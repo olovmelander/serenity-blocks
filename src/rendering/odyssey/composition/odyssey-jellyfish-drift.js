@@ -54,6 +54,13 @@ export const JELLY_KINDS = Object.freeze([
 export const JELLY_PULSE = Object.freeze({ contract: 0.26, surge: 5 });
 
 const SURGE_NORM = 1 - ((1 + JELLY_PULSE.surge) * Math.exp(-JELLY_PULSE.surge));
+/**
+ * How fast the coast still goes when the next beat starts (its glide's slope at f = 1). Taken out
+ * with a cubic that is 0 at both ends and flat at the start (2026-11-03): without it the bell's
+ * speed stepped at every new beat (a corner in its path, 0.17 of a beat's glide per beat), so now
+ * the coast comes to rest exactly as the next stroke begins.
+ */
+export const JELLY_SURGE_END = (JELLY_PULSE.surge * JELLY_PULSE.surge * Math.exp(-JELLY_PULSE.surge)) / SURGE_NORM;
 const smooth = (u) => u * u * (3 - (2 * u));
 
 /**
@@ -71,12 +78,14 @@ export function jellySqueeze(f) {
 
 /**
  * How far through its beat's glide the bell is at beat phase `f` (0 at 0, 1 at 1): its speed
- * rises through the contraction, peaks at a fifth of the beat and dies away as it coasts.
+ * rises through the contraction, peaks at a fifth of the beat and dies away as it coasts, to rest
+ * as the beat ends (so beat follows beat without a step in its speed).
  * @param {number} f
  */
 export function jellySurge(f) {
-    const x = JELLY_PULSE.surge * Math.min(Math.max(f, 0), 1);
-    return (1 - ((1 + x) * Math.exp(-x))) / SURGE_NORM;
+    const u = Math.min(Math.max(f, 0), 1);
+    const x = JELLY_PULSE.surge * u;
+    return ((1 - ((1 + x) * Math.exp(-x))) / SURGE_NORM) + (JELLY_SURGE_END * u * u * (1 - u));
 }
 
 /**

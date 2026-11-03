@@ -505,11 +505,121 @@ The other behaviours, after:
 
 The paddle surge is allowed in the calm-speed test (under 0.5 u/s²).
 
+### Natural motion pass (2026-11-03)
+
+The owner: "I want us to keep improving the design, movement and animations of all animals in
+odyssey mode, i want them to feel natural and move in a smooth and natural way!!!"
+
+**How it was measured.** The game's own pose code was sampled at 60 Hz over both swans' and the
+heron's whole loops. For every bone the probe measured its world rotation's speed, acceleration and
+jerk; for the body, its path's speed and acceleration; for the heron's planted feet, their slip and
+height. The motion was then skinned on the CPU and rendered in headless Blender as:
+
+- motion strips;
+- onion skins, with the 60 Hz paths of the head and feet drawn as curves.
+
+**The audit, worst first:**
+
+1. **The swans' heading jittered.** The route was a table of straight pieces, so the heading
+   turned in small steps: 220 rad/s² of angular acceleration at the root, 99 % of the time. It drew
+   a jagged path in the onion skin.
+2. **The mate cusped round the west turn.** It swam a fixed 2.6 u to the lead's side, and inside
+   the tight turn its offset line folded back: up to 14 u/s and 930 u/s².
+3. **The heron spun before walking.** It turned up to ~2.5 rad toward its next spot within its
+   first step, at up to 4.6 rad/s, and its planted foot slid with the body (no sideways reach).
+4. **The heron's legs jolted** (230-280 rad/s² at the thigh and shin). It had three causes: the
+   foot's lift started on a steep curve; a trailing leg pulled straight hit the reach limit and
+   kinked; and a planted foot slipped up to 0.02 u a frame.
+5. **A preen only twisted the neck about its own length.** A yaw of an upright neck cannot bring
+   the bill to the wing.
+6. **The heron never caught anything**, and its coil before a strike was quick (0.8 s).
+
+**What changed** (`odyssey-pond-life-motion.js`):
+
+- **The route.** Places and tangents now come from the Catmull-Rom spline itself, through a dense
+  arc-length table.
+- **The mate** follows the lead's own line, 8.5 s behind, wandering slowly up to 1.1 u to either
+  side.
+- **A swan turns head first.** Its upper neck looks into the bend the route takes ~2.5 s ahead.
+- **Each paddle stroke** is a quick push and a long glide (two harmonics, not a sine). The neck
+  gives a little at its base against the surge, so the head rides steady.
+- **The heron's walk is a list of moves.** Each one lifts one foot and sets it down while the body
+  is carried.
+  - It first turns toward its next spot in small stepped turns of at most ~0.5 rad. A foot is
+    re-placed with each one, and the body never spins.
+  - Then it stalks one step at a time, the head held still while the body moves under it.
+  - At the end the trailing foot closes up.
+  - Each leg also reaches sideways (a roll at the hip), so a planted foot stays put while the body
+    turns over it.
+- **The lift** follows sin^2.5, which starts and ends gently. Near full stretch the leg's reach
+  eases off instead of stopping dead.
+- **The preen** arches the neck back over the body and bends it to one side. The bill works at
+  the wing in small eased nibbles.
+- **The strike:**
+  - a slow 1.5 s coil, the neck drawn tight and low;
+  - the shot (0.24 s, eased at both ends), the hold, the return.
+  - **Half the strikes come up with a fish.** It is a new small silver part of the heron model on
+    its own bone, held crosswise in the bill. It grows in while the bill is under the water.
+  - **Then the swallow:** the head tips up, the neck gulps twice and the fish is gone (its bone
+    drawn at size 0). The model is now 13 bones and 1,336 triangles.
+
+**The numbers** (60 Hz, whole loops; the worst value; "a99" means 99 % of frames are below it):
+
+| | before | after |
+|---|---|---|
+| Swan root, angular acceleration (a99 / worst) | 221 / 357 rad/s² | 0.8 / 3.4 rad/s² |
+| Swan root, jerk (worst) | 42,800 rad/s³ | 197 rad/s³ |
+| The mate's speed (worst) | 14.5 u/s | 1.22 u/s |
+| The mate's acceleration (worst) | 927 u/s² | 2.9 u/s² |
+| Heron body, turning (worst) | 4.6 rad/s | 1.2 rad/s |
+| Heron thigh and shin, angular acceleration (worst) | 278 rad/s² | 29 rad/s² |
+| Heron thigh and shin, jerk (worst) | 21,300 rad/s³ | 820 rad/s³ |
+| Heron planted foot, slip (worst, per frame) | 0.020 u | 0.009 u |
+
+The fastest moves left are deliberate: the strike's shot (the upper neck at up to 26 rad/s, eased
+at both ends) and the swans' two wing beats in a stretch.
+
+![A swan's turn from above, before (left) and after (right): the head's 60 Hz path, jagged before, smooth after](images/odyssey-animals-2026-11-03/pond-onion-swan-turn.jpg)
+
+![Preening, before (top: the neck twists in place) and after (bottom: arched back, the bill at the wing)](images/odyssey-animals-2026-11-03/pond-strip-swan-preen.jpg)
+
+![The strike, before (top) and after (bottom): the slow coil, the shot, the hold](images/odyssey-animals-2026-11-03/pond-strip-heron-strike.jpg)
+
+![A catch: the coil, the shot, the fish in the bill, the swallow (0.4 s apart)](images/odyssey-animals-2026-11-03/pond-strip-heron-catch.jpg)
+
+![The heron's walk in onion skin with its feet's paths (orange left, blue right): before, the stalk after, and the stepped turn after](images/odyssey-animals-2026-11-03/pond-onion-heron-walk.jpg)
+
+![Strike paths of the head: before, after, and a catch](images/odyssey-animals-2026-11-03/pond-onion-heron-strike.jpg)
+
+![The swans gliding (0.25 s apart), before and after](images/odyssey-animals-2026-11-03/pond-strip-swan-glide.jpg)
+
+![The swan's turn, before and after](images/odyssey-animals-2026-11-03/pond-strip-swan-turn.jpg)
+
+At game size (L22, 4x; the 2026-11-02 shot left, this pass right) the swans, the heron and the
+drinkers read as before:
+
+![Game size at L22](images/odyssey-animals-2026-11-03/pond-game-size-l22.jpg)
+
+**Tests** (`tests/unit/odyssey-pond-life.test.js`, 15):
+
+- the swans' heading acceleration stays under 3 rad/s² at 60 Hz, and the mate's speed under 1.4x
+  the glide;
+- the heron never turns faster than 1.2 rad/s;
+- a fish appears only with the bill down, and is gone again within 5 s;
+- the fish is its own skinned part;
+- the leg reach eases off near full stretch without a kink.
+
+**Left as it was:**
+
+- **The drinking deer.** Their motion is the deer code's, which another helper owns.
+- **Up-ending.** The swan's hull is cut flat at the waterline, so tipping it up would show the
+  cut.
+- **The wake's crests** keep their travel speed; their strength already follows the swan's speed.
+
 ### Left for later
 
 - **The drinkers' timing** follows their own five-minute loop, so a given pass may find them on the
   ground above the bank rather than at the water.
-- **The heron does not catch anything.** Its strike comes back empty.
 - **The swans' paddling feet** are not drawn: under the turquoise they would not show.
 
 ## Ibex on the rock band (2026-11-02)
@@ -950,3 +1060,214 @@ the gallop (0.12 s apart), the wheel before a run, grazing, and a foal's buck:
 - the clearing holds every horse and every puff, has a ragged edge, keeps only a few lone trees in
   its core, and leaves the boulders exactly as they were;
 - dust rises only in a run.
+
+### Natural motion pass (2026-11-03)
+
+The owner: "I want us to keep improving the design, movement and animations of all animals in
+odyssey mode, i want them to feel natural and move in a smooth and natural way!!!"
+
+**How it was judged.**
+- The game's own CPU twin (`composition/odyssey-horse-band.js`) was sampled at 60 Hz over the whole
+  300 s loop for every horse. I measured:
+  - the root path (acceleration, jerk, vertical, turn rate);
+  - every joint (angular velocity and acceleration);
+  - the hooves in stance (slip, float, dig);
+  - the footfall order per gait;
+  - the foals' distance from their mothers;
+  - the band's spacing.
+- The same poses were skinned on the CPU in headless Blender
+  (`scripts/blender/odyssey/horse_motion_review.py`). It renders motion strips, onion skins and the
+  hooves' paths against the body, and builds a review .blend that can be scrubbed.
+- Close-up strips came from the playground in the browser (WebGPU), with the game's own shader.
+- Electron is blocked on this machine today, so there are no rail-station captures in this pass.
+
+**What looked least natural, worst first, and what changed.**
+
+1. **The gallop jolted and the knees popped.**
+   - The body's height jumped 4-7 cm from frame to frame (vertical spikes of ~420 m/s^2, life size)
+     and sank 22 cm low. The fore knee flipped between its two leg-solve answers (6,300-8,900
+     rad/s^2).
+   - Now the body's "drop" (how much it lowers so the hooves reach the ground) is averaged over a
+     few moments either side, so the body rides the strides in one swell.
+   - The hind hooves land under the hip at speed, the strides at a canter and gallop are shorter
+     and quicker, and the canter's rocking is lighter.
+   - The fore leg's knee folds only in the air. Its fold eases out by the stance share, and the
+     elbow is solved for that knee, so the hoof always lands where the plan put it. Deep in a
+     gallop's stance, the knee takes what the elbow can not.
+2. **Corners in the path.**
+   - Paths were read as a chain of straight pieces, which made spikes of 50-100 m/s^2 in the runs.
+     A run turned 90 degrees at the band's west end at full speed (3 u radius).
+   - Now the path comes from the curve itself.
+   - A run has a racing-line speed profile: it speeds up and slows at a horse's rate (1.6 m/s^2)
+     and eases off into a bend (at most 4 m/s^2 sideways), then the profile is smoothed.
+3. **Foals did not stay with their mothers.**
+   - Before: 5-5.5 m away on average, more than 6 m away 23-30 % of the time, never suckling.
+   - Now each foal keeps a place by its mother's hip. It walks to her, or trots when it has drifted
+     far, predicting where she will be when it arrives.
+   - It goes round her, never through her, and moves before she steps onto it.
+   - It suckles at her flank, head to tail, while she stands grazing, and plays (out and back,
+     sometimes a buck) only onto open grass clear of the rocks.
+   - In a run it ends beside her on its running side.
+4. **Turning on the spot.**
+   - Before: 43-73 s of every 5 minutes, with grazing steps spinning at the start (4-7.5 rad/s)
+     and a stumble in the wheel before a run.
+   - Now steps and walks curve from the way the horse faces to where it goes, and pivot only for
+     more than ~60 degrees. The wheel before a run is a firm 1.5 rad/s pivot, and the curve takes
+     the rest.
+5. **The walk's order.**
+   - The four-beat lateral sequence now holds in more strides (3-5 of 12-17, was 0-3 of 8-12).
+     Each walk starts with the left hind.
+   - The trot lands its diagonal pairs (7-13 diagonal against 0-1 lateral, was 1-2 against 0-1).
+6. **Life at rest.**
+   - A dozing mare stands with her head about her withers and one hind leg cocked on its toe, the
+     hip on that side dropped.
+   - A head toss now and then while a head is up.
+   - A suckling foal wags its tail.
+
+**Numbers, before -> after** (the worst over each group's loop; life size):
+
+| | adults | foals |
+|---|---|---|
+| Root acceleration (m/s^2) | 50-102 -> 6.6-8.2 | 72 -> 6.6-8.6 |
+| Root jerk (m/s^3) | 2,986-6,146 -> 657-812 | 4,293-4,335 -> 636-813 |
+| Vertical acceleration (m/s^2) | 418-434 -> 68-81 | 409-434 -> 58-59 |
+| Fastest turn of the body (rad/s) | 4.2-7.5 -> 1.6-2.0 | 3.6-4.5 -> 1.6-1.8 |
+| Leg joints, fastest (rad/s) | 52-56 -> 42-46 | 60-61 -> 45-46 |
+| Leg joints, acceleration max / 99.9 % (rad/s^2) | 6,332-7,872 / 2,063-2,230 -> 4,396-5,411 / 1,719-1,789 | 8,310-8,935 / 2,555-2,777 -> 5,693-5,825 / 2,305-2,386 |
+| Neck, acceleration max (rad/s^2) | 142-263 -> 120-133 | 158-164 -> 126-137 |
+| Hoof in stance: slip 99 % / dig | 0.04 / 0 -> 0.04 / 0 | 0.06 / 0.01 -> 0.06 / 0.01 |
+| Turning on the spot (s per 5 min) | 43-53 -> 28-38 | 52-73 -> 52-55 |
+| Foal from its mother: mean, share beyond 6 m | | 5.0-5.5 m, 23-30 % -> 2.3-2.4 m, 3 % |
+
+![The gallop in the playground, before (top) and after (bottom), 0.05 s apart](images/odyssey-animals-2026-11-03/horses-game-gallop-before-after.jpg)
+
+![Setting off: before, a stumble in a lone wheel; after, the foal at her side and a firm wheel](images/odyssey-animals-2026-11-03/horses-game-setoff-before-after.jpg)
+
+![A foal and its mother over 22 s: before, it grazes 8-12 m away; after, at her side](images/odyssey-animals-2026-11-03/horses-game-foalmum-before-after.jpg)
+
+![Blender, the game's poses: the gallop before (top) and after (bottom)](images/odyssey-animals-2026-11-03/horses-blender-gallop-before-after.jpg)
+
+![Blender: the gallop as an onion skin and the hooves' paths against the body, before (left) and after (right); the hind loops lost their lift-off spikes](images/odyssey-animals-2026-11-03/horses-blender-gallop-onion-hooves.jpg)
+
+![Blender: a bay foal and its mother; after, the foal at her side, then suckling head to tail](images/odyssey-animals-2026-11-03/horses-blender-nurse-before-after.jpg)
+
+![Blender: after, a doze on a cocked hind leg (bottom), where before the mare stepped and pivoted (top)](images/odyssey-animals-2026-11-03/horses-blender-doze-before-after.jpg)
+
+**Kept as they were:**
+- where the band lives, its world-anchored clock and runs, the window (never popping);
+- the model, the draws, the eight-buffer limit;
+- `?odysseyNoHorses=1` and `?odysseyNoMeadowClearing=1`.
+
+Planning the feet takes ~150 ms in all (one horse a task). The pose costs about 0.1 ms a frame on
+the CPU, as before; it now takes the drop at five moments instead of one, with no new allocation.
+
+**Tests** (`tests/unit/odyssey-wild-horses.test.js`): all pass. Bounds changed with notes, at the
+measured values:
+- a run may last up to 40 s (it eases into bends);
+- gallop strides at full speed, at least 10;
+- foals may spend up to 5 % of walking time on fewer than two hooves, and 2 % airborne (a quick
+  pivot hops);
+- a mother and her foal may brush (under 4.5 % of the time); every other pair keeps the strict gap.
+
+**Left:**
+- A foal still brushes its mother for about 3 % of the time: in a pivot, at a run's start, or
+  suckling at her flank.
+- The trot still takes a stride to settle its pairs when it starts from a walk.
+- The walk's lateral order holds in about a third of the strides (the walks are short; they
+  start and stop within a few strides).
+
+## Hoofed motion pass: the red deer and the ibex (2026-11-03)
+
+The owner, on all the animals: "I want them to feel natural and move in a smooth and natural way".
+This pass measured the red deer (the glade herd and the two drinkers at the tarn) and the ibex,
+fixed the worst first, and measured again. Their places, their schedules, their cost and their
+levers are unchanged; the deer and the ibex share one solver (`composition/odyssey-deer-herd.js`),
+so most fixes reach both.
+
+### How it was measured
+
+A node probe posed every animal through its whole loop at 60 Hz with the game's own solver and the
+real ground, and read:
+- each bone's angular speed, acceleration and jerk (from the pose table's quaternions);
+- the body's acceleration and jerk, in body sizes per second squared;
+- the hooves in stance: height over the ground (float, sink) and slip;
+- the walk's duty factor (the share of the stride a hoof stands).
+
+The motion was also filmed: the same pose tables rendered close up in headless Blender, with the
+hoof paths drawn as tubes. The coat and the rocks were judged in the game's own shaders, in a new
+playground page (`?effect=odyssey-ibex`, below).
+
+### The worst first, and what changed
+
+| # | What was wrong | Before | After |
+|---|---|---|---|
+| 1 | Ibex leap: the body pitched about 0.3 rad in one frame at the take-off and the landing; its speed jumped there | body bones up to 1,157-1,290 rad/s² (19 rad/s); body 220-368 sizes/s² | 35-42 rad/s² (2.8 rad/s); 55-98 sizes/s² |
+| 2 | Knees and hocks: at a deep fold the bend wrapped past pi and the leg flipped for a frame | single-frame leg pops on the tarn's bank | gone |
+| 3 | Hooves lifted and landed with a jump in speed (a sine lift, a sine curl) | deer legs up to 905-1,029 rad/s², jerk 78-93k | 369-525, jerk 19-35k |
+| 4 | The body jumped up as a hoof lifted (the hoof let go of the body in the swing's first frames) | glade body p99 14-21, max 76-121 sizes/s² | p99 5.3-7.3, max 22-55 |
+| 5 | Tarn drinkers: a sharp crest of the bank under a swinging hoof jolted the body; the lift asked a leg for more than it could reach | body bones 281/292 rad/s²; hoof float p99 0.058/0.074, max 0.106/0.150 | 29/40 rad/s²; float p99 0.053/0.058, max 0.096/0.125 |
+| 6 | Ibex leap: a fore stepped during the push and landed in the air; the push dipped below the crouch and came back up; a walk's carriage lowered the body as the push began | a dangling fore, a hitch, a drop | none |
+| 7 | Ibex coat: at game size the markings read as dark legs only | | the markings a deep chocolate, broader |
+| 8 | Perch rocks darker than the scree round them | 69-88 (screen value, lit side) | 80-102, the scree 81-93 |
+
+(Sizes are the animal's drawn size; legs are the deer's, the ibex's legs went from 2,729-3,851 to
+1,732-2,021 rad/s², their jerk from 300-430k to 140-220k; the walks' duty factors stayed 0.66-0.71.)
+
+**The leap** (`deerLeapAt`) is now one smooth curve from the gather to the settle:
+- The body's travel along the leap gathers speed in the push and sheds it in the landing's give
+  (`leapShare`); the height follows quintic curves that match the flight's speed and its curvature
+  at both ends.
+- The crouch is as deep as the push needs to reach the speed it leaves with (up to a sixth of the
+  size). The push runs up past standing, legs straight (`LEAP_REACH`), where the hooves leave the
+  rock; the landing meets the rock the same way and gives deeper the faster it lands.
+- Through the leap the body rides the line it flies, not its hooves (they leave and land one pair
+  after the other); its pitch leans back as the haunches gather, follows the arc, and leans
+  forward to land, each part easing in and out.
+- No step starts during a leap's gather and push.
+
+**The walk and the stand:**
+- A hoof's lift and curl rise and fall with no jump in speed (64 u³(1-u)³, sin²).
+- The body leans on a hoof less over its last 0.3 s of stance and again over the end of its swing,
+  continuously, so it never jumps when a hoof lifts; landing, a hoof takes the say it will have
+  standing.
+- The legs' reach and the knee's fold are clamped softly.
+- A hoof in the air counts for the body as the line between where it left and where it lands; the
+  hoof itself keeps clear of the ground below it.
+- The jaw's cropping no longer kinks.
+
+**The coat and the rocks:**
+- The ibex's darker coat (`odyssey-ibex.js`, and the paint in `alpine_ibex.py`, rebuilt byte for byte)
+  is a deep chocolate instead of near black; the flank band and the dorsal stripe are broader; the
+  backs of the lower legs are lighter.
+- The perch rocks (`ODYSSEY_PERCH_ROCKS`) are the scree's dry grey, with less lichen.
+
+![The buck's leap, before (rows 1-2) and after (rows 3-4): close up in Blender from the game's own solver, 0.12 s apart, the hoof paths drawn](images/odyssey-animals-2026-11-03/hoofed-leap-before-after.jpg)
+
+![After: the gather (haunches down, the head up), the push up past standing, the flight](images/odyssey-animals-2026-11-03/hoofed-leap-crouch.jpg)
+
+![The kid's hop, before and after: the fore's path no longer dips in the air](images/odyssey-animals-2026-11-03/hoofed-hop-before-after.jpg)
+
+![The tarn's hind on the bank, before and after (the change here is in single frames: the numbers above)](images/odyssey-animals-2026-11-03/hoofed-bank-before-after.jpg)
+
+![The coat and the perch rocks in the game's shaders (the playground page), before and after: the buck close up, and the herd from the rail's angle at 45 u](images/odyssey-animals-2026-11-03/ibex-coat-perch-before-after.jpg)
+
+### The playground page
+
+`?effect=odyssey-ibex&t=<board s>&ibex=<0-3>&view=side|three|front|rear|rail&dist=<u>&p=<progress>`
+draws the herd as the game does, on the real world (ground, scree, perch rocks) in its own light.
+`view=rail` looks at the herd from the rail's ground track at progress `p`; with `dist`, from that
+far along the same line.
+
+### Tests
+
+- `tests/unit/odyssey-ibex.test.js` adds a leap check at 60 Hz over every leap: the root's angular
+  acceleration under 80 rad/s² and the body's under 130 sizes/s² (the old solver: 1,165 rad/s²).
+- The deer's motion limits (`odyssey-ground-animals.test.js`) and every other check pass unchanged.
+
+### Left for later
+
+- The hooves still float a little before they lift (p99 0.03-0.06 of the size): the planner leaves
+  a trailing hoof down a moment longer than the leg can reach. A planner change, not a pose one.
+- On a perch rock's faceted top a hoof's tilt can step when a turn carries it over a facet edge
+  (one leg spike per loop for a nanny).
+- The ibex's leg speeds in the push stay high (a real leap's push is quick too).

@@ -15,6 +15,10 @@
  *   - BUTTERFLIES, a few, in an erratic flight close to the eye, wings beating in bouts between
  *     glides (the wings fold toward the body on each beat), drawn at about three times life so
  *     one crossing the view reads at the camera's height over the meadow (47-90 u up).
+ *     (2026-11-03) The beat is a smooth swing of the wings' elevation: the width the eye sees is
+ *     its cosine (it was |cos| of the clock, which bounced off closed with a corner every beat),
+ *     and the body bobs with each beat, rising as the wings come down (`butterflyBeatAt` is
+ *     the vertex stage's CPU twin).
  * Front-lit like the rest of the act (the sun behind the camera's shoulder).
  *
  * OPAQUE with an alpha test, so there is no blend state and no sorting: a petal is a solid shape.
@@ -62,6 +66,30 @@ export const ODYSSEY_MEADOW_LIFE = Object.freeze({
 });
 
 const win = (w, p) => THREE.MathUtils.smoothstep(p, w[0], w[1]) * (1 - THREE.MathUtils.smoothstep(p, w[2], w[3]));
+
+/** A butterfly's beat: the wings' widest swing up (radians) and the body's bob (world units). */
+export const BUTTERFLY_BEAT = Object.freeze({ swing: 1.42, bob: 0.12, glide: 0.92 });
+
+const jsSmooth = (e0, e1, x) => {
+    const k = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+    return k * k * (3 - (2 * k));
+};
+
+/**
+ * CPU twin of the vertex stage's butterfly beat for hashes h2..h5 at clock `t`: `width` the
+ * wings' width as the eye sees it (1 spread flat .. ~0.15 closed up), `bob` the body's rise.
+ * The wings' elevation swings smoothly from flat to nearly closed and back (a raised cosine);
+ * bouts of beating ease in and out of glides on spread wings.
+ */
+export function butterflyBeatAt(t, h2, h3, h4, h5) {
+    const bout = jsSmooth(-0.2, 0.4, Math.sin((t * (0.35 + (0.25 * h5))) + (h3 * 20)));
+    const phase = (t * (18 + (8 * h2))) + (h4 * 10);
+    const lift = (1 - Math.cos(phase)) * 0.5 * BUTTERFLY_BEAT.swing;
+    return {
+        width: BUTTERFLY_BEAT.glide + ((Math.cos(lift) - BUTTERFLY_BEAT.glide) * bout),
+        bob: Math.cos(phase) * BUTTERFLY_BEAT.bob * bout,
+    };
+}
 
 /** Strength of each kind at journey progress `p` (pure; exported for its test). */
 export function meadowLifeAt(p, cfg = ODYSSEY_MEADOW_LIFE) {
@@ -142,7 +170,14 @@ export function createOdysseyMeadowLife({
             cos(t.mul(mix(0.6, 1.2, h3)).add(h5.mul(35.0))).mul(2.6)
                 .add(cos(t.mul(mix(1.9, 3.1, h5)).add(h2.mul(14.0))).mul(0.8)),
         );
-        const flyMove = wind.mul(t.mul(B.drift)).add(weave);
+        // The beat (the twin: butterflyBeatAt): the wings' elevation swings smoothly from flat to
+        // nearly closed above the back and down again; the body rises as they come down.
+        const bout = smoothstep(-0.2, 0.4, sin(t.mul(mix(0.35, 0.6, h5)).add(h3.mul(20.0))));
+        const beatPhase = t.mul(mix(18.0, 26.0, h2)).add(h4.mul(10.0)).toVar();
+        const wingLift = float(1).sub(cos(beatPhase)).mul(0.5 * BUTTERFLY_BEAT.swing);
+        const beat = mix(float(BUTTERFLY_BEAT.glide), cos(wingLift), bout).toVar();
+        const bob = cos(beatPhase).mul(BUTTERFLY_BEAT.bob).mul(bout);
+        const flyMove = wind.mul(t.mul(B.drift)).add(weave).add(vec3(0.0, bob, 0.0));
         const q = home.add(mix(petalMove, flyMove, flyF));
         const rel = fract(q.sub(cameraPosition).div(box).add(0.5)).sub(0.5).mul(box);
         const centre = cameraPosition.add(rel).toVar();
@@ -162,17 +197,13 @@ export function createOdysseyMeadowLife({
         // beats in bouts (a glide between them), each beat folding the wings toward the body.
         const spin = t.mul(mix(0.6, 1.8, h3)).add(h1.mul(30.0));
         const flip = cos(t.mul(mix(1.4, 3.2, h4)).add(h2.mul(50.0))).toVar();
-        const bout = smoothstep(-0.2, 0.4, sin(t.mul(mix(0.35, 0.6, h5)).add(h3.mul(20.0))));
-        const beat = abs(cos(t.mul(mix(18.0, 26.0, h2)).add(h4.mul(10.0)))).mul(bout)
-            .add(float(1).sub(bout).mul(0.92))
-            .toVar();
         const size = mix(
             mix(float(P.size[0]), float(P.size[1]), h2),
             mix(float(B.size[0]), float(B.size[1]), h2),
             flyF,
         ).mul(fade.mul(0.5).add(0.5));
         const roll = mix(spin, sin(t.mul(0.9).add(h3.mul(12.0))).mul(0.35), flyF);
-        const width = mix(max(abs(flip), 0.12), max(beat, 0.10), flyF);
+        const width = mix(max(abs(flip), 0.12), beat, flyF);
         // A petal is taller than it is wide; a butterfly wider than it is tall.
         const local = vec2(
             positionGeometry.x.mul(width).mul(mix(float(0.7), float(1.0), flyF)),

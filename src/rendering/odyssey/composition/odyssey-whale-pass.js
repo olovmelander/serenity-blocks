@@ -1,12 +1,18 @@
 /* eslint-disable import/no-unresolved, import/no-extraneous-dependencies */
 /**
- * THE WHALE PASS — a mother and calf circling over the Act I ascent.
+ * THE WHALE PASS — a humpback mother and calf circling over the Act I ascent.
  *
  * The camera climbs the water column looking UP toward the bright surface, so a whale crossing
  * overhead is a SILHOUETTE against the light — the most iconic image underwater (ABZÛ, the
- * Big Blue). The project already owned the asset (`whale-glide.glb`, the photo→3D→rig pipeline
- * in assets/chapter-02/creatures/), but only the suppressed Deep Ocean diorama ever used it, so
- * on the default One World path the ocean had fish and nothing that made you look up.
+ * Big Blue).
+ *
+ * THE ANIMALS (2026-11-03): `humpback-swim.glb`, built, rigged and keyed in Blender
+ * (scripts/blender/odyssey/odyssey_whales.py): a humpback with its long white flippers and wide
+ * notched flukes, a 13-bone rig and a keyed stroke (a wave of heave running back to the flukes).
+ * It replaced `whale-glide.glb`, a photo-to-3D mesh whose auto-rig was backwards (its swim nodded
+ * the head and left the flukes still). On top of the keyed stroke the game sets the beat by the
+ * pace, the calf's faster than its mother's, bends the body into its turns and rolls the flippers
+ * with them (odyssey-whale-swim.js). docs/ODYSSEY_SEA_MOTION_2026-11.md.
  *
  * WHY A COMPOSITION ELEMENT, not world content: ADR-0017 lets the world's underwater span grow
  * content but not chapter-shaped special cases, and a two-actor hero beat with its own
@@ -23,21 +29,36 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    abs, cameraPosition, clamp, dot, length, max, mix, normalView, normalWorld, normalize, oneMinus,
-    positionWorld, pow, smoothstep, uniform, vec3,
+    abs, attribute, cameraPosition, clamp, dot, float, length, max, mix, normalView, normalWorld, normalize,
+    oneMinus, positionWorld, pow, smoothstep, uniform, vec3,
 } from 'three/tsl';
 import { loadOdysseyGltfCached } from '../chapter-environments/shared/odyssey-gltf-loader.js';
 import { getChapter2CreatureAssetById } from '../chapter-environments/shared/chapter-02-creature-assets.js';
 import { odysseyDeepWaterDim } from '../odyssey-colour-script.js';
 import { behindSteamDepth, steamVeilWeight } from './odyssey-steam-quench.js';
 import {
-    OCEAN_ROAM, roamAt, roamHeading, roamLane, stepRoamArrival,
+    OCEAN_ROAM, roamAt, roamHeading, roamLane, softLimit, stepRoamArrival,
 } from './odyssey-ocean-roam.js';
 import { oceanLifeDrawn } from './odyssey-through-surface.js';
+import {
+    WHALE_BEND_BONES, WHALE_FLIPPER_BONES, WHALE_SWIM, whaleBend, whaleClipRate,
+} from './odyssey-whale-swim.js';
 
-/** Whale length in world units (the GLB is auto-scaled to this by its largest bound). */
-const MOTHER_LENGTH = 58;
-const CALF_LENGTH = 26;
+/** The pair's asset (chapter-02-creature-assets.js). */
+export const WHALE_PASS_ASSET_ID = 'humpback-swim';
+
+/**
+ * Whale length in world units (the GLB is scaled to this by its largest bound).
+ *
+ * THE SIZE AS SEEN, kept (2026-11-03). These read 58 and 26 until the humpback came, but the old
+ * photo-to-3D GLB drew at HALF that: its positions were quantized to [-1, 1] and the dequantizing
+ * half went into its skin's inverse bind matrices, so its bind-pose bounds were twice what was
+ * drawn (measured: geometry box 2.0 long, skinned 1.008). What the journey has shown since
+ * 2026-10-22 is a ~29 u mother and a ~13 u calf, and that is the size kept here. The routes' eye
+ * clearances (tests/unit/odyssey-ch2-roam.test.js) were set for 58 / 26, so they hold with room.
+ */
+export const MOTHER_LENGTH = 29;
+export const CALF_LENGTH = 13;
 /**
  * THE PAIR ROAMS (2026-10-24; see odyssey-ocean-roam.js). It owned one stretch of the climb (orb 9,
  * 2026-10-22), then escorted the eye from a slot in the journey's view (2026-10-23), and Olov did
@@ -80,10 +101,7 @@ function bindPoseBounds(model) {
  * was the depth-window fade — and a dark silhouette fading over the water it swims in is exactly
  * a silhouette dissolving INTO the water colour. So the fade now rides the same haze the
  * distance already uses (fade 0 = pure water colour, and the group is hidden there), which keeps
- * the pair in the opaque queue: early-Z, no blend, no sort. Double-sided stays: the GLB is an
- * unindexed triangle soup authored doubleSided, and a culled hole in a 58 u hero would show.
- * (Its unused COLOR_0 is never uploaded: the node material reads no vertex colour, and WebGPU
- * only binds the attributes a pipeline uses — it is CPU memory in the shared glTF cache only.)
+ * the pair in the opaque queue: early-Z, no blend, no sort.
  */
 function createWhaleMaterial(uWater, uFade) {
     const material = new THREE.MeshBasicNodeMaterial();
@@ -93,7 +111,15 @@ function createWhaleMaterial(uWater, uFade) {
     // Clamped: a dot of unit vectors can round past 1, and pow of a negative base is NaN, which
     // bloom spreads into a black block (as the water surface's caustics, odyssey-water-surface.tsl.js).
     const fres = pow(clamp(oneMinus(abs(dot(normalize(normalView), vec3(0, 0, 1)))), 0.0, 1.0), 2.5);
+    // The humpback's own marks, baked per vertex in Blender (COLOR_0): r the fins' white (the long
+    // flippers, the flukes' underside), g the belly's, b how open the skin is to the light (ao).
+    // The belly keeps only a hint of its white: from below the pair stays a silhouette.
+    const marks = attribute('color', 'vec4');
+    const white = clamp(marks.x.mul(0.85).add(marks.y.mul(0.22)), 0.0, 1.0);
+    const open = mix(float(0.72), float(1.0), clamp(marks.z, 0.0, 1.0));
     let body = mix(vec3(0.016, 0.042, 0.064), vec3(0.085, 0.17, 0.22), pow(belly, 1.4).mul(0.85));
+    // White skin seen through the water: pale teal, brighter where it turns to the light below.
+    body = mix(body, vec3(0.22, 0.36, 0.42).mul(belly.mul(0.35).add(0.65)), white).mul(open);
     body = body.add(vec3(0.50, 0.80, 0.90).mul(fres).mul(towardSurface.mul(0.6).add(0.25)).mul(0.5));
     const dist = length(positionWorld.sub(cameraPosition));
     const haze = smoothstep(30.0, 360.0, dist).mul(0.88);
@@ -101,8 +127,8 @@ function createWhaleMaterial(uWater, uFade) {
     // Behind the 1->2 steam while it is up: it arrives there, never through it.
     material.depthNode = behindSteamDepth(positionWorld);
     material.depthWrite = true;
-    material.side = THREE.DoubleSide;
-    material.forceSinglePass = true;
+    // One closed skin wound outward (the Blender build checks it), so its back faces never show.
+    material.side = THREE.FrontSide;
     // It carries its own colour-with-distance; scene fog is the chapter-profile lerp and would
     // paint it in whatever the seam happens to be doing (the repo's four-times-paid fog trap).
     material.fog = false;
@@ -135,8 +161,39 @@ export function createWhalePass({
     const heading = new THREE.Vector3();
     const motherRoute = OCEAN_ROAM.whales;
     const calfRoute = roamLane(motherRoute, WHALE_PASS_PAIR.calf);
+    const scratchQ = new THREE.Quaternion();
+    const restQ = new THREE.Quaternion();
+    const UP = new THREE.Vector3(0, 1, 0);
+    const FORWARD = new THREE.Vector3(0, 0, -1);
 
-    async function addActor(url, bodyLength, phase, path) {
+    /** A bone of the rig with the model's up (and forward) axis in its own frame at rest. */
+    function boneRef(model, name) {
+        const bone = model.getObjectByName(name);
+        if (!bone) return null;
+        bone.getWorldQuaternion(restQ);
+        const inv = restQ.clone().invert();
+        return {
+            bone,
+            up: UP.clone().applyQuaternion(inv).normalize(),
+            forward: FORWARD.clone().applyQuaternion(inv).normalize(),
+        };
+    }
+
+    /** The turn on top of the keyed stroke: a C through the spine, the flippers rolled with it. */
+    function bendInto(actor, speed) {
+        const b = whaleBend(actor.turn, speed, actor.length);
+        for (let i = 0; i < actor.bend.length; i += 1) {
+            const ref = actor.bend[i];
+            ref.bone.quaternion.multiply(scratchQ.setFromAxisAngle(ref.up, b * ref.share));
+        }
+        const roll = b * WHALE_SWIM.flipperRoll;
+        for (let i = 0; i < actor.flippers.length; i += 1) {
+            const ref = actor.flippers[i];
+            ref.bone.quaternion.multiply(scratchQ.setFromAxisAngle(ref.forward, roll));
+        }
+    }
+
+    async function addActor(url, bodyLength, phase, path, who) {
         const { scene: model, animations } = await loadOdysseyGltfCached(url);
         const size = bindPoseBounds(model).getSize(new THREE.Vector3());
         model.scale.setScalar(bodyLength / Math.max(size.x, size.y, size.z, 1e-3));
@@ -150,6 +207,12 @@ export function createWhalePass({
         const holder = new THREE.Group();
         holder.add(model);
         group.add(holder);
+        model.updateMatrixWorld(true);
+        const bend = WHALE_BEND_BONES.map((b) => {
+            const ref = boneRef(model, b.name);
+            return ref ? { ...ref, share: b.share * b.dir } : null;
+        }).filter(Boolean);
+        const flippers = WHALE_FLIPPER_BONES.map((n) => boneRef(model, n)).filter(Boolean);
         const mixer = animations[0] ? new THREE.AnimationMixer(model) : null;
         if (mixer) {
             const action = mixer.clipAction(animations[0]);
@@ -158,7 +221,7 @@ export function createWhalePass({
             action.time = phase * (animations[0].duration || 1);
         }
         actors.push({
-            holder, mixer, phase, path, yaw: null, turn: 0,
+            holder, mixer, phase, path, who, length: bodyLength, bend, flippers, yaw: null, turn: 0,
         });
     }
 
@@ -167,10 +230,10 @@ export function createWhalePass({
         /** Fetch + parse only; no GPU work. Resolves true when both actors are in the group. */
         async load() {
             if (loaded) return true;
-            const rec = getChapter2CreatureAssetById('whale-glide');
+            const rec = getChapter2CreatureAssetById(WHALE_PASS_ASSET_ID);
             if (!rec?.url) return false;
-            await addActor(rec.url, MOTHER_LENGTH, 0, motherRoute);
-            await addActor(rec.url, CALF_LENGTH, 0.37, calfRoute);
+            await addActor(rec.url, MOTHER_LENGTH, 0, motherRoute, 'mother');
+            await addActor(rec.url, CALF_LENGTH, 0.37, calfRoute, 'calf');
             loaded = true;
             return true;
         },
@@ -218,13 +281,17 @@ export function createWhalePass({
             // Under a thick veil of the 1->2 steam the pair is already here when it clears.
             if (steamVeilWeight() > 0.3) arrival.arrive = 1;
             const fade = stepRoamArrival(arrival, dt);
-            actors.forEach((actor) => {
-                if (actor.mixer) actor.mixer.update(dt * 0.8);
+            for (let i = 0; i < actors.length; i += 1) {
+                const actor = actors[i];
                 // Each on its own route (the clock's, never the camera's); the calf's beside hers.
                 roamAt(actor.path, time, position, velocity);
                 actor.holder.position.copy(position);
-                // Heading from its velocity, mostly level. The GLB leads with -Z (see
-                // deep-ocean-manta.js _whaleBaseFwd), so yaw so that -Z points along it.
+                const speed = velocity.length();
+                // The stroke, quicker as it swims faster (the calf's quicker than hers); the mixer
+                // integrates the rate, so a change of pace never jumps it.
+                if (actor.mixer) actor.mixer.update(dt * whaleClipRate(speed, actor.path.speed, actor.who));
+                // Heading from its velocity, mostly level. The GLB leads with -Z, so yaw so that
+                // -Z points along it.
                 roamHeading(velocity, heading, { x: 0, y: 0, z: 1 });
                 const yaw = Math.atan2(-heading.x, -heading.z);
                 if (actor.yaw !== null && dt > 0) {
@@ -232,9 +299,11 @@ export function createWhalePass({
                     actor.turn += ((d / dt) - actor.turn) * (1 - Math.exp(-dt * 2));
                 }
                 actor.yaw = yaw;
-                // It banks a little into its turn.
-                actor.holder.rotation.set(0, yaw, THREE.MathUtils.clamp(-actor.turn * 0.9, -0.3, 0.3));
-            });
+                // It banks a little INTO its turn (the inside flank down; until 2026-11-03 the
+                // sign leaned it out), and bends into it.
+                actor.holder.rotation.set(0, yaw, softLimit(actor.turn * 0.9, 0.3));
+                bendInto(actor, speed);
+            }
             uFade.value = fade * life;
             group.visible = uFade.value > 0.01;
         },

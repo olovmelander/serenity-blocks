@@ -39,13 +39,11 @@ const _box = new THREE.Box3();
 const _size = new THREE.Vector3();
 const _fwd = new THREE.Vector3();
 const _q = new THREE.Quaternion();
-// Head axis in model space. Both GLBs are rigged with the head at canonical -Y (Blender)
-// which export_yup maps to +Z in glTF/three space — and whale-glide.glb is the same mesh —
-// so BOTH creatures lead with +Z. (If a creature ever visibly swims tail-first, flip this
-// one axis to (0, 0, -1).)
+// Head axis in model space. The manta GLB is rigged with the head at canonical -Y (Blender),
+// which export_yup maps to +Z in glTF/three space, so it leads with +Z. (If a creature ever
+// visibly swims tail-first, flip this one axis to (0, 0, -1).)
 const _baseFwd = new THREE.Vector3(0, 0, 1);
-// The whale GLB's head faces the opposite way from the manta's (verified in-game: it swam
-// tail-first at +Z), so it leads with -Z.
+// The humpback (humpback-swim.glb, as the whale pass swims it) leads with -Z.
 const _whaleBaseFwd = new THREE.Vector3(0, 0, -1);
 
 function smoothstep01(edge0, edge1, x) {
@@ -197,7 +195,7 @@ export async function loadDeepOceanMantas(group, uniforms, corridor) {
     // overlap instead of running serially (await manta THEN await whale halved the throughput
     // of the chapter's heaviest async work). Each seats independently — order is irrelevant.
     const mantaRecord = getChapter2CreatureAssetById('manta-glide');
-    const whaleRecord = getChapter2CreatureAssetById('whale-glide');
+    const whaleRecord = getChapter2CreatureAssetById('humpback-swim');
     await Promise.all([
         mantaRecord?.url ? loadCreature(group, uniforms, corridor, mantaRecord, 'manta') : null,
         whaleRecord?.url ? loadCreature(group, uniforms, corridor, whaleRecord, 'whale') : null,

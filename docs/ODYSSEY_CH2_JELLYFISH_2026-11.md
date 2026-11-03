@@ -132,3 +132,11 @@ Timed on the RTX at full speed (2560x1440, High, the jellies' material switched 
 same stations, p 0.068-0.138, two rounds): 0 to +0.15 ms of GPU time per frame. One station showed
 +1.7 ms once; a second run with the jellies switched off showed the same spike at another station,
 so it was other work on the GPU, not the jellies.
+
+## The coast comes to rest (2026-11-03)
+
+Part of the sea-motion pass (docs/ODYSSEY_SEA_MOTION_2026-11.md, section 4). The glide's coast had
+not quite stopped when the next stroke began, so the bell's speed stepped at every beat (0.10 bell
+radii a second, a corner in its path). A small cubic term (`JELLY_SURGE_END`) now brings it to rest
+exactly as the next stroke begins; the shader does the same. The places, the look and the beat's
+shape are unchanged.

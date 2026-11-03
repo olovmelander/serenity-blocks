@@ -668,6 +668,8 @@ def _quat_matrix(q):
 def motion(deer, spec_path, directory):
     """Render frames of a motion exported from the game's own solver (the pose table per frame:
     per bone a quaternion and where its rest frame lands, `pos = q v k + t`), each with its camera.
+    A frame carries one `table` or several `animals` (each a `table`); the spec may carry the
+    `ground` (positions, triangles) and `paths` (polylines drawn as thin tubes, e.g. hoof paths).
     Previews only: the tables come from the CPU twin of odyssey-deer-herd.js."""
     import bpy
     from fall_grove import studio as studio_module
@@ -677,34 +679,71 @@ def motion(deer, spec_path, directory):
     studio = studio_module.Studio()
     studio.setup_preview(sun_direction=(-0.46, 0.36, 0.61), sun_strength=4.0, sky=(0.5, 0.62, 0.8), sky_strength=0.8)
     colours = _albedo(deer.colors)
-    ground = studio.mesh_object("ground", np.array([[-60, 0, -60], [60, 0, -60], [60, 0, 60], [-60, 0, 60]],
-                                                   dtype=float), np.array([[0, 2, 1], [0, 3, 2]]))
+    if spec.get("ground"):
+        g = spec["ground"]
+        ground = studio.mesh_object("ground", np.asarray(g["positions"], dtype=float), np.asarray(g["triangles"]))
+    else:
+        ground = studio.mesh_object("ground", np.array([[-60, 0, -60], [60, 0, -60], [60, 0, 60], [-60, 0, 60]],
+                                                       dtype=float), np.array([[0, 2, 1], [0, 3, 2]]))
     ground.data.materials.append(studio.material("grass", vertex_color=False, base=(0.09, 0.2, 0.05)))
+    for index, path in enumerate(spec.get("paths", [])):
+        _path_tube(studio, "path%d" % index, np.asarray(path["points"], dtype=float), path.get("radius", 0.03),
+                   tuple(path.get("colour", (0.9, 0.2, 0.1))))
     material = studio.material("deer", roughness=0.85)
     w = deer.weights.astype(np.float64) / 255.0
     ids = deer.bones.astype(np.int64)
     for index, frame in enumerate(spec["frames"]):
-        table = np.asarray(frame["table"], dtype=np.float64).reshape(-1, 8)
-        mats = [_quat_matrix(row[:4]) for row in table]
-        p = np.zeros_like(deer.positions)
-        n = np.zeros_like(deer.normals)
-        for k in range(4):
-            R = np.stack([mats[i] for i in ids[:, k]])
-            T = table[ids[:, k], 4:7]
-            K = table[ids[:, k], 7:8]
-            p += w[:, k:k + 1] * (np.einsum("nij,nj->ni", R, deer.positions) * K + T)
-            n += w[:, k:k + 1] * np.einsum("nij,nj->ni", R, deer.normals)
-        n /= np.maximum(np.linalg.norm(n, axis=1), 1e-9)[:, None]
-        obj = studio.mesh_object("deer_frame", p, deer.triangles, colors=colours)
-        obj.data.normals_split_custom_set_from_vertices([tuple(v) for v in to_blender(n)])
-        obj.data.materials.append(material)
+        made = []
+        for animal in frame.get("animals", [{"table": frame.get("table")}]):
+            table = np.asarray(animal["table"], dtype=np.float64).reshape(-1, 8)
+            mats = [_quat_matrix(row[:4]) for row in table]
+            p = np.zeros_like(deer.positions)
+            n = np.zeros_like(deer.normals)
+            for k in range(4):
+                R = np.stack([mats[i] for i in ids[:, k]])
+                T = table[ids[:, k], 4:7]
+                K = table[ids[:, k], 7:8]
+                p += w[:, k:k + 1] * (np.einsum("nij,nj->ni", R, deer.positions) * K + T)
+                n += w[:, k:k + 1] * np.einsum("nij,nj->ni", R, deer.normals)
+            n /= np.maximum(np.linalg.norm(n, axis=1), 1e-9)[:, None]
+            obj = studio.mesh_object("deer_frame", p, deer.triangles, colors=colours)
+            obj.data.normals_split_custom_set_from_vertices([tuple(v) for v in to_blender(n)])
+            obj.data.materials.append(material)
+            made.append(obj)
         cam = frame["camera"]
         studio.render(directory / ("f%04d.png" % index), eye=cam["eye"], target=cam["target"], lens=cam.get("lens", 50),
                       size=tuple(spec.get("size", (480, 300))), samples=8)
-        data = obj.data
-        bpy.data.objects.remove(obj, do_unlink=True)
-        bpy.data.meshes.remove(data)
+        for obj in made:
+            data = obj.data
+            bpy.data.objects.remove(obj, do_unlink=True)
+            bpy.data.meshes.remove(data)
     studio.dispose()
+
+
+def _path_tube(studio, name, points, radius, colour):
+    """A polyline as a thin tube (a hoof's path over a cycle, for the trajectory plots)."""
+    rings = 6
+    verts = []
+    faces = []
+    for i, point in enumerate(points):
+        ahead = points[min(i + 1, len(points) - 1)] - points[max(i - 1, 0)]
+        ahead = ahead / max(np.linalg.norm(ahead), 1e-9)
+        side = np.cross(ahead, [0.0, 1.0, 0.0])
+        if np.linalg.norm(side) < 1e-6:
+            side = np.array([1.0, 0.0, 0.0])
+        side = side / np.linalg.norm(side)
+        up = np.cross(side, ahead)
+        for r in range(rings):
+            a = 2 * math.pi * r / rings
+            verts.append(point + radius * (math.cos(a) * side + math.sin(a) * up))
+    for i in range(len(points) - 1):
+        for r in range(rings):
+            a0, a1 = i * rings + r, i * rings + (r + 1) % rings
+            b0, b1 = a0 + rings, a1 + rings
+            faces += [[a0, b0, a1], [a1, b0, b1]]
+    obj = studio.mesh_object(name, np.asarray(verts), np.asarray(faces))
+    obj.data.materials.append(studio.material(name, vertex_color=False, base=colour))
+    return obj
 
 
 def main():

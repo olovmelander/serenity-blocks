@@ -36,9 +36,12 @@ export function create({
     meadow.rotation.x = -Math.PI / 2;
     meadow.position.set(-60, 0, -370);
     scene.add(meadow);
-    const which = Math.max(0, Math.min(6, Number(params.get('horse') ?? 0)));
-    const view = params.get('view') ?? 'side';
-    const dist = Number(params.get('dist') ?? 0);
+    // (A capture script may override the camera live: window.__horseCam = { horse, view, dist }.)
+    const urlCam = {
+        horse: Math.max(0, Math.min(6, Number(params.get('horse') ?? 0))),
+        view: params.get('view') ?? 'side',
+        dist: Number(params.get('dist') ?? 0),
+    };
     let ready = false;
     const loading = (async () => {
         horses = current.createOdysseyHorses({ heightAt: ground });
@@ -57,6 +60,9 @@ export function create({
             if (ready) horses.update(time, 0.2);
         },
         camera(time, camera) {
+            const cam = { ...urlCam, ...(window.__horseCam ?? {}) };
+            const which = cam.horse;
+            const { view, dist } = cam;
             const horse = horses?.band[which];
             const k = horse ? horse.k : 3;
             // The drawn state (the last pose), or the clock's before the first.

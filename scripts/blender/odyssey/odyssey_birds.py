@@ -88,6 +88,7 @@ class Builder:
         self.hinge = []    # per vertex: (arm, hand, tip, thin)
         self.top = []      # plumage seen from above (and the whole of a shell)
         self.under = []    # plumage seen from below (sheets); a shell's copy of `top`
+        self.tail = []     # per vertex: how much the tail's spread and twist move it (0 root .. 1 tip)
         self.parts = []    # (first vertex, end vertex, first tri, end tri, "shell" | "sheet", name)
 
     def begin(self):
@@ -97,9 +98,10 @@ class Builder:
         v0, t0 = self._part
         self.parts.append((v0, len(self.verts), t0, len(self.tris), kind, name))
 
-    def vert(self, p, top, under=None, hinge=(0.0, 0.0, 0.0), thin=0.0):
+    def vert(self, p, top, under=None, hinge=(0.0, 0.0, 0.0), thin=0.0, tail=0.0):
         self.verts.append(tuple(float(v) for v in p))
         self.hinge.append((hinge[0], hinge[1], hinge[2], thin))
+        self.tail.append(float(tail))
         self.top.append(list(top))
         self.under.append(list(under if under is not None else top))
         return len(self.verts) - 1
@@ -284,13 +286,14 @@ def build_wing(b, spec, side, colour_of):
     b.end("sheet", f"wing{'L' if side > 0 else 'R'}")
 
 
-def build_sheet(b, name, points, tris, colour_of):
-    """A small flat sheet (a tail): points (x, y, z) mirrored by the caller as needed."""
+def build_sheet(b, name, points, tris, colour_of, tail_of=None):
+    """A small flat sheet (a tail): points (x, y, z) mirrored by the caller as needed. `tail_of(p)`
+    is how much the tail's spread and twist carry the point (0 at its root .. 1 at its tip)."""
     b.begin()
     first = len(b.verts)
     for p in points:
         top, under = colour_of(p)
-        b.vert(p, top, under, (0.0, 0.0, 0.0), 0.5)
+        b.vert(p, top, under, (0.0, 0.0, 0.0), 0.5, tail_of(p) if tail_of else 0.0)
     for t in tris:
         b.tris.append(tuple(first + i for i in t))
     b.end("sheet", name)
@@ -364,6 +367,7 @@ GULL = {
     "chord": [0.0, 0.25, 0.55, 0.82, 1.0],
     "camber": 0.035,
     "wingY": lambda s: 0.022 + 0.004 * (s / 0.7),
+    "tailY": 0.012,
 }
 
 
@@ -408,7 +412,7 @@ def build_gull():
     pts, mirror = mirrored([(0.0, 0.014, -0.100), (0.030, 0.014, -0.100), (0.0, 0.012, -0.200),
                             (0.054, 0.012, -0.195), (0.0, 0.011, -0.232), (0.050, 0.011, -0.228)])
     build_sheet(b, "tail", pts, tail_tris([(0, 1, 3), (0, 3, 2), (2, 3, 5), (2, 5, 4)], mirror),
-                lambda p: (P["white"], P["white"]))
+                lambda p: (P["white"], P["white"]), lambda p: smooth(0.10, 0.232, -p[2]))
     return b
 
 
@@ -460,6 +464,7 @@ SWALLOW = {
     "chord": [0.0, 0.35, 0.7, 1.0],
     "camber": 0.03,
     "wingY": lambda s: 0.006,
+    "tailY": 0.003,
 }
 
 
@@ -490,7 +495,7 @@ def build_swallow():
                             (0.018, 0.003, -0.057), (0.013, 0.003, -0.066), (0.022, 0.003, -0.072),
                             (0.027, 0.003, -0.127)])
     build_sheet(b, "tail", pts, tail_tris([(0, 1, 3), (0, 3, 2), (2, 3, 4), (3, 5, 4), (4, 5, 6)], mirror),
-                lambda p: (P["back"], P["tailUnder"]))
+                lambda p: (P["back"], P["tailUnder"]), lambda p: smooth(0.030, 0.110, -p[2]))
     return b
 
 
@@ -559,6 +564,7 @@ GOOSE = {
     "chord": [0.0, 0.3, 0.62, 1.0],
     "camber": 0.04,
     "wingY": lambda s: 0.036 - 0.006 * (s / 0.8),
+    "tailY": 0.011,
 }
 
 
@@ -605,7 +611,8 @@ def build_goose():
     pts, mirror = mirrored([(0.0, 0.014, -0.200), (0.040, 0.014, -0.205), (0.0, 0.011, -0.300),
                             (0.062, 0.011, -0.285), (0.0, 0.010, -0.332), (0.044, 0.010, -0.322)])
     build_sheet(b, "tail", pts, tail_tris([(0, 1, 3), (0, 3, 2), (2, 3, 5), (2, 5, 4)], mirror),
-                lambda p: (mix(P["tail"], P["white"], smooth(-0.31, -0.33, p[2])), P["white"]))
+                lambda p: (mix(P["tail"], P["white"], smooth(-0.31, -0.33, p[2])), P["white"]),
+                lambda p: smooth(0.20, 0.332, -p[2]))
     return b
 
 
@@ -667,6 +674,7 @@ VULTURE = {
     "chord": [0.0, 1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6, 1.0],
     "camber": 0.03,
     "wingY": lambda s: 0.010,
+    "tailY": 0.004,
 }
 
 
@@ -709,14 +717,14 @@ def build_vulture():
     pts, mirror = mirrored([(0.0, 0.004, -0.220), (0.080, 0.004, -0.220), (0.0, 0.004, -0.420),
                             (0.120, 0.004, -0.410), (0.0, 0.004, -0.500), (0.125, 0.004, -0.490)])
     build_sheet(b, "tail", pts, tail_tris([(0, 1, 3), (0, 3, 2), (2, 3, 5), (2, 5, 4)], mirror),
-                lambda p: (P["tail"], P["tail"]))
+                lambda p: (P["tail"], P["tail"]), lambda p: smooth(0.22, 0.50, -p[2]))
     return b
 
 
 SPECS = {"gull": GULL, "swallow": SWALLOW, "goose": GOOSE, "vulture": VULTURE}
 BUILDERS = {"gull": build_gull, "swallow": build_swallow, "goose": build_goose, "vulture": build_vulture}
 
-# -- the wingbeat ---------------------------------------------------------------------------------
+# -- the wingbeat: keyframed in Blender ------------------------------------------------------------
 #
 # A pose is five hinge angles (radians):
 #   lift  the arm's elevation about the body's long axis (+ raises the wingtip)
@@ -724,56 +732,186 @@ BUILDERS = {"gull": build_gull, "swallow": build_swallow, "goose": build_goose, 
 #   bend  the hand's elevation about the wrist, relative to the arm
 #   fold  the hand swung back about the wrist
 #   curl  the wingtip bent up (+), carried by the tip weight
+# and the body's heave (metres, + up) against the beat.
 #
-# A beat at phase phi (0 the top of the stroke, pi the bottom): the arm's lift is L0 + LA cos phi,
-# the hand's own elevation H0 + HA cos(phi - lag) (the outer wing lags the inner), the hand folds
-# back on the upstroke and the tip curls up under the downstroke's load. A bird blends the beat
-# with its glide pose by a weight (gull: a few slow beats now and then; swallow: bursts of fast
-# beats with the wings swept back between; goose: steady deep beats, never a glide).
+# THE BEAT (2026-11-03) is a keyframed action per bird: each channel's keys over one beat (u in
+# beats, 0 the top of the stroke), Bezier with auto-clamped handles on a cyclic F-curve (a Cycles
+# modifier, so the ease runs through the seam). What the keys say, for every bird:
+#   - the downstroke (0 .. `down` of the beat) is a little quicker than the upstroke, and the wing
+#     sweeps it fully spread and a little forward, so the tip travels fast and far;
+#   - after the bottom the wrist flexes: the hand folds back and trails low while the arm rises,
+#     then reaches out again before the top, so the tip comes back up on a shorter path, behind:
+#     seen from the side it draws a loop, not a pendulum's line;
+#   - the hand lags the arm through the stroke; the tip bends up under the downstroke's load and
+#     trails a little below on the way up;
+#   - the body rises while the wings beat down and sinks while they come up (highest just after
+#     the bottom of the stroke).
+# The script samples the curves Blender evaluates and fits them with a short Fourier series
+# (`HARMONICS` terms): smooth at every order, periodic, and cheap in the vertex stage. The game,
+# the tests and these previews all evaluate the same coefficients (odyssey-bird-beats.js).
 
-FLIGHT = {
-    "gull": {
-        "rate": 2.6,
-        "glide": {"lift": 0.22, "sweep": 0.05, "bend": -0.42, "fold": 0.12, "curl": 0.06},
-        "beat": {"lift": [0.10, 0.46], "hand": [-0.06, 0.58], "lag": 0.75, "fold": [0.06, 0.32],
-                 "sweep": [0.03, 0.10], "curl": 0.14},
-    },
-    "swallow": {
-        "rate": 6.5,
-        "glide": {"lift": 0.06, "sweep": 0.34, "bend": -0.06, "fold": 0.44, "curl": 0.02},
-        "beat": {"lift": [0.06, 0.58], "hand": [0.04, 0.64], "lag": 0.6, "fold": [0.14, 0.40],
-                 "sweep": [0.04, 0.16], "curl": 0.10},
-    },
-    "vulture": {
-        "rate": 1.3,
-        "glide": {"lift": 0.10, "sweep": 0.02, "bend": 0.05, "fold": 0.02, "curl": 0.12},
-        "beat": {"lift": [0.06, 0.40], "hand": [0.08, 0.46], "lag": 0.7, "fold": [0.02, 0.12],
-                 "sweep": [0.0, 0.05], "curl": 0.16},
-    },
-    "goose": {
-        "rate": 2.8,
-        "glide": {"lift": 0.08, "sweep": 0.0, "bend": -0.06, "fold": 0.06, "curl": 0.03},
-        "beat": {"lift": [0.06, 0.52], "hand": [0.0, 0.64], "lag": 0.75, "fold": [0.05, 0.28],
-                 "sweep": [0.02, 0.07], "curl": 0.14},
-    },
+CHANNELS = ("lift", "sweep", "bend", "fold", "curl", "heave")
+HARMONICS = 5
+EAGLE_HARMONICS = 7
+SAMPLES_PER_BEAT = 192
+
+BEATS = {
+    # Herring gull: slow, elastic, deep strokes; mostly it glides on bowed wings.
+    "gull": {"rate": 2.6, "down": 0.42, "keys": {
+        "lift": [(0.0, 0.58), (0.42, -0.38)],
+        "bend": [(0.0, 0.06), (0.128, 0.14), (0.42, 0.02), (0.527, -0.16), (0.699, -0.48), (0.871, -0.22)],
+        "fold": [(0.0, 0.10), (0.274, 0.03), (0.42, 0.06), (0.592, 0.34), (0.742, 0.40), (0.914, 0.20)],
+        "sweep": [(0.0, 0.06), (0.219, -0.06), (0.42, 0.0), (0.678, 0.15)],
+        "curl": [(0.037, 0.02), (0.201, 0.16), (0.383, 0.08), (0.592, -0.06), (0.85, -0.02)],
+        "heave": [(0.055, -0.012), (0.527, 0.012)],
+    }},
+    # Barn swallow: quick, strong beats in bursts; the hand folds hard on the upstroke.
+    "swallow": {"rate": 6.5, "down": 0.4, "keys": {
+        "lift": [(0.0, 0.64), (0.4, -0.52)],
+        "bend": [(0.0, 0.06), (0.124, 0.16), (0.4, 0.02), (0.509, -0.18), (0.673, -0.42), (0.869, -0.16)],
+        "fold": [(0.0, 0.16), (0.249, 0.08), (0.4, 0.14), (0.564, 0.50), (0.716, 0.58), (0.913, 0.30)],
+        "sweep": [(0.0, 0.10), (0.213, 0.0), (0.4, 0.04), (0.651, 0.24)],
+        "curl": [(0.036, 0.02), (0.196, 0.12), (0.356, 0.06), (0.564, -0.04), (0.836, -0.01)],
+        "heave": [(0.044, -0.004), (0.509, 0.004)],
+    }},
+    # Greylag goose: steady, deep, unbroken beats.
+    "goose": {"rate": 2.8, "down": 0.44, "keys": {
+        "lift": [(0.0, 0.54), (0.44, -0.46)],
+        "bend": [(0.0, 0.04), (0.147, 0.12), (0.44, 0.0), (0.548, -0.14), (0.72, -0.38), (0.892, -0.14)],
+        "fold": [(0.0, 0.08), (0.293, 0.04), (0.44, 0.06), (0.612, 0.26), (0.763, 0.30), (0.925, 0.16)],
+        "sweep": [(0.0, 0.04), (0.229, -0.04), (0.44, 0.0), (0.698, 0.09)],
+        "curl": [(0.046, 0.02), (0.22, 0.16), (0.403, 0.08), (0.612, -0.04), (0.871, -0.01)],
+        "heave": [(0.055, -0.014), (0.537, 0.014)],
+    }},
+    # Griffon vulture: a rare, slow, heavy beat; the fingers bend up hard under it.
+    "vulture": {"rate": 1.3, "down": 0.44, "keys": {
+        "lift": [(0.0, 0.48), (0.44, -0.30)],
+        "bend": [(0.0, 0.06), (0.147, 0.14), (0.44, 0.0), (0.548, -0.10), (0.72, -0.28), (0.892, -0.08)],
+        "fold": [(0.0, 0.02), (0.33, 0.0), (0.462, 0.03), (0.655, 0.13), (0.785, 0.15), (0.935, 0.06)],
+        "sweep": [(0.0, 0.02), (0.229, -0.03), (0.44, 0.0), (0.698, 0.05)],
+        "curl": [(0.046, 0.14), (0.22, 0.28), (0.422, 0.20), (0.612, 0.04), (0.849, 0.08)],
+        "heave": [(0.055, -0.02), (0.537, 0.02)],
+    }},
 }
+# The golden eagle (composition/odyssey-eagle-flight.js poses its 26 joints in code): the shapes
+# its joints are driven by, over one beat. height 1 at the top .. -1 at the bottom; fold 0..1 the
+# hand swept back on the upstroke; push 0..1 the downstroke's drive (fingers bent up, hand twisted).
+EAGLE_BEAT = {"rate": 1.6, "down": 0.44, "keys": {
+    "height": [(0.0, 1.0), (0.44, -1.0)],
+    "fold": [(0.0, 0.0), (0.383, 0.0), (0.481, 0.10), (0.627, 0.78), (0.751, 1.0), (0.896, 0.36)],
+    "push": [(0.0, 0.0), (0.067, 0.12), (0.21, 1.0), (0.363, 0.40), (0.481, 0.0), (0.896, 0.0)],
+}}
+# The glide poses (no beat), held between beats.
+GLIDE = {
+    "gull": {"lift": 0.22, "sweep": 0.05, "bend": -0.42, "fold": 0.12, "curl": 0.06},
+    "swallow": {"lift": 0.06, "sweep": 0.34, "bend": -0.06, "fold": 0.44, "curl": 0.02},
+    "vulture": {"lift": 0.10, "sweep": 0.02, "bend": 0.05, "fold": 0.02, "curl": 0.12},
+    "goose": {"lift": 0.08, "sweep": 0.0, "bend": -0.06, "fold": 0.06, "curl": 0.03},
+}
+# The tail's spread (x widened by 1 + spread at its tip) and twist (radians about the long axis at
+# its tip) the game asks for at most (odyssey-flights.js, odyssey-summit-birds.js).
+TAIL_LIMITS = {"spread": 0.34, "twist": 0.30}
+
+CYCLES = {}       # kind -> {channel: coefficients}, filled by author_beats()
+EAGLE_CYCLE = {}  # channel -> coefficients
+FIT_ERROR = {}    # kind -> {channel: worst |key curve - series| over the beat}
+
+
+def fourier_fit(values, harmonics):
+    """[a0, a1, b1, a2, b2, ...] of a periodic sampled curve."""
+    n = len(values)
+    out = [sum(values) / n]
+    for k in range(1, harmonics + 1):
+        a = 2 / n * sum(v * math.cos(2 * math.pi * k * j / n) for j, v in enumerate(values))
+        b = 2 / n * sum(v * math.sin(2 * math.pi * k * j / n) for j, v in enumerate(values))
+        out += [a, b]
+    return out
+
+
+def fourier(coef, phi):
+    """The series at phase `phi` (radians; 0 the top of the stroke)."""
+    v = coef[0]
+    for k in range(1, (len(coef) - 1) // 2 + 1):
+        v += coef[2 * k - 1] * math.cos(k * phi) + coef[2 * k] * math.sin(k * phi)
+    return v
+
+
+def author_beats(scene=None):
+    """Key each bird's beat in Blender (one Empty per bird, its channels as keyed custom
+    properties on cyclic Bezier F-curves), sample what Blender evaluates and fit the series."""
+    import bpy
+    from bpy_extras import anim_utils
+    scene = scene or bpy.context.scene
+    frames = 48  # frames per beat in the actions (the review .blend's Graph Editor)
+
+    def keyed(name, spec, location):
+        ob = bpy.data.objects.get(name) or bpy.data.objects.new(name, None)
+        if ob.name not in scene.collection.objects:
+            scene.collection.objects.link(ob)
+        ob.location = location
+        ob.empty_display_size = 0.2
+        ob.animation_data_clear()
+        for ch, keys in spec["keys"].items():
+            # One beat's keys, closed one beat after the first (the cycle's seam).
+            for u, v in list(keys) + [(keys[0][0] + 1.0, keys[0][1])]:
+                ob[ch] = v
+                ob.keyframe_insert(f'["{ch}"]', frame=u * frames)
+        act = ob.animation_data.action
+        act.name = f"{name}-beat"
+        bag = anim_utils.action_get_channelbag_for_slot(act, ob.animation_data.action_slot)
+        curves = {}
+        for ch in spec["keys"]:
+            fc = bag.fcurves.find(f'["{ch}"]')
+            fc.modifiers.new("CYCLES")
+            for kp in fc.keyframe_points:
+                kp.interpolation = "BEZIER"
+                kp.handle_left_type = "AUTO_CLAMPED"
+                kp.handle_right_type = "AUTO_CLAMPED"
+            fc.update()
+            curves[ch] = fc
+        return curves
+
+    def sample(fc):
+        return [fc.evaluate(frames * j / SAMPLES_PER_BEAT) for j in range(SAMPLES_PER_BEAT)]
+
+    for i, (kind, spec) in enumerate(BEATS.items()):
+        curves = keyed(f"beat-{kind}", spec, (i * 0.6 - 1.0, 0.0, -2.0))
+        CYCLES[kind] = {}
+        FIT_ERROR[kind] = {}
+        for ch in CHANNELS:
+            values = sample(curves[ch])
+            coef = fourier_fit(values, HARMONICS)
+            CYCLES[kind][ch] = coef
+            FIT_ERROR[kind][ch] = max(abs(fourier(coef, 2 * math.pi * j / len(values)) - v)
+                                      for j, v in enumerate(values))
+    curves = keyed("beat-eagle", EAGLE_BEAT, (1.4, 0.0, -2.0))
+    FIT_ERROR["eagle"] = {}
+    for ch in EAGLE_BEAT["keys"]:
+        values = sample(curves[ch])
+        EAGLE_CYCLE[ch] = fourier_fit(values, EAGLE_HARMONICS)
+        FIT_ERROR["eagle"][ch] = max(abs(fourier(EAGLE_CYCLE[ch], 2 * math.pi * j / len(values)) - v)
+                                     for j, v in enumerate(values))
+    return CYCLES
 
 
 def wing_pose(kind, phi, weight):
-    """The five hinge angles at beat phase `phi` blended with the glide pose by `weight` (0..1)."""
-    f = FLIGHT[kind]
-    g, k = f["glide"], f["beat"]
-    up = max(0.0, -math.sin(phi)) ** 2
-    lift = k["lift"][0] + k["lift"][1] * math.cos(phi)
-    hand = k["hand"][0] + k["hand"][1] * math.cos(phi - k["lag"])
-    beat = {
-        "lift": lift,
-        "sweep": k["sweep"][0] + k["sweep"][1] * up,
-        "bend": hand - lift,
-        "fold": k["fold"][0] + k["fold"][1] * up,
-        "curl": k["curl"] * max(0.0, math.sin(phi)),
-    }
-    return {n: g[n] + (beat[n] - g[n]) * weight for n in g}
+    """The hinge angles (and heave) at beat phase `phi` blended with the glide pose by `weight`."""
+    g = GLIDE[kind]
+    out = {n: g[n] + (fourier(CYCLES[kind][n], phi) - g[n]) * weight for n in g}
+    out["heave"] = fourier(CYCLES[kind]["heave"], phi) * weight
+    return out
+
+
+def tail_pose(spec, p, tail, spread, twist):
+    """The tail fanned (x widened toward its tip) and twisted about the body's long axis."""
+    if tail <= 0.0:
+        return p
+    x = p[0] * (1.0 + spread * tail)
+    y0 = spec["tailY"]
+    dy = p[1] - y0
+    a = twist * tail
+    c, s = math.cos(a), math.sin(a)
+    return (x * c - dy * s, y0 + x * s + dy * c, p[2])
 
 
 def _rot(a, b, ang):
@@ -808,7 +946,8 @@ PREVIEW_POSES = {
 
 
 def stretch(b, spec, kind):
-    """Worst edge stretch and squash over the beat (and the glide), against the rest pose."""
+    """Worst edge stretch and squash over the beat, the glide and the tail's fan and twist,
+    against the rest pose."""
     edges = set()
     for t in b.tris:
         for i in range(3):
@@ -816,16 +955,20 @@ def stretch(b, spec, kind):
             edges.add((min(a, c), max(a, c)))
     rest = {e: math.dist(b.verts[e[0]], b.verts[e[1]]) for e in edges}
     worst_hi, worst_lo = 1.0, 1.0
+    tails = ((0.0, 0.0), (TAIL_LIMITS["spread"], TAIL_LIMITS["twist"]),
+             (TAIL_LIMITS["spread"], -TAIL_LIMITS["twist"]))
     for k in range(24):
         for weight in (0.0, 0.5, 1.0):
             pose = wing_pose(kind, 2 * math.pi * k / 24, weight)
-            moved = [fold(spec, v, w, pose) for v, w in zip(b.verts, b.hinge)]
-            for e, r0 in rest.items():
-                if r0 < 1e-6:
-                    continue
-                r = math.dist(moved[e[0]], moved[e[1]]) / r0
-                worst_hi = max(worst_hi, r)
-                worst_lo = min(worst_lo, r)
+            for spread, twist in (tails if k % 6 == 0 else tails[:1]):
+                moved = [fold(spec, tail_pose(spec, v, tl, spread, twist), w, pose)
+                         for v, w, tl in zip(b.verts, b.hinge, b.tail)]
+                for e, r0 in rest.items():
+                    if r0 < 1e-6:
+                        continue
+                    r = math.dist(moved[e[0]], moved[e[1]]) / r0
+                    worst_hi = max(worst_hi, r)
+                    worst_lo = min(worst_lo, r)
     return worst_hi, worst_lo
 
 
@@ -854,7 +997,7 @@ def record(kind, b, normals):
         "triangleCount": len(b.tris),
         "shoulder": [round(c, 4) for c in spec["shoulder"]],
         "wrist": [round(c, 4) for c in spec["wrist"]],
-        "flight": FLIGHT[kind],
+        "tailY": spec["tailY"],
         "stretch": [round(hi, 3), round(lo, 3)],
         "positions": b64("h", [int(round(c / QUANT)) for v in b.verts for c in v]),
         "normals": b64("b", [int(round(max(-1.0, min(1.0, c)) * 127)) for n in normals for c in n]),
@@ -862,6 +1005,7 @@ def record(kind, b, normals):
         "hinge": b64("B", [int(round(max(0.0, min(1.0, x)) * 255)) for h in b.hinge for x in h]),
         "top": b64("B", [x for c in b.top for x in srgb8(c)]),
         "under": b64("B", [x for c in b.under for x in srgb8(c)]),
+        "tail": b64("B", [int(round(max(0.0, min(1.0, x)) * 255)) for x in b.tail]),
     }
 
 
@@ -876,9 +1020,10 @@ def write_module(path, built):
         " * Bird frame: metres, real size; x the bird's LEFT, y up, z forward. Per bird: `positions`",
         " * Int16 in units of `quant` metres; `normals` Int8 (/127); `index` Uint16 triangles; `hinge`",
         " * Uint8 (arm, hand, tip, thin feather) /255; `top` and `under` Uint8 sRGB plumage seen from",
-        " * above and from below (a shell's are the same). `shoulder` and `wrist` are the hinges'",
-        " * pivots; `flight` the wingbeat's numbers (see `wing_pose` in the script); `stretch` the",
-        " * worst edge stretch and squash over the beat, as the script measured it.",
+        " * above and from below (a shell's are the same); `tail` Uint8 /255 how much the tail's fan",
+        " * and twist carry a point. `shoulder` and `wrist` are the hinges' pivots, `tailY` the tail's",
+        " * root height; `stretch` the worst edge stretch and squash over the beat, the glide and the",
+        " * tail's fan and twist, as the script measured it. The wingbeat: odyssey-bird-beats.js.",
         " */",
         "export const ODYSSEY_BIRD_MODELS = Object.freeze({",
         f"    quant: {QUANT},",
@@ -891,6 +1036,58 @@ def write_module(path, built):
             else:
                 lines.append(f"        {key}: {json.dumps(value, separators=(', ', ': '))},")
         lines.append("    }),")
+    lines += ["});", ""]
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    Path(path).write_text("\n".join(lines), encoding="utf-8", newline="\n")
+
+
+def r6(x):
+    return round(x, 6) + 0.0
+
+
+def write_beats_module(path):
+    """The wingbeats the game folds the wings by (author_beats must have run)."""
+    lines = [
+        "/* eslint-disable */",
+        "/**",
+        " * Odyssey's birds' wingbeats: GENERATED by scripts/blender/odyssey/odyssey_birds.py (do not",
+        " * edit by hand). Each beat was keyframed in Blender (cyclic Bezier F-curves, auto-clamped",
+        " * handles: see BEATS in the script) and fitted with a short Fourier series, so it is smooth",
+        " * at every order and runs through its seam. A channel at beat phase phi (radians, 0 the top of",
+        " * the stroke) is c[0] + sum over k of c[2k-1] cos(k phi) + c[2k] sin(k phi).",
+        " *",
+        " * Per bird: `rate` beats a second, `down` the share of the beat the downstroke takes, `glide`",
+        " * the held pose between beats, `cycle` the channels (lift, sweep, bend, fold, curl: radians,",
+        " * as odyssey-bird-rig.js folds them; heave: metres the body rises), `fit` the worst gap",
+        " * between Blender's curve and the series. `eagle`: the shapes the eagle's joints follow",
+        " * (odyssey-eagle-flight.js): height 1 top .. -1 bottom, fold and push 0..1.",
+        " */",
+        "export const ODYSSEY_BIRD_BEATS = Object.freeze({",
+        f"    harmonics: {HARMONICS},",
+        f"    channels: Object.freeze({json.dumps(list(CHANNELS))}),",
+    ]
+    for kind, spec in BEATS.items():
+        lines.append(f"    {kind}: Object.freeze({{")
+        lines.append(f"        rate: {spec['rate']},")
+        lines.append(f"        down: {spec['down']},")
+        lines.append(f"        glide: Object.freeze({json.dumps(GLIDE[kind], separators=(', ', ': '))}),")
+        lines.append("        cycle: Object.freeze({")
+        for ch in CHANNELS:
+            lines.append(f"            {ch}: Object.freeze({json.dumps([r6(c) for c in CYCLES[kind][ch]], separators=(', ', ': '))}),")
+        lines.append("        }),")
+        fit = {ch: round(FIT_ERROR[kind][ch], 4) for ch in CHANNELS}
+        lines.append(f"        fit: Object.freeze({json.dumps(fit, separators=(', ', ': '))}),")
+        lines.append("    }),")
+    lines.append("    eagle: Object.freeze({")
+    lines.append(f"        harmonics: {EAGLE_HARMONICS},")
+    lines.append(f"        down: {EAGLE_BEAT['down']},")
+    lines.append("        cycle: Object.freeze({")
+    for ch in EAGLE_BEAT["keys"]:
+        lines.append(f"            {ch}: Object.freeze({json.dumps([r6(c) for c in EAGLE_CYCLE[ch]], separators=(', ', ': '))}),")
+    lines.append("        }),")
+    fit = {ch: round(FIT_ERROR["eagle"][ch], 4) for ch in EAGLE_BEAT["keys"]}
+    lines.append(f"        fit: Object.freeze({json.dumps(fit, separators=(', ', ': '))}),")
+    lines.append("    }),")
     lines += ["});", ""]
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text("\n".join(lines), encoding="utf-8", newline="\n")
@@ -1013,6 +1210,9 @@ def main():
             opts[a[2:]] = argv[i + 1]
     built_meshes = {}
     records = {}
+    author_beats()
+    for kind, fit in FIT_ERROR.items():
+        print(f"{TAG} {kind} beat: worst fit " + ", ".join(f"{ch} {e:.4f}" for ch, e in fit.items()))
     for kind in ("gull", "swallow", "goose", "vulture"):
         b = BUILDERS[kind]()
         b.orient()
@@ -1033,6 +1233,9 @@ def main():
     if opts.get("out"):
         write_module(opts["out"], records)
         print(f"{TAG} wrote {opts['out']}")
+        beats = opts.get("beats") or str(Path(opts["out"]).parent / "odyssey-bird-beats.js")
+        write_beats_module(beats)
+        print(f"{TAG} wrote {beats}")
     if opts.get("preview"):
         previews(built_meshes, opts["preview"])
 

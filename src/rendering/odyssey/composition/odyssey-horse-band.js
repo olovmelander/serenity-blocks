@@ -41,6 +41,8 @@
  * and the ground plane under the horse (its shadow).
  */
 
+import { odysseyMeadowClearingRn } from '../world/odyssey-meadow-clearing.js';
+
 /** The band and its clock. Places are world (x, z); `size` scales the model (1 = as built). */
 export const ODYSSEY_HORSES = Object.freeze({
     /** Drawn larger than life, like the act's other life. */
@@ -67,15 +69,21 @@ export const ODYSSEY_HORSES = Object.freeze({
             name: 'trot', v: 3.0, rate: 1.7, duty: 0.42, lift: Object.freeze([0, 0.5, 0.5, 1.0]),
         }),
         Object.freeze({
-            name: 'canter', v: 5.0, rate: 2.1, duty: 0.33, lift: Object.freeze([0, 0.2, 0.75, 1.0]),
+            name: 'canter', v: 5.0, rate: 2.25, duty: 0.3, lift: Object.freeze([0, 0.2, 0.75, 1.0]),
         }),
         Object.freeze({
-            name: 'gallop', v: 7.0, rate: 2.35, duty: 0.27, lift: Object.freeze([0, 0.38, 0.88, 1.26]),
+            name: 'gallop', v: 7.0, rate: 2.5, duty: 0.24, lift: Object.freeze([0, 0.38, 0.88, 1.26]),
         }),
     ]),
     /** A run's top speed (adult life size, m/s; a slow gallop) and its speeding up / slowing (s). */
     runSpeed: 7.0,
     runRamp: 4.6,
+    /**
+     * How hard a run speeds up, slows down and corners (adult life m/s^2): it speeds up and slows
+     * at a horse's rate and eases off into a bend, so it never whips round a corner at a gallop.
+     */
+    runAccel: 1.6,
+    runLateral: 4.0,
     /** A walk between spots (life m/s); a grazing step's share of it; a foal's play trot. */
     walkSpeed: 1.2,
     stepShare: 0.42,
@@ -87,8 +95,18 @@ export const ODYSSEY_HORSES = Object.freeze({
      * (a horse moving off swings round in a second or two, it does not pivot for seven); and the
      * pivot behind the middle (share of size).
      */
-    turnRate: 0.6,
-    wheelRate: 2.2,
+    turnRate: 0.9,
+    wheelRate: 1.5,
+    /**
+     * A foal keeps to its mother: its place at her side (metres to her side, and back from her
+     * middle, at life size), how far off it may drift before it goes to her (and from how far it
+     * trots), how long it suckles and how often.
+     */
+    /** The field rocks on the meadow (world x, z, radius): a foal's play keeps clear of them. */
+    rocks: Object.freeze([Object.freeze([-84, -347, 2]), Object.freeze([-115, -354, 3])]),
+    follow: Object.freeze({
+        side: 1.6, back: 0.9, drift: 2.4, trotFrom: 5, nurse: Object.freeze([5, 9]), nurseEvery: 45,
+    }),
     pivotBack: 0.36,
     /** How far a swinging hoof lifts (share of size) and how much more at speed. */
     lift: 0.08,
@@ -174,7 +192,7 @@ export const ODYSSEY_HORSES = Object.freeze({
             tone: 0.4,
             slot: Object.freeze([1.1, -1.5]),
             spots: Object.freeze({
-                W: Object.freeze([[-122, -344], [-117, -340]]),
+                W: Object.freeze([[-126, -344], [-121, -340]]),
                 E: Object.freeze([[-40, -322], [-36, -316]]),
             }),
         }),
@@ -308,7 +326,7 @@ function moveProfile(u, a) {
  * @param {number[][]} points
  * @param {number[]} startDir
  */
-export function smoothPath(points, startDir) {
+export function smoothPath(points, startDir, per = 16) {
     const n = points.length;
     const tangents = points.map((p, i) => {
         if (i === 0) {
@@ -318,7 +336,6 @@ export function smoothPath(points, startDir) {
         if (i === n - 1) return [p[0] - points[i - 1][0], p[1] - points[i - 1][1]];
         return [0.5 * (points[i + 1][0] - points[i - 1][0]), 0.5 * (points[i + 1][1] - points[i - 1][1])];
     });
-    const per = 16;
     const count = ((n - 1) * per) + 1;
     const xs = new Float64Array(count);
     const zs = new Float64Array(count);
@@ -343,11 +360,15 @@ export function smoothPath(points, startDir) {
         }
     }
     return {
-        xs, zs, lengths, length: lengths[count - 1],
+        xs, zs, lengths, length: lengths[count - 1], points, tangents, per,
     };
 }
 
-/** Position and heading at a share `a` of a smooth path's length. */
+/**
+ * Position and heading at a share `a` of a smooth path's length. The arc-length table finds the
+ * curve's parameter; the position and the heading come from the cubic itself (not the chords
+ * between samples), so the path has no corners and the heading turns smoothly.
+ */
 function pathAt(c, a, out) {
     const n = c.lengths.length - 1;
     const target = clamp01(a) * c.length;
@@ -359,18 +380,98 @@ function pathAt(c, a, out) {
     }
     const i = lo;
     const l0 = c.lengths[i - 1];
-    const f = (target - l0) / Math.max(1e-9, c.lengths[i] - l0);
-    out.x = c.xs[i - 1] + ((c.xs[i] - c.xs[i - 1]) * f);
-    out.z = c.zs[i - 1] + ((c.zs[i] - c.zs[i - 1]) * f);
-    // The heading blends between the neighbouring chords (no corner at a sample).
-    const chord = (j) => Math.atan2(c.xs[j] - c.xs[j - 1], c.zs[j] - c.zs[j - 1]);
-    const h1 = chord(i);
-    const h0 = i > 1 ? chord(i - 1) : h1;
-    const h2 = i < n ? chord(i + 1) : h1;
-    out.heading = f < 0.5
-        ? h1 + (wrapAngle(h0 - h1) * (0.5 - f))
-        : h1 + (wrapAngle(h2 - h1) * (f - 0.5));
+    const f = clamp01((target - l0) / Math.max(1e-9, c.lengths[i] - l0));
+    const u = ((i - 1) + f) / c.per;
+    const s = Math.min(c.points.length - 2, Math.floor(u));
+    const t = u - s;
+    const [ax, az] = c.points[s];
+    const [bx, bz] = c.points[s + 1];
+    const [mx, mz] = c.tangents[s];
+    const [nx, nz] = c.tangents[s + 1];
+    const t2 = t * t;
+    const t3 = t2 * t;
+    out.x = (((2 * t3) - (3 * t2) + 1) * ax) + ((t3 - (2 * t2) + t) * mx) + (((-2 * t3) + (3 * t2)) * bx)
+        + ((t3 - t2) * nx);
+    out.z = (((2 * t3) - (3 * t2) + 1) * az) + ((t3 - (2 * t2) + t) * mz) + (((-2 * t3) + (3 * t2)) * bz)
+        + ((t3 - t2) * nz);
+    const dx = (((6 * t2) - (6 * t)) * ax) + (((3 * t2) - (4 * t) + 1) * mx) + (((-6 * t2) + (6 * t)) * bx)
+        + (((3 * t2) - (2 * t)) * nx);
+    const dz = (((6 * t2) - (6 * t)) * az) + (((3 * t2) - (4 * t) + 1) * mz) + (((-6 * t2) + (6 * t)) * bz)
+        + (((3 * t2) - (2 * t)) * nz);
+    if ((dx * dx) + (dz * dz) > 1e-12) out.heading = Math.atan2(dx, dz);
+    else out.heading = Math.atan2(c.xs[Math.min(n, i)] - c.xs[i - 1], c.zs[Math.min(n, i)] - c.zs[i - 1]);
     return out;
+}
+
+/**
+ * A run's speed along its path (a racing line): as fast as `vmax`, no faster round a bend than
+ * `lateral` allows (v^2 / r), speeding up and slowing at `accel`, from a stand to a stand, then
+ * smoothed. Returns the time at each path sample and the speed there; within a sample the speed
+ * changes at a constant rate, so the position and its velocity never jump.
+ * @param {ReturnType<typeof smoothPath>} path
+ */
+export function runProfile(path, vmax, accel, lateral) {
+    const { xs, zs, lengths } = path;
+    const n = lengths.length;
+    const v = new Float64Array(n);
+    for (let i = 0; i < n; i += 1) {
+        let lim = vmax;
+        if (i > 0 && i < n - 1) {
+            const ax = xs[i] - xs[i - 1];
+            const az = zs[i] - zs[i - 1];
+            const bx = xs[i + 1] - xs[i];
+            const bz = zs[i + 1] - zs[i];
+            const cross = Math.abs((ax * bz) - (az * bx));
+            const den = Math.hypot(ax, az) * Math.hypot(bx, bz) * Math.hypot(xs[i + 1] - xs[i - 1], zs[i + 1] - zs[i - 1]);
+            const curvature = den > 1e-12 ? (2 * cross) / den : 0;
+            if (curvature > 1e-6) lim = Math.min(lim, Math.sqrt(lateral / curvature));
+        }
+        v[i] = lim;
+    }
+    v[0] = 0;
+    v[n - 1] = 0;
+    const passes = () => {
+        for (let i = 1; i < n; i += 1) {
+            v[i] = Math.min(v[i], Math.sqrt((v[i - 1] * v[i - 1]) + (2 * accel * (lengths[i] - lengths[i - 1]))));
+        }
+        for (let i = n - 2; i >= 0; i -= 1) {
+            v[i] = Math.min(v[i], Math.sqrt((v[i + 1] * v[i + 1]) + (2 * accel * (lengths[i + 1] - lengths[i]))));
+        }
+    };
+    passes();
+    // Smoothed (no sudden change of acceleration), then held to the limits once more.
+    const tmp = new Float64Array(n);
+    for (let pass = 0; pass < 6; pass += 1) {
+        for (let i = 1; i < n - 1; i += 1) tmp[i] = (0.25 * v[i - 1]) + (0.5 * v[i]) + (0.25 * v[i + 1]);
+        for (let i = 1; i < n - 1; i += 1) v[i] = tmp[i];
+    }
+    passes();
+    const times = new Float64Array(n);
+    for (let i = 1; i < n; i += 1) {
+        const ds = lengths[i] - lengths[i - 1];
+        times[i] = times[i - 1] + ((2 * ds) / Math.max(1e-6, v[i - 1] + v[i]));
+    }
+    return { times, v, dur: times[n - 1] };
+}
+
+/** The share of a run's path covered `tau` seconds into it (constant acceleration per sample). */
+function runShareAt(path, profile, tau) {
+    const { times, v } = profile;
+    const n = times.length;
+    if (tau <= 0) return 0;
+    if (tau >= profile.dur) return 1;
+    let lo = 1;
+    let hi = n - 1;
+    while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (times[mid] < tau) lo = mid + 1; else hi = mid;
+    }
+    const i = lo;
+    const ds = path.lengths[i] - path.lengths[i - 1];
+    const a = ((v[i] * v[i]) - (v[i - 1] * v[i - 1])) / (2 * Math.max(1e-9, ds));
+    const t = tau - times[i - 1];
+    const sAt = Math.min(ds, (v[i - 1] * t) + (0.5 * a * t * t));
+    return (path.lengths[i - 1] + sAt) / path.length;
 }
 
 /**
@@ -412,6 +513,12 @@ export function wayFor(run, member, from) {
     });
 }
 
+/** The most a fore elbow flexes (rad) while its hoof bears weight before the knee gives too. */
+const STANCE_ELBOW = 0.8;
+
+/** How much lower (adult life m) the body is carried at a canter or gallop: the legs need the give. */
+const CANTER_CARRY = 0.05;
+
 /** The model's leg reach relative to the adult's (gaits scale with it). */
 const LEG_SCALE = Object.freeze({ horse: 1, foal: 0.8 });
 
@@ -424,7 +531,7 @@ const LEG_SCALE = Object.freeze({ horse: 1, foal: 0.8 });
  * @param {(typeof ODYSSEY_HORSES)['members'][number]} member
  * @param {typeof ODYSSEY_HORSES} [cfg]
  */
-export function buildHorseSchedule(member, cfg = ODYSSEY_HORSES) {
+export function buildHorseSchedule(member, cfg = ODYSSEY_HORSES, mother = null) {
     const k = cfg.scale * member.size;
     const legScale = LEG_SCALE[member.model];
     const life = k * legScale;
@@ -472,43 +579,220 @@ export function buildHorseSchedule(member, cfg = ODYSSEY_HORSES) {
             return { dur: (length / speed) + ramp, ramp };
         };
         const move = (kind, via, to, speed, head, alert) => {
+            // (Nowhere to go: a moment standing, not a path of no length with no heading.)
+            if (!via.length && Math.hypot(to[0] - x, to[1] - z) < 0.8) {
+                still('look', 0.6, head, 0, alert);
+                return;
+            }
             const pts = [[x, z]];
             const d0 = Math.hypot((via[0] ?? to)[0] - x, (via[0] ?? to)[1] - z);
             const [fx, fz] = dir(h);
-            pts.push([x + (fx * Math.min(d0 * 0.3, 15)), z + (fz * Math.min(d0 * 0.3, 15))]);
+            // (A run sets off along a lead point the way it faces; a step or a walk curves from
+            // its heading to its end over its whole length, so it never spins at the start.)
+            if (kind === 'run') pts.push([x + (fx * Math.min(d0 * 0.3, 15)), z + (fz * Math.min(d0 * 0.3, 15))]);
             via.forEach((p) => pts.push([p[0], p[1]]));
             pts.push([to[0], to[1]]);
-            const path = smoothPath(pts, [fx, fz]);
-            const { dur, ramp } = moveDur(kind, path.length, speed);
+            const path = smoothPath(pts, [fx, fz], kind === 'run' ? 48 : 16);
+            let { dur, ramp } = moveDur(kind, path.length, speed);
+            let profile = null;
+            if (kind === 'run') {
+                profile = runProfile(path, speed, cfg.runAccel * cfg.scale, cfg.runLateral * cfg.scale);
+                ({ dur } = profile);
+                ramp = 0;
+            }
             const end = pathAt(path, 1, { x: 0, z: 0, heading: 0 });
             push({
-                kind, dur, head, alert, path, ramp: Math.min(0.45, ramp / dur), x1: to[0], z1: to[1], h1: end.heading,
+                kind, dur, head, alert, path, profile, ramp: Math.min(0.45, ramp / dur), x1: to[0], z1: to[1], h1: end.heading,
             });
             x = to[0];
             z = to[1];
             h = end.heading;
         };
         /** The time a walk to `to` would take, with the turn it needs first. */
-        const walkCost = (to) => {
+        // (A walk curves from the way it faces to where it goes; only what a curve can not take,
+        // past about 60 degrees, is turned first, stepping round the hind legs.)
+        const walkCost = (to, speed = walkSpeed) => {
             const want = wrapAngle(Math.atan2(to[0] - x, to[1] - z) - h);
             const d = Math.hypot(to[0] - x, to[1] - z);
-            return (Math.abs(want) > 0.5 ? turnDur(want - (Math.sign(want) * 0.3)) : 1.2) + ((d * 1.25) / walkSpeed)
+            return (Math.abs(want) > 1.0 ? turnDur(want - (Math.sign(want) * 0.6)) : 1.0) + ((d * 1.3) / speed)
                 + cfg.accel;
         };
         const walkTo = (to, kind = 'walk', speed = walkSpeed, head = 0.2) => {
             const want = wrapAngle(Math.atan2(to[0] - x, to[1] - z) - h);
-            if (Math.abs(want) > 0.5) turn(want - (Math.sign(want) * 0.3));
-            else still('look', 1.2, 0.2, want * 0.6, 0.6);
+            if (Math.abs(want) > 1.0) turn(want - (Math.sign(want) * 0.6), pivot, head);
+            else still('look', 1.0, head, want * 0.6, 0.6);
             move(kind, [], to, speed, head, 0.5);
         };
         /** A foal's play trot to `to` (a turn first if it must). */
         const trotTo = (to) => {
             const want = wrapAngle(Math.atan2(to[0] - x, to[1] - z) - h);
-            if (Math.abs(want) > 0.5) turn(want - (Math.sign(want) * 0.3), pivot, 0.1);
+            if (Math.abs(want) > 1.0) turn(want - (Math.sign(want) * 0.6), pivot, 0.1);
             move('trot', [], to, cfg.playSpeed * life, 0.1, 0.8);
+        };
+        /** Rest a while: head about the withers, ears loose, a hind leg cocked on its toe. */
+        const doze = (dur) => push({
+            kind: 'doze', dur, head: 0.4, look: 0, alert: 0, x1: x, z1: z, h1: h, rest: rand() < 0.5 ? 0 : 2,
+        });
+        /**
+         * A foal beside its mother until `until`: it keeps a place at her side, goes to her (at a
+         * walk, or a trot when it has drifted far), suckles at her flank now and then while she
+         * stands grazing, and plays a little; between, it grazes or looks about.
+         */
+        const F = cfg.follow;
+        const mumAt = { x: 0, z: 0, heading: 0 };
+        let side = 1;
+        let lastNurse = -Infinity;
+        const slotAt = (tt) => {
+            horsePathAt(mother, tt, mumAt);
+            const c = Math.cos(mumAt.heading);
+            const sn = Math.sin(mumAt.heading);
+            const lx = F.side * side * mother.k;
+            const lz = -F.back * mother.k;
+            return [mumAt.x + (c * lx) + (sn * lz), mumAt.z + (-sn * lx) + (c * lz)];
+        };
+        /** The foal's side of its mother now (+1 her left), so it never walks through her. */
+        const sideNow = () => {
+            horsePathAt(mother, t, mumAt);
+            const lx = ((x - mumAt.x) * Math.cos(mumAt.heading)) - ((z - mumAt.z) * Math.sin(mumAt.heading));
+            return lx >= 0 ? 1 : -1;
+        };
+        /**
+         * The gap between the foal standing where it is and its mother's body over [t0, t1] (its
+         * nearest, in u): she steps and turns as she grazes, and must not walk onto her foal.
+         */
+        const mumBody = (tt) => {
+            horsePathAt(mother, tt, mumAt);
+            const half = 1.1 * mother.k;
+            const fx = Math.sin(mumAt.heading);
+            const fz = Math.cos(mumAt.heading);
+            const px = x - mumAt.x;
+            const pz = z - mumAt.z;
+            const along = Math.max(-half, Math.min(half, (px * fx) + (pz * fz)));
+            return Math.hypot(px - (fx * along), pz - (fz * along));
+        };
+        const clashAfter = (t0, t1) => {
+            for (let tt = t0; tt <= t1; tt += 0.25) if (mumBody(tt) < 0.72 * (mother.k + k)) return tt;
+            return Infinity;
+        };
+        const followUntil = (until) => {
+            for (let guard = 0; guard < 400 && until - t > 6; guard += 1) {
+                const left = until - t;
+                side = sideNow();
+                const slot = slotAt(t);
+                const d = Math.hypot(slot[0] - x, slot[1] - z);
+                // Drifted off, or she is about to step onto it: go to her side (where she will
+                // be when it arrives).
+                if (d > F.drift * k || clashAfter(t, t + 3) < Infinity) {
+                    const trot = d > F.trotFrom * k;
+                    const speed = trot ? cfg.playSpeed * life : walkSpeed;
+                    let to = slotAt(t + walkCost(slot, speed));
+                    to = slotAt(t + walkCost(to, speed));
+                    if (walkCost(to, speed) * 1.4 > left - 3) break;
+                    // Round her, never through her: if the straight way passes her body (where she
+                    // will be half-way), it goes by a point out at her side first.
+                    const mid = t + (0.5 * walkCost(to, speed));
+                    horsePathAt(mother, mid, mumAt);
+                    const ex = to[0] - x;
+                    const ez = to[1] - z;
+                    const len2 = (ex * ex) + (ez * ez) || 1;
+                    const u = clamp01((((mumAt.x - x) * ex) + ((mumAt.z - z) * ez)) / len2);
+                    const miss = Math.hypot(x + (ex * u) - mumAt.x, z + (ez * u) - mumAt.z);
+                    const kind = trot ? 'trot' : 'walk';
+                    const c = Math.cos(mumAt.heading);
+                    const sn = Math.sin(mumAt.heading);
+                    const lx = 2.6 * side * mother.k;
+                    const lz = -0.5 * mother.k;
+                    const via = [mumAt.x + (c * lx) + (sn * lz), mumAt.z + (-sn * lx) + (c * lz)];
+                    // (Only a way that keeps going forward through that point: no doubling back.)
+                    const inX = via[0] - x;
+                    const inZ = via[1] - z;
+                    const outX = to[0] - via[0];
+                    const outZ = to[1] - via[1];
+                    const onward = ((inX * outX) + (inZ * outZ)) > 0.5 * Math.hypot(inX, inZ) * Math.hypot(outX, outZ);
+                    if (miss < 0.75 * (mother.k + k) && onward) {
+                        const want = wrapAngle(Math.atan2(via[0] - x, via[1] - z) - h);
+                        if (Math.abs(want) > 1.0) turn(want - (Math.sign(want) * 0.6), pivot, 0.2);
+                        move(kind, [via], to, speed, trot ? 0.1 : 0.2, 0.5);
+                    } else walkTo(to, kind, speed, trot ? 0.1 : 0.2);
+                    continue;
+                }
+                // Suckling: she stands grazing for a good while yet; the foal goes to her flank
+                // and stands head to tail, its head under her belly.
+                const seg = horseSegmentAt(mother, t);
+                // (How long she stands yet: her grazing, looks and dozes in a row.)
+                let standsTill = seg.segment.kind === 'graze' ? seg.segment.t0 + seg.segment.dur : t;
+                if (standsTill > t) {
+                    let i = mother.segments.indexOf(seg.segment) + 1;
+                    while (i < mother.segments.length && ['graze', 'look', 'doze'].includes(mother.segments[i].kind)) {
+                        standsTill = mother.segments[i].t0 + mother.segments[i].dur;
+                        i += 1;
+                    }
+                }
+                const standsFor = standsTill - t;
+                if (seg.segment.kind === 'graze' && standsFor > F.nurse[0] + 6 && t - lastNurse > F.nurseEvery
+                    && rand() < 0.6 && left > F.nurse[1] + 10) {
+                    horsePathAt(mother, t, mumAt);
+                    const c = Math.cos(mumAt.heading);
+                    const sn = Math.sin(mumAt.heading);
+                    const lx = 0.62 * side * mother.k;
+                    const lz = 0.12 * mother.k;
+                    const flank = [mumAt.x + (c * lx) + (sn * lz), mumAt.z + (-sn * lx) + (c * lz)];
+                    // (Only if there is time to get there, turn head to tail and suckle a while.)
+                    const face0 = wrapAngle((mumAt.heading + Math.PI) - Math.atan2(flank[0] - x, flank[1] - z));
+                    const cost = walkCost(flank, walkSpeed * 0.7) + turnDur(face0, 1.6) + 0.5;
+                    const window = (standsTill - 0.8) - (t + cost);
+                    if (window > 3.5) {
+                        walkTo(flank, 'walk', walkSpeed * 0.7, 0.3);
+                        const face = wrapAngle((mumAt.heading + Math.PI) - h);
+                        if (Math.abs(face) > 0.05) turn(face, pivot * 0.5, 0.3, 1.6);
+                        const dur = Math.min(standsTill - 0.8 - t, F.nurse[0] + (rand() * (F.nurse[1] - F.nurse[0])));
+                        if (dur > 3) {
+                            push({
+                                kind: 'nurse', dur, head: 0.25, look: -0.75 * side, alert: 0, x1: x, z1: z, h1: h,
+                            });
+                        }
+                        lastNurse = t;
+                        continue;
+                    }
+                }
+                // Play: a few lively strides out and back, now and then a buck.
+                if (rand() < 0.1 && left > 30) {
+                    horsePathAt(mother, t, mumAt);
+                    const away = Math.atan2(x - mumAt.x, z - mumAt.z) + ((rand() - 0.5) * 1.2);
+                    const r = (3 + (rand() * 2.5)) * k;
+                    const [ax, az] = dir(away);
+                    const out = [x + (ax * r), z + (az * r)];
+                    // (Only out onto the open meadow, clear of its rocks.)
+                    const open = odysseyMeadowClearingRn(out[0], out[1]) < 0.85
+                        && cfg.rocks.every(([rx, rz, rr]) => Math.hypot(out[0] - rx, out[1] - rz) > rr + (2.5 * k));
+                    if (open && (2 * walkCost(out, cfg.playSpeed * life)) + 6 < left - 8) {
+                        trotTo(out);
+                        if (rand() < 0.6) still('buck', 1.3, 0.35, 0, 0.8);
+                        still('look', 1.2, 0.1, (rand() - 0.5), 0.9);
+                        side = rand() < 0.5 ? 1 : -1;
+                        continue;
+                    }
+                }
+                // Graze or look about, a short while (a foal is restless), never past the moment
+                // its mother would step onto it.
+                const want = rand() < 0.25 ? 2 + (rand() * 3) : 3 + (rand() * 5);
+                const clash = clashAfter(t + 3, t + want);
+                const dur = Math.min(left - 2, want, clash - t - 0.5);
+                if (dur < 1) {
+                    still('look', 1, 0.2, 0, 0.6);
+                    continue;
+                }
+                if (want < 5 && rand() < 0.5) still('look', dur, 0, (rand() - 0.5) * 1.4, 1);
+                else still('graze', dur, 1);
+            }
+            if (until - t > 1e-6) still('graze', until - t, 1);
         };
         /** Graze round the current place's spots until `until` (never past it). */
         const grazeUntil = (until) => {
+            if (foal && mother) {
+                followUntil(until);
+                return;
+            }
             const spots = member.spots[place];
             for (let guard = 0; guard < 400 && until - t > 6; guard += 1) {
                 const spot = spots[spotIndex];
@@ -540,42 +824,72 @@ export function buildHorseSchedule(member, cfg = ODYSSEY_HORSES) {
                 const bite = Math.min(left - 2, 5 + (rand() * 9));
                 still('graze', bite, 1);
                 if (until - t < 6) break;
-                if (rand() < 0.3) {
+                const r = rand();
+                if (r < 0.26) {
                     const dur = Math.min(until - t - 2, 3 + (rand() * 4));
                     still('look', dur, 0, (rand() - 0.5) * 1.6, 1);
                     if (until - t < 6) break;
+                } else if (r < 0.36 && until - t > 22) {
+                    // A doze: a horse at rest stands with its head about its withers, one hind leg
+                    // cocked on its toe, for a while.
+                    doze(8 + (rand() * 10));
+                    if (until - t < 6) break;
                 }
-                // A grazing step, drawn back toward the spot when it has wandered.
+                // A grazing step along a short curve, drawn back toward the spot when it has
+                // wandered; a turn on the spot only when the way home is well behind it.
                 const away = Math.hypot(x - spot[0], z - spot[1]);
                 const home = Math.atan2(spot[0] - x, spot[1] - z);
-                const wander = h + ((rand() - 0.5) * 0.8);
+                const wander = h + ((rand() - 0.5) * 0.7);
                 const pull = clamp01((away - (0.25 * k)) / (0.7 * k));
                 const aim = wrapAngle(wander + (wrapAngle(home - wander) * pull));
                 const dist = (0.3 + (rand() * 0.4)) * strideW;
-                const [ax, az] = dir(aim);
-                const turnNeed = Math.abs(wrapAngle(aim - h)) > 0.6 ? turnDur(wrapAngle(aim - h) * 0.75) : 0;
+                const off = wrapAngle(aim - h);
+                const turnNeed = Math.abs(off) > 1.1 ? turnDur(off - (Math.sign(off) * 0.6)) : 0;
                 if (turnNeed + (dist / (walkSpeed * cfg.stepShare)) + 2 > until - t - 2) break;
-                if (turnNeed) turn(wrapAngle(aim - h) * 0.75);
+                if (turnNeed) turn(off - (Math.sign(off) * 0.6));
+                const [ax, az] = dir(turnNeed ? aim : h + (off * (0.7 + (0.3 * pull))));
                 move('step', [], [x + (ax * dist), z + (az * dist)], walkSpeed * cfg.stepShare, 0.85, 0);
             }
             if (until - t > 1e-6) still('graze', until - t, 1);
         };
         for (const run of cfg.runs) {
-            // The band's way, offset to this horse's side of it and trimmed to it (wayFor).
-            const way = wayFor(run, member, [x, z]);
             const setOff = run.at + member.slot[0];
             grazeUntil(setOff - 14);
+            // A foal steps out to its running side of its mother first, clear of her wheel.
+            if (foal && mother) {
+                const runSide = member.slot[1] >= mother.member.slot[1] ? 1 : -1;
+                horsePathAt(mother, setOff - 6, mumAt);
+                const c = Math.cos(mumAt.heading);
+                const sn = Math.sin(mumAt.heading);
+                const lx = 2.4 * runSide * mother.k;
+                const stage = [mumAt.x + (c * lx), mumAt.z + (-sn * lx)];
+                if (Math.hypot(stage[0] - x, stage[1] - z) > 0.5 * k && walkCost(stage) < 6.5) walkTo(stage);
+            }
+            // The band's way, offset to this horse's side of it and trimmed to where it stands now.
+            const way = wayFor(run, member, [x, z]);
             // Heads up, then a turn toward the way out, timed to set off on the moment.
             const out = way[0] ?? member.spots[run.to][0];
             const want = wrapAngle(Math.atan2(out[0] - x, out[1] - z) - h);
-            const by = Math.abs(want) > 0.12 ? want : 0;
+            const by = Math.abs(want) > 0.5 ? want * 0.8 : 0;
             const need = (by ? turnDur(by, cfg.wheelRate) : 0) + 1.6;
             if (setOff - need - t > 1e-6) still('graze', setOff - need - t, 1);
             still('look', 1.6, 0, 0, 1);
             if (by) turn(by, pivot, 0, cfg.wheelRate);
             place = run.to;
             spotIndex = 0;
-            const dest = member.spots[place][0];
+            let dest = member.spots[place][0];
+            // A foal ends its run at its mother's side, the side it runs on.
+            if (foal && mother) {
+                const mrun = mother.segments.find((sg) => sg.kind === 'run' && Math.abs(sg.t0 - (run.at + mother.member.slot[0])) < 1.5);
+                if (mrun) {
+                    const runSide = member.slot[1] >= mother.member.slot[1] ? 1 : -1;
+                    const c = Math.cos(mrun.h1);
+                    const sn = Math.sin(mrun.h1);
+                    const lx = F.side * runSide * mother.k;
+                    const lz = -F.back * mother.k;
+                    dest = [mrun.x1 + (c * lx) + (sn * lz), mrun.z1 + (-sn * lx) + (c * lz)];
+                }
+            }
             move('run', way, dest, cfg.runSpeed * cfg.scale, 0.05, 1);
             atSpotSince = t;
         }
@@ -603,7 +917,17 @@ export function buildHorseSchedule(member, cfg = ODYSSEY_HORSES) {
 
 /** The schedules of the whole band (built once; pure). Feet come later (`planFootfalls`). */
 export function buildBand(cfg = ODYSSEY_HORSES) {
-    return cfg.members.map((member) => ({ member, ...buildHorseSchedule(member, cfg), plan: null }));
+    // The mothers first: a foal's day is built beside its mother's.
+    /** @param {object} member */
+    const motherOf = (member) => /** @type {{mother?: number}} */ (member).mother;
+    const band = cfg.members.map((member) => (motherOf(member) == null
+        ? { member, ...buildHorseSchedule(member, cfg), plan: null } : null));
+    cfg.members.forEach((member, i) => {
+        const mother = motherOf(member);
+        if (mother == null) return;
+        band[i] = { member, ...buildHorseSchedule(member, cfg, band[mother]), plan: null };
+    });
+    return band;
 }
 
 /** The segment index active at time `t` (already within [0, loop)). */
@@ -637,6 +961,8 @@ export function horsePathAt(horse, time, out = { x: 0, z: 0, heading: 0 }) {
         out.x = s.px + (fx * s.about);
         out.z = s.pz + (fz * s.about);
         out.heading = h;
+    } else if (s.profile) {
+        pathAt(s.path, runShareAt(s.path, s.profile, u * s.dur), out);
     } else if (s.path) {
         pathAt(s.path, moveProfile(u, s.ramp), out);
     } else {
@@ -754,8 +1080,13 @@ function planHorse(horse, rig, cfg) {
     const offsets = rig.legs.map((leg) => rig.footOffset[leg.leg]);
     const reach = 0.4 * life;
     const path = { x: 0, z: 0, heading: 0 };
+    // At a canter or gallop the hind hooves land well under the body (their stance centred under
+    // the hip, not behind it), so the legs reach their arcs without the body sinking.
+    let hindShift = 0;
+    const front = rig.legs.map((leg) => leg.front);
     const footUnder = (p, l, out) => {
-        const [ox, oz] = offsets[l];
+        const [ox, oz0] = offsets[l];
+        const oz = front[l] ? oz0 : oz0 + hindShift;
         const ch = Math.cos(p.heading);
         const sh = Math.sin(p.heading);
         out[0] = p.x + (((ch * ox) + (sh * oz)) * k);
@@ -819,6 +1150,7 @@ function planHorse(horse, rig, cfg) {
         }
         const v = pace / life;
         gaitAt(v, gait, cfg);
+        hindShift = 0.12 * horse.legScale * gaitShares(v).canter;
         const prevPhase = phase;
         phase += gait.rate * dt;
         const sample = Math.round(t * PLAN_RATE);
@@ -1107,6 +1439,11 @@ export function createHorseRig(skeleton) {
         L: new Float64Array(9),
         T: new Float64Array(9),
         legBones: new Set(legs.flatMap((leg) => leg.chain)),
+        dropPath: { x: 0, z: 0, heading: 0 },
+        dropRhythm: { phase: 0, speed: 0 },
+        dropFeet: LEGS.map(() => ({
+            x: 0, z: 0, swing: 0, planted: true, length: 0, ground: 0,
+        })),
         solveK: [0, 0],
         solveE: [0, 0],
         rhythm: { phase: 0, speed: 0 },
@@ -1144,6 +1481,11 @@ export function poseHorse(rig, horse, time, heightAt, table = null, offset = 0, 
     const rhythm = horseRhythmAt(horse, time, rig.rhythm);
     const { segment, u: segU } = horseSegmentAt(horse, time);
     const buck = segment.kind === 'buck' ? Math.sin(Math.PI * segU) ** 2 : 0;
+    // A doze eases in and out over a second and a half; so does suckling.
+    const easeIn = () => s5((segU * segment.dur) / 1.5) * s5(((1 - segU) * segment.dur) / 1.5);
+    const dozing = segment.kind === 'doze' ? easeIn() : 0;
+    const restLeg = segment.kind === 'doze' ? segment.rest : -1;
+    const nursing = segment.kind === 'nurse' ? easeIn() : 0;
     for (const l of local) { l[0] = 0; l[1] = 0; l[2] = 0; }
     const set = (name, rx, ry = 0, rz = 0) => {
         const l = local[index[name]];
@@ -1168,14 +1510,17 @@ export function poseHorse(rig, horse, time, heightAt, table = null, offset = 0, 
     const right = 0.5 * (feet[2].ground + feet[3].ground);
     const G = cfg.graze[model];
     // The canter's rocking: the forehand rises as the hinds land and dips as the leading fore does.
-    const rock = canter * 0.07 * Math.sin(ph + 0.6);
+    const rock = canter * 0.045 * Math.sin(ph + 0.6);
     const pitch = (-Math.atan2(fore - hind, 1.14 * k) * 0.9) + (G.dip * g) + rock + (0.3 * buck);
     const roll = -Math.atan2(left - right, 0.3 * k) * 0.12;
     const swingOf = (l) => (feet[l].planted ? 0 : Math.sin(Math.PI * feet[l].swing));
     const breathe = Math.sin(((time / (foal ? 2.6 : 3.8)) + (seed * 0.37)) * TAU);
     const sway = noise((time * 0.19) + seed, seed) * (1 - walk);
     set('root', 0, 0, (sway * 0.015) + (0.02 * (swingOf(1) - swingOf(3)) * walk * (1 - canter)));
-    set('pelvis', (0.01 * breathe) - (0.06 * canter * Math.sin(ph + 2.2)), 0, 0.04 * (swingOf(0) - swingOf(2)) * (1 - canter));
+    // (Dozing on a cocked hind leg, the hip on that side drops a little.)
+    const hipShot = dozing * (restLeg === 0 ? 1 : -1) * 0.06;
+    const pelvisRoll = (0.04 * (swingOf(0) - swingOf(2)) * (1 - canter)) - hipShot;
+    set('pelvis', (0.01 * breathe) - (0.06 * canter * Math.sin(ph + 2.2)), 0, pelvisRoll);
     set('chest', -0.01 * breathe, 0, 0.03 * (swingOf(1) - swingOf(3)) * (1 - canter));
     // THE HEAD AND NECK: grazing down the three neck bones; the walk's nod with the fore feet; the
     // trot's steady head; the canter's pump (the neck swings down as the forehand lands); a run
@@ -1187,15 +1532,18 @@ export function poseHorse(rig, horse, time, heightAt, table = null, offset = 0, 
     const stretch = canter * 0.22;
     const grazeT = (time * 0.43) + seed;
     // (A trot carries the head up and steady; a walk lets it down a little and nod.)
+    // A head toss now and then while the head is up (a fly, a stretch): a quick lift and drop.
+    const tossPulse = Math.max(0, Math.sin((time * 0.21) + (seed * 1.3))) ** 60;
+    const toss = tossPulse * (1 - g) * (1 - walk) * (1 - nursing) * Math.sin(Math.min(1, tossPulse * 1.6) * Math.PI);
     set('neck0', (G.neck0 * g) + (0.12 * walk * (1 - g) * (1 - trot)) - (0.12 * trot * (1 - g)) + stretch + nod + pump
-        - (0.05 * (1 - g) * (1 - canter))
+        - (0.05 * (1 - g) * (1 - canter)) - (0.22 * toss) + (0.12 * nursing)
         + (0.35 * buck), lookAt(0.42) * 0.2);
     set('neck1', (G.neck1 * g) - (0.5 * pump), lookAt(0.32) * 0.26);
     set('neck2', (G.neck2 * g) - (0.06 * (1 - g) * state.alert) - (0.1 * stretch), lookAt(0.22) * 0.26);
     set(
         'head',
         (G.head * g) + (0.05 * crop * Math.sin(time * TAU * 1.2)) + (0.04 * (1 - g) * noise(time * 0.6, seed + 3))
-            - (0.35 * stretch) - (0.4 * pump),
+            - (0.35 * stretch) - (0.4 * pump) + (0.3 * toss) - (0.45 * nursing) + (0.12 * dozing),
         (lookAt(0.12) * 0.18) + (0.12 * crop * noise(grazeT, seed + 5)),
     );
     const cud = (1 - g) * (1 - walk) * Math.max(0, noise(time * 0.15, seed + 9)) * 0.5;
@@ -1208,7 +1556,8 @@ export function poseHorse(rig, horse, time, heightAt, table = null, offset = 0, 
     // THE TAIL: hanging, swished at flies now and then while it grazes (a wave down its three
     // bones), lifted and streaming in a run, flagged up in a foal's buck.
     const swish = Math.max(0, noise(time * 0.27, seed + 17) - 0.35) / 0.65;
-    const flies = swish * (1 - canter);
+    // (A suckling foal wags its tail.)
+    const flies = Math.max(swish, nursing * 0.8) * (1 - canter);
     const swishAt = (lag) => 0.5 * flies * Math.sin((time - lag) * 7.5);
     const stream = (0.75 * canter) + (0.25 * trot) + (0.9 * buck);
     set('tail0', 0.06 + stream + (0.1 * flies), swishAt(0) * 0.6);
@@ -1224,7 +1573,7 @@ export function poseHorse(rig, horse, time, heightAt, table = null, offset = 0, 
     // (Standing, the legs are straight: a grazing horse does not fold its knees. A body tipped
     // nose-down to graze would lift the hips out of the hind legs' reach, drop the whole horse
     // and fold the fore knees, so the head reaches the grass by the neck alone: `dip` is 0.)
-    const carry = (0.004 + (0.03 * walk) + (0.035 * trot) + (0.06 * canter)) * life;
+    const carry = (0.004 + (0.03 * walk) + (0.035 * trot) + (CANTER_CARRY * canter)) * life;
     const bounce = ((0.012 * trot * Math.cos(2 * ph)) + (0.03 * canter * Math.sin(ph + 1.4))) * life;
     J[rootIndex][0] = state.x;
     J[rootIndex][1] = groundMean + (skeleton[rootIndex].head[1] * k) - carry + bounce + (0.003 * k * breathe);
@@ -1251,22 +1600,49 @@ export function poseHorse(rig, horse, time, heightAt, table = null, offset = 0, 
     bodyFk();
     // A buck kicks both hind hooves up and back off the ground (the foal plants its fores).
     const kickOf = (l) => (rig.legs[l].front ? 0 : buck);
+    // The cocked hind leg of a doze rests on its toe, a little forward, bearing no weight.
+    const restOf = (l) => (l === restLeg ? dozing : 0);
     // Lower the body if a hoof bearing weight would be out of its leg's reach (each hoof's say
-    // fading over the start of its swing and back before it lands, so nothing jumps).
+    // fading over the start of its swing and back before it lands). The need is taken over a few
+    // moments either side of now and averaged, so the body rides the strides in one smooth swell
+    // instead of jolting from one hoof's need to the next's (at a gallop the needs hand over
+    // several times a stride).
+    const dropAt = (tau) => {
+        const p = horsePathAt(horse, tau, rig.dropPath);
+        const rh = horseRhythmAt(horse, tau, rig.dropRhythm);
+        const sh2 = gaitShares(rh.speed);
+        const walk2 = clamp01(rh.speed / cfg.walkSpeed);
+        const carry2 = (0.004 + (0.03 * walk2) + (0.035 * sh2.trot) + (CANTER_CARRY * sh2.canter)) * life;
+        const ph2 = rh.phase * TAU;
+        const bounce2 = ((0.012 * sh2.trot * Math.cos(2 * ph2)) + (0.03 * sh2.canter * Math.sin(ph2 + 1.4))) * life;
+        const rootY = groundMean + (skeleton[rootIndex].head[1] * k) - carry2 + bounce2;
+        const c = Math.cos(p.heading);
+        const sn = Math.sin(p.heading);
+        const rest = skeleton[rootIndex].head;
+        let need = 0;
+        for (let l = 0; l < rig.legs.length; l += 1) {
+            const leg = rig.legs[l];
+            const f = horseFootAt(horse, l, tau, rig.dropFeet[l]);
+            const say = (f.planted ? 1 : 1 - (s5(f.swing / 0.3) * s5((1 - f.swing) / 0.3))) * (1 - kickOf(l));
+            if (say > 0) {
+                const top = skeleton[leg.top].head;
+                const ox = (top[0] - rest[0]) * k;
+                const oz = (top[2] - rest[2]) * k;
+                const ax = p.x + (c * ox) + (sn * oz);
+                const az = p.z + (-sn * ox) + (c * oz);
+                const ay = rootY + ((top[1] - rest[1]) * k);
+                const reach = leg.reach * k * 0.985;
+                const horiz = ((f.x - ax) ** 2) + ((f.z - az) ** 2);
+                const needY = feet[l].ground + (leg.fetlock * k) + Math.sqrt(Math.max(0, (reach * reach) - horiz));
+                need = Math.max(need, (ay - needY) * say);
+            }
+        }
+        return need;
+    };
+    const DROP_TAPS = [1, 2, 3, 2, 1];
     let drop = 0;
-    rig.legs.forEach((leg, l) => {
-        const f = feet[l];
-        const say = (f.planted ? 1 : 1 - (s5(f.swing / 0.3) * s5((1 - f.swing) / 0.3))) * (1 - kickOf(l));
-        if (say <= 0) return;
-        const A = J[leg.top];
-        const reach = leg.reach * k * 0.985;
-        const dx = f.x - A[0];
-        const dz = f.z - A[2];
-        const horiz = (dx * dx) + (dz * dz);
-        const tY = f.ground + (leg.fetlock * k);
-        const needY = tY + Math.sqrt(Math.max(0, (reach * reach) - horiz));
-        drop = Math.max(drop, (A[1] - needY) * say);
-    });
+    for (let i = 0; i < DROP_TAPS.length; i += 1) drop += DROP_TAPS[i] * dropAt(time + ((i - 2) / 40));
+    drop /= 9;
     if (drop > 0) {
         const most = 0.18 * k;
         J[rootIndex][1] -= most * (1 - Math.exp(-drop / most));
@@ -1285,9 +1661,10 @@ export function poseHorse(rig, horse, time, heightAt, table = null, offset = 0, 
         const lift = (f.planted ? 0
             : liftShare * k * Math.min(1, 0.35 + (f.length / horse.strideW)) * Math.sin(Math.PI * f.swing))
             + (0.32 * k * kick);
-        const tx = f.x - (sh * 0.3 * k * kick);
-        const ty = f.ground + (leg.fetlock * k) + lift;
-        const tz = f.z - (ch * 0.3 * k * kick);
+        const rested = restOf(l);
+        const tx = f.x - (sh * 0.3 * k * kick) + (sh * 0.07 * k * rested);
+        const ty = f.ground + (leg.fetlock * k) + lift + (0.045 * k * rested);
+        const tz = f.z - (ch * 0.3 * k * kick) + (ch * 0.07 * k * rested);
         const wx = (tx - A[0]) / k;
         const wy = (ty - A[1]) / k;
         const wz = (tz - A[2]) / k;
@@ -1304,21 +1681,39 @@ export function poseHorse(rig, horse, time, heightAt, table = null, offset = 0, 
         // give (the elbow's bend from a solve through the elbow, the knee held straight). In the
         // air that bend eases out and the knee folds. Then the knee's solve runs through the
         // elbow as it is, so the hoof always lands exactly where the plan put it.
-        let elbow = 0;
-        if (leg.front) {
-            const share = (f.planted ? 1 : 1 - (s5(f.swing / 0.22) * s5((1 - f.swing) / 0.22))) * (1 - kick);
-            if (share > 0) elbow = solveTwo(leg.e1, leg.e2, down, vz, -1, 1.2, rig.solveE)[1] * share;
-        }
-        const ce = Math.cos(elbow);
-        const se = Math.sin(elbow);
-        const upper = leg.front
-            ? [leg.e1[0] + ((leg.f1[0] * ce) - (leg.f1[1] * se)), leg.e1[1] + ((leg.f1[0] * se) + (leg.f1[1] * ce))]
-            : leg.u1;
-        solveTwo(upper, leg.u2, down, vz, leg.front ? 1 : -1, 1.9, rig.solveK, leg.front ? elbow - 0.03 : null);
-        local[leg.top][0] = rig.solveK[0];
         local[leg.top][2] = abduct;
-        local[c0][0] = elbow;
-        local[c1][0] = rig.solveK[1] - elbow;
+        if (leg.front) {
+            // The knee's fold in the air (from the solve with the elbow held), eased out by the
+            // stance share; then the elbow is solved for that knee, so the hoof always lands
+            // exactly where the plan put it and both joints move without a flip.
+            const share = (f.planted ? 1 : 1 - (s5(f.swing / 0.22) * s5((1 - f.swing) / 0.22))) * (1 - kick);
+            solveTwo(leg.u1, leg.u2, down, vz, 1, 1.9, rig.solveK);
+            const kneeAir = rig.solveK[1];
+            // On the ground the knee is straight unless the elbow has given all it can (deep in a
+            // gallop's stance): then the knee takes the rest, a little.
+            let kneeGround = 0;
+            if (share > 0 && solveTwo(leg.e1, leg.e2, down, vz, -1, 1.6, rig.solveE)[1] < -STANCE_ELBOW) {
+                const ce = Math.cos(-STANCE_ELBOW);
+                const se = Math.sin(-STANCE_ELBOW);
+                const upper = [leg.e1[0] + ((leg.f1[0] * ce) - (leg.f1[1] * se)), leg.e1[1] + ((leg.f1[0] * se) + (leg.f1[1] * ce))];
+                kneeGround = Math.max(0, solveTwo(upper, leg.u2, down, vz, 1, 1.9, rig.solveK)[1] + STANCE_ELBOW);
+            }
+            const knee = (kneeAir * (1 - share)) + (kneeGround * share);
+            const ck = Math.cos(knee);
+            const sk = Math.sin(knee);
+            const lower = [leg.f1[0] + ((leg.u2[0] * ck) - (leg.u2[1] * sk)), leg.f1[1] + ((leg.u2[0] * sk) + (leg.u2[1] * ck))];
+            // (Always the elbow's forward flex: the one answer that moves continuously from the
+            // air, where it flexes with the folding knee, to the ground.)
+            solveTwo(leg.e1, lower, down, vz, -1, 1.6, rig.solveE);
+            local[leg.top][0] = rig.solveE[0];
+            local[c0][0] = rig.solveE[1];
+            local[c1][0] = knee;
+        } else {
+            solveTwo(leg.u1, leg.u2, down, vz, -1, 1.9, rig.solveK);
+            local[leg.top][0] = rig.solveK[0];
+            local[c0][0] = 0;
+            local[c1][0] = rig.solveK[1];
+        }
         fkBone(leg.top);
         fkBone(c0);
         fkBone(c1);
@@ -1326,7 +1721,7 @@ export function poseHorse(rig, horse, time, heightAt, table = null, offset = 0, 
         const ahead = heightAt(f.x + (sh * along), f.z + (ch * along));
         const slope = (ahead - heightAt(f.x - (sh * along), f.z - (ch * along))) / (0.6 * k);
         const curl = (f.planted ? 0 : (leg.front ? 1.2 : 0.9) * Math.sin(Math.PI * Math.min(1, f.swing * 1.15)))
-            + (0.6 * kick);
+            + (0.6 * kick) + (0.7 * rested);
         rotation(-Math.atan(slope) + curl, state.heading, 0, rig.T);
         const rc = R[c1];
         const t = rig.T;
@@ -1345,7 +1740,7 @@ export function poseHorse(rig, horse, time, heightAt, table = null, offset = 0, 
         o.y = J[c2][1] + (r[3] * ddx) + (r[4] * ddy) + (r[5] * ddz);
         o.z = J[c2][2] + (r[6] * ddx) + (r[7] * ddy) + (r[8] * ddz);
         o.ground = heightAt(o.x, o.z);
-        o.stance = f.planted && kick < 0.01 ? 1 : 0;
+        o.stance = f.planted && kick < 0.01 && rested < 0.01 ? 1 : 0;
         o.planX = f.x;
         o.planZ = f.z;
     });

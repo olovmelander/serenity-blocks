@@ -24,11 +24,24 @@
  * vertex stage folds the wing about those two hinges (`foldBirdPoint` is its CPU twin), the
  * normals with it, so the light turns with the beat.
  *
+ * THE MOTION (2026-11-03; docs/ODYSSEY_BLENDER_BIRDS_2026-11.md, "Natural flight"):
+ *   - each kind's beat is keyframed in Blender (odyssey-bird-beats.js): a quick downstroke on a
+ *     spread wing, the wrist flexing on the upstroke so the tip draws a loop, the body rising
+ *     against the beat;
+ *   - GULLS beat in bouts of 3-5 on a clock of their own; a bout starts and ends at mid-upstroke
+ *     (where the beat meets the glide) and eases in and out. Between bouts the bowed wings flex
+ *     softly on the air;
+ *   - SWALLOWS beat on the straights of their eight and glide swept through its turns;
+ *   - the SKEIN beats as one wave running back down the V (each rank a little later), its
+ *     spacing breathing slowly;
+ *   - every bird banks with its turn (soft at the limit, a moment ahead of the turn) and fans
+ *     and twists its tail into it. No swallow's path ever runs straight up (its heading spun).
+ *
  * Every bird is CLOSED FORM in the vertex stage (position at t, heading from the position a
- * moment later, bank from the turn, the wingbeat from the clock), so nothing is written per frame
- * but the clock and three reveal values. Orientation is built from WORLD UP (never
+ * moment either side, bank from the turn, the wingbeat from the clock), so nothing is written per
+ * frame but the clock and three reveal values. Orientation is built from WORLD UP (never
  * `setFromUnitVectors(+z, heading)`, which flips a bird belly-up), and a turn to the right rolls
- * the right wing DOWN.
+ * the right wing DOWN. `flightFrameAt` and `birdWingPoseOf` are the vertex stage's CPU twins.
  *
  * ZERO-HITCH (ADR-0020), the summit birds' pattern: one opaque instanced draw per flock, all three
  * sharing ONE material (the same shader and pipeline: their attributes are laid out alike), built
@@ -39,10 +52,12 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn, abs, attribute, cameraPosition, clamp, cos, cross, dot, float, fract, length, max, mix,
-    normalize, positionLocal, sin, smoothstep, uniform, uniformArray, varying, vec3,
+    normalize, pow, positionLocal, sin, smoothstep, uniform, uniformArray, varying, vec3,
 } from 'three/tsl';
 import {
-    birdColourNode, birdWingPoseAt as birdWingPoseOf, decodeBirdModel, foldBirdNode, foldBirdPoint, setBirdTemplate,
+    BIRD_BEAT_CHANNELS, beatHarmonicsNode, beatSeriesNode, birdBoutAt, birdBoutNode, birdColourNode,
+    birdWingPoseAt as birdWingPoseOfModel, decodeBirdModel, foldBirdNode, foldBirdPoint, packBeatSeries,
+    setBirdTemplate, smootherstep, smootherstepNode, tailBirdNode,
 } from './odyssey-bird-rig.js';
 
 const TAU = Math.PI * 2;
@@ -53,6 +68,40 @@ const GULL_DRIFT = 22;
 export const FLIGHT_KIND = Object.freeze({ GULL: 0, SWALLOW: 1, GOOSE: 2 });
 /** The model each kind flies (keys of ODYSSEY_BIRD_MODELS), by FLIGHT_KIND. */
 const KIND_MODEL = Object.freeze(['gull', 'swallow', 'goose']);
+
+/**
+ * How each kind flies (per FLIGHT_KIND):
+ *   bankGain   bank (rad) per u/s^2 of turn; bankMax where it saturates (softly)
+ *   tail       [spread at rest, spread per radian of bank, twist per radian of bank]
+ *   flex       the held wing's slow flex: [lift amplitude, bend amplitude, rate rad/s]
+ */
+export const FLIGHT_STYLE = Object.freeze([
+    Object.freeze({
+        bankGain: 0.16, bankMax: 0.95, tail: Object.freeze([0.10, 0.24, 0.30]), flex: Object.freeze([0.035, 0.04, 0.9]),
+    }),
+    Object.freeze({
+        bankGain: 0.06, bankMax: 1.0, tail: Object.freeze([0.06, 0.28, 0.28]), flex: Object.freeze([0.02, 0.02, 1.5]),
+    }),
+    Object.freeze({
+        bankGain: 0.16, bankMax: 0.95, tail: Object.freeze([0.04, 0.06, 0.10]), flex: Object.freeze([0, 0, 1]),
+    }),
+]);
+/** A smooth |bank| (no corner at level flight) for the tail's fan: sqrt(b^2 + e^2) - e. */
+const TAIL_EASE = 0.08;
+/** The bank reads the turn this much ahead (s): a bird rolls into a turn as it begins it. */
+const BANK_LEAD = 0.1;
+/** The stencil (s) the heading and the turn are read over. */
+const STENCIL = 0.06;
+/** The gulls' bouts (odyssey-bird-rig.js `birdBoutAt`): every 8-14 s, 3-5 beats. */
+export const GULL_BOUTS = Object.freeze({
+    period: Object.freeze([8, 14]), beats: Object.freeze([3, 5]), start: 0.70, rise: 0.30, fall: 0.42, tail: 0.12,
+});
+/** The swallows beat where their eight runs straight (|cos| of its angle above this) ... */
+const SWALLOW_STRAIGHT = Object.freeze([0.30, 0.80]);
+/** ... and not every time: a slow gate of their own (sin above this beats). */
+const SWALLOW_GATE = Object.freeze([-0.7, -0.2, 0.41]);
+/** The skein: each rank beats this much of a beat after the one ahead of it. */
+const SKEIN_RANK_LAG = 0.16;
 
 /**
  * The flocks. Windows are [fade in from, fully in by, fade out from, gone by] in JOURNEY progress
@@ -165,6 +214,13 @@ export function resolveFlightLanes(flocks = ODYSSEY_FLIGHTS) {
 }
 
 /**
+ * The swallows' eight: its cross-track phase kept within +-0.8 rad of the lemniscate's (it ran
+ * 0..3 rad from the seed, and near pi/2 the path's horizontal speed fell to nothing twice a lap:
+ * the bird pointed straight up and its heading spun round in a frame or two).
+ */
+const swallowSkew = (seed) => (seed - 0.5) * 1.6;
+
+/**
  * CPU mirror of the vertex stage's `placeAt` (the bird's centre at clock `t`) — for the clearance
  * and framing tests and for siting. Keep in step with `placeAt` below.
  * @returns {{x:number,y:number,z:number,shown:boolean}}
@@ -181,10 +237,14 @@ export function flightPositionAt(lane, t, flocks = ODYSSEY_FLIGHTS) {
         const sideV = [-(run[2] / flat), 0, run[0] / flat];
         const sp = flock.spacing;
         const bob = Math.sin((t * 0.9) + (lane.seed * 7)) * 0.45;
+        // The V breathes: each slot slides a little back and out and weaves, slowly, its own way.
+        const backK = lane.cx * sp * (1 + (0.05 * Math.sin((t * 0.13) + (lane.seed * 5))));
+        const sideK = (lane.cz * lane.cx * sp * 0.72 * (1 + (0.05 * Math.sin((t * 0.11) + (lane.seed * 3)))))
+            + (Math.sin((t * 0.17) + (lane.seed * 4)) * 0.6 * Math.min(1, lane.cx));
         return {
-            x: flock.from[0] + (run[0] * s) + (back[0] * lane.cx * sp) + (sideV[0] * lane.cz * lane.cx * sp * 0.72),
+            x: flock.from[0] + (run[0] * s) + (back[0] * backK) + (sideV[0] * sideK),
             y: flock.from[1] + (run[1] * s) + lane.cy + bob,
-            z: flock.from[2] + (run[2] * s) + (back[2] * lane.cx * sp) + (sideV[2] * lane.cz * lane.cx * sp * 0.72),
+            z: flock.from[2] + (run[2] * s) + (back[2] * backK) + (sideV[2] * sideK),
             shown: cyc < flock.travel,
         };
     }
@@ -204,8 +264,53 @@ export function flightPositionAt(lane, t, flocks = ODYSSEY_FLIGHTS) {
     return {
         x: lane.cx + (Math.sin(ang) * r),
         y: lane.cy + (Math.sin((ang * 2) + (lane.seed * 5)) * r * 0.32),
-        z: lane.cz + (Math.sin((ang * 2) + (lane.seed * 3)) * r * 0.62),
+        z: lane.cz + (Math.sin((ang * 2) + swallowSkew(lane.seed)) * r * 0.62),
         shown: true,
+    };
+}
+
+const sub3 = (a, b) => [a.x - b.x, a.y - b.y, a.z - b.z];
+const norm3 = (v) => {
+    const l = Math.hypot(v[0], v[1], v[2]) || 1;
+    return [v[0] / l, v[1] / l, v[2] / l];
+};
+const cross3 = (a, b) => [(a[1] * b[2]) - (a[2] * b[1]), (a[2] * b[0]) - (a[0] * b[2]), (a[0] * b[1]) - (a[1] * b[0])];
+
+/** The soft limit on a bank: linear for small turns, easing into `max` (C-infinity). */
+export function softBank(raw, bankMax) {
+    const q = raw / bankMax;
+    return raw * ((1 + (q * q * q * q)) ** -0.25);
+}
+
+/**
+ * CPU twin of the vertex stage's body frame: where the bird is, its heading (from the path a
+ * moment either side), and its bank (from the turn a moment ahead, softly limited).
+ * @returns {{position:number[], left:number[], up:number[], forward:number[], bank:number}}
+ */
+export function flightFrameAt(lane, t, flocks = ODYSSEY_FLIGHTS) {
+    const style = FLIGHT_STYLE[lane.kind];
+    const P = (tt) => flightPositionAt(lane, tt, flocks);
+    const p0 = P(t);
+    const vel = sub3(P(t + STENCIL), P(t - STENCIL));
+    const fwd = norm3([vel[0] + 1e-4, vel[1], vel[2]]);
+    const r0 = cross3(fwd, [0, 1, 0]);
+    const right = norm3([r0[0], r0[1], r0[2] + 1e-5]);
+    const up = cross3(right, fwd);
+    const pl = P(t + BANK_LEAD);
+    const pa = P(t + BANK_LEAD + STENCIL);
+    const pb = P(t + BANK_LEAD - STENCIL);
+    const k = STENCIL * STENCIL;
+    const acc = [(pa.x + pb.x - (2 * pl.x)) / k, (pa.y + pb.y - (2 * pl.y)) / k, (pa.z + pb.z - (2 * pl.z)) / k];
+    const raw = ((acc[0] * right[0]) + (acc[1] * right[1]) + (acc[2] * right[2])) * style.bankGain;
+    const bank = softBank(raw, style.bankMax);
+    const cb = Math.cos(bank);
+    const sb = Math.sin(bank);
+    return {
+        position: [p0.x, p0.y, p0.z],
+        left: [0, 1, 2].map((i) => -((right[i] * cb) - (up[i] * sb))),
+        up: [0, 1, 2].map((i) => (up[i] * cb) + (right[i] * sb)),
+        forward: fwd,
+        bank,
     };
 }
 
@@ -219,37 +324,68 @@ export function lowlandBirdModel(kind) {
     return decodeBirdModel(KIND_MODEL[kind]);
 }
 
-const jsSmooth = (e0, e1, x) => {
-    const k = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
-    return k * k * (3 - (2 * k));
-};
+const bout = { weight: 0, phase: 0 };
 
 /**
- * How much of a beat a bird is in at clock `t` (0 glide .. 1 beating): gulls beat a few slow
- * strokes now and then, swallows in bursts with glides between, geese all the time. The vertex
- * stage's `beatWeight`.
+ * The beat a bird of `lane` is in at clock `t`: weight 0 glide .. 1 beating, and the phase (in
+ * beats, 0 the top of the stroke). Gulls: bouts on a clock of their own; swallows: on the
+ * straights of their eight; geese: always, as a wave down the V. The vertex stage's beat.
+ * @returns {{weight:number, phase:number}}
  */
-export function birdBeatWeight(kind, t, seed) {
-    if (kind === FLIGHT_KIND.GULL) return jsSmooth(0.62, 0.9, Math.sin((t * 0.52) + (seed * 13)));
-    if (kind === FLIGHT_KIND.SWALLOW) return jsSmooth(-0.15, 0.35, Math.sin((t * 1.7) + (seed * 11)));
-    return 1;
+export function birdBeatOf(lane, t, out = { weight: 0, phase: 0 }) {
+    const model = lowlandBirdModel(lane.kind);
+    const { rate } = model.flight;
+    if (lane.kind === FLIGHT_KIND.GULL) {
+        birdBoutAt(t, lane.seed, { ...GULL_BOUTS, rate }, bout);
+        out.weight = bout.weight;
+        out.phase = bout.phase;
+        return out;
+    }
+    if (lane.kind === FLIGHT_KIND.SWALLOW) {
+        const ang = ((t * TAU) / lane.lap) + (lane.phase * TAU);
+        const straight = smootherstep(SWALLOW_STRAIGHT[0], SWALLOW_STRAIGHT[1], Math.abs(Math.cos(ang)));
+        const gate = smootherstep(SWALLOW_GATE[0], SWALLOW_GATE[1], Math.sin((t * SWALLOW_GATE[2]) + (lane.seed * 9)));
+        out.weight = straight * gate;
+        out.phase = (rate * (1 + ((lane.seed - 0.5) * 0.06)) * t) + (lane.seed * 7);
+        return out;
+    }
+    out.weight = 1;
+    out.phase = (rate * t) + (lane.seed * 0.04) - (lane.cx * SKEIN_RANK_LAG)
+        + (0.03 * Math.sin((t * 0.23) + (lane.seed * 6.1)));
+    return out;
 }
 
-/** The beat's phase (radians, 0 the top of the stroke) at clock `t`: each bird its own rate +-3 %. */
-export function birdBeatPhase(kind, t, seed) {
-    const { rate } = lowlandBirdModel(kind).flight;
-    const cycles = (rate * (1 + ((seed - 0.5) * 0.06)) * t) + (seed * 7);
-    return (cycles - Math.floor(cycles)) * TAU;
+/** How much of a beat the bird of `lane` is in at clock `t` (0 glide .. 1 beating). */
+export function birdBeatWeightOf(lane, t) {
+    return birdBeatOf(lane, t).weight;
 }
 
-/** The pose at beat phase `phi`, blended with the glide by `weight` (odyssey-bird-rig.js). */
+/** The pose at beat phase `phi` (radians), blended with the glide by `weight` (odyssey-bird-rig.js). */
 export function birdWingPoseAt(kind, phi, weight, out = {}) {
-    return birdWingPoseOf(lowlandBirdModel(kind), phi, weight, out);
+    return birdWingPoseOfModel(lowlandBirdModel(kind), phi, weight, out);
 }
 
-/** The five hinge angles at clock `t` — the vertex stage's pose, the CPU twin. */
-export function birdWingPose(kind, t, seed, out = {}) {
-    return birdWingPoseAt(kind, birdBeatPhase(kind, t, seed), birdBeatWeight(kind, t, seed), out);
+const flexScratch = { lift: 0, bend: 0 };
+const beatScratch = { weight: 0, phase: 0 };
+
+/**
+ * The vertex stage's whole pose for the bird of `lane` at clock `t` (the CPU twin): the hinge
+ * angles, the body's heave, and the tail's spread and twist from its bank.
+ */
+export function birdWingPoseOf(lane, t, out = {}, flocks = ODYSSEY_FLIGHTS) {
+    const style = FLIGHT_STYLE[lane.kind];
+    const model = lowlandBirdModel(lane.kind);
+    const { weight, phase } = birdBeatOf(lane, t, beatScratch);
+    const [fa, fb, fr] = style.flex;
+    const w = (t * fr) + (lane.seed * 21);
+    flexScratch.lift = fa * Math.sin(w);
+    flexScratch.bend = -fb * Math.sin(w - 0.7);
+    birdWingPoseOfModel(model, phase * TAU, weight, out, flexScratch);
+    const { bank } = flightFrameAt(lane, t, flocks);
+    out.tailSpread = style.tail[0] + (style.tail[1] * (Math.sqrt((bank * bank) + (TAIL_EASE * TAIL_EASE)) - TAIL_EASE));
+    out.tailTwist = style.tail[2] * bank;
+    out.weight = weight;
+    return out;
 }
 
 export { foldBirdPoint };
@@ -271,6 +407,12 @@ export function createOdysseyFlights({
     // Per flock: x = reveal (scale), y = kind, z = drawn size (world units per model metre), w = spare.
     const flockRows = flocks.map((f) => new THREE.Vector4(0, f.kind, f.span / models[f.kind].span, 0));
     const uFlocks = uniformArray(flockRows, 'vec4');
+    // The keyframed beats, per kind and channel: three vec4s of Fourier coefficients each.
+    const beatRows = [];
+    models.forEach((m) => BIRD_BEAT_CHANNELS.forEach((ch) => {
+        packBeatSeries(m.flight.cycle[ch]).forEach((v) => beatRows.push(new THREE.Vector4(...v)));
+    }));
+    const uBeats = uniformArray(beatRows, 'vec4');
     // The skein's line (only one goose flock is supported): from, direction*length, timing.
     const goose = flocks.find((f) => f.kind === FLIGHT_KIND.GOOSE) || null;
     const gooseFrom = goose ? new THREE.Vector3(...goose.from) : new THREE.Vector3();
@@ -285,6 +427,7 @@ export function createOdysseyFlights({
     const aSeat = attribute('aSeat', 'vec4');
     const aMotion = attribute('aMotion', 'vec4');
     const aHinge = attribute('aHinge', 'vec4');
+    const aTop = attribute('aTop', 'vec4');
     const aNormal = attribute('normal', 'vec3');
     const flockRow = uFlocks.element(aMotion.w.add(0.5).toInt());
     const reveal = flockRow.x;
@@ -300,11 +443,12 @@ export function createOdysseyFlights({
     const perKind3 = (values) => vec3(...[0, 1, 2].map((c) => perKind(values.map((v) => v[c]))));
     const flight = models.map((m) => m.flight);
     const fl = (pick) => perKind(flight.map(pick));
+    const st = (pick) => perKind(FLIGHT_STYLE.map(pick));
 
     /**
      * Where the bird is at clock `t` (world). Gulls: a loop whose radius breathes and whose centre
      * drifts slowly (wandering rounds, not a carousel). Swallows: a fast figure-of-eight with a
-     * vertical swoop. Geese: their slot in the V along the skein's line.
+     * vertical swoop. Geese: their slot in the V along the skein's line, breathing.
      */
     const placeAt = (t) => {
         const lap = aMotion.x;
@@ -320,20 +464,24 @@ export function createOdysseyFlights({
                 sin(ang.mul(0.5).add(seed.mul(9.0))).mul(6.0),
                 sin(ang).mul(r).mul(wob.mul(0.8)),
             ));
-        // SWALLOW
+        // SWALLOW (the skew kept within +-0.8 rad: see swallowSkew)
         const swal = aSeat.xyz.add(vec3(
             sin(ang).mul(r),
             sin(ang.mul(2.0).add(seed.mul(5.0))).mul(r.mul(0.32)),
-            sin(ang.mul(2.0).add(seed.mul(3.0))).mul(r.mul(0.62)),
+            sin(ang.mul(2.0).add(seed.sub(0.5).mul(1.6))).mul(r.mul(0.62)),
         ));
         // GOOSE: s runs 0..1 across `travel` of the period; the V trails behind the leader.
         const period = float(goose ? goose.period : 1);
         const cyc = fract(t.div(period).add(goose ? goose.phase : 0));
         const s = cyc.div(goose ? goose.travel : 1);
         const spacing = float(goose ? goose.spacing : 1);
+        const backK = aSeat.x.mul(spacing).mul(sin(t.mul(0.13).add(seed.mul(5.0))).mul(0.05).add(1.0));
+        const breathe = sin(t.mul(0.11).add(seed.mul(3.0))).mul(0.05).add(1.0);
+        const sideK = aSeat.z.mul(aSeat.x).mul(spacing).mul(0.72).mul(breathe)
+            .add(sin(t.mul(0.17).add(seed.mul(4.0))).mul(0.6).mul(clamp(aSeat.x, 0.0, 1.0)));
         const gooseP = uGooseFrom.add(uGooseRun.mul(s))
-            .add(uGooseBack.mul(aSeat.x.mul(spacing)))
-            .add(uGooseSide.mul(aSeat.z.mul(aSeat.x).mul(spacing).mul(0.72)))
+            .add(uGooseBack.mul(backK))
+            .add(uGooseSide.mul(sideK))
             .add(vec3(0, aSeat.y.add(sin(t.mul(0.9).add(seed.mul(7.0))).mul(0.45)), 0));
         return gull.mul(isGull).add(swal.mul(isSwallow)).add(gooseP.mul(isGoose));
     };
@@ -346,7 +494,7 @@ export function createOdysseyFlights({
     const vSpeck = varying(vec3(0, 0, 0), 'birdSpeck');
     const positionNode = Fn(() => {
         const t = uTime;
-        const dt = float(0.06);
+        const dt = float(STENCIL);
         const p0 = placeAt(t).toVar();
         const p1 = placeAt(t.add(dt)).toVar();
         const pm = placeAt(t.sub(dt)).toVar();
@@ -355,44 +503,78 @@ export function createOdysseyFlights({
         const up0 = vec3(0, 1, 0);
         const right = normalize(cross(fwd, up0).add(vec3(0, 0, 1e-5))).toVar();
         const up = cross(right, fwd).toVar();
-        // Bank into the turn from the lateral acceleration (u/s^2 from the second difference); a
-        // right turn dips the right wing. Steep on purpose: a level bird seen from near its own
-        // height is a one-pixel line, a banked one shows its whole planform.
-        const acc = p1.add(pm).sub(p0.mul(2.0)).div(dt.mul(dt));
-        const bankGain = mix(float(0.16), float(0.06), isSwallow);
-        const bank = clamp(dot(acc, right).mul(bankGain), -0.95, 0.95);
+        // Bank into the turn from the lateral acceleration (u/s^2 from the second difference) a
+        // moment AHEAD (a bird rolls into a turn as it starts it), softly limited (no corner where
+        // it saturates); a right turn dips the right wing. Steep on purpose: a level bird seen
+        // from near its own height is a one-pixel line, a banked one shows its whole planform.
+        const tl = t.add(BANK_LEAD);
+        const pl = placeAt(tl).toVar();
+        const acc = placeAt(tl.add(dt)).add(placeAt(tl.sub(dt))).sub(pl.mul(2.0)).div(dt.mul(dt));
+        const raw = dot(acc, right).mul(st((s) => s.bankGain)).toVar();
+        const q = raw.div(st((s) => s.bankMax));
+        const q2 = q.mul(q);
+        const bank = raw.mul(pow(q2.mul(q2).add(1.0), -0.25)).toVar();
         const cb = cos(bank);
         const sb = sin(bank);
         const leftB = right.mul(cb).sub(up.mul(sb)).negate().toVar();
         const upB = up.mul(cb).add(right.mul(sb)).toVar();
 
-        // THE WINGBEAT (the twin: birdWingPose). Gulls glide on bowed wings and beat a few slow
-        // strokes now and then; swallows beat in fast bursts with the wings swept back between;
-        // geese beat steadily and deep. The hand lags the arm.
-        const beatWeight = isGull.mul(smoothstep(0.62, 0.9, sin(t.mul(0.52).add(seed.mul(13.0)))))
-            .add(isSwallow.mul(smoothstep(-0.15, 0.35, sin(t.mul(1.7).add(seed.mul(11.0))))))
-            .add(isGoose);
-        const rate = fl((f) => f.rate).mul(seed.sub(0.5).mul(0.06).add(1.0));
-        const phi = fract(rate.mul(t).add(seed.mul(7.0))).mul(TAU).toVar();
-        const sinPhi = sin(phi);
-        const upStroke = max(sinPhi.negate(), 0.0);
-        const upK = upStroke.mul(upStroke);
-        const beatLift = fl((f) => f.beat.lift[0]).add(fl((f) => f.beat.lift[1]).mul(cos(phi)));
-        const beatHand = fl((f) => f.beat.hand[0])
-            .add(fl((f) => f.beat.hand[1]).mul(cos(phi.sub(fl((f) => f.beat.lag)))));
-        const pose = (name, beat) => mix(fl((f) => f.glide[name]), beat, beatWeight);
-        const lift = pose('lift', beatLift).toVar();
-        const sweep = pose('sweep', fl((f) => f.beat.sweep[0]).add(fl((f) => f.beat.sweep[1]).mul(upK)));
-        const bend = pose('bend', beatHand.sub(beatLift));
-        const foldA = pose('fold', fl((f) => f.beat.fold[0]).add(fl((f) => f.beat.fold[1]).mul(upK)));
-        const curl = pose('curl', fl((f) => f.beat.curl).mul(max(sinPhi, 0.0)));
+        // THE BEAT (the twin: birdBeatOf / birdWingPoseOf): gulls in bouts that start and end at
+        // mid-upstroke, swallows on the straights of their eight, geese always, as a wave down
+        // the V.
+        const gullBout = birdBoutNode(t, seed, { ...GULL_BOUTS, rate: flight[0].rate });
+        const lap = aMotion.x;
+        const ang = t.mul(TAU).div(lap).add(aMotion.y.mul(TAU));
+        const swallowWeight = smootherstepNode(SWALLOW_STRAIGHT[0], SWALLOW_STRAIGHT[1], abs(cos(ang)))
+            .mul(smootherstepNode(SWALLOW_GATE[0], SWALLOW_GATE[1], sin(t.mul(SWALLOW_GATE[2]).add(seed.mul(9.0)))));
+        const beatWeight = gullBout.weight.mul(isGull).add(swallowWeight.mul(isSwallow)).add(isGoose).toVar();
+        const swallowPhase = seed.sub(0.5).mul(0.06).add(1.0).mul(flight[1].rate)
+            .mul(t)
+            .add(seed.mul(7.0));
+        const goosePhase = t.mul(flight[2].rate).add(seed.mul(0.04)).sub(aSeat.x.mul(SKEIN_RANK_LAG))
+            .add(sin(t.mul(0.23).add(seed.mul(6.1))).mul(0.03));
+        const phase = gullBout.phase.mul(isGull).add(swallowPhase.mul(isSwallow)).add(goosePhase.mul(isGoose));
+        const phi = fract(phase).mul(TAU).toVar();
+        const h = beatHarmonicsNode(phi);
+        // Row of a channel's series: (kind * channels + channel) * 3 (+ 0.5, then to int).
+        const series = (ch) => {
+            const at = kind.mul(BIRD_BEAT_CHANNELS.length * 3).add((BIRD_BEAT_CHANNELS.indexOf(ch) * 3) + 0.5);
+            return beatSeriesNode([0, 1, 2].map((j) => uBeats.element(at.add(j).toInt())), h);
+        };
+        // The held wing flexes softly on the air between beats (gulls most).
+        const flexW = t.mul(st((s) => s.flex[2])).add(seed.mul(21.0));
+        const held = (name) => {
+            const base = fl((f) => f.glide[name]);
+            if (name === 'lift') return base.add(sin(flexW).mul(st((s) => s.flex[0])));
+            if (name === 'bend') return base.sub(sin(flexW.sub(0.7)).mul(st((s) => s.flex[1])));
+            return base;
+        };
+        const pose = (name) => mix(held(name), series(name), beatWeight);
+        const lift = pose('lift').toVar();
+        const sweep = pose('sweep').toVar();
+        const bend = pose('bend').toVar();
+        const foldA = pose('fold').toVar();
+        const curl = pose('curl').toVar();
+        const heave = series('heave').mul(beatWeight).toVar();
 
-        // THE FOLD (odyssey-bird-rig.js; the twin: foldBirdPoint): about the wrist (the hand swung
-        // back, then raised or lowered with the tip's curl), then about the shoulder (the arm
-        // swept, then lifted); the normal turns with it.
-        const { local, normal } = foldBirdNode({
+        // THE TAIL fans and twists into the turn (the twin: tailBirdPoint), then THE FOLD
+        // (odyssey-bird-rig.js; the twin: foldBirdPoint): about the wrist (the hand swung back,
+        // then raised or lowered with the tip's curl), then about the shoulder (the arm swept,
+        // then lifted); the normal turns with it.
+        const spread = st((s) => s.tail[0])
+            .add(st((s) => s.tail[1]).mul(bank.mul(bank).add(TAIL_EASE * TAIL_EASE).sqrt().sub(TAIL_EASE)));
+        const twist = st((s) => s.tail[2]).mul(bank);
+        const tailed = tailBirdNode({
             position: positionLocal,
             normal: aNormal,
+            tail: aTop.w,
+            spread,
+            twist,
+            tailY: perKind(models.map((m) => m.tailY)),
+        });
+        const { local, normal } = foldBirdNode({
+            position: tailed.position,
+            normal: tailed.normal,
             hinge: aHinge,
             pose: {
                 lift, sweep, bend, fold: foldA, curl,
@@ -422,7 +604,8 @@ export function createOdysseyFlights({
             .div(max(length(p0.sub(cameraPosition)), 1.0));
         const far = float(1).sub(smoothstep(0.0048, 0.0112, across));
         vSpeck.assign(vec3(far, far.mul(perKind([0.15, 0.2, 0.55])), 0));
-        const offset = leftB.mul(local.x).add(upB.mul(local.y)).add(fwd.mul(local.z)).mul(size);
+        // The body rides up and down against the beat (heave, in the bird's own up).
+        const offset = leftB.mul(local.x).add(upB.mul(local.y.add(heave))).add(fwd.mul(local.z)).mul(size);
         return p0.add(offset);
     })();
 
@@ -487,7 +670,7 @@ export function createOdysseyFlights({
         meshes,
         material,
         lanes,
-        uniforms: { uTime, uFlocks },
+        uniforms: { uTime, uFlocks, uBeats },
         /** Reveal per flock at journey progress `p` (0..1 each). */
         revealAt(p) {
             return flocks.map((f) => windowWeight(f.window, p));

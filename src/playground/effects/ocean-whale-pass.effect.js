@@ -71,7 +71,7 @@ export function create({
 
     let mixer = null;
     let whale = null;
-    const rec = getChapter2CreatureAssetById('whale-glide');
+    const rec = getChapter2CreatureAssetById('humpback-swim');
     let disposed = false;
     const ready = rec ? loadOdysseyGltfCached(rec.url).then(({ scene: model, animations }) => {
         // Switched away before the GLB resolved: never add a whale to the next effect's scene.

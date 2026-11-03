@@ -17,7 +17,18 @@
  *
  * The bird's frame: x to its left, y up, z forward (the model's). Joint angles are radians,
  * applied in the order z, y, x about the bone's own axes (three's Euler order 'ZYX').
+ *
+ * THE BEAT (2026-11-03): the shapes the joints follow through a beat (the arm's height, the
+ * hand's fold on the upstroke, the downstroke's push) were piecewise cosines and half-sines, with
+ * a corner in each at the bottom of the stroke (the fingers' and the hand's twist jumped in
+ * speed there: 4.5x the acceleration at 240 Hz than at 60), and the downstroke took 55 % of the
+ * beat. They are now keyframed in Blender with the other birds' beats (scripts/blender/odyssey/
+ * odyssey_birds.py, EAGLE_BEAT -> odyssey-bird-beats.js) and evaluated as a smooth series: a
+ * downstroke of 44 % of the beat, the fold easing in after the bottom and out before the top. A
+ * bout now starts and ends at mid-upstroke (where the beat's pose meets the glide's) and eases in
+ * and out over C2 ramps, instead of starting at the top of a stroke from a glide.
  */
+import { ODYSSEY_BIRD_BEATS } from './odyssey-bird-beats.js';
 
 const TAU = Math.PI * 2;
 const DEG = Math.PI / 180;
@@ -110,41 +121,55 @@ const smooth = (e0, e1, x) => {
     const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
     return t * t * (3 - 2 * t);
 };
+/** Quintic smootherstep: C2, so a bout's start and end never jump in acceleration. */
+const smoother = (e0, e1, x) => {
+    const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
+    return t * t * t * ((t * ((t * 6) - 15)) + 10);
+};
 const wrap01 = (x) => x - Math.floor(x);
 
-/** The bout of wingbeats under way at `time`: amount (0..1) and the beat's phase. */
+/**
+ * A bout's shape, in beats: it starts at `start` of a beat (mid-upstroke), its weight rising over
+ * `rise`; after the last downstroke it eases out over `fall`, ending `tail` past the count.
+ */
+export const EAGLE_BOUT_SHAPE = Object.freeze({
+    start: 0.70, rise: 0.30, fall: 0.42, tail: 0.12,
+});
+
+/** The bout of wingbeats under way at `time`: amount (0..1) and the beat's phase (0 the top). */
 export function eagleBout(time, out = { amount: 0, phase: 0 }, cfg = ODYSSEY_EAGLE) {
     const local = wrap01(time / cfg.round) * cfg.round;
+    const shape = EAGLE_BOUT_SHAPE;
     out.amount = 0;
-    out.phase = 0;
+    out.phase = shape.start;
     for (let i = 0; i < EAGLE_BOUTS.length; i++) {
         const [start, beats] = EAGLE_BOUTS[i];
-        const into = local - start;
-        const length = beats / EAGLE_BEAT;
-        if (into < 0 || into > length) continue;
-        const ease = 0.5 / EAGLE_BEAT;
-        out.amount = smooth(0, ease, into) * smooth(length, length - ease, into);
-        out.phase = wrap01(into * EAGLE_BEAT);
+        const into = (local - start) * EAGLE_BEAT; // beats into the bout
+        const end = beats + shape.tail;
+        if (into < 0 || into > end) continue;
+        out.amount = smoother(0, shape.rise, into) * (1 - smoother(end - shape.fall, end, into));
+        out.phase = wrap01(shape.start + into);
         break;
     }
     return out;
 }
 
-const DOWN = 0.55;
-function beatHeight(phase) {
-    const p = wrap01(phase);
-    return p < DOWN ? Math.cos((Math.PI * p) / DOWN) : -Math.cos((Math.PI * (p - DOWN)) / (1 - DOWN));
+const BEAT = ODYSSEY_BIRD_BEATS.eagle.cycle;
+/** A keyframed beat shape (odyssey-bird-beats.js) at `phase` (beats). */
+function series(coef, phase) {
+    const phi = phase * TAU;
+    let v = coef[0];
+    for (let k = 1; (2 * k) < coef.length; k++) {
+        v += (coef[(2 * k) - 1] * Math.cos(k * phi)) + (coef[2 * k] * Math.sin(k * phi));
+    }
+    return v;
 }
-const beatFold = (phase) => {
-    const p = wrap01(phase);
-    if (p < DOWN) return 0;
-    const s = Math.sin((Math.PI * (p - DOWN)) / (1 - DOWN));
-    return s * s;
-};
-const beatPush = (phase) => {
-    const p = wrap01(phase);
-    return p < DOWN ? Math.sin((Math.PI * p) / DOWN) : 0;
-};
+/** The arm's height through a beat: 1 at the top, -1 at the bottom (44 % of the beat down). */
+const beatHeight = (phase) => series(BEAT.height, phase);
+/** The hand swept back on the upstroke (0 through the downstroke). */
+const beatFold = (phase) => series(BEAT.fold, phase);
+/** The downstroke's drive (0 through the upstroke). */
+const beatPush = (phase) => series(BEAT.push, phase);
 const teeter = (t) => 2.0 * Math.sin(1.13 * t + 0.4) + 1.2 * Math.sin(2.07 * t + 1.9) + 0.6 * Math.sin(3.31 * t + 0.7);
 
 export const EAGLE_FINGERS = 7;

@@ -117,16 +117,19 @@ export const ODYSSEY_BOULDERS = Object.freeze({
  * and seated like every other rock (the same shapes, material and tiers), but never dropped by the
  * forest or the rail rules: they are sited clear of both (odyssey-boulders.test.js holds that), and
  * the ibex's feet need them to be there. `buildPerchTops` gives the feet their top surfaces.
+ * Their `tone` runs past 1 (the shader mixes damp to dry rock by tone * 0.55): they are the scree's own
+ * dry grey, with little lichen, not the meadow boulders' darker stone (too dark beside the scree until
+ * 2026-11-03).
  */
 export const ODYSSEY_PERCH_ROCKS = Object.freeze([
     Object.freeze({
-        x: -150, z: -559, sx: 5.0, sy: 3.6, sz: 3.8, yaw: 0.4, shape: 0, tone: 0.35, moss: 0.35,
+        x: -150, z: -559, sx: 5.0, sy: 3.6, sz: 3.8, yaw: 0.4, shape: 0, tone: 1.55, moss: 0.18,
     }),
     Object.freeze({
-        x: -158.5, z: -556.5, sx: 4.0, sy: 2.6, sz: 2.8, yaw: -0.3, shape: 1, tone: 0.6, moss: 0.5,
+        x: -158.5, z: -556.5, sx: 4.0, sy: 2.6, sz: 2.8, yaw: -0.3, shape: 1, tone: 1.75, moss: 0.25,
     }),
     Object.freeze({
-        x: -144, z: -566.5, sx: 3.4, sy: 2.8, sz: 3.0, yaw: 1.1, shape: 2, tone: 0.5, moss: 0.4,
+        x: -144, z: -566.5, sx: 3.4, sy: 2.8, sz: 3.0, yaw: 1.1, shape: 2, tone: 1.65, moss: 0.2,
     }),
 ]);
 
