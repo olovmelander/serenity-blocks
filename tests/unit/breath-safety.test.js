@@ -33,7 +33,7 @@ describe('breathing safety note (breath-safety.js)', () => {
 
     it('treats only Volcanic Fire among the twelve worlds as fast breathing', () => {
         expect(BREATH_WORLDS.filter((world) => isStrongPattern(world.pattern)).map((world) => world.id))
-            .toEqual(['wim-hof']);
+            .toEqual(['volcanic-fire']);
         expect(isStrongPattern([3, 0, 2, 0])).toBe(true);
         expect(isStrongPattern([3, 1, 3, 1])).toBe(false);
         expect(isStrongPattern(null)).toBe(false);

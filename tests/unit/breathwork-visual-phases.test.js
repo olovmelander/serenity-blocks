@@ -151,7 +151,7 @@ describe('guided breathwork visual phase accuracy', () => {
     it('sets every stage in its session\'s own world, the same every time', () => {
         manager.startSession('ELIXIR');
         expect(indicator.setTechnique).toHaveBeenLastCalledWith('zen-garden', false);
-        [[1, 'wim-hof'], [2, 'cosmic-breath'], [3, 'coherence'], [4, 'energizing'], [7, 'electric-storm'], [10, 'deep-relaxation']]
+        [[1, 'volcanic-fire'], [2, 'cosmic-breath'], [3, 'coherence'], [4, 'energizing'], [7, 'electric-storm'], [10, 'deep-relaxation']]
             .forEach(([index, world]) => {
                 manager.currentPhaseIndex = index;
                 manager._runPhase();

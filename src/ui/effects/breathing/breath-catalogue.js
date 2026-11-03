@@ -2,7 +2,8 @@
  * The twelve breathing worlds: the one place their names, rhythms and copy live.
  *
  * Boot-safe data (no three.js): the guide, both Hub tabs and the session manager read it.
- * Ids are the persisted `breathingTechnique` setting values and must not change.
+ * Ids are the persisted `breathingTechnique` setting values (and keys in the breath collection and
+ * practice records). One was renamed (2026-11-03); RENAMED_BREATH_WORLDS maps a saved old id to it.
  * A pattern is [inhale, hold full, exhale, hold empty] in seconds.
  *
  * A world's words for the voice and the guide's hint: `cues` is its own couplet for the breath
@@ -115,7 +116,7 @@ export const BREATH_WORLDS = Object.freeze([
         accent: [150, 235, 240],
     },
     {
-        id: 'wim-hof',
+        id: 'volcanic-fire',
         name: 'Volcanic Fire',
         intent: 'Activate',
         pattern: [3, 0, 2, 0],
@@ -225,8 +226,16 @@ export const DEFAULT_BREATH_WORLD = 'coherence';
 const BY_ID = new Map(BREATH_WORLDS.map((world) => [world.id, world]));
 
 /** @param {string} id */
+/** A saved id from before a world was renamed, and the world it is now. */
+export const RENAMED_BREATH_WORLDS = Object.freeze({ 'wim-hof': 'volcanic-fire' });
+
+/** The current id for a saved one (unchanged unless that world was renamed). */
+export function resolveBreathWorldId(id) {
+    return Object.hasOwn(RENAMED_BREATH_WORLDS, id) ? RENAMED_BREATH_WORLDS[id] : id;
+}
+
 export function getBreathWorld(id) {
-    return BY_ID.get(id) || BY_ID.get(DEFAULT_BREATH_WORLD);
+    return BY_ID.get(resolveBreathWorldId(id)) || BY_ID.get(DEFAULT_BREATH_WORLD);
 }
 
 export function isBreathWorld(id) {

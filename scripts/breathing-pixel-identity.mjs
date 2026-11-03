@@ -50,7 +50,7 @@ async function loadPlaywright() {
 }
 
 const WORLDS = ['deep-relaxation', 'box-breathing', 'calm-sleep', 'energizing', 'coherence', 'triangle',
-    'wim-hof', 'ocean-breath', 'zen-garden', 'cosmic-breath', 'forest-breath', 'electric-storm']
+    'volcanic-fire', 'ocean-breath', 'zen-garden', 'cosmic-breath', 'forest-breath', 'electric-storm']
     .filter((id) => !args.worlds || String(args.worlds).split(',').includes(id));
 
 const LAUNCH = {

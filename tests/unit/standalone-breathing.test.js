@@ -26,7 +26,7 @@ describe('Breathing on your own, wired into the game', () => {
         const app = { settingsManager: { get: () => settings }, cleanupHandlers: [] };
         expect(startStandaloneBreathing(app)).toBe(guide);
         expect(guide.canChoose('coherence')).toBe(true);
-        expect(guide.canChoose('wim-hof')).toBe(false);
+        expect(guide.canChoose('volcanic-fire')).toBe(false);
 
         const { onRecorded } = trackStandalonePractice.mock.calls[0][0];
         onRecorded();

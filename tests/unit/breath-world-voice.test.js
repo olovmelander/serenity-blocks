@@ -105,7 +105,7 @@ describe('The voice of a practice on your own', () => {
     });
 
     it('answers the fire breath\'s two-second out-breath, and has no words for a part too short for them', async () => {
-        guide.currentTechnique = 'wim-hof';
+        guide.currentTechnique = 'volcanic-fire';
         guide.pattern = [3, 0, 2, 0];
         guide.isActive = true;
         start();
@@ -113,18 +113,18 @@ describe('The voice of a practice on your own', () => {
         introDone();
         breath();
         // Three seconds in: "Feed the fire". Two seconds out: its answer, "Release".
-        expect(voice.playCue.mock.calls).toEqual([['worlds/wim-hof_in'], ['worlds/wim-hof_out']]);
+        expect(voice.playCue.mock.calls).toEqual([['worlds/volcanic-fire_in'], ['worlds/volcanic-fire_out']]);
         // One second out has room for nothing.
         voice.playCue.mockClear();
         guide.pattern = [2, 0, 1, 0];
         breath();
-        expect(voice.playCue.mock.calls).toEqual([[expect.stringMatching(/^worlds\/wim-hof_in/)]]);
+        expect(voice.playCue.mock.calls).toEqual([[expect.stringMatching(/^worlds\/volcanic-fire_in/)]]);
         // And a take longer than the breath is never said.
         voice.playCue.mockClear();
         voice.fits = vi.fn(() => false);
         breath();
         expect(voice.playCue).not.toHaveBeenCalled();
-        expect(voice.fits).toHaveBeenCalledWith(expect.stringMatching(/^worlds\/wim-hof_in/), 2);
+        expect(voice.fits).toHaveBeenCalledWith(expect.stringMatching(/^worlds\/volcanic-fire_in/), 2);
     });
 
     it('names a world\'s hold and its rest in the world\'s own words, and varies them', async () => {
@@ -285,14 +285,14 @@ describe('The breath tone of a practice on your own', () => {
     });
 
     it('sounds on every breath of the fire breath too, with its words', async () => {
-        guide.currentTechnique = 'wim-hof';
+        guide.currentTechnique = 'volcanic-fire';
         guide.pattern = [3, 0, 2, 0];
         guide.isActive = true;
         start();
         await settle();
         introDone();
         breath();
-        expect(voice.playCue.mock.calls).toEqual([['worlds/wim-hof_in'], ['worlds/wim-hof_out']]);
+        expect(voice.playCue.mock.calls).toEqual([['worlds/volcanic-fire_in'], ['worlds/volcanic-fire_out']]);
         expect(chimes.tone.mock.calls).toEqual([['in', 3], ['out', 2]]);
     });
 

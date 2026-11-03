@@ -27,7 +27,7 @@ Added 2 new techniques and beautiful on-screen selector:
 
 #### New Techniques:
 - **Triangle Breath** - Anxiety relief and grounding (Aqua blue)
-- **Power Breath** - Wim Hof inspired energizing (Fiery red)
+- **Power Breath** - power-breathing energizing (Fiery red)
 
 #### All Techniques:
 1. **Deep Relaxation** - Serene Blue (5-2-7-2 pattern)

@@ -196,7 +196,7 @@ describe('Opening worlds and sessions', () => {
         const saved = JSON.parse(storage.getItem(BREATH_COLLECTION_STORAGE_KEY));
         expect(saved.sessions).toEqual({ BASE: 'legacy' });
         expect(saved.legacyChecked).toBe(true);
-        const again = makeService({ storage, legacy: { worlds: ['wim-hof'], sessions: ['ELIXIR'] } }).collection;
+        const again = makeService({ storage, legacy: { worlds: ['volcanic-fire'], sessions: ['ELIXIR'] } }).collection;
         expect(again.readLegacyEvidence).not.toHaveBeenCalled();
         expect(again.isSessionOpen('ELIXIR')).toBe(false);
     });
@@ -243,13 +243,13 @@ describe('Opening worlds and sessions', () => {
         expect(makeService({ storage: future }).collection.isSessionOpen('ELIXIR')).toBe(false);
         const foreign = memoryStorage({
             [BREATH_COLLECTION_STORAGE_KEY]: JSON.stringify({
-                version: 1, worlds: { 'wim-hof': 'odyssey', 'made-up': 'odyssey', triangle: 7 }, sessions: [], seen: { worlds: ['wim-hof', 3] }, legacyChecked: true,
+                version: 1, worlds: { 'volcanic-fire': 'odyssey', 'made-up': 'odyssey', triangle: 7 }, sessions: [], seen: { worlds: ['volcanic-fire', 3] }, legacyChecked: true,
             }),
         });
         const kept = makeService({ storage: foreign }).collection;
-        expect(kept.isWorldOpen('wim-hof')).toBe(true);
+        expect(kept.isWorldOpen('volcanic-fire')).toBe(true);
         expect(kept.isWorldOpen('triangle')).toBe(false);
-        expect(kept.status('worlds', 'wim-hof').isNew).toBe(false);
+        expect(kept.status('worlds', 'volcanic-fire').isNew).toBe(false);
         const broken = new BreathCollectionService({
             readOdysseyProgress: () => { throw new Error('no save'); },
             readPracticeSeconds: () => { throw new Error('no log'); },
@@ -290,8 +290,8 @@ describe('Evidence the collection reads', () => {
     it('does not count the old default world as a sign of anything on its own', () => {
         const fresh = memoryStorage({ serenityBlocksSettings: JSON.stringify({ breathingTechnique: 'deep-relaxation' }) });
         expect(readLegacyBreathEvidence(fresh)).toEqual({ worlds: [], sessions: [] });
-        const chose = memoryStorage({ serenityBlocksSettings: JSON.stringify({ breathingTechnique: 'wim-hof' }) });
-        expect(readLegacyBreathEvidence(chose)).toEqual({ worlds: ['wim-hof'], sessions: [] });
+        const chose = memoryStorage({ serenityBlocksSettings: JSON.stringify({ breathingTechnique: 'volcanic-fire' }) });
+        expect(readLegacyBreathEvidence(chose)).toEqual({ worlds: ['volcanic-fire'], sessions: [] });
         expect(readLegacyBreathEvidence(memoryStorage({ serenityBlocksSettings: '{oops' }))).toEqual({ worlds: [], sessions: [] });
     });
 

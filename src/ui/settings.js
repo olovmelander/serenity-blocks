@@ -11,6 +11,7 @@ import { eventBus, EVENTS } from '../events/event-bus.js';
 import { normalizeCursorSettings } from './components/custom-cursor.js';
 import { resolveThemeId } from '../themes/theme-registry.js';
 import { resolveMusicTrackKey } from '../core/progression/theme-music-catalog.js';
+import { resolveBreathWorldId } from './effects/breathing/breath-catalogue.js';
 import { developerSurfacesEnabled } from './developer-surfaces.js';
 import { findBoundAction, isBindableKey, normalizeBindingKey } from './binding-keys.js';
 import { armTwoPressQuit, canQuitDesktop } from './desktop-quit.js';
@@ -593,6 +594,7 @@ export class SettingsManager {
                     ...loaded,
                     backgroundTheme: sanitizedBackgroundTheme,
                     musicTrack: sanitizedMusicTrack,
+                    breathingTechnique: resolveBreathWorldId(loaded.breathingTechnique ?? DEFAULT_CONFIG.breathingTechnique),
                     gameMode: sanitizedGameMode,
                     keyBindings: sanitizedKeyBindings,
                     player2KeyBindings: sanitizedP2KeyBindings,
@@ -638,6 +640,9 @@ export class SettingsManager {
                     && loaded.musicTrack !== sanitizedMusicTrack
                 );
                 const gameModeChanged = loaded.gameMode !== undefined && loaded.gameMode !== sanitizedGameMode;
+                // A breathing world renamed since this save (breath-catalogue.js RENAMED_BREATH_WORLDS).
+                const breathingTechniqueChanged = typeof loaded.breathingTechnique === 'string'
+                    && loaded.breathingTechnique !== this.settings.breathingTechnique;
                 if (
                     keyBindingsChanged
                     || gamepadBindingsChanged
@@ -648,6 +653,7 @@ export class SettingsManager {
                     || backgroundThemeChanged
                     || musicTrackChanged
                     || gameModeChanged
+                    || breathingTechniqueChanged
                 ) {
                     this.save({ emitEvent: false });
                 }

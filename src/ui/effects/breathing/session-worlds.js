@@ -64,9 +64,9 @@ export const SESSION_WORLDS = Object.freeze({
         integration: 'calm-sleep',
     },
     ELIXIR: {
-        featured: 'wim-hof',
+        featured: 'volcanic-fire',
         grounding: 'zen-garden',
-        active: ['wim-hof', 'energizing', 'electric-storm'],
+        active: ['volcanic-fire', 'energizing', 'electric-storm'],
         retention: 'cosmic-breath',
         recovery: 'coherence',
         integration: 'deep-relaxation',

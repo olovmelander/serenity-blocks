@@ -55,7 +55,7 @@ The gamepad can cycle through these 7 techniques:
 
 7. **Power Breath**
    - Pattern: 2-0-1-0
-   - Wim Hof inspired energy boost
+   - Power-breathing energy boost
    - Color: Fiery Red
 
 ---

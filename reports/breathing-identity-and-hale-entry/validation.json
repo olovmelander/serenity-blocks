@@ -62,7 +62,7 @@
       "form": "prism triangle"
     },
     {
-      "technique": "wim-hof",
+      "technique": "volcanic-fire",
       "name": "Volcanic Fire",
       "form": "vertical flame"
     },
@@ -302,8 +302,8 @@
             "artworkOnly": true
           },
           {
-            "file": "desktop-wim-hof-inhale.png",
-            "technique": "wim-hof",
+            "file": "desktop-volcanic-fire-inhale.png",
+            "technique": "volcanic-fire",
             "phase": "inhale",
             "viewport": {
               "width": 1440,
@@ -313,8 +313,8 @@
             "artworkOnly": true
           },
           {
-            "file": "desktop-wim-hof-exhale.png",
-            "technique": "wim-hof",
+            "file": "desktop-volcanic-fire-exhale.png",
+            "technique": "volcanic-fire",
             "phase": "exhale",
             "viewport": {
               "width": 1440,
@@ -813,8 +813,8 @@
             "artworkOnly": true
           },
           {
-            "file": "portrait-wim-hof-inhale.png",
-            "technique": "wim-hof",
+            "file": "portrait-volcanic-fire-inhale.png",
+            "technique": "volcanic-fire",
             "phase": "inhale",
             "viewport": {
               "width": 390,
@@ -824,8 +824,8 @@
             "artworkOnly": true
           },
           {
-            "file": "portrait-wim-hof-exhale.png",
-            "technique": "wim-hof",
+            "file": "portrait-volcanic-fire-exhale.png",
+            "technique": "volcanic-fire",
             "phase": "exhale",
             "viewport": {
               "width": 390,
@@ -1508,7 +1508,7 @@
         "desktop-energizing-inhale.png",
         "desktop-coherence-inhale.png",
         "desktop-triangle-inhale.png",
-        "desktop-wim-hof-inhale.png",
+        "desktop-volcanic-fire-inhale.png",
         "desktop-ocean-breath-inhale.png",
         "desktop-zen-garden-inhale.png",
         "desktop-cosmic-breath-inhale.png",
@@ -1528,7 +1528,7 @@
         "desktop-energizing-inhale.png",
         "desktop-coherence-inhale.png",
         "desktop-triangle-inhale.png",
-        "desktop-wim-hof-inhale.png",
+        "desktop-volcanic-fire-inhale.png",
         "desktop-ocean-breath-inhale.png",
         "desktop-zen-garden-inhale.png",
         "desktop-cosmic-breath-inhale.png",
@@ -1548,7 +1548,7 @@
         "portrait-energizing-inhale.png",
         "portrait-coherence-inhale.png",
         "portrait-triangle-inhale.png",
-        "portrait-wim-hof-inhale.png",
+        "portrait-volcanic-fire-inhale.png",
         "portrait-ocean-breath-inhale.png",
         "portrait-zen-garden-inhale.png",
         "portrait-cosmic-breath-inhale.png",
@@ -1574,8 +1574,8 @@
         "desktop-coherence-exhale.png",
         "desktop-triangle-inhale.png",
         "desktop-triangle-exhale.png",
-        "desktop-wim-hof-inhale.png",
-        "desktop-wim-hof-exhale.png",
+        "desktop-volcanic-fire-inhale.png",
+        "desktop-volcanic-fire-exhale.png",
         "desktop-ocean-breath-inhale.png",
         "desktop-ocean-breath-exhale.png",
         "desktop-zen-garden-inhale.png",

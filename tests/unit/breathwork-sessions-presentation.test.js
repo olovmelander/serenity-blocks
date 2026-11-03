@@ -80,7 +80,7 @@ describe('Hale session facts', () => {
         expect(tab.getSessionDetails('FLOW').feature).toBe('Short holds, up to 5 sec');
         expect(tab.getSessionDetails('FLOW').carrySeconds).toBe(108);
         expect(tab.getSessionDetails('FLOW').poster).toBe('./assets/breathing/triangle.webp');
-        expect(tab.getSessionDetails('ELIXIR').poster).toBe('./assets/breathing/wim-hof.webp');
+        expect(tab.getSessionDetails('ELIXIR').poster).toBe('./assets/breathing/volcanic-fire.webp');
         expect(tab.getSessionDetails('NOPE')).toBeNull();
     });
 

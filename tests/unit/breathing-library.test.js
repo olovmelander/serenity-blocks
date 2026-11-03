@@ -70,7 +70,7 @@ describe('breathing library', () => {
     it('shows the safety note with a fast world and begins it only once the note is read', () => {
         const stored = new Map();
         win.localStorage = { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) };
-        settings.breathingTechnique = 'wim-hof';
+        settings.breathingTechnique = 'volcanic-fire';
         createTab();
         const caution = hero('.breath-lib__caution');
         expect(caution.hidden).toBe(false);
@@ -199,7 +199,7 @@ describe('breathing library', () => {
         const tab = createTab({ collection: new BreathCollectionService() });
         const html = container.innerHTML;
         expect(html).toContain('4 of 12 found');
-        expect(html).toMatch(/class="breath-world is-locked"\s+data-technique-id="wim-hof"/);
+        expect(html).toMatch(/class="breath-world is-locked"\s+data-technique-id="volcanic-fire"/);
         expect(html).toContain('aria-label="Volcanic Fire, not found yet. Opens when you complete the Odyssey, or after 120 more minutes of breathing."');
         expect(html).not.toMatch(/class="breath-world is-locked"\s+data-technique-id="calm-sleep"/);
         click({ '.breath-world': cards[6] });

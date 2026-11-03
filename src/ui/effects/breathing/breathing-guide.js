@@ -15,7 +15,7 @@
  * theme's camera breathes with you. A Hale session always has its worlds.
  */
 import {
-    BREATH_WORLDS, DEFAULT_BREATH_WORLD, formatPattern, getBreathWorld,
+    BREATH_WORLDS, DEFAULT_BREATH_WORLD, formatPattern, getBreathWorld, resolveBreathWorldId,
 } from './breath-catalogue.js';
 import {
     BREATH_PHASES, breathLevel, cycleSeconds, isValidPattern, nextPhase,
@@ -848,7 +848,8 @@ export class BreathingGuide {
     }
 
     /** The world to start on: the one you chose, if it is open to you, else a starter. */
-    allowedWorld(id) {
+    allowedWorld(saved) {
+        const id = resolveBreathWorldId(saved);
         if (this.techniques[id] && this.canChoose(id)) return id;
         return this.canChoose(DEFAULT_BREATH_WORLD) ? DEFAULT_BREATH_WORLD : (BREATH_WORLDS.find((world) => this.canChoose(world.id))?.id || DEFAULT_BREATH_WORLD);
     }

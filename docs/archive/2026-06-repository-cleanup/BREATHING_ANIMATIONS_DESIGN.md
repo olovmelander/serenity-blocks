@@ -130,7 +130,7 @@ Each breathing technique gets its own unique, stunning animation that reflects i
 
 ---
 
-## 🔥 7. Power Breath (Wim Hof)
+## 🔥 7. Power Breath
 **Purpose:** Energy boost, immune support, intense breathing  
 **Color:** Fiery Red (255, 100, 100)  
 **Pattern:** 2s in, 1s out (rapid, powerful)

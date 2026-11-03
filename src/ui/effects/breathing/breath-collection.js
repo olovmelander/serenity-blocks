@@ -16,7 +16,7 @@
 import { CHAPTER_CONFIGS } from '../../../core/odyssey/data/chapters.js';
 import { ODYSSEY_PROGRESS_STORAGE_KEY, getValidCompletedLevels } from '../../../core/progression/theme-collection-model.js';
 import { migrateOdysseyProgressData } from '../../../core/odyssey/OdysseyStateManager.js';
-import { BREATH_WORLDS } from './breath-catalogue.js';
+import { BREATH_WORLDS, resolveBreathWorldId } from './breath-catalogue.js';
 
 export const BREATH_COLLECTION_STORAGE_KEY = 'serenityBlocks_breathCollection';
 export const BREATH_COLLECTION_VERSION = 1;
@@ -53,7 +53,7 @@ export const BREATH_LADDER = Object.freeze([
         chapter: 7, world: 'electric-storm', session: 'BASE', place: 'Urban Dreams',
     },
     {
-        chapter: 8, world: 'wim-hof', session: 'ELIXIR', place: null,
+        chapter: 8, world: 'volcanic-fire', session: 'ELIXIR', place: null,
     },
 ].map((step) => Object.freeze(step)));
 
@@ -79,11 +79,15 @@ export function normalizeBreathCollection(raw, known = {}) {
     if (!isRecord(raw) || raw.version !== BREATH_COLLECTION_VERSION) return data;
     KINDS.forEach((kind) => {
         const valid = known[kind];
-        Object.entries(isRecord(raw[kind]) ? raw[kind] : {}).forEach(([id, source]) => {
+        // A world renamed since the save keeps what it had under its new id.
+        const current = (id) => (kind === 'worlds' ? resolveBreathWorldId(id) : id);
+        Object.entries(isRecord(raw[kind]) ? raw[kind] : {}).forEach(([saved, source]) => {
+            const id = current(saved);
             if (typeof source === 'string' && (!valid || valid.has(id))) data[kind][id] = source;
         });
         const seen = isRecord(raw.seen) && Array.isArray(raw.seen[kind]) ? raw.seen[kind] : [];
-        data.seen[kind] = [...new Set(seen.filter((id) => typeof id === 'string' && (!valid || valid.has(id))))];
+        data.seen[kind] = [...new Set(seen.filter((id) => typeof id === 'string').map(current)
+            .filter((id) => !valid || valid.has(id)))];
     });
     data.legacyChecked = raw.legacyChecked === true;
     return data;
