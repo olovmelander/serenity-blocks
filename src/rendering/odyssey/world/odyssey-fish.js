@@ -158,6 +158,12 @@ export const FISH_SCHOOLS = Object.freeze([
 
 export const FISH_COUNT = FISH_SCHOOLS.reduce((n, s) => n + s.count, 0);
 
+/**
+ * The schools' look pushed for visibility (2026-11-03): how far the belly goes toward silver and
+ * how bright it is, and the tuna's yellow fins (linear, past the grade like the tints).
+ */
+export const FISH_LOOK = Object.freeze({ bellySilver: 0.4, bellyGain: 0.82, tunaYellow: [0.78, 0.62, 0.12] });
+
 /** Hull index by name: the integer part of each instance's `aFish.w` (its seed is the fraction). */
 export const FISH_HULL_INDEX = Object.freeze({ school: 0, cruiser: 1 });
 
@@ -699,6 +705,8 @@ export function createOdysseyFish({
     // (d dorsal share, flex, region, hull) for the fragment; region and hull are constant over a
     // triangle.
     const vFishPart = varying(vec4(fPart.y, fPart.z, region, vertHull), 'vFishPart');
+    // How far along the fish (0 nose .. 1 tail tips), for the tuna's yellow fins.
+    const vFishS = varying(fPart.x, 'vFishS');
 
     // COUNTERSHADING from the hull's own baked dorsal share, so the dark back is a property of
     // the fish rather than of where the light is — exactly how a real fish's pigment works. The
@@ -724,11 +732,22 @@ export function createOdysseyFish({
     // countershading camouflages a fish against the surface (that is its purpose in nature), and
     // a fish the eye cannot find is no life at all. Silhouettes first, with the silver reserved
     // for the flash — the first capture's bright bellies all but vanished.
-    const fBelly = mix(fTint, vec3(0.86, 0.93, 0.95), float(0.25)).mul(0.62);
+    // VISIBILITY (2026-11-03): seen from below the schools read as pale fish against the deep blue,
+    // but in the brighter water of the upper climb a belly at 0.62 matched it (the teal school and
+    // the tuna went blue on blue). The silvering is pushed: paler and brighter.
+    const fBelly = mix(fTint, vec3(0.86, 0.93, 0.95), float(FISH_LOOK.bellySilver)).mul(FISH_LOOK.bellyGain);
     const fBodyAlbedo = mix(fBelly, fBack, fDorsal);
     // Fins: the body's colour where they stand, a little darker and greyer, thin enough that the
     // surface's light shows through them from below.
-    const fFinAlbedo = mix(fBelly, fBack, smoothstep(float(0.25), float(0.85), d)).mul(0.78);
+    // The tuna's yellow (a yellowfin's mark): its second dorsal, anal fin and finlets, between the
+    // body's middle and the tail stock (the tail fin stays dark); the jack's fins stay the body's.
+    const fYellow = vFishPart.w.mul(smoothstep(float(0.48), float(0.58), vFishS))
+        .mul(float(1).sub(smoothstep(float(0.8), float(0.85), vFishS)));
+    const fFinAlbedo = mix(
+        mix(fBelly, fBack, smoothstep(float(0.25), float(0.85), d)).mul(0.78),
+        vec3(...FISH_LOOK.tunaYellow),
+        fYellow,
+    );
     // The eye: a dark pupil in a pale iris (flex runs 0 at the pupil's centre to 1 at the rim).
     const fEyeAlbedo = mix(
         vec3(0.02, 0.022, 0.026),
