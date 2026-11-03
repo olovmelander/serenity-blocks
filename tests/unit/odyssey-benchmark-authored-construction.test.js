@@ -86,7 +86,8 @@ describe('Authored construction requirements', () => {
             .toEqual([5, 5, 0]);
         expect(recursiveInfinity.primary.timeConstraints)
             .toEqual([{ type: 'primary-acquisition-deadline', seconds: 600 }]);
-        expect(neonDistrict.primary.timeConstraints).toEqual([{ type: 'primary-acquisition-deadline', seconds: 300 }]);
+        // Pass 2: orb 59 races the rising tide, not a clock.
+        expect(neonDistrict.primary.timeConstraints).toEqual([]);
         expect(recursiveInfinity.finishPolicy).toMatchObject({
             authored: 'showcase', stopAfterPrimaryResolution: false, drainEntireCascade: true,
         });

@@ -1,6 +1,7 @@
 # Odyssey level design: phase 3 and the opening screenshots (2026-11-03)
 
-**Status: merged (70888fc8); the rising tide on orb 58 follows on `feature/odyssey-rising-tide`.** It carries the next
+**Status: merged (70888fc8); the rising tide on orb 58 lands with pass 2 of the audit on
+`feature/odyssey-level-design-pass2` ([ODYSSEY_LEVEL_DESIGN_PASS2_2026-11.md](ODYSSEY_LEVEL_DESIGN_PASS2_2026-11.md)).** It carries the next
 steps of the approved plan, [ODYSSEY_LEVEL_DESIGN_AUDIT_2026-11.md](ODYSSEY_LEVEL_DESIGN_AUDIT_2026-11.md) (§5.10):
 phase 3's two new goal types, each on its first orb, and in-game screenshots of phase 2's prepared openings. Phases
 1–2 are in [ODYSSEY_LEVEL_DESIGN_PHASE1_2026-11.md](ODYSSEY_LEVEL_DESIGN_PHASE1_2026-11.md).

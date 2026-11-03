@@ -34,7 +34,7 @@ describe('Odyssey retry debrief', () => {
     });
 
     it.each([
-        [getLevelById(51), { lines: 49 }, '1 line short of the goal.'],
+        [getLevelById(50), { lines: 49 }, '1 line short of the goal.'],
         [getLevelById(49), { score: 35999 }, '1 point short of the goal.'],
         [getLevelById(2), { cascades: 2 }, '1 cascade sequence short of the goal.'],
         [getLevelById(12), { tetrises: 2 }, '1 Quad short of the goal.'],

@@ -42,7 +42,8 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
         name: 'The Living Grotto',
         description: 'Mushrooms glow around a still pool in a cave that makes its own light. '
             + 'Clear lines and let cascades help.',
-        tip: 'Turn the starting rows into your first cascades, then keep the stack low with steady line clears.',
+        tip: 'Turn the starting rows into cascades. For every star, build in layers so one clear can set off a long '
+            + 'chain.',
     },
     pyrestorm: {
         name: 'Molten Flow',
@@ -129,8 +130,8 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
         name: 'Halcyon Ascension',
         description: 'A dawn lagoon mirrors a temple and the crystal floating over it. '
             + 'Score against the clock as it rises.',
-        tip: 'Cascades and clears on consecutive pieces score the most here. Build upward in shelves and keep the '
-            + 'clears coming.',
+        tip: 'The pieces get faster as you clear. Chain your clears on consecutive pieces and let the cascades carry '
+            + 'the score.',
     },
     summer: {
         name: 'Summer Glow',
@@ -155,9 +156,9 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
     },
     'ice-temple': {
         name: 'Ice Temple',
-        description: 'Ice columns rise from a frozen lake and ring with every piece you place. '
-            + 'Build your score steadily.',
-        tip: 'Keep the stack clean early, then build toward Quads; they are worth the most.',
+        description: 'Ice columns rise from a frozen lake and ring with every piece you place. Dig the temple out of '
+            + 'the ice.',
+        tip: 'Work down through the frozen rows: drop pieces into the gaps so each clear takes a row of ice with it.',
     },
     wolfhour: {
         name: 'Alpine Night',
@@ -175,7 +176,8 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
         name: 'The High Coast',
         description: 'Red granite cliffs rise over a pine archipelago on the High Coast. '
             + 'Keep clearing and let the land rise.',
-        tip: 'Use the calmer pace to set up runs of clears instead of forcing risky rescues.',
+        tip: 'Rubble rows push up from below with one gap each. Drop a long piece into the gap to clear several at '
+            + 'once.',
     },
     sunfall: {
         name: 'Garden Under Stone',
@@ -217,9 +219,10 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
     },
     sunbraid: {
         name: 'The Turning Suns',
-        description: 'Three colored suns wheel over a pale valley, and every shadow takes a color. '
-            + 'Race the clock across it.',
-        tip: 'Chains spin the suns faster. Keep the stack low and take every clear the light offers.',
+        description: 'Three colored suns wheel over a pale valley, and every shadow takes a color. Race the clock with '
+            + 'Quads.',
+        tip: 'Race the suns with one column open and the rest stacked flat. Save the long pieces for four lines at '
+            + 'a time.',
     },
     parhelion: {
         name: 'Ice Halo',
@@ -262,9 +265,10 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
     },
     'blood-moon': {
         name: 'Blood Moon',
-        description: 'Earth\'s shadow turns the moon red above a mirror of salt. '
-            + 'Keep your chains composed against the clock.',
-        tip: 'Look beneath the top layer for the next cascade, and keep clearing to hold the multiplier.',
+        description: 'Earth\'s shadow turns the moon red above a mirror of salt. Its pull lifts the ground under your '
+            + 'stack.',
+        tip: 'Rubble rises faster as time passes. Clear quickly early, and use the gaps in the rising rows for deep '
+            + 'clears.',
     },
     'void-ember': {
         name: 'Dying Ember',
@@ -277,7 +281,8 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
         name: 'Aether Surge',
         description: 'A river of glowing gas winds between two stars and bends to their pull. '
             + 'Keep moving against the clock.',
-        tip: 'A Quad clears four lines with one piece. The fastest way through is almost always the cleanest.',
+        tip: 'Blocks fall after every clear here. Set up cascades and each one clears lines for free while the clock '
+            + 'runs.',
     },
     'astral-weave': {
         name: 'Loom of Heaven',
@@ -287,15 +292,15 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
     },
     'shifting-sands': {
         name: 'Twin-Sun Dunes',
-        description: 'Twin suns set over alien dunes as something vast breaches the crests. '
-            + 'Cross them with deliberate lines.',
-        tip: 'The pieces get faster as you clear. Keep the stack open and take wide clears to keep moving.',
+        description: 'Twin suns set over alien dunes as something vast breaches the crests. Dig out what the sand '
+            + 'buried.',
+        tip: 'The buried rows fill most of the well. Clear the top rows first to make room, then dig steadily '
+            + 'downward.',
     },
     'vesper-chrysalis': {
         name: 'Celestial Chrysalis',
-        description: 'A crystal chrysalis hangs over a still lake at dusk, waiting to hatch. '
-            + 'Build your score at your own pace.',
-        tip: 'There is no countdown. Let the stack settle and choose clean scoring routes.',
+        description: 'A crystal chrysalis hangs over a still lake at dusk. Set off a long chain before time runs out.',
+        tip: 'Clear a line that holds up rubble: the blocks above fall, fill gaps and clear again. Aim for four waves.',
     },
     'stellar-drift': {
         name: 'Silent Drift',
@@ -338,21 +343,22 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
     },
     'nebula-flow': {
         name: 'Star Cradle',
-        description: 'Pillars of dust glow where young stars are born. '
-            + 'Feed the nursery with cascades before the clock runs out.',
-        tip: 'Dig into the opening rows for cascades, and keep every piece clearing while the multiplier climbs.',
-    },
-    'chiral-gold': {
-        name: 'Golden Convergence',
-        description: 'Two towers of braided gold turn in opposite directions over still black water. '
-            + 'A sprint at top pace.',
+        description: 'Pillars of dust glow where young stars are born. A sprint at top pace before the clock runs out.',
         tip: 'The journey\'s fastest pieces demand a clear plan. Trust the preview, keep the well open and favor '
             + 'multi-line clears.',
     },
+    'chiral-gold': {
+        name: 'Golden Convergence',
+        description: 'Two towers of braided gold turn in opposite directions over still black water. Here left is '
+            + 'right.',
+        tip: 'Your controls are mirrored, so left moves right. Take it slowly; the pieces fall at a steady speed.',
+    },
     'voltage-storm': {
         name: 'Voltage Storm',
-        description: 'Lightning towers stand in a flooded plain under a thunderhead. Charge the storm with cascades.',
-        tip: 'Use the full height, but do not overbuild. The best storm boards are structured, not chaotic.',
+        description: 'Lightning towers stand in a flooded plain under a thunderhead. Build one long chain before time '
+            + 'runs out.',
+        tip: 'Stack in layers with the gaps offset like stairs, so each clear drops into the next. You need four '
+            + 'waves.',
     },
     murmuration: {
         name: 'Murmuration',
@@ -397,9 +403,9 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
     },
     'neon-district': {
         name: 'Rainlit Streets',
-        description: 'Rain-soaked streets mirror a city of glowing signs. Reach the goal, then play on for stars.',
-        tip: 'Treat the opening rows like fuel. Turn them into cascades fast, then keep the multiplier alive '
-            + 'as long as you can.',
+        description: 'Rain-soaked streets mirror glowing signs as the water rises. Reach the goal, then play on for '
+            + 'stars.',
+        tip: 'Rubble rises from below until it wins. Turn it into cascades fast and keep the multiplier alive.',
     },
     'synthwave-sunset': {
         name: 'Last Light',

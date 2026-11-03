@@ -42,8 +42,9 @@ describe('Odyssey Infinity camera-independent spawning', () => {
 
     // 2026-10-22: the window is the 20 rows shown, framed over the garbage's top, and the first
     // piece enters two rows above it. The window used to add the starting rows, which put these
-    // first spawns at 52 and 6 — 32 and 8 rows above the view the well opened on.
-    it.each([[55, 68], [38, 14]])('spawns level %i\'s first piece just above the view it opens on', (id, view) => {
+    // first spawns at 52 and 6 — 32 and 8 rows above the view the well opened on. Pass 2 of the level design audit
+    // made orb 38 a standard tide well; orb 40 now has its 30-row, 6-rubble hybrid well.
+    it.each([[55, 68], [40, 14]])('spawns level %i\'s first piece just above the view it opens on', (id, view) => {
         const { state } = createAttempt(id);
         const level = getLevelById(id);
         expect(state.infinitySpawnPolicy).toBe(INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1);
@@ -60,9 +61,9 @@ describe('Odyssey Infinity camera-independent spawning', () => {
         expect(state.isGameOver).toBe(false);
     });
 
-    it.each([55, 38])('keeps level %i playable after paused exploration and immediate hard drops', async (id) => {
+    it.each([55, 40])('keeps level %i playable after paused exploration and immediate hard drops', async (id) => {
         const { engine, state } = createAttempt(id);
-        if (id === 38) {
+        if (id === 40) {
             // A supported central tower still leaves twelve clear roof rows.
             const garbageTop = state.boardGrid.length - getLevelById(id).mechanics.board.startingRows;
             state.lockedPieces.push({

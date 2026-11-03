@@ -103,15 +103,16 @@ describe('Odyssey benchmark command configuration', () => {
     });
 
     it('pairs scenarios and cadences independently without creating unsupported orb experiments', () => {
+        // The sprint's fall scenarios follow it to orb 50 (pass 2 of the level design audit).
         const options = parseOptions([
-            '--levels=51,59', '--profiles=cascade', '--scenarios=all',
+            '--levels=50,59', '--profiles=cascade', '--scenarios=all',
             '--cadences=native,steady', '--samples=2', '--seed-start=42', '--lap-seconds=full',
         ]);
         const tasks = buildTasks(options);
         expect(tasks).toHaveLength(24);
         expect(new Set(tasks.map(attemptKey)).size).toBe(24);
         expect(tasks.every((task) => task.lapWindowSeconds === null)).toBe(true);
-        expect(tasks.filter((task) => task.levelId === 51)
+        expect(tasks.filter((task) => task.levelId === 50)
             .every((task) => !task.scenarioId.startsWith('orb59') && !task.scenarioId.startsWith('duel'))).toBe(true);
         for (const task of tasks) {
             expect(tasks.filter((candidate) => candidate.levelId === task.levelId

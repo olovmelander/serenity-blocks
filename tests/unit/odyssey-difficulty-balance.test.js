@@ -48,7 +48,7 @@ describe('Odyssey difficulty balance', () => {
         expect(finale.mechanics.baseMode).toBe('infinity');
         expect(finale.mechanics.board.rows).toBe(100);
         expect(finale.mechanics.board.startingRows).toBe(30);
-        expect(finale.mechanics.speed.fixedDropInterval).toBe(500);
+        expect(finale.mechanics.speed.fixedDropInterval).toBe(340);
         expect(finale.victory.primary).toEqual({ type: 'score', target: 160000 });
         expect(finale.victory.failure).toEqual({ type: 'time', value: 600 });
     });
@@ -63,15 +63,17 @@ describe('Odyssey difficulty balance', () => {
         expect(singularityGate.mechanics.speed.startLevel).toBeLessThan(eventHorizon.mechanics.speed.startLevel);
         expect(singularityGate.metadata.difficulty).toBeLessThan(singularity.metadata.difficulty);
 
+        // Pass 2 (audit §8): orb 52 is the chain test, a 4-wave chain against a 240 s clock.
         const voltageStorm = getLevel(52);
-        const chromadelicHighway = getLevel(51);
-        expect(voltageStorm.victory.failure.type).toBe('top-out');
-        expect(voltageStorm.modifiers.active).not.toContain('time-attack');
-        expect(voltageStorm.victory.primary.target).toBeLessThan(25);
-        // The sprint stays the campaign's fastest orb, on the 105 ms floor (audit 2026-11, R1).
-        expect(chromadelicHighway.victory.primary.target).toBe(50);
-        expect(chromadelicHighway.victory.failure.value).toBe(180);
-        expect(chromadelicHighway.mechanics.speed).toEqual({
+        const sprint = getLevel(50);
+        expect(voltageStorm.victory.primary).toEqual({ type: 'combo', target: 4 });
+        expect(voltageStorm.victory.failure).toEqual({ type: 'time', value: 240 });
+        expect(voltageStorm.modifiers.active).toContain('time-attack');
+        // The sprint stays the campaign's fastest orb, on the 105 ms floor (audit 2026-11, R1); pass 2 moved it
+        // from orb 51 to orb 50, so the mirrored twist on 51 follows it.
+        expect(sprint.victory.primary.target).toBe(50);
+        expect(sprint.victory.failure.value).toBe(180);
+        expect(sprint.mechanics.speed).toEqual({
             startLevel: 13, levelProgression: true, fixedDropInterval: 120,
         });
     });

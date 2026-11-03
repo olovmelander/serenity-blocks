@@ -5,8 +5,9 @@ import { CHAPTER_CONFIGS } from '../../src/core/odyssey/data/chapters.js';
 import { LEVEL_CONFIGS } from '../../src/core/odyssey/data/levels.js';
 
 /**
- * The level design rules R1-R9 (docs/ODYSSEY_LEVEL_DESIGN_AUDIT_2026-11.md §5.1), asserted on the campaign as
- * players meet it, so a later tweak cannot quietly break the curve.
+ * The level design rules R1-R9 (docs/ODYSSEY_LEVEL_DESIGN_AUDIT_2026-11.md §5.1) and pass 2's variety rules V1, V2
+ * and V4 (§8.4.1), asserted on the campaign as players meet it, so a later tweak cannot quietly break the curve or
+ * bring back the repeats.
  *
  * MEASURED is what a regular player needs for one star, from the audit's benchmark on seeds 12001-12005:
  * [pieces placed, lines cleared] at the goal by the regular proxy (Quad goals: the Quad proxy; cascade and chain
@@ -28,44 +29,44 @@ const MEASURED = Object.freeze({
     14: [30, 162],
     15: [111, 42],
     16: [82, 30],
-    17: [129, 54],
+    17: [125, 53],
     19: [98, 39],
     20: [66, 83],
-    21: [111, 43],
-    22: [92, 178],
+    21: [42, 22],
+    22: [76, 28],
     23: [88, 34],
-    24: [101, 39],
+    24: [62, 24],
     25: [126, 199],
     27: [138, 54],
     28: [85, 32],
     29: [103, 522],
     30: [77, 123],
-    31: [96, 37],
+    31: [64, 22],
     32: [109, 181],
     33: [160, 67],
     35: [136, 52],
     36: [95, 148],
     37: [84, 36],
-    38: [157, 66],
+    38: [81, 36],
     39: [112, 43],
-    40: [115, 45],
+    40: [91, 40],
     41: [154, 60],
-    42: [115, 45],
-    43: [135, 54],
+    42: [92, 44],
+    43: [42, 16],
     44: [118, 438],
     45: [181, 76],
     46: [85, 32],
-    47: [129, 233],
+    47: [129, 56],
     49: [147, 57],
-    50: [181, 73],
-    51: [130, 50],
-    52: [86, 172],
+    50: [130, 50],
+    51: [82, 30],
+    52: [153, 60],
     53: [58, 24],
     54: [84, 103],
-    55: [419, 189],
+    55: [414, 189],
     57: [82, 30],
     58: [76, 31],
-    59: [211, 86],
+    59: [163, 84],
 });
 
 // R1, by chapter: [slowest start, fastest start, floor before one star, arrival starts no faster than] (ms/row).
@@ -109,6 +110,21 @@ const duels = LEVEL_CONFIGS.filter((level) => level.mechanics.versus);
 const isShowcase = (level) => level.victoryLapPolicy === 'showcase';
 const chainOf = (condition) => Math.max(...CHAIN_KEYS.map((key) => Number(condition?.[key]) || 0));
 const metricOf = (level) => PRIMARY_METRIC[level.victory.primary.type] || level.victory.primary.type;
+
+/** An orb's formula (pass 2, §8.3.1): its goal, its pressure and its well. */
+function formula(level) {
+    const { mechanics } = level;
+    const mods = level.modifiers.active;
+    const { type } = level.victory.primary;
+    const parts = [type];
+    if (level.victory.failure.type === 'time') parts.push('clock');
+    if (mechanics.tide) parts.push('tide');
+    if (mods.includes('mirror')) parts.push('mirror');
+    if (mechanics.speed.doublingSeconds > 0) parts.push('ramp');
+    if (mods.includes('gravity-cascade')) parts.push(mechanics.board.rows >= 60 ? '100-row well' : 'cascade well');
+    else if (mechanics.board.startingRows > 0 && type !== 'rubble') parts.push('rubble');
+    return parts.join(' · ');
+}
 
 function opening(level) {
     const { speed } = level.mechanics;
@@ -312,6 +328,44 @@ describe('Odyssey campaign design rules (level design audit 2026-11)', () => {
                 expect(level.victory.primary.type, `orb ${level.id} multiplier needs a score goal`).toBe('score');
             }
             expect(level.mechanics.pieces.previewCount, `orb ${level.id} previews`).toBe(3);
+        }
+    });
+    it('V1: repeats no formula more than three times', () => {
+        const byFormula = new Map();
+        for (const level of solo) {
+            byFormula.set(formula(level), [...(byFormula.get(formula(level)) || []), level]);
+        }
+        for (const [name, levels] of byFormula) {
+            if (name === 'cascade · cascade well') {
+                // The cascade count is the game's backbone: at most twice a chapter, three times in chapter 4,
+                // which teaches the tall well.
+                for (const chapter of CHAPTER_CONFIGS) {
+                    const count = levels.filter((level) => level.chapter === chapter.id).length;
+                    expect(count, `chapter ${chapter.id} cascade counts`).toBeLessThanOrEqual(chapter.id === 4 ? 3 : 2);
+                }
+                continue;
+            }
+            // Arrivals and rests may reuse the plain lines and score formulas.
+            const counted = levels.filter((level) => !(['lines', 'score'].includes(name)
+                && ['arrival', 'release'].includes(level.role)));
+            const ids = counted.map((level) => level.id).join(', ');
+            expect(counted.length, `formula "${name}" on ${ids}`).toBeLessThanOrEqual(3);
+        }
+    });
+
+    it('V2: never sets the same goal type on three solo orbs in a row', () => {
+        for (let index = 0; index + 2 < solo.length; index++) {
+            const run = solo.slice(index, index + 3);
+            const types = new Set(run.map((level) => level.victory.primary.type));
+            expect(types.size, `orbs ${run.map((level) => level.id).join(', ')}`).toBeGreaterThan(1);
+        }
+    });
+
+    it('V4: uses at least four goal types in each of chapters 3-7', () => {
+        for (const chapter of CHAPTER_CONFIGS.filter((entry) => entry.id >= 3 && entry.id <= 7)) {
+            const types = new Set(solo.filter((level) => level.chapter === chapter.id)
+                .map((level) => level.victory.primary.type));
+            expect(types.size, `chapter ${chapter.id} goal types`).toBeGreaterThanOrEqual(4);
         }
     });
 });

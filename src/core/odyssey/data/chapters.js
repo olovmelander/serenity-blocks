@@ -138,7 +138,7 @@ export const CHAPTER_CONFIGS = [
         name: 'Mountains & Thin-Air Ascension',
         subtitle: 'Climb the ridgeline',
         levelRange: [19, 26],
-        arcBeats: ['arrival', 'teach', 'reinforce', 'reinforce', 'test', 'release', 'boss', 'rival'],
+        arcBeats: ['arrival', 'teach', 'reinforce', 'release', 'test', 'twist', 'boss', 'rival'],
         targetDifficultyCurve: [6, 6, 6, 6, 7, 6, 8, 7],
 
         themes: {
@@ -223,7 +223,7 @@ export const CHAPTER_CONFIGS = [
         levelRange: [35, 48],
         arcBeats: [
             'arrival', 'reinforce', 'reinforce', 'test', 'twist', 'test', 'release',
-            'test', 'release', 'reinforce', 'test', 'release', 'boss', 'rival',
+            'test', 'reinforce', 'reinforce', 'test', 'release', 'boss', 'rival',
         ],
         targetDifficultyCurve: [8, 8, 8, 9, 10, 9, 8, 9, 6, 7, 10, 7, 10, 10],
 
@@ -268,7 +268,7 @@ export const CHAPTER_CONFIGS = [
         name: 'Black Hole & Abstract Transcendence',
         subtitle: 'Into another dimension',
         levelRange: [49, 56],
-        arcBeats: ['arrival', 'twist', 'test', 'test', 'release', 'reinforce', 'boss', 'rival'],
+        arcBeats: ['arrival', 'test', 'twist', 'test', 'release', 'reinforce', 'boss', 'rival'],
         targetDifficultyCurve: [8, 9, 9, 10, 8, 7, 10, 10],
 
         themes: {
