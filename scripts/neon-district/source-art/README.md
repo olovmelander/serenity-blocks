@@ -7,13 +7,14 @@ under `public/textures/neon-district/` and writes the cell table
 `src/themes/neon-district/neon-district-atlas.js`.
 
 ```sh
-node scripts/run-electron.mjs scripts/neon-district/build-atlases.mjs
+node scripts/neon-district/build-atlases.mjs
 # or, to try a change without touching the shipped files:
-node scripts/run-electron.mjs scripts/neon-district/build-atlases.mjs --out=<dir>
+node scripts/neon-district/build-atlases.mjs --out=<dir>
 ```
 
-The bake is deterministic: the same sources give byte-identical atlases. It runs Electron with
-hardware acceleration off (canvas 2D only, no GPU).
+The bake is deterministic: the same sources give byte-identical atlases. It draws in a headless
+page of the installed Chrome with the GPU off (canvas 2D only; set `CHROME_PATH` if Chrome is not
+in its usual folder).
 
 | Files | In the atlas |
 | --- | --- |

@@ -16,22 +16,20 @@
  * peak-normalised) and, for the campaign atlas, what each cell is (id, family, brand, shape, motion,
  * ring).
  *
- *   node scripts/run-electron.mjs scripts/neon-district/build-atlases.mjs [--out=<dir>]
+ *   node scripts/neon-district/build-atlases.mjs [--out=<dir>]
  *
  * (`--out` writes everything into <dir> instead of the repository, for trying a change.)
  *
- * Electron is only used for its canvas (decode, draw, scale, encode); hardware acceleration is off,
- * so nothing touches the GPU. Fonts are the game's own (public/fonts/, all OFL). The bake is
- * deterministic: no clock, and every random choice comes from a seeded generator.
+ * A headless Chrome page (scripts/lib/headless-chrome.mjs) is only used for its canvas (decode,
+ * draw, scale, encode); the GPU is off, so nothing touches it. Fonts are the game's own
+ * (public/fonts/, all OFL). The bake is deterministic: no clock, and every random choice comes from
+ * a seeded generator.
  */
-/* eslint-disable import/no-extraneous-dependencies, no-restricted-syntax, no-await-in-loop */
-import electron from 'electron';
+/* eslint-disable no-restricted-syntax, no-await-in-loop */
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import path from 'path';
 import { pathToFileURL } from 'url';
-
-const { app, BrowserWindow } = electron;
-app.disableHardwareAcceleration();
+import { openHeadlessPage } from '../lib/headless-chrome.mjs';
 
 const ROOT = process.cwd();
 const SOURCE = path.join(ROOT, 'scripts', 'neon-district', 'source-art');
@@ -3553,21 +3551,14 @@ async function run() {
         const bytes = await readFile(path.join(ROOT, 'public', 'fonts', file));
         fonts.push({ family, weight, b64: bytes.toString('base64') });
     }
-    const win = new BrowserWindow({
-        show: false, width: 320, height: 240, webPreferences: { webSecurity: false },
-    });
+    const page = await openHeadlessPage({ width: 320, height: 240 });
     try {
-        await win.loadURL('data:text/html,<body></body>');
-        const faces = await win.webContents.executeJavaScript(
-            `(${installFontsInPage.toString()})(${JSON.stringify(fonts)})`,
-        );
+        const faces = await page.evaluate(`(${installFontsInPage.toString()})(${JSON.stringify(fonts)})`);
         console.log(`fonts: ${faces} faces`);
-        await win.webContents.executeJavaScript(`(${installArtInPage.toString()})()`);
+        await page.evaluate(`(${installArtInPage.toString()})()`);
         const results = [];
         for (const spec of [SHOPFRONTS, CAMPAIGNS]) {
-            const baked = await win.webContents.executeJavaScript(
-                `(${bakeInPage.toString()})(${JSON.stringify(spec)}, ${GUTTER})`,
-            );
+            const baked = await page.evaluate(`(${bakeInPage.toString()})(${JSON.stringify(spec)}, ${GUTTER})`);
             const decode = (dataUrl) => Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64');
             const full = decode(baked.full);
             const half = decode(baked.half);
@@ -3580,20 +3571,19 @@ async function run() {
         await writeFile(TABLE, tableSource(results[0], results[1], CAMPAIGNS), 'utf8');
         console.log(`wrote ${OUT_OVERRIDE ? TABLE : path.relative(ROOT, TABLE)}`);
     } finally {
-        win.destroy();
+        await page.close();
     }
 }
 
-// A bake never needs minutes; never leave Electron hanging if something stalls.
+// A bake never needs minutes; never leave it hanging if something stalls.
 const watchdog = setTimeout(() => {
     console.error('[build-atlases] FAILED: timed out');
-    app.exit(2);
+    process.exit(2);
 }, 5 * 60 * 1000);
-app.whenReady().then(run).then(() => {
+run().then(() => {
     clearTimeout(watchdog);
-    app.exit(0);
+    process.exit(0);
 }).catch((error) => {
     console.error('[build-atlases] FAILED:', error?.stack || error?.message || error);
-    app.exit(1);
+    process.exit(1);
 });
-app.on('window-all-closed', () => {});
