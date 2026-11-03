@@ -52,7 +52,7 @@ const fileUrl = (...parts) => pathToFileURL(path.join(...parts)).href;
 
 /**
  * Shopfronts: seven 1.27:1 pieces, then nine wide cells (the 2.45:1 arcade is letterboxed).
- * storefront_02 is not used: its sign shows another game's characters.
+ * There is no storefront_02 (removed: its sign showed another game's characters).
  */
 const SHOPFRONTS = {
     file: 'shopfronts',
@@ -75,7 +75,7 @@ const SHAPES = {
     square: { w: 384, h: 384 },
 };
 
-/** User adverts: four wide screens, then six square ones (ads_large_18 is out: a film company's mark). */
+/** User adverts: four wide screens, then six square ones (06, 14 and 18 were removed from the sources). */
 const USER_ADS = [
     ...[8, 9, 10, 11].map((n) => ({ n, shape: 'wide' })),
     ...[7, 12, 13, 15, 16, 17].map((n) => ({ n, shape: 'square' })),
