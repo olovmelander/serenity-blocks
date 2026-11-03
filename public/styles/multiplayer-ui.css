@@ -580,11 +580,11 @@
 
 /* ========================================
    ONLINE MULTIPLAYER (3-COLUMN LAYOUT)
-   Quadra-style: Opponents | Main Board | Info
+   Opponents | Main Board | Info
    ======================================== */
 
 .online-game-area {
-  /* Narrower sides so the center HERO board gets the majority of the width (Quadra: the
+  /* Narrower sides so the center HERO board gets the majority of the width (the
    * focused board is the star). If you change these, mirror them in clampPx() in
    * OnlineMultiplayerMode.js (hero board sizing fallback). */
   --online-opponents-width: clamp(300px, 24vw, 460px);
@@ -1340,7 +1340,7 @@
 }
 
 /* SPECTATOR layout: a watcher has no board of their own, so the spotlight must be the STAR
- * (Quadra: the focused board is largest). The board lives inside the player-card structure,
+ * (the focused board is largest). The board lives inside the player-card structure,
  * which is sized for a player — so under .spectating we (a) hide the local-only chrome (own
  * stats bar, NEXT queue, garbage indicator — all empty for a spectator) and (b) make the
  * board chain FILL the center column so the spotlight canvas scales up to fill it. */

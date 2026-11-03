@@ -13,7 +13,7 @@ import {
     BREATH_PRACTICE_KEY, MAX_STRETCH_SECONDS, MIN_STRETCH_SECONDS, addBreathPractice, readBreathPractice,
     trackStandalonePractice,
 } from '../../src/ui/effects/breathing/breath-practice.js';
-import { announceBreathOpenings, describeOpenings, haleSessionName } from '../../src/ui/effects/breathing/breath-openings.js';
+import { announceBreathOpenings, describeOpenings, sukhaSessionName } from '../../src/ui/effects/breathing/breath-openings.js';
 import { BREATH_WORLDS, getBreathWorld } from '../../src/ui/effects/breathing/breath-catalogue.js';
 import { SESSION_WORLDS } from '../../src/ui/effects/breathing/session-worlds.js';
 import { CHAPTER_BREATH_WORLDS } from '../../src/ui/odyssey/chapter-breath.js';
@@ -63,7 +63,7 @@ const openIds = (collection, kind) => (kind === 'worlds' ? BREATH_WORLDS.map((wo
 afterEach(() => vi.clearAllMocks());
 
 describe('The breath path', () => {
-    it('opens four worlds and Hale First Breath from the start, one for each need', () => {
+    it('opens four worlds and Sukha First Breath from the start, one for each need', () => {
         const intents = STARTER_WORLDS.map((id) => getBreathWorld(id).intent);
         expect(intents).toEqual(['Balance', 'Sleep', 'Focus', 'Stillness']);
         expect(STARTER_SESSIONS).toEqual(['FIRST']);
@@ -196,7 +196,7 @@ describe('Opening worlds and sessions', () => {
         const saved = JSON.parse(storage.getItem(BREATH_COLLECTION_STORAGE_KEY));
         expect(saved.sessions).toEqual({ BASE: 'legacy' });
         expect(saved.legacyChecked).toBe(true);
-        const again = makeService({ storage, legacy: { worlds: ['wim-hof'], sessions: ['ELIXIR'] } }).collection;
+        const again = makeService({ storage, legacy: { worlds: ['volcanic-fire'], sessions: ['ELIXIR'] } }).collection;
         expect(again.readLegacyEvidence).not.toHaveBeenCalled();
         expect(again.isSessionOpen('ELIXIR')).toBe(false);
     });
@@ -243,13 +243,13 @@ describe('Opening worlds and sessions', () => {
         expect(makeService({ storage: future }).collection.isSessionOpen('ELIXIR')).toBe(false);
         const foreign = memoryStorage({
             [BREATH_COLLECTION_STORAGE_KEY]: JSON.stringify({
-                version: 1, worlds: { 'wim-hof': 'odyssey', 'made-up': 'odyssey', triangle: 7 }, sessions: [], seen: { worlds: ['wim-hof', 3] }, legacyChecked: true,
+                version: 1, worlds: { 'volcanic-fire': 'odyssey', 'made-up': 'odyssey', triangle: 7 }, sessions: [], seen: { worlds: ['volcanic-fire', 3] }, legacyChecked: true,
             }),
         });
         const kept = makeService({ storage: foreign }).collection;
-        expect(kept.isWorldOpen('wim-hof')).toBe(true);
+        expect(kept.isWorldOpen('volcanic-fire')).toBe(true);
         expect(kept.isWorldOpen('triangle')).toBe(false);
-        expect(kept.status('worlds', 'wim-hof').isNew).toBe(false);
+        expect(kept.status('worlds', 'volcanic-fire').isNew).toBe(false);
         const broken = new BreathCollectionService({
             readOdysseyProgress: () => { throw new Error('no save'); },
             readPracticeSeconds: () => { throw new Error('no log'); },
@@ -290,8 +290,8 @@ describe('Evidence the collection reads', () => {
     it('does not count the old default world as a sign of anything on its own', () => {
         const fresh = memoryStorage({ serenityBlocksSettings: JSON.stringify({ breathingTechnique: 'deep-relaxation' }) });
         expect(readLegacyBreathEvidence(fresh)).toEqual({ worlds: [], sessions: [] });
-        const chose = memoryStorage({ serenityBlocksSettings: JSON.stringify({ breathingTechnique: 'wim-hof' }) });
-        expect(readLegacyBreathEvidence(chose)).toEqual({ worlds: ['wim-hof'], sessions: [] });
+        const chose = memoryStorage({ serenityBlocksSettings: JSON.stringify({ breathingTechnique: 'volcanic-fire' }) });
+        expect(readLegacyBreathEvidence(chose)).toEqual({ worlds: ['volcanic-fire'], sessions: [] });
         expect(readLegacyBreathEvidence(memoryStorage({ serenityBlocksSettings: '{oops' }))).toEqual({ worlds: [], sessions: [] });
     });
 
@@ -316,7 +316,7 @@ describe('Stand-alone practice', () => {
         expect(readBreathPractice(memoryStorage({ [BREATH_PRACTICE_KEY]: '{"worlds":{"a":-4,"b":"x","c":30}}' })).seconds).toBe(30);
     });
 
-    it('follows the guide: a world change or a hidden page ends a stretch, a Hale session is not counted', () => {
+    it('follows the guide: a world change or a hidden page ends a stretch, a Sukha session is not counted', () => {
         const storage = memoryStorage();
         const target = new EventTarget();
         const doc = Object.assign(new EventTarget(), { hidden: false });
@@ -360,17 +360,17 @@ describe('Stand-alone practice', () => {
 });
 
 describe('Words for an opening', () => {
-    it('names worlds and Hale sessions the way the game does', () => {
-        expect(haleSessionName('FIRST')).toBe('Hale First Breath');
-        expect(haleSessionName('TIDE')).toBe('Hale Tide');
+    it('names worlds and Sukha sessions the way the game does', () => {
+        expect(sukhaSessionName('FIRST')).toBe('Sukha First Breath');
+        expect(sukhaSessionName('TIDE')).toBe('Sukha Tide');
         expect(describeOpenings({ worlds: ['ocean-breath'], sessions: ['TIDE'] })).toEqual({
             worlds: [{ id: 'ocean-breath', name: 'Ocean Tide' }],
-            sessions: [{ id: 'TIDE', name: 'Hale Tide' }],
-            line: 'Ocean Tide and Hale Tide are yours now',
+            sessions: [{ id: 'TIDE', name: 'Sukha Tide' }],
+            line: 'Ocean Tide and Sukha Tide are yours now',
         });
         expect(describeOpenings({ worlds: ['forest-breath', 'deep-relaxation'], sessions: ['ROOTS'] }).line)
-            .toBe('Ancient Forest, Aurora Dreams and Hale Roots are yours now');
-        expect(describeOpenings({ worlds: ['not-a-world'], sessions: ['REST'] }).line).toBe('Hale Rest is yours now');
+            .toBe('Ancient Forest, Aurora Dreams and Sukha Roots are yours now');
+        expect(describeOpenings({ worlds: ['not-a-world'], sessions: ['REST'] }).line).toBe('Sukha Nightfall is yours now');
         expect(describeOpenings({ worlds: [], sessions: [] })).toBeNull();
         expect(describeOpenings(null)).toBeNull();
     });
@@ -380,7 +380,7 @@ describe('Words for an opening', () => {
         expect(showToast).not.toHaveBeenCalled();
         announceBreathOpenings({ worlds: ['ocean-breath'], sessions: ['TIDE'] });
         expect(showToast).toHaveBeenCalledWith(expect.objectContaining({
-            type: 'success', message: 'Your breathing opened something new: Ocean Tide and Hale Tide are yours now.',
+            type: 'success', message: 'Your breathing opened something new: Ocean Tide and Sukha Tide are yours now.',
         }));
     });
 });

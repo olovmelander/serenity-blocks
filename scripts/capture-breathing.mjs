@@ -38,7 +38,7 @@ const POSTER_DIR = path.join(ROOT, 'public', 'assets', 'breathing');
 const WORLDS = [
     ['deep-relaxation', 'Aurora Dreams'], ['box-breathing', 'Sacred Geometry'], ['calm-sleep', 'Moonlit Waters'],
     ['energizing', 'Solar Flare'], ['coherence', 'Heart Glow'], ['triangle', 'Crystal Prism'],
-    ['wim-hof', 'Volcanic Fire'], ['ocean-breath', 'Ocean Tide'], ['zen-garden', 'Zen Garden'],
+    ['volcanic-fire', 'Volcanic Fire'], ['ocean-breath', 'Ocean Tide'], ['zen-garden', 'Zen Garden'],
     ['cosmic-breath', 'Cosmic Nebula'], ['forest-breath', 'Ancient Forest'], ['electric-storm', 'Electric Storm'],
 ].filter(([id]) => !args.worlds || String(args.worlds).split(',').includes(id));
 

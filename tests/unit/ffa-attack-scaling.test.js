@@ -97,7 +97,7 @@ describe('FFAAttackRouter authoritative garbage metadata', () => {
         const router = new FFAAttackRouter(gameState);
 
         router.routeAttack('A', {
-            depth: 5, // Quadra formula -> 4 raw lines, scaled to 2 with 7 opponents.
+            depth: 5, // depth - 1 -> 4 raw lines, scaled to 2 with 7 opponents.
             holeMask: [
                 [true, false, false, false, false, false, false, false, false, false],
                 [false, true, false, false, false, false, false, false, false, false],

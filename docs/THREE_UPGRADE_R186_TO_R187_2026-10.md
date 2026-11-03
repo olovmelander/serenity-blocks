@@ -158,7 +158,7 @@ pipelines each, no console problem; the boot's longest main-thread frame 1,021 m
 1,385 ms on r186 (blocking 327 against 742 ms).
 
 **Real game, breathing:** `scripts/breathing-stage-change-probe.mjs` (Low tier: the stage's own 30 fps
-cap), Hale First Breath and Base, built ahead as shipped, both versions: all 8 stage changes adopt the
+cap), Sukha First Breath and Base, built ahead as shipped, both versions: all 8 stage changes adopt the
 world built ahead and are back in 434-446 ms on both; no sync pipeline at any change on r187 (r186
 made 12 at one).
 

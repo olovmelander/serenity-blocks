@@ -32,17 +32,17 @@ Tracing one blind attack through the full pipeline (generation → local route �
 
 ---
 
-## 2. How Quadra does it (the bar)
+## 2. Target behaviour (the bar)
 
-- **Per-cell countdown.** `blinded[36][18]` `uint8_t` (`canvas.h:95`), separate from occupancy — a *render flag only*; never affects collision or clears.
-- **Partial vs full are distinct.** `ATTACK_BLIND` obscures **only the incoming garbage rows** (each row carries `bon[].blind_time`, `canvas.h:105`, stamped at `player.cc:1483-1506`). `ATTACK_FULLBLIND` calls `blind_all()` (`canvas.cc:382-398`) to blind **every occupied cell** (`canvas.cc:429-433`).
-- **Duration scaling differs.** BLIND uses `param` per row (PRESET param=30). FULLBLIND scales by attack size: `blind_all(nb*nc*param)` (param=12).
-- **Decrement is time-quantized** (every 16 frames, pause-aware, `player.cc:56-66`). *Serenity should replicate the real-time duration, not the frame quantization.*
-- **"Hidden but still solid."** A blinded occupied cell draws the background instead of its block (`canvas.cc:941,1017`) — invisible but fully collision-solid.
-- **Graceful expiry** via a short reveal flash (`bflash`); round-end clears all blind (`game.cc:439-450`).
-- **Shadow assist** — blind presets force the falling-piece shadow on (`canvas.cc:210-213`) so an obscured board stays playable.
+- **Render flag only.** Blind is kept apart from occupancy — it never affects collision or clears.
+- **Partial vs full are distinct.** Partial blind obscures **only the incoming garbage rows**; full blind obscures **every occupied cell**.
+- **Duration scaling differs.** Partial blind holds for a set time per attack; full blind scales with the attack's size.
+- **Real-time duration**, pause-aware.
+- **"Hidden but still solid."** A blinded occupied cell draws the background instead of its block — invisible but fully collision-solid.
+- **Graceful expiry** via a short reveal flash; round end clears all blind.
+- **Shadow assist** — while blind is active the falling-piece shadow is forced on, so an obscured board stays playable.
 
-Two ideas Serenity must adopt: **partial-blind obscures only the new garbage rows**, and **blinded cells are visual-only (board stays fully playable).**
+The two ideas that matter most: **partial-blind obscures only the new garbage rows**, and **blinded cells are visual-only (board stays fully playable).**
 
 ---
 
@@ -50,7 +50,7 @@ Two ideas Serenity must adopt: **partial-blind obscures only the new garbage row
 
 ### 3.1 Data model — field-level timers + a per-cell mark (hybrid)
 
-Keep the existing field-level `blindTimers` as the duration source of truth, add a lightweight per-cell/per-piece marker for partial-blind extent, and **do NOT** replicate Quadra's full `blinded[][]` countdown grid (it changes every tick and would defeat Serenity's dirty-flag static-layer cache at `base-board-scene.js:166,705`).
+Keep the existing field-level `blindTimers` as the duration source of truth, add a lightweight per-cell/per-piece marker for partial-blind extent, and **do NOT** keep a full per-cell countdown grid (it changes every tick and would defeat Serenity's dirty-flag static-layer cache at `base-board-scene.js:166,705`).
 
 Extend `game.js:457-460`:
 ```
@@ -63,11 +63,11 @@ blindTimers = {
 ```
 For **partial blind**, reuse the currently-dead `piece.blindTime` (`garbage.js:224`): set it on the inserted garbage pieces; render obscures those while `pending > 0`. For **full blind**, no per-cell data — one `field` timer drives a whole-board overlay.
 
-> Open question (recommend, don't invent): partial-blind = **incoming garbage rows only** (Quadra) vs whole-board flash. Recommend Quadra semantics. If the owner prefers a whole-board flash, partial+full collapse into one overlay and the per-piece marker is unneeded.
+> Open question (recommend, don't invent): partial-blind = **incoming garbage rows only** (as in Quadra) vs whole-board flash. Recommend rows-only. If the owner prefers a whole-board flash, partial+full collapse into one overlay and the per-piece marker is unneeded.
 
 ### 3.2 Semantics
 - **Partial (`type:'blind'`)** — obscure only this attack's garbage rows for `duration`s. Driven by `pending` + `piece.blindTime`.
-- **Full (`type:'full_blind'`)** — obscure the entire locked stack (active piece + ghost stay visible) for `duration`s. Driven by `field`. Optionally size-scale duration like Quadra using the `param` from `garbage.js:140-144`.
+- **Full (`type:'full_blind'`)** — obscure the entire locked stack (active piece + ghost stay visible) for `duration`s. Driven by `field`. Optionally scale duration with the attack's size using the `param` from `garbage.js:140-144`.
 - **Solid, not removed** — blind is render-only; collision/gravity/line-clear operate on `boardGrid`/`lockedPieces`, which blind never touches.
 
 ### 3.3 Time-based decrement (real dt, not frames)
@@ -116,8 +116,8 @@ decrementBlindTimers(gameState, dtSeconds):
 *Exit:* blind survives the wire, applies on host, syncs to clients, renders for all FFA players.
 
 ### Phase 4 — Partial-vs-full polish + tuning
-15. **Full-blind duration scaling** — flat vs `param`-scaled (Quadra) using `garbage.js:140-144`; tune multipliers.
-16. **Falling-piece assist** — force the ghost on while `field > 0` (Quadra parity).
+15. **Full-blind duration scaling** — flat vs `param`-scaled using `garbage.js:140-144`; tune multipliers.
+16. **Falling-piece assist** — force the ghost on while `field > 0`.
 17. **Expiry beat** — reveal flash on reaching 0 via `shared-effects.js`; emit `BLIND_EXPIRED`.
 18. **SFX/theme reactions** — `BLIND_APPLIED` hook (`sound-effects.js`/`sound-manager.js`).
 
@@ -172,6 +172,6 @@ Hook: a new `drawBlindOverlay()` from `renderGameState()` (`base-board-scene.js:
 
 ### Decisions for the owner (unverified)
 - **Duration unit** (seconds vs centiseconds) — confirm at `garbage.js:140-144` before Phase 1.
-- **Partial-blind semantics** (incoming rows only vs whole-board flash) — recommend Quadra's rows-only; confirm before Phase 2.
+- **Partial-blind semantics** (incoming rows only vs whole-board flash) — recommend rows-only; confirm before Phase 2.
 - **Full-blind size scaling** (flat vs `param`-scaled) — decide in Phase 4.
 - Whether the active `MultiPlayerState` exposes `applyBlindEffect`/`applyFullBlindEffect` or they must be ported from `multiplayer.js` — verify in Phase 1 step 2.

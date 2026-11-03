@@ -1,5 +1,5 @@
 /**
- * Hale session stage changes on real hardware: what building the next world ahead buys and costs.
+ * Sukha session stage changes on real hardware: what building the next world ahead buys and costs.
  *
  * Electron (discrete GPU) boots the real game, builds a BreathworkSessionManager over the real
  * guide (window.breathingIndicator) as the Hub does, and runs a session through its stage changes.

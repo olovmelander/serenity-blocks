@@ -88,7 +88,7 @@ body.start-modal-open #start-modal .main-menu-logo {
 #start-modal .sb-menu-light__layer[data-light='stillfall'] { --sb-light-rgb: var(--sb-coral-rgb); }
 #start-modal .sb-menu-light__layer[data-light='local-multiplayer'] { --sb-light-rgb: var(--sb-rose-rgb); }
 #start-modal .sb-menu-light__layer[data-light='online-multiplayer'] { --sb-light-rgb: var(--sb-sky-rgb); }
-#start-modal .sb-menu-light__layer:is([data-light='serenity'], [data-light='hale']) { --sb-light-rgb: var(--sb-mint-rgb); }
+#start-modal .sb-menu-light__layer:is([data-light='serenity'], [data-light='sukha']) { --sb-light-rgb: var(--sb-mint-rgb); }
 #start-modal .sb-menu-light__layer[data-light='odyssey'] { --sb-light-rgb: var(--sb-gold-rgb); }
 
 #start-modal .sb-menu {
@@ -126,8 +126,8 @@ body.start-modal-open #start-modal .main-menu-logo {
 #start-modal .sb-menu[data-current='online-multiplayer'] { --sb-mode-rgb: var(--sb-sky-rgb); --sb-mode: var(--sb-sky); }
 #start-modal [data-mode='serenity'],
 #start-modal .sb-menu[data-current='serenity'] { --sb-mode-rgb: var(--sb-mint-rgb); --sb-mode: var(--sb-mint); }
-#start-modal [data-mode='hale'],
-#start-modal .sb-menu[data-current='hale'] { --sb-mode-rgb: var(--sb-mint-rgb); --sb-mode: var(--sb-mint); }
+#start-modal [data-mode='sukha'],
+#start-modal .sb-menu[data-current='sukha'] { --sb-mode-rgb: var(--sb-mint-rgb); --sb-mode: var(--sb-mint); }
 #start-modal [data-mode='odyssey'],
 #start-modal .sb-menu[data-current='odyssey'] { --sb-mode-rgb: var(--sb-gold-rgb); --sb-mode: var(--sb-gold); }
 
@@ -411,7 +411,7 @@ body.start-modal-open #start-modal .main-menu-logo {
     /* The picture across the top, and how far the eyebrow and wordmark rise into its fade. */
     --sb-art-h: clamp(176px, 31vh, 300px);
     --sb-art-rise: clamp(54px, 7.4vh, 70px);
-    /* Room under the picture for the longest copy (Hale Sessions with its note). */
+    /* Room under the picture for the longest copy (Sukha Sessions with its note). */
     --sb-copy-min: clamp(394px, 57vh, 448px);
     position: relative;
     display: flex;
@@ -1095,12 +1095,12 @@ body.sb-input-gamepad .main-menu-player-card:focus {
 }
 
 /* On the main menu the dock names these destinations; the tiles and the floating
- * Hale entry would only repeat it. They stay in the DOM — the dock proxies to them. */
+ * Sukha entry would only repeat it. They stay in the DOM — the dock proxies to them. */
 body.start-modal-open #serenity-hub-icon,
 body.start-modal-open #open-replays-btn,
 body.start-modal-open #highscores-icon-btn,
 body.start-modal-open #settings-btn-global,
-body.start-modal-open #hale-sessions-btn.hale-sessions-entry {
+body.start-modal-open #sukha-sessions-btn.sukha-sessions-entry {
     opacity: 0 !important;
     visibility: hidden !important;
     pointer-events: none !important;

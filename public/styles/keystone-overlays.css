@@ -1979,7 +1979,7 @@ body.sb-input-gamepad #playback-controls .playback-progress-container {
 
 body.start-modal-open #sb-play-rail,
 body:has(> #breathing-guide:not([hidden])) #sb-play-rail,
-body:has(> .hale-flow:not([hidden])) #sb-play-rail {
+body:has(> .sukha-flow:not([hidden])) #sb-play-rail {
     visibility: hidden;
 }
 

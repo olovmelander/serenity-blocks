@@ -1,16 +1,16 @@
 # The breathing experience: direction (October 2026)
 
 One direction for everything a player meets when they breathe in Serenity Blocks: the twelve
-breathing worlds, the Hale sessions, the words on screen, the voice, the motion and how the worlds
+breathing worlds, the Sukha sessions, the words on screen, the voice, the motion and how the worlds
 and sessions are found. Copy, voice lines, ElevenLabs delivery and interface changes follow it. The
-mechanics live in [HALE_SESSIONS_2026-10.md](HALE_SESSIONS_2026-10.md) and
+mechanics live in [SUKHA_SESSIONS_2026-10.md](SUKHA_SESSIONS_2026-10.md) and
 [BREATHING_WORLDS_MASTERPIECE_2026-10.md](BREATHING_WORLDS_MASTERPIECE_2026-10.md).
 
 ## The idea: every world breathes
 
 The twelve worlds are places, and each place has its own way of breathing: the lotus opens over
 five seconds and folds over five, the tide runs up the sand and slides back, the moon-path opens,
-rests and narrows. That rhythm *is* the technique. A **Hale session** is a guided journey through
+rests and narrows. That rhythm *is* the technique. A **Sukha session** is a guided journey through
 these places with a voice beside you. The **Odyssey** is how you find the places. Once you have
 breathed in a world, it is yours.
 
@@ -19,7 +19,7 @@ So the parts are one thing seen from three sides:
 | | What it is | Where you meet it |
 | --- | --- | --- |
 | A world | A place and its rhythm (the technique) | Breathing tab, chapter arrival, inside sessions |
-| A session | A journey through worlds, with a voice | Hale tab |
+| A session | A journey through worlds, with a voice | Sukha tab |
 | The Odyssey | Where the worlds are found | Each finished chapter opens a world and the session that features it |
 
 ## The guide: one voice
@@ -86,7 +86,7 @@ back by Speech to Text, so all lines play as one speaker and say their words. Se
   an in-breath and leaves with an out-breath; nothing snaps.
 - **Stillness is visible.** During a hold the world goes still, and the counting stops.
 - **The breath has a sound.** A soft tone rises on every breath in and falls on every breath out,
-  beside the voice, in every world and every Hale session, all the time: no switch turns it off.
+  beside the voice, in every world and every Sukha session, all the time: no switch turns it off.
 - **Sound marks the structure.** A singing bowl opens a session and each round and closes the
   session. A small bell marks a hold's suggested length. The voice never speaks over itself.
 - **The voice is always heard.** It plays at the full effects volume, and the music dips under it

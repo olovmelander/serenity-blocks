@@ -113,7 +113,7 @@ describe('cascade budget', () => {
     });
 
     it('keeps the mega-cascade celebration at 10+ — once, as the chain\'s finale', () => {
-        // Quadra sums a move up once it settles; a banner per wave from ten stacked
+        // A move is summed up once, when it settles; a banner per wave from ten stacked
         // one over the next at every wave.
         const { scene, fx } = build();
         fx.showCascadeWave(12);

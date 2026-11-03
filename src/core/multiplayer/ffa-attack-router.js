@@ -2,7 +2,7 @@
  * FFA Attack Router - All-vs-All Combat System
  *
  * Routes garbage attacks from one player to ALL opponents (Free-For-All)
- * Implements Quadra-style attack scaling based on player count
+ * Implements attack scaling based on player count
  */
 
 import {
@@ -221,7 +221,7 @@ export class FFAAttackRouter {
    * Route garbage attack from one player to ALL opponents
    * (HOST ONLY - only host can route attacks)
    *
-   * PHASE 3.5: Implements garbage cancellation (Quadra/TETR.IO style)
+   * PHASE 3.5: Implements garbage cancellation
    * Outgoing lines first cancel any pending incoming garbage,
    * then only the remainder is sent to opponents.
    */
@@ -241,7 +241,7 @@ export class FFAAttackRouter {
             return;
         }
 
-        // Calculate garbage attack using Quadra formula
+        // Calculate the garbage attack (calculateGarbage in garbage.js)
         const attack = calculateGarbage(cascadeSummary, rules);
         const attackMeta = this.gameState._createAttackMetadata?.(attackerSteamId, cascadeSummary) || {};
         if (attackMeta.attackId) {
@@ -266,7 +266,7 @@ export class FFAAttackRouter {
 
         this._logGarbage(`💥 ${attacker.name} cleared lines → ${totalLines} garbage lines`);
 
-        // PHASE 3.5: Apply garbage cancellation (Quadra/TETR.IO style)
+        // PHASE 3.5: Apply garbage cancellation
         // Outgoing lines first cancel incoming garbage, then remainder goes to opponents
         const cancelledLines = this.gameState.applyGarbageCounter(attackerSteamId, totalLines);
         const effectiveLines = totalLines - cancelledLines;
@@ -290,7 +290,7 @@ export class FFAAttackRouter {
             return;
         }
 
-        // Apply attack scaling based on opponent count (Quadra style)
+        // Apply attack scaling based on opponent count
         const scaledLines = this.applyAttackScaling(
             effectiveLines,
             opponents.length,

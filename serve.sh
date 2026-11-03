@@ -11,7 +11,7 @@ echo ""
 PORT=${1:-8000}
 
 echo "📁 Current structure:"
-echo "   /workspaces/quadra/           (project root)"
+echo "   ./                            (project root)"
 echo "   ├── index.html                (auto-redirect to public/)"
 echo "   ├── public/                   (game files)"
 echo "   │   ├── index.html            (main game)"

@@ -59,11 +59,11 @@ export function calculateLineClearScore(linesCleared, level, complexity = 1, isP
 
 // NOTE (remediation Phase 2): the live level/line progression — 15 lines per
 // level — is implemented in processPhysics (src/core/physics.js) and seeded by
-// GameState.linesUntilNextLevel. The following pre-Quadra helpers were removed
+// GameState.linesUntilNextLevel. The following older helpers were removed
 // here because they had ZERO call sites and contradicted the live rule:
 //   - calculateLevel / getLinesUntilNextLevel  (encoded a wrong 10-line cadence)
 //   - calculateLineScore / calculateSoftDropScore / calculateHardDropScore
-//     (additive pre-Quadra scoring, superseded by calculateLineClearScore)
+//     (older additive scoring, superseded by calculateLineClearScore)
 // Do NOT re-introduce a progression helper here without making physics.js
 // consume it, so the rule keeps a single source of truth.
 

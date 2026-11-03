@@ -5,7 +5,8 @@
  * actually begins, and the twelve worlds as artwork to choose from. Worlds you have not found
  * yet (breath-collection.js) are shown, not hidden: dimmed, with where they are found, and can be
  * previewed but not begun. Catalogue data comes from breath-catalogue.js; the guide
- * (window.breathingIndicator) owns what is playing.
+ * (window.breathingIndicator) owns what is playing. A fast-breathing world shows the safety note
+ * (breath-safety.js) and begins only once it has been read.
  */
 import { csIcon } from '../components/cosmic-icons.js';
 import {
@@ -13,6 +14,9 @@ import {
 } from '../effects/breathing/breath-catalogue.js';
 import { getBreathCollection } from '../effects/breathing/breath-collection-store.js';
 import { PRACTICE_MINUTES_PER_STEP } from '../effects/breathing/breath-collection.js';
+import {
+    BREATH_CAUTION_TEXT, BREATH_WELLNESS_TEXT, isBreathSafetyRead, isStrongPattern, setBreathSafetyRead,
+} from '../effects/breathing/breath-safety.js';
 import { THEME_LOCK_ICON } from './ThemeCollectionView.js';
 
 const RHYTHM_LABELS = ['In', 'Hold', 'Out', 'Rest'];
@@ -122,27 +126,31 @@ export class BreathingTab {
                                 id="breathing-guide-toggle"></button>
                             <span class="breath-lib__cycle"></span>
                         </div>
+                        <div class="breath-lib__caution" hidden>
+                            <p>${csIcon('shield', 15)} ${BREATH_CAUTION_TEXT}</p>
+                            <label class="breath-lib__ack"><input type="checkbox" class="breath-lib__ack-input"><span>I understand</span></label>
+                        </div>
                     </div>
                 </section>
                 <section class="breath-lib__notice" hidden>
-                    <p>${csIcon('breath', 16)} A Hale session is running and owns the rhythm.</p>
-                    <button type="button" class="sb-btn breath-open-sessions">Open Hale sessions</button>
+                    <p>${csIcon('breath', 16)} A Sukha session is running and owns the rhythm.</p>
+                    <button type="button" class="sb-btn breath-open-sessions">Open Sukha sessions</button>
                 </section>
                 <section>
                     <h3 class="breath-lib__heading">Twelve worlds <small>${found} · each breathes at its own pace</small></h3>
                     <div class="breath-lib__grid" id="breathing-technique-grid" aria-label="Breathing worlds">${this.techniques.map((world) => this.renderCard(world)).join('')}</div>
                     <p class="breath-lib__found-note">${summary.open === summary.total ? 'Every world is yours.'
-        : `Each Odyssey chapter you finish opens a world, and the Hale session that features it. Breathing opens
+        : `Each Odyssey chapter you finish opens a world, and the Sukha session that features it. Breathing opens
                         them too: every ${PRACTICE_MINUTES_PER_STEP} minutes of practice opens the next.`}</p>
                 </section>
-                <section class="breath-lib__hale">
+                <section class="breath-lib__sukha">
                     <div>
                         <span class="breath-lib__eyebrow">Guided · 4 to 26 minutes</span>
-                        <h3>Hale sessions</h3>
-                        <p>Journeys with a voice through these worlds. Begin with Hale First Breath: four minutes in three of the worlds above.</p>
+                        <h3>Sukha sessions</h3>
+                        <p>Journeys with a voice through these worlds. Begin with Sukha First Breath: four minutes in three of the worlds above.</p>
                     </div>
-                    <button type="button" class="sb-btn breath-open-sessions breath-lib__hale-button">
-                        Explore Hale sessions <span aria-hidden="true">→</span></button>
+                    <button type="button" class="sb-btn breath-open-sessions breath-lib__sukha-button">
+                        Explore Sukha sessions <span aria-hidden="true">→</span></button>
                 </section>
                 <section class="breath-lib__settings">
                     <label class="breath-lib__switch">
@@ -165,6 +173,7 @@ export class BreathingTab {
                             ${this.settings.breathingOverTheme ? 'checked' : ''}>
                         <span><b>Over the theme</b><small>In Serenity Mode, breathe over the theme you are watching: its camera breathes with you</small></span>
                     </label>
+                    <p class="breath-lib__wellness">${BREATH_WELLNESS_TEXT} Breathe comfortably, and return to your natural breath whenever you need to.</p>
                     <div class="breath-lib__keys">
                         <p class="sb-eyebrow sb-eyebrow--quiet">During a practice</p>
                         <ul class="sb-hints">
@@ -195,6 +204,10 @@ export class BreathingTab {
             else if (event.target.id === 'breathing-auto-start') this.updateSetting('breathingGuideAutoStart', event.target.checked);
             else if (event.target.id === 'breathing-voice-toggle') this.updateSetting('breathingVoice', event.target.checked);
             else if (event.target.id === 'breathing-over-theme') this.updateSetting('breathingOverTheme', event.target.checked);
+            else if (event.target.closest?.('.breath-lib__ack-input')) {
+                setBreathSafetyRead(Boolean(event.target.checked));
+                this.refresh();
+            }
         }, { signal });
         // The guide's own "Over the theme" button changes the same choice.
         window.addEventListener('breathingOverThemeChange', (event) => {
@@ -214,8 +227,9 @@ export class BreathingTab {
         const guide = this.breathingIndicator;
         if (guide.isExternallyControlled) return;
         const worldId = this.heroWorldId();
-        // A world not found yet can be looked at, not begun.
+        // A world not found yet can be looked at, not begun; a fast one waits for the safety note.
         if (enabled && !this.collection.isWorldOpen(worldId)) return;
+        if (enabled && this.needsSafetyNote(worldId)) return;
         if (enabled) {
             this.collection.markSeen('worlds', worldId);
             guide.setTechnique(worldId);
@@ -251,6 +265,11 @@ export class BreathingTab {
             this.serenityMode?.deps?.settingsManager?.update({ breathingTechnique: techniqueId });
         }
         this.refresh();
+    }
+
+    /** A fast-breathing world whose safety note has not been read yet. */
+    needsSafetyNote(worldId) {
+        return isStrongPattern(getBreathWorld(worldId)?.pattern) && !isBreathSafetyRead();
     }
 
     updateSetting(key, value) {
@@ -292,7 +311,14 @@ export class BreathingTab {
         begin.textContent = beginLabel;
         begin.classList.toggle('is-active', active);
         begin.setAttribute('aria-pressed', String(active));
-        begin.disabled = controlled || (!status.open && !active);
+        // Fast breathing: the note shows with the world, and Begin waits until it is read.
+        const strong = status.open && isStrongPattern(world.pattern);
+        const read = isBreathSafetyRead();
+        const caution = hero.querySelector('.breath-lib__caution');
+        caution.hidden = !strong;
+        caution.querySelector('.breath-lib__ack').hidden = read;
+        caution.querySelector('.breath-lib__ack-input').checked = read;
+        begin.disabled = controlled || (!status.open && !active) || (strong && !read && !active);
         this.container.querySelector('.breath-lib__notice').hidden = !controlled;
         this.container.querySelectorAll('.breath-world').forEach((card) => {
             const pressed = card.dataset.techniqueId === world.id;

@@ -4,7 +4,7 @@
 focus on the black hole chapter 7, i want it to feel like we are in another dimension within this
 chapter. I want it to be visually stunning, trippy and an amazing feeling travelling through this
 chapter. How do we improve the black hole to be a visually stunning other dimension experience?"*
-Follows [the fall](ODYSSEY_CH7_FALL_2026-10.md), which this keeps: the dive into Gargantua at orb
+Follows [the fall](ODYSSEY_CH7_FALL_2026-10.md), which this keeps: the dive into the great hole at orb
 49 and the exit onto the Retrosun.
 
 ## What the player saw
@@ -137,7 +137,7 @@ it is the fold; outside, the tunnel.
 - **Measured** (frame luma, 0–255): 40 → 58 → 53 → 41 → 31 over p 0.8835–0.8935. The largest
   step is +18 per 0.0025, under half the 6 → 7 seam's own 38.9.
 
-![The dive, live: Gargantua at orb 49, the horizon, the plunge, the streaks winding into a spiral, the fold opening through its spectral rim, orbs 49 and 50 in the fold](images/odyssey-ch7-fold-2026-10/step2-crossing.jpg)
+![The dive, live: the great hole at orb 49, the horizon, the plunge, the streaks winding into a spiral, the fold opening through its spectral rim, orbs 49 and 50 in the fold](images/odyssey-ch7-fold-2026-10/step2-crossing.jpg)
 
 ## §3. A room per orb (2026-10-26)
 

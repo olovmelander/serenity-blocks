@@ -723,7 +723,7 @@ export function invertSweepPacing(table, share) {
  * THE RAIL RUNS INTO THE HOLE (2026-11-02; the owner: "i dont like that neon line going from our
  * path towards the black hole ... use the orb path going into the black hole instead"). Through
  * chapter 6 the rail is drawn only to the mouth orb (odyssey-path-horizon.js), and the black hole
- * hangs on the camera's own aim (GARGANTUA_LOCK). On the last approach the follow camera's look-ahead
+ * hangs on the camera's own aim (GREAT_HOLE_LOCK). On the last approach the follow camera's look-ahead
  * ran on past the mouth into chapter 7's bend, so the aim swung up to 31 degrees off the rail and the
  * hole slid off it: the inflow's thin stream had to bridge the gap. Now, as the look-ahead reaches
  * the rail's drawn end, the aim is held on that end (eased over `lead` of progress before it), so
@@ -954,7 +954,7 @@ function resolveJourneyFallCamera(progress, chapterPositions, reducedMotion) {
 // ── 6->7 HAIRPIN — the path turns ~170 deg just past the boundary ─────────────────
 // The rail doubles back between ~p 0.877 and 0.892 (tangent yaw 65 -> -135 deg in ~35 u), and
 // the follow camera swung round with it: the view turned at up to 13 deg per 0.001 p, while
-// Gargantua (camera-locked) sat still and the whole starfield whipped past it. The seam
+// The great hole (camera-locked) sat still and the whole starfield whipped past it. The seam
 // look-ahead made it worse by aiming INTO the turn from the boundary on.
 //
 // Inside this window the camera's travel direction is a CHORD of the rail,
@@ -962,7 +962,7 @@ function resolveJourneyFallCamera(progress, chapterPositions, reducedMotion) {
 // straight run; across a U-turn it rotates over the chord's whole span rather than the turn's,
 // and because the U also CLIMBS, the chord rolls over the top of the turn instead of swinging
 // flat across it — measured on the live spline: peak view rotation 13.1 -> ~6 deg per 0.001 p,
-// spread over the whole window (pitch peaks ~63 deg at the apex; Gargantua is camera-locked,
+// spread over the whole window (pitch peaks ~63 deg at the apex; the great hole is camera-locked,
 // so the hero holds its place in frame through it). The eye placement, the look target and the
 // lateral biases all use it. h is 0 at both window edges (h = H sin(pi u)), so the chord IS the
 // tangent there and the frame is continuous; the lag keeps the camera a little behind the

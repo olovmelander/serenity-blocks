@@ -63,9 +63,8 @@
 > imports it. The live path uses cruder inline logic in `board-evaluator.js`. Phase 0 fixes that.
 >
 > **Research basis.** All mechanics/strategy claims below were web‑researched and adversarially
-> verified (Quadra FAQ/wikis, cascade‑gravity strategy, Puyo/Cold‑Clear/ama AI literature) and
-> cross‑checked against the local Quadra C++ reference (`C:/Users/olovm/repositories/quadra`,
-> LGPL‑2.1 — **behavior reference only, no code copied**). Sources are listed at the end.
+> verified (Quadra FAQ/wikis, cascade‑gravity strategy, Puyo/Cold‑Clear/ama AI literature).
+> Sources are listed at the end.
 
 ---
 
@@ -125,7 +124,7 @@ Secondary gaps that make the lane heuristics misfire:
 ## 2. Verified mechanics (the behavior model the bot must match)
 
 Each item was confirmed against primary sources unless flagged. These are *facts about the game we
-ship*, cross‑checked against Quadra.
+ship*.
 
 | # | Fact | Verdict | Why it matters to the bot |
 |---|------|---------|---------------------------|
@@ -135,12 +134,12 @@ ship*, cross‑checked against Quadra.
 | M4 | **Build the platform over the far edge column EARLY** (build the *second‑to‑last* column as support; base piece → I → cap), and **stack duplicate I‑pieces above the platform while stacking**, not after. | confirmed | The canonical Quadra opener. Bias the bot to commit a lane early and bank I‑pieces into the payload during construction. |
 | M5 | **Cap intentional well depth at ~10 rows.** | partially confirmed (quote real; original *rationale* misattributed) | Keep enough room **above the platform to stack several I payload pieces**; a too‑deep naked well also risks top‑out and breaks per‑row chain timing. Treat `openDepth > 10` as `unsafe` (the analyzer already does). Frame it as *machine‑viability*, not "I‑drought survival". |
 | M6 | **No hold; 3‑piece preview.** | confirmed | Plan = current piece + ≤3 lookahead, **no reordering/deferral**. Cap committed multi‑piece plans at the visible queue; everything beyond is a *prediction*, not a guarantee. |
-| M7 | **Board is 10×20 visible.** Quadra is 10×32 internal (12 hidden rows); **ours is 10×24** (`ROWS=20`, `HIDDEN_ROWS=4`). | confirmed (ours verified in `constants.js`) | We have **less hidden headroom than Quadra** — the payload tower can't be built as tall. The depth cap (M5) and danger gate (§6) matter more here than in original Quadra. |
-| M8 | Quadra rotation is wallkick‑less left‑handed NRS, fire‑on‑key‑up, no lock delay, ARE‑like line‑clear delay. | confirmed (for Quadra) | **Fidelity check, not a copy target:** the bot's reachability must match *Serenity's actual* rotation/kick rules ([reachability-pathfinder.js](../src/core/ai/reachability-pathfinder.js)), whatever they are — never plan a placement the live game can't reach. Verify our kick behavior vs the pathfinder's. |
+| M7 | **Board is 10×20 visible; ours is 10×24 in all** (`ROWS=20`, `HIDDEN_ROWS=4`). | confirmed (verified in `constants.js`) | Only **4 hidden rows of headroom** — the payload tower can't be built very tall, so the depth cap (M5) and danger gate (§6) bind hard. |
+| M8 | **Serenity's own rotation/kick rules are the ones that count** (classic Quadra plays with no wall kicks and no lock delay). | confirmed | **Fidelity check:** the bot's reachability must match *Serenity's actual* rotation/kick rules ([reachability-pathfinder.js](../src/core/ai/reachability-pathfinder.js)), whatever they are — never plan a placement the live game can't reach. Verify our kick behavior vs the pathfinder's. |
 
 > **Caveat carried from research:** `harddrop.com` / `tetris.wiki` block direct fetches (HTTP 403);
 > wiki quotes were recovered via search snippets + the read proxy and cross‑checked, while
-> `roncli.com` (the maintainer's official site) and the local C++ source were read directly. The M5
+> `roncli.com` (the maintainer's official site) was read directly. The M5
 > rationale was the one claim downgraded to *uncertain* — keep the 10‑row cap, drop the
 > "I‑drought death" reasoning.
 
@@ -248,7 +247,7 @@ Adopt the Cold‑Clear structure: score every node as **`V(board) + Σ R(events 
   feature (4.1)** + protected‑hole exemption (§5.3). This is what lets a deep, clean, capped well +
   loaded payload score *high before any line clears*, so best‑first search keeps growing it.
 - **Reward** `R` — realized events along the path, **computed from the shipped formulas** rather than
-  guessed weights: `projectedScore = calculateQuadraLineScore(depth, level, complexity, perfectClear)`
+  guessed weights: `projectedScore = calculateLineClearScore(depth, level, complexity, perfectClear)`
   and `projectedAttack = max(0, depth-1) + cleanBonus`. **Penalize singles/doubles** (a positive
   small‑clear reward makes best‑first cash the machine prematurely — Cold Clear makes
   clear1/2/3 *negative* and only clear4+/clean positive). Reward big depth and clean disproportionately.
@@ -460,7 +459,7 @@ garbage near top‑out, **abandons the build and downstacks instead of dying**.
 
 ## 10. Fidelity notes & open questions
 
-- **Headroom (M7).** Our 24‑row board (4 hidden) gives less payload‑tower room than Quadra's 32. The
+- **Headroom (M7).** Our 24‑row board (4 hidden) leaves little payload‑tower room. The
   ~10‑row depth cap and danger gate are therefore *more* binding here — verify `targetDepth` defaults
   against our actual board before tuning offense up.
 - **Score vs attack objective (M3).** Single‑player Odyssey/Infinity care about `score`
@@ -468,10 +467,9 @@ garbage near top‑out, **abandons the build and downstacks instead of dying**.
   but the bot's reward weighting should switch emphasis by mode (clean route matters far more in
   handicapped/crowd multiplayer).
 - **Rotation reachability (M8).** Confirm `reachability-pathfinder.js` matches Serenity's live kick
-  rules; a plan that assumes a kick the game won't perform will desync. (Quadra itself is wallkick‑less;
-  Serenity may differ — match *Serenity*.)
-- **Randomizer.** Quadra uses a plain LCG `%7` (no 7‑bag). If Serenity uses a bag randomizer, the
-  Monte‑Carlo tail sampling (4.3) should model the *actual* randomizer, not assume Quadra's uniform draw.
+  rules; a plan that assumes a kick the game won't perform will desync.
+- **Randomizer.** The Monte‑Carlo tail sampling (4.3) should model Serenity's *actual* randomizer
+  (bag or uniform draw), not assume one.
 
 ---
 
@@ -504,8 +502,3 @@ garbage near top‑out, **abandons the build and downstacks instead of dying**.
 - https://tetris.wiki/Garbage · https://tetrio.wiki.gg/wiki/Mechanics ·
   https://winternebs.github.io/TETRIS-FAQ/versus/ ·
   https://www.tetrisconcept.com/2015/02/multiplayer-metrics.html
-
-**Local reference (behavior only, LGPL‑2.1 — no code copied)**
-- `C:/Users/olovm/repositories/quadra` — `source/player.cc` (cascade gravity / line detect),
-  `source/canvas.cc` (`give_line` scoring + attack), `source/bloc.cc` (weld‑bit shapes),
-  `source/net_list.cc` (garbage hole‑pattern mirroring + handicap).

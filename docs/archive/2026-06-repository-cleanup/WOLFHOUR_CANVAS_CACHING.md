@@ -199,8 +199,8 @@ Benchmark theme switching to Wolfhour:
 
 ### Test Files Created
 
-1. `/workspaces/quadra/tests/unit/test-wolfhour-caching-simple.js` (main test suite)
-2. `/workspaces/quadra/tests/unit/test-wolfhour-caching.js` (comprehensive test documentation)
+1. `tests/unit/test-wolfhour-caching-simple.js` (main test suite)
+2. `tests/unit/test-wolfhour-caching.js` (comprehensive test documentation)
 
 ### Automated Test Results
 

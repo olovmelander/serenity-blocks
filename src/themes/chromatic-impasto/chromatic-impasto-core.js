@@ -117,7 +117,7 @@ export function pigmentFromHex(hex) {
  *   darks    the first lay-in: wide thin passes that cover the ground
  *   masses   the big colour areas, by region of the picture
  *   accents  small bright passes over the masses
- *   contour  the black line Lindström draws round every form
+ *   contour  the black line drawn round every form
  *   light    highlights laid last
  *   key      the studio lamp's colour (a multiplier)
  */
@@ -133,8 +133,8 @@ const period = (name, spec) => Object.freeze({
 });
 
 export const IMPASTO_PERIODS = Object.freeze([
-    // Bengt Lindström: blood red, cadmium yellow, turquoise and ultramarine straight from the tube.
-    period('lindstrom', {
+    // Nordic: blood red, cadmium yellow, turquoise and ultramarine straight from the tube.
+    period('nordic', {
         ground: '#100d0b',
         darks: ['#06301c', '#07183c', '#2a0a10', '#1c120c'],
         masses: ['#b80f14', '#0a2fc8', '#00b8ae', '#ffbe00', '#ff7300', '#1a7f4d'],

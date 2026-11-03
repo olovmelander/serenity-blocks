@@ -40,7 +40,7 @@ picked by the person's seed:
 | clerk | a clerk at the counter's terminal: a bun, an earpiece, a cyber eye (`terminal`) | behind the office counter |
 | runner | lit leg stripes and soles, bracers, knee pads (`run`) | the gym's treadmills |
 | player | spiky hair, headphones, lit stripes down the back (`arcade`); a woman in a jacket with a bob and headphones (`arcadeB`) | at the cabinets |
-| monk | shaven, glowing implants, breathing with the game's breath (`lotus`) | Hale's calm room |
+| monk | shaven, glowing implants, breathing with the game's breath (`lotus`) | Sukha's calm room |
 | diner | a courier on a stool with crossed straps (`sitEat`); a woman in a hoodie with a ponytail (`sitEatB`) | the noodle counter |
 | patron | a long coat with a pauldron (`lean`); a heavy man with a mechanical fist (`leanC`) | the bar |
 | lifter | a heavy cyborg: a mechanical fist under a pauldron, curls (`lift`) | by the gym's window |

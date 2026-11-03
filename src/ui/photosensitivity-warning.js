@@ -22,8 +22,8 @@
  * with Ctrl, Alt or Meta are left alone.
  *
  * Skipped by `?photosensitivityWarning=0`, localStorage `serenity.photosensitivityWarning=0` (the
- * shared flag idiom, src/core/flags.js: the toggle a developer has in an installed game) and
- * `?skipIntro=1`: harnesses and captures. The player always sees it.
+ * shared flag idiom, src/core/flags.js) and `?skipIntro=1`: harnesses and captures. A shipped desktop
+ * build without diagnostics honours none of them: the player always sees it.
  *
  * Dependency-free on purpose: index.html imports this module directly, so it must stay off the
  * main bundle's graph (scripts/check-boot-closure.mjs).
@@ -84,12 +84,24 @@ const FUNCTION_KEY = /^F\d{1,2}$/;
  */
 
 /**
- * Whether the warning shows: `?photosensitivityWarning=1|0` → `?skipIntro=1` (skips) →
- * localStorage `serenity.photosensitivityWarning` ('1' / '0') → shown.
- * @param {{ search?: string, storage?: { getItem?: (key: string) => string | null } | null }} [source]
+ * A shipped desktop build started without diagnostics (src/ui/developer-surfaces.js
+ * packagedReleaseLocked: the same check, copied because this module imports nothing).
+ * @param {any} win
  * @returns {boolean}
  */
-export function isPhotosensitivityWarningEnabled({ search = '', storage = null } = {}) {
+export function isPackagedReleaseWindow(win) {
+    return win?.electronAPI?.isPackaged === true && win?.electronAPI?.diagnosticsEnabled !== true;
+}
+
+/**
+ * Whether the warning shows: always in a shipped build (`locked`); otherwise
+ * `?photosensitivityWarning=1|0` → `?skipIntro=1` (skips) → localStorage
+ * `serenity.photosensitivityWarning` ('1' / '0') → shown.
+ * @param {{ search?: string, storage?: { getItem?: (key: string) => string | null } | null, locked?: boolean }} [source]
+ * @returns {boolean}
+ */
+export function isPhotosensitivityWarningEnabled({ search = '', storage = null, locked = false } = {}) {
+    if (locked) return true;
     const query = String(search || '');
     if (new RegExp(`[?&]${PHOTOSENSITIVITY_WARNING_FLAG}=1\\b`).test(query)) return true;
     if (new RegExp(`[?&]${PHOTOSENSITIVITY_WARNING_FLAG}=0\\b`).test(query)) return false;
@@ -479,6 +491,7 @@ export function installPhotosensitivityWarning(options = {}) {
     const enabled = options.enabled ?? isPhotosensitivityWarningEnabled({
         search: win?.location?.search ?? '',
         storage: safeStorage(win),
+        locked: isPackagedReleaseWindow(win),
     });
 
     let controller;

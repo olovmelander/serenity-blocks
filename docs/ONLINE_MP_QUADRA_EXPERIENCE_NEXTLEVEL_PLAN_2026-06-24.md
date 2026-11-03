@@ -1,14 +1,12 @@
-# Online MP — The Quadra Experience, Compared & Leveled-Up (2026-06-24)
+# Online MP — The Quadra Experience, Leveled-Up (2026-06-24)
 
 **Goal:** take Serenity Blocks' online multiplayer to a best-in-class UX with the
 functionality Quadra is loved for — **start without waiting for everyone**, **drop-in
 mid-game**, **a clean rematch/restart loop**, and **watch-only spectating** — plus the
 performance foundation to make it all cheap.
 
-**Method:** a 15-agent adversarially-verified workflow read the real Quadra C++ source
-(`C:/Users/olovm/repositories/quadra/source`) and Serenity's `src/` line-by-line across
-five axes, cross-checked by my own reading of `game.cc`, `game.h`, `canvas.h`,
-`net_server.cc`. Every claim below cites code.
+**Method:** a 15-agent adversarially-verified workflow read Serenity's `src/` line-by-line
+across five axes, cross-checked by my own reading. Every claim below cites code.
 
 ---
 
@@ -16,7 +14,7 @@ five axes, cross-checked by my own reading of `game.cc`, `game.h`, `canvas.h`,
 
 **Serenity's host already serializes and broadcasts EVERY player's full board in every
 30 Hz snapshot** (`buildStateSnapshot`, ffa-p2p-game-state.js:2115; binary codec v5).
-Quadra had to invent a whole watcher-routing + state-download protocol to do what
+A server-relay design needs a whole watcher-routing + state-download protocol to do what
 Serenity gets for free. So:
 
 - **A spectator is nearly free** — it's a client that consumes the snapshot stream and
@@ -26,34 +24,34 @@ Serenity gets for free. So:
   machinery to hand it a baseline **already exists** (it's used for reconnect).
 
 **Architectural verdict (unchanged from prior audits): KEEP host-authoritative + client
-prediction. Do NOT migrate to Quadra-style lockstep.** Quadra's determinism is bought with
+prediction. Do NOT migrate to lockstep.** Lockstep determinism is bought with
 a fixed-point, single-seed, frame-stepped sim; Serenity's sim is float/RAF/async and shared
 with single-player — a lockstep rewrite would be an XL change that silently desyncs and is
 strictly worse for this feature set. Everything below is additive to the existing model.
 
 ---
 
-## Architectural contrast (verified)
+## Target experience vs today (verified)
 
-| | **Quadra** (C++) | **Serenity Blocks** |
+| | **Target** | **Serenity Blocks (today)** |
 |---|---|---|
-| Topology | Dedicated/loopback **server**; a `Game` *is* the room and survives matches | **P2P, host-is-a-player**; separate lobby (`lobby-waiting-room.js`) and match (`ffa-p2p-game-state.js`) |
-| Sim model | Deterministic **lockstep**: shared seed reconstructs every board; only **inputs** travel during play | Host-authoritative **full-board snapshots** @30 Hz + client prediction (`peerLocalSim`) |
-| Lobby = game? | **Yes** — `paused=true, delay_start=500` IS the waiting state (game.cc:223-226); no "ready" flag exists | **No** — `gamePhase 'waiting'→'playing'`; per-player `isReady` |
-| Start gate | Server starts on a **countdown** gated only by *optional* `server_min_players` (net_server.cc:498-526); host always allowed | **Hard all-ready barrier**: `readyCount === players.length` or `alert()` (lobby-waiting-room.js:644-647) |
-| Join while playing | **Always allowed** unless `terminated` (net_server.cc:351-354); `Net_pendingjoin` uploads a full `P_DOWNLOAD` per canvas at the round boundary | `addPlayer` has **no gamePhase gate and no cap**, but **nothing wires a browser join into a live match**; `downloadJoin` path exists but is OFF (ffa-p2p-game-state.js:357) |
-| Spectator | **First-class** `Canvas::watchers` (canvas.h:63); server routes a board's packets only to its watchers (net_server.cc:549-583) | **None** — only `OpponentWatchManager` (watch opponents *while you play*) |
-| Rematch | `auto_restart` + `Game::restart()` (game.cc:267-332): reset in place, **new seed**, `delay_start` countdown, un-join→re-join, **room persists** | `restartMatch`/`restartFullGame` reset in place; results modal exists; but **two restart impls**, an orphaned vote path, and a heartbeat/restart race |
-| Wire | Server relays selectively (per-watcher) | base64-in-JSON envelope (~33% inflation), same full snapshot fanned to every peer (steam-networking.js:478) |
-| Replays | **Yes** — recordings are replayable input streams (recording.cc) | **None** |
+| Room | The room *is* the game and survives matches | **P2P, host-is-a-player**; separate lobby (`lobby-waiting-room.js`) and match (`ffa-p2p-game-state.js`) |
+| Sim model | Unchanged: host-authoritative (see verdict above) | Host-authoritative **full-board snapshots** @30 Hz + client prediction (`peerLocalSim`) |
+| Lobby = game? | **Yes** — the waiting room is the paused game; no "ready" flag | **No** — `gamePhase 'waiting'→'playing'`; per-player `isReady` |
+| Start gate | Host starts a **countdown**; an *optional* minimum player count is the only gate | **Hard all-ready barrier**: `readyCount === players.length` or `alert()` (lobby-waiting-room.js:644-647) |
+| Join while playing | **Always allowed** while the match runs; the joiner gets a full board baseline at the round boundary | `addPlayer` has **no gamePhase gate and no cap**, but **nothing wires a browser join into a live match**; `downloadJoin` path exists but is OFF (ffa-p2p-game-state.js:357) |
+| Spectator | **First-class** watch-only role; each board's stream goes only to those watching it | **None** — only `OpponentWatchManager` (watch opponents *while you play*) |
+| Rematch | Automatic restart: reset in place, **new seed**, countdown, **room persists** | `restartMatch`/`restartFullGame` reset in place; results modal exists; but **two restart impls**, an orphaned vote path, and a heartbeat/restart race |
+| Wire | Relay selectively (per watcher) | base64-in-JSON envelope (~33% inflation), same full snapshot fanned to every peer (steam-networking.js:478) |
+| Replays | Recorded matches can be replayed | **None** |
 
 ---
 
 ## Axis-by-axis: verified gaps & the fix
 
 ### 1. Start without waiting for everyone
-- **Quadra:** no ready flag; host triggers a server-side `delay_start` countdown, stragglers
-  stream in. Optional `server_min_players` is the only gate.
+- **Target:** no ready flag; the host starts a countdown and stragglers stream in. An optional
+  minimum player count is the only gate.
 - **Serenity:** `startMatch()` hard-rejects unless **every** joined player is ready
   (lobby-waiting-room.js:644-647), and each side runs an **independent local 5 s countdown**
   (no shared start-tick → drift risk).
@@ -64,16 +62,15 @@ strictly worse for this feature set. Everything below is additive to the existin
     ready-barrier (`readyBarrier=1`) so the first round still syncs.
   - **A3 · Host-authoritative shared start-tick** `[P1 · M · med]` — host stamps
     `startAtEpoch = now + countdownMs` into `LOBBY_GAME_START`; both sides compute remaining
-    from it (no fixed local 5 s). Optional `CANCEL_START` (mirrors Quadra `delay_start→0`).
+    from it (no fixed local 5 s). Optional `CANCEL_START`.
   - **A2 · Enforce `maxPlayers`** `[P2 · S · low]` — `addPlayer` guard: reject non-local,
     non-reconnect joins past `matchConfig.maxPlayers||8` (spectators bypass). Today the cap is
     advisory and a 9th player wraps the 8-colour palette (ffa-p2p-game-state.js:500).
 
 ### 2. Join-in-progress (drop-in)
-- **Quadra:** `Net_pendingjoin::step` (net_server.cc:654-764) **defers the join until a
-  quiescent barrier** — `syncpoint == Canvas::LAST` (round boundary) AND every canvas idle —
-  then uploads a `Packet_download` per player (full grid + **canvas RNG seed** + current/next
-  pieces) and announces the slot. Cheap because the sim is deterministic thereafter.
+- **Target:** **defer the join until a quiescent barrier** — a round boundary AND every board
+  idle — then upload a full baseline per player (full grid + **RNG state** + current/next
+  pieces) and announce the slot. Cheap when the sim is deterministic thereafter.
 - **Serenity:** unfinished & fragmented. `addPlayer` (471-540) doesn't call
   `initializePlayerForMatch`, so a mid-match joiner would get a fresh `GameState()` whose
   `randomGenerator` is never seeded (its piece stream won't match the host). The
@@ -91,7 +88,7 @@ strictly worse for this feature set. Everything below is additive to the existin
   - **C2 · Gate the JOIN on the existing syncpoint barrier** `[P1 · M · low]` — Serenity already
     computes `syncpoint='busy'` when any board is mid-physics (`_computeSyncpoint` 2088-2092);
     queue the join in `pendingJoins` and admit it from the same drain point as
-    `_processPendingResyncs`. This is Quadra's `Canvas::LAST` barrier.
+    `_processPendingResyncs`.
   - **C3 · Policy: "watch, then spawn at next round"** `[P1 · L · low]` *(recommended drop-in
     UX)* — a mid-round arrival joins as a **spectator** (Axis 3), receives the live stream, and
     the host seats it as an active board on the next `GAME_ROUND_START`. Dramatically lower risk
@@ -102,9 +99,8 @@ strictly worse for this feature set. Everything below is additive to the existin
     *immediate mid-round* live entry beyond C3.
 
 ### 3. Spectator / watch-only — **the headline "free" win**
-- **Quadra:** `P_CLIENTSTARTWATCH` attaches a `Watcher` to a Canvas; the server forwards only
-  that board's packets to its watchers (net_server.cc:549-583). Zero input, no canvas owned;
-  dead players keep watching.
+- **Target:** a watch-only role that receives only the boards it watches. Zero input, no board
+  owned; dead players keep watching.
 - **Serenity:** no spectator role; but `buildStateSnapshot` already carries every board and
   `OpponentWatchManager` already renders up to 4 with interpolation, dirty-checking, dead-fill,
   and clear-flash overlays.
@@ -118,7 +114,7 @@ strictly worse for this feature set. Everything below is additive to the existin
     `spectators` Set instead of `players` + `queueResync`). Spectators are **excluded** from
     `readyCount`, win/elimination, attack routing, and the ready-barrier; they never run local
     prediction or send input (skip `_configureLocalInputHooks`). Reuse `queueResync` as the
-    Quadra `P_DOWNLOAD`.
+    spectator's baseline download.
   - **B3 · Full-roster spectator layout** `[P1 · M · low]` — in `OpponentWatchManager`, a
     spectator mode that shows ALL players (don't filter `localPlayerId`), grid up to 8, reusing
     the existing interpolator/renderer/flash. Click-to-focus a board.
@@ -132,8 +128,8 @@ strictly worse for this feature set. Everything below is additive to the existin
     re-handshake but are **never** migration candidates.
 
 ### 4. Game-over → restart / rematch (the user's "good restart process")
-- **Quadra:** room persists; `check_end_game` → 15 s "famous last words" window → `auto_restart`
-  → `Game::restart()` (reset in place, **new seed**, `delay_start` countdown, un-join→re-join).
+- **Target:** the room persists; after a match, a short window to read the results, then an
+  automatic restart (reset in place, **new seed**, countdown).
 - **Serenity:** richer results UX (`MatchResultsModal`: champion, stats, kill feed, chat) **but a
   fragmented restart layer**: two restart impls (`restartMatch`/`restartFullGame` vs
   `startNewMatch`/`performRoundRestart`), an **orphaned rematch-vote** path the modal doesn't
@@ -151,7 +147,7 @@ strictly worse for this feature set. Everything below is additive to the existin
   - **A4c · Restart-race guard** `[P1 · M · med]` — on `GAME_ROUND_RESTART` a peer sets
     `_awaitingRoundStart=true` and `_applySnapshotState` drops/queues ALL snapshots (even
     `gen==current`) until `GAME_ROUND_START` (or the peer fallback timer) — the ready-barrier
-    becomes the sole resume gate (Quadra `WAITFORRESTART`).
+    becomes the sole resume gate.
   - **A4d · Real "Play Again" + host-idle auto-advance** `[P0/P1 · M · med]` — wire the modal:
     host one-click **Play Again** → canonical restart; broadcast a `GAME_RESULTS_DEADLINE` so all
     clients show the same countdown; on host-idle timeout **return everyone to the lobby**
@@ -159,17 +155,17 @@ strictly worse for this feature set. Everything below is additive to the existin
     (live tally) **or** relabel/remove it — see Decisions.
 
 ### 5. Netcode & performance foundation
-- **Quadra:** inputs-only during play; server relays per-watcher (bandwidth scales with interest);
-  recordings double as replays + spectate.
+- **Target:** bandwidth that scales with interest (each board's stream goes only to its
+  watchers); recordings double as replays + spectate.
 - **Serenity:** full snapshot already carries every board (→ spectator free); `peerLocalSim`
-  gives Quadra-like local ownership; demo-replay-determinism test already proves the shared-seed
-  LCG is bit-identical per spawn. Gaps: no replay, base64-in-JSON ~33% inflation, no admin
+  gives local ownership of your own board; demo-replay-determinism test already proves the
+  shared-seed piece stream is bit-identical per spawn. Gaps: no replay, base64-in-JSON ~33% inflation, no admin
   controls, `simTickNetcode` (fixed-tick input replay) built but OFF.
 - **Fixes (Phase D):**
   - **D1 · Native binary Steam P2P transport** `[perf · M · med]` — drop the base64 envelope for
     log/snapshot payloads if steamworks.js 0.4.0 exposes raw binary send (open question).
   - **D2 · Replay / demo recording** `[L]` — record the snapshot stream (simple, larger) now;
-    input-stream recording (compact, needs the LCG) later. Doubles as spectate seed.
+    input-stream recording (compact, needs the seeded piece RNG) later. Doubles as spectate seed.
   - **D3 · Admin controls** `[M]` — host kick / pause / drop with polite messaging; spectator
     count + team-scoped chat.
   - **D4 · (optional) `simTickNetcode`** `[XL · high]` — fixed-tick input replay for
@@ -435,4 +431,4 @@ pre-existing Odyssey fail; kick verified live in the 2-window harness; 4 new uni
   machines (gates the A4b false-migration fix's margin).
 - Does the codec serialize enough per board (next/hold/incoming garbage) for a spectator view to look
   *complete*? (mostly yes — verify hold/incoming).
-- Replay format: snapshot-stream (simple, large) vs input-stream (compact, needs the LCG) — or both.
+- Replay format: snapshot-stream (simple, large) vs input-stream (compact, needs the seeded piece RNG) — or both.

@@ -67,6 +67,32 @@ describe('breathing library', () => {
             .toEqual(['calm-sleep']);
     });
 
+    it('shows the safety note with a fast world and begins it only once the note is read', () => {
+        const stored = new Map();
+        win.localStorage = { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) };
+        settings.breathingTechnique = 'volcanic-fire';
+        createTab();
+        const caution = hero('.breath-lib__caution');
+        expect(caution.hidden).toBe(false);
+        expect(caution.querySelector('.breath-lib__ack').hidden).toBe(false);
+        expect(hero('.breath-lib__begin').disabled).toBe(true);
+        click({ '.breath-lib__begin': true });
+        expect(guide.start).not.toHaveBeenCalled();
+        const ack = caution.querySelector('.breath-lib__ack-input');
+        container.fire('change', { target: Object.assign(targetMatching({ '.breath-lib__ack-input': ack }), { checked: true }) });
+        expect(stored.get('serenity.breathSafetyRead')).toBe('2026-11-03');
+        expect(hero('.breath-lib__begin').disabled).toBe(false);
+        expect(caution.querySelector('.breath-lib__ack').hidden).toBe(true);
+        click({ '.breath-lib__begin': true });
+        expect(guide.start).toHaveBeenCalledOnce();
+    });
+
+    it('shows no safety note with a gentle world', () => {
+        createTab();
+        expect(hero('.breath-lib__caution').hidden).toBe(true);
+        expect(hero('.breath-lib__begin').disabled).toBe(false);
+    });
+
     it('shows what is playing while a practice runs', () => {
         guide.isActive = true;
         createTab();
@@ -120,7 +146,7 @@ describe('breathing library', () => {
         expect(hub.hide).toHaveBeenCalledOnce();
     });
 
-    it('locks its controls while a Hale session owns the rhythm, and unlocks them after', () => {
+    it('locks its controls while a Sukha session owns the rhythm, and unlocks them after', () => {
         const tab = createTab();
         guide.isExternallyControlled = true;
         guide.isActive = true;
@@ -139,7 +165,7 @@ describe('breathing library', () => {
         expect(cards.every((card) => !card.disabled)).toBe(true);
     });
 
-    it('opens the Hale sessions from either entry and applies preferences at once', () => {
+    it('opens the Sukha sessions from either entry and applies preferences at once', () => {
         const tab = createTab();
         click({ '.breath-open-sessions': true });
         expect(hub.switchTab).toHaveBeenCalledWith('sessions');
@@ -173,7 +199,7 @@ describe('breathing library', () => {
         const tab = createTab({ collection: new BreathCollectionService() });
         const html = container.innerHTML;
         expect(html).toContain('4 of 12 found');
-        expect(html).toMatch(/class="breath-world is-locked"\s+data-technique-id="wim-hof"/);
+        expect(html).toMatch(/class="breath-world is-locked"\s+data-technique-id="volcanic-fire"/);
         expect(html).toContain('aria-label="Volcanic Fire, not found yet. Opens when you complete the Odyssey, or after 120 more minutes of breathing."');
         expect(html).not.toMatch(/class="breath-world is-locked"\s+data-technique-id="calm-sleep"/);
         click({ '.breath-world': cards[6] });

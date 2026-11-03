@@ -43,7 +43,7 @@ export const PIECE_KEYS = Object.freeze(['I', 'O', 'T', 'S', 'Z', 'J', 'L']);
  * The pieces in the logo's light: the wordmark's spectrum, so the world reads as one family
  * with the title. Solid colour, never four cells. No shape wears its familiar Guideline hue
  * (I cyan, O yellow, T purple, S green, Z red, J blue, L orange): 0/7 on the palette gate
- * (scripts/palette-guideline-check.mjs, tetris_legal_review.md PAL-1), the house ideal.
+ * (scripts/palette-guideline-check.mjs, PAL-1), the house ideal.
  */
 export const PIECE_COLORS = Object.freeze({
     I: '#b49cff', // lavender

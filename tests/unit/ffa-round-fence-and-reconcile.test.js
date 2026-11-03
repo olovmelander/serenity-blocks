@@ -115,7 +115,7 @@ describe('Bug 2 — round-generation fence (_applySnapshotState)', () => {
 });
 
 describe('Local-piece ownership — _reconcileLocalPlayer (prune-only) + _reconcileLocalPiece', () => {
-    // The peer's falling piece is now LOCALLY OWNED (Quadra model). _reconcileLocalPlayer
+    // The peer's falling piece is now LOCALLY OWNED (peer-owns-board model). _reconcileLocalPlayer
     // no longer resets the local board to the host snapshot and replays unacked inputs —
     // that fought the local sim and snapped rotation/x on the peer's OWN board. It now
     // ONLY prunes acked inputs. _reconcileLocalPiece reconciles the piece vs the host
@@ -168,7 +168,7 @@ describe('Local-piece ownership — _reconcileLocalPlayer (prune-only) + _reconc
     });
 });
 
-describe('Quadra lock-events — _applyAuthoritativeLock (peer snap)', () => {
+describe('Reliable lock-events — _applyAuthoritativeLock (peer snap)', () => {
     const grid = (cell) => Array.from({ length: 24 }, () => Array.from({ length: 10 }, () => cell));
     const apply = (stub, data) => FFAGameStateP2P.prototype._applyAuthoritativeLock.call(stub, data);
 
@@ -251,7 +251,7 @@ describe('Quadra lock-events — _applyAuthoritativeLock (peer snap)', () => {
     });
 });
 
-describe('Quadra ready-barrier — all-players-ready round syncpoint (host)', () => {
+describe('Ready-barrier — all-players-ready round syncpoint (host)', () => {
     // These methods call sibling prototype methods (_beginReadyBarrier →
     // _maybeFinalizeRoundStart → _finalizeRoundStart), so the stub puts the prototype
     // in its chain (Object.create) while skipping the constructor.

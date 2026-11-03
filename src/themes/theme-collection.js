@@ -2,6 +2,7 @@ import { ThemeCollectionService } from '../core/progression/theme-collection-ser
 import { getLevelRegistry } from '../core/odyssey/LevelRegistry.js';
 import { migrateOdysseyProgressData } from '../core/odyssey/OdysseyStateManager.js';
 import { THEME_REGISTRY, resolveThemeId } from './theme-registry.js';
+import { packagedReleaseLocked } from '../ui/developer-surfaces.js';
 
 // Forest is the starter; the 60 orb worlds retain their own rewards. Two themes have no orb:
 // they are chapter rewards, leaving every authored orb and save identity intact — Thermal Bloom
@@ -23,8 +24,9 @@ export const ODYSSEY_COLLECTION_REWARDS = Object.freeze([
 
 let collection;
 
-/** URL-only preview access; never read or persist a localStorage override. */
+/** URL-only preview access; never read or persist a localStorage override. Not in a shipped build. */
 export function isDevelopmentCollectionUnlocked(search = globalThis.location?.search || '') {
+    if (packagedReleaseLocked()) return false;
     return new URLSearchParams(search).get('unlockAll') === '1';
 }
 

@@ -10,7 +10,7 @@
  */
 const BASE_RULES = {
     standard: {
-        gravity: 'cascading', // Shared Quadra physics settles blocks after every clear
+        gravity: 'cascading', // Shared cascade physics settles blocks after every clear
         cascades: true, // Standard uses the same cascade rules as the other base modes
         levelProgression: true, // Speed increases with lines
         scoring: 'standard', // Standard Tetris scoring

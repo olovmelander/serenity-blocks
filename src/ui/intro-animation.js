@@ -1238,9 +1238,9 @@ export class IntroAnimation {
         this.releaseMenuArrivalGuard = guardMenuArrival(event);
         this.onInteractionBegin?.();
 
-        // "Begin" confirm — dark-space start pulse, in sync with the dismiss/warp-out.
-        // Honors mute/volume; best-effort so a missing/blocked file never blocks the dismiss.
-        this.soundManager?.playOneShotFile?.('assets/audio/intro/begin.ogg', { volume: 0.8 });
+        // "Begin" confirm — dark-space start pulse, in sync with the dismiss/warp-out
+        // (synthesised: src/audio/launch-sounds.js). Honors mute/volume; best-effort.
+        this.soundManager?.playLaunchSound?.('begin', { volume: 0.8 });
         // The world answers: a wave of light leaves the title as it rises to the menu.
         try {
             this.threeRenderer?.pulseBegin?.();

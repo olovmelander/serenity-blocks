@@ -20,9 +20,10 @@ function getGltfLoader() {
         gltfLoader = new GLTFLoader();
 
         // KTX2 (Basis-supercompressed GPU textures): stays block-compressed end-to-end —
-        // ~4-6x less VRAM and no CPU decode-to-RGBA stall. Transcoder lives in
-        // public/basics/basis/ (mirrors the neon-district theme's path).
-        ktx2Loader = new KTX2Loader().setTranscoderPath('./basics/basis/');
+        // ~4-6x less VRAM and no CPU decode-to-RGBA stall. With no transcoder path the loader
+        // uses three's own transcoder, which Vite emits as assets/basis_transcoder-*; it is
+        // fetched only when a model carries a KTX2 texture.
+        ktx2Loader = new KTX2Loader();
         gltfLoader.setKTX2Loader(ktx2Loader);
 
         // Meshopt (EXT_meshopt_compression): ~3x smaller geometry + morph/animation safe

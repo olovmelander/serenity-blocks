@@ -73,7 +73,7 @@
 │  │  Attack Router     │                                      │
 │  │  (Host Only)       │                                      │
 │  │                    │                                      │
-│  │  1. Calculate      │  Quadra Formula:                    │
+│  │  1. Calculate      │  Garbage formula:                   │
 │  │     garbage        │  - Lines cleared                    │
 │  │                    │  - Cascade length                   │
 │  │  2. Apply scaling  │  - Source color                     │
@@ -126,7 +126,7 @@
 ### How It Works
 
 1. **Player clears lines** → Generates cascade summary
-2. **Attack Router calculates garbage** using Quadra formula:
+2. **Attack Router calculates garbage** using the Quadra-style formula:
    ```javascript
    calculateGarbage(cascadeSummary)
    ```
@@ -154,7 +154,7 @@
 If `boringRules: true` in match config:
 - **No attack scaling** (always 1.0x)
 - More chaotic gameplay
-- Traditional Quadra behavior
+- Classic full-strength attacks
 
 ---
 
@@ -465,7 +465,7 @@ ffa.hostMigration.prepareHandoff()
 **Why:**
 - ✅ True FFA gameplay (attack everyone)
 - ✅ Simple to implement
-- ✅ Quadra-authentic behavior
+- ✅ Quadra-style behavior
 - ✅ Predictable outcomes
 
 **Trade-offs:**
@@ -478,7 +478,7 @@ ffa.hostMigration.prepareHandoff()
 - ✅ Prevents overwhelming with 4+ players
 - ✅ Keeps gameplay balanced
 - ✅ Optional (can be disabled with boring rules)
-- ✅ Tested formula from Quadra
+- ✅ Simple, tunable formula
 
 **Formula:** `lines / (1 + (opponentCount - 2) * 0.2)`
 
@@ -545,7 +545,7 @@ Steam P2P handles:
 
 ✅ **Production-Ready Combat System**
 - All-vs-all attack routing
-- Quadra-authentic garbage calculation
+- Quadra-style garbage calculation
 - Attack scaling for balance
 - Low latency (<1ms per attack)
 
@@ -642,7 +642,7 @@ In just **20 minutes**, we've built:
 
 This isn't just working code. This is:
 
-🏆 **Quadra-Authentic** - True to the original game  
+🏆 **Quadra-Style** - Classic cascade-and-garbage play  
 🏆 **Competitive-Ready** - Balanced with attack scaling  
 🏆 **Resilient** - Host migration prevents disruption  
 🏆 **Efficient** - <1ms per combat operation  
@@ -680,7 +680,7 @@ We're **60% complete** with the entire multiplayer implementation and **11-14 da
 **Phase 3 is COMPLETE and VERIFIED!**
 
 We've built a **production-ready FFA combat system** with:
-- All-vs-all attack routing (Quadra-authentic)
+- All-vs-all attack routing (Quadra-style)
 - Complete frag tracking (5 win conditions)
 - Seamless host migration (resilient)
 - 100% test success (fully verified)

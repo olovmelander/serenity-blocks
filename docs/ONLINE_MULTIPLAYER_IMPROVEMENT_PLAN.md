@@ -42,18 +42,18 @@
 
 ---
 
-## 🎮 Comparison: Quadra vs Serenity Blocks
+## 🎮 Comparison: Target vs Serenity Blocks
 
-### Quadra's Approach (Reference Implementation)
+### Target Approach
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ QUADRA ARCHITECTURE                                      │
+│ TARGET ARCHITECTURE                                      │
 ├─────────────────────────────────────────────────────────┤
-│ • Server-Authoritative TCP/UDP model                    │
+│ • One authoritative relay (the host)                    │
 │ • Binary packet serialization (efficient)               │
 │ • Deterministic piece sequence via shared seed          │
 │ • Full state download on player join                    │
-│ • UDP broadcast for LAN discovery                       │
+│ • Lobby discovery                                       │
 │ • Survivor mode with round-based respawns               │
 │ • Attack scaling based on player count                  │
 │ • Recording/replay support                              │
@@ -76,18 +76,18 @@
 └─────────────────────────────────────────────────────────┘
 ```
 
-### Best Practices to Adopt from Quadra
+### Best Practices to Adopt
 
-| Feature | Quadra Implementation | Adoption Plan |
+| Feature | Target Behavior | Adoption Plan |
 |---------|----------------------|---------------|
 | **Deterministic Sync** | Shared seed = same pieces | ✅ Already implemented |
-| **Join Sync + Full Download** | Server sends full canvas on join at safe syncpoint | 🔴 Not implemented; add in Phase 4 (resync) |
-| **Syncpoints** | Server broadcasts state gates to align transitions | 🔴 Not implemented; add with resync gating |
-| **Client-Side Prediction** | TCP acceptable in dial-up era, modern needs prediction | 🟡 Partial (input buffering + local prediction); add reconciliation |
-| **Move Compression** | Bit-packed input stream (P_MOVES) | 🔴 Not implemented; batch inputs per tick |
+| **Join Sync + Full Download** | Host sends the full board on join at a safe syncpoint | 🔴 Not implemented; add in Phase 4 (resync) |
+| **Syncpoints** | Host broadcasts state gates to align transitions | 🔴 Not implemented; add with resync gating |
+| **Client-Side Prediction** | Modern internet RTTs need prediction | 🟡 Partial (input buffering + local prediction); add reconciliation |
+| **Move Compression** | Bit-packed input stream | 🔴 Not implemented; batch inputs per tick |
 | **Delta State Sync** | Only send changes | 🟡 Partial (skip broadcasts on no-change); add delta/binary |
 | **Attack Balancing** | Reduce damage with many players | 🔴 Config exists; scaling disabled in router |
-| **Binary Encoding** | Raw bytes for grid (320 bytes/player) | 🔴 Not implemented; target Phase 4.2 |
+| **Binary Encoding** | Raw bytes for the grid | 🔴 Not implemented; target Phase 4.2 |
 | **Survivor Mode** | Round-based, respawn mechanics | 📋 Phase 5+ enhancement |
 | **Recording/Replay** | Packet logging for replays | 🔴 Not implemented; add passive logging + export |
 | **Handicap System** | Skill-based starting levels | 🟡 Core fields exist; add UI + validation |
@@ -130,23 +130,23 @@
 - **Soak tests:** 10-30 minute sessions with 4-8 players.
 - **Regression tests:** input buffering, garbage sync, match end + rematch.
 
-### Quadra Networking Model to Mirror (from `/quadra`)
-- **Full state download on join** (Packet_download + Packet_gameserver) only when syncpoint is safe and all canvases are idle. (`quadra/source/net_server.cc`, `quadra/source/packets.h`)
-- **Syncpoints for phase alignment** using server state packets (Packet_serverstate) polled by clients. (`quadra/source/net_list.cc`)
-- **Bit-packed input stream** via Packet_moves/Packet_clientmoves to reduce bandwidth. (`quadra/source/packets.h`, `quadra/source/packets.cc`)
-- **Server seed updates** between syncpoints (Packet_serverrandom). (`quadra/source/packets.h`)
-- **Reliable gameplay transport, UDP discovery only** (TCP for packets, UDP for LAN). (`quadra/source/net.cc`)
-- **Packet logging for replay/debug** (Packet_serverlog + recording). (`quadra/source/net_server.cc`, `quadra/source/recording.h`)
+### Networking Model
+- **Full state download on join** only when the syncpoint is safe and all boards are idle.
+- **Syncpoints for phase alignment**, broadcast by the host.
+- **Bit-packed input stream** to reduce bandwidth.
+- **Seed updates** only between syncpoints.
+- **Reliable gameplay transport**, with discovery kept separate.
+- **Packet logging for replay/debug.**
 
-**Quadra → Serenity (Spacewar P2P) Mapping:**
-| Quadra | Serenity Blocks (Steam P2P) |
+**Serenity (Spacewar P2P) Mapping:**
+| Need | Serenity Blocks (Steam P2P) |
 |--------|-----------------------------|
-| `Packet_download` | `GAME_STATE_RESYNC` (reliable full snapshot) |
-| `Packet_serverstate` | `GAME_SYNCPOINT` (phase gating) |
-| `Packet_moves` | `GAME_INPUT_BATCH` (tick-based input stream) |
-| `Packet_serverrandom` | `LOBBY_MATCH_CONFIG` / match seed |
-| TCP gameplay packets | Steam P2P reliable channel |
-| UDP LAN discovery | Steam Lobby discovery |
+| Full snapshot on join/resync | `GAME_STATE_RESYNC` (reliable full snapshot) |
+| Phase gating | `GAME_SYNCPOINT` (phase gating) |
+| Input stream | `GAME_INPUT_BATCH` (tick-based input stream) |
+| Shared seed | `LOBBY_MATCH_CONFIG` / match seed |
+| Reliable gameplay packets | Steam P2P reliable channel |
+| Discovery | Steam Lobby discovery |
 
 ---
 
@@ -436,10 +436,9 @@ class ClientPrediction {
 ### Problem
 In 5+ player FFA, a single tetris (4 lines) sends garbage to ALL opponents. Without scaling, games become chaotic instant-death scenarios.
 
-### Quadra's Solution ("Boring Rules" toggle)
-From `quadra/source/net_list.cc` lines 160-203:
-- When `boring_rules = false`: Attack damage scales inversely with opponent count
-- Formula approximation: `effective_lines = sent_lines / max(1, num_opponents / 2)`
+### Design: an optional fair-scaling rule
+- With fair scaling on, attack damage scales inversely with opponent count.
+- With it off (classic rules), every clear sends full damage to every target.
 
 ### Serenity Blocks Implementation
 
@@ -447,7 +446,7 @@ From `quadra/source/net_list.cc` lines 160-203:
 // Attack scaling formula
 function calculateScaledGarbage(baseLinesCleared, numOpponents, fairScalingEnabled) {
     if (!fairScalingEnabled) {
-        // "Boring rules" - no scaling
+        // Classic rules - no scaling
         return baseLinesCleared;
     }
     
@@ -463,12 +462,12 @@ function calculateScaledGarbage(baseLinesCleared, numOpponents, fairScalingEnabl
 
 ### Match Config UI Addition
 
-The following settings should be added to `match-config-modal.js` to match Quadra's configuration options:
+The following settings should be added to `match-config-modal.js`:
 
 ```javascript
-// Add to match-config-modal.js - Quadra-compatible settings
+// Add to match-config-modal.js - match rule settings
 
-// Fair Attack Scaling (Quadra's "Boring Rules" inverted)
+// Fair Attack Scaling (off = classic rules)
 {
     id: 'fairAttackScaling',
     label: 'Fair Attack Scaling',
@@ -477,7 +476,7 @@ The following settings should be added to `match-config-modal.js` to match Quadr
     help: 'Reduce garbage damage with many players (prevents instant death in 5+ player games)'
 }
 
-// Starting Level (Quadra: 1-9). Shipped 2026-10-21 with Level Progression below, on both
+// Starting Level (1-9). Shipped 2026-10-21 with Level Progression below, on both
 // setup sheets: src/core/multiplayer/match-level-rule.js (default: a fixed level 1).
 {
     id: 'startingLevel',
@@ -488,7 +487,7 @@ The following settings should be added to `match-config-modal.js` to match Quadr
     help: 'Initial difficulty level (affects piece fall speed)'
 }
 
-// Level Progression (Quadra: every 15 lines)
+// Level Progression (every 15 lines)
 {
     id: 'levelProgression',
     label: 'Level Progression',
@@ -497,7 +496,7 @@ The following settings should be added to `match-config-modal.js` to match Quadr
     help: 'If enabled, level increases every 15 lines cleared'
 }
 
-// Handicap System (Quadra: skill balancing)
+// Handicap System (skill balancing)
 {
     id: 'allowHandicap',
     label: 'Allow Handicaps',
@@ -708,7 +707,7 @@ CHAT_MESSAGE: {
 
 | Priority | Notes |
 |----------|-------|
-| 🟡 MEDIUM | Not blocking for MVP, but required for full Quadra parity |
+| 🟡 MEDIUM | Not blocking for MVP, but required for full team play |
 | Phase 3+ | Implement after core FFA is working |
 
 ## Infinity LMS (NEW - Online Mode)
@@ -780,13 +779,6 @@ Infinity LMS brings the tall-board Infinity experience to online play: last play
 
 ### Problem
 JSON snapshots at 30Hz for 8 players = **~4-8KB per snapshot**, potentially hitting bandwidth limits.
-
-### Quadra's Approach
-From `packets.h` lines 427-449:
-- Grid: `uint8_t can[32][10]` = 320 bytes per player
-- Piece queue: 4 bytes
-- Bonus/garbage: 20 entries × 5 bytes = 100 bytes
-- Total: ~450 bytes per player vs ~1-2KB JSON
 
 ### Serenity Blocks Binary Format
 
@@ -893,13 +885,11 @@ class BinaryEncoder {
 
 ---
 
-## 🔒 Syncpoint States (NEW - Quadra Model)
+## 🔒 Syncpoint States (NEW)
 
-### Quadra's Syncpoint Mechanic
-From `net_list.cc` lines 360-371:
-1. Server broadcasts `P_SERVERSTATE` at safe moments (all canvases idle)
-2. Clients poll every 5 frames
-3. **Downloads only happen when `syncpoint == Canvas::LAST`**
+### Rule
+1. Host broadcasts a syncpoint at safe moments (all boards idle)
+2. **Join/resync downloads only happen at a safe syncpoint**
 
 ### Serenity Blocks Syncpoint States
 
@@ -1329,7 +1319,7 @@ class OpponentWatchManager {
 
 **Existing Implementation in Local Multiplayer:**
 ```javascript
-// Attack Types (Quadra-compatible)
+// Attack Types
 ATTACK_TYPES = {
     LINES: 'lines',        // Standard garbage rows
     CLEAN: 'clean',        // Strategic hole placement
@@ -1414,7 +1404,7 @@ ATTACK_TYPES = {
 - Main board needs full Phaser for input + effects
 - Opponent boards need to be small and swappable (max 4 visible, up to 7 selectable)
 - Canvas is much lighter than several Phaser instances
-- Matches Quadra's approach (big main board, small watchers)
+- Same screen idea as Quadra (big main board, small opponent boards)
 
 ---
 
@@ -1583,7 +1573,7 @@ CHAT_MESSAGE: {
 
 **Note:** If you want smaller snapshots, omit `cells`/`color` and derive them from `type + rotation` on the client.
 
-### Join/Resync Flow (Quadra-Style Download)
+### Join/Resync Flow (Full Download)
 1. **Safe join gate:** Host only accepts join/resync when match is at a safe syncpoint (not mid-tick).
 2. **Send config first:** Host sends match config + seed + phase to the joining client.
 3. **Full snapshot download:** Host sends chunked `GAME_STATE_RESYNC` (16 KB chunks, window = 4, 300 ms timeout, 5 retries).
@@ -2272,7 +2262,7 @@ src/
 │   │   └── disconnect-detector.js      ← Heartbeat + timeout handling (PLANNED)
 │   ├── engine/
 │   │   └── unified-game-loop.js        ← Game loop (COMPLETE)
-│   └── garbage.js                      ← Quadra-compatible attacks (REUSE)
+│   └── garbage.js                      ← Attack/garbage rules (REUSE)
 │
 ├── ui/
 │   ├── lobby-browser.js                ← Browse lobbies (COMPLETE)
@@ -2352,7 +2342,6 @@ public/
 ### Why 30Hz Sync Rate?
 - Balance between responsiveness and bandwidth
 - Local prediction handles input latency
-- Quadra used similar approach (original dial-up compatible)
 - Can increase to 60Hz if needed
 
 ### Why Host-Authoritative?
@@ -2428,7 +2417,6 @@ const VALIDATION_RULES = {
 
 ## 🔗 References
 
-- [Quadra Source Code](./quadra/) - Original implementation reference
 - [FFA Multiplayer Plan](./docs/FFA_MULTIPLAYER_IMPLEMENTATION_PLAN.md)
 - [Lobby System Docs](./docs/LOBBY_SYSTEM_IMPLEMENTATION.md)
 - [Steam Networking API](https://partner.steamgames.com/doc/api/ISteamNetworkingSockets)

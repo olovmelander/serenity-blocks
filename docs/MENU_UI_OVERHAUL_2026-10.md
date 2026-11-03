@@ -54,7 +54,7 @@ from it and the language is named after it: **Keystone**.
 | Motion | `--sb-ease-lock`, `--sb-ease-breathe`, `--sb-dur-1/2/3`, `--sb-breath` | | See rule 4 |
 
 Per-mode identity: Single Player aqua, Infinity lavender, Local Versus rose, Online Versus
-sky, Serenity and Hale Sessions mint, Odyssey gold.
+sky, Serenity and Sukha Sessions mint, Odyssey gold.
 
 The legacy `--cs-*` tokens (`cosmic-tokens.css`) now carry brand values too, so anything
 still built on them reads as the same family.
@@ -115,13 +115,13 @@ open-corner notch the hero panels cut for it. What it marked is still marked:
 
 | Was | Now |
 |---|---|
-| Tile in the open corner of the menu stage, every sheet (Settings, Records, Replays, game over), the Hub, the multiplayer sheets, the waiting room and results, the Odyssey sheets and level panel, the Hale prepare panel and the countdown plate | Nothing: whole rounded panels |
+| Tile in the open corner of the menu stage, every sheet (Settings, Records, Replays, game over), the Hub, the multiplayer sheets, the waiting room and results, the Odyssey sheets and level panel, the Sukha prepare panel and the countdown plate | Nothing: whole rounded panels |
 | Tile on the current mode, Settings section and controls set, theme card, breathing world, playing track and next Odyssey level | Their existing state alone: tinted fill and frame, the "Current" label, the coral frame on the next level |
 | The focus tile (`keystone-focus.js`, `.sb-keystone`) | The cream focus ring (§1.6) |
 | Small inline tiles: the Hub's "Current" and "press again" hints, the local and online match bars, the goal-complete banner | Nothing (the words carry it) |
 | The tile on a dropdown's chosen option | A cream check |
 
-Coral stays on the primary button, a meter's current cell, Hale's practised-today cell,
+Coral stays on the primary button, a meter's current cell, Sukha's practised-today cell,
 the countdown's GO, the next Odyssey level's frame and a few thin bars
 and outlines. `@keyframes sb-key-drop` stays (the local results crown uses it).
 
@@ -198,7 +198,7 @@ section lists them).
 ## 3. Main menu (`#start-modal`)
 
 **Before:** a 2 × 3 grid of near-identical glass cards; monospace descriptions; four
-unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
+unlabelled icon tiles on the right edge; a floating "Sukha sessions" pill.
 
 **After:**
 
@@ -206,22 +206,22 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
   packaged Electron already used). The intro title still flies into it — the handoff
   targets `.main-menu-logo img` whenever the shrunken intro title is not displayed.
 - **Modes as a list grouped by the tagline:** Stack (Single Player, Infinity, Local
-  Versus, Online Versus), Breath (Serenity, Hale Sessions), Ascend (Odyssey). The current
+  Versus, Online Versus), Breath (Serenity, Sukha Sessions), Ascend (Odyssey). The current
   item is lit in its mode's hue. Every `.game-mode-card` keeps its id and `data-mode`
-  (game-mode-ui.js, gamepad card navigation, tests). Hale Sessions is now a list entry
-  (`#hale-card-btn`, `data-mode="hale"`) that opens the guided sessions; the floating pill
+  (game-mode-ui.js, gamepad card navigation, tests). Sukha Sessions is now a list entry
+  (`#sukha-card-btn`, `data-mode="sukha"`) that opens the guided sessions; the floating pill
   is hidden on the menu.
 - **Stage** for the current mode: a picture of the mode across the top (§3.1), the
   custom-lettered mode wordmark (the same alphabet as the logo,
   `public/assets/branding/modes/`) rising into the picture's fade, what the mode is, the
   player's own facts (Single Player's best score, level and games from its own counters,
   `byMode.single` in `score-statistics.js`, since Records' totals count Infinity runs too;
-  Odyssey levels, stars and chapter from the save; Hale sessions open, streak and practice
+  Odyssey levels, stars and chapter from the save; Sukha sessions open, streak and practice
   time; Serenity's worlds collected, as the Hub
   counts them, breathing worlds open and drift, with a note naming a new player's first world
   and where more come from), an Odyssey meter with a cell per level
   grouped by chapter and the keystone on the next level, and one primary action. The panel
-  keeps one height for every mode, sized for the longest copy (Hale Sessions with its
+  keeps one height for every mode, sized for the longest copy (Sukha Sessions with its
   note), so the button never moves. Odyssey's level and chapter counts are read from the
   registry (lazy-loaded — `levels.js` alone is 142 KB) instead of hard-coded copy; the old
   card said "56 levels across 7 chapters", the game had 59 in 8 (60 since).
@@ -260,9 +260,9 @@ in the corner. It now opens with a picture of the mode, taken from the game itse
   | Online Versus | Sky Children: a six-player match |
   | Serenity | Golden Forest |
   | Odyssey | The chapter the player's next level is in (`odyssey-<n>.webp`, 1–8), with a caption ("Chapter 4 · Mountains") |
-  | Hale Sessions | The poster of the newest session open on the breath path (`public/assets/breathing/<world>.webp`), with the session's name as caption |
+  | Sukha Sessions | The poster of the newest session open on the breath path (`public/assets/breathing/<world>.webp`), with the session's name as caption |
 
-  The Odyssey and Hale pictures follow the player, so the stage shows where they are.
+  The Odyssey and Sukha pictures follow the player, so the stage shows where they are.
 - **Layout:** the picture lies across the top of the panel (`--sb-art-h`: 176–300 px,
   160–210 px in windows under 800 px tall) and fades into it by a mask. The eyebrow and
   wordmark rise into the fade (`--sb-art-rise`), so the copy below stays on plain glass. A
@@ -319,12 +319,12 @@ in the corner. It now opens with a picture of the mode, taken from the game itse
 | The game-over career card, comparisons and record chip counted Infinity runs against Single Player | Per mode: `statisticsForMode()`, and scores now carry their mode for `getRank(score, { mode })` |
 | Records mixed every mode in one top-10 and one set of statistics; Infinity runs pushed Single Player scores out of the shared top 100 | A tab per mode with its own facts and list; scores stored and trimmed per mode (§5.1) |
 | Steam's status line used old names ("Local Multiplayer", "FFA Match", "Level 1" forever) and raw text that the friends list never shows | Menu names, only reported details, and localization tokens (`steam/rich-presence/`, to upload in Steamworks) |
-| Mode copy: Local Versus promised "outlast everyone" (matches are won by frags, lines, score or time); Infinity's "build upward instead of down"; Hale listed its last four sessions as if open | Copy audit 2026-10-17: rewritten, Hale shows sessions open (1 / 9) |
+| Mode copy: Local Versus promised "outlast everyone" (matches are won by frags, lines, score or time); Infinity's "build upward instead of down"; Sukha listed its last four sessions as if open | Copy audit 2026-10-17: rewritten, Sukha shows sessions open (1 / 9) |
 | The desktop game had no way to quit from its menus (Alt+F4 only, in fullscreen) | Quit in the main menu dock, two presses |
 | A failed game start raised a browser `alert` | A Keystone toast (the toast listener now installs at boot, with the main menu) |
 | On game over every controller face button restarted, B included, and a button still held from play fired at once | B is Main menu (like Escape); A, X, Y or Start play again; the sheet arms only after a neutral release |
 | Controller B ignored the multiplayer back stack | B goes back like Escape, and pad navigation stays inside the top multiplayer surface |
-| The floating Hale sessions pill crowded every mode (Serenity most), and with the corner tiles covered the online chat and, on phones, the board | One play rail; Hale lives in the Hub (§5.5) |
+| The floating Sukha sessions pill crowded every mode (Serenity most), and with the corner tiles covered the online chat and, on phones, the board | One play rail; Sukha lives in the Hub (§5.5) |
 | The controls took the online chat's corner (the chat column was shortened for them) and sat on player 4's board in 4-player local versus | One identical tray at the top-right in every mode; the layouts keep that corner free (§5.5) |
 | Rotating left with Y opened the Serenity Hub mid-run in every mode; LB/RB, LT/RT, L3 and R3 reached the Hub's music, volume, random-theme and fullscreen shortcuts during play | Serenity's pad shortcuts apply in Serenity Mode (and in the open Hub) only |
 | A controller could not reach the Hub outside Serenity | Serenity Hub on the pause sheet (Start, then the button) |
@@ -363,7 +363,7 @@ in the corner. It now opens with a picture of the mode, taken from the game itse
 | Replays: focus was lost after a delete; the browser never fired `modalShown`/`modalHidden` | Focus moves on; events fire |
 | Typing in the theme search fired Serenity's shortcuts (B random theme, T, F, H, Space) | The search owns its keys; the first Esc clears it, the second closes the Hub |
 | Space/Enter on a Hub button also reached the game; the closed Hub could still take focus | Contained in the Hub; the closed Hub is inert |
-| A Hale flow or breathing guide opened from the main menu let Space/Enter reach the menu (and reopen the Hub), and the menu kept animating underneath | The menu stands down while either is open; both count as menu surfaces, so the menu behind them is marked covered |
+| A Sukha flow or breathing guide opened from the main menu let Space/Enter reach the menu (and reopen the Hub), and the menu kept animating underneath | The menu stands down while either is open; both count as menu surfaces, so the menu behind them is marked covered |
 | A global `.gamepad-focused { outline: … !important }` drew an indigo ring over every focus style | Removed; the cream outline marks focus (the focus ring for a controller, §1.6) |
 | Hub tab panels were labelled by themselves; `serenity-hub.css` redefined `@keyframes pulse` for the whole game | Labelled by their tabs; Hub keyframes are its own |
 | Tabbing to "Back to Map" in the Odyssey failure sheet and pressing Enter retried the level | A focused button owns Enter/Space; Retry takes focus when the sheet opens |
@@ -393,7 +393,7 @@ in the corner. It now opens with a picture of the mode, taken from the game itse
 |---|---|---|
 | Main menu, dock, corner tiles, player card | `keystone-menu.css` | Shipped. 2026-10-21: the player card is a Keystone tile read from `steamService` on every show, absent in browser builds (no Steam client); the selected mode lights the page (`menu-light.js`). See [UI_NAVIGATOR_STANDARD_PASS_2026-10.md](UI_NAVIGATOR_STANDARD_PASS_2026-10.md). |
 | Settings (also the pause sheet), Records, Replays, game over, replay complete | `keystone-settings.css`, `keystone-modals.css` | Shipped |
-| Serenity Hub (Themes, Music, Breathing, Hale sessions), Hale flow, breathing guide chrome, Serenity controls overlay | `keystone-hub.css`, `breathwork-sessions.css`, `breathing-library.css`, `breathing-guide.css` | Shipped |
+| Serenity Hub (Themes, Music, Breathing, Sukha sessions), Sukha flow, breathing guide chrome, Serenity controls overlay | `keystone-hub.css`, `breathwork-sessions.css`, `breathing-library.css`, `breathing-guide.css` | Shipped |
 | Multiplayer (local setup, lobby browser, create match, waiting room, results, toasts, invite, in-game HUD type) | `keystone-multiplayer.css` | Shipped |
 | Loading, countdown, Odyssey overlays and HUD, replay playback bar, single-player and Infinity HUD type | `keystone-overlays.css` | Shipped |
 | In-game controls (the play rail: Chapters, Serenity Hub, Settings) | `keystone-overlays.css`, `src/ui/keystone/play-rail.js` | Shipped |
@@ -527,7 +527,7 @@ and saturated purple/teal/green thumbnail backdrops behind every theme orb.
   rectangles that sit inside the circle; no new assets. Details:
   [src/ui/serenity-hub/README.md](../src/ui/serenity-hub/README.md#themes-tab).
 - **Breathing:** one coral Begin, the chosen world framed in its own light, Keystone toggles.
-- **Hale sessions and the flow:** catalogue, a prepare panel, a
+- **Sukha sessions and the flow:** catalogue, a prepare panel, a
   four-beat meter on the countdown and a completion screen with the holds as bars.
 - **Breathing guide chrome and the Serenity controls overlay (`/`):** keycaps for every
   key, the controls overlay built from the player's own bindings, the end confirmation's
@@ -589,7 +589,7 @@ show/hide base and the HUD layout.
 ### 5.5 In-game controls: the play rail (`src/ui/keystone/play-rail.js`)
 
 **Before:** separate floating tiles stacked up the right edge (the Serenity Hub lotus, the
-settings gear, Odyssey's navigator) plus a 190 px "Hale sessions" pill beside them in
+settings gear, Odyssey's navigator) plus a 190 px "Sukha sessions" pill beside them in
 every mode. A first rail gathered them into one row in the bottom-right corner — the right
 idea in the wrong place: online versus shortened its chat column to make room, the row sat
 on player 4's board in 4-player local versus, the lotus and gear were the old filled
@@ -640,7 +640,7 @@ belongs to the game: boards, chat, stats, touch controls and toasts.
 - The rail **adopts** the existing controls (`#odyssey-navigator-btn`,
   `#serenity-hub-icon`, `#settings-btn-global`): ids, handlers and the code that shows,
   hides or activates them are unchanged. It is hidden on the main menu (the dock replaces
-  it) and while the breathing guide or a Hale flow is open.
+  it) and while the breathing guide or a Sukha flow is open.
 
 ### 5.6 Local versus (`keystone-versus.css`)
 
@@ -873,18 +873,15 @@ index back from the renderer.
 | Round won (versus) | `camera.flash` (a solid gold board), blob fireworks for a second, confetti | Gold light rises from the floor of the winner's well and two fireworks climb as one bright mote each and burst (flash, ring, embers in the winner's colour); the round waits 1.5 s on the outcome |
 | Match won (versus) | Nothing on the boards; the results faded in | A 2.4 s beat before the results: the boards hold still, the winner's well lights, a halo breathes behind it, five shells go up, a "Match won / Victory / name" crest rises in their colour (`local-versus-hud.js` `showVictory`), the other wells dim |
 
-**Cascades, as Quadra plays them.** The gravity is Quadra's (the physics is calibrated
-against its source: a 160 ms hold on cleared rows, 20 ms gravity steps). In Quadra a
-*move* is everything one piece sets off: its **depth** is the lines it clears in all,
-its **complexity** the waves — what this game calls the combo — and the score rewards
-lines over waves. When a move settles Quadra scrolls one line summing it up (its lines,
-"Double", "Triple", "Quad", and its points); a block's landing thud grows with how far
-it fell and the clear's pitch drops with each wave; an emptied well scrolls "Clean
-canvas!" and pays bonus lines. Sources:
-[harddrop.com/wiki/Quadra](https://harddrop.com/wiki/Quadra),
-[tetris.wiki/Quadra](https://tetris.wiki/Quadra) and the source,
-[github.com/quadra-game/quadra](https://github.com/quadra-game/quadra) (`canvas.cc`,
-`player.cc`). The boards follow it:
+**Cascades.** Here cleared rows hold for 160 ms, then the stack falls 20 ms per row.
+In Quadra a *move* is everything one piece sets off: its **depth** is the
+lines it clears in all, its **complexity** the waves — what this game calls the combo —
+and the score rewards lines over waves. When a move settles Quadra scrolls one line
+summing it up (its lines, "Double", "Triple", "Quad", and its points); a block's
+landing thud grows with how far it fell and the clear's pitch drops with each wave; an
+emptied well scrolls "Clean canvas!" and pays bonus lines. Sources:
+[harddrop.com/wiki/Quadra](https://harddrop.com/wiki/Quadra) and
+[tetris.wiki/Quadra](https://tetris.wiki/Quadra). The boards follow it:
 
 - **Each wave counts**: the depth's number in the chain's tone; the next replaces it.
 - **What a wave drops lands**: a piece that fell two rows or more lights where it comes
@@ -1185,7 +1182,7 @@ counts are numbers from the bridge on (`electron/steam-integration.js`,
 
 Every DOM surface was captured in the real game on the GPU (Electron, WebGPU, a private dev
 server; the launch, the main menu with each mode's stage, every Settings tab and controls
-subtab, Records, Replays, the Hub's four tabs, Hale's prepare and countdown, single player
+subtab, Records, Replays, the Hub's four tabs, Sukha's prepare and countdown, single player
 with the play rail, pause, game over, Infinity, Stillfall and its atlas, Local Versus setup,
 match and results, the online browser, create, waiting room, match and results, Odyssey's
 arrival and navigator, Serenity and its controls overlay, toasts, the loading cover and the
@@ -1202,7 +1199,7 @@ countdown), in pointer and gamepad hint modes, at 1600 x 900, 1280 x 720, 1024 x
 | Stillfall's atlas put its Back to the puzzle under the play rail while the tray named its controls (a mode's first three runs) | The atlas folds a peek when it opens, and no peek starts while it is open (`foldPlayRailPeek`, `RAIL_SHY_SURFACES` in `play-rail.js`) |
 | Local Versus results left by any way but their own buttons (the pause sheet's Main menu, a quit to menu) stayed over every screen that followed, the menu, the online lobby and Odyssey included | The overlay leaves when the main menu is shown (`modalShown` with `start`; `tests/unit/local-match-end-overlay.test.js`) |
 | The multiplayer sheets (Local versus, Online versus, Create a match) closed with an icon-only ✕, the one sheet family without words | The labelled Close with its Esc and B keycaps that Settings, Records, Replays and the Hub carry |
-| Hale Sessions was the one mode stage titled in plain text | Its own wordmark, HALE over SESSIONS, in the logo's alphabet (an H added to `generate-mode-wordmarks.mjs`; a short row scales up no further than LOCAL over VERSUS, so every other wordmark is byte-identical) |
+| Sukha Sessions was the one mode stage titled in plain text | Its own wordmark, SUKHA over SESSIONS, in the logo's alphabet (an H added to `generate-mode-wordmarks.mjs`; a short row scales up no further than LOCAL over VERSUS, so every other wordmark is byte-identical) |
 | The breathing guide's ELIXIR accent (255, 150, 120) sat beside coral | Keystone gold (243, 210, 141), as the Hub has it |
 | The photosensitivity warning broke the path to its setting after "Reduce" | The path stays on one line from 560 px wide (inline style; still plain white on black, ADR-0021) |
 

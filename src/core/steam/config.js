@@ -1,8 +1,6 @@
 /**
- * Steam Configuration
- *
- * Uses Spacewar (AppID 480) for development/testing
- * Switch to your real AppID for production
+ * Steam Configuration (renderer): debug logging and mock mode. The AppID is the main process's
+ * (electron/steam-app-id.js).
  */
 
 // Safely access process.env (works in both browser and Electron)
@@ -15,14 +13,8 @@ const getEnv = (key) => {
 
 const isProduction = getEnv('NODE_ENV') === 'production';
 const isMockMode = getEnv('MOCK_STEAM') === 'true';
-const steamAppId = getEnv('STEAM_APP_ID');
 
 export const SteamConfig = {
-    // Spacewar (480) for testing, real AppID for production
-    appId: steamAppId
-        ? parseInt(steamAppId)
-        : (isProduction ? 0 : 480),
-
     // Enable debug logging in development
     debugMode: !isProduction,
 
@@ -32,7 +24,6 @@ export const SteamConfig = {
 
 if (SteamConfig.debugMode) {
     console.log('🎮 Steam Config:');
-    console.log(`   AppID: ${SteamConfig.appId} ${SteamConfig.appId === 480 ? '(Spacewar - Testing)' : '(Production)'}`);
     console.log(`   Mock Mode: ${SteamConfig.mockMode}`);
     console.log(`   Debug Mode: ${SteamConfig.debugMode}`);
 }

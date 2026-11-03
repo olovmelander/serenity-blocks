@@ -926,11 +926,11 @@
                         <p class="mode-card-desc">Nothing to play. Living worlds, music and breath.</p>
                     </div>
 
-                    <div class="game-mode-card" data-mode="hale" id="hale-card-btn" tabindex="0">
+                    <div class="game-mode-card" data-mode="sukha" id="sukha-card-btn" tabindex="0">
                         <div class="mode-card-icon">
-                            <svg class="cs-icon cs-icon--hale" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 19c3.6 0 4.8-7.5 10-7.5S18.4 19 22 19"/><rect class="cs-tile" x="9.5" y="3.5" width="5" height="5" rx="1.35" fill="currentColor" stroke="none"/></svg>
+                            <svg class="cs-icon cs-icon--sukha" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 19c3.6 0 4.8-7.5 10-7.5S18.4 19 22 19"/><rect class="cs-tile" x="9.5" y="3.5" width="5" height="5" rx="1.35" fill="currentColor" stroke="none"/></svg>
                         </div>
-                        <h2 class="mode-card-title">Hale Sessions</h2>
+                        <h2 class="mode-card-title">Sukha Sessions</h2>
                         <p class="mode-card-desc">Guided breathwork. Nine sessions with a voice to follow.</p>
                     </div>
                 </div>
@@ -1138,6 +1138,9 @@
                 </button>
                 <button type="button" class="settings-tab" data-tab="controls" role="tab" id="settings-tab-controls" aria-selected="false" aria-controls="settings-controls" tabindex="-1">
                     <svg class="settings-tab__icon" aria-hidden="true" focusable="false"><use href="#sb-ico-pad"></use></svg><span>Controls</span>
+                </button>
+                <button type="button" class="settings-tab" data-tab="legal" role="tab" id="settings-tab-legal" aria-selected="false" aria-controls="settings-legal" tabindex="-1">
+                    <svg class="settings-tab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M7 3h7l4 4v14H7zM14 3v4h4M10 12h5M10 16h5"/></svg><span>Credits &amp; legal</span>
                 </button>
                 <button type="button" class="settings-tab" data-tab="url-parameters" role="tab" id="settings-tab-url-parameters" aria-selected="false" aria-controls="settings-url-parameters" tabindex="-1">
                     <svg class="settings-tab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true" focusable="false"><path d="m9 7-5 5 5 5m6-10 5 5-5 5m-2-14-2 18"/></svg><span>URL parameters</span>
@@ -2084,6 +2087,19 @@
                                     <button type="button" class="controls-subtab-action sb-btn sb-btn--quiet" data-reset-target="gamepad-player4">Reset to defaults</button>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-tab-content" id="settings-legal" role="tabpanel" aria-labelledby="settings-tab-legal">
+                    <div class="legal-docs">
+                        <div class="legal-docs__nav" role="group" aria-label="Documents">
+                            <button type="button" class="sb-btn sb-btn--quiet legal-docs__btn" data-legal-doc="credits" aria-pressed="false">Credits</button>
+                            <button type="button" class="sb-btn sb-btn--quiet legal-docs__btn" data-legal-doc="notices" aria-pressed="false">Notices</button>
+                            <button type="button" class="sb-btn sb-btn--quiet legal-docs__btn" data-legal-doc="licences" aria-pressed="false">Licences</button>
+                            <button type="button" class="sb-btn sb-btn--quiet legal-docs__btn" data-legal-doc="privacy" aria-pressed="false">Privacy</button>
+                        </div>
+                        <div class="legal-doc" tabindex="0" aria-live="polite" aria-busy="false">
+                            <p class="setting-help" role="status">Open this section to read the game's credits, notices, licences and privacy.</p>
                         </div>
                     </div>
                 </div>

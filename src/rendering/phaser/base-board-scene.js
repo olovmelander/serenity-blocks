@@ -874,7 +874,7 @@ export function createBaseBoardScene(
                 this.drawCurrentPiece();
             }
 
-            // Quadra blind veil — refreshed when its effective alpha changes; the blind layer
+            // Blind veil — refreshed when its effective alpha changes; the blind layer
             // sits below the piece layer so the active piece/ghost stay visible.
             this.drawBlindOverlay();
         }
@@ -891,7 +891,7 @@ export function createBaseBoardScene(
         }
 
         /**
-         * Draws the Quadra blind blackout from gameState.blindTimers onto the
+         * Draws the blind blackout from gameState.blindTimers onto the
          * dedicated blind layer. Identical effective alpha/geometry retains its commands.
          *   - full blind (field):   veil the whole visible locked stack
          *   - partial blind (pending): veil only the garbage rows

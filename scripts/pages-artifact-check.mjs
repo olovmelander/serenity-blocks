@@ -37,7 +37,7 @@ const manifestPath = path.join(distDir, 'manifest.json');
 const hiddenManifestPath = path.join(distDir, '.vite', 'manifest.json');
 const assetsDir = path.join(distDir, 'assets');
 const playgroundReferencesDir = path.join(distDir, 'playground-refs');
-const requiredLegalNotices = ['CREDITS.md', 'THIRD_PARTY_NOTICES.md', 'README.md'];
+const requiredLegalNotices = ['CREDITS.md', 'THIRD_PARTY_NOTICES.md', 'PRIVACY_POLICY.md', 'README.md'];
 // Written by Vite's build.license from the bundled packages; the bundle itself carries no notices.
 const bundledLicensesPath = path.join(distDir, 'THIRD_PARTY_LICENSES.md');
 const requiredBundledLicenses = ['phaser', 'three'];

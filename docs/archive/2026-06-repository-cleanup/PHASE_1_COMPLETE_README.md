@@ -214,7 +214,7 @@ This implementation demonstrates:
 ## 🙏 Acknowledgments
 
 **Based on:**
-- Quadra FFA multiplayer design
+- Quadra-inspired FFA multiplayer design
 - Local 2-player mode (working reference)
 - Phaser 4 rendering architecture
 

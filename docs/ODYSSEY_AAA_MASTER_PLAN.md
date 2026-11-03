@@ -168,7 +168,7 @@ Authored directly in TSL (so they only ever exist on the new core). Techniques a
 | **4** | Mountains | **Volumetric aurora** (folded `abs(noiseA−noiseB)` curtains, altitude color) + alpenglow summit | **Switchback** ridge corridor with cairns either side (not a far proscenium) | drifting snow (compute) |
 | **5** | Sky & Drift | **Cloud-sea + crepuscular god-rays** through cloud breaks (GPU Gems radial-blur, sun-gated) | Cloud banks the path **threads between**; re-anchor env to path (fix +185u) | cloud motes / rain veils |
 | **6** | Space | **Raymarched nebula** (FBM density, HG phase) + banded hero planet | Asteroid/lens-gate **gauntlet** the path curves through; re-anchor env (fix −231u); **kill aerial perspective** (no air) | star/dust field (compute, 100k+) |
-| **7** | Black Hole | **Ray-bent gravitational lensing + accretion disk** (inverse-square ray nudge, Doppler beaming, Einstein ring) — the *Interstellar* look in ~400 lines of TSL | Spiral the path **inward** toward the horizon; emissive-only, no sun | infalling accretion sparks |
+| **7** | Black Hole | **Ray-bent gravitational lensing + accretion disk** (inverse-square ray nudge, Doppler beaming, Einstein ring) — the cinematic black-hole look in ~400 lines of TSL | Spiral the path **inward** toward the horizon; emissive-only, no sun | infalling accretion sparks |
 | **8** | Neon City | **Procedural lit-window facades** + neon megastructure + **wet-reflection** plane; night fog catching neon | Promote neon rings to **path-straddling gates**; building faces line the route; lengthen the world | neon rain (compute) |
 
 ### 4.3 Consistency across the eight

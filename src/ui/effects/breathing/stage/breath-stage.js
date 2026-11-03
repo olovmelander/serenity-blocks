@@ -9,7 +9,7 @@
  *
  * A world swap is a blink: the canvas dips to dark, the next world's pipelines compile off the
  * compositor thread while nothing is visible, and the canvas returns. Nothing compiles on screen.
- * In a Hale session the next stage's world is built and compiled ahead, while the current one
+ * In a Sukha session the next stage's world is built and compiled ahead, while the current one
  * breathes (prepareNext), so its blink is just the dip.
  */
 import * as THREE from 'three/webgpu';

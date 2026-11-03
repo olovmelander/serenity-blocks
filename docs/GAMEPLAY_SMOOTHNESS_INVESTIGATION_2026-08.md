@@ -298,36 +298,31 @@ code-level facts and are resolution-independent.
 
 ---
 
-## 8. Cascade feel — Quadra calibration (2026-08-09, follow-up)
+## 8. Cascade feel — clear rhythm calibration (2026-08-09, follow-up)
 
 Fixing §3 revealed a second problem. Once the animation stopped stretching under load it
 started hitting its *authored* constants exactly — and those were too fast. Reported as
-"the cascade is too fast", with Quadra named as the reference.
+"the cascade is too fast", with Quadra named as the reference feel.
 
-### What Quadra actually does
+### The target rhythm
 
-Read from `C:/Users/olovm/repositories/quadra/source`. Quadra runs a **fixed 10ms tick
-(100 Hz)**, decoupled from render, with a catch-up accumulator clamped at 300ms
-(`quadra.cc` `main_loop`: `while (acc >= 10) { acc -= 10; overmind.step(); }`) — the same
-shape as our pacer. The clear is a three-module state machine in `player.cc`:
+The clear runs as a fixed sequence of beats on the same fixed-tick pacer, independent of
+render rate:
 
-| Stage | Module | Ticks | Wall clock |
-|---|---|---|---|
-| Detect + remove completed rows | `Player_check_line` | 1 | 10ms |
-| **Hold / flash** | `Player_flash_lines` (`:738`) | **16** | **160ms** |
-| Connectivity scan (moves nothing) | `Player_check_link` `anim==0` | 1 | 10ms |
-| **Fall, one row** | `Player_check_link` `anim==1` | **2 per row** | **20ms/row** |
-| Final no-op pass + landing sound | `Player_check_link` | 2 | 20ms |
+| Stage | Wall clock |
+|---|---|
+| **Hold / flash** — each cleared row shows as one bright bar | **160ms** |
+| Beat — rows gone, stack still hanging | 20ms |
+| **Fall, one row** | **20ms/row** |
+| Landing — the collapse lands | 20ms |
 
 Three findings that shaped the fix:
 
 1. **The fall is constant 20ms/row — no easing, no acceleration.** We were at 16ms/row.
-2. **The hold is 160ms and visually loud.** `blit_flash` (`canvas.cc:862`) fills each cleared
-   row with a solid bar across the full board width, strobing brightness 255/200.
-3. **There is no sub-cell interpolation anywhere in the cascade.** The `smooth` flag is read
-   at exactly two places (`canvas.cc:964`, `:972`) and governs only the *player's active
-   piece*. Settled and falling blocks draw on the 18px grid. **Quadra's satisfying cascade is
-   pure timing.** Our blocks are grid-snapped too, so no renderer work was required.
+2. **The hold is 160ms and visually loud** — a solid bar across the full board width per
+   cleared row.
+3. **No sub-cell interpolation is needed in the cascade.** A satisfying cascade is pure
+   timing. Our blocks are grid-snapped, so no renderer work was required.
 
 ### Two real bugs this surfaced in our code
 
@@ -336,36 +331,36 @@ Three findings that shaped the fix:
   that callback is an empty no-op (`main.js:3390`, `:4633`), while the renderer draws from
   `gameState.boardGrid` (`base-board-scene.js:814`). The visible clear effect was always
   `triggerLineClearFlash` (`shared-effects.js:262`), an additive full-width stripe per row —
-  our equivalent of Quadra's bar — tweened over `220 + index*40`ms. **The board was collapsing
+  our version of the bright bar — tweened over `220 + index*40`ms. **The board was collapsing
   out from under a stripe that was still playing.** The dead alpha code is now removed and the
   hold is long enough for the stripe to read.
 - **No beat between removal and collapse.** Nothing repainted between `removeClearedLines` and
   the first gravity step, so the first frame after the hold already had the stack moved down a
-  row — cause and effect on the same frame. Quadra gets this beat free from its
-  connectivity-scan tick. Added as `settleLead` (`markBoardDirty` + draw + 20ms).
+  row — cause and effect on the same frame. Added as `settleLead` (`markBoardDirty` + draw +
+  20ms).
 
 ### Constants
 
 ```
-LINE_CLEAR_HOLD_MS = 160   // Quadra Player_flash_lines: 16 ticks
-SETTLE_LEAD_MS     =  20   // Quadra check_link scan tick — rows gone, stack still hanging
-GRAVITY_STEP_MS    =  20   // Quadra check_link: 2 ticks/row, constant
-SETTLE_TAIL_MS     =  20   // Quadra's final no-op pass — the collapse lands
+LINE_CLEAR_HOLD_MS = 160   // the flash hold
+SETTLE_LEAD_MS     =  20   // rows gone, stack still hanging
+GRAVITY_STEP_MS    =  20   // one row of fall, constant
+SETTLE_TAIL_MS     =  20   // the collapse lands
 ```
 
 Wave budget = `200 + 20R` ms. The per-wave `speedMultiplier` (1.0 / 0.8 / 0.6 / 0.5) is kept —
-Quadra has no cascade speed-up, but deep chains are spectacle here and the wave payload already
-carries the multiplier, so wave 1 is Quadra-exact and later waves tighten.
+deep chains are spectacle here and the wave payload already carries the multiplier, so wave 1
+runs the full rhythm and later waves tighten.
 
 ### Measured (RTX 5080, single-player, medians of 5)
 
-| Rows fallen | Measured | Target `200+20R` | Quadra `190+20R` |
-|---|---|---|---|
-| 1 | 227ms | 220 | 210 |
-| 5 | 304ms | 300 | 290 |
-| 10 | 408ms | 400 | 390 |
-| 18 | 568ms | 560 | 550 |
-| 20 | 603ms | 600 | 590 |
+| Rows fallen | Measured | Target `200+20R` |
+|---|---|---|
+| 1 | 227ms | 220 |
+| 5 | 304ms | 300 |
+| 10 | 408ms | 400 |
+| 18 | 568ms | 560 |
+| 20 | 603ms | 600 |
 
 Frame-rate independence from §3 is preserved — 18-row cascade with busy-wait stalls injected
 into every frame:
@@ -380,8 +375,8 @@ into every frame:
 
 ### Rejected: sub-cell interpolated falling
 
-Considered and dropped. Quadra has none in the cascade path, so it is not needed for the
-reference feel; and it would require moving falling groups onto `pieceGraphics`, whose shading
+Considered and dropped. It is not needed for the target feel (finding 3); and it would require
+moving falling groups onto `pieceGraphics`, whose shading
 and rim treatment differ from `drawBoardFromGrid` (per-piece diagonal ±0.18 and per-piece rim
 vs board-global vertical ±0.1 and fused-region rim) — the stack would visibly shatter for the
 duration of the fall and pop on landing. It also cannot key off `cell.id`, which is not unique
@@ -391,13 +386,12 @@ after a clear (`cascade-helpers.js:118` assigns `pieceId: cellData.id` to every 
 
 - Feel is subjective and the four constants above are the tuning knobs. `GRAVITY_STEP_MS` is
   the one to move first; `LINE_CLEAR_HOLD_MS` second.
-- **Not implemented:** Quadra scales its landing sound by total fall distance
-  (`player.cc`: `i = -500 + tombe * 50`, capped at 0). We fire no sound on cascade settle at
-  all — `onCascadeComplete` is consumed only by InfinityMode. Cheap, and it is a real part of
-  why Quadra's collapse feels weighty.
+- **Not implemented:** a landing sound that grows with the total fall distance. We fire no
+  sound on cascade settle at all — `onCascadeComplete` is consumed only by InfinityMode. Cheap,
+  and it is a real part of what makes a collapse feel weighty.
 - Above level 40 our piece gravity (`constants.js:142-151`) is faster than 20ms/row, so the
-  collapse stops reading as faster than a drop. Quadra has the same crossover. Documented, not
-  fixed — a level-dependent cascade rate is exactly what Quadra refuses to have.
+  collapse stops reading as faster than a drop. Documented, not fixed — the cascade rate stays
+  independent of level by design.
 
 ---
 

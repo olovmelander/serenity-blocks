@@ -1,12 +1,12 @@
 /**
- * @fileoverview Quadra-style "blind" attack effects — a timed obscuring of a
+ * @fileoverview "Blind" attack effects — a timed obscuring of a
  * target board. Two flavours:
  *   - partial blind  ("blind"):       obscure the incoming garbage rows
  *   - full blind     ("full_blind"):  obscure the whole locked stack
  *
  * These helpers are render-only: they only touch `gameState.blindTimers` and
  * never modify the board, collision, gravity, or line-clear logic, so the board
- * stays fully playable while obscured (Quadra's "hidden but still solid").
+ * stays fully playable while obscured (hidden but still solid).
  *
  * Durations are in SECONDS of real time and decremented with real `dt` in the
  * logic loop (NOT per-frame), so local and online behave identically.

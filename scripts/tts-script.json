@@ -27,23 +27,23 @@
   "groups": [
     {
       "id": "session_intros",
-      "about": "Spoken as a Hale session begins: what it is, what you'll do, and any safety note.",
+      "about": "Spoken as a Sukha session begins: what it is, what you'll do, and any safety note.",
       "delivery": "welcome",
       "lines": [
-        { "id": "first_intro", "text": "Welcome to Hale First Breath. A few quiet minutes to meet the breathing worlds... There's nothing to get right... just follow the light, and my voice." },
-        { "id": "tide_intro", "text": "Welcome to Hale Tide. Five minutes of breathing with the sea... in through the nose as the wave comes in... and out as it slides away." },
-        { "id": "roots_intro", "text": "Welcome to Hale Roots. Five minutes under the old trees... a breath in, a moment of rest... and a long breath out, down into the ground." },
-        { "id": "unwind_intro", "text": "Welcome to Hale Unwind. Five minutes to let the day go... the breath out grows longer, the lights grow slower... until you're ready for the night." },
-        { "id": "sunrise_intro", "text": "Welcome to Hale Sunrise. Four minutes to wake up gently... lively breaths through the nose, light and never forced... then a steady close." },
-        { "id": "rest_intro", "text": "Welcome to Hale Rest, a slow practice for the end of the day. Step by step, we'll learn the four-seven-eight breath... and drift among the stars between rounds. If a hold ever feels like too much... simply breathe." },
-        { "id": "flow_intro", "text": "Welcome to Hale Flow, the geometry of breath. A square... a triangle... and a wider square. After each one the counting stops... and you keep the shape on your own." },
-        { "id": "base_intro", "text": "Welcome to Hale Base. Three rounds of steady breathing through the nose, each ending in a stillness you hold for as long as it feels good. Sit or lie down... and never practise this in water, or while driving." },
-        { "id": "elixir_intro", "text": "Welcome to Hale Elixir, the most active practice. Three rounds of strong breathing through the mouth, each ending in a hold you end yourself. Sit or lie down, never in water or while driving... and if you feel dizzy, slow down." }
+        { "id": "first_intro", "text": "Welcome to Sukha First Breath. A few quiet minutes to meet the breathing worlds... There's nothing to get right... just follow the light, and my voice." },
+        { "id": "tide_intro", "text": "Welcome to Sukha Tide. Five minutes of breathing with the sea... in through the nose as the wave comes in... and out as it slides away." },
+        { "id": "roots_intro", "text": "Welcome to Sukha Roots. Five minutes under the old trees... a breath in, a moment of rest... and a long breath out, down into the ground." },
+        { "id": "unwind_intro", "text": "Welcome to Sukha Unwind. Five minutes to let the day go... the breath out grows longer, the lights grow slower... until you're ready for the night." },
+        { "id": "sunrise_intro", "text": "Welcome to Sukha Sunrise. Four minutes to wake up gently... lively breaths through the nose, light and never forced... then a steady close." },
+        { "id": "rest_intro", "text": "Welcome to Sukha Nightfall, a slow practice for the end of the day. Step by step, we'll learn the four-seven-eight breath... and drift among the stars between rounds. If a hold ever feels like too much... simply breathe." },
+        { "id": "flow_intro", "text": "Welcome to Sukha Mandala, the geometry of breath. A square... a triangle... and a wider square. After each one the counting stops... and you keep the shape on your own." },
+        { "id": "base_intro", "text": "Welcome to Sukha Homecoming. Three rounds of steady breathing through the nose, each ending in a stillness you hold for as long as it feels good. Sit or lie down... and never practise this in water, or while driving." },
+        { "id": "elixir_intro", "text": "Welcome to Sukha Phoenix, the most active practice. Three rounds of strong breathing through the mouth, each ending in a hold you end yourself. Sit or lie down, never in water or while driving... and if you feel dizzy, slow down." }
       ]
     },
     {
       "id": "first",
-      "about": "Hale First Breath: the four starter worlds, a taste of each. Same words as the stage text.",
+      "about": "Sukha First Breath: the four starter worlds, a taste of each. Same words as the stage text.",
       "delivery": "guide",
       "lines": [
         { "id": "grounding_intro", "text": "Sit comfortably... let your shoulders drop... and breathe through your nose, at whatever pace feels easy." },
@@ -55,7 +55,7 @@
     },
     {
       "id": "tide",
-      "about": "Hale Tide: Ocean Tide's even breath, then a longer ebb. Same words as the stage text.",
+      "about": "Sukha Tide: Ocean Tide's even breath, then a longer ebb. Same words as the stage text.",
       "delivery": "guide",
       "lines": [
         { "id": "grounding_intro", "text": "Listen to the water... let your breath find the tide. There's no need to count yet." },
@@ -67,7 +67,7 @@
     },
     {
       "id": "roots",
-      "about": "Hale Roots: building to Ancient Forest's own rhythm. Same words as the stage text.",
+      "about": "Sukha Roots: building to Ancient Forest's own rhythm. Same words as the stage text.",
       "delivery": "guide",
       "lines": [
         { "id": "grounding_intro", "text": "Feel where your body meets the ground... and let it hold you." },
@@ -79,7 +79,7 @@
     },
     {
       "id": "unwind",
-      "about": "Hale Unwind: longer out-breaths, then Aurora Dreams' rhythm, then sleep. Same words as the stage text.",
+      "about": "Sukha Unwind: longer out-breaths, then Aurora Dreams' rhythm, then sleep. Same words as the stage text.",
       "delivery": "guide",
       "lines": [
         { "id": "grounding_intro", "text": "Let your jaw soften... let your hands rest. Nothing needs doing now." },
@@ -90,7 +90,7 @@
     },
     {
       "id": "sunrise",
-      "about": "Hale Sunrise: Solar Flare's brisk rhythm, then quicker and lighter. Same words as the stage text.",
+      "about": "Sukha Sunrise: Solar Flare's brisk rhythm, then quicker and lighter. Same words as the stage text.",
       "delivery": "guide",
       "lines": [
         { "id": "grounding_intro", "text": "Sit tall... let your shoulders open... and let the light find you." },
@@ -101,7 +101,7 @@
     },
     {
       "id": "rest",
-      "about": "Hale Rest: Moonlit Waters' four-seven-eight learned step by step, drifting in Cosmic Nebula, then sleep. Same words as the stage text.",
+      "about": "Sukha Nightfall: Moonlit Waters' four-seven-eight learned step by step, drifting in Cosmic Nebula, then sleep. Same words as the stage text.",
       "delivery": "guide",
       "lines": [
         { "id": "grounding_intro", "delivery": "still", "text": "Let your body grow heavy... let the day soften. There's nothing left to do tonight." },
@@ -115,7 +115,7 @@
     },
     {
       "id": "flow",
-      "about": "Hale Flow: Sacred Geometry's square, Crystal Prism's triangle, a wider square. Same words as the stage text.",
+      "about": "Sukha Mandala: Sacred Geometry's square, Crystal Prism's triangle, a wider square. Same words as the stage text.",
       "delivery": "guide",
       "lines": [
         { "id": "grounding_intro", "text": "Notice your heartbeat... and let it bring you here." },
@@ -130,7 +130,7 @@
     },
     {
       "id": "base",
-      "about": "Hale Base: steady nasal breathing in Electric Storm, holds you end yourself. Same words as the stage text.",
+      "about": "Sukha Homecoming: steady nasal breathing in Electric Storm, holds you end yourself. Same words as the stage text.",
       "delivery": "guide",
       "lines": [
         { "id": "grounding_intro", "text": "Close your eyes... scan your body from head to toe... and let each breath out soften what you find." },
@@ -148,7 +148,7 @@
     },
     {
       "id": "elixir",
-      "about": "Hale Elixir: Volcanic Fire's power breathing through the mouth, deep holds you end yourself. Same words as the stage text.",
+      "about": "Sukha Phoenix: Volcanic Fire's power breathing through the mouth, deep holds you end yourself. Same words as the stage text.",
       "delivery": "guide",
       "lines": [
         { "id": "grounding_intro", "text": "Breathe through your nose for now... slow and easy... and let your body settle before we begin." },
@@ -157,7 +157,6 @@
         { "id": "r1_recovery", "text": "Breathe all the way in... and hold it at the top." },
         { "id": "r2_active", "text": "The same steady loop... in... and out... connected breaths, with no pause between them." },
         { "id": "r2_hold", "delivery": "still", "text": "Deep silence... notice what you feel... without judging it." },
-        { "id": "r2_recovery", "text": "Breathe in fully... and hold... squeeze gently at the top." },
         { "id": "r3_active", "text": "Full and free... tingling is normal... if you feel dizzy, slow down." },
         { "id": "r3_hold", "delivery": "still", "text": "Complete release... you are held. Breathe in whenever you need." },
         { "id": "r3_recovery", "text": "One deep breath in... and hold... let the energy rise." },
@@ -253,17 +252,17 @@
         { "id": "triangle_rest", "text": "Let the crystal rest..." },
         { "id": "triangle_rest_2", "text": "Clear... and still..." },
         { "id": "triangle_rest_3", "text": "Rest in the clear light..." },
-        { "id": "wim-hof_intro", "delivery": "welcome", "text": "Volcanic Fire. Quick, full breaths... the strongest rhythm of all. Sit down for it... and stop if you feel dizzy." },
-        { "id": "wim-hof_in", "text": "Feed the fire..." },
-        { "id": "wim-hof_out", "text": "Release..." },
-        { "id": "wim-hof_in_2", "text": "Stoke the flames..." },
-        { "id": "wim-hof_out_2", "text": "Let go..." },
-        { "id": "wim-hof_in_3", "text": "Breathe into the fire..." },
-        { "id": "wim-hof_out_3", "text": "And release..." },
-        { "id": "wim-hof_in_4", "text": "Fan the embers..." },
-        { "id": "wim-hof_out_4", "text": "Let it drop..." },
-        { "id": "wim-hof_in_5", "text": "Lift the flame..." },
-        { "id": "wim-hof_out_5", "text": "Let it fall..." },
+        { "id": "volcanic-fire_intro", "delivery": "welcome", "text": "Volcanic Fire. Quick, full breaths... the strongest rhythm of all. Sit down for it... and stop if you feel dizzy." },
+        { "id": "volcanic-fire_in", "text": "Feed the fire..." },
+        { "id": "volcanic-fire_out", "text": "Release..." },
+        { "id": "volcanic-fire_in_2", "text": "Stoke the flames..." },
+        { "id": "volcanic-fire_out_2", "text": "Let go..." },
+        { "id": "volcanic-fire_in_3", "text": "Breathe into the fire..." },
+        { "id": "volcanic-fire_out_3", "text": "And release..." },
+        { "id": "volcanic-fire_in_4", "text": "Fan the embers..." },
+        { "id": "volcanic-fire_out_4", "text": "Let it drop..." },
+        { "id": "volcanic-fire_in_5", "text": "Lift the flame..." },
+        { "id": "volcanic-fire_out_5", "text": "Let it fall..." },
         { "id": "ocean-breath_intro", "delivery": "welcome", "text": "Ocean Tide. A wave in... a wave out. Nothing to count... just follow the water." },
         { "id": "ocean-breath_in", "text": "Rise with the wave..." },
         { "id": "ocean-breath_out", "text": "Slide back..." },
@@ -344,7 +343,7 @@
     },
     {
       "id": "cues_first",
-      "about": "Hale First Breath's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
+      "about": "Sukha First Breath's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
       "delivery": "cue",
       "context": { "previous": "Follow the light, and breathe slowly through your nose." },
       "lines": [
@@ -370,7 +369,7 @@
     },
     {
       "id": "cues_tide",
-      "about": "Hale Tide's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
+      "about": "Sukha Tide's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
       "delivery": "cue",
       "context": { "previous": "Listen to the water, and breathe slowly with the waves." },
       "lines": [
@@ -390,7 +389,7 @@
     },
     {
       "id": "cues_roots",
-      "about": "Hale Roots's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
+      "about": "Sukha Roots's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
       "delivery": "cue",
       "context": { "previous": "Feel the ground beneath you, and breathe slowly." },
       "lines": [
@@ -416,7 +415,7 @@
     },
     {
       "id": "cues_unwind",
-      "about": "Hale Unwind's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
+      "about": "Sukha Unwind's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
       "delivery": "cue",
       "context": { "previous": "The day is over. Breathe slowly, and let it go." },
       "lines": [
@@ -442,7 +441,7 @@
     },
     {
       "id": "cues_sunrise",
-      "about": "Hale Sunrise's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
+      "about": "Sukha Sunrise's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
       "delivery": "cue",
       "context": { "previous": "Sit tall, and breathe lightly through your nose." },
       "lines": [
@@ -462,7 +461,7 @@
     },
     {
       "id": "cues_rest",
-      "about": "Hale Rest's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
+      "about": "Sukha Nightfall's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
       "delivery": "cue",
       "context": { "previous": "It is night. Breathe slowly, ready for sleep." },
       "lines": [
@@ -487,7 +486,7 @@
     },
     {
       "id": "cues_flow",
-      "about": "Hale Flow's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
+      "about": "Sukha Mandala's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
       "delivery": "cue",
       "context": { "previous": "Follow the shape, each side the same length." },
       "lines": [
@@ -515,7 +514,7 @@
     },
     {
       "id": "cues_base",
-      "about": "Hale Base's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
+      "about": "Sukha Homecoming's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
       "delivery": "cue",
       "context": { "previous": "Breathe steadily through your nose, full and never forced." },
       "lines": [
@@ -552,7 +551,7 @@
     },
     {
       "id": "cues_elixir",
-      "about": "Hale Elixir's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
+      "about": "Sukha Phoenix's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
       "delivery": "cue",
       "context": { "previous": "Breathe gently through your nose, and settle." },
       "lines": [

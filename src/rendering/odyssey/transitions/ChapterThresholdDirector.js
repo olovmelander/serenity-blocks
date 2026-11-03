@@ -13,7 +13,7 @@
  * lavender flash (luma 193 at p 0.3709) was the eye passing the veil plane and its particle
  * cloud, the 2->3 waterline band and ring floated in the sky after the breach, and 1->2 drew a
  * ring circle over the ocean at p 0.0749. Each seam now carries something IN the world instead
- * (embers -> bubbles -> spray, cloud tops -> cloud sea, omen -> Gargantua, accretion light -> the
+ * (embers -> bubbles -> spray, cloud tops -> cloud sea, omen -> the great hole, accretion light -> the
  * city's sun). So every profile authors veilScale = ringScale = particleScale = 0, and a
  * component no profile asks for is NOT BUILT: zero meshes, zero materials, zero pipelines at
  * warm-up and zero draws at a seam (was 3 draws: quad + torus + 180-instance burst). The class
@@ -109,7 +109,7 @@ export const ODYSSEY_THRESHOLD_PROFILES = Object.freeze({
         veilScale: 0,
         particleScale: 0,
     }),
-    // QUIETED 2026-10-01 (masterpiece pass). Chapter 6's omen now IS chapter 7's Gargantua and
+    // QUIETED 2026-10-01 (masterpiece pass). Chapter 6's omen now IS chapter 7's great hole and
     // glides onto its pose across the seam, so the black hole itself carries the handoff. The
     // old violet ring (1.45) and orange veil (1.2) flooded the frame around p 0.878-0.886 — a
     // magenta wash over the very disk the seam is about. The gold accent that replaced it is

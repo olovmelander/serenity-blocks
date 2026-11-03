@@ -55,7 +55,7 @@ number, the fix rounds it first with `floor(x + 0.5)` instead.
 |---|---|---|---|
 | Rainbow Terraces | Glitter in every fall but slot 0: each rope's width, brightness, comet and main strand re-rolled per pixel (`scHash21` of the fall's slot) | Flat slot | 846 px, the right island's falls ([image](theme-shader-audit/rainbow-terraces-falls.png)) |
 | Luminous Tides | A dithered fringe crawling along every palm frond (each leaflet's length hashed from the palm's seed per pixel) | Flat seed | 2,983 px along the fronds |
-| Neon District | Logos 4, 8 and 12 (LEVEL GYM, HALE, the café's cup) drawn from the wrong atlas cell at scattered pixels: holes and fragments in bright tube logos | Cell index rounded | 467 px, the HALE wall sign ([image](theme-shader-audit/neon-district-logo.png)) |
+| Neon District | Logos 4, 8 and 12 (LEVEL GYM, SUKHA, the café's cup) drawn from the wrong atlas cell at scattered pixels: holes and fragments in bright tube logos | Cell index rounded | 467 px, the SUKHA wall sign ([image](theme-shader-audit/neon-district-logo.png)) |
 | High Coast | Dark speckles in the backlit sails and grey ones on the deck houses (exact `equal` on the part tag); red specks on the black roofs (`fract` of 2.0) | Flat part tags | 911 px, a sail ([image](theme-shader-audit/high-coast-sail.png)) |
 | Thermal Bloom | The ghost pines' branch stubs ragged and speckled (heights, sides and lengths hashed per pixel); drops, spray and motes flashing in part | Flat tree, ids and seed | 2,804 px on the pines |
 | Stillwater | Grain on the ferns' and reeds' tone, and straw speckle on about 2% of reeds; the lily pads' tone (latent) | Flat seeds | 277 px |

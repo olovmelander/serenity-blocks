@@ -6,7 +6,7 @@
  * EIGHT `od_hash31` calls plus seven mixes per octave — ~110 ALU — and the space chapters
  * stack it: the ch6 nebula gas runs 9 octaves per fragment over 18 overlapping additive hulls,
  * the gas giant 12-19 over ~1.8x its old screen area, ch7's dome 5 over the WHOLE frame,
- * Gargantua's disk 6. That is the fill x shader product the perf audit ranked first.
+ * The great hole's disk 6. That is the fill x shader product the perf audit ranked first.
  *
  * The cure is the classic value-noise lattice: bake the random lattice values ONCE into a
  * small periodic R8 Data3DTexture (64^3 = 256 KB, ~3 ms of CPU, built on first use) and let the

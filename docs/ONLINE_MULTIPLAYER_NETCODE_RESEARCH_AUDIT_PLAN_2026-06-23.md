@@ -181,24 +181,21 @@ Relevant links:
 - Steam networking types/send flags: https://partner.steamgames.com/doc/api/steamnetworkingtypes
 - ISteamNetworkingSockets lanes: https://partner.steamgames.com/doc/api/ISteamNetworkingSockets
 
-## Quadra Extraction
+## Design Patterns To Adopt
 
-Source root: `C:\Users\olovm\repositories\quadra\source`.
+The useful patterns are invariants, not a wire format.
 
-Quadra's useful patterns are not "copy the old protocol"; they are the invariants it
-protected.
-
-| Pattern | Quadra refs | What Serenity has | Gap / adoption idea |
-| --- | --- | --- | --- |
-| Packetized authoritative events | `packets.h:53-77` has `P_STAMPBLOCK`, `P_DOWNLOAD`, `P_LINES`, `P_MOVES`, `P_STATE`, `P_SERVERSTATE`, `P_SERVERRANDOM`. | Message types exist; lock events recently added. | Make lock/attack/garbage/round events first-class, sequenced, replayable records, not just state side effects. |
-| Lock/stamp event | `packets.h:354-367` defines `Packet_stampblock`. | `GAME_PLAYER_LOCK` sends a reliable authoritative board snap in `ffa-p2p-game-state.js:3004-3016`. | Keep this; add attack ids / source lock seq so garbage attribution ties to the lock that produced it. |
-| Download snapshot then stream | `net_server.cc:654-743` waits for no packet stack, syncpoint `Canvas::LAST`, idle canvases, then sends `Packet_gameserver` plus `Packet_download` per canvas. | Chunked resync exists; host migration sends one snapshot. | Make join/rejoin/migration explicitly two-phase: download snapshot, ack baseline, then live stream. Do not mix live deltas with an unacked download. |
-| Snapshot contains RNG, pieces, pending garbage, attack attribution | `Packet_download` stores seed/current/next pieces, board occupancy, pending bonus lines, `attacks[]`, and `last_attacker` (`packets.h:427-448`, `packets.cc:628-740`). | Serenity snapshots include board/current/next/garbage queue, but not full RNG state, attack counters, or `lastAttackerId`. | Add download/resync fields for RNG/bag state, `lastAttackerId`, attack counters/history tail, and complete pending garbage metadata. |
-| Per-line hole mask and final-in-burst bit | `Packet_lines` carries `hole_pos[36]` (`packets.h:451-466`, `packets.cc:742-774`); `Packet_download` packs `hole_pos` plus `final` (`packets.cc:689-692`, `734-738`); `Canvas::add_packet` sets `final` on the last queued line (`canvas.cc:442-452`). | Binary codec v3 supports `holeMask`, `variant`, and `isLastInBurst`. | `buildStateSnapshot()` currently serializes `type`, `attackerId`, `color`, `holeMask`, and `variant`, but not `isLastInBurst`. Preserve it through snapshot/resync/migration. |
-| Authoritative survivor syncpoints | `Canvas::PLAYING/WAITFORWINNER/WAITFORRESTART/LAST` in `canvas.h:49-54`; `Net_list::check_first_frag()` calls `syncto()` across round states (`net_list.cc:802-916`); `syncto()` dispatches `Packet_serverstate` (`net_list.cc:1035-1045`). | `roundGeneration` and `readyBarrier` exist; barrier default off. | Promote round flow to an explicit host state machine and enable ready barrier after instrumentation/soak. |
-| Deterministic input/demo stream | `Packet_moves` batches move bytes (`packets.h:551-570`, `packets.cc:851-876`); `Canvas::start_byte()` flushes at 50 bytes (`canvas.cc:1089-1127`). | Peer input batching exists; local prediction/reconcile exists. | Add tick-aligned input batches, duplicate/retry/ack policy, and replay logging from the host authority stream. |
-| Replay verification | `Recording::write_packet()` records frame + packet bytes (`recording.cc:61-82`); playback stores `Demo_packet(frame,p)` (`recording.cc:301-340`); `quadra.cc` has headless verification returning nonzero on failure (`quadra.cc:674-681`, `791-796`). | Unit tests and demo replay tests exist, but not a canonical network event log. | Build a host event log that can replay a match headlessly in CI and compare board/score/garbage digests. |
-| Lag/disconnect policy | `Net_list` periodically refreshes stats/test pings and drops laggy connections (`net_list.cc:453-493`). | Heartbeat and host migration exist. | Extend diagnostics to RTT/loss/gaps/resyncs and define reconnect/spectator policy. |
+| Pattern | What Serenity has | Gap / adoption idea |
+| --- | --- | --- |
+| Packetized authoritative events: lock, download snapshot, garbage lines, moves, round state and reseed are distinct message types. | Message types exist; lock events recently added. | Make lock/attack/garbage/round events first-class, sequenced, replayable records, not just state side effects. |
+| Lock/stamp event: a reliable event carrying the piece's final placement. | `GAME_PLAYER_LOCK` sends a reliable authoritative board snap in `ffa-p2p-game-state.js:3004-3016`. | Keep this; add attack ids / source lock seq so garbage attribution ties to the lock that produced it. |
+| Download snapshot then stream: snapshot only when nothing is in flight and every board is idle, then send the match header plus one download per board. | Chunked resync exists; host migration sends one snapshot. | Make join/rejoin/migration explicitly two-phase: download snapshot, ack baseline, then live stream. Do not mix live deltas with an unacked download. |
+| Snapshot contains RNG, pieces, pending garbage, attack attribution: seed/current/next pieces, board occupancy, pending garbage lines, per-attacker attack credit and the last attacker. | Serenity snapshots include board/current/next/garbage queue, but not full RNG state, attack counters, or `lastAttackerId`. | Add download/resync fields for RNG/bag state, `lastAttackerId`, attack counters/history tail, and complete pending garbage metadata. |
+| Per-line hole mask and final-in-burst bit: every queued garbage line carries its hole mask, and the last line of a burst is flagged in both the live message and the download snapshot. | Binary codec v3 supports `holeMask`, `variant`, and `isLastInBurst`. | `buildStateSnapshot()` currently serializes `type`, `attackerId`, `color`, `holeMask`, and `variant`, but not `isLastInBurst`. Preserve it through snapshot/resync/migration. |
+| Authoritative survivor round states: playing, waiting for a winner, waiting for restart, idle; the host broadcasts each transition. | `roundGeneration` and `readyBarrier` exist; barrier default off. | Promote round flow to an explicit host state machine and enable ready barrier after instrumentation/soak. |
+| Deterministic input/demo stream: move bytes batched and flushed at a size cap or on lock. | Peer input batching exists; local prediction/reconcile exists. | Add tick-aligned input batches, duplicate/retry/ack policy, and replay logging from the host authority stream. |
+| Replay verification: record frame-stamped messages; a headless re-simulation exits nonzero on mismatch. | Unit tests and demo replay tests exist, but not a canonical network event log. | Build a host event log that can replay a match headlessly in CI and compare board/score/garbage digests. |
+| Lag/disconnect policy: periodic stats/ping refresh; connections silent past a limit are dropped. | Heartbeat and host migration exist. | Extend diagnostics to RTT/loss/gaps/resyncs and define reconnect/spectator policy. |
 
 ## Serenity Audit
 
@@ -209,7 +206,7 @@ protected.
 - Local prediction plus reconciliation exists and uses host-carried `lastInputSeq`
   (`ffa-p2p-game-state.js:1232-1262`, `1970-2008`; wrapper in
   `steam-networking.js:420-446`, `635-644`).
-- Reliable lock events are a strong Quadra-style addition
+- Reliable lock events are a strong addition
   (`ffa-p2p-game-state.js:3004-3046`).
 - Snapshot codec v3 now has the right garbage primitives
   (`binary-encoding.js:16`, `_encodeGarbageEntry`, `_decodeGarbageEntry`).
@@ -263,8 +260,8 @@ protected.
 
    `buildStateSnapshot()` includes garbage entries but omits `isLastInBurst`, attacker
    name, created/apply tick, and player `lastAttackerId` (`ffa-p2p-game-state.js:1749-1809`).
-   Quadra's download snapshot included pending lines and attack attribution because late
-   join/rejoin needs those to continue correctly.
+   Late join/rejoin needs pending lines and attack attribution in the download snapshot to
+   continue correctly.
 
 7. Host migration is an authority assertion, not a full handoff protocol.
 
@@ -322,8 +319,8 @@ Fix:
   `handleP2PPacket()`.
 
 Borrowed from:
-TETR.IO's visible latency/diagnostic posture, Gaffer's sequence/loss metrics, Quadra's
-recorded packet stream.
+TETR.IO's visible latency/diagnostic posture, Gaffer's sequence/loss metrics, a recorded
+packet stream.
 
 Affected files:
 
@@ -368,7 +365,7 @@ Fix:
 - Snapshots include `lastProcessedInputSeqByPlayer` and `hostInputBufferDepthByPlayer`.
 
 Borrowed from:
-Gaffer state sync sequence/frame ids and jitter buffer, Gambetta reconciliation, Quadra
+Gaffer state sync sequence/frame ids and jitter buffer, Gambetta reconciliation,
 frame-stamped recording.
 
 Affected files:
@@ -416,7 +413,7 @@ Fix:
   authoritative events.
 
 Borrowed from:
-Gaffer snapshot interpolation and Quadra `P_STAMPBLOCK`.
+Gaffer snapshot interpolation and a reliable lock (stamp) event.
 
 Affected files:
 
@@ -466,7 +463,7 @@ Fix:
   state, garbage queue metadata, alive state, and last attacker.
 
 Borrowed from:
-Jstris-style garbage delay/blocking settings, Quadra per-line hole masks/final bits and
+Jstris-style garbage delay/blocking settings, per-line hole masks/final bits and
 attack attribution, Gambetta/Gaffer authority model.
 
 Affected files:
@@ -497,7 +494,7 @@ Impact: high. Risk: medium-high.
 
 Root cause:
 Round restart has generation fences now, but ready barrier is off and join/migration do
-not yet follow Quadra's "download snapshot then stream" invariant.
+not yet follow the "download snapshot then stream" invariant.
 
 Fix:
 
@@ -522,7 +519,7 @@ Fix:
   spectator or disconnected according to match config.
 
 Borrowed from:
-Quadra `Net_pendingjoin::step()` and `Packet_download`, Quadra syncpoint state machine.
+The "download snapshot then stream" join and an explicit round-state machine.
 
 Affected files:
 
@@ -615,7 +612,7 @@ Fix:
   requires dedicated authority or a trusted relay/server model, not a player host.
 
 Borrowed from:
-Quadra replay verification, TETR.IO replay/integrity posture.
+Headless replay verification, TETR.IO replay/integrity posture.
 
 Affected files:
 

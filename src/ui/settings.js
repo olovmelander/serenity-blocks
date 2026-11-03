@@ -11,6 +11,7 @@ import { eventBus, EVENTS } from '../events/event-bus.js';
 import { normalizeCursorSettings } from './components/custom-cursor.js';
 import { resolveThemeId } from '../themes/theme-registry.js';
 import { resolveMusicTrackKey } from '../core/progression/theme-music-catalog.js';
+import { resolveBreathWorldId } from './effects/breathing/breath-catalogue.js';
 import { developerSurfacesEnabled } from './developer-surfaces.js';
 import { findBoundAction, isBindableKey, normalizeBindingKey } from './binding-keys.js';
 import { armTwoPressQuit, canQuitDesktop } from './desktop-quit.js';
@@ -593,6 +594,7 @@ export class SettingsManager {
                     ...loaded,
                     backgroundTheme: sanitizedBackgroundTheme,
                     musicTrack: sanitizedMusicTrack,
+                    breathingTechnique: resolveBreathWorldId(loaded.breathingTechnique ?? DEFAULT_CONFIG.breathingTechnique),
                     gameMode: sanitizedGameMode,
                     keyBindings: sanitizedKeyBindings,
                     player2KeyBindings: sanitizedP2KeyBindings,
@@ -638,6 +640,9 @@ export class SettingsManager {
                     && loaded.musicTrack !== sanitizedMusicTrack
                 );
                 const gameModeChanged = loaded.gameMode !== undefined && loaded.gameMode !== sanitizedGameMode;
+                // A breathing world renamed since this save (breath-catalogue.js RENAMED_BREATH_WORLDS).
+                const breathingTechniqueChanged = typeof loaded.breathingTechnique === 'string'
+                    && loaded.breathingTechnique !== this.settings.breathingTechnique;
                 if (
                     keyBindingsChanged
                     || gamepadBindingsChanged
@@ -648,6 +653,7 @@ export class SettingsManager {
                     || backgroundThemeChanged
                     || musicTrackChanged
                     || gameModeChanged
+                    || breathingTechniqueChanged
                 ) {
                     this.save({ emitEvent: false });
                 }
@@ -1343,6 +1349,31 @@ function setupSettingsSheet(listen, signal) {
 }
 
 /**
+ * Credits & legal: the credits, third-party notices and licences and the privacy page, read in
+ * the game (src/ui/legal/legal-documents.js), loaded when the section is first opened.
+ */
+function setupLegalDocuments(listen, signal) {
+    const modal = document.getElementById('settings-modal');
+    const panel = document.getElementById('settings-legal');
+    if (!modal || !panel) return;
+    let loading = null;
+    const load = () => {
+        if (loading || signal.aborted) return;
+        loading = import('./legal/legal-documents.js').then(({ createLegalDocumentsView }) => {
+            if (signal.aborted) return null;
+            const view = createLegalDocumentsView(panel, { signal });
+            view.show('credits');
+            return view;
+        }).catch((error) => {
+            loading = null;
+            console.warn('[Settings] Credits & legal failed to load:', error);
+        });
+    };
+    listen(modal, 'settingsSectionChanged', (event) => { if (event.detail?.tab === 'legal') load(); });
+    if (panel.classList.contains('active')) load();
+}
+
+/**
  * Optional development reference, loaded only when its tab is first selected. Release builds
  * have no such tab (src/ui/developer-surfaces.js).
  */
@@ -1417,6 +1448,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
     // Setup tab switching
     setupSettingsTabs();
+    setupLegalDocuments(listen, controller.signal);
     setupUrlParameterReference(listen, controller.signal);
 
     // Setup controls sub-tab switching

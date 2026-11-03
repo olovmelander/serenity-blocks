@@ -1,15 +1,20 @@
 /**
- * Words for what just opened in the breath collection: "Ocean Tide" and "Hale Tide", for the
- * Odyssey ceremony, a Hale result and the toast that marks an opening by practice.
+ * Words for what just opened in the breath collection: "Ocean Tide" and "Sukha Tide", for the
+ * Odyssey ceremony, a Sukha result and the toast that marks an opening by practice.
  */
 import { showToast } from '../../components/toast.js';
 import { getBreathWorld, isBreathWorld } from './breath-catalogue.js';
 
-/** 'TIDE' → 'Hale Tide'; the first session has a longer name. */
-export function haleSessionName(id) {
-    if (id === 'FIRST') return 'Hale First Breath';
-    const word = String(id || '').toLowerCase();
-    return `Hale ${word.charAt(0).toUpperCase()}${word.slice(1)}`;
+/** Sessions whose title is not their key (the keys are saved data; the titles are what players see). */
+const SESSION_TITLES = Object.freeze({
+    FIRST: 'First Breath', REST: 'Nightfall', FLOW: 'Mandala', BASE: 'Homecoming', ELIXIR: 'Phoenix',
+});
+
+/** 'TIDE' → 'Sukha Tide', 'ELIXIR' → 'Sukha Phoenix'. */
+export function sukhaSessionName(id) {
+    const key = String(id || '');
+    const title = SESSION_TITLES[key] ?? `${key.charAt(0)}${key.slice(1).toLowerCase()}`;
+    return `Sukha ${title}`;
 }
 
 /**
@@ -18,7 +23,7 @@ export function haleSessionName(id) {
  */
 export function describeOpenings(opened) {
     const worlds = (opened?.worlds || []).filter(isBreathWorld).map((id) => ({ id, name: getBreathWorld(id).name }));
-    const sessions = (opened?.sessions || []).map((id) => ({ id, name: haleSessionName(id) }));
+    const sessions = (opened?.sessions || []).map((id) => ({ id, name: sukhaSessionName(id) }));
     if (!worlds.length && !sessions.length) return null;
     const names = [...worlds, ...sessions].map((item) => item.name);
     const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0];

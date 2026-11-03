@@ -1369,7 +1369,8 @@ class SteamService {
     async getFriendsPlayingGame() {
         const friends = await this.getFriends();
         // Filter to friends in-game (gameId matches our app)
-        const appId = String(this.appId || STEAM_APP_ID);
+        if (!this.appId) return [];
+        const appId = String(this.appId);
         return friends.filter((f) => f.gameId && f.inGame && f.gameId === appId);
     }
 

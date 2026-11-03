@@ -2,7 +2,7 @@
  * Frag Tracker - Kill Counting & Win Conditions
  *
  * Tracks player deaths, awards frags (kills), and checks win conditions
- * Implements all 5 Quadra end conditions: frags, time, points, lines, never
+ * Implements all 5 end conditions: frags, time, points, lines, never
  */
 
 import { emitMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';

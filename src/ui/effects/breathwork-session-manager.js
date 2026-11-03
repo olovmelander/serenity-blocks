@@ -1,5 +1,5 @@
 /**
- * BreathworkSessionManager - runs the Hale sessions.
+ * BreathworkSessionManager - runs the Sukha sessions.
  *
  * A session is a journey of stages (arrive, rounds of breathing, with stillness and recovery in
  * the longer practices, then rest). The manager owns its clock, its voice and its bells; the
@@ -27,8 +27,8 @@ export { SESSION_WORLDS } from './breathing/session-worlds.js';
 
 /** The picture for a stage breathed at your own pace: slow, and never counted. */
 export const NATURAL_PATTERN = Object.freeze([4, 1, 6, 1]);
-/** Longest an open hold may run before the voice brings you back: four minutes. */
-export const MAX_OPEN_HOLD_SECONDS = 240;
+/** Longest an open hold may run before the voice brings you back: two minutes. */
+export const MAX_OPEN_HOLD_SECONDS = 120;
 /** An open hold cannot end in its first moment (a tap meant for the stage before). */
 const MIN_OPEN_HOLD_MS = 1500;
 /** The closing words appear this long before the session ends. */
@@ -42,7 +42,7 @@ const BELL_LEAD_MS = 1400;
 const DEFAULT_OPTIONS = Object.freeze({
     /** { id, label, clip } chosen on the preparation screen, or null. */
     intention: null,
-    /** Base and Elixir holds end when you breathe in; false gives them their suggested length. */
+    /** Homecoming and Phoenix holds end when you breathe in; false gives them their suggested length. */
     openHolds: true,
     sounds: true,
     vibration: true,
@@ -138,10 +138,13 @@ export class BreathworkSessionManager {
         // breathe again; a 'carry' stage keeps the round's rhythm on your own, uncounted. An
         // arrival without a pattern is breathed at your own pace. The order is the path through
         // them: the short sessions first, then the longer practices.
+        // Keys (BASE, ELIXIR, REST, FLOW, …) are saved in practice records and name the voice folders,
+        // so they stay as they were; players see each session's `name` (Homecoming, Phoenix, Nightfall,
+        // Mandala since 2026-11-03).
         this.SESSIONS = {
             FIRST: {
-                id: 'hale-first-breath',
-                name: 'Hale First Breath',
+                id: 'sukha-first-breath',
+                name: 'Sukha First Breath',
                 description: 'A first taste of the starter worlds: Heart Glow, a gentle square, Moonlit Waters, then rest.',
                 intensity: 'Gentle',
                 totalRounds: 3,
@@ -202,8 +205,8 @@ export class BreathworkSessionManager {
                 ],
             },
             TIDE: {
-                id: 'hale-tide',
-                name: 'Hale Tide',
+                id: 'sukha-tide',
+                name: 'Sukha Tide',
                 description: 'Even breaths with the tide, a stretch on your own, then a longer ebb.',
                 intensity: 'Gentle',
                 totalRounds: 2,
@@ -263,8 +266,8 @@ export class BreathworkSessionManager {
                 ],
             },
             ROOTS: {
-                id: 'hale-roots',
-                name: 'Hale Roots',
+                id: 'sukha-roots',
+                name: 'Sukha Roots',
                 description: 'A rest at the top of each breath and a long breath out, building to the forest\'s own rhythm.',
                 intensity: 'Gentle',
                 totalRounds: 2,
@@ -325,8 +328,8 @@ export class BreathworkSessionManager {
                 ],
             },
             UNWIND: {
-                id: 'hale-unwind',
-                name: 'Hale Unwind',
+                id: 'sukha-unwind',
+                name: 'Sukha Unwind',
                 description: 'Out-breaths that grow longer until you breathe the aurora\'s rhythm, then a rest that leads to sleep.',
                 intensity: 'Gentle',
                 totalRounds: 2,
@@ -379,8 +382,8 @@ export class BreathworkSessionManager {
                 ],
             },
             SUNRISE: {
-                id: 'hale-sunrise',
-                name: 'Hale Sunrise',
+                id: 'sukha-sunrise',
+                name: 'Sukha Sunrise',
                 description: 'The Solar Flare\'s brisk rhythm, then quicker and lighter, then a steady close.',
                 intensity: 'Gentle',
                 totalRounds: 2,
@@ -435,8 +438,8 @@ export class BreathworkSessionManager {
                 ],
             },
             REST: {
-                id: 'hale-rest',
-                name: 'Hale Rest',
+                id: 'sukha-rest',
+                name: 'Sukha Nightfall',
                 description: 'The four-seven-eight breath learned step by step, drifting among the stars between rounds, '
                     + 'and a rest that leads into sleep.',
                 intensity: 'Gentle',
@@ -518,8 +521,8 @@ export class BreathworkSessionManager {
                 ],
             },
             FLOW: {
-                id: 'hale-flow',
-                name: 'Hale Flow',
+                id: 'sukha-flow',
+                name: 'Sukha Mandala',
                 description: 'The geometry of breath: a square, a triangle and a wider square, each kept on your own '
                     + 'after the count.',
                 intensity: 'Moderate',
@@ -608,8 +611,8 @@ export class BreathworkSessionManager {
                 ],
             },
             BASE: {
-                id: 'hale-base',
-                name: 'Hale Base',
+                id: 'sukha-base',
+                name: 'Sukha Homecoming',
                 description: 'Three rounds of steady breathing through the nose that charge the storm, each ending in a '
                     + 'stillness you hold for as long as it feels good.',
                 intensity: 'Moderate',
@@ -732,8 +735,8 @@ export class BreathworkSessionManager {
                 ],
             },
             ELIXIR: {
-                id: 'hale-elixir',
-                name: 'Hale Elixir',
+                id: 'sukha-elixir',
+                name: 'Sukha Phoenix',
                 description: 'Strong, connected breathing through the mouth that feeds the fire, each round ending in a '
                     + 'deep hold you end yourself.',
                 intensity: 'High',
@@ -812,8 +815,8 @@ export class BreathworkSessionManager {
                         duration: 15,
                         round: 2,
                         prompt: 'Recovery Breath',
-                        subPrompt: 'Breathe in fully, and hold. Squeeze gently at the top.',
-                        audio: { voice: 'elixir/r2_recovery', release: C.ELIXIR.release.out },
+                        subPrompt: 'Breathe all the way in, and hold it at the top.',
+                        audio: { voice: 'elixir/r1_recovery', release: C.ELIXIR.release.out },
                     },
                     {
                         type: 'active',
@@ -912,12 +915,12 @@ export class BreathworkSessionManager {
         return Array.isArray(choice) ? choice[Math.max(0, (phase.round || 1) - 1) % choice.length] : choice;
     }
 
-    /** A hold you end yourself: Base and Elixir, unless you asked for timed holds. */
+    /** A hold you end yourself: Homecoming and Phoenix, unless you asked for timed holds. */
     _isOpenHold(phase) {
         return phase?.type === 'retention' && phase.hold === 'open' && this.options.openHolds !== false;
     }
 
-    /** An open hold's safety limit: twice its suggestion, at least 30 s over, at most four minutes. */
+    /** An open hold's safety limit: twice its suggestion, at least 30 s over, at most two minutes. */
     _holdCap(phase) {
         return Math.min(MAX_OPEN_HOLD_SECONDS, Math.max(phase.duration + 30, phase.duration * 2));
     }

@@ -5129,7 +5129,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         category: 'Playground',
         scope: 'playground.html — breathing',
         description: 'Choose the breathing preview world.',
-        values: 'deep-relaxation, box-breathing, calm-sleep, energizing, coherence, triangle, wim-hof, '
+        values: 'deep-relaxation, box-breathing, calm-sleep, energizing, coherence, triangle, volcanic-fire, '
             + 'ocean-breath, zen-garden, cosmic-breath, forest-breath, electric-storm.',
         defaultValue: 'deep-relaxation.',
         example: 'world=ocean-breath',

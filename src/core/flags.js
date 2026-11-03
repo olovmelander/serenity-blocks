@@ -61,16 +61,17 @@ export const FLAG_REGISTRY = [
     {
         name: 'unlockAll',
         default: false,
-        purpose: 'URL-only theme and song development access without saved collection grants',
+        purpose: 'URL-only theme, song and breathing-world development access without saved collection grants; '
+            + 'a shipped desktop build without diagnostics ignores it (src/ui/developer-surfaces.js)',
         kind: 'permanent-ops',
         reader: 'local',
     },
     {
         name: 'photosensitivityWarning',
         default: true,
-        purpose: 'the photosensitivity warning that opens every launch; 0 skips it (harnesses, captures, a developer\'s '
-            + 'installed game). skipIntro=1 skips it too. Read by src/ui/photosensitivity-warning.js before the bundle '
-            + 'loads (ADR-0021)',
+        purpose: 'the photosensitivity warning that opens every launch; 0 skips it (harnesses, captures, a diagnostics '
+            + 'run). skipIntro=1 skips it too; a shipped build without diagnostics honours neither. Read by '
+            + 'src/ui/photosensitivity-warning.js before the bundle loads (ADR-0021)',
         kind: 'permanent-ops',
         reader: 'local',
     },
@@ -97,7 +98,7 @@ export const FLAG_REGISTRY = [
         name: 'holdStats', default: true, purpose: 'extend local-board hold to score/lines/level + garbage queue', kind: 'refactor', graduationBar: 'rollback lever — delete with plan §6B.3', reader: 'flags',
     },
     {
-        name: 'peerLocalSim', default: true, purpose: 'PEER-OWNS-BOARD full local sim on peer (Quadra model)', kind: 'refactor', graduationBar: 'rollback lever — becomes the only path in plan §6B.3, then delete', reader: 'flags',
+        name: 'peerLocalSim', default: true, purpose: 'PEER-OWNS-BOARD full local sim on peer (the peer owns its board)', kind: 'refactor', graduationBar: 'rollback lever — becomes the only path in plan §6B.3, then delete', reader: 'flags',
     },
     {
         name: 'opponentClearEvents', default: true, purpose: 'grid-free GAME_LINES_CLEAR flash on opponent mini-boards', kind: 'refactor', graduationBar: 'rollback lever — plan §6A.1', reader: 'flags',
@@ -115,7 +116,7 @@ export const FLAG_REGISTRY = [
         name: 'migrationEpoch', default: false, purpose: 'host-migration epoch fencing', kind: 'refactor', graduationBar: 'plan §6A.1 flag matrix soak', reader: 'flags',
     },
     {
-        name: 'readyBarrier', default: false, purpose: 'all-players-ready round-restart syncpoint', kind: 'refactor', graduationBar: 'plan §6A.6 (Quadra #12 reseed barrier)', reader: 'flags',
+        name: 'readyBarrier', default: false, purpose: 'all-players-ready round-restart syncpoint', kind: 'refactor', graduationBar: 'plan §6A.6 (reseed barrier)', reader: 'flags',
     },
     {
         name: 'adaptiveInterp', default: false, purpose: 'adaptive snapshot-interpolation delay', kind: 'refactor', graduationBar: 'plan §6A.1 flag matrix soak', reader: 'flags',

@@ -68,9 +68,9 @@ through another. The luma script now reads the boundary from the capture sidecar
 - **3→4 / 4→5:** the world is continuous; framing glides; no veil.
 - **5→6:** the aurora grows out of the world's airglow before the boundary and fades after it;
   the void sky is fully revealed (0.7730) before the world switches off (0.7765).
-- **6→7:** one black hole throughout — the omen→Gargantua glide runs on progress and completes at
+- **6→7:** one black hole throughout — the omen→the great hole glide runs on progress and completes at
   0.8487; exactly one opaque shadow at any progress.
-- **7→8:** the accretion light becomes the city's sun — Gargantua glides onto the Retrosun's
+- **7→8:** the accretion light becomes the city's sun — the great hole glides onto the Retrosun's
   direction, the shadow closes, a copy of the Retrosun fills the hole while the photon ring
   swells into its limb, and the city's own sun takes over on the frame the copy hides.
 

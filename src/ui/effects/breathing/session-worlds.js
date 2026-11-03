@@ -1,11 +1,11 @@
 /**
- * The world each stage of each Hale session is set in. One journey per session, the same every
+ * The world each stage of each Sukha session is set in. One journey per session, the same every
  * time: the scenery is part of the practice, not decoration to shuffle. An array is indexed by
  * round. A round breathes the technique of the world it is set in (or a gentler form of it, named
  * as such), and `featured` is the world a session opens with on the path (breath-collection.js):
  * its poster. Each session passes only through worlds that are open by the time it opens.
  *
- * Boot-safe data (no audio, no three.js): the session manager, the Hale tab and the breath
+ * Boot-safe data (no audio, no three.js): the session manager, the Sukha tab and the breath
  * collection read it.
  */
 export const SESSION_WORLDS = Object.freeze({
@@ -64,9 +64,9 @@ export const SESSION_WORLDS = Object.freeze({
         integration: 'calm-sleep',
     },
     ELIXIR: {
-        featured: 'wim-hof',
+        featured: 'volcanic-fire',
         grounding: 'zen-garden',
-        active: ['wim-hof', 'energizing', 'electric-storm'],
+        active: ['volcanic-fire', 'energizing', 'electric-storm'],
         retention: 'cosmic-breath',
         recovery: 'coherence',
         integration: 'deep-relaxation',

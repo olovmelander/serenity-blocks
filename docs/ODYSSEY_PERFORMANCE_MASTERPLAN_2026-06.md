@@ -109,7 +109,7 @@ the per‑chapter rows below list the *specific* heaviest items and the hero ele
 ### Ch7 — Black Hole · `gpu-fill` · ~70–75 draws
 - **Heaviest:** camera sits **inside two additive full‑frame procedural‑noise spheres** every frame (void dome ~160 hash/px at 5 oct + ambient wash ~80, neither early‑Z‑able); 25 secondary‑motif draws + 18 infall‑tube draws (materials shared, draws not); 7 accretion disks each running 5‑oct fbm3.
 - **Fixes:** bake the void dome + wash to a texture (L5); **drop dome/wash octaves 5 → 2–3** (instant, near‑zero risk); instance the 5 motifs (25 → 5) and merge the 18 infall tubes (→ 2) with GPU‑side spin; frustum/distance‑cull the staggered motifs (only 1–2 visible); optionally fold the wash into the dome (medium risk — playground‑verify).
-- **Preserve:** the camera‑locked lensed hero (disk + photon ring + Einstein shell + Gargantua fold arcs), Doppler asymmetry, the multi‑hued violet void that defeats RGB‑black.
+- **Preserve:** the camera‑locked lensed hero (disk + photon ring + Einstein shell + the great hole fold arcs), Doppler asymmetry, the multi‑hued violet void that defeats RGB‑black.
 
 ### Ch8 — Urban Dreams · **`compile`** · ~55–60 draws
 - **Heaviest:** **9 byte‑identical ground‑haze NodeMaterials built in a loop** (9 pipeline compiles for the same math); ~30+ unique materials across rings/tubes/signs/haze for math that wants ~5 shared programs; overlapping additive fill at the finale (7 haze billboards + 9 pools + 500‑r sun halo + wet street); fullscreen 5‑oct fbm2 sky dome.

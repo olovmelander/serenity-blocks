@@ -10,9 +10,9 @@
  * words again now and then. Fewer words, deeper.
  *
  * The tone: the soft rising tone on the breath in and falling tone on the breath out that a
- * Hale session has, on every breath in and out of every world, beside the voice.
+ * Sukha session has, on every breath in and out of every world, beside the voice.
  *
- * Silent while a Hale session drives the guide (the session has its own voice and tones); the
+ * Silent while a Sukha session drives the guide (the session has its own voice and tones); the
  * voice also while its switch is off, and for any line not recorded yet: the guide's words are on
  * screen regardless. The audio code loads on first use, not at boot, and follows the game's mute
  * and effects volume.

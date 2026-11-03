@@ -2,7 +2,7 @@
 /**
  * Bring the breath-cue lines of scripts/tts-script.json in line with the words in the source:
  *
- *   - one group `cues_<session>` per Hale session, from src/ui/effects/breathing/session-cues.js;
+ *   - one group `cues_<session>` per Sukha session, from src/ui/effects/breathing/session-cues.js;
  *   - the `worlds` group: each world's introduction (kept as written), then its couplets, its
  *     hold and its rest words, from src/ui/effects/breathing/breath-catalogue.js. A world whose
  *     out-breath is too short to speak on has no out lines.
@@ -26,15 +26,15 @@ import { SESSION_CUES } from '../src/ui/effects/breathing/session-cues.js';
 
 /** A session's name, and the sentence sent before each of its cues (not spoken) to set its tone. */
 const SESSIONS = {
-    FIRST: ['Hale First Breath', 'Follow the light, and breathe slowly through your nose.'],
-    TIDE: ['Hale Tide', 'Listen to the water, and breathe slowly with the waves.'],
-    ROOTS: ['Hale Roots', 'Feel the ground beneath you, and breathe slowly.'],
-    UNWIND: ['Hale Unwind', 'The day is over. Breathe slowly, and let it go.'],
-    SUNRISE: ['Hale Sunrise', 'Sit tall, and breathe lightly through your nose.'],
-    REST: ['Hale Rest', 'It is night. Breathe slowly, ready for sleep.'],
-    FLOW: ['Hale Flow', 'Follow the shape, each side the same length.'],
-    BASE: ['Hale Base', 'Breathe steadily through your nose, full and never forced.'],
-    ELIXIR: ['Hale Elixir', 'Breathe gently through your nose, and settle.'],
+    FIRST: ['Sukha First Breath', 'Follow the light, and breathe slowly through your nose.'],
+    TIDE: ['Sukha Tide', 'Listen to the water, and breathe slowly with the waves.'],
+    ROOTS: ['Sukha Roots', 'Feel the ground beneath you, and breathe slowly.'],
+    UNWIND: ['Sukha Unwind', 'The day is over. Breathe slowly, and let it go.'],
+    SUNRISE: ['Sukha Sunrise', 'Sit tall, and breathe lightly through your nose.'],
+    REST: ['Sukha Nightfall', 'It is night. Breathe slowly, ready for sleep.'],
+    FLOW: ['Sukha Mandala', 'Follow the shape, each side the same length.'],
+    BASE: ['Sukha Homecoming', 'Breathe steadily through your nose, full and never forced.'],
+    ELIXIR: ['Sukha Phoenix', 'Breathe gently through your nose, and settle.'],
 };
 /** A set spoken in another manner than its session: its own sentence of context. */
 const SET_CONTEXT = {

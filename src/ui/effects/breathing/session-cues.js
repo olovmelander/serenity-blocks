@@ -1,5 +1,5 @@
 /**
- * The breath cues of each Hale session: its own words for the breath in, the breath out, the
+ * The breath cues of each Sukha session: its own words for the breath in, the breath out, the
  * hold (lungs full) and the rest (lungs empty), in its own recordings. No session borrows
  * another's. A guided run opens on a `plain` take, then draws from all of them
  * (cue-variety.js); the session manager only says a take that ends inside the breath it is

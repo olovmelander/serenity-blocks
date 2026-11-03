@@ -352,7 +352,7 @@ describe('Chromatic Impasto theme: one node renderer on both backends', () => {
         expect(theme.getWarmupRoots()).toEqual([]);
         expect(theme.getTetrominoConfig()).toBe(CHROMATIC_IMPASTO_TETROMINOS);
         // The first of the five periods is on the easel.
-        expect(IMPASTO_PERIODS.map(({ name }) => name)).toEqual(['lindstrom', 'fauve', 'nocturne', 'ember', 'spring']);
+        expect(IMPASTO_PERIODS.map(({ name }) => name)).toEqual(['nordic', 'fauve', 'nocturne', 'ember', 'spring']);
         expect(theme.getDiagnostics()).toMatchObject({
             backend: 'WebGPU',
             quality: 'High',

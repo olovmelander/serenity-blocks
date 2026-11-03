@@ -1,12 +1,14 @@
 /**
- * Time spent breathing in the worlds outside a Hale session (the Breathing tab's practice), kept
+ * Time spent breathing in the worlds outside a Sukha session (the Breathing tab's practice), kept
  * on this device: `serenity.breathPractice` = { v: 1, seconds, worlds: { <world id>: seconds } }.
  *
  * It counts toward opening worlds and sessions by practice (breath-collection.js), alongside the
- * Hale practice log. A stretch is counted from when the guide starts on a world to when it stops,
+ * Sukha practice log. A stretch is counted from when the guide starts on a world to when it stops,
  * changes world or the page is hidden; a stretch of a few seconds (a world glimpsed while
  * browsing) is not practice.
  */
+import { resolveBreathWorldId } from './breath-catalogue.js';
+
 export const BREATH_PRACTICE_KEY = 'serenity.breathPractice';
 /** Shorter than this, a stretch in one world is browsing, not practice. */
 export const MIN_STRETCH_SECONDS = 20;
@@ -26,8 +28,12 @@ export function readBreathPractice(storage = defaultStorage()) {
     try {
         const raw = JSON.parse(storage?.getItem(BREATH_PRACTICE_KEY) || 'null');
         const worlds = {};
-        Object.entries(raw?.worlds || {}).forEach(([id, seconds]) => {
-            if (typeof id === 'string' && Number.isFinite(seconds) && seconds > 0) worlds[id] = Math.round(seconds);
+        Object.entries(raw?.worlds || {}).forEach(([saved, seconds]) => {
+            // A world renamed since the save adds its time to the new id.
+            const id = resolveBreathWorldId(saved);
+            if (typeof id === 'string' && Number.isFinite(seconds) && seconds > 0) {
+                worlds[id] = (worlds[id] || 0) + Math.round(seconds);
+            }
         });
         const seconds = Object.values(worlds).reduce((sum, value) => sum + value, 0);
         return { v: 1, seconds, worlds };
@@ -52,7 +58,7 @@ export function addBreathPractice(worldId, seconds, storage = defaultStorage()) 
 }
 
 /**
- * Follow the breathing guide and record its stand-alone practice. A Hale session drives the
+ * Follow the breathing guide and record its stand-alone practice. A Sukha session drives the
  * guide too (`isExternallyControlled`): those minutes are the practice log's, not counted here.
  * @param {{guide: object, storage?: object, now?: () => number, onRecorded?: () => void,
  *   target?: EventTarget, doc?: Document}} options

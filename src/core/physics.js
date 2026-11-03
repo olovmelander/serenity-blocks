@@ -50,17 +50,17 @@ const MAX_ANIMATION_CATCHUP_MS = 120;
 /**
  * Cascade gravity: milliseconds per row of fall.
  *
- * Ported from Quadra (source/player.cc, `Player_check_link::step`). Quadra runs
- * a fixed 10ms simulation tick (`while (acc >= 10) { acc -= 10; overmind.step(); }`
- * in quadra.cc's main_loop) and its cascade alternates two steps per row — one
- * step flood-fills block connectivity, the next moves every unsupported block
- * down exactly one row. That is 2 x 10ms = 20ms per row, constant, with no
- * acceleration and no easing.
+ * The cascade timeline is built on a fixed 10ms tick, and each row of fall
+ * takes two ticks: one works out which blocks are still connected and
+ * supported, the next moves every unsupported block down exactly one row.
+ * That is 2 x 10ms = 20ms per row, constant, with no acceleration and no
+ * easing.
  *
  * We were at 16ms (62.5 rows/sec), which read as frantic. Note the previous
  * frame-quantised implementation accidentally landed near this value — an
- * 18-row cascade measured 552ms against Quadra's 520ms — which is why it felt
- * right before the pacer started hitting the authored constants exactly.
+ * 18-row cascade measured 552ms against the 520ms this timeline gives (160ms
+ * hold + 18 x 20ms) — which is why it felt right before the pacer started
+ * hitting the authored constants exactly.
  *
  * See docs/GAMEPLAY_SMOOTHNESS_INVESTIGATION_2026-08.md §8.
  */
@@ -69,8 +69,8 @@ const GRAVITY_STEP_MS = 20;
 /**
  * How long the completed rows stay on screen before the stack collapses.
  *
- * Quadra's `Player_flash_lines` (source/player.cc:738) holds for 16 ticks =
- * 160ms, strobing a solid bar across each cleared row, then cuts to the fall.
+ * The hold is 16 ticks = 160ms: a solid bar strobes across each cleared row,
+ * then the stack cuts to the fall.
  *
  * We already draw that bar: `triggerLineClearFlash`
  * (rendering/phaser/shared-effects.js:262) adds a full-width additive stripe per
@@ -90,10 +90,10 @@ const LINE_CLEAR_HOLD_MS = 160;
 /**
  * Beat between the rows disappearing and the stack starting to fall.
  *
- * Quadra gets this for free: `Player_check_link`'s first tick only flood-fills
- * connectivity (`fill_bloc`) and moves nothing, so there is a full 10ms tick
- * where the row is gone and the stack still hangs. That beat is what makes the
- * collapse read as a consequence rather than a jump-cut.
+ * In the two-tick fall model this beat is the first connectivity tick: it
+ * works out what is supported and moves nothing, so the row is gone while the
+ * stack still hangs. That beat is what makes the collapse read as a
+ * consequence rather than a jump-cut.
  *
  * We had no equivalent — nothing repainted between `removeClearedLines` and the
  * first gravity step, so the first frame after the hold already had everything
@@ -103,8 +103,8 @@ const SETTLE_LEAD_MS = 20;
 
 /**
  * Beat after the last block lands, before the next wave or the next piece.
- * Mirrors Quadra's final `Player_check_link` pass, whose move step moves nothing
- * before `ret()` — the collapse gets a moment to land.
+ * This is the fall's last pass, where the move step finds nothing left to move
+ * and the cascade ends — the collapse gets a moment to land.
  */
 const SETTLE_TAIL_MS = 20;
 
@@ -307,7 +307,7 @@ export async function applyGravity(
     });
 
     // Fixed gravity delay - same speed for all game modes and every cascade
-    // wave, matching Quadra's constant 2-tick-per-row fall. See GRAVITY_STEP_MS.
+    // wave: the constant 2-tick-per-row fall. See GRAVITY_STEP_MS.
     const gravityDelay = GRAVITY_STEP_MS;
 
     physicsLog(`[Gravity] Max potential fall: ${maxPotentialFall} rows, using fixed ${gravityDelay}ms per step`);
@@ -902,14 +902,14 @@ export async function processPhysicsLegacy(gameState, callbacks) {
         physicsLog('[Physics] Clearing moved[][] array for gravity tracking');
         resetMovedArray(placementGrid);
 
-        // --- Line-clear flash (Quadra rhythm — see LINE_CLEAR_FLASH_BEATS) ---
+        // --- Line-clear flash (clear rhythm — see LINE_CLEAR_FLASH_BEATS) ---
         rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
         const markedBoard = cloneBoardGrid(gameState.boardGrid);
 
-        // Per-wave speed class. Quadra itself has no cascade speed-up — every
-        // wave gets the full 160ms hold — but deep chains are spectacle here and
-        // the wave payload already carries this multiplier, so keep it: wave 1
-        // is Quadra-exact at 160ms and later waves tighten.
+        // Per-wave speed class. The base rhythm has no cascade speed-up — every
+        // wave would get the full 160ms hold — but deep chains are spectacle here
+        // and the wave payload already carries this multiplier, so keep it: wave
+        // 1 holds the full 160ms and later waves tighten.
         // Cascade 1: 1.0x (160ms) · 2-4: 0.8x (128ms) · 5-9: 0.6x (96ms) · 10+: 0.5x (80ms)
         const speedMultiplier = cascadeCount === 1 ? 1.0
             : cascadeCount <= 4 ? 0.8
@@ -928,7 +928,7 @@ export async function processPhysicsLegacy(gameState, callbacks) {
         // Snapshot board state before gravity so the next cascade can compare deltas
         preGravityBoard = cloneBoardGrid(gameState.boardGrid).map((row) => row.map((cell) => cell !== null));
 
-        // Beat: rows gone, stack still hanging (Quadra's connectivity-scan tick)
+        // Beat: rows gone, stack still hanging (the connectivity-scan tick)
         // eslint-disable-next-line no-await-in-loop
         await settleLead(gameState, speedMultiplier, callbacks, pacer);
 

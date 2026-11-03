@@ -1,5 +1,5 @@
 /**
- * Which speaker recorded each Hale voice clip, and from which words: scripts/tts-recordings.json.
+ * Which speaker recorded each Sukha voice clip, and from which words: scripts/tts-recordings.json.
  *
  * scripts/generate-tts.js writes an entry after every clip it records. A line whose entry no longer
  * matches the speaker in tts-script.json's voice_config, or the line's words, is "stale": the next

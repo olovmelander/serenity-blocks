@@ -209,7 +209,7 @@ describe('the hole\'s window builds on both backends with the fold in it', () =>
     ['high', 'low'].forEach((tier) => {
         const env = createBlackHoleTranscendenceEnvironment({ particleCount: 200, qualityTier: tier });
         let shadow = null;
-        env.traverse((o) => { if (o.name === 'gargantua-shadow') shadow = o; });
+        env.traverse((o) => { if (o.name === 'great-hole-shadow') shadow = o; });
         backends.forEach(([label, Builder]) => {
             it(`${tier} (${label})`, () => {
                 expect(shadow).not.toBeNull();

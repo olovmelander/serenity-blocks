@@ -180,7 +180,7 @@ describe('Urban Dreams chapter environment (creative plan ch8)', () => {
     });
 
     it('7->8: keeps its Retrosun dark through the carry, then takes over at full strength', () => {
-        // Seamless pass: across the 7->8 window the sun is chapter 7's copy (Gargantua's light
+        // Seamless pass: across the 7->8 window the sun is chapter 7's copy (the great hole's light
         // closing into the identical disc); this one takes over at the hand-over frame.
         const group = createUrbanDreamsEnvironment();
         const positions = getActiveOdysseyChapterPositions();

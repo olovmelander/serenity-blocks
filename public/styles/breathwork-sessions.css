@@ -1,10 +1,10 @@
-/* Hale sessions (Keystone): the catalogue in the Hub's tab, and the full-screen flow around
+/* Sukha sessions (Keystone): the catalogue in the Hub's tab, and the full-screen flow around
    a session (prepare → countdown → complete). Each session brings a hue as --session
    (r, g, b) for its light, words and meters; coral stays for today's practice and the
    one primary action on each screen. Shell, card tokens and shared patterns: keystone-hub.css;
-   the in-game Hale tile is styled there too. */
-#serenity-hub-panel .hale,
-.hale-flow {
+   the in-game Sukha tile is styled there too. */
+#serenity-hub-panel .sukha,
+.sukha-flow {
     --session: var(--sb-sky-rgb);
     --sb-accent-rgb: var(--session);
     color: var(--sb-text);
@@ -12,54 +12,54 @@
 }
 
 #serenity-hub-panel [data-session='BASE'],
-.hale-flow[data-session='BASE'] { --session: var(--sb-sky-rgb); }
+.sukha-flow[data-session='BASE'] { --session: var(--sb-sky-rgb); }
 
 #serenity-hub-panel [data-session='ELIXIR'],
-.hale-flow[data-session='ELIXIR'] { --session: var(--sb-gold-rgb); }
+.sukha-flow[data-session='ELIXIR'] { --session: var(--sb-gold-rgb); }
 
 #serenity-hub-panel [data-session='REST'],
-.hale-flow[data-session='REST'] { --session: var(--sb-lavender-rgb); }
+.sukha-flow[data-session='REST'] { --session: var(--sb-lavender-rgb); }
 
 #serenity-hub-panel [data-session='FLOW'],
-.hale-flow[data-session='FLOW'] { --session: var(--sb-mint-rgb); }
+.sukha-flow[data-session='FLOW'] { --session: var(--sb-mint-rgb); }
 /* The beginner sessions take the accent of the world they introduce. */
 #serenity-hub-panel [data-session='FIRST'],
-.hale-flow[data-session='FIRST'] { --session: 255, 160, 190; }
+.sukha-flow[data-session='FIRST'] { --session: 255, 160, 190; }
 #serenity-hub-panel [data-session='TIDE'],
-.hale-flow[data-session='TIDE'] { --session: 120, 225, 225; }
+.sukha-flow[data-session='TIDE'] { --session: 120, 225, 225; }
 #serenity-hub-panel [data-session='ROOTS'],
-.hale-flow[data-session='ROOTS'] { --session: 165, 230, 150; }
+.sukha-flow[data-session='ROOTS'] { --session: 165, 230, 150; }
 #serenity-hub-panel [data-session='UNWIND'],
-.hale-flow[data-session='UNWIND'] { --session: 110, 240, 190; }
+.sukha-flow[data-session='UNWIND'] { --session: 110, 240, 190; }
 #serenity-hub-panel [data-session='SUNRISE'],
-.hale-flow[data-session='SUNRISE'] { --session: 255, 190, 90; }
+.sukha-flow[data-session='SUNRISE'] { --session: 255, 190, 90; }
 
-#serenity-hub-panel .hale button:focus-visible,
-.hale-flow button:focus-visible,
-.hale-flow input:focus-visible {
+#serenity-hub-panel .sukha button:focus-visible,
+.sukha-flow button:focus-visible,
+.sukha-flow input:focus-visible {
     outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
     outline-offset: 3px;
 }
 
 /* ===============================================================================
- * The catalogue (the Hub's Hale sessions tab)
+ * The catalogue (the Hub's Sukha sessions tab)
  * ============================================================================= */
-#serenity-hub-panel .hale {
+#serenity-hub-panel .sukha {
     display: flex;
     flex-direction: column;
     gap: 24px;
     padding: 0;
 }
 
-#serenity-hub-panel .hale__intro {
+#serenity-hub-panel .sukha__intro {
     max-width: 660px;
 }
 
-#serenity-hub-panel .hale__intro .sb-eyebrow {
+#serenity-hub-panel .sukha__intro .sb-eyebrow {
     --sb-accent-rgb: var(--sb-mint-rgb);
 }
 
-#serenity-hub-panel .hale__intro h2 {
+#serenity-hub-panel .sukha__intro h2 {
     max-width: 28ch;
     margin: 14px 0 12px;
     color: var(--sb-text);
@@ -68,7 +68,7 @@
     text-wrap: balance;
 }
 
-#serenity-hub-panel .hale__intro p {
+#serenity-hub-panel .sukha__intro p {
     max-width: 60ch;
     margin: 0;
     color: var(--sb-text-muted);
@@ -76,7 +76,7 @@
 }
 
 /* Your practice: streak, the last seven days (today, practised, in coral), totals. */
-#serenity-hub-panel .hale__practice {
+#serenity-hub-panel .sukha__practice {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -89,34 +89,34 @@
         var(--hub-card-fill);
 }
 
-#serenity-hub-panel .hale__streak {
+#serenity-hub-panel .sukha__streak {
     display: flex;
     align-items: center;
     gap: 12px;
     color: var(--sb-gold);
 }
 
-#serenity-hub-panel .hale__streak p {
+#serenity-hub-panel .sukha__streak p {
     display: flex;
     align-items: baseline;
     gap: 8px;
     margin: 0;
 }
 
-#serenity-hub-panel .hale__streak b {
+#serenity-hub-panel .sukha__streak b {
     color: var(--sb-text);
     font: 700 1.75rem / 1 var(--sb-font-display);
     font-variant-numeric: tabular-nums;
 }
 
-#serenity-hub-panel .hale__streak span {
+#serenity-hub-panel .sukha__streak span {
     color: var(--sb-text-faint);
     font: 600 0.5625rem / 1 var(--sb-font-display);
     letter-spacing: 0.2em;
     text-transform: uppercase;
 }
 
-#serenity-hub-panel .hale__week {
+#serenity-hub-panel .sukha__week {
     display: flex;
     gap: 6px;
     margin: 0;
@@ -124,7 +124,7 @@
     list-style: none;
 }
 
-#serenity-hub-panel .hale__week li {
+#serenity-hub-panel .sukha__week li {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -134,35 +134,35 @@
     letter-spacing: 0.06em;
 }
 
-#serenity-hub-panel .hale__week i {
+#serenity-hub-panel .sukha__week i {
     width: 14px;
     height: 14px;
     border-radius: 3px;
     background: rgba(var(--sb-cream-rgb), 0.09);
 }
 
-#serenity-hub-panel .hale__week li.is-practised i {
+#serenity-hub-panel .sukha__week li.is-practised i {
     background: rgba(var(--sb-mint-rgb), 0.85);
 }
 
-#serenity-hub-panel .hale__week li.is-practised {
+#serenity-hub-panel .sukha__week li.is-practised {
     color: var(--sb-text-muted);
 }
 
-#serenity-hub-panel .hale__week li.is-today {
+#serenity-hub-panel .sukha__week li.is-today {
     color: var(--sb-text);
 }
 
-#serenity-hub-panel .hale__week li.is-today i {
+#serenity-hub-panel .sukha__week li.is-today i {
     box-shadow: inset 0 0 0 1.5px rgba(var(--sb-cream-rgb), 0.55);
 }
 
-#serenity-hub-panel .hale__week li.is-today.is-practised i {
+#serenity-hub-panel .sukha__week li.is-today.is-practised i {
     background: var(--sb-keystone);
     box-shadow: 0 0 10px rgba(var(--sb-coral-rgb), 0.7);
 }
 
-#serenity-hub-panel .hale__totals {
+#serenity-hub-panel .sukha__totals {
     flex: 1 1 240px;
     margin: 0;
     color: var(--sb-text-muted);
@@ -171,7 +171,7 @@
 }
 
 /* A session in progress, held while the Hub is open. */
-#serenity-hub-panel .hale__live {
+#serenity-hub-panel .sukha__live {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -182,25 +182,25 @@
     background: rgba(var(--session), 0.08);
 }
 
-#serenity-hub-panel .hale__live > div {
+#serenity-hub-panel .sukha__live > div {
     flex: 1 1 260px;
     min-width: 0;
 }
 
-#serenity-hub-panel .hale__live-name {
+#serenity-hub-panel .sukha__live-name {
     margin: 10px 0 0;
     color: var(--sb-text);
     font: 600 var(--sb-fs-body) / 1.4 var(--sb-font-display);
 }
 
 /* The four sessions. */
-#serenity-hub-panel .hale__grid {
+#serenity-hub-panel .sukha__grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 16px;
 }
 
-#serenity-hub-panel .hale-card {
+#serenity-hub-panel .sukha-card {
     position: relative;
     display: flex;
     flex-direction: column;
@@ -211,14 +211,14 @@
     transition: border-color var(--sb-dur-2) var(--sb-ease-lock);
 }
 
-#serenity-hub-panel .hale-card:hover,
-#serenity-hub-panel .hale-card:focus-within {
+#serenity-hub-panel .sukha-card:hover,
+#serenity-hub-panel .sukha-card:focus-within {
     border-color: rgba(var(--session), 0.45);
     transform: none;
     box-shadow: none;
 }
 
-#serenity-hub-panel .hale-card__art {
+#serenity-hub-panel .sukha-card__art {
     position: relative;
     aspect-ratio: 16 / 7;
     background-color: rgba(var(--sb-night-rgb), 0.8);
@@ -226,14 +226,14 @@
     background-size: cover;
 }
 
-#serenity-hub-panel .hale-card__art::after {
+#serenity-hub-panel .sukha-card__art::after {
     content: '';
     position: absolute;
     inset: 0;
     background: linear-gradient(180deg, rgba(19, 16, 44, 0) 45%, rgba(19, 16, 44, 0.97) 100%);
 }
 
-#serenity-hub-panel .hale-card__body {
+#serenity-hub-panel .sukha-card__body {
     position: relative;
     display: flex;
     flex: 1;
@@ -243,26 +243,26 @@
     padding: 0 22px 22px;
 }
 
-#serenity-hub-panel .hale-card h3 {
+#serenity-hub-panel .sukha-card h3 {
     margin: 6px 0 0;
     color: var(--sb-text);
     font: 700 1.375rem / 1.15 var(--sb-font-display);
     letter-spacing: -0.005em;
 }
 
-#serenity-hub-panel .hale-card__promise {
+#serenity-hub-panel .sukha-card__promise {
     margin: 0;
     color: rgb(var(--session));
     font: 600 var(--sb-fs-body) / 1.4 var(--sb-font-text);
 }
 
-#serenity-hub-panel .hale-card__summary {
+#serenity-hub-panel .sukha-card__summary {
     margin: 2px 0 0;
     color: var(--sb-text-muted);
     font: 500 var(--sb-fs-small) / 1.6 var(--sb-font-text);
 }
 
-#serenity-hub-panel .hale-card__facts {
+#serenity-hub-panel .sukha-card__facts {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
@@ -272,7 +272,7 @@
 }
 
 /* Facts as rounded-square chips. */
-#serenity-hub-panel .hale-card__facts li {
+#serenity-hub-panel .sukha-card__facts li {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -286,38 +286,38 @@
     text-transform: uppercase;
 }
 
-#serenity-hub-panel .hale-card__facts .cs-icon {
+#serenity-hub-panel .sukha-card__facts .cs-icon {
     width: 12px;
     height: 12px;
     color: rgb(var(--session));
 }
 
-#serenity-hub-panel .hale-card__mine {
+#serenity-hub-panel .sukha-card__mine {
     margin: -4px 0 12px;
     color: rgb(var(--session));
     font: 600 0.75rem / 1.4 var(--sb-font-text);
 }
 
-#serenity-hub-panel .hale-card__begin {
+#serenity-hub-panel .sukha-card__begin {
     justify-content: space-between;
     width: 100%;
     margin-top: auto;
     border-color: rgba(var(--session), 0.4);
 }
 
-#serenity-hub-panel .hale-card__begin:hover {
+#serenity-hub-panel .sukha-card__begin:hover {
     border-color: rgba(var(--session), 0.75);
     background: rgba(var(--session), 0.1);
 }
 
 /* A session not found yet: its world drained of colour, and where it is found instead of Begin.
    The same language as a locked theme or breathing world. */
-#serenity-hub-panel .hale-card.is-locked .hale-card__art { filter: saturate(0.22) brightness(0.7); }
-#serenity-hub-panel .hale-card.is-locked h3,
-#serenity-hub-panel .hale-card.is-locked .hale-card__promise { color: var(--sb-text-muted); }
-#serenity-hub-panel .hale-card.is-locked:hover,
-#serenity-hub-panel .hale-card.is-locked:focus-within { border-color: var(--sb-line-strong); }
-#serenity-hub-panel .hale-card__locked {
+#serenity-hub-panel .sukha-card.is-locked .sukha-card__art { filter: saturate(0.22) brightness(0.7); }
+#serenity-hub-panel .sukha-card.is-locked h3,
+#serenity-hub-panel .sukha-card.is-locked .sukha-card__promise { color: var(--sb-text-muted); }
+#serenity-hub-panel .sukha-card.is-locked:hover,
+#serenity-hub-panel .sukha-card.is-locked:focus-within { border-color: var(--sb-line-strong); }
+#serenity-hub-panel .sukha-card__locked {
     display: flex;
     align-items: flex-start;
     gap: 10px;
@@ -328,10 +328,10 @@
     color: var(--sb-text-muted);
     font: 500 0.78rem / 1.5 var(--sb-font-text);
 }
-#serenity-hub-panel .hale-card__locked svg { flex: 0 0 auto; width: 15px; height: 15px; margin-top: 2px; }
+#serenity-hub-panel .sukha-card__locked svg { flex: 0 0 auto; width: 15px; height: 15px; margin-top: 2px; }
 /* Just found: its colour on the frame, and a word that it is new. */
-#serenity-hub-panel .hale-card.is-new { border-color: rgba(var(--session), 0.6); }
-#serenity-hub-panel .hale-card__new {
+#serenity-hub-panel .sukha-card.is-new { border-color: rgba(var(--session), 0.6); }
+#serenity-hub-panel .sukha-card__new {
     position: absolute;
     top: 12px;
     left: 12px;
@@ -346,7 +346,7 @@
     box-shadow: 0 0 18px rgba(var(--session), 0.45);
 }
 
-#serenity-hub-panel .hale__note {
+#serenity-hub-panel .sukha__note {
     display: flex;
     align-items: flex-start;
     gap: 10px;
@@ -359,7 +359,7 @@
     font: 500 var(--sb-fs-small) / 1.55 var(--sb-font-text);
 }
 
-#serenity-hub-panel .hale__note .cs-icon {
+#serenity-hub-panel .sukha__note .cs-icon {
     flex: none;
     margin-top: 2px;
     color: var(--sb-mint);
@@ -368,7 +368,7 @@
 /* ===============================================================================
  * The flow: its own full-screen surface above the Hub
  * ============================================================================= */
-.hale-flow {
+.sukha-flow {
     position: fixed;
     inset: 0;
     z-index: 2100;
@@ -382,11 +382,11 @@
     transition: opacity 0.4s linear;
 }
 
-.hale-flow[hidden] { display: none; }
-.hale-flow.is-open { opacity: 1; }
-.hale-flow [hidden] { display: none !important; }
+.sukha-flow[hidden] { display: none; }
+.sukha-flow.is-open { opacity: 1; }
+.sukha-flow [hidden] { display: none !important; }
 
-.hale-flow__art {
+.sukha-flow__art {
     position: fixed;
     inset: 0;
     background-position: center;
@@ -395,7 +395,7 @@
     pointer-events: none;
 }
 
-.hale-flow__art::after {
+.sukha-flow__art::after {
     content: '';
     position: absolute;
     inset: 0;
@@ -404,50 +404,50 @@
         linear-gradient(180deg, rgba(7, 6, 22, 0.35), rgba(7, 6, 22, 0.78));
 }
 
-.hale-flow__panel {
+.sukha-flow__panel {
     position: relative;
     width: min(100%, 1080px);
 }
 
-.hale-flow__panel--prepare {
+.sukha-flow__panel--prepare {
     display: grid;
     grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
     align-items: start;
     gap: clamp(24px, 4vw, 60px);
 }
 
-.hale-flow.is-open .hale-flow__panel:not([hidden]) {
+.sukha-flow.is-open .sukha-flow__panel:not([hidden]) {
     animation: sb-rise-in 0.55s var(--sb-ease-lock) both;
 }
 
-.hale-flow__lead {
+.sukha-flow__lead {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
 }
 
-.hale-flow__back {
+.sukha-flow__back {
     margin: 0 0 26px -12px;
 }
 
-.hale-flow__journey {
+.sukha-flow__journey {
     align-self: stretch;
 }
 
-.hale-flow__name {
+.sukha-flow__name {
     margin: 16px 0 10px;
     color: var(--sb-text);
     font: 700 clamp(2.4rem, 4.8vw, 3.6rem) / 1.02 var(--sb-font-display);
     letter-spacing: -0.015em;
 }
 
-.hale-flow__promise {
+.sukha-flow__promise {
     margin: 0 0 18px;
     color: rgb(var(--session));
     font: 600 1.0625rem / 1.4 var(--sb-font-text);
 }
 
-.hale-flow__about {
+.sukha-flow__about {
     max-width: 54ch;
     margin: 0;
     color: var(--sb-text-muted);
@@ -455,30 +455,30 @@
 }
 
 /* The journey: one cell per stage, as long as it lasts. */
-.hale-flow__journey {
+.sukha-flow__journey {
     margin-top: 32px;
 }
 
-.hale-flow__track {
+.sukha-flow__track {
     display: flex;
     gap: 3px;
     height: 8px;
 }
 
-.hale-flow__track i {
+.sukha-flow__track i {
     flex: 1 1 0;
     min-width: 3px;
     border-radius: 2px;
     background: rgba(var(--session), 0.9);
 }
 
-.hale-flow__track i[data-type='grounding'],
-.hale-flow__track i[data-type='integration'] { background: rgba(var(--session), 0.38); }
-.hale-flow__track i[data-type='retention'] { background: rgba(var(--sb-cream-rgb), 0.24); }
-.hale-flow__track i[data-type='recovery'] { background: rgba(var(--sb-cream-rgb), 0.62); }
-.hale-flow__track i[data-type='carry'] { background: rgba(var(--session), 0.6); }
+.sukha-flow__track i[data-type='grounding'],
+.sukha-flow__track i[data-type='integration'] { background: rgba(var(--session), 0.38); }
+.sukha-flow__track i[data-type='retention'] { background: rgba(var(--sb-cream-rgb), 0.24); }
+.sukha-flow__track i[data-type='recovery'] { background: rgba(var(--sb-cream-rgb), 0.62); }
+.sukha-flow__track i[data-type='carry'] { background: rgba(var(--session), 0.6); }
 
-.hale-flow__rounds {
+.sukha-flow__rounds {
     display: grid;
     gap: 10px;
     margin: 20px 0 0;
@@ -489,14 +489,14 @@
     font-variant-numeric: tabular-nums;
 }
 
-.hale-flow__rounds li {
+.sukha-flow__rounds li {
     display: flex;
     align-items: center;
     gap: 12px;
     min-height: 32px;
 }
 
-.hale-flow__rounds b {
+.sukha-flow__rounds b {
     display: inline-block;
     flex: none;
     min-width: 66px;
@@ -507,13 +507,13 @@
 }
 
 /* The worlds each stage is set in: small overlapping tiles. */
-.hale-flow__worlds {
+.sukha-flow__worlds {
     display: inline-flex;
     flex-shrink: 0;
     width: 54px;
 }
 
-.hale-flow__worlds i {
+.sukha-flow__worlds i {
     width: 28px;
     height: 28px;
     margin-right: -10px;
@@ -524,7 +524,7 @@
     background-size: cover;
 }
 
-.hale-flow__best {
+.sukha-flow__best {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -534,13 +534,13 @@
 }
 
 /* The preparation panel. */
-.hale-flow__setup {
+.sukha-flow__setup {
     position: relative;
     isolation: isolate;
     padding: 30px 28px 28px;
 }
 
-.hale-flow__setup::before {
+.sukha-flow__setup::before {
     content: '';
     position: absolute;
     inset: 0;
@@ -553,7 +553,7 @@
     box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.07);
 }
 
-.hale-flow__setup h3 {
+.sukha-flow__setup h3 {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -562,7 +562,7 @@
     font: 600 var(--sb-fs-heading) / 1.2 var(--sb-font-display);
 }
 
-.hale-flow__setup h3 small {
+.sukha-flow__setup h3 small {
     padding: 5px 7px;
     border-radius: 6px;
     border: 1px solid var(--sb-line-strong);
@@ -572,13 +572,13 @@
     text-transform: uppercase;
 }
 
-.hale-flow__intentions {
+.sukha-flow__intentions {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
 }
 
-.hale-flow__intention {
+.sukha-flow__intention {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -597,27 +597,27 @@
         background var(--sb-dur-2) var(--sb-ease-lock);
 }
 
-.hale-flow__intention .cs-icon {
+.sukha-flow__intention .cs-icon {
     flex-shrink: 0;
     width: 18px;
     height: 18px;
     color: rgb(var(--session));
 }
 
-.hale-flow__intention:hover {
+.sukha-flow__intention:hover {
     color: var(--sb-text);
     border-color: var(--sb-line-strong);
     background: rgba(var(--sb-cream-rgb), 0.06);
 }
 
-.hale-flow__intention.is-selected,
-.hale-flow__intention[aria-pressed='true'] {
+.sukha-flow__intention.is-selected,
+.sukha-flow__intention[aria-pressed='true'] {
     color: var(--sb-text);
     border-color: rgba(var(--session), 0.65);
     background: rgba(var(--session), 0.16);
 }
 
-.hale-flow__options {
+.sukha-flow__options {
     display: grid;
     gap: 14px;
     margin: 22px 0 0;
@@ -625,7 +625,7 @@
     border-top: 1px solid var(--sb-line);
 }
 
-.hale-flow__switch {
+.sukha-flow__switch {
     display: flex;
     align-items: center;
     gap: 14px;
@@ -635,21 +635,21 @@
     cursor: pointer;
 }
 
-.hale-flow__switch span small {
+.sukha-flow__switch span small {
     display: block;
     margin-top: 3px;
     color: var(--sb-text-faint);
     font: 500 0.75rem / 1.4 var(--sb-font-text);
 }
 
-.hale-flow__safety {
+.sukha-flow__safety {
     margin: 18px 0 22px;
     color: var(--sb-text-faint);
     font: 500 var(--sb-fs-small) / 1.6 var(--sb-font-text);
 }
 
 /* Strong holds: a warm note read once before the first session. */
-.hale-flow__caution {
+.sukha-flow__caution {
     margin: 20px 0;
     padding: 14px 16px;
     border-radius: var(--sb-r-sm);
@@ -657,7 +657,7 @@
     background: rgba(var(--sb-warning-rgb), 0.06);
 }
 
-.hale-flow__caution p {
+.sukha-flow__caution p {
     display: flex;
     gap: 10px;
     margin: 0;
@@ -665,13 +665,13 @@
     font: 500 var(--sb-fs-small) / 1.6 var(--sb-font-text);
 }
 
-.hale-flow__caution p .cs-icon {
+.sukha-flow__caution p .cs-icon {
     flex-shrink: 0;
     margin-top: 2px;
     color: var(--sb-warning);
 }
 
-.hale-flow__ack {
+.sukha-flow__ack {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -682,7 +682,7 @@
 }
 
 /* A tile checkbox: empty frame, then a filled tile with a check. */
-.hale-flow__ack input {
+.sukha-flow__ack input {
     position: relative;
     flex: none;
     width: 22px;
@@ -697,12 +697,12 @@
     transition: background var(--sb-dur-2) var(--sb-ease-lock), border-color var(--sb-dur-2) var(--sb-ease-lock);
 }
 
-.hale-flow__ack input:checked {
+.sukha-flow__ack input:checked {
     border-color: var(--sb-warning);
     background: var(--sb-warning);
 }
 
-.hale-flow__ack input:checked::after {
+.sukha-flow__ack input:checked::after {
     content: '';
     position: absolute;
     top: 3px;
@@ -714,15 +714,15 @@
     transform: rotate(45deg);
 }
 
-.hale-flow__begin,
-.hale-flow__finish {
+.sukha-flow__begin,
+.sukha-flow__finish {
     --sb-btn-h: 54px;
     width: 100%;
     font-size: 0.75rem;
 }
 
 /* Waiting for the safety note: a quiet frame, not a dimmed keystone. */
-.hale-flow__begin:disabled {
+.sukha-flow__begin:disabled {
     opacity: 1;
     border-color: var(--sb-line-strong);
     background: rgba(var(--sb-cream-rgb), 0.05);
@@ -732,24 +732,24 @@
     box-shadow: none;
 }
 
-.hale-flow__begin:disabled .sb-kbd {
+.sukha-flow__begin:disabled .sb-kbd {
     display: none;
 }
 
 /* ---- Countdown -------------------------------------------------------------------- */
-.hale-flow__panel--countdown,
-.hale-flow__panel--complete {
+.sukha-flow__panel--countdown,
+.sukha-flow__panel--complete {
     max-width: 560px;
     text-align: center;
 }
 
-.hale-flow__intent {
+.sukha-flow__intent {
     margin: 0 0 30px;
     color: var(--sb-text-muted);
     font: 500 1rem / 1.5 var(--sb-font-text);
 }
 
-.hale-flow__number {
+.sukha-flow__number {
     color: var(--sb-text);
     font: 700 clamp(96px, 15vw, 164px) / 1 var(--sb-font-display);
     font-variant-numeric: tabular-nums;
@@ -757,46 +757,46 @@
     text-shadow: 0 0 60px rgba(var(--session), 0.35);
 }
 
-.hale-flow__number.is-word {
+.sukha-flow__number.is-word {
     font-size: clamp(54px, 8.4vw, 96px);
 }
 
-.hale-flow__beats {
+.sukha-flow__beats {
     width: 168px;
     margin: 30px auto 0;
 }
 
-.hale-flow__beats > i {
+.sukha-flow__beats > i {
     height: 8px;
 }
 
-.hale-flow__beats > i.is-filled {
+.sukha-flow__beats > i.is-filled {
     background: rgba(var(--session), 0.85);
 }
 
-.hale-flow__message {
+.sukha-flow__message {
     margin: 22px 0 0;
     color: var(--sb-text);
     font: 500 1.125rem / 1.5 var(--sb-font-text);
 }
 
-.hale-flow__cancel {
+.sukha-flow__cancel {
     margin-top: 34px;
 }
 
 /* ---- Complete ----------------------------------------------------------------------- */
-.hale-flow__panel--complete .sb-eyebrow {
+.sukha-flow__panel--complete .sb-eyebrow {
     justify-content: center;
 }
 
-.hale-flow__done-name {
+.sukha-flow__done-name {
     margin: 16px 0 26px;
     color: var(--sb-text);
     font: 700 clamp(2.2rem, 4.2vw, 3.2rem) / 1.05 var(--sb-font-display);
     letter-spacing: -0.015em;
 }
 
-.hale-flow__record {
+.sukha-flow__record {
     display: inline-flex;
     align-items: center;
     gap: 9px;
@@ -810,13 +810,13 @@
     letter-spacing: 0.08em;
 }
 
-.hale-flow__record small {
+.sukha-flow__record small {
     color: rgba(var(--sb-gold-rgb), 0.75);
     font: 500 0.75rem / 1 var(--sb-font-text);
     letter-spacing: 0;
 }
 
-.hale-flow__stats {
+.sukha-flow__stats {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0;
@@ -826,20 +826,20 @@
     border-bottom: 1px solid var(--sb-line);
 }
 
-.hale-flow__stats div {
+.sukha-flow__stats div {
     display: flex;
     flex-direction: column-reverse;
     gap: 9px;
 }
 
-.hale-flow__stats dt {
+.sukha-flow__stats dt {
     color: var(--sb-text-faint);
     font: 600 0.5625rem / 1.2 var(--sb-font-display);
     letter-spacing: 0.18em;
     text-transform: uppercase;
 }
 
-.hale-flow__stats dd {
+.sukha-flow__stats dd {
     margin: 0;
     color: var(--sb-text);
     font: 600 1.75rem / 1 var(--sb-font-display);
@@ -847,11 +847,11 @@
 }
 
 /* Your holds: one tile-capped bar per round beside the suggested length. */
-.hale-flow__holds-chart {
+.sukha-flow__holds-chart {
     margin: 24px 0 0;
 }
 
-.hale-flow__holds-chart figcaption {
+.sukha-flow__holds-chart figcaption {
     display: flex;
     justify-content: center;
     align-items: baseline;
@@ -863,14 +863,14 @@
     text-transform: uppercase;
 }
 
-.hale-flow__holds-chart figcaption small {
+.sukha-flow__holds-chart figcaption small {
     color: var(--sb-text-faint);
     font: 500 0.75rem / 1 var(--sb-font-text);
     letter-spacing: 0;
     text-transform: none;
 }
 
-.hale-flow__holds-chart ol {
+.sukha-flow__holds-chart ol {
     display: flex;
     justify-content: center;
     align-items: flex-end;
@@ -881,7 +881,7 @@
     list-style: none;
 }
 
-.hale-flow__holds-chart li {
+.sukha-flow__holds-chart li {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -891,14 +891,14 @@
     font-variant-numeric: tabular-nums;
 }
 
-.hale-flow__bar {
+.sukha-flow__bar {
     position: relative;
     display: block;
     width: 34px;
     height: 100px;
 }
 
-.hale-flow__bar::before {
+.sukha-flow__bar::before {
     content: '';
     position: absolute;
     left: -6px;
@@ -907,7 +907,7 @@
     border-top: 1px dashed rgba(var(--sb-cream-rgb), 0.45);
 }
 
-.hale-flow__bar i {
+.sukha-flow__bar i {
     position: absolute;
     left: 0;
     right: 0;
@@ -916,45 +916,45 @@
     border-radius: 6px 6px 3px 3px;
     background: linear-gradient(180deg, rgb(var(--session)), rgba(var(--session), 0.3));
     transform-origin: bottom;
-    animation: hale-bar-rise 0.9s var(--sb-ease-lock) both;
+    animation: sukha-bar-rise 0.9s var(--sb-ease-lock) both;
 }
 
-.hale-flow__holds-chart li:nth-child(2) .hale-flow__bar i { animation-delay: 0.12s; }
-.hale-flow__holds-chart li:nth-child(3) .hale-flow__bar i { animation-delay: 0.24s; }
+.sukha-flow__holds-chart li:nth-child(2) .sukha-flow__bar i { animation-delay: 0.12s; }
+.sukha-flow__holds-chart li:nth-child(3) .sukha-flow__bar i { animation-delay: 0.24s; }
 
-.hale-flow__holds-chart li.is-best .hale-flow__bar i {
+.sukha-flow__holds-chart li.is-best .sukha-flow__bar i {
     background: linear-gradient(180deg, var(--sb-gold), rgba(var(--sb-gold-rgb), 0.35));
 }
 
-.hale-flow__holds-chart b {
+.sukha-flow__holds-chart b {
     color: var(--sb-text);
     font: 600 0.9375rem / 1 var(--sb-font-display);
 }
 
-.hale-flow__holds-chart small {
+.sukha-flow__holds-chart small {
     color: var(--sb-text-faint);
     font: 500 0.6875rem / 1 var(--sb-font-text);
 }
 
-@keyframes hale-bar-rise {
+@keyframes sukha-bar-rise {
     from { transform: scaleY(0); }
     to { transform: scaleY(1); }
 }
 
-.hale-flow__streak-line {
+.sukha-flow__streak-line {
     margin: 22px 0 0;
     color: var(--sb-gold);
     font: 600 var(--sb-fs-small) / 1.5 var(--sb-font-text);
 }
 
 /* Practice opened the next world and session: said once, where it was earned. */
-.hale-flow__opened {
+.sukha-flow__opened {
     max-width: 46ch;
     margin: 16px auto 0;
     color: var(--sb-text);
     font: 500 var(--sb-fs-small) / 1.6 var(--sb-font-text);
 }
-.hale-flow__opened-label {
+.sukha-flow__opened-label {
     display: inline-block;
     margin-right: 6px;
     padding: 1px 9px;
@@ -967,76 +967,76 @@
     vertical-align: 1px;
 }
 
-.hale-flow__closing {
+.sukha-flow__closing {
     max-width: 42ch;
     margin: 18px auto 28px;
     color: var(--sb-text-muted);
     font: 500 var(--sb-fs-body) / 1.7 var(--sb-font-text);
 }
 
-.hale-flow__actions {
+.sukha-flow__actions {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 8px;
 }
 
-.hale-flow__actions .hale-flow__finish {
+.sukha-flow__actions .sukha-flow__finish {
     max-width: 300px;
 }
 
 @media (max-width: 760px) {
-    #serenity-hub-panel .hale__grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-    #serenity-hub-panel .hale__practice { gap: 14px 20px; padding: 14px 16px; }
-    #serenity-hub-panel .hale-card__body { padding: 0 18px 18px; }
-    .hale-flow { place-items: start center; }
-    .hale-flow__panel--prepare { grid-template-columns: minmax(0, 1fr); gap: 26px; }
-    .hale-flow__back { margin-bottom: 14px; }
-    .hale-flow__journey { margin-top: 24px; }
-    .hale-flow__setup { padding: 26px 18px 20px; }
-    .hale-flow__stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 0; }
-    .hale-flow__holds-chart ol { height: 132px; }
-    .hale-flow__bar { height: 84px; }
+    #serenity-hub-panel .sukha__grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    #serenity-hub-panel .sukha__practice { gap: 14px 20px; padding: 14px 16px; }
+    #serenity-hub-panel .sukha-card__body { padding: 0 18px 18px; }
+    .sukha-flow { place-items: start center; }
+    .sukha-flow__panel--prepare { grid-template-columns: minmax(0, 1fr); gap: 26px; }
+    .sukha-flow__back { margin-bottom: 14px; }
+    .sukha-flow__journey { margin-top: 24px; }
+    .sukha-flow__setup { padding: 26px 18px 20px; }
+    .sukha-flow__stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 0; }
+    .sukha-flow__holds-chart ol { height: 132px; }
+    .sukha-flow__bar { height: 84px; }
 
-    .hale-flow__panel--countdown,
-    .hale-flow__panel--complete { align-self: center; }
+    .sukha-flow__panel--countdown,
+    .sukha-flow__panel--complete { align-self: center; }
 }
 
 @media (max-height: 560px) and (min-width: 761px) {
-    .hale-flow { padding-top: 14px; padding-bottom: 14px; }
-    .hale-flow__back { margin-bottom: 8px; }
-    .hale-flow__name { margin: 8px 0 6px; font-size: 2.2rem; }
-    .hale-flow__promise { margin-bottom: 8px; }
-    .hale-flow__journey { margin-top: 14px; }
-    .hale-flow__rounds { gap: 3px; margin-top: 10px; }
-    .hale-flow__setup { padding: 18px 20px; }
-    .hale-flow__intention { min-height: 40px; }
-    .hale-flow__safety { margin: 10px 0 12px; }
-    .hale-flow__number { font-size: 84px; }
-    .hale-flow__beats { margin-top: 16px; }
-    .hale-flow__message { margin-top: 12px; }
-    .hale-flow__cancel { margin-top: 16px; }
-    .hale-flow__done-name { margin-bottom: 12px; font-size: 2rem; }
-    .hale-flow__closing { margin: 12px auto 14px; }
-    .hale-flow__options { gap: 8px; margin-top: 12px; padding-top: 12px; }
-    .hale-flow__caution { margin: 10px 0; padding: 10px 12px; }
-    .hale-flow__holds-chart ol { height: 100px; }
-    .hale-flow__bar { height: 60px; }
+    .sukha-flow { padding-top: 14px; padding-bottom: 14px; }
+    .sukha-flow__back { margin-bottom: 8px; }
+    .sukha-flow__name { margin: 8px 0 6px; font-size: 2.2rem; }
+    .sukha-flow__promise { margin-bottom: 8px; }
+    .sukha-flow__journey { margin-top: 14px; }
+    .sukha-flow__rounds { gap: 3px; margin-top: 10px; }
+    .sukha-flow__setup { padding: 18px 20px; }
+    .sukha-flow__intention { min-height: 40px; }
+    .sukha-flow__safety { margin: 10px 0 12px; }
+    .sukha-flow__number { font-size: 84px; }
+    .sukha-flow__beats { margin-top: 16px; }
+    .sukha-flow__message { margin-top: 12px; }
+    .sukha-flow__cancel { margin-top: 16px; }
+    .sukha-flow__done-name { margin-bottom: 12px; font-size: 2rem; }
+    .sukha-flow__closing { margin: 12px auto 14px; }
+    .sukha-flow__options { gap: 8px; margin-top: 12px; padding-top: 12px; }
+    .sukha-flow__caution { margin: 10px 0; padding: 10px 12px; }
+    .sukha-flow__holds-chart ol { height: 100px; }
+    .sukha-flow__bar { height: 60px; }
 }
 
 @media (hover: none) and (pointer: coarse) {
-    .hale-flow .sb-kbd { display: none; }
+    .sukha-flow .sb-kbd { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .hale-flow,
-    .hale-flow *,
-    #serenity-hub-panel .hale * {
+    .sukha-flow,
+    .sukha-flow *,
+    #serenity-hub-panel .sukha * {
         transition-duration: 1ms !important;
     }
 
-    .hale-flow.is-open .hale-flow__panel:not([hidden]),
-    .hale-flow__bar i {
+    .sukha-flow.is-open .sukha-flow__panel:not([hidden]),
+    .sukha-flow__bar i {
         animation: none !important;
     }
 }

@@ -171,7 +171,7 @@ describe('Serenity mode exit cancels guided journeys', () => {
         const finish = manager.startSession.mock.calls[0][2];
         const completion = vi.spyOn(tab, 'showCompletionMessage');
         await mode.onStop();
-        finish({ sessionName: 'Hale Base', totalDuration: 60, rounds: 3 });
+        finish({ sessionName: 'Sukha Homecoming', totalDuration: 60, rounds: 3 });
         expect(manager.stopSession).toHaveBeenCalledOnce();
         expect(completion).not.toHaveBeenCalled();
         expect(mode.serenityHub.show).not.toHaveBeenCalled();

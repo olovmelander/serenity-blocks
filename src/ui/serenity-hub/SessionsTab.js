@@ -1,5 +1,5 @@
 /**
- * Hale sessions: the catalogue in the Hub, and the full-screen flow around a session
+ * Sukha sessions: the catalogue in the Hub, and the full-screen flow around a session
  * (prepare → countdown → the session itself in the breathing guide → complete).
  *
  * The catalogue lives in the Hub's tab. Everything after "Begin" is its own full-screen
@@ -12,6 +12,9 @@ import { breathPosterUrl, getBreathWorld } from '../effects/breathing/breath-cat
 import { SESSION_WORLDS } from '../effects/breathwork-session-manager.js';
 import { getBreathCollection } from '../effects/breathing/breath-collection-store.js';
 import { announceBreathOpenings, describeOpenings } from '../effects/breathing/breath-openings.js';
+import {
+    BREATH_CAUTION_TEXT, BREATH_WELLNESS_TEXT, isBreathSafetyRead, isStrongSession, setBreathSafetyRead,
+} from '../effects/breathing/breath-safety.js';
 import { THEME_LOCK_ICON } from './ThemeCollectionView.js';
 import {
     MIN_PRACTICE_SECONDS, formatPracticeTime, longestOpenHold, readPracticeLog, recordPractice,
@@ -22,9 +25,9 @@ import {
  * What each session is for. Durations, rounds and holds are read from the manager. The order is
  * the path through them: the short beginner sessions first, the longer practices after.
  */
-export const HALE_SESSIONS = Object.freeze({
+export const SUKHA_SESSIONS = Object.freeze({
     FIRST: {
-        name: 'Hale First Breath',
+        name: 'Sukha First Breath',
         promise: 'Your first few minutes',
         summary: 'Three starter worlds, a few breaths in each, then rest.',
         about: 'A first taste of guided breathing, through the worlds open from the start: Heart Glow\'s even breath, Sacred Geometry\'s square made gentle, Moonlit Waters\' long breath out, then rest in the Zen Garden. No breath holds and nothing to get right: follow the voice and the light.',
@@ -32,7 +35,7 @@ export const HALE_SESSIONS = Object.freeze({
         style: 'Nasal breathing',
     },
     TIDE: {
-        name: 'Hale Tide',
+        name: 'Sukha Tide',
         promise: 'Breathe with the sea',
         summary: 'Even breaths like waves, a little on your own, then a longer ebb.',
         about: 'Breathe in as the tide comes in and out as it draws back, evenly and through the nose. Then the count is yours for a short while, and the out-breath grows a little longer before you rest by moonlit water.',
@@ -40,7 +43,7 @@ export const HALE_SESSIONS = Object.freeze({
         style: 'Nasal breathing',
     },
     ROOTS: {
-        name: 'Hale Roots',
+        name: 'Sukha Roots',
         promise: 'Feel the ground hold you',
         summary: 'A brief rest at the top of each breath and a long breath out.',
         about: 'Settle into the ground, then breathe in, rest for a moment with full lungs, and let a long breath out. A short stretch on your own, then the forest\'s own rhythm, and rest.',
@@ -48,7 +51,7 @@ export const HALE_SESSIONS = Object.freeze({
         style: 'Nasal breathing',
     },
     UNWIND: {
-        name: 'Hale Unwind',
+        name: 'Sukha Unwind',
         promise: 'Let the day go',
         summary: 'Out-breaths that grow longer, for a quiet evening.',
         about: 'Breathe in gently and let a longer breath out, then breathe the aurora\'s own rhythm, with a long out-breath of seven. No holds: just the breath getting slower, then a rest that leads into sleep.',
@@ -56,7 +59,7 @@ export const HALE_SESSIONS = Object.freeze({
         style: 'Nasal breathing',
     },
     SUNRISE: {
-        name: 'Hale Sunrise',
+        name: 'Sukha Sunrise',
         promise: 'Wake up gently',
         summary: 'A light, lively rhythm to wake up, then a steady close.',
         about: 'The Solar Flare\'s brisk, even rhythm through the nose, then quicker and lighter for one minute before a steady close. Lively but never forced: if you feel light-headed, breathe normally.',
@@ -64,7 +67,7 @@ export const HALE_SESSIONS = Object.freeze({
         style: 'Nasal breathing',
     },
     REST: {
-        name: 'Hale Rest',
+        name: 'Sukha Nightfall',
         promise: 'Let the day soften',
         summary: 'The four-seven-eight breath, step by step, then sleep.',
         about: 'Learn Moonlit Waters\' four-seven-eight breath in three steps: a long breath out, then a soft hold, then the full rhythm. Between rounds you drift among the stars without counting, and the rest leads into sleep, with no bell to wake you.',
@@ -72,7 +75,7 @@ export const HALE_SESSIONS = Object.freeze({
         style: '4-7-8 breathing',
     },
     FLOW: {
-        name: 'Hale Flow',
+        name: 'Sukha Mandala',
         promise: 'Find your own rhythm',
         summary: 'A square, a triangle, and a wider square.',
         about: 'The geometry of breath: Sacred Geometry\'s square (in, hold, out, hold), Crystal Prism\'s triangle (in, out, rest), then a wider square. After each, the counting stops and you keep the shape on your own.',
@@ -80,7 +83,7 @@ export const HALE_SESSIONS = Object.freeze({
         style: 'Box and triangle',
     },
     BASE: {
-        name: 'Hale Base',
+        name: 'Sukha Homecoming',
         promise: 'Come back to yourself',
         summary: 'Rhythmic nasal breathing, quiet holds, and a grounded finish.',
         about: 'Three rounds of steady breathing through the nose as the storm gathers its charge. Each round is a little quicker than the last and ends in a stillness you hold for as long as feels good, then the session lets you rest.',
@@ -88,7 +91,7 @@ export const HALE_SESSIONS = Object.freeze({
         style: 'Nasal breathing',
     },
     ELIXIR: {
-        name: 'Hale Elixir',
+        name: 'Sukha Phoenix',
         promise: 'Meet your inner spark',
         summary: 'Connected mouth breathing that builds, then drops into deep stillness.',
         about: 'The most active session. Three rounds of strong, connected breathing through the mouth, from the volcano\'s fire to the sun and the storm, each followed by a hold on empty lungs that ends when you breathe in, and one deep recovery breath.',
@@ -98,7 +101,7 @@ export const HALE_SESSIONS = Object.freeze({
 });
 
 /** Each session's optional intentions; each is spoken from the line intentions/<session>_<id>. */
-export const HALE_INTENTIONS = {
+export const SUKHA_INTENTIONS = {
     FIRST: [
         { id: 'arrive', icon: 'breath', label: 'Just arrive' },
         { id: 'calm', icon: 'wave', label: 'Find calm' },
@@ -163,7 +166,9 @@ const COUNTDOWN = [
     ['1', 'Let one slow breath go'],
     ['Begin', 'Follow the voice and the light'],
 ];
-const PREFS_KEY = 'serenity.halePrefs';
+const PREFS_KEY = 'serenity.sukhaPrefs';
+/** Where the preferences lived before the sessions were renamed (2026-11-03). */
+const LEGACY_PREFS_KEY = 'serenity.halePrefs';
 const DEFAULT_PREFS = Object.freeze({
     voice: true, sounds: true, vibration: true, openHolds: true, safetyAcknowledged: false,
 });
@@ -198,7 +203,7 @@ function storage() {
 
 function readPrefs() {
     try {
-        const saved = JSON.parse(storage()?.getItem(PREFS_KEY) || 'null');
+        const saved = JSON.parse(storage()?.getItem(PREFS_KEY) || storage()?.getItem(LEGACY_PREFS_KEY) || 'null');
         return { ...DEFAULT_PREFS, ...(saved && typeof saved === 'object' ? saved : {}) };
     } catch {
         return { ...DEFAULT_PREFS };
@@ -251,7 +256,7 @@ export class SessionsTab {
 
     /** Everything the catalogue and the preparation screen say about a session. */
     getSessionDetails(sessionId) {
-        const info = HALE_SESSIONS[sessionId];
+        const info = SUKHA_SESSIONS[sessionId];
         if (!info) return null;
         const phases = this.sessionManager?.SESSIONS?.[sessionId]?.phases || [];
         const total = phases.reduce((sum, phase) => sum + secondsOf(phase), 0);
@@ -273,6 +278,8 @@ export class SessionsTab {
         return {
             ...info,
             id: sessionId,
+            // Open holds or fast breathing: the safety note is read before the first one.
+            strong: isStrongSession(phases),
             seconds: total,
             duration: `${Math.max(1, Math.ceil(total / 60))} min`,
             rounds,
@@ -302,50 +309,50 @@ export class SessionsTab {
 
     render() {
         if (!this.container) return;
-        const cards = Object.keys(HALE_SESSIONS).map((sessionId) => {
+        const cards = Object.keys(SUKHA_SESSIONS).map((sessionId) => {
             const info = this.getSessionDetails(sessionId);
             const status = this.collection.status('sessions', sessionId);
-            const begin = status.open ? `<button type="button" class="sb-btn hale-card__begin" data-session="${sessionId}">
+            const begin = status.open ? `<button type="button" class="sb-btn sukha-card__begin" data-session="${sessionId}">
                         Begin ${escapeHtml(info.name)} <span aria-hidden="true">→</span>
-                    </button>` : `<p class="hale-card__locked">${THEME_LOCK_ICON}<span>${escapeHtml(status.requirement?.label || 'Not found yet')}</span></p>`;
-            return `<article class="hale-card${status.open ? '' : ' is-locked'}${status.isNew ? ' is-new' : ''}" data-session="${sessionId}">
-                <div class="hale-card__art" style="background-image:url('${info.poster}')" aria-hidden="true">
-                    ${status.isNew ? '<span class="hale-card__new">New</span>' : ''}
+                    </button>` : `<p class="sukha-card__locked">${THEME_LOCK_ICON}<span>${escapeHtml(status.requirement?.label || 'Not found yet')}</span></p>`;
+            return `<article class="sukha-card${status.open ? '' : ' is-locked'}${status.isNew ? ' is-new' : ''}" data-session="${sessionId}">
+                <div class="sukha-card__art" style="background-image:url('${info.poster}')" aria-hidden="true">
+                    ${status.isNew ? '<span class="sukha-card__new">New</span>' : ''}
                 </div>
-                <div class="hale-card__body">
-                    <span class="sb-eyebrow hale-card__tag">${escapeHtml(info.intensity)} · ${escapeHtml(info.style)}</span>
+                <div class="sukha-card__body">
+                    <span class="sb-eyebrow sukha-card__tag">${escapeHtml(info.intensity)} · ${escapeHtml(info.style)}</span>
                     <h3>${escapeHtml(info.name)}</h3>
-                    <p class="hale-card__promise">${escapeHtml(info.promise)}</p>
-                    <p class="hale-card__summary">${escapeHtml(info.summary)}</p>
-                    <ul class="hale-card__facts">
+                    <p class="sukha-card__promise">${escapeHtml(info.promise)}</p>
+                    <p class="sukha-card__summary">${escapeHtml(info.summary)}</p>
+                    <ul class="sukha-card__facts">
                         <li>${csIcon('clock', 13)} ${info.duration}</li>
                         <li>${info.rounds} rounds</li>
                         <li>${escapeHtml(info.feature)}</li>
                     </ul>
-                    <p class="hale-card__mine" data-mine="${sessionId}" hidden></p>
+                    <p class="sukha-card__mine" data-mine="${sessionId}" hidden></p>
                     ${begin}
                 </div>
             </article>`;
         }).join('');
         this.container.innerHTML = `
-            <div class="hale">
-                <header class="hale__intro">
-                    <span class="sb-eyebrow hale__eyebrow">Hale sessions · guided breathwork</span>
+            <div class="sukha">
+                <header class="sukha__intro">
+                    <span class="sb-eyebrow sukha__eyebrow">Sukha sessions · guided breathwork</span>
                     <h2>A voice, a rhythm, and a world that follows your breath.</h2>
-                    <p>Every session arrives gently, breathes in rounds and ends in rest. Begin with Hale First
+                    <p>Every session arrives gently, breathes in rounds and ends in rest. Begin with Sukha First
                         Breath: each Odyssey chapter you finish opens another, and so does your practice.</p>
                 </header>
-                <section class="hale__practice" aria-label="Your practice" hidden></section>
-                <section class="hale__live" hidden aria-live="polite">
+                <section class="sukha__practice" aria-label="Your practice" hidden></section>
+                <section class="sukha__live" hidden aria-live="polite">
                     <div>
-                        <span class="sb-eyebrow hale__eyebrow">Session in progress · paused while the Hub is open</span>
-                        <p class="hale__live-name"></p>
+                        <span class="sb-eyebrow sukha__eyebrow">Session in progress · paused while the Hub is open</span>
+                        <p class="sukha__live-name"></p>
                     </div>
-                    <button type="button" class="sb-btn sb-btn--primary hale__return">Return to session</button>
-                    <button type="button" class="sb-btn sb-btn--quiet hale__end">End session</button>
+                    <button type="button" class="sb-btn sb-btn--primary sukha__return">Return to session</button>
+                    <button type="button" class="sb-btn sb-btn--quiet sukha__end">End session</button>
                 </section>
-                <div class="hale__grid">${cards}</div>
-                <p class="hale__note">${csIcon('breath', 14)} Breath holds are strong practice. Sit or lie down, never practise in or near water or while driving, and stop if you feel dizzy.</p>
+                <div class="sukha__grid">${cards}</div>
+                <p class="sukha__note">${csIcon('breath', 14)} Breath holds are strong practice. Sit or lie down, never practise in or near water or while driving, and stop if you feel dizzy.</p>
             </div>`;
         this.renderPractice();
     }
@@ -353,11 +360,11 @@ export class SessionsTab {
     /** Your practice: streak, this week, totals, and each session's own line. */
     renderPractice() {
         if (!this.container) return;
-        const section = this.container.querySelector('.hale__practice');
+        const section = this.container.querySelector('.sukha__practice');
         if (!section) return;
         const summary = summarizePractice(readPracticeLog(storage()));
         section.hidden = !summary.hasHistory;
-        Object.keys(HALE_SESSIONS).forEach((sessionId) => {
+        Object.keys(SUKHA_SESSIONS).forEach((sessionId) => {
             const line = this.container.querySelector(`[data-mine="${sessionId}"]`);
             if (!line) return;
             const mine = summary.bySession[sessionId];
@@ -368,7 +375,7 @@ export class SessionsTab {
             line.textContent = parts.length ? `You · ${parts.join(' · ')}` : '';
         });
         if (!summary.hasHistory) return;
-        const last = HALE_SESSIONS[summary.last?.id]?.name;
+        const last = SUKHA_SESSIONS[summary.last?.id]?.name;
         // The last of the seven days is today: practised today, it carries the keystone.
         const week = summary.week.map((day, index) => {
             const date = new Date(day.start);
@@ -383,91 +390,91 @@ export class SessionsTab {
             last ? `last: ${last}` : '',
         ].filter(Boolean).join(' · ');
         section.innerHTML = `
-            <div class="hale__streak">${csIcon('flame', 18)}<p>${streak}</p></div>
-            <ol class="hale__week" aria-label="The last seven days">${week}</ol>
-            <p class="hale__totals">${totals}</p>`;
+            <div class="sukha__streak">${csIcon('flame', 18)}<p>${streak}</p></div>
+            <ol class="sukha__week" aria-label="The last seven days">${week}</ol>
+            <p class="sukha__totals">${totals}</p>`;
     }
 
     // ── The full-screen flow ────────────────────────────────────────────────
 
     renderFlow() {
         const flow = document.createElement('div');
-        flow.className = 'hale-flow serenity-hub';
+        flow.className = 'sukha-flow serenity-hub';
         flow.hidden = true;
         flow.setAttribute('role', 'dialog');
         flow.setAttribute('aria-modal', 'true');
-        flow.setAttribute('aria-labelledby', 'hale-flow-title');
+        flow.setAttribute('aria-labelledby', 'sukha-flow-title');
         // Desktop browsers expose vibrate() too, and it does nothing there: offer it on touch only.
         const canVibrate = Boolean(this.sessionManager?.chimes?.canVibrate)
             && Boolean(window.matchMedia?.('(pointer: coarse)').matches);
         flow.innerHTML = `
-            <div class="hale-flow__art" aria-hidden="true"></div>
-            <div class="hale-flow__panel hale-flow__panel--prepare" data-panel="prepare">
-                <div class="hale-flow__lead">
-                    <button type="button" class="sb-btn sb-btn--quiet hale-flow__back">
+            <div class="sukha-flow__art" aria-hidden="true"></div>
+            <div class="sukha-flow__panel sukha-flow__panel--prepare" data-panel="prepare">
+                <div class="sukha-flow__lead">
+                    <button type="button" class="sb-btn sb-btn--quiet sukha-flow__back">
                         <span aria-hidden="true">←</span> All sessions</button>
-                    <span class="sb-eyebrow hale__eyebrow hale-flow__facts"></span>
-                    <h2 id="hale-flow-title" class="hale-flow__name"></h2>
-                    <p class="hale-flow__promise"></p>
-                    <p class="hale-flow__about"></p>
-                    <div class="hale-flow__journey" aria-label="How the session unfolds">
-                        <div class="hale-flow__track"></div>
-                        <ol class="hale-flow__rounds"></ol>
-                        <p class="hale-flow__best" hidden></p>
+                    <span class="sb-eyebrow sukha__eyebrow sukha-flow__facts"></span>
+                    <h2 id="sukha-flow-title" class="sukha-flow__name"></h2>
+                    <p class="sukha-flow__promise"></p>
+                    <p class="sukha-flow__about"></p>
+                    <div class="sukha-flow__journey" aria-label="How the session unfolds">
+                        <div class="sukha-flow__track"></div>
+                        <ol class="sukha-flow__rounds"></ol>
+                        <p class="sukha-flow__best" hidden></p>
                     </div>
                 </div>
-                <div class="hale-flow__setup">
+                <div class="sukha-flow__setup">
                     <h3>Set an intention <small>optional</small></h3>
-                    <div class="hale-flow__intentions" role="group" aria-label="Choose an intention"></div>
-                    <div class="hale-flow__options" role="group" aria-label="Guidance">
-                        <label class="hale-flow__switch">
-                            <input type="checkbox" class="sb-toggle hale-flow__voice" checked>
+                    <div class="sukha-flow__intentions" role="group" aria-label="Choose an intention"></div>
+                    <div class="sukha-flow__options" role="group" aria-label="Guidance">
+                        <label class="sukha-flow__switch">
+                            <input type="checkbox" class="sb-toggle sukha-flow__voice" checked>
                             <span>Voice guidance</span>
                         </label>
-                        <label class="hale-flow__switch">
-                            <input type="checkbox" class="sb-toggle hale-flow__sounds" checked>
+                        <label class="sukha-flow__switch">
+                            <input type="checkbox" class="sb-toggle sukha-flow__sounds" checked>
                             <span>Bells</span>
                         </label>
-                        <label class="hale-flow__switch hale-flow__switch--holds">
-                            <input type="checkbox" class="sb-toggle hale-flow__holds" checked>
+                        <label class="sukha-flow__switch sukha-flow__switch--holds">
+                            <input type="checkbox" class="sb-toggle sukha-flow__holds" checked>
                             <span>Breathe in when you are ready <small>Holds end when you choose</small></span>
                         </label>
-                        <label class="hale-flow__switch" ${canVibrate ? '' : 'hidden'}>
-                            <input type="checkbox" class="sb-toggle hale-flow__vibration" checked>
+                        <label class="sukha-flow__switch" ${canVibrate ? '' : 'hidden'}>
+                            <input type="checkbox" class="sb-toggle sukha-flow__vibration" checked>
                             <span>Gentle vibration</span>
                         </label>
                     </div>
-                    <div class="hale-flow__caution" hidden>
-                        <p>${csIcon('shield', 15)} Holding your breath after fast breathing can make you light-headed. Sit or lie down. Never practise in or near water, while driving, or standing. Stop and breathe normally if you feel unwell.</p>
-                        <label class="hale-flow__ack"><input type="checkbox" class="hale-flow__ack-input"><span>I understand</span></label>
+                    <div class="sukha-flow__caution" hidden>
+                        <p>${csIcon('shield', 15)} ${BREATH_CAUTION_TEXT} ${BREATH_WELLNESS_TEXT}</p>
+                        <label class="sukha-flow__ack"><input type="checkbox" class="sukha-flow__ack-input"><span>I understand</span></label>
                     </div>
-                    <p class="hale-flow__safety">Sit or lie down somewhere you can let go. Breathe comfortably, and return to your natural breath whenever you need to.</p>
-                    <button type="button" class="sb-btn sb-btn--primary hale-flow__begin">
+                    <p class="sukha-flow__safety">Sit or lie down somewhere you can let go. Breathe comfortably, and return to your natural breath whenever you need to. ${BREATH_WELLNESS_TEXT}</p>
+                    <button type="button" class="sb-btn sb-btn--primary sukha-flow__begin">
                         <span>Begin session</span>${KEY_HINTS}
                     </button>
                 </div>
             </div>
-            <div class="hale-flow__panel hale-flow__panel--countdown" data-panel="countdown" role="status" aria-live="polite" aria-atomic="true">
-                <p class="hale-flow__intent"></p>
-                <div class="hale-flow__number">3</div>
-                <div class="sb-meter hale-flow__beats" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-                <p class="hale-flow__message"></p>
-                <button type="button" class="sb-btn sb-btn--quiet hale-flow__cancel">Back to preparation</button>
+            <div class="sukha-flow__panel sukha-flow__panel--countdown" data-panel="countdown" role="status" aria-live="polite" aria-atomic="true">
+                <p class="sukha-flow__intent"></p>
+                <div class="sukha-flow__number">3</div>
+                <div class="sb-meter sukha-flow__beats" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+                <p class="sukha-flow__message"></p>
+                <button type="button" class="sb-btn sb-btn--quiet sukha-flow__cancel">Back to preparation</button>
             </div>
-            <div class="hale-flow__panel hale-flow__panel--complete" data-panel="complete">
-                <span class="sb-eyebrow hale__eyebrow">Session complete</span>
-                <h2 class="hale-flow__done-name"></h2>
-                <p class="hale-flow__record" hidden></p>
-                <dl class="hale-flow__stats"></dl>
-                <figure class="hale-flow__holds-chart" hidden></figure>
-                <p class="hale-flow__streak-line" hidden></p>
-                <p class="hale-flow__opened" hidden></p>
-                <p class="hale-flow__closing"></p>
-                <div class="hale-flow__actions">
-                    <button type="button" class="sb-btn sb-btn--primary hale-flow__finish">
+            <div class="sukha-flow__panel sukha-flow__panel--complete" data-panel="complete">
+                <span class="sb-eyebrow sukha__eyebrow">Session complete</span>
+                <h2 class="sukha-flow__done-name"></h2>
+                <p class="sukha-flow__record" hidden></p>
+                <dl class="sukha-flow__stats"></dl>
+                <figure class="sukha-flow__holds-chart" hidden></figure>
+                <p class="sukha-flow__streak-line" hidden></p>
+                <p class="sukha-flow__opened" hidden></p>
+                <p class="sukha-flow__closing"></p>
+                <div class="sukha-flow__actions">
+                    <button type="button" class="sb-btn sb-btn--primary sukha-flow__finish">
                         <span>Done</span>${KEY_HINTS}
                     </button>
-                    <button type="button" class="sb-btn sb-btn--quiet hale-flow__again">Go again</button>
+                    <button type="button" class="sb-btn sb-btn--quiet sukha-flow__again">Go again</button>
                 </div>
             </div>`;
         document.body.appendChild(flow);
@@ -478,6 +485,9 @@ export class SessionsTab {
 
     /** Your saved choices: voice, bells, open holds, vibration, and the safety note read once. */
     get prefs() { return this.savedPrefs || DEFAULT_PREFS; }
+
+    /** The current safety note has been read (here or in the Breathing tab: breath-safety.js). */
+    get safetyRead() { return isBreathSafetyRead(storage()); }
 
     /**
      * True from Begin until the result is dismissed. The guide stops a moment before the
@@ -503,10 +513,10 @@ export class SessionsTab {
     setupEventListeners() {
         if (!this.container) return;
         this.listen(this.container, 'click', (event) => {
-            const begin = event.target.closest?.('.hale-card__begin');
+            const begin = event.target.closest?.('.sukha-card__begin');
             if (begin) this.showPrepScreen(begin.dataset.session);
-            else if (event.target.closest?.('.hale__return')) this.hub.hide();
-            else if (event.target.closest?.('.hale__end')) this.requestEndFromHub();
+            else if (event.target.closest?.('.sukha__return')) this.hub.hide();
+            else if (event.target.closest?.('.sukha__end')) this.requestEndFromHub();
         });
         // Native activation must not also reach a mode's global Space/Enter shortcuts.
         const keepKeys = (event) => {
@@ -519,26 +529,29 @@ export class SessionsTab {
         });
         this.listen(this.flow, 'click', (event) => {
             const { target } = event;
-            const intention = target.closest?.('.hale-flow__intention');
+            const intention = target.closest?.('.sukha-flow__intention');
             if (intention) this.selectIntention(intention.dataset.intention, this.pendingSessionId);
-            else if (target.closest?.('.hale-flow__back')) this.hidePrepScreen();
-            else if (target.closest?.('.hale-flow__begin')) this.beginFromPrep();
-            else if (target.closest?.('.hale-flow__cancel')) this.showPrepScreen(this.pendingSessionId);
-            else if (target.closest?.('.hale-flow__finish')) this.closeCompletion();
-            else if (target.closest?.('.hale-flow__again')) this.showPrepScreen(this.completedSession?.sessionId);
+            else if (target.closest?.('.sukha-flow__back')) this.hidePrepScreen();
+            else if (target.closest?.('.sukha-flow__begin')) this.beginFromPrep();
+            else if (target.closest?.('.sukha-flow__cancel')) this.showPrepScreen(this.pendingSessionId);
+            else if (target.closest?.('.sukha-flow__finish')) this.closeCompletion();
+            else if (target.closest?.('.sukha-flow__again')) this.showPrepScreen(this.completedSession?.sessionId);
         });
         const toggle = (selector, key, apply) => this.listen(this.flow.querySelector(selector), 'change', (event) => {
             this.savePrefs({ [key]: Boolean(event.target.checked) });
             apply?.(Boolean(event.target.checked));
         });
-        toggle('.hale-flow__voice', 'voice', (on) => {
+        toggle('.sukha-flow__voice', 'voice', (on) => {
             this.voiceGuidance = on;
             this.sessionManager?.audioManager?.setEnabled(on);
         });
-        toggle('.hale-flow__sounds', 'sounds');
-        toggle('.hale-flow__holds', 'openHolds', () => this.renderJourney(this.pendingSessionId));
-        toggle('.hale-flow__vibration', 'vibration');
-        toggle('.hale-flow__ack-input', 'safetyAcknowledged', () => this.updateBegin());
+        toggle('.sukha-flow__sounds', 'sounds');
+        toggle('.sukha-flow__holds', 'openHolds', () => this.renderJourney(this.pendingSessionId));
+        toggle('.sukha-flow__vibration', 'vibration');
+        toggle('.sukha-flow__ack-input', 'safetyAcknowledged', (read) => {
+            setBreathSafetyRead(read, storage());
+            this.updateBegin();
+        });
         // The Hub over a running session holds it; closing the Hub lets it continue.
         this.listen(window, 'serenityHubVisibilityChange', (event) => {
             if (!this.sessionRunning || !this.sessionManager?.activeSession) return;
@@ -551,6 +564,7 @@ export class SessionsTab {
         this.savedPrefs = { ...this.prefs, ...changes };
         try {
             storage()?.setItem(PREFS_KEY, JSON.stringify(this.savedPrefs));
+            storage()?.removeItem?.(LEGACY_PREFS_KEY);
         } catch { /* private browsing: the choice holds for this visit */ }
     }
 
@@ -588,7 +602,7 @@ export class SessionsTab {
         if (!this.flowOpen) return false;
         const focused = document.activeElement;
         const panel = this.flow.querySelector(`[data-panel="${this.step}"]`);
-        const target = focused && panel?.contains?.(focused) ? focused : panel?.querySelector('.hale-flow__begin, .hale-flow__finish, .hale-flow__cancel');
+        const target = focused && panel?.contains?.(focused) ? focused : panel?.querySelector('.sukha-flow__begin, .sukha-flow__finish, .sukha-flow__cancel');
         if (!target || target.disabled) return true;
         target.click?.();
         return true;
@@ -629,10 +643,10 @@ export class SessionsTab {
         if (!info || !this.flow) return;
         const { flow } = this;
         const openHolds = info.openHolds && this.prefs.openHolds !== false;
-        const thumbs = (stages) => `<span class="hale-flow__worlds" aria-hidden="true">${stages.map((stage) => (
+        const thumbs = (stages) => `<span class="sukha-flow__worlds" aria-hidden="true">${stages.map((stage) => (
             `<i style="background-image:url('${breathPosterUrl(stage.world)}')" title="${escapeHtml(getBreathWorld(stage.world).name)}"></i>`
         )).join('')}</span>`;
-        flow.querySelector('.hale-flow__track').innerHTML = info.stages.map((stage) => (
+        flow.querySelector('.sukha-flow__track').innerHTML = info.stages.map((stage) => (
             `<i data-type="${stage.type}" style="flex-grow:${Math.max(stage.seconds, 1)}" title="${STAGE_NAMES[stage.type]} · ${formatClock(stage.seconds)}"></i>`
         )).join('');
         const arrive = info.stages.find((stage) => stage.type === 'grounding');
@@ -654,26 +668,26 @@ export class SessionsTab {
             if (recovery) after = carry ? ' · reset' : ' · recover';
             rounds.push(`<li>${thumbs(shown)}<b>Round ${round}</b> ${breathe ? `${breathe.breaths} breaths` : ''}${still}${after}</li>`);
         }
-        flow.querySelector('.hale-flow__rounds').innerHTML = [
+        flow.querySelector('.sukha-flow__rounds').innerHTML = [
             arrive ? `<li>${thumbs([arrive])}<b>Arrive</b> ${formatClock(arrive.seconds)} ${arrive.paced ? 'of slow breathing' : 'at your own pace'}</li>` : '',
             ...rounds,
             rest ? `<li>${thumbs([rest])}<b>Rest</b> ${formatClock(rest.seconds)} of natural breath</li>` : '',
         ].join('');
         const best = summarizePractice(readPracticeLog(storage())).bySession[sessionId]?.bestHold || 0;
-        const bestLine = flow.querySelector('.hale-flow__best');
+        const bestLine = flow.querySelector('.sukha-flow__best');
         bestLine.hidden = !(info.openHolds && best > 0);
         bestLine.textContent = bestLine.hidden ? '' : `Your best hold in ${info.name}: ${formatClock(best)}`;
     }
 
-    /** Begin is ready unless a strong-hold session still needs its one-time safety note read. */
+    /** Begin is ready unless a strong session still needs its one-time safety note read. */
     updateBegin() {
         const info = this.getSessionDetails(this.pendingSessionId);
         if (!info || !this.flow) return;
-        const caution = info.openHolds && !this.prefs.safetyAcknowledged;
-        const begin = this.flow.querySelector('.hale-flow__begin');
+        const caution = info.strong && !this.safetyRead;
+        const begin = this.flow.querySelector('.sukha-flow__begin');
         begin.disabled = false;
         if (caution) {
-            const read = Boolean(this.flow.querySelector('.hale-flow__ack-input').checked);
+            const read = Boolean(this.flow.querySelector('.sukha-flow__ack-input').checked);
             begin.disabled = !read;
         }
     }
@@ -689,31 +703,31 @@ export class SessionsTab {
         this.pendingSessionId = sessionId;
         this.selectedIntention = null;
         this.completedSession = null;
-        this.focusReturn = this.container?.querySelector(`.hale-card__begin[data-session="${sessionId}"]`) || null;
+        this.focusReturn = this.container?.querySelector(`.sukha-card__begin[data-session="${sessionId}"]`) || null;
         const { flow } = this;
         flow.dataset.session = sessionId;
-        flow.querySelector('.hale-flow__art').style.backgroundImage = `url('${info.poster}')`;
-        flow.querySelector('.hale-flow__facts').textContent = `${info.duration} · ${info.intensity} · ${info.style}`;
-        flow.querySelector('.hale-flow__name').textContent = info.name;
-        flow.querySelector('.hale-flow__promise').textContent = info.promise;
-        flow.querySelector('.hale-flow__about').textContent = info.about;
+        flow.querySelector('.sukha-flow__art').style.backgroundImage = `url('${info.poster}')`;
+        flow.querySelector('.sukha-flow__facts').textContent = `${info.duration} · ${info.intensity} · ${info.style}`;
+        flow.querySelector('.sukha-flow__name').textContent = info.name;
+        flow.querySelector('.sukha-flow__promise').textContent = info.promise;
+        flow.querySelector('.sukha-flow__about').textContent = info.about;
         this.renderJourney(sessionId);
-        flow.querySelector('.hale-flow__intentions').innerHTML = (HALE_INTENTIONS[sessionId] || []).map((intent) => `
-            <button type="button" class="hale-flow__intention" data-intention="${intent.id}" aria-pressed="false">
+        flow.querySelector('.sukha-flow__intentions').innerHTML = (SUKHA_INTENTIONS[sessionId] || []).map((intent) => `
+            <button type="button" class="sukha-flow__intention" data-intention="${intent.id}" aria-pressed="false">
                 ${csIcon(intent.icon, 18)}<span>${escapeHtml(intent.label)}</span>
             </button>`).join('');
-        flow.querySelector('.hale-flow__voice').checked = this.voiceGuidance;
-        flow.querySelector('.hale-flow__sounds').checked = this.prefs.sounds !== false;
-        flow.querySelector('.hale-flow__vibration').checked = this.prefs.vibration !== false;
-        const holds = flow.querySelector('.hale-flow__holds');
+        flow.querySelector('.sukha-flow__voice').checked = this.voiceGuidance;
+        flow.querySelector('.sukha-flow__sounds').checked = this.prefs.sounds !== false;
+        flow.querySelector('.sukha-flow__vibration').checked = this.prefs.vibration !== false;
+        const holds = flow.querySelector('.sukha-flow__holds');
         holds.checked = this.prefs.openHolds !== false;
-        flow.querySelector('.hale-flow__switch--holds').hidden = !info.openHolds;
-        const caution = flow.querySelector('.hale-flow__caution');
-        caution.hidden = !info.openHolds;
-        flow.querySelector('.hale-flow__ack').hidden = Boolean(this.prefs.safetyAcknowledged);
-        flow.querySelector('.hale-flow__ack-input').checked = Boolean(this.prefs.safetyAcknowledged);
-        flow.querySelector('.hale-flow__safety').hidden = info.openHolds;
-        const begin = flow.querySelector('.hale-flow__begin');
+        flow.querySelector('.sukha-flow__switch--holds').hidden = !info.openHolds;
+        const caution = flow.querySelector('.sukha-flow__caution');
+        caution.hidden = !info.strong;
+        flow.querySelector('.sukha-flow__ack').hidden = this.safetyRead;
+        flow.querySelector('.sukha-flow__ack-input').checked = this.safetyRead;
+        flow.querySelector('.sukha-flow__safety').hidden = info.strong;
+        const begin = flow.querySelector('.sukha-flow__begin');
         begin.setAttribute('aria-label', `Begin ${info.name}. Intention optional.`);
         this.updateBegin();
         this.showStep('prepare');
@@ -721,7 +735,7 @@ export class SessionsTab {
         this.sessionManager?.indicator?.preloadStage?.();
         // The flow is its own surface: the Hub steps aside but keeps holding gameplay.
         this.hub.hide();
-        this.scheduleUI(() => (begin.disabled ? flow.querySelector('.hale-flow__ack-input') : begin).focus?.({ preventScroll: true }), 30);
+        this.scheduleUI(() => (begin.disabled ? flow.querySelector('.sukha-flow__ack-input') : begin).focus?.({ preventScroll: true }), 30);
     }
 
     /** Leave the flow and return to the catalogue. */
@@ -737,20 +751,20 @@ export class SessionsTab {
     }
 
     selectIntention(intentionId, sessionId) {
-        const intention = (HALE_INTENTIONS[sessionId] || []).find((item) => item.id === intentionId);
+        const intention = (SUKHA_INTENTIONS[sessionId] || []).find((item) => item.id === intentionId);
         if (!intention) return;
         // Choosing the same intention again clears it: it was always optional.
         this.selectedIntention = this.selectedIntention?.id === intentionId ? null : intention;
         if (this.selectedIntention && this.voiceGuidance) {
             this.sessionManager?.audioManager?.playVoice(this.intentionClip(sessionId, intentionId));
         }
-        this.flow.querySelectorAll('.hale-flow__intention').forEach((button) => {
+        this.flow.querySelectorAll('.sukha-flow__intention').forEach((button) => {
             const pressed = button.dataset.intention === this.selectedIntention?.id;
             button.setAttribute('aria-pressed', String(pressed));
             button.classList.toggle('is-selected', pressed);
         });
         const info = this.getSessionDetails(sessionId);
-        this.flow.querySelector('.hale-flow__begin').setAttribute('aria-label', this.selectedIntention
+        this.flow.querySelector('.sukha-flow__begin').setAttribute('aria-label', this.selectedIntention
             ? `Begin ${info.name} with intention: ${this.selectedIntention.label}` : `Begin ${info.name}. Intention optional.`);
     }
 
@@ -760,7 +774,7 @@ export class SessionsTab {
 
     /** Begin, from a click: the moment the browser lets sound and vibration start. */
     beginFromPrep() {
-        const begin = this.flow?.querySelector('.hale-flow__begin');
+        const begin = this.flow?.querySelector('.sukha-flow__begin');
         if (begin?.disabled) return;
         this.sessionManager?.chimes?.prime?.();
         this.startCountdown();
@@ -772,16 +786,16 @@ export class SessionsTab {
         const sessionId = this.pendingSessionId;
         if (!sessionId || !this.getSessionDetails(sessionId)) return;
         const { flow } = this;
-        flow.querySelector('.hale-flow__intent').textContent = this.selectedIntention
+        flow.querySelector('.sukha-flow__intent').textContent = this.selectedIntention
             ? `Your intention · ${this.selectedIntention.label}` : 'Nothing to achieve. Just be here.';
         this.showStep('countdown');
         // The countdown is the world's time to compile: the session then opens on it, not on the
         // CSS orb while its shaders build.
         this.sessionManager?.prepareSession?.(sessionId);
-        this.scheduleUI(() => flow.querySelector('.hale-flow__cancel').focus?.({ preventScroll: true }), 30);
-        const number = flow.querySelector('.hale-flow__number');
-        const message = flow.querySelector('.hale-flow__message');
-        const beats = Array.from(flow.querySelector('.hale-flow__beats')?.children || []);
+        this.scheduleUI(() => flow.querySelector('.sukha-flow__cancel').focus?.({ preventScroll: true }), 30);
+        const number = flow.querySelector('.sukha-flow__number');
+        const message = flow.querySelector('.sukha-flow__message');
+        const beats = Array.from(flow.querySelector('.sukha-flow__beats')?.children || []);
         for (let i = 0; i < COUNTDOWN.length; i++) {
             const last = i === COUNTDOWN.length - 1;
             number.textContent = COUNTDOWN[i][0];
@@ -806,7 +820,7 @@ export class SessionsTab {
         this.sessionRunning = true;
         const generation = ++this.sessionGeneration;
         // Only an intention of this session: each one has its own spoken clip.
-        const intention = (HALE_INTENTIONS[sessionId] || []).some((item) => item.id === this.selectedIntention?.id)
+        const intention = (SUKHA_INTENTIONS[sessionId] || []).some((item) => item.id === this.selectedIntention?.id)
             ? this.selectedIntention : null;
         this.selectedIntention = intention;
         this.sessionManager.audioManager?.setEnabled(this.voiceGuidance);
@@ -838,7 +852,7 @@ export class SessionsTab {
 
     /** The Hub's End asks for a second press: it is a long session to lose by accident. */
     requestEndFromHub() {
-        const button = this.container?.querySelector('.hale__end');
+        const button = this.container?.querySelector('.sukha__end');
         if (this.endArmed) {
             clearTimeout(this.endArmed);
             this.pendingTimers.delete(this.endArmed);
@@ -912,20 +926,20 @@ export class SessionsTab {
         if (this.destroyed) return;
         this.activeSessionData = progress || null;
         if (!this.active || !this.container) return;
-        const live = this.container.querySelector('.hale__live');
+        const live = this.container.querySelector('.sukha__live');
         if (!live) return;
         const running = Boolean(progress && this.sessionManager?.activeSession);
         if (live.hidden === running) live.hidden = !running;
         if (!running) return;
         const round = progress.round > 0 ? ` · Round ${progress.round} of ${progress.totalRounds}` : '';
         const text = `${progress.sessionName || 'Session'}${round} · ${STAGE_NAMES[progress.phase] || ''}`;
-        const name = live.querySelector('.hale__live-name');
+        const name = live.querySelector('.sukha__live-name');
         if (name.textContent !== text) name.textContent = text;
     }
 
     /** Your holds, one bar per round, each beside the length it was suggested. */
     renderHoldsChart(holds, previousBest) {
-        const chart = this.flow.querySelector('.hale-flow__holds-chart');
+        const chart = this.flow.querySelector('.sukha-flow__holds-chart');
         const open = holds.filter((hold) => hold.mode === 'open');
         chart.hidden = !open.length;
         if (!open.length) {
@@ -937,7 +951,7 @@ export class SessionsTab {
         chart.innerHTML = `<figcaption>Your holds <small>${previousBest > 0 ? `previous best ${formatClock(previousBest)}` : 'marks show the suggested length'}</small></figcaption>
             <ol>${open.map((hold) => `
                 <li class="${hold.seconds === best ? 'is-best' : ''}" style="--h:${(hold.seconds / top).toFixed(3)};--s:${(hold.suggested / top).toFixed(3)}">
-                    <span class="hale-flow__bar"><i></i></span>
+                    <span class="sukha-flow__bar"><i></i></span>
                     <b>${formatClock(hold.seconds)}</b>
                     <small>Round ${hold.round}</small>
                 </li>`).join('')}
@@ -960,27 +974,27 @@ export class SessionsTab {
         }, storage());
         const { flow } = this;
         flow.dataset.session = stats.sessionId || '';
-        if (info.poster) flow.querySelector('.hale-flow__art').style.backgroundImage = `url('${info.poster}')`;
-        flow.querySelector('.hale-flow__done-name').textContent = stats.sessionName || info.name || 'Hale session';
+        if (info.poster) flow.querySelector('.sukha-flow__art').style.backgroundImage = `url('${info.poster}')`;
+        flow.querySelector('.sukha-flow__done-name').textContent = stats.sessionName || info.name || 'Sukha session';
         const longest = longestOpenHold(holds);
         let last = [info.maxHold || '—', 'Longest hold'];
         if (longest > 0) last = [formatClock(longest), 'Longest hold'];
         else if (holds.length) last = [info.maxHold, 'Longest pause'];
         else if (info.carrySeconds) last = [formatClock(info.carrySeconds), 'On your own'];
         else if (info.longestOutBreath) last = [`${info.longestOutBreath} sec`, 'Longest out-breath'];
-        flow.querySelector('.hale-flow__stats').innerHTML = [
+        flow.querySelector('.sukha-flow__stats').innerHTML = [
             [formatClock(stats.totalDuration), 'Time for yourself'],
             [stats.rounds ?? info.rounds ?? 3, 'Rounds'],
             [stats.breaths ?? info.breaths ?? 0, 'Guided breaths'],
             last,
         ].map(([value, label]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('');
-        const badge = flow.querySelector('.hale-flow__record');
+        const badge = flow.querySelector('.sukha-flow__record');
         badge.hidden = !record.personalBest;
         badge.innerHTML = record.personalBest
             ? `${csIcon('trophy', 15)} New best hold: ${formatClock(record.longestHold)} <small>was ${formatClock(record.previousBest)}</small>` : '';
         this.renderHoldsChart(holds, record.previousBest);
         const summary = summarizePractice(record.log);
-        const streak = flow.querySelector('.hale-flow__streak-line');
+        const streak = flow.querySelector('.sukha-flow__streak-line');
         streak.hidden = !record.recorded;
         streak.textContent = record.recorded ? [
             summary.streak > 1 ? `${summary.streak} days in a row` : 'Practised today',
@@ -989,16 +1003,16 @@ export class SessionsTab {
         ].join(' · ') : '';
         // Practice opens the next world and session on the path: said here, where it was earned.
         const opened = describeOpenings(this.collection.reconcile({ source: 'practice' }));
-        const openedLine = flow.querySelector('.hale-flow__opened');
+        const openedLine = flow.querySelector('.sukha-flow__opened');
         openedLine.hidden = !opened;
         openedLine.innerHTML = opened
-            ? `<span class="hale-flow__opened-label">New</span> ${escapeHtml(opened.line)}, opened by your practice.` : '';
+            ? `<span class="sukha-flow__opened-label">New</span> ${escapeHtml(opened.line)}, opened by your practice.` : '';
         const intention = this.selectedIntention?.label || stats.intention;
-        flow.querySelector('.hale-flow__closing').textContent = intention
+        flow.querySelector('.sukha-flow__closing').textContent = intention
             ? `You arrived with: ${intention}. Let your next moment begin gently.`
             : 'Notice your breath. Let your next moment begin gently.';
         this.showStep('complete');
-        this.scheduleUI(() => flow.querySelector('.hale-flow__finish').focus?.({ preventScroll: true }), 30);
+        this.scheduleUI(() => flow.querySelector('.sukha-flow__finish').focus?.({ preventScroll: true }), 30);
     }
 
     closeCompletion() {

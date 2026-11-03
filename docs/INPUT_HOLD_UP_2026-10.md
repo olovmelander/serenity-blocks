@@ -71,7 +71,7 @@ a player expects there.
 - **Smaller:** online Tab (the scoreboard) only acts in a match, not over Settings, the
   lobby or results; Enter focuses the match chat (its id was wrong) unless a control has
   focus; on the Odyssey map Enter on the Chapters and Hub tiles no longer plays the orb; H
-  and N stand aside over multiplayer screens and the Hale flow.
+  and N stand aside over multiplayer screens and the Sukha flow.
 
 ## 5. Tests and gates
 

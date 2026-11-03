@@ -6,6 +6,14 @@ Before proposing structural changes, load **[docs/ARCHITECTURE_INDEX.md](docs/AR
 and **[docs/adr/](docs/adr/)**. The remediation plan is the umbrella roadmap; ADRs record
 constraints that should not be re-litigated casually.
 
+## Clean room: never read another game's source
+
+Serenity Blocks' rules, timings and formulas are this project's own. Never open, search, quote or
+port the source code of another game (Quadra's C++ included), and never cite another game's source
+files, functions or line numbers in code, comments, tests or docs. Describe a mechanic by how it
+plays and by this repo's own code. Libraries the game uses under their licences (three.js, Phaser,
+steamworks.js, …) are fine to read.
+
 ## WebGPU / Three.js visual work: validate before "done" (required)
 
 This project's visual surfaces are WebGPU/TSL. When you create or change a **theme**

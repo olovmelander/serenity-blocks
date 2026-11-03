@@ -1,5 +1,5 @@
 /**
- * The Hale sessions' own sounds, made in code: a singing-bowl bell that opens and closes a
+ * The Sukha sessions' own sounds, made in code: a singing-bowl bell that opens and closes a
  * session and each round, a small chime when a hold reaches its suggested length, and a quiet
  * breath tone on every breath in and out, so you can practise with your eyes closed. On phones
  * that can, a light pulse marks the same moments.

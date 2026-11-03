@@ -616,7 +616,7 @@ describe('Demo replay clock', () => {
         await processPhysics(state, {});
 
         // One wave, no gravity (a full bottom row with nothing above it), so the
-        // skipped animation budget is the Quadra-calibrated clear rhythm:
+        // skipped animation budget is the calibrated clear rhythm:
         // 160ms hold + 20ms settle lead + 20ms settle tail = 200ms.
         // See LINE_CLEAR_HOLD_MS / SETTLE_LEAD_MS / SETTLE_TAIL_MS in physics.js.
         expect(state.simTimeMs).toBe(1200);

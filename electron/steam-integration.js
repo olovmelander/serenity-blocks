@@ -13,13 +13,15 @@
  */
 
 import { app, BrowserWindow, ipcMain } from 'electron';
-import { join, dirname, resolve } from 'path';
+import { join, resolve } from 'path';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { createRequire } from 'module';
 import net from 'net';
 import { decodeP2PPacketBody, encodeP2PPacketBody, resolveP2PSendType } from './p2p-packet-codec.js';
 import { lobbyMemberChange } from './steam-peer-events.js';
+import { resolveSteamAppId as resolveSteamAppIdFor } from './steam-app-id.js';
+import { createP2PSessionGate } from './p2p-session-gate.js';
 
 // ---------------------------------------------------------------------------
 // State
@@ -35,11 +37,12 @@ let currentLobbyId = null;
 // data/owner/members/leave are only reachable via the Lobby OBJECT returned by
 // createLobby()/joinLobby(). Hold onto it for the lobby we're currently in.
 let currentLobby = null;
+// Accepts P2P sessions from members of currentLobby only (electron/p2p-session-gate.js).
+let p2pSessionGate = null;
 let steamOverlayEnabled = false;
 let steamCallbackHandles = [];
 let steamStatusPending = false;
 
-const DEFAULT_STEAM_APP_ID = 480;
 const MAX_P2P_PACKET_BYTES = 64 * 1024;
 let steamAppId = null;
 
@@ -81,19 +84,29 @@ function steamLog(message) {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** electron/steam-app-id.js decides; a packaged build reads no file or variable. */
 function resolveSteamAppId() {
-    const envAppId = process.env.STEAM_APP_ID;
-    if (envAppId && /^\d+$/.test(envAppId)) return Number(envAppId);
+    return resolveSteamAppIdFor({
+        isPackaged: app.isPackaged,
+        env: process.env,
+        readAppIdFile: () => {
+            for (const dir of [process.cwd(), app.getAppPath()]) {
+                const appIdPath = join(dir, 'steam_appid.txt');
+                if (existsSync(appIdPath)) return readFileSync(appIdPath, 'utf8');
+            }
+            return null;
+        },
+    });
+}
 
-    const candidateDirs = [process.cwd(), app.getAppPath(), dirname(process.execPath)];
-    for (const dir of candidateDirs) {
-        const appIdPath = join(dir, 'steam_appid.txt');
-        if (existsSync(appIdPath)) {
-            const text = readFileSync(appIdPath, 'utf8').trim();
-            if (/^\d+$/.test(text)) return Number(text);
-        }
+/** Whether a SteamID belongs to a member of the lobby we are in right now. */
+function isCurrentLobbyMember(steamId) {
+    if (!currentLobby || !steamId) return false;
+    try {
+        return (currentLobby.getMembers?.() || []).some((member) => normalizeSteamId(member) === String(steamId));
+    } catch {
+        return false;
     }
-    return DEFAULT_STEAM_APP_ID;
 }
 
 function hasUsableSteamClient() {
@@ -311,19 +324,19 @@ function registerSteamCallbacks() {
     // first packet, Steam raises P2PSessionRequest and DROPS that packet until we
     // explicitly accept the session. Without this, two real machines join the same
     // lobby but never exchange game state (NET_HELLO/NET_WELCOME never arrive).
-    // We accept and let the app layer (_validateEnvelope: matchId/nonce/protocol)
-    // authorize individual packets.
+    // Accepting connects the two machines (directly when Steam can), so only members
+    // of our lobby are accepted (electron/p2p-session-gate.js); the app layer
+    // (_validateEnvelope: matchId/nonce/protocol) still authorizes each packet.
+    p2pSessionGate = createP2PSessionGate({
+        accept: (steamId) => steamworksClient.networking.acceptP2PSession(BigInt(steamId)),
+        isMember: isCurrentLobbyMember,
+        log: steamLog,
+    });
     const p2pSessionRequestHandle = steamworksClient.callback.register(
         steamworksModule.SteamCallback.P2PSessionRequest,
         (payload) => {
-            const remote = payload?.remote;
-            if (remote === undefined || remote === null) return;
-            try {
-                steamworksClient.networking.acceptP2PSession(BigInt(remote));
-                steamLog(`Accepted P2P session from ${remote}`);
-            } catch (err) {
-                steamLog(`WARN: failed to accept P2P session from ${remote}: ${err.message}`);
-            }
+            const remote = normalizeSteamId(payload?.remote);
+            if (remote) p2pSessionGate?.onRequest(remote);
         },
     );
 
@@ -347,6 +360,7 @@ function registerSteamCallbacks() {
         (payload) => {
             const change = lobbyMemberChange(payload?.member_state_change);
             if (!change) return;
+            p2pSessionGate?.onMembersChanged();
             sendToRenderer('steam:lobbyMember', {
                 lobbyId: payload?.lobby?.toString?.() ?? null,
                 steamId: payload?.user_changed?.toString?.() ?? null,
@@ -369,6 +383,12 @@ async function initSteamworks(retries = 3) {
     if (steamInitialized && steamworksClient) {
         steamLog('initSteamworks: already initialized');
         return true;
+    }
+
+    const resolvedAppId = resolveSteamAppId();
+    if (!resolvedAppId.appId) {
+        steamLog(`Steam off: ${resolvedAppId.reason}`);
+        retries = 0;
     }
 
     for (let attempt = 1; attempt <= retries; attempt++) {
@@ -399,8 +419,15 @@ async function initSteamworks(retries = 3) {
 
             installSteamOverlayFrameInvalidatorHook();
 
-            steamAppId = resolveSteamAppId();
-            steamLog(`Resolved Steam App ID: ${steamAppId}`);
+            steamAppId = resolvedAppId.appId;
+            steamLog(`Resolved Steam App ID: ${steamAppId} (${resolvedAppId.source})`);
+            // A shipped build started outside the Steam client hands itself to Steam, which
+            // launches it again as the game (Steamworks' DRM/launch contract).
+            if (app.isPackaged && steamworks.restartAppIfNecessary?.(steamAppId)) {
+                steamLog('Started outside Steam — relaunching through the Steam client');
+                app.quit();
+                return false;
+            }
             steamworksClient = steamworks.init(steamAppId);
 
             if (steamworksClient) {
@@ -984,6 +1011,7 @@ export function registerSteamIPC() {
         const { maxPlayers = 8, lobbyType = 'public' } = options || {};
         const type = lobbyType === 'public' ? 2 : 1;
         const lobby = await steamworksClient.matchmaking.createLobby(type, maxPlayers);
+        p2pSessionGate?.clear();
         currentLobby = lobby;
         currentLobbyId = lobby.id.toString();
         return currentLobbyId;
@@ -994,12 +1022,16 @@ export function registerSteamIPC() {
         // joinLobby() RESOLVES to the Lobby object — keep it; it's the only handle
         // to the lobby's owner/members/data in steamworks.js 0.4.0.
         const lobby = await steamworksClient.matchmaking.joinLobby(BigInt(lobbyId));
+        p2pSessionGate?.clear();
         currentLobby = lobby || null;
         currentLobbyId = lobby?.id ? lobby.id.toString() : String(lobbyId);
+        // Peers who asked while we were joining are members now.
+        p2pSessionGate?.onMembersChanged();
         return true;
     });
 
     ipcMain.handle('steam:leaveLobby', () => {
+        p2pSessionGate?.clear();
         if (!currentLobby) { currentLobbyId = null; return; }
         try { currentLobby.leave(); } catch {}
         currentLobby = null;
@@ -1142,5 +1174,7 @@ export function cleanupSteam() {
     }
     currentLobby = null;
     currentLobbyId = null;
+    p2pSessionGate?.clear();
+    p2pSessionGate = null;
     steamInitialized = false;
 }

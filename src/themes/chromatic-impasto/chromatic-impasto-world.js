@@ -22,7 +22,7 @@
  * and four-line gold is an accumulating envelope (shared/swell.js): a hit adds to what is still
  * lit, never restarts it.
  *
- * The periods (Lindström, the Fauves, a nocturne, earth and fire, spring) turn by the clock in
+ * The periods (nordic, the Fauves, a nocturne, earth and fire, spring) turn by the clock in
  * every mode: at each whole PERIOD_SECONDS the painter goes over the picture in the next period's
  * tubes, unhurried and without a word, and the lamp's colour melts with it. A level is one period
  * on top, painted over quickly, with the sheen and the swing it always had.

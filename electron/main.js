@@ -628,7 +628,11 @@ function createWindow() {
             nodeIntegration: false,
             sandbox: true,
             backgroundThrottling: false,
-            additionalArguments: diagnosticsEnabled ? ['--serenity-diagnostics-enabled'] : [],
+            // Sync flags for the preload (sandboxed: no process.env there).
+            additionalArguments: [
+                ...(diagnosticsEnabled ? ['--serenity-diagnostics-enabled'] : []),
+                ...(isPackaged ? ['--serenity-packaged'] : []),
+            ],
         },
     });
 

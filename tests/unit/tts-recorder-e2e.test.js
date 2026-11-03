@@ -163,7 +163,7 @@ let api;
 let base;
 
 beforeAll(async () => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hale-recorder-'));
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sukha-recorder-'));
     fs.mkdirSync(path.join(dir, 'scripts'));
     RECORDER_FILES.forEach((file) => fs.copyFileSync(path.join(ROOT, 'scripts', file), path.join(dir, 'scripts', file)));
     fs.writeFileSync(path.join(dir, 'scripts', 'tts-script.json'), JSON.stringify(SCRIPT, null, 2));

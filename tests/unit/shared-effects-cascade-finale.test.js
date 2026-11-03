@@ -1,5 +1,5 @@
 /**
- * A cascade's move as Quadra frames it (docs/MENU_UI_OVERHAUL_2026-10.md §5.8): what a
+ * A cascade's move as the game frames it (docs/MENU_UI_OVERHAUL_2026-10.md §5.8): what a
  * wave drops lands where it lands, the move is summed up once it settles ("Combo ×3 /
  * 7 lines"), and a move that empties the well says "Clean canvas" instead, named by
  * the move that made it.

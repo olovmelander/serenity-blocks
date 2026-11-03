@@ -483,7 +483,7 @@ describe('breathing over the theme (Serenity Mode)', () => {
         expect(guide.isOverTheme).toBe(false);
     });
 
-    it('breathes in its world outside Serenity Mode and in a Hale session, whatever was chosen', async () => {
+    it('breathes in its world outside Serenity Mode and in a Sukha session, whatever was chosen', async () => {
         guide.setOverTheme(true);
         guide.start();
         await settle();
@@ -582,14 +582,14 @@ describe('breathing guide controls', () => {
         key('ArrowLeft');
         expect(guide.currentTechnique).toBe('zen-garden');
         // A session may leave the guide in a world you have not found: you can step away from it.
-        guide.setTechnique('wim-hof');
+        guide.setTechnique('volcanic-fire');
         key('ArrowRight');
         expect(guide.currentTechnique).toBe('zen-garden');
         expect(guide.allowedWorld('calm-sleep')).toBe('calm-sleep');
-        expect(guide.allowedWorld('wim-hof')).toBe('coherence');
+        expect(guide.allowedWorld('volcanic-fire')).toBe('coherence');
         expect(guide.allowedWorld('not-a-world')).toBe('coherence');
         found.delete('coherence');
-        expect(guide.allowedWorld('wim-hof')).toBe('box-breathing');
+        expect(guide.allowedWorld('volcanic-fire')).toBe('box-breathing');
         // With one world, there is nowhere to step to.
         guide.canChoose = (id) => id === 'zen-garden';
         const heard = [];
@@ -646,10 +646,10 @@ describe('breathing guide under a session', () => {
         guide.setExternalControl(true);
         guide.setSessionTheme('ELIXIR');
         guide.overridePattern([3, 0, 1, 0]);
-        guide.setTechnique('wim-hof');
+        guide.setTechnique('volcanic-fire');
         guide.cycleTechnique(1);
         expect(guide.pattern).toEqual([3, 0, 1, 0]);
-        expect(guide.currentTechnique).toBe('wim-hof');
+        expect(guide.currentTechnique).toBe('volcanic-fire');
         guide.setPrompt('Round 1 • Activate', 'Mouth breathing.');
         expect(text(guide.title)).toBe('Round 1 • Activate');
         expect(text(guide.note)).toBe('Mouth breathing.');
@@ -686,11 +686,11 @@ describe('breathing guide under a session', () => {
         const marks = guide.journeyTrack.children;
         expect(marks.map((mark) => mark.style.flexGrow)).toEqual(['180', '240', '60']);
         const progress = {
-            sessionName: 'Hale Base', phase: 'active', phaseIndex: 2, phaseProgress: 0.5, round: 1, totalRounds: 3,
+            sessionName: 'Sukha Homecoming', phase: 'active', phaseIndex: 2, phaseProgress: 0.5, round: 1, totalRounds: 3,
             breathCount: 14, totalBreaths: 30, remainingTime: 120, sessionProgress: 0.4, sessionRemaining: 900,
         };
         guide.updateProgress(progress);
-        expect(text(guide.eyebrow)).toBe('Hale Base · Round 1 of 3');
+        expect(text(guide.eyebrow)).toBe('Sukha Homecoming · Round 1 of 3');
         expect(text(guide.journeyStage)).toBe('Breathe');
         expect(text(guide.journeyDetail)).toBe('Breath 15 of 30');
         expect(text(guide.journeyRemaining)).toBe('15 min to go');

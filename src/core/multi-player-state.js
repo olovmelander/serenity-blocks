@@ -95,7 +95,7 @@ export class MultiPlayerState {
 
         // Frag tracking (kills) and deaths tracking
         this.frags = new Array(numPlayers).fill(0);
-        this.deaths = new Array(numPlayers).fill(0); // Quadra-style death counter
+        this.deaths = new Array(numPlayers).fill(0); // Deaths per player
         this.lastAttackerIds = new Array(numPlayers).fill(null); // Track who last attacked each player
         // Presentation listener: (attackerIndex, targetIndices, lines) for each attack that
         // sends garbage (local versus draws it between the boards). Never alters the sim.
@@ -305,7 +305,7 @@ export class MultiPlayerState {
     }
 
     /**
-     * Apply per-player Quadra handicap levels (0-4) from match config.
+     * Apply per-player handicap levels (0-4) from match config.
      * Defaults every player to Intermediate (2) when not specified. Resets any
      * previously accumulated stamps. Call after players have been reset.
      * @param {Array<number>} [levels] - Handicap level per player index
@@ -321,7 +321,7 @@ export class MultiPlayerState {
     }
 
     /**
-     * Accumulate Quadra handicap stamps for one player against all opponents.
+     * Accumulate handicap stamps for one player against all opponents.
      * Intended to be called once per piece lock. No-op when handicap levels are
      * equal (the common case), so it is safe to call unconditionally.
      * @param {number} playerIndex
@@ -343,7 +343,7 @@ export class MultiPlayerState {
     }
 
     /**
-     * Apply Quadra per-opponent handicap to an attack for one target. Reduces the
+     * Apply the per-opponent handicap to an attack for one target. Reduces the
      * number of normal garbage lines (clean lines bypass handicap) by consuming
      * the attacker's accumulated stamps for that opponent. Returns the original
      * attack unchanged when no reduction applies.
@@ -636,7 +636,7 @@ export class MultiPlayerState {
      * For 3+ players: Distribute to all other players
      */
     handleGarbageSummary(playerIndex, summary, onGarbageSend) {
-        // Attack ruleset from match config (Quadra-style: standard/blind/full_blind/peaceful).
+        // Attack ruleset from match config (standard/blind/full_blind/peaceful).
         const attackRules = this.matchConfig?.attackRules || null;
         this._recordCascadeMetrics(playerIndex, summary);
 
@@ -712,7 +712,7 @@ export class MultiPlayerState {
 
             const targetQueue = this.garbageQueues[targetIndex];
 
-            // Quadra per-opponent handicap reduces this attack's normal garbage
+            // The per-opponent handicap reduces this attack's normal garbage
             // lines for stronger players; entries are expanded per target so the
             // reduction can differ per opponent.
             const targetAttack = this._applyHandicapForTarget(attack, attackerState, targetIndex);
@@ -803,7 +803,7 @@ export class MultiPlayerState {
 
     /**
      * Apply attack scaling based on number of players
-     * Similar to Quadra's "boring rules" system
+     * (the matchConfig.boringRules option turns it off)
      *
      * Without boring rules:
      * - 2 players: 100% damage (no scaling)

@@ -1,6 +1,6 @@
 /**
  * @fileoverview Keystone main menu: the current mode, its stage, keyboard arrows, the
- * dock and the Hale Sessions entry. Markup: index.html `#start-modal`. Styles:
+ * dock and the Sukha Sessions entry. Markup: index.html `#start-modal`. Styles:
  * public/styles/keystone-menu.css. Record: docs/MENU_UI_OVERHAUL_2026-10.md.
  *
  * Launching a mode stays where it was: a mode card's click fires `startGameWithMode`
@@ -20,7 +20,7 @@ import { BREATH_WORLDS, breathPosterUrl } from '../effects/breathing/breath-cata
 import { getBreathCollection as breathCollectionNow } from '../effects/breathing/breath-collection-store.js';
 import { BREATH_LADDER, STARTER_SESSIONS } from '../effects/breathing/breath-collection.js';
 import { driftOption } from '../serenity-mode/serenity-options.js';
-import { haleSessionName } from '../effects/breathing/breath-openings.js';
+import { sukhaSessionName } from '../effects/breathing/breath-openings.js';
 import { formatPracticeTime, readPracticeLog, summarizePractice } from '../effects/breathwork-practice-log.js';
 import { statisticsForMode } from '../../core/progression/score-statistics.js';
 import { MENU_ART_DIR, StageArt } from './stage-art.js';
@@ -39,7 +39,7 @@ const HOVER_SETTLE_MS = 50;
 /**
  * Copy and presentation for each entry in the list. Numbers come from live data. `art`
  * names the stage picture in public/assets/menu-art/; `focus` is its object-position on
- * the stage. Odyssey shows the player's chapter (`odyssey-<chapter>.webp`) and Hale
+ * the stage. Odyssey shows the player's chapter (`odyssey-<chapter>.webp`) and Sukha
  * Sessions the poster of their newest session's world instead.
  */
 const MODES = {
@@ -92,11 +92,11 @@ const MODES = {
         lede: 'Nothing to play — a living world and its music fill the screen. Let the worlds drift with the songs, breathe with the guide over them, or set a timer and let it all fade to sleep.',
         action: 'Enter Serenity',
     },
-    hale: {
+    sukha: {
         eyebrow: 'Breath · Guided breathwork',
-        title: 'Hale Sessions',
-        wordmark: { file: 'hale-sessions', tall: true },
-        lede: 'Nine voice-guided sessions in the breathing worlds, from the short Hale First Breath to the deep holds of Hale Elixir. The Odyssey and your practice open them, one by one.',
+        title: 'Sukha Sessions',
+        wordmark: { file: 'sukha-sessions', tall: true },
+        lede: 'Nine voice-guided sessions in the breathing worlds, from the short Sukha First Breath to the deep holds of Sukha Phoenix. The Odyssey and your practice open them, one by one.',
         action: 'Choose a session',
     },
     odyssey: {
@@ -108,10 +108,10 @@ const MODES = {
     },
 };
 
-const MODE_ORDER = ['single', 'infinity', 'stillfall', 'local-multiplayer', 'online-multiplayer', 'serenity', 'hale', 'odyssey'];
+const MODE_ORDER = ['single', 'infinity', 'stillfall', 'local-multiplayer', 'online-multiplayer', 'serenity', 'sukha', 'odyssey'];
 
-/** Hale sessions in the order the breath path opens them (breath-collection.js). */
-const HALE_SESSION_ORDER = [...STARTER_SESSIONS, ...BREATH_LADDER.map((step) => step.session)];
+/** Sukha sessions in the order the breath path opens them (breath-collection.js). */
+const SUKHA_SESSION_ORDER = [...STARTER_SESSIONS, ...BREATH_LADDER.map((step) => step.session)];
 
 const numberFormat = typeof Intl !== 'undefined' ? new Intl.NumberFormat() : null;
 const formatNumber = (value) => (numberFormat ? numberFormat.format(value) : String(value));
@@ -142,11 +142,11 @@ function readSerenityState() {
     return state;
 }
 
-/** How many Hale sessions the player has open, or null when the collection cannot be read. */
+/** How many Sukha sessions the player has open, or null when the collection cannot be read. */
 function readHaleOpenCount() {
     try {
         const collection = breathCollectionNow();
-        return HALE_SESSION_ORDER.filter((id) => collection.isSessionOpen(id)).length;
+        return SUKHA_SESSION_ORDER.filter((id) => collection.isSessionOpen(id)).length;
     } catch {
         return null;
     }
@@ -261,22 +261,22 @@ export function newestOpenSession(order, isOpen) {
 }
 
 /**
- * The newest Hale session the player has open, for the stage picture: the furthest step of
+ * The newest Sukha session the player has open, for the stage picture: the furthest step of
  * the breath path (breath-collection.js), loaded only when the menu first shows.
  */
-let haleNewestLoader = null;
+let sukhaNewestLoader = null;
 function loadHaleNewest() {
-    if (!haleNewestLoader) {
-        haleNewestLoader = Promise.all([
+    if (!sukhaNewestLoader) {
+        sukhaNewestLoader = Promise.all([
             import('../effects/breathing/breath-collection-store.js'),
             import('../effects/breathing/session-worlds.js'),
         ]).then(([{ getBreathCollection }, { SESSION_WORLDS }]) => () => {
             const collection = getBreathCollection();
-            const id = newestOpenSession(HALE_SESSION_ORDER, (session) => collection.isSessionOpen(session));
+            const id = newestOpenSession(SUKHA_SESSION_ORDER, (session) => collection.isSessionOpen(session));
             return { id, world: SESSION_WORLDS[id]?.featured || null };
         }).catch(() => null);
     }
-    return haleNewestLoader;
+    return sukhaNewestLoader;
 }
 
 class MainMenu {
@@ -290,7 +290,7 @@ class MainMenu {
         this.hoverTimer = null;
         this.scoreStats = null;
         this.odysseyShape = null;
-        this.haleNewest = null;
+        this.sukhaNewest = null;
         this.light = this.modal ? new MenuLight(this.modal) : null;
         this.buildStageShell();
         this.mountQuit();
@@ -301,8 +301,8 @@ class MainMenu {
 
     initialMode() {
         const saved = readStorage(LAST_MODE_KEY);
-        // The mode was called Fault Lines until 2026-10-18.
-        const remembered = saved === 'fault-lines' ? 'stillfall' : saved;
+        // Modes renamed since: Fault Lines (2026-10-18) and the breathing sessions (2026-11-03).
+        const remembered = { 'fault-lines': 'stillfall', hale: 'sukha' }[saved] ?? saved;
         if (remembered && MODES[remembered] && this.cardFor(remembered)) return remembered;
         return readOdysseyProgress()?.started ? 'odyssey' : 'single';
     }
@@ -361,11 +361,11 @@ class MainMenu {
     }
 
     ensureHaleNewest() {
-        if (this.haleNewest) return Promise.resolve(this.haleNewest);
+        if (this.sukhaNewest) return Promise.resolve(this.sukhaNewest);
         return loadHaleNewest().then((newest) => {
-            if (newest && !this.haleNewest) {
-                this.haleNewest = newest;
-                if (this.current === 'hale') this.renderStage();
+            if (newest && !this.sukhaNewest) {
+                this.sukhaNewest = newest;
+                if (this.current === 'sukha') this.renderStage();
             }
             return newest;
         });
@@ -378,18 +378,18 @@ class MainMenu {
             card.addEventListener('focus', () => this.setCurrent(mode, { immediate: true }));
         });
 
-        // Hale Sessions is a list entry, not a game mode: it opens the guided sessions.
-        const hale = this.cardFor('hale');
-        if (hale) {
-            hale.setAttribute('role', 'button');
-            const desc = hale.querySelector('.mode-card-desc');
+        // Sukha Sessions is a list entry, not a game mode: it opens the guided sessions.
+        const sukha = this.cardFor('sukha');
+        if (sukha) {
+            sukha.setAttribute('role', 'button');
+            const desc = sukha.querySelector('.mode-card-desc');
             if (desc) {
-                desc.id = desc.id || 'mode-desc-hale';
-                hale.setAttribute('aria-describedby', desc.id);
+                desc.id = desc.id || 'mode-desc-sukha';
+                sukha.setAttribute('aria-describedby', desc.id);
             }
-            hale.setAttribute('aria-label', 'Hale Sessions');
-            hale.addEventListener('click', () => this.openHaleSessions());
-            hale.addEventListener('keydown', (event) => {
+            sukha.setAttribute('aria-label', 'Sukha Sessions');
+            sukha.addEventListener('click', () => this.openHaleSessions());
+            sukha.addEventListener('keydown', (event) => {
                 if (event.key !== 'Enter' && event.key !== ' ') return;
                 event.preventDefault();
                 event.stopPropagation();
@@ -435,8 +435,8 @@ class MainMenu {
         return Boolean(this.modal?.classList.contains('visible'))
             && !document.body.classList.contains('start-modal-covered')
             && !document.body.classList.contains('serenity-hub-open')
-            // A Hale flow or breathing guide started from the menu owns Space and Enter.
-            && !document.querySelector('.hale-flow:not([hidden]), #breathing-guide:not([hidden])');
+            // A Sukha flow or breathing guide started from the menu owns Space and Enter.
+            && !document.querySelector('.sukha-flow:not([hidden]), #breathing-guide:not([hidden])');
     }
 
     /** Arrow keys walk the list; Enter with nothing focused plays the current mode. */
@@ -503,7 +503,7 @@ class MainMenu {
     }
 
     activate(mode) {
-        if (mode === 'hale') {
+        if (mode === 'sukha') {
             this.openHaleSessions();
             return;
         }
@@ -512,20 +512,20 @@ class MainMenu {
     }
 
     async openHaleSessions() {
-        writeStorage(LAST_MODE_KEY, 'hale');
+        writeStorage(LAST_MODE_KEY, 'sukha');
         const app = typeof window !== 'undefined' ? window.serenityBlocks : null;
         try {
             // The sessions need the breathing guide, which starts with the deferred services.
-            await app?.startDeferredDesktopServices?.('menu-hale');
+            await app?.startDeferredDesktopServices?.('menu-sukha');
             const hub = app?.serenityHub || (await app?.initializeGlobalSerenityHub?.());
             if (hub?.openHaleSessions) {
                 hub.openHaleSessions();
                 return;
             }
         } catch (error) {
-            console.warn('[MainMenu] Could not open Hale sessions directly:', error);
+            console.warn('[MainMenu] Could not open Sukha sessions directly:', error);
         }
-        document.getElementById('hale-sessions-btn')?.click();
+        document.getElementById('sukha-sessions-btn')?.click();
     }
 
     setCurrent(mode, { immediate = false } = {}) {
@@ -600,12 +600,12 @@ class MainMenu {
             const serenity = serenityFacts(readSerenityState());
             facts.push(...serenity.facts);
             ({ note } = serenity);
-        } else if (mode === 'hale') {
+        } else if (mode === 'sukha') {
             const summary = summarizePractice(readPracticeLog());
             const open = readHaleOpenCount();
             facts.push(open === null
-                ? ['Sessions', formatNumber(HALE_SESSION_ORDER.length)]
-                : ['Sessions open', `${formatNumber(open)} / ${formatNumber(HALE_SESSION_ORDER.length)}`]);
+                ? ['Sessions', formatNumber(SUKHA_SESSION_ORDER.length)]
+                : ['Sessions open', `${formatNumber(open)} / ${formatNumber(SUKHA_SESSION_ORDER.length)}`]);
             if (summary.hasHistory) {
                 facts.push(['Streak', `${summary.streak} ${summary.streak === 1 ? 'day' : 'days'}`]);
                 facts.push(['Practised', formatPracticeTime(summary.seconds)]);
@@ -645,9 +645,9 @@ class MainMenu {
                 caption: chapter?.name ? `Chapter ${id} · ${chapter.name.split(' & ')[0]}` : '',
             };
         }
-        if (mode === 'hale') {
-            const newest = this.haleNewest?.();
-            return newest?.world ? { src: breathPosterUrl(newest.world), caption: haleSessionName(newest.id) } : null;
+        if (mode === 'sukha') {
+            const newest = this.sukhaNewest?.();
+            return newest?.world ? { src: breathPosterUrl(newest.world), caption: sukhaSessionName(newest.id) } : null;
         }
         const art = MODES[mode]?.art;
         return art ? { src: `${MENU_ART_DIR}${art.file}.webp`, focus: art.focus } : null;
@@ -666,7 +666,7 @@ class MainMenu {
         const spec = MODES[mode];
 
         if (mode === 'odyssey' && !this.odysseyShape) this.ensureOdysseyShape();
-        if (mode === 'hale' && !this.haleNewest) this.ensureHaleNewest();
+        if (mode === 'sukha' && !this.sukhaNewest) this.ensureHaleNewest();
 
         const {
             facts, note, meter, eyebrow, action,

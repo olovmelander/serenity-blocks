@@ -76,7 +76,7 @@ describe('breathing world catalogue', () => {
         // These ids are stored in players' settings; renaming one silently resets their choice.
         expect(BREATH_WORLDS.map((world) => world.id)).toEqual([
             'deep-relaxation', 'box-breathing', 'calm-sleep', 'energizing', 'coherence', 'triangle',
-            'wim-hof', 'ocean-breath', 'zen-garden', 'cosmic-breath', 'forest-breath', 'electric-storm',
+            'volcanic-fire', 'ocean-breath', 'zen-garden', 'cosmic-breath', 'forest-breath', 'electric-storm',
         ]);
         expect(isBreathWorld('coherence')).toBe(true);
         expect(isBreathWorld('nope')).toBe(false);

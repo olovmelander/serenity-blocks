@@ -36,7 +36,7 @@ function createNode() {
 
 function progress(overrides = {}) {
     return {
-        sessionId: 'BASE', sessionName: 'Hale Base', round: 1, totalRounds: 3, phase: 'active', ...overrides,
+        sessionId: 'BASE', sessionName: 'Sukha Homecoming', round: 1, totalRounds: 3, phase: 'active', ...overrides,
     };
 }
 
@@ -60,9 +60,9 @@ afterEach(() => {
 
 function sessionsHarness() {
     const container = looseNode();
-    const live = container.querySelector('.hale__live');
+    const live = container.querySelector('.sukha__live');
     live.hidden = true;
-    const name = live.querySelector('.hale__live-name');
+    const name = live.querySelector('.sukha__live-name');
     let writes = 0;
     let label = '';
     Object.defineProperty(name, 'textContent', {
@@ -100,7 +100,7 @@ describe('hidden session tab presentation', () => {
         expect(h.manager.stopSession).not.toHaveBeenCalled();
         h.tab.setActive(true);
         expect(h.live.hidden).toBe(false);
-        expect(h.name.textContent).toBe('Hale Base · Round 1 of 3 · Breathe');
+        expect(h.name.textContent).toBe('Sukha Homecoming · Round 1 of 3 · Breathe');
     });
 
     it('rewrites the visible strip only when what it says changes', () => {
@@ -112,7 +112,7 @@ describe('hidden session tab presentation', () => {
         expect(h.writes()).toBe(1);
         h.tab.updateLive(progress({ phase: 'retention' }));
         expect(h.writes()).toBe(2);
-        expect(h.name.textContent).toBe('Hale Base · Round 1 of 3 · Hold');
+        expect(h.name.textContent).toBe('Sukha Homecoming · Round 1 of 3 · Hold');
     });
 
     it('cancels countdown waits on destroy without late session startup or timer retention', async () => {

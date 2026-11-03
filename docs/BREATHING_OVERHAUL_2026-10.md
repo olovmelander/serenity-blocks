@@ -1,14 +1,14 @@
-# Breathing and Hale sessions — rebuilt (October 2026)
+# Breathing and Sukha sessions — rebuilt (October 2026)
 
 > **Worlds and tiers superseded 2026-10-05** by
 > [BREATHING_WORLDS_MASTERPIECE_2026-10.md](BREATHING_WORLDS_MASTERPIECE_2026-10.md): the twelve
 > worlds were rebuilt again on a stage with a breathing camera, light shafts and a grade, and the
-> Low tier now runs a light post pipeline. **The Hale sessions are superseded** by
-> [HALE_SESSIONS_2026-10.md](HALE_SESSIONS_2026-10.md) (holds you end yourself, measured results,
+> Low tier now runs a light post pipeline. **The Sukha sessions are superseded** by
+> [SUKHA_SESSIONS_2026-10.md](SUKHA_SESSIONS_2026-10.md) (holds you end yourself, measured results,
 > your practice, bells). The guide's basics and the Breathing tab below are unchanged.
 
 A from-scratch rebuild of everything breathing: the twelve worlds, the guide that sits over
-them, the Breathing tab, and the Hale sessions menu and flow. It replaces the two earlier passes
+them, the Breathing tab, and the Sukha sessions menu and flow. It replaces the two earlier passes
 recorded in [BREATHING_IMMERSIVE_OVERHAUL_2026-10.md](BREATHING_IMMERSIVE_OVERHAUL_2026-10.md).
 
 ## What the player gets
@@ -38,7 +38,7 @@ breath, a **Begin** button that starts it and closes the Hub, and the twelve wor
 cards. Two preferences: words and counts, and *Begin with Serenity Mode* (the old
 "auto-start" setting was saved but never read; it works now).
 
-**Hale sessions.** The Hub tab is a catalogue of four sessions with their real length, rounds
+**Sukha sessions.** The Hub tab is a catalogue of four sessions with their real length, rounds
 and longest hold. **Begin** opens a full-screen preparation screen (what the session is, a
 timeline of its stages, an optional intention, a voice-guidance switch), then a countdown, then
 the session itself in the guide, then a result. During a session the guide shows the stage's
@@ -57,7 +57,7 @@ What changed in how sessions work:
 - **Breathing always holds gameplay.** A standalone practice started from the Hub in a
   falling-block mode keeps the game paused until it ends, like a session
   (`SerenityHub.holdsGameplay()`).
-- Completed sessions are counted locally (`localStorage`, key `serenity.haleSessions`) and
+- Completed sessions are counted locally (`localStorage`, key `serenity.sukhaSessions`) and
   shown as one line in the catalogue.
 
 Keys in a practice: `←` `→` change world, `Esc` ends. In a session: `Space` pauses, `Esc` asks
@@ -152,7 +152,7 @@ What was checked, and how:
 - **Every world on the WebGL2 backend** (`forceWebGL=1`): same artwork, no errors.
 - **Every world at 390×844 on the Low tier** (no post pipeline).
 - **The real game**, driven end to end at 1440×900 and 390×844: Serenity Mode → guide → world
-  change → Hub Breathing tab → Hale catalogue → preparation → countdown → session (arrive, a
+  change → Hub Breathing tab → Sukha catalogue → preparation → countdown → session (arrive, a
   breathing round, pause, end confirmation, a hold) → result → dismissed. No console errors;
   gameplay hold released at the end.
 - **Pause ownership in single-player**, read from the running mode: paused under the guide,

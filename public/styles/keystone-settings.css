@@ -1232,3 +1232,98 @@
         transition: none !important;
     }
 }
+
+/* ---- Credits & legal ------------------------------------------------------------------ */
+#settings-modal .legal-docs__nav {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 0 12px;
+    background: var(--sb-surface-solid);
+}
+
+#settings-modal .legal-docs__btn.is-active {
+    border-color: rgba(var(--sb-cream-rgb), 0.45);
+    color: var(--sb-text);
+    background: rgba(var(--sb-cream-rgb), 0.08);
+}
+
+#settings-modal .legal-doc {
+    max-width: 78ch;
+    padding: 4px 4px 24px;
+    color: var(--sb-text-muted);
+    font: 500 var(--sb-fs-small) / 1.65 var(--sb-font-text);
+    overflow-wrap: anywhere;
+}
+
+#settings-modal .legal-doc:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.35);
+    outline-offset: 4px;
+    border-radius: var(--sb-r-sm);
+}
+
+#settings-modal .legal-doc h3,
+#settings-modal .legal-doc h4,
+#settings-modal .legal-doc h5,
+#settings-modal .legal-doc h6 {
+    margin: 22px 0 8px;
+    color: var(--sb-text);
+    font-family: var(--sb-font-display);
+    line-height: 1.25;
+}
+
+#settings-modal .legal-doc h3 { font-size: 1.25rem; margin-top: 4px; }
+#settings-modal .legal-doc h4 { font-size: 1.02rem; }
+#settings-modal .legal-doc h5,
+#settings-modal .legal-doc h6 { font-size: 0.9rem; }
+#settings-modal .legal-doc p,
+#settings-modal .legal-doc ul,
+#settings-modal .legal-doc ol,
+#settings-modal .legal-doc blockquote { margin: 0 0 12px; }
+#settings-modal .legal-doc ul,
+#settings-modal .legal-doc ol { padding-left: 1.4em; }
+#settings-modal .legal-doc li { margin: 0 0 4px; }
+#settings-modal .legal-doc strong { color: var(--sb-text); }
+#settings-modal .legal-doc hr { border: 0; border-top: 1px solid var(--sb-line); margin: 18px 0; }
+
+#settings-modal .legal-doc blockquote {
+    padding-left: 12px;
+    border-left: 2px solid var(--sb-line);
+}
+
+#settings-modal .legal-doc code,
+#settings-modal .legal-doc pre {
+    font-family: "Space Mono", ui-monospace, monospace;
+    font-size: 0.85em;
+}
+
+#settings-modal .legal-doc pre {
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    border-radius: var(--sb-r-sm);
+    background: rgba(var(--sb-cream-rgb), 0.04);
+    white-space: pre-wrap;
+}
+
+#settings-modal .legal-doc__table { overflow-x: auto; margin: 0 0 12px; }
+
+#settings-modal .legal-doc table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92em;
+}
+
+#settings-modal .legal-doc th,
+#settings-modal .legal-doc td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--sb-line);
+    text-align: left;
+    vertical-align: top;
+}
+
+#settings-modal .legal-doc th { color: var(--sb-text); }
+#settings-modal .legal-doc__link { color: var(--sb-text); text-decoration: underline dotted; }
+#settings-modal .legal-doc__note { color: var(--sb-text-faint); }

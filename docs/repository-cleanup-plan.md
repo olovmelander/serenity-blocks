@@ -105,7 +105,7 @@ Archive candidate groups:
 Do not archive:
 
 - `README.md`, `CONTRIBUTING.md`, `CREDITS.md`, `HOW_TO_RUN.md`, `PHASER_QUICKSTART.md`, `RECOMMENDATIONS.md` *(deleted on 2026-10-03, see the note under Safety Rules)*.
-- Active untracked plans visible in the current worktree: `docs/ODYSSEY_CINEMATIC_JOURNEY_PLAN.md`, `docs/gameplay-effects-plan.md`, `docs/quadra-adoption-plan.md`, and the existing `docs/repository-review-plan.md`.
+- Active untracked plans visible in the current worktree: `docs/ODYSSEY_CINEMATIC_JOURNEY_PLAN.md`, `docs/gameplay-effects-plan.md`, and the existing `docs/repository-review-plan.md`.
 - Docs read by tests as fixtures.
 - Source-cited art direction docs unless their source references are removed first.
 

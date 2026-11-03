@@ -307,11 +307,11 @@ export function createNeonSigns(N, signs, glyphTex) {
         const sq = uvQuad.sub(vec2(0.5, 0.6)).mul(vec2(vDim.x.div(vDim.y), 1.0));
         const ad = vOrient.w;
         const t = N.uTime.add(seed.mul(0.37));
-        // Hale: a breathing ring over a deep teal field.
+        // Sukha: a breathing ring over a deep teal field.
         const breath = sin(t.mul(0.62)).mul(0.5).add(0.5);
         const ringR = breath.mul(0.09).add(0.2);
         const ringD = length(sq).sub(ringR).abs();
-        const hale = vec3(0.0, 0.05, 0.07).add(vec3(0.2, 0.95, 1.0).mul(exp(ringD.mul(ringD).mul(-2200.0))).mul(0.9))
+        const sukha = vec3(0.0, 0.05, 0.07).add(vec3(0.2, 0.95, 1.0).mul(exp(ringD.mul(ringD).mul(-2200.0))).mul(0.9))
             .add(vec3(0.05, 0.4, 0.5).mul(exp(length(sq).mul(length(sq)).mul(-30.0))).mul(breath.mul(0.3).add(0.15)));
         // Combo: neon blocks falling down a dark violet well.
         const cell = vec2(floor(uvQuad.x.mul(6.0)), floor(uvQuad.y.mul(9.0).add(t.mul(1.2))));
@@ -327,7 +327,7 @@ export function createNeonSigns(N, signs, glyphTex) {
         const skyT = mix(vec3(0.5, 0.06, 0.25), vec3(0.06, 0.02, 0.12), uvQuad.y);
         const sunTint = mix(vec3(1.0, 0.2, 0.3), vec3(1.0, 0.75, 0.25), uvQuad.y);
         const transit = skyT.mul(0.6).add(sunTint.mul(sunDisc).mul(0.85));
-        const picture = mix(mix(hale, combo, step(0.5, ad)), transit, step(1.5, ad));
+        const picture = mix(mix(sukha, combo, step(0.5, ad)), transit, step(1.5, ad));
         // LED pixels up close, a refresh bar rolling down, the word in tubes along the foot.
         const pitch = vec2(uvQuad.x.mul(vDim.x), uvQuad.y.mul(vDim.y)).div(0.4);
         const ledFw = fwidth(pitch.x).add(fwidth(pitch.y));

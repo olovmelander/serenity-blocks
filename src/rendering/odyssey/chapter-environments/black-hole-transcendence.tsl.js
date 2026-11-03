@@ -2,12 +2,12 @@
 /**
  * @fileoverview Black Hole Transcendence (Chapter 7) — TSL/WebGPU materials.
  *
- * MASTERPIECE PASS (2026-10): the chapter's hero is one Gargantua-style black hole (see
+ * MASTERPIECE PASS (2026-10): the chapter's hero is one great-hole-style black hole (see
  * black-hole-transcendence.js). The builders here paint it:
  *   - createVoidDomeTSL           near-black deep space, faint magenta/indigo nebulosity
  *   - createAccretionDiskTSL      the thin white-hot band: BOUNDED rigid rotation + a fixed
  *                                 spiral shear (no unbounded winding), view-dependent Doppler
- *   - createGargantuaPhotonRingTSL the razor ring at the shadow's edge
+ *   - createGreatHolePhotonRingTSL the razor ring at the shadow's edge
  *   - createLensedFoldMaterialTSL the lensed far side of the disk, over/under the shadow
  *   - createLensingStarfieldTSL   a far star shell for the ch7 post lens to bend
  *   - corridor dust / infall embers / shards — the near-life particle layers
@@ -17,7 +17,7 @@
  * the chapter crossfade (tests/unit/odyssey-wave46-scope-invariants.test.js counts them).
  * The shared noise is the value-noise lib (never MaterialX noise) — since the seamless pass
  * (2026-10) read from the baked lattice (shared/odyssey-lattice-noise.js: one texture fetch per
- * octave, not eight hashes; the full-frame dome and Gargantua's disk are the big consumers) —
+ * octave, not eight hashes; the full-frame dome and the great hole's disk are the big consumers) —
  * and every billboard is `billboardLocal` — the chapter group is anchored ~1.4 km from the origin.
  */
 
@@ -72,10 +72,10 @@ import { billboardLocal, makeQuadInstancedGeometry } from './shared/odyssey-tsl-
 const TAU = Math.PI * 2;
 
 /**
- * Where Gargantua hangs relative to the eye (world units), shared by ch7's camera lock and
+ * Where the great hole hangs relative to the eye (world units), shared by ch7's camera lock and
  * ch6's omen handoff so the two land on the same spot at the 6->7 seam.
  */
-export const GARGANTUA_LOCK = Object.freeze({
+export const GREAT_HOLE_LOCK = Object.freeze({
     lockDepth: 900,
     // Screen-anchor bias: where the rail runs into the hole. Olov (2026-10-22): "does the path go
     // in to the center of the black hole now?" At 150 up / 26 right (the upper-centre third) the
@@ -97,7 +97,7 @@ const _lockRight = new THREE.Vector3();
  * up vector — the ch7 spline climbs near-vertically, where a world-up basis degenerates).
  * @returns {THREE.Vector3} `out`
  */
-export function resolveGargantuaLockPosition(camera, out) {
+export function resolveGreatHoleLockPosition(camera, out) {
     camera.getWorldDirection(_lockFwd).normalize();
     _lockUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
     _lockRight.crossVectors(_lockFwd, _lockUp);
@@ -105,30 +105,30 @@ export function resolveGargantuaLockPosition(camera, out) {
     _lockRight.normalize();
     _lockUp.crossVectors(_lockRight, _lockFwd).normalize();
     return out.copy(camera.position)
-        .addScaledVector(_lockFwd, GARGANTUA_LOCK.lockDepth)
-        .addScaledVector(_lockUp, GARGANTUA_LOCK.upBias)
-        .addScaledVector(_lockRight, GARGANTUA_LOCK.rightBias);
+        .addScaledVector(_lockFwd, GREAT_HOLE_LOCK.lockDepth)
+        .addScaledVector(_lockUp, GREAT_HOLE_LOCK.upBias)
+        .addScaledVector(_lockRight, GREAT_HOLE_LOCK.rightBias);
 }
 
 /**
  * THE FALL (2026-10-02): the lock's position for a hero `depth` ahead of the eye, its screen bias
  * scaled with the depth (so the hole keeps its place on screen as it recedes to keep its near
  * surface clear of the rail) and eased onto the view axis by `centring`. At depth = lockDepth and
- * centring = 0 this is exactly resolveGargantuaLockPosition (the ch6 omen handoff lands on it).
+ * centring = 0 this is exactly resolveGreatHoleLockPosition (the ch6 omen handoff lands on it).
  * @returns {THREE.Vector3} `out`
  */
-export function resolveGargantuaFallPosition(camera, out, depth = GARGANTUA_LOCK.lockDepth, centring = 0) {
+export function resolveGreatHoleFallPosition(camera, out, depth = GREAT_HOLE_LOCK.lockDepth, centring = 0) {
     camera.getWorldDirection(_lockFwd).normalize();
     _lockUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
     _lockRight.crossVectors(_lockFwd, _lockUp);
     if (_lockRight.lengthSq() < 1e-8) _lockRight.set(1, 0, 0);
     _lockRight.normalize();
     _lockUp.crossVectors(_lockRight, _lockFwd).normalize();
-    const bias = (depth / GARGANTUA_LOCK.lockDepth) * (1 - centring);
+    const bias = (depth / GREAT_HOLE_LOCK.lockDepth) * (1 - centring);
     return out.copy(camera.position)
         .addScaledVector(_lockFwd, depth)
-        .addScaledVector(_lockUp, GARGANTUA_LOCK.upBias * bias)
-        .addScaledVector(_lockRight, GARGANTUA_LOCK.rightBias * bias);
+        .addScaledVector(_lockUp, GREAT_HOLE_LOCK.upBias * bias)
+        .addScaledVector(_lockRight, GREAT_HOLE_LOCK.rightBias * bias);
 }
 
 // ── The singularity window — the shadow's surface opens onto the warp tunnel (the fall) ──
@@ -198,7 +198,7 @@ export const CH7_CROSSING = Object.freeze({
 export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
     const uPortal = options.uPortal ?? uniform(0);
     const uWarp = options.uWarp ?? uniform(0);
-    const uEyeZ = options.uEyeZ ?? uniform(GARGANTUA_LOCK.lockDepth);
+    const uEyeZ = options.uEyeZ ?? uniform(GREAT_HOLE_LOCK.lockDepth);
     // The tunnel's MOUTH at the 7->8 exit: angular radius (rad) of the opening round the vanishing
     // point, through which the city and its sun are seen (alpha-tested away; 0 = no opening).
     const uOpen = options.uOpen ?? uniform(0);
@@ -497,7 +497,7 @@ export function createVoidDomeTSL(uTime = uniform(0), uEnergy = uniform(0.4), op
 // ── Accretion disk — the thin white-hot band (additive, bloom-eligible) ─────────────
 
 /**
- * Gargantua's disk on a RingGeometry (in its local XY plane).
+ * The great hole's disk on a RingGeometry (in its local XY plane).
  *
  * MOTION IS BOUNDED. The old swirl added `uTime * speed(r)` to the angle: the inner orbit
  * outran the outer by ~1.3 rad/s, so within minutes neighbouring radii were hundreds of
@@ -609,7 +609,7 @@ function rimFrame(shadowRadius) {
 
 // ── Photon ring — the razor of light at the shadow's edge (additive, bloom) ─────────
 
-export function createGargantuaPhotonRingTSL(uTime = uniform(0), options = {}) {
+export function createGreatHolePhotonRingTSL(uTime = uniform(0), options = {}) {
     const shadowRadius = options.shadowRadius ?? 132;
     const inner = options.innerRadius ?? shadowRadius;
     const outer = options.outerRadius ?? shadowRadius * 1.075;
@@ -654,7 +654,7 @@ export function createGargantuaPhotonRingTSL(uTime = uniform(0), options = {}) {
 
     const geometry = new THREE.RingGeometry(inner, outer, 256, 2);
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.name = 'gargantua-photon-ring-tsl';
+    mesh.name = 'great-hole-photon-ring-tsl';
     return {
         mesh, material, geometry, uniforms: { uOpacity },
     };
@@ -678,7 +678,7 @@ export function createLensedFoldMaterialTSL(uTime = uniform(0), options = {}) {
         rr, side, above, angle,
     } = rimFrame(shadowRadius);
     // THE IMAGE OF THE FAR DISK (overhaul 2026-10-20). The profile used to run 1.0-1.42 shadow
-    // radii, white-hot and even all round: a thick white donut hugging the shadow. Gargantua's
+    // radii, white-hot and even all round: a thick white donut hugging the shadow. The great hole's
     // read is the far side of the disk bowed OVER the shadow as a broad band — the whole disk,
     // inner edge to outer, compressed into ~1.2 shadow radii above it — and a thin one under it,
     // both carrying the disk's own temperature ladder and concentric lanes, so the lensed image
@@ -855,7 +855,7 @@ export function createCorridorDustTSL(uTime = uniform(0), requestedCount = 460, 
 // ── Infall embers — matter orbiting IN the disk plane (instanced, capped) ────────────
 
 /**
- * A dense ember field the .js parents onto Gargantua's disk pivot (orbit plane = local XZ,
+ * A dense ember field the .js parents onto the great hole's disk pivot (orbit plane = local XZ,
  * laid onto the disk by a +90° X rotation, scaled onto the disk's radii). Motion is GPU-side
  * (uTime + per-instance phase): a tangential orbit and a bounded radial breath.
  * @param {object} uTime shared time uniform
@@ -1140,7 +1140,7 @@ export function createLensingStarfieldTSL(uTime = uniform(0), options = {}) {
 // TSL graph in isolation and fail on validation errors; the masterpiece pass removed the old
 // assembler with the old hero, which silently turned the ch7 entry into an empty scene
 // (pre-merge review). This one assembles TODAY's parts at the shipped proportions (the
-// CH7_GARGANTUA multiples in black-hole-transcendence.js), compact enough for the pilot's
+// CH7_GREAT_HOLE multiples in black-hole-transcendence.js), compact enough for the pilot's
 // ~120 u camera, so the gate exercises every ch7 pipeline again.
 export function createBlackHoleTranscendencePilotTSL() {
     const uTime = uniform(0);
@@ -1155,7 +1155,7 @@ export function createBlackHoleTranscendencePilotTSL() {
         new THREE.MeshBasicNodeMaterial({ color: 0x000000 }),
     );
     face.add(shadow);
-    const photon = createGargantuaPhotonRingTSL(uTime, { innerRadius: S, outerRadius: S * 1.075, shadowRadius: S });
+    const photon = createGreatHolePhotonRingTSL(uTime, { innerRadius: S, outerRadius: S * 1.075, shadowRadius: S });
     face.add(photon.mesh);
     const foldMaterial = createLensedFoldMaterialTSL(uTime, { shadowRadius: S });
     const sweep = Math.PI * 0.8;

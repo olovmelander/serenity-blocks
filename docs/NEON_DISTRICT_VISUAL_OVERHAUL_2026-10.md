@@ -75,7 +75,7 @@ side. Each is one flat quad, and its shader builds the depth behind it:
   - a bar's backlit bottles
   - a gym
   - a service counter
-  - a calm room of round lamps for Hale and the sauna
+  - a calm room of round lamps for Sukha and the sauna
 
 The painted shopfronts keep their paintings. Their signs and walls stay flush, and their windows
 and door (`neon-district-openings.js`) are set back behind the same wet glass. The generated
@@ -107,10 +107,10 @@ families, and every surface that advertises carries them:
 
   Each has a mark, two colours and a slogan. Most have a branch on the street, so the noodle chain
   on the billboards has a noodle bar under them. Cascade Cola is in most vending machines.
-- **Hale**: the breathing guide's campaign, the calm spot in a loud street. Its screens draw a
+- **Sukha**: the breathing guide's campaign, the calm spot in a loud street. Its screens draw a
   ring in the space the advert leaves for it. The ring breathes on the game's breath (4 s in,
   6 s out, `breathFill`) and follows the guide's breath (`readBreathSignal`) while a session leads
-  one. Hale's tube logo breathes the same way.
+  one. Sukha's tube logo breathes the same way.
 - **Serenity Transit**: travel posters for the game's other worlds and modes, each framed around
   a render of the world it sells:
   - worlds: Koi Pond, Sakura Twilight, Crystal Cave, Golden Forest, Summer, Ocean, Winter and
@@ -128,12 +128,12 @@ The surfaces:
 | Tube logos | Each campaign's mark bent in tube, animated frame by frame (drops falling, steam rising, coins stacking, a drum turning), over its name. They hang over most branded shops and on some walls. |
 | Blades | About one Latin blade in six spells a campaign's word in its colour: NOODLES, TAXI, BREATHE and so on. |
 
-![Hale's breathing screen and tube logos, Spin Cycle on a fascia, a logo and a tower screen, a
+![Sukha's breathing screen and tube logos, Spin Cycle on a fascia, a logo and a tower screen, a
 roof board](neon-district-captures/campaigns-adverts.webp)
 
 The artwork is drawn by the atlas bake, not painted, so every campaign is one identity across
 its billboard, poster, logo and fascia. No real company, film or game is named or drawn. No mark
-is built from four squares or any other piece shape (`tetris_legal_review.md`). Two of the
+is built from four squares or any other piece shape. Two of the
 December 2025 images left the atlases because they carry third-party marks:
 
 - the Retro Replay arcade, whose sign shows another company's video-game characters
@@ -157,7 +157,7 @@ Each room has up to four:
 - **Staff** behind the counter, so the counter hides their legs: a cook, a bartender, a clerk,
   stepping along it between spots.
 - **Elsewhere at the back:** runners on the gym's treadmills, players at the arcade cabinets, and a
-  monk in Hale's calm room who breathes with the game's breath.
+  monk in Sukha's calm room who breathes with the game's breath.
 - **In front of the counter:** a diner on a stool eating, a patron leaning on the bar, shoppers at
   the shelves, someone lifting dumbbells, people waiting on their phones, and customers crossing the
   room, stopping at its end to look round, and walking back.
@@ -172,7 +172,7 @@ Each room has up to four:
 - a fridge door with a failing tube in the mart
 - attract modes on the arcade screens (rolling bars, a bouncing ball)
 - scrolling rows on the office's queue screens
-- Hale's round lamps brightening and dimming with the breath
+- Sukha's round lamps brightening and dimming with the breath
 
 **Neon.**
 
@@ -188,7 +188,7 @@ Each room has up to four:
 - Every advert creeps in a little as it shows; travel posters, a little more.
 - A gloss of light sweeps across each LED wall now and then.
 - Most street screens run a ticker under the advert: its slogan in amber LEDs ("COMBO NOODLES ·
-  KEEP THE CHAIN GOING", "SERENITY TRANSIT · NOW BOARDING: KOI POND", Hale's "INHALE 4 · EXHALE
+  KEEP THE CHAIN GOING", "SERENITY TRANSIT · NOW BOARDING: KOI POND", Sukha's "INHALE 4 · EXHALE
   6"), or one of the district's own lines under the user's adverts.
 - Text lines are now up to 48 characters.
 
@@ -215,7 +215,7 @@ their own.
 The billboard atlas is 4096 × 3584 (half size 2048 × 1792 on the low tiers). Adverts are dealt
 by campaign family first:
 
-- on the screens and roof boards: brands 42 %, transit 38 %, the user's adverts 12 %, Hale 8 %
+- on the screens and roof boards: brands 42 %, transit 38 %, the user's adverts 12 %, Sukha 8 %
 - on the paste-up walls: transit 60 %, brands 40 %
 
 About 26 of the 34 world posters are up in any one period of street. A final pass makes sure
@@ -326,7 +326,7 @@ the glass against 130.8 and 130.6 without, at Electron's frame cap.
 | `neon-district-tsl.js` | Hashes, the baked noise texture, the shared uniforms, the district's light (glow map, haze, lock shells, clear waves). |
 | `neon-district-facades.js` | Every building: one instanced box each, the facade drawn in the fragment shader with interior-mapped rooms. |
 | `neon-district-street.js` | The wet street: asphalt, paint, puddles, the planar mirror, rain rings, lock rings, kerb strips. |
-| `neon-district-campaigns.js` | Three-free: what the district sells. The eight brands, Hale, Serenity Transit, the trade shops, the shop archetypes and their light. |
+| `neon-district-campaigns.js` | Three-free: what the district sells. The eight brands, Sukha, Serenity Transit, the trade shops, the shop archetypes and their light. |
 | `neon-district-shops.js` | The shops: painted shopfronts and generated shops, each a flat quad that traces its recess, wet glass and an interior-mapped room by trade. |
 | `neon-district-people.js` | The people in the shops: roles by trade, the table the shader reads (clips, palettes), reading the sprite sheets and lighting a person by the room ([NEON_DISTRICT_PEOPLE_2026-10.md](NEON_DISTRICT_PEOPLE_2026-10.md)). |
 | `neon-district-people-atlas.js` | Generated by `scripts/blender/neon_district_people.py`: the people's sprite sheet layout, views and clip timing. |
@@ -462,7 +462,7 @@ of several hours (the scroll rebase is unit-tested only).
     dealt once a period
   - the campaigns: every brand with a shop has a branch, every campaign is on a screen or a wall,
     and every trade shop appears
-  - screens: three different adverts of one shape, Hale's at most once
+  - screens: three different adverts of one shape, Sukha's at most once
   - prints: never a ring advert, and every roof board sits on a scaffold
   - logos: the atlas and its animation table (16 logos)
   - every line of text spells with glyphs the atlas has
@@ -475,7 +475,7 @@ of several hours (the scroll rebase is unit-tested only).
   IP-string gate, Pages artifact and release gates.
 - **Playground captures on WebGPU (RTX 3070 Laptop).** Clean consoles at every tier from Minimal
   to Ultra, on the forced WebGL2 backend, in the four-line overdrive and in a hard drop. Close-ups
-  covered a Hale screen breathing, poster walls, roof boards, logo signs and both Combo Noodles
+  covered a Sukha screen breathing, poster walls, roof boards, logo signs and both Combo Noodles
   branches.
   - The first GPU run caught what software rendering could not. The generated shops and the
     screens had 11 and 9 separate instance attributes, and WebGPU allows 8 vertex buffers, so

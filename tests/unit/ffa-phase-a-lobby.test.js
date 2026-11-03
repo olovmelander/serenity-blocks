@@ -1,5 +1,5 @@
 /**
- * @fileoverview Phase A — lobby/start/restart polish (Quadra-experience parity).
+ * @fileoverview Phase A — lobby/start/restart polish.
  *
  * A2: the host enforces its configured maxPlayers on the join path (Steam enforces the
  *     lobby cap for real play, but the mock transport / in-app add path did not, and a 9th

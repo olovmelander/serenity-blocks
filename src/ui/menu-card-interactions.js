@@ -33,7 +33,7 @@ const HOVER_NOTE = {
     serenity: 698.46, // F5 — rose
     infinity: 783.99, // G5 — indigo
     odyssey: 880.0, // A5 — gold
-    hale: 698.46, // F5 — shares Serenity's note: both breathe
+    sukha: 698.46, // F5 — shares Serenity's note: both breathe
 };
 
 let lastHoverAt = 0;

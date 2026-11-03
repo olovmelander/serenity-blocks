@@ -3203,7 +3203,7 @@ export class GamepadController {
             prevState.serenityWorldLeft = buttonActive('navigateLeft');
             prevState.serenityWorldRight = buttonActive('navigateRight');
         } else {
-            // With the Hub closed, A and B belong to a Hale session: A breathes in during an open
+            // With the Hub closed, A and B belong to a Sukha session: A breathes in during an open
             // hold (or pauses), B asks to end; on the session screens they press and step back.
             // With no session, A touches the world.
             onButtonPress('confirmSelection', 'serenitySessionPrimary', () => {

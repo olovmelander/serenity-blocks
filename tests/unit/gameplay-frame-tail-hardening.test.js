@@ -200,14 +200,14 @@ describe('§3 the cascade animation catches up instead of stretching', () => {
         return { gameState, piece };
     }
 
-    it('falls at the Quadra rate of 20ms per row when frames are healthy', async () => {
+    it('falls at the fixed rate of 20ms per row when frames are healthy', async () => {
         const clock = installFrameClock({ frameMs: 4 });
         const { gameState, piece } = makeFallState(10);
 
         await applyGravity(gameState, null, null, {});
 
         expect(piece.y).toBe(BOTTOM);
-        // Quadra: Player_check_link takes 2 ticks x 10ms per row = 20ms/row.
+        // Each row of fall takes 2 ticks x 10ms = 20ms/row.
         // 10 rows => ~200ms, quantised up by at most one 4ms frame per row.
         expect(clock.now).toBeGreaterThanOrEqual(195);
         expect(clock.now).toBeLessThanOrEqual(240);
@@ -255,7 +255,7 @@ describe('§3 the cascade animation catches up instead of stretching', () => {
         expect(onGravityStep).toHaveBeenCalledTimes(7);
     });
 
-    it('holds the clear flash for Quadra\'s 160ms before anything falls', async () => {
+    it('holds the clear flash for 160ms before anything falls', async () => {
         const clock = installFrameClock({ frameMs: 4 });
         const gameState = {
             boardGrid: createBoardGrid(),
@@ -289,7 +289,7 @@ describe('§3 the cascade animation catches up instead of stretching', () => {
         await processPhysicsLegacy(gameState, callbacks);
 
         expect(gameState.lines).toBe(1);
-        // Quadra: 16 ticks of flash hold (160ms) then a connectivity-scan tick
+        // 16 ticks of flash hold (160ms) then a connectivity-scan tick
         // (20ms here) before the first row actually moves.
         const beforeFirstMove = firstRowMovedAt - holdStartedAt;
         expect(beforeFirstMove).toBeGreaterThanOrEqual(170);

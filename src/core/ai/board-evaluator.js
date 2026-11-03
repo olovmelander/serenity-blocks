@@ -70,7 +70,7 @@ export const COMBO_CASCADE_WEIGHTS = Object.freeze({
 });
 
 // Value/Reward split (Cold-Clear style): REWARD terms credit the realized outcome
-// of a placement, computed from the SHIPPED Quadra formulas (garbage.js / scoring.js)
+// of a placement, computed from the SHIPPED game formulas (garbage.js / scoring.js)
 // rather than hand-guessed cascade weights, so the bot optimizes the true objective —
 // total lines (depth) and outgoing garbage — instead of raw cascade count. The latent
 // terms credit an UNFIRED in-progress machine by its simulated discharge.
@@ -642,7 +642,7 @@ export function evaluateCandidate(candidate, difficultyConfig = null, rng = Math
     const effectiveWeightedHoles = Math.max(0, metrics.weightedHoles - protectedWeighted);
     const effectiveHoleDepth = Math.max(0, metrics.holeDepth - protectedDepth);
 
-    // REWARD (realized outcome), driven by the shipped Quadra formulas so the bot
+    // REWARD (realized outcome), driven by the shipped game formulas so the bot
     // optimizes total lines + outgoing garbage rather than raw cascade count.
     const perfectClear = Boolean(candidate.perfectClear);
     const projectedAttack = candidate.projectedAttack
@@ -767,7 +767,7 @@ export function evaluateCandidate(candidate, difficultyConfig = null, rng = Math
     // quietly accumulating holes (diminishing returns on incremental shaping).
     score += COMBO_CASCADE_WEIGHTS.setupGrowth * Math.min(4, Math.max(0, setupDelta)) * setupRewardScale;
 
-    // REWARD: realized garbage + score from the live Quadra formulas (the true objective).
+    // REWARD: realized garbage + score from the live game formulas (the true objective).
     score += REWARD_WEIGHTS.projectedAttack * projectedAttack * clearRewardScale;
     score += REWARD_WEIGHTS.projectedScore * projectedScore;
     if (perfectClear && totalLines > 0) {

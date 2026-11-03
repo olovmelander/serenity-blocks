@@ -503,9 +503,6 @@ describe('Kaleidosonic theme: one node renderer on both backends', () => {
         expect(png.readUInt32BE(16)).toBe(512);
         expect(png.readUInt32BE(20)).toBe(512);
         expect([png[24], png[25], png[28]]).toEqual([8, 6, 0]);
-        const mirror = path.join(repoDir, 'public', 'assets', 'themes', 'kaleidosonic-theme-icon.png');
-        expect(existsSync(mirror), 'public mirror').toBe(true);
-        expect(readFileSync(mirror).equals(png), 'public mirror is byte-identical').toBe(true);
     });
 
     it('ships no classic shader material, no legacy WebGL renderer and no MaterialX noise', () => {

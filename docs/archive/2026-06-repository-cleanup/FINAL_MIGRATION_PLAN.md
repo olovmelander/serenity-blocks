@@ -8,7 +8,7 @@ This document outlines the final step: migrating remaining files into a clean, p
 
 ### Current Structure (Partially Migrated)
 ```
-/workspaces/quadra/
+/workspaces/serenity-blocks/
 ├── src/                           ✅ Modular JavaScript (complete!)
 │   ├── main.js
 │   ├── core/
@@ -33,7 +33,7 @@ This document outlines the final step: migrating remaining files into a clean, p
 
 ### Target Structure (Production-Ready)
 ```
-/workspaces/quadra/
+/workspaces/serenity-blocks/
 ├── public/                        # Public-facing files
 │   ├── index.html                 # Main entry point
 │   ├── assets/                    # Static assets
@@ -100,7 +100,7 @@ This document outlines the final step: migrating remaining files into a clean, p
 ### Step 1: Create New Folder Structure
 
 ```bash
-# From /workspaces/quadra/
+# From /workspaces/serenity-blocks/
 
 # Create public directory structure
 mkdir -p public/assets/music
@@ -308,7 +308,7 @@ Only these lines need changes:
 ### Step 9: Test the Migration
 
 ```bash
-# From /workspaces/quadra/
+# From /workspaces/serenity-blocks/
 
 # Start server from root
 python3 -m http.server 8000
@@ -333,7 +333,7 @@ python3 -m http.server 8000
 ## Complete File Structure After Migration
 
 ```
-/workspaces/quadra/
+/workspaces/serenity-blocks/
 │
 ├── public/                              # Public-facing files (deploy this folder)
 │   ├── index.html                       # Main entry point (updated paths)
@@ -415,7 +415,7 @@ python3 -m http.server 8000
 
 ```bash
 # Start from project root
-cd /workspaces/quadra
+cd /workspaces/serenity-blocks
 python3 -m http.server 8000
 
 # Access at:
@@ -426,7 +426,7 @@ http://localhost:8000/public/index.html
 
 **For Python:**
 ```bash
-cd /workspaces/quadra/public
+cd /workspaces/serenity-blocks/public
 python3 -m http.server 8000
 
 # Access at:

@@ -267,7 +267,7 @@ export async function playBootWarpHandoff(options = {}) {
                     });
                     if (!warpAudioStarted) {
                         warpAudioStarted = true;
-                        soundManager?.playOneShotFile?.('assets/audio/intro/warp.ogg', { volume: 0.9 });
+                        soundManager?.playLaunchSound?.('warp', { volume: 0.9 });
                     }
                     markStartup('startup-shell:dismiss-request', { reason: 'warp-handoff' });
                     dismissStartupShell?.('warp-handoff', { quick: true, durationMs: timing.durationMs });

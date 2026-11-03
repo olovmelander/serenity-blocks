@@ -22,7 +22,7 @@ const RIPPLE_MS = 1100;
 /** Anything a press on which belongs to a control, not to the world. */
 const CONTROL_SELECTOR = [
     'button', 'a', 'input', 'select', 'textarea', 'label', '[role="button"]', '[role="dialog"]',
-    '.serenity-hub', '.serenity-notification', '#settings-modal', '.breath-guide', '.hale-flow', '#sb-play-rail',
+    '.serenity-hub', '.serenity-notification', '#settings-modal', '.breath-guide', '.sukha-flow', '#sb-play-rail',
     '.modal', '.sb-sheet',
 ].join(', ');
 

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { MultiPlayerState } from '../multi-player-state.js';
 import { COLS } from '../constants.js';
 
-describe('MultiPlayerState — Quadra handicap & attack rules', () => {
+describe('MultiPlayerState — handicap & attack rules', () => {
     const col0 = () => Array.from({ length: COLS }, (_, i) => i === 0);
 
     // depth 3 → rowsToSend = depth - 1 = 2 normal garbage lines

@@ -52,7 +52,7 @@ export const LOGOS = Object.freeze([
     Object.freeze({ id: 'next', anim: 'cycle', period: 0.9 }),
     Object.freeze({ id: 'clear', anim: 'alt', period: 1.6 }),
     Object.freeze({ id: 'spin', anim: 'cycle', period: 0.9 }),
-    Object.freeze({ id: 'hale', anim: 'breath', period: 10 }),
+    Object.freeze({ id: 'sukha', anim: 'breath', period: 10 }),
     Object.freeze({ id: 'transit', anim: 'cycle', period: 2.4 }),
     Object.freeze({ id: 'cocktail', anim: 'blink', period: 1.4 }),
     Object.freeze({ id: 'cross', anim: 'blink', period: 1.2 }),
@@ -356,8 +356,8 @@ const DESIGNS = {
         return [[body, panel, drawer, dial, door, glass], swirl(0), swirl(-120), swirl(-240)];
     },
 
-    /** Hale: a lotus over still water; rings of breath open above it and close again. */
-    hale() {
+    /** Sukha: a lotus over still water; rings of breath open above it and close again. */
+    sukha() {
         const lotus = [
             petal([5, 2.4], [5, 5.8], 0.78),
             petal([4.65, 2.5], [2.4, 5], 0.68),

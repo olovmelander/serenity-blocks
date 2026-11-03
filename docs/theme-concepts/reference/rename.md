@@ -149,7 +149,7 @@ called `snapshotLegacyOdysseyThemes` directly on index 54, so the same direct ca
 3. Build: `createThemeThumbnailAssetPlugin` (`scripts/theme-thumbnail-assets.js`, wired at `vite.config.js:95`) emits
    `assets/theme-thumbnails/NEWID-theme-icon.png` from the registry path (warns if missing); desktop hub reads it via
    `resolveDesktopHubThemeThumbnailUrl` (`theme-thumbnail-manifest.js:32-39`). Nothing to commit there.
-4. `public/assets/themes/NEWID-theme-icon.png`: a byte-identical mirror, **referenced by no code** (grep: zero refs). The precedent keeps it (a74a86a
+4. *(Historical: since 2026-11-03 there is no `public/assets/themes/` folder; skip this step.)* `public/assets/themes/NEWID-theme-icon.png`: a byte-identical mirror, **referenced by no code** (grep: zero refs). The precedent keeps it (a74a86a
    added murmuration's, sunset/ocean/solar-eclipse/starlight/stellar-* updated theirs; serenity-warp/parhelion/halcyon-apex/vesper have none). Add it, and git rm `cosmic-chimes-theme-icon.png`.
 5. Fallback glyph (`ThemesTab.getThemeFallbackIconName`, :283-331, used only when no icon URL): key = **displayName**, value = a
    `src/ui/components/cosmic-icons.js` key. Available: wave moon leaf tree flower cloud mist bolt flame star burst gem butterfly sprout breath
@@ -197,7 +197,7 @@ called `snapshotLegacyOdysseyThemes` directly on index 54, so the same direct ca
 10. `src/ui/serenity-hub/ThemesTab.js:302`: `'NEWNAME': '<glyph>'` (quote the key if it has a space).
 11. `index.html:285-294`: static container (section 4).
 12. `public/styles/main.css:2967-3426`: delete; insert the 1-rule NEWID block in its place.
-13. Public icon mirror: `git rm public/assets/themes/cosmic-chimes-theme-icon.png`; add `public/assets/themes/NEWID-theme-icon.png` (cmp-identical to src).
+13. Public icon mirror: none since 2026-11-03 (`public/assets/themes/` removed).
 14. `scripts/lib/mobile-webgl2-validation.mjs:14-21`: add `'NEWID'` to `MOBILE_WEBGL2_NODE_IDS`.
 15. `src/ui/url-parameters/theme-parameters.js:64-186`: captureThemes row; `src/ui/url-parameters/playground-parameters.js`: effect sources/scopes + new entries.
 16. Tests: `git rm tests/unit/mobile-wrapper-policy.test.js`; `tests/unit/mobile-webgl2-validation.test.js:160` -> `'mountain'`; `tests/unit/theme-music-preferences.test.js:15,99,100` -> `'NewKey'`; leave `tests/unit/odyssey-save-migration.test.js:79`; add `tests/unit/NEWID-rename-migration.test.js` (clone of `murmuration-rename-migration.test.js`: OLD_THEME `cosmic-chimes`, OLD_TRACK `CosmicChimes`, frozen-table orb **47**, grant `levelId: 47`; registry/meta, music retitle + `resolveMusicTrackKey`, settings heal + write-back, owned-music via old key, collection grant + seen mark, Odyssey completion saved + stamped, orb name + no old name in `LEVEL_CONFIGS`); add to `theme-music-catalog.test.js` the `it.each` authored row `['NEWID', 'NewKey']` + "keeps the key and theme id ... before it was retitled" case (`getThemeForMusic('CosmicChimes') === 'NEWID'`, `getThemeMusic('cosmic-chimes') === getThemeMusic('NEWID')`, catalog keys exclude `CosmicChimes`); NEWID theme/world/effect tests incl. `existsSync` icon check.

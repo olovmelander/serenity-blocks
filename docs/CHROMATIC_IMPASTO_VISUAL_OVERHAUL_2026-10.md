@@ -3,7 +3,7 @@
 Implemented 2026-10-08 on `feature/chromatic-impasto-masterpiece`, with Three.js 0.186.1. A
 from-scratch rebuild: it replaces the earlier theme in full (a 2D WebGL fluid simulation drawn as
 glowing smoke on black, with its `ChromaticImpastoSimulator`). The theme keeps its identity — thick
-oil paint, the tube colours of Bengt Lindström's "Kvinnan Alpha", strokes that swirl, a canvas the
+oil paint, bold tube colours (blood red, cadmium yellow, turquoise, ultramarine), strokes that swirl, a canvas the
 game paints on, the whorl a chain of clears stirs — and everything else is new. This document
 records the shipped design and what was verified. It is a reference, not a backlog.
 
@@ -19,7 +19,7 @@ light from the lower right on their other flank. Where the paint is thin the lin
 The picture is a current: one great whorl turns round the board, smaller ones turn in the open
 cloth to either side, each against its neighbour, and most strokes follow it. It is blocked in
 while the theme starts, the way a painter blocks a canvas in (the darks in broad flat passes, then
-a few bold colour masses, the black contour Lindström draws round every form, the lights last),
+a few bold colour masses, the black contour drawn round every form, the lights last),
 and the painter never quite stops: every few seconds one more unhurried stroke goes on somewhere.
 
 ![The canvas at rest](chromatic-impasto-overhaul/rest.webp)
@@ -46,7 +46,7 @@ end of a game is the picture that game painted.
 | Four lines | The studio holds its breath: a fifth of a second of near dark. Then four rows sweep out, paint is flung from behind the board in every direction (heavy throws that taper into drops, great splats, a hundred and more drops in the air), and gold leaf is laid round the card in a ring. Each four-line clear of a game lays its ring outside the last: the board ends the game in the frame it earned. |
 | Perfect clear | All of that, with a second ring and two great arcs of white and gold wound round the board. |
 | T-spin | The canvas turns a notch on its own, and three arcs are drawn round the board. |
-| Level up | A new period: the painter goes over the picture in other tubes. Five, cycled: Lindström, the Fauves, a nocturne, earth and fire, spring. |
+| Level up | A new period: the painter goes over the picture in other tubes. Five, cycled: nordic, the Fauves, a nocturne, earth and fire, spring. |
 | New game | The canvas is scraped down with the knife and blocked in again, in the first period. A game that ends keeps its painting until then. |
 
 Combo here is the true consecutive-clear combo (one `ComboTracker` per player in

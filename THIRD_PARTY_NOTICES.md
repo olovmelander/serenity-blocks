@@ -203,7 +203,7 @@ SOFTWARE.
 
 ---
 
-# Part 2: code inside the bundled three.js (r186) and its add-ons
+# Part 2: code inside the bundled three.js (r187) and its add-ons
 
 ## 5. MaterialX noise functions
 
@@ -416,8 +416,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ## 9. Basis Universal transcoder
 
 - **Upstream:** https://github.com/BinomialLLC/basis_universal (version 1.50, as bundled with
-  three.js r186: `basis_transcoder.js` and `basis_transcoder.wasm`, shipped in `basics/basis/`
-  and as `assets/basis_transcoder-*`)
+  three.js r187: `basis_transcoder.js` and `basis_transcoder.wasm`, shipped as
+  `assets/basis_transcoder-*`)
 - **Used in the game:** transcoding the Basis-compressed KTX2 textures of Odyssey mode's
   3D models.
 - **Licence:** Apache License, Version 2.0 (full text at the end). The transcoder source carries:

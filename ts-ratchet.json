@@ -84,7 +84,7 @@
     "src/rendering/half-float.js",
     "src/rendering/mipmap-pipeline-warm.js",
     "src/rendering/odyssey/chapter-build-lane.js",
-    "src/rendering/odyssey/chapter-environments/odyssey-gargantua-gas.js",
+    "src/rendering/odyssey/chapter-environments/odyssey-great-hole-gas.js",
     "src/rendering/odyssey/chapter-environments/odyssey-ringed-giant.js",
     "src/rendering/odyssey/chapter-environments/odyssey-spiral-galaxy-noise.js",
     "src/rendering/odyssey/chapter-environments/odyssey-spiral-galaxy-suns.js",

@@ -595,7 +595,7 @@ export class ChapterEnvironmentManager {
         // FADE EXEMPTION (the agreed interface with the chapter owners): an object tagged
         // `userData.odysseyFadeExempt === true` — or any descendant of one — is never collected,
         // so it is never forced transparent and never faded here. Its chapter drives its own
-        // handoff (the omen / Gargantua shadows, whose forced transparency let the stars show
+        // handoff (the omen / the great hole shadows, whose forced transparency let the stars show
         // through the black hole at p 0.8589). It still hides with its group at weight 0.
         // A material shared with a non-exempt mesh is treated as exempt too: forcing it
         // transparent would change the exempt object as well.

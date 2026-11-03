@@ -8,8 +8,8 @@ takes a second instead of seven frames (§6).
 
 ## 0. Why the black hole floated (read before changing ch7)
 
-Gargantua is **camera-locked**: re-seated ~913 u ahead of the eye every frame
-(`GARGANTUA_LOCK`, `resolveGargantuaLockPosition`). That is deliberate — an earlier world-parked
+The great hole is **camera-locked**: re-seated ~913 u ahead of the eye every frame
+(`GREAT_HOLE_LOCK`, `resolveGreatHoleLockPosition`). That is deliberate — an earlier world-parked
 hero slid out of frame on ch7's hairpin (p 0.878–0.893) and two near-vertical kinks
 (0.925–0.935, 0.940–0.953) and left the chapter ~75 % black (ODYSSEY_CHAPTER_BY_CHAPTER_IMPROVEMENT_PLAN
 §ch7). A world point at the lock pose leaves the frame by p 0.89 and sits behind the camera from
@@ -131,7 +131,7 @@ orbs 49 and 50 both park inside the tunnel at p 0.8941):
    ease runs fastest: **~120 ms**. Filmed at ~110 ms a frame, the whole plunge fell between two
    frames.
 4. **A ghost of the ring across the shadow.** Through the 6 → 7 seam both the omen's and
-   Gargantua's lens targets fed the post lens each frame, so its smoothing settled between them (a
+   the great hole's lens targets fed the post lens each frame, so its smoothing settled between them (a
    lens radius of 0.38 for a shadow of 0.59 at p 0.877). The bloom mask and the bend sat inside the
    hole. Invisible while the two holes were one size, it showed once the ring stayed lit.
 
@@ -141,7 +141,7 @@ orbs 49 and 50 both park inside the tunnel at p 0.8941):
   `odyssey-path-renderer.tsl.js`, owned by `OdysseyPathRenderer.setInflow`). From the mouth orb a
   stream of the rail's light winds into the hole's centre. It is rebuilt every frame from where
   the orb and the hole really are (`OdysseyBoardController._updatePathInflow`, after the
-  environments pose the hole: chapter 6's omen until chapter 7's Gargantua takes the shadow
+  environments pose the hole: chapter 6's omen until chapter 7's great hole takes the shadow
   over), so it stays attached whatever the camera, the hole or a free look does.
   - **Shape:** it leaves the orb along the rail (only while the rail heads for the hole on screen),
     then follows a logarithmic spiral, counter-clockwise on screen (the disk's sense). It bends
@@ -157,7 +157,7 @@ orbs 49 and 50 both park inside the tunnel at p 0.8941):
     wrong way.
 - **The ring on the silhouette** (`updateBlackHoleTranscendenceEnvironment`): the photon ring sits
   R sin α nearer the eye and is scaled by cos α, a hair in front of the tangent points. Its profile
-  is drawn in toward the shadow as the hole grows (`uRazor`, `CH7_GARGANTUA.photonRazor`), so it
+  is drawn in toward the shadow as the hole grows (`uRazor`, `CH7_GREAT_HOLE.photonRazor`), so it
   stays a razor where it sweeps past the frame's edges. It is no longer dimmed. When the exit's
   mouth opens it returns to the centre plane for the 7 → 8 swell, as before; at that swap it is
   past the frame's edges or behind the shadow. The lensed halo still fades by ~19° (the amber
@@ -177,7 +177,7 @@ orbs 49 and 50 both park inside the tunnel at p 0.8941):
   and once past the inside point the eye picks up speed through the tunnel (the warp drive's
   throttle follows it). Reduced motion still cuts. Scrolling by hand is not slowed.
 - **One hole feeds the lens** (`OdysseyBoardController._feedBlackHoleLens`): the omen's target is
-  skipped once Gargantua's shadow is live. Measured live: lens radius = shadow radius within 0.01
+  skipped once the great hole's shadow is live. Measured live: lens radius = shadow radius within 0.01
   at every station of the plunge.
 
 **Verification** (WebGPU, High, RTX): live captures (the game loop running, parked 2.5 s per
@@ -201,7 +201,7 @@ the reveal inside the hole. Per frame, while drawn: O(128) arithmetic and a 7 KB
 ## 7. Open items
 
 - **The lensed halo** still fades out by ~19° (the amber flood at the 6 → 7 gate). With the ring
-  on the silhouette, a silhouette-seated halo that thins as it grows could keep Gargantua's look
+  on the silhouette, a silhouette-seated halo that thins as it grows could keep the great hole's look
   further in. Measure the gate's luma first.
 - **Scrolling through the plunge** by hand moves at the player's speed. Easing the scroll there
   would be resistance, not pacing; leave it unless asked.

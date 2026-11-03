@@ -129,7 +129,7 @@ export function frame(css = '') {
         style.id = 'menu-art-frame';
         document.head.appendChild(style);
     }
-    style.textContent = `#serenity-hub-icon, #settings-btn-global, #odyssey-navigator-btn, #hale-sessions-btn,
+    style.textContent = `#serenity-hub-icon, #settings-btn-global, #odyssey-navigator-btn, #sukha-sessions-btn,
         .main-menu-player-card, .toast-container, .sb-toast, .custom-cursor, .custom-cursor-container,
         #custom-cursor { display: none !important; }\n${css}`;
     hide(RAIL);

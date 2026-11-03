@@ -1,5 +1,5 @@
 /**
- * Golden rule fixtures (plan Phase 3b, Quadra takeaway #10).
+ * Golden rule fixtures (plan Phase 3b).
  *
  * Table-driven pins of the GAMEPLAY RULES — scoring, level progression,
  * garbage/attack mapping, hole-mask encoding — with hand-computed literal
@@ -23,7 +23,7 @@ const SIM_VERSION = 1;
 const BOTTOM = ROWS + HIDDEN_ROWS - 1;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Scoring (Quadra formula): base 250/500/1000/2000 (200·d² above 4)
+// Scoring formula: base 250/500/1000/2000 (200·d² above 4)
 // + 200·(complexity−1)² cascade + perfect d·1250 (d²·500 above 4),
 // then +10%·level additive (floored).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -133,7 +133,7 @@ describe(`level progression goldens (simVersion ${SIM_VERSION}) — 15 lines per
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Garbage attack mapping (Quadra formulas) + hole-mask encoding.
+// Garbage attack mapping formulas + hole-mask encoding.
 // Encoding is MSB-first: column 0 → bit 9 … column 9 → bit 0; a 1-bit is a
 // HOLE. Competitive-visible — a flipped bit order sends mirrored garbage.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -153,7 +153,7 @@ describe(`garbage attack goldens (simVersion ${SIM_VERSION})`, () => {
         expect(calculateGarbage({ depth, holeMask: [] }).cleanRowBonus).toBe(0);
     });
 
-    it('clean masks alternate the Quadra 72/585 patterns', () => {
+    it('clean masks alternate the 72/585 patterns', () => {
         const attack = calculateGarbage({ depth: 5, holeMask: [], sendForPerfectClear: true });
         expect(attack.cleanMasks).toEqual([72, 585, 72]); // cols [3,6] / [0,3,6,9] / [3,6]
     });

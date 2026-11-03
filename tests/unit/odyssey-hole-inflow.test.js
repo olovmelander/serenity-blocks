@@ -6,7 +6,7 @@
  * Measured on the real 48 -> 49 trip before this pass: the rail ended at orb 49 while the
  * camera-locked hole held the frame's centre (the orb slid half a frame away from it, the rail a
  * stub at the bottom), the photon ring sat in the hole's centre plane where the shadow hid it from
- * ~20 deg (the plunge was a flat black disc), the omen's lens target and Gargantua's both fed the
+ * ~20 deg (the plunge was a flat black disc), the omen's lens target and the great hole's both fed the
  * post lens through the plunge (a ghost of the ring across the shadow), and the whole plunge took
  * ~0.12 s of a ~1 s trip. Played here on the real camera (tests/unit/helpers/odyssey-camera-rig.js).
  */
@@ -39,10 +39,10 @@ import {
     resolvePlungeStretch,
 } from '../../src/rendering/odyssey/transitions/odyssey-black-hole-fall.js';
 import {
-    resolveGargantuaFallPosition,
+    resolveGreatHoleFallPosition,
 } from '../../src/rendering/odyssey/chapter-environments/black-hole-transcendence.tsl.js';
 import {
-    CH7_GARGANTUA,
+    CH7_GREAT_HOLE,
     createBlackHoleTranscendenceEnvironment,
     updateBlackHoleTranscendenceEnvironment,
 } from '../../src/rendering/odyssey/chapter-environments/black-hole-transcendence.js';
@@ -57,11 +57,11 @@ const start = curve.getPointAt(mouth);
 const tangent = curve.getTangentAt(mouth).normalize();
 const reveal = resolveOdysseyPathReveal(cp, layout.levelPositions);
 
-/** The hole as chapter 7 poses it for the camera at `p` (poseGargantua). */
+/** The hole as chapter 7 poses it for the camera at `p` (poseGreatHole). */
 function holeAt(camera, p) {
     const fall = resolveBlackHoleFall(p, cp);
     const depth = fall.active ? resolveBlackHoleFallDepth(fall.alpha) : CH7_FALL_LOCK.depth;
-    const centre = resolveGargantuaFallPosition(camera, new THREE.Vector3(), depth, fall.centring);
+    const centre = resolveGreatHoleFallPosition(camera, new THREE.Vector3(), depth, fall.centring);
     const d = centre.distanceTo(camera.position);
     return { centre, d, radius: fall.active ? d * Math.sin(fall.alpha) : CH7_FALL_LOCK.shadowRadius };
 }
@@ -287,7 +287,7 @@ describe('the hole stays a black hole all the way in', () => {
             const fall = resolveBlackHoleFall(p, cp);
             const ring = group.userData.distantHole.userData.photonRing;
             const centre = ring.getWorldPosition(new THREE.Vector3());
-            const inner = CH7_GARGANTUA.shadowRadius * CH7_GARGANTUA.photonInner
+            const inner = CH7_GREAT_HOLE.shadowRadius * CH7_GREAT_HOLE.photonInner
                 * ring.getWorldScale(new THREE.Vector3()).x;
             const seen = Math.atan(inner / centre.distanceTo(camera.position));
             // The ring's inner edge is on the silhouette (the centre plane put it at
@@ -305,11 +305,11 @@ describe('the hole stays a black hole all the way in', () => {
         expect(ring.scale.x).toBe(1);
     });
 
-    it('feeds the post lens from one hole only once Gargantua has the shadow', () => {
-        const feed = (gargantuaLive) => {
+    it('feeds the post lens from one hole only once the great hole has the shadow', () => {
+        const feed = (greatHoleLive) => {
             const setLensTarget = vi.fn();
             const omen = Object.assign(new THREE.Vector3(1, 2, 3), { lensStrength: 0.5 });
-            const gargantua = new THREE.Vector3(4, 5, 6);
+            const greatHole = new THREE.Vector3(4, 5, 6);
             const board = {
                 postProcessingStack: { setLensTarget },
                 cinematicJourneyActive: true,
@@ -321,23 +321,23 @@ describe('the hole stays a black hole all the way in', () => {
                             group: {
                                 visible: true,
                                 userData: {
-                                    lensWorldPos: gargantua,
-                                    distantHole: { userData: { horizon: { visible: gargantuaLive } } },
+                                    lensWorldPos: greatHole,
+                                    distantHole: { userData: { horizon: { visible: greatHoleLive } } },
                                 },
                             },
                         }],
                     ]),
                 },
-                _isGargantuaShadowLive: OdysseyBoardController.prototype._isGargantuaShadowLive,
+                _isGreatHoleShadowLive: OdysseyBoardController.prototype._isGreatHoleShadowLive,
             };
             OdysseyBoardController.prototype._feedBlackHoleLens.call(board, {
                 inSeam: true, sourceChapter: 6, targetChapter: 7,
             });
-            return setLensTarget.mock.calls.map(([target]) => (target === omen ? 'omen' : 'gargantua'));
+            return setLensTarget.mock.calls.map(([target]) => (target === omen ? 'omen' : 'great-hole'));
         };
-        // Before the hand-over both set it (the omen first, Gargantua last: one spot there)...
-        expect(feed(false)).toEqual(['omen', 'gargantua']);
+        // Before the hand-over both set it (the omen first, the great hole last: one spot there)...
+        expect(feed(false)).toEqual(['omen', 'great-hole']);
         // ...after it, through the plunge, only the hole that is growing.
-        expect(feed(true)).toEqual(['gargantua']);
+        expect(feed(true)).toEqual(['great-hole']);
     });
 });

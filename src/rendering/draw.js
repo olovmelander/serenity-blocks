@@ -35,7 +35,7 @@ const statElements = {
     ppm: null,
 };
 
-/** Quadra: 15 lines per level (GameState.linesUntilNextLevel counts down from it). */
+/** 15 lines per level (GameState.linesUntilNextLevel counts down from it). */
 const LINES_PER_LEVEL = 15;
 /** The well turns coral when the stack stands this many rows of 20 high, and calms
     only once it is DANGER_CALM rows lower (keystone-solo.css). */
@@ -820,7 +820,7 @@ export function updateStats(stats) {
         }
     }
 
-    // Calculate PPM (Points Per Minute) - like Quadra
+    // Calculate PPM (Points Per Minute)
     if (statElements.ppm) {
         const ppm = elapsedMinutes > 0.05 ? Math.round(score / elapsedMinutes) : 0; // Wait 3s before calculating
 

@@ -1068,9 +1068,9 @@ Tech split in this slice:
   ultramarine, deep green, salmon, cream; gold-leaf rim; black contours.
 - **Setting / time**: a full-frame oil canvas seen square-on (action-painting floor), raked by a
   studio lamp upper-left; no sky, no horizon.
-- **Palette**: Bengt Lindstrom "Kvinnan Alpha" tubes — `#b80f14` red, `#0a2fc8` ultramarine,
+- **Palette**: bold tube colours — `#b80f14` red, `#0a2fc8` ultramarine,
   `#00b8ae` turquoise, `#ffbe00` yellow, `#ff7300` orange, `#1a7f4d` green, contour `#08080a`
-  (`chromatic-impasto-core.js` L130). Periods: lindstrom, fauve, nocturne, ember, spring.
+  (`chromatic-impasto-core.js`, the nordic period). Periods: nordic, fauve, nocturne, ember, spring.
   Pieces: I `#00D9CC` J `#0033CC` L `#FF7F00` O `#FFD000` S `#1A7F4D` T `#B30000` Z `#FFF8DC`.
 - **Motion**: great whorl round the board + counter-whorls; painter adds an occasional stroke.
 - **Gameplay FX**: lock = a brush stroke of piece colour leaves card side and bends into current,
@@ -1185,7 +1185,7 @@ Tech split in this slice:
 
 ### 41. black-hole (`docs/BLACK_HOLE_VISUAL_OVERHAUL_2026-10.md`)
 
-- **Icon**: Gargantua-style lensed black hole: black shadow, gold/orange accretion disk with
+- **Icon**: great-hole-style lensed black hole: black shadow, gold/orange accretion disk with
   lensed arch over/under, violet-white polar jets, ember sparks, blue galaxy.
 - **Setting / time**: deep space; hole in free space left of board, disk running behind playfield;
   camera orbits every ~90 s (tilted whirlpool <-> edge-on).
@@ -1487,7 +1487,7 @@ Registry entries are in `src/themes/theme-registry.js:325-428`. The groups are: 
 - **Look.** A street canyon in the rain, looking up its centre line.
   - Shopfronts, tube-neon blades, interior-mapped lit windows, lanterns and cables, skybridges, gantries, megatowers in smog.
   - The whole city mirrored in the wet road, an endless scroll.
-  - Since 2026-10-18: shops set back into the walls behind wet glass, each with a lit, interior-mapped room of its trade (noodle counter, laundromat drums, mart aisles, arcade cabinets, bar bottles, gym, service counter, calm room) and some shutters down and fly-posted. The district runs its own campaigns on every surface: eight local brands named for the board's verbs (Cascade Cola, Combo Noodles, Stack Savings, Drop Couriers, Level Gym, Next Taxi, Clear Optics, Spin Cycle), Hale's breathing adverts, and Serenity Transit travel posters for the game's other worlds, on LED screens with playlists, floodlit roof boards, paste-up poster walls, animated tube logos and blade words.
+  - Since 2026-10-18: shops set back into the walls behind wet glass, each with a lit, interior-mapped room of its trade (noodle counter, laundromat drums, mart aisles, arcade cabinets, bar bottles, gym, service counter, calm room) and some shutters down and fly-posted. The district runs its own campaigns on every surface: eight local brands named for the board's verbs (Cascade Cola, Combo Noodles, Stack Savings, Drop Couriers, Level Gym, Next Taxi, Clear Optics, Spin Cycle), Sukha's breathing adverts, and Serenity Transit travel posters for the game's other worlds, on LED screens with playlists, floodlit roof boards, paste-up poster walls, animated tube logos and blade words.
 - **Palette.**
   - Hot pink, teal, ultraviolet and gold neon on dark wet asphalt.
   - Five level palettes: signal, harbour, arcade, lantern, ultraviolet.

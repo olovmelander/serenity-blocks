@@ -97,7 +97,7 @@ export function normalizeSfc32RandomState(state) {
  *    low bits (the 7-bag trap the plan calls out).
  *  - getState/setState/drawCount: the save/restore seam §5.9's savestate and
  *    §6A.6's join snapshot need (the RNG CURSOR ships in the snapshot, not
- *    just the seed — Quadra takeaway #4).
+ *    just the seed).
  */
 
 /**
@@ -191,8 +191,8 @@ export class RandomStream {
 
     /**
      * The savestate/join-snapshot seam: full cursor, not just the seed
-     * (Quadra #4 — anything the sim reads that is not in the snapshot is a
-     * future desync).
+     * (anything the sim reads that is not in the snapshot is a future
+     * desync).
      * @returns {RandomStreamState}
      */
     getState() {

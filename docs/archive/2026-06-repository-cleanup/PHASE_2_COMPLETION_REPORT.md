@@ -645,7 +645,7 @@ With Phase 2 complete, you can now:
 
 ### Objectives:
 - Implement FFA attack routing (all-vs-all combat)
-- Create garbage calculation system (Quadra formula)
+- Create garbage calculation system (Quadra-style)
 - Add frag tracker (kill counting)
 - Build kill feed display
 - Implement all 5 end conditions (frags/time/points/lines/never)

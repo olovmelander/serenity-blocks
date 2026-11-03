@@ -64,7 +64,7 @@ Each technique is scientifically designed for specific purposes:
 #### 🔥 Power Breath
 - **Pattern**: 2s in, 1s out (rapid)
 - **Color**: Fiery Red
-- **Purpose**: Wim Hof inspired energizing
+- **Purpose**: power-breathing energizing
 - **Best For**: Energy boost, cold exposure prep, immune support
 
 ## 🎮 How to Use

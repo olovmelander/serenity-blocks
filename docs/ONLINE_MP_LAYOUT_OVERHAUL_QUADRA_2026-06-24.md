@@ -1,8 +1,7 @@
 # Online Multiplayer Layout Overhaul — Quadra-Inspired Board Proportions
 
-**Status: Option 1 Phases 1–3 SHIPPED (2026-06-24).** Researched against Quadra
-(`C:/Users/olovm/repositories/quadra/source`) + the current Serenity online-MP layout via a
-4-agent workflow; root-cause formula verified by direct read. Phases 1–3 implemented + live-verified
+**Status: Option 1 Phases 1–3 SHIPPED (2026-06-24).** Researched against the current Serenity
+online-MP layout via a 4-agent workflow; root-cause formula verified by direct read. Phases 1–3 implemented + live-verified
 (see "Implementation status" at the bottom). Phase 4 (polish/responsive) still open.
 
 > **The problem (user report + screenshot, spectator view):** the main/spotlight board renders
@@ -61,26 +60,22 @@ board is pinned to a 280px ceiling that never scales → the hierarchy is struct
 
 ---
 
-## 2. Quadra model — what feels good, what to borrow
+## 2. What feels good — the board hierarchy to borrow
 
-Verified in Quadra's C++/SDL source (`quadra.cc`, `canvas.cc`, `pane.cc`, `zone.cc/.h`):
+The feel to aim for is the one Quadra players know: your own board is the big one, the boards you
+watch sit small beside it.
 
-- **Hierarchy by block-size, never by stretch.** Quadra has exactly two cell sizes:
-  **18px for a focused board** (`canvas.cc:348` → `(i-4)*18, (j-12)*18`; `zone.h:137`) and
-  **6px for small watched boards** (`canvas.cc:1002` → `(i-4)*6`; `zone.cc:270`). The focused
-  board is **3× the linear size** of a small board → unmistakable visual hierarchy.
-- **The focused board is the star.** 10×20 @18px = **180×360px**, ~81% of its pane height to the
-  playfield, stats below (`pane.cc:43-54, 1860-1894`).
-- **Full playfield always visible.** All 10×20 visible cells (offset from the 36×18 internal grid)
-  render at every size — no clipping of frame or rows (`canvas.cc:348`).
-- **Scale by count, gracefully.** 1 watched → full 18px board (`Pane_startwatch`); 4 watched →
-  **2×2 grid of 6px boards** (`Pane_smallwatch`, `pane.cc:1967-1976`); >4 → auto-watch cycling
-  (`pane.cc:1019-1020`). The focused board never shrinks to match the small ones.
-- **640×480 screen split into three 214px panes** (`pane.cc:47-50`); right pane = chat/info, left
-  panes = boards. Deliberate real-estate split (focused ≈81% board; spectator 2×2 ≈63% boards /
-  ~28% scoreboard).
+- **Hierarchy by block-size, never by stretch.** Exactly two cell sizes: a large one for the
+  focused board and one about a third of that for small watched boards. The focused board is
+  **~3× the linear size** of a small board → unmistakable visual hierarchy.
+- **The focused board is the star.** Most of its pane height goes to the playfield, stats below.
+- **Full playfield always visible.** All 10×20 visible cells render at every size — no clipping
+  of frame or rows.
+- **Scale by count, gracefully.** 1 watched → a full-size board; 4 watched → **2×2 grid of small
+  boards**; more → cycle through them. The focused board never shrinks to match the small ones.
+- **A deliberate real-estate split** between the board panes and a chat/info pane.
 
-**Distillation:** Quadra picks a **block size per role** and never stretch-fills. Serenity's bug
+**Distillation:** pick a **block size per role** and never stretch-fill. Serenity's bug
 is the opposite — opponents stretch-fill while the hero is pixel-pinned. The fix is to make the
 **hero** the board that scales with available space and give **opponents a sensible cap**.
 
@@ -127,7 +122,7 @@ Result: large spotlight center, small roster left — the opposite of today.
 |---|---|---|---|
 | 1 (2-player) | 1×1 | ~360–420px tall | **cap opponent height ≤ ~55% of hero height** so the 1-opponent case stops being huge |
 | 3 (4-player) | 2×2 | ~200px tall | full frame visible |
-| 7 (8-player) | 2×4 | ~120–140px tall | matches Quadra's 6px small-board scale |
+| 7 (8-player) | 2×4 | ~120–140px tall | the small-board scale |
 
 **Hard rules at every count:** full 10×20 playfield + both side borders + frame always visible
 (no `overflow:hidden` clipping the frame — only canvas bleed); strict 1:2 (already enforced in
@@ -138,9 +133,9 @@ bound is the 50px floor).
 - **Option 1 — Centered Hero + Opponent Rail (RECOMMENDED).** Keep the 3-column grid; hero board
   (yours / spotlight) is the large center star, opponents a scaled rail on the left, info right.
   Minimal structural change, reuses existing DOM, lowest regression risk, ships incrementally.
-- **Option 2 — Pure Quadra grid.** Drop the dedicated center column; one uniform grid where your
-  board (or the spotlight) spans 2×2 and others 1×1. Visually closest to Quadra, but a much bigger
-  DOM + `_applyGridLayout` rewrite and loses the right info-panel placement. Higher risk.
+- **Option 2 — One uniform grid.** Drop the dedicated center column; one uniform grid where your
+  board (or the spotlight) spans 2×2 and others 1×1. A much bigger DOM + `_applyGridLayout`
+  rewrite, and it loses the right info-panel placement. Higher risk.
 
 **Recommendation: Option 1.**
 
@@ -211,8 +206,6 @@ hero height, or absolute ~420px) so 1–2 opponent layouts stop filling the colu
 - `src/ui/opponent-watch-manager.js` — `_handleResize` cell sizing (~191-256), `_applyGridLayout`
   (~258-300), spotlight render, mini-board render (`_renderMiniBoard`, blockSize = width/10).
 - `src/core/constants.js` — `COLS=10, ROWS=20, HIDDEN_ROWS=4` (full board = 1:2).
-- Reference: `C:/Users/olovm/repositories/quadra/source/canvas.cc:348` (18px focused) & `:1002`
-  (6px small), `pane.cc:47-50` (panes), `pane.cc:1967-1976` (2×2 small grid), `zone.h:137`.
 
 > **Note on line numbers:** captured from a research snapshot; some shifted slightly after recent
 > spotlight/scoreboard edits — re-grep before editing.

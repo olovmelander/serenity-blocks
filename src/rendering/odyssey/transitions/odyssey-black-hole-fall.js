@@ -2,7 +2,7 @@
  * THE FALL — chapter 7's schedule, as one pure function of path progress (2026-10-02).
  *
  * The owner's brief: "the black hole floats right next to the journey — I want to be sucked into
- * it and have amazing warp effects while inside." Gargantua stays CAMERA-LOCKED (a world-parked
+ * it and have amazing warp effects while inside." The great hole stays CAMERA-LOCKED (a world-parked
  * hero slid out of frame on ch7's hairpin and kinks and left the chapter ~75 % black — the reason
  * the lock exists), but its ANGULAR SIZE is now authored by progress: it grows from the lock's
  * 8.3 deg radius until it swallows the frustum, drifting to dead centre as it comes. Its surface is a window onto the singularity's interior (the warp tunnel), which fades in
@@ -29,10 +29,10 @@ import { seamHalfWidth, smooth01, smoother01 } from './odyssey-seam-schedule.js'
 
 const DEG = Math.PI / 180;
 
-/** The lock's geometry (mirrors GARGANTUA_LOCK; duplicated here so the camera need not import a
+/** The lock's geometry (mirrors GREAT_HOLE_LOCK; duplicated here so the camera need not import a
  * chapter environment). */
 const LOCK_DEPTH = 900;
-// The rail runs into the hole's centre (GARGANTUA_LOCK, 2026-10-22: was 150 up / 26 right).
+// The rail runs into the hole's centre (GREAT_HOLE_LOCK, 2026-10-22: was 150 up / 26 right).
 const LOCK_UP = 29;
 const LOCK_RIGHT = 4;
 const SHADOW_RADIUS = 132;

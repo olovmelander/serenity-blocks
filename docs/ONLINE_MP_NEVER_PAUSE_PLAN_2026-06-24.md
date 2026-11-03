@@ -1,8 +1,7 @@
 # Online MP Never-Pause — Fixed-Timestep Clock Decoupled From Window State
 
 **Status: Layer C (forbid-pause) SHIPPED + verified 2026-06-24. Layer B (worker sim clock) = specced
-follow-up.** Researched against Quadra (`C:/Users/olovm/repositories/quadra/source`) + the live tree
-via a 4-agent workflow. Several feared problems are **already handled** (see §0).
+follow-up.** Researched against the live tree via a 4-agent workflow. Several feared problems are **already handled** (see §0).
 
 **Layer C shipped:** `unified-game-loop.js` gained a `neverPause` latch (`pause()` no-ops while set) +
 `setNeverPause()`; `ffa-p2p-game-state.js` latches it on in `startGameLoop()` / releases in
@@ -45,11 +44,10 @@ a **false-host-migration trap** — so "never pauses" isn't yet *structural*.
 | R9 | `src/main.js:1371-1382` | The generic `backgroundTabBehavior` machine can `pauseAllRendering()`/`reduceRenderingFrameRate()` (dev default `'reduce'`, `:1309`) with **no online-MP carve-out**. |
 | R7 | `OnlineMultiplayerMode.js:2774-2786` | `_setupVisibilityHandler` clears held input on `document.hidden` (correct, kills ghost-repeat) — but it's the only visibility hook and offers no positive "keep running" guarantee. |
 
-## 2. Quadra principle
-`quadra.cc:413-505`: one **fixed 10ms timestep** driven by a **wall-clock accumulator**
-(`acc += SDL_GetTicks()-last; while(acc>=10){acc-=10; overmind.step();}`), **decoupled from render**
-(many sim steps per frame; render may lag), **clamped** (`acc>300`→clamp), and a shared
-`framecount` all peers advance in lockstep. **No focus-loss pause** — the clock keeps running
+## 2. The principle
+One **fixed timestep** driven by a **wall-clock accumulator**, **decoupled from render**
+(many sim steps per frame; render may lag), **clamped** when too much time is owed, and a shared
+frame count all peers advance together. **No focus-loss pause** — the clock keeps running
 regardless of window state. Serenity already has the accumulator+clamp (`_runFixedStepHostSimulation`,
 `ffa-p2p-game-state.js:450-479`); what's missing is **a clock that doesn't stop when the window does**.
 

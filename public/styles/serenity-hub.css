@@ -4,9 +4,9 @@
  * keystone-menu.css gives the tiles their Keystone look and hides them on the main
  * menu (its dock names them instead).
  *
- * The Hub sheet itself, its tabs, the controls overlay and the in-game Hale tile are
- * styled in keystone-hub.css; Breathing in breathing-library.css; Hale sessions and the
- * Hale flow in breathwork-sessions.css. Nothing here is scoped to a surface, so add
+ * The Hub sheet itself, its tabs, the controls overlay and the in-game Sukha tile are
+ * styled in keystone-hub.css; Breathing in breathing-library.css; Sukha sessions and the
+ * Sukha flow in breathwork-sessions.css. Nothing here is scoped to a surface, so add
  * only rules for these tiles (the unscoped tab rules that lived here leaked onto
  * other screens — .progress-fill once stretched the Odyssey HUD bar).
  */

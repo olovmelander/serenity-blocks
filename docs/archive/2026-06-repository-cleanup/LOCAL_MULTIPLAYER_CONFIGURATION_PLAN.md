@@ -1279,7 +1279,6 @@ The `MultiPlayerState` class already handles this in `_getAttackTargets()`:
 ```javascript
 /**
  * Apply attack scaling based on number of players
- * Similar to Quadra's "boring rules" system
  */
 _scaleAttackForPlayerCount(totalLines) {
     if (this.matchConfig.boringRules) {

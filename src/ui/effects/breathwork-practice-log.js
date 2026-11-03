@@ -1,19 +1,21 @@
 /**
- * The Hale practice log: the sessions you have sat, kept on this device.
+ * The Sukha practice log: the sessions you have sat, kept on this device.
  *
- * One localStorage entry, `serenity.haleSessions`. Version 2 keeps the totals version 1 had
+ * One localStorage entry, `serenity.sukhaSessions`. Version 2 keeps the totals version 1 had
  * (`count` completed sessions, `seconds` of practice, `last`) so older readers still work, and
  * adds `entries`: one per sitting, newest last, capped at MAX_ENTRIES.
  *
  *   entry = { id, at, seconds, completed, rounds, breaths, holds: [{ round, seconds, suggested, mode }],
  *             intention }
  *
- * A hold's `mode` is 'open' when you chose when to breathe (Base and Elixir): only those are
+ * A hold's `mode` is 'open' when you chose when to breathe (Homecoming and Phoenix): only those are
  * personal records. Timed pauses are part of a rhythm, not a measure of anything.
  *
  * Pure functions take the storage they use, so tests and the game share one implementation.
  */
-export const PRACTICE_KEY = 'serenity.haleSessions';
+export const PRACTICE_KEY = 'serenity.sukhaSessions';
+/** Where the log lived before the sessions were renamed (2026-11-03): read once, then moved. */
+export const LEGACY_PRACTICE_KEY = 'serenity.haleSessions';
 export const MAX_ENTRIES = 200;
 /** A sitting shorter than this is not counted as practice (an accidental start). */
 export const MIN_PRACTICE_SECONDS = 60;
@@ -58,7 +60,7 @@ export function readPracticeLog(storage = defaultStorage()) {
     };
     let raw = null;
     try {
-        raw = JSON.parse(storage?.getItem(PRACTICE_KEY) || 'null');
+        raw = JSON.parse(storage?.getItem(PRACTICE_KEY) || storage?.getItem(LEGACY_PRACTICE_KEY) || 'null');
     } catch {
         return empty;
     }
@@ -164,6 +166,7 @@ export function recordPractice(entry, storage = defaultStorage(), now = Date.now
     log.last = { id: clean.id, at: clean.at };
     try {
         storage?.setItem(PRACTICE_KEY, JSON.stringify(log));
+        storage?.removeItem?.(LEGACY_PRACTICE_KEY);
         result.recorded = true;
     } catch { /* private browsing: the practice still happened */ }
     return result;

@@ -42,8 +42,8 @@ import {
     OMEN_SHADOW_RADIUS,
 } from '../../src/rendering/odyssey/chapter-environments/cosmic-expanse.tsl.js';
 import {
-    GARGANTUA_LOCK,
-    resolveGargantuaLockPosition,
+    GREAT_HOLE_LOCK,
+    resolveGreatHoleLockPosition,
 } from '../../src/rendering/odyssey/chapter-environments/black-hole-transcendence.tsl.js';
 import {
     ODYSSEY_PATH_HORIZON,
@@ -432,7 +432,7 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
             // Already on chapter 7's place on screen, so the hand-over is a settle, not a move.
             const lock = project(
                 frameAt(controller, chapterPositions, 6, p, true),
-                resolveGargantuaLockPosition(r.cam, new THREE.Vector3()),
+                resolveGreatHoleLockPosition(r.cam, new THREE.Vector3()),
                 16 / 9,
             );
             expect(Math.hypot(r.x - lock.x, r.y - lock.y), `off the lock's place ${where}`).toBeLessThan(0.06);
@@ -449,15 +449,15 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
         const atStart = omenAt(handoff.start);
         const lockAtStart = project(
             frameAt(controller, chapterPositions, 6, handoff.start),
-            resolveGargantuaLockPosition(atStart.cam, new THREE.Vector3()),
+            resolveGreatHoleLockPosition(atStart.cam, new THREE.Vector3()),
             16 / 9,
         );
         expect(Math.hypot(atStart.x - lockAtStart.x, atStart.y - lockAtStart.y)).toBeLessThan(0.03);
         // At the hand-over it IS the lock, at ch7's size.
         const atEnd = omenAt(handoff.end);
-        const lockAtEnd = resolveGargantuaLockPosition(atEnd.cam, new THREE.Vector3());
+        const lockAtEnd = resolveGreatHoleLockPosition(atEnd.cam, new THREE.Vector3());
         expect(atEnd.world.distanceTo(lockAtEnd)).toBeLessThan(1e-3);
-        expect(atEnd.scale).toBeCloseTo(GARGANTUA_LOCK.shadowRadius / OMEN_SHADOW_RADIUS, 6);
+        expect(atEnd.scale).toBeCloseTo(GREAT_HOLE_LOCK.shadowRadius / OMEN_SHADOW_RADIUS, 6);
         // One size in the world (overhaul 2026-10-20): it grows on screen by approach alone —
         // a great black hole from the first frame (~6 deg), ~1.3x by the lock, no scripted swell.
         expect(atEnd.deg / first.deg).toBeGreaterThan(1.1);

@@ -124,7 +124,7 @@ export class OnlineKillFeed {
     }
 
     /**
-     * Add a garbage cancellation event (Phase 3.5 - Quadra style)
+     * Add a garbage cancellation event (Phase 3.5)
      * @param {Object} event - { player: string, linesCancelled: number, playerColor?: string }
      */
     addGarbageCancelled(event) {
@@ -257,7 +257,7 @@ export class OnlineKillFeed {
         }
 
         if (item.type === 'cancel') {
-            // Phase 3.5: Garbage cancellation event (Quadra style)
+            // Phase 3.5: Garbage cancellation event
             const playerStyle = colorStyle(item.playerColor);
             return `
                 <div class="${classes.join(' ')} cancel-event">

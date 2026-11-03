@@ -38,9 +38,40 @@ function bareImports(file) {
         .filter((specifier) => !specifier.startsWith('.') && !specifier.startsWith('/'));
 }
 
+/** Top-level and per-platform extraResources (electron-builder applies both). */
+function allExtraResources() {
+    const { build } = manifest;
+    return [...build.extraResources, ...(build.win?.extraResources ?? []), ...(build.linux?.extraResources ?? [])];
+}
+
 describe('electron-builder packaging config', () => {
     it('keeps node_modules out of app.asar', () => {
         expect(manifest.build.files).toContain('!**/node_modules/**/*');
+    });
+
+    it('ships no steam_appid.txt: not in app.asar, not next to the executable', () => {
+        expect(manifest.build.files).toContain('!**/steam_appid.txt');
+        expect(manifest.build.extraFiles ?? []).toEqual([]);
+        expect(allExtraResources().map((entry) => entry.from)).not.toContain('steam_appid.txt');
+    });
+
+    it("ships each platform's Steam binaries only, without link libraries or type files", () => {
+        const steam = (platform) => manifest.build[platform].extraResources
+            .find((entry) => entry.from === 'node_modules/steamworks.js');
+        expect(manifest.build.extraResources.map((entry) => entry.from)).not.toContain('node_modules/steamworks.js');
+        expect(steam('win').filter).toEqual(expect.arrayContaining(['!dist/linux64/**', '!dist/osx/**', '!**/*.lib', '!**/*.d.ts']));
+        expect(steam('win').filter).not.toContain('!dist/win64/**');
+        expect(steam('linux').filter).toEqual(expect.arrayContaining(['!dist/win64/**', '!dist/osx/**', '!**/*.d.ts']));
+        expect(steam('linux').filter).not.toContain('!dist/linux64/**');
+    });
+
+    it('ships the credits, notices, licences and privacy page beside app.asar', () => {
+        const copied = manifest.build.extraResources.map((entry) => entry.to);
+        expect(copied).toEqual(expect.arrayContaining([
+            'CREDITS.md', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_LICENSES.md', 'PRIVACY_POLICY.md',
+        ]));
+        expect(manifest.build.extraResources.find((entry) => entry.to === 'THIRD_PARTY_LICENSES.md').from)
+            .toBe('dist/THIRD_PARTY_LICENSES.md');
     });
 
     it('generates no auto-update config, since the app has no updater', () => {
@@ -48,7 +79,7 @@ describe('electron-builder packaging config', () => {
     });
 
     it('ships every package the main process and preloads import through extraResources', () => {
-        const shipped = new Set(manifest.build.extraResources
+        const shipped = new Set(allExtraResources()
             .map((entry) => /^node_modules\/(.+)$/.exec(entry.from)?.[1])
             .filter(Boolean));
         const builtins = new Set(builtinModules);

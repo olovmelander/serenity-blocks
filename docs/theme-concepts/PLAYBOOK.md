@@ -635,9 +635,9 @@ clear of 10 under every simulation and separate close hues by value (ΔL*).
   `quality=Ultra`, lift colour slightly (Murmuration: saturation 1.22, contrast 1.14, brightness
   1.08), bake the 512 px circle, and check it at the picker's 80 px beside its neighbours. One hero
   motif; read the concept file's icon brief.
-- The registry `icon` path must end in `.png`; the theme test checks the file exists. Add the
-  byte-identical public mirror `public/assets/themes/NEW_ID-theme-icon.png` (no code reads it; the
-  precedent keeps it).
+- The registry `icon` path must end in `.png`; the theme test checks the file exists. Do not add a
+  copy under `public/assets/themes/`: no code read those, and the folder was removed on 2026-11-03
+  (Vite emits the icon from `src/themes/NEW_ID/`).
 
 ### 2.10 The playground effect (`src/playground/effects/NEW_ID.effect.js`)
 
@@ -1005,8 +1005,8 @@ Each step names the Rainbark change as the worked example.
     `#rainbark-theme { background: #3a4a72; overflow: hidden; }`. Watch for same-named rules
     elsewhere in the file that belong to other themes (Cosmic Chimes' `.aurora-wave` had a dead
     twin at another line; `@keyframes aurora-wave` was a different, live name).
-13. **Public icon mirror**: `git rm public/assets/themes/OLD_ID-theme-icon.png` (if present); add
-    `public/assets/themes/NEW_ID-theme-icon.png`, byte-identical to the source icon (`cmp`).
+13. **Public icon mirror**: none any more (`public/assets/themes/` was removed on 2026-11-03; the
+    icon lives in `src/themes/NEW_ID/` only).
 14. **Phone validator lists** (`scripts/lib/mobile-webgl2-validation.mjs`): add `'NEW_ID'` to
     `MOBILE_WEBGL2_NODE_IDS` (requires `WebGPURenderer` on the WebGL2 backend with node materials)
     and to `MOBILE_WEBGL2_SMOKE_IDS`; remove `OLD_ID` from both.

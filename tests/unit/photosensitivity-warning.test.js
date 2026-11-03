@@ -22,6 +22,7 @@ import {
     PHOTOSENSITIVITY_WARNING_MIN_VISIBLE_MS,
     createPhotosensitivityWarning,
     installPhotosensitivityWarning,
+    isPackagedReleaseWindow,
     isPhotosensitivityWarningEnabled,
 } from '../../src/ui/photosensitivity-warning.js';
 
@@ -125,11 +126,21 @@ describe('isPhotosensitivityWarningEnabled', () => {
         expect(isPhotosensitivityWarningEnabled({ search: '?skipIntro=0' })).toBe(true);
     });
 
-    it('the saved flag is the developer\'s toggle in an installed game', () => {
+    it('the saved flag is the developer\'s toggle in a dev or diagnostics run', () => {
         const storage = (value) => ({ getItem: (key) => (key === 'serenity.photosensitivityWarning' ? value : null) });
         expect(isPhotosensitivityWarningEnabled({ storage: storage('0') })).toBe(false);
         expect(isPhotosensitivityWarningEnabled({ storage: storage('1') })).toBe(true);
         expect(isPhotosensitivityWarningEnabled({ storage: { getItem: () => { throw new Error('blocked'); } } })).toBe(true);
+    });
+
+    it('a shipped build without diagnostics shows it whatever the URL or the saved flag say', () => {
+        const skipEverything = { search: '?photosensitivityWarning=0&skipIntro=1', storage: { getItem: () => '0' } };
+        expect(isPhotosensitivityWarningEnabled({ ...skipEverything, locked: true })).toBe(true);
+        expect(isPhotosensitivityWarningEnabled({ ...skipEverything, locked: false })).toBe(false);
+        expect(isPackagedReleaseWindow({ electronAPI: { isPackaged: true } })).toBe(true);
+        expect(isPackagedReleaseWindow({ electronAPI: { isPackaged: true, diagnosticsEnabled: true } })).toBe(false);
+        expect(isPackagedReleaseWindow({ electronAPI: { isPackaged: false } })).toBe(false);
+        expect(isPackagedReleaseWindow({})).toBe(false);
     });
 });
 

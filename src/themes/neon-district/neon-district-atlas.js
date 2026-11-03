@@ -135,13 +135,13 @@ export const BILLBOARD_ATLAS = Object.freeze({
 
 /**
  * The campaign cells: 10 user adverts, then 24 district-brand pieces (a wide billboard
- * and two portrait posters per brand), 2 Hale pieces and 37 Serenity
+ * and two portrait posters per brand), 2 Sukha pieces and 37 Serenity
  * Transit posters.
- *  - `family`: 'user' | 'brand' | 'hale' | 'transit'; `brand`: the campaign id (neon-district-campaigns.js),
+ *  - `family`: 'user' | 'brand' | 'sukha' | 'transit'; `brand`: the campaign id (neon-district-campaigns.js),
  *    null for user adverts.
  *  - `shape`: 'wide' (16:9, 16 cells) | 'portrait' (2:3, 51) | 'square' (6); a user advert keeps its own
  *    `aspect` inside its shape.
- *  - `motion`: 'breathe' (Hale: the shader draws a breathing ring in `ring`), 'pan' (transit: drift
+ *  - `motion`: 'breathe' (Sukha: the shader draws a breathing ring in `ring`), 'pan' (transit: drift
  *    and zoom slowly) or 'none'.
  *  - `ring`: [cx, cy, r] of the empty ring area in cell fractions (v down from the top, r a fraction
  *    of the cell height), or null.
@@ -591,9 +591,9 @@ export const BILLBOARD_CELLS = Object.freeze([
         luma: 0.119,
     },
     {
-        id: 'hale-wide',
-        family: 'hale',
-        brand: 'hale',
+        id: 'sukha-wide',
+        family: 'sukha',
+        brand: 'sukha',
         shape: 'wide',
         motion: 'breathe',
         ring: [0.735, 0.5, 0.38],
@@ -604,9 +604,9 @@ export const BILLBOARD_CELLS = Object.freeze([
         luma: 0.0169,
     },
     {
-        id: 'hale-portrait',
-        family: 'hale',
-        brand: 'hale',
+        id: 'sukha-portrait',
+        family: 'sukha',
+        brand: 'sukha',
         shape: 'portrait',
         motion: 'breathe',
         ring: [0.5, 0.465, 0.205],

@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { createOdysseyCameraRig } from './helpers/odyssey-camera-rig.js';
 import {
-    GARGANTUA_LOCK, resolveGargantuaLockPosition,
+    GREAT_HOLE_LOCK, resolveGreatHoleLockPosition,
 } from '../../src/rendering/odyssey/chapter-environments/black-hole-transcendence.tsl.js';
 import { getOdysseyPathCurve } from '../../src/rendering/odyssey/path-utils.js';
 import { RAIL_END_AIM } from '../../src/rendering/odyssey/OdysseyCameraController.js';
@@ -23,9 +23,9 @@ describe('the rail runs into the hole', () => {
         const v = new THREE.Vector3();
         for (let p = mouthP - 0.03; p <= mouthP + 1e-9; p += 0.002) {
             const cam = rig.poseAt(p);
-            resolveGargantuaLockPosition(cam, hole);
+            resolveGreatHoleLockPosition(cam, hole);
             const centre = hole.clone().project(cam);
-            const radius = Math.tan(Math.asin(GARGANTUA_LOCK.shadowRadius / hole.distanceTo(cam.position)))
+            const radius = Math.tan(Math.asin(GREAT_HOLE_LOCK.shadowRadius / hole.distanceTo(cam.position)))
                 / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
             v.copy(mouth).project(cam);
             const off = Math.hypot((v.x - centre.x) * cam.aspect, v.y - centre.y);

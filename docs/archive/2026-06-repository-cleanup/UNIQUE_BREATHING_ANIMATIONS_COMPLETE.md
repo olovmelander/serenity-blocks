@@ -60,7 +60,7 @@ Each of the 7 breathing techniques now has its own **stunning, unique animation*
 **Color:** Fiery Red  
 **Animation:** 30 flame-like particles exploding outward with intense white-hot center  
 **Feel:** Intense, powerful, energetic  
-**Perfect for:** Wim Hof method, energy boost, immune support
+**Perfect for:** power breathing, an energy boost
 
 ---
 
@@ -76,7 +76,7 @@ _animateTechniqueSpecific(progress) {
         case 'energizing': _animateEnergizing()
         case 'coherence': _animateHeartCoherence()
         case 'triangle': _animateTriangleBreath()
-        case 'wim-hof': _animatePowerBreath()
+        case 'volcanic-fire': _animatePowerBreath()
     }
 }
 ```
@@ -217,7 +217,7 @@ _animateTechniqueSpecific(progress) {
 | Energizing | Rays | Burst | High | Morning energy |
 | Heart Coherence | Wave + Circle | Pulse | Balanced | HRV training |
 | Triangle | Triangle | Rotation | Grounded | Anxiety relief |
-| Power Breath | Explosion | Intense | Maximum | Wim Hof method |
+| Power Breath | Explosion | Intense | Maximum | Power breathing |
 
 ---
 

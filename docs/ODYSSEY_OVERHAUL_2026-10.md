@@ -76,7 +76,7 @@ opt-in (`?odysseyCh6GiantAurora=1`): on the tipped pole it stood off the limb as
 ### 2.3 The black hole's lensed image
 
 The far side of the disk is now bowed over the shadow as a broad band (1.0–2.2 shadow radii above,
-a thin arc below) carrying the disk's temperature ladder and lanes — Gargantua's read — instead of a
+a thin arc below) carrying the disk's temperature ladder and lanes — the great hole's read — instead of a
 thick white donut. Chapter 6's omen arrives on its own reveal uniform (its materials' opacity was a
 dead write, so it used to pop in whole at the boundary). In chapter 7 the image fades out as the
 hole outgrows the frame (11° → 22°) and the photon ring dims at the frame's edge.

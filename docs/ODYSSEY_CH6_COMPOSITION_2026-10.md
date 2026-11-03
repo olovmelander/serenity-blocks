@@ -35,7 +35,7 @@ up, right) at a progress. If the path is re-authored, the placement follows it.
 
 - **The hole on the spine** (`OMEN_SPINE_ANCHOR`). It sits on the rail's own line, 871 u down
   its direction from the 6→7 hand-over, 42 u up and 51 u right. That is exactly where
-  chapter 7's camera lock (`GARGANTUA_LOCK`) puts Gargantua for the path camera at that
+  chapter 7's camera lock (`GREAT_HOLE_LOCK`) puts the great hole for the path camera at that
   progress.
   - The rail flies at it from the chapter's first frame, so it sits at the end of the path
     wherever the path turns.

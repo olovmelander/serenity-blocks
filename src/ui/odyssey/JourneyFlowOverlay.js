@@ -233,7 +233,7 @@ export function createJourneyFlowOverlay({
         : `Next · Orb ${nextLevel?.id || ''}`;
     const nextEyebrow = nextLevel ? el('p', 'ody-flow__next-label', nextEyebrowText) : null;
     if (nextEyebrow) nextBlock.appendChild(nextEyebrow);
-    // A finished chapter opens a breathing world and the Hale session that features it: said
+    // A finished chapter opens a breathing world and the Sukha session that features it: said
     // once, with the next chapter, whose arrival you then breathe in that world.
     const opened = variant === 'completion' && crossesChapter ? describeOpenings(results?.breathUnlock) : null;
     const breathOpening = opened ? el('p', 'ody-flow__breath-opening') : null;

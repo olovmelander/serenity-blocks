@@ -1,4 +1,4 @@
-# Immersive breathing and Hale sessions — October 2026
+# Immersive breathing and Sukha sessions — October 2026
 
 > **Superseded 2026-10-05** by [BREATHING_OVERHAUL_2026-10.md](BREATHING_OVERHAUL_2026-10.md). The renderer, worlds, guide
 > and menus described here were rebuilt; the files this document names no longer exist. Kept for its
@@ -23,7 +23,7 @@ All twelve breathing worlds now have distinct foreground forms and particle move
 | Ancient Forest | Branching tree with individual leaves | Canopy opens and branches rest |
 | Electric Storm | Two forked currents | Branches reach outward with continuous travelling light |
 
-The visible **Hale sessions** control opens guided journeys directly. The Hub tab uses the same label, and Breathing includes a permanent **Choose a Hale session** action. Select **Start Hale Base**, **Elixir**, **Rest**, or **Flow**, then use the enabled **Start** button in preparation; intentions are optional. A cancellable countdown leads into the session.
+The visible **Sukha sessions** control opens guided journeys directly. The Hub tab uses the same label, and Breathing includes a permanent **Choose a Sukha session** action. Select **Start Sukha Homecoming**, **Elixir**, **Rest**, or **Flow**, then use the enabled **Start** button in preparation; intentions are optional. A cancellable countdown leads into the session.
 
 The four journeys have illustrated selection cards, durations calculated from their session definitions, separate phase and overall progress, and completion results. Guided instructions sit above the artwork with session progress below it. Starting a session acquires ownership before the Hub closes, so paused falling-block gameplay remains paused throughout the journey; closing the Hub after ending/completing restores play. Portrait and landscape layouts use the same artwork.
 
@@ -72,8 +72,8 @@ The matrix's source fingerprints are preserved. Final dialog-layout, copy and ti
 Final targeted coverage passes **117 tests in nine files**. The settled UI pass captures **69 frames** (23 per viewport), including all four preparation, countdown, active and completion flows. Screenshots and the compact source-provenance report live in [reports/breathing-immersive-overhaul](../reports/breathing-immersive-overhaul/README.md).
 
 
-### Identity and Hale entry follow-up
+### Identity and Sukha entry follow-up
 
 The new captures and interaction evidence are recorded separately in
-[reports/breathing-identity-and-hale-entry](../reports/breathing-identity-and-hale-entry/README.md).
+[reports/breathing-identity-and-sukha-entry](../reports/breathing-identity-and-sukha-entry/README.md).
 The earlier report above preserves the source fingerprints and resource counts of the first overhaul.

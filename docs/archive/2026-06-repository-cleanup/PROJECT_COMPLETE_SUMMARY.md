@@ -80,7 +80,7 @@ serenity-blocks/
 │   ├── core/
 │   │   ├── game.js           [GameState class]
 │   │   ├── physics.js         [Line clearing, gravity]
-│   │   ├── garbage.js         [Garbage calculation (Quadra)]
+│   │   ├── garbage.js         [Garbage calculation (Quadra-style)]
 │   │   └── multiplayer/
 │   │       ├── ffa-p2p-game-state.js   [Main multiplayer]
 │   │       ├── ffa-attack-router.js    [Attack routing]

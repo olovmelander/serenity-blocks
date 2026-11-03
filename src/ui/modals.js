@@ -22,7 +22,7 @@ import {
     RECORD_MODES, allModesLine, loadOdysseyRecords, odysseyTabHtml, recordModeName, scoresTabHtml,
 } from './records/records-view.js';
 
-const MENU_SURFACES = '.modal, .serenity-hub-panel, .match-config-modal, #lobby-browser, .hale-flow, #breathing-guide';
+const MENU_SURFACES = '.modal, .serenity-hub-panel, .match-config-modal, #lobby-browser, .sukha-flow, #breathing-guide';
 
 /** Suspend decoration only on menu surfaces covered by a higher menu. */
 export function updateMenuCoverage(documentRoot = document) {
@@ -30,8 +30,8 @@ export function updateMenuCoverage(documentRoot = document) {
     const visible = surfaces.filter((surface) => {
         if (surface.classList.contains('modal')) return surface.classList.contains('visible');
         if (surface.id === 'serenity-hub-panel') return surface.classList.contains('open');
-        // The Hale flow and the breathing guide hide with the `hidden` attribute.
-        if (surface.id === 'breathing-guide' || surface.classList.contains('hale-flow')) return !surface.hidden;
+        // The Sukha flow and the breathing guide hide with the `hidden` attribute.
+        if (surface.id === 'breathing-guide' || surface.classList.contains('sukha-flow')) return !surface.hidden;
         return !surface.classList.contains('hidden');
     });
     const view = documentRoot.defaultView || globalThis.window;

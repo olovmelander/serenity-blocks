@@ -10,7 +10,7 @@
  *     last change, so a theme you just chose gets its full time.
  *
  * Drift holds while the theme cannot be seen or you are choosing (the Hub, Settings, a
- * breathing world over the theme, a Hale session, the rest veil) and picks up where it was.
+ * breathing world over the theme, a Sukha session, the rest veil) and picks up where it was.
  * Everything it needs is passed in, so it runs in tests without a DOM or a renderer.
  */
 import { driftMinutes, normalizeDrift } from './serenity-options.js';

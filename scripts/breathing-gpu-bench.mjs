@@ -49,7 +49,7 @@ const args = Object.fromEntries(process.argv.slice(2).filter((arg) => arg.starts
 }));
 
 export const WORLD_IDS = ['deep-relaxation', 'box-breathing', 'calm-sleep', 'energizing', 'coherence', 'triangle',
-    'wim-hof', 'ocean-breath', 'zen-garden', 'cosmic-breath', 'forest-breath', 'electric-storm'];
+    'volcanic-fire', 'ocean-breath', 'zen-garden', 'cosmic-breath', 'forest-breath', 'electric-storm'];
 
 const DEFAULTS = {
     baseUrl: 'http://127.0.0.1:5173',

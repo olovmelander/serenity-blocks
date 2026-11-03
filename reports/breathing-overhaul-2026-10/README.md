@@ -26,13 +26,13 @@ operate the shipping UI through its own elements.
 | --- | --- |
 | [game-guide.jpg](game-guide.jpg) | Standalone guide, Aurora Dreams, 1440×900 |
 | [game-breathing-tab.jpg](game-breathing-tab.jpg) | Hub → Breathing |
-| [game-hale-catalogue.jpg](game-hale-catalogue.jpg) | Hub → Hale sessions |
-| [game-hale-prepare.jpg](game-hale-prepare.jpg) | Preparation for Hale Base, one intention chosen |
-| [game-hale-session.jpg](game-hale-session.jpg) | Round 1 of Hale Base in the guide |
-| [game-hale-complete.jpg](game-hale-complete.jpg) | Result |
+| [game-sukha-catalogue.jpg](game-sukha-catalogue.jpg) | Hub → Sukha sessions |
+| [game-sukha-prepare.jpg](game-sukha-prepare.jpg) | Preparation for Sukha Homecoming, one intention chosen |
+| [game-sukha-session.jpg](game-sukha-session.jpg) | Round 1 of Sukha Homecoming in the guide |
+| [game-sukha-complete.jpg](game-sukha-complete.jpg) | Result |
 | [game-guide-over-single-player.jpg](game-guide-over-single-player.jpg) | The guide over a paused single-player game: nothing of the board shows through |
 | [phone-guide.jpg](phone-guide.jpg) | Standalone guide, Heart Glow, 390×844 |
-| [phone-hale-hold.jpg](phone-hale-hold.jpg) | A hold in Hale Base, 390×844 |
+| [phone-sukha-hold.jpg](phone-sukha-hold.jpg) | A hold in Sukha Homecoming, 390×844 |
 
 Both walkthroughs (1440×900 and 390×844) ran every step without a console error. State read
 back from the page during them:
@@ -40,14 +40,14 @@ back from the page during them:
 - guide: stage live on `webgpu`, `window.isThemeCovered === true`; High tier on desktop, Low
   tier (direct render, no pipeline) at phone size;
 - preparation open: `serenityHub.holdsGameplay() === true`;
-- session: active, first stage set in `forest-breath` (Hale Base's arrival world);
+- session: active, first stage set in `forest-breath` (Sukha Homecoming's arrival world);
 - Pause from the guide: `sessionManager.isPaused === true`;
 - after dismissing the result: nothing holds gameplay, the guide is stopped, the flow is closed.
 
 **Pause ownership in single-player** ([pause-ownership.json](pause-ownership.json)): twelve
 checks read from `gameModeManager.getCurrentMode().isPaused`, all true. Opening the Hub pauses;
 starting a practice from the Breathing tab keeps the game paused after the Hub closes; a direct
-`resumeGame()` during the practice is refused; ending the practice resumes play. For a Hale
+`resumeGame()` during the practice is refused; ending the practice resumes play. For a Sukha
 session the game stays paused through preparation, the session and its result, and resumes when
 the result is dismissed.
 

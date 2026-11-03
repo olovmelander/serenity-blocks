@@ -610,7 +610,7 @@ export class LobbyWaitingRoom {
             readyBtn.hidden = true;
             startBtn.hidden = false;
 
-            // Quadra-style: the host can START as soon as there are >=2 players — readiness
+            // The host can START as soon as there are >=2 players — readiness
             // is a courtesy signal, not a hard gate. One AFK/unready peer no longer blocks the
             // whole lobby; unready peers still receive the seed and start with everyone.
             const notReady = players.length - readyCount;
@@ -686,7 +686,7 @@ export class LobbyWaitingRoom {
         }
 
         // No all-ready gate: the host may start with >=2 players even if some haven't readied
-        // (Quadra-style drop-in feel). Unready peers still get LOBBY_GAME_START + the seed.
+        // (a drop-in feel). Unready peers still get LOBBY_GAME_START + the seed.
         if (readyCount < players.length) {
             console.log(`🚀 Host starting with ${players.length - readyCount} player(s) not ready`);
         }
