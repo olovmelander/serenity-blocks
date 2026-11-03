@@ -55,7 +55,8 @@ const vec = (a, i) => [a[i * 3], a[(i * 3) + 1], a[(i * 3) + 2]];
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const cross = (a, b) => [(a[1] * b[2]) - (a[2] * b[1]), (a[2] * b[0]) - (a[0] * b[2]), (a[0] * b[1]) - (a[1] * b[0])];
 const dot = (a, b) => (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]);
-const lanesOf = (kind) => resolveFlightLanes().filter((l) => l.kind === kind);
+/** A kind's own lanes (the swallow fly-by has its own test: odyssey-swallow-flyby.test.js). */
+const lanesOf = (kind) => resolveFlightLanes().filter((l) => l.kind === kind && !l.flyby);
 
 /** The vertex nearest `target` (bird frame). */
 function nearest(model, target) {
@@ -593,7 +594,8 @@ describe('the lowland flights draw', () => {
         flights.meshes.forEach((mesh, i) => {
             expect(mesh.material).toBe(flights.material);
             const flock = ODYSSEY_FLIGHTS[i];
-            expect(mesh.geometry.instanceCount).toBe(flock.count);
+            // The swallows' draw carries the fly-by swallow too (odyssey-swallow-flyby.js).
+            expect(mesh.geometry.instanceCount).toBe(flock.count + (flock.kind === FLIGHT_KIND.SWALLOW ? 1 : 0));
             expect(mesh.geometry.index.count).toBe(lowlandBirdModel(flock.kind).triangleCount * 3);
             // Every attribute is a vertex buffer on WebGPU; a pipeline binds at most eight.
             expect(Object.keys(mesh.geometry.attributes).length).toBeLessThanOrEqual(8);
