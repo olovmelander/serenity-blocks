@@ -4,8 +4,9 @@
  * hind and her calf that come down to drink at its bank (chapter 3, 2026-11-02). Their lives are
  * odyssey-pond-life-motion.js (three-free); this draws them.
  *
- * The birds are Blender-built (scripts/blender/odyssey/pond_birds.py: `swan.glb`, 1,300 triangles,
- * 6 bones; `heron.glb`, 1,150 triangles, 11 bones), skinned in the vertex stage from a float table
+ * The birds are Blender-built (scripts/blender/odyssey/pond_birds.py: `swan.glb`, 1,598 triangles,
+ * 9 bones; `heron.glb`, 1,656 triangles, 17 bones, its open wings drawn only in flight), skinned in
+ * the vertex stage from a float table
  * of bone poses as the deer are: a row an animal, two texels a bone (its rotation in the world, and
  * where its rest frame lands with its size). One draw per species. The drinkers are the glade's
  * deer model and life (createOdysseyDeer with ODYSSEY_TARN_DEER), so they cost no new pipeline.
@@ -21,12 +22,14 @@
  * Their light is the act's: the world's low sun, the sky from above, the water's turquoise (the
  * swans) or the meadow's green (the heron) bounced up from below, and the air between them and the
  * eye. White plumage scatters light round itself (wrapped), so a swan's shade side stays a soft
- * blue-white, never grey.
+ * white, never grey. Against the low sun the edges of the feathers light up (`sunRim`), most on
+ * white: that, a darker slate back and a whiter face part the heron from its bank (VISIBILITY,
+ * 2026-11-03).
  */
 import * as THREE from 'three/webgpu';
 import {
     Fn, abs, attribute, cameraPosition, clamp, cross, dot, exp, float, floor, int, ivec2,
-    length, max, mix, normalize, positionGeometry, positionWorld, textureLoad, varying, vec3, vec4,
+    length, max, mix, normalize, positionGeometry, positionWorld, smoothstep, textureLoad, varying, vec3, vec4,
 } from 'three/tsl';
 import { loadOdysseyGltfCached } from '../chapter-environments/shared/odyssey-gltf-loader.js';
 import { ODYSSEY_WORLD_SUN } from '../chapter-environments/shared/chapter-profile.js';
@@ -44,20 +47,25 @@ const BIRD_ATTRIBUTES = Object.freeze(['position', 'normal', 'color', '_bones', 
 /** Each species' paint: the base, the white, the bill (and the heron's legs), the dark. */
 const PAINT = Object.freeze({
     swan: Object.freeze({
-        base: [0.80, 0.80, 0.78],
-        white: [0.80, 0.80, 0.78],
+        // A mute swan's white is a little warm (cream), which parts it from the turquoise water;
+        // the water's teal bounced up into its underside is kept low, so its shade stays white.
+        base: [0.84, 0.82, 0.76],
+        white: [0.84, 0.82, 0.76],
         bill: [0.78, 0.30, 0.05],
         dark: [0.02, 0.02, 0.02],
         wrap: 0.6,
-        below: [0.10, 0.36, 0.36],
+        below: [0.08, 0.2, 0.2],
+        sunRim: 0.45,
     }),
     heron: Object.freeze({
-        base: [0.25, 0.27, 0.30],
-        white: [0.70, 0.70, 0.68],
-        bill: [0.62, 0.48, 0.12],
-        dark: [0.02, 0.02, 0.025],
-        wrap: 0.35,
+        base: [0.16, 0.18, 0.22],
+        white: [0.94, 0.94, 0.92],
+        bill: [0.86, 0.68, 0.16],
+        dark: [0.012, 0.012, 0.016],
+        wrap: 0.45,
         below: [0.14, 0.2, 0.1],
+        // The low sun behind it lights the edges of its plumage (white most).
+        sunRim: 0.7,
     }),
 });
 
@@ -204,7 +212,16 @@ export function createOdysseyPondLife({
             const occlusion = mix(float(0.55), float(1), seen);
             const lit = albedo.mul(sun.mul(ndl.mul(0.92)).add(ambient)).mul(occlusion).toVar();
             const edge = float(1).sub(abs(dot(N, V)));
-            const rim = haze.mul(edge.mul(edge).mul(edge).mul(0.06));
+            let rim = haze.mul(edge.mul(edge).mul(edge).mul(0.06));
+            if (paint.sunRim > 0) {
+                // Against the light, the sun shines through the edges of the feathers: on the
+                // sun's side of the outline, as strong as the sun is behind the bird.
+                const behind = smoothstep(0.0, 0.7, dot(V, L).negate());
+                const sunSide = clamp(dot(N, L).add(0.4).div(1.4), 0, 1);
+                rim = rim.add(sun.mul(edge.mul(edge).mul(behind).mul(sunSide)
+                    .mul(mix(float(0.35), float(1), white))
+                    .mul(paint.sunRim)));
+            }
             const air = float(1).sub(exp(length(toEye).div(-2600.0)));
             return mix(lit.add(rim), haze, air.mul(0.8));
         })();

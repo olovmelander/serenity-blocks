@@ -616,6 +616,145 @@ drinkers read as before:
   cut.
 - **The wake's crests** keep their travel speed; their strength already follows the swan's speed.
 
+### Visibility (2026-11-03): the heron seen, and flying
+
+The owner: "the heron is very hard to see!" Then the visibility check of every animal
+(the shared method in the visibility brief). The heron, then the swans and the drinkers.
+
+**How it was measured.** Real-game shots in Chrome over CDP (`cstations.mjs`, 2560x1440, PNG),
+the board clock frozen, the camera's breathing off, each shot taken twice: with the animal and
+with its mesh hidden. The pixels that differ (more than 0.08, in a body of them, the biggest
+blob and 2 px round it) are the animal. Its shadow and wake are not in it: the heron casts
+none, and a swan's wake and mirror image stay in both shots. Contrast is
+|mean Y animal - mean Y ground| / mean Y ground (linear luminance); dE is the mean CIE76 colour
+difference (Lab, D65). "Longest" is the farthest two of its pixels. Time in frame is from the
+rail camera in node (`odyssey-camera-rig.js`) over the whole loop.
+
+#### The heron
+
+**Before** (three times life, at its south-west spot): a 4-6 px wide stroke at the water's edge,
+10-11 px at the start of the L18 -> L19 glide and 22 px at L22-L23, at the very foot of the
+frame there. Its grey matched the shallows and its white the bright water.
+
+**What changed, in order, measured after each:**
+
+1. **Contrast.** A darker slate back (0.16, 0.18, 0.22), a whiter face, neck and crown sides
+   (0.94), a black shoulder patch and darker primaries, a yellower bill. Against the low sun the
+   edges of its feathers light up, most on white (a sun rim; the sun is behind it from the rail).
+   At 4-6 px wide this alone moved little (dE about the same, contrast mixed): it was too thin.
+2. **Size: 4.2 times life** (1.4x the pond's 3.0). It stands 26-30 px tall at the parks and 17-25
+   px through the glide. Beside the swans and the hind it still looks like a heron of its size
+   (below).
+3. **Where, inside the west lobe.** Its round now starts on the lobe's north shore, which every
+   view of the pond sees (in frame 100 % of the loop at p 0.235-0.255 and at L22-L23, higher in
+   the frame there than the old spot), and keeps the south-west shallows as its second place.
+4. **The flight**, every two or three minutes (two a loop: 115 s and 164 s apart).
+
+| Heron | p 0.235 | p 0.245 | p 0.255 | L22 | L23 |
+|---|---|---|---|---|---|
+| Before, longest (px) | 10.5 | 11.0 | 18.1 | 22.0 | 22.4 |
+| Before, contrast / dE | 1.97 / 26 | 0.77 / 28 | 0.44 / 33 | 0.14 / 32 | 0.15 / 28 |
+| Contrast step only, longest / dE | 11.0 / 25 | 14.0 / 27 | 18.1 / 36 | 22.0 / 32 | 23.5 / 29 |
+| After, south-west spot, longest | 16.5 | 20.4 | 25.7 | 28.9 | 27.0 |
+| After, south-west, contrast / dE | 1.40 / 30 | 1.46 / 32 | 0.97 / 38 | 1.34 / 38 | 1.26 / 32 |
+| After, north shore, longest | 18.0 | 21.1 | 25.1 | 32.3 | 33.1 |
+| After, north shore, contrast / dE | 1.36 / 27 | 1.22 / 27 | 1.95 / 32 | 1.23 / 31 | 0.80 / 33 |
+| In flight over the bank, longest | 23.0 | 26.5 | 32.2 | 37.2 | 36.2 |
+| In flight over the bank, contrast / dE | 2.3 / 29 | 2.7 / 30 | 3.2 / 32 | 6.0 / 35 | 6.9 / 35 |
+| In flight over the water, longest | 22.8 | 26.7 | 36.2 | 40.7 | 37.4 |
+| Reads? before | stroke | stroke | shape | shape | shape |
+| Reads? after | shape | shape / heron | heron | heron | heron |
+
+Trees and terrain hide it at none of these stations. At p 0.265 only the north shore is in frame
+(59 % of the loop). Its flights are in frame 100 % of their air time at every station but p 0.265
+(55 %); the second one leaves from the south-west shallows below the parks' frame and flies up
+into it.
+
+![The heron x3: rows p 0.245, p 0.255, L22, L23; columns before (south-west spot), after (south-west), after (north shore), in flight](images/odyssey-animals-2026-11-03/pond-heron-visibility-x4.jpg)
+
+![The same at real size (1:1)](images/odyssey-animals-2026-11-03/pond-heron-visibility-x1.jpg)
+
+**The flight** (`odyssey-pond-life-motion.js`, `HERON_FLIGHT`):
+
+- **The wings.** `pond_birds.py` builds open wings for it: broad and rounded, bowed down at the
+  hand, pale grey coverts and black flight feathers, 1.85 m tip to tip (times 4.2). Each has an
+  arm and a hand bone. Standing, they are drawn at size 0, so it looks as it did. As it takes
+  off they grow and unfold, the arm swung back and the hand folded forward at first.
+- **Keyed in Blender.** Nine channels (along the path, height, crouch, the shoulder's stroke, the
+  forward sweep, how open, body pitch, the neck, the legs) are keyframed on an Empty with Bezier
+  keys and auto-clamped handles, and sampled at 30 Hz into
+  `composition/odyssey-heron-flight-keys.js` (generated; `--flight-out`). The game reads them
+  cubic between samples.
+- **The take-off:** a crouch, the wings open, three deep beats to rise, the legs reaching down
+  and then trailing.
+- **In the air:** two slow beats (about 1.4 a second), a glide with the wings a little raised,
+  the neck drawn back into a tight S, the legs straight out behind, the body level. It follows a
+  curved path, its heading the path's way over 3 u (so the spline's knots never jerk it), banked
+  into its turns as a bird flies them (tan bank = speed x turn rate / g, at life size; at most
+  0.38 rad). Its feet stay 2 u and more over the bank it crosses; at most 1.4 m up (5.9 u).
+- **The landing:** braking beats with the wings swept forward, the body flared up, the legs
+  reaching for the water, a give as it lands, the wings folding away, then two quick steps to
+  settle (its head carried with them).
+- **The two flights:** from the north shore round over the west bank to the south-west shallows
+  (34.5 u), and back over the water (35.4 u). The 6.6 s flight is a calm one, about 12 u/s.
+- **Smooth:** in the air its body and neck turn at most 2.5 rad/s, its legs 5 rad/s (as they
+  swing back and forward again) and the wing bones 11.8 rad/s (the beats). Its heading turns at
+  most 1.8 rad/s. In its walks and stands nothing changed.
+
+![L22 (x2), 0.5 s apart: off the north shore, round over the dark bank, down into the south-west shallows](images/odyssey-animals-2026-11-03/pond-heron-flight-l22-x2.jpg)
+
+![The same flight at real size from the glide (p 0.245)](images/odyssey-animals-2026-11-03/pond-heron-flight-p245-x1.jpg)
+
+![Blender review renders of the game's own motion: one wingbeat (0.07 s a frame), the take-off, the landing](images/odyssey-animals-2026-11-03/pond-heron-flight-review.jpg)
+
+#### The swans
+
+Measured the same way (their bodies only). They are white on pale turquoise, so their luminance
+contrast is low (0.04-0.6) and their colour difference carries them. One change: a little warmer
+white (a mute swan's cream), less of the water's teal bounced up into its underside, and a
+smaller sun rim (0.45). Their size is unchanged (three times life).
+
+| Swans (both) | p 0.235 | p 0.245 | p 0.255 | L22 | L23 |
+|---|---|---|---|---|---|
+| Longest (px) | 16 | 18-19 | 22-27 | 22-28 | 19-26 |
+| dE before | 22-23 | 22 | 23 | 20 | 19-20 |
+| dE after | 22-24 | 22-23 | 24 | 20-21 | 20-21 |
+| Reads? | shape | shape | swan | swan | swan |
+
+![Swans x4, before (left) and after (right): p 0.235, 0.245, 0.255, L22, L23](images/odyssey-animals-2026-11-03/pond-swans-visibility-x4.jpg)
+
+#### The drinkers
+
+The deer helper measured them (the hind a speck at L15-L17, the calf a shape) and asked for
+1.2x: `ODYSSEY_TARN_DEER.scale` is now 3.6. At that size the calf's middle spot moved 2 u east
+(to -365.5, -438.1), so it keeps to gentle ground (slope 0.67, under the 0.75 gate) and its
+standing hooves meet the bank (0.07 of its size, under 0.1). The hind's spots are as they were
+(slope 0.62, hooves 0.07).
+
+![L22 (x2), before and after: the heron (north shore, right of the swans), the swans, the hind and her calf on the bank](images/odyssey-animals-2026-11-03/pond-scale-l22.jpg)
+
+**Scale beside each other.** The heron stands a little taller than a swan's raised head (in
+life they are about the same) and the hind stays the largest. It reads as one pond.
+
+**Cost.** The heron is 1,656 triangles (was 1,336: +320 for the wings) and 17 bones (was 13), in
+the same single instanced draw. No new texture, pass or pipeline. In a flight, the CPU adds a few
+path lookups and four ground heights a frame. The sun rim is a few shader instructions.
+
+**Tests** (`tests/unit/odyssey-pond-life.test.js`, 16): the heron's 17 bones (fish, then the
+four wing bones); its walks and stands as before; the wing bones under 14 rad/s; its heading
+under 2.2 rad/s in the air; two flights a loop, 90-180 s apart, the wings at size 0 whenever it
+is not flying, its feet over 1 u clear of the water and the bank, at most 8 u up; the flights in
+frame at L22-L23 (over 70 % of their air time); none of them in frame as the window closes.
+
+**For the owner:**
+
+- **A darker reflection under the heron** on the water would part it from the shallows a little
+  more. It needs a third row in the tarn's mirror (the world shader). Not done.
+- **The swans at 1.2x** (with their wake and mirror numbers) would bring them over 24 px through
+  the whole glide and keep their size beside the heron. Not done: they read at the parks.
+- **The flight is calm** (about 3 m/s at life size): slower than a real heron's cruise (8-10 m/s),
+  so the beats look deep and slow. A faster one would cross the view in two seconds.
+
 ### Left for later
 
 - **The drinkers' timing** follows their own five-minute loop, so a given pass may find them on the

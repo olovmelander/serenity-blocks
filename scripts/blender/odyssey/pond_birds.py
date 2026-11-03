@@ -1,13 +1,15 @@
 """Odyssey's pond birds: a mute swan and a grey heron, modelled and rigged procedurally in headless Blender.
 
     blender -b --factory-startup --python scripts/blender/odyssey/pond_birds.py -- \
-        --out-dir src/rendering/odyssey/assets/chapter-03/pond [--preview <dir>]
+        --out-dir src/rendering/odyssey/assets/chapter-03/pond \
+        --flight-out src/rendering/odyssey/composition/odyssey-heron-flight-keys.js [--preview <dir>]
 
 Life at the tarn (the chapter-3 basin's pond, docs/ODYSSEY_GROUND_ANIMALS_2026-11.md "Life at the
 pond"): a pair of swans glides across it and a heron stands in the shallows. Seen from the rail
-200-270 metres off and drawn at three times life, like the rest of the act's life, so a swan is
-some twenty-five pixels long on a 1440p screen and the heron some fifteen pixels tall. What has to
-read is the silhouette and the value: the swan's white body riding low with its neck in an S and an
+200-320 metres off: the swans drawn at three times life, like the rest of the act's life (16-28
+pixels long on a 1440p screen), the heron at 4.2 times (17-33 pixels tall; at three times it was a
+speck). What has to read is the silhouette and the value: the swan's white body riding low with its
+neck in an S and an
 orange bill; the heron's grey body on long legs, a white neck, a dark crest and a yellow bill.
 
 How they are made: the red deer's way (red_deer.py, after the Grainfields horse): a signed distance
@@ -20,7 +22,12 @@ nets, decimated, cleaned and mirrored, then painted and skinned.
 - **Heron** (`heron.glb`): the body tilted up at the front, the folded wings, the short tail and the
   breast plumes; the neck in its resting S; the head, the long dagger bill, the black crest; the
   long legs to the toes (thicker than life so they stay lines when drawn small; the toes stand on
-  y = 0). Bones: root, three neck bones, head, and each leg's thigh, shin and foot.
+  y = 0). Bones: root, three neck bones, head, and each leg's thigh, shin and foot; the fish; and
+  each open wing's arm and hand. The open wings are plain meshes beside the field (broad, rounded,
+  bowed at the hand, pale grey coverts and black flight feathers, 1.85 m tip to tip), drawn only
+  in flight.
+- **The flight** is keyframed here too: channels on an Empty with Bezier keys, sampled into the
+  game's table (`--flight-out`).
 - **Skin.** Up to four bones a vertex (`_BONES`, `_WEIGHTS`), down each chain with blends at the
   joints, smoothed over the mesh. Every bone rests aligned with the bird's axes (x left, y up,
   z forward); a pose turns a bone about its head in its parent's frame.
@@ -277,7 +284,7 @@ def heron_bones():
             ("foot" + tag, "shin" + tag, (x, HERON_FOOT[0], HERON_FOOT[1])),
         ]
     bones.append(("fish", "head", tuple(float(v) for v in HERON_FISH)))
-    return bones
+    return bones + heron_wing_bones()
 
 
 def _heron_leg(side):
@@ -388,8 +395,8 @@ def heron_paint(shape, landmarks, positions, normals, parts):
                               for e in landmarks["eyes"]])
     body = parts == P["body"]
     # The black shoulder patch at the bend of the wing, and the dark primaries at the wing's end.
-    shoulder = body * _smoothstep(0.06, 0.1, z) * _smoothstep(0.66, 0.70, y) * _smoothstep(0.035, 0.055, np.abs(x)) * 0.9
-    primaries = body * _smoothstep(-0.12, -0.2, z) * _smoothstep(0.035, 0.05, np.abs(x)) * 0.6
+    shoulder = body * _smoothstep(0.06, 0.1, z) * _smoothstep(0.66, 0.70, y) * _smoothstep(0.035, 0.055, np.abs(x))
+    primaries = body * _smoothstep(-0.1, -0.18, z) * _smoothstep(0.03, 0.045, np.abs(x)) * 0.9
     # The streaked front: dark streaks down the throat and the breast's middle.
     neck = parts == P["neck"]
     streak = (neck | body) * _smoothstep(0.55, 0.9, normals[:, 2]) * _smoothstep(0.011, 0.004, np.abs(x)) \
@@ -410,12 +417,194 @@ def heron_paint(shape, landmarks, positions, normals, parts):
     return np.stack([yellow, dark, white, seen], axis=1)
 
 
+# -- the heron's wings and its flight ------------------------------------------------------
+# Open wings for flight (the standing bird's folded wings are part of its body): broad and
+# rounded, bowed down at the hand as a heron's are, pale grey coverts and black flight feathers,
+# 1.85 m from tip to tip. Built spread, their chord along the body's axis (so they lie level when
+# the body levels out in flight); each wing has its arm (from the shoulder) and its hand (from the
+# wrist). The game draws them at size 0 while the heron stands, so its standing look is as it was.
+HERON_SHOULDER = np.array([0.045, 0.70, 0.04])
+HERON_WRIST_OUT = 0.40
+HERON_SPAN = 0.925  # x of the wing tip (half the span)
+WING_ALONG = _unit(np.array([0.0, 0.57, 0.82]))  # the body's axis: the chord's forward
+WING_UP = np.array([0.0, WING_ALONG[2], -WING_ALONG[1]])  # out of the wing's plane
+
+
+def _wing_point(side, x, along, up):
+    return np.array([x * side, 0.0, 0.0]) + np.array([0.0, HERON_SHOULDER[1], HERON_SHOULDER[2]]) \
+        + along * WING_ALONG + up * WING_UP
+
+
+def heron_wing_bones():
+    bones = []
+    for side, tag in ((1.0, "L"), (-1.0, "R")):
+        shoulder = _wing_point(side, HERON_SHOULDER[0], 0.0, 0.0)
+        wrist = _wing_point(side, HERON_WRIST_OUT, 0.02, 0.01)
+        bones += [
+            ("wing" + tag, "root", tuple(round(float(v), 4) for v in shoulder)),
+            ("hand" + tag, "wing" + tag, tuple(round(float(v), 4) for v in wrist)),
+        ]
+    return bones
+
+
+def heron_wing_mesh(index):
+    """Both wings as one mesh: positions, normals, COLOR_0, triangles, bone and weight bytes."""
+    S, C = 10, 4  # samples along the span and across the chord
+    pos, col, bones, weights, tris = [], [], [], [], []
+    x0 = HERON_SHOULDER[0]
+    for side in (1.0, -1.0):
+        tag = "L" if side > 0 else "R"
+        arm, hand = index["wing" + tag], index["hand" + tag]
+        grid = {}
+        for top in (1, -1):
+            for i in range(S + 1):
+                s = i / S
+                x = x0 + (HERON_SPAN - x0) * s
+                # The leading edge runs out to the wrist a little forward, then back to the tip; the
+                # chord is broad all along and rounds off at the tip.
+                lead = 0.07 + 0.03 * math.sin(math.pi * min(1.0, s / 0.45)) - 0.1 * max(0.0, s - 0.45)
+                chord = 0.31 - 0.05 * s
+                if s > 0.7:
+                    chord *= 0.25 + 0.75 * math.sqrt(max(0.0, 1.0 - ((s - 0.7) / 0.3) ** 2))
+                # Bowed: the hand droops below the arm.
+                bow = -0.1 * max(0.0, (s - 0.35) / 0.65) ** 1.6 + 0.03 * s
+                for j in range(C + 1):
+                    c = j / C
+                    along = lead - chord * c
+                    # A thin aerofoil, thickest near the leading edge; the arm thicker than the hand.
+                    thick = 0.02 * (1.0 - 0.6 * s) * math.sin(math.pi * (0.12 + 0.88 * c)) ** 0.7
+                    up = bow + 0.012 * math.sin(math.pi * c) + top * thick * 0.5
+                    grid[(top, i, j)] = len(pos)
+                    pos.append(_wing_point(side, x, along, up))
+                    # Above: pale grey coverts over the arm's front, black flight feathers behind them
+                    # and over the whole hand. Below: grey, the flight feathers darker.
+                    feather = max(_smoothstep(0.45, 0.6, c), _smoothstep(0.42, 0.55, s))
+                    dark = (0.95 if top > 0 else 0.55) * feather
+                    white = (0.3 if top > 0 else 0.4) * (1.0 - feather)
+                    col.append((0.0, dark, white, 0.95 if top > 0 else 0.75))
+                    w_hand = float(_smoothstep(0.38, 0.5, s))
+                    if w_hand > 0.5:
+                        bones.append((hand, arm, 0, 0))
+                        q = int(round(w_hand * 255))
+                    else:
+                        bones.append((arm, hand, 0, 0))
+                        q = int(round((1.0 - w_hand) * 255))
+                    weights.append((q, 255 - q, 0, 0))
+        for top in (1, -1):
+            for i in range(S):
+                for j in range(C):
+                    a, b = grid[(top, i, j)], grid[(top, i + 1, j)]
+                    c_, d = grid[(top, i + 1, j + 1)], grid[(top, i, j + 1)]
+                    # Outward faces (counter-clockwise from outside): the top up, the bottom down,
+                    # the right wing mirrored.
+                    up = (top > 0) == (side > 0)
+                    tris += [(a, b, c_), (a, c_, d)] if up else [(a, c_, b), (a, d, c_)]
+    positions = np.array(pos, dtype=np.float64)
+    triangles = np.array(tris, dtype=np.int64)
+    normals = mesh_normals(positions, triangles)
+    return (positions, normals, np.array(col, dtype=np.float64), triangles, np.array(bones, dtype=np.uint8),
+            np.array(weights, dtype=np.uint8))
+
+
+# The flight, keyframed: channels over one flight of FLIGHT_SECONDS from a standing take-off to a
+# standing landing, eased by Blender's Bezier keys (auto-clamped handles, so no key overshoots), and
+# sampled at FLIGHT_RATE into the game's table (src/rendering/odyssey/composition/
+# odyssey-heron-flight-keys.js). The game lays it along a path between two spots, then takes the
+# settling steps.
+FLIGHT_SECONDS = 6.6
+FLIGHT_RATE = 30
+FLIGHT_KEYS = {
+    # Share of the way along the flight's path.
+    "along": [(0.0, 0.0), (0.4, 0.0), (1.4, 0.1), (3.6, 0.78), (4.6, 0.94), (5.5, 1.0), (6.6, 1.0)],
+    # Height of the feet over the ground (m at life size): low over the water and the bank.
+    "height": [(0.0, 0.0), (0.4, 0.0), (0.8, 0.3), (1.5, 1.0), (2.4, 1.4), (3.4, 1.25), (4.4, 0.7), (5.5, 0.0),
+               (6.6, 0.0)],
+    # A crouch to spring, and the landing's give (m at life size).
+    "crouch": [(0.0, 0.0), (0.25, 0.12), (0.5, 0.0), (5.45, 0.0), (5.7, 0.1), (6.3, 0.0), (6.6, 0.0)],
+    # The shoulder's stroke (rad, + up): three deep beats to rise, two slow ones, a glide with the
+    # wings a little raised, braking beats, folding.
+    "wing": [(0.0, 0.0), (0.25, 0.0), (0.5, 1.2), (0.8, -1.0), (1.1, 1.15), (1.45, -0.95), (1.8, 1.0), (2.15, -0.75),
+             (2.5, 0.65), (2.86, -0.6), (3.2, 0.2), (3.8, 0.12), (4.25, 0.85), (4.55, -0.3), (4.85, 0.95), (5.15, -0.2),
+             (5.45, 0.8), (5.8, 0.4), (6.2, 0.0), (6.6, 0.0)],
+    # The wings swept forward to brake as it lands (rad).
+    "sweep": [(0.0, 0.0), (3.9, 0.0), (4.6, 0.35), (5.5, 0.45), (6.0, 0.0), (6.6, 0.0)],
+    # How open the wings are (0 = folded away).
+    "spread": [(0.0, 0.0), (0.2, 0.0), (0.55, 1.0), (5.6, 1.0), (6.15, 0.0), (6.6, 0.0)],
+    # Body pitch (rad, + nose down from its standing tilt): level in flight, flared up to land.
+    "pitch": [(0.0, 0.0), (0.25, 0.08), (0.55, -0.1), (1.4, 0.55), (3.3, 0.6), (4.3, 0.35), (5.2, -0.2), (6.1, 0.0),
+              (6.6, 0.0)],
+    # Neck: 0 its standing S, 1 drawn back into the flight's tight S.
+    "neck": [(0.0, 0.0), (0.3, 0.0), (1.7, 1.0), (3.9, 1.0), (5.2, 0.35), (6.4, 0.0), (6.6, 0.0)],
+    # Legs: 0 reaching for the ground, 1 trailing straight behind.
+    "legs": [(0.0, 0.0), (0.5, 0.0), (1.5, 1.0), (3.8, 1.0), (4.9, 0.0), (6.6, 0.0)],
+}
+
+
+def sample_flight():
+    """Keyframe the channels on an Empty in Blender (Bezier, auto-clamped) and sample them."""
+    import bpy
+    scene = bpy.data.scenes.new("SODY_heron_flight")
+    scene.render.fps = 24
+    holder = bpy.data.objects.new("SODY_heron_flight", None)
+    scene.collection.objects.link(holder)
+    for name, keys in FLIGHT_KEYS.items():
+        holder[name] = 0.0
+        for t, v in keys:
+            holder[name] = v
+            holder.keyframe_insert('["%s"]' % name, frame=1 + t * 24)
+    curves = {}
+    action = holder.animation_data.action
+    for fc in _action_fcurves(action):
+        name = fc.data_path.split('"')[1]
+        for kp in fc.keyframe_points:
+            kp.interpolation = "BEZIER"
+            kp.handle_left_type = "AUTO_CLAMPED"
+            kp.handle_right_type = "AUTO_CLAMPED"
+        fc.update()
+        curves[name] = fc
+    n = int(round(FLIGHT_SECONDS * FLIGHT_RATE)) + 1
+    table = {name: [round(float(curves[name].evaluate(1 + (i / FLIGHT_RATE) * 24)), 4) for i in range(n)]
+             for name in FLIGHT_KEYS}
+    bpy.data.objects.remove(holder, do_unlink=True)
+    bpy.data.scenes.remove(scene)
+    return table
+
+
+def _action_fcurves(action):
+    """F-curves of an action (Blender 4.4+ keeps them in layers / strips / channelbags)."""
+    if hasattr(action, "fcurves") and len(action.fcurves):
+        return list(action.fcurves)
+    out = []
+    for layer in getattr(action, "layers", []):
+        for strip in layer.strips:
+            for bag in getattr(strip, "channelbags", []):
+                out += list(bag.fcurves)
+    return out
+
+
+def write_flight(path, table):
+    lines = [
+        "/* eslint-disable */",
+        "// GENERATED by scripts/blender/odyssey/pond_birds.py (the heron's flight, keyframed in Blender",
+        "// with Bezier keys and auto-clamped handles, sampled at %d Hz). Do not edit by hand." % FLIGHT_RATE,
+        "export const HERON_FLIGHT = Object.freeze({",
+        "    seconds: %s," % FLIGHT_SECONDS,
+        "    rate: %d," % FLIGHT_RATE,
+        "    channels: Object.freeze({",
+    ]
+    for name, values in table.items():
+        lines.append("        %s: Object.freeze([%s])," % (name, ", ".join("%g" % v for v in values)))
+    lines += ["    }),", "});", ""]
+    with open(path, "w", encoding="utf-8", newline="\n") as out:
+        out.write("\n".join(lines))
+
+
 # == THE BUILD ============================================================================
 BIRDS = {
     "swan": dict(name="swan", species="Mute swan (Cygnus olor)", design=swan_design, bones=swan_bones,
                  skin=swan_skin, paint=swan_paint, voxel=0.0065, target=1600),
     "heron": dict(name="heron", species="Grey heron (Ardea cinerea)", design=heron_design, bones=heron_bones,
-                  skin=heron_skin, paint=heron_paint, voxel=0.0038, target=1400),
+                  skin=heron_skin, paint=heron_paint, voxel=0.0038, target=1400, extra=heron_wing_mesh),
 }
 
 
@@ -465,7 +654,18 @@ def build(studio, key):
     bones, weights = finish_weights(spec["skin"](positions, parts, triangles, index), triangles)
     skeleton = [dict(name=name, parent=-1 if parent is None else index[parent], head=[round(float(v), 4) for v in head])
                 for name, parent, head in table]
+    body_vertices = len(positions)
+    if spec.get("extra"):
+        # Parts built as plain meshes beside the field (the heron's open wings).
+        p2, n2, c2, t2, b2, w2 = spec["extra"](index)
+        triangles = np.concatenate([triangles, t2 + len(positions)])
+        positions = np.concatenate([positions, p2])
+        normals = np.concatenate([normals, n2])
+        colors = np.concatenate([colors, c2])
+        bones = np.concatenate([bones, b2])
+        weights = np.concatenate([weights, w2])
     bird = Bird(spec, positions, normals, colors, triangles, bones, weights, skeleton)
+    bird.body_vertices = body_vertices
     print("%s %s -> %d tris %d verts, %s, %.1fs" % (TAG, key, len(triangles), len(positions),
                                                     json.dumps(bird.record()), time.time() - started), flush=True)
     return bird
@@ -517,12 +717,18 @@ def previews(birds, directory):
     water.data.materials.append(studio.material("water", vertex_color=False, base=(0.1, 0.45, 0.5)))
     material = studio.material("bird", roughness=0.8)
     objects = []
+    shots = []
     for bird in birds:
-        obj = studio.mesh_object("bird_" + bird.spec["name"], bird.positions, bird.triangles, colors=_albedo(bird))
-        obj.data.normals_split_custom_set_from_vertices([tuple(v) for v in to_blender(bird.normals)])
-        obj.data.materials.append(material)
-        objects.append(obj)
-    for bird, obj in zip(birds, objects):
+        # Standing, as the game draws it (the heron's open wings hidden), and the heron's wings open.
+        body = bird.triangles[(bird.triangles < bird.body_vertices).all(axis=1)]
+        for name, triangles in [(bird.spec["name"], body)] + ([(bird.spec["name"] + "-wings", bird.triangles)]
+                                                               if len(body) < len(bird.triangles) else []):
+            obj = studio.mesh_object("bird_" + name, bird.positions, triangles, colors=_albedo(bird))
+            obj.data.normals_split_custom_set_from_vertices([tuple(v) for v in to_blender(bird.normals)])
+            obj.data.materials.append(material)
+            objects.append(obj)
+            shots.append((bird, name, obj))
+    for bird, name, obj in shots:
         for other in objects:
             other.hide_render = other is not obj
         h = 0.42 if bird.spec["name"] == "swan" else 0.55
@@ -533,9 +739,9 @@ def previews(birds, directory):
             "top": ((0.01, 3.4, 0.0), (0.0, 0.0, 0.0)),
             "34": ((2.2, h + 1.0, 2.4), (0.0, h, 0.0)),
         }
-        for name, (eye, target) in views.items():
-            studio.render(directory / ("%s-%s.png" % (bird.spec["name"], name)), eye=eye, target=target, lens=50,
-                          size=(480, 360), samples=16)
+        for view, (eye, target) in views.items():
+            studio.render(directory / ("%s-%s.png" % (name, view)), eye=eye, target=target,
+                          lens=50 if name == bird.spec["name"] else 28, size=(480, 360), samples=16)
     studio.dispose()
 
 
@@ -559,6 +765,9 @@ def main():
             birds.append(bird)
     finally:
         studio.dispose()
+    if options.get("flight-out"):
+        write_flight(options["flight-out"], sample_flight())
+        print("%s wrote %s" % (TAG, options["flight-out"]), flush=True)
     if options.get("preview"):
         previews(birds, Path(options["preview"]))
         print("%s previews in %s" % (TAG, options["preview"]), flush=True)
