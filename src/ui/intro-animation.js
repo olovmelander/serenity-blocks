@@ -629,11 +629,16 @@ export class IntroAnimation {
         const rect = titleContainer.getBoundingClientRect();
         if (rect.width <= 0 || rect.height <= 0) return;
 
+        // The begin prompt below it is kept clear of the flock too.
+        const promptRect = this.container.querySelector('.intro-prompt')?.getBoundingClientRect();
         this.threeRenderer.setTitleBounds({
             x: rect.left,
             y: rect.top,
             width: rect.width,
             height: rect.height,
+            prompt: promptRect && promptRect.width > 0 ? {
+                x: promptRect.left, y: promptRect.top, width: promptRect.width, height: promptRect.height,
+            } : null,
         });
         this.lastTitleBoundsSync = timeMs;
 

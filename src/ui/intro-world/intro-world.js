@@ -388,6 +388,16 @@ export class IntroWorld {
                 x1: (r.x + r.width * 1.04) / W,
                 y1: (r.y + r.height * 1.06) / H,
             });
+            // ...and the begin prompt under it.
+            const q = r.prompt;
+            if (q) {
+                avoid.push({
+                    x0: (q.x - q.width * 0.1) / W,
+                    y0: (q.y - q.height * 0.3) / H,
+                    x1: (q.x + q.width * 1.1) / W,
+                    y1: (q.y + q.height * 1.3) / H,
+                });
+            }
         }
         this.murmuration.setAvoid(avoid);
         const m = murmurationAt({

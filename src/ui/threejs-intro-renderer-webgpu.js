@@ -187,7 +187,7 @@ export default class ThreeJSIntroRendererWebGPU {
     setTitleBounds(bounds) {
         if (!bounds || !this.world) return;
         this.world.setTitleRect({
-            x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height,
+            x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, prompt: bounds.prompt ?? null,
         });
     }
 
