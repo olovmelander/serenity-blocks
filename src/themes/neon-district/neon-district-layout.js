@@ -41,7 +41,7 @@ export const SIGN_WORDS = Object.freeze([
 
 /** How often each campaign family comes up when a screen or a wall is given an advert. */
 export const AD_FAMILY_SHARE = Object.freeze({
-    brand: 0.42, transit: 0.38, user: 0.12, sukha: 0.08,
+    brand: 0.42, transit: 0.38, street: 0.12, sukha: 0.08,
 });
 
 /** The paste-up walls lean to the travel posters: that is where a city's travel adverts go. */
@@ -903,7 +903,7 @@ export function buildLayout(seed = 0x0d15721c) {
             const runs = (brand) => plan.screens.reduce((n, s) => n + s.playlist.filter((c) => BILLBOARD_CELLS[c].brand === brand).length, 0);
             const slot = screen.playlist.findIndex((c) => {
                 const was = BILLBOARD_CELLS[c];
-                return was.family === 'user' || (was.family !== 'sukha' && runs(was.brand) > 1);
+                return was.family === 'street' || (was.family !== 'sukha' && runs(was.brand) > 1);
             });
             if (slot < 0) continue; // eslint-disable-line no-continue
             screen.playlist[slot] = cell;

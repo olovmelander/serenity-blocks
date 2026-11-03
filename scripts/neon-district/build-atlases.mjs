@@ -4,21 +4,22 @@
  * Shopfronts: the district's painted shopfronts (scripts/neon-district/source-art/), packed with
  * edge-extended gutters into one WebP atlas.
  *
- * Campaigns: everything the district advertises, packed the same way into a 4096 × 3584 atlas —
- * the user adverts from source-art/, and the generated campaigns painted here on a 2D canvas: the
- * eight district brands (one 16:9 billboard and two 2:3 posters in different designs each), Sukha's
- * calm spots (with an empty ring the theme's shader breathes in) and the Serenity Transit travel
- * posters — 34 worlds in seven poster designs, coloured from the game's own renders of them (docs/
- * captures), and the three modes from the menu's key art (public/assets/menu-art/).
+ * Campaigns: everything the district advertises, packed the same way into a 4096 × 3584 atlas and
+ * all painted here on a 2D canvas: ten one-off street adverts (the game's own poster among them),
+ * the eight district brands (one 16:9 billboard and two 2:3 posters in different designs each),
+ * Sukha's calm spots (with an empty ring the theme's shader breathes in) and the Serenity Transit
+ * travel posters — 34 worlds in seven poster designs, coloured from the game's own renders of them
+ * (docs/ captures), and the three modes from the menu's key art (public/assets/menu-art/).
  *
  * Writes the cell table the theme reads (src/themes/neon-district/neon-district-atlas.js): UV rect,
  * aspect, the colour each piece throws on the street (a luminance-weighted mean, scene-linear,
  * peak-normalised) and, for the campaign atlas, what each cell is (id, family, brand, shape, motion,
  * ring).
  *
- *   node scripts/neon-district/build-atlases.mjs [--out=<dir>]
+ *   node scripts/neon-district/build-atlases.mjs [--out=<dir>] [--cells=<id prefix>,...]
  *
- * (`--out` writes everything into <dir> instead of the repository, for trying a change.)
+ * (`--out` writes everything into <dir> instead of the repository, for trying a change; `--cells`
+ * paints only the campaign cells whose ids start with one of the prefixes, as PNGs into --out.)
  *
  * A headless Chrome page (scripts/lib/headless-chrome.mjs) is only used for its canvas (decode,
  * draw, scale, encode); the GPU is off, so nothing touches it. Fonts are the game's own
@@ -26,6 +27,7 @@
  * a seeded generator.
  */
 /* eslint-disable no-restricted-syntax, no-await-in-loop */
+import { readFileSync } from 'fs';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import path from 'path';
 import { pathToFileURL } from 'url';
@@ -44,6 +46,9 @@ const TABLE = OUT_OVERRIDE
     ? path.join(OUT_OVERRIDE, 'neon-district-atlas.js')
     : path.join(ROOT, 'src', 'themes', 'neon-district', 'neon-district-atlas.js');
 const GUTTER = 6;
+/** `--cells=<prefix>,...`: paint only these campaign cells, one PNG each, into --out. */
+const CELLS_ARG = process.argv.find((a) => a.startsWith('--cells='));
+const CELL_PREFIXES = CELLS_ARG ? CELLS_ARG.slice('--cells='.length).split(',').filter(Boolean) : null;
 
 const pad = (n) => String(n).padStart(2, '0');
 const fileUrl = (...parts) => pathToFileURL(path.join(...parts)).href;
@@ -73,11 +78,37 @@ const SHAPES = {
     square: { w: 384, h: 384 },
 };
 
-/** User adverts: four wide screens, then six square ones (06, 14 and 18 were removed from the sources). */
-const USER_ADS = [
-    ...[8, 9, 10, 11].map((n) => ({ n, shape: 'wide' })),
-    ...[7, 12, 13, 15, 16, 17].map((n) => ({ n, shape: 'square' })),
+/**
+ * The street adverts: one-off campaigns with no shop of their own, painted by STREET_PAINTERS in
+ * the page (four wide screens, then six squares, in atlas order). Their names play on the game's
+ * own words, like the district brands'.
+ */
+const STREET_ADS = [
+    { id: 'hold-neural', shape: 'wide' },
+    { id: 'well-fm', shape: 'wide' },
+    { id: 'rotate-bionics', shape: 'wide' },
+    { id: 'shift-faceplates', shape: 'wide' },
+    { id: 'serenity-blocks', shape: 'square' },
+    { id: 'paws-and-parts', shape: 'square' },
+    { id: 'night-market', shape: 'square' },
+    { id: 'glance-pay', shape: 'square' },
+    { id: 'lumen-soda', shape: 'square' },
+    { id: 'overclock-repairs', shape: 'square' },
 ];
+
+/** The game's own marks for its poster: the wordmark file, and the symbol's path and corner tile. */
+function gameLogo() {
+    const branding = path.join(ROOT, 'public', 'assets', 'branding');
+    const svg = readFileSync(path.join(branding, 'serenity-blocks-symbol.svg'), 'utf8');
+    const symbol = /<path[^>]*\sd="([^"]+)"/.exec(svg)?.[1];
+    const rect = /<rect([^>]*)>/.exec(svg)?.[1] || '';
+    const attr = (name) => Number(new RegExp(`\\s${name}="([-\\d.]+)"`).exec(rect)?.[1]);
+    const tile = ['x', 'y', 'width', 'height', 'rx'].map(attr);
+    if (!symbol || tile.some((v) => !Number.isFinite(v))) {
+        throw new Error('serenity-blocks-symbol.svg: no path or tile');
+    }
+    return { wordmark: fileUrl(branding, 'serenity-blocks-logo.svg'), symbol, tile };
+}
 
 /** Sukha's empty ring: [cx, cy, r] in cell fractions (v down from the top, r a fraction of the height). */
 const SUKHA_RING = { wide: [0.735, 0.5, 0.38], portrait: [0.5, 0.465, 0.205] };
@@ -437,20 +468,25 @@ const withUrls = (images) => images.map((im) => ({
     url: fileUrl(ROOT, im.image), region: im.region || null, focus: im.focus || null, zoom: im.zoom || 1,
 }));
 
-/** Every campaign cell, in table order: user adverts, brands, Sukha, transit. */
+/** Every campaign cell, in table order: street adverts, brands, Sukha, transit. */
 function campaignCells({ BRANDS, SUKHA, TRANSIT }) {
     const cells = [];
-    for (const { n, shape } of USER_ADS) {
-        const src = `ads_large_${pad(n)}.jpg`;
+    const logo = gameLogo();
+    for (const { id, shape } of STREET_ADS) {
+        const own = id === 'serenity-blocks';
         cells.push({
-            id: `user-ads_large_${pad(n)}`,
-            family: 'user',
+            id: `street-${id}`,
+            family: 'street',
             brand: null,
             shape,
             motion: 'none',
             ring: null,
-            src,
-            url: fileUrl(SOURCE, src),
+            paint: {
+                kind: 'street',
+                design: id,
+                images: own ? [{ url: logo.wordmark }] : [],
+                logo: own ? { symbol: logo.symbol, tile: logo.tile } : null,
+            },
         });
     }
     // Each brand: its billboard, its poster, and a second poster in another design of the same
@@ -464,7 +500,6 @@ function campaignCells({ BRANDS, SUKHA, TRANSIT }) {
                 shape,
                 motion: 'none',
                 ring: null,
-                src: null,
                 paint: { kind: 'brand', brand, variant },
             });
         }
@@ -477,7 +512,6 @@ function campaignCells({ BRANDS, SUKHA, TRANSIT }) {
             shape,
             motion: 'breathe',
             ring: SUKHA_RING[shape],
-            src: null,
             paint: { kind: 'sukha', brand: SUKHA, ring: SUKHA_RING[shape] },
         });
     }
@@ -490,7 +524,6 @@ function campaignCells({ BRANDS, SUKHA, TRANSIT }) {
             shape: 'portrait',
             motion: 'pan',
             ring: null,
-            src: null,
             paint: {
                 kind: 'world', brand: TRANSIT, poster: { ...w, n: i + 1 }, images: withUrls([w]),
             },
@@ -504,7 +537,6 @@ function campaignCells({ BRANDS, SUKHA, TRANSIT }) {
             shape: 'wide',
             motion: 'pan',
             ring: null,
-            src: null,
             paint: {
                 kind: 'mode', brand: TRANSIT, poster: mode, images: withUrls(mode.images),
             },
@@ -1809,7 +1841,7 @@ function installArtInPage() {
     };
 
     // ---- Sukha ------------------------------------------------------------------------------
-    function paintHale(ctx, w, h, b, wide, ring) {
+    function paintSukha(ctx, w, h, b, wide, ring) {
         const A = b.a;
         const B = b.b;
         const C = 0xeef3f6;
@@ -3332,6 +3364,957 @@ function installArtInPage() {
         });
     }
 
+    // ---- street adverts ------------------------------------------------------------------------
+    /** A neon tube along a path: a wide soft glow, the coloured tube, a pale core. */
+    function tube(ctx, shape, color, width, glow = 18) {
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.shadowColor = css(color);
+        ctx.shadowBlur = glow;
+        ctx.strokeStyle = css(color, 0.5);
+        ctx.lineWidth = width * 2.4;
+        ctx.stroke(shape);
+        ctx.shadowBlur = glow * 0.45;
+        ctx.strokeStyle = css(color);
+        ctx.lineWidth = width;
+        ctx.stroke(shape);
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = css(light(color, 0.72));
+        ctx.lineWidth = Math.max(0.6, width * 0.36);
+        ctx.stroke(shape);
+        ctx.restore();
+    }
+    /** Faint scanlines: a lit screen, not paper. */
+    function scanlines(ctx, w, h, step, a) {
+        ctx.fillStyle = `rgba(0,0,0,${a})`;
+        for (let y = 0; y < h; y += step) ctx.fillRect(0, y, w, 1);
+    }
+    /** A path from a list of points, closed or open. */
+    function poly(points, closed = true) {
+        const p = new Path2D();
+        points.forEach(([x, y], i) => (i ? p.lineTo(x, y) : p.moveTo(x, y)));
+        if (closed) p.closePath();
+        return p;
+    }
+    /** Mirrors the right half of a symmetric outline (top to bottom) into a closed loop. */
+    function mirrored(half) {
+        return [...half, ...half.slice(1, -1).reverse().map(([x, y]) => [-x, y])];
+    }
+    /** An arc with an arrowhead at its end (a rotation mark). */
+    function turnArrow(ctx, x, y, r, a0, a1, color, width) {
+        const p = new Path2D();
+        p.arc(x, y, r, a0, a1);
+        tube(ctx, p, color, width, 10);
+        const ex = x + Math.cos(a1) * r;
+        const ey = y + Math.sin(a1) * r;
+        const t = a1 + Math.PI / 2;
+        const s = width * 3.2;
+        const head = poly([
+            [ex + Math.cos(t) * s * 1.4, ey + Math.sin(t) * s * 1.4],
+            [ex + Math.cos(a1) * s, ey + Math.sin(a1) * s],
+            [ex - Math.cos(a1) * s, ey - Math.sin(a1) * s],
+        ]);
+        ctx.save();
+        ctx.fillStyle = css(color);
+        ctx.shadowColor = css(color);
+        ctx.shadowBlur = 8;
+        ctx.fill(head);
+        ctx.restore();
+    }
+
+    const STREET_PAINTERS = {
+        /** A neural implant clinic: a head in profile, and the thought it keeps in its hold box. */
+        holdNeural(ctx, w, h) {
+            const A = 0x5ee7ff;
+            const B = 0xb07cff;
+            const C = 0xeaf6ff;
+            ground(ctx, w, h, 0x0a1024, 0x08061a);
+            glowAt(ctx, w * 0.22, h * 0.52, h * 0.95, B, 0.3);
+            glowAt(ctx, w * 0.27, h * 0.4, h * 0.55, A, 0.16);
+            const k = h / 132;
+            const mx = w * 0.165;
+            const my = h * 0.54;
+            ctx.save();
+            ctx.translate(mx, my);
+            ctx.scale(k, k);
+            const head = new Path2D();
+            head.moveTo(-20, 54);
+            head.bezierCurveTo(-19, 42, -22, 31, -30, 21);
+            head.bezierCurveTo(-43, 4, -41, -31, -24, -45);
+            head.bezierCurveTo(-8, -58, 22, -55, 30, -35);
+            head.bezierCurveTo(33, -28, 32, -21, 30, -16);
+            head.lineTo(32, -9);
+            head.bezierCurveTo(36, -3, 41, 3, 42, 7);
+            head.bezierCurveTo(41, 10, 37, 11, 35, 11);
+            head.lineTo(36, 15);
+            head.lineTo(33.5, 17.5);
+            head.lineTo(35.5, 20.5);
+            head.bezierCurveTo(34.5, 26, 33, 30, 29, 33);
+            head.bezierCurveTo(24, 36, 18, 36, 14, 37);
+            head.bezierCurveTo(13, 43, 14, 49, 16, 54);
+            // The implant: traces from a node at the temple out through the head.
+            const node = [10, -17];
+            const traces = [
+                [node, [10, -30], [-6, -30], [-6, -42]],
+                [node, [-4, -17], [-4, -22], [-22, -22]],
+                [node, [0, -7], [-18, -7], [-18, 6]],
+                [node, [16, -24], [16, -40]],
+                [node, [2, 2], [2, 14], [-8, 14]],
+            ];
+            for (const t of traces) {
+                tube(ctx, poly(t, false), B, 0.9, 6);
+                const [ex, ey] = t[t.length - 1];
+                const end = new Path2D();
+                end.arc(ex, ey, 2.2, 0, TAU);
+                tube(ctx, end, B, 0.8, 6);
+            }
+            tube(ctx, head, A, 2.2, 20);
+            // The held thought, in its box, reached by a dotted line.
+            const bx = 54;
+            const by = -42;
+            const bs = 26;
+            ctx.save();
+            ctx.setLineDash([1.5, 3.5]);
+            tube(ctx, poly([node, [bx - bs / 2 - 4, by + 4]], false), A, 0.8, 6);
+            ctx.restore();
+            const box = new Path2D();
+            box.roundRect(bx - bs / 2, by - bs / 2, bs, bs, 6);
+            tube(ctx, box, A, 1.4, 12);
+            const orb = ctx.createRadialGradient(bx - 3, by - 3, 1, bx, by, 9);
+            orb.addColorStop(0, css(0xffffff));
+            orb.addColorStop(0.45, css(light(B, 0.35)));
+            orb.addColorStop(1, css(B, 0));
+            ctx.shadowColor = css(B);
+            ctx.shadowBlur = 16;
+            ctx.fillStyle = orb;
+            ctx.beginPath();
+            dot(ctx, bx, by, 9);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.beginPath();
+            dot(ctx, node[0], node[1], 3);
+            ctx.fillStyle = css(light(A, 0.6));
+            ctx.fill();
+            ctx.restore();
+            glowAt(ctx, mx + node[0] * k, my + node[1] * k, h * 0.07, A, 0.7);
+            const x = w * 0.53;
+            block(ctx, [
+                {
+                    str: 'HOLD',
+                    s: {
+                        family: UNB, weight: 900, size: 96, color: css(C), glow: 20, glowColor: css(A), maxW: w * 0.43,
+                    },
+                },
+                {
+                    str: 'NEURAL',
+                    gap: 14,
+                    s: {
+                        family: UNB, weight: 500, size: 22, spacing: 1.05, color: css(A),
+                    },
+                },
+                {
+                    str: 'KEEP ONE THOUGHT FOR LATER.',
+                    gap: 30,
+                    s: {
+                        family: MAN, weight: 800, size: 17, spacing: 0.04, color: css(C), maxW: w * 0.43,
+                    },
+                },
+                {
+                    str: 'Clarity implants, fitted in an hour.',
+                    gap: 12,
+                    s: {
+                        family: MAN, weight: 400, size: 15, color: css(light(B, 0.45)), maxW: w * 0.43,
+                    },
+                },
+            ], x, 0, { middle: h * 0.47 });
+            fine(ctx, 'SIDE EFFECTS MAY INCLUDE DEJA VU', w - 16, h - 14, css(A, 0.55), 'right');
+            scanlines(ctx, w, h, 3, 0.12);
+        },
+        /** A night radio station: looking down a well of light. */
+        wellFm(ctx, w, h) {
+            const A = 0xff6a3d;
+            const B = 0xffc46b;
+            const C = 0xfff0dc;
+            ground(ctx, w, h, 0x1d0907, 0x0b0306);
+            const cx = w * 0.245;
+            const cy = h * 0.47;
+            glowAt(ctx, cx, cy + h * 0.1, h * 0.62, A, 0.42);
+            for (let i = 0; i < 14; i++) {
+                const t = i / 13;
+                const rx = h * (0.39 - 0.34 * t ** 0.8);
+                const y = cy - h * 0.14 + h * 0.28 * t ** 0.9;
+                const ring = new Path2D();
+                ring.ellipse(cx, y, rx, rx * 0.36, 0, 0, TAU);
+                ctx.save();
+                ctx.globalAlpha = 0.95 - 0.55 * t;
+                tube(ctx, ring, mix(B, A, t), 2.4 - 1.5 * t, 12);
+                ctx.restore();
+            }
+            const deep = ctx.createRadialGradient(cx, cy + h * 0.14, 0, cx, cy + h * 0.14, h * 0.09);
+            deep.addColorStop(0, css(0xffffff, 0.95));
+            deep.addColorStop(0.4, css(B, 0.8));
+            deep.addColorStop(1, css(A, 0));
+            ctx.fillStyle = deep;
+            ctx.fillRect(cx - h * 0.1, cy + h * 0.04, h * 0.2, h * 0.2);
+            const x = w * 0.49;
+            const boxes = block(ctx, [
+                {
+                    str: 'WELL FM',
+                    s: {
+                        family: UNB, weight: 900, size: 68, color: css(C), glow: 16, glowColor: css(A), maxW: w * 0.47,
+                    },
+                },
+                {
+                    str: '88.4',
+                    gap: 16,
+                    s: {
+                        family: ORB, weight: 900, size: 62, spacing: 0.06, color: css(B), glow: 18, glowColor: css(A),
+                    },
+                },
+                {
+                    str: 'DEEP SOUNDS ALL NIGHT',
+                    gap: 22,
+                    s: {
+                        family: UNB, weight: 600, size: 15, spacing: 0.32, color: css(A), maxW: w * 0.47,
+                    },
+                },
+            ], x, 0, { middle: h * 0.42 });
+            // A level meter under the copy.
+            const r = rng(seedOf('well-fm'));
+            const top = boxes[2].base + 24;
+            const bars = 30;
+            const span = w * 0.46;
+            for (let i = 0; i < bars; i++) {
+                const v = 0.25 + 0.75 * Math.abs(Math.sin(i * 0.55 + 1.3)) * (0.55 + 0.45 * r());
+                const bh = v * h * 0.15;
+                const bx = x + (i / bars) * span;
+                const g = ctx.createLinearGradient(0, top + h * 0.15, 0, top + h * 0.15 - bh);
+                g.addColorStop(0, css(A, 0.9));
+                g.addColorStop(1, css(B, 0.9));
+                ctx.fillStyle = g;
+                ctx.fillRect(bx, top + h * 0.15 - bh, span / bars - 3, bh);
+            }
+            fine(ctx, 'ON AIR FROM MIDNIGHT · NO TALK, JUST SOUND', w - 16, h - 14, css(B, 0.6), 'right');
+            scanlines(ctx, w, h, 3, 0.1);
+        },
+        /** Bionic limbs: an arm drawn as a blueprint, every joint with its turn. */
+        rotateBionics(ctx, w, h) {
+            const A = 0x3dffa0;
+            const B = 0x2fd4ff;
+            const C = 0xe6fff3;
+            ground(ctx, w, h, 0x04140f, 0x03090d);
+            ctx.fillStyle = css(A, 0.06);
+            for (let gx = 0; gx < w; gx += 16) ctx.fillRect(gx, 0, 1, h);
+            for (let gy = 0; gy < h; gy += 16) ctx.fillRect(0, gy, w, 1);
+            ctx.fillStyle = css(A, 0.07);
+            for (let gx = 0; gx < w; gx += 64) ctx.fillRect(gx, 0, 1, h);
+            for (let gy = 0; gy < h; gy += 64) ctx.fillRect(0, gy, w, 1);
+            glowAt(ctx, w * 0.24, h * 0.5, h * 0.8, A, 0.18);
+            const k = h / 158;
+            const mx = w * 0.25;
+            const my = h * 0.53;
+            ctx.save();
+            ctx.translate(mx, my);
+            ctx.scale(k, k);
+            const S = [-42, -10];
+            const E = [-4, 30];
+            const Wr = [30, -14];
+            const capsule = (p, q, r) => {
+                const a = Math.atan2(q[1] - p[1], q[0] - p[0]);
+                const c = new Path2D();
+                c.arc(p[0], p[1], r, a + Math.PI / 2, a - Math.PI / 2);
+                c.arc(q[0], q[1], r, a - Math.PI / 2, a + Math.PI / 2);
+                c.closePath();
+                return c;
+            };
+            tube(ctx, capsule(S, E, 11), A, 1.6, 14);
+            tube(ctx, capsule(E, Wr, 9), A, 1.6, 14);
+            ctx.save();
+            ctx.setLineDash([4, 3]);
+            tube(ctx, poly([S, E, Wr], false), B, 0.6, 4);
+            ctx.restore();
+            for (const [[jx, jy], r] of [[S, 9], [E, 7.5], [Wr, 6]]) {
+                const j = new Path2D();
+                j.arc(jx, jy, r, 0, TAU);
+                j.moveTo(jx - r * 0.5, jy);
+                j.lineTo(jx + r * 0.5, jy);
+                j.moveTo(jx, jy - r * 0.5);
+                j.lineTo(jx, jy + r * 0.5);
+                tube(ctx, j, B, 1.1, 8);
+            }
+            turnArrow(ctx, S[0], S[1], 17, Math.PI * 0.75, Math.PI * 1.9, B, 0.9);
+            turnArrow(ctx, E[0], E[1], 14, Math.PI * 0.2, Math.PI * 1.05, B, 0.9);
+            turnArrow(ctx, Wr[0], Wr[1], 12, -Math.PI * 0.95, -Math.PI * 0.15, B, 0.9);
+            // A two-finger gripper at the wrist, along the forearm.
+            const fa = Math.atan2(Wr[1] - E[1], Wr[0] - E[0]);
+            ctx.save();
+            ctx.translate(Wr[0], Wr[1]);
+            ctx.rotate(fa);
+            const palm = new Path2D();
+            palm.roundRect(5, -8, 12, 16, 3);
+            tube(ctx, palm, A, 1.4, 10);
+            const finger = new Path2D();
+            finger.moveTo(16, -6);
+            finger.bezierCurveTo(26, -12, 34, -8, 36, -2);
+            finger.moveTo(16, 6);
+            finger.bezierCurveTo(26, 12, 34, 8, 36, 2);
+            tube(ctx, finger, A, 1.6, 10);
+            ctx.restore();
+            // A dimension line along the upper arm.
+            const n = [-(E[1] - S[1]), E[0] - S[0]];
+            const nl = Math.hypot(n[0], n[1]);
+            const o = 22;
+            const d0 = [S[0] + (n[0] / nl) * o, S[1] + (n[1] / nl) * o];
+            const d1 = [E[0] + (n[0] / nl) * o, E[1] + (n[1] / nl) * o];
+            tube(ctx, poly([d0, d1], false), A, 0.5, 3);
+            ctx.restore();
+            line(ctx, '412 MM', mx + ((d0[0] + d1[0]) / 2) * k - 10, my + ((d0[1] + d1[1]) / 2) * k + 4, {
+                family: MONO, weight: 400, size: 10, spacing: 0.1, color: css(A, 0.75), align: 'right',
+            });
+            const x = w * 0.5;
+            block(ctx, [
+                {
+                    str: 'ROTATE',
+                    s: {
+                        family: UNB, weight: 900, size: 76, color: css(A), glow: 16, maxW: w * 0.46,
+                    },
+                },
+                {
+                    str: 'BIONICS',
+                    gap: 14,
+                    s: {
+                        family: UNB, weight: 500, size: 22, spacing: 0.9, color: css(B),
+                    },
+                },
+                {
+                    str: 'FULL RANGE OF MOTION.',
+                    gap: 30,
+                    s: {
+                        family: MAN, weight: 800, size: 18, spacing: 0.04, color: css(C), maxW: w * 0.46,
+                    },
+                },
+                {
+                    str: 'Arms and hands, fitted while you wait.',
+                    gap: 12,
+                    s: {
+                        family: MAN, weight: 400, size: 15, color: css(light(B, 0.4)), maxW: w * 0.46,
+                    },
+                },
+            ], x, 0, { middle: h * 0.47 });
+            fine(ctx, 'CALIBRATION INCLUDED · TEN YEAR WARRANTY', w - 16, h - 14, css(A, 0.55), 'right');
+        },
+        /** Faceplates: a faceted mask, and the same mask a step to the side. */
+        shiftFaceplates(ctx, w, h) {
+            const A = 0xd65cff;
+            const B = 0x7d84ff;
+            const C = 0xf7eaff;
+            ground(ctx, w, h, 0x150822, 0x070512);
+            glowAt(ctx, w * 0.23, h * 0.5, h * 0.9, A, 0.24);
+            const k = h / 120;
+            const mx = w * 0.275;
+            const my = h * 0.5;
+            const half = [[0, -52], [19, -48], [31, -37], [35, -18], [34, 0], [30, 17], [22, 33], [12, 45], [0, 51]];
+            const outline = poly(mirrored(half));
+            const facets = new Path2D();
+            const seg = (p, q) => {
+                facets.moveTo(p[0], p[1]);
+                facets.lineTo(q[0], q[1]);
+            };
+            for (const s of [1, -1]) {
+                const P = (x, y) => [x * s, y];
+                seg(P(0, -22), P(31, -37));
+                seg(P(0, -22), P(35, -18));
+                seg(P(0, -52), P(14, -24));
+                seg(P(14, -24), P(31, -37));
+                seg(P(0, 8), P(34, 0));
+                seg(P(0, 8), P(30, 17));
+                seg(P(6, 14), P(22, 33));
+                seg(P(0, 38), P(22, 33));
+                seg(P(0, 38), P(12, 45));
+            }
+            seg([0, -52], [0, 8]);
+            seg([-6, 14], [6, 14]);
+            seg([0, 8], [-6, 14]);
+            seg([0, 8], [6, 14]);
+            ctx.save();
+            ctx.translate(mx, my);
+            ctx.scale(k, k);
+            ctx.save();
+            ctx.translate(-26, 0);
+            ctx.globalAlpha = 0.28;
+            tube(ctx, outline, B, 1.4, 10);
+            ctx.restore();
+            ctx.fillStyle = 'rgba(14,6,28,0.88)';
+            ctx.fill(outline);
+            ctx.save();
+            ctx.globalAlpha = 0.6;
+            tube(ctx, facets, A, 0.55, 4);
+            ctx.restore();
+            tube(ctx, outline, A, 1.8, 18);
+            for (const s of [-1, 1]) {
+                const eye = poly([[s * 7, -9], [s * 22, -12], [s * 24, -7], [s * 9, -5]]);
+                ctx.save();
+                ctx.shadowColor = css(s > 0 ? 0xffffff : B);
+                ctx.shadowBlur = s > 0 ? 22 : 8;
+                ctx.fillStyle = css(s > 0 ? light(A, 0.7) : dark(B, 0.6));
+                ctx.fill(eye);
+                ctx.restore();
+            }
+            tube(ctx, poly([[-10, 27], [10, 27]], false), A, 1.2, 8);
+            ctx.restore();
+            glowAt(ctx, mx + 16 * k, my - 9 * k, h * 0.12, A, 0.5);
+            const x = w * 0.5;
+            block(ctx, [
+                {
+                    str: 'SHIFT',
+                    s: {
+                        family: UNB, weight: 900, size: 92, color: css(C), glow: 20, glowColor: css(A), maxW: w * 0.46,
+                    },
+                },
+                {
+                    str: 'FACEPLATES',
+                    gap: 14,
+                    s: {
+                        family: UNB, weight: 500, size: 20, spacing: 0.62, color: css(A),
+                    },
+                },
+                {
+                    str: 'NEW FACE. SAME YOU.',
+                    gap: 30,
+                    s: {
+                        family: MAN, weight: 800, size: 18, spacing: 0.04, color: css(C), maxW: w * 0.46,
+                    },
+                },
+                {
+                    str: 'Chrome, ceramic or carbon. Fitted over lunch.',
+                    gap: 12,
+                    s: {
+                        family: MAN, weight: 400, size: 15, color: css(light(B, 0.45)), maxW: w * 0.46,
+                    },
+                },
+            ], x, 0, { middle: h * 0.47 });
+            fine(ctx, 'SKIN SAFE · REVERSIBLE · BOOK A FITTING', w - 16, h - 14, css(A, 0.55), 'right');
+            scanlines(ctx, w, h, 3, 0.1);
+        },
+        /** The game's own poster: its symbol as a neon sign over the wordmark, in the rain. */
+        serenityBlocks(ctx, w, h, imgs, logo) {
+            const TEAL = 0x9ee8ed;
+            const VIOLET = 0xb8a4ff;
+            const CORAL = 0xffac88;
+            ground(ctx, w, h, 0x0c0e22, 0x05060e);
+            glowAt(ctx, w * 0.5, h * 0.36, h * 0.62, VIOLET, 0.26);
+            glowAt(ctx, w * 0.5, h * 0.34, h * 0.36, TEAL, 0.22);
+            const r = rng(seedOf('serenity-rain'));
+            ctx.lineCap = 'round';
+            for (let i = 0; i < 240; i++) {
+                const x = r() * (w + 40) - 20;
+                const y = r() * h;
+                const len = 8 + r() * 22;
+                ctx.strokeStyle = css(TEAL, 0.05 + 0.16 * r() ** 2);
+                ctx.lineWidth = 0.6 + r() * 0.7;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x - len * 0.12, y + len);
+                ctx.stroke();
+            }
+            // The symbol (its own path data, viewBox -8 -12 100 120), lit as a sign.
+            const size = h * 0.42;
+            const k = size / 120;
+            const sx = w / 2 - (100 * k) / 2 + 8 * k;
+            const sy = h * 0.07 + 12 * k;
+            ctx.save();
+            ctx.translate(sx, sy);
+            ctx.scale(k, k);
+            const o = new Path2D(logo.symbol);
+            ctx.fillStyle = css(TEAL, 0.14);
+            ctx.fill(o);
+            tube(ctx, o, TEAL, 2.6, 26);
+            const tile = new Path2D();
+            tile.roundRect(...logo.tile);
+            ctx.shadowColor = css(CORAL);
+            ctx.shadowBlur = 26;
+            ctx.fillStyle = css(CORAL);
+            ctx.fill(tile);
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = css(light(CORAL, 0.45));
+            ctx.fill(tile);
+            ctx.restore();
+            // The wordmark itself (public/assets/branding/serenity-blocks-logo.svg).
+            const wordmark = imgs[0].img;
+            const mw = w * 0.74;
+            const mh = mw * (wordmark.naturalHeight / wordmark.naturalWidth);
+            const wy = h * 0.57;
+            ctx.save();
+            ctx.shadowColor = css(VIOLET, 0.8);
+            ctx.shadowBlur = 18;
+            ctx.drawImage(wordmark, (w - mw) / 2, wy, mw, mh);
+            ctx.restore();
+            ctx.drawImage(wordmark, (w - mw) / 2, wy, mw, mh);
+            const floor = ctx.createLinearGradient(0, h * 0.86, 0, h);
+            floor.addColorStop(0, 'rgba(0,0,0,0)');
+            floor.addColorStop(1, css(VIOLET, 0.1));
+            ctx.fillStyle = floor;
+            ctx.fillRect(0, h * 0.86, w, h * 0.14);
+            line(ctx, 'THE FUTURE OF PUZZLES IS NEON', w / 2, h - 22, {
+                family: ORB,
+                weight: 700,
+                size: 14,
+                spacing: 0.16,
+                color: css(TEAL),
+                glow: 8,
+                align: 'center',
+                maxW: w - 40,
+            });
+        },
+        /** A clinic for robot pets: a cat's face with lit eyes. */
+        pawsAndParts(ctx, w, h) {
+            const A = 0xff5fae;
+            const B = 0x5ff2e0;
+            const C = 0xfff0f7;
+            ground(ctx, w, h, 0x1c0a1e, 0x0a0610);
+            glowAt(ctx, w * 0.5, h * 0.36, h * 0.55, A, 0.3);
+            const k = h / 210;
+            const mx = w * 0.5;
+            const my = h * 0.38;
+            ctx.save();
+            ctx.translate(mx, my);
+            ctx.scale(k, k);
+            const half = [[0, -36], [12, -36], [29, -58], [35, -25], [39, 0], [37, 22], [22, 39], [0, 43]];
+            const head = poly(mirrored(half));
+            ctx.fillStyle = 'rgba(30,8,32,0.9)';
+            ctx.fill(head);
+            tube(ctx, head, A, 2.2, 18);
+            const detail = new Path2D();
+            for (const s of [-1, 1]) {
+                detail.moveTo(s * 15, -37);
+                detail.lineTo(s * 27, -50);
+                detail.lineTo(s * 31, -32);
+                for (const [y0, y1] of [[10, 4], [14, 14], [18, 24]]) {
+                    detail.moveTo(s * 21, y0);
+                    detail.lineTo(s * 54, y1);
+                }
+            }
+            detail.moveTo(-8, 17);
+            detail.quadraticCurveTo(-4, 22, 0, 18);
+            detail.quadraticCurveTo(4, 22, 8, 17);
+            tube(ctx, detail, A, 0.9, 8);
+            ctx.save();
+            ctx.setLineDash([2, 3]);
+            const seam = new Path2D();
+            seam.moveTo(-26, -20);
+            seam.quadraticCurveTo(0, -30, 26, -20);
+            tube(ctx, seam, B, 0.6, 4);
+            ctx.restore();
+            for (const s of [-1, 1]) {
+                const eye = new Path2D();
+                eye.roundRect(s * 15 - 8, -9, 16, 9, 4);
+                ctx.save();
+                ctx.shadowColor = css(B);
+                ctx.shadowBlur = 18;
+                ctx.fillStyle = css(light(B, 0.4));
+                ctx.fill(eye);
+                ctx.restore();
+                ctx.beginPath();
+                dot(ctx, s * 34, -12, 1.8);
+                ctx.fillStyle = css(B);
+                ctx.fill();
+            }
+            ctx.fillStyle = css(A);
+            ctx.fill(poly([[-4, 8], [4, 8], [0, 13]]));
+            ctx.restore();
+            block(ctx, [
+                {
+                    str: 'PAWS & PARTS',
+                    s: {
+                        family: UNB, weight: 900, size: 44, color: css(C), glow: 14, glowColor: css(A), maxW: w - 40,
+                    },
+                },
+                {
+                    str: 'ROBOT PET CLINIC',
+                    gap: 12,
+                    s: {
+                        family: UNB, weight: 500, size: 14, spacing: 0.5, color: css(B),
+                    },
+                },
+            ], w / 2, h * 0.66, { align: 'center' });
+            block(ctx, [{
+                str: 'EVERY LIFE BACKED UP',
+                s: {
+                    family: UNB,
+                    weight: 800,
+                    size: 13,
+                    spacing: 0.1,
+                    color: css(dark(A, 0.6)),
+                    bg: {
+                        color: css(A), padX: 13, padY: 8, radius: 99,
+                    },
+                },
+            }], w / 2, h - 58, { align: 'center' });
+            fine(ctx, 'WALK-INS WELCOME · OPEN ALL NIGHT', w / 2, h - 14, css(B, 0.6), 'center');
+        },
+        /** The night market: lanterns on a line over the stalls' awnings. */
+        nightMarket(ctx, w, h) {
+            const AMBER = 0xffb340;
+            const RED = 0xff4d4d;
+            const TEAL = 0x4de0d0;
+            const PAPER = 0xfff1dc;
+            ground(ctx, w, h, 0x160b20, 0x07050c);
+            glowAt(ctx, w * 0.5, h * 0.2, h * 0.7, AMBER, 0.16);
+            const sag = (x) => 58 + 46 * (1 - ((x / w) * 2 - 1) ** 2);
+            const wire = new Path2D();
+            for (let x = -4; x <= w + 4; x += 4) {
+                if (x < 0) wire.moveTo(x, sag(x));
+                else wire.lineTo(x, sag(x));
+            }
+            ctx.strokeStyle = 'rgba(255,220,170,0.35)';
+            ctx.lineWidth = 1.2;
+            ctx.stroke(wire);
+            const colours = [AMBER, RED, AMBER, TEAL, AMBER, RED, AMBER];
+            colours.forEach((col, i) => {
+                const x = w * (0.08 + (i / (colours.length - 1)) * 0.84);
+                const y = sag(x) + 18;
+                glowAt(ctx, x, y, 44, col, 0.5);
+                ctx.strokeStyle = 'rgba(255,220,170,0.4)';
+                ctx.beginPath();
+                ctx.moveTo(x, sag(x));
+                ctx.lineTo(x, y - 14);
+                ctx.stroke();
+                const g = ctx.createRadialGradient(x - 3, y - 4, 1, x, y, 16);
+                g.addColorStop(0, css(light(col, 0.7)));
+                g.addColorStop(0.6, css(col));
+                g.addColorStop(1, css(dark(col, 0.45)));
+                ctx.fillStyle = g;
+                ctx.beginPath();
+                ctx.ellipse(x, y, 11, 14, 0, 0, TAU);
+                ctx.fill();
+                ctx.strokeStyle = css(dark(col, 0.4), 0.7);
+                ctx.lineWidth = 1;
+                for (const dx of [-5, 0, 5]) {
+                    ctx.beginPath();
+                    ctx.ellipse(x, y, Math.abs(dx) * 1.6 + 0.5, 14, 0, 0, TAU);
+                    ctx.stroke();
+                }
+                ctx.fillStyle = css(dark(col, 0.35));
+                ctx.fillRect(x - 6, y - 16, 12, 3);
+                ctx.fillRect(x - 5, y + 13, 10, 3);
+            });
+            // Three awnings along the bottom, scalloped.
+            const aw = w / 3;
+            const top = h - 74;
+            [[RED, PAPER], [TEAL, PAPER], [AMBER, 0x3a1a08]].forEach(([a, b], i) => {
+                const x0 = i * aw;
+                ctx.save();
+                const shape = new Path2D();
+                shape.moveTo(x0 + 6, top);
+                shape.lineTo(x0 + aw - 6, top);
+                shape.lineTo(x0 + aw - 2, top + 30);
+                const n = 5;
+                for (let s = n; s > 0; s--) {
+                    const sx0 = x0 + 2 + ((aw - 4) / n) * s;
+                    const sx1 = x0 + 2 + ((aw - 4) / n) * (s - 1);
+                    shape.quadraticCurveTo((sx0 + sx1) / 2, top + 44, sx1, top + 30);
+                }
+                shape.closePath();
+                ctx.clip(shape);
+                ctx.fillStyle = css(a);
+                ctx.fillRect(x0, top, aw, 50);
+                ctx.fillStyle = css(b);
+                for (let s = 0; s < 5; s += 2) ctx.fillRect(x0 + 2 + ((aw - 4) / 5) * s, top, (aw - 4) / 5, 50);
+                ctx.restore();
+                const lit = ctx.createLinearGradient(0, top + 40, 0, h);
+                lit.addColorStop(0, css(AMBER, 0.16));
+                lit.addColorStop(1, css(AMBER, 0));
+                ctx.fillStyle = lit;
+                ctx.fillRect(x0 + 8, top + 40, aw - 16, h - top - 40);
+            });
+            const title = {
+                family: UNB, weight: 900, size: 56, color: css(PAPER), glow: 16, glowColor: css(AMBER),
+            };
+            block(ctx, [
+                {
+                    str: 'NIGHT',
+                    s: { ...title, maxW: w - 50 },
+                },
+                {
+                    str: 'MARKET',
+                    gap: 10,
+                    s: { ...title, maxW: w - 50 },
+                },
+                {
+                    str: 'OPEN TILL DAWN',
+                    gap: 18,
+                    s: {
+                        family: UNB, weight: 700, size: 16, spacing: 0.3, color: css(AMBER),
+                    },
+                },
+                {
+                    str: 'STREET FOOD · RECORDS · REPAIRS',
+                    gap: 12,
+                    s: {
+                        family: MAN, weight: 600, size: 13, spacing: 0.12, color: css(PAPER, 0.8), maxW: w - 50,
+                    },
+                },
+            ], w / 2, 0, { align: 'center', middle: h * 0.56 });
+        },
+        /** Pay with a look: an iris in the scanner's frame. */
+        glancePay(ctx, w, h) {
+            const A = 0x3fd8ff;
+            const B = 0x4a6bff;
+            const C = 0xeaf9ff;
+            ground(ctx, w, h, 0x06101f, 0x030611);
+            const cx = w / 2;
+            const cy = h * 0.37;
+            const R = h * 0.25;
+            glowAt(ctx, cx, cy, R * 1.9, A, 0.3);
+            const iris = ctx.createRadialGradient(cx, cy, R * 0.3, cx, cy, R);
+            iris.addColorStop(0, css(light(A, 0.25)));
+            iris.addColorStop(0.55, css(B));
+            iris.addColorStop(1, css(dark(B, 0.35)));
+            ctx.fillStyle = iris;
+            ctx.beginPath();
+            dot(ctx, cx, cy, R);
+            ctx.fill();
+            const r = rng(seedOf('glance-iris'));
+            for (let i = 0; i < 260; i++) {
+                const a = (i / 260) * TAU + r() * 0.02;
+                const r0 = R * (0.36 + 0.06 * r());
+                const r1 = R * (0.72 + 0.26 * r());
+                ctx.strokeStyle = css(r() > 0.5 ? light(A, 0.5) : dark(B, 0.5), 0.25 + 0.45 * r());
+                ctx.lineWidth = 0.6 + r() * 0.9;
+                ctx.beginPath();
+                ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0);
+                ctx.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+                ctx.stroke();
+            }
+            ctx.strokeStyle = css(light(A, 0.6), 0.7);
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            dot(ctx, cx, cy, R * 0.52);
+            ctx.stroke();
+            ctx.strokeStyle = css(0x02040a, 0.9);
+            ctx.lineWidth = R * 0.07;
+            ctx.beginPath();
+            dot(ctx, cx, cy, R * 0.98);
+            ctx.stroke();
+            ctx.fillStyle = '#02030a';
+            ctx.beginPath();
+            dot(ctx, cx, cy, R * 0.32);
+            ctx.fill();
+            ctx.fillStyle = 'rgba(255,255,255,0.85)';
+            ctx.beginPath();
+            dot(ctx, cx - R * 0.12, cy - R * 0.14, R * 0.06);
+            ctx.fill();
+            // The scanner: corner brackets, a sweep line and its read-out.
+            const s = R * 1.3;
+            const br = new Path2D();
+            for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+                br.moveTo(cx + sx * s, cy + sy * (s - 22));
+                br.lineTo(cx + sx * s, cy + sy * s);
+                br.lineTo(cx + sx * (s - 22), cy + sy * s);
+            }
+            tube(ctx, br, A, 2, 12);
+            const sweep = cy + R * 0.42;
+            const g = ctx.createLinearGradient(cx - s, 0, cx + s, 0);
+            g.addColorStop(0, css(A, 0));
+            g.addColorStop(0.5, css(light(A, 0.5), 0.9));
+            g.addColorStop(1, css(A, 0));
+            ctx.fillStyle = g;
+            ctx.fillRect(cx - s, sweep - 1, s * 2, 2);
+            fine(ctx, 'MATCH 99.8%', cx + s - 4, cy - s + 16, css(A, 0.8), 'right');
+            block(ctx, [
+                {
+                    str: 'GLANCE',
+                    s: {
+                        family: UNB, weight: 900, size: 52, color: css(C), glow: 14, glowColor: css(A), maxW: w - 40,
+                    },
+                },
+                {
+                    str: 'PAY WITH A LOOK',
+                    gap: 12,
+                    s: {
+                        family: UNB, weight: 500, size: 14, spacing: 0.45, color: css(A),
+                    },
+                },
+            ], w / 2, h * 0.76, { align: 'center' });
+            fine(ctx, 'NO CARDS · NO CODES · NO QUEUES', w / 2, h - 14, css(A, 0.55), 'center');
+        },
+        /** A soda that glows: the can, lit from inside its label. */
+        lumenSoda(ctx, w, h) {
+            const A = 0xc6ff3d;
+            const B = 0x8a4dff;
+            const C = 0xf5ffe0;
+            ground(ctx, w, h, 0x18092c, 0x070312);
+            const cx = w * 0.3;
+            const cy = h * 0.5;
+            rays(ctx, w, h, cx, cy, 28, A, 0.05, 0, 0.1);
+            glowAt(ctx, cx, cy, h * 0.5, A, 0.36);
+            bubbles(ctx, w, h, {
+                seed: seedOf('lumen-bubbles'), count: 70, min: 1.2, max: 5, alpha: 0.4, color: A, ring: true,
+            });
+            const cw = w * 0.3;
+            const ch = h * 0.62;
+            const x0 = cx - cw / 2;
+            const y0 = cy - ch / 2;
+            const body = ctx.createLinearGradient(x0, 0, x0 + cw, 0);
+            body.addColorStop(0, css(dark(B, 0.35)));
+            body.addColorStop(0.3, css(light(B, 0.25)));
+            body.addColorStop(0.55, css(B));
+            body.addColorStop(1, css(dark(B, 0.3)));
+            const can = new Path2D();
+            can.roundRect(x0, y0, cw, ch, 14);
+            ctx.save();
+            ctx.shadowColor = css(A);
+            ctx.shadowBlur = 30;
+            ctx.fillStyle = body;
+            ctx.fill(can);
+            ctx.restore();
+            ctx.save();
+            ctx.clip(can);
+            const band = ctx.createLinearGradient(x0, 0, x0 + cw, 0);
+            band.addColorStop(0, css(dark(A, 0.55)));
+            band.addColorStop(0.4, css(light(A, 0.5)));
+            band.addColorStop(1, css(dark(A, 0.6)));
+            ctx.fillStyle = band;
+            ctx.fillRect(x0, cy - ch * 0.16, cw, ch * 0.32);
+            ctx.restore();
+            ctx.fillStyle = css(0xd8d0ea);
+            ctx.beginPath();
+            ctx.ellipse(cx, y0 + 4, cw * 0.44, 6, 0, 0, TAU);
+            ctx.fill();
+            ctx.fillStyle = css(0x9a90b0);
+            ctx.beginPath();
+            ctx.ellipse(cx, y0 + 4, cw * 0.3, 3.5, 0, 0, TAU);
+            ctx.fill();
+            line(ctx, 'L', cx, cy + ch * 0.1, {
+                family: UNB, weight: 900, size: ch * 0.26, color: css(dark(B, 0.55)), align: 'center',
+            });
+            const x = w * 0.54;
+            block(ctx, [
+                {
+                    str: 'LUMEN',
+                    s: {
+                        family: UNB, weight: 900, size: 46, color: css(A), glow: 16, maxW: w * 0.42,
+                    },
+                },
+                {
+                    str: 'SODA',
+                    gap: 12,
+                    s: {
+                        family: UNB, weight: 500, size: 18, spacing: 0.9, color: css(C),
+                    },
+                },
+                {
+                    str: 'DRINK THE LIGHT',
+                    gap: 30,
+                    s: {
+                        family: UNB,
+                        weight: 800,
+                        size: 11,
+                        spacing: 0.1,
+                        color: css(dark(B, 0.6)),
+                        maxW: w * 0.42,
+                        bg: {
+                            color: css(A), padX: 10, padY: 7, radius: 99,
+                        },
+                    },
+                },
+            ], x + 8, 0, { middle: h * 0.47 });
+            fine(ctx, 'CONTAINS NO ACTUAL LIGHT', w - 16, h - 14, css(A, 0.55), 'right');
+        },
+        /** A repair shop: a cog and a spanner inside hazard stripes. */
+        overclockRepairs(ctx, w, h) {
+            const A = 0xffcc1a;
+            const B = 0xff7a1a;
+            const C = 0xfff4d6;
+            ground(ctx, w, h, 0x15120a, 0x080704);
+            const f = 18;
+            ctx.save();
+            const frame = new Path2D();
+            frame.rect(0, 0, w, h);
+            frame.rect(f, f, w - f * 2, h - f * 2);
+            ctx.clip(frame, 'evenodd');
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, w, h);
+            stripes(ctx, 0, 0, w, h, {
+                color: css(A), slant: 1, width: 14, period: 28,
+            });
+            ctx.restore();
+            glowAt(ctx, w / 2, h * 0.38, h * 0.48, A, 0.2);
+            const cx = w / 2;
+            const cy = h * 0.37;
+            const R = h * 0.2;
+            const cog = new Path2D();
+            const teeth = 12;
+            for (let i = 0; i < teeth * 4; i++) {
+                const a = (i / (teeth * 4)) * TAU;
+                const rr = i % 4 < 2 ? R : R * 0.8;
+                const px = cx + Math.cos(a) * rr;
+                const py = cy + Math.sin(a) * rr;
+                if (i) cog.lineTo(px, py);
+                else cog.moveTo(px, py);
+            }
+            cog.closePath();
+            cog.moveTo(cx + R * 0.34, cy);
+            cog.arc(cx, cy, R * 0.34, 0, TAU);
+            ctx.fillStyle = 'rgba(40,30,6,0.9)';
+            ctx.fill(cog, 'evenodd');
+            tube(ctx, cog, A, 2.2, 16);
+            // The spanner, drawn solid on its own layer (the jaw and the ring cut out), then lit.
+            const layer = document.createElement('canvas');
+            layer.width = w;
+            layer.height = h;
+            const lc = layer.getContext('2d');
+            lc.translate(cx, cy);
+            lc.rotate(-Math.PI / 4);
+            const L = R * 1.45;
+            const spanner = lc.createLinearGradient(0, -12, 0, 12);
+            spanner.addColorStop(0, css(light(B, 0.35)));
+            spanner.addColorStop(1, css(dark(B, 0.75)));
+            lc.fillStyle = spanner;
+            lc.beginPath();
+            lc.roundRect(-L, -7, L * 2, 14, 7);
+            lc.fill();
+            lc.beginPath();
+            dot(lc, L, 0, 21);
+            dot(lc, -L, 0, 15);
+            lc.fill();
+            lc.globalCompositeOperation = 'destination-out';
+            lc.fillRect(L - 2, -8, 30, 16);
+            lc.beginPath();
+            dot(lc, -L, 0, 8);
+            lc.fill();
+            ctx.save();
+            ctx.shadowColor = css(B);
+            ctx.shadowBlur = 18;
+            ctx.drawImage(layer, 0, 0);
+            ctx.restore();
+            block(ctx, [
+                {
+                    str: 'OVERCLOCK',
+                    s: {
+                        family: UNB, weight: 900, size: 42, color: css(A), glow: 12, glowColor: css(B), maxW: w - 70,
+                    },
+                },
+                {
+                    str: 'REPAIRS',
+                    gap: 10,
+                    s: {
+                        family: UNB, weight: 600, size: 17, spacing: 0.6, color: css(C),
+                    },
+                },
+                {
+                    str: 'FIX IT · TUNE IT · RUN IT',
+                    gap: 16,
+                    s: {
+                        family: MAN, weight: 800, size: 14, spacing: 0.08, color: css(B), maxW: w - 70,
+                    },
+                },
+            ], w / 2, h * 0.65, { align: 'center' });
+            fine(ctx, 'DROIDS · DRONES · DECKS · 24H', w / 2, h - f - 10, css(A, 0.6), 'center');
+        },
+    };
+
     async function paint(spec, shape, w, h, load) {
         const canvas = document.createElement('canvas');
         canvas.width = w;
@@ -3340,13 +4323,20 @@ function installArtInPage() {
         ctx.imageSmoothingQuality = 'high';
         const wide = shape === 'wide';
         const variant = spec.variant > 1 ? `-${spec.variant}` : '';
-        const id = `${spec.kind}-${spec.brand.id}-${spec.poster ? spec.poster.id : ''}-${shape}${variant}`;
+        const who = spec.brand ? spec.brand.id : spec.design;
+        const id = `${spec.kind}-${who}-${spec.poster ? spec.poster.id : ''}-${shape}${variant}`;
         if (spec.kind === 'brand') {
             if (spec.variant > 1) BRAND_POSTERS_2[spec.brand.id](ctx, w, h, spec.brand);
             else BRAND_PAINTERS[spec.brand.id](ctx, w, h, spec.brand, wide);
             vignette(ctx, w, h, 0.35);
         } else if (spec.kind === 'sukha') {
-            paintHale(ctx, w, h, spec.brand, wide, spec.ring);
+            paintSukha(ctx, w, h, spec.brand, wide, spec.ring);
+        } else if (spec.kind === 'street') {
+            const imgs = [];
+            for (const im of spec.images) imgs.push({ img: await load(im.url) });
+            const painter = spec.design.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+            STREET_PAINTERS[painter](ctx, w, h, imgs, spec.logo);
+            vignette(ctx, w, h, 0.35);
         } else {
             const imgs = [];
             for (const im of spec.images) {
@@ -3464,6 +4454,24 @@ async function bakeInPage(spec, gutter) {
     };
 }
 
+/** Runs in the page: paints the given campaign cells alone, as PNG data URLs (for --cells). */
+async function previewInPage(cells, gutter) {
+    const load = (url) => new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error(`failed to load ${url}`));
+        img.src = url;
+    });
+    const out = [];
+    for (const cell of cells) {
+        const w = cell.w - gutter * 2;
+        const h = cell.h - gutter * 2;
+        const canvas = await window.__campaignArt.paint(cell.paint, cell.shape, w, h, load);
+        out.push({ id: cell.id, png: canvas.toDataURL('image/png') });
+    }
+    return out;
+}
+
 const round = (v, digits = 5) => Number(v.toFixed(digits));
 const str = (v) => (v === null || v === undefined ? 'null' : `'${v}'`);
 const rectOf = (c) => `rect: [${c.rect.map((v) => round(v)).join(', ')}],`;
@@ -3484,14 +4492,13 @@ function tableSource(shop, ads, adsAtlas) {
         shape: '${c.shape}',
         motion: '${c.motion}',
         ring: ${c.ring ? `[${c.ring.join(', ')}]` : 'null'},
-        src: ${str(c.src)},
         ${rectOf(c)}
         aspect: ${round(c.aspect, 4)},
         ${glowOf(c)}
         luma: ${round(c.luma, 4)},
     },`).join('\n');
     const n = (key, value) => ads.cells.filter((c) => c[key] === value).length;
-    const families = `${n('family', 'user')} user adverts, then ${n('family', 'brand')} district-brand pieces`;
+    const families = `${n('family', 'street')} street adverts, then ${n('family', 'brand')} district-brand pieces`;
     const shapes = `'wide' (16:9, ${n('shape', 'wide')} cells) | 'portrait' (2:3, ${n('shape', 'portrait')})`
         + ` | 'square' (${n('shape', 'square')})`;
     return `/**
@@ -3522,15 +4529,13 @@ export const BILLBOARD_ATLAS = Object.freeze({
  * The campaign cells: ${families} (a wide billboard
  * and two portrait posters per brand), ${n('family', 'sukha')} Sukha pieces and ${n('family', 'transit')} Serenity
  * Transit posters.
- *  - \`family\`: 'user' | 'brand' | 'sukha' | 'transit'; \`brand\`: the campaign id (neon-district-campaigns.js),
- *    null for user adverts.
- *  - \`shape\`: ${shapes}; a user advert keeps its own
- *    \`aspect\` inside its shape.
+ *  - \`family\`: 'street' | 'brand' | 'sukha' | 'transit'; \`brand\`: the campaign id
+ *    (neon-district-campaigns.js), null for street adverts.
+ *  - \`shape\`: ${shapes}.
  *  - \`motion\`: 'breathe' (Sukha: the shader draws a breathing ring in \`ring\`), 'pan' (transit: drift
  *    and zoom slowly) or 'none'.
  *  - \`ring\`: [cx, cy, r] of the empty ring area in cell fractions (v down from the top, r a fraction
  *    of the cell height), or null.
- *  - \`src\`: the source file of a user advert; null for generated art.
  */
 export const BILLBOARD_CELLS = Object.freeze([
 ${adRows}
@@ -3556,10 +4561,18 @@ async function run() {
         const faces = await page.evaluate(`(${installFontsInPage.toString()})(${JSON.stringify(fonts)})`);
         console.log(`fonts: ${faces} faces`);
         await page.evaluate(`(${installArtInPage.toString()})()`);
+        const decode = (dataUrl) => Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64');
+        if (CELL_PREFIXES) {
+            if (!OUT_OVERRIDE) throw new Error('--cells writes previews: give --out=<dir> too');
+            const picked = CAMPAIGNS.cells.filter((c) => c.paint && CELL_PREFIXES.some((p) => c.id.startsWith(p)));
+            const shots = await page.evaluate(`(${previewInPage.toString()})(${JSON.stringify(picked)}, ${GUTTER})`);
+            for (const shot of shots) await writeFile(path.join(OUT_DIR, `${shot.id}.png`), decode(shot.png));
+            console.log(`painted ${shots.length} cells into ${OUT_DIR}`);
+            return;
+        }
         const results = [];
         for (const spec of [SHOPFRONTS, CAMPAIGNS]) {
             const baked = await page.evaluate(`(${bakeInPage.toString()})(${JSON.stringify(spec)}, ${GUTTER})`);
-            const decode = (dataUrl) => Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64');
             const full = decode(baked.full);
             const half = decode(baked.half);
             await writeFile(path.join(OUT_DIR, `${spec.file}.webp`), full);

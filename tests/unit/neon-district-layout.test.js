@@ -365,7 +365,7 @@ describe('neon district atlases', () => {
 
     it('files every advert under a campaign and a shape, Sukha\'s with room for its ring', () => {
         const families = new Set(BILLBOARD_CELLS.map((c) => c.family));
-        expect([...families].sort()).toEqual(['brand', 'sukha', 'transit', 'user']);
+        expect([...families].sort()).toEqual(['brand', 'street', 'sukha', 'transit']);
         for (const cell of BILLBOARD_CELLS) {
             expect(['wide', 'portrait', 'square']).toContain(cell.shape);
             if (cell.family === 'brand') expect(BRANDS.map((b) => b.id)).toContain(cell.brand);
