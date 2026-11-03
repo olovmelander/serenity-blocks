@@ -11,11 +11,11 @@ export const FALL_TETROMINOS = {
     colors: {
         I: '#f6cf72', // Sunlit birch gold
         O: '#ef9e42', // Harvest amber
-        T: '#bc77ac', // Plum twilight
-        S: '#8fb89c', // Woodland sage
-        Z: '#df7052', // Copper maple
-        J: '#7faaca', // Blue mist between the trees
-        L: '#edb68b', // Peach light through the canopy
+        T: '#8fb89c', // Woodland sage
+        S: '#bc77ac', // Plum twilight
+        Z: '#7faaca', // Blue mist between the trees
+        J: '#edb68b', // Peach light through the canopy
+        L: '#df7052', // Copper maple
         GARBAGE: '#3e2723', // Dark walnut bark - forest floor shadow
     },
 

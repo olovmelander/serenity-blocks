@@ -10,13 +10,13 @@ export const FLUID_DREAMS_TETROMINOS = {
     version: 2,
 
     colors: {
-        I: '#00E5FF', // electric cyan
-        O: '#FFD93D', // warm gold accent
+        I: '#FFD93D', // warm gold accent
+        O: '#00E5FF', // electric cyan
         T: '#FF2D95', // neon pink-magenta
         S: '#6FE7E0', // soft cyan-mint
-        Z: '#FF6FB5', // pink rim
+        Z: '#FFA84C', // gold-orange
         J: '#B14CFF', // electric violet
-        L: '#FFA84C', // gold-orange
+        L: '#FF6FB5', // pink rim
         GARBAGE: '#1A0532', // deep amethyst
     },
 

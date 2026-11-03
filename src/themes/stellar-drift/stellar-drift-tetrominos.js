@@ -9,12 +9,12 @@
 export const STELLAR_DRIFT_TETROMINOS = {
     version: 1,
     colors: {
-        I: '#5ee7df', // Aurora teal
-        O: '#ffd662', // Solar gold
-        T: '#8b5cf6', // Nebula violet
+        I: '#ffd662', // Solar gold
+        O: '#5ee7df', // Aurora teal
+        T: '#ff6b4a', // Supernova orange
         S: '#f472b6', // Cosmic pink
-        Z: '#ff6b4a', // Supernova orange
-        J: '#2d4a8c', // Stellar blue
+        Z: '#2d4a8c', // Stellar blue
+        J: '#8b5cf6', // Nebula violet
         L: '#4a1a6b', // Deep indigo
         GARBAGE: '#3a3a5a', // Space dust gray
     },

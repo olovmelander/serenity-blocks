@@ -40,6 +40,7 @@ import { createFluidParticlesRenderer } from './rendering/fluid-particles-render
 import { SwarmPostPipeline, getSwarmPostProfile } from './post/render-pipeline.js';
 import { FLUID_BUDGETS, FluidParticleSim, getFluidBudget } from './sim/fluid-particles.js';
 import { SHAPE_NAMES } from './sim/shape-formations.js';
+import { MURMURATION_TETROMINOS } from './murmuration-tetrominos.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 import { compileComputeAsync, isAsyncComputeCapable } from '../../rendering/webgpu-compute-pipeline-async.js';
 
@@ -511,6 +512,11 @@ export default class MurmurationTheme extends BaseTheme {
         this._boardMutationObserver = null;
         this._boardResizeObserver = null;
         this._observedBoardCanvas = null;
+    }
+
+    /** The pieces in the swarm's own colours. */
+    getTetrominoConfig() {
+        return MURMURATION_TETROMINOS;
     }
 
     resize(w, h) {

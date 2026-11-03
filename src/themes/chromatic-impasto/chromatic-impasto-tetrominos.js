@@ -7,11 +7,11 @@ export const CHROMATIC_IMPASTO_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#00D9CC', // Bright turquoise/cyan
-        J: '#0033CC', // Deep saturated blue
-        L: '#FF7F00', // Pure saturated orange
-        O: '#FFD000', // Rich golden yellow
-        S: '#1A7F4D', // Deep forest green
+        I: '#FFD000', // Rich golden yellow
+        J: '#FF7F00', // Pure saturated orange
+        L: '#1A7F4D', // Deep forest green
+        O: '#00D9CC', // Bright turquoise/cyan
+        S: '#0033CC', // Deep saturated blue
         T: '#B30000', // Deep blood red
         Z: '#FFF8DC', // Warm cream white
         GARBAGE: '#2A2A2A', // Dark charcoal (neutral canvas)
