@@ -12,8 +12,15 @@
  * odyssey-bird-models.js, folded by odyssey-bird-rig.js) — they are 18-80 px across on the climb,
  * so the flat paper shape they were read as a cut-out. Long broad wings held in a shallow
  * dihedral with six splayed primaries curled up at the tip, a short square tail, a pale ruff;
- * sandy brown above against blackish flight feathers, lit by the act's sun and sky. They soar,
- * with a slow beat or two now and then (`summitWingPose` is the vertex stage's pose).
+ * sandy brown above against blackish flight feathers, lit by the act's sun and sky.
+ *
+ * HOW THEY SOAR (2026-11-03): griffons ride a thermal on held wings and almost never beat. Each
+ * bird now beats once a minute or so (two or three slow strokes keyframed in Blender,
+ * odyssey-bird-beats.js, starting and ending at mid-upstroke), and between those it is alive on
+ * the air: it tilts in and out of its bank and pitches a little (each bird on its own slow
+ * clock), its wings flex and its fingers bend with the gusts, its tail twists against each tilt,
+ * and its body rises against a beat. They beat a quarter of the time before. `summitWingPose` and
+ * `summitFrameAt` are the vertex stage's CPU twins.
  *
  * WHERE: the kettle's centre and lanes were solved on the in-game camera (BEYOND profile, drift
  * pinned) so it is in frame at every station from L29 to L34, clears the hero cone (>= 30 u) and
@@ -34,7 +41,8 @@ import {
     varying, vec3,
 } from 'three/tsl';
 import {
-    birdColourNode, birdWingPoseAt, decodeBirdModel, foldBirdNode, setBirdTemplate,
+    beatHarmonicsNode, beatSeriesConstants, beatSeriesNode, birdBoutAt, birdBoutNode, birdColourNode,
+    birdWingPoseAt, decodeBirdModel, foldBirdNode, setBirdTemplate, tailBirdNode,
 } from './odyssey-bird-rig.js';
 
 /** The kettle: centre of the thermal, lane radii and heights, and one lap's period. */
@@ -46,7 +54,7 @@ export const SUMMIT_BIRDS = Object.freeze({
     lapSeconds: 44,
     /** A bird's wingspan, world units (the old 3.8-unit template at 3.0 u per unit). */
     span: 11.4,
-    /** Roll into the turn, radians. */
+    /** Roll into the turn, radians (each bird tilts in and out of it: SUMMIT_SOAR.tilt). */
     bank: 0.32,
     /**
      * [fade in from, fully in by, fade out from, gone by] in JOURNEY progress. The fade out
@@ -56,6 +64,23 @@ export const SUMMIT_BIRDS = Object.freeze({
      * past the horn, over the kettle, and lets it go ~0.005 later.)
      */
     window: Object.freeze([0.36, 0.40, 0.679, 0.709]),
+});
+
+/**
+ * The soaring: each bird's beats (odyssey-bird-rig.js `birdBoutAt`: one bout of 2-3 beats every
+ * 55-95 s), its tilts in the thermal ([amplitude rad, rate rad/s] x3: slow, smaller, quicker),
+ * pitch, the held wing's flex and the fingers' bend ([amplitude, rate]), and the tail.
+ */
+export const SUMMIT_SOAR = Object.freeze({
+    bouts: Object.freeze({
+        period: Object.freeze([55, 95]), beats: Object.freeze([2, 3]), start: 0.70, rise: 0.30, fall: 0.42, tail: 0.12,
+    }),
+    tilt: Object.freeze([[0.045, 0.83], [0.025, 1.9], [0.012, 3.1]]),
+    pitch: Object.freeze([0.02, 0.61]),
+    flex: Object.freeze([0.025, 1.1]),
+    fingers: Object.freeze([[0.05, 1.7], [0.03, 2.9]]),
+    /** The tail: [spread at rest, spread slow swing, twist per radian of bank, twist per radian of tilt]. */
+    tail: Object.freeze([0.16, 0.06, 0.25, -1.6]),
 });
 
 const TAU = Math.PI * 2;
@@ -81,20 +106,87 @@ export function resolveSummitBirdLanes(config = SUMMIT_BIRDS) {
     return lanes;
 }
 
-const jsSmooth = (e0, e1, x) => {
-    const k = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
-    return k * k * (3 - (2 * k));
-};
+/** A bird's tilt in and out of its bank (radians) at clock `t`. */
+export function summitTilt(t, seed) {
+    const [[a0, r0], [a1, r1], [a2, r2]] = SUMMIT_SOAR.tilt;
+    return (a0 * Math.sin((r0 * t) + (seed * 9))) + (a1 * Math.sin((r1 * t) + (seed * 4)))
+        + (a2 * Math.sin((r2 * t) + (seed * 2)));
+}
+
+const boutScratch = { weight: 0, phase: 0 };
+
+/** How much of a beat a bird of `seed` is in at clock `t` (0 soaring .. 1 beating). */
+export function summitBeatWeight(t, seed) {
+    const model = decodeBirdModel('vulture');
+    return birdBoutAt(t, seed, { ...SUMMIT_SOAR.bouts, rate: model.flight.rate }, boutScratch).weight;
+}
 
 /**
  * The vertex stage's wing pose at clock `t` for a bird of `seed` (the CPU twin, for the tests):
- * soaring on held wings, fingers curled up, with a few slow beats now and then on its own clock.
+ * soaring on held wings that flex on the air, fingers bending, a bout of slow beats now and
+ * then, the body's heave against a beat and the tail's spread and twist.
  */
-export function summitWingPose(t, seed, out = {}) {
+export function summitWingPose(t, seed, out = {}, config = SUMMIT_BIRDS) {
     const model = decodeBirdModel('vulture');
-    const beating = jsSmooth(0.55, 0.9, Math.sin((t * 0.21) + (seed * 11)));
-    const cycles = (model.flight.rate * (1 + ((seed - 0.5) * 0.06)) * t) + (seed * 7);
-    return birdWingPoseAt(model, (cycles - Math.floor(cycles)) * TAU, beating, out);
+    const { weight, phase } = birdBoutAt(t, seed, { ...SUMMIT_SOAR.bouts, rate: model.flight.rate }, boutScratch);
+    const [fa, fr] = SUMMIT_SOAR.flex;
+    const [[ca, cr], [cb, cr2]] = SUMMIT_SOAR.fingers;
+    const flex = {
+        lift: fa * Math.sin((fr * t) + (seed * 5)),
+        curl: (ca * Math.sin((cr * t) + (seed * 7))) + (cb * Math.sin((cr2 * t) + (seed * 2))),
+    };
+    birdWingPoseAt(model, phase * TAU, weight, out, flex);
+    const [s0, s1, tb, tt] = SUMMIT_SOAR.tail;
+    out.tailSpread = s0 + (s1 * Math.sin((0.5 * t) + (seed * 3)));
+    out.tailTwist = (tb * config.bank) + (tt * summitTilt(t, seed));
+    out.weight = weight;
+    return out;
+}
+
+/** The bird of `lane`'s angle round the thermal at clock `t`. */
+function laneAngle(lane, t, config) {
+    return ((t * TAU) / config.lapSeconds) * ((lane.seed * 0.3) + 0.85) + (lane.phase * TAU);
+}
+
+/** Where the bird of `lane` is at clock `t` (world): its lane round the thermal, bobbing slowly. */
+export function summitBirdPositionAt(lane, t, config = SUMMIT_BIRDS) {
+    const a = laneAngle(lane, t, config);
+    const bob = Math.sin((t * 0.23) + (lane.seed * 9)) * 3;
+    return {
+        x: config.centre[0] + (Math.cos(a) * lane.radius),
+        y: config.centre[1] + lane.height + bob,
+        z: config.centre[2] + (Math.sin(a) * lane.radius),
+    };
+}
+
+/**
+ * CPU twin of the vertex stage's body frame for bird `index` at clock `t`: its place, its bank
+ * with the tilts, and its pitch.
+ * @returns {{position:number[], left:number[], up:number[], forward:number[], roll:number, pitch:number}}
+ */
+export function summitFrameAt(index, t, config = SUMMIT_BIRDS) {
+    const lane = resolveSummitBirdLanes(config)[index];
+    const a = laneAngle(lane, t, config);
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    const roll = config.bank + summitTilt(t, lane.seed);
+    const pitch = SUMMIT_SOAR.pitch[0] * Math.sin((SUMMIT_SOAR.pitch[1] * t) + (lane.seed * 3));
+    const cr = Math.cos(roll);
+    const sr = Math.sin(roll);
+    const left = [c * cr, sr, s * cr];
+    const up0 = [-c * sr, cr, -s * sr];
+    const fwd0 = [-s, 0, c];
+    const cp = Math.cos(pitch);
+    const sp = Math.sin(pitch);
+    const p = summitBirdPositionAt(lane, t, config);
+    return {
+        position: [p.x, p.y, p.z],
+        left,
+        up: [0, 1, 2].map((k) => (up0[k] * cp) - (fwd0[k] * sp)),
+        forward: [0, 1, 2].map((k) => (fwd0[k] * cp) + (up0[k] * sp)),
+        roll,
+        pitch,
+    };
 }
 
 /**
@@ -120,46 +212,73 @@ export function createSummitBirds({
     const uReveal = uniform(0);
     const aLane = attribute('aLane', 'vec4');
     const seed = aLane.w;
-
-    // Round the thermal, counter-clockwise; each bird a little faster or slower than its lap.
-    const angle = uTime.mul(TAU / config.lapSeconds).mul(seed.mul(0.3).add(0.85)).add(aLane.x.mul(TAU));
-    const c = cos(angle);
-    const s = sin(angle);
-    const radial = vec3(c, 0, s);
-    const forward = vec3(s.negate(), 0, c);
-    // Right wing = forward x up = -radial (toward the centre); banking dips it into the turn.
-    const cosB = Math.cos(config.bank);
-    const sinB = Math.sin(config.bank);
-    const left = radial.mul(cosB).add(vec3(0, sinB, 0));
-    const up = vec3(0, cosB, 0).sub(radial.mul(sinB));
-    const bob = sin(uTime.mul(0.23).add(seed.mul(9.0))).mul(3.0);
-    const centre = vec3(...config.centre);
-    const seat = centre.add(radial.mul(aLane.y)).add(vec3(0, 1, 0).mul(aLane.z.add(bob)));
+    const { glide } = model.flight;
+    const sinAt = (amp, rate, offset) => sin(uTime.mul(rate).add(seed.mul(offset))).mul(amp);
 
     const vBirdN = varying(vec3(0, 1, 0), 'summitBirdN');
     const vSpeck = varying(vec3(0, 0, 0), 'summitBirdSpeck');
-    const { glide, beat } = model.flight;
     const positionNode = Fn(() => {
-        // SOARING (the twin: summitWingPose): wings held in a shallow dihedral, the fingers
-        // curled up, a slow beat or two now and then (each bird on its own clock); the hand lags.
-        const beating = smoothstep(0.55, 0.9, sin(uTime.mul(0.21).add(seed.mul(11.0))));
-        const rate = seed.sub(0.5).mul(0.06).add(1.0).mul(model.flight.rate);
-        const phi = fract(rate.mul(uTime).add(seed.mul(7.0))).mul(TAU).toVar();
-        const sinPhi = sin(phi);
-        const upK = max(sinPhi.negate(), 0.0).mul(max(sinPhi.negate(), 0.0));
-        const beatLift = cos(phi).mul(beat.lift[1]).add(beat.lift[0]);
-        const beatHand = cos(phi.sub(beat.lag)).mul(beat.hand[1]).add(beat.hand[0]);
-        const pose = (name, value) => mix(float(glide[name]), value, beating);
-        const { local, normal } = foldBirdNode({
+        // Round the thermal, counter-clockwise; each bird a little faster or slower than its lap.
+        const angle = uTime.mul(TAU / config.lapSeconds).mul(seed.mul(0.3).add(0.85)).add(aLane.x.mul(TAU)).toVar();
+        const c = cos(angle);
+        const s = sin(angle);
+        const radial = vec3(c, 0, s).toVar();
+        const forward0 = vec3(s.negate(), 0, c);
+        // The bank (right wing = -radial, toward the centre, dipped into the turn), tilting in and
+        // out of it on the bird's own slow clock (the twin: summitTilt), and a little pitch.
+        const [[a0, r0], [a1, r1], [a2, r2]] = SUMMIT_SOAR.tilt;
+        const tilt = sinAt(a0, r0, 9.0).add(sinAt(a1, r1, 4.0)).add(sinAt(a2, r2, 2.0)).toVar();
+        const roll = tilt.add(config.bank);
+        const cr = cos(roll);
+        const sr = sin(roll);
+        const left = radial.mul(cr).add(vec3(0, 1, 0).mul(sr)).toVar();
+        const up0 = vec3(0, 1, 0).mul(cr).sub(radial.mul(sr));
+        const pitch = sinAt(SUMMIT_SOAR.pitch[0], SUMMIT_SOAR.pitch[1], 3.0);
+        const cp = cos(pitch);
+        const sp = sin(pitch);
+        const up = up0.mul(cp).sub(forward0.mul(sp)).toVar();
+        const forward = forward0.mul(cp).add(up0.mul(sp)).toVar();
+        const bob = sin(uTime.mul(0.23).add(seed.mul(9.0))).mul(3.0);
+        const seat = vec3(...config.centre).add(radial.mul(aLane.y)).add(vec3(0, 1, 0).mul(aLane.z.add(bob))).toVar();
+
+        // SOARING (the twin: summitWingPose): wings held in a shallow dihedral that flexes on the
+        // air, the fingers curled up and bending with the gusts; a bout of slow beats now and
+        // then (each bird on its own clock), starting and ending at mid-upstroke.
+        const bout = birdBoutNode(uTime, seed, { ...SUMMIT_SOAR.bouts, rate: model.flight.rate });
+        const beating = bout.weight.toVar();
+        const phi = fract(bout.phase).mul(TAU).toVar();
+        const h = beatHarmonicsNode(phi);
+        const series = beatSeriesConstants(model);
+        const [[ca, cr1], [cb, cr2]] = SUMMIT_SOAR.fingers;
+        const held = {
+            lift: float(glide.lift).add(sinAt(SUMMIT_SOAR.flex[0], SUMMIT_SOAR.flex[1], 5.0)),
+            sweep: float(glide.sweep),
+            bend: float(glide.bend),
+            fold: float(glide.fold),
+            curl: float(glide.curl).add(sinAt(ca, cr1, 7.0)).add(sinAt(cb, cr2, 2.0)),
+        };
+        const pose = (name) => mix(held[name], beatSeriesNode(series[name], h), beating).toVar();
+        const heave = beatSeriesNode(series.heave, h).mul(beating);
+        // The tail spreads and twists against each tilt (the twin's tailSpread / tailTwist).
+        const [s0, s1, tb, tt] = SUMMIT_SOAR.tail;
+        const tailed = tailBirdNode({
             position: positionLocal,
             normal: attribute('normal', 'vec3'),
+            tail: attribute('aTop', 'vec4').w,
+            spread: sinAt(s1, 0.5, 3.0).add(s0),
+            twist: tilt.mul(tt).add(tb * config.bank),
+            tailY: float(model.tailY),
+        });
+        const { local, normal } = foldBirdNode({
+            position: tailed.position,
+            normal: tailed.normal,
             hinge: attribute('aHinge', 'vec4'),
             pose: {
-                lift: pose('lift', beatLift),
-                sweep: pose('sweep', upK.mul(beat.sweep[1]).add(beat.sweep[0])),
-                bend: pose('bend', beatHand.sub(beatLift)),
-                fold: pose('fold', upK.mul(beat.fold[1]).add(beat.fold[0])),
-                curl: pose('curl', max(sinPhi, 0.0).mul(beat.curl)),
+                lift: pose('lift'),
+                sweep: pose('sweep'),
+                bend: pose('bend'),
+                fold: pose('fold'),
+                curl: pose('curl'),
             },
             shoulder: model.shoulder,
             wrist: model.wrist,
@@ -171,7 +290,7 @@ export function createSummitBirds({
         const far = float(1).sub(smoothstep(0.0048, 0.0112, across));
         vSpeck.assign(vec3(far, far.mul(0.35), 0));
         const size = float(config.span / model.span).mul(uReveal);
-        return seat.add(left.mul(local.x).add(up.mul(local.y)).add(forward.mul(local.z)).mul(size));
+        return seat.add(left.mul(local.x).add(up.mul(local.y.add(heave))).add(forward.mul(local.z)).mul(size));
     })();
 
     const material = new THREE.MeshBasicNodeMaterial();
