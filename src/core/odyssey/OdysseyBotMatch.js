@@ -54,6 +54,9 @@ export class OdysseyBotMatch {
             playerIndex: 1,
             playerState: bot,
             difficulty: this.difficulty,
+            // The rival's pace caps (level design audit 2026-11, R8): smarter each chapter, never faster
+            // than a strong person.
+            configOverrides: session.levelConfig.mechanics.versus.botOverrides || null,
             // Spread each plan over game time (2.5 placements a ms: a 341-placement tier-8 plan
             // takes 136 ms, inside the 160 ms head start), not one 20-28 ms frame per piece.
             planUnitsPerMs: 2.5,

@@ -21,13 +21,15 @@ export const DEFAULT_BOARD_TRANSITION = Object.freeze({
 // the "chapter arcBeats stay in sync" assertion in odyssey-difficulty-balance.test.js.
 // `targetDifficultyCurve` is an indicative 1-10 sketch; the model computes the real
 // continuous scalar (metadata.difficultyModel.scalar) per level.
+// Level design audit 2026-11: arcBeats follow the retuned roles. A duel's beat is `rival`, a rule-changing
+// orb is `twist`, and the audit's "practise" keeps the `reinforce` tag.
 export const CHAPTER_CONFIGS = [
     {
         id: 1,
         name: 'Earth Core & Subterranean Origins',
         subtitle: 'Find your first rhythm',
         levelRange: [1, 5],
-        arcBeats: ['arrival', 'teach', 'reinforce', 'boss', 'test'],
+        arcBeats: ['arrival', 'teach', 'reinforce', 'boss', 'rival'],
         targetDifficultyCurve: [1, 2, 2, 4, 3],
 
         themes: {
@@ -61,7 +63,7 @@ export const CHAPTER_CONFIGS = [
         name: 'Deep Ocean & Liquid Worlds',
         subtitle: 'Dive deep, then rise',
         levelRange: [6, 10],
-        arcBeats: ['arrival', 'teach', 'reinforce', 'boss', 'reinforce'],
+        arcBeats: ['teach', 'reinforce', 'twist', 'boss', 'rival'],
         targetDifficultyCurve: [3, 4, 4, 6, 5],
 
         themes: {
@@ -95,7 +97,7 @@ export const CHAPTER_CONFIGS = [
         name: 'Surface World & Living Landscapes',
         subtitle: 'Learn the seasons',
         levelRange: [11, 18],
-        arcBeats: ['arrival', 'teach', 'reinforce', 'teach', 'test', 'release', 'boss', 'test'],
+        arcBeats: ['arrival', 'teach', 'teach', 'teach', 'test', 'release', 'boss', 'rival'],
         targetDifficultyCurve: [4, 4, 5, 5, 6, 5, 7, 6],
 
         themes: {
@@ -136,7 +138,7 @@ export const CHAPTER_CONFIGS = [
         name: 'Mountains & Thin-Air Ascension',
         subtitle: 'Climb the ridgeline',
         levelRange: [19, 26],
-        arcBeats: ['arrival', 'teach', 'reinforce', 'reinforce', 'test', 'release', 'boss', 'test'],
+        arcBeats: ['arrival', 'teach', 'reinforce', 'reinforce', 'test', 'release', 'boss', 'rival'],
         targetDifficultyCurve: [6, 6, 6, 6, 7, 6, 8, 7],
 
         themes: {
@@ -176,7 +178,7 @@ export const CHAPTER_CONFIGS = [
         name: 'Sky & Atmospheric Drift',
         subtitle: 'Cross the last air',
         levelRange: [27, 34],
-        arcBeats: ['arrival', 'release', 'reinforce', 'reinforce', 'test', 'boss', 'boss', 'reinforce'],
+        arcBeats: ['arrival', 'release', 'teach', 'reinforce', 'test', 'reinforce', 'boss', 'rival'],
         targetDifficultyCurve: [7, 6, 6, 6, 8, 9, 9, 7],
 
         themes: {
@@ -220,8 +222,8 @@ export const CHAPTER_CONFIGS = [
         // Collection revision adds a fourteenth orb: Vesper pauses after the alien dunes.
         levelRange: [35, 48],
         arcBeats: [
-            'arrival', 'teach', 'reinforce', 'test', 'test', 'test', 'reinforce',
-            'test', 'release', 'release', 'boss', 'release', 'boss', 'test',
+            'arrival', 'reinforce', 'reinforce', 'test', 'reinforce', 'test', 'release',
+            'test', 'release', 'reinforce', 'test', 'release', 'boss', 'rival',
         ],
         targetDifficultyCurve: [8, 8, 8, 9, 10, 9, 8, 9, 6, 7, 10, 7, 10, 10],
 
@@ -266,7 +268,7 @@ export const CHAPTER_CONFIGS = [
         name: 'Black Hole & Abstract Transcendence',
         subtitle: 'Into another dimension',
         levelRange: [49, 56],
-        arcBeats: ['arrival', 'reinforce', 'test', 'boss', 'release', 'teach', 'boss', 'test'],
+        arcBeats: ['arrival', 'twist', 'test', 'test', 'release', 'reinforce', 'boss', 'rival'],
         targetDifficultyCurve: [8, 9, 9, 10, 8, 7, 10, 10],
 
         themes: {
@@ -309,7 +311,7 @@ export const CHAPTER_CONFIGS = [
         name: 'Urban Dreams Encore',
         subtitle: 'One last electric dream',
         levelRange: [57, 60],
-        arcBeats: ['encore', 'encore', 'encore', 'encore'],
+        arcBeats: ['arrival', 'reinforce', 'boss', 'rival'],
         targetDifficultyCurve: [7, 8, 9, 10],
 
         themes: {

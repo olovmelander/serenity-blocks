@@ -67,32 +67,32 @@ async function replay(record) {
 }
 
 describe('Authored construction requirements', () => {
-    it('records exact depth targets of 6, 6 and 5 without changing the authored configs', () => {
+    it('records exact depth targets of 5, 5 and none without changing the authored configs', () => {
         const before = structuredClone(LEVEL_CONFIGS);
         const recursiveInfinity = getMasteryRequirements(getLevelById(55));
         const neonDistrict = getMasteryRequirements(getLevelById(59));
         const fortyNine = getMasteryRequirements(getLevelById(49));
         expect(recursiveInfinity.stars.three).toMatchObject({
-            comboTarget: 0, maxCascadeDepthTarget: 6, effectiveChainDepth: 6,
+            comboTarget: 0, maxCascadeDepthTarget: 5, effectiveChainDepth: 5,
         });
-        expect(recursiveInfinity.stars.two.effectiveChainDepth).toBe(4);
-        expect(recursiveInfinity.bonuses.map((bonus) => bonus.effectiveChainDepth)).toEqual([6, 0, 0]);
+        expect(recursiveInfinity.stars.two.effectiveChainDepth).toBe(0);
+        expect(recursiveInfinity.bonuses.map((bonus) => bonus.effectiveChainDepth)).toEqual([5, 0]);
         expect(neonDistrict.stars.three).toMatchObject({
-            comboTarget: 0, maxCascadeDepthTarget: 6, effectiveChainDepth: 6,
+            comboTarget: 0, maxCascadeDepthTarget: 5, effectiveChainDepth: 5,
         });
-        expect(neonDistrict.stars.two.effectiveChainDepth).toBe(4);
-        expect(fortyNine.stars.three.effectiveChainDepth).toBe(5);
+        expect(neonDistrict.stars.two.effectiveChainDepth).toBe(0);
+        expect(fortyNine.stars.three.effectiveChainDepth).toBe(0);
         expect([recursiveInfinity, neonDistrict, fortyNine].map((entry) => entry.maximumEffectiveChainDepth))
-            .toEqual([6, 6, 5]);
+            .toEqual([5, 5, 0]);
         expect(recursiveInfinity.primary.timeConstraints)
-            .toEqual([{ type: 'primary-acquisition-deadline', seconds: 480 }]);
-        expect(neonDistrict.primary.timeConstraints).toEqual([{ type: 'primary-acquisition-deadline', seconds: 210 }]);
+            .toEqual([{ type: 'primary-acquisition-deadline', seconds: 600 }]);
+        expect(neonDistrict.primary.timeConstraints).toEqual([{ type: 'primary-acquisition-deadline', seconds: 300 }]);
         expect(recursiveInfinity.finishPolicy).toMatchObject({
             authored: 'showcase', stopAfterPrimaryResolution: false, drainEntireCascade: true,
         });
         expect(fortyNine.finishPolicy.stopAfterPrimaryResolution).toBe(true);
         expect(getMasteryRequirements(getLevelById(1)).stars.three.timeConstraints)
-            .toEqual([{ type: 'completion-upper-bound', seconds: 120 }]);
+            .toEqual([{ type: 'completion-upper-bound', seconds: 65 }]);
         expect(LEVEL_CONFIGS).toEqual(before);
     });
 
@@ -291,8 +291,8 @@ describe('Legal construction on authored boards', () => {
         expect(second).toEqual(first);
         expect(first.status).toBe('inconclusive');
         expect(first.interpretation).toContain('not an impossibility or difficulty verdict');
-        expect(first.requirements.stars.three.effectiveChainDepth).toBe(6);
-        expect(first.maximumDepth).toBeLessThan(6);
+        expect(first.requirements.stars.three.effectiveChainDepth).toBe(5);
+        expect(first.maximumDepth).toBeLessThan(5);
     });
 
     it.each([

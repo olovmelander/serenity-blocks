@@ -3,7 +3,7 @@ import {
     createMasteryGeometryObjective, drainedTerminalInventoryBound, masteryGeometryUtility,
     measureQuadWell, orb49InventoryRoutes,
 } from '../../scripts/odyssey-benchmark/mastery-geometry.mjs';
-import { getLevelById } from '../../src/core/odyssey/data/levels.js';
+import { shippedMasteryOrb } from '../helpers/odyssey-shipped-mastery-orbs.js';
 
 function boardWithWell(rows = 4, well = 9) {
     return Array.from({ length: 24 }, (_, y) => Array.from({ length: 10 }, (unused, x) => (
@@ -26,7 +26,8 @@ function node(overrides = {}) {
 }
 
 function observation(levelId, metrics = {}) {
-    const level = getLevelById(levelId);
+    // The geometry tool targets the shipped 2026-10 mastery tiers, kept as a frozen fixture.
+    const level = shippedMasteryOrb(levelId);
     const state = node();
     state.metrics = { ...state.metrics, ...metrics };
     state.rules = { levelId, stars: level.stars, victory: level.victory };

@@ -120,9 +120,10 @@ describe('Odyssey exclusive orb themes', () => {
         const vesper = registry.getLevel(43);
         const warp = registry.getLevel(54);
         expect(vesper.role).toBe('release');
-        expect(vesper.victory.primary).toEqual({ type: 'score', target: 43000 });
+        // Level design audit 2026-11: Vesper is its own short rest; Warp rehearses (practise) for orb 55.
+        expect(vesper.victory.primary).toEqual({ type: 'score', target: 30000 });
         expect(vesper.victory.failure.type).toBe('top-out');
-        expect(warp.role).toBe('teach');
+        expect(warp.role).toBe('reinforce');
         expect(warp.victory.primary).toEqual({ type: 'cascade', target: 10 });
         expect(warp.victory.failure.type).toBe('top-out');
         expect(warp.mechanics.board).toEqual({ columns: 10, rows: 36, startingRows: 10 });

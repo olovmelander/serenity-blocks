@@ -394,6 +394,15 @@ export class LevelRegistry {
             if (!['standard', 'infinity', 'hybrid'].includes(levelConfig.mechanics.baseMode)) {
                 errors.push(`Invalid baseMode: ${levelConfig.mechanics.baseMode}`);
             }
+            // A prepared opening: rows of X (block) and . (open), as wide as the board, none of them full.
+            const opening = levelConfig.mechanics.board?.opening;
+            if (opening !== undefined) {
+                const columns = levelConfig.mechanics.board.columns || 10;
+                const valid = Array.isArray(opening) && opening.length > 0 && opening.every((row) => (
+                    typeof row === 'string' && row.length === columns && /^[X.]+$/.test(row) && row.includes('.')
+                ));
+                if (!valid) errors.push('Opening rows must be X and . as wide as the board, each with an open cell');
+            }
         }
 
         if (levelConfig.victory) {

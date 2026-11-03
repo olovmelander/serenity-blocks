@@ -14,9 +14,12 @@ import * as pathfinder from '../../src/core/ai/reachability-pathfinder.js';
 import { SHAPES } from '../../src/core/constants.js';
 import { findConnectedComponents } from '../../src/core/cascade-helpers.js';
 import { createVirtualClock } from '../../scripts/odyssey-benchmark/virtual-clock.mjs';
+import { shippedMasteryOrb } from '../helpers/odyssey-shipped-mastery-orbs.js';
 
+// The search tool is exercised on the shipped 2026-10 mastery tiers (joint Quads and chains), which the
+// level design retune (2026-11) removed from the live campaign.
 function rulesFor(levelId) {
-    const level = levels.getLevelById(levelId);
+    const level = shippedMasteryOrb(levelId);
     return { victory: level.victory, stars: level.stars, victoryLapPolicy: level.victoryLapPolicy || 'none' };
 }
 
@@ -25,7 +28,7 @@ function metrics(values = {}) {
 }
 
 function initialObservation(levelId = 49) {
-    const level = levels.getLevelById(levelId);
+    const level = shippedMasteryOrb(levelId);
     const engine = new GameplayHybridEngine();
     engine.configure(level);
     const state = engine.createGameState({ rngSeed: 9101 });
@@ -185,6 +188,7 @@ describe('bounded Odyssey mastery search', () => {
         const progress = [];
         const candidate = await searchMastery({
             levelId: 49,
+            levelConfig: shippedMasteryOrb(49),
             seed: 9101,
             maxPieces: 3,
             maxNodes: 17,

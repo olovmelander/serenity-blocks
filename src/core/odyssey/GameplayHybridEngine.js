@@ -180,6 +180,12 @@ export class GameplayHybridEngine {
     }
 
     seedStartingRows() {
+        // A prepared opening (level design audit 2026-11, phase 2) replaces the generic rubble pattern.
+        const opening = this.levelConfig?.mechanics?.board?.opening;
+        if (Array.isArray(opening) && opening.length) {
+            this.seedOpeningRows(opening);
+            return;
+        }
         const requestedRows = Number(this.levelConfig?.mechanics?.board?.startingRows) || 0;
         if (!this.gameState || requestedRows <= 0) {
             return;
@@ -200,6 +206,33 @@ export class GameplayHybridEngine {
         if (result?.topOut) {
             this.gameState.isGameOver = true;
         }
+    }
+
+    /**
+     * Seed authored opening rows: strings listed top to bottom as the player sees them, one character a column,
+     * 'X' a block and '.' an open cell. Rows go in through the same garbage boundary as the rubble, so they look
+     * and settle the same; only the holes are designed, so a lesson's first move can be one placement away.
+     * @param {string[]} rows
+     */
+    seedOpeningRows(rows) {
+        if (!this.gameState) return;
+        const totalRows = this.gameState.boardGrid?.length || (ROWS + HIDDEN_ROWS);
+        const rowCount = resolveStartingRowCount(rows.length, totalRows);
+        if (rowCount <= 0) return;
+        const id = Number(this.levelConfig?.boardSeedId) || this.levelConfig?.id || 0;
+        // The garbage boundary raises the board one row per entry, so the bottom row goes in last.
+        const entries = rows.slice(rows.length - rowCount).map((row) => {
+            const holes = [...row].flatMap((cell, column) => (cell === '.' ? [column] : []));
+            return {
+                type: 'line',
+                attackId: `odyssey-opening-${id}`,
+                variant: 'normal',
+                holeMask: maskArrayToBits(columnsToMask(holes)),
+                color: '#808080',
+            };
+        });
+        const result = applyGarbage(this.gameState, entries, { settleFloatingBlocks: false });
+        if (result?.topOut) this.gameState.isGameOver = true;
     }
 
     /**

@@ -49,19 +49,19 @@ const goalTexts = (node) => node.children.map((item) => item.children.map((part)
 describe('Odyssey star outcome: why an attempt earned the stars it did', () => {
     it('marks earned tiers from the engine count and names the next star’s shortfall in the player’s numbers', () => {
         const outcome = describeOdysseyStarOutcome(getLevelById(1), {
-            stars: 2, lines: 23, time: 148, bonuses: [false],
+            stars: 2, lines: 23, time: 80, bonuses: [false],
         });
         expect(outcome.stars).toBe(2);
         expect(outcome.tiers.map((tier) => tier.earned)).toEqual([true, true, false]);
         expect(outcome.tiers.map((tier) => tier.label)).toEqual([
-            'Clear the orb', '20 lines + Under 2:30', '20 lines + Under 2 min + No single-line clears',
+            'Clear the orb', '20 lines + Under 1:25', '20 lines + Under 1:05 + No single-line clears',
         ]);
         expect(outcome.next.tier).toBe('three');
         // A named bonus says what it needs, so it carries no "you:" count.
         expect(outcome.next.missed.map((part) => [part.key, part.actual])).toEqual([
-            ['time', '2:28'], ['bonuses', ''],
+            ['time', '1:20'], ['bonuses', ''],
         ]);
-        expect(formatOdysseyNextStar(outcome)).toBe('Next star: Under 2 min (you: 2:28) · No single-line clears');
+        expect(formatOdysseyNextStar(outcome)).toBe('Next star: Under 1:05 (you: 1:20) · No single-line clears');
     });
 
     it('says so when every star is earned, and never invents a shortfall from numbers it was not given', () => {
@@ -71,7 +71,7 @@ describe('Odyssey star outcome: why an attempt earned the stars it did', () => {
         expect(partial.next.tier).toBe('two');
         expect(partial.next.missed).toEqual([]);
         expect(partial.next.parts.map((part) => part.met)).toEqual([null, null]);
-        expect(formatOdysseyNextStar(partial)).toBe('Next star: 20 lines + Under 2:30.');
+        expect(formatOdysseyNextStar(partial)).toBe('Next star: 20 lines + Under 1:25.');
         expect(formatOdysseyNextStar(describeOdysseyStarOutcome({ stars: {} }, { stars: 1 }))).toBeNull();
         expect(formatOdysseyNextStar(null)).toBeNull();
     });
@@ -103,9 +103,9 @@ describe('Odyssey star outcome: why an attempt earned the stars it did', () => {
 
     it('phrases a mastery orb’s next step in its own units', () => {
         const outcome = describeOdysseyStarOutcome(getLevelById(49), {
-            stars: 1, score: 40000, tetrises: 6, maxCascadeDepth: 2,
+            stars: 1, score: 40000, tetrises: 3, maxCascadeDepth: 2,
         });
-        expect(formatOdysseyNextStar(outcome)).toBe('Next star: 8+ Quads (you: 6 Quads)');
+        expect(formatOdysseyNextStar(outcome)).toBe('Next star: 4+ Quads (you: 3 Quads)');
     });
 
     it('describes every campaign tier with a readable label and no duplicated requirement', () => {
@@ -197,7 +197,7 @@ describe('Odyssey star notes list', () => {
 
     it('lists the three goals with earned marks and ends on the next-star line that sets the reading beat', () => {
         const notes = createOdysseyStarNotes(getLevelById(1), {
-            stars: 2, lines: 23, time: 148, bonuses: [false],
+            stars: 2, lines: 23, time: 80, bonuses: [false],
         }, { className: 'ody-flow__star-notes' });
         expect(notes.list.className).toBe('ody-flow__star-notes');
         expect(notes.list.ariaLabel).toBe('Star goals');
@@ -210,10 +210,10 @@ describe('Odyssey star notes list', () => {
         ]);
         expect(notes.list.children.map((item) => item.dataset.earned)).toEqual(['true', 'true', 'false', undefined]);
         expect(notes.list.children[0].ariaLabel).toBe('Clear the orb: earned');
-        expect(notes.list.children[2].ariaLabel).toBe('20 lines + Under 2 min + No single-line clears: not earned');
-        expect(texts(notes.list.children[2])).toEqual(['·', '20 lines + Under 2 min + No single-line clears']);
+        expect(notes.list.children[2].ariaLabel).toBe('20 lines + Under 1:05 + No single-line clears: not earned');
+        expect(texts(notes.list.children[2])).toEqual(['·', '20 lines + Under 1:05 + No single-line clears']);
         expect(notes.list.children[3].textContent)
-            .toBe('Next star: Under 2 min (you: 2:28) · No single-line clears');
+            .toBe('Next star: Under 1:05 (you: 1:20) · No single-line clears');
         expect(notes.words).toHaveLength(4);
         expect(notes.readingWords).toEqual([notes.list.children[3].textContent]);
     });
@@ -286,7 +286,7 @@ describe('Odyssey map orb panel', () => {
         expect(node('level-panel-stars').attributes['aria-label']).toBe('2 of 3 stars earned');
         expect(node('level-panel-goal').textContent).toBe('Clear 20 lines');
         expect(goalTexts(node('level-panel-star-goals'))).toEqual([
-            '1 ★ Clear the orb', '2 ★ 20 lines + Under 2:30', '3 ★ 20 lines + Under 2 min + No single-line clears',
+            '1 ★ Clear the orb', '2 ★ 20 lines + Under 1:25', '3 ★ 20 lines + Under 1:05 + No single-line clears',
         ]);
         expect(node('level-panel-rules-label').textContent).toBe('Rules');
         expect(texts(node('level-panel-rules'))).toEqual(getOdysseyLevelBriefing(level).rules);

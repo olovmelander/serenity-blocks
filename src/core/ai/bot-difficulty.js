@@ -153,6 +153,26 @@ export function normalizeDifficultyTier(value) {
     return Math.min(10, Math.max(1, parsed));
 }
 
+/**
+ * A tier's config with an Odyssey rival's caps on top (level design audit 2026-11, R8): the rival keeps
+ * its tier's judgement, lookahead and mistakes but acts no faster than a strong person. Only the action
+ * rate and the reaction window can be capped; versus mode passes no overrides and is unchanged.
+ */
+export function applyBotConfigOverrides(config, overrides) {
+    if (!overrides) return config;
+    const next = { ...config };
+    if (Number.isFinite(overrides.maxApm) && overrides.maxApm > 0) {
+        next.maxApm = overrides.maxApm;
+        next.actionIntervalMs = 60000 / overrides.maxApm;
+    }
+    const reaction = overrides.reactionMs;
+    if (Array.isArray(reaction) && reaction.length === 2 && reaction.every(Number.isFinite)
+        && reaction[0] >= 0 && reaction[0] <= reaction[1]) {
+        next.reactionMs = [reaction[0], reaction[1]];
+    }
+    return next;
+}
+
 export function getBotDifficultyConfig(value = 10) {
     const tier = normalizeDifficultyTier(value);
     const config = BOT_DIFFICULTY_TIERS[tier];

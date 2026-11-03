@@ -6,7 +6,9 @@ import { createHash } from 'node:crypto';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LEVEL_CONFIGS } from '../src/core/odyssey/data/levels.js';
-import { BENCHMARK_PROFILES, BENCHMARK_CADENCES } from './odyssey-benchmark/profiles.mjs';
+import {
+    BENCHMARK_PROFILES, BENCHMARK_CADENCES, ALL_BENCHMARK_CADENCES,
+} from './odyssey-benchmark/profiles.mjs';
 import { BENCHMARK_SCENARIOS, supportsScenario, resolveScenario } from './odyssey-benchmark/scenarios.mjs';
 import { writeReports } from './odyssey-benchmark/report.mjs';
 import { MAX_ODYSSEY_LEVEL_ID, MASTERY_LEVEL_IDS } from './odyssey-benchmark/campaign-targets.mjs';
@@ -60,13 +62,14 @@ export function parseOptions(args) {
     for (const id of profileIds) {
         if (!BENCHMARK_PROFILES.some((profile) => profile.id === id)) throw new Error(`Unknown profile: ${id}`);
     }
-    const selection = (value, entries, fallback, name) => {
+    // `all` expands to the listed entries; `known` also accepts entries that must be named (human paces).
+    const selection = (value, entries, fallback, name, known = entries) => {
         const ids = value === 'all' ? entries.map((entry) => entry.id) : String(value ?? fallback).split(',');
-        if (ids.some((id) => !entries.some((entry) => entry.id === id))) throw new Error(`Unknown ${name}: ${value}`);
+        if (ids.some((id) => !known.some((entry) => entry.id === id))) throw new Error(`Unknown ${name}: ${value}`);
         return [...new Set(ids)];
     };
     const scenarioIds = selection(values.scenarios, BENCHMARK_SCENARIOS, 'baseline', 'scenario');
-    const cadenceIds = selection(values.cadences, BENCHMARK_CADENCES, 'native', 'cadence');
+    const cadenceIds = selection(values.cadences, BENCHMARK_CADENCES, 'native', 'cadence', ALL_BENCHMARK_CADENCES);
     const hasCompatibleScenario = levelIds.some((id) => {
         const level = LEVEL_CONFIGS.find((entry) => entry.id === id);
         return scenarioIds.some((scenarioId) => supportsScenario(scenarioId, level));
@@ -327,7 +330,7 @@ export async function main(args = process.argv.slice(2)) {
         syntheticProfiles: true,
         revision,
         scenarios: BENCHMARK_SCENARIOS.filter((entry) => options.scenarioIds.includes(entry.id)),
-        cadences: BENCHMARK_CADENCES.filter((entry) => options.cadenceIds.includes(entry.id)),
+        cadences: ALL_BENCHMARK_CADENCES.filter((entry) => options.cadenceIds.includes(entry.id)),
         effectiveLevels: options.levelIds.flatMap((id) => options.scenarioIds
             .filter((scenarioId) => supportsScenario(scenarioId, LEVEL_CONFIGS.find((level) => level.id === id)))
             .map((scenarioId) => ({

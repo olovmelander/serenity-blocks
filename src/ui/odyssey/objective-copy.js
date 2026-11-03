@@ -19,6 +19,7 @@ export function formatOdysseyMapObjective(primary) {
     case 'cascade': return `Trigger ${primary.target} cascades`;
     case 'time': return `Survive ${primary.target} seconds`;
     case 'combo': return formatOdysseyChainGoal(primary.target);
+    case 'tetrises': return `Clear ${countOf(primary.target, 'Quad')}`;
     case 'frags': return primary.description || formatOdysseyDuelGoal('the rival', primary.target);
     default: return `Complete: ${primary.type} (${primary.target})`;
     }
@@ -104,7 +105,7 @@ export function getOdysseyRetryDebrief(level, metrics, reason) {
     if (!primary || !metrics || level.mechanics?.versus) return null;
     const { type, target } = primary;
     const metricKey = {
-        lines: 'lines', score: 'score', cascade: 'cascades', combo: 'maxCombo', time: 'time',
+        lines: 'lines', score: 'score', cascade: 'cascades', combo: 'maxCombo', time: 'time', tetrises: 'tetrises',
     }[type];
     if (!metricKey) return null;
     const value = metrics[metricKey];
@@ -114,7 +115,7 @@ export function getOdysseyRetryDebrief(level, metrics, reason) {
         `${amount.toLocaleString()} ${amount === 1 ? singular : plural}`
     );
     const units = {
-        lines: 'line', score: 'point', cascade: 'cascade sequence', combo: 'wave', time: 'second',
+        lines: 'line', score: 'point', cascade: 'cascade sequence', combo: 'wave', time: 'second', tetrises: 'Quad',
     };
     const remaining = Math.ceil(Math.max(0, target - value));
     let remainingText = `${count(remaining, units[type])} short of the goal.`;
@@ -131,6 +132,7 @@ export function getOdysseyRetryDebrief(level, metrics, reason) {
         combo: 'Build a chain from one locked piece. The first clear counts as wave one; '
             + 'clears on later pieces start a new chain.',
         time: 'Keep the stack low and take safe clears while the timer runs.',
+        tetrises: 'Stack flat with one column left open, then drop a long I piece into it to clear four lines.',
     };
     let tip = cues[type];
     if (reason === 'top-out') {

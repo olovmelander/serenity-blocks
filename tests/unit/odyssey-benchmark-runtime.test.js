@@ -251,14 +251,17 @@ describe('Odyssey benchmark real gameplay runtime', () => {
         }
         expect(attempts.every((attempt) => attempt.outcome === 'censored')).toBe(true);
         expect(states.map((state) => [state.lines, state.level])).toEqual([[15, 14], [15, 14], [15, 14]]);
+        // Orb 51 authors a 120 ms opening on the proportional curve (level design audit 2026-11), so the
+        // fall scenarios scale the level-13 schedule from there.
         const base = attempts[0].effectiveConfig.physicsPolicy.authoredInitialIntervalMs;
-        expect(base).toBe(LEVEL_SPEEDS[12]);
+        expect(base).toBe(120);
         const initialIntervals = attempts.slice(1).map((attempt) => (
             attempt.effectiveConfig.physicsPolicy.initialIntervalMs
         ));
         expect(initialIntervals).toEqual([75, 100]);
-        expect(states[1].dropInterval).toBeCloseTo(LEVEL_SPEEDS[13] * (75 / base));
-        expect(states[2].dropInterval).toBeCloseTo(LEVEL_SPEEDS[13] * (100 / base));
+        expect(states[0].dropInterval).toBeCloseTo(LEVEL_SPEEDS[13] * (base / LEVEL_SPEEDS[12]));
+        expect(states[1].dropInterval).toBeCloseTo(LEVEL_SPEEDS[13] * (75 / LEVEL_SPEEDS[12]));
+        expect(states[2].dropInterval).toBeCloseTo(LEVEL_SPEEDS[13] * (100 / LEVEL_SPEEDS[12]));
         expect(states[1].score).toBe(states[0].score);
         expect(states[2].score).toBe(states[0].score);
         expect(getLevelById(51).mechanics.speed).toEqual(attempts[0].effectiveConfig.speed);

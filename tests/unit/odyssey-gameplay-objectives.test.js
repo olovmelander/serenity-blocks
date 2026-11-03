@@ -327,11 +327,11 @@ describe('OdysseyMode gameplay objectives', () => {
         expect(mode.completeLevel).not.toHaveBeenCalled();
         expect(mode.failLevel).not.toHaveBeenCalled();
 
-        now.mockReturnValue(1211000);
+        now.mockReturnValue(1311000);
         session.gameState.score += 5000;
         mode._checkVictoryConditions(session);
         mode._checkVictoryConditions(session);
-        expect(session.hybridEngine.getMetrics().time).toBe(211);
+        expect(session.hybridEngine.getMetrics().time).toBe(311);
         expect(session.gameState.victoryLapActive).toBe(true);
         expect(mode._showGoalCompleteOverlay).toHaveBeenCalledTimes(1);
         expect(mode.completeLevel).not.toHaveBeenCalled();
@@ -345,7 +345,7 @@ describe('OdysseyMode gameplay objectives', () => {
         await finishUi(harness, true);
         expect(mode.odysseyState.completeLevel).toHaveBeenCalledTimes(1);
         expect(mode.odysseyState.completeLevel).toHaveBeenCalledWith(59, expect.objectContaining({
-            score: 165000, time: 211, stars: 1,
+            score: 75000, time: 311, stars: 1,
         }), { themeId: 'neon-district' });
         expect(mode.odysseyState.recordAttempt).not.toHaveBeenCalled();
         expect(mode._showLevelResults).toHaveBeenCalledTimes(1);
@@ -503,7 +503,7 @@ describe('OdysseyMode gameplay objectives', () => {
         expect(mode.completeLevel).toHaveBeenCalledTimes(1);
         await finishUi(harness, true);
         expect(mode.odysseyState.completeLevel).toHaveBeenCalledExactlyOnceWith(49, expect.objectContaining({
-            score: target + 25, stars: 1, bonuses: [false, false],
+            score: target + 25, stars: 1, bonuses: [false],
         }), { themeId: 'fluid-dreams' });
         expect(mode.failLevel).not.toHaveBeenCalled();
         expect(mode.odysseyState.recordAttempt).not.toHaveBeenCalled();
@@ -528,8 +528,8 @@ describe('OdysseyMode gameplay objectives', () => {
         }
         hybridEngine.victoryEvaluator.onCombo(tier.maxCascadeDepth);
         hybridEngine.updateTime(levelConfig.victory.failure.value + 1);
-        // Indra's Net also asks for Quads, which this fixture never clears.
-        const expectedBonuses = levelId === 55 ? [true, true, false] : [true, true];
+        // Both capstones' extra goals are a chain and a cascade count, which this fixture supplies.
+        const expectedBonuses = [true, true];
         expect(hybridEngine.calculateStars()).toBe(3);
         expect(hybridEngine.evaluateBonuses()).toEqual(expectedBonuses);
         mode._checkVictoryConditions(session);

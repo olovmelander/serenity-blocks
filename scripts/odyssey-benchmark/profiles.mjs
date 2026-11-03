@@ -89,6 +89,45 @@ export const BENCHMARK_CADENCES = Object.freeze([
     }),
 ]);
 
+/**
+ * Human-paced cadences (level design audit 2026-11, §5.7 level 2): any strategy held to roughly 0.6, 1.0 and
+ * 1.6 pieces a second, the audit's casual, regular and strong bands, with a person's reaction spread and a few
+ * misplaced pieces. Clocks and star times are then measured against people's pace, not the bot's. Select them
+ * by id; `--cadences all` keeps meaning the three execution cadences above.
+ */
+export const HUMAN_PACE_CADENCES = Object.freeze([
+    Object.freeze({
+        id: 'human-casual',
+        label: 'Casual human pace',
+        description: 'About 0.6 pieces a second, with a casual player\'s reactions and misplacements.',
+        reactionMs: Object.freeze([800, 1200]),
+        actionIntervalMs: 165,
+        mistakeChance: 0.06,
+        humanPace: true,
+    }),
+    Object.freeze({
+        id: 'human-regular',
+        label: 'Regular human pace',
+        description: 'About one piece a second, with a regular player\'s reactions and misplacements.',
+        reactionMs: Object.freeze([300, 400]),
+        actionIntervalMs: 160,
+        mistakeChance: 0.04,
+        humanPace: true,
+    }),
+    Object.freeze({
+        id: 'human-strong',
+        label: 'Strong human pace',
+        description: 'About 1.6 pieces a second, with a strong player\'s reactions and the odd misplacement.',
+        reactionMs: Object.freeze([150, 250]),
+        actionIntervalMs: 105,
+        mistakeChance: 0.02,
+        humanPace: true,
+    }),
+]);
+
+/** Every cadence a run may name: the execution cadences, then the human-paced ones. */
+export const ALL_BENCHMARK_CADENCES = Object.freeze([...BENCHMARK_CADENCES, ...HUMAN_PACE_CADENCES]);
+
 /** A planning view only. Neither bag contents nor production state are mutated. */
 export function restrictBotPreview(bot, previewCount = 3) {
     const count = Number.isFinite(previewCount) ? Math.max(0, Math.min(3, Math.floor(previewCount))) : 3;
@@ -180,7 +219,7 @@ export class BenchmarkBot extends PuzzleBotController {
     }) {
         const profile = BENCHMARK_PROFILES.find((entry) => entry.id === profileId);
         if (!profile) throw new RangeError(`Unknown benchmark profile: ${profileId}`);
-        const cadence = BENCHMARK_CADENCES.find((entry) => entry.id === cadenceId);
+        const cadence = ALL_BENCHMARK_CADENCES.find((entry) => entry.id === cadenceId);
         if (!cadence) throw new RangeError(`Unknown benchmark cadence: ${cadenceId}`);
         const decisions = new RandomStream(decisionSeed ?? 'odyssey-benchmark', 'bot-decisions');
         super({
@@ -209,7 +248,7 @@ export class BenchmarkBot extends PuzzleBotController {
             ...this.config,
             reactionMs: (cadence.reactionMs || profile.reactionMs).slice(),
             actionIntervalMs: cadence.actionIntervalMs || profile.actionIntervalMs,
-            mistakeChance: profile.mistakeChance,
+            mistakeChance: cadence.mistakeChance ?? profile.mistakeChance,
             heuristicNoise: 0,
             lookaheadDepth: profile.lookaheadDepth,
             lookaheadBreadth: 6, // Four root candidates, at most two at future plies.

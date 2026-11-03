@@ -1,4 +1,4 @@
-import { getBotDifficultyConfig, rollReactionDelay } from './bot-difficulty.js';
+import { applyBotConfigOverrides, getBotDifficultyConfig, rollReactionDelay } from './bot-difficulty.js';
 import { analyzeCascadePreparation, measureBoard, rankCandidates } from './board-evaluator.js';
 import { simulatePlacement } from './cascade-simulator.js';
 import { estimateLatentDischarge } from './latent-chain.js';
@@ -174,7 +174,11 @@ export class PuzzleBotController {
         this.playerState = options.playerState;
         this.actions = options.actions;
         this.rng = options.rng || defaultRng;
-        this.config = getBotDifficultyConfig(options.difficulty ?? 10);
+        // An Odyssey rival may cap the tier's pace (`versus.botOverrides`); everyone else passes none.
+        this.config = applyBotConfigOverrides(
+            getBotDifficultyConfig(options.difficulty ?? 10),
+            options.configOverrides,
+        );
         this.scheduler = new BotInputScheduler(this.actions, this.config);
         this.currentSpawnToken = null;
         this.readyAtMs = 0;

@@ -33,11 +33,15 @@ describe('Odyssey difficulty balance', () => {
         expect(firstSprint.victory.primary).toEqual({ type: 'lines', target: 22 });
         expect(firstSprint.victory.failure).toEqual({ type: 'time', value: 270 });
 
+        // Level design audit 2026-11: the first boss is paced to what chapter 1 taught.
         const chapterOneBoss = getLevel(4);
         expect(chapterOneBoss.mechanics.baseMode).toBe('hybrid');
         expect(chapterOneBoss.victory.primary.type).toBe('lines');
-        expect(chapterOneBoss.victory.primary.target).toBe(40);
-        expect(chapterOneBoss.stars.three).toEqual({ lines: 40, cascades: 3, bonuses: 1 });
+        expect(chapterOneBoss.victory.primary.target).toBe(30);
+        expect(chapterOneBoss.mechanics.speed).toEqual({
+            startLevel: 3, levelProgression: true, fixedDropInterval: 420,
+        });
+        expect(chapterOneBoss.stars.three).toEqual({ lines: 30, bonuses: 2 });
 
         const finale = getLevel(55);
         expect(finale.metadata.difficultyModel.scalar).toBe(1);
@@ -45,7 +49,8 @@ describe('Odyssey difficulty balance', () => {
         expect(finale.mechanics.board.rows).toBe(100);
         expect(finale.mechanics.board.startingRows).toBe(30);
         expect(finale.mechanics.speed.fixedDropInterval).toBe(500);
-        expect(finale.victory.primary).toEqual({ type: 'score', target: 250000 });
+        expect(finale.victory.primary).toEqual({ type: 'score', target: 160000 });
+        expect(finale.victory.failure).toEqual({ type: 'time', value: 600 });
     });
 
     it('keeps chapter 6 and chapter 7 peaks hard while adding release space around them', () => {
@@ -63,9 +68,12 @@ describe('Odyssey difficulty balance', () => {
         expect(voltageStorm.victory.failure.type).toBe('top-out');
         expect(voltageStorm.modifiers.active).not.toContain('time-attack');
         expect(voltageStorm.victory.primary.target).toBeLessThan(25);
-        expect(chromadelicHighway.victory.primary.target).toBe(66);
-        expect(chromadelicHighway.victory.failure.value).toBe(150);
-        expect(chromadelicHighway.mechanics.speed.startLevel).toBe(13);
+        // The sprint stays the campaign's fastest orb, on the 105 ms floor (audit 2026-11, R1).
+        expect(chromadelicHighway.victory.primary.target).toBe(50);
+        expect(chromadelicHighway.victory.failure.value).toBe(180);
+        expect(chromadelicHighway.mechanics.speed).toEqual({
+            startLevel: 13, levelProgression: true, fixedDropInterval: 120,
+        });
     });
 
     it('maintains an increasing main-arc chapter peak curve with explicit release beats', () => {

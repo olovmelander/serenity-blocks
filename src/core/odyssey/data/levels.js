@@ -30,6 +30,7 @@
 import { deriveOdysseyLevelTuning, normalizeOdysseyCompletionStars } from './difficulty-model.js';
 import { assembleOdysseyCampaign } from './campaign-order.js';
 import { applyOdysseyOrbCopy } from './orb-copy.js';
+import { applyOdysseyLevelDesign } from './level-design-2026-11.js';
 import {
     ODYSSEY_DUEL_KNOCKOUTS, ODYSSEY_DUEL_STAR_TOP_OUTS, formatOdysseyDuelGoal, formatOdysseyRival, getOdysseyDuelGravity,
 } from './duel-rules.js';
@@ -4871,8 +4872,12 @@ const AUTHORED_LEVEL_CONFIGS = BASE_LEVEL_CONFIGS.map((level) => {
     return harmonizeChainGoals(tunedLevel);
 });
 
-// The words go on last, so every orb ships with exactly the name, description and tip in orb-copy.js.
-export const LEVEL_CONFIGS = applyOdysseyOrbCopy(assembleOdysseyCampaign(AUTHORED_LEVEL_CONFIGS));
+// The level design retune (audit 2026-11) applies to the assembled campaign by public id, so it holds the
+// numbers players meet. The words go on last, so every orb ships with exactly the name, description and
+// tip in orb-copy.js.
+export const LEVEL_CONFIGS = applyOdysseyOrbCopy(
+    applyOdysseyLevelDesign(assembleOdysseyCampaign(AUTHORED_LEVEL_CONFIGS)),
+);
 
 /** The rival of each chapter, keyed by the public id of the duel orb (the chapter's last slot). */
 export const ODYSSEY_BOT_CHALLENGES = Object.freeze(Object.fromEntries(
