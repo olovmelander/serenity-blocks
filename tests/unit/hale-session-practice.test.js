@@ -98,14 +98,16 @@ describe('open holds', () => {
 
     it('brings you back at the safety limit', async () => {
         at('ELIXIR', RETENTION + 3);
-        expect(manager.holdState.cap).toBe(180);
-        await vi.advanceTimersByTimeAsync(179000);
+        // A 90 s suggestion would allow 180 s; the two-minute ceiling ends it at 120.
+        expect(manager.holdState.cap).toBe(120);
+        await vi.advanceTimersByTimeAsync(119000);
         expect(manager.currentPhaseIndex).toBe(RETENTION + 3);
         await vi.advanceTimersByTimeAsync(1000);
         expect(manager.currentPhaseIndex).toBe(RECOVERY + 3);
-        expect(manager.measure.holds[0]).toMatchObject({ seconds: 180, endedBy: 'limit' });
-        expect(MAX_OPEN_HOLD_SECONDS).toBe(240);
-        expect(manager._holdCap({ duration: 120 })).toBe(240);
+        expect(manager.measure.holds[0]).toMatchObject({ seconds: 120, endedBy: 'limit' });
+        expect(MAX_OPEN_HOLD_SECONDS).toBe(120);
+        expect(manager._holdCap({ duration: 120 })).toBe(120);
+        expect(manager._holdCap({ duration: 60 })).toBe(120);
     });
 
     it('keeps the hold paused when you pause, then measures only the time you held', async () => {

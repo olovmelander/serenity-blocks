@@ -27,8 +27,8 @@ export { SESSION_WORLDS } from './breathing/session-worlds.js';
 
 /** The picture for a stage breathed at your own pace: slow, and never counted. */
 export const NATURAL_PATTERN = Object.freeze([4, 1, 6, 1]);
-/** Longest an open hold may run before the voice brings you back: four minutes. */
-export const MAX_OPEN_HOLD_SECONDS = 240;
+/** Longest an open hold may run before the voice brings you back: two minutes. */
+export const MAX_OPEN_HOLD_SECONDS = 120;
 /** An open hold cannot end in its first moment (a tap meant for the stage before). */
 const MIN_OPEN_HOLD_MS = 1500;
 /** The closing words appear this long before the session ends. */
@@ -917,7 +917,7 @@ export class BreathworkSessionManager {
         return phase?.type === 'retention' && phase.hold === 'open' && this.options.openHolds !== false;
     }
 
-    /** An open hold's safety limit: twice its suggestion, at least 30 s over, at most four minutes. */
+    /** An open hold's safety limit: twice its suggestion, at least 30 s over, at most two minutes. */
     _holdCap(phase) {
         return Math.min(MAX_OPEN_HOLD_SECONDS, Math.max(phase.duration + 30, phase.duration * 2));
     }
