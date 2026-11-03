@@ -16,7 +16,7 @@
  * beads of the ring round it one by one; four lines or a perfect clear collapse it (the star
  * falls in on itself for a moment, then detonates: a flash, a blast wave that bends the picture,
  * a fireball of filaments, a spray of ejecta) and leave a spinning pulsar whose beams sweep the
- * nebula while a new star kindles; a T-spin winds the corona into a pinwheel and lets it spring
+ * nebula while a new star kindles; a twist winds the corona into a pinwheel and lets it spring
  * back; and a level change shifts the element the star burns and with it the palette (hydrogen,
  * helium, carbon, oxygen, silicon). Time alone also turns the colours through that cycle, slowly,
  * whatever the level: about eighty seconds a palette.

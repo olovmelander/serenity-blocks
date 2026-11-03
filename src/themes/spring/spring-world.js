@@ -14,7 +14,7 @@
  *   chain         the spring flood rises with each link: the river swells, runs whiter and faster
  *                 and the fall's mist thickens; when the chain breaks it falls back
  *   four lines    the great surge, and the last of the winter's ice goes out on it
- *   T-spin        the pool turns in a whirl where it drains
+ *   twist        the pool turns in a whirl where it drains
  *   back-to-back  the river glitters while the run lasts, and each back-to-back clear flares it
  *                 and lights the bow in the fall's spray, brighter each step of the run
  *   perfect       two surges, and whooper swans come over the valley (the crown on the clear it
@@ -28,7 +28,7 @@
  * leans the meadow and the colours deepen; in a fever the spring flood is at its height: the whole
  * knoll in flower and glowing in the colours played, the bow blazing in the spray, the river
  * glittering, cranes trumpeting over the valley. When the hands rest it all breathes back.
- * Nothing restarts: a clear's flush of bloom, a T-spin's whirl, a perfect clear's stillness and a
+ * Nothing restarts: a clear's flush of bloom, a twist's whirl, a perfect clear's stillness and a
  * clear's breath are taken up where they stand by the next one (spring-core.js Rejoin, the shared
  * Swell), so fast play builds on what is lit instead of blinking it out.
  *
@@ -36,7 +36,7 @@
  * breeze; a lock shakes the piece's own pollen out of its patch and puffs the air round it; a
  * clear lifts pollen and down off the knoll in the cleared rows' colours and sends a breath out
  * across the valley; each link of a chain spins up a little whirlwind beside the card, the air
- * thickens and two gyres turn it, and a broken chain lets its down go; a T-spin whirls too; back-
+ * thickens and two gyres turn it, and a broken chain lets its down go; a twist whirls too; back-
  * to-back strikes glints off the river; a level up sends willow down drifting over from upwind;
  * a perfect clear stills the air and showers it gold.
  *
@@ -93,7 +93,7 @@ export const REST_RIG = Object.freeze({ near: RIG.near, far: RIG.far });
 export const fovForAspect = (aspect) => rigFor(aspect).fov;
 
 const COUNTERS = [
-    'locks', 'hardDrops', 'clears', 'lines', 'waves', 'quads', 'tspins', 'spins', 'perfects', 'chainSteps',
+    'locks', 'hardDrops', 'clears', 'lines', 'waves', 'quads', 'twists', 'spins', 'perfects', 'chainSteps',
     'releases', 'b2bSteps', 'levelUps', 'gameOvers', 'mornings', 'feverFlights',
 ];
 /** How long ago (s) an event row's moment was (Infinity before it). */
@@ -330,7 +330,7 @@ export class SpringWorld {
             rise: FLUSH.rise, holdEnd: FLUSH.rise + FLUSH.hold, fallEnd: FLUSH.rise + FLUSH.hold + FLUSH.fall,
         });
         this.still = new Rejoin({ rise: STILL.rise, holdEnd: STILL.hold, fallEnd: STILL.fall });
-        /** A T-spin's whirl in the plunge pool (the river's shader draws the same curve). */
+        /** A twist's whirl in the plunge pool (the river's shader draws the same curve). */
         this.poolWhirl = new Rejoin({
             rise: WHIRL.life[0], holdEnd: WHIRL.life[1], fallEnd: WHIRL.life[2], ceiling: 1.6,
         });
@@ -764,7 +764,7 @@ export class SpringWorld {
         this.kindBloom[slot]?.hit(power * HEAT.kindHit, this.time);
         this.gustKick.hit(hard ? 0.14 : 0.07, this.time);
         this.playSurge.lock(context, this.time);
-        if (context.tspin) this.onSpin();
+        if (context.twist) this.onSpin();
     }
 
     /** True when gameplay may throw motes into the air (not under reduced motion). */
@@ -1179,7 +1179,7 @@ export class SpringWorld {
         this.gustKick.hit(0.1 + 0.05 * lines, this.time);
         this.clearDrift(lines + deeper * 0.5, context.rowCodes);
         if (lines === 4) this.onQuad();
-        if (context.tspin) this.onTSpin(context);
+        if (context.twist) this.onTwist(context);
         if (context.b2b) this.onB2BClear();
         // A perfect clear in the clear's own frame: the clear, and its crown on top.
         if (context.perfect) this.onPerfect();
@@ -1194,21 +1194,21 @@ export class SpringWorld {
         this.flashKick.hit(0.5, this.time);
     }
 
-    /** The plunge pool's whirl, taken up where it stands (a second T-spin keeps it turning, harder). */
+    /** The plunge pool's whirl, taken up where it stands (a second twist keeps it turning, harder). */
     spinPool(power) {
         this.poolWhirl.hit(power, this.time, 0.3);
         this.u.whirl.value.set(this.poolWhirl.at, this.poolWhirl.power);
     }
 
-    /** A T-spin: the plunge pool turns in a whirl, and so does the air beside the card on its side. */
-    onTSpin() {
-        this.counts.tspins++;
+    /** A twist: the plunge pool turns in a whirl, and so does the air beside the card on its side. */
+    onTwist() {
+        this.counts.twists++;
         this.spinPool(1);
         this.whirlSpray();
         this.whirlwind(this.lastLockU < 0.5 ? -1 : 1, 5, PIECE_RGB[1]);
     }
 
-    /** A T-spin that cleared nothing: the pool stirs a little, and a small whirl of air beside the card. */
+    /** A twist that cleared nothing: the pool stirs a little, and a small whirl of air beside the card. */
     onSpin() {
         this.counts.spins++;
         this.spinPool(0.45);

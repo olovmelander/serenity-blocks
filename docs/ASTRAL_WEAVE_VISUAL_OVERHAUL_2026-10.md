@@ -132,7 +132,7 @@ Run `npm run dev:playground`, then:
 
 `/playground.html?effect=astral-weave&t=20&quality=High&board=1&stack=7`
 
-Add `event=lock|drop|clear|tetris|tspin|perfect|levelUp` with `eventAge=<s>`, `combo=<n>`,
+Add `event=lock|drop|clear|quad|twist|perfect|levelUp` with `eventAge=<s>`, `combo=<n>`,
 `level=<n>`, `lines=<n>`. `demo=1` (without `t`) plays a looping script. `parts=` draws only
 the named layers (`sky`, `rosette`, `wefts`, `warp`, `hoop`, `flares`, `sparks`, `dust`,
 `motes`); `falseColor=1` bands the pre-tone-map peak; `forceWebGL=1` uses the WebGL2
@@ -141,7 +141,7 @@ backend; `hud=0` hides the playground's panel. In the game: `?astralWeaveTime=`,
 
 The second pass's beats: a lamp flaring under a clear's ring,
 `event=clear&lines=2&combo=1&eventAge=0.57`; the near motes struck by it, `eventAge=0.7`; a
-rose chain, `combo=5`; the amber iris, `event=tetris&eventAge=2.2`; the sky alone,
+rose chain, `combo=5`; the amber iris, `event=quad&eventAge=2.2`; the sky alone,
 `parts=sky`; a session an hour old (the jewels and lamps stay put, the gas has drifted),
 `t=3600`.
 

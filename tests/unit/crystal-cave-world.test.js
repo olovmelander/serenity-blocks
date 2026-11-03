@@ -434,7 +434,7 @@ describe('Crystal Cave world', () => {
             director.onPieceLock({ piece: piece('IOTSZJL'[round % 7], round % 10, 6 + (round % 18)) });
             director.onLineClear(1 + (round % 4));
             director.onCombo(2 + round);
-            if (round % 6 === 0) director.onTSpin({ piece: piece('T', 7) });
+            if (round % 6 === 0) director.onTwist({ piece: piece('T', 7) });
             if (round % 9 === 0) director.onPerfectClear();
             if (round % 11 === 0) director.onLevelUp();
             play(world, director, 0.12, 30);

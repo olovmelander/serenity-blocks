@@ -1622,10 +1622,10 @@ describe('halcyon apex world: clears, combos and the four-line clear', () => {
         for (const { world } of [four, perfect, three]) world.dispose();
     });
 
-    it('turns everything that floats on a T-spin, and sends two more rings from the wave\'s heart', () => {
+    it('turns everything that floats on a twist, and sends two more rings from the wave\'s heart', () => {
         const spun = makeWorld('Low');
         const plain = makeWorld('Low');
-        spun.world.onClear({ lines: 2, tspin: true });
+        spun.world.onClear({ lines: 2, twist: true });
         plain.world.onClear({ lines: 2 });
         expect(plain.world.twist).toBe(0);
         expect(rings(plain.world)).toHaveLength(0);
@@ -1882,8 +1882,8 @@ describe('halcyon apex world: the heat of play', () => {
     it('answers a back-to-back with both beacons and a second ring, in sunfire', () => {
         const back = makeWorld('Low');
         const plain = makeWorld('Low');
-        back.world.onClear({ lines: 2, tspin: true, b2b: true });
-        plain.world.onClear({ lines: 2, tspin: true });
+        back.world.onClear({ lines: 2, twist: true, b2b: true });
+        plain.world.onClear({ lines: 2, twist: true });
         expect(hueGap(back.world.u.clearC[0].value.toArray(), SUNFIRE)).toBeLessThan(1e-6);
         expect(hueGap(plain.world.u.clearC[0].value.toArray(), SUNFIRE)).toBeGreaterThan(0.05);
         expect(back.world.u.shock.value.y).toBeGreaterThan(0);
@@ -1926,7 +1926,7 @@ describe('halcyon apex world: the heat of play', () => {
         world.dispose();
     });
 
-    it('turns a little on a T-spin that cleared nothing', () => {
+    it('turns a little on a twist that cleared nothing', () => {
         const { camera, world } = makeWorld('Low');
         expect(world.twist).toBe(0);
         world.onSpin({});
@@ -2056,7 +2056,7 @@ describe('halcyon apex world: time', () => {
         // Something else entirely in between...
         world.onCombo(9);
         world.onLock({ u: 0.5, hardDrop: true });
-        world.onClear({ lines: 3, tspin: true });
+        world.onClear({ lines: 3, twist: true });
         world.levelUp(4);
         world.setReducedMotion(true);
         run(world, camera, 3);

@@ -756,9 +756,9 @@ describe('Nebula Flow world: a clear', () => {
         expect(perfect.world.getState().counts.quads).toBe(1);
     });
 
-    it('twists the flow on a T-spin and lets it spring back; a plain clear leaves it be', () => {
+    it('twists the flow on a twist and lets it spring back; a plain clear leaves it be', () => {
         const { world, camera } = makeWorld('High', { at: 20 });
-        frame(world, camera, 1 / 60, () => world.onClear({ rows: [19, 18], lines: 2, tspin: true }));
+        frame(world, camera, 1 / 60, () => world.onClear({ rows: [19, 18], lines: 2, twist: true }));
         let peak = 0;
         for (let i = 0; i < 20; i += 1) {
             frame(world, camera, 1 / 60);
@@ -969,7 +969,7 @@ describe('Nebula Flow world: a session', () => {
         expect(calm.world.vortex).toBeCloseTo(full.world.vortex, 9);
         expect(calm.world.u.vortex.value.z).toBeLessThan(full.world.u.vortex.value.z);
         [calm, full].forEach(({ world, camera }) => {
-            frame(world, camera, 1 / 60, () => world.onClear({ rows: [19], lines: 1, tspin: true }));
+            frame(world, camera, 1 / 60, () => world.onClear({ rows: [19], lines: 1, twist: true }));
             run(world, camera, 0.15, 1 / 60);
         });
         expect(Math.abs(calm.world.u.twist.value)).toBeLessThan(Math.abs(full.world.u.twist.value));
@@ -1291,9 +1291,9 @@ describe('Nebula Flow world: building with play', () => {
         const plain = makeWorld('Low', { at: 20 });
         const twin = makeWorld('Low', { at: 20 });
         let t = plain.world.time + 1 / 60;
-        frame(plain.world, plain.camera, 1 / 60, () => plain.world.onClear({ rows: [19, 18], lines: 2, tspin: true }));
+        frame(plain.world, plain.camera, 1 / 60, () => plain.world.onClear({ rows: [19, 18], lines: 2, twist: true }));
         frame(twin.world, twin.camera, 1 / 60, () => twin.world.onClear({
-            rows: [19, 18], lines: 2, tspin: true, b2b: true,
+            rows: [19, 18], lines: 2, twist: true, b2b: true,
         }));
         expect(clusterFronts(plain.world, t)).toHaveLength(2);
         const first = clusterFronts(twin.world, t).map((f) => ({ ...f }));
@@ -1305,13 +1305,13 @@ describe('Nebula Flow world: building with play', () => {
         run(twin.world, twin.camera, 1, 1 / 60);
         t = twin.world.time + 1 / 60;
         frame(twin.world, twin.camera, 1 / 60, () => twin.world.onClear({
-            rows: [19, 18], lines: 2, tspin: true, b2b: true,
+            rows: [19, 18], lines: 2, twist: true, b2b: true,
         }));
         const strongest = (fronts) => Math.max(...fronts.map((f) => f.strength));
         expect(strongest(clusterFronts(twin.world, t))).toBeGreaterThan(strongest(first));
     });
 
-    it('turns the flow a little for a T-spin that clears nothing', () => {
+    it('turns the flow a little for a twist that clears nothing', () => {
         const peakTwist = (during) => {
             const { world, camera } = makeWorld('Low', { at: 20 });
             frame(world, camera, 1 / 60, () => during(world));
@@ -1323,7 +1323,7 @@ describe('Nebula Flow world: building with play', () => {
             return peak;
         };
         const spin = peakTwist((world) => world.onSpin({ player: 0 }));
-        const clear = peakTwist((world) => world.onClear({ rows: [19, 18], lines: 2, tspin: true }));
+        const clear = peakTwist((world) => world.onClear({ rows: [19, 18], lines: 2, twist: true }));
         expect(spin).toBeGreaterThan(0.01);
         expect(spin).toBeLessThan(clear);
     });

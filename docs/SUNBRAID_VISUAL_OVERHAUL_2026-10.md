@@ -115,7 +115,7 @@ found in a triple star system (HD 188753, announced 2005).
 Checked on 2026-10-20 on the RTX 3070 laptop (WebGPU, adapter "nvidia ampere"), branch
 `feature/sunbraid` merged with main d48739f2.
 
-- **Playground** (`?effect=sunbraid`): rest, every gameplay event (`event=lock|drop|clear|quad|tspin|
+- **Playground** (`?effect=sunbraid`): rest, every gameplay event (`event=lock|drop|clear|quad|twist|
   perfect|levelUp|over|morning` with `eventAge`), the clock, levels, portrait and 21:9, every quality
   tier, on WebGPU and on the WebGL2 backend (`forceWebGL`): clean consoles, no validation errors,
   no NaN frames (the conjunction is the frame to capture).

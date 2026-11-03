@@ -206,7 +206,7 @@ describe.each(TIERS)('blood moon shaders at %s', (quality) => {
         runtime.update(3, 1 / 60);
         // Something in every table, as a frame mid-game has.
         runtime.cue('lock', {});
-        runtime.cue('tetris', { lineCount: 4 });
+        runtime.cue('quad', { lineCount: 4 });
         runtime.update(3.4, 1 / 60);
 
         const targets = [];
@@ -264,7 +264,7 @@ describe('blood moon under Reduce flashing effects', () => {
         vi.unstubAllGlobals();
     });
 
-    async function lightAfterTetris(reduceFlashing) {
+    async function lightAfterQuad(reduceFlashing) {
         restore.push(vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture()));
         restore.push(vi.spyOn(THREE.ImageLoader.prototype, 'load').mockImplementation(() => {}));
         vi.stubGlobal('window', {
@@ -283,7 +283,7 @@ describe('blood moon under Reduce flashing effects', () => {
             sizes: { width: 1600, height: 900 },
         });
         runtime.update(2, 1 / 60);
-        runtime.cue('tetris', { lineCount: 4 });
+        runtime.cue('quad', { lineCount: 4 });
         runtime.update(2.2, 0.2);
         const { eventLight, ripples } = runtime.getDiagnostics();
         runtime.dispose();
@@ -291,8 +291,8 @@ describe('blood moon under Reduce flashing effects', () => {
     }
 
     it('keeps under a tenth of every flare round the moon, and still drops its rings', async () => {
-        const full = await lightAfterTetris(false);
-        const held = await lightAfterTetris(true);
+        const full = await lightAfterQuad(false);
+        const held = await lightAfterQuad(true);
         expect(full.corona).toBeGreaterThan(0.2);
         expect(full.wave).toBeGreaterThan(0.2);
         expect(held.corona).toBeLessThan(full.corona * 0.1);

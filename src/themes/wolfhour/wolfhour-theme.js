@@ -590,7 +590,7 @@ export default class WolfhourTheme extends BaseTheme {
         this.crown = new Swell({
             attack: 0.2, release: 2.4, ceiling: 1.3, knee: 0.9,
         });
-        /** The night wind's kicks (hard drops, T-spins): snow torn off the summits. */
+        /** The night wind's kicks (hard drops, twists): snow torn off the summits. */
         this.gust = new Swell({
             attack: 0.12, release: 1.1, ceiling: 1, knee: 0.6,
         });
@@ -2682,7 +2682,7 @@ export default class WolfhourTheme extends BaseTheme {
             [EVENTS.PIECE_LOCK, 'onPieceLock'],
             [EVENTS.LINE_CLEAR, 'onLineClear'],
             [EVENTS.COMBO, 'onCombo'],
-            [EVENTS.TSPIN, 'onTSpin'],
+            [EVENTS.TWIST, 'onTwist'],
             [EVENTS.B2B, 'onB2B'],
             [EVENTS.PERFECT_CLEAR, 'onPerfectClear'],
             [EVENTS.LEVEL_UP, 'onLevelUp'],
@@ -3056,7 +3056,7 @@ export default class WolfhourTheme extends BaseTheme {
         return tracker;
     }
 
-    /** One of SURGE_WEIGHTS' extras (a T-spin, a B2B, a perfect clear) added to the play's heat. */
+    /** One of SURGE_WEIGHTS' extras (a twist, a B2B, a perfect clear) added to the play's heat. */
     surgeBonus(kind, scale = 1, at = this.time) {
         const punch = SURGE_WEIGHTS.punch[kind] * scale;
         const heat = SURGE_WEIGHTS.heat[kind] * scale;
@@ -3491,10 +3491,10 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     /**
-     * A T-spin: the wind whirls snow off the summits and the moon rings in its palest light;
-     * with lines, two rifts cross the sky. A T-spin that clears nothing still stirs the wind.
+     * A twist: the wind whirls snow off the summits and the moon rings in its palest light;
+     * with lines, two rifts cross the sky. A twist that clears nothing still stirs the wind.
      */
-    onTSpin(data = {}) {
+    onTwist(data = {}) {
         const detail = data?.detail || data;
         const lines = Math.max(0, Math.floor(Number(detail?.lineCount) || 0));
         const playerKey = this.getReactivePlayerKey(data);
@@ -3509,7 +3509,7 @@ export default class WolfhourTheme extends BaseTheme {
             cosmicRiftIntensity: lines > 0 ? 0.5 : 0.15,
         });
         // Its clear (if any) already counted its lines: only the spin's own worth is added.
-        this.surgeBonus('tspin', lines > 0 ? 1 : 0.45);
+        this.surgeBonus('twist', lines > 0 ? 1 : 0.45);
     }
 
     /**

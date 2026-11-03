@@ -36,7 +36,7 @@ The Wave 2 lake now has one preallocated response system:
 The deterministic capture contract is:
 
 ```text
-event=idle|lock|tetris|tspin
+event=idle|lock|quad|tspin
 fxAge=<seconds>
 t=8
 quality=High|Low

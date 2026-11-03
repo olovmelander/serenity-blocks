@@ -150,7 +150,7 @@ export class AstralWeaveWorld {
         };
         this._lockCue = { hardDrop: false };
         this._clearCue = {
-            lines: 1, cascade: 1, combo: 1, tspin: false, perfect: false, b2b: false,
+            lines: 1, cascade: 1, combo: 1, twist: false, perfect: false, b2b: false,
         };
         // Everything an event lights ADDS to what is still lit (shared/swell.js): a weak hit
         // after a strong one can only lift the light, rapid hits ride up to a plateau.
@@ -506,7 +506,7 @@ export class AstralWeaveWorld {
         }
     }
 
-    /** A T-spin that cleared nothing (the director's sink.spin). */
+    /** A twist that cleared nothing (the director's sink.spin). */
     onSpin(c) {
         if (this.isPrimary(c?.player)) this.spinOnly();
     }
@@ -612,13 +612,13 @@ export class AstralWeaveWorld {
      * @param {number} [c.lines]  1..4 (defaults to rows.length)
      * @param {number} [c.combo]  true consecutive-clear combo after this clear (1 = first)
      * @param {number} [c.cascade] cascade depth of this wave (1 = the lock's own clear)
-     * @param {boolean} [c.tspin]
+     * @param {boolean} [c.twist]
      * @param {boolean} [c.perfect]
      * @param {boolean} [c.b2b]   the second (or later) difficult clear in a row
      * @param {number} [c.strength]
      */
     clear({
-        rows, lines, combo = null, cascade = 1, tspin = false, perfect = false, b2b = false, strength = 1,
+        rows, lines, combo = null, cascade = 1, twist = false, perfect = false, b2b = false, strength = 1,
     } = {}) {
         this.applyPendingShift();
         const list = Array.isArray(rows) && rows.length ? rows : [WEFT_ROWS - 1];
@@ -688,8 +688,8 @@ export class AstralWeaveWorld {
         this.flashSwell.hit((0.12 + 0.07 * n) * gain, this.time);
         if (!this.reducedMotion) this.kickSwell.hit((0.1 + 0.09 * n) * gain, this.time);
         if (combo !== null) this.setCombo(combo);
-        if (tspin) {
-            // A T-spin wrings the hoop: one quick turn of the whole weave, sprung back.
+        if (twist) {
+            // A twist wrings the hoop: one quick turn of the whole weave, sprung back.
             this.spinVelocity += (this.shuttleDir > 0 ? 1 : -1) * (this.reducedMotion ? 0.4 : 1.5);
             this.heatFlash = Math.max(this.heatFlash, 0.25);
         }
@@ -703,7 +703,7 @@ export class AstralWeaveWorld {
         cue.lines = n;
         cue.cascade = depth;
         cue.combo = combo ?? 1;
-        cue.tspin = tspin === true;
+        cue.twist = twist === true;
         cue.perfect = perfect === true;
         cue.b2b = b2b === true;
         this.surge.clear(cue, this.time);
@@ -795,7 +795,7 @@ export class AstralWeaveWorld {
         this.surge.crown(this.time);
     }
 
-    /** A T-spin that cleared nothing: a small wring of the hoop. */
+    /** A twist that cleared nothing: a small wring of the hoop. */
     spinOnly() {
         this.spinVelocity += (this.shuttleDir > 0 ? 1 : -1) * (this.reducedMotion ? 0.2 : 0.6);
         this.heatFlash = Math.max(this.heatFlash, 0.12);
@@ -1116,7 +1116,7 @@ export class AstralWeaveWorld {
             const rate = this.heatTarget > this.heat ? 2.4 : 0.55;
             this.heat += (this.heatTarget - this.heat) * approach(rate, dt);
             this.heatFlash *= Math.exp(-dt * 0.5);
-            // The hoop's spin: a sprung turn (T-spins) on top of a slow sway.
+            // The hoop's spin: a sprung turn (twists) on top of a slow sway.
             const w = 3.4;
             const c1 = this.spin;
             const c2 = this.spinVelocity + w * c1;

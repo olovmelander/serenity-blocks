@@ -19,7 +19,7 @@
  *   reduce=1                 reduced motion
  *   look=x,y,z,fov           inspection lens: from the eye, look at a world point with this fov
  *   level=<n>                rest on level n (the braid wound on n − 1 sixths; the clock turns it too)
- *   event=lock|drop|clear|quad|tspin|perfect|levelUp|over|morning   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|perfect|levelUp|over|morning   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<1..4>, turns=<1..3>)
  *   combo=<n>                hold a chain of n (the braid turns faster and opens wider)
  *   locks=<n>                before the event, play n locks
@@ -44,7 +44,7 @@ const DEMO_SCRIPT = [
     [12.0, 'lock'], [13.2, 'lock'], [14.4, 'lock'], [15.6, 'drop'],
     [17.0, 'drop'], [17.0, 'clear', { lines: 4, combo: 1 }],
     [24.0, 'lock'], [25.2, 'lock'],
-    [26.4, 'lock'], [26.4, 'clear', { lines: 2, tspin: true, combo: 1 }],
+    [26.4, 'lock'], [26.4, 'clear', { lines: 2, twist: true, combo: 1 }],
     [30.0, 'lock'],
 ];
 
@@ -166,9 +166,9 @@ export function create({
         else if (eventName === 'drop') world.onLock({ rows: [13, 12], u: 0.3, hardDrop: true });
         else if (eventName === 'clear') world.onClear({ lines, combo: Math.max(1, holdCombo) });
         else if (eventName === 'quad') world.onClear({ lines: 4, combo: Math.max(1, holdCombo) });
-        else if (eventName === 'tspin') {
+        else if (eventName === 'twist') {
             const turns = Math.max(1, Math.min(3, Math.round(num(params, 'turns', 2))));
-            world.onClear({ lines: turns, tspin: true });
+            world.onClear({ lines: turns, twist: true });
         } else if (eventName === 'perfect') world.onClear({ lines: 4, perfect: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
         else if (eventName === 'over') world.onGameOver();

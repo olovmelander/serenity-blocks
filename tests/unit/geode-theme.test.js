@@ -469,7 +469,7 @@ describe('Geode theme: one node renderer on both backends', () => {
         expect(lock).toHaveBeenCalledOnce();
     });
 
-    it('crowns a four with its late perfect clear, and answers a T-spin that clears nothing', async () => {
+    it('crowns a four with its late perfect clear, and answers a twist that clears nothing', async () => {
         const { theme } = await startTheme({ quality: 'High' });
         const clear = vi.spyOn(theme.world, 'onClear');
         const perfect = vi.spyOn(theme.world, 'onPerfect');
@@ -484,7 +484,7 @@ describe('Geode theme: one node renderer on both backends', () => {
         expect(perfect).toHaveBeenCalledOnce();
         expect(theme.world.getState().counts).toMatchObject({ clears: 1, quads: 1, crowns: 1 });
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 0 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 0 });
         theme.stepFrame(48);
         expect(spin).toHaveBeenCalledOnce();
         expect(clear).toHaveBeenCalledOnce();

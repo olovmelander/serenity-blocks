@@ -7,7 +7,7 @@
  * face as straight bands that slide as the eye moves, glows from its root (the mycelium feeds it)
  * and catches light on every arris.
  *
- * The crystals are the grotto's bells. A T-spin, three lines or the Great Bloom makes them
+ * The crystals are the grotto's bells. A twist, three lines or the Great Bloom makes them
  * chime: a front of light runs root to point through every stone and splits into colours. A
  * chime that comes while another still rings adds to it: its front runs again from the roots
  * while the stones stay lit, so a cascade rings them in sequence, louder each time.

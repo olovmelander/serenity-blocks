@@ -23,7 +23,7 @@
  *            arms wind tighter — then the nucleus erupts: both jets fire to their full reach
  *            behind a bright head, every nursery goes nova as the wave passes, a prismatic ring
  *            crosses the sky, space itself ripples out from the nucleus, and it spits stars.
- *   T-spin   the arms wind up and spring back (one that clears nothing still turns them a
+ *   twist   the arms wind up and spring back (one that clears nothing still turns them a
  *            little and sends a faint ring across the sky).
  *   cascade  every wave of it runs out hotter than the last: wider fronts, nearer starfire, a
  *            knot up the jets and a shooting star more for each.
@@ -752,7 +752,7 @@ export class GalaxyWorld {
 
     /**
      * A prismatic ring across the sky from the nucleus at `at`. Two can cross at once: it takes
-     * the one with less light left, so a T-spin or a new level never cuts an eruption's.
+     * the one with less light left, so a twist or a new level never cuts an eruption's.
      */
     shockRing(at, strength) {
         const { shock, shockB } = this.u;
@@ -904,13 +904,13 @@ export class GalaxyWorld {
     }
 
     /**
-     * Lines cleared. `lines` 1..4; `tspin`, `perfect`; `rows` = the visible rows that went;
+     * Lines cleared. `lines` 1..4; `twist`, `perfect`; `rows` = the visible rows that went;
      * `combo` = the true chain this clear is a step of; `cascade` = which wave of its lock this
      * is (1 = the first); `b2b` = a difficult clear right after another; `crown` = a perfect clear
      * that settled after its clear (it crowns what is playing: see onCrown()).
      */
     onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, player = 0, screen = null,
+        rows = null, lines = 1, twist = false, perfect = false, player = 0, screen = null,
         combo = 1, cascade = 1, b2b = false, crown = false,
     } = {}) {
         const { u } = this;
@@ -1029,7 +1029,7 @@ export class GalaxyWorld {
                 radiant: u.nucleusDir.value.toArray(),
             });
         }
-        if (tspin) {
+        if (twist) {
             // The arms wind up and spring back; a small ring leaves the nucleus across the sky.
             this.twistVelocity += 3.0;
             if (!quad) {
@@ -1046,7 +1046,7 @@ export class GalaxyWorld {
         if (deep > 0) this.play.wave(birth);
         else {
             this.play.clear({
-                lines: n, combo: chain, tspin, perfect, b2b,
+                lines: n, combo: chain, twist, perfect, b2b,
             }, birth);
         }
         this.counts.clears += 1;
@@ -1094,7 +1094,7 @@ export class GalaxyWorld {
         this.play.crown(t);
     }
 
-    /** A T-spin that cleared nothing: the arms turn a little, a faint ring, a knot up the jets. */
+    /** A twist that cleared nothing: the arms turn a little, a faint ring, a knot up the jets. */
     onSpin() {
         if (!this.u) return;
         this.twistVelocity += 1.4;

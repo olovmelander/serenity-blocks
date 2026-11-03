@@ -76,7 +76,7 @@ describe('sunfall-director', () => {
         expect(snap.exhalePulse).toBeGreaterThan(0.8);
     });
 
-    it('accumulates B2B Flood Threads (up to 3) + Echo and T-Spin persistent +15 deg/line fringe rotation', () => {
+    it('accumulates B2B Flood Threads (up to 3) + Echo and Twist persistent +15 deg/line fringe rotation', () => {
         const dir = new SunfallDirector({ level: 1, reducedMotion: true });
 
         dir.setB2B(2);
@@ -86,9 +86,9 @@ describe('sunfall-director', () => {
         expect(snap.echoBoost).toBeGreaterThan(0.1);
 
         const beforeDeg = snap.fringeDegrees;
-        dir.onTSpin({ lines: 2, isMini: false });
+        dir.onTwist({ lines: 2, isMini: false });
         snap = dir.step(0.2);
-        expect(snap.fringeDegrees - beforeDeg).toBeCloseTo(2 * SUNFALL_TIMINGS.tSpinTurnDeg, 2);
+        expect(snap.fringeDegrees - beforeDeg).toBeCloseTo(2 * SUNFALL_TIMINGS.twistTurnDeg, 2);
     });
 
     it('handles Perfect Clear Zenith Flush, Level Up, Game Over Over-Cloud, and Reset Session', () => {

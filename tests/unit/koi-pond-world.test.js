@@ -447,11 +447,11 @@ describe('koi pond world: clears, chains and the four-line clear', () => {
         expect(world.getPostState().exposure).toBeCloseTo(1, 3);
     });
 
-    it('turns one koi over in the air for a T-spin, and reads nonsense as one line', () => {
+    it('turns one koi over in the air for a twist, and reads nonsense as one line', () => {
         const { camera, world } = makeWorld('Low');
         run(world, camera, 10);
         const leap = vi.spyOn(world.school, 'leap');
-        world.onClear({ lines: 2, tspin: true });
+        world.onClear({ lines: 2, twist: true });
         expect(leap.mock.calls[0][0]).toMatchObject({ twist: true });
         run(world, camera, 1);
         expect(leap.mock.calls[1][0]).toMatchObject({ twist: false });
@@ -1460,13 +1460,13 @@ describe('koi pond world: play builds instead of popping', () => {
         expect(world.getState().liliesOpen).toBe(world.getState().lilies);
     });
 
-    it('shows a T-spin that cleared nothing: one koi turns over at the surface under a rose swirl', () => {
+    it('shows a twist that cleared nothing: one koi turns over at the surface under a rose swirl', () => {
         const { camera, world } = makeWorld('Low');
         run(world, camera, 10);
         const leap = vi.spyOn(world.school, 'leap');
         const ring = vi.spyOn(world.light, 'ring');
         world.onLock({ u: 0.3, rows: [18, 19], color: '#7dffb8' });
-        world.onClear({ lines: 0, tspin: true });
+        world.onClear({ lines: 0, twist: true });
         expect(world.counts).toMatchObject({ clears: 0, spins: 1, quads: 0 });
         expect(leap.mock.calls[0][0]).toMatchObject({ twist: true });
         const swirl = ring.mock.calls[ring.mock.calls.length - 1];

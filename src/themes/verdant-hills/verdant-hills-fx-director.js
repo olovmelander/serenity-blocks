@@ -247,7 +247,7 @@ export class VerdantHillsFxDirector {
         }
     }
 
-    /** A T-spin: a tight spiral of wind beside the board, climbing as it turns. */
+    /** A twist: a tight spiral of wind beside the board, climbing as it turns. */
     spinRibbon(streak) {
         const { stage, ribbons } = this;
         const side = streak.side || 1;

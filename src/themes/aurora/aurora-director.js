@@ -65,7 +65,7 @@ const DEG = Math.PI / 180;
 const AMBER = [1.0, 0.42, 0.04];
 /** A back-to-back's answer: the oxygen red of the crown, carried down the curtain. */
 const CRIMSON = [1.0, 0.08, 0.26];
-const TSPIN_VIOLET = [0.62, 0.36, 1.0];
+const TWIST_VIOLET = [0.62, 0.36, 1.0];
 /** Seconds the storm hue takes to follow a new streak step (1/e). */
 const STORM_EASE = 0.6;
 /** Seconds between the slow bands of a storm's recovery. */
@@ -151,7 +151,7 @@ function makeBoard() {
         lines: 0,
         cascade: 1,
         advanced: false,
-        tspin: false,
+        twist: false,
         b2b: false,
         perfect: false,
         levelUp: false,
@@ -168,7 +168,7 @@ function clearPending(board) {
     board.lines = 0;
     board.cascade = 1;
     board.advanced = false;
-    board.tspin = false;
+    board.twist = false;
     board.b2b = false;
     board.perfect = false;
     board.levelUp = false;
@@ -416,10 +416,10 @@ export class AuroraDirector {
         return true;
     }
 
-    onTSpin(payload) {
+    onTwist(payload) {
         const board = this.boardFor(payload);
         board.pending = true;
-        board.tspin = true;
+        board.twist = true;
         return true;
     }
 
@@ -694,7 +694,7 @@ export class AuroraDirector {
         const boost = (board.b2b ? 1.15 : 1) * (1 + (depth - 1) * 0.12);
         const { azimuth } = board;
         const quad = lines >= 4;
-        const tint = board.tspin ? TSPIN_VIOLET : color;
+        const tint = board.twist ? TWIST_VIOLET : color;
 
         // Strum: every arc takes pulses from both edges of the board, a billow that moves
         // the fabric itself, and a bloom standing in the sky around the board.
@@ -710,12 +710,12 @@ export class AuroraDirector {
                 0,
                 tint,
             );
-            this.pluck(arc, board, 0.42, 2.2, 0.17, 0, (board.tspin ? 34 : 15 + lines * 4) * near, tint);
+            this.pluck(arc, board, 0.42, 2.2, 0.17, 0, (board.twist ? 34 : 15 + lines * 4) * near, tint);
             this.launch(arc, azimuth, 0, 0, 1.15, board.halfWidth + 0.16, 0.3 * near * boost, 0, tint);
             // An awake front runs out along the arc from the board; a bigger clear colours
             // its tall rays, the near arc violet-topped and the others red-crowned.
             let tops = 0;
-            if (board.tspin) tops = -1;
+            if (board.twist) tops = -1;
             else if (lines >= 2) tops = arc.index === 0 ? -0.7 : 0.6;
             this.wake(
                 arc,
@@ -737,7 +737,7 @@ export class AuroraDirector {
         this.heightKick = Math.min(0.9, this.heightKick + 0.14 + lines * 0.07);
         this.fringeKick = Math.min(1.2, this.fringeKick + lines * 0.22);
         this.crownKick = Math.min(1.2, this.crownKick + lines * 0.12);
-        if (board.tspin) this.violetKick = Math.min(1.2, this.violetKick + 0.8);
+        if (board.twist) this.violetKick = Math.min(1.2, this.violetKick + 0.8);
 
         const streak = 1 - Math.exp(-(combo - 1) * 0.2);
         this.raiseActivity(
@@ -767,7 +767,7 @@ export class AuroraDirector {
             this.queueMeteors(3, 1.8);
             this.requestShake(0.0225, 150);
         }
-        if (board.tspin) this.requestShake(0.0133, 130);
+        if (board.twist) this.requestShake(0.0133, 130);
         if (depth >= 2) this.cueWave(board, depth, tint);
 
         // A growing streak: each consecutive clear sends one surge the length of the sky.
@@ -906,12 +906,12 @@ export class AuroraDirector {
         this.requestShake(0.0307, 190);
     }
 
-    /** A T-spin that cleared nothing: a small violet twist in the curtain above the board. */
+    /** A twist that cleared nothing: a small violet twist in the curtain above the board. */
     cueSpin(board) {
-        this.pluck(AURORA_ARCS[0], board, 0.34, 1.6, 0.15, 0.55, 22, TSPIN_VIOLET);
+        this.pluck(AURORA_ARCS[0], board, 0.34, 1.6, 0.15, 0.55, 22, TWIST_VIOLET);
         this.wake(AURORA_ARCS[0], board.azimuth, 0.16, 0.4, 0.15, 0, -1);
         this.violetKick = Math.min(1.2, this.violetKick + 0.35);
-        this.queueRipple(board.azimuth, 0.35, 0.45, 28, TSPIN_VIOLET);
+        this.queueRipple(board.azimuth, 0.35, 0.45, 28, TWIST_VIOLET);
         this.requestShake(0.0075, 110);
     }
 
@@ -934,7 +934,7 @@ export class AuroraDirector {
         // A lock that clears is one event: the clear cue carries the piece's colour.
         if (board.lines > 0) this.cueClear(board, color);
         else if (board.lock) this.cueLock(board, color);
-        if (board.tspin && board.lines === 0) this.cueSpin(board);
+        if (board.twist && board.lines === 0) this.cueSpin(board);
         if (board.perfect) this.cuePerfect(board);
         if (board.levelUp) this.cueLevelUp(board);
         this.feedHeat(board, this.time);
@@ -951,15 +951,15 @@ export class AuroraDirector {
                 lines: board.lines,
                 cascade: board.cascade,
                 combo: board.tracker.combo,
-                tspin: board.tspin,
+                twist: board.twist,
                 b2b: board.b2b,
                 perfect: board.perfect,
             }, at);
         } else {
             // A later wave of a cascade its first wave already counted, or no clear at all.
             if (board.lines > 0) heat.wave(at);
-            if (board.tspin) {
-                if (board.lines > 0) heat.tspin(at);
+            if (board.twist) {
+                if (board.lines > 0) heat.twist(at);
                 else heat.spin(at);
             }
             if (board.b2b && board.lines > 0) heat.b2b(at);

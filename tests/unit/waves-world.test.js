@@ -128,7 +128,7 @@ function play(world, camera) {
             });
         }
         if (i === 90) {
-            world.onClear({ rows: [19, 18, 17], lines: 3, tspin: true });
+            world.onClear({ rows: [19, 18, 17], lines: 3, twist: true });
             world.onCombo(5);
         }
         if (i === 150) world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
@@ -824,13 +824,13 @@ describe('waves world: clears', () => {
         expect([liveBands(world).length, finite]).toEqual([1, true]);
     });
 
-    it('turns a wheel of spray off the walls for a T-spin, and tears the lip all the way', () => {
+    it('turns a wheel of spray off the walls for a twist, and tears the lip all the way', () => {
         const plain = makeWorld('Low');
         const spun = makeWorld('Low');
         const wheel = vi.spyOn(spun.world.spray, 'swirl');
         const none = vi.spyOn(plain.world.spray, 'swirl');
         plain.world.onClear({ lines: 2 });
-        spun.world.onClear({ lines: 2, tspin: true });
+        spun.world.onClear({ lines: 2, twist: true });
         expect(none).not.toHaveBeenCalled();
         expect(wheel).toHaveBeenCalledOnce();
         const [when, , options] = wheel.mock.calls[0];
@@ -1272,10 +1272,10 @@ describe('waves world: play builds, it never pops', () => {
         run(world, camera, 0.6);
         const first = lit(world);
         expect(world.getState().stage).toBe(0);
-        // A quick hand: a clear every 0.64 s, a T-spin and a cascade among them.
+        // A quick hand: a clear every 0.64 s, a twist and a cascade among them.
         for (const lines of [1, 2, 1, 2, 2, 3, 2, 2, 3, 2, 3]) {
             run(world, camera, 0.04);
-            clear(lines, lines === 3 ? { tspin: combo === 6 } : {});
+            clear(lines, lines === 3 ? { twist: combo === 6 } : {});
             if (combo === 9) {
                 for (let wave = 2; wave <= 4; wave++) {
                     run(world, camera, 0.36);
@@ -1380,11 +1380,11 @@ describe('waves world: play builds, it never pops', () => {
     it('answers a back-to-back with a set wave through the tube; another grows it, never starts it again', () => {
         const { camera, world } = makeWorld('Low');
         const bulge = world.U.bulge.value;
-        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        world.onClear({ rows: [19, 18], lines: 2, twist: true });
         frame(world, camera, DT);
         expect(world.getState().setWave).toBe(false);
         world.onClear({
-            rows: [19, 18], lines: 2, tspin: true, b2b: true,
+            rows: [19, 18], lines: 2, twist: true, b2b: true,
         });
         frame(world, camera, DT);
         expect(world.getState().setWave).toBe(true);
@@ -1392,7 +1392,7 @@ describe('waves world: play builds, it never pops', () => {
         const { x } = bulge;
         const { setHeight } = world.state;
         world.onClear({
-            rows: [19, 18], lines: 2, tspin: true, b2b: true,
+            rows: [19, 18], lines: 2, twist: true, b2b: true,
         });
         frame(world, camera, DT);
         // On down the tube from where it was, and taller.
@@ -1412,7 +1412,7 @@ describe('waves world: play builds, it never pops', () => {
         expect(world.state.setHeight).toBeLessThan(0.2);
     });
 
-    it('shows a T-spin that cleared nothing: a small screw of light and a little wheel of spray', () => {
+    it('shows a twist that cleared nothing: a small screw of light and a little wheel of spray', () => {
         const { camera, world } = makeWorld('Low');
         const wheel = vi.spyOn(world.spray, 'swirl');
         world.onSpin({ player: 0 });
@@ -1598,7 +1598,7 @@ describe('waves world: time', () => {
         run(world, camera, 1);
         world.onLock({ u: 0.3, hardDrop: true, color: '#ffa6e3' });
         world.onLock({ u: 0.7, color: '#6b8dff' });
-        world.onClear({ lines: 3, tspin: true });
+        world.onClear({ lines: 3, twist: true });
         world.onCombo(9);
         world.levelUp(4);
         run(world, camera, 1.5);

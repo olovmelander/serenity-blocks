@@ -354,7 +354,7 @@ interface EventPayloadMap {
   COMBO: GameplayEventTags & { comboCount: number };
   PIECE_LOCK: GameplayEventTags & { piece: unknown | null };
   PERFECT_CLEAR: GameplayEventTags & { depth: number; perfectClearBonus?: number };
-  TSPIN: GameplayEventTags & { lineCount: number };
+  TWIST: GameplayEventTags & { lineCount: number };
   B2B: GameplayEventTags & { active: boolean };
 }
 

@@ -757,7 +757,7 @@ describe('Ocean theme: one node renderer on both backends', () => {
         expect(world.clears[0]).toMatchObject({
             lines: 4, rows: [19, 18, 17, 16], combo: 1, cascade: 1, player: 0, screen: null,
         });
-        expect(world.clears[0]).toMatchObject({ tspin: false, perfect: false, b2b: false });
+        expect(world.clears[0]).toMatchObject({ twist: false, perfect: false, b2b: false });
         expect(world.onCombo).toHaveBeenLastCalledWith(1);
         // The level, with its ceremony, and remembered for a rebuild.
         expect(world.levelUp).toHaveBeenCalledOnce();
@@ -772,17 +772,17 @@ describe('Ocean theme: one node renderer on both backends', () => {
         expect(callOrder(post.update)).toBeLessThan(callOrder(post.render));
     });
 
-    it('carries a T-spin, a perfect clear and a back-to-back on the clear', async () => {
+    it('carries a twist, a perfect clear and a back-to-back on the clear', async () => {
         const { theme } = await startTheme({ quality: 'High' });
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 2 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 2 });
         eventBus.emit(EVENTS.B2B, { active: true });
         eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 1 });
         theme.stepFrame(16);
         expect(theme.world.clears).toHaveLength(1);
         expect(theme.world.clears[0]).toMatchObject({
-            lines: 2, rows: [19, 18], tspin: true, perfect: true, b2b: true,
+            lines: 2, rows: [19, 18], twist: true, perfect: true, b2b: true,
         });
     });
 

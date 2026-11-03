@@ -82,7 +82,7 @@ const clear = (world, extra = {}) => world.onClear({
     lines: 2,
     combo: 1,
     cascade: 1,
-    tspin: false,
+    twist: false,
     perfect: false,
     b2b: false,
     rowCodes: [],
@@ -362,18 +362,18 @@ describe('Rainbark world: the Climb and Mistfall', () => {
 });
 
 describe('Rainbark world: what the events record', () => {
-    it('counts locks, hard drops, clears, lines, quads, T-spins and perfect clears, and the session\'s sheds', () => {
+    it('counts locks, hard drops, clears, lines, quads, twists and perfect clears, and the session\'s sheds', () => {
         const { world } = makeWorld('Minimal');
         world.primeSession({ sheds: 0 });
         lock(world);
         lock(world, { hardDrop: true, distance: 14 });
         clear(world, { lines: 3, rowCodes: [0, 1, 2, 3, 4, 5, 6, 7, 7, 7] });
-        clear(world, { lines: 4, tspin: false });
-        clear(world, { lines: 2, tspin: true });
+        clear(world, { lines: 4, twist: false });
+        clear(world, { lines: 2, twist: true });
         clear(world, { lines: 1, perfect: true });
         const { counts, sheds } = world.getState();
         expect(counts).toMatchObject({
-            locks: 2, hardDrops: 1, clears: 4, lines: 10, quads: 1, tspins: 1, perfects: 1,
+            locks: 2, hardDrops: 1, clears: 4, lines: 10, quads: 1, twists: 1, perfects: 1,
         });
         expect(sheds).toBeGreaterThan(2);
         // What it keeps is its own copy: the director reuses its context objects.

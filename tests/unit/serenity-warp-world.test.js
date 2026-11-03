@@ -273,9 +273,9 @@ describe('Serenity Warp world', () => {
         expect(world.getState().warp).toBeLessThan(last * 0.3);
     });
 
-    it('twists the vortex on a T-spin and lets it spring back', () => {
+    it('twists the vortex on a twist and lets it spring back', () => {
         const { world, camera } = makeWorld('High', { at: 20 });
-        frame(world, camera, 1 / 60, () => world.onClear({ rows: [19, 18], lines: 2, tspin: true }));
+        frame(world, camera, 1 / 60, () => world.onClear({ rows: [19, 18], lines: 2, twist: true }));
         run(world, camera, 0.15, 1 / 60);
         expect(Math.abs(world.twist)).toBeGreaterThan(0.02);
         run(world, camera, 4, 1 / 60);
@@ -518,13 +518,13 @@ describe('Serenity Warp world', () => {
         expect(counts[3]).toBeGreaterThan(counts[0]);
     });
 
-    it('rings twice for a back-to-back, more the longer the run, and answers a T-spin that cleared nothing', () => {
+    it('rings twice for a back-to-back, more the longer the run, and answers a twist that cleared nothing', () => {
         const { world, camera } = makeWorld('High', { at: 20 });
         let rim = 0;
         const clear = (b2b) => {
             const before = world.waveCursor;
             frame(world, camera, 1 / 60, () => world.onClear({
-                rows: [19, 18], lines: 2, tspin: true, b2b,
+                rows: [19, 18], lines: 2, twist: true, b2b,
             }));
             rim = world.rimFlash;
             run(world, camera, 0.4, 1 / 60);
@@ -539,7 +539,7 @@ describe('Serenity Warp world', () => {
         expect(world.getState().b2bRun).toBe(2);
         clear(false);
         expect(world.getState().b2bRun).toBe(0);
-        // A T-spin that cleared nothing: a small twist, the glass turning over, one faint ring.
+        // A twist that cleared nothing: a small twist, the glass turning over, one faint ring.
         run(world, camera, 4, 1 / 30);
         const before = world.waveCursor;
         const { level } = world.heat;

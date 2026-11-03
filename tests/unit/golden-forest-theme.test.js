@@ -50,11 +50,11 @@ vi.mock('three/webgpu', async (importOriginal) => {
     return { ...actual, WebGPURenderer: TestRenderer };
 });
 
-const GAMEPLAY_EVENTS = [EVENTS.HARD_DROP, EVENTS.PIECE_LOCK, EVENTS.LINE_CLEAR, EVENTS.COMBO, EVENTS.TSPIN, EVENTS.B2B,
+const GAMEPLAY_EVENTS = [EVENTS.HARD_DROP, EVENTS.PIECE_LOCK, EVENTS.LINE_CLEAR, EVENTS.COMBO, EVENTS.TWIST, EVENTS.B2B,
     EVENTS.PERFECT_CLEAR, EVENTS.LEVEL_UP];
-const DIRECTOR_METHODS = ['onHardDrop', 'onPieceLock', 'onLineClear', 'onCombo', 'onTSpin', 'onBackToBack',
+const DIRECTOR_METHODS = ['onHardDrop', 'onPieceLock', 'onLineClear', 'onCombo', 'onTwist', 'onBackToBack',
     'onPerfectClear', 'onLevelUp', 'onGameOver'];
-const FLOURISHES = ['onTSpin', 'onBackToBack', 'onPerfectClear', 'onLevelUp'];
+const FLOURISHES = ['onTwist', 'onBackToBack', 'onPerfectClear', 'onLevelUp'];
 const RUNTIME_FIELDS = ['renderer', 'world', 'post', 'reactions', 'assets', 'timer', 'scene', 'camera'];
 const CONTAINER_ID = 'golden-forest-theme';
 const assetDirectory = new URL('../../src/themes/golden-forest/assets/', import.meta.url);
@@ -107,7 +107,7 @@ function stubSceneBuild(theme) {
             onPieceLock: vi.fn(),
             onLineClear: vi.fn(),
             onCombo: vi.fn(),
-            onTSpin: vi.fn(),
+            onTwist: vi.fn(),
             onBackToBack: vi.fn(),
             onPerfectClear: vi.fn(),
             onLevelUp: vi.fn(),
@@ -365,7 +365,7 @@ describe('Golden Forest gameplay payloads', () => {
         };
         eventBus.emit(EVENTS.HARD_DROP, drop);
         eventBus.emit(EVENTS.PIECE_LOCK, { piece });
-        eventBus.emit(EVENTS.TSPIN, { detail: { lineCount: 2 } });
+        eventBus.emit(EVENTS.TWIST, { detail: { lineCount: 2 } });
         eventBus.emit(EVENTS.B2B, { active: true });
         eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 3, perfectClearBonus: 800 });
         eventBus.emit(EVENTS.LEVEL_UP, { level: 4, source: 'odyssey' });
@@ -376,7 +376,7 @@ describe('Golden Forest gameplay payloads', () => {
         expect(reactions.onPieceLock).toHaveBeenCalledExactlyOnceWith({ piece });
         expect(reactions.onHardDrop.mock.invocationCallOrder[0])
             .toBeLessThan(reactions.onPieceLock.mock.invocationCallOrder[0]);
-        expect(reactions.onTSpin).toHaveBeenCalledExactlyOnceWith({ lineCount: 2 });
+        expect(reactions.onTwist).toHaveBeenCalledExactlyOnceWith({ lineCount: 2 });
         expect(reactions.onBackToBack).toHaveBeenCalledExactlyOnceWith({ active: true });
         expect(reactions.onPerfectClear).toHaveBeenCalledExactlyOnceWith({ depth: 3, perfectClearBonus: 800 });
         expect(reactions.onLevelUp).toHaveBeenCalledExactlyOnceWith({ level: 4, source: 'odyssey' });
@@ -461,7 +461,7 @@ describe('Golden Forest gameplay payloads', () => {
         // Everything else still answers through the bus.
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1 });
         eventBus.emit(EVENTS.COMBO, { comboCount: 3 });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 1 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 1 });
         eventBus.emit(EVENTS.B2B, { active: true });
         eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 1 });
         eventBus.emit(EVENTS.LEVEL_UP, { level: 2 });
@@ -492,7 +492,7 @@ describe('Golden Forest gameplay payloads', () => {
             theme.onPieceLock({});
             theme.onLineClear(2);
             theme.onCombo(4);
-            theme.onFlourish('onTSpin', {});
+            theme.onFlourish('onTwist', {});
         }).not.toThrow();
     });
 
@@ -541,10 +541,10 @@ describe('Golden Forest gameplay payloads', () => {
         expect(theme.reactions.onLineClear).not.toHaveBeenCalled();
         expect(theme.reactions.onCombo).not.toHaveBeenCalled();
         eventBus.emit(EVENTS.HARD_DROP, { distance: 10 });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 2 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 2 });
         eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 2 });
         expect(theme.reactions.onHardDrop).not.toHaveBeenCalled();
-        expect(theme.reactions.onTSpin).not.toHaveBeenCalled();
+        expect(theme.reactions.onTwist).not.toHaveBeenCalled();
         expect(theme.reactions.onPerfectClear).not.toHaveBeenCalled();
 
         eventBus.emit(EVENTS.SETTINGS_CHANGED, { settings: { backgroundComboEffects: true, pieceLockRipple: 'off' } });
@@ -555,9 +555,9 @@ describe('Golden Forest gameplay payloads', () => {
         expect(theme.reactions.onLineClear).toHaveBeenCalledExactlyOnceWith(2, { lineCount: 2 });
         expect(theme.reactions.onCombo).toHaveBeenCalledExactlyOnceWith(3, { comboCount: 3 });
         eventBus.emit(EVENTS.HARD_DROP, { distance: 10 });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 2 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 2 });
         expect(theme.reactions.onHardDrop).not.toHaveBeenCalled();
-        expect(theme.reactions.onTSpin).toHaveBeenCalledExactlyOnceWith({ lineCount: 2 });
+        expect(theme.reactions.onTwist).toHaveBeenCalledExactlyOnceWith({ lineCount: 2 });
         // Turning effects back on, or touching another setting, clears nothing.
         expect(theme.reactions.reset).toHaveBeenCalledOnce();
         expect(theme.world.resetEffects).toHaveBeenCalledOnce();
@@ -1801,7 +1801,7 @@ describe('Golden Forest with its real artwork', () => {
         eventBus.emit(EVENTS.PIECE_LOCK, { piece });
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 4, clearedRows: [20, 21, 22, 23], cascadeCount: 1 });
         eventBus.emit(EVENTS.COMBO, { comboCount: 6 });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 2 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 2 });
         eventBus.emit(EVENTS.B2B, { active: true });
         eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 1, perfectClearBonus: 800 });
         eventBus.emit(EVENTS.LEVEL_UP, { level: 2 });

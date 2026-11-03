@@ -1861,7 +1861,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     /**
      * Hor+ lens: 60° vertical, the horizontal FOV widening with the aspect and capped at 104°
      * (the composition is authored in viewport heights). The world adds pace widening and the
-     * Tetris surge on top each frame.
+     * Quad surge on top each frame.
      */
     updateCameraProjection(width, height) {
         if (!this.camera) return;
@@ -1997,11 +1997,11 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             });
         });
 
-        const tspinUnsub = eventBus.on(EVENTS.TSPIN, (data) => {
+        const twistUnsub = eventBus.on(EVENTS.TWIST, (data) => {
             if (!reactive()) return;
             const lines = Number.isFinite(data?.lineCount) ? data.lineCount : 0;
             this.pushReactiveEnvelope({ ring: 0.25, ambient: 0.2 });
-            this.world?.onTSpin(lines);
+            this.world?.onTwist(lines);
         });
 
         const b2bUnsub = eventBus.on(EVENTS.B2B, (data) => {
@@ -2044,7 +2044,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             hardDropUnsub,
             comboUnsub,
             lineClearUnsub,
-            tspinUnsub,
+            twistUnsub,
             b2bUnsub,
             perfectUnsub,
             levelUpUnsub,

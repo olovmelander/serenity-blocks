@@ -61,7 +61,7 @@ export const SURGE_WEIGHTS = Object.freeze({
         lines: Object.freeze([0, 0.3, 0.45, 0.6, 0.85]),
         wave: 0.12, // each cascade wave past the first
         comboStep: 0.04, // per step of the true combo, up to COMBO_CAP
-        tspin: 0.35,
+        twist: 0.35,
         b2b: 0.3,
         perfect: 1.1,
         levelUp: 0.45,
@@ -72,7 +72,7 @@ export const SURGE_WEIGHTS = Object.freeze({
         lines: Object.freeze([0, 0.12, 0.2, 0.3, 0.5]),
         wave: 0.1,
         comboStep: 0.035,
-        tspin: 0.3,
+        twist: 0.3,
         b2b: 0.25,
         perfect: 0.9,
         levelUp: 0.3,
@@ -184,7 +184,7 @@ export class GameplaySurge {
 
     /**
      * Lines cleared (one call per resolved clear; `cascade` is its deepest wave).
-     * @param {{ lines?: number, cascade?: number, combo?: number, tspin?: boolean,
+     * @param {{ lines?: number, cascade?: number, combo?: number, twist?: boolean,
      *   perfect?: boolean, b2b?: boolean }} clear
      * @param {number} at seconds
      */
@@ -195,9 +195,9 @@ export class GameplaySurge {
         const steps = Math.max(0, Math.min(COMBO_CAP, Math.round(Number(clear?.combo) || 1) - 1));
         let punch = W.punch.lines[lines] + W.punch.wave * waves + W.punch.comboStep * steps;
         let heat = W.heat.lines[lines] + W.heat.wave * waves + W.heat.comboStep * steps;
-        if (clear?.tspin) {
-            punch += W.punch.tspin;
-            heat += W.heat.tspin;
+        if (clear?.twist) {
+            punch += W.punch.twist;
+            heat += W.heat.twist;
         }
         if (clear?.b2b) {
             punch += W.punch.b2b;
@@ -221,7 +221,7 @@ export class GameplaySurge {
 
     /**
      * For a theme that hears the parts of a clear one by one rather than as one resolved clear:
-     * one more cascade wave, a T-spin, a back-to-back, each worth what clear() adds for it.
+     * one more cascade wave, a twist, a back-to-back, each worth what clear() adds for it.
      * @param {number} at seconds
      */
     wave(at) {
@@ -229,8 +229,8 @@ export class GameplaySurge {
     }
 
     /** @param {number} at seconds */
-    tspin(at) {
-        this._add(SURGE_WEIGHTS.punch.tspin, SURGE_WEIGHTS.heat.tspin, at);
+    twist(at) {
+        this._add(SURGE_WEIGHTS.punch.twist, SURGE_WEIGHTS.heat.twist, at);
     }
 
     /** @param {number} at seconds */
@@ -238,9 +238,9 @@ export class GameplaySurge {
         this._add(SURGE_WEIGHTS.punch.b2b, SURGE_WEIGHTS.heat.b2b, at);
     }
 
-    /** A T-spin that cleared nothing: a little over half a T-spin's worth. @param {number} at seconds */
+    /** A twist that cleared nothing: a little over half a twist's worth. @param {number} at seconds */
     spin(at) {
-        this._add(SURGE_WEIGHTS.punch.tspin * 0.6, SURGE_WEIGHTS.heat.tspin * 0.5, at);
+        this._add(SURGE_WEIGHTS.punch.twist * 0.6, SURGE_WEIGHTS.heat.twist * 0.5, at);
     }
 
     /** The level rose. @param {number} at seconds */

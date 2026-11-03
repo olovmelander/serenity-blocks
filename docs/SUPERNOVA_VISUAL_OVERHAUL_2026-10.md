@@ -242,7 +242,7 @@ Run `npm run dev:playground`, then:
 
 `/playground.html?effect=supernova&t=20&quality=High&board=1`
 
-Add `event=lock|drop|clear|quad|tspin|perfect|levelUp` with `eventAge=<s>`, and `combo=<n>`
+Add `event=lock|drop|clear|quad|twist|perfect|levelUp` with `eventAge=<s>`, and `combo=<n>`
 (a held chain: it does not set the star off, whatever its length), `level=<n>`, `lines=<n>`,
 `t=<s>` (the palette's clock too: `t=20` is a level's own palette, `t=62` is well into its turn
 toward the next, `t=100` is the next),

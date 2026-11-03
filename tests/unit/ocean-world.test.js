@@ -332,7 +332,7 @@ describe('Ocean world: a long session stays sound', () => {
                 u: 0.8, rows: [17], hardDrop: true, color: pieces[4],
             });
             run(world, camera, 0.7);
-            world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+            world.onClear({ rows: [19, 18], lines: 2, twist: true });
             world.onCombo(3);
             run(world, camera, 2);
         };
@@ -399,9 +399,9 @@ describe('Ocean world: a long session stays sound', () => {
 });
 
 describe('Ocean world: play builds instead of popping', () => {
-    /** The tray's Fever: twelve clearing locks 0.64 s apart (a T-spin, a four-wave cascade), a quad. */
+    /** The tray's Fever: twelve clearing locks 0.64 s apart (a twist, a four-wave cascade), a quad. */
     const fever = (world, camera, from, to) => {
-        const plan = [1, 1, 2, 1, 2, 2, 3, 'tspin', 2, 'cascade', 3, 4];
+        const plan = [1, 1, 2, 1, 2, 2, 3, 'twist', 2, 'cascade', 3, 4];
         for (let n = from; n < to; n++) {
             const step = plan[n];
             const lines = typeof step === 'number' ? step : 2;
@@ -409,7 +409,7 @@ describe('Ocean world: play builds instead of popping', () => {
                 u: [0.2, 0.8, 0.4, 0.6][n % 4], rows: [19], hardDrop: true, color: pieces[n % 7],
             });
             world.onClear({
-                rows: [19, 18, 17, 16].slice(0, lines), lines, tspin: step === 'tspin', combo: n + 1, cascade: 1,
+                rows: [19, 18, 17, 16].slice(0, lines), lines, twist: step === 'twist', combo: n + 1, cascade: 1,
             });
             world.onCombo(n + 1);
             if (step === 'cascade') {
@@ -529,7 +529,7 @@ describe('Ocean world: play builds instead of popping', () => {
         expect(world.getState().beam).toBeGreaterThan(0.5);
     });
 
-    it('answers a T-spin that cleared nothing with a ring where the piece went in', () => {
+    it('answers a twist that cleared nothing with a ring where the piece went in', () => {
         const { world } = build();
         world.onLock({ u: 0.3, rows: [19], color: pieces[5] });
         const rings = world.rings.length;

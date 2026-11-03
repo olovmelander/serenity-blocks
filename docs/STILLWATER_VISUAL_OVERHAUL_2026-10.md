@@ -261,7 +261,7 @@ screen, 7 of 7).
 ```
 npm run dev:playground
 /playground.html?effect=stillwater&t=20&quality=High&board=1
-  &event=lock|drop|clear|quad|tspin|perfect|levelUp|break  &eventAge=<s>  &lines=<n>  &u=<0..1>  &row=<r>  &color=<hex>
+  &event=lock|drop|clear|quad|twist|perfect|levelUp|break  &eventAge=<s>  &lines=<n>  &u=<0..1>  &row=<r>  &color=<hex>
   &combo=<n>        hold a chain of n (how far the two have come)
   &locks=<n>        play n locks first (wisps over the water)
   &level=<n>        rest on that level's hour and hold it there (without it the night drifts by the clock)

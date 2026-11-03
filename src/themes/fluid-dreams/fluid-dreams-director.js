@@ -3,13 +3,13 @@
  *
  * Renderer-free, DOM-free, bus-free. The canonical gameplay events are delivered synchronously
  * inside the simulation tick, several per lock (HARD_DROP, PIECE_LOCK, then LINE_CLEAR / COMBO /
- * TSPIN / PERFECT_CLEAR once per cascade wave), so every on*() handler only STAGES numbers into
+ * TWIST / PERFECT_CLEAR once per cascade wave), so every on*() handler only STAGES numbers into
  * one of five preallocated player slots. flush() — called first in the theme's frame — resolves
  * each pending slot into at most one `lock` and one `clear` for the sink:
  *
  *   sink.lock({ player, rows, u, hardDrop, color, screen })
- *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, crown, screen })
- *   sink.spin({ player })      a T-spin that cleared nothing
+ *   sink.clear({ player, rows, lines, combo, cascade, twist, perfect, b2b, crown, screen })
+ *   sink.spin({ player })      a twist that cleared nothing
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
  *
@@ -47,7 +47,7 @@ export const FLUID_DREAMS_EVENT_HANDLERS = Object.freeze({
     HARD_DROP: 'onHardDrop',
     LINE_CLEAR: 'onLineClear',
     COMBO: 'onCombo',
-    TSPIN: 'onTSpin',
+    TWIST: 'onTwist',
     B2B: 'onB2B',
     PERFECT_CLEAR: 'onPerfectClear',
     LEVEL_UP: 'onLevelUp',
@@ -82,7 +82,7 @@ function createSlot() {
         clearRows: new Int16Array(MAX_ROWS),
         clearRowCount: 0,
         explicitCombo: -1,
-        tspin: false,
+        twist: false,
         perfect: false,
         b2b: false,
         /** A perfect clear on a frame of its own: the crown on the clear before it. */
@@ -106,7 +106,7 @@ function clearPending(slot) {
     slot.cascade = 1;
     slot.clearRowCount = 0;
     slot.explicitCombo = -1;
-    slot.tspin = false;
+    slot.twist = false;
     slot.perfect = false;
     slot.b2b = false;
     slot.crown = false;
@@ -221,7 +221,7 @@ export class FluidDreamsDirector {
             lines: 1,
             combo: 1,
             cascade: 1,
-            tspin: false,
+            twist: false,
             perfect: false,
             b2b: false,
             crown: false,
@@ -352,13 +352,13 @@ export class FluidDreamsDirector {
         return true;
     }
 
-    onTSpin(event) {
+    onTwist(event) {
         if (!this.enabled) return false;
         const payload = event || EMPTY;
         const slot = this.slotFor(payload);
         if (!slot) return false;
         slot.pending = true;
-        slot.tspin = true;
+        slot.twist = true;
         const lines = Math.max(0, Math.min(MAX_ROWS, Math.trunc(finite(payload.lineCount, 0))));
         if (lines > slot.lines) slot.lines = lines;
         if (lines > 0) slot.crown = false;
@@ -443,14 +443,14 @@ export class FluidDreamsDirector {
                 c.lines = slot.lines;
                 c.combo = Math.max(1, combo);
                 c.cascade = slot.cascade;
-                c.tspin = slot.tspin;
+                c.twist = slot.twist;
                 c.perfect = slot.perfect;
                 c.b2b = slot.b2b;
                 c.crown = slot.crown;
                 c.screen = screen;
                 sink.clear(c);
-            } else if (slot.lines === 0 && slot.tspin && sink?.spin) {
-                // A T-spin that cleared nothing still turns the sea a little.
+            } else if (slot.lines === 0 && slot.twist && sink?.spin) {
+                // A twist that cleared nothing still turns the sea a little.
                 this._spin.player = slot.player;
                 sink.spin(this._spin);
             }

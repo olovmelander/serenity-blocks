@@ -21,7 +21,7 @@
  *   clear       for every line the oldest lantern on the water lifts off, and the evening wind
  *               carries it away toward the place the sun goes down; a 22-degree halo blooms
  *               round the sun (the moon at night) and the sun's road on the sea flares.
- *   T-spin      the lanterns that lift go up turning round where they rose (one that clears
+ *   twist      the lanterns that lift go up turning round where they rose (one that clears
  *               nothing still sends the oldest lantern up turning).
  *   cascade     each wave lifts more than the last, and feeds the halo, the fire and the road.
  *   back-to-back  sun dogs: two mock suns stand on the halo either side of the light.
@@ -615,7 +615,7 @@ export class SunsetWorld {
         this.surge.lock(c, this.clock);
     }
 
-    /** Lines cleared: { player, rows, lines, combo, cascade, tspin, perfect, b2b, screen }. */
+    /** Lines cleared: { player, rows, lines, combo, cascade, twist, perfect, b2b, screen }. */
     onClear(c) {
         const s = this.state;
         const at = this.clock;
@@ -632,7 +632,7 @@ export class SunsetWorld {
         const lifted = this._lifted;
         lifted.length = 0;
         const went = this.pool.lift(at, count, {
-            gap: (big ? 0.16 : 0.32) / swell, spiral: c.tspin ? 1.25 : 0, out: lifted,
+            gap: (big ? 0.16 : 0.32) / swell, spiral: c.twist ? 1.25 : 0, out: lifted,
         });
         s.lifted += went;
         // Each leaves a ring where it rose from the water (a quad's first few only: the rest
@@ -691,7 +691,7 @@ export class SunsetWorld {
         this.sendFlock(this.parts.birds?.count ?? 0);
     }
 
-    /** A T-spin that cleared nothing: the oldest lantern on the water goes up turning. */
+    /** A twist that cleared nothing: the oldest lantern on the water goes up turning. */
     onSpin() {
         const at = this.clock;
         const lifted = this._lifted;

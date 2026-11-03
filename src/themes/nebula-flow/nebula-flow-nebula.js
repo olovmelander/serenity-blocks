@@ -3,7 +3,7 @@
  *
  *   the deep     a dark gradient and a powder of far stars, hidden where gas or lanes stand
  *   the cavity   glowing gas, brightest under the cluster, carried outward along its light by a
- *                flow map (two cross-faded reads), wound by the chain's vortex and a T-spin
+ *                flow map (two cross-faded reads), wound by the chain's vortex and a twist
  *   the veils    thin filaments of brighter gas in the same current
  *   the pillars  dust: a tapered-capsule distance per pillar, roughened by a baked relief whose
  *                gradient is exact (smooth normals), lit by the cluster from above and behind
@@ -175,7 +175,7 @@ export function createNebulaMaterial(u, noiseTex, reliefTex, look = {}) {
     };
 
     /**
-     * The chain's vortex and a T-spin's twist: turn a point about the board. The vortex turns the
+     * The chain's vortex and a twist's twist: turn a point about the board. The vortex turns the
      * gas only part of its way (VORTEX_TURN): wound its whole way, the shear drew every billow out
      * into arcs, a twirl filter over the picture; the spiral arms carry the rest.
      */

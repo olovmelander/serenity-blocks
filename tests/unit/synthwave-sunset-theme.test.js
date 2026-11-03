@@ -80,7 +80,7 @@ function fakeWorld() {
         onCombo: vi.fn(),
         onChain: vi.fn(),
         onLevelUp: vi.fn(),
-        onTSpin: vi.fn(),
+        onTwist: vi.fn(),
         onPerfectClear: vi.fn(),
         dispose: vi.fn(),
     };
@@ -141,7 +141,7 @@ describe('synthwave-sunset theme wiring', () => {
         theme.flushEvents();
         expect(world.onPieceLock).toHaveBeenCalledWith({ type: 'T', x: 3, rotation: 0 }, { hardDrop: false });
         expect(world.onLineClear).toHaveBeenCalledWith(2, {
-            cascade: 1, combo: 1, tspin: false, b2b: false,
+            cascade: 1, combo: 1, twist: false, b2b: false,
         });
         expect(world.onCombo).toHaveBeenCalledWith(3);
         expect(world.onLevelUp).toHaveBeenCalledTimes(1);
@@ -198,7 +198,7 @@ describe('synthwave-sunset theme wiring', () => {
         expect(late).not.toHaveBeenCalled();
     });
 
-    it('counts the true combo whatever the setting; hands over hard drops, T-spins, B2B, perfect clears, waves', () => {
+    it('counts the true combo whatever the setting; hands over hard drops, twists, B2B, perfect clears, waves', () => {
         const theme = new SynthwaveSunsetTheme();
         theme.isActive = true;
         const world = fakeWorld();
@@ -219,22 +219,22 @@ describe('synthwave-sunset theme wiring', () => {
         eventBus.emit(EVENTS.HARD_DROP, { piece: { type: 'T', x: 3 } });
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: { type: 'T', x: 3 } });
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 2, cascadeCount: 1 });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 2 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 2 });
         eventBus.emit(EVENTS.B2B, { active: true });
         theme.flushEvents();
         expect(world.onPieceLock).toHaveBeenLastCalledWith({ type: 'T', x: 3 }, { hardDrop: true });
         expect(world.onLineClear).toHaveBeenLastCalledWith(2, {
-            cascade: 1, combo: 4, tspin: true, b2b: true,
+            cascade: 1, combo: 4, twist: true, b2b: true,
         });
         expect(world.onChain).toHaveBeenLastCalledWith(4);
-        expect(world.onTSpin).not.toHaveBeenCalled();
+        expect(world.onTwist).not.toHaveBeenCalled();
 
         // Cascade waves arrive in their own ticks, each with its depth (COMBO announces it).
         eventBus.emit(EVENTS.COMBO, { comboCount: 2 });
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1 });
         theme.flushEvents();
         expect(world.onLineClear).toHaveBeenLastCalledWith(1, {
-            cascade: 2, combo: 4, tspin: false, b2b: false,
+            cascade: 2, combo: 4, twist: false, b2b: false,
         });
         // Two waves landing in one frame (a stall) stay two clears, not one bigger one.
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 2, cascadeCount: 3 });
@@ -251,11 +251,11 @@ describe('synthwave-sunset theme wiring', () => {
         expect(world.onPerfectClear).toHaveBeenCalledTimes(1);
         expect(world.onLineClear).toHaveBeenCalledTimes(clears);
 
-        // A T-spin that clears nothing still shows something.
+        // A twist that clears nothing still shows something.
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: { type: 'T', x: 4 } });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 0 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 0 });
         theme.flushEvents();
-        expect(world.onTSpin).toHaveBeenCalledTimes(1);
+        expect(world.onTwist).toHaveBeenCalledTimes(1);
         expect(world.onChain).toHaveBeenLastCalledWith(0);
         theme.stop();
     });

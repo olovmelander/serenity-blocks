@@ -14,7 +14,7 @@
  * columnMesh      the eruption columns' and spray veils' lathe grid [θ, h]
  * bloomSlots      lock-bloom slots (one pool for both sides)
  * recordSamples   arc-length samples a row of the stone record holds (16 rows)
- * rosettes        T-spin rosette slots
+ * rosettes        twist rosette slots
  * pines           ghost pines
  * motes           drifting droplets / diamond dust in the near air (one instanced pool)
  * devilMesh       the steam devils' lathe grid [θ, h]

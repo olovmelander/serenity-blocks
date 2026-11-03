@@ -221,7 +221,7 @@ export const EVENTS = {
     PERFECT_CLEAR: 'perfectClear',
     CASCADE: 'cascade',
     B2B: 'b2b',
-    TSPIN: 'tspin',
+    TWIST: 'twist',
     PIECE_LOCK: 'pieceLock',
     PIECE_MOVE: 'pieceMove',
     PIECE_ROTATE: 'pieceRotate',

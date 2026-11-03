@@ -248,7 +248,7 @@ describe('himalayan peak: what plays on builds', () => {
             const { world, camera } = makeWorld();
             step(world, camera, 0, 1);
             world.onClear({
-                rows: [19, 18], lines: 2, tspin: true, b2b,
+                rows: [19, 18], lines: 2, twist: true, b2b,
             });
             const thrown = world.counts.papers;
             step(world, camera, 1, 1.5);
@@ -267,7 +267,7 @@ describe('himalayan peak: what plays on builds', () => {
         expect(twice.spark.y).toBeCloseTo(gold[1], 6);
     });
 
-    it('turns the wind for a T-spin that cleared nothing', () => {
+    it('turns the wind for a twist that cleared nothing', () => {
         const { world, camera } = makeWorld();
         step(world, camera, 0, 1);
         const { level } = world.getState().play;
@@ -329,10 +329,10 @@ describe('himalayan peak director: the moments that clear nothing new', () => {
         expect(clears[0]).toMatchObject({ lines: 1, perfect: true });
     });
 
-    it('hands on a T-spin that cleared nothing', () => {
+    it('hands on a twist that cleared nothing', () => {
         const { director, calls } = make();
         director.onPieceLock({ piece: T });
-        director.onTSpin({ lineCount: 0 });
+        director.onTwist({ lineCount: 0 });
         director.flush();
         expect(calls.clear).toHaveLength(0);
         expect(calls.spin).toEqual([{ player: 0 }]);

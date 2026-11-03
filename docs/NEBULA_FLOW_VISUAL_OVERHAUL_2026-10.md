@@ -208,7 +208,7 @@ Playground (`npm run dev:playground`, then `playground.html?effect=nebula-flow&.
 | a clear | `t=26&quality=High&board=1&locks=6&event=clear&lines=2&eventAge=1.0` (`1.8`: the highest star freed; `2.6`: every held star) |
 | four lines | `t=26&quality=High&board=1&locks=6&event=quad&eventAge=0.2` (the hush), `0.5`, `1.4`, `4` |
 | a chain | `t=26&quality=High&board=1&locks=5&combo=3` (`combo=8`) |
-| T-spin, level | `event=tspin&eventAge=0.5`, `event=levelUp&eventAge=1.0` |
+| T-spin, level | `event=twist&eventAge=0.5`, `event=levelUp&eventAge=1.0` |
 | palettes | `t=10&quality=High&board=1&level=` 1 (webb), 2 (cosmic), 3 (rosette), 4 (ember), 8 (aurora), 9 (prismatic) |
 | debug | `dbg=diffuse\|lit\|th\|n`, `parts=nebula,stars,…`, `noPost=1`, `falseColor=1` |
 | the icon | `t=20&quality=Ultra&icon=1&locks=6&event=drop&u=0.2&piece=I&color=ff5ea8&iconFov=0.55&iconPitch=0.02&iconYaw=0.04&eventAge=3.2&row=2`, captured square (1024²), contrast 1.2, saturation 1.3, a soft vignette, baked to a 512 px circle. Superseded 2026-10-23 without the falling-piece trail ([THEME_ICON_AUDIT_2026-10-23.md](THEME_ICON_AUDIT_2026-10-23.md)) |

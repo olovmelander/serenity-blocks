@@ -24,7 +24,7 @@
  *   reduce=1                 reduced motion
  *   shake=0                  the ridge never shakes (everything else as usual: A/B captures)
  *   look=x,y,z,fov           inspection lens: from the eye, look at a world point with this fov
- *   event=lock|drop|clear|quad|tspin|perfect|levelUp|release|over   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|perfect|levelUp|release|over   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (u=<0..1> column, row=<0..19>,
  *                            lines=<1..4>, color=<hex>, peak=<n> for release)
  *   eventAt=<s>              ...or pin it on the clock: a seek to t shows it t - eventAt seconds
@@ -68,7 +68,7 @@ const DEMO_SCRIPT = [
     }], [19.0, 'clear', { lines: 4, combo: 1, rows: [19, 18, 17, 16] }],
     [27.0, 'lock', { rows: [19], u: 0.3 }], [28.4, 'lock', { rows: [18], u: 0.7 }],
     [29.8, 'lock', { rows: [19, 18], u: 0.2, color: PIECE_COLORS[2] }], [29.8, 'clear', {
-        lines: 2, tspin: true, combo: 1, rows: [19, 18],
+        lines: 2, twist: true, combo: 1, rows: [19, 18],
     }],
     [34.0, 'lock', { rows: [19], u: 0.55 }],
 ];
@@ -210,9 +210,9 @@ export function create({
             });
         } else if (eventName === 'clear') world.onClear({ lines, rows: rowsOf(row, lines), combo: Math.max(1, holdCombo) });
         else if (eventName === 'quad') world.onClear({ lines: 4, rows: rowsOf(16, 4), combo: Math.max(1, holdCombo) });
-        else if (eventName === 'tspin') {
+        else if (eventName === 'twist') {
             world.onClear({
-                lines: 2, rows: rowsOf(row, 2), tspin: true, u, color: PIECE_COLORS[1],
+                lines: 2, rows: rowsOf(row, 2), twist: true, u, color: PIECE_COLORS[1],
             });
         } else if (eventName === 'perfect') world.onClear({ lines: 4, perfect: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));

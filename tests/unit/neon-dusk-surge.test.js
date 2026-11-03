@@ -167,14 +167,14 @@ describe('neon-dusk builds with play', () => {
         world.dispose();
     });
 
-    it('answers a hard drop, a T-spin that clears nothing, and back-to-back', () => {
+    it('answers a hard drop, a twist that clears nothing, and back-to-back', () => {
         const world = makeWorld();
         world.onHardDrop();
         world.onPieceLock({ type: 'T', x: 2 });
         expect(Math.max(...world.ripples.map((r) => r.energy))).toBeCloseTo(1.5);
 
         runTo(world, world.time + 0.5);
-        world.onTSpin(0);
+        world.onTwist(0);
         runTo(world, world.time + 0.2);
         const spun = world.holos.find((h) => h.energy > 0);
         expect(spun.spin).not.toBe(0);

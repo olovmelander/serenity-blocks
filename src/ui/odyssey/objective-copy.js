@@ -19,7 +19,7 @@ export function formatOdysseyMapObjective(primary) {
     case 'cascade': return `Trigger ${primary.target} cascades`;
     case 'time': return `Survive ${primary.target} seconds`;
     case 'combo': return formatOdysseyChainGoal(primary.target);
-    case 'tetrises': return `Clear ${countOf(primary.target, 'Quad')}`;
+    case 'quads': return `Clear ${countOf(primary.target, 'Quad')}`;
     case 'rubble': return `Dig out ${countOf(primary.target, 'rubble row')}`;
     case 'frags': return primary.description || formatOdysseyDuelGoal('the rival', primary.target);
     default: return `Complete: ${primary.type} (${primary.target})`;
@@ -49,7 +49,7 @@ export function formatOdysseyBonusObjective(bonus) {
     case 'combo':
     case 'max-cascade-depth':
         return formatOdysseyChainGoal(bonus.target);
-    case 'tetris-count':
+    case 'quad-count':
         if (hasTarget) return `Clear ${countOf(target, 'Quad')}`;
         break;
     case 'cascade':
@@ -111,7 +111,7 @@ export function getOdysseyRetryDebrief(level, metrics, reason) {
         cascade: 'cascades',
         combo: 'maxCombo',
         time: 'time',
-        tetrises: 'tetrises',
+        quads: 'quads',
         rubble: 'rubbleCleared',
     }[type];
     if (!metricKey) return null;
@@ -127,7 +127,7 @@ export function getOdysseyRetryDebrief(level, metrics, reason) {
         cascade: 'cascade sequence',
         combo: 'wave',
         time: 'second',
-        tetrises: 'Quad',
+        quads: 'Quad',
         rubble: 'rubble row',
     };
     const remaining = Math.ceil(Math.max(0, target - value));
@@ -145,7 +145,7 @@ export function getOdysseyRetryDebrief(level, metrics, reason) {
         combo: 'Build a chain from one locked piece. The first clear counts as wave one; '
             + 'clears on later pieces start a new chain.',
         time: 'Keep the stack low and take safe clears while the timer runs.',
-        tetrises: 'Stack flat with one column left open, then drop a long I piece into it to clear four lines.',
+        quads: 'Stack flat with one column left open, then drop a long I piece into it to clear four lines.',
         rubble: 'Rubble rows have gaps. Clear the rows above them, then drop pieces into the gaps.',
     };
     let tip = cues[type];
@@ -201,7 +201,7 @@ export function formatOdysseyStarCondition(condition, starIndex = 0, bonuses = [
         case 'rubbleCleared':
             parts.push(starIndex === 0 ? 'Clear the orb' : countOf(value, 'rubble row'));
             break;
-        case 'tetrises':
+        case 'quads':
             parts.push(formatOdysseyAtLeast(value, 'Quad'));
             break;
         case 'maxCascadeDepth':
@@ -238,7 +238,7 @@ function odysseyBonusImpliedByCondition(bonus, condition = {}) {
     const target = Number(bonus?.target);
     if (!Number.isFinite(target)) return false;
     switch (bonus?.type) {
-    case 'tetris-count': return Number(condition.tetrises) >= target;
+    case 'quad-count': return Number(condition.quads) >= target;
     case 'cascade': return Number(condition.cascades) >= target;
     case 'combo':
     case 'max-cascade-depth': return getOdysseyChainTarget(condition) >= target;
@@ -303,7 +303,7 @@ function readOdysseyStarMetrics(results = {}) {
         cascades: readOdysseyMetric(results.cascades),
         maxCascadeDepth: chain,
         combo: chain,
-        tetrises: readOdysseyMetric(results.tetrises),
+        quads: readOdysseyMetric(results.quads),
         time: readOdysseyMetric(results.time),
         survived: readOdysseyMetric(results.time),
         rubbleCleared: readOdysseyMetric(results.rubbleCleared),
@@ -352,7 +352,7 @@ export function formatOdysseyStarActual(key, metrics) {
     case 'cascades': return plural(actual, 'cascade');
     case 'maxCascadeDepth':
     case 'combo': return `${actual}-wave chain`;
-    case 'tetrises': return plural(actual, 'Quad');
+    case 'quads': return plural(actual, 'Quad');
     case 'time':
     case 'survived': return formatOdysseyClock(actual);
     case 'rubbleCleared': return plural(actual, 'rubble row');

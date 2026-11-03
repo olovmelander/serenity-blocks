@@ -52,7 +52,7 @@ function createTheme() {
         const director = {
             activity: 0.4, surge: 0.1, heatLevel: 0.3, heatFever: 0.2,
         };
-        for (const handler of ['onHardDrop', 'onPieceLock', 'onLineClear', 'onCascade', 'onTSpin',
+        for (const handler of ['onHardDrop', 'onPieceLock', 'onLineClear', 'onCascade', 'onTwist',
             'onBackToBack', 'onPerfectClear', 'onLevelUp', 'stepHours', 'setHourSteps', 'calm']) {
             director[handler] = vi.fn();
         }
@@ -213,7 +213,7 @@ describe('Aurora theme lifecycle', () => {
         eventBus.emit(EVENTS.PIECE_LOCK, lock);
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 2, clearedRows: [23, 22] });
         eventBus.emit(EVENTS.COMBO, { comboCount: 3 });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 2 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 2 });
         eventBus.emit(EVENTS.B2B, { active: true });
         eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 1 });
         eventBus.emit(EVENTS.LEVEL_UP, { level: 2 });
@@ -221,7 +221,7 @@ describe('Aurora theme lifecycle', () => {
         expect(director.onPieceLock).toHaveBeenCalledWith(lock, true);
         expect(director.onLineClear).toHaveBeenCalledWith({ lineCount: 2, clearedRows: [23, 22] });
         expect(director.onCascade).toHaveBeenCalledWith({ comboCount: 3 });
-        expect(director.onTSpin).toHaveBeenCalledTimes(1);
+        expect(director.onTwist).toHaveBeenCalledTimes(1);
         expect(director.onBackToBack).toHaveBeenCalledTimes(1);
         expect(director.onPerfectClear).toHaveBeenCalledTimes(1);
         expect(director.onLevelUp).toHaveBeenCalledWith({ level: 2 });

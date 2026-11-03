@@ -24,7 +24,7 @@
  *   hard drop   the same, struck harder.
  *   clear       the lip throws a sheet of spray and a band of light runs down the tube for
  *               every line; the barrel opens a little and the water lights from inside.
- *   T-spin      the bands of light come down the tube as a screw, and a wheel of spray turns
+ *   twist      the bands of light come down the tube as a screw, and a wheel of spray turns
  *               off the walls and is flung ahead.
  *   four lines  the wave holds: the clock slows to a tenth, the biggest throw of all hangs in
  *               the air around the eye, then everything runs on.
@@ -39,7 +39,7 @@
  *   cascade     each wave of it comes deeper than the last: a wider, brighter band of light, a
  *               bigger throw.
  *   back-to-back  a set wave rolls through the tube behind the clear, and the lip throws again.
- *   T-spin, no lines   a small screw of light and a little wheel of spray.
+ *   twist, no lines   a small screw of light and a little wheel of spray.
  *   perfect     the whole pod, and the sky goes to gold. Settled after its clear (the crown),
  *               it draws the hold out and pours gold through the lip; it never throws again.
  *   level up    a set wave runs through the tube and the hour turns with it: golden hour,
@@ -710,7 +710,7 @@ export class WavesWorld {
     }
 
     /**
-     * Lines cleared: { player, rows, lines, combo, cascade, tspin, perfect, b2b, crown, screen }.
+     * Lines cleared: { player, rows, lines, combo, cascade, twist, perfect, b2b, crown, screen }.
      * `crown`: a perfect clear settled after the clear it crowns (waves-director.js).
      */
     onClear(c) {
@@ -728,7 +728,7 @@ export class WavesWorld {
         // bigger, harder throw, more light in the water.
         const depth = Math.max(0, Math.min(8, Math.round(Number(c.cascade) || 1) - 1));
         const open = this.U.open.value;
-        const twist = c.tspin ? 2.4 : 0;
+        const twist = c.twist ? 2.4 : 0;
         const strength = 0.75 + lines * 0.12 + depth * 0.08;
         const width = (0.85 + lines * 0.1) * (1 + depth * 0.14);
         for (let i = 0; i < lines; i += 1) this.addBand(strength, width, i * 0.26, twist);
@@ -747,7 +747,7 @@ export class WavesWorld {
             speed: [0.7 + lines * 0.12 + depth * 0.1, 1.5 + lines * 0.4 + depth * 0.25],
             size: 0.028 + lines * 0.003,
         });
-        if (c.tspin) {
+        if (c.twist) {
             this.spray.swirl(this.clock, open, { d: landingDistance(open) + 2.5, n: Math.round(this.spray.count / 5) });
             s.tear = 1;
         }
@@ -826,7 +826,7 @@ export class WavesWorld {
         });
     }
 
-    /** A T-spin that cleared nothing: a small screw of light down the tube, a little wheel of spray. */
+    /** A twist that cleared nothing: a small screw of light down the tube, a little wheel of spray. */
     onSpin() {
         if (!this.spray) return;
         const s = this.state;

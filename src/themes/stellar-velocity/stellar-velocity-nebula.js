@@ -105,7 +105,7 @@ export function createCanyon(u, {
     const texel = uniform(new THREE.Vector2(1 / 960, 1 / 540));
 
     /**
-     * A world point in the canyon's own frame: wound round the course by a T-spin, slid by how
+     * A world point in the canyon's own frame: wound round the course by a twist, slid by how
      * far we have come, shifted by a jump. One unit is one tile of the cloud, which is drawn out
      * along the course: the walls are streamers, not puffs.
      */

@@ -13,7 +13,7 @@
  *   statsHud=0               with board=1: board only, no HUD mock
  *   combo=<n>                hold a combo of n (the district's charge)
  *   level=<n>                level n's step on top of the clock's palette
- *   event=lock|drop|clear|quad|tspin|perfect|levelUp   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
  *   demo=1                   live only: play a looping gameplay script
@@ -118,7 +118,7 @@ const DEMO_SCRIPT = [
     [23.0, 'lock', { rows: [19], u: 0.45 }], [24.0, 'lock', { rows: [19, 18], u: 0.7 }],
     [25.0, 'lock', { rows: [18], u: 0.25, hardDrop: true }],
     [25.0, 'clear', {
-        rows: [19, 18], lines: 2, tspin: true, combo: 1,
+        rows: [19, 18], lines: 2, twist: true, combo: 1,
     }],
     [27.0, 'lock', { rows: [19], u: 0.5 }],
 ];
@@ -261,9 +261,9 @@ export function create({
             });
         } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines, combo });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4, combo });
-        else if (eventName === 'tspin') {
+        else if (eventName === 'twist') {
             world.onClear({
-                rows: bottom(2), lines: 2, tspin: true, combo,
+                rows: bottom(2), lines: 2, twist: true, combo,
             });
         } else if (eventName === 'perfect') {
             world.onClear({

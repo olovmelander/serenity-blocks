@@ -18,7 +18,7 @@
  *   combo/streak  fireflies gather into a river that winds around the board; it climbs,
  *                 speeds up and whitens as cascades or consecutive clears build, and
  *                 ribbons of light unfurl across the sky
- *   t-spin        a spiral flourish beside the board
+ *   twist        a spiral flourish beside the board
  *   back-to-back  the sun pours gold down its path on the water, more for every one in a row
  *   perfect clear the crown: the sun flares on the treetops and the sky's ribbons ignite
  *   level up      the whole lake exhales: light, rings, wind and wings
@@ -479,15 +479,15 @@ export class GoldenForestReactions {
         return true;
     }
 
-    onTSpin(detail = {}) {
+    onTwist(detail = {}) {
         if (this.disposed) return false;
         const payload = unwrap(detail);
         const place = boardPlace(payload);
-        // A T-spin that cleared lines adds its own weight to the clear just counted; one that
+        // A twist that cleared lines adds its own weight to the clear just counted; one that
         // cleared nothing is a little flourish of its own.
         if (positiveCount(payload.lineCount, 4) > 0) {
-            this.surge.punch.hit(SURGE_WEIGHTS.punch.tspin, this.time);
-            this.surge.level.hit(SURGE_WEIGHTS.heat.tspin, this.time);
+            this.surge.punch.hit(SURGE_WEIGHTS.punch.twist, this.time);
+            this.surge.level.hit(SURGE_WEIGHTS.heat.twist, this.time);
         } else this.surge.spin(this.time);
         this.excite({
             gust: 0.45, warmth: 0.3, shafts: 0.3, glow: 0.6, shimmer: 0.5,

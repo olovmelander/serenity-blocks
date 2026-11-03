@@ -232,7 +232,7 @@ export function create({
         } else if (event === 'festival') {
             // Lock one of each kind: the seventh kite completes the festival.
             BAG.forEach((shapeKey) => reactions.onPieceLock({ piece: pieceOf(shapeKey) }));
-        } else if (event === 'spin') reactions.onTSpin({ piece });
+        } else if (event === 'spin') reactions.onTwist({ piece });
         else if (event === 'perfect') reactions.onPerfectClear();
         else if (event === 'level') {
             // As the theme does: the flourish, and the day one weather on.

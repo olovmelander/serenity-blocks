@@ -781,12 +781,12 @@ describe('WinterWorld: lines clear', () => {
         world.dispose();
     });
 
-    it('spins a wheel of sparks round the card on a T-spin', () => {
+    it('spins a wheel of sparks round the card on a twist', () => {
         const plain = makeWorld();
         const spun = makeWorld();
         for (const { world, camera } of [plain, spun]) step(world, camera, 0, 1);
         plain.world.onClear({ rows: [19, 18], lines: 2 });
-        spun.world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        spun.world.onClear({ rows: [19, 18], lines: 2, twist: true });
         expect(spun.world.counts.sparks).toBeGreaterThan(plain.world.counts.sparks);
         expect(spun.world.storm).toBeGreaterThan(plain.world.storm);
         plain.world.dispose();
@@ -1086,7 +1086,7 @@ describe('WinterWorld: seek, replay and a new session', () => {
         const first = replay(world, camera);
         // Leave it in the middle of things, then seek and play the same script again.
         world.onCombo(9);
-        world.onClear({ rows: [19, 18, 17], lines: 3, tspin: true });
+        world.onClear({ rows: [19, 18, 17], lines: 3, twist: true });
         step(world, camera, 11, 13.3);
         world.onGameOver();
         step(world, camera, 13.3, 14);

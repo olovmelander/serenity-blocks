@@ -378,7 +378,7 @@ describe('cinder drift world: build', () => {
             world.onLock({ u: 0.5 });
             world.onLock({ screen: { x: 0.2, y: 0.9 }, hardDrop: true });
             world.onClear({ lines: 4 });
-            world.onClear({ lines: 1, perfect: true, tspin: true });
+            world.onClear({ lines: 1, perfect: true, twist: true });
             world.onCombo(3);
             world.levelUp(2);
             world.setViewport(800, 600, 800 / 600);
@@ -1360,14 +1360,14 @@ describe('cinder drift world: clears', () => {
         perfect.world.dispose();
     });
 
-    it('turns the crust round the foot of the board on a T-spin, and a second spin adds to the turn', () => {
+    it('turns the crust round the foot of the board on a twist, and a second spin adds to the turn', () => {
         const plain = makeWorld('Low');
         const once = makeWorld('Low');
         const { camera, world } = makeWorld('Low');
         expect(world.u.whirl.value.w).toBe(0);
         plain.world.onClear({ lines: 2 });
-        once.world.onClear({ lines: 2, tspin: true });
-        world.onClear({ lines: 2, tspin: true });
+        once.world.onClear({ lines: 2, twist: true });
+        world.onClear({ lines: 2, twist: true });
         const whirl = world.u.whirl.value;
         const heart = world.u.heart.value;
         expect(whirl.z).toBe(world.time);
@@ -1387,7 +1387,7 @@ describe('cinder drift world: clears', () => {
         const first = whirl.w;
         // A second spin while the crust still turns adds to the turn, the same way: the plates
         // never snap back straight or jerk round the other way.
-        world.onClear({ lines: 1, tspin: true });
+        world.onClear({ lines: 1, twist: true });
         let last = Math.abs(whirl.w);
         for (let i = 0; i < 30; i++) {
             run(world, camera, 1 / 60, 1);
@@ -1406,16 +1406,16 @@ describe('cinder drift world: clears', () => {
         run(world, camera, 8);
         expect(world.storm).toBeLessThan(stirred * 0.1);
         expect(Math.abs(whirl.w)).toBeLessThan(0.05);
-        world.onClear({ lines: 1, tspin: true });
+        world.onClear({ lines: 1, twist: true });
         run(world, camera, 0.4);
         expect(Math.sign(whirl.w)).toBe(-Math.sign(first));
-        // A T-spin that clears nothing turns it a little.
+        // A twist that clears nothing turns it a little.
         const mini = makeWorld('Low');
-        mini.world.onTSpinMini({});
+        mini.world.onTwistMini({});
         run(mini.world, mini.camera, 0.4);
         expect(Math.abs(mini.world.u.whirl.value.w)).toBeGreaterThan(0);
         expect(Math.abs(mini.world.u.whirl.value.w)).toBeLessThan(Math.abs(first));
-        expect(mini.world.counts).toMatchObject({ tspins: 1, clears: 0 });
+        expect(mini.world.counts).toMatchObject({ twists: 1, clears: 0 });
         expect(mini.world.storm).toBeGreaterThan(0);
         for (const w of [plain, once, mini]) w.world.dispose();
         world.dispose();
@@ -1661,7 +1661,7 @@ describe('cinder drift world: combos and levels', () => {
         expect(post).toMatchObject(AT_REST);
         const events = [
             () => world.onLock({ u: 0.2, hardDrop: true, color: '#fff5e6' }),
-            () => world.onClear({ lines: 4, rows: [19, 18, 17, 16], tspin: true }),
+            () => world.onClear({ lines: 4, rows: [19, 18, 17, 16], twist: true }),
             () => world.onCombo(12),
             () => world.levelUp(3),
             () => world.onClear({ lines: 1, perfect: true }),
@@ -1822,7 +1822,7 @@ describe('cinder drift world: time', () => {
         // Something else entirely in between...
         world.onCombo(9);
         world.onLock({ u: 0.5, hardDrop: true });
-        world.onClear({ lines: 3, tspin: true });
+        world.onClear({ lines: 3, twist: true });
         world.levelUp(4);
         world.setReducedMotion(true);
         run(world, camera, 3);
@@ -1885,7 +1885,7 @@ describe('cinder drift world: time', () => {
     it('drops every event in flight when it seeks, and puts the clocks where the time says', () => {
         const { camera, world } = makeWorld('Low');
         world.onLock({ u: 0.4, hardDrop: true });
-        world.onClear({ lines: 4, rows: [19, 18, 17, 16], tspin: true });
+        world.onClear({ lines: 4, rows: [19, 18, 17, 16], twist: true });
         world.onCombo(6);
         world.levelUp(3);
         run(world, camera, 1);
@@ -2032,7 +2032,7 @@ describe('cinder drift world: time', () => {
         // Nothing at rest touches the post: the picture is steady.
         expect(world.getPostState()).toMatchObject(AT_REST);
         expect(world.counts).toEqual({
-            locks: 0, clears: 0, quads: 0, fountains: 0, bombs: 0, crowns: 0, tspins: 0, b2b: 0,
+            locks: 0, clears: 0, quads: 0, fountains: 0, bombs: 0, crowns: 0, twists: 0, b2b: 0,
         });
         world.dispose();
     });

@@ -34,7 +34,7 @@ import { InfinityAscent } from '../../ui/infinity/ascent/infinity-ascent.js';
 import { installLegacyBoardJuiceInputWrapper } from '../../ui/infinity/legacy-board-juice-input-wrapper.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import {
-    emitLineClear, emitCombo, emitPieceLock, emitPerfectClear, emitTSpin, emitB2B,
+    emitLineClear, emitCombo, emitPieceLock, emitPerfectClear, emitTwist, emitB2B,
     emitHardDrop,
 } from '../../events/gameplay-events.js';
 import steamService from '../steam/steam-service.js';
@@ -1381,13 +1381,13 @@ export class InfinityMode extends BaseGameMode {
                     console.log(`[Infinity] Line clear: depth=${comboDepth}, complexity=${comboComplexity}, maxDepth=${callbackState.infinityStats.maxComboDepth}, maxComplexity=${callbackState.infinityStats.maxComboComplexity}`);
                 }
             },
-            onTSpin: (lineCount) => {
+            onTwist: (lineCount) => {
                 if (!ownsCallbackSession()) return;
-                emitTSpin({ lineCount, source: 'infinity' });
-                this.deps.soundManager.sfxPlayer.playTSpin?.();
+                emitTwist({ lineCount, source: 'infinity' });
+                this.deps.soundManager.sfxPlayer.playTwist?.();
                 const boardScene = this._getBoardScene();
-                if (boardScene?.sharedEffects?.playTSpinEffect) {
-                    boardScene.sharedEffects.playTSpinEffect(lineCount);
+                if (boardScene?.sharedEffects?.playTwistEffect) {
+                    boardScene.sharedEffects.playTwistEffect(lineCount);
                 }
             },
             onB2B: () => {

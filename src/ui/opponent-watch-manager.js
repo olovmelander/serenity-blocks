@@ -291,7 +291,7 @@ export class OpponentWatchManager {
 
     /**
      * Calculates available space in the watch grid cells and sets explicit dimensions
-     * to guarantee perfect 1:2 Tetris aspect ratio without CSS flexbox bugs.
+     * to guarantee perfect 1:2 board aspect ratio without CSS flexbox bugs.
      * Dynamically measures actual chrome from the DOM for pixel-perfect sizing.
      */
     _handleResize() {
@@ -2009,7 +2009,7 @@ export class OpponentWatchManager {
             }
         }
 
-        // Tetris board is ALWAYS exactly 10 blocks wide.
+        // The board is ALWAYS exactly 10 blocks wide.
         // Calculate dynamic block size based on the new, true canvas width.
         const blockSize = canvas.width / 10;
 

@@ -876,12 +876,12 @@ export async function processPhysicsLegacy(gameState, callbacks) {
             );
         }
 
-        // T-spin and B2B tracking — evaluated on the manual clear (cascade 1) per lock.
-        const isTSpin = cascadeCount === 1 && Boolean(gameState.comboState?.tSpin);
-        const isDifficultClear = fullLines.length >= 4 || isTSpin;
+        // Twist and B2B tracking — evaluated on the manual clear (cascade 1) per lock.
+        const isTwist = cascadeCount === 1 && Boolean(gameState.comboState?.twist);
+        const isDifficultClear = fullLines.length >= 4 || isTwist;
 
-        if (isTSpin && callbacks.onTSpin) {
-            callbacks.onTSpin(fullLines.length);
+        if (isTwist && callbacks.onTwist) {
+            callbacks.onTwist(fullLines.length);
         }
         if (isDifficultClear) {
             if (gameState.b2bActive && callbacks.onB2B) {
@@ -1216,10 +1216,10 @@ export async function processPhysicsResolved(
             );
         }
 
-        if (wave.tSpin && callbacks.onTSpin) {
-            callbacks.onTSpin(fullLines.length);
+        if (wave.twist && callbacks.onTwist) {
+            callbacks.onTwist(fullLines.length);
         }
-        const isDifficultClear = fullLines.length >= 4 || wave.tSpin;
+        const isDifficultClear = fullLines.length >= 4 || wave.twist;
         if (isDifficultClear) {
             if (wave.b2bFired && callbacks.onB2B) {
                 callbacks.onB2B(true);

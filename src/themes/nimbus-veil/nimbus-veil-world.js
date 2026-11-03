@@ -221,7 +221,7 @@ export function createWorldUniforms() {
          * crown lit at once (perfect clear, back-to-back).
          */
         blaze: uniform(new THREE.Vector4(0, 0, 0, 0)),
-        /** The turn of the sun's fan of beams (a T-spin turns it; a fever turns it slowly). */
+        /** The turn of the sun's fan of beams (a twist turns it; a fever turns it slowly). */
         beamTurn: uniform(0),
         /** The flight clock: the veils and motes drift on it; it runs faster as play heats. */
         flight: uniform(0),
@@ -278,7 +278,7 @@ export class NimbusWorld {
          */
         this.glow = new Swell({ release: 1.0, ceiling: 0.45, knee: 0.3 });
         this.warmth = new Swell({ release: 1.25, ceiling: 0.6, knee: 0.35 });
-        /** The sun's flare (a quad, a T-spin, a perfect clear): its beams and the towers' rims. */
+        /** The sun's flare (a quad, a twist, a perfect clear): its beams and the towers' rims. */
         this.flare = new Swell({
             attack: 0.06, release: 1.4, ceiling: 1.3, knee: 0.8,
         });
@@ -290,7 +290,7 @@ export class NimbusWorld {
         this.dip = new Swell({
             attack: 0.05, release: 0.35, ceiling: 1, knee: 0.6,
         });
-        /** How fast a T-spin turns the sun's fan of beams (rad/s). */
+        /** How fast a twist turns the sun's fan of beams (rad/s). */
         this.spin = new Swell({ release: 0.7, ceiling: 1.6, knee: 1 });
         /** How hot play runs (src/themes/shared/gameplay-surge.js). */
         this.surge = new GameplaySurge();
@@ -689,11 +689,11 @@ export class NimbusWorld {
         if (c >= 2) this.emitHeavenlyBurst(this.burstCount(0.08 + c * 0.04, 40 + 20 * c));
     }
 
-    /** A T-spin turns the sun's fan of beams; one that cleared nothing turns it a little. */
-    onTSpin(lines = 0) {
+    /** A twist turns the sun's fan of beams; one that cleared nothing turns it a little. */
+    onTwist(lines = 0) {
         const at = this.time;
         const cleared = (lines | 0) > 0;
-        if (cleared) this.surge.tspin(at);
+        if (cleared) this.surge.twist(at);
         else this.surge.spin(at);
         this.spin.hit(cleared ? 0.9 : 0.45, at);
         this.flare.hit(cleared ? 0.5 : 0.18, at);
@@ -817,7 +817,7 @@ export class NimbusWorld {
     }
 
     /**
-     * A heavenly burst (combos, Tetris, level up): golden glints leave the sun and drift to their
+     * A heavenly burst (combos, Quad, level up): golden glints leave the sun and drift to their
      * own targets across the WHOLE screen — 70 % anywhere in the view, 30 % around the sun — then
      * float upward and twinkle out. Velocities are solved from the drag model (travel = v / drag).
      */

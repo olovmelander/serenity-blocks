@@ -33,7 +33,7 @@
  *            faster and bluer, the sky pulled further toward the jump, the sun's corona swelling.
  *   b2b      the sun's spikes flare gold and a gold front comes down; a second one in a row
  *            burns brighter still, and a back-to-back jump arrives in gold.
- *   T-spin   the canyon rolls: cloud, stars and hoops wind round the course and spring back.
+ *   twist   the canyon rolls: cloud, stars and hoops wind round the course and spring back.
  *   level    the nebula moves one palette along its line of six, and a slow front of the new
  *            colour comes down the canyon.
  *   time     by itself, with no level change, the nebula drifts along the same line: one
@@ -933,12 +933,12 @@ export class StellarVelocityWorld {
     }
 
     /**
-     * Lines cleared. `lines` 1..4; `tspin`, `perfect`, `b2b`; `cascade` = the wave (1 = the lock's
+     * Lines cleared. `lines` 1..4; `twist`, `perfect`, `b2b`; `cascade` = the wave (1 = the lock's
      * own clear, 2.. its cascade); `combo` = the chain it belongs to; `rows` = the visible rows
      * that went.
      */
     onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, b2b = false, cascade = 1, combo = 1,
+        rows = null, lines = 1, twist = false, perfect = false, b2b = false, cascade = 1, combo = 1,
         player = 0, screen = null,
     } = {}) {
         const { u } = this;
@@ -953,7 +953,7 @@ export class StellarVelocityWorld {
         // hush's depth reads the heat of play BEFORE this clear's own.
         const birth = quad ? this.leap(t, { perfect, gold }) : t;
         this.pace.clear({
-            lines: n, cascade, combo, tspin, perfect, b2b,
+            lines: n, cascade, combo, twist, perfect, b2b,
         }, t);
 
         // ── We go through every hoop we have laid, the nearest first ──
@@ -1022,7 +1022,7 @@ export class StellarVelocityWorld {
         }
 
         if (quad) this.counts.quads += 1;
-        if (tspin) {
+        if (twist) {
             // The canyon rolls round the course and springs back.
             this.twistVelocity += 0.5;
             this.kick = Math.max(this.kick, 0.35);
@@ -1056,7 +1056,7 @@ export class StellarVelocityWorld {
         }
     }
 
-    /** A T-spin that cleared nothing: a little roll of the canyon and a nudge. */
+    /** A twist that cleared nothing: a little roll of the canyon and a nudge. */
     onSpin() {
         if (!this.u) return;
         this.pace.spin(this.time);

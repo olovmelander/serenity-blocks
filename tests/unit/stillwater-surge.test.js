@@ -4,7 +4,7 @@
  * shared surge, src/themes/shared/gameplay-surge.js). A weak answer after a strong one only adds
  * to its light; a long chain reads hotter than its first clear and the night breathes back when
  * the hands rest; a perfect clear that settles after its quad crowns it instead of replaying it;
- * a T-spin that clears nothing and a back-to-back each have an answer of their own.
+ * a twist that clears nothing and a back-to-back each have an answer of their own.
  */
 import {
     describe, expect, it, vi,
@@ -101,12 +101,12 @@ describe('stillwater surge: a weak answer after a strong one never cuts the ligh
         followed.world.dispose();
     });
 
-    it('sends the ring across the picture once: a T-spin on its heels adds to it, never pulls it back', () => {
+    it('sends the ring across the picture once: a twist on its heels adds to it, never pulls it back', () => {
         const { camera, world } = makeWorld();
         world.onClear({ rows: [16, 17, 18, 19], lines: 4 });
         run(world, camera, HUSH_HOLD + 0.3);
         const before = { ...world.getPostState().prism };
-        world.onClear({ rows: [18, 19], lines: 2, tspin: true });
+        world.onClear({ rows: [18, 19], lines: 2, twist: true });
         run(world, camera, 1 / 60);
         const after = world.getPostState().prism;
         expect(after.radius).toBeGreaterThan(before.radius);
@@ -203,14 +203,14 @@ describe('stillwater surge: moments of their own', () => {
         world.dispose();
     });
 
-    it('whirls the water a little for a T-spin that clears nothing, and counts no clear', () => {
+    it('whirls the water a little for a twist that clears nothing, and counts no clear', () => {
         const { camera, world } = makeWorld();
         world.onLock({ u: 0.3, rows: [18, 19] });
         run(world, camera, 1);
         const rings = world.u.counts.value.x;
         const wind = world.u.wind.value;
         const strokes = strokesLive(world);
-        world.onClear({ lines: 0, tspin: true, rows: [] });
+        world.onClear({ lines: 0, twist: true, rows: [] });
         run(world, camera, 0.5);
         expect(world.u.counts.value.x).toBeGreaterThan(rings);
         expect(world.u.wind.value).toBeGreaterThan(wind);

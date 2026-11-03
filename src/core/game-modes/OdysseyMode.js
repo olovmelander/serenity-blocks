@@ -288,7 +288,7 @@ export class OdysseyMode extends BaseGameMode {
             cascades: 0,
             maxCascadeDepth: 0,
             combos: 0,
-            tetrises: 0,
+            quads: 0,
             singles: 0,
             maxCombo: 0,
         };

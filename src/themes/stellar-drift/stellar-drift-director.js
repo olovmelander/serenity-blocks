@@ -3,12 +3,12 @@
  *
  * Renderer-free, DOM-free, bus-free. The canonical gameplay events are delivered synchronously
  * inside the simulation tick, several per lock (HARD_DROP, PIECE_LOCK, then LINE_CLEAR / COMBO /
- * TSPIN / PERFECT_CLEAR once per cascade wave), so every on*() handler only STAGES numbers into
+ * TWIST / PERFECT_CLEAR once per cascade wave), so every on*() handler only STAGES numbers into
  * one of five preallocated player slots. flush() — called first in the theme's frame — resolves
  * each pending slot into at most one `lock` and one `clear` for the sink:
  *
  *   sink.lock({ player, rows, u, hardDrop, color, screen })
- *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, color, screen })
+ *   sink.clear({ player, rows, lines, combo, cascade, twist, perfect, b2b, color, screen })
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
  *
@@ -20,7 +20,7 @@
  * Order inside one flush: a slot's lock, then its clear, then its combo. A clear therefore
  * reaches the sink BEFORE the combo it raised: read the chain a clear belongs to from the clear's
  * own `combo`, never from the last sink.combo() call.
- * A zero-line T-spin also reaches `clear`, with lines = 0 and the unchanged combo. So does a
+ * A zero-line twist also reaches `clear`, with lines = 0 and the unchanged combo. So does a
  * perfect clear that settles on its own (physics sends it ~360 ms after its clear's last wave, in
  * a frame of its own): lines = 0, no rows, `perfect` — the crown on a clear already played, never
  * a clear of its own.
@@ -50,7 +50,7 @@ export const STELLAR_DRIFT_EVENT_HANDLERS = Object.freeze({
     HARD_DROP: 'onHardDrop',
     LINE_CLEAR: 'onLineClear',
     COMBO: 'onCombo',
-    TSPIN: 'onTSpin',
+    TWIST: 'onTwist',
     B2B: 'onB2B',
     PERFECT_CLEAR: 'onPerfectClear',
     LEVEL_UP: 'onLevelUp',
@@ -85,7 +85,7 @@ function createSlot() {
         clearRows: new Int16Array(MAX_ROWS),
         clearRowCount: 0,
         explicitCombo: -1,
-        tspin: false,
+        twist: false,
         perfect: false,
         b2b: false,
         hasPosition: false,
@@ -108,7 +108,7 @@ function clearPending(slot) {
     slot.cascade = 1;
     slot.clearRowCount = 0;
     slot.explicitCombo = -1;
-    slot.tspin = false;
+    slot.twist = false;
     slot.perfect = false;
     slot.b2b = false;
     slot.hasPosition = false;
@@ -224,7 +224,7 @@ export class StellarDriftDirector {
             lines: 1,
             combo: 1,
             cascade: 1,
-            tspin: false,
+            twist: false,
             perfect: false,
             b2b: false,
             color: null,
@@ -351,13 +351,13 @@ export class StellarDriftDirector {
         return true;
     }
 
-    onTSpin(event) {
+    onTwist(event) {
         if (!this.enabled) return false;
         const payload = event || EMPTY;
         const slot = this.slotFor(payload);
         if (!slot) return false;
         slot.pending = true;
-        slot.tspin = true;
+        slot.twist = true;
         const lines = Math.max(0, Math.min(MAX_ROWS, Math.trunc(finite(payload.lineCount, 0))));
         if (lines > slot.lines) slot.lines = lines;
         return true;
@@ -432,17 +432,17 @@ export class StellarDriftDirector {
                 c.screen = null;
                 sink.lock(c);
             }
-            if ((slot.lines > 0 || slot.tspin || slot.perfect) && sink?.clear) {
+            if ((slot.lines > 0 || slot.twist || slot.perfect) && sink?.clear) {
                 const c = this._clear;
                 c.player = slot.player;
                 c.rows.length = 0;
                 for (let r = 0; r < slot.clearRowCount; r += 1) c.rows.push(slot.clearRows[r]);
                 c.lines = slot.lines;
-                // A zero-line T-spin has its own flourish, and a perfect clear settling after its
+                // A zero-line twist has its own flourish, and a perfect clear settling after its
                 // clear its own crown, but neither starts a clearing chain.
                 c.combo = slot.lines > 0 ? Math.max(1, combo) : combo;
                 c.cascade = slot.cascade;
-                c.tspin = slot.tspin;
+                c.twist = slot.twist;
                 c.perfect = slot.perfect;
                 c.b2b = slot.b2b;
                 c.color = slot.color;

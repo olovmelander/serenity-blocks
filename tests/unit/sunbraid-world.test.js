@@ -34,7 +34,7 @@ const WORLD_METHODS = [
     'setAirMarch', 'setCaptureOverrides',
 ];
 const COUNTERS = [
-    'locks', 'hardDrops', 'clears', 'lines', 'quads', 'tspins', 'perfects', 'chainSteps', 'b2bSteps', 'levelUps',
+    'locks', 'hardDrops', 'clears', 'lines', 'quads', 'twists', 'perfects', 'chainSteps', 'b2bSteps', 'levelUps',
     'gameOvers', 'mornings',
 ];
 const {
@@ -159,7 +159,7 @@ function play(w) {
         world.onLock({
             u: n / 7, rows: [19], color: PIECE_COLORS[n % 7], hardDrop: n === 3, distance: 12,
         });
-        world.onClear({ lines: 1, combo: n, tspin: n === 4 });
+        world.onClear({ lines: 1, combo: n, twist: n === 4 });
         world.onCombo(n);
         stepTo(w, world.time + 0.8);
     }
@@ -344,13 +344,13 @@ describe('SunbraidWorld: events turn the braid', () => {
         expect(early).toBeLessThan(tick.step * 0.1);
     });
 
-    it('twists the suns a third of a turn per spin-turn of a T-spin', () => {
-        const single = phaseGain((world) => world.onClear({ lines: 1, tspin: true }), START + twist.ease + 0.5);
+    it('twists the suns a third of a turn per spin-turn of a twist', () => {
+        const single = phaseGain((world) => world.onClear({ lines: 1, twist: true }), START + twist.ease + 0.5);
         expect(single).toBeCloseTo(twist.step, 9);
         const tripleDone = START + 2 * twist.gap + twist.ease + 0.5;
-        const triple = phaseGain((world) => world.onClear({ lines: 3, tspin: true }), tripleDone);
+        const triple = phaseGain((world) => world.onClear({ lines: 3, twist: true }), tripleDone);
         expect(triple).toBeCloseTo(3 * twist.step, 9);
-        expect(shared.world.counts).toMatchObject({ clears: 1, lines: 3, tspins: 1 });
+        expect(shared.world.counts).toMatchObject({ clears: 1, lines: 3, twists: 1 });
     });
 
     it('draws the suns in for a clear and lets them go', () => {
@@ -501,16 +501,16 @@ describe('SunbraidWorld: events turn the braid', () => {
         suns(world).forEach((s, k) => expect(after[k]).toBeCloseTo(elevation(s.dir), 9));
     });
 
-    it('under reduced motion: a hard drop ticks as a lock, a T-spin twists once; the counters still count', () => {
+    it('under reduced motion: a hard drop ticks as a lock, a twist twists once; the counters still count', () => {
         shared.world.setReducedMotion(true);
         try {
             const hard = phaseGain((world) => world.onLock({ u: 0.5, rows: [12], hardDrop: true }), START + 1);
             expect(hard).toBeCloseTo(tick.step, 9);
             expect(shared.world.counts).toMatchObject({ locks: 1, hardDrops: 1 });
             const spinDone = START + 2 * twist.gap + twist.ease + 0.5;
-            const spin = phaseGain((world) => world.onClear({ lines: 3, tspin: true }), spinDone);
+            const spin = phaseGain((world) => world.onClear({ lines: 3, twist: true }), spinDone);
             expect(spin).toBeCloseTo(twist.step, 9);
-            expect(shared.world.counts.tspins).toBe(1);
+            expect(shared.world.counts.twists).toBe(1);
         } finally {
             shared.world.setReducedMotion(false);
         }
@@ -630,12 +630,12 @@ describe('SunbraidWorld: the build-up of play', () => {
         expect(world.lift).toBeCloseTo(BRAID_EVENTS.noon.lift, 9);
     });
 
-    it('answers a T-spin that clears nothing with a small turn and a flicker of the ribbons', () => {
+    it('answers a twist that clears nothing with a small turn and a flicker of the ribbons', () => {
         const until = START + BRAID_EVENTS.spin.ease + 0.5;
         const gain = phaseGain((world) => world.onSpin({ player: 0 }), until);
         expect(gain).toBeCloseTo(BRAID_EVENTS.spin.step, 9);
         expect(BRAID_EVENTS.spin.step).toBeLessThan(BRAID_EVENTS.twist.step);
-        expect(shared.world.counts).toMatchObject({ tspins: 1, clears: 0 });
+        expect(shared.world.counts).toMatchObject({ twists: 1, clears: 0 });
         begin(shared);
         shared.world.onSpin({ player: 0 });
         stepTo(shared, START + 0.3);
@@ -735,7 +735,7 @@ describe('SunbraidWorld: the frame writes the uniforms', () => {
             if (frame % 44 === 0) {
                 const lines = 1 + (frame % 4);
                 combo = frame % 440 < 330 ? combo + 1 : 0;
-                world.onClear({ lines, combo: Math.max(1, combo), tspin: frame % 352 === 0 });
+                world.onClear({ lines, combo: Math.max(1, combo), twist: frame % 352 === 0 });
                 world.onCombo(combo);
                 world.onB2B(lines === 4 ? Math.min(4, world.b2b + 1) : 0);
             }
@@ -801,7 +801,7 @@ describe('SunbraidWorld state', () => {
             hardDrops: 1,
             clears: 7,
             quads: 1,
-            tspins: 1,
+            twists: 1,
             perfects: 1,
             levelUps: 1,
             chainSteps: 4,

@@ -7,7 +7,7 @@
  * every lock strikes a note (a wavefront in the piece's colour rings through the stone at the
  * piece's own pitch); a clear sounds a harmonic and refolds the architecture; a chain deepens the
  * trance (finer fractal, the lens folding into a kaleidoscope) and its release settles it; four
- * lines dive an octave down into the fractal; a T-spin twists the folds; back-to-back keeps a
+ * lines dive an octave down into the fractal; a twist twists the folds; back-to-back keeps a
  * drone; a perfect clear aligns every fold into one still mandala; game over lets the light sink.
  *
  * Content lives in KaleidosonicWorld, shared with the playground. This adapter preserves the

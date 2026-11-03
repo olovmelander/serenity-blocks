@@ -234,7 +234,7 @@ Playground (`npm run dev:playground`, then `playground.html?effect=rainbark&…`
 | a triple | `t=55&level=4&board=1&locks=10&event=clear&lines=3&row=16&eventAge=0.75` (and `1.8`) |
 | four lines | `t=55&level=4&board=1&event=quad&row=16&eventAge=1.3` (and `4.2`) |
 | a chain / the Set | `t=55&level=4&board=1&combo=6` / `event=release&peak=7&eventAge=1.2` |
-| a T-spin | `t=55&level=4&board=1&event=tspin&lines=2&u=0.2&row=13&eventAge=2.0` |
+| a T-spin | `t=55&level=4&board=1&event=twist&lines=2&u=0.2&row=13&eventAge=2.0` |
 | back-to-back | `t=55&level=4&board=1&b2b=2` |
 | perfect clear | `t=55&level=4&board=1&event=perfect&eventAge=5&sheds=700` |
 | the light wheel | `t=10&level=4` (morning) … `t=110` (noon), `t=210` (gold), `t=310` (pearl) |

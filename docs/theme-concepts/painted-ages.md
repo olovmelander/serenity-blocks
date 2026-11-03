@@ -493,7 +493,7 @@ src/playground/effects/painted-ages.effect.js
 ```
 
 - **Parts** for `?paintedAgesParts=`: `sky, land, water, air, steam, hoodoo`.
-- **Playground parameters:** the house set (`event=lock|drop|clear|quad|tspin|perfect|levelUp`,
+- **Playground parameters:** the house set (`event=lock|drop|clear|quad|twist|perfect|levelUp`,
   `eventAge`, `lines`, `row`, `u`, `piece`, `combo`, `level`, `locks`, `board`, `quality`, `reduce`,
   `parts`, `bloom`, `noPost`, `falseColor`, `icon`…), plus theme-specific `wet=`, `sun=`,
   `formation=`, `release=<peak>` (rainbow), `b2b=<n>` and `gameover=1`. *(§5.5 renames the last
@@ -1087,7 +1087,7 @@ the sibling-style playground test enforce this).
 | `board`, `statsHud` | Mock board with the real selectors (calm zones and chute keep-out exercised) |
 | `locks=<n>` | Pre-play n locks (alternating fronts and pieces) |
 | `deposits=<n>` | Pre-deposit n seeded strata (mid-session look); default 0 |
-| `event` | `lock`, `drop`, `clear`, `quad`, `tspin`, `perfect`, `levelUp`, `release`, `b2b`, `gameOver` |
+| `event` | `lock`, `drop`, `clear`, `quad`, `twist`, `perfect`, `levelUp`, `release`, `b2b`, `gameOver` |
 | `eventAge` | Seconds after the event; default 0.4 |
 | `eventLevel` | Default level + 1 |
 | `lines` | 1–4, default 2 |
@@ -1235,7 +1235,7 @@ Viewports: **D** 1920×1080, **W** 2560×1080, **P** 390×844 (DPR 1). `quality=
 | 11 | Release after peak 4: sun returns, no bow | `t=40&level=3&board=1&event=release&peak=4&eventAge=1.5` | D |
 | 12★ | Release after peak 7: double bow, Alexander's band, legs in front of ridges, both legs clear of the card and HUD (§3.3 #11); repeat at P (arcs above the card) and with `sun=12` and `sun=22` | `t=40&level=3&board=1&event=release&peak=7&eventAge=2.5` | D, P |
 | 13 | B2B folds held at 3 | `t=40&level=3&board=1&b2b=3` | D |
-| 14 | Hoodoo mid-twist (2 caps) | `t=40&level=3&board=1&event=tspin&lines=2&u=0.2&row=13&eventAge=0.8` | D |
+| 14 | Hoodoo mid-twist (2 caps) | `t=40&level=3&board=1&event=twist&lines=2&u=0.2&row=13&eventAge=0.8` | D |
 | 15★ | Sky strata: 9-plate tower in record colours | `t=40&level=3&deposits=20&event=perfect&eventAge=4` | D |
 | 16 | Unconformity mid-tilt; then the long-session stack | `t=40&level=3&event=levelUp&eventAge=1.4`; `t=40&level=6&deposits=90` | D |
 | 17 | Tuff seal and low light: Earth shadow, Belt of Venus | `t=40&level=3&event=gameOver&eventAge=5` | D |

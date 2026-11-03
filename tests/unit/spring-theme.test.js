@@ -861,7 +861,7 @@ describe('Spring theme: one node renderer on both backends', () => {
         eventBus.emit(EVENTS.HARD_DROP, { piece: I, distance: 12 });
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: I });
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 4 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 4 });
         eventBus.emit(EVENTS.B2B, { active: true });
         eventBus.emit(EVENTS.LEVEL_UP, { level: 3 });
         theme.stepFrame(16);
@@ -876,8 +876,8 @@ describe('Spring theme: one node renderer on both backends', () => {
             color: themePieceColor('I'),
             shape: 'I',
             cells: [-1.5, 0, -0.5, 0, 0.5, 0, 1.5, 0],
-            // Its T-spin cleared lines: it rides on the clear, not the lock.
-            tspin: false,
+            // Its twist cleared lines: it rides on the clear, not the lock.
+            twist: false,
             screen: null,
         });
         expect(theme.world.clears).toHaveLength(1);
@@ -887,7 +887,7 @@ describe('Spring theme: one node renderer on both backends', () => {
             lines: 4,
             combo: 1,
             cascade: 1,
-            tspin: true,
+            twist: true,
             perfect: false,
             crown: false,
             b2b: true,
@@ -2016,7 +2016,7 @@ describe.skipIf(!existsSync(worldFile) || !existsSync(postFile))('Spring theme: 
                     lines: 4,
                     combo: 1,
                     cascade: 1,
-                    tspin: true,
+                    twist: true,
                     perfect: false,
                     b2b: true,
                     rowCodes: Array.from({ length: 40 }, (_, i) => i % 8),

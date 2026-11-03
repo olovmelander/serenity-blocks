@@ -11,7 +11,7 @@
  *             (far off the water is glass); the wind's patches roughen some reaches and leave
  *             others still, and a chain (u.glass) stills them all
  *   ripples   rings the gameplay drops (a lock at the card's foot, a clear into the sun's own
- *             reflection) and a whirl for a T-spin: a short train of crests spreading and dying
+ *             reflection) and a whirl for a twist: a short train of crests spreading and dying
  *   salt      the crust's polygons near the lens: dry ridges between them break the mirror and
  *             catch the light of the horizon; they fade into the film with distance
  *   glint     the diamond's light laid on the water as a glitter path (an analytic facet

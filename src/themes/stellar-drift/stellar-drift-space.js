@@ -464,7 +464,7 @@ export function createSpace(u, tier) {
                         lead = lead.add(sdBell(at.add(0.016).div(0.018)).mul(on));
                     }
                     const after = exp(max(since, 0.0).mul(-1.1)).mul(step(0.0, since)).mul(0.3);
-                    // A T-spin's chime is a spiral: two arms of light wound through the rings,
+                    // A twist's chime is a spiral: two arms of light wound through the rings,
                     // winding tighter as they turn.
                     const age = max(u.time.sub(A.x), 0.0).toVar();
                     const arm = fract(theta.div(TAU).mul(A.w).sub(rr.sub(RINGS.cInner).mul(age.mul(1.4).add(2.0)))
@@ -592,7 +592,7 @@ export function createSpace(u, tier) {
                     });
                 });
             }
-            // A T-spin's cyclone: where it was spun the bands are wound into a storm that tightens
+            // A twist's cyclone: where it was spun the bands are wound into a storm that tightens
             // for a few seconds and then lets go; two arms of light are wound with them. Its
             // strength is the world's: a second spin feeds the storm still turning.
             const cycloneLight = float(0.0).toVar();

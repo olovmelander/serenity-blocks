@@ -13,7 +13,7 @@ const BASE_RULES = {
         gravity: 'cascading', // Shared cascade physics settles blocks after every clear
         cascades: true, // Standard uses the same cascade rules as the other base modes
         levelProgression: true, // Speed increases with lines
-        scoring: 'standard', // Standard Tetris scoring
+        scoring: 'standard', // Standard line-clear scoring
         lockDelay: 500, // Lock delay in ms
         previewCount: 5,
     },

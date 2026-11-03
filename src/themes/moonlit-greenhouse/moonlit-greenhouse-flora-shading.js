@@ -42,7 +42,7 @@ export const FLORA_LOOK = {
     // Sway at rest (share of each vertex's sway weight, metres), added per unit of gust.
     sway: 0.05,
     gustSway: 0.3,
-    // The T-spin's swirl: metres per unit of sway weight at full strength.
+    // The twist's swirl: metres per unit of sway weight at full strength.
     turn: 0.42,
     // Light through the leaves: overall, extra at the margins, extra along the veins.
     translucency: 0.3,
@@ -66,7 +66,7 @@ export const FLORA_LOOK = {
 /**
  * The greenhouse air on a plant: a slow sway of the whole plant (aSway.xy) and each leaf's own
  * nod (aSway.zw), two incommensurate waves drifting down the house; a gust pushes everything down
- * the nave beat by beat; the T-spin's turn swirls it about the vertical axis through
+ * the nave beat by beat; the twist's turn swirls it about the vertical axis through
  * (turn.z, turn.w); the leaflets tremble along their normals, more toward their tips. With
  * `clearMoon` the leaves then part round the moon's line of sight.
  * Computed from positionGeometry (the merged meshes are laid in world space).

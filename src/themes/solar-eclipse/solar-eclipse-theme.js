@@ -12,7 +12,7 @@
  * (an arch, or a ragged hedgerow; a hard drop raises a taller one); a clear sends a necklace of
  * light round the black sun, one bead per line, and the oldest prominences erupt and are flung
  * out through the corona; four lines or a perfect clear bring the diamond ring (daylight floods
- * back for a breath) and a coronal mass ejection; a T-spin twists the corona; a chain of clears
+ * back for a breath) and a coronal mass ejection; a twist twists the corona; a chain of clears
  * is a longer exposure (the outer corona reaches further, the faint stars come out, earthshine
  * lights the moon); a new level turns the light one step (ember, gold, jade, azure, violet,
  * rose) and the solar cycle with it, and both also turn by themselves, slowly, with the clock.

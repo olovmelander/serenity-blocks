@@ -135,7 +135,7 @@ export function create({
                 reactions.onCombo(step);
             }
         }
-        if (event === 'spin') reactions.onTSpin(detail);
+        if (event === 'spin') reactions.onTwist(detail);
         if (event === 'perfect') reactions.onPerfectClear();
         if (event === 'level') {
             reactions.onLevelUp();

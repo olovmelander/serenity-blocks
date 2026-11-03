@@ -9,7 +9,7 @@
  * ADR-0011 and tests/unit/physics-callback-schedule.test.js certify it for 60+
  * theme/juice consumers — so the real combo cannot be threaded through it.
  *
- * A combo in the Tetris sense is a property of the LOCK sequence, not of one
+ * A combo in the falling-block sense is a property of the LOCK sequence, not of one
  * lock's cascade: it counts consecutive locks that cleared at least one line and
  * resets on the first lock that clears nothing. Both facts are already observable
  * from callbacks every game mode wires today, so this tracker derives the counter

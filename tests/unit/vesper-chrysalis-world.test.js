@@ -234,7 +234,7 @@ function script(world, camera, fps = 60) {
     world.onCombo(2);
     run(world, camera, 2, Math.round(2 * fps));
     world.onLock({ u: 0.8, color: '#ff70ff' });
-    world.onClear({ lines: 1, tspin: true });
+    world.onClear({ lines: 1, twist: true });
     world.onCombo(3);
     world.levelUp(2);
     run(world, camera, 1.5, Math.round(1.5 * fps));
@@ -1680,7 +1680,7 @@ describe('vesper world: clears', () => {
     });
 });
 
-describe('vesper world: the four-line clear, the perfect clear and the T-spin', () => {
+describe('vesper world: the four-line clear, the perfect clear and the twist', () => {
     it('holds its breath on four lines, then lets everything go at once', () => {
         const { camera, world, lit } = litWorld('Low');
         run(world, camera, 2);
@@ -1788,13 +1788,13 @@ describe('vesper world: the four-line clear, the perfect clear and the T-spin', 
         world.dispose();
     });
 
-    it('beats the wings on a T-spin and rings the frame, without the hush', () => {
+    it('beats the wings on a twist and rings the frame, without the hush', () => {
         const quad = makeWorld('Low');
         quad.world.onClear({ lines: 4 });
         const { camera, world } = makeWorld('Low');
         const plain = makeWorld('Low');
         const t0 = world.time;
-        world.onClear({ lines: 2, tspin: true });
+        world.onClear({ lines: 2, twist: true });
         plain.world.onClear({ lines: 2 });
         expect(world.counts.quads).toBe(0);
         expect(world.hushUntil).toBeLessThan(t0);
@@ -1810,9 +1810,9 @@ describe('vesper world: the four-line clear, the perfect clear and the T-spin', 
         expect(world.getPostState().prism.strength).toBeGreaterThan(0);
         expect(plain.world.getPostState().prism.strength).toBe(0);
         expect(world.u.breath.value).toBeGreaterThan(0.9);
-        // A T-spin that clears four lines is a four-line clear: its ring waits for the hush.
+        // A twist that clears four lines is a four-line clear: its ring waits for the hush.
         const both = makeWorld('Low');
-        both.world.onClear({ lines: 4, tspin: true });
+        both.world.onClear({ lines: 4, twist: true });
         expect(both.world.shock.time).toBe(both.world.time + HUSH_HOLD);
         expect(both.world.shock.strength).toBe(quad.world.shock.strength);
         for (const made of [quad, plain, both]) made.world.dispose();
@@ -2490,9 +2490,9 @@ describe('vesper world: it builds with play', () => {
         const ring = { ...world.shock };
         const prism = world.getPostState().prism.strength;
         expect(prism).toBeGreaterThan(0);
-        // A T-spin and a new level inside the four-line clear's ring: the ring crossing the frame is
+        // A twist and a new level inside the four-line clear's ring: the ring crossing the frame is
         // not started over from the chrysalis at half its light; it takes theirs and crosses on.
-        world.onClear({ lines: 1, tspin: true });
+        world.onClear({ lines: 1, twist: true });
         world.levelUp(2);
         expect(world.shock.time).toBe(ring.time);
         expect(world.shock.strength).toBeGreaterThanOrEqual(ring.strength);
@@ -2623,7 +2623,7 @@ describe('vesper world: it builds with play', () => {
         world.dispose();
     });
 
-    it('answers a T-spin that cleared nothing with a stroke of the wings and the silk', () => {
+    it('answers a twist that cleared nothing with a stroke of the wings and the silk', () => {
         const { camera, world } = makeWorld('Low');
         const pulses = world.pulseCursor;
         const rings = world.ringCursor;
@@ -2689,7 +2689,7 @@ describe('vesper world: it builds with play', () => {
         const once = world.u.heat.value.z;
         expect(once).toBeGreaterThan(0.5);
         expect(world.u.heat.value.w).toBeGreaterThan(0.2); // the evening star flares
-        world.onClear({ lines: 2, tspin: true, b2b: true });
+        world.onClear({ lines: 2, twist: true, b2b: true });
         run(world, camera, 0.3);
         expect(world.u.heat.value.z).toBeGreaterThan(once);
         // And it fades when the streak is over.
@@ -2863,7 +2863,7 @@ describe('vesper world: what the shaders and the post are told', () => {
             () => world.onLock({ u: 0.2, hardDrop: true, color: '#ffa050' }),
             () => world.onClear({ lines: 1 }),
             () => world.onCombo(2),
-            () => world.onClear({ lines: 3, tspin: true }),
+            () => world.onClear({ lines: 3, twist: true }),
             () => world.onCombo(3),
             () => world.levelUp(2),
             () => world.onClear({ lines: 4 }),
@@ -3023,7 +3023,7 @@ describe('vesper world: time', () => {
         // Something else entirely in between: play, a new run with everything in the air, more play...
         world.onCombo(9);
         world.onLock({ u: 0.5, hardDrop: true });
-        world.onClear({ lines: 3, tspin: true });
+        world.onClear({ lines: 3, twist: true });
         world.levelUp(5);
         world.setReducedMotion(true);
         run(world, camera, 3);
@@ -3135,7 +3135,7 @@ describe('vesper world: time', () => {
     it('drops every event in flight when it seeks, and starts the evening over at its first hour', () => {
         const { camera, world } = makeWorld('High');
         world.onLock({ u: 0.4, hardDrop: true });
-        world.onClear({ lines: 4, tspin: true });
+        world.onClear({ lines: 4, twist: true });
         world.onCombo(6);
         world.levelUp(3);
         run(world, camera, 1.5);

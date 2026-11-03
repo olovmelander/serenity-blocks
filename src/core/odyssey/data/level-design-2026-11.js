@@ -85,8 +85,8 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
     6: {
         stars: {
             one: { lines: 20 },
-            two: { lines: 20, tetrises: 1 },
-            three: { lines: 20, tetrises: 2, time: 55 },
+            two: { lines: 20, quads: 1 },
+            three: { lines: 20, quads: 2, time: 55 },
         },
         role: 'teach',
     },
@@ -139,7 +139,7 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
             board: { opening: ['XXXXXXXXX.', 'XXXXXXXXX.', 'XXXXXXXXX.', 'XXXXXXXXX.'] },
         },
         victory: {
-            primary: { type: 'tetrises', target: 3 },
+            primary: { type: 'quads', target: 3 },
             failure: { type: 'top-out', value: null },
             bonuses: [
                 { type: 'no-singles', description: 'No single-line clears' },
@@ -147,9 +147,9 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
             ],
         },
         stars: {
-            one: { tetrises: 3 },
-            two: { tetrises: 3, bonuses: 1 },
-            three: { tetrises: 3, bonuses: 2 },
+            one: { quads: 3 },
+            two: { quads: 3, bonuses: 1 },
+            three: { quads: 3, bonuses: 2 },
         },
         mechanicFocus: 'quads',
     },
@@ -159,12 +159,12 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         mechanics: { speed: { startLevel: 3, fixedDropInterval: 450, levelProgression: true } },
         victory: {
             primary: { type: 'score', target: 16500 },
-            bonuses: [{ type: 'tetris-count', target: 4, description: 'Clear 4 Quads' }],
+            bonuses: [{ type: 'quad-count', target: 4, description: 'Clear 4 Quads' }],
         },
         stars: {
             one: { score: 16500 },
-            two: { score: 16500, tetrises: 2 },
-            three: { score: 16500, tetrises: 4 },
+            two: { score: 16500, quads: 2 },
+            three: { score: 16500, quads: 4 },
         },
         role: 'teach',
     },
@@ -196,14 +196,14 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         victory: {
             primary: { type: 'lines', target: 30 },
             bonuses: [
-                { type: 'tetris-count', target: 4, description: 'Clear 4 Quads' },
+                { type: 'quad-count', target: 4, description: 'Clear 4 Quads' },
                 { type: 'no-singles', description: 'No single-line clears' },
             ],
         },
         stars: {
             one: { lines: 30 },
-            two: { lines: 30, tetrises: 3 },
-            three: { lines: 30, tetrises: 3, bonuses: 1 },
+            two: { lines: 30, quads: 3 },
+            three: { lines: 30, quads: 3, bonuses: 1 },
         },
     },
     // The boss tests what the chapter taught: score with the multiplier against the chapter's tightest clock
@@ -343,14 +343,14 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
     29: {
         mechanics: { speed: { startLevel: 4, fixedDropInterval: 280, levelProgression: false } },
         victory: {
-            primary: { type: 'tetrises', target: 5 },
+            primary: { type: 'quads', target: 5 },
             bonuses: [{ type: 'pieces', target: 105, description: 'Finish within 105 pieces' }],
         },
         modifiers: { active: [] },
         stars: {
-            one: { tetrises: 5 },
-            two: { tetrises: 5, bonuses: 1 },
-            three: { tetrises: 5, bonuses: 1, time: 95 },
+            one: { quads: 5 },
+            two: { quads: 5, bonuses: 1 },
+            three: { quads: 5, bonuses: 1, time: 95 },
         },
         role: 'teach',
         mechanicFocus: 'quads',
@@ -377,10 +377,10 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         },
         victory: {
             bonuses: [],
-            primary: { type: 'tetrises', target: 4 },
+            primary: { type: 'quads', target: 4 },
             failure: { type: 'time', value: 150 },
         },
-        stars: { one: { tetrises: 4 }, two: { tetrises: 4, time: 70 }, three: { tetrises: 4, time: 50 } },
+        stars: { one: { quads: 4 }, two: { quads: 4, time: 70 }, three: { quads: 4, time: 50 } },
         modifiers: { active: ['time-attack'] },
         mechanicFocus: 'quads',
     },
@@ -421,11 +421,11 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
     // tier.
     35: {
         mechanics: { speed: { startLevel: 4, fixedDropInterval: 240, levelProgression: true } },
-        victory: { bonuses: [{ type: 'tetris-count', target: 5, description: 'Clear 5 Quads' }] },
+        victory: { bonuses: [{ type: 'quad-count', target: 5, description: 'Clear 5 Quads' }] },
         stars: {
             one: { score: 28000 },
-            two: { score: 28000, tetrises: 3 },
-            three: { score: 28000, tetrises: 5 },
+            two: { score: 28000, quads: 3 },
+            three: { score: 28000, quads: 5 },
         },
     },
     // Keep; retag it, and drop the inert multiplier and the uncounted bonus.
@@ -502,7 +502,7 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         mechanics: { speed: { startLevel: 8, fixedDropInterval: 200, levelProgression: true } },
         victory: {
             primary: { type: 'score', target: 40000 },
-            bonuses: [{ type: 'tetris-count', target: 6, description: 'Clear 6 Quads' }],
+            bonuses: [{ type: 'quad-count', target: 6, description: 'Clear 6 Quads' }],
         },
         stars: {
             one: { score: 40000 },
@@ -558,14 +558,14 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
     44: {
         mechanics: { speed: { startLevel: 5, fixedDropInterval: 260, levelProgression: false } },
         victory: {
-            primary: { type: 'tetrises', target: 6 },
+            primary: { type: 'quads', target: 6 },
             bonuses: [{ type: 'pieces', target: 120, description: 'Finish within 120 pieces' }],
         },
         modifiers: { active: [] },
         stars: {
-            one: { tetrises: 6 },
-            two: { tetrises: 6, bonuses: 1 },
-            three: { tetrises: 6, bonuses: 1, time: 100 },
+            one: { quads: 6 },
+            two: { quads: 6, bonuses: 1 },
+            three: { quads: 6, bonuses: 1, time: 100 },
         },
         role: 'reinforce',
         mechanicFocus: 'quads',
@@ -617,11 +617,11 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
     // Arrival at 200 ms instead of 84. Stars become reachable: 4 Quads, then 6 (no policy reached the shipped 8).
     49: {
         mechanics: { speed: { startLevel: 7, fixedDropInterval: 200, levelProgression: true } },
-        victory: { bonuses: [{ type: 'tetris-count', target: 6, description: 'Clear 6 Quads' }] },
+        victory: { bonuses: [{ type: 'quad-count', target: 6, description: 'Clear 6 Quads' }] },
         stars: {
             one: { score: 36000 },
-            two: { score: 36000, tetrises: 4 },
-            three: { score: 36000, tetrises: 6 },
+            two: { score: 36000, quads: 4 },
+            three: { score: 36000, quads: 6 },
         },
     },
     // Pass 2: the sprint moves here from orb 51 (50 lines in 180 s, 120 → 105 ms, still the campaign's fastest),
@@ -718,7 +718,7 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
     // Pace 180 → 126 ms instead of 120 → 84. Real star times; three stars add 4 Quads.
     57: {
         mechanics: { speed: { startLevel: 5, fixedDropInterval: 180, levelProgression: true } },
-        victory: { bonuses: [{ type: 'tetris-count', target: 4, description: 'Clear 4 Quads' }] },
+        victory: { bonuses: [{ type: 'quad-count', target: 4, description: 'Clear 4 Quads' }] },
         stars: {
             one: { lines: 30 },
             two: { lines: 30, time: 75 },

@@ -16,7 +16,7 @@
  * Notable contract facts these pins encode:
  *  - Wave order: [level-up trio if crossed] → playLineClear → onScoreAdd →
  *    onLineClear(lineCount, footprintCols, holeMask, clearedRows, cascadeCount)
- *    → [onTSpin] → onLineClearImpact → triggerFlash → triggerBackgroundPulse →
+ *    → [onTwist] → onLineClearImpact → triggerFlash → triggerBackgroundPulse →
  *    gravity steps → next wave (triggerCombo+triggerCascadeWave FIRST) →
  *    onCascadeComplete(waveCount) → [perfect-clear: onScoreAdd(bonus) →
  *    onPerfectClear(depth, bonus)] → onGarbageReady(summary).
@@ -187,25 +187,25 @@ describe.each([
         expect(gs.linesUntilNextLevel).toBe(15);
     });
 
-    it('T-spin: onTSpin(lineCount) fires immediately after onLineClear', async () => {
+    it('Twist: onTwist(lineCount) fires immediately after onLineClear', async () => {
         const gs = makeState({
-            comboState: { lockFootprint: [], manualColumns: [], tSpin: true },
+            comboState: { lockFootprint: [], manualColumns: [], twist: true },
             lockedPieces: [fullRowPiece(BOTTOM), loneBlock(0, BOTTOM - 4)],
         });
         const log = [];
         await processPhysics(gs, recorder(log));
 
         const names = log.map(([n]) => n);
-        expect(names.indexOf('onTSpin')).toBe(names.indexOf('onLineClear') + 1);
-        expect(log[names.indexOf('onTSpin')]).toEqual(['onTSpin', 1]);
+        expect(names.indexOf('onTwist')).toBe(names.indexOf('onLineClear') + 1);
+        expect(log[names.indexOf('onTwist')]).toEqual(['onTwist', 1]);
     });
 
     it('B2B: fires only when the PREVIOUS lock was difficult and this one is too', async () => {
         // onB2B(true) fires BEFORE b2bActive is re-set — it reflects the prior
-        // lock (physics.js:850-853). A tetris with b2bActive preset → fires and
+        // lock (physics.js:850-853). A quad with b2bActive preset → fires and
         // stays armed.
-        const tetrisRows = [BOTTOM, BOTTOM - 1, BOTTOM - 2, BOTTOM - 3].map((y) => fullRowPiece(y, `r${y}`));
-        const armed = makeState({ b2bActive: true, lockedPieces: [...tetrisRows, loneBlock(0, BOTTOM - 8)] });
+        const quadRows = [BOTTOM, BOTTOM - 1, BOTTOM - 2, BOTTOM - 3].map((y) => fullRowPiece(y, `r${y}`));
+        const armed = makeState({ b2bActive: true, lockedPieces: [...quadRows, loneBlock(0, BOTTOM - 8)] });
         const armedLog = [];
         await processPhysics(armed, recorder(armedLog));
         const names = armedLog.map(([n]) => n);

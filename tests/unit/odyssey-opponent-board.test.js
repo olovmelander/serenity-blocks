@@ -36,7 +36,7 @@ vi.mock('../../src/rendering/phaser/multiplayer/board-panel.js', () => ({
         this.key = key;
         this.boardConfig = boardConfig;
         this.sharedEffects = Object.fromEntries([
-            'cleanup', 'clearKnockout', 'playHardDropEffect', 'playPerfectClear', 'playTSpinEffect',
+            'cleanup', 'clearKnockout', 'playHardDropEffect', 'playPerfectClear', 'playTwistEffect',
             'playB2BChange', 'playLevelUp', 'playGarbageArrival', 'playKnockout', 'playRoundWin', 'playVictory',
             'showCascadeWave',
         ].map((method) => [method, vi.fn()]));

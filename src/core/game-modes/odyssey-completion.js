@@ -73,7 +73,7 @@ export async function completeOdysseyLevel(mode, results) {
         cascades: metrics.cascades,
         maxCascadeDepth: metrics.maxCascadeDepth,
         combo: metrics.maxCombo,
-        tetrises: metrics.tetrises,
+        quads: metrics.quads,
         rubbleCleared: metrics.rubbleCleared,
         ...(session.duel ? { duel: session.duel.getResult() } : {}),
         ...results,

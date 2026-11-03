@@ -12,7 +12,7 @@
  *   onClear  the figure's LINES are drawn, two for every row, and one shooting star per row
  *            crosses the sky. Four lines or a perfect clear finish the figure at once and send
  *            a fireball over the whole sky: it lights the air and the lake and leaves a train.
- *            A T-spin whirls the sky. A finished figure flares, stays, and turns with the sky.
+ *            A twist whirls the sky. A finished figure flares, stays, and turns with the sky.
  *   onCombo  the chain is the exposure: the shutter opens, every star draws a trail round the
  *            pole (circles, with the mirror), the sky turns faster and the shower thickens. It
  *            closes slowly when the chain breaks.
@@ -24,7 +24,7 @@
  * once, each with its own light on the air and the lake, and each lands (a third great clear
  * swells the one in flight). A cascade's waves each sweep the pole further and ring the lake
  * wider than the last; a back-to-back sends a pair of amber shooting stars side by side; a
- * T-spin that cleared nothing gives the sky a small turn; the late perfect clear is the CROWN on
+ * Twist that cleared nothing gives the sky a small turn; the late perfect clear is the CROWN on
  * the clear still playing (a storm from the radiant in the colours played, every figure flaring,
  * the fireball in flight swelling), never a clear of its own.
  *
@@ -63,7 +63,7 @@ import {
     SKY_START,
     STREAK,
     TAU,
-    TSPIN_SWING,
+    TWIST_SWING,
     WORLD,
     approach,
     clamp,
@@ -1138,7 +1138,7 @@ export class StarlightWorld {
             this.waveRing(c, depth);
         }
         if (c.b2b) this.twin(at);
-        if (c.tspin) this.turnDebt += TSPIN_SWING;
+        if (c.twist) this.turnDebt += TWIST_SWING;
         this.kick = Math.max(this.kick, 0.25 + lines * 0.14 + 0.06 * depth);
     }
 
@@ -1200,10 +1200,10 @@ export class StarlightWorld {
         this.crown(this.time, { fireball: true });
     }
 
-    /** A T-spin that cleared nothing: the sky gives a small turn and the figure twinkles. */
+    /** A twist that cleared nothing: the sky gives a small turn and the figure twinkles. */
     onSpin() {
         this.gameplay.spin(this.time);
-        this.turnDebt += TSPIN_SWING * 0.4;
+        this.turnDebt += TWIST_SWING * 0.4;
         if (this.current) this.current.flare = Math.max(this.current.flare, 0.35);
         this.kick = Math.max(this.kick, 0.18);
     }
@@ -1316,7 +1316,7 @@ export class StarlightWorld {
         this.lensFlash *= Math.exp(-dt / 0.3);
 
         // The sky turns: by itself, faster in a chain, and by the swings it owes (a level's
-        // hour, a T-spin's whirl). All of it accumulates, so no change of pace ever jumps.
+        // hour, a twist's whirl). All of it accumulates, so no change of pace ever jumps.
         const step = this.turnDebt * approach(1.5, dt);
         this.turnDebt -= step;
         if (dt > 0) this.spin = step / dt;

@@ -713,7 +713,7 @@ describe('Luminous Tides theme: one node renderer on both backends', () => {
         expect(lock.mock.calls[0][0].u).toBeCloseTo(0.8, 6);
         expect(clear).toHaveBeenCalledOnce();
         expect(clear.mock.calls[0][0]).toMatchObject({
-            lines: 4, rows: [19, 18, 17, 16], tspin: false, perfect: false, player: 0,
+            lines: 4, rows: [19, 18, 17, 16], twist: false, perfect: false, player: 0,
         });
         expect(levelUp).toHaveBeenCalledOnce();
         expect(levelUp).toHaveBeenCalledWith(3);
@@ -722,16 +722,16 @@ describe('Luminous Tides theme: one node renderer on both backends', () => {
         expect(theme.level).toBe(3);
     });
 
-    it('carries a T-spin and a perfect clear to the shore on the clear they belong to', async () => {
+    it('carries a twist and a perfect clear to the shore on the clear they belong to', async () => {
         const { theme } = await startTheme({ quality: 'High' });
         const clear = vi.spyOn(theme.world, 'onClear');
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 2 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 2 });
         eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 1 });
         expect(() => stepFrames(theme, 30)).not.toThrow();
         expect(clear).toHaveBeenCalledOnce();
-        expect(clear.mock.calls[0][0]).toMatchObject({ lines: 2, tspin: true, perfect: true });
+        expect(clear.mock.calls[0][0]).toMatchObject({ lines: 2, twist: true, perfect: true });
         expect(counts(theme).clears).toBe(1);
     });
 
@@ -1507,7 +1507,7 @@ describe.skipIf(!realModules)('Luminous Tides theme: the real world and post', (
                         lines: 4,
                         combo: 1,
                         cascade: 1,
-                        tspin: false,
+                        twist: false,
                         perfect: false,
                         b2b: true,
                         screen: null,
@@ -1515,7 +1515,7 @@ describe.skipIf(!realModules)('Luminous Tides theme: the real world and post', (
                     world.onCombo(1);
                 }
                 if (frame === 3) {
-                    // A board on screen, a T-spin, another player's board, a perfect clear.
+                    // A board on screen, a twist, another player's board, a perfect clear.
                     world.onLock({
                         player: 2, rows: [3, 4], u: 0.2, hardDrop: false, color: null, screen: null,
                     });
@@ -1525,7 +1525,7 @@ describe.skipIf(!realModules)('Luminous Tides theme: the real world and post', (
                         lines: 2,
                         combo: 2,
                         cascade: 1,
-                        tspin: true,
+                        twist: true,
                         perfect: true,
                         b2b: false,
                         screen: null,
@@ -1540,7 +1540,7 @@ describe.skipIf(!realModules)('Luminous Tides theme: the real world and post', (
                         lines: 1,
                         combo: 3,
                         cascade: 1,
-                        tspin: false,
+                        twist: false,
                         perfect: false,
                         b2b: false,
                         screen: { x: 0.3, y: 0.6 },

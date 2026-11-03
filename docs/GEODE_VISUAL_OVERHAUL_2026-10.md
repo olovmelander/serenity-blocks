@@ -207,7 +207,7 @@ Playground (private dev server in the worktree:
 
 ```
 /playground.html?effect=geode&t=20&hud=0&quality=High&board=1&locks=5
-  + event=lock|drop|clear|quad|tspin|perfect|levelUp   eventAge=<s>  lines=<n>  color=<hex>
+  + event=lock|drop|clear|quad|twist|perfect|levelUp   eventAge=<s>  lines=<n>  color=<hex>
   + combo=<n>   level=<n>   locks=<n>   demo=1 (live)   forceWebGL=1   reduce=1
   + parts=shell,druzy,crystals,glints,beams,air,shards,wisps,rowBeams   falseColor=1   noPost=1
 ```

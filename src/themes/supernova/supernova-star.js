@@ -104,7 +104,7 @@ export function createStar(u, { detail = 3, spikes = true } = {}) {
         // ── The corona and the chromosphere ──
         If(cover.lessThan(0.999), () => {
             const x = max(d.div(R).sub(1.0), 0.0).toVar();
-            // A T-spin winds the streamers round the axis, more the further out they are.
+            // A twist winds the streamers round the axis, more the further out they are.
             const qc = snTurnY(dc, u.twist.mul(x.add(0.2))).toVar();
             const s1 = u.noise(qc.mul(0.34).add(vec3(0.0, 0.0, u.boil.mul(0.004))).add(vec3(0.41, 0.17, 0.66))).toVar();
             // Sliding the read along the direction itself makes the pattern run outward. The

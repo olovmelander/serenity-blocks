@@ -130,7 +130,7 @@ function play(w) {
         world.onLock({
             u: n / 7, rows: [19], color: PIECE_COLORS[n % 7], hardDrop: n === 3, distance: 12,
         });
-        world.onClear({ lines: 1, combo: n, tspin: n === 4 });
+        world.onClear({ lines: 1, combo: n, twist: n === 4 });
         world.onCombo(n);
         stepTo(w, world.time + 0.8);
     }
@@ -292,7 +292,7 @@ describe('GrainfieldsWorld: events reach the reactions and the counters', () => 
         expect(world.parts.beams.count).toBe(0);
     });
 
-    it('blows a clear\'s lanes of wind, wheels a T-spin, tears four lines open over the gate and clears the sky on a perfect clear', () => {
+    it('blows a clear\'s lanes of wind, wheels a twist, tears four lines open over the gate and clears the sky on a perfect clear', () => {
         const { world } = shared;
         begin(shared);
         const wheel = HAS_HERD ? vi.spyOn(world.parts.herd, 'wheel') : null;
@@ -301,8 +301,8 @@ describe('GrainfieldsWorld: events reach the reactions and the counters', () => 
             expect(world.counts).toMatchObject({ clears: 1, lines: 2 });
             expect(world.reactions.trails).toHaveLength(1);
             expect(thrownAt(world, START)).toBeGreaterThan(0); // chaff where the lane starts
-            world.onClear({ lines: 1, combo: 2, tspin: true });
-            expect(world.counts).toMatchObject({ clears: 2, lines: 3, tspins: 1 });
+            world.onClear({ lines: 1, combo: 2, twist: true });
+            expect(world.counts).toMatchObject({ clears: 2, lines: 3, twists: 1 });
             expect(world.reactions.pulses.map((p) => p.kind)).toEqual([PULSE.whirl]);
             if (wheel) expect(wheel).toHaveBeenCalledWith(START);
             // Four lines: two lanes, and the tear where the sun's ray to a point over the gate meets the deck.
@@ -466,7 +466,7 @@ describe('GrainfieldsWorld: events reach the reactions and the counters', () => 
             stepTo(shared, START + 0.1);
             expect(world.light.place - world.time / TIMING.hour).toBeCloseTo(1, 9);
             world.onLock({ u: 0.2, rows: [14] });
-            world.onClear({ lines: 2, tspin: true });
+            world.onClear({ lines: 2, twist: true });
             expect(world.reactions.gaps).toHaveLength(1);
             expect(thrownAt(world, world.time)).toBe(0);
         } finally {
@@ -596,11 +596,11 @@ describe('GrainfieldsWorld: play builds the storm\'s break', () => {
         begin(shared);
     });
 
-    it('turns a little wind for a T-spin that cleared nothing', () => {
+    it('turns a little wind for a twist that cleared nothing', () => {
         const { world } = shared;
         begin(shared);
         world.onSpin({ player: 0, u: 0.3 });
-        expect(world.counts).toMatchObject({ spins: 1, clears: 0, tspins: 0 });
+        expect(world.counts).toMatchObject({ spins: 1, clears: 0, twists: 0 });
         expect(world.reactions.pulses.map((p) => p.kind)).toEqual([PULSE.whirl]);
         expect(thrownAt(world, START)).toBeGreaterThan(0);
         stepTo(shared, START + 0.5);
@@ -734,7 +734,7 @@ describe('GrainfieldsWorld: the frame writes the uniforms', () => {
             if (frame % 44 === 0) {
                 const lines = 1 + (frame % 4);
                 combo = frame % 440 < 330 ? combo + 1 : 0;
-                world.onClear({ lines, combo: Math.max(1, combo), tspin: frame % 352 === 0 });
+                world.onClear({ lines, combo: Math.max(1, combo), twist: frame % 352 === 0 });
                 world.onCombo(combo);
                 world.onB2B(lines === 4 ? Math.min(4, world.b2b + 1) : 0);
             }
@@ -804,7 +804,7 @@ describe('GrainfieldsWorld state', () => {
         play(shared);
         const first = read(shared);
         expect(first.state.counts).toMatchObject({
-            locks: 6, hardDrops: 1, clears: 7, quads: 1, tspins: 1, perfects: 1, levelUps: 1, chainSteps: 4, b2bSteps: 1,
+            locks: 6, hardDrops: 1, clears: 7, quads: 1, twists: 1, perfects: 1, levelUps: 1, chainSteps: 4, b2bSteps: 1,
         });
         begin(shared);
         play(shared);

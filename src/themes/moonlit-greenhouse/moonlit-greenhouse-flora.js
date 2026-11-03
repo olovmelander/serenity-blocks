@@ -13,7 +13,7 @@
  * Everything is merged per species into a few meshes laid in world space (geometry:
  * moonlit-greenhouse-flora-geometry.js), cut and lit in the fragment (shading:
  * moonlit-greenhouse-flora-shading.js) and moved by the greenhouse air in the vertex stage: the
- * world's gust and the T-spin's turn come in through U. Parts:
+ * world's gust and the twist's turn come in through U. Parts:
  *   palms   trunks (opaque) + fronds (cut-out)
  *   ferns   tree-fern trunks + every fern frond (tree ferns' lace, ground ferns)
  *   leaves  banana stems + broad leaves (paddles and hearts) + the urns' sword ferns

@@ -45,11 +45,11 @@ vi.mock('three/webgpu', async (importOriginal) => {
     return { ...actual, WebGPURenderer: TestRenderer };
 });
 
-const GAMEPLAY_EVENTS = [EVENTS.HARD_DROP, EVENTS.PIECE_LOCK, EVENTS.LINE_CLEAR, EVENTS.COMBO, EVENTS.TSPIN, EVENTS.B2B,
+const GAMEPLAY_EVENTS = [EVENTS.HARD_DROP, EVENTS.PIECE_LOCK, EVENTS.LINE_CLEAR, EVENTS.COMBO, EVENTS.TWIST, EVENTS.B2B,
     EVENTS.PERFECT_CLEAR, EVENTS.LEVEL_UP];
-const DIRECTOR_METHODS = ['onHardDrop', 'onPieceLock', 'onLineClear', 'onCombo', 'onTSpin', 'onBackToBack',
+const DIRECTOR_METHODS = ['onHardDrop', 'onPieceLock', 'onLineClear', 'onCombo', 'onTwist', 'onBackToBack',
     'onPerfectClear', 'onLevelUp', 'onGameOver'];
-const FLOURISHES = ['onTSpin', 'onBackToBack', 'onPerfectClear', 'onLevelUp'];
+const FLOURISHES = ['onTwist', 'onBackToBack', 'onPerfectClear', 'onLevelUp'];
 const assetDirectory = new URL('../../src/themes/fall/assets/', import.meta.url);
 
 let themes;
@@ -97,7 +97,7 @@ function stubSceneBuild(theme) {
             onPieceLock: vi.fn(),
             onLineClear: vi.fn(),
             onCombo: vi.fn(),
-            onTSpin: vi.fn(),
+            onTwist: vi.fn(),
             onBackToBack: vi.fn(),
             onPerfectClear: vi.fn(),
             onLevelUp: vi.fn(),
@@ -267,7 +267,7 @@ describe('Fall gameplay payloads', () => {
         };
         eventBus.emit(EVENTS.HARD_DROP, drop);
         eventBus.emit(EVENTS.PIECE_LOCK, { piece });
-        eventBus.emit(EVENTS.TSPIN, { detail: { lineCount: 2 } });
+        eventBus.emit(EVENTS.TWIST, { detail: { lineCount: 2 } });
         eventBus.emit(EVENTS.B2B, { active: true });
         eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 3, perfectClearBonus: 800 });
         eventBus.emit(EVENTS.LEVEL_UP, { level: 4, source: 'odyssey' });
@@ -278,7 +278,7 @@ describe('Fall gameplay payloads', () => {
         expect(reactions.onPieceLock).toHaveBeenCalledExactlyOnceWith({ piece });
         expect(reactions.onHardDrop.mock.invocationCallOrder[0])
             .toBeLessThan(reactions.onPieceLock.mock.invocationCallOrder[0]);
-        expect(reactions.onTSpin).toHaveBeenCalledExactlyOnceWith({ lineCount: 2 });
+        expect(reactions.onTwist).toHaveBeenCalledExactlyOnceWith({ lineCount: 2 });
         expect(reactions.onBackToBack).toHaveBeenCalledExactlyOnceWith({ active: true });
         expect(reactions.onPerfectClear).toHaveBeenCalledExactlyOnceWith({ depth: 3, perfectClearBonus: 800 });
         expect(reactions.onLevelUp).toHaveBeenCalledExactlyOnceWith({ level: 4, source: 'odyssey' });
@@ -343,16 +343,16 @@ describe('Fall gameplay payloads', () => {
         stubSceneBuild(theme);
         theme.buildScene();
         theme.setupEventListeners();
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 1 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 1 });
         eventBus.emit(EVENTS.B2B, { active: true });
         eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 1 });
         eventBus.emit(EVENTS.LEVEL_UP, { level: 2 });
         for (const method of FLOURISHES) expect(theme.reactions[method], method).toHaveBeenCalledOnce();
-        expect(theme.reactions.onTSpin).toHaveBeenCalledWith({ lineCount: 1 });
+        expect(theme.reactions.onTwist).toHaveBeenCalledWith({ lineCount: 1 });
 
         theme.comboEffects = false;
         theme.lockRipple = true;
-        for (const event of [EVENTS.TSPIN, EVENTS.B2B, EVENTS.PERFECT_CLEAR, EVENTS.LEVEL_UP]) eventBus.emit(event, {});
+        for (const event of [EVENTS.TWIST, EVENTS.B2B, EVENTS.PERFECT_CLEAR, EVENTS.LEVEL_UP]) eventBus.emit(event, {});
         for (const method of FLOURISHES) expect(theme.reactions[method], method).toHaveBeenCalledOnce();
     });
 
@@ -370,7 +370,7 @@ describe('Fall gameplay payloads', () => {
             theme.onPieceLock({});
             theme.onLineClear(2);
             theme.onCombo(4);
-            theme.onFlourish('onTSpin', {});
+            theme.onFlourish('onTwist', {});
         }).not.toThrow();
     });
 
@@ -416,10 +416,10 @@ describe('Fall gameplay payloads', () => {
         expect(theme.reactions.onLineClear).not.toHaveBeenCalled();
         expect(theme.reactions.onCombo).not.toHaveBeenCalled();
         eventBus.emit(EVENTS.HARD_DROP, { distance: 10 });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 2 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 2 });
         eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 2 });
         expect(theme.reactions.onHardDrop).not.toHaveBeenCalled();
-        expect(theme.reactions.onTSpin).not.toHaveBeenCalled();
+        expect(theme.reactions.onTwist).not.toHaveBeenCalled();
         expect(theme.reactions.onPerfectClear).not.toHaveBeenCalled();
 
         eventBus.emit(EVENTS.SETTINGS_CHANGED, { settings: { backgroundComboEffects: true, pieceLockRipple: 'off' } });
@@ -430,9 +430,9 @@ describe('Fall gameplay payloads', () => {
         expect(theme.reactions.onLineClear).toHaveBeenCalledExactlyOnceWith(2, { lineCount: 2 });
         expect(theme.reactions.onCombo).toHaveBeenCalledExactlyOnceWith(3, { comboCount: 3 });
         eventBus.emit(EVENTS.HARD_DROP, { distance: 10 });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 2 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 2 });
         expect(theme.reactions.onHardDrop).not.toHaveBeenCalled();
-        expect(theme.reactions.onTSpin).toHaveBeenCalledExactlyOnceWith({ lineCount: 2 });
+        expect(theme.reactions.onTwist).toHaveBeenCalledExactlyOnceWith({ lineCount: 2 });
         // Turning effects back on, or touching another setting, clears nothing.
         expect(theme.reactions.reset).toHaveBeenCalledOnce();
         expect(theme.world.resetEffects).toHaveBeenCalledOnce();
@@ -1328,7 +1328,7 @@ describe('Fall with its real artwork', () => {
         eventBus.emit(EVENTS.PIECE_LOCK, { piece });
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 4, clearedRows: [20, 21, 22, 23], cascadeCount: 1 });
         eventBus.emit(EVENTS.COMBO, { comboCount: 6 });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 2 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 2 });
         eventBus.emit(EVENTS.B2B, { active: true });
         eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 1, perfectClearBonus: 800 });
         eventBus.emit(EVENTS.LEVEL_UP, { level: 2 });

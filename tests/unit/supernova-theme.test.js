@@ -644,7 +644,7 @@ describe('Supernova theme: one node renderer on both backends', () => {
         expect(lock.mock.calls[0][0].u).toBeCloseTo(0.8, 6);
         expect(clear).toHaveBeenCalledOnce();
         expect(clear.mock.calls[0][0]).toMatchObject({
-            lines: 4, rows: [19, 18, 17, 16], combo: 1, tspin: false, perfect: false,
+            lines: 4, rows: [19, 18, 17, 16], combo: 1, twist: false, perfect: false,
         });
         // The element the star burns changes with the level.
         expect(level).toHaveBeenCalledOnce();
@@ -652,18 +652,18 @@ describe('Supernova theme: one node renderer on both backends', () => {
         expect(theme.world.getState()).toMatchObject({ level: 3, combo: 1, counts: { locks: 1, clears: 1 } });
     });
 
-    it('carries a T-spin, a back-to-back and a perfect clear on the clear they belong to', async () => {
+    it('carries a twist, a back-to-back and a perfect clear on the clear they belong to', async () => {
         const { theme } = await startTheme({ quality: 'High' });
         const clear = vi.spyOn(theme.world, 'onClear');
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 2 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 2 });
         eventBus.emit(EVENTS.B2B, { active: true });
         eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 1 });
         theme.stepFrame(16);
         expect(clear).toHaveBeenCalledOnce();
         expect(clear.mock.calls[0][0]).toMatchObject({
-            lines: 2, rows: [19, 18], tspin: true, b2b: true, perfect: true,
+            lines: 2, rows: [19, 18], twist: true, b2b: true, perfect: true,
         });
     });
 

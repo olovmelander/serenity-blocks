@@ -669,7 +669,7 @@ describe('astral weave world: fast play builds instead of popping', () => {
         world.dispose();
     });
 
-    it('answers a T-spin that cleared nothing with a small wring of the hoop', () => {
+    it('answers a twist that cleared nothing with a small wring of the hoop', () => {
         const { world } = makeWorld();
         world.onSpin({ player: 0 });
         run(world, 0.2);

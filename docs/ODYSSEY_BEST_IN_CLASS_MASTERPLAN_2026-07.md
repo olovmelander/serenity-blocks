@@ -233,7 +233,7 @@ measurement; **no post-fast-start baseline exists — capturing one is Wave-1 wo
 | 7 | `ChapterEnvironmentManager.dispose()` skips textures/uniform-textures/RTs (CEM:1554–1587) — the eviction path's own teardown is the correct superset; adopt it for full dispose too. | minor | ✅ **RESOLVED 2026-07-05** — extracted the eviction walk into `_freeEnvironmentResources(env)`; both `disposeChapterEnvironment` and `dispose()` call it. Full teardown now frees textures/uniform-textures/RTs it leaked AND skips `fromSharedGltfCache` (was disposing the shared manta/whale/conifer cache → broke them on next entry). Build green, CEM suite unchanged. |
 | 8 | Results modal is mouse-only (`Continue`, OdysseyMode.js:5062) while the failure modal has full keyboard support. Most-pressed button in the mode. | minor | Enter/Space/Esc parity. |
 | 9 | Untracked 1200ms park `setTimeout` in entry transition (OdysseyMode.js:721–727) can race a fast return; `_getPhysicsCallbacks()` rebuilds the whole wrapped-callback graph on **every** hard/soft-drop keypress (:5374–5388). | minor | Track + guard the timer; build callbacks once per level. |
-| 10 | `LevelRegistry.validateLevel` omits `'tetrises'` from validTypes (LevelRegistry.js:397) though the evaluator supports it. | minor | Add it (enables §5 variety work). |
+| 10 | `LevelRegistry.validateLevel` omits `'quads'` from validTypes (LevelRegistry.js:397) though the evaluator supports it. | minor | Add it (enables §5 variety work). |
 | 11 | **Level-node cores render as dark/black spheres** — captured live in ch5 body and the 5→6 seam: node inner cores show as large dark spheres instead of glowing biome wisps, wrecking focal hierarchy (a dark blob becomes the biggest object on screen). Likely the instanced-core atlas (`?odysseyCoreInstanced`, default-ON) or node glass at certain chapter light states. | **major, capture-confirmed** | Repro at ch5 (pos≈0.574) with `?odysseyCoreInstanced=0` to isolate the atlas vs the glass; fix the dark path. Retest all 8 chapters' node cores. |
 
 ---
@@ -378,7 +378,7 @@ Open items, ranked (draws from the June-22 plan §8 minus what shipped):
   Wire `combo-multiplier` into scoring; implement `invisible` (renderer honors `piece.fadeOutTime`),
   `mirror` (input map), `speed-up` (gravity scale) — or delete them from 33 levels' data. Then author the
   back half of the campaign to actually use combo/tetrises/time-survival primaries and the richer pool.
-  Add `'tetrises'` to LevelRegistry validTypes (§2#10).
+  Add `'quads'` to LevelRegistry validTypes (§2#10).
 
   > **STATUS (2026-07-05 — wiring SHIPPED, authoring still open):** The four dead modifiers are now
   > resolved. The wire points were mapped by an adversarial multi-agent pass (all recs verified):
@@ -649,7 +649,7 @@ insta-fail; node cores glow (no dark blobs); birds fly in ch3.*
 > ✅ #1 double garbage-seeding removed (`OdysseyMode._addStartingRows` deleted; engine `seedStartingRows`
 > is the single source). ✅ #2 paused-time clock (paused-ms accumulator + `_elapsedLevelMs()`; excludes
 > pause-menu time). ✅ #4 dev backdoor gated (`isOdysseyDebugExposureEnabled()` — DEV or capture-flag only).
-> ✅ #8 results-modal keyboard (Enter/Space/Esc, single-fire, capture-phase). ✅ #10 `'tetrises'` added to
+> ✅ #8 results-modal keyboard (Enter/Space/Esc, single-fire, capture-phase). ✅ #10 `'quads'` added to
 > validTypes. ✅ #6 camera roll restored (deferred `_pendingViewRoll`, applied via `rotateZ` after `lookAt`
 > in OdysseyCameraController). ✅ #11 dark node-orb — **root cause found + fixed live via chrome-devtools**:
 > the instanced-core locked treatment was ×0.45 brightness + 45% desaturation → dark theme icons rendered

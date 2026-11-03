@@ -54,7 +54,7 @@ function getGoalRule(level) {
     const type = level?.victory?.primary?.type;
     if (type === 'cascade') return CASCADE_RULE;
     if (type === 'combo') return CHAIN_RULE;
-    if (type === 'tetrises') return QUAD_RULE;
+    if (type === 'quads') return QUAD_RULE;
     if (type === 'rubble') return RUBBLE_RULE;
     if (type === 'time') return SURVIVAL_RULE;
     return null;
@@ -84,7 +84,7 @@ function getGoal(level) {
     const primary = level?.victory?.primary;
     if (!primary || !positiveNumber(primary.target)) return 'Clear the orb';
     if (primary.type === 'height') return `Build to ${primary.target} rows`;
-    if (!['lines', 'score', 'cascade', 'time', 'combo', 'tetrises', 'rubble', 'frags'].includes(primary.type)) {
+    if (!['lines', 'score', 'cascade', 'time', 'combo', 'quads', 'rubble', 'frags'].includes(primary.type)) {
         return 'Clear the orb';
     }
     return formatOdysseyMapObjective(primary);

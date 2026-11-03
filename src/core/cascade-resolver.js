@@ -154,7 +154,7 @@ function settleGravity(lockedPieces, boardGrid, placementGrid) {
  * @property {boolean[][]} holeMasks per-cleared-row COLS-wide mask (true = hole)
  * @property {number[]} holeColumns merged sorted hole columns for the wave
  * @property {number} points score awarded this wave (post combo-multiplier)
- * @property {boolean} tSpin
+ * @property {boolean} twist
  * @property {boolean} b2bFired
  * @property {number|null} leveledTo new level if this wave crossed a threshold
  * @property {number} gravitySteps animation steps after this wave's clear
@@ -171,7 +171,7 @@ function settleGravity(lockedPieces, boardGrid, placementGrid) {
  *    comboMultiplierEnabled?, comboMultiplier?, comboCount?,
  *    lastPlacedPieceX?, lineClearCounts?: boolean,
  *    comboState?: {lockFootprint?, manualColumns?, depth?, complexity?,
- *                  tSpin?, sourceColor?, sourcePiece?, sequence?}}
+ *                  twist?, sourceColor?, sourcePiece?, sequence?}}
  * @returns {Object} the complete resolution result
  */
 export function resolveCascade(lockedPieces, context = {}) {
@@ -290,11 +290,11 @@ export function resolveCascade(lockedPieces, context = {}) {
         }
         scoreDelta += points;
 
-        // T-spin / B2B (physics.js:842-857). NOTE: legacy reads the LIVE
-        // gameState.comboState?.tSpin, not the defaulted local — mirrored via
-        // context.comboState?.tSpin.
-        const tSpin = cascadeCount === 1 && Boolean(context.comboState?.tSpin);
-        const isDifficultClear = fullLines.length >= 4 || tSpin;
+        // Twist / B2B (physics.js:842-857). NOTE: legacy reads the LIVE
+        // gameState.comboState?.twist, not the defaulted local — mirrored via
+        // context.comboState?.twist.
+        const twist = cascadeCount === 1 && Boolean(context.comboState?.twist);
+        const isDifficultClear = fullLines.length >= 4 || twist;
         let b2bFired = false;
         if (isDifficultClear) {
             if (b2bActive) b2bFired = true;
@@ -326,7 +326,7 @@ export function resolveCascade(lockedPieces, context = {}) {
             holeMasks: waveHoleMasks,
             holeColumns,
             points,
-            tSpin,
+            twist,
             b2bFired,
             leveledTo: levelChanged ? level : leveledTo,
             gravitySteps,

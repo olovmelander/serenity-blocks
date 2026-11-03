@@ -20,7 +20,7 @@
  *                 one flame at a time around it, and the constellations draw themselves in
  *   cascade       each wave of one lock answers more fully than the last: another flame,
  *                 more of the sky drawn, a wider ring of petals, another front of wind
- *   t-spin        a spiral flourish beside the board and a shooting star (a smaller spiral
+ *   twist        a spiral flourish beside the board and a shooting star (a smaller spiral
  *                 and a fainter star when it cleared nothing)
  *   back-to-back  the hazy moon's rainbow corona opens, brighter for every one in a row
  *   level up      sky lanterns rise from the shore
@@ -48,7 +48,7 @@
 import { ComboTracker } from '../../core/combo-tracker.js';
 import { GameplaySurge, SURGE_WEIGHTS, Swell } from '../shared/gameplay-surge.js';
 
-// Every handler firing in one frame (a hard-dropped lock, four lines, a combo, a T-spin,
+// Every handler firing in one frame (a hard-dropped lock, four lines, a combo, a twist,
 // a perfect clear and a level-up) asks for seventeen emitters; no tier's pool is smaller,
 // so none is reclaimed before the garden has played it.
 export const SAKURA_REACTION_LIMITS = Object.freeze({
@@ -519,16 +519,16 @@ export class SakuraReactions {
         return true;
     }
 
-    onTSpin(detail = {}) {
+    onTwist(detail = {}) {
         if (this.disposed) return false;
         const payload = unwrap(detail);
         const place = boardPlace(payload);
-        // A T-spin that cleared lines adds its own weight to the clear just counted; one that
+        // A twist that cleared lines adds its own weight to the clear just counted; one that
         // cleared nothing is a small flourish of its own.
         const cleared = positiveCount(payload.lineCount, 4) > 0 || payload.lineCount === undefined;
         if (cleared) {
-            this.surge.punch.hit(SURGE_WEIGHTS.punch.tspin, this.time);
-            this.surge.level.hit(SURGE_WEIGHTS.heat.tspin, this.time);
+            this.surge.punch.hit(SURGE_WEIGHTS.punch.twist, this.time);
+            this.surge.level.hit(SURGE_WEIGHTS.heat.twist, this.time);
         } else this.surge.spin(this.time);
         const size = cleared ? 1 : 0.6;
         this.excite({

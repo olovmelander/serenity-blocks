@@ -90,7 +90,7 @@ describe('luminous tides world: building', () => {
         world.onLock({
             rows: [6, 5], u: 0.85, color: '#45DCF7', hardDrop: true,
         });
-        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        world.onClear({ rows: [19, 18], lines: 2, twist: true });
         world.onClear({ rows: [19, 18, 17, 16], lines: 4, perfect: true });
         world.onCombo(6);
         world.levelUp(3);
@@ -138,7 +138,7 @@ describe('luminous tides world: the board', () => {
         expect(world.getState().splashes).toBeLessThanOrEqual(tierFor('Low').splashes + SPARE_SPLASHES);
     });
 
-    it('throws a wave of light for each line, one great one for four, and sends a shoal on a T-spin', () => {
+    it('throws a wave of light for each line, one great one for four, and sends a shoal on a twist', () => {
         const { world, step } = makeWorld();
         world.onClear({ rows: [19, 18, 17], lines: 3 });
         expect(world.breakers).toHaveLength(3);
@@ -146,7 +146,7 @@ describe('luminous tides world: the board', () => {
         world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
         expect(world.breakers).toHaveLength(1);
         expect(world.breakers[0].H).toBeGreaterThan(1.2);
-        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        world.onClear({ rows: [19, 18], lines: 2, twist: true });
         step(1);
         expect(world.getState().shoal).toBe(true);
         expect(world.getState().waves).toBeGreaterThan(0);
@@ -285,7 +285,7 @@ describe('luminous tides world: the build', () => {
         for (let k = 2; k <= 12; k += 1) {
             world.onLock({ rows: [19], u: 0.5, hardDrop: true });
             world.onClear({
-                rows: [19, 18], lines: k % 4 === 0 ? 3 : 2, combo: k, tspin: k === 8,
+                rows: [19, 18], lines: k % 4 === 0 ? 3 : 2, combo: k, twist: k === 8,
             });
             world.onCombo(k);
             step(0.64);
@@ -308,7 +308,7 @@ describe('luminous tides world: the build', () => {
         expect(rest.power).toBeCloseTo(1, 2);
     });
 
-    it('sends a small school for a T-spin with no lines, and more fish after a running school', () => {
+    it('sends a small school for a twist with no lines, and more fish after a running school', () => {
         const { world, step } = makeWorld();
         world.onSpin({ player: 0 });
         step(0.5);
@@ -316,11 +316,11 @@ describe('luminous tides world: the build', () => {
         const small = world.getState().fish;
         expect(small).toBeGreaterThan(0);
         expect(small).toBeLessThan(tierFor('Low').fish);
-        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
-        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        world.onClear({ rows: [19, 18], lines: 2, twist: true });
+        world.onClear({ rows: [19, 18], lines: 2, twist: true });
         const [a, b] = world.schools;
         const set = [a.at, b.at];
-        // Both schools are running: a third T-spin adds fish to the youngest, restarting neither.
+        // Both schools are running: a third twist adds fish to the youngest, restarting neither.
         world.onSpin({ player: 0 });
         expect([a.at, b.at]).toEqual(set);
         expect(world.getState().fish).toBeGreaterThan(small + tierFor('Low').fish);

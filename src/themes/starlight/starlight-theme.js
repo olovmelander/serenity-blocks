@@ -10,7 +10,7 @@
  * ring in the same colour runs out over the mirror under the piece's column (a hard drop is
  * brighter and wider); a clear draws the figure's lines, two for every row, and sends one
  * shooting star per row across the sky; four lines or a perfect clear finish the figure at
- * once and send a fireball over the whole sky that lights the lake; a T-spin makes the sky
+ * once and send a fireball over the whole sky that lights the lake; a twist makes the sky
  * pirouette; a chain of clears opens the shutter, so every star draws a trail round the pole,
  * longer with the chain (and circles, with the mirror); a new level carries the sky an hour on
  * in one breath and turns the light to the next hour (deep night, airglow, first light,
@@ -247,7 +247,7 @@ export default class StarlightTheme extends BaseTheme {
             sink: {
                 lock: (c) => this.world?.onLock(c),
                 clear: (c) => this.world?.onClear(c),
-                // The late perfect clear crowns the clear still playing; a T-spin that cleared
+                // The late perfect clear crowns the clear still playing; a twist that cleared
                 // nothing still turns the sky a little.
                 crown: () => this.world?.onCrown?.(),
                 spin: () => this.world?.onSpin?.(),

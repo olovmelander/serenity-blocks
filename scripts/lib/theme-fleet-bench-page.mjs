@@ -7,7 +7,7 @@
  *     fresh profile and again warm on a second visit: time to running, to first frame, to fully
  *     shown, and the longest freeze the player sees meanwhile;
  *   - rest: frame rate and frame-time percentiles with the game running and no events;
- *   - storm: the same while locks, drops, clears, combos, T-spins and perfect clears fire;
+ *   - storm: the same while locks, drops, clears, combos, twists and perfect clears fire;
  *   - gpu: a short window with GPU timestamps armed (they cost CPU, so the fps windows run
  *     without them).
  *
@@ -309,7 +309,7 @@ const STORM_FN = `
     () => { E.emitHardDrop({ piece: piece(), startY: 0, endY: 18, distance: 18 }); E.emitPieceLock({ piece: piece() }); },
     () => { E.emitHardDrop({ piece: piece(), startY: 0, endY: 18, distance: 18 }); E.emitPieceLock({ piece: piece() }); E.emitLineClear({ lineCount: 1, clearedRows: rows(1) }); },
     () => { E.emitPieceLock({ piece: piece() }); E.emitLineClear({ lineCount: 2, clearedRows: rows(2), comboCount: 1 }); E.emitCombo({ comboCount: 1 }); },
-    () => { E.emitPieceLock({ piece: piece() }); E.emitTSpin({ lineCount: 2 }); E.emitLineClear({ lineCount: 2, clearedRows: rows(2), comboCount: 2 }); E.emitCombo({ comboCount: 2 }); E.emitB2B({ active: true }); },
+    () => { E.emitPieceLock({ piece: piece() }); E.emitTwist({ lineCount: 2 }); E.emitLineClear({ lineCount: 2, clearedRows: rows(2), comboCount: 2 }); E.emitCombo({ comboCount: 2 }); E.emitB2B({ active: true }); },
     () => { E.emitHardDrop({ piece: piece(), startY: 0, endY: 18, distance: 18 }); E.emitPieceLock({ piece: piece() }); E.emitLineClear({ lineCount: 3, clearedRows: rows(3), comboCount: 3 }); E.emitCombo({ comboCount: 3 }); },
     () => { E.emitHardDrop({ piece: piece(), startY: 0, endY: 18, distance: 18 }); E.emitPieceLock({ piece: piece() }); E.emitLineClear({ lineCount: 4, clearedRows: rows(4), comboCount: 4 }); E.emitCombo({ comboCount: 4 }); E.emitB2B({ active: true }); },
     () => { E.emitPieceLock({ piece: piece() }); E.emitLineClear({ lineCount: 4, clearedRows: rows(4), comboCount: 5 }); E.emitCombo({ comboCount: 5 }); E.emitPerfectClear({ depth: 4, perfectClearBonus: 3000 }); },

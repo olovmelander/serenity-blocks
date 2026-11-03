@@ -215,7 +215,7 @@ describe('Odyssey campaign design rules (level design audit 2026-11)', () => {
             expect(three, `orb ${level.id} three stars ask more than two`).not.toEqual(two);
             if (level.mechanics.versus) continue;
             for (const condition of [two, three]) {
-                const quads = Number(condition.tetrises) > 0;
+                const quads = Number(condition.quads) > 0;
                 const cascadeAsk = Number(condition.cascades) > 0 && metricOf(level) !== 'cascades';
                 const chains = chainOf(condition) > 0 || cascadeAsk;
                 if (!['cascade', 'combo'].includes(level.victory.primary.type)) {
@@ -224,7 +224,7 @@ describe('Odyssey campaign design rules (level design audit 2026-11)', () => {
             }
             const types = new Set(level.victory.bonuses.map((bonus) => bonus.type));
             const chainBonus = ['max-cascade-depth', 'combo', 'cascade'].some((type) => types.has(type));
-            expect(types.has('tetris-count') && chainBonus, `orb ${level.id} extra goals mix Quads with chains`)
+            expect(types.has('quad-count') && chainBonus, `orb ${level.id} extra goals mix Quads with chains`)
                 .toBe(false);
         }
         expect(LEVEL_CONFIGS.filter(isShowcase).map((level) => level.id)).toEqual(SHOWCASES);
@@ -236,7 +236,7 @@ describe('Odyssey campaign design rules (level design audit 2026-11)', () => {
             const byBonuses = tiers.some((condition) => Number(condition.bonuses) > 0);
             for (const bonus of level.victory.bonuses) {
                 const matched = byBonuses || tiers.some((condition) => (
-                    (bonus.type === 'tetris-count' && condition.tetrises >= bonus.target)
+                    (bonus.type === 'quad-count' && condition.quads >= bonus.target)
                     || (bonus.type === 'cascade' && condition.cascades >= bonus.target)
                     || (['max-cascade-depth', 'combo'].includes(bonus.type) && chainOf(condition) >= bonus.target)
                     || (bonus.type === 'time' && condition.time <= bonus.target)
@@ -264,9 +264,9 @@ describe('Odyssey campaign design rules (level design audit 2026-11)', () => {
                 expect(level.victory.primary.target, `orb ${level.id} cascade goal`)
                     .toBeLessThanOrEqual(CASCADE_GOAL[level.chapter]);
             }
-            if (level.victory.primary.type !== 'tetrises') {
-                const quadAsks = [two.tetrises, three.tetrises,
-                    ...level.victory.bonuses.filter((bonus) => bonus.type === 'tetris-count')
+            if (level.victory.primary.type !== 'quads') {
+                const quadAsks = [two.quads, three.quads,
+                    ...level.victory.bonuses.filter((bonus) => bonus.type === 'quad-count')
                         .map((bonus) => bonus.target)];
                 for (const asked of quadAsks.filter(Number.isFinite)) {
                     expect(asked, `orb ${level.id} Quad ask`).toBeLessThanOrEqual(QUAD_ASK[level.chapter]);

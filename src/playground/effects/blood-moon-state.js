@@ -144,7 +144,7 @@ const smooth = (low, high, value) => {
  * order never matters), then join the swell at the update's time.
  *
  * Four lunar halos, four wave fronts and the moments: the perfect clear's crown and its diamond
- * ring (the shadow steps aside for a beat), a T-spin's whirl, back-to-back's volcano flare, and
+ * ring (the shadow steps aside for a beat), a twist's whirl, back-to-back's volcano flare, and
  * the exhale when a long chain ends. The true combo arrives from the theme's ComboTracker
  * (`combo`); COMBO events carry the cascade depth of one lock and are read as depth.
  *
@@ -174,7 +174,7 @@ export class BloodMoonReactions {
         this.diamond = new Swell({
             attack: 0.3, release: 1.3, ceiling: 1, knee: 0.9,
         });
-        /** A T-spin whirls the corona's fire; back-to-back wakes the volcano. */
+        /** A twist whirls the corona's fire; back-to-back wakes the volcano. */
         this.spin = new Swell({
             attack: 0.06, release: 0.9, ceiling: 1.6, knee: 1.1,
         });
@@ -218,8 +218,8 @@ export class BloodMoonReactions {
             locked: false,
             lines: 0,
             cascade: 1,
-            tspin: false,
-            tspinLines: 0,
+            twist: false,
+            twistLines: 0,
             b2b: false,
             perfect: false,
             levelUp: false,
@@ -419,8 +419,8 @@ export class BloodMoonReactions {
         f.locked = false;
         f.lines = 0;
         f.cascade = 1;
-        f.tspin = false;
-        f.tspinLines = 0;
+        f.twist = false;
+        f.twistLines = 0;
         f.b2b = false;
         f.perfect = false;
         f.levelUp = false;
@@ -502,7 +502,7 @@ export class BloodMoonReactions {
             lunarCombo = Math.min(1, depth / 8);
             lunarDuration = Math.min(1.9, 1.35 + depth * 0.05);
             break;
-        case 'tetris':
+        case 'quad':
             f.lines = 4;
             f.cascade = Math.max(f.cascade, clamp(Math.floor(finite(payload?.cascadeCount, 1)), 1, 12));
             pulse = 0.62 + chain * 0.012;
@@ -514,11 +514,11 @@ export class BloodMoonReactions {
             width = 1.25;
             lunarStrength = 1.25; lunarCombo = Math.max(0.55, Math.min(1, chain / 10)); lunarDuration = 1.65;
             break;
-        case 'tspin': {
-            // A T-spin whirls the corona's fire; with lines it is a big clear's answer too.
+        case 'twist': {
+            // A twist whirls the corona's fire; with lines it is a big clear's answer too.
             const spun = clamp(Math.floor(finite(payload?.lineCount ?? payload?.lines, 1)), 0, 4);
-            f.tspin = true;
-            f.tspinLines = Math.max(f.tspinLines, spun);
+            f.twist = true;
+            f.twistLines = Math.max(f.twistLines, spun);
             this._spinHit = Math.max(this._spinHit, 0.45 + spun * 0.25);
             if (spun === 0) {
                 pulse = 0.2; corona = 0.3; stars = 0.2; impact = 0.2;
@@ -616,14 +616,14 @@ export class BloodMoonReactions {
         const f = this._frame;
         const { surge } = this;
         if (f.lock || f.hardDrop) surge.lock({ hardDrop: f.hardDrop }, t);
-        if (f.lines > 0 || f.perfect || f.tspin || f.b2b) {
+        if (f.lines > 0 || f.perfect || f.twist || f.b2b) {
             // A cascade's later waves add a wave's weight each; only a lock's first clear is a
-            // step of the combo. A late perfect clear or a zero-line T-spin weighs as a single.
+            // step of the combo. A late perfect clear or a zero-line twist weighs as a single.
             surge.clear({
                 lines: f.lines > 0 ? f.lines : 1,
                 cascade: f.cascade >= 2 ? 2 : 1,
                 combo: f.lines > 0 && f.cascade < 2 ? this.combo : 1,
-                tspin: f.tspin && f.tspinLines > 0,
+                twist: f.twist && f.twistLines > 0,
                 b2b: f.b2b,
                 perfect: f.perfect,
             }, t);

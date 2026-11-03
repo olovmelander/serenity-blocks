@@ -28,7 +28,7 @@
  *   cascade  each wave reaches further than the last: a wider, deeper-gold ring, a higher leap.
  *   b2b      the second difficult clear sends a PAIR over together, turning, under a rose ring,
  *            and the lantern flares.
- *   spin     a T-spin that clears nothing: one koi turns over at the surface, a rose swirl.
+ *   spin     a twist that clears nothing: one koi turns over at the surface, a rose swirl.
  *   heat     the shared surge (src/themes/shared/gameplay-surge.js) is the pond's memory of
  *            play. Warm: the koi quicken and warm from inside, the fireflies lift, the lantern
  *            burns brighter. Hot: the big koi rally to the ring round the board without a
@@ -780,12 +780,12 @@ export class KoiPondWorld {
     }
 
     /**
-     * Lines cleared. `lines` 1..4; `tspin`, `perfect`, `b2b`; `cascade` the wave (1 = the clear
+     * Lines cleared. `lines` 1..4; `twist`, `perfect`, `b2b`; `cascade` the wave (1 = the clear
      * itself); `combo` the true chain. Two clears carry no lines (koi-pond-director.js): `crown`
-     * (a perfect clear settled after its clear) and a T-spin with `lines: 0`.
+     * (a perfect clear settled after its clear) and a twist with `lines: 0`.
      */
     onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, b2b = false, cascade = 1, combo = 1, crown = false,
+        rows = null, lines = 1, twist = false, perfect = false, b2b = false, cascade = 1, combo = 1, crown = false,
         player = 0, screen = null,
     } = {}) {
         const { light, school } = this;
@@ -794,7 +794,7 @@ export class KoiPondWorld {
             this.crownClear(rows, player, screen);
             return;
         }
-        if (tspin && Number(lines) === 0) {
+        if (twist && Number(lines) === 0) {
             this.spinClear();
             return;
         }
@@ -823,7 +823,7 @@ export class KoiPondWorld {
         ];
         const fuller = 1 + 0.15 * deeper;
         this.surge.clear({
-            lines: n, cascade: deeper + 1, combo, tspin, perfect, b2b,
+            lines: n, cascade: deeper + 1, combo, twist, perfect, b2b,
         }, birth);
         this.at(birth, () => {
             this.plunge(hx0, hz0, {
@@ -884,7 +884,7 @@ export class KoiPondWorld {
         } else {
             // A cascade's later waves leap higher, and from the third on they turn in the air.
             const up = 0.12 * deeper;
-            this.sendLeap(first, 0.9 + 0.12 * n + up, tspin || deeper >= 2);
+            this.sendLeap(first, 0.9 + 0.12 * n + up, twist || deeper >= 2);
             if (n >= 2) this.at(this.time + 0.16, () => this.sendLeap(-first, 1.0 + 0.1 * n + up, false));
             if (n >= 3) this.at(this.time + 0.36, () => this.sendLeap(first, 1.35 + up, true));
         }
@@ -941,7 +941,7 @@ export class KoiPondWorld {
         this.counts.crowns += 1;
     }
 
-    /** A T-spin that cleared nothing: one koi turns over at the surface, a rose swirl. */
+    /** A twist that cleared nothing: one koi turns over at the surface, a rose swirl. */
     spinClear() {
         const { light } = this;
         const x = this.lastLockX;

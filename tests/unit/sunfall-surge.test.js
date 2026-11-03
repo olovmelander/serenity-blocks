@@ -179,9 +179,9 @@ describe('sunfall surge', () => {
         expect(readSunfallClear({ lineCount: 2, clearedRows: [22, 23], cascadeCount: 1 }).rows).toEqual([18, 19]);
     });
 
-    it('answers a T-spin that clears nothing with a small turn, and a back-to-back with a thread', () => {
+    it('answers a twist that clears nothing with a small turn, and a back-to-back with a thread', () => {
         const dir = new SunfallDirector({ level: 1, reducedMotion: true });
-        dir.onTSpin({ lines: 0 });
+        dir.onTwist({ lines: 0 });
         let snap = dir.step(DT);
         expect(snap.fringeDegrees).toBeCloseTo(7.5, 3);
         expect(snap.turningPulse).toBeGreaterThan(0.8);

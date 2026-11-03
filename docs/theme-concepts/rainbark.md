@@ -1459,7 +1459,7 @@ each with `scope` naming `rainbark` and `sources` naming the effect file):
 | `level` | 1–13; default 4 |
 | `board`, `statsHud` | Mock board with the real selectors (calm zones and lanes exercised) |
 | `locks=<n>` | Pre-play n locks (alternating lanes and pieces) |
-| `event` | `lock`, `drop`, `clear`, `quad`, `tspin`, `perfect`, `levelUp`, **`release`**, **`b2b`**, **`gameOver`** |
+| `event` | `lock`, `drop`, `clear`, `quad`, `twist`, `perfect`, `levelUp`, **`release`**, **`b2b`**, **`gameOver`** |
 | `eventAge` | s, default 0.4 |
 | `eventLevel` | Default level + 1 |
 | `lines` | 1–4, default 2 |
@@ -1576,7 +1576,7 @@ starred shots.
 | 9 | Great Moult: ripening flames | `t=55&level=4&event=quad&row=16&eventAge=4.2` | D |
 | 10★ | Combo ×6: five counted pools with beams, quickening | `t=55&level=4&board=1&combo=6` | D |
 | 11 | The Set after ×7: gaps closing, curl curtain, vapour roll | `t=55&level=4&board=1&event=release&peak=7&eventAge=1.2` | D |
-| 12 | Unwinding: two diagonal stripes and amber beads | `t=55&level=4&board=1&event=tspin&lines=2&u=0.2&row=13&eventAge=2.0` | D |
+| 12 | Unwinding: two diagonal stripes and amber beads | `t=55&level=4&board=1&event=twist&lines=2&u=0.2&row=13&eventAge=2.0` | D |
 | 13★ | The Floor: drained mist, roots, stream, curl carpet | `t=55&level=4&event=perfect&eventAge=5&sheds=700` | D |
 | 14★ | Phone portrait: edge-band lanes, top crown gap, bottom mist, lock legible | `t=55&level=4&board=1&event=lock&piece=T&u=0.2&row=10&eventAge=0.5` | P |
 

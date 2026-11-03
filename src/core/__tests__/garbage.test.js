@@ -103,7 +103,7 @@ describe('Garbage Logic', () => {
 
         it('generates clean bonus correctly (72/585 pattern)', () => {
             const summary = {
-                depth: 4, // Tetris
+                depth: 4, // Quad
                 complexity: 1,
                 holeMask: Array(4).fill(Array(COLS).fill(false)), // Doesn't matter for clean
                 sendForPerfectClear: true,

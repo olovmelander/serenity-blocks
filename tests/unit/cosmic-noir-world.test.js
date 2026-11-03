@@ -248,7 +248,7 @@ describe('cosmic noir world: gameplay', () => {
         expect(calm.world.getPostState().flash).toBeGreaterThan(0.3);
     });
 
-    it('spins the cage on a T-spin, and lets it settle back to its own slow turn', () => {
+    it('spins the cage on a twist, and lets it settle back to its own slow turn', () => {
         const { world, camera } = makeWorld();
         const rest = () => {
             const a = world.cageTurn;
@@ -256,7 +256,7 @@ describe('cosmic noir world: gameplay', () => {
             return turn(a, world.cageTurn) * 60;
         };
         const slow = rest();
-        frame(world, camera, 1 / 60, () => world.onClear({ lines: 2, rows: [18, 19], tspin: true }));
+        frame(world, camera, 1 / 60, () => world.onClear({ lines: 2, rows: [18, 19], twist: true }));
         expect(rest() - slow).toBeGreaterThan(Math.abs(slow) * 10);
         run(world, camera, 10);
         expect(rest()).toBeCloseTo(slow, 3);
@@ -417,7 +417,7 @@ describe('cosmic noir world: it builds with play instead of popping', () => {
     it('answers a back-to-back with a double ring and a warmer print, warmer for each one in a row', () => {
         const plain = makeWorld();
         const b2b = makeWorld();
-        const spin = { lines: 2, rows: [18, 19], tspin: true };
+        const spin = { lines: 2, rows: [18, 19], twist: true };
         frame(plain.world, plain.camera, 1 / 60, () => plain.world.onClear(spin));
         frame(b2b.world, b2b.camera, 1 / 60, () => b2b.world.onClear({ ...spin, b2b: true }));
         run(plain.world, plain.camera, 0.3);
@@ -449,7 +449,7 @@ describe('cosmic noir world: it builds with play instead of popping', () => {
         });
     });
 
-    it('turns the cage and sends a faint ring for a T-spin that cleared nothing', () => {
+    it('turns the cage and sends a faint ring for a twist that cleared nothing', () => {
         const { world, camera } = makeWorld();
         const turnRate = () => {
             const a = world.cageTurn;

@@ -16,7 +16,7 @@
  *                            clock say: 0 silver moon, 1 lavender night, 2 jade dream, 3 harvest
  *                            moon, 4 rose nocturne, 5 blue hour; 2.5 is half-way from jade to harvest
  *   locks=<n>                before anything else, open n blooms in the garden
- *   event=lock|drop|clear|quad|tspin|perfect|levelUp|break   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|perfect|levelUp|break   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>, eventLevel=<n>). A lock's seed is in flight for its
  *                            first 0.85 s (0.6 s on a hard drop): 0.95 shows the landing, 1.5 the
@@ -113,7 +113,7 @@ const DEMO_SCRIPT = [
     [29.0, 'lock', { rows: [19], u: 0.45 }], [30.0, 'lock', { rows: [19, 18], u: 0.7 }],
     [31.0, 'lock', { rows: [18], u: 0.25, hardDrop: true }],
     [31.0, 'clear', {
-        rows: [19, 18], lines: 2, tspin: true, combo: 1,
+        rows: [19, 18], lines: 2, twist: true, combo: 1,
     }],
     [33.0, 'lock', { rows: [19], u: 0.5 }], [34.5, 'lock', { rows: [18], u: 0.15 }],
 ];
@@ -221,7 +221,7 @@ export function create({
             });
         } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
-        else if (eventName === 'tspin') world.onClear({ rows: bottom(2), lines: 2, tspin: true });
+        else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
         else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
         else if (eventName === 'break') world.onCombo(0);

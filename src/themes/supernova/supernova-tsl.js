@@ -148,7 +148,7 @@ export function createSupernovaUniforms(textures) {
         flow: uniform(0),
         /** Gain on every light: a collapse holds the nebula's breath. */
         breath: uniform(1),
-        /** How far the corona is wound round the star (a T-spin winds it and lets it go). */
+        /** How far the corona is wound round the star (a twist winds it and lets it go). */
         twist: uniform(0),
         // The palette (scene-linear), eased by the world between levels.
         starDeep: v3(p.starDeep),

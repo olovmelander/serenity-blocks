@@ -251,7 +251,7 @@ export default class AuroraTheme extends BaseTheme {
             eventBus.on(EVENTS.PIECE_LOCK, (payload) => this.onPieceLock(eventDetail(payload))),
             eventBus.on(EVENTS.LINE_CLEAR, whenAllowed((payload) => this.world.director.onLineClear(payload))),
             eventBus.on(EVENTS.COMBO, whenAllowed((payload) => this.world.director.onCascade(payload))),
-            eventBus.on(EVENTS.TSPIN, whenAllowed((payload) => this.world.director.onTSpin(payload))),
+            eventBus.on(EVENTS.TWIST, whenAllowed((payload) => this.world.director.onTwist(payload))),
             eventBus.on(EVENTS.B2B, whenAllowed((payload) => this.world.director.onBackToBack(payload))),
             eventBus.on(EVENTS.PERFECT_CLEAR, whenAllowed((payload) => this.world.director.onPerfectClear(payload))),
             eventBus.on(EVENTS.LEVEL_UP, (payload) => this.onLevelUp(eventDetail(payload))),

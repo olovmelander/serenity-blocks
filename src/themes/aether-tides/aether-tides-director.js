@@ -3,17 +3,17 @@
  *
  * Renderer-free, DOM-free, bus-free. The canonical gameplay events are delivered synchronously
  * inside the simulation tick, several per lock (HARD_DROP, PIECE_LOCK, then LINE_CLEAR / COMBO /
- * TSPIN / PERFECT_CLEAR once per cascade wave), so every on*() handler only STAGES numbers into
+ * TWIST / PERFECT_CLEAR once per cascade wave), so every on*() handler only STAGES numbers into
  * one of five preallocated player slots. flush() — called first in the theme's frame — resolves
  * each pending slot into at most one `lock` and one `clear` for the sink:
  *
  *   sink.lock({ player, cells, rows, u, hardDrop, color, screen })
- *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, crown, screen })
+ *   sink.clear({ player, rows, lines, combo, cascade, twist, perfect, b2b, crown, screen })
  *
  * Two clears carry no lines of their own: physics settles a perfect clear ~360 ms AFTER the
  * clear's last wave, in a frame of its own, so a PERFECT_CLEAR with nothing staged resolves as
  * `crown: true, perfect: true, lines: 0` — a crown on the clear still playing, never a second
- * clear; and a T-spin that clears nothing resolves as `tspin: true, lines: 0`.
+ * clear; and a twist that clears nothing resolves as `twist: true, lines: 0`.
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
  *
@@ -51,7 +51,7 @@ export const AETHER_TIDES_EVENT_HANDLERS = Object.freeze({
     HARD_DROP: 'onHardDrop',
     LINE_CLEAR: 'onLineClear',
     COMBO: 'onCombo',
-    TSPIN: 'onTSpin',
+    TWIST: 'onTwist',
     B2B: 'onB2B',
     PERFECT_CLEAR: 'onPerfectClear',
     LEVEL_UP: 'onLevelUp',
@@ -90,7 +90,7 @@ function createSlot() {
         clearRows: new Int16Array(MAX_ROWS),
         clearRowCount: 0,
         explicitCombo: -1,
-        tspin: false,
+        twist: false,
         perfect: false,
         crown: false,
         b2b: false,
@@ -114,7 +114,7 @@ function clearPending(slot) {
     slot.cascade = 1;
     slot.clearRowCount = 0;
     slot.explicitCombo = -1;
-    slot.tspin = false;
+    slot.twist = false;
     slot.perfect = false;
     slot.crown = false;
     slot.b2b = false;
@@ -237,7 +237,7 @@ export class AetherTidesDirector {
             lines: 1,
             combo: 1,
             cascade: 1,
-            tspin: false,
+            twist: false,
             perfect: false,
             b2b: false,
             crown: false,
@@ -366,13 +366,13 @@ export class AetherTidesDirector {
         return true;
     }
 
-    onTSpin(event) {
+    onTwist(event) {
         if (!this.enabled) return false;
         const payload = event || EMPTY;
         const slot = this.slotFor(payload);
         if (!slot) return false;
         slot.pending = true;
-        slot.tspin = true;
+        slot.twist = true;
         const lines = Math.max(0, Math.min(MAX_ROWS, Math.trunc(finite(payload.lineCount, 0))));
         if (lines > slot.lines) slot.lines = lines;
         return true;
@@ -452,7 +452,7 @@ export class AetherTidesDirector {
                 c.screen = null;
                 sink.lock(c);
             }
-            const lineless = slot.lines === 0 && (slot.crown || slot.tspin);
+            const lineless = slot.lines === 0 && (slot.crown || slot.twist);
             if ((slot.lines > 0 || lineless) && sink?.clear) {
                 const c = this._clear;
                 c.player = slot.player;
@@ -461,7 +461,7 @@ export class AetherTidesDirector {
                 c.lines = slot.lines;
                 c.combo = Math.max(1, combo);
                 c.cascade = slot.cascade;
-                c.tspin = slot.tspin;
+                c.twist = slot.twist;
                 c.perfect = slot.perfect;
                 c.b2b = slot.b2b;
                 c.crown = slot.lines === 0 && slot.crown;

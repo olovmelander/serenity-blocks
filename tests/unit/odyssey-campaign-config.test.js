@@ -142,7 +142,7 @@ describe('Odyssey campaign objectives', () => {
 
         expect(authored).toEqual(before);
         expect(normalized.stars.three.score).toBe(authored.victory.primary.target);
-        expect(normalized.stars.three.tetrises).toBe(authored.stars.three.tetrises);
+        expect(normalized.stars.three.quads).toBe(authored.stars.three.quads);
         expect(normalized.stars.three.maxCascadeDepth).toBe(authored.stars.three.maxCascadeDepth);
     });
 

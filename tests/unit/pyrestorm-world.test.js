@@ -531,12 +531,12 @@ describe('PyrestormWorld clears', () => {
         expect(world.u.shock.value.y).toBe(0);
     });
 
-    it('blows a vortex ring on a T-spin', () => {
+    it('blows a vortex ring on a twist', () => {
         const { world, camera } = makeWorld();
         world.onClear({
-            lines: 2, rows: [19, 18], combo: 1, tspin: true,
+            lines: 2, rows: [19, 18], combo: 1, twist: true,
         });
-        expect(world.counts.tspins).toBe(1);
+        expect(world.counts.twists).toBe(1);
         stepTo(world, camera, world.time + 1);
         expect(world.getState().eventPuffs).toBeGreaterThan(0);
         stepTo(world, camera, world.time + TIMING.ring + 1);
@@ -740,7 +740,7 @@ describe('PyrestormWorld state', () => {
             stepTo(world, camera, world.time + 0.7);
         }
         world.onClear({
-            lines: 4, rows: [19, 18, 17, 16], combo: 7, tspin: true,
+            lines: 4, rows: [19, 18, 17, 16], combo: 7, twist: true,
         });
         world.onCombo(7);
         stepTo(world, camera, world.time + 1);
@@ -769,7 +769,7 @@ describe('PyrestormWorld state', () => {
         play(a.world, a.camera);
         const first = snapshot(a.world);
         expect(first.state.counts).toMatchObject({
-            locks: 8, hardDrops: 1, quads: 1, tspins: 1, perfects: 1, discharges: 1, levelUps: 1, gameOvers: 1,
+            locks: 8, hardDrops: 1, quads: 1, twists: 1, perfects: 1, discharges: 1, levelUps: 1, gameOvers: 1,
         });
         a.world.seek(START);
         a.world.updateCamera(a.camera, sim(START, 0));
@@ -891,7 +891,7 @@ describe('PyrestormWorld state', () => {
             world.onClear({ lines, rows: [19, 18, 17, 16].slice(0, lines), combo: lines });
         }
         world.onClear({
-            lines: 2, rows: [19, 18], combo: 1, tspin: true,
+            lines: 2, rows: [19, 18], combo: 1, twist: true,
         });
         world.onClear({ lines: 4, perfect: true });
         for (let n = 1; n <= 6; n++) world.onCombo(n);
@@ -929,7 +929,7 @@ describe('PyrestormWorld state', () => {
                 const lines = 1 + (frame % 4);
                 combo = frame % 440 < 330 ? combo + 1 : 0;
                 world.onClear({
-                    lines, rows: [19, 18, 17, 16].slice(0, lines), combo: Math.max(1, combo), tspin: frame % 352 === 0,
+                    lines, rows: [19, 18, 17, 16].slice(0, lines), combo: Math.max(1, combo), twist: frame % 352 === 0,
                 });
                 world.onCombo(combo);
                 world.onB2B(lines === 4 ? Math.min(4, world.b2b + 1) : 0);
@@ -1094,12 +1094,12 @@ describe('PyrestormWorld builds with play', () => {
         expect(world.u.sheet.value.y).toBeGreaterThan(0);
     });
 
-    it('answers a T-spin that cleared nothing with a small ring, and stacks a second ring above the first', () => {
+    it('answers a twist that cleared nothing with a small ring, and stacks a second ring above the first', () => {
         const { world, camera } = makeWorld();
         world.onLock({
-            u: 0.5, rows: [19], color: PIECE_COLORS[2], tspin: true,
+            u: 0.5, rows: [19], color: PIECE_COLORS[2], twist: true,
         });
-        expect(world.counts.tspins).toBe(1);
+        expect(world.counts.twists).toBe(1);
         stepTo(world, camera, world.time + 0.5);
         const small = world.getState().eventPuffs;
         expect(small).toBeGreaterThan(0);
@@ -1111,13 +1111,13 @@ describe('PyrestormWorld builds with play', () => {
         });
         const ringBase = () => Math.min(...spawned.filter((p) => p.kind === 2).map((p) => p.y));
         world.onClear({
-            lines: 2, rows: [19, 18], combo: 1, tspin: true,
+            lines: 2, rows: [19, 18], combo: 1, twist: true,
         });
         const first = ringBase();
         spawned.length = 0;
         stepTo(world, camera, world.time + 1);
         world.onClear({
-            lines: 2, rows: [19, 18], combo: 2, tspin: true,
+            lines: 2, rows: [19, 18], combo: 2, twist: true,
         });
         expect(ringBase()).toBeGreaterThan(first);
     });
@@ -1246,7 +1246,7 @@ describe('PyrestormWorld: the ridge shakes', () => {
         const b = makeWorld();
         a.world.setReducedMotion(true);
         b.world.setReducedMotion(true);
-        a.world.onLock(lock({ hardDrop: true, distance: 18, tspin: true }));
+        a.world.onLock(lock({ hardDrop: true, distance: 18, twist: true }));
         a.world.onClear({ lines: 4, rows: [19, 18, 17, 16], combo: 1 });
         a.world.onClear({ lines: 4, perfect: true });
         a.world.levelUp(3);

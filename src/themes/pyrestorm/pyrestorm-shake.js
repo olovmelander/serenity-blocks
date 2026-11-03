@@ -15,7 +15,7 @@
  *                discharge from the anvil is the loudest of all.
  *   four lines   the Vulcanian blast: the ground jolts at once; the blast's air wave reaches the
  *                ridge a third of a second later and knocks the view, then rolls on.
- *   T-spin       the vortex ring's soft whump: a little roll.
+ *   twist       the vortex ring's soft whump: a little roll.
  *   perfect      the sheet lightning's long thunder: the ground swells into a slow roll under the
  *                crown's cracks.
  *   level up     the mountain groans as fresh lava surges down every channel: a slow, low sway
@@ -86,7 +86,7 @@ export const RIDGE = Object.freeze({
     blast: Object.freeze({
         jolt: 1, kick: 1.6, tremble: 1.6, roll: 2,
     }),
-    /** A T-spin's vortex ring: the roll it starts (one that cleared no line, the smaller). */
+    /** A twist's vortex ring: the roll it starts (one that cleared no line, the smaller). */
     ring: Object.freeze({ roll: 0.7, small: 0.4 }),
     /** A perfect clear's sheet lightning: a groan and a roll under the crown's own cracks. */
     sheet: Object.freeze({ groan: 1.6, roll: 1.2 }),
@@ -236,7 +236,7 @@ export class RidgeShake {
         this.hit(this.roll, b.roll * p, wave);
     }
 
-    /** A T-spin's vortex ring (`small`: it cleared no line). */
+    /** A twist's vortex ring (`small`: it cleared no line). */
     ring(small, at) {
         this.hit(this.roll, small ? RIDGE.ring.small : RIDGE.ring.roll, at);
     }

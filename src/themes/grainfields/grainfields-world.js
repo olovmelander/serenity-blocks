@@ -61,7 +61,7 @@ export const fovForAspect = (aspect) => rigFor(aspect).fov;
 export const PIECE_LINEAR = PIECE_COLORS.map((c) => hexToLinear(c));
 
 const COUNTERS = [
-    'locks', 'hardDrops', 'clears', 'lines', 'quads', 'tspins', 'perfects', 'chainSteps', 'b2bSteps',
+    'locks', 'hardDrops', 'clears', 'lines', 'quads', 'twists', 'perfects', 'chainSteps', 'b2bSteps',
     'levelUps', 'gameOvers', 'mornings', 'spins',
 ];
 const emptyCounts = () => Object.fromEntries(COUNTERS.map((k) => [k, 0]));
@@ -547,7 +547,7 @@ export class GrainfieldsWorld {
         this.counts.clears += 1;
         this.counts.lines += lines;
         if (lines >= 4) this.counts.quads += 1;
-        if (c?.tspin) this.counts.tspins += 1;
+        if (c?.twist) this.counts.twists += 1;
         if (c?.perfect) this.counts.perfects += 1;
         const before = this.reactions.trails.length;
         const aim = (x, y, d) => this.aim(x, y, d);
@@ -564,10 +564,10 @@ export class GrainfieldsWorld {
             this.reactions.tearZ = PLACES.gate.z + deck.sunDir[2] * lift + deck.drift[1];
         }
         if (this.reducedMotion) return;
-        // A T-spin wheels the herd round, and its whirl lifts a spinning column of chaff.
-        if (c?.tspin) this.parts.herd?.wheel(this.time);
+        // A twist wheels the herd round, and its whirl lifts a spinning column of chaff.
+        if (c?.twist) this.parts.herd?.wheel(this.time);
         const whirl = this.reactions.pulses[this.reactions.pulses.length - 1];
-        if (c?.tspin && whirl?.kind === 1) {
+        if (c?.twist && whirl?.kind === 1) {
             this.parts.motes?.burst({
                 x: whirl.x,
                 y: groundHeight(whirl.x, whirl.z) + 0.3,
@@ -630,7 +630,7 @@ export class GrainfieldsWorld {
         this.launchSkein(this.time);
     }
 
-    /** A T-spin that cleared nothing: a small whirl of wind in the stand, and the horses look up. */
+    /** A twist that cleared nothing: a small whirl of wind in the stand, and the horses look up. */
     onSpin(c) {
         this.counts.spins += 1;
         this.surge.spin(this.time);

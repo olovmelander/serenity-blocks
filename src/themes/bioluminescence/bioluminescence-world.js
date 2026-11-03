@@ -817,10 +817,10 @@ export class BioluminescenceWorld {
 
     /**
      * Lines cleared. `lines` 1..4; `cascade` the wave's depth in its cascade (1 the first), `combo`
-     * the true combo, `tspin`, `perfect`, `b2b`.
+     * the true combo, `twist`, `perfect`, `b2b`.
      */
     onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, b2b = false, cascade = 1, combo = 1,
+        rows = null, lines = 1, twist = false, perfect = false, b2b = false, cascade = 1, combo = 1,
         player = 0, screen = null,
     } = {}) {
         const { u: uniforms } = this;
@@ -935,7 +935,7 @@ export class BioluminescenceWorld {
         else if (n === 3) this.crystals?.chime?.(birth + 0.1, 0.7);
         // A cascade rings the crystals, a little louder with every wave.
         if (deeper > 0) this.crystals?.chime?.(birth + 0.08, Math.min(1.1, 0.3 + 0.12 * deeper));
-        if (tspin) {
+        if (twist) {
             // The air itself turns, and the crystals ring.
             this.swirl = 1;
             this.swells.storm.hit(0.55, this.time);
@@ -949,7 +949,7 @@ export class BioluminescenceWorld {
             lines: n,
             cascade: deeper + 1,
             combo: chain + 1,
-            tspin: tspin === true,
+            twist: twist === true,
             perfect: perfect === true,
             b2b: b2b === true,
         }, birth);
@@ -1081,7 +1081,7 @@ export class BioluminescenceWorld {
         this.play.crown(this.time);
     }
 
-    /** A T-spin that cleared nothing: the air turns a little and the crystals answer softly. */
+    /** A twist that cleared nothing: the air turns a little and the crystals answer softly. */
     onSpin() {
         if (!this.u) return;
         this.swirl = Math.max(this.swirl, 0.55);

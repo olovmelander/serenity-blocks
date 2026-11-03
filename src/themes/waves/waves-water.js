@@ -269,7 +269,7 @@ export function createWater({
         for (let i = 0; i < BAND_SLOTS; i += 1) {
             const row = rows.bands.element(i);
             const age = time.sub(row.x);
-            // A band is a ring round the tube; twisted (a T-spin), it is a screw of light.
+            // A band is a ring round the tube; twisted (a twist), it is a screw of light.
             const x = sZ.add(BAND_START).sub(age.mul(BAND_SPEED)).add(phi.mul(row.w)).div(max(row.z, 0.3));
             sweep.addAssign(exp(x.mul(x).negate()).mul(row.y).mul(smoothstep(0.0, 0.08, age)));
         }

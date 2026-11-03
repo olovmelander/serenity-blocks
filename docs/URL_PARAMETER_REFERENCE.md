@@ -235,7 +235,7 @@ Sunbraid (2026-10-20), a new theme in Rainy Window's place, adds the capture fla
 `sunbraidForceWebGL`, `sunbraidTime`, `sunbraidFixedDt`, `sunbraidParts` and `sunbraidFalseColor`;
 the part names are `sky`, `land`, `spires` and `gliders`. Its `sunbraid` playground effect reads 22
 parameters, catalogued as its own rows; `braid` (hold the three suns' braid at a phase, in degrees)
-and `turns` (the spin-turns of an `event=tspin`) are new names, and `event` also takes `morning` (a
+and `turns` (the spin-turns of an `event=twist`) are new names, and `event` also takes `morning` (a
 game over, then a new run: the suns rising). Rainy Window read no URL parameters. Use
 `effect=sunbraid&t=10&braid=<degrees>` for a deterministic playground capture.
 

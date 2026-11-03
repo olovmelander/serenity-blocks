@@ -3,18 +3,18 @@
  *
  * Renderer-free, DOM-free, bus-free. The canonical gameplay events are delivered synchronously
  * inside the simulation tick, several per lock (HARD_DROP, PIECE_LOCK, then LINE_CLEAR / COMBO /
- * TSPIN / PERFECT_CLEAR once per cascade wave), so every on*() handler only STAGES numbers into
+ * TWIST / PERFECT_CLEAR once per cascade wave), so every on*() handler only STAGES numbers into
  * one of five preallocated player slots. flush() — called first in the theme's frame — resolves
  * each pending slot into at most one `lock` and one `clear` for the sink:
  *
  *   sink.lock({ player, rows, u, hardDrop, color, screen })
- *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
+ *   sink.clear({ player, rows, lines, combo, cascade, twist, perfect, b2b, screen })
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
  *   sink.crown({ player })     a perfect clear settled after its clear (physics sends it ~360 ms
  *                              after the last wave, in a frame of its own): the crown on the
  *                              clear still playing, never a new clear
- *   sink.spin({ player })      a T-spin that cleared nothing
+ *   sink.spin({ player })      a twist that cleared nothing
  *
  * `rows` are VISIBLE board rows (0 = the top row, 19 = the floor); `u` is the lock's column as a
  * fraction of the board width; `color` is the piece's colour (a CSS hex string) or null. `screen`
@@ -44,7 +44,7 @@ export const ICE_TEMPLE_EVENT_HANDLERS = Object.freeze({
     HARD_DROP: 'onHardDrop',
     LINE_CLEAR: 'onLineClear',
     COMBO: 'onCombo',
-    TSPIN: 'onTSpin',
+    TWIST: 'onTwist',
     B2B: 'onB2B',
     PERFECT_CLEAR: 'onPerfectClear',
     LEVEL_UP: 'onLevelUp',
@@ -79,7 +79,7 @@ function createSlot() {
         clearRows: new Int16Array(MAX_ROWS),
         clearRowCount: 0,
         explicitCombo: -1,
-        tspin: false,
+        twist: false,
         perfect: false,
         b2b: false,
         hasPosition: false,
@@ -101,7 +101,7 @@ function clearPending(slot) {
     slot.cascade = 1;
     slot.clearRowCount = 0;
     slot.explicitCombo = -1;
-    slot.tspin = false;
+    slot.twist = false;
     slot.perfect = false;
     slot.b2b = false;
     slot.hasPosition = false;
@@ -209,7 +209,7 @@ export class IceTempleDirector {
             player: 0, rows: [], u: 0.5, hardDrop: false, color: null, screen: null,
         };
         this._clear = {
-            player: 0, rows: [], lines: 1, combo: 1, cascade: 1, tspin: false, perfect: false, b2b: false, screen: null,
+            player: 0, rows: [], lines: 1, combo: 1, cascade: 1, twist: false, perfect: false, b2b: false, screen: null,
         };
         this._screen = { x: 0.5, y: 0.5 };
         this._moment = { player: 0 };
@@ -333,13 +333,13 @@ export class IceTempleDirector {
         return true;
     }
 
-    onTSpin(event) {
+    onTwist(event) {
         if (!this.enabled) return false;
         const payload = event || EMPTY;
         const slot = this.slotFor(payload);
         if (!slot) return false;
         slot.pending = true;
-        slot.tspin = true;
+        slot.twist = true;
         const lines = Math.max(0, Math.min(MAX_ROWS, Math.trunc(finite(payload.lineCount, 0))));
         if (lines > slot.lines) slot.lines = lines;
         return true;
@@ -420,7 +420,7 @@ export class IceTempleDirector {
             if (alone && slot.perfect && sink?.crown) {
                 this._moment.player = slot.player;
                 sink.crown(this._moment);
-            } else if (alone && slot.tspin && sink?.spin) {
+            } else if (alone && slot.twist && sink?.spin) {
                 this._moment.player = slot.player;
                 sink.spin(this._moment);
             }
@@ -432,7 +432,7 @@ export class IceTempleDirector {
                 c.lines = slot.lines;
                 c.combo = Math.max(1, combo);
                 c.cascade = slot.cascade;
-                c.tspin = slot.tspin;
+                c.twist = slot.twist;
                 c.perfect = slot.perfect;
                 c.b2b = slot.b2b;
                 c.screen = screen;

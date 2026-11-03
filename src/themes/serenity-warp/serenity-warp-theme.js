@@ -14,7 +14,7 @@
  * and one piece per line falls in, drawn out into a streak of its colour. Each step of a chain
  * winds the warp up: the current runs faster, the arms wind tighter, the stars draw out, the
  * glass glows from within. Four lines make the warp hold its breath; then the throat opens
- * round us and we come out under the sky we saw in it. A T-spin twists the vortex and it
+ * round us and we come out under the sky we saw in it. A twist twists the vortex and it
  * springs back. The sky moves one palette along its line of six on a new level, and it also
  * drifts along the same line by itself, one palette every PALETTE_STEP seconds: the two add.
  *

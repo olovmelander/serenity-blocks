@@ -384,9 +384,9 @@ export default class NimbusVeilTheme extends BaseTheme {
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
             if (reactive()) this.world?.onCombo(finite(data?.comboCount, 0));
         });
-        // After the LINE_CLEAR of the same lock (or alone, for a T-spin that cleared nothing).
-        const tspinUnsub = eventBus.on(EVENTS.TSPIN, (data) => {
-            if (reactive()) this.world?.onTSpin?.(finite(data?.lineCount, 0));
+        // After the LINE_CLEAR of the same lock (or alone, for a twist that cleared nothing).
+        const twistUnsub = eventBus.on(EVENTS.TWIST, (data) => {
+            if (reactive()) this.world?.onTwist?.(finite(data?.lineCount, 0));
         });
         const b2bUnsub = eventBus.on(EVENTS.B2B, (data) => {
             if (reactive() && data?.active !== false) this.world?.onB2B?.();
@@ -419,7 +419,7 @@ export default class NimbusVeilTheme extends BaseTheme {
             hardDropUnsub,
             clearUnsub,
             comboUnsub,
-            tspinUnsub,
+            twistUnsub,
             b2bUnsub,
             perfectUnsub,
             levelUnsub,

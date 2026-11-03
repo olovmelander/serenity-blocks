@@ -13,8 +13,8 @@
  *    the last. Every clear, wave and hard drop feeds the gale (a swell the wind rides on).
  *  - A chain breaks the storm open (the deck thins step by step, the light lifts, the wind
  *    rises); when the chain ends the deck closes again over TIMING.breakOut.
- *  - A T-spin sets the wind wheeling in the stand where the piece fell (a whirl in the barley); a
- *    T-spin that clears nothing turns a smaller one.
+ *  - A twist sets the wind wheeling in the stand where the piece fell (a whirl in the barley); a
+ *    twist that clears nothing turns a smaller one.
  *  - Four lines tear the sky open over Lapporten and a front of light runs out of the gate over
  *    the fields toward the eye. Back-to-back is the gate's: every difficult clear of a run tears
  *    the sky over Lapporten (wider with each step of the run), and a second quad feeds the tear
@@ -132,7 +132,7 @@ function trailWeight(tr, time) {
     return tr.power * (1 - smooth(4, 7.5, time - tr.at));
 }
 
-/** A pulse's worth: what it still has to give, a T-spin's whirl and a level's wave above a hard drop's ring. */
+/** A pulse's worth: what it still has to give, a twist's whirl and a level's wave above a hard drop's ring. */
 function pulseWeight(p, time) {
     const age = time - p.at;
     const left = p.kind === PULSE.whirl ? 1 - smooth(3.5, 7, age) : 1 - smooth(2.5, 6, age);
@@ -340,7 +340,7 @@ export class GrainfieldsReactions {
         }
         // The gale: more lines, and each deeper wave, blow harder.
         this.galeSwell.hit(0.06 * lines + 0.07 * depth, time);
-        if (c?.tspin) {
+        if (c?.twist) {
             const g = aim(freeColumn(layout, c?.player || 0, 0.5 + 0.35 * this.trailSide), 0.75, 42);
             if (g) {
                 this.addPulse({
@@ -354,7 +354,7 @@ export class GrainfieldsReactions {
     }
 
     /**
-     * A T-spin that cleared nothing: a small whirl in the stand where the piece fell. Returns it
+     * A twist that cleared nothing: a small whirl in the stand where the piece fell. Returns it
      * (null when the aim cannot place it).
      */
     spin(c, time, { layout, aim }) {

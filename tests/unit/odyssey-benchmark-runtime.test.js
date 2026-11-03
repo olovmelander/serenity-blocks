@@ -66,7 +66,7 @@ beforeEach(() => {
         stars: {
             one: { lines: 4 },
             two: { lines: 4, time: 60 },
-            three: { lines: 4, tetrises: 1, bonuses: 1 },
+            three: { lines: 4, quads: 1, bonuses: 1 },
         },
     };
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -109,7 +109,7 @@ describe('Odyssey benchmark real gameplay runtime', () => {
         expect(result).toMatchObject({
             outcome: 'win', reason: 'primary-goal', pieces: 1, stars: 3, bonusResults: [true],
         });
-        expect(result.metrics).toMatchObject({ lines: 4, tetrises: 1, piecesPlaced: 1 });
+        expect(result.metrics).toMatchObject({ lines: 4, quads: 1, piecesPlaced: 1 });
         expect(result.metrics.score).toBeGreaterThan(0);
         expect(result.elapsedSeconds).toBeGreaterThan(0.2);
         expect(fixture.state.isSeeking).toBe(false);

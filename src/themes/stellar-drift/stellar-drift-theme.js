@@ -20,7 +20,7 @@
  * arcs of light racing round the rings, and a long chain throws a corona of light off the giant.
  * Four lines bring a storm of bolides that strike the cloud tops (fireball, shock, embers and a
  * scar the wind shears) while a corona leaves the giant, the icy moon vents and the rings ring
- * four times over. A T-spin spins a cyclone into the cloud bands and winds a two-armed spiral of
+ * four times over. A twist spins a cyclone into the cloud bands and winds a two-armed spiral of
  * light through the rings; a back-to-back clear sets the outer strand ablaze. The whole picture turns slowly through
  * six palettes on a wheel on its own clock, one every ninety seconds (the giant's bands take the
  * new colours one by one, like weather, and the sun moves with the hour), and a new level moves

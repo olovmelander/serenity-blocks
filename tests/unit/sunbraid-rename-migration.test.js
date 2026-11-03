@@ -142,7 +142,7 @@ describe('Sunbraid took the Rainy Window orb: what a player already has now mean
         // Still the chapter's test against the clock; pass 2 of the level design audit made it the Quad test.
         expect(orb.role).toBe('test');
         expect(orb.modifiers.active).toEqual(['time-attack']);
-        expect(orb.victory.primary.type).toBe('tetrises');
+        expect(orb.victory.primary.type).toBe('quads');
         expect(orb.metadata.description).toMatch(/Three colored suns/);
         expect(orb.metadata.description).toMatch(/every shadow takes a color/);
         expect(orb.metadata.description).not.toMatch(/storm|rain|window/i);

@@ -2062,7 +2062,7 @@ describe('geode world: clears', () => {
     });
 });
 
-describe('geode world: the four-line clear and the T-spin', () => {
+describe('geode world: the four-line clear and the twist', () => {
     it('holds its breath on four lines, then fractures, throws a lance from every cluster and rings the frame', () => {
         const { camera, world } = makeWorld('High');
         const rest = { ...world.getPostState(), prism: { ...world.getPostState().prism } };
@@ -2188,14 +2188,14 @@ describe('geode world: the four-line clear and the T-spin', () => {
         perfect.world.dispose();
     });
 
-    it('turns the agate a notch on a T-spin and rings the frame without breaking the wall', () => {
+    it('turns the agate a notch on a twist and rings the frame without breaking the wall', () => {
         const { camera, world } = makeWorld('Low');
         const quad = makeWorld('Low');
         quad.world.onClear({ lines: 4 });
         run(quad.world, quad.camera, HUSH_HOLD + 0.05);
 
         expect(world.twistTarget).toBe(0);
-        world.onClear({ lines: 2, tspin: true });
+        world.onClear({ lines: 2, twist: true });
         const notch = world.twistTarget;
         expect(notch).toBeGreaterThan(0);
         expect(world.twist).toBe(0); // it turns, it does not jump
@@ -2221,11 +2221,11 @@ describe('geode world: the four-line clear and the T-spin', () => {
         expect(world.twist).toBeCloseTo(notch, 4);
         expect(world.getState().twist).toBe(world.twist);
         expect(world.getPostState().prism).toEqual({ radius: 0, strength: 0 });
-        // Each T-spin is one more notch the same way.
-        world.onClear({ lines: 1, tspin: true });
+        // Each twist is one more notch the same way.
+        world.onClear({ lines: 1, twist: true });
         expect(world.twistTarget).toBeCloseTo(notch * 2, 12);
-        // A T-spin that is also a four-line clear's equal keeps the fracture.
-        world.onClear({ lines: 2, tspin: true, perfect: true });
+        // A twist that is also a four-line clear's equal keeps the fracture.
+        world.onClear({ lines: 2, twist: true, perfect: true });
         expect(world.twistTarget).toBeCloseTo(notch * 3, 12);
         expect(world.u.shock.value.x).toBeCloseTo(world.time + HUSH_HOLD, 9);
         expect(world.counts.quads).toBe(1);
@@ -2717,9 +2717,9 @@ describe('geode world: what the shaders and the post are told', () => {
         world.levelUp(2);
         run(world, camera, 1 / 60, 1);
         expect(live()).toEqual([0, 0, 1, 0]);
-        // A T-spin's ring is the post's alone: the wall does not fracture.
+        // A twist's ring is the post's alone: the wall does not fracture.
         settle();
-        world.onClear({ lines: 2, tspin: true });
+        world.onClear({ lines: 2, twist: true });
         run(world, camera, 1 / 60, 1);
         expect(live()).toEqual([0, 0, 1, 0]);
         expect(world.u.time.value).toBe(world.time);
@@ -2822,7 +2822,7 @@ describe('geode world: what the shaders and the post are told', () => {
             () => world.onLock({ u: 0.2, hardDrop: true, color: '#ffa050' }),
             () => world.onClear({ lines: 1 }),
             () => world.onCombo(2),
-            () => world.onClear({ lines: 3, tspin: true }),
+            () => world.onClear({ lines: 3, twist: true }),
             () => world.onCombo(3),
             () => world.levelUp(2),
             () => world.onClear({ lines: 4 }),
@@ -2866,7 +2866,7 @@ describe('geode world: time', () => {
         world.onCombo(4);
         run(world, camera, 2, Math.round(2 * fps));
         world.onLock({ u: 0.8, color: '#ff70ff' });
-        world.onClear({ lines: 1, tspin: true });
+        world.onClear({ lines: 1, twist: true });
         world.levelUp(2);
         run(world, camera, 1.5, Math.round(1.5 * fps));
         // One more piece, whose sparks land after the last wave has gone by: its light stays.
@@ -2952,7 +2952,7 @@ describe('geode world: time', () => {
         // Something else entirely in between...
         world.onCombo(9);
         world.onLock({ u: 0.5, hardDrop: true });
-        world.onClear({ lines: 3, tspin: true });
+        world.onClear({ lines: 3, twist: true });
         world.levelUp(5);
         world.setReducedMotion(true);
         run(world, camera, 3);
@@ -2977,7 +2977,7 @@ describe('geode world: time', () => {
     it('drops every event in flight when it seeks, and puts the dust where the clock says', () => {
         const { camera, world } = makeWorld('High');
         world.onLock({ u: 0.4, hardDrop: true });
-        world.onClear({ lines: 4, tspin: true });
+        world.onClear({ lines: 4, twist: true });
         world.onCombo(6);
         world.levelUp(3);
         run(world, camera, 1);
@@ -3189,7 +3189,7 @@ describe('geode world: the build-up', () => {
         const before = {
             ...world.getPostState(), prism: { ...world.getPostState().prism }, storm: world.storm, surge: world.surge,
         };
-        // A plain lock, a single, and a T-spin that clears nothing, all at once on top of the four.
+        // A plain lock, a single, and a twist that clears nothing, all at once on top of the four.
         world.onLock({ u: 0.6, color: '#60ffff' });
         world.onClear({ lines: 1 });
         world.onSpin();
@@ -3317,14 +3317,14 @@ describe('geode world: the build-up', () => {
         const once = world.u.heat.value.w;
         expect(once).toBeGreaterThan(0);
         run(world, camera, 1.6);
-        world.onClear({ lines: 2, tspin: true, b2b: true });
+        world.onClear({ lines: 2, twist: true, b2b: true });
         expect(ringsBornAt(world, world.time + 0.2)).toHaveLength(1); // a third ring for the second in a row
         run(world, camera, 0.4);
         expect(world.u.heat.value.w).toBeGreaterThan(once);
         world.dispose();
     });
 
-    it('turns the agate half a notch on a T-spin that clears nothing, with a faint ring from the heart', () => {
+    it('turns the agate half a notch on a twist that clears nothing, with a faint ring from the heart', () => {
         const { camera, world } = makeWorld('Low');
         world.onSpin();
         expect(world.twistTarget).toBeGreaterThan(0);

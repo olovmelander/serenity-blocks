@@ -194,7 +194,7 @@ describe('Aurora director — gameplay to sky', () => {
             director.onHardDrop({ distance: i % 20 });
             director.onPieceLock({ ...lock(i % 10), player: (i % 5) || undefined });
             if (i % 2 === 0) director.onLineClear({ ...clear(1 + (i % 4)), player: (i % 5) || undefined });
-            if (i % 7 === 0) director.onTSpin({});
+            if (i % 7 === 0) director.onTwist({});
             if (i % 11 === 0) director.onPerfectClear({});
             if (i % 13 === 0) director.onLevelUp({ level: 3 });
             director.update(1 / 120);

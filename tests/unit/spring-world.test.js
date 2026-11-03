@@ -70,7 +70,7 @@ describe('spring world: build and contract', () => {
         world.onLock({ rows: [17], u: 0.2, shape: 'T' });
         world.onClear({ lines: 4, rowCodes: [], combo: 3 });
         world.onCombo(5);
-        world.onClear({ lines: 2, tspin: true, combo: 6 });
+        world.onClear({ lines: 2, twist: true, combo: 6 });
         world.onClear({ lines: 4, perfect: true });
         world.levelUp(3);
         world.onGameOver();
@@ -191,17 +191,17 @@ describe('spring world: gameplay', () => {
         world.dispose();
     });
 
-    it('turns the pool in a whirl on a T-spin, throwing spray off its rim', () => {
+    it('turns the pool in a whirl on a twist, throwing spray off its rim', () => {
         const { camera, world } = makeWorld();
         settle(world, camera, 0, 0.5);
         const { cursor } = world.motes;
         world.onClear({
-            lines: 2, rowCodes: [], combo: 1, tspin: true,
+            lines: 2, rowCodes: [], combo: 1, twist: true,
         });
         expect(world.u.whirl.value.x).toBe(world.time);
         expect(world.u.whirl.value.y).toBe(1);
         expect(world.motes.cursor).not.toBe(cursor);
-        expect(world.counts.tspins).toBe(1);
+        expect(world.counts.twists).toBe(1);
         world.dispose();
     });
 
@@ -336,14 +336,14 @@ describe('spring world: play builds instead of popping', () => {
         const { camera, world } = makeWorld();
         settle(world, camera, 0, 1);
         world.onClear({
-            lines: 4, rowCodes: [], combo: 1, tspin: true,
+            lines: 4, rowCodes: [], combo: 1, twist: true,
         });
         settle(world, camera, 1, 4);
         const quad = look(world, camera, 4);
         const breath = world.u.airWave.value.clone();
-        // A single (and its own T-spin) mid-way through the quad's flush and whirl.
+        // A single (and its own twist) mid-way through the quad's flush and whirl.
         world.onClear({
-            lines: 1, rowCodes: [], combo: 2, tspin: true,
+            lines: 1, rowCodes: [], combo: 2, twist: true,
         });
         // (Through the hold they now share: past it they fall as any one does.)
         let last = quad;
@@ -481,11 +481,11 @@ describe('spring world: play builds instead of popping', () => {
         world.dispose();
     });
 
-    it('answers a T-spin that cleared nothing with a little whirl, and feeds the heat of play', () => {
+    it('answers a twist that cleared nothing with a little whirl, and feeds the heat of play', () => {
         const { camera, world } = makeWorld();
         settle(world, camera, 0, 0.5);
         world.onLock({
-            rows: [19], u: 0.3, shape: 'T', tspin: true,
+            rows: [19], u: 0.3, shape: 'T', twist: true,
         });
         expect(world.counts.spins).toBe(1);
         settle(world, camera, 0.5, 2);

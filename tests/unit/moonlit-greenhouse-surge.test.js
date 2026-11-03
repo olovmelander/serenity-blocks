@@ -1,7 +1,7 @@
 /**
  * Moonlit Greenhouse — the house builds with play instead of popping and resetting: every flash,
  * jolt, flood and turn of the air ADDS to what is still lit or moving (a weak event after a
- * strong one never cuts the light, a second T-spin never snaps the swarm home, a hard drop never
+ * strong one never cuts the light, a second twist never snaps the swarm home, a hard drop never
  * cuts a falling curtain of dew off), a long chain reads hotter than its first clear, a quad
  * mid-fever only inhales, the late perfect clear crowns the Queen instead of hushing the house a
  * second time, and when the hands rest the house breathes back to calm.
@@ -44,9 +44,9 @@ function makeWorld() {
     return { world, step, frames };
 }
 
-/** The tray's Fever: twelve hard-dropped clears 0.64 s apart, a T-spin, a cascade, a quad and its crown. */
+/** The tray's Fever: twelve hard-dropped clears 0.64 s apart, a twist, a cascade, a quad and its crown. */
 function fever(world, step, each = null) {
-    const plan = [1, 1, 2, 1, 2, 2, 3, 'tspin', 2, 'cascade', 3, 'quad'];
+    const plan = [1, 1, 2, 1, 2, 2, 3, 'twist', 2, 'cascade', 3, 'quad'];
     plan.forEach((move, n) => {
         if (n > 0) step(0.64, 1 / 30, each);
         const combo = n + 1;
@@ -75,9 +75,9 @@ function fever(world, step, each = null) {
             }
             return;
         }
-        const lines = move === 'tspin' ? 2 : move;
+        const lines = move === 'twist' ? 2 : move;
         world.onClear({
-            rows: QUAD.slice(0, lines), lines, combo, tspin: move === 'tspin',
+            rows: QUAD.slice(0, lines), lines, combo, twist: move === 'twist',
         });
         world.onCombo(combo);
     });
@@ -115,13 +115,13 @@ describe('moonlit greenhouse: the house builds with play', () => {
         expect(least).toBeGreaterThan(before - 0.02);
     });
 
-    it('turns the air on with a second T-spin instead of snapping the swarm home', () => {
+    it('turns the air on with a second twist instead of snapping the swarm home', () => {
         const { world, step } = makeWorld();
-        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        world.onClear({ rows: [19, 18], lines: 2, twist: true });
         step(1.6);
         let last = world.U.turn.value.clone();
         expect(last.y).toBeGreaterThan(0.5);
-        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        world.onClear({ rows: [19, 18], lines: 2, twist: true });
         let angleJump = 0;
         let heldDrop = 0;
         step(TIMING.turn * 2, 1 / 30, (w) => {
@@ -133,9 +133,9 @@ describe('moonlit greenhouse: the house builds with play', () => {
         expect(angleJump).toBeLessThan(0.12);
         expect(heldDrop).toBeLessThan(0.05);
         expect(world.U.turn.value.y).toBe(0);
-        // A T-spin that cleared nothing still turns the air a little.
+        // A twist that cleared nothing still turns the air a little.
         world.onClear({
-            rows: [], lines: 0, tspin: true, combo: 1,
+            rows: [], lines: 0, twist: true, combo: 1,
         });
         step(TIMING.turn * 0.5);
         expect(world.U.turn.value.y).toBeGreaterThan(0.2);
@@ -286,9 +286,9 @@ describe('moonlit greenhouse director: clears with no lines of their own', () =>
         expect(clears[1]).toMatchObject({ lines: 0, perfect: true, crown: true });
     });
 
-    it('answers a T-spin that cleared nothing and a back-to-back in a frame of its own', () => {
+    it('answers a twist that cleared nothing and a back-to-back in a frame of its own', () => {
         const { director, clears } = makeDirector();
-        director.onTSpin({ lineCount: 0 });
+        director.onTwist({ lineCount: 0 });
         director.flush();
         director.onB2B({ active: true });
         director.flush();
@@ -296,10 +296,10 @@ describe('moonlit greenhouse director: clears with no lines of their own', () =>
         director.flush();
         expect(clears).toHaveLength(3);
         expect(clears[0]).toMatchObject({
-            lines: 0, tspin: true, b2b: false, crown: false,
+            lines: 0, twist: true, b2b: false, crown: false,
         });
         expect(clears[1]).toMatchObject({
-            lines: 0, tspin: false, b2b: true, crown: false,
+            lines: 0, twist: false, b2b: true, crown: false,
         });
         // The back-to-back never rides on the next clear.
         expect(clears[2]).toMatchObject({ lines: 1, b2b: false });

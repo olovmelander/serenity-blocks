@@ -25,7 +25,7 @@
  *            notch farther out (the reach); the eye widens.
  *   release  the steam phase: 4 + 2·peak seconds of white exhalation; the fingers drain back.
  *   B2B      the Consort: a companion vent wakes and stands while the chain lives.
- *   T-spin   steam devils off the Iris, each leaving a sinter rosette in the mats.
+ *   twist   steam devils off the Iris, each leaving a sinter rosette in the mats.
  *   perfect  the Sleeper wakes on the far rim; the living colour is renewed; the stone stays.
  *   level    the year turns: a succession front sweeps out from the Iris along the fingers.
  *   over     the springs sigh: the blooms bleach, the Chalice drains; a new run refills it.
@@ -440,7 +440,7 @@ function emptyCounts() {
         clears: 0,
         lines: 0,
         quads: 0,
-        tspins: 0,
+        twists: 0,
         perfects: 0,
         cascades: 0,
         chainSteps: 0,
@@ -517,7 +517,7 @@ export class ThermalBloomWorld {
             at: -1e6, player: 0, u: 0.5, rowTop: 19, rowBottom: 19, code: 7, color: null, hardDrop: false, distance: 0,
         };
         this.lastClear = {
-            at: -1e6, player: 0, lines: 0, combo: 0, cascade: 1, tspin: false, perfect: false, b2b: false,
+            at: -1e6, player: 0, lines: 0, combo: 0, cascade: 1, twist: false, perfect: false, b2b: false,
         };
         this.lastClear.rows = [];
         this.lastClear.rowCodes = [];
@@ -630,7 +630,7 @@ export class ThermalBloomWorld {
          * and blows out when it breaks (`out` the time it did).
          */
         this.ladder = [];
-        /** The T-spin's devils in flight and the rosettes they left. */
+        /** The twist's devils in flight and the rosettes they left. */
         this.devils = [];
         this.rosettes = [];
         this.drained = 0;
@@ -1775,7 +1775,7 @@ export class ThermalBloomWorld {
         C.lines = lines;
         C.combo = Math.max(0, Math.round(Number(context.combo) || 0));
         C.cascade = Math.max(1, Math.round(Number(context.cascade) || 1));
-        C.tspin = context.tspin === true;
+        C.twist = context.twist === true;
         C.perfect = context.perfect === true;
         C.b2b = context.b2b === true;
         C.rows = Array.isArray(context.rows) ? context.rows.slice(0, 4).map((r) => Number(r) || 0) : [];
@@ -1809,12 +1809,12 @@ export class ThermalBloomWorld {
             this.kickSpouter((C.cascade - 2) % SPOUTERS.length, 3 + 2.2 * Math.min(8, C.cascade), t);
             if (C.cascade >= 3 && t - this.sympathyAt > 1.2) this.sympathyAt = t;
         }
-        if (C.tspin) this.counts.tspins += 1;
+        if (C.twist) this.counts.twists += 1;
         if (C.cascade > 1) this.counts.cascades += 1;
         // Every cleared row lays a stripe in the stone record (a perfect clear's stone stays).
         this.records += C.perfect ? 0 : lines;
         if (!C.perfect) this.seal(C);
-        if (C.tspin) this.spawnDevils(C);
+        if (C.twist) this.spawnDevils(C);
         // A perfect clear in the clear's own frame: the clear, and its crown.
         if (C.perfect) this.crown(t, { clear: false });
         this.lastEventAt = t;
@@ -2257,7 +2257,7 @@ export class ThermalBloomWorld {
     }
 
     /**
-     * The T-spin's devils (§3.11): one a line (1–3), spinning up off the Iris's rim on the side
+     * The twist's devils (§3.11): one a line (1–3), spinning up off the Iris's rim on the side
      * facing the card and wandering toward the card's side for 5–7 s, never round it; under
      * reduced motion they turn in place.
      */
@@ -2284,7 +2284,7 @@ export class ThermalBloomWorld {
             const life = 5 + 2 * rand();
             const height = small ? 34 + 10 * rand() : 55 + 20 * rand();
             if (this.devils.length >= EVENT_SLOTS.devils) {
-                // Every slot spins: the T-spin feeds the devil nearest its end instead of deleting
+                // Every slot spins: the twist feeds the devil nearest its end instead of deleting
                 // one mid-spin — it spins on longer, climbs taller, and wanders on toward the card.
                 let d = this.devils[0];
                 this.devils.forEach((e) => {
@@ -2316,7 +2316,7 @@ export class ThermalBloomWorld {
                 pathAt: t + i * 0.35,
                 pathLen: life,
                 // 55–75 m tall, 8–11 m across: a column that reads from the overlook at the Iris
-                // (a T-spin that clears nothing: a small one). A feed eases it taller.
+                // (a twist that clears nothing: a small one). A feed eases it taller.
                 heightFrom: height,
                 heightTo: height,
                 heightAt: -1e6,
@@ -2332,16 +2332,16 @@ export class ThermalBloomWorld {
     }
 
     /**
-     * A T-spin that cleared nothing (the director's tspin): still a small devil off the Iris (or
+     * A twist that cleared nothing (the director's twist): still a small devil off the Iris (or
      * a feed to one already spinning), and a little heat.
      */
-    onTSpin() {
+    onTwist() {
         if (!this.u) return;
         const t = this.time;
-        this.counts.tspins += 1;
+        this.counts.twists += 1;
         this.spawnDevils(this.lastClear, { small: true });
-        this.surge.punch.hit(SURGE_WEIGHTS.punch.tspin * 0.6, t);
-        this.surge.level.hit(SURGE_WEIGHTS.heat.tspin * 0.4, t);
+        this.surge.punch.hit(SURGE_WEIGHTS.punch.twist * 0.6, t);
+        this.surge.level.hit(SURGE_WEIGHTS.heat.twist * 0.4, t);
         this.lastEventAt = t;
     }
 
@@ -3225,7 +3225,7 @@ export class ThermalBloomWorld {
                 }
             });
         }
-        // The T-spin's devils: slender spinning columns off the Iris, their skirts lit from below by
+        // The twist's devils: slender spinning columns off the Iris, their skirts lit from below by
         // the bands they cross (turquoise core, apricot hem), fading in at birth and out at the end.
         this.devils.forEach((d, i) => {
             const a = t - d.start;

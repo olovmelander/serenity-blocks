@@ -211,9 +211,9 @@ still shows the old artwork; nobody but the author has watched it in motion.
 `npm run dev:playground`, then
 `/playground.html?effect=stellar-drift&t=20&quality=High&board=1&orbit=0&hud=0` plus:
 
-- `event=lock|drop|clear|quad|tspin|perfect|b2b|cascade|levelUp`, `eventAge=<s>` (and `lines=`,
+- `event=lock|drop|clear|quad|twist|perfect|b2b|cascade|levelUp`, `eventAge=<s>` (and `lines=`,
   `row=`, `u=`, `color=<hex>`, `cascade=<depth>`), `locks=<n>` (locks played before the moment
-  shown), `combo=<n>` (the held chain and the clear's combo); `event=tspin&lines=0` previews a
+  shown), `combo=<n>` (the held chain and the clear's combo); `event=twist&lines=0` previews a
   spin without a line clear;
 - `level=<n>` rests on that level's palette when `t` is inside the rest (`t=14`); later `t`
   values show the clock's drift on the same level (`level=1&t=50` is half-way from amber to

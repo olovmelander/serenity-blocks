@@ -23,7 +23,7 @@ playground scene, its FX controller, tests and icon) is removed.
 
 To look at it: `npm run dev`, then `/playground.html?effect=spring&t=10&hour=0.3&board=1`
 (`hour` 0 morning, 1 afternoon, 2 golden evening, 3 sunset, 4 light night, 5 dawn mist;
-`event=lock|drop|clear|quad|tspin|perfect|levelUp|release|over` with `eventAge`; `combo=<n>`,
+`event=lock|drop|clear|quad|twist|perfect|levelUp|release|over` with `eventAge`; `combo=<n>`,
 `b2b=<n>`, `locks=<n>`, `shape=<piece>`; `look=x,y,z,fov` and `eye=x,y,z` for close-ups;
 `icon=1` for the icon's lens; `atlas=albedo|normal` shows the woods' impostor atlas). In the
 game: `/?unlockAll=1&skipIntro=1`.

@@ -52,7 +52,7 @@ import {
 /** The volume the snow falls through (metres), and where its centre is. */
 export const SNOW_BOX = Object.freeze([66, 30, 80]);
 export const SNOW_CENTRE = Object.freeze([0, 14, -30]);
-/** The height the T-spin's vortex turns about. */
+/** The height the twist's vortex turns about. */
 const SWIRL_AXIS_Y = 9;
 
 const viewProjection = (world) => cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(world, 1.0));

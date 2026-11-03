@@ -1,5 +1,5 @@
 /**
- * SRS kick-table + T-spin pins (plan Phase 3b — "the strongest engineering in
+ * SRS kick-table + twist pins (plan Phase 3b — "the strongest engineering in
  * the core gets its pin"; previously ZERO kick tests).
  *
  * Conventions under test (game.js):
@@ -137,7 +137,7 @@ describe('kick application — every table entry lands the piece at (x+dx, y-dy)
         expect(gs.currentPiece.y).toBe(y0 + 2);
     });
 
-    it('O-piece rotation is a successful no-op that does not arm T-spin', () => {
+    it('O-piece rotation is a successful no-op that does not arm twist', () => {
         const gs = makeState('O', 0, 4, 10);
         expect(rotate(gs, 'right')).toBe(true);
         expect([gs.currentPiece.x, gs.currentPiece.y, gs.currentPiece.rotation]).toEqual([4, 10, 0]);
@@ -170,7 +170,7 @@ describe('kick application — every table entry lands the piece at (x+dx, y-dy)
     });
 });
 
-describe('T-spin 3-corner detection (lockPiece)', () => {
+describe('Twist 3-corner detection (lockPiece)', () => {
     // The 3×3 corner box is the T shape-matrix footprint at (piece.x, piece.y).
     function lockT({ corners, lastMoveWasRotation, x = 4, y = 20 }) {
         const gs = makeState('T', 0, x, y);
@@ -178,31 +178,31 @@ describe('T-spin 3-corner detection (lockPiece)', () => {
         for (const [cx, cy] of corners) gs.boardGrid[cy][cx] = { type: 'G', color: '#888', id: 7 };
         markBoardDirty(gs);
         lockPiece(gs);
-        return gs.comboState?.tSpin === true;
+        return gs.comboState?.twist === true;
     }
 
-    it('3 filled corners + last move was rotation → T-spin', () => {
+    it('3 filled corners + last move was rotation → twist', () => {
         expect(lockT({
             corners: [[4, 20], [6, 20], [4, 22]],
             lastMoveWasRotation: true,
         })).toBe(true);
     });
 
-    it('same corners without a final rotation → no T-spin', () => {
+    it('same corners without a final rotation → no twist', () => {
         expect(lockT({
             corners: [[4, 20], [6, 20], [4, 22]],
             lastMoveWasRotation: false,
         })).toBe(false);
     });
 
-    it('only 2 corners → no T-spin', () => {
+    it('only 2 corners → no twist', () => {
         expect(lockT({
             corners: [[4, 20], [6, 20]],
             lastMoveWasRotation: true,
         })).toBe(false);
     });
 
-    it('out-of-bounds corners count as filled (wall T-spin)', () => {
+    it('out-of-bounds corners count as filled (wall twist)', () => {
         // At x=-1 the two left corners are off-board; one filled right corner
         // reaches the 3-corner threshold.
         expect(lockT({
@@ -212,7 +212,7 @@ describe('T-spin 3-corner detection (lockPiece)', () => {
         })).toBe(true);
     });
 
-    it('non-T pieces never T-spin', () => {
+    it('non-T pieces never twist', () => {
         const gs = makeState('S', 0, 4, 20);
         gs.lastMoveWasRotation = true;
         for (const [cx, cy] of [[4, 20], [6, 20], [4, 22], [6, 22]]) {
@@ -220,6 +220,6 @@ describe('T-spin 3-corner detection (lockPiece)', () => {
         }
         markBoardDirty(gs);
         lockPiece(gs);
-        expect(gs.comboState?.tSpin).toBe(false);
+        expect(gs.comboState?.twist).toBe(false);
     });
 });

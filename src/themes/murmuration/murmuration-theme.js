@@ -326,7 +326,7 @@ export default class MurmurationTheme extends BaseTheme {
                 clear: (detail) => this.show?.clear(detail),
                 // A perfect clear that settled after its clear: the crown on it, not a new clear.
                 crown: (detail) => this.show?.crown(detail),
-                // A T-spin that cleared nothing.
+                // A twist that cleared nothing.
                 spin: (detail) => this.show?.spin(detail),
                 combo: (count, player) => this.show?.combo(count, player),
                 // With reactions switched off the palette still steps on; the wave stays home.

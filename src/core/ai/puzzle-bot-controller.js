@@ -358,15 +358,15 @@ export class PuzzleBotController {
      */
     chooseSelection(ranked, rankedFull, tactics) {
         if (this.config.buildVsFire) {
-            // Fire a board-clearing cascade (>=2), a Tetris-or-better (>=4 is always
+            // Fire a board-clearing cascade (>=2), a Quad-or-better (>=4 is always
             // strong and safe in a no-hold game), or anything meeting the tier target.
             // Triples/doubles are intentionally held to build a bigger cascade — but
             // under the danger gate, fire ANY clear to survive (downstack).
             //
             // NOTE: an empirical sweep (scripts/sweep-cascade-policy.mjs) showed that
-            // *withholding* Tetrises when "safe" to build deeper backfires on this
+            // *withholding* Quads when "safe" to build deeper backfires on this
             // 24-row board — it floods the stack into the danger zone, yielding MORE
-            // survival singles and FEWER Tetrises. Eager fire-at-Tetris is the best
+            // survival singles and FEWER Quads. Eager fire-at-Quad is the best
             // policy here, so we keep it.
             const target = this.config.triggerDepthTarget || 4;
             const minLines = tactics.danger ? 1 : 4;

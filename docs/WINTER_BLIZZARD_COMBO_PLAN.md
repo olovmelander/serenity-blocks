@@ -2,7 +2,7 @@
 
 Creative-director + graphics-tech plan to escalate the winter WebGPU/TSL scene into a breathtaking blizzard during combos, then recede. Everything funnels through **ONE eased master scalar** plus a few decaying transient channels — the world breathes as a single storm, never a flicker of disconnected effects.
 
-> **Good news:** `src/themes/winter/composition/storm-director.js` is ALREADY the exact eased-intensity + transient-channel model the research recommends (`intensity` fast-attack/slow-decay, `gust`/`whiteout`/`flare`/`kick` decaying transients, event pokes, accent palette). We do NOT rebuild it. We add: (1) a `trauma` channel + `onTSpin()`/`onPerfectClear()` pokes, (2) a `setReactive(state)` hook on the effect, and (3) a wind-streak + fog-overlay path. The effect itself currently has NO `setReactive` and NO shake injection — those are the build.
+> **Good news:** `src/themes/winter/composition/storm-director.js` is ALREADY the exact eased-intensity + transient-channel model the research recommends (`intensity` fast-attack/slow-decay, `gust`/`whiteout`/`flare`/`kick` decaying transients, event pokes, accent palette). We do NOT rebuild it. We add: (1) a `trauma` channel + `onTwist()`/`onPerfectClear()` pokes, (2) a `setReactive(state)` hook on the effect, and (3) a wind-streak + fog-overlay path. The effect itself currently has NO `setReactive` and NO shake injection — those are the build.
 
 ---
 
@@ -52,7 +52,7 @@ All magnitudes are MULTIPLIERS / ADDENDS on the per-tier SNOW_TIERS baselines (f
 | **COMBO ×10+** | Full blizzard wall; horizontal sheets, pale haze, magenta surge. | `bump(min(0.5,combo·0.06),{whiteout:0.6, flare:0.85, trauma:0.4})` | S held at top |
 | **LINE_CLEAR 1–3** | Gust + small accent flash by tier. | `bump(0.12+lines·0.06+combo·0.04,{gust, flare, kick, accent:tier})` | gust ~0.5s |
 | **TETRIS (4)** | Bigger gust + soft white flash + aurora flare. | adds `whiteout:0.7, kick:0.9, trauma:0.45` | flash fast-up ~80ms / slow ~400ms |
-| **T-SPIN** | A swirling **vortex burst** — air spins around the clear. | NEW `onTSpin(lines)`: `bump(...,{flare:0.5, vortex:1.2, accent:violet, trauma:0.25})`, `curlStr ×1.6` ~0.8s | vortex ~0.8s |
+| **T-SPIN** | A swirling **vortex burst** — air spins around the clear. | NEW `onTwist(lines)`: `bump(...,{flare:0.5, vortex:1.2, accent:violet, trauma:0.25})`, `curlStr ×1.6` ~0.8s | vortex ~0.8s |
 | **PERFECT_CLEAR** | **Whiteout bloom + aurora flare** — the reserved crescendo. | NEW `onPerfectClear()`: `bump(0.4,{whiteout:1.0, flare:1.0, kick:0.6, trauma:0.55})` | whiteout fast-up / slow ~600ms |
 | **LEVEL_UP** | Sustained step-up; raises the idle floor so later levels live in a windier night. | `onLevelUp()` + raise `idleFloor` +0.015 (cap ~0.3) + `gust:0.5, flare:0.4` | permanent floor shift |
 | **COMBO DROP / IDLE** | Graceful settle; wind relaxes, fog recedes, snow re-verticalizes. | No poke; `target` → `idleFloor`, S decays. | 5–14s exhale |
@@ -64,7 +64,7 @@ All magnitudes are MULTIPLIERS / ADDENDS on the per-tier SNOW_TIERS baselines (f
 ### 3.1 Reuse the StormDirector; add three small things
 **File:** `src/themes/winter/composition/storm-director.js`
 1. **Add `trauma` channel:** `this.trauma=0`; decay `trauma -= dt*0.8` in `update()`; accept `opts.trauma` in `bump()`; expose in `getState()`. Shake consumed CPU-side as `pow(trauma,2.5)`.
-2. **Add pokes:** `onTSpin(lines)`, `onPerfectClear()`; extend `onHardDrop`/`onLineClear` with `trauma`.
+2. **Add pokes:** `onTwist(lines)`, `onPerfectClear()`; extend `onHardDrop`/`onLineClear` with `trauma`.
 3. **Add `vortex` transient** (decay ~1.2/s) so combo×6 / T-spin inject a centered curl burst separate from ambient curl.
 
 ### 3.2 `setReactive(state)` hook on the effect
@@ -81,7 +81,7 @@ All magnitudes are MULTIPLIERS / ADDENDS on the per-tier SNOW_TIERS baselines (f
 **File:** `winter-wonderland.effect.js` `camera(time,camera)`. Read `_react.trauma`, apply a SMOOTH-noise rotational wobble (`sin(time*f)` layered — NOT per-frame random) AFTER `lookAt`: tiny roll (≤0.06 rad) + pitch, plus a `kick` forward-Z dolly punch. Bias ROTATION over translation (translation can clip the camera through the framing spruces). `shakeGain` is the accessibility knob.
 
 ### 3.6 Theme wrapper: eventBus → director → setReactive
-**File:** `src/themes/winter/winter-theme.js`. StormDirector already instantiated + fed events in `setupEventListeners()` + updated each frame. Bridge work: (1) wire `EVENTS.TSPIN → onTSpin`, `EVENTS.PERFECT_CLEAR → onPerfectClear`; (2) after `stormDirector.update(delta)`, call `this.effect?.setReactive?.(stormDirector.getState())` (mirrors summer's `runtime.setReactive(director.getState())`); (3) keep the legacy `stormEnergy`/`windForce` path as-is (additive; Director is the source of truth for the new uniforms).
+**File:** `src/themes/winter/winter-theme.js`. StormDirector already instantiated + fed events in `setupEventListeners()` + updated each frame. Bridge work: (1) wire `EVENTS.TWIST → onTwist`, `EVENTS.PERFECT_CLEAR → onPerfectClear`; (2) after `stormDirector.update(delta)`, call `this.effect?.setReactive?.(stormDirector.getState())` (mirrors summer's `runtime.setReactive(director.getState())`); (3) keep the legacy `stormEnergy`/`windForce` path as-is (additive; Director is the source of truth for the new uniforms).
 
 ### 3.7 Vortex injection
 Reuse `StormField.addVortex(...)` on combo×6 / T-spin via the `vortex` transient → `setReactive` adds to `uCurlStr` (and calls `addVortex` if the in-game StormField path is active). In the playground (per-tier SnowSim) the `curlStr` pop alone delivers the swirl.
@@ -109,7 +109,7 @@ Reuse `StormField.addVortex(...)` on combo×6 / T-spin via the `vortex` transien
 6. **Vortex burst** for T-spin / combo×6.
 
 **Full system (port + wire):**
-7. Add `trauma`/`vortex` + `onTSpin`/`onPerfectClear` to StormDirector (dependency-free → unit-testable).
+7. Add `trauma`/`vortex` + `onTwist`/`onPerfectClear` to StormDirector (dependency-free → unit-testable).
 8. Wire new events in `winter-theme.js`; call `effect.setReactive(getState())` each frame; add `setIntensity` gating.
 9. **Capture-gate in-game** (TDR-safe short session): verify the WinterPipeline-graded result, shake comfort, reduced-motion path.
 

@@ -39,7 +39,7 @@ function createHarness(id = 1, fixed = false) {
         playMove: vi.fn(),
         playPerfectClear: vi.fn(),
         playRotate: vi.fn(),
-        playTSpin: vi.fn(),
+        playTwist: vi.fn(),
     };
     const scene = {
         cameraSettings: { visibleRows: 20, currentTopRow: 66, activeTopRow: 70.25 },
@@ -57,7 +57,7 @@ function createHarness(id = 1, fixed = false) {
             playKnockout: vi.fn(),
             playPerfectClear: vi.fn(),
             playRoundWin: vi.fn(),
-            playTSpinEffect: vi.fn(),
+            playTwistEffect: vi.fn(),
             playVictory: vi.fn(),
             showCascadeWave: vi.fn(),
         },
@@ -190,13 +190,13 @@ describe('Odyssey Phaser effect parity', () => {
             callbacks, engine, scene, session,
         } = createHarness();
         const lock = observe(EVENTS.PIECE_LOCK);
-        const tSpin = observe(EVENTS.TSPIN);
+        const twist = observe(EVENTS.TWIST);
         const b2b = observe(EVENTS.B2B);
         const perfect = observe(EVENTS.PERFECT_CLEAR);
-        callbacks.onTSpin(2);
+        callbacks.onTwist(2);
         callbacks.onB2B();
         callbacks.onPerfectClear(3, 4000);
-        expect(tSpin).toHaveBeenCalledWith({ lineCount: 2, source: 'odyssey', levelId: 1 });
+        expect(twist).toHaveBeenCalledWith({ lineCount: 2, source: 'odyssey', levelId: 1 });
         expect(b2b).toHaveBeenCalledWith({ active: true, source: 'odyssey', levelId: 1 });
         expect(perfect).toHaveBeenCalledWith({
             depth: 3, perfectClearBonus: 4000, source: 'odyssey', levelId: 1,
@@ -208,13 +208,13 @@ describe('Odyssey Phaser effect parity', () => {
         session.retired = true;
         callbacks.onPieceLock({});
         callbacks.onLineClear(4);
-        callbacks.onTSpin(4);
+        callbacks.onTwist(4);
         callbacks.onB2B();
         callbacks.onPerfectClear(10, 20000);
         callbacks.onGarbageApplied(8);
         expect(callbacks.onTopOut()).toBeUndefined();
         expect(lock).not.toHaveBeenCalled();
-        expect(tSpin).toHaveBeenCalledOnce();
+        expect(twist).toHaveBeenCalledOnce();
         expect(b2b).toHaveBeenCalledOnce();
         expect(perfect).toHaveBeenCalledOnce();
         expect(scene.sharedEffects.playGarbageArrival).toHaveBeenCalledOnce();

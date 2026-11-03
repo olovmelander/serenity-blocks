@@ -7,7 +7,7 @@ const METRICS = {
     cascade: 'cascades',
     combo: 'maxCombo',
     'max-cascade-depth': 'maxCascadeDepth',
-    'tetris-count': 'tetrises',
+    'quad-count': 'quads',
     pieces: 'piecesPlaced',
     maxDeaths: 'deaths',
 };
@@ -510,7 +510,7 @@ function aggregate(attempts, sourceLevel, profile, capabilities, condition = nul
         errorCauses: reasons(attempts, 'error'),
         goals,
         duel,
-        metrics: Object.fromEntries(['lines', 'score', 'cascades', 'maxCascadeDepth', 'maxCombo', 'tetrises', 'height']
+        metrics: Object.fromEntries(['lines', 'score', 'cascades', 'maxCascadeDepth', 'maxCombo', 'quads', 'height']
             .map((metric) => [metric, distribution(attempts.filter((attempt) => outcome(attempt) !== 'error')
                 .map((attempt) => metricValue(attempt, metric)))])),
         showcase: {

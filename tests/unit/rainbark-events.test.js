@@ -57,7 +57,7 @@ const clearOf = (rows, lines = rows.length, extra = {}) => ({
     lines,
     combo: 1,
     cascade: 1,
-    tspin: false,
+    twist: false,
     perfect: false,
     b2b: false,
     rowCodes: rows.flatMap((_, k) => Array.from({ length: 10 }, (__, c) => (c + k) % 7)),
@@ -310,11 +310,11 @@ describe('Rainbark events: the beats in the world', () => {
         expect(a.world.u.sheenK.value).toBeGreaterThan(0);
     });
 
-    it('unwinds a helix on a T-spin, one turn a line, on the T\'s side', () => {
+    it('unwinds a helix on a twist, one turn a line, on the T\'s side', () => {
         const { world, camera } = makeWorld('Low');
         step(world, camera, 1 / 30, () => {
             world.onLock(lockAt(0.8, [12, 13], { shape: 'T' }));
-            world.onClear(clearOf([13, 12], 2, { tspin: true }));
+            world.onClear(clearOf([13, 12], 2, { twist: true }));
         });
         expect(world.u.helixCount.value).toBe(1);
         const h = row(world, 'helices', 0);

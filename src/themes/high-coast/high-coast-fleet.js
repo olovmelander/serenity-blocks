@@ -8,7 +8,7 @@
  * after the last; the boat surges and its wake whitens. A lock that reaches a sail already flying
  * never douses it to set it again: it fills again from where it stands, its puff adds to the
  * boat's surge, and its colour turns toward the new piece's. In hot play every boat whose sail is
- * down sets one, and the sails burn in the low sun (u.heat.z). A T-spin brings the whole fleet
+ * down sets one, and the sails burn in the low sun (u.heat.z). A twist brings the whole fleet
  * about from where its heel stands: every sail swings across and the boats heel the other way.
  * The boats ride the sea's level, so they sink with it as the land rises.
  *
@@ -453,7 +453,7 @@ export function createFleet(u, t, tier) {
             return spare ? spare.place : null;
         },
         /**
-         * T-spin: every boat comes about, from where its heel stands now (a second T-spin mid-tack
+         * Twist: every boat comes about, from where its heel stands now (a second twist mid-tack
          * turns them back from there; the sails' swing carries on). `amount` scales the swing.
          */
         tack(time, amount = 1) {

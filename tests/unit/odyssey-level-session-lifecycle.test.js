@@ -36,7 +36,7 @@ function createHybridEngine() {
         combos: 0,
         lines: 0,
         maxCascadeDepth: 0,
-        tetrises: 0,
+        quads: 0,
         time: 0,
     };
 

@@ -25,7 +25,7 @@
  *            clouds; and what is left is a pulsar whose beams sweep the nebula while a new star
  *            kindles. Four lines too soon after the last flash re-light the fireball and charge
  *            the next one; a perfect clear that settles after its clear crowns the flash.
- *   T-spin   the corona winds into a pinwheel and springs back (a little, for one that clears
+ *   twist   the corona winds into a pinwheel and springs back (a little, for one that clears
  *            nothing).
  *   B2B      the ring of old gas flares and spins up, and a twin of the shock follows it out.
  *   cascade  each wave runs deeper, wider and faster than the last, in the next gas colour.
@@ -154,7 +154,7 @@ const KIND_SHOCK = 2;
 const KIND_DETONATE = 3;
 /** What a queued shock carries besides its lines. */
 const FLAG_AFTERSHOCK = 1;
-const FLAG_TSPIN = 2;
+const FLAG_TWIST = 2;
 const FLAG_B2B = 4;
 
 const PARTS = ['sky', 'nebula', 'beams', 'star', 'ring', 'loops', 'embers', 'streams', 'sparks'];
@@ -1184,9 +1184,9 @@ export class SupernovaWorld {
     /** The cleared rows have reached the star: it answers with a shock, one front per line. */
     shock(ev) {
         // The star is already falling in: these rows feed the collapse, and the flash is their
-        // answer, that much bigger (a T-spin among them still winds the corona, with the flash).
+        // answer, that much bigger (a twist among them still winds the corona, with the flash).
         if (this.nova.next !== Infinity) {
-            if (ev.flag & FLAG_TSPIN) this.nova.twist = true;
+            if (ev.flag & FLAG_TWIST) this.nova.twist = true;
             if (ev.flag & FLAG_B2B) this.nova.b2b = true;
             this.feedCollapse(0.05 * Math.max(1, Math.min(4, ev.lines)) + (ev.flag & FLAG_AFTERSHOCK ? 0.2 : 0));
             return;
@@ -1218,7 +1218,7 @@ export class SupernovaWorld {
         env.kick.hit(0.24 + 0.1 * n + depth * 0.03, ev.time);
         env.flash.hit(0.1 + 0.05 * n, ev.time);
         env.storm.hit(Math.min(1.3, 0.3 + 0.16 * n) * deeper, ev.time);
-        if (ev.flag & FLAG_TSPIN) this.windCorona(ev.time);
+        if (ev.flag & FLAG_TWIST) this.windCorona(ev.time);
         if (ev.flag & FLAG_B2B) this.backToBack(ev.time);
         if (this.sparks) {
             const share = this.sparks.count / 800;
@@ -1276,7 +1276,7 @@ export class SupernovaWorld {
         env.rekindle.hit(0.6 + 0.2 * nova.charge, time);
     }
 
-    /** A T-spin: the corona winds up and springs back, and a thin front leaves in the rim's colour. */
+    /** A twist: the corona winds up and springs back, and a thin front leaves in the rim's colour. */
     windCorona(time) {
         this.twistVelocity += this.reducedMotion ? 1 : 4.2;
         this.front({
@@ -1372,7 +1372,7 @@ export class SupernovaWorld {
 
     /**
      * The star begins to fall in at `start`; it detonates COLLAPSE_HOLD later. `twist`: the clear
-     * that set it off was a T-spin, so the corona winds with the flash. The flash carries what
+     * that set it off was a twist, so the corona winds with the flash. The flash carries what
      * the star was refused since the last and how far past critical the chain has taken it; the
      * hush before it is as deep as play is cold (in a fever the nebula only catches its breath).
      */
@@ -1525,11 +1525,11 @@ export class SupernovaWorld {
     }
 
     /**
-     * Lines cleared. `lines` 1..4; `tspin`, `perfect`, `b2b`; `cascade` = which wave of a cascade
+     * Lines cleared. `lines` 1..4; `twist`, `perfect`, `b2b`; `cascade` = which wave of a cascade
      * (1 = the lock's own clear); `combo` = the chain; `rows` = the visible rows that went.
      */
     onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, b2b = false, cascade = 1, combo = 1, player = 0,
+        rows = null, lines = 1, twist = false, perfect = false, b2b = false, cascade = 1, combo = 1, player = 0,
         screen = null,
     } = {}) {
         const { u } = this;
@@ -1568,7 +1568,7 @@ export class SupernovaWorld {
         const arrive = this.time + flight;
 
         if (quad && this.canDetonate()) {
-            this.beginCollapse(arrive, (perfect ? 1.3 : 1) + (b2b ? 0.1 : 0), tspin);
+            this.beginCollapse(arrive, (perfect ? 1.3 : 1) + (b2b ? 0.1 : 0), twist);
             this.nova.b2b = b2b;
         } else {
             // A second four lines too soon after the first: the newborn star answers with an
@@ -1579,14 +1579,14 @@ export class SupernovaWorld {
                 amount: strength,
                 lines: quad ? 4 : n,
                 depth,
-                // A T-spin winds the corona when the rows arrive, with the shock.
-                flag: (quad ? FLAG_AFTERSHOCK : 0) | (tspin ? FLAG_TSPIN : 0) | (b2b ? FLAG_B2B : 0),
+                // A twist winds the corona when the rows arrive, with the shock.
+                flag: (quad ? FLAG_AFTERSHOCK : 0) | (twist ? FLAG_TWIST : 0) | (b2b ? FLAG_B2B : 0),
             });
         }
         this.lastClear = { time: arrive, lines: n };
         this.counts.clears += 1;
         this.pressure.clear({
-            lines: n, cascade, combo, tspin, perfect, b2b,
+            lines: n, cascade, combo, twist, perfect, b2b,
         }, this.time);
     }
 
@@ -1612,7 +1612,7 @@ export class SupernovaWorld {
         this.pressure.crown(t);
     }
 
-    /** A T-spin that cleared nothing: the corona gives a small turn, a thin front leaves. */
+    /** A twist that cleared nothing: the corona gives a small turn, a thin front leaves. */
     onSpin() {
         if (!this.u) return;
         const t = this.time;

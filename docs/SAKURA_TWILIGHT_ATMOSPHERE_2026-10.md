@@ -93,7 +93,7 @@ state are noise. By construction:
 ## Verification
 
 - **Playground** (`?effect=sakura-twilight&orbit=0&hud=0&seed=271`): idle at `t=12` and `t=40`, with
-  the stand-in card (`board=1`), `event=drop|double|tetris|combo|level|over`, Low, Minimal,
+  the stand-in card (`board=1`), `event=drop|double|quad|combo|level|over`, Low, Minimal,
   `forceWebGL=1`, portrait 720 × 1280 at High and Low. No WebGPU validation errors, no TSL
   warnings, on both backends.
 - **In the game** (scratch Electron harness, real boot, theme pinned at High, single player,

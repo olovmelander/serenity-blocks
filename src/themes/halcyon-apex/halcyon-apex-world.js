@@ -1024,11 +1024,11 @@ export class HalcyonApexWorld {
     }
 
     /**
-     * Lines cleared. `lines` 1..4; `tspin`, `perfect`, `b2b`; `cascade` = the deepest wave of the
+     * Lines cleared. `lines` 1..4; `twist`, `perfect`, `b2b`; `cascade` = the deepest wave of the
      * lock's cascade (1 = its first), `combo` = the true chain this clear belongs to.
      */
     onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, b2b = false, cascade = 1, combo = 1, player = 0,
+        rows = null, lines = 1, twist = false, perfect = false, b2b = false, cascade = 1, combo = 1, player = 0,
         screen = null,
     } = {}) {
         const { u: uniforms } = this;
@@ -1103,7 +1103,7 @@ export class HalcyonApexWorld {
         const kick = 0.22 + 0.1 * n + 0.05 * deeper;
         this.strike(kick, kick * 0.5, blow);
         this.gameplay.clear({
-            lines: n, cascade: deeper + 1, combo: chain, tspin, perfect, b2b: back,
+            lines: n, cascade: deeper + 1, combo: chain, twist, perfect, b2b: back,
         }, blow);
 
         // ── Every crystal on the lines rings as the wave passes it ──
@@ -1159,7 +1159,7 @@ export class HalcyonApexWorld {
             this.addOverdrive(0.35, this.time);
             this.shockRing(birth + 0.18, this.reducedMotion ? 0.3 : 0.6);
         }
-        if (tspin) {
+        if (twist) {
             // Everything that floats turns on its axis.
             this.twist = Math.max(this.twist, 1);
             this.stir = Math.max(this.stir, 0.9);
@@ -1202,7 +1202,7 @@ export class HalcyonApexWorld {
         this.counts.crowns += 1;
     }
 
-    /** A T-spin that cleared nothing: the floating things turn a little, a ring leaves the board's foot. */
+    /** A twist that cleared nothing: the floating things turn a little, a ring leaves the board's foot. */
     onSpin({ player = 0, screen = null } = {}) {
         if (!this.u || !this.crystals) return;
         const board = boardFor(this.layout, player);

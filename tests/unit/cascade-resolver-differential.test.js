@@ -191,10 +191,10 @@ describe('resolveCascade ≡ processPhysics (structured scenarios)', () => {
         baseContext(),
         'double',
     ));
-    it('tetris with B2B armed', () => compare(
+    it('quad with B2B armed', () => compare(
         [BOTTOM, BOTTOM - 1, BOTTOM - 2, BOTTOM - 3].map((y) => fullRowPiece(y, `r${y}`)).concat(block(0, BOTTOM - 8)),
         baseContext({ b2bActive: true }),
-        'tetris-b2b',
+        'quad-b2b',
     ));
     it('perfect clear', () => compare([fullRowPiece(BOTTOM)], baseContext(), 'perfect'));
     it('two-wave cascade into perfect clear', () => compare([
@@ -214,19 +214,19 @@ describe('resolveCascade ≡ processPhysics (structured scenarios)', () => {
         baseContext({ linesUntilNextLevel: 1, disableLevelProgression: true }),
         'no-progress',
     ));
-    it('T-spin flag + manual hole columns + lock footprint', () => compare(
+    it('Twist flag + manual hole columns + lock footprint', () => compare(
         [fullRowPiece(BOTTOM), block(0, BOTTOM - 4)],
         baseContext({
             comboState: {
                 lockFootprint: [{ x: 4, y: BOTTOM }, { x: 5, y: BOTTOM }],
                 manualColumns: [4, 5],
-                tSpin: true,
+                twist: true,
                 sourceColor: '#f0f',
                 sourcePiece: 'T',
                 sequence: 7,
             },
         }),
-        't-spin',
+        'Twist',
     ));
     it('odyssey combo multiplier scales wave + perfect points', () => compare(
         [fullRowPiece(BOTTOM)],
@@ -290,7 +290,7 @@ describe('resolveCascade ≡ processPhysics (seeded random boards)', () => {
             comboState: {
                 lockFootprint: footprint,
                 manualColumns: [rng.nextInt(COLS)],
-                tSpin: rng.nextInt(6) === 0,
+                twist: rng.nextInt(6) === 0,
                 depth: 0,
                 complexity: 0,
             },

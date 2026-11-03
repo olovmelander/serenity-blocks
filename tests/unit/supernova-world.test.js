@@ -1210,12 +1210,12 @@ describe('supernova world: clears', () => {
         world.dispose();
     });
 
-    it('winds the corona up on a T-spin and lets it spring back', () => {
+    it('winds the corona up on a twist and lets it spring back', () => {
         const { camera, world } = makeWorld('High');
         const calm = makeWorld('High');
         calm.world.setReducedMotion(true);
         const landings = watchLandings(world);
-        for (const made of [{ camera, world }, calm]) made.world.onClear({ rows: bottom(2), lines: 2, tspin: true });
+        for (const made of [{ camera, world }, calm]) made.world.onClear({ rows: bottom(2), lines: 2, twist: true });
         // Nothing winds until the rows arrive: the corona, its thin front and the sky all answer
         // with the shock, not with the clear.
         run(world, camera, ROW_FLIGHT - 0.02);
@@ -1248,7 +1248,7 @@ describe('supernova world: clears', () => {
         expect(Math.abs(world.getState().twist)).toBeLessThan(1e-3);
         expect(Math.abs(world.u.twist.value)).toBeLessThan(1e-3);
         // A long frame cannot blow the spring up.
-        world.onClear({ lines: 1, tspin: true });
+        world.onClear({ lines: 1, twist: true });
         run(world, camera, 30, 6);
         expect(Math.abs(world.getState().twist)).toBeLessThan(1);
         world.dispose();
@@ -1282,7 +1282,7 @@ describe('supernova world: clears', () => {
         // A front not yet born is not taken for a dead one: the shock's later fronts wait their
         // turn while a run of weaker fronts, more than there is room for, is sent past them.
         settle(world, camera, 10);
-        world.onClear({ rows: bottom(3), lines: 3, tspin: true });
+        world.onClear({ rows: bottom(3), lines: 3, twist: true });
         run(world, camera, ROW_FLIGHT + 0.02);
         expect(world.fronts.filter((front) => front.birth > world.time)).toHaveLength(2);
         const sent = world.fronts
@@ -1534,11 +1534,11 @@ describe('supernova world: four lines', () => {
         expect(blasts[0][0].amount).toBeGreaterThan(blasts[1][0].amount);
         expect(perfect.world.u.echo.value.y).toBeGreaterThan(plain.world.u.echo.value.y);
         expect(perfect.world.getState().surge).toBeGreaterThan(plain.world.getState().surge);
-        // A T-spin on the same clear winds the corona with the flash, not during the hush before it.
+        // A twist on the same clear winds the corona with the flash, not during the hush before it.
         const both = makeWorld('Low');
         const winds = watchLandings(both.world);
         both.world.onClear({
-            lines: 4, tspin: true, perfect: true,
+            lines: 4, twist: true, perfect: true,
         });
         const flashAt = both.world.nova.next;
         runTo(both.world, both.camera, flashAt - 0.01);
@@ -1916,18 +1916,18 @@ describe('supernova world: the chain', () => {
     });
 
     /**
-     * Fault in the fix for the critical chain: the shock it cancels carried the T-spin's flag, and
-     * beginCollapse() is called there without `twist`. A T-spin that takes the chain to its
+     * Fault in the fix for the critical chain: the shock it cancels carried the twist's flag, and
+     * beginCollapse() is called there without `twist`. A twist that takes the chain to its
      * critical step never winds the corona: no twist, no thin front, no answer from the sky.
-     * Carry the cancelled shock's FLAG_TSPIN into beginCollapse(…, 1.15, twist). (The chain now
-     * sets the star off when it lets go: the T-spin is the last clear before it does, and its
+     * Carry the cancelled shock's FLAG_TWIST into beginCollapse(…, 1.15, twist). (The chain now
+     * sets the star off when it lets go: the twist is the last clear before it does, and its
      * rows arrive in the fall.)
      */
-    it('still winds the corona when the clear whose rows the flash waits for is a T-spin', () => {
+    it('still winds the corona when the clear whose rows the flash waits for is a twist', () => {
         const { camera, world } = makeWorld('High');
         world.onCombo(CRITICAL_COMBO);
         run(world, camera, 3);
-        world.onClear({ rows: bottom(2), lines: 2, tspin: true });
+        world.onClear({ rows: bottom(2), lines: 2, twist: true });
         world.onCombo(0);
         let wound = 0;
         run(world, camera, 1.5, 180, () => {
@@ -1935,7 +1935,7 @@ describe('supernova world: the chain', () => {
         });
         expect(world.getState().counts.novas).toBe(1);
         expect(wound).toBeGreaterThan(0.05);
-        // The flash's three fronts and the T-spin's thin one.
+        // The flash's three fronts and the twist's thin one.
         expect(world.getState().counts.fronts).toBe(4);
         world.dispose();
     });
@@ -2206,7 +2206,7 @@ describe('supernova world: time', () => {
      * of now (each handler allows for how late the frame noticed it), and the six decays a few
      * lines on then take a whole frame off it again. A detonation landing exactly on a frame
      * shows a flash of 0.875 at 30 frames a second, 0.936 at 60 and 0.984 at 240 (kick 0.81 /
-     * 0.90 / 0.97; surge 0.990 / 0.995 / 0.999), and so does every impact, shock and T-spin.
+     * 0.90 / 0.97; surge 0.990 / 0.995 / 0.999), and so does every impact, shock and twist.
      * Move the six `*= Math.exp(-dt / …)` lines above `this.runPending(t)`: the life-stage
      * reads can stay after it. Allowing for it in detonate() alone would leave the others.
      */
@@ -2271,7 +2271,7 @@ describe('supernova world: time', () => {
         // Something else entirely in between...
         world.onCombo(9);
         world.onLock({ u: 0.5, rows: [3], hardDrop: true });
-        world.onClear({ lines: 3, tspin: true });
+        world.onClear({ lines: 3, twist: true });
         world.setReducedMotion(true);
         run(world, camera, 3);
         world.setReducedMotion(false);
@@ -2321,7 +2321,7 @@ describe('supernova world: time', () => {
         const { camera, world } = makeWorld('High');
         const standing = world.tier.shells;
         world.onLock({ u: 0.4, rows: [10], hardDrop: true });
-        world.onClear({ lines: 4, tspin: true });
+        world.onClear({ lines: 4, twist: true });
         world.onCombo(6);
         world.levelUp(3);
         run(world, camera, 1);
@@ -2697,7 +2697,7 @@ describe('supernova world: robustness', () => {
                 world.onLock({ rows: value });
                 world.onClear({ lines: value });
                 world.onClear({ rows: value });
-                world.onClear({ player: value, tspin: value, perfect: false });
+                world.onClear({ player: value, twist: value, perfect: false });
                 world.onClear({ screen: { x: value, y: value } });
                 world.onCombo(value);
                 world.onCombo(value, { silent: true });
@@ -2854,7 +2854,7 @@ describe('supernova world: robustness', () => {
         };
         check();
         world.onLock({ u: 0.3, rows: [12], hardDrop: true });
-        world.onClear({ lines: 3, tspin: true });
+        world.onClear({ lines: 3, twist: true });
         world.onCombo(CRITICAL_COMBO - 1);
         run(world, camera, 2, 120, check);
         world.onClear({ lines: 4, perfect: true });
@@ -3119,10 +3119,10 @@ describe('supernova world: play builds', () => {
         const plain = makeWorld('High');
         const flare = { pair: 0, plain: 0 };
         for (const [name, { world, camera }] of [['pair', pair], ['plain', plain]]) {
-            world.onClear({ rows: bottom(2), lines: 2, tspin: true });
+            world.onClear({ rows: bottom(2), lines: 2, twist: true });
             run(world, camera, 1);
             world.onClear({
-                rows: bottom(2), lines: 2, tspin: true, b2b: name === 'pair',
+                rows: bottom(2), lines: 2, twist: true, b2b: name === 'pair',
             });
             run(world, camera, 1.2, 72, () => {
                 flare[name] = Math.max(flare[name], world.u.ring.value.y);
@@ -3136,7 +3136,7 @@ describe('supernova world: play builds', () => {
         // The next difficult clear in the run flares the ring harder still.
         const before = pair.world.b2bGlow;
         pair.world.onClear({
-            rows: bottom(2), lines: 2, tspin: true, b2b: true,
+            rows: bottom(2), lines: 2, twist: true, b2b: true,
         });
         let most = 0;
         run(pair.world, pair.camera, 0.6, 36, () => {
@@ -3204,7 +3204,7 @@ describe('supernova world: play builds', () => {
         world.dispose();
     });
 
-    it('turns the corona a little for a T-spin that clears nothing', () => {
+    it('turns the corona a little for a twist that clears nothing', () => {
         const { camera, world } = makeWorld('High');
         world.onSpin();
         expect(world.getState().counts).toMatchObject({ fronts: 1, clears: 0 });
@@ -3213,7 +3213,7 @@ describe('supernova world: play builds', () => {
             wound = Math.max(wound, Math.abs(world.getState().twist));
         });
         expect(wound).toBeGreaterThan(0.02);
-        // Less than a T-spin that clears.
+        // Less than a twist that clears.
         const full = makeWorld('High');
         full.world.windCorona(full.world.time);
         let fullWound = 0;

@@ -3,7 +3,7 @@
  *
  * Renderer-free, DOM-free, bus-free. The canonical gameplay events are delivered synchronously
  * inside the simulation tick, several per lock (HARD_DROP, PIECE_LOCK, then LINE_CLEAR / COMBO /
- * TSPIN / PERFECT_CLEAR once per cascade wave), so every on*() handler only STAGES numbers into
+ * TWIST / PERFECT_CLEAR once per cascade wave), so every on*() handler only STAGES numbers into
  * one of five preallocated player slots. flush() — called in the theme's frame, once the camera
  * the events aim through has moved — resolves each pending slot into at most one `lock` and one
  * `clear` for the sink:
@@ -11,13 +11,13 @@
  *   sink.lock({ player, rows, u, hardDrop, color, screen })
  *       the piece leaves the card as sparks in its own colour, a ring of powder runs over the
  *       snow and the fox's tail flicks when it arrives
- *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, crown, screen })
+ *   sink.clear({ player, rows, lines, combo, cascade, twist, perfect, b2b, crown, screen })
  *       the rows leave as blades of light, a gust crosses the snowfield, the sky is strummed;
  *       four lines (or a perfect clear) make the fox pounce and send its like across the sky.
  *       `crown`: a perfect clear that settled after its clear's last wave (physics sends it
  *       ~360 ms later, in a frame of its own) — the crown on the clear still playing, never a
  *       new clear (`lines` 1, no rows)
- *   sink.spin({ player, screen })  a T-spin that cleared nothing
+ *   sink.spin({ player, screen })  a twist that cleared nothing
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke): how
  *                              brightly the fires burn and how fast the fox runs
  *   sink.levelUp(level)        the hour turns
@@ -61,7 +61,7 @@ export const WINTER_EVENT_HANDLERS = Object.freeze({
     HARD_DROP: 'onHardDrop',
     LINE_CLEAR: 'onLineClear',
     COMBO: 'onCombo',
-    TSPIN: 'onTSpin',
+    TWIST: 'onTwist',
     B2B: 'onB2B',
     PERFECT_CLEAR: 'onPerfectClear',
     LEVEL_UP: 'onLevelUp',
@@ -99,7 +99,7 @@ function createSlot() {
         clearRows: new Int16Array(MAX_ROWS),
         clearRowCount: 0,
         explicitCombo: -1,
-        tspin: false,
+        twist: false,
         perfect: false,
         b2b: false,
         cleared: false,
@@ -126,7 +126,7 @@ function clearPending(slot) {
     slot.cascade = 1;
     slot.clearRowCount = 0;
     slot.explicitCombo = -1;
-    slot.tspin = false;
+    slot.twist = false;
     slot.perfect = false;
     slot.b2b = false;
     slot.cleared = false;
@@ -239,7 +239,7 @@ export class WinterDirector {
             lines: 1,
             combo: 1,
             cascade: 1,
-            tspin: false,
+            twist: false,
             perfect: false,
             b2b: false,
             crown: false,
@@ -372,13 +372,13 @@ export class WinterDirector {
         return true;
     }
 
-    onTSpin(event) {
+    onTwist(event) {
         if (!this.enabled) return false;
         const payload = event || EMPTY;
         const slot = this.slotFor(payload);
         if (!slot) return false;
         slot.pending = true;
-        slot.tspin = true;
+        slot.twist = true;
         const lines = Math.max(0, Math.min(MAX_ROWS, Math.trunc(finite(payload.lineCount, 0))));
         if (lines > slot.lines) slot.lines = lines;
         return true;
@@ -479,7 +479,7 @@ export class WinterDirector {
                 sink.lock(c);
             }
             // A perfect clear with no clear in its frame is the crown on the one already playing.
-            const crown = slot.perfect && !slot.cleared && !slot.hasPosition && !slot.tspin;
+            const crown = slot.perfect && !slot.cleared && !slot.hasPosition && !slot.twist;
             if (slot.lines > 0 && sink?.clear) {
                 const c = this._clear;
                 c.player = slot.player;
@@ -488,14 +488,14 @@ export class WinterDirector {
                 c.lines = slot.lines;
                 c.combo = Math.max(1, combo);
                 c.cascade = crown ? 1 : slot.cascade;
-                c.tspin = slot.tspin;
+                c.twist = slot.twist;
                 c.perfect = slot.perfect;
                 c.b2b = crown ? false : slot.b2b;
                 c.crown = crown;
                 c.screen = screen;
                 sink.clear(c);
-            } else if (slot.tspin && sink?.spin) {
-                // A T-spin that cleared nothing: still something small.
+            } else if (slot.twist && sink?.spin) {
+                // A twist that cleared nothing: still something small.
                 const c = this._spin;
                 c.player = slot.player;
                 c.screen = screen;

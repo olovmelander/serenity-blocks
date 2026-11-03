@@ -503,7 +503,7 @@ export function createBasin(u, tier, tex) {
         const bloom = tbBlooms(u, P, 0, tex, { channel: finger.mul(onMats) });
         albedo.assign(mix(albedo, vec3(0.72, 0.68, 0.56), bloom.scour.mul(0.94)));
         albedo.assign(mix(albedo, bloom.tint, bloom.cover));
-        // T-spin rosettes (§3.11): where a devil died, its spinning foot scoured a two-armed spiral
+        // Twist rosettes (§3.11): where a devil died, its spinning foot scoured a two-armed spiral
         // of bare cream sinter (4–6 m across its arms' reach), its edges torn, each arm outlined by
         // a thin darker rim, which the mat slowly recolonises.
         const rosette = float(0.0).toVar();

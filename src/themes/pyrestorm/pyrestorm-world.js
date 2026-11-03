@@ -20,7 +20,7 @@
  *   four lines  a Vulcanian blast: the crater flashes, a shock front races out through the
  *               column and the anvil (a pale ring of condensation), a ring of bombs, the fountain
  *               jets to twice its height, a glowing surge rolls down the breach, and the bolts
- *   T-spin      the crater blows a glowing vortex ring that rises and widens over the column
+ *   twist      the crater blows a glowing vortex ring that rises and widens over the column
  *   b2b         St Elmo's fire: a violet corona on the summit while the run lasts
  *   perfect     sheet lightning sweeps the whole anvil from the head downwind, a crown of bolts
  *               round the summit, the fountain at its highest
@@ -40,7 +40,7 @@
  *
  * The ridge feels it (pyrestorm-shake.js): a hard drop thuds through the ground, every stroke's
  * thunder cracks a beat after its flash (louder the nearer it struck), the blast's air wave knocks
- * the view, a T-spin's ring and a perfect clear's sheet roll it, and fresh lava makes the mountain
+ * the view, a twist's ring and a perfect clear's sheet roll it, and fresh lava makes the mountain
  * groan. Small turns of the view, added up like the light, and none under reduced motion.
  *
  * Lifecycle: `await PyrestormWorld.prepare(quality, { signal })` bakes the land and the lava in
@@ -86,7 +86,7 @@ export const PYRESTORM_PARTS = Object.freeze(['land', 'sky', 'anvil', 'ash', 'bo
 export const REST_RIG = Object.freeze({ near: RIG.near, far: RIG.far });
 export const fovForAspect = (aspect) => rigFor(aspect).fov;
 
-const COUNTERS = ['locks', 'hardDrops', 'clears', 'lines', 'bolts', 'quads', 'tspins', 'perfects', 'chainSteps', 'discharges', 'spiders', 'b2bSteps', 'levelUps', 'gameOvers', 'wakes'];
+const COUNTERS = ['locks', 'hardDrops', 'clears', 'lines', 'bolts', 'quads', 'twists', 'perfects', 'chainSteps', 'discharges', 'spiders', 'b2bSteps', 'levelUps', 'gameOvers', 'wakes'];
 const emptyCounts = () => Object.fromEntries(COUNTERS.map((k) => [k, 0]));
 /**
  * The shortest gap between two frame-wide flashes (a blast, a perfect clear's sheet), seconds. A
@@ -279,7 +279,7 @@ export class PyrestormWorld {
         // Envelopes that accumulate (shared/swell.js): a new event adds to what is still lit and
         // never restarts it. The crater's glow after a burst (it swells in fast and fades), the
         // fountain's kick, the crust's tremor, the frame's flash (a blast), the glare of a perfect
-        // clear's sheet (it rises, never strobes), a back-to-back's corona flare, and the T-spin
+        // clear's sheet (it rises, never strobes), a back-to-back's corona flare, and the twist
         // rings still climbing (each new one stacks above them).
         this.burstGlow = new Swell({
             attack: 0.08, release: 0.55, ceiling: 1.6, knee: 1.1,
@@ -620,8 +620,8 @@ export class PyrestormWorld {
             // The slam thuds through the ground under the eye.
             this.ridge.hardDrop(drop, this.time);
         }
-        // A T-spin that cleared nothing still blows a small ring.
-        if (context.tspin) this.onTSpin({ lines: 0 });
+        // A twist that cleared nothing still blows a small ring.
+        if (context.twist) this.onTwist({ lines: 0 });
     }
 
     /**
@@ -825,7 +825,7 @@ export class PyrestormWorld {
             this.schedule(t + 0.2, 'bolt', BOLT.ground, 1, 1.15, 0.05);
         }
         if (lines === 4) this.onQuad();
-        if (context.tspin) this.onTSpin(context);
+        if (context.twist) this.onTwist(context);
         if (context.combo > this.combo) this.onCombo(context.combo);
     }
 
@@ -1013,13 +1013,13 @@ export class PyrestormWorld {
         }
     }
 
-    onTSpin(context = {}) {
-        this.counts.tspins++;
+    onTwist(context = {}) {
+        this.counts.twists++;
         if (!this.smoke) return;
         const t = this.time;
         const r = this.random;
-        // A T-spin that cleared nothing blows a small ring; rings still climbing lift the next one
-        // above them and make it wider (T-spin after T-spin stack up the column).
+        // A twist that cleared nothing blows a small ring; rings still climbing lift the next one
+        // above them and make it wider (twist after twist stack up the column).
         const small = !(context.lines > 0);
         const stack = Math.min(2, this.rings.valueAt(t));
         this.rings.hit(small ? 0.5 : 1, t);

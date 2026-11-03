@@ -175,7 +175,7 @@ describe('Pyrestorm playground effect', () => {
         ['lock', { locks: 1, hardDrops: 0 }],
         ['drop', { locks: 1, hardDrops: 1 }],
         ['clear', { clears: 1, lines: 2 }],
-        ['tspin', { clears: 1, tspins: 1 }],
+        ['twist', { clears: 1, twists: 1 }],
         ['perfect', { perfects: 1, clears: 0 }],
         ['levelUp', { levelUps: 1 }],
         ['release', { discharges: 1 }],
@@ -226,7 +226,7 @@ describe('Pyrestorm playground effect', () => {
         const state = effect.getDiagnostics();
         expect(state.counts.locks).toBeGreaterThan(10);
         expect(state.counts.quads).toBeGreaterThanOrEqual(1);
-        expect(state.counts.tspins).toBeGreaterThanOrEqual(1);
+        expect(state.counts.twists).toBeGreaterThanOrEqual(1);
         expect(state.level).toBe(1);
     });
 

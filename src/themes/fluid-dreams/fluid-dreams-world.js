@@ -568,7 +568,7 @@ export class FluidDreamsWorld {
     /**
      * `crown`: a perfect clear settled after its clear's last wave (the director's own frame for
      * it): the crown on the clear still playing, never a clear of its own.
-     * @param {{ player?: number, rows: number[], lines: number, tspin?: boolean, perfect?: boolean,
+     * @param {{ player?: number, rows: number[], lines: number, twist?: boolean, perfect?: boolean,
      *   cascade?: number, combo?: number, b2b?: boolean, crown?: boolean }} clear
      */
     onClear(clear) {
@@ -594,7 +594,7 @@ export class FluidDreamsWorld {
         const plunged = this.choreo.clear({
             origin,
             lines,
-            tspin: clear.tspin === true,
+            twist: clear.twist === true,
             perfect: clear.perfect === true,
             site: site ? this.sitePoint(site, this._site) : null,
             cascade: clear.cascade,
@@ -635,7 +635,7 @@ export class FluidDreamsWorld {
         }
     }
 
-    /** A T-spin that cleared nothing: the sea under the Drop turns a little. */
+    /** A twist that cleared nothing: the sea under the Drop turns a little. */
     onSpin() {
         this.choreo?.spinNoLines();
     }

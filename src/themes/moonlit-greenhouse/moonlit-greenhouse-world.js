@@ -30,7 +30,7 @@
  *   combo       the fireflies fall into step (their own rhythms, then rolling waves down the
  *               house, then one flash); the swarm thickens; bioluminescent moss climbs the iron
  *               columns a step a link; the lanterns burn up. The chain breaking lets it all go.
- *   T-spin      a turn of the air: the fireflies, the moths, the motes and the pollen wheel
+ *   twist      a turn of the air: the fireflies, the moths, the motes and the pollen wheel
  *               round the canal and the fronds sway.
  *   four lines  the house holds its breath: a cloud crosses the moon, every light sinks, the
  *               fireflies go dark. Then the Queen of the Night opens behind the card, her long
@@ -142,10 +142,10 @@ const FADE_OUT = 0.35;
 /** A time no event reaches. */
 const NEVER = Infinity;
 
-/** How far round (radians) a T-spin turns the air, and how many turns can run at once. */
+/** How far round (radians) a twist turns the air, and how many turns can run at once. */
 const TURN_ANGLE = Math.PI * 1.2;
 const TURN_SLOTS = 3;
-/** A T-spin that cleared nothing turns it this share of that. */
+/** A twist that cleared nothing turns it this share of that. */
 const SPIN_TURN = 0.4;
 
 /**
@@ -286,7 +286,7 @@ export class MoonlitGreenhouseWorld {
         this.fliers = [];
         /** Pollen rising from released blooms: { x, y, z, t0, rgb, seed, fadeAt }. */
         this.pollen = [];
-        /** The turns of the air in flight (T-spins): when each began and what share of a turn. */
+        /** The turns of the air in flight (twists): when each began and what share of a turn. */
         this.turns = Array.from({ length: TURN_SLOTS }, () => ({ at: -100, amp: 0 }));
         /**
          * Envelopes that ACCUMULATE (src/themes/shared/swell.js): a new event adds to what is
@@ -854,16 +854,16 @@ export class MoonlitGreenhouseWorld {
     }
 
     /**
-     * Lines cleared: { player, rows, lines, combo, cascade, tspin, perfect, b2b, crown, screen }.
+     * Lines cleared: { player, rows, lines, combo, cascade, twist, perfect, b2b, crown, screen }.
      * A clear with no lines of its own (moonlit-greenhouse-director.js) is a perfect clear's crown
-     * on the clear still playing, a T-spin that cleared nothing, or a lone back-to-back.
+     * on the clear still playing, a twist that cleared nothing, or a lone back-to-back.
      */
     onClear(c) {
         if (!this.camera) return;
         const s = this.state;
         if (!(Math.round(Number(c.lines)) > 0)) {
             if (c.crown === true) this.crown();
-            else if (c.tspin === true) this.spin();
+            else if (c.twist === true) this.spin();
             if (c.b2b === true) this.answerB2B();
             return;
         }
@@ -964,7 +964,7 @@ export class MoonlitGreenhouseWorld {
         this.givePollen(released);
         s.lanternKick = Math.min(1.5, s.lanternKick + 0.25 + lines * 0.1 + 0.05 * (depth - 1));
         this.flash.hit(0.04 + lines * 0.03, this.clock + delay);
-        if (c.tspin) {
+        if (c.twist) {
             this.turnAir(1);
             s.gust = Math.min(1.2, s.gust + 0.6);
         }
@@ -997,7 +997,7 @@ export class MoonlitGreenhouseWorld {
     }
 
     /**
-     * A T-spin's turn of the air (`amp` a share of a full turn). It never restarts the turn in
+     * A twist's turn of the air (`amp` a share of a full turn). It never restarts the turn in
      * flight: each runs its own course and they add, the air going on round the same way while
      * any is moving; a fresh turn may go either way.
      */
@@ -1034,7 +1034,7 @@ export class MoonlitGreenhouseWorld {
         turn.amp = 0;
     }
 
-    /** A T-spin that cleared nothing: a small turn of the air and a breath through the fronds. */
+    /** A twist that cleared nothing: a small turn of the air and a breath through the fronds. */
     spin() {
         this.turnAir(SPIN_TURN);
         this.state.gust = Math.min(1.2, this.state.gust + 0.3);
@@ -1319,7 +1319,7 @@ export class MoonlitGreenhouseWorld {
             this.lanternRowsV[i].w = flicker;
         }
 
-        // The turns of the air (T-spins) add: the angle runs on from what the finished turns
+        // The turns of the air (twists) add: the angle runs on from what the finished turns
         // left, and the air is held as long as any is turning.
         for (let i = 0; i < this.turns.length; i += 1) {
             const turn = this.turns[i];
@@ -1489,7 +1489,7 @@ export class MoonlitGreenhouseWorld {
             arcPoint(f.from, f.ctrl, f.to, 1 - (1 - s) * (1 - s), this._seedP);
             const blink = 0.55 + 0.45 * Math.sin(t * (5 + f.seed * 4) + f.seed * 30);
             const k = 2.4 * blink * (1 - smooth(life - 1.2, life, age)) * dim * f.gain * fadeLeft(f.fadeAt, t);
-            // A T-spin's turn of the air carries them as it carries the swarm.
+            // A twist's turn of the air carries them as it carries the swarm.
             const q = turnOfTheAirAt(
                 this._seedP.x,
                 this._seedP.y + Math.sin(age * 2 + f.seed * 9) * 0.05 * s,

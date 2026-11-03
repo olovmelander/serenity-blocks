@@ -209,7 +209,7 @@ export function create({
                 reactions.onPieceLock({ piece });
                 reactions.onLineClear(1, { clearedRows: [row + 1] });
             }
-        } else if (event === 'spin') reactions.onTSpin({ piece });
+        } else if (event === 'spin') reactions.onTwist({ piece });
         else if (event === 'perfect') reactions.onPerfectClear();
         else if (event === 'level') {
             world?.setLevel(world.level + 1);

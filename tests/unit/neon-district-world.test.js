@@ -547,7 +547,7 @@ describe('neon district world: clears, combos and the four-line overdrive', () =
         world.dispose();
     });
 
-    it('answers a T-spin that clears nothing, and a back-to-back with stretched flares', () => {
+    it('answers a twist that clears nothing, and a back-to-back with stretched flares', () => {
         const { camera, world } = makeWorld('Low');
         const restStreak = world.getPostState().streak;
         world.onSpin({ player: 0 });
@@ -669,9 +669,9 @@ describe('neon district world: clears, combos and the four-line overdrive', () =
         world.dispose();
     });
 
-    it('glitches the signs on a T-spin and lets it die away', () => {
+    it('glitches the signs on a twist and lets it die away', () => {
         const { camera, world } = makeWorld('Low');
-        world.onClear({ lines: 2, tspin: true });
+        world.onClear({ lines: 2, twist: true });
         expect(world.glitch).toBe(1);
         run(world, camera, 2);
         expect(world.u.glitch.value).toBeLessThan(0.01);

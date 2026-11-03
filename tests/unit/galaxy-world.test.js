@@ -1780,27 +1780,27 @@ describe('galaxy world: clears, combos and the four-line clear', () => {
         perfect.world.dispose();
     });
 
-    it('keeps the eruption\'s ring and ripple when a perfect clear is a T-spin too', () => {
+    it('keeps the eruption\'s ring and ripple when a perfect clear is a twist too', () => {
         const quad = makeWorld('Low');
         const both = makeWorld('Low');
         const spun = makeWorld('Low');
         quad.world.onClear({ lines: 4 });
-        both.world.onClear({ lines: 2, tspin: true, perfect: true });
-        spun.world.onClear({ lines: 2, tspin: true });
+        both.world.onClear({ lines: 2, twist: true, perfect: true });
+        spun.world.onClear({ lines: 2, twist: true });
         const birth = both.world.time + HUSH_HOLD;
         // The sky's ring is the eruption's: as strong, and born when the breath is let go, not
-        // the small ring a plain T-spin sends at once.
+        // the small ring a plain twist sends at once.
         expect(both.world.u.shock.value.toArray()).toEqual(quad.world.u.shock.value.toArray());
         expect(both.world.u.shock.value.x).toBeCloseTo(birth, 9);
         expect(both.world.u.shock.value.y).toBeGreaterThan(spun.world.u.shock.value.y);
         expect(spun.world.u.shock.value.x).toBe(spun.world.time);
         expect(both.world.counts).toMatchObject({ clears: 1, quads: 1 });
-        // Nothing crosses the picture during the hush; the plain T-spin's ripple is already out.
+        // Nothing crosses the picture during the hush; the plain twist's ripple is already out.
         for (const { world, camera } of [quad, both, spun]) run(world, camera, HUSH_HOLD * 0.9);
         expect(both.world.getPostState().ripple.strength).toBe(0);
         expect(both.world.getState().breath).toBeLessThan(0.3);
         expect(spun.world.getPostState().ripple.strength).toBeGreaterThan(0);
-        // Then the same ripple as any eruption's, stronger than a T-spin's ever is.
+        // Then the same ripple as any eruption's, stronger than a twist's ever is.
         let peak = 0;
         let spunPeak = spun.world.getPostState().ripple.strength;
         let wound = 0;
@@ -1816,7 +1816,7 @@ describe('galaxy world: clears, combos and the four-line clear', () => {
             quadWound = Math.max(quadWound, Math.abs(quad.world.u.winding.value - GALAXY.winding));
         }
         expect(peak).toBeGreaterThan(spunPeak);
-        // It is still a T-spin: the arms wind further than an eruption alone winds them.
+        // It is still a twist: the arms wind further than an eruption alone winds them.
         expect(wound).toBeGreaterThan(quadWound);
         for (const { world } of [quad, both, spun]) world.dispose();
     });
@@ -1854,14 +1854,14 @@ describe('galaxy world: clears, combos and the four-line clear', () => {
         quad.world.dispose();
     });
 
-    it('winds the arms up on a T-spin and lets them spring back', () => {
+    it('winds the arms up on a twist and lets them spring back', () => {
         const { camera, world } = makeWorld('Low');
         const plain = makeWorld('Low');
         const quad = makeWorld('Low');
         plain.world.onClear({ lines: 2 });
         quad.world.onClear({ lines: 4 });
 
-        world.onClear({ lines: 2, tspin: true });
+        world.onClear({ lines: 2, twist: true });
         expect(world.storm).toBeGreaterThan(plain.world.storm);
         // A small ring from the nucleus, at once: gentler than a four-line clear's.
         expect(world.u.shock.value.x).toBe(world.time);
@@ -1992,13 +1992,13 @@ describe('galaxy world: clears, combos and the four-line clear', () => {
 });
 
 describe('galaxy world: it builds with play', () => {
-    it('never lets a weaker event cut a stronger one: a T-spin single and a new level on an eruption', () => {
+    it('never lets a weaker event cut a stronger one: a twist single and a new level on an eruption', () => {
         const quad = makeWorld('Low');
         const both = makeWorld('Low');
         for (const { world } of [quad, both]) world.onClear({ lines: 4 });
         const birth = quad.world.time + HUSH_HOLD;
         for (const { world, camera } of [quad, both]) run(world, camera, HUSH_HOLD + 0.15);
-        both.world.onClear({ lines: 1, tspin: true });
+        both.world.onClear({ lines: 1, twist: true });
         both.world.levelUp(2);
         // The eruption's wave, its ring across the sky and its head up the jets are all still there.
         const { world } = both;
@@ -2198,7 +2198,7 @@ describe('galaxy world: it builds with play', () => {
         b2b.world.dispose();
     });
 
-    it('turns the arms a little and sends a faint ring for a T-spin that clears nothing', () => {
+    it('turns the arms a little and sends a faint ring for a twist that clears nothing', () => {
         const { camera, world } = makeWorld('Low');
         const { clears } = world.counts;
         world.onSpin({ player: 0 });
@@ -2316,7 +2316,7 @@ describe('galaxy world: time', () => {
         // Something else entirely in between...
         world.onCombo(9);
         world.onLock({ u: 0.5, hardDrop: true });
-        world.onClear({ lines: 3, tspin: true });
+        world.onClear({ lines: 3, twist: true });
         world.setReducedMotion(true);
         run(world, camera, 3);
         world.setReducedMotion(false);
@@ -2343,7 +2343,7 @@ describe('galaxy world: time', () => {
         world.onCombo(6);
         world.levelUp(3);
         run(world, camera, 1);
-        world.onClear({ lines: 2, tspin: true });
+        world.onClear({ lines: 2, twist: true });
         run(world, camera, 0.1);
         expect(world.nurseries.pendingCount()).toBeGreaterThan(0); // a wave still on its way
         world.seek(40);
@@ -2418,7 +2418,7 @@ describe('galaxy world: time', () => {
         world.onLock({ u: 0.7 });
         run(world, camera, lastLanding(seeds()) - world.time + 0.05);
         // ...and a clear sends a wave for it that is still on its way when the run ends.
-        world.onClear({ lines: 2, tspin: true });
+        world.onClear({ lines: 2, twist: true });
         run(world, camera, 0.05);
         expect(world.getState().held).toBeGreaterThan(0);
         expect(world.nurseries.pendingCount()).toBeGreaterThan(0);
@@ -2524,7 +2524,7 @@ describe('galaxy world: time', () => {
         const rest = { ...world.getPostState(), glare: glare(), jets: world.u.jets.value.toArray() };
         world.onLock({ u: 0.5, hardDrop: true });
         world.onCombo(5);
-        world.onClear({ lines: 3, tspin: true });
+        world.onClear({ lines: 3, twist: true });
         run(world, camera, 2);
         world.onCombo(0);
         run(world, camera, 60, 1200);

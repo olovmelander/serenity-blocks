@@ -278,7 +278,7 @@ export function createWarpUniforms(textures) {
          */
         inflow: uniform(0),
         spin: uniform(0),
-        /** The vortex's twist from a T-spin (radians, springs back to 0). */
+        /** The vortex's twist from a twist (radians, springs back to 0). */
         twist: uniform(0),
         /** How far the near stars and the dust have come (warp units, wrapped at their own depths). */
         starTravel: uniform(0),

@@ -387,8 +387,8 @@ export default class NeonDuskTheme extends BaseTheme {
             this.world?.setLevel?.(this.level);
             if (reactive()) this.world?.onLevelUp();
         });
-        const tspinUnsub = eventBus.on(EVENTS.TSPIN, (data) => {
-            if (reactive()) this.world?.onTSpin?.(data?.lineCount ?? 0);
+        const twistUnsub = eventBus.on(EVENTS.TWIST, (data) => {
+            if (reactive()) this.world?.onTwist?.(data?.lineCount ?? 0);
         });
         const b2bUnsub = eventBus.on(EVENTS.B2B, (data) => {
             if (reactive()) this.world?.onB2B?.(data?.active !== false);
@@ -412,7 +412,7 @@ export default class NeonDuskTheme extends BaseTheme {
             clearUnsub,
             comboUnsub,
             levelUnsub,
-            tspinUnsub,
+            twistUnsub,
             b2bUnsub,
             perfectUnsub,
             () => window.removeEventListener('pointermove', onPointerMove),

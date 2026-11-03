@@ -544,7 +544,7 @@ describe('PaintedAgesWorld state', () => {
                     lines,
                     rowCodes: Array.from({ length: lines * 10 }, (_, i) => (i + frame) % 8),
                     combo: Math.max(1, combo),
-                    tspin: frame % 352 === 0,
+                    twist: frame % 352 === 0,
                 });
                 world.onCombo(combo);
                 world.onB2B(lines === 4 ? Math.min(4, world.b2b + 1) : 0);
@@ -765,11 +765,11 @@ describe('PaintedAgesWorld build-up (the heat of play)', () => {
         expect(world.u.sheen.value).toBeGreaterThan(plain.world.u.sheen.value + 0.3);
     });
 
-    it('shows a T-spin that cleared nothing as a small dust devil', () => {
+    it('shows a twist that cleared nothing as a small dust devil', () => {
         const { world, camera } = makeWorld();
         const before = world.motes.cursor;
         world.onSpin({ u: 0.3, color: PIECE_COLORS[1] });
-        expect(world.counts.tspins).toBe(1);
+        expect(world.counts.twists).toBe(1);
         expect(world.motes.cursor).not.toBe(before);
         stepTo(world, camera, world.time + 0.5);
         expect(world.heat.level).toBeGreaterThan(0);
@@ -778,7 +778,7 @@ describe('PaintedAgesWorld build-up (the heat of play)', () => {
     it('keeps the rain to its share of the motes, so the pigment and the dust devil survive it', () => {
         const { world, camera } = makeWorld();
         const { motes } = world;
-        world.onTSpin({ u: 0.2 });
+        world.onTwist({ u: 0.2 });
         const kindAt = (i) => Math.round(motes.kind[i * 4]);
         const devils = () => Array.from({ length: motes.count }, (_, i) => i).filter((i) => kindAt(i) === 3);
         const spun = devils();

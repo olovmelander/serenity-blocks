@@ -105,7 +105,7 @@ export function drawSun(env, p, {
 
     // ── The corona ──
     If(r.greaterThan(0.995).and(r.lessThan(CORONA_REACH)), () => {
-        // A T-spin twists it: most at the limb, unwinding outward.
+        // A twist twists it: most at the limb, unwinding outward.
         const tw = u.twist.mul(exp(r.sub(1.0).mul(-0.45)));
         const ct = cos(tw);
         const st = sin(tw);

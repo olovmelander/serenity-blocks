@@ -1,7 +1,7 @@
 /**
  * Shared banner: snap → hold → release.
  *
- * The combo popup was rebuilt on this timeline while T-spin, back-to-back, mega
+ * The combo popup was rebuilt on this timeline while twist, back-to-back, mega
  * cascade and perfect clear were left fading from frame one — which left the
  * game's biggest moment (perfect clear) with a weaker banner than a 2x combo.
  * These pin the shared shape and the layout lanes that keep them off each other.
@@ -142,7 +142,7 @@ describe('banner layout lanes', () => {
     it('gives every banner its own lane', () => {
         const lanes = {
             b2b: anchorFor((fx) => fx.playB2BChange(true)),
-            tspin: anchorFor((fx) => fx.playTSpinEffect(2)),
+            twist: anchorFor((fx) => fx.playTwistEffect(2)),
             perfect: anchorFor((fx) => fx.playPerfectClear(4)),
             cascade: anchorFor((fx) => fx.showMegaCascadeEffect(14)),
         };
@@ -152,9 +152,9 @@ describe('banner layout lanes', () => {
         expect(new Set(Object.values(lanes)).size).toBe(4);
     });
 
-    it('orders them top-down: back-to-back, T-spin, perfect clear, cascade', () => {
+    it('orders them top-down: back-to-back, twist, perfect clear, cascade', () => {
         expect(anchorFor((fx) => fx.playB2BChange(true))).toBeCloseTo(H * 0.18, 0);
-        expect(anchorFor((fx) => fx.playTSpinEffect(2))).toBeCloseTo(H * 0.375, 0);
+        expect(anchorFor((fx) => fx.playTwistEffect(2))).toBeCloseTo(H * 0.375, 0);
         expect(anchorFor((fx) => fx.playPerfectClear(4))).toBeCloseTo(H * 0.5, 0);
         expect(anchorFor((fx) => fx.showMegaCascadeEffect(14))).toBeCloseTo(H * 0.62, 0);
     });
@@ -169,7 +169,7 @@ describe('banner layout lanes', () => {
         };
         const perfect = holdOf((fx) => fx.playPerfectClear(4));
         expect(perfect).toBeGreaterThan(holdOf((fx) => fx.playB2BChange(true)));
-        expect(perfect).toBeGreaterThan(holdOf((fx) => fx.playTSpinEffect(2)));
+        expect(perfect).toBeGreaterThan(holdOf((fx) => fx.playTwistEffect(2)));
         expect(perfect).toBeGreaterThan(holdOf((fx) => fx.showMegaCascadeEffect(14)));
     });
 });

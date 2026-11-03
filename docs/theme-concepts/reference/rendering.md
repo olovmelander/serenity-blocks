@@ -446,7 +446,7 @@ if (eventName) { fireEvent(); stepTo(eventTime, time, 1 / 120); }
 frame(time, 0);   // draw=true: env painted
 pushPost(time);   // post.update({ ...world.getPostState(), time })
 ```
-- `event=lock|drop|clear|quad|tspin|perfect|levelUp` with `eventAge=` (default 0.4 s), `lines=` (1–4, default 2), `row=` (default 9), `u=` (default 0.3), `color=<hex>` (default the piece's theme colour), `piece=I|O|T|S|Z|J|L` (default T), `turns=` quarter turns (cells via `turnCw` matrix rotation, 91-99), `eventLevel=` (default level+1) (211-230). `combo=<n>` holds a chain; `level=<n>` rests on that palette; `locks=<n>` pre-plays n locks.
+- `event=lock|drop|clear|quad|twist|perfect|levelUp` with `eventAge=` (default 0.4 s), `lines=` (1–4, default 2), `row=` (default 9), `u=` (default 0.3), `color=<hex>` (default the piece's theme colour), `piece=I|O|T|S|Z|J|L` (default T), `turns=` quarter turns (cells via `turnCw` matrix rotation, 91-99), `eventLevel=` (default level+1) (211-230). `combo=<n>` holds a chain; `level=<n>` rests on that palette; `locks=<n>` pre-plays n locks.
 - `demo=1` (live only): 40 s looping script of locks/clears/combos/quad/T-spin (102-123, 269-299), `world.resetSession()` per loop; breaks chains on schedule.
 - `getDiagnostics()` → `{ backend: 'WebGPU'|'WebGL2', calls, triangles, ...world.getState() }`.
 - `dispose()` removes overlay, disposes post + world, restores `toneMapping`, `fov/near/far`.

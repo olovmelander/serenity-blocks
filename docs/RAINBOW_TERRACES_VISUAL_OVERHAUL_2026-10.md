@@ -489,7 +489,7 @@ verdicts) and the planned fix packages are in the handover:
 ## Reproduce
 
 Playground: `npm run dev:playground`, then `/playground.html?effect=rainbow-terraces&t=30&quality=High&board=1`
-plus `event=lock|drop|clear|tspin|b2b|quad|perfect|levelUp|newRun|gameOver|break`, `eventAge=<s>`,
+plus `event=lock|drop|clear|twist|b2b|quad|perfect|levelUp|newRun|gameOver|break`, `eventAge=<s>`,
 `lines=`, `row=`, `u=`, `color=<hex>`, `shape=`, `combo=<n>`, `held=<n>`, `hour=<place>` (0 Jade
 Morning … 4 Pearl Dawn), `players=2|4`, `parts=sky,isles,...`, `noPost=1`, `values=1`, `hud=0`,
 `icon=1` (+ `iconFov`, `iconYaw`, `iconPitch`), `P.<name>=<value>` for the look's numbers (the

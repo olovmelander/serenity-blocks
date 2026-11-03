@@ -184,7 +184,7 @@ async function validateMechanics(fixture) {
             && actual.waves === expected.waves ? 'pass' : 'fail',
             scope: {
                 baseModes: [fixture.infinity ? 'infinity' : 'standard'],
-                objectiveTypes: ['cascade', 'combo', 'score', 'lines', 'tetrises'],
+                objectiveTypes: ['cascade', 'combo', 'score', 'lines', 'quads'],
             },
             reachable: true,
             expected,
@@ -352,7 +352,7 @@ export async function demonstrateConstruction({
         let maximumDepth = 0;
         let currentDepth = 0;
         let cascades = 0;
-        let tetrises = 0;
+        let quads = 0;
         let singles = 0;
         let rejectedActions = 0;
         let allTetrominoes = true;
@@ -366,7 +366,7 @@ export async function demonstrateConstruction({
             },
             onLineClear: (lines) => {
                 if (lines === 1) singles++;
-                if (lines === 4) tetrises++;
+                if (lines === 4) quads++;
             },
             onCascadeComplete: (depth) => { if (depth >= 2) cascades++; },
             spawnPiece: () => spawnPiece(state, null, () => { state.isGameOver = true; }),
@@ -383,7 +383,7 @@ export async function demonstrateConstruction({
                 stars: { three: { maxCascadeDepth: targetDepth } },
             },
             getMetrics: () => ({
-                cascades, maxCombo: maximumDepth, maxCascadeDepth: maximumDepth, tetrises, singles,
+                cascades, maxCombo: maximumDepth, maxCascadeDepth: maximumDepth, quads, singles,
             }),
         });
         for (let step = 1; step <= maxPieces && state.currentPiece && !state.isGameOver; step++) {
@@ -439,7 +439,7 @@ export async function demonstrateConstruction({
             status: maximumDepth >= 3 && rejectedActions === 0 && allTetrominoes ? 'pass' : 'inconclusive',
             maximumDepth,
             cascades,
-            tetrises,
+            quads,
             singles,
             piecesPlaced: trace.length,
             pieceBudget: maxPieces,

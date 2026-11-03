@@ -94,7 +94,7 @@ Medium up.
 ## Reproduce
 
 Playground: `playground.html?effect=luminous-tides&t=24&night=2&quality=High&board=1`, plus
-`event=lock|drop|clear|quad|tspin|perfect|levelUp&eventAge=<s>` (`lines`, `row`, `u`, `color`),
+`event=lock|drop|clear|quad|twist|perfect|levelUp&eventAge=<s>` (`lines`, `row`, `u`, `color`),
 `combo=<n>` (rain from two), `level=<n>`, `night=<0..6>`, `locks=<n>`, `parts=sky,shore,land,glows,rain`,
 `falseColor=1`, `noPost=1`, `P.<TUNE name>=<value>`, `icon=1`.
 
@@ -111,7 +111,7 @@ RTX 3070, board mock on), `ingame.jpg` (the real game on WebGPU: rest, hard drop
 a chain in the rain, four lines at 0.7 s and 2.2 s), `drift.jpg` (the clock alone, below).
 
 - **Playground**, WebGPU (RTX 3070, `nvidia ampere`) and the WebGL2 backend (RTX and SwiftShader):
-  every night, every event at several ages (`lock`, `drop`, `clear`, `quad`, `tspin`, `perfect`,
+  every night, every event at several ages (`lock`, `drop`, `clear`, `quad`, `twist`, `perfect`,
   `levelUp`, a held chain of six), the Minimal and Low tiers, `falseColor=1` (only the sparks and
   the wave cores pass the bloom knee), a phone frame (390 × 844) and a wide one. Clean consoles.
 - **The real game**, single player on the dev server with real hard drops and the app's own bus

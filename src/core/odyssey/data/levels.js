@@ -437,7 +437,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: null,
             },
             bonuses: [
-                { type: 'tetris-count', target: 3, description: 'Clear 3 Quads' },
+                { type: 'quad-count', target: 3, description: 'Clear 3 Quads' },
             ],
         },
 
@@ -447,8 +447,8 @@ const BASE_LEVEL_CONFIGS = [
 
         stars: {
             one: { lines: 20 },
-            two: { lines: 20, tetrises: 2 },
-            three: { lines: 20, tetrises: 4, time: 120 },
+            two: { lines: 20, quads: 2 },
+            three: { lines: 20, quads: 4, time: 120 },
         },
 
         metadata: {
@@ -636,7 +636,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: null,
             },
             bonuses: [
-                { type: 'tetris-count', target: 4, description: 'Clear 4 Quads' },
+                { type: 'quad-count', target: 4, description: 'Clear 4 Quads' },
             ],
         },
 
@@ -646,8 +646,8 @@ const BASE_LEVEL_CONFIGS = [
 
         stars: {
             one: { score: 10000 },
-            two: { score: 15000, tetrises: 2 },
-            three: { score: 20000, tetrises: 5 },
+            two: { score: 15000, quads: 2 },
+            three: { score: 20000, quads: 5 },
         },
 
         metadata: {
@@ -769,7 +769,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: 240,
             },
             bonuses: [
-                { type: 'tetris-count', target: 8, description: 'Clear 8 Quads' },
+                { type: 'quad-count', target: 8, description: 'Clear 8 Quads' },
                 { type: 'time', target: 180, description: 'Complete in under 3 minutes' },
             ],
         },
@@ -780,8 +780,8 @@ const BASE_LEVEL_CONFIGS = [
 
         stars: {
             one: { lines: 50 },
-            two: { lines: 50, tetrises: 5 },
-            three: { lines: 50, tetrises: 10, time: 150 },
+            two: { lines: 50, quads: 5 },
+            three: { lines: 50, quads: 10, time: 150 },
         },
 
         metadata: {
@@ -902,7 +902,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: null,
             },
             bonuses: [
-                { type: 'tetris-count', target: 5, description: 'Clear 5 Quads' },
+                { type: 'quad-count', target: 5, description: 'Clear 5 Quads' },
                 { type: 'combo', target: 4, description: 'Reach 4x combo' },
             ],
         },
@@ -913,8 +913,8 @@ const BASE_LEVEL_CONFIGS = [
 
         stars: {
             one: { score: 12000 },
-            two: { score: 18000, tetrises: 3 },
-            three: { score: 25000, tetrises: 6, combo: 5 },
+            two: { score: 18000, quads: 3 },
+            three: { score: 25000, quads: 6, combo: 5 },
         },
 
         metadata: {
@@ -1102,7 +1102,7 @@ const BASE_LEVEL_CONFIGS = [
             },
             bonuses: [
                 { type: 'cascade', target: 6, description: 'Trigger 6 cascades' },
-                { type: 'tetris-count', target: 5, description: 'Clear 5 Quads' },
+                { type: 'quad-count', target: 5, description: 'Clear 5 Quads' },
             ],
         },
 
@@ -1113,7 +1113,7 @@ const BASE_LEVEL_CONFIGS = [
         stars: {
             one: { score: 20000 },
             two: { score: 30000, cascades: 4 },
-            three: { score: 40000, cascades: 8, tetrises: 6 },
+            three: { score: 40000, cascades: 8, quads: 6 },
         },
 
         metadata: {
@@ -1169,7 +1169,7 @@ const BASE_LEVEL_CONFIGS = [
             },
             bonuses: [
                 { type: 'no-singles', description: 'No single line clears' },
-                { type: 'tetris-count', target: 8, description: 'Clear 8 Quads' },
+                { type: 'quad-count', target: 8, description: 'Clear 8 Quads' },
             ],
         },
 
@@ -1179,8 +1179,8 @@ const BASE_LEVEL_CONFIGS = [
 
         stars: {
             one: { lines: 50 },
-            two: { lines: 50, tetrises: 5 },
-            three: { lines: 50, tetrises: 10, bonuses: 2 },
+            two: { lines: 50, quads: 5 },
+            three: { lines: 50, quads: 10, bonuses: 2 },
         },
 
         metadata: {
@@ -1303,7 +1303,7 @@ const BASE_LEVEL_CONFIGS = [
             },
             bonuses: [
                 { type: 'cascade', target: 10, description: 'Trigger 10 cascades' },
-                { type: 'tetris-count', target: 8, description: 'Clear 8 Quads' },
+                { type: 'quad-count', target: 8, description: 'Clear 8 Quads' },
                 { type: 'time', target: 180, description: 'Complete in under 3 minutes' },
             ],
         },
@@ -1315,7 +1315,7 @@ const BASE_LEVEL_CONFIGS = [
         stars: {
             one: { score: 35000 },
             two: { score: 50000, cascades: 8 },
-            three: { score: 70000, cascades: 12, tetrises: 10 },
+            three: { score: 70000, cascades: 12, quads: 10 },
         },
 
         metadata: {
@@ -1439,7 +1439,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: null,
             },
             bonuses: [
-                { type: 'tetris-count', target: 6, description: 'Clear 6 Quads' },
+                { type: 'quad-count', target: 6, description: 'Clear 6 Quads' },
             ],
         },
 
@@ -1449,8 +1449,8 @@ const BASE_LEVEL_CONFIGS = [
 
         stars: {
             one: { score: 18000 },
-            two: { score: 25000, tetrises: 4 },
-            three: { score: 35000, tetrises: 8 },
+            two: { score: 25000, quads: 4 },
+            three: { score: 35000, quads: 8 },
         },
 
         metadata: {
@@ -1638,7 +1638,7 @@ const BASE_LEVEL_CONFIGS = [
             },
             bonuses: [
                 { type: 'cascade', target: 8, description: 'Trigger 8 cascades' },
-                { type: 'tetris-count', target: 6, description: 'Clear 6 Quads' },
+                { type: 'quad-count', target: 6, description: 'Clear 6 Quads' },
             ],
         },
 
@@ -1649,7 +1649,7 @@ const BASE_LEVEL_CONFIGS = [
         stars: {
             one: { score: 25000 },
             two: { score: 35000, cascades: 6 },
-            three: { score: 50000, cascades: 10, tetrises: 8 },
+            three: { score: 50000, cascades: 10, quads: 8 },
         },
 
         metadata: {
@@ -1705,7 +1705,7 @@ const BASE_LEVEL_CONFIGS = [
             },
             bonuses: [
                 { type: 'time', target: 90, description: 'Complete in under 90 seconds' },
-                { type: 'tetris-count', target: 4, description: 'Clear 4 Quads' },
+                { type: 'quad-count', target: 4, description: 'Clear 4 Quads' },
             ],
         },
 
@@ -1718,8 +1718,8 @@ const BASE_LEVEL_CONFIGS = [
             one: { lines: 30 },
             // 2 stars: Clear 30 lines in under 2 minutes
             two: { lines: 30, time: 120 },
-            // 3 stars: Clear 30 lines in 90s + 4 tetrises (more achievable with starting garbage)
-            three: { lines: 30, time: 90, tetrises: 4 },
+            // 3 stars: Clear 30 lines in 90s + 4 quads (more achievable with starting garbage)
+            three: { lines: 30, time: 90, quads: 4 },
         },
 
         metadata: {
@@ -1842,7 +1842,7 @@ const BASE_LEVEL_CONFIGS = [
             },
             bonuses: [
                 { type: 'cascade', target: 12, description: 'Trigger 12 cascades' },
-                { type: 'tetris-count', target: 10, description: 'Clear 10 Quads' },
+                { type: 'quad-count', target: 10, description: 'Clear 10 Quads' },
                 { type: 'time', target: 180, description: 'Complete in under 3 minutes' },
             ],
         },
@@ -1854,7 +1854,7 @@ const BASE_LEVEL_CONFIGS = [
         stars: {
             one: { score: 50000 },
             two: { score: 70000, cascades: 10 },
-            three: { score: 100000, cascades: 15, tetrises: 12 },
+            three: { score: 100000, cascades: 15, quads: 12 },
         },
 
         metadata: {
@@ -1975,7 +1975,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: null,
             },
             bonuses: [
-                { type: 'tetris-count', target: 7, description: 'Clear 7 Quads' },
+                { type: 'quad-count', target: 7, description: 'Clear 7 Quads' },
                 { type: 'combo', target: 5, description: 'Reach 5x combo' },
             ],
         },
@@ -1986,8 +1986,8 @@ const BASE_LEVEL_CONFIGS = [
 
         stars: {
             one: { score: 22000 },
-            two: { score: 32000, tetrises: 5 },
-            three: { score: 45000, tetrises: 9, combo: 7 },
+            two: { score: 32000, quads: 5 },
+            three: { score: 45000, quads: 9, combo: 7 },
         },
 
         metadata: {
@@ -2175,7 +2175,7 @@ const BASE_LEVEL_CONFIGS = [
             },
             bonuses: [
                 { type: 'cascade', target: 10, description: 'Trigger 10 cascades' },
-                { type: 'tetris-count', target: 8, description: 'Clear 8 Quads' },
+                { type: 'quad-count', target: 8, description: 'Clear 8 Quads' },
             ],
         },
 
@@ -2186,7 +2186,7 @@ const BASE_LEVEL_CONFIGS = [
         stars: {
             one: { score: 35000 },
             two: { score: 50000, cascades: 8 },
-            three: { score: 70000, cascades: 12, tetrises: 10 },
+            three: { score: 70000, cascades: 12, quads: 10 },
         },
 
         metadata: {
@@ -2312,7 +2312,7 @@ const BASE_LEVEL_CONFIGS = [
             },
             bonuses: [
                 { type: 'cascade', target: 15, description: 'Trigger 15 cascades' },
-                { type: 'tetris-count', target: 12, description: 'Clear 12 Quads' },
+                { type: 'quad-count', target: 12, description: 'Clear 12 Quads' },
             ],
         },
 
@@ -2323,7 +2323,7 @@ const BASE_LEVEL_CONFIGS = [
         stars: {
             one: { score: 60000 },
             two: { score: 85000, cascades: 12 },
-            three: { score: 120000, cascades: 18, tetrises: 15 },
+            three: { score: 120000, cascades: 18, quads: 15 },
         },
 
         metadata: {
@@ -2378,7 +2378,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: null,
             },
             bonuses: [
-                { type: 'tetris-count', target: 8, description: 'Clear 8 Quads' },
+                { type: 'quad-count', target: 8, description: 'Clear 8 Quads' },
                 { type: 'combo', target: 6, description: 'Reach 6x combo' },
             ],
         },
@@ -2389,8 +2389,8 @@ const BASE_LEVEL_CONFIGS = [
 
         stars: {
             one: { score: 30000 },
-            two: { score: 45000, tetrises: 6 },
-            three: { score: 65000, tetrises: 10, combo: 8 },
+            two: { score: 45000, quads: 6 },
+            three: { score: 65000, quads: 10, combo: 8 },
         },
 
         metadata: {
@@ -2581,7 +2581,7 @@ const BASE_LEVEL_CONFIGS = [
             },
             bonuses: [
                 { type: 'cascade', target: 10, description: 'Trigger 10 cascades' },
-                { type: 'tetris-count', target: 10, description: 'Clear 10 Quads' },
+                { type: 'quad-count', target: 10, description: 'Clear 10 Quads' },
             ],
         },
 
@@ -2592,7 +2592,7 @@ const BASE_LEVEL_CONFIGS = [
         stars: {
             one: { score: 45000 },
             two: { score: 65000, cascades: 8 },
-            three: { score: 90000, cascades: 12, tetrises: 12 },
+            three: { score: 90000, cascades: 12, quads: 12 },
         },
 
         metadata: {
@@ -2647,7 +2647,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: null,
             },
             bonuses: [
-                { type: 'tetris-count', target: 12, description: 'Clear 12 Quads' },
+                { type: 'quad-count', target: 12, description: 'Clear 12 Quads' },
                 { type: 'combo', target: 8, description: 'Reach 8x combo' },
             ],
         },
@@ -2658,8 +2658,8 @@ const BASE_LEVEL_CONFIGS = [
 
         stars: {
             one: { score: 80000 },
-            two: { score: 120000, tetrises: 10 },
-            three: { score: 180000, tetrises: 15, combo: 10 },
+            two: { score: 120000, quads: 10 },
+            three: { score: 180000, quads: 15, combo: 10 },
         },
 
         metadata: {
@@ -2714,7 +2714,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: 180,
             },
             bonuses: [
-                { type: 'tetris-count', target: 10, description: 'Clear 10 Quads' },
+                { type: 'quad-count', target: 10, description: 'Clear 10 Quads' },
                 { type: 'time', target: 140, description: 'Finish with 40+ seconds left' },
             ],
         },
@@ -2726,10 +2726,10 @@ const BASE_LEVEL_CONFIGS = [
         stars: {
             // 1 star: Clear 60 lines before time runs out
             one: { lines: 60 },
-            // 2 stars: Clear 60 lines + get 8 tetrises (efficient clearing)
-            two: { lines: 60, tetrises: 8 },
-            // 3 stars: Clear 60 lines + 12 tetrises + finish fast (use victory lap for extras)
-            three: { lines: 60, tetrises: 12, time: 120 },
+            // 2 stars: Clear 60 lines + get 8 quads (efficient clearing)
+            two: { lines: 60, quads: 8 },
+            // 3 stars: Clear 60 lines + 12 quads + finish fast (use victory lap for extras)
+            three: { lines: 60, quads: 12, time: 120 },
         },
 
         metadata: {
@@ -2767,7 +2767,7 @@ const BASE_LEVEL_CONFIGS = [
             primary: { type: 'score', target: 38000 },
             failure: { type: 'top-out', value: null },
             bonuses: [
-                { type: 'tetris-count', target: 8, description: 'Clear 8 Quads' },
+                { type: 'quad-count', target: 8, description: 'Clear 8 Quads' },
                 { type: 'combo', target: 6, description: 'Reach 6x combo' },
             ],
         },
@@ -2776,8 +2776,8 @@ const BASE_LEVEL_CONFIGS = [
 
         stars: {
             one: { score: 38000 },
-            two: { score: 55000, tetrises: 6 },
-            three: { score: 75000, tetrises: 10, combo: 8 },
+            two: { score: 55000, quads: 6 },
+            three: { score: 75000, quads: 10, combo: 8 },
         },
 
         metadata: {
@@ -2811,7 +2811,7 @@ const BASE_LEVEL_CONFIGS = [
             primary: { type: 'lines', target: 40 },
             failure: { type: 'top-out', value: null },
             bonuses: [
-                { type: 'tetris-count', target: 6, description: 'Clear 6 Quads' },
+                { type: 'quad-count', target: 6, description: 'Clear 6 Quads' },
                 { type: 'combo', target: 7, description: 'Reach 7x combo' },
             ],
         },
@@ -2820,8 +2820,8 @@ const BASE_LEVEL_CONFIGS = [
 
         stars: {
             one: { lines: 40 },
-            two: { lines: 40, tetrises: 5 },
-            three: { lines: 40, tetrises: 8, combo: 8 },
+            two: { lines: 40, quads: 5 },
+            three: { lines: 40, quads: 8, combo: 8 },
         },
 
         metadata: {
@@ -2855,7 +2855,7 @@ const BASE_LEVEL_CONFIGS = [
             primary: { type: 'score', target: 50000 },
             failure: { type: 'top-out', value: null },
             bonuses: [
-                { type: 'tetris-count', target: 10, description: 'Clear 10 Quads' },
+                { type: 'quad-count', target: 10, description: 'Clear 10 Quads' },
                 { type: 'combo', target: 8, description: 'Reach 8x combo' },
             ],
         },
@@ -2864,8 +2864,8 @@ const BASE_LEVEL_CONFIGS = [
 
         stars: {
             one: { score: 50000 },
-            two: { score: 70000, tetrises: 8 },
-            three: { score: 95000, tetrises: 12, combo: 9 },
+            two: { score: 70000, quads: 8 },
+            three: { score: 95000, quads: 12, combo: 9 },
         },
 
         metadata: {
@@ -2900,7 +2900,7 @@ const BASE_LEVEL_CONFIGS = [
             failure: { type: 'top-out', value: null },
             bonuses: [
                 { type: 'combo', target: 6, description: 'Reach 6x combo' },
-                { type: 'tetris-count', target: 6, description: 'Clear 6 Quads' },
+                { type: 'quad-count', target: 6, description: 'Clear 6 Quads' },
             ],
         },
 
@@ -2909,7 +2909,7 @@ const BASE_LEVEL_CONFIGS = [
         stars: {
             one: { score: 32000 },
             two: { score: 46000, combo: 6 },
-            three: { score: 62000, combo: 8, tetrises: 8 },
+            three: { score: 62000, combo: 8, quads: 8 },
         },
 
         metadata: {
@@ -2965,7 +2965,7 @@ const BASE_LEVEL_CONFIGS = [
             },
             bonuses: [
                 { type: 'cascade', target: 18, description: 'Trigger 18 cascades' },
-                { type: 'tetris-count', target: 15, description: 'Clear 15 Quads' },
+                { type: 'quad-count', target: 15, description: 'Clear 15 Quads' },
             ],
         },
 
@@ -2976,7 +2976,7 @@ const BASE_LEVEL_CONFIGS = [
         stars: {
             one: { score: 80000 },
             two: { score: 120000, cascades: 15 },
-            three: { score: 180000, cascades: 22, tetrises: 18 },
+            three: { score: 180000, cascades: 22, quads: 18 },
         },
 
         metadata: {
@@ -3166,7 +3166,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: null,
             },
             bonuses: [
-                { type: 'tetris-count', target: 12, description: 'Clear 12 Quads' },
+                { type: 'quad-count', target: 12, description: 'Clear 12 Quads' },
                 { type: 'combo', target: 8, description: 'Reach 8x combo' },
             ],
         },
@@ -3177,8 +3177,8 @@ const BASE_LEVEL_CONFIGS = [
 
         stars: {
             one: { score: 40000 },
-            two: { score: 60000, tetrises: 10 },
-            three: { score: 85000, tetrises: 15, combo: 10 },
+            two: { score: 60000, quads: 10 },
+            three: { score: 85000, quads: 15, combo: 10 },
         },
 
         metadata: {
@@ -3234,7 +3234,7 @@ const BASE_LEVEL_CONFIGS = [
             },
             bonuses: [
                 { type: 'cascade', target: 12, description: 'Trigger 12 cascades' },
-                { type: 'tetris-count', target: 10, description: 'Clear 10 Quads' },
+                { type: 'quad-count', target: 10, description: 'Clear 10 Quads' },
             ],
         },
 
@@ -3245,7 +3245,7 @@ const BASE_LEVEL_CONFIGS = [
         stars: {
             one: { score: 55000 },
             two: { score: 80000, cascades: 10 },
-            three: { score: 110000, cascades: 15, tetrises: 12 },
+            three: { score: 110000, cascades: 15, quads: 12 },
         },
 
         metadata: {
@@ -3439,7 +3439,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: 180,
             },
             bonuses: [
-                { type: 'tetris-count', target: 15, description: 'Clear 15 Quads' },
+                { type: 'quad-count', target: 15, description: 'Clear 15 Quads' },
                 { type: 'time', target: 120, description: 'Complete in under 2 minutes' },
             ],
         },
@@ -3450,8 +3450,8 @@ const BASE_LEVEL_CONFIGS = [
 
         stars: {
             one: { lines: 70 },
-            two: { lines: 70, tetrises: 12 },
-            three: { lines: 70, tetrises: 18, time: 100 },
+            two: { lines: 70, quads: 12 },
+            three: { lines: 70, quads: 18, time: 100 },
         },
 
         metadata: {
@@ -3577,7 +3577,7 @@ const BASE_LEVEL_CONFIGS = [
             bonuses: [
                 { type: 'max-cascade-depth', target: 10, description: 'Trigger a 10-chain cascade' },
                 { type: 'cascade', target: 30, description: 'Trigger 30 cascades' },
-                { type: 'tetris-count', target: 20, description: 'Clear 20 Quads' },
+                { type: 'quad-count', target: 20, description: 'Clear 20 Quads' },
                 { type: 'combo', target: 18, description: 'Reach 18x combo' },
             ],
         },
@@ -3646,7 +3646,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: null,
             },
             bonuses: [
-                { type: 'tetris-count', target: 8, description: 'Clear 8 Quads' },
+                { type: 'quad-count', target: 8, description: 'Clear 8 Quads' },
                 { type: 'combo', target: 8, description: 'Reach 8x combo' },
             ],
         },
@@ -3657,9 +3657,9 @@ const BASE_LEVEL_CONFIGS = [
 
         stars: {
             one: { lines: 50 },
-            two: { lines: 50, tetrises: 6, time: 240 },
+            two: { lines: 50, quads: 6, time: 240 },
             three: {
-                lines: 50, tetrises: 8, combo: 8, time: 180,
+                lines: 50, quads: 8, combo: 8, time: 180,
             },
         },
 
@@ -3784,7 +3784,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: 300,
             },
             bonuses: [
-                { type: 'tetris-count', target: 12, description: 'Clear 12 Quads' },
+                { type: 'quad-count', target: 12, description: 'Clear 12 Quads' },
                 { type: 'max-cascade-depth', target: 5, description: 'Trigger a 5-chain cascade' },
             ],
         },
@@ -3795,9 +3795,9 @@ const BASE_LEVEL_CONFIGS = [
 
         stars: {
             one: { lines: 60 },
-            two: { lines: 60, tetrises: 10, cascades: 8 },
+            two: { lines: 60, quads: 10, cascades: 8 },
             three: {
-                lines: 60, tetrises: 12, maxCascadeDepth: 5, time: 240,
+                lines: 60, quads: 12, maxCascadeDepth: 5, time: 240,
             },
         },
 
@@ -4008,13 +4008,13 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
         victory: {
             bonuses: [
-                { type: 'tetris-count', target: 2, description: 'Clear 2 Quads' },
+                { type: 'quad-count', target: 2, description: 'Clear 2 Quads' },
             ],
         },
         stars: {
             one: { lines: 20 },
-            two: { lines: 20, tetrises: 1 },
-            three: { lines: 20, tetrises: 2, time: 150 },
+            two: { lines: 20, quads: 1 },
+            three: { lines: 20, quads: 2, time: 150 },
         },
         metadata: {
             difficulty: 3,
@@ -4073,8 +4073,8 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
         stars: {
             one: { score: 14000 },
-            two: { score: 20000, tetrises: 2 },
-            three: { score: 28000, tetrises: 4, combo: 4 },
+            two: { score: 20000, quads: 2 },
+            three: { score: 28000, quads: 4, combo: 4 },
         },
         metadata: {
             difficulty: 5,
@@ -4141,8 +4141,8 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
         stars: {
             one: { score: 15000 },
-            two: { score: 22000, tetrises: 3 },
-            three: { score: 30000, tetrises: 5, combo: 5 },
+            two: { score: 22000, quads: 3 },
+            three: { score: 30000, quads: 5, combo: 5 },
         },
         metadata: {
             difficulty: 5,
@@ -4172,7 +4172,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         stars: {
             one: { score: 22000 },
             two: { score: 32000, cascades: 4 },
-            three: { score: 42000, cascades: 6, tetrises: 6 },
+            three: { score: 42000, cascades: 6, quads: 6 },
         },
     },
     18: {
@@ -4182,13 +4182,13 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             },
             bonuses: [
                 { type: 'no-singles', description: 'No single line clears' },
-                { type: 'tetris-count', target: 6, description: 'Clear 6 Quads' },
+                { type: 'quad-count', target: 6, description: 'Clear 6 Quads' },
             ],
         },
         stars: {
             one: { lines: 45 },
-            two: { lines: 45, tetrises: 4 },
-            three: { lines: 45, tetrises: 6, bonuses: 2 },
+            two: { lines: 45, quads: 4 },
+            three: { lines: 45, quads: 6, bonuses: 2 },
         },
         metadata: {
             difficulty: 5,
@@ -4220,7 +4220,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             },
             bonuses: [
                 { type: 'cascade', target: 6, description: 'Trigger 6 cascades' },
-                { type: 'tetris-count', target: 4, description: 'Clear 4 Quads' },
+                { type: 'quad-count', target: 4, description: 'Clear 4 Quads' },
             ],
         },
         modifiers: {
@@ -4229,7 +4229,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         stars: {
             one: { score: 22000 },
             two: { score: 30000, cascades: 3 },
-            three: { score: 42000, cascades: 5, tetrises: 5 },
+            three: { score: 42000, cascades: 5, quads: 5 },
         },
         metadata: {
             difficulty: 5,
@@ -4309,7 +4309,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             },
             bonuses: [
                 { type: 'cascade', target: 10, description: 'Trigger 10 cascades' },
-                { type: 'tetris-count', target: 8, description: 'Clear 8 Quads' },
+                { type: 'quad-count', target: 8, description: 'Clear 8 Quads' },
             ],
         },
         modifiers: {
@@ -4318,7 +4318,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         stars: {
             one: { score: 34000 },
             two: { score: 47000, cascades: 7 },
-            three: { score: 62000, cascades: 9, tetrises: 7 },
+            three: { score: 62000, cascades: 9, quads: 7 },
         },
         metadata: {
             difficulty: 6,
@@ -4358,8 +4358,8 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
         stars: {
             one: { score: 20000 },
-            two: { score: 30000, tetrises: 4 },
-            three: { score: 40000, tetrises: 7, combo: 6 },
+            two: { score: 30000, quads: 4 },
+            three: { score: 40000, quads: 7, combo: 6 },
         },
         metadata: {
             difficulty: 6,
@@ -4395,7 +4395,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         stars: {
             one: { score: 32000 },
             two: { score: 45000, cascades: 8 },
-            three: { score: 65000, cascades: 12, tetrises: 10 },
+            three: { score: 65000, cascades: 12, quads: 10 },
         },
         metadata: {
             difficulty: 7,
@@ -4416,8 +4416,8 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
         stars: {
             one: { score: 28000 },
-            two: { score: 42000, tetrises: 5 },
-            three: { score: 60000, tetrises: 9, combo: 8 },
+            two: { score: 42000, quads: 5 },
+            three: { score: 60000, quads: 9, combo: 8 },
         },
         metadata: {
             difficulty: 8,
@@ -4431,8 +4431,8 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
         stars: {
             one: { score: 70000 },
-            two: { score: 110000, tetrises: 9 },
-            three: { score: 160000, tetrises: 14, combo: 10 },
+            two: { score: 110000, quads: 9 },
+            three: { score: 160000, quads: 14, combo: 10 },
         },
     },
     41: {
@@ -4443,8 +4443,8 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
         stars: {
             one: { lines: 52 },
-            two: { lines: 52, tetrises: 8 },
-            three: { lines: 60, tetrises: 12, time: 120 },
+            two: { lines: 52, quads: 8 },
+            three: { lines: 60, quads: 12, time: 120 },
         },
     },
     47: {
@@ -4487,8 +4487,8 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
         stars: {
             one: { score: 36000 },
-            two: { score: 52000, tetrises: 8 },
-            three: { score: 72000, tetrises: 12, combo: 8 },
+            two: { score: 52000, quads: 8 },
+            three: { score: 72000, quads: 12, combo: 8 },
         },
         metadata: {
             difficulty: 8,
@@ -4547,8 +4547,8 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
         stars: {
             one: { lines: 60 },
-            two: { lines: 60, tetrises: 10 },
-            three: { lines: 60, tetrises: 14, time: 115 },
+            two: { lines: 60, quads: 10 },
+            three: { lines: 60, quads: 14, time: 115 },
         },
         metadata: {
             difficulty: 9,
@@ -4616,7 +4616,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             bonuses: [
                 { type: 'max-cascade-depth', target: 10, description: 'Trigger a 10-chain cascade' },
                 { type: 'cascade', target: 30, description: 'Trigger 30 cascades' },
-                { type: 'tetris-count', target: 20, description: 'Clear 20 Quads' },
+                { type: 'quad-count', target: 20, description: 'Clear 20 Quads' },
                 { type: 'combo', target: 18, description: 'Reach 18x combo' },
             ],
         },
@@ -4813,14 +4813,14 @@ const MASTERY_RETUNE = Object.freeze({
     49: Object.freeze({
         victory: {
             bonuses: [
-                { type: 'tetris-count', target: 10, description: 'Clear 10 Quads' },
+                { type: 'quad-count', target: 10, description: 'Clear 10 Quads' },
                 { type: 'max-cascade-depth', target: 5, description: 'Trigger a 5-wave chain' },
             ],
         },
         stars: {
             one: { score: 36000 },
-            two: { score: 36000, tetrises: 8 },
-            three: { score: 36000, tetrises: 10, maxCascadeDepth: 5 },
+            two: { score: 36000, quads: 8 },
+            three: { score: 36000, quads: 10, maxCascadeDepth: 5 },
         },
     }),
     55: Object.freeze({
@@ -4828,7 +4828,7 @@ const MASTERY_RETUNE = Object.freeze({
             bonuses: [
                 { type: 'max-cascade-depth', target: 6, description: 'Trigger a 6-wave chain' },
                 { type: 'cascade', target: 25, description: 'Trigger 25 cascades' },
-                { type: 'tetris-count', target: 12, description: 'Clear 12 Quads' },
+                { type: 'quad-count', target: 12, description: 'Clear 12 Quads' },
             ],
         },
         stars: {

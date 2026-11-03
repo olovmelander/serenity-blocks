@@ -322,7 +322,7 @@ move for long.
 
 Playground: `npm run dev:playground`, then
 `/playground.html?effect=ocean&t=20&quality=High&board=1` plus
-`event=lock|drop|clear|quad|tspin|perfect|levelUp|break`, `eventAge=<s>`, `lines=`, `row=`, `u=`,
+`event=lock|drop|clear|quad|twist|perfect|levelUp|break`, `eventAge=<s>`, `lines=`, `row=`, `u=`,
 `color=<hex>`, `combo=<n>`, `locks=<n>`, `pass=turtle|manta|whale|whaleFar&passAge=<s>`,
 `visit=<act>&visitK=<0..1>|visitAge=<s>&visitSide=±1&visitSeed=<n>`, `visits=0|1`,
 `hour=<place>` (0 high sun … 5 first light), `level=<n>`, `shafts=0`, `noPost=1`,

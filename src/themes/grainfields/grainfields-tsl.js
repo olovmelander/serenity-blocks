@@ -137,7 +137,7 @@ export function createNoiseTexture(data = noiseData()) {
 export const GAPS = 16;
 /** Trails of wind the clears send across the fields at once (each three rows in `trails`): six, and three fading. */
 export const TRAILS = 9;
-/** Pulses of wind in the grain at once (a hard drop's ring, a T-spin's whirl, a level's wave): six, and three fading. */
+/** Pulses of wind in the grain at once (a hard drop's ring, a twist's whirl, a level's wave): six, and three fading. */
 export const PULSES = 9;
 /** Gaps whose shafts stand in the air in front of the fells at the storm break. */
 export const RAYS = 4;

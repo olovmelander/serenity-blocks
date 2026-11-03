@@ -79,7 +79,7 @@ function begin({ world, camera }, time = START) {
     world.update(sim(time, 0), camera);
 }
 
-/** The eye's Euler z with no T-spin roll at the world's time: its level pose under the shared camera breath. */
+/** The eye's Euler z with no twist roll at the world's time: its level pose under the shared camera breath. */
 function levelRoll({ world }) {
     const level = new THREE.PerspectiveCamera();
     world.pose(level, world.time);
@@ -163,7 +163,7 @@ function play(w) {
             distance: 12,
         });
         world.onClear({
-            lines: 1, combo: n, tspin: n === 4, rowCodes: rowsOf(1, n % 7),
+            lines: 1, combo: n, twist: n === 4, rowCodes: rowsOf(1, n % 7),
         });
         world.onCombo(n);
         stepTo(w, world.time + 0.8);
@@ -717,25 +717,25 @@ describe('KaleidosonicWorld: the chain folds the lens', () => {
         });
     });
 
-    it('rolls the eye a full turn on a T-spin and comes back level; one mid-roll spins it a turn further', () => {
+    it('rolls the eye a full turn on a twist and comes back level; one mid-roll spins it a turn further', () => {
         withWorld((w) => {
             const { world, camera } = w;
             begin(w);
             expect(camera.rotation.z).toBeCloseTo(levelRoll(w), 12);
-            world.onClear({ lines: 2, combo: 1, tspin: true });
-            expect(world.counts.tspins).toBe(1);
+            world.onClear({ lines: 2, combo: 1, twist: true });
+            expect(world.counts.twists).toBe(1);
             stepTo(w, START + TIMING.roll * 0.5);
             expect(Math.abs(camera.rotation.z)).toBeGreaterThan(0.5);
             stepTo(w, START + TIMING.roll + 0.05);
             expect(camera.rotation.z).toBeCloseTo(levelRoll(w), 12);
-            // A second T-spin mid-roll is not dropped: the roll carries on without a jump, one
+            // A second twist mid-roll is not dropped: the roll carries on without a jump, one
             // turn further, and lands level.
             begin(w);
-            world.onClear({ lines: 2, combo: 1, tspin: true });
+            world.onClear({ lines: 2, combo: 1, twist: true });
             stepTo(w, START + TIMING.roll * 0.5);
             const { angle, speed } = { ...world.rollState(world.time) };
-            world.onTSpin();
-            expect(world.counts.tspins).toBe(2);
+            world.onTwist();
+            expect(world.counts.twists).toBe(2);
             const again = world.rollState(world.time);
             expect(again.angle).toBeCloseTo(angle, 12);
             expect(again.speed).toBeCloseTo(speed, 12);
@@ -754,12 +754,12 @@ describe('KaleidosonicWorld: the chain folds the lens', () => {
         });
     });
 
-    it('rocks the eye a little on a T-spin that clears nothing, and settles level', () => {
+    it('rocks the eye a little on a twist that clears nothing, and settles level', () => {
         withWorld((w) => {
             const { world, camera } = w;
             begin(w);
-            world.onClear({ lines: 0, combo: 1, tspin: true });
-            expect(world.counts).toMatchObject({ tspins: 1, clears: 0 });
+            world.onClear({ lines: 0, combo: 1, twist: true });
+            expect(world.counts).toMatchObject({ twists: 1, clears: 0 });
             let peak = 0;
             stepTo(w, START + world.rollDur + 0.05, 1 / 60, () => {
                 peak = Math.max(peak, Math.abs(world.rollState(world.time).angle));
@@ -770,7 +770,7 @@ describe('KaleidosonicWorld: the chain folds the lens', () => {
             // A small chord sounds in the T's colour; nothing refolds.
             expect(world.refoldIndex).toBe(0);
             begin(w);
-            world.onClear({ lines: 0, combo: 1, tspin: true });
+            world.onClear({ lines: 0, combo: 1, twist: true });
             stepTo(w, START + 0.2);
             const [chord] = harmonicRows(world);
             chord.rgb.forEach((v, i) => expect(v).toBeCloseTo(hexToLinear(PIECE_COLORS[PIECE_CODE.T])[i], 9));
@@ -782,8 +782,8 @@ describe('KaleidosonicWorld: the chain folds the lens', () => {
             const { world, camera } = w;
             begin(w);
             world.setReducedMotion(true);
-            world.onClear({ lines: 4, combo: 1, tspin: true });
-            expect(world.counts).toMatchObject({ quads: 1, tspins: 1, dives: 0 });
+            world.onClear({ lines: 4, combo: 1, twist: true });
+            expect(world.counts).toMatchObject({ quads: 1, twists: 1, dives: 0 });
             stepTo(w, START + TIMING.dive, 1 / 30, () => {
                 expect(world.diveTravel).toBe(0);
                 expect(camera.rotation.z).toBe(0);
@@ -802,7 +802,7 @@ describe('KaleidosonicWorld: the chain folds the lens', () => {
             world.onLock({
                 u: 0.3, rows: [19], hardDrop: true, distance: 16, color: PIECE_COLORS[0], shape: 'I',
             });
-            world.onClear({ lines: 4, combo: 1, tspin: true });
+            world.onClear({ lines: 4, combo: 1, twist: true });
             world.onClear({ lines: 4, combo: 2 });
             stepTo(w, START + TIMING.dive * 0.4);
             expect(world.diveTravel).toBeGreaterThan(0);
@@ -826,7 +826,7 @@ describe('KaleidosonicWorld: the chain folds the lens', () => {
             world.onCombo(FOLD_AT[0]);
             stepTo(w, START + TIMING.foldIn + 0.1);
             expect(world.folds[0]).toBe(1);
-            world.onClear({ lines: 1, combo: FOLD_AT[0], tspin: true });
+            world.onClear({ lines: 1, combo: FOLD_AT[0], twist: true });
             let last = world.u.lens.value.x;
             let turned = 0;
             let largest = 0;
@@ -1190,7 +1190,7 @@ describe('KaleidosonicWorld: determinism and state', () => {
             play(w);
             const first = read(w);
             expect(first.diag.counts).toMatchObject({
-                locks: 7, drops: 1, clears: 8, quads: 1, tspins: 1, perfects: 1, levelUps: 1, dives: 1,
+                locks: 7, drops: 1, clears: 8, quads: 1, twists: 1, perfects: 1, levelUps: 1, dives: 1,
             });
             begin(w);
             play(w);
@@ -1241,7 +1241,7 @@ describe('KaleidosonicWorld: determinism and state', () => {
                 if (frame % 24 === 0) {
                     const lines = 1 + (frame % 4);
                     combo = frame % 480 < 360 ? combo + 1 : 0;
-                    world.onClear({ lines, combo: Math.max(1, combo), tspin: frame % 192 === 0 });
+                    world.onClear({ lines, combo: Math.max(1, combo), twist: frame % 192 === 0 });
                     world.onCombo(combo);
                     world.onB2B(lines === 4 ? Math.min(4, world.b2b + 1) : 0);
                 }
@@ -1517,14 +1517,14 @@ describe('KaleidosonicWorld: fast play builds, it never pops', () => {
     /** The tray's Fever, as the director hands it to the world: twelve clearing locks 0.64 s apart. */
     const fever = (w, each = null) => {
         const { world } = w;
-        const plan = [1, 1, 2, 1, 2, 2, 3, 'tspin', 2, 'cascade', 3, 4];
+        const plan = [1, 1, 2, 1, 2, 2, 3, 'twist', 2, 'cascade', 3, 4];
         plan.forEach((step, n) => {
             if (n > 0) stepTo(w, world.time + 0.64, 1 / 60, each);
             const combo = n + 1;
             world.onLock({
                 u: (n % 5) / 4, rows: [18], color: PIECE_COLORS[n % 7], shape: PIECE_ORDER[n % 7], hardDrop: true,
             });
-            if (step === 'tspin') world.onClear({ lines: 2, combo, tspin: true });
+            if (step === 'twist') world.onClear({ lines: 2, combo, twist: true });
             else if (step === 'cascade') {
                 world.onClear({ lines: 2, combo });
                 for (let wave = 2; wave <= 4; wave++) {

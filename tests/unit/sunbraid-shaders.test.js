@@ -223,7 +223,7 @@ describe.each(TIERS)('sunbraid shaders at %s', (quality) => {
         world.onLock({
             u: 0.7, rows: [9], color: '#3f6fe0', hardDrop: true,
         });
-        world.onClear({ lines: 4, tspin: true, combo: 3 });
+        world.onClear({ lines: 4, twist: true, combo: 3 });
         world.update({ time: 6, delta: 1 / 30 }, camera);
 
         const targets = [];

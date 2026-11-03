@@ -648,7 +648,7 @@ describe('Sunset theme: one node renderer on both backends', () => {
         expect(lock.mock.calls[0][0].u).toBeCloseTo(0.8, 6);
         expect(clear).toHaveBeenCalledOnce();
         expect(clear.mock.calls[0][0]).toMatchObject({
-            lines: 4, rows: [19, 18, 17, 16], tspin: false, perfect: false, player: 0,
+            lines: 4, rows: [19, 18, 17, 16], twist: false, perfect: false, player: 0,
         });
         expect(levelUp).toHaveBeenCalledOnce();
         expect(levelUp).toHaveBeenCalledWith(3);
@@ -657,16 +657,16 @@ describe('Sunset theme: one node renderer on both backends', () => {
         expect(theme.level).toBe(3);
     });
 
-    it('carries a T-spin and a perfect clear to the sky on the clear they belong to', async () => {
+    it('carries a twist and a perfect clear to the sky on the clear they belong to', async () => {
         const { theme } = await startTheme({ quality: 'High' });
         const clear = vi.spyOn(theme.world, 'onClear');
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 2 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 2 });
         eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 1 });
         expect(() => stepFrames(theme, 30)).not.toThrow();
         expect(clear).toHaveBeenCalledOnce();
-        expect(clear.mock.calls[0][0]).toMatchObject({ lines: 2, tspin: true, perfect: true });
+        expect(clear.mock.calls[0][0]).toMatchObject({ lines: 2, twist: true, perfect: true });
         expect(counts(theme).clears).toBe(1);
     });
 

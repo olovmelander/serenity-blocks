@@ -12,7 +12,7 @@
  *    raises it).
  */
 
-/** @typedef {{ id: string, re: RegExp, scope?: (path: string) => boolean, identifierAllowance?: boolean }} IpToken */
+/** @typedef {{ id: string, re: RegExp, scope?: (path: string) => boolean }} IpToken */
 
 /** @type {IpToken[]} */
 export const BLOCKED_TOKENS = [
@@ -25,8 +25,6 @@ export const BLOCKED_TOKENS = [
     { id: 'mononoke', re: /mononoke/gi },
 ];
 
-const IN_RUNTIME_SOURCE = (path) => /^(src|electron)\//.test(path) && /\.(js|mjs|cjs|css|html|json)$/i.test(path);
-
 /** @type {IpToken[]} */
 export const RATCHET_TOKENS = [
     { id: 'ghibli', re: /ghibli|totoro|ponyo|nausica[aä]|laputa|howl['’]?s[\s_-]+moving|spirited[\s_-]+away/gi },
@@ -36,31 +34,13 @@ export const RATCHET_TOKENS = [
     { id: 'hale', re: /\bhale\b/gi },
     { id: 'sky-children', re: /sky[\s_-]?children/gi },
     { id: 'thatgamecompany', re: /thatgamecompany|\babz[uû]\b|journey\s+\((?:game|thatgamecompany)/gi },
-    // The genre mark in runtime source, outside identifiers and string keys (those are save and
-    // replay data: renamed with their migrations). Comments and prose only.
-    { id: 'genre-mark-in-source', re: /tetris|tetrimino/gi, scope: IN_RUNTIME_SOURCE, identifierAllowance: true },
 ];
 
-const IDENT_CHAR = /[A-Za-z0-9_$]/;
-
-/** True when a match is an internal identifier shape that survives into JS (not prose). */
-export function isInternalIdentifierUse(source, index, length) {
-    const before = source[index - 1] ?? '';
-    const after = source[index + length] ?? '';
-    if (IDENT_CHAR.test(before) || IDENT_CHAR.test(after)) return true; // tetrisFlash, _cueTetris, isTetris
-    if (before === '.') return true; // property access: me.tetris, zt.TETRIS
-    if (/^\s*:/.test(source.slice(index + length))) return true; // object key: tetris:{...}
-    if (/["'`]/.test(before) && before === after) return true; // bare string literal: 'tetris'
-    if (/tetris-count/i.test(source.slice(Math.max(0, index - 6), index + length + 6))) return true; // serialized type
-    return false;
-}
-
 /** Matches of one token in a text, as { line, context }. */
-export function findToken(token, source, { allowIdentifiers = token.identifierAllowance === true } = {}) {
+export function findToken(token, source) {
     const hits = [];
     token.re.lastIndex = 0;
     for (const match of source.matchAll(token.re)) {
-        if (allowIdentifiers && isInternalIdentifierUse(source, match.index, match[0].length)) continue;
         const start = Math.max(0, match.index - 24);
         hits.push({
             line: source.slice(0, match.index).split('\n').length,
@@ -85,7 +65,7 @@ export function countTokens(tokens, paths, readText) {
             if (token.scope && !token.scope(path)) continue;
             const entry = result.get(token.id);
             if (!token.scope) {
-                const named = findToken(token, path, { allowIdentifiers: false });
+                const named = findToken(token, path);
                 if (named.length) {
                     entry.count += named.length;
                     entry.hits.push(`${path} (file name)`);

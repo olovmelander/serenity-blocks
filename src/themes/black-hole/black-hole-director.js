@@ -273,7 +273,7 @@ function makeBoard() {
         clearY: null,
         cascade: 1,
         advanced: false,
-        tspin: false,
+        twist: false,
         b2b: false,
         perfect: false,
         levelUp: false,
@@ -289,7 +289,7 @@ function clearPending(board) {
     board.clearY = null;
     board.cascade = 1;
     board.advanced = false;
-    board.tspin = false;
+    board.twist = false;
     board.b2b = false;
     board.perfect = false;
     board.levelUp = false;
@@ -465,10 +465,10 @@ export class BlackHoleDirector {
         board.cascade = Math.max(board.cascade, depth);
     }
 
-    onTSpin(payload) {
+    onTwist(payload) {
         const board = this.boardFor(payload);
         board.pending = true;
-        board.tspin = true;
+        board.twist = true;
     }
 
     /** The bus `B2B` event: a second difficult clear in a row. `active: false` is not one. */
@@ -631,7 +631,7 @@ export class BlackHoleDirector {
     resolve(board) {
         const scale = this.reducedMotion ? REDUCED_MOTION_SCALE : 1;
         const {
-            lock, lines, cascade, tspin, b2b, perfect, levelUp, exhale,
+            lock, lines, cascade, twist, b2b, perfect, levelUp, exhale,
         } = board;
         const now = this.time;
         const drop = board.hardDropAge < 0.3 ? board.hardDrop : 0;
@@ -662,10 +662,10 @@ export class BlackHoleDirector {
             this.sinceClear = 0;
             if (counted) {
                 this.gameplay.clear({
-                    lines, combo: streak, tspin, b2b, perfect,
+                    lines, combo: streak, twist, b2b, perfect,
                 }, now);
                 // An easy clear ends a run of back-to-backs.
-                if (lines < 4 && !tspin && !b2b) this.b2bChain = 0;
+                if (lines < 4 && !twist && !b2b) this.b2bChain = 0;
             } else this.gameplay.wave(now);
             // Each wave of a cascade runs out faster and wider than the one before it.
             this.pressure(clamp(0.55 + lines * 0.24 + depth * 0.14, 0, 1.8) * scale, 5.4 + depth * 0.7, depth * 0.14);
@@ -687,7 +687,7 @@ export class BlackHoleDirector {
                 this.jetPulse = Math.max(this.jetPulse, 2.6);
                 this.eject(0.85 * scale, 0.35);
                 holeRipple = Math.max(holeRipple, 0.04);
-                this.shake(...SHAKE.TETRIS);
+                this.shake(...SHAKE.QUAD);
             }
             if (streak >= 8) holeRipple = Math.max(holeRipple, 0.03);
             if (depth >= 2) holeRipple = Math.max(holeRipple, 0.014 + depth * 0.005);
@@ -701,16 +701,16 @@ export class BlackHoleDirector {
             this.ringPulse = Math.min(RING_CAP, this.ringPulse + 0.3);
         }
 
-        if (tspin) {
+        if (twist) {
             // A twist that cleared nothing still counts a little; one inside a clear counted above.
             if (lines === 0) this.gameplay.spin(now);
-            else if (!counted) this.gameplay.tspin(now);
+            else if (!counted) this.gameplay.twist(now);
             // A twist: the gas whips round and a violet knot lights where it tore.
             this.rateBoost = Math.min(RATE_CAP, this.rateBoost + 1.4);
             const tear = this.random() * TAU;
             this.ignite(tear, DISK_INNER + 1.4 + this.random() * 2, VIOLET, 1.1 * scale, 5);
             this.ringPulse = Math.min(RING_CAP, this.ringPulse + 0.5);
-            this.shake(...SHAKE.TSPIN);
+            this.shake(...SHAKE.TWIST);
         }
 
         if (b2b) {
@@ -729,7 +729,7 @@ export class BlackHoleDirector {
             this.blaze.hit(0.45 + chain * 0.15, now);
             this.jetPulse = Math.max(this.jetPulse, 1.1 + chain * 0.3);
             this.ringPulse = Math.min(RING_CAP, this.ringPulse + 0.5);
-            this.shake(...SHAKE.TSPIN);
+            this.shake(...SHAKE.TWIST);
         }
 
         if (perfect) {

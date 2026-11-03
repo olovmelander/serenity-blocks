@@ -96,7 +96,7 @@ export const SURGE_LOOK = Object.freeze({
 });
 
 const COUNTERS = [
-    'locks', 'hardDrops', 'clears', 'lines', 'quads', 'tspins', 'perfects', 'chainSteps', 'b2bSteps', 'levelUps',
+    'locks', 'hardDrops', 'clears', 'lines', 'quads', 'twists', 'perfects', 'chainSteps', 'b2bSteps', 'levelUps',
     'gameOvers', 'mornings',
 ];
 /** Session scalars a rebuild in place carries over. */
@@ -313,7 +313,7 @@ export class SunbraidWorld {
      * A clear draws the suns together for a breath (each cascade wave deeper, winding the sundial
      * further) and lights their coronas (hits add: rapid clears build a shimmer); four lines bring
      * them into one white sun and part them wide (a second four lines feeds the one in flight); a
-     * T-spin twists the braid a third of a turn per spin-turn; a back-to-back flares the ribbons
+     * Twist twists the braid a third of a turn per spin-turn; a back-to-back flares the ribbons
      * between the suns; a perfect clear riding on it crowns it.
      */
     onClear(c) {
@@ -323,7 +323,7 @@ export class SunbraidWorld {
         this.counts.clears += 1;
         this.counts.lines += lines;
         if (lines >= 4) this.counts.quads += 1;
-        if (c?.tspin) this.counts.tspins += 1;
+        if (c?.twist) this.counts.twists += 1;
         if (c?.perfect) this.counts.perfects += 1;
         this.surge.clear(c, at);
         if (lines >= 4) {
@@ -333,8 +333,8 @@ export class SunbraidWorld {
             this.braid.breathe(lines, at, wave);
         }
         if (wave > 1) this.braid.wave(wave, at);
-        if (c?.tspin) this.braid.twist(this.reducedMotion ? 1 : lines, at);
-        this.shine.hit(0.18 + 0.1 * lines + 0.12 * (wave - 1) + (c?.tspin ? 0.25 : 0), at);
+        if (c?.twist) this.braid.twist(this.reducedMotion ? 1 : lines, at);
+        this.shine.hit(0.18 + 0.1 * lines + 0.12 * (wave - 1) + (c?.twist ? 0.25 : 0), at);
         // A back-to-back: the braid itself flares, harder the longer the run (its level steps
         // after this clear, so the run this clear extends is one more than the one held).
         if (c?.b2b) this.flare.hit(0.45 + 0.15 * Math.min(4, this.b2b + 1), at);
@@ -359,9 +359,9 @@ export class SunbraidWorld {
         if (own) this.surge.crown(at);
     }
 
-    /** A T-spin that cleared nothing: the braid turns a twelfth and its ribbons flicker. */
+    /** A twist that cleared nothing: the braid turns a twelfth and its ribbons flicker. */
     onSpin() {
-        this.counts.tspins += 1;
+        this.counts.twists += 1;
         this.braid.spin(this.time);
         this.flare.hit(0.35, this.time);
         this.shine.hit(0.15, this.time);

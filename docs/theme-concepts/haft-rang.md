@@ -781,7 +781,7 @@ src/playground/effects/haft-rang.effect.js
 
 **Parts** (`?haftRangParts=` and the effect's `parts=`): `sky, garden, hall, carpet, orosi, curtains, air, motes`.
 
-**Effect params:** the house set (`event=lock|drop|clear|quad|tspin|perfect|levelUp`, `lines`, `row`, `u`,
+**Effect params:** the house set (`event=lock|drop|clear|quad|twist|perfect|levelUp`, `lines`, `row`, `u`,
 `piece`, `turns`, `combo`, `level`, `locks`, `board`, `quality`, `reduce`, `parts`, `noPost`, `bloom`,
 `falseColor`, `px`, `py`, `icon*`, `demo`). It adds four, all catalogued in `playground-parameters.js`:
 - `set=0..6` (sash set);
@@ -1663,7 +1663,7 @@ Every parameter must be catalogued in `src/ui/url-parameters/playground-paramete
 | `board`, `statsHud` | Mock board with the real selectors (calm zones, Rug solver, bay solver exercised) |
 | `stack=<n>` | Fill the mirror's bottom n rows with a seeded stack (one gap per row, so no clears) |
 | `locks=<n>` | Pre-play n locks (alternating pieces and columns) |
-| `event` | `lock`, `drop`, `clear`, `quad`, `tspin`, `perfect`, `levelUp`, `release`, `b2b`, `gameOver` |
+| `event` | `lock`, `drop`, `clear`, `quad`, `twist`, `perfect`, `levelUp`, `release`, `b2b`, `gameOver` |
 | `eventAge` | Seconds after the event; default 0.4 |
 | `eventLevel` | Default level + 1 |
 | `lines` | 1–4; default 2 |
@@ -1713,7 +1713,7 @@ Reference time `t=48`, level 1 (set *Za'feran*).
 | **B2** | Clear: slide, pour (threads in the row's real colours), mix in the channel, collapse; cascades. | ★ `stack=8&event=clear&lines=1&row=19&eventAge=0.2` @D (panes sliding, stripe = clear sun, no flare) · `stack=8&event=clear&lines=3&row=18&eventAge=0.8` @D (thirty threads braiding) · `stack=8&event=clear&lines=3&row=18&eventAge=1.6` @D (whitening down the channel; image collapsed) · `stack=8&event=clear&lines=1&row=19&cascade=3&eventAge=1.2` @D · `stack=8&event=clear&lines=2&row=18&eventAge=0.8&falseColor=1` @D (nothing above clear-sun level). |
 | **B3** | Irrigation: bands, guard lines, escalation 2–10+, the jub and chutes through the arch; release drain on the breaking lock; resume rule. | ★ `combo=3` @D (medallion brims) · `combo=5` @D (quarters filled, bands countable) · ★ `combo=8` @D (chutes lit through the arch) · `combo=11` @D (far gate lit, hall dust) · `event=release&peak=8&eventAge=1.5` @D (draining downstream, head dark first) · `combo=5` @P. Director tests: break on the breaking lock, resume within 0.6 s. |
 | **B4** | Four lines: stripes to clear glass and pouring, sash rise, flood (≤ +0.25 stop measured), white air, tier-by-tier split into seven slabs, bands to the far gate. Measure the board's own gold flash in the real game and set the peak delay. | ★ `stack=8&event=quad&row=18&eventAge=0.3` @D (sashes rising) · ★ `stack=8&event=quad&row=18&eventAge=0.9` @D (flood) · ★ `stack=8&event=quad&row=18&eventAge=1.9` @D (seven slabs) · `stack=8&event=quad&row=18&eventAge=4` @D (bands down the jub) · `stack=8&event=quad&row=18&eventAge=1.9` @P · `stack=8&event=quad&row=18&eventAge=0.9&falseColor=1` @D. Log mean frame luminance across `eventAge=0…3` in 0.1 s steps: peak ≤ +0.25 stop over rest, ramp ≥ 0.4 s. |
-| **B5** | T-spin click (glass-image end state, 0.35 s spring, 2–3 clicks 0.18 s apart); B2B mirror cascade and sheen; level sash-change wipe. | `event=tspin&lines=2&u=0.2&row=13&eventAge=0.2` @D (first click mid-spring) · `event=tspin&lines=2&u=0.2&row=13&eventAge=0.6` @D (two notches; pools rotated) · `b2b=2` @D (ceiling sheen) · `event=b2b&eventAge=0.5` @D (cascade through the inlays) · ★ `event=levelUp&eventLevel=3&eventAge=1.2` @D (front mid-wipe, no luminance edge) · `reduce=1&event=tspin&lines=1&eventAge=0.3` @D (cross-fade). |
+| **B5** | T-spin click (glass-image end state, 0.35 s spring, 2–3 clicks 0.18 s apart); B2B mirror cascade and sheen; level sash-change wipe. | `event=twist&lines=2&u=0.2&row=13&eventAge=0.2` @D (first click mid-spring) · `event=twist&lines=2&u=0.2&row=13&eventAge=0.6` @D (two notches; pools rotated) · `b2b=2` @D (ceiling sheen) · `event=b2b&eventAge=0.5` @D (cascade through the inlays) · ★ `event=levelUp&eventLevel=3&eventAge=1.2` @D (front mid-wipe, no luminance edge) · `reduce=1&event=twist&lines=1&eventAge=0.3` @D (cross-fade). |
 | **B6** | Ganzfeld (amended); curtains drawn on game over and gathered on restart; idle rules; meditation (sun-catch at the pointer); multiplayer Rugs per card. | ★ `event=perfect&eventAge=0.8` @D (fog rising) · ★ `event=perfect&eventAge=3` @D (field: low chroma, near geometry ≥ 25%) · `event=perfect&eventAge=7` @D (re-glazed, Rug clean) · `event=gameOver&eventAge=2` @D (curtains drawn, no beams) · `curtains=1` @P · `reduce=1&event=perfect&eventAge=3` @D (one hue). |
 
 **Stage C: post, tiers, phone, icon, docs**

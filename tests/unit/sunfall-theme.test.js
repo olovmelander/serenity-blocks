@@ -72,11 +72,11 @@ describe('sunfall-theme', () => {
         expect(theme.director.snapColor).toEqual(PIECE_SWATCH_RGB.I);
         expect(theme.director.lockSerial).toBe(locks + 1);
 
-        // A quad, read from lineCount and clearedRows; a T-spin and a back-to-back after it.
+        // A quad, read from lineCount and clearedRows; a twist and a back-to-back after it.
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 4, clearedRows: [20, 21, 22, 23], cascadeCount: 1 });
         expect(theme.director.cataractPulse).toBeGreaterThan(0.8);
         expect(theme.director.clearEvents.at(-1).rows).toEqual([16, 17, 18, 19]);
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 2 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 2 });
         expect(theme.director.turningPulse).toBeGreaterThan(0.8);
         eventBus.emit(EVENTS.B2B, { active: true });
         eventBus.emit(EVENTS.B2B, { active: true });

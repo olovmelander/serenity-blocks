@@ -1019,11 +1019,11 @@ export class OceanWorld {
     }
 
     /**
-     * Lines cleared. `lines` 1..4; `tspin`, `perfect`, `b2b`; `cascade` = which wave of one
+     * Lines cleared. `lines` 1..4; `twist`, `perfect`, `b2b`; `cascade` = which wave of one
      * lock's cascade this is (each builds on the last); `combo` = the true combo.
      */
     onClear({
-        rows = null, lines = 1, perfect = false, tspin = false, b2b = false, cascade = 1, combo = 1, player = 0,
+        rows = null, lines = 1, perfect = false, twist = false, b2b = false, cascade = 1, combo = 1, player = 0,
         screen = null,
     } = {}) {
         if (!this.u) return;
@@ -1041,7 +1041,7 @@ export class OceanWorld {
         // The heat of play: read before this clear adds to it (the share a colony keeps).
         const keep = this.keepShare();
         this.heat.clear({
-            lines: n, cascade: wave, combo, tspin, perfect, b2b,
+            lines: n, cascade: wave, combo, twist, perfect, b2b,
         }, t);
         const front = this.sendCurrent(birth, n, Math.min(1.6, 0.6 + 0.22 * n + (quad ? 0.25 : 0)) + 0.35 * deep);
         const { dir } = front;
@@ -1151,7 +1151,7 @@ export class OceanWorld {
             if (!quad) this.shock(0, 3, VORTEX.z, birth + 0.12, 0.7);
             this.flare = Math.max(this.flare, 0.95);
         }
-        if (tspin) {
+        if (twist) {
             // A ring of bubbles blown where the piece went in, widening as it climbs.
             const at = this.lastLanding || [-6 * this.squeeze, this.groundAt(-6 * this.squeeze, -2), -2];
             if (this.pool) {
@@ -1194,7 +1194,7 @@ export class OceanWorld {
         this.crown(this.time);
     }
 
-    /** A T-spin that cleared nothing: one ring of bubbles where the piece went in, and a ring of its light. */
+    /** A twist that cleared nothing: one ring of bubbles where the piece went in, and a ring of its light. */
     onSpin() {
         if (!this.u) return;
         const t = this.time;

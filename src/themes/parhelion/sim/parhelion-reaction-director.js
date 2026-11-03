@@ -6,17 +6,17 @@
  * one of five preallocated player slots. update(dt) — called FIRST in the theme frame —
  * resolves each pending slot into ONE dominant cue:
  *
- *   PERFECT > APEX (true combo >= 10, 6 s cooldown per player) > TSPIN > QUAD (lines >= 4)
+ *   PERFECT > APEX (true combo >= 10, 6 s cooldown per player) > TWIST > QUAD (lines >= 4)
  *   > CLEAR > STONEFALL (hard drop) > LOCK
  *
- * T-spin, B2B, true combo, cascade depth and line count are modifiers on that one cue, never
+ * Twist, B2B, true combo, cascade depth and line count are modifiers on that one cue, never
  * separate shows. "QUAD" is the four-line clear. The apex's cooldown only spaces its full
  * entrance (the Sun Cross drawn, the stone shaken): a clear of a combo >= 10 inside it keeps its
  * own beat and carries `apex`, so the optics FEED the Sun Cross still standing instead of
  * answering the 11th clear of a chain like the 1st.
  *
  * Handler names (one per canonical event; `PARHELION_EVENT_HANDLERS` maps EVENTS keys to them):
- *   onPieceLock, onHardDrop, onLineClear, onCombo, onTSpin, onB2B, onPerfectClear, onLevelUp.
+ *   onPieceLock, onHardDrop, onLineClear, onCombo, onTwist, onB2B, onPerfectClear, onLevelUp.
  * Serenity-mode clicks arrive as LINE_CLEAR/COMBO carrying `position`; they go through the same
  * onLineClear/onCombo handlers (the "Glint Bloom" is a CLEAR/QUAD/APEX cue with sx/sy >= 0).
  *
@@ -37,13 +37,13 @@
  *                  readLockViewportOrigin (Infinity) > occupied-cell centroid > last known.
  *   rowV           BOARD-normalised row height the cue climbs from. Clear-family cues use the
  *                  LINE_CLEAR viewportOrigin.y (Infinity) > cleared-row mean > lock centroid.
- *                  LOCK/STONEFALL/TSPIN are lock-anchored: rowV === lockV.
+ *                  LOCK/STONEFALL/TWIST are lock-anchored: rowV === lockV.
  *   sx, sy         SCREEN-normalised (0..1 of the window, y-down) ONLY for Serenity clicks
  *                  (`position` in CSS px / window size); otherwise -1 and the consumer maps
  *                  lockU/rowV through the board rect. Infinity's viewportOrigin is NOT screen
  *                  space: InfinityMode computes it as col/10 and (row - topRow)/visibleRows, i.e.
  *                  a fraction of the visible playfield, so it feeds lockU/lockV/rowV instead.
- *   lines          1..4 for clear-family cues (T-spin: max of TSPIN/LINE_CLEAR counts), else 0.
+ *   lines          1..4 for clear-family cues (twist: max of TWIST/LINE_CLEAR counts), else 0.
  *   combo          true consecutive-clear combo (ComboTracker per player); an explicit
  *                  LINE_CLEAR.comboCount (Serenity clicks, Odyssey victory lap) can raise it.
  *   cascade        LINE_CLEAR.cascadeCount of the deepest wave staged this frame (1 default).
@@ -118,7 +118,7 @@ export const CUE = Object.freeze({
     STONEFALL: 2,
     CLEAR: 3,
     QUAD: 4,
-    TSPIN: 5,
+    TWIST: 5,
     APEX: 6,
     PERFECT: 7,
     ECHO: 8,
@@ -130,7 +130,7 @@ export const PARHELION_EVENT_HANDLERS = Object.freeze({
     HARD_DROP: 'onHardDrop',
     LINE_CLEAR: 'onLineClear',
     COMBO: 'onCombo',
-    TSPIN: 'onTSpin',
+    TWIST: 'onTwist',
     B2B: 'onB2B',
     PERFECT_CLEAR: 'onPerfectClear',
     LEVEL_UP: 'onLevelUp',
@@ -184,8 +184,8 @@ function createSlot() {
         depth: 0,
         explicitCombo: -1,
         // modifiers / specials
-        tspin: false,
-        tspinLines: 0,
+        twist: false,
+        twistLines: 0,
         b2b: false,
         perfect: false,
         perfectDepth: 0,
@@ -214,8 +214,8 @@ function clearPending(slot) {
     slot.rowFresh = false;
     slot.depth = 0;
     slot.explicitCombo = -1;
-    slot.tspin = false;
-    slot.tspinLines = 0;
+    slot.twist = false;
+    slot.twistLines = 0;
     slot.b2b = false;
     slot.perfect = false;
     slot.perfectDepth = 0;
@@ -399,7 +399,7 @@ export class ReactionDirector {
      * Settings may change at any time. intensity 0 (reactions off) resets everything so
      * re-enabling can never replay stale gameplay; switching lockRipple off cancels staged
      * lock/hard-drop cues and a pending Full Circle but keeps the captured lock origin for a
-     * co-resolving T-spin/clear.
+     * co-resolving twist/clear.
      */
     configure(options = EMPTY_PAYLOAD) {
         if (this.disposed) return;
@@ -500,14 +500,14 @@ export class ReactionDirector {
         return true;
     }
 
-    onTSpin(event) {
+    onTwist(event) {
         const payload = event || EMPTY_PAYLOAD;
         const slot = this._slotFor(payload);
         if (!slot) return false;
         slot.pending = true;
-        slot.tspin = true;
-        slot.tspinLines = Math.max(
-            slot.tspinLines,
+        slot.twist = true;
+        slot.twistLines = Math.max(
+            slot.twistLines,
             clamp(Math.trunc(finiteNumber(payload.lineCount, 0)), 0, MAX_LINES),
         );
         return true;
@@ -667,7 +667,7 @@ export class ReactionDirector {
             if (crossed && this.lockRipple) this.fullCirclePending = true;
         }
 
-        const lines = Math.max(slot.lines, slot.tspin ? slot.tspinLines : 0);
+        const lines = Math.max(slot.lines, slot.twist ? slot.twistLines : 0);
         const combo = Math.max(slot.tracker.combo, slot.explicitCombo);
         const depthBoost = CASCADE_DEPTH_STEP * Math.min(CASCADE_DEPTH_MAX, slot.depth);
 
@@ -684,8 +684,8 @@ export class ReactionDirector {
             kind = CUE.APEX;
             strength = 1;
             slot.apexAt = this.time;
-        } else if (slot.tspin) {
-            kind = CUE.TSPIN;
+        } else if (slot.twist) {
+            kind = CUE.TWIST;
             strength = 1;
         } else if (lines >= MAX_LINES) {
             kind = CUE.QUAD;
@@ -703,7 +703,7 @@ export class ReactionDirector {
         }
 
         if (kind !== CUE.NONE) {
-            const special = kind === CUE.QUAD || kind === CUE.TSPIN || kind === CUE.APEX;
+            const special = kind === CUE.QUAD || kind === CUE.TWIST || kind === CUE.APEX;
             const echo = special && slot.b2b;
             // Inside the apex cooldown a chain past ten is not dropped back to a plain beat: the
             // clear keeps its own beat and feeds the Sun Cross still standing.
@@ -736,7 +736,7 @@ export class ReactionDirector {
 
     _emit(slot, kind, strength, lines, combo, b2b) {
         const c = this.cue;
-        const lockAnchored = kind === CUE.LOCK || kind === CUE.STONEFALL || kind === CUE.TSPIN;
+        const lockAnchored = kind === CUE.LOCK || kind === CUE.STONEFALL || kind === CUE.TWIST;
         // Clear-family: this frame's row > this frame's lock > the last known row.
         const clearFromRow = slot.rowFresh || !slot.lockFresh;
         c.kind = kind;

@@ -242,7 +242,7 @@ Run `npm run dev:playground`, then:
 
 `/playground.html?effect=chiral-gold&t=44&quality=High&board=1`
 
-Add `event=lock|drop|clear|quad|tspin|perfect|levelUp|break` with `eventAge=<s>`, and
+Add `event=lock|drop|clear|quad|twist|perfect|levelUp|break` with `eventAge=<s>`, and
 `combo=<n>`, `level=<n>`, `lines=<n>`, `row=<r>`, `u=<0..1>`, `color=<hex>`. `demo=1` (without
 `t`) plays a looping script. `parts=` draws only the named parts (`sky`, `water`, `towers`,
 `ring`, `shafts`, `motes`, `leaf`, `sparks`, `blades`, `flares`, `braid`, `tally`);

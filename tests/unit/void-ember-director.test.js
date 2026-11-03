@@ -152,16 +152,16 @@ describe('void ember director: intake', () => {
         expect(calls.combo[calls.combo.length - 1]).toEqual([0, 0]);
     });
 
-    it('carries T-spins, perfect clears and back-to-backs on the clear', () => {
+    it('carries twists, perfect clears and back-to-backs on the clear', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: T });
         director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.onB2B({ active: true });
         director.onPerfectClear({ depth: 1 });
         director.flush();
         expect(calls.clear[0]).toMatchObject({
-            lines: 2, tspin: true, b2b: true, perfect: true,
+            lines: 2, twist: true, b2b: true, perfect: true,
         });
         // An inactive B2B is not one.
         expect(director.onB2B({ active: false })).toBe(false);
@@ -295,7 +295,7 @@ describe('void ember director: settings and resets', () => {
     });
 });
 
-describe('void ember director: the late perfect clear and the empty T-spin', () => {
+describe('void ember director: the late perfect clear and the empty twist', () => {
     it('crowns the clear already sent when a perfect clear arrives in a frame of its own', () => {
         const { director, calls, sink } = makeDirector();
         sink.crown = vi.fn();
@@ -324,11 +324,11 @@ describe('void ember director: the late perfect clear and the empty T-spin', () 
         expect(bare.calls.clear[0]).toMatchObject({ lines: 1, perfect: true });
     });
 
-    it('hands a T-spin that cleared nothing to spin(), and nothing else', () => {
+    it('hands a twist that cleared nothing to spin(), and nothing else', () => {
         const { director, calls, sink } = makeDirector();
         sink.spin = vi.fn();
         director.onPieceLock({ piece: T });
-        director.onTSpin({ lineCount: 0 });
+        director.onTwist({ lineCount: 0 });
         director.flush();
         expect(sink.spin).toHaveBeenCalledOnce();
         expect(sink.spin).toHaveBeenCalledWith(0);
@@ -336,9 +336,9 @@ describe('void ember director: the late perfect clear and the empty T-spin', () 
         // One that cleared lines is the clear's own flag.
         director.onPieceLock({ piece: T });
         director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.flush();
         expect(sink.spin).toHaveBeenCalledOnce();
-        expect(calls.clear[0]).toMatchObject({ lines: 2, tspin: true });
+        expect(calls.clear[0]).toMatchObject({ lines: 2, twist: true });
     });
 });

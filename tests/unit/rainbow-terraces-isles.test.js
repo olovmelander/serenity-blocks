@@ -365,7 +365,7 @@ describe('Rainbow Terraces isles: nothing the builders made floats', () => {
             expect(airUnder(gate, x, z, from, -2.5), `air under the piece at ${x}`).toBeLessThan(0.01);
         });
         // The bell hangs from the keystone's soffit (its pivot), its stem up into the stone, and at
-        // any swing the world gives it (0.9 rad on a T-spin) its body stays under the soffit.
+        // any swing the world gives it (0.9 rad on a twist) its body stays under the soffit.
         const { arch, bell } = isleAnchors(PLAN);
         const h = gatewayHeight();
         expect(bell.y).toBeCloseTo(arch.y + h.intrados, 6);

@@ -601,7 +601,7 @@ export class CrystalCaveWorld {
                 this.familyTint(cue.count % FAMILIES),
             );
         } else if (cue.type === 'spin') {
-            // A full wheel for a T-spin that cleared, a small turn of light for one that did not.
+            // A full wheel for a twist that cleared, a small turn of light for one that did not.
             const scale = clamp(cue.strength / 0.8, 0.35, 1.5);
             const spokes = Math.max(8, Math.round(20 * scale));
             const edge = stage.edge(cue.side, cue.row, CRYSTAL_CAVE_STAGE_DEPTH, this.pointA);

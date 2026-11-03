@@ -6,7 +6,7 @@ import {
     emitLineClear,
     emitPerfectClear,
     emitPieceLock,
-    emitTSpin,
+    emitTwist,
     emitHardDrop,
     emitLevelUp,
 } from '../../events/gameplay-events.js';
@@ -105,10 +105,10 @@ export function createOdysseyPhysicsCallbacks(mode, session) {
                 levelId,
             });
         },
-        onTSpin: (lineCount) => {
-            emitTSpin({ lineCount, source: 'odyssey', levelId });
-            mode.deps.soundManager?.sfxPlayer?.playTSpin?.();
-            mode._getBoardScene?.()?.sharedEffects?.playTSpinEffect?.(lineCount);
+        onTwist: (lineCount) => {
+            emitTwist({ lineCount, source: 'odyssey', levelId });
+            mode.deps.soundManager?.sfxPlayer?.playTwist?.();
+            mode._getBoardScene?.()?.sharedEffects?.playTwistEffect?.(lineCount);
         },
         onB2B: () => {
             emitB2B({ source: 'odyssey', levelId });

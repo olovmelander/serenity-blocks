@@ -231,7 +231,7 @@ describe.each(TIERS)('luminous tides shaders at %s', (quality) => {
         world.onLock({
             u: 0.7, rows: [9], color: PIECES.O, hardDrop: true,
         });
-        world.onClear({ lines: 2, rows: [19, 18], tspin: true });
+        world.onClear({ lines: 2, rows: [19, 18], twist: true });
         world.onClear({ lines: 4, rows: [19, 18, 17, 16], perfect: true });
         world.onCombo(5);
         world.update({ time: 6, delta: 1 / 30 }, camera);

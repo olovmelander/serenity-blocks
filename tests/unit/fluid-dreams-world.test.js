@@ -891,7 +891,7 @@ describe('fluid dreams world: clears, combos and levels', () => {
         const board = world.layout.boards[0];
         world.onClear({ rows: [19, 18], lines: 2 });
         expect(clears).toHaveLength(1);
-        expect(clears[0]).toMatchObject({ lines: 2, tspin: false, perfect: false });
+        expect(clears[0]).toMatchObject({ lines: 2, twist: false, perfect: false });
         // The packet leaves the foot of the board.
         const origin = onScreen(camera, clears[0].origin[0], 0, clears[0].origin[1]);
         expect(origin.x).toBeCloseTo(0.5, 3);
@@ -970,10 +970,10 @@ describe('fluid dreams world: clears, combos and levels', () => {
         expect(spray.filter((burst) => burst.kind === 'pour')).toHaveLength(8);
         // The line count is clamped to what a piece can clear; none named is one.
         world.onClear({});
-        world.onClear({ lines: 2.4, tspin: true, perfect: true });
+        world.onClear({ lines: 2.4, twist: true, perfect: true });
         expect(clears.map((clear) => clear.lines)).toEqual([1, 4, 4, 1, 2]);
-        expect(clears[4]).toMatchObject({ tspin: true, perfect: true });
-        expect(clears[3]).toMatchObject({ tspin: false, perfect: false });
+        expect(clears[4]).toMatchObject({ twist: true, perfect: true });
+        expect(clears[3]).toMatchObject({ twist: false, perfect: false });
         world.dispose();
     });
 
@@ -1526,7 +1526,7 @@ describe('fluid dreams world: time', () => {
         // Something else entirely in between...
         world.onCombo(9);
         world.onLock({ u: 0.5, hardDrop: true });
-        world.onClear({ lines: 3, tspin: true });
+        world.onClear({ lines: 3, twist: true });
         world.setReducedMotion(true);
         run(world, camera, 3);
         world.setReducedMotion(false);
@@ -1896,7 +1896,7 @@ describe('fluid dreams world: play builds', () => {
         world.dispose();
     });
 
-    it('turns the sea a little on a T-spin that clears nothing', () => {
+    it('turns the sea a little on a twist that clears nothing', () => {
         const { camera, world } = makeWorld('Low');
         world.onSpin({ player: 0 });
         run(world, camera, 0.5);

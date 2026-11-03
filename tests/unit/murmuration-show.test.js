@@ -183,9 +183,9 @@ describe('swarm show: clears', () => {
         ]);
     });
 
-    it('turns a T-spin into two counter-turning eddies either side of the piece, and a knot', () => {
+    it('turns a twist into two counter-turning eddies either side of the piece, and a knot', () => {
         const { show, sim, impulses } = makeShow();
-        show.clear({ lines: 2, rows: [19, 18], tspin: true });
+        show.clear({ lines: 2, rows: [19, 18], twist: true });
         const eddies = impulses.filter((impulse) => impulse.type === VORTEX);
         expect(impulses).toHaveLength(3); // the clear's own ring, then the eddies
         expect(eddies).toHaveLength(2);
@@ -255,11 +255,11 @@ describe('swarm show: clears', () => {
         // 'free' is the release state and the heart belongs to game over.
         expect(RANDOM_SHAPE_POOL).not.toContain('free');
         expect(RANDOM_SHAPE_POOL).not.toContain('heart');
-        // The T-spin's knots and the perfect clear's blooms are private lists: roll through them.
+        // The twist's knots and the perfect clear's blooms are private lists: roll through them.
         const asked = new Set();
         for (let roll = 0.02; roll < 1; roll += 0.04) {
             const { show, sim } = makeShow({ random: () => roll });
-            show.clear({ lines: 1, rows: [19], tspin: true });
+            show.clear({ lines: 1, rows: [19], twist: true });
             show.resetSession();
             show.clear({ lines: 1, rows: [19], perfect: true });
             run(show, 0, 1);
@@ -276,7 +276,7 @@ describe('swarm show: clears', () => {
         show.resetSession();
         show.clear(QUAD);
         show.resetSession();
-        show.clear({ lines: 1, rows: [19], tspin: true });
+        show.clear({ lines: 1, rows: [19], twist: true });
         show.resetSession();
         show.clear({ lines: 1, rows: [19], perfect: true });
         run(show, 0, 1);
@@ -453,8 +453,8 @@ describe('swarm show: combo', () => {
         expect(show.shape.name).toBe(quad.name);
         expect(show.shape.growth).toBeGreaterThan(0);
         expect(show.shape.target).toBeGreaterThan(quad.target);
-        // A T-spin's knot: the figure pirouettes instead.
-        show.clear({ lines: 2, rows: [19, 18], tspin: true });
+        // A twist's knot: the figure pirouettes instead.
+        show.clear({ lines: 2, rows: [19, 18], twist: true });
         expect(sim.setShape).toHaveBeenCalledTimes(1);
         expect(show.shape.spinTarget).toBeCloseTo(Math.PI * 2, 9);
         time = run(show, time, 2.5);
@@ -469,7 +469,7 @@ describe('swarm show: combo', () => {
         still.show.reducedMotion = true;
         still.show.clear(QUAD);
         run(still.show, 0, 1);
-        still.show.clear({ lines: 2, rows: [19, 18], tspin: true });
+        still.show.clear({ lines: 2, rows: [19, 18], twist: true });
         expect(still.show.shape.growth).toBeGreaterThan(0);
         expect(still.show.shape.spinTarget).toBe(0);
     });
@@ -621,8 +621,8 @@ describe('swarm show: the build (fast play accumulates instead of popping)', () 
         };
     }
 
-    /** The tray's Fever: twelve clearing hard drops 0.64 s apart, a T-spin, a cascade, a quad. */
-    const FEVER = [1, 1, 2, 1, 2, 2, 3, 'tspin', 2, 'cascade', 3, 'quad'];
+    /** The tray's Fever: twelve clearing hard drops 0.64 s apart, a twist, a cascade, a quad. */
+    const FEVER = [1, 1, 2, 1, 2, 2, 3, 'twist', 2, 'cascade', 3, 'quad'];
     const rows = (lines) => [19, 18, 17, 16].slice(0, lines);
 
     function playStep(show, step, combo, time) {
@@ -630,9 +630,9 @@ describe('swarm show: the build (fast play accumulates instead of popping)', () 
         show.lock({ rows: [19], hardDrop: true });
         if (step === 'quad') {
             show.clear({ lines: 4, rows: rows(4), combo });
-        } else if (step === 'tspin') {
+        } else if (step === 'twist') {
             show.clear({
-                lines: 2, rows: rows(2), combo, tspin: true,
+                lines: 2, rows: rows(2), combo, twist: true,
             });
         } else if (step === 'cascade') {
             show.clear({
@@ -820,7 +820,7 @@ describe('swarm show: the build (fast play accumulates instead of popping)', () 
         expect(same.show.heat).toBeLessThan(peak * 0.4);
     });
 
-    it('answers a T-spin that cleared nothing with two small eddies at the piece and a turn of the figure', () => {
+    it('answers a twist that cleared nothing with two small eddies at the piece and a turn of the figure', () => {
         const locate = vi.fn((detail, row, u, out) => {
             out.x = 2; out.y = -1; out.z = FOCAL.z;
             return true;
@@ -834,9 +834,9 @@ describe('swarm show: the build (fast play accumulates instead of popping)', () 
         expect(b.type).toBe(VORTEX);
         expect(a.dir.z * b.dir.z).toBeLessThan(0);
         expect((a.position.x + b.position.x) / 2).toBeCloseTo(2, 9);
-        // Smaller than a T-spin that cleared lines.
+        // Smaller than a twist that cleared lines.
         const full = makeShow();
-        full.show.clear({ lines: 2, rows: [19, 18], tspin: true });
+        full.show.clear({ lines: 2, rows: [19, 18], twist: true });
         expect(a.strength).toBeLessThan(full.impulses.find((impulse) => impulse.type === VORTEX).strength);
         expect(show.skyFlash).toBeGreaterThan(0);
         expect(show.skyFlash).toBeLessThan(full.show.skyFlash);
@@ -1082,7 +1082,7 @@ describe('swarm show: the frame', () => {
             show.lock({ hardDrop: true, rows: [19], u: 0.2 });
             show.clear({});
             show.clear({
-                lines: 3, rows: [19, 18, 17], tspin: true, b2b: true,
+                lines: 3, rows: [19, 18, 17], twist: true, b2b: true,
             });
             show.clear(QUAD);
             show.clear({ lines: 1, perfect: true });

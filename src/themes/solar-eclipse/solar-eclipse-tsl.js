@@ -149,7 +149,7 @@ export function createUniforms() {
         cycle: uniform(0.1),
         /** The chain's long exposure, 0..1. */
         exposure: uniform(0),
-        /** A T-spin's twist of the corona, radians at the limb. */
+        /** A twist's twist of the corona, radians at the limb. */
         twist: uniform(0),
         /** The corona's swell on a clear, 0..1. */
         surge: uniform(0),

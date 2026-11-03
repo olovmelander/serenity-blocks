@@ -302,7 +302,7 @@ export function createUniforms() {
         /** The spring flood's rise over the river's rest level (m) and its extra white water. */
         flood: uniform(0),
         foamBoost: uniform(0),
-        /** A T-spin: the whirlpool in the plunge pool (start time, strength). */
+        /** A twist: the whirlpool in the plunge pool (start time, strength). */
         whirl: uniform(new THREE.Vector2(-1e6, 0)),
     };
 }

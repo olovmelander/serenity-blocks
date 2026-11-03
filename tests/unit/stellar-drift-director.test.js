@@ -152,16 +152,16 @@ describe('stellar drift director: intake', () => {
         expect(calls.combo[calls.combo.length - 1]).toEqual([0, 0]);
     });
 
-    it('carries T-spins, perfect clears and back-to-backs on the clear', () => {
+    it('carries twists, perfect clears and back-to-backs on the clear', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: T });
         director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.onB2B({ active: true });
         director.onPerfectClear({ depth: 1 });
         director.flush();
         expect(calls.clear[0]).toMatchObject({
-            lines: 2, tspin: true, b2b: true, perfect: true,
+            lines: 2, twist: true, b2b: true, perfect: true,
         });
         // An inactive B2B is not one.
         expect(director.onB2B({ active: false })).toBe(false);
@@ -177,20 +177,20 @@ describe('stellar drift director: intake', () => {
         director.flush();
         expect(calls.clear).toHaveLength(2);
         expect(calls.clear[1]).toMatchObject({
-            lines: 0, rows: [], perfect: true, combo: 1, tspin: false,
+            lines: 0, rows: [], perfect: true, combo: 1, twist: false,
         });
         // The chain is not counted again.
         expect(calls.combo).toEqual([[1, 0]]);
     });
 
-    it('delivers a zero-line T-spin without starting a clearing chain', () => {
+    it('delivers a zero-line twist without starting a clearing chain', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: T });
-        director.onTSpin({ lineCount: 0 });
+        director.onTwist({ lineCount: 0 });
         director.flush();
         expect(calls.clear).toHaveLength(1);
         expect(calls.clear[0]).toMatchObject({
-            lines: 0, combo: 0, tspin: true, rows: [], color: STELLAR_DRIFT_TETROMINOS.colors.T,
+            lines: 0, combo: 0, twist: true, rows: [], color: STELLAR_DRIFT_TETROMINOS.colors.T,
         });
         expect(calls.combo).toEqual([]);
         director.flush();
@@ -201,9 +201,9 @@ describe('stellar drift director: intake', () => {
         director.flush();
         expect(calls.clear[1].combo).toBe(1);
         director.onPieceLock({ piece: T });
-        director.onTSpin({ lineCount: 0 });
+        director.onTwist({ lineCount: 0 });
         director.flush();
-        expect(calls.clear[2]).toMatchObject({ lines: 0, combo: 1, tspin: true });
+        expect(calls.clear[2]).toMatchObject({ lines: 0, combo: 1, twist: true });
         expect(calls.combo).toEqual([[1, 0]]);
         // Like every non-clearing lock, the spin ends the chain at the next lock boundary.
         director.onPieceLock({ piece: T });

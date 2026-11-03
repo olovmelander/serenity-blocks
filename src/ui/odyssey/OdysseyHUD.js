@@ -128,7 +128,7 @@ export class OdysseyHUD {
             score: 0,
             cascades: 0,
             maxCascadeDepth: 0,
-            tetrises: 0,
+            quads: 0,
             singles: 0,
             combo: 0,
             bonuses: 0,
@@ -822,7 +822,7 @@ export class OdysseyHUD {
         case 'combo':
             objectiveText = formatOdysseyChainGoal(target);
             break;
-        case 'tetrises':
+        case 'quads':
         case 'rubble':
             objectiveText = formatOdysseyMapObjective({ type, target });
             break;
@@ -927,8 +927,8 @@ export class OdysseyHUD {
         case 'combo':
             current = this.metrics.combo || 0;
             break;
-        case 'tetrises':
-            current = this.metrics.tetrises || 0;
+        case 'quads':
+            current = this.metrics.quads || 0;
             break;
         case 'rubble':
             current = this.metrics.rubbleCleared || 0;
@@ -986,8 +986,8 @@ export class OdysseyHUD {
             case 'maxCascadeDepth':
                 if (this.metrics.maxCascadeDepth < value) return false;
                 break;
-            case 'tetrises':
-                if (this.metrics.tetrises < value) return false;
+            case 'quads':
+                if (this.metrics.quads < value) return false;
                 break;
             case 'combo':
                 if (this.metrics.combo < value) return false;
@@ -1137,7 +1137,7 @@ export class OdysseyHUD {
             score: 0,
             cascades: 0,
             maxCascadeDepth: 0,
-            tetrises: 0,
+            quads: 0,
             singles: 0,
             combo: 0,
             bonuses: 0,

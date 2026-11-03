@@ -27,7 +27,7 @@
  * and then a fish rises and leaves a ring of its own. The canal answers the board beyond its
  * rings: a chain wakes more of the glitter, pulsing with the fireflies' light (in step it flashes
  * with the swarm); the hush before the Queen of the Night lets it show in the dark; four lines'
- * flood of moonlight brightens every pane in the mirror; a T-spin's turn of the air stirs a
+ * flood of moonlight brightens every pane in the mirror; a twist's turn of the air stirs a
  * spiral of cat's-paw ripples about the turn's axis and the plankton wake along its arms.
  * Fresnel: steeply below the eye the water is mostly its own dark body (the moon's lattice
  * faintly lit in its murk), toward the far end nearly all mirror. The glass's edges in the mirror
@@ -44,7 +44,7 @@
  *
  * The reeds stand in clumps at the canal's edges: long strap leaves arching over, cattail stalks
  * with their dark velvet heads and the thin spike above, here and there a reed's drooping plume,
- * swaying in the greenhouse air, with the T-spin's turn and with the gusts; dark against the
+ * swaying in the greenhouse air, with the twist's turn and with the gusts; dark against the
  * mirror, their edges luminous where the moon is behind them (mgSurface's light through thin
  * leaves). The nearest clumps are fuller and frame the foot of the picture.
  *
@@ -981,7 +981,7 @@ export function createWater({
             wake.addAssign(w.z.mul(0.6));
             stir.addAssign(abs(w.x));
         });
-        // The T-spin's turn of the air stirs the canal: a spiral of cat's-paw ripples wheels about
+        // The twist's turn of the air stirs the canal: a spiral of cat's-paw ripples wheels about
         // the turn's axis while it lasts, and the plankton wake along its arms.
         const toAxis = p.xz.sub(U.turn.zw);
         const axisR = length(toAxis);
@@ -1518,7 +1518,7 @@ export function* createPadsSteps({
 /**
  * The greenhouse air in the reeds: each plant sways from its foot (the higher a point, the more:
  * stalk, head and leaves of one plant move together), two incommensurate waves on its own phase;
- * a gust leans the clumps down the house beat by beat; the T-spin's turn swirls them about the
+ * a gust leans the clumps down the house beat by beat; the twist's turn swirls them about the
  * vertical axis through (turn.z, turn.w); the leaves flutter along their normals toward the tips.
  */
 function reedSway(U) {

@@ -126,7 +126,7 @@ export function create({
         post?.update(frame);
         frameFox();
     };
-    // ?event=lock|drop|clear|double|triple|tetris|combo|streak|spin|perfect|level|over,
+    // ?event=lock|drop|clear|double|triple|quad|combo|streak|spin|perfect|level|over,
     // placed with ?col=0..9 and ?row=0..19 (0 is the top visible row).
     const levelUp = () => {
         reactions.onLevelUp();
@@ -139,7 +139,7 @@ export function create({
             shapeKey: 'T', x: column, y: row, shape: [[0, 1, 0], [1, 1, 1], [0, 0, 0]],
         };
         const lines = {
-            clear: 1, double: 2, triple: 3, tetris: 4,
+            clear: 1, double: 2, triple: 3, quad: 4,
         }[event];
         if (event === 'lock') reactions.onPieceLock({ piece });
         else if (event === 'drop') {
@@ -154,7 +154,7 @@ export function create({
                 reactions.onPieceLock({ piece });
                 reactions.onLineClear(1, { clearedRows: [row + 1] });
             }
-        } else if (event === 'spin') reactions.onTSpin({ piece });
+        } else if (event === 'spin') reactions.onTwist({ piece });
         else if (event === 'perfect') reactions.onPerfectClear();
         else if (event === 'level') levelUp();
         else if (event === 'over') reactions.onGameOver();

@@ -933,11 +933,11 @@ export class WinterWorld {
     }
 
     /**
-     * Lines cleared. `lines` 1..4; `tspin`, `perfect`, `b2b`; `cascade` = which wave of its lock
+     * Lines cleared. `lines` 1..4; `twist`, `perfect`, `b2b`; `cascade` = which wave of its lock
      * this is (1 = the first); `crown`: a perfect clear that settled after its clear (onCrown).
      */
     onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, b2b = false, cascade = 1, combo = 1, crown = false,
+        rows = null, lines = 1, twist = false, perfect = false, b2b = false, cascade = 1, combo = 1, crown = false,
         player = 0, screen = null,
     } = {}) {
         const { u } = this;
@@ -962,7 +962,7 @@ export class WinterWorld {
         this.strike((0.2 + 0.1 * n) * (1 + 0.1 * deeper), (0.2 + 0.1 * n) * 0.4, birth + 0.1);
         this.storm = Math.max(this.storm, Math.min(1.5, 0.45 + 0.2 * n + (quad ? 0.4 : 0) + 0.06 * deeper));
         this.play.clear({
-            lines: n, cascade: depth, combo, tspin, perfect, b2b,
+            lines: n, cascade: depth, combo, twist, perfect, b2b,
         }, birth);
 
         // ── The cleared rows leave the card: blades of light, and jets of sparks ──
@@ -1040,7 +1040,7 @@ export class WinterWorld {
                 });
             }
         }
-        if (tspin) {
+        if (twist) {
             // The wind turns on itself: a wheel of sparks and powder spins up round the card.
             this.storm = Math.max(this.storm, 1.1);
             if (card && !screen) this.wheel(card, 14, 7, birth);
@@ -1121,7 +1121,7 @@ export class WinterWorld {
         }
     }
 
-    /** A T-spin that cleared nothing: the wind turns on itself, a little. */
+    /** A twist that cleared nothing: the wind turns on itself, a little. */
     onSpin({ screen = null } = {}) {
         if (!this.u || !this.sparks) return;
         this.storm = Math.max(this.storm, 0.55);

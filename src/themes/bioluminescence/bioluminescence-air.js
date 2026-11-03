@@ -253,7 +253,7 @@ export function createMotes(u, count, seed = 0x5b0e) {
         cos(u.time.mul(s.mul(0.17).add(0.11)).add(s.mul(23.0))),
     ).mul(s.mul(1.3).add(0.6));
     const height = climb.mul(MOTE_BOX.height).add(0.12);
-    // A T-spin turns the air about the middle of the pool, faster higher up.
+    // A twist turns the air about the middle of the pool, faster higher up.
     const turn = u.swirl.mul(height.mul(0.09).add(0.4));
     const ox = home.x.add(wander.x);
     const oz = home.z.add(wander.y).add(22.0);

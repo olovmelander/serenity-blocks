@@ -355,7 +355,7 @@ describe('chromadelic highway spectrum in the world', () => {
                 maxStep = Math.max(maxStep, step);
                 prev = w.ringPhase;
             });
-            // Never more than the fastest rate (rest + a full combo + the heat of play + a T-spin's
+            // Never more than the fastest rate (rest + a full combo + the heat of play + a twist's
             // whirl) times one frame.
             expect(maxStep, `session ${start} s old`).toBeLessThanOrEqual((RING_PHASE_MAX_RATE / 60) * 1.0001);
         }
@@ -512,10 +512,10 @@ describe('chromadelic highway build-up', () => {
         expect(rest.speed).toBeLessThan(peak.speed * 0.8);
     });
 
-    it('a T-spin that clears nothing still turns the tunnel', () => {
+    it('a twist that clears nothing still turns the tunnel', () => {
         const world = liveWorld();
         world.seek(20);
-        world.onTSpin(0);
+        world.onTwist(0);
         expect(world.waveSlots.some(Boolean)).toBe(true);
         step(world, 0.1);
         expect(world.env.twist.valueAt(world.time)).toBeGreaterThan(0.1);

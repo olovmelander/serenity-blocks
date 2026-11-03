@@ -192,7 +192,7 @@ export function createDistrictUniforms(textures) {
         heat: uniform(0),
         /** Gain on every neon emitter (blackouts pull it down, overdrive pushes it up). */
         neon: uniform(1),
-        /** 0..1: sign glitch (T-spins, the blackout's edges). */
+        /** 0..1: sign glitch (twists, the blackout's edges). */
         glitch: uniform(0),
         /** Sheet lightning in the smog, 0..1. */
         storm: uniform(0),

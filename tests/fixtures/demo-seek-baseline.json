@@ -4,7 +4,7 @@
   "scenarios": [
     {
       "kind": "plain",
-      "canonicalHash": "426f0c7a9ad9be69d504f5f677c5f35beaf2ab4018a908be5787549a40e6c618",
+      "canonicalHash": "cb3a193cf0f10d14b37ed5adf123546220d474623c2bcc0113b3e4840955f8a8",
       "rngState": 218261,
       "lines": 0,
       "level": 1,
@@ -113,7 +113,7 @@
     },
     {
       "kind": "clear",
-      "canonicalHash": "77a21e992396faa42d4ac7ce41c0c7f519ccd66e854cb7c1e9be9ce2603cd5ea",
+      "canonicalHash": "f54d14ffad6ce3994846a778337b63f027b63bebfcd08f4a387fa2a3ed87f66b",
       "rngState": 218261,
       "lines": 15,
       "level": 2,

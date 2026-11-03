@@ -2,7 +2,7 @@
  * Vesper Chrysalis — random play against the real world.
  *
  * Seeded runs of a few thousand events each: locks, hard drops, clears of one to four lines,
- * T-spins, perfect clears, chains that grow, jump and break, new levels, new runs, game overs,
+ * Twists, perfect clears, chains that grow, jump and break, new levels, new runs, game overs,
  * seeks, boards that come and go and change shape, windows that resize, reduced motion switched on
  * and off, and frames of every length from none at all to a stall of most of a minute. After
  * every frame the world is audited: nothing it holds may leave its range, nothing due may be left
@@ -444,7 +444,7 @@ function play(seed, { events = 2500, quality = 'Low' } = {}) {
         world.onClear({
             lines,
             rows: rand() < 0.3 ? null : Array.from({ length: lines }, (_, i) => 19 - i),
-            tspin: rand() < 0.12,
+            twist: rand() < 0.12,
             perfect,
             player: Math.floor(rand() * 5),
             screen: rand() < 0.03 ? { x: rand(), y: rand() } : null,

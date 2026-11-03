@@ -23,7 +23,7 @@
  *                closed by a gold willow. The show has memory: a longer chain and hotter play
  *                fire more and bigger shells, glitter and then willows join the volley, and each
  *                cascade wave bursts higher and fuller than the last
- *   T-spin       the wheel whirls round and a lilac ring bursts (with no lines, the whirl alone
+ *   twist       the wheel whirls round and a lilac ring bursts (with no lines, the whirl alone
  *                and a lilac band round the rims)
  *   back-to-back a salute: a row of rings bursting together in the wheel's neon colours (one more
  *                for each back-to-back in a row), and both rims ring round
@@ -416,7 +416,7 @@ export class SynthwaveWorld {
         this.nextAmbientShoot = 12 + this.rand() * 18;
         /**
          * How hot play runs (src/themes/shared/gameplay-surge.js) on the world's clock, and its
-         * reading this frame; the perfect clear's crown; a T-spin's whirl of the wheel.
+         * reading this frame; the perfect clear's crown; a twist's whirl of the wheel.
          */
         this.surge = new GameplaySurge();
         this.heat = {
@@ -666,7 +666,7 @@ export class SynthwaveWorld {
         const { bay } = this;
 
         // The wheel turns on the clock (a seek lands right); reduced motion slows it to a crawl,
-        // play turns it faster and a T-spin whirls it (all through the lag: it never jumps).
+        // play turns it faster and a twist whirls it (all through the lag: it never jumps).
         this.wheelLag = (this.wheelLag ?? 0) + dt * ((1 - motion) * 0.85 - bay.spin * motion);
         u.wheelAngle.value = ((t - this.wheelLag) * (Math.PI * 2)) / WHEEL.period;
         this.gullLag = (this.gullLag ?? 0) + dt * (1 - motion) * 0.6;
@@ -989,13 +989,13 @@ export class SynthwaveWorld {
      * the locking piece's colour; four lines, a finale closed by a gold willow. The show has
      * memory: the chain (`combo`), the wave's depth and the heat of play add shells, size and
      * stars, graduate their kinds (glitter, then willows) and tighten the volley, and each wave
-     * bursts higher and fuller than the last. A T-spin whirls the wheel under a lilac ring; a
+     * bursts higher and fuller than the last. A twist whirls the wheel under a lilac ring; a
      * back-to-back fires the salute.
      * @param {number} [lines]
-     * @param {{ cascade?: number, combo?: number, tspin?: boolean, b2b?: boolean }} [info]
+     * @param {{ cascade?: number, combo?: number, twist?: boolean, b2b?: boolean }} [info]
      */
     onLineClear(lines = 1, {
-        cascade = 1, combo = 0, tspin = false, b2b = false,
+        cascade = 1, combo = 0, twist = false, b2b = false,
     } = {}) {
         const n = Math.max(1, Math.min(4, lines | 0));
         const depth = Math.max(1, cascade | 0);
@@ -1003,7 +1003,7 @@ export class SynthwaveWorld {
         const fw = this.fireworks;
         const r = this.rand;
         this.surge.clear({
-            lines: n, cascade: depth, combo, tspin, b2b,
+            lines: n, cascade: depth, combo, twist, b2b,
         }, t);
         const { level } = this.heat;
         const reduced = (this.motion ?? 1) < 0.5;
@@ -1013,8 +1013,8 @@ export class SynthwaveWorld {
         const high = wave * 0.22;
         const pick = () => new THREE.Color(FIREWORK_COLORS[Math.floor(r() * FIREWORK_COLORS.length)]);
         if (b2b) this.b2bStreak += 1;
-        else if (depth === 1 && n < 4 && !tspin) this.b2bStreak = 0;
-        if (tspin) {
+        else if (depth === 1 && n < 4 && !twist) this.b2bStreak = 0;
+        if (twist) {
             this.spin.hit(1, t);
             this.runChase(RIM_BOTTOM, LILAC, 1.2);
         }
@@ -1030,7 +1030,7 @@ export class SynthwaveWorld {
                 let kind = kinds[k % 3];
                 if (k >= n) kind = chain >= 5 && k === shells - 1 ? 'willow' : 'chrys';
                 let color = k === 0 ? this.lastLockColor : pick();
-                if (tspin && k === 0) {
+                if (twist && k === 0) {
                     kind = 'ring';
                     color = LILAC;
                 }
@@ -1095,11 +1095,11 @@ export class SynthwaveWorld {
         this.runChase(RIM_BOTTOM + Math.PI, MINT, 1.3);
     }
 
-    /** A T-spin that cleared nothing: the wheel whirls a little and a lilac band runs round. */
-    onTSpin() {
+    /** A twist that cleared nothing: the wheel whirls a little and a lilac band runs round. */
+    onTwist() {
         this.spin.hit(0.5, this.time);
         this.runChase(RIM_BOTTOM, LILAC, 1.2);
-        this.surgeBonus('tspin', 0.45);
+        this.surgeBonus('twist', 0.45);
     }
 
     /**

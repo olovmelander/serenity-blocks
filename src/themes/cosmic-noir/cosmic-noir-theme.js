@@ -11,7 +11,7 @@
  * inside by a dying ember. A clear makes the pulsar flare and sends a light echo per line out
  * through the smoke, drawing its shape in rings. Each step of a chain spins the lighthouse up and
  * opens the blinds. Four lines fire the flashbulb: the print turns to its own negative for a
- * moment. A T-spin spins the cage. A new level is a reel change: two cue marks flash at the
+ * moment. A twist spins the cage. A new level is a reel change: two cue marks flash at the
  * corner of the picture and the print turns to the next film stock (cyanotype, silver, selenium,
  * sepia, platinum); it also drifts along the same line by itself, one stock every STOCK_STEP
  * seconds: the two simply add.

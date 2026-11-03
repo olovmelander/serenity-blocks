@@ -1,5 +1,5 @@
 /**
- * Pyrestorm — the event smoke: the puffs the events throw (a T-spin's vortex ring, the four-line
+ * Pyrestorm — the event smoke: the puffs the events throw (a twist's vortex ring, the four-line
  * blast's surge down the flank). The column itself is a volume (`pyrestorm-plume.js`).
  *
  * One instanced quad per puff, all in one draw, placed on the CPU each frame and sorted far to
@@ -41,7 +41,7 @@ import {
     BILLOW, aerial, lightningAt, noise3, pyBlackbody, wideGlowAt,
 } from './pyrestorm-tsl.js';
 
-/** Puff kinds: a T-spin's vortex ring, the blast's surge, a lock's burst of ash out of the crater. */
+/** Puff kinds: a twist's vortex ring, the blast's surge, a lock's burst of ash out of the crater. */
 export const PUFF = Object.freeze({ ring: 2, surge: 3, burst: 4 });
 
 /**

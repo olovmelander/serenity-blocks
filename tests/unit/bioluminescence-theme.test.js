@@ -760,7 +760,7 @@ describe('Bioluminescence theme: one node renderer on both backends', () => {
         expect(world.locks[0].u).toBeCloseTo(0.8, 6);
         expect(world.clears).toHaveLength(1);
         expect(world.clears[0]).toMatchObject({
-            lines: 4, rows: [19, 18, 17, 16], combo: 1, cascade: 1, tspin: false, perfect: false, player: 0,
+            lines: 4, rows: [19, 18, 17, 16], combo: 1, cascade: 1, twist: false, perfect: false, player: 0,
         });
         expect(world.level).toBe(3);
         expect(world.combo).toBe(1);
@@ -774,17 +774,17 @@ describe('Bioluminescence theme: one node renderer on both backends', () => {
         expect(post.renders).toBe(1);
     });
 
-    it('carries a T-spin and a perfect clear on the clear', async () => {
+    it('carries a twist and a perfect clear on the clear', async () => {
         const { theme } = await startTheme({ quality: 'High' });
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 2 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 2 });
         eventBus.emit(EVENTS.B2B, { active: true });
         eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 1 });
         theme.stepFrame(16);
         expect(theme.world.clears).toHaveLength(1);
         expect(theme.world.clears[0]).toMatchObject({
-            lines: 2, tspin: true, b2b: true, perfect: true,
+            lines: 2, twist: true, b2b: true, perfect: true,
         });
     });
 

@@ -17,7 +17,7 @@
  * further out along the axis, the pattern turns faster and the old suns stream through the
  * arms); four lines make the galaxy hold its breath, then the nucleus erupts (both jets fire to
  * their full reach, every nursery goes nova as the wave passes, a prismatic ring crosses the
- * sky, the picture ripples out from the nucleus and shooting stars fly from it); and a T-spin
+ * sky, the picture ripples out from the nucleus and shooting stars fly from it); and a twist
  * winds the arms up and lets them spring back.
  *
  * Content lives in GalaxyWorld (galaxy-world.js), shared with the playground effect

@@ -15,7 +15,7 @@ takes its registry position, group (`meditation`), Odyssey orb 56 (chapter 7's f
 placeholder must stay a byte copy of `blood-moon.mp3`).
 
 To look at it: `npm run dev`, then `/playground.html?effect=kaleidosonic&t=10&board=1`
-(`mood=0..5` holds a mood; `combo=<n>` holds a chain; `event=lock|drop|clear|quad|tspin|perfect|levelUp|release|over`
+(`mood=0..5` holds a mood; `combo=<n>` holds a chain; `event=lock|drop|clear|quad|twist|perfect|levelUp|release|over`
 with `eventAge`, `u`, `row`, `piece`, `lines`; `icon=1` the icon's lens). In the game:
 `/?unlockAll=1&skipIntro=1`.
 
@@ -372,7 +372,7 @@ right of the HUD), `combo=5&mood=2` (six sectors), `combo=8&mood=4` (twelve: a c
 and a perfect clear's mandala (`event=perfect&eventAge=2.0&mood=5`).*
 
 ![A T-spin's roll](kaleidosonic-captures/roll.jpg)
-*`event=tspin&combo=3`, `eventAge` 0.3 → 1.8 s: the eye rolls a full turn with the mirror open;
+*`event=twist&combo=3`, `eventAge` 0.3 → 1.8 s: the eye rolls a full turn with the mirror open;
 the mirror's line turns with the core's bearing, so the core and its image wheel round the card
 and the core never leaves the frame.*
 

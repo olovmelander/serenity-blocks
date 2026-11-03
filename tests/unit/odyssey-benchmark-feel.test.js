@@ -14,7 +14,7 @@ function sample(t, height, counts = {}, extra = {}) {
         singles: 0,
         doubles: 0,
         triples: 0,
-        tetrises: 0,
+        quads: 0,
         cascades: 0,
         goal: false,
         ...counts,
@@ -29,12 +29,12 @@ describe('benchmark feel summary (level design audit 2026-11, §5.7 level 3)', (
             sample(10, 0.3, { singles: 1 }),
             sample(20, 0.7, { singles: 1, doubles: 1 }),
             sample(30, 0.95, { singles: 1, doubles: 1 }),
-            sample(40, 0.5, { singles: 1, doubles: 1, tetrises: 1 }),
+            sample(40, 0.5, { singles: 1, doubles: 1, quads: 1 }),
             sample(50, 0.92, {
-                singles: 1, doubles: 1, tetrises: 1, cascades: 2,
+                singles: 1, doubles: 1, quads: 1, cascades: 2,
             }),
             sample(60, 0.2, {
-                singles: 1, doubles: 1, tetrises: 1, cascades: 2,
+                singles: 1, doubles: 1, quads: 1, cascades: 2,
             }, { goal: true }),
         ];
         const feel = summarizeFeel(samples);
@@ -44,7 +44,7 @@ describe('benchmark feel summary (level design audit 2026-11, §5.7 level 3)', (
             nearMisses: 2,
             notableEvents: 3,
             clears: {
-                singles: 1, doubles: 1, triples: 0, tetrises: 1,
+                singles: 1, doubles: 1, triples: 0, quads: 1,
             },
             cascades: 2,
             dominantClearShare: 0.333,

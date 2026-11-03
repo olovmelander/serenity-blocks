@@ -239,8 +239,8 @@ describe('benchmark-only bot profiles', () => {
             gameState: state,
             profileId: 'quad',
             decisionSeed: 44,
-            levelConfig: { victory: { primary: { type: 'tetrises', target: 1 }, bonuses: [{ type: 'no-singles' }] } },
-            getMetrics: () => ({ tetrises: 0, singles: 0 }),
+            levelConfig: { victory: { primary: { type: 'quads', target: 1 }, bonuses: [{ type: 'no-singles' }] } },
+            getMetrics: () => ({ quads: 0, singles: 0 }),
             actions: {
                 moveRight: () => move(state, 1),
                 moveLeft: () => move(state, -1),

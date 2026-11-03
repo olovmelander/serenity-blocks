@@ -90,7 +90,7 @@ export function createStreakField(u, { count, kind = 'stars', seed = 0x51a7 } = 
         const ahead = stars
             ? mod(place.z.sub(travel).add(lead), depthSpan).sub(behind)
             : mod(place.z.add(travel).sub(lead), depthSpan).add(behind);
-        // The dust swirls round the axis faster the deeper it has gone in; a T-spin winds both.
+        // The dust swirls round the axis faster the deeper it has gone in; a twist winds both.
         const turn = stars
             ? u.twist.mul(0.4)
             : u.spin.mul(1.6).add(ahead.mul(0.09)).add(u.twist.mul(1.2)).add(place.w.mul(TAU));

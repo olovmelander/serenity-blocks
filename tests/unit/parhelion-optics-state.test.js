@@ -225,7 +225,7 @@ describe('Parhelion optics determinism (§7.2, §8)', () => {
         {
             t: 2.1,
             cue: makeCue({
-                kind: CUE.TSPIN, lines: 2, lockU: 0.2, lockV: 0.6,
+                kind: CUE.TWIST, lines: 2, lockU: 0.2, lockV: 0.6,
             }),
         },
         { t: 2.4, count: 12 },
@@ -301,7 +301,7 @@ describe('Parhelion optics determinism (§7.2, §8)', () => {
         for (let frame = 0; frame < 600; frame++) {
             t += FRAME;
             if (frame % 37 === 0) {
-                const kinds = [CUE.LOCK, CUE.CLEAR, CUE.QUAD, CUE.TSPIN, CUE.APEX, CUE.PERFECT, CUE.ECHO];
+                const kinds = [CUE.LOCK, CUE.CLEAR, CUE.QUAD, CUE.TWIST, CUE.APEX, CUE.PERFECT, CUE.ECHO];
                 state.applyCue(makeCue({ kind: kinds[frame % kinds.length], lines: 2, echoOf: CUE.QUAD }), t);
             }
             expect(state.update(t, FRAME)).toBe(out);
@@ -389,7 +389,7 @@ describe('Parhelion QUAD "The Halo Closes" (§7.4)', () => {
             makeCue({ kind: CUE.CLEAR, lines: 1 }),
             makeCue({ kind: CUE.CLEAR, lines: 2 }),
             makeCue({ kind: CUE.CLEAR, lines: 3 }),
-            makeCue({ kind: CUE.TSPIN, lines: 1 }),
+            makeCue({ kind: CUE.TWIST, lines: 1 }),
             makeCue({ kind: CUE.QUAD, lines: 4 }),
         ];
         const peaks = cues.map((cue) => {
@@ -689,7 +689,7 @@ describe('Parhelion reduced motion (§7.6)', () => {
         expect(out.clocks.dustClockRate).toBe(PARHELION_CLOCK_RATES.dustReducedMotion);
     });
 
-    it('lights stations at 0.12 with no motes, skips the Clear Sky freeze, and flattens the T-spin orbit', () => {
+    it('lights stations at 0.12 with no motes, skips the Clear Sky freeze, and flattens the twist orbit', () => {
         const state = createState();
         state.configure({ reducedMotion: true });
         state.applyCue(makeCue({
@@ -710,7 +710,7 @@ describe('Parhelion reduced motion (§7.6)', () => {
         }
 
         state.applyCue(makeCue({
-            kind: CUE.TSPIN, lines: 2, reducedMotion: true, strength: 0.45,
+            kind: CUE.TWIST, lines: 2, reducedMotion: true, strength: 0.45,
         }), 4);
         out = state.update(4.2, FRAME);
         const wave = ARC_SLOT.WAVE * 4;
@@ -910,13 +910,13 @@ describe('Parhelion keeps the board sanctuary (§7.3: nothing reactive spawns in
                     ...at, kind: CUE.CLEAR, lines: 3, depth: 2,
                 }));
                 cues.push(makeCue({ ...at, kind: CUE.QUAD, lines: 4 }));
-                cues.push(makeCue({ ...at, kind: CUE.TSPIN, lines: 2 }));
+                cues.push(makeCue({ ...at, kind: CUE.TWIST, lines: 2 }));
                 cues.push(makeCue({
                     ...at, kind: CUE.APEX, lines: 1, combo: 10,
                 }));
                 cues.push(makeCue({ ...at, kind: CUE.PERFECT, lines: 4 }));
                 cues.push(makeCue({
-                    ...at, kind: CUE.ECHO, echoOf: CUE.TSPIN, strength: 0.5,
+                    ...at, kind: CUE.ECHO, echoOf: CUE.TWIST, strength: 0.5,
                 }));
             }
         }

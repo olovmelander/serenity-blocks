@@ -189,7 +189,7 @@ describe('ice temple world: camera', () => {
         run(world, camera, 1);
         const still = camera.position.clone();
         const snow = world.snowFall;
-        world.onClear({ lines: 2, tspin: true });
+        world.onClear({ lines: 2, twist: true });
         run(world, camera, 6);
         expect(camera.position.distanceTo(still)).toBeLessThan(1e-9);
         // The snow keeps falling at its resting pace whatever the combo, and the air never turns.
@@ -495,9 +495,9 @@ describe('ice temple world: clears, resonance and the four-line hush', () => {
         world.dispose();
     });
 
-    it('turns the air on a T-spin and lets it come to rest', () => {
+    it('turns the air on a twist and lets it come to rest', () => {
         const { camera, world } = makeWorld('Minimal');
-        world.onClear({ lines: 2, tspin: true });
+        world.onClear({ lines: 2, twist: true });
         run(world, camera, 1);
         const turning = world.swirl;
         expect(turning).toBeGreaterThan(1);
@@ -825,7 +825,7 @@ describe('ice temple world: it builds with play', () => {
         const { world } = makeWorld('Minimal');
         world.onClear({ lines: 2 });
         const t0 = world.time;
-        world.onClear({ lines: 2, tspin: true, b2b: true });
+        world.onClear({ lines: 2, twist: true, b2b: true });
         const births = world.u.clearA.map((slot) => slot.value.x).filter((x) => x > 0).sort((a, b) => a - b);
         expect(births).toEqual([t0, t0, t0 + ECHO_DELAY]);
         const echo = world.u.clearC[world.lastClearSlot].value;
@@ -851,14 +851,14 @@ describe('ice temple world: it builds with play', () => {
         world.dispose();
     });
 
-    it('gives a T-spin that cleared nothing a small turn of the air', () => {
+    it('gives a twist that cleared nothing a small turn of the air', () => {
         const { camera, world } = makeWorld('Minimal');
         world.onSpin({ player: 0 });
         run(world, camera, 3);
         const small = world.swirl;
         expect(small).toBeGreaterThan(0.3);
         world.seek(10);
-        world.onClear({ lines: 2, tspin: true });
+        world.onClear({ lines: 2, twist: true });
         run(world, camera, 3);
         expect(world.swirl).toBeGreaterThan(small);
         world.dispose();
@@ -885,7 +885,7 @@ describe('ice temple world: time', () => {
             const { camera, world } = makeWorld('Minimal');
             world.onLock({ u: 0.3, hardDrop: true });
             world.onCombo(4);
-            world.onClear({ lines: 2, tspin: true });
+            world.onClear({ lines: 2, twist: true });
             run(world, camera, 3, 3 * fps);
             const state = world.getState();
             const post = { ...world.getPostState() };

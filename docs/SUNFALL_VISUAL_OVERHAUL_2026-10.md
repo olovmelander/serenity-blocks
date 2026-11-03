@@ -185,7 +185,7 @@ One world-space integral per pixel to the depth the scene pass wrote, then bloom
 - **Playground** (`?effect=sunfall`; the world loads asynchronously, so wait for
   `diagnostics().assets === 'ready'` as well as `__PLAYGROUND_READY__`): rest `t=40&level=1` (and
   `&board=1`), opaque-first `parts=sky,cave,jungle,gours`, `falseColor=1`, `event=lock`,
-  `event=clear&lines=3`, `event=quad`, `combo=7`, `event=tspin`, `b2b=2`, `event=perfect`,
+  `event=clear&lines=3`, `event=quad`, `combo=7`, `event=twist`, `b2b=2`, `event=perfect`,
   `event=over`, `level=4`, 2560×1080, 390×844, `quality=Low`, `quality=Minimal`, `forceWebGL=1`:
   clean consoles on both backends. A replay re-seeks every frame, so the director's session reset
   now restarts the weather clock and its random stream, and the playground's replays skip the
@@ -254,7 +254,7 @@ change does:
   2.6 px, so they bloom as sparse sparkles; never in step, about one in five bright at any moment.
 
 **Verification.** Playground (private server; console clean on every view): rest `t=40&level=1`
-and `&board=1`, `level=2/3/5`, `combo=7`, `event=quad`, `event=perfect`, `event=tspin`,
+and `&board=1`, `level=2/3/5`, `combo=7`, `event=quad`, `event=perfect`, `event=twist`,
 `event=over`, `weather=mist`/`cloud`, 390×844, 2520×1080, `quality=Low`, `quality=Minimal`,
 `forceWebGL=1`, `falseColor=1`, and `parts=` with and without the deck and the beam. In the game:
 `scripts/capture-theme-screenshots.mjs --theme sunfall` → PASS (0 lifecycle failures, 0 console

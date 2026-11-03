@@ -176,7 +176,7 @@ function configureNonDefaultState(player) {
         complexity: 3,
         lockFootprint: [{ x: 4, y: 21 }],
         manualColumns: [4],
-        tSpin: true,
+        twist: true,
         sequence: 9,
     };
     restoreBlindTimers(gameState, {

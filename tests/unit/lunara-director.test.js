@@ -114,22 +114,22 @@ describe('lunara director: intake', () => {
         expect(calls.combo[calls.combo.length - 1]).toEqual([0, 0]);
     });
 
-    it('carries T-spins, perfect clears and back-to-backs on the clear', () => {
+    it('carries twists, perfect clears and back-to-backs on the clear', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: T });
         director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.onB2B({ active: true });
         director.onPerfectClear({ depth: 1 });
         director.flush();
         expect(calls.clear[0]).toMatchObject({
-            lines: 2, tspin: true, b2b: true, perfect: true,
+            lines: 2, twist: true, b2b: true, perfect: true,
         });
         // An inactive B2B is not one.
         expect(director.onB2B({ active: false })).toBe(false);
     });
 
-    it('resolves a perfect clear settled after its clear as a crown, and a T-spin that clears nothing', () => {
+    it('resolves a perfect clear settled after its clear as a crown, and a twist that clears nothing', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: I });
         director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
@@ -146,12 +146,12 @@ describe('lunara director: intake', () => {
         });
         // The chain is not counted twice.
         expect(calls.combo).toEqual([[1, 0]]);
-        // A T-spin with no lines still says so.
+        // A twist with no lines still says so.
         director.onPieceLock({ piece: T });
-        director.onTSpin({ lineCount: 0 });
+        director.onTwist({ lineCount: 0 });
         director.flush();
         expect(calls.clear).toHaveLength(3);
-        expect(calls.clear[2]).toMatchObject({ lines: 0, tspin: true, crown: false });
+        expect(calls.clear[2]).toMatchObject({ lines: 0, twist: true, crown: false });
         // A perfect clear in the frame of its own clear stays on that clear.
         director.onPieceLock({ piece: I });
         director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });

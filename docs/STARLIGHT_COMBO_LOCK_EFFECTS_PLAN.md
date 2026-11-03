@@ -346,7 +346,7 @@ attach() {
     eventBus.on(EVENTS.COMBO,         (d) => this._onCombo(d)),
     eventBus.on(EVENTS.LEVEL_UP,      ()  => this._onLevelUp()),
     eventBus.on(EVENTS.PERFECT_CLEAR, ()  => this._onPerfectClear()),
-    eventBus.on(EVENTS.TSPIN,         (d) => this._onTSpin(d)),   // NEW
+    eventBus.on(EVENTS.TWIST,         (d) => this._onTSpin(d)),   // NEW
     eventBus.on(EVENTS.B2B,           (d) => this._onB2B(d)),     // NEW
     eventBus.on(EVENTS.CASCADE,       (d) => this._onCascade(d)), // NEW
   );

@@ -25,7 +25,7 @@
  * visible erg — any azimuth inside the lens, near or far, travelling any way across the view —
  * as long as it is clear of the rock, not hidden behind a formation and not behind the gameplay
  * board. Two worms can be live at once: slot 0 is the idle worm (a cycle of sign → breach →
- * settle), slot 1 the summoned one (a Tetris), so answering a Tetris never cuts a breach short.
+ * settle), slot 1 the summoned one (a Quad), so answering a Quad never cuts a breach short.
  * Every slot is closed-form in the world clock, from the first tremor of the sign to the last
  * drifting dust of the settle: nothing switches off in a single frame.
  */
@@ -712,7 +712,7 @@ export class WormDirector {
     }
 
     /**
-     * A Tetris: the worm comes for the drum. Refused only while the last summoned worm is
+     * A Quad: the worm comes for the drum. Refused only while the last summoned worm is
      * still above the sand; if its dust is still settling, that fades out under the new sign.
      */
     summon(t) {
@@ -756,7 +756,7 @@ export class WormDirector {
             const cycle = Math.floor((t - IDLE_OFFSET) / IDLE_PERIOD);
             idle = this.idleBreach(cycle, t);
             // A summons that lands before an idle sign has begun keeps that cycle quiet: the
-            // Tetris has the erg to itself. A breach already under way always runs its course.
+            // Quad has the erg to itself. A breach already under way always runs its course.
             const signStart = idle.t0 - idle.leadTime;
             if (cycle === this.skipCycle) {
                 idle = null;

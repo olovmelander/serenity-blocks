@@ -282,7 +282,7 @@ export const TIMING = Object.freeze({
     gust: 3.2,
     /** A spinnaker stays set this long after its lock, then is doused. */
     spinnaker: 24,
-    /** T-spin: the fleet comes about over this long. */
+    /** Twist: the fleet comes about over this long. */
     tack: 3.4,
     /** Perfect clear: the sea lies glass-calm this long, then the breeze returns over the next. */
     calmHold: 8,

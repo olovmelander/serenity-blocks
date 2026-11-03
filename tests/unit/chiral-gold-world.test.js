@@ -495,11 +495,11 @@ describe('Chiral Gold world: gameplay', () => {
         expect(live(cold.world.u.pulseA, 1, cold.time)).toHaveLength(0);
     });
 
-    it('turns both towers exactly once on a T-spin', () => {
+    it('turns both towers exactly once on a twist', () => {
         const run = createWorld('High', { time: 5 });
         const { world } = run;
         const [, right] = world.towers;
-        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        world.onClear({ rows: [19, 18], lines: 2, twist: true });
         run.step(0.45);
         const mid = right.group.rotation.y - world.spin;
         expect(mid).toBeGreaterThan(1);
@@ -723,11 +723,11 @@ describe('Chiral Gold world: gameplay', () => {
 describe('Chiral Gold world: it builds instead of restarting', () => {
     /**
      * The tray's Fever, by the clock: twelve clearing hard drops 0.64 s apart (singles into
-     * triples, a T-spin, a four-wave cascade), ending in a quad and the late perfect clear.
+     * triples, a twist, a four-wave cascade), ending in a quad and the late perfect clear.
      */
     const fever = (run) => {
         const { world } = run;
-        const plan = [1, 1, 2, 1, 2, 2, 3, 'tspin', 2, 'cascade', 3, 'quad'];
+        const plan = [1, 1, 2, 1, 2, 2, 3, 'twist', 2, 'cascade', 3, 'quad'];
         plan.forEach((step, n) => {
             if (n > 0) run.step(0.64);
             const combo = n + 1;
@@ -739,9 +739,9 @@ describe('Chiral Gold world: it builds instead of restarting', () => {
                 world.onClear({
                     lines: 1, combo, crown: true, perfect: true,
                 });
-            } else if (step === 'tspin') {
+            } else if (step === 'twist') {
                 world.onClear({
-                    rows: [19, 18], lines: 2, combo, tspin: true,
+                    rows: [19, 18], lines: 2, combo, twist: true,
                 });
                 world.onCombo(combo);
             } else if (step === 'cascade') {
@@ -881,7 +881,7 @@ describe('Chiral Gold world: it builds instead of restarting', () => {
         const { world } = run;
         const t0 = run.time;
         world.onClear({
-            rows: [19, 18], lines: 2, tspin: true, b2b: true,
+            rows: [19, 18], lines: 2, twist: true, b2b: true,
         });
         // Comets leave the crown and run down to both feet: the reverse of a clear's.
         const fromCrown = live(world.u.cometA, 0, t0).filter((c) => Math.abs(c[3] - Math.PI / 2) < 1e-9);
@@ -898,7 +898,7 @@ describe('Chiral Gold world: it builds instead of restarting', () => {
         expect(world.getState().crown).toBeLessThan(0.01);
     });
 
-    it('turns on a T-spin that clears nothing, and never snaps a turn back', () => {
+    it('turns on a twist that clears nothing, and never snaps a turn back', () => {
         const run = createWorld('High', { time: 5 });
         const { world } = run;
         const [, right] = world.towers;
@@ -907,11 +907,11 @@ describe('Chiral Gold world: it builds instead of restarting', () => {
         expect(world.counts.spins).toBe(1);
         run.step(1);
         expect(turned()).toBeCloseTo(TAU / 2, 6);
-        // A full T-spin half-way through another turn carries on from where the towers are.
-        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        // A full twist half-way through another turn carries on from where the towers are.
+        world.onClear({ rows: [19, 18], lines: 2, twist: true });
         run.step(0.45);
         const before = turned();
-        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        world.onClear({ rows: [19, 18], lines: 2, twist: true });
         run.step(1 / 240, 1 / 240);
         expect(Math.abs(turned() - before)).toBeLessThan(0.1);
         run.step(2);

@@ -23,7 +23,7 @@ import { updateStats } from '../../rendering/draw.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import {
-    emitLineClear, emitCombo, emitPieceLock, emitPerfectClear, emitTSpin, emitB2B,
+    emitLineClear, emitCombo, emitPieceLock, emitPerfectClear, emitTwist, emitB2B,
     emitHardDrop, emitLevelUp,
 } from '../../events/gameplay-events.js';
 import {
@@ -57,7 +57,7 @@ import { canWriteLegacySinglePlayerResults } from './single-player-result-compat
 import { saveRunScore } from '../progression/run-score.js';
 
 /**
- * SinglePlayerMode - Classic single-player Tetris experience
+ * SinglePlayerMode - Classic single-player falling-block experience
  *
  * Manages:
  * - Single GameState instance
@@ -1213,12 +1213,12 @@ export class SinglePlayerMode extends BaseGameMode {
                 // Emit event for theme reactions
                 emitLineClear({ lineCount, clearedRows, cascadeCount });
             },
-            onTSpin: (lineCount) => {
-                emitTSpin({ lineCount });
-                this.deps.soundManager.sfxPlayer.playTSpin?.();
+            onTwist: (lineCount) => {
+                emitTwist({ lineCount });
+                this.deps.soundManager.sfxPlayer.playTwist?.();
                 const boardScene = this._getBoardScene();
-                if (boardScene?.sharedEffects?.playTSpinEffect) {
-                    boardScene.sharedEffects.playTSpinEffect(lineCount);
+                if (boardScene?.sharedEffects?.playTwistEffect) {
+                    boardScene.sharedEffects.playTwistEffect(lineCount);
                 }
             },
             onB2B: () => {

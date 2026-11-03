@@ -26,7 +26,7 @@
  *   four     the star holds its breath — every light sinks for a quarter of a second — then
  *            flares: a full shell crosses the frame, every loop is torn off at once, space
  *            ripples, and the ember stands white-gold for a few seconds.
- *   T-spin   the star spins up: the corona and the wind wind into a pinwheel and spring back.
+ *   twist   the star spins up: the corona and the wind wind into a pinwheel and spring back.
  *   level    the void moves one palette along its line of five, and a cold ring crosses it.
  *   time     by itself, with no level change, the void drifts along the same line: one palette
  *            every PALETTE_STEP seconds, there and back. The two simply add.
@@ -282,7 +282,7 @@ export class VoidEmberWorld {
             dip: new Swell({
                 attack: 0.06, release: 0.35, ceiling: 0.35, knee: 0.25,
             }),
-            /** A T-spin's spin-up of the star's turn. */
+            /** A twist's spin-up of the star's turn. */
             spinKick: new Swell({ release: 2.4, ceiling: 1.6, knee: 1 }),
             /** The post's swell after a clear. */
             swell: new Swell({ release: 0.7, ceiling: 0.8, knee: 0.55 }),
@@ -1005,12 +1005,12 @@ export class VoidEmberWorld {
     }
 
     /**
-     * Lines cleared. `lines` 1..4; `tspin`, `perfect`, `b2b`; `rows` = the visible rows that went;
+     * Lines cleared. `lines` 1..4; `twist`, `perfect`, `b2b`; `rows` = the visible rows that went;
      * `combo` = the chain this clear belongs to (1 = its first clear); `cascade` = which wave of
      * its lock's cascade it is (each one builds on the last: stronger, wider, more fronts, hotter).
      */
     onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, player = 0, screen = null, combo = 1, cascade = 1,
+        rows = null, lines = 1, twist = false, perfect = false, player = 0, screen = null, combo = 1, cascade = 1,
         b2b = false,
     } = {}) {
         const { u } = this;
@@ -1022,7 +1022,7 @@ export class VoidEmberWorld {
         const { level, fever } = this.playNow;
         const birth = quad ? this.time + HUSH_HOLD : this.time;
         this.play.clear({
-            lines: n, cascade: depth + 1, combo: chain, tspin, perfect, b2b,
+            lines: n, cascade: depth + 1, combo: chain, twist, perfect, b2b,
         }, this.time);
 
         // ── What the star lets go of; the wave is tinted by it ──
@@ -1145,7 +1145,7 @@ export class VoidEmberWorld {
         } else if (n === 3) {
             this.swells.surge.hit(0.3, this.time);
         }
-        if (tspin) {
+        if (twist) {
             // The star spins up and the corona winds into a pinwheel.
             this.twistVelocity += 3.4;
             this.swells.spinKick.hit(1, this.time);
@@ -1156,7 +1156,7 @@ export class VoidEmberWorld {
             this.b2bStreak += 1;
             this.swells.b2b.hit(0.55 + 0.2 * Math.min(4, this.b2bStreak - 1), this.time);
             this.ripple(birth, this.reducedMotion ? 0.08 : 0.3);
-        } else if (!quad && !tspin) this.b2bStreak = 0;
+        } else if (!quad && !twist) this.b2bStreak = 0;
         this.counts.eruptions += torn;
         this.counts.clears += 1;
     }
@@ -1226,7 +1226,7 @@ export class VoidEmberWorld {
         this.counts.crowns += 1;
     }
 
-    /** A T-spin that cleared nothing: the star still turns a little and the corona winds up. */
+    /** A twist that cleared nothing: the star still turns a little and the corona winds up. */
     onSpin() {
         if (!this.u) return;
         this.play.spin(this.time);

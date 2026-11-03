@@ -216,7 +216,7 @@ export class CinderDriftWorld {
          *   dip       the breath the chamber lets go when a chain breaks (a sag, not a drop)
          *   quadCurtain, curtain   the fountains' light: a curtain of fire, a smaller clear's
          *   swell     the shafts' and the iris's answer to a clear
-         *   whirl     how far T-spins have turned the crust (they add up, one way per turn)
+         *   whirl     how far twists have turned the crust (they add up, one way per turn)
          *   carry     the afterglow of clear waves whose slots newer waves took
          *   b2b       a back-to-back streak: the rock's answer
          *   crown     a perfect clear's crown
@@ -293,7 +293,7 @@ export class CinderDriftWorld {
         this.rain = 0.1;
         this.hushUntil = -1;
         this.hushDepth = 1;
-        /** The way T-spins turn the crust: kept while it turns, changed for a fresh turn. */
+        /** The way twists turn the crust: kept while it turns, changed for a fresh turn. */
         this.whirlSign = -1;
         this.b2bStreak = 0;
         /** The clear slot the newest wave took. */
@@ -306,7 +306,7 @@ export class CinderDriftWorld {
         /** Pools still to be melted into the lake's memory: bombs landing, fountains standing. */
         this.pending = [];
         this.counts = {
-            locks: 0, clears: 0, quads: 0, fountains: 0, bombs: 0, crowns: 0, tspins: 0, b2b: 0,
+            locks: 0, clears: 0, quads: 0, fountains: 0, bombs: 0, crowns: 0, twists: 0, b2b: 0,
         };
         // The slow clocks are functions of the world clock until gameplay bends them.
         const motion = this.reducedMotion ? 0.35 : 1;
@@ -825,13 +825,13 @@ export class CinderDriftWorld {
     }
 
     /**
-     * Lines cleared. `lines` 1..4; `tspin`, `perfect`, `b2b`; `cascade` = which wave of one lock's
+     * Lines cleared. `lines` 1..4; `twist`, `perfect`, `b2b`; `cascade` = which wave of one lock's
      * clear this is (each wave lands deeper and whiter on the last); `combo` = the chain it is a
      * step of (the fountains walk out along the fissure with it). (The chamber's pressure follows
      * the true combo through onCombo.)
      */
     onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, player = 0, screen = null,
+        rows = null, lines = 1, twist = false, perfect = false, player = 0, screen = null,
         cascade = 1, combo = 1, b2b = false,
     } = {}) {
         const { u: uniforms } = this;
@@ -863,7 +863,7 @@ export class CinderDriftWorld {
         // (Read before this clear's own heat joins: a quad's hush depends on how hot play WAS.)
         const hushDepth = quad ? this.hushDepthNow() : 0;
         this.gameplay.clear({
-            lines: n, cascade, combo: chain, tspin, perfect, b2b,
+            lines: n, cascade, combo: chain, twist, perfect, b2b,
         }, birth);
 
         // ── The wave leaves the foot of the board ──
@@ -1004,7 +1004,7 @@ export class CinderDriftWorld {
             this.counts.quads += 1;
             if (perfect) this.crown(birth, player, { wave: false });
         }
-        if (tspin) {
+        if (twist) {
             // The crust turns round the foot of the board (a second spin adds to the turn).
             this.twist(hx, hz - 9, 1.8 * (1 + 0.15 * depth));
             this.storm = Math.max(this.storm, 0.85);
@@ -1017,7 +1017,7 @@ export class CinderDriftWorld {
             S.b2b.hit(0.35 + 0.15 * step, birth);
             this.shockAt(birth, (this.reducedMotion ? 0.5 : 1) * (0.5 + 0.12 * step));
             this.counts.b2b += 1;
-        } else if (n < 4 && !tspin) this.b2bStreak = 0;
+        } else if (n < 4 && !twist) this.b2bStreak = 0;
         this.counts.clears += 1;
     }
 
@@ -1070,8 +1070,8 @@ export class CinderDriftWorld {
         this.crown(this.time, player);
     }
 
-    /** A T-spin that cleared nothing: the crust turns a little round the foot of the board. */
-    onTSpinMini({ player = 0 } = {}) {
+    /** A twist that cleared nothing: the crust turns a little round the foot of the board. */
+    onTwistMini({ player = 0 } = {}) {
         if (!this.u || !this.spatter) return;
         const board = boardFor(this.layout, player);
         const heart = this.screenToLake(board ? (board.x0 + board.x1) * 0.5 : 0.5, 0.93);
@@ -1079,9 +1079,9 @@ export class CinderDriftWorld {
         this.ring(heart.x, heart.z - 9, this.time, 0.75, this._palette.spark, 0.6);
         this.storm = Math.max(this.storm, 0.45);
         const W = SURGE_WEIGHTS;
-        this.gameplay.punch.hit(W.punch.tspin * 0.5, this.time);
-        this.gameplay.level.hit(W.heat.tspin * 0.5, this.time);
-        this.counts.tspins += 1;
+        this.gameplay.punch.hit(W.punch.twist * 0.5, this.time);
+        this.gameplay.level.hit(W.heat.twist * 0.5, this.time);
+        this.counts.twists += 1;
     }
 
     /** The true combo changed (0 = the chain broke). */

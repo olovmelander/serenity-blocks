@@ -61,7 +61,7 @@ function createTheme() {
     return theme;
 }
 
-const REACTIONS = ['onHardDrop', 'onPieceLock', 'onLineClear', 'onCombo', 'onTSpin', 'onBackToBack', 'onPerfectClear',
+const REACTIONS = ['onHardDrop', 'onPieceLock', 'onLineClear', 'onCombo', 'onTwist', 'onBackToBack', 'onPerfectClear',
     'onLevelUp', 'onGameOver'];
 
 function stubSceneBuild(theme) {
@@ -209,12 +209,12 @@ describe('Crystal Cave gameplay event normalization', () => {
         const { reactions } = buildStubScene(theme);
         theme.setupEventListeners();
         eventBus.emit(EVENTS.HARD_DROP, { piece: { x: 1 }, distance: 12 });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 2 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 2 });
         eventBus.emit(EVENTS.B2B, { active: true });
         eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 1 });
         eventBus.emit(EVENTS.LEVEL_UP, { level: 3 });
         expect(reactions.onHardDrop).toHaveBeenCalledExactlyOnceWith({ piece: { x: 1 }, distance: 12 });
-        expect(reactions.onTSpin).toHaveBeenCalledExactlyOnceWith({ lineCount: 2 });
+        expect(reactions.onTwist).toHaveBeenCalledExactlyOnceWith({ lineCount: 2 });
         expect(reactions.onBackToBack).toHaveBeenCalledOnce();
         expect(reactions.onPerfectClear).toHaveBeenCalledOnce();
         expect(reactions.onLevelUp).toHaveBeenCalledOnce();
@@ -264,7 +264,7 @@ describe('Crystal Cave gameplay event normalization', () => {
             theme.onPieceLock({});
             theme.onLineClear(4);
             theme.onCombo(8);
-            theme.onFlourish('onTSpin', {});
+            theme.onFlourish('onTwist', {});
             theme.onFlourish('onPerfectClear');
             for (const name of REACTIONS) expect(reactions[name]).not.toHaveBeenCalled();
         },

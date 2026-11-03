@@ -114,16 +114,16 @@ describe('neon district director: intake', () => {
         expect(calls.combo[calls.combo.length - 1]).toEqual([0, 0]);
     });
 
-    it('carries T-spins, perfect clears and back-to-backs on the clear', () => {
+    it('carries twists, perfect clears and back-to-backs on the clear', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: T });
         director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.onB2B({ active: true });
         director.onPerfectClear({ depth: 1 });
         director.flush();
         expect(calls.clear[0]).toMatchObject({
-            lines: 2, tspin: true, b2b: true, perfect: true,
+            lines: 2, twist: true, b2b: true, perfect: true,
         });
         // An inactive B2B is not one.
         expect(director.onB2B({ active: false })).toBe(false);
@@ -145,9 +145,9 @@ describe('neon district director: intake', () => {
         expect(calls.clear).toHaveLength(1);
         expect(perfect).toHaveLength(1);
         expect(perfect[0]).toMatchObject({ lines: 0, perfect: true, combo: 1 });
-        // A T-spin that clears nothing still reaches the sink, beside its lock.
+        // A twist that clears nothing still reaches the sink, beside its lock.
         director.onPieceLock({ piece: T });
-        director.onTSpin({ lineCount: 0 });
+        director.onTwist({ lineCount: 0 });
         director.flush();
         expect(spins).toEqual([{ player: 0 }]);
         expect(calls.clear).toHaveLength(1);

@@ -1166,7 +1166,7 @@ describe('lunara world: clears, combos and the four-line clear', () => {
         perfect.world.dispose();
     });
 
-    it('turns the sky on a T-spin and lets it settle', () => {
+    it('turns the sky on a twist and lets it settle', () => {
         const { camera, world } = makeWorld('Low');
         const calm = world.auroraDrift;
         run(world, camera, 0.5);
@@ -1174,7 +1174,7 @@ describe('lunara world: clears, combos and the four-line clear', () => {
         const quad = makeWorld('Low');
         quad.world.onClear({ lines: 4 });
 
-        world.onClear({ lines: 2, tspin: true });
+        world.onClear({ lines: 2, twist: true });
         expect(world.twist).toBe(1);
         expect(world.storm).toBeGreaterThan(0.5);
         // A small ring from the moon, at once: gentler than a four-line clear's.
@@ -1351,9 +1351,9 @@ describe('lunara world: the build-up', () => {
             run(w.world, w.camera, HUSH_HOLD + 0.3);
         }
         const ring = joined.world.u.shock.value.clone();
-        // A single and a T-spin that clears nothing land on the quad's light...
+        // A single and a twist that clears nothing land on the quad's light...
         joined.world.onClear({ lines: 1 });
-        joined.world.onClear({ lines: 0, tspin: true });
+        joined.world.onClear({ lines: 0, twist: true });
         for (const w of [alone, joined]) run(w.world, w.camera, 1 / 60, 1);
         // ...and every light is at least where the quad alone left it.
         for (const key of ['flash', 'kick', 'shafts', 'bloomBoost']) {
@@ -1517,13 +1517,13 @@ describe('lunara world: the build-up', () => {
         run(world, camera, 0.2);
         const atRest = rose();
         const { orbit } = world;
-        world.onClear({ lines: 2, tspin: true, b2b: true });
+        world.onClear({ lines: 2, twist: true, b2b: true });
         run(world, camera, 0.5);
         const once = rose();
         expect(once).toBeGreaterThan(atRest * 1.3);
         // It lurches on round the great moon.
         expect(world.orbit - orbit).toBeGreaterThan(ORBIT_RATE * 0.5 * 6);
-        world.onClear({ lines: 2, tspin: true, b2b: true });
+        world.onClear({ lines: 2, twist: true, b2b: true });
         run(world, camera, 0.5);
         expect(rose()).toBeGreaterThan(once);
         run(world, camera, 16, 320);
@@ -1531,9 +1531,9 @@ describe('lunara world: the build-up', () => {
         world.dispose();
     });
 
-    it('turns the sky a little on a T-spin that clears nothing', () => {
+    it('turns the sky a little on a twist that clears nothing', () => {
         const { world } = makeWorld('Low');
-        world.onClear({ lines: 0, tspin: true });
+        world.onClear({ lines: 0, twist: true });
         expect(world.twist).toBeGreaterThan(0.3);
         expect(world.u.shock.value.y).toBeGreaterThan(0);
         expect(world.counts.clears).toBe(0);
@@ -1625,7 +1625,7 @@ describe('lunara world: time', () => {
         // Something else entirely in between...
         world.onCombo(9);
         world.onLock({ u: 0.5, hardDrop: true });
-        world.onClear({ lines: 3, tspin: true });
+        world.onClear({ lines: 3, twist: true });
         world.setReducedMotion(true);
         run(world, camera, 3);
         world.setReducedMotion(false);

@@ -1193,12 +1193,12 @@ describe('aether tides world: clears', () => {
         world.dispose();
     });
 
-    it('turns the whole tide about the board for a T-spin', () => {
+    it('turns the whole tide about the board for a twist', () => {
         const { world } = makeWorld('Low');
         const swirlAt = () => Math.max(...world.events.wells.map((well) => Math.abs(well.swirl)));
         const rest = swirlAt();
         const at = world.eventClock;
-        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        world.onClear({ rows: [19, 18], lines: 2, twist: true });
         expect(world.twist.at).toBe(at);
         expect(Math.abs(world.twist.strength)).toBeGreaterThan(0);
         run(world, SIM_DT);
@@ -1602,7 +1602,7 @@ describe('aether tides world: levels, seeks and reduced motion', () => {
         world.onLock(T_RIGHT);
         world.onCombo(4);
         run(world, 1);
-        world.onClear({ rows: [19, 18, 17, 16], lines: 4, tspin: true });
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4, twist: true });
         run(world, 0.5);
         expect(world.getState().splats).toBeGreaterThan(0);
         expect(world.getState().rings).toBeGreaterThan(0);
@@ -1647,7 +1647,7 @@ describe('aether tides world: levels, seeks and reduced motion', () => {
             world.onCombo(1);
             run(world, 0.4);
             world.onLock(T_RIGHT);
-            world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+            world.onClear({ rows: [19, 18], lines: 2, twist: true });
             world.onCombo(2);
             run(world, 0.6);
             world.levelUp(2);
@@ -1813,7 +1813,7 @@ describe('aether tides world: levels, seeks and reduced motion', () => {
                 check(`${lines} lines`);
             }
             world.onClear({
-                rows: [0], lines: 1, perfect: true, tspin: true, b2b: true,
+                rows: [0], lines: 1, perfect: true, twist: true, b2b: true,
             });
             world.onClear({ lines: 2, screen: { x: 0.5, y: 0.5 } });
             world.onClear({ rows: [19, 19, 19, 19, 19, 19], lines: 6, player: 4 });

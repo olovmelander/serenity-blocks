@@ -126,7 +126,7 @@ describe('astral weave director: clears and the true combo', () => {
         director.flush();
         const [clear] = r.of('clear');
         expect(clear).toMatchObject({
-            rows: [18, 19], lines: 2, combo: 1, cascade: 3, tspin: false, perfect: false,
+            rows: [18, 19], lines: 2, combo: 1, cascade: 3, twist: false, perfect: false,
         });
     });
 
@@ -153,19 +153,19 @@ describe('astral weave director: clears and the true combo', () => {
         expect(r.of('combo').map(([n]) => n)).toEqual([1, 2, 3, 0]);
     });
 
-    it('marks a four-line clear, a T-spin, a perfect clear and a back-to-back', () => {
+    it('marks a four-line clear, a twist, a perfect clear and a back-to-back', () => {
         const r = recorder();
         const director = new AstralWeaveDirector({ sink: r.sink });
         director.onPieceLock({ piece: { shape: [[1], [1], [1], [1]], x: 0, y: HIDDEN + 16 } });
         director.onLineClear({
             lineCount: 4, clearedRows: [HIDDEN + 16, HIDDEN + 17, HIDDEN + 18, HIDDEN + 19], cascadeCount: 1,
         });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.onB2B({ active: true });
         director.onPerfectClear({ depth: 1 });
         director.flush();
         expect(r.of('clear')[0]).toMatchObject({
-            rows: [16, 17, 18, 19], lines: 4, tspin: true, b2b: true, perfect: true,
+            rows: [16, 17, 18, 19], lines: 4, twist: true, b2b: true, perfect: true,
         });
         // In the same frame as its clear, the perfect clear rides on it: no crown of its own.
         expect(r.of('perfect')).toHaveLength(0);
@@ -192,11 +192,11 @@ describe('astral weave director: clears and the true combo', () => {
         expect(r.of('perfect')).toHaveLength(1);
     });
 
-    it('answers a T-spin that clears nothing, alongside its lock', () => {
+    it('answers a twist that clears nothing, alongside its lock', () => {
         const r = recorder();
         const director = new AstralWeaveDirector({ sink: r.sink });
         director.onPieceLock({ piece: { shape: [[0, 1, 0], [1, 1, 1]], x: 3, y: HIDDEN + 18 } });
-        director.onTSpin({ lineCount: 0 });
+        director.onTwist({ lineCount: 0 });
         director.flush();
         expect(r.of('lock')).toHaveLength(1);
         expect(r.of('clear')).toHaveLength(0);

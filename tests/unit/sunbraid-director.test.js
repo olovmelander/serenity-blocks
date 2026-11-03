@@ -90,7 +90,7 @@ describe('sunbraid director: intake', () => {
     it('names a handler for every canonical gameplay event it listens to', () => {
         const director = new SunbraidDirector();
         expect(Object.keys(SUNBRAID_EVENT_HANDLERS).sort()).toEqual([
-            'B2B', 'COMBO', 'HARD_DROP', 'LEVEL_UP', 'LINE_CLEAR', 'PERFECT_CLEAR', 'PIECE_LOCK', 'TSPIN',
+            'B2B', 'COMBO', 'HARD_DROP', 'LEVEL_UP', 'LINE_CLEAR', 'PERFECT_CLEAR', 'PIECE_LOCK', 'TWIST',
         ]);
         for (const [event, handler] of Object.entries(SUNBRAID_EVENT_HANDLERS)) {
             expect(EVENTS[event], event).toBeTruthy();
@@ -281,16 +281,16 @@ describe('sunbraid director: intake', () => {
         expect(calls.order.slice(4)).toEqual(['lock', 'clear', 'combo']);
     });
 
-    it('carries T-spins, perfect clears and back-to-backs on the clear', () => {
+    it('carries twists, perfect clears and back-to-backs on the clear', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: T });
         director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.onB2B({ active: true });
         director.onPerfectClear({ depth: 2 });
         director.flush();
         expect(calls.clear[0]).toMatchObject({
-            lines: 2, tspin: true, b2b: true, perfect: true,
+            lines: 2, twist: true, b2b: true, perfect: true,
         });
         // An inactive B2B is not one.
         expect(director.onB2B({ active: false })).toBe(false);
@@ -298,7 +298,7 @@ describe('sunbraid director: intake', () => {
         clearingLock(director, I, [23]);
         director.flush();
         expect(calls.clear[1]).toMatchObject({
-            lines: 1, tspin: false, b2b: false, perfect: false,
+            lines: 1, twist: false, b2b: false, perfect: false,
         });
     });
 
@@ -340,7 +340,7 @@ describe('sunbraid director: intake', () => {
         expect(crowns).toHaveLength(1);
     });
 
-    it('answers a T-spin that cleared nothing with a spin, after its lock', () => {
+    it('answers a twist that cleared nothing with a spin, after its lock', () => {
         const { director, calls, sink } = makeDirector();
         const spins = [];
         sink.spin = vi.fn((c) => {
@@ -348,18 +348,18 @@ describe('sunbraid director: intake', () => {
             spins.push({ ...c });
         });
         director.onPieceLock({ piece: T });
-        director.onTSpin({ lineCount: 0 });
+        director.onTwist({ lineCount: 0 });
         director.flush();
         expect(calls.clear).toHaveLength(0);
         expect(spins).toEqual([{ player: 0 }]);
         expect(calls.order).toEqual(['lock', 'spin']);
-        // A T-spin that clears rides on its clear as before.
+        // A twist that clears rides on its clear as before.
         director.onPieceLock({ piece: T });
         director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.flush();
         expect(spins).toHaveLength(1);
-        expect(calls.clear[0]).toMatchObject({ lines: 2, tspin: true });
+        expect(calls.clear[0]).toMatchObject({ lines: 2, twist: true });
     });
 
     it('turns a meditation click into a clear at a screen position', () => {
@@ -802,28 +802,28 @@ describe('sunbraid director: back-to-back', () => {
         clearingLock(director, I, [23, 22, 21, 20]);
         if (b2b) director.onB2B({ active: true });
     };
-    /** A T-spin: the TSPIN (and any B2B) come after the wave's LINE_CLEAR, in its tick. */
-    const tspin = (director, lines, b2b = true) => {
+    /** A twist: the TWIST (and any B2B) come after the wave's LINE_CLEAR, in its tick. */
+    const twist = (director, lines, b2b = true) => {
         director.onPieceLock({ piece: T });
         director.onLineClear({
             lineCount: lines, clearedRows: [23, 22, 21].slice(0, lines), cascadeCount: 1,
         });
-        director.onTSpin({ lineCount: lines });
+        director.onTwist({ lineCount: lines });
         if (b2b) director.onB2B({ active: true });
     };
 
     it('steps the level with each back-to-back, at most four, and ends it on an easy clear', () => {
         const { director, calls } = makeDirector();
         // The first difficult clear only arms the run: the game sends no B2B for it.
-        tspin(director, 2, false);
+        twist(director, 2, false);
         director.flush();
         expect(calls.b2b).toEqual([]);
         quad(director);
         director.flush();
         expect(calls.b2b).toEqual([[1, 0]]);
         expect(calls.clear[calls.clear.length - 1].b2b).toBe(true);
-        // A T-spin single is difficult too, though it clears fewer than four lines.
-        tspin(director, 1);
+        // A twist single is difficult too, though it clears fewer than four lines.
+        twist(director, 1);
         director.flush();
         quad(director);
         director.flush();
@@ -834,7 +834,7 @@ describe('sunbraid director: back-to-back', () => {
         quad(director);
         director.flush();
         expect(calls.b2b).toEqual([[1, 0], [2, 0], [3, 0], [4, 0]]);
-        // No producer ever says the run ended: a single with no T-spin after it ends it.
+        // No producer ever says the run ended: a single with no twist after it ends it.
         clearingLock(director, I, [23]);
         director.flush();
         expect(calls.b2b).toEqual([[1, 0], [2, 0], [3, 0], [4, 0], [0, 0]]);
@@ -934,7 +934,7 @@ describe('sunbraid director: settings and resets', () => {
         expect(director.onLineClear({ lineCount: 2, clearedRows: [23, 22] })).toBe(false);
         expect(director.onCombo({ comboCount: 3, position: { x: 10, y: 10 } })).toBe(false);
         expect(director.onCombo({ comboCount: 3 })).toBe(false);
-        expect(director.onTSpin({ lineCount: 2 })).toBe(false);
+        expect(director.onTwist({ lineCount: 2 })).toBe(false);
         expect(director.onB2B({ active: true })).toBe(false);
         expect(director.onPerfectClear({ depth: 1 })).toBe(false);
         director.flush();

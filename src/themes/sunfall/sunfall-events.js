@@ -8,7 +8,7 @@
  *   COMBO      { comboCount }   the CASCADE DEPTH of one lock (ADR-0011), never a combo; the
  *              wave's LINE_CLEAR carries it too, so only a Serenity click's (with `position`)
  *              is read, as that click combo
- *   TSPIN      { lineCount }    after the wave's LINE_CLEAR (0 lines: a spin that cleared nothing)
+ *   TWIST      { lineCount }    after the wave's LINE_CLEAR (0 lines: a spin that cleared nothing)
  *   B2B        { active }      after it, on a back-to-back difficult clear
  *   PERFECT_CLEAR { depth }     ~360 ms after the clear's last wave: a crown, not a clear
  *   LEVEL_UP   { level }
@@ -120,7 +120,7 @@ export function wireSunfallEvents(theme) {
     on(EVENTS.COMBO, (p) => {
         if (p?.position) director()?.onCombo(finite(p.comboCount, 0));
     });
-    on(EVENTS.TSPIN, (p) => director()?.onTSpin({ lines: finite(p?.lineCount, 0) }));
+    on(EVENTS.TWIST, (p) => director()?.onTwist({ lines: finite(p?.lineCount, 0) }));
     on(EVENTS.B2B, (p) => {
         if (p?.active !== false) director()?.onB2B();
     });

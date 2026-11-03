@@ -912,7 +912,7 @@ export class ParhelionOpticsState {
         else if ((kind === CUE.CLEAR || kind === CUE.QUAD) && click) this._glintBloom(c, t, s);
         else if (kind === CUE.CLEAR) this._houndsWake(c, t, s, rm);
         else if (kind === CUE.QUAD) this._haloCloses(c, t, s, rm);
-        else if (kind === CUE.TSPIN) this._haloTurn(c, t, s, rm);
+        else if (kind === CUE.TWIST) this._haloTurn(c, t, s, rm);
         else if (kind === CUE.APEX) this._sunCross(t, s, rm);
         else if (kind === CUE.PERFECT) this._clearSky(c, t, s, rm);
         else if (kind === CUE.ECHO) this._houndsAnswer(c, t, s, rm);
@@ -936,7 +936,7 @@ export class ParhelionOpticsState {
             return;
         }
         const lines = finiteNumber(c.lines, 0);
-        if (kind === CUE.TSPIN && !(lines >= 1)) {
+        if (kind === CUE.TWIST && !(lines >= 1)) {
             surge.spin(t);
             return;
         }
@@ -946,7 +946,7 @@ export class ParhelionOpticsState {
             cascade,
             // A later wave is the same lock: its combo steps were counted with the first.
             combo: cascade > 1 ? 1 : finiteNumber(c.combo, 1),
-            tspin: kind === CUE.TSPIN,
+            twist: kind === CUE.TWIST,
             perfect: kind === CUE.PERFECT,
             b2b: c.b2b === true,
         }, t);
@@ -1303,7 +1303,7 @@ export class ParhelionOpticsState {
         this._laneMotesTowardRing(t, 1.3 * s, motes, 0.9, 0.4);
     }
 
-    /** TSPIN "Halo Turn": one bead orbits the ring once from the lock side, sweeping a spoke. */
+    /** TWIST "Halo Turn": one bead orbits the ring once from the lock side, sweeping a spoke. */
     _haloTurn(c, t, s, rm) {
         const { geo } = this;
         const withLines = finiteNumber(c.lines, 0) >= 1;
@@ -1423,7 +1423,7 @@ export class ParhelionOpticsState {
             this._arc(slot, geo.player, t, s, BEAD_WIDTH, ARC_MODE.PAIR);
             this._arcMotion(slot, HALF_PI, HALF_PI, 0, EASE_LINEAR);
             this._arcEnvelope(slot, 0.1, 0.35, 0.15);
-        } else if (c.echoOf === CUE.TSPIN) {
+        } else if (c.echoOf === CUE.TWIST) {
             const start = geo.side < 0 ? Math.PI - geo.phiLock : geo.phiLock;
             this._arc(slot, geo.player, t, 0.9 * s, ORBIT_WIDTH, ARC_MODE.ORBIT);
             this._arcMotion(slot, start, start + geo.side * TWO_PI, 1.1, EASE_SMOOTH);

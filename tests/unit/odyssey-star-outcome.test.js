@@ -103,7 +103,7 @@ describe('Odyssey star outcome: why an attempt earned the stars it did', () => {
 
     it('phrases a mastery orb’s next step in its own units', () => {
         const outcome = describeOdysseyStarOutcome(getLevelById(49), {
-            stars: 1, score: 40000, tetrises: 3, maxCascadeDepth: 2,
+            stars: 1, score: 40000, quads: 3, maxCascadeDepth: 2,
         });
         expect(formatOdysseyNextStar(outcome)).toBe('Next star: 4+ Quads (you: 3 Quads)');
     });
@@ -131,8 +131,8 @@ describe('Odyssey star outcome: why an attempt earned the stars it did', () => {
 
 describe('Odyssey bonus goals and the stars that ask for them', () => {
     it('names each bonus goal from its own numbers, the same way on every orb', () => {
-        expect(formatOdysseyBonusObjective({ type: 'tetris-count', target: 1, description: 'stale' })).toBe('Clear 1 Quad');
-        expect(formatOdysseyBonusObjective({ type: 'tetris-count', target: 6 })).toBe('Clear 6 Quads');
+        expect(formatOdysseyBonusObjective({ type: 'quad-count', target: 1, description: 'stale' })).toBe('Clear 1 Quad');
+        expect(formatOdysseyBonusObjective({ type: 'quad-count', target: 6 })).toBe('Clear 6 Quads');
         expect(formatOdysseyBonusObjective({ type: 'cascade', target: 8 })).toBe('Trigger 8 cascades');
         expect(formatOdysseyBonusObjective({ type: 'no-singles', description: 'Clear no single lines' }))
             .toBe('No single-line clears');
@@ -148,34 +148,34 @@ describe('Odyssey bonus goals and the stars that ask for them', () => {
     });
 
     it('never names a bonus the star\'s other goals already guarantee', () => {
-        const quadBonus = [{ type: 'no-singles' }, { type: 'tetris-count', target: 6 }];
-        expect(formatOdysseyStarCondition({ lines: 45, tetrises: 6, bonuses: 2 }, 2, quadBonus))
+        const quadBonus = [{ type: 'no-singles' }, { type: 'quad-count', target: 6 }];
+        expect(formatOdysseyStarCondition({ lines: 45, quads: 6, bonuses: 2 }, 2, quadBonus))
             .toBe('45 lines + 6+ Quads + No single-line clears');
         const cascadeBonus = [{ type: 'cascade', target: 3 }, { type: 'no-singles' }];
         expect(formatOdysseyStarCondition({ lines: 40, cascades: 3, bonuses: 1 }, 2, cascadeBonus))
             .toBe('40 lines + 3+ cascades');
         expect(formatOdysseyStarCondition({ lines: 40, cascades: 2, bonuses: 1 }, 2, cascadeBonus))
             .toBe('40 lines + 2+ cascades + One of: Trigger 3 cascades, No single-line clears');
-        expect(formatOdysseyStarCondition({ lines: 20, tetrises: 1 }, 1)).toBe('20 lines + 1 Quad');
+        expect(formatOdysseyStarCondition({ lines: 20, quads: 1 }, 1)).toBe('20 lines + 1 Quad');
     });
 
     it('explains the next star from the goals it names, judging each bonus by its own result', () => {
         const level = {
             stars: {
                 one: { lines: 45 },
-                two: { lines: 45, tetrises: 4 },
-                three: { lines: 45, tetrises: 6, bonuses: 2 },
+                two: { lines: 45, quads: 4 },
+                three: { lines: 45, quads: 6, bonuses: 2 },
             },
-            victory: { bonuses: [{ type: 'no-singles' }, { type: 'tetris-count', target: 6 }] },
+            victory: { bonuses: [{ type: 'no-singles' }, { type: 'quad-count', target: 6 }] },
         };
         // No singles were cleared; the missing piece is the Quads, which its own goal reports.
         const short = describeOdysseyStarOutcome(level, {
-            stars: 2, lines: 45, tetrises: 4, bonuses: [true, false],
+            stars: 2, lines: 45, quads: 4, bonuses: [true, false],
         });
-        expect(short.next.missed.map((part) => part.key)).toEqual(['tetrises']);
+        expect(short.next.missed.map((part) => part.key)).toEqual(['quads']);
         expect(formatOdysseyNextStar(short)).toBe('Next star: 6+ Quads (you: 4 Quads)');
         const singles = describeOdysseyStarOutcome(level, {
-            stars: 2, lines: 45, tetrises: 6, bonuses: [false, true],
+            stars: 2, lines: 45, quads: 6, bonuses: [false, true],
         });
         expect(formatOdysseyNextStar(singles)).toBe('Next star: No single-line clears');
         const guaranteed = describeOdysseyStarOutcome({

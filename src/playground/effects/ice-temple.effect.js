@@ -12,7 +12,7 @@
  *   statsHud=0               with board=1: board only, no HUD mock
  *   combo=<n>                hold a combo of n (the temple's resonance)
  *   level=<n>                level n's step on top of the clock's aurora
- *   event=lock|drop|clear|quad|tspin|perfect|levelUp   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
  *   demo=1                   live only: play a looping gameplay script
@@ -101,7 +101,7 @@ const DEMO_SCRIPT = [
     [25.0, 'lock', { rows: [19], u: 0.45 }], [26.2, 'lock', { rows: [19, 18], u: 0.7 }],
     [27.4, 'lock', { rows: [18], u: 0.25, hardDrop: true }],
     [27.4, 'clear', {
-        rows: [19, 18], lines: 2, tspin: true, combo: 1,
+        rows: [19, 18], lines: 2, twist: true, combo: 1,
     }],
     [30.0, 'lock', { rows: [19], u: 0.5 }],
 ];
@@ -192,7 +192,7 @@ export function create({
             });
         } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
-        else if (eventName === 'tspin') world.onClear({ rows: bottom(2), lines: 2, tspin: true });
+        else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
         else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
     };

@@ -324,7 +324,7 @@ before the frame; the diagnostics name what it is doing, its turns and its restl
 - **Playground** (`npm run dev:playground`, `?effect=sakura-twilight&orbit=0&seed=271&hud=0`):
   the captures above, each with a clean console (no WebGPU validation errors, no TSL
   warnings), on native WebGPU and with `forceWebGL=1`. Events are reproducible with
-  `&t=12&event=lock|drop|clear|double|triple|tetris|combo|streak|spin|perfect|level|over`,
+  `&t=12&event=lock|drop|clear|double|triple|quad|combo|streak|spin|perfect|level|over`,
   `&eventAge=<s>`, `&col=0..9&row=0..19`, `&combo=<n>` and `&board=1` for a stand-in card;
   `&quality=<tier>` picks a tier.
 - **In the game**: `node scripts/validate-all-themes.mjs --theme sakura-twilight` on a

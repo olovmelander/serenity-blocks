@@ -13,14 +13,14 @@ const SHIPPED_2026_10 = Object.freeze({
             primary: { type: 'score', target: 36000 },
             failure: { type: 'top-out', value: null },
             bonuses: [
-                { type: 'tetris-count', target: 10, description: 'Clear 10 Quads' },
+                { type: 'quad-count', target: 10, description: 'Clear 10 Quads' },
                 { type: 'max-cascade-depth', target: 5, description: 'Trigger a 5-wave chain' },
             ],
         },
         stars: {
             one: { score: 36000 },
-            two: { score: 36000, tetrises: 8 },
-            three: { score: 36000, tetrises: 10, maxCascadeDepth: 5 },
+            two: { score: 36000, quads: 8 },
+            three: { score: 36000, quads: 10, maxCascadeDepth: 5 },
         },
         modifiers: { active: ['combo-multiplier'] },
     },
@@ -32,7 +32,7 @@ const SHIPPED_2026_10 = Object.freeze({
             bonuses: [
                 { type: 'max-cascade-depth', target: 6, description: 'Trigger a 6-wave chain' },
                 { type: 'cascade', target: 25, description: 'Trigger 25 cascades' },
-                { type: 'tetris-count', target: 12, description: 'Clear 12 Quads' },
+                { type: 'quad-count', target: 12, description: 'Clear 12 Quads' },
             ],
         },
         stars: {

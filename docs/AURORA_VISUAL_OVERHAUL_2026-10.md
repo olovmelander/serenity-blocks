@@ -276,7 +276,7 @@ Run `npm run dev:playground` and open:
 `t` fixes the animation phase (and the sky's weather); `eventAge` fixes the time since the
 cue. A streak is replayed as real consecutive clearing locks, a storm as twelve of them 0.64 s
 apart into a fever, a rush as twelve quick locks that clear nothing. Other parameters:
-`event=clear|tspin|perfect|level`, `lines`, `reduce=1`.
+`event=clear|twist|perfect|level`, `lines`, `reduce=1`.
 
 ### Theme icon
 

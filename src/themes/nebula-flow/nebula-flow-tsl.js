@@ -227,7 +227,7 @@ export function createNebulaUniforms() {
         vortexSpin: uniform(new THREE.Vector2(1, 0)),
         /** How strongly the vortex glows in its tint (0..1). */
         vortexGlow: uniform(0),
-        /** A T-spin's twist of the whole flow (radians at the board). */
+        /** A twist's twist of the whole flow (radians at the board). */
         twist: uniform(0),
         /** The great star's dust hole: (x, y, radius, healing 0..1). */
         hole: uniform(new THREE.Vector4(0, -10, 0, 0)),

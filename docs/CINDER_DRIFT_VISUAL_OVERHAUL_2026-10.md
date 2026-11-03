@@ -281,7 +281,7 @@ Run `npm run dev:playground`, then:
 
 `/playground.html?effect=cinder-drift&t=20&quality=High&board=1`
 
-Add `event=lock|drop|clear|quad|tspin|perfect|levelUp` with `eventAge=<s>`, and `combo=<n>`,
+Add `event=lock|drop|clear|quad|twist|perfect|levelUp` with `eventAge=<s>`, and `combo=<n>`,
 `level=<n>`, `lines=<n>`, `u=<0..1>`, `row=<r>`, `color=<hex>`; `eye=x,y,z&aim=x,y,z&fov=<deg>`
 looks from anywhere (the cliff close up: `eye=6,3.5,-6&aim=22,5,-22&fov=55`). `locks=<n>` plays n locks first,
 so their pools are drifting in the lake when the event fires. `demo=1` (without `t`) plays a

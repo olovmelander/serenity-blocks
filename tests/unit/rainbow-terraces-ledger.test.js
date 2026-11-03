@@ -1,7 +1,7 @@
 /**
  * Rainbow Terraces — the ledger of what the world holds: which pool a lock's light-water fills, how
  * long it holds the colour, which pools a clear releases and where their colour runs, the
- * chain's stroke book (the true bow, the T-spin's turn), and the dial's pace up and down.
+ * chain's stroke book (the true bow, the twist's turn), and the dial's pace up and down.
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -211,7 +211,7 @@ describe('Rainbow Terraces stroke book', () => {
         expect(book.isTrueBow()).toBe(false);
     });
 
-    it('turns the colours one stroke along for a T-spin, the last coming round to the first', () => {
+    it('turns the colours one stroke along for a twist, the last coming round to the first', () => {
         const book = new StrokeBook();
         'SJITZLO'.split('').forEach((shape, k) => book.link(k + 1, colour(k), shape));
         const before = Array.from({ length: 7 }, (_, i) => book.colourOf(i));

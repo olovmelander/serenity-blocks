@@ -3,7 +3,7 @@
  * board starts is cut or restarted by the next beat (a second Moult, a second Floor, a gap shutting,
  * a ring cleared again, a level inside a Climb), a long chain opens the canopy wider and pours more
  * light than its first clear, and the grove breathes back to calm once the hands rest. The late
- * perfect clear is the crown on its clear, and a T-spin that clears nothing still turns some bark.
+ * perfect clear is the crown on its clear, and a twist that clears nothing still turns some bark.
  *
  * Relations, not tuning numbers: constants are imported; the assertions are orders and bounds.
  */
@@ -58,7 +58,7 @@ const clearOf = (rows, lines = rows.length, extra = {}) => ({
     lines,
     combo: 1,
     cascade: 1,
-    tspin: false,
+    twist: false,
     perfect: false,
     b2b: false,
     rowCodes: rows.flatMap((_, k) => Array.from({ length: 10 }, (__, c) => (c + k) % 7)),
@@ -249,7 +249,7 @@ describe('Rainbark surge: the canopy opens with play and breathes back', () => {
         const peakRain = (steps) => {
             const { world, camera } = makeWorld();
             world.onB2B(steps);
-            step(world, camera, 1 / 30, () => world.onClear(clearOf(bottom(2), 2, { tspin: true, b2b: true })));
+            step(world, camera, 1 / 30, () => world.onClear(clearOf(bottom(2), 2, { twist: true, b2b: true })));
             let peak = 0;
             run(world, camera, 1.5, 1 / 30, () => { peak = Math.max(peak, world.u.rain.value - world.rain); });
             return peak;
@@ -287,12 +287,12 @@ describe('Rainbark surge: the crown and the empty spin', () => {
         director.onPerfectClear({ depth: 1 });
         director.flush();
         expect(clears[2]).toMatchObject({ lines: 4, perfect: true, crown: false });
-        // A T-spin that clears nothing is an empty spin, not a clear.
+        // A twist that clears nothing is an empty spin, not a clear.
         const T = {
             shape: [[0, 1, 0], [1, 1, 1]], x: 3, y: 22, type: 'T',
         };
         director.onPieceLock({ piece: T });
-        director.onTSpin({ lineCount: 0 });
+        director.onTwist({ lineCount: 0 });
         director.flush();
         expect(clears).toHaveLength(3);
         expect(spins).toHaveLength(1);
@@ -318,7 +318,7 @@ describe('Rainbark surge: the crown and the empty spin', () => {
         expect(world.u.drain.value).toBeGreaterThan(0);
     });
 
-    it('a T-spin that clears nothing unwinds half a turn that heals again', () => {
+    it('a twist that clears nothing unwinds half a turn that heals again', () => {
         const { world, camera } = makeWorld();
         step(world, camera, 1 / 30, () => {
             world.onLock(lockAt(0.3, [12, 13], { hardDrop: false }));

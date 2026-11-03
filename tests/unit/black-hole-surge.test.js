@@ -270,10 +270,10 @@ describe('Black Hole surge: moments of their own', () => {
         expect(director.b2bChain).toBe(0);
     });
 
-    it('still marks a T-spin that clears nothing, and counts it a little', () => {
+    it('still marks a twist that clears nothing, and counts it a little', () => {
         const director = create();
         director.onPieceLock({ piece: piece() });
-        director.onTSpin({ lineCount: 0 });
+        director.onTwist({ lineCount: 0 });
         run(director, STEP);
         expect(active(director.hotspots)).toHaveLength(1);
         run(director, 1);

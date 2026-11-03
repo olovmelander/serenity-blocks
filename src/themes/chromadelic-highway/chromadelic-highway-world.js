@@ -29,7 +29,7 @@
  * cruise, the lens opening), the packets blur into rings of light, every other ring comes out of the
  * board as a prism arc, the hero's storm charges and meteors shower. The true combo (from the
  * theme's ComboTracker) turns the spectrum a step per clear; cascade depth escalates wave on wave;
- * a T-spin twists the tunnel, back-to-back answers with a second gold front, and a perfect clear
+ * a twist twists the tunnel, back-to-back answers with a second gold front, and a perfect clear
  * crowns the clear still playing with a prism tunnel. When the hands rest it all coasts back.
  *
  * The planets catch the board's light (chromadelic-highway-planet-events.js): every clear sends a
@@ -235,7 +235,7 @@ const CAMERA_Z = 280;
 const RING_PHASE_RATE = 0.7;
 /**
  * The packets' fastest rate: rest, a full combo (+1.4), the heat of play (+1.0 hot, +1.2 fever)
- * and a T-spin's whirl. The integrated phase never steps further than this × one frame.
+ * and a twist's whirl. The integrated phase never steps further than this × one frame.
  */
 export const RING_PHASE_MAX_RATE = RING_PHASE_RATE + 1.4 + 2.2 + 2.4;
 /**
@@ -282,7 +282,7 @@ const WAVE_PRESETS = {
     clear: {
         v0: 650, accel: 1400, amp: 0.5, hue: 11 / 12, width: 22, white: 0.25, tau: 0.6,
     },
-    tetris: {
+    quad: {
         v0: 700, accel: 1800, amp: 0.8, hue: -1, width: 24, white: 0.1, tau: 0.65,
     },
     levelUp: {
@@ -298,7 +298,7 @@ const WAVE_PRESETS = {
 const CHAIN_STEP = 0.05;
 /** Back-to-back's second front and the perfect clear's wave: white-gold. */
 const GOLD = new THREE.Color(1.0, 0.84, 0.46);
-/** A T-spin's band: the theme's T (chromadelic-highway-tetrominos.js), electric lemon. */
+/** A twist's band: the theme's T (chromadelic-highway-tetrominos.js), electric lemon. */
 const T_COLOR = new THREE.Color(1.0, 0.92, 0.0);
 /** What a prism front leaves glowing behind it on the planets: the spectrum's sum, a pale lavender. */
 const PRISM_AFTERGLOW = new THREE.Color(0.78, 0.72, 1.0);
@@ -407,7 +407,7 @@ export class ChromadelicWorld {
             }),
             railTick: new Swell({ release: 0.08, ceiling: 1.6, knee: 1 }),
             roadPulse: new Swell({ release: 0.3, ceiling: 0.9, knee: 0.5 }), // every lock, on the road
-            twist: new Swell({ // a T-spin's whirl
+            twist: new Swell({ // a twist's whirl
                 attack: 0.08, release: 0.8, ceiling: 1.4, knee: 0.9,
             }),
         };
@@ -421,9 +421,9 @@ export class ChromadelicWorld {
         this.heat = {
             punch: 0, level: 0, fever: 0, stage: 0,
         };
-        /** One resolved clear for the surge, staged like a director's (T-spin/B2B come after it). */
+        /** One resolved clear for the surge, staged like a director's (twist/B2B come after it). */
         this.staged = {
-            any: false, at: 0, lines: 0, cascade: 1, combo: 1, tspin: false, b2b: false, perfect: false,
+            any: false, at: 0, lines: 0, cascade: 1, combo: 1, twist: false, b2b: false, perfect: false,
         };
         /** The live lock band (a quicker lock folds into it), the hard drop of this tick, the B2B run. */
         this.lockBand = null;
@@ -1335,7 +1335,7 @@ export class ChromadelicWorld {
             s.lines = 0;
             s.cascade = 1;
             s.combo = 1;
-            s.tspin = false;
+            s.twist = false;
             s.b2b = false;
             s.perfect = false;
         }
@@ -1343,9 +1343,9 @@ export class ChromadelicWorld {
     }
 
     /**
-     * Resolve what this tick staged into the surge: a clear (with its T-spin, back-to-back and
+     * Resolve what this tick staged into the surge: a clear (with its twist, back-to-back and
      * perfect flags, which arrive after its LINE_CLEAR), or, with no lines, a crown on the clear
-     * still playing (a late perfect clear) or a T-spin that cleared nothing — never a new clear.
+     * still playing (a late perfect clear) or a twist that cleared nothing — never a new clear.
      */
     flushStaged() {
         const s = this.staged;
@@ -1353,11 +1353,11 @@ export class ChromadelicWorld {
         s.any = false;
         if (s.lines > 0) {
             this.surge.clear(s, s.at);
-            if (s.lines < 4 && !s.tspin && !s.b2b) this.b2bRun = 0;
+            if (s.lines < 4 && !s.twist && !s.b2b) this.b2bRun = 0;
             return;
         }
         const W = SURGE_WEIGHTS;
-        const worth = (w) => (s.perfect ? w.perfect : 0) + (s.tspin ? w.tspin * 0.5 : 0) + (s.b2b ? w.b2b : 0);
+        const worth = (w) => (s.perfect ? w.perfect : 0) + (s.twist ? w.twist * 0.5 : 0) + (s.b2b ? w.b2b : 0);
         const punch = worth(W.punch);
         const heat = worth(W.heat);
         this.surge.punch.hit(punch, s.at);
@@ -1491,9 +1491,9 @@ export class ChromadelicWorld {
         if (n >= 4) {
             // Three staggered beats: bands out of the card, the prism cascade (every arch turns
             // into the spectrum as the front passes, the light climbing it), the streak warp.
-            // The next rings out of the board are prism arcs too: the Tetris echoes down the road.
+            // The next rings out of the board are prism arcs too: the Quad echoes down the road.
             // A second quad adds to the first's warp and lens instead of restarting them.
-            for (let i = 0; i < 4; i++) this.launchWave('tetris', { white: 0.1 + i * 0.13 }, i * 0.05);
+            for (let i = 0; i < 4; i++) this.launchWave('quad', { white: 0.1 + i * 0.13 }, i * 0.05);
             this.schedule(0.15, () => this.launchCascade({ amp: 1.0, speed: 2400, prism: true }));
             this.schedule(0.3, () => { this.env.warp.hit(1, this.time); });
             this.prismEcho = Math.min(this.prismEcho + 3, this.ringCount + 4);
@@ -1534,13 +1534,13 @@ export class ChromadelicWorld {
     }
 
     /**
-     * A T-spin twists the tunnel: the packets whirl round every ring (the spinning forms spin
+     * A twist twists the tunnel: the packets whirl round every ring (the spinning forms spin
      * with them), the view leans into the turn and a band in the T's electric yellow leaves the
-     * board. A T-spin that clears nothing still turns it, more gently. Arrives after its clear.
+     * board. A twist that clears nothing still turns it, more gently. Arrives after its clear.
      */
-    onTSpin(lines = 0) {
+    onTwist(lines = 0) {
         const n = Math.max(0, Math.min(3, Math.floor(Number(lines) || 0)));
-        this.stage(this.time).tspin = true;
+        this.stage(this.time).twist = true;
         this.env.twist.hit(n > 0 ? 0.6 + 0.2 * n : 0.35, this.time);
         const motion = this.motion ?? 1;
         this.cam.bank.v += this.twistSign * (n > 0 ? 0.05 + 0.012 * n : 0.03) * motion;
@@ -1836,7 +1836,7 @@ export class ChromadelicWorld {
         _decay(fx, 'combo', 2.5, delta);
 
         // The spectrum: lock the rings about to come out, ease the sky's level step (~3 s), and
-        // run the packets' phase at a rate the combo, the heat and a T-spin raise (integrated:
+        // run the packets' phase at a rate the combo, the heat and a twist raise (integrated:
         // never clock × rate). In a fever the packets blur into rings of light.
         this.updateRingStyles();
         const sp = this.spectrum;
@@ -1992,7 +1992,7 @@ export class ChromadelicWorld {
     /**
      * Camera rig: the rest pose (60° Hor+ lens), a slow closed-form float, pointer parallax,
      * a damped look-ahead into the road curve and a gentle bank. FOV widens with pace (Medium+)
-     * and surges on a Tetris. Refreshes the pixel-scale uniforms when the FOV changes.
+     * and surges on a Quad. Refreshes the pixel-scale uniforms when the FOV changes.
      * @param {THREE.PerspectiveCamera} camera
      * @param {{ time: number, delta?: number, pace?: number, pointerX?: number, pointerY?: number }} sim
      */
@@ -2035,7 +2035,7 @@ export class ChromadelicWorld {
         camera.lookAt(_look);
         camera.rotateZ(this.cam.bank.x);
 
-        // Lens: Hor+ base + pace widening (Medium+) + the Tetris surge + the overdrive (the lens
+        // Lens: Hor+ base + pace widening (Medium+) + the Quad surge + the overdrive (the lens
         // opens with the heat of play; a fever stretches the tunnel toward warp).
         let fov = restVerticalFov(camera.aspect || this.aspect);
         if (this.tier.paceFov) {

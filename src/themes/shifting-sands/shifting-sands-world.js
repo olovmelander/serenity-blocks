@@ -496,7 +496,7 @@ export class ShiftingSandsWorld {
 
     /**
      * Lines cleared: geysers of dust, a gust, the suns flare. A cascade's later waves build on
-     * the first (harder, brighter, a drum beat each, louder each time); a Tetris calls the worm.
+     * the first (harder, brighter, a drum beat each, louder each time); a Quad calls the worm.
      * @param {number} lines
      * @param {{ cascade?: number, react?: boolean, player?: number }} [opts] cascade: which wave
      *   of its lock this clear is (1: the lock's own); the last COMBO's depth when absent
@@ -525,7 +525,7 @@ export class ShiftingSandsWorld {
         if (combo >= 2) this.glowSwell.hit(0.1 + Math.min(combo, 10) * 0.05, t);
         if (deep > 0) this.drumBeat(Math.min(DRUM_MAX, 1.1 + deep * 0.3), t);
         if (n >= 4) {
-            // A Tetris calls the worm: one great blow where it will break the surface. If the
+            // A Quad calls the worm: one great blow where it will break the surface. If the
             // last one it called is still above the sand, the geysers answer instead.
             if (this.director.summon(t)) {
                 this.heraldWorm();
@@ -539,19 +539,19 @@ export class ShiftingSandsWorld {
     }
 
     /**
-     * A T-spin: the drum turns — beats round it one after another (a third of a turn for one
+     * A twist: the drum turns — beats round it one after another (a third of a turn for one
      * that cleared nothing), a twist of wind and a glint of gold.
      * @param {number} [lineCount]
      * @param {{ react?: boolean }} [opts]
      */
-    onTSpin(lineCount, { react = true } = {}) {
+    onTwist(lineCount, { react = true } = {}) {
         if (!react) return;
         const t = this.time;
         const cleared = !Number.isFinite(lineCount) || lineCount > 0;
         const W = SURGE_WEIGHTS;
         if (cleared) {
-            this.surge.punch.hit(W.punch.tspin, t);
-            this.surge.level.hit(W.heat.tspin, t);
+            this.surge.punch.hit(W.punch.twist, t);
+            this.surge.level.hit(W.heat.twist, t);
         } else {
             this.surge.spin(t);
         }

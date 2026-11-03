@@ -7,7 +7,7 @@
  * suns burn along their crests, and the worm breaches there, a black arch against the light.
  * On the right the Sentinel, a monumental sandstone butte, takes the low sun on its flank under
  * two pale moons. The board is the drum: every lock sends a ring of lifted sand across the
- * erg, clears throw up geysers of dust, and a Tetris calls the worm. Play builds: a quick hand
+ * erg, clears throw up geysers of dust, and a Quad calls the worm. Play builds: a quick hand
  * raises a sandstorm, a fever breaks it (shifting-sands-world.js, shared/gameplay-surge.js).
  *
  * Content lives in ShiftingSandsWorld (shifting-sands-world.js), shared with the playground
@@ -349,8 +349,8 @@ export default class ShiftingSandsTheme extends BaseTheme {
                     this.world?.onCombo(Number.isFinite(d?.comboCount) ? d.comboCount : 0, { react: allowed() });
                 }
             }),
-            eventBus.on(EVENTS.TSPIN, (d) => {
-                if (allowed()) this.world?.onTSpin(Number.isFinite(d?.lineCount) ? d.lineCount : undefined);
+            eventBus.on(EVENTS.TWIST, (d) => {
+                if (allowed()) this.world?.onTwist(Number.isFinite(d?.lineCount) ? d.lineCount : undefined);
             }),
             eventBus.on(EVENTS.B2B, (d) => {
                 if (allowed() && d?.active !== false) this.world?.onBackToBack();

@@ -84,7 +84,7 @@ const clear = (lines, extra = {}) => ({
     lines,
     combo: 1,
     cascade: 1,
-    tspin: false,
+    twist: false,
     perfect: false,
     b2b: false,
     screen: null,
@@ -795,10 +795,10 @@ describe('void ember world: a clear makes the star let go', () => {
         expect(hottest).toBeLessThanOrEqual(HEAT_FLARE + 1e-9);
     });
 
-    it('a T-spin winds the corona up and it springs back', () => {
+    it('a twist winds the corona up and it springs back', () => {
         const { world, camera } = makeWorld();
         expect(world.twist).toBe(0);
-        world.onClear(clear(2, { tspin: true }));
+        world.onClear(clear(2, { twist: true }));
         let widest = 0;
         for (let i = 0; i < 60; i++) {
             frame(world, camera, 1 / 60);
@@ -809,7 +809,7 @@ describe('void ember world: a clear makes the star let go', () => {
         run(world, camera, 12);
         expect(Math.abs(world.twist)).toBeLessThan(widest / 100);
         // A long stall cannot blow the spring up.
-        world.onClear(clear(2, { tspin: true }));
+        world.onClear(clear(2, { twist: true }));
         run(world, camera, 5, 5);
         expect(Number.isFinite(world.twist)).toBe(true);
         expect(Math.abs(world.twist)).toBeLessThan(widest * 4);
@@ -842,10 +842,10 @@ describe('void ember world: a clear makes the star let go', () => {
         expect(great.strength).toBeGreaterThan(0);
         expect(great.birth).toBeGreaterThan(world.time);
         expect(world.getPostState().ripple.strength).toBe(0);
-        // A T-spin inside the hush sends a lesser ring: the great one stays on its way, and the
+        // A twist inside the hush sends a lesser ring: the great one stays on its way, and the
         // lesser one's energy joins it.
         run(world, camera, HUSH_HOLD / 2);
-        world.onClear(clear(2, { tspin: true }));
+        world.onClear(clear(2, { twist: true }));
         expect(world.spaceRipple.birth).toBe(great.birth);
         expect(world.spaceRipple.strength).toBeGreaterThan(great.strength);
         // It leaves the star at its birth and runs outward.
@@ -1024,7 +1024,7 @@ describe('void ember world: the clock', () => {
                 world.onCombo(1);
             },
             150: () => {
-                world.onClear(clear(2, { tspin: true }));
+                world.onClear(clear(2, { twist: true }));
                 world.onCombo(2);
             },
             200: () => world.levelUp(2),
@@ -1266,8 +1266,8 @@ describe('void ember world: the clock', () => {
         expect(cool.world.boil).toBeGreaterThan(before.boil);
         expect(hot.world.boil).toBeGreaterThan(cool.world.boil);
         expect(hot.world.flow).toBeGreaterThan(cool.world.flow);
-        expect(hot.world.spin).toBeCloseTo(cool.world.spin, 9); // heat does not turn it; a T-spin does
-        hot.world.onClear(clear(2, { tspin: true }));
+        expect(hot.world.spin).toBeCloseTo(cool.world.spin, 9); // heat does not turn it; a twist does
+        hot.world.onClear(clear(2, { twist: true }));
         run(cool.world, cool.camera, 2);
         run(hot.world, hot.camera, 2);
         expect(hot.world.spin).toBeGreaterThan(cool.world.spin);
@@ -1741,7 +1741,7 @@ describe('void ember world: fast play builds instead of popping', () => {
         }
     });
 
-    it('a back-to-back rings the limb, more with each in a row; an empty T-spin still turns the star', () => {
+    it('a back-to-back rings the limb, more with each in a row; an empty twist still turns the star', () => {
         const { world, camera } = makeWorld();
         frame(world, camera, 1 / 60);
         const fringe = () => world.corona.uniforms.fringe.value;

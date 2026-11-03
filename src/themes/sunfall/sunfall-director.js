@@ -11,7 +11,7 @@
  * - 4-Line Clear -> Cataract + Analytic Double Rainbow (`dlBow` at 42°/51°)
  * - Combo -> Inhale / Sevenfold (up to 7 shafts) & Combo End -> Exhale cloud ring
  * - Back-to-Back -> 1–3 Oculus Flood Threads + Far Doline Echo
- * - T-Spin -> The Turning (+15° persistent oculus vine-fringe rotation per line)
+ * - Twist -> The Turning (+15° persistent oculus vine-fringe rotation per line)
  * - Perfect Clear -> Zenith Flush (a crown on the clear still playing, never a clear of its own)
  * - Game Over / New Run -> The Light Leaves / Morning Enters
  *
@@ -103,10 +103,10 @@ export class SunfallDirector {
         this.weatherTimer = 64;
         this.weatherLocked = null;
 
-        // Persistent session state (The Turning: +15° per T-Spin line)
+        // Persistent session state (The Turning: +15° per Twist line)
         this.fringeAngleTarget = 0;
         this.fringeAngle = 0;
-        this.tSpinCount = 0;
+        this.twistCount = 0;
 
         // Gameplay envelopes: every hit adds to what is still lit (see the header).
         this.flushSwell = new Swell({ release: 1.6, ceiling: 1.4, knee: 1 });
@@ -163,12 +163,12 @@ export class SunfallDirector {
         // Back-to-back Flood Threads (1..3) + Far Doline Echo
         this.b2bCount = 0;
         this.b2bLevel = 0;
-        /** A plain clear ends a back-to-back chain unless a T-spin of the same lock follows it. */
+        /** A plain clear ends a back-to-back chain unless a twist of the same lock follows it. */
         this.b2bBreakPending = false;
         this.floodThreads = 0;
         this.echoBoost = 0;
 
-        // T-Spin Turning flash & Perfect Clear Zenith Flush
+        // Twist Turning flash & Perfect Clear Zenith Flush
         this.turningSwell = new Swell({ release: 1.1, ceiling: 1.2, knee: 0.9 });
         this.turningPulse = 0;
         this.zenithSwell = new Swell({
@@ -603,19 +603,19 @@ export class SunfallDirector {
     }
 
     /**
-     * T-Spin — The Turning:
+     * Twist — The Turning:
      * Rotates the oculus vine-fringe stencil by +15° per line (persisting for the session!).
-     * A T-spin that clears nothing turns it half a step.
+     * A twist that clears nothing turns it half a step.
      */
-    onTSpin({ lines = 2, isMini = false } = {}) {
+    onTwist({ lines = 2, isMini = false } = {}) {
         const n = Math.round(Number(lines) || 0);
         const turns = n > 0 ? clamp(n, 1, 3) : 0.5;
-        const stepDeg = (isMini ? 0.65 : 1.0) * SUNFALL_TIMINGS.tSpinTurnDeg * turns;
+        const stepDeg = (isMini ? 0.65 : 1.0) * SUNFALL_TIMINGS.twistTurnDeg * turns;
         const stepRad = stepDeg * DEG2RAD;
         const t = this.time;
 
         this.b2bBreakPending = false;
-        this.tSpinCount += 1;
+        this.twistCount += 1;
         this.fringeAngleTarget += stepRad;
         if (this.reducedMotion) {
             this.fringeAngle = this.fringeAngleTarget;
@@ -624,7 +624,7 @@ export class SunfallDirector {
         this.turningPulse = this.turningSwell.valueAt(t);
         this.showerSwell.hit(n > 0 ? 0.5 : 0.3, t);
         this.showerPulse = this.showerSwell.valueAt(t);
-        if (n > 0) this.surge.tspin(t);
+        if (n > 0) this.surge.twist(t);
         else this.surge.spin(t);
     }
 
@@ -686,7 +686,7 @@ export class SunfallDirector {
 
     /**
      * New Run / Reset Session — Morning Enters:
-     * Cloud deck parts open, resets session T-spin rotation, and pours fresh morning light in.
+     * Cloud deck parts open, resets session twist rotation, and pours fresh morning light in.
      */
     resetSession() {
         // A session starts the cave's weather clock and its random stream afresh, so a replay
@@ -701,7 +701,7 @@ export class SunfallDirector {
         this.morningPulse = 1.0;
         this.fringeAngleTarget = 0;
         this.fringeAngle = 0;
-        this.tSpinCount = 0;
+        this.twistCount = 0;
         this.comboCount = 0;
         this.comboPeak = 0;
         this.comboColumns = 1;
@@ -804,7 +804,7 @@ export class SunfallDirector {
             }
         }
 
-        // 3. T-Spin persistent vine-fringe rotation; a fever wheels the ring of shafts slowly.
+        // 3. Twist persistent vine-fringe rotation; a fever wheels the ring of shafts slowly.
         if (!this.reducedMotion) this.fringeAngleTarget += safeDt * heat.fever * 0.1;
         if (this.reducedMotion) {
             this.fringeAngle = this.fringeAngleTarget;

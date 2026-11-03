@@ -135,7 +135,7 @@ const metricAlias = (key) => ({
     combo: 'maxCombo',
     cascade: 'cascades',
     'max-cascade-depth': 'maxCascadeDepth',
-    'tetris-count': 'tetrises',
+    'quad-count': 'quads',
     pieces: 'piecesPlaced',
     maxDeaths: 'deaths',
 }[key] || key);
@@ -215,7 +215,7 @@ function searchUtility(node, rules, previews, geometryObjective) {
         if (requirement.timeUnvalidated || requirement.upperBound || !requirement.target) continue;
         const ratio = Math.min(1, requirement.actual / requirement.target);
         if (['maxCombo', 'maxCascadeDepth'].includes(requirement.metric)) score += 140000 * ratio ** 3;
-        else if (requirement.metric === 'tetrises') score += 30000 * ratio;
+        else if (requirement.metric === 'quads') score += 30000 * ratio;
         else if (requirement.metric === 'cascades') score += 20000 * ratio;
         else score += 10000 * ratio;
     }
@@ -235,8 +235,8 @@ function futurePiece(node, key) {
     };
 }
 
-/** Path-dependent T-spins require rotation at the landing row; hard-drop distance resets the flag. */
-function placementTSpin(node, activePiece, placement) {
+/** Path-dependent twists require rotation at the landing row; hard-drop distance resets the flag. */
+function placementTwist(node, activePiece, placement) {
     if (placement.shapeKey !== 'T') return false;
     const state = {
         boardGrid: node.boardGrid,
@@ -267,7 +267,7 @@ function transition(node, activePiece, placement, serial, rules) {
     placement.shape.forEach((row, y) => row.forEach((cell, x) => {
         if (cell) lockFootprint.push({ x: placement.x + x, y: placement.y + y });
     }));
-    const tSpin = placementTSpin(node, activePiece, placement);
+    const twist = placementTwist(node, activePiece, placement);
     const result = resolveCascade([...node.lockedPieces, {
         ...placement, pieceId: `mastery:${serial}`, color: placement.shapeKey,
     }], {
@@ -275,7 +275,7 @@ function transition(node, activePiece, placement, serial, rules) {
         comboState: {
             lockFootprint,
             manualColumns: [...new Set(lockFootprint.map((cell) => cell.x))],
-            tSpin,
+            twist,
         },
     });
     const evaluator = new VictoryConditionEvaluator();
@@ -322,7 +322,7 @@ function transition(node, activePiece, placement, serial, rules) {
             metricsAfter: evaluator.getMetrics(),
             boardHashAfter: hashBoard(result.boardAfter),
             lockBonus,
-            tSpin,
+            twist,
             b2bActiveAfter: result.b2bActiveAfter,
         },
         pathCost: node.pathCost + placement.pathCost,
@@ -422,7 +422,7 @@ export function planMasteryObservation(observation, options = {}) {
             boardHashAfter: selected.root.boardHashAfter,
             lockedPiece: pose(selected.root.placement),
             lockBonus: selected.root.lockBonus,
-            tSpin: selected.root.tSpin,
+            twist: selected.root.twist,
             b2bActiveAfter: selected.root.b2bActiveAfter,
         } : null,
         diagnostics: {

@@ -21,7 +21,7 @@
  * them all into the cloud; four lines swell the funnel into a wedge and send a dust front across
  * the field and over the lens, and a perfect clear crowns it (the gap opens to full light, the
  * funnel lets everything go); a back-to-back brings channels down either side of the funnel;
- * the heat of play (shared/gameplay-surge.js) winds the whole storm up to a fever; a T-spin
+ * the heat of play (shared/gameplay-surge.js) winds the whole storm up to a fever; a twist
  * spins it up;
  * a new level turns the hour (golden hour, ember dusk, green sky, blue hour), which also turns
  * by itself, slowly, with the clock.
@@ -271,7 +271,7 @@ export default class TornadoTheme extends BaseTheme {
             sink: {
                 lock: (c) => this.world?.onLock(c),
                 clear: (c) => this.world?.onClear(c),
-                tspin: () => this.world?.onTSpin?.(),
+                twist: () => this.world?.onTwist?.(),
                 combo: (n, player) => this.reportCombo(n, player),
                 levelUp: (level) => {
                     this.level = level;

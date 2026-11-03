@@ -407,10 +407,10 @@ export class LevelRegistry {
         }
 
         if (levelConfig.victory) {
-            // 'tetrises' is supported by VictoryConditionEvaluator (primary switch) but was
-            // missing here, so a tetrises-primary level would falsely fail validation (masterplan §2 #10).
+            // 'quads' is supported by VictoryConditionEvaluator (primary switch) but was
+            // missing here, so a quads-primary level would falsely fail validation (masterplan §2 #10).
             const validTypes = [
-                'lines', 'score', 'time', 'height', 'cascade', 'combo', 'tetrises', 'rubble', 'frags', 'custom',
+                'lines', 'score', 'time', 'height', 'cascade', 'combo', 'quads', 'rubble', 'frags', 'custom',
             ];
             const { primary } = levelConfig.victory;
             if (!primary) {

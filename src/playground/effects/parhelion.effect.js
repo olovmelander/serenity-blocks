@@ -28,7 +28,7 @@
  *                           every LOWER_SUN_WALK.seconds)
  *   ?parhelionCombo=<n>     static resonance preview (Warm Hounds / Crowning / Parhelic Line)
  *   ?parhelionPulse=<cue>&parhelionPulseAge=<s>  one deterministic reaction through the real
- *                           optics state: lock, harddrop, single, double, triple, quad, tspin,
+ *                           optics state: lock, harddrop, single, double, triple, quad, twist,
  *                           apex, perfect, echo
  *   ?parhelionCalmDebug=1   calm-union outline in the dome (stone hidden so it shows)
  *   ?parhelionNoPost=1      direct render (no RenderPipeline) — debugging only
@@ -120,7 +120,7 @@ const PULSE_CUES = Object.freeze({
     double: Object.freeze({ kind: CUE.CLEAR, lines: 2 }),
     triple: Object.freeze({ kind: CUE.CLEAR, lines: 3 }),
     quad: Object.freeze({ kind: CUE.QUAD, lines: 4 }),
-    tspin: Object.freeze({ kind: CUE.TSPIN, lines: 2 }),
+    twist: Object.freeze({ kind: CUE.TWIST, lines: 2 }),
     apex: Object.freeze({ kind: CUE.APEX, lines: 1, combo: 10 }),
     perfect: Object.freeze({ kind: CUE.PERFECT, lines: 4 }),
     echo: Object.freeze({ kind: CUE.ECHO, lines: 4, echoOf: CUE.QUAD }),

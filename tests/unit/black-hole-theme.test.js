@@ -58,7 +58,7 @@ function createTheme() {
         theme.scene = { clear: vi.fn() };
         theme.camera = new THREE.PerspectiveCamera(60, 1, 1, 20000);
         const director = { energy: 0.4, flash: 0.1, iris: 0.05 };
-        for (const handler of ['onHardDrop', 'onPieceLock', 'onLineClear', 'onCascade', 'onTSpin',
+        for (const handler of ['onHardDrop', 'onPieceLock', 'onLineClear', 'onCascade', 'onTwist',
             'onBackToBack', 'onPerfectClear', 'onLevelUp', 'calm']) director[handler] = vi.fn();
         const group = new THREE.Group();
         const parked = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicNodeMaterial());
@@ -246,7 +246,7 @@ describe('Black Hole theme lifecycle', () => {
         eventBus.emit(EVENTS.PIECE_LOCK, lock);
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 2, clearedRows: [23, 22] });
         eventBus.emit(EVENTS.COMBO, { comboCount: 3 });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 2 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 2 });
         eventBus.emit(EVENTS.B2B, { active: true });
         eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 1 });
         eventBus.emit(EVENTS.LEVEL_UP, { level: 2 });
@@ -254,7 +254,7 @@ describe('Black Hole theme lifecycle', () => {
         expect(director.onPieceLock).toHaveBeenCalledWith(lock, true);
         expect(director.onLineClear).toHaveBeenCalledWith({ lineCount: 2, clearedRows: [23, 22] });
         expect(director.onCascade).toHaveBeenCalledWith({ comboCount: 3 });
-        expect(director.onTSpin).toHaveBeenCalledTimes(1);
+        expect(director.onTwist).toHaveBeenCalledTimes(1);
         expect(director.onBackToBack).toHaveBeenCalledWith({ active: true });
         expect(director.onPerfectClear).toHaveBeenCalledTimes(1);
         expect(director.onLevelUp).toHaveBeenCalledWith({ level: 2 });

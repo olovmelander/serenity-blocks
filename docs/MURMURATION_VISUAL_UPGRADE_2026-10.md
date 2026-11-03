@@ -407,7 +407,7 @@ Run `npm run dev:playground`, then:
 
 `/playground.html?effect=murmuration&t=40&quality=High&board=1`
 
-Add `event=lock|drop|clear|quad|tspin|perfect|levelUp|gameOver` with `eventAge=<s>` (and
+Add `event=lock|drop|clear|quad|twist|perfect|levelUp|gameOver` with `eventAge=<s>` (and
 `lines=<n>`, `row=<r>`, `u=<0..1>`), `combo=<n>`, `level=<n>`, `shape=<name>` (with
 `strength=`, and `twin=0` for one centred figure). `demo=1` (without `t`) plays a looping
 script. `noPost=1` shows the raw scene; `forceWebGL=1` uses the WebGL2 backend;

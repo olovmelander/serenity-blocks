@@ -1,7 +1,7 @@
 /**
  * @fileoverview BoardJuice - Reactive board motion system (Screen Juice)
  *
- * Applies Tetris Effect-style micro-animations to the game board canvas:
+ * Applies micro-animations to the game board canvas:
  * nudges, tilts, dips, bounces, and pulses triggered by game events.
  *
  * Uses spring physics for smooth, natural settle-back.

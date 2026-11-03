@@ -27,7 +27,7 @@ export class VictoryConditionEvaluator {
             maxCascadeDepth: 0,
             combos: 0,
             maxCombo: 0,
-            tetrises: 0,
+            quads: 0,
             singles: 0,
             doubles: 0,
             triples: 0,
@@ -72,7 +72,7 @@ export class VictoryConditionEvaluator {
             this.trackedMetrics.triples++;
             break;
         case 4:
-            this.trackedMetrics.tetrises++;
+            this.trackedMetrics.quads++;
             break;
         }
     }
@@ -208,8 +208,8 @@ export class VictoryConditionEvaluator {
         case 'combo':
             return this.trackedMetrics.maxCombo >= condition.target;
 
-        case 'tetrises':
-            return this.trackedMetrics.tetrises >= condition.target;
+        case 'quads':
+            return this.trackedMetrics.quads >= condition.target;
 
         case 'rubble': {
             // Dig out N rubble rows, never more than the attempt started with.
@@ -282,8 +282,8 @@ export class VictoryConditionEvaluator {
             case 'max-cascade-depth':
                 return this.trackedMetrics.maxCascadeDepth >= bonus.target;
 
-            case 'tetris-count':
-                return this.trackedMetrics.tetrises >= bonus.target;
+            case 'quad-count':
+                return this.trackedMetrics.quads >= bonus.target;
 
             case 'cascade':
                 return this.trackedMetrics.cascades >= bonus.target;

@@ -11,7 +11,7 @@
  * sparkle       sizes of spark in the foam (1..3: coarse, medium, fine)
  * backwash      the previous wave's swash is drawn too (no edge pops off when the next one arrives)
  * splashes      drops that can be lighting the water at once  breakers  clear-waves alive at once
- * drops         the splash-droplet pool                      fish       the shoal a T-spin sends
+ * drops         the splash-droplet pool                      fish       the shoal a twist sends
  * streaks       rain streaks near the eye                    palms      palms on the tree line (density)
  * spray         droplets of spray off breaking lips alive at once
  */

@@ -15,7 +15,7 @@
  *            Great Drop, which swells and takes the colour (each wave of a cascade runs deeper,
  *            wider and brighter than the one before);
  *   combo    the Drop buds one satellite per step of the chain and the whole sea charges;
- *   T-spin   the sea under the Drop winds into a funnel (a second one winds it deeper; a T-spin
+ *   twist   the sea under the Drop winds into a funnel (a second one winds it deeper; a twist
  *            that clears nothing still turns it a little);
  *   B2B      the kin answer: they flare in dreamfire and ring the sea, and the clear's packet
  *            runs twice;
@@ -198,7 +198,7 @@ export class FluidChoreography {
         this._flash = new Swell({ release: 0.28, ceiling: 1, knee: 0.6 });
         this._kick = new Swell({ release: 0.22, ceiling: 1.2, knee: 0.8 });
         this._sky = new Swell({ release: 0.9, ceiling: 1, knee: 0.6 });
-        /** The funnel a T-spin winds: a second T-spin winds it deeper instead of starting it over. */
+        /** The funnel a twist winds: a second twist winds it deeper instead of starting it over. */
         this._twist = new Swell({
             attack: 0.2, release: 1.3, ceiling: 1.5, knee: 1,
         });
@@ -371,13 +371,13 @@ export class FluidChoreography {
      * and dives in, and the scene's hero anchor moves there. Without one it falls where it hangs.
      * `cascade` is the deepest wave of the lock's cascade this clear is (1 = its first), `combo`
      * the true chain it extends, `b2b` a back-to-back difficult clear.
-     * @param {{ origin: number[], lines: number, tspin?: boolean, perfect?: boolean, site?: number[],
+     * @param {{ origin: number[], lines: number, twist?: boolean, perfect?: boolean, site?: number[],
      *   cascade?: number, combo?: number, b2b?: boolean }} clear
      * @returns {boolean} true when this clear sent the Drop down (a four-line clear that arrives
      *     while it is still down feeds the crater instead)
      */
     clear({
-        origin, lines, tspin = false, perfect = false, site = null, cascade = 1, combo = 1, b2b = false,
+        origin, lines, twist = false, perfect = false, site = null, cascade = 1, combo = 1, b2b = false,
     }) {
         const n = Math.max(1, Math.min(4, Math.round(lines)));
         const { time } = this;
@@ -407,7 +407,7 @@ export class FluidChoreography {
             if (!down) this.hushDepth = 1 - 0.75 * this.heat.level;
         }
         const plunged = quad && this._startPlunge(site);
-        if (tspin) this._wind(1 + 0.12 * n);
+        if (twist) this._wind(1 + 0.12 * n);
         if (b2b) this._backToBack(origin, n, power, hold);
         if (perfect) {
             // (with the Drop going down, the sea turns to glass once the crown has gone up)
@@ -415,7 +415,7 @@ export class FluidChoreography {
             this._glassFrom(p.active ? Math.max(time, p.t0 + p.fall + 1.6) : time);
         }
         this.play.clear({
-            lines: n, cascade: deeper + 1, combo, tspin, perfect, b2b,
+            lines: n, cascade: deeper + 1, combo, twist, perfect, b2b,
         }, time + hold);
         return plunged;
     }
@@ -462,7 +462,7 @@ export class FluidChoreography {
     }
 
     /**
-     * A T-spin that cleared nothing: the sea under the Drop turns a little, a ring opens round
+     * A twist that cleared nothing: the sea under the Drop turns a little, a ring opens round
      * the thread's foot, and the film catches it.
      */
     spinNoLines() {
@@ -597,7 +597,7 @@ export class FluidChoreography {
     }
 
     /**
-     * A four-line clear while the Drop is down (a back-to-back Tetris): no second hush, no second
+     * A four-line clear while the Drop is down (a back-to-back Quad): no second hush, no second
      * fall. Before the impact it lands harder; after it, the crater answers again — rings of
      * dreamfire, the overdrive climbs, the rain thickens.
      */
@@ -1015,7 +1015,7 @@ export class FluidChoreography {
             }
         }
 
-        // ── the funnel a T-spin winds (a second one winds it deeper; it turns on, never restarts) ──
+        // ── the funnel a twist winds (a second one winds it deeper; it turns on, never restarts) ──
         const tw = this.twist;
         const { vortex } = this;
         if (tw.active) {

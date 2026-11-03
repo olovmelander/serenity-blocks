@@ -185,7 +185,7 @@ export class TornadoWorld {
          * still lit and never restarts it, so a weak hit after a strong one can only lift the
          * light, and two quads in a row are more than one.
          *   swell     the funnel breathes out into a wedge (a clear; a quad fully)
-         *   spinKick  the funnel spins up (a T-spin, a chain's clears, an unwind)
+         *   spinKick  the funnel spins up (a twist, a chain's clears, an unwind)
          *   raysBoost the sun's shafts under the deck
          *   shake, kick, lensFlash   the lens: a jolt, the fringe, the iris on a stroke
          *   glint     the ribbons flare (a clear's release, a chain's winding)
@@ -871,7 +871,7 @@ export class TornadoWorld {
             return;
         }
         const big = lines >= 4 || c.perfect === true;
-        const difficult = lines >= 4 || c.tspin === true;
+        const difficult = lines >= 4 || c.twist === true;
         if (c.b2b === true) this.b2bStreak += 1;
         else if (!difficult && depth === 1) this.b2bStreak = 0;
 
@@ -904,7 +904,7 @@ export class TornadoWorld {
         for (let i = 0; i < strikes; i += 1) {
             this.schedule(t + 0.1 + i * gap, () => this.strike(power));
         }
-        if (c.tspin) this.spinKick.hit(1, t);
+        if (c.twist) this.spinKick.hit(1, t);
         this.kick.hit(0.3 + lines * 0.15 + 0.08 * wave, t);
         if (big) {
             this.swell.hit(1, t);
@@ -973,8 +973,8 @@ export class TornadoWorld {
         this.quietUntil = t + CROWN_QUIET;
     }
 
-    /** A T-spin that cleared nothing: the funnel twists up and the wall cloud glows a moment. */
-    onTSpin() {
+    /** A twist that cleared nothing: the funnel twists up and the wall cloud glows a moment. */
+    onTwist() {
         const t = this.time;
         const { axis } = this.u;
         this.spinKick.hit(0.7, t);

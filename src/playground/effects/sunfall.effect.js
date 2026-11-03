@@ -35,7 +35,7 @@ const DEMO_SCRIPT = [
     [9.8, 'clear', { lines: 3, combo: 7, codes: ['L', 'J', 'I'] }],
     [13.5, 'release', { peak: 7 }],
     [16.5, 'quad', { b2b: 2 }],
-    [23.0, 'tspin', { lines: 2, b2b: 3 }],
+    [23.0, 'twist', { lines: 2, b2b: 3 }],
     [28.5, 'perfect', {}],
 ];
 
@@ -211,8 +211,8 @@ export function create({
             director.onLineClear({
                 lines: 4, rows: [12, 13, 14, 15], codes: ['I', 'S', 'T', 'Z'], b2b: Math.max(1, holdB2B),
             });
-        } else if (eventName === 'tspin') {
-            director.onTSpin({ lines });
+        } else if (eventName === 'twist') {
+            director.onTwist({ lines });
             director.onLineClear({
                 lines, rows: [row, row + 1], codes: ['T', 'L', 'I'], b2b: Math.max(1, holdB2B),
             });
@@ -300,8 +300,8 @@ export function create({
                 if (detail.combo) director.onCombo(detail.combo);
             } else if (verb === 'release') director.releaseCombo(detail.peak);
             else if (verb === 'quad') director.onLineClear({ lines: 4, b2b: detail.b2b });
-            else if (verb === 'tspin') {
-                director.onTSpin({ lines: detail.lines });
+            else if (verb === 'twist') {
+                director.onTwist({ lines: detail.lines });
                 director.onLineClear({ lines: detail.lines, b2b: detail.b2b });
             } else if (verb === 'perfect') director.onPerfectClear();
             demoCursor += 1;

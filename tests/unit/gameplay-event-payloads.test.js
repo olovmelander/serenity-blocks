@@ -1,7 +1,7 @@
 /**
  * Gameplay-event payload schema pins (plan §4.6 first slice + 3b).
  *
- * The quartet (+TSPIN/B2B) was emitted from ~25 sites with 6+ divergent
+ * The quartet (+TWIST/B2B) was emitted from ~25 sites with 6+ divergent
  * shapes; ~212 theme subscriptions consume them. events/gameplay-events.js is
  * now the ONE shape definition — these tests pin the canonical payloads, the
  * consumer-audit safety rules, and that no mode regrows a direct emit.
@@ -15,7 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
 import {
-    emitLineClear, emitCombo, emitPieceLock, emitPerfectClear, emitTSpin, emitB2B,
+    emitLineClear, emitCombo, emitPieceLock, emitPerfectClear, emitTwist, emitB2B,
     emitHardDrop, emitLevelUp,
 } from '../../src/events/gameplay-events.js';
 
@@ -68,10 +68,10 @@ describe('canonical payload shapes', () => {
         expect(p.timestamp).toBeUndefined();
     });
 
-    it('COMBO / TSPIN / B2B / PIECE_LOCK / PERFECT_CLEAR canonical fields', () => {
+    it('COMBO / TWIST / B2B / PIECE_LOCK / PERFECT_CLEAR canonical fields', () => {
         expect(capture(EVENTS.COMBO, () => emitCombo({ comboCount: 5, player: 1 })))
             .toEqual({ comboCount: 5, player: 1 });
-        expect(capture(EVENTS.TSPIN, () => emitTSpin({ lineCount: 2, source: 'infinity' })))
+        expect(capture(EVENTS.TWIST, () => emitTwist({ lineCount: 2, source: 'infinity' })))
             .toEqual({ lineCount: 2, source: 'infinity' });
         expect(capture(EVENTS.B2B, () => emitB2B()))
             .toEqual({ active: true });
@@ -134,7 +134,7 @@ describe('canonical payload shapes', () => {
 });
 
 describe('one emit site per event (tripwire)', () => {
-    const QUARTET_RE = /eventBus\.emit\(\s*EVENTS\.(LINE_CLEAR|COMBO|PIECE_LOCK|PERFECT_CLEAR|TSPIN|B2B)\b/g;
+    const QUARTET_RE = /eventBus\.emit\(\s*EVENTS\.(LINE_CLEAR|COMBO|PIECE_LOCK|PERFECT_CLEAR|TWIST|B2B)\b/g;
 
     // Shrink-only allowlist. main.js's six emits live in the LEGACY loops that
     // plan §5.5 deletes outright — migrate or delete with that phase.

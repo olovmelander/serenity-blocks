@@ -232,7 +232,7 @@ export function createGrottoUniforms(textures, opts = {}) {
          * chain lets the caps keep their colours, so the grotto fills with them.
          */
         keep: uniform(0),
-        /** A T-spin's turn of the air, 0..1. */
+        /** A twist's turn of the air, 0..1. */
         swirl: uniform(0),
         /** 1 while any ring / any clear wave is still in the grotto (the loops are skipped at rest). */
         ringsLive: uniform(0),

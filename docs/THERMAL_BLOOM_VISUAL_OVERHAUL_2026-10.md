@@ -234,7 +234,7 @@ Playground (`npm run dev:playground`, then `playground.html?effect=thermal-bloom
 | its release | `t=10&board=1&chain=7&event=release&eventAge=1.5` |
 | a hard drop | `t=10&board=1&event=drop&piece=T&u=0.3&row=17&dist=18&eventAge=0.6` |
 | four lines | `t=40&board=1&event=quad&row=16&eventAge=1.4` |
-| T-spin | `t=40&board=1&event=tspin&lines=2&u=0.2&row=13&eventAge=3` |
+| T-spin | `t=40&board=1&event=twist&lines=2&u=0.2&row=13&eventAge=3` |
 | perfect clear | `t=10&board=1&event=perfect&eventAge=3.5` |
 | a gust | `t=10&board=1&gust=0.5` |
 | a free camera | `cam=x,y,z,tx,ty,tz,fov` (the Iris close: `t=10&cam=-40,40,-90,-108,0,-205,46`); `sunAz=` and `sunEl=` hold the sun |

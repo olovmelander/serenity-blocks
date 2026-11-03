@@ -20,7 +20,7 @@
  *             go: a front, two jets, and the tide runs out again.
  *   four lines / perfect clear   the nebula holds its breath, then the Tide Star itself flares
  *             and everything fires at once, in starfire.
- *   T-spin    the whole tide turns about the board.
+ *   twist    the whole tide turns about the board.
  *   level up  a soft front from the board, and the nebula turns to the next colours.
  *
  * The colours turn by the clock as well, in every mode (paletteDrift: a palette rests, then melts
@@ -161,7 +161,7 @@ export class AetherTidesWorld {
         this.releaseAt = NEVER;
         /**
          * The spring behind the board a clear opens (it follows the latest clear and its push
-         * accumulates: a cascade's waves feed one welling spring), and the turn a T-spin gives.
+         * accumulates: a cascade's waves feed one welling spring), and the turn a twist gives.
          */
         this.burst = {
             x: 0,
@@ -467,7 +467,7 @@ export class AetherTidesWorld {
             swirlRadius: 0.3 + 0.16 * open,
         });
 
-        // ── the spring behind the board, and a T-spin's turn ──
+        // ── the spring behind the board, and a twist's turn ──
         const twistAge = clock - this.twist.at;
         const burstLater = this.burst.swell.t0 > this.twist.at;
         events.setWell(WELL_BOARD, {
@@ -937,7 +937,7 @@ export class AetherTidesWorld {
 
     /**
      * Lines have cleared.
-     * @param {{ player?: number, rows?: number[], lines?: number, combo?: number, tspin?: boolean,
+     * @param {{ player?: number, rows?: number[], lines?: number, combo?: number, twist?: boolean,
      *           perfect?: boolean, b2b?: boolean, screen?: {x:number,y:number} }} c
      */
     onClear(c) {
@@ -946,7 +946,7 @@ export class AetherTidesWorld {
             this.crown(c);
             return;
         }
-        if (c.lines === 0 && c.tspin) {
+        if (c.lines === 0 && c.twist) {
             this.spin(c);
             return;
         }
@@ -1090,7 +1090,7 @@ export class AetherTidesWorld {
             }, this.eventClock);
         }
         if (c.b2b) this.answer(at);
-        if (c.tspin) {
+        if (c.twist) {
             this.twist.at = at;
             this.twist.x = heartX;
             this.twist.y = heartY;
@@ -1179,7 +1179,7 @@ export class AetherTidesWorld {
         this.strike(0.3, 0.6, at);
     }
 
-    /** A T-spin that cleared nothing: the tide still turns about the board, gently. */
+    /** A twist that cleared nothing: the tide still turns about the board, gently. */
     spin(c) {
         const at = this.eventClock;
         const { board } = this.stage(c.player || 0);

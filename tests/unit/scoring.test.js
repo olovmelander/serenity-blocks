@@ -13,7 +13,7 @@ describe('Line-clear Scoring', () => {
             expect(SCORE_VALUES[1]).toBe(250);  // Single
             expect(SCORE_VALUES[2]).toBe(500);  // Double
             expect(SCORE_VALUES[3]).toBe(1000); // Triple
-            expect(SCORE_VALUES[4]).toBe(2000); // Tetris
+            expect(SCORE_VALUES[4]).toBe(2000); // Quad
         });
     });
 
@@ -48,7 +48,7 @@ describe('Line-clear Scoring', () => {
                 expect(score).toBe(1100);
             });
 
-            it('should score tetris correctly', () => {
+            it('should score quad correctly', () => {
                 // Base: 2000, Level bonus: 2000 * 0.1 * 1 = 200
                 // Total: 2200
                 const score = calculateLineClearScore(4, 1, 1, false);
@@ -63,7 +63,7 @@ describe('Line-clear Scoring', () => {
                 expect(score).toBe(375);
             });
 
-            it('should calculate tetris at level 10', () => {
+            it('should calculate quad at level 10', () => {
                 // Base: 2000, Level bonus: 2000 * 0.1 * 10 = 2000
                 // Total: 4000
                 const score = calculateLineClearScore(4, 10, 1, false);
@@ -114,7 +114,7 @@ describe('Line-clear Scoring', () => {
                 expect(score).toBe(1650);
             });
 
-            it('should add perfect clear bonus for tetris', () => {
+            it('should add perfect clear bonus for quad', () => {
                 // Base: 2000
                 // Perfect: 4 * 1250 = 5000
                 // Subtotal: 7000
