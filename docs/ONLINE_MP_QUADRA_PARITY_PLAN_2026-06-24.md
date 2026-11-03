@@ -1,10 +1,10 @@
-# Online MP — Quadra-Parity Best-in-Class Plan (2026-06-24)
+# Online MP — Local-Feel Best-in-Class Plan (2026-06-24)
 
-Source: 27-agent adversarially-verified comparison of **Quadra** (`C:/Users/olovm/repositories/quadra`, C++ deterministic-lockstep) vs **Serenity Blocks** (host-authoritative + prediction). Every claim below was re-read and confirmed against cited code in both repos.
+Source: 27-agent adversarially-verified review of Serenity Blocks' online MP (host-authoritative + prediction) against a deterministic-lockstep design target. Every claim about Serenity below was re-read and confirmed against the cited code.
 
 ## Implementation status (2026-06-24)
 
-- **⭐ PEER-OWNS-BOARD (Quadra local-sim) — SHIPPED (`?peerLocalSim`, default on).** The architectural fix for "feel exactly like local/host": the incremental hold/reconcile patches plateaued because the peer re-based its own board against the host's stale 30Hz snapshot every frame. Determinism is verified feasible (shared-seed integer-LCG piece stream identical on both sides; clears/cascades integer-pure; hard-drops bit-identical per the demo-replay test). So the peer now FULLY OWNS its grid/piece/nextPieces/score/lines/level as a local sim — never re-based per-frame; the host snapshot supplies only incoming garbage + frags/death (verdicts) + a **caught-up+settled** desync backstop (compare to host only once it has applied all our inputs and both are settled → one rate-limited resync on a true divergence). The local board then renders like LocalMP (direct from gameState, instant input). Only non-bit-identical source is gravity-lock timing (both sides RAF wall-clock, not fixed-step) → rare divergence → resync; true bit-identical needs the fixed-step clock (Phase 4/5). Unit `ffa-peer-local-sim.test.js` 4/4; suite 521/522; harness @80-110ms × 34 drops → **0 resyncs, 0 score regressions, 0 errors**. Needs real 2-machine validation of resync frequency; `?peerLocalSim=0` reverts.
+- **⭐ PEER-OWNS-BOARD (local-sim) — SHIPPED (`?peerLocalSim`, default on).** The architectural fix for "feel exactly like local/host": the incremental hold/reconcile patches plateaued because the peer re-based its own board against the host's stale 30Hz snapshot every frame. Determinism is verified feasible (shared-seed integer piece stream identical on both sides; clears/cascades integer-pure; hard-drops bit-identical per the demo-replay test). So the peer now FULLY OWNS its grid/piece/nextPieces/score/lines/level as a local sim — never re-based per-frame; the host snapshot supplies only incoming garbage + frags/death (verdicts) + a **caught-up+settled** desync backstop (compare to host only once it has applied all our inputs and both are settled → one rate-limited resync on a true divergence). The local board then renders like LocalMP (direct from gameState, instant input). Only non-bit-identical source is gravity-lock timing (both sides RAF wall-clock, not fixed-step) → rare divergence → resync; true bit-identical needs the fixed-step clock (Phase 4/5). Unit `ffa-peer-local-sim.test.js` 4/4; suite 521/522; harness @80-110ms × 34 drops → **0 resyncs, 0 score regressions, 0 errors**. Needs real 2-machine validation of resync frequency; `?peerLocalSim=0` reverts.
 
 
 - **Phase 0 — SHIPPED & verified.** score/lines/level + garbage held with the grid during the local predicted clear (monotonic `Math.max`), Signal 4 (`isProcessingPhysics`) holds across the whole cascade, round-gen reset. Behind `?holdStats`. Harness: score-regression frames 68→1, `desyncCount` 0, round-2 clean, suite 508/509. Fixes the peer's OWN clears/cascades/combos feeling off.
@@ -20,7 +20,7 @@ Source: 27-agent adversarially-verified comparison of **Quadra** (`C:/Users/olov
 
 ## Executive summary
 
-Serenity's online MP is **host-authoritative full-board snapshot streaming + client prediction + reconciliation**. Quadra is **peer-deterministic lockstep input-streaming** (shared seed → every machine regenerates the identical piece stream and runs one frame-stepped sim; the local sim is never overwritten; the lock is the only authoritative discrete event; clears/cascades/combos are the deterministic *consequence* of the stamped lock, frame-identical everywhere, free on the wire).
+Serenity's online MP is **host-authoritative full-board snapshot streaming + client prediction + reconciliation**. The design target is **peer-deterministic lockstep input-streaming** (shared seed → every machine regenerates the identical piece stream and runs one frame-stepped sim; the local sim is never overwritten; the lock is the only authoritative discrete event; clears/cascades/combos are the deterministic *consequence* of the stamped lock, frame-identical everywhere, free on the wire).
 
 The two shipped fixes (LOCAL-PIECE OWNERSHIP + LOCAL-BOARD HOLD) made **move/rotate/drop** smooth on the peer because those are instantaneous, single-cell, locally-owned. **Line clears / cascades / combos still feel "way off"** because they are derived, multi-frame, async-animated events that are effectively **triple-owned**: (a) the peer runs its own async `processPhysics` animation on its RAF clock; (b) the host runs *its* own async `processPhysics` on a different clock and broadcasts the settled result; (c) the LOCAL-BOARD HOLD freezes only the **grid** during the post-lock window while **score/lines/level** (`ffa-p2p-game-state.js:2652-2654`) and the **garbage queue** (`2774-2796`) are adopted from the host **every frame, outside the hold gate**.
 
@@ -28,29 +28,29 @@ Visible result on the peer: the score/lines counter **regresses to the host's pr
 
 ## Architectural verdict
 
-**KEEP host-authoritative + prediction and perfect it via a Quadra-inspired hybrid. Do NOT migrate to full deterministic lockstep.**
+**KEEP host-authoritative + prediction and perfect it via a lockstep-inspired hybrid. Do NOT migrate to full deterministic lockstep.**
 
-Why not lockstep: Serenity is structurally hostile to bit-determinism today — float physics (not fixed-point), RAF-paced variable-delta sim (not a fixed quantum), clears/cascades are async wall-clock animations (not deterministic ticks), and the bag is host-pushed (not seed-derived). Converting all four is an XL, high-risk rewrite of the **shared single-player core** and throws away the working prediction/ownership/hold investment. Quadra can *assert* determinism (validate the stamp, drop on mismatch) because C++ integer math guarantees it; JS float under async timing cannot, so a half-migrated lockstep would desync silently — strictly worse.
+Why not lockstep: Serenity is structurally hostile to bit-determinism today — float physics (not fixed-point), RAF-paced variable-delta sim (not a fixed quantum), clears/cascades are async wall-clock animations (not deterministic ticks), and the bag is host-pushed (not seed-derived). Converting all four is an XL, high-risk rewrite of the **shared single-player core** and throws away the working prediction/ownership/hold investment. A fully deterministic integer sim can *assert* determinism (validate the stamp, drop on mismatch); JS float under async timing cannot, so a half-migrated lockstep would desync silently — strictly worse.
 
-Quadra's smoothness comes from **three separable mechanisms Serenity can adopt without bit-determinism**:
+Lockstep's smoothness comes from **three separable mechanisms Serenity can adopt without bit-determinism**:
 1. **The clear is owned by ONE timeline and never overwritten mid-animation** → make the predicted clear a single self-consistent window (Phase 0).
 2. **The lock is a discrete RELIABLE EVENT carrying the authoritative result** → extend `_emitAuthoritativeLock` to carry clear semantics (Phase 1).
 3. **Opponents REPRODUCE the clear animation** instead of teleporting between settled grids (Phase 2).
 
 The host-authoritative safety net (chunked resync) stays as the divergence backstop. The seed/lockSeq/simTick plumbing added here keeps a future 1v1-only lockstep experiment possible.
 
-## Quadra's secret sauce (verified)
+## What makes a lockstep design smooth
 
-- **Deterministic per-canvas RNG from one shared seed** (`canvas.cc:43/83 rnd(game_seed)`, `random.cc:38` LCG `seed*0x41c64e6d+0x3039`, `player.cc:269 the_next=rnd()%7`) → identical piece stream everywhere, no queue transmitted.
-- **Fixed-timestep deterministic tick**: one 10ms accumulator (`quadra.cc:425-432`) advances a global `overmind.framecount`; every canvas stepped once per tick (`net_list.cc:412-417`). Sim decoupled from render; clears run *inside* the stepped sim.
-- **Fixed-point integer physics** (`canvas.cc:228-245`, `<<4`) → bit-identical, nothing to reconcile.
-- **Inputs (not state) streamed reliable in-order** (TCP, Nagle off): one bit-packed byte/frame (`player.cc:451-460`), flushed at 50 bytes or on lock. Board grid never transmitted during play.
-- **Remote players REPRODUCED, not sampled**: `Player_wait_block` replays one input byte/frame through the *same* move/rotate/drop functions (`player.cc:1308-1357`) → full frame-rate motion, nothing to interpolate.
-- **The lock is the single authoritative discrete event** (`Packet_clientstampblock`, `player.cc:478-499`), reliable/ordered/idempotent, force-flushes pending moves. The clear is the deterministic *consequence* (`Player_stamp→check_line→flash_lines→check_link`, `player.cc:528-833`).
-- **Single writer**: the sim mutates the same arrays the renderer reads (`zone.cc:64-73`). No interpolator, no two-writer fight.
-- **Garbage crosses as an explicit `Packet_lines` event** with exact hole positions (`net_list.cc:122-142`), applied to local canvases — never reconciled state.
-- **Round transitions = one-byte all-ready barrier + one shared reseed** (`net_list.cc:826-870`, `game.cc:941-951`); no board payload crosses a round boundary.
-- **Determinism is verifiable**: `recording.cc` replays seed+inputs bit-identically; `Player_stamp` validates the streamed pose vs the locally-reproduced board (desync → server drop).
+- **One shared seed drives every piece stream** → identical pieces everywhere, no queue transmitted.
+- **A fixed-timestep sim tick**, decoupled from render; clears run *inside* the stepped sim.
+- **Integer physics** → bit-identical results, nothing to reconcile.
+- **Inputs (not state) streamed reliably and in order**, compactly encoded and flushed on lock. The board grid is not transmitted during play.
+- **Remote players reproduced, not sampled**: replayed inputs drive the *same* move/rotate/drop functions → full frame-rate motion, nothing to interpolate.
+- **The lock is the single authoritative discrete event**, reliable/ordered/idempotent, force-flushing pending moves. The clear is its deterministic *consequence*.
+- **Single writer**: the sim mutates the same state the renderer reads. No interpolator, no two-writer fight.
+- **Garbage crosses as an explicit event** with exact hole positions, applied to local boards — never reconciled state.
+- **Round transitions = a tiny all-ready barrier + one shared reseed**; no board payload crosses a round boundary.
+- **Determinism is verifiable**: a seed+inputs replay reproduces the match bit-identically, and each streamed lock pose is validated against the locally reproduced board (a desync drops the player).
 
 ## Phase 0 — Ship-now: make the predicted clear a single self-consistent window
 
@@ -68,7 +68,7 @@ The host-authoritative safety net (chunked resync) stays as the divergence backs
 
 ## Phase 1 — Authoritative CLEAR-RESULT event (extend the lock channel)
 
-Give clears/cascades/combos a discrete, reliable, ordered wire representation (Serenity's analogue of stampblock + deterministic clear).
+Give clears/cascades/combos a discrete, reliable, ordered wire representation (a reliable lock event plus a deterministic clear).
 
 - Extend `_emitAuthoritativeLock` (`3832-3851`) to carry `{playerSteamId, lockSeq, roundGeneration, hostTick, linesCleared[], holeMask, cascadeDepth, comboTier, b2b, perfectClear, tSpin, scoreDelta, garbageSent}` (reuse the summary already built in `physics.js` `onGarbageReady`).
 - On the local peer, treat predicted `onLineClearImpact`/`triggerCombo`/score as **provisional**; reconcile to confirmed event values **at the animation boundary** (`onCascadeComplete`/hold release), keyed on `lockSeq`. Drive kill-feed/scoreboard from confirmed values.
@@ -87,7 +87,7 @@ Make opponent clears/cascades/combos animate on the watcher instead of teleporti
 - Unify round-2 host spawn with match-start via one prepare/spawn helper (reset occupancy, clear active piece, fillBag, spawnPiece, assert no collision before `gamePhase='playing'`); jitter-buffer re-add after reset, before first spawn. **Keep the "do NOT `new GameState()`" constraint — reset in place.**
 - Re-arm `startHeartbeatLoop()` on the round-2 path; gate host-migration election on a heartbeat guaranteed live across rounds (`host-migration.js:44`).
 - Force an immediate reliable keyframe on the round-start tick (after `resetSnapshotBaselines`); event-couple keyframes to clearing locks (keyframe immediately after a clear/garbage lock).
-- Optionally flip `_readyBarrierEnabled` default on (after Phase-0 resets land) — Serenity's analogue of Quadra's `syncto`.
+- Optionally flip `_readyBarrierEnabled` default on (after Phase-0 resets land) — Serenity's all-ready round barrier.
 
 ## Phase 4 — Optional: frame-lock cascades & seed-as-authority
 

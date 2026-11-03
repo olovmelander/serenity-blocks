@@ -318,7 +318,7 @@ Your implementation is correct if:
 5. ✅ Cascade holes differ from initial piece holes
 6. ✅ Console logs show correct values at each step
 
-**If all checks pass → 100% Quadra-accurate! 🎉**
+**If all checks pass → the garbage system works as designed! 🎉**
 
 ---
 

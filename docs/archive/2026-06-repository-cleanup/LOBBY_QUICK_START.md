@@ -230,7 +230,6 @@ Waiting Room
 **Questions?** Check these files:
 1. 📖 [Full Implementation Doc](./LOBBY_SYSTEM_IMPLEMENTATION.md)
 2. 📋 [FFA Multiplayer Plan](./FFA_MULTIPLAYER_IMPLEMENTATION_PLAN.md)
-3. 🎮 [Quadra Multiplayer Spec](./QUADRA_MULTIPLAYER_GAME_MODES.md)
 
 **Console Logs:**
 ```

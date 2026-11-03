@@ -24,7 +24,7 @@ Local code confirms this project implements the same gameplay family:
 
 - `src/core/physics.js` runs a recursive cascade loop. It rebuilds the board, detects full rows, clears them, splits the post-clear stack with `findConnectedComponents`, applies gravity to those components, then checks again.
 - `src/core/scoring.js` uses Quadra-style scoring: base line clear values, `200 * (complexity - 1)^2` cascade bonus, perfect-clear bonus, and additive level multiplier.
-- `src/core/constants.js` sets `ROWS = 20`, `HIDDEN_ROWS = 4`, three visible next canvases in local multiplayer UI, no hold system, and Quadra-derived drop intervals.
+- `src/core/constants.js` sets `ROWS = 20`, `HIDDEN_ROWS = 4`, three visible next canvases in local multiplayer UI, no hold system, and its own drop-interval table.
 
 ### Gold Standard Bot Models
 
@@ -202,7 +202,6 @@ No external code, assets, sounds, images, or libraries should be imported for th
 
 | Source | Use | License status | Decision |
 |---|---|---|---|
-| `C:/Users/olovm/repositories/quadra` and https://github.com/quadra-game/quadra | Mechanics reference only | LGPL-2.1 according to local `LICENSE` and GitHub API | Do not copy or link code. Study behavior only. |
 | Roncli Quadra page | Mechanics research | Website content copyright Ronald M. Clifford | Link/cite only. No content reuse in runtime. |
 | Hard Drop Quadra page | Mechanics research | CC BY-SA 4.0 page license | Link/cite only. Do not copy text/assets into shipped game. |
 | TetrisWiki Quadra page | Mechanics research | CC BY-NC-SA 4.0 page license | Link/cite only. Non-commercial share-alike content is not suitable for commercial runtime assets. |

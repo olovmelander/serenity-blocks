@@ -646,7 +646,7 @@ export class SinglePlayerMode extends BaseGameMode {
             this.isRecording = false;
             console.log('[SinglePlayer] Recording stopped. Demo captured:', !!demo, 'Inputs:', demo?.inputs?.length);
 
-            // Auto-save the demo to IndexedDB (like Quadra's automatic last.qrec).
+            // Auto-save the demo to IndexedDB: the last game is always kept.
             if (demo && demo.inputs?.length > 0) {
                 demoId = await this._autoSaveDemo(demo);
             }
@@ -1682,7 +1682,7 @@ export class SinglePlayerMode extends BaseGameMode {
     }
 
     /**
-     * Auto-save demo to IndexedDB (like Quadra's automatic last.qrec saving)
+     * Auto-save demo to IndexedDB (the last game is auto-saved)
      * @private
      * @param {Object} demo - Demo object to save
      * @returns {Promise<number|null>} The saved demo ID, or null if save failed

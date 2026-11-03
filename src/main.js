@@ -4469,7 +4469,7 @@ class SerenityBlocks {
                 effectHandlers.lockBeat(piece);
                 currentMode?._infinityCameraEvent?.(playerNum - 1, 'lock', piece);
 
-                // Quadra handicap: accumulate per-opponent stamps on each placement
+                // Handicap: accumulate per-opponent stamps on each placement
                 // (no-op unless players have differing handicap levels).
                 multiplayerState?.accumulateHandicap?.(playerNum - 1);
 
@@ -4506,10 +4506,10 @@ class SerenityBlocks {
 
             currentMode?._maybeExpandPlayerGrid?.(playerState, sceneRef());
 
-            // Insert any pending garbage before spawning next piece (Quadra-style)
+            // Insert any pending garbage before spawning next piece
             const garbageQueue = multiplayerState.getGarbageQueue(playerIdentifier);
 
-            // Apply Quadra blind attacks FIRST. This both triggers the blackout
+            // Apply blind attacks FIRST. This both triggers the blackout
             // and removes leading blind/full_blind entries that would otherwise
             // block dequeueLineBurst() (which bails on a non-'line' head).
             const blindBurst = garbageQueue.takePendingBlindBurst?.() || [];

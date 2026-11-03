@@ -85,8 +85,8 @@ export class CanvasBoardEffects {
         this.hiddenRows = HIDDEN_ROWS;
         this.baseCanvas = baseCanvas;
 
-        // Light primitives in flight; the move in progress (its waves and lines, as
-        // Quadra counts a combo) tints the clears and names the clean canvas.
+        // Light primitives in flight; the move in progress (its chained waves, the
+        // combo, and its lines) tints the clears and names the clean canvas.
         this.lights = [];
         this.comboEnergy = 0;
         this.chainCount = 0;

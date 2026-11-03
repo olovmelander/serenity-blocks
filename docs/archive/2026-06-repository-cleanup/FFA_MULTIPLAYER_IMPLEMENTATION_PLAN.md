@@ -2,7 +2,7 @@
 
 **Project:** Serenity Blocks  
 **Feature:** Network Multiplayer - Free-For-All Mode  
-**Based on:** Quadra Multiplayer Game Modes Specification  
+**Inspired by:** Quadra's multiplayer modes (Free-For-All, Survivor)  
 **Architecture:** Steam P2P (Peer-to-Peer) - ZERO Server Hosting Costs  
 **Created:** October 16, 2025  
 **Version:** 3.0 (Clean P2P-Only)  
@@ -1014,7 +1014,7 @@ export class FFAAttackRouter {
     const attacker = this.gameState.players.get(attackerSteamId);
     if (!attacker || !attacker.isAlive) return;
     
-    // Calculate garbage attack using Quadra formula
+    // Calculate garbage attack
     const attack = calculateGarbage(cascadeSummary);
     const totalLines = attack.getTotalLines();
     
@@ -1028,7 +1028,7 @@ export class FFAAttackRouter {
     
     if (opponents.length === 0) return;
     
-    // Apply attack scaling (Quadra style)
+    // Apply crowd attack scaling
     const scaledLines = this.applyAttackScaling(
       totalLines,
       opponents.length,
@@ -1060,7 +1060,7 @@ export class FFAAttackRouter {
   }
   
   /**
-   * Apply Quadra-style attack scaling
+   * Apply crowd attack scaling
    * With many players, reduce damage (unless "boring rules")
    */
   applyAttackScaling(baseLines, opponentCount, boringRules) {
@@ -1068,7 +1068,7 @@ export class FFAAttackRouter {
       return baseLines; // No scaling
     }
     
-    // Quadra scaling: reduce damage with 4+ opponents
+    // Crowd scaling: reduce damage with 4+ opponents
     // Formula: lines / (1 + (opponentCount - 2) * 0.2)
     const scaleFactor = 1 + (opponentCount - 2) * 0.2;
     const scaledLines = Math.max(1, Math.floor(baseLines / scaleFactor));
@@ -1603,7 +1603,7 @@ export class MatchConfigModal {
 - ✅ Lobby browser shows public games
 - ✅ Players can create games with custom settings
 - ✅ Players can join games from browser
-- ✅ All Quadra match settings available
+- ✅ All match settings available (end condition, level, handicap, attack scaling)
 - ✅ Friends-only lobbies supported
 
 ---
@@ -1807,8 +1807,7 @@ serenity-blocks/
 │   └── main.js                   # Main application entry
 │
 ├── docs/
-│   ├── FFA_MULTIPLAYER_IMPLEMENTATION_PLAN.md (this file)
-│   └── QUADRA_MULTIPLAYER_GAME_MODES.md
+│   └── FFA_MULTIPLAYER_IMPLEMENTATION_PLAN.md (this file)
 │
 └── package.json
 ```

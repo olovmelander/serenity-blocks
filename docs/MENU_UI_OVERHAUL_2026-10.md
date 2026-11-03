@@ -873,18 +873,15 @@ index back from the renderer.
 | Round won (versus) | `camera.flash` (a solid gold board), blob fireworks for a second, confetti | Gold light rises from the floor of the winner's well and two fireworks climb as one bright mote each and burst (flash, ring, embers in the winner's colour); the round waits 1.5 s on the outcome |
 | Match won (versus) | Nothing on the boards; the results faded in | A 2.4 s beat before the results: the boards hold still, the winner's well lights, a halo breathes behind it, five shells go up, a "Match won / Victory / name" crest rises in their colour (`local-versus-hud.js` `showVictory`), the other wells dim |
 
-**Cascades, as Quadra plays them.** The gravity is Quadra's (the physics is calibrated
-against its source: a 160 ms hold on cleared rows, 20 ms gravity steps). In Quadra a
-*move* is everything one piece sets off: its **depth** is the lines it clears in all,
-its **complexity** the waves — what this game calls the combo — and the score rewards
-lines over waves. When a move settles Quadra scrolls one line summing it up (its lines,
-"Double", "Triple", "Quad", and its points); a block's landing thud grows with how far
-it fell and the clear's pitch drops with each wave; an emptied well scrolls "Clean
-canvas!" and pays bonus lines. Sources:
-[harddrop.com/wiki/Quadra](https://harddrop.com/wiki/Quadra),
-[tetris.wiki/Quadra](https://tetris.wiki/Quadra) and the source,
-[github.com/quadra-game/quadra](https://github.com/quadra-game/quadra) (`canvas.cc`,
-`player.cc`). The boards follow it:
+**Cascades.** Here cleared rows hold for 160 ms, then the stack falls 20 ms per row.
+In Quadra a *move* is everything one piece sets off: its **depth** is the
+lines it clears in all, its **complexity** the waves — what this game calls the combo —
+and the score rewards lines over waves. When a move settles Quadra scrolls one line
+summing it up (its lines, "Double", "Triple", "Quad", and its points); a block's
+landing thud grows with how far it fell and the clear's pitch drops with each wave; an
+emptied well scrolls "Clean canvas!" and pays bonus lines. Sources:
+[harddrop.com/wiki/Quadra](https://harddrop.com/wiki/Quadra) and
+[tetris.wiki/Quadra](https://tetris.wiki/Quadra). The boards follow it:
 
 - **Each wave counts**: the depth's number in the chain's tone; the next replaces it.
 - **What a wave drops lands**: a piece that fell two rows or more lights where it comes

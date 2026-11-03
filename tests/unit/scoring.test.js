@@ -1,15 +1,15 @@
 /**
- * @fileoverview Unit tests for Quadra-style scoring implementation
- * Verifies that calculateLineClearScore matches the exact Quadra formula
+ * @fileoverview Unit tests for the line-clear scoring implementation
+ * Verifies that calculateLineClearScore matches the exact scoring formula
  */
 
 import { describe, it, expect } from 'vitest';
 import { calculateLineClearScore } from '../../src/core/scoring.js';
 import { SCORE_VALUES, CASCADE_SCORING } from '../../src/core/constants.js';
 
-describe('Quadra Scoring', () => {
+describe('Line-clear Scoring', () => {
     describe('SCORE_VALUES constants', () => {
-        it('should have Quadra base values', () => {
+        it('should have the base values', () => {
             expect(SCORE_VALUES[1]).toBe(250);  // Single
             expect(SCORE_VALUES[2]).toBe(500);  // Double
             expect(SCORE_VALUES[3]).toBe(1000); // Triple
@@ -146,18 +146,18 @@ describe('Quadra Scoring', () => {
 });
 
 // ============================================================
-// FALL SPEED TESTS - Verify Quadra's drop interval formula
+// FALL SPEED TESTS - Verify the drop interval formula
 // ============================================================
 
 import { getDropIntervalForLevel, LEVEL_SPEEDS } from '../../src/core/constants.js';
 
-describe('Quadra Fall Speed', () => {
+describe('Fall Speed', () => {
     describe('getDropIntervalForLevel', () => {
-        // Speed formula from canvas.cc:calc_speed():
+        // Speed formula (sub-units per 10ms frame):
         // level <= 10: speed = 4 + (level - 1) * 5
         // level > 10: speed = 50 + (level - 10) * 3
         // 
-        // Conversion from calc_by (>>4 = divide by 16):
+        // Fixed point, 16 sub-units per pixel (>>4 = divide by 16):
         // Cell = 18 pixels × 16 = 288 sub-units
         // Drop interval = 2880 / speed ms (288 × 10ms per frame)
 

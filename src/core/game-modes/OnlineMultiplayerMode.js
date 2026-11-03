@@ -1279,7 +1279,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         const localSteamId = this.steamNetworking?.steamId;
         // Consecutive-clear bookkeeping for the light's tint only. The combo the board
         // counts out loud is the cascade's depth (the COMBO event), as in every other
-        // mode and as Quadra counts it: the chained waves of one piece.
+        // mode: the chained waves of one piece.
         this._comboTracker = this._comboTracker || new ComboTracker();
         this._comboTracker.reset();
 

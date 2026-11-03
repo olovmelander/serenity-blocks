@@ -473,7 +473,6 @@ When adding features to the lobby system:
 
 - [FFA Multiplayer Implementation Plan](./FFA_MULTIPLAYER_IMPLEMENTATION_PLAN.md)
 - [Steam Networking Documentation](https://partner.steamgames.com/doc/api/ISteamNetworkingSockets)
-- [Quadra Multiplayer Spec](./QUADRA_MULTIPLAYER_GAME_MODES.md)
 
 ---
 

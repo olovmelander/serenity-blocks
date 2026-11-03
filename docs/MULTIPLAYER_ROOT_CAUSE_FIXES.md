@@ -1,6 +1,6 @@
 # Online Multiplayer — Root‑Cause Fixes & Repro Guide (2026‑06‑23)
 
-Deep investigation (4 parallel agents + Quadra architecture study) of three reported failures, fixed at the **root cause** with regression tests, logging, and repro steps. The agents **ruled out** my earlier Phase‑1 keyframe change as the cause — these are deeper, mostly pre‑existing bugs.
+Deep investigation (4 parallel agents) of three reported failures, fixed at the **root cause** with regression tests, logging, and repro steps. The agents **ruled out** my earlier Phase‑1 keyframe change as the cause — these are deeper, mostly pre‑existing bugs.
 
 ---
 
@@ -24,7 +24,7 @@ Deep investigation (4 parallel agents + Quadra architecture study) of three repo
 
 **Root cause:** a **stale round‑1 snapshot** (unreliable, deferred, channel 1) arrives **after** the reliable `GAME_ROUND_RESTART` (channel 0) and clobbers the freshly‑revived state back to `isAlive=false` / `gamePhase='finished'`. The unified loop then skips the player (no gravity) and `sendInput` rejects (`gamePhase!=='playing'`). The per‑channel seq guard can't catch it (different logical channels). There was **no round/generation fence** on authoritative state.
 
-**Fix (root):** a monotonic **`roundGeneration`**, stamped into every snapshot + the restart message + the resync header. `_applySnapshotState` **drops any snapshot whose generation is older than the peer's current round**. Host bumps it in `restartMatch`; peer adopts it in `performRoundRestart`. (Inspired by Quadra's `P_SERVERRANDOM`/syncpoint round boundary.)
+**Fix (root):** a monotonic **`roundGeneration`**, stamped into every snapshot + the restart message + the resync header. `_applySnapshotState` **drops any snapshot whose generation is older than the peer's current round**. Host bumps it in `restartMatch`; peer adopts it in `performRoundRestart`.
 
 **Repro:** Host + peer, finish a round (one tops out) → before fix round 2 is frozen for both; after fix round 2 plays normally. Log to watch (peer): `⏮️ [FFA] Dropped stale snapshot: gen N < current N+1` right after `🔄 [FFA] Peer round restart → generation N+1`.
 
@@ -51,7 +51,7 @@ The generation fence stopped the *clobber*, but a second cause remained: the hos
 
 ## Garbage — wrong/garbled on peer victims (host fine)
 
-The binary codec **truncated the hole mask to 8 of 10 columns** (`& 0xFF`) and dropped `variant`/`isLastInBurst`. The host inserts garbage into its authoritative board *before* encoding, so the host victim was fine — but peer victims got wrong holes / mis‑typed garbage (the exact host‑vs‑peer asymmetry). **Fix:** pack the full 10‑bit mask + `variant` + `isLastInBurst` into the garbage entry's type‑byte spare bits (no size change), `FORMAT_VERSION 2→3`, and carry `isLastInBurst` through the snapshot reconstruction. (Outgoing peer attacks were already correct; note a *single‑line clear sends 0 garbage* by Quadra design — that's not a bug.)
+The binary codec **truncated the hole mask to 8 of 10 columns** (`& 0xFF`) and dropped `variant`/`isLastInBurst`. The host inserts garbage into its authoritative board *before* encoding, so the host victim was fine — but peer victims got wrong holes / mis‑typed garbage (the exact host‑vs‑peer asymmetry). **Fix:** pack the full 10‑bit mask + `variant` + `isLastInBurst` into the garbage entry's type‑byte spare bits (no size change), `FORMAT_VERSION 2→3`, and carry `isLastInBurst` through the snapshot reconstruction. (Outgoing peer attacks were already correct; note a *single‑line clear sends 0 garbage* by design — that's not a bug.)
 
 **Regression test:** `tests/unit/binary-encoding-roundtrip.test.js` → garbage entries with hole columns 8/9 + variant + isLastInBurst survive encode→decode.
 
@@ -63,21 +63,21 @@ Root cause: the host logs at **simulation time** (local echo) and the peer at **
 - `⏮️ [FFA] Dropped stale snapshot: gen X < current Y` — the round fence firing.
 - `🔄 [FFA] Round restart → generation N` (host) / `🔄 [FFA] Peer round restart → generation N` (peer).
 
-## Quadra patterns adopted / queued (`C:\Users\olovm\repositories\quadra`)
-- **Adopted:** round‑generation fence ≈ Quadra's reseed‑at‑round‑boundary.
+## Structural patterns adopted / queued
+- **Adopted:** round‑generation fence (the shared seed changes only at a round boundary).
 - **Queued (high value, see plan Phase 3/4):** reliable discrete **lock events** to anchor opponent boards (kills "freeze‑then‑teleport"); **download‑snapshot‑then‑stream** for clean join/host‑migration; **all‑players‑ready syncpoint** for round transitions (vs host‑local timer); per‑line **hole‑bitmask garbage applied at next lock**; **demo‑replay determinism test** in CI.
 
-## Quadra‑grade structural upgrades — SHIPPED (v9)
+## Structural upgrades — SHIPPED (v9)
 
-Three of the queued Quadra patterns are now implemented, unit‑tested, and **default ON** (each has a debug off‑switch URL flag). They harden the exact failure classes above instead of only patching symptoms.
+Three of the queued patterns are now implemented, unit‑tested, and **default ON** (each has a debug off‑switch URL flag). They harden the exact failure classes above instead of only patching symptoms.
 
 ### 1. Reliable LOCK‑EVENTS (anchors opponent boards) — `?lockEvents=0` to disable
 On every piece settle the **host** broadcasts a reliable, self‑contained authoritative board for that player (`GAME_PLAYER_LOCK`: `playerSteamId`, monotonic `lockSeq`, `roundGeneration`, `hostTick`, `grid`, `currentPiece`, `topOut`). Peers **snap the opponent's board to truth** the instant it locks instead of waiting for the next lossy 30 Hz frame — kills the "freeze‑then‑teleport" between snapshots. The receiver (`_applyAuthoritativeLock`) is **idempotent** (drops replays/old `lockSeq`), **round‑fenced** (drops a lock from a superseded round), and **never snaps the local player** (prediction owns it). A companion guard in `_applySnapshotState` (`staleVsLock`: `state.tick <= player._lastLockHostTick`) stops an in‑flight 30 Hz snapshot from *un‑locking* a freshly snapped board. Emitted via `broadcastToAll` (reliable, channel 0). Purely additive — an old peer without the handler just ignores the message.
-*Tests:* `ffa-round-fence-and-reconcile.test.js` → "Quadra lock-events" (snap, fence, idempotency, skip‑local, flag‑off).
+*Tests:* `ffa-round-fence-and-reconcile.test.js` → "Reliable lock-events" (snap, fence, idempotency, skip‑local, flag‑off).
 
 ### 2. All‑players‑READY round syncpoint — `?readyBarrier=0` to disable
 The old restart **instant‑started** the next round and resumed 30 Hz broadcasts before the peer had even processed the restart. Now the host‑driven barrier: the restart message carries `awaitReady`; each peer resets, sends `GAME_ROUND_READY{roundGeneration}`, and **waits**; once every expected player has acked (or a **2500 ms host timeout** fires) the host broadcasts `GAME_ROUND_START` and everyone starts **together**. Cannot hang: host timeout backstop **and** a peer‑side fallback (`timeout + 1500 ms`) that starts locally if the GO is ever lost. Host‑driven so only the host's flag matters; default OFF = the legacy instant path, unchanged.
-*Tests:* same file → "Quadra ready-barrier" (expected‑set, solo‑immediate, block‑then‑ack, idempotent finalize, timeout fallback).
+*Tests:* same file → "Ready-barrier" (expected‑set, solo‑immediate, block‑then‑ack, idempotent finalize, timeout fallback).
 
 ### 3. Demo‑replay DETERMINISM CI guard
 `tests/unit/ffa-demo-replay-determinism.test.js` replays a fixed input demo on the **real** seeded RNG (`createSeededRNG`) + sim (`fillBag`/`spawnPiece`/`move`/`rotate`/`hardDrop`): same seed → byte‑identical board + piece sequence; different seed → different sequence. Pins the seed→pieces→board contract that host‑authoritative round restart depends on, so a future non‑determinism regression in the RNG/bag/lock path is caught in CI instead of as a live desync.

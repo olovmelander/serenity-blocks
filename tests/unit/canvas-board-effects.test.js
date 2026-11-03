@@ -165,7 +165,7 @@ describe('opponent tile: a clear is light', () => {
     });
 });
 
-describe('opponent tile: the move (Quadra\'s combo)', () => {
+describe('opponent tile: the move (its combo of chained waves)', () => {
     it('counts each wave in the chain\'s tone, in words', () => {
         const fx = makeFx();
         fx.triggerCombo(2);

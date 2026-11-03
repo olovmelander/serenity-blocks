@@ -250,7 +250,7 @@ function resolveCascadeAfterstate(boardGrid, sourceCells, state) {
 }
 
 /**
- * Outgoing garbage a cascade would send, using the live Quadra attack formula
+ * Outgoing garbage a cascade would send, using the live attack formula
  * (see calculateGarbage in garbage.js): base = depth - 1, plus a clean bonus of
  * floor((1 + depth) / 2) when the board is fully cleared. This is the real
  * competitive objective the planner should optimize, so it is computed here
@@ -322,7 +322,7 @@ export function simulatePlacement(gameState, placement, options = {}) {
 /**
  * Simulate filling a set of arbitrary empty cells (e.g. the missing cells of a
  * near-full row) and resolving the full cascade. Used by the latent-chain
- * "complete the low row" trigger probe — the canonical Quadra "build-tall, fire-low"
+ * "complete the low row" trigger probe — the canonical "build-tall, fire-low"
  * machine where clearing a low row drops a stacked payload into a chain.
  * Each filler cell is its own id (it clears immediately when the row completes,
  * so connectivity is irrelevant). Returns null if any target cell is invalid/occupied.

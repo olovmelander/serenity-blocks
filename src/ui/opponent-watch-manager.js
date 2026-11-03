@@ -372,7 +372,7 @@ export class OpponentWatchManager {
         }
 
         // Cap opponent board height so multi-opponent layouts don't dwarf the hero/spotlight.
-        // COUNT-AWARE (Quadra shows a lone watched board near full size): a single opponent
+        // COUNT-AWARE (a lone watched board shows near full size): a single opponent
         // (1v1) is allowed to be LARGE; the cap tightens as the roster grows. For 1 opponent
         // the column width is the real bound (≈ left-column width), so this only guards height.
         const visibleCount = this.watchedPlayers.length || 1;
@@ -2022,7 +2022,7 @@ export class OpponentWatchManager {
         // Render cohesive opponent grid blocks
         this._drawCohesiveGrid(ctx, grid, blockSize, this._colorCache);
 
-        // Render Quadra blind blackout veils
+        // Render blind blackout veils
         if (blindTimers) {
             if (blindTimers.field > 0) {
                 const ratio = blindTimers.field / (blindTimers.fieldMax || 4.0);

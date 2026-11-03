@@ -438,7 +438,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.multiplayerState.setMatchConfig(this.matchConfig);
         this.multiplayerState.reset();
         configureLocalMultiplayerSimulationClock(this);
-        // Apply per-player Quadra handicap levels AFTER reset() (which restores the
+        // Apply per-player handicap levels AFTER reset() (which restores the
         // default level). No-op unless the host picked differing levels.
         this.multiplayerState.setPlayerHandicaps(this.matchConfig?.playerHandicaps);
         this.multiplayerState.isPaused = true;
@@ -1872,7 +1872,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             return;
         }
 
-        // Quadra-style: instant restart; the banner names the round's winner as it begins.
+        // Instant restart; the banner names the round's winner as it begins.
         this._roundOutcome = { winnerIndex, selfKill: isSelfKill };
         console.log(`[LocalMultiplayer] Starting next round... Winner: ${winnerName}, Wins: ${winnerWins}`);
         // Removed _showRoundEnd delay for instant transition
@@ -2062,7 +2062,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Update stats
         this._updateMultiplayerStats();
 
-        // Quadra-style instant restart: no countdown between rounds
+        // Instant restart: no countdown between rounds
         // Play a start sound to signal the round beginning
         this.deps.soundManager.sfxPlayer.playDrop?.();
 

@@ -1,5 +1,5 @@
 /**
- * @fileoverview Demo-replay DETERMINISM test (Quadra-grade CI guard).
+ * @fileoverview Demo-replay DETERMINISM test (CI guard).
  *
  * Host-authoritative FFA round restart hands every player the SAME seed and trusts
  * that, given identical inputs, every machine simulates the identical board. If the

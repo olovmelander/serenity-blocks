@@ -92,8 +92,8 @@ semantics; and `wireV2`, whose flag expires on **2026‑10‑31** and turns CI r
   - client performance (Node microbenchmarks of the real modules);
   - tests and tooling.
 - **Two research reports:** genre netcode practice, from TETR.IO's 124 versions of patch
-  notes, Quadra's GPL source, the steamworks.js 0.4 typings, Valve's documentation, GGPO and
-  GGRS; and the product and UX of online block battlers.
+  notes, the steamworks.js 0.4 typings, Valve's documentation, GGPO and GGRS; and the product
+  and UX of online block battlers.
 - **A browser soak harness:** one Chromium with 2–4 windows on the mock transport. A bot
   plays in every window for 45 s after 16 probe key presses. The harness records:
   - each window's own board;
@@ -294,7 +294,7 @@ references are to `d01643b`. **Abbreviations:**
 | G4 | The host decides where garbage lands and inputs bypass its buffer, so the host has an edge. Model: about 170 ms at 100 ms RTT; about 25% of attacks land one piece apart on the two boards. | P1 | Open | G3 · M |
 | G5 | Line clears shift locked-piece fragments up (cascade-helpers.js:154-173). Fuzz over 40,000 locks: 5–6% of clearing locks get wrong hole masks, 1.5–2% send different garbage, 0.4% gain or lose a wave, about 0.1% delete a block. | P1 | Open | Keep absolute rows, plus a cell-conservation property test · S · **rules-version bump** |
 | G6 | Every attack goes to every opponent, and the 1-line minimum flattens big clears. At 8 players a double, a triple and a quad all send 1 line to 7 opponents. There is no target choice and so no counterplay. | P1 | Open | One target per attack, with TETR.IO / Tetris 99 targeting modes; or fractional lines if broadcast stays · M · **decision: battle rules** |
-| G7 | Kill credit goes to whoever's garbage was inserted last and never expires. | P1 | Open | Quadra-style decaying credit ledger · M · **decision** |
+| G7 | Kill credit goes to whoever's garbage was inserted last and never expires. | P1 | Open | A decaying attack-credit ledger · M · **decision** |
 | G8 | Peer attack reports are rate-limited but never checked against the host's copy: a modified client can claim 35 lines per request. | P1 | **Fixed** (F‑19) | Follow-up: quarantine a sender that keeps failing the check · S |
 | G9 | Blind and Full-blind modes are broken online: peers never insert the rows, and counters never cancel. | P1 | **Fixed** (F‑20) | — |
 | G10 | Top-out after garbage uses piece bounding boxes (`y <= 4` vs local `< 4`), so a player can die with every piece still spawnable. | P2 | Open | Kill only when cells overlap the spawn area · S · rules-version bump |
@@ -415,9 +415,7 @@ Two research reports fed this section; the sources are listed under each part. "
   rollback. TETR.IO clients simulate their own boards at 60 fps and send batched input frames
   plus targeting and garbage events. Opponent boards are re-simulated from the relayed inputs;
   they hold when out of data and "speed up slightly to catch up" (TN 3.0.0) *(community, for
-  the mechanism)*. Quadra, the original cascade game, exchanges placements (x, y, rotation),
-  and every peer replays them deterministically, cascades included
-  ([Quadra source](https://github.com/quadra-game/quadra/tree/master/source)).
+  the mechanism)*.
 - **A delay before garbage lands is the fairness and latency buffer.**
   - TETR.IO: garbage travels 20/30/40 frames (333–666 ms) by size (TN 4.2.0); it can be
     cancelled in flight and tanked only when it lands (TN 6.1.0).
@@ -432,12 +430,11 @@ Two research reports fed this section; the sources are listed under each part. "
   "only registered one player's attack" when both attacked together
   ([1.0.8](https://www.tetriseffect.game/patch-note/xbox-win-10-pc-patch-1-0-8/)).
 - **Garbage holes are decided once and sent explicitly.** TETR.IO has "seeded and synchronized"
-  hole columns (TN 2.2.5); Quadra sends hole masks. Serenity already does this.
+  hole columns (TN 2.2.5). Serenity already does this.
 - **Fixed timestep, deterministic simulation, periodic checksums.**
   - [Gaffer on fixed timesteps](https://gafferongames.com/post/fix_your_timestep/).
   - GGRS compares checksums between peers periodically
     ([DesyncDetection](https://docs.rs/ggrs/latest/ggrs/enum.DesyncDetection.html)).
-  - Quadra drops a player on an invalid placement.
 - **Remote playback.** Source renders 100 ms in the past so one lost snapshot is survivable
   ([Valve](https://developer.valvesoftware.com/wiki/Source_Multiplayer_Networking)). Gaffer's
   rule of thumb is about three send intervals plus jitter
@@ -451,7 +448,7 @@ Two research reports fed this section; the sources are listed under each part. "
 - **Disconnects in two stages.** GGPO shows "interrupted" at 750 ms and disconnects at 5 s
   ([p2p.cpp](https://github.com/pond3r/ggpo/blob/master/src/lib/ggpo/backends/p2p.cpp)).
   TETR.IO gives a ranked player "at minimum 45 seconds" to reconnect, once per match
-  (TN 1.2.0). Quadra holds a slot for 180 s.
+  (TN 1.2.0).
 - **Host advantage is neutralised, not ignored.** "Time delay" equalises latency
   ([Tokey et al.](https://web.cs.wpi.edu/~claypool/papers/adaptive-fdg-26/paper.pdf)), and
   local-lag trades a little responsiveness for consistency

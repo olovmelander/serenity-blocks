@@ -2,7 +2,7 @@
  * §5.2/§5.10 differential gate (test tier): the pure resolveCascade must
  * reproduce the legacy async processPhysics EXACTLY — board digest, score,
  * lines, level, drop interval, B2B, per-wave payloads, hole masks (the
- * competitive-visible Quadra channel — parity here is the plan's abort
+ * competitive-visible garbage channel — parity here is the plan's abort
  * criterion), garbage summary, gravity-step counts, and comboState.
  *
  * Structured scenarios + seeded-random boards (RandomStream → reproducible in

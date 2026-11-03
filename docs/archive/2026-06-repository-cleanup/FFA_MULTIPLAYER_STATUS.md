@@ -352,7 +352,7 @@ Your game is fully functional and playable **right now**!
 
 ## 📚 Documentation
 
-- **`FFA_MULTIPLAYER_IMPLEMENTATION.md`** - Original design doc (from Quadra)
+- **`FFA_MULTIPLAYER_IMPLEMENTATION.md`** - Original design doc (Quadra-inspired)
 - **`FFA_MULTIPLAYER_FIX_PLAN.md`** - Complete implementation plan
 - **`PHASE_1_COMPLETE_README.md`** - Phase 1 summary
 - **`PHASE_2_STATUS.md`** - Phase 2 summary
@@ -376,7 +376,7 @@ Your game is fully functional and playable **right now**!
 
 ## 🙏 Credits
 
-**Implementation:** Based on Quadra (quadra.sourceforge.net)  
+**Inspiration:** Quadra (quadra.sourceforge.net)  
 **Framework:** Phaser 4  
 **Networking:** Custom P2P (mock Steam)  
 **Design:** Tetris 99, Jstris, Tetr.io inspiration

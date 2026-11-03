@@ -71,8 +71,8 @@ const SHARDS_PER_CELL = 2;
 // One callout per word in this window: a cascade can clear four rows wave after wave.
 const CALLOUT_REPEAT_MS = 1200;
 // A cascade's landings: a piece that fell and has been still this long has landed
-// (two of the physics' 20 ms gravity steps and a frame). Quadra marks the moment with
-// a thud as loud as the fall was long; here, light where it struck.
+// (two of the physics' 20 ms gravity steps and a frame). The landing is marked with
+// light where it struck.
 const LANDING_QUIET_MS = 50;
 // Only a real fall lands with light: everything above a cleared row shifts down one
 // row, and lighting every one of those would sprinkle the whole stack. The longest
@@ -150,8 +150,8 @@ export class SharedEffects {
         // impact records it and the flash and embers right after it read it.
         this._waveDepth = 1;
 
-        // The move being resolved, in Quadra's terms: its waves (the combo, Quadra's
-        // "complexity"), its lines in all (Quadra's "depth"), and whether it left a
+        // The move being resolved: its waves (the combo, the scoring's
+        // "complexity"), its lines in all (the "depth"), and whether it left a
         // clean canvas. The settle watch runs from a wave's flash to the move's end.
         this._move = { waves: 0, lines: 0, clean: false };
         this._settle = null;
@@ -435,7 +435,7 @@ export class SharedEffects {
     }
 
     /**
-     * The move is over. Quadra sums a move up once it settles (its lines, its combo);
+     * The move is over. A move is summed up once, when it settles (its lines, its combo);
      * a move of one wave says nothing more (its light and the Quad callout carried it),
      * one that left a clean canvas already had the clean canvas say it all.
      * @private
@@ -2280,7 +2280,7 @@ export class SharedEffects {
     showCascadeWave(cascadeCount) {
         // Nothing of its own, wave by wave: each wave already brings its light (lifted
         // by its depth), debris, weight and the combo popup, and the chain's banner is
-        // its finale once the move settles (_endMove), as Quadra sums a move up once.
+        // its finale once the move settles (_endMove): a move is summed up once.
         // A banner per wave from ten stacked one over the next at every wave.
         debugLog(`[SharedEffects] cascade wave ${cascadeCount}`);
     }
@@ -2328,7 +2328,7 @@ export class SharedEffects {
     }
 
     /**
-     * Clean canvas — Quadra's name for the well emptied, the game's flagship moment,
+     * Clean canvas — the well emptied, the game's flagship moment,
      * as a dawn in the empty well.
      *
      * Gold light rises from the floor and fills the well, a warm bloom opens from

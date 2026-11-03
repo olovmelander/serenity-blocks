@@ -167,7 +167,7 @@ export class FFAGameStateP2P {
             levelProgression: false,
             allowHandicap: true,
             boringRules: false,
-            garbageCancellation: 'full', // 'full' (modern Quadra/TETR.IO) | 'disabled' (classic)
+            garbageCancellation: 'full', // 'full' (outgoing lines cancel incoming first) | 'disabled' (classic)
             attackStyle: 'standard',
             attackRules: null,
             hotPotato: false,
@@ -288,7 +288,7 @@ export class FFAGameStateP2P {
         // freshly-revived next round. Bumped by the host on each round restart.
         this.roundGeneration = 0;
 
-        // Quadra-style reliable LOCK-EVENTS: on every piece lock the host sends a
+        // Reliable LOCK-EVENTS: on every piece lock the host sends a
         // reliable authoritative board snapshot so opponent boards SNAP to truth.
         // DEFAULT OFF (2026-06-23 audit): _applyAuthoritativeLock snaps the grid and
         // calls renderAllPlayers(), but opponents are rendered from the snapshot
@@ -322,7 +322,7 @@ export class FFAGameStateP2P {
         this._localBoardHoldEnabled = readNetFlag('localBoardHold', true);
         this._localBoardHoldCount = 0;
         // ~1s at 30Hz. Long enough that continuous fast play (the host stays a few
-        // frames behind the whole time) is pure local prediction — the Quadra model;
+        // frames behind the whole time) is pure local prediction — the peer-owns-board model;
         // short enough that a genuine stuck divergence still force-reconciles (the
         // digest-resync path catches real desyncs faster).
         this._LOCAL_BOARD_HOLD_MAX_FRAMES = 30;
@@ -349,7 +349,7 @@ export class FFAGameStateP2P {
         // mismatch (new round) lazily clears stale hold state so a round-1 tail lock can
         // never bridge into round 2.
         this._localBoardHoldRoundGen = null;
-        // ⭐ PEER-OWNS-BOARD (Quadra model) — the durable cure for the residual "stack gets
+        // ⭐ PEER-OWNS-BOARD — the durable cure for the residual "stack gets
         // higher then resets / tetrominos glitch + jump / small lag" on the peer. Those are
         // ALL artifacts of re-basing the peer's OWN board against the host's ~RTT-stale 30Hz
         // snapshot every frame (the LOCAL-BOARD HOLD only band-aided the timing). The host
@@ -415,7 +415,7 @@ export class FFAGameStateP2P {
         this.downloadJoinPeers = new Map();
         /** @type {DownloadJoinProgress|null} */ this.downloadJoinInProgress = null;
 
-        // Quadra-style ALL-PLAYERS-READY round syncpoint: instead of the host
+        // ALL-PLAYERS-READY round syncpoint: instead of the host
         // instant-starting the next round and resuming 30Hz broadcasts before the
         // peer has even processed the restart (a freeze/desync risk), the host waits
         // for every player to ack GAME_ROUND_READY, then GAME_ROUND_START fires for
@@ -1583,7 +1583,7 @@ export class FFAGameStateP2P {
 
         const { garbageQueue } = player;
 
-        // Apply Quadra blind attacks FIRST. This both triggers the blackout
+        // Apply blind attacks FIRST. This both triggers the blackout
         // and removes leading blind/full_blind entries that would otherwise
         // block dequeueLineBurst() (which bails on a non-'line' head).
         const blindBurst = garbageQueue.takePendingBlindBurst?.() || [];
@@ -1734,7 +1734,7 @@ export class FFAGameStateP2P {
     /**
     * PHASE 3.5: Cancel garbage with outgoing attacks (garbage counter)
     * Modern competitive mechanic where outgoing lines cancel incoming garbage first.
-    * Only the remainder is sent to opponents (Quadra/TETR.IO style).
+    * Only the remainder is sent to opponents.
     * @param {string} attackerSteamId - The player clearing lines
     * @param {number} outgoingLines - Lines the player would send
     * @returns {number} Lines cancelled (to be subtracted from outgoing attack)
@@ -1756,7 +1756,7 @@ export class FFAGameStateP2P {
             return 0; // No incoming garbage to counter
         }
 
-        // Calculate how many lines can be countered (1:1 ratio - Quadra/TETR.IO style)
+        // Calculate how many lines can be countered (1:1 ratio)
         const canceledLines = Math.min(incomingLines, outgoingLines);
 
         if (canceledLines > 0) {
@@ -2154,7 +2154,7 @@ export class FFAGameStateP2P {
      * silently swallowed whenever a lock/line-clear animation set isProcessingPhysics —
      * the visible "rotation snaps / feels off" on the peer's own board. The local
      * falling piece is now LOCALLY OWNED (see _reconcileLocalPiece / _applySnapshotState),
-     * Quadra-style: never yanked by a remote frame. So this only bounds inputHistory.
+     * so it is never yanked by a remote frame; this only bounds inputHistory.
      */
     _reconcileLocalPlayer() {
         if (this.isHost) return;
@@ -3169,7 +3169,7 @@ export class FFAGameStateP2P {
                     playerName: player.name,
                     linesCleared: lineCount,
                     // The wave's depth in its cascade: the board lifts wave after wave
-                    // and counts the move (Quadra's combo) from it.
+                    // and counts the move (its combo, the chained waves) from it.
                     cascadeCount: cascadeCount || 1,
                     isLocal: isLocal(),
                 });

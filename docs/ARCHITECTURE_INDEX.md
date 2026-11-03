@@ -214,7 +214,6 @@ conflicts with it, the umbrella wins unless it explicitly links out to that plan
 | [ONLINE_MP_QUADRA_PARITY_PLAN_2026-06-24.md](ONLINE_MP_QUADRA_PARITY_PLAN_2026-06-24.md) | Reference | Multiplayer source plan. |
 | [ONLINE_MULTIPLAYER_IMPROVEMENT_PLAN.md](ONLINE_MULTIPLAYER_IMPROVEMENT_PLAN.md) | Superseded | Replaced by current MP tactical plan and umbrella phases. |
 | [ONLINE_MULTIPLAYER_NETCODE_RESEARCH_AUDIT_PLAN_2026-06-23.md](ONLINE_MULTIPLAYER_NETCODE_RESEARCH_AUDIT_PLAN_2026-06-23.md) | Reference | Multiplayer research evidence. |
-| [quadra-adoption-plan.md](quadra-adoption-plan.md) | Reference | Source material for the umbrella plan's Quadra imports. |
 | [quadra-cascade-bot-tactics-plan.md](quadra-cascade-bot-tactics-plan.md) | Reference | Bot/tactics source plan. |
 | [repository-cleanup-plan.md](repository-cleanup-plan.md) | Superseded | Cleanup decisions have been absorbed or archived. |
 | [repository-review-plan.md](repository-review-plan.md) | Superseded | Review output is superseded by the umbrella plan. |

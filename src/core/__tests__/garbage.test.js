@@ -5,9 +5,9 @@ import {
 } from '../garbage.js';
 import { COLS } from '../constants.js';
 
-describe('Garbage Logic (Quadra Compliance)', () => {
+describe('Garbage Logic', () => {
     describe('Bitwise Encoding (Inverse Mapping)', () => {
-        // Quadra encoding: MSB (Bit 9) is Column 0, LSB (Bit 0) is Column 9
+        // Encoding: MSB (Bit 9) is Column 0, LSB (Bit 0) is Column 9
         // 1 = Hole, 0 = Solid
 
         it('encodes Column 0 as Bit 9 (512)', () => {
@@ -41,10 +41,10 @@ describe('Garbage Logic (Quadra Compliance)', () => {
         });
     });
 
-    describe('calculateGarbage (Quadra Logic)', () => {
+    describe('calculateGarbage', () => {
         it('generates correct hole mask for single line clear', () => {
             // Simulate a summary from a manual clear
-            // Quadra Logic: The "moved" cells (where piece was) become holes.
+            // The "moved" cells (where piece was) become holes.
 
             // Scenario: Piece placed in Column 5.
             const summary = {
@@ -89,7 +89,7 @@ describe('Garbage Logic (Quadra Compliance)', () => {
 
             const attack = calculateGarbage(summary);
 
-            // Quadra: Depth 2 -> 1 attack line
+            // Depth 2 -> 1 attack line
             expect(attack.rows).toBe(1);
 
             // The hole mask for that 1 line should correspond to the first cleared line's mask
@@ -101,7 +101,7 @@ describe('Garbage Logic (Quadra Compliance)', () => {
             expect(attack.holeMasks[0]).toBe(expectedBit);
         });
 
-        it('generates clean bonus correctly (Quadra 72/585 pattern)', () => {
+        it('generates clean bonus correctly (72/585 pattern)', () => {
             const summary = {
                 depth: 4, // Tetris
                 complexity: 1,
@@ -111,7 +111,7 @@ describe('Garbage Logic (Quadra Compliance)', () => {
 
             const attack = calculateGarbage(summary);
 
-            // Quadra Clean Bonus: (1 + depth) / 2
+            // Clean Bonus: (1 + depth) / 2
             // (1 + 4) / 2 = 2 (floored)
             expect(attack.cleanRowBonus).toBe(2);
             expect(attack.cleanMasks.length).toBe(2);

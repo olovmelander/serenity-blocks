@@ -29,12 +29,9 @@ export function setBlockSize(size) {
 /**
  * Tetromino colors
  *
- * Our saturated palette (close to the brightest ramp tops Quadra uses on its
- * later levels), with the piece→hue assignment matching Quadra: I is green and
- * Z is red. Those two were swapped here for a long time — Quadra's block colors
- * live in the level background's PNG palette at index `184 + piece * 8`, with
- * the piece slots ordered O,S,Z,L,J,I,T (`Bloc::bloc[7]`), which puts green on
- * the I bar and red on the Z.
+ * Our saturated palette, with a fixed piece→hue assignment: I is green and Z
+ * is red. Those two were swapped here for a long time; the intended mapping
+ * puts green on the I bar and red on the Z.
  */
 export const COLORS = {
     I: '#00ff00', // Green

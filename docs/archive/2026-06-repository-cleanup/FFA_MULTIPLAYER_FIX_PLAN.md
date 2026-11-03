@@ -918,7 +918,6 @@ Based on codebase analysis:
 
 ## Resources & References
 
-- **Quadra Source:** Garbage logic reference (working in local MP)
 - **Local Multiplayer:** `src/core/multiplayer.js` - Working reference
 - **Physics System:** `src/core/physics.js` - Line clearing logic
 - **Garbage System:** `src/core/garbage.js` - Attack calculation

@@ -97,7 +97,7 @@ export const FLAG_REGISTRY = [
         name: 'holdStats', default: true, purpose: 'extend local-board hold to score/lines/level + garbage queue', kind: 'refactor', graduationBar: 'rollback lever — delete with plan §6B.3', reader: 'flags',
     },
     {
-        name: 'peerLocalSim', default: true, purpose: 'PEER-OWNS-BOARD full local sim on peer (Quadra model)', kind: 'refactor', graduationBar: 'rollback lever — becomes the only path in plan §6B.3, then delete', reader: 'flags',
+        name: 'peerLocalSim', default: true, purpose: 'PEER-OWNS-BOARD full local sim on peer (the peer owns its board)', kind: 'refactor', graduationBar: 'rollback lever — becomes the only path in plan §6B.3, then delete', reader: 'flags',
     },
     {
         name: 'opponentClearEvents', default: true, purpose: 'grid-free GAME_LINES_CLEAR flash on opponent mini-boards', kind: 'refactor', graduationBar: 'rollback lever — plan §6A.1', reader: 'flags',
@@ -115,7 +115,7 @@ export const FLAG_REGISTRY = [
         name: 'migrationEpoch', default: false, purpose: 'host-migration epoch fencing', kind: 'refactor', graduationBar: 'plan §6A.1 flag matrix soak', reader: 'flags',
     },
     {
-        name: 'readyBarrier', default: false, purpose: 'all-players-ready round-restart syncpoint', kind: 'refactor', graduationBar: 'plan §6A.6 (Quadra #12 reseed barrier)', reader: 'flags',
+        name: 'readyBarrier', default: false, purpose: 'all-players-ready round-restart syncpoint', kind: 'refactor', graduationBar: 'plan §6A.6 (reseed barrier)', reader: 'flags',
     },
     {
         name: 'adaptiveInterp', default: false, purpose: 'adaptive snapshot-interpolation delay', kind: 'refactor', graduationBar: 'plan §6A.1 flag matrix soak', reader: 'flags',

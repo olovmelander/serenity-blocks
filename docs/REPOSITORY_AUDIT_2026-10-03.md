@@ -240,7 +240,7 @@ See Part 2 for the full cleanup plan. Headlines:
 |---|---|---|
 | README.md | rewrite, **keep the Legal block verbatim** (required by `pages-artifact-check.mjs:40`, `ip-string-gate.mjs:33`) | rc.5 Phaser, "Three.js/WebGL", 6 of 7 doc links dead; ships in the Pages artifact |
 | HOW_TO_RUN.md | merge useful bits into README, delete | `testSteam()`/`testFFA()` helpers don't exist; Linux commands |
-| PHASER_QUICKSTART.md, public/README.md | delete | stale (rc.5; `/workspaces/quadra`) |
+| PHASER_QUICKSTART.md, public/README.md | delete | stale (rc.5; old workspace paths) |
 | CREDITS.md, steam_appid.txt | keep | functional |
 | tetris_legal_review.md, quadra-provenance-attestation.md | **move** to `docs/legal/` (update cites in pages.yml, ip-string-gate, palette check) — never delete | legal |
 | game_description.md, single_player_death.md | keep / move with legal docs | audited by the legal review |

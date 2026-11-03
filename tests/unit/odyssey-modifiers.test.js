@@ -108,7 +108,7 @@ describe('combo-multiplier through real physics (C2 flagship)', () => {
         const noFlag = makeState({ lockedPieces: [fullBottomRowPiece(), loneBlockPiece()] });
         await processPhysics(noFlag, {});
         const expected = calculateLineClearScore(1, 1, 1, false);
-        expect(noFlag.score).toBe(expected); // untouched Quadra scoring
+        expect(noFlag.score).toBe(expected); // untouched base scoring
     });
 
     it('advances the combo on clears and resets it on a non-clearing lock', async () => {

@@ -403,7 +403,7 @@ Open items, ranked (draws from the June-22 plan §8 minus what shipped):
   > **Safety:** every `physics.js` edit is gated on Odyssey-only flags never set by single-player/MP
   > callers → byte-identical normal play. Proven by tests: `tests/unit/odyssey-modifiers.test.js`
   > drives real `processPhysics` (`isSeeking=true`) to assert exact ×2 scaling, an **unscaled baseline
-  > equal to raw `calculateQuadraLineScore`** (the gate), and the chain 1.5→2.0→reset; the FFA
+  > equal to raw `calculateLineClearScore`** (the gate), and the chain 1.5→2.0→reset; the FFA
   > cascade/attack suites (same shared physics) still pass. Build + lint green.
   >
   > **STILL OPEN (the transformative half):** author the back-half campaign to actually *use*
