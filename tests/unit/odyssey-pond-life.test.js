@@ -19,7 +19,7 @@ import { context } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createOdysseyCameraRig } from './helpers/odyssey-camera-rig.js';
 import {
-    HERON_LOOP, ODYSSEY_POND, ODYSSEY_TARN_DEER, createBirdRig, legReach, poseHeron, poseSwan, swanRoute,
+    HERON_LOOP, ODYSSEY_POND, ODYSSEY_TARN_DEER, createBirdRig, heronStateAt, legReach, poseHeron, poseSwan, swanRoute,
     swanStateAt,
 } from '../../src/rendering/odyssey/composition/odyssey-pond-life-motion.js';
 import { createOdysseyPondLife, parseOdysseyPondBird } from '../../src/rendering/odyssey/composition/odyssey-pond-life.js';
@@ -123,11 +123,17 @@ beforeAll(async () => {
 });
 
 describe('the pond birds: models, skins, the draw', () => {
-    it('are small skinned models: a swan of 9 bones (its wings their own), a heron of 12, under 1,700 triangles', () => {
+    it('are small skinned models: a swan of 9 bones (its wings their own), a heron of 13 (its catch its own), under 1,700 triangles', () => {
         expect(swanModel.skeleton.map((b) => b.name))
             .toEqual(['root', 'neck0', 'neck1', 'neck2', 'neck3', 'neck4', 'head', 'wingL', 'wingR']);
         expect(heronModel.skeleton.map((b) => b.name).slice(0, 6)).toEqual(['root', 'neck0', 'neck1', 'neck2', 'neck3', 'head']);
-        expect(heronModel.skeleton.length).toBe(12);
+        expect(heronModel.skeleton.length).toBe(13);
+        expect(heronModel.skeleton[12].name).toBe('fish');
+        // The fish is its own small part, skinned whole to its bone.
+        const bones = heronModel.geometry.attributes._bones;
+        let fishVerts = 0;
+        for (let v = 0; v < bones.count; v += 1) if (Math.round(bones.getX(v) * 255) === 12) fishVerts += 1;
+        expect(fishVerts).toBeGreaterThan(8);
         [swanModel, heronModel].forEach((m) => {
             expect(m.triangles).toBeGreaterThan(600);
             expect(m.triangles).toBeLessThan(1700);
@@ -197,6 +203,32 @@ describe('the swans', () => {
         }));
         expect(rn).toBeLessThan(0.75);
         expect(depth).toBeGreaterThan(0.6);
+    });
+
+    it('turn smoothly along the route and the mate never swings wide (60 Hz, both swans)', () => {
+        // The heading is the spline's own tangent (a table of straight pieces turned it in small
+        // steps: 220 rad/s^2 at the root); the mate follows the lead's line, so its speed stays the
+        // lead's (a fixed side offset cusped round the west turn at up to 14 u/s).
+        [0, 1].forEach((i) => {
+            let prevH = null;
+            let prevW = null;
+            let worstA = 0;
+            let worstV = 0;
+            let prev = null;
+            for (let t = 0; t < 150; t += 1 / 60) {
+                const s = swanStateAt(i, t, {});
+                if (prev) worstV = Math.max(worstV, Math.hypot(s.x - prev.x, s.z - prev.z) * 60);
+                if (prevH !== null) {
+                    const w = Math.atan2(Math.sin(s.heading - prevH), Math.cos(s.heading - prevH)) * 60;
+                    if (prevW !== null) worstA = Math.max(worstA, Math.abs(w - prevW) * 60);
+                    prevW = w;
+                }
+                prevH = s.heading;
+                prev = s;
+            }
+            expect(worstA, `swan ${i} heading acceleration`).toBeLessThan(3);
+            expect(worstV, `swan ${i} speed`).toBeLessThan(ODYSSEY_POND.swans.speed * 1.4);
+        });
     });
 
     it('keep apart, glide calmly (no sudden turns or speed changes) and stay world-anchored', () => {
@@ -322,13 +354,52 @@ describe('the heron', () => {
         expect(fastestShot).toBeLessThan(30);
     });
 
+    it('turns in small steps, never spinning, and swallows the fish it catches', () => {
+        // Over the whole loop: the body never turns faster than a stepped turn allows; a fish is in
+        // the bill only after a strike's shot (its bill under the water when it appears) and is
+        // gone again within seconds, swallowed.
+        let fastest = 0;
+        let prev = null;
+        let fishTime = 0;
+        let fishRuns = 0;
+        let inRun = false;
+        let longest = 0;
+        let run = 0;
+        for (let t = 0; t < HERON_LOOP; t += 1 / 30) {
+            const s = heronStateAt(t, { feet: [{}, {}] });
+            if (prev !== null) fastest = Math.max(fastest, Math.abs(Math.atan2(Math.sin(s.heading - prev), Math.cos(s.heading - prev))) * 30);
+            prev = s.heading;
+            if (s.fish > 0.01) {
+                fishTime += 1 / 30;
+                run += 1 / 30;
+                if (!inRun) {
+                    fishRuns += 1;
+                    expect(s.shoot, `a fish appears only with the bill down, t ${t.toFixed(2)}`).toBeGreaterThan(0.9);
+                }
+                inRun = true;
+                longest = Math.max(longest, run);
+            } else {
+                inRun = false;
+                run = 0;
+            }
+        }
+        expect(fastest).toBeLessThan(1.2);
+        expect(fishRuns).toBeGreaterThan(0);
+        expect(longest).toBeLessThan(5);
+        expect(fishTime).toBeGreaterThan(0);
+    });
+
     it('reaches with a two-segment solve whose heel bends back', () => {
-        const { upper, lower } = legReach(0.26, 0.27, 0.01, -0.5);
+        const { upper, lower } = legReach(0.26, 0.27, 0.01, -0.42);
         expect(upper).toBeLessThan(lower);
         expect(Math.hypot(
             (0.26 * Math.sin(upper)) + (0.27 * Math.sin(lower)),
             (0.26 * Math.cos(upper)) + (0.27 * Math.cos(lower)),
-        )).toBeCloseTo(Math.hypot(0.01, 0.5), 4);
+        )).toBeCloseTo(Math.hypot(0.01, 0.42), 4);
+        // Past ~93 % of its length the reach eases off smoothly: no kink at full stretch.
+        const near = legReach(0.26, 0.27, 0, -0.52);
+        const nearer = legReach(0.26, 0.27, 0, -0.5201);
+        expect(Math.abs(near.upper - nearer.upper)).toBeLessThan(0.01);
     });
 });
 
