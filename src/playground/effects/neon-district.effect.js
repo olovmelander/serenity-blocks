@@ -7,6 +7,7 @@
  *
  * URL params:
  *   quality=High|Ultra|...   content tier (default High)
+ *   layout=<n>               build the district from layout seed n (the game uses the default)
  *   board=1                  overlay a mock gameplay board + HUD (the solo layout rules); events
  *                            aim at its rects and the post's calm zones read them
  *   statsHud=0               with board=1: board only, no HUD mock
@@ -33,12 +34,18 @@
  *                            the street: shopN=<k> the k-th open one, shopAngle=<deg> how far up the
  *                            street the camera stands (0 = straight on; the game sees 45-85),
  *                            shopDist=<m> its distance from the wall, shopFov=<deg>
+ *   screen=<cell id prefix>  follow a street screen whose playlist holds that advert (an id from
+ *                            neon-district-atlas.js, e.g. street-glance-pay), square on:
+ *                            screenN=<k> the k-th such screen, screenDist=<m>, screenFov=<deg>.
+ *                            getDiagnostics().screen says when in its cycle each advert shows
+ *                            (pass one of those times as t= to see it)
  */
 import * as THREE from 'three/webgpu';
 import { NeonDistrictWorld } from '../../themes/neon-district/neon-district-world.js';
 import { NeonDistrictPost, POST_LOOK } from '../../themes/neon-district/neon-district-post.js';
 import { readLayoutRects } from '../../themes/neon-district/neon-district-composition.js';
 import { SHOP_ARCHETYPES } from '../../themes/neon-district/neon-district-campaigns.js';
+import { BILLBOARD_CELLS } from '../../themes/neon-district/neon-district-atlas.js';
 import { STREET, wrapZ } from '../../themes/neon-district/neon-district-core.js';
 
 export const meta = {
@@ -123,8 +130,9 @@ export function create({
     const saved = {
         fov: camera.fov, near: camera.near, far: camera.far, toneMapping: renderer.toneMapping,
     };
+    const layoutSeed = params.has('layout') ? Math.round(num(params, 'layout')) : undefined;
     const world = new NeonDistrictWorld({
-        scene, quality, capture: true, renderer,
+        scene, quality, capture: true, renderer, seed: layoutSeed,
     }).build();
     world.bindCamera(camera);
     world.loadTextures();
@@ -156,6 +164,13 @@ export function create({
         : [];
     const followShop = followed.length
         ? followed[Math.max(0, Math.round(num(params, 'shopN', 0))) % followed.length] : null;
+    // A screen to look at: the k-th whose playlist holds an advert with that id prefix.
+    const screenParam = params.get('screen');
+    const screensWith = screenParam
+        ? world.plan.screens.filter((s) => s.playlist.some((c) => BILLBOARD_CELLS[c].id.startsWith(screenParam)))
+        : [];
+    const followScreen = screensWith.length
+        ? screensWith[Math.max(0, Math.round(num(params, 'screenN', 0))) % screensWith.length] : null;
     const size = new THREE.Vector2(1, 1);
     const syncViewport = () => {
         const aspect = window.innerWidth / Math.max(1, window.innerHeight);
@@ -197,6 +212,17 @@ export function create({
             camera.updateProjectionMatrix();
             camera.up.set(0, 1, 0);
             camera.lookAt(wall, 1.35, z);
+            camera.updateMatrixWorld();
+        }
+        if (followScreen) {
+            const z = wrapZ(followScreen.z + world.scroll);
+            camera.fov = num(params, 'screenFov', 40);
+            const fit = (followScreen.h * 0.5) / Math.tan((camera.fov * Math.PI) / 360);
+            const dist = num(params, 'screenDist', fit * 1.35);
+            camera.position.set(followScreen.x, followScreen.y, z + dist);
+            camera.updateProjectionMatrix();
+            camera.up.set(0, 1, 0);
+            camera.lookAt(followScreen.x, followScreen.y, z);
             camera.updateMatrixWorld();
         }
         if (inspect) {
@@ -313,7 +339,18 @@ export function create({
             syncViewport();
         },
         getDiagnostics() {
+            // When each advert of the followed screen is on: the middle of its slot in the
+            // screen's cycle (the screens' shader: fract(t / (3 period) + 0.137 seed) * 3).
+            const screen = followScreen && {
+                shape: followScreen.shape,
+                showAt: followScreen.playlist.map((c, k) => {
+                    const cycle = followScreen.period * 3;
+                    const phase = ((k + 0.5) / 3 - ((followScreen.seed * 0.137) % 1) + 2) % 1;
+                    return { id: BILLBOARD_CELLS[c].id, t: Number((phase * cycle).toFixed(3)) };
+                }),
+            };
             return {
+                screen,
                 atlases: world.atlasReady.slice(),
                 people: world.peopleReady,
                 backend: renderer.backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL2',
