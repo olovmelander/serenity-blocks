@@ -44,11 +44,11 @@ const HOVER_SETTLE_MS = 50;
  */
 const MODES = {
     single: {
-        eyebrow: 'Stack · Classic',
+        eyebrow: 'Stack · Tempo',
         title: 'Single Player',
         art: { file: 'single' },
         wordmark: { file: 'single-player', tall: true },
-        lede: 'The classic climb. Clear lines to raise the level — every level drops the pieces a little faster. Keep the stack low and chase your best.',
+        lede: 'Every level, a little faster. Clear lines to raise the level and quicken the fall. Keep the stack low and chase your best.',
         action: 'Play',
     },
     infinity: {
