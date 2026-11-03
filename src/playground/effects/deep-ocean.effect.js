@@ -55,9 +55,8 @@ export function create({ scene, camera, renderer }) {
         camera(time, cam) {
             const gp = THREE.MathUtils.clamp(globalProgress(time), 0, 1);
             curve.getPointAt(gp, p);
-            // Review-only: ?inspect=manta|whale tracks that creature from above so its
-            // head-first swim direction is unambiguous (the iconic diamond should lead with
-            // its cephalic/head end). Removed after verification.
+            // Review-only: ?inspect=whale tracks that creature from above so its
+            // head-first swim direction is unambiguous (it should lead with its head).
             const insp = (typeof window !== 'undefined') && window.__DO_GROUP__
                 && new URLSearchParams(window.location.search).get('inspect');
             if (insp) {
@@ -83,9 +82,9 @@ export function create({ scene, camera, renderer }) {
             lastTime = time;
             updateDeepOceanEnvironment(group, dt ?? 0.016, time, camera, globalProgress(time));
         },
-        // The first frame waits for the manta and whale, which load as two GLBs, and poses them
-        // at this frame's time: drawn before them, a capture caught the corridor with or without
-        // them, or with them still at their seats.
+        // The first frame waits for the diorama's GLB whale and poses it at this frame's time:
+        // drawn before it, a capture caught the corridor with or without it, or with it still at
+        // its seat.
         async renderAsync() {
             await group.userData.mantasLoaded;
             updateDeepOceanEnvironment(group, 0, lastTime, camera, globalProgress(lastTime));

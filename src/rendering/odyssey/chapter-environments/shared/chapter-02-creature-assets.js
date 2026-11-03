@@ -8,27 +8,27 @@
  *     (composition/odyssey-whale-pass.js), built, rigged and keyed in headless Blender by
  *     scripts/blender/odyssey/odyssey_whales.py. It replaced `whale-glide.glb`, a photo-to-3D
  *     mesh whose auto-rig was backwards.
- *   - `manta-glide.glb`: the hero manta of the Deep Ocean diorama, which only the ADR-0015
- *     recovery path builds (`?odysseyOneWorld=0` or a world-build failure); the One World never
- *     loads it. Authored in the old local pipeline (Gemini concept photo → TRELLIS.2-4B photo→3D
- *     with vertex-colour baking → headless-Blender auto-rig + a glide/flap cycle).
+ *     The Deep Ocean diorama, which only the ADR-0015 recovery path builds
+ *     (`?odysseyOneWorld=0` or a world-build failure), swims it too (deep-ocean-manta.js).
+ *
+ * `manta-glide.glb`, the diorama's old hero manta (a photo-to-3D mesh whose wings curled down,
+ * with two lumps hanging below), was removed on 2026-11-03 (owner's call); the diorama's
+ * billboard manta trio carries the mantas.
  *
  * IMPORTANT: this module is intentionally tolerant of an EMPTY asset directory.
- * `import.meta.glob` returns `{}` when no .glb is present, so the chapter builds
- * and renders normally (the billboard impostors carry it) until `manta-glide.glb`
- * is dropped into assets/chapter-02/creatures/. Drop the GLB in, `git add` it
- * (Odyssey GLB assets are NOT auto-tracked — they vanish on clean checkouts/CI
- * otherwise), and the deep-ocean chapter picks it up automatically.
+ * `import.meta.glob` returns `{}` when no .glb is present, so the chapter builds and renders
+ * normally without it. A GLB dropped into assets/chapter-02/creatures/ must be `git add`ed
+ * (Odyssey GLB assets are NOT auto-tracked — they vanish on clean checkouts/CI otherwise).
  */
 
-export const CH2_CREATURE_ASSET_VERSION = 'chapter-02-creatures-v2'; // glob: humpback-swim.glb, manta-glide.glb
+export const CH2_CREATURE_ASSET_VERSION = 'chapter-02-creatures-v3'; // glob: humpback-swim.glb
 
 export const CH2_CREATURE_ASSET_CONTRACT = Object.freeze({
     author: 'Serenity Blocks asset pipeline',
-    source: 'Local C:\\AI photo→3D→rig pipeline (TRELLIS.2-4B + Blender auto-rig)',
+    source: 'Headless Blender, built from numbers (scripts/blender/odyssey/)',
     license: 'Project-owned original asset',
     licenseCode: 'proprietary-original',
-    runtimeUse: 'Chapter 2 Deep Ocean hero sea creatures (skinned, vertex-coloured)',
+    runtimeUse: 'Chapter 2 Deep Ocean sea creatures (skinned, vertex-coloured)',
 });
 
 // Glob every .glb in the creatures dir. Eager + ?url so each value is a hashed
@@ -43,10 +43,6 @@ let ASSET_MODULES = typeof import.meta.glob === 'function'
 
 if (Object.keys(ASSET_MODULES).length === 0) {
     ASSET_MODULES = {
-        '../../assets/chapter-02/creatures/manta-glide.glb': new URL(
-            '../../assets/chapter-02/creatures/manta-glide.glb',
-            import.meta.url,
-        ).href,
         '../../assets/chapter-02/creatures/humpback-swim.glb': new URL(
             '../../assets/chapter-02/creatures/humpback-swim.glb',
             import.meta.url,
@@ -54,21 +50,9 @@ if (Object.keys(ASSET_MODULES).length === 0) {
     };
 }
 
-// Per-file runtime metadata. `runtimeScale` targets an on-screen wingspan of
-// ~28u (a hero manta that fills a third of frame at the escort pass); the loader
-// auto-scales by the model's largest bound, so this is the final world size, not
-// a raw multiplier. Tune after the first capture.
+// Per-file runtime metadata. `targetSize` is the final world size of the model's largest
+// bound (the loader auto-scales to it), not a raw multiplier.
 const METADATA_BY_FILE = Object.freeze({
-    'manta-glide.glb': {
-        id: 'manta-glide',
-        title: 'Hero Manta',
-        role: 'manta',
-        targetSize: 28, // world units, largest dimension (wingspan)
-        vertexColors: true,
-        skinnedAnimated: true,
-        animationClips: 1, // the baked glide/flap cycle
-        artDirection: 'dark charcoal-indigo body, electric-cyan ventral bioluminescent rim; the escort hero',
-    },
     'humpback-swim.glb': {
         id: 'humpback-swim',
         title: 'Humpback',
