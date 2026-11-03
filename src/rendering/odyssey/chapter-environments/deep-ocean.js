@@ -184,9 +184,6 @@ export function createDeepOceanEnvironment(options = {}) {
         // 1.1 — god-ray hero amplitude, driven from OdysseyDirector audio state each frame
         // (1 = calm, up to ~1.8 on energy/beat). Defaults to 1 with no director (playground).
         uGodRayPulse: uniform(1),
-        // GLB hero-manta escort window (0→1 across the ~0.52 pass) — lifts the manta's
-        // ventral bioluminescent rim and tightens its arc into the formation hold.
-        uEscort: uniform(0),
     };
     group.userData.uniforms = uniforms;
 
@@ -250,20 +247,17 @@ export function createDeepOceanEnvironment(options = {}) {
     // 35–55 so a wing silhouette actually reads — while instance 0 is the leviathan,
     // DEMOTED to one extreme-distance background crossing (a scale cue, never competing
     // with the mantas). The rest stay small distant whales/rays/jellies.
-    // When a pipeline-authored hero-manta GLB is present, it carries the manta trio
-    // (real 3D geometry + a glide clip + the escort moment), so the billboard impostor
-    // mantas are skipped (those instances fall through to distant scatter). Without the
-    // GLB, the billboard heroes carry the chapter exactly as before.
-    const useGlbMantas = hasChapter2CreatureAssets();
-    const creatures = createCreatureSilhouettes(uniforms, 10, corridor, useGlbMantas);
+    // The billboard trio always carries the hero mantas: the hero-manta GLB that used to
+    // replace it (manta-glide.glb, malformed) was removed on 2026-11-03.
+    const creatures = createCreatureSilhouettes(uniforms, 10, corridor);
     group.add(creatures);
 
-    // Hero manta GLB (fire-and-forget; no-op without the asset). Init the registries
+    // The GLB humpback (fire-and-forget; no-op without the asset). Init the registries
     // first so the update loop is safe before the async load resolves. The load's promise
     // stays on userData for a caller that must wait for it (a reproducible capture).
     group.userData.mantaFlights = [];
     group.userData.mantaMixers = [];
-    group.userData.mantasLoaded = useGlbMantas
+    group.userData.mantasLoaded = hasChapter2CreatureAssets()
         ? loadDeepOceanMantas(group, uniforms, corridor).catch((err) => {
             console.warn('[DeepOcean] manta load error:', err);
         })
@@ -411,7 +405,7 @@ function placeGodRaysAlongCorridor(rayGroup, corridor) {
 // (z ~ -55, y ~ -8) — the unforgettable hero beat — with its flank markings + slow X
 // traverse driven in the material. The remaining instances stay small distant whales/
 // rays/jellies for layered depth (NOT competing silhouettes).
-function createCreatureSilhouettes(uniforms, count, corridor, skipHeroMantas = false) {
+function createCreatureSilhouettes(uniforms, count, corridor) {
     const positions = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
     const shapes = new Float32Array(count);
@@ -463,7 +457,7 @@ function createCreatureSilhouettes(uniforms, count, corridor, skipHeroMantas = f
             continue;
         }
 
-        if (!skipHeroMantas && i <= mantaPasses.length) {
+        if (i <= mantaPasses.length) {
             // HERO MANTA TRIO: shape 4, sized 35–55, seated tight on the corridor so
             // the banked arc (±46u lateral in the material) carries each one across
             // the visible frustum 20–35u ahead of the camera.

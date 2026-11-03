@@ -4,8 +4,7 @@ Project-owned original assets. License: proprietary-original. No third-party att
 
 | file | role | made by |
 | --- | --- | --- |
-| `humpback-swim.glb` | the humpback mother and calf of the whale pass (`composition/odyssey-whale-pass.js`) | `scripts/blender/odyssey/odyssey_whales.py` |
-| `manta-glide.glb` | the hero manta of the Deep Ocean diorama, built only on the ADR-0015 recovery path (`?odysseyOneWorld=0`) | the old local photo-to-3D pipeline (below) |
+| `humpback-swim.glb` | the humpback mother and calf of the whale pass (`composition/odyssey-whale-pass.js`), and the whale of the Deep Ocean diorama on the ADR-0015 recovery path (`?odysseyOneWorld=0`) | `scripts/blender/odyssey/odyssey_whales.py` |
 
 ## humpback-swim.glb (2026-11-03)
 
@@ -24,12 +23,11 @@ Built, rigged and animated in headless Blender from numbers. Nothing is download
 It replaced `whale-glide.glb`, a photo-to-3D (TRELLIS) mesh with a 9-bone auto-rig whose swim
 nodded the head and left the flukes still.
 
-## manta-glide.glb (legacy)
+## Removed
 
-Made by the local `C:\AI` photo→3D→rig pipeline: a Flux.2 Klein / Gemini concept image →
-TRELLIS.2-4B (Q8_0 GGUF) on ComfyUI with vertex-colour baking → a headless-Blender auto-rig
-(spine, cephalic fins, a 3-bone chain per wing) with a glide/flap cycle. The One World never
-loads it.
+- `manta-glide.glb` (removed 2026-11-03, owner's call): the diorama's hero manta, a photo-to-3D
+  (TRELLIS) mesh whose wings curled down with two lumps hanging below. The diorama's billboard
+  manta trio carries the mantas on the recovery path.
 
 > ⚠️ Odyssey GLB assets are **not** auto-tracked — `git add` the `.glb` explicitly or it vanishes
 > on clean checkouts / CI.

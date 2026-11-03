@@ -1,11 +1,17 @@
 /* eslint-disable import/no-unresolved, import/no-extraneous-dependencies */
 /**
- * @fileoverview Chapter 2 Deep Ocean — GLB hero manta & whale.
+ * @fileoverview Chapter 2 Deep Ocean diorama — the GLB whale on the recovery path.
  *
- * Loads the pipeline-authored manta & whale GLBs (shared/chapter-02-creature-assets.js),
- * replaces their materials with a TSL bioluminescent silhouette (dark charcoal-indigo
- * body + electric-cyan/teal VENTRAL rim), ticks their baked animations, and choreographs
- * them along the chapter corridor.
+ * Only the ADR-0015 recovery path builds this diorama (`?odysseyOneWorld=0` or a world-build
+ * failure); the One World never does. It loads the humpback (humpback-swim.glb, through
+ * shared/chapter-02-creature-assets.js), gives it a TSL bioluminescent silhouette (a dark
+ * charcoal-indigo body with a cyan-teal VENTRAL rim), ticks its keyed stroke and swims it on a
+ * slow loop beside the corridor.
+ *
+ * The hero manta GLB that used to swim here too (manta-glide.glb, a photo-to-3D mesh whose wings
+ * curled down with two lumps hanging below) was removed on 2026-11-03 (owner's call). The
+ * diorama's billboard manta trio (deep-ocean.js, createCreatureSilhouettes) carries the mantas.
+ * The exported names keep "manta" for the chapter's and the playground's hooks.
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -30,59 +36,19 @@ import {
     hasChapter2CreatureAssets,
 } from './shared/chapter-02-creature-assets.js';
 
-// The pass stations along the chapter (0..1 ascent).
-const MANTA_PASS_T = 0.52;
-const WHALE_PASS_T = 0.40; // nearer the manta region so the climb meets both in the mid-chapter
-const ESCORT_LATERAL = 36; // formation-hold offset (u) beside the corridor
+// The whale's station along the chapter (0..1 ascent).
+const WHALE_PASS_T = 0.40;
 
 const _box = new THREE.Box3();
 const _size = new THREE.Vector3();
 const _fwd = new THREE.Vector3();
 const _q = new THREE.Quaternion();
-// Head axis in model space. The manta GLB is rigged with the head at canonical -Y (Blender),
-// which export_yup maps to +Z in glTF/three space, so it leads with +Z. (If a creature ever
-// visibly swims tail-first, flip this one axis to (0, 0, -1).)
-const _baseFwd = new THREE.Vector3(0, 0, 1);
 // The humpback (humpback-swim.glb, as the whale pass swims it) leads with -Z.
 const _whaleBaseFwd = new THREE.Vector3(0, 0, -1);
 
 function smoothstep01(edge0, edge1, x) {
     const t = THREE.MathUtils.clamp((x - edge0) / (edge1 - edge0), 0, 1);
     return t * t * (3 - 2 * t);
-}
-
-/**
- * Bioluminescent silhouette material for the GLB manta.
- */
-function createMantaBioluminescentMaterial(uniforms) {
-    const uOpacity = uniforms.uOpacity ?? uniform(1);
-    const uDepth = uniforms.uDepth ?? uniform(0);
-    const uEscort = uniforms.uEscort ?? uniform(0);
-
-    const bioCyan = vec3(0.18, 0.94, 1.0); // #2ef0ff bio key
-    const bodyDeep = vec3(0.015, 0.045, 0.085); // dark charcoal-indigo
-    const bodyLit = vec3(0.04, 0.11, 0.18);
-
-    const material = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
-    material.colorNode = Fn(() => {
-        const vc = attribute('color', 'vec4').rgb;
-        const lum = vc.dot(vec3(0.3, 0.6, 0.1));
-        const body = mix(bodyDeep, bodyLit, lum);
-        const fres = pow(oneMinus(abs(normalView.z)), 2.4);
-        const ventral = clamp(normalWorld.y.negate().mul(0.5).add(0.55), float(0.0), float(1.0));
-        const rim = clamp(fres.mul(ventral).mul(uEscort.mul(0.6).add(0.85)), float(0.0), float(1.0));
-        return mix(body, bioCyan, rim);
-    })();
-
-    const surfaceFade = oneMinus(smoothstep(0.72, 0.9, uDepth));
-    material.opacityNode = surfaceFade.mul(uOpacity).mul(0.96);
-    material.transparent = true;
-    material.depthWrite = true;
-    material.side = THREE.DoubleSide;
-    material.fog = true;
-    material.userData.emitsBloom = true;
-    material.uniforms = { uOpacity };
-    return material;
 }
 
 /**
@@ -125,10 +91,9 @@ async function loadCreature(group, uniforms, corridor, record, role) {
     // The seat (a random angle round the corridor) is drawn before the load, while the chapter
     // is built, not when the GLB lands: a build whose randomness is seeded (the playground's
     // captures) then seats the creature the same way every time.
-    const seatT = role === 'whale' ? WHALE_PASS_T : MANTA_PASS_T;
     const seat = corridor?.ok
-        ? corridor.sample(seatT, 6)
-        : { x: 0, y: role === 'whale' ? -5 : 2, z: -34 };
+        ? corridor.sample(WHALE_PASS_T, 6)
+        : { x: 0, y: -5, z: -34 };
     let gltf;
     try {
         gltf = await loadOdysseyGltfCached(record.url);
@@ -145,9 +110,7 @@ async function loadCreature(group, uniforms, corridor, record, role) {
     const scale = (record.targetSize ?? 28) / (Math.max(_size.x, _size.y, _size.z) || 1);
     model.scale.setScalar(scale);
 
-    const material = role === 'whale'
-        ? createWhaleBioluminescentMaterial(uniforms)
-        : createMantaBioluminescentMaterial(uniforms);
+    const material = createWhaleBioluminescentMaterial(uniforms);
 
     model.traverse((child) => {
         if (!child.isMesh) return;
@@ -162,7 +125,7 @@ async function loadCreature(group, uniforms, corridor, record, role) {
     root.add(model);
 
     root.userData.seat = seat;
-    root.userData.phase = role === 'whale' ? 3.14 : 0.0;
+    root.userData.phase = 3.14;
     root.userData.role = role;
     group.add(root);
 
@@ -171,7 +134,7 @@ async function loadCreature(group, uniforms, corridor, record, role) {
         mixer = new THREE.AnimationMixer(model);
         gltf.animations.forEach((clip) => {
             const action = mixer.clipAction(clip);
-            action.timeScale = role === 'whale' ? 0.45 : 0.65; // whale moves slower and more majestically
+            action.timeScale = 0.45; // slow and majestic
             action.play();
         });
         group.userData.mantaMixers.push(mixer);
@@ -183,7 +146,7 @@ async function loadCreature(group, uniforms, corridor, record, role) {
 }
 
 /**
- * Load deep ocean creatures (manta & whale), apply materials, and seat them.
+ * Load the diorama's GLB creature (the humpback), apply its material, and seat it.
  */
 export async function loadDeepOceanMantas(group, uniforms, corridor) {
     if (!hasChapter2CreatureAssets()) return;
@@ -191,19 +154,12 @@ export async function loadDeepOceanMantas(group, uniforms, corridor) {
     group.userData.mantaFlights = group.userData.mantaFlights || [];
     group.userData.mantaMixers = group.userData.mantaMixers || [];
 
-    // Load manta + whale IN PARALLEL so the two ~4.5MB fetch+decode+upload operations
-    // overlap instead of running serially (await manta THEN await whale halved the throughput
-    // of the chapter's heaviest async work). Each seats independently — order is irrelevant.
-    const mantaRecord = getChapter2CreatureAssetById('manta-glide');
     const whaleRecord = getChapter2CreatureAssetById('humpback-swim');
-    await Promise.all([
-        mantaRecord?.url ? loadCreature(group, uniforms, corridor, mantaRecord, 'manta') : null,
-        whaleRecord?.url ? loadCreature(group, uniforms, corridor, whaleRecord, 'whale') : null,
-    ]);
+    if (whaleRecord?.url) await loadCreature(group, uniforms, corridor, whaleRecord, 'whale');
 }
 
 /**
- * Per-frame creature choreography: drive paths along spline, banking, and companion holds.
+ * Per-frame choreography: swim the whale on its loop, heading along its path, banking gently.
  */
 export function updateDeepOceanMantas(group, delta, time) {
     const flights = group.userData.mantaFlights;
@@ -211,13 +167,8 @@ export function updateDeepOceanMantas(group, delta, time) {
     const { uniforms } = group.userData;
     const depth = uniforms?.uDepth?.value ?? 0;
 
-    // Escort window for manta (camera progress 0.46 -> 0.52 -> stays -> 0.68 -> 0.76)
-    // Extended to prevent sudden lateral drifting while the camera is still close/passing.
-    const escort = smoothstep01(0.46, 0.52, depth) * (1 - smoothstep01(0.68, 0.76, depth));
-    if (uniforms?.uEscort) uniforms.uEscort.value = escort;
-
-    // Companion window for whale (camera progress 0.22 -> 0.30 -> stays -> 0.46 -> 0.54)
-    // Extended to prevent sudden lateral drifting while the camera is still close/passing.
+    // Companion window for the whale (camera progress 0.22 -> 0.30 -> stays -> 0.46 -> 0.54):
+    // its bank settles while the camera is close.
     const whaleWindow = smoothstep01(0.22, 0.30, depth) * (1 - smoothstep01(0.46, 0.54, depth));
 
     const mixers = group.userData.mantaMixers || [];
@@ -227,24 +178,11 @@ export function updateDeepOceanMantas(group, delta, time) {
 
     // A wide, slow horizontal ellipse GLIDE around a centre beside the corridor. The large
     // radii + steady angular speed make the velocity DOMINANT and well-defined, so the head
-    // (baseFwd) leads cleanly every frame. The previous tiny hover-weave produced a near-zero,
-    // jittery finite-diff velocity → essentially random facing (the "not swimming right" bug).
-    const posAtManta = (seat, phase, t) => {
-        const w = 0.14; // ~45 s per loop — unhurried glide
-        const a = t * w + phase;
-        const cx = seat.x + ESCORT_LATERAL; // circle beside the camera
-        const cz = seat.z - 18;
-        return {
-            x: cx + Math.cos(a) * 30,
-            y: seat.y + Math.sin(t * 0.5 + phase) * 2.5, // gentle vertical bob
-            z: cz + Math.sin(a) * 24,
-        };
-    };
-
+    // leads cleanly every frame.
     const posAtWhale = (seat, phase, t) => {
         const w = 0.085; // ~74 s per loop — slow & majestic
         const a = t * w + phase;
-        const cx = seat.x - 30; // opposite side from the manta, but in-sightline
+        const cx = seat.x - 30;
         const cz = seat.z - 22;
         return {
             x: cx + Math.cos(a) * 30,
@@ -254,28 +192,21 @@ export function updateDeepOceanMantas(group, delta, time) {
     };
 
     for (let i = 0; i < flights.length; i += 1) {
-        const f = flights[i];
-        const {
-            root, seat, phase, role,
-        } = f;
+        const { root, seat, phase } = flights[i];
         if (!root) continue;
 
-        const isWhale = role === 'whale';
-        const p = isWhale ? posAtWhale(seat, phase, time) : posAtManta(seat, phase, time);
+        const p = posAtWhale(seat, phase, time);
         root.position.set(p.x, p.y, p.z);
 
-        const pAhead = isWhale ? posAtWhale(seat, phase, time + eps) : posAtManta(seat, phase, time + eps);
+        const pAhead = posAtWhale(seat, phase, time + eps);
         _fwd.set(pAhead.x - p.x, pAhead.y - p.y, pAhead.z - p.z);
         if (_fwd.lengthSq() > 1e-6) {
             _fwd.normalize();
-            const baseFwd = isWhale ? _whaleBaseFwd : _baseFwd;
-            _q.setFromUnitVectors(baseFwd, _fwd);
+            _q.setFromUnitVectors(_whaleBaseFwd, _fwd);
             root.quaternion.copy(_q);
         }
 
-        const activeWindow = isWhale ? whaleWindow : escort;
-        const bankAmp = isWhale ? 0.12 : 0.4;
-        const bank = Math.cos(time * (isWhale ? 0.1 : 0.16) + phase) * bankAmp * (1 - activeWindow * 0.7);
+        const bank = Math.cos(time * 0.1 + phase) * 0.12 * (1 - whaleWindow * 0.7);
         root.rotateZ(bank);
     }
 }

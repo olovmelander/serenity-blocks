@@ -15,7 +15,7 @@ their clocks, the 1->2 steam rule and the zero-hitch load are unchanged.
 | 1 | **The whales swam backwards.** The photo-to-3D `whale-glide.glb` had an auto-rig with its "tail" bones in the head: the swim nodded the head up and down by ~11 % of the body length and left the flukes still. It was also a slender rorqual, not the humpback the docs name, drew at half the size the code said, banked *out* of its turns, never bent, and both whales stroked at one fixed rate. | rebuilt |
 | 2 | **The fish swam sideways and through each other.** Each fish swayed its heading ±14 degrees on its own clock while its body kept sliding along the school's path, so it pointed up to 50 degrees off the way it went. The rest places were random, and 91 of the 150 fish passed through a neighbour at some point. | fixed |
 | 3 | **The manta never glided.** Its wingbeat only grew and shrank over 30 s; it flapped all the time. Its bank stopped on a hard clamp (a corner in the motion). | fixed |
-| 4 | **The hero manta (`manta-glide.glb`) is malformed** (wings curl down, two long lumps hang below). It is never loaded in the One World. It shows only on the ADR-0015 recovery path, where it is seen big. | reported, owner decision below |
+| 4 | **The hero manta (`manta-glide.glb`) is malformed** (wings curl down, two long lumps hang below). It is never loaded in the One World. It showed only on the ADR-0015 recovery path, where it is seen big. | removed (owner, below) |
 | 5 | **The whale shark beat at one rate** whatever its pace. | fixed |
 | 6 | **The jellies' glide stepped at each beat:** the coast had not stopped when the next stroke began, so the bell's speed jumped (a corner in its path). | fixed |
 
@@ -184,7 +184,6 @@ the manta over one flap-glide cycle and the whale shark's beat, baked to shape k
 
 ## Left as it is, and why
 
-- **The hero manta on the recovery path** (`manta-glide.glb`, below): an owner decision.
 - **The jellies' strands** already trail with a delay line and sway; nothing read wrong there.
 - **The calf is the mother's model, smaller.** A real calf has a rounder head and shorter flippers
   for its size. At 13 u, ~90 px on screen, it does not show; offered if wanted.
@@ -202,6 +201,9 @@ the manta over one flap-glide cycle and the whale shark's beat, baked to shape k
    below). Options: (a) delete `manta-glide.glb` and let the diorama's billboard mantas carry it,
    as they do when the GLB is missing (recommended: cheapest, -860 KB); (b) swim the visitors'
    Blender manta there instead (more code on a path that is rarely seen); (c) leave it.
+   **Done (a), 2026-11-03** (Olov: "Delete the old mishapen manta if thats recommended."): the
+   GLB, its registry entry, its material and its swim are gone; the diorama always draws the
+   billboard manta trio, and its GLB layer is the humpback alone (`deep-ocean-manta.js`).
 3. **The belly's white.** Kept to a hint, so the pair reads as silhouettes from below. North Atlantic
    humpbacks have white bellies; one number (`marks.y` in the whale material) raises it.
 
