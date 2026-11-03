@@ -133,7 +133,7 @@ roof board](neon-district-captures/campaigns-adverts.webp)
 
 The artwork is drawn by the atlas bake, not painted, so every campaign is one identity across
 its billboard, poster, logo and fascia. No real company, film or game is named or drawn. No mark
-is built from four squares or any other piece shape (`tetris_legal_review.md`). Two of the
+is built from four squares or any other piece shape. Two of the
 December 2025 images left the atlases because they carry third-party marks:
 
 - the Retro Replay arcade, whose sign shows another company's video-game characters

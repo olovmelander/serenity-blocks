@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Palette separation gate (tetris_legal_review.md v4.0, PAL-1 / remediation P0.4).
+ * Palette separation gate (legal review v4.0, PAL-1 / remediation P0.4).
  *
  * Static screen of every theme tetromino palette (plus the default COLORS in
  * src/core/constants.js) against the familiar Guideline shape->hue roles
@@ -23,7 +23,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const themesDir = path.join(repoRoot, 'src', 'themes');
 const SHAPES = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
 
-// Screening bands (hue degrees) per tetris_legal_review.md §Copyright / v3.0 §8.1.
+// Screening bands (hue degrees) per the legal review (§Copyright / v3.0 §8.1).
 const GUIDELINE_BANDS = {
     I: [[160, 210]], // cyan / blue-cyan
     O: [[32, 75]], // yellow / gold
@@ -170,7 +170,7 @@ console.log(
 if (failed) {
     console.error(
         'palette-gate: FAILED — a selectable palette reproduces the complete familiar '
-            + 'shape->hue mapping. Derange at least two roles (see tetris_legal_review.md).',
+            + 'shape->hue mapping. Derange at least two roles (see the header of this script).',
     );
     process.exit(1);
 }

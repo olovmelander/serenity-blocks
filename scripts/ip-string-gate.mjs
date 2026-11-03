@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * IP-string gate (tetris_legal_review.md v4.0, remediation P0.7; extended 2026-10-20).
+ * IP-string gate (legal review v4.0, remediation P0.7; extended 2026-10-20 and 2026-11-03).
  *
  * Two classes of third-party token, two scopes:
  *

@@ -13,7 +13,7 @@
  *    a render of the world it sells.
  *
  * No real company, film or game is named or drawn anywhere here, and no mark is built from the
- * board's pieces (the product's branding keeps piece imagery out: tetris_legal_review.md).
+ * board's pieces (the product's branding keeps piece imagery out).
  */
 
 /** Interior archetypes a generated shop can have (the shop shader's room recipes). */
