@@ -8,6 +8,34 @@ WebGPURenderer**, the WebGL2 backend as its fallback, and redesigns the loading 
 the logo it keeps. The boot's machinery (startup pipeline, studio-ident hold, boot warp, title
 handoff, menu wordmark flight, parked menu renderer) is kept and fed by the new world.
 
+## The murmuration (2026-11-03)
+
+The rising pieces and the stack are gone. In their place flies **one great murmuration of
+light** (`intro-world-murmuration.js`, about 110 000 motes on High, 52 000 on Medium, 18 000 on
+Low): a long plume whose head flies a slow loop round the wordmark and whose body follows it, so
+the flock sweeps across the whole frame in arcs and swings toward the eye and away again. Across
+its body it is a broad, thin ribbon that banks: a wave of turning rolls from head to tail, and
+where the ribbon turns edge on its motes crowd along the line of sight and the band blazes. It
+bulges and thins along its length, and on the out-breath it opens into two streams and closes
+again. Its colour runs the logo's spectrum along it: lavender at the head, aqua through the body,
+mint at the tail.
+
+- **The opening:** the flock pours up out of the light below as the eye rises.
+- **The gathering** (every third breath on the title): the whole flock pours, head first, into a
+  ring of light round the wordmark. The ring ripples, beads and breathes, a wave of light leaves
+  the title as it closes, the eye leans in, and on the out-breath the ring unravels back into the
+  flock. Behind the menu there is no gathering (the ring would cross the navigation); the flock
+  flies to the right of it.
+- **The music:** the flock swells and brightens with the soundtrack's level.
+- **A touch:** a pulse of light runs both ways along the flock from the part nearest the click.
+
+Everything is a closed form of time (`murmurationAt`, `murmurationLine` in
+`intro-world-core.js`), every mote is placed in the vertex stage from a static seed: no compute,
+no state, a seek lands where playing would. Motes are a few pixels at any distance, with a light
+budget per tier, and fade where the title and the menu's navigation stand. The veils keep to a
+quieter light now: the murmuration is the show. The sections below describe the 2026-10 world;
+where they speak of pieces and the stack, the murmuration and the gathering replace them.
+
 ## The picture
 
 A deep, dark cosmos (since the 2026-10-16 pass below): a near-black void overhead, a faint violet
@@ -55,11 +83,11 @@ is on the boot path; `intro-visual-config.js` keeps only the phase names and the
 
 | Module | What it holds |
 |---|---|
-| `intro-world-core.js` | Pure (no three): the palette, the breath and its exact integral (the rise clock), the camera poses and the opening's curves, the lanes the pieces rise in, quiet-zone presence, the stack's fits, rhythm and pair choice, quaternion helpers. |
+| `intro-world-core.js` | Pure (no three): the palette, the breath and its exact integral (the rise clock), the camera poses and the opening's curves, the murmuration's seeds, its state at a moment and its middle line (a CPU twin of the vertex stage), the gathering's rhythm. |
 | `intro-world-tsl.js` | Laid-out helpers (`fl_*`): hashes, Fresnel, quaternion rotate, `fl_sky` (the sky as one function of a direction) and `fl_skySoft` (its cheap twin for reflections and air); the baked 128² fBm grain. |
 | `intro-world-sky.js` | The sky on a sphere round the eye, drawn after the opaque pieces; the haze's grain projected on a plane far below. |
 | `intro-world-veils.js` | Four ribbons in one draw: built on the CPU along curves, billowed by two travelling waves in the vertex stage with analytic normals; premultiplied additive light. |
-| `intro-world-pieces.js` | The fused rounded solids (outline extruded, as Serenity Warp's) and their lacquer; seven instanced draws on one material. |
+| `intro-world-murmuration.js` | The murmuration: one instanced draw of point motes placed in the vertex stage from the frame's closed-form state (seven `vec4` rows), the title's and the navigation's rects as quiet zones. |
 | `intro-world-motes.js` | Instanced quads placed in the vertex stage from static seeds and the rise clock. |
 | `intro-world-post.js` | One scene pass (MSAA on High), bloom on a max-channel knee, and one output pass: the waves (opening, begin, stack lock), calm rects, hue-preserving filmic, a grade by scaling only, vignette, grain and dither. |
 | `intro-world.js` | The world: builds the parts, owns the shared uniforms, integrates the clocks, directs the camera, the opening, the title/menu blend, the stack, touches and quiet zones; `seek(t)` for captures. |
@@ -75,17 +103,16 @@ timing; its overlay (`boot-aurora-scene.js`) is now the bridging glow. The loadi
 progress line follows `markStartup` through a listener registry
 (`startup-debug.js` `onStartupMark`, `startup-progress.js`).
 
-**Palette and the legal screen.** The pieces wear the logo's colours with no shape on its
-familiar Guideline hue: 0/7 on `scripts/palette-guideline-check.mjs`, which now screens the
-intro's palette too.
+**Palette.** The murmuration wears the logo's colours. With no pieces in the intro, the palette
+gate (`scripts/palette-guideline-check.mjs`) no longer screens it.
 
 ## Tiers
 
 | Budget | World | Post |
 |---|---|---|
-| HIGH | 21 pieces, 1,800 motes, grain, bevel 3, pixel ratio up to 2 | MSAA x4, bloom ½ res, lens fringe |
-| MEDIUM | 18 pieces, 1,100 motes, grain, bevel 2, up to 1.5 | bloom ⅓ res |
-| LOW | 14 pieces, 600 motes, no grain, bevel 1, 1 | no bloom |
+| HIGH | murmuration of 110,000, 1,800 motes, grain, pixel ratio up to 2 | MSAA x4, bloom ½ res, lens fringe |
+| MEDIUM | murmuration of 52,000, 1,100 motes, grain, up to 1.5 | bloom ⅓ res |
+| LOW | murmuration of 18,000, 600 motes, no grain, 1 | no bloom |
 
 The starting budget comes from the device (`detectIntroBudget`); after a 10 s grace (and never
 during the opening) a frame rate under 35 / 50 fps (scaled by the Target Frame Rate) steps it
@@ -189,7 +216,7 @@ reaches each milestone; the cover dissolves into the live scene).
 /playground.html?effect=intro-world&phase=open&opening=1.4&t=20  the opening, 1.4 s in
 /playground.html?effect=intro-world&phase=boot&t=8               the frame under the loading screen
 /playground.html?effect=intro-world&phase=menu&ui=1&t=12         behind the menu (mock UI)
-/playground.html?effect=intro-world&t=23.75                      the first stack locking
+/playground.html?effect=intro-world&t=25.5                       the first gathering, the ring held
 /playground.html?effect=intro-world&t=12&begin=0.5               the begin wave
 /playground.html?effect=intro-world&phase=boot&autoOpen=2        live: watch the opening
 /?forceWebGL=1                                                   the whole boot on the WebGL2 backend

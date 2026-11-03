@@ -6,31 +6,22 @@ import { describe, expect, it } from 'vitest';
 import {
     BREATH_IN,
     BREATH_PERIOD,
-    PIECE_CELLS,
-    PIECE_COLORS,
-    PIECE_KEYS,
+    GATHER,
+    GATHER_SECONDS,
+    MURMURATION,
     POSES,
-    STACK,
-    STACK_FITS,
-    STACK_SECONDS,
-    axisAngle,
-    chooseStackPair,
-    qMul,
-    qRotate,
-    qSlerp,
-    stackPhase,
-    stackSlot,
     breathAt,
     breathIntegral,
     buildMoteSeeds,
-    buildPieceField,
+    buildMurmurationSeeds,
     cameraPoseAt,
+    gatherPhase,
+    gatherSlot,
     halfHeightAt,
+    murmurationAt,
+    murmurationLine,
     openingState,
-    pieceAt,
-    presenceAt,
     riseClock,
-    srgbToLinear,
 } from '../../src/ui/intro-world/intro-world-core.js';
 
 describe('the breath', () => {
@@ -82,108 +73,61 @@ describe('the breath', () => {
     });
 });
 
-describe('the pieces', () => {
-    const lanes = buildPieceField({ count: 21, seed: 7 });
+describe('the murmuration', () => {
+    const seeds = buildMurmurationSeeds(4000);
 
-    it('are laid out the same way every time, every shape among them', () => {
-        expect(buildPieceField({ count: 21, seed: 7 })).toEqual(lanes);
-        expect(lanes).toHaveLength(21);
-        expect(new Set(lanes.map((l) => l.shape)).size).toBe(PIECE_KEYS.length);
+    it('lays its motes out the same way every time, along it and across it', () => {
+        expect(buildMurmurationSeeds(4000)).toEqual(seeds);
+        for (let i = 0; i < 4000; i++) {
+            expect(seeds[i * 4]).toBeGreaterThanOrEqual(0);
+            expect(seeds[i * 4]).toBeLessThanOrEqual(1);
+            expect(seeds[i * 4 + 2]).toBeGreaterThanOrEqual(0);
+            expect(seeds[i * 4 + 2]).toBeLessThanOrEqual(1);
+        }
     });
 
-    it('wear the logo\'s spectrum and never the familiar Guideline hue of their shape (0/7)', () => {
-        expect(Object.keys(PIECE_COLORS).sort()).toEqual([...PIECE_KEYS].sort());
-        // scripts/palette-guideline-check.mjs screens sRGB hues against these bands.
-        const hue = (hex) => {
-            const n = Number.parseInt(hex.slice(1), 16);
-            const r = ((n >> 16) & 255) / 255;
-            const g = ((n >> 8) & 255) / 255;
-            const b = (n & 255) / 255;
-            const max = Math.max(r, g, b);
-            const min = Math.min(r, g, b);
-            let h;
-            if (max === r) h = ((g - b) / (max - min)) % 6;
-            else if (max === g) h = (b - r) / (max - min) + 2;
-            else h = (r - g) / (max - min) + 4;
-            return (h * 60 + 360) % 360;
-        };
-        const bands = {
-            I: [[160, 210]],
-            O: [[32, 75]],
-            T: [[245, 315]],
-            S: [[90, 170]],
-            Z: [[320, 360], [0, 20]],
-            J: [[200, 250]],
-            L: [[20, 50]],
-        };
-        const inBand = (k) => bands[k].some(([lo, hi]) => hue(PIECE_COLORS[k]) >= lo && hue(PIECE_COLORS[k]) <= hi);
-        const matched = PIECE_KEYS.filter(inBand);
-        expect(matched).toEqual([]);
-        // Pale and luminous, as the wordmark is: every colour is light.
-        PIECE_KEYS.forEach((k) => expect(Math.max(...srgbToLinear(PIECE_COLORS[k]))).toBeGreaterThan(0.6));
+    it('is a closed form of time: the same moment always gives the same flock', () => {
+        const a = murmurationAt({ time: 37.5, breath: 0.3 });
+        const b = murmurationAt({ time: 37.5, breath: 0.3 });
+        expect(a).toEqual(b);
+        expect(murmurationAt({ time: 40 }).head).toBeGreaterThan(a.head);
     });
 
-    it('rise on either side of the title, never through its column', () => {
-        for (const lane of lanes) {
-            const hw = halfHeightAt(lane.z) * (16 / 9);
-            const least = lane.band === 'far' ? 0.27 : 0.4;
-            for (let t = 0; t < 120; t += 0.7) {
-                const p = pieceAt(lane, { rise: riseClock(t), time: t, aspect: 16 / 9 });
-                expect(Math.abs(p.x) / hw, `${lane.band} lane at t=${t}`).toBeGreaterThan(least);
+    it('flies round the title, never through it, for minutes on end', () => {
+        const hh = halfHeightAt(MURMURATION.z);
+        for (const aspect of [16 / 9, 21 / 9, 4 / 3]) {
+            const hw = hh * aspect;
+            for (let t = 0; t < 300; t += 0.9) {
+                const m = murmurationAt({ time: t, breath: breathAt(t), aspect });
+                for (let k = 0; k <= 20; k++) {
+                    const [x, y] = murmurationLine(m, k / 20);
+                    const inside = Math.abs(x) < 0.3 * hw && Math.abs(y) < 0.3 * hh;
+                    expect(inside, `aspect ${aspect.toFixed(2)}, t=${t.toFixed(1)}, s=${k / 20}`).toBe(false);
+                }
             }
         }
     });
 
-    it('rise through the whole frame and the margin beyond it, so none pops in or out', () => {
-        const lane = lanes[0];
-        const hh = halfHeightAt(lane.z);
-        let wraps = 0;
-        let last = null;
-        for (let t = 0; t < 400; t += 0.05) {
-            const p = pieceAt(lane, { rise: riseClock(t), time: t, aspect: 16 / 9 });
-            expect(p.y).toBeGreaterThanOrEqual(-hh - lane.scale * 2.4 - 3 - 1e-6);
-            expect(p.y).toBeLessThanOrEqual(hh + lane.scale * 2.4 + 3 + 1e-6);
-            if (last !== null && p.y < last - 1) {
-                wraps += 1;
-                // It leaves above the frame and comes back below it.
-                expect(last).toBeGreaterThan(hh + lane.scale);
-                expect(p.y).toBeLessThan(-hh - lane.scale);
-            }
-            last = p.y;
-        }
-        expect(wraps).toBeGreaterThan(0);
+    it('splits on the out-breath, never on the in-breath\'s top', () => {
+        expect(murmurationAt({ time: 20, breath: 1 }).split).toBeCloseTo(0, 9);
+        const open = Math.max(...Array.from({ length: 40 }, (_, i) => murmurationAt({ time: i, breath: 0 }).split));
+        expect(open).toBeGreaterThan(0.6);
     });
 
-    it('turn with unit quaternions', () => {
-        const p = pieceAt(lanes[3], { rise: 3, time: 17, aspect: 1.5 });
-        expect(Math.hypot(...p.q)).toBeCloseTo(1, 6);
+    it('calms under reduced motion: no banking, no splitting, a shallow swing', () => {
+        const calm = murmurationAt({ time: 33, breath: 0.2, motion: 0 });
+        expect(calm.bank[2]).toBe(0);
+        expect(calm.split).toBe(0);
+        expect(calm.radii[2]).toBeLessThan(MURMURATION.zAmp * 0.5);
     });
 
-    it('draw a near piece smaller on a tall screen', () => {
-        const near = lanes.find((l) => l.band === 'near');
-        const wide = pieceAt(near, { rise: 0, time: 0, aspect: 16 / 9 });
-        const tall = pieceAt(near, { rise: 0, time: 0, aspect: 0.46 });
-        expect(tall.scale).toBeLessThan(wide.scale);
-    });
-});
-
-describe('quiet zones', () => {
-    const nav = {
-        x0: 0.05, y0: 0.3, x1: 0.3, y1: 0.8,
-    };
-
-    it('take a piece away inside a rect and leave it alone well clear of it', () => {
-        // NDC (x right, y up) of the rect's middle: x = 0.175 → -0.65, y = 0.55 → -0.1.
-        expect(presenceAt(-0.65, -0.1, 0.02, [nav])).toBe(0);
-        expect(presenceAt(0.6, 0.6, 0.02, [nav])).toBe(1);
-        expect(presenceAt(0, 0, 0.02, [])).toBe(1);
-    });
-
-    it('fade it at the rect\'s edge, not at a line', () => {
-        const values = [];
-        for (let x = -0.3; x <= 0.1; x += 0.02) values.push(presenceAt(x, -0.1, 0.02, [nav]));
-        expect(values.some((v) => v > 0.05 && v < 0.95)).toBe(true);
-        for (let i = 1; i < values.length; i++) expect(values[i]).toBeGreaterThanOrEqual(values[i - 1] - 1e-9);
+    it('gathers into a ring that stands round the title, wider on a tall screen', () => {
+        const hh = halfHeightAt(MURMURATION.z);
+        const wide = murmurationAt({ time: 25, aspect: 16 / 9 });
+        expect(wide.ring[2] - wide.ringTube).toBeGreaterThan(0.3 * hh * (16 / 9));
+        expect(wide.ring[3] - wide.ringTube).toBeGreaterThan(0.3 * hh);
+        const tall = murmurationAt({ time: 25, aspect: 0.46 });
+        expect(tall.ring[2] / (hh * 0.56)).toBeGreaterThan(wide.ring[2] / (hh * (16 / 9)));
     });
 });
 
@@ -220,72 +164,22 @@ describe('the opening and the camera', () => {
     });
 });
 
-describe('the stack', () => {
-    it('locks every twin pair into one rectangle with no gap and no overlap', () => {
-        for (const [key, fit] of Object.entries(STACK_FITS)) {
-            const cells = PIECE_CELLS[key];
-            const c = Math.cos(fit.turn);
-            const s = Math.sin(fit.turn);
-            const turn = (x, y) => [x * c - y * s, x * s + y * c];
-            const all = [];
-            for (let i = 0; i < 8; i += 2) all.push([cells[i], cells[i + 1]]);
-            for (let i = 0; i < 8; i += 2) {
-                const [x, y] = turn(cells[i], cells[i + 1]);
-                all.push([x + fit.offset[0], y + fit.offset[1]]);
-            }
-            const keys = new Set(all.map(([x, y]) => `${Math.round(x * 2)},${Math.round(y * 2)}`));
-            expect(keys.size, `${key}: overlap`).toBe(8);
-            const xs = all.map(([x]) => x);
-            const ys = all.map(([, y]) => y);
-            const w = Math.round(Math.max(...xs) - Math.min(...xs)) + 1;
-            const h = Math.round(Math.max(...ys) - Math.min(...ys)) + 1;
-            expect(w * h, `${key}: ${w} x ${h}`).toBe(8);
-        }
-    });
-
-    it('comes on the breath: glides together, locks with a flash, holds, lets go', () => {
-        expect(stackPhase(0).join).toBeCloseTo(0, 6);
-        expect(stackPhase(STACK.approach).join).toBeCloseTo(1, 6);
-        expect(stackPhase(STACK.approach + STACK.hold * 0.5).join).toBe(1);
-        expect(stackPhase(STACK_SECONDS - 1e-6).join).toBeCloseTo(0, 4);
-        expect(stackPhase(1).flash).toBe(0);
-        const lockFlash = stackPhase(STACK.approach * 0.96 + 0.01).flash;
-        expect(lockFlash).toBeGreaterThan(0.6);
-        expect(stackPhase(STACK.approach + 2).flash).toBeLessThan(lockFlash * 0.1);
-        // It starts with an in-breath.
-        expect((STACK.first % 10) + (STACK.every % 10)).toBe(0);
-        expect(stackSlot(STACK.first - 0.1)).toBeNull();
-        expect(stackSlot(STACK.first + 1)).toMatchObject({ k: 0 });
-        expect(stackSlot(STACK.first + STACK_SECONDS + 1)).toBeNull();
-        expect(stackSlot(STACK.first + STACK.every + 2)).toMatchObject({ k: 1 });
-    });
-
-    it('finds a pair of twins for most stacks, on the side it is asked for', () => {
-        const lanes = buildPieceField({ count: 21, seed: 7 });
-        let found = 0;
-        for (let k = 0; k < 24; k++) {
-            const start = STACK.first + k * STACK.every;
-            const side = k % 2 === 0 ? 1 : -1;
-            const pair = chooseStackPair(lanes, { start, aspect: 16 / 9, side });
-            if (!pair) continue;
-            found += 1;
-            const a = lanes[pair.anchor];
-            const b = lanes[pair.partner];
-            expect(a.shape).toBe(b.shape);
-            expect(Math.sign(a.sx)).toBe(side);
-            expect(Math.sign(b.sx)).toBe(side);
-            expect(STACK_FITS[PIECE_KEYS[a.shape]]).toBeDefined();
-        }
-        expect(found).toBeGreaterThanOrEqual(12);
-    });
-
-    it('turns with quaternions that compose and slerp to unit length', () => {
-        const q = qMul(axisAngle([0, 1, 0], 0.4), axisAngle([1, 0, 0], -0.2));
-        expect(Math.hypot(...q)).toBeCloseTo(1, 9);
-        const half = qSlerp([0, 0, 0, 1], axisAngle([0, 0, 1], Math.PI / 2), 0.5);
-        const v = qRotate(half, [1, 0, 0]);
-        expect(v[0]).toBeCloseTo(Math.SQRT1_2, 6);
-        expect(v[1]).toBeCloseTo(Math.SQRT1_2, 6);
+describe('the gathering', () => {
+    it('comes on the breath: pours in, closes with a flash, holds, lets go', () => {
+        expect(gatherPhase(0).join).toBeCloseTo(0, 6);
+        expect(gatherPhase(GATHER.approach).join).toBeCloseTo(1, 6);
+        expect(gatherPhase(GATHER.approach + GATHER.hold * 0.5).join).toBe(1);
+        expect(gatherPhase(GATHER_SECONDS - 1e-6).join).toBeCloseTo(0, 4);
+        expect(gatherPhase(1).flash).toBe(0);
+        const closing = gatherPhase(GATHER.approach * 0.96 + 0.01).flash;
+        expect(closing).toBeGreaterThan(0.6);
+        expect(gatherPhase(GATHER.approach + 2).flash).toBeLessThan(closing * 0.1);
+        // It starts with an in-breath, every third breath.
+        expect((GATHER.first % 10) + (GATHER.every % 10)).toBe(0);
+        expect(gatherSlot(GATHER.first - 0.1)).toBeNull();
+        expect(gatherSlot(GATHER.first + 1)).toMatchObject({ k: 0 });
+        expect(gatherSlot(GATHER.first + GATHER_SECONDS + 1)).toBeNull();
+        expect(gatherSlot(GATHER.first + GATHER.every + 2)).toMatchObject({ k: 1 });
     });
 });
 

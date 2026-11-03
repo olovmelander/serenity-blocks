@@ -67,7 +67,7 @@ describe('intro menu-logo identity (duplicate header fix)', () => {
         vi.spyOn(introAnimation, 'ensureIntroMusic').mockImplementation(() => {});
         vi.spyOn(introAnimation, 'setRendererPhase').mockImplementation(() => {});
         vi.spyOn(introAnimation, 'startRenderLoop').mockImplementation(() => {});
-        vi.spyOn(introAnimation, 'installTetrominoPointerListener').mockImplementation(() => {});
+        vi.spyOn(introAnimation, 'installWorldPointerListener').mockImplementation(() => {});
 
         expect(body.classList.contains('startup-intro-skipped')).toBe(true);
 
