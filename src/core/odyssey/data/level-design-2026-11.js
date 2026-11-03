@@ -1,5 +1,5 @@
 /**
- * Odyssey level design retune (docs/ODYSSEY_LEVEL_DESIGN_AUDIT_2026-11.md, phase 1 and 1b).
+ * Odyssey level design retune (docs/ODYSSEY_LEVEL_DESIGN_AUDIT_2026-11.md: phase 1 and 1b, and pass 2, §8).
  *
  * Applied to the assembled campaign, keyed by PUBLIC orb id, so every number here is the one the player
  * meets and the one the audit measured (3,600 shipped attempts against the same seeds). Generated from the
@@ -64,19 +64,19 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         },
     },
     // Pace the first boss to what chapter 1 taught (420 → 246 ms instead of 205 → 120), 30 lines instead of 40.
-    // Drop the multiplier, which no goal reads. "No singles" can't sit beside cascades, so three stars ask for 6
-    // cascades and a 3-wave chain.
+    // Pass 2: its three stars came on their own in a cascade well, even at casual pace, so two stars ask for 4
+    // cascades and three for 7 cascades and a 4-wave chain.
     4: {
         mechanics: { speed: { startLevel: 3, fixedDropInterval: 420, levelProgression: true } },
         victory: {
             primary: { type: 'lines', target: 30 },
             bonuses: [
-                { type: 'cascade', target: 6, description: 'Trigger 6 cascades' },
-                { type: 'max-cascade-depth', target: 3, description: 'Trigger a 3-wave chain' },
+                { type: 'cascade', target: 7, description: 'Trigger 7 cascades' },
+                { type: 'max-cascade-depth', target: 4, description: 'Trigger a 4-wave chain' },
             ],
         },
         modifiers: { active: ['gravity-cascade'] },
-        stars: { one: { lines: 30 }, two: { lines: 30, cascades: 3 }, three: { lines: 30, bonuses: 2 } },
+        stars: { one: { lines: 30 }, two: { lines: 30, cascades: 4 }, three: { lines: 30, bonuses: 2 } },
     },
     // Keep.
     5: { role: 'rival' },
@@ -206,9 +206,9 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
             three: { lines: 30, tetrises: 3, bonuses: 1 },
         },
     },
-    // The boss now tests what the chapter taught: score with the multiplier against the chapter's tightest clock
-    // (30,000 in 300 s, 0.43 pieces/s over the chapter's longest solo run) on the cascade well. Three stars:
-    // within 145 s and a 4-wave chain.
+    // The boss tests what the chapter taught: score with the multiplier against the chapter's tightest clock
+    // (30,000 in 300 s) over a cascade floor. Pass 2: a hybrid well paced like the chapter's test (350 ms,
+    // speeding up with lines) instead of a calm 670 ms, so the boss is its chapter's peak, not its easiest orb.
     17: {
         victory: {
             primary: { type: 'score', target: 30000 },
@@ -218,8 +218,12 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         modifiers: { active: ['gravity-cascade', 'combo-multiplier', 'time-attack'] },
         stars: {
             one: { score: 30000 },
-            two: { score: 30000, time: 185 },
-            three: { score: 30000, time: 145, maxCascadeDepth: 4 },
+            two: { score: 30000, time: 180 },
+            three: { score: 30000, time: 140, maxCascadeDepth: 4 },
+        },
+        mechanics: {
+            baseMode: 'hybrid',
+            speed: { startLevel: 4, fixedDropInterval: 350, levelProgression: true },
         },
         mechanicFocus: 'score',
     },
@@ -235,33 +239,44 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
             three: { score: 22000, cascades: 8 },
         },
     },
-    // Pace 300 → 176 ms instead of 205 → 120. The uncounted 6-Quad bonus becomes a 4-Quad ask that three stars
-    // need.
+    // Pass 2: digging comes back as practice (taught on orb 8): dig 8 of 10 rubble rows out of the ice at a steady
+    // 300 ms, instead of a third score orb in a chapter that alternated score and cascades.
     21: {
-        mechanics: { speed: { startLevel: 3, fixedDropInterval: 300, levelProgression: true } },
-        victory: { bonuses: [{ type: 'tetris-count', target: 4, description: 'Clear 4 Quads' }] },
-        stars: {
-            one: { score: 21000 },
-            two: { score: 21000, time: 140 },
-            three: { score: 21000, time: 110, bonuses: 1 },
+        mechanics: {
+            speed: { startLevel: 4, fixedDropInterval: 300, levelProgression: false },
+            baseMode: 'standard',
+            board: { columns: 10, rows: 20, startingRows: 10 },
         },
+        victory: {
+            bonuses: [],
+            primary: { type: 'rubble', target: 8 },
+            failure: { type: 'top-out', value: null },
+        },
+        stars: {
+            one: { rubbleCleared: 8 },
+            two: { rubbleCleared: 8, time: 50 },
+            three: { rubbleCleared: 8, time: 35 },
+        },
+        modifiers: { active: [] },
+        mechanicFocus: 'dig',
     },
-    // No longer a flat repeat of orb 20: 11 cascades and 5 rubble rows, at 680 ms. Three stars: a 4-wave chain or
-    // a tidy run (within 85 pieces), the player's choice.
+    // No longer a flat repeat of orb 20: cascades over 5 rubble rows at 680 ms. Pass 2: the chapter's rest, 9
+    // cascades instead of 11, with a 70-piece budget for the tidy-run star.
     22: {
         mechanics: { board: { startingRows: 5 }, speed: { fixedDropInterval: 680 } },
         victory: {
-            primary: { type: 'cascade', target: 11 },
+            primary: { type: 'cascade', target: 9 },
             bonuses: [
                 { type: 'max-cascade-depth', target: 4, description: 'Trigger a 4-wave chain' },
-                { type: 'pieces', target: 85, description: 'Finish within 85 pieces' },
+                { type: 'pieces', target: 70, description: 'Finish within 70 pieces' },
             ],
         },
         stars: {
-            one: { cascades: 11 },
-            two: { cascades: 11, maxCascadeDepth: 3 },
-            three: { cascades: 11, maxCascadeDepth: 3, bonuses: 1 },
+            one: { cascades: 9 },
+            two: { cascades: 9, maxCascadeDepth: 3 },
+            three: { cascades: 9, maxCascadeDepth: 3, bonuses: 1 },
         },
+        role: 'release',
     },
     // Slower gravity (250 → 184 ms instead of 99 → 84) with a real clock: 34 lines in 200 s. Star times ask 0.8
     // and 1.17 pieces/s.
@@ -274,16 +289,29 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         },
         stars: { one: { lines: 34 }, two: { lines: 34, time: 110 }, three: { lines: 34, time: 75 } },
     },
-    // Remove the cliff (650 → 307 ms); the target rises 9% to 17,500 for the start-level change. The uncounted
-    // bonuses are gone.
+    // Pass 2: the rising tide arrives gently, as chapter 4's twist on the coast where the land rises: clear 24
+    // lines while rubble rows rise (the first at 15 s, every 12 s tightening to every 6 s over 4 minutes) at a
+    // steady 500 ms.
     24: {
-        mechanics: { speed: { startLevel: 2, fixedDropInterval: 650, levelProgression: true } },
-        victory: { primary: { type: 'score', target: 17500 }, bonuses: [] },
-        stars: {
-            one: { score: 17500 },
-            two: { score: 17500, time: 125 },
-            three: { score: 17500, time: 85 },
+        mechanics: {
+            speed: { startLevel: 2, fixedDropInterval: 500, levelProgression: false },
+            baseMode: 'standard',
+            board: { columns: 10, rows: 20, startingRows: 0 },
+            tide: {
+                startSeconds: 15,
+                firstEverySeconds: 12,
+                lastEverySeconds: 6,
+                rampSeconds: 240,
+            },
         },
+        victory: {
+            primary: { type: 'lines', target: 24 },
+            bonuses: [],
+            failure: { type: 'top-out', value: null },
+        },
+        stars: { one: { lines: 24 }, two: { lines: 24, time: 80 }, three: { lines: 24, time: 50 } },
+        modifiers: { active: [] },
+        role: 'twist',
     },
     // Keep the tall-well cascade boss. Drop the inert multiplier and the uncounted 6-wave bonus.
     25: { victory: { bonuses: [] }, modifiers: { active: ['gravity-cascade'] } },
@@ -339,12 +367,22 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
             three: { cascades: 10, maxCascadeDepth: 4 },
         },
     },
-    // Pace 200 → 159 ms instead of 73 → 58; same lines and clock. The separate time bonus folds into the star
-    // times.
+    // Pass 2: chapter 5 tests the Quads it teaches on orb 29: 4 Quads within 150 s at a steady 240 ms, instead of
+    // the third lines-against-the-clock test.
     31: {
-        mechanics: { speed: { startLevel: 8, fixedDropInterval: 200, levelProgression: true } },
-        victory: { bonuses: [] },
-        stars: { one: { lines: 37 }, two: { lines: 37, time: 105 }, three: { lines: 37, time: 75 } },
+        mechanics: {
+            speed: { startLevel: 6, fixedDropInterval: 240, levelProgression: false },
+            baseMode: 'standard',
+            board: { columns: 10, rows: 20, startingRows: 0 },
+        },
+        victory: {
+            bonuses: [],
+            primary: { type: 'tetrises', target: 4 },
+            failure: { type: 'time', value: 150 },
+        },
+        stars: { one: { tetrises: 4 }, two: { tetrises: 4, time: 70 }, three: { tetrises: 4, time: 50 } },
+        modifiers: { active: ['time-attack'] },
+        mechanicFocus: 'quads',
     },
     // No longer a second boss in a row: a "wonder" showcase. 14 cascades at 580 ms; stars after the goal at 18,
     // then 22 cascades with a 4-wave chain.
@@ -398,20 +436,27 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         victory: { bonuses: [] },
         stars: { one: { lines: 36 }, two: { lines: 36, time: 85 }, three: { lines: 36, time: 60 } },
     },
-    // Close to a wall, now a test: 50,000 in 240 s at 190 → 133 ms (0.65 pieces/s instead of 0.90). Three stars
-    // add 10 cascades.
+    // Pass 2: the blood moon pulls the tide: clear 36 lines while rubble rows rise (the first at 6 s, every 6 s
+    // tightening to every 3 s over 150 s) at a steady 190 ms, instead of the third score race in a cascade well.
     38: {
-        mechanics: { speed: { startLevel: 8, fixedDropInterval: 190, levelProgression: true } },
+        mechanics: {
+            speed: { startLevel: 8, fixedDropInterval: 190, levelProgression: false },
+            baseMode: 'standard',
+            board: { columns: 10, rows: 20, startingRows: 0 },
+            tide: {
+                startSeconds: 6,
+                firstEverySeconds: 6,
+                lastEverySeconds: 3,
+                rampSeconds: 150,
+            },
+        },
         victory: {
-            primary: { type: 'score', target: 50000 },
-            failure: { type: 'time', value: 240 },
-            bonuses: [{ type: 'cascade', target: 10, description: 'Trigger 10 cascades' }],
+            primary: { type: 'lines', target: 36 },
+            failure: { type: 'top-out', value: null },
+            bonuses: [],
         },
-        stars: {
-            one: { score: 50000 },
-            two: { score: 50000, time: 155 },
-            three: { score: 50000, time: 130, bonuses: 1 },
-        },
+        stars: { one: { lines: 36 }, two: { lines: 36, time: 80 }, three: { lines: 36, time: 60 } },
+        modifiers: { active: [] },
     },
     // Phase 3's survival goal ("keep the ember alive"): last 90 seconds from 170 ms while the pieces fall twice as
     // fast every 2:30, then play on; two stars at 3 minutes, three at 5. A twist between the arc's two tests
@@ -435,20 +480,21 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         stars: { one: { survived: 90 }, two: { survived: 180 }, three: { survived: 300 } },
         role: 'twist',
     },
-    // 45 lines in 210 s at 170 → 145 ms (0.55 pieces/s for one star instead of 0.76). Three stars: within 95 s and
-    // 6 Quads, instead of 12 Quads that no policy reached.
+    // Pass 2: lines against the clock in a cascade well (40 lines in 180 s, 30 rows over 6 rubble rows, 190 ms),
+    // so cascades pay under time pressure, instead of the fourth plain lines-against-the-clock test.
     40: {
-        mechanics: { speed: { startLevel: 11, fixedDropInterval: 170, levelProgression: true } },
+        mechanics: {
+            speed: { startLevel: 8, fixedDropInterval: 190, levelProgression: false },
+            baseMode: 'hybrid',
+            board: { columns: 10, rows: 30, startingRows: 6 },
+        },
         victory: {
-            primary: { type: 'lines', target: 45 },
-            failure: { type: 'time', value: 210 },
-            bonuses: [{ type: 'tetris-count', target: 6, description: 'Clear 6 Quads' }],
+            primary: { type: 'lines', target: 40 },
+            failure: { type: 'time', value: 180 },
+            bonuses: [],
         },
-        stars: {
-            one: { lines: 45 },
-            two: { lines: 45, time: 115 },
-            three: { lines: 45, time: 95, bonuses: 1 },
-        },
+        stars: { one: { lines: 40 }, two: { lines: 40, time: 90 }, three: { lines: 40, time: 65 } },
+        modifiers: { active: ['gravity-cascade', 'time-attack'] },
     },
     // The rest after the tests: 40,000 at 200 → 140 ms instead of 54,000 at 73 → 48. Star times are real; three
     // stars add 6 Quads.
@@ -465,34 +511,47 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         },
         role: 'release',
     },
-    // Second-arc opener: 45 lines at 160 → 136 ms instead of 56 at 54 → 46. Star times are real; three stars add 5
-    // Quads.
+    // Pass 2: the digging test: dig 11 of 12 rubble rows out of the dunes at a steady 180 ms in a 24-row well,
+    // instead of the chapter's third lines orb.
     42: {
-        mechanics: { speed: { startLevel: 11, fixedDropInterval: 160, levelProgression: true } },
+        mechanics: {
+            speed: { startLevel: 8, fixedDropInterval: 180, levelProgression: false },
+            baseMode: 'hybrid',
+            board: { columns: 10, rows: 24, startingRows: 12 },
+        },
         victory: {
-            primary: { type: 'lines', target: 45 },
-            bonuses: [{ type: 'tetris-count', target: 5, description: 'Clear 5 Quads' }],
+            primary: { type: 'rubble', target: 11 },
+            bonuses: [],
+            failure: { type: 'top-out', value: null },
         },
         stars: {
-            one: { lines: 45 },
-            two: { lines: 45, time: 115 },
-            three: { lines: 45, time: 95, bonuses: 1 },
+            one: { rubbleCleared: 11 },
+            two: { rubbleCleared: 11, time: 90 },
+            three: { rubbleCleared: 11, time: 65 },
         },
+        modifiers: { active: [] },
+        mechanicFocus: 'dig',
     },
-    // Its own rest orb: 30,000 at 260 → 158 ms. Real star times; three stars add 4 Quads. The slow start goes: the
-    // pace is already gentle.
+    // Pass 2 (D9): the chain comes back as practice: trigger a 4-wave chain within 150 s in a deep rubble well (32
+    // rows, 10 rubble rows, 600 ms), instead of a second score rest.
     43: {
-        mechanics: { speed: { startLevel: 5, fixedDropInterval: 260, levelProgression: true } },
-        modifiers: { active: ['combo-multiplier'] },
+        mechanics: {
+            speed: { startLevel: 4, fixedDropInterval: 600, levelProgression: false },
+            baseMode: 'infinity',
+            board: { columns: 10, rows: 32, startingRows: 10 },
+        },
+        modifiers: { active: ['gravity-cascade', 'time-attack'] },
         victory: {
-            primary: { type: 'score', target: 30000 },
-            bonuses: [{ type: 'tetris-count', target: 4, description: 'Clear 4 Quads' }],
+            primary: { type: 'combo', target: 4 },
+            bonuses: [
+                { type: 'pieces', target: 60, description: 'Finish within 60 pieces' },
+                { type: 'pieces', target: 40, description: 'Finish within 40 pieces' },
+            ],
+            failure: { type: 'time', value: 150 },
         },
-        stars: {
-            one: { score: 30000 },
-            two: { score: 30000, time: 135 },
-            three: { score: 30000, time: 110, bonuses: 1 },
-        },
+        stars: { one: { combo: 4 }, two: { combo: 4, bonuses: 1 }, three: { combo: 4, bonuses: 2 } },
+        role: 'reinforce',
+        mechanicFocus: 'chain',
     },
     // No longer a duplicate of orb 43: a Quad practice, 6 Quads at a steady 260 ms. Two stars within 120 pieces;
     // three also within 100 s.
@@ -537,16 +596,17 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
             three: { lines: 32, time: 70, bonuses: 1 },
         },
     },
-    // The black hole stays the chapter's signature: 20 cascades at 520 ms instead of 25 at 460. Stars after the
-    // goal at 24 and 28 cascades.
+    // The black hole stays the chapter's signature: 20 cascades instead of 25. Pass 2: a steady 340 ms instead of
+    // 520 brings it within 0.3 of its chapter's test on the index; stars after the goal at 26 cascades with a
+    // 4-wave chain, then 32 with a 5-wave chain.
     47: {
-        mechanics: { speed: { fixedDropInterval: 520 } },
+        mechanics: { speed: { fixedDropInterval: 340 } },
         victory: { primary: { type: 'cascade', target: 20 }, bonuses: [] },
         modifiers: { active: ['gravity-cascade'] },
         stars: {
             one: { cascades: 20 },
-            two: { cascades: 24, maxCascadeDepth: 3 },
-            three: { cascades: 28, maxCascadeDepth: 4 },
+            two: { cascades: 26, maxCascadeDepth: 4 },
+            three: { cascades: 32, maxCascadeDepth: 5 },
         },
     },
     // Capped at 300 actions a minute (tier 6 plays at 460).
@@ -564,50 +624,62 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
             three: { score: 36000, tetrises: 6 },
         },
     },
-    // The wall becomes the chapter's first clocked orb: 52,000 in 240 s at 170 → 126 ms (0.75 pieces/s instead of
-    // 1.12).
+    // Pass 2: the sprint moves here from orb 51 (50 lines in 180 s, 120 → 105 ms, still the campaign's fastest),
+    // so chapter 7 opens on its hardest test and the mirrored twist follows; replaces the fifth score race in a
+    // cascade well.
     50: {
-        mechanics: { speed: { startLevel: 9, fixedDropInterval: 170, levelProgression: true } },
-        victory: {
-            primary: { type: 'score', target: 52000 },
-            failure: { type: 'time', value: 240 },
-            bonuses: [{ type: 'cascade', target: 12, description: 'Trigger 12 cascades' }],
+        mechanics: {
+            speed: { startLevel: 13, fixedDropInterval: 120, levelProgression: true },
+            baseMode: 'standard',
+            board: { columns: 10, rows: 20, startingRows: 0 },
         },
-        stars: {
-            one: { score: 52000 },
-            two: { score: 52000, time: 170 },
-            three: { score: 52000, time: 145, bonuses: 1 },
-        },
-        role: 'twist',
-    },
-    // The sprint stays the fastest orb in the campaign (120 → 105 ms) but asks 50 lines in 180 s (0.72 pieces/s
-    // instead of 1.14).
-    51: {
-        mechanics: { speed: { startLevel: 13, fixedDropInterval: 120, levelProgression: true } },
         victory: {
             primary: { type: 'lines', target: 50 },
             failure: { type: 'time', value: 180 },
             bonuses: [],
         },
         stars: { one: { lines: 50 }, two: { lines: 50, time: 125 }, three: { lines: 50, time: 90 } },
+        modifiers: { active: ['time-attack'] },
+        role: 'test',
     },
-    // A mid-chapter test, no longer a crownless boss: 14 cascades instead of 22. Stars: a 4-wave chain, then also
-    // a 5-wave chain or a tidy run (within 95 pieces).
+    // Pass 2 (D10): a twist that changes the rules: 30 lines with mirrored controls at a steady 240 ms, so
+    // mirroring is chapter 7's "other dimension" with orb 53. The sprint moved to orb 50.
+    51: {
+        mechanics: {
+            speed: { startLevel: 6, fixedDropInterval: 240, levelProgression: false },
+            baseMode: 'standard',
+            board: { columns: 10, rows: 20, startingRows: 0 },
+        },
+        victory: {
+            primary: { type: 'lines', target: 30 },
+            failure: { type: 'top-out', value: null },
+            bonuses: [],
+        },
+        stars: { one: { lines: 30 }, two: { lines: 30, time: 80 }, three: { lines: 30, time: 55 } },
+        modifiers: { active: ['mirror'] },
+        role: 'twist',
+    },
+    // Pass 2 (D9): the chain test: trigger a 4-wave chain within 240 s from a one-row floor (27 rows, 550 ms),
+    // instead of a cascade count whose chains were only star asks. An empty floor made the chain a matter of luck
+    // (24 or 300 pieces).
     52: {
         victory: {
-            primary: { type: 'cascade', target: 14 },
+            primary: { type: 'combo', target: 4 },
             bonuses: [
-                { type: 'max-cascade-depth', target: 5, description: 'Trigger a 5-wave chain' },
-                { type: 'pieces', target: 95, description: 'Finish within 95 pieces' },
+                { type: 'pieces', target: 140, description: 'Finish within 140 pieces' },
+                { type: 'pieces', target: 100, description: 'Finish within 100 pieces' },
             ],
+            failure: { type: 'time', value: 240 },
         },
-        modifiers: { active: ['gravity-cascade'] },
-        stars: {
-            one: { cascades: 14 },
-            two: { cascades: 14, maxCascadeDepth: 4 },
-            three: { cascades: 14, maxCascadeDepth: 4, bonuses: 1 },
+        modifiers: { active: ['gravity-cascade', 'time-attack'] },
+        stars: { one: { combo: 4 }, two: { combo: 4, bonuses: 1 }, three: { combo: 4, bonuses: 2 } },
+        mechanics: {
+            baseMode: 'infinity',
+            board: { columns: 10, rows: 27, startingRows: 1 },
+            speed: { startLevel: 4, fixedDropInterval: 550, levelProgression: false },
         },
         role: 'test',
+        mechanicFocus: 'chain',
     },
     // Chapter 7 is "another dimension": mirrored controls on a slow, short orb (24 lines, 500 ms, 3 rubble rows
     // instead of 36 lines and 6).
@@ -620,7 +692,7 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
     // Keep the rehearsal for orb 55; retag it.
     54: { role: 'reinforce' },
     // The capstone stays the longest orb but becomes possible: 160,000 in 600 s (0.70 pieces/s instead of 0.98).
-    // Stars after the goal: 210,000 with 20 cascades, then 270,000 with 26 cascades and a 5-wave chain.
+    // Pass 2: a steady 340 ms instead of 500, so the ten-minute final exam asks more of a casual player.
     55: {
         victory: {
             primary: { type: 'score', target: 160000 },
@@ -635,6 +707,7 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
             two: { score: 210000, cascades: 20 },
             three: { score: 270000, cascades: 26, maxCascadeDepth: 5 },
         },
+        mechanics: { speed: { fixedDropInterval: 340 } },
     },
     // Tier 6 instead of 7 (D8): tier 7 looks two pieces ahead, which made Prism as hard as the last rival for a
     // person. Capped at 330 actions a minute (tier 6 plays at 460).
@@ -653,29 +726,44 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         },
         role: 'arrival',
     },
-    // Shorter (34,000 instead of 46,000) at 190 → 125 ms instead of 99 → 58. Real star times; three stars add 10
-    // cascades.
+    // The encore's twist: survive the rising tide (rubble rows rise from below, faster over time) for a minute at
+    // a steady 160 ms, then play on; two stars at 2 minutes, three at 3. Replaces a score orb with the multiplier.
     58: {
-        mechanics: { speed: { startLevel: 6, fixedDropInterval: 190, levelProgression: true } },
+        victoryLapPolicy: 'showcase',
+        mechanics: {
+            speed: { startLevel: 6, fixedDropInterval: 160, levelProgression: false },
+            tide: {
+                startSeconds: 8,
+                firstEverySeconds: 6,
+                lastEverySeconds: 2,
+                rampSeconds: 180,
+            },
+        },
+        modifiers: { active: [] },
         victory: {
-            bonuses: [{ type: 'cascade', target: 10, description: 'Trigger 10 cascades' }],
-            primary: { type: 'score', target: 34000 },
+            primary: { type: 'time', target: 60 },
+            failure: { type: 'top-out', value: null },
+            bonuses: [],
         },
-        stars: {
-            one: { score: 34000 },
-            two: { score: 34000, time: 135 },
-            three: { score: 34000, time: 115, bonuses: 1 },
-        },
-        role: 'reinforce',
+        stars: { one: { survived: 60 }, two: { survived: 120 }, three: { survived: 180 } },
+        role: 'twist',
     },
-    // The encore boss comes down from a wall to chapter 7's level instead of climbing past it: 70,000 in 300 s at
-    // 150 → 117 ms (0.70 pieces/s instead of 1.62). Stars after the goal: 115,000 with 14 cascades, then 140,000
-    // with 18 and a 5-wave chain.
+    // Pass 2 (D11): the encore boss scores under the rising tide its chapter just taught (the first row at 12 s,
+    // every 9 s tightening to every 3 s over 4 minutes) instead of racing a clock; the showcase lap ends when the
+    // tide wins. Stars after the goal: 115,000 with 14 cascades, then 140,000 with 18 and a 5-wave chain.
     59: {
-        mechanics: { speed: { startLevel: 11, fixedDropInterval: 150, levelProgression: true } },
+        mechanics: {
+            speed: { startLevel: 11, fixedDropInterval: 150, levelProgression: true },
+            tide: {
+                startSeconds: 12,
+                firstEverySeconds: 9,
+                lastEverySeconds: 3,
+                rampSeconds: 240,
+            },
+        },
         victory: {
             primary: { type: 'score', target: 70000 },
-            failure: { type: 'time', value: 300 },
+            failure: { type: 'top-out', value: null },
             bonuses: [
                 { type: 'cascade', target: 18, description: 'Trigger 18 cascades' },
                 { type: 'max-cascade-depth', target: 5, description: 'Trigger a 5-wave chain' },
@@ -686,6 +774,7 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
             two: { score: 115000, cascades: 14 },
             three: { score: 140000, cascades: 18, maxCascadeDepth: 5 },
         },
+        modifiers: { active: ['gravity-cascade', 'combo-multiplier'] },
         role: 'boss',
     },
     // The last rival stays the strongest but becomes beatable: capped at 340 actions a minute (tier 8 plays at

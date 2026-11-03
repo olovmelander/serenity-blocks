@@ -1213,3 +1213,79 @@ change here.
     writes no depth and has no discard).
   - The sea adds one fetch (the surf line's break-up) and a few ALU on topside pixels.
   - The low tier skips the cloud trace, as before.
+
+## §22. The shore's depth fight (2026-11-03)
+
+Olov: *"now we need to fix the big shore on the back of the island, it flickers against the
+water."*
+
+**Measured first.** The camera was pinned (breathing off) and the board clock frozen, then stepped
+1/30 s a frame. Per pixel, the flicker is the frame-to-frame change that is not steady motion (the
+mean of `|L_i - (L_i-1 + L_i+1)/2|`). At 2560x1440, from the climb (p 0.60-0.67), the flicker lay
+in a bright line on the north beach's waterline, 1.7-2.1 km off.
+
+**The cause: a depth fight.**
+
+- With the clock frozen as well, the line still flickered almost as much. Parked, the camera still
+  moves by 1-5 mm a frame (the follow's damping), about 0.02 px on screen. That cannot flicker an
+  ordinary edge, but it re-rolls a depth fight.
+- With the sea's depth test switched off (a diagnostic only), the line was gone.
+- The camera is `PerspectiveCamera(60, aspect, 0.1, 9000)` with a standard depth buffer. One step of
+  it is about `2^-24 * z^2 / near` along a ray: 2.4 u at 2 km. Looking 15-25 degrees down at the
+  beach's 2-degree sand, the last ~0.7 u of water is inside one step: a band ~20 u wide, right on
+  the waterline. There the film is part-opaque and the surf line is drawn, and the depth test
+  between the film and the sand picked a different winner every frame. In play the camera's
+  breathing moves it far more, so the line shimmered all the time.
+- Ruled out: the terrain's LOD morph (static when parked, and continuous), any depth-texture term
+  (the waters read none) and the far surf line itself (what is left after the fix is the surf and
+  the shallows' rings really moving).
+
+**The fix** (`WATER_SHORE_DEPTH_BIAS` in `world/odyssey-water-looks.js`). The sea's film and the
+north lake's film are drawn 3 depth steps nearer the eye: a pipeline depth bias
+(`polygonOffsetUnits`). It is counted in the depth buffer's own steps, so in the world it grows with
+range exactly as the precision falls: 7 u along the ray at 2 km, 0.16 u at 300 u.
+
+- In the band where the depth test could not decide, the water now always wins. What shows there is
+  the film's own opacity, which reads the real depth over the seabed (the macro and relief plates),
+  and the surf line, which already reads the same height-based depth.
+- The undecided line moves onto the dry sand, 2-4 steps above the water. From the climb that is
+  about 1-4 u up the beach, where the film is fully clear and no foam is drawn.
+- The look of the shallows, the surf line and the beach is unchanged (same-frame crops below).
+- The camera's near and far planes and the depth buffer's kind are not touched.
+
+![p 0.65, x2: before and after frames, then before and after flicker maps (red-yellow = flicker)](images/odyssey-water-2026-11-03/north-beach-flicker-x2.png)
+
+![The same four stepped moments, before (top) and after (bottom), x4](images/odyssey-water-2026-11-03/north-beach-frame-strips.png)
+
+**Every shore, before and after** (in one session, the bias switched off and on; pixels flickering
+by more than 8 and 16 levels of 255):
+
+| Shore | Before | After |
+|---|---|---|
+| North beach, p 0.60 / 0.63 / 0.65 / 0.67 (>16) | 64 / 181 / 267 / 355 | 2 / 10 / 38 / 36 (birds) |
+| North beach, same (>8) | 279 / 463 / 723 / 1253 | 5 / 41 / 127 / 367 (birds) |
+| East coast from the climb, p 0.60 / 0.63 / 0.67 (>8) | 82 / 163 / 43 | 0 / 69 / 27 |
+| North lake's bank, the player looking down at p 0.645 (>8 / >16) | 642 / 230 | 27 / 6 |
+| South beach near, p 0.15, three boxes on the waterline (>8) | 5 / 58 / 27 | 5 / 61 / 39 (the swash, unchanged) |
+| Tarn, p 0.25 and 0.28 | no flicker | no flicker (untouched) |
+| Chapter 2's underside, p 0.09 and 0.12 | | unchanged (as alike as two frames of one moment) |
+
+High and Low tiers render; console logs clean.
+
+**Tests.** `world/odyssey-water-looks.test.js` pins the band with the game's camera numbers:
+
+- a depth step is ~2.4 u at 2 km;
+- without the bias the band lay on the waterline, where the film and the surf line show;
+- with it, from the climb's ranges and angles, the band shows nothing;
+- at any range and angle it is never worse than without the bias, and stays faint;
+- near the eye the bias is under 0.2 u of ray within 300 u;
+- the lake's film is exactly clear on the band.
+
+`tests/unit/odyssey-water-shaders.test.js` checks that both films carry the bias.
+
+**Cost.** None. A depth bias is fixed-function pipeline state: no shader work, and early depth
+rejection still works.
+
+**Not done.** The massif's snow and rock bands and the forest's outlines also shimmer a little under
+sub-pixel camera motion in these maps. That is the ground and the trees, not the water, so it is
+left alone here.

@@ -43,6 +43,15 @@
 
 import { odysseyMeadowClearingRn } from '../world/odyssey-meadow-clearing.js';
 
+/**
+ * The foals' drawn size beside the model as built, as a share of their mothers' (visibility
+ * check, 2026-11-03). As built (a foal of two or three months, 0.75 of a mare at the withers) a
+ * foal measured 20-26 px from L15-L16 at 1440p, under the ~24 px a player reads. x1.1 makes
+ * them foals of about five months, 0.83 of their mothers at the withers and 0.65 of their
+ * length: still plainly foals by their long legs, short body and big head.
+ */
+const FOAL_SIZE = 1.1;
+
 /** The band and its clock. Places are world (x, z); `size` scales the model (1 = as built). */
 export const ODYSSEY_HORSES = Object.freeze({
     /** Drawn larger than life, like the act's other life. */
@@ -126,12 +135,23 @@ export const ODYSSEY_HORSES = Object.freeze({
             neck0: 1.58, neck1: 0.45, neck2: 0.33, head: -1.98, dip: 0, splay: 0.12,
         }),
     }),
-    /** The coats (linear albedo): body, points (mane, tail, legs), pale (the mealy muzzle and belly). */
+    /**
+     * The coats (linear albedo): body, points (mane, tail, legs), pale (the mealy muzzle and belly).
+     * The bay is a bright red bay: a darker bay sat at the meadow's own brightness and read by its
+     * hue alone (visibility check, 2026-11-03).
+     */
     coats: Object.freeze({
-        bay: Object.freeze({ body: [0.2, 0.085, 0.035], points: [0.02, 0.016, 0.014], pale: [0.42, 0.3, 0.18] }),
+        bay: Object.freeze({ body: [0.28, 0.118, 0.045], points: [0.02, 0.016, 0.014], pale: [0.52, 0.37, 0.22] }),
         dun: Object.freeze({ body: [0.42, 0.32, 0.18], points: [0.05, 0.035, 0.025], pale: [0.7, 0.62, 0.48] }),
         grey: Object.freeze({ body: [0.5, 0.5, 0.49], points: [0.16, 0.16, 0.17], pale: [0.68, 0.68, 0.66] }),
     }),
+    /**
+     * A foal's coat: its mother's colour, paler and softer (a foal is born light, woolly and
+     * mealy; the dark legs and mane come with its first moult). `pale`: how far the body goes
+     * toward the coat's pale; `points`: how far the legs and the short mane go toward the body.
+     * It also parts the foal from its mother when it stands against her.
+     */
+    foalCoat: Object.freeze({ pale: 0.4, points: 0.45 }),
     /**
      * The runs: when the lead mare sets off (loop seconds), from which place to which, and the
      * band's way between them (world x, z), round the copse or along the open band.
@@ -193,7 +213,8 @@ export const ODYSSEY_HORSES = Object.freeze({
             slot: Object.freeze([1.1, -1.5]),
             spots: Object.freeze({
                 W: Object.freeze([[-126, -344], [-121, -340]]),
-                E: Object.freeze([[-40, -322], [-36, -316]]),
+                // (A little south of where a tree hid her from L15: visibility check, 2026-11-03.)
+                E: Object.freeze([[-44, -340], [-39, -337]]),
             }),
         }),
         Object.freeze({
@@ -238,7 +259,7 @@ export const ODYSSEY_HORSES = Object.freeze({
         Object.freeze({
             name: 'foal',
             model: 'foal',
-            size: 1.0,
+            size: FOAL_SIZE,
             seed: 79,
             coat: 'dun',
             tone: 0.55,
@@ -253,7 +274,7 @@ export const ODYSSEY_HORSES = Object.freeze({
         Object.freeze({
             name: 'foal',
             model: 'foal',
-            size: 1.0,
+            size: FOAL_SIZE * 0.95, // (her mother's size)
             seed: 97,
             coat: 'bay',
             tone: 0.45,

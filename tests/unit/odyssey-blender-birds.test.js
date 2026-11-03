@@ -23,7 +23,7 @@ import {
 import * as THREE from 'three/webgpu';
 import { uniform, vec3 } from 'three/tsl';
 import {
-    FLIGHT_KIND, FLIGHT_STYLE, ODYSSEY_FLIGHTS, birdBeatOf, birdBeatWeightOf, birdWingPoseAt, birdWingPoseOf,
+    FAR_SPECK, FLIGHT_KIND, FLIGHT_STYLE, ODYSSEY_FLIGHTS, birdBeatOf, birdBeatWeightOf, birdWingPoseAt, birdWingPoseOf,
     createOdysseyFlights, flightFrameAt, flightPositionAt, foldBirdPoint, lowlandBirdModel, resolveFlightLanes,
 } from '../../src/rendering/odyssey/composition/odyssey-flights.js';
 import { ODYSSEY_BIRD_MODELS } from '../../src/rendering/odyssey/composition/odyssey-bird-models.js';
@@ -35,7 +35,7 @@ import {
     SUMMIT_BIRDS, createSummitBirds, summitBeatWeight, summitFrameAt, summitWingPose,
 } from '../../src/rendering/odyssey/composition/odyssey-summit-birds.js';
 import {
-    createEaglePose, eagleBout, eagleFlight, EAGLE_BOUTS, EAGLE_BEAT,
+    createEaglePose, eagleBout, eagleFlight, EAGLE_BOUTS, EAGLE_BEAT, ODYSSEY_EAGLE,
 } from '../../src/rendering/odyssey/composition/odyssey-eagle-flight.js';
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -55,7 +55,8 @@ const vec = (a, i) => [a[i * 3], a[(i * 3) + 1], a[(i * 3) + 2]];
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const cross = (a, b) => [(a[1] * b[2]) - (a[2] * b[1]), (a[2] * b[0]) - (a[0] * b[2]), (a[0] * b[1]) - (a[1] * b[0])];
 const dot = (a, b) => (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]);
-const lanesOf = (kind) => resolveFlightLanes().filter((l) => l.kind === kind);
+/** A kind's own lanes (the swallow fly-by has its own test: odyssey-swallow-flyby.test.js). */
+const lanesOf = (kind) => resolveFlightLanes().filter((l) => l.kind === kind && !l.flyby);
 
 /** The vertex nearest `target` (bird frame). */
 function nearest(model, target) {
@@ -554,6 +555,37 @@ describe('natural flight (2026-11-03)', () => {
     });
 });
 
+describe('seen from the rail (the 2026-11-03 visibility check)', () => {
+    it('draws each bird large enough to read, and keeps their sizes true to each other', () => {
+        const span = (id) => ODYSSEY_FLIGHTS.find((f) => f.id === id).span;
+        // Gulls 1.25x, swallows 1.54x, geese 1.3x what they were: measured in the game, specks.
+        expect(span('gulls')).toBeCloseTo(5.75, 2);
+        expect(span('swallows')).toBeCloseTo(2.0, 2);
+        expect(span('geese')).toBeCloseTo(8.6, 2);
+        // A swallow stays a small bird beside a gull (life: 0.24), a goose a big one.
+        expect(span('swallows') / span('gulls')).toBeLessThan(0.4);
+        expect(span('geese') / span('gulls')).toBeGreaterThan(1.1);
+        // A griffon is a fifth bigger than a golden eagle; the kettle now draws it so.
+        expect(SUMMIT_BIRDS.span / ODYSSEY_EAGLE.span).toBeGreaterThan(1.15);
+        expect(SUMMIT_BIRDS.span / ODYSSEY_EAGLE.span).toBeLessThan(1.35);
+    });
+
+    it('keeps a far bird a dark silhouette: under ~24 px it darkens and takes on less air', () => {
+        // Angular span at 60 degrees and 1440p: px = radians * 720 / tan(30 degrees).
+        const px = (rad) => (rad * 720) / Math.tan(Math.PI / 6);
+        expect(px(FAR_SPECK.across[1])).toBeCloseTo(24, 0);
+        expect(px(FAR_SPECK.across[0])).toBeCloseTo(6, 0);
+        // The geese darken most (a far skein against the sky), the white gulls least.
+        const [gull, swallow, goose] = FAR_SPECK.darken;
+        expect(goose).toBeGreaterThan(swallow);
+        expect(swallow).toBeGreaterThan(gull - 1e-9);
+        [...FAR_SPECK.darken, ...FAR_SPECK.air].forEach((v) => {
+            expect(v).toBeGreaterThan(0);
+            expect(v).toBeLessThan(1);
+        });
+    });
+});
+
 describe('the lowland flights draw', () => {
     it('is one material shared by one instanced draw per flock, inside the vertex-buffer limit', () => {
         const flights = createOdysseyFlights();
@@ -562,7 +594,8 @@ describe('the lowland flights draw', () => {
         flights.meshes.forEach((mesh, i) => {
             expect(mesh.material).toBe(flights.material);
             const flock = ODYSSEY_FLIGHTS[i];
-            expect(mesh.geometry.instanceCount).toBe(flock.count);
+            // The swallows' draw carries the fly-by swallow too (odyssey-swallow-flyby.js).
+            expect(mesh.geometry.instanceCount).toBe(flock.count + (flock.kind === FLIGHT_KIND.SWALLOW ? 1 : 0));
             expect(mesh.geometry.index.count).toBe(lowlandBirdModel(flock.kind).triangleCount * 3);
             // Every attribute is a vertex buffer on WebGPU; a pipeline binds at most eight.
             expect(Object.keys(mesh.geometry.attributes).length).toBeLessThanOrEqual(8);

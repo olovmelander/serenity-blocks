@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * Which Odyssey runs race on an orb's time board (Steam `OdysseyLevelTime_v5_<id>`, fastest finish first).
+ * Which Odyssey runs race on an orb's time board (Steam `OdysseyLevelTime_v6_<id>`, fastest finish first).
  */
 
 /**

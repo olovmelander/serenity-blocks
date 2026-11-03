@@ -124,8 +124,8 @@ describe('Odyssey campaign objectives', () => {
         expect(evaluator.calculateStars(level.stars, {})).toBe(1);
         expect(evaluator.calculateStars(level.stars, {}, [true, false])).toBe(2);
         expect(evaluator.calculateStars(level.stars, {}, [true, true])).toBe(3);
-        expect(getLevelById(52).stars.three.cascades).toBe(14);
-        expect(getLevelById(52).stars.three.maxCascadeDepth).toBe(4);
+        // Pass 2: orb 52 is the chain test; its quality stars count piece budgets.
+        expect(getLevelById(52).stars.three).toEqual({ combo: 4, bonuses: 2 });
     });
 
     it('retains meaningful quality tiers and extended showcase goals', () => {
@@ -163,7 +163,7 @@ describe('Odyssey campaign objectives', () => {
             if (deadline) expect(Number(deadline[1])).toBe(failure.value);
         }
         expect(getLevelById(37).metadata.tip).not.toContain('ms');
-        expect(getLevelById(51).metadata.tip).not.toContain('ms');
+        expect(getLevelById(50).metadata.tip).not.toContain('ms');
         for (const id of DUEL_IDS) {
             // The goal line carries the knockouts; the card shows the world and who the rival is.
             const duel = getLevelById(id);

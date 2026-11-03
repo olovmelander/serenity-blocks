@@ -72,14 +72,15 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 describe('Odyssey campaign leaderboard identity', () => {
     it('assigns new boards to the reordered 60-orb campaign', () => {
         // Campaign v5 ends every chapter on its rival duel, so slot ids name different challenges; the level
-        // design retune (2026-11) changed the orbs' goals and speeds, so times moved to v5 boards.
-        expect(STEAM_LEADERBOARDS.ODYSSEY_LEVEL_TIME_PREFIX).toBe('OdysseyLevelTime_v5_');
+        // design retune (2026-11) changed the orbs' goals and speeds, so times moved to v5 boards, and its pass 2
+        // changed 16 more orbs, so times moved again to v6 (D12).
+        expect(STEAM_LEADERBOARDS.ODYSSEY_LEVEL_TIME_PREFIX).toBe('OdysseyLevelTime_v6_');
         expect(STEAM_LEADERBOARDS.ODYSSEY_TOTAL_STARS).toBe('OdysseyTotalStars_v3');
     });
 
     it.each([
         'OdysseyLevelTime_v1_42', 'OdysseyLevelTime_v2_46', 'OdysseyLevelTime_v3_60', 'OdysseyLevelTime_v4_59',
-        'OdysseyLevelTime_v5_59',
+        'OdysseyLevelTime_v5_59', 'OdysseyLevelTime_v6_59',
     ])(
         'retains the fastest offline result and creates %s ascending',
         async (name) => {

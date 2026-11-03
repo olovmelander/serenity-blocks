@@ -1,13 +1,15 @@
 # Odyssey level design audit and plan (2026-11-02)
 
-**Status: approved by the owner on 2026-11-03, every decision as recommended (D8 included), and implemented:** phases
+**Pass 2 (2026-11-03, [§8](#8-pass-2-variety-and-level-2026-11-03)): a variety and level audit of all 60 orbs with 16 more changes, approved (D9–D13) and built on branch `feature/odyssey-level-design-pass2`.**
+
+**Pass 1 status: approved by the owner on 2026-11-03, every decision as recommended (D8 included), and implemented:** phases
 1–1c (the retune, the rival caps and the test tooling) and phase 2's openings for orbs 2 and 12, on branch
 `feature/odyssey-level-design-phase1` (handover:
 [ODYSSEY_LEVEL_DESIGN_PHASE1_2026-11.md](ODYSSEY_LEVEL_DESIGN_PHASE1_2026-11.md)), then phase 3's new goals (dig out
-the rubble on orb 8, survive on orb 39) and in-game screenshots of the openings (§5.10, handover:
-[ODYSSEY_LEVEL_DESIGN_PHASE3_2026-11.md](ODYSSEY_LEVEL_DESIGN_PHASE3_2026-11.md)). This audits all 60 Odyssey orbs as
-they ship and proposes a campaign that is fun first, genuinely challenging and consistent from orb 1 to orb 60. It
-builds on [ODYSSEY_GAMEPLAY_AUDIT_2026-10.md](ODYSSEY_GAMEPLAY_AUDIT_2026-10.md),
+the rubble on orb 8, survive on orb 39, the rising tide on orb 58) and in-game screenshots of the openings (§5.10,
+handover: [ODYSSEY_LEVEL_DESIGN_PHASE3_2026-11.md](ODYSSEY_LEVEL_DESIGN_PHASE3_2026-11.md)). This audits all 60
+Odyssey orbs as they ship and proposes a campaign that is fun first, genuinely challenging and consistent from orb 1
+to orb 60. It builds on [ODYSSEY_GAMEPLAY_AUDIT_2026-10.md](ODYSSEY_GAMEPLAY_AUDIT_2026-10.md),
 [ODYSSEY_JOURNEY_DIFFICULTY_2026-10.md](ODYSSEY_JOURNEY_DIFFICULTY_2026-10.md),
 [ODYSSEY_BALANCE_HANDOVER_2026-10.md](ODYSSEY_BALANCE_HANDOVER_2026-10.md),
 [ODYSSEY_60_ORB_CAMPAIGN_2026-10.md](ODYSSEY_60_ORB_CAMPAIGN_2026-10.md),
@@ -24,6 +26,7 @@ builds on [ODYSSEY_GAMEPLAY_AUDIT_2026-10.md](ODYSSEY_GAMEPLAY_AUDIT_2026-10.md)
 5. [Part 3: improvement plan](#5-part-3-improvement-plan)
 6. [Decisions for the owner](#6-decisions-for-the-owner)
 7. [Reproduce](#7-reproduce)
+8. [Pass 2: variety and level (2026-11-03)](#8-pass-2-variety-and-level-2026-11-03)
 
 ---
 
@@ -89,7 +92,7 @@ the charm rules. It is mostly data:
 - **Hardest solo orb: 10 → 5.0** (orb 51, chapter 7's sprint). The fastest fall before one star goes from 37 to 105 ms
   a row, and the highest one-star clock pace from 1.62 to 0.75 pieces a second.
 - **Smoother and still climbing.** The largest rise from one orb to the next within a chapter goes from +6.0 to +2.5.
-  The average solo index per chapter runs 1.1, 1.1, 0.9, 2.1, 2.6, 3.1, 2.9 and 3.6.
+  The average solo index per chapter runs 1.1, 1.1, 0.9, 2.1, 2.6, 3.0, 2.9 and 3.4.
 - **Stars.** Free three stars 13 → 0, unreachable three stars 8 → 0, uncounted extra goals 26 → 0.
 - **Rules.** 127 breaches of the checkable design rules on 42 orbs → 0.
 - **Clears.** The novice proxy clears 93% of attempts (84% shipped); the regular proxy wins 85% of rival matches (68%).
@@ -397,7 +400,7 @@ them, and the regular proxy clears 45 and 59 on no seed. The rivals 56 and 60 lo
 | 5 Sky | 27–34 | 4.6 (10.0) → 2.9 (4.9) | 1 → 0 | 1 | 2 → 0 | score 3, lines 2, cascade 2, frags 1 |
 | 6 Space | 35–48 | 5.4 (10.0) → 3.2 (5.6) | 1 → 0 | 5 | 3 → 0 | score 7, cascade 2, lines 4, frags 1 |
 | 7 Black Hole | 49–56 | 5.9 (9.9) → 3.4 (6.6) | 3 → 0 | 1 | 1 → 0 | score 3, lines 2, cascade 2, frags 1 |
-| 8 Urban Dreams Encore | 57–60 | 7.2 (10.0) → 4.9 (8.8) | 2 → 1 | 2 | 0 → 0 | lines 1, score 2, frags 1 |
+| 8 Urban Dreams Encore | 57–60 | 7.2 (10.0) → 4.8 (8.8) | 2 → 1 | 2 | 0 → 0 | lines 1, score 2, frags 1 |
 
 - **Across the campaign** the curve doesn't rise; it saws. In chapters 1–4 it swings between about 0 and 4 orb to orb,
   driven by arrivals that start fast and rests that start at 720 ms. From orb 33 it jumps between walls (8–10) and
@@ -683,7 +686,7 @@ proxy (Q), which judges the Quad goals.
 | # | Orb | Role | Change (old → **new**) | Why | Bots N R S E Q: now → proposed | Index |
 |---|---|---|---|---|---|---|
 | 57 | Chromadelic Gateway | arrival | speed 120→84 ms → **180→126 ms** (`startLevel 5→5`, `fixedDropInterval None→180`); stars ≤210 s / ≤158 s → **≤75 s / ≤65 s, 1 extra goal**; extra goals [tetris-count=8, max-cascade-depth=6] → **[tetris-count=4]** | Pace 180 → 126 ms instead of 120 → 84. Real star times; three stars add 4 Quads. | 5/5 5/5 5/5 5/5 5/5 → 5/5 5/5 5/5 5/5 5/5 | 3.9 → 2.9 |
-| 58 | Neon Dusk | practise | goal score 46,000 → **score 34,000**; speed 99→58 ms → **190→125 ms** (`startLevel 6→6`, `fixedDropInterval None→190`); stars ≤460 s / ≤345 s → **≤135 s / ≤115 s, 1 extra goal**; extra goals [cascade=15, max-cascade-depth=6] → **[cascade=10]** | Shorter (34,000 instead of 46,000) at 190 → 125 ms instead of 99 → 58. Real star times; three stars add 10 cascades. | 5/5 5/5 4/5 5/5 3/5 → 5/5 5/5 4/5 5/5 4/5 | 4.8 → 3.0 |
+| 58 | Neon Dusk | twist | goal score 46,000 → **survive 60 s**; speed 99→58 ms → **160 ms** (`startLevel 6→6`, `fixedDropInterval None→160`); **rising tide**: a rubble row every 6 → 2 s over 180 s, from 8 s; modifiers ×M → **—**; stars ≤460 s / ≤345 s → **survive 120 s / survive 180 s**; extra goals [cascade=15, max-cascade-depth=6] → **[—]** | The encore's twist: survive the rising tide (rubble rows rise from below, faster over time) for a minute at a steady 160 ms, then play on; two stars at 2 minutes, three at 3. Replaces a score orb with the multiplier. | 5/5 5/5 4/5 5/5 3/5 → 5/5 5/5 4/5 5/5 2/5 | 4.8 → 2.4 |
 | 59 | Rainlit Streets | boss | goal score 160,000 in 210 s → **score 70,000 in 300 s**; speed 54→37 ms → **150→117 ms** (`startLevel 11→11`, `fixedDropInterval None→150`); stars score 200,000, 16 cascades, 4-wave chain / score 240,000, 20 cascades, 6-wave chain → **score 115,000, 14 cascades / score 140,000, 18 cascades, 5-wave chain**; extra goals [cascade=20, max-cascade-depth=6] → **[cascade=18, max-cascade-depth=5]** | The encore boss comes down from a wall to chapter 7's level instead of climbing past it: 70,000 in 300 s at 150 → 117 ms (0.70 pieces/s instead of 1.62). Stars after the goal: 115,000 with 14 cascades, then 140,000 with 18 and a 5-wave chain. | 0/5 0/5 2/5 5/5 1/5 → 5/5 5/5 5/5 5/5 3/5 | 10 → 4.9 |
 | 60 | Last Light | rival | goal Rival Neon (tier 8), 3 knockouts → **Rival Neon (tier 8), 3 knockouts, capped 340 APM** | The last rival stays the strongest but becomes beatable: capped at 340 actions a minute (tier 8 plays at 900). | 0/5 0/5 0/5 4/5 0/5 → 0/5 2/5 5/5 5/5 2/5 | 10 → 8.8 |
 
@@ -701,7 +704,7 @@ All but two are data on systems that already exist:
 | **Prepared opening** (new: `board.opening`, row strings as in Stillfall) | `applyGarbage` + Stillfall's row notation | 2 and 12 (phase 2, prototyped); 14 tried and rejected (§5.9) | the first cascade and the first Quad are one obvious placement away |
 | **Survive N seconds** (`primary: time`) | the evaluator's `time` case, a showcase lap to play on, a `survived` star key (at least N seconds) and a speed ramp (`speed.doublingSeconds`) | 39 (phase 3, built, §5.10) | a test of steadiness, not score |
 | **Dig out N rubble rows** (new: `primary: rubble`) | rubble rows counted on the settled grid by their GARBAGE cell type, which survives every clear | 8 (phase 3, built, §5.10) | gives the ocean chapter a goal of its own |
-| *Optional:* **rising tide** (a rubble row every N s) | `applyGarbage` on a timer | encore remix (not built: only if playtests want it) | a survival classic; not needed for the plan |
+| **Rising tide** (`mechanics.tide`: a rubble row every N s, tightening) | `applyGarbage` between pieces, gaps from the attempt's seed | 58 (built, §5.10) | a survival classic the bots can measure |
 
 None of these goes in `OdysseyMode.js`: it is under the line ratchet (ARCHITECTURAL_REMEDIATION_PLAN §fitness).
 They live in the data, the evaluator, `GameplayHybridEngine` and the briefing module. The deterministic-simulation rule
@@ -734,7 +737,7 @@ Implementation: an optional `versus.botOverrides` in `AUTHORED_BOT_CHALLENGES`. 
 | **1b · rivals** | `versus.botOverrides` (§5.5) | `levels.js`, `OdysseyBotMatch.js`, `puzzle-bot-controller.js` | Unit test: versus mode's config is byte-identical without overrides. Benchmark (15 seeds): at the chapter 8 rival, skilled ≥ 60% and regular ≥ 20%; at chapters 5–7, regular ≥ 40%. |
 | **1c · test tooling** | §5.7 levels 2–3: human-paced cadences (0.6, 1.0 and 1.6 pieces/s) in the benchmark, a per-attempt trace summary (tension, near-misses, reward cadence, shape, variety) and one card per orb | `scripts/odyssey-benchmark/profiles.mjs`, `runtime.mjs`, `report.mjs` | The human-paced cadences hold their target pace within ±10% on a calm orb. Cards for all 60 orbs from one overnight CPU run. |
 | **2 · prepared openings** | `board.opening` rows for 2 and 12 (and 29 if playtests ask), a briefing cue, and a tip that points at the board. Orb 14 keeps its rubble: every 3-wave puzzle needs a gap buried under a full row, which costs the players who don't solve it (§5.9). | `GameplayHybridEngine.seedStartingRows`, levels data, `odyssey-level-briefing.js`, `orb-copy.js` | Unit: an opening seeds exactly the authored cells, and each plays its lesson with the real physics (one I in the open column cascades on orb 2 and clears a Quad on orb 12). Benchmark: no proxy does worse beyond a one-seed swing over 15 seeds. Measured overnight: on orb 2 the novice proxy clears 15 of 15 (14 before) in 89 pieces instead of 128; on orb 12 the Quad proxy's median falls from 47 to 38 pieces. A stacking proxy can't judge a Quad opening: it never builds Quads, so it still needs 300–800 pieces. The real test is the playtest: do people learn the cascade and the Quad from them? Screenshots of both openings (WebGPU workflow). |
-| **3 · new goals** | Survive (with a `survived` star key and a speed ramp), dig out the rubble, optional rising tide. Built 2026-11-03 for orbs 39 and 8 (§5.10); the rising tide waits for playtests. | `VictoryConditionEvaluator`, `GameplayHybridEngine`, `objective-copy.js` | Evaluator unit tests per type; failure debrief copy; benchmark the orbs that adopt them. |
+| **3 · new goals** | Survive (with a `survived` star key and a speed ramp), dig out the rubble, the rising tide. Built 2026-11-03 for orbs 39, 8 and 58 (§5.10). | `VictoryConditionEvaluator`, `GameplayHybridEngine`, `objective-copy.js` | Evaluator unit tests per type; failure debrief copy; benchmark the orbs that adopt them. |
 | **4 · playtest** | The formative protocol in ODYSSEY_JOURNEY_DIFFICULTY (three experience groups, natural progression from orb 1), with §5.7's local attempt log, the two taps and the think-aloud orbs | playtest build only | §5.7's acceptance: medians inside the role targets, quits, boss named hardest, teach idea named. One tuning pass with the loop in §5.7, then re-verify neighbours. |
 
 ### 5.7 Test-and-tune programme: getting every orb right
@@ -825,8 +828,8 @@ attempt there had ended by 166 s. Star and extra-goal values were scored offline
 | Rival matches won by the regular proxy | 27/40 (68%) | 34/40 (85%) |
 | Fastest fall before one star (standard and hybrid) | 37 ms | 105 ms |
 | Highest one-star clock pace | 1.62 pieces/s (orb 59) | 0.75 pieces/s (orb 50) |
-| Largest index jump within a chapter | +6.0 (orb 33) | +2.5 (orb 47) |
-| Mean index | 4.1 | 2.6 |
+| Largest index jump within a chapter | +6.0 (orb 33) | +2.5 (orb 59) |
+| Mean index | 4.1 | 2.5 |
 | Orbs with free three stars | 13 | 0 |
 | Orbs whose three stars no policy reached | 8 | 0: — |
 | Orbs with uncounted extra goals | 26 | 0 |
@@ -834,7 +837,7 @@ attempt there had ended by 166 s. Star and extra-goal values were scored offline
 
 What the numbers say:
 
-- **Easier on average, by design.** The mean index drops from 4.1 to 2.6 because the walls go: most of the shipped
+- **Easier on average, by design.** The mean index drops from 4.1 to 2.5 because the walls go: most of the shipped
   difficulty was fall speed and clock pace beyond a person's reach. The challenge moves to construction (Quads, chains,
   cascades) and to the stars. Three stars now need more than a regular player's pace or a construction goal on every
   orb, and none come free.
@@ -1029,8 +1032,28 @@ whether regular players reach 3 minutes and only strong ones 5. The goal itself 
 **Gates** with both orbs: 9 of 9 over all 15 seeds, and on the tuning, fresh and combined sets; the confirmation set
 alone still misses only orb 52's three stars, as before.
 
-**Not built:** the rising tide (rubble pushing up on a timer). It stays an optional survival variant for an encore
-remix, if playtests ask for one.
+**The rising tide** (`mechanics.tide`) **on orb 58, Neon Dusk**, the encore's twist (built at the owner's request
+after phase 3). Rubble rows rise from below: the first at 8 s, then one every 6 s, tightening to one every 2 s over
+3 minutes. The goal is to survive a minute, then play on: two stars at 2 minutes, three at 3. The rows rise between
+pieces, never under a falling one, and the gaps come from the attempt's seed, holding the same column for a run of
+1–4 rows so one long I piece can dig several out at once. A row that would top the well out ends the run (a survival
+lap then finishes with the stars earned). The HUD counts down to the next row, the duels' garbage-arrival effect plays
+as rows land, and the briefing names the rule. The orb drops the score multiplier and its line-based speed-ups: a
+steady 160 ms, so the tide is the one pressure.
+
+Unlike the speed ramp on orb 39, the bots can judge the tide: it ends every run, so survival can be measured.
+
+| Orb 58, 15 seeds | Novice | Regular | Skilled | Expert | Quad builder |
+|---|---|---|---|---|---|
+| Survives the minute | 15/15 | 15/15 | 14/15 | 14/15 | 5/15 |
+| Three stars (3 minutes) | 2 | 2 | 4 | 12 | 0 |
+
+At human pace (10 seeds) the stacker survives the minute on 8 of 10 at a casual pace and 10 of 10 at regular and
+strong pace; two stars come on half or more of the runs, three stars on 2 of 10 at regular and strong pace and none
+at casual pace. The tide rewards digging technique more than raw speed, so regular and strong players earn three
+stars about equally often. The playtest question: does three minutes feel like a fair top mark?
+
+![The rising tide in game](images/odyssey-level-design-2026-11/in-game-rising-tide.jpg)
 
 **In game.** Both prepared openings (phase 2) and both new goals, captured in the real game at 30 fps with no console
 errors:
@@ -1042,6 +1065,8 @@ errors:
 | 09:50 | 8 (twist) | The chapter's digging twist asked for 28 lines, not digging. | Goal: dig out the 6 rubble rows | Novice 15 of 15; human casual 9 of 10. Kept. |
 | 09:50 | 39 | Phase 3's survival goal, first version: speed up with lines. | Goal: survive 90 s, then play on | **Rejected:** the stacker lasted the 15-minute cap at every pace. |
 | 10:15 | 39 | The speed table flattens, so survival never ends. | Ramp: twice as fast every 2:30, from 170 ms | Runs end. Bots still slide at full speed, so the extra stars come from the person model (3:00, 5:00). Kept. |
+| 11:15 | 58 (twist) | The owner asked for the rising tide. At 190 ms with a 90 s goal the novice proxy reached the goal on 3 of 5 seeds (gate 80%). | Goal 90 → 60 s, stars at 2 and 3 minutes | Novice 15 of 15; three stars not free. |
+| 11:45 | 58 | At a steady 190 ms the difficulty index read 2.0, a rise of 3.2 to the encore's boss (gate 3): the index doesn't count the tide. | Steady 190 → 160 ms, inside the encore's band | Rise 2.8; every gate passes over 15 seeds. Kept. |
 | 10:30 | 8 | Its three-star time rounded up to 30 s (1.03 pieces/s), under the 1.10 floor: a novice replayed at 1 piece/s got it on 8 of 15 seeds. | 30 → 25 s | 6 of 15; gates pass. Kept. |
 
 ---
@@ -1086,3 +1111,581 @@ ODYSSEY_PROPOSAL=artifacts/odyssey-level-design-audit-2026-11/proposal.json \
   --samples 5 --seed-start 12001 --workers 8 --max-seconds 1800 --max-pieces 3000 --wall-ms 120000 \
   --output artifacts/odyssey-level-design-audit-2026-11/proposal-stacker   # likewise cascade/steady, expert/native, quad/native
 ```
+
+---
+
+## 8. Pass 2: variety and level (2026-11-03)
+
+**Status: approved by the owner on 2026-11-03 (D9–D13 as recommended) and built on branch
+`feature/odyssey-level-design-pass2`** (handover: [ODYSSEY_LEVEL_DESIGN_PASS2_2026-11.md](ODYSSEY_LEVEL_DESIGN_PASS2_2026-11.md)).
+Phases 5 and 6 are done (§8.9); phase 7 is the playtest. Every number below was measured in a scratch worktree (main
+`b6cf474b` plus the rising-tide branch) on the same retune the branch ships.
+
+The owner asked for a second pass after phases 1–3 and the rising tide: *"audit and make a good variety and level of
+all 60 orbs, I want this experience to be varied, challenging and awesome."* Pass 1 made the campaign fair and
+consistent. Pass 2 asks whether it is **varied** (does each orb feel different, does each idea grow?) and whether it
+is **pitched right** (does each chapter build to its boss, and does the campaign keep challenging a player who has
+learned it?). It audits all 60 orbs as they ship with the tide on orb 58, and proposes changes to 16 of them.
+
+### 8.0 Summary
+
+**What's good.** Pass 1's rules hold everywhere: speed bands, clock paces, star ladders, rests and rivals. Every gate
+passes over 15 seeds. A regular player (about one piece a second) clears every solo orb on 8+ of 10 tries except the
+two Quad orbs (29, 44), and strong play earns three stars somewhere in every chapter. The set pieces are strong: the black hole (47), the 100-row capstone (55), survival
+(39) and the rising tide (58).
+
+**What's missing.**
+
+1. **Too few formulas, repeated too often.** 16 distinct orb formulas across 52 solo orbs. Thirteen
+   orbs are "N cascades in a cascade well"; six are "score against the clock in a cascade well" (17, 33, 38, 45, 50,
+   59); five are "N lines in T seconds" (15, 23, 31, 40, 51). The goal mix is lines 16, score 16, cascades 13, against
+   Quads 3, chain 1, dig 1 and survival 2.
+2. **New ideas are taught once and dropped.** Digging (8), the chain goal (14), survival (39), the rising tide (58) and
+   mirrored controls (53) each appear on one orb. Quads are taught twice (12, 29) but never tested.
+3. **Weak chapter identity in the middle.** Chapter 4 alternates score and cascades (19 to 25) with no new idea.
+   Chapter 6 runs 13 solo orbs, five of them score orbs and four lines orbs. Chapter 7's twist (50) is a copy of a test.
+4. **Bosses that aren't peaks.** Four of eight solo bosses sit below another orb of their chapter on the difficulty
+   index: 4 (1.4, below orb 3's 1.7), 17 (0.6, its chapter's *lowest*), 47 (4.1, below 45's 5.1) and 55 (2.7, below 50's
+   4.7 and 51's 5.3). Two give three stars away: 4 at any pace, 47 to a cascade player at any pace.
+5. **The late game stops challenging regular players.** From chapter 7 on, a regular player clears every solo orb on
+   10 of 10 tries; only the rivals push back.
+
+**The plan** (§8.4) changes 16 orbs and adds no engine code: every new combination uses mechanics the game already
+has.
+
+- Every idea gets **teach → practise → test**: digging on 8, 21 and 42; the rising tide on 24, 38, 58 and 59; chains on
+  14, 43 and 52; Quads on 12, 29, 31 and 44; mirrored controls on 51 and 53.
+- Each chapter gets a **signature** (§8.4.2). On the index, chapter 3's boss (17) goes from its chapter's easiest orb
+  to its peak and the black hole (47) closes in on its test. Orb 4 stops giving its three stars away, and the encore's
+  boss scores under the tide its chapter teaches (59).
+- Distinct formulas rise from 16 to 22. "Score against the clock in a cascade well"
+  drops from 6 to 3, and "N lines in T seconds" from 5 to 3. Chapter 6 uses 7 goal types instead of 5.
+- **Measured** (§8.5): every gate passes over all 15 seeds; seed set by seed set, single-seed swings show
+  on the fresh seeds (47) and the confirmation seeds (52's three stars). R1–R9 and the variety rules V1, V2 and V4
+  pass. At human pace a regular player still clears every solo orb on 8+ of 10 tries except the technique tests (29,
+  44 and the new chain test 52), and every chapter from 5 on now has an orb that beats a regular player sometimes.
+
+Five decisions are for the owner (§8.6). The biggest is D9: chain goals of 4+ waves become *technique goals* like Quad
+goals, judged by a cascade player instead of a plain stacker.
+
+### 8.1 How this was measured
+
+Same tools as pass 1 (§1, §5.7, §5.9):
+
+- **Proxies.** Five bot proxies: novice, regular, skilled (cascade), expert and Quad builder, each on 15 seeds (12001,
+  13001 and 16001, five each).
+- **Human pace.** Three playing styles (stacker, cascade, Quad builder) held to casual, regular and strong human pace
+  (about 0.6, 1.0 and 1.6 pieces a second, with a person's reaction times and the odd misplaced piece), on 10 seeds
+  (15001 and 17001, five each). "People C · R · S" in the tables is the clears out of 10 at each pace, playing the
+  style that suits the orb best; the bracket is three stars at strong pace.
+- **What's re-run.** The 16 changed orbs were re-run in full, and the unchanged orbs keep their phase-3 runs. Every
+  rule the design test checks (R1–R9, §5.1) was re-checked on the proposal.
+
+Two blind spots stay as in pass 1:
+
+- The bots plan cascades better than most people, so cascade stars read easier than they are.
+- The bots can't see mirrored controls (their moves bypass the input layer), so orbs 51 and 53 read as plain orbs.
+  Only a playtest can judge them.
+
+The survival orbs' extra stars still come from the person model (§5.10).
+
+### 8.2 Part 1: level-by-level audit
+
+All 60 orbs as they ship with the rising tide. Columns as in §3, plus:
+
+- **People C · R · S (3★ S).** Clears at casual, regular and strong human pace out of 10, and three stars at strong
+  pace.
+- **Formula (uses).** The orb's goal, pressure and well, with how many orbs in the campaign share it.
+- **Va.** The seventh rating: variety. Does the orb add something its neighbours don't?
+
+#### Chapter 1: Earth Core & Subterranean Origins (orbs 1–5)
+
+| # | Orb · role | Goal | Well · ms/row | Mods & rules | 2★ / 3★ add | Bots N R S E · best 3★ | People C · R · S (3★ S) | Formula (uses) | G S M Mo St Me Va | Note |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | Ashen Dawn · arrival | 20 lines | std 20 · 720→461 | — | ≤85 s / ≤65 s, 1 extra goal (extra: clear no single lines) | 14 14 15 15 · 67% | 10 · 10 · 10 (7) | lines (7) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | A calm first orb. Three stars need a real pace (65 s with no singles): a regular player gets them on 8 of 10 tries, a casual one never. |
+| 2 | Crystal Cascade · teach | 3 cascades | tall 24, opening · 820 | GC | 1 extra goal / 2 extra goals (extra: trigger a 3-wave chain; finish within 40 pieces) | 15 15 15 15 · 40% | 10 · 10 · 10 (4) | cascades · cascade well (13) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | The prepared opening shows the first cascade before the player has to build one. |
+| 3 | Geode Heart · practise | 4 cascades | tall 25, 1 rubble · 810 | GC | 1 extra goal / 2 extra goals (extra: trigger a 3-wave chain; finish within 45 pieces) | 14 14 15 15 · 47% | 10 · 10 · 10 (3) | cascades · cascade well (13) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | A clean practice step for cascades. |
+| 4 | The Living Grotto · boss 👑 | 30 lines | tall 26, 2 rubble · 420→246 | GC | 3 cascades / 2 extra goals (extra: trigger 6 cascades; trigger a 3-wave chain) | 15 15 15 15 · 100% | 10 · 10 · 10 (10) | lines · cascade well (1) | ✓ ✓ ✓ ✓ ✗ ✓ ✓ | The first boss gives three stars away: 6 cascades and a 3-wave chain come on their own in a cascade well, and a casual player earns all three on 10 of 10 tries. It also sits below orb 3 on the index (1.4 against 1.7). |
+| 5 | Molten Flow · rival | Rival Cinder (tier 1), 3 knockouts | std 20 · 1000 | — | ≤1 top-out / ≤0 top-outs | 15 15 15 15 · 100% | (see §8.3.6) | duel | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | A fair first rival. |
+
+#### Chapter 2: Deep Ocean & Liquid Worlds (orbs 6–10)
+
+| # | Orb · role | Goal | Well · ms/row | Mods & rules | 2★ / 3★ add | Bots N R S E · best 3★ | People C · R · S (3★ S) | Formula (uses) | G S M Mo St Me Va | Note |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 6 | Ocean Descent · teach | 20 lines | std 20, 5 rubble · 800→636 | — | 1 Quads / 2 Quads, ≤55 s | 15 15 15 15 · 60% | 10 · 10 · 10 (6) | lines · rubble (2) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | Rubble taught gently: 20 lines over 5 rubble rows. |
+| 7 | Night Surf · practise | 7 cascades | tall 28, 8 rubble · 800 | GC | 3-wave chain / 4-wave chain | 15 15 15 15 · 53% | 10 · 10 · 10 (3) | cascades · cascade well (13) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | Cascades out of a rubble floor: the chapter's two ideas meet early. |
+| 8 | Koi Sanctuary · twist | dig out 6 rubble rows | std 20, 6 rubble · 450 | — | ≤50 s / ≤25 s | 15 15 14 15 · 73% | 10 · 10 · 10 (5) | dig (1) | ✓ ✓ ✓ ✓ ✓ ✓ ~ | Digging works well here, but it's the only dig orb in the campaign: taught, then never practised or tested. |
+| 9 | Tarn of Wisps · boss 👑 | 8 cascades | tall 27, 8 rubble · 710 | GC | 3-wave chain / 4-wave chain | 13 13 15 15 · 33% | 10 · 10 · 10 (4) | cascades · cascade well (13) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | A proper boss, and the chapter's peak (index 2.4). |
+| 10 | Wave Runner · rival | Rival Coral (tier 2), 3 knockouts | std 20 · 950 | — | ≤1 top-out / ≤0 top-outs | 15 15 15 15 · 100% | (see §8.3.6) | duel | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | Fair. |
+
+#### Chapter 3: Surface World & Living Landscapes (orbs 11–18)
+
+| # | Orb · role | Goal | Well · ms/row | Mods & rules | 2★ / 3★ add | Bots N R S E · best 3★ | People C · R · S (3★ S) | Formula (uses) | G S M Mo St Me Va | Note |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 11 | Grainfields · arrival | 26 lines | std 20 · 450→331 | — | ≤100 s / ≤75 s, 1 extra goal (extra: clear no single lines) | 14 14 15 15 · 60% | 10 · 10 · 10 (5) | lines (7) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | A good arrival. |
+| 12 | Spring Flood · teach | 3 Quads | std 20, opening · 600 | — | 1 extra goal / 2 extra goals (extra: no single-line clears; finish within 60 pieces) | 10 11 13 15 · 60% | 8 · 9 · 8 (5) | Quads (3) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | The Quad lesson, set up by its open-column opening. |
+| 13 | Golden Reflection · teach | 16,500 points | std 20 · 450→263 | ×M | 2 Quads / 4 Quads | 14 14 15 15 · 60% | 10 · 10 · 10 (3) | score (7) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | The score lesson. |
+| 14 | Glasshouse Reverie · teach | a 3-wave chain | tall 25, 2 rubble · 800 | GC | 1 extra goal / 2 extra goals (extra: finish within 100 pieces; finish within 30 pieces) | 14 14 15 15 · 67% | 10 · 10 · 10 (6) | chain · cascade well (1) | ✓ ✓ ✓ ✓ ✓ ✓ ~ | A good chain lesson, but the chain goal never comes back. Every later chain is only a star ask. |
+| 15 | Gathering Storm · test | 42 lines in 270 s | std 20 · 330→216 | — | ≤160 s / ≤100 s | 14 14 15 15 · 100% | 10 · 10 · 10 (10) | lines · clock (5) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | A fair first clock: 42 lines in 270 s. The first of five "N lines in T s" orbs. |
+| 16 | Amber Grove · release | 30 lines | std 20 · 700→330 | — | 3 Quads / 3 Quads, 1 extra goal (extra: clear 4 Quads; no single-line clears) | 14 14 15 15 · 73% | 10 · 10 · 10 (5) | lines (7) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | A real rest, with a choice for three stars. |
+| 17 | Halcyon Ascension · boss 👑 | 30,000 points in 300 s | tall 27, 4 rubble · 670 | GC, ×M | ≤185 s / ≤145 s, 4-wave chain | 15 15 14 15 · 60% | 10 · 10 · 10 (6) | score · clock · cascade well (6) | ✓ ✗ ✓ ✓ ✓ ✓ ✓ | A boss in name only: the chapter's lowest index (0.6, below its arrival's 0.9 and its test's 2.3). A calm 670 ms with a generous clock. The first of six "score against the clock in a cascade well" orbs. |
+| 18 | Summer Glow · rival | Rival Willow (tier 3), 3 knockouts | std 20 · 900 | — | ≤1 top-out / ≤0 top-outs | 15 15 15 15 · 100% | (see §8.3.6) | duel | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | Fair. |
+
+#### Chapter 4: Mountains & Thin-Air Ascension (orbs 19–26)
+
+| # | Orb · role | Goal | Well · ms/row | Mods & rules | 2★ / 3★ add | Bots N R S E · best 3★ | People C · R · S (3★ S) | Formula (uses) | G S M Mo St Me Va | Note |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 19 | Blossom Foothills · arrival | 22,000 points | tall 24, 2 rubble · 330→231 | ×M | 3 cascades / 8 cascades | 15 15 15 15 · 100% | 10 · 10 · 10 (8) | score · rubble (1) | ✓ ✓ ✓ ✓ ~ ✓ ✓ | A generous arrival: three stars on 10 of 10 tries at every pace. That's acceptable for an arrival. |
+| 20 | Verdant Rise · teach | 9 cascades | tall 36, 8 rubble · 700 | GC | 3-wave chain / 4-wave chain | 15 15 15 15 · 47% | 10 · 10 · 10 (4) | cascades · cascade well (13) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | The tall well taught. |
+| 21 | Ice Temple · practise | 21,000 points | std 20 · 300→176 | ×M | ≤140 s / ≤110 s, 1 extra goal (extra: clear 4 Quads) | 14 14 15 15 · 67% | 9 · 10 · 10 (6) | score (7) | ✓ ✓ ✓ ✓ ✓ ✓ ✗ | Fine on its own, but chapter 4 just alternates score and cascades (19 score, 20 cascades, 21 score, 22 cascades, 24 score, 25 cascades) and adds no new idea. |
+| 22 | Alpine Night · practise | 11 cascades | tall 26, 5 rubble · 680 | GC | 3-wave chain / 3-wave chain, 1 extra goal (extra: trigger a 4-wave chain; finish within 85 pieces) | 13 13 15 15 · 80% | 10 · 10 · 10 (7) | cascades · cascade well (13) | ✓ ✓ ✓ ✓ ~ ✓ ~ | The chapter's third cascade orb. Its three stars come on 10 of 10 tries at regular pace. |
+| 23 | Everest Ascent · test | 34 lines in 200 s | std 20 · 250→184 | — | ≤110 s / ≤75 s | 14 14 15 15 · 100% | 10 · 10 · 10 (10) | lines · clock (5) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | A good clock test (the second "lines in T s"). |
+| 24 | The High Coast · release | 17,500 points | std 20 · 650→307 | ×M | ≤125 s / ≤85 s | 14 14 15 15 · 100% | 10 · 10 · 10 (10) | score (7) | ✓ ✓ ✓ ✓ ✓ ✓ ✗ | The third score orb of the chapter. Its name (the coast where the land still rises out of the sea) begs for the rising tide. |
+| 25 | Garden Under Stone · boss 👑 | 16 cascades | tall 29, 6 rubble · 600 | GC | 3-wave chain / 4-wave chain | 15 15 15 15 · 67% | 10 · 10 · 10 (9) | cascades · cascade well (13) | ✓ ~ ✓ ✓ ✓ ✓ ✓ | A good tall-well boss. On the index it only ties the test before it (2.9 and 2.9). |
+| 26 | Winter Trial · rival | Rival Frost (tier 4), 3 knockouts | std 20 · 850 | — | ≤1 top-out / ≤0 top-outs | 12 13 13 15 · 100% | (see §8.3.6) | duel | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | Fair. |
+
+#### Chapter 5: Sky & Atmospheric Drift (orbs 27–34)
+
+| # | Orb · role | Goal | Well · ms/row | Mods & rules | 2★ / 3★ add | Bots N R S E · best 3★ | People C · R · S (3★ S) | Formula (uses) | G S M Mo St Me Va | Note |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 27 | Lantern Sky · arrival | 34,000 points | tall 26, 1 rubble · 260→180 | GC, ×M | 5 cascades / 12 cascades | 15 15 15 15 · 80% | 10 · 10 · 10 (10) | score · cascade well (1) | ✓ ✓ ✓ ✓ ~ ✓ ✓ | A generous arrival: three stars on 10 of 10 tries at every pace. |
+| 28 | Mirror of Stars · release | 32 lines | std 20 · 600→283 | — | ≤95 s / ≤75 s, 1 extra goal (extra: no single line clears) | 14 14 15 15 · 53% | 10 · 10 · 10 (3) | lines (7) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | A good rest. |
+| 29 | Aurora Passage · teach | 5 Quads | std 20 · 280 | — | 1 extra goal / 1 extra goal, ≤95 s (extra: finish within 105 pieces) | 6 7 6 15 · 60% | 5 · 7 · 9 (8) | Quads (3) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | The precision lesson, and the hardest one-star for people so far (7 of 10 at regular pace). Challenging in a good way. |
+| 30 | Nimbus Veil · practise | 10 cascades | tall 27, 3 rubble · 670 | GC | 3-wave chain / 4-wave chain | 15 15 15 15 · 60% | 10 · 10 · 10 (5) | cascades · cascade well (13) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | Fine practice. |
+| 31 | The Turning Suns · test | 37 lines in 210 s | std 20 · 200→159 | — | ≤105 s / ≤75 s | 14 14 14 15 · 100% | 9 · 10 · 10 (10) | lines · clock (5) | ✓ ✓ ✓ ✓ ✓ ✓ ✗ | The third lines-against-the-clock test. Chapter 5 teaches Quads (29) but never tests them. |
+| 32 | Ice Halo · practise | 14 cascades | tall 30, 6 rubble · 580 | GC | 18 cascades / 22 cascades, 4-wave chain | 12 12 15 15 · 100% | 10 · 10 · 10 (10) | cascades · cascade well (13) | ✓ ✓ ✓ ✓ ~ ✓ ✓ | The "wonder" showcase. Its three stars are free for a cascade player, which is fine for a showcase. |
+| 33 | Atmosphere's End · boss 👑 | 55,000 points in 250 s | tall 31, 7 rubble · 150→122 | GC, ×M | ≤180 s / ≤145 s, 1 extra goal (extra: trigger 12 cascades) | 14 14 15 15 · 100% | 4 · 10 · 10 (10) | score · clock · cascade well (6) | ✓ ✓ ✓ ✓ ✓ ✓ ~ | A real peak (index 4.6), and the first wall for a casual player (4 of 10). The second score-clock cascade orb. |
+| 34 | Where Color Falls · rival | Rival Zephyr (tier 5), 3 knockouts | std 20 · 800 | — | ≤1 top-out / ≤0 top-outs | 12 13 13 15 · 80% | (see §8.3.6) | duel | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | Fair: a regular player wins half the matches. |
+
+#### Chapter 6: Space & Cosmic Expanse (orbs 35–48)
+
+| # | Orb · role | Goal | Well · ms/row | Mods & rules | 2★ / 3★ add | Bots N R S E · best 3★ | People C · R · S (3★ S) | Formula (uses) | G S M Mo St Me Va | Note |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 35 | Galaxy Core · arrival | 28,000 points | std 20 · 240→134 | ×M | 3 Quads / 5 Quads | 14 14 14 15 · 67% | 9 · 10 · 10 (8) | score (7) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | A good arrival with a Quad ladder. |
+| 36 | Cosmic Nocturne · practise | 12 cascades | tall 27, 3 rubble · 670 | GC | 3-wave chain / 4-wave chain | 15 15 15 15 · 67% | 10 · 10 · 10 (5) | cascades · cascade well (13) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | Fine. |
+| 37 | Stellar Flare · practise | 36 lines | std 20, 6 rubble · 220→162 | — | ≤85 s / ≤60 s | 15 15 15 15 · 100% | 10 · 10 · 10 (10) | lines · rubble (2) | ✓ ✓ ✓ ✓ ~ ✓ ✓ | Fine practice over rubble. |
+| 38 | Blood Moon · test | 50,000 points in 240 s | tall 30, 6 rubble · 190→133 | GC, ×M | ≤155 s / ≤130 s, 1 extra goal (extra: trigger 10 cascades) | 15 15 15 15 · 100% | 3 · 10 · 10 (10) | score · clock · cascade well (6) | ✓ ✓ ✓ ✓ ✓ ✓ ✗ | The third score-clock cascade orb, just five orbs after the chapter 5 boss with the same formula. |
+| 39 | Dying Ember · twist | survive 90 s | std 20 · 170 | ramp ×2/150 s | 180 s / 300 s | 14 14 14 15 · 100% | 10 · 10 · 10 (8) | survive · ramp (1) | ✓ ✓ ✓ ✓ ✓ ✓ ~ | A strong twist. Survival returns only once, as 58's variant. |
+| 40 | Aether Surge · test | 45 lines in 210 s | std 20 · 170→145 | — | ≤115 s / ≤95 s, 1 extra goal (extra: clear 6 Quads) | 14 14 14 15 · 60% | 9 · 10 · 10 (3) | lines · clock (5) | ✓ ✓ ✓ ✓ ✓ ✓ ✗ | The fourth lines-against-the-clock test. |
+| 41 | Loom of Heaven · release | 40,000 points | std 20 · 200→148 | ×M | ≤155 s / ≤130 s, 1 extra goal (extra: clear 6 Quads) | 14 14 14 15 · 60% | 9 · 10 · 10 (5) | score (7) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | A fine rest. |
+| 42 | Twin-Sun Dunes · test | 45 lines | std 20 · 160→136 | — | ≤115 s / ≤95 s, 1 extra goal (extra: clear 5 Quads) | 14 14 14 15 · 80% | 10 · 10 · 10 (7) | lines (7) | ✓ ✓ ✓ ✓ ✓ ✓ ~ | The chapter's third lines orb in six. |
+| 43 | Celestial Chrysalis · release | 30,000 points | std 20 · 260→158 | ×M | ≤135 s / ≤110 s, 1 extra goal (extra: clear 4 Quads) | 14 14 14 15 · 73% | 10 · 10 · 10 (9) | score (7) | ✓ ✓ ✓ ✓ ✓ ✓ ✗ | A second score rest two orbs after the first (41). |
+| 44 | Silent Drift · practise | 6 Quads | std 20 · 260 | — | 1 extra goal / 1 extra goal, ≤100 s (extra: finish within 120 pieces) | 5 6 4 15 · 47% | 4 · 7 · 8 (5) | Quads (3) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | Quad practice: 7 of 10 at regular pace. Challenging. |
+| 45 | Eclipse Horizon · test | 68,000 points in 240 s | tall 32, 8 rubble · 145→115 | GC, ×M | ≤180 s / ≤150 s, 1 extra goal (extra: trigger 15 cascades) | 14 14 15 15 · 87% | 2 · 10 · 10 (10) | score · clock · cascade well (6) | ✓ ✓ ✓ ✓ ✓ ✓ ~ | The fourth score-clock cascade orb, and the chapter's peak (5.1), higher than its boss. |
+| 46 | The Painted Giants · release | 32 lines | std 20 · 260→207 | — | ≤85 s / ≤70 s, 1 extra goal (extra: no single line clears) | 14 14 15 15 · 53% | 10 · 10 · 10 (2) | lines (7) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | A fine rest. |
+| 47 | The Singularity · boss 👑 | 20 cascades | tall 32, 10 rubble · 520 | GC | 24 cascades, 3-wave chain / 28 cascades, 4-wave chain | 11 12 15 15 · 100% | 10 · 10 · 10 (10) | cascades · cascade well (13) | ✓ ~ ✓ ✓ ✗ ✓ ✓ | The black hole is a great set piece, but at 520 ms it sits below the test before it (4.1 against 5.1), and a cascade player earns three stars on 10 of 10 tries at every pace. |
+| 48 | Comet Chase · rival | Rival Nova (tier 6), 3 knockouts | std 20 · 750 | — | ≤1 top-out / ≤0 top-outs | 10 13 13 15 · 100% | (see §8.3.6) | duel | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | Fair: a regular player wins 60%. |
+
+#### Chapter 7: Black Hole & Abstract Transcendence (orbs 49–56)
+
+| # | Orb · role | Goal | Well · ms/row | Mods & rules | 2★ / 3★ add | Bots N R S E · best 3★ | People C · R · S (3★ S) | Formula (uses) | G S M Mo St Me Va | Note |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 49 | Fluid Dreams · arrival | 36,000 points | std 20 · 200→138 | ×M | 4 Quads / 6 Quads | 14 14 14 15 · 53% | 9 · 10 · 10 (5) | score (7) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | Fine. |
+| 50 | Star Cradle · twist | 52,000 points in 240 s | tall 30, 4 rubble · 170→126 | GC, ×M | ≤170 s / ≤145 s, 1 extra goal (extra: trigger 12 cascades) | 15 15 15 15 · 100% | 2 · 10 · 10 (10) | score · clock · cascade well (6) | ✓ ✓ ✗ ✓ ✓ ✓ ✗ | A twist with nothing new: the fifth score-clock cascade orb. |
+| 51 | Golden Convergence · test | 50 lines in 180 s | std 20 · 120→105 | — | ≤125 s / ≤90 s | 14 14 14 15 · 100% | 0 · 10 · 10 (9) | lines · clock (5) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | The sprint: a good signature test. Casual players can't make it (0 of 10). |
+| 52 | Voltage Storm · test | 14 cascades | tall 32, 10 rubble · 500 | GC | 4-wave chain / 4-wave chain, 1 extra goal (extra: trigger a 5-wave chain; finish within 95 pieces) | 14 14 15 15 · 33% | 10 · 10 · 10 (3) | cascades · cascade well (13) | ✓ ✓ ✓ ✓ ✓ ✓ ~ | A cascade test whose interesting part, the 4- and 5-wave chains, is only a star ask. |
+| 53 | Murmuration · release | 24 lines | std 20, 3 rubble · 500 | GC, mirror | ≤55 s / ≤40 s | 15 15 15 15 · 100% | 10 · 10 · 10 (6) | lines · mirror · cascade well (1) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | Mirrored controls: the "another dimension" idea, used once. The bots can't see mirroring, so only a playtest can judge it. |
+| 54 | Serenity Passage · practise | 10 cascades | tall 36, 10 rubble · 600 | GC | 3-wave chain / 4-wave chain | 14 14 15 15 · 40% | 10 · 10 · 10 (5) | cascades · cascade well (13) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | A good rehearsal for 55. |
+| 55 | Indra's Net · boss 👑 | 160,000 points in 600 s | tall 100, 30 rubble · 500 | GC, ×M | 210,000, 20 cascades / 270,000, 26 cascades, 5-wave chain | 15 15 15 15 · 100% | 9 · 10 · 10 (8) | score · clock · 100-row cascade well (1) | ✓ ~ ✓ ✓ ✓ ✓ ✓ | A great set piece, but the chapter's easiest peak: index 2.7 against 4.7 and 5.3 for the tests, and a regular player clears it on 10 of 10. |
+| 56 | Chromatic Impasto · rival | Rival Prism (tier 6), 3 knockouts | std 20 · 700 | — | ≤1 top-out / ≤0 top-outs | 9 10 12 15 · 80% | (see §8.3.6) | duel | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | Fair after D8. |
+
+#### Chapter 8: Urban Dreams Encore (orbs 57–60)
+
+| # | Orb · role | Goal | Well · ms/row | Mods & rules | 2★ / 3★ add | Bots N R S E · best 3★ | People C · R · S (3★ S) | Formula (uses) | G S M Mo St Me Va | Note |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 57 | Chromadelic Gateway · arrival | 30 lines | std 20 · 180→126 | — | ≤75 s / ≤65 s, 1 extra goal (extra: clear 4 Quads) | 14 14 15 15 · 60% | 10 · 10 · 10 (4) | lines (7) | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | Fine. |
+| 58 | Neon Dusk · twist | survive 60 s | std 20 · 160 | tide 6→2 s | 120 s / 180 s | 15 15 14 14 · 80% | 9 · 10 · 10 (2) | survive · tide (1) | ✓ ✓ ✓ ✓ ✓ ✓ ~ | A good twist, but the tide appears once, in the last chapter: taught and never used again. |
+| 59 | Rainlit Streets · boss 👑 | 70,000 points in 300 s | tall 30, 5 rubble · 150→117 | GC, ×M | 115,000, 14 cascades / 140,000, 18 cascades, 5-wave chain | 13 14 15 15 · 80% | 2 · 10 · 10 (5) | score · clock · cascade well (6) | ✓ ✓ ✓ ✓ ✓ ✓ ✗ | The campaign's peak (5.2), but the sixth score-clock cascade orb, and it ignores the tide its chapter just taught. |
+| 60 | Last Light · rival | Rival Neon (tier 8), 3 knockouts | std 20 · 650 | — | ≤1 top-out / ≤0 top-outs | 2 4 13 15 · 67% | (see §8.3.6) | duel | ✓ ✓ ✓ ✓ ✓ ✓ ✓ | The strongest rival: a regular player wins 27%, a strong one 63%. |
+
+#### 8.2.1 Outliers
+
+| Kind | Orbs |
+|---|---|
+| **Boss below its chapter's peak** | 4 (1.4 against orb 3's 1.7), 17 (0.6, the chapter's lowest), 47 (4.1 against 45's 5.1), 55 (2.7 against 51's 5.3) |
+| **Three stars given away** | 4 (casual 10 of 10), 47 (cascade player, any pace) |
+| **Formula repeated 5+ times** | cascades in a cascade well (13), score against the clock in a cascade well (6: 17, 33, 38, 45, 50, 59), lines in T seconds (5: 15, 23, 31, 40, 51) |
+| **Taught once, never again** | dig (8), chain goal (14), survival (39), rising tide (58), mirror (53); Quads never tested |
+| **A twist with nothing new** | 50 |
+| **A chapter with no new idea** | 4 (score and cascades alternate from 19 to 25) |
+| **No one-star challenge for a regular player** | every solo orb from 49 to 59 (10 of 10) |
+
+### 8.3 Part 2: the campaign as a whole
+
+#### 8.3.1 Variety
+
+**Goal mix (52 solo orbs), today → pass 2:** lines 16 → 17, score 16 → 11, cascades 13 → 12, Quads 3 → 4, chain 1 → 3, dig 1 → 3, survival 2 → 2.
+
+| Formula | Today | Pass 2 | Orbs in pass 2 |
+|---|---|---|---|
+| cascades · cascade well | 13 | 12 | 2, 3, 7, 9, 20, 22, 25, 30, 32, 36, 47, 54 |
+| lines | 7 | 6 | 1, 11, 16, 28, 46, 57 |
+| score | 7 | 4 | 13, 35, 41, 49 |
+| score · clock · cascade well | 6 | 3 | 17, 33, 45 |
+| lines · clock | 5 | 3 | 15, 23, 50 |
+| Quads | 3 | 3 | 12, 29, 44 |
+| dig | 1 | 3 | 8, 21, 42 |
+| chain · clock · cascade well | — | 2 | 43, 52 |
+| lines · rubble | 2 | 2 | 6, 37 |
+| lines · tide | — | 2 | 24, 38 |
+| Quads · clock | — | 1 | 31 |
+| chain · cascade well | 1 | 1 | 14 |
+| lines · cascade well | 1 | 1 | 4 |
+| lines · clock · cascade well | — | 1 | 40 |
+| lines · mirror | — | 1 | 51 |
+| lines · mirror · cascade well | 1 | 1 | 53 |
+| score · cascade well | 1 | 1 | 27 |
+| score · clock · 100-row cascade well | 1 | 1 | 55 |
+| score · rubble | 1 | 1 | 19 |
+| score · tide · cascade well | — | 1 | 59 |
+| survive · ramp | 1 | 1 | 39 |
+| survive · tide | 1 | 1 | 58 |
+
+**Goal types per chapter (solo), today → pass 2:** 1: 2; 2: 3; 3: 4; 4: 3 → 4; 5: 4; 6: 5 → 7; 7: 3 → 4; 8: 3.
+
+The campaign's backbone is right: cascades are the game's signature, and plain lines and score suit arrivals and
+rests. What's wrong is that tests and bosses reuse a handful of formulas. Six orbs, from chapter 3's boss to the
+encore's, are the same score race in a cascade well. The newest ideas (dig, chain, survival, tide, mirror) each get
+one orb, so the player never meets them again once learned.
+
+#### 8.3.2 Teaching rhythm: does each idea grow?
+
+| Idea | Taught | Practised | Tested | Proposal |
+|---|---|---|---|---|
+| Cascades | 2 | 3, 7, 20, 22, 30, 36, 54 | 9, 25, 47 | unchanged (the backbone) |
+| Rubble wells | 6 | 7, 37 | 9 | unchanged |
+| **Digging** (dig out N rows) | 8 | — | — | 8 → **21** practise → **42** test |
+| Quads | 12, 29 | 16 (stars), 44 | — | 12, 29 → 44 → **31** test (4 Quads in 150 s) |
+| Score and the multiplier | 13 | 19, 21, 24, 27, 35, 41, 43, 49 | 17, 33, 38, 45, 50, 55, 59 | fewer: 21, 24, 38, 43, 50 move to new ideas |
+| **Chains** (as a goal) | 14 | — (stars only) | — | 14 → **43** practise → **52** test (4-wave, with a clock) |
+| Clock | 15 | 23 | 17, 31, 33, 38, 40, 45, 50, 51, 55, 59 | 15, 23 and the sprint (now 50) keep it; 31, 40, 43 and 52 put it on Quads, cascades and chains |
+| Tall well | 20 | 22, 54 | 25, 47, 55 | unchanged |
+| Survival | 39 | — | 58 (with the tide) | unchanged |
+| **Rising tide** | 58 | — | — | **24** twist → **38** test → 58 survival → **59** boss |
+| **Mirrored controls** | 53 | — | — | **51** twist → 53 rest |
+
+#### 8.3.3 Difficulty curve: does each chapter build to its boss?
+
+![Difficulty index by orb: today and pass 2](images/odyssey-level-design-2026-11/difficulty-curve-pass2.png)
+
+Chapters 2, 5 and 8 build cleanly to their boss, and chapter 4's boss (25) ties its test (2.9). In the others an
+earlier orb beats the boss:
+
+- **Chapter 3** (17): a calm 670 ms with a generous clock. It sits below every non-teaching orb in its chapter.
+- **Chapter 6** (47): the test before it (45) is harder.
+- **Chapter 7** (55): both tests (50, 51) are harder.
+- **Chapter 1** (4): a step below orb 3.
+
+The difficulty index is a bot measure (§1.2). It counts fall speed, clock pace, length, cascade construction and bot
+losses, but it can't see the tide, mirrored controls or how hard a chain is for a person. So pass 2's orange line
+dips on orbs whose pressure it can't see: the tide orbs (24, 38, 59), the chain orbs (43, 52) and the mirrored twist
+(51). The second chart checks from the other side, with tries failed out of 10 at casual human pace. There the Quad
+test (31) and the chain orbs (43, 52) add failures, while the tide orbs are about as hard as the races they replace:
+38 and 59 beat slightly fewer casual players (5 and 6 of 10, against 7 and 8) and slightly more regular ones (1 of
+10 each, against none). The mirrored twist can't be measured by bots at all.
+
+![Tries failed at casual pace: today and pass 2](images/odyssey-level-design-2026-11/casual-fails-pass2.png)
+
+#### 8.3.4 Chapter identity
+
+| Chapter | Signature today | Goal types (solo) | Verdict |
+|---|---|---|---|
+| 1 Earth core | first cascades | 2 | right for a first chapter |
+| 2 Ocean | rubble and the first dig | 3 | strong |
+| 3 Fields | the toolbox: Quads, score, chains, the clock | 4 | strong |
+| 4 Mountains | the tall well | 3 | **weak:** score and cascades alternate |
+| 5 Sky | precision (Quads) | 4 | good, but Quads are never tested |
+| 6 Space | survival, the black hole | 5 | **long and samey:** 5 score, 4 lines in 13 solo orbs |
+| 7 Another dimension | mirrored controls, the 100-row well | 3 | **thin:** its twist is a copy of a test |
+| 8 Encore | the rising tide | 3 | the tide arrives late and once |
+
+#### 8.3.5 How fast do you need to be?
+
+The owner asked this during the audit. **You need about one piece a second to finish every orb, and about 1.5 pieces
+a second (plus the technique) for three stars everywhere.** Measured at human pace, playing the style that suits the
+orb:
+
+| Pace | Pieces a second | Solo orbs cleared on 8+ of 10 tries: today → pass 2 | Cleared on 4 or fewer of 10 (today → pass 2) | Three stars at least once in 10 (pass 2) |
+|---|---|---|---|---|
+| Casual | 0.62 | 44 → 41 of 52 | 33, 38, 44, 45, 50, 51, 59 → 33, 43, 44, 45, 50, 59 | 27 of 52 |
+| Regular | 1.04 | 50 → 49 of 52 | none → none | 41 of 52 |
+| Strong | 1.51 | 52 → 51 of 52 | none → none | 51 of 52 |
+
+**Where the pace wall is.** A casual player (about 0.6 pieces a second) finishes everything through chapter 4.
+From chapter 5 on, the clocks start to beat them: they ask 0.6–0.75 pieces a second for one star, with the sprint (51 today, 50 in pass 2)
+the tightest. Speed isn't the whole story. The Quad and chain goals ask for technique: even a strong player clears the
+Quad orbs 29 and 44 on only 8–9 of 10 tries, because a Quad has to be built.
+
+**One-star pace on the clocked orbs** (measured pieces at the goal ÷ the clock, today → pass 2):
+
+| Orb | Today: clock · pace needed | Pass 2: clock · pace needed |
+|---|---|---|
+| 15 Gathering Storm | 270 s · 0.41 | 270 s · 0.41 |
+| 17 Halcyon Ascension | 300 s · 0.45 | 300 s · 0.45 |
+| 23 Everest Ascent | 200 s · 0.45 | 200 s · 0.45 |
+| 31 The Turning Suns | 210 s · 0.47 | 150 s · 0.40 |
+| 33 Atmosphere's End | 250 s · 0.64 | 250 s · 0.64 |
+| 38 Blood Moon | 240 s · 0.70 | no clock |
+| 40 Aether Surge | 210 s · 0.55 | 180 s · 0.52 |
+| 43 Celestial Chrysalis | no clock | 150 s · 0.54 |
+| 45 Eclipse Horizon | 240 s · 0.73 | 240 s · 0.73 |
+| 50 Star Cradle | 240 s · 0.75 | 180 s · 0.73 |
+| 51 Golden Convergence | 180 s · 0.73 | no clock |
+| 52 Voltage Storm | no clock | 240 s · 0.51 |
+| 55 Indra's Net | 600 s · 0.67 | 600 s · 0.66 |
+| 59 Rainlit Streets | 300 s · 0.71 | no clock |
+
+Pass 2 keeps the wall where it is (D13): by chapter 5 a player has had 26 orbs to build pace, and the brief asks for a
+challenge. It moves pressure off the clock on some orbs (the tide on 38 and 59, mirroring on 51) and onto technique on
+others (Quads on 31, chains on 43 and 52), so a casual player meets more kinds of challenge, not just a faster clock.
+
+
+#### 8.3.6 Rivals at human pace (unchanged by pass 2)
+
+| Rival | Regular pace | Strong pace |
+|---|---|---|
+| 5, 10, 18, 26 | 100% | 100% |
+| 34 (Zephyr, tier 5) | 50% | 90% |
+| 48 (Nova, tier 6) | 60% | 90% |
+| 56 (Prism, tier 6, D8) | 60% | 73% |
+| 60 (Neon, tier 8) | 27% | 63% |
+
+The rival ladder is right: a regular player meets real resistance from chapter 5, and the last rival is the peak.
+Pass 2 leaves the rivals alone.
+
+#### 8.3.7 Star economy
+
+The star ladder (R2, R4, R5) holds everywhere. Two bosses are the exceptions: their top mark asks nothing a cascade
+well doesn't give. Orb 4's three stars (6 cascades and a 3-wave chain) come on 10 of 10 tries even at casual pace.
+Orb 47's (28 cascades and a 4-wave chain, on a showcase lap with no clock) come to a cascade player at every pace.
+The arrivals 19 and 27 are also generous (10 of 10), which suits an arrival.
+
+### 8.4 Part 3: the plan
+
+#### 8.4.1 Variety rules
+
+These add to R1–R9 (§5.1). V1, V2 and V4 are checkable and go into `odyssey-campaign-design-rules.test.js` in phase
+5 (today's campaign fails V1 and V4; the proposal passes all three). V3 and V5 are design checks, and V6 and V7 are
+measured.
+
+- **V1. No formula more than three times.** Rest and arrival orbs may reuse the plain lines and score formulas, and
+  the cascade count (the game's backbone) may appear at most twice per chapter (three times in chapter 4, which
+  teaches the tall well).
+- **V2. No goal type on three solo orbs in a row.**
+- **V3. Every idea grows.** Each mechanic the campaign introduces comes back at least twice: practised, then tested
+  or combined.
+- **V4. Chapters 3–7 each use at least four goal types.** The encore's three solo orbs each have a different goal.
+- **V5. Every chapter has a signature** it introduces or owns, used on at least two of its orbs (§8.4.2).
+- **V6. Each boss is its chapter's peak.** No solo orb of its chapter sits more than 0.5 above it on the index. Where
+  the index can't see a boss's pressure (the tide, a ten-minute marathon), human pace decides. Bosses and tests combine
+  two learned ideas.
+- **V7. A real challenge to the end.** From chapter 5 on, every chapter has at least one solo orb a regular player
+  fails sometimes (9 of 10 or less).
+
+#### 8.4.2 Chapter signatures
+
+| Chapter | Signature | Orbs | Goal types (solo) |
+|---|---|---|---|
+| 1 Earth core | first cascades | 2, 3 | 2 |
+| 2 Ocean | rubble and digging | 6–9 | 3 |
+| 3 Fields | the toolbox | 12–17 | 4 |
+| 4 Mountains | **the tall well and the rising land** | 20, 25; 21 (dig), 24 (tide twist) | 3 → **4** |
+| 5 Sky | **precision: Quads taught and tested** | 29, 31 | 4 |
+| 6 Space | **pressure: the tide, survival, deep digging and chains** | 38–43 | 5 → **7** |
+| 7 Another dimension | **the sprint, mirrored controls and the chain test** | 50; 51, 53; 52 | 3 → **4** |
+| 8 Encore | **the rising tide, survived then scored under** | 58, 59 | 3 |
+
+#### 8.4.3 Per-orb changes
+
+| # | Orb · role | Today | Pass 2 | Why | Bots N R S E Q · best 3★, today → pass 2 | People C · R · S (3★ S), today → pass 2 |
+|---|---|---|---|---|---|---|
+| 4 | The Living Grotto · boss | 30 lines · tall 26, 2 rubble · 420→246 · GC · stars: 3 cascades / 2 extra goals (extra: trigger 6 cascades; trigger a 3-wave chain) | 30 lines · tall 26, 2 rubble · 420→246 · GC · stars: 4 cascades / 2 extra goals (extra: trigger 7 cascades; trigger a 4-wave chain) | Its three stars came on their own in a cascade well; now they ask for building | 15 15 15 15 13 · 100% → 15 15 15 15 13 · 47% | 10 · 10 · 10 (10) → 10 · 10 · 10 (2) |
+| 17 | Halcyon Ascension · boss | 30,000 points in 300 s · tall 27, 4 rubble · 670 · GC, ×M · stars: ≤185 s / ≤145 s, 4-wave chain | 30,000 points in 300 s · tall 27, 4 rubble · 350→195 · GC, ×M · stars: ≤180 s / ≤140 s, 4-wave chain | The boss was its chapter's easiest orb; now it runs at the chapter's test speed | 15 15 14 15 11 · 60% → 15 15 14 15 12 · 60% | 10 · 10 · 10 (6) → 10 · 10 · 10 (6) |
+| 21 | Ice Temple · practise | 21,000 points · std 20 · 300→176 · ×M · stars: ≤140 s / ≤110 s, 1 extra goal (extra: clear 4 Quads) | dig out 8 rubble rows · std 20, 10 rubble · 300 · — · stars: ≤50 s / ≤35 s | Digging (taught on 8) gets its practice, and chapter 4 stops alternating score and cascades | 14 14 15 15 14 · 67% → 15 15 15 15 1 · 93% | 9 · 10 · 10 (6) → 10 · 9 · 10 (6) |
+| 22 | Alpine Night · practise → release | 11 cascades · tall 26, 5 rubble · 680 · GC · stars: 3-wave chain / 3-wave chain, 1 extra goal (extra: trigger a 4-wave chain; finish within 85 pieces) | 9 cascades · tall 26, 5 rubble · 680 · GC · stars: 3-wave chain / 3-wave chain, 1 extra goal (extra: trigger a 4-wave chain; finish within 70 pieces) | Becomes the chapter's rest, since 24 takes the twist | 13 13 15 15 1 · 80% → 13 13 15 15 2 · 73% | 10 · 10 · 10 (7) → 10 · 10 · 10 (6) |
+| 24 | The High Coast · release → twist | 17,500 points · std 20 · 650→307 · ×M · stars: ≤125 s / ≤85 s | 24 lines · std 20 · 500 · tide 12→6 s · stars: ≤80 s / ≤50 s | The tide arrives early and gently, on the coast where the land rises | 14 14 15 15 15 · 100% → 15 14 15 15 14 · 100% | 10 · 10 · 10 (10) → 9 · 10 · 10 (9) |
+| 31 | The Turning Suns · test | 37 lines in 210 s · std 20 · 200→159 · — · stars: ≤105 s / ≤75 s | 4 Quads in 150 s · std 20 · 240 · — · stars: ≤70 s / ≤50 s | Chapter 5 tests the Quads it teaches; the third lines-in-T-seconds test goes | 14 14 14 15 15 · 100% → 0 0 0 7 12 · 60% | 9 · 10 · 10 (10) → 6 · 9 · 9 (8) |
+| 38 | Blood Moon · test | 50,000 points in 240 s · tall 30, 6 rubble · 190→133 · GC, ×M · stars: ≤155 s / ≤130 s, 1 extra goal (extra: trigger 10 cascades) | 36 lines · std 20 · 190 · tide 6→3 s · stars: ≤80 s / ≤60 s | Lines under the tide as a test; the third score race in a cascade well goes | 15 15 15 15 7 · 100% → 13 14 15 15 9 · 100% | 3 · 10 · 10 (10) → 5 · 9 · 10 (8) |
+| 40 | Aether Surge · test | 45 lines in 210 s · std 20 · 170→145 · — · stars: ≤115 s / ≤95 s, 1 extra goal (extra: clear 6 Quads) | 40 lines in 180 s · tall 30, 6 rubble · 190 · GC · stars: ≤90 s / ≤65 s | Cascades pay under the clock; the fourth plain lines-in-T-seconds test goes | 14 14 14 15 14 · 60% → 15 15 15 15 12 · 100% | 9 · 10 · 10 (3) → 9 · 10 · 10 (9) |
+| 42 | Twin-Sun Dunes · test | 45 lines · std 20 · 160→136 · — · stars: ≤115 s / ≤95 s, 1 extra goal (extra: clear 5 Quads) | dig out 11 rubble rows · tall 24, 12 rubble · 180 · — · stars: ≤90 s / ≤65 s | The dig test; the chapter's third lines orb goes | 14 14 14 15 14 · 80% → 15 15 15 15 0 · 100% | 10 · 10 · 10 (7) → 9 · 10 · 9 (7) |
+| 43 | Celestial Chrysalis · release → practise | 30,000 points · std 20 · 260→158 · ×M · stars: ≤135 s / ≤110 s, 1 extra goal (extra: clear 4 Quads) | a 4-wave chain in 150 s · tall 32, 10 rubble · 600 · GC · stars: 1 extra goal / 2 extra goals (extra: finish within 60 pieces; finish within 40 pieces) | The chain comes back as a goal (D9); a second score rest goes | 14 14 14 15 13 · 73% → 3 2 15 15 4 · 33% | 10 · 10 · 10 (9) → 4 · 8 · 7 (2) |
+| 47 | The Singularity · boss | 20 cascades · tall 32, 10 rubble · 520 · GC · stars: 24 cascades, 3-wave chain / 28 cascades, 4-wave chain | 20 cascades · tall 32, 10 rubble · 340 · GC · stars: 26 cascades, 4-wave chain / 32 cascades, 5-wave chain | The black hole closes in on its chapter's test, and its top stars ask for a 5-wave chain | 11 12 15 15 0 · 100% → 11 11 15 15 0 · 100% | 10 · 10 · 10 (10) → 10 · 10 · 10 (10) |
+| 50 | Star Cradle · twist → test | 52,000 points in 240 s · tall 30, 4 rubble · 170→126 · GC, ×M · stars: ≤170 s / ≤145 s, 1 extra goal (extra: trigger 12 cascades) | 50 lines in 180 s · std 20 · 120→105 · — · stars: ≤125 s / ≤90 s | The sprint moves here from 51, so the mirrored twist doesn't drop the curve before it; the fifth score race in a cascade well goes | 15 15 15 15 11 · 100% → 14 14 14 15 12 · 100% | 2 · 10 · 10 (10) → 0 · 10 · 10 (9) |
+| 51 | Golden Convergence · test → twist | 50 lines in 180 s · std 20 · 120→105 · — · stars: ≤125 s / ≤90 s | 30 lines · std 20 · 240 · mirror · stars: ≤80 s / ≤55 s | A twist that changes the rules: mirrored controls (D10) | 14 14 14 15 12 · 100% → 14 14 15 15 15 · 100% | 0 · 10 · 10 (9) → 10 · 10 · 10 (10) |
+| 52 | Voltage Storm · test | 14 cascades · tall 32, 10 rubble · 500 · GC · stars: 4-wave chain / 4-wave chain, 1 extra goal (extra: trigger a 5-wave chain; finish within 95 pieces) | a 4-wave chain in 240 s · tall 27, 1 rubble · 550 · GC · stars: 1 extra goal / 2 extra goals (extra: finish within 140 pieces; finish within 100 pieces) | The chain test (D9): the chains were only star asks | 14 14 15 15 0 · 33% → 1 2 15 15 0 · 40% | 10 · 10 · 10 (3) → 6 · 6 · 8 (0) |
+| 55 | Indra's Net · boss | 160,000 points in 600 s · tall 100, 30 rubble · 500 · GC, ×M · stars: 210,000, 20 cascades / 270,000, 26 cascades, 5-wave chain | 160,000 points in 600 s · tall 100, 30 rubble · 340 · GC, ×M · stars: 210,000, 20 cascades / 270,000, 26 cascades, 5-wave chain | The ten-minute capstone asks more of a casual player (chapter 7's exception to V6, §8.5) | 15 15 15 15 3 · 100% → 15 15 15 15 3 · 100% | 9 · 10 · 10 (8) → 7 · 10 · 10 (9) |
+| 59 | Rainlit Streets · boss | 70,000 points in 300 s · tall 30, 5 rubble · 150→117 · GC, ×M · stars: 115,000, 14 cascades / 140,000, 18 cascades, 5-wave chain | 70,000 points · tall 30, 5 rubble · 150→117 · GC, ×M, tide 9→3 s · stars: 115,000, 14 cascades / 140,000, 18 cascades, 5-wave chain | The final boss joins its chapter's two ideas, score and the tide (D11); the sixth score race goes | 13 14 15 15 9 · 80% → 13 13 15 15 2 · 100% | 2 · 10 · 10 (5) → 4 · 9 · 10 (6) |
+
+Copy follows each change (the orb's description and tip in `orb-copy.js`; objectives and the briefing already name
+dig, chain, tide and mirror goals). Roles move with five of them: 22 becomes the chapter 4 rest, 24 its twist, 43 a
+practice orb, and 50 and 51 swap places: the sprint moves to 50 (a test) and the mirrored twist to 51. The swap keeps
+the curve smooth: the bots can't see mirroring, so a mirrored twist right before the sprint read as a drop of 3.6 on
+the index, over the gate's limit of 3.
+
+#### 8.4.4 New combinations
+
+| Combination | Orbs | Why it works |
+|---|---|---|
+| Lines under the tide | 24 (gentle), 38 (test) | The tide's rows are nearly full, so they feed lines while pushing the stack up: a race the player can win by digging |
+| Score under the tide in a cascade well | 59 | The encore's boss joins its chapter's two ideas. The tide replaces the clock and ends the showcase lap |
+| Quads against the clock | 31 | Tests chapter 5's lesson under pressure |
+| Lines against the clock in a cascade well | 40 | Cascades clear lines for free, so building them pays under time pressure |
+| Digging a deep well | 21, 42 | Digging grows from 6 rows (8) to 8 of 10 and then 11 of 12 |
+| Chain against the clock | 43, 52 | A 4-wave chain is the cascade game's Quad. The clock ends an attempt that can't find it |
+| Mirrored lines | 51 | A twist that changes how the player moves, not what they aim for |
+
+**Not combined, on purpose:** rubble goals with the tide. The tide's rows are rubble too, so the dig counter would
+count them.
+
+#### 8.4.5 What it costs
+
+- **No engine or UI code.** Every change is data in `level-design-2026-11.js`, generated from the scratch
+  `proposal.json` as in pass 1.
+- **Copy:** descriptions and tips for the 12 orbs whose goal changes.
+- **Roles:** `chapters.js` arc beats follow the new roles.
+- **Tests:** the design-rules test's measured rows for the changed orbs, plus V1, V2 and V4. The speed-progression
+  test's proportional list follows the new speeds (17 joins; 21, 24, 31, 38, 40, 42, 43, 51 run steady). The balance
+  test reads 55's new speed and follows the sprint to orb 50 and the chain test on 52. In the scratch worktree,
+  with those updates, the design-rules, balance, speed-progression and rising-tide tests pass (35 of 35).
+- **Benchmark gate:** a 4-wave chain goal is excepted from the novice gate like a Quad goal (D9).
+- **ADRs:** no structural change, so none applies (`docs/adr/` and the architecture index were checked).
+
+#### 8.4.6 Rollout
+
+| Phase | What | Verification |
+|---|---|---|
+| **5 · data** (one branch) | The 16 changes, copy, roles, tests (V1, V2, V4) and the gate exception | Every gate over 15 seeds; human pace on 10 seeds per changed orb; full suite; lint |
+| **6 · in game** | Screenshots of the new combinations at 30 fps: tide on 24, 38 and 59; dig on 21 and 42; chains on 43 and 52; Quads on 31; mirror on 51 | No console errors; the HUD shows each goal and the tide countdown |
+| **7 · playtest** | Questions in §8.7 | People, not bots: mirror, chains and the tide's feel |
+
+### 8.5 Measured: the proposal against today
+
+**Gates** (pass 1's §5.6, plus the D9 exception), on the whole campaign with pass 2:
+
+| Gate | Tuning seeds (12001) | Fresh (13001) | Confirmation (16001) | All 15 seeds |
+|---|---|---|---|---|
+| novice >= 80% (bosses >= 60%), Quad and 4-wave chain goals excepted | ✓ | ✗ [(47, 0.4)] | ✓ | ✓ |
+| Quad proxy >= 60% on Quad goals | ✓ | ✓ | ✓ | ✓ |
+| skilled >= 80% on every other solo orb | ✓ | ✓ | ✓ | ✓ |
+| best policy three-star rate 30-100% | ✓ | ✓ | ✗ [(52, 0.2)] | ✓ |
+| no free three stars (regular pace replay) | ✓ | ✓ | ✓ | ✓ |
+| no index rise above 3 within a chapter | ✓ | ✗ (4.0, 47) | ✓ | ✓ |
+| no solo walls (index >= 8) | ✓ | ✓ | ✓ | ✓ |
+| chapter 8 rival: skilled >= 60% and regular >= 20% | ✓ | ✓ | ✓ | ✓ |
+| chapter 5-7 rivals: regular >= 40% | ✓ | ✓ | ✓ | ✓ |
+
+**Bosses as peaks** (V6). The index is a bot measure, so the boss's clear rate at regular human pace is shown beside
+it:
+
+| Chapter | Boss | Index today → pass 2 | Highest other solo orb, today → pass 2 | Boss at regular pace, today → pass 2 | Boss three stars at casual pace, today → pass 2 |
+|---|---|---|---|---|---|
+| 1 | 4 The Living Grotto | 1.4 → 1.4 | 3 (1.7) → 3 (1.7) | 10/10 → 10/10 | 10/10 → 2/10 |
+| 2 | 9 Tarn of Wisps | 2.4 → 2.4 | 7 (1.8) → 7 (1.8) | 10/10 → 10/10 | 4/10 → 4/10 |
+| 3 | 17 Halcyon Ascension | 0.6 → 2.5 | 15 (2.3) → 15 (2.3) | 10/10 → 10/10 | 2/10 → 2/10 |
+| 4 | 25 Garden Under Stone | 2.9 → 2.9 | 23 (2.9) → 23 (2.9) | 10/10 → 10/10 | 6/10 → 6/10 |
+| 5 | 33 Atmosphere's End | 4.6 → 4.6 | 31 (3.3) → 32 (3.3) | 10/10 → 10/10 | 0/10 → 0/10 |
+| 6 | 47 The Singularity | 4.1 → 4.8 | 45 (5.1) → 45 (5.1) | 10/10 → 10/10 | 10/10 → 8/10 |
+| 7 | 55 Indra's Net | 2.7 → 3.3 | 51 (5.3) → 50 (5.3) | 10/10 → 10/10 | 0/10 → 0/10 |
+| 8 | 59 Rainlit Streets | 5.2 → 3.5 | 57 (3.1) → 57 (3.1) | 10/10 → 9/10 | 0/10 → 0/10 |
+
+Seven of eight bosses meet V6. Chapter 3's boss (17) rises from its chapter's lowest index to its highest (0.6 → 2.5),
+and the black hole (47) closes from 1.0 below its test to 0.3. Chapter 1's boss sits 0.3 below orb 3 and chapter 4's
+ties its test, both inside the rule. For people, 17 and 47 stay a sure clear at regular pace; the change is felt as
+speed, not as failure.
+
+**Chapter 7 is the exception.** The capstone (55) is the chapter's ten-minute final exam, and pass 2 makes it ask more
+of a casual player (7 of 10 instead of 9). But the sprint (50) stays sharper on the index (5.3 against 3.3), and the
+chain test (52) beats more regular players (6 of 10 against 10 of 10). Pass 2 keeps that order on purpose: a speed
+spike and a technique spike before a long final exam. Whether 55 still feels like the peak is a playtest question
+(§8.7).
+
+The tide boss (59) reads 3.5 instead of 5.2 because the index can't see the tide. At human pace it's as hard as
+before: a casual player clears it 4 of 10 (2 today), a regular one 9 of 10 (10 today).
+
+The black hole's three stars still come to a cascade player at casual pace (8 of 10, down from 10). That's the known
+blind spot (§8.1): the cascade bot plans chains better than people do. A 5-wave chain is a real ask for a person, so
+it's left for the playtest.
+
+**A challenge to the end** (V7): solo orbs a regular player fails at least once in 10 tries, chapters 5–8:
+
+| Chapter | Solo orbs a regular player fails sometimes: today | Pass 2 |
+|---|---|---|
+| 5 | 29 (7/10) | 29 (7/10), 31 (9/10) |
+| 6 | 44 (7/10) | 38 (9/10), 43 (8/10), 44 (7/10) |
+| 7 | none | 52 (6/10) |
+| 8 | none | 59 (9/10) |
+
+Today, chapters 7 and 8 never beat a regular player. Pass 2 gives every chapter from 5 on at least one orb that does:
+the chain test (52) in chapter 7, the tide boss (59) in chapter 8, and in chapter 6 the tide test (38) and the chain
+practice (43) beside the Quad practice (44).
+
+**The design rules.** R1–R9 (`odyssey-campaign-design-rules.test.js`) pass on the proposal in the scratch worktree,
+with the changed orbs' measured rows updated, and so do the balance and rising-tide tests. The variety checks:
+
+| Rule | Today | Pass 2 |
+|---|---|---|
+| V1 no formula more than three times | ✗ lines · clock x5 (15, 23, 31, 40, 51); score · clock · cascade well x6 (17, 33, 38, 45, 50, 59) | ✓ |
+| V2 no goal type on three solo orbs in a row | ✓ | ✓ |
+| V4 chapters 3-7 use 4+ goal types | ✗ chapter 4: 3; chapter 7: 3 | ✓ |
+
+
+### 8.6 Decisions for the owner
+
+Approved on 2026-11-03: all five as recommended.
+
+| # | Decision | Recommended | Alternative |
+|---|---|---|---|
+| D9 | **Chain goals** (4 waves) on 43 and 52 | yes: technique goals like Quad goals, each with a clock, judged by the cascade player (the novice gate excepts them) | keep chains as star asks only. 43 and 52 then stay score and cascade orbs, and the chain goal stays a one-orb lesson |
+| D10 | **Mirrored controls on a second orb** (51, chapter 7's twist) | yes: mirroring becomes the chapter's "other dimension" | give 51 a different twist; mirroring stays on 53 alone |
+| D11 | **The rising tide on four orbs** (24, 38, 58, 59) | yes: taught gently in chapter 4, tested in 6, survived then scored under in the encore | keep it on 58 alone, or add only 24 |
+| D12 | **Fastest-time boards** for the 16 changed orbs | bump the namespace for all orbs again (one constant, as D5) | bump only the changed orbs (more code) |
+| D13 | **The casual-pace wall** (clocks from chapter 5 ask about 0.6–0.75 pieces/s) | keep: the brief asks for a challenge, and the campaign trains the pace by then | soften late clocks so casual players finish (fewer peaks) |
+
+### 8.7 Playtest questions (phase 7)
+
+1. Do mirrored controls on two orbs of chapter 7 feel like "another dimension" or like a chore?
+2. Can people who have earned chain stars build a 4-wave chain on orb 43 within 150 s?
+3. Does the gentle tide on orb 24 read as a twist, and does orb 38's tide feel fair as a test?
+4. Does the rising tide make the final boss (59) feel like a finale?
+5. Do casual players hit chapter 5's boss (33) as a wall or as a goal to train for?
+6. After the sprint (50) and the chain test (52), does the ten-minute capstone (55) still feel like chapter 7's peak?
+7. Is the black hole's 5-wave chain (47's top star) a fair top mark for people?
+
+### 8.8 Reproduce
+
+Pass 2's inputs and outputs are in `artifacts/odyssey-level-design-audit-2026-11/pass2/` (git-ignored), with its
+scripts in `scripts/pass2/`:
+
+- `pass2_v4.py` writes the 16 overrides (`pass2.json`), and `build.py` merges them onto pass 1's `proposal.json` and
+  emits `level-design-2026-11.js` into a worktree.
+- `bench.sh` and `bench_human.sh` run the five proxies and the human paces on the changed orbs, and `eval_p2.py` joins
+  them with the unchanged orbs' runs and applies the gates (`gates_p2.py`).
+- `part1.py` and `assemble_p2.py` write this section; `chart_p2.py` draws the curve.
+
+```sh
+# in a worktree with the pass-2 retune emitted (build.py)
+node scripts/odyssey-benchmark.mjs --levels 4,17,21,22,24,31,38,40,42,43,47,50,51,52,55,59 --profiles stacker \
+  --cadences deliberate,native --samples 5 --seed-start 12001 --workers 2 --output <dir>   # and 13001, 16001;
+  # likewise cascade/steady, expert/native, quad/native, and the human paces on 15001 and 17001
+```
+
+### 8.9 Built: phases 5 and 6 (2026-11-03)
+
+**Phase 5 (data)** is on `feature/odyssey-level-design-pass2`:
+
+- **Retune.** The 16 orbs in the retune, which is byte-identical to the measured one apart from its comments.
+- **Copy.** New words for 13 orbs.
+- **Roles.** The arc beats for chapters 4, 6 and 7.
+- **Time boards.** `OdysseyLevelTime_v6_` (D12).
+- **Tests.** The design-rules test gains V1, V2 and V4 and the new measured rows. The balance, speed-progression and
+  leaderboard tests follow.
+- **Gate.** The benchmark gate's D9 exception lives in the artifact scripts.
+
+**Phase 6 (in game)** captured the ten new combinations in the real game at 30 fps, with no console errors. Each
+HUD shows its goal, the briefing names each rule, and the tide orbs count down to the next row. A tide run that tops
+out ends on the normal results sheet.
+
+![The new orbs in game](images/odyssey-level-design-2026-11/in-game-pass2.jpg)
+
+**Phase 3's follow-up, the star-time floor:** no time-only three-star time falls under 1.10 pieces/s on any orb. The
+only gaps against the ladder are its 5-second rounding, which R2 allows.

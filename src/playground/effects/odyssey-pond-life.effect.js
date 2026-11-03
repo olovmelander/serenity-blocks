@@ -55,8 +55,9 @@ export function create({
     const target = () => {
         if (animal === 'heron') {
             const h = pond.heron;
+            // It may be in flight: the camera follows its height too.
             return {
-                x: h.x ?? 0, y: floor + 1.6, z: h.z ?? 0, heading: h.heading ?? 0,
+                x: h.x ?? 0, y: (h.y ?? floor) + 2.2, z: h.z ?? 0, heading: h.heading ?? 0,
             };
         }
         if (deer) {

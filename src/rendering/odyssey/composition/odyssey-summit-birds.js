@@ -52,8 +52,11 @@ export const SUMMIT_BIRDS = Object.freeze({
     radius: Object.freeze([55, 95]),
     heightSpread: 22,
     lapSeconds: 44,
-    /** A bird's wingspan, world units (the old 3.8-unit template at 3.0 u per unit). */
-    span: 11.4,
+    /**
+     * A bird's wingspan, world units: 13.7 (5.3x life; 11.4 until the 2026-11-03 visibility check,
+     * which found the kettle a speck at L27-L29), 1.24x the eagle's as a griffon is a golden eagle's.
+     */
+    span: 13.7,
     /** Roll into the turn, radians (each bird tilts in and out of it: SUMMIT_SOAR.tilt). */
     bank: 0.32,
     /**
@@ -284,11 +287,12 @@ export function createSummitBirds({
             wrist: model.wrist,
         });
         vBirdN.assign(left.mul(normal.x).add(up.mul(normal.y)).add(forward.mul(normal.z)));
-        // Under ~14 px across a bird darkens a little toward its silhouette and loses its rim
-        // (the flights' rule: a far bird reads only while it is darker than the air behind it).
+        // Under ~24 px across a bird darkens toward its silhouette, takes on less of the air and
+        // loses its rim (the flights' rule: a far bird reads only while it is darker than the air
+        // behind it; 14 px and a lighter darkening until the 2026-11-03 visibility check).
         const across = float(config.span).div(max(length(seat.sub(cameraPosition)), 1.0));
-        const far = float(1).sub(smoothstep(0.0048, 0.0112, across));
-        vSpeck.assign(vec3(far, far.mul(0.35), 0));
+        const far = float(1).sub(smoothstep(0.0048, 0.0192, across));
+        vSpeck.assign(vec3(far, far.mul(0.5), far.mul(0.5)));
         const size = float(config.span / model.span).mul(uReveal);
         return seat.add(left.mul(local.x).add(up.mul(local.y.add(heave))).add(forward.mul(local.z)).mul(size));
     })();

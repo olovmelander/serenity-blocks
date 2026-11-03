@@ -3856,6 +3856,8 @@ export class OdysseyBoardController {
                         this.flights = createOdysseyFlights({
                             hazeColour: this.oneWorld?.cloudPalette?.skyHorizon || null,
                             sunColour: this.oneWorld?.cloudPalette?.sunColour || null,
+                            // The swallow fly-by past the meadow orbs; ?odysseyNoSwallowFlyby=1 drops it.
+                            ...(readBooleanUrlFlag('odysseyNoSwallowFlyby') ? { flyby: null } : {}),
                         });
                         this.scene.add(this.flights.group);
                     }

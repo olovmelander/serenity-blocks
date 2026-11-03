@@ -49,7 +49,8 @@ import { ODYSSEY_SHOWER, showerBowVolume } from './odyssey-shower.js';
 import { CLOUD_FIELD_ANCHOR, ODYSSEY_CLOUD_FIELD_SPECS } from './odyssey-cloud-field-specs.js';
 import { WATER_CLOUD_SLOTS, buildWaterCloudProxies, selectWaterClouds } from './odyssey-water-clouds.js';
 import {
-    LAKE_RAMP, LAKE_WATER, SEA_ABSORB_GAIN, SEA_HORIZON_DOWN, SEA_RAMP, SEA_SURF,
+    LAKE_RAMP, LAKE_WATER, SEA_ABSORB_GAIN, SEA_FILM, SEA_HORIZON_DOWN, SEA_RAMP, SEA_SURF,
+    WATER_SHORE_DEPTH_BIAS,
 } from './odyssey-water-looks.js';
 import {
     FOREST_LEAF_CARD, FOREST_TRUNK_PACK, buildForestTreeGeometry, packForestTrunkW,
@@ -3496,6 +3497,11 @@ export function createOdysseyWorld({
         lakeMat.opacityNode = smoothstep(float(0), lakeShoreW, lakeDepth);
         lakeMat.transparent = true;
         lakeMat.depthWrite = false;
+        // The sea's depth bias (THE SHORE'S DEPTH FIGHT): the undecided line lies on the dry bank,
+        // where the film is exactly clear, instead of on the waterline.
+        lakeMat.polygonOffset = true;
+        lakeMat.polygonOffsetFactor = 0;
+        lakeMat.polygonOffsetUnits = -WATER_SHORE_DEPTH_BIAS;
         // No alphaTest (a discard): through chapters 3-4 the lake is in frame but behind the
         // massif, and the depth test should reject it before it shades. A clear film just blends.
         lakeMat.side = THREE.FrontSide;
@@ -4353,11 +4359,21 @@ export function createOdysseyWorld({
     // The film thins toward the LIVE waterline (the swash), and foam is opaque where the
     // film under it is not — otherwise the lapping front would be drawn at ~20 % alpha.
     waterMat.opacityNode = clamp(max(
-        smoothstep(float(-0.45), float(2.0), depthLive),
+        smoothstep(float(SEA_FILM[0]), float(SEA_FILM[1]), depthLive),
         shoreFoam.mul(0.92),
     ), 0, 1);
     waterMat.transparent = true;
     waterMat.depthWrite = false;
+    // THE SHORE'S DEPTH FIGHT (2026-11-03; WATER_SHORE_DEPTH_BIAS). From the climb the last part
+    // of a metre of water over the north beach's 2-degree sand lies inside one step of the depth
+    // buffer, so the film and the sand fought there and the waterline flickered with every
+    // sub-pixel move of the camera. The film is drawn a few depth steps nearer the eye (steps grow
+    // with range as the precision falls): in that band the water always wins and its own opacity,
+    // which reads the real depth over the seabed, decides what shows. The undecided line is now on
+    // the dry sand, where the film is clear. Tiny near the eye (0.16 u along the ray at 300 u).
+    waterMat.polygonOffset = true;
+    waterMat.polygonOffsetFactor = 0;
+    waterMat.polygonOffsetUnits = -WATER_SHORE_DEPTH_BIAS;
     waterMat.alphaTest = 0.004;
     waterMat.side = THREE.DoubleSide;
     // NOT forceSinglePass, deliberately (2026-08-22 audit): every other transparent DoubleSide

@@ -59,6 +59,7 @@
     "src/core/odyssey/odyssey-charm-bag.js",
     "src/core/odyssey/odyssey-charm-use.js",
     "src/core/odyssey/odyssey-rubble.js",
+    "src/core/odyssey/odyssey-tide.js",
     "src/core/odyssey/odyssey-time-board.js",
     "src/core/player-input-state.js",
     "src/core/progression/run-score.js",

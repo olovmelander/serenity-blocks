@@ -203,7 +203,9 @@ describe('Act II set pieces fade only out of view (real camera, live spline, hei
         const flock = ODYSSEY_FLIGHTS.findIndex((f) => f.id === 'swallows');
         const { window } = ODYSSEY_FLIGHTS[flock];
         const places = [];
-        resolveFlightLanes().filter((lane) => lane.flock === flock).forEach((lane) => {
+        // (The swallow fly-by is not in the window's fade: a pass is shown only if it starts with
+        // the camera in the meadow, then flies to its end out of frame; odyssey-swallow-flyby.test.)
+        resolveFlightLanes().filter((lane) => lane.flock === flock && !lane.flyby).forEach((lane) => {
             for (let t = 0; t < 30; t += 1) {
                 const q = flightPositionAt(lane, t);
                 places.push(new THREE.Vector3(q.x, q.y, q.z));

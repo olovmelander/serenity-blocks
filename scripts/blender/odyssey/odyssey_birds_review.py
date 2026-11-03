@@ -483,6 +483,8 @@ def review_blend(mod, built, motion, path, eagle_arm=None):
         scene.collection.objects.link(cobj)
     if eagle_arm is not None:
         eagle_arm.location = (0, 4.5, 1.0)
+    if motion.get("flyby"):
+        flyby_pass(mod, built, motion, scene)
     if hasattr(mod, "author_beats"):
         mod.author_beats(scene)
     # A camera and Workbench in vertex colour, so it opens looking like the previews.
@@ -504,6 +506,62 @@ def review_blend(mod, built, motion, path, eagle_arm=None):
         bpy.context.window.scene = scene
     bpy.ops.wm.save_as_mainfile(filepath=str(path), compress=True)
     print(f"{TAG} saved {path}")
+
+
+def flyby_pass(mod, built, motion, scene):
+    """The swallow fly-by in WORLD space (Blender: x, -z, y of the game's), drawn at its game size:
+    the bird keyed along one pass (absolute shape keys for the wings, its full frame keyed), the
+    route as a curve, and a camera at each seat L16-L24 looking at its orb (look through
+    seat-L19 and scrub)."""
+    fb = motion["flyby"]
+    b = built["swallow"]
+    spec = mod.SPECS["swallow"]
+    frames = fb["frames"]
+    n = len(frames)
+    coll = bpy.data.collections.new("swallow-flyby")
+    scene.collection.children.link(coll)
+    o = mesh_object(scene, "swallow-flyby", b, b.verts)
+    scene.collection.objects.unlink(o)
+    coll.objects.link(o)
+    o.scale = (fb["span"] / spec["span"],) * 3
+    bake_shapes(o, [posed(mod, "swallow", b, fr) for fr in frames], (1, n))
+    o.rotation_mode = "QUATERNION"
+    for k, fr in enumerate(frames):
+        left = world_to_blender(fr["left"])
+        up = world_to_blender(fr["up"])
+        fwd = world_to_blender(fr["forward"])
+        rot = Matrix((left, -fwd, up)).transposed()
+        o.location = world_to_blender(fr["position"])
+        o.rotation_quaternion = rot.to_quaternion()
+        o.keyframe_insert("location", frame=k + 1)
+        o.keyframe_insert("rotation_quaternion", frame=k + 1)
+    curve = bpy.data.curves.new("flyby-route", "CURVE")
+    curve.dimensions = "3D"
+    curve.bevel_depth = 0.06
+    spline = curve.splines.new("POLY")
+    pts = [world_to_blender(fr["position"]) for fr in frames]
+    spline.points.add(len(pts) - 1)
+    for i, p in enumerate(pts):
+        spline.points[i].co = (p.x, p.y, p.z, 1.0)
+    cobj = bpy.data.objects.new("flyby-route", curve)
+    cobj.hide_render = True  # the path is for the viewport; a render shows the bird alone
+    coll.objects.link(cobj)
+    for s in fb["seats"]:
+        cam_data = bpy.data.cameras.new(f"seat-L{s['id']}")
+        cam_data.angle_y = math.radians(60)
+        cam_data.sensor_fit = "VERTICAL"
+        cam = bpy.data.objects.new(f"seat-L{s['id']}", cam_data)
+        coll.objects.link(cam)
+        eye = world_to_blender(s["eye"])
+        orb = world_to_blender(s["orb"])
+        cam.location = eye
+        cam.rotation_euler = (orb - eye).to_track_quat("-Z", "Y").to_euler()
+        mark = bpy.data.objects.new(f"orb-L{s['id']}", None)
+        mark.empty_display_type = "SPHERE"
+        mark.empty_display_size = 1.2
+        mark.location = orb
+        coll.objects.link(mark)
+    scene.frame_end = max(scene.frame_end, n)
 
 
 def main():

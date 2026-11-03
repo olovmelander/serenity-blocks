@@ -19,8 +19,8 @@ describe('isolated Odyssey balance experiments', () => {
         expect(() => resolveScenario(getLevelById(55), 'orb59-deadline210')).toThrow();
     });
 
-    it('requests only gravity scaling for Orb 51, preserving score level and acceleration', () => {
-        const original = getLevelById(51);
+    it('requests only gravity scaling for the sprint (orb 50), preserving score level and acceleration', () => {
+        const original = getLevelById(50);
         const before = structuredClone(original);
         const variant = resolveScenario(original, 'orb51-fall75');
         expect(variant.benchmarkPhysicsPolicy).toEqual({ initialFallMs: 75 });
