@@ -2,7 +2,7 @@
  * KEYSTONE — main menu (#start-modal) and the game-wide corner tiles
  * ---------------------------------------------------------------------------------
  * Replaces menu-aaa.css. The modes are a list grouped by the tagline's verbs
- * (Stack · Breath · Ascend); the stage beside them describes the current mode and
+ * (Stack · Breathe · Ascend); the stage beside them describes the current mode and
  * holds its one primary action; the dock names every secondary destination.
  * Behaviour: src/ui/main-menu/main-menu.js. Record: docs/MENU_UI_OVERHAUL_2026-10.md.
  *

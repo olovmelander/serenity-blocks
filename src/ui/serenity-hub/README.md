@@ -40,7 +40,7 @@ the world, the wake lock, the media keys) lives beside the Hub in `src/ui/sereni
 .serenity-hub-backdrop                 solid night scrim, data-wheel-lock
 #serenity-hub-panel.serenity-hub       role=dialog aria-modal, data-tab=<current tab>
   header.hub-panel-header
-    .hub-eyebrow                       "Breath · …", follows the tab
+    .hub-eyebrow                       "Breathe · …", follows the tab
     h2#hub-title                       "Serenity Hub" (focused on open)
     button.hub-close-btn               "Close" + Esc / B keycaps
   nav.hub-tabs[role=tablist]           #hub-tab-<id>, roving tabindex

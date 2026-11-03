@@ -1104,7 +1104,7 @@ export class IntroAnimation {
 
         const tagline = document.createElement('span');
         tagline.className = 'intro-subtitle';
-        tagline.textContent = 'Stack · Breath · Ascend';
+        tagline.textContent = 'Stack · Breathe · Ascend';
         title.appendChild(tagline);
 
         return title;

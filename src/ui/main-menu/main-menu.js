@@ -85,7 +85,7 @@ const MODES = {
         unavailableNote: 'Online play runs through Steam. Start Serenity Blocks from Steam to create and join lobbies.',
     },
     serenity: {
-        eyebrow: 'Breath · Worlds and music',
+        eyebrow: 'Breathe · Worlds and music',
         title: 'Serenity',
         art: { file: 'serenity' },
         wordmark: { file: 'serenity' },
@@ -93,7 +93,7 @@ const MODES = {
         action: 'Enter Serenity',
     },
     sukha: {
-        eyebrow: 'Breath · Guided breathwork',
+        eyebrow: 'Breathe · Guided breathwork',
         title: 'Sukha Sessions',
         wordmark: { file: 'sukha-sessions', tall: true },
         lede: 'Nine voice-guided sessions in the breathing worlds, from the short Sukha First Breath to the deep holds of Sukha Phoenix. The Odyssey and your practice open them, one by one.',
