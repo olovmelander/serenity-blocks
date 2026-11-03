@@ -1,4 +1,4 @@
-"""Neon District's shop people: a cast of cyberpunk characters baked into a relightable sprite sheet.
+"""Neon District's shop people: a cast of neon-noir street characters baked into a relightable sprite sheet.
 
 Run headless (nothing in an open Blender session is touched):
 

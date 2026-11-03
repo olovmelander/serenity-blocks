@@ -139,7 +139,9 @@ December 2025 images left the atlases because they carry third-party marks:
 - the Retro Replay arcade, whose sign shows another company's video-game characters
 - the Aurelia Colonies advert, signed with a famous film company's name and logo
 
-The user's other adverts stay in the screens' playlists.
+The user's other adverts stay in the screens' playlists. (Since 2026-11-03 those are gone too:
+ten street adverts painted by the bake took their slots; see
+`scripts/neon-district/source-art/README.md`.)
 
 ## The street comes alive (2026-10-18, second pass)
 
@@ -189,7 +191,7 @@ Each room has up to four:
 - A gloss of light sweeps across each LED wall now and then.
 - Most street screens run a ticker under the advert: its slogan in amber LEDs ("COMBO NOODLES ·
   KEEP THE CHAIN GOING", "SERENITY TRANSIT · NOW BOARDING: KOI POND", Sukha's "INHALE 4 · EXHALE
-  6"), or one of the district's own lines under the user's adverts.
+  6"), or one of the district's own lines under the street adverts.
 - Text lines are now up to 48 characters.
 
 **Posters.** Rain runs down the paste-ups in streaks that darken and shine the paper, and a torn
@@ -215,7 +217,7 @@ their own.
 The billboard atlas is 4096 × 3584 (half size 2048 × 1792 on the low tiers). Adverts are dealt
 by campaign family first:
 
-- on the screens and roof boards: brands 42 %, transit 38 %, the user's adverts 12 %, Sukha 8 %
+- on the screens and roof boards: brands 42 %, transit 38 %, the street adverts 12 %, Sukha 8 %
 - on the paste-up walls: transit 60 %, brands 40 %
 
 About 26 of the 34 world posters are up in any one period of street. A final pass makes sure
@@ -413,8 +415,8 @@ Halos, lamp cones and steam are Medium and up. Low and Minimal load the half-siz
 ## Assets
 
 The shopfronts and billboards are two WebP atlases under `public/textures/neon-district/`
-(about 1 MB each, with half-size copies), baked by `scripts/neon-district/build-atlases.mjs`
-from the images in `scripts/neon-district/source-art/`. The bake is deterministic. The atlases
+(with half-size copies), baked by `scripts/neon-district/build-atlases.mjs`: the shopfronts
+from the paintings in `scripts/neon-district/source-art/`, the billboards painted by the bake. The bake is deterministic. The atlases
 load off the frame: the district stands dark where they go and powers up when they arrive.
 
 Everything else is generated: the facades, the signs' glyphs, the hardware (boxes and

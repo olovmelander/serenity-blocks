@@ -598,12 +598,12 @@ WALK_FRAMES = 18
 # The walkers: who crosses the rooms. Their clothes are symmetric (a walk is mirrored for the
 # other direction, a turn for the other end). step: half a stride (metres); speed: m/s.
 WALKERS = {
-    # A fixer: a calf-length coat with the collar up, a lit visor, pauldrons on both shoulders.
+    # A broker: a calf-length coat with the collar up, a lit visor, pauldrons on both shoulders.
     "Fixer": dict(build="A", step=0.52, speed=0.96, hold="coat", walk={},
                   outfit=dict(top="longcoat", bottom="trousers", hair="short", shoes="boots",
                               gear=["collar", "visor", "pauldron_L", "pauldron_R", "belt", "pouches"],
                               trims=["cuffs"])),
-    # A netrunner: hood up, goggles and a respirator, straps crossed on the chest, bracers, lit soles.
+    # A hacker: hood up, goggles and a respirator, straps crossed on the chest, bracers, lit soles.
     "Runner": dict(build="B", step=0.48, speed=0.9, hold="hoodie", walk=dict(sway=0.026, drop=5.0, arm=14.0),
                    outfit=dict(top="hoodie", bottom="cargo", hair=None, shoes="boots",
                                gear=["hood", "mask", "goggles_eyes", "strap_L", "strap_R", "belt", "bracers"],
@@ -663,7 +663,7 @@ COOK = dict(top="chef", bottom="trousers", hair="buzz", shoes="boots", gear=["he
 # A role's alternatives follow each other (the shader picks one by the person's seed).
 CLIPS = dict(_walker_clips())
 CLIPS.update({
-    # Waiting (the laundromat, the office): a corp fixer on her phone; a heavy guard reading the
+    # Waiting (the laundromat, the office): a corporate broker on her phone; a heavy guard reading the
     # screen on his forearm.
     "idleB": dict(build="B", outfit=dict(top="longcoat", bottom="trousers", hair="bob", shoes="boots",
                                          gear=["collar", "eye", "belt"], trims=["cuffs"], props=[dict(kind="phone")]),

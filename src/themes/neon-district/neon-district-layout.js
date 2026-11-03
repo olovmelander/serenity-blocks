@@ -41,7 +41,7 @@ export const SIGN_WORDS = Object.freeze([
 
 /** How often each campaign family comes up when a screen or a wall is given an advert. */
 export const AD_FAMILY_SHARE = Object.freeze({
-    brand: 0.42, transit: 0.38, user: 0.12, sukha: 0.08,
+    brand: 0.42, transit: 0.38, street: 0.12, sukha: 0.08,
 });
 
 /** The paste-up walls lean to the travel posters: that is where a city's travel adverts go. */
@@ -213,8 +213,17 @@ export function buildLayout(seed = 0x0d15721c) {
     };
     const meanGlow = (cells) => [0, 1, 2].map((c) => cells.reduce((a, k) => a + BILLBOARD_CELLS[k].glow[c], 0) / cells.length);
     const SHAPE_ASPECT = { wide: 16 / 9, portrait: 2 / 3, square: 1 };
-    const addScreen = (screen) => {
-        const cells = playlist(screen.shape);
+    // The square adverts (street adverts all) come round in order on the squares hung in place of
+    // tall street screens (see the block loop); a dealt playlist is drawn for those all the same,
+    // so the rest of the street is dealt exactly as if they were tall.
+    const squareDeck = BILLBOARD_CELLS.map((c, i) => (c.shape === 'square' ? i : -1)).filter((i) => i >= 0);
+    let squareCursor = 0;
+    let tallStreetScreens = 0;
+    const nextSquares = () => [0, 1, 2].map(() => squareDeck[squareCursor++ % squareDeck.length]);
+    const addScreen = ({ square = false, ...screen }) => {
+        const dealt = playlist(screen.shape);
+        const cells = square ? nextSquares() : dealt;
+        if (square) screen.shape = 'square';
         const glow = meanGlow(cells);
         // Most street screens run a ticker under each advert: its slogan, scrolling.
         const tickerOn = (screen.pitch ?? 0.055) < 0.07 && chance(0.85);
@@ -672,13 +681,19 @@ export function buildLayout(seed = 0x0d15721c) {
                 if (roll < 0.45) shape = 'wide';
                 else if (roll < 0.85) shape = 'portrait';
                 const heights = { wide: [3.6, 4.6], portrait: [5.6, 7.2], square: [4.4, 5.6] }[shape];
-                const h = range(heights[0], heights[1]);
-                const w = h * SHAPE_ASPECT[shape];
+                let h = range(heights[0], heights[1]);
+                const lift = range(0, 6);
+                // Every fourth tall street screen hangs as a square instead (its height mapped into
+                // the squares' range), so the square adverts always have somewhere to run.
+                const square = shape === 'portrait' && tallStreetScreens++ % 4 === 1;
+                if (square) h = 4.4 + ((h - 5.6) / 1.6) * 1.2;
+                const w = square ? h : h * SHAPE_ASPECT[shape];
                 addScreen({
                     side,
                     shape,
+                    square,
                     x: side * (STREET.halfStreet - 0.4 - w / 2),
-                    y: Math.min(wallH + 2 + h / 2, STREET.plinth + 4 + h / 2 + range(0, 6)),
+                    y: Math.min(wallH + 2 + h / 2, STREET.plinth + 4 + h / 2 + lift),
                     z: z + screenEnd * (len / 2 - 1.2),
                     w,
                     h,
@@ -903,7 +918,7 @@ export function buildLayout(seed = 0x0d15721c) {
             const runs = (brand) => plan.screens.reduce((n, s) => n + s.playlist.filter((c) => BILLBOARD_CELLS[c].brand === brand).length, 0);
             const slot = screen.playlist.findIndex((c) => {
                 const was = BILLBOARD_CELLS[c];
-                return was.family === 'user' || (was.family !== 'sukha' && runs(was.brand) > 1);
+                return was.family === 'street' || (was.family !== 'sukha' && runs(was.brand) > 1);
             });
             if (slot < 0) continue; // eslint-disable-line no-continue
             screen.playlist[slot] = cell;

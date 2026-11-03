@@ -1,8 +1,8 @@
 /**
  * Neon District — the people in the shops.
  *
- * A cast of cyberpunk characters (six kinds of walker: a fixer in a long coat, a hooded
- * netrunner, a chrome-armed brute, a punk, a helmeted rider, a nomad under a wide hat; cooks,
+ * A cast of neon-noir street characters (six kinds of walker: a broker in a long coat, a hooded
+ * hacker, a chrome-armed brute, a punk, a helmeted rider, a nomad under a wide hat; cooks,
  * bartenders and clerks, runners, gamers, couriers, a monk...) baked in Blender by
  * scripts/blender/neon_district_people.py into a sprite sheet of DATA, not colour: per texel the
  * view-space normal, an occlusion and coverage, and weights for seven surface classes (skin, hair,
