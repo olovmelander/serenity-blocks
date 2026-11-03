@@ -195,11 +195,12 @@ export function createOdysseyIbex({
             const brown = clamp(vPaint.z, 0, 1);
             const seen = clamp(vPaint.w, 0, 1);
             const tone = vLook.y;
-            // The summer coat: a warm grey-brown (the buck a little darker), darker brown down the
-            // fronts of the legs, along the back and on the chest; the belly and the insides pale; the
-            // hooves, nose and eyes near black; the horns a dark grey-brown.
-            const coat = mix(vec3(0.115, 0.095, 0.07), vec3(0.17, 0.145, 0.108), tone);
-            const darker = mix(coat, vec3(0.022, 0.016, 0.011), brown);
+            // The summer coat: a warm grey-brown (the buck a little darker), a deep chocolate down the
+            // fronts of the legs, along the back, on the flank and the chest; the belly and the insides
+            // pale; the hooves, nose and eyes near black; the horns a dark grey-brown. (The markings were
+            // near black until 2026-11-03, and at game size they read as shadow: only the legs showed.)
+            const coat = mix(vec3(0.125, 0.102, 0.074), vec3(0.185, 0.155, 0.112), tone);
+            const darker = mix(coat, vec3(0.045, 0.031, 0.02), brown);
             const belly = mix(darker, vec3(0.6, 0.55, 0.45), pale);
             const hornC = clamp(float(1).sub(abs(vHorn.sub(1))), 0, 1);
             const beardC = clamp(vHorn.sub(1), 0, 1);

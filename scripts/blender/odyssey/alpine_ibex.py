@@ -426,13 +426,17 @@ def paint(shape, landmarks, positions, normals, parts):
     dark = np.clip(np.maximum.reduce([hooves, nose, eyes, tail * 0.75]), 0.0, 1.0)
     dark[apart] = 0.0
     # Brown (the darker coat).
-    lower_legs = legs * _smoothstep(0.34, 0.22, y)
+    # (Less than all round, the backs of the cannons lighter: at game size the legs read as one black
+    # stick until 2026-11-03.)
+    lower_legs = legs * _smoothstep(0.34, 0.22, y) * (0.75 + (0.25 * _smoothstep(-0.6, 0.2, normals[:, 2])))
     fore_front = fore * _smoothstep(-0.2, 0.5, normals[:, 2]) * _smoothstep(0.58, 0.44, y)
     hind_front = legs * ~fore * _smoothstep(0.0, 0.6, normals[:, 2]) * _smoothstep(0.52, 0.36, y) * 0.8
-    dorsal = trunk * _smoothstep(0.35, 0.8, normals[:, 1]) * _smoothstep(0.1, 0.05, np.abs(x)) \
-        * _smoothstep(0.60, 0.68, y)
-    flank = body * _smoothstep(0.45, 0.75, side) * _smoothstep(0.37, 0.42, y) * _smoothstep(0.58, 0.50, y) \
-        * _smoothstep(-0.38, -0.28, z) * _smoothstep(0.28, 0.18, z)
+    # (The stripe along the back and the band along the lower flank broader: at game size they were lost
+    # until 2026-11-03.)
+    dorsal = trunk * _smoothstep(0.3, 0.75, normals[:, 1]) * _smoothstep(0.13, 0.07, np.abs(x)) \
+        * _smoothstep(0.58, 0.66, y)
+    flank = body * _smoothstep(0.3, 0.6, side) * _smoothstep(0.35, 0.41, y) * _smoothstep(0.60, 0.52, y) \
+        * _smoothstep(-0.40, -0.30, z) * _smoothstep(0.30, 0.20, z)
     chest = trunk * _smoothstep(0.2, 0.8, normals[:, 2]) * _smoothstep(0.06, 0.2, z) * _smoothstep(0.74, 0.44, y)
     throat = (parts == PARTS["neck"]) * _smoothstep(0.0, -0.6, normals[:, 1]) * 0.7
     brown = np.clip(np.maximum.reduce([lower_legs, fore_front, hind_front, dorsal, flank, chest, throat]), 0.0, 1.0)
@@ -595,7 +599,7 @@ POSES = {
 # The game's coat (composition/odyssey-ibex.js), brightened for the preview's Cycles light.
 COAT = np.array([0.30, 0.25, 0.185])
 PALE = np.array([0.80, 0.74, 0.62])
-BROWN = np.array([0.035, 0.026, 0.019])
+BROWN = np.array([0.075, 0.052, 0.034])
 DARK = np.array([0.03, 0.025, 0.02])
 HORN = np.array([0.22, 0.19, 0.15])
 
@@ -695,6 +699,9 @@ def motion(ibex, spec_path, directory):
         ground = studio.mesh_object("ground", np.array([[-60, 0, -60], [60, 0, -60], [60, 0, 60], [-60, 0, 60]],
                                                        dtype=float), np.array([[0, 2, 1], [0, 3, 2]]))
     ground.data.materials.append(studio.material("rock", vertex_color=False, base=(0.22, 0.21, 0.19)))
+    for index, path in enumerate(spec.get("paths", [])):
+        kit._path_tube(studio, "path%d" % index, np.asarray(path["points"], dtype=float), path.get("radius", 0.03),
+                       tuple(path.get("colour", (0.9, 0.2, 0.1))))
     material = studio.material("ibex", roughness=0.85)
     w = ibex.weights.astype(np.float64) / 255.0
     ids = ibex.bones.astype(np.int64)

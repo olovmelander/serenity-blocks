@@ -68,6 +68,13 @@ export const ODYSSEY_DEER = Object.freeze({
     /** Once the body has stood still this long (s), hooves this far (share of a stride) off settle. */
     settleAfter: 0.45,
     settleAt: 0.07,
+    /**
+     * The share of the ground's side-to-side tilt the body rolls with, and how far (share of size) the
+     * body may sink to keep a hoof bearing weight in reach (a sixth until 2026-11-03, when the hooves
+     * on the tarn's bank floated).
+     */
+    rollShare: 0.12,
+    dropMost: 0.24,
     /** Local rotations of a grazing head (the neck swung down its three bones, the face to the grass). */
     graze: Object.freeze({
         neck0: 1.85, neck1: 0.5, neck2: 0.4, head: -2.3, dip: 0.08,
@@ -148,15 +155,19 @@ function noise(t, seed) {
     return h(i) + ((h(i + 1) - h(i)) * u);
 }
 
+/** The integral of smoothstep over [0, x]: the distance a speed rising along smoothstep has covered. */
+function rampDistance(x) {
+    return (x * x * x) - (0.5 * x * x * x * x);
+}
+
 /** Distance travelled along a move after a share `u` of its time: a smooth start and stop. */
 function moveProfile(u, a) {
     // Speed rises over [0, a] (smoothstep), holds, falls over [1 - a, 1]; its integral, normalised.
-    const ramp = (x) => (x * x * x) - (0.5 * x * x * x * x);
     const total = 1 - a;
     if (u <= 0) return 0;
     if (u >= 1) return 1;
-    if (u < a) return (a * ramp(u / a)) / total;
-    if (u > 1 - a) return (total - (a * ramp((1 - u) / a))) / total;
+    if (u < a) return (a * rampDistance(u / a)) / total;
+    if (u > 1 - a) return (total - (a * rampDistance((1 - u) / a))) / total;
     return ((0.5 * a) + (u - a)) / total;
 }
 
@@ -297,6 +308,7 @@ export function buildDeerSchedule(member, cfg = ODYSSEY_DEER) {
                 flight,
                 absorb: L.absorb,
                 apex: (L.apex * k) + (L.apexPerDistance * d),
+                sinkDepth: L.sink * k,
                 head: 0,
                 alert: 0.7,
                 x1: to[0],
@@ -404,8 +416,8 @@ export function deerPathAt(deer, time, out = { x: 0, z: 0, heading: 0 }) {
         out.z = s.pz + (fz * s.about);
         out.heading = h;
     } else if (s.kind === 'leap') {
-        // Standing through the crouch, a straight line at a steady speed in the air, standing again.
-        const f = clamp01((t - s.t0 - s.crouch) / s.flight);
+        // Still through the gather, the push gathering speed, a steady flight, the landing shedding it.
+        const f = leapShare(s, t - s.t0);
         out.x = s.x0 + ((s.x1 - s.x0) * f);
         out.z = s.z0 + ((s.z1 - s.z0) * f);
         out.heading = s.h0;
@@ -419,47 +431,176 @@ export function deerPathAt(deer, time, out = { x: 0, z: 0, heading: 0 }) {
     return out;
 }
 
+/** The push and the landing's braking, as shares of the crouch and of the give. */
+const LEAP_PUSH = 0.4;
+const LEAP_BRAKE = 0.45;
+/** How far past standing the legs reach at the take-off and the touch-down (a share of the size). */
+const LEAP_REACH = 0.06;
+
 /**
- * Where a leap is at `time` (all zero outside one): `sink` the crouch before and the give after
- * (0..1, the body lowered), `arc` the body's height over the straight line between the two
- * grounds, `rise` the arc's slope along the ground (for the body's pitch), `f` the flight's share.
+ * Quintic Hermite over u in [0, 1]: value, slope and curvature at both ends (slopes per u, curvatures
+ * per u^2), so the joins between the leap's parts match in speed and acceleration too.
  */
-export function deerLeapAt(deer, time, out = {
-    on: false, f: 0, arc: 0, rise: 0, sink: 0, apex: 0, phase: 0,
-}) {
-    out.phase = 0;
+function quintic(u, p0, v0, a0, p1, v1, a1) {
+    const u2 = u * u;
+    const u3 = u2 * u;
+    const u4 = u3 * u;
+    const u5 = u4 * u;
+    return (p0 * (1 - (10 * u3) + (15 * u4) - (6 * u5)))
+        + (v0 * (u - (6 * u3) + (8 * u4) - (3 * u5)))
+        + (a0 * ((0.5 * u2) - (1.5 * u3) + (1.5 * u4) - (0.5 * u5)))
+        + (a1 * ((0.5 * u3) - u4 + (0.5 * u5)))
+        + (v1 * ((-4 * u3) + (7 * u4) - (3 * u5)))
+        + (p1 * ((10 * u3) - (15 * u4) + (6 * u5)));
+}
+
+/** The quintic's slope per u (same arguments). */
+function quinticSlope(u, p0, v0, a0, p1, v1, a1) {
+    const u2 = u * u;
+    const u3 = u2 * u;
+    const u4 = u3 * u;
+    return ((p1 - p0) * ((30 * u2) - (60 * u3) + (30 * u4)))
+        + (v0 * (1 - (18 * u2) + (32 * u3) - (15 * u4)))
+        + (a0 * (u - (4.5 * u2) + (6 * u3) - (2.5 * u4)))
+        + (a1 * ((1.5 * u2) - (4 * u3) + (2.5 * u4)))
+        + (v1 * ((-12 * u2) + (28 * u3) - (15 * u4)));
+}
+
+/**
+ * How far along its line a leap has carried the body at `local` seconds into it (0..1): nothing
+ * through the gather, then the push gathers speed (no jump in speed or acceleration), a steady
+ * speed in the air, and the landing sheds it over the first part of the give.
+ */
+function leapShare(s, local) {
+    const push = LEAP_PUSH * s.crouch;
+    const brake = LEAP_BRAKE * s.absorb;
+    const v = 1 / ((push / 2) + s.flight + (brake / 2));
+    const tp = local - (s.crouch - push);
+    if (tp <= 0) return 0;
+    if (tp < push) return v * push * rampDistance(tp / push);
+    const tf = local - s.crouch;
+    if (tf < s.flight) return v * ((push / 2) + tf);
+    const ta = tf - s.flight;
+    if (ta < brake) {
+        const u = ta / brake;
+        return v * ((push / 2) + s.flight + (brake * (u - rampDistance(u))));
+    }
+    return 1;
+}
+
+/** A leap's scratch record (deerLeapAt fills it). */
+function leapRecord() {
+    return {
+        on: false,
+        f: 0,
+        y: 0,
+        vy: 0,
+        v0: 1,
+        depth: 1,
+        apex: 0,
+        phase: 0,
+        hold: 0,
+        lean: 0,
+        ext: 0,
+        x0: 0,
+        z0: 0,
+        x1: 0,
+        z1: 0,
+        share: 0,
+    };
+}
+
+/**
+ * Where a leap is at `time` (all zero outside one). `y` is the body's height over its ground
+ * (world units): it sinks as the haunches gather, rises through the push to leave the rock at the
+ * speed the arc starts with, flies the arc, and gives on landing, down fast and back up slowly;
+ * `vy` its vertical speed and `v0` the launch speed, `depth` the gather's depth (no jump in height
+ * or speed anywhere: the body is C1 from the first gather to the settle). `phase`: 0 the gather and
+ * push, 1 the flight, 2 the landing's give. `f` the flight's share. `x0 z0 x1 z1` the line it
+ * flies (where the body leaves and lands), `share` how far along it the body has come.
+ */
+export function deerLeapAt(deer, time, out = leapRecord()) {
     out.on = false;
+    out.phase = 0;
     out.f = 0;
-    out.arc = 0;
-    out.rise = 0;
-    out.sink = 0;
+    out.y = 0;
+    out.vy = 0;
     out.apex = 0;
+    out.hold = 0;
+    out.lean = 0;
     const t = wrapTime(deer, time);
     const s = deer.segments[segmentAt(deer.segments, t)];
     if (s.kind !== 'leap') return out;
     const local = t - s.t0;
+    const v0 = (4 * s.apex) / s.flight;
+    // The crouch and the reach: the push runs from the crouch up past standing, the legs straight
+    // (`ext`), where the hooves leave the rock; the crouch is as deep as the push needs to reach the
+    // speed it leaves with in its time, up to a sixth of the size (the push then shortens instead).
+    // With a fixed depth the big leaps' push took four frames, a pop, until 2026-11-03.
+    const ext = LEAP_REACH * deer.k;
+    const deepest = 0.16 * deer.k;
+    const pushMost = LEAP_PUSH * s.crouch;
+    const d = Math.min(Math.max(s.sinkDepth ?? (0.1 * deer.k), ((v0 * pushMost) / 2.2) - ext), deepest);
     out.on = true;
+    out.x0 = s.x0;
+    out.z0 = s.z0;
+    out.x1 = s.x1;
+    out.z1 = s.z1;
+    out.share = leapShare(s, local);
     out.apex = s.apex;
+    out.v0 = v0;
+    out.depth = d;
+    out.ext = ext;
+    // (The push is as quick as its travel allows at the speed it must leave with: a longer one dipped
+    // below the gather and came back up, a hitch, until 2026-11-03.)
+    const push = Math.min(pushMost, (2.2 * (d + ext)) / v0);
+    const gather = s.crouch - push;
+    if (local < gather) {
+        const u = local / gather;
+        out.hold = s5(u);
+        out.lean = s5(u);
+        out.y = -d * s5(u);
+        out.vy = (-d * 30 * u * u * (1 - u) * (1 - u)) / gather;
+        return out;
+    }
+    out.hold = 1;
+    // The arc's own curvature, matched at the take-off and the touch-down.
+    const g = (-8 * s.apex) / (s.flight * s.flight);
     if (local < s.crouch) {
-        // Down over the first part, then springing up through the take-off.
-        const u = local / s.crouch;
-        out.sink = u < 0.62 ? s5(u / 0.62) : 1 - s5((u - 0.62) / 0.38);
+        const u = (local - gather) / push;
+        out.lean = 1 - s5(u);
+        out.y = quintic(u, -d, 0, 0, ext, v0 * push, g * push * push);
+        out.vy = quinticSlope(u, -d, 0, 0, ext, v0 * push, g * push * push) / push;
         return out;
     }
     const f = (local - s.crouch) / s.flight;
     if (f <= 1) {
-        const d = Math.max(1e-6, Math.hypot(s.x1 - s.x0, s.z1 - s.z0));
         out.phase = 1;
         out.f = f;
-        out.arc = 4 * s.apex * f * (1 - f);
-        out.rise = (4 * s.apex * (1 - (2 * f))) / d;
+        out.y = ext + (4 * s.apex * f * (1 - f));
+        out.vy = (4 * s.apex * (1 - (2 * f))) / s.flight;
         return out;
     }
-    const u = clamp01((local - s.crouch - s.flight) / s.absorb);
     out.phase = 2;
     out.f = 1;
-    // The give: down fast as the fores take it, then back up more slowly as the hinds come under.
-    out.sink = 0.8 * Math.sin(Math.PI * Math.min(1, (u < 0.3 ? u / 0.6 : 0.5 + ((u - 0.3) / 1.4))));
+    const ta = local - s.crouch - s.flight;
+    // The give: deeper the faster it lands, and over the time that depth takes at that speed (a fixed
+    // give in a fixed time overshot it and bounced, until 2026-11-03).
+    const give = Math.min(Math.max(0.8 * d, ((v0 * 0.35 * s.absorb) / 2.2) - ext), deepest);
+    const down = Math.min(0.35 * s.absorb, (2.2 * (give + ext)) / v0);
+    out.depth = give;
+    if (ta < down) {
+        const u = ta / down;
+        out.lean = s5(u);
+        out.y = quintic(u, ext, -v0 * down, g * down * down, -give, 0, 0);
+        out.vy = quinticSlope(u, ext, -v0 * down, g * down * down, -give, 0, 0) / down;
+        return out;
+    }
+    const u = clamp01((ta - down) / (s.absorb - down));
+    out.hold = 1 - s5(u);
+    out.lean = 1 - s5(u);
+    out.y = -give * (1 - s5(u));
+    out.vy = (give * 30 * u * u * (1 - u) * (1 - u)) / (s.absorb - down);
     return out;
 }
 
@@ -664,7 +805,9 @@ function planDeer(deer, rig, cfg) {
             leapUntil = landAt + 0.25;
             lastLift = t;
         }
-        if (t < leapUntil) best = -1;
+        // (Nor in the leap's gather and push: the body moving off for the push read as a step due, and
+        // a fore stepped then, landing in the air, until 2026-11-03.)
+        if (t < leapUntil || seg.kind === 'leap') best = -1;
         if (best >= 0) due[best] = false;
         if (best >= 0) {
             const l = best;
@@ -693,14 +836,33 @@ function planDeer(deer, rig, cfg) {
     return { steps: lists, start: startState };
 }
 
+/** A hoof's scratch record (deerFootAt fills it; poseDeer adds the ground). */
+function footRecord() {
+    return {
+        x: 0,
+        z: 0,
+        swing: 0,
+        planted: true,
+        length: 0,
+        ground: 0,
+        under: 0,
+        kind: 0,
+        fx: 0,
+        fz: 0,
+        tx: 0,
+        tz: 0,
+        untilLift: Infinity,
+        landIn: 0,
+    };
+}
+
 /**
  * Where hoof `l` of a planned deer is at `time` (world x, z, the share of its swing done, its lift
  * and whether it is planted). Planted hooves never move.
  */
-export function deerFootAt(deer, l, time, out = {
-    x: 0, z: 0, swing: 0, planted: true, length: 0, ground: 0, kind: 0, fx: 0, fz: 0, tx: 0, tz: 0,
-}) {
+export function deerFootAt(deer, l, time, out = footRecord()) {
     out.kind = 0;
+    out.untilLift = Infinity;
     const t = wrapTime(deer, time);
     const list = deer.plan.steps[l];
     let lo = 0;
@@ -722,13 +884,14 @@ export function deerFootAt(deer, l, time, out = {
         out.swing = 0;
         out.planted = true;
         out.length = 0;
+        if (list.length) out.untilLift = list[0][0] - t;
         return out;
     }
     const s = list[found];
     if (t < s[1]) {
         const u = (t - s[0]) / (s[1] - s[0]);
-        // (In a leap the hooves travel with the body, at its steady speed.)
-        const e = s[6] === 2 ? u : s5(u);
+        // (Eased in a leap too: the hooves trail the push and reach forward for the landing.)
+        const e = s5(u);
         out.kind = s[6];
         out.fx = s[2];
         out.fz = s[3];
@@ -739,6 +902,8 @@ export function deerFootAt(deer, l, time, out = {
         out.swing = u;
         out.planted = false;
         out.length = Math.hypot(s[4] - s[2], s[5] - s[3]);
+        out.landIn = s[1] - t;
+        if (found + 1 < list.length) out.untilLift = list[found + 1][0] - t;
         return out;
     }
     out.x = s[4];
@@ -746,6 +911,8 @@ export function deerFootAt(deer, l, time, out = {
     out.swing = 0;
     out.planted = true;
     out.length = 0;
+    // (How long it stands yet: the body stops leaning on a hoof before it lifts, see poseDeer.)
+    if (found + 1 < list.length) out.untilLift = list[found + 1][0] - t;
     return out;
 }
 
@@ -880,16 +1047,39 @@ export function createDeerRig(skeleton) {
         state: {
             x: 0, z: 0, heading: 0, speed: 0, turning: 0, head: 0, alert: 0,
         },
-        feet: LEGS.map(() => ({
-            x: 0, z: 0, swing: 0, planted: true, length: 0, ground: 0, kind: 0, fx: 0, fz: 0, tx: 0, tz: 0,
-        })),
-        leap: {
-            on: false, f: 0, arc: 0, rise: 0, sink: 0, apex: 0, phase: 0,
-        },
+        feet: LEGS.map(footRecord),
+        leap: leapRecord(),
         hooves: LEGS.map(() => ({
             x: 0, y: 0, z: 0, ground: 0, stance: 0, planX: 0, planZ: 0,
         })),
     };
+}
+
+/** max(0, x) with a soft knee `c` (no jump in slope where it starts): C1 at zero. */
+function softRamp(x, c) {
+    if (x <= 0) return 0;
+    return x < c ? (x * x) / (2 * c) : x - (c / 2);
+}
+
+/** Smooth minimum and maximum of a and b, blending over about `r` (no kink where one takes over). */
+function softMin(a, b, r) {
+    const h = clamp01(0.5 + ((0.5 * (b - a)) / r));
+    return (b + ((a - b) * h)) - (r * h * (1 - h));
+}
+function softMax(a, b, r) {
+    return -softMin(-a, -b, r);
+}
+
+/**
+ * The body's pitch through a leap (+ nose down): the haunches gather (nose up), it rises nose up
+ * with the push and comes down nose first, the landing gives over the fores. Continuous throughout.
+ */
+function leapPitch(leap) {
+    // (The gather's lean eases in and out over its own time: taken from the crouch's depth, it let go
+    // in the push's last frames and the body rocked, until 2026-11-03.)
+    return (-0.26 * Math.tanh(leap.vy / Math.max(1e-6, leap.v0)))
+        - (leap.phase === 0 ? 0.24 * leap.lean : 0)
+        + (leap.phase === 2 ? 0.12 * leap.lean : 0);
 }
 
 /**
@@ -919,14 +1109,12 @@ export function poseDeer(rig, deer, time, heightAt, table = null, offset = 0, cf
     const { feet } = rig;
     rig.legs.forEach((leg, l) => {
         const f = deerFootAt(deer, l, time, feet[l]);
-        // (In a leap the ground under a hoof is the line between where it left and where it lands,
-        // or the rock under it where that stands higher.)
-        f.ground = f.kind === 2 && !f.planted
-            ? Math.max(
-                heightAt(f.fx, f.fz) + ((heightAt(f.tx, f.tz) - heightAt(f.fx, f.fz)) * f.swing),
-                heightAt(f.x, f.z),
-            )
-            : heightAt(f.x, f.z);
+        // (A hoof in the air counts for the body as the line between where it left and where it
+        // lands, so a crest passing under it never jolts the body; `under` is the ground below it,
+        // which the hoof itself keeps clear of.)
+        f.under = heightAt(f.x, f.z);
+        f.ground = f.planted ? f.under
+            : heightAt(f.fx, f.fz) + ((heightAt(f.tx, f.tz) - heightAt(f.fx, f.fz)) * s5(f.swing));
     });
     const leap = deerLeapAt(deer, time, rig.leap);
     // THE BODY rides on them: height from the ground under the hooves, pitch from fore to hind,
@@ -935,18 +1123,26 @@ export function poseDeer(rig, deer, time, heightAt, table = null, offset = 0, cf
     const sh = Math.sin(state.heading);
     const ch = Math.cos(state.heading);
     const g = state.head;
-    const walk = clamp01(state.speed / deer.walkSpeed);
+    // (Not in a leap, which carries the body itself: its speed read as a walk lowered the body a fifth of
+    // its size in five frames as the push began, until 2026-11-03.)
+    const walk = clamp01(state.speed / deer.walkSpeed) * (1 - (leap.on ? leap.hold : 0));
     const fore = 0.5 * (feet[1].ground + feet[3].ground);
     const hind = 0.5 * (feet[0].ground + feet[2].ground);
     const left = 0.5 * (feet[0].ground + feet[1].ground);
     const right = 0.5 * (feet[2].ground + feet[3].ground);
-    const pitch = (-Math.atan2(fore - hind, 0.98 * k) * 0.9) + (cfg.graze.dip * g)
+    // (Through a leap the body rides the line it flies, not its hooves: they leave and land one pair
+    // after the other, and until 2026-11-03 the body pitched back and forth with each pair.)
+    const hold = leap.on ? leap.hold : 0;
+    const lineFrom = leap.on ? heightAt(leap.x0, leap.z0) : 0;
+    const lineTo = leap.on ? heightAt(leap.x1, leap.z1) : 0;
+    const linePitch = leap.on
+        ? -Math.atan2(lineTo - lineFrom, Math.max(k, Math.hypot(leap.x1 - leap.x0, leap.z1 - leap.z0))) * 0.9 : 0;
+    const groundPitch = -Math.atan2(fore - hind, 0.98 * k) * 0.9;
+    const pitch = groundPitch + ((linePitch - groundPitch) * hold) + (cfg.graze.dip * g)
         // (In a leap: nose up off the rock, level at the top, nose down to land; held to ~17
         // degrees, as far as the legs can reach for it.)
-        - (leap.on ? Math.max(-0.3, Math.min(0.3, Math.atan(leap.rise) * 0.45)) : 0)
-        - (leap.on && leap.phase === 0 ? 0.16 * leap.sink : 0)
-        + (leap.on && leap.phase === 2 ? 0.12 * leap.sink : 0);
-    const roll = -Math.atan2(left - right, 0.22 * k) * 0.12;
+        + (leap.on ? leapPitch(leap) : 0);
+    const roll = -Math.atan2(left - right, 0.22 * k) * (cfg.rollShare ?? 0.12) * (1 - hold);
     const swingOf = (l) => (feet[l].planted ? 0 : Math.sin(Math.PI * feet[l].swing));
     const breathe = Math.sin(((time / 3.4) + (seed * 0.37)) * TAU);
     const sway = noise((time * 0.21) + seed, seed) * (1 - walk);
@@ -971,7 +1167,7 @@ export function poseDeer(rig, deer, time, heightAt, table = null, offset = 0, cf
     );
     // The jaw: cropping while it grazes, chewing the cud now and then with the head up.
     const cud = (1 - g) * (1 - walk) * Math.max(0, noise(time * 0.15, seed + 9));
-    set('jaw', 0.1 * Math.max(0, Math.sin(time * TAU * 1.5)) * Math.min(1, crop + cud));
+    set('jaw', 0.1 * (Math.max(0, Math.sin(time * TAU * 1.5)) ** 2) * Math.min(1, crop + cud));
     // Ears: toward the look, forward when alert, back and turning about on their own while it
     // grazes; a flick now and then.
     const look0 = lookAt(0);
@@ -989,11 +1185,12 @@ export function poseDeer(rig, deer, time, heightAt, table = null, offset = 0, cf
     // Height: the root over the mean of the ground under the hooves, carried a little lower in a
     // walk (a deer's legs stand straight; a stride needs a little give), then lowered further
     // below wherever a hoof bearing weight needs it (which makes the walk's own gentle bob).
-    const groundMean = 0.25 * (feet[0].ground + feet[1].ground + feet[2].ground + feet[3].ground);
+    const hoofMean = 0.25 * (feet[0].ground + feet[1].ground + feet[2].ground + feet[3].ground);
+    const groundMean = hoofMean + (((lineFrom + ((lineTo - lineFrom) * (leap.on ? leap.share : 0))) - hoofMean) * hold);
     J[rootIndex][0] = state.x;
     J[rootIndex][1] = groundMean + (skeleton[rootIndex].head[1] * k) - ((0.016 + (0.055 * walk)) * k)
         + (0.003 * k * breathe)
-        + (leap.on ? leap.arc - (/** @type {any} */ (cfg).leap.sink * k * leap.sink) : 0);
+        + (leap.on ? leap.y : 0);
     J[rootIndex][2] = state.z;
     const fkBone = (b) => {
         const { parent, head } = skeleton[b];
@@ -1017,12 +1214,20 @@ export function poseDeer(rig, deer, time, heightAt, table = null, offset = 0, cf
     };
     bodyFk();
     // Lower the body if a hoof bearing weight would be out of its leg's reach.
-    // Each hoof's say in it fades out over the start of its swing and back in before it lands, so
-    // the body never jumps when a hoof lifts.
-    let drop = 0;
+    // Each hoof's say in it eases down before it lifts, on to nothing through most of its swing and
+    // back before it lands, so the body never jumps when a hoof lifts.
+    // (A soft maximum over the hooves, so the body never kinks where one hoof takes over from another.)
+    const soft = 0.015 * k;
+    let dropSum = 1;
     rig.legs.forEach((leg, l) => {
         const f = feet[l];
-        const say = f.planted ? 1 : 1 - (s5(f.swing / 0.3) * s5((1 - f.swing) / 0.3));
+        // A hoof holds the body down while it stands, letting go of a third over its last 0.3 s
+        // (the heel lifting before the toe leaves) and taking it again over the end of its swing:
+        // until 2026-11-03 it let go in the swing's first frames and the body jumped up.
+        // (Landing, it takes the say it will have standing: a short stance starts lower.)
+        const sayLand = 1 - (0.35 * (1 - s5((f.untilLift - f.landIn) / 0.3)));
+        const say = f.planted ? 1 - (0.35 * (1 - s5(f.untilLift / 0.3)))
+            : (0.65 * (1 - s5(f.swing / 0.7))) + (sayLand * s5((f.swing - 0.7) / 0.3));
         if (say <= 0) return;
         const A = J[leg.top];
         const reach = leg.reach * k * 0.985;
@@ -1031,11 +1236,17 @@ export function poseDeer(rig, deer, time, heightAt, table = null, offset = 0, cf
         const horiz = (dx * dx) + (dz * dz);
         const tY = f.ground + (leg.fetlock * k);
         const needY = tY + Math.sqrt(Math.max(0, (reach * reach) - horiz));
-        drop = Math.max(drop, (A[1] - needY) * say);
+        dropSum += Math.exp(Math.min(40, ((A[1] - needY) * say) / soft));
     });
+    // (Through a leap the body's height is the leap's: the legs let go of it over the gather and take
+    // it back over the landing's give. `hold`, deerLeapAt.)
+    // (Less ln 2: near exact where one hoof sets it, a little deep where all four ask alike. Less ln 5
+    // until 2026-11-03, when one hoof's need fell short by a fortieth of the size and the hoof floated.)
+    const drop = (soft * (Math.log(dropSum) - Math.LN2)) * (1 - (leap.on ? leap.hold : 0));
     if (drop > 0) {
-        // (At most a sixth of its size, easing into that limit: past it a hoof would rather lift.)
-        const most = 0.16 * k;
+        // (A little under a quarter of its size at most, easing into that limit: past it a hoof would
+        // rather lift. `dropMost`.)
+        const most = (cfg.dropMost ?? 0.24) * k;
         J[rootIndex][1] -= most * (1 - Math.exp(-drop / most));
         bodyFk();
     }
@@ -1047,15 +1258,21 @@ export function poseDeer(rig, deer, time, heightAt, table = null, offset = 0, cf
         const { parent } = skeleton[leg.top];
         const P = R[parent];
         const A = J[leg.top];
+        // (A bump with no jump in speed or acceleration at the lift-off or the touch-down: 64 u^3 (1-u)^3.)
+        const bump = 64 * (f.swing ** 3) * ((1 - f.swing) ** 3);
         let lift = f.planted ? 0
-            : cfg.lift * k * Math.min(1, 0.35 + (f.length / deer.strideW)) * Math.sin(Math.PI * f.swing);
-        // In a leap the hooves ride the body's arc, folded up under it.
+            : cfg.lift * k * Math.min(1, 0.35 + (f.length / deer.strideW)) * bump;
+        // In a leap the hooves ride the body's arc, folded up under it. (Leaving and meeting the rock
+        // softly: taken straight, the hooves' speed jumped where the arc crossed the ground's line.)
         if (f.kind === 2 && !f.planted) {
-            lift = (4 * leap.apex * f.swing * (1 - f.swing))
-                + (/** @type {any} */ (cfg).leap.tuck * (leg.front ? 1 : 0.7) * k * Math.sin(Math.PI * f.swing));
+            lift = softRamp(leap.y - leap.ext, 0.08 * k)
+                + (/** @type {any} */ (cfg).leap.tuck * (leg.front ? 1 : 0.7) * k * (Math.sin(Math.PI * f.swing) ** 2));
         }
         const tx = f.x;
-        const ty = f.ground + (leg.fetlock * k) + lift;
+        // (Over the ground below it where that stands above the line: a soft maximum whose blend
+        // grows from nothing at the lift-off and shrinks to nothing at the touch-down.)
+        const clear = f.planted ? f.ground : softMax(f.ground + lift, f.under + (0.5 * lift), (0.03 * k * bump) + 1e-6);
+        const ty = (f.planted ? f.ground + lift : clear) + (leg.fetlock * k);
         const tz = f.z;
         // Into the parent's frame (the rest axes), in model units.
         const wx = (tx - A[0]) / k;
@@ -1072,7 +1289,8 @@ export function poseDeer(rig, deer, time, heightAt, table = null, offset = 0, cf
         // plane's own downward reach takes the sideways part too.
         const side = vx - leg.restX;
         const down = -Math.hypot(vy, side);
-        const d = Math.min(Math.max(Math.hypot(down, vz), Math.abs(l1 - l2) * 1.05), (l1 + l2) * 0.999);
+        // (Clamped smoothly into the leg's reach: a hard clamp kinked the knee where it took hold.)
+        const d = softMin(softMax(Math.hypot(down, vz), Math.abs(l1 - l2) * 1.08, 0.02), (l1 + l2) * 0.996, 0.02);
         // Bend at the knee or hock: |u1 + Rx(b) u2| = d.
         const Pdot = (u1y * u2y) + (u1z * u2z);
         const Q = (u1z * u2y) - (u1y * u2z);
@@ -1083,9 +1301,10 @@ export function poseDeer(rig, deer, time, heightAt, table = null, offset = 0, cf
         // phi0 is the bend at which the leg is straightest; fore knees fold the cannon back from
         // there (+), hocks fold it forward (-). One root each, continuous as the reach changes.
         // (A knee or hock folds no further than about 110 degrees past straight.)
-        const bend = leg.front
-            ? Math.min(wrapAngle(phi0 + spread), phi0 + 1.9)
-            : Math.max(wrapAngle(phi0 - spread), phi0 - 1.9);
+        // (Not wrapped: at a deep fold phi0 + spread passed pi, the wrap turned it negative and the knee
+        // flipped the other way for a frame, until 2026-11-03.)
+        const fold = softMin(spread, 1.9, 0.08);
+        const bend = leg.front ? phi0 + fold : phi0 - fold;
         const cb = Math.cos(bend);
         const sb = Math.sin(bend);
         const cy = u1y + ((u2y * cb) - (u2z * sb));
@@ -1105,7 +1324,7 @@ export function poseDeer(rig, deer, time, heightAt, table = null, offset = 0, cf
         const ahead = heightAt(f.x + (sh * along), f.z + (ch * along));
         const slope = (ahead - heightAt(f.x - (sh * along), f.z - (ch * along)))
             / (0.6 * k);
-        const curl = f.planted ? 0 : (leg.front ? 1.1 : 0.8) * Math.sin(Math.PI * Math.min(1, f.swing * 1.15));
+        const curl = f.planted ? 0 : (leg.front ? 1.1 : 0.8) * (Math.sin(Math.PI * Math.min(1, f.swing * 1.15)) ** 2);
         rotation(-Math.atan(slope) + curl, state.heading, 0, rig.T);
         // local = R_c1^T * desired, taken about x.
         const rc = R[c1];

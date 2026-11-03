@@ -300,8 +300,9 @@ describe('the ibex on the rock', () => {
                 const line = G(s.x0, s.z0) + ((G(s.x1, s.z1) - G(s.x0, s.z0)) * 0.5);
                 expect(rig.J[rig.index.root][1] - line - standY, label).toBeGreaterThan(0.3 * animal.k);
                 expect(flying.state.x, label).toBeCloseTo((s.x0 + s.x1) / 2, 0);
-                // After the landing every hoof is planted, near where it lands.
-                const after = off + s.flight + 0.3;
+                // Just after the landing (the fores first, the hinds a moment later) every hoof is down,
+                // near where it lands; a settling step may follow.
+                const after = off + s.flight + 0.12;
                 for (let l = 0; l < 4; l += 1) {
                     const f = deerFootAt(animal, l, after, {});
                     expect(f.planted, `${label} hoof ${l} down`).toBe(true);
@@ -313,6 +314,50 @@ describe('the ibex on the rock', () => {
         // Two each: the buck down off its boulder and back up, each nanny onto her rock and off, the
         // kid's two hops.
         expect(leaps).toBe(8);
+    });
+
+    it('leaps without a pop: the body turns and moves smoothly from the gather to the settle', () => {
+        // At 60 Hz over every leap and a second either side: the root's angular acceleration and the
+        // body's acceleration (sizes/s^2). Until 2026-11-03 the body pitched 0.3 rad in one frame at the
+        // take-off and at the landing (over 1100 rad/s^2, over 200 sizes/s^2).
+        const qmul = (a, b) => [
+            (a[3] * b[0]) + (a[0] * b[3]) + (a[1] * b[2]) - (a[2] * b[1]),
+            (a[3] * b[1]) - (a[0] * b[2]) + (a[1] * b[3]) + (a[2] * b[0]),
+            (a[3] * b[2]) + (a[0] * b[1]) - (a[1] * b[0]) + (a[2] * b[3]),
+            (a[3] * b[3]) - (a[0] * b[0]) - (a[1] * b[1]) - (a[2] * b[2]),
+        ];
+        const omega = (q0, q1, dt) => {
+            let d = qmul(q1, [-q0[0], -q0[1], -q0[2], q0[3]]);
+            if (d[3] < 0) d = d.map((v) => -v);
+            const s = Math.hypot(d[0], d[1], d[2]);
+            if (s < 1e-12) return [0, 0, 0];
+            const angle = (2 * Math.atan2(s, d[3])) / dt;
+            return [(d[0] / s) * angle, (d[1] / s) * angle, (d[2] / s) * angle];
+        };
+        const dt = 1 / 60;
+        const table = new Float32Array(rig.skeleton.length * 8);
+        const r = rig.index.root * 8;
+        let turnMost = 0;
+        let moveMost = 0;
+        const rate = (a, b) => a.map((x, i) => (x - b[i]) / dt);
+        herd.forEach((animal) => {
+            animal.segments.filter((s) => s.kind === 'leap').forEach((s) => {
+                const steps = Math.ceil((s.dur + 2) / dt);
+                const qs = [];
+                const ps = [];
+                for (let f = 0; f <= steps; f += 1) {
+                    poseDeer(rig, animal, s.t0 - 1 + (f * dt), G, table, 0, ODYSSEY_IBEX);
+                    qs.push([table[r], table[r + 1], table[r + 2], table[r + 3]]);
+                    ps.push(rig.J[rig.index.root].map((v) => v / animal.k));
+                }
+                const ws = qs.slice(1).map((q, f) => omega(qs[f], q, dt));
+                const vs = ps.slice(1).map((p, f) => rate(p, ps[f]));
+                ws.slice(1).forEach((w, f) => { turnMost = Math.max(turnMost, Math.hypot(...rate(w, ws[f]))); });
+                vs.slice(1).forEach((v, f) => { moveMost = Math.max(moveMost, Math.hypot(...rate(v, vs[f]))); });
+            });
+        });
+        expect(turnMost, 'root angular acceleration (rad/s^2)').toBeLessThan(80);
+        expect(moveMost, 'body acceleration (sizes/s^2)').toBeLessThan(130);
     });
 });
 
