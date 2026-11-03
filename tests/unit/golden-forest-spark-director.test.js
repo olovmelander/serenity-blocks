@@ -738,7 +738,7 @@ describe('Golden Forest spark director', () => {
                 () => reactions.onPieceLock(),
                 () => { reactions.onPieceLock(); reactions.onLineClear(4); },
                 () => reactions.onCombo(5),
-                () => { reactions.onPerfectClear(); reactions.onLevelUp(); reactions.onTSpin(); },
+                () => { reactions.onPerfectClear(); reactions.onLevelUp(); reactions.onTwist(); },
                 () => { reactions.onLineClear(2); reactions.onLineClear(3); reactions.onCombo(7); },
                 () => reactions.onBackToBack(),
                 () => {
@@ -1252,7 +1252,7 @@ describe('Golden Forest spark director', () => {
             expect(sim.spawn).toHaveBeenCalledTimes(thrown.length);
         });
 
-        it.each([[-1], [1]])('spins a small vortex beside the card for a t-spin on side %i', (side) => {
+        it.each([[-1], [1]])('spins a small vortex beside the card for a twist on side %i', (side) => {
             const { director, sim, stage } = createDirector();
             const spec = {
                 kind: 'spin', side, row: 0.5, strength: 0.8, duration: 1.7,
@@ -1433,7 +1433,7 @@ describe('Golden Forest spark director', () => {
                 reactions.onPieceLock({ piece: { x: 1, y: 20, shape: [[1]] } });
                 reactions.onLineClear(2, { clearedRows: [22, 23] });
                 reactions.onCombo(8);
-                reactions.onTSpin();
+                reactions.onTwist();
                 return reactions;
             };
             const reactions = session(1);

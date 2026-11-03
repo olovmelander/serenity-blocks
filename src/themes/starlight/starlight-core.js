@@ -36,9 +36,9 @@ export const WORLD = Object.freeze({
 /** The sky's own turn: once round the pole in this many seconds (an hour of sky a minute). */
 export const SKY_TURN_SECONDS = 1440;
 export const SKY_RATE = TAU / SKY_TURN_SECONDS;
-/** A level-up carries the sky one hour on at once; a T-spin whirls it this far. */
+/** A level-up carries the sky one hour on at once; a twist whirls it this far. */
 export const HOUR_SWING = 15 * DEG;
-export const TSPIN_SWING = 22 * DEG;
+export const TWIST_SWING = 22 * DEG;
 /** The longest trail a chain can open, radians round the pole. */
 export const EXPOSURE_MAX = 40 * DEG;
 

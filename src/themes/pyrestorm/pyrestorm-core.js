@@ -578,7 +578,7 @@ export const TIMING = Object.freeze({
     /** Four lines: the shock front crosses the sky in this long; the surge runs this long. */
     shock: 2.6,
     surge: 9,
-    /** T-spin: the vortex ring rises for this long. */
+    /** Twist: the vortex ring rises for this long. */
     ring: 14,
     /** Perfect clear: the anvil's sheet lightning crosses it in this long, and it fades over this. */
     sheet: 1.8,

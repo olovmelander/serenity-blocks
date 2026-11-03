@@ -881,12 +881,12 @@ describe('Verdant Hills reaction director', () => {
             const out = lines(reactions);
             reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
             reactions.onCombo(9);
-            reactions.onTSpin({ piece: pieceOf('T') });
+            reactions.onTwist({ piece: pieceOf('T') });
             reactions.onBackToBack();
             reactions.onLevelUp();
             reactions.onHardDrop({ distance: 18 });
             expect(lines(reactions)).toEqual(out);
-            // Not even the T-spin flies the T's kite: its ribbon only wears the colour.
+            // Not even the twist flies the T's kite: its ribbon only wears the colour.
             expect(reactions.line[VERDANT_HILLS_PIECE_KITES.T]).toBe(0);
             expect(reactions.frame).toMatchObject({ aloft: 3, festivals: 0, festival: 0 });
             expect(advance(reactions, 3)).toMatchObject({ aloft: 3, festivals: 0 });
@@ -1553,9 +1553,9 @@ describe('Verdant Hills reaction director', () => {
     });
 
     describe('flourishes', () => {
-        it('answers a t-spin with a spinning ribbon in the colour of the T beside the piece, and a gust', () => {
+        it('answers a twist with a spinning ribbon in the colour of the T beside the piece, and a gust', () => {
             const reactions = create();
-            expect(reactions.onTSpin({ piece: cell(8, 13) })).toBe(true);
+            expect(reactions.onTwist({ piece: cell(8, 13) })).toBe(true);
             const { frame } = reactions;
             expect(frame.emitters).toEqual([expect.objectContaining({
                 kind: 'spin', side: 1, row: expect.closeTo(0.525, 12), kite: VERDANT_HILLS_PIECE_KITES.T,
@@ -1570,12 +1570,12 @@ describe('Verdant Hills reaction director', () => {
             expect(frame.flock).toBe(0);
             // A spin is announced with the lock that made it: it flies no kite of its own.
             expect(frame.aloft).toBe(0);
-            reactions.onTSpin({ detail: { piece: cell(1, 13) } });
+            reactions.onTwist({ detail: { piece: cell(1, 13) } });
             expect(emittersOf(reactions.frame, 'spin')[1]).toMatchObject({ side: -1 });
             expect(ribbonsOf(reactions.frame, 'spin')[1]).toMatchObject({ side: -1 });
             // With nothing to place it, the ribbon still has a side and a height.
             const bare = create();
-            bare.onTSpin();
+            bare.onTwist();
             expectBounded(bare.frame, bare);
             expect(bare.frame.emitters[0]).toMatchObject({ side: -1, row: 0.3 });
             expect(live(bare.frame.streaks)[0]).toMatchObject({ side: -1, row: 0.3 });
@@ -1783,7 +1783,7 @@ describe('Verdant Hills reaction director', () => {
             expect(wind((reactions) => reactions.onLineClear(1))).toBeCloseTo(0.15, 12);
             expect(wind((reactions) => reactions.onLineClear(4))).toBeCloseTo(0.36, 12);
             expect(wind((reactions) => reactions.onCombo(2))).toBeCloseTo(0.1 + (1 - Math.exp(-0.22)) * 0.3, 12);
-            expect(wind((reactions) => reactions.onTSpin())).toBeCloseTo(0.2, 12);
+            expect(wind((reactions) => reactions.onTwist())).toBeCloseTo(0.2, 12);
             expect(wind((reactions) => reactions.onLevelUp())).toBeCloseTo(0.3, 12);
             // A perfect clear and the festival it begins fill the dial between them.
             expect(wind((reactions) => reactions.onPerfectClear())).toBe(1);
@@ -2046,7 +2046,7 @@ describe('Verdant Hills reaction director', () => {
             expect(opened((reactions) => lockKinds(reactions, LETTERS))).toBe(true);
             expect(opened((reactions) => reactions.onLineClear(3))).toBe(false);
             expect(opened((reactions) => reactions.onCombo(30))).toBe(false);
-            expect(opened((reactions) => reactions.onTSpin())).toBe(false);
+            expect(opened((reactions) => reactions.onTwist())).toBe(false);
             expect(opened((reactions) => reactions.onBackToBack())).toBe(false);
             expect(opened((reactions) => reactions.onLevelUp())).toBe(false);
             expect(opened((reactions) => lockKinds(reactions, LETTERS.slice(0, 6)))).toBe(false);
@@ -2142,7 +2142,7 @@ describe('Verdant Hills reaction director', () => {
                     expect(() => {
                         reactions.onHardDrop(payload);
                         reactions.onPieceLock(payload);
-                        reactions.onTSpin(payload);
+                        reactions.onTwist(payload);
                         reactions.onLineClear(2, payload);
                         reactions.onCombo(3, payload);
                         reactions.onBackToBack(payload);
@@ -2260,7 +2260,7 @@ describe('Verdant Hills reaction director', () => {
         it('ages each emitter to the end of its own life and then frees the slot', () => {
             const reactions = create();
             reactions.onPieceLock({ piece: pieceOf('I', 1) });
-            reactions.onTSpin({ piece: pieceOf('T', 1) });
+            reactions.onTwist({ piece: pieceOf('T', 1) });
             const [lock, spin] = reactions.frame.emitters;
             expect([lock.kind, spin.kind]).toEqual(['lock', 'spin']);
             const [shorter, longer] = lock.duration <= spin.duration ? [lock, spin] : [spin, lock];
@@ -2326,7 +2326,7 @@ describe('Verdant Hills reaction director', () => {
                     },
                     () => reactions.onLineClear(1 + Math.floor(random() * 4), { clearedRows: [22, 23] }),
                     () => reactions.onCombo(2 + Math.floor(random() * 30)),
-                    () => reactions.onTSpin({ piece: cell(Math.floor(random() * 10), 20, 'T') }),
+                    () => reactions.onTwist({ piece: cell(Math.floor(random() * 10), 20, 'T') }),
                     () => reactions.onPerfectClear(),
                     () => reactions.onLevelUp(),
                     () => reactions.onBackToBack(),
@@ -2388,7 +2388,7 @@ describe('Verdant Hills reaction director', () => {
             const reactions = create('Minimal');
             const capacity = reactions.maxEmitters;
             reactions.onPieceLock(); // the short one
-            while (reactions.frame.emitters.length < capacity) reactions.onTSpin();
+            while (reactions.frame.emitters.length < capacity) reactions.onTwist();
             const [short] = emittersOf(reactions.frame, 'lock');
             const long = emittersOf(reactions.frame, 'spin');
             expect(long).toHaveLength(capacity - 1);
@@ -2451,7 +2451,7 @@ describe('Verdant Hills reaction director', () => {
                 () => reactions.onLineClear(2),
                 () => reactions.onLineClear(4),
                 () => reactions.onCombo(4),
-                () => reactions.onTSpin(),
+                () => reactions.onTwist(),
                 () => reactions.onBackToBack(),
                 () => reactions.onPerfectClear(),
                 () => reactions.onLevelUp(),
@@ -2513,13 +2513,13 @@ describe('Verdant Hills reaction director', () => {
             for (let lock = 0; lock < 5; lock++) reactions.onPieceLock({ piece: pieceOf('I', lock) });
             advance(reactions, 1);
             const [firstRibbon, firstGust] = [reactions.streakSerial, reactions.waveSerial];
-            // One piece: a hard-dropped t-spin that clears four lines on a combo, empties the board
+            // One piece: a hard-dropped twist that clears four lines on a combo, empties the board
             // (and so begins the festival) and levels up.
             reactions.onHardDrop({ distance: 18 });
             reactions.onPieceLock({ piece: pieceOf('T') });
             reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
             reactions.onCombo(5);
-            reactions.onTSpin({ piece: pieceOf('T') });
+            reactions.onTwist({ piece: pieceOf('T') });
             reactions.onBackToBack();
             reactions.onPerfectClear();
             reactions.onLevelUp();
@@ -2696,7 +2696,7 @@ describe('Verdant Hills reaction director', () => {
             expect(reactions.onPieceLock({ piece: pieceOf('I', 1) })).toBe(false);
             expect(reactions.onLineClear(4)).toBe(false);
             expect(reactions.onCombo(9)).toBe(false);
-            expect(reactions.onTSpin()).toBe(false);
+            expect(reactions.onTwist()).toBe(false);
             expect(reactions.onBackToBack()).toBe(false);
             expect(reactions.onPerfectClear()).toBe(false);
             expect(reactions.onLevelUp()).toBe(false);
@@ -2731,7 +2731,7 @@ describe('Verdant Hills reaction director', () => {
             reactions.onPieceLock({ piece: pieceOf('I', 1) });
             reactions.onLineClear(4);
             reactions.onCombo(8);
-            reactions.onTSpin();
+            reactions.onTwist();
             reactions.onBackToBack();
             reactions.onPerfectClear();
             reactions.onLevelUp();
@@ -2767,7 +2767,7 @@ describe('Verdant Hills reaction director', () => {
                     }
                     if (frame % 40 === 5) reactions.onLineClear(1 + ((frame / 40) % 4), { clearedRows: [22] });
                     if (frame % 60 === 10) reactions.onCombo(2 + frame / 20);
-                    if (frame === 100) reactions.onTSpin();
+                    if (frame === 100) reactions.onTwist();
                     if (frame === 150) reactions.onPerfectClear();
                     frames.push(snapshot(reactions.update(1 / 60)));
                 }

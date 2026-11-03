@@ -80,7 +80,7 @@ export function createSky(u, { march = 14, detail = true, flashSteps = true } = 
 
     /** A world point in the cloud's own drifting, twisting ground plan. */
     const plan = (p) => {
-        // The cell winds up over the hero tower on a T-spin: the noise domain turns with it.
+        // The cell winds up over the hero tower on a twist: the noise domain turns with it.
         const rel = p.xz.sub(u.twist.xy);
         const turn = u.twist.z.mul(exp(dot(rel, rel).div(u.twist.w.mul(u.twist.w)).negate()));
         const c = cos(turn);

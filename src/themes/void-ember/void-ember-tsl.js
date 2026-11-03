@@ -409,7 +409,7 @@ export function createVoidEmberUniforms(textures) {
          * over a banked one.
          */
         iris: uniform(1),
-        /** The corona and the ember wind wind up (a T-spin) and spring back: radians per radius. */
+        /** The corona and the ember wind wind up (a twist) and spring back: radians per radius. */
         twist: uniform(0),
         /**
          * How hot play runs, spent where the world wears it (0 at rest): the loops the star holds

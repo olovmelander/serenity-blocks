@@ -18,7 +18,7 @@
  *   combo         a leaf vortex winding around the board; it climbs, speeds up and finally
  *                 glows like embers as consecutive clears build (the true combo,
  *                 src/core/combo-tracker.js)
- *   t-spin        a spiral flourish beside the board (a T-spin that clears nothing too)
+ *   twist        a spiral flourish beside the board (a twist that clears nothing too)
  *   back-to-back  the two great trees answer: both crowns let go a cascade of leaves at once,
  *                 more of them for every back-to-back in a row
  *   perfect clear the crown on the clear still playing: the sun bursts through the canopy and
@@ -280,7 +280,7 @@ export class FallReactions {
         this.refresh();
     }
 
-    /** A hit of play's own weight (a later cascade wave, a T-spin, a back-to-back) on the surge. */
+    /** A hit of play's own weight (a later cascade wave, a twist, a back-to-back) on the surge. */
     feed(punch, heat) {
         this.surge.punch.hit(punch, this.time);
         this.surge.level.hit(heat, this.time);
@@ -463,13 +463,13 @@ export class FallReactions {
         return true;
     }
 
-    onTSpin(detail = {}) {
+    onTwist(detail = {}) {
         if (this.disposed) return false;
         const payload = unwrap(detail);
         const place = boardPlace(payload);
-        // A T-spin that cleared lines adds its own weight to the clear just counted; one that
+        // A twist that cleared lines adds its own weight to the clear just counted; one that
         // cleared nothing is a small flourish of its own (the spiral still plays).
-        if (positiveCount(payload.lineCount, 4) > 0) this.feed(SURGE_WEIGHTS.punch.tspin, SURGE_WEIGHTS.heat.tspin);
+        if (positiveCount(payload.lineCount, 4) > 0) this.feed(SURGE_WEIGHTS.punch.twist, SURGE_WEIGHTS.heat.twist);
         else this.surge.spin(this.time);
         this.excite({
             gust: 0.5, warmth: 0.3, shafts: 0.3, glow: 0.55,

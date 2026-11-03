@@ -39,7 +39,7 @@
  *              water or the stones. At rest a few drips gather on the glass,
  *              hang glinting, and fall now and then, each from its own place on its own beat.
  *
- * The T-spin's turn of the air (U.turn) wheels the fireflies, the moths and the motes about the
+ * The twist's turn of the air (U.turn) wheels the fireflies, the moths and the motes about the
  * vertical axis through (turn.z, turn.w): an elliptical vortex stretched down the nave, strongest
  * at its heart; each thing goes round with it and slides home as it dies (turnOfTheAir).
  *
@@ -166,7 +166,7 @@ export const DEW = Object.freeze({
 });
 
 /**
- * The T-spin's turn of the air: an elliptical vortex about the vertical axis through
+ * The twist's turn of the air: an elliptical vortex about the vertical axis through
  * (turn.z, turn.w), `reach` metres across and down the nave, strongest at its heart (falloff),
  * lifting what it carries a little.
  */
@@ -296,7 +296,7 @@ function airMesh(geometry, material, name, order) {
 }
 
 /**
- * The T-spin's turn of the air at a point: the vortex about the vertical axis through
+ * The twist's turn of the air at a point: the vortex about the vertical axis through
  * (turn.z, turn.w), measured in an ellipse stretched down the nave so what it carries keeps
  * inside the house. A point goes round by turn.x (the turn's angle so far) as far as the vortex
  * holds it (its strength turn.y, falling off from the heart), so mid-turn the air wheels and as

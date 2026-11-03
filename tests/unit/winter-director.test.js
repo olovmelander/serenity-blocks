@@ -71,7 +71,7 @@ describe('winter director: intake', () => {
             expect(typeof director[handler], handler).toBe('function');
         }
         expect(Object.keys(WINTER_EVENT_HANDLERS).sort()).toEqual([
-            'B2B', 'COMBO', 'HARD_DROP', 'LEVEL_UP', 'LINE_CLEAR', 'PERFECT_CLEAR', 'PIECE_LOCK', 'TSPIN',
+            'B2B', 'COMBO', 'HARD_DROP', 'LEVEL_UP', 'LINE_CLEAR', 'PERFECT_CLEAR', 'PIECE_LOCK', 'TWIST',
         ]);
         expect(Object.isFrozen(WINTER_EVENT_HANDLERS)).toBe(true);
     });
@@ -218,32 +218,32 @@ describe('winter director: intake', () => {
         expect(calls.clear[2]).toMatchObject({ lines: 4, perfect: true, crown: false });
     });
 
-    it('hands on a T-spin that cleared nothing as a spin', () => {
+    it('hands on a twist that cleared nothing as a spin', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: T });
-        director.onTSpin({ lineCount: 0 });
+        director.onTwist({ lineCount: 0 });
         director.flush();
         expect(calls.clear).toHaveLength(0);
         expect(calls.spin).toEqual([{ player: 0, screen: null }]);
         // One that cleared is on its clear, not a spin as well.
         director.onPieceLock({ piece: T });
         director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.flush();
         expect(calls.spin).toHaveLength(1);
-        expect(calls.clear[0]).toMatchObject({ lines: 2, tspin: true });
+        expect(calls.clear[0]).toMatchObject({ lines: 2, twist: true });
     });
 
-    it('carries T-spins, perfect clears and back-to-backs on the clear', () => {
+    it('carries twists, perfect clears and back-to-backs on the clear', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: T });
         director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.onB2B({ active: true });
         director.onPerfectClear({ depth: 1 });
         director.flush();
         expect(calls.clear[0]).toMatchObject({
-            lines: 2, tspin: true, b2b: true, perfect: true,
+            lines: 2, twist: true, b2b: true, perfect: true,
         });
         // An inactive B2B is not one.
         expect(director.onB2B({ active: false })).toBe(false);

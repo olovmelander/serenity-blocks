@@ -622,9 +622,9 @@ describe('chromatic impasto world: the board paints', () => {
         world.dispose();
     });
 
-    it('gives a T-spin a turn of its own', () => {
+    it('gives a twist a turn of its own', () => {
         const { world, camera } = makeWorld('Low');
-        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        world.onClear({ rows: [19, 18], lines: 2, twist: true });
         expect(tagged(world, 'spiral').length).toBeGreaterThanOrEqual(2);
         run(world, camera, 1.5);
         expect(world.twistAngle).toBeGreaterThan(0.2);
@@ -987,7 +987,7 @@ describe('chromatic impasto world: it builds with play', () => {
         world.dispose();
     });
 
-    it('answers a T-spin that clears nothing with a small turn', () => {
+    it('answers a twist that clears nothing with a small turn', () => {
         const { world, camera } = makeWorld('Low');
         world.onSpin({ player: 0 });
         expect(tagged(world, 'spiral').length).toBe(3);
@@ -1011,7 +1011,7 @@ describe('chromatic impasto world: it builds with play', () => {
         expect(tagged(world, 'splat').length).toBeGreaterThan(4);
         const before = tagged(world, 'sweep');
         world.onClear({
-            rows: [19, 18], lines: 2, tspin: true, b2b: true,
+            rows: [19, 18], lines: 2, twist: true, b2b: true,
         });
         const gilt = tagged(world, 'sweep').filter((st) => !before.includes(st) && st.special === 1);
         expect(gilt.length).toBeGreaterThan(0);

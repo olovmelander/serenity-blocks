@@ -3,7 +3,7 @@
  *
  * "The board is the sun": the key light sits at the highway core behind the card, so every lit
  * limb faces the board. When the board sends light out (a clear, a quad, a level-up, a back-to-back,
- * a perfect clear, a T-spin, a deep cascade), a shell of that light runs out to the bodies and
+ * a perfect clear, a twist, a deep cascade), a shell of that light runs out to the bodies and
  * washes over each one as a FRONT: an arc of the event's colour that crosses the lit face from the
  * point under the key to the terminator, flares the limb and leaves the day side glowing in its
  * colour for a moment. It reaches the hero first and the ringed ice giant a beat later, and it

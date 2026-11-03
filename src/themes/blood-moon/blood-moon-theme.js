@@ -254,7 +254,7 @@ export default class BloodMoonTheme extends BaseTheme {
                 cue((data?.lineCount ?? data?.lines) >= 4 ? 'quad' : 'clear', data);
             }),
             eventBus.on(EVENTS.COMBO, (data) => cue('combo', data)),
-            eventBus.on(EVENTS.TSPIN, (data) => cue('tspin', data)),
+            eventBus.on(EVENTS.TWIST, (data) => cue('twist', data)),
             eventBus.on(EVENTS.B2B, (data) => cue('b2b', data)),
             eventBus.on(EVENTS.PERFECT_CLEAR, (data) => cue('perfectClear', data)),
             eventBus.on(EVENTS.LEVEL_UP, (data) => cue('levelUp', data)),

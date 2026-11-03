@@ -14,7 +14,7 @@
  *   level=<n>                rest on level n's hour of the evening and hold it there (without it
  *                            the evening also moves on by itself: an hour every 120 s of `t`)
  *   locks=<n>                before anything else, play n locks (the lilies holding their light)
- *   event=lock|drop|clear|quad|tspin|perfect|levelUp|break   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|perfect|levelUp|break   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>, eventLevel=<n> for levelUp); `break` ends the held combo
  *   demo=1                   live only: play a looping gameplay script
@@ -109,7 +109,7 @@ const DEMO_SCRIPT = [
     [27.0, 'lock', { rows: [19], u: 0.45 }], [28.0, 'lock', { rows: [19, 18], u: 0.7 }],
     [29.0, 'lock', { rows: [18], u: 0.25, hardDrop: true }],
     [29.0, 'clear', {
-        rows: [19, 18], lines: 2, tspin: true, combo: 1,
+        rows: [19, 18], lines: 2, twist: true, combo: 1,
     }],
     [31.0, 'lock', { rows: [19], u: 0.5 }],
 ];
@@ -202,7 +202,7 @@ export function create({
             });
         } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
-        else if (eventName === 'tspin') world.onClear({ rows: bottom(2), lines: 2, tspin: true });
+        else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
         else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
         else if (eventName === 'break') world.onCombo(0);

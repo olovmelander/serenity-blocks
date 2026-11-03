@@ -14,7 +14,7 @@
  *   CASCADE       each wave's ring rounder, wider, faster and brighter than the last
  *   BACK-TO-BACK  the clear's ring answered by a second, harder one right behind it
  *   QUAD          two rings, a swirl, the sky lights up, the swarm gathers into a shape
- *   T-SPIN        two counter-turning eddies and a knot — or the figure held pirouettes
+ *   TWIST        two counter-turning eddies and a knot — or the figure held pirouettes
  *   PERFECT CLEAR the swarm is drawn in to a point, then blooms in gold (the chain's crown)
  *   COMBO         the gyre spins up and the swarm warms toward gold; from four the flock
  *                 draws ONE figure and the chain grows it
@@ -37,8 +37,8 @@
  *          chain is over and the heat bleeds out over several seconds.
  *
  * The figure of a chain is never abandoned half-formed: lesser moments (a triple's roll, a
- * T-spin's knot, a quad) fold into the figure that is held — it grows larger and firmer, takes
- * a breath, pirouettes for a T-spin — and a new figure comes only once the last has formed and
+ * Twist's knot, a quad) fold into the figure that is held — it grows larger and firmer, takes
+ * a breath, pirouettes for a twist — and a new figure comes only once the last has formed and
  * held (a long chain's figure becomes a grander one; the perfect clear crowns it with a bloom).
  */
 import { IMPULSE_TYPE } from '../sim/fluid-particles.js';
@@ -116,11 +116,11 @@ const GROW = Object.freeze({
     step: 0.08, // a step of the chain
     milestone: 0.18, // the seventh and the tenth
     fold: 0.1, // a lesser figure's roll (a triple)
-    tspin: 0.12,
+    twist: 0.12,
     quad: 0.24,
     b2b: 0.1,
     wave: 0.05, // each cascade wave past the first
-    spin: 0.05, // a T-spin that cleared nothing
+    spin: 0.05, // a twist that cleared nothing
     level: 0.08,
 });
 /** A figure held while play goes on is held a little longer for each fold. */
@@ -435,7 +435,7 @@ export class SwarmShow {
         return true;
     }
 
-    /** A T-spin turns the figure held once round (its twin the other way). */
+    /** A twist turns the figure held once round (its twin the other way). */
     _pirouette() {
         const s = this.shape;
         if (this.reducedMotion || s.name === 'free' || !(s.target > 0)) return;
@@ -557,10 +557,10 @@ export class SwarmShow {
             this._pushRing(ring, ring.strength);
             this._lightSky(0.12 * lines * (1 + deeper * 0.3));
             if (deeper > 0) this._grow(GROW.wave * deeper);
-            // A T-spin draws its own knot below; a plain triple rolls from the whole pool.
-            if (lines === 3 && !detail.tspin) this.requestRandomShape(RANDOM_SHAPE_POOL, 0.5, 2.8, 1);
+            // A twist draws its own knot below; a plain triple rolls from the whole pool.
+            if (lines === 3 && !detail.twist) this.requestRandomShape(RANDOM_SHAPE_POOL, 0.5, 2.8, 1);
         }
-        if (detail.tspin) this._tspin(detail, row);
+        if (detail.twist) this._twist(detail, row);
         if (detail.b2b) this._backToBack(ring);
     }
 
@@ -626,17 +626,17 @@ export class SwarmShow {
         this.requestRandomShape(RANDOM_SHAPE_POOL, 0.7, 4.5, 2, GROW.quad);
     }
 
-    _tspin(detail, row) {
+    _twist(detail, row) {
         const origin = this._origin(detail, row, detail.u ?? 0.5);
         const at = { x: origin.x, y: origin.y, z: origin.z };
         this._push({ x: at.x - 1.6, y: at.y, z: at.z }, 4.5, AXIS_IN, IMPULSE_TYPE.VORTEX);
         this._push({ x: at.x + 1.6, y: at.y, z: at.z }, 4.5, AXIS_OUT, IMPULSE_TYPE.VORTEX);
         this._lightSky(0.5);
         // A knot — or, with a figure held, the figure pirouettes and grows.
-        if (!this.requestRandomShape(KNOT_SHAPES, 0.62, 3.2, 1, GROW.tspin)) this._pirouette();
+        if (!this.requestRandomShape(KNOT_SHAPES, 0.62, 3.2, 1, GROW.twist)) this._pirouette();
     }
 
-    /** A T-spin that cleared nothing: two small eddies at the piece, and a turn of the figure. */
+    /** A twist that cleared nothing: two small eddies at the piece, and a turn of the figure. */
     spin(detail = {}) {
         this.surge.spin(this.time);
         const origin = this._origin(detail, SwarmShow.meanRow(detail.rows), detail.u ?? 0.5);

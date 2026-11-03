@@ -20,7 +20,7 @@
  *   clear       the sea throws a wave of light for every line: it stands up glowing beside the card,
  *               breaks, the break running along the shore both ways, and its bore and swash run in
  *               and up the sand toward the eye.
- *   T-spin      a shoal of fish darts through the shallows, each streaking light behind it.
+ *   twist      a shoal of fish darts through the shallows, each streaking light behind it.
  *   four lines  a great set wave stands up out in the bay, glowing from within, breaks along the
  *               whole shore and floods the beach to the eye's feet.
  *   perfect     the same, and the whole bay lights to the horizon for a while.
@@ -30,12 +30,12 @@
  *               right on the heels of the last feeds the wave still standing up instead.
  *   back-to-back  the wave peels along the shore half again as fast and the whole bay shimmers,
  *               more for every back-to-back in a row.
- *   T-spin, no lines  a small school of fish darts through the shallows.
+ *   twist, no lines  a small school of fish darts through the shallows.
  *
  * Nothing the board does restarts what is already lit: a full table of waves makes room by
  * fading out the faintest (one that has run up the sand and is draining), never a great set wave
  * mid-run, and when every wave is still bright the new one's light feeds the youngest instead; a
- * splash makes room the same way; a crown never takes a droplet still in the air; a T-spin while
+ * splash makes room the same way; a crown never takes a droplet still in the air; a twist while
  * every school is running sends more fish after the youngest. A perfect clear that settles after
  * its clear (the game sends it a moment later) crowns the great wave still running (it swells and
  * burns brighter, and the bay lights) instead of throwing a second one.
@@ -228,7 +228,7 @@ export class LuminousTidesWorld {
         this.drops = new Float32Array(this.tier.drops * 10).fill(-100);
         this.dropCursor = 0;
         /**
-         * The schools of fish a T-spin sends: when each set off, where it runs (shore a, s), and when
+         * The schools of fish a twist sends: when each set off, where it runs (shore a, s), and when
          * each of its fish set off (fish join a running school from where it started).
          */
         this.schools = Array.from({ length: SCHOOLS }, () => ({
@@ -759,7 +759,7 @@ export class LuminousTidesWorld {
         this.surge.lock(c, this.clock);
     }
 
-    /** Lines cleared: { player, rows, lines, combo, cascade, tspin, perfect, b2b, screen }. */
+    /** Lines cleared: { player, rows, lines, combo, cascade, twist, perfect, b2b, screen }. */
     onClear(c) {
         if (!this.camera) return;
         const s = this.state;
@@ -771,7 +771,7 @@ export class LuminousTidesWorld {
         const { level } = this.heat;
         this.surge.clear(c, this.clock);
         if (c.b2b) this.b2bRun += 1;
-        else if (depth === 1 && lines < 4 && !c.tspin) this.b2bRun = 0;
+        else if (depth === 1 && lines < 4 && !c.twist) this.b2bRun = 0;
         // Where along the shore the waves are thrown from: beside the card at the cleared rows.
         let y = 0.62;
         let x = 0.2;
@@ -827,7 +827,7 @@ export class LuminousTidesWorld {
         }
         // A back-to-back: the whole bay shimmers, brighter for every one in a row.
         if (c.b2b) s.bloom = Math.max(s.bloom, (0.3 + 0.08 * run) * flashScale());
-        if (c.tspin) this.sendShoal(1);
+        if (c.twist) this.sendShoal(1);
     }
 
     /**
@@ -857,7 +857,7 @@ export class LuminousTidesWorld {
         this.feedBreaker(host, 0.5, grow);
     }
 
-    /** A T-spin that cleared nothing: a small school darts through the shallows. */
+    /** A twist that cleared nothing: a small school darts through the shallows. */
     onSpin() {
         if (!this.camera) return;
         this.surge.spin(this.clock);
@@ -866,7 +866,7 @@ export class LuminousTidesWorld {
     }
 
     /**
-     * A school of fish darts through the shallows; `size` of a T-spin's full school. While every
+     * A school of fish darts through the shallows; `size` of a twist's full school. While every
      * school is still running, more fish set off after the youngest from where it started.
      */
     sendShoal(size = 1) {

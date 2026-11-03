@@ -180,7 +180,7 @@ The pixel-ratio cap rises with the tier (0.7 → 1.6), as in the sibling themes.
 ## Reproduce
 
 Playground: `/playground.html?effect=solar-eclipse&t=14&quality=High&board=1`, plus
-`event=lock|drop|clear|quad|tspin|perfect|levelUp`, `eventAge=`, `lines=`, `u=`, `row=`,
+`event=lock|drop|clear|quad|twist|perfect|levelUp`, `eventAge=`, `lines=`, `u=`, `row=`,
 `color=`, `combo=`, `locks=`, `clears=`, `level=`, `parts=sky,motes`, `noPost=1`,
 `falseColor=1`, `px=`/`py=`, `reduce=1`, and `icon=1` (`iconFov=13`, `iconYaw`, `iconPitch`,
 `iconHorizon=1` to stand the lens level at the horizon under the sun). `t=14` lies in the rest

@@ -23,7 +23,7 @@
  *   four     the temple holds its breath — a quarter of a second of dark, the snow still in the
  *            air — then the Great Crystal answers in diamond white with four fronts and the
  *            Great Snowflake grows round the board, holds, and shatters.
- *   T-spin   the air turns: the snow winds round the nave's axis (a T-spin that clears nothing
+ *   twist   the air turns: the snow winds round the nave's axis (a twist that clears nothing
  *            gives it a small turn).
  *   B2B      the Great Crystal answers twice: an echo wave follows the first, in the fringe colour.
  *   perfect  (it comes ~360 ms after its clear) the crown on the answer still playing: the snow
@@ -688,13 +688,13 @@ export class IceTempleWorld {
     }
 
     /**
-     * Lines cleared. `lines` 1..4, `rows` = the visible rows that went, `tspin`, `perfect`,
+     * Lines cleared. `lines` 1..4, `rows` = the visible rows that went, `twist`, `perfect`,
      * `b2b`, `cascade` (this wave's depth), `combo`. The wave is a little stronger the longer the
      * chain the temple is already holding, and a cascade's waves build on each other: each deeper
      * wave burns whiter and brighter, rings with one more front and flares the crystal harder.
      */
     onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, b2b = false, cascade = 1, combo = 0, player = 0,
+        rows = null, lines = 1, twist = false, perfect = false, b2b = false, cascade = 1, combo = 0, player = 0,
     } = {}) {
         const { u: uniforms } = this;
         if (!uniforms) return;
@@ -747,9 +747,9 @@ export class IceTempleWorld {
             // The Great Snowflake grows round the board (with its halo for a perfect clear).
             this.callFlake(birth + 0.05, perfect);
         }
-        if (tspin && !this.reducedMotion) this.swirlRate = Math.max(this.swirlRate, 2.6);
+        if (twist && !this.reducedMotion) this.swirlRate = Math.max(this.swirlRate, 2.6);
         this.surge.clear({
-            lines: n, cascade: depth, combo, tspin, perfect, b2b,
+            lines: n, cascade: depth, combo, twist, perfect, b2b,
         }, birth);
         this.counts.clears += 1;
 
@@ -831,7 +831,7 @@ export class IceTempleWorld {
         this.surge.crown(at);
     }
 
-    /** A T-spin that cleared nothing: the air gives a small turn and the Great Crystal glints. */
+    /** A twist that cleared nothing: the air gives a small turn and the Great Crystal glints. */
     onSpin() {
         if (!this.u) return;
         if (!this.reducedMotion) this.swirlRate = Math.max(this.swirlRate, 1.1);
@@ -945,7 +945,7 @@ export class IceTempleWorld {
         const fall = this.reducedMotion ? SNOW_FALL : SNOW_FALL * (1 - meanLift) * held;
         this.snowFall += fall * dt;
         this.snowDrift += (0.42 + this.overdrive * 0.5 + F * 0.25 * calm) * held * dt;
-        // A T-spin turns the air; in a fever it turns slowly round the nave on its own, and the
+        // A twist turns the air; in a fever it turns slowly round the nave on its own, and the
         // rising snow becomes a vortex.
         this.swirlRate *= Math.exp(-dt / 1.1);
         this.swirl += Math.max(this.swirlRate, F * FEVER_SWIRL * calm) * (1 - still) * dt;

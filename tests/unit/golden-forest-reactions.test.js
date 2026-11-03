@@ -722,9 +722,9 @@ describe('Golden Forest reaction director', () => {
     });
 
     describe('flourishes', () => {
-        it('answers a t-spin with a spiral beside the piece and a ring under it', () => {
+        it('answers a twist with a spiral beside the piece and a ring under it', () => {
             const reactions = create();
-            expect(reactions.onTSpin({ piece: cell(8, 13) })).toBe(true);
+            expect(reactions.onTwist({ piece: cell(8, 13) })).toBe(true);
             expect(reactions.frame.emitters).toEqual([expect.objectContaining({
                 kind: 'spin', side: 1, row: expect.closeTo(0.525, 12), strength: 0.8, duration: 1.7,
             })]);
@@ -734,11 +734,11 @@ describe('Golden Forest reaction director', () => {
             expect(reactions.frame).toMatchObject({
                 gust: 0.45, warmth: 0.3, shafts: 0.3, glow: 0.6, shimmer: 0.5, flock: 0, front: null,
             });
-            reactions.onTSpin({ detail: { piece: cell(1, 13) } });
+            reactions.onTwist({ detail: { piece: cell(1, 13) } });
             expect(emittersOf(reactions.frame, 'spin')[1]).toMatchObject({ side: -1 });
             // With nothing to place it, the spiral goes to the left at a third of the height.
             const bare = create();
-            bare.onTSpin();
+            bare.onTwist();
             expect(bare.frame.emitters[0]).toMatchObject({ side: -1, row: 0.3 });
             expect(liveRings(bare.frame)[0]).toMatchObject({ column: 0.5, row: 0.3 });
         });
@@ -931,7 +931,7 @@ describe('Golden Forest reaction director', () => {
                 expect(() => {
                     reactions.onHardDrop(payload);
                     reactions.onPieceLock(payload);
-                    reactions.onTSpin(payload);
+                    reactions.onTwist(payload);
                     reactions.onLineClear(2, payload);
                     reactions.onCombo(3, payload);
                     reactions.onBackToBack(payload);
@@ -991,7 +991,7 @@ describe('Golden Forest reaction director', () => {
         it('ages each emitter to the end of its own life and then frees the slot', () => {
             const reactions = create();
             reactions.onPieceLock({ piece: cell(1, 20) });
-            reactions.onTSpin({ piece: cell(1, 20) });
+            reactions.onTwist({ piece: cell(1, 20) });
             const half = advance(reactions, 0.55);
             expect(half.emitters.map((emitter) => emitter.kind)).toEqual(['lock', 'spin']);
             expect(half.emitters[0].progress).toBeCloseTo(0.5, 9);
@@ -1043,7 +1043,7 @@ describe('Golden Forest reaction director', () => {
                     () => { reactions.onHardDrop({ distance: random() * 22 }); reactions.onPieceLock(); },
                     () => reactions.onLineClear(1 + Math.floor(random() * 4), { clearedRows: [22, 23] }),
                     () => reactions.onCombo(2 + Math.floor(random() * 30)),
-                    () => reactions.onTSpin({ piece: cell(Math.floor(random() * 10), 20) }),
+                    () => reactions.onTwist({ piece: cell(Math.floor(random() * 10), 20) }),
                     () => reactions.onPerfectClear(),
                     () => reactions.onLevelUp(),
                     () => reactions.onBackToBack(),
@@ -1069,7 +1069,7 @@ describe('Golden Forest reaction director', () => {
             const reactions = create('Minimal');
             reactions.onPieceLock(); // slot 0, 1.1 s
             advance(reactions, 0.5);
-            reactions.onTSpin(); // slot 1, 1.7 s
+            reactions.onTwist(); // slot 1, 1.7 s
             reactions.onPerfectClear(); // slot 2, 3.4 s
             reactions.onCombo(3); // slot 3, 1.4 s
             const full = advance(reactions, 0.3);
@@ -1081,11 +1081,11 @@ describe('Golden Forest reaction director', () => {
 
             // The lock is 73% through: it goes first.
             reactions.onLevelUp(); // spends no emitter
-            reactions.onTSpin();
+            reactions.onTwist();
             expect(reactions.frame.emitters.map((emitter) => emitter.kind)).toEqual(['spin', 'spin', 'rise', 'combo']);
             expect(reactions.frame.emitters[0]).toMatchObject({ id: 0, age: 0, serial: 4 });
             // Next the combo (21%), although the first spin and the rise both started before it.
-            reactions.onTSpin();
+            reactions.onTwist();
             expect(reactions.frame.emitters.map((emitter) => emitter.kind)).toEqual(['spin', 'spin', 'rise', 'spin']);
             expect(reactions.frame.emitters[3]).toMatchObject({ id: 3, age: 0, serial: 5 });
             // Then the older spin (18%), and the long rise survives them all.
@@ -1100,11 +1100,11 @@ describe('Golden Forest reaction director', () => {
             // long emitters here are one rise and two spirals.)
             reactions.onPerfectClear(); // slot 0, 3.4 s
             reactions.onPieceLock(); // slot 1, 1.1 s
-            reactions.onTSpin(); // slot 2, 1.7 s
-            reactions.onTSpin(); // slot 3, 1.7 s
+            reactions.onTwist(); // slot 2, 1.7 s
+            reactions.onTwist(); // slot 3, 1.7 s
             const frame = advance(reactions, 1.2);
             expect(frame.emitters.map((emitter) => emitter.id)).toEqual([0, 2, 3]);
-            reactions.onTSpin();
+            reactions.onTwist();
             const after = reactions.frame.emitters;
             expect(after.map((emitter) => emitter.id)).toEqual([0, 1, 2, 3]);
             expect(after.map((emitter) => emitter.kind)).toEqual(['rise', 'spin', 'spin', 'spin']);
@@ -1142,7 +1142,7 @@ describe('Golden Forest reaction director', () => {
                 [() => reactions.onLineClear(2), 2],
                 [() => reactions.onLineClear(4), 2],
                 [() => reactions.onCombo(4), 1],
-                [() => reactions.onTSpin(), 1],
+                [() => reactions.onTwist(), 1],
                 [() => reactions.onBackToBack(), 0],
                 [() => reactions.onPerfectClear(), 2],
                 [() => reactions.onLevelUp(), 1],
@@ -1186,13 +1186,13 @@ describe('Golden Forest reaction director', () => {
 
         it('holds every ring the busiest single lock can ask for', () => {
             const reactions = create();
-            // One piece: a t-spin that clears four lines on a combo, empties the board and
+            // One piece: a twist that clears four lines on a combo, empties the board and
             // levels up. Lock 1, clear 2, combo 1, spin 1, perfect clear 2, level 1.
             reactions.onHardDrop({ distance: 18 });
             reactions.onPieceLock({ piece: cell(4, 20) });
             reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
             reactions.onCombo(5);
-            reactions.onTSpin({ piece: cell(4, 20) });
+            reactions.onTwist({ piece: cell(4, 20) });
             reactions.onBackToBack();
             reactions.onPerfectClear();
             reactions.onLevelUp();
@@ -1289,7 +1289,7 @@ describe('Golden Forest reaction director', () => {
             expect(reactions.onPieceLock({ piece: cell(1, 20) })).toBe(false);
             expect(reactions.onLineClear(4)).toBe(false);
             expect(reactions.onCombo(9)).toBe(false);
-            expect(reactions.onTSpin()).toBe(false);
+            expect(reactions.onTwist()).toBe(false);
             expect(reactions.onBackToBack()).toBe(false);
             expect(reactions.onPerfectClear()).toBe(false);
             expect(reactions.onLevelUp()).toBe(false);
@@ -1319,7 +1319,7 @@ describe('Golden Forest reaction director', () => {
             reactions.onPieceLock({ piece: cell(1, 20) });
             reactions.onLineClear(4);
             reactions.onCombo(8);
-            reactions.onTSpin();
+            reactions.onTwist();
             reactions.onBackToBack();
             reactions.onPerfectClear();
             reactions.onLevelUp();
@@ -1353,7 +1353,7 @@ describe('Golden Forest reaction director', () => {
                     if (frame % 40 === 0) reactions.onPieceLock({ piece: cell(frame % 10, 20) });
                     if (frame % 40 === 5) reactions.onLineClear(1 + ((frame / 40) % 4), { clearedRows: [22] });
                     if (frame % 60 === 10) reactions.onCombo(2 + frame / 20);
-                    if (frame === 100) reactions.onTSpin();
+                    if (frame === 100) reactions.onTwist();
                     if (frame === 150) reactions.onPerfectClear();
                     frames.push(snapshot(reactions.update(1 / 60)));
                 }
@@ -1385,7 +1385,7 @@ describe('Golden Forest reaction director', () => {
 describe('Golden Forest builds with play', () => {
     /** The tray's Fever (serenity-effects.js): twelve clearing hard drops, 640 ms apart. */
     function fever(reactions, fps = 60) {
-        const plan = [1, 1, 2, 1, 2, 2, 3, 'tspin', 2, 'cascade', 3, 'quad'];
+        const plan = [1, 1, 2, 1, 2, 2, 3, 'twist', 2, 'cascade', 3, 'quad'];
         const samples = [];
         const wait = (seconds) => {
             for (let frame = 0; frame < Math.round(seconds * fps); frame++) samples.push(reactions.update(1 / fps));
@@ -1401,9 +1401,9 @@ describe('Golden Forest builds with play', () => {
                 reactions.onLineClear({ lineCount: 4, clearedRows: [20, 21, 22, 23], cascadeCount: 1 });
                 wait(0.36);
                 reactions.onPerfectClear();
-            } else if (step === 'tspin') {
+            } else if (step === 'twist') {
                 reactions.onLineClear({ lineCount: 2, clearedRows: [22, 23], cascadeCount: 1 });
-                reactions.onTSpin({ lineCount: 2 });
+                reactions.onTwist({ lineCount: 2 });
             } else if (step === 'cascade') {
                 reactions.onLineClear({ lineCount: 2, clearedRows: [22, 23], cascadeCount: 1 });
                 for (let wave = 2; wave <= 4; wave++) {
@@ -1531,12 +1531,12 @@ describe('Golden Forest builds with play', () => {
         expect(advance(reactions, 15).gold).toBeLessThan(0.01);
     });
 
-    it('still shows a T-spin that clears nothing, smaller than a clearing one in the heat it adds', () => {
+    it('still shows a twist that clears nothing, smaller than a clearing one in the heat it adds', () => {
         const zero = create();
-        expect(zero.onTSpin({ lineCount: 0, piece: cell(4, 20) })).toBe(true);
+        expect(zero.onTwist({ lineCount: 0, piece: cell(4, 20) })).toBe(true);
         expect(zero.frame.emitters.map((emitter) => emitter.kind)).toEqual(['spin']);
         const clearing = create();
-        clearing.onTSpin({ lineCount: 2, piece: cell(4, 20) });
+        clearing.onTwist({ lineCount: 2, piece: cell(4, 20) });
         const heat = (reactions) => advance(reactions, 1).level;
         expect(heat(zero)).toBeGreaterThan(0);
         expect(heat(zero)).toBeLessThan(heat(clearing));

@@ -1043,7 +1043,7 @@ export class SoundEffectPlayer {
         this.soundSet = soundSet;
         this.lastMoveSoundAt = -Infinity;
         this.moveSoundCooldownMs = 55;
-        // Direct tone generators for new procedural effects (cascade, T-spin, B2B, perfect clear).
+        // Direct tone generators for new procedural effects (cascade, twist, B2B, perfect clear).
         // Injected by SoundManager so we don't need to duplicate them into every sound profile.
         this._createTone = createTone;
         this._createRichTone = createRichTone;
@@ -1131,10 +1131,10 @@ export class SoundEffectPlayer {
     }
 
     /**
-     * Signature vortex spin sound for T-spin clears.
+     * Signature vortex spin sound for twist clears.
      * Rising-then-falling chirp to evoke the spin motion.
      */
-    playTSpin() {
+    playTwist() {
         if (!this._createTone || !this._canPlay()) return;
         // Rising chirp
         [660, 784, 880].forEach((f, i) => {

@@ -1,7 +1,7 @@
 // @ts-check
 /**
  * Canonical gameplay-event emitters (remediation plan §4.6 first slice — the
- * "6-shape problem"). The quartet (+TSPIN/B2B) was emitted from ~25 sites
+ * "6-shape problem"). The quartet (+TWIST/B2B) was emitted from ~25 sites
  * across the six game modes with divergent payloads; ~212 theme subscriptions
  * consume them. These helpers are now the ONE definition of each payload
  * shape; modes call them instead of eventBus.emit directly (pinned by
@@ -101,8 +101,8 @@ export function emitPerfectClear({ depth, perfectClearBonus, ...extra }) {
  * @param {{ lineCount: number, source?: string, levelId?: string|number,
  *   player?: number }} payload
  */
-export function emitTSpin({ lineCount, ...extra }) {
-    eventBus.emit(EVENTS.TSPIN, { lineCount, ...pickAllowed(extra, COMMON_OPTIONALS) });
+export function emitTwist({ lineCount, ...extra }) {
+    eventBus.emit(EVENTS.TWIST, { lineCount, ...pickAllowed(extra, COMMON_OPTIONALS) });
 }
 
 /**

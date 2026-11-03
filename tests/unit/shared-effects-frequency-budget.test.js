@@ -2,7 +2,7 @@
  * Effect budget by frequency.
  *
  * Local multiplayer runs a different callback set (main.js injects it), and wires
- * NO cascade wave, NO cascade-complete, NO T-spin/B2B, NO perfect clear. Playing
+ * NO cascade wave, NO cascade-complete, NO twist/B2B, NO perfect clear. Playing
  * the two side by side showed MP reading better — not because it had more, but
  * because it had less: single player stacked five extra layers onto the same
  * clear.
@@ -125,9 +125,9 @@ describe('cascade budget', () => {
 });
 
 describe('skill beats keep their mark, not the whole frame', () => {
-    it('T-spin keeps banner and ring, drops the border pulse and screen flash', () => {
+    it('Twist keeps banner and ring, drops the border pulse and screen flash', () => {
         const { scene, fx } = build();
-        fx.playTSpinEffect(2);
+        fx.playTwistEffect(2);
         expect(scene.rings).toBe(1);
         expect(scene.edgePulses).toBe(0);
         expect(scene.screenFlashes).toBe(0);

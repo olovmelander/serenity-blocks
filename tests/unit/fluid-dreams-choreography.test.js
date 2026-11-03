@@ -1031,8 +1031,8 @@ describe('fluid dreams choreography: clears', () => {
         expect(choreo.hero.z).toBeCloseTo(twin.hero.z, 9);
         expect(choreo.stem.x).toBeCloseTo(twin.stem.x, 9);
         expect(choreo.stem.z).toBeCloseTo(twin.stem.z, 9);
-        // A T-spin now winds the sea under its new home.
-        choreo.clear({ origin: [...choreo.scene.foot], lines: 2, tspin: true });
+        // A twist now winds the sea under its new home.
+        choreo.clear({ origin: [...choreo.scene.foot], lines: 2, twist: true });
         run(choreo, 0.5);
         expect([choreo.vortex.x, choreo.vortex.z]).toEqual([site[0], site[2]]);
     });
@@ -1125,10 +1125,10 @@ describe('fluid dreams choreography: clears', () => {
         }
     });
 
-    it('winds the sea under the Drop into a funnel on a T-spin, and lets it close', () => {
+    it('winds the sea under the Drop into a funnel on a twist, and lets it close', () => {
         const { choreo } = make();
         expect(choreo.vortex.depth).toBe(0);
-        choreo.clear({ origin: [...choreo.scene.foot], lines: 2, tspin: true });
+        choreo.clear({ origin: [...choreo.scene.foot], lines: 2, twist: true });
         expect(choreo.isBusy()).toBe(true);
         run(choreo, 0.5);
         expect(choreo.vortex.depth).toBeGreaterThan(0);
@@ -1260,7 +1260,7 @@ describe('fluid dreams choreography: budgets and time', () => {
         run(choreo, 2.5);
         choreo.levelUp();
         lockBeside(choreo, 1, { out: 4, back: -8, color: TEAL });
-        choreo.clear({ origin: [...choreo.scene.foot], lines: 3, tspin: true });
+        choreo.clear({ origin: [...choreo.scene.foot], lines: 3, twist: true });
         run(choreo, 1.5);
         choreo.setCombo(0);
         run(choreo, 0.5);
@@ -1300,7 +1300,7 @@ describe('fluid dreams choreography: budgets and time', () => {
                 choreo.clear({
                     origin: [choreo.scene.foot[0] + random() - 0.5, choreo.scene.foot[1]],
                     lines: 1 + (i % 4),
-                    tspin: i % 7 === 0,
+                    twist: i % 7 === 0,
                     perfect: i % 31 === 0,
                 });
             }
@@ -1405,7 +1405,7 @@ describe('fluid dreams choreography: budgets and time', () => {
             const { choreo } = make({ satellites: 4 });
             lockBeside(choreo, -1, { hardDrop: true });
             lockBeside(choreo, 1);
-            choreo.clear({ origin: [...choreo.scene.foot], lines: 4, tspin: true });
+            choreo.clear({ origin: [...choreo.scene.foot], lines: 4, twist: true });
             choreo.setCombo(6);
             choreo.levelUp();
             run(choreo, 1.2);
@@ -2004,14 +2004,14 @@ describe('fluid dreams choreography: play builds instead of popping', () => {
         expect(least).toBeGreaterThan(0.95);
     });
 
-    it('winds the funnel deeper on a second T-spin, and turns it a little on one that clears nothing', () => {
+    it('winds the funnel deeper on a second twist, and turns it a little on one that clears nothing', () => {
         const { choreo } = make();
         const twin = make().choreo;
         for (const c of [choreo, twin]) {
-            c.clear({ origin: [...c.scene.foot], lines: 2, tspin: true });
+            c.clear({ origin: [...c.scene.foot], lines: 2, twist: true });
             run(c, 1.2);
         }
-        choreo.clear({ origin: [...choreo.scene.foot], lines: 1, tspin: true });
+        choreo.clear({ origin: [...choreo.scene.foot], lines: 1, twist: true });
         let deeper = 0;
         for (let i = 0; i < 120; i++) {
             run(choreo, DT);
@@ -2021,11 +2021,11 @@ describe('fluid dreams choreography: play builds instead of popping', () => {
             deeper = Math.max(deeper, choreo.vortex.depth - twin.vortex.depth);
         }
         expect(deeper).toBeGreaterThan(0.2);
-        // A T-spin that cleared nothing: a smaller turn, but a turn.
+        // A twist that cleared nothing: a smaller turn, but a turn.
         const small = make().choreo;
         const full = make().choreo;
         small.spinNoLines();
-        full.clear({ origin: [...full.scene.foot], lines: 2, tspin: true });
+        full.clear({ origin: [...full.scene.foot], lines: 2, twist: true });
         run(small, 0.5);
         run(full, 0.5);
         expect(small.vortex.depth).toBeGreaterThan(0);
@@ -2040,9 +2040,9 @@ describe('fluid dreams choreography: play builds instead of popping', () => {
         const twin = make().choreo;
         for (const c of [choreo, twin]) run(c, 0.2);
         choreo.clear({
-            origin: [...choreo.scene.foot], lines: 2, tspin: true, b2b: true,
+            origin: [...choreo.scene.foot], lines: 2, twist: true, b2b: true,
         });
-        twin.clear({ origin: [...twin.scene.foot], lines: 2, tspin: true });
+        twin.clear({ origin: [...twin.scene.foot], lines: 2, twist: true });
         run(choreo, 0.5);
         run(twin, 0.5);
         const kinGlow = (c) => ballsOf(c, GROUP_KIN)[0].glow;
@@ -2055,7 +2055,7 @@ describe('fluid dreams choreography: play builds instead of popping', () => {
         run(choreo, 0.9);
         const left = kinGlow(choreo);
         choreo.clear({
-            origin: [...choreo.scene.foot], lines: 2, tspin: true, b2b: true,
+            origin: [...choreo.scene.foot], lines: 2, twist: true, b2b: true,
         });
         run(choreo, 0.3);
         expect(kinGlow(choreo)).toBeGreaterThan(left);

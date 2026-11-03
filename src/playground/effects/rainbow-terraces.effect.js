@@ -21,7 +21,7 @@
  *   linkAge=<s>              the last link of the chain was made <s> seconds before the frame
  *   held=<n>                 n pools holding colour before the event
  *   locks=<n>                n warm-up locks 0.45 s apart (every fourth a hard drop)
- *   event=lock|drop|clear|tspin|b2b|quad|perfect|levelUp|newRun|gameOver|break
+ *   event=lock|drop|clear|twist|b2b|quad|perfect|levelUp|newRun|gameOver|break
  *   eventAge=<s>             …shown <s> seconds later (lines=<n>, row=<r>, u=<0..1>, color=<hex>,
  *                            shape=I..L, dropRows=<n>)
  *   parts=sky,isles,...      draw only these parts (sky, sea, cumulus, isles, falls, spray, pools, gliders, fx)
@@ -220,9 +220,9 @@ export function create({
         else if (eventName === 'drop') world.onLock({ ...lock, hardDrop: true, dropRows: Math.round(num(params, 'dropRows', 8)) });
         else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines, combo });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4, combo });
-        else if (eventName === 'tspin') {
+        else if (eventName === 'twist') {
             world.onClear({
-                rows: bottom(2), lines: 2, tspin: true, combo,
+                rows: bottom(2), lines: 2, twist: true, combo,
             });
         } else if (eventName === 'b2b') {
             world.onClear({

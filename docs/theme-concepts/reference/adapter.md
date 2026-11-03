@@ -245,7 +245,7 @@ if(!isPaused) animate(); console.log(`${LOG_PREFIX} Scene ready (${backend}, ${q
 `SERENITY_WARP_EVENT_HANDLERS` (director.js:48):
 ```js
 { PIECE_LOCK:'onPieceLock', HARD_DROP:'onHardDrop', LINE_CLEAR:'onLineClear', COMBO:'onCombo',
-  TSPIN:'onTSpin', B2B:'onB2B', PERFECT_CLEAR:'onPerfectClear', LEVEL_UP:'onLevelUp' }
+  TSPIN:'onTwist', B2B:'onB2B', PERFECT_CLEAR:'onPerfectClear', LEVEL_UP:'onLevelUp' }
 ```
 Payload fields each handler reads (canonical emitters in `src/events/gameplay-events.js`):
 
@@ -392,7 +392,7 @@ At High the binding cap is the theme's 1.15. Extreme is limited to 1.5 by policy
 1. Scaffold the new folder with copied adapter, director, composition and quality, plus a minimal world (one sky part) and the post. Make the world satisfy `WORLD_METHODS` from day one.
 2. Make the registry, heavy-set, retired-id, container/CSS and URL-param changes. Delete `src/themes/cosmic-chimes/` and the obsolete cosmic-chimes references, tests and CSS. Run `npx vitest run tests/unit/<id>-theme.test.js tests/unit/url-parameter-catalog.test.js tests/unit/theme-*`.
 3. Iterate the look in `src/playground/effects/<id>.effect.js` and take screenshots. Grow the parts list and keep `<UPPER>_PARTS` in sync with the captureThemes row.
-4. Implement `onLock`, `onClear`, `onCombo` and `levelUp` in the world, playground-first (`event=lock|drop|clear|quad|tspin|perfect|levelUp`).
+4. Implement `onLock`, `onClear`, `onCombo` and `levelUp` in the world, playground-first (`event=lock|drop|clear|quad|twist|perfect|levelUp`).
 5. Set tier values and POST_LOOK, then check on WebGL2 (`?forceWebGL`) and on a phone aspect.
 
 ### 6e. Pitfalls

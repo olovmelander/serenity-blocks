@@ -240,7 +240,7 @@ export class RainbarkEvents {
     }
 
     /**
-     * A T-spin's helix unwinds at time t: `h` = { code, yTop, turns, pitch, theta, width }. It
+     * A twist's helix unwinds at time t: `h` = { code, yTop, turns, pitch, theta, width }. It
      * stands for the level; when every slot is taken the oldest heals (over HELIX.heal).
      */
     helix(t, h) {

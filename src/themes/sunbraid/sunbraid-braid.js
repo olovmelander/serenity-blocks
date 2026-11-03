@@ -5,8 +5,8 @@
  * The suns wheel round one another (the phase) on a circle of a given size (the spread). The
  * clock turns the phase at a calm rate; gameplay adds to it:
  *  - a lock ticks it a notch (a hard drop further), so play winds the sundial;
- *  - a T-spin twists it a third of a turn, so the suns change places and every fan's colours turn
- *    (a T-spin that clears nothing, a twelfth);
+ *  - a twist twists it a third of a turn, so the suns change places and every fan's colours turn
+ *    (a twist that clears nothing, a twelfth);
  *  - a level-up winds it on a sixth of a turn over a few seconds (the era steps on, while the
  *    clock keeps turning it too);
  *  - a chain turns it faster and draws the suns closer (the fans narrow and burn), easing back when
@@ -34,7 +34,7 @@ import {
 export const BRAID_EVENTS = Object.freeze({
     tick: Object.freeze({ step: 2.6 * DEG, hardStep: 5.5 * DEG, ease: 0.7 }),
     twist: Object.freeze({ step: TAU / 3, ease: 1.5, gap: 0.22 }),
-    /** A T-spin that cleared nothing: something small, a twelfth of a turn. */
+    /** A twist that cleared nothing: something small, a twelfth of a turn. */
     spin: Object.freeze({ step: TAU / 12, ease: 0.9 }),
     level: Object.freeze({ step: BRAID.levelStep, ease: BRAID.levelEase }),
     /**
@@ -199,7 +199,7 @@ export class Braid {
         this.nudge(hard ? e.hardStep : e.step, e.ease, at);
     }
 
-    /** A T-spin: a third of a turn per spin-turn (doubles and triples queue a little apart). */
+    /** A twist: a third of a turn per spin-turn (doubles and triples queue a little apart). */
     twist(turns = 1, at = this.time) {
         const e = BRAID_EVENTS.twist;
         const n = Math.max(1, Math.min(3, Math.round(turns)));
@@ -207,7 +207,7 @@ export class Braid {
         this.lastTwistAt = at;
     }
 
-    /** A T-spin that cleared nothing: a twelfth of a turn. */
+    /** A twist that cleared nothing: a twelfth of a turn. */
     spin(at = this.time) {
         const e = BRAID_EVENTS.spin;
         this.nudge(e.step, e.ease, at);

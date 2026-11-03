@@ -45,7 +45,7 @@ describe('stillwater director: intake', () => {
     it('names a handler for every canonical gameplay event it listens to', () => {
         const director = new StillwaterDirector();
         expect(Object.keys(STILLWATER_EVENT_HANDLERS).sort()).toEqual([
-            'B2B', 'COMBO', 'HARD_DROP', 'LEVEL_UP', 'LINE_CLEAR', 'PERFECT_CLEAR', 'PIECE_LOCK', 'TSPIN',
+            'B2B', 'COMBO', 'HARD_DROP', 'LEVEL_UP', 'LINE_CLEAR', 'PERFECT_CLEAR', 'PIECE_LOCK', 'TWIST',
         ]);
         for (const [event, handler] of Object.entries(STILLWATER_EVENT_HANDLERS)) {
             expect(EVENTS[event], event).toBeTruthy();
@@ -159,16 +159,16 @@ describe('stillwater director: intake', () => {
         expect(calls.combo[calls.combo.length - 1]).toEqual([0, 0]);
     });
 
-    it('carries T-spins, perfect clears and back-to-backs on the clear', () => {
+    it('carries twists, perfect clears and back-to-backs on the clear', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: T });
         director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.onB2B({ active: true });
         director.onPerfectClear({ depth: 1 });
         director.flush();
         expect(calls.clear[0]).toMatchObject({
-            lines: 2, tspin: true, b2b: true, perfect: true,
+            lines: 2, twist: true, b2b: true, perfect: true,
         });
         // An inactive B2B is not one.
         expect(director.onB2B({ active: false })).toBe(false);
@@ -177,7 +177,7 @@ describe('stillwater director: intake', () => {
         director.onLineClear({ lineCount: 1, clearedRows: [23], cascadeCount: 1 });
         director.flush();
         expect(calls.clear[1]).toMatchObject({
-            lines: 1, tspin: false, b2b: false, perfect: false,
+            lines: 1, twist: false, b2b: false, perfect: false,
         });
     });
 
@@ -331,7 +331,7 @@ describe('stillwater director: settings and resets', () => {
         expect(director.onPieceLock({ piece: I })).toBe(false);
         expect(director.onLineClear({ lineCount: 2, clearedRows: [23, 22] })).toBe(false);
         expect(director.onCombo({ comboCount: 3, position: { x: 10, y: 10 } })).toBe(false);
-        expect(director.onTSpin({ lineCount: 2 })).toBe(false);
+        expect(director.onTwist({ lineCount: 2 })).toBe(false);
         expect(director.onB2B({ active: true })).toBe(false);
         expect(director.onPerfectClear({ depth: 1 })).toBe(false);
         director.flush();

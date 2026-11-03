@@ -18,7 +18,7 @@
  *               lets the mirrors go
  *   four lines  dives one octave of the lattice down the eye's free lane (exactly one period:
  *               the view it lands on is the one it left), the whole temple resonating
- *   T-spin      turns the kaleidoscope: the eye rolls a full turn
+ *   twist      turns the kaleidoscope: the eye rolls a full turn
  *   back-to-back  a drone: a ring of light round the core, held while the run lives
  *   perfect     every mirror aligns into one still mandala and the floors' pattern flares
  *   level up    the mood wheel steps on (it also turns by itself with the clock)
@@ -93,7 +93,7 @@ const CLIMB = Object.freeze({ lo: Math.min(...REFOLDS), hi: Math.max(...REFOLDS)
  */
 const FOLD_OPEN = TIMING.foldIn;
 const FOLD_RELEASE = TIMING.foldOut / 3;
-/** A zero-line T-spin rocks the eye: this much roll speed (radians per second), settling level. */
+/** A zero-line twist rocks the eye: this much roll speed (radians per second), settling level. */
 const TWIST = 0.7;
 /** s(1 − s)³(1 + 3s): leaves 0 at speed 1 and comes back to 0 at rest (a roll's carried speed). */
 const lead = (s) => s * (1 - s) ** 3 * (1 + 3 * s);
@@ -106,7 +106,7 @@ const _v = new THREE.Vector3();
 
 function emptyCounts() {
     return {
-        locks: 0, drops: 0, clears: 0, quads: 0, tspins: 0, perfects: 0, levelUps: 0, gameOvers: 0, dives: 0,
+        locks: 0, drops: 0, clears: 0, quads: 0, twists: 0, perfects: 0, levelUps: 0, gameOvers: 0, dives: 0,
     };
 }
 
@@ -249,7 +249,7 @@ export class KaleidosonicWorld {
         this.sink = 0;
         this.sinkTarget = 0;
         this.drone = 0;
-        /** The T-spin roll: `rollFrom` to `rollTo` (radians) over `rollDur` from `rollAt`, leaving at `rollSpeed`. */
+        /** The twist roll: `rollFrom` to `rollTo` (radians) over `rollDur` from `rollAt`, leaving at `rollSpeed`. */
         this.rollAt = -1e6;
         this.rollFrom = 0;
         this.rollTo = 0;
@@ -360,7 +360,7 @@ export class KaleidosonicWorld {
 
     /**
      * The eye's pose: the rest pose, a slow drift of the eye and the lens, the pointer's parallax,
-     * a hard drop's kick, and the T-spin's roll. `rest` leaves out everything that moves.
+     * a hard drop's kick, and the twist's roll. `rest` leaves out everything that moves.
      */
     pose(camera, time, pointerX = 0, pointerY = 0, rest = false) {
         const rig = this.rig();
@@ -738,8 +738,8 @@ export class KaleidosonicWorld {
             this.onCrown(context);
             return;
         }
-        // A T-spin that cleared nothing: something small.
-        if (named <= 0 && context.tspin === true) {
+        // A twist that cleared nothing: something small.
+        if (named <= 0 && context.twist === true) {
             this.onSpin();
             return;
         }
@@ -771,7 +771,7 @@ export class KaleidosonicWorld {
         else this.stepRefold();
         let ring = 0.6 + lines * 0.25;
         let flare = 0.4 + lines * 0.15;
-        if (context.tspin) ring = Math.max(ring, 0.8);
+        if (context.twist) ring = Math.max(ring, 0.8);
         if (lines >= 4) {
             ring = Math.max(ring, 1.3);
             flare = Math.max(flare, 1.2);
@@ -783,7 +783,7 @@ export class KaleidosonicWorld {
         // A meditation click (a screen point, no board) sounds its harmonic without flash or dive.
         const calm = Boolean(context.screen);
         if (lines >= 4) this.onQuad({ calm });
-        if (context.tspin) this.onTSpin();
+        if (context.twist) this.onTwist();
         if (perfect) this.onPerfect({ calm });
     }
 
@@ -852,15 +852,15 @@ export class KaleidosonicWorld {
         }
     }
 
-    /** A T-spin's clear: the eye rolls a full turn (one mid-roll spins it a turn further). */
-    onTSpin() {
-        this.counts.tspins += 1;
+    /** A twist's clear: the eye rolls a full turn (one mid-roll spins it a turn further). */
+    onTwist() {
+        this.counts.twists += 1;
         if (!this.reducedMotion) this.planRoll(1, 0);
     }
 
-    /** A T-spin that cleared nothing: the eye rocks and settles, and a small chord in the T's colour. */
+    /** A twist that cleared nothing: the eye rocks and settles, and a small chord in the T's colour. */
     onSpin() {
-        this.counts.tspins += 1;
+        this.counts.twists += 1;
         this.lastEventAt = this.time;
         this.soundHarmonic(2, 0.55, this.pigment(PIECE_COLORS[pieceCode('T')], this._rgb), this.time);
         this.ring.hit(0.4, this.time);

@@ -411,7 +411,7 @@ describe('waves playground effect: captures', () => {
         ['clear&lines=3', 3, false],
         ['clear&lines=9', 4, true],
         ['quad', 4, true],
-        ['tspin', 2, false],
+        ['twist', 2, false],
         ['perfect', 4, true],
     ])('shows event=%s as a clear of %s line(s)', (event, lines, held) => {
         const age = Math.min(0.5, HOLD_SECONDS / 2);
@@ -433,8 +433,8 @@ describe('waves playground effect: captures', () => {
         }
         expect(state.open).toBeGreaterThan(0);
         expect(state.glow).toBeGreaterThan(0);
-        // A T-spin's bands are screws of light; the whole pod answers a perfect clear.
-        expect(bands.every((band) => band[3] !== 0)).toBe(event === 'tspin');
+        // A twist's bands are screws of light; the whole pod answers a perfect clear.
+        expect(bands.every((band) => band[3] !== 0)).toBe(event === 'twist');
         expect(state.leaps).toBe(event === 'perfect' ? world.pod.count : 0);
     });
 

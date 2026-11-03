@@ -28,7 +28,7 @@ const STREAK_SPACING = 0.9;
  *   quality=High            tier
  *   az=0.6 el=0.2 dist=1045 hold the camera at this azimuth / elevation (radians) / distance
  *   frame=-0.6 up=0         the hole's place across the frame (NDC) and its lift in world units
- *   event=lock|clear|quad|tspin|perfect|level|combo   gameplay cue to replay under ?t=
+ *   event=lock|clear|quad|twist|perfect|level|combo   gameplay cue to replay under ?t=
  *   eventAge=0.45           seconds between the cue and the captured frame
  *   lines=1  combo=5  column=4.5  row=20  drop=0  color=%23f8b24f
  *   board=1                 draw a stand-in board and launch fed pieces from it
@@ -113,9 +113,9 @@ export function create({
         if (drop > 0) director.onHardDrop({ distance: drop });
         director.onPieceLock({ piece: piece() });
         if (kind === 'lock') return;
-        const count = kind === 'quad' ? 4 : Math.max(1, Math.min(4, kind === 'tspin' ? 2 : lines));
+        const count = kind === 'quad' ? 4 : Math.max(1, Math.min(4, kind === 'twist' ? 2 : lines));
         director.onLineClear({ lineCount: count, clearedRows: Array.from({ length: count }, (_, i) => 23 - i) });
-        if (kind === 'tspin') director.onTSpin({ lineCount: count });
+        if (kind === 'twist') director.onTwist({ lineCount: count });
         if (kind === 'perfect') director.onPerfectClear({ depth: 1 });
     };
 

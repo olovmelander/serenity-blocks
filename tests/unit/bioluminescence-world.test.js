@@ -185,7 +185,7 @@ function playScript(made) {
     beat();
     world.onLock({ u: 0.5, rows: [19], color: AMBER });
     world.onCombo(2);
-    world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+    world.onClear({ rows: [19, 18], lines: 2, twist: true });
     beat();
     beat();
     world.levelUp(2);
@@ -813,15 +813,15 @@ describe('bioluminescence world: a clear', () => {
         expect(click.u.heart.value.y).toBeCloseTo(expected.z, 9);
     });
 
-    it('turns the air and rings the crystals for a T-spin', () => {
+    it('turns the air and rings the crystals for a twist', () => {
         const made = makeWorld('High');
         const { world } = made;
         expect(world.u.swirl.value).toBe(0);
         const now = world.time;
-        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        world.onClear({ rows: [19, 18], lines: 2, twist: true });
         expect(world.crystals.ringAt(now)).toBeGreaterThan(0);
         run(made, 1 / 60, 1);
-        // The front left the roots as the T-spin landed, and the stones ring.
+        // The front left the roots as the twist landed, and the stones ring.
         expect(world.crystals.uniforms.chime.value.x).toBe(now);
         expect(world.crystals.uniforms.chime.value.y).toBeGreaterThan(0);
         expect(world.u.swirl.value).toBeGreaterThan(0.5);
@@ -1582,7 +1582,7 @@ describe('bioluminescence world: faults that stay fixed', () => {
                     world.onLock({
                         u: 0.9, rows: [17, 18, 19], color: BLUE, hardDrop: true,
                     });
-                    world.onClear({ rows: [19, 18, 17], lines: 3, tspin: true });
+                    world.onClear({ rows: [19, 18, 17], lines: 3, twist: true });
                 });
                 expect(lesser, `${quality}: three lines with ${holding} caps holding`).toBeLessThanOrEqual(world.spores.count);
             }
@@ -1893,7 +1893,7 @@ describe('bioluminescence world: faults that stay fixed', () => {
                 world.onLock({ screen: { x: 0.3, y: bad } });
                 world.onClear({ lines: bad, rows: [19], screen: { x: bad, y: 0.9 } });
                 world.onClear({ lines: 4, perfect: true, screen: { x: 0.5, y: bad } });
-                world.onClear({ lines: bad, rows: [19, 18], tspin: true });
+                world.onClear({ lines: bad, rows: [19, 18], twist: true });
                 world.onCombo(bad);
             }, what).not.toThrow();
             expectAllFinite(world, what);
@@ -2107,14 +2107,14 @@ describe('bioluminescence world: it builds with play', () => {
         expect(births[1]).toBeGreaterThan(births[0] + 0.2);
         expect(shock.y).toBeGreaterThan(0);
         expect(shock.w).toBeGreaterThan(0);
-        // A back-to-back T-spin double rings it once, with no hush; a plain double not at all.
-        const tspin = makeWorld('High').world;
-        tspin.onClear({
-            rows: [19, 18], lines: 2, tspin: true, b2b: true,
+        // A back-to-back twist double rings it once, with no hush; a plain double not at all.
+        const twist = makeWorld('High').world;
+        twist.onClear({
+            rows: [19, 18], lines: 2, twist: true, b2b: true,
         });
-        expect(tspin.hushUntil).toBeLessThan(tspin.time);
-        expect(Math.max(tspin.u.shock.value.y, tspin.u.shock.value.w)).toBeGreaterThan(0);
-        expect(tspin.counts.blooms).toBe(0);
+        expect(twist.hushUntil).toBeLessThan(twist.time);
+        expect(Math.max(twist.u.shock.value.y, twist.u.shock.value.w)).toBeGreaterThan(0);
+        expect(twist.counts.blooms).toBe(0);
         const plain = makeWorld('High').world;
         plain.onClear({ rows: [19, 18], lines: 2 });
         expect(Math.max(plain.u.shock.value.y, plain.u.shock.value.w)).toBe(0);
@@ -2162,7 +2162,7 @@ describe('bioluminescence world: it builds with play', () => {
         expect(alone.counts.clears).toBe(0);
     });
 
-    it('turns the air a little for a T-spin that cleared nothing', () => {
+    it('turns the air a little for a twist that cleared nothing', () => {
         const made = makeWorld('High');
         const { world } = made;
         const now = world.time;

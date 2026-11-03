@@ -160,7 +160,7 @@ export class LanternPool {
 
     /**
      * Lift `count` lanterns off the water, the oldest first, `gap` seconds apart, starting at
-     * `clock`. `spiral` (radians a second) turns them round where they rose (a T-spin).
+     * `clock`. `spiral` (radians a second) turns them round where they rose (a twist).
      * Returns how many went.
      */
     lift(clock, count, { gap = 0.28, spiral = 0, out = null } = {}) {
@@ -230,7 +230,7 @@ export class LanternPool {
         const up = RISE_SPEED * lagged(s, RISE_LAG);
         const away = WIND_SPEED * lagged(s, WIND_LAG);
         const sway = 0.35 * Math.sin(s * 0.7 + r.seed * 9) * smooth(0, 6, s);
-        // A T-spin's lanterns go up turning round where they rose, then the wind takes them.
+        // A twist's lanterns go up turning round where they rose, then the wind takes them.
         const turn = r.spiral * Math.min(s, 9);
         const radius = r.spiral ? 1.4 * smooth(0, 1.5, s) * (1 - smooth(6, 12, s)) : 0;
         out.phase = 'air';

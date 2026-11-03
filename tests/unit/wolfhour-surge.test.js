@@ -164,11 +164,11 @@ describe('Wolfhour surge', () => {
         expect(theme.night.halo).toBeGreaterThan(haloBefore + 0.3);
     });
 
-    it('answers a zero-line T-spin and a back-to-back clear with something of their own', () => {
+    it('answers a zero-line twist and a back-to-back clear with something of their own', () => {
         const theme = createTheme();
         theme.time = 40;
         const ring = vi.spyOn(theme, 'triggerLunarReaction');
-        theme.onTSpin({ lineCount: 0 });
+        theme.onTwist({ lineCount: 0 });
         expect(ring).toHaveBeenCalledTimes(1);
         expect(queued(theme, 'starBurst')).toBe(1);
         runTo(theme, 40.2);

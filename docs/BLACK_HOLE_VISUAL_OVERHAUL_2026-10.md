@@ -198,7 +198,7 @@ Run `npm run dev:playground` and open:
 
 `t` fixes the animation phase; `eventAge` fixes the time since the cue. A streak is replayed
 as real consecutive clearing locks. `az`, `el`, `dist` and `frame` hold the camera; without
-them it follows the theme's own path. Other parameters: `event=tspin|perfect|level`,
+them it follows the theme's own path. Other parameters: `event=twist|perfect|level`,
 `lines`, `column`, `row`, `reduce=1`, `tone=aces|agx|neutral`, and per-term gains for
 bisecting a look (`disk`, `ring`, `heat`, `sky`, `stars`, `doppler`, `corona`, `nebula`,
 `bloom`, `exposure`). The second pass's close view is

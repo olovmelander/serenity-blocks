@@ -85,7 +85,7 @@ const clear = (world, extra = {}) => world.onClear({
     lines: 2,
     combo: 1,
     cascade: 1,
-    tspin: false,
+    twist: false,
     perfect: false,
     b2b: false,
     rowCodes: [],
@@ -382,17 +382,17 @@ describe('Thermal Bloom world: what the events record', () => {
         expect(world.lastLock.code).toBe(1); // T
     });
 
-    it('records clears, four lines, T-spins, perfect clears and the stone record', () => {
+    it('records clears, four lines, twists, perfect clears and the stone record', () => {
         const { world, camera } = makeWorld();
         frame(world, camera, 0.1, () => clear(world, { lines: 3, rowCodes: new Array(30).fill(2) }));
         frame(world, camera, 0.1, () => clear(world, { lines: 4 }));
-        frame(world, camera, 0.1, () => clear(world, { lines: 2, tspin: true, cascade: 2 }));
+        frame(world, camera, 0.1, () => clear(world, { lines: 2, twist: true, cascade: 2 }));
         frame(world, camera, 0.1, () => clear(world, { lines: 1, perfect: true }));
         const s = world.getState();
         expect(s.counts.clears).toBe(4);
         expect(s.counts.lines).toBe(10);
         expect(s.counts.quads).toBe(1);
-        expect(s.counts.tspins).toBe(1);
+        expect(s.counts.twists).toBe(1);
         expect(s.counts.perfects).toBe(1);
         expect(s.counts.cascades).toBe(1);
         expect(s.records).toBe(9);
@@ -567,15 +567,15 @@ describe('Thermal Bloom world: the gameplay beats in the event table', () => {
         expect(world.u.bow.value).toBe(0);
     });
 
-    it('spins up a devil a T-spin line and leaves a rosette where each one ends', () => {
+    it('spins up a devil a twist line and leaves a rosette where each one ends', () => {
         const { world, camera } = makeWorld();
-        frame(world, camera, 0.1, () => clear(world, { lines: 2, tspin: true }));
+        frame(world, camera, 0.1, () => clear(world, { lines: 2, twist: true }));
         run(world, camera, 1);
         expect(world.u.devilCount.value).toBe(2);
         run(world, camera, 9);
         expect(world.u.devilCount.value).toBe(0);
         expect(world.u.rosetteCount.value).toBe(2);
-        for (let i = 0; i < 5; i++) frame(world, camera, 0.1, () => clear(world, { lines: 3, tspin: true }));
+        for (let i = 0; i < 5; i++) frame(world, camera, 0.1, () => clear(world, { lines: 3, twist: true }));
         run(world, camera, 10);
         expect(world.u.rosetteCount.value).toBeLessThanOrEqual(EVENT_SLOTS.rosettes);
     });
@@ -762,16 +762,16 @@ describe('Thermal Bloom world: play builds, and nothing running is cut', () => {
         expect(low).toBeGreaterThan(swollen * 0.9);
     });
 
-    it('feeds spinning devils instead of deleting one; a T-spin that clears nothing spins a small one', () => {
+    it('feeds spinning devils instead of deleting one; a twist that clears nothing spins a small one', () => {
         const { world, camera } = makeWorld();
-        frame(world, camera, 0.1, () => world.onTSpin());
+        frame(world, camera, 0.1, () => world.onTwist());
         run(world, camera, 1);
         expect(world.u.devilCount.value).toBe(1);
-        frame(world, camera, 0.1, () => clear(world, { lines: 3, tspin: true }));
+        frame(world, camera, 0.1, () => clear(world, { lines: 3, twist: true }));
         run(world, camera, 1.5);
         expect(world.u.devilCount.value).toBe(EVENT_SLOTS.devils);
         const tallest = Math.max(...world.devils.map((d) => d.height));
-        frame(world, camera, 0.1, () => clear(world, { lines: 2, tspin: true }));
+        frame(world, camera, 0.1, () => clear(world, { lines: 2, twist: true }));
         run(world, camera, 1.5);
         expect(world.u.devilCount.value).toBe(EVENT_SLOTS.devils);
         expect(Math.max(...world.devils.map((d) => d.height))).toBeGreaterThan(tallest);

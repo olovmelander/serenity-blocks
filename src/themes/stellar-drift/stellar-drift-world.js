@@ -23,7 +23,7 @@
  *   four     a storm of bolides strikes the cloud tops (fireball, shock, embers, a dark scar
  *            the wind shears), the icy moon vents, a corona of light leaves the giant and the
  *            whole ring system rings four times over.
- *   T-spin   a cyclone is spun into the cloud bands, its arms lit, and a two-armed spiral of
+ *   twist   a cyclone is spun into the cloud bands, its arms lit, and a two-armed spiral of
  *            light winds round through the rings.
  *   b2b      the rings' outer strand blazes, braided and knotted with light; a streak of them
  *            keeps it smouldering, and each one blazes brighter.
@@ -344,7 +344,7 @@ export class StellarDriftWorld {
             locks: 0,
             clears: 0,
             quads: 0,
-            tspins: 0,
+            twists: 0,
             perfects: 0,
             b2b: 0,
             milestones: 0,
@@ -871,7 +871,7 @@ export class StellarDriftWorld {
         });
     }
 
-    /** A T-spin's cyclone, wound into the cloud somewhere on the day side the camera sees. */
+    /** A twist's cyclone, wound into the cloud somewhere on the day side the camera sees. */
     cycloneAt(time, power, rgb, seed) {
         const rand = mulberry32(0xc1c1 + seed * 7919);
         const camera = this._camera || this.restCamera();
@@ -948,7 +948,7 @@ export class StellarDriftWorld {
     }
 
     /**
-     * A clear: `c` = { player, rows, lines, combo, cascade, tspin, perfect, b2b, color, screen }.
+     * A clear: `c` = { player, rows, lines, combo, cascade, twist, perfect, b2b, color, screen }.
      * Each wave of a cascade arrives as a clear of its own (`cascade` = its depth), and each rings
      * deeper than the last. A perfect clear with no lines is the crown on the clear before it.
      */
@@ -956,9 +956,9 @@ export class StellarDriftWorld {
         if (!this.u) return;
         const t = this.time;
         const lines = Math.max(0, Math.min(4, Math.trunc(Number(c.lines ?? 1) || 0)));
-        const tspin = c.tspin === true;
+        const twist = c.twist === true;
         const perfect = c.perfect === true;
-        if (lines === 0 && !tspin && !perfect) return;
+        if (lines === 0 && !twist && !perfect) return;
         const quad = lines >= 4;
         const combo = Math.max(0, Math.trunc(Number(c.combo) || 0));
         // How deep in its cascade this wave is (1 = the lock's own clear), and how much deeper
@@ -968,14 +968,14 @@ export class StellarDriftWorld {
         const calm = this.reducedMotion;
         const rgb = c.color ? pieceColor(c.color) : [...this._lastColor];
         const pale = rgb.map((v) => lerp(v, 1, 0.35 + deeper * 0.06));
-        const seed = this.seed + this.counts.clears * 977 + this.counts.tspins * 131;
+        const seed = this.seed + this.counts.clears * 977 + this.counts.twists * 131;
 
         // How hot play runs: a clear adds to it, a spin that cleared nothing a little, and a
         // perfect clear settling after its clear crowns it.
         if (lines > 0) this.drive.clear(c, t);
-        else if (tspin) this.drive.spin(t);
+        else if (twist) this.drive.spin(t);
         else this.drive.crown(t);
-        if (lines === 0 && !tspin) {
+        if (lines === 0 && !twist) {
             this.crownPerfect(t, rgb, seed);
             return;
         }
@@ -988,10 +988,10 @@ export class StellarDriftWorld {
             const ring = 0.7 + lines * 0.2 + (quad ? 0.25 : 0) + deeper * 0.12;
             this.ringChime(t, ring, Math.min(4, lines + deeper), 0, pale);
         }
-        if (tspin) {
+        if (twist) {
             this.ringChime(t + 0.05, lines > 0 ? 1.1 : 0.7, 1, 2, rgb);
             this.cycloneAt(t, lines > 0 ? 1.0 : 0.7, rgb, seed + 11);
-            this.counts.tspins += 1;
+            this.counts.twists += 1;
         }
 
         // Every cleared row is written round the giant on its own latitude.

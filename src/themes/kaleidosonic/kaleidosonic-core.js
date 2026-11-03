@@ -431,7 +431,7 @@ export const TIMING = Object.freeze({
     refold: 1.4,
     /** The four-line dive: one diagonal period in this long. */
     dive: 2.8,
-    /** T-spin: the eye rolls a full turn in this long. */
+    /** Twist: the eye rolls a full turn in this long. */
     roll: 2.2,
     /** Perfect clear: every fold aligns this long, then lets go over the next. */
     mandalaHold: 5,

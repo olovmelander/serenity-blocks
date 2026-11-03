@@ -18,7 +18,7 @@
  * the fireflies into step, from their own rhythms to rolling waves down the house to one flash,
  * and bioluminescent moss climbs the iron columns a step a link. Four lines hush the house; then
  * the Queen of the Night opens behind the board, her long white petals reaching out round it,
- * and moonlight floods every pane. A T-spin turns the air. The level moves the night along a
+ * and moonlight floods every pane. A twist turns the air. The level moves the night along a
  * wheel of six, and the clock alone drifts it there too.
  *
  * Content lives in MoonlitGreenhouseWorld (moonlit-greenhouse-world.js), shared with the

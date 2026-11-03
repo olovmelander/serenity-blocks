@@ -503,7 +503,7 @@ export const TIMING = Object.freeze({
     /** A chain's shower moves in over this long per step; the rainbow after it lives this long. */
     showerStep: 0.8,
     bowLife: 18,
-    tspinLife: 9,
+    twistLife: 9,
     perfectHold: 10,
     perfectFade: 6,
     /** Game over: the light falls to dusk over this long, and returns over this long. */

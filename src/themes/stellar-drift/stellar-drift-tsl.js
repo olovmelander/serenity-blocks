@@ -333,7 +333,7 @@ export function createStellarDriftUniforms(textures, sizes) {
         bolts: uniform(0),
         // The flourishes (stellar-drift-core.js): two surges and two shells may run at once; the
         // cyclone and the strand are fed by a second reward, so the world hands their light.
-        /** A T-spin's cyclone: (longitude in the giant's frame, latitude, birth, light now). */
+        /** A twist's cyclone: (longitude in the giant's frame, latitude, birth, light now). */
         cyclone: uniform(new THREE.Vector4(0, 0, -1000, 0)),
         /** Its colour, and which way it winds (±1). */
         cycloneTint: uniform(new THREE.Vector4(1, 1, 1, 1)),

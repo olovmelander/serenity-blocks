@@ -6,7 +6,7 @@
  * leg rested, a foal at its mother's side), and every so often the band moves on: a walk to new
  * grass, a trot, a canter round a loop, or a gallop that leaves the picture over the crest, past
  * a side of the frame or behind the eye, and comes back in again somewhere else a little later.
- * A chain sets them running, a T-spin wheels them round.
+ * A chain sets them running, a twist wheels them round.
  *
  * The lead mare follows a route (a polyline of waypoints); the others follow her trail, each a
  * few lengths behind and a little to one side, so the band strings out as she sets off, flows
@@ -806,7 +806,7 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
             if (band.plan && band.plan.pace === 'gallop' && time - band.plan.at < 20) return;
             band.nextRun = time;
         },
-        /** A T-spin: the band wheels round its ground at a canter. */
+        /** A twist: the band wheels round its ground at a canter. */
         wheel(time) {
             if (calm || !horses.length) return;
             if (band.plan?.name === 'wheel') return;

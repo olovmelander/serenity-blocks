@@ -16,7 +16,7 @@
  * Each step of a chain winds the gas into a vortex round the board, in the colour of the piece
  * that made it; when the chain breaks the vortex lets go. Four lines make the nursery hold its
  * breath; then a great star is born in the head of the tallest pillar and blows a hole in the dust
- * that heals over the next half minute. A T-spin twists the whole flow round the board and it
+ * that heals over the next half minute. A twist twists the whole flow round the board and it
  * springs back. The palettes lie on a line of six, walked there and back: the nursery drifts along
  * it by itself, one step every PALETTE_STEP = 95 seconds, and a new level adds a step.
  *

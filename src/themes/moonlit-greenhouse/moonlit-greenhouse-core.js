@@ -607,7 +607,7 @@ export function nightPlace(level, clock) {
  *   queenClose      …and closes over this long
  *   dewFall         a hard drop's curtain of dew falls from the glass in this long
  *   ringLife        a ring on the canal runs this long
- *   turn            a T-spin's turn of the air
+ *   turn            a twist's turn of the air
  */
 export const TIMING = Object.freeze({
     seedFlight: 0.85,

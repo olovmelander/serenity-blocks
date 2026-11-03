@@ -192,7 +192,7 @@ Run `npm run dev:playground`, then:
 
 `/playground.html?effect=moonlit-greenhouse&t=20&quality=High&board=1`
 
-Add `event=lock|drop|clear|quad|tspin|perfect|levelUp|break` with `eventAge=<s>` (a lock's seed
+Add `event=lock|drop|clear|quad|twist|perfect|levelUp|break` with `eventAge=<s>` (a lock's seed
 lands at 0.85 s and its flower is open by about 2.5; four lines open the Queen after the 0.42 s
 hush, fully by about 2.3 s), and `lines=<n>`, `row=<r>`, `u=<0..1>`, `color=<hex>`,
 `eventLevel=<n>`, `combo=<n>`, `level=<n>`, `night=<0..5>` (silver moon, lavender night, jade

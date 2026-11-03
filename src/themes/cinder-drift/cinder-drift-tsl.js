@@ -209,8 +209,8 @@ export function createChamberUniforms(textures) {
         /** The moment the heat texture is true for. */
         heatRef: uniform(0),
         /**
-         * A whirl in the crust (T-spins): (x, z, the last spin's time, how far it is turned now in radians). The
-         * world winds it up and lets it go on the CPU, so T-spins add to a turn already going.
+         * A whirl in the crust (twists): (x, z, the last spin's time, how far it is turned now in radians). The
+         * world winds it up and lets it go on the CPU, so twists add to a turn already going.
          */
         whirl: uniform(new THREE.Vector4(0, 0, -100, 0)),
         /** Lava standing in the seams between the columns beyond the pressure's own (play, B2B). */

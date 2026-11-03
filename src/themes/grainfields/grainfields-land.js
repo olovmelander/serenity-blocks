@@ -292,7 +292,7 @@ export function trailsAt(u, xz) {
  * The pulses of wind at a ground point: which way the grain is pushed and how hard (a vector in
  * xz), and how far it is laid over (0..1.2). A ring runs outward from its centre (a hard drop's
  * downdraft; a level-up's wave is a wide, fast one); a whirl wheels round its centre in spiral
- * arms (a T-spin).
+ * arms (a twist).
  */
 export function pulsesAt(u, xz) {
     const push = vec2(0.0).toVar();

@@ -300,7 +300,7 @@ const PLAY = [
     0.6,
     (world) => {
         world.onLock({ u: 0.5, rows: [19], color: '#9A7FB7' });
-        world.onClear({ rows: [19], lines: 1, tspin: true });
+        world.onClear({ rows: [19], lines: 1, twist: true });
         world.onCombo(3);
     },
     0.6,
@@ -1950,7 +1950,7 @@ describe('stillwater world: clears', () => {
         perfect.world.dispose();
     });
 
-    it('whirls the water where the piece went in on a T-spin', () => {
+    it('whirls the water where the piece went in on a twist', () => {
         const { camera, world } = makeWorld('Low');
         const rings = recordRings(world);
         world.onLock({ u: 0.3, rows: [18, 19] });
@@ -1958,7 +1958,7 @@ describe('stillwater world: clears', () => {
         const [landing] = rings;
         const rest = world.u.wind.value;
         const t0 = world.time;
-        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        world.onClear({ rows: [19, 18], lines: 2, twist: true });
         const whirl = rings.slice(1);
         expect(whirl.length).toBeGreaterThanOrEqual(2);
         for (const ring of whirl) {
@@ -1979,7 +1979,7 @@ describe('stillwater world: clears', () => {
         // With no piece gone in yet it whirls on open water all the same.
         const fresh = makeWorld('Low', { width: 390, height: 844 });
         const first = recordRings(fresh.world);
-        fresh.world.onClear({ lines: 1, tspin: true });
+        fresh.world.onClear({ lines: 1, twist: true });
         expect(first.length).toBeGreaterThanOrEqual(2);
         for (const ring of first) expect(ring.edge).toBeLessThan(0);
         fresh.world.dispose();
@@ -2910,7 +2910,7 @@ describe('stillwater world: runs, captures and motion', () => {
             () => world.levelUp(world.level + 1),
             () => world.onCombo(3),
             () => world.onCombo(0),
-            () => world.onClear({ lines: 2, tspin: true }),
+            () => world.onClear({ lines: 2, twist: true }),
         ];
         const watch = () => {
             const now = read();
@@ -3120,7 +3120,7 @@ describe('stillwater world: random play', () => {
                     rows: rand() < 0.1 ? null : [19, 18, 17, 16].slice(0, 1 + Math.floor(rand() * 4)),
                     lines: rand() < 0.05 ? pick([0, NaN, 'x', 99]) : 1 + Math.floor(rand() * 4),
                     perfect: rand() < 0.05,
-                    tspin: rand() < 0.15,
+                    twist: rand() < 0.15,
                     player: Math.floor(rand() * 5),
                     screen: rand() < 0.1 ? { x: rand(), y: rand() } : null,
                 });

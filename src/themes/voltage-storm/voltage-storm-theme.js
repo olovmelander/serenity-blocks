@@ -23,7 +23,7 @@
  * perfect clear make the storm hold its breath (every light sinks for a fifth of a second and the
  * rain hangs), then a superbolt strikes the hero tower with five return strokes, the four
  * nearest towers are struck in turn, a ring of sheet lightning runs out through the cloud and
- * the picture itself ripples from the strike; a T-spin winds the cloud above the hero tower up
+ * the picture itself ripples from the strike; a twist winds the cloud above the hero tower up
  * like a mesocyclone and lets it spring back while an arc climbs the tower's mast; and a new
  * level steps the storm's light one palette on, which also drifts slowly round its six palettes
  * by itself as the clock runs.
@@ -262,7 +262,7 @@ export default class VoltageStormTheme extends BaseTheme {
                 lock: (c) => this.world?.onLock(c),
                 clear: (c) => this.world?.onClear(c),
                 perfect: (c) => this.world?.onPerfect(c),
-                tspin: (c) => this.world?.onTSpin(c),
+                twist: (c) => this.world?.onTwist(c),
                 combo: (n, player) => this.reportCombo(n, player),
                 levelUp: (level) => {
                     this.level = level;

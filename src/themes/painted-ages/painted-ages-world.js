@@ -17,7 +17,7 @@
  *               after a long one), and the rock dries in the sun
  *   four lines  a rainbow tide climbs every bed, and a flash flood of coloured water races down
  *               the river through the valley
- *   T-spin      a dust devil of pigment spins up from the valley floor
+ *   twist      a dust devil of pigment spins up from the valley floor
  *   b2b         mica glints on the sunlit rock
  *   perfect     the clouds take the mineral colours, every bed lights, a double bow
  *   level up    the day steps an hour forward (it also turns with the clock alone); a pale marker
@@ -74,7 +74,7 @@ export const PAINTED_AGES_PARTS = Object.freeze(['land', 'sky', 'props', 'cumulu
 export const REST_RIG = Object.freeze({ near: RIG.near, far: RIG.far });
 export const fovForAspect = (aspect) => rigFor(aspect).fov;
 
-const COUNTERS = ['locks', 'hardDrops', 'clears', 'lines', 'quads', 'tspins', 'perfects', 'chainSteps', 'releases', 'b2bSteps', 'levelUps', 'gameOvers', 'mornings'];
+const COUNTERS = ['locks', 'hardDrops', 'clears', 'lines', 'quads', 'twists', 'perfects', 'chainSteps', 'releases', 'b2bSteps', 'levelUps', 'gameOvers', 'mornings'];
 const emptyCounts = () => Object.fromEntries(COUNTERS.map((k) => [k, 0]));
 /** The newest record beds the land shows (older ones return to the land's own beds). */
 export const RECORD_SHOWN = 24;
@@ -714,7 +714,7 @@ export class PaintedAgesWorld {
             });
         }
         if (lines === 4) this.onQuad();
-        if (context.tspin) this.onTSpin(context);
+        if (context.twist) this.onTwist(context);
         if (context.perfect) this.onPerfect({ counted: true });
         if (context.combo > this.combo) this.onCombo(context.combo);
     }
@@ -777,8 +777,8 @@ export class PaintedAgesWorld {
         return smooth(0, 0.4, age) * (1 - smooth(this.floodEnd - 5, this.floodEnd, time));
     }
 
-    onTSpin(context = {}, share = 1) {
-        this.counts.tspins++;
+    onTwist(context = {}, share = 1) {
+        this.counts.twists++;
         // On the valley floor at a middle distance, on the side the T locked on.
         const p = this.landSite(context.u ?? (this.random() < 0.5 ? 0.2 : 0.8), 18.5);
         if (!p || !this.motes) return;
@@ -827,10 +827,10 @@ export class PaintedAgesWorld {
         if (!counted) this.surge.crown(this.time);
     }
 
-    /** A T-spin that cleared nothing: a small dust devil on the valley floor. */
+    /** A twist that cleared nothing: a small dust devil on the valley floor. */
     onSpin(context = {}) {
         if (this.disposed) return;
-        this.onTSpin(context || {}, 0.3);
+        this.onTwist(context || {}, 0.3);
         this.surge.spin(this.time);
     }
 

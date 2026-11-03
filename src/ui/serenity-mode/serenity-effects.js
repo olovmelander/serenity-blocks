@@ -1,7 +1,7 @@
 // @ts-check
 /**
  * Theme effects in Serenity Mode: every reaction a theme has to play — a piece locking, a
- * hard drop, line clears, combos, cascades, a T-spin, back-to-back, a perfect clear, a level
+ * hard drop, line clears, combos, cascades, a twist, back-to-back, a perfect clear, a level
  * up — on demand, so you can watch what each world does without playing a game. Two more play
  * the BUILD-UP of fast play (Rush: twenty quick hard drops; Fever: a twelve-clear chain to a
  * perfect clear), where a theme's answers must accumulate rather than pop and restart
@@ -29,7 +29,7 @@ import { rotateShape } from '../../core/pieces.js';
 import { calculateLineClearScore } from '../../core/scoring.js';
 import {
     emitB2B, emitCombo, emitHardDrop, emitLevelUp, emitLineClear, emitPerfectClear, emitPieceLock,
-    emitTSpin,
+    emitTwist,
 } from '../../events/gameplay-events.js';
 
 /** The board's bottom row (the matrix counts the hidden rows above the visible twenty). */
@@ -223,14 +223,14 @@ function rush(s, ctx) {
 
 /**
  * Fever: twelve clearing locks in a row, hard-dropped, each one bigger than the play before —
- * singles into doubles into triples, a T-spin, a four-wave cascade — ending in a quad that
+ * singles into doubles into triples, a twist, a four-wave cascade — ending in a quad that
  * empties the board. A theme counts the combo from one to twelve.
  */
 const FEVER_PIECES = [null, { key: 'I', turns: 0 }, { key: 'O', turns: 0 }, { key: 'L', turns: 1 }];
 
 function fever(s, ctx) {
     freshChain(s, ctx);
-    const plan = [1, 1, 2, 1, 2, 2, 3, 'tspin', 2, 'cascade', 3, 'quad'];
+    const plan = [1, 1, 2, 1, 2, 2, 3, 'twist', 2, 'cascade', 3, 'quad'];
     plan.forEach((step, n) => {
         if (n > 0) s.wait(FEVER_MS);
         if (step === 'quad') {
@@ -241,10 +241,10 @@ function fever(s, ctx) {
             const perfectClearBonus = calculateLineClearScore(4, level, 1, true)
                 - calculateLineClearScore(4, level, 1, false);
             s.emit('perfectClear', { depth: 4, perfectClearBonus });
-        } else if (step === 'tspin') {
+        } else if (step === 'twist') {
             lock(s, ctx, placePiece(ctx, 'T', { column: 3 }), { drop: true, clears: true });
             wave(s, ctx, rowsFromFloor(2), 1);
-            s.emit('tspin', { lineCount: 2 });
+            s.emit('twist', { lineCount: 2 });
         } else if (step === 'cascade') {
             const column = LOCK_COLUMNS[n % LOCK_COLUMNS.length];
             lock(s, ctx, placePiece(ctx, 'S', { column }), { drop: true, clears: true });
@@ -365,7 +365,7 @@ export const EFFECTS = [
         },
     },
     {
-        id: 'tspin',
+        id: 'twist',
         group: 'moments',
         label: 'Twist',
         name: 'Twist double',
@@ -374,7 +374,7 @@ export const EFFECTS = [
             // The T turned point-down into its slot: its bar and its point are the two rows.
             lock(s, ctx, placePiece(ctx, 'T', { column: 3 }), { clears: true });
             wave(s, ctx, rowsFromFloor(2), 1);
-            s.emit('tspin', { lineCount: 2 });
+            s.emit('twist', { lineCount: 2 });
         },
     },
     {
@@ -466,7 +466,7 @@ const EMITTERS = {
     lineClear: emitLineClear,
     combo: emitCombo,
     levelUp: emitLevelUp,
-    tspin: emitTSpin,
+    twist: emitTwist,
     b2b: emitB2B,
     perfectClear: emitPerfectClear,
 };

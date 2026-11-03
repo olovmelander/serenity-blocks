@@ -424,10 +424,10 @@ describe('stellar velocity world: four lines jump', () => {
     });
 });
 
-describe('stellar velocity world: a T-spin rolls the canyon', () => {
+describe('stellar velocity world: a twist rolls the canyon', () => {
     it('the canyon winds round the course and springs back', () => {
         const { camera, world } = makeWorld();
-        frame(world, camera, 1 / 60, () => world.onClear({ lines: 2, tspin: true }));
+        frame(world, camera, 1 / 60, () => world.onClear({ lines: 2, twist: true }));
         let peak = 0;
         for (let i = 0; i < 60; i++) {
             frame(world, camera, 1 / 60);
@@ -671,20 +671,20 @@ describe('stellar velocity world: play builds instead of restarting', () => {
         const gold = () => 1 - world.u.sunCol.value.z / world.u.sunCol.value.x;
         const restGold = gold();
         const restGlint = world.getPostState().glint;
-        frame(world, camera, 1 / 60, () => world.onClear({ lines: 2, tspin: true, b2b: true }));
+        frame(world, camera, 1 / 60, () => world.onClear({ lines: 2, twist: true, b2b: true }));
         run(world, camera, 0.3);
         const once = gold();
         expect(once).toBeGreaterThan(restGold + 0.1);
         expect(world.getPostState().glint).toBeGreaterThan(restGlint);
         run(world, camera, 0.9);
-        frame(world, camera, 1 / 60, () => world.onClear({ lines: 2, tspin: true, b2b: true }));
+        frame(world, camera, 1 / 60, () => world.onClear({ lines: 2, twist: true, b2b: true }));
         run(world, camera, 0.3);
         expect(gold()).toBeGreaterThan(once);
         run(world, camera, 15);
         expect(Math.abs(gold() - restGold)).toBeLessThan(0.02);
     });
 
-    it('a T-spin that clears nothing rolls the canyon a little', () => {
+    it('a twist that clears nothing rolls the canyon a little', () => {
         const peakRoll = (fire) => {
             const { camera, world } = makeWorld();
             frame(world, camera, 1 / 60, () => fire(world));
@@ -696,7 +696,7 @@ describe('stellar velocity world: play builds instead of restarting', () => {
             return peak;
         };
         const spin = peakRoll((world) => world.onSpin());
-        const clear = peakRoll((world) => world.onClear({ lines: 2, tspin: true }));
+        const clear = peakRoll((world) => world.onClear({ lines: 2, twist: true }));
         expect(spin).toBeGreaterThan(0.005);
         expect(spin).toBeLessThan(clear);
     });

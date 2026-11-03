@@ -1030,7 +1030,7 @@ describe('Summer effects director', () => {
             reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
             director.apply(reactions.update(STEP), STEP);
             reactions.onCombo(3);
-            reactions.onTSpin({ piece: pieceOf('T', 8, 22) });
+            reactions.onTwist({ piece: pieceOf('T', 8, 22) });
             reactions.onPerfectClear();
             reactions.onLevelUp();
             director.apply(reactions.update(STEP), STEP);
@@ -1051,7 +1051,7 @@ describe('Summer effects director', () => {
                 () => reactions.onPieceLock({ piece: pieceOf('I') }),
                 () => { reactions.onPieceLock({ piece: pieceOf('O') }); reactions.onLineClear(4); },
                 () => reactions.onCombo(5),
-                () => { reactions.onPerfectClear(); reactions.onLevelUp(); reactions.onTSpin(); },
+                () => { reactions.onPerfectClear(); reactions.onLevelUp(); reactions.onTwist(); },
                 () => { reactions.onLineClear(2); reactions.onCombo(7); },
                 () => reactions.onBackToBack(),
                 () => {
@@ -1671,7 +1671,7 @@ describe('Summer effects director', () => {
                 .toBeLessThan(mean(turning.map((entry) => entry.speed)));
         });
 
-        it.each([[-1], [1]])('winds a garland beside the card for a t-spin on side %i', (side) => {
+        it.each([[-1], [1]])('winds a garland beside the card for a twist on side %i', (side) => {
             const {
                 director, sim, stage, camera,
             } = createDirector();
@@ -1840,7 +1840,7 @@ describe('Summer effects director', () => {
             reactions.onPieceLock({ piece: pieceOf('T') });
             reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
             reactions.onCombo(6);
-            reactions.onTSpin({ piece: pieceOf('T') });
+            reactions.onTwist({ piece: pieceOf('T') });
             reactions.onPerfectClear();
         };
 
@@ -1882,10 +1882,10 @@ describe('Summer effects director', () => {
                 director, sim, rung, blown, ripples, waves,
             } = createDirector({ groundHeight: PLAIN });
             const reactions = new SummerReactions({ rng: seededRandom(1) });
-            // A lock and a t-spin: each throws once, rings once and stirs the meadow once.
+            // A lock and a twist: each throws once, rings once and stirs the meadow once.
             const events = () => {
                 reactions.onPieceLock({ piece: pieceOf('I') });
-                reactions.onTSpin({ piece: pieceOf('T') });
+                reactions.onTwist({ piece: pieceOf('T') });
             };
             events();
             director.apply(reactions.update(STEP), STEP);
@@ -2085,7 +2085,7 @@ describe('Summer effects director', () => {
                     () => reactions.onPieceLock({ piece: pieceOf(letter(), column()) }),
                     () => reactions.onLineClear(1 + Math.floor(random() * 4), { clearedRows: [22, 23] }),
                     () => reactions.onCombo(2 + Math.floor(random() * 30)),
-                    () => reactions.onTSpin({ piece: pieceOf('T', column()) }),
+                    () => reactions.onTwist({ piece: pieceOf('T', column()) }),
                     () => reactions.onPerfectClear(),
                     () => reactions.onLevelUp(),
                     () => reactions.onBackToBack(),
@@ -2144,7 +2144,7 @@ describe('Summer effects director', () => {
             for (const payload of hostile) {
                 reactions.onHardDrop(payload);
                 reactions.onPieceLock(payload);
-                reactions.onTSpin(payload);
+                reactions.onTwist(payload);
                 reactions.onLineClear(2, payload);
                 reactions.onCombo(3, payload);
                 reactions.onPerfectClear(payload);
@@ -2174,7 +2174,7 @@ describe('Summer effects director', () => {
             ['four lines', (r) => r.onLineClear(4, { clearedRows: [20, 21, 22, 23] }),
                 (petal) => petal.kind === SEED && Math.abs(petal.vx) < 1],
             ['a combo', (r) => r.onCombo(5), () => true],
-            ['a t-spin', (r) => r.onTSpin({ piece: pieceOf('T', 7) }),
+            ['a twist', (r) => r.onTwist({ piece: pieceOf('T', 7) }),
                 (petal) => petal.flower === SUMMER_PIECE_FLOWERS.T],
             ['a perfect clear', (r) => r.onPerfectClear(), (petal) => petal.y > 5.5],
         ])('puts petals in the air for %s', (_label, event, expected) => {

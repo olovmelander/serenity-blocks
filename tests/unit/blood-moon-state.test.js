@@ -345,7 +345,7 @@ describe('Blood Moon reactions', () => {
         expect(normal.time).toBe(0);
     });
 
-    it.each(['quad', 'tspin', 'perfectClear', 'levelUp'])('gives %s a bounded moon-first cue', (kind) => {
+    it.each(['quad', 'twist', 'perfectClear', 'levelUp'])('gives %s a bounded moon-first cue', (kind) => {
         const state = new BloodMoonReactions();
         state.cue(kind);
         expect(state.corona).toBeGreaterThan(state.starBoost);

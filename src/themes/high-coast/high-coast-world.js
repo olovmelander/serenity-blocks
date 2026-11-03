@@ -16,7 +16,7 @@
  *               chain breaks, a swell runs in from the open sea and the sea returns
  *   four lines  the great rebound: a big lift at once, the risen rock flaring gold, spray off every
  *               shore in the colours of the rows it cleared
- *   T-spin      the fleet comes about, every sail swinging through the light together (a T-spin that
+ *   twist      the fleet comes about, every sail swinging through the light together (a twist that
  *               clears nothing too)
  *   b2b         the lighthouse lights and sweeps while the run lasts; each back-to-back clear its
  *               long flash, the rock flaring in it
@@ -76,7 +76,7 @@ export const REST_RIG = Object.freeze({ near: RIG.near, far: RIG.far });
 export const fovForAspect = (aspect) => rigFor(aspect).fov;
 
 const COUNTERS = [
-    'locks', 'hardDrops', 'clears', 'lines', 'quads', 'tspins', 'spins', 'perfects', 'chainSteps', 'releases',
+    'locks', 'hardDrops', 'clears', 'lines', 'quads', 'twists', 'spins', 'perfects', 'chainSteps', 'releases',
     'b2bSteps', 'waves', 'levelUps', 'gameOvers', 'mornings',
 ];
 const emptyCounts = () => Object.fromEntries(COUNTERS.map((k) => [k, 0]));
@@ -686,7 +686,7 @@ export class HighCoastWorld {
         if (deeper > 0) this.onWave(deeper, palette);
         if (lines === 4) this.onQuad(context.b2b === true, palette);
         if (context.b2b) this.onBackToBack();
-        if (context.tspin) this.onTSpin(context);
+        if (context.twist) this.onTwist(context);
         // A perfect clear that landed with its rows: the clear above, and its crown.
         if (context.perfect) this.onPerfect({ onClear: true });
         if (context.combo > this.combo) this.onCombo(context.combo);
@@ -743,12 +743,12 @@ export class HighCoastWorld {
         this.reboundSwell.hit(0.35, this.time);
     }
 
-    onTSpin() {
-        this.counts.tspins++;
+    onTwist() {
+        this.counts.twists++;
         this.parts.fleet?.tack?.(this.time, this.motion);
     }
 
-    /** A T-spin that cleared nothing: the fleet still comes about. */
+    /** A twist that cleared nothing: the fleet still comes about. */
     onSpin() {
         if (this.disposed) return;
         this.counts.spins++;

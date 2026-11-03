@@ -57,7 +57,7 @@
           "sourceColor": "#00ffff",
           "sourcePiece": "S",
           "sequence": 81,
-          "tSpin": false
+          "twist": false
         },
         "lastPlacedPieceX": [
           0,
@@ -717,7 +717,7 @@
           "sourceColor": "#0000ff",
           "sourcePiece": "T",
           "sequence": 65,
-          "tSpin": false
+          "twist": false
         },
         "lastPlacedPieceX": [
           0,
@@ -1148,7 +1148,7 @@
           "sourceColor": "#cc00cc",
           "sourcePiece": "L",
           "sequence": 26,
-          "tSpin": false
+          "twist": false
         },
         "lastPlacedPieceX": [
           2,
@@ -1781,7 +1781,7 @@
           "sourceColor": "#00ff00",
           "sourcePiece": "I",
           "sequence": 29,
-          "tSpin": false
+          "twist": false
         },
         "lastPlacedPieceX": [
           0

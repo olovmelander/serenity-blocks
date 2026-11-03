@@ -27,7 +27,7 @@
  *                 through the moss and the fungi light; a lock without a clear lets it sleep
  *   cascade       every wave of it builds on the last: stronger jets, a hotter, wider wave of
  *                 light, another gust
- *   t-spin        a spiral flourish beside the board (a T-spin that clears nothing too)
+ *   twist        a spiral flourish beside the board (a twist that clears nothing too)
  *   back-to-back  the moon puts on its ice ring, twin rings of white-gold light run out over
  *                 the moss, and the whole wood blinks twice; brighter for every one in a row
  *   four lines again while an animal stands   it is fed, not replaced: the same animal stands
@@ -329,7 +329,7 @@ export class ForestReactions {
         }
     }
 
-    /** A hit of play's own weight (a T-spin, a back-to-back, a later cascade wave) on the surge. */
+    /** A hit of play's own weight (a twist, a back-to-back, a later cascade wave) on the surge. */
     feed(punch, heat) {
         this.surge.punch.hit(punch, this.time);
         this.surge.level.hit(heat, this.time);
@@ -625,13 +625,13 @@ export class ForestReactions {
         return true;
     }
 
-    onTSpin(detail = {}) {
+    onTwist(detail = {}) {
         if (this.disposed) return false;
         const payload = unwrap(detail);
         const place = boardPlace(payload);
-        // A T-spin that cleared lines adds its own weight to the clear just counted; one that
+        // A twist that cleared lines adds its own weight to the clear just counted; one that
         // cleared nothing is a little flourish of its own (the spiral and the wave still play).
-        if (positiveCount(payload.lineCount, 4) > 0) this.feed(SURGE_WEIGHTS.punch.tspin, SURGE_WEIGHTS.heat.tspin);
+        if (positiveCount(payload.lineCount, 4) > 0) this.feed(SURGE_WEIGHTS.punch.twist, SURGE_WEIGHTS.heat.twist);
         else this.surge.spin(this.time);
         this.excite({
             gust: 0.45, moon: 0.3, shafts: 0.3, glow: 0.6,

@@ -244,7 +244,7 @@ function eventfulReactions(quality = 'High') {
     reactions.onPieceLock({ piece: { x: 7, y: 12, shape: [[1]] } });
     reactions.onLineClear(2, { clearedRows: [12, 13] });
     reactions.onCombo(9);
-    reactions.onTSpin({ piece });
+    reactions.onTwist({ piece });
     reactions.onBackToBack();
     reactions.onPerfectClear();
     reactions.onLevelUp();

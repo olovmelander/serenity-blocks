@@ -15,7 +15,7 @@ Odyssey completions that name it now mean High Coast; the track key `Mountain` r
 `HighCoast`. The frozen V2 save table keeps `mountain` (PLAYBOOK §4.5).
 
 To look at it: `npm run dev`, then `/playground.html?effect=high-coast&t=10&board=1`
-(`hour` 0 golden hour … 5 afternoon; `event=lock|drop|clear|quad|tspin|perfect|levelUp|release|over`
+(`hour` 0 golden hour … 5 afternoon; `event=lock|drop|clear|quad|twist|perfect|levelUp|release|over`
 with `eventAge`; `combo=<n>`, `lift=<m>`, `b2b=<n>`, `locks=<n>`; `look=x,y,z,fov` for close-ups).
 In the game: `/?unlockAll=1&skipIntro=1`.
 

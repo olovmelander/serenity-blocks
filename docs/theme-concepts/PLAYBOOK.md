@@ -377,7 +377,7 @@ Subscribe to exactly these eight keys, each gated by `this.isActive && !this.isP
 
 ```js
 { PIECE_LOCK: 'onPieceLock', HARD_DROP: 'onHardDrop', LINE_CLEAR: 'onLineClear', COMBO: 'onCombo',
-  TSPIN: 'onTSpin', B2B: 'onB2B', PERFECT_CLEAR: 'onPerfectClear', LEVEL_UP: 'onLevelUp' }
+  TSPIN: 'onTwist', B2B: 'onB2B', PERFECT_CLEAR: 'onPerfectClear', LEVEL_UP: 'onLevelUp' }
 ```
 
 There is **no bus event** for hold, game over, top-out, garbage, soft drop, move or rotate.
@@ -661,7 +661,7 @@ export function create({ scene, camera, renderer, params }) {
   `#single-player-game-canvas`, `.single-player-stats-bar`) sized by the stylesheet formula, then
   feeds `readLayoutRects()` to `world.setLayout` and the post's calm rects: events aim at the mock
   board and calm zones are exercised.
-- `event=lock|drop|clear|quad|tspin|perfect|levelUp` with `eventAge` (default 0.4 s), `lines`,
+- `event=lock|drop|clear|quad|twist|perfect|levelUp` with `eventAge` (default 0.4 s), `lines`,
   `row`, `u`, `piece`, `turns`, `color`; `combo=<n>` holds a chain, `level=<n>` rests on a
   level, `locks=<n>` pre-plays locks. `seek(t)` replays from `t − lead` with fixed steps
   (`draw = false` except the last frame), so any event at any age is reproducible.
@@ -790,7 +790,7 @@ Integrator checklist (Rainbark's Stage 0 acceptance):
 2. Capture a **known-good control** first to prove the harness works (we used
    `game.mjs --theme=serenity-warp --backend=webgl2`).
 3. Playground shots on both backends: rest, `board=1`, phone 390×844, Minimal, Low, Medium,
-   `falseColor=1`, and every event (`lock`, `drop`, `clear`, `quad`, `tspin`, `perfect`,
+   `falseColor=1`, and every event (`lock`, `drop`, `clear`, `quad`, `twist`, `perfect`,
    `levelUp`, plus the concept's own), even though the placeholder world draws little: the point
    is a clean console on every code path.
 4. The real game on both backends (`game.mjs`), switching away on both (`switch-away.mjs`

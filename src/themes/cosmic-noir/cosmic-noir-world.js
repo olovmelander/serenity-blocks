@@ -21,7 +21,7 @@
  *   four     the flashbulb: the print turns to its own negative for a moment (in hot play a
  *            solarisation: the mid-tones reverse, the blacks stay black), the pulsar flares, four
  *            echoes leave it, and the cage's slats spin.
- *   T-spin   the cage spins on its axis: the shafts wheel round the lantern (a T-spin that clears
+ *   twist   the cage spins on its axis: the shafts wheel round the lantern (a twist that clears
  *            nothing: a smaller turn and a faint ring).
  *   B2B      a double ring, the cage turns, and the print warms toward its heat tone; each
  *            difficult clear in a row warms it further.
@@ -618,7 +618,7 @@ export class CosmicNoirWorld {
      * the crown alone, on the clear still ringing.
      */
     onClear({
-        lines = 1, tspin = false, perfect = false, cascade = 1, combo = 1, b2b = false, crown = false,
+        lines = 1, twist = false, perfect = false, cascade = 1, combo = 1, b2b = false, crown = false,
     } = {}) {
         if (!this.u) return;
         const t = this.time;
@@ -634,7 +634,7 @@ export class CosmicNoirWorld {
         if (depth >= 2) this.surge.wave(t);
         else {
             this.surge.clear({
-                lines: n, cascade: depth, combo, tspin, perfect, b2b,
+                lines: n, cascade: depth, combo, twist, perfect, b2b,
             }, t);
         }
         const deep = depth - 1;
@@ -649,7 +649,7 @@ export class CosmicNoirWorld {
             this.schedule(t + i * gap, 'echo', { strength, width });
         }
         let flare = (quad ? 1.6 : 0.5 + 0.15 * n) * (1 + 0.15 * deep);
-        if (tspin) flare += 0.3;
+        if (twist) flare += 0.3;
         if (b2b) flare += 0.3;
         this.flareSwell.hit(flare, t);
         this.flashSwell.hit(quad ? 0.3 : 0.08 + 0.04 * n, t);
@@ -670,7 +670,7 @@ export class CosmicNoirWorld {
             this.cageSpin += 1.4;
             this.counts.quads += 1;
         }
-        if (tspin) this.cageSpin += 3.2;
+        if (twist) this.cageSpin += 3.2;
         // A deeper wave turns the cage a little more.
         if (deep > 0) this.cageSpin += 0.4 * Math.min(4, deep);
         if (b2b) {
@@ -680,7 +680,7 @@ export class CosmicNoirWorld {
             this.schedule(t + 0.07, 'echo', { strength: strength * 0.9, width: width * 1.15 });
             this.tintSwell.hit(0.4 + 0.15 * Math.min(3, this.b2bRun - 1), t);
             this.cageSpin += 1.0;
-        } else if (!quad && !tspin && depth === 1) {
+        } else if (!quad && !twist && depth === 1) {
             this.b2bRun = 0;
         }
         if (perfect) this.crownLight(t);
@@ -698,7 +698,7 @@ export class CosmicNoirWorld {
         this.counts.crowns += 1;
     }
 
-    /** A T-spin that cleared nothing: a smaller turn of the cage and a faint ring. */
+    /** A twist that cleared nothing: a smaller turn of the cage and a faint ring. */
     onSpin() {
         if (!this.u) return;
         const t = this.time;

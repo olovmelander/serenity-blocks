@@ -60,7 +60,7 @@ describe('rainbow terraces director: intake', () => {
     it('names a handler for every canonical gameplay event it listens to', () => {
         const director = new RainbowTerracesDirector();
         expect(Object.keys(RAINBOW_TERRACES_EVENT_HANDLERS).sort()).toEqual([
-            'B2B', 'COMBO', 'HARD_DROP', 'LEVEL_UP', 'LINE_CLEAR', 'PERFECT_CLEAR', 'PIECE_LOCK', 'TSPIN',
+            'B2B', 'COMBO', 'HARD_DROP', 'LEVEL_UP', 'LINE_CLEAR', 'PERFECT_CLEAR', 'PIECE_LOCK', 'TWIST',
         ]);
         expect(Object.isFrozen(RAINBOW_TERRACES_EVENT_HANDLERS)).toBe(true);
         for (const [event, handler] of Object.entries(RAINBOW_TERRACES_EVENT_HANDLERS)) {
@@ -281,16 +281,16 @@ describe('rainbow terraces director: intake', () => {
         expect(calls.clear[1].combo).toBe(1);
     });
 
-    it('carries T-spins, perfect clears and back-to-backs on the clear, and only on that clear', () => {
+    it('carries twists, perfect clears and back-to-backs on the clear, and only on that clear', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: T });
         director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.onB2B({ active: true });
         director.onPerfectClear({ depth: 1 });
         director.flush();
         expect(calls.clear[0]).toMatchObject({
-            lines: 2, tspin: true, b2b: true, perfect: true,
+            lines: 2, twist: true, b2b: true, perfect: true,
         });
         // An inactive B2B is not one.
         expect(director.onB2B({ active: false })).toBe(false);
@@ -299,7 +299,7 @@ describe('rainbow terraces director: intake', () => {
         director.onLineClear({ lineCount: 1, clearedRows: [23], cascadeCount: 1 });
         director.flush();
         expect(calls.clear[1]).toMatchObject({
-            lines: 1, tspin: false, b2b: false, perfect: false,
+            lines: 1, twist: false, b2b: false, perfect: false,
         });
     });
 
@@ -516,7 +516,7 @@ describe('rainbow terraces director: settings and resets', () => {
         expect(director.onPieceLock({ piece: I })).toBe(false);
         expect(director.onLineClear({ lineCount: 2, clearedRows: [23, 22] })).toBe(false);
         expect(director.onCombo({ comboCount: 3, position: { x: 10, y: 10 } })).toBe(false);
-        expect(director.onTSpin({ lineCount: 2 })).toBe(false);
+        expect(director.onTwist({ lineCount: 2 })).toBe(false);
         expect(director.onB2B({ active: true })).toBe(false);
         expect(director.onPerfectClear({ depth: 1 })).toBe(false);
         director.flush();
@@ -598,14 +598,14 @@ describe('rainbow terraces director: clears with no lines of their own', () => {
         expect(calls.clear[0]).toMatchObject({ lines: 4, perfect: true, crown: false });
     });
 
-    it('delivers a T-spin that clears nothing as a lineless clear, after its lock, with no combo', () => {
+    it('delivers a twist that clears nothing as a lineless clear, after its lock, with no combo', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: T });
-        director.onTSpin({ lineCount: 0 });
+        director.onTwist({ lineCount: 0 });
         director.flush();
         expect(calls.order).toEqual(['lock', 'clear']);
         expect(calls.clear[0]).toMatchObject({
-            lines: 0, tspin: true, perfect: false, crown: false,
+            lines: 0, twist: true, perfect: false, crown: false,
         });
         expect(calls.combo).toEqual([]);
     });

@@ -787,7 +787,7 @@ describe('Cosmic Noir theme: one node renderer on both backends', () => {
         eventBus.emit(EVENTS.HARD_DROP, { piece: I, distance: 12 });
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: I });
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 4 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 4 });
         eventBus.emit(EVENTS.B2B, { active: true });
         eventBus.emit(EVENTS.LEVEL_UP, { level: 3 });
         theme.stepFrame(16);
@@ -803,7 +803,7 @@ describe('Cosmic Noir theme: one node renderer on both backends', () => {
             lines: 4,
             combo: 1,
             cascade: 1,
-            tspin: true,
+            twist: true,
             perfect: false,
             b2b: true,
             crown: false,
@@ -1564,7 +1564,7 @@ describe.skipIf(!existsSync(worldFile) || !existsSync(postFile))('Cosmic Noir th
                         lines: 4,
                         combo: 1,
                         cascade: 1,
-                        tspin: true,
+                        twist: true,
                         perfect: false,
                         b2b: false,
                         screen: null,

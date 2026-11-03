@@ -674,7 +674,7 @@ describe('Summer reaction director', () => {
             const tally = lanterns(reactions);
             reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
             reactions.onCombo(9);
-            reactions.onTSpin({ piece: pieceOf('T') });
+            reactions.onTwist({ piece: pieceOf('T') });
             reactions.onBackToBack();
             reactions.onPerfectClear();
             reactions.onLevelUp();
@@ -1128,9 +1128,9 @@ describe('Summer reaction director', () => {
     });
 
     describe('flourishes', () => {
-        it('answers a t-spin with a garland of the flower of the T beside the piece, a ring and a gust', () => {
+        it('answers a twist with a garland of the flower of the T beside the piece, a ring and a gust', () => {
             const reactions = create();
-            expect(reactions.onTSpin({ piece: cell(8, 13) })).toBe(true);
+            expect(reactions.onTwist({ piece: cell(8, 13) })).toBe(true);
             const { frame } = reactions;
             expect(frame.emitters).toEqual([expect.objectContaining({
                 kind: 'spin', side: 1, row: expect.closeTo(0.525, 12), flower: SUMMER_PIECE_FLOWERS.T,
@@ -1145,11 +1145,11 @@ describe('Summer reaction director', () => {
             });
             expect(frame.front).toBeNull();
             expect(frame.flock).toBe(0);
-            reactions.onTSpin({ detail: { piece: cell(1, 13) } });
+            reactions.onTwist({ detail: { piece: cell(1, 13) } });
             expect(emittersOf(reactions.frame, 'spin')[1]).toMatchObject({ side: -1 });
             // With nothing to place it, the garland still has a side and a height.
             const bare = create();
-            bare.onTSpin();
+            bare.onTwist();
             expectBounded(bare.frame, bare);
             expect(live(bare.frame.rings)[0]).toMatchObject({ column: 0.5, row: bare.frame.emitters[0].row });
         });
@@ -1362,7 +1362,7 @@ describe('Summer reaction director', () => {
                     expect(() => {
                         reactions.onHardDrop(payload);
                         reactions.onPieceLock(payload);
-                        reactions.onTSpin(payload);
+                        reactions.onTwist(payload);
                         reactions.onLineClear(2, payload);
                         reactions.onCombo(3, payload);
                         reactions.onBackToBack(payload);
@@ -1506,11 +1506,11 @@ describe('Summer reaction director', () => {
             expect(reactions.b2bRun).toBe(1);
         });
 
-        it('shows a T-spin that clears nothing, smaller than one that clears', () => {
+        it('shows a twist that clears nothing, smaller than one that clears', () => {
             const empty = create();
-            empty.onTSpin({ piece: pieceOf('T'), lineCount: 0 });
+            empty.onTwist({ piece: pieceOf('T'), lineCount: 0 });
             const cleared = create();
-            cleared.onTSpin({ piece: pieceOf('T'), lineCount: 2 });
+            cleared.onTwist({ piece: pieceOf('T'), lineCount: 2 });
             expect(emittersOf(empty.frame, 'spin')).toHaveLength(1);
             const [quiet, loud] = [advance(empty, 0.5).surge, advance(cleared, 0.5).surge];
             expect(quiet.punch).toBeGreaterThan(0);
@@ -1623,7 +1623,7 @@ describe('Summer reaction director', () => {
         it('ages each emitter to the end of its own life and then frees the slot', () => {
             const reactions = create();
             reactions.onPieceLock({ piece: pieceOf('I', 1) });
-            reactions.onTSpin({ piece: pieceOf('T', 1) });
+            reactions.onTwist({ piece: pieceOf('T', 1) });
             const [lock, spin] = reactions.frame.emitters;
             expect([lock.kind, spin.kind]).toEqual(['lock', 'spin']);
             const [shorter, longer] = lock.duration <= spin.duration ? [lock, spin] : [spin, lock];
@@ -1690,7 +1690,7 @@ describe('Summer reaction director', () => {
                     },
                     () => reactions.onLineClear(1 + Math.floor(random() * 4), { clearedRows: [22, 23] }),
                     () => reactions.onCombo(2 + Math.floor(random() * 30)),
-                    () => reactions.onTSpin({ piece: cell(Math.floor(random() * 10), 20, 'T') }),
+                    () => reactions.onTwist({ piece: cell(Math.floor(random() * 10), 20, 'T') }),
                     () => reactions.onPerfectClear(),
                     () => reactions.onLevelUp(),
                     () => reactions.onBackToBack(),
@@ -1751,7 +1751,7 @@ describe('Summer reaction director', () => {
             const reactions = create('Minimal');
             const capacity = reactions.maxEmitters;
             reactions.onPieceLock(); // the short one
-            while (reactions.frame.emitters.length < capacity) reactions.onTSpin();
+            while (reactions.frame.emitters.length < capacity) reactions.onTwist();
             const [short] = emittersOf(reactions.frame, 'lock');
             const long = emittersOf(reactions.frame, 'spin');
             expect(long).toHaveLength(capacity - 1);
@@ -1800,7 +1800,7 @@ describe('Summer reaction director', () => {
                 () => reactions.onLineClear(2),
                 () => reactions.onLineClear(4),
                 () => reactions.onCombo(4),
-                () => reactions.onTSpin(),
+                () => reactions.onTwist(),
                 () => reactions.onBackToBack(),
                 () => reactions.onPerfectClear(),
                 () => reactions.onLevelUp(),
@@ -1855,13 +1855,13 @@ describe('Summer reaction director', () => {
             for (let lock = 0; lock < 5; lock++) reactions.onPieceLock({ piece: pieceOf('I', lock) });
             advance(reactions, 1);
             const [firstRing, firstGust] = [reactions.ringSerial, reactions.waveSerial];
-            // One piece: a hard-dropped t-spin that clears lines on a combo, empties the board
+            // One piece: a hard-dropped twist that clears lines on a combo, empties the board
             // and levels up.
             reactions.onHardDrop({ distance: 18 });
             reactions.onPieceLock({ piece: pieceOf('T') });
             reactions.onLineClear(3, { clearedRows: [21, 22, 23] });
             reactions.onCombo(5);
-            reactions.onTSpin({ piece: pieceOf('T') });
+            reactions.onTwist({ piece: pieceOf('T') });
             reactions.onBackToBack();
             reactions.onPerfectClear();
             reactions.onLevelUp();
@@ -1888,7 +1888,7 @@ describe('Summer reaction director', () => {
                 director.onPieceLock({ piece: pieceOf('T') });
                 director.onLineClear(3, { clearedRows: [21, 22, 23] });
                 director.onCombo(5);
-                director.onTSpin({ piece: pieceOf('T') });
+                director.onTwist({ piece: pieceOf('T') });
                 director.onBackToBack();
                 director.onPerfectClear();
                 director.onLevelUp();
@@ -2268,7 +2268,7 @@ describe('Summer reaction director', () => {
             expect(reactions.onPieceLock({ piece: pieceOf('I', 1) })).toBe(false);
             expect(reactions.onLineClear(4)).toBe(false);
             expect(reactions.onCombo(9)).toBe(false);
-            expect(reactions.onTSpin()).toBe(false);
+            expect(reactions.onTwist()).toBe(false);
             expect(reactions.onBackToBack()).toBe(false);
             expect(reactions.onPerfectClear()).toBe(false);
             expect(reactions.onLevelUp()).toBe(false);
@@ -2303,7 +2303,7 @@ describe('Summer reaction director', () => {
             reactions.onPieceLock({ piece: pieceOf('I', 1) });
             reactions.onLineClear(4);
             reactions.onCombo(8);
-            reactions.onTSpin();
+            reactions.onTwist();
             reactions.onBackToBack();
             reactions.onPerfectClear();
             reactions.onLevelUp();
@@ -2339,7 +2339,7 @@ describe('Summer reaction director', () => {
                     }
                     if (frame % 40 === 5) reactions.onLineClear(1 + ((frame / 40) % 4), { clearedRows: [22] });
                     if (frame % 60 === 10) reactions.onCombo(2 + frame / 20);
-                    if (frame === 100) reactions.onTSpin();
+                    if (frame === 100) reactions.onTwist();
                     if (frame === 150) reactions.onPerfectClear();
                     frames.push(snapshot(reactions.update(1 / 60)));
                 }

@@ -1997,11 +1997,11 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             });
         });
 
-        const tspinUnsub = eventBus.on(EVENTS.TSPIN, (data) => {
+        const twistUnsub = eventBus.on(EVENTS.TWIST, (data) => {
             if (!reactive()) return;
             const lines = Number.isFinite(data?.lineCount) ? data.lineCount : 0;
             this.pushReactiveEnvelope({ ring: 0.25, ambient: 0.2 });
-            this.world?.onTSpin(lines);
+            this.world?.onTwist(lines);
         });
 
         const b2bUnsub = eventBus.on(EVENTS.B2B, (data) => {
@@ -2044,7 +2044,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             hardDropUnsub,
             comboUnsub,
             lineClearUnsub,
-            tspinUnsub,
+            twistUnsub,
             b2bUnsub,
             perfectUnsub,
             levelUpUnsub,

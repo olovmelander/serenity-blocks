@@ -24,7 +24,7 @@
  *            leaves the rim.
  *   four     the warp holds its breath, then the throat opens round us: we fall through,
  *            rings of its light rushing past, and come out under the sky we saw in it.
- *   T-spin   the vortex twists round the gate and springs back; the glass tumbles.
+ *   twist   the vortex twists round the gate and springs back; the glass tumbles.
  *   level    the sky moves one palette along its line of six, and a slow ring of the new
  *            colour leaves the rim.
  *   time     by itself, with no level change, the sky drifts along the same line: one palette
@@ -1028,11 +1028,11 @@ export class SerenityWarpWorld {
 
     /**
      * Lines cleared. `lines` 1..4; `cascade` = which wave of a cascade this is (each wave past the
-     * first builds on the last); `combo` = the chain it belongs to; `tspin`, `b2b`, `perfect`;
+     * first builds on the last); `combo` = the chain it belongs to; `twist`, `b2b`, `perfect`;
      * `rows` = the visible rows that went.
      */
     onClear({
-        rows = null, lines = 1, cascade = 1, combo = 1, tspin = false, b2b = false, perfect = false, player = 0,
+        rows = null, lines = 1, cascade = 1, combo = 1, twist = false, b2b = false, perfect = false, player = 0,
         screen = null,
     } = {}) {
         if (!this.u) return;
@@ -1079,7 +1079,7 @@ export class SerenityWarpWorld {
         // Each wave of a cascade counts as one more clear of its lines (the director resolves
         // them a frame apart), never as the whole depth again.
         this.pace.clear({
-            lines: n, cascade: depth > 0 ? 2 : 1, combo, tspin, b2b, perfect,
+            lines: n, cascade: depth > 0 ? 2 : 1, combo, twist, b2b, perfect,
         }, at);
 
         // ── The cleared rows send streams of light into the throat ──
@@ -1112,7 +1112,7 @@ export class SerenityWarpWorld {
             this.twistVelocity += 0.18 * Math.min(depth, 4);
             this.tumbleBoost = Math.max(this.tumbleBoost, 0.5 + 0.2 * depth);
         }
-        if (tspin) {
+        if (twist) {
             // The vortex twists round the gate and springs back; the glass tumbles.
             this.twistVelocity += 0.9;
             this.tumbleBoost = Math.max(this.tumbleBoost, 1.6);
@@ -1152,7 +1152,7 @@ export class SerenityWarpWorld {
         this.counts.b2b += 1;
     }
 
-    /** A T-spin that cleared nothing: a small twist of the vortex, the glass turning over, one faint ring. */
+    /** A twist that cleared nothing: a small twist of the vortex, the glass turning over, one faint ring. */
     onSpin() {
         if (!this.u) return;
         const t = this.time;

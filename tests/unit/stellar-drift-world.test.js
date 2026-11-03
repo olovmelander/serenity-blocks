@@ -81,7 +81,7 @@ const lock = (world, over = {}) => world.onLock({
     player: 0, rows: [14, 13], u: 0.4, hardDrop: false, color: COLORS.I, screen: null, ...over,
 });
 const clear = (world, over = {}) => world.onClear({
-    player: 0, rows: [19], lines: 1, combo: 1, cascade: 1, tspin: false, perfect: false, b2b: false, screen: null, ...over,
+    player: 0, rows: [19], lines: 1, combo: 1, cascade: 1, twist: false, perfect: false, b2b: false, screen: null, ...over,
 });
 
 describe('stellar drift world: built, posed, taken down', () => {
@@ -264,9 +264,9 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
         world.dispose();
     });
 
-    it('winds a spiral through the rings on a T-spin', () => {
+    it('winds a spiral through the rings on a twist', () => {
         const { world, camera } = makeWorld();
-        frame(world, camera, 1 / 60, () => clear(world, { rows: [19, 18], lines: 2, tspin: true }));
+        frame(world, camera, 1 / 60, () => clear(world, { rows: [19, 18], lines: 2, twist: true }));
         run(world, camera, 0.2);
         expect(live(world).chimes).toBe(2);
         const rows = rowsOf(world, EVENT_ROWS.chime, 2);
@@ -274,14 +274,14 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
         world.dispose();
     });
 
-    it('gives a zero-line T-spin a cyclone without inventing a clear, row jet or combo milestone', () => {
+    it('gives a zero-line twist a cyclone without inventing a clear, row jet or combo milestone', () => {
         const { world, camera } = makeWorld();
         frame(world, camera, 1 / 60, () => clear(world, {
-            rows: [], lines: 0, tspin: true, combo: 8,
+            rows: [], lines: 0, twist: true, combo: 8,
         }));
         expect(live(world)).toMatchObject({ chimes: 1, jets: 0 });
         expect(world.getState().counts).toMatchObject({
-            clears: 0, tspins: 1, quads: 0, milestones: 0, meteors: 0,
+            clears: 0, twists: 1, quads: 0, milestones: 0, meteors: 0,
         });
         expect(played(world)).toEqual({
             cyclone: 1, surge: 0, crown: 0, strand: 0, shock: 0,
@@ -333,7 +333,7 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
     it('distinguishes a back-to-back strand, a perfect-clear crown and a four-line storm', () => {
         const { world } = makeWorld();
         clear(world, {
-            lines: 2, rows: [19, 18], b2b: true, tspin: true,
+            lines: 2, rows: [19, 18], b2b: true, twist: true,
         });
         expect(played(world)).toMatchObject({ cyclone: 1, strand: 1 });
         // The strand catches fire a beat after the clear itself.
@@ -372,7 +372,7 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
         frame(world, camera, 1 / 60, () => {
             lock(world, { hardDrop: true });
             clear(world, {
-                lines: 4, rows: [19, 18, 17, 16], combo: 8, cascade: 4, tspin: true, b2b: true, perfect: true,
+                lines: 4, rows: [19, 18, 17, 16], combo: 8, cascade: 4, twist: true, b2b: true, perfect: true,
             });
             world.levelUp(2);
         });
@@ -404,7 +404,7 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
         expect(world.getState().flourishes.active).toEqual([]);
         expect(world.getPostState()).toMatchObject({ flash: 0, kick: 0 });
         // Reapplying the setting does not interrupt the gentler rewards emitted afterwards.
-        clear(world, { tspin: true, lines: 0, rows: [] });
+        clear(world, { twist: true, lines: 0, rows: [] });
         world.setReducedMotion(true);
         expect(played(world).cyclone).toBe(1);
         world.dispose();
@@ -456,7 +456,7 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
                 });
                 if (i % 5 < 2) {
                     clear(world, {
-                        rows: [19, 18, 17, 16].slice(0, (i % 4) + 1), lines: (i % 4) + 1, combo: 1 + (i % 9), tspin: i % 7 === 0,
+                        rows: [19, 18, 17, 16].slice(0, (i % 4) + 1), lines: (i % 4) + 1, combo: 1 + (i % 9), twist: i % 7 === 0,
                     });
                 }
                 world.onCombo(i % 12);
@@ -500,7 +500,7 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
         frame(world, camera, 1 / 60, () => {
             lock(world);
             clear(world, {
-                rows: [19, 18, 17, 16], lines: 4, combo: 5, tspin: true,
+                rows: [19, 18, 17, 16], lines: 4, combo: 5, twist: true,
             });
             world.onCombo(6);
         });
@@ -528,8 +528,8 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
 
 describe('stellar drift world: it builds with play instead of popping', () => {
     /** The tray's Fever, as the director hands it on: twelve clearing hard drops, 0.64 s apart. */
-    const PLAN = [1, 1, 2, 1, 2, 2, 3, 'tspin', 2, 'cascade', 3, 'quad'];
-    const LINES = { tspin: 2, cascade: 2, quad: 4 };
+    const PLAN = [1, 1, 2, 1, 2, 2, 3, 'twist', 2, 'cascade', 3, 'quad'];
+    const LINES = { twist: 2, cascade: 2, quad: 4 };
     function fever(world, camera, sample = () => {}) {
         PLAN.forEach((step, n) => {
             if (n > 0) run(world, camera, 0.64, 20);
@@ -539,7 +539,7 @@ describe('stellar drift world: it builds with play instead of popping', () => {
             frame(world, camera, 1 / 60, () => {
                 lock(world, { hardDrop: true, rows: [19, 18] });
                 clear(world, {
-                    rows, lines, combo, tspin: step === 'tspin', color: COLORS[['I', 'O', 'L', 'T', 'S'][n % 5]],
+                    rows, lines, combo, twist: step === 'twist', color: COLORS[['I', 'O', 'L', 'T', 'S'][n % 5]],
                 });
             });
             if (step === 'cascade') {
@@ -577,11 +577,11 @@ describe('stellar drift world: it builds with play instead of popping', () => {
         run(world, camera, 0.3, 9);
         expect(world.u.surge.value.z).toBeGreaterThan(0.05);
         expect(world.u.surgeB.value.z).toBeGreaterThan(0.05);
-        // A second T-spin feeds the storm still turning: it stays where it is and only gains.
-        frame(world, camera, 1 / 60, () => clear(world, { rows: [19, 18], lines: 2, tspin: true }));
+        // A second twist feeds the storm still turning: it stays where it is and only gains.
+        frame(world, camera, 1 / 60, () => clear(world, { rows: [19, 18], lines: 2, twist: true }));
         run(world, camera, 1.5, 45);
         const storm = { ...world.u.cyclone.value };
-        frame(world, camera, 1 / 60, () => clear(world, { rows: [], lines: 0, tspin: true }));
+        frame(world, camera, 1 / 60, () => clear(world, { rows: [], lines: 0, twist: true }));
         run(world, camera, 0.1, 3);
         expect(world.u.cyclone.value.x).toBe(storm.x);
         expect(world.u.cyclone.value.z).toBe(storm.z);

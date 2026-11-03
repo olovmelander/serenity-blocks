@@ -12,7 +12,7 @@
  *   statsHud=0               with board=1: board only, no HUD mock
  *   combo=<n>                hold a combo of n (the lighthouse spun up, the blinds open)
  *   level=<n>                rest n − 1 stocks along the line (the level's own reel)
- *   event=lock|drop|clear|quad|tspin|perfect|levelUp   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>)
  *   demo=1                   live only: play a looping gameplay script
  *   parts=sky,smoke          draw only these parts (sky alone: the smoke switched off)
@@ -103,7 +103,7 @@ const DEMO_SCRIPT = [
     [28.0, 'lock', { rows: [19], u: 0.45 }], [29.0, 'lock', { rows: [13, 12], u: 0.7 }],
     [30.0, 'lock', { rows: [18], u: 0.25, hardDrop: true }],
     [30.0, 'clear', {
-        rows: [19, 18], lines: 2, tspin: true, combo: 1,
+        rows: [19, 18], lines: 2, twist: true, combo: 1,
     }],
     [32.0, 'lock', { rows: [7], u: 0.5 }],
 ];
@@ -198,7 +198,7 @@ export function create({
         else if (name === 'drop') world.onLock({ rows: [row, row - 1], u, hardDrop: true });
         else if (name === 'clear') world.onClear({ rows: bottom(ev.lines), lines: ev.lines });
         else if (name === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
-        else if (name === 'tspin') world.onClear({ rows: bottom(2), lines: 2, tspin: true });
+        else if (name === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
         else if (name === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
         else if (name === 'levelUp') world.levelUp(ev.level + 1);
     };

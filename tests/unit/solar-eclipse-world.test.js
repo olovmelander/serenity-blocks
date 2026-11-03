@@ -364,9 +364,9 @@ describe('SolarEclipseWorld: a clear', () => {
         expect(world.u.diamond.value.z).toBeGreaterThan(0);
     });
 
-    it('twists the corona on a T-spin and lets it ring down without a jump', () => {
+    it('twists the corona on a twist and lets it ring down without a jump', () => {
         const { world, camera } = makeWorld();
-        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        world.onClear({ rows: [19, 18], lines: 2, twist: true });
         let last = 0;
         let peak = 0;
         for (let i = 0; i < 300; i += 1) {
@@ -459,9 +459,9 @@ describe('SolarEclipseWorld: the salt mirror', () => {
         expect(world.u.tables.ripples.filter((r, i) => i % 2 === 0 && r.z > t2 + 0.3 && r.w > 0)).toHaveLength(1);
     });
 
-    it('winds a whirl into the reflection on a T-spin', () => {
+    it('winds a whirl into the reflection on a twist', () => {
         const { world } = makeWorld();
-        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        world.onClear({ rows: [19, 18], lines: 2, twist: true });
         const kinds = [];
         for (let i = 0; i < MIRROR.ripples; i += 1) {
             const [a, b] = ripple(world, i);
@@ -711,14 +711,14 @@ describe('SolarEclipseWorld: fast play builds instead of restarting', () => {
         expect(plain.world.u.cme2.value.z).toBe(0);
     });
 
-    it('still turns the corona for a T-spin that cleared nothing, and winds a second twist on the first', () => {
+    it('still turns the corona for a twist that cleared nothing, and winds a second twist on the first', () => {
         const { world, camera } = makeWorld();
         world.onSpin({ player: 0 });
         step(world, camera, world.time, world.time + 0.6, 1 / 60);
         const one = world.u.twist.value;
         expect(one).toBeGreaterThan(0.2);
         expect(world.getState().ripples).toBeGreaterThan(0);
-        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        world.onClear({ rows: [19, 18], lines: 2, twist: true });
         step(world, camera, world.time, world.time + 1 / 60, 1 / 60);
         expect(world.u.twist.value).toBeGreaterThanOrEqual(one * 0.95);
         step(world, camera, world.time, world.time + 0.6, 1 / 60);

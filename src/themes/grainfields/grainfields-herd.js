@@ -5,7 +5,7 @@
  * dun, grey, black-bay), two of them foals at their mothers' sides. They live on the near field
  * (grainfields-herd-sim.js): they graze, wander to new grass, trot, canter round, and now and
  * then gallop out of the picture over the crest, off a side of the frame or behind the eye, and
- * come back in somewhere else. When the storm breaks with a chain they run; with a T-spin they
+ * come back in somewhere else. When the storm breaks with a chain they run; with a twist they
  * wheel round.
  *
  * The horse is authored and rigged in Blender (scripts/blender/grainfields/horse.py, loaded by
@@ -483,7 +483,7 @@ export function createHerd(u, t, count, horse, { seed, dust: dustCount = 384 } =
         get horses() { return sim.horses; },
         /** A chain breaks the storm: the horses run. */
         run(time) { sim.run(time); },
-        /** A T-spin: the horses wheel round. */
+        /** A twist: the horses wheel round. */
         wheel(time) { sim.wheel(time); },
         /** A hard drop: heads up. */
         startle(time) { sim.startle(time); },

@@ -6,7 +6,7 @@
  * locks fill a sailboat's spinnaker in the piece colour with a gust across the water; clears
  * lift the land (the sea draws back, wet rock and skerries rise, streams run off); a chain
  * compounds the lift and its break sends a swell that returns the sea; four lines the great
- * rebound; a T-spin the fleet comes about; back-to-back lights the lighthouse; a perfect clear
+ * rebound; a twist the fleet comes about; back-to-back lights the lighthouse; a perfect clear
  * the sea goes glass-calm; game over dusk.
  *
  * Content lives in HighCoastWorld, shared with the playground. This adapter preserves the

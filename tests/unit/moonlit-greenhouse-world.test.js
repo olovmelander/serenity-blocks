@@ -265,9 +265,9 @@ describe('moonlit greenhouse world', () => {
         expect(world.getState().released).toBe(8);
     });
 
-    it('turns the air on a T-spin and lets it settle', () => {
+    it('turns the air on a twist and lets it settle', () => {
         const { world, step } = makeWorld();
-        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        world.onClear({ rows: [19, 18], lines: 2, twist: true });
         step(TIMING.turn * 0.5);
         expect(world.U.turn.value.y).toBeGreaterThan(0.5);
         expect(world.U.gust.value).toBeGreaterThan(0.2);
@@ -371,7 +371,7 @@ describe('moonlit greenhouse world', () => {
     it('is a fresh world after a seek, whatever the last run left', () => {
         const used = makeWorld({ start: 5 });
         for (let n = 1; n <= 8; n += 1) used.world.onCombo(n);
-        used.world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        used.world.onClear({ rows: [19, 18], lines: 2, twist: true });
         used.step(11);
         used.world.seek(20);
         used.step(5);
@@ -444,7 +444,7 @@ describe('moonlit greenhouse world', () => {
             step(0.6);
             world.onCombo(2);
             world.onClear({
-                rows: [19, 18], lines: 2, combo: 2, tspin: true,
+                rows: [19, 18], lines: 2, combo: 2, twist: true,
             });
             step(1.2);
         };

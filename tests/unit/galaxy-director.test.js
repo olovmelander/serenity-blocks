@@ -114,17 +114,17 @@ describe('galaxy director: intake', () => {
         expect(calls.combo[calls.combo.length - 1]).toEqual([0, 0]);
     });
 
-    it('carries T-spins, perfect clears and back-to-backs on the clear', () => {
+    it('carries twists, perfect clears and back-to-backs on the clear', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: T });
         director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.onB2B({ active: true });
         director.onPerfectClear({ depth: 1 });
         director.flush();
         // In the clear's own frame a perfect clear is that clear's, not a crown on it.
         expect(calls.clear[0]).toMatchObject({
-            lines: 2, tspin: true, b2b: true, perfect: true, crown: false,
+            lines: 2, twist: true, b2b: true, perfect: true, crown: false,
         });
         // An inactive B2B is not one.
         expect(director.onB2B({ active: false })).toBe(false);
@@ -221,12 +221,12 @@ describe('galaxy director: intake', () => {
         expect(calls.clear[1].combo).toBe(calls.clear[0].combo);
     });
 
-    it('still answers a T-spin that clears nothing, with no clear', () => {
+    it('still answers a twist that clears nothing, with no clear', () => {
         const { director, calls } = makeDirector();
         const spin = vi.fn();
         director.sink.spin = spin;
         director.onPieceLock({ piece: T });
-        director.onTSpin({ lineCount: 0 });
+        director.onTwist({ lineCount: 0 });
         director.flush();
         expect(calls.clear).toHaveLength(0);
         expect(calls.lock).toHaveLength(1);

@@ -349,8 +349,8 @@ export default class ShiftingSandsTheme extends BaseTheme {
                     this.world?.onCombo(Number.isFinite(d?.comboCount) ? d.comboCount : 0, { react: allowed() });
                 }
             }),
-            eventBus.on(EVENTS.TSPIN, (d) => {
-                if (allowed()) this.world?.onTSpin(Number.isFinite(d?.lineCount) ? d.lineCount : undefined);
+            eventBus.on(EVENTS.TWIST, (d) => {
+                if (allowed()) this.world?.onTwist(Number.isFinite(d?.lineCount) ? d.lineCount : undefined);
             }),
             eventBus.on(EVENTS.B2B, (d) => {
                 if (allowed() && d?.active !== false) this.world?.onBackToBack();

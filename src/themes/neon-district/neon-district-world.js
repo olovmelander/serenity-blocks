@@ -339,7 +339,7 @@ export class NeonDistrictWorld {
         };
         this._rgb = [0, 0, 0];
         this._surgeClear = {
-            lines: 1, cascade: 1, combo: 1, tspin: false, perfect: false, b2b: false,
+            lines: 1, cascade: 1, combo: 1, twist: false, perfect: false, b2b: false,
         };
         this._lock = { hardDrop: false };
 
@@ -369,7 +369,7 @@ export class NeonDistrictWorld {
         });
         /** A back-to-back stretches the cinema flares across the street. */
         this.flare = new Swell({ release: 0.9, ceiling: 1.2, knee: 0.8 });
-        /** A T-spin turns the circuit over: the kerb lights race. */
+        /** A twist turns the circuit over: the kerb lights race. */
         this.spinHits = new Swell({ release: 0.45, ceiling: 1.5, knee: 1 });
         /** A perfect clear's crown: the storm breaks, the rain lets up, the glass wipes clear. */
         this.crown = new Swell({
@@ -836,10 +836,10 @@ export class NeonDistrictWorld {
 
     /**
      * Lines cleared. `lines` 1..4; `combo` = the true consecutive-clear combo; `cascade` = which
-     * wave of its lock this is (1 = the first); `tspin`, `perfect`, `b2b`.
+     * wave of its lock this is (1 = the first); `twist`, `perfect`, `b2b`.
      */
     onClear({
-        rows = null, lines = 1, combo = 1, cascade = 1, tspin = false, perfect = false, b2b = false, player = 0,
+        rows = null, lines = 1, combo = 1, cascade = 1, twist = false, perfect = false, b2b = false, player = 0,
     } = {}) {
         const { u: uniforms } = this;
         if (!uniforms) return;
@@ -921,7 +921,7 @@ export class NeonDistrictWorld {
             this.stormHits.hit(0.3, t);
             this.counterPunch = 1;
         }
-        if (tspin) {
+        if (twist) {
             this.glitch = 1;
             this.spinHits.hit(1, t);
         }
@@ -931,7 +931,7 @@ export class NeonDistrictWorld {
         sc.lines = n;
         sc.cascade = deeper + 1;
         sc.combo = combo;
-        sc.tspin = tspin === true;
+        sc.twist = twist === true;
         sc.perfect = perfect === true;
         sc.b2b = b2b === true;
         this.surge.clear(sc, birth);
@@ -1006,14 +1006,14 @@ export class NeonDistrictWorld {
         sc.lines = 1;
         sc.cascade = 1;
         sc.combo = combo;
-        sc.tspin = false;
+        sc.twist = false;
         sc.perfect = true;
         sc.b2b = b2b === true;
         this.surge.clear(sc, t);
         this.counts.perfects += 1;
     }
 
-    /** A T-spin that cleared nothing: the signs tear for a moment and the kerb lights race. */
+    /** A twist that cleared nothing: the signs tear for a moment and the kerb lights race. */
     onSpin() {
         if (!this.u) return;
         const t = this.time;

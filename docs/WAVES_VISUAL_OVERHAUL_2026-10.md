@@ -223,7 +223,7 @@ Both copies (`src/themes/waves/waves-theme-icon.png` and the byte-identical
   through Electron under the machine's shared GPU lock rather than the browser MCP; the look
   was first iterated on the CPU renderer (SwiftShader, the WebGL2 backend of the same code),
   which needs no lock. Events are reproducible with
-  `&t=20&board=1&event=lock|drop|clear|quad|tspin|perfect|levelUp`, `&eventAge=<s>`,
+  `&t=20&board=1&event=lock|drop|clear|quad|twist|perfect|levelUp`, `&eventAge=<s>`,
   `&lines=<n>`, `&u=0..1&row=0..19`, `&color=<hex>`, `&combo=<n>`, `&locks=<n>`,
   `&leap=<n>&leapAge=<s>&hero=1`; `&quality=<tier>` picks a tier.
 

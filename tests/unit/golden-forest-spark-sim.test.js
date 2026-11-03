@@ -669,7 +669,7 @@ describe('Golden Forest firefly simulation', () => {
             expect(mean(sparks.map((spark) => spark.turning)) * turn).toBeLessThanOrEqual(field.spin);
         });
 
-        it('winds a t-spin flourish into a tight spiral beside the board', () => {
+        it('winds a twist flourish into a tight spiral beside the board', () => {
             const field = {
                 kind: 'vortex',
                 x: 4,

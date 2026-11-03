@@ -72,7 +72,7 @@ describe('nimbus-veil theme wiring', () => {
             onHardDrop: vi.fn(),
             onLineClear: vi.fn(),
             onCombo: vi.fn(),
-            onTSpin: vi.fn(),
+            onTwist: vi.fn(),
             onB2B: vi.fn(),
             onPerfectClear: vi.fn(),
             onLevelUp: vi.fn(),
@@ -85,7 +85,7 @@ describe('nimbus-veil theme wiring', () => {
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: { type: 'T' } });
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 3, cascadeCount: 1 });
         eventBus.emit(EVENTS.COMBO, { comboCount: 4 });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 0 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 0 });
         eventBus.emit(EVENTS.B2B, { active: true });
         eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 4 });
         eventBus.emit(EVENTS.LEVEL_UP, { level: 2 });
@@ -93,7 +93,7 @@ describe('nimbus-veil theme wiring', () => {
         expect(world.onPieceLock).toHaveBeenCalledWith({ chain: 0 });
         expect(world.onLineClear).toHaveBeenCalledWith(3, { cascade: 1, combo: 1, chainStep: true });
         expect(world.onCombo).toHaveBeenCalledWith(4);
-        expect(world.onTSpin).toHaveBeenCalledWith(0);
+        expect(world.onTwist).toHaveBeenCalledWith(0);
         expect(world.onB2B).toHaveBeenCalledTimes(1);
         expect(world.onPerfectClear).toHaveBeenCalledTimes(1);
         expect(world.onLevelUp).toHaveBeenCalledTimes(1);

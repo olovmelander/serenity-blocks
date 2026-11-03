@@ -28,7 +28,7 @@
  *                 the clouds open: a pool of sunlight crosses the hills
  *   combo/streak  the wind winds around the board; the whirl climbs, tightens and quickens
  *                 as cascades or consecutive clears build, and streamers unfurl in it
- *   t-spin        a spinning ribbon in the colour of the T's kite beside the board
+ *   twist        a spinning ribbon in the colour of the T's kite beside the board
  *   back-to-back  every kite on its line bows at once and two golden ribbons cross behind
  *                 the board, more of them the longer the back-to-backs run
  *   perfect clear / level up   the whole day exhales: light, wind, ribbons, wings; a
@@ -786,12 +786,12 @@ export class VerdantHillsReactions {
         return true;
     }
 
-    onTSpin(detail = {}) {
+    onTwist(detail = {}) {
         if (this.disposed) return false;
         const payload = unwrap(detail);
         // A spin that cleared nothing is a little of one; one that cleared adds a spin's worth to its clear.
         if (positiveCount(payload.lineCount, 4) > 0) {
-            this.surge.tspin(this.time);
+            this.surge.twist(this.time);
         } else this.surge.spin(this.time);
         const place = boardPlace(payload);
         const side = place && place.column >= 0.5 ? 1 : -1;

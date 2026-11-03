@@ -170,7 +170,7 @@ function snapshot(world) {
     };
 }
 
-/** A second and a half of play: locks either side, a clear, a chain, four lines with a T-spin. */
+/** A second and a half of play: locks either side, a clear, a chain, four lines with a twist. */
 function play(world, camera) {
     world.onLock({
         u: 0.2, rows: [12], color: PIECES[0], hardDrop: true,
@@ -181,7 +181,7 @@ function play(world, camera) {
     world.onCombo(2);
     run(world, camera, 0.4, 48);
     world.onLock({ u: 0.5, rows: [16], color: PIECES[2] });
-    world.onClear({ lines: 4, rows: [19, 18, 17, 16], tspin: true });
+    world.onClear({ lines: 4, rows: [19, 18, 17, 16], twist: true });
     world.onCombo(3);
     run(world, camera, 0.7, 84);
 }
@@ -751,7 +751,7 @@ describe('voltage storm world: four lines', () => {
     });
 });
 
-describe('voltage storm world: a T-spin', () => {
+describe('voltage storm world: a twist', () => {
     it('winds the cloud up over the hero, lets it spring back to rest, and sends an arc up the mast', () => {
         const plain = makeWorld();
         plain.world.onClear({ lines: 2 });
@@ -762,7 +762,7 @@ describe('voltage storm world: a T-spin', () => {
         const { world, camera } = makeWorld();
         const fired = watchBolts(world);
         const hero = world.towers[0];
-        world.onClear({ lines: 2, tspin: true });
+        world.onClear({ lines: 2, twist: true });
         let peak = 0;
         let shown = 0;
         for (let i = 0; i < 120; i++) {
@@ -1282,7 +1282,7 @@ describe('voltage storm world: a new run', () => {
         world.onLock({
             u: 0.2, rows: [8], color: PIECES[3], hardDrop: true,
         });
-        world.onClear({ lines: 4, tspin: true });
+        world.onClear({ lines: 4, twist: true });
         world.onCombo(4);
         expect(world.getState().queued).toBeGreaterThan(0);
         world.resetSession();
@@ -1447,7 +1447,7 @@ describe('voltage storm world: reduced motion', () => {
         }
         expect(shocks(calm.world)).toHaveLength(shocks(full.world).length);
         for (const { world, camera } of [full, calm]) {
-            world.onClear({ lines: 2, tspin: true });
+            world.onClear({ lines: 2, twist: true });
             world.onCombo(4);
             world.levelUp(2);
             run(world, camera, 1);
@@ -1483,7 +1483,7 @@ describe('voltage storm world: reduced motion', () => {
                 moved: 0, zoomed: 0, flash: 0, ripple: 0, twist: 0, sheet: 0, arcs: 0, strokes: 0,
             };
             world.onCombo(MAX_CHAIN_ARCS + 3);
-            world.onClear({ lines: 4, tspin: true });
+            world.onClear({ lines: 4, twist: true });
             for (let i = 0; i < 180; i++) {
                 const sim = {
                     time: world.time + 1 / 60, delta: 1 / 60, pointerX: 1, pointerY: -1,
@@ -1687,11 +1687,11 @@ describe('voltage storm world: the storm builds with play', () => {
         expect(world.totalHeld()).toBe(0);
     });
 
-    it('answers a T-spin that cleared nothing with a small turn of the cell and an arc up the mast', () => {
+    it('answers a twist that cleared nothing with a small turn of the cell and an arc up the mast', () => {
         const { world, camera } = makeWorld();
         const fired = watchBolts(world);
         const hero = world.towers[0];
-        world.onTSpin({});
+        world.onTwist({});
         expect(fired('strike')).toHaveLength(0);
         expect(fired('arc')).toHaveLength(1);
         expect(fired('arc')[0].end).toEqual([hero.x, hero.height * TOWER.toroid, hero.z]);
@@ -1701,9 +1701,9 @@ describe('voltage storm world: the storm builds with play', () => {
             turned = Math.max(turned, Math.abs(world.twist));
         }
         expect(turned).toBeGreaterThan(0);
-        // Smaller than a T-spin that cleared lines.
+        // Smaller than a twist that cleared lines.
         const clearing = makeWorld();
-        clearing.world.onClear({ lines: 2, tspin: true });
+        clearing.world.onClear({ lines: 2, twist: true });
         let big = 0;
         for (let i = 0; i < 60; i++) {
             run(clearing.world, clearing.camera, 1 / 60, 1);
@@ -1755,7 +1755,7 @@ describe('voltage storm world: the storm builds with play', () => {
         run(world, camera, 2);
         from = fired('strike').length;
         world.onClear({
-            lines: 2, tspin: true, b2b: true,
+            lines: 2, twist: true, b2b: true,
         });
         const second = twin(fired('strike').slice(from));
         expect(second.left).toBeDefined();
@@ -1985,7 +1985,7 @@ describe('voltage storm world: parts, frames and disposal', () => {
             world.onLock({
                 u: (i * 0.37) % 1, rows: [4 + i], color: PIECES[i % PIECES.length], hardDrop: i % 2 === 0,
             });
-            if (i % 3 === 0) world.onClear({ lines: 4, tspin: i % 2 === 0, perfect: i === 9 });
+            if (i % 3 === 0) world.onClear({ lines: 4, twist: i % 2 === 0, perfect: i === 9 });
             else world.onClear({ lines: 1 + (i % 3), rows: [19, 18, 17].slice(0, 1 + (i % 3)) });
             if (i === 5) world.levelUp(2);
             run(world, camera, 0.4, 24);
@@ -2152,7 +2152,7 @@ describe('voltage storm world: parts, frames and disposal', () => {
         expect(post.heart).toBe(world.heart);
 
         // A frame may be frozen, missing its length, backwards or thirty seconds long.
-        world.onClear({ lines: 4, tspin: true });
+        world.onClear({ lines: 4, twist: true });
         let { time } = world;
         for (const delta of [0, undefined, -1, NaN, 5, 0.016, 0, 30, 0.016]) {
             time += Number.isFinite(delta) && delta > 0 ? delta : 0;
@@ -2192,7 +2192,7 @@ describe('voltage storm world: parts, frames and disposal', () => {
         expect(new Set(disposed).size).toBe(parts * 2);
         expect(() => {
             world.onLock({ u: 0.3, color: PIECES[1], hardDrop: true });
-            world.onClear({ lines: 2, tspin: true });
+            world.onClear({ lines: 2, twist: true });
             world.onClear({ lines: 4, perfect: true });
             world.onCombo(5);
             world.levelUp(3);

@@ -227,7 +227,7 @@ export class LunaraWorld {
          *   flash, kick  the post's lift and the lens's impact
          *   overdrive    a four-line clear's fire (it stacks: a quad after a perfect clear burns on)
          *   swell        a clear's flood of the moon's shafts and bloom
-         *   twist        the curtains' turn on a T-spin
+         *   twist        the curtains' turn on a twist
          *   companion    the rose moon answering a back-to-back
          */
         this.env = {
@@ -265,7 +265,7 @@ export class LunaraWorld {
         return this.env.overdrive.valueAt(this.time);
     }
 
-    /** How hard the curtains are turning from a T-spin now. */
+    /** How hard the curtains are turning from a twist now. */
     get twist() {
         return this.env.twist.valueAt(this.time);
     }
@@ -773,7 +773,7 @@ export class LunaraWorld {
 
     /**
      * Ring the sky from the great moon. There is one ring: while it is still bright a new one adds
-     * to it (it runs on, brighter) instead of starting over, so a T-spin or a new level right
+     * to it (it runs on, brighter) instead of starting over, so a twist or a new level right
      * after a four-line clear never swaps its ring for a smaller one.
      */
     shockRing(strength, at) {
@@ -887,12 +887,12 @@ export class LunaraWorld {
 
     /**
      * Lines cleared. `lines` 1..4; `combo` = the true consecutive-clear combo; `cascade` = which
-     * wave of the lock's cascade this is (1 = the first); `tspin`, `perfect`, `b2b`. A clear with
+     * wave of the lock's cascade this is (1 = the first); `twist`, `perfect`, `b2b`. A clear with
      * no lines of its own (`lines: 0`) is a perfect clear settled after the clear it crowns
-     * (`crown` or `perfect`) or a T-spin that cleared nothing.
+     * (`crown` or `perfect`) or a twist that cleared nothing.
      */
     onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, b2b = false, crown = false,
+        rows = null, lines = 1, twist = false, perfect = false, b2b = false, crown = false,
         cascade = 1, combo = 1, player = 0, screen = null,
     } = {}) {
         const { u: uniforms } = this;
@@ -902,7 +902,7 @@ export class LunaraWorld {
             this.crownValley();
             return;
         }
-        if (lineless && tspin) {
+        if (lineless && twist) {
             this.turnSky();
             return;
         }
@@ -1026,7 +1026,7 @@ export class LunaraWorld {
             this.veinsFlare = Math.max(this.veinsFlare, Math.min(1.2, 0.3 + 0.2 * depth));
             if (depth >= 2) this.shockRing(Math.min(0.5, 0.12 * depth), birth);
         }
-        if (tspin) {
+        if (twist) {
             // The sky itself turns: a small ring from the moon, and the curtains twist.
             this.shockRing(0.42, this.time);
             this.storm = Math.max(this.storm, 0.85);
@@ -1043,7 +1043,7 @@ export class LunaraWorld {
             });
         }
         this.play.clear({
-            lines: n, cascade: depth + 1, combo, tspin, perfect, b2b,
+            lines: n, cascade: depth + 1, combo, twist, perfect, b2b,
         }, birth);
         this.counts.clears += 1;
     }
@@ -1088,13 +1088,13 @@ export class LunaraWorld {
         this.play.clear({ lines: 1, perfect: true }, at);
     }
 
-    /** A T-spin that cleared nothing: the sky turns a little — the curtains twist, a faint ring leaves the moon. */
+    /** A twist that cleared nothing: the sky turns a little — the curtains twist, a faint ring leaves the moon. */
     turnSky() {
         this.env.twist.hit(0.55, this.time);
         this.storm = Math.max(this.storm, 0.45);
         this.shockRing(0.2, this.time);
-        this.play.punch.hit(SURGE_WEIGHTS.punch.tspin, this.time);
-        this.play.level.hit(SURGE_WEIGHTS.heat.tspin * 0.5, this.time);
+        this.play.punch.hit(SURGE_WEIGHTS.punch.twist, this.time);
+        this.play.level.hit(SURGE_WEIGHTS.heat.twist * 0.5, this.time);
     }
 
     /** The true combo changed (0 = the chain broke). */

@@ -2656,7 +2656,7 @@ export function trunkHeightAt(record, lens, sy, theta, eyeY, offset = 0, out = [
  * rides the front; once free it dries over `settle` seconds into a curl rolled across its width,
  * `turns` of a turn, its radius tightening to `inner` of the outer one (the old bark outside, the
  * cream underside within, as a strip curls on the tree; open, so its turns never show through one
- * another). A T-spin's strip takes the same shape. A ring's sheet pieces peel down their band as
+ * another). A twist's strip takes the same shape. A ring's sheet pieces peel down their band as
  * lips too, then pop clear of the blazing ring at once and fall away still curled outward as
  * peeled bark does, only `plate` of the way eased into curved plates (rolled `roll` of the way a
  * lock's strip is: a short, wide plate rolled across its width is a capsule, a row of pills along
@@ -3082,7 +3082,7 @@ export const MOULT = Object.freeze({
 });
 
 /**
- * The Unwinding (§6.9, as built): a T-spin's helix on the T's side (columns 0–4 the Elder, else
+ * The Unwinding (§6.9, as built): a twist's helix on the T's side (columns 0–4 the Elder, else
  * Sister One), from its top row down: `width` metres wide, `pitch` metres a turn, one turn per
  * line, unwinding from `start` over `unwind` seconds (`reduced` under reduced motion). Its strip
  * ripens from First Skin to Young Emerald (the T's own age) over `ripen` seconds; it stays for the

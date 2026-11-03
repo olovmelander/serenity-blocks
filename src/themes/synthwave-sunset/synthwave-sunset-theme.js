@@ -46,7 +46,7 @@ const STAGED_WAVES = 4;
 /**
  * One frame's gameplay events, gathered as they arrive and handed to the world at the top of the
  * next frame: the lock (and whether it was hard-dropped), each clear wave's lines and cascade
- * depth, a T-spin, a back-to-back, a perfect clear, level-ups.
+ * depth, a twist, a back-to-back, a perfect clear, level-ups.
  */
 function createStage() {
     return {
@@ -58,7 +58,7 @@ function createStage() {
         /** The cascade depth a COMBO announced for the wave that follows it. */
         nextDepth: 0,
         cascade: 0,
-        tspin: false,
+        twist: false,
         b2b: false,
         perfect: false,
         levelUps: 0,
@@ -432,9 +432,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             if (!reactive() || !local(data)) return;
             stage.hardDrop = true;
         });
-        const tspinUnsub = eventBus.on(EVENTS.TSPIN, (data) => {
+        const twistUnsub = eventBus.on(EVENTS.TWIST, (data) => {
             if (!reactive() || !local(data)) return;
-            stage.tspin = true;
+            stage.twist = true;
         });
         const b2bUnsub = eventBus.on(EVENTS.B2B, (data) => {
             if (!reactive() || !local(data) || data?.active === false) return;
@@ -466,7 +466,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             clearUnsub,
             comboUnsub,
             hardDropUnsub,
-            tspinUnsub,
+            twistUnsub,
             b2bUnsub,
             perfectUnsub,
             levelUnsub,
@@ -548,7 +548,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     /**
      * Hand the frame's staged events to the world: the level, the lock (hard-dropped or not),
      * each clear wave with its cascade depth and the true combo (the lock's own wave carries its
-     * T-spin and back-to-back), a T-spin that cleared nothing, the perfect clear (its own crown,
+     * Twist and back-to-back), a twist that cleared nothing, the perfect clear (its own crown,
      * never a new clear), then the true combo for the coaster — 0 when this lock cleared nothing
      * after a chain.
      */
@@ -563,11 +563,11 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             world.onLineClear(stage.waveLines[i], {
                 cascade: stage.waveDepth[i],
                 combo,
-                tspin: i === 0 && stage.tspin,
+                twist: i === 0 && stage.twist,
                 b2b: i === 0 && stage.b2b,
             });
         }
-        if (stage.tspin && stage.waves === 0) world.onTSpin?.(0);
+        if (stage.twist && stage.waves === 0) world.onTwist?.(0);
         if (stage.perfect) world.onPerfectClear?.();
         if (stage.cascade > 0) world.onCombo(stage.cascade);
         // ComboTracker resets on the NEXT lock; a lock with no clear in its own tick breaks the
@@ -579,7 +579,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         stage.waves = 0;
         stage.nextDepth = 0;
         stage.cascade = 0;
-        stage.tspin = false;
+        stage.twist = false;
         stage.b2b = false;
         stage.perfect = false;
         stage.levelUps = 0;

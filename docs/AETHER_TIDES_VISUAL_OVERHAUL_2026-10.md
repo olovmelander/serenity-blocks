@@ -209,7 +209,7 @@ Run `npm run dev:playground`, then:
 
 `/playground.html?effect=aether-tides&t=30&quality=High&board=1`
 
-Add `event=lock|drop|clear|quad|tspin|perfect|levelUp|break` with `eventAge=<s>`, and
+Add `event=lock|drop|clear|quad|twist|perfect|levelUp|break` with `eventAge=<s>`, and
 `combo=<n>`, `level=<n>`, `lines=<n>`, `piece=I|O|T|S|Z|J|L`, `col=<c>`, `row=<r>`,
 `color=<hex>`. `locks=<n>` plays n locks first, so the sky is holding their stars when the
 event fires. `lead=<s>` sets how many seconds of fluid are replayed before the frame.

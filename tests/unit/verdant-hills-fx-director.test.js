@@ -256,10 +256,10 @@ describe('Verdant Hills effects director', () => {
 
         it('starts the gust of every kind of event that lands in one frame', () => {
             const { director, reactions, blown } = rig();
-            // A lock that sets off the festival, a t-spin, a clear, a combo, a perfect clear and a level-up.
+            // A lock that sets off the festival, a twist, a clear, a combo, a perfect clear and a level-up.
             LETTERS.slice(0, 6).forEach((letter) => reactions.launch(VERDANT_HILLS_PIECE_KITES[letter]));
             reactions.onPieceLock({ piece: piece(LETTERS[6], 3, 22) });
-            reactions.onTSpin({ piece: piece('T', 3, 22) });
+            reactions.onTwist({ piece: piece('T', 3, 22) });
             reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
             reactions.onCombo(3);
             reactions.onPerfectClear();
@@ -829,12 +829,12 @@ describe('Verdant Hills effects director', () => {
         });
     });
 
-    describe('a t-spin', () => {
+    describe('a twist', () => {
         it.each([[-1, 1], [1, 8]])('winds a spiral of wind beside the board on side %i', (side, column) => {
             const {
                 director, reactions, stage, camera, launched,
             } = rig();
-            reactions.onTSpin({ piece: piece('T', column, 10) });
+            reactions.onTwist({ piece: piece('T', column, 10) });
             const env = director.apply(reactions.update(STEP), STEP, WIND);
             // Two strands from one place, wound against each other.
             expect(launched).toHaveLength(2);
@@ -871,7 +871,7 @@ describe('Verdant Hills effects director', () => {
             const {
                 reactions, frame, thrown, spawn, launched,
             } = rig();
-            reactions.onTSpin({ piece: piece('T', 7, 10) });
+            reactions.onTwist({ piece: piece('T', 7, 10) });
             const whirls = [];
             for (let count = 0; count < 120; count++) {
                 whirls.push(frame().fields.filter((field) => field.kind === 'vortex').length);
@@ -898,7 +898,7 @@ describe('Verdant Hills effects director', () => {
                 const built = rig();
                 built.reactions.onPieceLock({ piece: piece('L', 1, y) });
                 built.reactions.onLineClear(1, { clearedRows: [y] });
-                built.reactions.onTSpin({ piece: piece('T', 8, y) });
+                built.reactions.onTwist({ piece: piece('T', 8, y) });
                 const env = built.director.apply(built.reactions.update(STEP), STEP, WIND);
                 for (const field of env.fields) {
                     const height = field.kind === 'vortex' ? field.top : field.y;
@@ -909,9 +909,9 @@ describe('Verdant Hills effects director', () => {
             expect(buried).toEqual([]);
         });
 
-        it('keeps the seed of a t-spin low on the board in the air', () => {
+        it('keeps the seed of a twist low on the board in the air', () => {
             const built = rig();
-            built.reactions.onTSpin({ piece: piece('T', 7, 22) });
+            built.reactions.onTwist({ piece: piece('T', 7, 22) });
             built.frame();
             const seed = aloft(built.sim);
             expect(seed.length).toBeGreaterThan(15);
@@ -922,9 +922,9 @@ describe('Verdant Hills effects director', () => {
             expect(down.length, `${down.length} of ${seed.length} are in the grass`).toBe(0);
         });
 
-        it('keeps the seed of a t-spin higher on the board in the air', () => {
+        it('keeps the seed of a twist higher on the board in the air', () => {
             const built = rig();
-            built.reactions.onTSpin({ piece: piece('T', 7, 12) });
+            built.reactions.onTwist({ piece: piece('T', 7, 12) });
             built.frame();
             const seed = aloft(built.sim);
             built.run(1);
@@ -946,7 +946,7 @@ describe('Verdant Hills effects director', () => {
                 if (roll === 0) built.reactions.onHardDrop({ distance: 4 + random() * 16 });
                 if (roll <= 2) built.reactions.onPieceLock({ piece: piece(LETTERS[event % 7], column, y) });
                 else if (roll === 3) built.reactions.onLineClear(1 + (event % 4), { clearedRows: [y] });
-                else if (roll === 4) built.reactions.onTSpin({ piece: piece('T', column, y) });
+                else if (roll === 4) built.reactions.onTwist({ piece: piece('T', column, y) });
                 else if (roll === 5) built.reactions.onCombo(2 + (event % 6));
                 else built.reactions.onPerfectClear();
                 built.run(0.25);
@@ -1320,7 +1320,7 @@ describe('Verdant Hills effects director', () => {
             const { director, reactions, launched } = rig({ quality: 'Extreme' });
             LETTERS.slice(0, 6).forEach((letter) => reactions.launch(VERDANT_HILLS_PIECE_KITES[letter]));
             reactions.onPieceLock({ piece: piece(LETTERS[6], 3, 12) });
-            reactions.onTSpin({ piece: piece('T', 3, 12) });
+            reactions.onTwist({ piece: piece('T', 3, 12) });
             reactions.onLineClear(4, { clearedRows: [10, 11, 12, 13] });
             reactions.onPerfectClear();
             reactions.onLevelUp();
@@ -1723,7 +1723,7 @@ describe('Verdant Hills effects director', () => {
             expect(['a', 'b', 'c']).toContain(built.director.pick(['a', 'b', 'c']));
             built.reactions.onHardDrop({ distance: 15 });
             built.reactions.onPieceLock({ piece: piece('S', 3, 20) });
-            built.reactions.onTSpin({ piece: piece('T', 3, 12) });
+            built.reactions.onTwist({ piece: piece('T', 3, 12) });
             built.reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
             built.reactions.onCombo(6);
             built.reactions.onPerfectClear();
@@ -1750,7 +1750,7 @@ describe('Verdant Hills effects director', () => {
                 point, foot, heading, axis, windward, env, fields, front, pool,
             } = built.director;
             built.reactions.onPieceLock({ piece: piece('S', 3, 20) });
-            built.reactions.onTSpin({ piece: piece('T', 3, 12) });
+            built.reactions.onTwist({ piece: piece('T', 3, 12) });
             built.reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
             built.reactions.onCombo(6);
             built.reactions.onPerfectClear();
@@ -1785,7 +1785,7 @@ describe('Verdant Hills effects director', () => {
                     built.reactions.onPieceLock({ piece: piece(LETTERS[event % 7], column, y) });
                     if (random() < 0.5) built.reactions.onLineClear(1 + (event % 4), { clearedRows: [22] });
                 } else if (roll < 0.7) built.reactions.onCombo(2 + Math.floor(random() * 6));
-                else if (roll < 0.8) built.reactions.onTSpin({ piece: piece('T', column, 14) });
+                else if (roll < 0.8) built.reactions.onTwist({ piece: piece('T', column, 14) });
                 else if (roll < 0.9) built.reactions.onLevelUp();
                 else built.reactions.onPerfectClear();
                 built.run(0.5, measure);

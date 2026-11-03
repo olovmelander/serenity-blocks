@@ -21,7 +21,7 @@
  *   combo    each link opens a gap in the canopy: one counted pool of sunlight per link.
  *   release  the Set: the gaps close and a curtain of curls falls, sized by the chain's peak.
  *   B2B      the Sunshower: rain in the light and wet, glistening bark while the chain lives.
- *   T-spin   the Unwinding: a helical strip unwinds like an apple peel; amber beads well up.
+ *   twist   the Unwinding: a helical strip unwinds like an apple peel; amber beads well up.
  *   perfect  the Floor: the mist drains and the forest floor shows for the first time; settled
  *            after its clear, it is the crown on that clear (the canopy flares), never a new one.
  *   level    the Climb: the walkway rises a storey (12 m) and the giants slide down past us.
@@ -278,7 +278,7 @@ function emptyCounts() {
         clears: 0,
         lines: 0,
         quads: 0,
-        tspins: 0,
+        twists: 0,
         perfects: 0,
         chainSteps: 0,
         releases: 0,
@@ -366,7 +366,7 @@ export class RainbarkWorld {
             at: -1e6, player: 0, u: 0.5, rowTop: 19, rowBottom: 19, code: 7, color: null, hardDrop: false, distance: 0,
         };
         this.lastClear = {
-            at: -1e6, player: 0, lines: 0, combo: 0, cascade: 1, tspin: false, perfect: false, b2b: false,
+            at: -1e6, player: 0, lines: 0, combo: 0, cascade: 1, twist: false, perfect: false, b2b: false,
         };
         this.lastClear.rows = [];
         this.lastClear.rowCodes = [];
@@ -1052,7 +1052,7 @@ export class RainbarkWorld {
         C.lines = lines;
         C.combo = Math.max(0, Math.round(Number(context.combo) || 0));
         C.cascade = Math.max(1, Math.round(Number(context.cascade) || 1));
-        C.tspin = context.tspin === true;
+        C.twist = context.twist === true;
         C.perfect = context.perfect === true;
         C.b2b = context.b2b === true;
         C.rows = Array.isArray(context.rows) ? context.rows.slice(0, 4).map((r) => Number(r) || 0) : [];
@@ -1064,7 +1064,7 @@ export class RainbarkWorld {
         this.counts.clears += 1;
         this.counts.lines += lines;
         if (lines >= 4) this.counts.quads += 1;
-        if (C.tspin) this.counts.tspins += 1;
+        if (C.twist) this.counts.twists += 1;
         if (C.perfect) this.counts.perfects += 1;
         // Two sheet strips drop off each of the two near trunks per cleared row.
         this.sheds += lines * 4;
@@ -1085,7 +1085,7 @@ export class RainbarkWorld {
         // A perfect clear in its own clear's frame: the Floor opens over the clear.
         if (C.perfect) this.openFloor(t);
         if (lines >= 4) this.moultStart(t);
-        else if (C.tspin) this.unwind(t, C);
+        else if (C.twist) this.unwind(t, C);
         else this.shed(t, C);
     }
 
@@ -1114,7 +1114,7 @@ export class RainbarkWorld {
     }
 
     /**
-     * A T-spin that cleared nothing: half a turn of the Unwinding at the T, healing again in a few
+     * A twist that cleared nothing: half a turn of the Unwinding at the T, healing again in a few
      * seconds (it marks the spin, not the level).
      */
     onSpin(context = {}) {
@@ -1128,7 +1128,7 @@ export class RainbarkWorld {
     }
 
     /**
-     * The Unwinding (HELIX): a T-spin's helix on the T's side, from its top row down, one turn a
+     * The Unwinding (HELIX): a twist's helix on the T's side, from its top row down, one turn a
      * line (`turns` instead, when given); the freed strip falls as a corkscrew ribbon. Returns the
      * helix's slot (or null).
      */

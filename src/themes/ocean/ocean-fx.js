@@ -9,7 +9,7 @@
  *             drift   thrown, slowed by the water, carried by the current
  *             home    eased along a line to a point: a lock's light sinking to the reef
  *             bubble  rising, wobbling, growing as they climb, gone at the surface; a ring of
- *                     them (a t-spin) widens as it climbs
+ *                     them (a twist) widens as it climbs
  *             bead    rising slowly with the water's sway: the reef spawning
  *             puff    a soft cloud of sand thrown up where something lands
  *   motes   marine snow: specks hanging in the water, lit where a shaft crosses them; at night

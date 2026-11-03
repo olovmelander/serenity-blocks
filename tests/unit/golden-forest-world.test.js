@@ -1201,7 +1201,7 @@ describe('Golden Forest world in play', () => {
                 reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
                 reactions.onCombo(2);
             },
-            60: () => { reactions.onCombo(5); reactions.onTSpin({ piece: right }); },
+            60: () => { reactions.onCombo(5); reactions.onTwist({ piece: right }); },
             80: () => { reactions.onCombo(9); reactions.onBackToBack(); },
             100: () => { reactions.onPerfectClear(); reactions.onLevelUp(); },
             170: () => reactions.onGameOver(),
@@ -1643,7 +1643,7 @@ describe('Golden Forest world in play', () => {
         const { ripples } = world.lake;
         const reactions = new GoldenForestReactions({ quality: 'Minimal', rng: seededRandom(1) });
         reactions.onPieceLock({ piece: cell(1, 20) });
-        reactions.onTSpin({ piece: cell(1, 20) });
+        reactions.onTwist({ piece: cell(1, 20) });
         reactions.onLineClear(2, { clearedRows: [22, 23] });
         // Forty frames: the puff, the spiral and both jets have thrown all their sparks.
         for (let frame = 0; frame < 40; frame++) world.update(frame * STEP, STEP, reactions.update(STEP));

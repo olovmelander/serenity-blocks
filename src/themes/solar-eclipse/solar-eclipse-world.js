@@ -18,7 +18,7 @@
  *            moon slides off until one lunar valley lets the photosphere through, and daylight
  *            floods back for a breath) and a coronal mass ejection. Every clear drops a ring
  *            into the sun's own reflection; the diamond lays a glitter path down the water and
- *            sends shadow bands racing over the salt. A T-spin twists the corona and winds a
+ *            sends shadow bands racing over the salt. A twist twists the corona and winds a
  *            whirl into the mirror.
  *   onCombo  the chain is a longer exposure: the outer corona reaches further, the faint stars
  *            come out and earthshine lights the moon's face, and the water stills to glass. It
@@ -28,7 +28,7 @@
  *            with it, from the long wings of a quiet sun to the round crown of an active one.
  *
  * Nothing restarts under fast play (src/themes/shared/gameplay-surge.js): the corona's swell, the
- * chromosphere's flash, the lens's kick and shake and a T-spin's twist are Swells, so every hit
+ * chromosphere's flash, the lens's kick and shake and a twist's twist are Swells, so every hit
  * adds to what is still lit; the necklace ADDS pearls to the one still turning (a cascade lights
  * more and more of the limb until it closes into a ring); a second diamond feeds the one still
  * burning (the moon stays slid off, the glare flares again) instead of snapping the moon back;
@@ -123,7 +123,7 @@ const MOTE_FLIGHT_HARD = 0.55;
 const DIAMOND_OPEN = 0.38;
 const DIAMOND_HOLD = 0.55;
 const DIAMOND_CLOSE = 1.5;
-/** A T-spin's twist of the corona (radians at the limb) and how it rings down. */
+/** A twist's twist of the corona (radians at the limb) and how it rings down. */
 const TWIST = 1.0;
 const TWIST_DECAY = 1.5;
 /** Below this the twist has rung down (radians). */
@@ -258,7 +258,7 @@ export class SolarEclipseWorld {
          *   corona   the corona's swell on a lock's landing and a clear (u.surge)
          *   flashes  the chromosphere's flash (u.flash; `flash` is its reading this frame)
          *   shake    the lens's shake (radians); kick the post's fringe
-         *   twist    a T-spin's twist of the corona (× TWIST radians), wound in, ringing down
+         *   twist    a twist's twist of the corona (× TWIST radians), wound in, ringing down
          *   burst    the diamond's flare as the light breaks through (each re-flare adds)
          *   beads    the necklace's light (× BEAD_GAIN)
          */
@@ -851,7 +851,7 @@ export class SolarEclipseWorld {
             const deeper = 1 + 0.3 * Math.min(wave, 5);
             this.ripple(ex, ez, { strength: (big ? RING.great : RING.clear + RING.line * (lines - 1)) * deeper });
             if (big) this.ripple(ex, ez, { strength: RING.great * 0.7, start: time + 0.55 });
-            if (c.tspin) {
+            if (c.twist) {
                 this.ripple(ex, ez, {
                     strength: RING.whirl, kind: 1, turn: this.reduced ? 1.2 : 2.6, start: time + 0.05,
                 });
@@ -882,7 +882,7 @@ export class SolarEclipseWorld {
             this.flashes.hit(0.35, time);
             this.corona.hit(0.35, time);
         }
-        if (c.tspin) this.twist.hit(1, time);
+        if (c.twist) this.twist.hit(1, time);
         this.kick.hit(0.15 + lines * 0.1 + 0.05 * Math.min(wave, 4), time);
         this.surge.clear(c, time);
     }
@@ -906,7 +906,7 @@ export class SolarEclipseWorld {
         this.surge.crown(time);
     }
 
-    /** A T-spin that cleared nothing: a smaller twist of the corona and a whirl in the mirror. */
+    /** A twist that cleared nothing: a smaller twist of the corona and a whirl in the mirror. */
     onSpin() {
         const { time } = this;
         this.twist.hit(0.5, time);
@@ -1145,7 +1145,7 @@ export class SolarEclipseWorld {
         const exposure = 1 - (1 - this.exposure) * (1 - open);
         u.moon.value.set(moon[0], moon[1], MOON.ratio, exposure);
 
-        // A T-spin's twist rings down; another winds it further instead of starting again.
+        // A twist's twist rings down; another winds it further instead of starting again.
         const twist = this.twist.valueAt(time) * TWIST;
         u.twist.value = twist > TWIST_REST ? twist * (this.reduced ? 0.4 : 1) : 0;
 

@@ -182,12 +182,12 @@ describe('High Coast: a weak event after a strong one never cuts the light', () 
         expect(heights()).toBeGreaterThan(lifted);
     });
 
-    it('turns the fleet back from where it stands when a second T-spin comes mid-tack', () => {
+    it('turns the fleet back from where it stands when a second twist comes mid-tack', () => {
         const { world } = shared;
         begin(shared);
         const heel = () => world.parts.fleet.mesh.instanceMatrix.array.slice(0, 16);
         world.onClear({
-            lines: 2, combo: 1, tspin: true, rows: [18, 19],
+            lines: 2, combo: 1, twist: true, rows: [18, 19],
         });
         stepTo(shared, START + TIMING.tack * 0.5);
         const mid = heel();
@@ -198,7 +198,7 @@ describe('High Coast: a weak event after a strong one never cuts the light', () 
         const { scale } = world.parts.fleet.boats[0];
         const moved = Math.max(...mid.slice(0, 12).map((v, i) => Math.abs(v - after[i]))) / scale;
         expect(moved).toBeLessThan(0.05);
-        expect(world.counts).toMatchObject({ tspins: 1, spins: 1, clears: 1 });
+        expect(world.counts).toMatchObject({ twists: 1, spins: 1, clears: 1 });
     });
 });
 

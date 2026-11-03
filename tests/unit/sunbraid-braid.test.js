@@ -4,7 +4,7 @@
  *
  * The answers are still being tuned, so they are held as relations to the module's own constants
  * (BRAID_RATE, BRAID_EVENTS), never as numbers: the calm turn, the nudges (a lock's tick, a
- * T-spin's twist, a level's wind) that add exactly their step and never turn the suns back, the
+ * Twist's twist, a level's wind) that add exactly their step and never turn the suns back, the
  * chain that turns them faster and opens them, the breath and the conjunction that draw them
  * together, the dusk, and the determinism a capture's seek relies on.
  */
@@ -88,7 +88,7 @@ describe('Sunbraid braid: the calm turn', () => {
     });
 });
 
-describe('Sunbraid braid: nudges (a lock, a T-spin, a level)', () => {
+describe('Sunbraid braid: nudges (a lock, a twist, a level)', () => {
     /** The phase a nudged braid gains over a calm twin, sampled each frame until `until`. */
     function gainOf(nudge, until, t0 = 3) {
         const calm = stepTo(braidAt(0, P0), t0);
@@ -110,9 +110,9 @@ describe('Sunbraid braid: nudges (a lock, a T-spin, a level)', () => {
     const cases = [
         ['a lock tick', (b, t) => b.tick(false, t), tick.step, tick.ease],
         ['a hard-drop tick', (b, t) => b.tick(true, t), tick.hardStep, tick.ease],
-        ['a T-spin twist', (b, t) => b.twist(1, t), twist.step, twist.ease],
-        ['a T-spin double (two twists)', (b, t) => b.twist(2, t), 2 * twist.step, twist.gap + twist.ease],
-        ['a T-spin triple (three twists)', (b, t) => b.twist(3, t), 3 * twist.step, 2 * twist.gap + twist.ease],
+        ['a twist twist', (b, t) => b.twist(1, t), twist.step, twist.ease],
+        ['a twist double (two twists)', (b, t) => b.twist(2, t), 2 * twist.step, twist.gap + twist.ease],
+        ['a twist triple (three twists)', (b, t) => b.twist(3, t), 3 * twist.step, 2 * twist.gap + twist.ease],
         ['a level wind', (b, t) => b.levelUp(1, t), level.step, level.ease],
         ['two levels at once', (b, t) => b.levelUp(2, t), 2 * level.step, level.ease],
     ];

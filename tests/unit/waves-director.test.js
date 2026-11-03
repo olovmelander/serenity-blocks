@@ -39,9 +39,9 @@ describe('waves director: intake', () => {
             expect(EVENTS[event], event).toBeTruthy();
             expect(typeof director[handler], handler).toBe('function');
         }
-        // Everything the wave answers: locks, drops, clears, chains, T-spins, perfect clears, levels.
+        // Everything the wave answers: locks, drops, clears, chains, twists, perfect clears, levels.
         const heard = Object.keys(WAVES_EVENT_HANDLERS);
-        for (const event of ['PIECE_LOCK', 'HARD_DROP', 'LINE_CLEAR', 'COMBO', 'TSPIN', 'PERFECT_CLEAR', 'LEVEL_UP']) {
+        for (const event of ['PIECE_LOCK', 'HARD_DROP', 'LINE_CLEAR', 'COMBO', 'TWIST', 'PERFECT_CLEAR', 'LEVEL_UP']) {
             expect(heard, event).toContain(event);
         }
         expect(Object.isFrozen(WAVES_EVENT_HANDLERS)).toBe(true);
@@ -127,16 +127,16 @@ describe('waves director: intake', () => {
         expect(calls.combo[calls.combo.length - 1]).toEqual([0, 0]);
     });
 
-    it('carries T-spins, perfect clears and back-to-backs on the clear', () => {
+    it('carries twists, perfect clears and back-to-backs on the clear', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: T });
         director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.onB2B({ active: true });
         director.onPerfectClear({ depth: 1 });
         director.flush();
         expect(calls.clear[0]).toMatchObject({
-            lines: 2, tspin: true, b2b: true, perfect: true,
+            lines: 2, twist: true, b2b: true, perfect: true,
         });
         // An inactive B2B is not one.
         expect(director.onB2B({ active: false })).toBe(false);
@@ -145,7 +145,7 @@ describe('waves director: intake', () => {
         director.onLineClear({ lineCount: 1, clearedRows: [23], cascadeCount: 1 });
         director.flush();
         expect(calls.clear[1]).toMatchObject({
-            lines: 1, tspin: false, b2b: false, perfect: false,
+            lines: 1, twist: false, b2b: false, perfect: false,
         });
     });
 
@@ -170,11 +170,11 @@ describe('waves director: intake', () => {
         expect(calls.clear[2]).toMatchObject({ lines: 2, perfect: true, crown: false });
     });
 
-    it('turns a T-spin that cleared nothing into a spin, not a clear', () => {
+    it('turns a twist that cleared nothing into a spin, not a clear', () => {
         const { director, calls, sink } = makeDirector();
         sink.spin = vi.fn();
         director.onPieceLock({ piece: T });
-        director.onTSpin({ lineCount: 0 });
+        director.onTwist({ lineCount: 0 });
         director.flush();
         expect(calls.clear).toHaveLength(0);
         expect(sink.spin).toHaveBeenCalledOnce();
@@ -182,14 +182,14 @@ describe('waves director: intake', () => {
         // One that cleared lines rides on its clear.
         director.onPieceLock({ piece: T });
         director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.flush();
         expect(sink.spin).toHaveBeenCalledOnce();
-        expect(calls.clear[0]).toMatchObject({ lines: 2, tspin: true, crown: false });
+        expect(calls.clear[0]).toMatchObject({ lines: 2, twist: true, crown: false });
         // A sink that does not hear spins is no error.
         const deaf = makeDirector();
         deaf.director.onPieceLock({ piece: T });
-        deaf.director.onTSpin({ lineCount: 0 });
+        deaf.director.onTwist({ lineCount: 0 });
         expect(() => deaf.director.flush()).not.toThrow();
         expect(deaf.calls.clear).toHaveLength(0);
     });

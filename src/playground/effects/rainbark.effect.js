@@ -14,13 +14,13 @@
  *                            aim at its rects and the post's calm zones read them
  *   statsHud=0               with board=1: board only, no HUD mock
  *   locks=<n>                before anything else, play n locks (alternating lanes and pieces)
- *   event=lock|drop|clear|quad|tspin|perfect|levelUp|release|b2b|gameOver   fire an event...
+ *   event=lock|drop|clear|quad|twist|perfect|levelUp|release|b2b|gameOver   fire an event...
  *   eventAge=<s>             ...and show it <s> seconds later (default 0.4)
  *   eventLevel=<n>           levelUp: the new level (default level + 1)
- *   lines=<n>                clear/tspin: lines (1..4, default 2)
- *   row=<r>                  lock/drop/tspin: the piece's lowest row; clear: the lowest cleared
+ *   lines=<n>                clear/twist: lines (1..4, default 2)
+ *   row=<r>                  lock/drop/twist: the piece's lowest row; clear: the lowest cleared
  *                            row (default 9 for a lock, the floor for a clear)
- *   u=<0..1>                 lock/drop/tspin: the piece's column as a fraction (default 0.3)
+ *   u=<0..1>                 lock/drop/twist: the piece's column as a fraction (default 0.3)
  *   piece=I|O|T|S|Z|J|L      lock/drop: the shape (default T); turns=<quarter turns>;
  *   color=<hex>              its colour (default the piece's own)
  *   dist=<rows>              drop: how far it fell (default 14)
@@ -156,7 +156,7 @@ const clearedRows = (n, lowest = BOARD_GRID.rows - 1) => Array.from(
     (_, i) => Math.max(0, lowest - i) + BOARD_GRID.hiddenRows,
 );
 
-/** A looping script for the live demo (seconds into the loop): locks, clears, a chain, four lines, a T-spin. */
+/** A looping script for the live demo (seconds into the loop): locks, clears, a chain, four lines, a twist. */
 const DEMO_LOOP = 40;
 const DEMO_SCRIPT = [
     [1.0, 'lock', { u: 0.2, row: 19 }], [2.1, 'lock', { u: 0.75, row: 18 }],
@@ -167,7 +167,7 @@ const DEMO_SCRIPT = [
     [12.6, 'lock', { u: 0.15, row: 3 }], [13.6, 'lock', { u: 0.85, row: 17 }],
     [14.6, 'drop', { u: 0.35, row: 8, dist: 9 }], [15.6, 'lock', { u: 0.6, row: 16 }],
     [18.6, 'clear', { u: 0.95, lines: 4 }], [24.0, 'lock', { u: 0.45, row: 19 }],
-    [26.0, 'clear', { u: 0.25, lines: 4, b2b: true }], [30.0, 'tspin', {
+    [26.0, 'clear', { u: 0.25, lines: 4, b2b: true }], [30.0, 'twist', {
         u: 0.25, row: 18, lines: 2, b2b: true,
     }],
     [32.0, 'lock', { u: 0.5, row: 7 }], [34.0, 'lock', { u: 0.7, row: 12 }],
@@ -295,12 +295,12 @@ export function create({
             director.onPieceLock({ piece });
             return;
         }
-        if (verb === 'clear' || verb === 'tspin') {
+        if (verb === 'clear' || verb === 'twist') {
             const lines = Math.max(1, Math.min(4, Math.round(detail.lines ?? 2)));
-            const lowest = detail.row ?? (verb === 'tspin' ? 9 : BOARD_GRID.rows - 1);
-            const key = verb === 'tspin' ? 'T' : (detail.key || 'I');
+            const lowest = detail.row ?? (verb === 'twist' ? 9 : BOARD_GRID.rows - 1);
+            const key = verb === 'twist' ? 'T' : (detail.key || 'I');
             // The locking piece sits on the rows it clears.
-            director.onPieceLock({ piece: boardPiece(key, { u, row: lowest, turns: verb === 'tspin' ? 2 : 0 }) });
+            director.onPieceLock({ piece: boardPiece(key, { u, row: lowest, turns: verb === 'twist' ? 2 : 0 }) });
             const waves = Math.max(1, Math.round(detail.cascade ?? 1));
             for (let wave = 1; wave <= waves; wave++) {
                 if (wave > 1) director.onCombo({ comboCount: wave });
@@ -309,7 +309,7 @@ export function create({
                     clearedRows: wave === 1 ? clearedRows(lines, lowest) : clearedRows(1, lowest),
                     cascadeCount: wave,
                 });
-                if (wave === 1 && verb === 'tspin') director.onTSpin({ lineCount: lines });
+                if (wave === 1 && verb === 'twist') director.onTwist({ lineCount: lines });
                 if (wave === 1 && detail.b2b) director.onB2B({ active: true });
             }
             return;
@@ -336,8 +336,8 @@ export function create({
             });
         } else if (eventName === 'quad') {
             play('clear', { u, lines: 4, row: num(params, 'row', BOARD_GRID.rows - 1) });
-        } else if (eventName === 'tspin') {
-            play('tspin', { u, lines, row: num(params, 'row', 9) });
+        } else if (eventName === 'twist') {
+            play('twist', { u, lines, row: num(params, 'row', 9) });
         } else if (eventName === 'perfect') {
             play('perfect');
         } else if (eventName === 'levelUp') {

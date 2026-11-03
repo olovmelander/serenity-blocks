@@ -145,7 +145,7 @@ describe.each(TIERS)('Painted Ages shaders at %s', (quality) => {
             u: 0.7, rows: [9], color: PIECE_COLORS[6], hardDrop: true, distance: 12,
         });
         world.onClear({
-            lines: 4, rowCodes: Array.from({ length: 40 }, (_, i) => i % 8), tspin: true, combo: 3,
+            lines: 4, rowCodes: Array.from({ length: 40 }, (_, i) => i % 8), twist: true, combo: 3,
         });
         world.update({ time: 6, delta: 1 / 30 }, camera);
 

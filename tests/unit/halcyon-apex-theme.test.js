@@ -608,7 +608,7 @@ describe('Halcyon Apex theme: one node renderer on both backends', () => {
         expect(lastCall(world.onLock)[0].u).toBeCloseTo(0.8, 6);
         expect(world.onClear).toHaveBeenCalledOnce();
         expect(lastCall(world.onClear)[0]).toMatchObject({
-            lines: 4, rows: [19, 18, 17, 16], tspin: false, perfect: false, player: 0, screen: null,
+            lines: 4, rows: [19, 18, 17, 16], twist: false, perfect: false, player: 0, screen: null,
         });
         expect(world.onCombo).toHaveBeenLastCalledWith(1);
         // The level, with its ceremony, and remembered for a rebuild.
@@ -624,7 +624,7 @@ describe('Halcyon Apex theme: one node renderer on both backends', () => {
         expect(callOrder(post.update)).toBeLessThan(callOrder(post.render));
     });
 
-    it('crowns a four-line clear with the perfect clear that settles after it; turns on a bare T-spin', async () => {
+    it('crowns a four-line clear with the perfect clear that settles after it; turns on a bare twist', async () => {
         const { theme } = await startTheme({ quality: 'High' });
         const { world } = theme;
         eventBus.emit(EVENTS.HARD_DROP, { piece: I, distance: 12 });
@@ -639,9 +639,9 @@ describe('Halcyon Apex theme: one node renderer on both backends', () => {
         expect(world.onClear).toHaveBeenCalledOnce();
         expect(world.onCrown).toHaveBeenCalledOnce();
         expect(world.getState().counts).toMatchObject({ clears: 1, quads: 1, crowns: 1 });
-        // A T-spin that cleared nothing still turns the sanctuary a little.
+        // A twist that cleared nothing still turns the sanctuary a little.
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 0 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 0 });
         theme.stepFrame(48);
         expect(world.onSpin).toHaveBeenCalledOnce();
         expect(world.onClear).toHaveBeenCalledOnce();

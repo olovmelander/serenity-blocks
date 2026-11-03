@@ -846,13 +846,13 @@ export class ChromaticImpastoWorld {
     }
 
     /**
-     * Lines cleared. `lines` 1..4; `rows` = the cleared visible rows; `tspin`, `perfect`, `b2b`;
+     * Lines cleared. `lines` 1..4; `rows` = the cleared visible rows; `twist`, `perfect`, `b2b`;
      * `cascade` = the wave of the lock's cascade (each deeper wave flings harder); `combo` = the
      * true combo; `crown` = a perfect clear settled after its clear's last wave (no rows of its
      * own: the crown on the clear still playing, see crown()).
      */
     onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, b2b = false, cascade = 1, combo = 1, crown = false,
+        rows = null, lines = 1, twist = false, perfect = false, b2b = false, cascade = 1, combo = 1, crown = false,
         player = 0, screen = null,
     } = {}) {
         if (!this.u) return;
@@ -949,7 +949,7 @@ export class ChromaticImpastoWorld {
         }
         this.swing = Math.max(this.swing, 0.25 + 0.12 * n + 0.05 * depth);
         this.play.clear({
-            lines: n, cascade, combo, tspin, perfect, b2b,
+            lines: n, cascade, combo, twist, perfect, b2b,
         }, birth);
 
         if (quad) {
@@ -999,7 +999,7 @@ export class ChromaticImpastoWorld {
         }
         // A perfect clear named with its clear (the masterstroke laid with the quad).
         if (perfect) this.masterstroke(birth + 0.3, index);
-        if (tspin) {
+        if (twist) {
             // The canvas itself turns a notch, and the turn is drawn.
             if (!this.reducedMotion) this.twistTarget += 0.42;
             const round = this.ringRound(0.12);
@@ -1078,7 +1078,7 @@ export class ChromaticImpastoWorld {
         this.play.crown(t);
     }
 
-    /** A T-spin that cleared nothing: the canvas turns a little, and a short turn is drawn. */
+    /** A twist that cleared nothing: the canvas turns a little, and a short turn is drawn. */
     onSpin() {
         if (!this.u) return;
         const t = this.time;

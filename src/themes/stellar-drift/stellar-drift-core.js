@@ -95,7 +95,7 @@ export const MOTE_TRAIN = 0.5;
  * running: two surges and two shells can be in flight at once (a new one takes the place of the
  * one with least light left), and a second cyclone or a second blaze of the strand feeds the one
  * already burning (stellar-drift-world.js). Seconds each lives (a fed one lives longer):
- *   cyclone   a T-spin winds a storm into the cloud bands, its arms lit in the piece's colour
+ *   cyclone   a twist winds a storm into the cloud bands, its arms lit in the piece's colour
  *   surge     a chain's milestone sends two arcs of its light racing both ways round the rings
  *   strand    a back-to-back clear sets the rings' outer strand ablaze, braided and knotted
  *   shock     four lines, a perfect clear or a new level throw a torn shell of light off the giant

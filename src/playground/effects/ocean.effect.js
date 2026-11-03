@@ -16,7 +16,7 @@
  *   hour=<place>             hold the light at a place on the wheel of hours (0 = the high sun,
  *                            1 = the gold, ... 5 = first light; fractions are crossings)
  *   locks=<n>                before anything else, play n locks (colonies holding their colours)
- *   event=lock|drop|clear|quad|tspin|perfect|levelUp|break   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|perfect|levelUp|break   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>, eventLevel=<n> for levelUp); `break` ends the held combo
  *   pass=turtle|manta|whale|whaleFar   send for one of the large animals...
@@ -125,7 +125,7 @@ const DEMO_SCRIPT = [
     [29.0, 'lock', { rows: [19], u: 0.45 }], [30.0, 'lock', { rows: [19, 18], u: 0.7 }],
     [31.0, 'lock', { rows: [18], u: 0.25, hardDrop: true }],
     [31.0, 'clear', {
-        rows: [19, 18], lines: 2, tspin: true, combo: 1,
+        rows: [19, 18], lines: 2, twist: true, combo: 1,
     }],
     [33.0, 'lock', { rows: [19], u: 0.5 }],
 ];
@@ -240,7 +240,7 @@ export function create({
             });
         } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
-        else if (eventName === 'tspin') world.onClear({ rows: bottom(2), lines: 2, tspin: true });
+        else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
         else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
         else if (eventName === 'break') world.onCombo(0);

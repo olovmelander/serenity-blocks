@@ -1002,13 +1002,13 @@ export class StillwaterWorld {
     }
 
     /**
-     * Lines cleared. `lines` 1..4; `tspin`, `perfect`, `b2b`; `cascade` = the deepest wave of the
+     * Lines cleared. `lines` 1..4; `twist`, `perfect`, `b2b`; `cascade` = the deepest wave of the
      * lock's cascade (each wave arrives as a clear of its own), `combo` the true chain. A `crown`
-     * (a perfect clear settled after the lines it crowns) and a T-spin that cleared nothing come
+     * (a perfect clear settled after the lines it crowns) and a twist that cleared nothing come
      * with no lines.
      */
     onClear({
-        rows = null, lines = 1, perfect = false, tspin = false, b2b = false, crown = false, combo = 1, cascade = 1,
+        rows = null, lines = 1, perfect = false, twist = false, b2b = false, crown = false, combo = 1, cascade = 1,
         player = 0, screen = null,
     } = {}) {
         if (!this.u) return;
@@ -1016,7 +1016,7 @@ export class StillwaterWorld {
             this.crownClear();
             return;
         }
-        if (tspin && Number(lines) === 0) {
+        if (twist && Number(lines) === 0) {
             this.turnTarn();
             return;
         }
@@ -1053,7 +1053,7 @@ export class StillwaterWorld {
         // (The light swells as the answer comes: after the hush for four lines.)
         this.env.swell.hit((0.3 + 0.12 * n) * (1 + 0.15 * (depth - 1)), birth);
         const clear = {
-            time: birth, lines: n, cascade: depth, combo, tspin, perfect, b2b,
+            time: birth, lines: n, cascade: depth, combo, twist, perfect, b2b,
         };
         // (Four lines are answered as their hush ends: see answerQuad.)
         if (!quad) this.play.clear(clear, birth);
@@ -1131,7 +1131,7 @@ export class StillwaterWorld {
             }
         }
         if (perfect) this.lift = 1;
-        if (tspin) {
+        if (twist) {
             // A whirl where the piece went in: three rings on one another's heels.
             const at = this.lastLanding || [-3 * this.squeeze, -2];
             for (let i = 0; i < 3; i++) this.ring(at[0], at[1], this.time + i * 0.22, 0.8 - i * 0.15, rgb, 0.9 + i * 0.25);
@@ -1210,7 +1210,7 @@ export class StillwaterWorld {
         }
     }
 
-    /** A T-spin that cleared nothing: a small whirl where the piece went in, a breath of wind. */
+    /** A twist that cleared nothing: a small whirl where the piece went in, a breath of wind. */
     turnTarn() {
         const at = this.time;
         const spot = this.lastLanding || [-3 * this.squeeze, -2];
@@ -1218,8 +1218,8 @@ export class StillwaterWorld {
         for (let i = 0; i < 2; i++) this.ring(spot[0], spot[1], at + i * 0.22, 0.5 - i * 0.12, rgb, 0.8 + i * 0.2);
         this.gust = Math.max(this.gust, 0.35);
         this.env.eyes.hit(0.25, at);
-        this.play.punch.hit(SURGE_WEIGHTS.punch.tspin * 0.5, at);
-        this.play.level.hit(SURGE_WEIGHTS.heat.tspin * 0.45, at);
+        this.play.punch.hit(SURGE_WEIGHTS.punch.twist * 0.5, at);
+        this.play.level.hit(SURGE_WEIGHTS.heat.twist * 0.45, at);
     }
 
     /**

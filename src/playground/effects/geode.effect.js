@@ -13,9 +13,9 @@
  *   combo=<n>                hold a combo of n (the geode's charge, and the crown it has grown)
  *   level=<n>                rest on level n's mineral
  *   locks=<n>                before anything else, play n locks (the crystals holding their light)
- *   event=lock|drop|clear|quad|tspin|perfect|crown|spin|levelUp   fire a gameplay event (crown: a
+ *   event=lock|drop|clear|quad|twist|perfect|crown|spin|levelUp   fire a gameplay event (crown: a
  *                            quad crowned by its perfect clear, settled after it as physics sends
- *                            it; spin: a T-spin that clears nothing)...
+ *                            it; spin: a twist that clears nothing)...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
  *   demo=1                   live only: play a looping gameplay script
@@ -106,7 +106,7 @@ const DEMO_SCRIPT = [
     [26.0, 'lock', { rows: [19], u: 0.45 }], [27.0, 'lock', { rows: [19, 18], u: 0.7 }],
     [28.0, 'lock', { rows: [18], u: 0.25, hardDrop: true }],
     [28.0, 'clear', {
-        rows: [19, 18], lines: 2, tspin: true, combo: 1,
+        rows: [19, 18], lines: 2, twist: true, combo: 1,
     }],
     [30.0, 'lock', { rows: [19], u: 0.5 }],
 ];
@@ -197,7 +197,7 @@ export function create({
             });
         } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
-        else if (eventName === 'tspin') world.onClear({ rows: bottom(2), lines: 2, tspin: true });
+        else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
         else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
         else if (eventName === 'crown') {
             world.onClear({ rows: bottom(4), lines: 4 });

@@ -202,7 +202,7 @@ export function createGeodeUniforms(textures) {
         minerals: [],
         /** How far the dust has been carried round the axis and toward the viewer. */
         drift: uniform(0),
-        /** A T-spin turns the agate: the bands' phase round the axis. */
+        /** A twist turns the agate: the bands' phase round the axis. */
         twist: uniform(0),
         /** Rings of the crown grown (0..CROWN_RINGS, eased). */
         crown: uniform(0),

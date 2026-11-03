@@ -823,12 +823,12 @@ export class VesperWorld {
     }
 
     /**
-     * Lines cleared. `lines` 1..4; `tspin`, `perfect`; `cascade` the wave of one lock's cascade
+     * Lines cleared. `lines` 1..4; `twist`, `perfect`; `cascade` the wave of one lock's cascade
      * this is (2.. for the waves after the first: each builds on the last), `b2b` a back-to-back,
      * `combo` the chain it belongs to.
      */
     onClear({
-        rows = null, lines = 1, perfect = false, tspin = false, player = 0, screen = null,
+        rows = null, lines = 1, perfect = false, twist = false, player = 0, screen = null,
         cascade = 1, combo = 0, b2b = false,
     } = {}) {
         const { u: uniforms } = this;
@@ -875,7 +875,7 @@ export class VesperWorld {
         this.wingFlash = Math.max(this.wingFlash, 0.35 + 0.15 * n + 0.1 * deeper);
         // The pace of play (a four-line clear's lands as its hush lets go).
         this.gameplay.clear({
-            lines: n, cascade: deeper + 1, combo, tspin, perfect, b2b,
+            lines: n, cascade: deeper + 1, combo, twist, perfect, b2b,
         }, birth);
         // The hotter play runs, the more of its light a lily keeps through the swell: a chain
         // fills the lake with lanterns instead of emptying it at every clear.
@@ -985,7 +985,7 @@ export class VesperWorld {
             this.threadPulse(birth, 0, 0.6 + 0.12 * deeper, rgb);
             this.beatKick = Math.max(this.beatKick, 0.3 + 0.15 * deeper);
         }
-        if (tspin) {
+        if (twist) {
             this.storm = Math.max(this.storm, 0.85);
             this.beatKick = Math.max(this.beatKick, 0.6);
             if (!quad) this.strikeRing(this.time, 0.4);
@@ -1038,7 +1038,7 @@ export class VesperWorld {
         this.strikeRing(t, this.reducedMotion ? 0.3 : 0.6);
     }
 
-    /** A T-spin that cleared nothing: the wings stroke once and the silk rings, softly. */
+    /** A twist that cleared nothing: the wings stroke once and the silk rings, softly. */
     onSpin() {
         if (!this.u) return;
         const t = this.time;

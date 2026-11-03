@@ -283,8 +283,8 @@ describe('Blood Moon production lifecycle', () => {
         eventBus.emit(EVENTS.SETTINGS_CHANGED, { settings: { pieceLockRipple: false } });
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: {} });
         expect(scene.cue).toHaveBeenCalledTimes(1);
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 2 });
-        expect(scene.cue).toHaveBeenLastCalledWith('tspin', { lineCount: 2 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 2 });
+        expect(scene.cue).toHaveBeenLastCalledWith('twist', { lineCount: 2 });
         win.dispatch('settingsChanged', { backgroundComboEffects: false });
         expect(scene.setEffectsEnabled).toHaveBeenLastCalledWith(false);
         eventBus.emit(EVENTS.COMBO, { comboCount: 4 });

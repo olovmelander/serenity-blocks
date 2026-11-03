@@ -8,7 +8,7 @@
  * clock (a level-up steps it forward): morning, afternoon, a golden evening behind the fall,
  * sunset, the light night, dawn mist. A lock sends a breath through the meadow and lights its
  * piece's own flowers; a clear sends a surge down the rapids and a bloom across the knoll; a
- * chain raises the flood; four lines send the last of the ice out; a T-spin turns the pool in a
+ * chain raises the flood; four lines send the last of the ice out; a twist turns the pool in a
  * whirl; back-to-back sets the river glittering; a perfect clear brings whooper swans over, a
  * level-up cranes; game over the light falls to dusk.
  *

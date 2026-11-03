@@ -21,7 +21,7 @@
  *                 while the stones hum; the chain is the true combo (consecutive clearing
  *                 locks), held for as long as it lives — resting hands quiet the hum, they
  *                 do not break it. When a lock clears nothing the lattice lets go, link by link.
- *   t-spin        a pinwheel of light beside the board (a small one when nothing cleared).
+ *   twist        a pinwheel of light beside the board (a small one when nothing cleared).
  *   back-to-back  the skylight opens: light pours down the chimney and glitter falls through
  *                 it to the pool, more of it and in more colours for every difficult clear in
  *                 a row.
@@ -438,7 +438,7 @@ export class CrystalCaveReactions {
         this.streak = this.tracker.noteLineClear();
         if (first) {
             // A difficult clear in a row is answered by B2B; a plain one ends the run (unless the
-            // T-spin that comes right after it says it was one).
+            // Twist that comes right after it says it was one).
             if (this.maybePlain) this.b2bBroken = true;
             this.maybePlain = lines < 4;
             this.surge.clear({ lines, combo: this.streak }, this.time);
@@ -499,11 +499,11 @@ export class CrystalCaveReactions {
         return true;
     }
 
-    onTSpin(detail = {}) {
+    onTwist(detail = {}) {
         if (this.disposed) return false;
         const payload = unwrap(detail);
         const place = boardPlace(payload);
-        // A T-spin that cleared nothing still turns a little light; one that cleared is a full wheel.
+        // A twist that cleared nothing still turns a little light; one that cleared is a full wheel.
         const cleared = positiveCount(payload.lineCount ?? payload.lines, 4) > 0
             || !(Object.hasOwn(payload, 'lineCount') || Object.hasOwn(payload, 'lines'));
         const W = SURGE_WEIGHTS;
@@ -512,14 +512,14 @@ export class CrystalCaveReactions {
             this.excite(0.55);
             this.liftAll(0.3);
             this.light(0.6, SPIN_VIOLET);
-            this.surge.punch.hit(W.punch.tspin, this.time);
-            this.surge.level.hit(W.heat.tspin, this.time);
+            this.surge.punch.hit(W.punch.twist, this.time);
+            this.surge.level.hit(W.heat.twist, this.time);
         } else {
             this.excite(0.25);
             this.liftAll(0.12);
             this.light(0.22, SPIN_VIOLET);
-            this.surge.punch.hit(W.punch.tspin * 0.5, this.time);
-            this.surge.level.hit(W.heat.tspin * 0.3, this.time);
+            this.surge.punch.hit(W.punch.twist * 0.5, this.time);
+            this.surge.level.hit(W.heat.twist * 0.3, this.time);
         }
         this.cue('spin', {
             side: place && place.column >= 0.5 ? 1 : -1,

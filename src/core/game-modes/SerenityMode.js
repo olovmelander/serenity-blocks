@@ -24,7 +24,7 @@ const HUB_OPEN_ACTIONS = new Set(['toggleHub', 'toggleFullscreen', 'toggleContro
  * - The breathing guide, in a world of its own or over the theme (the camera breathes with you)
  * - Touch the world (a press, a tap, A on a pad) for a soft reaction; swipe to change theme
  * - Effects (E, the bar's chip): every reaction a theme has to play — a lock, a hard drop, line
- *   clears, combos, cascades, a T-spin, back-to-back, a perfect clear, a level up — on demand
+ *   clears, combos, cascades, a twist, back-to-back, a perfect clear, a level up — on demand
  * - The cursor and the world bar leave when you are still; the screen stays awake
  *
  * The on-screen parts live in src/ui/serenity-mode/ (SerenityModeUi); this class owns the

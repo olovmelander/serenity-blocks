@@ -9,7 +9,7 @@
  *   untwist from their spiral and spring open into a cupped star, a trumpet like a moonflower's,
  *   then settle with a little bounce, a band of light running out along them as they go. The
  *   head nods toward the eye (it is a flower even when it is a few pixels across), sways in the
- *   house's air, in the gusts and in a T-spin's turn. Its petals are translucent and glow from
+ *   house's air, in the gusts and in a twist's turn. Its petals are translucent and glow from
  *   within: brightest in the throat, where they are whitened by the heat of the heart, their
  *   colour deepening out toward the tips, the midrib, the veins and the thin margins catching
  *   more light, the outside of the cup lit through; a few fine stamens glow in the throat. Its
@@ -556,7 +556,7 @@ function bedHead(I, U) {
     const toEye = vec3(d.x, 0.0, d.y).div(max(length(d), 1e-3)).toVar();
     const side = vec3(toEye.z.negate(), 0.0, toEye.x).toVar();
     const H = I.size.mul(BLOOM.stem).toVar();
-    // The house's air, a gust and a T-spin's turn nod the flower on its stem.
+    // The house's air, a gust and a twist's turn nod the flower on its stem.
     const ph = I.seed.mul(40.0);
     const nod = sin(t.mul(1.05).add(ph)).mul(0.03)
         .add(sin(t.mul(2.6).add(ph.mul(0.7))).mul(U.gust).mul(0.1))

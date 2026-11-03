@@ -16,7 +16,7 @@
  * is the piece's colour (a hard drop knocks the giant); a clear sheds a girdle at each cleared
  * row, and the ring ripens into the row's own colours; four lines make the whole grove moult;
  * each step of a chain opens the canopy one counted pool of sunlight; the chain's end lets a
- * curtain of curls fall; back-to-backs bring a sunshower; a T-spin unwinds a helix with amber
+ * curtain of curls fall; back-to-backs bring a sunshower; a twist unwinds a helix with amber
  * beads; a perfect clear drains the mist to show the forest floor; a new level climbs a storey;
  * the end of a run lets the mist rise, and the next run brings the morning back.
  *

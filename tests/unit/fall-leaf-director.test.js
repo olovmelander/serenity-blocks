@@ -809,7 +809,7 @@ describe('Fall leaf director', () => {
             expect(small.sim.spawn.mock.calls.length).toBeLessThan(log[0].spawned);
         });
 
-        it.each([[-1], [1]])('spins a small vortex beside the card for a t-spin on side %i', (side) => {
+        it.each([[-1], [1]])('spins a small vortex beside the card for a twist on side %i', (side) => {
             const { stage, sim, director } = createDirector();
             const log = play(director, sim, [{
                 kind: 'spin', side, row: 0.4, strength: 0.8, duration: 1.7,
@@ -1051,7 +1051,7 @@ describe('Fall leaf director', () => {
             reactions.onPieceLock({ piece: { x: 1, y: 20, shape: [[1]] } });
             reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
             reactions.onCombo(12);
-            reactions.onTSpin();
+            reactions.onTwist();
             reactions.onPerfectClear();
             for (let frame = 0; frame < 90; frame++) {
                 const env = director.apply(reactions.update(STEP), STEP, { x: 1, z: 0, strength: 0.3 });

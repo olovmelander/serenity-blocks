@@ -5,7 +5,7 @@
  * keeps no hidden state. At rest the gliders soar between the thermals of their own flock, each
  * thermal circled one way, leaning into the turn. A glider painting a stroke flies the bow's own
  * circle at PAINT_DISTANCE (so its screen position lies on the bow, just inside the primary); the
- * T-spin helix and the level-up launch play in their windows; the long-wing keeps its station
+ * Twist helix and the level-up launch play in their windows; the long-wing keeps its station
  * while a back-to-back holds. Every glider joins its event from where it was and flies home after
  * it: nothing jumps, and its lean never snaps. An aloft share below one parks the rest out of
  * sight, the last of them fading rather than vanishing.
@@ -259,7 +259,7 @@ describe('rainbow terraces flock', () => {
         expect(home.every((q) => q.mode === 0 && q.trail === 0)).toBe(true);
     });
 
-    it('raises the T-spin\'s double helix in its window, joined from the flock and flown home after', () => {
+    it('raises the twist\'s double helix in its window, joined from the flock and flown home after', () => {
         const f = flock();
         const from = [-80, -10, -120];
         f.helix(from, 50);

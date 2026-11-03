@@ -139,16 +139,16 @@ describe('aether tides director: intake', () => {
         expect(calls.combo).toEqual([[6, 0]]);
     });
 
-    it('carries T-spins, perfect clears and back-to-backs on the clear', () => {
+    it('carries twists, perfect clears and back-to-backs on the clear', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: T });
         director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.onB2B({ active: true });
         director.onPerfectClear({ depth: 1 });
         director.flush();
         expect(calls.clear[0]).toMatchObject({
-            lines: 2, tspin: true, b2b: true, perfect: true,
+            lines: 2, twist: true, b2b: true, perfect: true,
         });
         // An inactive B2B is not one.
         expect(director.onB2B({ active: false })).toBe(false);
@@ -524,12 +524,12 @@ describe('aether tides director: what clears carry no lines of their own', () =>
         expect(calls.clear[0]).toMatchObject({ lines: 4, perfect: true, crown: false });
     });
 
-    it('resolves a T-spin that cleared nothing as a lineless spin', () => {
+    it('resolves a twist that cleared nothing as a lineless spin', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: T });
-        director.onTSpin({ lineCount: 0 });
+        director.onTwist({ lineCount: 0 });
         director.flush();
         expect(calls.clear).toHaveLength(1);
-        expect(calls.clear[0]).toMatchObject({ lines: 0, tspin: true, crown: false });
+        expect(calls.clear[0]).toMatchObject({ lines: 0, twist: true, crown: false });
     });
 });

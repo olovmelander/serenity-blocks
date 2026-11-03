@@ -32,7 +32,7 @@
  *                 unfurl around it
  *   cascade       every wave of one lock builds on the last: stronger jets, a ring further
  *                 out on the lake, and a front of wind of its own rolling after the last
- *   t-spin        a spinning garland beside the board (a T-spin that clears nothing too)
+ *   twist        a spinning garland beside the board (a twist that clears nothing too)
  *   back-to-back  the sun answers: a sunburst through the maypole's wreath and its road on
  *                 the water flaring, brighter for every one in a row
  *   perfect clear the crown on the clear still playing: the sunburst blazes, the maypole
@@ -652,13 +652,13 @@ export class SummerReactions {
         return true;
     }
 
-    onTSpin(detail = {}) {
+    onTwist(detail = {}) {
         if (this.disposed) return false;
         const payload = unwrap(detail);
         const place = boardPlace(payload);
-        // A T-spin that cleared lines adds its own weight to the clear just counted; one that
+        // A twist that cleared lines adds its own weight to the clear just counted; one that
         // cleared nothing is a little flourish of its own (the garland still spins).
-        if (positiveCount(payload.lineCount, 4) > 0) this.surge.tspin(this.time);
+        if (positiveCount(payload.lineCount, 4) > 0) this.surge.twist(this.time);
         else this.surge.spin(this.time);
         this.excite({
             gust: 0.45, warmth: 0.3, shafts: 0.3, glow: 0.6, shimmer: 0.5, flutter: 0.6,

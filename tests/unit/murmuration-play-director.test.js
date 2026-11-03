@@ -37,7 +37,7 @@ describe('swarm play director: intake', () => {
             expect(typeof director[handler], handler).toBe('function');
         }
         expect(Object.keys(SWARM_EVENT_HANDLERS)).toEqual(expect.arrayContaining([
-            'PIECE_LOCK', 'HARD_DROP', 'LINE_CLEAR', 'COMBO', 'TSPIN', 'B2B', 'PERFECT_CLEAR', 'LEVEL_UP',
+            'PIECE_LOCK', 'HARD_DROP', 'LINE_CLEAR', 'COMBO', 'TWIST', 'B2B', 'PERFECT_CLEAR', 'LEVEL_UP',
         ]));
     });
 
@@ -143,7 +143,7 @@ describe('swarm play director: intake', () => {
         director.flush();
         expect(calls.clear).toHaveLength(1);
         expect(calls.clear[0]).toMatchObject({
-            lines: 3, cascade: 2, combo: 1, player: 0, tspin: false, perfect: false, b2b: false, screen: null,
+            lines: 3, cascade: 2, combo: 1, player: 0, twist: false, perfect: false, b2b: false, screen: null,
         });
         expect(calls.clear[0].rows).toEqual([19, 18, 17]);
         expect(calls.combo).toEqual([[1, 0]]);
@@ -215,16 +215,16 @@ describe('swarm play director: intake', () => {
         expect(calls.combo).toEqual([[5, 0]]);
     });
 
-    it('carries T-spins, perfect clears and back-to-backs on the clear', () => {
+    it('carries twists, perfect clears and back-to-backs on the clear', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: T });
         director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.onB2B({ active: true });
         director.onPerfectClear({ depth: 1 });
         director.flush();
         expect(calls.clear[0]).toMatchObject({
-            lines: 2, tspin: true, b2b: true, perfect: true,
+            lines: 2, twist: true, b2b: true, perfect: true,
         });
         // An inactive B2B is not one.
         expect(director.onB2B({ active: false })).toBe(false);
@@ -232,12 +232,12 @@ describe('swarm play director: intake', () => {
         director.onPieceLock({ piece: T });
         director.onLineClear({ lineCount: 1, clearedRows: [23] });
         director.flush();
-        expect(calls.clear[1]).toMatchObject({ tspin: false, b2b: false, perfect: false });
-        // A T-spin names its own lines when the clear has not arrived yet; a perfect clear implies one.
+        expect(calls.clear[1]).toMatchObject({ twist: false, b2b: false, perfect: false });
+        // A twist names its own lines when the clear has not arrived yet; a perfect clear implies one.
         director.onPieceLock({ piece: T });
-        director.onTSpin({ lineCount: 3 });
+        director.onTwist({ lineCount: 3 });
         director.flush();
-        expect(calls.clear[2]).toMatchObject({ lines: 3, tspin: true });
+        expect(calls.clear[2]).toMatchObject({ lines: 3, twist: true });
         director.onPerfectClear({});
         director.flush();
         expect(calls.clear[3]).toMatchObject({ lines: 1, perfect: true });
@@ -267,28 +267,28 @@ describe('swarm play director: intake', () => {
         expect(calls.crown).toHaveLength(1);
     });
 
-    it('answers a T-spin that cleared nothing where the piece locked', () => {
+    it('answers a twist that cleared nothing where the piece locked', () => {
         const { director, calls, sink } = makeDirector();
         calls.spin = [];
         sink.spin = vi.fn((c) => calls.spin.push({ ...c, rows: [...c.rows] }));
         director.onPieceLock({ piece: T });
-        director.onTSpin({ lineCount: 0 });
+        director.onTwist({ lineCount: 0 });
         director.flush();
         expect(calls.lock).toHaveLength(1);
         expect(calls.clear).toHaveLength(0);
         expect(calls.spin).toHaveLength(1);
         expect(calls.spin[0]).toMatchObject({ player: 0, rows: calls.lock[0].rows, u: calls.lock[0].u });
-        // A T-spin that clears lines is a clear, not a spin.
+        // A twist that clears lines is a clear, not a spin.
         director.onPieceLock({ piece: T });
         director.onLineClear({ lineCount: 2, clearedRows: [23, 22] });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.flush();
         expect(calls.spin).toHaveLength(1);
-        expect(calls.clear[0]).toMatchObject({ lines: 2, tspin: true });
+        expect(calls.clear[0]).toMatchObject({ lines: 2, twist: true });
         // A sink without `spin` hears nothing more than the lock.
         const plain = makeDirector();
         plain.director.onPieceLock({ piece: T });
-        plain.director.onTSpin({ lineCount: 0 });
+        plain.director.onTwist({ lineCount: 0 });
         expect(() => plain.director.flush()).not.toThrow();
         expect(plain.calls.clear).toHaveLength(0);
     });
@@ -378,7 +378,7 @@ describe('swarm play director: intake', () => {
             director.onHardDrop(undefined);
             director.onLineClear({ lineCount: NaN, clearedRows: [NaN, 'x'] });
             director.onCombo(null);
-            director.onTSpin(undefined);
+            director.onTwist(undefined);
             director.onLevelUp({});
             director.flush();
         }).not.toThrow();
@@ -408,10 +408,10 @@ describe('swarm play director: settings and resets', () => {
         director.flush();
         director.onPieceLock({ piece: I });
         director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20] });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.configure({ enabled: false });
         expect(calls.combo[calls.combo.length - 1]).toEqual([0, 0]);
-        const intakes = ['onPieceLock', 'onHardDrop', 'onLineClear', 'onCombo', 'onTSpin', 'onB2B', 'onPerfectClear'];
+        const intakes = ['onPieceLock', 'onHardDrop', 'onLineClear', 'onCombo', 'onTwist', 'onB2B', 'onPerfectClear'];
         for (const intake of intakes) {
             expect(director[intake]({ piece: I, lineCount: 1, position: { x: 1, y: 1 } }), intake).toBe(false);
         }

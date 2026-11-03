@@ -177,34 +177,34 @@ describe('tornado director: intake', () => {
         expect(calls.combo).toEqual([[1, 0]]);
     });
 
-    it('hands a T-spin that cleared nothing to the sink on its own', () => {
+    it('hands a twist that cleared nothing to the sink on its own', () => {
         const { director, calls, sink } = makeDirector();
-        sink.tspin = vi.fn();
+        sink.twist = vi.fn();
         director.onPieceLock({ piece: T });
-        director.onTSpin({ lineCount: 0 });
+        director.onTwist({ lineCount: 0 });
         director.flush();
-        expect(sink.tspin).toHaveBeenCalledOnce();
-        expect(sink.tspin).toHaveBeenCalledWith(0);
+        expect(sink.twist).toHaveBeenCalledOnce();
+        expect(sink.twist).toHaveBeenCalledWith(0);
         expect(calls.clear).toHaveLength(0);
-        // A T-spin that cleared lines rides on its clear instead.
+        // A twist that cleared lines rides on its clear instead.
         director.onPieceLock({ piece: T });
         director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.flush();
-        expect(sink.tspin).toHaveBeenCalledOnce();
-        expect(calls.clear[0]).toMatchObject({ tspin: true, lines: 2, crown: false });
+        expect(sink.twist).toHaveBeenCalledOnce();
+        expect(calls.clear[0]).toMatchObject({ twist: true, lines: 2, crown: false });
     });
 
-    it('carries T-spins, perfect clears and back-to-backs on the clear', () => {
+    it('carries twists, perfect clears and back-to-backs on the clear', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: T });
         director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.onB2B({ active: true });
         director.onPerfectClear({ depth: 1 });
         director.flush();
         expect(calls.clear[0]).toMatchObject({
-            lines: 2, tspin: true, b2b: true, perfect: true,
+            lines: 2, twist: true, b2b: true, perfect: true,
         });
         // An inactive B2B is not one.
         expect(director.onB2B({ active: false })).toBe(false);

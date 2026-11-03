@@ -418,7 +418,7 @@ export function* bakeTerrainGeometrySteps(field, { tier, shadowDir }) {
 // ── Sand material ───────────────────────────────────────────────────────────────
 
 /**
- * Drum rings (piece locks, cascade waves, a T-spin's turn) and the geysers' rings: (x, z, t0,
+ * Drum rings (piece locks, cascade waves, a twist's turn) and the geysers' rings: (x, z, t0,
  * strength). A new pulse takes the slot with the least light left, so a quick hand's beats
  * stand as a train of rings instead of cutting each other off.
  */

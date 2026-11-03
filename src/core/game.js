@@ -1319,9 +1319,9 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks, timing 
     comboState.sourceColor = themedColor;
     comboState.sourcePiece = lockedPieceSnapshot.shapeKey;
     comboState.sequence = gameState.garbageAttackSequence++;
-    // T-spin 3-corner detection: must be a T-piece, last action must have been a rotation,
+    // Twist 3-corner detection: must be a T-piece, last action must have been a rotation,
     // and at least 3 of the 4 diagonal corners of the 3×3 bounding box must be filled.
-    comboState.tSpin = false;
+    comboState.twist = false;
     if (lockedPieceSnapshot.shapeKey === 'T' && gameState.lastMoveWasRotation) {
         const tx = lockedPieceSnapshot.x;
         const ty = lockedPieceSnapshot.y;
@@ -1336,7 +1336,7 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks, timing 
             }
         }
         if (filledCorners >= 3) {
-            comboState.tSpin = true;
+            comboState.twist = true;
         }
     }
     gameState.comboState = comboState;

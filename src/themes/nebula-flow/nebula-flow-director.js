@@ -3,15 +3,15 @@
  *
  * Renderer-free, DOM-free, bus-free. The canonical gameplay events are delivered synchronously
  * inside the simulation tick, several per lock (HARD_DROP, PIECE_LOCK, then LINE_CLEAR / COMBO /
- * TSPIN / PERFECT_CLEAR once per cascade wave), so every on*() handler only STAGES numbers into
+ * TWIST / PERFECT_CLEAR once per cascade wave), so every on*() handler only STAGES numbers into
  * one of five preallocated player slots. flush() — called first in the theme's frame — resolves
  * each pending slot into at most one `lock` and one `clear` for the sink:
  *
  *   sink.lock({ player, rows, u, hardDrop, color, shape, cells, screen })
- *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
+ *   sink.clear({ player, rows, lines, combo, cascade, twist, perfect, b2b, screen })
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.crown({ player })     a perfect clear that settled after its clear (no rows of its own)
- *   sink.spin({ player })      a T-spin that cleared nothing
+ *   sink.spin({ player })      a twist that cleared nothing
  *   sink.levelUp(level)
  *
  * What the nursery (NebulaFlowWorld) does with each of them:
@@ -27,7 +27,7 @@
  *            of the piece that made it; at 0 the vortex lets go.
  *   four     (lines 4, or a perfect clear) the nursery holds its breath, then the great star is
  *            born in the head of the tallest pillar.
- *   T-spin   the whole flow twists round the board and springs back (a little, clearing nothing).
+ *   twist   the whole flow twists round the board and springs back (a little, clearing nothing).
  *   crown    physics sends PERFECT_CLEAR ~360 ms after the clear's last wave, in a frame of its
  *            own: it crowns the great star that clear kindled — never a second clear (with no
  *            sink.crown it falls back to a one-line perfect clear, as before).
@@ -70,7 +70,7 @@ export const NEBULA_FLOW_EVENT_HANDLERS = Object.freeze({
     HARD_DROP: 'onHardDrop',
     LINE_CLEAR: 'onLineClear',
     COMBO: 'onCombo',
-    TSPIN: 'onTSpin',
+    TWIST: 'onTwist',
     B2B: 'onB2B',
     PERFECT_CLEAR: 'onPerfectClear',
     LEVEL_UP: 'onLevelUp',
@@ -120,7 +120,7 @@ function createSlot() {
         clearRows: new Int16Array(MAX_ROWS),
         clearRowCount: 0,
         explicitCombo: -1,
-        tspin: false,
+        twist: false,
         perfect: false,
         b2b: false,
         /** A perfect clear with no rows of its own this frame (the crown on an earlier clear). */
@@ -146,7 +146,7 @@ function clearPending(slot) {
     slot.cascade = 1;
     slot.clearRowCount = 0;
     slot.explicitCombo = -1;
-    slot.tspin = false;
+    slot.twist = false;
     slot.perfect = false;
     slot.b2b = false;
     slot.crown = false;
@@ -262,7 +262,7 @@ export class NebulaFlowDirector {
         };
         this._cells = [0, 0, 0, 0, 0, 0, 0, 0];
         this._clear = {
-            player: 0, rows: [], lines: 1, combo: 1, cascade: 1, tspin: false, perfect: false, b2b: false, screen: null,
+            player: 0, rows: [], lines: 1, combo: 1, cascade: 1, twist: false, perfect: false, b2b: false, screen: null,
         };
         this._screen = { x: 0.5, y: 0.5 };
         this._moment = { player: 0 };
@@ -386,13 +386,13 @@ export class NebulaFlowDirector {
         return true;
     }
 
-    onTSpin(event) {
+    onTwist(event) {
         if (!this.enabled) return false;
         const payload = event || EMPTY;
         const slot = this.slotFor(payload);
         if (!slot) return false;
         slot.pending = true;
-        slot.tspin = true;
+        slot.twist = true;
         const lines = Math.max(0, Math.min(MAX_ROWS, Math.trunc(finite(payload.lineCount, 0))));
         if (lines > slot.lines) slot.lines = lines;
         return true;
@@ -476,8 +476,8 @@ export class NebulaFlowDirector {
                     sink.crown(this._moment);
                 } else slot.lines = 1;
             }
-            // a T-spin that cleared nothing
-            if (slot.tspin && slot.lines === 0 && sink?.spin) {
+            // a twist that cleared nothing
+            if (slot.twist && slot.lines === 0 && sink?.spin) {
                 this._moment.player = slot.player;
                 sink.spin(this._moment);
             }
@@ -489,7 +489,7 @@ export class NebulaFlowDirector {
                 c.lines = slot.lines;
                 c.combo = Math.max(1, combo);
                 c.cascade = slot.cascade;
-                c.tspin = slot.tspin;
+                c.twist = slot.twist;
                 c.perfect = slot.perfect;
                 c.b2b = slot.b2b;
                 c.screen = screen;

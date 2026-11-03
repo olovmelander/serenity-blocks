@@ -88,7 +88,7 @@ this.eventUnsubscribers.push(
   eventBus.on(EVENTS.PIECE_LOCK,   (d) => allow() && this.runtime.pulse('pieceLock',   this.mapLock(d?.piece))),
   eventBus.on(EVENTS.COMBO,        (d) => allow() && this.runtime.pulse('combo',        { count: d?.comboCount ?? d?.combo ?? 0 })),
   eventBus.on(EVENTS.LINE_CLEAR,   (d) => allow() && this.runtime.pulse('lineClear',    { lines: d?.lineCount ?? 0, cascade: d?.cascadeCount ?? 1, rows: d?.clearedRows })),
-  eventBus.on(EVENTS.TSPIN,        (d) => allow() && this.runtime.pulse('tspin',        { lines: d?.lineCount ?? 0 })),
+  eventBus.on(EVENTS.TWIST,        (d) => allow() && this.runtime.pulse('twist',        { lines: d?.lineCount ?? 0 })),
   eventBus.on(EVENTS.B2B,          (d) => allow() && this.runtime.pulse('b2b',          { active: !!d?.active })),
   eventBus.on(EVENTS.PERFECT_CLEAR,(d) => allow() && this.runtime.pulse('perfectClear', { depth: d?.depth ?? 1 })),
   eventBus.on(EVENTS.HARD_DROP,    (d) => allow() && this.runtime.pulse('hardDrop',     this.mapLock(d?.piece))), // defensive

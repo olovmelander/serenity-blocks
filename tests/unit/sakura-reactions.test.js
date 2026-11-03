@@ -181,7 +181,7 @@ describe('Sakura reaction director', () => {
                 reactions.onPieceLock({ piece });
                 reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
                 reactions.onCombo(9);
-                reactions.onTSpin({ piece });
+                reactions.onTwist({ piece });
                 reactions.onBackToBack();
                 reactions.onPerfectClear();
                 reactions.onLevelUp();
@@ -980,10 +980,10 @@ describe('Sakura reaction director', () => {
     });
 
     describe('flourishes', () => {
-        it('answers a t-spin with a spiral beside the piece and a shooting star', () => {
+        it('answers a twist with a spiral beside the piece and a shooting star', () => {
             const spin = (payload) => {
                 const reactions = create();
-                expect(reactions.onTSpin(payload)).toBe(true);
+                expect(reactions.onTwist(payload)).toBe(true);
                 expect(kindsOf(reactions.frame)).toEqual(['spin', 'star']);
                 return { frame: reactions.frame, spiral: emittersOf(reactions.frame, 'spin')[0] };
             };
@@ -1196,7 +1196,7 @@ describe('Sakura reaction director', () => {
             clearingLock(reactions, 4);
             clearingLock(reactions, 2);
             reactions.onCombo(14);
-            reactions.onTSpin({ piece: cell(1, 20) });
+            reactions.onTwist({ piece: cell(1, 20) });
             reactions.onBackToBack();
             reactions.onPerfectClear();
             reactions.onLevelUp();
@@ -1250,7 +1250,7 @@ describe('Sakura reaction director', () => {
                     () => reactions.onPieceLock({ piece: cell(2, 20) }),
                     () => reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] }),
                     () => reactions.onCombo(9),
-                    () => reactions.onTSpin({ piece: cell(7, 10) }),
+                    () => reactions.onTwist({ piece: cell(7, 10) }),
                     () => reactions.onPerfectClear(),
                     () => reactions.onLevelUp(),
                     () => reactions.onHardDrop({ distance: 12 }),
@@ -1394,7 +1394,7 @@ describe('Sakura reaction director', () => {
             expect(reactions.onPieceLock({ piece: cell(1, 20) })).toBe(false);
             expect(reactions.onLineClear(4)).toBe(false);
             expect(reactions.onCombo(8)).toBe(false);
-            expect(reactions.onTSpin()).toBe(false);
+            expect(reactions.onTwist()).toBe(false);
             expect(reactions.onBackToBack()).toBe(false);
             expect(reactions.onPerfectClear()).toBe(false);
             expect(reactions.onLevelUp()).toBe(false);
@@ -1429,7 +1429,7 @@ describe('Sakura reaction director', () => {
                 reactions.onPieceLock({ piece: cell(1, 20) });
                 reactions.onLineClear(4);
                 reactions.onCombo(7);
-                reactions.onTSpin();
+                reactions.onTwist();
                 return advance(reactions, 0.4);
             };
             expect(play(11)).toEqual(play(11));
@@ -1573,11 +1573,11 @@ describe('Sakura reaction director', () => {
             expect(advance(reactions, 20).corona).toBeLessThan(0.005);
         });
 
-        it('shows a T-spin that cleared nothing as a smaller flourish', () => {
+        it('shows a twist that cleared nothing as a smaller flourish', () => {
             const cleared = create();
-            cleared.onTSpin({ lineCount: 2, piece: cell(6, 20) });
+            cleared.onTwist({ lineCount: 2, piece: cell(6, 20) });
             const empty = create();
-            empty.onTSpin({ lineCount: 0, piece: cell(6, 20) });
+            empty.onTwist({ lineCount: 0, piece: cell(6, 20) });
             const spin = (frame) => emittersOf(frame, 'spin')[0];
             expect(spin(empty.frame).strength).toBeGreaterThan(0);
             expect(spin(empty.frame).strength).toBeLessThan(spin(cleared.frame).strength);

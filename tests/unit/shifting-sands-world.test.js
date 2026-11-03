@@ -72,10 +72,10 @@ function advance(world, camera, to, dt = 1 / 30) {
 
 /**
  * The tray's Fever, as the bus sends it: twelve hard-dropped locks 0.64 s apart, each clearing
- * (singles into triples, a T-spin, a four-wave cascade), ending in a quad and its perfect clear.
+ * (singles into triples, a twist, a four-wave cascade), ending in a quad and its perfect clear.
  */
 function fever(world, camera, start) {
-    const plan = [1, 1, 2, 1, 2, 2, 3, 'tspin', 2, 'cascade', 3, 4];
+    const plan = [1, 1, 2, 1, 2, 2, 3, 'twist', 2, 'cascade', 3, 4];
     let t = start;
     plan.forEach((step, n) => {
         if (n > 0) t += 0.64;
@@ -90,9 +90,9 @@ function fever(world, camera, start) {
                 world.onCombo(w);
                 world.onLineClear(w % 3 === 0 ? 2 : 1, { cascade: w });
             }
-        } else if (step === 'tspin') {
+        } else if (step === 'twist') {
             world.onLineClear(2, { cascade: 1 });
-            world.onTSpin(2);
+            world.onTwist(2);
         } else {
             world.onLineClear(step, { cascade: 1 });
         }
@@ -162,8 +162,8 @@ describe('shifting sands world', () => {
         world.onPieceLock();
         world.onCombo(5);
         world.onLineClear(2);
-        world.onTSpin(0);
-        world.onTSpin(2);
+        world.onTwist(0);
+        world.onTwist(2);
         world.onBackToBack();
         world.onLineClear(4);
         world.onPerfectClear();

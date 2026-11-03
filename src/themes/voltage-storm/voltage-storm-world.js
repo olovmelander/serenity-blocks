@@ -26,7 +26,7 @@
  *            strikes the hero tower with five return strokes, every other tower is struck in
  *            turn, sheet lightning runs out through the cloud and the picture ripples. A perfect
  *            clear on a frame of its own crowns it: the whole field lets go of its charge.
- *   T-spin   the cloud over the hero tower winds up and springs back, and an arc climbs the mast.
+ *   twist   the cloud over the hero tower winds up and springs back, and an arc climbs the mast.
  *   level    the storm's light steps one palette on; and by itself, level or no level, it drifts
  *            slowly round the same wheel of six palettes as the clock runs.
  *
@@ -1025,12 +1025,12 @@ export class VoltageStormWorld {
     }
 
     /**
-     * Lines cleared. `lines` 1..4; `tspin`, `perfect`, `b2b` (the second difficult clear in a
+     * Lines cleared. `lines` 1..4; `twist`, `perfect`, `b2b` (the second difficult clear in a
      * row); `cascade` = which wave of one lock's cascade this is (1: the lock's own clear);
      * `combo` = the true combo; `rows` = the visible rows that went.
      */
     onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, b2b = false, cascade = 1, combo = 1,
+        rows = null, lines = 1, twist = false, perfect = false, b2b = false, cascade = 1, combo = 1,
         player = 0, screen = null,
     } = {}) {
         if (!this.u || !this.bolts || !this.towers.length) return;
@@ -1046,10 +1046,10 @@ export class VoltageStormWorld {
         const hot = smooth(0.12, 0.85, before);
         const keep = KEEP_MAX * hot;
         this.pace.clear({
-            lines: n, cascade: wave, combo, tspin, perfect, b2b,
+            lines: n, cascade: wave, combo, twist, perfect, b2b,
         }, quad ? now + HUSH_HOLD : now);
         if (b2b) this.b2bRun += 1;
-        else if (quad || tspin) this.b2bRun = 0;
+        else if (quad || twist) this.b2bRun = 0;
 
         // ── The cleared rows discharge out of both edges of the card ──
         const board = boardFor(this.layout, player);
@@ -1179,7 +1179,7 @@ export class VoltageStormWorld {
                 this.ripplePush((this.reducedMotion ? 0.15 : 0.5) + 0.1 * run);
             });
         }
-        if (tspin) {
+        if (twist) {
             // The cell winds up over the hero tower and an arc climbs its mast.
             this.twistVelocity += 3.2;
             this.climbMast(0.8, 3, 2.6);
@@ -1189,7 +1189,7 @@ export class VoltageStormWorld {
         this.counts.clears += 1;
     }
 
-    /** An arc climbs the hero tower's mast from the water to its electrode (a T-spin). */
+    /** An arc climbs the hero tower's mast from the water to its electrode (a twist). */
     climbMast(power, strokes, width) {
         const hero = this.towers[0];
         if (!hero || !this.bolts) return;
@@ -1248,8 +1248,8 @@ export class VoltageStormWorld {
         this.counts.crowns += 1;
     }
 
-    /** A T-spin that cleared nothing: the cell turns a little over the hero, a small arc climbs its mast. */
-    onTSpin() {
+    /** A twist that cleared nothing: the cell turns a little over the hero, a small arc climbs its mast. */
+    onTwist() {
         if (!this.u || !this.bolts || !this.towers.length) return;
         this.twistVelocity += 1.4;
         this.climbMast(0.45, 2, 1.9);

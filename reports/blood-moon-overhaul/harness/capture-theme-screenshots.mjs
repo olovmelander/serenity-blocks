@@ -346,7 +346,7 @@ Options:
 /** Report-only stress: retain the pinned scene time while advancing event clocks. */
 function installBurstStressPage() {
     window.__BLOOD_MOON_BURST_STRESS__?.stop?.();
-    const kinds = ['quad', 'tspin', 'perfectClear'];
+    const kinds = ['quad', 'twist', 'perfectClear'];
     const intervalMs = 900;
     const visits = [];
     let theme = null;

@@ -286,7 +286,7 @@ export function createStellarUniforms(textures) {
         speed: uniform(0.2),
         /** The share of light's speed the sky is shown at: 0 at rest → 0.9 in a long chain. */
         warp: uniform(0),
-        /** The canyon winds round the course (a T-spin) and springs back: radians per unit of depth. */
+        /** The canyon winds round the course (a twist) and springs back: radians per unit of depth. */
         twist: uniform(0),
         /** Gain on every light: a four-line clear holds the drive's breath (→ 0.1). */
         breath: uniform(1),

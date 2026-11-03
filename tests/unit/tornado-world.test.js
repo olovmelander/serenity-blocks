@@ -444,13 +444,13 @@ describe('TornadoWorld build-up', () => {
         expect(reduced).toBeGreaterThan(0.95);
     });
 
-    it('twists the funnel up for a T-spin that cleared nothing', () => {
+    it('twists the funnel up for a twist that cleared nothing', () => {
         const { world, camera } = makeWorld();
         step(world, camera, world.time, world.time + 0.5);
         const s0 = world.u.spin.value;
         step(world, camera, world.time, world.time + 0.5);
         const calm = world.u.spin.value - s0;
-        world.onTSpin();
+        world.onTwist();
         const s1 = world.u.spin.value;
         step(world, camera, world.time, world.time + 0.5);
         expect(world.u.spin.value - s1).toBeGreaterThan(calm * 1.5);

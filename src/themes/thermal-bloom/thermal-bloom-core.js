@@ -1358,7 +1358,7 @@ export const VAPOUR_ROWS_PER = 6;
  * dome   the Iris's shell of steam: wide and low, densest in its skin, lit from below turquoise
  *        over the water and apricot over the mats, torn by the gusts
  * puff   a ball of steam swelling as it rises (a lock's boil-over, chuffs, a clear's lift)
- * devil  a spinning column (the T-spin's steam devils)
+ * devil  a spinning column (the twist's steam devils)
  * spray  a cloud of falling water drops: white, forward-scattering, the bow in it
  */
 /** How fast billows climb a body that names no speed of its own (m/s). */

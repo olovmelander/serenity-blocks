@@ -13,7 +13,7 @@
  *   combo=<n>                hold a chain of n (the hall's heat)
  *   level=<n>                rest in level n's alloy (a step on top of the clock's: t=<s> shows
  *                            the alloy the clock has poured by then)
- *   event=lock|drop|clear|quad|tspin|perfect|levelUp|break   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|perfect|levelUp|break   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
  *   demo=1                   live only: play a looping gameplay script
@@ -102,7 +102,7 @@ const DEMO_SCRIPT = [
     [26.0, 'lock', { rows: [19], u: 0.45 }], [27.0, 'lock', { rows: [19, 18], u: 0.7 }],
     [28.0, 'lock', { rows: [18], u: 0.25, hardDrop: true }],
     [28.0, 'clear', {
-        rows: [19, 18], lines: 2, tspin: true, combo: 1,
+        rows: [19, 18], lines: 2, twist: true, combo: 1,
     }],
     [30.5, 'lock', { rows: [19], u: 0.5 }],
 ];
@@ -201,9 +201,9 @@ export function create({
             });
         } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines, combo });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4, combo });
-        else if (eventName === 'tspin') {
+        else if (eventName === 'twist') {
             world.onClear({
-                rows: bottom(2), lines: 2, tspin: true, combo,
+                rows: bottom(2), lines: 2, twist: true, combo,
             });
         } else if (eventName === 'perfect') {
             world.onClear({

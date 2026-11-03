@@ -99,9 +99,9 @@ Keep the `reflector()`. Add: (a) **bioluminescent flow noise** — animated mage
 ### 2-F. LOCK-PIECE & COMBO EFFECTS (WebGPU particles are key)
 We already forward gameplay events to `runtime.pulse(kind,payload)`. Wire real effects:
 1. **Water-ring pulses** (highest ROI — our scene ≈ halcyon's): copy the `uRing` `vec4` pool + `ringHeight`/`ringGlow` into the lake material; `spawnRing(x,z,amp)` from `applyPulse('lineClear')`. Expanding light-rings on the mirror at every clear, reflected for free. Ref: `halcyon-apex.effect.js:104-125, 840-901, 1793-1818, 1926-2003`.
-2. **Crack-spall spark bursts** (GPU compute): `IceTempleShardBurstCompute.spawnBurst(count, x, z, {style:'crack-front'})` fired along the egg fracture on `lineClear`/`tspin`. Ref: `ice-temple-compute.js:196-510`.
+2. **Crack-spall spark bursts** (GPU compute): `IceTempleShardBurstCompute.spawnBurst(count, x, z, {style:'crack-front'})` fired along the egg fracture on `lineClear`/`twist`. Ref: `ice-temple-compute.js:196-510`.
 3. **Continuous ember/mote field** (GPU compute): `IceTempleSnowCompute` recolored amber→cyan, additive `PointsNodeMaterial`, rising off the relic; density scales with `uS`. Ref: `ice-temple-compute.js:20-194`, `ice-temple-materials.js:206-296`.
-4. **Relic flare + camera kick/trauma** on Tetris/perfect-clear: swap the inline director for `winter/composition/storm-director.js` (eased intensity + `gust/flare/kick/trauma` channels, `onLineClear`/`onCombo`/`onTSpin`/`onPerfectClear`) — cleaner, testable, adds camera trauma.
+4. **Relic flare + camera kick/trauma** on Tetris/perfect-clear: swap the inline director for `winter/composition/storm-director.js` (eased intensity + `gust/flare/kick/trauma` channels, `onLineClear`/`onCombo`/`onTwist`/`onPerfectClear`) — cleaner, testable, adds camera trauma.
 5. **Piece-lock**: a small ripple + ember puff at the relic; **level-up**: sky-deepen step + arm Cosmos.
 6. **Ascension/Cosmos beats**: aurora curtains (`winter/rendering/aurora-volume.js`) + monolith/planets reveal at high `uS`.
 

@@ -14,7 +14,7 @@
  *   level=<n>                rest on level n's palette (a step on top of the clock's: t=<s>
  *                            shows the palette the clock has turned to by then)
  *   locks=<n>                before anything else, play n locks (the sky holding their stars)
- *   event=lock|drop|clear|quad|tspin|perfect|levelUp|break   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|perfect|levelUp|break   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, col=<c>,
  *                            color=<hex>, piece=I|O|T|S|Z|J|L)
  *   lead=<s>                 seconds of fluid replayed before the frame (default 10)
@@ -137,7 +137,7 @@ const DEMO_SCRIPT = [
     [27.0, 'lock', ['O', 4, 19]], [28.0, 'lock', ['S', 6, 19]],
     [29.0, 'lock', ['T', 2, 18, true]],
     [29.0, 'clear', {
-        rows: [19, 18], lines: 2, tspin: true, combo: 1,
+        rows: [19, 18], lines: 2, twist: true, combo: 1,
     }],
     [31.0, 'lock', ['Z', 5, 19]], [33.0, 'lock', ['J', 1, 19]],
 ];
@@ -237,7 +237,7 @@ export function create({
         if (eventName === 'lock' || eventName === 'drop') world.onLock(spec);
         else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
-        else if (eventName === 'tspin') world.onClear({ rows: bottom(2), lines: 2, tspin: true });
+        else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
         else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
         else if (eventName === 'break') world.onCombo(0);

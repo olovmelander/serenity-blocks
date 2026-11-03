@@ -31,7 +31,7 @@
  *            span it, a hole blown in the dust that heals over the next half minute. A great star
  *            while that hole is open is born in it and opens it wider. A perfect clear that
  *            settles after its quad crowns the great star (never a second one).
- *   T-spin   the whole flow twists round the board and springs back (a little, for one that
+ *   twist   the whole flow twists round the board and springs back (a little, for one that
  *            clears nothing).
  *   heat     how hot play runs (the shared surge) builds the whole nursery up: see `surge`.
  *   level    the nursery moves one palette along its line of six, and a front in the new
@@ -137,7 +137,7 @@ const PARTS = ['nebula', 'stars', 'births', 'jets', 'flights', 'blades'];
 /** The piece colours, for ambient stars and fallbacks. */
 const PIECE_RGB = Object.freeze(SHAPE_KEYS.map((key) => pieceColor(NEBULA_FLOW_TETROMINOS.colors[key])));
 
-/** How fast the T-spin twist springs back. */
+/** How fast the twist twist springs back. */
 const TWIST_STIFFNESS = 14;
 const TWIST_DAMPING = 3.4;
 /** Nursery units a star's place keeps inside the frame's edge (about 5 px of an upright phone). */
@@ -823,7 +823,7 @@ export class NebulaFlowWorld {
      *            great star, a perfect clear, or the chain's end (onCombo(0)).
      */
     onClear({
-        rows, lines = 1, tspin = false, perfect = false, b2b = false, cascade = 1, combo = 1, player = 0, screen = null,
+        rows, lines = 1, twist = false, perfect = false, b2b = false, cascade = 1, combo = 1, player = 0, screen = null,
     } = {}) {
         const t = this.time;
         const n = Math.max(1, Math.min(4, lines | 0));
@@ -893,13 +893,13 @@ export class NebulaFlowWorld {
         }
         // each wave of a cascade winds the gas a little further round the board
         if (deeper > 0) this.swell.wind.hit(0.35 * Math.min(4, deeper), t);
-        if (tspin) {
+        if (twist) {
             this.twistVelocity += 2.4;
             this.swell.kick.hit(0.5, t);
         }
         // each wave past the first is worth one wave to the surge
         this.surge.clear({
-            lines: n, cascade: deeper > 0 ? 2 : 1, combo, tspin, perfect, b2b,
+            lines: n, cascade: deeper > 0 ? 2 : 1, combo, twist, perfect, b2b,
         }, t);
         this.counts.clears += 1;
     }
@@ -947,7 +947,7 @@ export class NebulaFlowWorld {
         this.swell.twin.hit(0.8, t);
     }
 
-    /** A T-spin that cleared nothing: the flow turns a little round the board and springs back. */
+    /** A twist that cleared nothing: the flow turns a little round the board and springs back. */
     onSpin() {
         this.twistVelocity += 1.1;
         this.swell.kick.hit(0.25, this.time);
@@ -1233,7 +1233,7 @@ export class NebulaFlowWorld {
             for (let c = 0; c < 3; c += 1) this.arms[a][c] += (this.armAims[a][c] - this.arms[a][c]) * ease;
         }
         this.armTurn = (this.armTurn + dt * calm * this.vortex * 0.05 * (1 + fever)) % (Math.PI * 2);
-        // a T-spin's twist springs back
+        // a twist's twist springs back
         let left = dt;
         while (left > 1e-6) {
             const h = Math.min(left, 1 / 120);

@@ -31,7 +31,7 @@ export const MOTE_KIND = Object.freeze({
 
 /**
  * The share of the pool the rain may hold. A chain's rain would otherwise fill the whole pool every
- * few seconds and wipe the pigment puffs and a T-spin's dust devil exactly when play is richest;
+ * few seconds and wipe the pigment puffs and a twist's dust devil exactly when play is richest;
  * the rain has its own ring at the end of the buffer and the world caps its rate to fit it.
  */
 export const RAIN_SHARE = 0.4;

@@ -232,7 +232,7 @@ export function createCorona(u, { detail = 2 } = {}) {
         const b = max(length(q).div(uniforms.limb), 1e-4).toVar();
         const out = max(b.sub(1.0), 0.0).toVar();
         const dir = q.div(length(q).add(1e-5)).toVar();
-        // A T-spin winds the corona into a pinwheel: the further out, the further round.
+        // A twist winds the corona into a pinwheel: the further out, the further round.
         const turn = u.twist.mul(out);
         const cs = cos(turn);
         const sn = sin(turn);

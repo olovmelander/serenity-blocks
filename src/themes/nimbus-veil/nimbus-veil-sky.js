@@ -81,7 +81,7 @@ export function createSky(u, opts = {}) {
         const above = smoothstep(-0.0015, 0.0006, e).toVar();
 
         // ── Sunbeams: the shadows of clouds beyond the horizon fan out from the sun across its
-        // glow. Read on a circle round the sun (no seam), drifting very slowly; a T-spin turns
+        // glow. Read on a circle round the sun (no seam), drifting very slowly; a twist turns
         // the fan (u.beamTurn). The heat of play (u.blaze.x) sharpens it into a crown: the beams
         // reach further, the gaps between them deepen and the beams themselves burn gold. ──
         const blaze = u.blaze.x;

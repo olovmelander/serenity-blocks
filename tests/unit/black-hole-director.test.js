@@ -359,14 +359,14 @@ describe('Black Hole director: clears, streaks and the jets', () => {
         expect(active(director.waves)).toHaveLength(2);
     });
 
-    it('marks a T-spin, a perfect clear and a level-up each in its own way', () => {
+    it('marks a twist, a perfect clear and a level-up each in its own way', () => {
         const spin = create();
-        spin.onTSpin({ lineCount: 2 });
+        spin.onTwist({ lineCount: 2 });
         spin.update(STEP);
         expect(active(spin.hotspots)).toHaveLength(1);
         expect(spin.hotspots[0].color[2]).toBeGreaterThan(spin.hotspots[0].color[0]);
         expect(spin.diskRate).toBeGreaterThan(2);
-        expect(spin.shakeAmount).toBe(SHAKE.TSPIN[0]);
+        expect(spin.shakeAmount).toBe(SHAKE.TWIST[0]);
 
         const perfect = create();
         perfect.onPerfectClear({ depth: 1 });
@@ -392,7 +392,7 @@ describe('Black Hole director: clears, streaks and the jets', () => {
             director.onPieceLock({ piece: piece({ x: frame % 9 }) });
             director.onLineClear({ lineCount: 4, cascadeCount: 8 });
             director.onCascade({ comboCount: 8 });
-            director.onTSpin({});
+            director.onTwist({});
             director.onPerfectClear({});
             director.onLevelUp({});
             director.update(STEP);
@@ -448,7 +448,7 @@ describe('Black Hole director: time and state', () => {
                     director.onPieceLock({ piece: piece({ x: frame % 7 }) });
                     if (frame % 100 === 5) director.onLineClear({ lineCount: 1 + (frame % 4), clearedRows: [22] });
                 }
-                if (frame === 300) director.onTSpin({});
+                if (frame === 300) director.onTwist({});
                 director.update(STEP);
             }
             return snapshot(director);

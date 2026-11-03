@@ -9,7 +9,7 @@
  *   shape=<name>             hold a formation (heart, galaxy, torus, ...)
  *   combo=<n>                hold a combo of n (the gyre spins up, the swarm warms)
  *   level=<n>                rest on level n's palette
- *   event=lock|drop|clear|quad|tspin|perfect|levelUp|gameOver   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|perfect|levelUp|gameOver   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>)
  *   demo=1                   live only: play a looping gameplay script
  *   noPost=1                 raw scene (no bloom/grade)
@@ -116,7 +116,7 @@ const DEMO_SCRIPT = [
     [26.0, 'lock', { rows: [19], u: 0.45 }], [27.0, 'lock', { rows: [19, 18], u: 0.7 }],
     [28.0, 'lock', { rows: [18], u: 0.25, hardDrop: true }],
     [28.0, 'clear', {
-        rows: [19, 18], lines: 2, tspin: true, combo: 1,
+        rows: [19, 18], lines: 2, twist: true, combo: 1,
     }],
     [30.0, 'lock', { rows: [19], u: 0.5 }], [30.0, 'combo', { combo: 0 }],
 ];
@@ -296,9 +296,9 @@ export function create({
         else if (eventName === 'drop') show.lock({ rows: [row, row - 1], u, hardDrop: true });
         else if (eventName === 'clear') show.clear({ rows: bottom(lines), lines });
         else if (eventName === 'quad') show.clear({ rows: bottom(4), lines: 4 });
-        else if (eventName === 'tspin') {
+        else if (eventName === 'twist') {
             show.clear({
-                rows: bottom(2), lines: 2, tspin: true, u,
+                rows: bottom(2), lines: 2, twist: true, u,
             });
         } else if (eventName === 'perfect') show.clear({ rows: bottom(4), lines: 4, perfect: true });
         else if (eventName === 'levelUp') show.levelUp(num(params, 'eventLevel', level + 1));

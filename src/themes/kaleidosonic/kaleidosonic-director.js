@@ -3,12 +3,12 @@
  *
  * Renderer-free, DOM-free, bus-free. The canonical gameplay events are delivered synchronously
  * inside the simulation tick, several per lock (HARD_DROP, PIECE_LOCK, then LINE_CLEAR / COMBO /
- * TSPIN / B2B once per cascade wave, PERFECT_CLEAR on a later frame), so every on*() handler only
+ * TWIST / B2B once per cascade wave, PERFECT_CLEAR on a later frame), so every on*() handler only
  * STAGES numbers into one of five preallocated player slots. flush() — called first in the
  * theme's frame — resolves each slot into at most one `lock` and one `clear` for the sink:
  *
  *   sink.lock({ player, rows, u, hardDrop, distance, color, shape, cells, screen })
- *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, crown, rowCodes, screen })
+ *   sink.clear({ player, rows, lines, combo, cascade, twist, perfect, b2b, crown, rowCodes, screen })
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.b2b(level, player)    the live back-to-back level (0..4), whenever it changes
  *   sink.levelUp(level)
@@ -16,7 +16,7 @@
  * Two clears carry no lines of their own: physics settles a perfect clear ~360 ms AFTER the
  * clear's last wave, in a frame of its own, so a PERFECT_CLEAR with nothing staged resolves as
  * `crown: true, perfect: true, lines: 0` (a crown on the clear still ringing, never a second
- * clear); and a T-spin that clears nothing resolves as `tspin: true, lines: 0`.
+ * clear); and a twist that clears nothing resolves as `twist: true, lines: 0`.
  *
  * `rows` are VISIBLE board rows (0 = the top row, 19 = the floor), a clear's lowest row first;
  * `u` is the lock's column as a fraction of the board width; `distance` is how many rows a hard
@@ -53,9 +53,9 @@
  * second starts a new chain (1 -> 0 -> 1), the sink is still told of the break: combo(0), then
  * combo(1).
  *
- * Back-to-back: the game sends B2B on each difficult clear (four lines or a T-spin) after the
+ * Back-to-back: the game sends B2B on each difficult clear (four lines or a twist) after the
  * first, and never says when the run ends. Each B2B steps the level (at most 4); a wave-1 clear
- * of fewer than four lines with no T-spin after it ends the run (level 0).
+ * of fewer than four lines with no twist after it ends the run (level 0).
  *
  * Cascade depth: local multiplayer's LINE_CLEAR has no cascadeCount; the depth arrives only as
  * the COMBO that precedes the wave's LINE_CLEAR in the same tick, so a COMBO with no clear yet
@@ -92,7 +92,7 @@ export const KALEIDOSONIC_EVENT_HANDLERS = Object.freeze({
     HARD_DROP: 'onHardDrop',
     LINE_CLEAR: 'onLineClear',
     COMBO: 'onCombo',
-    TSPIN: 'onTSpin',
+    TWIST: 'onTwist',
     B2B: 'onB2B',
     PERFECT_CLEAR: 'onPerfectClear',
     LEVEL_UP: 'onLevelUp',
@@ -149,7 +149,7 @@ function createSlot() {
         clearRowCount: 0,
         clearCodes: new Uint8Array(MAX_ROWS * COLUMNS),
         explicitCombo: -1,
-        tspin: false,
+        twist: false,
         perfect: false,
         /** A perfect clear on a frame of its own (no clear staged with it): the crown. */
         crown: false,
@@ -170,7 +170,7 @@ function createSlot() {
         b2bReported: 0,
         /** The back-to-back run the sink was last told of ended since. */
         b2bBroke: false,
-        /** A wave-1 clear of fewer than four lines, waiting on the T-spin that may follow it. */
+        /** A wave-1 clear of fewer than four lines, waiting on the twist that may follow it. */
         b2bCandidate: false,
         // shadow well
         wellKey: new Int32Array(WELL_ROWS),
@@ -201,7 +201,7 @@ function clearPending(slot) {
     slot.cascade = 1;
     slot.clearRowCount = 0;
     slot.explicitCombo = -1;
-    slot.tspin = false;
+    slot.twist = false;
     slot.perfect = false;
     slot.crown = false;
     slot.b2b = false;
@@ -216,7 +216,7 @@ function clearWell(slot) {
     slot.ringCount = 0;
 }
 
-/** A wave-1 clear that no T-spin followed in its own tick: the back-to-back run is over. */
+/** A wave-1 clear that no twist followed in its own tick: the back-to-back run is over. */
 function settleB2B(slot) {
     if (!slot.b2bCandidate) return;
     slot.b2bCandidate = false;
@@ -495,7 +495,7 @@ export class KaleidosonicDirector {
             lines: 1,
             combo: 1,
             cascade: 1,
-            tspin: false,
+            twist: false,
             perfect: false,
             b2b: false,
             crown: false,
@@ -612,7 +612,7 @@ export class KaleidosonicDirector {
         // A clear that turns up after its lock's frame (online play) picks the chain back up.
         slot.breakSent = false;
         slot.tracker.noteLineClear();
-        // Only a difficult clear keeps a back-to-back run alive; a T-spin follows in this tick.
+        // Only a difficult clear keeps a back-to-back run alive; a twist follows in this tick.
         if (cascade === 1 && lines < 4) slot.b2bCandidate = true;
         if (synthetic) slot.explicitCombo = Math.max(slot.explicitCombo, Math.trunc(Number(payload.comboCount)));
         capturePosition(slot, payload);
@@ -646,14 +646,14 @@ export class KaleidosonicDirector {
         return true;
     }
 
-    onTSpin(event) {
+    onTwist(event) {
         if (!this.enabled) return false;
         const payload = event || EMPTY;
         const slot = this.slotFor(payload);
         if (!slot) return false;
         slot.pending = true;
-        slot.tspin = true;
-        // A T-spin clear is a difficult one: the back-to-back run lives on.
+        slot.twist = true;
+        // A twist clear is a difficult one: the back-to-back run lives on.
         slot.b2bCandidate = false;
         const lines = Math.max(0, Math.min(MAX_ROWS, Math.trunc(finite(payload.lineCount, 0))));
         if (lines > slot.lines) slot.lines = lines;
@@ -775,7 +775,7 @@ export class KaleidosonicDirector {
             c.screen = null;
             sink.lock(c);
         }
-        const lineless = slot.lines === 0 && (slot.crown || slot.tspin);
+        const lineless = slot.lines === 0 && (slot.crown || slot.twist);
         if ((slot.lines > 0 || lineless) && sink?.clear) {
             const c = this._clear;
             c.player = slot.player;
@@ -788,7 +788,7 @@ export class KaleidosonicDirector {
             c.lines = slot.lines;
             c.combo = Math.max(1, combo);
             c.cascade = slot.cascade;
-            c.tspin = slot.tspin;
+            c.twist = slot.twist;
             c.perfect = slot.perfect;
             c.b2b = slot.b2b;
             c.crown = slot.lines === 0 && slot.crown;

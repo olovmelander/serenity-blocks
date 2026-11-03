@@ -187,7 +187,7 @@ export class OdysseyOpponentBoard {
                 this.juice?.dip(2);
                 this.juice?.bounce();
             },
-            onTSpin: (lines) => this.scene?.sharedEffects?.playTSpinEffect?.(lines),
+            onTwist: (lines) => this.scene?.sharedEffects?.playTwistEffect?.(lines),
             onB2B: () => this.scene?.sharedEffects?.playB2BChange?.(true),
             onLevelUp: (level) => this.scene?.sharedEffects?.playLevelUp?.(level),
             onGarbageApplied: (lines) => this.scene?.sharedEffects?.playGarbageArrival?.(lines),

@@ -36,7 +36,7 @@
  *            burns, light pulsing outward along it, the heart turns to geodefire.
  * A late perfect clear crowns the clear still playing (every bell rings in fire opal and keeps
  * it, the heart's window flares white, the lances and the cracks blaze: nothing restarts);
- * back-to-back clears wind the agate tighter and set its bands blazing; a T-spin that clears
+ * back-to-back clears wind the agate tighter and set its bands blazing; a twist that clears
  * nothing still turns the agate half a notch. When the hands rest it all breathes back to calm.
  *
  * And with no help from the board it turns through the same minerals by the clock: it rests on
@@ -140,7 +140,7 @@ export const warmth = (level) => clamp01((level - 0.15) / 0.75);
 const CHIME_VOICES = 7;
 const CHIME_GAP = 0.045;
 const CHIME_SHARE = 0.42;
-/** One notch of the agate's fortification: a T-spin turns the bands this far. */
+/** One notch of the agate's fortification: a twist turns the bands this far. */
 const TWIST_NOTCH = 1 / 7;
 
 const PARTS = ['shell', 'druzy', 'crystals', 'glints', 'beams', 'air', 'shards', 'wisps', 'rowBeams'];
@@ -680,7 +680,7 @@ export class GeodeWorld {
 
     /**
      * The post's prism ring leaves the heart at `at`. A ring already crossing the frame brighter
-     * than half this one carries its light instead of restarting (a T-spin inside a four-line
+     * than half this one carries its light instead of restarting (a twist inside a four-line
      * clear's ring, a perfect clear's crown): only a fainter one is replaced, by a brighter.
      */
     ringOut(strength, at) {
@@ -717,11 +717,11 @@ export class GeodeWorld {
     }
 
     /**
-     * Lines cleared. `lines` 1..4; `tspin`, `perfect`, `b2b`; `cascade` is this wave's depth in
+     * Lines cleared. `lines` 1..4; `twist`, `perfect`, `b2b`; `cascade` is this wave's depth in
      * its lock's cascade (1 = the lock's own clear), `combo` the true chain.
      */
     onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, b2b = false, cascade = 1, combo = 1,
+        rows = null, lines = 1, twist = false, perfect = false, b2b = false, cascade = 1, combo = 1,
         player = 0, screen = null,
     } = {}) {
         const { u: uniforms } = this;
@@ -837,7 +837,7 @@ export class GeodeWorld {
             }
             this.counts.quads += 1;
         }
-        if (tspin) {
+        if (twist) {
             // The agate itself turns a notch.
             this.twistTarget += TWIST_NOTCH;
             this.env.storm.hit(0.55, now);
@@ -849,7 +849,7 @@ export class GeodeWorld {
         if (b2b) this.backToBack(this.b2bStreak);
         // The heat of play: a cascade's later waves each count as one more wave of the same lock.
         this.play.clear({
-            lines: n, cascade: depth > 0 ? 2 : 1, combo: depth > 0 ? 1 : combo, tspin, perfect, b2b,
+            lines: n, cascade: depth > 0 ? 2 : 1, combo: depth > 0 ? 1 : combo, twist, perfect, b2b,
         }, now);
         this.refresh(now);
         this.counts.clears += 1;
@@ -917,7 +917,7 @@ export class GeodeWorld {
         this.counts.crowns += 1;
     }
 
-    /** A T-spin that cleared nothing: the agate turns half a notch, and a faint ring leaves the heart. */
+    /** A twist that cleared nothing: the agate turns half a notch, and a faint ring leaves the heart. */
     onSpin() {
         if (!this.u) return;
         const now = this.time;

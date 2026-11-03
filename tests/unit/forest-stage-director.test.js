@@ -557,7 +557,7 @@ describe('Forest firefly director: waves of light', () => {
             () => reactions.onPieceLock({ piece }),
             () => { reactions.onHardDrop({ distance: 19 }); reactions.onPieceLock({ piece }); },
             () => reactions.onLineClear(1, {}), () => reactions.onLineClear(2, {}), () => reactions.onLineClear(4, {}),
-            () => reactions.onCombo(7), () => reactions.onTSpin({ piece }), () => reactions.onPerfectClear(),
+            () => reactions.onCombo(7), () => reactions.onTwist({ piece }), () => reactions.onPerfectClear(),
             () => reactions.onLevelUp(), () => reactions.onBackToBack(),
         ]) {
             act();
@@ -1424,7 +1424,7 @@ describe('Forest firefly director: resets and epochs', () => {
         reactions.onPieceLock({ piece });
         reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
         reactions.onCombo(8);
-        reactions.onTSpin({ piece });
+        reactions.onTwist({ piece });
         return reactions;
     }
 

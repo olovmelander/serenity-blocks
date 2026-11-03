@@ -19,7 +19,7 @@
  * oldest held pools go, their colours riding down the white water as ribbons. While a chain
  * holds, the gliders paint the bow into the spray one stroke per link, until from this height
  * it closes into a full circle. Four lines hush the world, open the glory one ring per line and
- * then let every pool go at once. A T-spin wrings the falls; a new level tolls the bell on the
+ * then let every pool go at once. A twist wrings the falls; a new level tolls the bell on the
  * Spring Isle and turns the light one hour on its wheel of five (jade morning, gilded afternoon,
  * rose hour, moonbow night, pearl dawn), and the light also walks round that wheel by itself,
  * whatever the level.

@@ -153,7 +153,7 @@ describe.each(TIERS)('Pyrestorm shaders at %s', (quality) => {
             u: 0.7, rows: [9], color: PIECE_COLORS[6], hardDrop: true, distance: 12,
         });
         world.onClear({
-            lines: 4, rows: [19, 18, 17, 16], tspin: true, combo: 3,
+            lines: 4, rows: [19, 18, 17, 16], twist: true, combo: 3,
         });
         for (let n = 1; n <= 5; n++) world.onCombo(n);
         world.onB2B(2);

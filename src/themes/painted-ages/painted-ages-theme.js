@@ -7,7 +7,7 @@
  * wheel with the clock (and a level-up steps the day forward); locks race pigment along the
  * beds, clears send bands of light climbing the strata and lay the rows down as the newest beds
  * of the land's record, a chain brings a shower and then a rainbow, four lines a rainbow tide
- * and a flash flood, a T-spin a dust devil, game over the dusk and its lanterns.
+ * and a flash flood, a twist a dust devil, game over the dusk and its lanterns.
  *
  * Content lives in PaintedAgesWorld, shared with the playground. This adapter preserves the
  * house lifecycle: renderer ownership, one WebGL2 recovery, settings and event subscriptions,

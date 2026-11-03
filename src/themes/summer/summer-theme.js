@@ -366,7 +366,7 @@ export default class SummerTheme extends BaseTheme {
             eventBus.on(EVENTS.PIECE_LOCK, (payload) => this.onPieceLock(payload)),
             eventBus.on(EVENTS.LINE_CLEAR, (payload) => this.onLineClear(payload)),
             eventBus.on(EVENTS.COMBO, (payload) => this.onCombo(payload)),
-            eventBus.on(EVENTS.TSPIN, (payload) => this.onFlourish('onTSpin', payload)),
+            eventBus.on(EVENTS.TWIST, (payload) => this.onFlourish('onTwist', payload)),
             eventBus.on(EVENTS.B2B, (payload) => this.onFlourish('onBackToBack', payload)),
             eventBus.on(EVENTS.PERFECT_CLEAR, (payload) => this.onFlourish('onPerfectClear', payload)),
             eventBus.on(EVENTS.LEVEL_UP, (payload) => this.onLevelUp(payload)),
@@ -417,7 +417,7 @@ export default class SummerTheme extends BaseTheme {
         else this.reactions?.onPieceLock(eventDetail(payload));
     }
 
-    /** T-spins, back-to-backs, perfect clears and level-ups share one gate. */
+    /** Twists, back-to-backs, perfect clears and level-ups share one gate. */
     onFlourish(method, payload) {
         if (!this.effectsAllowed()) return;
         this.reactions?.[method]?.(eventDetail(payload));

@@ -251,7 +251,7 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
         const bendWind = clamp(float(0.1).add(gust.mul(0.42)).add(flutter), 0.0, 1.3);
         const stray = h3.sub(0.5).mul(0.8);
         const windD = normalize(vec2(u.windDir.x.add(stray), u.windDir.y.sub(stray.mul(0.6))));
-        // A pulse pushes the stalks its own way (out from a hard drop, round a T-spin's whirl).
+        // A pulse pushes the stalks its own way (out from a hard drop, round a twist's whirl).
         // A grazing horse's lips gather the ears they are working at.
         const pushed = windD.mul(bendWind).add(pulse.push.mul(1.7)).add(trail.push.mul(1.3)).add(tramp.push.mul(1.5))
             .add(grazingPullAt(u, iA.xz).mul(1.3))

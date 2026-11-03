@@ -285,7 +285,7 @@ export function createSky(u, opts = {}) {
         }
 
         // ── Hologram halos: three pixel-thin dashed circles racing out of the sun's rim, with
-        // a faint glow behind them (line clears, big combos, level up; a T-spin's wheel round,
+        // a faint glow behind them (line clears, big combos, level up; a twist's wheel round,
         // P.w turning the dashes) ──
         const theta = atan(sd.y, sd.x);
         const thin = max(fwR.mul(1.3), 0.01);

@@ -159,7 +159,7 @@ export function createGalaxyUniforms(textures) {
         surge: uniform(0),
         /** Gain on every light: a four-line clear holds the galaxy's breath (→ 0.12). */
         breath: uniform(1),
-        /** How tightly the arms wind right now (a T-spin winds them up and lets them go). */
+        /** How tightly the arms wind right now (a twist winds them up and lets them go). */
         winding: uniform(GALAXY.winding),
         /** How far the old disc's stars have streamed through the pattern (a clock gameplay bends). */
         flow: uniform(0),
@@ -182,7 +182,7 @@ export function createGalaxyUniforms(textures) {
         jetBursts: uniform(new THREE.Vector4(-100, 0, -100, 0)),
         /** A four-line clear's shock ring across the sky: (birth time, strength). */
         shock: uniform(new THREE.Vector2(-100, 0)),
-        /** A second ring, so a T-spin or a new level never cuts an eruption's: (birth, strength). */
+        /** A second ring, so a twist or a new level never cuts an eruption's: (birth, strength). */
         shockB: uniform(new THREE.Vector2(-100, 0)),
         /** The sky's stars answer a clear: 0..1. */
         skyPulse: uniform(0),

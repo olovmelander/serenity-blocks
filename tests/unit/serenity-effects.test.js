@@ -58,7 +58,7 @@ describe('the effects', () => {
     });
 
     it('send only events themes know, every one tagged, set down on the board', () => {
-        const known = new Set(['hardDrop', 'pieceLock', 'lineClear', 'combo', 'levelUp', 'tspin', 'b2b', 'perfectClear']);
+        const known = new Set(['hardDrop', 'pieceLock', 'lineClear', 'combo', 'levelUp', 'twist', 'b2b', 'perfectClear']);
         const ctx = createEffectContext();
         EFFECTS.forEach((effect) => {
             const steps = build(effect.id, ctx);
@@ -136,9 +136,9 @@ describe('the effects', () => {
         expect(locks.map((step) => step.at)).toEqual([0, 1, 2, 3, 4].map((n) => n * LOCK_MS));
     });
 
-    it('T-spin: a T clearing two rows, TSPIN right after its LINE_CLEAR', () => {
-        const steps = build('tspin');
-        expect(types(steps)).toEqual(['pieceLock', 'lineClear', 'tspin']);
+    it('Twist: a T clearing two rows, TWIST right after its LINE_CLEAR', () => {
+        const steps = build('twist');
+        expect(types(steps)).toEqual(['pieceLock', 'lineClear', 'twist']);
         expect(steps[0].payload.piece.shapeKey).toBe('T');
         expect(steps[2].payload).toMatchObject({ lineCount: 2 });
     });
@@ -195,9 +195,9 @@ describe('the effects', () => {
         const locks = steps.filter((step) => step.type === 'pieceLock');
         expect(locks).toHaveLength(12);
         locks.forEach((step) => expect(steps[steps.indexOf(step) - 1].type).toBe('hardDrop'));
-        // A T-spin, a four-wave cascade, and the board emptied at the end.
-        const tspin = steps.find((step) => step.type === 'tspin');
-        expect(steps[steps.indexOf(tspin) - 1].type).toBe('lineClear');
+        // A twist, a four-wave cascade, and the board emptied at the end.
+        const twist = steps.find((step) => step.type === 'twist');
+        expect(steps[steps.indexOf(twist) - 1].type).toBe('lineClear');
         const waves = steps.filter((step) => step.type === 'combo').map((step) => step.payload.comboCount);
         expect(waves).toEqual([2, 3, 4]);
         expect(steps[steps.length - 1].type).toBe('perfectClear');
@@ -232,7 +232,7 @@ describe('each effect stands on its own', () => {
         const themed = createEffectContext({ colorFor: (key) => (key === 'I' ? '#123456' : null) });
         const quad = build('quad', themed)[0].payload.piece;
         expect(quad.color).toBe('#123456');
-        const plain = build('tspin', createEffectContext())[0].payload.piece;
+        const plain = build('twist', createEffectContext())[0].payload.piece;
         expect(plain.color).toBe(COLORS.T);
     });
 });
@@ -250,7 +250,7 @@ describe('through the canonical emitters', () => {
             [EVENTS.LINE_CLEAR]: 'lineClear',
             [EVENTS.COMBO]: 'combo',
             [EVENTS.LEVEL_UP]: 'levelUp',
-            [EVENTS.TSPIN]: 'tspin',
+            [EVENTS.TWIST]: 'twist',
             [EVENTS.B2B]: 'b2b',
             [EVENTS.PERFECT_CLEAR]: 'perfectClear',
         };

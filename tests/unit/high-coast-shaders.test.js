@@ -239,7 +239,7 @@ describe.each(TIERS)('high coast shaders at %s', (quality) => {
         world.onLock({
             u: 0.7, rows: [9], color: PIECE_COLORS[6], hardDrop: true, distance: 12,
         });
-        world.onClear({ lines: 4, tspin: true, combo: 3 });
+        world.onClear({ lines: 4, twist: true, combo: 3 });
         world.update({ time: 6, delta: 1 / 30 }, camera);
 
         const targets = [];

@@ -45,12 +45,12 @@ and `--backend` apply to the whole call, so phone, 21:9 and WebGL2 shots go in t
 | B3-release2 / B3-release10 | `event=release&peak=6&eventAge=2` / `…eventAge=10` |
 | B4-dome / -column / -flood / -steam | `event=quad&row=16&eventAge=0.2` / `1.4` / `3` / `9` |
 | B4-false | `event=quad&row=16&eventAge=1.4&falseColor=1` |
-| B5-devils / B5-rosettes | `event=tspin&lines=2&u=0.2&row=13&eventAge=3` / `…eventAge=9` |
+| B5-devils / B5-rosettes | `event=twist&lines=2&u=0.2&row=13&eventAge=3` / `…eventAge=9` |
 | B5-consort / B5-double | `b2b=2` / `b2b=1&event=quad&row=16&eventAge=1.6` |
 | B5-sleeper / B5-renewed | `event=perfect&eventAge=2.5` / `event=perfect&eventAge=13&record=30` |
 | B5-levelup | `event=levelUp&eventLevel=3&eventAge=3` |
 | B5-gameover | `event=gameOver&eventAge=4` |
-| B5-reduce | `reduce=1&event=tspin&lines=1&eventAge=3` |
+| B5-reduce | `reduce=1&event=twist&lines=1&eventAge=3` |
 | B1-P, B4-P (390×844) | `event=lock&piece=T&u=0.2&row=10&eventAge=1.2`, `event=quad&row=16&eventAge=1.4` |
 | B4-gl-column, B2-gl-fills, B5-gl-devils (WebGL2) | as B4-column, B2-fills, B5-devils |
 

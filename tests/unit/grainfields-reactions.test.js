@@ -300,11 +300,11 @@ describe('Grainfields reactions: clears', () => {
         expect(reactions.trails[2].rgb).toEqual([1, 0.86, 0.6]);
     });
 
-    it('wheels the wind in the stand on a T-spin, and only on one', () => {
+    it('wheels the wind in the stand on a twist, and only on one', () => {
         const reactions = new GrainfieldsReactions();
         clearAt(reactions, { lines: 2 });
         expect(reactions.pulses).toHaveLength(0);
-        clearAt(reactions, { lines: 2, tspin: true }, 11);
+        clearAt(reactions, { lines: 2, twist: true }, 11);
         expect(reactions.pulses).toHaveLength(1);
         const [whirl] = reactions.pulses;
         expect(whirl.kind).toBe(PULSE.whirl);
@@ -476,15 +476,15 @@ describe('Grainfields reactions: building, never restarting', () => {
     it('answers back-to-back at the gate: each difficult clear of a run tears the sky over Lapporten, wider', () => {
         const reactions = new GrainfieldsReactions();
         reactions.setB2B(1, 0);
-        clearAt(reactions, { lines: 2, tspin: true, b2b: true }, 10);
+        clearAt(reactions, { lines: 2, twist: true, b2b: true }, 10);
         expect(reactions.tear(10 + TIMING.tearIn)).toBeCloseTo(1, 9);
         const one = reactions.tearRadius;
         reactions.setB2B(3, 12);
-        clearAt(reactions, { lines: 2, tspin: true, b2b: true }, 12);
+        clearAt(reactions, { lines: 2, twist: true, b2b: true }, 12);
         expect(reactions.tearRadius).toBeGreaterThan(one);
-        // No B2B, no tear: a T-spin alone wheels the wind only.
+        // No B2B, no tear: a twist alone wheels the wind only.
         const plain = new GrainfieldsReactions();
-        clearAt(plain, { lines: 2, tspin: true }, 10);
+        clearAt(plain, { lines: 2, twist: true }, 10);
         expect(plain.tear(12)).toBe(0);
     });
 
@@ -543,13 +543,13 @@ describe('Grainfields reactions: building, never restarting', () => {
         expect(reactions.gale(40)).toBeLessThan(0.01);
     });
 
-    it('turns a small whirl for a T-spin that cleared nothing, where the piece fell', () => {
+    it('turns a small whirl for a twist that cleared nothing, where the piece fell', () => {
         const reactions = new GrainfieldsReactions();
         const whirl = reactions.spin({ u: 0.2 }, 10, { layout: BOARD_ONLY, aim: makeAim() });
         expect(whirl).toMatchObject({ kind: PULSE.whirl, at: 10 });
         expect(reactions.pulses).toEqual([whirl]);
         const full = new GrainfieldsReactions();
-        clearAt(full, { lines: 2, tspin: true }, 10);
+        clearAt(full, { lines: 2, twist: true }, 10);
         expect(whirl.power).toBeLessThan(full.pulses[0].power);
         expect(whirl.width).toBeLessThan(full.pulses[0].width);
         expect(reactions.spin({ u: 0.2 }, 11, { layout: BOARD_ONLY, aim: () => null })).toBeNull();
@@ -585,7 +585,7 @@ describe('Grainfields reactions: the tables', () => {
         expect(fading.length).toBeGreaterThan(0);
         expect(reactions.pulses.length).toBeLessThanOrEqual(MAX_PULSES);
         for (let k = 0; k < MAX_TRAILS * 3; k++) {
-            clearAt(reactions, { lines: 1 + (k % 4), tspin: k % 3 === 0 }, 20 + k);
+            clearAt(reactions, { lines: 1 + (k % 4), twist: k % 3 === 0 }, 20 + k);
             reactions.levelUp(20 + k);
             expect(reactions.trails.length).toBeLessThanOrEqual(MAX_TRAILS);
             expect(reactions.pulses.length).toBeLessThanOrEqual(MAX_PULSES);
@@ -618,14 +618,14 @@ describe('Grainfields reactions: the tables', () => {
         let lock = 0;
         for (let t = 0; t < 40; t += dt) {
             // A quick hand: a hard drop every 0.3 s, a clear every other lock, a cascade's waves now
-            // and then, a T-spin and a level now and then.
+            // and then, a twist and a level now and then.
             if (t >= lock * 0.3) {
                 lockAt(reactions, {
                     u: (lock * 0.37) % 1, rows: [19 - (lock % 12)], hardDrop: true, distance: 10,
                 }, t);
                 if (lock % 2 === 0) {
                     clearAt(reactions, {
-                        lines: 1 + (lock % 4), cascade: 1 + (lock % 3), tspin: lock % 9 === 0,
+                        lines: 1 + (lock % 4), cascade: 1 + (lock % 3), twist: lock % 9 === 0,
                     }, t);
                 }
                 if (lock % 15 === 0) reactions.levelUp(t);
@@ -668,7 +668,7 @@ describe('Grainfields reactions: the tables', () => {
         lockAt(reactions, {
             u: 0.2, rows: [10], hardDrop: true, distance: 9,
         }, 0);
-        clearAt(reactions, { lines: 2, tspin: true }, 0);
+        clearAt(reactions, { lines: 2, twist: true }, 0);
         reactions.prune(1);
         expect([reactions.gaps.length, reactions.trails.length, reactions.pulses.length]).toEqual([1, 1, 2]);
         reactions.prune(12);
@@ -689,7 +689,7 @@ describe('Grainfields reactions: the uniforms', () => {
         const hard = lockAt(reactions, {
             u: 0.8, rows: [9], color: PIECE_COLORS[6], hardDrop: true, distance: 14,
         }, t0 + 0.5);
-        clearAt(reactions, { lines: 4, tspin: true }, t0 + 0.5);
+        clearAt(reactions, { lines: 4, twist: true }, t0 + 0.5);
         reactions.tearX = -4100;
         reactions.tearZ = -10800;
         reactions.setCombo(3, t0);
@@ -714,7 +714,7 @@ describe('Grainfields reactions: the uniforms', () => {
             expect(u.tables.trails[n * 3 + 1].toArray()).toEqual([tr.hx, tr.hz, tr.curl, tr.width]);
             expect(u.tables.trails[n * 3 + 2].toArray()).toEqual([...tr.rgb, tr.side]);
         });
-        // The pulses: the hard drop's ring, the T-spin's whirl, the level's wave.
+        // The pulses: the hard drop's ring, the twist's whirl, the level's wave.
         expect(u.pulseCount.value).toBe(3);
         expect(reactions.pulses.map((p) => p.kind)).toEqual([PULSE.ring, PULSE.whirl, PULSE.wave]);
         reactions.pulses.forEach((p, n) => {
@@ -754,7 +754,7 @@ describe('Grainfields reactions: the uniforms', () => {
         lockAt(reactions, {
             u: 0.2, rows: [12], hardDrop: true, distance: 9,
         });
-        clearAt(reactions, { lines: 4, perfect: true, tspin: true });
+        clearAt(reactions, { lines: 4, perfect: true, twist: true });
         reactions.setCombo(5, 10);
         reactions.setB2B(3);
         reactions.reset();

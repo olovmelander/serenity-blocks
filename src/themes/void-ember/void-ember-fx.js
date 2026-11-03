@@ -4,7 +4,7 @@
  *  - The ember wind: sparks the star sheds all the time, like a fire's. They leave the surface
  *    fast, drag to a drift, cool from gold to a dull red and go out; the hotter the star, the
  *    more of them and the further they get. The star's turn lays them into a spiral, and a
- *    T-spin winds that spiral tight.
+ *    twist winds that spiral tight.
  *  - Comets: a lock's light leaves the board as a comet in the piece's colour and falls into
  *    the star — a bright head and a tail of motes strung along one arc.
  *  - Sparks: what an impact or a torn-off loop throws. Streaks that leave fast, drag to a halt
@@ -107,7 +107,7 @@ export function createEmberWind(u, count) {
     const from = u.starRot.mul(normalize(dir0.xyz.add(jitter.mul(0.9))));
     const at = (kk) => {
         const rise = float(1.0).sub(exp(kk.mul(-WIND_DRAG))).mul(param.x).mul(uniforms.reach);
-        // The star turns under what it has shed, and a T-spin winds the spiral tighter.
+        // The star turns under what it has shed, and a twist winds the spiral tighter.
         const lag = rise.mul(u.twist.mul(0.5).add(0.22)).negate();
         const swirl = turnAbout(from, u.axis, cos(lag), sin(lag));
         const waver = sin(kk.mul(9.0).add(dir0.w.mul(40.0))).mul(rise).mul(0.035);

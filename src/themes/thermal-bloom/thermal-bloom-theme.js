@@ -19,7 +19,7 @@
  * new white sinter rim per cleared row, the pool behind it fills, and the cleared row's colours
  * fix into the stone. Four lines make the Chalice's major eruption, with one rainbow in its spray.
  * Each link of a chain is one preplay splash and one notch of the fingers' reach; the chain's
- * release is the steam phase. A back-to-back wakes the Consort vent; a T-spin raises steam devils
+ * release is the steam phase. A back-to-back wakes the Consort vent; a twist raises steam devils
  * that leave a sinter rosette; a perfect clear wakes the Sleeper; a new level turns the year (a
  * succession front sweeps the mats into the next season); the end of a run lets the springs sigh
  * and the Chalice drain.
@@ -281,8 +281,8 @@ export default class ThermalBloomTheme extends BaseTheme {
             sink: {
                 lock: (c) => this.world?.onLock(c),
                 clear: (c) => this.world?.onClear(c),
-                // (a T-spin that cleared nothing: a small devil off the Iris)
-                tspin: (player) => this.world?.onTSpin?.(player),
+                // (a twist that cleared nothing: a small devil off the Iris)
+                twist: (player) => this.world?.onTwist?.(player),
                 combo: (n, player) => this.reportCombo(n, player),
                 b2b: (level, player) => this.reportB2B(level, player),
                 levelUp: (level) => {

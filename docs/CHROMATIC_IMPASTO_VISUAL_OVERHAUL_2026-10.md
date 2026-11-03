@@ -234,7 +234,7 @@ Run `npm run dev:playground`, then:
 
 `/playground.html?effect=chromatic-impasto&t=12&quality=High&board=1`
 
-Add `event=lock|drop|clear|quad|tspin|perfect|levelUp|fresh` with `eventAge=<s>`, and `combo=<n>`
+Add `event=lock|drop|clear|quad|twist|perfect|levelUp|fresh` with `eventAge=<s>`, and `combo=<n>`
 (held for `comboHold=<s>`), `locks=<n>` (play n locks first), `level=<n>`, `lines=<n>`,
 `u=<0..1>`, `row=<n>`, `color=<hex>`, `seed=<n>`. `demo=1` (without `t`) plays a looping script.
 `parts=` draws only the named parts; `falseColor=1` bands the pre-tone-map peak; `noPost=1` shows

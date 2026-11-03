@@ -915,11 +915,11 @@ export class HimalayanPeakWorld {
     }
 
     /**
-     * Lines cleared. `lines` 1..4; `tspin`, `perfect`, `b2b`; `combo` = the chain's length;
+     * Lines cleared. `lines` 1..4; `twist`, `perfect`, `b2b`; `combo` = the chain's length;
      * `cascade` = which wave of its lock this is (1 the first; each later one runs deeper).
      */
     onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, b2b = false, combo = 1, cascade = 1, player = 0,
+        rows = null, lines = 1, twist = false, perfect = false, b2b = false, combo = 1, cascade = 1, player = 0,
         screen = null,
     } = {}) {
         const { u } = this;
@@ -1044,7 +1044,7 @@ export class HimalayanPeakWorld {
             this.sendPrayers(birth + 0.1, 18, { speed: [3, 9], glow: 1.4, stagger: 0.25 });
             this.gust(-1, 0, birth + 0.3, 0.9);
         }
-        if (tspin) {
+        if (twist) {
             // The wind turns on itself: a second snap a moment later, the crests throw more,
             // and a wheel of papers spins up round the card before the wind takes it.
             this.gust(-1, 0, birth + 0.22, 1.2);
@@ -1053,7 +1053,7 @@ export class HimalayanPeakWorld {
         }
         if (deeper === 0) {
             this.play.clear({
-                lines: n, combo: chain, tspin, perfect, b2b,
+                lines: n, combo: chain, twist, perfect, b2b,
             }, birth);
         } else {
             // (One more wave of a lock already counted: its own worth, and its lines'.)
@@ -1120,7 +1120,7 @@ export class HimalayanPeakWorld {
         this.play.crown(t);
     }
 
-    /** A T-spin that cleared nothing: the wind turns on itself, a little. */
+    /** A twist that cleared nothing: the wind turns on itself, a little. */
     onSpin({ player = 0 } = {}) {
         if (!this.u || !this.papers) return;
         const t = this.time;

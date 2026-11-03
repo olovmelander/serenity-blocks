@@ -120,7 +120,7 @@ export function create({
         else if (eventName === 'quad') world.onLineClear(4);
         else if (eventName === 'levelUp') world.onLevelUp();
         else if (eventName === 'perfect') world.onPerfectClear();
-        else if (eventName === 'tspin') world.onTSpin(num(params, 'lines', 0));
+        else if (eventName === 'twist') world.onTwist(num(params, 'lines', 0));
         else if (eventName === 'b2b') world.onB2B(true);
     };
 

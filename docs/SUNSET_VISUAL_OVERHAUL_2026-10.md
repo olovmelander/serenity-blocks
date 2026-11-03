@@ -173,7 +173,7 @@ day at an hour, 0 to 24: 4.7 before dawn, 5.45 dawn, 6.05 sunrise, 8 morning, 12
 afternoon, 17 golden hour, 18 sunset, 18.4 afterglow, 19.3 dusk, 0 midnight; unset, `t` is the
 day's clock: `t=0` is 16:40, sunset at `t=70`, sunrise at `t=355`),
 `level=<n>`, `locks=<n>`, `lift=<n>&liftAge=<s>` (`spin=1`), `flock=<n>&flockAge=<s>`,
-`event=lock|drop|clear|quad|tspin|perfect|levelUp` with `eventAge`, `lines`, `row`, `u`, `color`,
+`event=lock|drop|clear|quad|twist|perfect|levelUp` with `eventAge`, `lines`, `row`, `u`, `color`,
 `combo=<n>`, `parts=sky,sea,lanterns,glows,birds`, `falseColor=1`, `noPost=1`, and
 `P.<name>=<value>` to override any number of `TUNE` in `sunset-tsl.js` before the world is
 built. The icon (shot on the six-hour wheel at its place 0.95, the sun on the water; on the day

@@ -14,7 +14,7 @@ landmarks, the water, every event and the post. The first build's implementation
 the git history (`docs/PAINTED_AGES_VISUAL_OVERHAUL_2026-10.md` at 3ff50fe7).
 
 To look at it: `npm run dev`, then `/playground.html?effect=painted-ages&t=10&hour=1.2&board=1`
-(`hour` 0 first light … 5 blue hour; `event=lock|drop|clear|quad|tspin|perfect|levelUp|release|over`
+(`hour` 0 first light … 5 blue hour; `event=lock|drop|clear|quad|twist|perfect|levelUp|release|over`
 with `eventAge`; `look=x,y,z,fov` for close-ups). In the game: `/?unlockAll=1&skipIntro=1`.
 
 ## The picture

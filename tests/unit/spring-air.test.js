@@ -329,11 +329,11 @@ describe('spring air: what gameplay does to it', () => {
         },
     );
 
-    it('a T-spin whirls the air on the side of its lock', () => {
+    it('a twist whirls the air on the side of its lock', () => {
         const { world } = makeWorld();
         world.onLock({ rows: [19], u: 0.85, color: '#F8F4EC' });
         world.motes.clear();
-        world.onClear({ lines: 2, tspin: true, combo: 1 });
+        world.onClear({ lines: 2, twist: true, combo: 1 });
         const whirl = live(world).filter((m) => m.kind === MOTE_KIND.whirl);
         expect(whirl.length).toBeGreaterThan(10);
         expect(whirl[0].at[0]).toBeGreaterThan(0);

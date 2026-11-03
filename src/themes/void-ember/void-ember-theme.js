@@ -20,7 +20,7 @@
  * the crust breaks and sinks, the cells under it go from red through gold, the corona reaches
  * further, the wind streams faster and everything the star lights brightens with it. Four lines
  * make it hold its breath, then flare: a full shell crosses the frame, every loop is torn off at
- * once, space ripples and the star stands white-gold for a few seconds. A T-spin spins it up and
+ * once, space ripples and the star stands white-gold for a few seconds. A twist spins it up and
  * winds the corona and the wind into a pinwheel that springs back. The void behind it all
  * turns slowly through five palettes on its own clock, one every eighty seconds, and a new
  * level moves it one further.

@@ -110,9 +110,9 @@ describe('Blood Moon builds with play', () => {
         expect(state.crescendo.diamond).toBeLessThan(0.1);
     });
 
-    it('shows a zero-line T-spin small, and gives back-to-back a twin front and a waking volcano', () => {
+    it('shows a zero-line twist small, and gives back-to-back a twin front and a waking volcano', () => {
         const spin = new BloodMoonReactions();
-        expect(spin.cue('tspin', { lineCount: 0 })).toBe(0);
+        expect(spin.cue('twist', { lineCount: 0 })).toBe(0);
         expect(spin.corona).toBeGreaterThan(0.2);
         expect(live(spin)).toHaveLength(0);
         run(spin, 0.15);
@@ -165,7 +165,7 @@ describe('Blood Moon pools that never cut a live answer', () => {
         expect(rippleCue('lock', {}, { hardDrop: true }).strength).toBeGreaterThan(rippleCue('lock').strength);
         expect(rippleCue('clear', { lineCount: 1 }, { chain: 6 }).strength)
             .toBeGreaterThan(rippleCue('clear', { lineCount: 1 }).strength);
-        expect(rippleCue('tspin', { lineCount: 0 }).count).toBe(1);
+        expect(rippleCue('twist', { lineCount: 0 }).count).toBe(1);
     });
 
     it('flares a climbing fireball into a bolide and queues one past its best, never cutting it', () => {

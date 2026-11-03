@@ -27,7 +27,7 @@
  *   look=x,y,z,fov           inspection lens: from the eye, look at a world point with this fov
  *   cam=x,y,z,tx,ty,tz,fov   a free camera: from one world point, look at another (inside the stand,
  *                            a plant against the sky)
- *   event=lock|drop|clear|quad|tspin|perfect|levelUp|over   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|perfect|levelUp|over   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (u=<0..1> column, row=<0..19>,
  *                            lines=<1..4>, color=<hex>)
  *   combo=<n>                hold a chain of n (the storm breaks)
@@ -71,7 +71,7 @@ const DEMO_SCRIPT = [
     [14.4, 'lock', { rows: [15], u: 0.2 }], [15.6, 'lock', { rows: [14], u: 0.8, hardDrop: true }],
     [17.0, 'lock', { rows: [19, 18, 17, 16], u: 0.95, hardDrop: true }], [17.0, 'clear', { lines: 4, combo: 1 }],
     [24.0, 'lock', { rows: [19], u: 0.3 }], [25.2, 'lock', { rows: [18], u: 0.7 }],
-    [26.4, 'lock', { rows: [19, 18], u: 0.2 }], [26.4, 'clear', { lines: 2, tspin: true, combo: 1 }],
+    [26.4, 'lock', { rows: [19, 18], u: 0.2 }], [26.4, 'clear', { lines: 2, twist: true, combo: 1 }],
     [30.0, 'lock', { rows: [19], u: 0.55 }],
 ];
 
@@ -271,7 +271,7 @@ export function create({
             });
         } else if (eventName === 'clear') world.onClear({ lines, combo: Math.max(1, holdCombo) });
         else if (eventName === 'quad') world.onClear({ lines: 4, combo: Math.max(1, holdCombo) });
-        else if (eventName === 'tspin') world.onClear({ lines: 2, tspin: true, u });
+        else if (eventName === 'twist') world.onClear({ lines: 2, twist: true, u });
         else if (eventName === 'perfect') world.onClear({ lines: 4, perfect: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
         else if (eventName === 'over') world.onGameOver();

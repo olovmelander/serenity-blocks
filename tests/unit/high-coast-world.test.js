@@ -99,7 +99,7 @@ function play(w) {
         world.onLock({
             u: n / 7, rows: [19], color: PIECE_COLORS[n % 7], hardDrop: n === 3, distance: 12,
         });
-        world.onClear({ lines: 1, combo: n, tspin: n === 4 });
+        world.onClear({ lines: 1, combo: n, twist: n === 4 });
         stepTo(w, world.time + 0.8);
     }
     world.onLock({ u: 0.7, rows: [19, 18, 17, 16], color: PIECE_COLORS[3] });
@@ -533,7 +533,7 @@ describe('HighCoastWorld state', () => {
         play(shared);
         const first = read(shared);
         expect(first.state.counts).toMatchObject({
-            locks: 6, hardDrops: 1, clears: 6, quads: 1, tspins: 1, perfects: 1, levelUps: 1,
+            locks: 6, hardDrops: 1, clears: 6, quads: 1, twists: 1, perfects: 1, levelUps: 1,
         });
         begin(shared);
         play(shared);
@@ -676,7 +676,7 @@ describe('HighCoastWorld state', () => {
             if (frame % 44 === 0) {
                 const lines = 1 + (frame % 4);
                 combo = frame % 440 < 330 ? combo + 1 : 0;
-                world.onClear({ lines, combo: Math.max(1, combo), tspin: frame % 352 === 0 });
+                world.onClear({ lines, combo: Math.max(1, combo), twist: frame % 352 === 0 });
                 world.onCombo(combo);
                 world.onB2B(lines === 4 ? Math.min(4, world.b2b + 1) : 0);
             }

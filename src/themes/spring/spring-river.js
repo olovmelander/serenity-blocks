@@ -82,7 +82,7 @@ export const SURGE = Object.freeze({
     speed: 7.5, height: 0.5, length: 9, front: 1.8,
 });
 /**
- * A T-spin's whirl where the plunge pool drains, clear of the fall's spray: its centre (m along
+ * A twist's whirl where the plunge pool drains, clear of the fall's spray: its centre (m along
  * the river past the pool's start), its radius (m), how deep its eye dips (m), and its life
  * (s: spinning up, turning, dying away).
  */
@@ -525,7 +525,7 @@ export function createRiverMaterial(u, tex) {
         vDir.assign(aDir);
         // (Its white rises with it: no line across the water where the surges start.)
         vWave.assign(vec3(waveSlope, bore.min(1.0).mul(rising), wake.min(1.0).mul(rising)));
-        // A T-spin's whirl: the pool's surface sinks toward the vortex's eye.
+        // A twist's whirl: the pool's surface sinks toward the vortex's eye.
         const wd = positionLocal.xz.sub(vec2(WHIRL_CENTRE.x, WHIRL_CENTRE.z));
         const dip = exp(dot(wd, wd).div(-(WHIRL.radius * WHIRL.radius) * 0.35)).mul(whirlNow(u)).mul(WHIRL.dip);
         // The flood lifts the whole river.
@@ -639,7 +639,7 @@ export function createRiverMaterial(u, tex) {
         // into heaps and gaps (a solid band read as a painted stripe).
         const ragged = vWave.y.mul(1.15).add(churn.sub(0.5).mul(1.5)).add(streak.sub(0.5).mul(0.6));
         const boreFoam = smoothstep(0.42, 0.72, ragged);
-        // ── A T-spin's whirl: arms of foam winding in to a dark eye ──
+        // ── A twist's whirl: arms of foam winding in to a dark eye ──
         const wv = P.xz.sub(vec2(WHIRL_CENTRE.x, WHIRL_CENTRE.z));
         const wr = length(wv).toVar();
         const wk = whirlNow(u).mul(exp(wr.div(-WHIRL.radius))).toVar();

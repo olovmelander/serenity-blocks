@@ -318,7 +318,7 @@ Run `npm run dev:playground`, then:
 
 `/playground.html?effect=himalayan-peak&t=20&quality=High&board=1`
 
-Add `event=lock|drop|clear|quad|tspin|perfect|levelUp|over` with `eventAge=<s>`, and `combo=<n>`,
+Add `event=lock|drop|clear|quad|twist|perfect|levelUp|over` with `eventAge=<s>`, and `combo=<n>`,
 `level=<n>` (the five hours; `t` carries the light on from there, an hour per 140 s), `lines=<n>`, `u=<0..1>`, `row=<r>`, `color=<hex>`. `locks=<n>`
 plays n locks first, so the lines are holding their light when the event fires. `sun=<degrees>`
 holds the sun at an elevation (about -7 under the wall to 22). `demo=1` (without `t`) plays a

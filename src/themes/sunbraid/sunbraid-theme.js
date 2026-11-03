@@ -8,7 +8,7 @@
  * casts a fan of coloured light toward the eye. The braid turns with the clock (and a level-up
  * winds it on), so the valley's colours braid and turn; gameplay answers in that light: a lock
  * ticks the braid a notch, a clear draws the suns together and lets them go, a chain opens the
- * braid wider, four lines bring the suns into one white sun and part them again, a T-spin twists
+ * braid wider, four lines bring the suns into one white sun and part them again, a twist twists
  * the braid, and game over sets the suns.
  *
  * Content lives in SunbraidWorld, shared with the playground. This adapter preserves the house
@@ -263,7 +263,7 @@ export default class SunbraidTheme extends BaseTheme {
             sink: {
                 lock: (c) => this.sendWorld('onLock', c),
                 clear: (c) => this.sendWorld('onClear', c),
-                // A late perfect clear crowns the clear still playing; a T-spin with no clear turns a little.
+                // A late perfect clear crowns the clear still playing; a twist with no clear turns a little.
                 perfect: (c) => this.sendWorld('onPerfect', c),
                 spin: (c) => this.sendWorld('onSpin', c),
                 combo: (n, player) => this.reportCombo(n, player),

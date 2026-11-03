@@ -858,7 +858,7 @@ describe('High Coast theme: one node renderer on both backends', () => {
         eventBus.emit(EVENTS.HARD_DROP, { piece: I, distance: 12 });
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: I });
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 4 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 4 });
         eventBus.emit(EVENTS.B2B, { active: true });
         eventBus.emit(EVENTS.LEVEL_UP, { level: 3 });
         theme.stepFrame(16);
@@ -882,7 +882,7 @@ describe('High Coast theme: one node renderer on both backends', () => {
             lines: 4,
             combo: 1,
             cascade: 1,
-            tspin: true,
+            twist: true,
             perfect: false,
             b2b: true,
             screen: null,
@@ -902,10 +902,10 @@ describe('High Coast theme: one node renderer on both backends', () => {
         });
     });
 
-    it('carries a T-spin that cleared nothing to the world as a spin, not a clear', async () => {
+    it('carries a twist that cleared nothing to the world as a spin, not a clear', async () => {
         const { theme } = await startTheme({ quality: 'High' });
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: I });
-        eventBus.emit(EVENTS.TSPIN, { lineCount: 0 });
+        eventBus.emit(EVENTS.TWIST, { lineCount: 0 });
         theme.stepFrame(16);
         expect(theme.world.clears).toHaveLength(0);
         expect(theme.world.spins).toEqual([{ player: 0, screen: null }]);
@@ -2001,7 +2001,7 @@ describe.skipIf(!existsSync(worldFile) || !existsSync(postFile))('High Coast the
                     lines: 4,
                     combo: 1,
                     cascade: 1,
-                    tspin: true,
+                    twist: true,
                     perfect: false,
                     b2b: true,
                     rowCodes: Array.from({ length: 40 }, (_, i) => i % 8),

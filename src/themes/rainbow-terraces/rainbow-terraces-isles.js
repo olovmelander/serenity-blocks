@@ -3216,7 +3216,7 @@ export function* createIslesSteps({
             });
             this.update(0);
         },
-        /** The bell swings (level up, T-spin): `swing` in radians, decaying. */
+        /** The bell swings (level up, twist): `swing` in radians, decaying. */
         swing(amount) {
             bellSwing = Math.max(bellSwing, amount);
         },

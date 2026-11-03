@@ -1,5 +1,5 @@
 /**
- * Thermal Bloom — the T-spin's steam devils (iris-springs.md §1.5, §3.11): one to three slender
+ * Thermal Bloom — the twist's steam devils (iris-springs.md §1.5, §3.11): one to three slender
  * whirls of steam that spin up off the Iris's rim and wander toward the card's side for 5–7 s,
  * never orbiting the card; under reduced motion they turn in place. Each is an open lathe (the
  * tier's devil grid) on its row pair of the event table — (x, z, start, life) and (height,

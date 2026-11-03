@@ -182,7 +182,7 @@ export function createSky(u, { layers = 3, nebula = true, deepField = true } = {
             .mul(u.breath.mul(0.6).add(0.4)));
 
         // ── A four-line clear's ring across the sky, split like light through a prism ──
-        // Two rings may cross it at once (an eruption's, and a T-spin's or a new level's).
+        // Two rings may cross it at once (an eruption's, and a twist's or a new level's).
         const sky = acos(clamp(toNucleus, -1.0, 1.0)).toVar();
         const ring = (shock) => {
             const age = u.time.sub(shock.x);

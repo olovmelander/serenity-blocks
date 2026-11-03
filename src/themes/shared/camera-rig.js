@@ -62,7 +62,7 @@ const SHAKE_ROLL_PER_UNIT = 0.34; // radians of roll per unit of shake ANGLE
  */
 export const SHAKE = Object.freeze({
     LOCK: [0.0046, 90], // ~5 px at 1080p — a tap; this fires on EVERY piece
-    TSPIN: [0.0133, 130],
+    TWIST: [0.0133, 130],
     QUAD: [0.0225, 150],
     APEX: [0.0307, 190], // combo apex / perfect clear — the biggest hit in the game
     CLEAR_MS: 120,

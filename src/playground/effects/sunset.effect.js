@@ -19,7 +19,7 @@
  *                            the day's clock: t=0 is 16:40, sunset at t=70, sunrise at t=355
  *   locks=<n>                before anything else, set n lanterns on the water
  *   lift=<n>&liftAge=<s>     lift n of them <s> seconds before the frame (spin=1: turning)
- *   event=lock|drop|clear|quad|tspin|perfect|levelUp   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
  *   flock=<n>&flockAge=<s>   send n birds across the light and show them <s> seconds later
@@ -114,7 +114,7 @@ const DEMO_SCRIPT = [
     [29.0, 'lock', { rows: [19], u: 0.45 }], [30.0, 'lock', { rows: [19, 18], u: 0.7 }],
     [31.0, 'lock', { rows: [18], u: 0.25, hardDrop: true }],
     [31.0, 'clear', {
-        rows: [19, 18], lines: 2, tspin: true, combo: 1,
+        rows: [19, 18], lines: 2, twist: true, combo: 1,
     }],
     [33.0, 'lock', { rows: [19], u: 0.5 }], [34.5, 'lock', { rows: [18], u: 0.15 }],
 ];
@@ -225,7 +225,7 @@ export function create({
             });
         } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
-        else if (eventName === 'tspin') world.onClear({ rows: bottom(2), lines: 2, tspin: true });
+        else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
         else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
     };

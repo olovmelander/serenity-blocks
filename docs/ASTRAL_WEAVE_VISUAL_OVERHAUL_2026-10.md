@@ -132,7 +132,7 @@ Run `npm run dev:playground`, then:
 
 `/playground.html?effect=astral-weave&t=20&quality=High&board=1&stack=7`
 
-Add `event=lock|drop|clear|quad|tspin|perfect|levelUp` with `eventAge=<s>`, `combo=<n>`,
+Add `event=lock|drop|clear|quad|twist|perfect|levelUp` with `eventAge=<s>`, `combo=<n>`,
 `level=<n>`, `lines=<n>`. `demo=1` (without `t`) plays a looping script. `parts=` draws only
 the named layers (`sky`, `rosette`, `wefts`, `warp`, `hoop`, `flares`, `sparks`, `dust`,
 `motes`); `falseColor=1` bands the pre-tone-map peak; `forceWebGL=1` uses the WebGL2

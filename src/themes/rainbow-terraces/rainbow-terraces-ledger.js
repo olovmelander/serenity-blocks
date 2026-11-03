@@ -8,7 +8,7 @@
  *               to pool and ride down a fall as coloured packets
  *   StrokeBook  the chain's links: the colour and piece of each link that paints a stroke of the
  *               bow (7 on the primary, 5 on the secondary), whether the seven primary strokes
- *               were made by seven different pieces (the true bow), and the T-spin's turn
+ *               were made by seven different pieces (the true bow), and the twist's turn
  *   Dial        the one eased number (0..13) every chain stage reads: it paints up at most a
  *               second a stroke (faster under a backlog), withdraws newest-first a stroke every
  *               0.35 s, and under B2B holds four seconds before it lets go
@@ -409,7 +409,7 @@ export class StrokeBook {
     }
 
     /**
-     * The T-spin: the colours turn one place along the painted strokes (stroke i takes stroke
+     * The twist: the colours turn one place along the painted strokes (stroke i takes stroke
      * i − 1's colour, the first the last's).
      * @param {number} [count] how many strokes are painted (default: the links so far)
      */

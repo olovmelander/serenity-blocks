@@ -23,7 +23,7 @@
  *   scout=0                  march every pixel from the eye (no scout pass): the A/B for the scout
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   reduce=1                 reduced motion
- *   event=lock|drop|clear|quad|tspin|perfect|levelUp|release|over   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|perfect|levelUp|release|over   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (u=<0..1> column, row=<0..19>,
  *                            lines=<1..4>, color=<hex>, piece=<I|O|T|S|Z|J|L>, peak=<n> for release)
  *   combo=<n>                hold a chain of n (the trance; the kaleidoscope opens at 2, 5 and 8)
@@ -69,7 +69,7 @@ const DEMO_SCRIPT = [
         rows: [19, 18, 17, 16], u: 0.95, hardDrop: true, distance: 18,
     }], [17.0, 'clear', { lines: 4, combo: 1 }],
     [24.0, 'lock', { rows: [19], u: 0.3 }], [25.2, 'lock', { rows: [18], u: 0.7 }],
-    [26.4, 'lock', { rows: [19, 18], u: 0.2 }], [26.4, 'clear', { lines: 2, tspin: true, combo: 1 }],
+    [26.4, 'lock', { rows: [19, 18], u: 0.2 }], [26.4, 'clear', { lines: 2, twist: true, combo: 1 }],
     [30.0, 'lock', { rows: [19], u: 0.55 }],
 ];
 
@@ -215,9 +215,9 @@ export function create({
         } else if (eventName === 'clear') {
             world.onClear({ lines, rowCodes: codes(lines), combo: Math.max(1, holdCombo) });
         } else if (eventName === 'quad') world.onClear({ lines: 4, rowCodes: codes(4), combo: Math.max(1, holdCombo) });
-        else if (eventName === 'tspin') {
+        else if (eventName === 'twist') {
             world.onClear({
-                lines: 2, rowCodes: codes(2), tspin: true, combo: Math.max(1, holdCombo),
+                lines: 2, rowCodes: codes(2), twist: true, combo: Math.max(1, holdCombo),
             });
         } else if (eventName === 'perfect') world.onClear({ lines: 4, rowCodes: codes(4), perfect: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));

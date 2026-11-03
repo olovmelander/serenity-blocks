@@ -204,7 +204,7 @@ Run `npm run dev:playground`, then:
 
 `/playground.html?effect=lunara&t=20&quality=High&board=1`
 
-Add `event=lock|drop|clear|quad|tspin|perfect|levelUp` with `eventAge=<s>`, and `combo=<n>`,
+Add `event=lock|drop|clear|quad|twist|perfect|levelUp` with `eventAge=<s>`, and `combo=<n>`,
 `level=<n>`, `lines=<n>`, `u=<0..1>`, `row=<r>`, `color=<hex>`. `locks=<n>` plays n locks first,
 so the valley is holding their light when the event fires. `demo=1` (without `t`) plays a
 looping script. `parts=` draws only the named parts; `falseColor=1` bands the pre-tone-map

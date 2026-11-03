@@ -348,7 +348,7 @@ Run `npm run dev:playground`, then:
 
 `/playground.html?effect=winter&t=20&quality=High&board=1&hud=0`
 
-Add `event=lock|drop|clear|quad|tspin|perfect|levelUp|over` with `eventAge=<s>`, and `combo=<n>`,
+Add `event=lock|drop|clear|quad|twist|perfect|levelUp|over` with `eventAge=<s>`, and `combo=<n>`,
 `level=<n>` (one hour on per level), `lines=<n>`, `u=<0..1>`, `row=<r>`, `color=<hex>`. The
 clock turns the hours too: `t=20` is the first hour at rest, `t=62` half-way into the second,
 `t=110`, `206`, `302` and `398` the second to the fifth at rest. `locks=<n>`

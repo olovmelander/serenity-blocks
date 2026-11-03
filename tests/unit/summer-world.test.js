@@ -1623,7 +1623,7 @@ describe('Summer world in play', () => {
                 reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
                 reactions.onCombo(2);
             },
-            60: () => { reactions.onCombo(5); reactions.onTSpin({ piece: piece('T', 8, 12) }); },
+            60: () => { reactions.onCombo(5); reactions.onTwist({ piece: piece('T', 8, 12) }); },
             80: () => { reactions.onCombo(9); reactions.onBackToBack(); },
             100: () => { reactions.onPerfectClear(); reactions.onLevelUp(); },
             170: () => reactions.onGameOver(),
@@ -1856,7 +1856,7 @@ describe('Summer world in play', () => {
         const { sim } = world.petals;
         const reactions = new SummerReactions({ quality: 'Minimal', rng: seededRandom(1) });
         reactions.onPieceLock({ piece: piece('I', 1) });
-        reactions.onTSpin({ piece: piece('T', 1) });
+        reactions.onTwist({ piece: piece('T', 1) });
         reactions.onLineClear(2, { clearedRows: [22, 23] });
         // Forty frames: the puff, the garland and both jets have thrown all their petals.
         advance(world, reactions, 40 * STEP);

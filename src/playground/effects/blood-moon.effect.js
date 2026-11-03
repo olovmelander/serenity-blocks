@@ -86,7 +86,7 @@ function createCorona(scene, shared, nebula) {
         const direction = p.x.mul(-0.55).add(p.y.mul(0.65)).div(max(r, 0.01));
         const lit = smoothstep(-0.4, 0.85, direction);
         const angle = atan(p.y, p.x.add(0.00001)).toVar();
-        // The fire's tongues turn with the clock, faster as play heats and whirling on a T-spin.
+        // The fire's tongues turn with the clock, faster as play heats and whirling on a twist.
         const tongues = sin(angle.mul(19).sub(shared.coronaPhase.x))
             .mul(sin(angle.mul(31).add(shared.coronaPhase.y))).mul(0.5).add(0.5);
         const rim = exp(d.mul(-85)).mul(shared.corona.mul(2.8)).mul(lit.mul(0.6).add(0.4));
@@ -295,10 +295,10 @@ export function create({
     const reactions = new BloodMoonReactions();
     const ripples = new BloodMoonRipples(tier.ripples);
     const meteors = new BloodMoonMeteors();
-    /** Big clears that send a fireball across the sky, and how bright (a T-spin's by its lines). */
+    /** Big clears that send a fireball across the sky, and how bright (a twist's by its lines). */
     const FIREBALLS = { quad: 1.2, perfectClear: 1.6 };
     const fireballFor = (kind, data) => {
-        if (kind !== 'tspin') return FIREBALLS[kind] || 0;
+        if (kind !== 'twist') return FIREBALLS[kind] || 0;
         const lines = Number(data?.lineCount ?? data?.lines ?? 1);
         return lines > 0 ? 0.85 + Math.min(4, lines) * 0.1 : 0;
     };
@@ -317,7 +317,7 @@ export function create({
     let enabled = true;
     let now = 0;
     let rippleSide = 0;
-    /** The corona fire's extra turn, beyond the clock's own (play heat, T-spins). */
+    /** The corona fire's extra turn, beyond the clock's own (play heat, twists). */
     let coronaTurn = 0;
     /** The hard drop just cued (its PIECE_LOCK follows in the same tick). */
     let hardDropCued = false;

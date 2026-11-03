@@ -118,16 +118,16 @@ afterEach(() => {
 });
 
 describe('Parhelion ReactionDirector dominance', () => {
-    it('orders the cue kinds PERFECT > APEX > TSPIN > QUAD > CLEAR > STONEFALL > LOCK', () => {
+    it('orders the cue kinds PERFECT > APEX > TWIST > QUAD > CLEAR > STONEFALL > LOCK', () => {
         expect(CUE.PERFECT).toBeGreaterThan(CUE.APEX);
-        expect(CUE.APEX).toBeGreaterThan(CUE.TSPIN);
-        expect(CUE.TSPIN).toBeGreaterThan(CUE.QUAD);
+        expect(CUE.APEX).toBeGreaterThan(CUE.TWIST);
+        expect(CUE.TWIST).toBeGreaterThan(CUE.QUAD);
         expect(CUE.QUAD).toBeGreaterThan(CUE.CLEAR);
         expect(CUE.CLEAR).toBeGreaterThan(CUE.STONEFALL);
         expect(CUE.STONEFALL).toBeGreaterThan(CUE.LOCK);
         expect(CUE.LOCK).toBeGreaterThan(CUE.NONE);
         expect(Object.keys(CUE)).toEqual([
-            'NONE', 'LOCK', 'STONEFALL', 'CLEAR', 'QUAD', 'TSPIN', 'APEX', 'PERFECT', 'ECHO',
+            'NONE', 'LOCK', 'STONEFALL', 'CLEAR', 'QUAD', 'TWIST', 'APEX', 'PERFECT', 'ECHO',
         ]);
     });
 
@@ -148,22 +148,22 @@ describe('Parhelion ReactionDirector dominance', () => {
             d.onPieceLock({ piece: tPiece() });
             d.onLineClear({ lineCount: 4, clearedRows: [20, 21, 22, 23] });
         }],
-        ['a T-spin over a four-line clear', CUE.TSPIN, (d) => {
+        ['a twist over a four-line clear', CUE.TWIST, (d) => {
             d.onPieceLock({ piece: tPiece() });
             d.onLineClear({ lineCount: 4, clearedRows: [20, 21, 22, 23] });
-            d.onTSpin({ lineCount: 2 });
+            d.onTwist({ lineCount: 2 });
         }],
-        ['a combo-10 apex over a T-spin', CUE.APEX, (d) => {
+        ['a combo-10 apex over a twist', CUE.APEX, (d) => {
             d.onPieceLock({ piece: tPiece() });
             d.onLineClear({ lineCount: 2, clearedRows: [22, 23], comboCount: 10 });
-            d.onTSpin({ lineCount: 2 });
+            d.onTwist({ lineCount: 2 });
         }],
         ['a perfect clear over everything', CUE.PERFECT, (d) => {
             d.onHardDrop({ piece: tPiece(), distance: 12 });
             d.onPieceLock({ piece: tPiece() });
             d.onCombo({ comboCount: 3 });
             d.onLineClear({ lineCount: 4, clearedRows: [20, 21, 22, 23], comboCount: 10 });
-            d.onTSpin({ lineCount: 2 });
+            d.onTwist({ lineCount: 2 });
             d.onB2B({ active: true });
             d.onPerfectClear({ depth: 4 });
         }],
@@ -303,14 +303,14 @@ describe('Parhelion ReactionDirector origins', () => {
         expect(last().lockU).toBeCloseTo(T_LOCK_U);
     });
 
-    it('anchors a T-spin at the lock origin, not the cleared rows', () => {
+    it('anchors a twist at the lock origin, not the cleared rows', () => {
         const { director, cues } = createDirector();
         director.onPieceLock({ piece: tPiece() });
         director.onLineClear({ lineCount: 2, clearedRows: [22, 23] });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.update(0);
         expect(cues).toHaveLength(1);
-        expect(cues[0]).toMatchObject({ kind: CUE.TSPIN, lines: 2 });
+        expect(cues[0]).toMatchObject({ kind: CUE.TWIST, lines: 2 });
         expect(cues[0].lockU).toBeCloseTo(T_LOCK_U);
         expect(cues[0].rowV).toBeCloseTo(T_LOCK_V);
         expect(cues[0].rowV).not.toBeCloseTo(0.95);
@@ -376,10 +376,10 @@ describe('Parhelion ReactionDirector per-player isolation', () => {
         const { director, kinds } = createDirector();
         director.onPieceLock({ piece: tPiece() });
         director.onLineClear({ lineCount: 1, clearedRows: [23] });
-        director.onTSpin({ lineCount: 1, source: 'infinity' });
+        director.onTwist({ lineCount: 1, source: 'infinity' });
         director.onB2B({ active: true, source: 'infinity' });
         director.update(0);
-        expect(kinds()).toEqual([CUE.TSPIN]);
+        expect(kinds()).toEqual([CUE.TWIST]);
     });
 
     it('bounds concurrent players to five fixed slots and drops the overflow', () => {
@@ -427,17 +427,17 @@ describe('Parhelion ReactionDirector B2B echo', () => {
         expect(cues).toHaveLength(3);
     });
 
-    it('echoes a B2B T-spin and a B2B apex', () => {
-        const tspin = createDirector();
-        tspin.director.onPieceLock({ piece: tPiece() });
-        tspin.director.onLineClear({ lineCount: 2, clearedRows: [22, 23] });
-        tspin.director.onTSpin({ lineCount: 2 });
-        tspin.director.onB2B({ active: true });
-        tspin.director.update(0);
-        advance(tspin.director, 0.2);
-        expect(tspin.kinds()).toEqual([CUE.TSPIN, CUE.ECHO]);
-        expect(tspin.last().echoOf).toBe(CUE.TSPIN);
-        expect(tspin.last().rowV).toBeCloseTo(T_LOCK_V);
+    it('echoes a B2B twist and a B2B apex', () => {
+        const twist = createDirector();
+        twist.director.onPieceLock({ piece: tPiece() });
+        twist.director.onLineClear({ lineCount: 2, clearedRows: [22, 23] });
+        twist.director.onTwist({ lineCount: 2 });
+        twist.director.onB2B({ active: true });
+        twist.director.update(0);
+        advance(twist.director, 0.2);
+        expect(twist.kinds()).toEqual([CUE.TWIST, CUE.ECHO]);
+        expect(twist.last().echoOf).toBe(CUE.TWIST);
+        expect(twist.last().rowV).toBeCloseTo(T_LOCK_V);
 
         const apex = createDirector();
         apex.director.onLineClear({ lineCount: 4, comboCount: 10 });
@@ -637,11 +637,11 @@ describe('Parhelion ReactionDirector lock count and Full Circle', () => {
         expect(counts).toEqual([]);
         expect(director.getDebugState().lockCount).toBe(12);
 
-        director.onPieceLock({ piece: tPiece() }); // a T-spin still finds its lock origin
+        director.onPieceLock({ piece: tPiece() }); // a twist still finds its lock origin
         director.onLineClear({ lineCount: 1, clearedRows: [23] });
-        director.onTSpin({ lineCount: 1 });
+        director.onTwist({ lineCount: 1 });
         director.update(0.1);
-        expect(cues[0].kind).toBe(CUE.TSPIN);
+        expect(cues[0].kind).toBe(CUE.TWIST);
         expect(cues[0].rowV).toBeCloseTo(T_LOCK_V);
     });
 
@@ -661,13 +661,13 @@ describe('Parhelion ReactionDirector fixed capacity', () => {
         const { cue, echoDue, echoKind } = initial;
         const lock = { piece: tPiece() };
         const clear = { lineCount: 2, clearedRows: [22, 23] };
-        const tspin = { lineCount: 2 };
+        const twist = { lineCount: 2 };
         const b2b = { active: true };
 
         for (let index = 0; index < 10000; index += 1) {
             director.onPieceLock(lock);
             director.onLineClear(clear);
-            director.onTSpin(tspin);
+            director.onTwist(twist);
             director.onB2B(b2b);
             director.update(0);
         }

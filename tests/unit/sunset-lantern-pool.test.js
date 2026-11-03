@@ -73,7 +73,7 @@ describe('sunset lanterns', () => {
         expect(r.alive).toBe(false);
     });
 
-    it('turns a T-spin\'s lanterns as they rise', () => {
+    it('turns a twist\'s lanterns as they rise', () => {
         const pool = new LanternPool({ capacity: 8, seed: 4 });
         const r = pool.send(0, FROM, -8, -20, GOLD);
         pool.lift(5, 1, { spiral: 1.25 });

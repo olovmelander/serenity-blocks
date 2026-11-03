@@ -180,7 +180,7 @@ describe('sunset world: what the board does', () => {
         expect(sent[0]).toBeLessThan(sent[1]);
     });
 
-    it('lifts a lantern for each line, all of them for four, and turns them for a T-spin', () => {
+    it('lifts a lantern for each line, all of them for four, and turns them for a twist', () => {
         const { world, step } = makeWorld();
         for (let i = 0; i < 8; i += 1) {
             world.onLock({ rows: [19 - i], u: (i * 0.37) % 1, color: '#ff8a65' });
@@ -191,7 +191,7 @@ describe('sunset world: what the board does', () => {
         world.onClear({ lines: 2, rows: [19, 18] });
         step(1.5);
         expect(world.pool.flying(world.clock)).toBe(2);
-        world.onClear({ lines: 2, rows: [19, 18], tspin: true });
+        world.onClear({ lines: 2, rows: [19, 18], twist: true });
         step(1.5);
         expect(world.pool.records.some((r) => r.spiral !== 0)).toBe(true);
         world.onClear({ lines: 4, rows: [19, 18, 17, 16] });
@@ -431,7 +431,7 @@ describe('sunset world: it builds with play, and never restarts', () => {
         world.onClear({ ...quad, b2b: true });
         step(0.8);
         expect(world.getState().sunDogs).toBeGreaterThan(0.5);
-        // A T-spin that clears nothing still sends a lantern up, turning.
+        // A twist that clears nothing still sends a lantern up, turning.
         for (let i = 0; i < 3; i += 1) world.onLock({ rows: [19], u: 0.7, color: '#ba68c8' });
         step(1);
         was = lifted();

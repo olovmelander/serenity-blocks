@@ -286,7 +286,7 @@ The choice is the author's; it has not been reviewed by the project owner.
   clean console (no WebGPU validation errors, no TSL warnings), on native WebGPU and with
   `forceWebGL=1`, at High, Medium, Low and Minimal, at 1584 x 813 and 393 x 852. Captures went
   through Electron under the machine's shared GPU lock rather than the browser MCP. Events are
-  reproducible with `&t=20&board=1&event=lock|drop|clear|quad|tspin|perfect|levelUp`,
+  reproducible with `&t=20&board=1&event=lock|drop|clear|quad|twist|perfect|levelUp`,
   `&eventAge=<s>`, `&lines=<n>`, `&u=0..1&row=0..19`, `&color=<hex>`, `&combo=<n>`,
   `&locks=<n>`; `&quality=<tier>` picks a tier; `&probe=1` reads the wave simulation back into
   the diagnostics (a hard drop measured rings 3.9 cm high 1.9 s after it; at rest the koi's own

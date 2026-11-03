@@ -12,7 +12,7 @@
  *
  * Gameplay is that light and the wind in the grain (grainfields-reactions.js): a lock tears a gap
  * in the deck and a sunbeam stands in the barley beside the card, a clear sends a lane of wind
- * running out across the field, a chain breaks the storm open, a T-spin wheels the wind in the
+ * running out across the field, a chain breaks the storm open, a twist wheels the wind in the
  * stand, four lines tear the sky open over the gate. This module owns the geometry everything
  * shares (eye, rig, landmarks), the piece codes the director deals in, timings and small maths.
  */
@@ -239,7 +239,7 @@ export const TIMING = Object.freeze({
     /** Perfect clear: the sky stays clear this long, then the deck returns over the next. */
     clearHold: 14,
     clearReturn: 10,
-    /** T-spin: the herd wheels for this long. */
+    /** Twist: the herd wheels for this long. */
     wheel: 9,
     /** Game over: the light falls over this long, and returns over this long. */
     dusk: 6,

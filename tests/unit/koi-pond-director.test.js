@@ -114,16 +114,16 @@ describe('koi pond director: intake', () => {
         expect(calls.combo[calls.combo.length - 1]).toEqual([0, 0]);
     });
 
-    it('carries T-spins, perfect clears and back-to-backs on the clear', () => {
+    it('carries twists, perfect clears and back-to-backs on the clear', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: T });
         director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.onB2B({ active: true });
         director.onPerfectClear({ depth: 1 });
         director.flush();
         expect(calls.clear[0]).toMatchObject({
-            lines: 2, tspin: true, b2b: true, perfect: true,
+            lines: 2, twist: true, b2b: true, perfect: true,
         });
         // An inactive B2B is not one.
         expect(director.onB2B({ active: false })).toBe(false);
@@ -325,15 +325,15 @@ describe('koi pond director: clears with no lines of their own', () => {
         expect(calls.clear).toHaveLength(3);
     });
 
-    it('resolves a T-spin that clears nothing as a lineless spin that does not move the chain', () => {
+    it('resolves a twist that clears nothing as a lineless spin that does not move the chain', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: T });
-        director.onTSpin({ lineCount: 0 });
+        director.onTwist({ lineCount: 0 });
         director.flush();
         expect(calls.lock).toHaveLength(1);
         expect(calls.clear).toHaveLength(1);
         expect(calls.clear[0]).toMatchObject({
-            lines: 0, tspin: true, crown: false, perfect: false,
+            lines: 0, twist: true, crown: false, perfect: false,
         });
         expect(calls.combo).toEqual([]);
         // A plain lock is still just a lock.

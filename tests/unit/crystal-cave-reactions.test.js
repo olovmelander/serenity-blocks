@@ -428,9 +428,9 @@ describe('Crystal Cave reactions — chains', () => {
 });
 
 describe('Crystal Cave reactions — flourishes and the end of a game', () => {
-    it('spins a pinwheel beside the piece on a t-spin', () => {
+    it('spins a pinwheel beside the piece on a twist', () => {
         const director = new CrystalCaveReactions({ rng: seeded() });
-        director.onTSpin({ piece: piece('T', 8, 10) });
+        director.onTwist({ piece: piece('T', 8, 10) });
         const [cue] = cuesOf(director);
         expect(cue).toMatchObject({ type: 'spin', side: 1, family: 0 });
         expect(director.energy).toBeGreaterThan(0.5);
@@ -485,7 +485,7 @@ describe('Crystal Cave reactions — the build-up', () => {
         director.update(1 / 60);
         const strong = { ...director.getFrame(), familyLevel: [...director.getFrame().familyLevel] };
         director.onPieceLock({ piece: piece('O') });
-        director.onTSpin({ lineCount: 0 });
+        director.onTwist({ lineCount: 0 });
         const weak = director.update(1 / 60);
         expect(weak.flash).toBeGreaterThanOrEqual(strong.flash * Math.exp(-4.2 / 60));
         expect(weak.energy).toBeGreaterThanOrEqual(strong.energy * Math.exp(-1.45 / 60));
@@ -573,10 +573,10 @@ describe('Crystal Cave reactions — the build-up', () => {
         expect(two.strength).toBeGreaterThan(one.strength);
         expect(director.update(1 / 60).skylight).toBeGreaterThan(opened);
         director.clearCues();
-        // A T-spin is difficult too: the run goes on.
+        // A twist is difficult too: the run goes on.
         director.onPieceLock({ piece: piece('T') });
         director.onLineClear(2);
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.onBackToBack();
         expect(cuesOf(director).find((cue) => cue.type === 'skyfall').count).toBe(3);
         director.clearCues();
@@ -589,11 +589,11 @@ describe('Crystal Cave reactions — the build-up', () => {
         expect(cuesOf(director).find((cue) => cue.type === 'skyfall').count).toBe(1);
     });
 
-    it('answers a T-spin that cleared nothing with a small turn of light', () => {
+    it('answers a twist that cleared nothing with a small turn of light', () => {
         const zero = new CrystalCaveReactions({ rng: seeded() });
-        zero.onTSpin({ lineCount: 0 });
+        zero.onTwist({ lineCount: 0 });
         const full = new CrystalCaveReactions({ rng: seeded() });
-        full.onTSpin({ lineCount: 2 });
+        full.onTwist({ lineCount: 2 });
         const small = cuesOf(zero).find((cue) => cue.type === 'spin');
         const big = cuesOf(full).find((cue) => cue.type === 'spin');
         expect(small.strength).toBeGreaterThan(0.2);
@@ -612,7 +612,7 @@ describe('Crystal Cave reactions — bounds, determinism and lifecycle', () => {
                 director.onPieceLock({ piece: piece('IOTSZJL'[index % 7], index % 10, 4 + (index % 20)) });
                 director.onLineClear(1 + (index % 4));
                 director.onCombo(index);
-                director.onTSpin({});
+                director.onTwist({});
                 director.onBackToBack();
                 director.onPerfectClear();
                 director.onLevelUp();
@@ -670,7 +670,7 @@ describe('Crystal Cave reactions — bounds, determinism and lifecycle', () => {
         director.onLineClear(4);
         director.dispose();
         expect(director.cueCount).toBe(0);
-        for (const [method, argument] of [['onPieceLock', {}], ['onLineClear', 4], ['onCombo', 5], ['onTSpin', {}],
+        for (const [method, argument] of [['onPieceLock', {}], ['onLineClear', 4], ['onCombo', 5], ['onTwist', {}],
             ['onBackToBack'], ['onPerfectClear'], ['onLevelUp'], ['onGameOver'], ['onHardDrop', { distance: 9 }]]) {
             expect(director[method](argument)).toBe(false);
         }

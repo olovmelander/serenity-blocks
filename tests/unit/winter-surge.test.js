@@ -3,7 +3,7 @@
  * src/themes/shared/gameplay-surge.js): every flash, lift, strum and overdrive accumulates, so a
  * weak event on the heels of a strong one never cuts the light; a long chain reads hotter than
  * its first clear and breathes back once the hands rest; cascade waves, back-to-backs, a late
- * perfect clear and a T-spin that clears nothing each have their own answer.
+ * perfect clear and a twist that clears nothing each have their own answer.
  */
 
 import {
@@ -327,9 +327,9 @@ describe('Winter builds with play: its own moments', () => {
         const plain = makeWorld();
         const b2b = makeWorld();
         for (const { world, camera } of [plain, b2b]) step(world, camera, 0, 1);
-        plain.world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        plain.world.onClear({ rows: [19, 18], lines: 2, twist: true });
         b2b.world.onClear({
-            rows: [19, 18], lines: 2, tspin: true, b2b: true,
+            rows: [19, 18], lines: 2, twist: true, b2b: true,
         });
         for (const { world, camera } of [plain, b2b]) step(world, camera, 1, 1.5);
         const first = b2b.world.u.halo.value;
@@ -356,7 +356,7 @@ describe('Winter builds with play: its own moments', () => {
         b2b.world.dispose();
     });
 
-    it('still turns the wind a little for a T-spin that clears nothing', () => {
+    it('still turns the wind a little for a twist that clears nothing', () => {
         const { world, camera } = makeWorld();
         step(world, camera, 0, 1);
         const { sparks } = world.counts;

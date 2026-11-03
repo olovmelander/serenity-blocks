@@ -9,7 +9,7 @@ import {
 const TIER_ORDER = ['Extreme', 'Ultra', 'High', 'Medium', 'Low', 'Minimal'];
 const ENVELOPES = ['gust', 'moon', 'shafts', 'glow'];
 const STEP = 1 / 60;
-const HANDLERS = ['onHardDrop', 'onPieceLock', 'onLineClear', 'onCombo', 'onTSpin', 'onBackToBack', 'onPerfectClear',
+const HANDLERS = ['onHardDrop', 'onPieceLock', 'onLineClear', 'onCombo', 'onTwist', 'onBackToBack', 'onPerfectClear',
     'onLevelUp', 'onGameOver'];
 const FRAME_KEYS = ['beatRate', 'blink', 'breeze', 'emitters', 'epoch', 'figure', 'front', 'glow', 'gust', 'halo',
     'heat', 'moon', 'motion', 'owl', 'settled', 'shafts', 'stars', 'streak', 'surge', 'sync', 'wake', 'waves'];
@@ -224,7 +224,7 @@ describe('Forest reactions: envelopes', () => {
         reactions.onPieceLock({ piece: cell(2, 20) });
         reactions.onLineClear(1, { clearedRows: [23] });
         reactions.onLevelUp();
-        reactions.onTSpin({});
+        reactions.onTwist({});
         const after = reactions.getFrame();
         for (const key of ENVELOPES) {
             expect(after[key], key).toBeGreaterThanOrEqual(peak[key]);
@@ -267,7 +267,7 @@ describe('Forest reactions: envelopes', () => {
             reactions.onPieceLock({ piece: tee(round % 10, 4 + (round % 20)) });
             reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
             reactions.onCombo(60);
-            reactions.onTSpin({ piece: tee(8, 5) });
+            reactions.onTwist({ piece: tee(8, 5) });
             reactions.onBackToBack();
             reactions.onPerfectClear();
             reactions.onLevelUp();
@@ -546,14 +546,14 @@ describe('Forest reactions: the build-up of hot play', () => {
         expect(reactions.getFrame().front).not.toBeNull();
     });
 
-    it('answers a T-spin that clears nothing with its spiral and a little heat of its own', () => {
+    it('answers a twist that clears nothing with its spiral and a little heat of its own', () => {
         const reactions = director();
-        expect(reactions.onTSpin({ lineCount: 0, piece: tee(5, 18) })).toBe(true);
+        expect(reactions.onTwist({ lineCount: 0, piece: tee(5, 18) })).toBe(true);
         const frame = advance(reactions, 0.5);
         expect(frame.emitters.map((entry) => entry.kind)).toContain('spin');
         expect(frame.surge.level).toBeGreaterThan(0);
         const cleared = director();
-        cleared.onTSpin({ lineCount: 2, piece: tee(5, 18) });
+        cleared.onTwist({ lineCount: 2, piece: tee(5, 18) });
         expect(advance(cleared, 0.5).surge.level).toBeGreaterThan(frame.surge.level);
     });
 
@@ -611,7 +611,7 @@ describe('Forest reactions: waves of light', () => {
             () => reactions.onLineClear(1, { clearedRows: [23] }),
             () => reactions.onLineClear(3, { clearedRows: [21, 22, 23] }),
             () => reactions.onCombo(5),
-            () => reactions.onTSpin({ piece: tee(6, 18) }),
+            () => reactions.onTwist({ piece: tee(6, 18) }),
             () => reactions.onPerfectClear(),
             () => reactions.onLevelUp(),
             () => { reactions.onHardDrop({ distance: 18 }); reactions.onPieceLock({ piece: cell(8, 22) }); },
@@ -838,7 +838,7 @@ describe('Forest reactions: the emitter pool', () => {
         const furthest = [...before].sort((a, b) => b.progress - a.progress)[0];
         expect(furthest.id).not.toBe(long.id);
         // The pool is full: the next event takes the slot that was furthest through its life.
-        reactions.onTSpin({ piece: tee(1, 10) });
+        reactions.onTwist({ piece: tee(1, 10) });
         const after = reactions.getFrame().emitters;
         expect(after).toHaveLength(limit);
         const spin = after.find((emitter) => emitter.kind === 'spin');
@@ -1037,7 +1037,7 @@ describe('Forest reactions: the wind front and the falling stars', () => {
         reactions.onLineClear(1, {});
         reactions.onLineClear(2, {});
         reactions.onCombo(9);
-        reactions.onTSpin({});
+        reactions.onTwist({});
         reactions.onBackToBack();
         expect(count()).toBe(0);
         let previous = 0;
@@ -1069,7 +1069,7 @@ describe('Forest reactions: the figure', () => {
 
     it('is called by four lines and by a perfect clear, and by nothing less', () => {
         for (const act of [(r) => r.onLineClear(1, {}), (r) => r.onLineClear(3, {}), (r) => r.onCombo(30),
-            (r) => r.onTSpin({}), (r) => r.onBackToBack(), (r) => r.onLevelUp(), (r) => r.onPieceLock({})]) {
+            (r) => r.onTwist({}), (r) => r.onBackToBack(), (r) => r.onLevelUp(), (r) => r.onPieceLock({})]) {
             const reactions = director();
             act(reactions);
             expect(reactions.getFrame().figure).toBeNull();
@@ -1621,7 +1621,7 @@ describe('Forest reactions: reset, epochs and disposal', () => {
             for (let frame = 0; frame < 240; frame++) {
                 if (frame % 20 === 0) clearingMove(reactions, 1 + ((frame / 20) % 4), tee(frame % 8, 18));
                 if (frame % 45 === 10) reactions.onCombo(2 + frame / 45);
-                if (frame === 100) reactions.onTSpin({ piece: tee(2, 12) });
+                if (frame === 100) reactions.onTwist({ piece: tee(2, 12) });
                 if (frame === 150) reactions.onPerfectClear();
                 frames.push(JSON.stringify(reactions.update(STEP)));
             }

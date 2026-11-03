@@ -13,7 +13,7 @@ const CUES = Object.freeze({
     lock: [1, 0.55],
     clear: [1, 0.75],
     combo: [1, 0.9],
-    tspin: [2, 1],
+    twist: [2, 1],
     quad: [3, 1.1],
     perfectClear: [4, 1.25],
     levelUp: [2, 0.85],
@@ -22,7 +22,7 @@ const CUES = Object.freeze({
 /**
  * The rings a cue drops. `options.hardDrop`: the lock landed from a hard drop (a stronger ring);
  * `options.chain`: the true combo so far (each clear of a chain lands harder on the water).
- * A T-spin that cleared nothing drops one ring.
+ * A twist that cleared nothing drops one ring.
  */
 export function rippleCue(kind, payload, options = undefined) {
     const cue = CUES[kind];
@@ -36,7 +36,7 @@ export function rippleCue(kind, payload, options = undefined) {
     } else if (kind === 'lock') {
         if (options?.hardDrop) strength += 0.17;
         strength += chain * 0.02;
-    } else if (kind === 'tspin' && Number(payload?.lineCount ?? payload?.lines) === 0) {
+    } else if (kind === 'twist' && Number(payload?.lineCount ?? payload?.lines) === 0) {
         count = 1;
         strength = 0.7;
     }

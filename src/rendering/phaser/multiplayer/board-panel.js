@@ -65,7 +65,7 @@ export function createMultiplayerBoardScene(
             // SharedEffects instance (will be initialized in create()).
             // BoardScene exposes the same instance under BOTH names and callers
             // reach for `scene.sharedEffects?.…` — without the alias every such
-            // call (T-spin, back-to-back, cascade wave, perfect clear, clear-tier
+            // call (twist, back-to-back, cascade wave, perfect clear, clear-tier
             // hit-stop, combo state) silently no-opped on multiplayer boards.
             this.effects = null;
             this.sharedEffects = null;

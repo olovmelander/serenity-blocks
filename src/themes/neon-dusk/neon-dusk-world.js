@@ -978,18 +978,18 @@ export class NeonDuskWorld {
     }
 
     /**
-     * A T-spin: a spun halo, its dashes wheeling round the sun (it turns the clear's own halo
+     * A twist: a spun halo, its dashes wheeling round the sun (it turns the clear's own halo
      * when they leave together). One that clears nothing still turns a small one.
      */
-    onTSpin(lineCount = 0) {
+    onTwist(lineCount = 0) {
         const t = this.time;
         const n = Math.max(0, lineCount | 0);
         this.triggerHolo(n > 0 ? 0.7 + 0.15 * n : 0.45, 0, { spin: n > 0 ? 8 : 6 });
         this.sunSwell.hit(n > 0 ? 0.15 : 0.08, t);
         if (n === 0) this.emitRisingPixels(this.burstCount(0.03, 14));
         const k = n > 0 ? 1 : 0.5;
-        this.surge.punch.hit(SURGE_WEIGHTS.punch.tspin * k, t);
-        this.surge.level.hit(SURGE_WEIGHTS.heat.tspin * k, t);
+        this.surge.punch.hit(SURGE_WEIGHTS.punch.twist * k, t);
+        this.surge.level.hit(SURGE_WEIGHTS.heat.twist * k, t);
     }
 
     /**

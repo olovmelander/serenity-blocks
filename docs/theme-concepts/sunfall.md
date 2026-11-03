@@ -669,7 +669,7 @@ src/themes/sunfall/
   sunfall-theme-icon.png  oculus → white-gold column → glowing canopy, rainbow fragment at its foot, one swiftlet
                           [amended: §3.2, the icon has no rainbow and no swiftlet]
 src/playground/effects/sunfall.effect.js
-  standard params (event=lock|drop|clear|quad|tspin|perfect|levelUp, lines, row, u, combo, level, locks,
+  standard params (event=lock|drop|clear|quad|twist|perfect|levelUp, lines, row, u, combo, level, locks,
   parts, quality, board, icon, px, py, bloom, noPost, falseColor, reduce, statsHud, demo) + weather=, station=
 tests/unit/sunfall-{core,director,composition,world,theme}.test.js
 ```
@@ -1633,7 +1633,7 @@ sink.levelUp(level)
 ```
 
 World reactions: `lock` → Flush (or Snap when `hardDrop`); `clear` → Shower + Ripening + New Growth (lines 1–3),
-Cataract (lines 4), the Turning (`tspin`), Zenith Flush (`perfect`, standalone, `rows: []`); `combo` → Inhale or
+Cataract (lines 4), the Turning (`twist`), Zenith Flush (`perfect`, standalone, `rows: []`); `combo` → Inhale or
 Exhale; `b2b` → flood threads and Echo; `levelUp` → the light walks; `gameOver` → the light leaves;
 `onSessionStart` → Morning enters.
 
@@ -1692,7 +1692,7 @@ Every parameter must be catalogued in `src/ui/url-parameters/playground-paramete
 | `cloud` | 0–1, holds the cloud-crossing phase (1 = fully covered) |
 | `board`, `statsHud` | Mock board with the real selectors (calm zones and aims exercised) |
 | `locks=<n>` | Pre-play n locks (alternating sides and pieces) |
-| `event` | `lock`, `drop`, `clear`, `quad`, `tspin`, `perfect`, `levelUp`, `release`, `b2b`, `gameOver`, `morning` |
+| `event` | `lock`, `drop`, `clear`, `quad`, `twist`, `perfect`, `levelUp`, `release`, `b2b`, `gameOver`, `morning` |
 | `eventAge` | Seconds after the event; default 0.4 |
 | `eventLevel` | Default level + 1 |
 | `lines` | 1–4; default 2 |
@@ -1746,8 +1746,8 @@ All queries below follow `/playground.html?`. Viewports: **D** = 1920×1080, **W
 | **B2** | Shower, Ripening at the rows, New Growth from the shadow well, cascades. | ★ `locks=10&event=clear&lines=3&row=16&eventAge=1.2` @D (veil in the column, three rows shivering on both strands, bands unfurling) · `locks=10&event=clear&lines=2&row=17&eventAge=4` @D (bands in the rows' own colours; those rows' leaves emerald) · `locks=10&event=clear&lines=1&row=18&eventAge=0.9` @D · `event=clear&lines=1&row=18&cascade=3&eventAge=2.2` @D (aftershowers) · `locks=10&event=clear&lines=3&row=16&eventAge=1.2&falseColor=1` @D (only glints above the knee). No colour in the rain anywhere. |
 | **B3** | Combo: columns and pools in rank order, vine partings, mist inhale, deck gilding at 5, natural flush at 6, Sevenfold; Exhale; break inference. | ★ `combo=2` @D · `combo=4` @D (four columns, four pools) · ★ `combo=7` @D (Sevenfold) · `event=release&peak=6&eventAge=0.8` @D (columns closing outside-in) · `event=release&peak=6&eventAge=2.5` @D (the cloud passing out through the oculus, sunfall dimmed) · `combo=5` @P. Director tests: break on the breaking lock, resume rule. |
 | **B4** | Cataract and the one bow: the tongue, the fall (leading edge at the canopy 1.2 s after the 0.35 s lead, stylised; the spray and bow peak about 2.2 s after the event), spray shell with `dlBow`, `solveBowSun`, wet tail, swiftlet scatter, measured lift. | `event=quad&row=16&eventAge=0.2` @D (the tongue over the lip) · ★ `event=quad&row=16&eventAge=2.2` @D (the fall through the beam and the double bow in the spray) · `event=quad&row=16&eventAge=5` @D (thinning, the jungle glistening) · `event=quad&row=16&eventAge=2.2&falseColor=1` @D · `event=quad&row=16&eventAge=2.2` @P and @W. Mean-luminance lift ≤ +0.25 stop measured between `eventAge=0` and the peak. |
-| **B5** | The Turning (fringe texture, rotation, persistence); flood threads and Echo; director B2B level. | `event=tspin&lines=2&u=0.2&row=13&eventAge=0.9` @D (mid-turn: streaks sliding round the column) · `event=tspin&lines=2&u=0.2&row=13&eventAge=4` @D (turned; the pool's light pattern changed) · `fringe=6` @D · `b2b=2` @D (two threads) · ★ `b2b=1&event=quad&row=16&eventAge=6` @D (the cataract thinned into one thread that stays) · `event=b2b&eventAge=1.0` @D (Echo, no bow). |
-| **B6** | Zenith Flush; the light walks; the light leaves and Morning enters; idle drips; meditation drip bursts; multiplayer strands. | ★ `event=perfect&eventAge=2.5` @D (vertical column inside the left free space; every crown flushed) · `event=perfect&eventAge=14` @D (greening back) · `event=levelUp&eventLevel=2&eventAge=1.5` @D (column mid-swing) · the full query `effect=sunfall&t=40&level=4&board=1&event=levelUp&eventLevel=5&eventAge=3` @D (the wrap under a cloud; written out because a second `level=` would be ignored) · `event=gameOver&eventAge=4` @D (a sliver at the rim, twilight) · `event=morning&eventAge=2` @D · `reduce=1&event=tspin&lines=1&eventAge=1` @D. |
+| **B5** | The Turning (fringe texture, rotation, persistence); flood threads and Echo; director B2B level. | `event=twist&lines=2&u=0.2&row=13&eventAge=0.9` @D (mid-turn: streaks sliding round the column) · `event=twist&lines=2&u=0.2&row=13&eventAge=4` @D (turned; the pool's light pattern changed) · `fringe=6` @D · `b2b=2` @D (two threads) · ★ `b2b=1&event=quad&row=16&eventAge=6` @D (the cataract thinned into one thread that stays) · `event=b2b&eventAge=1.0` @D (Echo, no bow). |
+| **B6** | Zenith Flush; the light walks; the light leaves and Morning enters; idle drips; meditation drip bursts; multiplayer strands. | ★ `event=perfect&eventAge=2.5` @D (vertical column inside the left free space; every crown flushed) · `event=perfect&eventAge=14` @D (greening back) · `event=levelUp&eventLevel=2&eventAge=1.5` @D (column mid-swing) · the full query `effect=sunfall&t=40&level=4&board=1&event=levelUp&eventLevel=5&eventAge=3` @D (the wrap under a cloud; written out because a second `level=` would be ignored) · `event=gameOver&eventAge=4` @D (a sliver at the rim, twilight) · `event=morning&eventAge=2` @D · `reduce=1&event=twist&lines=1&eventAge=1` @D. |
 
 **Stage C: post, tiers, phone, icon, docs**
 

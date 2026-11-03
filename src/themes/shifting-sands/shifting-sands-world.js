@@ -539,19 +539,19 @@ export class ShiftingSandsWorld {
     }
 
     /**
-     * A T-spin: the drum turns — beats round it one after another (a third of a turn for one
+     * A twist: the drum turns — beats round it one after another (a third of a turn for one
      * that cleared nothing), a twist of wind and a glint of gold.
      * @param {number} [lineCount]
      * @param {{ react?: boolean }} [opts]
      */
-    onTSpin(lineCount, { react = true } = {}) {
+    onTwist(lineCount, { react = true } = {}) {
         if (!react) return;
         const t = this.time;
         const cleared = !Number.isFinite(lineCount) || lineCount > 0;
         const W = SURGE_WEIGHTS;
         if (cleared) {
-            this.surge.punch.hit(W.punch.tspin, t);
-            this.surge.level.hit(W.heat.tspin, t);
+            this.surge.punch.hit(W.punch.twist, t);
+            this.surge.level.hit(W.heat.twist, t);
         } else {
             this.surge.spin(t);
         }

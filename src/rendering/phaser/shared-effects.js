@@ -708,7 +708,7 @@ export class SharedEffects {
      * an impact ONLY because the modes pause the simulation at the same instant
      * via gameState.hitStopRemaining, which they derive from getClearTier().hitStop.
      * Freezing the effect layer on its own would just stutter the animation while
-     * the board kept moving. Extending micro-stops to triples/T-spins therefore
+     * the board kept moving. Extending micro-stops to triples/twists therefore
      * means changing gameplay timing, which is a game-feel decision rather than a
      * visual one — so it is left alone here.
      *
@@ -2301,7 +2301,7 @@ export class SharedEffects {
         // Sits BELOW centre on purpose. A deep cascade can end in a perfect clear,
         // and both banners used to anchor at centreY — drawing one exactly on top
         // of the other. Every banner now has its own lane: back-to-back 0.18,
-        // combo 0.28, T-spin and quad 0.375, level 0.44, perfect clear 0.50,
+        // combo 0.28, twist and quad 0.375, level 0.44, perfect clear 0.50,
         // cascade 0.62.
         this._showBanner({
             kicker: lines > 0 ? `${lines} lines` : 'Chain',
@@ -2766,7 +2766,7 @@ export class SharedEffects {
      * behind it. The game's own word for it; the internal event keeps its old key.
      * @param {number} [lineCount=0] - Lines cleared with the twist (0 = a twist that clears none).
      */
-    playTSpinEffect(lineCount = 0) {
+    playTwistEffect(lineCount = 0) {
         const boardWidth = this.scene.cols * this.scene.blockSize;
         const boardHeight = this.scene.rows * this.scene.blockSize;
         const centerX = boardWidth / 2;

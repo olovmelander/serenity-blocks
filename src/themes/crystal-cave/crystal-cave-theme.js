@@ -297,7 +297,7 @@ export default class CrystalCaveTheme extends BaseTheme {
             eventBus.on(EVENTS.PIECE_LOCK, (payload) => this.onPieceLock(payload)),
             eventBus.on(EVENTS.LINE_CLEAR, (payload) => this.onLineClear(payload)),
             eventBus.on(EVENTS.COMBO, (payload) => this.onCombo(payload)),
-            eventBus.on(EVENTS.TSPIN, (payload) => this.onFlourish('onTSpin', payload)),
+            eventBus.on(EVENTS.TWIST, (payload) => this.onFlourish('onTwist', payload)),
             eventBus.on(EVENTS.B2B, () => this.onFlourish('onBackToBack')),
             eventBus.on(EVENTS.PERFECT_CLEAR, () => this.onFlourish('onPerfectClear')),
             eventBus.on(EVENTS.LEVEL_UP, (payload) => this.onLevelUp(payload)),

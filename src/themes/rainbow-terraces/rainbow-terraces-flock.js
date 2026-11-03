@@ -11,7 +11,7 @@
  * When the chain holds, one peels off for each link: it dives to the bow with its wings folded,
  * rides the brush round the bow's arc at a fixed distance (so its screen position lies on the
  * bow; its short trail in the colour of the link is the stroke's brush), and when the stroke is
- * laid flies on and home to its flock, beating its wings, its trail fading. A T-spin draws two
+ * laid flies on and home to its flock, beating its wings, its trail fading. A twist draws two
  * down to rise in a double helix beside the card; a level up gathers a flight out over the gulf
  * from the Spring Isle; while a back-to-back holds, one larger "long-wing" keeps station along the
  * bow's leg. Each joins its flight from where it was and flies home afterwards: nothing jumps. In
@@ -244,7 +244,7 @@ export class GliderFlock {
         this.bankFlash = at;
     }
 
-    /** Two gliders rise from a point in a double helix (a T-spin). */
+    /** Two gliders rise from a point in a double helix (a twist). */
     helix(from, at) {
         this.helixFrom = from.slice();
         this.helixAt = at;
@@ -595,7 +595,7 @@ export class GliderFlock {
                 if (ended) sl.t1 = Math.max(to, from + sl.join);
             }
         }
-        // A T-spin: two from the flock nearest the card rise in a double helix.
+        // A twist: two from the flock nearest the card rise in a double helix.
         if (t >= this.helixAt && t < this.helixAt + FLIGHT.helixSeconds + FLIGHT.helixHome + 1.6 + LOOK_BACK && flying >= 4) {
             const list = this.flyingIn(this.nearestGroup(this.helixFrom), flying);
             for (let k = 0; k < 2; k++) {

@@ -1,7 +1,7 @@
 /**
  * Rainbow Terraces — the world on the CPU: a real RainbowTerracesWorld in a THREE.Scene, no renderer.
  *
- * These pin what a lock, a clear, a chain, four lines, a perfect clear, a T-spin and a new level DO
+ * These pin what a lock, a clear, a chain, four lines, a perfect clear, a twist and a new level DO
  * to the world, in what order and how often, and that every frame is a function of the clock and
  * the events (a seek and a replay at any frame rate land in the same place) — never a tuning
  * number: constants are imported, and the assertions are relations (counted, ordered, bounded,
@@ -107,7 +107,7 @@ const clear = (world, extra = {}) => world.onClear({
     lines: 1,
     combo: 1,
     cascade: 1,
-    tspin: false,
+    twist: false,
     perfect: false,
     b2b: false,
     screen: null,
@@ -284,7 +284,7 @@ describe('Rainbow Terraces world: replaying a moment', () => {
         })],
         [4.5, (w) => clear(w, { rows: [19, 18, 17, 16], lines: 4, combo: 4 })],
         [6.5, (w) => clear(w, {
-            rows: [18, 17], lines: 2, combo: 5, tspin: true,
+            rows: [18, 17], lines: 2, combo: 5, twist: true,
         })],
         [7.0, (w) => w.levelUp(2)],
         [8.0, (w) => w.onCombo(0)],
@@ -386,7 +386,7 @@ describe('Rainbow Terraces world: replaying a moment', () => {
         const used = makeWorld('Minimal', { at: 12 });
         run(used.world, used.camera, 2);
         frame(used.world, used.camera, 1 / 30, () => {
-            clear(used.world, { rows: [18, 17], lines: 2, tspin: true });
+            clear(used.world, { rows: [18, 17], lines: 2, twist: true });
             used.world.levelUp(2);
         });
         run(used.world, used.camera, 1);
@@ -1013,7 +1013,7 @@ describe('Rainbow Terraces world: the falls', () => {
     });
 });
 
-describe('Rainbow Terraces world: a T-spin', () => {
+describe('Rainbow Terraces world: a twist', () => {
     it('wrings the falls from the water clock of the clear, sends two children up in a helix, swings the bell', () => {
         const { world, camera } = makeWorld('Low');
         expect(world.U.wring.value.y).toBe(0);
@@ -1021,7 +1021,7 @@ describe('Rainbow Terraces world: a T-spin', () => {
         let water = 0;
         frame(world, camera, 1 / 30, () => {
             water = world.U.waterClock.value;
-            clear(world, { rows: [18, 17], lines: 2, tspin: true });
+            clear(world, { rows: [18, 17], lines: 2, twist: true });
         });
         expect(world.U.wring.value.y).toBe(1);
         expect(world.U.wring.value.x).toBeCloseTo(water, 9);
@@ -1031,7 +1031,7 @@ describe('Rainbow Terraces world: a T-spin', () => {
         expect(world.parts.isles.bell.matrix.equals(bellAtRest)).toBe(false);
         // Reduced motion plays it at half strength.
         const calm = makeWorld('Low', { reduce: true });
-        frame(calm.world, calm.camera, 1 / 30, () => clear(calm.world, { rows: [18, 17], lines: 2, tspin: true }));
+        frame(calm.world, calm.camera, 1 / 30, () => clear(calm.world, { rows: [18, 17], lines: 2, twist: true }));
         expect(calm.world.U.wring.value.y).toBeCloseTo(0.5, 9);
     });
 
@@ -1046,7 +1046,7 @@ describe('Rainbow Terraces world: a T-spin', () => {
         expect(world.dial).toBeCloseTo(3, 6);
         const thread = (i) => world.U.strokes.array[STROKES + i].toArray().slice(0, 3);
         expect([0, 1, 2].map(thread)).toEqual([rgbOf(COLORS.S), rgbOf(COLORS.I), rgbOf(COLORS.T)]);
-        frame(world, camera, 1 / 30, () => clear(world, { combo: 0, tspin: true }));
+        frame(world, camera, 1 / 30, () => clear(world, { combo: 0, twist: true }));
         frame(world, camera, 1 / 30);
         expect([0, 1, 2].map(thread)).toEqual([rgbOf(COLORS.T), rgbOf(COLORS.S), rgbOf(COLORS.I)]);
     });
@@ -1638,7 +1638,7 @@ describe('Rainbow Terraces world: a long session', () => {
         const holders = holdersOf(world);
         const { glows } = world.parts.fx;
         const { spray } = world.parts;
-        // Ten kinds of event in turn: locks (hard, silent), clears (b2b, T-spin), four lines or a
+        // Ten kinds of event in turn: locks (hard, silent), clears (b2b, twist), four lines or a
         // perfect clear, a broken chain (and now and then a level).
         const events = [];
         let combo = 0;
@@ -1656,7 +1656,7 @@ describe('Rainbow Terraces world: a long session', () => {
             } else if (kind < 8) {
                 combo += 1;
                 const lines = {
-                    lines: 1 + (i % 3), combo, tspin: kind === 7, b2b: kind === 6,
+                    lines: 1 + (i % 3), combo, twist: kind === 7, b2b: kind === 6,
                 };
                 events.push(() => clear(world, lines));
             } else if (kind === 8) {
@@ -1750,14 +1750,14 @@ describe('Rainbow Terraces world: fast play builds, it never pops', () => {
         expect(spillways(world)).toHaveLength(1);
     });
 
-    it('stirs the falls on a T-spin that clears nothing, and a second wring never cuts the first', () => {
+    it('stirs the falls on a twist that clears nothing, and a second wring never cuts the first', () => {
         const { world, camera } = makeWorld('Low');
-        frame(world, camera, 1 / 30, () => clear(world, { rows: [], lines: 0, tspin: true }));
+        frame(world, camera, 1 / 30, () => clear(world, { rows: [], lines: 0, twist: true }));
         const first = world.U.wring.value.toArray();
         expect(first[1]).toBeGreaterThan(0);
         expect(world.combo).toBe(0);
         run(world, camera, 0.5, 1 / 30);
-        frame(world, camera, 1 / 30, () => clear(world, { rows: [18, 17], lines: 2, tspin: true }));
+        frame(world, camera, 1 / 30, () => clear(world, { rows: [18, 17], lines: 2, twist: true }));
         const both = world.U.wring.value.toArray();
         expect(both.slice(0, 2)).toEqual(first.slice(0, 2));
         expect(both[3]).toBeGreaterThan(first[1]);

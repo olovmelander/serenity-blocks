@@ -1541,7 +1541,7 @@ describe('Sakura world in play', () => {
                 reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
                 reactions.onCombo(2);
             },
-            60: () => { reactions.onCombo(5); reactions.onTSpin({ piece: right }); },
+            60: () => { reactions.onCombo(5); reactions.onTwist({ piece: right }); },
             80: () => { reactions.onCombo(9); reactions.onBackToBack(); },
             100: () => { reactions.onPerfectClear(); reactions.onLevelUp(); },
             130: () => reactions.onGameOver(),

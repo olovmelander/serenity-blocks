@@ -27,7 +27,7 @@
  *             a hush, then the ring ignites from its crown, the water is gilded outward from the
  *             board, and two sets of spiral arms of gold leaf climb around the board through one
  *             another. Then it rains gold.
- *   T-spin    both towers turn once on the spot (half a turn for one that clears nothing).
+ *   twist    both towers turn once on the spot (half a turn for one that clears nothing).
  *   back-to-back
  *             the great ring's crown lights and a pair of comets runs DOWN from it to both feet
  *             (a clear's comets climb up from them); it stays lit while the back-to-backs come.
@@ -212,8 +212,8 @@ export class ChiralGoldWorld {
         /** The hush before a strike from cold: when, and how deep (shallower the hotter play runs). */
         this.hushAt = -100;
         this.hushDepth = 0;
-        /** T-spins: the towers turn from `from` to `to` (radians), eased from `tspinAt`. */
-        this.tspinAt = -100;
+        /** Twists: the towers turn from `from` to `to` (radians), eased from `twistAt`. */
+        this.twistAt = -100;
         this.pirouette = { from: 0, to: 0 };
         this.pourAt = -100;
         /**
@@ -640,7 +640,7 @@ export class ChiralGoldWorld {
 
     /**
      * @param {{ player?: number, rows?: number[], lines?: number, combo?: number, cascade?: number,
-     *   tspin?: boolean, b2b?: boolean, perfect?: boolean, crown?: boolean,
+     *   twist?: boolean, b2b?: boolean, perfect?: boolean, crown?: boolean,
      *   screen?: {x:number,y:number}|null }} c
      */
     onClear(c = {}) {
@@ -662,7 +662,7 @@ export class ChiralGoldWorld {
         if (deeper > 0) {
             // One more wave of a clear already counted.
             this.surge.wave(t);
-            if (c.tspin) this.surge.tspin(t);
+            if (c.twist) this.surge.twist(t);
             if (c.b2b) this.surge.b2b(t);
             if (c.perfect) this.surge.crown(t);
         } else {
@@ -756,12 +756,12 @@ export class ChiralGoldWorld {
         if (!this.reducedMotion) this.dolly = Math.min(0.7, this.dolly + 0.1 * lines + 0.05 * deeper);
         this.flash.hit(0.06 + 0.04 * lines + 0.02 * deeper, t);
         this.kick.hit(0.2 + 0.1 * lines, t);
-        if (c.tspin) this.turn(t, TAU);
+        if (c.twist) this.turn(t, TAU);
         if (c.b2b) this.backToBack(t);
         if (strikes) this.strike(t, c.perfect ? 1.25 : 1);
     }
 
-    /** A T-spin that cleared nothing: half a turn, and a breath of light up both towers. */
+    /** A twist that cleared nothing: half a turn, and a breath of light up both towers. */
     onSpin() {
         const t = this.time;
         this.counts.spins += 1;
@@ -781,13 +781,13 @@ export class ChiralGoldWorld {
         const now = this.pirouetteAt(t);
         this.pirouette.from = now;
         this.pirouette.to = Math.max(this.pirouette.to, now) + amount;
-        this.tspinAt = t;
+        this.twistAt = t;
     }
 
     /** How far the towers have turned on the spot at `t` (radians). */
     pirouetteAt(t) {
         const { from, to } = this.pirouette;
-        const k = clamp01((t - this.tspinAt) / 0.9);
+        const k = clamp01((t - this.twistAt) / 0.9);
         return from + (to - from) * k * k * (3 - 2 * k);
     }
 
@@ -1076,7 +1076,7 @@ export class ChiralGoldWorld {
         this.aurumStrength = 0;
         this.hushAt = -100;
         this.hushDepth = 0;
-        this.tspinAt = -100;
+        this.twistAt = -100;
         this.pirouette.from = 0;
         this.pirouette.to = 0;
         this.dip = 0;
@@ -1330,7 +1330,7 @@ export class ChiralGoldWorld {
         const { u, place } = this;
         u.helixX.value = place.helixX;
         u.helixScale.value = place.scale;
-        // A T-spin: one whole turn on the spot, eased (turns asked for mid-turn carry on).
+        // A twist: one whole turn on the spot, eased (turns asked for mid-turn carry on).
         const pirouette = this.pirouetteAt(t);
         for (let i = 0; i < this.towers.length; i++) {
             const tower = this.towers[i];

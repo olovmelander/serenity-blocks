@@ -96,7 +96,7 @@ describe('Chiral Gold director: stage on the bus, resolve on the frame', () => {
         director.flush();
         expect(calls.clears).toHaveLength(1);
         expect(calls.clears[0]).toMatchObject({
-            rows: [18, 19], lines: 2, combo: 1, cascade: 1, tspin: false, perfect: false, screen: null,
+            rows: [18, 19], lines: 2, combo: 1, cascade: 1, twist: false, perfect: false, screen: null,
         });
         expect(calls.combos).toEqual([[1, 0]]);
     });
@@ -167,24 +167,24 @@ describe('Chiral Gold director: stage on the bus, resolve on the frame', () => {
         expect(calls.clears[1]).toMatchObject({ lines: 1, combo: 6, screen: { x: 1, y: 0 } });
     });
 
-    it('carries T-spins, back-to-backs and perfect clears on the clear', () => {
+    it('carries twists, back-to-backs and perfect clears on the clear', () => {
         const { sink, calls } = createSink();
         const director = new ChiralGoldDirector({ sink });
         director.onPieceLock({ piece: T });
-        director.onTSpin({ lineCount: 2 });
+        director.onTwist({ lineCount: 2 });
         director.onB2B({ active: true });
         director.onLineClear({ lineCount: 2, clearedRows: [22, 23] });
         director.onPerfectClear({});
         director.flush();
         expect(calls.clears[0]).toMatchObject({
-            lines: 2, tspin: true, b2b: true, perfect: true,
+            lines: 2, twist: true, b2b: true, perfect: true,
         });
         // The flags do not leak into the next clear.
         director.onPieceLock({ piece: T });
         director.onB2B({ active: false });
         director.onLineClear({ lineCount: 1, clearedRows: [23] });
         director.flush();
-        expect(calls.clears[1]).toMatchObject({ tspin: false, b2b: false, perfect: false });
+        expect(calls.clears[1]).toMatchObject({ twist: false, b2b: false, perfect: false });
     });
 
     it('crowns the clear with a late perfect clear instead of replaying it', () => {
@@ -207,24 +207,24 @@ describe('Chiral Gold director: stage on the bus, resolve on the frame', () => {
         expect(calls.clears[2]).toMatchObject({ lines: 2, crown: false, perfect: true });
     });
 
-    it('turns a T-spin that clears nothing into a spin, not a clear', () => {
+    it('turns a twist that clears nothing into a spin, not a clear', () => {
         const { sink, calls } = createSink();
         const spins = [];
         sink.spin = (c) => spins.push({ ...c });
         const director = new ChiralGoldDirector({ sink });
         director.onPieceLock({ piece: T });
-        director.onTSpin({ lineCount: 0 });
+        director.onTwist({ lineCount: 0 });
         director.flush();
         expect(calls.clears).toHaveLength(0);
         expect(calls.locks).toHaveLength(1);
         expect(spins).toEqual([{ player: 0 }]);
-        // A T-spin that clears lines stays on its clear.
+        // A twist that clears lines stays on its clear.
         director.onPieceLock({ piece: T });
-        director.onTSpin({ lineCount: 1 });
+        director.onTwist({ lineCount: 1 });
         director.onLineClear({ lineCount: 1, clearedRows: [23] });
         director.flush();
         expect(spins).toHaveLength(1);
-        expect(calls.clears[0]).toMatchObject({ tspin: true });
+        expect(calls.clears[0]).toMatchObject({ twist: true });
     });
 
     it('keeps one chain per board and drops a sixth board rather than crossing wires', () => {

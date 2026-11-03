@@ -238,7 +238,7 @@ Playground (private dev server in the worktree:
 
 ```
 /playground.html?effect=vesper-chrysalis&t=20&hud=0&quality=High&board=1&locks=6
-  + event=lock|drop|clear|quad|tspin|perfect|levelUp|break   eventAge=<s>  lines=<n>  color=<hex>
+  + event=lock|drop|clear|quad|twist|perfect|levelUp|break   eventAge=<s>  lines=<n>  color=<hex>
   + combo=<n>   level=<n> (holds that level's hour; without it the hour follows t)   locks=<n>
   + demo=1 (live)   forceWebGL=1   reduce=1
   + parts=sky,lake,spires,reeds,chrysalis,threads,wings,blooms,moths,dust,fireflies,blades

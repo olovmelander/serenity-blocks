@@ -118,7 +118,7 @@ describe('Grainfields herd: the band\'s life', () => {
         expect(runner.plan).toBe(plan);
     });
 
-    it('wheels round at a T-spin, and keeps calm under reduced motion', () => {
+    it('wheels round at a twist, and keeps calm under reduced motion', () => {
         const sim = createHerdSim({ count: 9 });
         live(sim, 20);
         sim.wheel(20);

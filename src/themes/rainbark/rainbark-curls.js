@@ -161,7 +161,7 @@ function curlMaterial(u) {
         const w = positionGeometry.x;
         // (A page: a lock's strip, kind 1. A ring's sheet pieces, kind 5, are curved plates: quills
         // that peel down their band, rolled only part of the way round.)
-        // (A T-spin's strip, kind 6, takes the lock's shape too: an open lip, then a spiral quill.)
+        // (A twist's strip, kind 6, takes the lock's shape too: an open lip, then a spiral quill.)
         const isLock = step(0.5, D.z).mul(step(D.z, 1.5)).add(step(5.5, D.z).mul(step(D.z, 6.5))).toVar();
         const length = C.x.mul(mix(float(1.0), rideEase, riding)).toVar();
         const width = C.y.mul(sin(s.mul(Math.PI)).mul(0.25).add(0.75)).toVar();
@@ -175,7 +175,7 @@ function curlMaterial(u) {
         const kq = max(F.x.div(max(C.z, 0.01)), 0.05).toVar();
         const psi = w.mul(width).mul(kq).toVar();
         const along = s.mul(length).toVar();
-        // (A T-spin's corkscrew, kind 6, twists harder; a strip's segments never turn more than a
+        // (A twist's corkscrew, kind 6, twists harder; a strip's segments never turn more than a
         // quarter turn each, or its triangles fold into saw teeth.)
         const corkscrew = step(5.5, D.z).mul(step(D.z, 6.5));
         const tw = along.mul(h2.mul(2.0).add(1.5).add(corkscrew.mul(2.5))).add(h1.mul(TAU)).toVar();
@@ -326,7 +326,7 @@ function curlMaterial(u) {
         const seen = rbAir(u, shaded, P, null, { billows: 0 });
         // A frayed edge across the strip (no hard ribbon edge at a few pixels).
         // Torn, never cut: frayed along its sides, its two ends ragged across the grain.
-        // (A lock's or a T-spin's strip, rolled into a curl, keeps its long edges whole: a faded lip
+        // (A lock's or a twist's strip, rolled into a curl, keeps its long edges whole: a faded lip
         // writes depth like the rest, hiding the curl's far wall behind half-seen pixels, a tooth a
         // segment.)
         const rolled = step(0.5, vLook.z).mul(step(vLook.z, 1.5)).add(step(5.5, vLook.z).mul(step(vLook.z, 6.5)));

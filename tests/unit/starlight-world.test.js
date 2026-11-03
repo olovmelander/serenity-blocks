@@ -13,7 +13,7 @@ import {
 } from '../../src/themes/starlight/starlight-world.js';
 import {
     DEG, EXPOSURE_MAX, FIGURES, FIGURES_KEPT, HOUR_SECONDS, HOUR_SWING, LINES_PER_ROW, PALETTES, SKY_RATE,
-    SKY_START, TAU, TSPIN_SWING,
+    SKY_START, TAU, TWIST_SWING,
 } from '../../src/themes/starlight/starlight-core.js';
 import { RINGS, STREAKS } from '../../src/themes/starlight/starlight-tsl.js';
 import { cardUnion, fallbackLayout } from '../../src/themes/starlight/starlight-composition.js';
@@ -170,18 +170,18 @@ describe('StarlightWorld: the sky turns', () => {
         expect(world.turnDebt).toBe(0);
     });
 
-    it('whirls on a T-spin without ever jumping', () => {
+    it('whirls on a twist without ever jumping', () => {
         [START, 1800].forEach((start) => {
             const { world, camera } = makeWorld('Low', { start });
             const a0 = world.skyAngle;
             let worst = 0;
             let last = world.skyAngle;
             let t = start + 0.1;
-            // A rapid chain of T-spins, sixty frames a second.
+            // A rapid chain of twists, sixty frames a second.
             for (let i = 0; i < 240; i += 1) {
                 if (i % 20 === 0) {
                     lock(world, i);
-                    world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+                    world.onClear({ rows: [19, 18], lines: 2, twist: true });
                     world.onCombo(i / 20 + 1);
                 }
                 step(world, camera, t, t + 1 / 60, 1 / 60);
@@ -191,7 +191,7 @@ describe('StarlightWorld: the sky turns', () => {
             }
             // The sky has whirled far, but never more than a few degrees in one frame, and no
             // further in an old session than in a new one.
-            expect(world.skyAngle - a0).toBeGreaterThan(TSPIN_SWING * 6);
+            expect(world.skyAngle - a0).toBeGreaterThan(TWIST_SWING * 6);
             expect(worst).toBeLessThan(4 * DEG);
         });
     });
@@ -678,7 +678,7 @@ describe('StarlightWorld: play builds the night instead of popping', () => {
         expect(world.u.exposure.value).toBeLessThanOrEqual(EXPOSURE_MAX * 1.03);
     });
 
-    it('builds a cascade wave on the last, answers a back-to-back with a pair, a bare T-spin with a turn', () => {
+    it('builds a cascade wave on the last, answers a back-to-back with a pair, a bare twist with a turn', () => {
         const shallow = makeWorld();
         shallow.world.onClear({ rows: [19], lines: 1, cascade: 2 });
         const deep = makeWorld();

@@ -934,7 +934,7 @@ describe('Sakura petal director', () => {
                 .toBeLessThan(mean(sim.thrown().map((entry) => Math.hypot(entry.vx, entry.vz))));
         });
 
-        it.each([[-1], [1]])('spins a small vortex beside the card for a t-spin on side %i', (side) => {
+        it.each([[-1], [1]])('spins a small vortex beside the card for a twist on side %i', (side) => {
             const { stage, sim, director } = createDirector();
             const log = play(director, sim, [{
                 kind: 'spin', side, row: 0.6, strength: 0.8, duration: 1.7,
@@ -1372,7 +1372,7 @@ describe('Sakura petal director', () => {
             reactions.onPieceLock({ piece: { x: 1, y: 20, shape: [[1]] } });
             reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
             reactions.onCombo(12);
-            reactions.onTSpin();
+            reactions.onTwist();
             reactions.onPerfectClear();
             for (let frame = 0; frame < 90; frame += 1) {
                 const env = director.apply(reactions.update(STEP), STEP, { x: 1, z: 0, strength: 0.3 });
@@ -1472,7 +1472,7 @@ describe('Sakura petal director', () => {
             expect(four.effects.skyLantern).not.toHaveBeenCalled();
         });
 
-        it('releases sky lanterns for a level up and a shooting star for a t-spin', () => {
+        it('releases sky lanterns for a level up and a shooting star for a twist', () => {
             const {
                 reactions, effects, advance, sim,
             } = garden('Medium');
@@ -1482,7 +1482,7 @@ describe('Sakura petal director', () => {
             expect(released).toBeGreaterThanOrEqual(3);
             expect(released).toBeLessThanOrEqual(SAKURA_TIERS.Medium.skyLanterns);
             expect(sim.counts().idle).toBe(sim.reserve);
-            reactions.onTSpin({ piece: { x: 8, y: 14, shape: [[1]] } });
+            reactions.onTwist({ piece: { x: 8, y: 14, shape: [[1]] } });
             advance(0.5);
             expect(effects.star).toHaveBeenCalledOnce();
             expect(effects.skyLantern).toHaveBeenCalledTimes(released);

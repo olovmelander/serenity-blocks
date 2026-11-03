@@ -736,8 +736,8 @@ describe('Fall reaction director', () => {
             const piece = cell(8, 10);
             const lock = frameOf((reactions) => reactions.onPieceLock({ piece }));
             expect(frameOf((reactions) => reactions.onPieceLock({ detail: { piece } }))).toEqual(lock);
-            const spin = frameOf((reactions) => reactions.onTSpin({ piece }));
-            expect(frameOf((reactions) => reactions.onTSpin({ detail: { piece } }))).toEqual(spin);
+            const spin = frameOf((reactions) => reactions.onTwist({ piece }));
+            expect(frameOf((reactions) => reactions.onTwist({ detail: { piece } }))).toEqual(spin);
         });
 
         it('counts a bare call as one line, as the bus adapter does for an unknown payload', () => {
@@ -750,12 +750,12 @@ describe('Fall reaction director', () => {
     });
 
     describe('flourishes', () => {
-        it('answers a t-spin with a spiral beside the piece', () => {
+        it('answers a twist with a spiral beside the piece', () => {
             const reactions = create();
-            expect(reactions.onTSpin({ piece: cell(8, 10) })).toBe(true);
-            expect(reactions.onTSpin({ piece: cell(1, 22) })).toBe(true);
-            expect(reactions.onTSpin({ lineCount: 2 })).toBe(true);
-            expect(reactions.onTSpin()).toBe(true);
+            expect(reactions.onTwist({ piece: cell(8, 10) })).toBe(true);
+            expect(reactions.onTwist({ piece: cell(1, 22) })).toBe(true);
+            expect(reactions.onTwist({ lineCount: 2 })).toBe(true);
+            expect(reactions.onTwist()).toBe(true);
             const [right, left, unplaced, bare] = reactions.frame.emitters;
             expect(right).toMatchObject({ kind: 'spin', side: 1, age: 0 });
             expect(right.row).toBeCloseTo(1 - (10.5 - 4) / 20, 10);
@@ -900,7 +900,7 @@ describe('Fall reaction director', () => {
                 reactions.onPieceLock({ piece: cell(8, 21) });
                 reactions.onLineClear(2, { clearedRows: [22, 23] });
                 reactions.onCombo(8);
-                reactions.onTSpin({ piece: cell(8, 21) });
+                reactions.onTwist({ piece: cell(8, 21) });
                 third();
                 expect(reactions.time).toBeCloseTo(2 / 3, 10);
                 return reactions.getFrame();
@@ -993,7 +993,7 @@ describe('Fall reaction director', () => {
                     reactions.onPieceLock({ piece: cell(event % 10, 4 + (event % 20)) });
                     reactions.onLineClear(1 + (event % 4), { clearedRows: [23 - (event % 20)] });
                     reactions.onCombo(60);
-                    if (event % 3 === 0) reactions.onTSpin();
+                    if (event % 3 === 0) reactions.onTwist();
                     if (event % 7 === 0) reactions.onPerfectClear();
                     if (event % 11 === 0) reactions.onLevelUp();
                     if (event % 13 === 0) reactions.onBackToBack();
@@ -1037,7 +1037,7 @@ describe('Fall reaction director', () => {
             const reactions = create('Minimal');
             reactions.onPerfectClear();
             reactions.update(0.1);
-            reactions.onTSpin();
+            reactions.onTwist();
             reactions.update(0.1);
             reactions.onCombo(5);
             reactions.update(0.3);
@@ -1189,10 +1189,10 @@ describe('Fall reaction director', () => {
             expect(reactions.frame.streak).toBe(1);
         });
 
-        it('answers a T-spin that clears nothing with the spiral and a little warmth of play', () => {
+        it('answers a twist that clears nothing with the spiral and a little warmth of play', () => {
             const reactions = create();
             reactions.onPieceLock({ piece: cell(4, 22) });
-            reactions.onTSpin({ lineCount: 0, piece: cell(4, 22) });
+            reactions.onTwist({ lineCount: 0, piece: cell(4, 22) });
             expect(emittersOf(reactions.frame, 'spin')).toHaveLength(1);
             const lockOnly = create();
             lockOnly.onPieceLock({ piece: cell(4, 22) });
@@ -1278,7 +1278,7 @@ describe('Fall reaction director', () => {
             expect(reactions.onPieceLock()).toBe(false);
             expect(reactions.onLineClear(4)).toBe(false);
             expect(reactions.onCombo(8)).toBe(false);
-            expect(reactions.onTSpin()).toBe(false);
+            expect(reactions.onTwist()).toBe(false);
             expect(reactions.onBackToBack()).toBe(false);
             expect(reactions.onPerfectClear()).toBe(false);
             expect(reactions.onLevelUp()).toBe(false);
@@ -1298,7 +1298,7 @@ describe('Fall reaction director', () => {
                 reactions.onLineClear(4);
                 reactions.update(0.1);
                 reactions.onCombo(60);
-                reactions.onTSpin();
+                reactions.onTwist();
                 reactions.onPerfectClear();
                 reactions.update(0.25);
                 return reactions.frame;

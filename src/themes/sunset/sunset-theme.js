@@ -14,7 +14,7 @@
  * runs out from it (a hard drop throws a splash of drops in its light). A clear sends lanterns
  * UP: for every line the oldest on the water lifts off and the evening wind carries it away
  * toward the place the sun goes down, climbing, until it is a spark over the horizon; a halo
- * blooms round the sun and its road on the sea flares. A T-spin's
+ * blooms round the sun and its road on the sea flares. A twist's
  * lanterns go up turning; four lines lift every lantern on the water at once, set the sky on
  * fire and, if the sun is low, show the green flash; a chain of clears sets the sky burning
  * brighter with every clear held and calls a flock of gulls across the light. The whole day

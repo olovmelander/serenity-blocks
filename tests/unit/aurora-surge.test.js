@@ -39,11 +39,11 @@ const eldest = (director) => liveBands(director).reduce((a, b) => (b.age > a.age
 const bornNow = (director) => director.pulses.filter((pulse) => pulse.active && pulse.born > director.time - 0.02);
 
 /** A hard-dropped piece that clears `lines`, resolved in one frame. */
-function clearingLock(director, lines = 1, { b2b = false, tspin = false } = {}) {
+function clearingLock(director, lines = 1, { b2b = false, twist = false } = {}) {
     director.onHardDrop({ distance: 16 });
     director.onPieceLock(lock());
     director.onLineClear(clear(lines));
-    if (tspin) director.onTSpin({ lineCount: lines });
+    if (twist) director.onTwist({ lineCount: lines });
     if (b2b) director.onBackToBack({ active: true });
     director.update(1 / 60);
 }
@@ -242,7 +242,7 @@ describe('Aurora builds with play instead of popping', () => {
         clearingLock(director, 4, { b2b: true });
         const first = crimson(director);
         advance(director, 1.4);
-        clearingLock(director, 2, { b2b: true, tspin: true });
+        clearingLock(director, 2, { b2b: true, twist: true });
         const second = crimson(director);
         expect(first).toBeGreaterThan(0);
         expect(second).toBeGreaterThan(first);
@@ -252,10 +252,10 @@ describe('Aurora builds with play instead of popping', () => {
         expect(director.b2bCount).toBe(0);
     });
 
-    it('shows something small for a T-spin that clears nothing', () => {
+    it('shows something small for a twist that clears nothing', () => {
         const { director } = create();
         director.onPieceLock(lock(4, '#c18bff'));
-        director.onTSpin({ lineCount: 0 });
+        director.onTwist({ lineCount: 0 });
         director.update(1 / 60);
         const twist = bornNow(director).filter((pulse) => pulse.shift !== 0);
         expect(twist.length).toBeGreaterThan(0);

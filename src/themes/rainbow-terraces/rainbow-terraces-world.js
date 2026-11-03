@@ -23,7 +23,7 @@
  *   four lines  the hush (the falls thin, the spray hangs, the gliders stop dead), then the glory
  *               opens at the tip of our own shadow, one ring per line, and the great pour
  *   perfect     the same, eight rings, and the Far Gate's spillway runs for the only time
- *   T-spin      the falls are wrung, two gliders rise in a double helix, the colours turn
+ *   twist      the falls are wrung, two gliders rise in a double helix, the colours turn
  *   B2B         the pools stay brimming; the long-wing keeps station on the bow
  *   level up    the bell tolls the hour: every pool rings, a flight of gliders sails out, and the
  *               light turns one place round the wheel
@@ -440,7 +440,7 @@ function createUniforms() {
         /** The bell's toll through every pool: x time it rang, y strength. */
         toll: uniform(new THREE.Vector2(-1e4, 0)),
         /**
-         * The T-spins' wrings, two at once so a second never cuts the first: x water clock the
+         * The twists' wrings, two at once so a second never cuts the first: x water clock the
          * first began, y its strength; z, w the second's.
          */
         wring: uniform(new THREE.Vector4(-1e4, 0, -1e4, 0)),
@@ -1789,13 +1789,13 @@ export class RainbowTerracesWorld {
     onClear(c) {
         if (!c) return;
         // A perfect clear settled after its clear's last wave is the crown on that clear; a
-        // T-spin that clears nothing still turns the falls a little. Neither is a clear.
+        // Twist that clears nothing still turns the falls a little. Neither is a clear.
         if (c.crown || (c.perfect && !(c.lines > 0))) {
             this.crown();
             return;
         }
         if (!(c.lines > 0)) {
-            if (c.tspin) this.spin(c);
+            if (c.twist) this.spin(c);
             return;
         }
         const lines = Math.max(1, Math.min(4, c.lines || 1));
@@ -1883,12 +1883,12 @@ export class RainbowTerracesWorld {
         // second wave swells the plume.
         if (lines >= 3 || wave >= 2) this.throwSpray(SPRAY_BURST.tower, t, 1 + 0.2 * Math.max(0, wave - 1));
         else if (wave === 1) this.throwSpray(SPRAY_BURST.swell, t + 0.05, 1.5);
-        if (c.tspin) this.tspin(c);
+        if (c.twist) this.twist(c);
         this.flare(0.27, 0.62, 0.22, 0.35 + lines * 0.12, accentA);
     }
 
-    /** A T-spin: the falls are wrung, two gliders rise, the link colours turn, the bell swings. */
-    tspin(c) {
+    /** A twist: the falls are wrung, two gliders rise, the link colours turn, the bell swings. */
+    twist(c) {
         this.wring(this.reduced ? 0.5 : 1);
         const { card, board } = this.sourceOf(c);
         const row = c.rows && c.rows.length ? c.rows[0] : 15;
@@ -1907,7 +1907,7 @@ export class RainbowTerracesWorld {
 
     /**
      * A wring down the falls of `strength`: it takes the slot whose half-turn has run furthest,
-     * so a second T-spin never cuts the first one travelling down the sheets.
+     * so a second twist never cuts the first one travelling down the sheets.
      */
     wring(strength) {
         const w = this.U.wring.value;
@@ -1921,7 +1921,7 @@ export class RainbowTerracesWorld {
         }
     }
 
-    /** A T-spin that cleared nothing: a gentler wring, one helix, the bell stirs. */
+    /** A twist that cleared nothing: a gentler wring, one helix, the bell stirs. */
     spin(c) {
         this.surge.spin(this.time);
         this.wring(this.reduced ? 0.25 : 0.5);

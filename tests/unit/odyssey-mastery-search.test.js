@@ -154,7 +154,7 @@ describe('bounded Odyssey mastery search', () => {
         expect(acquired.bonuses[0].timeUnvalidated).toBe(true);
     });
 
-    it('keeps an observed grounded T-spin on an empty path and models the current piece age', () => {
+    it('keeps an observed grounded twist on an empty path and models the current piece age', () => {
         const { level, engine, state } = initialObservation();
         const piece = state.currentPiece;
         Object.assign(piece, {
@@ -175,12 +175,12 @@ describe('bounded Odyssey mastery search', () => {
             const observation = createMasteryObservation(state, engine.getMetrics(), level, { actionIntervalMs: 100 });
             const plan = planMasteryObservation(observation, { maxNodes: 1, maxNodesPerPlan: 1 });
             expect(plan.actions).toEqual([{ type: 'hardDrop' }]);
-            expect(plan.prediction.tSpin).toBe(true);
+            expect(plan.prediction.twist).toBe(true);
             expect(plan.prediction.b2bActiveAfter).toBe(true);
             expect(plan.prediction.lockBonus).toBe(38);
             observation.timing.lastMoveWasRotation = false;
             const unrotated = planMasteryObservation(observation, { maxNodes: 1, maxNodesPerPlan: 1 });
-            expect(unrotated.prediction.tSpin).toBe(false);
+            expect(unrotated.prediction.twist).toBe(false);
         } finally { placements.mockRestore(); state.reset(); engine.reset(); }
     });
 

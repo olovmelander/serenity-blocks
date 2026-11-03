@@ -1147,17 +1147,17 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'sunset, supernova, synthwave-sunset, thermal-bloom, tornado, verdant-hills, vesper-chrysalis, '
             + 'void-ember, voltage-storm, waves, winter, wolfhour, wolfhour-lunar-sigil',
         description: 'Replay a gameplay reaction in the selected preview.',
-        values: 'Effect-specific cue, commonly lock, clear, combo, quad, tspin, perfect or levelUp (Koi '
+        values: 'Effect-specific cue, commonly lock, clear, combo, quad, twist, perfect or levelUp (Koi '
             + 'Pond, Star Cradle, Serenity Warp, Stellar Drift, Stellar Velocity and Void Ember: lock, '
-            + 'drop, clear, quad, tspin, perfect, levelUp; Vesper Chrysalis: lock, drop, clear, quad, '
-            + 'tspin, perfect, levelUp, break; Stillwater and Moonlit Greenhouse: lock, drop, clear, '
-            + 'quad, tspin, perfect, levelUp, break); cue names are case-sensitive in most effects. '
+            + 'drop, clear, quad, twist, perfect, levelUp; Vesper Chrysalis: lock, drop, clear, quad, '
+            + 'twist, perfect, levelUp, break; Stillwater and Moonlit Greenhouse: lock, drop, clear, '
+            + 'quad, twist, perfect, levelUp, break); cue names are case-sensitive in most effects. '
             + 'Summer: lock, drop, clear, double, triple, quad, combo, streak, spin, perfect, level, '
             + 'over or bouquet. Verdant Hills: lock, drop, clear, double, triple, quad, combo, streak, '
-            + 'spin, perfect, level, over or festival. Rainbow Terraces: lock, drop, clear, quad, tspin, '
+            + 'spin, perfect, level, over or festival. Rainbow Terraces: lock, drop, clear, quad, twist, '
             + 'b2b, perfect, levelUp, newRun, gameOver or break. Rainbark: lock, drop, clear, quad, '
-            + 'tspin, perfect, levelUp, release (the chain held by peak breaks), b2b (the sunshower '
-            + 'starts) or gameOver (Mistfall). Kaleidosonic: lock, drop, clear, quad, tspin, perfect, '
+            + 'twist, perfect, levelUp, release (the chain held by peak breaks), b2b (the sunshower '
+            + 'starts) or gameOver (Mistfall). Kaleidosonic: lock, drop, clear, quad, twist, perfect, '
             + 'levelUp, release (the chain held by peak breaks) or over (the light sinks). Synthwave '
             + 'Sunset: lock, clear, quad, chain (the coaster lifted chain=<n> notches), ride (a chain '
             + 'of chain=<n> breaks and the coaster goes once round its circuit) or levelUp.',
@@ -2669,7 +2669,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'spin',
         category: 'Playground',
         scope: 'playground.html — sunset',
-        description: 'Turn the lanterns of lift as they rise, as a T-spin does.',
+        description: 'Turn the lanterns of lift as they rise, as a twist does.',
         values: '1 enables.',
         defaultValue: 'Off.',
         example: 'locks=10&lift=4&spin=1',
@@ -3365,7 +3365,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         category: 'Playground',
         scope: 'playground.html — parhelion; game themes: Parhelion',
         description: 'Trigger a named Parhelion reaction.',
-        values: 'lock, harddrop, stonefall, single, clear, double, triple, quad, tspin, apex, perfect, '
+        values: 'lock, harddrop, stonefall, single, clear, double, triple, quad, twist, apex, perfect, '
             + 'echo (case-insensitive).',
         defaultValue: 'No simulated cue.',
         example: 'parhelionPulse=lock',
@@ -4379,7 +4379,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         description: 'Set the board row used by a reaction preview.',
         values: 'Board row number, normally 0–19; Black Hole accepts 20.',
         defaultValue: 'Effect-dependent: 12–20; Void Ember 9; Stellar Velocity 9; Serenity Warp 9; Nebula '
-            + 'Flow 9; Rainbark 9 for a lock or a T-spin (the piece\'s lowest row), the floor for a clear (the '
+            + 'Flow 9; Rainbark 9 for a lock or a twist (the piece\'s lowest row), the floor for a clear (the '
             + 'lowest cleared row).',
         example: 'row=15',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
@@ -5675,7 +5675,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         [
             'event',
             'Replay one gameplay reaction before the frame.',
-            'lock, drop, clear, quad, tspin, perfect, levelUp, release or over.',
+            'lock, drop, clear, quad, twist, perfect, levelUp, release or over.',
             'Idle.',
             'quad',
         ],
@@ -5683,7 +5683,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ['eventLevel', 'The level an event=levelUp steps to.', 'Integer.', 'level + 1.', '4'],
         [
             'u',
-            'Board column of a lock or T-spin (it lands on the land on that side of the card).',
+            'Board column of a lock or twist (it lands on the land on that side of the card).',
             '0 to 1.',
             '0.22.',
             '0.8',
@@ -5717,7 +5717,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ['recordTop', 'Where the record’s newest bed stands.', 'Geological metres.', '150.', '120'],
         [
             'demo',
-            'Loop a script of locks, clears, a chain, four lines and a T-spin.',
+            'Loop a script of locks, clears, a chain, four lines and a twist.',
             '1 enables; use without a fixed t.',
             'Off.',
             '1',
@@ -5777,7 +5777,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         [
             'event',
             'Fire a gameplay event before the frame.',
-            'lock, drop, clear, quad, tspin, perfect, levelUp, release or over.',
+            'lock, drop, clear, quad, twist, perfect, levelUp, release or over.',
             'None.',
             'quad',
         ],
@@ -5805,7 +5805,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ['iconPitch', 'The icon lens’s pitch above the horizon.', 'Degrees.', '15.', '12'],
         [
             'demo',
-            'Loop a script of locks, clears, a chain and its discharge, four lines and a T-spin.',
+            'Loop a script of locks, clears, a chain and its discharge, four lines and a twist.',
             '1 enables; use without a fixed t.',
             'Off.',
             '1',
@@ -5882,7 +5882,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         [
             'event',
             'Replay one gameplay reaction before the frame.',
-            'lock, drop, clear, quad, tspin, perfect, levelUp, release or over.',
+            'lock, drop, clear, quad, twist, perfect, levelUp, release or over.',
             'Idle.',
             'quad',
         ],
@@ -5890,7 +5890,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ['eventLevel', 'The level an event=levelUp steps to.', 'Integer.', 'level + 1.', '4'],
         [
             'u',
-            'Board column of a lock or T-spin (its gust sets out over the water on that side of the card).',
+            'Board column of a lock or twist (its gust sets out over the water on that side of the card).',
             '0 to 1.',
             '0.22.',
             '0.8',
@@ -5912,7 +5912,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ['clears', 'Among those locks, play this many single-line clears.', 'Integer ≥ 0.', '0.', '4'],
         [
             'demo',
-            'Loop a script of locks, clears, a chain, four lines and a T-spin.',
+            'Loop a script of locks, clears, a chain, four lines and a twist.',
             '1 enables; use without a fixed t.',
             'Off.',
             '1',
@@ -6006,7 +6006,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         [
             'event',
             'Replay one gameplay reaction before the frame.',
-            'lock, drop, clear, quad, tspin, perfect, levelUp or over.',
+            'lock, drop, clear, quad, twist, perfect, levelUp or over.',
             'Idle.',
             'quad',
         ],
@@ -6014,7 +6014,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ['eventLevel', 'The level an event=levelUp steps to.', 'Integer.', 'level + 1.', '4'],
         [
             'u',
-            'Board column of a lock or T-spin (where on the field its sunbeam stands).',
+            'Board column of a lock or twist (where on the field its sunbeam stands).',
             '0 to 1.',
             '0.22.',
             '0.8',
@@ -6032,7 +6032,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ['locks', 'Play this many locks before the frame.', 'Integer ≥ 0.', '0.', '8'],
         [
             'demo',
-            'Loop a script of locks, clears, a chain, four lines and a T-spin.',
+            'Loop a script of locks, clears, a chain, four lines and a twist.',
             '1 enables; use without a fixed t.',
             'Off.',
             '1',
@@ -6195,14 +6195,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
         [
             'event',
             'Replay one gameplay reaction before the frame (morning: a game over, then a new run, the suns rising).',
-            'lock, drop, clear, quad, tspin, perfect, levelUp, over or morning.',
+            'lock, drop, clear, quad, twist, perfect, levelUp, over or morning.',
             'Idle.',
             'quad',
         ],
         ['eventAge', 'Capture this many seconds after the event.', 'Seconds.', '0.6.', '1.4'],
         ['eventLevel', 'The level an event=levelUp steps to.', 'Integer.', 'level + 1.', '4'],
         ['lines', 'Lines in an event=clear.', '1 to 4.', '2.', '3'],
-        ['turns', 'Spin-turns of an event=tspin (a third of a turn of the braid each).', '1 to 3.', '2.', '1'],
+        ['turns', 'Spin-turns of an event=twist (a third of a turn of the braid each).', '1 to 3.', '2.', '1'],
         [
             'combo',
             'Hold a chain of this length (the braid turns faster and opens wider, its ribbons in the sky).',
@@ -6213,7 +6213,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ['locks', 'Play this many locks before the frame.', 'Integer ≥ 0.', '0.', '8'],
         [
             'demo',
-            'Loop a script of locks, clears, a chain, four lines and a T-spin.',
+            'Loop a script of locks, clears, a chain, four lines and a twist.',
             '1 enables; use without a fixed t.',
             'Off.',
             '1',
@@ -6265,7 +6265,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'fringe',
             'Rotate the oculus vine-fringe stencil in degrees.',
             'Degrees.',
-            '0 (advances +15° per T-Spin line).',
+            '0 (advances +15° per Twist line).',
             '30',
         ],
         [
@@ -6288,7 +6288,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         [
             'event',
             'Replay one gameplay reaction before the frame.',
-            'lock, drop, clear, quad, tspin, perfect, levelUp, release, over or morning.',
+            'lock, drop, clear, quad, twist, perfect, levelUp, release, over or morning.',
             'Idle.',
             'quad',
         ],
@@ -6296,14 +6296,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ['eventLevel', 'The level an event=levelUp steps to.', 'Integer ≥ 1.', 'level + 1.', '3'],
         ['u', 'Board column of a lock or hard drop.', '0 to 1.', '0.52.', '0.3'],
         ['row', 'Board row of a lock or clear.', '0 to 19.', '13.', '15'],
-        ['lines', 'Lines in an event=clear or tspin.', '1 to 4.', '2.', '3'],
+        ['lines', 'Lines in an event=clear or twist.', '1 to 4.', '2.', '3'],
         ['shape', 'Piece code of a lock or drop.', 'I, O, T, S, Z, J or L.', 'I.', 'T'],
         ['peak', 'Combo chain length released on event=release.', 'Integer ≥ 3.', '6.', '7'],
         ['combo', 'Hold an active combo chain of this length.', 'Integer ≥ 0.', '0.', '7'],
         ['b2b', 'Hold a back-to-back level (1–3 oculus waterfall threads + far doline echo).', '0 to 3.', '0.', '2'],
         ['locks', 'Play this many locks before the frame.', 'Integer ≥ 0.', '0.', '6'],
         ['clears', 'Play this many line clears before the frame.', 'Integer ≥ 0.', '0.', '3'],
-        ['demo', 'Loop a script of locks, clears, Sevenfold combo, Cataract quad, and T-Spin.', '1 enables.', 'Off.', '1'],
+        ['demo', 'Loop a script of locks, clears, Sevenfold combo, Cataract quad, and Twist.', '1 enables.', 'Off.', '1'],
     ].map(([name, description, values, defaultValue, value]) => ({
         name,
         category: 'Playground',
@@ -6483,7 +6483,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         [
             'event',
             'Replay one gameplay reaction before the frame.',
-            'lock, drop, clear, quad, tspin, perfect, levelUp, release or over.',
+            'lock, drop, clear, quad, twist, perfect, levelUp, release or over.',
             'Idle.',
             'quad',
         ],
@@ -6525,7 +6525,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ['clears', 'Among those locks, play this many single-line clears.', 'Integer ≥ 0.', '0.', '4'],
         [
             'demo',
-            'Loop a script of locks, clears, a chain, four lines and a T-spin.',
+            'Loop a script of locks, clears, a chain, four lines and a twist.',
             '1 enables; use without a fixed t.',
             'Off.',
             '1',

@@ -15,7 +15,7 @@
  * sets off. Each step of a chain is a gear: the canyon rushes, the near stars draw out into
  * trails, and the sky bunches toward the sun and splits into the starbow. Four lines make the
  * drive hold its breath, then jump: a tunnel of light, and we drop out in a stretch of the
- * canyon we have not seen. A T-spin rolls the canyon round the course and it springs back. The
+ * canyon we have not seen. A twist rolls the canyon round the course and it springs back. The
  * nebula moves one palette along its line of six on a new level, and it also drifts along the
  * same line by itself, one palette every PALETTE_STEP seconds: the two simply add.
  *

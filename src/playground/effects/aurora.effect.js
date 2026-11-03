@@ -26,7 +26,7 @@ const ICON_LENS = {
 /**
  * URL parameters (all optional):
  *   quality=High            tier
- *   event=lock|clear|quad|tspin|perfect|level|combo|storm|rush   gameplay cue to replay under ?t=
+ *   event=lock|clear|quad|twist|perfect|level|combo|storm|rush   gameplay cue to replay under ?t=
  *                           (storm: a hot run of twelve clearing locks into a fever;
  *                           rush: twelve quick locks that clear nothing)
  *   eventAge=0.45           seconds between the cue (a streak's or storm's last) and the frame
@@ -105,9 +105,9 @@ export function create({
         if (drop > 0) director.onHardDrop({ distance: drop });
         director.onPieceLock({ piece: piece(color) });
         if (kind === 'lock') return;
-        const count = kind === 'quad' ? 4 : Math.max(1, Math.min(4, kind === 'tspin' ? 2 : lines));
+        const count = kind === 'quad' ? 4 : Math.max(1, Math.min(4, kind === 'twist' ? 2 : lines));
         director.onLineClear({ lineCount: count, clearedRows: Array.from({ length: count }, (_, i) => 23 - i) });
-        if (kind === 'tspin') director.onTSpin({ lineCount: count });
+        if (kind === 'twist') director.onTwist({ lineCount: count });
         if (kind === 'perfect') director.onPerfectClear({ depth: 1 });
     };
     const frame = (time, dt) => {

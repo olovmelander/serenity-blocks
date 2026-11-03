@@ -298,11 +298,11 @@ describe('GameplaySurge', () => {
         expect(s.punch).toBeLessThan(0.35);
     });
 
-    it('perfect clear, T-spin and back-to-back weigh more than the clear alone', () => {
+    it('perfect clear, twist and back-to-back weigh more than the clear alone', () => {
         const base = new GameplaySurge();
         base.clear({ lines: 2 }, 0);
         const plain = base.sample(0.5).level;
-        ['tspin', 'b2b', 'perfect'].forEach((flag) => {
+        ['twist', 'b2b', 'perfect'].forEach((flag) => {
             const surge = new GameplaySurge();
             surge.clear({ lines: 2, [flag]: true }, 0);
             expect(surge.sample(0.5).level).toBeGreaterThan(plain);

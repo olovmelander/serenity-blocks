@@ -214,19 +214,19 @@ describe('resolveCascade ≡ processPhysics (structured scenarios)', () => {
         baseContext({ linesUntilNextLevel: 1, disableLevelProgression: true }),
         'no-progress',
     ));
-    it('T-spin flag + manual hole columns + lock footprint', () => compare(
+    it('Twist flag + manual hole columns + lock footprint', () => compare(
         [fullRowPiece(BOTTOM), block(0, BOTTOM - 4)],
         baseContext({
             comboState: {
                 lockFootprint: [{ x: 4, y: BOTTOM }, { x: 5, y: BOTTOM }],
                 manualColumns: [4, 5],
-                tSpin: true,
+                twist: true,
                 sourceColor: '#f0f',
                 sourcePiece: 'T',
                 sequence: 7,
             },
         }),
-        't-spin',
+        'Twist',
     ));
     it('odyssey combo multiplier scales wave + perfect points', () => compare(
         [fullRowPiece(BOTTOM)],
@@ -290,7 +290,7 @@ describe('resolveCascade ≡ processPhysics (seeded random boards)', () => {
             comboState: {
                 lockFootprint: footprint,
                 manualColumns: [rng.nextInt(COLS)],
-                tSpin: rng.nextInt(6) === 0,
+                twist: rng.nextInt(6) === 0,
                 depth: 0,
                 complexity: 0,
             },

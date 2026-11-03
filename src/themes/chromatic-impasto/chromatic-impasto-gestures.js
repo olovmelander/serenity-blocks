@@ -591,7 +591,7 @@ export function haloGesture({
 }
 
 /**
- * Long arcs wound round the board: what a chain of clears, or a T-spin, draws.
+ * Long arcs wound round the board: what a chain of clears, or a twist, draws.
  *
  * @returns {object[]} strokes
  */
