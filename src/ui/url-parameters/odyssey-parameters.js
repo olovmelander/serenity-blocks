@@ -566,6 +566,9 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
     toggle('odysseyNoFlights', 'Removes the gulls, swallows and geese of chapters 3 and 4 for scene comparisons.', {
         scope: 'Odyssey shore and meadows, One World enabled',
     }),
+    toggle('odysseyNoSwallowFlyby', 'Removes the swallow that now and then sweeps past the meadow orbs (L16-L24).', {
+        scope: 'Odyssey meadows, One World enabled',
+    }),
     toggle('odysseyNoEagle', 'Removes the eagle thermalling off the massif in chapters 4 and 5.', {
         scope: 'Odyssey mountains, One World enabled',
     }),

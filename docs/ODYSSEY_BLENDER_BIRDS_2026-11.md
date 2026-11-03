@@ -401,3 +401,107 @@ far right), L33 (the kettle)](images/odyssey-birds-visibility-2026-11-03/full-fr
 - **The skein nearer.** It crosses 400-800 u off at L11-L24 (moved north in October to clear the
   wall's rail). Options: (a) leave it; (b) a second, lower skein that crosses nearer at L19-L24.
 - **Gulls at L11-L14.** Their first party could hunt 20-30 u nearer the shore orbs.
+
+## The swallow fly-by (2026-11-03)
+
+Asked for by Olov after the visibility check ("start the swallow fly-by"): the meadow's
+swallows hunt 60-200 u off the rail and read as specks. Now, now and then, one barn swallow sweeps
+up the meadow past the orbs where they live (L16-L24), close to the eye, and is gone. It is the
+moment a player sees "a swallow".
+
+![A pass seen from the L19 seat at 2560 x 1440, every 0.1 s, at 1:1 (top) and x2: it comes in at
+the left edge, banks through its swerve and dwindles into the meadow
+ahead](images/odyssey-swallow-flyby-2026-11-03/pass-strip-x1.jpg)
+
+![The same, x2](images/odyssey-swallow-flyby-2026-11-03/pass-strip-x2.jpg)
+
+![Close up as it comes in (L19), 1:1 and x3](images/odyssey-swallow-flyby-2026-11-03/closeup.jpg)
+
+![The L19 seat's whole frame at that moment: the swallow at the left edge](images/odyssey-swallow-flyby-2026-11-03/seat-L19-frame.jpg)
+
+### Where it flies
+
+- One route, in the world, flown on the board clock: it comes in from far behind L16 (out of
+  every frame), runs up the meadow on the LEFT of the orbs' seats, 6 u under the eye. The rail's
+  glide camera runs ~13 u to the right of the seats, so the left keeps clear of it. It swerves out
+  hard at L16, L19 and L22, as if snapping an insect, goes on past L24, then climbs and swings away
+  west, out of every frame again.
+- Each seat's camera is its orb's rail point + (0, 1.8, 10.2), looking at the orb, 55-75 u over
+  the meadow. Every seat L16-L24 sees each pass: the swallow comes in big at the left edge and
+  dwindles into the meadow ahead.
+- The route is a cubic B-spline (C2) through points 20 u apart, so the speed is even (35-39 u/s)
+  and the path and the bank have no corner. It was built from the seats: a guide line left of
+  them, smoothed, resampled, the swerves pushed out (the `route` in
+  composition/odyssey-swallow-flyby.js).
+- Clear of every seat's eye by 15.4 u or more (16-29 u at its nearest to each), of the glide
+  camera by 20 u, of the rail and the orbs by 18 u, of the ground by 42 u and 8 u over the tree
+  crowns. Its start and its end are out of frame for every seat and for every glide camera while
+  the swallows are drawn.
+
+### When
+
+A pass every 90-190 s (140 on average), each at a time of its own. A pass is shown only if it
+STARTS with the camera in the meadow (L16-L24). A pass already under way when the board wakes, or
+begun with the camera elsewhere, stays hidden all through. So the swallow never appears in view;
+it enters and leaves out of frame. Once begun, it flies to its end even if the camera leaves, and
+the swallows' draw stays on until it does.
+
+**The board stays clear.** A level is played in its own theme, with this world parked and hidden
+(OdysseyMode `_parkOdysseyBoard`), so a pass can never cross a board card or the gameplay HUD.
+Over the map it keeps to the left half of the frame (the orb panel docks on the right) and passes
+under the top HUD only as a speck.
+
+### How it flies
+
+The same barn swallow and keyframed beat as the flock. In bursts it gives a few quick beats, and
+it glides with its wings swept through each banked swerve (about 40 % beating over a pass). It
+banks up to its soft limit (1 rad) in the swerves, rolling up to 8.7 rad/s, a swallow's flick, and
+smooth. Its tail fans and its streamers show as it banks.
+
+| | measured |
+|---|---|
+| Speed | 35-39 u/s |
+| Corner in the path / the bank (acceleration at 960 Hz over 240 Hz) | 1.005 / 1.002 (jerk 1.13) |
+| In frame per pass, by seat | L16 11.8 s, L17 10.8, L18 9.5, L19 8.5, L20 7.5, L21 6.2, L22 4.8, L23 3.4, L24 1.5 |
+| Over 30 px (its span), by seat | 1.0-1.4 s at every seat |
+| Biggest, in the game (extent, L17 / L19 / L22) | 56 / 40 / 27 px; its span 55-64 px |
+| Contrast and Delta E there | 0.50-0.72 and 19-31: it reads (a flock swallow was 8-12 px) |
+
+**Size.** It comes into frame 40-50 u from the eye. It passes nearer (16-20 u), but then it is
+beside the camera, out of frame. The rail runs up-left from each orb and the glide camera runs on
+the right, so a route that kept 15 u from all of them can only enter from the left edge. Seen
+from below instead (flying 2 u over the eye), it is a dark forked silhouette against the pale sky,
+but smaller (38 px at most); from above, as now, it is bigger, its blue-black back over the
+meadow. The model holds at this size (196 triangles; in Blender at ~230 px only the head-on body
+shows facets), so it was not refined.
+
+### Cost and levers
+
+One more instance in the swallows' own draw: the same model, shader and pipeline. It adds a
+route uniform array (44 vec4) and one uniform. Nothing is written per frame but the clock and one
+flag. `?odysseyNoSwallowFlyby=1` drops it (the URL parameter catalog lists it); `?odysseyNoFlights=1`
+drops it with the flocks.
+
+### Review
+
+The review .blend (scripts/blender/odyssey/odyssey_birds_review.py with the exporter's `flyby`
+clip) holds one pass in world space at game size. The bird is keyed along its route, the route is
+drawn as a curve in the viewport, and there is a camera at each seat L16-L24 looking at its orb.
+Look through `seat-L19` and scrub frames 150-200.
+
+### Tests
+
+`tests/unit/odyssey-swallow-flyby.test.js`:
+- the clearances (eye, orbs, glide camera, rail, ground, crowns);
+- every seat sees a pass, and its ends are out of every frame;
+- the passes 90-190 s apart, each inside its period;
+- the arming (shown only if begun in the meadow, never popping in mid-pass);
+- an even speed with no corner in the path or the bank;
+- bursts and glides;
+- one more instance in the draw, and none with the lever.
+
+### Left for the owner
+
+- **Bigger.** It could cross the top of the view above the rail at two or three seats (L19, L22).
+  It would then be about 25 u off in the frame (~95 px), 15 u from the next seat's eye. That is a
+  stronger moment, over the middle of the view.

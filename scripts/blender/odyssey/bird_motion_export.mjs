@@ -87,6 +87,7 @@ function legacySummitFrame(lane, t) {
 }
 
 const flightFrame = flights.flightFrameAt ?? legacyFlightFrame;
+const flightFrameAt = flightFrame;
 const summitFrame = summit.summitFrameAt ?? legacySummitFrame;
 const r3 = (v) => v.map(round);
 
@@ -193,7 +194,41 @@ for (let k = 0; k < SECONDS * FPS; k += 1) {
     });
 }
 
+// -- the swallow fly-by: one pass in WORLD space, with the seats that watch it --------------------
+let flyby = null;
+const flybyLane = lanes.find((l) => l.flyby);
+if (flybyLane) {
+    const Y = await imp('odyssey-swallow-flyby.js');
+    const { getLevelRegistry } = await import(pathToFileURL(path.join(comp, '../../../core/odyssey/LevelRegistry.js')).href);
+    const P = await import(pathToFileURL(path.join(comp, '../path-utils.js')).href);
+    const layout = getLevelRegistry().getPresentationLayout();
+    const { start } = Y.swallowFlybyPassAt(1);
+    const D = Y.swallowFlybyDuration();
+    const frames = [];
+    for (let k = 0; k <= D * FPS; k += 1) {
+        const t = start + (k / FPS);
+        const fr = flightFrameAt(flybyLane, t);
+        frames.push({
+            t: round(t),
+            ...poseOf(flights.birdWingPoseOf(flybyLane, t)),
+            position: r3(fr.position),
+            left: r3(fr.left),
+            up: r3(fr.up),
+            forward: r3(fr.forward),
+            bank: round(fr.bank),
+        });
+    }
+    // Each seat: the orb's rail point + (0, 1.8, 10.2), looking at the orb.
+    const seats = [16, 17, 18, 19, 20, 21, 22, 23, 24].map((id) => {
+        const o = P.getOdysseyPathPointAt(layout.levelPositionsById[id]);
+        return { id, eye: r3([o.x, o.y + 1.8, o.z + 10.2]), orb: r3([o.x, o.y, o.z]) };
+    });
+    flyby = {
+        start, duration: D, span: flights.ODYSSEY_FLIGHTS[1].span, route: Y.ODYSSEY_SWALLOW_FLYBY.route, frames, seats,
+    };
+}
+
 fs.writeFileSync(out, JSON.stringify({
-    fps: FPS, seconds: SECONDS, samples: SAMPLES, cycles, clips, eagle: { start: eStart, span: eagleM.ODYSSEY_EAGLE.span, frames: eFrames },
+    fps: FPS, seconds: SECONDS, samples: SAMPLES, cycles, clips, eagle: { start: eStart, span: eagleM.ODYSSEY_EAGLE.span, frames: eFrames }, flyby,
 }));
 console.log(`[bird-motion] wrote ${out} (${Object.keys(clips).join(', ')}, eagle)`);
