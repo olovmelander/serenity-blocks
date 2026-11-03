@@ -61,16 +61,17 @@ export const FLAG_REGISTRY = [
     {
         name: 'unlockAll',
         default: false,
-        purpose: 'URL-only theme and song development access without saved collection grants',
+        purpose: 'URL-only theme, song and breathing-world development access without saved collection grants; '
+            + 'a shipped desktop build without diagnostics ignores it (src/ui/developer-surfaces.js)',
         kind: 'permanent-ops',
         reader: 'local',
     },
     {
         name: 'photosensitivityWarning',
         default: true,
-        purpose: 'the photosensitivity warning that opens every launch; 0 skips it (harnesses, captures, a developer\'s '
-            + 'installed game). skipIntro=1 skips it too. Read by src/ui/photosensitivity-warning.js before the bundle '
-            + 'loads (ADR-0021)',
+        purpose: 'the photosensitivity warning that opens every launch; 0 skips it (harnesses, captures, a diagnostics '
+            + 'run). skipIntro=1 skips it too; a shipped build without diagnostics honours neither. Read by '
+            + 'src/ui/photosensitivity-warning.js before the bundle loads (ADR-0021)',
         kind: 'permanent-ops',
         reader: 'local',
     },

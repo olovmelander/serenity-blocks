@@ -7,6 +7,7 @@ import { BreathCollectionService, readSavedOdysseyProgress } from './breath-coll
 import { readBreathPractice } from './breath-practice.js';
 import { readPracticeLog } from '../breathwork-practice-log.js';
 import { SESSION_WORLDS } from './session-worlds.js';
+import { packagedReleaseLocked } from '../../developer-surfaces.js';
 
 const SETTINGS_KEY = 'serenityBlocksSettings';
 /** The world every player started on before this: proof of nothing on its own. */
@@ -22,8 +23,9 @@ function defaultStorage() {
     }
 }
 
-/** URL-only preview access, like the theme collection's: never stored. */
+/** URL-only preview access, like the theme collection's: never stored, never in a shipped build. */
 export function isDevelopmentBreathUnlocked(search = globalThis.location?.search || '') {
+    if (packagedReleaseLocked()) return false;
     return new URLSearchParams(search).get('unlockAll') === '1';
 }
 

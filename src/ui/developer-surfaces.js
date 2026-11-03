@@ -9,3 +9,16 @@ export function developerSurfacesEnabled() {
     if (import.meta.env.DEV) return true;
     return typeof window !== 'undefined' && window.electronAPI?.diagnosticsEnabled === true;
 }
+
+/**
+ * A shipped desktop build started without SERENITY_ENABLE_DIAGNOSTICS=1. It ignores the
+ * development overrides a URL or saved setting could carry: `unlockAll=1` (every theme, song and
+ * breathing world) and the photosensitivity warning's skips (src/ui/photosensitivity-warning.js
+ * keeps its own copy of this check: it loads before the bundle and imports nothing). Dev runs,
+ * diagnostics runs and browser previews keep them, for harnesses and captures.
+ * @param {any} [win]
+ * @returns {boolean}
+ */
+export function packagedReleaseLocked(win = typeof window !== 'undefined' ? window : undefined) {
+    return win?.electronAPI?.isPackaged === true && win?.electronAPI?.diagnosticsEnabled !== true;
+}

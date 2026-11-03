@@ -55,8 +55,10 @@ player play safely and a note on the store page.
   long it has been seen, so its line ceiling (the architecture fitness ratchet) holds. The
   watchdogs and the warp are untouched.
 - **It is shown every launch.** The only skips are a harness's: `?photosensitivityWarning=0`,
-  the saved `serenity.photosensitivityWarning=0` (the shared flag idiom, the developer's toggle
-  in an installed game) and `?skipIntro=1`. No "don't show again" is offered.
+  the saved `serenity.photosensitivityWarning=0` (the shared flag idiom) and `?skipIntro=1`.
+  No "don't show again" is offered. *(2026-11-03: a shipped desktop build started without
+  `SERENITY_ENABLE_DIAGNOSTICS=1` honours none of the skips; dev runs, diagnostics runs and
+  browser previews keep them.)*
 
 ### 2. Reduce flashing effects is its own setting, read live, and never folded into Reduce motion
 

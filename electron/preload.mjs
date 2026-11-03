@@ -137,6 +137,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // preload doesn't reliably expose process.env, so main.js passes this via
     // webPreferences.additionalArguments instead (documented sandbox-safe channel).
     diagnosticsEnabled: process.argv.includes('--serenity-diagnostics-enabled'),
+    // A shipped build: it ignores the development overrides (src/ui/developer-surfaces.js).
+    isPackaged: process.argv.includes('--serenity-packaged'),
     getDesktopRuntimeConfig: () => invoke('desktop:get-runtime-config'),
     getProcessMetrics: () => invoke('desktop:get-process-metrics'),
     getGPUHealth: () => invoke('desktop:get-gpu-health'),
