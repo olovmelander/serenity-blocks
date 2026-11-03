@@ -505,11 +505,121 @@ The other behaviours, after:
 
 The paddle surge is allowed in the calm-speed test (under 0.5 u/s²).
 
+### Natural motion pass (2026-11-03)
+
+The owner: "I want us to keep improving the design, movement and animations of all animals in
+odyssey mode, i want them to feel natural and move in a smooth and natural way!!!"
+
+**How it was measured.** The game's own pose code was sampled at 60 Hz over both swans' and the
+heron's whole loops. For every bone the probe measured its world rotation's speed, acceleration and
+jerk; for the body, its path's speed and acceleration; for the heron's planted feet, their slip and
+height. The motion was then skinned on the CPU and rendered in headless Blender as:
+
+- motion strips;
+- onion skins, with the 60 Hz paths of the head and feet drawn as curves.
+
+**The audit, worst first:**
+
+1. **The swans' heading jittered.** The route was a table of straight pieces, so the heading
+   turned in small steps: 220 rad/s² of angular acceleration at the root, 99 % of the time. It drew
+   a jagged path in the onion skin.
+2. **The mate cusped round the west turn.** It swam a fixed 2.6 u to the lead's side, and inside
+   the tight turn its offset line folded back: up to 14 u/s and 930 u/s².
+3. **The heron spun before walking.** It turned up to ~2.5 rad toward its next spot within its
+   first step, at up to 4.6 rad/s, and its planted foot slid with the body (no sideways reach).
+4. **The heron's legs jolted** (230-280 rad/s² at the thigh and shin). It had three causes: the
+   foot's lift started on a steep curve; a trailing leg pulled straight hit the reach limit and
+   kinked; and a planted foot slipped up to 0.02 u a frame.
+5. **A preen only twisted the neck about its own length.** A yaw of an upright neck cannot bring
+   the bill to the wing.
+6. **The heron never caught anything**, and its coil before a strike was quick (0.8 s).
+
+**What changed** (`odyssey-pond-life-motion.js`):
+
+- **The route.** Places and tangents now come from the Catmull-Rom spline itself, through a dense
+  arc-length table.
+- **The mate** follows the lead's own line, 8.5 s behind, wandering slowly up to 1.1 u to either
+  side.
+- **A swan turns head first.** Its upper neck looks into the bend the route takes ~2.5 s ahead.
+- **Each paddle stroke** is a quick push and a long glide (two harmonics, not a sine). The neck
+  gives a little at its base against the surge, so the head rides steady.
+- **The heron's walk is a list of moves.** Each one lifts one foot and sets it down while the body
+  is carried.
+  - It first turns toward its next spot in small stepped turns of at most ~0.5 rad. A foot is
+    re-placed with each one, and the body never spins.
+  - Then it stalks one step at a time, the head held still while the body moves under it.
+  - At the end the trailing foot closes up.
+  - Each leg also reaches sideways (a roll at the hip), so a planted foot stays put while the body
+    turns over it.
+- **The lift** follows sin^2.5, which starts and ends gently. Near full stretch the leg's reach
+  eases off instead of stopping dead.
+- **The preen** arches the neck back over the body and bends it to one side. The bill works at
+  the wing in small eased nibbles.
+- **The strike:**
+  - a slow 1.5 s coil, the neck drawn tight and low;
+  - the shot (0.24 s, eased at both ends), the hold, the return.
+  - **Half the strikes come up with a fish.** It is a new small silver part of the heron model on
+    its own bone, held crosswise in the bill. It grows in while the bill is under the water.
+  - **Then the swallow:** the head tips up, the neck gulps twice and the fish is gone (its bone
+    drawn at size 0). The model is now 13 bones and 1,336 triangles.
+
+**The numbers** (60 Hz, whole loops; the worst value; "a99" means 99 % of frames are below it):
+
+| | before | after |
+|---|---|---|
+| Swan root, angular acceleration (a99 / worst) | 221 / 357 rad/s² | 0.8 / 3.4 rad/s² |
+| Swan root, jerk (worst) | 42,800 rad/s³ | 197 rad/s³ |
+| The mate's speed (worst) | 14.5 u/s | 1.22 u/s |
+| The mate's acceleration (worst) | 927 u/s² | 2.9 u/s² |
+| Heron body, turning (worst) | 4.6 rad/s | 1.2 rad/s |
+| Heron thigh and shin, angular acceleration (worst) | 278 rad/s² | 29 rad/s² |
+| Heron thigh and shin, jerk (worst) | 21,300 rad/s³ | 820 rad/s³ |
+| Heron planted foot, slip (worst, per frame) | 0.020 u | 0.009 u |
+
+The fastest moves left are deliberate: the strike's shot (the upper neck at up to 26 rad/s, eased
+at both ends) and the swans' two wing beats in a stretch.
+
+![A swan's turn from above, before (left) and after (right): the head's 60 Hz path, jagged before, smooth after](images/odyssey-animals-2026-11-03/pond-onion-swan-turn.jpg)
+
+![Preening, before (top: the neck twists in place) and after (bottom: arched back, the bill at the wing)](images/odyssey-animals-2026-11-03/pond-strip-swan-preen.jpg)
+
+![The strike, before (top) and after (bottom): the slow coil, the shot, the hold](images/odyssey-animals-2026-11-03/pond-strip-heron-strike.jpg)
+
+![A catch: the coil, the shot, the fish in the bill, the swallow (0.4 s apart)](images/odyssey-animals-2026-11-03/pond-strip-heron-catch.jpg)
+
+![The heron's walk in onion skin with its feet's paths (orange left, blue right): before, the stalk after, and the stepped turn after](images/odyssey-animals-2026-11-03/pond-onion-heron-walk.jpg)
+
+![Strike paths of the head: before, after, and a catch](images/odyssey-animals-2026-11-03/pond-onion-heron-strike.jpg)
+
+![The swans gliding (0.25 s apart), before and after](images/odyssey-animals-2026-11-03/pond-strip-swan-glide.jpg)
+
+![The swan's turn, before and after](images/odyssey-animals-2026-11-03/pond-strip-swan-turn.jpg)
+
+At game size (L22, 4x; the 2026-11-02 shot left, this pass right) the swans, the heron and the
+drinkers read as before:
+
+![Game size at L22](images/odyssey-animals-2026-11-03/pond-game-size-l22.jpg)
+
+**Tests** (`tests/unit/odyssey-pond-life.test.js`, 15):
+
+- the swans' heading acceleration stays under 3 rad/s² at 60 Hz, and the mate's speed under 1.4x
+  the glide;
+- the heron never turns faster than 1.2 rad/s;
+- a fish appears only with the bill down, and is gone again within 5 s;
+- the fish is its own skinned part;
+- the leg reach eases off near full stretch without a kink.
+
+**Left as it was:**
+
+- **The drinking deer.** Their motion is the deer code's, which another helper owns.
+- **Up-ending.** The swan's hull is cut flat at the waterline, so tipping it up would show the
+  cut.
+- **The wake's crests** keep their travel speed; their strength already follows the swan's speed.
+
 ### Left for later
 
 - **The drinkers' timing** follows their own five-minute loop, so a given pass may find them on the
   ground above the bank rather than at the water.
-- **The heron does not catch anything.** Its strike comes back empty.
 - **The swans' paddling feet** are not drawn: under the turquoise they would not show.
 
 ## Ibex on the rock band (2026-11-02)

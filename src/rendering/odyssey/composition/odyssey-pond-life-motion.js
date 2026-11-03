@@ -48,9 +48,10 @@ export const ODYSSEY_POND = Object.freeze({
         speed: 0.95,
         breathe: 0.18,
         breath: 23,
-        /** The second swan: seconds behind the first along the route, and units to its left. */
+        /** The second swan: seconds behind the first along the route, and how far it wanders to
+         * either side of the lead's line (units). */
         lag: 8.5,
-        side: 2.6,
+        side: 1.1,
         /** How far the hull sits under the water (drawn units): the model is cut at its waterline. */
         draft: 0.2,
         /** Each swan's events repeat after this many seconds. */
@@ -122,32 +123,42 @@ function seeded(seed) {
 }
 
 // ── THE SWANS' ROUTE ─────────────────────────────────────────────────────────────────
-/** The closed route as a dense table: a centripetal Catmull-Rom through the waypoints. */
+/** A Catmull-Rom point (`d` = 0) or its derivative (`d` = 1) at `t` in the span p1 -> p2. */
+function catmull(p0, p1, p2, p3, t, d) {
+    const t2 = t * t;
+    const c = (a, b, cc, e) => (d === 0
+        ? 0.5 * ((2 * b) + ((-a + cc) * t) + (((2 * a) - (5 * b) + (4 * cc) - e) * t2)
+            + ((-a + (3 * b) - (3 * cc) + e) * t2 * t))
+        : 0.5 * ((-a + cc) + (2 * ((2 * a) - (5 * b) + (4 * cc) - e) * t)
+            + (3 * (-a + (3 * b) - (3 * cc) + e) * t2)));
+    return [c(p0[0], p1[0], p2[0], p3[0]), c(p0[1], p1[1], p2[1], p3[1])];
+}
+
+/**
+ * The closed route: a Catmull-Rom through the waypoints, with a dense arc-length table that maps a
+ * distance along it to the spline's own parameter. Places and tangents are evaluated on the spline
+ * itself, so the heading turns smoothly (a table of straight pieces turned it in small steps, a
+ * jitter of up to 220 rad/s^2 at the root).
+ */
 function buildRoute(points) {
     const n = points.length;
-    const out = [];
-    const per = 24;
-    for (let i = 0; i < n; i += 1) {
-        const p0 = points[(i - 1 + n) % n];
-        const p1 = points[i];
-        const p2 = points[(i + 1) % n];
-        const p3 = points[(i + 2) % n];
-        for (let s = 0; s < per; s += 1) {
-            const t = s / per;
-            const t2 = t * t;
-            const t3 = t2 * t;
-            const c = (a, b, cc, d) => 0.5 * ((2 * b) + ((-a + cc) * t) + (((2 * a) - (5 * b) + (4 * cc) - d) * t2)
-                + ((-a + (3 * b) - (3 * cc) + d) * t3));
-            out.push([c(p0[0], p1[0], p2[0], p3[0]), c(p0[1], p1[1], p2[1], p3[1])]);
-        }
+    const per = 48;
+    const params = [];
+    const at = (u) => {
+        const i = Math.floor(u) % n;
+        return catmull(points[(i - 1 + n) % n], points[i], points[(i + 1) % n], points[(i + 2) % n], u - Math.floor(u), 0);
+    };
+    for (let k = 0; k <= n * per; k += 1) params.push(k / per);
+    const lengths = new Float64Array(params.length);
+    let prev = at(0);
+    for (let k = 1; k < params.length; k += 1) {
+        const q = at(params[k] % n);
+        lengths[k] = lengths[k - 1] + Math.hypot(q[0] - prev[0], q[1] - prev[1]);
+        prev = q;
     }
-    const lengths = new Float64Array(out.length + 1);
-    for (let i = 1; i <= out.length; i += 1) {
-        const a = out[i - 1];
-        const b = out[i % out.length];
-        lengths[i] = lengths[i - 1] + Math.hypot(b[0] - a[0], b[1] - a[1]);
-    }
-    return { points: out, lengths, length: lengths[out.length] };
+    return {
+        points, params, lengths, length: lengths[lengths.length - 1], n,
+    };
 }
 
 let routeCache = null;
@@ -157,31 +168,38 @@ export function swanRoute() {
     return routeCache;
 }
 
-/** A point on the route at arc length `s` (wrapped), with its unit tangent. */
+/** A point on the route at arc length `s` (wrapped), with its unit tangent and its curvature. */
 function routeAt(route, s, out) {
     const L = route.length;
     const u = ((s % L) + L) % L;
     let lo = 0;
-    let hi = route.points.length - 1;
+    let hi = route.params.length - 2;
     while (lo < hi) {
         const mid = (lo + hi + 1) >> 1;
         if (route.lengths[mid] <= u) lo = mid; else hi = mid - 1;
     }
-    const a = route.points[lo];
-    const b = route.points[(lo + 1) % route.points.length];
     const seg = Math.max(1e-9, route.lengths[lo + 1] - route.lengths[lo]);
-    const f = (u - route.lengths[lo]) / seg;
-    const dx = (b[0] - a[0]) / seg;
-    const dz = (b[1] - a[1]) / seg;
-    out.x = a[0] + ((b[0] - a[0]) * f);
-    out.z = a[1] + ((b[1] - a[1]) * f);
-    out.tx = dx;
-    out.tz = dz;
+    const param = route.params[lo] + ((route.params[lo + 1] - route.params[lo]) * ((u - route.lengths[lo]) / seg));
+    const { points, n } = route;
+    const i = Math.floor(param) % n;
+    const t = param - Math.floor(param);
+    const span = [points[(i - 1 + n) % n], points[i], points[(i + 1) % n], points[(i + 2) % n]];
+    const p = catmull(...span, t, 0);
+    const d = catmull(...span, t, 1);
+    const len = Math.max(1e-9, Math.hypot(d[0], d[1]));
+    out.x = p[0];
+    out.z = p[1];
+    out.tx = d[0] / len;
+    out.tz = d[1] / len;
     return out;
 }
 
 /** Each swan's paddle rhythm (strokes a second) and how much a stroke surges it (share of speed). */
-const PADDLE = Object.freeze({ rate: Object.freeze([0.92, 1.07]), surge: 0.07 });
+const PADDLE = Object.freeze({ rate: Object.freeze([0.92, 1.07]), surge: 0.06 });
+/** A paddle stroke's push and glide: a quick surge, then a long, slow ease (two harmonics). */
+const paddleShape = (phase) => Math.cos(phase) + (0.35 * Math.cos((2 * phase) - 0.6));
+/** Its integral over the phase, for the distance glided. */
+const paddleArea = (phase) => Math.sin(phase) + (0.175 * Math.sin((2 * phase) - 0.6));
 
 /** Distance swan `i` has glided by board time `t`: a steady speed that breathes slowly, surging a
  * little with each paddle stroke (closed form). */
@@ -189,7 +207,7 @@ function glided(t, i = 0) {
     const S = ODYSSEY_POND.swans;
     const w = TAU / S.breath;
     const p = TAU * PADDLE.rate[i % 2];
-    return S.speed * (t - ((S.breathe / w) * Math.cos(w * t)) + ((PADDLE.surge / p) * Math.sin(p * t)));
+    return S.speed * (t - ((S.breathe / w) * Math.cos(w * t)) + ((PADDLE.surge / p) * paddleArea(p * t)));
 }
 
 /** Swan event kinds and their weights; a wing stretch is rare. */
@@ -254,14 +272,23 @@ export function swanStateAt(i, time, out = {}) {
     const behind = routeAt(route, s - 0.8, {
         x: 0, z: 0, tx: 0, tz: 1,
     });
-    const side = i === 0 ? 0 : S.side;
-    // The mate swims a little to the lead's left (its tangent turned a quarter to the left).
+    // The mate follows the lead's own line a few seconds behind, wandering slowly a little to
+    // either side of it (a fixed offset swung wide and cusped round the west lobe's turn).
+    const side = i === 0 ? 0 : S.side * Math.sin((t * 0.047) + 1.1);
     out.x = at.x + (-at.tz * side);
     out.z = at.z + (at.tx * side);
     out.heading = Math.atan2(at.tx, at.tz);
     const w = TAU / S.breath;
     const p = TAU * PADDLE.rate[i % 2];
-    out.speed = S.speed * (1 + (S.breathe * Math.sin(w * t)) + (PADDLE.surge * Math.cos(p * t)));
+    out.speed = S.speed * (1 + (S.breathe * Math.sin(w * t)) + (PADDLE.surge * paddleShape(p * t)));
+    // Turning by the head first: the neck looks into the bend the route takes ~2.5 s ahead.
+    const far = routeAt(route, s + (out.speed * 2.5), {
+        x: 0, z: 0, tx: 0, tz: 1,
+    });
+    out.leadYaw = Math.max(-0.45, Math.min(0.45, 0.8 * Math.atan2(
+        Math.sin(Math.atan2(far.tx, far.tz) - out.heading),
+        Math.cos(Math.atan2(far.tx, far.tz) - out.heading),
+    )));
     out.vx = at.tx * out.speed;
     out.vz = at.tz * out.speed;
     // How fast it is turning (rad/s): the route's curvature at its speed. It leans into a turn.
@@ -313,23 +340,36 @@ function buildHeronSchedule() {
     const segs = [];
     let t = 0;
     const n = H.spots.length;
+    // Each walk's heading; the heron stands facing the way it walked in.
+    const headings = H.spots.map((from, i) => {
+        const to = H.spots[(i + 1) % n];
+        return Math.atan2(to[0] - from[0], to[1] - from[1]);
+    });
+    const half = 0.04 * k;
+    const lateral = (p, h, side) => {
+        const s = side === 0 ? 1 : -1;
+        return [p[0] + (Math.cos(h) * half * s), p[1] - (Math.sin(h) * half * s)];
+    };
     for (let i = 0; i < n; i += 1) {
         const from = H.spots[i];
         const to = H.spots[(i + 1) % n];
         const stand = H.stand[0] + (rand() * (H.stand[1] - H.stand[0]));
         // Its acts while it stands: stalks (a slow lean, the neck reaching forward and low) and
-        // strikes (coil, shoot, hold, recover), some followed by a shake; never in the first or last
-        // few seconds, so it is settled before and after a walk.
+        // strikes (a slow coil, the shot, the hold, the return; half of them come up with a fish,
+        // which it swallows), some followed by a shake; never in the first or last few seconds.
         const acts = [];
         let a = 4 + (rand() * 6);
-        while (a < stand - 12) {
+        while (a < stand - 14) {
             const strike = rand() < 0.45;
-            const dur = strike ? 4.2 + (rand() * 1.2) : 7 + (rand() * 7);
-            acts.push({ kind: strike ? 'strike' : 'stalk', t0: a, dur });
+            const caught = rand() < 0.5;
+            const dur = strike ? (caught ? 6.4 : 4.8) + (rand() * 1.2) : 7 + (rand() * 7);
+            acts.push({
+                kind: strike ? 'strike' : 'stalk', t0: a, dur, caught: strike && caught,
+            });
             a += dur;
             if (strike && rand() < 0.5) {
-                acts.push({ kind: 'shake', t0: a + 0.4, dur: 1.1 });
-                a += 1.6;
+                acts.push({ kind: 'shake', t0: a + 0.5, dur: 1.2 });
+                a += 1.8;
             }
             a += 5 + (rand() * 10);
         }
@@ -340,21 +380,63 @@ function buildHeronSchedule() {
             looks.push({ t0: l, yaw: (rand() - 0.5) * 0.9, pitch: (rand() - 0.5) * 0.12 });
             l += 1.8 + (rand() * 3.5);
         }
+        const standHeading = headings[(i - 1 + n) % n];
         segs.push({
-            kind: 'stand', t0: t, dur: stand, x: from[0], z: from[1], acts, looks,
+            kind: 'stand', t0: t, dur: stand, x: from[0], z: from[1], acts, looks, heading: standHeading,
         });
         t += stand;
+        // THE WALK: a list of moves, each lifting one foot and setting it down while the body is
+        // carried. It first turns toward its next spot in a few small stepped turns (each at most
+        // ~0.5 rad, a foot re-placed each time, never a spin), then stalks there one step at a time,
+        // and brings the trailing foot up beside the other at the end.
+        const walkHeading = headings[i];
+        const turnBy = Math.atan2(Math.sin(walkHeading - standHeading), Math.cos(walkHeading - standHeading));
+        const turns = Math.abs(turnBy) < 0.05 ? 0 : Math.ceil(Math.abs(turnBy) / 0.5);
         const dist = Math.hypot(to[0] - from[0], to[1] - from[1]);
         const count = Math.max(2, Math.round(dist / (H.step * k)));
-        const steps = [];
+        const delta = dist / count;
+        const dx = (to[0] - from[0]) / dist;
+        const dz = (to[1] - from[1]) / dist;
+        const feet = [lateral(from, standHeading, 0), lateral(from, standHeading, 1)];
+        const moves = [];
         let u = 0;
-        for (let s = 0; s <= count; s += 1) {
-            const dur = H.stepTime * (0.9 + (rand() * 0.25));
-            steps.push({ t0: u, dur, closing: s === count });
-            u += dur + (s === count ? 0.6 : H.pause[0] + (rand() * (H.pause[1] - H.pause[0])));
+        let along = 0;
+        let heading = standHeading;
+        // Turning toward the left (positive), the left foot steps first, and the other way round.
+        let side = turnBy >= 0 ? 0 : 1;
+        const pushMove = (to2, a1, h1, forward, closing = false) => {
+            const dur = H.stepTime * (0.9 + (rand() * 0.25)) * (forward ? 1 : 0.85);
+            moves.push({
+                t0: u,
+                dur,
+                side,
+                from: feet[side].slice(),
+                to: to2,
+                feet: [feet[0].slice(), feet[1].slice()],
+                a0: along,
+                a1,
+                h0: heading,
+                h1,
+                forward,
+            });
+            feet[side] = to2;
+            along = a1;
+            heading = h1;
+            u += dur + (closing ? 0.6 : H.pause[0] + (rand() * (H.pause[1] - H.pause[0])) * (forward ? 1 : 0.6));
+            side = 1 - side;
+        };
+        for (let m = 1; m <= turns; m += 1) {
+            const h1 = standHeading + ((turnBy * m) / turns);
+            pushMove(lateral(from, h1, side), 0, h1, false);
         }
+        for (let m = 0; m < count; m += 1) {
+            const pos = m >= count - 1 ? dist : Math.min(dist, ((m + 1) * delta) + (delta * 0.5));
+            const foot = lateral([from[0] + (dx * pos), from[1] + (dz * pos)], walkHeading, side);
+            pushMove(foot, (m + 1) * delta, walkHeading, true);
+        }
+        pushMove(lateral(to, walkHeading, side), dist, walkHeading, false, true);
         segs.push({
-            kind: 'walk', t0: t, dur: u, from, to, dist, count, steps,
+            kind: 'walk', t0: t, dur: u, from, to, dist, moves, heading: walkHeading,
         });
         t += u;
     }
@@ -362,13 +444,6 @@ function buildHeronSchedule() {
 }
 const HERON = buildHeronSchedule();
 export const HERON_LOOP = HERON.loop;
-
-/** Which way the heron faces at a spot: the way it walked in (the walk before it, round the loop). */
-function heronFacing(seg) {
-    const i = HERON.segs.indexOf(seg);
-    const prev = HERON.segs[(i - 1 + HERON.segs.length) % HERON.segs.length];
-    return Math.atan2(prev.to[0] - prev.from[0], prev.to[1] - prev.from[1]);
-}
 
 /** The stand's head turn at `u`: eased from the last look to the current over 0.35 s. */
 function heronLook(seg, u) {
@@ -380,25 +455,31 @@ function heronLook(seg, u) {
     return { yaw: prev.yaw + ((cur.yaw - prev.yaw) * w), pitch: prev.pitch + ((cur.pitch - prev.pitch) * w) };
 }
 
+/** The strike's timing (s from its start): lean in, a slow coil, the shot, the hold, the return. */
+const STRIKE = Object.freeze({
+    coil: Object.freeze([1.0, 1.5]), shot: 0.24, hold: 0.5,
+});
+
 /**
  * The heron at board time `time`: its body (x, z, heading), its feet (world x, z, each planted or
  * swinging with its lift), its posture's channels (`stalk`, the strike's `coil` and `shoot`, `shake`
- * and its clock, the head's `look` and `nod`) and `headLag`, how far (world units, along its heading)
- * the head is held back while the body moves under it.
+ * and its clock, the catch's `fish` and `swallow`, the head's `look` and `nod`) and `headLag`, how
+ * far (world units, along its heading) the head is held back while the body moves under it.
  */
 export function heronStateAt(time, out = { feet: [{}, {}] }) {
     const H = ODYSSEY_POND.heron;
-    const k = ODYSSEY_POND.scale;
     const t = ((time % HERON.loop) + HERON.loop) % HERON.loop;
     let seg = HERON.segs[0];
     for (const s of HERON.segs) if (s.t0 <= t) seg = s;
     const u = t - seg.t0;
-    const half = 0.04 * k;
     out.stalk = 0;
     out.coil = 0;
     out.shoot = 0;
     out.shake = 0;
     out.shakeT = 0;
+    out.fish = 0;
+    out.swallow = 0;
+    out.gulp = 0;
     out.walking = 0;
     out.headLag = 0;
     out.look = 0;
@@ -406,7 +487,7 @@ export function heronStateAt(time, out = { feet: [{}, {}] }) {
     if (seg.kind === 'stand') {
         out.x = seg.x;
         out.z = seg.z;
-        out.heading = heronFacing(seg);
+        out.heading = seg.heading;
         // Its head turns settle to the front before and after a walk (no turn carries across).
         const look = heronLook(seg, u);
         const settle = s5(u / 1.2) * s5((seg.dur - u) / 1.2);
@@ -417,108 +498,90 @@ export function heronStateAt(time, out = { feet: [{}, {}] }) {
             if (v < 0 || v > a.dur) continue;
             if (a.kind === 'stalk') out.stalk = envelope(v, a.dur, 2.4, 2.6);
             else if (a.kind === 'shake') {
-                out.shake = envelope(v, a.dur, 0.15, 0.45);
+                out.shake = envelope(v, a.dur, 0.15, 0.5);
                 out.shakeT = v;
             } else {
-                // The strike: lean in (1.2 s), coil (0.8 s), the shot (0.2 s, eased so even the
-                // fastest move starts and stops), held (0.5 s), back.
-                out.stalk = envelope(v, a.dur, 1.2, 1.4);
-                out.coil = v < 1.2 ? 0 : s5((v - 1.2) / 0.8) * (1 - s5((v - 2.0) / 0.2));
-                const back = a.dur - 2.7;
-                if (v >= 2.0 && v < 2.2) out.shoot = s5((v - 2.0) / 0.2);
-                else if (v >= 2.2 && v < 2.7) out.shoot = 1;
-                else if (v >= 2.7) out.shoot = 1 - s5((v - 2.7) / back);
+                const [c0, c1] = STRIKE.coil;
+                const shotAt = c0 + c1;
+                const holdEnd = shotAt + STRIKE.shot + STRIKE.hold;
+                out.stalk = envelope(v, a.dur, 1.0, 1.4);
+                // The coil draws the neck slowly back into a tight S; the shot throws it out (eased
+                // at both ends) as the coil lets go; it holds, then draws back slowly.
+                out.coil = v < c0 ? 0 : s5((v - c0) / c1) * (1 - s5((v - shotAt) / STRIKE.shot));
+                if (v >= shotAt && v < shotAt + STRIKE.shot) out.shoot = s5((v - shotAt) / STRIKE.shot);
+                else if (v >= shotAt + STRIKE.shot && v < holdEnd) out.shoot = 1;
+                else if (v >= holdEnd) out.shoot = 1 - s5((v - holdEnd) / (a.dur - holdEnd));
+                if (a.caught) {
+                    // A fish in the bill: it grows in while the bill is under (hidden by the water),
+                    // comes up with the head, and is swallowed: the head tips up, two gulps, gone.
+                    const swallowAt = holdEnd + 1.3;
+                    out.fish = s5((v - (shotAt + STRIKE.shot)) / 0.2) * (1 - s5((v - (swallowAt + 0.5)) / 0.7));
+                    out.swallow = envelope(v - swallowAt, 1.8, 0.45, 0.6);
+                    const g = v - (swallowAt + 0.4);
+                    out.gulp = g > 0 && g < 1.2 ? Math.max(0, Math.sin((g / 1.2) * TAU * 2)) * 0.5 : 0;
+                }
             }
         }
         if (out.stalk > 0 || out.shoot > 0) out.look *= 1 - Math.max(out.stalk, out.shoot);
-        const fx = Math.sin(out.heading);
-        const fz = Math.cos(out.heading);
-        out.feet.forEach((f, side) => {
-            const s = side === 0 ? 1 : -1;
-            f.x = out.x + (fz * half * s);
-            f.z = out.z - (fx * half * s);
+        const [L, R] = HERON_STAND_FEET(seg);
+        out.feet[0].x = L[0];
+        out.feet[0].z = L[1];
+        out.feet[1].x = R[0];
+        out.feet[1].z = R[1];
+        out.feet.forEach((f) => {
             f.lift = 0;
             f.planted = true;
         });
         return out;
     }
-    // A stalk to the next spot, one step at a time, in the stalking posture.
-    const D = seg.dist;
-    const dx = (seg.to[0] - seg.from[0]) / D;
-    const dz = (seg.to[1] - seg.from[1]) / D;
-    const walkHeading = Math.atan2(dx, dz);
-    const standSeg = HERON.segs[HERON.segs.indexOf(seg) - 1];
-    const standHeading = heronFacing(standSeg);
-    const turnBy = Math.atan2(Math.sin(walkHeading - standHeading), Math.cos(walkHeading - standHeading));
+    // A walk: the move this is (or the pause after it).
     out.walking = 1;
     out.stalk = envelope(u, seg.dur, 1.6, 1.6);
-    const N = seg.count;
-    const delta = D / N;
-    // Which step (or the pause after it) this is.
     let j = 0;
-    while (j + 1 < seg.steps.length && seg.steps[j + 1].t0 <= u) j += 1;
-    const step = seg.steps[j];
-    const w = s5((u - step.t0) / step.dur);
-    // The body: still between steps, carried one `delta` along over each regular step.
-    const bodyAt = (m) => Math.min(D, m * delta);
-    const along = step.closing ? D : bodyAt(j) + ((bodyAt(j + 1) - bodyAt(j)) * w);
+    while (j + 1 < seg.moves.length && seg.moves[j + 1].t0 <= u) j += 1;
+    const mv = seg.moves[j];
+    const w = s5((u - mv.t0) / mv.dur);
+    const along = mv.a0 + ((mv.a1 - mv.a0) * w);
+    const dx = (seg.to[0] - seg.from[0]) / seg.dist;
+    const dz = (seg.to[1] - seg.from[1]) / seg.dist;
     out.x = seg.from[0] + (dx * along);
     out.z = seg.from[1] + (dz * along);
-    // It turns from the way it stood to the way it walks over the first step.
-    out.heading = standHeading + (turnBy * (j === 0 ? w : 1));
+    const dh = Math.atan2(Math.sin(mv.h1 - mv.h0), Math.cos(mv.h1 - mv.h0));
+    out.heading = mv.h0 + (dh * w);
     // The head is held where it was while the body moves under it, then glides on in the pause.
-    const moved = step.closing ? 0 : (bodyAt(j + 1) - bodyAt(j)) * w;
-    const pauseU = u - (step.t0 + step.dur);
-    out.headLag = pauseU < 0 ? moved : (bodyAt(j + 1) - bodyAt(j)) * (1 - s5(pauseU / 0.7)) * (step.closing ? 0 : 1);
-    // The feet. Step m moves foot m % 2 (left first) to beside the body's end of that step and half a
-    // step ahead; the closing step brings the trailing foot up beside the other. Before its first
-    // step a foot stands where it stood (the way it stood).
-    const sx = Math.sin(standHeading);
-    const sz = Math.cos(standHeading);
-    const plant = (side, m, pt) => {
-        const s = side === 0 ? 1 : -1;
-        if (m < 0) {
-            pt[0] = seg.from[0] + (sz * half * s);
-            pt[1] = seg.from[1] - (sx * half * s);
-            return pt;
-        }
-        const pos = m >= N - 1 ? D : Math.min(D, bodyAt(m + 1) + (delta * 0.5));
-        pt[0] = seg.from[0] + (dx * pos) + (dz * half * s);
-        pt[1] = seg.from[1] + (dz * pos) - (dx * half * s);
-        return pt;
-    };
-    // The step index of each foot's latest move at or before step j, and whether it is moving now.
-    const a = [0, 0];
-    const b = [0, 0];
+    const pauseU = u - (mv.t0 + mv.dur);
+    if (mv.forward) out.headLag = pauseU < 0 ? (mv.a1 - mv.a0) * w : (mv.a1 - mv.a0) * (1 - s5(pauseU / 0.7));
+    const moving = pauseU < 0;
     out.feet.forEach((f, side) => {
-        // Foot `side` moves on steps side, side + 2, ... and on the closing step if it trails.
-        const trailing = (N % 2) === side; // the foot not moved by step N - 1
-        let last = -1;
-        for (let m = 0; m <= j; m += 1) {
-            const moves = m < N ? m % 2 === side : trailing;
-            if (moves) last = m;
-        }
-        const movingNow = last === j && u < step.t0 + step.dur;
-        const prevMove = (() => {
-            for (let m = (movingNow ? j : last + 1) - 1; m >= 0; m -= 1) if (m < N ? m % 2 === side : trailing) return m;
-            return -1;
-        })();
-        if (movingNow) {
-            plant(side, prevMove, a);
-            plant(side, j, b);
-            f.x = a[0] + ((b[0] - a[0]) * w);
-            f.z = a[1] + ((b[1] - a[1]) * w);
-            const lift = Math.hypot(b[0] - a[0], b[1] - a[1]) > 1e-6 ? Math.sin(Math.PI * w) : 0;
-            f.lift = lift * H.lift * k;
+        if (moving && side === mv.side) {
+            f.x = mv.from[0] + ((mv.to[0] - mv.from[0]) * w);
+            f.z = mv.from[1] + ((mv.to[1] - mv.from[1]) * w);
+            const lift = Math.hypot(mv.to[0] - mv.from[0], mv.to[1] - mv.from[1]) > 1e-6
+                ? Math.sin(Math.PI * ((u - mv.t0) / mv.dur)) ** 2.5 : 0;
+            f.lift = lift * H.lift * ODYSSEY_POND.scale;
             f.planted = lift === 0;
         } else {
-            plant(side, last, a);
-            [f.x, f.z] = a;
+            const p = side === mv.side ? mv.to : mv.feet[side];
+            [f.x, f.z] = p;
             f.lift = 0;
             f.planted = true;
         }
     });
     return out;
+}
+
+/** A stand's two feet: where the walk before it left them (beside each other, the way it faces). */
+function HERON_STAND_FEET(seg) {
+    if (!seg.feetCache) {
+        const k = ODYSSEY_POND.scale;
+        const half = 0.04 * k;
+        const h = seg.heading;
+        seg.feetCache = [0, 1].map((side) => {
+            const s = side === 0 ? 1 : -1;
+            return [seg.x + (Math.cos(h) * half * s), seg.z - (Math.sin(h) * half * s)];
+        });
+    }
+    return seg.feetCache;
 }
 
 // ── POSING (shared) ──────────────────────────────────────────────────────────────────
@@ -601,6 +664,9 @@ export function poseBird(rig, {
             hw[i][2] = hw[p][2] + (v[2] * k);
         }
         if (table) {
+            // A bone may be drawn smaller than the rest (`rig.size`, the heron's fish: 0 = gone),
+            // scaled about its own head.
+            const ks = k * (rig.size ? rig.size[i] : 1);
             const o = offset + (i * 8);
             const q = qw[i];
             qrot(q, bone.head, v);
@@ -608,10 +674,10 @@ export function poseBird(rig, {
             table[o + 1] = q[1];
             table[o + 2] = q[2];
             table[o + 3] = q[3];
-            table[o + 4] = hw[i][0] - (v[0] * k);
-            table[o + 5] = hw[i][1] - (v[1] * k);
-            table[o + 6] = hw[i][2] - (v[2] * k);
-            table[o + 7] = k;
+            table[o + 4] = hw[i][0] - (v[0] * ks);
+            table[o + 5] = hw[i][1] - (v[1] * ks);
+            table[o + 6] = hw[i][2] - (v[2] * ks);
+            table[o + 7] = ks;
         }
     });
     return rig;
@@ -656,14 +722,20 @@ function neckRest(rig, names) {
  * whatever the neck above it does. Each bone's local pitch is the change in its segment's angle less
  * what its parents already turned.
  */
-function setNeck(rig, neck, want, yaw, headPitch) {
+function setNeck(rig, neck, want, yaw, headPitch, roll = null) {
     let turned = 0;
     for (let i = 0; i < neck.angles.length; i += 1) {
         const change = want[i] - neck.angles[i];
-        setLocal(rig, neck.names[i], change - turned, yaw[i] ?? 0, 0);
+        setLocal(rig, neck.names[i], change - turned, yaw[i] ?? 0, roll ? roll[i] : 0);
         turned = change;
     }
-    setLocal(rig, neck.names[neck.names.length - 1], headPitch - turned, yaw[neck.angles.length] ?? 0, 0);
+    setLocal(
+        rig,
+        neck.names[neck.names.length - 1],
+        headPitch - turned,
+        yaw[neck.angles.length] ?? 0,
+        roll ? roll[neck.angles.length] : 0,
+    );
 }
 
 /** Mix arrays: a + (b - a) w, into `out`. */
@@ -717,6 +789,8 @@ const SWAN_NECK_POSE = Object.freeze({
     dip: Object.freeze([1.35, 1.6, 1.85, 2.05, 2.2]),
     // Stretching up for a wing stretch: the S opened toward upright.
     stretch: Object.freeze([0.25, -0.15, -0.35, 0.2, 0.75]),
+    // Preening: the neck arched back over the body, the head down at the back of the wing.
+    preen: Object.freeze([0.2, -0.45, -1.15, -1.75, -2.25]),
 });
 const SWAN_NECK = Object.freeze(['neck0', 'neck1', 'neck2', 'neck3', 'neck4', 'head']);
 
@@ -732,25 +806,36 @@ export function poseSwan(rig, i, time, waterY = ODYSSEY_TARN.waterY, table = nul
     const want = rig.want || (rig.want = new Array(neck.angles.length).fill(0));
     const yaw = rig.yaw || (rig.yaw = new Array(SWAN_NECK.length).fill(0));
     // The rest S, breathing: a slow sway that travels down the neck (each segment a little later).
+    // Against each paddle stroke's surge the neck gives a little at its base and the head rides
+    // steady (the S flexes, the head does not bob with the body).
+    const surge = paddleShape(s.paddle);
     for (let j = 0; j < want.length; j += 1) {
-        want[j] = neck.angles[j] + (Math.sin((time * 0.42) + (i * 2.3) - (j * 0.55)) * 0.035);
+        want[j] = neck.angles[j] + (Math.sin((time * 0.42) + (i * 2.3) - (j * 0.55)) * 0.03)
+            - (surge * 0.012 * (j === 0 ? 1 : -0.5));
     }
     // A dip feeds forward and down; a stretch opens the S toward upright.
     mixInto(want, want, SWAN_NECK_POSE.dip, s.dip);
     mixInto(want, want, SWAN_NECK_POSE.stretch, s.stretch * 0.85);
     // A look turns the upper neck and head; a preen swings the whole neck back over the wing, its
     // head low over the back (the yaws add down the chain to ~2.7 rad).
-    const pr = s.preen * s.side;
+    // A preen arches the neck back over the body and bends it to one side, so the bill reaches
+    // the wing on that side (a yaw of the upright neck only twisted it about its own length).
+    mixInto(want, want, SWAN_NECK_POSE.preen, s.preen);
+    const roll = rig.roll || (rig.roll = new Array(SWAN_NECK.length).fill(0));
+    const bend = [0.1, 0.18, 0.24, 0.24, 0.18, 0.08];
     const lookW = [0.04, 0.08, 0.14, 0.2, 0.24, 0.3];
-    const preenW = [0.42, 0.5, 0.55, 0.5, 0.4, 0.3];
     for (let j = 0; j < yaw.length; j += 1) {
-        yaw[j] = (s.look * lookW[j]) + (pr * preenW[j]) + (Math.sin((time * 0.31) + (i * 1.7) + j) * 0.012);
+        // Into a bend the head leads: the upper neck turns toward where the route goes next.
+        yaw[j] = (s.look * lookW[j]) + (s.leadYaw * lookW[j] * 1.4) + (Math.sin((time * 0.31) + (i * 1.7) + j) * 0.012);
+        roll[j] = -s.side * s.preen * bend[j];
     }
-    if (s.preen > 0) {
-        for (let j = 1; j < want.length; j += 1) want[j] += s.preen * 0.25;
-    }
-    const headPitch = (s.dip * 0.75) + (s.preen * 0.6) - (s.stretch * 0.25) + (Math.sin((time * 0.7) + i) * 0.03);
-    setNeck(rig, neck, want, yaw, headPitch);
+    // Preening, the bill works through the feathers: small quick nibbles, eased in and out, the head
+    // turned in toward the wing.
+    const nibble = s.preen * ((Math.sin(time * 12.0) * 0.5) + (Math.sin((time * 7.0) + 1.3) * 0.5)) * 0.06;
+    yaw[yaw.length - 1] += nibble + (s.side * s.preen * 0.5);
+    const headPitch = (s.dip * 0.75) + (s.preen * 0.45) - (s.stretch * 0.25) + (Math.sin((time * 0.7) + i) * 0.03)
+        + (nibble * 0.8);
+    setNeck(rig, neck, want, yaw, headPitch, roll);
     // The wings: raised over the back at rest, breathing a little; a stretch lifts them high over
     // the back and opens them outward, beating twice before they fold back.
     const flap = s.stretch > 0 ? Math.max(0, Math.sin(s.stretchT * TAU * 0.75)) : 0;
@@ -779,7 +864,11 @@ export function poseSwan(rig, i, time, waterY = ODYSSEY_TARN.waterY, table = nul
  * straight down (positive = the segment points forward). */
 export function legReach(a, b, fwd, up) {
     const far = Math.max(1e-6, Math.hypot(fwd, up));
-    const d = Math.min(far, (a + b) * 0.999);
+    // Near full stretch the reach eases off instead of stopping dead (a hard limit kinked the knee
+    // into a jolt when a trailing foot pulled the leg straight).
+    const R = a + b;
+    const knee = 0.93 * R;
+    const d = far <= knee ? far : knee + ((0.995 * R - knee) * Math.tanh((far - knee) / (0.995 * R - knee)));
     const toward = Math.atan2(fwd, -up);
     const cosA = Math.max(-1, Math.min(1, ((a * a) + (d * d) - (b * b)) / (2 * a * d)));
     // The heel behind the line from hip to foot (a heron's "knee" bends back).
@@ -795,8 +884,8 @@ export function legReach(a, b, fwd, up) {
 const HERON_NECK_POSE = Object.freeze({
     // Stalking: the neck reaching forward and low in an open S, the head level.
     stalk: Object.freeze([1.05, 0.25, 0.85, 1.2]),
-    // Coiled for the strike: the S drawn tight, the head pulled back.
-    coil: Object.freeze([0.35, -1.25, -0.2, 1.15]),
+    // Coiled for the strike: the S drawn tight and low, the head pulled back over the shoulders.
+    coil: Object.freeze([0.55, -1.35, -0.1, 1.3]),
     // The shot: the neck thrown straight out, forward and down at the water.
     shoot: Object.freeze([1.45, 1.6, 1.7, 1.78]),
 });
@@ -839,13 +928,19 @@ export function poseHeron(rig, time, heightAt, table = null, offset = 0, state =
         const bu = (cp * tu) + (sp * tf);
         const a = Math.hypot(heel[1] - hip[1], heel[2] - hip[2]);
         const b = Math.hypot(foot[1] - heel[1], foot[2] - heel[2]);
-        const reach = legReach(a, b, bf - hip[2], bu - hip[1]);
+        // Sideways: how far the foot stands out from under its hip (the body's +x is its left).
+        // The whole leg swings out toward it about the hip (a roll), so a planted foot stays put
+        // while the body turns over it in a stepped turn.
+        const lat = (((relX * Math.cos(s.heading)) - (relZ * Math.sin(s.heading))) / k) - hip[0];
+        const down = bu - hip[1];
+        const roll = Math.atan2(lat, -down);
+        const reach = legReach(a, b, bf - hip[2], -Math.hypot(down, lat));
         const restUpper = Math.atan2(heel[2] - hip[2], -(heel[1] - hip[1]));
         const restLower = Math.atan2(foot[2] - heel[2], -(foot[1] - heel[1]));
-        setLocal(rig, `thigh${tag}`, restUpper - reach.upper, 0, 0);
+        setLocal(rig, `thigh${tag}`, restUpper - reach.upper, 0, roll);
         setLocal(rig, `shin${tag}`, (restLower - reach.lower) - (restUpper - reach.upper), 0, 0);
         // The foot kept level: undo the leg's and the body's turn.
-        setLocal(rig, `foot${tag}`, -(restLower - reach.lower) - pitch, 0, 0);
+        setLocal(rig, `foot${tag}`, -(restLower - reach.lower) - pitch, 0, -roll);
     });
     // The neck: the rest S, a stalk's forward reach, a strike's coil and shot.
     const neck = neckRest(rig, HERON_NECK);
@@ -866,8 +961,16 @@ export function poseHeron(rig, time, heightAt, table = null, offset = 0, state =
     for (let j = 0; j < yaw.length; j += 1) {
         yaw[j] = (s.look * [0.05, 0.1, 0.15, 0.25, 0.45][j]) + (shake * [0.05, 0.1, 0.2, 0.3, 0.6][j]);
     }
-    const headPitch = s.nod + (s.shoot * 0.85) + (s.coil * 0.15) - (pitch * (1 - s.shoot));
+    // Swallowing: the head tips up (the bill raised) and the neck gulps twice.
+    for (let j = 1; j < want.length; j += 1) want[j] -= s.gulp * 0.12 * (j % 2 === 0 ? 1 : -1);
+    const headPitch = s.nod + (s.shoot * 0.85) + (s.coil * 0.15) - (pitch * (1 - s.shoot)) - (s.swallow * 0.75);
     setNeck(rig, neck, want, yaw, headPitch);
+    // The catch: a small fish in the bill, there only while it is held (0 = gone).
+    if (rig.index.fish != null) {
+        rig.size = rig.size || new Array(rig.skeleton.length).fill(1);
+        rig.size[rig.index.fish] = Math.max(0, Math.min(1, s.fish));
+        setLocal(rig, 'fish', Math.sin(time * 9.0) * 0.25 * s.fish, 0, 0);
+    }
     setLocal(rig, 'root', 0, 0, shake * 0.04);
     poseBird(rig, {
         x: s.x, y, z: s.z, heading: s.heading, pitch, roll: 0,

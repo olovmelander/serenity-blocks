@@ -245,7 +245,12 @@ def swan_paint(shape, landmarks, positions, normals, parts):
 # long, 0.13 m wide) held up at ~35 degrees; the long neck folded into an S and hunched into the
 # shoulders at rest; a 0.12 m dagger bill; long thin legs (the bare shin and the tarsus each ~0.25 m),
 # drawn a little thicker than life so they read; the black crest plumes trailing from the nape.
-HERON_PARTS = {"body": 0, "neck": 1, "head": 2, "bill": 3, "crest": 4, "legLeft": 5, "legRight": 6}
+HERON_PARTS = {"body": 0, "neck": 1, "head": 2, "bill": 3, "crest": 4, "legLeft": 5, "legRight": 6, "fish": 7}
+# The poll, the bill's line, and the catch: a small fish held crosswise just under the bill's tip
+# (its own bone, drawn at size 0 until a strike comes up with it).
+HERON_POLL = _point(0.975, 0.16)
+HERON_FWD = _unit(np.array([0.0, -0.12, 0.99]))
+HERON_FISH = HERON_POLL + 0.16 * HERON_FWD - np.array([0.0, 0.026, 0.0])
 HERON_NECK = [(0.72, 0.12), (0.80, 0.185), (0.855, 0.105), (0.915, 0.09), (0.965, 0.15)]
 HERON_HIP = (0.56, -0.02)
 HERON_HEEL = (0.31, -0.045)
@@ -271,6 +276,7 @@ def heron_bones():
             ("shin" + tag, "thigh" + tag, (x, HERON_HEEL[0], HERON_HEEL[1])),
             ("foot" + tag, "shin" + tag, (x, HERON_FOOT[0], HERON_FOOT[1])),
         ]
+    bones.append(("fish", "head", tuple(float(v) for v in HERON_FISH)))
     return bones
 
 
@@ -308,8 +314,8 @@ def heron_design():
     ], k=0.04).tag(P["body"])
     neck = Tube([_point(y, z) for y, z in HERON_NECK], [0.04, 0.03, 0.027, 0.025, 0.026],
                 squash_axis=X_AXIS, squash=0.82, k=0.018).tag(P["neck"])
-    poll = _point(0.975, 0.16)
-    fwd = _unit(np.array([0.0, -0.12, 0.99]))
+    poll = HERON_POLL
+    fwd = HERON_FWD
     head = Union([
         Ellipsoid(poll + 0.022 * fwd, (0.024, 0.027, 0.046), along=fwd),
         *[Ellipsoid(poll + 0.035 * fwd + np.array([0.019 * s, 0.006, 0.0]), (0.007, 0.007, 0.007)) for s in (1.0, -1.0)],
@@ -319,7 +325,14 @@ def heron_design():
     crest = Tube([poll + np.array([0.0, 0.02, -0.01]), poll + np.array([0.0, 0.016, -0.08]),
                   poll + np.array([0.0, -0.004, -0.15])], [0.0075, 0.0055, 0.003]).tag(P["crest"])
     legs = [_heron_leg(1.0).tag(P["legLeft"]), _heron_leg(-1.0).tag(P["legRight"])]
-    root = HalfSpace(Union([(body, 0.0), (neck, 0.04), (head, 0.025), (bill, 0.008), (crest, 0.008),
+    # The fish: a slim silver body across the bill and a forked tail to one side (mirrored, so a
+    # tail each side reads as the fish's two ends at this size), clear of the bill by a few mm.
+    fish = Union([
+        Ellipsoid(HERON_FISH, (0.06, 0.012, 0.011)),
+        *[RoundCone(HERON_FISH + np.array([0.055 * s, 0.0, 0.0]), HERON_FISH + np.array([0.075 * s, 0.008, 0.0]),
+                    0.006, 0.004) for s in (1.0, -1.0)],
+    ], k=0.006).tag(P["fish"])
+    root = HalfSpace(Union([(body, 0.0), (neck, 0.04), (head, 0.025), (bill, 0.008), (crest, 0.008), (fish, 0.0),
                             *[(leg, 0.025) for leg in legs]]), axis=1)
     landmarks = dict(poll=poll, fwd=fwd, eyes=[poll + 0.035 * fwd + np.array([0.021 * s, 0.006, 0.0]) for s in (1.0, -1.0)],
                      back=back)
@@ -347,6 +360,7 @@ def heron_skin(positions, parts, triangles, index):
     put(neck, "root", 0.7 * base)
     for part in ("head", "bill", "crest"):
         put(parts == P[part], "head", 1.0)
+    put(parts == P["fish"], "fish", 1.0)
     for part, tag in (("legLeft", "L"), ("legRight", "R")):
         leg = parts == P[part]
         into = _smoothstep(0.54, 0.6, y)
@@ -380,11 +394,15 @@ def heron_paint(shape, landmarks, positions, normals, parts):
     neck = parts == P["neck"]
     streak = (neck | body) * _smoothstep(0.55, 0.9, normals[:, 2]) * _smoothstep(0.011, 0.004, np.abs(x)) \
         * (0.5 + 0.5 * np.sin(y * 260.0)) * 0.55
-    dark = np.clip(np.maximum.reduce([(parts == P["crest"]).astype(float), stripe, eyes, shoulder, primaries, streak]),
+    fish = parts == P["fish"]
+    fish_back = fish * _smoothstep(0.2, 0.7, normals[:, 1]) * 0.55
+    dark = np.clip(np.maximum.reduce([(parts == P["crest"]).astype(float), stripe, eyes, shoulder, primaries, streak,
+                                      fish_back]),
                    0.0, 1.0)
     # White: the face, the neck, the breast plumes and the pale belly.
     white = np.clip(np.maximum.reduce([
         (head | neck).astype(float) * 0.95,
+        fish.astype(float),
         body * _smoothstep(0.1, 0.14, z) * 0.85,
         body * _smoothstep(0.62, 0.55, y) * _smoothstep(0.03, -0.1, normals[:, 1] * -1.0) * 0.6,
     ]) - dark, 0.0, 1.0)
