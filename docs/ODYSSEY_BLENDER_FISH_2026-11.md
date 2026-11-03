@@ -188,3 +188,20 @@ things change:
 Same counts as before: 214 and 301 triangles, one draw, no new pipeline (the flash change only
 reworks the shader's terms). New tests: the side fins keep off the flank, and the flank flash comes
 from the upright mirror in both the WebGPU and the WebGL2 shader.
+
+## The school moves as one (2026-11-03)
+
+Part of the sea-motion pass (docs/ODYSSEY_SEA_MOTION_2026-11.md, section 2). The hulls are
+unchanged; how the fish move is new:
+
+- Each fish points where it goes: its heading is its path's own velocity. It used to sway ±14
+  degrees on its own clock while sliding along the path, up to 50 degrees sideways.
+- The school follows its leaders: its meander, rise and fall and surge of pace are laid out along
+  the ring, so every fish swims the path of those ahead. A turn and the flank flash run back through
+  the school as a wave.
+- No two fish meet: the rest places are relaxed apart at build time (91 of 150 fish used to pass
+  through a neighbour; now none does).
+- The tail beat follows the pace (its phase is the distance swum), and the body bends and leans
+  into the curve it swims.
+
+`fishPoseAt` is the CPU twin of the vertex stage; tests/unit/odyssey-ch2-sea-motion.test.js reads it.

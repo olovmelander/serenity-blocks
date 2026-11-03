@@ -29,6 +29,20 @@
  * (thunniform), slower. The fins' trailing edges lag a little behind. The normal is bent by the
  * same wave (the wave's slope), so the light slides along the flank as the body flexes.
  *
+ * THE SCHOOL MOVES AS ONE (2026-11-03, docs/ODYSSEY_SEA_MOTION_2026-11.md). Each fish used to sway its
+ * heading ±14 degrees on its own clock while its body kept sliding along the ribbon, so it swam up to
+ * 50 degrees sideways to the way it went, and a third of the fish passed through a neighbour. Now:
+ *   - a fish points where it goes: its heading is the true direction of its motion (the analytic
+ *     velocity of its path), never a sway laid on top;
+ *   - the school FOLLOWS ITS LEADERS: its meander, its rise and fall and its surge of pace are laid
+ *     out along the ring, so every fish behind swims the path the one ahead swam a moment before. A
+ *     turn runs back through the school as a wave, and the flank flash ripples with it;
+ *   - each fish keeps its place: the rest places are spread apart (a relaxation at build time) so no
+ *     two bodies meet, and a small swerve of its own keeps neighbours out of lock-step;
+ *   - the tail beat follows the pace (the beat's phase is the distance swum, so it never jumps),
+ *     and the body bends into the curve it swims (a C toward the inside), leaning into it.
+ * `fishPoseAt` is the CPU twin of the vertex stage (the tests read it).
+ *
  * Shading is COUNTERSHADING, the way real pelagic fish are coloured: dark back, silver belly — and
  * a FLANK FLASH: the flank is a mirror, so when a fish's yaw wobble turns it to reflect the bright
  * surface into the eye it flares, the signature glint of a school turning. Three tint families:
@@ -53,6 +67,7 @@ import {
     float,
     floor,
     fwidth,
+    length,
     max,
     mix,
     normalGeometry,
@@ -149,6 +164,9 @@ export const FISH_HULL_INDEX = Object.freeze({ school: 0, cruiser: 1 });
 /** Hull units: nose at +2.10, tail tips at -2.25, the length every swim term is measured in. */
 export const FISH_HULL_LENGTH = ODYSSEY_FISH_HULLS.noseZ - ODYSSEY_FISH_HULLS.tailZ;
 
+/** Every hull is drawn this much over its school's scale (see fScaleBase). */
+export const FISH_HULL_SCALE = 1.2;
+
 /**
  * THE SWIM, per hull (indexed as FISH_HULL_INDEX). Lateral displacement of a point a share `s`
  * along the fish (0 nose .. 1 tail tips), in hull units, at beat phase `phi`:
@@ -189,6 +207,218 @@ export function fishSwimOffset(hull, s, phi) {
     const k = (Math.PI * 2) / w.wavelength;
     const q = Math.max(s - w.from, 0) / (1 - w.from);
     return (w.tail * q * q * Math.sin(phi - (k * s))) - (w.recoil * Math.sin(phi - k) * (w.pivot - s));
+}
+
+/**
+ * HOW A SCHOOL MOVES, per hull (jack, tuna). Angles in radians, rates in rad/s.
+ *   surge: the pace swells and slackens by this share, `surgeRate` the swell's rate;
+ *   yaw / yawRate: the school's meander, as the heading's swing and its rate;
+ *   pitch / pitchRate: its rise and fall, the same way;
+ *   ownYaw / ownRate: each fish's own small swerve (its rate varies per fish by ±25 %);
+ *   bank / bankMax: the lean into the curve (rad per u/s^2 of sideways acceleration), capped.
+ * The school-wide terms are laid out along the ring (phase = rate x (t + along / omega)), so every
+ * fish follows the path its leaders swam.
+ */
+export const FISH_SCHOOL_MOTION = Object.freeze([
+    Object.freeze({
+        surge: 0.12,
+        surgeRate: 0.35,
+        yaw: 0.22,
+        yawRate: 0.5,
+        pitch: 0.05,
+        pitchRate: 0.4,
+        ownYaw: 0.06,
+        ownRate: 0.9,
+        bank: 1.2,
+        bankMax: 0.45,
+    }),
+    Object.freeze({
+        surge: 0.10,
+        surgeRate: 0.25,
+        yaw: 0.12,
+        yawRate: 0.35,
+        pitch: 0.04,
+        pitchRate: 0.3,
+        ownYaw: 0.04,
+        ownRate: 0.6,
+        bank: 1.0,
+        bankMax: 0.35,
+    }),
+]);
+
+/**
+ * How far apart the rest places are kept, in body lengths (the mean of the two fish's), along the
+ * ring, across it and up (an ellipsoid round each fish no other fish's centre enters).
+ */
+export const FISH_SPACING = Object.freeze({ along: 1.75, across: 0.62, up: 0.5 });
+
+const fishHash = (n) => {
+    let v = Math.imul(n ^ 0x51ed270b, 2654435761);
+    v = Math.imul(v ^ (v >>> 13), 1274126177);
+    return ((v ^ (v >>> 16)) >>> 0) / 4294967296;
+};
+
+/**
+ * Every fish's row: its school, its rest place in the school (along the ring as an angle, across,
+ * up), its seed, scale and tint. Rest places start from a soft-edged (triangular) spread, dense in
+ * the middle, and are then pushed apart until no two are closer than FISH_SPACING (a deterministic
+ * relaxation, inside the school's spread).
+ * @param {readonly object[]} [schools]
+ */
+export function fishSchoolRows(schools = FISH_SCHOOLS) {
+    const tri = (n) => fishHash(n) + fishHash(n + 7919) - 1;
+    const rows = [];
+    schools.forEach((school, si) => {
+        const meanR = (school.rx + school.rz) / 2;
+        // Along the ring the places are kept apart where it is tightest (its smaller radius), so the
+        // gap holds all the way round the ellipse. `a` is the distance along at that radius.
+        const minR = Math.min(school.rx, school.rz);
+        const reach = (school.spread[0] / meanR) * minR;
+        const pts = [];
+        for (let k = 0; k < school.count; k += 1) {
+            const n = (si * 1009) + (k * 17);
+            const sc = school.scale[0] + (fishHash(n + 5) * (school.scale[1] - school.scale[0]));
+            pts.push({
+                n,
+                sc,
+                len: sc * FISH_HULL_SCALE * FISH_HULL_LENGTH,
+                a: ((tri(n + 1) * school.spread[0]) / meanR) * minR,
+                c: tri(n + 2) * school.spread[1],
+                u: tri(n + 3) * school.spread[2],
+            });
+        }
+        const sp = [0, 0, 0];
+        for (let it = 0; it < 120; it += 1) {
+            let moved = false;
+            for (let i = 0; i < pts.length; i += 1) {
+                for (let j = i + 1; j < pts.length; j += 1) {
+                    const A = pts[i];
+                    const B = pts[j];
+                    const len = (A.len + B.len) / 2;
+                    sp[0] = FISH_SPACING.along * len;
+                    sp[1] = FISH_SPACING.across * len;
+                    sp[2] = FISH_SPACING.up * len;
+                    const dx = (B.a - A.a) / sp[0];
+                    const dy = (B.c - A.c) / sp[1];
+                    const dz = (B.u - A.u) / sp[2];
+                    const d = Math.hypot(dx, dy, dz);
+                    if (d >= 1) continue;
+                    moved = true;
+                    // Apart along the line between them (a fixed axis when they coincide).
+                    const k = d > 1e-6 ? ((1 - d) * 0.5) / d : 0.5;
+                    const ux = d > 1e-6 ? dx : 1;
+                    const uy = d > 1e-6 ? dy : 0;
+                    const uz = d > 1e-6 ? dz : 0;
+                    A.a -= ux * k * sp[0]; B.a += ux * k * sp[0];
+                    A.c -= uy * k * sp[1]; B.c += uy * k * sp[1];
+                    A.u -= uz * k * sp[2]; B.u += uz * k * sp[2];
+                }
+            }
+            pts.forEach((pt) => {
+                pt.a = Math.min(Math.max(pt.a, -reach), reach);
+                pt.c = Math.min(Math.max(pt.c, -school.spread[1]), school.spread[1]);
+                pt.u = Math.min(Math.max(pt.u, -school.spread[2]), school.spread[2]);
+            });
+            if (!moved) break;
+        }
+        pts.forEach((pt) => {
+            const { n, sc } = pt;
+            const tv = 0.88 + (fishHash(n + 6) * 0.24); // per-fish value variation inside a school
+            rows.push({
+                si,
+                hull: FISH_HULL_INDEX[school.hull],
+                along: pt.a / minR,
+                across: pt.c,
+                up: pt.u,
+                seed: Math.min(fishHash(n + 4), 0.999),
+                scale: sc,
+                tint: [school.tint[0] * tv, school.tint[1] * tv, school.tint[2] * tv],
+            });
+        });
+    });
+    return rows;
+}
+
+/**
+ * THE CPU TWIN of the vertex stage's school motion: where a fish is at time `t` (relative to its
+ * ring's centre), the way it heads (unit, its velocity's), its speed, its sideways acceleration
+ * toward its own left (u/s^2), its lean and its tail beat's phase.
+ * @param {ReturnType<typeof fishSchoolRows>[number]} row
+ * @param {object} school its FISH_SCHOOLS entry
+ * @param {number} phase0 the school's phase (as the instance's aPathB.z)
+ * @param {number} t seconds
+ */
+export function fishPoseAt(row, school, phase0, t) {
+    const m = FISH_SCHOOL_MOTION[row.hull];
+    const w = school.omega;
+    const absW = Math.abs(w);
+    const meanR = (school.rx + school.rz) / 2;
+    const v0 = absW * meanR;
+    const lag = t + (row.along / w); // the moment the school's head was where this fish is
+    // the surge: theta' = w (1 + surge cos psiS)
+    const psiS = (m.surgeRate * lag) + (phase0 * 1.7);
+    const th = phase0 + (w * t) + row.along + (((m.surge * w) / m.surgeRate) * Math.sin(psiS));
+    const thD = w * (1 + (m.surge * Math.cos(psiS)));
+    const thDD = -w * m.surge * m.surgeRate * Math.sin(psiS);
+    const ct = Math.cos(th);
+    const st = Math.sin(th);
+    const bobPh = (th * 2) + phase0;
+    const R = [school.rx * ct, school.bob * Math.sin(bobPh), school.rz * st];
+    const R1 = [-school.rx * st, 2 * school.bob * Math.cos(bobPh), school.rz * ct];
+    const R2 = [-school.rx * ct, -4 * school.bob * Math.sin(bobPh), -school.rz * st];
+    // across: level, square to the ring's way (its sign follows the hand, as the rest offset's)
+    const hand = w >= 0 ? 1 : -1;
+    const tl = Math.hypot(R1[0], R1[2]) || 1;
+    const C = [-(R1[2] * hand) / tl, 0, (R1[0] * hand) / tl];
+    // the meander (school-wide, laid along the ring) and the fish's own swerve
+    const W = (m.yaw * v0) / m.yawRate;
+    const own = 0.75 + (0.5 * row.seed);
+    const ownRate = m.ownRate * own;
+    const Wi = (m.ownYaw * v0) / ownRate;
+    const psiW = (m.yawRate * lag) + (phase0 * 2.3);
+    const psiI = (ownRate * t) + (row.seed * 41);
+    const a = row.across + (W * Math.sin(psiW)) + (Wi * Math.sin(psiI));
+    const aD = (W * m.yawRate * Math.cos(psiW)) + (Wi * ownRate * Math.cos(psiI));
+    const aDD = -(W * m.yawRate * m.yawRate * Math.sin(psiW)) - (Wi * ownRate * ownRate * Math.sin(psiI));
+    // the rise and fall
+    const B = (m.pitch * v0) / m.pitchRate;
+    const psiV = (m.pitchRate * lag) + (phase0 * 3.1);
+    const b = row.up + (B * Math.sin(psiV));
+    const bD = B * m.pitchRate * Math.cos(psiV);
+    const bDD = -B * m.pitchRate * m.pitchRate * Math.sin(psiV);
+    // ...and how the across direction turns with the ring (it carries a fish set off the ring a
+    // little faster or slower than the ring itself, which sets how steeply it climbs and dips)
+    const P1 = [-(R2[2] * hand), (R2[0] * hand)];
+    const cP = (C[0] * P1[0]) + (C[2] * P1[1]);
+    const C1 = [(P1[0] - (C[0] * cP)) / tl, (P1[1] - (C[2] * cP)) / tl];
+    const centre = [R[0] + (C[0] * a), R[1] + b, R[2] + (C[2] * a)];
+    const V = [
+        (R1[0] * thD) + (C[0] * aD) + (C1[0] * thD * a),
+        (R1[1] * thD) + bD,
+        (R1[2] * thD) + (C[2] * aD) + (C1[1] * thD * a),
+    ];
+    const A = [
+        (R2[0] * thD * thD) + (R1[0] * thDD) + (C[0] * aDD),
+        (R2[1] * thD * thD) + (R1[1] * thDD) + bDD,
+        (R2[2] * thD * thD) + (R1[2] * thDD) + (C[2] * aDD),
+    ];
+    const speed = Math.hypot(V[0], V[1], V[2]) || 1e-6;
+    const fwd = [V[0] / speed, V[1] / speed, V[2] / speed];
+    // left = up x fwd, levelled
+    const lx = fwd[2];
+    const lz = -fwd[0];
+    const ll = Math.hypot(lx, lz) || 1;
+    const left = [lx / ll, 0, lz / ll];
+    const side = (A[0] * left[0]) + (A[2] * left[2]);
+    const bank = -Math.min(m.bankMax, Math.max(-m.bankMax, side * m.bank));
+    // the beat: its phase is the distance swum (in body lengths x stride) plus the idle beat
+    const swim = FISH_SWIM[row.hull];
+    const bodyLen = row.scale * FISH_HULL_SCALE * FISH_HULL_LENGTH;
+    const swum = meanR * ((absW * t) + (((m.surge * absW) / m.surgeRate) * Math.sin(psiS)));
+    const beat = (Math.PI * 2 * (((swim.stride * swum) / bodyLen) + (swim.idle * t))) + (row.seed * 60);
+    return {
+        centre, fwd, left, speed, side, curvature: side / (speed * speed), bank, beat,
+    };
 }
 
 const decode = (text) => {
@@ -242,6 +472,11 @@ export function buildFishHullGeometry(geometry = new THREE.BufferGeometry()) {
     return geometry;
 }
 
+/** A school's phase round its ring (the instances' aPathB.z). */
+export function fishSchoolPhase(si) {
+    return fishHash((si * 131) + 3) * Math.PI * 2;
+}
+
 /**
  * The schools as one instanced draw.
  *
@@ -273,24 +508,21 @@ export function createOdysseyFish({
     const aPathB = new Float32Array(FISH_COUNT * 4);
     const aFish = new Float32Array(FISH_COUNT * 4);
     const aLook = new Float32Array(FISH_COUNT * 4);
-    const fh = (n) => {
-        let v = Math.imul(n ^ 0x51ed270b, 2654435761);
-        v = Math.imul(v ^ (v >>> 13), 1274126177);
-        return ((v ^ (v >>> 16)) >>> 0) / 4294967296;
-    };
-    // A soft-edged (triangular) distribution: a school is dense in the middle and thins at its
-    // edges, which is what reads as a school rather than a box of fish.
-    const tri = (n) => fh(n) + fh(n + 7919) - 1;
     // Each school's ring (centre, radii, reach in depth), for the gate that keeps the fish drawn
     // while any of them still shows through the surface to an eye above it.
     const rings = [];
+    const rows = fishSchoolRows();
     let fi = 0;
     FISH_SCHOOLS.forEach((school, si) => {
         const anchor = openWater[Math.min(openWater.length - 1, Math.floor(school.f * openWater.length))];
-        // Clearance: lift the ring until every point of it (with its vertical spread and bob)
-        // clears the seabed by 6 u, and cap it 8 u under the surface. Sampled on the CPU height
-        // mirror the vertex shader displaces to, so a buried school is impossible.
-        let cy = Math.min(anchor.y + school.dy, seaLevel - 8 - school.bob - school.spread[2]);
+        // Clearance: lift the ring until every point of it (with its vertical spread, bob and the
+        // school's own rise and fall) clears the seabed by 6 u, and cap it 8 u under the surface.
+        // Sampled on the CPU height mirror the vertex shader displaces to, so a buried school is
+        // impossible.
+        const motion = FISH_SCHOOL_MOTION[FISH_HULL_INDEX[school.hull]];
+        const rise = (motion.pitch * Math.abs(school.omega) * ((school.rx + school.rz) / 2)) / motion.pitchRate;
+        const reachUp = school.bob + school.spread[2] + rise;
+        let cy = Math.min(anchor.y + school.dy, seaLevel - 8 - reachUp);
         for (let k = 0; k < 24; k += 1) {
             const a = (k / 24) * Math.PI * 2;
             const reach = 1 + (school.spread[1] / Math.min(school.rx, school.rz));
@@ -298,28 +530,24 @@ export function createOdysseyFish({
                 anchor.x + (Math.cos(a) * school.rx * reach),
                 anchor.z + (Math.sin(a) * school.rz * reach),
             );
-            cy = Math.max(cy, bed + 6 + school.bob + school.spread[2]);
+            cy = Math.max(cy, bed + 6 + reachUp);
         }
-        const phase0 = fh((si * 131) + 3) * Math.PI * 2;
-        const meanR = (school.rx + school.rz) / 2;
+        const phase0 = fishSchoolPhase(si);
         rings.push({
-            x: anchor.x, y: cy, z: anchor.z, rx: school.rx, rz: school.rz, up: school.bob + school.spread[2],
+            x: anchor.x, y: cy, z: anchor.z, rx: school.rx, rz: school.rz, up: reachUp,
         });
-        const hull = FISH_HULL_INDEX[school.hull];
         for (let k = 0; k < school.count; k += 1, fi += 1) {
-            const n = (si * 1009) + (k * 17);
+            const row = rows[fi];
             aPath.set([anchor.x, cy, anchor.z, school.rx], fi * 4);
             aPathB.set([school.rz, school.omega, phase0, school.bob], fi * 4);
             aFish.set([
-                (tri(n + 1) * school.spread[0]) / meanR, // along the ribbon, as an angle
-                tri(n + 2) * school.spread[1],
-                tri(n + 3) * school.spread[2],
+                row.along, // along the ribbon, as an angle
+                row.across,
+                row.up,
                 // The hull in the integer part, the fish's seed in the fraction (kept < 1).
-                hull + Math.min(fh(n + 4), 0.999),
+                row.hull + row.seed,
             ], fi * 4);
-            const sc = school.scale[0] + (fh(n + 5) * (school.scale[1] - school.scale[0]));
-            const tv = 0.88 + (fh(n + 6) * 0.24); // per-fish value variation inside a school
-            aLook.set([school.tint[0] * tv, school.tint[1] * tv, school.tint[2] * tv, sc], fi * 4);
+            aLook.set([...row.tint, row.scale], fi * 4);
         }
     });
     fInst.setAttribute('aPath', new THREE.InstancedBufferAttribute(aPath, 4));
@@ -343,14 +571,24 @@ export function createOdysseyFish({
     // x(0.25..1) by uLife (the 1->2 carry): while the quench veil thins the schools come IN —
     // smaller and dissolved into the water (the haze floor on the aerial) — instead of standing
     // full-size and crisp beside Earth Core's basalt (the audit's p=0.0529 frame).
-    const fScaleBase = fLook.w.mul(1.2);
+    const fScaleBase = fLook.w.mul(FISH_HULL_SCALE);
     const fScale = fScaleBase.mul(uLife.mul(0.75).add(0.25));
     const fOmega = fPathB.y;
     const fHand = step(float(0), fOmega).mul(2).sub(1);
-    // THE RIBBON: an ellipse with a 2-per-lap vertical undulation, so a school rises and dips as
-    // it wheels. A tiny per-fish surge keeps neighbours from moving in lock-step.
+    const motionOf = (key) => mix(float(FISH_SCHOOL_MOTION[0][key]), float(FISH_SCHOOL_MOTION[1][key]), instHull);
+    const fMeanR = fPath.w.add(fPathB.x).mul(0.5);
+    const fSpeed = abs(fOmega).mul(fMeanR);
+    // THE SCHOOL FOLLOWS ITS LEADERS (fishPoseAt is the CPU twin of all of this): its surge of
+    // pace, its meander and its rise and fall are laid out along the ring, read at the moment the
+    // school's head was where this fish is (`lag`), so each fish swims the path of those ahead.
+    const fLag = uTime.add(fFish.x.div(fOmega));
+    const mSurge = motionOf('surge');
+    const mSurgeRate = motionOf('surgeRate');
+    const psiS = mSurgeRate.mul(fLag).add(fPathB.z.mul(1.7));
     const fTheta = fPathB.z.add(uTime.mul(fOmega)).add(fFish.x)
-        .add(sin(uTime.mul(0.23).add(fS.mul(37))).mul(0.012));
+        .add(mSurge.mul(fOmega).div(mSurgeRate).mul(sin(psiS)));
+    const thD = fOmega.mul(mSurge.mul(cos(psiS)).add(1));
+    const thDD = fOmega.mul(mSurge).mul(mSurgeRate).mul(sin(psiS)).negate();
     const fCt = cos(fTheta);
     const fSt = sin(fTheta);
     const fBobPh = fTheta.mul(2).add(fPathB.z);
@@ -359,30 +597,55 @@ export function createOdysseyFish({
         fPath.y.add(fPathB.w.mul(sin(fBobPh))),
         fPath.z.add(fPathB.x.mul(fSt)),
     );
-    const fTangent = normalize(vec3(
-        fPath.w.mul(fSt).negate(),
-        fPathB.w.mul(2).mul(cos(fBobPh)),
-        fPathB.x.mul(fCt),
-    ).mul(fHand));
+    const fR1 = vec3(fPath.w.mul(fSt).negate(), fPathB.w.mul(2).mul(cos(fBobPh)), fPathB.x.mul(fCt));
+    const fR2 = vec3(fPath.w.mul(fCt).negate(), fPathB.w.mul(4).mul(sin(fBobPh)).negate(), fPathB.x.mul(fSt).negate());
     const fWorldUp = vec3(0, 1, 0);
-    const fAcross = normalize(cross(fTangent, fWorldUp));
-    // YAW WOBBLE — the flank-flash driver. A slow per-fish sway of the heading turns each flank
-    // through the angle that mirrors the bright surface into the eye.
-    const fYaw = sin(uTime.mul(fS.mul(0.7).add(0.45)).add(fS.mul(23))).mul(0.24);
-    const fFwd = normalize(fTangent.add(fAcross.mul(fYaw)));
+    // Across the ring, level (its sign follows the hand, as the rest offset's always has).
+    const fAcrossRaw = vec3(fR1.z.mul(fHand).negate(), 0, fR1.x.mul(fHand));
+    const fAcrossLen = max(length(fAcrossRaw), 1e-4);
+    const fAcross = fAcrossRaw.div(fAcrossLen);
+    // How the across direction turns with the ring (a fish set off the ring goes a little faster or
+    // slower than it, which sets how steeply it climbs and dips).
+    const fAcrossTurn = vec3(fR2.z.mul(fHand).negate(), 0, fR2.x.mul(fHand));
+    const fAcross1 = fAcrossTurn.sub(fAcross.mul(dot(fAcross, fAcrossTurn))).div(fAcrossLen);
+    // The meander (school-wide) and the fish's own small swerve, as offsets across the ring.
+    const mYawRate = motionOf('yawRate');
+    const fW = motionOf('yaw').mul(fSpeed).div(mYawRate);
+    const fOwnRate = motionOf('ownRate').mul(fS.mul(0.5).add(0.75));
+    const fWi = motionOf('ownYaw').mul(fSpeed).div(fOwnRate);
+    const psiW = mYawRate.mul(fLag).add(fPathB.z.mul(2.3));
+    const psiI = fOwnRate.mul(uTime).add(fS.mul(41));
+    const fA = fFish.y.add(fW.mul(sin(psiW))).add(fWi.mul(sin(psiI)));
+    const fAD = fW.mul(mYawRate).mul(cos(psiW)).add(fWi.mul(fOwnRate).mul(cos(psiI)));
+    const fADD = fW.mul(mYawRate).mul(mYawRate).mul(sin(psiW))
+        .add(fWi.mul(fOwnRate).mul(fOwnRate).mul(sin(psiI)))
+        .negate();
+    // The rise and fall.
+    const mPitchRate = motionOf('pitchRate');
+    const fB = motionOf('pitch').mul(fSpeed).div(mPitchRate);
+    const psiV = mPitchRate.mul(fLag).add(fPathB.z.mul(3.1));
+    const fBD = fB.mul(mPitchRate).mul(cos(psiV));
+    const fBDD = fB.mul(mPitchRate).mul(mPitchRate).mul(sin(psiV)).negate();
+    const fishCenter = fRibbon.add(fAcross.mul(fA)).add(vec3(0, fFish.z.add(fB.mul(sin(psiV))), 0));
+    // A fish points where it goes: the heading is its path's own velocity.
+    const fVel = fR1.mul(thD).add(fAcross.mul(fAD)).add(fAcross1.mul(thD.mul(fA))).add(vec3(0, fBD, 0));
+    const fAcc = fR2.mul(thD.mul(thD)).add(fR1.mul(thDD)).add(fAcross.mul(fADD)).add(vec3(0, fBDD, 0));
+    const fFwd = normalize(fVel);
     // The fish's own frame, right-handed: x its LEFT (the hull's +x), y up, z forward.
     const fLeft = normalize(cross(fWorldUp, fFwd));
     const fUp = cross(fFwd, fLeft);
-    const fishCenter = fRibbon
-        .add(fAcross.mul(fFish.y.mul(sin(uTime.mul(0.31).add(fS.mul(13))).mul(0.12).add(1))))
-        .add(vec3(0, fFish.z.add(sin(uTime.mul(0.5).add(fS.mul(9))).mul(0.6)), 0));
-    // SWIM: tail beat coupled to speed (beats per body length of travel + an idle floor). The
+    // Its sideways acceleration toward its left (u/s^2) and the curve it swims (1/u).
+    const fSide = dot(fAcc, fLeft);
+    const fCurve = fSide.div(max(dot(fVel, fVel), 1e-4));
+    // SWIM: tail beat coupled to speed (beats per body length of travel + an idle floor). Its phase
+    // is the distance swum, so the beat quickens and slows with the surge and never jumps. The
     // beat keys off the UNSCALED hull, so the 1->2 presence ramp never re-times the tail.
     const swimOf = (key) => mix(float(FISH_SWIM[0][key]), float(FISH_SWIM[1][key]), instHull);
-    const fSpeed = abs(fOmega).mul(fPath.w.add(fPathB.x).mul(0.5));
     const bodyLen = fScaleBase.mul(FISH_HULL_LENGTH);
-    const beatHz = fSpeed.div(bodyLen).mul(swimOf('stride')).add(swimOf('idle'));
-    const swimPhase = uTime.mul(beatHz.mul(Math.PI * 2)).add(fS.mul(60));
+    const fSwum = fMeanR.mul(abs(fOmega).mul(uTime).add(mSurge.mul(abs(fOmega)).div(mSurgeRate).mul(sin(psiS))));
+    const swimPhase = fSwum.div(bodyLen).mul(swimOf('stride')).add(swimOf('idle').mul(uTime))
+        .mul(Math.PI * 2)
+        .add(fS.mul(60));
     const waveK = float(Math.PI * 2).div(swimOf('wavelength'));
     const waveFrom = swimOf('from');
     const sAlong = fPart.x;
@@ -394,22 +657,28 @@ export function createOdysseyFish({
     const recoil = swimOf('recoil');
     // Only the fins' trailing edges lag (a quarter beat behind the body under them).
     const finVertex = float(1).sub(clamp(abs(region.sub(1)), 0, 1));
+    // The body bends into the curve it swims: a C toward the inside (nose and tail both), so it
+    // follows its path instead of crossing it as a stiff stick.
+    const zH = positionGeometry.z;
+    const bend = fCurve.mul(fScale).mul(zH).mul(zH).mul(0.5);
     const sway = envelope.mul(sin(wavePh))
         .sub(recoil.mul(tailSin).mul(swimOf('pivot').sub(sAlong)))
-        .add(fPart.z.mul(finVertex).mul(swimOf('flutter')).mul(cos(wavePh)));
+        .add(fPart.z.mul(finVertex).mul(swimOf('flutter')).mul(cos(wavePh)))
+        .add(bend);
     // The wave's slope along the hull (d/dz = -d/ds / length) bends the normal: for a shear
-    // x' = x + h(z) the normal becomes (n.x, n.y, n.z - h'(z) n.x).
+    // x' = x + h(z) the normal becomes (n.x, n.y, n.z - h'(z) n.x). The C adds its own slope.
     const swayDs = envelopeSlope.mul(sin(wavePh))
         .sub(envelope.mul(waveK).mul(cos(wavePh)))
         .add(recoil.mul(tailSin));
-    const swayDz = swayDs.div(-FISH_HULL_LENGTH);
+    const swayDz = swayDs.div(-FISH_HULL_LENGTH).add(fCurve.mul(fScale).mul(zH));
     const lx = positionGeometry.x.add(sway);
     const nIn = normalGeometry;
     const nz = nIn.z.sub(swayDz.mul(nIn.x));
-    // A bank INTO the turn riding the centripetal v*omega, and a small roll with the yaw wobble
-    // (a fish leans into its own swerves): the roll is what turns a flank's mirror up to the
-    // surface and back, the flash of a school turning.
-    const bank = clamp(fSpeed.mul(abs(fOmega)).mul(1.4), 0, 0.5).mul(fHand).add(fYaw.mul(0.9));
+    // It leans into the curve it swims, by its sideways acceleration (capped): the lean is what turns
+    // a flank's mirror up to the surface and back, so the flash ripples through the school with its
+    // meander.
+    const bankMax = motionOf('bankMax');
+    const bank = clamp(fSide.mul(motionOf('bank')), bankMax.negate(), bankMax).negate();
     const cb = cos(bank);
     const sb = sin(bank);
     const py = positionGeometry.y;
