@@ -1373,3 +1373,73 @@ far along the same line.
 - On a perch rock's faceted top a hoof's tilt can step when a turn carries it over a facet edge
   (one leg spike per loop for a nanny).
 - The ibex's leg speeds in the push stay high (a real leap's push is quick too).
+
+### Visibility (2026-11-03)
+
+The owner, after "the heron is very hard to see!": "start the visibility check". The question for
+each animal: does a player on the rail see it, and see what it is?
+
+**How it was measured.** The real game in Chrome at 2560x1440, parked at each station with the board
+clock pinned, the camera held still and the film grain off. Each station was shot three times: with
+the animals, without their bodies (their shadows kept), and with them again. The pixels that differ
+are the animal; whatever also changes between the two "with" shots (the orb's glass, motes) is not
+counted. Each animal's pixels were found from its projected skeleton. For each:
+- its longest extent in px;
+- its luminance contrast against what it covers;
+- ΔE (CIE Lab) against that.
+
+A node probe with the real camera and spline gave the time in view over the whole loop. Terrain hid
+nothing at any of these stations; trees are noted below. As a rule of thumb, an animal reads at 24 px
+or more, with a contrast of 0.35 or more or a ΔE of 20 or more.
+
+| Animal, station | Size (px) | Contrast | ΔE | Reads? |
+|---|---|---|---|---|
+| Glade deer, L10 and p 0.14 | hinds 20-41, calf 11 | 0.3-0.6 | 14-24 | a shape (the act's blue haze) |
+| Glade deer, L11 | hinds 21-37, yearling 19 | 0.1-0.5 | 17-24 | a shape, the nearest a deer |
+| Glade deer, L14 | hinds 28-38, yearling 23 | 0.6-1.3 | 27-28 | yes (some behind tree crowns) |
+| Glade deer, L15 and L17 | hinds 47-82, yearling 29-36, calf 18-35 | 0.5-0.9 | 26-35 | yes |
+| Tarn drinkers, L15-L17 | hind about 17, calf about 10 | | | a speck |
+| Tarn drinkers, L18 | hind 24, calf 14 | 0.68 | 17 | a shape |
+| Tarn drinkers, p 0.25, L22, L23 | hind 27-34, calf 15-19 | 0.4-2.0 | 19-26 | the hind yes, the calf a shape |
+| Ibex, L19-L21, before / after | buck 17 / 20, nannies 12-14 / 15-17 | 1.6-2.4 | 18-22 | a speck / a shape |
+| Ibex, L22, before / after | buck 51 / 62, nannies 24-28 / 29-33 | 1.0-3.0 | 19-24 | nannies borderline / yes |
+| Ibex, L24-L25, before / after | buck 49-54 / 56-80, nannies 24-40 / 29-49, kid 20 / 25 | 1.5-5.4 | 18-27 | yes / yes, the kid now too |
+
+In the glade, every deer is in view 100 % of the time from L10 to L15. At L17 two hinds walk out of
+the frame for part of the loop. The drinkers and the ibex are in view 100 % of the time at every
+station listed.
+
+**The ibex coat** reads against the grass: luminance contrast 1.6-5.8, ΔE 18-27 (a pale goat on dark
+grass). Seen end-on in shade, the contrast drops to 0.1-0.2, but ΔE stays at 20-28. Against the perch
+rock under it, it reads weakly: contrast 0.3-0.6, ΔE 8-16. Only a small part of the outline is against
+the rock (15-40 px of 900-1,600). The dark markings do not show at game size. What tells a player it
+is an ibex is the buck's horns, and before this check he spent most of his time on his rock grazing,
+head down.
+
+**What changed (the ibex):**
+- **Drawn 1.2 times larger** (`ODYSSEY_IBEX.scale` 3 -> 3.6). The model is a nanny's size, so the
+  buck now stands a hind's height at the withers (3.35 u against her 3.4 u), and the nannies stand
+  lower.
+- **On a perch it mostly stands head up and looks out:** short bites, longer looks. That share went
+  from 22-30 % to 62-74 % of their time on the rock, so the buck's horns stand against the slope.
+- **The body rolls more with the shelf's 27-degree slope** (`rollShare` 0.35, the deer's 0.12). It
+  is still smooth: root angular acceleration p99 3.7-7.2 rad/s², max 36. Uphill and downhill legs
+  stay in reach at the larger size.
+
+![The ibex at L22 and L25, before and after (crops enlarged 3.75x; the board clock pinned at 66 s)](images/odyssey-animals-2026-11-03/visibility-ibex-x4.jpg)
+
+![The same, at real size (1:1)](images/odyssey-animals-2026-11-03/visibility-ibex-x1.jpg)
+
+![L24, the full frame, before and after](images/odyssey-animals-2026-11-03/visibility-ibex-full.jpg)
+
+![The glade deer at L11, L14, L15 and the drinkers at L18, p 0.25 and L22 (crops, enlarged)](images/odyssey-animals-2026-11-03/visibility-glade-tarn-x4.jpg)
+
+**Left as they are, and why:**
+- **The glade deer read from L14 on.** At L10-L11 they are shapes in the act's haze, which is right
+  for the distance.
+- **The tarn's drinkers:** the hind reads from p 0.25 on, while the calf stays a shape. Their size
+  and their place are the pond's (`ODYSSEY_TARN_DEER` in `odyssey-pond-life-motion.js`). A scale of
+  3.6 (1.2 times) would make the hind 23 px at L18 and about 36 px at L22, and the calf 15-23 px.
+  That is proposed, not done.
+- **The ibex at L19-L21 stay specks or shapes.** The shelf is 130-170 m from those parks; reading
+  there would need twice the size or another place. That is an owner decision.

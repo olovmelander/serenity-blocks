@@ -329,12 +329,15 @@ export function buildDeerSchedule(member, cfg = ODYSSEY_DEER) {
             const perched = spot[2] === 1;
             let left = grazeEach;
             while (left > 5) {
-                const bite = Math.min(left, 5 + (rand() * 9));
+                // (On its rock it mostly stands head up and looks out, the horns against the slope: a
+                // short bite now and then. Until 2026-11-03 it grazed 70 % of the time up there, head
+                // down, and from the rail the buck read as a pale shape with no horns.)
+                const bite = Math.min(left, perched ? 2.5 + (rand() * 3) : 5 + (rand() * 9));
                 still('graze', bite, 1);
                 left -= bite;
                 if (left < 5) break;
-                if (rand() < (perched ? 0.6 : 0.32)) {
-                    const dur = Math.min(left, 3 + (rand() * 4));
+                if (rand() < (perched ? 0.88 : 0.32)) {
+                    const dur = Math.min(left, perched ? 6 + (rand() * 6) : 3 + (rand() * 4));
                     still('look', dur, 0, (rand() - 0.5) * 1.6, 1);
                     left -= dur;
                     if (left < 5) break;
