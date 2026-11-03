@@ -165,7 +165,7 @@ export function resolveRetrosunReveal(progress) {
 /**
  * World position of the Retrosun's centre and the city's stage orientation — chapter 8's
  * anchor (the path centre) with the corridor rotation applied to CH8_RETROSUN_STAGE.sun.
- * Chapter 7's 7->8 carry glides Gargantua onto this and seats its sun copy on it.
+ * Chapter 7's 7->8 carry glides the great hole onto this and seats its sun copy on it.
  * @returns {{position: THREE.Vector3, quaternion: THREE.Quaternion}|null}
  */
 export function resolveRetrosunStage() {
@@ -667,7 +667,7 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
             + easedReveal * (1 - CH8_RETROSUN_STAGE.revealFloor);
     }
     // THE 7->8 CARRY (urban-dreams-sun-carry.js): across the seam window the sun is chapter 7's
-    // — Gargantua's light closing into a copy of this disc, drawn identically — so this one
+    // — the great hole's light closing into a copy of this disc, drawn identically — so this one
     // stays dark until the hand-over and then takes over at full strength (the copy hides on
     // the same frame). Overrides the crossfade weight only inside the window.
     const sunOpacity = sun?.material?.uniforms?.uOpacity;

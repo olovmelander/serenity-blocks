@@ -6,7 +6,7 @@
  * One canvas in thick oil fills the frame, lit by a studio lamp standing low on the upper left:
  * every bristle track is a ridge that throws a shadow and carries the lamp's window in its wet
  * skin. The picture is blocked in while the theme starts (darks, colour masses, the black
- * contour, the lights), in the tube colours of Bengt Lindström, along a current that turns round
+ * contour, the lights), in bold colours straight from the tube, along a current that turns round
  * the board, and the painter never quite stops. The board is the brush: a locking piece lays one
  * stroke of its own colour beside the board at its own height, streaked with the colour of the
  * piece before it (a hard drop lays a slab with the knife out of a splat, and paint flies); a
@@ -14,7 +14,7 @@
  * the edge of the cloth, and a ring of wet light crosses the canvas; a chain of clears turns the
  * whole canvas round the board, stirring the wet paint into a whorl, and draws an arc for every
  * link; four lines make the studio hold its breath, then paint is flung from behind the board in
- * every direction and gold leaf is laid round it. The periods (Lindström, the Fauves, a nocturne,
+ * every direction and gold leaf is laid round it. The periods (nordic, the Fauves, a nocturne,
  * earth and fire, spring) turn by the clock in every mode, each painted over the last; every level
  * is one period more on top.
  *

@@ -61,9 +61,9 @@ describe('Odyssey P4 chapter environment anchors', () => {
         expect(group.userData.eventHorizon?.name).toBe('dominant-event-horizon-anchor');
         expect(group.userData.lensingStarfield?.name).toBe('lensing-starfield');
         // Masterpiece pass (2026-10): the nine flat-coloured infall tubes (18 draws) are
-        // retired — the infall now lives IN the Gargantua disk plane as the ember field.
+        // retired — the infall now lives IN the great hole disk plane as the ember field.
         expect(group.userData.infallStreams).toBeUndefined();
-        expect(group.userData.infallEmbers?.parent?.name).toBe('gargantua-disk-pivot');
+        expect(group.userData.infallEmbers?.parent?.name).toBe('great-hole-disk-pivot');
         expect(Number.isFinite(group.userData.yStart)).toBe(true);
         expect(Number.isFinite(group.userData.yEnd)).toBe(true);
     });

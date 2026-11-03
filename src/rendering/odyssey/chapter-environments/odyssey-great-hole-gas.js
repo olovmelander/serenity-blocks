@@ -1,11 +1,11 @@
 // @ts-check
 /**
  * @fileoverview THE GAS OF ODYSSEY'S BLACK HOLE (2026-10-31, the space masterpiece pass): the
- * accretion texture the lens (odyssey-gargantua-lens.tsl.js) shears round the hole.
+ * accretion texture the lens (odyssey-great-hole-lens.tsl.js) shears round the hole.
  *
  * Re-derived from the Black Hole theme's bake (`src/themes/black-hole/black-hole-noise.js`
  * `bakeDiskTextureSteps`; theme code is never imported into Odyssey): the same seeded value noise
- * and the same four channels, so the gas reads the way the theme's Gargantua does. Three-free and
+ * and the same four channels, so the gas reads the way the theme's great hole does. Three-free and
  * deterministic, so a test can read it in Node.
  *   R  broad lanes       G  fine streaks
  *   B  hot clumps        A  gaps between lanes (ridged)
@@ -13,7 +13,7 @@
  * lens reads a finer octave by repeating the tile).
  */
 
-export const GARGANTUA_GAS = Object.freeze({
+export const GREAT_HOLE_GAS = Object.freeze({
     width: 512,
     height: 128,
     seed: 7919,
@@ -91,7 +91,7 @@ const CHANNELS = Object.freeze([
  * stretched to the full byte range so the lens's thresholds stay predictable.
  * @returns {Generator<string, Uint8Array>}
  */
-export function* bakeGargantuaGasSteps(spec = GARGANTUA_GAS) {
+export function* bakeGreatHoleGasSteps(spec = GREAT_HOLE_GAS) {
     const { width, height, seed } = spec;
     const data = new Uint8Array(width * height * 4);
     const plane = new Float32Array(width * height);
@@ -125,8 +125,8 @@ export function* bakeGargantuaGasSteps(spec = GARGANTUA_GAS) {
 }
 
 /** The whole bake at once (tests, headless). */
-export function bakeGargantuaGas(spec = GARGANTUA_GAS) {
-    const steps = bakeGargantuaGasSteps(spec);
+export function bakeGreatHoleGas(spec = GREAT_HOLE_GAS) {
+    const steps = bakeGreatHoleGasSteps(spec);
     let next = steps.next();
     while (!next.done) next = steps.next();
     return next.value;

@@ -1068,9 +1068,9 @@ Tech split in this slice:
   ultramarine, deep green, salmon, cream; gold-leaf rim; black contours.
 - **Setting / time**: a full-frame oil canvas seen square-on (action-painting floor), raked by a
   studio lamp upper-left; no sky, no horizon.
-- **Palette**: Bengt Lindstrom "Kvinnan Alpha" tubes — `#b80f14` red, `#0a2fc8` ultramarine,
+- **Palette**: bold tube colours — `#b80f14` red, `#0a2fc8` ultramarine,
   `#00b8ae` turquoise, `#ffbe00` yellow, `#ff7300` orange, `#1a7f4d` green, contour `#08080a`
-  (`chromatic-impasto-core.js` L130). Periods: lindstrom, fauve, nocturne, ember, spring.
+  (`chromatic-impasto-core.js`, the nordic period). Periods: nordic, fauve, nocturne, ember, spring.
   Pieces: I `#00D9CC` J `#0033CC` L `#FF7F00` O `#FFD000` S `#1A7F4D` T `#B30000` Z `#FFF8DC`.
 - **Motion**: great whorl round the board + counter-whorls; painter adds an occasional stroke.
 - **Gameplay FX**: lock = a brush stroke of piece colour leaves card side and bends into current,
@@ -1185,7 +1185,7 @@ Tech split in this slice:
 
 ### 41. black-hole (`docs/BLACK_HOLE_VISUAL_OVERHAUL_2026-10.md`)
 
-- **Icon**: Gargantua-style lensed black hole: black shadow, gold/orange accretion disk with
+- **Icon**: great-hole-style lensed black hole: black shadow, gold/orange accretion disk with
   lensed arch over/under, violet-white polar jets, ember sparks, blue galaxy.
 - **Setting / time**: deep space; hole in free space left of board, disk running behind playfield;
   camera orbits every ~90 s (tilted whirlpool <-> edge-on).

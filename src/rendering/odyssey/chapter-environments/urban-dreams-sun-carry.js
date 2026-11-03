@@ -1,7 +1,7 @@
 /**
  * @fileoverview THE 7->8 CARRY — the black hole's light becomes the city's sun (seamless pass).
  *
- * One schedule, read by BOTH chapters so they can never disagree: chapter 7 glides Gargantua
+ * One schedule, read by BOTH chapters so they can never disagree: chapter 7 glides the great hole
  * off its camera lock onto the Retrosun's direction while a copy of the Retrosun (the same
  * builder, the same uniforms, oriented on the city's up) sits at its heart; chapter 8 keeps its
  * own Retrosun dark until the hand-over and then takes over from the copy, pixel for pixel.
@@ -19,7 +19,7 @@
 import { getChapterTransitionForChapter } from './shared/chapter-profile.js';
 
 export const CH7_SUN_CARRY = Object.freeze({
-    // Gargantua leaves its lock and settles on the sun's direction.
+    // The great hole leaves its lock and settles on the sun's direction.
     glideEnd: 0.5,
     // The tunnel's mouth opens from the vanishing point until it passes the frame's edges.
     openStart: 0.08,

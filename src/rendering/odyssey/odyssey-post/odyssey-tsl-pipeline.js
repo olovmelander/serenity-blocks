@@ -504,7 +504,7 @@ export class OdysseyTslPipeline {
         this.uLensRush = uniform(0);
         this._publishedRush = 0;
         // How far out the lens reaches, as a multiple of its 3-6 shadow-radius falloff: 1 for
-        // chapter 7's Gargantua, shorter for chapter 6's omen (it bends the sky right round the
+        // chapter 7's great hole, shorter for chapter 6's omen (it bends the sky right round the
         // hole and leaves the rail's orbs in the middle of the frame alone).
         this.uLensReach = uniform(1);
         this._smLensRadius = params.lensRadius ?? 0.12;

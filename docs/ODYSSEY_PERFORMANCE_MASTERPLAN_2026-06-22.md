@@ -143,7 +143,7 @@ Draw counts and material counts are *current‑tree* (corrected from the prior m
 | **7** | Black Hole | **~52‑68 (24)** | ~13 (already shared) | **TWO stacked full‑screen noise domes** (voidDome 4 calls + ambientWash 2 calls ≈ 30 oct/px) | **Fold ambientWash floor into voidDome + delete the wash mesh** (minor, removes a full‑screen pass); voidDome+wash 5→3 oct (zero‑ish); collapse accretion‑disk 3 compiles→1 + lensShell 3→1 (zero); merge/trim 18 infall tubes (minor) | none |
 | **8** | Urban Dreams | **~57 (41)** | 18 (facade already 1) | Wet‑street fbm2(4) on 280×1400 floor; 7 haze curtains fbm2(5) | **Instance 18 sky‑traffic tubes→1, 9 rails→1, 4 signs→1, 4 spire conduits→1 mat** (zero); wet‑street 4→3 oct + shrink far half (minor); haze‑stack 5→3 oct + cull (minor) | none |
 
-**Hero elements to preserve** are documented per chapter in the agent maps (e.g. ch1 First Heart caldera + lava‑fall + obsidian colonnade; ch2 god‑ray shafts + manta/whale escort; ch7 the camera‑locked lensed Gargantua hero + fold arcs). Every minor‑visual change is capture‑gated against these.
+**Hero elements to preserve** are documented per chapter in the agent maps (e.g. ch1 First Heart caldera + lava‑fall + obsidian colonnade; ch2 god‑ray shafts + manta/whale escort; ch7 the camera‑locked lensed the great hole hero + fold arcs). Every minor‑visual change is capture‑gated against these.
 
 ---
 

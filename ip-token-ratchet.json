@@ -1,0 +1,14 @@
+{
+  "note": "Names from other works still in the tracked tree while renames are pending (scripts/ip-tokens.mjs, RATCHETED). Counts of matches in tracked text and file names; shrink-only: lower with node scripts/ip-string-gate.mjs --update.",
+  "updatedAt": "2026-11-03",
+  "tokens": {
+    "ghibli": 233,
+    "cyberpunk": 49,
+    "chiral": 754,
+    "wim-hof": 129,
+    "hale": 1089,
+    "sky-children": 676,
+    "thatgamecompany": 32,
+    "genre-mark-in-source": 43
+  }
+}

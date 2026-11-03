@@ -326,13 +326,13 @@ describe('additive DoubleSide materials do not double-bill (Act II->Space §8.6)
 });
 
 // ── THE 6->7 HANDOFF (seamless pass) ──────────────────────────────────────────────────
-// The omen used to glide onto Gargantua's lock by camera HEIGHT, which the eye only reaches
+// The omen used to glide onto the great hole's lock by camera HEIGHT, which the eye only reaches
 // after the boundary — at the crossfade's first frame the two black holes sat apart, and both
 // shadows were forced transparent, so stars showed through the hole.
-describe('omen -> Gargantua handoff runs on progress and keeps one opaque shadow', () => {
+describe('omen -> the great hole handoff runs on progress and keeps one opaque shadow', () => {
     it('completes exactly where chapter 7 first appears, and hides the omen shadow there', async () => {
         const { resolveOmenHandoffWindow } = await import('./cosmic-expanse.js');
-        const { resolveGargantuaLockPosition } = await import('./black-hole-transcendence.tsl.js');
+        const { resolveGreatHoleLockPosition } = await import('./black-hole-transcendence.tsl.js');
         const positions = deriveOdysseyChapterPositions();
         const handoff = resolveOmenHandoffWindow(positions);
         // ch7 is first drawn at the 6->7 seam start (boundary minus ch6's seam half-width).
@@ -355,8 +355,8 @@ describe('omen -> Gargantua handoff runs on progress and keeps one opaque shadow
 
         updateCosmicExpanseEnvironment(group, 0.016, 1, camera, handoff.end + 1e-4);
         expect(shadow.visible).toBe(false);
-        // ...and the omen sits on the lock, at Gargantua's size: the two coincide.
-        const lock = resolveGargantuaLockPosition(camera, new THREE.Vector3()).sub(group.position);
+        // ...and the omen sits on the lock, at the great hole's size: the two coincide.
+        const lock = resolveGreatHoleLockPosition(camera, new THREE.Vector3()).sub(group.position);
         expect(blackHole.position.distanceTo(lock)).toBeLessThan(1e-3);
         expect(blackHole.scale.x * 24).toBeCloseTo(132, 3);
     });

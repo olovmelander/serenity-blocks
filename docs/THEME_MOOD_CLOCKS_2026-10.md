@@ -128,7 +128,7 @@ way round the colour wheel (`meltPalettes`), so a melt is as vivid as its ends.
 | --- | --- | --- | --- |
 | Aether Tides | aether, carina, rosette, lagoon, ember | 100 s, rest 0.35 | a clock melt also lets the fluid heal gently (at most +0.04 at mid-melt) so the gas takes the new colours; a level turn keeps its fast 9-s heal |
 | Chiral Gold | fine, rose, white, green, red gold | a pour every 100 s | the clock pours the next alloy up the towers (~2.8 s, quiet: no comets or flare); a level pours one more with its burst; one pending target, so pours never pile up; the hall's glow now melts with the pour instead of snapping |
-| Chromatic Impasto | Lindström, fauve, nocturne, ember, spring | a 12-s over-paint every 100 s | the painter goes over the canvas in the next period's tubes (no sheen or flash); the level's quick 2.6-s over-paint keeps its burst; the lamp key melts instead of switching |
+| Chromatic Impasto | nordic, fauve, nocturne, ember, spring | a 12-s over-paint every 100 s | the painter goes over the canvas in the next period's tubes (no sheen or flash); the level's quick 2.6-s over-paint keeps its burst; the lamp key melts instead of switching |
 | Cinder Drift | ember, crimson, gold, forge, rose | 100 s, rest 0.35 | |
 | Fluid Dreams | amethyst dusk, lagoon, rose gold, ultraviolet, aurora mint | 100 s, rest 0.35 | the world now keeps its own clock |
 | Galaxy | andromeda, whirlpool, sombrero, emerald, ultraviolet | 100 s, rest 0.35 | the level's meteors take the new nucleus colour; the straight RGB mix (grey between violet and amber) is gone |

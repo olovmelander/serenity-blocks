@@ -3,7 +3,7 @@
  * @fileoverview Black Hole Transcendence Environment - Chapter 7 Visual Theme
  *
  * The journey's gravitational climax. MASTERPIECE PASS (2026-10): the chapter is now built
- * around ONE black hole read the way Interstellar's Gargantua reads, painted Ghibli-soft —
+ * around ONE great black hole, lit as a film would light it and painted soft —
  *
  *   - a pure BLACK shadow, square to the eye, ringed by a thin blazing photon ring;
  *   - a thin, white-hot accretion band crossing in front of it, its plane tilted to within
@@ -23,7 +23,7 @@
  * Layers:
  *   0  Void dome        — near-black deep space with faint magenta/indigo nebulosity
  *   0b Far starfield    — a full shell behind everything (the post lens bends it)
- *   1  Gargantua        — camera-locked: face pivot (shadow, photon ring, fold arcs) +
+ *   1  the great hole        — camera-locked: face pivot (shadow, photon ring, fold arcs) +
  *                         disk pivot (the tilted accretion band) + infall embers in its plane
  *   6  Near life        — transcendence shards + corridor dust (parallax motes)
  *
@@ -60,7 +60,7 @@ import { resolveRetrosunReveal, resolveRetrosunStage, resolveUrbanEnergy } from 
 import { createBakedVoidSkyTSL } from './odyssey-cosmic-backdrop.js';
 import {
     createAccretionDiskTSL,
-    createGargantuaPhotonRingTSL,
+    createGreatHolePhotonRingTSL,
     createLensedFoldMaterialTSL,
     createTranscendenceShardsTSL,
     createLensingStarfieldTSL,
@@ -69,11 +69,11 @@ import {
     createSingularityWindowTSL,
     CH7_CORRIDOR_DUST_SETTINGS,
     CH7_STARFIELD,
-    GARGANTUA_LOCK,
-    resolveGargantuaFallPosition,
+    GREAT_HOLE_LOCK,
+    resolveGreatHoleFallPosition,
 } from './black-hole-transcendence.tsl.js';
 import { runChapterSteps } from './shared/chapter-build-steps.js';
-import { createGargantuaLensSteps } from './odyssey-gargantua-lens.tsl.js';
+import { createGreatHoleLensSteps } from './odyssey-great-hole-lens.tsl.js';
 
 export const BLACK_HOLE_TRANSCENDENCE_CONFIG = {
     id: 7,
@@ -93,19 +93,19 @@ export const BLACK_HOLE_TRANSCENDENCE_CONFIG = {
 };
 
 /**
- * The Gargantua hero, in WORLD units (no group scale). Sized so the shadow is ~25% of the
+ * The great hole hero, in WORLD units (no group scale). Sized so the shadow is ~25% of the
  * frame height at the lock depth and the disk band spans ~60% of a 16:9 frame.
  */
-export const CH7_GARGANTUA = Object.freeze({
+export const CH7_GREAT_HOLE = Object.freeze({
     // lockDepth / upBias / rightBias / shadowRadius — shared with ch6's omen handoff.
-    ...GARGANTUA_LOCK,
+    ...GREAT_HOLE_LOCK,
     // Disk radii as multiples of the shadow radius.
     diskInner: 1.34,
     diskOuter: 4.8,
     // How far the disk plane is lifted out of edge-on toward the eye (rad, ~6°), and its roll
     // in the frame (rad) so the band crosses on a slight diagonal instead of a ruler line.
     // 0.16 put the band's near side across the LOWER half of the shadow; 0.10 crosses it
-    // just below the middle, as Gargantua's does.
+    // just below the middle, as the great hole's does.
     diskTilt: 0.10,
     diskRoll: -0.10,
     // Photon ring radii as multiples of the shadow radius.
@@ -179,13 +179,13 @@ const _axis = new THREE.Vector3();
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * The camera-locked Gargantua. The group itself is re-posed every frame in update(): placed
+ * The camera-locked great hole. The group itself is re-posed every frame in update(): placed
  * `lockDepth` ahead of the eye on a basis built from the CAMERA'S OWN up vector (the ch7
  * spline climbs nearly vertically at times, where a world-up basis degenerates), so the
  * shadow is always square to the eye and the disk band always reads across the frame.
  */
-function createGargantua(uniforms, tier = CH7_QUALITY_TIERS.high) {
-    const S = CH7_GARGANTUA.shadowRadius;
+function createGreatHole(uniforms, tier = CH7_QUALITY_TIERS.high) {
+    const S = CH7_GREAT_HOLE.shadowRadius;
     const group = new THREE.Group();
     group.name = 'distant-background-singularity';
 
@@ -198,7 +198,7 @@ function createGargantua(uniforms, tier = CH7_QUALITY_TIERS.high) {
     // depth-writing material either way, so nothing about its pipeline changes mid-chapter.
     const singularity = createSingularityWindowTSL(uniforms.uTime, { foldSteps: tier.foldSteps });
     const horizon = new THREE.Mesh(new THREE.SphereGeometry(S, 64, 48), singularity.material);
-    horizon.name = 'gargantua-shadow';
+    horizon.name = 'great-hole-shadow';
     // FADE-EXEMPT (seamless pass; agreed interface with the environment manager): the shadow
     // is an opaque occluder through every crossfade and the chapter drives its visibility —
     // see update(). Forced transparent and faded, it and ch6's omen shadow each covered only
@@ -208,14 +208,14 @@ function createGargantua(uniforms, tier = CH7_QUALITY_TIERS.high) {
 
     const uSwell = uniform(0);
     const uRazor = uniform(1);
-    const photon = createGargantuaPhotonRingTSL(uniforms.uTime, {
-        innerRadius: S * CH7_GARGANTUA.photonInner,
-        outerRadius: S * CH7_GARGANTUA.photonOuter,
+    const photon = createGreatHolePhotonRingTSL(uniforms.uTime, {
+        innerRadius: S * CH7_GREAT_HOLE.photonInner,
+        outerRadius: S * CH7_GREAT_HOLE.photonOuter,
         shadowRadius: S,
         uSwell,
         uRazor,
     });
-    photon.mesh.name = 'gargantua-photon-ring';
+    photon.mesh.name = 'great-hole-photon-ring';
     face.add(photon.mesh);
 
     const foldArcMaterial = createLensedFoldMaterialTSL(uniforms.uTime, {
@@ -247,15 +247,15 @@ function createGargantua(uniforms, tier = CH7_QUALITY_TIERS.high) {
     // Euler 'ZYX': tilt about X first (ring normal +Z → mostly +Y, a little toward the eye),
     // then roll about the view axis.
     const diskPivot = new THREE.Group();
-    diskPivot.name = 'gargantua-disk-pivot';
+    diskPivot.name = 'great-hole-disk-pivot';
     diskPivot.rotation.order = 'ZYX';
-    diskPivot.rotation.set(-(Math.PI / 2 - CH7_GARGANTUA.diskTilt), 0, CH7_GARGANTUA.diskRoll);
+    diskPivot.rotation.set(-(Math.PI / 2 - CH7_GREAT_HOLE.diskTilt), 0, CH7_GREAT_HOLE.diskRoll);
     group.add(diskPivot);
 
     const uDiskFade = uniform(1);
     const { mesh: disk } = createAccretionDiskTSL(uniforms.uTime, uniforms.uEnergy, {
-        innerRadius: S * CH7_GARGANTUA.diskInner,
-        outerRadius: S * CH7_GARGANTUA.diskOuter,
+        innerRadius: S * CH7_GREAT_HOLE.diskInner,
+        outerRadius: S * CH7_GREAT_HOLE.diskOuter,
         uFade: uDiskFade,
     });
     disk.name = 'distant-accretion-disk';
@@ -286,7 +286,7 @@ function createSunCopy(uniforms) {
     const uEnergy = uniform(0.45);
     const uReveal = uniform(0.62);
     const { mesh } = createSynthwaveSunTSL(uniforms.uTime, uEnergy, { uReveal });
-    mesh.name = 'gargantua-sun-copy';
+    mesh.name = 'great-hole-sun-copy';
     mesh.frustumCulled = false;
     mesh.visible = false;
     mesh.userData.uEnergy = uEnergy;
@@ -375,11 +375,11 @@ export function* buildBlackHoleTranscendenceEnvironmentSteps(options = {}) {
     group.userData.lensingStarfield = lensingStarfield;
     yield;
 
-    // 1. Gargantua — the one hero, camera-locked in update().
-    const distantHole = createGargantua(uniforms, tier);
+    // 1. The great hole — the one hero, camera-locked in update().
+    const distantHole = createGreatHole(uniforms, tier);
     if (!readPaintedHoleFlag()) {
-        const lens = yield* createGargantuaLensSteps({
-            shadowRadius: CH7_GARGANTUA.shadowRadius,
+        const lens = yield* createGreatHoleLensSteps({
+            shadowRadius: CH7_GREAT_HOLE.shadowRadius,
             uReveal: uniform(0),
             quality: tier === CH7_QUALITY_TIERS.low ? 'low' : 'high',
         });
@@ -405,7 +405,7 @@ export function* buildBlackHoleTranscendenceEnvironmentSteps(options = {}) {
     // update(); the ch7 post lens projects it to centre the warp. `lensRadius` (world units)
     // rides on the same Vector3 so the lens can size itself to the PROJECTED shadow.
     group.userData.lensWorldPos = new THREE.Vector3(0, 120, -900);
-    group.userData.lensWorldPos.lensRadius = CH7_GARGANTUA.shadowRadius;
+    group.userData.lensWorldPos.lensRadius = CH7_GREAT_HOLE.shadowRadius;
     yield;
 
     // Drifting dust hugging the corridor (re-centred on the camera in update()).
@@ -440,7 +440,7 @@ export function* buildBlackHoleTranscendenceEnvironmentSteps(options = {}) {
         * tier.embers);
     const { mesh: infallEmbers } = createInfallEmberFieldTSL(uniforms.uTime, emberCount);
     infallEmbers.rotation.x = Math.PI / 2;
-    infallEmbers.scale.setScalar(CH7_GARGANTUA.emberScale);
+    infallEmbers.scale.setScalar(CH7_GREAT_HOLE.emberScale);
     distantHole.userData.diskPivot.add(infallEmbers);
     group.userData.infallEmbers = infallEmbers;
 
@@ -468,7 +468,7 @@ export function* buildBlackHoleTranscendenceEnvironmentSteps(options = {}) {
  * the frame whatever the spline does — including the near-vertical climb, where the old
  * world-up `lookAt` basis degenerated. Writes the world centre into `lensWorldPos`.
  */
-export function poseGargantua(group, camera, time = 0, glide = 0, fall = null) {
+export function poseGreatHole(group, camera, time = 0, glide = 0, fall = null) {
     const { distantHole } = group.userData;
     if (!distantHole || !camera?.position) return false;
     const fallState = fall ?? blackHoleFallAtRest();
@@ -476,8 +476,8 @@ export function poseGargantua(group, camera, time = 0, glide = 0, fall = null) {
     const grown = fallState.active || fallState.alpha > CH7_FALL.restAlpha + 1e-9;
     // THE FALL: as the hole grows it recedes along the view axis just enough to keep its near
     // surface clear of the rail and nodes, and eases onto the axis (resolveBlackHoleFallDepth).
-    const depth = grown ? resolveBlackHoleFallDepth(fallState.alpha) : GARGANTUA_LOCK.lockDepth;
-    resolveGargantuaFallPosition(camera, _heroWorld, depth, fallState.centring);
+    const depth = grown ? resolveBlackHoleFallDepth(fallState.alpha) : GREAT_HOLE_LOCK.lockDepth;
+    resolveGreatHoleFallPosition(camera, _heroWorld, depth, fallState.centring);
     // THE 7->8 GLIDE: off the lock onto the Retrosun's direction, at the lock's distance (so the
     // shadow keeps its angular size, which is also the sun disc's). The target is held within
     // maxOffAxis of the view axis so the hero can never leave the frame.
@@ -502,7 +502,7 @@ export function poseGargantua(group, camera, time = 0, glide = 0, fall = null) {
     // rest, where the lock already subtends it).
     const heroDistance = _heroWorld.distanceTo(camera.position);
     const heroScale = grown
-        ? Math.max(1e-3, (heroDistance * Math.sin(fallState.alpha)) / CH7_GARGANTUA.shadowRadius)
+        ? Math.max(1e-3, (heroDistance * Math.sin(fallState.alpha)) / CH7_GREAT_HOLE.shadowRadius)
         : 1;
     distantHole.scale.setScalar(heroScale);
     group.userData.heroScale = heroScale;
@@ -519,7 +519,7 @@ export function poseGargantua(group, camera, time = 0, glide = 0, fall = null) {
     _basis.makeBasis(_right, _up, _back);
     distantHole.quaternion.setFromRotationMatrix(_basis);
     // Slow precession about the view axis — bounded, so it never drifts the composition.
-    _spin.setFromAxisAngle(_zAxis, Math.sin(time * CH7_GARGANTUA.precession) * 0.06);
+    _spin.setFromAxisAngle(_zAxis, Math.sin(time * CH7_GREAT_HOLE.precession) * 0.06);
     distantHole.quaternion.multiply(_spin);
     return true;
 }
@@ -611,12 +611,12 @@ export function advanceWarpDrive(state, delta, progress, warp, opts = {}) {
 }
 
 /**
- * THE TRACED HOLE CARRIES THE DIVE (2026-10-31; 2026-11-02). Chapter 6's omen and Gargantua are one
+ * THE TRACED HOLE CARRIES THE DIVE (2026-10-31; 2026-11-02). Chapter 6's omen and the great hole are one
  * hole: the same traced lens round the same shadow, in the same pose, so the 6->7 hand-over changes
  * nothing. Until 2026-11-02 the eye had to stay outside the lens's march sphere, which it left at
  * ~12.9 deg of hole, and the dive was handed to painted parts (a razor ring on the silhouette, a
  * flat band, embers): the bent light went flat exactly as the hole filled the frame. The lens now
- * works with the eye inside (GARGANTUA_LENS_CARRIER), so the traced hole carries the whole dive:
+ * works with the eye inside (GREAT_HOLE_LENS_CARRIER), so the traced hole carries the whole dive:
  * the disk arching over and under the shadow as it sweeps through edge-on, its gas fading as it
  * has swept past (the fall's `band`), and the photon ring riding the silhouette out past the
  * frame's edges (~51 deg of hole on a 16:9 frame), gone between `ringFrom` and `ringTo` degrees.
@@ -683,7 +683,7 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
     // hold eases onto the gaze: inside, the tunnel is wherever the eye looks (and the dome and
     // far stars stop drawing on exactly that promise). Identical to the render camera otherwise.
     const lockCamera = resolveFallLockCamera(camera, fall.portal);
-    if (!poseGargantua(group, lockCamera, time, carry?.glide ?? 0, fall) && group.userData.distantHole) {
+    if (!poseGreatHole(group, lockCamera, time, carry?.glide ?? 0, fall) && group.userData.distantHole) {
         // No-camera fallback (smoke tests): a slow precession in place.
         group.userData.distantHole.rotation.z -= delta * 0.025;
     }
@@ -706,7 +706,7 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
     // also grows with the fall (the shadow's world radius scales with the hero), and `portal`
     // tells the post pass to stop masking bloom where the shadow has become the tunnel window.
     if (group.userData.lensWorldPos) {
-        group.userData.lensWorldPos.lensRadius = CH7_GARGANTUA.shadowRadius
+        group.userData.lensWorldPos.lensRadius = CH7_GREAT_HOLE.shadowRadius
             * (group.userData.heroScale ?? 1) * (1 - open);
         group.userData.lensWorldPos.portal = fall.portal;
     }
@@ -773,7 +773,7 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
     if (hero?.diskPivot) {
         hero.diskPivot.rotation.x = -(Math.PI / 2 - fall.diskTilt);
         const heroScale = group.userData.heroScale ?? 1;
-        const diskOuter = CH7_GARGANTUA.shadowRadius * CH7_GARGANTUA.diskOuter * heroScale;
+        const diskOuter = CH7_GREAT_HOLE.shadowRadius * CH7_GREAT_HOLE.diskOuter * heroScale;
         const heroDistance = group.userData.lensWorldPos && camera?.position
             ? group.userData.lensWorldPos.distanceTo(camera.position) : Infinity;
         hero.diskPivot.scale.setScalar(Math.min(1, (0.85 * heroDistance) / Math.max(1e-3, diskOuter)));
@@ -795,7 +795,7 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
     // into the new sun's limb from the centre plane as before (at that swap it is past the frame's
     // edges or behind the shadow, so the move is never seen).
     if (hero?.photonRing) {
-        const S = CH7_GARGANTUA.shadowRadius;
+        const S = CH7_GREAT_HOLE.shadowRadius;
         const heroDistance = group.userData.lensWorldPos && camera?.position
             ? group.userData.lensWorldPos.distanceTo(camera.position) : Infinity;
         const sinA = Math.min(0.995, (S * (group.userData.heroScale ?? 1)) / Math.max(1e-3, heroDistance));
@@ -810,7 +810,7 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
         if (hero.uRazor) {
             const sizeDeg = THREE.MathUtils.radToDeg(Math.asin(sinA));
             hero.uRazor.value = onSilhouette
-                ? 1 + (CH7_GARGANTUA.photonRazor * THREE.MathUtils.smoothstep(sizeDeg, 14, 40))
+                ? 1 + (CH7_GREAT_HOLE.photonRazor * THREE.MathUtils.smoothstep(sizeDeg, 14, 40))
                 : 1;
         }
     }

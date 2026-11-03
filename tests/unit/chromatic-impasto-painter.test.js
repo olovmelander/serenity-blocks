@@ -105,7 +105,7 @@ describe('chromatic impasto core maths', () => {
         expect(periodTurns(PERIOD_SECONDS)).toBe(1);
         expect(periodTurns(-3)).toBe(0);
         expect(periodTurns(NaN)).toBe(0);
-        // Time 0, level 1 is Lindström, as the studio always opened.
+        // Time 0, level 1 is the nordic period, as the studio always opened.
         expect(periodIndex(1, 0)).toBe(0);
         for (let k = 0; k <= count * 2; k++) {
             expect(periodIndex(1, k * PERIOD_SECONDS + 1)).toBe(k % count);

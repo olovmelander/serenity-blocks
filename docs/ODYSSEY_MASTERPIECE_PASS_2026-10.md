@@ -137,7 +137,7 @@ under the stars instead of a grey smoke shape (bisected to `void-sky-baked`).
 ## 7. Chapter 7 — Black Hole & Abstract Transcendence (space session)
 
 **Before:** a washed-out pink fog ring around a dark ellipse, purple noise walls, a tiny swirl.
-**After:** Gargantua — a black shadow (~25 % of frame height), a thin white-hot disk 6° off
+**After:** the great hole — a black shadow (~25 % of frame height), a thin white-hot disk 6° off
 edge-on with the lensed far side arcing over the top, Doppler-bright approaching limb from
 the real orbit direction, bounded rotation (no aliasing over a session), deep starfield.
 Removed: a lensing shell hidden inside the horizon, an off-frame halo, a second entry hole,

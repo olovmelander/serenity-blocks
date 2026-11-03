@@ -28,15 +28,28 @@
  *    class added so they cannot creep back. No identifier allowance: there is no legitimate
  *    internal use of these names.
  *
- * Usage: node scripts/ip-string-gate.mjs
+ * C. Names from other people's films, games and art (2026-11-03): scripts/ip-tokens.mjs. Blocked
+ *    names fail anywhere (tracked text, tracked file names, dist/); names whose renames are still
+ *    pending are held at or under the counts in ip-token-ratchet.json, which only goes down.
+ *
+ * Under CI (the CI variable set) a missing dist/ fails instead of being skipped: the bundles are
+ * where a token actually reaches players.
+ *
+ * Usage: node scripts/ip-string-gate.mjs            check
+ *        node scripts/ip-string-gate.mjs --update   lower ip-token-ratchet.json to today's counts
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+    BLOCKED_TOKENS, RATCHET_TOKENS, compareToBaseline, countTokens, findToken, isInternalIdentifierUse,
+} from './ip-tokens.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SELF = 'scripts/ip-string-gate.mjs';
+const RATCHET_FILE = 'ip-token-ratchet.json';
+const UPDATE = process.argv.includes('--update');
 
 const TEXT_EXT = /\.(js|mjs|css|html|svg|json|txt|md|xml|webmanifest)$/i;
 const TREE_TEXT_EXT = /\.(js|mjs|cjs|ts|mts|css|html|svg|json|txt|md|xml|webmanifest|ya?ml|py|sh|cmd|bat|ps1|glsl|wgsl|csv|toml)$/i;
@@ -45,21 +58,8 @@ const GENRE_TOKEN = /tetris|tetrimino/gi;
 // desert, a worm or a geyser needs ("dune", "sand", "worm", "spice" on its own) stay usable.
 const WORLD_TOKEN =
     /arrakis|shai[\s-]?hulud|fremen|melange|muad'?dib|harkonnen|atreides|sardaukar|bene\s+gesserit|kwisatz|lisan\s+al[\s-]?gaib|crysknife|stillsuit|ornithopter|sietch|wormsign|spice\s+blows?|thumper|dune[\s-]+inspired|inspired\s+by\s+dune|dune\s+(?:film|movie|novel|franchise)/gi;
-const IDENT_CHAR = /[A-Za-z0-9_$]/;
 const ALLOWED_FILES = new Set(['dist/CREDITS.md', 'dist/README.md']);
-const TREE_SKIP = new Set([SELF, 'package-lock.json']);
-
-/** True when a JS-bundle match is a non-rendered internal identifier shape. */
-function isInternalIdentifierUse(source, index, length) {
-    const before = source[index - 1] ?? '';
-    const after = source[index + length] ?? '';
-    if (IDENT_CHAR.test(before) || IDENT_CHAR.test(after)) return true; // tetrisFlash, _cueTetris, isTetris
-    if (before === '.') return true; // property access: me.tetris, zt.TETRIS
-    if (/^\s*:/.test(source.slice(index + length))) return true; // object key: tetris:{...}
-    if (/["'`]/.test(before) && before === after) return true; // bare string literal: 'tetris'
-    if (/tetris-count/i.test(source.slice(Math.max(0, index - 6), index + length + 6))) return true; // serialized type
-    return false;
-}
+const TREE_SKIP = new Set([SELF, 'scripts/ip-tokens.mjs', 'tests/unit/ip-tokens.test.js', RATCHET_FILE, 'package-lock.json']);
 
 function* walk(dir) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -136,8 +136,15 @@ if (fs.existsSync(distDir)) {
         const isBundle = /\.(js|mjs)$/i.test(rel);
         violations.push(...scanFile(file, rel, GENRE_TOKEN, { allowInternalIdentifiers: isBundle }));
         violations.push(...scanFile(file, rel, WORLD_TOKEN));
+        const text = fs.readFileSync(file, 'utf8');
+        for (const token of BLOCKED_TOKENS) {
+            for (const hit of findToken(token, rel)) violations.push(`${rel} (file name): ${token.id} …${hit.context}…`);
+            for (const hit of findToken(token, text)) violations.push(`${rel}:${hit.line}: ${token.id} …${hit.context}…`);
+        }
     }
     surfaces.push('dist/');
+} else if (process.env.CI) {
+    violations.push('dist/ not found under CI: run `npm run build` before this gate (it scans the bundles).');
 } else {
     console.warn(
         'ip-string-gate: dist/ not found — built artifact not scanned (run `npm run build` first for full coverage)'
@@ -145,15 +152,50 @@ if (fs.existsSync(distDir)) {
 }
 
 // B. Every tracked text file: world names from other franchises, anywhere.
+const tracked = trackedFiles().filter((rel) => !TREE_SKIP.has(rel) && fs.existsSync(path.join(repoRoot, rel)));
 let treeCount = 0;
-for (const rel of trackedFiles()) {
-    if (TREE_SKIP.has(rel) || !TREE_TEXT_EXT.test(rel)) continue;
-    const full = path.join(repoRoot, rel);
-    if (!fs.existsSync(full)) continue; // deleted in the working tree
-    violations.push(...scanFile(full, rel, WORLD_TOKEN));
+for (const rel of tracked) {
+    if (!TREE_TEXT_EXT.test(rel)) continue;
+    violations.push(...scanFile(path.join(repoRoot, rel), rel, WORLD_TOKEN));
     treeCount++;
 }
 surfaces.push(`tracked tree (${treeCount} text files, world names)`);
+
+// C. Names from other works: blocked ones nowhere, ratcheted ones no more than the baseline.
+//    Tracked text and every tracked file name (binaries included).
+const readTracked = (rel) => {
+    if (!TREE_TEXT_EXT.test(rel)) return null;
+    try {
+        return fs.readFileSync(path.join(repoRoot, rel), 'utf8');
+    } catch {
+        return null; // deleted in the working tree
+    }
+};
+for (const [id, { hits }] of countTokens(BLOCKED_TOKENS, tracked, readTracked)) {
+    for (const hit of hits) violations.push(`${hit} — ${id}`);
+}
+const ratchetPath = path.join(repoRoot, RATCHET_FILE);
+const ratchet = fs.existsSync(ratchetPath) ? JSON.parse(fs.readFileSync(ratchetPath, 'utf8')) : { tokens: {} };
+const ratchetCounts = countTokens(RATCHET_TOKENS, tracked, readTracked);
+const { over, under } = compareToBaseline(ratchetCounts, ratchet.tokens);
+for (const { id, count, baseline } of fs.existsSync(ratchetPath) ? over : []) {
+    const hits = ratchetCounts.get(id).hits;
+    violations.push(`${id}: ${count} uses, the ratchet allows ${baseline} (${RATCHET_FILE}). Latest: ${hits.slice(-3).join(' | ')}`);
+}
+if (UPDATE) {
+    if (over.length && fs.existsSync(ratchetPath)) {
+        console.error('ip-string-gate: --update never raises the ratchet; remove the new uses first.');
+    } else {
+        const tokens = Object.fromEntries([...ratchetCounts].map(([id, { count }]) => [id, count]));
+        fs.writeFileSync(ratchetPath, `${JSON.stringify({ ...ratchet, updatedAt: new Date().toISOString().slice(0, 10), tokens }, null, 2)}\n`);
+        console.log(`ip-string-gate: ${RATCHET_FILE} lowered to today's counts`);
+    }
+} else {
+    for (const { id, count, baseline } of under) {
+        console.log(`ip-string-gate: ${id} is down to ${count} (baseline ${baseline}): run with --update to lock it in`);
+    }
+}
+surfaces.push(`tracked names and text (${BLOCKED_TOKENS.length} blocked, ${RATCHET_TOKENS.length} ratcheted tokens)`);
 
 console.log(`ip-string-gate: scanned ${surfaces.join(', ')}`);
 if (violations.length > 0) {
@@ -161,6 +203,7 @@ if (violations.length > 0) {
     for (const v of violations) console.error(`  ${v}`);
     console.error(
         'Remove the token (evoke the setting, do not name it) or, for a counsel-approved legal notice, extend the documented allowlist.'
+            + ' A ratcheted name may only go down.'
     );
     process.exit(1);
 }

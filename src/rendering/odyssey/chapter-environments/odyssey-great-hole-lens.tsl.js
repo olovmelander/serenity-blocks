@@ -2,11 +2,11 @@
 /**
  * @fileoverview ODYSSEY'S BLACK HOLE, TRACED (2026-10-31, the space masterpiece pass).
  *
- * Olov: "I guess the black hole in the black hole theme looks like the gargantua in interstellar."
- * Odyssey's hole (chapter 6's omen, chapter 7's Gargantua) was painted: a black sphere, a thin
+ * The ask: Odyssey's black hole should look like the Black Hole theme's traced one.
+ * Odyssey's hole (chapter 6's omen, chapter 7's great hole) was painted: a black sphere, a thin
  * ring mesh, two torus arcs standing in for the disk's far side, a flat band for the disk. Read
  * from up close it was a target of glowing hoops. The Black Hole theme's hole is one material that
- * traces every view ray through Schwarzschild spacetime, and everything that makes Gargantua read
+ * traces every view ray through Schwarzschild spacetime, and everything that makes the great hole read
  * falls out of the bend: the far side of the disk arching over the shadow and tucked under it, the
  * thin photon ring, the brighter approaching side, the glowing gas round it.
  *
@@ -14,7 +14,7 @@
  * Odyssey; the same physics, constants and look): the photon path x'' = -(3/2) h^2 x / |x|^5 in
  * Schwarzschild radii (exact for null geodesics), stepped symplectically inside a bounding sphere,
  * the closed-form bend outside it; the disk sheared Keplerian over a baked gas texture
- * (odyssey-gargantua-gas.js), lit by a blackbody ramp with relativistic beaming; the corona's
+ * (odyssey-great-hole-gas.js), lit by a blackbody ramp with relativistic beaming; the corona's
  * Gaussian sheet integrated in closed form along each step.
  *
  * WHAT IS DIFFERENT HERE: the theme's material IS the sky (it lenses its own galaxy). Odyssey's
@@ -31,12 +31,12 @@ import {
     positionWorld, pow, select, sign, sin, cos, smoothstep, sqrt, texture, uniform, vec2, vec3, vec4,
     viewZToPerspectiveDepth,
 } from 'three/tsl';
-import { GARGANTUA_GAS, bakeGargantuaGasSteps } from './odyssey-gargantua-gas.js';
+import { GREAT_HOLE_GAS, bakeGreatHoleGasSteps } from './odyssey-great-hole-gas.js';
 
 const TAU = Math.PI * 2;
 
 /** Lengths in Schwarzschild radii (the theme's HOLE). */
-export const GARGANTUA_HOLE = Object.freeze({
+export const GREAT_HOLE_HOLE = Object.freeze({
     /** 3√3/2: the impact parameter of the shadow's edge. */
     CRITICAL: 2.598076,
     /** Innermost stable orbit: where the disk proper ends. */
@@ -59,7 +59,7 @@ const CORONA = Object.freeze({
 });
 
 /** March budgets by the board's quality tier (the theme's Ultra / Medium). */
-export const GARGANTUA_LENS_QUALITY = Object.freeze({
+export const GREAT_HOLE_LENS_QUALITY = Object.freeze({
     high: Object.freeze({ steps: 72, stepScale: 0.125, detail: true }),
     low: Object.freeze({ steps: 44, stepScale: 0.19, detail: false }),
 });
@@ -76,7 +76,7 @@ export const GARGANTUA_LENS_QUALITY = Object.freeze({
  * to `capTo` of the eye's distance from the hole): a disk passing under the eye is a floor across
  * half the frame (the painted band's 0.85, black-hole-transcendence.js).
  */
-export const GARGANTUA_LENS_CARRIER = Object.freeze({
+export const GREAT_HOLE_LENS_CARRIER = Object.freeze({
     front: 120,
     minScale: 0.01,
     capFrom: 0.7,
@@ -132,7 +132,7 @@ const blackbody = (heat) => {
 const GAS_SMOOTH_ABOVE_PX = 1.5;
 
 function sampleGasSmooth(gasTex, uv, lod) {
-    const size = vec2(GARGANTUA_GAS.width, GARGANTUA_GAS.height).mul(exp2(lod.negate())).toVar();
+    const size = vec2(GREAT_HOLE_GAS.width, GREAT_HOLE_GAS.height).mul(exp2(lod.negate())).toVar();
     const st = uv.mul(size).sub(0.5).toVar();
     const cell = floor(st).toVar();
     const f = fract(st).toVar();
@@ -167,13 +167,13 @@ function sampleGasSmooth(gasTex, uv, lod) {
 /**
  * The disk's gas, sheared Keplerian over the baked texture and lit by the blackbody ramp with
  * relativistic beaming: the theme's shadeDisk. Shared by the lens (where a traced ray crosses the
- * disk's plane) and the plunge's band (createGargantuaBandMaterial), so the two are one gas.
+ * disk's plane) and the plunge's band (createGreatHoleBandMaterial), so the two are one gas.
  * Returns (p, radius, towardCamera, order, travelled, pixelAngle) -> vec4(emission, opacity), with
  * `p` in the disk's frame (+Y its normal) and lengths in Schwarzschild radii.
  */
 function makeShadeDisk(gasTex, u, detail) {
-    const H = GARGANTUA_HOLE;
-    const rowsPerRadius = GARGANTUA_GAS.height / (H.DISK_OUTER - H.DISK_INNER);
+    const H = GREAT_HOLE_HOLE;
+    const rowsPerRadius = GREAT_HOLE_GAS.height / (H.DISK_OUTER - H.DISK_INNER);
     return (p, radius, towardCamera, order, travelled, pixelAngle) => {
         const turn = atan(p.z, p.x).div(TAU);
         const orbit = pow(float(H.DISK_INNER).div(radius), 1.5);
@@ -190,7 +190,7 @@ function makeShadeDisk(gasTex, u, detail) {
         // along its long side (the unsqueezed one: around the disk or across it, whichever is
         // denser), through the cubic B-spline (no texel kinks).
         const perPixel = pixelAngle.mul(travelled)
-            .mul(max(float(rowsPerRadius), float(GARGANTUA_GAS.width / TAU).div(max(radius, 1)))).toVar();
+            .mul(max(float(rowsPerRadius), float(GREAT_HOLE_GAS.width / TAU).div(max(radius, 1)))).toVar();
         If(exp2(lod).greaterThan(perPixel.mul(GAS_SMOOTH_ABOVE_PX)), () => {
             g0.assign(mix(sampleGasSmooth(gasTex, uvA, lod), sampleGasSmooth(gasTex, uvB, lod), u.flowMix));
         });
@@ -236,7 +236,7 @@ function makeShadeDisk(gasTex, u, detail) {
 
 /** The gas texture the lens and the band read (one upload, mipmapped, tiled both ways). */
 function createGasTexture(gas) {
-    const gasTex = new THREE.DataTexture(gas, GARGANTUA_GAS.width, GARGANTUA_GAS.height, THREE.RGBAFormat);
+    const gasTex = new THREE.DataTexture(gas, GREAT_HOLE_GAS.width, GREAT_HOLE_GAS.height, THREE.RGBAFormat);
     gasTex.wrapS = THREE.RepeatWrapping;
     gasTex.wrapT = THREE.RepeatWrapping;
     gasTex.magFilter = THREE.LinearFilter;
@@ -254,10 +254,10 @@ function createGasTexture(gas) {
  * @param {*} [options.uReveal] 0..1 uniform: the hole's light arriving (premultiplied fade)
  * @param {'high'|'low'} [options.quality]
  */
-export function* createGargantuaLensSteps({ shadowRadius, uReveal = uniform(1), quality = 'high' }) {
-    const H = GARGANTUA_HOLE;
-    const Q = GARGANTUA_LENS_QUALITY[quality] ?? GARGANTUA_LENS_QUALITY.high;
-    const gas = yield* bakeGargantuaGasSteps();
+export function* createGreatHoleLensSteps({ shadowRadius, uReveal = uniform(1), quality = 'high' }) {
+    const H = GREAT_HOLE_HOLE;
+    const Q = GREAT_HOLE_LENS_QUALITY[quality] ?? GREAT_HOLE_LENS_QUALITY.high;
+    const gas = yield* bakeGreatHoleGasSteps();
     const gasTex = createGasTexture(gas);
     yield 'gas';
 
@@ -285,7 +285,7 @@ export function* createGargantuaLensSteps({ shadowRadius, uReveal = uniform(1), 
     };
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.name = 'Odyssey Gargantua — lens';
+    material.name = 'Odyssey great hole — lens';
     material.transparent = true;
     material.premultipliedAlpha = true;
     material.depthWrite = false;
@@ -306,9 +306,9 @@ export function* createGargantuaLensSteps({ shadowRadius, uReveal = uniform(1), 
         const impact = max(length(closest), 1e-4).toVar();
         const away = closest.div(impact).toVar();
         const cameraDistance = length(origin).toVar();
-        // THE EYE GOES IN (GARGANTUA_LENS_CARRIER): no gas within reach of the eye.
-        const capFrom = cameraDistance.mul(GARGANTUA_LENS_CARRIER.capFrom).toVar();
-        const capTo = cameraDistance.mul(GARGANTUA_LENS_CARRIER.capTo).toVar();
+        // THE EYE GOES IN (GREAT_HOLE_LENS_CARRIER): no gas within reach of the eye.
+        const capFrom = cameraDistance.mul(GREAT_HOLE_LENS_CARRIER.capFrom).toVar();
+        const capTo = cameraDistance.mul(GREAT_HOLE_LENS_CARRIER.capTo).toVar();
         const nearCap = (ringRadius) => float(1).sub(smoothstep(capFrom, capTo, ringRadius));
 
         const colour = vec3(0).toVar();
@@ -446,15 +446,15 @@ export function* createGargantuaLensSteps({ shadowRadius, uReveal = uniform(1), 
         const crit2 = float(H.CRITICAL * H.CRITICAL);
         const onShadow = impact2.lessThan(crit2);
         const toShadow = along.negate().sub(sqrt(max(crit2.sub(impact2), 0))).toVar();
-        const reach = select(onShadow, toShadow, along.negate()).mul(u.rs).mul(GARGANTUA_LENS_CARRIER.depthPull);
-        const dist = max(reach, float(GARGANTUA_LENS_CARRIER.front));
+        const reach = select(onShadow, toShadow, along.negate()).mul(u.rs).mul(GREAT_HOLE_LENS_CARRIER.depthPull);
+        const dist = max(reach, float(GREAT_HOLE_LENS_CARRIER.front));
         const viewZ = cameraViewMatrix.mul(vec4(cameraPosition.add(ray.mul(dist)), 1)).z;
         return viewZToPerspectiveDepth(viewZ, cameraNear, cameraFar);
     })();
 
     const geometry = new THREE.SphereGeometry(shadowRadius * (H.BOUND / H.CRITICAL), 64, 40);
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.name = 'gargantua-lens';
+    mesh.name = 'great-hole-lens';
     mesh.frustumCulled = false;
 
     let turns = 0;
@@ -479,7 +479,7 @@ export function* createGargantuaLensSteps({ shadowRadius, uReveal = uniform(1), 
          * @param {number} [shadowScale] the shadow sphere's own scale (it grows out of a point as
          *   the hole arrives): the traced shadow follows it, so the two stay one circle
          * @param {THREE.Vector3|null} [eye] the camera's world position: the carrier shrinks to stay
-         *   ahead of it (GARGANTUA_LENS_CARRIER)
+         *   ahead of it (GREAT_HOLE_LENS_CARRIER)
          */
         update(diskPivot, dt = 0, shadowScale = 1, eye = null) {
             mesh.scale.setScalar(1);
@@ -488,9 +488,9 @@ export function* createGargantuaLensSteps({ shadowRadius, uReveal = uniform(1), 
             u.hole.value.copy(_pos);
             const grown = Number.isFinite(shadowScale) ? Math.max(shadowScale, 1e-3) : 1;
             u.rs.value = Math.max((shadowRadius * _scale.x * grown) / H.CRITICAL, 1e-6);
-            // THE EYE GOES IN (GARGANTUA_LENS_CARRIER): the carrier keeps its front ahead of the eye.
+            // THE EYE GOES IN (GREAT_HOLE_LENS_CARRIER): the carrier keeps its front ahead of the eye.
             if (eye) {
-                const C = GARGANTUA_LENS_CARRIER;
+                const C = GREAT_HOLE_LENS_CARRIER;
                 const bound = shadowRadius * (H.BOUND / H.CRITICAL) * _scale.x;
                 const carrier = THREE.MathUtils.clamp((_pos.distanceTo(eye) - C.front) / Math.max(bound, 1e-6), C.minScale, 1);
                 if (carrier < 1) {
@@ -529,7 +529,7 @@ export function* createGargantuaLensSteps({ shadowRadius, uReveal = uniform(1), 
         createBand({ uFade = uniform(1), uOpacity = uniform(1) } = {}) {
             const toRs = H.CRITICAL / shadowRadius;
             const band = new THREE.MeshBasicNodeMaterial();
-            band.name = 'Odyssey Gargantua — band';
+            band.name = 'Odyssey great hole — band';
             band.transparent = true;
             band.premultipliedAlpha = true;
             band.depthWrite = false;
@@ -560,7 +560,7 @@ export function* createGargantuaLensSteps({ shadowRadius, uReveal = uniform(1), 
                 16,
             );
             const bandMesh = new THREE.Mesh(ring, band);
-            bandMesh.name = 'gargantua-band';
+            bandMesh.name = 'great-hole-band';
             bands.push(bandMesh);
             return { mesh: bandMesh, material: band, uniforms: { uFade, uOpacity } };
         },

@@ -3,7 +3,7 @@
 Olov: *"how can we make chapter 6 less clutterly and more visually impressive? I want a more epic
 visually experience in chapter 6."*, then *"Now start improving this chapter so it becomes a space
 masterpiece experience. You can start working on all steps."* Along the way:
-- *"I guess the black hole in the black hole theme looks like the gargantua in interstellar."*
+- The ask: Odyssey's black hole should look like the Black Hole theme's traced one.
 - *"And remember, chapter 7 are 'inside' the black hole."*
 - *"why do we need this neon line into the black hole, cant just the orb path go into the black
   hole???"*
@@ -27,9 +27,9 @@ dust stays for parallax, the streaks for the pull, and the comet. `?odysseyCh6Cl
 `options.ambient`) builds them all again for a side by side. Tests that cover those layers build
 with `CH6_AMBIENT_ALL`.
 
-## 2. The black hole, traced (odyssey-gargantua-lens.tsl.js, odyssey-gargantua-gas.js)
+## 2. The black hole, traced (odyssey-great-hole-lens.tsl.js, odyssey-great-hole-gas.js)
 
-The hole (chapter 6's omen and chapter 7's Gargantua) was painted from parts:
+The hole (chapter 6's omen and chapter 7's great hole) was painted from parts:
 - a black sphere and a thin ring mesh;
 - two torus arcs standing in for the disk's far side;
 - a flat band for the disk.
@@ -37,7 +37,7 @@ The hole (chapter 6's omen and chapter 7's Gargantua) was painted from parts:
 Up close it read as a target of glowing hoops. It is now the Black Hole theme's hole, re-derived for
 Odyssey (theme code is never imported): one material that traces every view ray through
 Schwarzschild spacetime. The photon path x'' = -(3/2) h² x / |x|⁵ is stepped symplectically inside
-a bounding sphere, with the closed-form bend outside it. Everything that makes Gargantua read comes
+a bounding sphere, with the closed-form bend outside it. Everything that makes the great hole read comes
 out of the bend:
 - the far side of the disk arching over the shadow and tucked under it;
 - the thin photon ring;
@@ -65,7 +65,7 @@ lens's march sphere (~4.5 shadow radii out), which it left at ~12.9° of hole, a
 to painted parts (a razor ring on the silhouette, a flat band, embers). The traced hole now carries
 the whole dive: see "The dive" below.
 
-![The traced hole at p 0.845](images/odyssey-space-2026-10-31/traced-gargantua.jpg)
+![The traced hole at p 0.845](images/odyssey-space-2026-10-31/traced-great-hole.jpg)
 
 ![The 6->7 hand-over (p 0.85-0.872), the dive's tunnel (0.88) and the fold (0.89-0.91)](images/odyssey-space-2026-10-31/handover-and-inside.jpg)
 
@@ -95,7 +95,7 @@ the length of that chapter slightly and use the orb path going into the black ho
 neon line?"
 
 **Why there was a line.** The black hole hangs on the camera's own aim, 900 units ahead
-(`GARGANTUA_LOCK`). Through chapter 6 the rail is drawn only to the mouth orb, chapter 7's first
+(`GREAT_HOLE_LOCK`). Through chapter 6 the rail is drawn only to the mouth orb, chapter 7's first
 (odyssey-path-horizon.js).
 - Up to p ~0.86 the camera looked at the rail ahead, so the rail and its orbs climbed into the
   middle of the hole.
@@ -148,9 +148,9 @@ experience."
 - That gives ~14° at the mouth and on without a pause.
 - From `landFrom` (60°) it eases onto the horizon's 72°, with the pace matched at the join.
 - The old growth (u^1.9 from the chapter line) started from a standstill.
-- The hole grows as the hero's scale (`poseGargantua`), so the post lens grows with it.
+- The hole grows as the hero's scale (`poseGreatHole`), so the post lens grows with it.
 
-**2. The traced hole carries the dive** (`GARGANTUA_LENS_CARRIER`, odyssey-gargantua-lens.tsl.js;
+**2. The traced hole carries the dive** (`GREAT_HOLE_LENS_CARRIER`, odyssey-great-hole-lens.tsl.js;
 `CH7_TRACED_HOLE`).
 - **The march already worked with the eye inside its sphere.** It starts at the eye. In this
   model the shadow's edge stays on the black sphere from any distance (a ray is captured when

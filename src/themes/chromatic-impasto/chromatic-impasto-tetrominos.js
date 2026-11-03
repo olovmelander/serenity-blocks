@@ -1,6 +1,6 @@
 /**
- * Chromatic Impasto Tetrominos - Colors inspired by Bengt Lindström's "Kvinnan Alpha"
- * Bold, deeply saturated colors from the expressionist painting
+ * Chromatic Impasto Tetrominos - bold tube colours: blood red, cadmium yellow, turquoise, ultramarine
+ * Bold, deeply saturated colours, an expressionist palette
  */
 
 export const CHROMATIC_IMPASTO_TETROMINOS = {

@@ -3,7 +3,7 @@
 ## Context
 
 Create a new visually stunning WebGPU theme called **"Chiral Gold"** for Serenity Blocks, inspired by:
-- **Death Stranding 2's "Chiral Gold" aesthetic**: Dark cinematic atmosphere, brilliant golden metallic particles, high contrast between deep blacks and bright gold, wet/metallic light catching, volumetric golden beams
+- **A gold-on-black aesthetic**: Dark cinematic atmosphere, brilliant golden metallic particles, high contrast between deep blacks and bright gold, wet/metallic light catching, volumetric golden beams
 - **Tetris Effect's synesthesia**: Every gameplay action triggers synchronized visual responses. Particles pulse with the music beat. The player feels like part of the visual experience
 - Pure dark void with floating golden particles - **no reflective plane**
 - Music-reactive particles using real-time audio frequency analysis (new capability)

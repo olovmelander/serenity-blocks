@@ -75,7 +75,7 @@ import {
     createAsteroidRockTSL,
 } from './cosmic-expanse.tsl.js';
 import { createBakedVoidSkyTSL, GALACTIC_BAND_AXIS } from './odyssey-cosmic-backdrop.js';
-import { GARGANTUA_LOCK, resolveGargantuaLockPosition } from './black-hole-transcendence.tsl.js';
+import { GREAT_HOLE_LOCK, resolveGreatHoleLockPosition } from './black-hole-transcendence.tsl.js';
 import { createNebulaFieldTSLSteps } from './odyssey-nebula-field.js';
 import { latticeNoise3 } from './shared/odyssey-lattice-noise.js';
 import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
@@ -381,7 +381,7 @@ export const PLANET_SEAM_LOCK = Object.freeze({
  * THE HOLE'S SEAT AT THE HAND-OVER. 856 u down the rail's direction from the 6->7 hand-over (80 u
  * below its tangent, 39 u right, so it sits where the rail's drawn end points; 871 / 42 up / 51
  * until 2026-10-22, when the rail met the hole at its rim): exactly where ch7's camera lock puts
- * Gargantua for the path camera there (solved by replaying the real controller over the real
+ * The great hole for the path camera there (solved by replaying the real controller over the real
  * spline). Through the chapter the hole rides the path at this seat's angle (resolveOmenPathPlace),
  * so it arrives here on its own; in the last few units before the hand-over it settles onto the
  * live lock — on the path camera a correction of a few thousandths of the frame — so chapter 7
@@ -475,7 +475,7 @@ export const GALAXY_WORLD_SEAT = Object.freeze({
 export const OMEN_HANDOFF_SPAN = 0.035;
 
 /**
- * Global-progress schedule of the omen -> Gargantua handoff.
+ * Global-progress schedule of the omen -> the great hole handoff.
  * @returns {{start: number, end: number}|null} null when the layout is unknown
  */
 export function resolveOmenHandoffWindow(chapterPositions) {
@@ -651,7 +651,7 @@ export const OMEN_LENS = Object.freeze({
 });
 
 export function resolveOmenSpineScale(toLock) {
-    const lockScale = GARGANTUA_LOCK.shadowRadius / OMEN_SHADOW_RADIUS;
+    const lockScale = GREAT_HOLE_LOCK.shadowRadius / OMEN_SHADOW_RADIUS;
     return lockScale / (1 + OMEN_SPINE_ANCHOR.approachGain * (1 - smoothstep01(toLock)));
 }
 
@@ -956,7 +956,7 @@ function readCh6UrlFlag(name) {
  */
 export const CH6_AMBIENT = Object.freeze({
     nebulaField: false,
-    // The glitter in the hole's disk plane: the traced hole (odyssey-gargantua-lens.tsl.js)
+    // The glitter in the hole's disk plane: the traced hole (odyssey-great-hole-lens.tsl.js)
     // carries its own gas, and the sparks read as dust on the lens.
     debris: false,
     dustNear: false,
@@ -1427,7 +1427,7 @@ function createVoidSky(uniforms) {
 }
 
 function* createBlackHoleSteps(uniforms, options = {}) {
-    // TSL builder: the shadow and, round it, the traced hole (odyssey-gargantua-lens.tsl.js);
+    // TSL builder: the shadow and, round it, the traced hole (odyssey-great-hole-lens.tsl.js);
     // `?odysseyPaintedHole=1` the painted one it replaced (photon ring, fold arcs, disk band).
     const { group } = yield* createBlackHoleTSLSteps(uniforms.uTime, uniforms.uEnergy, {
         painted: readCh6UrlFlag('odysseyPaintedHole'),
@@ -2513,15 +2513,15 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
             const lock = THREE.MathUtils.smoothstep(cameraProgress, handoffWindow.start, handoffWindow.end);
             if (lock > 0) {
                 // The hero camera while looking around (see black-hole-transcendence.js).
-                resolveGargantuaLockPosition(lockCamera, _omenLock).sub(group.position);
+                resolveGreatHoleLockPosition(lockCamera, _omenLock).sub(group.position);
                 blackHole.position.lerp(_omenLock, lock);
             }
         }
-        // Square to the eye (ch7's Gargantua pose): the shadow faces the camera and the disk
+        // Square to the eye (ch7's great hole pose): the shadow faces the camera and the disk
         // band reads across the frame wherever the corridor turns.
         orientBlackHoleOmen(blackHole, lockCamera);
         // EXACTLY ONE OPAQUE SHADOW. The omen's shadow covers the hole until the handoff is
-        // complete — the frame ch7 appears, with Gargantua's identical shadow (same lock, same
+        // complete — the frame ch7 appears, with the great hole's identical shadow (same lock, same
         // radius) taking over there (black-hole-transcendence.js). Opacity is re-asserted
         // because, until the environment manager honours `odysseyFadeExempt`, it still writes a
         // crossfade opacity into this material each frame.
@@ -2534,7 +2534,7 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
             // of its own light. It grows out of a point as the light around it fades in.
             shadow.scale.setScalar(Math.max(1e-3, Math.sqrt(omenReveal)));
         }
-        // The traced hole round that shadow (odyssey-gargantua-lens.tsl.js): one circle with it,
+        // The traced hole round that shadow (odyssey-great-hole-lens.tsl.js): one circle with it,
         // the disk in the disk pivot's plane, drawn exactly while the omen's shadow is.
         const tracer = blackHole.userData.lens;
         if (tracer) {

@@ -1,7 +1,7 @@
 // THE DIVE INTO THE HOLE (2026-11-02). Olov: "can we extend the length of that chapter slightly and
 // use the orb path going into the black hole instead of this neon line? ... really improve this
 // visual experience." The hole looms on the way in (CH7_APPROACH), the traced hole carries the whole
-// dive with the eye inside its march sphere (GARGANTUA_LENS_CARRIER, CH7_TRACED_HOLE), and the trip
+// dive with the eye inside its march sphere (GREAT_HOLE_LENS_CARRIER, CH7_TRACED_HOLE), and the trip
 // lingers on the run-in and at the rim (CH7_PLUNGE_TRAVEL). Played on the real camera
 // (tests/unit/helpers/odyssey-camera-rig.js).
 import { describe, expect, it } from 'vitest';
@@ -21,13 +21,13 @@ import {
 import {
     CH7_TRACED_HOLE,
     createBlackHoleTranscendenceEnvironment,
-    poseGargantua,
+    poseGreatHole,
     updateBlackHoleTranscendenceEnvironment,
 } from '../../src/rendering/odyssey/chapter-environments/black-hole-transcendence.js';
 import {
-    GARGANTUA_HOLE,
-    GARGANTUA_LENS_CARRIER,
-} from '../../src/rendering/odyssey/chapter-environments/odyssey-gargantua-lens.tsl.js';
+    GREAT_HOLE_HOLE,
+    GREAT_HOLE_LENS_CARRIER,
+} from '../../src/rendering/odyssey/chapter-environments/odyssey-great-hole-lens.tsl.js';
 
 const rig = createOdysseyCameraRig();
 const { cp } = rig;
@@ -70,7 +70,7 @@ describe('the hole looms on the way in', () => {
     it('poses the hole bigger on the run-in, the lock\'s size before it', () => {
         const group = createBlackHoleTranscendenceEnvironment({ particleCount: 100 });
         const scaleAt = (p) => {
-            poseGargantua(group, rig.poseAt(p), 0, 0, resolveBlackHoleFall(p, cp));
+            poseGreatHole(group, rig.poseAt(p), 0, 0, resolveBlackHoleFall(p, cp));
             return group.userData.heroScale;
         };
         expect(scaleAt(runFrom - 0.002)).toBe(1);
@@ -113,14 +113,14 @@ describe('the traced hole carries the dive', () => {
         lens.update(hero.diskPivot, 0, 1, camera.position);
         expect(lens.uniforms.rs.value).toBe(rs);
         const hole = lens.uniforms.hole.value;
-        const carrier = rs * GARGANTUA_HOLE.BOUND * lens.mesh.scale.x;
+        const carrier = rs * GREAT_HOLE_HOLE.BOUND * lens.mesh.scale.x;
         // The eye is inside the march sphere, so the carrier has shrunk...
-        expect(hole.distanceTo(camera.position)).toBeLessThan(rs * GARGANTUA_HOLE.BOUND);
+        expect(hole.distanceTo(camera.position)).toBeLessThan(rs * GREAT_HOLE_HOLE.BOUND);
         expect(lens.mesh.scale.x).toBeLessThan(1);
         // ...to keep its front `front` units ahead of the eye: past the rail (the mouth orb is
         // within ~80 u) and in front of the shadow's near surface.
-        expect(hole.distanceTo(camera.position) - carrier).toBeCloseTo(GARGANTUA_LENS_CARRIER.front, 3);
-        expect(hole.distanceTo(camera.position) - (rs * GARGANTUA_HOLE.CRITICAL)).toBeGreaterThan(GARGANTUA_LENS_CARRIER.front);
+        expect(hole.distanceTo(camera.position) - carrier).toBeCloseTo(GREAT_HOLE_LENS_CARRIER.front, 3);
+        expect(hole.distanceTo(camera.position) - (rs * GREAT_HOLE_HOLE.CRITICAL)).toBeGreaterThan(GREAT_HOLE_LENS_CARRIER.front);
         // Far away, the whole sphere as before.
         lens.update(hero.diskPivot, 0, 1, camera.position.clone().addScaledVector(hole.clone().sub(camera.position).normalize(), -1e5));
         expect(lens.mesh.scale.x).toBe(1);

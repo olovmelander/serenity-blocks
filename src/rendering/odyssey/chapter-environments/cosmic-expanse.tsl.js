@@ -58,15 +58,15 @@ import {
 import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
 import { latticeNoise3 } from './shared/odyssey-lattice-noise.js';
 import {
-    createAccretionDiskTSL as createGargantuaDiskTSL,
-    createGargantuaPhotonRingTSL,
+    createAccretionDiskTSL as createGreatHoleDiskTSL,
+    createGreatHolePhotonRingTSL,
     createLensedFoldMaterialTSL,
 } from './black-hole-transcendence.tsl.js';
 import { ODYSSEY_WORLD_SUN } from './shared/chapter-profile.js';
 import { auroraSurfaceTerm, createPlanetAuroraCrown } from './odyssey-planet-aurora.js';
 import { createRingedGiantTSLSteps } from './odyssey-ringed-giant.tsl.js';
 import { runChapterSteps } from './shared/chapter-build-steps.js';
-import { createGargantuaLensSteps } from './odyssey-gargantua-lens.tsl.js';
+import { createGreatHoleLensSteps } from './odyssey-great-hole-lens.tsl.js';
 
 // ── Nebula void dome — FBM galactic backdrop (-100 backstop; must NOT bloom) ──────
 
@@ -287,7 +287,7 @@ export function createLensShellTSL(uTime) {
     return { mesh, material, geometry };
 }
 
-// ── Black-hole OMEN — chapter 7's Gargantua, foreshadowed ────────────────────────────
+// ── Black-hole OMEN — chapter 7's great hole, foreshadowed ────────────────────────────
 //
 // MASTERPIECE PASS (2026-10). The omen used to be its own vocabulary (a purple Keplerian
 // disk on a fixed -1.12 tilt, two pink glow rings, a fresnel "lensing" shell that drew a thin
@@ -295,7 +295,7 @@ export function createLensShellTSL(uTime) {
 // black hole. It is now built from ch7's own builders (black shadow, razor photon ring,
 // lensed fold arcs on a FACE pivot the chapter turns to the eye every frame, and the thin
 // white-hot band on a DISK pivot tilted near edge-on), so the omen the player chases all
-// chapter IS the black hole they fall into. Ratios match CH7_GARGANTUA / CH7_FOLD_ARC_SETTINGS.
+// chapter IS the black hole they fall into. Ratios match CH7_GREAT_HOLE / CH7_FOLD_ARC_SETTINGS.
 
 /** The omen's shadow radius (group-local; the chapter scales the group 1.2 -> 3.4). */
 export const OMEN_SHADOW_RADIUS = 24;
@@ -328,7 +328,7 @@ export function* createBlackHoleTSLSteps(uTime, uEnergy, { painted = false, qual
     horizon.name = 'omen-shadow';
     // FADE-EXEMPT (seamless pass, agreed interface with the environment manager): the shadow
     // stays OPAQUE through every crossfade. Forced transparent and faded with the chapter, the
-    // omen's shadow and Gargantua's each covered only part of the hole at the 6->7 seam, and
+    // omen's shadow and the great hole's each covered only part of the hole at the 6->7 seam, and
     // stars showed through it. The chapter drives its visibility instead (exactly one of the
     // two shadows is drawn at any progress — see updateCosmicExpanseEnvironment).
     horizon.userData.odysseyFadeExempt = true;
@@ -340,7 +340,7 @@ export function* createBlackHoleTSLSteps(uTime, uEnergy, { painted = false, qual
     // its full size. The chapter drives this uniform instead.
     const uReveal = uniform(1);
     if (!painted) {
-        // TRACED (2026-10-31, odyssey-gargantua-lens.tsl.js): the photon ring, the lensed far side
+        // TRACED (2026-10-31, odyssey-great-hole-lens.tsl.js): the photon ring, the lensed far side
         // of the disk, the disk and its glowing gas all come out of one material that bends every
         // view ray round the hole, round this same shadow. The disk's plane is the DISK pivot's
         // (the pose the painted band had). `?odysseyPaintedHole=1` builds the painted hole again.
@@ -349,7 +349,7 @@ export function* createBlackHoleTSLSteps(uTime, uEnergy, { painted = false, qual
         diskPivot.rotation.order = 'ZYX';
         diskPivot.rotation.set(-(Math.PI / 2 - 0.10), 0, -0.10);
         face.add(diskPivot);
-        const lens = yield* createGargantuaLensSteps({ shadowRadius: S, uReveal, quality });
+        const lens = yield* createGreatHoleLensSteps({ shadowRadius: S, uReveal, quality });
         face.add(lens.mesh);
         group.userData.uReveal = uReveal;
         group.userData.face = face;
@@ -366,7 +366,7 @@ export function* createBlackHoleTSLSteps(uTime, uEnergy, { painted = false, qual
             },
         };
     }
-    const photon = createGargantuaPhotonRingTSL(time, {
+    const photon = createGreatHolePhotonRingTSL(time, {
         shadowRadius: S, innerRadius: S, outerRadius: S * 1.075, uFade: uReveal,
     });
     photon.mesh.name = 'omen-photon-ring';
@@ -392,7 +392,7 @@ export function* createBlackHoleTSLSteps(uTime, uEnergy, { painted = false, qual
     diskPivot.rotation.order = 'ZYX';
     diskPivot.rotation.set(-(Math.PI / 2 - 0.10), 0, -0.10);
     face.add(diskPivot);
-    const disk = createGargantuaDiskTSL(time, energy, {
+    const disk = createGreatHoleDiskTSL(time, energy, {
         innerRadius: S * 1.34, outerRadius: S * 4.8, uFade: uReveal,
     });
     disk.mesh.name = 'accretion-disk';

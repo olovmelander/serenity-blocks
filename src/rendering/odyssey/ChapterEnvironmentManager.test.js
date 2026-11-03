@@ -196,7 +196,7 @@ describe('ChapterEnvironmentManager seamless fades (2026-10-02)', () => {
         const group = new THREE.Group();
         const shadowRoot = new THREE.Group();
         shadowRoot.userData.odysseyFadeExempt = true;
-        const shadow = opaqueMesh('gargantua-shadow');
+        const shadow = opaqueMesh('great-hole-shadow');
         shadowRoot.add(shadow); // exempt by ANCESTOR
         const tagged = opaqueMesh('omen-shadow');
         tagged.userData.odysseyFadeExempt = true; // exempt by itself

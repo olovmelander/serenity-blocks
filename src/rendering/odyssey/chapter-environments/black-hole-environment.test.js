@@ -3,16 +3,16 @@ import { describe, expect, it } from 'vitest';
 import {
     createBlackHoleTranscendenceEnvironment,
     updateBlackHoleTranscendenceEnvironment,
-    poseGargantua,
+    poseGreatHole,
     resolveFallLockCamera,
     CH7_FOLD_ARC_SETTINGS,
-    CH7_GARGANTUA,
+    CH7_GREAT_HOLE,
 } from './black-hole-transcendence.js';
 import {
     CH7_CORRIDOR_DUST_SETTINGS,
 } from './black-hole-transcendence.tsl.js';
 import { ODYSSEY_CHAPTER_PROFILES } from './shared/chapter-profile.js';
-import { GARGANTUA_HOLE } from './odyssey-gargantua-lens.tsl.js';
+import { GREAT_HOLE_HOLE } from './odyssey-great-hole-lens.tsl.js';
 import { getActiveOdysseyChapterPositions } from '../path-utils.js';
 import { CH7_SUN_CARRY, resolveSunCarry } from './urban-dreams-sun-carry.js';
 import { resolveRetrosunStage } from './urban-dreams.js';
@@ -36,7 +36,7 @@ describe('Black Hole chapter environment (creative plan ch7)', () => {
             .toBeCloseTo(Math.PI * CH7_FOLD_ARC_SETTINGS.sweepRatio, 5);
     });
 
-    it('is ONE Gargantua: a face pivot square to the eye and a disk tilted near edge-on', () => {
+    it('is ONE great hole: a face pivot square to the eye and a disk tilted near edge-on', () => {
         // Masterpiece pass (2026-10): the hero's disk used to face the camera with an 18 deg
         // tilt (a bullseye). The shadow, photon ring and fold arcs now live on a face pivot,
         // and the disk on its own pivot whose normal is within ~10 deg of the screen plane.
@@ -51,19 +51,19 @@ describe('Black Hole chapter environment (creative plan ch7)', () => {
         const towardEye = new THREE.Vector3(0, 0, 1)
             .applyQuaternion(face.getWorldQuaternion(new THREE.Quaternion()));
         const tiltOutOfEdgeOn = Math.asin(Math.abs(diskNormal.dot(towardEye)));
-        expect(tiltOutOfEdgeOn).toBeCloseTo(CH7_GARGANTUA.diskTilt, 3);
+        expect(tiltOutOfEdgeOn).toBeCloseTo(CH7_GREAT_HOLE.diskTilt, 3);
         // The disk wraps the shadow: its gas's inner edge lies outside the photon ring. The plunge's
         // band (2026-11-01) is the traced disk's own gas: its ring reaches in to the faint plunge
         // glow, and the disk proper begins at the innermost stable orbit (3 Rs), outside the ring.
-        if (disk.name === 'gargantua-band') {
-            const rs = CH7_GARGANTUA.shadowRadius / GARGANTUA_HOLE.CRITICAL;
-            expect(GARGANTUA_HOLE.DISK_INNER * rs)
-                .toBeGreaterThan(CH7_GARGANTUA.shadowRadius * CH7_GARGANTUA.photonOuter);
-            expect(disk.geometry.parameters.innerRadius).toBeCloseTo(GARGANTUA_HOLE.PLUNGE * rs, 6);
-            expect(disk.geometry.parameters.outerRadius).toBeCloseTo(GARGANTUA_HOLE.DISK_OUTER * 1.08 * rs, 6);
+        if (disk.name === 'great-hole-band') {
+            const rs = CH7_GREAT_HOLE.shadowRadius / GREAT_HOLE_HOLE.CRITICAL;
+            expect(GREAT_HOLE_HOLE.DISK_INNER * rs)
+                .toBeGreaterThan(CH7_GREAT_HOLE.shadowRadius * CH7_GREAT_HOLE.photonOuter);
+            expect(disk.geometry.parameters.innerRadius).toBeCloseTo(GREAT_HOLE_HOLE.PLUNGE * rs, 6);
+            expect(disk.geometry.parameters.outerRadius).toBeCloseTo(GREAT_HOLE_HOLE.DISK_OUTER * 1.08 * rs, 6);
         } else {
             expect(disk.geometry.parameters.innerRadius)
-                .toBeGreaterThan(CH7_GARGANTUA.shadowRadius * CH7_GARGANTUA.photonOuter);
+                .toBeGreaterThan(CH7_GREAT_HOLE.shadowRadius * CH7_GREAT_HOLE.photonOuter);
         }
         // Retired: the lensing shell that sat INSIDE the opaque horizon, the off-frame halo,
         // the entry hero, the five secondary mini-holes, the glow rings, the violet wash.
@@ -83,7 +83,7 @@ describe('Black Hole chapter environment (creative plan ch7)', () => {
         camera.position.set(267, 1358, -1146);
         camera.lookAt(camera.position.x - 0.2, camera.position.y + 10, camera.position.z + 0.1);
         camera.updateMatrixWorld(true);
-        expect(poseGargantua(group, camera, 3)).toBe(true);
+        expect(poseGreatHole(group, camera, 3)).toBe(true);
         const { distantHole } = group.userData;
         group.updateMatrixWorld(true);
         const hero = distantHole.getWorldPosition(new THREE.Vector3());
@@ -91,10 +91,10 @@ describe('Black Hole chapter environment (creative plan ch7)', () => {
         const z = new THREE.Vector3(0, 0, 1).applyQuaternion(distantHole.getWorldQuaternion(new THREE.Quaternion()));
         expect(Number.isFinite(z.x + z.y + z.z)).toBe(true);
         expect(z.dot(toEye)).toBeGreaterThan(0.999);
-        expect(hero.distanceTo(camera.position)).toBeGreaterThan(CH7_GARGANTUA.lockDepth * 0.99);
+        expect(hero.distanceTo(camera.position)).toBeGreaterThan(CH7_GREAT_HOLE.lockDepth * 0.99);
         // The lens target carries the shadow radius for the post pass.
         expect(group.userData.lensWorldPos.distanceTo(hero)).toBeLessThan(1e-3);
-        expect(group.userData.lensWorldPos.lensRadius).toBe(CH7_GARGANTUA.shadowRadius);
+        expect(group.userData.lensWorldPos.lensRadius).toBe(CH7_GREAT_HOLE.shadowRadius);
     });
 
     it('scales the corridor dust and ember density with the quality preset', () => {
@@ -155,7 +155,7 @@ describe('Black Hole chapter environment (creative plan ch7)', () => {
 });
 
 // ── SEAMLESS PASS (2026-10) ───────────────────────────────────────────────────────────
-describe('Gargantua while the eye looks around', () => {
+describe('The great hole while the eye looks around', () => {
     it('holds the hole in the sky, then eases it onto the gaze as the window opens', () => {
         const camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 9000);
         camera.position.set(10, 700, -40);
@@ -188,7 +188,7 @@ describe('Gargantua while the eye looks around', () => {
     });
 });
 
-describe('Gargantua at the seams', () => {
+describe('The great hole at the seams', () => {
     const positions = getActiveOdysseyChapterPositions();
     const ch7 = positions[6];
     const ch8 = positions[7];
@@ -238,7 +238,7 @@ describe('Gargantua at the seams', () => {
         expect(group.userData.fall.inside).toBe(1);
         expect(group.userData.lensWorldPos.portal).toBe(1);
         expect(group.userData.lensWorldPos.lensRadius)
-            .toBeCloseTo(CH7_GARGANTUA.shadowRadius * group.userData.heroScale, 3);
+            .toBeCloseTo(CH7_GREAT_HOLE.shadowRadius * group.userData.heroScale, 3);
         expect(distantHole.userData.singularity.uOpen.value).toBe(0);
         expect(sunCopy.visible).toBe(false);
 

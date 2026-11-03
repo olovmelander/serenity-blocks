@@ -1,6 +1,6 @@
 /**
  * THE SPACE MASTERPIECE PASS (2026-10-31, docs/ODYSSEY_CH6_SPACE_MASTERPIECE_2026-10.md): the
- * traced black hole (odyssey-gargantua-lens.tsl.js), the Galaxy theme's disc and suns
+ * traced black hole (odyssey-great-hole-lens.tsl.js), the Galaxy theme's disc and suns
  * (odyssey-spiral-galaxy*.js) and the orb path into the hole. The bakes are seeded and in range,
  * and every new material builds for WebGPU (WGSL) and the WebGL2 fallback (GLSL) on a device-less
  * renderer without a word.
@@ -11,11 +11,11 @@ import {
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import {
-    GARGANTUA_GAS, bakeGargantuaGas,
-} from '../../src/rendering/odyssey/chapter-environments/odyssey-gargantua-gas.js';
+    GREAT_HOLE_GAS, bakeGreatHoleGas,
+} from '../../src/rendering/odyssey/chapter-environments/odyssey-great-hole-gas.js';
 import {
-    GARGANTUA_HOLE, createGargantuaLensSteps,
-} from '../../src/rendering/odyssey/chapter-environments/odyssey-gargantua-lens.tsl.js';
+    GREAT_HOLE_HOLE, createGreatHoleLensSteps,
+} from '../../src/rendering/odyssey/chapter-environments/odyssey-great-hole-lens.tsl.js';
 import {
     SPIRAL_GALAXY_NOISE, bakeSpiralGalaxyNoise,
 } from '../../src/rendering/odyssey/chapter-environments/odyssey-spiral-galaxy-noise.js';
@@ -49,9 +49,9 @@ afterEach(() => { vi.restoreAllMocks(); });
 
 describe('the space masterpiece bakes', () => {
     it('bakes the hole\'s gas deterministically, each channel over the full byte range', () => {
-        const a = bakeGargantuaGas();
-        const b = bakeGargantuaGas();
-        expect(a.length).toBe(GARGANTUA_GAS.width * GARGANTUA_GAS.height * 4);
+        const a = bakeGreatHoleGas();
+        const b = bakeGreatHoleGas();
+        expect(a.length).toBe(GREAT_HOLE_GAS.width * GREAT_HOLE_GAS.height * 4);
         expect(Buffer.from(a).equals(Buffer.from(b))).toBe(true);
         for (let c = 0; c < 4; c += 1) {
             let lo = 255;
@@ -93,12 +93,12 @@ describe('the space masterpiece bakes', () => {
     });
 
     it('sizes the traced shadow as the chapter\'s own: the march sphere is BOUND / CRITICAL shadow radii', () => {
-        const lens = runChapterSteps(createGargantuaLensSteps({ shadowRadius: 24 }));
+        const lens = runChapterSteps(createGreatHoleLensSteps({ shadowRadius: 24 }));
         lens.mesh.geometry.computeBoundingSphere();
-        const bound = 24 * (GARGANTUA_HOLE.BOUND / GARGANTUA_HOLE.CRITICAL);
+        const bound = 24 * (GREAT_HOLE_HOLE.BOUND / GREAT_HOLE_HOLE.CRITICAL);
         expect(lens.mesh.geometry.boundingSphere.radius).toBeCloseTo(bound, 3);
         lens.update(null, 0.016, 1);
-        expect(lens.uniforms.rs.value).toBeCloseTo(24 / GARGANTUA_HOLE.CRITICAL, 5);
+        expect(lens.uniforms.rs.value).toBeCloseTo(24 / GREAT_HOLE_HOLE.CRITICAL, 5);
         lens.dispose();
     });
 });
@@ -136,16 +136,16 @@ describe('the space masterpiece shaders build for both backends', () => {
 
     [['WGSL', false], ['GLSL', true]].forEach(([label, forceWebGL]) => {
         it(`builds the traced hole (${label})`, () => {
-            const lens = runChapterSteps(createGargantuaLensSteps({ shadowRadius: 24, uReveal: uniform(1) }));
+            const lens = runChapterSteps(createGreatHoleLensSteps({ shadowRadius: 24, uReveal: uniform(1) }));
             expect(build(lens.mesh, forceWebGL)).toEqual([]);
         });
         it(`builds the plunge's band from the lens's gas (${label})`, () => {
-            const lens = runChapterSteps(createGargantuaLensSteps({ shadowRadius: 24, uReveal: uniform(1) }));
+            const lens = runChapterSteps(createGreatHoleLensSteps({ shadowRadius: 24, uReveal: uniform(1) }));
             const band = lens.createBand();
             // The traced disk's own extent: from the plunge to past its outer edge.
             band.mesh.geometry.computeBoundingSphere();
             expect(band.mesh.geometry.boundingSphere.radius)
-                .toBeCloseTo(24 * ((GARGANTUA_HOLE.DISK_OUTER * 1.08) / GARGANTUA_HOLE.CRITICAL), 3);
+                .toBeCloseTo(24 * ((GREAT_HOLE_HOLE.DISK_OUTER * 1.08) / GREAT_HOLE_HOLE.CRITICAL), 3);
             expect(build(band.mesh, forceWebGL)).toEqual([]);
             lens.dispose();
         });

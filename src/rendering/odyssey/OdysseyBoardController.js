@@ -3195,8 +3195,8 @@ export class OdysseyBoardController {
 
     /**
      * THE HERO CAMERA (all-angles pass, 2026-10-18). The journey's heroes — ch6's planet at the
-     * seam and its omen, ch7's Gargantua — are seated on the CAMERA'S basis so they hold their
-     * place in the frame wherever the rail turns (a world-parked Gargantua left ch7 ~75 % black).
+     * seam and its omen, ch7's great hole — are seated on the CAMERA'S basis so they hold their
+     * place in the frame wherever the rail turns (a world-parked great hole left ch7 ~75 % black).
      * But that also made them follow the gaze: looking around freely, the same black hole sat
      * dead centre in every direction. While the eye looks around, the heroes are seated on this
      * camera instead — the render camera's position and lens with the orientation it had when
@@ -3269,7 +3269,7 @@ export class OdysseyBoardController {
     /**
      * THE PATH FLOWS INTO THE HOLE (odyssey-path-inflow.js): from the rail's end at the mouth orb
      * a stream of its light winds into whichever black hole is drawn this frame — chapter 6's
-     * omen until chapter 7's Gargantua takes the shadow over — as the environments posed it.
+     * omen until chapter 7's great hole takes the shadow over — as the environments posed it.
      * @private
      */
     _updatePathInflow(cameraProgress) {
@@ -3335,7 +3335,7 @@ export class OdysseyBoardController {
      * Chapter 6's omen bends the sky as it nears (2026-10-19): set first, so at the 6->7 seam
      * chapter 7's hero — the same spot there — has the last word on the lens centre.
      * ...but only until chapter 7's shadow has taken over (2026-10-23): from there the two are
-     * the same hole only at rest, and through the plunge Gargantua grows while the omen's target
+     * the same hole only at rest, and through the plunge the great hole grows while the omen's target
      * stays small. Both fed the lens each frame, so its smoothing settled between them (a lens
      * radius of 0.38 for a shadow of 0.59 at p 0.877): the bloom mask and the bend sat inside
      * the hole and painted a ghost of the photon ring across the shadow.
@@ -3347,7 +3347,7 @@ export class OdysseyBoardController {
         const environments = this.environmentManager?.environments;
         const omenRelevant = (this.lastActiveChapter === 6
             || (blendState?.inSeam === true && (blendState.sourceChapter === 6 || blendState.targetChapter === 6)))
-            && !this._isGargantuaShadowLive();
+            && !this._isGreatHoleShadowLive();
         const omenLens = omenRelevant && environments?.get(6)?.group?.userData?.lensWorldPos;
         if (omenLens?.lensStrength > 0) post.setLensTarget(omenLens);
         const bhRelevant = this.lastActiveChapter === 7
@@ -3358,25 +3358,25 @@ export class OdysseyBoardController {
     }
 
     /**
-     * Whether chapter 7's Gargantua draws the black hole's shadow this frame (it takes the shadow
+     * Whether chapter 7's great hole draws the black hole's shadow this frame (it takes the shadow
      * over from chapter 6's omen at the 6->7 hand-over and keeps it until the exit's mouth opens).
      * @private
      */
-    _isGargantuaShadowLive() {
+    _isGreatHoleShadowLive() {
         const ch7 = this.environmentManager?.environments?.get(7)?.group;
         return !!(ch7 && ch7.visible !== false && ch7.userData?.distantHole?.userData?.horizon?.visible);
     }
 
     /**
      * The black hole whose shadow is drawn this frame (exactly one is, from chapter 6's omen to
-     * chapter 7's Gargantua): its world centre and shadow radius, from the lens targets the
+     * chapter 7's great hole): its world centre and shadow radius, from the lens targets the
      * chapters keep for the post pass. null when neither is on screen.
      * @private
      */
     _resolveInflowHole() {
         const environments = this.environmentManager?.environments;
         const lens7 = environments?.get(7)?.group?.userData?.lensWorldPos;
-        if (this._isGargantuaShadowLive() && lens7?.lensRadius > 0) {
+        if (this._isGreatHoleShadowLive() && lens7?.lensRadius > 0) {
             return { centre: lens7, radius: lens7.lensRadius, reveal: 1 };
         }
         const ch6 = environments?.get(6)?.group;
