@@ -165,6 +165,32 @@ function placeOnRoute(r, t, out) {
     return out;
 }
 
+/**
+ * How fast an animal swims on its route at `t`, as a share of its mean pace (the pace term of
+ * placeOnRoute), and how fast that share is changing (1/s): what a swimmer's stroke follows (it
+ * strokes harder as it speeds up, and a manta glides while it slows).
+ * @param {OceanRoute} r
+ * @param {number} t seconds
+ * @param {{ share: number, change: number }} [out] written
+ */
+export function roamPace(r, t, out = { share: 1, change: 0 }) {
+    // d(angle)/dt = w (turn + pace cos(pp)); |turn| = 1 and pace < 1, so its size is w (1 + turn pace cos(pp)).
+    const pp = ((TAU * t) / r.paceS) + (r.phase * 1.7);
+    out.share = 1 + (r.turn * r.pace * Math.cos(pp));
+    out.change = -(r.turn * r.pace * Math.sin(pp) * TAU) / r.paceS;
+    return out;
+}
+
+/**
+ * A soft limit: `x` as it is while small, easing into +-`limit` (tanh) instead of stopping on it,
+ * so a lean that reaches its limit never turns a corner.
+ * @param {number} x
+ * @param {number} limit
+ */
+export function softLimit(x, limit) {
+    return limit * Math.tanh(x / limit);
+}
+
 const _ahead = { x: 0, y: 0, z: 0 };
 const _behind = { x: 0, y: 0, z: 0 };
 

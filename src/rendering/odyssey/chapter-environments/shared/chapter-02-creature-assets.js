@@ -3,12 +3,15 @@
 /**
  * @fileoverview Chapter 2 (Deep Ocean) GLB sea-creature assets.
  *
- * Skinned, vertex-coloured creature GLBs (the hero manta) that swim the Deep
- * Ocean corridor. Authored in the project's own local asset pipeline — the same
- * one that produced the Chapter 3 songbirds (chapter-03-bird-assets.js):
- *   Gemini concept photo → TRELLIS.2-4B (Q8_0 GGUF) photo→3D with vertex-colour
- *   baking → headless-Blender auto-rig (spine + cephalic + per-wing bone chains)
- *   + a natural glide/flap cycle.
+ * Skinned, vertex-coloured creature GLBs that swim the Deep Ocean:
+ *   - `humpback-swim.glb` (2026-11-03): the humpback mother and calf of the whale pass
+ *     (composition/odyssey-whale-pass.js), built, rigged and keyed in headless Blender by
+ *     scripts/blender/odyssey/odyssey_whales.py. It replaced `whale-glide.glb`, a photo-to-3D
+ *     mesh whose auto-rig was backwards.
+ *   - `manta-glide.glb`: the hero manta of the Deep Ocean diorama, which only the ADR-0015
+ *     recovery path builds (`?odysseyOneWorld=0` or a world-build failure); the One World never
+ *     loads it. Authored in the old local pipeline (Gemini concept photo → TRELLIS.2-4B photo→3D
+ *     with vertex-colour baking → headless-Blender auto-rig + a glide/flap cycle).
  *
  * IMPORTANT: this module is intentionally tolerant of an EMPTY asset directory.
  * `import.meta.glob` returns `{}` when no .glb is present, so the chapter builds
@@ -18,7 +21,7 @@
  * otherwise), and the deep-ocean chapter picks it up automatically.
  */
 
-export const CH2_CREATURE_ASSET_VERSION = 'chapter-02-creatures-v1'; // glob: manta-glide.glb
+export const CH2_CREATURE_ASSET_VERSION = 'chapter-02-creatures-v2'; // glob: humpback-swim.glb, manta-glide.glb
 
 export const CH2_CREATURE_ASSET_CONTRACT = Object.freeze({
     author: 'Serenity Blocks asset pipeline',
@@ -44,8 +47,8 @@ if (Object.keys(ASSET_MODULES).length === 0) {
             '../../assets/chapter-02/creatures/manta-glide.glb',
             import.meta.url,
         ).href,
-        '../../assets/chapter-02/creatures/whale-glide.glb': new URL(
-            '../../assets/chapter-02/creatures/whale-glide.glb',
+        '../../assets/chapter-02/creatures/humpback-swim.glb': new URL(
+            '../../assets/chapter-02/creatures/humpback-swim.glb',
             import.meta.url,
         ).href,
     };
@@ -66,15 +69,16 @@ const METADATA_BY_FILE = Object.freeze({
         animationClips: 1, // the baked glide/flap cycle
         artDirection: 'dark charcoal-indigo body, electric-cyan ventral bioluminescent rim; the escort hero',
     },
-    'whale-glide.glb': {
-        id: 'whale-glide',
-        title: 'Hero Whale',
+    'humpback-swim.glb': {
+        id: 'humpback-swim',
+        title: 'Humpback',
         role: 'whale',
-        targetSize: 42, // world units, largest dimension (length)
-        vertexColors: true,
+        targetSize: 42, // world units, largest dimension (length); the whale pass sets its own
+        vertexColors: true, // r its white (flippers, flukes below, belly), g the throat, b ao
         skinnedAnimated: true,
-        animationClips: 1, // the baked swim cycle
-        artDirection: 'dark teal-indigo body with faint bioluminescent lines; the companion giant',
+        animationClips: 1, // "Swim": one keyed stroke of 4 s, cyclic
+        source: 'scripts/blender/odyssey/odyssey_whales.py (headless Blender, built from numbers)',
+        artDirection: 'a humpback: long white flippers, wide notched flukes; the mother and calf',
     },
 });
 

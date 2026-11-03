@@ -75,7 +75,7 @@ import { hash21 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
 import { behindSteamDepth, steamVeilWeight } from './odyssey-steam-quench.js';
 import { oceanLifeDrawn, throughSurfaceNode, throughSurfaceShare } from './odyssey-through-surface.js';
 import {
-    OCEAN_ROAM, roamAt, roamHeading, stepRoamArrival,
+    OCEAN_ROAM, roamAt, roamHeading, roamPace, softLimit, stepRoamArrival,
 } from './odyssey-ocean-roam.js';
 
 export const OCEAN_VISITORS_URL = new URL('../assets/chapter-02/visitors/ocean-visitors.glb', import.meta.url).href;
@@ -202,6 +202,37 @@ export const OCEAN_VISITOR_CAST = Object.freeze([
 ]);
 
 /**
+ * HOW THEY STROKE (2026-11-03, docs/ODYSSEY_SEA_MOTION_2026-11.md). Each strokes with its route's
+ * pace (roamPace): the whale shark's tail beats faster and a little wider as it speeds up; the manta
+ * FLAPS while it gathers speed and GLIDES while it slows, wings held out with a slight lift and only
+ * a slow ripple running along them, easing between the two over a few seconds. The stroke's phase
+ * is integrated, so a change of rate never jumps it.
+ *   glideAmp   the manta's wing stroke while it glides (share of a full stroke)
+ *   glideRate  ...and its pace then (share)
+ *   flapEase   how much of a change of pace (share of its largest) turns a glide to a flap
+ *   paceBeat   how much the whale shark's beat follows its pace
+ */
+export const OCEAN_VISITOR_STROKE = Object.freeze({
+    glideAmp: 0.12,
+    glideRate: 0.35,
+    flapEase: 0.35,
+    paceBeat: 0.8,
+});
+
+/**
+ * The manta's flap (1) or glide (0) at a point of its route's pace: it flaps while it speeds up.
+ * @param {{ share: number, change: number }} pace roamPace's
+ * @param {{ pace: number, paceS: number }} route
+ */
+export function mantaFlap(pace, route) {
+    const most = (route.pace * Math.PI * 2) / route.paceS;
+    const x = pace.change / Math.max(most, 1e-6);
+    const e = OCEAN_VISITOR_STROKE.flapEase;
+    const u = Math.min(Math.max((x + e) / (2 * e), 0), 1);
+    return u * u * (3 - (2 * u));
+}
+
+/**
  * Per kind, from the theme's tables (ocean-giants.js SWIM / SKINS): stroke shape and colours.
  *   swim  (amplitude, wavenumber, chord / unused, recoil)
  *   skin  back, belly (w: where the line falls on the rest normal's y), accent A, accent B
@@ -268,7 +299,11 @@ function createVisitorMaterial(uWater, uSurface, seaLevel) {
             const y1 = pow(smoothstep(0.12, 1.0, sp1), 1.25).mul(amp)
                 .mul(sin(phase.sub(sp1.mul(mt.swim[1])).sub(chord.mul(mt.swim[2]))));
             const fx = y1.sub(y0).div(0.01);
-            const heave = float(mt.swim[3]).mul(amp).negate().mul(sin(phase));
+            // Gliding, its wings are held out with a slight lift toward the tips.
+            const glide = oneMinus(smoothstep(float(OCEAN_VISITOR_STROKE.glideAmp), float(0.75), beat));
+            const lift = glide.mul(wing).mul(0.022);
+            const heave = float(mt.swim[3]).mul(amp).negate().mul(sin(phase))
+                .add(lift);
             const sgn = select(local.x.greaterThanEqual(0.0), float(1.0), float(-1.0));
             const tuck = sgn.mul(y0.mul(y0)).div(max(abs(positionGeometry.x), 0.06)).mul(0.5);
             const whip = sin(phase.mul(1.3).sub(s.mul(7.0))).mul(0.04).mul(beat).mul(smoothstep(0.45, 1.0, s))
@@ -385,6 +420,7 @@ export function createOceanVisitors({
     const vU = new THREE.Vector3();
     const up = new THREE.Vector3(0, 1, 0);
     const velocity = new THREE.Vector3();
+    const pace = { share: 1, change: 0 };
 
     return {
         group,
@@ -412,10 +448,11 @@ export function createOceanVisitors({
                     path,
                     mesh,
                     phase: path.phase,
-                    beatPhase: path.phase,
                     fade: 0,
                     roam: {},
-                    heading: null,
+                    // The heading it swam last frame (`hasHeading` false until the first).
+                    heading: { x: 0, y: 0, z: 1 },
+                    hasHeading: false,
                     turn: 0,
                 });
             });
@@ -463,7 +500,7 @@ export function createOceanVisitors({
                 if (!drawn) {
                     // Out of the water and out of sight (or the chapter): it arrives afresh next time.
                     actor.roam = {};
-                    actor.heading = null;
+                    actor.hasHeading = false;
                     mesh.visible = false;
                     return;
                 }
@@ -474,33 +511,50 @@ export function createOceanVisitors({
                 mesh.visible = actor.fade > 0.01;
                 if (!mesh.visible) return;
                 any = true;
-                // Stroke phase integrated on the CPU (never clock x a changing rate); mantas glide.
-                actor.beatPhase += dt * 0.21;
-                const beat = cast.ray ? 0.35 + (0.65 * (0.5 + (0.5 * Math.sin(actor.beatPhase)))) : 0.85;
-                actor.phase += (dt * Math.PI * 2 * (0.6 + (0.4 * beat))) / cast.stroke;
+                // The stroke follows the route's pace; its phase is integrated on the CPU (never
+                // clock x a changing rate). The manta flaps while it speeds up and glides while it
+                // slows; the whale shark beats harder as it goes faster.
+                roamPace(path, time, pace);
+                let beat;
+                let rate;
+                if (cast.ray) {
+                    const flap = mantaFlap(pace, path);
+                    const S = OCEAN_VISITOR_STROKE;
+                    beat = S.glideAmp + ((1 - S.glideAmp) * flap);
+                    rate = S.glideRate + ((1 - S.glideRate) * flap);
+                } else {
+                    const k = 1 + (OCEAN_VISITOR_STROKE.paceBeat * (pace.share - 1));
+                    beat = 0.85 * (0.8 + (0.2 * k));
+                    rate = 0.94 * k;
+                }
+                actor.phase += (dt * Math.PI * 2 * rate) / cast.stroke;
                 mesh.userData.swimPhase = actor.phase;
                 mesh.userData.swimBeat = beat;
                 // Heading from its velocity, mostly level (orientation from WORLD up).
-                roamHeading(velocity, vF, actor.heading || { x: 0, y: 0, z: 1 });
+                roamHeading(velocity, vF, actor.hasHeading ? actor.heading : { x: 0, y: 0, z: 1 });
                 vF.normalize();
                 // Turn: how fast the heading swings toward its side (per half second), eased.
-                if (actor.heading && dt > 0) {
+                if (actor.hasHeading && dt > 0) {
                     const cross = (actor.heading.x * vF.z) - (actor.heading.z * vF.x);
                     const dotH = (actor.heading.x * vF.x) + (actor.heading.z * vF.z);
-                    const rate = (Math.atan2(cross, dotH) / dt) * 0.5;
-                    actor.turn += (rate - actor.turn) * (1 - Math.exp(-dt * 3));
+                    const turnRate = (Math.atan2(cross, dotH) / dt) * 0.5;
+                    actor.turn += (turnRate - actor.turn) * (1 - Math.exp(-dt * 3));
                 }
-                actor.heading = { x: vF.x, y: vF.y, z: vF.z };
+                actor.heading.x = vF.x;
+                actor.heading.y = vF.y;
+                actor.heading.z = vF.z;
+                actor.hasHeading = true;
                 vS.crossVectors(up, vF).normalize();
                 vU.crossVectors(vF, vS).normalize();
+                // Leans into the turn, easing into its limit (a hard clamp turned a corner there).
                 const bankMax = cast.bankMax ?? 0.7;
-                const bank = THREE.MathUtils.clamp(actor.turn * (cast.ray ? 6.0 : 2.5), -bankMax, bankMax);
+                const bank = softLimit(actor.turn * (cast.ray ? 6.0 : 2.5), bankMax);
                 // Bank: the up vector leans toward the inside of the turn.
                 vU.multiplyScalar(Math.cos(bank)).addScaledVector(vS, -Math.sin(bank)).normalize();
                 vS.crossVectors(vU, vF).normalize();
                 basis.makeBasis(vS, vU, vF);
                 mesh.quaternion.setFromRotationMatrix(basis);
-                mesh.userData.swimTurn = THREE.MathUtils.clamp(actor.turn * 4, -0.6, 0.6);
+                mesh.userData.swimTurn = softLimit(actor.turn * 4, 0.6);
             });
             group.visible = any;
         },

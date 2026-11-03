@@ -62,7 +62,7 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    JELLY_KINDS, JELLY_PULSE, OCEAN_JELLIES, jellyAt, jellyBeatS, jellyHang, jellyHome,
+    JELLY_KINDS, JELLY_PULSE, JELLY_SURGE_END, OCEAN_JELLIES, jellyAt, jellyBeatS, jellyHang, jellyHome,
 } from '../composition/odyssey-jellyfish-drift.js';
 import { behindSteamDepth } from '../composition/odyssey-steam-quench.js';
 import {
@@ -223,7 +223,9 @@ export function createOdysseyJellyfish({
         const f = fract(n);
         const k = n.sub(f);
         const x = f.mul(JELLY_PULSE.surge);
-        const surge = float(1).sub(x.add(1).mul(exp(x.negate()))).div(surgeNorm);
+        // (the drift module's jellySurge: the coast comes to rest as the next beat starts)
+        const surge = float(1).sub(x.add(1).mul(exp(x.negate()))).div(surgeNorm)
+            .add(f.mul(f).mul(float(1).sub(f)).mul(JELLY_SURGE_END));
         const s = jB.z.mul(k.add(surge));
         const psi = jC.w.add(jC.z.mul(s).mul(jC.x).div(jB.w));
         const centre = vec3(

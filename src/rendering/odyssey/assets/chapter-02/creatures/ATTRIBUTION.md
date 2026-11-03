@@ -1,28 +1,35 @@
 # Chapter 2 (Deep Ocean) — sea-creature GLB assets
 
-Project-owned original assets, produced by the local `C:\AI` photo→3D→rig pipeline
-(the same one that authored the Chapter 3 songbirds):
+Project-owned original assets. License: proprietary-original. No third-party attribution required.
 
-1. **Concept image** — Flux.2 Klein (or Gemini) renders a clean top-down dorsal
-   manta on a seamless white background, wings spread flat & symmetric.
-2. **Photo → 3D** — TRELLIS.2-4B (Q8_0 GGUF) on ComfyUI, with vertex-colour baking.
-3. **Rig & animate** — headless Blender auto-rig (centerline spine + cephalic fins +
-   a 3-bone chain per pectoral wing) with distance-based weights and a slow glide/
-   flap cycle (one clip).
-
-## Expected files
-
-| file | role | notes |
+| file | role | made by |
 | --- | --- | --- |
-| `manta-glide.glb` | hero manta | dark body + cyan ventral bioluminescence; the escort hero |
+| `humpback-swim.glb` | the humpback mother and calf of the whale pass (`composition/odyssey-whale-pass.js`) | `scripts/blender/odyssey/odyssey_whales.py` |
+| `manta-glide.glb` | the hero manta of the Deep Ocean diorama, built only on the ADR-0015 recovery path (`?odysseyOneWorld=0`) | the old local photo-to-3D pipeline (below) |
 
-Export as **glTF binary (.glb)**, +Z forward, Y up, real-ish proportions (wingspan
-wider than body). The loader auto-scales by the largest bound (`targetSize` in
-`shared/chapter-02-creature-assets.js`) and replaces the GLB's materials with the
-chapter's TSL bioluminescent silhouette, so only geometry + skeleton + the baked
-vertex colours + the animation clip need to be correct.
+## humpback-swim.glb (2026-11-03)
 
-> ⚠️ Odyssey GLB assets are **not** auto-tracked — `git add` the `.glb` explicitly
-> or it vanishes on clean checkouts / CI.
+Built, rigged and animated in headless Blender from numbers. Nothing is downloaded or scanned:
 
-License: proprietary-original (project-owned). No third-party attribution required.
+    blender -b --factory-startup --python scripts/blender/odyssey/odyssey_whales.py -- \
+        [--out <glb>] [--review <dir>] [--blend <review .blend>]
+
+- The body is a signed distance field of smooth masses and fins (the generic SDF library in
+  `scripts/blender/ocean_creatures/sdf.py`), meshed by Blender's bundled openvdb and decimated
+  mirror-symmetric to 6,000 triangles. Normals come from the field.
+- A 13-bone rig and one keyed action, "Swim": one stroke of 4 s at 24 fps, cyclic.
+- COLOR_0 carries the white of the fins (r), the belly's (g) and the ambient occlusion (b).
+- The script writes the same file every run.
+
+It replaced `whale-glide.glb`, a photo-to-3D (TRELLIS) mesh with a 9-bone auto-rig whose swim
+nodded the head and left the flukes still.
+
+## manta-glide.glb (legacy)
+
+Made by the local `C:\AI` photo→3D→rig pipeline: a Flux.2 Klein / Gemini concept image →
+TRELLIS.2-4B (Q8_0 GGUF) on ComfyUI with vertex-colour baking → a headless-Blender auto-rig
+(spine, cephalic fins, a 3-bone chain per wing) with a glide/flap cycle. The One World never
+loads it.
+
+> ⚠️ Odyssey GLB assets are **not** auto-tracked — `git add` the `.glb` explicitly or it vanishes
+> on clean checkouts / CI.
