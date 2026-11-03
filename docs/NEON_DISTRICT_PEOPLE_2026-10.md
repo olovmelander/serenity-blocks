@@ -15,7 +15,7 @@ Before the first pass the people were signed-distance pictograms (`ndFigure`): a
 rounded-box body and straight capsule limbs, one dark fill with a rim. They stood on cards
 parallel to the glass, and the game's camera sees every shop 30–88° off its window, so from the
 street they were squeezed to a third of their width: a faint line. The first pass replaced them
-with Blender-baked, relightable sprites of twelve cyberpunk characters; the second made them
+with Blender-baked, relightable sprites of twelve neon-noir street characters; the second made them
 cel-shaded and inked, kitted them out from the references, and loosened their motion; the third
 gave the walkers a real turn (braking, stepping round, standing, setting off), cross-faded
 every frame and view change, and widened the cast to 24 characters.
@@ -26,14 +26,14 @@ every frame and view change, and widened the cast to 24 characters.
 
 ## What is there now
 
-**A cast of cyberpunk characters** in three builds (a man of about 1.77 m, a woman of about
+**A cast of neon-noir street characters** in three builds (a man of about 1.77 m, a woman of about
 1.66 m, a heavy man of about 1.86 m), recoloured per person. Each role has one character or more,
 picked by the person's seed:
 
 | Role | Characters (clips) | Where |
 |---|---|---|
-| walker | a fixer (calf-length coat open below the belt, collar up, a lit visor, pauldrons); a netrunner (hood up with a lit edge, goggles and a respirator, crossed straps, lit soles); a brute (chrome arms, pauldrons, a mohawk, knee pads; arms folded at rest); a punk (spiky hair, goggles on the brow, a bomber with a lit zip, shorts, boots; hands on hips); a rider (a metal helmet with a lit visor slit and a crest, lit leg stripes, straps); a nomad (a wide-brimmed hat with a lit band, goggles and a respirator, a coat, a pack of glowing canisters) — `walk*` + `turn*` | crossing any room and turning at its ends |
-| waiting | a corp fixer on her phone (`idleB`); a heavy guard reading the screen on his forearm (`idleC`) | the laundromat, the office |
+| walker | a broker (calf-length coat open below the belt, collar up, a lit visor, pauldrons); a hacker (hood up with a lit edge, goggles and a respirator, crossed straps, lit soles); a brute (chrome arms, pauldrons, a mohawk, knee pads; arms folded at rest); a punk (spiky hair, goggles on the brow, a bomber with a lit zip, shorts, boots; hands on hips); a rider (a metal helmet with a lit visor slit and a crest, lit leg stripes, straps); a nomad (a wide-brimmed hat with a lit band, goggles and a respirator, a coat, a pack of glowing canisters) — `walk*` + `turn*` | crossing any room and turning at its ends |
+| waiting | a corporate broker on her phone (`idleB`); a heavy guard reading the screen on his forearm (`idleC`) | the laundromat, the office |
 | looker | a punk with a chrome arm, hands in pockets (`idleA`); a woman with a chrome arm, a bun and lit stripes down her cargo trousers (`idleD`) | the arcade |
 | staff | a heavy street cook: headband, a cyber eye, a mechanical fist on the pan (`work`, `workStep`) | the noodle bar's counter |
 | tender | a bartender with lit temple implants, polishing glasses (`tend`) | behind the bar |
