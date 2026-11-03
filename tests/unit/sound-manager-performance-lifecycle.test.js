@@ -214,6 +214,22 @@ describe('audio cancellation, cache ownership and transient graphs', () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 
+    it('renders a launch sound once per context and plays it through the SFX bus', () => {
+        const { manager, context, sources } = createManager();
+        manager.playLaunchSound('warp', { volume: 0.9 });
+        manager.playLaunchSound('warp', { volume: 0.9 });
+        expect(context.createBuffer).toHaveBeenCalledOnce();
+        expect(context.createBuffer.mock.calls[0]).toEqual([2, 6 * 48000, 48000]);
+        expect(sources).toHaveLength(2);
+        expect(sources[0].buffer).toBe(sources[1].buffer);
+        expect(sources[0].start).toHaveBeenCalled();
+        manager.playLaunchSound('no-such-sound');
+        expect(sources).toHaveLength(2);
+        manager.isMuted = true;
+        manager.playLaunchSound('begin');
+        expect(sources).toHaveLength(2);
+    });
+
     it('concurrent cold one-shots share fetch/decode but retain independent playback sources', async () => {
         const { manager, context, sources } = createManager();
         const first = manager.playOneShotFile('clip.ogg');

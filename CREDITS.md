@@ -24,8 +24,7 @@ The breathing guide's narration was made by Olov Melander with ElevenLabs (AI te
 
 ## Sound
 
-The sound effects are synthesised in code by the game itself. The two launch sounds (`begin`
-and `warp`) were generated with Stable Audio (Stability AI).
+The sound effects, the two launch sounds included, are synthesised in code by the game itself.
 
 ## Images and models made with AI tools
 

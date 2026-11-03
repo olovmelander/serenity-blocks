@@ -16,6 +16,7 @@ import {
     DEFAULT_MUSIC_TRACK, getThemeMusic, getThemeForMusic, resolveMusicTrackKey,
 } from '../core/progression/theme-music-catalog.js';
 import { random } from '../utils/helpers.js';
+import { renderLaunchSound } from './launch-sounds.js';
 
 const NOISE_CACHE_BYTES = 4 * 1024 * 1024;
 const ONE_SHOT_CACHE_BYTES = 16 * 1024 * 1024;
@@ -278,19 +279,52 @@ export class SoundManager {
             if (!buffer || this.isMuted || this.audioContext !== audioContext
                 || this.audioResourceToken !== resourceToken) return;
 
-            const source = audioContext.createBufferSource();
-            source.buffer = buffer;
-            const gain = audioContext.createGain();
-            gain.gain.value = clampUnitVolume(options.volume ?? 1, 1) * this.getSfxVolume();
-            source.connect(gain);
-            gain.connect(this.getToneDestination(false) || audioContext.destination);
-            this.trackAudioVoice([source], [source, gain]);
-            source.start();
+            this.startOneShotBuffer(buffer, options);
         } catch (error) {
             if (error?.name !== 'AbortError') {
                 console.warn('[SoundManager] one-shot file play failed:', url, error);
             }
         }
+    }
+
+    /**
+     * Play one of the launch sounds ('begin', 'warp'): synthesised by src/audio/launch-sounds.js,
+     * rendered once per sample rate, and played like a one-shot file (SFX bus, mute, volume).
+     * Best-effort: never throws.
+     * @param {string} name
+     * @param {{volume?: number}} [options]
+     */
+    playLaunchSound(name, options = {}) {
+        try {
+            this.resumeAudioContext();
+            if (!this.audioContext || this.isMuted) return;
+            const { audioContext } = this;
+            const key = `launch:${name}@${audioContext.sampleRate}`;
+            let buffer = this.oneShotBuffers.get(key);
+            if (!buffer) {
+                const rendered = renderLaunchSound(name, audioContext.sampleRate);
+                if (!rendered) return;
+                buffer = audioContext.createBuffer(rendered.channels.length, rendered.channels[0].length, rendered.sampleRate);
+                rendered.channels.forEach((data, channel) => buffer.getChannelData(channel).set(data));
+                this.oneShotBuffers.set(key, buffer);
+            }
+            this.startOneShotBuffer(buffer, options);
+        } catch (error) {
+            console.warn('[SoundManager] launch sound failed:', name, error);
+        }
+    }
+
+    /** Start a decoded or rendered one-shot through the SFX bus at the SFX volume. */
+    startOneShotBuffer(buffer, options = {}) {
+        const { audioContext } = this;
+        const source = audioContext.createBufferSource();
+        source.buffer = buffer;
+        const gain = audioContext.createGain();
+        gain.gain.value = clampUnitVolume(options.volume ?? 1, 1) * this.getSfxVolume();
+        source.connect(gain);
+        gain.connect(this.getToneDestination(false) || audioContext.destination);
+        this.trackAudioVoice([source], [source, gain]);
+        source.start();
     }
 
     /** Share cold fetch/decode work; late results cannot repopulate a torn-down context. */

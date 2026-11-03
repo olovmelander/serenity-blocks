@@ -16,7 +16,7 @@
  *              and cross lines) in sRGB, then applies the INVERSE of the renderer's ACES curve,
  *              so after tone mapping the pixels equal the CSS ones. The DOM mark can therefore
  *              disappear on the handoff frame with no visible seam.
- *   0.05–0.17  IGNITION — a flare peaks at p≈0.087 (on warp.ogg's peak: the sound starts at the
+ *   0.05–0.17  IGNITION — a flare peaks at p≈0.087 (on the warp sound's peak: it starts at the
  *              reveal, p≈0.02), the solid gem shatters and the particles are born on its facets.
  *   0.17–0.33  CREEP → JUMP — the bars retract, the room falls away, then the flight kicks
  *              (trapezoid velocity profile) with an FOV push and a vanishing-point glow.
@@ -111,8 +111,8 @@ const TONE_EXPOSURE = 0.9; // the boot renderer's toneMappingExposure (ACES)
 const GEM_TARGET_PX = 118;
 
 // ── Progress timeline (see header) ──
-// The reveal is at p≈0.02 (BOOT_WARP_REVEAL_PROGRESS) and warp.ogg starts there with its peak
-// 0.4 s later, i.e. p≈0.02 + 0.4/6.5 ≈ 0.08: the flare peaks on that beat.
+// The reveal is at p≈0.02 (BOOT_WARP_REVEAL_PROGRESS) and the warp sound (src/audio/launch-sounds.js)
+// starts there with its peak 0.4 s later, i.e. p≈0.02 + 0.4/6.5 ≈ 0.08: the flare peaks on that beat.
 const T_FLARE_IN = 0.045;
 const T_FLARE_PEAK_A = 0.08;
 const T_FLARE_PEAK_B = 0.094;

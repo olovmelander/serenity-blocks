@@ -1007,7 +1007,7 @@ describe('playBootWarpHandoff hold wiring', () => {
             urlParams: new URLSearchParams(),
             introAnimation: { revealTitle: vi.fn() },
             dismissStartupShell,
-            soundManager: { playOneShotFile: vi.fn() },
+            soundManager: { playLaunchSound: vi.fn() },
             setTimeoutFn: (callback) => { callback(); return 1; },
         });
 
@@ -1098,7 +1098,7 @@ describe('playBootWarpHandoff hold wiring', () => {
             warpTransition: observedTransition,
             urlParams: new URLSearchParams(),
             introAnimation: { revealTitle: vi.fn() },
-            soundManager: { playOneShotFile: vi.fn() },
+            soundManager: { playLaunchSound: vi.fn() },
             dismissStartupShell: vi.fn(() => {
                 dismissed = true;
                 dismissedAt = samples.at(-1);
@@ -1172,7 +1172,7 @@ describe('playBootWarpHandoff ident arming class', () => {
             urlParams: new URLSearchParams(),
             introAnimation: { revealTitle: vi.fn() },
             dismissStartupShell: vi.fn(),
-            soundManager: { playOneShotFile: vi.fn() },
+            soundManager: { playLaunchSound: vi.fn() },
             setTimeoutFn: (callback) => { callback(); return 1; },
             ...extra,
         };
