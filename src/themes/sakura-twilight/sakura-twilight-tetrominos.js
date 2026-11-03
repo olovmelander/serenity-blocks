@@ -7,11 +7,11 @@
 export const SAKURA_TWILIGHT_TETROMINOS = {
     version: 1,
     colors: {
-        I: '#A8C8E8', // Moonlight blue - cool ethereal glow
-        O: '#FFCF8B', // Lantern amber - warm floating light
-        T: '#7B5B9A', // Deep twilight purple - matches fog
+        I: '#FFCF8B', // Lantern amber - warm floating light
+        O: '#A8C8E8', // Moonlight blue - cool ethereal glow
+        T: '#DB7093', // Rose pink - sakura shadow tone
         S: '#FFB7C5', // Soft sakura pink - cherry blossom lit
-        Z: '#DB7093', // Rose pink - sakura shadow tone
+        Z: '#7B5B9A', // Deep twilight purple - matches fog
         J: '#9B7BB8', // Lavender mist - evening sky
         L: '#E8B4C8', // Pale cherry blossom - delicate pink
         GARBAGE: '#4A3B5C', // Muted twilight - dark purple-gray

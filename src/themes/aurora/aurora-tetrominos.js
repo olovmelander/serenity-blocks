@@ -9,12 +9,12 @@ export const AURORA_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#6cf5ff', // Glacier cyan beam
+        I: '#c18bff', // Violet surge
         O: '#d6ffb0', // Polar horizon glow
-        T: '#c18bff', // Violet surge
-        S: '#62ffbf', // Emerald ribbon
+        T: '#6cf5ff', // Glacier cyan beam
+        S: '#5a7cff', // Midnight cobalt
         Z: '#ff88ee', // Combo magenta flare
-        J: '#5a7cff', // Midnight cobalt
+        J: '#62ffbf', // Emerald ribbon
         L: '#8dfdff', // Aqua cascade
         GARBAGE: '#030713', // Night sky shadow
     },

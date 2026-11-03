@@ -7,9 +7,9 @@
  * (I cyan, O yellow, T purple, S green, Z red, J blue, L orange).
  *
  * This is a conservative engineering screen, NOT a legal test: it looks only at
- * the first configured hue per shape. Policy (from the review):
- *   - FAIL  if any palette maps all 7 shapes into their familiar hue bands
- *   - WARN  at 6/7 (requires documented human review)
+ * the first configured hue per shape. Policy:
+ *   - FAIL  if any palette puts more than 3 of the 7 shapes in their familiar hue bands
+ *           (MAX_FAMILIAR; every palette in the game is at 3/7 or below)
  *   - WARN  if a *-tetrominos.js config is not referenced by its theme
  *           (dead config: the board silently falls back to the default palette)
  *
@@ -22,6 +22,8 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const themesDir = path.join(repoRoot, 'src', 'themes');
 const SHAPES = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
+/** The most shapes a palette may leave in their familiar hue bands. */
+const MAX_FAMILIAR = 3;
 
 // Screening bands (hue degrees) per the legal review (§Copyright / v3.0 §8.1).
 const GUIDELINE_BANDS = {
@@ -137,16 +139,11 @@ for (const dir of fs.readdirSync(themesDir, { withFileTypes: true })) {
 for (const { name, matched, complete } of results) {
     const count = matched.length;
     const label = `${count}/7${complete ? '' : ' (incomplete config)'}`;
-    if (count === 7) {
+    if (count > MAX_FAMILIAR) {
         failed = true;
         console.error(
-            `FAIL  ${label}  ${name} — full Guideline hue-role mapping [${matched.join(',')}]`,
+            `FAIL  ${label}  ${name} — ${count} shapes in their familiar hue bands [${matched.join(',')}]`,
         );
-    } else if (count === 6) {
-        warnings.push(
-            `${name}: 6/7 Guideline hue roles [${matched.join(',')}] — needs documented human review`,
-        );
-        console.warn(`WARN  ${label}  ${name} [${matched.join(',')}]`);
     } else {
         console.log(`ok    ${label}  ${name}`);
     }
@@ -155,13 +152,15 @@ for (const { name, matched, complete } of results) {
 for (const w of warnings) console.warn(`WARN  ${w}`);
 console.log(
     `palette-gate: ${results.length} palettes screened, `
-        + `${results.filter((r) => r.matched.length === 7).length} full matches, ${warnings.length} warnings`,
+        + `${results.filter((r) => r.matched.length > MAX_FAMILIAR).length} over ${MAX_FAMILIAR}/7, `
+        + `${warnings.length} warnings`,
 );
 
 if (failed) {
     console.error(
-        'palette-gate: FAILED — a selectable palette reproduces the complete familiar '
-            + 'shape->hue mapping. Derange at least two roles (see the header of this script).',
+        `palette-gate: FAILED — a palette puts more than ${MAX_FAMILIAR} shapes in their familiar `
+            + 'hue bands. Give those shapes other colours (moving the palette\'s own colours between '
+            + 'shapes keeps the theme\'s look).',
     );
     process.exit(1);
 }

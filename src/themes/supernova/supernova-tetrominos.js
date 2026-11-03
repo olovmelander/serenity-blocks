@@ -10,12 +10,12 @@ export const SUPERNOVA_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#64dcff', // Electric Blue (Shockwave)
-        O: '#ffaa00', // Core Orange
+        I: '#ffaa00', // Core Orange
+        O: '#64dcff', // Electric Blue (Shockwave)
         T: '#ff0033', // Nebula Red
-        S: '#00ff88', // Greenish Tint (Plasma)
+        S: '#0088ff', // Deep Blue
         Z: '#ff00ff', // Magenta (Mixing zone)
-        J: '#0088ff', // Deep Blue
+        J: '#00ff88', // Greenish Tint (Plasma)
         L: '#ffdd00', // Solar Gold
         GARBAGE: '#1a0033', // Dark Space Blue
     },

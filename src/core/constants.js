@@ -38,7 +38,7 @@ export const COLORS = {
     O: '#ff9900', // Orange
     T: '#0000ff', // Blue
     S: '#00ffff', // Cyan
-    Z: '#ff0000', // Red
+    Z: '#f2f2f7', // White
     J: '#ffff00', // Yellow
     L: '#cc00cc', // Purple
     GARBAGE: '#808080', // Gray (garbage blocks)
