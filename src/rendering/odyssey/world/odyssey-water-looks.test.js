@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-    LAKE_RAMP, LAKE_WATER, SEA_HORIZON_DOWN, SEA_SURF,
-    lakeBodyAt, lakeShoreOpacity, lakeShoreWidth, lakeWetLip, seaBodyAt, seaHorizonKeep, seaSurfLine,
+    LAKE_RAMP, LAKE_WATER, SEA_HORIZON_DOWN, SEA_SURF, WATER_SHORE_DEPTH_BIAS,
+    depthStepAlongRay, lakeBodyAt, lakeShoreOpacity, lakeShoreWidth, lakeWetLip, seaBodyAt, seaFilmOpacity,
+    seaHorizonKeep, seaSurfLine, shoreFightBand,
 } from './odyssey-water-looks.js';
 
 const luma = (c) => (0.2126 * c[0]) + (0.7152 * c[1]) + (0.0722 * c[2]);
@@ -156,5 +157,74 @@ describe('no NaN anywhere in the waters\' terms', () => {
             });
         });
         [-1, 0, 0.05, 0.3, 1, 2].forEach((s) => expect(Number.isFinite(seaHorizonKeep(s))).toBe(true));
+    });
+});
+
+describe('the shore depth fight (2026-11-03)', () => {
+    // The game's camera: PerspectiveCamera(60, aspect, 0.1, 9000), a standard depth buffer. The
+    // finest screen the owner plays on (1440 rows) makes the pixel smallest, so the test strictest.
+    const NEAR = 0.1;
+    const PX = ((60 * Math.PI) / 180) / 1440;
+    const BEACH = Math.tan((2 * Math.PI) / 180); // the north beach's sand and shelf
+    const deg = (a) => Math.sin((a * Math.PI) / 180);
+    /**
+     * How much an undecided depth test can show at a shore: the most the film (or its foam) covers
+     * anywhere in the band, times how much of a pixel the band is wide (a band under a pixel only
+     * shimmers by its share of it).
+     */
+    const flickerWeight = (range, down, units) => {
+        const [lo, hi] = shoreFightBand(range, down, NEAR, units);
+        const depthPx = (BEACH * range * PX) / down; // depth one pixel spans on the beach
+        let most = 0;
+        for (let i = 0; i <= 64; i += 1) {
+            const depth = -(lo + (((hi - lo) * i) / 64)); // heights above the water are negative depths
+            most = Math.max(most, seaFilmOpacity(depth), seaSurfLine(depth, depthPx) * SEA_SURF.gain * 0.92);
+        }
+        const widthPx = (hi - lo) / BEACH / ((range * PX) / down);
+        return most * Math.min(1, widthPx);
+    };
+
+    it('a depth step is ~2.4 u along a ray at 2 km and microscopic near the eye', () => {
+        expect(depthStepAlongRay(2000, NEAR)).toBeCloseTo(2.38, 1);
+        expect(depthStepAlongRay(300, NEAR)).toBeLessThan(0.06);
+    });
+
+    it('without the bias the climb saw the band on the waterline, where the film and the surf line show', () => {
+        [1700, 2000, 2100].forEach((range) => [15, 20, 25].forEach((a) => {
+            expect(flickerWeight(range, deg(a), 0), `${range} u, ${a} deg`).toBeGreaterThan(0.3);
+        }));
+    });
+
+    it('with the bias the band lies on the dry sand, where nothing is drawn, from the climb', () => {
+        [1500, 1700, 2000, 2100, 2500, 3500].forEach((range) => [10, 15, 20, 25, 35].forEach((a) => {
+            expect(flickerWeight(range, deg(a), WATER_SHORE_DEPTH_BIAS), `${range} u, ${a} deg`).toBeLessThan(0.01);
+        }));
+    });
+
+    it('is never worse than without it, and faint at every range and angle', () => {
+        // Near the eye the band is a hair wide on the film's own faint edge (its 9% at the
+        // waterline), with or without the bias. Looking along the water at a far coast it can touch
+        // the surf line's soft edge a pixel over the sand, a third of a pixel wide.
+        for (let range = 50; range <= 6000; range += 50) {
+            [3, 5, 10, 20, 30, 45].forEach((a) => {
+                const w = flickerWeight(range, deg(a), WATER_SHORE_DEPTH_BIAS);
+                expect(w, `${range} u, ${a} deg`).toBeLessThanOrEqual(flickerWeight(range, deg(a), 0) + 1e-12);
+                expect(w, `${range} u, ${a} deg`).toBeLessThan(0.12);
+            });
+        }
+    });
+
+    it('moves little near the eye: under 0.2 u of ray within 300 u', () => {
+        expect(WATER_SHORE_DEPTH_BIAS * depthStepAlongRay(300, NEAR)).toBeLessThan(0.2);
+        expect(WATER_SHORE_DEPTH_BIAS).toBeGreaterThanOrEqual(2); // a margin over one step of noise
+    });
+
+    it('the lake film is exactly clear on the dry side, so its band shows nothing at all', () => {
+        [500, 1000, 2000].forEach((range) => {
+            const [lo, hi] = shoreFightBand(range, deg(30), NEAR);
+            expect(lo).toBeGreaterThan(0);
+            expect(lakeShoreOpacity(-lo, 1)).toBe(0);
+            expect(lakeShoreOpacity(-hi, 1)).toBe(0);
+        });
     });
 });
