@@ -1,103 +1,64 @@
 #!/usr/bin/env node
 /**
- * Winter — rig the fox.
+ * Winter — model and rig the fox.
  *
- * The fox's mesh is the project's own (see src/themes/winter/assets/ATTRIBUTION.md): a
- * reconstruction of a stylized arctic fox, 25 000 vertices. It arrived with its head turned to
- * one side, a skeleton of rigid blocks (one bone for the whole back, legs weighted by distance
- * alone) and baked clips that could not be trusted. This script makes the animal the theme
- * animates instead:
+ * The fox is the project's own: no scan, no download, no clip. Two steps make it:
  *
- *   mesh      centred on its own middle, its head turned to look straight ahead, its facets
- *             rounded a little (a coat of fur goes over it), its normals smoothed
- *   skeleton  the table in src/themes/winter/winter-fox-rig.js: a back of three bones, neck,
- *             head, a tail of four, legs of three — every bone axis-aligned at rest, so the
- *             theme poses it with rotations in the model's own frame
- *   skin      weights laid by region, with soft seams: a leg belongs to its own side, a haunch
- *             partly to its thigh, the ruff partly to the head
- *   coat      four numbers a vertex, stored as its colour: how far along the tail it is, how
- *             long its fur is there, how dark it is painted (nose, eyes, the hollows of the
- *             ears — the reconstruction had two dots), and how much of the sky it sees (an
- *             occlusion bake: the belly, the insides of the legs, the throat)
+ *   model     headless Blender (scripts/blender/winter_arctic_fox.py) builds the animal as a signed
+ *             distance field round the joints of the theme's rig (this script hands it the
+ *             skeleton as JSON), meshes it, decimates it and mirrors it
+ *   rig       this script gives that mesh the animal the theme animates:
+ *     skeleton  the table in src/themes/winter/winter-fox-rig.js: a back of three bones, neck,
+ *               head, a tail of four, legs of three — every bone axis-aligned at rest, so the
+ *               theme poses it with rotations in the model's own frame
+ *     skin      weights laid by region, with soft seams: a leg belongs to its own side, a haunch
+ *               partly to its thigh, the ruff partly to the head
+ *     coat      four numbers a vertex, stored as its colour: how far along the tail it is, how
+ *               long its fur is there, how dark it is painted (nose, eyes, the hollows of the
+ *               ears), and how much of the sky it sees (an occlusion bake: the belly, the insides
+ *               of the legs, the throat)
  *
  * No clips are written: the theme animates the skeleton itself (winter-fox-rig.js).
  *
- *   node scripts/winter/rig-fox.mjs --from=<source.glb>   rig a source mesh and write the asset
+ *   node scripts/winter/rig-fox.mjs --model               model with Blender, rig, write the asset
+ *   node scripts/winter/rig-fox.mjs --model --mesh=<file>   ... and keep Blender's mesh there
+ *   node scripts/winter/rig-fox.mjs --from=<mesh.glb>     rig a mesh Blender already wrote
  *   node scripts/winter/rig-fox.mjs                       re-skin and re-paint the asset in place
  *   node scripts/winter/rig-fox.mjs --preview=<dir>       also draw the mesh, skin and coat (CPU)
  *   node scripts/winter/rig-fox.mjs --check               rig in memory and compare with the asset
+ *   node scripts/winter/rig-fox.mjs --blender=<exe>       (default: Blender 5.2 where it installs)
  *
- * Deterministic: the same script and source give the same bytes. The asset records that its
- * mesh has been straightened, so running the script on its own output only redoes skin and coat.
+ * Deterministic: the same Blender and the same scripts give the same bytes.
  */
 
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
-    existsSync, mkdirSync, readFileSync, writeFileSync,
+    existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync,
 } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FOX_BONES, FOX_BONE_INDEX, FOX_MARKS } from '../../src/themes/winter/winter-fox-rig.js';
 import { SIDES, picture, tile } from '../fox/cpu-picture.mjs';
 import { readGlb } from '../fox/glb-read.mjs';
 import {
-    adjacency, normalsOf, occlusion, relax, writeGlb,
+    adjacency, normalsOf, occlusion, writeGlb,
 } from '../fox/mesh-tools.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..', '..');
 const ASSET = join(ROOT, 'src', 'themes', 'winter', 'assets', 'arctic-fox.glb');
-/** Stamped into the asset: the mesh is already centred, straightened and smoothed. */
-const RIG_VERSION = 2;
+const MODEL_SCRIPT = join(ROOT, 'scripts', 'blender', 'winter_arctic_fox.py');
+const BLENDER = 'C:\\Program Files\\Blender Foundation\\Blender 5.2\\blender.exe';
+/** Stamped into the asset. */
+const RIG_VERSION = 3;
 
 const smooth = (a, b, x) => {
     const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
     return t * t * (3 - 2 * t);
 };
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
-
-// ── The mesh ────────────────────────────────────────────────────────────────────
-
-/** The source stands a little to one side of its own middle (metres). */
-const MIDDLE_X = -0.04;
-/** Its head is turned this far to its left, about a vertical through this point of its neck. */
-const HEAD_TURN = 0.56;
-const HEAD_PIVOT_Z = 0.27;
-
-/** Centre the animal and turn its head to look straight ahead. */
-function straighten(pos) {
-    const n = pos.length / 3;
-    for (let i = 0; i < n; i++) {
-        const x = pos[i * 3] - MIDDLE_X;
-        const y = pos[i * 3 + 1];
-        const z = pos[i * 3 + 2];
-        // What turns: everything above the back, and the ruff and throat in front of the
-        // shoulders — all of it less the nearer it is to the axis it turns about.
-        const high = smooth(0.42, 0.47, y);
-        const fore = smooth(0.14, 0.2, z) * smooth(0.33, 0.42, y);
-        const r = Math.hypot(x, z - HEAD_PIVOT_Z);
-        const w = Math.max(high, fore) * smooth(0.02, 0.08, r);
-        const angle = -HEAD_TURN * w;
-        const c = Math.cos(angle);
-        const s = Math.sin(angle);
-        // (+ about y turns +z toward +x.)
-        const dz = z - HEAD_PIVOT_Z;
-        pos[i * 3] = x * c + dz * s;
-        pos[i * 3 + 2] = HEAD_PIVOT_Z - x * s + dz * c;
-    }
-}
-
-/** Round the facets without shrinking the animal (Taubin: a step in, a step out). */
-function round(pos, adj, passes) {
-    const count = pos.length / 3;
-    // The paws stay as they are: they stand on the snow.
-    const hold = new Float64Array(count);
-    for (let i = 0; i < count; i++) hold[i] = smooth(0.01, 0.06, pos[i * 3 + 1]);
-    for (let p = 0; p < passes; p++) {
-        relax(pos, 3, adj, 0.5, hold);
-        relax(pos, 3, adj, -0.53, hold);
-    }
-}
 
 // ── The skin ────────────────────────────────────────────────────────────────────
 
@@ -253,9 +214,9 @@ function tuft(x, y, z) {
     return value(x * 26, y * 26, z * 17) * 0.65 + value(x * 61 + 3.1, y * 61 + 1.7, z * 43 + 5.3) * 0.35;
 }
 
-/** Where the eyes are painted (the source's two dots sat a centimetre apart from symmetric). */
+/** Where the eyes are painted. */
 const EYE = FOX_MARKS.eye;
-const EYE_SIZE = 0.017;
+const EYE_SIZE = 0.0165;
 const NOSE_SIZE = 0.021;
 
 /**
@@ -283,7 +244,7 @@ function coat(pos, nor, sees) {
 
         // Paint: the nose, the eyes with a soft rim, a shade in the hollows of the ears.
         const toNose = Math.hypot(x - nose[0], (y - nose[1]) * 1.25, z - nose[2]);
-        const toEye = Math.hypot(ax - EYE[0], y - EYE[1], (z - EYE[2]) * 0.6);
+        const toEye = Math.hypot(ax - EYE[0], y - EYE[1], (z - EYE[2]) * 0.9);
         const forward = nor[i * 3 + 2];
         const hollow = smooth(0.565, 0.6, y) * smooth(0.25, 0.7, forward) * 0.45;
         const dark = Math.max(
@@ -384,9 +345,30 @@ function pictures(dir, mesh) {
 
 // ── Main ────────────────────────────────────────────────────────────────────────
 
+/** Have Blender model the fox: its mesh, in a file. */
+function model({ blender, preview, keep }) {
+    if (!existsSync(blender)) throw new Error(`no Blender at ${blender} (pass --blender=<exe>)`);
+    const work = mkdtempSync(join(tmpdir(), 'winter-fox-'));
+    const skeleton = join(work, 'skeleton.json');
+    writeFileSync(skeleton, JSON.stringify({ bones: FOX_BONES, marks: FOX_MARKS }));
+    const mesh = keep || join(work, 'arctic-fox-mesh.glb');
+    const args = ['--background', '--factory-startup', '--python', MODEL_SCRIPT, '--',
+        '--skeleton', skeleton, '--out', mesh];
+    if (preview) args.push('--preview', preview);
+    const run = spawnSync(blender, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    const said = `${run.stdout || ''}${run.stderr || ''}`.split(/\r?\n/);
+    said.filter((l) => /\[winter-fox\]|Error|Traceback/.test(l)).forEach((line) => console.log(`  ${line.trim()}`));
+    if (run.status !== 0 || !existsSync(mesh)) {
+        throw new Error(`Blender did not model the fox (status ${run.status}): ${run.error?.message || ''}\n${run.stderr || ''}`);
+    }
+    return { mesh, done: () => rmSync(work, { recursive: true, force: true }) };
+}
+
 function rig({ from = ASSET } = {}) {
     const { json, read } = readGlb(from);
     const prim = json.meshes[0].primitives[0];
+    const node = json.nodes?.find((n) => n.mesh === 0);
+    if (node?.translation || node?.scale) throw new Error('the mesh must carry metres (position_bits=32)');
     const positions = read(prim.attributes.POSITION);
     const indexData = read(prim.indices);
     const count = positions.length / 3;
@@ -395,17 +377,7 @@ function rig({ from = ASSET } = {}) {
     const adj = adjacency(indices, count);
     const stamp = json.asset?.extras?.winterFoxRig;
     if (stamp !== undefined && stamp !== RIG_VERSION) {
-        throw new Error(`this file was rigged by version ${stamp} of this script and its mesh already changed: `
-            + 'rig the source mesh instead (--from, see assets/ATTRIBUTION.md)');
-    }
-    const done = stamp === RIG_VERSION;
-    if (!done) {
-        straighten(positions);
-        round(positions, adj, 3);
-        // Stand it on the snow.
-        let foot = Infinity;
-        for (let i = 0; i < count; i++) foot = Math.min(foot, positions[i * 3 + 1]);
-        for (let i = 0; i < count; i++) positions[i * 3 + 1] -= foot;
+        throw new Error(`this file was rigged by version ${stamp} of this script: model the fox again (--model)`);
     }
     // (Single precision is what the file holds: everything after is computed from that.)
     const stored = Float32Array.from(positions);
@@ -426,7 +398,6 @@ function rig({ from = ASSET } = {}) {
             ...mesh,
         }),
         nose,
-        straightened: !done,
     };
 }
 
@@ -435,16 +406,19 @@ function main() {
         const [k, v] = a.replace(/^--/, '').split('=');
         return [k, v ?? true];
     }));
-    const from = typeof args.from === 'string' ? resolve(args.from) : ASSET;
-    if (!existsSync(from)) throw new Error(`no such file: ${from}`);
     const started = Date.now();
-    const {
-        mesh, bytes, nose, straightened,
-    } = rig({ from });
+    const modelled = args.model ? model({
+        blender: typeof args.blender === 'string' ? args.blender : BLENDER,
+        preview: typeof args.preview === 'string' ? resolve(args.preview) : null,
+        keep: typeof args.mesh === 'string' ? resolve(args.mesh) : null,
+    }) : null;
+    const from = modelled?.mesh ?? (typeof args.from === 'string' ? resolve(args.from) : ASSET);
+    if (!existsSync(from)) throw new Error(`no such file: ${from}`);
+    const { mesh, bytes, nose } = rig({ from });
+    modelled?.done();
     const hash = createHash('sha256').update(bytes).digest('hex');
     console.log(`fox: ${mesh.positions.length / 3} vertices, ${mesh.indices.length / 3} triangles, `
         + `${FOX_BONES.length} bones, ${(bytes.length / 1024).toFixed(0)} KiB, ${Date.now() - started} ms`);
-    console.log(`  mesh ${straightened ? 'centred, straightened and rounded' : 'kept as it is (already straightened)'}`);
     console.log(`  tip of the muzzle at ${nose.map((v) => v.toFixed(3)).join(', ')}`);
     console.log(`  sha256 ${hash}`);
     if (typeof args.preview === 'string') pictures(resolve(args.preview), mesh);

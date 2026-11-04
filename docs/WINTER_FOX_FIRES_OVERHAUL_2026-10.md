@@ -272,7 +272,15 @@ lens on the fox (`foxCam`, `foxAct`).
 
 ![Trot and gallop, one cycle each, as the CPU preview draws them](winter-fox-fires/fox-gait.webp)
 
-![The skeleton on the straightened mesh, and which bone holds what](winter-fox-fires/fox-rig.webp)
+![The skeleton on the mesh of the time, and which bone holds what](winter-fox-fires/fox-rig.webp)
+
+**Remodelled 2026-11-04.** The body is now modelled in Blender round the same joints
+(`scripts/blender/winter_arctic_fox.py`, the polar bear's method): round and young, a big head on a
+short muzzle, nearly round eyes, soft round ears, a chubby body in a deep ruff, furred paws and a
+full brush of a tail, half the triangles of the mesh before it (24 000), symmetric, its tail bones
+on the midline. The skeleton's joints and the solver are unchanged, so every gait and act above
+carries over; the marks for its nose and eyes moved with the shorter face. The pictures above
+show the earlier mesh. `node scripts/winter/rig-fox.mjs --model` makes it, byte for byte.
 
 Not done: it has no ear or jaw bones; a paw that is planted when the pace changes slides a
 little until its next step (the gait is a function of how far it has run, not a memory of where

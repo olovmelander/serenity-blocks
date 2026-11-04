@@ -32,11 +32,8 @@ describe('launch sounds (src/audio/launch-sounds.js)', () => {
         for (const name of LAUNCH_SOUND_NAMES) {
             const { channels } = renderLaunchSound(name, RATE);
             for (const data of channels) {
-                let peak = 0;
-                for (const sample of data) {
-                    expect(Number.isFinite(sample)).toBe(true);
-                    peak = Math.max(peak, Math.abs(sample));
-                }
+                expect(data.every((sample) => Number.isFinite(sample)), name).toBe(true);
+                const peak = data.reduce((most, sample) => Math.max(most, Math.abs(sample)), 0);
                 expect(peak, name).toBeGreaterThan(0.5);
                 expect(peak, name).toBeLessThan(0.95);
                 expect(Math.abs(data[data.length - 1]), name).toBeLessThan(1e-3);
