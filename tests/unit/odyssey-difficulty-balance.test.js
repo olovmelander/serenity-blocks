@@ -41,7 +41,9 @@ describe('Odyssey difficulty balance', () => {
         expect(chapterOneBoss.mechanics.speed).toEqual({
             startLevel: 3, levelProgression: true, fixedDropInterval: 420,
         });
-        expect(chapterOneBoss.stars.three).toEqual({ lines: 30, bonuses: 2 });
+        expect(chapterOneBoss.stars.three).toEqual({
+            lines: 30, cascades: 7, maxCascadeDepth: 3, bonuses: 1,
+        });
 
         const finale = getLevel(55);
         expect(finale.metadata.difficultyModel.scalar).toBe(1);

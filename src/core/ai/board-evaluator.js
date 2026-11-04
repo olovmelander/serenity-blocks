@@ -5,13 +5,12 @@ import { analyzeSideCascade, classifySideCascadePlacement } from './side-cascade
 import { estimateLatentDischarge } from './latent-chain.js';
 import { computeProjectedAttack } from './cascade-simulator.js';
 
-export const DELLACHERIE_WEIGHTS = Object.freeze({
-    landingHeight: -4.500158825082766,
-    erodedPieceCells: 3.4181268101392694,
-    rowTransitions: -3.2178882868487753,
-    columnTransitions: -9.348695305445199,
-    holes: -7.899265427351652,
-    wellSums: -3.3855972247263626,
+export const BOARD_SHAPE_WEIGHTS = Object.freeze({
+    landingHeight: -8.48,
+    erodedPieceCells: 6.1,
+    rowTransitions: -1.37,
+    columnTransitions: -8.17,
+    wellSums: -6.48,
 });
 
 export const CASCADE_ADAPTATION_WEIGHTS = Object.freeze({
@@ -671,16 +670,16 @@ export function evaluateCandidate(candidate, difficultyConfig = null, rng = Math
     const fireScale = sealedMachine ? 0.1 : 1;
 
     let score = 0;
-    score += DELLACHERIE_WEIGHTS.landingHeight * landingHeight * (1 + (pressureRatio * 0.75));
-    score += DELLACHERIE_WEIGHTS.erodedPieceCells * erodedPieceCells;
-    score += DELLACHERIE_WEIGHTS.rowTransitions * metrics.rowTransitions * surfaceScale;
-    score += DELLACHERIE_WEIGHTS.columnTransitions * metrics.columnTransitions * surfaceScale;
+    score += BOARD_SHAPE_WEIGHTS.landingHeight * landingHeight * (1 + (pressureRatio * 0.75));
+    score += BOARD_SHAPE_WEIGHTS.erodedPieceCells * erodedPieceCells;
+    score += BOARD_SHAPE_WEIGHTS.rowTransitions * metrics.rowTransitions * surfaceScale;
+    score += BOARD_SHAPE_WEIGHTS.columnTransitions * metrics.columnTransitions * surfaceScale;
     // Strong base penalty on every non-protected covered hole, plus a surcharge on
     // fully-enclosed cavities (worst — can't be dug). The protected cascade lane is
     // already exempted above, so this hits only genuine damage.
     score += CASCADE_ADAPTATION_WEIGHTS.coveredHole * effectiveHoles;
     score += CASCADE_ADAPTATION_WEIGHTS.cavityCells * effectiveCavities;
-    score += DELLACHERIE_WEIGHTS.wellSums * effectiveWellSums * Math.max(0.65, cleanupScale);
+    score += BOARD_SHAPE_WEIGHTS.wellSums * effectiveWellSums * Math.max(0.65, cleanupScale);
     score += CASCADE_ADAPTATION_WEIGHTS.aggregateHeight * metrics.aggregateHeight;
     score += CASCADE_ADAPTATION_WEIGHTS.bumpiness * metrics.bumpiness * surfaceScale;
     score += CASCADE_ADAPTATION_WEIGHTS.maxHeight * metrics.maxHeight;

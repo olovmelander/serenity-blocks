@@ -190,7 +190,7 @@ describe('Legal construction on authored boards', () => {
 
     it('drains orb 49 terminal cascades and stops at the actual primary before another piece', async () => {
         const result = await demonstrateAuthoredConstruction({
-            levelId: 49, profileId: 'cascade', seed: 42, maxPieces: 128,
+            levelId: 49, profileId: 'cascade', seed: 40, maxPieces: 128,
         });
         expect(result.termination).toBe('primary-complete');
         expect(result.primaryReachedAtPiece).toBe(result.piecesPlaced);

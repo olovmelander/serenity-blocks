@@ -110,7 +110,7 @@ Secondary gaps that make the lane heuristics misfire:
   ([board-evaluator.js:377-463](../src/core/ai/board-evaluator.js#L377-L463)) uses column‑height
   heuristics that can reward an *open well with no overhang* — the opposite of a real machine.
 - **Intentional wells get punished.** The generic `measureBoard` penalizes the deep side well as
-  holes/wells/transitions (`DELLACHERIE_WEIGHTS.holes=-7.9`, `wellSums`, `CASCADE_ADAPTATION.rowsWithHoles=-5.4`)
+  holes/wells/transitions (`BOARD_SHAPE_WEIGHTS.wellSums`, `CASCADE_ADAPTATION.rowsWithHoles`)
   with no offsetting credit, because the analyzer's `protectedLane*` exemptions are never wired in.
 - **No outgoing‑attack estimate.** `simulatePlacement`
   ([cascade-simulator.js:269-300](../src/core/ai/cascade-simulator.js#L269-L300)) produces
