@@ -448,11 +448,6 @@ describe('the mode starts the bake the board will ask for', () => {
         expect(board._worldBakeOptions.scatter).not.toBeNull();
     });
 
-    it('starts nothing when the board will build no world', () => {
-        vi.stubGlobal('window', { settings: { effectQuality: 'High' }, location: { search: '?odysseyOneWorld=0' } });
-        expect(OdysseyBoardController.prestartWorldBake(registry)).toBeNull();
-    });
-
     it('never throws into the mode\'s activation', () => {
         stubPage();
         vi.spyOn(console, 'warn').mockImplementation(() => {});

@@ -513,45 +513,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
-        name: 'camX',
-        category: 'Playground',
-        scope: 'playground.html — ch3-surface-world',
-        description: 'Set Surface World camera X.',
-        values: 'Number in world units.',
-        defaultValue: '0.',
-        example: 'camX=0',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/ch3-surface-world.effect.js',
-        ],
-    },
-    {
-        name: 'camY',
-        category: 'Playground',
-        scope: 'playground.html — ch3-surface-world',
-        description: 'Set Surface World camera height.',
-        values: 'Number in world units.',
-        defaultValue: '6.',
-        example: 'camY=6',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/ch3-surface-world.effect.js',
-        ],
-    },
-    {
-        name: 'camZ',
-        category: 'Playground',
-        scope: 'playground.html — ch3-surface-world',
-        description: 'Set Surface World camera Z.',
-        values: 'Number in world units.',
-        defaultValue: '72.',
-        example: 'camZ=72',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/ch3-surface-world.effect.js',
-        ],
-    },
-    {
         name: 'cameraMotion',
         category: 'Playground',
         scope: 'playground.html — odyssey-path-beacons',
@@ -1505,19 +1466,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
-        name: 'flowers',
-        category: 'Playground',
-        scope: 'playground.html — ch3-surface-world',
-        description: 'Use the Surface World card-flower comparison.',
-        values: 'card selects cards; other values use the normal flowers.',
-        defaultValue: 'Normal flowers.',
-        example: 'flowers=card',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/ch3-surface-world.effect.js',
-        ],
-    },
-    {
         name: 'focus',
         category: 'Playground',
         scope: 'playground.html — breathing',
@@ -1528,32 +1476,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/breathing.effect.js',
-        ],
-    },
-    {
-        name: 'fog',
-        category: 'Playground',
-        scope: 'playground.html — ch3-surface-world',
-        description: 'Enable Surface World fog.',
-        values: '0 disables; other numeric values enable.',
-        defaultValue: 'On.',
-        example: 'fog=0',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/ch3-surface-world.effect.js',
-        ],
-    },
-    {
-        name: 'fogD',
-        category: 'Playground',
-        scope: 'playground.html — ch3-surface-world',
-        description: 'Set Surface World fog density.',
-        values: 'Nonnegative number.',
-        defaultValue: '0.0016.',
-        example: 'fogD=0.0016',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/ch3-surface-world.effect.js',
         ],
     },
     {
@@ -1663,16 +1585,15 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'fov',
         category: 'Playground',
-        scope: 'playground.html — ch3-surface-world, cinder-drift, crystal-cave, summer, synthwave-sunset, verdant-hills',
+        scope: 'playground.html — cinder-drift, crystal-cave, summer, synthwave-sunset, verdant-hills',
         description: 'Set a custom camera vertical field of view.',
         values: 'Degrees; Cinder Drift, Crystal Cave and Synthwave Sunset require eye and aim; Summer and Verdant Hills need a '
             + 'value above 1.',
-        defaultValue: 'Surface World 55; Cinder Drift, Crystal Cave and Synthwave Sunset custom camera 40; Summer and Verdant '
-            + 'Hills: authored framing.',
+        defaultValue: 'Cinder Drift, Crystal Cave and Synthwave Sunset custom camera 40; Summer and Verdant Hills: authored '
+            + 'framing.',
         example: 'fov=40',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
-            'src/playground/effects/ch3-surface-world.effect.js',
             'src/playground/effects/cinder-drift.effect.js',
             'src/playground/effects/crystal-cave.effect.js',
             'src/playground/effects/summer.effect.js',
@@ -2367,19 +2288,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
-        name: 'inspect',
-        category: 'Playground',
-        scope: 'playground.html — deep-ocean',
-        description: 'Follow a manta or whale from above in the Deep Ocean preview.',
-        values: 'manta or whale; an unknown nonempty value follows the first available creature.',
-        defaultValue: 'Off.',
-        example: 'inspect=manta',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/deep-ocean.effect.js',
-        ],
-    },
-    {
         name: 'inspector',
         category: 'Playground',
         scope: 'playground.html (all effects)',
@@ -2903,32 +2811,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
-        name: 'lookX',
-        category: 'Playground',
-        scope: 'playground.html — ch3-surface-world',
-        description: 'Set Surface World camera target X.',
-        values: 'Number in world units.',
-        defaultValue: '-18.',
-        example: 'lookX=-18',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/ch3-surface-world.effect.js',
-        ],
-    },
-    {
-        name: 'lookY',
-        category: 'Playground',
-        scope: 'playground.html — ch3-surface-world',
-        description: 'Set Surface World camera target height.',
-        values: 'Number in world units.',
-        defaultValue: '24.',
-        example: 'lookY=24',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/ch3-surface-world.effect.js',
-        ],
-    },
-    {
         name: 'lookYaw',
         category: 'Playground',
         scope: 'playground.html — odyssey-world',
@@ -2939,19 +2821,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=odyssey-world; reviews a chapter from every angle.',
         sources: [
             'src/playground/effects/odyssey-world.effect.js',
-        ],
-    },
-    {
-        name: 'lookZ',
-        category: 'Playground',
-        scope: 'playground.html — ch3-surface-world',
-        description: 'Set Surface World camera target Z.',
-        values: 'Number in world units.',
-        defaultValue: '-360.',
-        example: 'lookZ=-360',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/ch3-surface-world.effect.js',
         ],
     },
     {
@@ -2992,19 +2861,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/ch8-spire.effect.js',
-        ],
-    },
-    {
-        name: 'mountT',
-        category: 'Playground',
-        scope: 'playground.html — ch4-mountain-peaks',
-        description: 'Set the Mountain Peaks chapter position.',
-        values: 'Number clamped to 0–1.',
-        defaultValue: '0.12.',
-        example: 'mountT=0.12',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/ch4-mountain-peaks.effect.js',
         ],
     },
     {
@@ -3172,19 +3028,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
-        name: 'opacity',
-        category: 'Playground',
-        scope: 'playground.html — seam-34-landscape',
-        description: 'Set mountain-seam landscape opacity.',
-        values: 'Number from 0 to 1.',
-        defaultValue: '1.',
-        example: 'opacity=0.5',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/seam-34-landscape.effect.js',
-        ],
-    },
-    {
         name: 'orbit',
         category: 'Playground',
         scope: 'playground.html (all effects)',
@@ -3201,7 +3044,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'p',
         category: 'Playground',
-        scope: 'playground.html — act2-cloud-deck, ch3-ch4-seam, ch4-mountain-peaks, ch5-sky-drift, '
+        scope: 'playground.html — act2-cloud-deck, '
             + 'ch6-cosmic-expanse, ch7-fall, ch8-neon, odyssey-path-beacons, seam-12-dive',
         description: 'Pin normalized Odyssey camera progress in a chapter/world preview.',
         values: 'Number clamped to 0–1; Act II Cloud Deck caps at 0.999.',
@@ -3210,9 +3053,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/act2-cloud-deck.effect.js',
-            'src/playground/effects/ch3-ch4-seam.effect.js',
-            'src/playground/effects/ch4-mountain-peaks.effect.js',
-            'src/playground/effects/ch5-sky-drift.effect.js',
             'src/playground/effects/ch6-cosmic-expanse.effect.js',
             'src/playground/effects/ch7-fall.effect.js',
             'src/playground/effects/ch8-neon.effect.js',
@@ -3405,14 +3245,13 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'particles',
         category: 'Playground',
-        scope: 'playground.html — ch5-sky-drift, ch6-cosmic-expanse, ch7-fall',
+        scope: 'playground.html — ch6-cosmic-expanse, ch7-fall',
         description: 'Set the particle budget in a chapter preview.',
-        values: 'Sky Drift: 80–420; Cosmic Expanse: 200–1200; Black Hole Fall: 100–1200.',
-        defaultValue: 'Sky Drift 260; Cosmic Expanse 700; Fall 600.',
+        values: 'Cosmic Expanse: 200–1200; Black Hole Fall: 100–1200.',
+        defaultValue: 'Cosmic Expanse 700; Fall 600.',
         example: 'particles=300',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
-            'src/playground/effects/ch5-sky-drift.effect.js',
             'src/playground/effects/ch6-cosmic-expanse.effect.js',
             'src/playground/effects/ch7-fall.effect.js',
         ],
@@ -3625,14 +3464,13 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'pathProgress',
         category: 'Playground',
-        scope: 'playground.html — ch5-sky-drift, ch6-cosmic-expanse',
+        scope: 'playground.html — ch6-cosmic-expanse',
         description: 'Set path reveal progress independently of camera progress.',
         values: 'Number clamped to 0–1.',
         defaultValue: 'Camera progress.',
         example: 'pathProgress=0.5',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
-            'src/playground/effects/ch5-sky-drift.effect.js',
             'src/playground/effects/ch6-cosmic-expanse.effect.js',
         ],
     },
@@ -3876,19 +3714,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/nimbus-veil.effect.js',
             'src/playground/effects/synthwave-sunset.effect.js',
             'src/playground/effects/wolfhour.effect.js',
-        ],
-    },
-    {
-        name: 'pollen',
-        category: 'Playground',
-        scope: 'playground.html — ch3-surface-world',
-        description: 'Enable Surface World pollen.',
-        values: '0 disables; other numeric values enable.',
-        defaultValue: 'On.',
-        example: 'pollen=0',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/ch3-surface-world.effect.js',
         ],
     },
     {
@@ -4445,29 +4270,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'seamT',
         category: 'Playground',
-        scope: 'playground.html — ch3-ch4-seam, seam-12-dive',
+        scope: 'playground.html — seam-12-dive',
         description: 'Set the chapter transition blend position.',
         values: 'Number clamped to 0–1.',
         defaultValue: '0.5.',
         example: 'seamT=0.5',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
-            'src/playground/effects/ch3-ch4-seam.effect.js',
             'src/playground/effects/seam-12-dive.effect.js',
-        ],
-    },
-    {
-        name: 'season',
-        category: 'Playground',
-        scope: 'playground.html — ch3-lake, ch3-surface-world',
-        description: 'Set Surface World season progression.',
-        values: 'Number, normally 0–1.',
-        defaultValue: '0.',
-        example: 'season=0.5',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/ch3-lake.effect.js',
-            'src/playground/effects/ch3-surface-world.effect.js',
         ],
     },
     {
@@ -4631,34 +4441,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/verdant-hills.effect.js',
-        ],
-    },
-    {
-        name: 'skyT',
-        category: 'Playground',
-        scope: 'playground.html — ch5-sky-drift',
-        description: 'Set the Sky Drift chapter position.',
-        values: 'Number clamped to 0–1.',
-        defaultValue: '0.42.',
-        example: 'skyT=0.42',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/ch5-sky-drift.effect.js',
-        ],
-    },
-    {
-        name: 'snow',
-        category: 'Playground',
-        scope: 'playground.html — ch3-surface-world, ch3-waterfall, seam-34-landscape',
-        description: 'Set snow coverage in Surface World or the mountain seam.',
-        values: 'Number from 0 to 1.',
-        defaultValue: 'Surface World follows season; Waterfall 0; seam landscape 0.84.',
-        example: 'snow=0.8',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/ch3-surface-world.effect.js',
-            'src/playground/effects/ch3-waterfall.effect.js',
-            'src/playground/effects/seam-34-landscape.effect.js',
         ],
     },
     {
@@ -4886,19 +4668,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
-        name: 'terrainY',
-        category: 'Playground',
-        scope: 'playground.html — ch3-surface-world',
-        description: 'Move Surface World terrain vertically.',
-        values: 'Number in world units.',
-        defaultValue: '-8.',
-        example: 'terrainY=-8',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/ch3-surface-world.effect.js',
-        ],
-    },
-    {
         name: 'tier',
         category: 'Playground',
         scope: 'playground.html — ch7-fall, ch8-city-facades, ch8-neon',
@@ -5073,19 +4842,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
-        name: 'variant',
-        category: 'Playground',
-        scope: 'playground.html — ch3-butterflies',
-        description: 'Compare the old and new butterfly effect.',
-        values: 'before selects the old effect; other values select after.',
-        defaultValue: 'after.',
-        example: 'variant=before',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/ch3-butterflies.effect.js',
-        ],
-    },
-    {
         name: 'view',
         category: 'Playground',
         scope: 'playground.html — crystal-cave',
@@ -5096,19 +4852,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/crystal-cave.effect.js',
-        ],
-    },
-    {
-        name: 'waterY',
-        category: 'Playground',
-        scope: 'playground.html — ch3-surface-world',
-        description: 'Move Surface World water vertically.',
-        values: 'Number in world units.',
-        defaultValue: '-15.',
-        example: 'waterY=-15',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/ch3-surface-world.effect.js',
         ],
     },
     {

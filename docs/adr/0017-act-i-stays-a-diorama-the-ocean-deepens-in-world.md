@@ -25,9 +25,9 @@ The facts that decide it, each measured or verified against the code on 2026-08-
 - **The camera can never see both at once.** The only crossing is the vertical crack at
   p ≈ 0.077, inside the steam quench's occlusion window (0.033–0.153) — capture-verified,
   including the plan's Wave 6 asymmetric-density fix.
-- **The registry/crash-recovery contract needs the module anyway.** ADR-0015's flagless
-  crash-catch loads chapter modules; `earth-core.js` must keep its three convention-derived
-  exports regardless of where its content is hosted.
+- **The registry contract needs the module anyway.** `earth-core.js` must keep its three
+  convention-derived exports regardless of where its content is hosted. (The crash-catch
+  that also loaded chapter modules went with ADR-0022.)
 
 ## Decision
 
@@ -49,8 +49,7 @@ across the act is delivered by contract, not by co-residence:
 - The world's underwater span may grow content (bands/SSS/motes/fish shipped at a measured
   Lane B **saving** — 7.73 → 5.96 ms p50) but never chapter-shaped special cases; anything
   that needs a chapter identity belongs to the chapter module.
-- Not re-litigated here: ADR-0015 (hatch + modules stay), the act-gate margin 0.03,
-  `ONE_WORLD_CHAPTERS`.
+- Not re-litigated here: the act-gate margin 0.03, `ONE_WORLD_CHAPTERS`.
 
 ## Enforcement
 

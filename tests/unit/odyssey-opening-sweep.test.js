@@ -219,6 +219,14 @@ describe('the board holds at orb 1 until the way is ready, then flies', () => {
         expect(board._openingSweepPathStates(1, 8)[8]).toBe('missing');
     });
 
+    it('has nothing to wait for in chapters 2-5 once the world is gone', () => {
+        const { board } = sweepBoard();
+        board.oneWorld = null;
+        board._oneWorldCompiled = false;
+        expect(board._openingSweepPathReady(1, 8)).toBe(true);
+        expect(board._openingSweepPathStates(1, 8)[3]).toBe('no-world');
+    });
+
     it('holds at least its minimum, then flies the sweep\'s time to the orb', async () => {
         vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] });
         const { board, level } = sweepBoard();

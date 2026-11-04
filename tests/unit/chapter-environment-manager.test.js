@@ -5,17 +5,6 @@ import {
     resolveChapterBlendState,
 } from '../../src/rendering/odyssey/ChapterEnvironmentManager.js';
 import { getActiveOdysseyChapterPositions } from '../../src/rendering/odyssey/path-utils.js';
-import {
-    createSurfaceWorldEnvironment,
-} from '../../src/rendering/odyssey/chapter-environments/surface-world.js';
-import {
-    createMountainPeaksEnvironment,
-    updateMountainPeaksEnvironment,
-} from '../../src/rendering/odyssey/chapter-environments/mountain-peaks.js';
-import {
-    MOUNTAIN_SHADING,
-    resolveMountainTreatment,
-} from '../../src/rendering/odyssey/chapter-environments/shared/mountain-language.js';
 import { ODYSSEY_PATH_DATA } from '../../src/rendering/odyssey/path-data.js';
 
 describe('resolveChapterBlendState', () => {
@@ -78,114 +67,6 @@ describe('resolveChapterBlendState', () => {
     });
 });
 
-describe('Chapter 3 to 4 ground continuity', () => {
-    it('builds a continuous foothill skirt (ramp) instead of the old flat snow-floor seam', () => {
-        const environment = createSurfaceWorldEnvironment();
-        const bridge = environment.userData.foothillBridge;
-        // WebGPU/TSL: the skirt's uniforms are TSL nodes tagged on userData.odysseyUniforms
-        // (NodeMaterials expose no `material.uniforms` map). The canonical mountain language
-        // bakes snow/rock/fog into the colorNode, so per-channel colour uniforms no longer
-        // exist per-mesh — what we assert is the unified contract: the skirt is present, is a
-        // depth-writing ramp, exposes the live snow-blend + opacity drivers, and the old flat
-        // snow-floor seam is gone.
-        const bridgeUniforms = bridge.userData.odysseyUniforms;
-
-        expect(bridge).toBeTruthy();
-        expect(environment.getObjectByName('foothill-bridge')).toBeTruthy();
-        expect(environment.getObjectByName('mountain-snow-floor')).toBeFalsy();
-        expect(environment.userData.auroraPreview).toBeNull();
-        expect(bridgeUniforms.uSnowBlend).toBeTruthy();
-        expect(typeof bridgeUniforms.uSnowBlend.value).toBe('number');
-        expect(bridgeUniforms.uOpacity).toBeTruthy();
-        expect(bridge.material.depthWrite).toBe(true);
-
-        // GATE THE LEAK: the alpine pieces (distant range + skirt) are tracked separately so
-        // they can be ramped in only on the Surface→Mountains approach (never in Deep Ocean).
-        expect(environment.userData.alpineElements).toContain(bridge);
-        expect(environment.userData.alpineOpacityUniformTargets.length).toBeGreaterThan(0);
-    });
-
-    it('keeps Chapter 4 grounded before the alpine look fully takes over', () => {
-        const environment = createMountainPeaksEnvironment();
-        const previewEnvironment = createSurfaceWorldEnvironment();
-        const camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 4000);
-        const apronZ = environment.userData.foothillApron.children.map((mesh) => mesh.position.z);
-        const fullAnchors = environment.userData.aurora.children
-            .slice(0, 3)
-            .map((mesh) => mesh.position.toArray());
-        // WebGPU/TSL + ONE mountain language: per-channel colour uniforms are baked into the
-        // colorNode from the canonical treatment (shared/mountain-language.js), so meshes no
-        // longer expose `material.uniforms.uSnowColor` etc. We assert the unified contract:
-        // both the hero peaks and the foothill apron resolve from the SAME palette (heroes on
-        // the cool pole, apron pulled toward neutral with a higher snow line), and each mesh
-        // still carries the live transition/opacity/snow-blend drivers on userData.tslUniforms.
-        const mainPeakUniforms = environment.userData.mainPeaks.userData.parts[0].uniforms;
-        const apronUniforms = environment.userData.foothillApron.children[0].userData.tslUniforms;
-        const heroTreatment = resolveMountainTreatment({ coolTemp: 1.0 });
-        const apronTreatment = resolveMountainTreatment({
-            coolTemp: 0.72,
-            snowLine: MOUNTAIN_SHADING.snowLineFoothill,
-        });
-
-        expect(environment.userData.foothillApron?.children).toHaveLength(3);
-        // Depth-insensitive to insertion order: the material-sharing perf refactor builds the
-        // sibling foothill right after the shared one, so child order is an implementation
-        // detail — the contract is the three apron depths.
-        // 2026-08 recomposition: the apron moved from -600/-710/-860 (IN FRONT of / level
-        // with the canonical hero plane at world z ≈ -967..-1107, where its cool-treated
-        // crests cut a "second environment" band across the hero's middle) to BEHIND the
-        // plane's back edge — background fill on the flanks. The contract stays: all three
-        // depths sit BEHIND the hero plane and stay mutually staggered.
-        expect([...apronZ].sort((a, b) => b - a)).toEqual([-1350, -1450, -1600]);
-        expect(fullAnchors.length).toBe(3);
-        // Hero peaks ride the cool pole; the apron pulls toward neutral grey. After the Wave-C rock
-        // repalette (rockCool 0x202f40 → 0x3b4d63, lifted off near-black to stop the navy blob), the
-        // cool hero rock is a lighter BLUE-grey, so the cool-vs-neutral distinction now reads in the
-        // BLUE channel: the hero (cool pole) rock is BLUER than the apron (neutral) rock.
-        expect(heroTreatment.snowLine).toBe(MOUNTAIN_SHADING.snowLine);
-        expect(apronTreatment.snowLine).toBe(MOUNTAIN_SHADING.snowLineFoothill);
-        expect(apronTreatment.snowLine).toBeGreaterThan(heroTreatment.snowLine);
-        expect(heroTreatment.rock % 256)
-            .toBeGreaterThan(apronTreatment.rock % 256);
-        // Each peak/apron mesh exposes the live drivers (transition + opacity + snow blend).
-        expect(mainPeakUniforms.uTransition).toBeTruthy();
-        expect(mainPeakUniforms.uOpacity).toBeTruthy();
-        expect(mainPeakUniforms.uSnowBlend).toBeTruthy();
-        expect(apronUniforms.uTransition).toBeTruthy();
-        expect(apronUniforms.uOpacity).toBeTruthy();
-
-        camera.position.y = environment.userData.yStart;
-        updateMountainPeaksEnvironment(environment, 1 / 60, 0, camera, 0.352);
-        const earlyTransition = environment.userData.mountainTransitionUniformTargets[0].value;
-        const earlyAurora = environment.userData.auroraFadeUniformTargets[0].value;
-
-        camera.position.y = environment.userData.yStart + 80;
-        updateMountainPeaksEnvironment(environment, 1 / 60, 0, camera, 0.38);
-        const midTransition = environment.userData.mountainTransitionUniformTargets[0].value;
-        const midAurora = environment.userData.auroraFadeUniformTargets[0].value;
-
-        camera.position.y = environment.userData.yStart + 220;
-        updateMountainPeaksEnvironment(environment, 1 / 60, 0, camera, 0.537);
-        const lateTransition = environment.userData.mountainTransitionUniformTargets[0].value;
-        const lateAurora = environment.userData.auroraFadeUniformTargets[0].value;
-
-        expect(earlyTransition).toBeLessThan(0.01);
-        expect(earlyAurora).toBeGreaterThan(0.99);
-        // PAINTERLY-ASCENT REPALETTE (Wave B): the day→NIGHT transition is DROPPED
-        // (MOUNTAIN_TRANSITION_START/END pushed past 1.0), so uTransition now stays ≈0 the whole
-        // chapter — Ch4 is a bright daylight climb and the summit crests into MORE light. Was
-        // mid>0.5 / late>0.99 back when the chapter ramped to night.
-        expect(midTransition).toBeLessThan(0.05);
-        expect(lateTransition).toBeLessThan(0.05);
-        expect(midAurora).toBeGreaterThan(0.99);
-        expect(lateAurora).toBeGreaterThan(0.99);
-        expect(environment.userData.mountains.scale.x).toBeCloseTo(1, 6);
-        expect(environment.userData.mountains.position.y).toBeCloseTo(0, 6);
-        expect(environment.userData.aurora.scale.x).toBeCloseTo(1, 6);
-        expect(environment.userData.aurora.position.y).toBeCloseTo(0, 6);
-    });
-});
-
 describe('ChapterEnvironmentManager late-game coverage', () => {
     it('registers dedicated board environments for chapters 7 and 8', async () => {
         const scene = new THREE.Scene();
@@ -209,27 +90,6 @@ describe('ChapterEnvironmentManager late-game coverage', () => {
         manager.dispose();
     });
 
-    it('ends the chapter 5 carry before chapter 7 arrives (the fallback path)', () => {
-        // Audit 2026-10-18: carried to 0.8534 while chapter 7 appeared at 0.8487 — three lit
-        // chapters at once overran the light pool's adjacent-pair slots.
-        const scene = new THREE.Scene();
-        const chapterPositions = getActiveOdysseyChapterPositions();
-        const manager = new ChapterEnvironmentManager(scene, null, { chapterPositions });
-        [5, 6, 7].forEach((id) => {
-            const group = new THREE.Group();
-            group.userData.chapterId = id;
-            scene.add(group);
-            manager.environments.set(id, { group });
-        });
-        for (let p = chapterPositions[5] + 0.01; p < chapterPositions[6]; p += 0.0005) {
-            manager.updateVisibility(p, { mode: 'progress' });
-            const ch5 = manager.environments.get(5).group.userData.chapterOpacity;
-            const ch7 = manager.environments.get(7).group.userData.chapterOpacity;
-            expect(ch5 > 0 && ch7 > 0, `p=${p.toFixed(4)}: ch5 ${ch5}, ch7 ${ch7}`).toBe(false);
-        }
-        manager.dispose();
-    });
-
     it('uses injected chapter positions when resolving blend state', () => {
         const scene = new THREE.Scene();
         const chapterPositions = [0, 0.12, 0.24, 0.36, 0.5, 0.64, 0.78, 0.9, 1];
@@ -241,17 +101,13 @@ describe('ChapterEnvironmentManager late-game coverage', () => {
         expect(state.boundaryId).toBe('3-4');
     });
 
-    it('lights the rig for the chapters it builds, and for 2-5 again once the One World hands them back', () => {
-        // Perf audit 2026-10-28: 4 slots with the One World on, not the dioramas' 9 (every lit
-        // material evaluated all of them); the escape hatch still lights its dioramas (ADR-0015).
-        const lights = (m) => m.persistentLightRig.children.filter((c) => c.isLight).length;
-        const world = new ChapterEnvironmentManager(new THREE.Scene(), null, { suppressedChapters: [2, 3, 4, 5] });
-        expect(lights(world)).toBe(4);
-        world.suppressedChapters = new Set(); // _abandonOneWorld
-        expect(lights(world)).toBe(9);
-        world.dispose();
-        const dioramas = new ChapterEnvironmentManager(new THREE.Scene(), null);
-        expect(lights(dioramas)).toBe(9);
-        dioramas.dispose();
+    it('lights the rig for the chapters it builds; the world draws the rest', async () => {
+        // Perf audit 2026-10-28: 4 slots, not the 9 the old chapter 2-5 scenes sized it to
+        // (every lit material evaluated all of them).
+        const manager = new ChapterEnvironmentManager(new THREE.Scene(), null);
+        expect(manager.persistentLightRig.children.filter((c) => c.isLight)).toHaveLength(4);
+        await expect(manager.createChapterEnvironment(3)).resolves.toBeNull();
+        expect(manager.environments.has(3)).toBe(false);
+        manager.dispose();
     });
 });

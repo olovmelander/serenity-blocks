@@ -20,13 +20,13 @@
  *     per-frame animation in their update loops) — but as **virtual** lights: `visible = false`,
  *     so they never enter the render list and never touch the lights key.
  *   • The rig holds a fixed set of **slots**, one per type up to the maximum CONCURRENT count over
- *     any two adjacent chapters (a seam blends two): 4 point + 3 directional + 1 hemisphere + 1
- *     ambient = 9 lights, vs 18 resident before. Each frame the manager copies every ACTIVE
+ *     any two adjacent chapters (a seam blends two): 2 point + 1 directional + 1 ambient = 4
+ *     lights, vs 18 resident before. Each frame the manager copies every ACTIVE
  *     chapter's virtual lights into slots of the same type — world placement, colour, parameters,
  *     and intensity × the chapter's blend weight (the crossfade). Ambients add linearly, so all
  *     active ambients collapse into the single ambient slot. Unused slots sit at intensity 0.
  *
- * The lights key is fixed at manager construction; lit shaders carry 9 lights for the whole
+ * The lights key is fixed at manager construction; lit shaders carry 4 lights for the whole
  * session instead of growing to 18; chapter code is untouched beyond `acquireChapterLight()`.
  * The manifest is a contract: a fitness test builds every chapter and asserts it acquired exactly
  * its manifest, and that no chapter constructs a visible light behind the pool's back.
@@ -37,9 +37,6 @@ import * as THREE from 'three/webgpu';
 /** Per-chapter light types in ACQUISITION order. Chapters absent here construct no lights. */
 export const CHAPTER_LIGHT_MANIFEST = Object.freeze({
     1: Object.freeze(['AmbientLight', 'PointLight', 'PointLight']), // earth-core: ambient, lavaLight, lavaGlow
-    3: Object.freeze(['AmbientLight', 'DirectionalLight', 'HemisphereLight']), // surface-world
-    4: Object.freeze(['AmbientLight', 'DirectionalLight', 'DirectionalLight']), // mountain-peaks
-    5: Object.freeze(['AmbientLight', 'PointLight', 'PointLight', 'PointLight']), // sky-drift
     6: Object.freeze(['AmbientLight', 'PointLight', 'DirectionalLight']), // cosmic-expanse
     8: Object.freeze(['PointLight', 'AmbientLight']), // urban-dreams: beacon (tsl builder runs first), ambient
 });
@@ -50,21 +47,13 @@ const SUPPORTED = new Set(SLOT_TYPES);
 /**
  * Rig slot counts per type: the maximum over every pair of ADJACENT chapters (the two a seam
  * blends) of their summed counts; ambient is one merged slot.
- *
- * `without`: chapters drawn by something else, which never acquire a light here — with the One
- * World on, chapters 2-5 (perf audit 2026-10-28). Their dioramas' lights sized the rig at 9 slots
- * (ch5's three points beside ch6's one, ch3+ch4's three directionals, ch3's hemisphere) while the
- * chapters the board builds need 4, and every lit material evaluated all 9 lights, five of them at
- * intensity 0. Leaving them out changes no pixel: those slots only ever carried zero.
  * @param {object} [manifest]
- * @param {{without?: Iterable<number>|null}} [options]
  * @returns {Record<string, number>}
  */
-export function deriveRigSlots(manifest = CHAPTER_LIGHT_MANIFEST, { without = null } = {}) {
+export function deriveRigSlots(manifest = CHAPTER_LIGHT_MANIFEST) {
     const ids = Object.keys(manifest).map(Number);
     const last = Math.max(8, ...ids);
-    const skip = new Set(without || []);
-    const countOf = (id, type) => (skip.has(id) ? 0 : (manifest[id] || []).filter((t) => t === type).length);
+    const countOf = (id, type) => (manifest[id] || []).filter((t) => t === type).length;
     const slots = {};
     for (const type of SLOT_TYPES) {
         let max = 0;
@@ -101,9 +90,8 @@ const _worldPos = new THREE.Vector3();
 const _accumColor = new THREE.Color();
 const _tmpColor = new THREE.Color();
 
-/** Add rig slots until each type has `counts[type]` (never removes one). @returns {number} added */
+/** Add rig slots until each type has `counts[type]`. */
 function addSlots(rig, slots, counts) {
-    let added = 0;
     for (const type of SLOT_TYPES) {
         if (!slots[type]) slots[type] = [];
         for (let i = slots[type].length; i < counts[type]; i += 1) {
@@ -113,41 +101,23 @@ function addSlots(rig, slots, counts) {
             light.userData.chapterLightSlot = { type, index: i };
             rig.add(light);
             slots[type].push(light);
-            added += 1;
         }
     }
-    return added;
 }
 
 /**
  * Create the rig's light SLOTS (intensity 0, fixed order). Idempotent per rig.
  * @param {THREE.Object3D} rig the persistent light rig (never hidden)
  * @param {object} [manifest]
- * @param {{without?: Iterable<number>|null}} [options] chapters drawn by something else (deriveRigSlots)
  */
-export function seedChapterLightPool(rig, manifest = CHAPTER_LIGHT_MANIFEST, { without = null } = {}) {
+export function seedChapterLightPool(rig, manifest = CHAPTER_LIGHT_MANIFEST) {
     if (_pool && _pool.rig === rig) return _pool;
     const slots = {};
-    addSlots(rig, slots, deriveRigSlots(manifest, { without }));
+    addSlots(rig, slots, deriveRigSlots(manifest));
     _pool = {
         rig, manifest, slots, virtual: new Map(), fallbacks: [], overflow: 0, warnedOverflow: false,
     };
     return _pool;
-}
-
-/**
- * Give the rig the slots the chapters drawn here now need, when fewer are drawn by something else
- * (the One World handing chapters 2-5 back to their dioramas, ADR-0015). Slots are only ever
- * ADDED: a new slot changes the light set every lit material is keyed on, so those rebuild once,
- * which is what that failure path costs; the default path never grows.
- * @param {{without?: Iterable<number>|null, rig?: THREE.Object3D}} [options] the chapters still
- *   drawn by something else; `rig`, when given, must be the pool's (another manager's pool is not
- *   this one's to grow)
- * @returns {number} the slots added
- */
-export function growChapterLightPool({ without = null, rig = null } = {}) {
-    if (!_pool || (rig && _pool.rig !== rig)) return 0;
-    return addSlots(_pool.rig, _pool.slots, deriveRigSlots(_pool.manifest, { without }));
 }
 
 /** The live pool, or null when no manager has seeded one (plain chapter builds in tests). */

@@ -7,7 +7,7 @@
  * difference between "it hangs" and knowing which object is missing.
  *
  * Usage:
- *   PROBE_PORT=5173 PROBE_WAIT=40000 PROBE_FLAGS=odysseyOneWorld=1  *     node scripts/run-electron.mjs scripts/odyssey-boot-probe.mjs
+ *   PROBE_PORT=5173 PROBE_WAIT=40000 PROBE_FLAGS=odysseyWorldNoClouds=1  *     node scripts/run-electron.mjs scripts/odyssey-boot-probe.mjs
  */
 /* eslint-disable import/no-extraneous-dependencies, no-console */
 import electron from 'electron';

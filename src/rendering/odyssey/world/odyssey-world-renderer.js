@@ -218,7 +218,7 @@ const PLAIN_MEADOWS = Object.freeze({
     edge: 0.05,
 });
 /**
- * Snow's ice-blue shadow, from mountain-language.js — the ONE shadow colour here that is prior
+ * Snow's ice-blue shadow, from the old alpine language — the ONE shadow colour here that is prior
  * art rather than a measurement (no reference frame contains snow). Authored luma-neutral
  * (0.2126/0.7152/0.0722 weights sum to 0.997) so it shifts hue only and cannot claim a second
  * share of the value drop that `value` owns.
@@ -2167,7 +2167,7 @@ export function createOdysseyWorld({
         // ALPINE SURFACE LANGUAGE (Ch4 port). The peaks survive suppression as terms in the
         // height field, so the camera stares at them for all of Ch4 — but a generic biome ramp
         // gives them a CLEAN HORIZONTAL snow band, which reads as a contour line on a map rather
-        // than a mountain. mountain-language.js broke that band with FBM jitter and gated snow by
+        // than a mountain. The old alpine language broke that band with FBM jitter and gated snow by
         // slope; both port directly here, the jitter riding a low-frequency read of the detail
         // texture (one fetch) instead of procedural noise. The band is also tightened 620..790 ->
         // 620..730 now that the jitter, not the ramp width, is what softens the boundary.
@@ -2681,8 +2681,7 @@ export function createOdysseyWorld({
         // aerial perspective below, both of which measured positive.)
 
         /**
-         * CAUSTICS on the submerged shelf — ported from Ch2 (deep-ocean.tsl.js
-         * causticProjection), and RE-CUT (Wave 4) to obey this file's own header law.
+         * CAUSTICS on the submerged shelf, RE-CUT (Wave 4) to obey this file's own header law.
          *
          * It shipped as two `snoise3` evaluations per fragment: the only procedural noise left
          * in the graph, paid on every land pixel in the frame to light a shelf most frames
@@ -2734,7 +2733,7 @@ export function createOdysseyWorld({
          * rock instead DESATURATES toward neutral (ref2's ledge 0.33 -> 0.06). Desaturating a
          * warm colour raises its relative blue on its own, so `desat` OWNS the measured hue
          * shift and no blue tint is added anywhere — the one-owner law. Snow is the documented
-         * exception: it takes mountain-language's ice-blue shadow, authored luma-neutral so it
+         * exception: it takes the old alpine language's ice-blue shadow, authored luma-neutral so it
          * shifts hue without also claiming a second share of the value drop.
          *
          * Every colour term below is luma-preserving BY CONSTRUCTION, so the measured shade:lit

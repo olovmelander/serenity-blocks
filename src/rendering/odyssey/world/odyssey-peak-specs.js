@@ -1,17 +1,11 @@
 /**
  * THE canonical Act II peak specifications — the world's own frozen authority.
  *
- * SPEC-AUTHORITY FLIP (Wave 4/6 audit, Tranche 2.2, 2026-08-12). These four peaks used to
- * be declared inside `chapter-environments/shared/canonical-mountain-range.js`, and the
- * LIVE world's height-field test derived its `ODYSSEY_MASSIFS` expectations from that
- * legacy module — truth flowed from the code Wave 4 wants to delete into the code that
- * shipped. This file inverts the direction: the world owns the geometry truth, and the
- * legacy canonical builder now DERIVES its specs from here (pinned by
- * tests/unit/odyssey-peak-spec-authority.test.js). Deleting the legacy chain no longer
- * orphans the silhouette's definition.
+ * The world's `ODYSSEY_MASSIFS` height-field table is checked against this data
+ * (`odyssey-world-height.test.js`), and the rest of Act II takes its peaks from there.
  *
  * Deliberately import-free pure data, like `odyssey-world-height.js`: safe to read from a
- * worker, a bake, a test, or the legacy module without dragging in THREE or path-utils.
+ * worker, a bake or a test without dragging in THREE or path-utils.
  *
  * Coordinates are OFFSETS, not absolutes, because that is what the shipped derivation has
  * always been: X/Z relative to the Chapter 4 path-range centre, and the foot datum
