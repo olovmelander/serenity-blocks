@@ -37,11 +37,16 @@ describe('the boulders and outcrops', () => {
     });
 
     it('stands clear of every tree trunk', () => {
+        // One assertion a rock, on its nearest tree: an expect for every rock and tree was what took
+        // this test past its five seconds on a slow runner.
         rocks.forEach((r) => {
             const radius = Math.max(r.sx, r.sz);
+            let nearest = Infinity;
             forest.placements.forEach((t) => {
-                expect(Math.hypot(t.x - r.x, t.z - r.z)).toBeGreaterThan(radius + ODYSSEY_BOULDERS.treeClear - 1e-6);
+                nearest = Math.min(nearest, Math.hypot(t.x - r.x, t.z - r.z));
             });
+            expect(nearest, `${r.kind} rock at (${r.x.toFixed(0)}, ${r.z.toFixed(0)})`)
+                .toBeGreaterThan(radius + ODYSSEY_BOULDERS.treeClear - 1e-6);
         });
     });
 
