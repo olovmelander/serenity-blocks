@@ -104,8 +104,8 @@ The legacy path is the default (`fixedTick`/`cascadeV2` are off), so these hit e
 
 ### 7. The theme contract is advisory, so frame pacing, resolution and quality settings reach only part of the fleet — **High on the target hardware** · S–M per item
 
-- **✔ The Target Frame Rate cap is bypassed by 28 of 62 themes (23 GPU-heavy).** The cap lives only in `BaseTheme.shouldRenderFrame()`/`safeAnimate()` (`base-theme.js:1262-1348`); themes with their own rAF loop that call neither (e.g. stellar-velocity, sky-children-v2, aurora, sunset, neon-dusk, galaxy, pyrestorm) render every refresh. High-refresh panels draw 2–4× the target, and a "30 fps" battery choice does nothing in 45 % of themes. `docs/GAMEPLAY_SMOOTHNESS_INVESTIGATION_2026-08.md:411-413` claims all themes obey; they don't.
-- **✔ Dynamic resolution only ratchets down.** 16 per-theme controllers compare vsync-locked frame intervals with fixed targets. ice-temple on WebGPU targets 8.33 ms (`ice-temple-theme.js:572-576`) and is fed the inter-frame delta (`:5079`), so at 60 Hz it always decays to its 0.60–0.64 floor. sky-children steps down and permanently disables post; neon-district/neon-dusk never scale up; golden-forest and stellar-drift hit the floor at Target 30; lunara's knob is a no-op on WebGPU. The global controller **persists** lowered render scales into the player's settings (`main.js:1123-1134`, `persist: true`) and runs only while the FPS overlay is on. Correct implementations exist: nimbus-veil, synthwave-sunset, chromadelic, and black-hole (GPU timestamps).
+- **✔ The Target Frame Rate cap is bypassed by 28 of 62 themes (23 GPU-heavy).** The cap lives only in `BaseTheme.shouldRenderFrame()`/`safeAnimate()` (`base-theme.js:1262-1348`); themes with their own rAF loop that call neither (e.g. stellar-velocity, rainbow-terraces, aurora, sunset, neon-dusk, galaxy, pyrestorm) render every refresh. High-refresh panels draw 2–4× the target, and a "30 fps" battery choice does nothing in 45 % of themes. `docs/GAMEPLAY_SMOOTHNESS_INVESTIGATION_2026-08.md:411-413` claims all themes obey; they don't.
+- **✔ Dynamic resolution only ratchets down.** 16 per-theme controllers compare vsync-locked frame intervals with fixed targets. ice-temple on WebGPU targets 8.33 ms (`ice-temple-theme.js:572-576`) and is fed the inter-frame delta (`:5079`), so at 60 Hz it always decays to its 0.60–0.64 floor. rainbow-terraces steps down and permanently disables post; neon-district/neon-dusk never scale up; golden-forest and stellar-drift hit the floor at Target 30; lunara's knob is a no-op on WebGPU. The global controller **persists** lowered render scales into the player's settings (`main.js:1123-1134`, `persist: true`) and runs only while the FPS overlay is on. Correct implementations exist: nimbus-veil, synthwave-sunset, chromadelic, and black-hole (GPU timestamps).
 - **Settings don't propagate.** Quality, Render Scale and AA changes reach ~13 themes over three different channels; ~49 read `window.settings` only in `createScene` (38 private quality getters). The Odyssey board reads quality once at init and never uses Render Scale.
 - **First-event stalls.** ~18 themes create geometry and materials inside line-clear/combo handlers; only 3 implement `getWarmupRoots()`, so the first effect of a session compiles pipelines synchronously in play (70–190 ms measured for this class in Stillwater).
 - **Also:**
@@ -200,7 +200,7 @@ See Part 2 for the full cleanup plan. Headlines:
    - Produce a ≤300-line `docs/ROADMAP.md` as the live status page.
    - Cite other plans by filename. "Plan item 2.1" means different things in the R185 plan and the umbrella plan.
 4. **Executed plans still marked unstarted** — archive or stamp "EXECUTED → see <record>":
-   - `ODYSSEY_NORTH_ISLAND_LAKE_PLAN_2026-08` ("NOT STARTED"), `ODYSSEY_GHIBLI_WATER_PLAN_2026-08` and `ODYSSEY_ACT_II_SEAM_AND_OCEAN_PLAN_2026-08` ("PLAN ONLY"), `ODYSSEY_ACT_I_REBIRTH_PLAN_2026-08` ("PROPOSED", 121 KB), `ODYSSEY_ACT2_FOREST_VISIBILITY_PLAN_2026-08` ("Not implemented") — all landed.
+   - `ODYSSEY_NORTH_ISLAND_LAKE_PLAN_2026-08` ("NOT STARTED"), `ODYSSEY_PAINTED_WATER_PLAN_2026-08` and `ODYSSEY_ACT_II_SEAM_AND_OCEAN_PLAN_2026-08` ("PLAN ONLY"), `ODYSSEY_ACT_I_REBIRTH_PLAN_2026-08` ("PROPOSED", 121 KB), `ODYSSEY_ACT2_FOREST_VISIBILITY_PLAN_2026-08` ("Not implemented") — all landed.
    - The 5 root `PLAN-*.md` ("Rank 1 of 5. Do this first."), whose P0/OD markers are all in code (#306).
 5. **Prompt-style docs:**
    - Archive `docs/architectural-review-prompt.md`. It is "You are an expert Principal Game Architect…", with a "verified — do not re-litigate" section that is now false (no typecheck, two buses, no fixed tick).
@@ -242,8 +242,6 @@ See Part 2 for the full cleanup plan. Headlines:
 | HOW_TO_RUN.md | merge useful bits into README, delete | `testSteam()`/`testFFA()` helpers don't exist; Linux commands |
 | PHASER_QUICKSTART.md, public/README.md | delete | stale (rc.5; old workspace paths) |
 | CREDITS.md, steam_appid.txt | keep | functional |
-| tetris_legal_review.md, quadra-provenance-attestation.md | **move** to `docs/legal/` (update cites in pages.yml, ip-string-gate, palette check) — never delete | legal |
-| game_description.md, single_player_death.md | keep / move with legal docs | audited by the legal review |
 | AUTO_DROP_*.txt ×2, RECOMMENDATIONS.md, PHASE_1_COMPLETE.md | delete | fixed/obsolete |
 | PERFORMANCE_STABILITY_AUDIT.md, PERF_REMEDIATION_LOG.md, ODYSSEY_MODE_PERFORMANCE_AUDIT.md | archive under `docs/archive/2026-07-perf-audit/` (update code-comment refs) | dated records; one "done" item is contradicted by code (overlay canvas, Part 1 #7) |
 | PLAN-*.md ×5 | archive, marked DONE (#306) | executed |
@@ -338,7 +336,7 @@ See Part 2 for the full cleanup plan. Headlines:
 - Theme switches can't preempt (A→B→C fully builds B and switches music).
 - Level/Random background modes switch themes mid-game without a loading surface.
 - The adjacent-preload cache holds almost nothing.
-- neon-district's line-clear lightning, dolly and Tetris sky flash have never fired: it subscribes to the nonexistent `EVENTS.LINES_CLEARED` (`neon-district-theme.js:8729`) and reads `data.lines` instead of `lineCount`. electric-dreams-v3 and himalayan-peak subscribe to nonexistent `GAME_OVER`/`GAME_START`. `setKnownEvents` is never enabled in dev.
+- neon-district's line-clear lightning, dolly and Quad sky flash have never fired: it subscribes to the nonexistent `EVENTS.LINES_CLEARED` (`neon-district-theme.js:8729`) and reads `data.lines` instead of `lineCount`. electric-dreams-v3 and himalayan-peak subscribe to nonexistent `GAME_OVER`/`GAME_START`. `setKnownEvents` is never enabled in dev.
 - The prewarm fallback's whole-scene `compileAsync` ignores MRT themes (`theme-manager.js:1645-1662`; plausible blank objects under `?themeWarmAsync=0`).
 - Non-theme code imports theme internals: the intro renderer → `themes/shared/bloom-dispose.js`, breaking the boot-import rule, and `core/constants.js` → a registry that now has DOM code.
 - 3 themes ignore the render-scale and GPU-safety pixel-ratio caps (cinder-drift, electric-dreams-v3, singing-bowl).

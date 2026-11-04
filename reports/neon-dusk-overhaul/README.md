@@ -43,7 +43,7 @@ The great sun sinks into a pass between three neon mountain ranges, over a glass
 | `after-playground-menu-centred.jpg` | `?effect=neon-dusk&t=20&board=0` — the centred menu shot |
 | `after-playground-game.jpg` | Mock board + HUD: the sun solved into the free zone left of the board |
 | `after-playground-lock.jpg` | A T piece locked in the board's left half: its tiles light in the glass |
-| `after-playground-tetris.jpg` | Tetris: hologram halos, pixel burst, the wave rolling in |
+| `after-playground-quad.jpg` | Quad: hologram halos, pixel burst, the wave rolling in |
 | `after-playground-combo.jpg` | Combo ×5: neon pixels from the sun across the screen, grid hue shift, glitch |
 | `after-playground-low-tier.jpg` | `quality=Low` — analytic mirror (no second render), no bloom |
 | `after-playground-webgl2-menu.jpg` | `forceWebGL=1` — the WebGL2 backend renders the same node path |

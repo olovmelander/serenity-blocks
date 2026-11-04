@@ -30,7 +30,7 @@
 ## 1. Executive Summary
 
 ### Vision
-Odyssey Mode transforms Serenity Blocks from a traditional puzzle game into an immersive, emotionally-driven experience inspired by Tetris Effect. Players traverse a linear path through 56+ levels spanning seven chapters, each representing a stage of cosmic ascent—from Earth's core to abstract transcendence.
+Odyssey Mode transforms Serenity Blocks from a traditional puzzle game into an immersive, emotionally-driven experience inspired by a flow-state block puzzle. Players traverse a linear path through 56+ levels spanning seven chapters, each representing a stage of cosmic ascent—from Earth's core to abstract transcendence.
 
 ### Key Design Goals
 1. **Modularity**: Level parameters, gameplay mechanics, and visuals are fully data-driven
@@ -865,7 +865,7 @@ export const LEVEL_CONFIGS = [
             },
 
             bonuses: [
-                { type: 'tetris-count', target: 5, description: 'Clear 5 Tetrises' },
+                { type: 'quad-count', target: 5, description: 'Clear 5 Quads' },
                 { type: 'no-top-out', description: 'Never reach the danger zone' },
             ],
         },
@@ -876,15 +876,15 @@ export const LEVEL_CONFIGS = [
 
         stars: {
             one: { score: 50000 },
-            two: { score: 50000, tetrises: 3 },
-            three: { score: 75000, tetrises: 5, time: 180 },
+            two: { score: 50000, quads: 3 },
+            three: { score: 75000, quads: 5, time: 180 },
         },
 
         metadata: {
             description: 'The point of no return approaches.',
             difficulty: 8,
             estimatedTime: 300,
-            tip: 'Build for Tetrises while managing the time pressure.',
+            tip: 'Build for Quads while managing the time pressure.',
         },
     },
 ];
@@ -1266,7 +1266,7 @@ export class VictoryConditionEvaluator {
             cascades: 0,
             maxCascadeDepth: 0,
             combos: 0,
-            tetrises: 0,
+            quads: 0,
             singles: 0,
             height: 0,
         };
@@ -1282,7 +1282,7 @@ export class VictoryConditionEvaluator {
         this.trackedMetrics.lines += lineCount;
 
         if (lineCount === 1) this.trackedMetrics.singles++;
-        if (lineCount === 4) this.trackedMetrics.tetrises++;
+        if (lineCount === 4) this.trackedMetrics.quads++;
     }
 
     onCascade(cascadeDepth) {
@@ -1363,8 +1363,8 @@ export class VictoryConditionEvaluator {
                 case 'max-cascade-depth':
                     return this.trackedMetrics.maxCascadeDepth >= bonus.target;
 
-                case 'tetris-count':
-                    return this.trackedMetrics.tetrises >= bonus.target;
+                case 'quad-count':
+                    return this.trackedMetrics.quads >= bonus.target;
 
                 default:
                     return false;

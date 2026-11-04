@@ -562,7 +562,7 @@ export function* buildUrbanDreamsEnvironmentSteps(options = {}) {
         group.position.y = chapterCenterY;
     }
 
-    // FogExp2 WASHOUT fix (backlog #3): this is a neon NIGHT-CITY set-piece, not a foggy
+    // FogExp2 WASHOUT fix (backlog #3): this is a neon CITY-AT-NIGHT set-piece, not a foggy
     // scene — the profile runs a violet FogExp2 at density 0.012, which at the spire/sun
     // depth (z≈−600..−690) reaches ~100% and flattens every additive neon surface into a
     // uniform violet blob. The city's depth comes from its own sky dome, ground haze pools

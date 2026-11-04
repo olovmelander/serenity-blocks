@@ -113,7 +113,7 @@ _getPhysicsCallbacks() {
         onRotate: () => this.deps.soundManager.sfxPlayer.playRotate(),
         onLineClear: (lines) => {
             if (lines === 4) {
-                this.deps.soundManager.sfxPlayer.playTetris();
+                this.deps.soundManager.sfxPlayer.playQuad();
             } else {
                 this.deps.soundManager.sfxPlayer.playLineClear();
             }
@@ -318,4 +318,4 @@ You can:
 - See stats update ✅
 - See next pieces ✅
 
-Enjoy your refactored, properly architected Tetris game!
+Enjoy your refactored, properly architected block-stacking game!

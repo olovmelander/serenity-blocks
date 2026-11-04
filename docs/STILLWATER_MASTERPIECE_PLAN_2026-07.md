@@ -109,7 +109,7 @@ The shipping gate must use production preview/Electron and the matrix in §13.
 
 ### 2.2 Reaction stress evidence
 
-A deterministic synthetic burst of 48 piece locks plus a Tetris and combo 10 produced:
+A deterministic synthetic burst of 48 piece locks plus a Quad and combo 10 produced:
 
 | Metric | Idle | Stress peak |
 |---|---:|---:|
@@ -414,7 +414,7 @@ The director must:
 | Single | **Reed Whisper:** narrow lateral wake; one nearby cluster answers |
 | Double | **Twin Current:** paired wakes and a small shore-spore lift |
 | Triple | **Moon Path:** broad silver path and one soft shaft |
-| Tetris | **The Lake Opens:** four row/depth wakes converge into one mirror swell |
+| Quad | **The Lake Opens:** four row/depth wakes converge into one mirror swell |
 | Combo 2–3 | Tide begins; mushrooms breathe |
 | Combo 4–6 | Mycelium relay moves along the bank; motes orbit |
 | Combo 7–9 | Tree rims lift; troll/spirit notice; peripheral echo wakes |
@@ -547,7 +547,7 @@ separate cold and warm runs.
 
 1. 20 s warmed idle.
 2. Deterministic 2 Hz piece locks.
-3. Line/Tetris/combo 10 storm and a perfect clear.
+3. Line/Quad/combo 10 storm and a perfect clear.
 4. Cold activation through troll readiness.
 5. 1080p → 1440p → capped 4K resize/DPR transition.
 6. Hidden for 20 s, then resume.
@@ -602,7 +602,7 @@ phase-locked screenshot and clean console.
 
 ### Wave 0 — truth and correctness
 
-- Capture current real-game idle, lock, single, Tetris, combo 4/7/10, T-spin, B2B, and
+- Capture current real-game idle, lock, single, Quad, combo 4/7/10, T-spin, B2B, and
   perfect-clear states.
 - Land the P0 frame-loop, beam, shader-math, loading, disposal, deterministic RNG, and
   instrumentation repairs.
@@ -638,23 +638,23 @@ conversion deferred; see
 
 ### Wave 3 — integrated water response
 
-Add one fixed-slot dimple/wake system to the lake pilot. Trigger routine lock, Tetris, and
+Add one fixed-slot dimple/wake system to the lake pilot. Trigger routine lock, Quad, and
 T-spin variants through deterministic playground controls.
 
 **Exit:** response hierarchy reads without new meshes, programs, or geometry growth.
 
 **Completed 2026-07-25:** High uses 10 preallocated response slots and Low uses 4, with a
-reserved special channel for four converging Tetris wakes or the cyan/violet T-spin turn.
+reserved special channel for four converging Quad wakes or the cyan/violet T-spin turn.
 The fixed-time hierarchy passed native WebGPU and forced-WebGL2 inspection, and a warmed
 48-event storm left render/resource counters and backing identities unchanged. See
 [`STILLWATER_WAVE3_RESPONSE_EVIDENCE_2026-07.md`](STILLWATER_WAVE3_RESPONSE_EVIDENCE_2026-07.md).
 That Wave 3 pilot did not obtain incremental GPU timestamp attribution after its capture
 target closed, so the historical pilot never treated the reaction as zero-cost. The Wave 8
 production harness now measures the warmed idle-to-reaction GPU-timestamp delta and gates
-it at +0.75 ms. The final production graph replaces four repeated full-lake Tetris
+it at +0.75 ms. The final production graph replaces four repeated full-lake Quad
 branches with one construction-time-selected periodic signed-distance field while
 preserving four converging ivory wakes. The
-[historical v5 native-WebGPU Tetris capture](../artifacts/themes/stillwater/wave8/final-playground/water-high-tetris-lean-periodic-webgpu-v5.png)
+[historical v5 native-WebGPU Quad capture](../artifacts/themes/stillwater/wave8/final-playground/water-high-quad-lean-periodic-webgpu-v5.png)
 reports `lean-four-wake`, ten fixed slots, one active reserved special slot, four depth
 wakes, one canvas, and no shader/pipeline failure.
 
@@ -714,7 +714,7 @@ journey capture.
 readable pieces, and no shared-board effect duplication.
 
 **Completed and current-source verified 2026-07-26:** the fixed reaction director covers
-11 canonical production inputs: lock, hard drop, line clear, Tetris, combo 4/7/10, T-spin,
+11 canonical production inputs: lock, hard drop, line clear, Quad, combo 4/7/10, T-spin,
 B2B, perfect clear, and level up, plus reduced motion and multiplayer ownership filtering.
 B2B reaches the dedicated echo route 4, hard drop reaches route 8, and level up reaches
 route 9. The troll's authored reactions are lock glance, line turn/pause, combo wary,
@@ -786,7 +786,7 @@ and are not promoted into an attestation.
 - The spirit has internal form and controlled bloom; the troll is grounded and visible.
 - Water reflects and responds without looking like a mirror sheet or a 2D glow blob.
 - Near/mid/far layers remain separable without relying on particles.
-- Lock, hard drop, line clear, Tetris, combo 4/7/10, T-spin, B2B, perfect clear, and
+- Lock, hard drop, line clear, Quad, combo 4/7/10, T-spin, B2B, perfect clear, and
   level up have distinct, serene, folklore-native responses.
 - Tetrominoes are immediately distinguishable in motion and in next/hold/ghost views.
 

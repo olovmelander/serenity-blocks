@@ -377,7 +377,7 @@ Open items, ranked (draws from the June-22 plan §8 minus what shipped):
   primary victory = 3 of 8 supported types (lines 22 / score 20 / cascade 14); working modifiers = 2 of 7.
   Wire `combo-multiplier` into scoring; implement `invisible` (renderer honors `piece.fadeOutTime`),
   `mirror` (input map), `speed-up` (gravity scale) — or delete them from 33 levels' data. Then author the
-  back half of the campaign to actually use combo/tetrises/time-survival primaries and the richer pool.
+  back half of the campaign to actually use combo/quads/time-survival primaries and the richer pool.
   Add `'quads'` to LevelRegistry validTypes (§2#10).
 
   > **STATUS (2026-07-05 — wiring SHIPPED, authoring still open):** The four dead modifiers are now
@@ -407,7 +407,7 @@ Open items, ranked (draws from the June-22 plan §8 minus what shipped):
   > cascade/attack suites (same shared physics) still pass. Build + lint green.
   >
   > **STILL OPEN (the transformative half):** author the back-half campaign to actually *use*
-  > combo/tetrises/time-survival primaries + the now-live modifier pool. That's level-data design, not code.
+  > combo/quads/time-survival primaries + the now-live modifier pool. That's level-data design, not code.
 - **C3 — Ceremonies for the authored-but-silent content** *(high/medium)*. `isChapterEnd`/`isFinalLevel`
   are never referenced; chapter `narrative.intro/outro` and `victoryLapPolicy` "showcase" tags are dead
   data. Build: chapter-completion ceremony (chapter environment does a one-shot bloom-surge/palette-

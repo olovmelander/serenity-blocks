@@ -1,9 +1,7 @@
 # Rainbow Terraces — handover (2026-10-12)
 
-> **Renamed 2026-10-18.** This theme was called Sky Children (with the working subtitle
-> "Irisfall") until 2026-10-18. Both names belong to other games, so it became **Rainbow Terraces**
-> (id `rainbow-terraces`, Odyssey orb 34 "Where Color Falls"); the old ids `sky-children` and
-> `sky-children-v2` resolve to it for old saves.
+> **Renamed 2026-10-18.** This theme had an earlier working name. It is **Rainbow Terraces** (id
+> `rainbow-terraces`, Odyssey orb 34 "Where Color Falls"); its old ids resolve to it for old saves.
 
 Where the Rainbow Terraces rebuild stands, what is left, and how to pick it up in a new
 session. The theme itself is described in the design record,
@@ -54,7 +52,7 @@ in short:
   is byte-identical to it.
 - **Gates on the final merged tree:** typecheck clean, lint ratchet 565 errors (baseline 807; the
   baseline was not lowered), dependency boundaries clean, theme lifecycle audit passed, build with
-  boot closure OK, IP string gate OK (it scans only for the Tetris marks), and the full unit suite
+  boot closure OK, IP string gate OK (it scans only for the third-party marks), and the full unit suite
   (`npm test`: 861 files, 16,519 tests, all passing; the 15 Rainbow Terraces files hold 347 of them).
   A playground frame of the merged tree renders as before, with a clean console.
 - **What the theme is now:** a from-scratch rebuild under `src/themes/rainbow-terraces/` (registry id
@@ -173,7 +171,7 @@ Steps 0 to 2 are done, and step 4 in part (see the third pass above); what is le
 - **The old V2 module: settled, deleted (2026-10-18).** The owner chose to delete it with the
   rename: the unloaded V2 theme folder, `src/themes/shared/sky-core/`, its textures, its detail
   playground effect (and the four URL-catalogue entries for it), its two tests and its reference
-  images. The registry's `sky-children-v2` → `rainbow-terraces` alias (`RETIRED_THEME_IDS` in
+  images. The registry's old-id alias (`RETIRED_THEME_IDS` in
   `theme-registry.js`) stays for old saves.
 - **`rainbow-terraces-ledger.js`** (PoolLedger, StrokeBook, Dial) is a reference model that only its own
   test imports; the world keeps its own pool choice, release and dial. Wire it in, or remove it?
@@ -224,7 +222,7 @@ Steps 0 to 2 are done, and step 4 in part (see the third pass above); what is le
   name, and motif phrases such as the ones above), never a single word the theme itself uses (sky,
   gliders, light), so that a clean diff gives no hit. After staging and before every commit, `git
   diff --cached <base> | grep -inEf <list>` must print nothing (and exit 1; exit 2 means the list
-  is missing). `npm run check:ip-strings` does not cover this: it scans only for the Tetris marks. The theme's own
+  is missing). `npm run check:ip-strings` does not cover this: it scans only for the third-party marks. The theme's own
   vocabulary (Rainbow Terraces, the Mother Fall, the Twin Isle, the Far Gate, the hours Jade Morning to
   Pearl Dawn) is original.
 - **Parallel work:** one worktree per package with a strict file-ownership list, merged by one

@@ -29,7 +29,7 @@
 - Opponents arranged in 2-column grid
 - Perfect for 2-4 opponents
 - Wider left sidebar (640px)
-- Maintains Tetris aspect ratio
+- Maintains block-stacking aspect ratio
 
 ---
 
@@ -68,7 +68,7 @@
 │                     │  Level | Frags       │                   │
 │ ┌────┬────┐        │ ┌──────────────────┐ │ [Messages]        │
 │ │ P1 │ P2 │        │ │                  │ │                   │
-│ │👤 │👤 │        │ │   Your Tetris    │ │                   │
+│ │👤 │👤 │        │ │   Your Board    │ │                   │
 │ └────┴────┘        │ │     Canvas       │ │                   │
 │ ┌────┬────┐        │ │                  │ │                   │
 │ │ P3 │ P4 │        │ │                  │ │ [Type here...]    │
@@ -88,7 +88,7 @@
 2. **Wider left column** - 640px for 2x2 grid
 3. **Grid layout** - `repeat(2, 1fr)` for 2 columns
 4. **Backdrop blur** - 10px blur on sidebars
-5. **Aspect ratios** - 1:2 for Tetris boards
+5. **Aspect ratios** - 1:2 for block-stacking boards
 
 ### Files Modified:
 - `public/styles/multiplayer-ui.css` - Complete redesign

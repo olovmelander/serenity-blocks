@@ -1934,7 +1934,7 @@ serenity-blocks/
 ❌ Cross-platform (mobile, consoles)  
 ❌ Web browser gameplay  
 
-**Verdict:** For a competitive 2-8 player Tetris game on Steam, **P2P is OPTIMAL!** 🏆
+**Verdict:** For a competitive 2-8 player block-stacking game on Steam, **P2P is OPTIMAL!** 🏆
 
 ---
 
@@ -1991,7 +1991,7 @@ This plan is **production-ready** and **completely free** (except $100 Steam fee
 **Total cost:** $100-112  
 **Monthly cost:** $0 🎉
 
-**Let's build a commercial-grade multiplayer Tetris game with ZERO hosting costs!** 🚀
+**Let's build a commercial-grade multiplayer block-stacking game with ZERO hosting costs!** 🚀
 
 ---
 

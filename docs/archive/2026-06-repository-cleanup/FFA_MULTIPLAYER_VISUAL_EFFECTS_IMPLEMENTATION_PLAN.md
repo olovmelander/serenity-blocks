@@ -555,7 +555,7 @@ drawSimpleRipple(steamId, piece) {
 - Combo explosion particles (360-degree burst)
 - Stronger camera shake
 
-#### Test 3: Tetris (4 Lines)
+#### Test 3: Quad (4 Lines)
 **Steps**:
 1. Clear 4 lines at once
 

@@ -35,7 +35,7 @@ testMultiplayer(4)
 - Semi-transparent with **blur effect**
 
 ### **Center (Your Game):**
-- **Large Tetris canvas**
+- **Large block-stacking canvas**
 - Over the theme (theme visible around it)
 - Semi-transparent container
 

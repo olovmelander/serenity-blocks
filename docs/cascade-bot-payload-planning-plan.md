@@ -47,7 +47,7 @@ row missing one cell):
 
 So the bot has **no signal to build the photo's machine** — it only "sees" empty-well machines.
 That's why it doesn't stack I-payload towers and hold for a big low-row trigger. Everything
-downstream (it fires Tetris+ via the GO override, garbage already carries the right color, cleanliness
+downstream (it fires Quad+ via the GO override, garbage already carries the right color, cleanliness
 is good after the last pass) is fine — the missing piece is the **planning signal for the build-tall,
 fire-low machine.**
 
@@ -84,7 +84,7 @@ fire the **big low-row trigger**:
   not only on a capped side-lane being `triggerReady`. I.e. when `latentDepth >= triggerDepthTarget`,
   treat the machine as "loaded": prefer the placement that fires the full cascade, and penalize a
   placement that clears only 1-2 lines and **destroys the near-full structure**.
-- The GO override already fires Tetris-or-better / perfect-clear; ensure the **row-completing fire**
+- The GO override already fires Quad-or-better / perfect-clear; ensure the **row-completing fire**
   is recognized as the discharge (it is — it produces the big `totalLines`).
 
 ### 2c. Safety — build tall without topping out

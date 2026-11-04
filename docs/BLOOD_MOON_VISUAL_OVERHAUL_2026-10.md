@@ -92,11 +92,11 @@ sky and the camera does the moving, so moon, stars and horizon shift together.
 
 ## Gameplay
 
-- **Rings on the water** (`rippleCue`): a lock drops one, a clear one or two, a T-spin two, a Tetris
+- **Rings on the water** (`rippleCue`): a lock drops one, a clear one or two, a T-spin two, a Quad
   three, a perfect clear four, a level-up two. They land on visible water beside the board (the board
   lanes come from the layout), mostly near the lens, spread at 2.1 m/s, bend the reflections and
   their crests catch the moon's own light: red in totality, silver when the sliver shows.
-- **Fireballs:** a Tetris, a T-spin and a perfect clear send a brighter, slower meteor with a glowing
+- **Fireballs:** a Quad, a T-spin and a perfect clear send a brighter, slower meteor with a glowing
   head and halo across the open sky on the far side from the moon; its glint shows in the water.
 - **Kept from the previous Blood Moon:** the broken lunar wave of a lock (Wolfhour's), the corona
   flare, the expanding wave ring and the three-slot ember showers of clears and combos, all following
@@ -144,7 +144,7 @@ and keeps 0.03 of the height from any board (was 0.014) to leave room for the ca
   `game-over-modal-result-compatibility`, `tts-recorder-e2e`). The same four fail on untouched
   `main` (the first three expect "250,000" where this machine's locale writes "250 000").
 - Playground captures, zero console errors each, in the evidence folder: totality with no board,
-  totality with a board, late totality (t = 40), the sliver (t = 60), a Tetris with its fireball at
+  totality with a board, late totality (t = 40), the sliver (t = 60), a Quad with its fireball at
   1.1 s, a lock at 0.7 s, a quiet meteor (t = 35), Minimal on the WebGL2 backend, and phone portrait
   (390×844) and landscape (844×390) at Low on the WebGL2 backend.
 - In game, from a production build: `node scripts/validate-all-themes.mjs --theme blood-moon`: PASS,

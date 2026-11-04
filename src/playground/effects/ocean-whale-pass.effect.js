@@ -4,7 +4,7 @@
  *
  * The camera climbs the water column looking UP toward the bright surface, so a whale crossing
  * overhead is a SILHOUETTE against the light — the single most iconic underwater image there is
- * (ABZÛ, Big Blue). This bench answers "does the project-owned whale GLB carry that read?"
+ * (an underwater game, Big Blue). This bench answers "does the project-owned whale GLB carry that read?"
  * before anything is wired into the game: the whale glides across a bright, depth-graded water
  * ceiling, shaded the way it will be in-world — dark back, a soft belly lit from below by the
  * scattered light, a fresnel rim where the surface light wraps the body, and colour-with-

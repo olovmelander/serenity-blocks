@@ -609,7 +609,7 @@ We've built a **production-ready multiplayer UI** that:
 - Performs excellently (<50ms interactions)
 - Costs nothing ($0/month forever)
 
-**You now have a fully functional multiplayer Tetris game with a beautiful UI!** 🎮✨
+**You now have a fully functional multiplayer block-stacking game with a beautiful UI!** 🎮✨
 
 Only 1 phase remains: Final testing and polish!
 

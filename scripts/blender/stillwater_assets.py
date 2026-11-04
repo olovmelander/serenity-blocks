@@ -3,8 +3,8 @@
     blender --background --factory-startup --python scripts/blender/stillwater_assets.py -- \
         --out src/themes/stillwater/assets [--only troll,spirit] [--preview <dir>] [--voxel 0.003]
 
-* troll-lod0..3.glb: the theme's own troll, drawn clean from numbers in the character of the
-  author's sculpt (assets/troll.glb): one signed distance field of smooth masses under a mane of
+* troll-lod0..3.glb: the theme's own troll, the author's character, drawn clean from numbers:
+  one signed distance field of smooth masses under a mane of
   matted moss locks (scripts/blender/stillwater/troll_shape.py), meshed once, four LODs, a 21-bone
   skeleton, every vertex told what it is, baked occlusion (scripts/blender/stillwater/troll.py);
 * spirit-lod0..1.glb: the spirit, built from numbers (scripts/blender/stillwater/spirit.py).

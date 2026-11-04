@@ -17,7 +17,7 @@ The first implementation should be a local-only bot framework that controls one 
 External sources agree on the mechanics that matter for this feature:
 
 - Roncli's Quadra overview describes the key rule: after a line clear, blocks fall as far as they can, enabling chain reactions larger than four-line clears. It also calls out fast multiplayer play and near-immediate next-piece flow: https://roncli.com/quadra
-- TetrisWiki describes Quadra as using recursive gravity, three next pieces, no hold, hard drop, and fast multiplayer play: https://tetris.wiki/Quadra
+- the genre wiki describes Quadra as using recursive gravity, three next pieces, no hold, hard drop, and fast multiplayer play
 - Hard Drop's Quadra page confirms recursive gravity, no hold, hard drop, three next pieces, and the same "higher line clears" scoring emphasis: https://harddrop.com/wiki/Quadra
 
 Local code confirms this project implements the same gameplay family:
@@ -59,14 +59,14 @@ Academic survey material summarizes this Dellacherie controller as a leading one
 
 The weights the bots ship with are this project's own, fitted by its headless simulator against the Odyssey balance gates (`BOARD_SHAPE_WEIGHTS` in `src/core/ai/board-evaluator.js`).
 
-Colin Fahey's Tetris AI work is useful for two design principles:
+Colin Fahey's block-stacking AI work is useful for two design principles:
 
 - Evaluate hypothetical resulting game states rather than individual input moves in isolation.
 - Use pathfinding to determine whether a desired final placement is actually reachable by legal rotations and shifts.
 
-Source: https://www.colinfahey.com/tetris/
+Source
 
-Modern research also shows that Dellacherie-Thiery feature variants and policy-search methods remain competitive. The NeurIPS CBMPI paper reports strong performance using Dellacherie-Thiery features and gives optimized weights for 10x10 and 10x20 boards: https://proceedings.neurips.cc/paper/5190-approximate-dynamic-programming-finally-performs-well-in-the-game-of-tetris.pdf
+Modern research also shows that Dellacherie-Thiery feature variants and policy-search methods remain competitive. The NeurIPS CBMPI paper reports strong performance using Dellacherie-Thiery features and gives optimized weights for 10x10 and 10x20 boards
 
 ### Cascade Adaptation
 
@@ -189,9 +189,9 @@ No external code, assets, sounds, images, or libraries should be imported for th
 |---|---|---|---|
 | Roncli Quadra page | Mechanics research | Website content copyright Ronald M. Clifford | Link/cite only. No content reuse in runtime. |
 | Hard Drop Quadra page | Mechanics research | CC BY-SA 4.0 page license | Link/cite only. Do not copy text/assets into shipped game. |
-| TetrisWiki Quadra page | Mechanics research | CC BY-NC-SA 4.0 page license | Link/cite only. Non-commercial share-alike content is not suitable for commercial runtime assets. |
-| Colin Fahey Tetris page | AI/pathfinding research | No clear reusable code license for our purposes | Link/cite only. Reimplement concepts independently. |
-| NeurIPS CBMPI Tetris paper | Research reference | Research publication, not runtime code | Cite only. |
+| the genre wiki Quadra page | Mechanics research | CC BY-NC-SA 4.0 page license | Link/cite only. Non-commercial share-alike content is not suitable for commercial runtime assets. |
+| Colin Fahey block stacking page | AI/pathfinding research | No clear reusable code license for our purposes | Link/cite only. Reimplement concepts independently. |
+| NeurIPS CBMPI block stacking paper | Research reference | Research publication, not runtime code | Cite only. |
 
 All new Serenity bot code should be written from scratch in this repo and distributed under the repo's existing MIT license.
 

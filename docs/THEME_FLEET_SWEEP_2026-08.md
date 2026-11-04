@@ -88,7 +88,7 @@ behind it in the same `Promise.all`.
 
 **3a. winter blocks the main thread for 3,156 ms on switch-*away*.** Its own teardown logs complete
 in 2 ms; the stall lands on the *next* theme's already-cached dynamic import. Nothing else in the
-fleet exceeds 83 ms except sky-children (1,170 ms). This is invisible in every "first entry" column
+fleet exceeds 83 ms except rainbow-terraces (1,170 ms). This is invisible in every "first entry" column
 and is the largest single switch cost in the fleet after golden-forest and koi-pond.
 
 **3b. Six themes ship a `src/playground/effects/*.effect.js` file as their production scene** —
@@ -197,7 +197,7 @@ per-frame-allocation audit (1 = worst).
 | 15 | lunara | WGPU+GL | 1784 | 658 | 35 | 61 | — | — | moderate *(was lava-lake)* | — |
 | 16 | stellar-velocity | WGPU+GL | 1518 | 231 | 38 | 32 | 1 | — | light | 4 |
 | 17 | neon-dusk | WGPU+GL | 1315 | 333 | 34 | 25 | — | — | moderate | 5 |
-| 18 | sky-children | WGPU | 1267 | 206 | 1170 | 17 | — | — | heavy *(was lava-lake)* | — |
+| 18 | rainbow-terraces | WGPU | 1267 | 206 | 1170 | 17 | — | — | heavy *(was lava-lake)* | — |
 | 19 | cosmic-noir | WGPU+GL | 1701 | 233 | 32 | 24 | 1 | — | moderate | — |
 | 20 | starlight | WGPU | 1197 | 164 | 33 | 8 | — | — | heavy *(was lava-lake)* | — |
 | 21 | sunset | GL | 527 | 188 | 83 | 23 | — | — | moderate | 1 |
@@ -451,7 +451,7 @@ Verified present in 0.185.1: `godrays`, `ao` (GTAO), `denoise`, `radialBlur`, `l
 plus `dispersion`/`iridescence` on both physical materials. **`SSAONode` and `depthAwareBlur` are
 confirmed absent** — not proposed anywhere here.
 
-- **`godrays` — 5 hand-rolled implementations to replace.** sky-children (`post/sky-pipeline.js:128-139`,
+- **`godrays` — 5 hand-rolled implementations to replace.** rainbow-terraces (`post/sky-pipeline.js:128-139`,
   a 16-iteration `Loop` with **no occlusion test**) and himalayan-peak (`post/peak-pipeline.js:218-233`,
   a verbatim duplicate of it) are the strongest cases; then neon-district (`:172-190`, 6 arbitrary
   taps), neon-dusk (`:135-157`, already re-deriving linear depth per step by hand), and ocean
@@ -462,7 +462,7 @@ confirmed absent** — not proposed anywhere here.
   7 separate materials).
 - **`dispersion` + `iridescence`** — ice-temple's 7 pillar cores and lunara, both already
   transmissive `MeshPhysicalNodeMaterial`. Ultra/Extreme-gated.
-- **`lut3D`** — already proven in-repo; ocean's `tslAbzuGrade` (a ~60-op helper inlined into the post
+- **`lut3D`** — already proven in-repo; ocean's `tslan underwater gameGrade` (a ~60-op helper inlined into the post
   quad), winter, fluid-dreams.
 - **GTAO + `denoise`** — the audit found **no strong candidate**; recorded as a negative result
   rather than carried forward on the plan's original theme list.
@@ -475,7 +475,7 @@ confirmed absent** — not proposed anywhere here.
 ## 7. Negative results (recorded, not deleted)
 
 - **There is no fleet of lava lakes.** 21 heavy/lava-lake claims were adversarially challenged and
-  **13 were demoted**: lunara, sky-children, starlight, serenity-warp, electric-dreams-v3, summer,
+  **13 were demoted**: lunara, rainbow-terraces, starlight, serenity-warp, electric-dreams-v3, summer,
   himalayan-peak, vesper-chrysalis (lava-lake → heavy or moderate); koi-pond, neon-district,
   ice-temple, black-hole, crystal-cave, cinder-drift, solar-eclipse, pyrestorm (heavy → moderate or
   light). Exactly **one** survived: fluid-dreams' hero raymarch.
@@ -543,7 +543,7 @@ One line each. Themes not in the top 8 get a verdict, not a rewrite.
 - **lunara** (WGPU+GL) — Hit-list candidate on compile: 61 materials built at scene time with ZERO compileAsync and no prewarm of its own, a sky fragment that inlines 256 hash31 bodies across 32 unrolled value-noise evaluations with not one setLayout in the whole noise library, a synchronous PMREM bake on the awaited critical path, and 20 pooled reaction materials sitting visible=false that will fire synchronous createRen
 - **stellar-velocity** (WGPU+GL) — Not a compile hit-list candidate -- zero mx_noise, zero layout-less shared Fn helpers, zero procedural noise and zero texture taps on the WebGPU path, 32 ordinary materials, and no external assets at all -- but it owns the worst GC profile in this batch: Object.keys().forEach every frame in decayReactiveEnvelope plus a full applyActivePalette() (six forEach closures and ~25 redundant uniform write
 - **neon-dusk** (WGPU+GL) — Hit-list candidate on three independent axes: zero compileAsync anywhere so all ~33 pipelines (25 scene + post output + 7 bloom internals) are created synchronously on frame 1; a 22-tap post output node running at full resolution with a 6x-inlined ray helper; and an ungated animate() that allocates a closure per frame and never calls shouldRenderFrame(). Its asset profile, by contrast, is the clea
-- **sky-children** (WGPU) — HIT-LIST CANDIDATE — the valley terrain material is a genuine lava-lake (94 inlined valueNoise2 = 376 inlined hash2 bodies in one program, 84 of them in the vertex stage), four more materials each carry 42 valueNoise2 from a needlessly doubled heightFieldTSL call, there is not a single setLayout() in the theme and not a single compileAsync, so all 17 pipelines are built synchronously while the rAF
+- **rainbow-terraces** (WGPU) — HIT-LIST CANDIDATE — the valley terrain material is a genuine lava-lake (94 inlined valueNoise2 = 376 inlined hash2 bodies in one program, 84 of them in the vertex stage), four more materials each carry 42 valueNoise2 from a needlessly doubled heightFieldTSL call, there is not a single setLayout() in the theme and not a single compileAsync, so all 17 pipelines are built synchronously while the rAF
 - **cosmic-noir** (WGPU+GL) — Not a hit-list theme for compile — no mx_noise anywhere, heaviest material is a 'moderate' MeshStandardNodeMaterial with 5 cheap value-noise evals — but it earns a row for two concrete defects: a 6.8 MB planet PNG loaded on the critical path and sampled by neither renderer path, and four scene-build materials left unwarmed because compileAsync skips visible=false objects, so their pipelines compil
 - **starlight** (WGPU) — Hit-list candidate on COMPILE alone: the nebula sky fragment is a genuine lava-lake-shaped shader — 256 inlined hash3 bodies, 32 valueNoise3, 34 noise evaluations, zero real WGSL functions — and one setLayout on fbm3 (tsl-noise-lib.js:70) would collapse it the way it collapsed the Odyssey lake; everything else about the theme (4 idle draw calls, zero runtime textures, essentially zero per-frame al
 - **sunset** (GL) — Hit-list candidate on frame and GC, not on compile: getOceanColorsForTime allocates 24 THREE.Color objects plus ~10 object literals every single frame from an unconditional call in updateOcean, while the ocean's onBeforeRender re-renders the entire scene — 35,000-point starfield included — into a 512x512 target on top of it.

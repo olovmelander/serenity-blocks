@@ -807,7 +807,7 @@ export function createGodRayConeTSL(uTime, uPulseIntensity = uniform(0), options
     // FACING FADE — the lesson Act II already paid for on its own god rays, applied here.
     // A cone is a SHELL standing in for a volume, so without dimming where it is seen
     // edge-on it draws its own silhouette: the in-game captures show hard pale WEDGES rather
-    // than columns of light, which is both the least Ghibli thing in the chapter and a
+    // than columns of light, which is both the least painterly thing in the chapter and a
     // sizeable slice of its mid-band. The grazing angle IS the boundary, so fading there
     // means the shape has no visible edge at all.
     const rayView = normalize(cameraPosition.sub(positionWorld));
@@ -854,7 +854,7 @@ export function createVolcanoBackgroundTSL(uTime, uPulseIntensity = uniform(0), 
     //     bounce only low down, where the key actually reaches;
     //   - DARKNESS-GATED ember veins: thin ridged filaments at crack scale, invisible where the
     //     lake already lights the rock and blazing where it does not;
-    //   - a sparse "galaxy" of twinkling ember points in the rock (Laputa's ceiling, in fire);
+    //   - a sparse "galaxy" of twinkling ember points in the rock (a painted film's ceiling, in fire);
     //   - THE CRACK at the crown: the act's one cool accent, starved to a hint at the start and
     //     widening as the traveller climbs toward it (uAscent), the light the steam opens onto.
     // Values overshoot the study's flat-playground ones for the in-game ACES + master grade.

@@ -8,7 +8,7 @@
 
 ## Overview
 
-Added smooth animation for garbage lines that rise from the bottom of the screen when received, similar to classic Tetris games. The garbage no longer "pops" into existence - it gracefully slides up into position.
+Added smooth animation for garbage lines that rise from the bottom of the screen when received, similar to classic block-stacking games. The garbage no longer "pops" into existence - it gracefully slides up into position.
 
 ---
 
@@ -452,7 +452,7 @@ Add particles when garbage hits:
 - Garbage gracefully rises from bottom
 - Visual clarity (players see it coming)
 - Professional, polished feel
-- Matches classic Tetris behavior
+- Matches classic block-stacking behavior
 
 **Technical Quality**:
 - Clean, maintainable code

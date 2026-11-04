@@ -6,7 +6,7 @@
 >
 > **Relationship to [ODYSSEY_MODE_AAA_OVERHAUL_PLAN.md](ODYSSEY_MODE_AAA_OVERHAUL_PLAN.md).** That plan built the machinery (director spine, diegetic path, per-act camera, threshold breaches, atmosphere rig, audio reactor). This plan is the **finish-and-align pass**: it assumes that machinery exists (it does — see §1), turns it on, removes the seams *between the systems*, and tunes the five dimensions into one journey. It supersedes that plan's stale "current state" claims (§9).
 >
-> **North star (unchanged): Tetris Effect: Connected — Journey Mode.** One unbroken, breathing ascent where the path belongs to each world, the camera flows continuously, and the worlds dissolve seamlessly into one another with the music.
+> **North star (unchanged): a flow-state block puzzle — Journey Mode.** One unbroken, breathing ascent where the path belongs to each world, the camera flows continuously, and the worlds dissolve seamlessly into one another with the music.
 
 ---
 

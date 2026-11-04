@@ -140,7 +140,7 @@ Open: `http://localhost:5173`
 
 ### 2. Select Mode
 - Click **"Single Player"** button
-- See description: "Classic Tetris experience with progressive difficulty"
+- See description: "Classic block-stacking experience with progressive difficulty"
 
 ### 3. Start Playing
 - Click **"START GAME"** button

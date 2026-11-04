@@ -4,7 +4,7 @@
  *
  * Wave 1 of docs/ODYSSEY_ACT_I_REBIRTH_PLAN_2026-08.md. This is the proving ground for the
  * rebuilt chapter's SHAPE and VALUE STRUCTURE, not a port target: everything here exists to
- * answer "does the Laputa device carry a molten cavern?" before a single line lands in
+ * answer "does the floating-stone device carry a molten cavern?" before a single line lands in
  * `earth-core.js`.
  *
  * THE DEVICE (plan §2.1, Castle in the Sky's levistone mine): a cavern reads as a cavern
@@ -43,7 +43,7 @@ import {
 export const meta = {
     id: 'act1-earth-core',
     title: 'Act I — Earth Core (value study)',
-    description: 'Laputa-device molten cavern: one warm key below, darkness-gated response, cool crack seed.',
+    description: 'floating-stone device molten cavern: one warm key below, darkness-gated response, cool crack seed.',
 };
 
 /** Lake surface Y. The camera looks ACROSS it, as the shipped chapter intends. */
@@ -70,7 +70,7 @@ export function create({ scene }) {
 
     // ── 1. THE VAULT ────────────────────────────────────────────────────────────
     // One BackSide shell carrying three terms that used to be separate meshes: the charred
-    // body, the darkness-gated ember veins, and the twinkle "galaxy" (Laputa's ceiling of
+    // body, the darkness-gated ember veins, and the twinkle "galaxy" (a painted film's ceiling of
     // stars, in ember rather than levistone blue).
     const vaultMat = new THREE.MeshBasicNodeMaterial();
     const vDir = normalize(positionLocal);
@@ -274,7 +274,7 @@ export function create({ scene }) {
     // ── 5. ONE PARTICLE ATLAS (embers) ──────────────────────────────────────────
     // The shipped chapter runs four separate particle systems (smoke, stars, embers, sparks).
     // One instanced billboard set replaces them; the atlas tile is chosen per instance.
-    // TRANSMITTED LIGHT (Nausicaä's spore rig): an ember is a light SOURCE, so it is brightest
+    // TRANSMITTED LIGHT (a painted film's spore rig): an ember is a light SOURCE, so it is brightest
     // against the dark vault and vanishes against the lake — which is also what keeps the
     // value gate honest as the count rises.
     const EMBERS = 900;
@@ -295,7 +295,7 @@ export function create({ scene }) {
     disposables.push(emberGeo);
 
     // ── 6. THE CRACK SHAFTS (cool pre-seed) ─────────────────────────────────────
-    // Nausicaä's underground chamber: parallel shafts of clean surface light entering through
+    // a painted film's underground chamber: parallel shafts of clean surface light entering through
     // the crack above. Four cards, additive, fading with depth. This is the LIGHT LANGUAGE
     // flip the quench completes — warm key below, cool key arriving from above.
     // SEATED FAR AND THIN. At radius 54 with a 26×300 card the camera stood practically
@@ -338,7 +338,7 @@ export function create({ scene }) {
     const emberMat = new THREE.MeshBasicNodeMaterial();
     const eSeedN = attribute('aSeed', 'float');
     const eOriginN = attribute('aOrigin', 'vec3');
-    // Rise with a slow lateral sway. CONSTANT velocity per Nausicaä: serenity comes from not
+    // Rise with a slow lateral sway. CONSTANT velocity, as in a painted film: serenity comes from not
     // easing — a burst reads as an explosion, a steady drift reads as air. `fract` recycles
     // each ember without a CPU pass.
     const eRise = fract(uTime.mul(0.035).mul(eSeedN.mul(0.6).add(0.5)).add(eSeedN));

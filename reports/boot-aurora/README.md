@@ -12,7 +12,7 @@ observations, not an objective ranking of game logos:
 | Reference | Observation | Applied to Serenity Blocks |
 | --- | --- | --- |
 | [Lumines Arise](https://lumines.game/) | Heavy, readable title lettering; a small signature detail; clear hierarchy. | Make the name the primary identity with a strong two-row silhouette. |
-| [Tetris Effect: Connected](https://www.tetriseffect.game/) | Color and light belong to the title's presentation as well as its world. | Use a coherent spectrum through BLOCKS, with a high-contrast ivory first row. |
+| a flow-state block puzzle | Color and light belong to the title's presentation as well as its world. | Use a coherent spectrum through BLOCKS, with a high-contrast ivory first row. |
 | [COCOON](https://www.cocoongame.com/) | Repeated geometry gives the lettering a consistent visual language. | Draw the glyphs on a common grid with repeated stroke widths and corner shapes. |
 | [Lumen identity case study](https://www.toptal.com/designers/graphic/logo-case-study) | The designer revised the lettering to reflect the game's visual world and kept the icon and marketing identity related. | Derive the small symbol from the wordmark's block-fitting O. |
 

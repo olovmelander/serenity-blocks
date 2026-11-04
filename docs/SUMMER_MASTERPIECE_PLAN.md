@@ -92,7 +92,7 @@ This replaces the current theme's flat midday "dense green field under a blue sk
 ### Emotional north star
 The player should feel they've stepped onto a wooden dock at a Swedish *sommarstuga* at 22:30 on
 a summer's eve — flowers swaying, water still and gold, a red cottage glowing, a flower-decked
-maypole on the far shore. Calm enough to play Tetris in front of for an hour.
+maypole on the far shore. Calm enough to play block-stacking games in front of for an hour.
 
 ---
 
@@ -114,7 +114,7 @@ individually-tunable systems:
 | **Maypole** | Cross + two hanging wreath rings, birch-leaf sleeved, flower-studded, backlit | hero geometry, mid-distance on the far bank/meadow |
 | **Atmosphere** | Golden ground-fog over meadow + lake mist; drifting pollen/petals; a floating flower crown | `sim/` curl-noise particle field + fog |
 
-The play area (the 2D Tetris board) sits in front of this; the composition must keep the **center
+The play area (the 2D block-stacking board) sits in front of this; the composition must keep the **center
 clear and the action at the periphery** (halcyon does this deliberately) so the board stays readable.
 
 ---
@@ -324,7 +324,7 @@ color scaled by the angle between view and sun dirs (the golden-hour glow — Gh
 - **Maypole:** the identity object, **mid-distance on the meadow/far bank** (locked,
   §14.3). Get the **cross + two hanging wreath rings** silhouette exactly right; birch-leaf-sleeved
   pole, flower-studded wreaths; **backlit/rim-lit** by the low sun; subtle emissive flower glints.
-  **Reacts on big clears:** a subtle **"raise & glow" beat on Tetris / Perfect Clear** (§9) — the pole
+  **Reacts on big clears:** a subtle **"raise & glow" beat on Quad / Perfect Clear** (§9) — the pole
   lifts slightly and the wreaths bloom-glow, then settle.
 - **Cottage:** Falu-red box + gabled roof, **white trim**, an **emissive window** with a red
   geranium; warm interior glow at dusk.
@@ -386,7 +386,7 @@ heavy governor is unnecessary when the preset + emissive-bloom-scale are sane).
   | `PIECE_LOCK` | a few petals puff up from the meadow at the piece's column |
   | `COMBO` (tiered) | breeze gust ripples the meadow + water rings; warmth ticks up; fireflies rise |
   | `LINE_CLEAR` | a band of flowers bloom-flash + dandelion-seed burst; one water ring per line |
-  | `TETRIS`/`PERFECT_CLEAR` | maypole "raise & glow" beat + golden bloom swell + flower-crown launch |
+  | `QUAD`/`PERFECT_CLEAR` | maypole "raise & glow" beat + golden bloom swell + flower-crown launch |
   | `B2B` | sustained warmth floor (sky pushes more golden) |
   | `LEVEL_UP` | sun nudges lower/warmer (deeper into the golden hour) |
 
@@ -469,7 +469,7 @@ Each wave = one screenshot-verified playground session before porting into the t
 2. **Day phase: LOCKED golden hour.** The "endless evening" Nordic golden-hour mood, matching the
    reference photo. No day→dusk drift in v1 — one controlled, beautiful, always-on lighting state.
 3. **Maypole: mid-distance hero that reacts on big clears.** Placed on the meadow / far bank, backlit
-   by the low sun, with a subtle **"raise & glow" beat on Tetris / Perfect Clear** (see §9).
+   by the low sun, with a subtle **"raise & glow" beat on Quad / Perfect Clear** (see §9).
 4. **Theme id stays `summer`** (preserves settings/rotation).
 
 ---

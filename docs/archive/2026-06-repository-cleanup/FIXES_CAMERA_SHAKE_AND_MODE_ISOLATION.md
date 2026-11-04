@@ -114,7 +114,7 @@ It depends on what you're seeing:
 1. Launch game in single-player
 2. Clear 1 line → Should see **subtle shake**
 3. Clear 2 lines → Should see **moderate shake**
-4. Clear 4 lines (Tetris) → Should see **strong shake**
+4. Clear 4 lines (Quad) → Should see **strong shake**
 
 #### FFA Multiplayer Mode:
 1. Run `window.testMultiplayer(2)`

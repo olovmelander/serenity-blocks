@@ -59,7 +59,7 @@ Each game mode follows this lifecycle:
 - **Lifecycle Tracking**: `isActive`, `isRunning`, `isPaused` flags
 
 #### 2. `/src/core/game-modes/SinglePlayerMode.js`
-- **Purpose**: Classic single-player Tetris mode
+- **Purpose**: Classic single-player block-stacking mode
 - **Manages**:
   - Single `GameState` instance
   - Single Phaser board scene
@@ -126,7 +126,7 @@ Each game mode follows this lifecycle:
 <!-- Mode-specific descriptions -->
 <div id="mode-description" class="mode-description">
     <p id="single-player-desc" class="mode-desc active">
-        Classic Tetris experience with progressive difficulty
+        Classic block-stacking experience with progressive difficulty
     </p>
     <p id="local-multiplayer-desc" class="mode-desc">
         Compete head-to-head with friends on the same device
@@ -323,7 +323,7 @@ GAME IS NOW RUNNING ✅
 - [ ] Background theme is playing
 - [ ] No game logic running initially
 - [ ] Can select "Single Player" mode
-- [ ] Mode description updates to "Classic Tetris experience..."
+- [ ] Mode description updates to "Classic block-stacking experience..."
 - [ ] Clicking "START GAME" starts single player
 - [ ] Game state initializes correctly
 - [ ] Pieces spawn and game loop runs
@@ -406,4 +406,4 @@ This refactoring successfully separates game modes into isolated, maintainable c
 ✅ **Shared resources (backgrounds, effects, themes) are reused**
 ✅ **Clean, extensible architecture following best practices**
 
-The code is now structured to easily add new game modes, maintain existing ones, and prevent accidental game starts. Enjoy your well-architected Tetris game!
+The code is now structured to easily add new game modes, maintain existing ones, and prevent accidental game starts. Enjoy your well-architected block-stacking game!

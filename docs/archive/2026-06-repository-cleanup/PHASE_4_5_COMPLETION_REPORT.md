@@ -447,7 +447,7 @@ User clicks MULTIPLAYER
 
 Phase 4.5 successfully delivered a **professional, polished multiplayer experience** that matches industry standards. The flow from lobby → waiting room → in-game is smooth, intuitive, and visually appealing.
 
-The multi-player canvas layout system is **robust, performant, and scalable**, handling anywhere from 1v1 to 1v7 matches seamlessly. The design is inspired by Tetris 99 and Jstris, but tailored specifically for Serenity Blocks' aesthetic.
+The multi-player canvas layout system is **robust, performant, and scalable**, handling anywhere from 1v1 to 1v7 matches seamlessly. The design is inspired by a 99-player battle stacker and Jstris, but tailored specifically for Serenity Blocks' aesthetic.
 
 **User feedback will be critical** in Phase 5 to fine-tune the experience before Steam launch.
 

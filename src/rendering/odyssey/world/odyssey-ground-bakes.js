@@ -54,7 +54,7 @@ export const GROUND_BAKE_EXTENT = 9000;
  */
 const AO_RADII = Object.freeze([9, 64]);
 const AO_DIRS = 8;
-/** How dark the deepest hollow is allowed to get. Ghibli shadows pool; they do not black out. */
+/** How dark the deepest hollow is allowed to get. Painted shadows pool; they do not black out. */
 const AO_FLOOR = 0.56;
 
 /**

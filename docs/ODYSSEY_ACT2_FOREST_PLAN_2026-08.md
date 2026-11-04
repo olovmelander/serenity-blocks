@@ -2,7 +2,7 @@
 
 **Goal.** Replace Act II's single-species programmer conifer (one 30-tri cone-stack repeated
 15,427 times) with a SMALL AUTHORED ROSTER of sculpted, opaque, Witness-grade tree species —
-hue-zoned across the island, painted with a 2–3-band Ghibli ramp on blob normals, moved by
+hue-zoned across the island, painted with a 2–3-band painterly ramp on blob normals, moved by
 travelling gusts — at ≈ net-zero Lane B cost, funded by the forest's FIRST-EVER measured
 price (it has never been gpu-split priced) and a load-bearing LOD + bucketing discipline.
 The forest keeps its proven plumbing: chunked InstancedMeshes, CPU visible gates, one
@@ -12,7 +12,7 @@ the three things every reference says carry the look.
 **Provenance.** 2026-08-14: 8-agent research workflow (5 cited online sweeps — the-witness.net
 devlog + Luis Antonio's GDC 2014 slides read first-hand, Jane Ng's GDC/NYU talk transcripts
 pulled from captions, the fluffytree repo source, a TSL-feasibility technique survey, a
-Ghibli/Oga art-rules distillation — plus 3 repo deep-reads: current system, prior art,
+painterly/Oga art-rules distillation — plus 3 repo deep-reads: current system, prior art,
 harness/ledger). Transcripts: `~/.claude/.../subagents/workflows/wf_73636721-8f0`. Reference
 images: the owner's three screenshots (Firewatch backlit conifers; The Witness village
 variety; The Witness lake zones) — to be dropped as `public/playground-refs/act2-trees-ref{1,2,3}.png`
@@ -36,7 +36,7 @@ disjoint slot (the `── forest ──` section).
    (polycount/habrador reproductions of the shipped look; Witness posts name the
    `normal_thief` workflow). The same trick is named independently by BotW/Europa foliage
    analyses, by Alba (ustwo shipped a whole game with ZERO normal maps — "normal transfer
-   from smooth temporary meshes"), and by every community Ghibli-tree recipe (Lightning Boy,
+   from smooth temporary meshes"), and by every community painted-tree recipe (Lightning Boy,
    Mistwork, Kids With Sticks, aVersionofReality, Alisavakis). **It is the single
    non-negotiable trick, and it works identically on opaque geometry.**
 3. **Witness colour design = hue zoning at the island scale.** Palettes were painted over
@@ -45,8 +45,8 @@ disjoint slot (the `── forest ──` section).
    species identity is the SQUINT TEST — "a birch is a yellow body with splotches"; trunk
    colour + canopy hue + silhouette, details deleted. Species come as sets of ~3 growth
    stages (Orsi Spanyol). Pines must avoid Christmas-tree regularity — saggy, irregular
-   branches. And the GDC vegetation slides' reference images are **literally Ghibli/Shinkai
-   background paintings** — "Witness + Ghibli" is one lineage, not two targets.
+   branches. And the GDC vegetation slides' reference images are **literally painterly/Shinkai
+   background paintings** — "Witness + painterly" is one lineage, not two targets.
 4. **Firewatch is the roster law**: 23 hand-made trees, ~14 workhorses + 9 specials + one
    one-off, placed ~4,600 times, **rotation-only variation** ("you don't even scale it that
    much"), repetition hidden by density. "If you can get away with 23 trees, don't make 25"
@@ -60,7 +60,7 @@ disjoint slot (the `── forest ──` section).
    depth-indexed RGBA colour strip (two strips blended by view·sun at sunset) — which in
    this world is `applyAerial`'s job; fog also *flattens* distant texture noise ("which is
    actually what we want").
-6. **The Ghibli value structure (Oga)**: a canopy is split EARLY into a lit crown mass and a
+6. **The painted value structure (Oga)**: a canopy is split EARLY into a lit crown mass and a
    dark interior mass, 2–3 value steps total; the dark mass is **sky-occlusion, not N·L**
    ("blocked from the light of the sky"); shadows stay **saturated and shift cool**
    (blue/teal), never desaturated black; highlights shift warm toward sun-yellow; dapple is
@@ -251,7 +251,7 @@ vertex fetch, no `.level()` lint exposure) so gusts CROSS the forest instead of 
   cool-shift remains the CLOUD law only). Crown warm toward `uSunColour`; never white,
   never black. **The softness knob is the fluffytree over-extension: band/ramp ends may
   run past the dot's [−1,1] range** (their shipped values: gradient end 2.7, highlight
-  window 0.5→1.8) — tune between "banded Witness" (tight ends) and "airbrushed Ghibli"
+  window 0.5→1.8) — tune between "banded Witness" (tight ends) and "airbrushed painterly"
   (over-extended) per species; the audition decides where each archetype sits. (The
   fluffytree blue-teal shadow STOP itself is a non-Witness variant — an art lever, not
   the bar.)
@@ -419,7 +419,7 @@ vertex fetch, no `.level()` lint exposure) so gusts CROSS the forest instead of 
 > now carries the measured bands. The headline results:
 >
 > **1. THE ASSUMED SHADOW RULE WAS WRONG, AND THE PLAN IS CORRECTED.** The authored bar
-> said "shadow shifts cool (B↑ R↓)" — the Ghibli-community-recipe rule, and the fluffytree
+> said "shadow shifts cool (B↑ R↓)" — the painted-community-recipe rule, and the fluffytree
 > repo's blue-teal shadow stop. The pixels refuse: across 15 genuine lit/shade pairs in
 > four images, **ΔnormB is NEGATIVE in 14/15 and saturation RISES in shade in 14/15**
 > (up to +0.33). Witness/Firewatch foliage shade goes **deeper and more saturated along
@@ -1314,7 +1314,7 @@ retires 0a's cell into a v2 note.
 - **Authored framing trees** — a small owner-approved spec list at named stations (the
   cloud field's FRAMING-roles pattern; hero-LOD regardless of distance bin).
 - **Wind-lines** — gust fronts expressed in the LIGHTING (band-threshold ripple riding the
-  same gust field; the 80.lv Ghibli-island trick). One uniform + 3 ALU; probe behind a flag.
+  same gust field; the 80.lv painted-island trick). One uniform + 3 ALU; probe behind a flag.
 - **Understory band** — low opaque scrub/"vegetation wall" masses at forest interiors
   (finding 3's density illusion) — only if hero-LOD interiors read hollow from the rail.
 - **Far-ring silhouette forest** — beyond the 1450 u gate the slopes are bare today; a

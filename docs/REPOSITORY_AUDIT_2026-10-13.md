@@ -561,7 +561,7 @@ Ordering inside a tier is by value per effort, with dependencies respected. For 
 - **How:**
   1. Implement plan §5.8: a `rules/` registry with a version per mode, recorded in demos, local records, leaderboard names and the online HELLO (R-06, NET-04). Keep the old interpreters for old demos.
   2. Then land each fix with its own conformance fixtures:
-     - SRS lookup `srs = (rotation + (T/J/L ? 2 : 0)) % 4`, with fixtures built from **canonical** SRS matrices: 7 pieces × 4 orientations × 2 directions, plus a TST and a wall TSD. Keep the flat-side-up spawn; the legal review treats orientation as open (`tetris_legal_review.md:553`).
+     - SRS lookup `srs = (rotation + (T/J/L ? 2 : 0)) % 4`, with fixtures built from **canonical** SRS matrices: 7 pieces × 4 orientations × 2 directions, plus a TST and a wall TSD. Keep the flat-side-up spawn; the legal review treats orientation as open (`quad_legal_review.md:553`).
      - Lowest-row reset refresh.
      - One shared `routeAttack` (scale → cancel → distribute) for local and online.
      - Victory evaluated before spawn.
@@ -593,7 +593,7 @@ Ordering inside a tier is by value per effort, with dependencies respected. For 
      - a tap 1 frame after a hard drop applies, in all modes;
      - an Infinity move during a cascade applies at spawn;
      - DAS/SOCD goldens at 30/60/144/240 Hz.
-- **Benefit:** no silently eaten inputs. This is the single biggest "feel" gap versus TETR.IO and Tetris Effect.
+- **Benefit:** no silently eaten inputs. This is the single biggest "feel" gap versus TETR.IO and a flow-state block puzzle.
 
 #### R-15 · Replays players can trust
 *Replays / integrity · M · [CORE-01, CORE-13, CORE-14, SCORE-13, UI-08]*
@@ -842,7 +842,7 @@ Ordering inside a tier is by value per effort, with dependencies respected. For 
   1. An Accessibility tab:
      - reduced motion (System / On / Off) driving both the setting and a body class;
      - "Reduce flashing", via SharedEffects caps and a theme hook, plus a first-launch photosensitivity notice;
-     - colour-blind support through `tetromino-style-manager`. Per-piece glyphs or patterns are the safer route: any new palette must pass the PAL-1 gate (`npm run check:palette`), because the scrambled shape→colour mapping is a deliberate legal-distance mitigation (`tetris_legal_review.md:378-379`);
+     - colour-blind support through `tetromino-style-manager`. Per-piece glyphs or patterns are the safer route: any new palette must pass the PAL-1 gate (`npm run check:palette`), because the scrambled shape→colour mapping is a deliberate legal-distance mitigation (`quad_legal_review.md:378-379`);
      - a 90–150 % UI scale with a 12 px minimum font;
      - a high-contrast token set.
   2. Captions from a line-id → text map.
@@ -1224,7 +1224,7 @@ Ordering inside a tier is by value per effort, with dependencies respected. For 
 *UX · S each*
 - **Pause flow** [UI-12]: "Main menu" abandons a live run or online match with no confirmation, and there is no Restart or Quit. Serenity's Esc quits instantly. Use the in-app confirm whenever a run is live.
 - **Cursor** [UI-21]: the custom cursor replaces the OS cursor by default and adds a frame of latency. Default to the system cursor, and suppress the custom one in gamepad mode.
-- **Gameplay options** [UI-26]: ghost opacity, a preview count of 1–3 (MechanicsMixer already supports `previewCount`; stay within 3, because the legal review lists hold and the 5-slot preview as deliberate mitigations, `tetris_legal_review.md:380-381,409,547-548`) and coarser pad slider steps.
+- **Gameplay options** [UI-26]: ghost opacity, a preview count of 1–3 (MechanicsMixer already supports `previewCount`; stay within 3, because the legal review lists hold and the 5-slot preview as deliberate mitigations, `quad_legal_review.md:380-381,409,547-548`) and coarser pad slider steps.
 - **Audio** [AUDIO-05/06/07]: SFX scheduled on `ctx.currentTime`, a voice cap, per-player cooldowns, a perceptual volume taper and real breath-voice preloading.
 - **Odyssey** [ODY-22/23/26]: held-key policy, copy nits, and map auto-drift under reduced motion.
 - **Game-over arm delay** [LIFE-12]: so hard-drop spam doesn't skip the results.
@@ -1267,7 +1267,7 @@ Part 3 merges these into recommendations.
 | CORE-18 | **Outcome-changing fixes ship with no rules version.** The line-clear fix kept `DEMO_VERSION` '2.0'; there is no rules registry. | Low (but gating) | S | VERIFIED | `DemoRecorder.js:10` |
 | CORE-19 | **Serenity leaves an 8 s cooldown and notification timers running after exit**, so a stray toast can appear in the next mode. | Low | S | VERIFIED | `SerenityMode.js:236-247,867-869,1083-1087` |
 
-**Rules conformance** (keep the legally attested deviations; `tetris_legal_review.md` lists hold and the 5-slot preview as mitigations):
+**Rules conformance** (keep the legally attested deviations; `quad_legal_review.md` lists hold and the 5-slot preview as mitigations):
 
 | Feature | Current | Peers (TEC/TETR.IO/PPT2) | Recommendation |
 |---|---|---|---|

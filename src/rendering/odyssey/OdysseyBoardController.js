@@ -1319,7 +1319,7 @@ export class OdysseyBoardController {
                     // this lever retained, mounting stops): ?odysseyWorldHeroes=1 restores the meshes
                     // AND the deck's hero clearings, which ride the same option.
                     heroes: readBooleanUrlFlag('odysseyWorldHeroes'),
-                    // Bisect lever for the Ghibli-water plan's Wave 0: ?odysseyWorldNoWater=1
+                    // Bisect lever for the painted-water plan's Wave 0: ?odysseyWorldNoWater=1
                     // removes the sea plate entirely. The water is one ungated DoubleSide
                     // transparent clipmap drawing across the whole act window and NOTHING in
                     // the tree could switch it off, so its total cost had never been measured

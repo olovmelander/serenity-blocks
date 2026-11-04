@@ -64,7 +64,7 @@ The host-authoritative safety net (chunked resync) stays as the divergence backs
 
 **Risks:** held stats delay genuine corrections (mitigated by 90-frame cap + atomic adopt-on-release + flag); garbage gate must let host POST-consumption queue win on release; verify `_desyncCount` stays 0 across deep cascades.
 
-**Verify (2-window harness @ 90ms+20ms jitter):** score/lines **monotonic** across single/Tetris/cascade/combo/perfect-clear; garbage meter moves **once**; flash/combo coincide with grid settle; deep cascade (>250ms) holds until `isProcessingPhysics` clears (no mid-fade twitch); on release digest matches host (`_desyncCount`=0); round-2 first clears don't spuriously hold; impairment-off unchanged.
+**Verify (2-window harness @ 90ms+20ms jitter):** score/lines **monotonic** across single/Quad/cascade/combo/perfect-clear; garbage meter moves **once**; flash/combo coincide with grid settle; deep cascade (>250ms) holds until `isProcessingPhysics` clears (no mid-fade twitch); on release digest matches host (`_desyncCount`=0); round-2 first clears don't spuriously hold; impairment-off unchanged.
 
 ## Phase 1 — Authoritative CLEAR-RESULT event (extend the lock channel)
 

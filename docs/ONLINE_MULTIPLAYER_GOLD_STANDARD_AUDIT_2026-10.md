@@ -293,7 +293,7 @@ references are to `d01643b`. **Abbreviations:**
 | G3 | **Cancelling runs only on the host, against its copy.** Either the host cancels while the peer's board still takes every row (4 vs 1, never detected), or the report arrives after the host's copy spawned and the attack goes through uncancelled. | P0 | Open | Piece-indexed garbage: the host stamps each line with the victim's piece index, and both sides cancel and insert at the same piece, after a deliberate counter window · M · **decision: ADR + rules-version bump** |
 | G4 | The host decides where garbage lands and inputs bypass its buffer, so the host has an edge. Model: about 170 ms at 100 ms RTT; about 25% of attacks land one piece apart on the two boards. | P1 | Open | G3 · M |
 | G5 | Line clears shift locked-piece fragments up (cascade-helpers.js:154-173). Fuzz over 40,000 locks: 5–6% of clearing locks get wrong hole masks, 1.5–2% send different garbage, 0.4% gain or lose a wave, about 0.1% delete a block. | P1 | Open | Keep absolute rows, plus a cell-conservation property test · S · **rules-version bump** |
-| G6 | Every attack goes to every opponent, and the 1-line minimum flattens big clears. At 8 players a double, a triple and a quad all send 1 line to 7 opponents. There is no target choice and so no counterplay. | P1 | Open | One target per attack, with TETR.IO / Tetris 99 targeting modes; or fractional lines if broadcast stays · M · **decision: battle rules** |
+| G6 | Every attack goes to every opponent, and the 1-line minimum flattens big clears. At 8 players a double, a triple and a quad all send 1 line to 7 opponents. There is no target choice and so no counterplay. | P1 | Open | One target per attack, with TETR.IO / a 99-player battle stacker targeting modes; or fractional lines if broadcast stays · M · **decision: battle rules** |
 | G7 | Kill credit goes to whoever's garbage was inserted last and never expires. | P1 | Open | A decaying attack-credit ledger · M · **decision** |
 | G8 | Peer attack reports are rate-limited but never checked against the host's copy: a modified client can claim 35 lines per request. | P1 | **Fixed** (F‑19) | Follow-up: quarantine a sender that keeps failing the check · S |
 | G9 | Blind and Full-blind modes are broken online: peers never insert the rows, and counters never cancel. | P1 | **Fixed** (F‑20) | — |
@@ -419,16 +419,16 @@ Two research reports fed this section; the sources are listed under each part. "
 - **A delay before garbage lands is the fairness and latency buffer.**
   - TETR.IO: garbage travels 20/30/40 frames (333–666 ms) by size (TN 4.2.0); it can be
     cancelled in flight and tanked only when it lands (TN 6.1.0).
-  - Tetris 99: incoming lines turn red after 2.5 s (less near the top)
-    ([Hard Drop](https://harddrop.com/wiki/Tetris_99)) *(community)*.
+  - a 99-player battle stacker: incoming lines turn red after 2.5 s (less near the top)
+    (Hard Drop) *(community)*.
   - Puyo: nuisance drops when the receiver's chain ends, giving "exactly one chain to try to
     mitigate" ([Offset rule](https://puyonexus.com/wiki/Offset_rule)).
 - **Crossing attacks cancel symmetrically.** Each TETR.IO attack carries its own id and the last
   attack id it had seen from the target, so "attacks sent at the same time (during lag…) cancel
   each other out"; the passthrough variant was dropped as "far too unpredictable" (TN 6.3.4;
-  [TetrisWiki](https://tetris.wiki/TETR.IO)). Tetris Effect: Connected patched a lag bug that
+  the genre wiki). a flow-state block puzzle patched a lag bug that
   "only registered one player's attack" when both attacked together
-  ([1.0.8](https://www.tetriseffect.game/patch-note/xbox-win-10-pc-patch-1-0-8/)).
+  (1.0.8).
 - **Garbage holes are decided once and sent explicitly.** TETR.IO has "seeded and synchronized"
   hole columns (TN 2.2.5). Serenity already does this.
 - **Fixed timestep, deterministic simulation, periodic checksums.**
@@ -473,12 +473,12 @@ Two research reports fed this section; the sources are listed under each part. "
 - **One or two inputs to a game, seconds to the next.**
   - TETR.IO Quick Play is one persistent free-for-all you can "jump in at any time" (TN 1.0.0).
   - Jstris drops you into a live room on load.
-  - Tetris 99 is one button and "another game within seconds"
-    ([review](https://vooks.net/tetris-99-switch-eshop-review)).
+  - a 99-player battle stacker is one button and "another game within seconds"
+    (review).
   - Rematches are nearly frictionless: EXIT returns to the room lobby (TN A5.2.3), and "Stride
     Mode" speeds up everything between games (TN A2.2.7).
-- **Don't fragment a small population.** The top Steam complaint about Puyo Puyo Tetris 2,
-  Puyo Puyo Champions and Tetris Effect is dead or split queues ("the online is DEAD AF", 112
+- **Don't fragment a small population.** The top Steam complaint about a versus block puzzle 2,
+  Puyo Puyo Champions and a flow-state block puzzle is dead or split queues ("the online is DEAD AF", 112
   helpful votes). Leaders keep one casual queue, one ranked queue and private rooms, concentrate
   players with events, and label any bots.
 - **Lobby browser.**
@@ -493,12 +493,12 @@ Two research reports fed this section; the sources are listed under each part. "
 - **Connection UX.** A per-player connection icon, your own ping, and "reconnecting…"
   (TN A2.5.4–5, A4.2.0).
 - **Readable threat and fair free-for-all.**
-  - Tetris 99's incoming column goes yellow → red → flashing.
+  - a 99-player battle stacker's incoming column goes yellow → red → flashing.
   - TETR.IO shows "how many people target you", has payback and defence bonuses (TN A6.4.0),
     and weighted targeting "to fix the insane pileons".
 - **Leavers.** Dim a dropped board, give a rejoin window, then count it as a KO credited to the
   last attacker, and show DNF in the results. A disconnect that denies the winner credit is a
-  recurring Tetris Effect complaint.
+  recurring a flow-state block puzzle complaint.
 - **Spectating and replays.**
   - TETR.IO lets you watch a game already underway, pin a player, and replay matches with a
     seekable timeline (TN A5.2.0).

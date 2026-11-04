@@ -11,7 +11,7 @@
 
 ## 1. Executive Summary
 
-Serenity Blocks is a large, feature-rich Phaser 4 / Electron Tetris-style game with single-player, a campaign ("Odyssey"), local 1–4 player, and online P2P (Steam) multiplayer. The core game logic (board, physics, scoring, bag) is generally sound — several "obvious" bugs there were investigated and **refuted** (e.g. the Fisher–Yates shuffle in `game.js` is correct; the perfect-clear/cascade pipeline terminates). The real risk is concentrated in three areas:
+Serenity Blocks is a large, feature-rich Phaser 4 / Electron Quad-style game with single-player, a campaign ("Odyssey"), local 1–4 player, and online P2P (Steam) multiplayer. The core game logic (board, physics, scoring, bag) is generally sound — several "obvious" bugs there were investigated and **refuted** (e.g. the Fisher–Yates shuffle in `game.js` is correct; the perfect-clear/cascade pipeline terminates). The real risk is concentrated in three areas:
 
 1. **The P2P trust boundary is effectively absent.** The host is nominally authoritative, but peer-supplied identity, game-state, host-migration, and rematch messages are accepted with little or no origin/authorization checking. The binary snapshot decoder trusts attacker-controlled length/count fields. This enables match hijacking, roster spoofing, remote "kick", forged game state, and decode-cost amplification. Several of these are reachable by *any* lobby participant. (H6, H9, M23, M27, M28, M29)
 2. **Two user-facing XSS sinks** render peer-supplied chat **color** strings into `innerHTML` without sanitization — a hostile peer can inject markup/script into another player's client. (H10, H11; related: M75 driver-string injection in the perf overlay)

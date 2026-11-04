@@ -134,7 +134,7 @@ reference-driven LUT bake (color-space trap, high uncertainty).
    every step.
 3. **Wave C** — polish, only after A+B are value-checked in-game.
 Throughout: preserve the value-contrast art direction (near-black silhouettes, light on the hero), keep the
-center-mid readable for the Tetris board, and hold ≥120fps on High/RTX with a working WebGL fallback.
+center-mid readable for the block-stacking board, and hold ≥120fps on High/RTX with a working WebGL fallback.
 
 ---
 

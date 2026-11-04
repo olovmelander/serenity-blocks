@@ -97,7 +97,7 @@ method [theme-concepts/PLAYBOOK.md](theme-concepts/PLAYBOOK.md). Appendix:
 ## State at handover
 
 - **Merged to `main`** with everything `main` had gained meanwhile (Painted Ages, Solar Eclipse,
-  the Sky Children rebuild, Sunset's 24-hour day). The work was done on the branch
+  the Rainbow Terraces rebuild, Sunset's 24-hour day). The work was done on the branch
   `ccr-ad4f0320-10cxrb`; its last theme commit before the merge is `5c51839`.
 - **What it is:** a new theme added beside the others (it replaces none): registry id
   `thermal-bloom`, display name Thermal Bloom, group `biomes`, heavy-GPU class, the **63rd** theme.

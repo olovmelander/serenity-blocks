@@ -57,7 +57,7 @@ The final set is all-pass:
   layouts.
 
 Every response-enabled tier now uses the bounded `lean-four-wake` response graph. The
-[final High WebGPU Tetris capture](../artifacts/themes/stillwater/wave8/final-playground/water-high-tetris-lean-periodic-webgpu-v5.png)
+[final High WebGPU Quad capture](../artifacts/themes/stillwater/wave8/final-playground/water-high-quad-lean-periodic-webgpu-v5.png)
 shows the four opposing wake filaments with one ready WebGPU canvas and no shader,
 pipeline, or console error. High retains planar reflection and selective bloom.
 
@@ -224,7 +224,7 @@ feature-cost attribution. Current policy gates p99 only at 60 Hz; p99 is diagnos
 
 Wave 3 adds the authorized fixed-slot response system to the same isolated lake pilot:
 10 slots on High, 4 on Low, one reserved special channel, radial-fill displacement, optical
-slope, and restrained response emission. Lock, Tetris, and T-spin are phase-locked through
+slope, and restrained response emission. Lock, Quad, and T-spin are phase-locked through
 `event` and `fxAge`; `responses=off` removes the graph for matched A/B measurements.
 
 Native WebGPU and forced WebGL2 were console-clean, and the three-event hierarchy reads.
@@ -251,7 +251,7 @@ the full section 13 ship gate remain deferred.
 | Full height-fog/selective-bloom target | Open | Wave 2 proves lake optics and grade; later waves own atmosphere and post. |
 | Startup and VRAM delta below 10% | Not tested | Requires matched integrated candidates and cold runs. |
 | Device/context-loss rebuild and lifecycle soak | Not tested | Disposal hooks exist, but repeated real-theme rebuild evidence does not. |
-| Isolated lock/Tetris/T-spin reactions | Pilot pass | Wave 3 hierarchy reads with fixed resources on both TSL backends. |
+| Isolated lock/Quad/T-spin reactions | Pilot pass | Wave 3 hierarchy reads with fixed resources on both TSL backends. |
 | Real board, full gameplay director, layouts, iGPU, resize, and quality matrix | Not tested | These belong to later waves and the integrated section 13 ship gate. |
 
 The historical standalone WebGL audit (67 calls, 77,137 triangles, rAF

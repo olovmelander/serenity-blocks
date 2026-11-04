@@ -37,19 +37,19 @@ Phase 6 has been **fully implemented** in `src/core/multi-player-state.js`. The 
 
 **Setup:**
 - 2 players
-- Player 1 clears 4 lines (Tetris)
+- Player 1 clears 4 lines (Quad)
 - Default settings (no boring rules)
 
 **Expected Behavior:**
 ```
-Player 1 clears Tetris → Sends 4 lines to Player 2
+Player 1 clears a Quad → Sends 4 lines to Player 2
 Scaling: 100% (2 players)
 Final attack: 4 lines to Player 2
 ```
 
 **Verification Steps:**
 1. Start a 2-player local match
-2. Player 1 clears a Tetris
+2. Player 1 clears a Quad
 3. Check Player 2's garbage queue
 4. Console should log:
    ```
@@ -69,12 +69,12 @@ Final attack: 4 lines to Player 2
 
 **Setup:**
 - 3 players (all alive)
-- Player 1 clears 4 lines (Tetris)
+- Player 1 clears 4 lines (Quad)
 - Default settings (no boring rules)
 
 **Expected Behavior:**
 ```
-Player 1 clears Tetris → Sends garbage to Player 2 AND Player 3
+Player 1 clears a Quad → Sends garbage to Player 2 AND Player 3
 Scaling: 75% (3 players)
 Original attack: 4 lines
 Scaled attack: 3 lines (Math.ceil(4 * 0.75))
@@ -83,7 +83,7 @@ Final: 3 lines to Player 2, 3 lines to Player 3
 
 **Verification Steps:**
 1. Start a 3-player local match
-2. Player 1 clears a Tetris
+2. Player 1 clears a Quad
 3. Check both Player 2 and Player 3 garbage queues
 4. Console should log:
    ```
@@ -105,12 +105,12 @@ Final: 3 lines to Player 2, 3 lines to Player 3
 
 **Setup:**
 - 4 players (all alive)
-- Player 1 clears 4 lines (Tetris)
+- Player 1 clears 4 lines (Quad)
 - Default settings (no boring rules)
 
 **Expected Behavior:**
 ```
-Player 1 clears Tetris → Sends to Player 2, Player 3, AND Player 4
+Player 1 clears a Quad → Sends to Player 2, Player 3, AND Player 4
 Scaling: 50% (4 players)
 Original attack: 4 lines
 Scaled attack: 2 lines (Math.ceil(4 * 0.5))
@@ -119,7 +119,7 @@ Final: 2 lines to each opponent
 
 **Verification Steps:**
 1. Start a 4-player local match
-2. Player 1 clears a Tetris
+2. Player 1 clears a Quad
 3. Check all three opponents' garbage queues
 4. Console should log:
    ```
@@ -142,12 +142,12 @@ Final: 2 lines to each opponent
 
 **Setup:**
 - 4 players (all alive)
-- Player 1 clears 4 lines (Tetris)
+- Player 1 clears 4 lines (Quad)
 - **Boring Rules ENABLED** in match config
 
 **Expected Behavior:**
 ```
-Player 1 clears Tetris → Sends to all opponents
+Player 1 clears a Quad → Sends to all opponents
 Scaling: DISABLED (boring rules)
 Original attack: 4 lines
 Scaled attack: 4 lines (no scaling)
@@ -156,7 +156,7 @@ Final: 4 lines to each opponent
 
 **Verification Steps:**
 1. Start a 4-player match with "Boring Rules" enabled
-2. Player 1 clears a Tetris
+2. Player 1 clears a Quad
 3. Check all opponents' garbage queues
 4. Console should log:
    ```
@@ -180,7 +180,7 @@ Final: 4 lines to each opponent
 
 **Expected Behavior:**
 ```
-Player 1 clears Tetris → Sends ONLY to alive opponents (P3, P4)
+Player 1 clears a Quad → Sends ONLY to alive opponents (P3, P4)
 Targets: Player 3, Player 4 (Player 2 skipped)
 Scaling: 75% (3 alive players)
 Final: 3 lines to Player 3, 3 lines to Player 4
@@ -189,7 +189,7 @@ Final: 3 lines to Player 3, 3 lines to Player 4
 **Verification Steps:**
 1. Start a 4-player match
 2. Manually set `multiplayerState.players[1].isAlive = false` (or let Player 2 die)
-3. Player 1 clears a Tetris
+3. Player 1 clears a Quad
 4. Verify Player 2 receives NO garbage
 5. Verify Players 3 and 4 receive garbage
 
@@ -205,7 +205,7 @@ Final: 3 lines to Player 3, 3 lines to Player 4
 
 **Setup:**
 - 2 players
-- Player 1 performs a combo (e.g., Tetris → Double)
+- Player 1 performs a combo (e.g., Quad → Double)
 - Default settings
 
 **Expected Behavior:**
@@ -228,23 +228,23 @@ Scaling: 100% (2 players)
 
 ---
 
-### Test 7: Back-to-Back Tetris (B2B)
+### Test 7: Back-to-Back Quad (B2B)
 
 **Setup:**
 - 3 players
-- Player 1 performs back-to-back Tetrises
+- Player 1 performs back-to-back Quads
 - Default settings
 
 **Expected Behavior:**
 ```
-Player 1 B2B Tetris → Increased garbage output
+Player 1 B2B Quad → Increased garbage output
 Scaling: 75% (3 players)
 Both opponents receive scaled B2B garbage
 ```
 
 **Verification Steps:**
 1. Start a 3-player match
-2. Player 1 clears two consecutive Tetrises without single/double/triple
+2. Player 1 clears two consecutive Quads without single/double/triple
 3. Verify B2B bonus is applied
 4. Check both opponents receive scaled garbage
 
@@ -276,7 +276,7 @@ scaledLines = boringRules
 | 1              | 1         | 1        | 1        | 1             |
 | 2              | 2         | 2        | 1        | 2             |
 | 3              | 3         | 3        | 2        | 3             |
-| 4 (Tetris)     | 4         | 3        | 2        | 4             |
+| 4 (Quad)     | 4         | 3        | 2        | 4             |
 | 6              | 6         | 5        | 3        | 6             |
 | 8              | 8         | 6        | 4        | 8             |
 | 10             | 10        | 8        | 5        | 10            |
@@ -366,10 +366,10 @@ multiplayerState.players.map((p, i) => ({
 
 ### Quick Test Procedure
 ```
-1. Start 2-player match → Clear Tetris → Verify 4 lines sent
-2. Start 3-player match → Clear Tetris → Verify 3 lines sent to both
-3. Start 4-player match → Clear Tetris → Verify 2 lines sent to all
-4. Enable boring rules → Clear Tetris → Verify 4 lines sent regardless
+1. Start 2-player match → Clear a Quad → Verify 4 lines sent
+2. Start 3-player match → Clear a Quad → Verify 3 lines sent to both
+3. Start 4-player match → Clear a Quad → Verify 2 lines sent to all
+4. Enable boring rules → Clear a Quad → Verify 4 lines sent regardless
 5. Let a player die → Clear lines → Verify dead player not targeted
 ```
 

@@ -1023,7 +1023,7 @@ the game's fastest drop after about ten minutes.
 
 The bots can't judge how long a person lasts. Once the drop is fast they slide each piece along the stack during the
 lock delay, which a person can't do reliably, and the novice proxy outlasts three stars on 13 of 15 seeds. So the extra
-stars come from a person model built on classic Tetris speeds: most players top out near 67 ms a row, regular players
+stars come from a person model built on classic block-stacking speeds: most players top out near 67 ms a row, regular players
 near 50, strong ones near 33. On the ramp, 3:00 is 74 ms (a regular player) and 5:00 is 43 ms (a strong one). For
 survival orbs the bots' free-stars verdict is set aside, in the gates and in the rules checker, and the playtest asks
 whether regular players reach 3 minutes and only strong ones 5. The goal itself is measured: the novice proxy reaches

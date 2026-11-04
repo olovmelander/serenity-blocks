@@ -32,7 +32,7 @@ The molten cracks **light the rock around them** (thermal bleed). The camera bre
 |---|---|---|
 | **Smoulder** (idle/early) | low intensity | Slow lava flow, dim plume, cool ambient, gentle ember rise |
 | **Surge** (line clears/combos) | rising intensity | Lava brightens & widens channels, plume churns harder, embers accelerate, rim lights snap warm |
-| **Cataclysm** (Tetris/high combo) | spikes | Eruption detonates — shockwave rings, lava bombs arc out, lightning, camera dolly-push + screen shake |
+| **Cataclysm** (Quad/high combo) | spikes | Eruption detonates — shockwave rings, lava bombs arc out, lightning, camera dolly-push + screen shake |
 
 ---
 
@@ -120,7 +120,7 @@ New dir, `pyrestorm-v2-theme.js` with WebGPU init (+ timeout guard + WebGL fallb
 `post/render-pipeline.js` (mirror [V3PostPipeline](../src/themes/electric-dreams-v3/post/render-pipeline.js)): **MRT selective bloom** (emissive channel only → no white-out), **depth/luminance-masked heat haze** (replaces the full-screen sine warp), **ACES** tonemap, **color grade** (deep cool shadows, saturated molten mids, filmic S-curve, teal/orange split), **film grain + dither** (anti-banding), vignette, subtle **DOF** to separate planes.
 
 ### Phase 7 — Camera & choreography *(composition)*
-`camera-director.js`: idle breathing orbit with the eruption framed **off-center on a third**; event-driven **dolly-push** on Tetris/high combo; DOF focal pull; screen shake. Distant volcanoes placed at thirds.
+`camera-director.js`: idle breathing orbit with the eruption framed **off-center on a third**; event-driven **dolly-push** on Quad/high combo; DOF focal pull; screen shake. Distant volcanoes placed at thirds.
 
 ### Phase 8 — Quality presets & perf *(ship)*
 Redefine the 6 tiers for the WebGPU budget; gate FBM octaves, fog, smoke layers, eruption particle counts, DOF, grade. Adaptive resolution (synthwave pattern). Target 60 FPS mid-tier, 120 high-tier. Final in-browser verification + screenshot compare.

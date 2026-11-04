@@ -1,11 +1,11 @@
 # Act II clouds — the painted sky (2026-08)
 
-**Goal.** Replace Act II's flat, noise-static clouds with a Ghibli-grade painted sky —
+**Goal.** Replace Act II's flat, noise-static clouds with a painted-grade painted sky —
 scalloped opaque poster masses, two quantised value bands, drawn edges — at net-zero GPU
 cost on the Lane B iGPU. Kill the ch5 "construction visible" defect class (razor plane
 edges, ultramarine patches, edge-on slabs) on both the default and recovery paths.
 
-**Provenance.** 10-agent research pass, 2026-08-13: Ghibli/Witness visual-language
+**Provenance.** 10-agent research pass, 2026-08-13: painterly visual-language
 distillation, shipped-game technique survey (BotW/TotK, Sky CotL, Sable, Genshin, The
 Witness), r181 TSL technique cards, three code reads (deck, sky-drift, perf), three
 adversarial approach designs, one verification critic. Everything below that is stated as
@@ -74,7 +74,7 @@ volumetric** (slab raymarcher over the deck band).
   Its two real critic defects (authored-lobe tiling every ~488 u; the "street" term as
   written was a no-op ~28 km sine) are fixed in this plan (§4 Wave 1).
 - **Hero imposters: deferred, owner-gated.** The composition argument is correct (a field
-  cannot frame a summit; every Ghibli reference authors its silhouettes) but the
+  cannot frame a summit; every painted reference authors its silhouettes) but the
   load-bearing construct was broken as specified — r181 `billboarding()` under
   InstanceNode re-interprets instance placements in camera space, so a hand-rolled
   per-instance yaw basis must be designed first — plus an unsolved deck-vs-hero sort
@@ -88,7 +88,7 @@ volumetric** (slab raymarcher over the deck band).
 
 ## 3. The target look (distilled rules the shaders must obey)
 
-From the Ghibli/Witness distillation — the implementable core:
+From the painterly distillation — the implementable core:
 
 - **2-3 flat value bands, never a gradient.** Lit top = warm off-white (overshot for the
   grade); shadow band at ~80-88 % of lit luminance, and it is a HUE SHIFT toward the sky
@@ -183,7 +183,7 @@ From the Ghibli/Witness distillation — the implementable core:
 > waterMs 2.228 (max 14.2 ✓); shallows **6.226/6.292**, drift −0.066, 34 draws, waterMs 1.966
 > (max 8.5 ✓). Both sit ~0.2 ms above the superseded pairs because those measured an
 > underside whose inputs the regime branch had zero-starved — cheap because it was not doing
-> the work. Deep landing exactly on the pre-Ghibli 13.11 with the full wave package on screen
+> the work. Deep landing exactly on the pre-painted-water 13.11 with the full wave package on screen
 > is the honest result.
 >
 > **INSTRUMENT NOTE for later waves:** the GPU co-tenant that blocked measurement for two
@@ -270,7 +270,7 @@ From the Ghibli/Witness distillation — the implementable core:
 >    clusters are the sky. The ridge detail term is gated by the disc field for the same
 >    reason — ungated it re-filled the gaps.
 > 2. *This field is a PLAN view.* The deck is a horizontal sheet, so the silhouette the player
->    reads is this field's contour from below/above. The Ghibli "flat base" rule belongs to
+>    reads is this field's contour from below/above. The painted "flat base" rule belongs to
 >    vertical faces and does not apply; the scalloped contour rule does.
 >
 > **The calibration survived the rebake, which is why this wave did not become a re-tune.**
@@ -306,7 +306,7 @@ From the Ghibli/Witness distillation — the implementable core:
 - [x] **Per-fragment fromAbove** against displaced fragment height (varying of 660+billow)
       — crest-first reveal when climbing through the deck, no global colour swim.
 - [x] **Root-pin law** (no `If` branch exists in this material, so the trap cannot fire here; `aaW` was hoisted because colour and opacity now share it —: every node shared between colorNode and opacityNode (density, N,
-      band) gets a bare `.toVar()` at the Fn root BEFORE any branch — the ghibli-water
+      band) gets a bare `.toVar()` at the Fn root BEFORE any branch — the painted-water
       zero-starve trap, now a repo law (skill table row exists).
 - [x] **The pair**: ch4 p=0.42 trio must hold **net ≤ +0.15 ms beyond the session drift
       bound** with draws content-matched. **PASSES, 2026-08-13: +0.131 ms** (see the gate

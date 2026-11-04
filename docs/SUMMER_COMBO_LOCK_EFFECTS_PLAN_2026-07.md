@@ -36,7 +36,7 @@ The suite is called **Summer Promise** in this plan. Production names can remain
 - Keep the palette pearly dew, warm sunlight, fresh green/silver birch, and the meadow's existing flower colors.
 - No fireworks, embers, flame burst, confetti cannon, neon magic, camera shake, exposure punch, or strobe.
 - The core effects must look complete in direct rendering. The currently disabled MRT bloom path is not a dependency.
-- The maypole may answer a high combo, but it cannot carry the signal by itself: it is small, right-weighted, and already owns Tetris/perfect-clear hero beats.
+- The maypole may answer a high combo, but it cannot carry the signal by itself: it is small, right-weighted, and already owns Quad/perfect-clear hero beats.
 
 ---
 
@@ -388,7 +388,7 @@ Each wave is a separate, small visual session. Do not capture a full journey on 
 - Remove the no-op `bloom` signal and prevent combo/line-clear double bumps.
 - Either wire `breezeDir` to an intentional scene response or remove the dead director state.
 - Tune against the actual game board overlay at representative viewport sizes.
-- Keep the maypole Tetris/perfect-clear lift exclusive; ordinary combo only adds a subtle wreath response at 7+.
+- Keep the maypole Quad/perfect-clear lift exclusive; ordinary combo only adds a subtle wreath response at 7+.
 
 **Gate:** the effects feel grown from the scene but remain readable if all secondary scene responses are disabled.
 
@@ -496,7 +496,7 @@ Add a source-contract test for the diagnostic query/pulse mapping if it cannot b
 | More glowing dots/fireflies | The scene already has 720 motes; no semantic distinction |
 | Water splash on every lock | Risks reading as Ocean theme and fights the dew material |
 | Full-screen radial shockwave | Obscures play, breaks calm atmosphere, poor reduced-motion behavior |
-| Maypole lift on every combo | Steals the existing Tetris/perfect-clear hero beat and is too peripheral |
+| Maypole lift on every combo | Steals the existing Quad/perfect-clear hero beat and is too peripheral |
 | Brightness-only combo tiers | Weak hierarchy in a scene already dominated by a white-gold sun |
 | Load-bearing bloom | Current MRT path is broken/disabled; fallback would lose the effect |
 | GPU compute from the first prototype | Unnecessary complexity and dispatch overhead for the expected count |

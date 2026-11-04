@@ -282,7 +282,7 @@ single-player, `usingHybridLoop:false`, `_fixedTickEnabled:false`, `targetFrameR
 | Scenario | throughput | p50 | p95 | p99 | max | >33ms | longtasks |
 |---|---|---|---|---|---|---|---|
 | Stillwater, gameplay, first 5s after theme switch | 82 fps | 8.4 | 16.7 | 108.6 | 154.5 | 17 | **0** |
-| Stillwater, warm, 50 forced tetris clears over 20s | 117 fps | 8.4 | 12.6 | 12.9 | 25.1 | 0 | 0 |
+| Stillwater, warm, 50 forced quad clears over 20s | 117 fps | 8.4 | 12.6 | 12.9 | 25.1 | 0 | 0 |
 | Wolfhour, idle, warm | 201 fps | 4.2 | — | 12.5 | 20.9 | — | 0 |
 | Nothing rendering (theme paused) | 200 fps | 4.2 | — | 12.6 | 16.6 | — | 0 |
 | Switch to Stillwater (cold) | 191 fps | 4.2 | — | 12.6 | **195.2** | — | 0 |

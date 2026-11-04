@@ -17,19 +17,8 @@ uint8, WEIGHTS_0 uint8 summing to 255), no glTF skin and no animation. The skele
 
 ## The troll
 
-`troll.glb` is the theme's own troll, the author's character: the troll files are drawn in its
-character (since 2026-10-18 they no longer derive from its mesh). It is not loaded at run time.
-
-The source image, `C:\AI\troll-source.png`, is a private, project-owned input supplied by the
-Serenity Blocks author. It is not redistributed. The resulting mesh is a project-owned
-derivative. It was reconstructed with **TRELLIS.2-4B** through the local `ComfyUI-Trellis2` GGUF
-workflow (GGUF Q8_0, `sdpa`, CUDA low-VRAM; background removal on, no padding; seed 42, pipeline
-type 512; Euler, 12 sparse-structure, 12 shape and 12 texture steps; sparse structure resolution
-32, at most 49,152 tokens and 4 views; 512 dual contouring, floater and inner-face removal, hole
-fill, Xatlas unwrap, 2,048 texture bake, vertex-colour bake, opaque material), then reduced to about
-60k triangles and given a 13-joint rig and a `Walk` clip in Blender (`C:\AI\TRELLIS2-ComfyUI\
-blender_troll_walk.py`, `C:\AI\troll_walk.blend`; that machine is gone). TRELLIS.2 is MIT-licensed.
-No Tencent/Hunyuan asset or model was used.
+The troll is the theme's own, the author's character, drawn from numbers in Blender (the files
+below).
 
 `troll-lod0..3.glb` (drawn 2026-10-18, `scripts/blender/stillwater/troll_shape.py` and
 `troll.py`, from numbers alone): the reconstruction's pelt was a soup of thin sheets that read as

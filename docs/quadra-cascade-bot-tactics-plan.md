@@ -17,7 +17,7 @@
 > - Lookahead depth was kept at the existing max of 2 (not bumped to 3): depth-3 pushed tier-10
 >   `plan()` to ~79ms/spawn; the persistent plan + GO override deliver the multi-piece behavior at
 >   depth 2 (~36ms). The latent probe is skipped inside lookahead plies (top-level only) for cost.
-> - The `triggerDepthTarget` GO threshold is overridden by a "fire any Tetris-or-better / perfect
+> - The `triggerDepthTarget` GO threshold is overridden by a "fire any Quad-or-better / perfect
 >   clear" rule, since those are always strong in a no-hold game; triples/doubles are held to build
 >   bigger. Monte-Carlo queue sampling (§4.3, optional) was not implemented.
 >
@@ -44,7 +44,7 @@
 >
 > **Empirically validated across 12 seeds × 180 pieces, tier 10** (`scripts/diagnose-cascade-bot.mjs`
 > + `scripts/verify-cascade-live.mjs`): avgHoles **11.3 → 6.0 (−47%)**, attack/game **32.4 → 39.8
-> (+23%)**, Tetris+/game **5.3 → 7.9 (+49%)**, big-5 cascades **17 → 30 (+76%)**, singles/game
+> (+23%)**, Quad+/game **5.3 → 7.9 (+49%)**, big-5 cascades **17 → 30 (+76%)**, singles/game
 > **13.4 → 7.3 (−45%)**, avg cascade depth 3.18 → 3.49, **0 top-outs throughout**. Tests: full suite
 > 324/324 green (added a cavity/overhang regression test). Note: the earlier "hold to build bigger
 > when safe" idea was empirically *refuted* (it floods the board → more singles) and reverted; the
@@ -137,7 +137,7 @@ ship*.
 | M7 | **Board is 10×20 visible; ours is 10×24 in all** (`ROWS=20`, `HIDDEN_ROWS=4`). | confirmed (verified in `constants.js`) | Only **4 hidden rows of headroom** — the payload tower can't be built very tall, so the depth cap (M5) and danger gate (§6) bind hard. |
 | M8 | **Serenity's own rotation/kick rules are the ones that count** (classic Quadra plays with no wall kicks and no lock delay). | confirmed | **Fidelity check:** the bot's reachability must match *Serenity's actual* rotation/kick rules ([reachability-pathfinder.js](../src/core/ai/reachability-pathfinder.js)), whatever they are — never plan a placement the live game can't reach. Verify our kick behavior vs the pathfinder's. |
 
-> **Caveat carried from research:** `harddrop.com` / `tetris.wiki` block direct fetches (HTTP 403);
+> **Caveat carried from research:** `harddrop.com` / `the genre wiki` block direct fetches (HTTP 403);
 > wiki quotes were recovered via search snippets + the read proxy and cross‑checked, while
 > `roncli.com` (the maintainer's official site) was read directly. The M5
 > rationale was the one claim downgraded to *uncertain* — keep the 10‑row cap, drop the
@@ -168,7 +168,7 @@ Maps to `platformReady → payloadLoaded → triggerReady` in
 ### T2 — Homogeneous S (or Z) diagonal staircase
 Stacking **only‑S or only‑Z** builds a continuous diagonal wall with single‑cell trigger holes; one
 bottom clear drops the next offset piece to complete the row above, chaining diagonally (~9 stages in
-Tetris Worlds). **Do not alternate S/Z** — each switch flips the offset, *merges* what would have
+an online block stacker). **Do not alternate S/Z** — each switch flips the offset, *merges* what would have
 been separate cascade stages into one multi‑line wave, and **reduces chain count** (lines cleared
 stay equal). Use when the queue feeds repeated S or repeated Z, or as a no‑I alternative to T1.
 *New tactic — not modeled at all today.*
@@ -353,8 +353,8 @@ evaluator (most relevant at tiers ≥5, gated by `comboAggression`/`survivalInst
   Multiply the machine's offensive value by a factor decaying to 0 as spare rows shrink. (Downstacking
   is ~10× cheaper per row than manufacturing offense, so defense wins the throughput race when buried.)
 - **Cascade GO threshold.** Fire the big cascade only when `latentDepth ≥ ~6` *or* it goes clean;
-  below that a triple/quad is more efficient (Single≈0, Double 0.2, Triple 0.27, Tetris 0.4
-  garbage/piece; combos overtake a Tetris around chain 7). `Value(fire) = max(0, sent − opponentCanCancel)`.
+  below that a triple/quad is more efficient (Single≈0, Double 0.2, Triple 0.27, Quad 0.4
+  garbage/piece; combos overtake a Quad around chain 7). `Value(fire) = max(0, sent − opponentCanCancel)`.
 - **Counter‑synchronization (defensive cascade).** Garbage travels with delay and sits in a pending
   queue; an outgoing clear subtracts from pending *before* net rows are added. Time a cascade to land
   just before insertion to **cancel** an incoming wave — often higher‑EV than pure offense under
@@ -479,19 +479,17 @@ garbage near top‑out, **abandons the build and downstacks instead of dying**.
 - https://roncli.com/quadra · https://roncli.com/quadra/faq/2/quadra-basics ·
   https://roncli.com/quadra/faq/9/playing-tips · https://roncli.com/quadra/faq/4/multiplayer ·
   https://roncli.com/quadra/faq/10/commands
-- https://harddrop.com/wiki/Quadra · https://tetris.wiki/Quadra ·
+- https://harddrop.com/wiki/Quadra
   https://harddrop.com/wiki/Clearing_over_four_lines
 
 **Cascade‑gravity strategy**
-- https://tetris.wiki/Cascade_mode · https://harddrop.com/wiki/Line_clear ·
-  https://harddrop.com/wiki/S_and_Z_cascade · https://harddrop.com/wiki/Tetris_Worlds ·
-  https://tetrisconcept.net/threads/tetris-cascade-question.2410/ ·
+-  · https://harddrop.com/wiki/Line_clear
+  https://harddrop.com/wiki/S_and_Z_cascade
   https://puyonexus.com/wiki/Patterns_1:_Stairs
 
 **Combo setups & AI planning architecture**
 - https://four.lol/stacking/4-wide/ · https://harddrop.com/wiki/4-Wide_Setups ·
-  https://codemyroad.wordpress.com/2013/04/14/tetris-ai-the-near-perfect-player/ ·
-  https://ar5iv.labs.arxiv.org/html/1905.01652 (Dellacherie/El‑Tetris feature set) ·
+  https://ar5iv.labs.arxiv.org/html/1905.01652 (Dellacherie feature set) ·
   Cold Clear evaluation: https://github.com/MinusKelvin/cold-clear ·
   https://github.com/MinusKelvin/cold-clear-2 ·
   Puyo chain‑search (Ikeda et al.): https://link.springer.com/referenceworkentry/10.1007/978-3-319-08234-9_23-1 ·
@@ -499,6 +497,4 @@ garbage near top‑out, **abandons the build and downstacks instead of dying**.
   https://meatfighter.com/puyopuyoai/ (the surface‑only failure mode)
 
 **Attack economy**
-- https://tetris.wiki/Garbage · https://tetrio.wiki.gg/wiki/Mechanics ·
-  https://winternebs.github.io/TETRIS-FAQ/versus/ ·
-  https://www.tetrisconcept.com/2015/02/multiplayer-metrics.html
+-  · https://tetrio.wiki.gg/wiki/Mechanics

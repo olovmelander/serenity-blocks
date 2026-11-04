@@ -1,7 +1,7 @@
 {
   "title": "Ocean biodiversity art direction research",
   "researchedOn": "2026-10-01",
-  "scope": "Primary developer sources for ABZU and Subnautica 2, applied to original Serenity Blocks Ocean models and composition.",
+  "scope": "Primary developer sources for an underwater game and Subnautica 2, applied to original Serenity Blocks Ocean models and composition.",
   "method": "Read official studio articles, the developer-authored Steam description, and an interview containing firsthand Giant Squid developer explanations. Source observations are separated from our own design applications. No game assets, models, textures, or distinctive creature designs were copied.",
   "principles": [
     {
@@ -35,8 +35,8 @@
       "id": "life-through-motion",
       "principle": "Make different life forms move in different but related ways.",
       "source": {
-        "title": "Get to know the ocean in Journey-like diving adventure Abzu",
-        "url": "https://www.unrealengine.com/developer-interviews/get-to-know-the-ocean-in-journey-like-diving-adventure-abzu?lang=en-US",
+        "title": "Get to know the ocean in Journey-like diving adventure an underwater game",
+        "url": ""
         "publisher": "Epic Games / Unreal Engine",
         "author": "Jeremy Peel, interviewing Giant Squid developers Derek Cornish and Brian Balamut",
         "type": "Firsthand developer interview published by the engine vendor"
@@ -63,8 +63,8 @@
       "id": "calm-fluidity",
       "principle": "Fluid motion should preserve a tranquil and legible view.",
       "source": {
-        "title": "Fluid Motion in ABZU",
-        "url": "https://giantsquidstudios.com/Fluid-Motion-in-ABZU",
+        "title": "Fluid Motion in an underwater game",
+        "url": ""
         "publisher": "Giant Squid",
         "author": "Max Kaufmann, Gameplay Engineer",
         "type": "Official developer movement and camera process article"

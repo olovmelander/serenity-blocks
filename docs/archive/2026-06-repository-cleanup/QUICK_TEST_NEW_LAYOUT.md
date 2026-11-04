@@ -22,7 +22,7 @@ testMultiplayer(3)
 │ [Alice]     │   ┌─────────────┐    │  💬 Match Chat         │
 │ Canvas +    │   │             │    │  ─────────────────     │
 │ Stats       │   │   Your      │    │  Match started!        │
-│             │   │  Tetris     │    │                        │
+│             │   │  Quad     │    │                        │
 │ [Bob]       │   │  Canvas     │    │  [Messages here]       │
 │ Canvas +    │   │  (LARGE!)   │    │                        │
 │ Stats       │   │             │    │  ┌──────────────────┐  │

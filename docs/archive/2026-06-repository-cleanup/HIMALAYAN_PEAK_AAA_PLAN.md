@@ -51,13 +51,13 @@ The emotional thesis: **the mountain light is the game's intensity.** Serene coo
 
 ### Ascent-intensity arc (3 acts + resolution)
 
-One master scalar, `ascentIntensity ∈ [0,1]`, smoothed from game state (fast attack on tetris/big-combo, slow decay) drives **every** subsystem. An `AltitudeDirector` maps it — the Himalayan analogue of Winter's `StormDirector` and Electric Dreams' `fxState`.
+One master scalar, `ascentIntensity ∈ [0,1]`, smoothed from game state (fast attack on quad/big-combo, slow decay) drives **every** subsystem. An `AltitudeDirector` maps it — the Himalayan analogue of Winter's `StormDirector` and Electric Dreams' `fxState`.
 
 | Act | Game state | Sky / Light | Mountains | Wind / Plume | Camera | Post |
 |---|---|---|---|---|---|---|
 | **I — Cool Dawn** | idle / early | cool blue-hour, soft pale sun, high stars fading | snow neutral white, blue shadows, deep haze | gentle plume, slow flag ripple | slow 25s drift | clean cool grade, light grain |
 | **II — Warming** | combos building | sun warms to amber, sky horizon glows, god-rays strengthen | summit rims catch warm light, shadows deepen to violet | plume thickens, flags flutter harder, birds rise | gentle dolly-in, parallax tracks | bloom +, DOF deepens, grade warms |
-| **III — Alpenglow Ignition** | tetris / high combo | **summits blaze rosy-gold**, haze turns fuchsia, sun flares, lens flare | full alpenglow rim, snow glows, rock reddens | plume surges + curls, flag snap, birds scatter & wheel | dolly-push + subtle shake + FOV pulse | **golden grade peaks**, bloom flare, god-ray spike, frost-glint, CA + |
+| **III — Alpenglow Ignition** | quad / high combo | **summits blaze rosy-gold**, haze turns fuchsia, sun flares, lens flare | full alpenglow rim, snow glows, rock reddens | plume surges + curls, flag snap, birds scatter & wheel | dolly-push + subtle shake + FOV pulse | **golden grade peaks**, bloom flare, god-ray spike, frost-glint, CA + |
 | **Resolution** | game over / calm | light eases back to cool dawn over ~3s | rims cool, shadows soften | wind dies, plume settles, flags calm | slow pull-back | grade settles, vignette breathes, grain calms |
 
 `ascentIntensity` never snaps — it eases, so the light feels like *weather and time of day*, not a state machine.
@@ -212,11 +212,11 @@ src/themes/himalayan-peak/
 The conductor. Holds `ascentIntensity` (eased) + transient punches, maps them to a struct every subsystem reads each frame. Mirrors Winter's StormDirector and e-d-v3's `fxState`.
 
 - **Inputs** (via existing eventBus, gated on `window.settings.backgroundComboEffects` like the current theme): `LINE_CLEAR` (lineCount → attack), `COMBO` (comboCount → sustain), `PIECE_LOCK` (tiny breeze + flag flutter), `HARD_DROP` (camera/plume punch), `GAME_OVER` (resolution exhale), `GAME_START` (reset to dawn).
-- **State**: `ascentIntensity` (fast attack ~0.2s on tetris/7+ combo, slow decay ~3-4s); `gustPulse`, `bloomPunch`, `flarePunch`, `cameraPunch` (decay per-frame, e-d-v3 pattern [:691-702](../src/themes/electric-dreams-v3/electric-dreams-v3-theme.js#L691)).
+- **State**: `ascentIntensity` (fast attack ~0.2s on quad/7+ combo, slow decay ~3-4s); `gustPulse`, `bloomPunch`, `flarePunch`, `cameraPunch` (decay per-frame, e-d-v3 pattern [:691-702](../src/themes/electric-dreams-v3/electric-dreams-v3-theme.js#L691)).
 - **Outputs** (cached object, no per-frame alloc): sky palette blend t, sun color/warmth, terrain rim color + snow glow, fog density/color, wind dir + gust amplitude, plume density, bird scatter impulse, flag ripple gain, camera dolly/shake/FOV, and all post boosts (bloom/godray/grade-warmth/CA/flare).
 - **Mapping examples**:
   - Triple → small warmth bump + gentle dolly + a few birds rise.
-  - Tetris → ignition pulse: alpenglow snaps in, plume surges, lens flare, birds scatter, camera dolly-push + FOV pulse.
+  - Quad → ignition pulse: alpenglow snaps in, plume surges, lens flare, birds scatter, camera dolly-push + FOV pulse.
   - Combo ≥7 → sustained high `ascentIntensity` (the longer the combo, the longer the golden light holds).
   - Game over → drive `ascentIntensity` to 0 over ~3s with a slow camera pull-back.
 

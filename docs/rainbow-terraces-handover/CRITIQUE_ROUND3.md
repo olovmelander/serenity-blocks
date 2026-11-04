@@ -1,4 +1,4 @@
-# Sky Children — round-3 critique and skeptic verdicts (2026-10-12)
+# Rainbow Terraces — round-3 critique and skeptic verdicts (2026-10-12)
 
 > **Renamed 2026-10-18.** A dated record, kept as written: the theme it critiques is now
 > **Rainbow Terraces** (id `rainbow-terraces`, files `src/themes/rainbow-terraces/rainbow-terraces-*.js`).
@@ -32,7 +32,7 @@ critique/*.png views are listed there as far as the text records them.
   near plane; 15 m is enough.
 - **Isle sizes:** "72 m" and "46 m" are the isles' radii (`PLAN.spring.radius`, `PLAN.twin.radius`); the Spring's
   crown is about 140 m across.
-- **Line numbers** are as the critics read them. In `sky-children-isles.js` they run about 17 lines short of
+- **Line numbers** are as the critics read them. In `rainbow-terraces-isles.js` they run about 17 lines short of
   79adc87 (the critics read it at 70f9bd9, and 79adc87 added 17 lines above these): 2083 -> 2100 (`const L = U.key`), 2225-2229 -> 2242-2246
   (shadeBelow), 2232 -> 2249 (the fill), 2286 -> 2303 (the far T floor), 2291 -> 2308 (the veil), 2301-2302 ->
   2318-2319 (the mist dissolve). In the other files they match 79adc87. Search by the quoted code.
@@ -119,7 +119,7 @@ What improved, frame by frame:
 
 Against the siblings it still reads as a toy: a bald lawn pillow sitting like a lid on a spinning-top root, a ladder of white slats for a cascade, and a quilted procedural skin. Problems 1-4 below are what keep it from 7-8.
 
-Caveat: the worktree has an uncommitted, in-progress edit to buildCascade in sky-children-isles.js (basin dishes under the pools, contour-aligned dams, a travertine runnel into the notch). My verdict is on the committed b-frames. My captures (critique/isles-c1-spring-isolated.png, parts=isles; critique/isles-c2-twin-close.png) may include part of that edit through HMR, but the cascade still reads as slats in both.
+Caveat: the worktree has an uncommitted, in-progress edit to buildCascade in rainbow-terraces-isles.js (basin dishes under the pools, contour-aligned dams, a travertine runnel into the notch). My verdict is on the committed b-frames. My captures (critique/isles-c1-spring-isolated.png, parts=isles; critique/isles-c2-twin-close.png) may include part of that edit through HMR, but the cascade still reads as slats in both.
 
 Measured on the working tree (node, High tier):
 - Spring: 17 trees, only 1 on the half facing the eye.
@@ -133,11 +133,11 @@ Measured on the working tree (node, High tier):
 **Why it matters:** The cascade is the theme's 'one idea': the board pours colour into terraced pools. Right now nothing on the crown says 'water stepping down stone'; it says 'stairs'. The held jewels (the gameplay link) are chips a few pixels wide, so locks land on pools the eye can barely find. Every sibling has one hero surface rendered with care; here the hero is the weakest read on the isle.
 
 **Critic's fix:** Build on the in-progress basin-dish and runnel edit.
-(a) Travertine apron, in createStoneMaterial (sky-children-isles.js). Add a `flow` option shaped like `path`: about 8 points [x, z, halfWidth] sampled from buildCascade's Bezier (have buildCascade return it; createIsles passes it). Inside about 0.6× each dam's width, mix the turf to cream travertine with ochre-wet streaks running down the fall line (stone.a sampled along the slope). Carry it over the notch lip, and turn the `wet` tint's first 8-10 m under the notch from dark-green into white-ochre flowstone. The dams then sit in one continuous white-jade ribbon from spring to fall, the Pamukkale read.
-(b) Pools that fill their basins. buildCascade emits rx (half the crest stretch between jewel spots, ×1.05), rz (the basin depth from setBack) and yaw = atan2(d.tx, d.tz) per pool. sky-children-water.js createPools().set(i, world, rx, rz, yaw, tilt) uses s.set(rx, 1, rz) and yaw instead of the random seed turn. world.placePools (sky-children-world.js:840) passes them. Slot counts are unchanged, so the side and level tests hold.
+(a) Travertine apron, in createStoneMaterial (rainbow-terraces-isles.js). Add a `flow` option shaped like `path`: about 8 points [x, z, halfWidth] sampled from buildCascade's Bezier (have buildCascade return it; createIsles passes it). Inside about 0.6× each dam's width, mix the turf to cream travertine with ochre-wet streaks running down the fall line (stone.a sampled along the slope). Carry it over the notch lip, and turn the `wet` tint's first 8-10 m under the notch from dark-green into white-ochre flowstone. The dams then sit in one continuous white-jade ribbon from spring to fall, the Pamukkale read.
+(b) Pools that fill their basins. buildCascade emits rx (half the crest stretch between jewel spots, ×1.05), rz (the basin depth from setBack) and yaw = atan2(d.tx, d.tz) per pool. rainbow-terraces-water.js createPools().set(i, world, rx, rz, yaw, tilt) uses s.set(rx, 1, rz) and yaw instead of the random seed turn. world.placePools (rainbow-terraces-world.js:840) passes them. Slot counts are unchanged, so the side and level tests hold.
 (c) Break the ladder. Raise the minimum level drop in buildCascade from 0.6 to about 1.1·scaleR so curtains are 4-6 px tall at game view. Stagger the basins laterally by ±0.4 width, and pair two side-by-side basins on 2-3 levels so it reads as a fan of basins, not stair treads. Add a darker wet band under each crest.
 
-**Files:** src/themes/sky-children/sky-children-isles.js (buildCascade, createStoneMaterial, createIsles); src/themes/sky-children/sky-children-water.js (createPools.set); src/themes/sky-children/sky-children-world.js (placePools)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-isles.js (buildCascade, createStoneMaterial, createIsles); src/themes/rainbow-terraces/rainbow-terraces-water.js (createPools.set); src/themes/rainbow-terraces/rainbow-terraces-world.js (placePools)
 
 **Cost:** 0 draws. (a) is shader only: the path loop over about 8 segments, about +0.8 KB fragment WGSL and +30 ALU on the Spring material. (b) is 0 tris (instance scale only). (c) is 0-1k tris. Re-run the pool-slot and grounding tests.
 
@@ -164,7 +164,7 @@ On the proposed fix:
 **Amended fix (use this):** Three changes, in order of how much each helps. None adds triangles or draws.
 
 1. A travertine apron, so the cascade becomes one cream ribbon from the spring to the Mother Fall. This is the biggest lever and is shader-only.
-   - buildCascade (sky-children-isles.js) also returns `flow`: about 8 points [x, z, halfWidth] in isle-local coordinates:
+   - buildCascade (rainbow-terraces-isles.js) also returns `flow`: about 8 points [x, z, halfWidth] in isle-local coordinates:
      - each dam's centre `d.c` with halfWidth about 0.45·d.width, so the ribbon stays inside the dams' sunken wings;
      - then the runnel's `from` and `to` points, halfWidth about 1.5·scaleR rising to 4·scaleR.
    - createIsles calls isleCascade before it builds the materials (isleCascade is a pure function). It passes `flow: cascades.spring.flow` to the spring material and `cascades.twin.flow` to twinMaterial.
@@ -184,7 +184,7 @@ On the proposed fix:
      - `setBack` and `far` use rz.
      - Emit `{ x, y, z, rx, rz, yaw: atan2(d.tx, d.tz), radius: max(rx, rz), level, … }`.
    - createIsles forwards rx, rz and yaw. The footprint keeps using `radius`.
-   - sky-children-water.js: createPools.set(i, world, rx, rz, yaw, tilt) uses `s.set(rx, 1, rz)` and `q.setFromAxisAngle(Y, yaw).premultiply(tiltQ)`.
+   - rainbow-terraces-water.js: createPools.set(i, world, rx, rz, yaw, tilt) uses `s.set(rx, 1, rz)` and `q.setFromAxisAngle(Y, yaw).premultiply(tiltQ)`.
    - world.placePools calls `pools.set(k, q.world, (q.rx ?? q.radius)·scale, (q.rz ?? q.radius)·scale, q.rx ? q.yaw + e.yaw : k·2.39996, pitch)`. The corner basins stay circles with their seeded turn.
    - Tests:
      - Update the "held all round" test to sample the yawed ellipse at 1.11·(rx, rz).
@@ -205,14 +205,14 @@ Verify:
 
 **Why it matters:** The user's first complaint was 'a pillar standing in the clouds'. The tip kissing the ledge recreates the 'standing on it' read in the two most common aspect ratios. An upturned mountain needs an irregular, leaning silhouette with sub-peaks; a centred cone reads as a manufactured top. The web panel is a visible modelling error at game view.
 
-**Critic's fix:** In buildMassif (sky-children-isles.js):
+**Critic's fix:** In buildMassif (rainbow-terraces-isles.js):
 (1) Bend the spine. Offset each root ring by spine(s) = A·s^1.6 toward a silhouette bearing (local −x, back-left), with A ≈ 0.3R. Compute section() relative to the spine, and move the hard-coded tip vertex push(0, p.root-4, 0) to spine(1). The root then leans and its deepest point is off-centre.
 (2) Remove the web. In section(), replace the far-hit with its `if (disc <= 0) continue` cut-off by the disc's support function, d = cu + rho. The cut-off makes a radial step at the tangent bearings, which is the planar panel. The support function is smooth everywhere.
 (3) Read the lobes from a table in isleShapes.spring instead of a count. Put them on the silhouette bearings (±x, where they shape the outline; front and back lobes are invisible): w 0.5-0.6, off 0.5, ends 0.7 and 0.5. End the main lobe at about 0.75, and set kSmooth 0.15R → 0.09R so the saddles read as notches. Add 2 buildPinnacles at the lobe ends, but not on the Mother Fall's bearing.
 (4) Clear the parapet. PLAN.spring.root -245 → about -220 lifts the tip about 60 px. Or add a frame-solver check that the tip's screen y stays at least 30 px above the parapet top.
 (5) buildSatellites: make 3 of the 5 bare, tilted debris rocks (no turf dome, tilt 0.4-0.7 rad so the beds slant).
 
-**Files:** src/themes/sky-children/sky-children-isles.js (buildMassif, isleShapes, buildPinnacles, buildSatellites, createIsles casters); src/themes/sky-children/sky-children-plan.js (PLAN.spring.root)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-isles.js (buildMassif, isleShapes, buildPinnacles, buildSatellites, createIsles casters); src/themes/rainbow-terraces/rainbow-terraces-plan.js (PLAN.spring.root)
 
 **Cost:** 0 draws; 0 tris for the body (same rings × radial); pinnacles about +500 tris at High. CPU build is negligible. Update the casters' capsule end (a/b) for the new tip, and re-run the composition tests (bow cut, spray skirt).
 
@@ -238,7 +238,7 @@ Also, a lean toward −x moves the tip about 40-50 px toward the newel post at 1
 
 The lean (1) and the lift (4) are sound. I simulated a clamped, polynomial-smooth-max version with a lobe table and a 0.25R lean. It has no jumps (column steps ≤ 1.4 m, ring steps ≤ 1.2 m). Its left outline bulges to 54 m, has a concave saddle (48 → 38 m between s 0.34 and 0.39), and its deepest point sits 17 m off-axis.
 
-**Amended fix (use this):** All in src/themes/sky-children/sky-children-isles.js unless noted. No new draws, no shader change, and the body triangles stay the same (rings × radial).
+**Amended fix (use this):** All in src/themes/rainbow-terraces/rainbow-terraces-isles.js unless noted. No new draws, no shader change, and the body triangles stay the same (rings × radial).
 
 1. Remove the web without the support function (buildMassif → section).
    - Keep the far-hit, but keep every lobe star-shaped about the spine. Scale the lobe centre so that |c| ≤ 0.9·rho: `if (cl > 0.9*rho) { cx *= 0.9*rho/cl; cz *= 0.9*rho/cl; }`. Then disc = rho² − |c|² + cu² is never negative, and the far-hit is defined at every bearing. The union of discs that each contain the spine is exactly star-shaped, so the concave saddles between lobes survive. As rho → 0 at a lobe's end, its centre retracts onto the spine, so the lobe leaves no floor.
@@ -262,9 +262,9 @@ The lean (1) and the lift (4) are sound. I simulated a clamped, polynomial-smoot
    - Simulated with the lean: a left bulge to 54 m, a concave saddle at s ≈ 0.35-0.4, and an off-centre tip 17 m left. Iterate in the playground and keep the rim's set-back cap band; the root under the rim must not undercut it into a mushroom.
    - Optional, for true downward sub-peaks: 2 pendants from buildPinnacles under the left and back lobes. Make them near-vertical (lean ≤ 0.05), radius 0.3-0.4 of the local section, 25-35 % of the depth, with the joint buried ≥ 0.15 local radius. They must carry per-vertex aBed from the same cliffBeds/bedAt at their depths (and aMoss 0). Otherwise ensureAttrs makes them unbedded smooth cones, the old 'insect legs'. About +300 triangles at High.
 
-4. Clear the parapet (src/themes/sky-children/sky-children-plan.js).
+4. Clear the parapet (src/themes/rainbow-terraces/rainbow-terraces-plan.js).
    - Set PLAN.spring.root from −245 to −220. That lifts the tip about 25 m, roughly 55-60 px at 16:9 and 21:9.
-   - Pin it with a world test in tests/unit/sky-children-world.test.js: for 16:9, 16:10, 21:9 and 4:3, project the placed spring mesh's lowest vertices (as bowHides does) and assert ≥ 30 px from the cornerL hull, the whole parapet (the newel post as well as the ledge edge). The lean moves the tip toward the post.
+   - Pin it with a world test in tests/unit/rainbow-terraces-world.test.js: for 16:9, 16:10, 21:9 and 4:3, project the placed spring mesh's lowest vertices (as bowHides does) and assert ≥ 30 px from the cornerL hull, the whole parapet (the newel post as well as the ledge edge). The lean moves the tip toward the post.
    - Add an isles test: the largest radius jump between adjacent columns and between adjacent rings on the Spring root at High is < 3 m.
 
 5. Casters (createIsles.place). Move the lower end of setCaster 0 and 5 to the spine offset at that depth: extend setCaster with a local x/z for the b end, using entryToWorld(e, spine.x, yb, spine.z). The bow-stroke cut needs no change, because bowHides builds the hull from the placed mesh's own vertices.
@@ -277,13 +277,13 @@ Cost: 0 draws, 0 triangles for the body, optional pendants about +300 triangles 
 
 **Why it matters:** The isle reads as three stacked parts (green cap, dark gap, rock drum): the toy 'tart on a rock'. Painted floating islands get their mass from cliffs rising to the turf, from bites in the edge and from varying overhang. This band is the strongest single cue that the crown is a separate object.
 
-**Critic's fix:** In buildMassif's rim block and rawCrownHeight (sky-children-isles.js):
+**Critic's fix:** In buildMassif's rim block and rawCrownHeight (rainbow-terraces-isles.js):
 (a) Vary the overhang. Seed overhang(θ) as a 5-term cosine series in 0..1. Cap rock q = mix(1.0, 0.92, ov) and turf lip q = mix(1.0, 1.035, ov). Over about 40% of the perimeter the cliff rises flush to the turf, topped by the existing bright capLine; elsewhere the turf rolls over.
 (b) Bites. Add a shared biteAt(θ) = Π(1 − 0.12·exp(−((θ−θj)/0.1)²)) at the ravines' bearings. Apply it to k in the rim rings, the crown rings and rawCrownHeight (as spurWeight is), so 2-3 bays notch the outline. Keep them off the gateway pad, the cascade footprint and the Twin's promontory; the grounding tests will catch any violation.
 (c) In createStoneMaterial, scale lipShade by the same overhang (evaluate the cosine series from atan(lp.x, lp.z), a uniform array of 5 coefficients). Where the turf overhangs, paint a 1.5-2.5 m band of dark earth, about (0.12, 0.08, 0.05), with root hairs under it.
 (d) Flatten the dome's last 10%: domeAt exponent 2.2 → about 3.5. The rim is then a crisp turf edge, not a rounded cushion.
 
-**Files:** src/themes/sky-children/sky-children-isles.js (buildMassif rim/crown rings, rawCrownHeight, domeAt, createStoneMaterial lipShade)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-isles.js (buildMassif rim/crown rings, rawCrownHeight, domeAt, createStoneMaterial lipShade)
 
 **Cost:** 0 draws, 0 tris (same rings). About +0.4 KB fragment WGSL. crownHeight must carry the bites so isleAnchors, the groves, the outcrops and the cascade stay grounded; the existing tests cover this.
 
@@ -307,7 +307,7 @@ Cost: 0 draws, 0 triangles for the body, optional pendants about +300 triangles 
 - **(c) has an angle trap.** The existing `wet` code uses atan(lp.x, lp.z), which is π/2−θ. The cosine series is in body θ and must use atan(lp.z, lp.x).
 - **(d) is backwards.** Raising the inner exponent from 2.2 to 3.5 keeps the vertical tangent and raises the rim zone: +1.6 m at q=0.96 and +2.5 m at q=0.9. That makes the shoulder taller and more pillow-like, and steepens the front under the lowest dams. bodyProfile's dome branch, which buildTerraces reads, is domeAt's inverse with the exponents hard-coded, so it would also go out of step.
 
-**Amended fix (use this):** All changes are in src/themes/sky-children/sky-children-isles.js.
+**Amended fix (use this):** All changes are in src/themes/rainbow-terraces/rainbow-terraces-isles.js.
 
 1. **Put the rim design on the shape (isleShapes), not in buildMassif's random draws.**
    - Each isle gets `rim: { ov: [[a,φ]×4] }`, a 4-term cosine series normalised to 0..1 that is flush (≈0) over about 35–40% of the perimeter.
@@ -349,12 +349,12 @@ Cost: 0 draws, 0 triangles for the body, optional pendants about +300 triangles 
 
 **Why it matters:** The front slope is the largest crown area on screen, and nothing there gives scale or interest, so the crown reads as a green pillow. The trees, the best new asset, all sit in one skyline row. Nothing ties the gateway, the path and the water into a scene a viewer could walk.
 
-**Critic's fix:** (a) groveSpots (sky-children-isles.js): add a front group of 3-5 shrubs (kind 2) and 1-2 small pines along the cascade's banks, outside its footprint and beside every second or third dam. Add 2 rim-leaners on the front-left rim, body bearing about -0.3..-0.9, never over the Mother Fall. Water-side vegetation gives scale to the basins.
+**Critic's fix:** (a) groveSpots (rainbow-terraces-isles.js): add a front group of 3-5 shrubs (kind 2) and 1-2 small pines along the cascade's banks, outside its footprint and beside every second or third dam. Add 2 rim-leaners on the front-left rim, body bearing about -0.3..-0.9, never over the Mother Fall. Water-side vegetation gives scale to the basins.
 (b) buildOutcrops: use icosphere(1) with y quantised into 2-3 bedding steps (stepped limestone), in clusters of 3-5 along the knoll shoulders and the rim shoulder, lime-toned.
 (c) springPath: carry the path from the gateway down past the spring head to a small overlook on the front-left rim, curving along the contour, so it leads the eye from the bell to the water.
 (d) createStoneMaterial crown: on convex shoulders (N.y < 0.85 within about 6 m of the lip) let crownRock show through the turf in patches (it already exists and is only gated by N.y).
 
-**Files:** src/themes/sky-children/sky-children-isles.js (groveSpots, isleGroves, buildOutcrops, springPath, createStoneMaterial)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-isles.js (groveSpots, isleGroves, buildOutcrops, springPath, createStoneMaterial)
 
 **Cost:** About +1.5-2k tris at High (shrubs about 80 tris each, pines about 400) and +600 tris for outcrops; High goes from about 121k to about 124k of the 140k budget. Fewer on Minimal/Low through groveTrees. 0 draws, negligible shader cost.
 
@@ -381,7 +381,7 @@ Cost: 0 draws, 0 triangles for the body, optional pendants about +300 triangles 
 - The Twin's front is its cascade, which holds 11 or more jewel slots, and it sits 820 m away. Leave it as it is.
 - Budget: High is now 98.6k of 140k, not 121k.
 
-**Amended fix (use this):** All changes are in src/themes/sky-children/sky-children-isles.js unless noted.
+**Amended fix (use this):** All changes are in src/themes/rainbow-terraces/rainbow-terraces-isles.js unless noted.
 
 **0. Sight guard (do this first)**
 - Add eyeLocal(plan): the desktop eye in the Spring Isle's local frame. It is the inverse of the yaw and the 0.3 rad pitch, roughly (29, 83, 466), and it matches gatewaySight's (0.063, 0.994).
@@ -425,12 +425,12 @@ Cost: 0 draws, 0 triangles for the body, optional pendants about +300 triangles 
 
 **Why it matters:** The bedded cliff is the largest stone area in every frame. A regular procedural net and triangle-shaped bed edges are the giveaways that make it look generated and plastic next to himalayan-peak's eroded massif.
 
-**Critic's fix:** In createStoneMaterial (sky-children-isles.js):
+**Critic's fix:** In createStoneMaterial (rainbow-terraces-isles.js):
 (1) Drop `rims` on the iron/lime cliff. Keep `cups` only on lime beds' undercut feet, at the s1 scale (0.028/m), weight 0.15.
-(2) Compute the bed in the fragment. Bake a 256×2 RGBA8 bed LUT (Spring row and Twin row: tone, frac, hard) from cliffBeds in sky-children-core.js, beside bakeStoneNoise, into tex.beds. Sample it at (lipY − lp.y + warp)/depth, with warp = 6·(noise at the bearing − 0.5) + 0.123·lp.x, mirroring bedAt. Bed lines and cap lines become pixel-crisp on every tier. aBed then only needs its x component as the on-cliff flag.
+(2) Compute the bed in the fragment. Bake a 256×2 RGBA8 bed LUT (Spring row and Twin row: tone, frac, hard) from cliffBeds in rainbow-terraces-core.js, beside bakeStoneNoise, into tex.beds. Sample it at (lipY − lp.y + warp)/depth, with warp = 6·(noise at the bearing − 0.5) + 0.123·lp.x, mirroring bedAt. Bed lines and cap lines become pixel-crisp on every tier. aBed then only needs its x component as the on-cliff flag.
 (3) Add sparse vertical joints: 1-px dark lines where a stone.a read at about 0.05/m across falls under 0.04, faded by fwidth as the ashlar joints already are.
 
-**Files:** src/themes/sky-children/sky-children-isles.js (createStoneMaterial, buildMassif aBed, cliffBeds); src/themes/sky-children/sky-children-core.js (new bed LUT bake beside bakeStoneNoise)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-isles.js (createStoneMaterial, buildMassif aBed, cliffBeds); src/themes/rainbow-terraces/rainbow-terraces-core.js (new bed LUT bake beside bakeStoneNoise)
 
 **Cost:** +1 texture read, minus the s2 net work; about +0.5 KB fragment WGSL; bake under 1 ms; 0 tris, 0 draws. Can shrink aBed from vec2 to float.
 
@@ -442,11 +442,11 @@ Cost: 0 draws, 0 triangles for the body, optional pendants about +300 triangles 
 
 **Why it matters:** The Twin is the right-hand counterweight to the Spring Isle and the only near isle on the HUD side. As a flat green disc with a flat cutout it reads as a lesser copy, not a place of its own, and the user named it explicitly.
 
-**Critic's fix:** (a) Turn the aqueduct off the face-on axis. Swing TWIN_BUILD.spur from π to about π − 0.4, and run the aqueduct along it in isleAnchors (sky-children-isles.js), so it runs diagonally toward the eye and its pier reveals and soffits take the key. Then re-verify spanLip's screen position in the frame solver and composition tests.
+**Critic's fix:** (a) Turn the aqueduct off the face-on axis. Swing TWIN_BUILD.spur from π to about π − 0.4, and run the aqueduct along it in isleAnchors (rainbow-terraces-isles.js), so it runs diagonally toward the eye and its pier reveals and soffits take the key. Then re-verify spanLip's screen position in the frame solver and composition tests.
 (b) Twin grove: at least 6 trees, including a front group of 2-3 shrubs and a small pine at the promontory's root and the front rim (same groveSpots change as isles-4).
 (c) The Twin takes the isles-1 apron and elliptical pools and the isles-3 rim variation through the shared builders; give it its own seed so the outline bites differ from the Spring's.
 
-**Files:** src/themes/sky-children/sky-children-isles.js (TWIN_BUILD, isleAnchors, isleGroves, groveSpots)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-isles.js (TWIN_BUILD, isleAnchors, isleGroves, groveSpots)
 
 **Cost:** 0 draws; about +0.5k tris for trees; 0 shader cost. Composition re-check for the span's fall.
 
@@ -471,12 +471,12 @@ What holds the theme back now is mostly the spray. The overall score is 6/10, no
 
 **Why it matters:** The Mother Fall was the frame's strongest vertical, the counterweight to the card. It now reads as a short spout over a cloud. The plume shares its shape language with the cumulus tower right behind it (b02 x370-620, y230-520), so the water's own spray reads as more weather. It has none of the lit-and-shaded volume of nimbus-veil's towers (r-nimbus x1180-1470). Because the rest state already fills the frame bottom, the three-line tower and the 12-row burst have nowhere to go, and the colour story ends in white.
 
-**Critic's fix:** (a) In sky-children-world.js, SPRAY.mother plume: h [0.5,1.05] -> [0.72,1.15], size [7,17] -> [5,12], out 1.0 -> 0.55, drift 3.0 -> 1.2, rise 2.6 -> 1.4. The rest plume becomes a low boil seated under the curtain at the frame cut, and the streamers stay visible to about 80% of the visible drop. The spray (renderOrder 58) composites over the falls (55), so today the plume paints over the streamers.
-(b) In sky-children-fx.js createSpray, lower the plume's alpha cap from 0.7 to 0.42. Raise it to about 0.62 only for puffs the burst throws: in sprayPuffs set role = SPRAY_ROLE.plume + 0.3 for thrown puffs, and branch on smoothstep(2.1,2.3,role) inside the plume mix. The foot role (3) stays above the 2.4 threshold. The tower then reads as an event.
+**Critic's fix:** (a) In rainbow-terraces-world.js, SPRAY.mother plume: h [0.5,1.05] -> [0.72,1.15], size [7,17] -> [5,12], out 1.0 -> 0.55, drift 3.0 -> 1.2, rise 2.6 -> 1.4. The rest plume becomes a low boil seated under the curtain at the frame cut, and the streamers stay visible to about 80% of the visible drop. The spray (renderOrder 58) composites over the falls (55), so today the plume paints over the streamers.
+(b) In rainbow-terraces-fx.js createSpray, lower the plume's alpha cap from 0.7 to 0.42. Raise it to about 0.62 only for puffs the burst throws: in sprayPuffs set role = SPRAY_ROLE.plume + 0.3 for thrown puffs, and branch on smoothstep(2.1,2.3,role) inside the plume mix. The foot role (3) stays above the 2.4 threshold. The tower then reads as an event.
 (c) Give it form. diff = clamp(dot(N,U.key)*0.45+0.6) saturates at 1 for nearly every camera-facing normal. Change it to dot*0.75+0.25, weight puffN at 1.3 for billows so each billow's rim turns 30-40% toward the luminous shade, and cut keyW from 0.56 to about 0.48. Target in b02: plume mean at or below 0.9x the curtain mean, plume sd at or above 20.
 (d) Optional: tint plume puffs whose source time matches a live Mother packet (CPU in sprayPuffs, stride 12 -> 16 floats: rgb, dye) so the great pour boils out coloured. Re-check b02, b08, the three-line tower and the quad at eventAge 5.
 
-**Files:** src/themes/sky-children/sky-children-world.js (SPRAY.mother, sprayPuffs), src/themes/sky-children/sky-children-fx.js (createSpray outputNode)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-world.js (SPRAY.mother, sprayPuffs), src/themes/rainbow-terraces/rainbow-terraces-fx.js (createSpray outputNode)
 
 **Cost:** (a) CPU constants only. 0 triangles, 0 draws, all tiers. (b, c) About +4 ALU in the spray fragment, under 0.2 KB of WGSL. Fill drops with the smaller, thinner rest plume. (d) Instance stride 12 -> 16 floats and a per-frame list of the Mother's live bands (at most 48), about 10 CPU ops per puff, about +0.2 KB of WGSL.
 
@@ -508,14 +508,14 @@ Artefacts:
 - critique/refute-plume-with-vs-without.png
 - refute-plume-mirror/tests/unit/probe.test.js
 
-**Amended fix (use this):** 1. **Seat the rest plume lower and smaller** (sky-children-world.js, SPRAY.mother, plume role). Change: h [0.5, 1.05] → [0.68, 1.05], size [7, 17] → [6, 14], out 1.0 → 0.75, drift 3.0 → 2.0, rise 2.6 → 1.5. Keep share 0.36 and density 1.3.
+**Amended fix (use this):** 1. **Seat the rest plume lower and smaller** (rainbow-terraces-world.js, SPRAY.mother, plume role). Change: h [0.5, 1.05] → [0.68, 1.05], size [7, 17] → [6, 14], out 1.0 → 0.75, drift 3.0 → 2.0, rise 2.6 → 1.5. Keep share 0.36 and density 1.3.
    - Don't raise h past about 1.05: the sqrt "low" bias sends any higher puffs below the frame.
    - Probed at 1600x900: the plume's top goes from y 0.767 to 0.847 (about 67% down the visible drop, just above the mist line at 0.901). 97% of its puffs stay on screen. Spray fill drops from 1.50 to 1.19 screens.
    - On the phone (430x932) the top goes to 0.869 and fit rises from 0.34 to 0.45.
    - All existing spray, plume, tower and fall tests pass.
    - Add a test: the plume's 5th-percentile top, radius included, sits at least 62% of the way from the lip's screen y to the frame cut.
 
-2. **Give the billows form relative to their own light** (sky-children-fx.js, createSpray outputNode; lip and veil unchanged via `billows`). The absolute floor is the real cause of the flatness.
+2. **Give the billows form relative to their own light** (rainbow-terraces-fx.js, createSpray outputNode; lip and veil unchanged via `billows`). The absolute floor is the real cause of the flatness.
    - Normal: `N = normalize(towerN + puffN*mix(0.65, 1.3, billows))`.
    - Diffuse: `diff = clamp(dot(N,U.key)*mix(0.45,0.7,billows) + mix(0.6,0.3,billows), 0, 1)`.
    - Lit face: `face = max(keyW*0.74, light.mistLit*0.85)`. Rose's and Pearl's key is darker than their mist, so the face is lifted to the mist's light.
@@ -547,9 +547,9 @@ Artefacts:
 
 **Why it matters:** A second pale pillar rises next to the fall from just under the lip. It reads as steam from a vent or smoke from a chimney, a second object beside the water. It doubles the fall's silhouette and muddies the edge where the bow's leg meets the water.
 
-**Critic's fix:** In sky-children-world.js, SPRAY.mother veil: across [0.6,1.0] -> [0.35,0.75], past [1.0,1.5] at 34% -> [0.75,1.0] at about 20%, size [8,15] -> [4,9], density 0.9 -> 0.7, rise 0.25 -> 0. Add ride 0.6 so the veil travels down with the water like the span's lip beads, and narrow h to [0.2,0.8]. The curtain's visible edge sits at about 0.6-0.75 of the half-width (falls.js edge = 1 - smoothstep(0.6,1,|ue|+noise), fingers tear inward by grow²·0.45), so today every veil puff lands outside the edge. Optionally, in createSpray's vertexNode, stretch quads with role near 1 by 1.6 along the projected fall direction so the veil streaks with the water instead of balling up.
+**Critic's fix:** In rainbow-terraces-world.js, SPRAY.mother veil: across [0.6,1.0] -> [0.35,0.75], past [1.0,1.5] at 34% -> [0.75,1.0] at about 20%, size [8,15] -> [4,9], density 0.9 -> 0.7, rise 0.25 -> 0. Add ride 0.6 so the veil travels down with the water like the span's lip beads, and narrow h to [0.2,0.8]. The curtain's visible edge sits at about 0.6-0.75 of the half-width (falls.js edge = 1 - smoothstep(0.6,1,|ue|+noise), fingers tear inward by grow²·0.45), so today every veil puff lands outside the edge. Optionally, in createSpray's vertexNode, stretch quads with role near 1 by 1.6 along the projected fall direction so the veil streaks with the water instead of balling up.
 
-**Files:** src/themes/sky-children/sky-children-world.js (SPRAY.mother veil), src/themes/sky-children/sky-children-fx.js (createSpray vertexNode, optional)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-world.js (SPRAY.mother veil), src/themes/rainbow-terraces/rainbow-terraces-fx.js (createSpray vertexNode, optional)
 
 **Cost:** CPU constants: 0 triangles, 0 draws. The optional stretch is about +3 vertex ALU on spray quads.
 
@@ -576,7 +576,7 @@ The amended fix below moves the veil inward and removes the head, but keeps the 
 
 **Amended fix (use this):** Move the veil inward and remove its head, keep its size and density, and give the bow's leg an invisible medium so it does not depend on a pale column.
 
-1) sky-children-world.js, SPRAY.mother veil row:
+1) rainbow-terraces-world.js, SPRAY.mother veil row:
 - `h` [0.12,0.75] -> [0.25,0.8]
 - `across` [0.6,1.0] -> [0.35,0.75]
 - `past` [1.0,1.5] -> [0.75,1.2], same 34% share, plus a new field `pastDensity: 0.6`
@@ -613,9 +613,9 @@ Cost: constants plus 2 CPU lines and 1 CPU line in placeSprayColumn. 0 triangles
 
 **Why it matters:** The curtain's surface is the hero's texture at every distance. Rectangles read as mechanical (piano keys, tally marks), the original pinstripe complaint in a bigger form. They give the eye no teardrop shape, taper or speed cue, which is the whole point of the jets.
 
-**Critic's fix:** In sky-children-falls.js colorNode, give the jet its own profile instead of riding the flat-topped tube: tube = 1 - smoothstep(w*0.3, w, |fract(x)-0.5|) is flat over about 60% of the rope. Use jw = w*mix(0.55, 0.25, q) (wide head, thin tail), jetTube = exp(-((fract(x)-0.5)/jw)^2), and a rounded head smoothstep(0.0, 0.07, q) in place of the 2% step. Vary the length per rope with exp(-q*(3+4*h1)). Rebalance: rope = tube*strandGain*0.55 + jetTube*jet*strandGain*0.7, roughly halving today's jet gain (jet*1.4). Keep the bead branch for unresolved ropes. Screenshot b07's lens and b02.
+**Critic's fix:** In rainbow-terraces-falls.js colorNode, give the jet its own profile instead of riding the flat-topped tube: tube = 1 - smoothstep(w*0.3, w, |fract(x)-0.5|) is flat over about 60% of the rope. Use jw = w*mix(0.55, 0.25, q) (wide head, thin tail), jetTube = exp(-((fract(x)-0.5)/jw)^2), and a rounded head smoothstep(0.0, 0.07, q) in place of the 2% step. Vary the length per rope with exp(-q*(3+4*h1)). Rebalance: rope = tube*strandGain*0.55 + jetTube*jet*strandGain*0.7, roughly halving today's jet gain (jet*1.4). Keep the bead branch for unresolved ropes. Screenshot b07's lens and b02.
 
-**Files:** src/themes/sky-children/sky-children-falls.js (createFalls colorNode)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-falls.js (createFalls colorNode)
 
 **Cost:** About +6 ALU in the falls fragment, about +0.2 KB of WGSL. 0 triangles, 0 draws, all tiers.
 
@@ -649,7 +649,7 @@ Cost: constants plus 2 CPU lines and 1 CPU line in placeSprayColumn. 0 triangles
 
 The amended fix below is in budget: 0 triangles, 0 draws, about +12 ALU, one hash, about 0.3 KB of WGSL, all tiers. It follows the rendering law.
 
-**Amended fix (use this):** All changes are in createFalls `material.colorNode`, in src/themes/sky-children/sky-children-falls.js, around lines 315-331.
+**Amended fix (use this):** All changes are in createFalls `material.colorNode`, in src/themes/rainbow-terraces/rainbow-terraces-falls.js, around lines 315-331.
 
 (1) **Give each comet its own random values.** Add:
 - `cid = mod(floor(stream*rate + h3), rate*WATER_WRAP)`. The mod keeps each comet's identity across the 50 s water-clock wrap, because rate*WATER_WRAP is a whole number.
@@ -683,14 +683,14 @@ Cost: about +12 ALU and one extra hash per falls fragment, about +0.3 KB of WGSL
 
 **Why it matters:** The brink is where the eye starts reading the fall. A rounded lid with tentacles reads as an object, not water pouring over a rim. The source stays unreadable, so the narrative of the terraces emptying into the fall does not land.
 
-**Critic's fix:** In sky-children-falls.js positionNode:
+**Critic's fix:** In rainbow-terraces-falls.js positionNode:
 (a) arc = max(form*(smoothstep(0,1.2,t)*0.55+0.45), 0.02) gives about 0.4 rad of bulge at t=0. Seen from about 58 m below, the bulged middle projects higher than the flanks (a dome). Use arc = max(form*smoothstep(0.25,1.6,t), 0.02), and sag the brink's middle by P.y -= 0.6*(1-u²)*(1-smoothstep(0, lipT, t)) so the brink reads as a notch rather than a dome (sub-metre, so fallPoint needs no mirror).
 In colorNode:
 (b) Break the top silhouette: head = smoothstep(0, 0.02+0.03*n3, vS), and start the crest speck band from tau about 0.15.
 (c) On the far flank, scale the edge-noise amplitude by 1/max(|dot(N,V)|, 0.35) and start the edge fade earlier where the arc foreshortens. Today the |u| 0.6-1 band collapses into 1-3 px.
 (d) Take one lip close-up (icon lens, iconFov about 9 on the lip). If the dark band above the tongue is the turf overhang rather than the notch wall, move the outlet out in isles.js (outlets x/z at r+0.3) until the tongue clears it.
 
-**Files:** src/themes/sky-children/sky-children-falls.js (positionNode, colorNode), src/themes/sky-children/sky-children-isles.js (outlets, only if (d) applies)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-falls.js (positionNode, colorNode), src/themes/rainbow-terraces/rainbow-terraces-isles.js (outlets, only if (d) applies)
 
 **Cost:** About +5 vertex ALU and +4 fragment ALU, under 0.3 KB of WGSL. 0 triangles, 0 draws, all tiers. CPU only for (d).
 
@@ -702,9 +702,9 @@ In colorNode:
 
 **Why it matters:** This is the right third's whole water read, beside the HUD in every landscape frame. Definite-edged, under-shaded billows climbing in a diagonal chain read as cannon or locomotive smoke. The design asks that thin falls end in a breath of spray. They also compete with the Mother's plume for the 'big spray' read.
 
-**Critic's fix:** In sky-children-world.js, SPRAY.horse and SPRAY.span foot use SPRAY_ROLE.foot (3). In fx.js that gets billows = 1 (a definite body edge, 'under' shading 0.4, rim darkening), cap 0.35, size 5-10 m (span 7-14 m), rise 1.2-1.6 m/s and drift 1.4-1.8 m/s, so each foot climbs into a lumpy chain. Make them breath instead: add a role 4 'breath' (or reuse the veil's soft branch) with no billows (the soft puff edge), cap 0.15 (span 0.22), size [3,7], rise 0.3, drift 0.8, ride 0.4, h [0.6,1.05], spread along the thread's last 40%. The thread then dissolves into its own sheath instead of ending in a ball. Check b02 at 2x and b16.
+**Critic's fix:** In rainbow-terraces-world.js, SPRAY.horse and SPRAY.span foot use SPRAY_ROLE.foot (3). In fx.js that gets billows = 1 (a definite body edge, 'under' shading 0.4, rim darkening), cap 0.35, size 5-10 m (span 7-14 m), rise 1.2-1.6 m/s and drift 1.4-1.8 m/s, so each foot climbs into a lumpy chain. Make them breath instead: add a role 4 'breath' (or reuse the veil's soft branch) with no billows (the soft puff edge), cap 0.15 (span 0.22), size [3,7], rise 0.3, drift 0.8, ride 0.4, h [0.6,1.05], spread along the thread's last 40%. The thread then dissolves into its own sheath instead of ending in a ball. Check b02 at 2x and b16.
 
-**Files:** src/themes/sky-children/sky-children-world.js (SPRAY.horse, SPRAY.span), src/themes/sky-children/sky-children-fx.js (createSpray role caps)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-world.js (SPRAY.horse, SPRAY.span), src/themes/rainbow-terraces/rainbow-terraces-fx.js (createSpray role caps)
 
 **Cost:** CPU constants plus one role branch in createSpray (about +2 ALU). 0 triangles, 0 draws, all tiers. Less fill.
 
@@ -722,8 +722,8 @@ In colorNode:
 - It contradicts the theme's own design. The design doc says "thin falls end in a breath of spray". The code comments on `SPAN`/`HORSE` say "it ends in a breath of spray" and "the Twin's threads only end in a breath".
 
 **Root cause, confirmed in the code:**
-- `SPRAY.span[1]` and `SPRAY.horse[0]` in `sky-children-world.js` use `SPRAY_ROLE.foot` (3).
-- In `createSpray` (`sky-children-fx.js`), `billows = smoothstep(1.4, 1.6, role)` is 1 for the foot. That gives it the definite `body` edge, the rim darkening, `under` 0.4 and cap 0.35.
+- `SPRAY.span[1]` and `SPRAY.horse[0]` in `rainbow-terraces-world.js` use `SPRAY_ROLE.foot` (3).
+- In `createSpray` (`rainbow-terraces-fx.js`), `billows = smoothstep(1.4, 1.6, role)` is 1 for the foot. That gives it the definite `body` edge, the rim darkening, `under` 0.4 and cap 0.35.
 - It is also not in `thin`, so it can render darker than the air behind it.
 - In `sprayPuffs`, `heaped` covers the foot, so it gets the sqrt bias toward the bottom with the biggest puffs lowest.
 - `rise` of 1.2-1.6 m/s and `drift` of 1.4-1.8 m/s over 5-8 s of life make a climb of 6-13 m and a drift of 7-14 m: the diagonal chain.
@@ -736,14 +736,14 @@ In colorNode:
 
 **Amended fix (use this):** Keep role 3. Change what it means, so no new role is added.
 
-**1. `sky-children-fx.js`, `createSpray` `outputNode` (about +4 ALU, all tiers, WebGL2-safe TSL math):**
+**1. `rainbow-terraces-fx.js`, `createSpray` `outputNode` (about +4 ALU, all tiers, WebGL2-safe TSL math):**
 - Add `const isFoot = float(1.0).sub(smoothstep(0.0, 0.5, abs(role.sub(3.0))));`.
 - Set `billows = smoothstep(1.4, 1.6, role).mul(float(1.0).sub(isFoot))`. The foot then takes the soft, noise-eroded edge, with no body edge, no rim or mass darkening and no 0.4 underside.
 - Set `thin = isLip.add(isVeil).add(isFoot)`. The breath then only lightens the air behind it, which also stops a grey-smoke read at night.
 - Set `cap = mix(<existing cap expression>, float(0.17), isFoot)`.
 - Update the comment that lists the caps ("a thread's foot 0.17, a breath").
 
-**2. `sky-children-world.js`, `SPRAY` (CPU constants only):**
+**2. `rainbow-terraces-world.js`, `SPRAY` (CPU constants only):**
 - `span` foot: `h [0.55, 0.98]`, `across [0, 0.8]`, `out 0.45`, `size [6, 11]`, `rise -0.6` (it sinks, as free-air mist does), `drift 0.6` (the veil's wind), `life [4, 7]`, `density 1.0`.
 - `horse` foot: the same, with `size [4, 8]`, `out 0.35` and `density 0.9`.
 - No `ride`. A negative `rise` already works: `lift = e.rise * age * …` and `y = p[1] + lift`.
@@ -752,7 +752,7 @@ In colorNode:
 - Change `const low = heaped ? Math.sqrt(h2) : h2` to `e.role === SPRAY_ROLE.plume ? Math.sqrt(h2) : h2`. The foot then spreads evenly along the thread's last stretch, and `size *= 0.6 + 0.6 * low` still widens the sheath downward. Keep the ring layout from `heaped`.
 - Optional, for the phone: for the foot, apply `fitN` to the count only and skip `fitR` on size. The layout then gets fewer, overlapping soft smudges instead of 3 px dots.
 
-**4. Tests, `tests/unit/sky-children-world.test.js`:**
+**4. Tests, `tests/unit/rainbow-terraces-world.test.js`:**
 - Raise the Mother-to-Twin seen-area ratio from 2.5 to 4.
 - Add a test: every foot puff's y is at most `fallPoint(fall, t).y + 1` m (nothing climbs), and every foot puff is on screen above the frame's lower edge.
 
@@ -770,9 +770,9 @@ In colorNode:
 
 **Why it matters:** The night beat, warmth seen through the water, reads instead as a lamp or visor stuck on the fall, the lit-from-behind story inverted. It is also the most saturated spot in the night frame, pulling the eye off the card.
 
-**Critic's fix:** In sky-children-world.js emitGlows (sleepers block, about lines 2155-2167), the heap is still pushed at `through = 0.35` when the falls are visible. It is additive at renderOrder 60, after the non-depth-writing falls, so it still lands on top of the water. Only the wide soft glow was dropped. Set through = 0 when veiled. In sky-children-falls.js colorNode, make the falls' own hearth term carry it: gain 0.5 -> 1.1, falloff 22 -> 28 m, weighted by (1 - rope*0.6)*(1 - sheetAlpha*0.5) instead of thin², so amber shows between the ropes and on the lace. Re-check b05.
+**Critic's fix:** In rainbow-terraces-world.js emitGlows (sleepers block, about lines 2155-2167), the heap is still pushed at `through = 0.35` when the falls are visible. It is additive at renderOrder 60, after the non-depth-writing falls, so it still lands on top of the water. Only the wide soft glow was dropped. Set through = 0 when veiled. In rainbow-terraces-falls.js colorNode, make the falls' own hearth term carry it: gain 0.5 -> 1.1, falloff 22 -> 28 m, weighted by (1 - rope*0.6)*(1 - sheetAlpha*0.5) instead of thin², so amber shows between the ropes and on the lace. Re-check b05.
 
-**Files:** src/themes/sky-children/sky-children-world.js (emitGlows sleepers), src/themes/sky-children/sky-children-falls.js (hearth term in colorNode)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-world.js (emitGlows sleepers), src/themes/rainbow-terraces/rainbow-terraces-falls.js (hearth term in colorNode)
 
 **Cost:** Trivial CPU, about +1 ALU in the falls fragment. 0 triangles, 0 draws.
 
@@ -814,14 +814,14 @@ It is still there at t=95 on Minimal Gilded (critique/clouds-1-minimal-gilded-t9
 The outline comes from an optics mismatch: sea.js l.187 passes deepMist: rim, which is about 0 at the rim, so the rim pixels lose the opposition glow and glory. The dome behind the hole keeps mist of at least 0.2 and keeps them. The two sides of the discard edge therefore have different colours.
 Through the hole, deepColour (tsl.js l.1036-1052) still draws shelf 1 with the old smoothstep(0.56, 0.8) blotch-and-emboss ramp.
 
-**Critic's fix:** All in sky-children-sea.js createSea:
+**Critic's fix:** All in rainbow-terraces-sea.js createSea:
 (a) Keep the deck closed round A and along the leg. Before the Discard (l.140): thetaA = acos(dot(V, U.A)); cover += 0.6*(1 - smoothstep(0.12, 0.26, thetaA)). The glory and opposition glow then always lie on cloud, which is also the physics.
 (b) Make the rim match the dome exactly. Compute behind = deepColour(...) once. Then mistBehind = max(clamp(1 - (1 - behind.mist)/0.55, 0, 1), 0.2) * smoothstep(0, 0.03, -V.y), the same formula skyColour uses. Pass deepMist: mix(mistBehind, 1, rim) to optics. Both sides of the discard edge are then the same colour and the jagged contour disappears.
 (c) Give holes walls. In positionNode, compute cover from the same level-0 fetches and sink the surface: y -= (1 - smoothstep(SEA.hole, SEA.hole + 0.25, cover))*700. The rim then curls down into a billowing wall whose far side faces the eye, lit full face by the sun behind. Shade the wall from the lit colour toward mistShade with its depth below the mean.
 (d) In deepColour, light the shelves seen through holes with cloudLight at a lower key (deeper, bluer, low contrast) instead of the emboss blotches.
 Verify: event=quad at hour=2 and hour=0. The glory must lie on unbroken cloud, and a luma probe on the glory must be no darker than in b13.
 
-**Files:** src/themes/sky-children/sky-children-sea.js (createSea positionNode and colorNode l.139-187), src/themes/sky-children/sky-children-tsl.js (deepColour l.1021-1060)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-sea.js (createSea positionNode and colorNode l.139-187), src/themes/rainbow-terraces/rainbow-terraces-tsl.js (deepColour l.1021-1060)
 
 **Cost:** 0 triangles, 0 draws. Sea vertex shader about +3 ALU (the fetches already exist). Sea fragment about +10 ALU. WGSL under +0.5 KB. Same on every tier. On Minimal, with 36 rings, the walls are coarser but still read.
 
@@ -839,16 +839,16 @@ The storm top sits lower than the tower, beside it rather than under it.
 **Why it matters:** The design says the tower is 'the storm's sunlit crown over its dark body'. What reads is a white cloud parked in front of a dark hill. Nothing says cumulonimbus: there is no anvil, no stepped and uneven turret flanks, and no transition from lit crown to slate across the form.
 This is the largest shape in the upper-left third, right where the bow's leg climbs, so its silhouette sets the style of the whole sky. A capsule and a pyramid read as props next to nimbus's irregular stacked tower.
 
-**Critic's fix:** (a) sky-children-cumulus.js cloudPuffs, edge() (l.117). Replace the cos^0.28 capsule with a stepped congestus profile:
+**Critic's fix:** (a) rainbow-terraces-cumulus.js cloudPuffs, edge() (l.117). Replace the cos^0.28 capsule with a stepped congestus profile:
 - 2-3 flank turrets on the left at 0.35-0.7H, bulging 0.15-0.25 halfW.
 - The right flank steps DOWN in two shelves (heads at about 0.55H and 0.3H) into the storm.
 - Crown turrets at uneven heights (1.0H, 0.78H, 0.62H) so the top is asymmetric.
 (b) Darken across the form, not only by height. In outputNode (l.266) take storm = max(storm, smoothstep(0.2, 0.75, tone.z)*tower*showerAmt*0.85), so the right flank's billows turn slate over 2-3 billows. In cumulusPlan (l.56) set bearing = showerBearing - 0.015 so the tower overlaps the wall's heart by 25-30% of its width. The lit-to-dark change then crosses billows, not a silhouette line.
-(c) sky-children-tsl.js scStormHeight (l.555). Steepen the ends: body = smoothstep(1.0, 0.82, x).sqrt()*0.45. Add an anvil: a fifth scBillow row in stormWall at low k (about 6) with squash 0.3, crest at 1.0-1.05 of the top, spanning u from -0.2 to 0.9, with a smooth underside about 0.12 of the top below it and its brow lit by cloudLight. The silhouette is then a wall with an overhanging top, never a pyramid.
+(c) rainbow-terraces-tsl.js scStormHeight (l.555). Steepen the ends: body = smoothstep(1.0, 0.82, x).sqrt()*0.45. Add an anvil: a fifth scBillow row in stormWall at low k (about 6) with squash 0.3, crest at 1.0-1.05 of the top, spanning u from -0.2 to 0.9, with a smooth underside about 0.12 of the top below it and its brow lit by cloudLight. The silhouette is then a wall with an overhanging top, never a pyramid.
 (d) Lower the puffN weight from 1.1 to 0.6 above hf 0.6 so the crown reads as one mass, not balls.
 Verify: b01, b11 and combo=13 (the legs must still burn on slate).
 
-**Files:** src/themes/sky-children/sky-children-cumulus.js (cumulusPlan l.41-60, cloudPuffs edge() l.117, outputNode l.240-300), src/themes/sky-children/sky-children-tsl.js (scStormHeight l.555, stormWall l.583-690)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-cumulus.js (cumulusPlan l.41-60, cloudPuffs edge() l.117, outputNode l.240-300), src/themes/rainbow-terraces/rainbow-terraces-tsl.js (scStormHeight l.555, stormWall l.583-690)
 
 **Cost:** (a), (b) and (d): CPU placement only on layout change, same puff count, about +4 ALU per puff fragment. (c): one more scBillow call in the dome, about +1 KB WGSL (about 40 to 41 KB of the 64 KB gate) and about +15 ALU per storm-window pixel. 0 triangles, 0 draws, every tier.
 
@@ -869,7 +869,7 @@ Cause: altoDeck (tsl.js l.408-424) multiplies four masks:
 What survives is a strip about 250 px wide between the HUD and the gate. With the board on, one cell survives.
 
 **Critic's fix:** Compose the drift from the free room instead of subtracting masks from it.
-(a) In sky-children-world.js, on each frame solve, compute a free sky box right of the HUD: bearing from the HUD's right edge + 2 degrees to the frame's right edge + 10 degrees, elevation 4-16 degrees. Pass it as U.deckZone (vec4).
+(a) In rainbow-terraces-world.js, on each frame solve, compute a free sky box right of the HUD: bearing from the HUD's right edge + 2 degrees to the frame's right edge + 10 degrees, elevation 4-16 degrees. Pass it as U.deckZone (vec4).
 (b) In altoDeck, replace zone with a soft box SDF in (bearing, elevation) whose elevation profile peaks at 6-10 degrees, so the drift is a wide low sheet, at least 3:1 on screen, running behind the gate and down into the far banks.
 (c) Thin the deck at the gate instead of clearing it: need += clear*0.3. Cells behind the gate are more than 15 km out and already hazed 0.55 or more, so the gate stays legible.
 (d) If the box is narrower than 12 degrees (two boards, a smile frame), set the deck's share of U.cloud to 0. Never draw a single cell.
@@ -877,7 +877,7 @@ What survives is a strip about 250 px wide between the HUD and the gate. With th
 Optional: a second, sparser drift upper-left outside the secondary, under the cirrus.
 Verify: b02, b17 and the portrait frame.
 
-**Files:** src/themes/sky-children/sky-children-tsl.js (altoDeck l.396-460), src/themes/sky-children/sky-children-world.js (frame solve / uniform setup)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-tsl.js (altoDeck l.396-460), src/themes/rainbow-terraces/rainbow-terraces-world.js (frame solve / uniform setup)
 
 **Cost:** One vec4 uniform, set on the CPU on layout change. Shader ALU-neutral: one box SDF replaces two smoothstep windows and the clear term. 0 fetches, 0 triangles, 0 draws. Applies on every tier that draws slices.
 
@@ -901,7 +901,7 @@ Cheaper alternative per tier: fade the detail by pixel footprint. tpp = length(f
 (c) Valley mist: lit = mix(lit, mix(light.mistLit, levelHaze, 0.5)*0.8, (1 - smoothstep(0.1, 0.45, heads))*0.5), and cut the crease darkening from 0.2 to 0.1. The seams become soft luminous lanes of vapour.
 Verify: b17 and b02 at 100% crop, and two captures 0.5 s apart to check for crawl.
 
-**Files:** src/themes/sky-children/sky-children-core.js (bakeSeaField l.1104-1180), src/themes/sky-children/sky-children-tsl.js (createFieldTexture l.134), src/themes/sky-children/sky-children-sea.js (colorNode l.145-165)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-core.js (bakeSeaField l.1104-1180), src/themes/rainbow-terraces/rainbow-terraces-tsl.js (createFieldTexture l.134), src/themes/rainbow-terraces/rainbow-terraces-sea.js (colorNode l.145-165)
 
 **Cost:** Bake: about +30% CPU, one-off (about 30 ms at 512²). Mips: +33% texture memory (about 2.0 to 2.7 MB at 512²). Sea fragment about +6-8 ALU, 0 extra fetches. 0 triangles, 0 draws, every tier.
 
@@ -929,7 +929,7 @@ Cause:
 - Sea, sea.js l.147: key = mix(0.45, 1.0, scWrap(dot(N, U.key), 0.8)) and gain 0.48 to 0.36. The deck median luma stays about 150 at Jade, but its lit hue becomes the hour's cloudLit (cream at Jade, gold at Gilded, rose at Rose). Shade stays in creases, limbs and faces turned away.
 Verify: ?hour=0..4 with a luma probe on the tower, the deck and the fall.
 
-**Files:** src/themes/sky-children/sky-children-cumulus.js (outputNode l.250-290), src/themes/sky-children/sky-children-sea.js (l.145-160)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-cumulus.js (outputNode l.250-290), src/themes/rainbow-terraces/rainbow-terraces-sea.js (l.145-160)
 
 **Cost:** ALU-neutral. 0 fetches, 0 triangles, 0 draws, every tier.
 
@@ -950,7 +950,7 @@ Cause:
 **Critic's fix:** Cirrus: perturb the cut with the drift noise, using thetaA + (broad.g - 0.5)*0.12 in inBows. Thin to 0.35 instead of 0 everywhere except within ±2 degrees of R1 and inside Alexander's band.
 Rays on the sea (surface branch): use only the broad 5-per-turn row with smoothstep(0.35, 0.75). Fade any lane narrower than about 1 degree on screen (scale beam by smoothstep(1, 3, the lane's width in pixels from across)). Cut the depth from 1.6 to 1.0.
 
-**Files:** src/themes/sky-children/sky-children-tsl.js (cirrusLayer l.357-394, antiRays l.327-352), src/themes/sky-children/sky-children-sea.js (l.169-173)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-tsl.js (cirrusLayer l.357-394, antiRays l.327-352), src/themes/rainbow-terraces/rainbow-terraces-sea.js (l.169-173)
 
 **Cost:** Free. A few ALU, one fewer fetch on the sea. 0 triangles, 0 draws. Only on tiers with rays and cirrus.
 
@@ -988,13 +988,13 @@ On the quad (b13 Rose; my capture critique/bow-c3-quad-jade-t75.png, crop bow-c3
 
 **Why it matters:** A is where everything converges: the bow circle, the isles' wedges, the anticrepuscular rays and the glory. The four-line clear's reward currently reads as half a halo leaking out of a hole. In sea.js, the Discard at cover < SEA.hole and the `rim` that feeds deepMist cut the glory, the opposition glow and the fogbow. The shelves seen through the hole carry them only at the 0.2 mist floor, which makes the chord.
 
-**Critic's fix:** 1. In sky-children-sea.js createSea colorNode, hoist thetaA = acos(dot(V, U.A)), which is already computed inside the `tier.rays` branch, above the hole test.
+**Critic's fix:** 1. In rainbow-terraces-sea.js createSea colorNode, hoist thetaA = acos(dot(V, U.A)), which is already computed inside the `tier.rays` branch, above the hole test.
 2. Close the sea round A before the Discard: cover = cover + 0.45·(1 − smoothstep(0.087, 0.175, thetaA)), i.e. 5°→10°. The antisolar point then always lies on a sunlit mist dome, and lanes and holes open only beyond about 8°. This is the cloud top the glory sits on and the wedges and rays end on.
-3. Optional: in sky-children-tsl.js optics(), deep block, raise the mist floor for the glory and opposition terms only to max(mist, 0.5·(1 − smoothstep(4, 8, thetaDeg))). A residual hole edge then never draws a chord through the rings.
+3. Optional: in rainbow-terraces-tsl.js optics(), deep block, raise the mist floor for the glory and opposition terms only to max(mist, 0.5·(1 − smoothstep(4, 8, thetaDeg))). A residual hole edge then never draws a chord through the rings.
 4. Feather the Discard edge by about 1.5 px in screen space (cover against hole ± fwidth(cover)) so the 1 px dark aliased rim goes.
 5. Verify: quad at t=30 and t=75, hours 0 and 2; board=0 at rest at hour 4.
 
-**Files:** src/themes/sky-children/sky-children-sea.js (createSea colorNode, lines ~138-140 Discard, ~167-171 rays, ~182-187 rim/optics); src/themes/sky-children/sky-children-tsl.js (optics(), glory/opposition block ~945-958)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-sea.js (createSea colorNode, lines ~138-140 Discard, ~167-171 rays, ~182-187 rim/optics); src/themes/rainbow-terraces/rainbow-terraces-tsl.js (optics(), glory/opposition block ~945-958)
 
 **Cost:** About 4 ALU per sea fragment and 0 fetches (thetaA is reused). 0 draws, 0 triangles, WGSL about +0.1 KB on every tier.
 
@@ -1015,9 +1015,9 @@ Compare the leg on the storm (b02, y=420): red (161,106,89), orange (152,122,84)
 
 At combos 1-6, which is most of play, the crest is a 200 px pastel shard on empty blue at (990-1215, 110-150) in b02/b03/b06. It is also the crest in b15 and b17.
 
-**Why it matters:** The luminance fix (2-3x the sky) was right. But a purely additive bow over saturated blue cannot show red, orange or yellow: red plus blue reads pink, yellow plus blue reads grey. The chain's drops (chainVeil) are invisible, so the crest still reads as a hologram decal while the leg on the storm reads as weather. Irisfall's main arc should read warm-outside like a real rainbow.
+**Why it matters:** The luminance fix (2-3x the sky) was right. But a purely additive bow over saturated blue cannot show red, orange or yellow: red plus blue reads pink, yellow plus blue reads grey. The chain's drops (chainVeil) are invisible, so the crest still reads as a hologram decal while the leg on the storm reads as weather. Rainbow Terraces's main arc should read warm-outside like a real rainbow.
 
-**Critic's fix:** 1. In sky-children-tsl.js optics(), let the drops dim what lies behind them under the band: the rain veil's extinction, art-directed to the coloured band. Add to the returned darkening channel:
+**Critic's fix:** 1. In rainbow-terraces-tsl.js optics(), let the drops dim what lies behind them under the band: the rain veil's extinction, art-directed to the coloured band. Add to the returned darkening channel:
    w += medium1·0.3·band1Win + medium2·0.2·band2Win
    - band1Win = smoothstep(37.0, 39.0, t1)·(1 − smoothstep(42.4, 43.4, t1))
    - band2Win is the mirror image on t2 (49.5-51 / 53-54.5)
@@ -1028,7 +1028,7 @@ At combos 1-6, which is most of play, the crest is a 200 px pastel shard on empt
 2. Optional, keep only after a capture shows it doesn't read as noise: in skyColour, above the horizon where chainVeil·band1 > 0.2 and t1 < 41, reuse the shower block's curtain-streak noise as faint virga. Use −3-4% luminance, slanted like the shower, ending raggedly 4-6° inside the band, so the painted crest visibly stands in rain the children brought.
 3. Verify at combo 3 and 13, hours 0, 1, 3 and 4.
 
-**Files:** src/themes/sky-children/sky-children-tsl.js (optics() ~824-960: the returned vec4(out, alexander); skyColour optics block ~1202-1211 for the optional virga)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-tsl.js (optics() ~824-960: the returned vec4(out, alexander); skyColour optics block ~1202-1211 for the optional virga)
 
 **Cost:** Extinction: about 5 ALU per pixel where optics run, 0 fetches. Virga: +1 noise fetch gated by |t1 − 40| < 6. 0 draws, 0 triangles, WGSL +0.2-0.4 KB on every tier.
 
@@ -1047,11 +1047,11 @@ The spray carries its bow at max(m1, rest) times 3.0, then times its alpha. The 
 **Why it matters:** On a phone the smile is the only bow, and its strokes are the chain's score readout. Today an unpainted puff outshines four painted links, and the bow looks as if it lives only inside the spray.
 
 **Critic's fix:** 1. The bow-2 extinction already restores contrast over the bright sea, since the band dims the pink sea behind it by about 25%.
-2. In sky-children-world.js applyFrame (~line 583), set U.bowDeep to (1.0, 1.0) for the smile. In tsl.js chainVeil(), give the smile a medium floor of about 0.75 once dial ≥ 1, for example via a uniform flag.
-3. In sky-children-fx.js, at the spray's optics call (~276-283), replace the constant colour.addAssign(opt.mul(3.0)) with opt.mul(mix(1.2, 3.0, smoothstep(0.2, 0.6, alpha))), computing alpha before it. A puff's thin rim then carries about the sea's own bow and only dense cores burn, so the bow passes through the puff edge without a step.
+2. In rainbow-terraces-world.js applyFrame (~line 583), set U.bowDeep to (1.0, 1.0) for the smile. In tsl.js chainVeil(), give the smile a medium floor of about 0.75 once dial ≥ 1, for example via a uniform flag.
+3. In rainbow-terraces-fx.js, at the spray's optics call (~276-283), replace the constant colour.addAssign(opt.mul(3.0)) with opt.mul(mix(1.2, 3.0, smoothstep(0.2, 0.6, alpha))), computing alpha before it. A puff's thin rim then carries about the sea's own bow and only dense cores burn, so the bow passes through the puff edge without a step.
 4. Verify at 430×932 and 390×844: hour 2 combo 4, and hour 0 combo 12.
 
-**Files:** src/themes/sky-children/sky-children-fx.js (spray outputNode, optics call ~276-283); src/themes/sky-children/sky-children-world.js (applyFrame, U.bowDeep ~583); src/themes/sky-children/sky-children-tsl.js (chainVeil ~775-785)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-fx.js (spray outputNode, optics call ~276-283); src/themes/rainbow-terraces/rainbow-terraces-world.js (applyFrame, U.bowDeep ~583); src/themes/rainbow-terraces/rainbow-terraces-tsl.js (chainVeil ~775-785)
 
 **Cost:** About 3 ALU per spray fragment, 0 fetches, 0 draws, 0 triangles on every tier.
 
@@ -1067,11 +1067,11 @@ world.js bowHides() puts the tower in the stroke cut's hides, with the comment '
 
 **Why it matters:** This is where the eye travels from the secondary down to the Spring Isle in the theme's peak frame, and the maroon cap reads as a rendering glitch. It also contradicts the cut's own rule, so stroke ends there are not where the cut says.
 
-**Critic's fix:** 1. In sky-children-cumulus.js outputNode (optics call ~279), pass veil: float(0.0). Only the shower's real rain in front of the lower tower carries a bow there, as the cut assumes. Also weight `rain` by (1 − smoothstep(0.3, 0.6, rise)) so crowns above the rain show none.
-2. In sky-children-tsl.js stormWall() return (~687-691), use rain: bodyA·0.55·(1 − smoothstep(crownLow, crownHigh, el)) + rainA, with crownLow/crownHigh the billows' own crown elevations. Rain falls from the base, so the bow fades up a billow instead of lighting its crown.
+**Critic's fix:** 1. In rainbow-terraces-cumulus.js outputNode (optics call ~279), pass veil: float(0.0). Only the shower's real rain in front of the lower tower carries a bow there, as the cut assumes. Also weight `rain` by (1 − smoothstep(0.3, 0.6, rise)) so crowns above the rain show none.
+2. In rainbow-terraces-tsl.js stormWall() return (~687-691), use rain: bodyA·0.55·(1 − smoothstep(crownLow, crownHigh, el)) + rainA, with crownLow/crownHigh the billows' own crown elevations. Rain falls from the base, so the bow fades up a billow instead of lighting its crown.
 3. Verify with the b12 query and at combo 9, when the secondary starts.
 
-**Files:** src/themes/sky-children/sky-children-cumulus.js (outputNode ~272-282); src/themes/sky-children/sky-children-tsl.js (stormWall return ~687-691); src/themes/sky-children/sky-children-world.js (bowHides ~630-682, for reference)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-cumulus.js (outputNode ~272-282); src/themes/rainbow-terraces/rainbow-terraces-tsl.js (stormWall return ~687-691); src/themes/rainbow-terraces/rainbow-terraces-world.js (bowHides ~630-682, for reference)
 
 **Cost:** −1 noise fetch per cumulus fragment (chainVeil skipped) and +2 ALU in the storm wall. 0 draws, 0 triangles.
 
@@ -1086,14 +1086,14 @@ In b06 (Pearl, whose hours.js comment promises 'the brightest fogbow', fogbow 0.
 **Why it matters:** The design record promises an optic that never shows, while its LUT fetch and about 15 ALU run per fragment on both the sea and the dome's Deep. Either the picture should show it or the budget should not pay for it.
 
 **Critic's fix:** Recommended: remove it.
-1. Delete the fogbow block in sky-children-tsl.js optics() (~932-945).
-2. Drop the `fogbow` HOUR_SCALARS row in sky-children-hours.js (line 134) and its SCALAR_UNIFORMS entry in world.js.
+1. Delete the fogbow block in rainbow-terraces-tsl.js optics() (~932-945).
+2. Drop the `fogbow` HOUR_SCALARS row in rainbow-terraces-hours.js (line 134) and its SCALAR_UNIFORMS entry in world.js.
 3. Keep or retire LUT row 2 in core.js bakeOpticsLut, updating the OPTICS_ROWS tests together.
 4. Correct the design record and the Pearl comment.
 
 Alternative, if it must stay: give it a moment where it can be seen. For example, on the smile plan's quad, or only at board=0 idle where the plume is not between the eye and the leg, boost U.fogbow about 4x for 1.5 s, gated by the sea's cover. Verify with a capture before keeping it.
 
-**Files:** src/themes/sky-children/sky-children-tsl.js (optics() fogbow block ~932-945); src/themes/sky-children/sky-children-hours.js (fogbow row 134); src/themes/sky-children/sky-children-core.js (bakeOpticsLut row 2); docs/RAINBOW_TERRACES_VISUAL_OVERHAUL_2026-10.md
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-tsl.js (optics() fogbow block ~932-945); src/themes/rainbow-terraces/rainbow-terraces-hours.js (fogbow row 134); src/themes/rainbow-terraces/rainbow-terraces-core.js (bakeOpticsLut row 2); docs/RAINBOW_TERRACES_VISUAL_OVERHAUL_2026-10.md
 
 **Cost:** Removal saves about 1 fetch and about 15 ALU per Deep fragment (sea and dome) and about 0.3 KB WGSL on every tier. The alternative costs 1 uniform write and nothing else.
 
@@ -1135,7 +1135,7 @@ What still holds it at 6 rather than 8:
 
 **Why it matters:** The owner asked that every arch stand on solid ground, aligned with it. The grounding audits made that true in the geometry, but the picture never shows the contact, so the colossus still reads as two shafts rising out of cloud. A visible footing (stepped plinth, block rubble, mesa edge) is also the strongest scale cue the gate could carry.
 
-**Critic's fix:** The cause is the placement. sky-children-plan.js (gate block) sets e.pos[1] = -0.12*H = -264 m, so the mesa crown is ~1.2 deg below the horizon. That puts it inside the Deep-mist term of createStoneMaterial's far branch (sky-children-isles.js). At -264 m and 13 km, tau_mist ~1.1 plus tau_air ~1.4 gives T ~0.08, and the painter's floor smoothstep(-10,40,y)*0.22 is zero there.
+**Critic's fix:** The cause is the placement. rainbow-terraces-plan.js (gate block) sets e.pos[1] = -0.12*H = -264 m, so the mesa crown is ~1.2 deg below the horizon. That puts it inside the Deep-mist term of createStoneMaterial's far branch (rainbow-terraces-isles.js). At -264 m and 13 km, tau_mist ~1.1 plus tau_air ~1.4 gives T ~0.08, and the painter's floor smoothstep(-10,40,y)*0.22 is zero there.
 
 Fix:
 - Set e.pos[1] = +40, so the mesa crown and plinth sit just above the eye.
@@ -1146,7 +1146,7 @@ Fix:
 
 Alternative, if the owner wants the gate low: pass a groundY option to createStoneMaterial so the mist term starts at the gate's crown, not at y=0.
 
-**Files:** src/themes/sky-children/sky-children-plan.js (placePlan, gate block); src/themes/sky-children/sky-children-isles.js (createStoneMaterial far branch, only for the alternative)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-plan.js (placePlan, gate block); src/themes/rainbow-terraces/rainbow-terraces-isles.js (createStoneMaterial far branch, only for the alternative)
 
 **Cost:** CPU only (plan solve). 0 tris, 0 draws, no shader change on the main route.
 
@@ -1158,7 +1158,7 @@ Alternative, if the owner wants the gate low: pass a groundY option to createSto
 
 **Why it matters:** On a phone this is the only gate the player sees, and it reads as two light beams or pipes. A cut-off colossus also flattens the far plane and draws the eye to the frame edge, right above the card.
 
-**Critic's fix:** Cause: the smile branch of sky-children-frame.js hard-codes out.gate = {x: 0.8, head: 0.2}. In portrait the horizon sits at y~0.115, so the head target is below the horizon. placePlan then gets elev < 0 and a raw scale < 0.12, and clamp(...,0.8,1.6) floors it to 0.8: a ~1.7 km gate taller than the whole strip above the horizon.
+**Critic's fix:** Cause: the smile branch of rainbow-terraces-frame.js hard-codes out.gate = {x: 0.8, head: 0.2}. In portrait the horizon sits at y~0.115, so the head target is below the horizon. placePlan then gets elev < 0 and a raw scale < 0.12, and clamp(...,0.8,1.6) floors it to 0.8: a ~1.7 km gate taller than the whole strip above the horizon.
 
 Fix:
 - In the smile branch, set out.gate.head = max(0.025, horizon*0.35).
@@ -1166,7 +1166,7 @@ Fix:
 - If the solved scale is still < 0.3 (a stub under ~25 px), drop the gate behind the card (x ~0.5) and skip casters 3 and 7.
 - Add plan tests for 430x932 and a 2-board row: the projected gate rect has y0 >= 0.02 and lies inside the frame.
 
-**Files:** src/themes/sky-children/sky-children-frame.js (smile branch, out.gate); src/themes/sky-children/sky-children-plan.js (gate scale clamp)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-frame.js (smile branch, out.gate); src/themes/rainbow-terraces/rainbow-terraces-plan.js (gate scale clamp)
 
 **Cost:** CPU only. 0 tris, 0 draws.
 
@@ -1187,7 +1187,7 @@ Fix:
 - Add a capital under the impost block (inverted frustum 1.0 to 1.4, 0.035H tall).
 - Keep each step >= 45 m proud of the shaft, because the depth buffer resolves ~35 m at 13 km (see the overhaul doc).
 
-**Files:** src/themes/sky-children/sky-children-isles.js (buildFarGate, battered piers block)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-isles.js (buildFarGate, battered piers block)
 
 **Cost:** About +130 tris (base and capital, 2 frusta x 2 piers) on every tier. Vertex count +~150 from flat shading. 0 draws, no shader change.
 
@@ -1202,7 +1202,7 @@ Fix:
 
 **Why it matters:** Two arcades on one axis read as one structure: the gate with a little arcade at its threshold. The 820 m vs 13 km depth, which is the point of the ladder, collapses into a single object. The original gate-2 brief said explicitly that the Twin must 'never sit inside the opening'; the rebuild did not encode that rule.
 
-**Critic's fix:** Cause: placePlan pins the Twin at x 0.89, and its aqueduct runs along local -x to land at ~0.825-0.878. gateAnchor (sky-children-frame.js) seeks GATE_ROOM.x 0.85 clear of the bow only and knows nothing of the Twin.
+**Critic's fix:** Cause: placePlan pins the Twin at x 0.89, and its aqueduct runs along local -x to land at ~0.825-0.878. gateAnchor (rainbow-terraces-frame.js) seeks GATE_ROOM.x 0.85 clear of the bow only and knows nothing of the Twin.
 
 Fix in placePlan, after both are placed:
 - Project the aqueduct's ends: entryToWorld on the twin entry at isleAnchors().aqueduct.x and x - L - stub, at its top.
@@ -1213,7 +1213,7 @@ Fix in placePlan, after both are placed:
 
 Add a plan test for 16:9, 21:9 and 2-board layouts: the aqueduct's midpoint is never inside the gate's opening.
 
-**Files:** src/themes/sky-children/sky-children-plan.js (placePlan, twin and gate blocks); src/themes/sky-children/sky-children-frame.js (gateAnchor)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-plan.js (placePlan, twin and gate blocks); src/themes/rainbow-terraces/rainbow-terraces-frame.js (gateAnchor)
 
 **Cost:** CPU only. 0 tris, 0 draws.
 
@@ -1236,7 +1236,7 @@ Fix:
 - **(c) The break as a seeded stepped polyline:** 5-7 treads and risers along the 35 deg line. Each riser is ~40 m (~5 px at gameplay). Add 2 tilted loose blocks (hexa) on the treads.
 - Update profile.topAt and floorAt so the grounding tests follow. The world's spillway lip (anchors.weir) picks up the new notchY.
 
-**Files:** src/themes/sky-children/sky-children-isles.js (buildFarGate: notch, travertine wall, right-wall outline, profile)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-isles.js (buildFarGate: notch, travertine wall, right-wall outline, profile)
 
 **Cost:** About +100-150 tris on every tier. 0 draws, no shader change. Grounding and profile tests need updating.
 
@@ -1263,7 +1263,7 @@ Fix:
 
 **Gateway:** in buildGateway, replace the two upright `cols` cylinders with one drum lying on its side on the top course plus a low square trough, or remove them.
 
-**Files:** src/themes/sky-children/sky-children-isles.js (createStoneMaterial shadeBelow path, buildParapet, buildLedge, buildGateway cols, createIsles cornerMaterial options)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-isles.js (createStoneMaterial shadeBelow path, buildParapet, buildLedge, buildGateway cols, createIsles cornerMaterial options)
 
 **Cost:** About +40 tris. ~6 ALU, only in the corner material (JS-gated option, other materials unchanged). 0 draws.
 
@@ -1306,7 +1306,7 @@ critique/comp-x1-two-boards.png (1600x900, players=2): pitch −24.8°, horizon 
 
 **Critic's fix:** Build the crown plan as already decided (PLAN §P6 step 2), keeping the smile only as a fallback.
 
-sky-children-frame.js:frameFor
+rainbow-terraces-frame.js:frameFor
 - Add a 'crown' branch for a < 1 and for cards.length > 1.
 - setPlan horizon 0.5 on a phone and 0.55 for rows of boards (pitch ≈ 0).
 - A at x = union centre. Solve yA (depression 8-14°) so the crest's y = union.y0 − 0.035, with R1 clamped to [40°, 42°].
@@ -1314,14 +1314,14 @@ sky-children-frame.js:frameFor
 - On a phone, 5 primary strokes on the crest, each ≥ 0.08 frame heights (exempt the crown cut from MIN_STROKE). R2 ≥ R1 + 5°.
 - gloryVisible false, with the opposition glow on A's vertical in the bottom band.
 
-sky-children-plan.js:placePlan, crown branch
+rainbow-terraces-plan.js:placePlan, crown branch
 - spring at x = free.left·0.3 (cropped by the left edge), y +40, full dist, with the fall down the margin
 - twin mirrored at 1 − free.left·0.3
 - on a phone no gate, or only its outer pier cropped at x ≈ 1.02
 - archipelago at elevation 0.5-3° and at most 6 isles, in the side margins and the top band only
 - the corners anchored at y ≥ 1.12 whenever pitch < −5°, so their ledges never show their tops
 
-sky-children-world.js:applyFrame: a crown branch for the shower and the bowDeep.
+rainbow-terraces-world.js:applyFrame: a crown branch for the shower and the bowDeep.
 
 Tests at 430x932, 390x844, and 2 and 4 boards:
 - horizon in [0.45, 0.6]
@@ -1331,7 +1331,7 @@ Tests at 430x932, 390x844, and 2 and 4 boards:
 
 Capture b16 and two boards before and after.
 
-**Files:** src/themes/sky-children/sky-children-frame.js (frameFor/setPlan, smileOrder → crownOrder, paintStrokes), src/themes/sky-children/sky-children-plan.js (placePlan smile branch, corners), src/themes/sky-children/sky-children-world.js (applyFrame shower/bowDeep/oppRest), tests/unit/sky-children-frame.test.js, tests/unit/sky-children-plan.test.js
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-frame.js (frameFor/setPlan, smileOrder → crownOrder, paintStrokes), src/themes/rainbow-terraces/rainbow-terraces-plan.js (placePlan smile branch, corners), src/themes/rainbow-terraces/rainbow-terraces-world.js (applyFrame shower/bowDeep/oppRest), tests/unit/rainbow-terraces-frame.test.js, tests/unit/rainbow-terraces-plan.test.js
 
 **Cost:** CPU only: solver, plan and tests. Zero triangles, draws and shader bytes on every tier. Medium-high complexity (a new plan branch, stroke ordering, tests, 2-3 verification captures).
 
@@ -1348,9 +1348,9 @@ Capture b16 and two boards before and after.
 
 **Why it matters:** The foreground is the plane that says 'you stand here' and starts the scale ladder. As two isolated boxes in the UI's value and hue, it reads as third and fourth dark rectangles beside the card and HUD. It adds two new focal points in the bottom corners and frames nothing. The siblings' coulisses (r-golden-forest boughs, r-ice-temple columns) are big masses entering from the edges.
 
-**Critic's fix:** Left, sky-children-isles.js:buildParapet(true):
+**Critic's fix:** Left, rainbow-terraces-isles.js:buildParapet(true):
 - Newel height 2.0 → 1.25 m, so it reads as a rail post rather than a chimney.
-- sky-children-plan.js:placePlan cornerL anchor (0.02, 1.07) → about (0.06, 1.0), so the rail and 3-4 balusters run in from the left edge along y ≈ 0.90-0.98.
+- rainbow-terraces-plan.js:placePlan cornerL anchor (0.02, 1.07) → about (0.06, 1.0), so the rail and 3-4 balusters run in from the left edge along y ≈ 0.90-0.98.
 - buildLedge x1 3.5 → about 1.5, so the ledge top stays ≥ 0.95 under the leg's x (0.22-0.29). recutStrokes already treats the parapet as an occluder.
 
 Right, buildParapet(false): replace the stub, rail and baluster with the planned low natural ledge rock (a smoothed buildLedge slab, or a low-frequency displaced boulder). It runs out through the right and bottom edges with its top ≤ y 0.92, so there is no second masonry box beside the HUD.
@@ -1366,7 +1366,7 @@ Acceptance:
 - at least 3 balusters visible at 16:9 and 21:9
 - the corners cover < 10 % of the bottom band with two boards (with composition-1's anchor rule)
 
-**Files:** src/themes/sky-children/sky-children-isles.js (buildParapet, buildLedge, createStoneMaterial shadeBelow/fill, cornerMaterial), src/themes/sky-children/sky-children-plan.js (placePlan corners), src/themes/sky-children/sky-children-world.js (parapet hull for recutStrokes, check only)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-isles.js (buildParapet, buildLedge, createStoneMaterial shadeBelow/fill, cornerMaterial), src/themes/rainbow-terraces/rainbow-terraces-plan.js (placePlan corners), src/themes/rainbow-terraces/rainbow-terraces-world.js (parapet hull for recutStrokes, check only)
 
 **Cost:** About +0.3-0.6 k triangles: 3-4 more visible lathe balusters at about 160 tris each, and the ledge rock replaces the stub. Zero draws, a few ALU in one material, every tier. Low-medium complexity.
 
@@ -1387,12 +1387,12 @@ Acceptance:
 
 **Why it matters:** The right group is the counterweight to the Spring Isle, and the 1 m → 46 m → 2 km ladder is the frame's depth device. A shared ground line collapses two planes into one and inverts the scale. At 4:3 (iPads, many laptops) the counterweight is cut by the UI, the worst possible tangent. It also undercuts the owner's explicit ask that every arch visibly stand on its ground.
 
-**Critic's fix:** Twin, sky-children-plan.js:placePlan
+**Critic's fix:** Twin, rainbow-terraces-plan.js:placePlan
 - x = max(0.91, free.right + twinHalfWidthFrame + 0.03), not a constant 0.89.
 - PLAN.twin.y −45 → about −5. Its crown and aqueduct then cross the right pier at mid-height (an arcade in front of the colossal arch), while the left pier's foot and the mesa's left half stay clear.
 - This is the plan's own acceptance: 'the twin's crown overlaps the right pier and the mesa shows'.
 
-Gate, sky-children-frame.js:gateAnchor
+Gate, rainbow-terraces-frame.js:gateAnchor
 - When no x passes, never return a position with x0 < right + 0.02.
 - First allow the outer pier to be cut by the right frame edge (x1 up to about 1.10, the comp-6 coulisse crop).
 - If that still fails, shrink: lower plan.js's gate scale clamp 0.8 → 0.6, with GATE_ROOM.half scaled to match, so it fits beyond the HUD.
@@ -1403,7 +1403,7 @@ Tests (plan/frame) at 4:3, 16:10, 16:9 and 21:9:
 - |twin crown y − mesa top y| ≥ 0.04
 - the left pier's foot visible
 
-**Files:** src/themes/sky-children/sky-children-plan.js (PLAN.twin, placePlan twin/gate scale), src/themes/sky-children/sky-children-frame.js (gateAnchor, GATE_ROOM), tests/unit/sky-children-plan.test.js, tests/unit/sky-children-frame.test.js
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-plan.js (PLAN.twin, placePlan twin/gate scale), src/themes/rainbow-terraces/rainbow-terraces-frame.js (gateAnchor, GATE_ROOM), tests/unit/rainbow-terraces-plan.test.js, tests/unit/rainbow-terraces-frame.test.js
 
 **Cost:** CPU placement only. Zero triangles, draws and shader bytes. Low complexity; recheck the casters' wedges (slots 3 and 7) and the twin falls' spray after the move.
 
@@ -1418,7 +1418,7 @@ Tests (plan/frame) at 4:3, 16:10, 16:9 and 21:9:
 
 **Why it matters:** What is left after calm.mul(0.8) on one side and the gate's clear on the other is a bright vertical sliver that rhymes with the HUD's edge. It is a tangent to the UI, competes with the HUD and the gate, and reads as the sticker clouds the overhaul removed elsewhere.
 
-**Critic's fix:** sky-children-tsl.js:altoDeck. Either option works:
+**Critic's fix:** rainbow-terraces-tsl.js:altoDeck. Either option works:
 
 (a) Gate the deck by its room. In world.js:applyFrame compute the frame width between hud.x1 + the calm fade and the gate hull's x0, and between the gate hull's x1 and the frame's right edge. Pass it as one float uniform (U.deckRoom), and multiply `zone` by smoothstep(0.08, 0.16, room). The deck is then simply absent where it cannot lie as a field.
 
@@ -1426,7 +1426,7 @@ Tests (plan/frame) at 4:3, 16:10, 16:9 and 21:9:
 
 Acceptance: no deck cell within 0.04 frame widths of a calm rect or of a frame edge, at 16:9, 21:9 and 4:3.
 
-**Files:** src/themes/sky-children/sky-children-tsl.js (altoDeck zone), src/themes/sky-children/sky-children-world.js (applyFrame: the deck's room uniform)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-tsl.js (altoDeck zone), src/themes/rainbow-terraces/rainbow-terraces-world.js (applyFrame: the deck's room uniform)
 
 **Cost:** Sky dome fragment only: one uniform and about 3-6 ALU, < 0.2 KB WGSL (about 40 of 64 KB). Zero geometry, every tier.
 
@@ -1442,11 +1442,11 @@ b12, b17 and comp-x2 show the same. plan.js thermals are unchanged at (0.27,0.56
 
 **Why it matters:** Evenly spaced specks read as dust on the cirrus rather than a flock, and add noise to the two quiet areas the frame has (the upper-left sky and the sky over the gate). Grouped, they would be a living leading line along the bow.
 
-**Critic's fix:** - sky-children-plan.js:placePlan thermals → two anchors: (0.20, 0.28) over the Spring crown, and (0.84, 0.18) under the crest right of the HUD. The smile/crown frame uses (0.12, 0.30) and (0.88, 0.25).
-- sky-children-quality.js: gliders aloft at High 28 → 14 (Extreme 18, Minimal 8). The rest stay perched on the terraces.
-- sky-children-flock.js: transit flights follow the primary's arc (bowPoint) between the two thermals.
+**Critic's fix:** - rainbow-terraces-plan.js:placePlan thermals → two anchors: (0.20, 0.28) over the Spring crown, and (0.84, 0.18) under the crest right of the HUD. The smile/crown frame uses (0.12, 0.30) and (0.88, 0.25).
+- rainbow-terraces-quality.js: gliders aloft at High 28 → 14 (Extreme 18, Minimal 8). The rest stay perched on the terraces.
+- rainbow-terraces-flock.js: transit flights follow the primary's arc (bowPoint) between the two thermals.
 
-**Files:** src/themes/sky-children/sky-children-plan.js (thermals), src/themes/sky-children/sky-children-quality.js (gliders), src/themes/sky-children/sky-children-flock.js (flight paths)
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-plan.js (thermals), src/themes/rainbow-terraces/rainbow-terraces-quality.js (gliders), src/themes/rainbow-terraces/rainbow-terraces-flock.js (flight paths)
 
 **Cost:** Data only, with fewer instances aloft. Zero draws and shader bytes; slightly fewer triangles. Low complexity.
 
@@ -1468,9 +1468,9 @@ The hours now differ in value key as well as hue. Mean OKLab L is Jade 0.597, Gi
 
 **Why it matters:** This was the time-of-day finding (atmo-4) and none of it landed. HOUR_SCALARS.keyNudge (hours.js:127) is still dead: SCALAR_UNIFORMS (world.js:71) leaves it out and applyFrame writes U.key = -A for every hour (world.js:545). No terminator exists. skyBase's earthShadow is still a Gaussian at 1.5±2.5° (tsl.js:47, 218-220), and the antisolar lobe and the Deep's luminous wall brighten the horizon again underneath it. Each hour should be a different light, not a LUT. Rose is the obvious case: pink-lit crowns and the gate's top over violet-blue roots, Twin and sea is exactly the warm/cool structure that makes r-himalayan beloved, and the subject here is built for it.
 
-**Critic's fix:** (1) A shading key separate from the bow. Add hour rows keySwing (azimuth deg: 10, 14, 6, 0, -8) and term (weight: 0, 0, 1, 0, 0.7), and use termElev/termY (Rose 4° / +10 m, Pearl 2° / -30 m). In world.js applyHour, write U.shadeKey = -A rotated by keyNudge (elevation) and keySwing (azimuth), and U.term = vec4(Axz unit, tan termElev, termY). Read U.shadeKey instead of U.key in sky-children-isles.js:2083 (the stone's L), sky-children-sea.js:147, sky-children-cumulus.js:254, sky-children-falls.js:368 and sky-children-fx.js:253. optics(), antiRays and casterShadow keep U.A/U.key, so the bow does not move. (2) Earth's-shadow terminator: sunlit = mix(1, smoothstep(-25, 25, P.y - (U.term.w + dot(P.xz, U.term.xy)*U.term.z)), U.termWeight). It multiplies only the key term in stone, sea, cumulus and falls, never the lamps, hearth, pools or glider glow. Because the weight mixes linearly, the shadow fades in through the Gilded-to-Rose crossing instead of snapping. (3) In tsl.js skyBase, replace the Gaussian with a band rising from the horizon: shade = smoothstep(eS+1.2°, eS-0.4°, elev)*lobe*twilight. Scale the antisolar horizon lobe and deepColour's luminous wall (exp(-10*below)*0.55) by (1 - 0.7*twilight*lobe) so the blue band sits on the horizon and continues onto the sea. (4) stars row → (0, 0, 0.03, 1, 0). Add the new rows to the hours test and to SCALAR_UNIFORMS in the same change. Verify Rose and the 1.5 / 2.5 crossings in the playground.
+**Critic's fix:** (1) A shading key separate from the bow. Add hour rows keySwing (azimuth deg: 10, 14, 6, 0, -8) and term (weight: 0, 0, 1, 0, 0.7), and use termElev/termY (Rose 4° / +10 m, Pearl 2° / -30 m). In world.js applyHour, write U.shadeKey = -A rotated by keyNudge (elevation) and keySwing (azimuth), and U.term = vec4(Axz unit, tan termElev, termY). Read U.shadeKey instead of U.key in rainbow-terraces-isles.js:2083 (the stone's L), rainbow-terraces-sea.js:147, rainbow-terraces-cumulus.js:254, rainbow-terraces-falls.js:368 and rainbow-terraces-fx.js:253. optics(), antiRays and casterShadow keep U.A/U.key, so the bow does not move. (2) Earth's-shadow terminator: sunlit = mix(1, smoothstep(-25, 25, P.y - (U.term.w + dot(P.xz, U.term.xy)*U.term.z)), U.termWeight). It multiplies only the key term in stone, sea, cumulus and falls, never the lamps, hearth, pools or glider glow. Because the weight mixes linearly, the shadow fades in through the Gilded-to-Rose crossing instead of snapping. (3) In tsl.js skyBase, replace the Gaussian with a band rising from the horizon: shade = smoothstep(eS+1.2°, eS-0.4°, elev)*lobe*twilight. Scale the antisolar horizon lobe and deepColour's luminous wall (exp(-10*below)*0.55) by (1 - 0.7*twilight*lobe) so the blue band sits on the horizon and continues onto the sea. (4) stars row → (0, 0, 0.03, 1, 0). Add the new rows to the hours test and to SCALAR_UNIFORMS in the same change. Verify Rose and the 1.5 / 2.5 crossings in the playground.
 
-**Files:** src/themes/sky-children/sky-children-hours.js, src/themes/sky-children/sky-children-world.js, src/themes/sky-children/sky-children-tsl.js, src/themes/sky-children/sky-children-isles.js, src/themes/sky-children/sky-children-sea.js, src/themes/sky-children/sky-children-cumulus.js, src/themes/sky-children/sky-children-falls.js, src/themes/sky-children/sky-children-fx.js
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-hours.js, src/themes/rainbow-terraces/rainbow-terraces-world.js, src/themes/rainbow-terraces/rainbow-terraces-tsl.js, src/themes/rainbow-terraces/rainbow-terraces-isles.js, src/themes/rainbow-terraces/rainbow-terraces-sea.js, src/themes/rainbow-terraces/rainbow-terraces-cumulus.js, src/themes/rainbow-terraces/rainbow-terraces-falls.js, src/themes/rainbow-terraces/rainbow-terraces-fx.js
 
 **Cost:** 0 triangles, 0 draws. 4 hour rows, 2 uniforms, one CPU vec3 rotation per frame. About 8 ALU per fragment in 5 materials and the dome, about +0.3 KB WGSL each (dome about 40 of 64 KB). All tiers.
 
@@ -1482,9 +1482,9 @@ The hours now differ in value key as well as hue. Mean OKLab L is Jade 0.597, Gi
 
 **Why it matters:** Everything in the frame is composed round A: the bow, the rays, the wedges, the glory. It should be the luminous centre of the cloud sea, and today it reads as a dark lake. Three causes stack. (a) The isle and overlook caster wedges (isles.js setCaster 1/2/6; the overlook's capsule is aimed straight at A) reach A at full shadowDepth. (b) The sea opens holes there (sea.js:140, SEA.hole 0.14), and in them the dome's abyss is still the pre-audit formula: tsl.js:1026-1028, where sink saturates by about 4° down, so at A's 15° depression the hole shows light.deep #132746. (c) The rest opposition glow is additive and gated by deepMist = rim (sea.js:187), and rim → 0 at hole rims, so the glow vanishes exactly where it is needed.
 
-**Critic's fix:** In sky-children-sea.js, compute thetaA once (it already exists for the rays). (1) No holes round A: Discard(cover.lessThan(SEA.hole * smoothstep(6°, 14°, thetaA))). (2) Let the wedges dissolve into the glow at rest: lit *= 1 - shadow*U.shadowDepth*mix(smoothstep(1.5°, 7°, thetaA), 1, U.glory.z), so the quad's deepening wedges still play. (3) A multiplicative rest glow on the sea's own light, not gated by rim: lit *= 1 + (0.35*exp(-thetaDeg/10) + 0.25*exp(-thetaDeg/2.5))*U.glory.w, keeping optics()'s additive boost for the quad (glory.z) on top. (4) In tsl.js deepColour, apply the amended atmo-2 abyss so the remaining holes elsewhere read as depth, not navy water: sink = smoothstep(0.02, 0.55, below); abyss = mix(mix(haze, mistLit*keyGain*0.4, 0.5), deep*1.4, sink*0.55) * mix(0.75, 1.15, exp(-thetaA/30°)). Check b02 (a soft brightening at A) and b13 (a clear step up, glory centred on lit cloud).
+**Critic's fix:** In rainbow-terraces-sea.js, compute thetaA once (it already exists for the rays). (1) No holes round A: Discard(cover.lessThan(SEA.hole * smoothstep(6°, 14°, thetaA))). (2) Let the wedges dissolve into the glow at rest: lit *= 1 - shadow*U.shadowDepth*mix(smoothstep(1.5°, 7°, thetaA), 1, U.glory.z), so the quad's deepening wedges still play. (3) A multiplicative rest glow on the sea's own light, not gated by rim: lit *= 1 + (0.35*exp(-thetaDeg/10) + 0.25*exp(-thetaDeg/2.5))*U.glory.w, keeping optics()'s additive boost for the quad (glory.z) on top. (4) In tsl.js deepColour, apply the amended atmo-2 abyss so the remaining holes elsewhere read as depth, not navy water: sink = smoothstep(0.02, 0.55, below); abyss = mix(mix(haze, mistLit*keyGain*0.4, 0.5), deep*1.4, sink*0.55) * mix(0.75, 1.15, exp(-thetaA/30°)). Check b02 (a soft brightening at A) and b13 (a clear step up, glory centred on lit cloud).
 
-**Files:** src/themes/sky-children/sky-children-sea.js, src/themes/sky-children/sky-children-tsl.js
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-sea.js, src/themes/rainbow-terraces/rainbow-terraces-tsl.js
 
 **Cost:** Shader ALU only (about 12 ALU on the sea, about 6 in deepColour), 0 triangles, 0 draws, all tiers. WGSL about +0.3 KB.
 
@@ -1496,9 +1496,9 @@ The hours now differ in value key as well as hue. Mean OKLab L is Jade 0.597, Gi
 
 **Why it matters:** Mist between the eye and a far mass converges to what lies behind that mass. Here it converges to something much brighter than what lies behind it, so the far isles read as glass or ice instead of stone hanging in a sea of cloud. Because T saturates, all three distance bands collapse to one flat value, and the archipelago's depth stack disappears. Code: isles.js:2286 floors T only above y=-10 (T = max(exp(-tau), smoothstep(-10, 40, y1)*0.22)), so roots are 100% veil. isles.js:2291 veils below the horizon toward mix(light.mistLit, airColour, 0.5), and mistLit (Jade #e2f6ee, Gilded #ffd59a) is far brighter than the lit sea the mesh actually shows. The near stone's mist dissolve (isles.js:2301-2302) uses the same over-bright target.
 
-**Critic's fix:** Export a cheap seaTone(dir, U) from sky-children-tsl.js: the sea's far-field lit colour as sea.js computes it (cloudLight(U, ~0.62, 0, farShade at that depression) blended to horizonHaze toward the horizon with the sea's own air term). In createStoneMaterial's far branch, use veil = mix(seaTone(viewDir)*0.9, skyBehind, smoothstep(-0.02, 0.02, viewDir.y)). That is the below-horizon twin of the existing 0.86 'a few shades under the sky' rule, so a far mass is never paler than what is behind it. Floor T per band (max(T, 0.15) under y=-10), or use per-channel extinction exp(-tau*(0.75, 0.9, 1.25)), so the nearest band keeps a hint of its form and the three bands stack by value. Point the near stone's mist dissolve (isles.js:2301-2302) and the falls' far air at the same seaTone.
+**Critic's fix:** Export a cheap seaTone(dir, U) from rainbow-terraces-tsl.js: the sea's far-field lit colour as sea.js computes it (cloudLight(U, ~0.62, 0, farShade at that depression) blended to horizonHaze toward the horizon with the sea's own air term). In createStoneMaterial's far branch, use veil = mix(seaTone(viewDir)*0.9, skyBehind, smoothstep(-0.02, 0.02, viewDir.y)). That is the below-horizon twin of the existing 0.86 'a few shades under the sky' rule, so a far mass is never paler than what is behind it. Floor T per band (max(T, 0.15) under y=-10), or use per-channel extinction exp(-tau*(0.75, 0.9, 1.25)), so the nearest band keeps a hint of its form and the three bands stack by value. Point the near stone's mist dissolve (isles.js:2301-2302) and the falls' far air at the same seaTone.
 
-**Files:** src/themes/sky-children/sky-children-isles.js, src/themes/sky-children/sky-children-tsl.js, src/themes/sky-children/sky-children-falls.js
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-isles.js, src/themes/rainbow-terraces/rainbow-terraces-tsl.js, src/themes/rainbow-terraces/rainbow-terraces-falls.js
 
 **Cost:** About 15 ALU per far-stone fragment, about +0.4 KB WGSL. 0 triangles, 0 draws. All tiers.
 
@@ -1510,9 +1510,9 @@ The hours now differ in value key as well as hue. Mean OKLab L is Jade 0.597, Gi
 
 **Why it matters:** The threshold was lowered to 1.3 (post.js:57), but the content was never lifted to reach it. Bloom is paid for at Medium and up and does almost nothing. r-golden-forest and r-sakura get their atmosphere from small hot sources glowing through haze. Gilded is meant to be the theme's glowing hour and reads as a warm grade over a cobalt picture. The per-hour glow scalar from the audit (atmo-6) was not added.
 
-**Critic's fix:** Lift only small hot things into HDR, and let the hour open the knee. (1) In sky-children-falls.js:369 raise keyLight's factor from 0.74 to about 1.1 on the core and ropes (2.5-3.4 at Jade and Gilded, about 1.2 at Night). (2) In cloudLight (tsl.js:260), take `gain` from a new per-hour cloudGain row (0.5, 0.62, 0.58, 0.5, 0.52) so the tower's crown, and only the crown, sits at 1.0-1.3 at Gilded and Rose while its body stays under 1.0. (3) Add a per-hour `glow` row (0, 0.5, 0.3, 0.35, 0.2), passed to the post as a separate uniform, never written into bloomBoost (events and world.js:2208 own that). In post.js:201 use glare *= 1 + (uBloomBoost + uGlow)*0.6, and lower the high-pass threshold by 0.2*uGlow (Gilded about 1.2). (4) Low and Minimal have no BloomNode: raise the falls' mist-skirt gain ×1.4 there. Verify with falseColor that only the falls, glints, crowns and hearth go orange.
+**Critic's fix:** Lift only small hot things into HDR, and let the hour open the knee. (1) In rainbow-terraces-falls.js:369 raise keyLight's factor from 0.74 to about 1.1 on the core and ropes (2.5-3.4 at Jade and Gilded, about 1.2 at Night). (2) In cloudLight (tsl.js:260), take `gain` from a new per-hour cloudGain row (0.5, 0.62, 0.58, 0.5, 0.52) so the tower's crown, and only the crown, sits at 1.0-1.3 at Gilded and Rose while its body stays under 1.0. (3) Add a per-hour `glow` row (0, 0.5, 0.3, 0.35, 0.2), passed to the post as a separate uniform, never written into bloomBoost (events and world.js:2208 own that). In post.js:201 use glare *= 1 + (uBloomBoost + uGlow)*0.6, and lower the high-pass threshold by 0.2*uGlow (Gilded about 1.2). (4) Low and Minimal have no BloomNode: raise the falls' mist-skirt gain ×1.4 there. Verify with falseColor that only the falls, glints, crowns and hearth go orange.
 
-**Files:** src/themes/sky-children/sky-children-post.js, src/themes/sky-children/sky-children-hours.js, src/themes/sky-children/sky-children-world.js, src/themes/sky-children/sky-children-tsl.js, src/themes/sky-children/sky-children-falls.js
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-post.js, src/themes/rainbow-terraces/rainbow-terraces-hours.js, src/themes/rainbow-terraces/rainbow-terraces-world.js, src/themes/rainbow-terraces/rainbow-terraces-tsl.js, src/themes/rainbow-terraces/rainbow-terraces-falls.js
 
 **Cost:** Parameters and 2 uniforms; the bloom pass already runs at Medium and up. 0 triangles, 0 draws, no WGSL growth worth noting.
 
@@ -1524,9 +1524,9 @@ The hours now differ in value key as well as hue. Mean OKLab L is Jade 0.597, Gi
 
 **Why it matters:** Night is now good, and its one warm-against-cold accent should be a glow seen through water that warms the stone round it. Right now it reads as a UI decal. world.js:2161-2169 still pushes the heap's GLOW.glow sprites when the fall veils them (through = 0.35 only dims them). The additive glow layer draws over the transparent curtain, which writes no depth, so 'behind the water' ends up in front of it. The hearth was never added to U.lamps, although the stone material's lamp loop supports it.
 
-**Critic's fix:** In sky-children-world.js, skip the heap sprites entirely when `veiled`; the grotto term at falls.js:445 already glimmers through the thin water (raise it ×1.5 if it needs more). In writeLamps, give the last lamp row to the hearth when U.hearth > 0.05: position = the grotto (the same point falls.js uses), radius 30 m (a.w), rgb = hour.colour.hearth*hearth*0.6. The root, the lip's underside and the curtain's flanks then warm round it at Night, Pearl and Rose. Even Minimal has 4 lamps, so one held-pool lamp yields to the hearth at night.
+**Critic's fix:** In rainbow-terraces-world.js, skip the heap sprites entirely when `veiled`; the grotto term at falls.js:445 already glimmers through the thin water (raise it ×1.5 if it needs more). In writeLamps, give the last lamp row to the hearth when U.hearth > 0.05: position = the grotto (the same point falls.js uses), radius 30 m (a.w), rgb = hour.colour.hearth*hearth*0.6. The root, the lip's underside and the curtain's flanks then warm round it at Night, Pearl and Rose. Even Minimal has 4 lamps, so one held-pool lamp yields to the hearth at night.
 
-**Files:** src/themes/sky-children/sky-children-world.js, src/themes/sky-children/sky-children-falls.js
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-world.js, src/themes/rainbow-terraces/rainbow-terraces-falls.js
 
 **Cost:** 0 draws, 0 triangles, fewer glow sprites. One lamp row; no shader change.
 
@@ -1540,7 +1540,7 @@ The hours now differ in value key as well as hue. Mean OKLab L is Jade 0.597, Gi
 
 **Critic's fix:** In createStoneMaterial's shadeBelow branch, add a fill from the bright sky behind the eye: col += albedo*light.horizon*U.keyGain*0.12*(0.5 + 0.5*nv). Then floor at col = max(col, light.shadow*albedo*0.6). Target about L* 25-30 at Jade, around (50,65,80): still the darkest thing in the scene and still a repoussoir, but a clear step above the card and never black at Night.
 
-**Files:** src/themes/sky-children/sky-children-isles.js
+**Files:** src/themes/rainbow-terraces/rainbow-terraces-isles.js
 
 **Cost:** About 4 ALU on the parapet's fragments only. 0 triangles, 0 draws.
 

@@ -39,7 +39,7 @@ feel depend on the worst peer and would scale poorly toward 8-player FFA.
 
 ### Competitive stackers
 
-Exact netcode for TETR.IO, Jstris, Tetris Effect Connected, and Puyo Puyo Tetris is
+Exact netcode for TETR.IO, Jstris, a flow-state block puzzle Connected, and a versus block puzzle is
 mostly closed-source. I am separating public facts from inference.
 
 - TETR.IO publicly exposes network and performance-facing diagnostics in-client:
@@ -53,11 +53,11 @@ mostly closed-source. I am separating public facts from inference.
   and public room settings pages. Public lesson: online stackers expose deterministic
   rule knobs and treat delayed/blockable garbage as part of competitive fairness rather
   than a rendering side effect.
-- Tetris Effect Connected publicly documents/advertises online/local multiplayer modes
+- a flow-state block puzzle Connected publicly documents/advertises online/local multiplayer modes
   such as Connected, Zone Battle, Score Attack, and Classic Score Attack. Exact netcode
   is not public. For Serenity, the useful comparison is mode design: competitive modes
   resolve attacks/score/zone state, not full rollback of every opponent visual.
-- Puyo Puyo Tetris and Puyo Puyo Tetris 2 publicly document versus play where clears
+- a versus block puzzle and a versus block puzzle 2 publicly document versus play where clears
   send garbage and players top out when their fields overflow. The exact online
   transport/model is not public. The transferable lesson is the same: garbage and
   attack timing are the cross-player contract.
@@ -67,9 +67,9 @@ Relevant links:
 - TETR.IO: https://tetr.io/ and https://tetr.io/about/
 - Jstris guide: https://jstris.jezevec10.com/guide
 - Jstris room/settings surface: https://jstris.jezevec10.com/
-- Tetris Effect Connected overview: https://en.wikipedia.org/wiki/Tetris_Effect
-- Puyo Puyo Tetris: https://en.wikipedia.org/wiki/Puyo_Puyo_Tetris
-- Puyo Puyo Tetris 2: https://en.wikipedia.org/wiki/Puyo_Puyo_Tetris_2
+- a flow-state block puzzle Connected overview
+- a versus block puzzle
+- a versus block puzzle 2
 
 ### Netcode models
 

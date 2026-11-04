@@ -769,7 +769,7 @@ opaque dissolve keeps it out of the blend queue but does not make it free.
   entry size at the boundary — see the Wave 3 landing note.
 - **D4:** bless a reference frame for "leaving atmosphere" so Wave 3 can be judged against
   something rather than argued about. **DECIDED (2026-08-16):**
-  `public/playground-refs/ch6-ascent-dusk-laputa050.jpg` is the blessed ref; Wave 3 was
+  `public/playground-refs/ch6-ascent-dusk-sky-fortress050.jpg` is the blessed ref; Wave 3 was
   judged against its READ (world below, sky presence above, horizon haze), not its warm
   dusk grade, which was not adopted.
 

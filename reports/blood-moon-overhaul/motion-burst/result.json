@@ -1,5 +1,5 @@
 {
-  "url": "http://localhost:5173/playground.html?effect=blood-moon&t=8&quality=High&seed=431&event=tetris&eventAge=0.8",
+  "url": ""
   "width": 1280,
   "height": 800,
   "backend": "WebGPU · nvidia ampere",

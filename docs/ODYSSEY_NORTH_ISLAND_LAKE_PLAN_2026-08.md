@@ -81,7 +81,7 @@ Gate: capture p 0.60 (planet must NOT be visible), 0.648, 0.67 (blooming), 0.693
   - **(a) PAINTED lake (recommended).** A flat unlit disc: one sky-family colour band,
     a drawn Witness-style shoreline, an analytic sun glint streak. ~1 draw, trivial ALU,
     matches the unlit world's language, and reads perfectly at 900–1000 u from the rail.
-  - **(b) Ghibli-water patch.** The real water material on a local plane — true ripples,
+  - **(b) painted-water patch.** The real water material on a local plane — true ripples,
     but its regimes/envelopes are authored against the SEA's camera distances, and it
     prices a real shader into every climb frame. Only if (a) reads flat in capture.
 - **Shore:** a feathered wet-band + reed/grass ring (the autumn-terrace precedent), two
@@ -138,7 +138,7 @@ Gate: capture p 0.60 (planet must NOT be visible), 0.648, 0.67 (blooming), 0.693
 
 ## 6. OWNER DECISIONS
 
-- **L1:** lake surface — painted disc (recommended) or Ghibli-water patch?
+- **L1:** lake surface — painted disc (recommended) or painted-water patch?
 - **L2:** aliveness levers — which of: shore motes/fireflies, lone islet tree, cloud
   shadows, birds (new system)?
 - **L3:** does the plateau keep wild bare/moor patches, or go full flower meadow?

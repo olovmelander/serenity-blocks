@@ -104,7 +104,7 @@ Base. Ice Temple replaces the duplicate Aurora with a distinct frozen environmen
 
 ### Chapter 5 — Sky & Atmospheric Drift, orbs 28–35
 
-Light, clouds, rain, aurora, and atmospheric optics dominate. Sky Children and Parhelion replace
+Light, clouds, rain, aurora, and atmospheric optics dominate. Rainbow Terraces and Parhelion replace
 scenes that were more directly cosmic. Starlight is interpreted as looking into the night sky;
 Lunara intentionally makes the final threshold fantastical before chapter 6 enters space.
 
@@ -115,7 +115,7 @@ Lunara intentionally makes the final threshold fantastical before chapter 6 ente
 | 30 | Aurora (`aurora`) | Auroral curtains are the dominant subject over a reflective lake and snowy peaks. |
 | 31 | Nimbus Veil (`nimbus-veil`) | Cloud tops, towering cumulus, mist, and sun rays place the player above a cloud sea. |
 | 32 | Rainy Window (`rainy-window`) | Rain, storm clouds, and lightning focus on atmospheric weather. |
-| 33 | Sky Children (`sky-children`) | Cloud seas, floating islands, distant ranges, and luminous skies fit the airborne chapter. |
+| 33 | Rainbow Terraces (`rainbow-terraces`) | Cloud seas, floating islands, distant ranges, and luminous skies fit the airborne chapter. |
 | 34 | Parhelion (`parhelion`) | A hidden sun, 22-degree halo, and sundogs make atmospheric optics the main subject. |
 | 35 | Lunara (`lunara`) | Twin moons and aurora above a crystal valley make an intentional sky-to-cosmos threshold. |
 
@@ -185,7 +185,7 @@ previous Aurora at orb 22, is the migration baseline.
 | 12 | `forest` | `misty-lake` |
 | 19 | `summer` | `halcyon-apex` |
 | 22 | `aurora` | `ice-temple` |
-| 33 | `aether-tides` | `sky-children` |
+| 33 | `aether-tides` | `rainbow-terraces` |
 | 34 | `solar-eclipse` | `parhelion` |
 | 40 | `astral-weave` | `void-ember` |
 | 41 | `astral-weave` | `aether-tides` |

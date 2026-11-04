@@ -257,7 +257,7 @@ in the corner. It now opens with a picture of the mode, taken from the game itse
   | Single Player | Waves: a stack in the well, the right column open, an I piece over it |
   | Infinity | Galaxy: an 80-row tower, the camera at its top, the tower map beside it |
   | Local Versus | Sakura Twilight: four bots playing |
-  | Online Versus | Sky Children: a six-player match |
+  | Online Versus | Rainbow Terraces: a six-player match |
   | Serenity | Golden Forest |
   | Odyssey | The chapter the player's next level is in (`odyssey-<n>.webp`, 1–8), with a caption ("Chapter 4 · Mountains") |
   | Sukha Sessions | The poster of the newest session open on the breath path (`public/assets/breathing/<world>.webp`), with the session's name as caption |
@@ -881,7 +881,7 @@ summing it up (its lines, "Double", "Triple", "Quad", and its points); a block's
 landing thud grows with how far it fell and the clear's pitch drops with each wave; an
 emptied well scrolls "Clean canvas!" and pays bonus lines. Sources:
 [harddrop.com/wiki/Quadra](https://harddrop.com/wiki/Quadra) and
-[tetris.wiki/Quadra](https://tetris.wiki/Quadra). The boards follow it:
+the genre wiki/Quadra. The boards follow it
 
 - **Each wave counts**: the depth's number in the chain's tone; the next replaces it.
 - **What a wave drops lands**: a piece that fell two rows or more lights where it comes

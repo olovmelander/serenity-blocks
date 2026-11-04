@@ -47,7 +47,7 @@ owner at the machine.
 >   and the switch's build budget is spent per task (it reset every 14 ms of wall clock, so heavy
 >   frames deferred nothing). Fifteen themes went from 200-790 ms of longest load task to 0-160 ms;
 >   every refactored build hashes identical to main's. Left (§10.2): heavy single materials
->   (rainbark's trunks, sky-children's sky), the generic warm of parked effects, Cinder Drift's
+>   (rainbark's trunks, rainbow-terraces's sky), the generic warm of parked effects, Cinder Drift's
 >   plan, Sakura's storms.
 > - **2026-10-16 afternoon, branch `perf/theme-pass-2026-10-16b`** (record §10.3): a fleet sweep on
 >   the merged main (no load task over 235 ms), then Cinder Drift's plan, Supernova, Neon District

@@ -58,7 +58,7 @@ Enhanced the `onLineClear` callback to capture combo statistics:
 onLineClear: (lines) => {
     // Play sound effects (unchanged)
     if (lines === 4) {
-        this.deps.soundManager.sfxPlayer.playTetris();
+        this.deps.soundManager.sfxPlayer.playQuad();
     } else {
         this.deps.soundManager.sfxPlayer.playLineClear();
     }

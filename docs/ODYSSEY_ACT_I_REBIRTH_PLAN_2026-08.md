@@ -16,7 +16,7 @@ standard the Act II rebuild set: stunning, measured-fast, one continuous feeling
 **THE FEELING (the spine everything serves):** we are BORN from the lava and magma of the
 earth's core, rise through a crack where fire quenches into water, ascend through a magical,
 luminous ocean, and breach into the daylight of Act II. One journey, no seams felt. The design
-language, atmosphere and colour of the whole act is STUDIO GHIBLI: hand-painted softness,
+language, atmosphere and colour of the whole act is STUDIO PAINTERLY: hand-painted softness,
 light as a character, wonder over spectacle.
 
 **Method:** this document inherits the One World plan's discipline, not just its format. That
@@ -105,7 +105,7 @@ What the numbers say:
 - **The underwater frame is empty and comparatively cheap**: 45 draws, 0.262 ms Lane A,
   7.73 ms Lane B — cheaper than Act II's own mid-station (9.90) on the weak lane, but
   already over the lane's aspirational 7.0 contract before a single new mote is added. The
-  deepening therefore budgets as a measured DELTA on this baseline (§8), and the Ghibli
+  deepening therefore budgets as a measured DELTA on this baseline (§8), and the painted
   device list was chosen for exactly this: bands and SSS are ~free, and everything additive
   is size-capped.
 - Earth Core's draw count (131) is the old world's disease in one chapter: ~25–29 material
@@ -147,7 +147,7 @@ renders — the frame is ~90% mid-red. The molten-rock vein noise reads as speck
 not charred crust. The obsidian columns terminate in hard flat-shaded polygon caps, exposed
 against the quench veil at p=0.093. There is no single readable light source: ember glow is
 everywhere, so light is nowhere — the exact inverse of the reference device this plan adopts
-(§2.1: Laputa's levistone cave holds 51% of the frame in one near-black indigo and lets a
+(§2.1: a painted film's levistone cave holds 51% of the frame in one near-black indigo and lets a
 single glow carry it).
 
 **The underwater stretch** (`chapter-02-03/04/05`): a flat royal-blue void. No vertical light
@@ -275,60 +275,60 @@ one colour script own the whole act.**
 
 ## 2. Research — references verified, extended, rejected
 
-Three independent research passes (Ghibli films; game techniques; the nominated CodePen) ran
+Three independent research passes (painterly films; game techniques; the nominated CodePen) ran
 against the candidates named in the brief. Verdicts below; every claim carries a citation.
-**36 reference images are saved under `public/playground-refs/`** (`act1-ghibli-*`,
-`act1-game-*`; 19 official-Ghibli + 17 game stills, all verified image files) for
+**36 reference images are saved under `public/playground-refs/`** (`act1-painterly-*`,
+`act1-game-*`; 19 official-painterly + 17 game stills, all verified image files) for
 `?ref=/playground-refs/<name>.jpg&refMode=split` iteration. All hex values quoted from the
-Ghibli stills were machine-sampled from the saved frames, not eyeballed.
+painterly stills were machine-sampled from the saved frames, not eyeballed.
 
-### 2.1 Ghibli — the palette and light devices (all ADOPTED; one addition)
+### 2.1 painterly — the palette and light devices (all ADOPTED; one addition)
 
 | Reference | The SPECIFIC device | TSL cost class |
 |---|---|---|
 | **Castle in the Sky — levistone cave** | **Darkness-gated emission**: the glow lives only where ambient light is absent (Pom covers the lantern; the ceiling ignites). Base near-black `#202020`/indigo `#204060` holds ~51% of the frame; ONE warm source (amber lantern, tight falloff, warms only near surfaces) against ONE cool omnidirectional response (levistone blue `#206080`, reads as the air glowing). The "galaxy" is thousands of static twinkle points in the rock itself. | Near-free: one uniform lerp into emissive; instanced twinkle sprites; two-tone light is standard. |
-| **Ponyo — ocean language** | Depth as **stacked flat hue bands**, never grey scattering: each depth plane a distinct hue step (`#608080` → `#80C0E0` → `#404060`), lighter and cooler toward the light. Foam is a drawn line (crest rim with hand-wobble), not particles. Waves-as-creatures reserved for hero moments only. | Bands = free (depth-keyed smoothstep ramps — and they REPLACE fog, sidestepping the 4×-recurring `scene.fog` trap). Foam rim moderate. Creature-waves moderate-to-high — hero moments only. |
-| **Nausicaä — spore glow + underground chamber** | **Transmitted light**: spores are light sources, not lit objects (the film built a backlight double-exposure rig for exactly this) — additive emissive motes whose brightness scales with background darkness; slow constant-velocity drift with gentle sine sway, serenity from constancy. The underground chamber still (`nausicaa031`) — clean water lit by parallel blue shafts from cracks above — is the single best Ghibli match for the quench-to-ocean beat. | Cheap, **fill-rate-capped on Lane B** (additive overdraw was the Cosmic Noir bottleneck): cap sprite SIZE, not count. Shafts = 3–6 vertical gradient cards, near-free. |
+| **a painted film — ocean language** | Depth as **stacked flat hue bands**, never grey scattering: each depth plane a distinct hue step (`#608080` → `#80C0E0` → `#404060`), lighter and cooler toward the light. Foam is a drawn line (crest rim with hand-wobble), not particles. Waves-as-creatures reserved for hero moments only. | Bands = free (depth-keyed smoothstep ramps — and they REPLACE fog, sidestepping the 4×-recurring `scene.fog` trap). Foam rim moderate. Creature-waves moderate-to-high — hero moments only. |
+| **a painted film — spore glow + underground chamber** | **Transmitted light**: spores are light sources, not lit objects (the film built a backlight double-exposure rig for exactly this) — additive emissive motes whose brightness scales with background darkness; slow constant-velocity drift with gentle sine sway, serenity from constancy. The underground chamber still (`painted-film031`) — clean water lit by parallel blue shafts from cracks above — is the single best painterly match for the quench-to-ocean beat. | Cheap, **fill-rate-capped on Lane B** (additive overdraw was the Cosmic Noir bottleneck): cap sprite SIZE, not count. Shafts = 3–6 vertical gradient cards, near-free. |
 | **Howl's — Calcifer** | **Fire as a posed character**: defined teardrop silhouette, stretch/squash with state, features cut *into* the flame, held poses with snappy transitions — not continuous noise. Production rules that survive translation: bounce light stays ORANGE (green firelight was tested and rejected); the digital spec was literally "softening, transparency, diffusion as a light source". Ramp `white-yellow → #E06040 → #804020` against room-dark `#202020`. | Moderate — and the cost is animation authoring (pose library + easing), not shading. SDF/vertex-morph teardrop + 3-stop ramp is cheap. |
-| **The Boy and the Heron — warawara ascension, Himi's fire, dawn sea** (ADDED) | The only Ghibli sequence containing the act's *entire arc*: luminous beings born below rising in slow helices to be born into the sky; living fire with a face (coral-pink `#FF6060→#FFA060`, warmer and softer than Calcifer); a dawn-gold sea `#E0C080/#FFC080` as the breach target frame. One warm system (fast additive fire streaks) against one cool system (slow diffuse orbs) in the same frame — the quench's warm/cool duel, pre-solved. | Cheap: instanced orbs on helical drift; additive streaks; 2-stop dawn gradient. |
+| **The Boy and the Heron — warawara ascension, Himi's fire, dawn sea** (ADDED) | The only painterly sequence containing the act's *entire arc*: luminous beings born below rising in slow helices to be born into the sky; living fire with a face (coral-pink `#FF6060→#FFA060`, warmer and softer than Calcifer); a dawn-gold sea `#E0C080/#FFC080` as the breach target frame. One warm system (fast additive fire streaks) against one cool system (slow diffuse orbs) in the same frame — the quench's warm/cool duel, pre-solved. | Cheap: instanced orbs on helical drift; additive streaks; 2-stop dawn gradient. |
 
 Cross-cutting findings that became design law in §3: depth is ALWAYS discrete hue/value
 steps within one temperature family (never grey mush); warm and cool never mix except at a
 declared collision (the quench); each zone is one hue family plus one accent.
 
-Citations: ghibli.jp official stills gallery (free-use, ghibli.jp/info/013344/);
-sifrinsight.com Castle in the Sky analysis; ghibli.fandom.com (Uncle Pom; Calcifer —
-Takeshige/Okui production notes via *The Art of Howl's Moving Castle*; Warawara); Miyazaki
-on Ponyo (hand-drawn-animation.blogspot.com interview; Academy Museum Ponyo exhibition;
-FIU JSR Ponyo paper); *The Art of Nausicaä* staff notes on the transmitted-light rig
-(scribd.com/document/764743228); thegamer.com warawara explainer; deepfocusreview.com Ponyo.
+Citations: painterly.jp official stills gallery (free-use, painterly.jp/info/013344/);
+sifrinsight.com Castle in the Sky analysis; painterly.fandom.com (Uncle Pom; Calcifer —
+Takeshige/Okui production notes via *The Art of a painted film*; Warawara); Miyazaki
+on a painted film (hand-drawn-animation.blogspot.com interview; Academy Museum a painted film exhibition;
+FIU JSR a painted film paper); *The Art of a painted film* staff notes on the transmitted-light rig
+(scribd.com/document/764743228); thegamer.com warawara explainer; deepfocusreview.com a painted film.
 
 ### 2.2 Games — the mechanism library (verdicts as found, including rejections)
 
 | Reference | Verdict | Device adopted | Lane B cost note |
 |---|---|---|---|
-| **ABZÛ** | ADOPT | Fish as instanced static meshes animated ENTIRELY in the vertex stage (cosine yaw/tail/roll in model space — no skeletons; the technique is documented from the GDC talk). Kelp as instanced blades on the existing vegetation-wind TSL pattern. Underwater look is *authored* colour-with-distance, "paint the world", not simulated fog. God-ray implementation unverified in print → we keep our shipped cone approach. Particulate counts unpublished → 2 depth tiers, ours to tune. | Fish: 1–2 draws, vertex-ALU only, hundreds not thousands. Shafts: bound additive overdraw (thin cones, facing fade — already shipped). |
+| **an underwater game** | ADOPT | Fish as instanced static meshes animated ENTIRELY in the vertex stage (cosine yaw/tail/roll in model space — no skeletons; the technique is documented from the GDC talk). Kelp as instanced blades on the existing vegetation-wind TSL pattern. Underwater look is *authored* colour-with-distance, "paint the world", not simulated fog. God-ray implementation unverified in print → we keep our shipped cone approach. Particulate counts unpublished → 2 depth tiers, ours to tune. | Fish: 1–2 draws, vertex-ALU only, hundreds not thousands. Shafts: bound additive overdraw (thin cones, facing fade — already shipped). |
 | **Journey** | ADOPT | The sand shader's **diffuse-contrast** device (`saturate(4·dot(N,L))` with `N.y×0.3` first) — terminator steepening that makes landforms read as graphic value shapes; **glitter** = per-grain random normals + thresholded half-vector (ports to sediment and to underwater floor sparkle; already proven in Winter). The underground blue chapter IS a faked underwater level — shafts + murk + sparkle — the closest shipped model for our ascent's read. Colour script: one dominant hue per chapter. "2–3 value rule" NOT FOUND verbatim — treated as our formulation, not a quote. | Pure ALU; glitter is 1 fetch + pow. Glitter aliases without TAA → Lane B hard-off (the One World rule stands). |
 | **Gris** | EXTEND — and the candidate's premise REJECTED | No GDC talk "Art Direction of Gris" exists (checked); Gris is hand-drawn art, not a runtime gradient shader. What we take is the READ, via our own synthesis: 2–3-stop gradient ramps keyed on depth/height, paper-grain overlay, watercolour edge = noise-perturbed silhouette band (band WIDER than noise swing — the Ch3 dissolve lesson). | Ramp = LUT fetch or mix chain, near-free; grain = 1 fullscreen blend. Cheapest high-identity device in the list. |
 | **Ori (Will of the Wisps)** | ADOPT | **Hand-authored light masks** (30,000+ painted surfaces because automated looked "cheap and plasticky") → per-asset glow/light-response masks in vertex colour; light placement is authored, not simulated. Parallax silhouette layers with fog separation sell cave depth; capped at 3–4 layers. Their magma device: saturated emissive gradient streams + moss-rimmed dark silhouettes — charm from rim + hue contrast, not realism. Light rays at 60 fps on Switch proves the budget class. | Painted masks: zero runtime. Layers: a few large alpha quads — overdraw-capped. |
-| **EUROPA** (Steam app 2214880, Helder Pinto — per the user's clarification, the Ghibli glider game, not Europa Universalis) | ADOPT (devices), sources caveated | The key device: foliage cards with normals transferred from a smooth proxy blob so a canopy shades as ONE soft volume (zero runtime cost — bake into normal attributes); height-gradient hue tint base→crown (1 mix on world-Y, serves kelp and coral directly); palette per emotional zone; post grade iterated AGAINST GHIBLI STILLS (the same overshoot workflow our playground already demands). Pinto has published no pipeline breakdown; two sources 403'd and are flagged; the adjacent kidswithsticks.com Ghibli-in-UE4 breakdown documents the same technique family and is readable. UE distance-field lighting REJECTED for our stack. | All authoring-side except 1 mix + 1 grain blend. |
+| **EUROPA** (Steam app 2214880, Helder Pinto — per the user's clarification, the painted glider game, not Europa Universalis) | ADOPT (devices), sources caveated | The key device: foliage cards with normals transferred from a smooth proxy blob so a canopy shades as ONE soft volume (zero runtime cost — bake into normal attributes); height-gradient hue tint base→crown (1 mix on world-Y, serves kelp and coral directly); palette per emotional zone; post grade iterated AGAINST PAINTERLY STILLS (the same overshoot workflow our playground already demands). Pinto has published no pipeline breakdown; two sources 403'd and are flagged; the adjacent kidswithsticks.com painterly-in-UE4 breakdown documents the same technique family and is readable. UE distance-field lighting REJECTED for our stack. | All authoring-side except 1 mix + 1 grain blend. |
 | **Sea of Thieves** (added, one device only) | EXTEND | **Wave-SSS approximation** (SIGGRAPH 2018, Rare): `mix(deepColor, glowColor, crestMask × sunFacing × grazing)`, crest mask from displacement magnitude — no FFT needed, ours derives from the existing swell term. From below, the surface becomes a luminous ceiling; this is what makes the breach PAY OFF. FFT ocean itself rejected for iGPU. | ~5 ALU on the existing water material. Zero new draws. |
 
-Citations: GDC Vault — *Creating the Art of ABZU* (1024643), *Sand Rendering in Journey*
+Citations: GDC Vault — *Creating the Art of an underwater game* (1024643), *Sand Rendering in Journey*
 (1017742, + slidetodoc slide capture of the shader math), *The Art of Journey* (1017799),
-*The Art of Ori and the Will of the Wisps* (1027375); Godot docs' writeup of ABZÛ's
-vertex-cosine fish; 80.lv ABZÛ creative-director interview; pcgamesn/unrealengine.com ABZÛ
+*The Art of Ori and the Will of the Wisps* (1027375); Godot docs' writeup of an underwater game's
+vertex-cosine fish; 80.lv an underwater game creative-director interview; pcgamesn/unrealengine.com an underwater game
 engineering interview (custom underwater lighting, "paint the world"); thegamer.com Ori
 hand-painted light masks; nintendolife.com Moon Studios Switch interview;
 wccftech.com Ori deferred+tiled lighting; thisiscolossal.com & gamereactor.eu &
 redbull.com Gris interviews; halisavakis.com gradient-mapper pattern; 80.lv EUROPA piece;
-kidswithsticks.com Ghibli-in-UE4; ACM SIGGRAPH 2018 *The Technical Art of Sea of Thieves*
+kidswithsticks.com painterly-in-UE4; ACM SIGGRAPH 2018 *The Technical Art of Sea of Thieves*
 (doi 10.1145/3214745.3214820 + published PDF).
 
 ### 2.3 The nominated CodePen — identified, extracted, and worth more than expected
 
 The pen (`codepen.io/editor/lentils801/pen/019f9b4b-...`) is **"Hoshi-no-Tani · The Valley
-of Stars"** — a 287 KB single-file, fully procedural Ghibli pastoral valley (three.js 0.180
+of Stars"** — a 287 KB single-file, fully procedural painterly pastoral valley (three.js 0.180
 WebGL2, zero textures/models), verified running locally at 88–162 fps. **Full source saved
 to the session scratchpad** (`pen-live.html`) — the fetch URL is session-scoped, so the
 local copy is the durable artifact; copy it beside the refs if it should survive the
@@ -336,12 +336,12 @@ machine. It is NOT underwater — but four of its devices are directly load-bear
 
 1. **The film print** (its post grade, constants verbatim): shadows pushed to violet
    `(0.90, 0.95, 1.16)`, highlights to cream `(1.055, 1.012, 0.925)`, and a black lift
-   `(0.017, 0.021, 0.036)` — "nothing in a Ghibli frame is ever pure black". This is the
+   `(0.017, 0.021, 0.036)` — "nothing in a painted frame is ever pure black". This is the
    single biggest lever for making Earth Core's darkness read *painted* rather than void,
    and it composes with our existing ACES pipeline as a per-act grade tweak, not a new pass.
 2. **Painted water banding**: bed-depth quantised into ~3 soft-stepped colour plates that
    follow the CHANNEL (not the ripples), plus fresnel CLAMPED at ~0.46 so water never
-   becomes a mirror and keeps its own colour — the exact mechanism for Ponyo's band device
+   becomes a mirror and keeps its own colour — the exact mechanism for a painted film's band device
    on a 3D sheet.
 3. **Quantised sun glitter**: `smoothstep(0.9975, 0.99925, f) × twinkle` — winking discrete
    glints, not a specular lobe. Ports to the underwater surface ceiling and the sediment.
@@ -357,7 +357,7 @@ custom depth-only shadow pass is not needed here.
 - **snowflow** (terrain technique): already adopted wholesale by the One World; Act I's
   ocean floor IS that clipmap. A cave is authored geometry, not a heightfield — snowflow
   contributes nothing new inside the cavern, and that non-fit is an input to §4.
-- **Journey/ABZÛ/Firewatch/Tsushima art rules** absorbed by the One World plan (§3.10 there)
+- **Journey/an underwater game/Firewatch/Tsushima art rules** absorbed by the One World plan (§3.10 there)
   continue to bind: anchors hand over only while both are visible; one wind field; the
   glitter gate is Lane-B-off.
 
@@ -381,10 +381,10 @@ Wave 1 calibrates them against the refs before anything ships):
 | script p | name | medium | palette anchors | notes |
 |---|---|---|---|---|
 | −0.10 | **birth** | magma | base `#1a0d0d` near-black; ember ramp `#ff6060→#e06040→#804020`; accent `#ffaa60` | Heron flame-coral warmth, NOT pure red; ONE warm key (the lava lake below); black lift per §2.3 so darkness stays painted |
-| −0.06 | **cathedral** | magma | base `#141018` (indigo-charred, cooler than birth); veins `#ff8040` darkness-gated; accent cyan seed `#40a0a0` at ≤2% area | the Laputa frame: ≥50% of pixels under luma 60 (a TESTABLE value-share gate, §6 Wave 1); the cyan accent foreshadows water |
+| −0.06 | **cathedral** | magma | base `#141018` (indigo-charred, cooler than birth); veins `#ff8040` darkness-gated; accent cyan seed `#40a0a0` at ≤2% area | the a painted film frame: ≥50% of pixels under luma 60 (a TESTABLE value-share gate, §6 Wave 1); the cyan accent foreshadows water |
 | −0.02 | **crack** | magma→steam | quench owns the frame: `#ffb079 → #ffffff → #cfe6ff` (shipped constants) | `seamAfter: true` — the hue-rate invariant is suspended INSIDE the quench, exactly as designed |
-| 0.00 | **abyss** (existing) | water | deepen toward sampled Ghibli abyss: zenith `#0a2036`, consider `#062028` floor tint | existing keyframe; revision only with capture A/B |
-| +0.06 (new) | **luminous mid-water** | water | band 2 of the Ponyo stack: `#1a4a6a` body, shaft cyan `#4080a0`, spore-glow accent `#40c0c0` | new keyframe: the magical ocean's own identity, distinct from abyss and shallows |
+| 0.00 | **abyss** (existing) | water | deepen toward sampled painterly abyss: zenith `#0a2036`, consider `#062028` floor tint | existing keyframe; revision only with capture A/B |
+| +0.06 (new) | **luminous mid-water** | water | band 2 of the a painted film stack: `#1a4a6a` body, shaft cyan `#4080a0`, spore-glow accent `#40c0c0` | new keyframe: the magical ocean's own identity, distinct from abyss and shallows |
 | +0.12 (new) | **shallows** | water | powder `#4a8ab0` body, ceiling glow `#80c0e0`, dawn-gold kiss `#e0c080` in the crest SSS only | Heron dawn-sea; gold stays in the SSS mask so the air keyframes' horizon anchor is untouched |
 | 0.18 | **breach** (existing) | air | unchanged | Act II's script takes over; continuity by construction |
 
@@ -431,11 +431,11 @@ The whole act uses one grammar, stated once:
 
 - **Chapter 1:** ONE warm key — the lava lake / First Heart *below* the camera (the profile
   already authors `lightDir: [0.1, −0.6, 0.3]`, light from beneath — keep it). Everything
-  else is *response*: darkness-gated ember veins (Laputa device in ember), Calcifer-grammar
+  else is *response*: darkness-gated ember veins (floating-stone device in ember), Calcifer-grammar
   fire personality on the First Heart, orange-only bounce (Takeshige's rejected-green
   lesson). No second light. No sky.
 - **The crack:** the quench flips the key. Warm key below fades as a cool key above ignites
-  — Nausicaä-chamber shafts of surface light bleeding DOWN through the crack during the last
+  — a painted film-chamber shafts of surface light bleeding DOWN through the crack during the last
   fifth of ch1 (pre-seeding the palette flip so the quench is a flash, not a hue cut).
 - **The ocean:** ONE cool key — the surface above, on `ODYSSEY_WORLD_SUN`'s azimuth exactly
   as the shipped god rays already lean (23°, refraction-steepened; do not invent a private
@@ -451,7 +451,7 @@ adopts it wholesale:
 
 - **Every rebuilt Act I material carries its own aerial and sets `fog = false`.** Earth
   Core's "atmosphere" becomes a depth-keyed darkness ramp (near: ember-lit; far: near-black
-  indigo — Ponyo bands in the magma family), replacing the current `fogDensity 0.014` red
+  indigo — a painted film bands in the magma family), replacing the current `fogDensity 0.014` red
   soup. The underwater aerial is the banded ramp in `applyAerial`'s water branch (§3.4).
 - **The lints extend, not duplicate**: `odyssey-world-lints.test.js` pins the world's
   opt-out list against its constructor list; the rebuilt `earth-core` gets the same
@@ -469,7 +469,7 @@ All inside `odyssey-world-renderer.js`'s existing material set — **no new chap
 no new environment, at most ONE new material object** (the life system):
 
 1. **Banded depth ramp** replacing the single exponential in the water branch of
-   `applyAerial`: 3 Oklab-interpolated plates keyed on depth-to-surface (Ponyo stack,
+   `applyAerial`: 3 Oklab-interpolated plates keyed on depth-to-surface (a painted film stack,
    Hoshi-no-Tani's channel-following softstep), driven by the script's water keyframes.
    Brightest band at the top — the inversion fix. Cost: a mix chain, ~free (ESTIMATE;
    measured in Wave 4).
@@ -479,7 +479,7 @@ no new environment, at most ONE new material object** (the life system):
 3. **Particulate**: one instanced additive mote system, 2 depth tiers, transmitted-light
    brightness (∝ darkness behind), slow constant-velocity drift + sine sway. Hard size cap
    for Lane B fill (the Cosmic Noir lesson); count is free, SIZE is the budget.
-4. **Life**: one InstancedMesh of fish/ray silhouettes, ABZÛ vertex-cosine swim (yaw + tail
+4. **Life**: one InstancedMesh of fish/ray silhouettes, an underwater game vertex-cosine swim (yaw + tail
    + roll in model space, `positionGeometry` for the mask, `positionLocal` for the offset —
    the r181 instancing rule), dark shapes against the light above — Deep Ocean's old
    "distant creatures still flat dark polygons" note is the caution: silhouettes must live
@@ -497,7 +497,7 @@ Target: **≤ 35 draws, ≤ 10 material objects** for the whole chapter (ESTIMAT
 today: 131 draws, ~27 materials). The shape:
 
 - **One vault** (BackSide shell, single material): near-black charred interior with the
-  darkness-gated ember-vein term and the twinkle "galaxy" (Laputa) baked as instanced points
+  darkness-gated ember-vein term and the twinkle "galaxy" (a painted film) baked as instanced points
   in the shell's own vertex data — not a separate system. The magma-cloud canopy folds into
   the vault's upper hemisphere as a shader term, not a second mesh family.
 - **One column family** (single InstancedMesh, one material): re-silhouetted — tapering
@@ -516,7 +516,7 @@ today: 131 draws, ~27 materials). The shape:
   motes as atlas tiles of one InstancedMesh, replacing today's four separate systems.
   Transmitted-light embers (bright where the background is dark).
 - **The crack pre-seed** (last fifth): 3–5 cool shaft cards descending from the vault mouth
-  (Nausicaä chamber), gated on progress; the cyan accent the script already seeds.
+  (a painted film chamber), gated on progress; the cyan accent the script already seeds.
 - **Deletions**: the standalone smoke/stars/embers/sparks/haze systems, the separate
   horizon/low/mid duplicate meshes, the per-set-piece Sprite glows (fold into the atlas),
   and every material object the ≤10 budget cannot carry. The 17 `uOpacity` bridges collapse
@@ -528,7 +528,7 @@ today: 131 draws, ~27 materials). The shape:
 - No volumetric raymarching anywhere (the One World's rejected-cost table stands).
 - No new post passes: the film-print grade rides the existing pipeline's grade stage;
   playground tuning overshoots because the playground is NoToneMapping (the standing rule).
-- No creature-wave hero moment in v1 (Ponyo's most expensive device) — the quench is the
+- No creature-wave hero moment in v1 (a painted film's most expensive device) — the quench is the
   act's one bespoke volume; a second is Lane-B-unaffordable until measured otherwise.
 - No changes to `ONE_WORLD_CHAPTERS`, the act-gate margin, the registry, or the escape
   hatch (ADR-0015).
@@ -735,12 +735,12 @@ no visual surface was modified, so no ADR-0007 capture debt is incurred.
 ### Wave 1 — The playground value study (the look is proven before any port)
 
 > **/goal hook:** "Act I Wave 1: playground effect `act1-earth-core` — vault + columns +
-> lake value study against the Laputa/Heron refs, ≤10 materials, value-share gate met,
+> lake value study against the a painted film/Heron refs, ≤10 materials, value-share gate met,
 > clean console, screenshots. No in-game changes."
 
 - New `src/playground/effects/act1-earth-core.effect.js` (drop-in, auto-registers): the
   §3.5 shape — one vault, one column family, one lake, one particle atlas, First Heart
-  stub. Iterate against `?ref=/playground-refs/act1-ghibli-laputa-levistone-blue-glow.jpg`
+  stub. Iterate against `?ref=/playground-refs/act1-painterly-sky-fortress-levistone-blue-glow.jpg`
   (and `-heron-himi-flame-face.jpg` for the fire ramp) in split mode.
 - Tune with overshoot (NoToneMapping); the value-share gate (≥50% of pixels < luma 60) is
   checked on the playground capture AND re-checked in-game in Wave 3.
@@ -844,7 +844,7 @@ without anything failing is decoration. The Act I test now checks both atmospher
 authored at 0.05 and classified the entire quench palette as neutral — `#cfe6ff` measures
 Oklab chroma 0.042, `#1a2630` 0.025, `#8fa6b4` 0.033 — so the `crack` keyframe read as "all
 warm" and could not earn the exemption it needs. This act's cool tones are PALE by design
-(the Ghibli research is explicit about it), so a floor tuned for saturated colour is blind
+(the painted research is explicit about it), so a floor tuned for saturated colour is blind
 exactly where the rule matters. Calibrated to **0.02**, which still excludes the near-neutral
 charcoals at 0.015. Recorded at the constant.
 
@@ -1039,7 +1039,7 @@ So the wave splits, and the split is recorded rather than quietly performed:
    own ported god rays ("a shell standing in for a volume must dim where it is seen edge-on,
    because the grazing angle IS the silhouette"). Without it they drew hard pale WEDGES across
    the frame. Adding it: mid-wash **0.631 → 0.209** at the cathedral station, true-black
-   0.367 → 0.790, in one change. It is also the least Ghibli thing in the chapter, gone.
+   0.367 → 0.790, in one change. It is also the least painterly thing in the chapter, gone.
 2. **`moltenRockField` re-based to charred** (crust `0.07,0.03,0.012` → `0.013,0.006,0.004`,
    cooling-river stop more than halved, the 0.05 black floor dropped to 0.012). Worth
    0.445 → 0.283 at the mid-cavern station. The bright river stop is untouched on purpose:
@@ -1707,18 +1707,18 @@ no longer block that frame, exposing the open lake.
   `perf-budgets.json`.
 - Measurements produced for this plan: `reports/odyssey-perf/gpu-split-lane{a,b}-act1-{ch1,underwater}.json`;
   `artifacts/odyssey/wave-v/chapter-0{1,2}-high-webgpu/` (captures + per-frame metrics).
-- Reference images: `public/playground-refs/act1-ghibli-*` (19, official ghibli.jp
+- Reference images: `public/playground-refs/act1-painterly-*` (19, official painterly.jp
   free-use stills), `public/playground-refs/act1-game-*` (17, store/press stills). NOTE:
   per the assets-are-untracked convention, `git add` these explicitly if they should ship.
-- Film/art: ghibli.jp gallery + free-use notice; *The Art of Nausicaä* (transmitted-light
-  rig); *The Art of Howl's Moving Castle* production notes (Takeshige, Okui) via
-  ghibli.fandom; Miyazaki Ponyo interviews (hand-drawn-animation.blogspot, Academy Museum,
+- Film/art: painterly.jp gallery + free-use notice; *The Art of a painted film* (transmitted-light
+  rig); *The Art of a painted film* production notes (Takeshige, Okui) via
+  painterly.fandom; Miyazaki a painted film interviews (hand-drawn-animation.blogspot, Academy Museum,
   FIU JSR); sifrinsight Castle in the Sky and Boy and the Heron analyses; thegamer warawara.
-- Games/tech: GDC Vault 1024643 (ABZÛ), 1017742 + slide capture (Journey sand), 1017799
-  (Art of Journey), 1027375 (Ori WotW); Godot docs (ABZÛ fish vertex animation); 80.lv
-  (ABZÛ, EUROPA); pcgamesn/unrealengine (ABZÛ underwater lighting); thegamer + nintendolife
+- Games/tech: GDC Vault 1024643 (an underwater game), 1017742 + slide capture (Journey sand), 1017799
+  (Art of Journey), 1027375 (Ori WotW); Godot docs (an underwater game fish vertex animation); 80.lv
+  (an underwater game, EUROPA); pcgamesn/unrealengine (an underwater game underwater lighting); thegamer + nintendolife
   + wccftech (Ori); thisiscolossal + gamereactor + redbull (Gris — and the GDC-talk claim
-  rejected); halisavakis (gradient mapper pattern); kidswithsticks (Ghibli-in-UE4 foliage
+  rejected); halisavakis (gradient mapper pattern); kidswithsticks (painterly-in-UE4 foliage
   normal transfer); ACM 10.1145/3214745.3214820 (Sea of Thieves wave SSS); Steam app
   2214880 (EUROPA).
 - The nominated pen: "Hoshi-no-Tani · The Valley of Stars" (codepen.io/lentils801, pen

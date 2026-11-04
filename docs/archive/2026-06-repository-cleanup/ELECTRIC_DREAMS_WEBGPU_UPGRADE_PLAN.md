@@ -563,7 +563,7 @@ When two blobs are within interaction range, render a visible electric arc betwe
 
 **Event Reactivity**:
 - COMBO: Arcs intensify, become thicker and brighter, more branching
-- LINE_CLEAR (Tetris): All nearby blob pairs get arcs simultaneously, brief overload effect
+- LINE_CLEAR (Quad): All nearby blob pairs get arcs simultaneously, brief overload effect
 
 ### 5.4 Blob Color Breathing
 
@@ -614,9 +614,9 @@ When two blobs are very close (nearly merging), a bright glow bridge forms betwe
 |-------|---------------|----------------------|
 | `PIECE_LOCK` | Pulse intensity + glow flash | Pulse + flash + 1 energy pulse ring from random blob + spark burst (50-200 particles) from random blob + motes flash |
 | `COMBO` | Intensity/scale/speed/morph/bloom boost | All PIECE_LOCK effects + electric arcs intensify + background energy field pulses + all blob tendrils extend + chromatic aberration spike + bloom strength spike + color flash toward white |
-| `LINE_CLEAR` | Scaled combo effects | Combo effects scaled by line count + energy pulse rings from multiple blobs + spark super-burst + Tetris (4-line) triggers screen-wide energy overload |
+| `LINE_CLEAR` | Scaled combo effects | Combo effects scaled by line count + energy pulse rings from multiple blobs + spark super-burst + Quad (4-line) triggers screen-wide energy overload |
 
-### New Event Response: Tetris (4-Line Clear)
+### New Event Response: Quad (4-Line Clear)
 
 A special, dramatic response for clearing 4 lines simultaneously:
 - All blobs briefly flash white/ultra-bright

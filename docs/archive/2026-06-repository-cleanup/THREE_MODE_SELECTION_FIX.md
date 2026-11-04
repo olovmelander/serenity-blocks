@@ -184,7 +184,7 @@ if (e.detail.mode === GAME_MODES.ONLINE_MULTIPLAYER) {
 
 **What Happens:**
 - Press SPACEBAR → Single-player game starts
-- Standard solo Tetris gameplay
+- Standard solo block-stacking gameplay
 - High scores and statistics tracked
 
 ### **2. Local Multiplayer Mode (2P)**

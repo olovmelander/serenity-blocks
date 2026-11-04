@@ -85,7 +85,7 @@ this.time.delayedCall(2000, () => {
     particles.destroy(); // ⚠️ May not execute if scene changes
 });
 
-// Line ~2050: createTetrisEffect - 4 emitters
+// Line ~2050: createQuadEffect - 4 emitters
 for (let i = 0; i < 4; i++) {
     const particles = this.add.particles(...); // ⚠️ 4x emitters at once
 }
@@ -564,7 +564,7 @@ console.log('Memory:', (performance.memory.usedJSHeapSize / 1048576).toFixed(2) 
 ### File: [src/rendering/phaser/board-scene.js](src/rendering/phaser/board-scene.js) (Particle Pooling)
 - [ ] Add particle emitter pool in `create()`
 - [ ] Modify `createLineClearEffect()` to use pool
-- [ ] Modify `createTetrisEffect()` to use pool
+- [ ] Modify `createQuadEffect()` to use pool
 - [ ] Cap combo effects to max 20 emitters
 - [ ] Add `this.activeEmitters = []` tracking
 - [ ] Cleanup particles in `shutdown()`

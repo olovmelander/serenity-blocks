@@ -47,7 +47,7 @@ centroid into the backdrop's world space and use it as the impulse + wave + ring
 twilight you could wish upon. The player's hands coax light out of it. Nothing
 detonates; light *ignites*, *accretes*, and *is remembered*. The cosmos notices you,
 swells, then exhales back to calm. Flow is an oscillation, never a monotonic ramp
-(Tetris Effect's MacDonald): every crescendo must *recede* so the next has somewhere
+(that game's MacDonald): every crescendo must *recede* so the next has somewhere
 to climb.
 
 **How LOCK and COMBO differ — the structural contract.**
@@ -71,7 +71,7 @@ remember.** The verb/shape changes per tier so tiers never blur into "just brigh
 `#FFD9A8`/`#FFCE7A` = special/earned (the sim's literal `WARM` seed); silver-cyan
 `#9FE8FF` = structure/constellation; teal `#6FE3D2` + lavender `#9D8CE0` = aurora.
 Warm-gold + the `wish` pentagram are reserved strictly for the earned peaks
-(Tetris / Perfect / combo 10+).
+(Quad / Perfect / combo 10+).
 
 ---
 
@@ -118,7 +118,7 @@ gated Tier-2** that is never load-bearing.
 3. C's **twinkle-wave** as the universal lock + low-combo hero.
 4. A's **add-a-channel-per-tier** escalation grammar.
 5. A's **supernova-leaves-a-constellation** remnant ("the sky remembers" — `trigger('wish')` places in the upper sky, NOT at the cell; framed correctly).
-6. A's **bottom→top vertical sweep for Tetris** (shape-distinct from a point-origin combo).
+6. A's **bottom→top vertical sweep for Quad** (shape-distinct from a point-origin combo).
 7. B's **bend + settle ("inhale → bloom") for the PEAKS** instead of a white flash.
 8. B's **center-pull lens** as the optional special-moment warp signature (Tier-2 only).
 9. The shared **lock-cell → world-space origin** fix.
@@ -226,15 +226,15 @@ frame) and the emitter caps itself to **≤2 concurrent impulse pushes per event
 
 | Moment | Event | The beat (shape-distinct) | Calls |
 |---|---|---|---|
-| **Tetris (4-line)** | `LINE_CLEAR {lineCount>=4, clearedRows}` | **Vertical sweep**: four staggered ignitions bottom→top across the four cleared rows (**50 ms apart**) converging into one RADIAL bloom + ring. A different *silhouette* from the point-origin combo. | per-row: `triggerWave(rowOrigin, {boost:0.8})` staggered; then `pushImpulse(centroid, 8.0, RADIAL)`; `shockwave.spawn(centroid, RING_PRESET, #FFF6E8)`; `meteors.spawnFireball()`; `constellations.trigger('wish')`; `camera.fovPunch(-2.0)`; `_bump('flashPunch', 0.30)` (capped warm); `_bump('bloomPunch', 0.20)`. |
-| **PERFECT_CLEAR** | `PERFECT_CLEAR {depth}` | The **held-breath Zone**: longest inhale (~**250 ms**) at board center, biggest light-echo shell, then a slow color-resaturation tail (GRIS). The rarest, biggest exhale. | inhale `pushImpulse(center, 5.0, ATTRACTOR)` + dim 250 ms; bloom `pushImpulse(center, 11.0, RADIAL)` + `shockwave.spawn(center, ECHO_PRESET)`; `aurora.surge(1.0, 1600)`; `meteors.spawnWishingStar()` + `spawnFireball()`; `constellations.trigger('wish')`; `_bump('flashPunch', 0.36)` (capped); `_bump('bloomPunch', 0.28)`; `camera.pullBack(0.35)` (the cosmos steps back in awe — distinct from Tetris's fovPunch). |
+| **Quad (4-line)** | `LINE_CLEAR {lineCount>=4, clearedRows}` | **Vertical sweep**: four staggered ignitions bottom→top across the four cleared rows (**50 ms apart**) converging into one RADIAL bloom + ring. A different *silhouette* from the point-origin combo. | per-row: `triggerWave(rowOrigin, {boost:0.8})` staggered; then `pushImpulse(centroid, 8.0, RADIAL)`; `shockwave.spawn(centroid, RING_PRESET, #FFF6E8)`; `meteors.spawnFireball()`; `constellations.trigger('wish')`; `camera.fovPunch(-2.0)`; `_bump('flashPunch', 0.30)` (capped warm); `_bump('bloomPunch', 0.20)`. |
+| **PERFECT_CLEAR** | `PERFECT_CLEAR {depth}` | The **held-breath Zone**: longest inhale (~**250 ms**) at board center, biggest light-echo shell, then a slow color-resaturation tail (GRIS). The rarest, biggest exhale. | inhale `pushImpulse(center, 5.0, ATTRACTOR)` + dim 250 ms; bloom `pushImpulse(center, 11.0, RADIAL)` + `shockwave.spawn(center, ECHO_PRESET)`; `aurora.surge(1.0, 1600)`; `meteors.spawnWishingStar()` + `spawnFireball()`; `constellations.trigger('wish')`; `_bump('flashPunch', 0.36)` (capped); `_bump('bloomPunch', 0.28)`; `camera.pullBack(0.35)` (the cosmos steps back in awe — distinct from the genre's fovPunch). |
 | **T-SPIN** | `TSPIN {lineCount}` | **The twist (bend, not strike)**: C's inverted twinkle-wave — stars DIM-then-rebrighten — + one VORTEX impulse (the spin literally swirls the dust) + one lavender ring. No ring train, no flash. | `starfield.triggerWave(origin, {boost:0.6, invert:true})`; `pushImpulse(origin, 4.0, AXIS, VORTEX)`; `shockwave.spawn(origin, RING_PRESET, {color:#9D8CE0})`; `_bump('chromaPunch', 0.10)`. Tier-2: `warpPunch(origin, -0.020)` center-pull twist. |
 | **B2B** | `B2B {active:true}` | **The echo / sustain**: re-fire the *prior* special's signature at half amplitude a beat later (a paired second ring), + lengthen the next wave's decay. "The previous wave hasn't finished ringing." A modifier, not its own event. | sets `this._b2bActive = true` for ~1.5 s; the next special schedules a second `shockwave.spawn(lastOrigin, RING_PRESET, {scale:0.6})` ~180 ms after its primary, and passes `decayMul: 1.4` into `triggerWave`. |
 | **CASCADE** | `LINE_CLEAR {cascadeCount>1}` (and standalone `CASCADE`) | **Marching chain**: N sequential lock-style `triggerWave` + spark flashes, one per cascade step, marching up the board (Destiny "hero shatters into seekers"). Pure starfield+spark, near-free. | for `k in 0..cascadeCount`: `setTimeout(k*70ms)` → `triggerWave(rowOrigin(k), {boost:0.5})` + `pushImpulse(rowOrigin(k), 1.4, ATTRACTOR)`. No camera, no flash. |
 | **LEVEL_UP** | `LEVEL_UP` | **The earned milestone**: a wishing star + a single soft light-echo shell + an aurora breath (the "world brightens" GRIS beat) — calm, not a combo climax. | `meteors.spawnWishingStar()`; `shockwave.spawn(center, ECHO_PRESET, {alpha:0.5})`; `aurora.surge(0.7, 1400)`; `pushImpulse(center, 2.0, RADIAL)`; `_bump('bloomPunch', 0.12)`. No flash, no shake. |
 
 All `clearedRows`-derived origins use §7.4 mapping; if data is missing they fall back to
-board center. `wish` is reserved strictly for Tetris / Perfect / combo 10+.
+board center. `wish` is reserved strictly for Quad / Perfect / combo 10+.
 
 ---
 
@@ -420,7 +420,7 @@ around* the board, never inside the brightness-capped pocket.
 **Hex (semantic):**
 - Calm bed / lock twinkle: blue-white `#CFE0FF`, white `#FFF6E8`.
 - Ignition spark / cluster ring: gold `#FFD9A8` → `#FFCE7A`.
-- Nova / supernova / Tetris ring + flash: warm-white `#FFF6E8` → gold `#FFD9A8`
+- Nova / supernova / Quad ring + flash: warm-white `#FFF6E8` → gold `#FFD9A8`
   (**never pure `#FFFFFF`, never red-adjacent** — WCAG general-flash + red-flash limits).
 - T-spin ring: lavender `#9D8CE0`. Aurora surge: teal `#6FE3D2` / lavender `#9D8CE0`
   (capped `min(,0.17)`, `emitsBloom=false`).
@@ -431,7 +431,7 @@ around* the board, never inside the brightness-capped pocket.
 **Timing (ms):** lock spark **220**, lock/low-combo twinkle-wave **450–500**; cluster ring
 **550**; nova ring **600**, nova spike **1 frame** + bloom decay ~5 frames; supernova
 inhale **180** → bloom → echo **700** → `wish` draw **~1800** → resaturation tail **~1000**;
-Tetris row stagger **50** each (×4), flash decay **~5 frames** (`fxState` `*=0.78`/frame);
+Quad row stagger **50** each (×4), flash decay **~5 frames** (`fxState` `*=0.78`/frame);
 perfect inhale **250**; cascade step stagger **70**; aurora surge ramp **1200–1600**;
 B2B echo offset **180**, B2B window **~1500**. Engine impulse half-life **~170 ms**
 (`k=exp(-delta*4)`), `fxState` decays: bloom `*=0.86`, vignette `*=0.82`, chroma `*=0.8`,
@@ -455,7 +455,7 @@ flash `*=0.78` per frame.
 - **Cost:** added per-frame budget is ~one quad pool (≤12 instances) + ~7 uniforms +
   one aurora tween. Impulses are fixed-cost (8-slot loop runs regardless). 60 fps safe
   on the target iGPU by construction (no new compute, no new post pass in Tiers 1–4).
-- **Photosensitivity:** flashes fire ONLY on nova-peak / supernova / Tetris / Perfect —
+- **Photosensitivity:** flashes fire ONLY on nova-peak / supernova / Quad / Perfect —
   all small-area, warm (never near-red, never pure white), capped (`flashPunch ≤ 0.36`),
   and never on lock or combos (a sub-second lock with any full-screen flash would breach
   WCAG 2.3.1's 3-flashes/sec). The HDR `clamp(0,2.2)` on rings/meteors prevents
@@ -488,7 +488,7 @@ small effect per session** (iGPU TDR risk). Prototype these as
    undistorted; amp ≤ 0.025; WebGPU-only (skip on WebGL2).
 
 After each clean screenshot, port the proven node code into the real subsystem
-(§6), then validate the *wired* effect via the in-game event bus (trigger a combo/Tetris
+(§6), then validate the *wired* effect via the in-game event bus (trigger a combo/Quad
 in a dev build).
 
 ---
@@ -503,9 +503,9 @@ in a dev build).
   1–3 + cascade. Highest ROI, both backends, no renderer. Ships the "the sky responded"
   feel everywhere.
 - **Phase 2 — Shockwave renderer (§6.2).** Build the pool, validate both presets, wire
-  the cluster ring (combo 4–6) + nova ring (7–9) + Tetris ring. The only new file.
+  the cluster ring (combo 4–6) + nova ring (7–9) + Quad ring. The only new file.
 - **Phase 3 — Supernova + constellation peak (combo 10+) & specials.** Inhale→bloom arc,
-  `wish` remnant (reserved), Tetris vertical sweep, T-spin inverted wave + VORTEX,
+  `wish` remnant (reserved), Quad vertical sweep, T-spin inverted wave + VORTEX,
   B2B echo, LEVEL_UP wishing-star + echo.
 - **Phase 4 — Aurora surge (§6.3).** Wire `surge()` into combo 10+ / Perfect / LEVEL_UP.
 - **Phase 5 — Reduce-motion toggle + impulse-pool budgeting + photosensitivity audit.**
@@ -526,7 +526,7 @@ in a dev build).
 2. **Tier-2 warp: build it or shelve it?** It is the one genuinely-invasive,
    WebGPU-only change. The plan ships a complete, magical system *without* it. Do you
    want it in scope, or deferred until the rest is capture-verified?
-3. **Audio coupling.** The Tetris Effect research is emphatic that 1:1:1 audio-visual
+3. **Audio coupling.** a flow-state block puzzle research is emphatic that 1:1:1 audio-visual
    weight is what makes this land (a quantized note per lock rising with combo). Is the
    sound layer in scope for this work, or visual-only for now (with hooks left for audio)?
 4. **`reduce-motion` source of truth.** Is there an existing settings flag

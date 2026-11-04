@@ -71,7 +71,7 @@ driftAngle: random    // Each nebula moves in a different direction
    - Purple, blue, pink colors
 
 3. **Game Layer** (0+ z-index)
-   - Your Tetris game
+   - Your block-stacking game
 
 ### Timeline of a Nebula:
 

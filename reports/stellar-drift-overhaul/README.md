@@ -63,7 +63,7 @@ Run `npm run dev:playground` and open one effect at a time:
 ```text
 /playground.html?effect=stellar-drift&orbit=0&t=8&seed=187&quality=High
 /playground.html?effect=stellar-drift&orbit=0&t=8&seed=187&quality=High&forceWebGL=1&event=combo&combo=9&eventAge=1.8
-/playground.html?effect=stellar-drift&orbit=0&t=8&seed=187&quality=Low&forceWebGL=1&board=1&event=tetris&eventAge=0.6
+/playground.html?effect=stellar-drift&orbit=0&t=8&seed=187&quality=Low&forceWebGL=1&board=1&event=quad&eventAge=0.6
 ```
 
 The playground imports the production atmosphere, director and post modules.

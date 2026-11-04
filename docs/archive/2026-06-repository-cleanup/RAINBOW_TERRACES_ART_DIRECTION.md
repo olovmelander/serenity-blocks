@@ -1,8 +1,8 @@
-# Sky Children Phase 0 Look Bible
+# Rainbow Terraces Phase 0 Look Bible
 
 ## North Star
 
-Target the "Valley of Triumph / Sunset" emotional state from Sky: Children of the Light with Journey-style painterly lighting language:
+Target the "Valley of Triumph / Sunset" emotional state from a calm flying adventure with Journey-style painterly lighting language:
 - warm-gold highlights,
 - cool-violet shadows,
 - soft atmospheric depth,
@@ -55,12 +55,12 @@ Use Sky and Journey as mood and lighting references only.
 ## Phase 0 Review Workflow
 
 1. Capture fixed-camera shots from the six hero bookmarks.
-2. Compare against `docs/SKY_CHILDREN_PHASE0_REFERENCE_BOARD.md`.
-3. Record every style regression in `docs/SKY_CHILDREN_LOOK_LOG.md`.
+2. Compare against `docs/RAINBOW_TERRACES_PHASE0_REFERENCE_BOARD.md`.
+3. Record every style regression in `docs/RAINBOW_TERRACES_LOOK_LOG.md`.
 4. Block merge if warm/cool balance, silhouette readability, or atmosphere continuity regresses.
 
 ## Linked Artifacts
 
-- Reference board: `docs/SKY_CHILDREN_PHASE0_REFERENCE_BOARD.md`
-- Look log: `docs/SKY_CHILDREN_LOOK_LOG.md`
-- Master plan: `docs/SKY_CHILDREN_WEBGPU_THEME_PLAN.md`
+- Reference board: `docs/RAINBOW_TERRACES_PHASE0_REFERENCE_BOARD.md`
+- Look log: `docs/RAINBOW_TERRACES_LOOK_LOG.md`
+- Master plan: `docs/RAINBOW_TERRACES_WEBGPU_THEME_PLAN.md`

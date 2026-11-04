@@ -1,4 +1,4 @@
-# 🎉 FFA Multiplayer Tetris - Project Complete!
+# 🎉 FFA Multiplayer block-stacking - Project Complete!
 
 **Date:** October 18, 2025  
 **Status:** 🚀 PRODUCTION READY  
@@ -20,7 +20,7 @@
 
 ## 🎮 What You Built
 
-### A Fully Functional Multiplayer Tetris Game With:
+### A Fully Functional Multiplayer block-stacking Game With:
 
 #### Core Features:
 - ✅ **60 FPS Rendering** (host & peer)
@@ -55,12 +55,12 @@
 
 ## 🏆 Achievement Unlocked
 
-You've built a **professional-grade competitive multiplayer Tetris game**!
+You've built a **professional-grade competitive multiplayer block-stacking game**!
 
 ### Comparable To:
-- **Tetris 99** (Nintendo Switch)
-- **Jstris** (online Tetris)
-- **Tetr.io** (competitive Tetris)
+- **a 99-player battle stacker** (Nintendo Switch)
+- **Jstris** (online block-stacking)
+- **Tetr.io** (competitive block-stacking)
 - **Quadra** (classic multiplayer)
 
 ### Key Differentiators:
@@ -381,7 +381,7 @@ Professional transitions and effects
 
 **You've built something truly special!**
 
-This is a **complete, professional-grade multiplayer Tetris game** that rivals commercial implementations.
+This is a **complete, professional-grade multiplayer block-stacking game** that rivals commercial implementations.
 
 ### What You Achieved:
 - ✅ Complete feature set

@@ -14,7 +14,7 @@
  *      smooth FBM falloff), with the void floor held at the black-lift family.
  *
  * Refs: ?ref=/playground-refs/ch6-star-catching-howl044.jpg&refMode=split (bar frame);
- * also ch6-ember-collision-howl040 / ch6-levistone-key-laputa018 / ch6-ascent-dusk-laputa050.
+ * also ch6-ember-collision-howl040 / ch6-levistone-key-sky-fortress018 / ch6-ascent-dusk-sky-fortress050.
  * Playground is NoToneMapping — these albedos deliberately OVERSHOOT (double-grade law).
  */
 import * as THREE from 'three/webgpu';
@@ -27,7 +27,7 @@ import { buildCloudFieldGeometry } from '../../rendering/odyssey/world/odyssey-c
 export const meta = {
     id: 'ch6-painted-cosmos',
     title: 'Ch6 Painted Cosmos (Wave 0 probe)',
-    description: 'Sculpted nebula mass + banded gas giant + posterized backdrop vs the Ghibli bar',
+    description: 'Sculpted nebula mass + banded gas giant + posterized backdrop vs the painted bar',
 };
 
 // One key light for the whole frame (the accretion/star key) — warm, from upper-left,
@@ -74,7 +74,7 @@ function makeNebulaMaterial(uniforms) {
     const base = mix(color(PALETTE.nebulaShade), litRamp, band);
 
     // Darkness-gated interior: the SDF crevices (low AO) are where ambient is absent, so
-    // that is where the ember lives — Laputa's Levistone rule, not additive glow everywhere.
+    // that is where the ember lives — the glowing-stone rule, not additive glow everywhere.
     const crevice = smoothstep(0.72, 0.18, ao);
     const interior = color(PALETTE.nebulaCore).mul(crevice.mul(crevice).mul(0.85));
 
@@ -105,7 +105,7 @@ function makePlanetMaterial(uniforms) {
         midBand,
     );
 
-    // The thin warm terminator band — the Ghibli sunset edge — lives where N·L crosses
+    // The thin warm terminator band — the painted sunset edge — lives where N·L crosses
     // the mid edge; width is authored, not physical.
     const terminator = smoothstep(-0.16, -0.04, d).mul(smoothstep(0.14, 0.02, d));
     const termGlow = color(PALETTE.planetTerminator).mul(terminator.mul(0.8));
@@ -150,7 +150,7 @@ function makeBackdropMaterial() {
     const field = n1.mul(0.72).add(n2.mul(0.28)).mul(0.5).add(0.5);
 
     // Three soft-quantised bands over the void floor; the floor is the black lift — the
-    // void is never RGB-zero (Ghibli law), and depth reads as stacked hue bands, not fog.
+    // void is never RGB-zero (painterly law), and depth reads as stacked hue bands, not fog.
     const deep = smoothstep(0.44, 0.50, field);
     const tealBand = smoothstep(0.58, 0.64, field);
     const roseBand = smoothstep(0.74, 0.80, field);

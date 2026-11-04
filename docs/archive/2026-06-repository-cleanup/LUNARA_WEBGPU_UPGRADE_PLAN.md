@@ -170,7 +170,7 @@ Preserve the existing `eventBus` integration and elevate combo/line-clear/lock v
 - `PIECE_LOCK` → small sparkle burst on a random nearby crystal + brief moon halo pulse.
 - `LINE_CLEAR` → ripple ring originating between the two moons; secondary aurora-curtain glow band that fades over ~1.2s.
 - `COMBO` (≥3) → companion-moon flare + brief saturation/exposure pop in post (clamped); for combos ≥6 a shooting star streak across the sky.
-- `LINE_CLEAR.lineCount === 4` (Tetris) → screen-wide bioluminescent shockwave through the flora field.
+- `LINE_CLEAR.lineCount === 4` (Quad) → screen-wide bioluminescent shockwave through the flora field.
 
 All effects run on dedicated short-lived TSL node materials or transient sprites; they auto-dispose with timeouts registered via the existing `BaseTheme.registerTimeout()`.
 
@@ -207,7 +207,7 @@ All effects run on dedicated short-lived TSL node materials or transient sprites
 - Foreground hero crystals.
 
 ### Phase 3 — Reactive flourishes
-- Screen-wide bioluminescent shockwave on Tetris.
+- Screen-wide bioluminescent shockwave on Quad.
 - Shooting stars (3D, not DOM).
 - Adaptive bloom intensity reacting to combo energy.
 

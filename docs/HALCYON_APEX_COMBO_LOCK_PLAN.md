@@ -35,7 +35,7 @@ Confirmed at the emit sites (`src/main.js`, `src/core/game-modes/*`) and against
 | --- | --- | --- |
 | `PIECE_LOCK` | `{ piece: { type, x:0–9, y:0–19, rotation } }` | Lock trickle; map `piece.x` → causeway shard Z |
 | `COMBO` | `{ comboCount }` (legacy fallback `combo`) | Master escalation tier driver |
-| `LINE_CLEAR` | `{ lineCount, clearedRows:number[], cascadeCount }` | One ring per line; tetris = `lineCount===4`; cascade via `cascadeCount>1` |
+| `LINE_CLEAR` | `{ lineCount, clearedRows:number[], cascadeCount }` | One ring per line; quad = `lineCount===4`; cascade via `cascadeCount>1` |
 | `TSPIN` | `{ lineCount }` (no spin sub‑type) | Helix arc + apex spin kick |
 | `B2B` | `{ active: boolean }` | Sustained warm energy floor while active |
 | `PERFECT_CLEAR` | `{ depth, perfectClearBonus }` | Force the Apex Beacon + longest exhale |
@@ -136,7 +136,7 @@ Caps: arcs ≤ 8 (drop oldest), rings ≤ 8 fixed slots, fireflies ≤ 6. Beacon
 ## 6. Special events
 
 - **Line clear** — scale by `lineCount`: one water ring per line; portal "breath" (`scale.y` stretch + `uPortalCharge`). Use `clearedRows` average only to bias the ring origin Z subtly.
-- **Tetris** (`lineCount === 4`) — snap straight to **Resonate**; bigger ring; brief full‑shard wave.
+- **Quad** (`lineCount === 4`) — snap straight to **Resonate**; bigger ring; brief full‑shard wave.
 - **Cascade** (`cascadeCount > 1`) — extra ring + small `energy` bump per cascade depth.
 - **T‑Spin** — a **helical** arc that twists up to the apex + an apex spin kick, scaled by `lineCount` (we can't distinguish spin sub‑type, so differentiate purely by the helix VFX).
 - **B2B** (`active`) — raise a sustained warm **energy floor** while active (a low hum), drop it when `active:false`.
@@ -196,9 +196,9 @@ All additive contributions are **clamped** so the worst case (perfect clear duri
 - **Phase 3 — Water shockwave ring.** Add `uRings` term to water position/emissive; fire one ring. Screenshot with reflector ON and `?noReflect` — confirm the mirrored crest doesn't alias at resolutionScale 0.4.
 - **Phase 4 — Combo tier ladder.** Wire Tiers 0–3; one representative screenshot per tier (separate short sessions). Confirm clamps keep it jewel‑like.
 - **Phase 5 — Apex Beacon + dawn column.** Yaw‑only column + `uColumnLife` + lake‑wide ring + shaft spike; stress the worst case (perfect clear during a high combo); clamp.
-- **Phase 6 — Special events.** line clear / tetris / cascade / tspin / b2b / perfect clear, + defensive hard drop / level up. Verify each via the hook.
+- **Phase 6 — Special events.** line clear / quad / cascade / tspin / b2b / perfect clear, + defensive hard drop / level up. Verify each via the hook.
 - **Phase 7 — Wrapper wiring + accessibility.** `setupEventListeners()` with the guard, `mapLock`, unsub teardown, `setIntensity` from settings + reduced‑motion. Confirm clean subscribe/unsubscribe across theme switches (no leaks/double‑subscribe).
-- **Phase 8 — Real‑game verification (user‑captured).** Batch all changes, then a short **per‑event** capture in the desktop session (a lock, a 5‑combo, a tetris, a perfect clear) — **not** a full journey — and confirm it reads serene + native. Iterate from those.
+- **Phase 8 — Real‑game verification (user‑captured).** Batch all changes, then a short **per‑event** capture in the desktop session (a lock, a 5‑combo, a quad, a perfect clear) — **not** a full journey — and confirm it reads serene + native. Iterate from those.
 
 ---
 

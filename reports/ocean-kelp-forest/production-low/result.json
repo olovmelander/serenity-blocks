@@ -1257,7 +1257,7 @@
           ],
           "freeAssetFallbackPolicy": "CC0-preferred-CC-BY-with-attribution",
           "noProprietaryArtwork": true,
-          "noAbzuLogoTextOrCopiedScenes": true,
+          "noan underwater gameLogoTextOrCopiedScenes": true,
           "generator": "tools/assetgen/generate_ocean_fauna_premium.py",
           "blenderMcpSketchfabStatus": "attempted-but-disabled-no-api-key"
         },

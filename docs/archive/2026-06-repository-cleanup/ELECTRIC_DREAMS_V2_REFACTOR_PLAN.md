@@ -16,7 +16,7 @@ A **dreamy, tactile, hypnotic** scene where one massive metaball orb dominates t
 - Macro footage of ferrofluid spikes responding to magnets
 - A bioluminescent aquarium at night
 
-**Non-goals**: We are NOT building a generic Tetris background. Every visual element earns its frame budget by either (a) reinforcing the hero composition or (b) responding to gameplay.
+**Non-goals**: We are NOT building a generic block-stacking background. Every visual element earns its frame budget by either (a) reinforcing the hero composition or (b) responding to gameplay.
 
 ---
 
@@ -31,7 +31,7 @@ A **dreamy, tactile, hypnotic** scene where one massive metaball orb dominates t
 | Codrops "Procedural Vortex in Glass Sphere" | Refractive glass foreground overlay technique | [tympanus.net/codrops/tag/webgpu](https://tympanus.net/codrops/tag/webgpu/) |
 | `discourse.threejs.org` volumetric lighting WebGPU thread | Half-resolution offscreen pass + composite for expensive raymarched volumes | [discourse.threejs.org](https://discourse.threejs.org/t/volumetric-lighting-in-webgpu/87959) |
 | THREE.Fire (TSL volumetric fire) | TSL implementation reference for volumetric absorption pattern | [github.com/typeWolffo/THREE.Fire](https://github.com/typeWolffo/THREE.Fire) |
-| `awwwards.com` Samsy cyberpunk WebGPU | Compositional benchmark: 120+ FPS WebGPU portfolio that proves the target is achievable | [awwwards.com](https://www.awwwards.com/sites/cyberpunk-interactive-3d-desk) |
+| `awwwards.com` Samsy neon-noir WebGPU | Compositional benchmark: 120+ FPS WebGPU portfolio that proves the target is achievable | awwwards.com |
 
 ---
 
@@ -318,5 +318,5 @@ Critical path: 0 → 1 → 2 → 3 → 4 → 6 → 11. Phases 5, 7, 8, 9, 10 can
 - [Codrops — WebGPU tutorials tag](https://tympanus.net/codrops/tag/webgpu/)
 - [three.js discourse — Volumetric Lighting in WebGPU](https://discourse.threejs.org/t/volumetric-lighting-in-webgpu/87959)
 - [THREE.Fire — TSL volumetric fire reference](https://github.com/typeWolffo/THREE.Fire)
-- [Awwwards — Samsy cyberpunk WebGPU portfolio (120+ FPS benchmark)](https://www.awwwards.com/sites/cyberpunk-interactive-3d-desk)
+- Awwwards — Samsy neon-noir WebGPU portfolio (120+ FPS benchmark)
 - [Utsubo — Migrate Three.js to WebGPU (2026) checklist](https://www.utsubo.com/blog/webgpu-threejs-migration-guide)

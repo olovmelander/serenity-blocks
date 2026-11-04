@@ -9769,7 +9769,7 @@
       "expectedMaxPixelRatio": 0.5
     },
     {
-      "id": "sky-children",
+      "id": "rainbow-terraces",
       "quality": "Low",
       "errors": [],
       "warnings": [
@@ -11563,7 +11563,7 @@
               "wakeSlots": 4,
               "responseSlotBytes": 128,
               "reservedSpecialSlot": 0,
-              "tetrisDepthWakes": 4,
+              "quadDepthWakes": 4,
               "lakeRings": 12,
               "lakeVertices": 1225,
               "lakeTriangles": 2304,
@@ -12183,7 +12183,7 @@
               "wakeSlots": 4,
               "responseSlotBytes": 128,
               "reservedSpecialSlot": 0,
-              "tetrisDepthWakes": 4,
+              "quadDepthWakes": 4,
               "lakeRings": 12,
               "lakeVertices": 1225,
               "lakeTriangles": 2304,
@@ -12203,7 +12203,7 @@
               "responseOverwrites": 0,
               "suppressedLocks": 0,
               "responseGraphActive": true,
-              "responseGraphMode": "tetris",
+              "responseGraphMode": "quad",
               "waterMaterialVersion": 0
             },
             "forest": {
@@ -12803,7 +12803,7 @@
               "wakeSlots": 4,
               "responseSlotBytes": 128,
               "reservedSpecialSlot": 0,
-              "tetrisDepthWakes": 4,
+              "quadDepthWakes": 4,
               "lakeRings": 12,
               "lakeVertices": 1225,
               "lakeTriangles": 2304,
@@ -12823,7 +12823,7 @@
               "responseOverwrites": 0,
               "suppressedLocks": 0,
               "responseGraphActive": true,
-              "responseGraphMode": "tetris",
+              "responseGraphMode": "quad",
               "waterMaterialVersion": 0
             },
             "forest": {

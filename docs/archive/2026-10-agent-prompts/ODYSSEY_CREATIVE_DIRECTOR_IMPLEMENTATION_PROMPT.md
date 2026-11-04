@@ -33,7 +33,7 @@ Repository and screenshot review:
 - Inspect the Odyssey journey environment code under `src/rendering/odyssey/chapter-environments/` to understand the existing chapter vocabulary, but do not solve implementation in code.
 - Use these local visual references for inspiration:
   - `src/themes/pyrestorm/` for lava, magma, embers, volcanic glow, heat haze, and smoke.
-  - `src/themes/sky-children-v2/` for luminous skies, cloud seas, warm/cool color scripting, birds, glints, and sunset mood.
+  - `src/themes/rainbow-terraces/` for luminous skies, cloud seas, warm/cool color scripting, birds, glints, and sunset mood.
   - `src/themes/swedish-forest/` for forest richness, water, sun shafts, mist, birds, fireflies, atmosphere, and reflective landscape color.
   - `src/themes/sakura-twilight/` for romantic foliage, petals, painterly twilight color, and elegant vegetation density.
   - `src/themes/himalayan-peak/` for snow peaks, alpenglow, spindrift, eagles, altitude drama, and high-altitude camera composition.
@@ -62,7 +62,7 @@ Creative target: a luminous descent through a living water column. The visible p
 
 3. Surface World & Living Landscapes
 Current issue: colors are washed out, water reads grey, trees/flora/birds need more beauty and life.
-Creative target: the first breath of daylight. Pull inspiration from Sky Children, Swedish Forest, Sakura Twilight, and Himalayan Peak. Make this chapter saturated, alive, and lyrical: reflective blue-green water with gold sky shimmer, a real sun or warm horizon glow, richer trees, meadow flora, drifting petals/leaves/fireflies, birds crossing the sky, and layered hills that feel fertile. This should feel like emergence, relief, and wonder after pressure and water.
+Creative target: the first breath of daylight. Pull inspiration from Rainbow Terraces, Swedish Forest, Sakura Twilight, and Himalayan Peak. Make this chapter saturated, alive, and lyrical: reflective blue-green water with gold sky shimmer, a real sun or warm horizon glow, richer trees, meadow flora, drifting petals/leaves/fireflies, birds crossing the sky, and layered hills that feel fertile. This should feel like emergence, relief, and wonder after pressure and water.
 
 4. Mountains & Thin-Air Ascension
 Current issue: washed out, too little happening, not close enough to peaks, snow lacks presence, mountains change shape and waterfalls disappear during transition.

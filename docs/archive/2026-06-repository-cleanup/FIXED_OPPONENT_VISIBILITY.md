@@ -110,7 +110,7 @@ From your screenshot, I could see:
 │ ┌──────┬──────┐ │  ┌───────────┐  │                │
 │ │Alice │ Bob  │ │  │           │  │  [Messages]    │
 │ │ 👤   │ 👤   │ │  │   Your    │  │                │
-│ │Score │Score │ │  │  Tetris   │  │                │
+│ │Score │Score │ │  │  Quad   │  │                │
 │ │Frags │Frags │ │  │  Canvas   │  │                │
 │ └──────┴──────┘ │  │           │  │                │
 │ ┌──────┬──────┐ │  │           │  │  [Type...]     │

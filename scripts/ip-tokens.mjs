@@ -27,6 +27,7 @@ export const BLOCKED_TOKENS = [
 
 /** @type {IpToken[]} */
 export const RATCHET_TOKENS = [
+    { id: 'genre-mark', re: /tetris|tetrimino/gi },
     { id: 'ghibli', re: /ghibli|totoro|ponyo|nausica[aä]|laputa|howl['’]?s[\s_-]+moving|spirited[\s_-]+away/gi },
     { id: 'cyberpunk', re: /cyberpunk|netrunner|night[\s_-]+city/gi },
     { id: 'chiral', re: /chiral/gi },

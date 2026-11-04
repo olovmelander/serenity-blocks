@@ -27,7 +27,7 @@ herd's gaits side by side on the spot) and `herdRun` (moves the band makes at se
 playground effect added `lookPitch` and `lookYaw` (turn the camera off the path, for checking a
 chapter from every angle). The `fluid-dreams`
 playground effect added `quads` (four-line clears played before the frame); Sakura Twilight
-keeping one fox retired `foxWhich`; Rainbow Terraces (Sky Children until 2026-10-18) added
+keeping one fox retired `foxWhich`; Rainbow Terraces (Rainbow Terraces until 2026-10-18) added
 `cardAlpha` and took the V2 detail effect's four entries with it. The preview flags
 `faultLines` and `waystones` were retired on 2026-10-18, when Waystones was removed and Fault
 Lines (now Stillfall) joined the main menu. Grainfields (in Misty Lake's place, 2026-10-18)
@@ -117,12 +117,12 @@ the theme itself read only `serenityWarpForceWebGL`) and added the capture flags
 `serenityWarpTime`, `serenityWarpFixedDt`, `serenityWarpParts` and `serenityWarpFalseColor`
 plus the rewritten `serenity-warp` playground effect, which reads 26 parameters its sibling
 effects already had and adds `turns`.
-The Rainbow Terraces rebuild (the theme was called Sky Children until 2026-10-18) retired the
+The Rainbow Terraces rebuild retired the
 readers of the replaced V2 module (`skyV2NoPost`, `skyV2NoMRT`, `skyV2NoCompute`, `skyV2UseMRT`,
 `skyV2Debug`, and its readings of `noPost`, `noMRT` and `noCompute`, which Wolfhour still
 reads) and added the capture flags `rainbowTerracesForceWebGL`,
 `rainbowTerracesTime`, `rainbowTerracesFixedDt`, `rainbowTerracesParts` and
-`rainbowTerracesFalseColor` (named `skyChildren…` before the rename) plus the `rainbow-terraces`
+`rainbowTerracesFalseColor` (named `rainbowTerraces…` before the rename) plus the `rainbow-terraces`
 playground effect, which reads 26 parameters its sibling effects already had and adds `held`,
 `links`, `trueBow`, `dropRows`, `players`, `values`, `ripple` and `cardAlpha`, with entries of its
 own for `hour` and `shape`. The V2 module's detail effect and its `bare`, `detail`, `view` and

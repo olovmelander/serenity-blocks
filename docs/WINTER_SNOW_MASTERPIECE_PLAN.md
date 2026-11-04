@@ -23,7 +23,7 @@
 
 ## 1. Vision — "Inside the Weather"
 
-Today the snow is *in front of* a winter scene. The goal is to put the player **inside** it: enveloping, three-dimensional snowfall with a tangible foreground, a swirling readable mid-body, and a soft far veil that melts into the night haze — all reacting to the moon and aurora. Calm enough to play Tetris in front of for an hour, beautiful enough to stop and watch.
+Today the snow is *in front of* a winter scene. The goal is to put the player **inside** it: enveloping, three-dimensional snowfall with a tangible foreground, a swirling readable mid-body, and a soft far veil that melts into the night haze — all reacting to the moon and aurora. Calm enough to play block-stacking games in front of for an hour, beautiful enough to stop and watch.
 
 ### Design pillars
 1. **Depth by stratification, not count.** Four tiers with distinct size / fall-speed / sway / color-temp / blend. Layering is the cheapest, highest-impact 3D cue and is universal in AAA (Niagara, Witcher, RDR2).

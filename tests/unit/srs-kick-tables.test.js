@@ -18,7 +18,7 @@ import {
 import { markBoardDirty } from '../../src/core/board.js';
 import { SHAPES } from '../../src/core/constants.js';
 
-// ── Golden guideline-SRS values (https://tetris.wiki/Super_Rotation_System) ──
+// ── Golden guideline-SRS values ──
 const GUIDELINE_JLSTZ = {
     '0>R': [[0, 0], [-1, 0], [-1, 1], [0, -2], [-1, -2]],
     'R>0': [[0, 0], [1, 0], [1, -1], [0, 2], [1, 2]],

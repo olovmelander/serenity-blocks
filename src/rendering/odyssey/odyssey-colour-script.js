@@ -141,7 +141,7 @@ export const MAX_HUE_RATE_DEG_PER_005P = 12;
  * journey is allowed to cut.
  */
 /**
- * THE SEA'S OWN RAMP — one table owns the water's colour (Ghibli-water plan, Wave 1).
+ * THE SEA'S OWN RAMP — one table owns the water's colour (painted-water plan, Wave 1).
  *
  * The Act II water surface used to carry three hardcoded `vec3`s in the renderer, divorced
  * from this file, so "the colour script owns the palette" was true of everything except the
@@ -150,10 +150,10 @@ export const MAX_HUE_RATE_DEG_PER_005P = 12;
  * NOT display hexes — they are magnitude-matched to the ramp they replace, which was tuned
  * in-game).
  *
- * The hues are the Ghibli pigment axis the research pass converged on: Ghibli backgrounds are
+ * The hues are the painted pigment axis the research pass converged on: Painted backgrounds are
  * opaque poster colour drawn from a narrow, nameable set, and the sea runs viridian in the
  * shallows through cerulean and cobalt to a Prussian deep — teal/slate-shifted, never a
- * saturated primary blue. Four stops, because a Ghibli sea reads as a few flat plates of
+ * saturated primary blue. Four stops, because a painted sea reads as a few flat plates of
  * colour rather than a continuous gradient; the renderer quantises between them.
  */
 export const ODYSSEY_WATER_RAMP = Object.freeze({

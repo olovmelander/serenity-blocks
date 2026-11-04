@@ -126,7 +126,7 @@ Sorted by ready time. Cold Dawn cache, Performance mode, 1920×1080, High, 60 fp
 | fall | 2112 | 598 | 107 | 6.4 | 1.44 | 51 |
 | moonrise-summit | 1734 | 1651 | 0 (WebGL) | 0.3 | — | — |
 | verdant-hills | 1658 | 533 | 62 | 6.9 | 2.82 | 58 |
-| sky-children | 1589 | 825 | 22 | 2.0 | 2.69 | 27 |
+| rainbow-terraces | 1589 | 825 | 22 | 2.0 | 2.69 | 27 |
 | thermal-bloom | 1447 | 662 | 26 | 3.4 | 3.15 | 33 |
 | pyrestorm | 1426 | 1184 | 27 | 2.4 | 1.64 | 32 |
 | high-coast | 1292 | 853 | 40 | 2.4 | 3.21 | 43 |
@@ -279,7 +279,7 @@ The queue:
    moonlit-forest (the fleet's last `mx_noise`). Find the monster pipelines from the lane's
    per-pipeline rows first.
 6. **GPU:** no theme needs GPU work for this machine. For weaker GPUs, the static audit's frame-GPU
-   suspects come first: kaleidosonic, fluid-dreams, sky-children, moonlit-greenhouse,
+   suspects come first: kaleidosonic, fluid-dreams, rainbow-terraces, moonlit-greenhouse,
    thermal-bloom.
 7. **App-wide, still open:**
    - The CPU profiles show ~80-110 ms/s of JavaScript outside the theme in every theme (Phaser, the
@@ -324,8 +324,8 @@ AC. Two instruments:
 | Fall: the shadow rig is primed into a scene-pass-shaped target, not the canvas | pipelines 107 → 95 |
 | Aether Tides: `forceSinglePass` on the additive double-sided quads | pipelines 26 → 22; GPU 1.57 → 1.18 ms; uploads 8.1 → 4.7 MB/s |
 | Cinder Drift: the spatter pool uploads only the slots a burst wrote | uploads 17.5 → 16.6 MB/s (the falls, rewritten whole every frame, are the bigger writer) |
-| Per-frame pools upload only the instances drawn (`shared/instance-upload.js`): Luminous Tides, Sky Children, Sunset | Luminous glows 3.0 → 1.6 MB/s; the other pools are drawn nearly full |
-| A shared bake cache (`shared/bake-cache.js`) for nine themes' deterministic bakes | second visit's switch, ms: serenity-warp 484 → 105, stellar-velocity 396 → 87, sky-children 644 → 302, koi-pond 680 → 190, luminous-tides 367 → 68, sunset 302 → 64, stellar-drift 201 → 75, thermal-bloom 692 → 444 |
+| Per-frame pools upload only the instances drawn (`shared/instance-upload.js`): Luminous Tides, Rainbow Terraces, Sunset | Luminous glows 3.0 → 1.6 MB/s; the other pools are drawn nearly full |
+| A shared bake cache (`shared/bake-cache.js`) for nine themes' deterministic bakes | second visit's switch, ms: serenity-warp 484 → 105, stellar-velocity 396 → 87, rainbow-terraces 644 → 302, koi-pond 680 → 190, luminous-tides 367 → 68, sunset 302 → 64, stellar-drift 201 → 75, thermal-bloom 692 → 444 |
 | Pyrestorm: the first visit's four bakes breathe between them; the prepare starts early | switch 1143 / 1156 → 1090 / 1089 ms (n=2); first frame unchanged |
 | Forest: the firefly light field uploads only when a byte changed | not measured (one 9 KB texture a frame at most) |
 | The perf lane measures a theme on its own again | see 8.3 |
@@ -429,7 +429,7 @@ Main, sorted by the longest load freeze (j = janks; % = GPU busy):
 | moonrise-summit | - | 1661 | 1661 | 0 fps, 0 j, 39% | 0 fps, 0 j, -% | 0 fps, 0 j, -% |
 | misty-lake | - | 1473 | 1525 | 0 fps, 0 j, 43% | 0 fps, 0 j, 43% | 0 fps, 0 j, -% |
 | koi-pond | 2.8 | 784 | 859 | 128.8 fps, 9 j, 36% | 129.2 fps, 9 j, 39% | 129.2 fps, 13 j, 39% |
-| sky-children | 3.5 | 717 | 1056 | 128.4 fps, 9 j, 39% | 129.2 fps, 8 j, 42% | 128.9 fps, 10 j, 44% |
+| rainbow-terraces | 3.5 | 717 | 1056 | 128.4 fps, 9 j, 39% | 129.2 fps, 8 j, 42% | 128.9 fps, 10 j, 44% |
 | thermal-bloom | 3.3 | 598 | 920 | 129 fps, 6 j, 55% | 122.5 fps, 12 j, 83% | 114.5 fps, 10 j, 96% |
 | moonlit-greenhouse | 3.8 | 540 | 1392 | 127.8 fps, 12 j, 51% | 129.3 fps, 10 j, 56% | 130.7 fps, 1 j, 58% |
 | rainbark | 4.5 | 459 | 892 | 128.6 fps, 9 j, 38% | 129.1 fps, 9 j, 40% | 129.8 fps, 7 j, 39% |
@@ -497,7 +497,7 @@ Rainy Window (2D, no 3D renderer) timed out the load measure and is not covered.
 | Fix | Measured at 120 fps, main → branch |
 |---|---|
 | Thermal Bloom: the bloom loop skipped for pixels a bloom cannot reach (32e9bc0e) | storms 114.5-122.5 → 129-130 fps |
-| Bake worker (`shared/bake-worker-client.js`, `bake-worker-host.js`): a theme starts its first visit's CPU bakes in a module Worker before it awaits its renderer, and the build finds them in the bake cache | longest load task, ms: thermal-bloom 538-689 → 145-188, koi-pond 718-784 → 179-242, sky-children 717-866 → 302-316, pyrestorm 374-462 → 54-56, rainbark 459 → 223-238, moonlit-greenhouse 540-626 → 268-297, ocean 403-498 → 79-83, serenity-warp 452-472 → 56, luminous-tides 357-410 → 74, stellar-velocity 348-377 → none over 50 ms |
+| Bake worker (`shared/bake-worker-client.js`, `bake-worker-host.js`): a theme starts its first visit's CPU bakes in a module Worker before it awaits its renderer, and the build finds them in the bake cache | longest load task, ms: thermal-bloom 538-689 → 145-188, koi-pond 718-784 → 179-242, rainbow-terraces 717-866 → 302-316, pyrestorm 374-462 → 54-56, rainbark 459 → 223-238, moonlit-greenhouse 540-626 → 268-297, ocean 403-498 → 79-83, serenity-warp 452-472 → 56, luminous-tides 357-410 → 74, stellar-velocity 348-377 → none over 50 ms |
 | Moonrise Summit and Misty Lake (classic WebGL): `compileAsync` for the composer's buffer before the first frame, at most 4 s | longest load task 1561-1696 → 137-143 ms; 1473 → 200 ms (running 2.8 → 0.65 s) |
 | High Coast: an event's water sites run a few per frame under a march budget (b1b05304) | storms 122.4-124.9 → 128.4-130.6 fps; p99 frame 27-30 → ~10 ms |
 | Sakura: the same petal motion for less work (0db17490) | Node bench 2.7 → 1.7 ms a frame, bit-identical. Storms, A/B (two runs each): main 110.4 / 98.4 and 130 / 126.7 → branch 130 / 130.5 and 129.3 / 130.3 fps |
@@ -560,7 +560,7 @@ when a whole run sits at 60-ish.
 A switch in play at 120 fps, the probe of §9.1 (`--loadOnly=1`, profiles with `--cpuprofile=1`),
 branch `perf/theme-pass-2026-10-16`. Today's sweep on main put sixteen themes over 200 ms of longest
 load task (rainy-window 755, rainbark 478, summer 373, moonlit-greenhouse 365, verdant-hills 351,
-high-coast 331, koi-pond 323, sky-children 303, sunset 287, forest 274, sakura 271, cinder-drift 271,
+high-coast 331, koi-pond 323, rainbow-terraces 303, sunset 287, forest 274, sakura 271, cinder-drift 271,
 golden-forest 258, bioluminescence 245, voltage-storm 210, wolfhour 204). Every fix below keeps the
 art: each refactored build was fingerprinted before and after (every mesh's attribute bytes, index,
 material and matrix, the baked textures, per quality tier) and hashes identical; storm screenshots
@@ -570,11 +570,11 @@ match main's.
 
 | Change | Longest load task, ms, main → branch (two runs each) |
 |---|---|
-| **Stepped builds** (`shared/build-steps.js`): a world's `build()` drains a `* buildSteps()` generator that yields between its heavy parts (same parts, same order, same random sequence). The theme runs the steps with a macrotask before each, and takes the world only once it is whole (`buildWorldBreathing`; a stop or a part that throws disposes it there). Forest family (8975b463), Moonlit Greenhouse (2aa71635), High Coast (9b1dba04), Cinder Drift, Sky Children, Bioluminescence, Koi Pond | summer 425 / 426 → 107 / 113, verdant-hills 406 / 412 → 116 / 114, forest 293 / 295 → 127 / 151, golden-forest 263 / 263 → 50 / 83, moonlit-greenhouse 324 / 346 → 80 / 78, high-coast 272 / 293 → 158 / 148 |
+| **Stepped builds** (`shared/build-steps.js`): a world's `build()` drains a `* buildSteps()` generator that yields between its heavy parts (same parts, same order, same random sequence). The theme runs the steps with a macrotask before each, and takes the world only once it is whole (`buildWorldBreathing`; a stop or a part that throws disposes it there). Forest family (8975b463), Moonlit Greenhouse (2aa71635), High Coast (9b1dba04), Cinder Drift, Rainbow Terraces, Bioluminescence, Koi Pond | summer 425 / 426 → 107 / 113, verdant-hills 406 / 412 → 116 / 114, forest 293 / 295 → 127 / 151, golden-forest 263 / 263 → 50 / 83, moonlit-greenhouse 324 / 346 → 80 / 78, high-coast 272 / 293 → 158 / 148 |
 | Rainy Window (classic WebGL): `compileAsync` for the canvas and the mirror's half-float target before the first frame, at most 4 s (9c0b30aa) | 760 / 790 → 0 / 50; running 806 → 390 ms |
 | First-visit bakes in a module worker: Sunset's sky and sea noise (ef19778b), Voltage Storm's noise (bc53c899), Cinder Drift's noise and plates (cb42f05f), Wolfhour's landscape (3cae0498: four ranges and the granite; three's indexed `computeVertexNormals` reproduced bit for bit, `vertexNormals`), Bioluminescence's noise and plan (a07e81d6: the plan's readers are closures, so the plan comes as data and is handed to one world, which makes them), Koi Pond's water mask and noise (75c7ed41) | sunset 292 / 290 → 75 / 68, voltage-storm 204 / 215 → 73 / 74, wolfhour 211 / 215 → 55 / 56, bioluminescence 245 / 242 → 51 / 55, koi-pond 237 / 179 → none over 50 ms, cinder-drift 262 / 267 → 89 / 96 |
-| Sky Children: the isles (`createIslesSteps`) and the world in steps (d7b314d9) | 306 / 304 → 67 / 74 |
-| **The switch's build budget per task** (caa24b4b). It reset every 14 ms of wall clock, so a frame whose builds each took over 14 ms refilled it from its own length and deferred nothing: koi-pond spent 375 ms, bioluminescence 591 ms and sky-children 213 ms in one frame of node builds. It now opens at a task's first new build and closes at the next macrotask | bioluminescence's long tasks in a switch, total 833 / 740 → 255 / 245 ms; summer's 1231 / 999 → 242 / 261 |
+| Rainbow Terraces: the isles (`createIslesSteps`) and the world in steps (d7b314d9) | 306 / 304 → 67 / 74 |
+| **The switch's build budget per task** (caa24b4b). It reset every 14 ms of wall clock, so a frame whose builds each took over 14 ms refilled it from its own length and deferred nothing: koi-pond spent 375 ms, bioluminescence 591 ms and rainbow-terraces 213 ms in one frame of node builds. It now opens at a task's first new build and closes at the next macrotask | bioluminescence's long tasks in a switch, total 833 / 740 → 255 / 245 ms; summer's 1231 / 999 → 242 / 261 |
 | A breath before the first step too (367c23f5): Cinder Drift's constructor (its plan, 91 ms) and first step (47 ms) had shared a task | cinder-drift 137 / 127 → 89 / 96 |
 
 Storms and rest on the branch: 127-131 fps in every changed theme (one full run each, with shots).
@@ -584,7 +584,7 @@ s, cinder-drift 0.78 → 0.95 s), with the old theme playing on meanwhile.
 ### 10.2 What is left
 
 - **One heavy material is still one task.** The per-task budget defers every build after a task's
-  first, but cannot split a material: rainbark's trunks (136-206 ms in a switch), sky-children's sky
+  first, but cannot split a material: rainbark's trunks (136-206 ms in a switch), rainbow-terraces's sky
   (66 ms cold in Node, 56 KB of fragment shader, 673 node variables, little of it repeated),
   high-coast's and cinder-drift's largest. Smaller graphs mean rewriting those shaders, theme by
   theme.

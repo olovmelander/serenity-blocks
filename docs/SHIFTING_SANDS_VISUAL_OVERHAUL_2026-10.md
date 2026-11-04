@@ -29,7 +29,7 @@ the far erg on the left; the dune ridges between the camera and the suns burn al
 the worm breaches there, a black arch against the light. On the right the Sentinel, a
 monumental sandstone butte, takes the low sun on its flank under two pale moons. The board is the
 **drum**: every lock sends a ring of lifted sand across the erg, clears throw up geysers of dust, and a
-Tetris calls the worm.
+Quad calls the worm.
 
 **Naming (2026-10-20).** The theme evokes a twin-sun desert with a giant worm; it names nothing
 from anyone else's fiction. No world, creature, substance or device names from a third-party
@@ -152,10 +152,10 @@ the scene graph is identical before and after a burst of events).
   wake) races in for 13 s, the worm breaches, and after the tail has gone under the sand **settles
   for 9 s** — the wells collapse and fill, the dust drifts off, and the sign travels on from the
   dive. Every envelope is continuous and reaches zero inside the settle; the body is only shown or hidden
-  while all of it is under the sand. The **summoned breach** (a Tetris) is a larger, closer worm
+  while all of it is under the sand. The **summoned breach** (a Quad) is a larger, closer worm
   1.6 s later, heralded by a great dust geyser where it will come up. It has its own slot, so it
   never cuts the idle worm short — the two rise in different parts of the erg — and a summons
-  that lands before an idle sign has begun keeps that cycle quiet. A second Tetris is refused only
+  that lands before an idle sign has begun keeps that cycle quiet. A second Quad is refused only
   while the last summoned worm is still above the sand; if its dust is still settling, that fades
   over 0.9 s under the new sign. Closed-form in time and the summons timestamps (unit-tested,
   including a frame-by-frame test that nothing on the sand ever jumps).
@@ -181,7 +181,7 @@ the scene graph is identical before and after a burst of events).
 | Piece lock | **Drum beat:** a golden ring of lifted sand (and a low swell in the geometry) runs out across the erg from just beyond the foot of the board (≤ one per 120 ms; 4 pooled slots). Respects `pieceLockRipple`. |
 | Combo c ≥ 2 | The gold glows (motes brighten, the blue fringe surfaces) and the wind rises. |
 | Line clear (1–3) | n dust geysers in the side zones (alternating sites), a gust (spindrift and blowing-sand sheets surge), a sun flare, a warm flash. |
-| Tetris | The worm is summoned: the sign races in, the ground trembles (a fine tremor, never a shake), a great dust geyser erupts where it will break the surface, and the worm rears out of the dust — somewhere new each time, beside the idle worm if one is up. If the last summoned worm is still above the sand, three strong dust geysers answer instead. |
+| Quad | The worm is summoned: the sign races in, the ground trembles (a fine tremor, never a shake), a great dust geyser erupts where it will break the surface, and the worm rears out of the dust — somewhere new each time, beside the idle worm if one is up. If the last summoned worm is still above the sand, three strong dust geysers answer instead. |
 | Level up | The dusk deepens (persistent, eased): every atmosphere colour slides toward its dusk value and both suns sink, lengthening every shadow; stars and moons strengthen. Game over / new game returns to golden hour. |
 
 All reactions are gated on `isActive && !isPaused && backgroundComboEffects`; reduced motion stills
@@ -275,7 +275,7 @@ before a clean pair landed). Re-run on a quiet machine before a release claim:
 ## 9. Validation
 
 - Playground (WebGPU and `forceWebGL=1`) at 1600×900: rest, deep dusk, lock ring, 2/3-line dust
-  geysers, idle breach across the suns, the summoned Tetris breach (with and without the board mock),
+  geysers, idle breach across the suns, the summoned Quad breach (with and without the board mock),
   Low tier, no-post and false-colour views. Zero console errors or WebGPU validation messages.
 - In game: `scripts/capture-theme-screenshots.mjs --theme=shifting-sands` PASS (0 lifecycle
   failures, 0 console errors); `docs/theme-screenshots/shifting-sands.png` refreshed.
@@ -289,7 +289,7 @@ before a clean pair landed). Re-run on a quiet machine before a release claim:
   outliving the worm, dusk, drum rate limit.
 - **Worm pass (2026-10-05):** playground on WebGPU and `forceWebGL=1`, High and Low — eruption,
   arch, strike, tail under, collapse and settle from the game lens, from a tight lens and looking
-  down into both wells; a Tetris during an idle breach (both worms up); zero console messages.
+  down into both wells; a Quad during an idle breach (both worms up); zero console messages.
   Real game on the dev server: `scripts/validate-all-themes.mjs --theme shifting-sands` PASS, the
   live layout reaching the director (free zones left of the board and right of the HUD) and a
   breach captured in play. **Not re-measured:** frame cost. The machine was shared with other GPU
@@ -342,7 +342,7 @@ the arms' overall medians within that spread of each other and in no consistent 
 with the §8 lane on a quiet machine.
 
 **Verified.** Playground on WebGPU and `forceWebGL=1` at High and Low (rest, deep dusk, the idle
-breach from the game lens and a tight one, the maw open and closing, a Tetris with the board mock,
+breach from the game lens and a tight one, the maw open and closing, a Quad with the board mock,
 three-line clear, lock); the real game (single player, High, six hard drops) on the RTX 5080; no
 console, WebGPU validation, WGSL or TSL message in any capture. New gate:
 `tests/unit/shifting-sands-shaders.test.js` builds every material and the post output through the

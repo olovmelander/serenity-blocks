@@ -119,7 +119,7 @@
       "errors": 0,
       "clockDeprecations": 2,
       "dominantGapMs": 2396,
-      "dominantGapAfter": "[2026-08-21T09:22:30.636Z][L1] http://127.0.0.1:4174/assets/theme-neon-district-DavVBx-6.js:62 [NeonDistrict] Creating cyberpunk cityscape (smart loading)...",
+      "dominantGapAfter": "[2026-08-21T09:22:30.636Z][L1] http://127.0.0.1:4174/assets/theme-neon-district-DavVBx-6.js:62 [NeonDistrict] Creating neon-noir cityscape (smart loading)...",
       "dominantGapBefore": "[2026-08-21T09:22:33.032Z][L1] http://127.0.0.1:4174/assets/theme-neon-district-DavVBx-6.js:152 [NeonDistrict] Camera positioned in alley"
     },
     {
@@ -411,7 +411,7 @@
       "dominantGapBefore": "[2026-08-21T06:25:58.813Z][L1] http://127.0.0.1:4174/assets/theme-bioluminescence-2-CZaleJAA.js:1 [Bioluminescence2] Scene created (webgpu=true)"
     },
     {
-      "id": "sky-children",
+      "id": "rainbow-terraces",
       "firstEntryMs": 1267,
       "importMs": 22,
       "sceneWindowMs": 1225,

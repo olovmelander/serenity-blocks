@@ -96,7 +96,7 @@ Implementation notes:
 **Reactive bursts (build on what exists):**
 - Line clear → inject an outward velocity impulse into the ember field near the clear's X (turbulence injection, not just spawning new sprites).
 - Combo → raise `colorShift`/twinkle on pollen (already plumbed via `effectState.colorShift`) and briefly boost emission rate.
-- Tetris → a one-shot radial spark fountain from the horizon (reuse `createBurstParticleSystem`).
+- Quad → a one-shot radial spark fountain from the horizon (reuse `createBurstParticleSystem`).
 
 **Outcome:** the frame is alive with parallax light at every depth, and the particles *belong* to the world (sun-lit, fogged, DOF-blurred) instead of floating on top.
 
@@ -136,7 +136,7 @@ We already have bloom + vignette + god-rays + grain + saturation in `NeonDuskPos
 
 **5a. Reactive camera.** Extend `updateCamera` ([2668](../src/themes/neon-dusk/neon-dusk-theme.js#L2668)) with an event-driven offset channel:
 - Line clear → short dolly-push toward the valley, then ease back.
-- Tetris → bigger push + brief FOV widen (subtle dolly-zoom).
+- Quad → bigger push + brief FOV widen (subtle dolly-zoom).
 - Combo ≥7 → slow saturation ramp (drive the LUT mix) + tighter bloom.
 - Idle → keep the current gentle sway as the resting state.
 

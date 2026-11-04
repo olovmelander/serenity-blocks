@@ -35,7 +35,7 @@ drawn in `chromadelic-highway-planets.js`, sent from `chromadelic-highway-world.
 |---|---|
 | Line clear (n ≤ 3) | A front in the clear's band colour, brighter the hotter play runs; n lightning cells |
 | Cascade wave ≥ 3 | Its band colour folds into that wave's clear front |
-| Tetris | A prism front with the prism cascade; the giant's ring in the spectrum as it arrives; three cells |
+| Quad | A prism front with the prism cascade; the giant's ring in the spectrum as it arrives; three cells |
 | T-spin | A front in the T's electric lemon |
 | Back-to-back | A gold front with the gold cascade (0.42 s on), two cells |
 | Perfect clear | A wide, slow prism front; the ring in the spectrum; four cells |

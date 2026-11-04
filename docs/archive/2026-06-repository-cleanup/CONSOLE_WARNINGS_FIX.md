@@ -44,11 +44,11 @@ draw() {
 **Root Cause**: The `index.html` file had no favicon link tag, causing the browser to look for the default `/favicon.ico` which didn't exist.
 
 **Solution**: 
-1. Created an SVG favicon with a Tetris-block themed design at `/public/favicon.svg`
+1. Created an SVG favicon with a Quad-block themed design at `/public/favicon.svg`
 2. Added favicon link tag to `index.html`
 
 **Files Created**:
-- `public/favicon.svg` - Modern SVG favicon with gradient background and Tetris blocks
+- `public/favicon.svg` - Modern SVG favicon with gradient background and falling blocks
 
 **Files Modified**:
 - `index.html` - Added `<link rel="icon" type="image/svg+xml" href="/favicon.svg">` in the `<head>` section

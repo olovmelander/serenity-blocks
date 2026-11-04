@@ -34,7 +34,7 @@
 ├──────────────────┤  Level: 1  Frags: 0     │ "Match started!"   │
 │ [Alice]          │ ┌───────────────────┐  │                    │
 │  Score: 0        │ │                   │  │ [Chat messages]    │
-│  Frags: 0        │ │    Your Tetris    │  │                    │
+│  Frags: 0        │ │    Your Board    │  │                    │
 ├──────────────────┤ │      Canvas       │  │                    │
 │ [Bob]            │ │     (Large)       │  │                    │
 │  Score: 0        │ │                   │  │                    │
@@ -243,7 +243,7 @@ ffa.players.size
 
 ## 🎉 Result
 
-You now have a **professional, polished multiplayer layout** that matches modern Tetris games like Tetris 99 and Jstris!
+You now have a **professional, polished multiplayer layout** that matches modern block-stacking games like a 99-player battle stacker and Jstris!
 
 - ✅ Clean 3-column layout
 - ✅ Opponents visible on left
@@ -267,7 +267,7 @@ You now have a **professional, polished multiplayer layout** that matches modern
 ### Center (Your Game):
 - Header with your name
 - Stats bar (Score, Lines, Level, Frags)
-- Large Tetris canvas
+- Large block-stacking canvas
 - Glowing purple border
 
 ### Right Sidebar (Chat):

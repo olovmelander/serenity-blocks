@@ -2,12 +2,12 @@
 
 *Synthesized from a 5-agent research+review workflow (external technique mining + per-chapter
 current-state audits + a cohesion/seam analysis). Governs the repalette of Surface World, Mountain
-Peaks and Sky & Drift into a single continuous bright-daylight Ghibli/Genshin/Europa ascent.*
+Peaks and Sky & Drift into a single continuous bright-daylight painted/Europa ascent.*
 
 Reference targets: the user's three images (a vivid blue-sky meadow-lake-snowpeak with big cumulus and
-flower carpets; a Ghibli floating-meadow lake; a Ghibli sea-and-clouds), the **Europa** game's airy
+flower carpets; a painted floating-meadow lake; a painted sea-and-clouds), the **Europa** game's airy
 ascent, and a procedural "painterly world" (Reddit/CodePen refs were fetch-blocked; technique recovered
-from equivalent WebGPU/TSL cloud, atmospheric-sky, BOTW-grass, Ghibli-UE4 and stylized-water sources).
+from equivalent WebGPU/TSL cloud, atmospheric-sky, BOTW-grass, painterly-UE4 and stylized-water sources).
 
 > **Reference-driven iteration:** drop the hero image (image 1) into `public/playground-refs/ch3-hero.png`
 > and iterate the sky/cloud/water effects against it (`?ref=/playground-refs/ch3-hero.png&refMode=split`)

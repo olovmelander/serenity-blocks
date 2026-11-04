@@ -22,12 +22,12 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../../themes/shared/bloom-dispose.js';
 
 /**
- * Abzu-style warm/cool color grade.
+ * Deep-sea style warm/cool color grade.
  * Lifts teal shadows, pushes warm gold highlights, adds slight mid desaturation.
  * @param {vec3} input    - input color (linear)
  * @param {float} strength - grade intensity (0→1)
  */
-function tslAbzuGrade(input, strength, blackLift = 0.04) {
+function tslWarmCoolGrade(input, strength, blackLift = 0.04) {
     const luma = dot(input, vec3(0.2126, 0.7152, 0.0722));
     const shadowMask = float(1.0).sub(smoothstep(float(0.045), float(0.38), luma));
     const highlightMask = smoothstep(float(0.46), float(0.88), luma);
@@ -246,7 +246,7 @@ export function create({ scene, camera, renderer }) {
         0.86,
         sceneColor.add(bloomNode),
     ).rgb.mul(color(0.985, 1.005, 1.015));
-    const graded = tslAbzuGrade(toneMapped, float(0.66), float(0.04));
+    const graded = tslWarmCoolGrade(toneMapped, float(0.66), float(0.04));
     post.outputNode = renderOutput(vec4(graded, float(1.0)), THREE.NoToneMapping);
 
     return {

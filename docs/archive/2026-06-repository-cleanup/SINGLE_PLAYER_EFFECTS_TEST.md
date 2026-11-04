@@ -54,7 +54,7 @@ When you play single-player, you should see **all the beautiful Phaser effects**
   - 1 line: Subtle
   - 2 lines: Moderate
   - 3 lines: Strong
-  - 4 lines (Tetris): Very strong
+  - 4 lines (Quad): Very strong
 
 **How to test**: Clear different numbers of lines
 

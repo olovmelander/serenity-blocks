@@ -1,17 +1,17 @@
-# Sky: Children of the Light - WebGPU Render Theme Plan
+# a calm flying adventure - WebGPU Render Theme Plan
 
 ## Executive Summary
 
-This document outlines the implementation plan for a reusable WebGPU Render Theme that replicates the **"painterly, ethereal" art direction** of **SKY: Children of the Light** and **Journey** by thatgamecompany.
+This document outlines the implementation plan for a reusable WebGPU Render Theme that replicates the **"painterly, ethereal" art direction** of **SKY: a calm flying adventure** and **Journey** by a calm-games studio.
 
 The plan now distinguishes between:
-- **Confirmed thatgamecompany techniques** (from primary talks/interviews)
+- **Confirmed a calm-games studio techniques** (from primary talks/interviews)
 - **High-confidence technical inferences** (derived from primary constraints and observed output)
 - **Production-ready adaptations** (industry-proven methods used to match the look under WebGPU constraints)
 
-The theme uses a **Stylized PBR** workflow that deliberately "cheats physics in favor of art" — the same philosophy thatgamecompany's engineers followed over 3+ years of continuous shader refinement. All shaders are written in **raw WGSL** with WebGPU pipelines. Target: 60fps with GPU instancing for foliage and compute shaders for particles/post-processing.
+The theme uses a **Stylized PBR** workflow that deliberately "cheats physics in favor of art" — the same philosophy a calm-games studio's engineers followed over 3+ years of continuous shader refinement. All shaders are written in **raw WGSL** with WebGPU pipelines. Target: 60fps with GPU instancing for foliage and compute shaders for particles/post-processing.
 
-**Key Principle**: *"If you're ever in doubt, remember the message you are working towards and follow through."* — Yuichiro Tanabe, Lead Artist, thatgamecompany (GDC 2020)
+**Key Principle**: *"If you're ever in doubt, remember the message you are working towards and follow through."* — Yuichiro Tanabe, Lead Artist, a calm-games studio (GDC 2020)
 
 ---
 
@@ -21,9 +21,9 @@ This plan is informed by the following technical sources:
 
 | Source | Author | Key Contribution | Evidence Tier |
 |--------|--------|------------------|---------------|
-| [Sand Rendering in Journey (GDC 2013)](https://gdcvault.com/play/1017742/Sand-Rendering-in) | John Edwards, thatgamecompany | Sand shader components, diffuse/specular shaping | Confirmed |
-| [Art of Sky: Children of the Light (GDC 2020)](https://gdcvault.com/play/1026903/Art-of-Sky-Children-of) | Yuichiro Tanabe, thatgamecompany | Time-of-day emotional framing and visual direction | Confirmed |
-| [Glitter, Fur and Shadows (GDC 2025)](https://schedule.gdconf.com/session/glitter-fur-and-shadows-character-rendering-technology-of-sky-children-of-the-light/907475) | Oliver Castaneda, thatgamecompany | Character rendering themes: IBL, self-shadowing, transparency, procedural glitter/fur | Confirmed (high-level) |
+| [Sand Rendering in Journey (GDC 2013)](https://gdcvault.com/play/1017742/Sand-Rendering-in) | John Edwards, a calm-games studio | Sand shader components, diffuse/specular shaping | Confirmed |
+| Art of a calm flying adventure (GDC 2020) | Yuichiro Tanabe, a calm-games studio | Time-of-day emotional framing and visual direction | Confirmed |
+| Glitter, Fur and Shadows (GDC 2025) | Oliver Castaneda, a calm-games studio | Character rendering themes: IBL, self-shadowing, transparency, procedural glitter/fur | Confirmed (high-level) |
 | [Behind the Design: Sky](https://developer.apple.com/news/?id=zm47it7t) | Apple Developer | Custom Metal stack, mobile optimization philosophy | Confirmed |
 | [A Journey Into Journey's Sand Shader](https://www.alanzucconi.com/2019/10/08/journey-sand-shader-1/) | Alan Zucconi | Practical reconstruction of Journey sand math | Secondary |
 | [Mesh Cloud Rendering (Sea of Thieves)](https://github.com/maajor/Mesh-Cloud-Rendering) | GDC / Rare | Mesh-cloud adaptation path for real-time stylized clouds | Adaptation |
@@ -40,7 +40,7 @@ This plan is informed by the following technical sources:
 
 ---
 
-## Art Direction: How thatgamecompany "Cheats Physics"
+## Art Direction: How a calm-games studio "Cheats Physics"
 
 ### The Emotional Time-of-Day Framework
 
@@ -57,7 +57,7 @@ Sky's visual design maps each level to a **time of day** that mirrors the player
 
 **Our theme targets the "Valley of Triumph / Sunset" state** — the most visually distinctive time with warm-cool color separation.
 
-### The 6 Rules of thatgamecompany's Visual Style
+### The 6 Rules of a calm-games studio's Visual Style
 
 1. **No black shadows** — Shadows are always colored (blue-purple in warm scenes, warm in cool scenes)
 2. **Light wraps around everything** — Modified diffuse models prevent harsh terminator lines
@@ -218,7 +218,7 @@ fn glitter_specular(
 // =============================================================
 // 6. COLORED SHADOWS
 // =============================================================
-// thatgamecompany's Rule #1: NO black shadows.
+// a calm-games studio's Rule #1: NO black shadows.
 // Shadow regions are tinted with the ambient/sky color.
 // In golden hour: shadows are blue-purple. In cool scenes: shadows are warm.
 fn colored_shadow_blend(
@@ -1551,7 +1551,7 @@ Every phase must pass both a **visual gate** and a **performance gate** before m
 ## File Structure
 
 ```
-src/themes/sky-children/
+src/themes/rainbow-terraces/
 ├── wgsl/
 │   ├── stylized_lighting.wgsl       # Journey's lighting model (diffuse contrast,
 │   │                                 # Oren-Nayar, Fresnel, ocean spec, glitter)
@@ -1560,11 +1560,11 @@ src/themes/sky-children/
 │   ├── cloud.wgsl                    # Mesh volumetric with Beer's Law + HG + occlusion
 │   ├── foliage.wgsl                  # Instanced grass with wind + normal-distortion SSS
 │   └── post_processing.wgsl         # Dual Kawase bloom + AgX tonemap + color grade
-├── sky-children-theme.js             # Main theme class
-├── sky-children-pipelines.js         # WebGPU pipeline setup (bind groups, layouts)
-├── sky-children-resources.js         # Buffer/texture management + quality presets
-├── sky-children-post.js              # Post-processing orchestration
-└── sky-children-tetrominos.js        # Tetromino color configuration
+├── rainbow-terraces-theme.js             # Main theme class
+├── rainbow-terraces-pipelines.js         # WebGPU pipeline setup (bind groups, layouts)
+├── rainbow-terraces-resources.js         # Buffer/texture management + quality presets
+├── rainbow-terraces-post.js              # Post-processing orchestration
+└── rainbow-terraces-tetrominos.js        # Tetromino color configuration
 ```
 
 ---
@@ -1593,11 +1593,11 @@ src/themes/sky-children/
 
 ## References
 
-### Confirmed thatgamecompany / Official Sources
-- [Sand Rendering in Journey (GDC 2013)](https://gdcvault.com/play/1017742/Sand-Rendering-in) — John Edwards, thatgamecompany
+### Confirmed a calm-games studio / Official Sources
+- [Sand Rendering in Journey (GDC 2013)](https://gdcvault.com/play/1017742/Sand-Rendering-in) — John Edwards, a calm-games studio
 - [GDC 2013 Recording](https://archive.org/details/GDC2013Edwards) — Full presentation archive
-- [Art of Sky: Children of the Light (GDC 2020)](https://gdcvault.com/play/1026903/Art-of-Sky-Children-of) — Yuichiro Tanabe
-- [Glitter, Fur and Shadows (GDC 2025)](https://schedule.gdconf.com/session/glitter-fur-and-shadows-character-rendering-technology-of-sky-children-of-the-light/907475) — Oliver Castaneda
+- Art of a calm flying adventure (GDC 2020) — Yuichiro Tanabe
+- Glitter, Fur and Shadows (GDC 2025) — Oliver Castaneda
 - [Behind the Design: Sky (Apple)](https://developer.apple.com/news/?id=zm47it7t) — Custom Metal engine, mobile optimization
 
 ### Supporting Analysis / Adaptation Sources

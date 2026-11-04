@@ -183,7 +183,7 @@ const GROUND_ZONE_COOL = Object.freeze([0.93, 0.98, 1.00]);
 /** The painted contact lip where grass meets sand or rock: darker AND warmer, never grey. */
 const GROUND_EDGE_TINT = Object.freeze([0.80, 0.72, 0.55]);
 const GROUND_EDGE_AMT = 0.55;
-/** Wind-swept lighter bands. Deliberately small: this is a Ghibli stroke, not a strobe. */
+/** Wind-swept lighter bands. Deliberately small: this is a painted stroke, not a strobe. */
 const GROUND_WIND_LIFT = 0.055;
 /**
  * THE NORTH BEACH'S PAINT (2026-11-02; the landform is ODYSSEY_NORTH_BEACH). The sand there is
@@ -918,7 +918,7 @@ const FOREST_DRAW_FAR = 1650;
 const FOREST_FADE_SINK = 90;
 const FOREST_FLAT_NEAR = 220;
 const FOREST_FLAT_FAR = 950;
-// The backlit gold: the Ghibli glow, and the half of §1b R7 that a near tree can show.
+// The backlit gold: the painted glow, and the half of §1b R7 that a near tree can show.
 const FOREST_BACKLIT_GAIN = 0.30;
 // Ambient = the colour script's shadow tint plus a little sky fill, so the shade band is a
 // LIT colour and not merely a darker albedo. Nodes, never copied numbers — the whole forest
@@ -1786,7 +1786,7 @@ export function createOdysseyWorld({
             // grazing ray is a long horizontal water column and must darken like one.
             const surfaceGlow = clamp(dirY, 0, 1).pow(2.2).mul(0.55);
             const grazing = clamp(float(1).sub(abs(dirY)), 0.0, 1.0).pow(3);
-            // BANDED DEPTH, not one exponential (plan §3.4.1 — Ponyo's stacked plates). Depth is
+            // BANDED DEPTH, not one exponential (plan §3.4.1 — a painted film's stacked plates). Depth is
             // shown as discrete hue steps within one temperature family, which is how every
             // adopted reference does it and why none of them need grey scattering. The band index
             // comes from the fragment's own depth below the surface, so the column brightens
@@ -2530,7 +2530,7 @@ export function createOdysseyWorld({
         albedo = albedo.mul(mix(float(1), toothMat, detailMelt.mul(toothAmt)));
 
         /**
-         * THE CONTACT BAND. Ghibli paints a darker, WARMER lip where grass meets a path or a
+         * THE CONTACT BAND. A background painter paints a darker, WARMER lip where grass meets a path or a
          * beach — grass roots darken at contacts, and the edge is a painted occlusion band
          * rather than a gradient. The product of two weights peaks exactly at the boundary and
          * is zero in both interiors, so this needs no mask of its own.
@@ -2638,7 +2638,7 @@ export function createOdysseyWorld({
         })();
 
         /**
-         * WIND, at no cost. The Ghibli meadow signature is lighter stroke bands sweeping across
+         * WIND, at no cost. The painted meadow signature is lighter stroke bands sweeping across
          * a slope; the forest's travelling gust line proved the mechanism here — a static field
          * plus a time-varying PHASE, so motion is a sine and not a second texture.
          */
@@ -2749,7 +2749,7 @@ export function createOdysseyWorld({
                 smoothstep(float(ODYSSEY_SEA_LEVEL + 1), float(ODYSSEY_SEA_LEVEL + 6), height),
             )
             : float(1);
-        // Lambert, S-shaped. The shoulders group the terminator into masses (the Ghibli law);
+        // Lambert, S-shaped. The shoulders group the terminator into masses (the painted law);
         // the middle keeps the mid-tones a rolling landform needs. See the palette's terminator
         // note for the two remaps that tried to replace Lambert and measured worse than it.
         const lightAmt = smoothstep(
@@ -3764,7 +3764,7 @@ export function createOdysseyWorld({
     // ── water ──
     const w = clipmapXZ(waterSpacing, 16);
     const waterMat = new THREE.MeshBasicNodeMaterial();
-    // ── THE SWELL (Ghibli-water Wave 2) ──────────────────────────────────────────────
+    // ── THE SWELL (painted-water Wave 2) ──────────────────────────────────────────────
     // Was ONE separable sine product, amplitude 0.55 u over 483-628 u wavelengths: a maximum
     // surface slope of 0.007 rad, i.e. a flat sheet from every camera in the journey. Worse,
     // the shading normal was built from the wave's VALUE rather than its GRADIENT (max tilt
@@ -3884,7 +3884,7 @@ export function createOdysseyWorld({
         .sub(bedTex.r.add(texture(heightTex, wUv).level(0).r.mul(bedTex.g))).toVar();
     // (`depthLive` — the water column under the LIVE, swash-raised surface — is built with the
     // shore foam below, inside the topside regime: see `shoreTerms`.)
-    // ── THE PAINTED SEA (Ghibli-water Wave 1) ────────────────────────────────────────
+    // ── THE PAINTED SEA (painted-water Wave 1) ────────────────────────────────────────
     // Was: two smooth mixes over hardcoded vec3s with band edges at 0-18 m and 18-103 m.
     // MEASURED problem: the median visible bed depth is 49.6 m at the shoreline station and
     // 133 m just past the breach, so both of the journey's largest water views sat inside
@@ -4031,7 +4031,7 @@ export function createOdysseyWorld({
             .mul(SEA_SURF.gain);
         shoreFoam.assign(clamp(max(rings.mul(0.80).add(swashFront.mul(0.90)), surfLine), 0, 1));
     };
-    // ── THE REGIME BRANCH (MEASURED, and it pays for the whole Ghibli package) ────────
+    // ── THE REGIME BRANCH (MEASURED, and it pays for the whole painterly package) ────────
     // The cold-machine sweep priced waves 1+2 at +2.36 ms on the deep station — OVER its
     // 14.2 max — and the tell is that both hot stations are UNDERWATER frames: every
     // submerged pixel was paying for the full topside stack (quantised ramp, fresnel, sun
@@ -4092,7 +4092,7 @@ export function createOdysseyWorld({
                     .mul(0.95),
             );
             const reflN = normalize(mix(vec3(waveSlope.x.negate(), 1, waveSlope.y.negate()), wN, reflRipple));
-            // FRESNEL TWO-TONE, then the sun glint over the baked sun visibility. Ghibli
+            // FRESNEL TWO-TONE, then the sun glint over the baked sun visibility. painterly
             // water is not a mirror: the sky arrives as a colour wash, never an image.
             const fb = float(1).sub(max(dot(wN, viewDir), 0));
             const fres = waterFresnel(reflN, viewDir, 0.62, 0.05).mul(mix(float(1), float(0.78), seaGust));
@@ -4535,7 +4535,7 @@ export function createOdysseyWorld({
     // ALL THREE OCTAVES READ THE SILHOUETTE FIELD (.a) — cloud plan Wave 1b. Octaves 2 and 3
     // used to read .b, which is the terrain's value noise: lobes at the coarse scale with
     // static sprayed over them at the fine scales, so every cloud edge dissolved into
-    // confetti exactly where the Ghibli rules want a drawn scallop. Reading .a at all three
+    // confetti exactly where the painted rules want a drawn scallop. Reading .a at all three
     // scales gives the three-tier lobe hierarchy the references describe (primaries carry the
     // read, secondaries ride them, tertiaries scallop the crown), and the scale ratios
     // (2.73x, 2.54x) are deliberately non-integer so the 256^2 tile's recurrences at the
@@ -4719,7 +4719,7 @@ export function createOdysseyWorld({
     const bandFade = smoothstep(float(40), float(200), abs(positionWorld.y.sub(cameraPosition.y)));
     // ── POSTER-PAINT ALPHA (cloud plan Wave 1b) ──────────────────────────────────────
     // Was a single smoothstep to 0.94: one soft ramp from sky to cloud, which is the
-    // fog-blob edge the Ghibli/Witness distillation names as mistake #1, and a body that
+    // fog-blob edge the painterly distillation names as mistake #1, and a body that
     // never reached opaque so saturated sky bled through the mass everywhere (mistake #11,
     // and half of why the holes read ultramarine).
     //
@@ -5458,7 +5458,7 @@ export function createOdysseyWorld({
     }
 
     // ── motes (Wave 4: the particulate the luminous ocean was missing) ─────────────
-    // Nausicaa's transmitted-light rig, sized for Lane B: the spores are LIGHT SOURCES, so
+    // a painted film's transmitted-light rig, sized for Lane B: the spores are LIGHT SOURCES, so
     // each mote's brightness scales with how dark the water behind it is (deeper = brighter
     // relative to its background), and serenity comes from CONSTANT velocity — no easing.
     // ONE material, ONE instanced draw, and the budget lever is SIZE, not count: additive
@@ -6208,7 +6208,7 @@ export function createOdysseyWorld({
         const fvTreeRand = fract(fvPhase.mul(0.1591549)).sub(0.5).mul(FOREST_BAND_JITTER);
         // WIND-LINES (Wave 6): the gust front expressed in the LIGHTING as well as the vertex
         // sway — a slow ripple of the upper band threshold travelling the same direction as the
-        // displacement gusts, so light sweeps across the canopy the way the 80.lv Ghibli-island
+        // displacement gusts, so light sweeps across the canopy the way the 80.lv painted-island
         // breakdown animates its vegetation highlights. Three ALU; the amplitude is a fraction of
         // the band jitter so it can never flip a crown across a whole tone.
         const fvWindLine = gustFront(positionWorld.xz).mul(0.045);

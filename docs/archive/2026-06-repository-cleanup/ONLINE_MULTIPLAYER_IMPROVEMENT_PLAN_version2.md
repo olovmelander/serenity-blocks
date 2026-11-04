@@ -580,12 +580,12 @@ Location: src/core/multiplayer/ffa-p2p-game-state.js
 ---
 
 ### Phase 9: Modern Competitive Features (FUTURE - Post-Launch)
-**Goal:** Add modern competitive Tetris features found in TETR.IO, Tetris 99, and other contemporary games.
+**Goal:** Add modern competitive block-stacking features found in TETR.IO, a 99-player battle stacker, and other contemporary games.
 **Priority:** 🔵 LOW (Enhancement) - Defer until Phases 1-8 are complete and stable.
 **Rationale:** These features enhance competitive depth but are not required for a solid multiplayer experience. The Quadra-style foundation is complete and playable without them.
 
 #### 9.1 Attack Targeting System
-Modern competitive Tetris games don't just send attacks to all opponents - they offer targeting modes:
+Modern competitive block-stacking games don't just send attacks to all opponents - they offer targeting modes:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -608,29 +608,29 @@ Modern competitive Tetris games don't just send attacks to all opponents - they 
 - [ ] Show "being targeted by X players" indicator on your board
 - [ ] Add `GAME_TARGET_CHANGE` network message
 
-**Reference:** Tetris 99 targeting, TETR.IO manual targeting
+**Reference:** a 99-player battle stacker targeting, TETR.IO manual targeting
 
 #### 9.2 Advanced Scoring Bonuses
-Modern Tetris rewards technical play with bonus damage:
+Modern block-stacking rewards technical play with bonus damage:
 
 | Clear Type | Standard | Bonus | Notes |
 |------------|----------|-------|-------|
 | **T-Spin Single** | 0 lines | 2 lines | Rotate T-piece into tight space |
 | **T-Spin Double** | 1 line | 4 lines | T-spin clearing 2 lines |
 | **T-Spin Triple** | 2 lines | 6 lines | T-spin clearing 3 lines |
-| **Back-to-Back** | - | +50% | Consecutive Tetrises or T-spins |
+| **Back-to-Back** | - | +50% | Consecutive Quads or T-spins |
 | **Perfect Clear** | - | +10 lines | Clear entire board |
 | **Combo** | - | +1 per combo | Consecutive line clears |
 
 **Requirements:**
 - [ ] Implement T-spin detection (3-corner rule or immobile check)
-- [ ] Track back-to-back state (last clear was Tetris or T-spin)
+- [ ] Track back-to-back state (last clear was Quad or T-spin)
 - [ ] Detect perfect clear (empty board after clear)
 - [ ] Apply bonus multipliers to garbage sent
 - [ ] Show T-spin / Perfect Clear / B2B animations
 - [ ] Update kill feed with special clear types
 
-**Reference:** Tetris Guideline scoring, TETR.IO damage tables
+**Reference:** the genre's guideline scoring, TETR.IO damage tables
 
 #### 9.3 Garbage Timing & Indicators
 Modern games show when garbage will drop and who's attacking:
@@ -1465,7 +1465,7 @@ if (Math.abs(stateB.currentPiece.y - stateA.currentPiece.y) > 4) {
 ## ⚔️ Attack Scaling / Fair Attack Rules (NEW)
 
 ### Problem
-In 5+ player FFA, a single tetris (4 lines) sends garbage to ALL opponents. Without scaling, games become chaotic instant-death scenarios.
+In 5+ player FFA, a single quad (4 lines) sends garbage to ALL opponents. Without scaling, games become chaotic instant-death scenarios.
 
 ### Design: an optional fair-scaling rule
 - With fair scaling on, attack damage scales inversely with opponent count.
@@ -1537,7 +1537,7 @@ The following settings should be added to `match-config-modal.js`:
 ```
 
 ### Scaling Table
-| Players | Opponents | Scaling Factor | 4-Line Tetris Sends |
+| Players | Opponents | Scaling Factor | 4-Line Quad Sends |
 |---------|-----------|----------------|---------------------|
 | 2 | 1 | 1.0x | 4 lines each |
 | 3 | 2 | 0.75x | 3 lines each |
@@ -1552,7 +1552,7 @@ The following settings should be added to `match-config-modal.js`:
 ## 🛡️ Garbage Cancellation (NEW - Modern Competitive Feature)
 
 ### Overview
-Garbage cancellation is a core mechanic in modern competitive Tetris (Tetris 99, TETR.IO, Puyo Puyo Tetris). When a player clears lines while they have pending incoming garbage, the outgoing attack cancels some or all of the pending garbage before it drops.
+Garbage cancellation is a core mechanic in modern competitive block-stacking (a 99-player battle stacker, TETR.IO, a versus block puzzle). When a player clears lines while they have pending incoming garbage, the outgoing attack cancels some or all of the pending garbage before it drops.
 
 ### Why This Matters
 - **Defensive counterplay:** Players can "fight back" against attacks instead of passively receiving garbage
@@ -1605,7 +1605,7 @@ class GarbageCancellation {
         }
 
         if (this.cancellationMode === 'partial') {
-            // Partial cancellation (Tetris 99 style)
+            // Partial cancellation (a 99-player battle stacker style)
             // Only combos and special clears can cancel
             // Single/double clears don't cancel
             // Implementation deferred - use 'full' or 'disabled' for now
@@ -1959,7 +1959,7 @@ JSON snapshots at 30Hz for 8 players = **~4-8KB per snapshot**, potentially hitt
 - **8-player bandwidth:** JSON at 30Hz = 360 KB/s outbound from host; binary = 36 KB/s
 - **Steam P2P limits:** Relay connections have practical throughput limits
 - **Player experience:** High bandwidth causes packet loss → desyncs → poor gameplay
-- **Competitive parity:** All modern competitive Tetris games use binary or compressed formats
+- **Competitive parity:** All modern competitive block-stacking games use binary or compressed formats
 
 ### Serenity Blocks Binary Format
 
@@ -3256,11 +3256,11 @@ const VALIDATION_RULES = {
 - [Lobby System Docs](./docs/LOBBY_SYSTEM_IMPLEMENTATION.md)
 - [Steam Networking API](https://partner.steamgames.com/doc/api/ISteamNetworkingSockets)
 
-### Modern Competitive Tetris References (Phase 9)
-- [TETR.IO](https://tetr.io/) - Modern web-based competitive Tetris (targeting, T-spins, back-to-back)
-- [Tetris 99](https://tetris.com/article/78/tetris-99-tips-and-strategies) - Nintendo's battle royale Tetris (badge targeting)
-- [Tetris Guideline](https://tetris.wiki/Tetris_Guideline) - Official Tetris mechanics specification
-- [Hard Drop Wiki](https://harddrop.com/wiki/Tetris_Guideline) - Community mechanics documentation
+### Modern Competitive block-stacking References (Phase 9)
+- [TETR.IO](https://tetr.io/) - Modern web-based competitive block-stacking (targeting, T-spins, back-to-back)
+- a 99-player battle stacker - Nintendo's battle royale block stacking (badge targeting)
+- the genre's guideline - Official block-stacking mechanics specification
+- Hard Drop Wiki - Community mechanics documentation
 - [T-Spin Detection](https://harddrop.com/wiki/T-Spin) - Technical T-spin rules
 
 ---
@@ -3287,7 +3287,7 @@ const VALIDATION_RULES = {
 
 ### Comparison to Modern Competitive Games (January 2026 Review)
 
-| Feature | TETR.IO / Tetris 99 | Serenity Blocks | Status |
+| Feature | TETR.IO / a 99-player battle stacker | Serenity Blocks | Status |
 |---------|---------------------|-----------------|--------|
 | Host-Authoritative Netcode | ✅ (Server) | ✅ (P2P Host) | ✅ Equivalent |
 | Client-Side Prediction | ✅ | ✅ | ✅ Equivalent |
@@ -3306,7 +3306,7 @@ const VALIDATION_RULES = {
 ### New Additions (January 2026)
 | Addition | Phase | Priority | Rationale |
 |----------|-------|----------|-----------|
-| Garbage Cancellation | 3.5 | HIGH | Modern competitive standard (TETR.IO, Tetris 99) |
+| Garbage Cancellation | 3.5 | HIGH | Modern competitive standard (TETR.IO, a 99-player battle stacker) |
 | Binary Snapshot Encoding | 4 | CRITICAL | Required for 8-player bandwidth (90% reduction) |
 | Host-Side Jitter Buffer | 4 | CRITICAL | Fair input timing for all latencies |
 | Opponent Snapshot Interpolation | 4 | MEDIUM | Visual polish for smooth opponent boards |

@@ -21,11 +21,11 @@ camera's row, the piece, the stack's top and every physics event are logged each
 | Event | Before |
 |---|---|
 | Spawning, moving, turning | Camera still; pieces enter two rows above the view (Single Player's convention too). Fine. |
-| Hard drop onto the tower, Tetris or cascade in view | Camera still; all cleared rows on screen (Stillfall's eight-wave Cornerstone: 8/8 rows flashed in view). Fine. |
+| Hard drop onto the tower, Quad or cascade in view | Camera still; all cleared rows on screen (Stillfall's eight-wave Cornerstone: 8/8 rows flashed in view). Fine. |
 | Soft drop down a deep shaft | Followed, but with the piece's bottom held at 80–89 % of the view: 2–4 rows ahead visible, never its landing. |
 | Lock after a deep soft drop | The view whipped home: 66 rows in about 100 ms (a quarter of the way per frame at 165 Hz, then frozen for 8 frames), no moment at the landing. |
 | Hard drop down a deep shaft | The piece landed 82 rows below the view and was never shown. |
-| Tetris 80 rows below the view | 0 of 4 cleared rows ever on screen. Two camera controllers fought: the per-frame follow pulled to the tower's top while the gravity-step tracker pulled to the clear. The view jumped 8 rows in one frame and back, three times in 100 ms. |
+| Quad 80 rows below the view | 0 of 4 cleared rows ever on screen. Two camera controllers fought: the per-frame follow pulled to the tower's top while the gravity-step tracker pulled to the clear. The view jumped 8 rows in one frame and back, three times in 100 ms. |
 | Cascade in a tall well | The view stepped down with the stack, one row a wave. Fine. |
 | The well growing (rows added above) | Compensated exactly. Fine. |
 | Every glide | A fraction of the distance *per frame* (0.08, 0.15, 0.25), so 2.75× faster at 165 Hz than at 60 Hz. At 60 Hz a soft drop's lag pushed the piece to the view's bottom edge. |
@@ -74,8 +74,8 @@ camera's row, the piece, the stack's top and every physics event are logged each
 | Soft drop down an 80-row shaft | The piece rides 40–45 % down the view (8–9 rows of 20), 11 rows ahead visible. At the floor the view stops and shows the landing |
 | Its lock | Held 150 ms at the floor, then home in ~0.45 s; the next piece out of sight ~0.6 s in all (was ~0.95 s, after a whip) |
 | Deep hard drop | Dives to the landing (on screen within ~0.3 s), holds, comes home; the next piece out of sight ~0.8–1 s; a key press ends it |
-| Tetris 80 rows down | One dive, no reversals. The view reaches the floor as the stack settles, with the clear's debris still flying and "Quad" showing |
-| Everything in view | Unchanged: camera still (zero frames of motion in the spawn/move, top hard drop, top Tetris, both cascades and growth runs) |
+| Quad 80 rows down | One dive, no reversals. The view reaches the floor as the stack settles, with the clear's debris still flying and "Quad" showing |
+| Everything in view | Unchanged: camera still (zero frames of motion in the spawn/move, top hard drop, top Quad, both cascades and growth runs) |
 | Cascade in a tall well | Follows the stack down; every wave's row flashes 6–7 rows down the view |
 
 A deep flash itself is over before the view arrives: cascade animation runs on wall-clock

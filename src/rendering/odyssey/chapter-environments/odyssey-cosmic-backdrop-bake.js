@@ -25,7 +25,7 @@ export const COSMIC_BACKDROP_DEFAULTS = Object.freeze({
     height: 512,
     seed: 61.7,
     // Base floor gradient, bottom → top. ⚠️ Floors are chosen to survive 8-bit
-    // quantisation (≥ 1/255 per authored channel): "nothing in a Ghibli frame is
+    // quantisation (≥ 1/255 per authored channel): "nothing in a painted frame is
     // ever pure black" fails silently if the lift rounds to zero.
     floorBottom: [0.004, 0.004, 0.012],
     floorTop: [0.010, 0.007, 0.030],

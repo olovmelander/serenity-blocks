@@ -53,10 +53,10 @@ The theme tracks one master scalar, `stormIntensity ∈ [0,1]`, smoothed from ga
 |---|---|---|---|---|---|---|
 | **I — Still Night** | idle / early | gentle near-vertical fall, low density | faint single ribbon, slow | thin, clear, deep stars | slow 20s drift | clean, cool grade |
 | **II — Rising Wind** | combos building | wind tilts snow into sheets, gusts roll through | brightens, begins to dance & fold | thickens at ground, light scatter grows | tracks gust direction | bloom +, DOF deepens |
-| **III — Whiteout** | high combo / tetris | density surges toward whiteout, vortices | flares in accent color, violent ripple, vertical rays spike | glowing, near-opaque haze | gust shove + subtle shake | frost crystallizes edges, motion streak, CA + |
+| **III — Whiteout** | high combo / quad | density surges toward whiteout, vortices | flares in accent color, violent ripple, vertical rays spike | glowing, near-opaque haze | gust shove + subtle shake | frost crystallizes edges, motion streak, CA + |
 | **Resolution** | game over | wind dies, snow settles slowly | fades to one calm ribbon | clears, exhales | slow pull-back | frost melts off, vignette settles |
 
-`stormIntensity` doesn't snap — it eases (attack fast on tetris, decay slow), so the storm feels like weather, not a state machine.
+`stormIntensity` doesn't snap — it eases (attack fast on quad, decay slow), so the storm feels like weather, not a state machine.
 
 ### Compositional depth (layers, back to front)
 
@@ -229,13 +229,13 @@ Keep every event-bus contract ([setupEventListeners](../src/themes/winter/winter
 | Piece lock | small puff at lock point | — | — | — |
 | Hard drop | downward gust pulse | — | tiny punch | small impact bloom |
 | Single line | gust sweep along clear row | aurora brightness blip | — | — |
-| Tetris | radial gust burst + vortex | full-curtain flare in accent, vertical-ray spike | dolly-push + micro-shake | bloom +0.3, CA +, 1-frame flare |
+| Quad | radial gust burst + vortex | full-curtain flare in accent, vertical-ray spike | dolly-push + micro-shake | bloom +0.3, CA +, 1-frame flare |
 | Combo 4 | `stormIntensity` step up, swirl | curtain folds faster, hue shifts to accent | slow zoom 3° | DOF deepens |
 | Combo 7+ | **whiteout ramp** + triple vortex | violent ripple, secondary curtain ignites | gust shove + shake | frost crystallizes, motion streak, desat-then-resaturate |
 | Level up | wind direction reverses (gust) | color drift sweep across curtain | gentle pan | grade cross-fade |
 | Game over | wind dies, snow settles | fade to one calm ribbon | slow pull-back | frost melts, vignette settles |
 
-`stormIntensity` integrates these: a tetris spikes it, sustained combos hold it high, silence decays it. The **whiteout is earned**, not constant.
+`stormIntensity` integrates these: a quad spikes it, sustained combos hold it high, silence decays it. The **whiteout is earned**, not constant.
 
 ---
 
@@ -273,7 +273,7 @@ Critical path: 0 → 1 → 2 → 3. Phases 4–6 parallelize. Each phase has an 
 ## 8. Definition of Done
 
 - [ ] **60 FPS sustained on Ultra** (RTX 3070 / M-series) over a 10-min soak with the full event mix
-- [ ] **No frame spike > 18 ms** across idle → tetris → 10× combo → whiteout → game-over
+- [ ] **No frame spike > 18 ms** across idle → quad → 10× combo → whiteout → game-over
 - [ ] **First frame < 200 ms**: sky shell + a few flakes paint immediately; field+volume layer in over ~1 s
 - [ ] **Side-by-side video** vs current clearly shows: (a) coherent wind-driven snow, (b) dancing volumetric aurora that lights the scene, (c) whiteout escalation, (d) AAA post finish
 - [ ] **All 7 presets** hit target FPS on a representative device; WebGL2 fallback still renders cleanly

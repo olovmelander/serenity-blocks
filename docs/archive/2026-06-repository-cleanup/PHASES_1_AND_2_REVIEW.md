@@ -539,7 +539,7 @@ console.log(ffa.sharedSeed);   // 669689
 **Trade-offs:**
 - ❌ Requires Steam client
 - ❌ 2-8 players ideal (not MMO scale)
-- ✅ Perfect for competitive Tetris!
+- ✅ Perfect for competitive block-stacking!
 
 ### 2. Host-Authoritative (Not Full P2P)
 

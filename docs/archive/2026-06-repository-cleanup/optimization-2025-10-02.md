@@ -9,7 +9,7 @@
 ## 1. Bottleneck Description
 
 - **Location in Code:** `script.js` lines 5357-5358 (within the `draw()` function)
-- **Issue:** The Tetris game grid was being redrawn from scratch every single frame using 22 separate canvas path operations (11 vertical lines + 11 horizontal lines). Each line required 4 canvas API calls: `beginPath()`, `moveTo()`, `lineTo()`, and `stroke()`. This resulted in **88 canvas API calls per frame** just to render the static grid.
+- **Issue:** The block-stacking game grid was being redrawn from scratch every single frame using 22 separate canvas path operations (11 vertical lines + 11 horizontal lines). Each line required 4 canvas API calls: `beginPath()`, `moveTo()`, `lineTo()`, and `stroke()`. This resulted in **88 canvas API calls per frame** just to render the static grid.
 - **Impact:**
   - At 60 FPS, the grid rendering alone generated **5,280 canvas API calls per second**
   - The grid never changes during gameplay, making this redundant work
@@ -97,7 +97,7 @@
 ### Test Results:
 ```
 $ node tests/unit/test-grid-cache.js
-=== Tetris Grid Rendering Cache Test ===
+=== Grid Rendering Cache Test ===
 
 Test 1: Grid cache variables declared
   ✓ PASS: Grid cache variables exist

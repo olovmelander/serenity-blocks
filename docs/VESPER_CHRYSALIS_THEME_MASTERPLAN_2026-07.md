@@ -74,13 +74,13 @@ relic) plus **transient flares** fired by discrete events. Idle → `S` decays b
 |---|---|---|---|
 | **Dormant** | 0.0–0.15 | idle / start | relic breathes a slow amber pulse; embers drift lazily; aurora sways faintly; lake perfectly mirrors sky |
 | **Fracture** | 0.15–0.45 | combos build | hairline cracks trace the shell and glow molten-amber; core brightens; first god-ray hints; shore crystals catch the light |
-| **Spill** | 0.45–0.7 | line clears / Tetris | shell fractures widen; a vertical **shaft of light** spills upward; the lake ripples outward from the relic |
+| **Spill** | 0.45–0.7 | line clears / Quad | shell fractures widen; a vertical **shaft of light** spills upward; the lake ripples outward from the relic |
 | **Ascension** | 0.7–0.9 | combo peak | the **aurora phoenix unfurls its wings** across the sky, mirrored in the water; embers swarm upward; bloom surges |
 | **Cosmos** | 0.9–1.0 | high level | sky deepens past twilight toward the void; a distant **monolith rises** on the horizon and **ringed planets** fade in high above |
 
 **Transient flares** (short, decaying, layered on top of `S`):
 - **Line clear** → radial lake ripple + small ember burst from the relic.
-- **Tetris** → light-shaft flash + aurora density surge (whiteout-lite).
+- **Quad** → light-shaft flash + aurora density surge (whiteout-lite).
 - **Combo step** → crack-glow pulse + core flare.
 - **Level up** → one-step sky deepen; at high levels, arm the Cosmos reveal.
 - **Game over** → relic dims, cracks cool to ash, aurora recedes (graceful dormancy).
@@ -184,7 +184,7 @@ The brain. One class, ticked once per frame. Directly modeled on
 - **State:** target `S` from gameplay signals; actual `S` eased toward target (attack fast on events,
   slow decay when idle); a small pool of active transients (each: kind, age, duration, magnitude).
 - **Inputs (gameplay coupling):** subscribe to the same event stream winter's storm-director uses —
-  line clears, combo count, level, Tetris, game-over. **Task: confirm exact event names/bus API by
+  line clears, combo count, level, Quad, game-over. **Task: confirm exact event names/bus API by
   reading `storm-director.js` before wiring** (it already does this; copy its subscription).
 - **Outputs:** every element reads a single `directorState` object each frame:
   `{ S, corePulse, crackOpen, godrayIntensity, auroraSpread, rippleImpulses[], emberRate, skyDeepen,
@@ -228,7 +228,7 @@ scenePass(scene,camera)
 ## 7. How it plugs into the theme system (architecture)
 
 Grounded in the theme-system map. **File layout** (adopting the newer "AAA" nested structure —
-winter / himalayan-peak / electric-dreams-v3 / sky-children-v2):
+winter / himalayan-peak / electric-dreams-v3 / rainbow-terraces):
 
 ```
 src/themes/vesper-chrysalis/

@@ -20,7 +20,7 @@
  *
  * Nothing here is lit by a light: the glow map, the haze and the gameplay pulses light the
  * outside, each shop's own colour lights its inside. The people in the rooms are sprites of a cast
- * of cyberpunk characters baked in Blender, turned to the camera and lit by the room
+ * of neon-noir characters baked in Blender, turned to the camera and lit by the room
  * (neon-district-people.js).
  */
 

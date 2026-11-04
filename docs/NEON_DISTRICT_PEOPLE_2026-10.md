@@ -3,8 +3,8 @@
 The asks: "in neon district theme, is there any way we can make the people in the stores, gyms,
 restaurants etc to feel more real. they are just flat now! we can use Blender mcp for design and
 animation if needed and if that is a good idea", then "I guess we want them stylized as different
-cyberpunk characters." In a second pass the same day: "I want them to be cell shaded and feel more
-natural in the animation", and "can we keep improving the models to be more cyberpunky and well
+neon-noir characters." In a second pass the same day: "I want them to be cell shaded and feel more
+natural in the animation", and "can we keep improving the models to be more neon-noiry and well
 made? see photo for inspiration" (three sheets of inked, flat-shaded concept art: pauldrons,
 utility belts, harnesses, goggles, combat boots, mechanical fists, glowing canisters, long coats,
 a heavy brute among slim figures). In a third pass: "the ncps needs to feel more smooth and less

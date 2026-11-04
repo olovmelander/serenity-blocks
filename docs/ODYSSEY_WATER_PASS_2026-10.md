@@ -5,7 +5,7 @@ the ocean!"*, then *"I think we can improve the water in the pond and in the sea
 visually stunning masterpiece ... reflective and alive and that really fits into the atmosphere
 with the correct colors, reflectiveness and movement and waves and foam and everything."*
 
-Earlier water work this builds on: the Ghibli-water waves (the painted sea, the swell, the shore
+Earlier water work this builds on: the painted-water waves (the painted sea, the swell, the shore
 foam, the underside) in `world/odyssey-world-renderer.js`, and the tarn of
 [ODYSSEY_ACT2_STUNNING_2026-10.md](ODYSSEY_ACT2_STUNNING_2026-10.md) §6.
 

@@ -18,11 +18,11 @@ It does not change production Stillwater's intentional WebGL ownership.
 The Wave 2 lake now has one preallocated response system:
 
 - High constructs 10 slots; Low constructs 4.
-- Slot 0 is structurally reserved for one dominant Tetris or T-spin response.
+- Slot 0 is structurally reserved for one dominant Quad or T-spin response.
 - Remaining slots are circularly reused for routine lock dimples.
 - Two fixed-length packed `vec4` arrays hold state and shape data. Events mutate existing
   objects; they never resize the arrays or create render resources.
-- A Tetris special evaluates four curved, broken bank wakes and a later mirror swell once,
+- A Quad special evaluates four curved, broken bank wakes and a later mirror swell once,
   rather than duplicating the special graph in every slot.
 - A T-spin evaluates one inward annulus plus paired cyan/violet counter-rotating turns.
 - The same response field supplies physical height, optical slope/reflection distortion,
@@ -54,22 +54,22 @@ error, console warning, console error, issue, or WebGPU validation message for:
 
 | Backend | Tier | Validated states | Expected path |
 |---|---|---|---|
-| native WebGPU | High | idle, lock, Tetris, T-spin | 10 slots, 0.45 reflector |
+| native WebGPU | High | idle, lock, Quad, T-spin | 10 slots, 0.45 reflector |
 | native WebGPU | Low | T-spin | 4 slots, analytic reflection |
-| forced WebGL2/TSL | High | Tetris | 10 slots, 0.45 reflector |
+| forced WebGL2/TSL | High | Quad | 10 slots, 0.45 reflector |
 | forced WebGL2/TSL | Low | lock | 4 slots, analytic reflection |
 
 The hierarchy reads in the fixed hero frames:
 
 - lock is one small ivory depression/ring;
-- Tetris is four imperfect wakes entering from opposite banks, visibly broader than lock;
+- Quad is four imperfect wakes entering from opposite banks, visibly broader than lock;
 - T-spin is the dominant event, with a lavender outer turn and cyan/violet inner rune.
 
 Durable 1920×1080 forced-WebGL2 parity captures:
 
 - [idle](../artifacts/themes/stillwater/wave3-2026-07-25/webgl2-high-idle-t08.png)
 - [lock](../artifacts/themes/stillwater/wave3-2026-07-25/webgl2-high-lock-t08.png)
-- [Tetris](../artifacts/themes/stillwater/wave3-2026-07-25/webgl2-high-tetris-t08.png)
+- [Quad](../artifacts/themes/stillwater/wave3-2026-07-25/webgl2-high-quad-t08.png)
 - [T-spin](../artifacts/themes/stillwater/wave3-2026-07-25/webgl2-high-tspin-t08.png)
 - [Low T-spin](../artifacts/themes/stillwater/wave3-2026-07-25/webgl2-low-tspin-t08.png)
 
@@ -80,7 +80,7 @@ labelling a headless fallback as native WebGPU.
 
 ## Resource-stability gate
 
-After warmup, a 48-event sequence containing 42 routine locks, 3 Tetrises, and 3 T-spins
+After warmup, a 48-event sequence containing 42 routine locks, 3 Quads, and 3 T-spins
 was written through the debug API. Every fixed array and slot object retained identity.
 
 | Counter | Before | After |

@@ -140,7 +140,7 @@ ffa.players.get(ffa.localPlayerId).gameState.currentPiece
 
 ## 🎉 **IT'S FIXED!**
 
-**Hard refresh and enjoy smooth multiplayer Tetris!** 🎮✨
+**Hard refresh and enjoy smooth multiplayer block-stacking!** 🎮✨
 
 **You should now be able to:**
 - ✅ Play full games

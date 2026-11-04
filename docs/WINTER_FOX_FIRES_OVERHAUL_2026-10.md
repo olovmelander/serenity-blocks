@@ -346,7 +346,7 @@ physical phones; local multiplayer and Infinity layouts in a capture (their rout
 unit-tested only); the real game in an upright window; the icon on an Odyssey level orb; long
 sessions. `docs/theme-screenshots/winter.png` still shows the previous artwork (a fleet capture
 writes it). Comments in a few other modules still name files of the earlier Winter theme as
-their lineage (`sky-children-v2`, `void-ember`, the Odyssey forest geometry), and ADR-0015's
+their lineage (`rainbow-terraces`, `void-ember`, the Odyssey forest geometry), and ADR-0015's
 third finding still lists the Winter theme as a consumer of the shared mountain language, which
 it no longer is (`odyssey-wave46-scope-invariants.test.js` now pins the opposite).
 

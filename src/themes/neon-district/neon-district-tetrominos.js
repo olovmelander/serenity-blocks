@@ -1,6 +1,6 @@
 /**
  * Neon District Theme - Tetromino Configuration
- * Cyberpunk electric neon color palette
+ * Neon-noir electric neon color palette
  */
 
 export const NEON_DISTRICT_TETROMINOS = {

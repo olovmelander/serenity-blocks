@@ -434,7 +434,7 @@ class ClientPrediction {
 ## ⚔️ Attack Scaling / Fair Attack Rules (NEW)
 
 ### Problem
-In 5+ player FFA, a single tetris (4 lines) sends garbage to ALL opponents. Without scaling, games become chaotic instant-death scenarios.
+In 5+ player FFA, a single quad (4 lines) sends garbage to ALL opponents. Without scaling, games become chaotic instant-death scenarios.
 
 ### Design: an optional fair-scaling rule
 - With fair scaling on, attack damage scales inversely with opponent count.
@@ -507,7 +507,7 @@ The following settings should be added to `match-config-modal.js`:
 ```
 
 ### Scaling Table
-| Players | Opponents | Scaling Factor | 4-Line Tetris Sends |
+| Players | Opponents | Scaling Factor | 4-Line Quad Sends |
 |---------|-----------|----------------|---------------------|
 | 2 | 1 | 1.0x | 4 lines each |
 | 3 | 2 | 0.75x | 3 lines each |
