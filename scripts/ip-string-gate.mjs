@@ -9,6 +9,9 @@
  *      1. public/** and index.html  — copied verbatim into every build
  *      2. the runtime source         — tracked text under src/ and electron/
  *      3. dist/**                   — the built web artifact, when present
+ *      4. release/**                — each packaged desktop build's app.asar and the files beside
+ *                                     it, when present (scripts/ip-packaged-scan.mjs, which
+ *                                     scripts/afterPack.cjs also runs on every build it packages)
  *    The only allowance: the CREDITS.md / README.md copies in dist (the legal notice). Code
  *    names its own things (a four-line clear is a quad, its event 'quad', its Odyssey goal
  *    'quads'), so identifiers, keys and string literals get no exemption either.
@@ -38,8 +41,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-    BLOCKED_TOKENS, RATCHET_TOKENS, compareToBaseline, countTokens, findToken,
+    BLOCKED_TOKENS, GENRE_TOKEN, RATCHET_TOKENS, WORLD_TOKEN, compareToBaseline, countTokens, findToken,
 } from './ip-tokens.mjs';
+import { findPackagedResources, scanPackagedApp } from './ip-packaged-scan.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SELF = 'scripts/ip-string-gate.mjs';
@@ -48,13 +52,11 @@ const UPDATE = process.argv.includes('--update');
 
 const TEXT_EXT = /\.(js|mjs|css|html|svg|json|txt|md|xml|webmanifest)$/i;
 const TREE_TEXT_EXT = /\.(js|mjs|cjs|ts|mts|css|html|svg|json|txt|md|xml|webmanifest|ya?ml|py|sh|cmd|bat|ps1|glsl|wgsl|csv|toml)$/i;
-const GENRE_TOKEN = /tetris|tetrimino/gi;
-// Class B. Keep to proper nouns and coinages that belong to one franchise; plain words that a
-// desert, a worm or a geyser needs ("dune", "sand", "worm", "spice" on its own) stay usable.
-const WORLD_TOKEN =
-    /arrakis|shai[\s-]?hulud|fremen|melange|muad'?dib|harkonnen|atreides|sardaukar|bene\s+gesserit|kwisatz|lisan\s+al[\s-]?gaib|crysknife|stillsuit|ornithopter|sietch|wormsign|spice\s+blows?|thumper|dune[\s-]+inspired|inspired\s+by\s+dune|dune\s+(?:film|movie|novel|franchise)/gi;
 const ALLOWED_FILES = new Set(['dist/CREDITS.md', 'dist/README.md']);
-const TREE_SKIP = new Set([SELF, 'scripts/ip-tokens.mjs', 'tests/unit/ip-tokens.test.js', RATCHET_FILE, 'package-lock.json']);
+const TREE_SKIP = new Set([
+    SELF, 'scripts/ip-tokens.mjs', 'tests/unit/ip-tokens.test.js', 'tests/unit/ip-packaged-scan.test.js',
+    RATCHET_FILE, 'package-lock.json',
+]);
 
 function* walk(dir) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -146,6 +148,14 @@ if (fs.existsSync(distDir)) {
     console.warn(
         'ip-string-gate: dist/ not found — built artifact not scanned (run `npm run build` first for full coverage)'
     );
+}
+
+// A4. Packaged desktop builds, when present: each app.asar under release/ and the files beside it.
+for (const resourcesDir of findPackagedResources(path.join(repoRoot, 'release'))) {
+    const rel = path.relative(repoRoot, resourcesDir).replace(/\\/g, '/');
+    const { violations: found, fileCount } = scanPackagedApp(resourcesDir);
+    violations.push(...found.map((violation) => `${rel}/${violation}`));
+    surfaces.push(`${rel}/ (${fileCount} packaged files)`);
 }
 
 // B. Every tracked text file: world names from other franchises, anywhere.
