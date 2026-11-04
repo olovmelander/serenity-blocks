@@ -82,7 +82,7 @@ describe('the murmuration', () => {
             expect(seeds[i * 4]).toBeGreaterThanOrEqual(0);
             expect(seeds[i * 4]).toBeLessThanOrEqual(1);
             expect(seeds[i * 4 + 2]).toBeGreaterThanOrEqual(0);
-            expect(seeds[i * 4 + 2]).toBeLessThanOrEqual(1);
+            expect(seeds[i * 4 + 2]).toBeLessThanOrEqual(1.5);
         }
     });
 

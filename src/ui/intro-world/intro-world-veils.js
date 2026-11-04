@@ -53,7 +53,7 @@ import { REF_CAMERA, srgbToLinear } from './intro-world-core.js';
 export const VEILS = Object.freeze([
     {
         name: 'hero',
-        points: [[-50, -17, -32], [-26, -11.8, -21], [-7, -12.6, -16], [9, -9.4, -16], [21, 1.5, -20],
+        points: [[-50, -18, -32], [-26, -14.2, -21], [-7, -15.4, -16], [9, -11.6, -16], [21, 1.5, -20],
             [29, 16, -26], [38, 33, -35]],
         width: 5.6,
         twist: [1.05, 1.15, 0.4],
@@ -276,7 +276,7 @@ export function createVeils(u, grainTex) {
         const profile = mix(core.mul(core), core, soft);
         const hem = exp(vv.sub(0.8).div(0.045).pow2().negate()).mul(0.9)
             .add(exp(vv.add(0.88).div(0.035).pow2().negate()).mul(0.3));
-        const filament = exp(vv.mul(vHalf).div(0.15).pow2().negate());
+        const filament = exp(vv.mul(vHalf).div(0.1).pow2().negate());
         // Silk: fibres run along the sheet; a slow cloud of density over them.
         const fibreUv = vec2(
             vv.mul(1.1).add(sin(ss.mul(9.0).add(sv.z)).mul(0.06)),
@@ -304,7 +304,7 @@ export function createVeils(u, grainTex) {
         const cores = mix(vec3(0.15, 0.831, 1.0), vec3(0.275, 1.0, 0.745), ss);
         const crisp = float(1.0).sub(soft);
         const sharp = crisp.mul(crisp).mul(crisp);
-        const threads = filament.mul(sharp).mul(0.85).mul(drawn).add(edge.mul(profile.mul(0.5).add(filament)).mul(0.7));
+        const threads = filament.mul(sharp).mul(0.6).mul(drawn).add(edge.mul(profile.mul(0.5).add(filament)).mul(0.7));
         const rgb = vCol.rgb.mul(body.mul(drawn)).add(cores.mul(threads))
             .mul(ends).mul(vCol.w)
             .mul(breath)

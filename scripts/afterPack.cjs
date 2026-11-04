@@ -7,6 +7,9 @@
  * as Valve's test app 480). package.json copies no such file and excludes it from app.asar; this
  * hook fails the build if one turns up next to the executable anyway.
  *
+ * Every build also passes the IP-string gate over what was just packaged: the app.asar and the
+ * files beside it, by the rules dist/ is held to (scripts/ip-packaged-scan.mjs).
+ *
  * Release mode (SERENITY_RELEASE=1) also requires the release AppID to be set (the release gate
  * checks it before the build starts; this is the last line).
  */
@@ -21,6 +24,25 @@ module.exports = async function afterPack(context) {
             '[afterPack] Packaging blocker: steam_appid.txt is in the packaged output. Packaged builds '
             + 'take the Steam AppID from electron/steam-app-id.js; remove whatever copies the file.',
         );
+    }
+
+    const scanModule = path.join(__dirname, 'ip-packaged-scan.mjs');
+    const { findPackagedResources, scanPackagedApp } = await import(pathToFileURL(scanModule).href);
+    const packaged = findPackagedResources(context.appOutDir);
+    if (packaged.length === 0) {
+        throw new Error(
+            `[afterPack] Packaging blocker: no app.asar under ${context.appOutDir} for the IP-string gate to scan.`,
+        );
+    }
+    for (const resourcesDir of packaged) {
+        const { violations, fileCount } = scanPackagedApp(resourcesDir);
+        if (violations.length > 0) {
+            throw new Error(
+                `[afterPack] Packaging blocker: ${violations.length} disallowed name(s) in the package `
+                + `(scripts/ip-packaged-scan.mjs):\n  ${violations.slice(0, 20).join('\n  ')}`,
+            );
+        }
+        console.log(`[afterPack] IP-string gate: ${fileCount} packaged files, no disallowed names.`);
     }
 
     if (process.env.SERENITY_RELEASE === '1') {

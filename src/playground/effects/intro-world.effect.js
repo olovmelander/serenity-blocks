@@ -15,6 +15,8 @@
  *   quality=High|Medium|Low      content tier (default High)
  *   title=0                      hide the mock wordmark (shown by default)
  *   ui=1                         with phase=menu: overlay a mock of the menu (navigation, card)
+ *   mode=<id>                    with phase=menu: the current mode (single, odyssey, ...)
+ *   row=<0..7>                   with phase=menu: the current row, from the top of the list
  *   px=-1..1&py=-1..1            hold a pointer-parallax offset
  *   noPost=1                     raw scene (no bloom/grade)
  *   reduce=1                     reduced motion
@@ -51,7 +53,7 @@ function mountTitle() {
     return { root, img };
 }
 
-/** A stand-in for the main menu (the real class layout's rects at 1600 x 852). */
+/** A stand-in for the main menu (the real layout's rects at 1707 x 1067). */
 function mountMenu() {
     const root = document.createElement('div');
     root.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:5';
@@ -66,24 +68,49 @@ function mountMenu() {
     logo.src = './assets/branding/serenity-blocks-logo.svg';
     logo.style.cssText = 'position:absolute;left:5%;top:4.4%;width:min(265px,17vw)';
     root.appendChild(logo);
-    box(0.05, 0.29, 0.287, 0.79, 'border-radius:14px;background:rgba(10,12,30,0.18)');
-    box(0.425, 0.114, 0.873, 0.875, 'border-radius:28px;background:rgba(14,14,34,0.62);'
-        + 'backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,0.08)');
+    box(0.05, 0.289, 0.272, 0.787, 'border-radius:14px;background:rgba(10,12,30,0.18)');
+    box(0.413, 0.185, 0.87, 0.82, 'border-radius:28px;background:linear-gradient(180deg,'
+        + 'rgba(27,23,60,0.88),rgba(12,10,30,0.93));border:1px solid rgba(255,246,233,0.1)');
+    box(0.05, 0.918, 0.95, 0.972, 'border-radius:8px;background:rgba(255,246,233,0.03)');
     document.body.appendChild(root);
     return root;
 }
 
 export const MENU_RECTS = Object.freeze({
     nav: {
-        x0: 0.04, y0: 0.27, x1: 0.30, y1: 0.80,
+        x0: 0.0418, y0: 0.2758, x1: 0.2808, y1: 0.8006,
     },
-    logo: {
-        x0: 0.04, y0: 0.03, x1: 0.23, y1: 0.2,
+    brand: {
+        x0: 0.0418, y0: 0.0328, x1: 0.2808, y1: 0.1715,
     },
-    card: {
-        x0: 0.425, y0: 0.114, x1: 0.873, y1: 0.875,
+    stage: {
+        x0: 0.4129, y0: 0.1842, x1: 0.8699, y1: 0.8196,
+    },
+    dock: {
+        x0: 0.05, y0: 0.9178, x1: 0.9502, y1: 0.9722,
     },
 });
+
+/** The list's rows, top to bottom (their centres, screen fractions, at 1707 x 1067). */
+const MENU_ROWS = [0.3533, 0.398, 0.443, 0.488, 0.533, 0.6131, 0.658, 0.7385];
+
+/** The menu's layout as the intro measures it, for the current row. */
+function menuLayout(params) {
+    const y = MENU_ROWS[Math.max(0, Math.min(MENU_ROWS.length - 1, Math.round(num(params, 'row', 0))))];
+    return {
+        ...MENU_RECTS,
+        row: {
+            x0: 0.05, y0: y - 0.022, x1: 0.272, y1: y + 0.022,
+        },
+        mode: params.get('mode') || 'single',
+        calm: [
+            { ...MENU_RECTS.nav, level: 0.9 },
+            { ...MENU_RECTS.stage, level: 0.8 },
+            { ...MENU_RECTS.dock, level: 0.6 },
+            { ...MENU_RECTS.brand, level: 0.7 },
+        ],
+    };
+}
 
 export function create({
     scene, camera, renderer, params,
@@ -103,10 +130,7 @@ export function create({
     const showTitle = params.get('title') !== '0' && phase !== 'menu' && phase !== 'boot';
     const title = showTitle ? mountTitle() : null;
     const ui = phase === 'menu' && params.get('ui') === '1' ? mountMenu() : null;
-    if (phase === 'menu') {
-        world.setAvoidRects([MENU_RECTS.nav, MENU_RECTS.logo]);
-        world.setCalmRects([{ ...MENU_RECTS.nav, level: 0.7 }, { ...MENU_RECTS.card, level: 0.85 }]);
-    }
+    if (phase === 'menu') world.setMenuLayout(menuLayout(params));
 
     const noPost = params.get('noPost') === '1';
     const post = noPost ? null : new IntroWorldPost(renderer, scene, camera, {

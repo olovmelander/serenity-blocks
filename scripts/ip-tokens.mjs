@@ -12,6 +12,20 @@
  *    raises it).
  */
 
+/**
+ * Class A: the genre mark. Shipped surfaces only (public/, index.html, the runtime source, dist/
+ * and the packaged desktop build).
+ */
+export const GENRE_TOKEN = /tetris|tetrimino/gi;
+
+/**
+ * Class B: names from other people's fictional worlds, anywhere in the tracked tree and in what
+ * ships. Keep to proper nouns and coinages that belong to one franchise; plain words that a
+ * desert, a worm or a geyser needs ("dune", "sand", "worm", "spice" on its own) stay usable.
+ */
+export const WORLD_TOKEN =
+    /arrakis|shai[\s-]?hulud|fremen|melange|muad'?dib|harkonnen|atreides|sardaukar|bene\s+gesserit|kwisatz|lisan\s+al[\s-]?gaib|crysknife|stillsuit|ornithopter|sietch|wormsign|spice\s+blows?|thumper|dune[\s-]+inspired|inspired\s+by\s+dune|dune\s+(?:film|movie|novel|franchise)/gi;
+
 /** @typedef {{ id: string, re: RegExp, scope?: (path: string) => boolean }} IpToken */
 
 /** @type {IpToken[]} */

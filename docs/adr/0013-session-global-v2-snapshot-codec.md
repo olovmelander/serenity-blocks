@@ -72,3 +72,13 @@ drop it. Nothing changes at runtime: protocol 1 stays the default and protocol 2
 is unchanged — one recorded two-machine session, then protocol 2 becomes the host default with
 protocol 1 kept as an undated rollback ([OWNER_DECISIONS_RESEARCH_2026-10-13.md](../OWNER_DECISIONS_RESEARCH_2026-10-13.md),
 decision 1). If that session cannot happen by 2026-11-30, re-date again here with the reason.
+
+## Amendment — 2026-11-04: `wireV2` re-dated to 2026-12-31
+
+The two-peer soak has still not run: the run log in
+[TWO_MACHINE_STEAM_VALIDATION.md](../TWO_MACHINE_STEAM_VALIDATION.md) is empty, and the 22–28 October
+window for it has passed. The fallback for that session is a date no later than 15 December, so the
+flag is re-dated past it, to 2026-12-31, instead of letting `npm test` fail on 1 December. Nothing
+else changes: protocol 1 stays the default, protocol 2 stays opt-in, and the plan is still one
+recorded two-machine session, then protocol 2 as the host default. If that session has not happened
+by 2026-12-31, re-date again here with the reason, or drop the flag.

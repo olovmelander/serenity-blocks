@@ -1703,6 +1703,66 @@
     background: rgba(var(--sb-accent-rgb), 0.24);
 }
 
+/* Chat moderation (src/ui/chat-moderation.js), in the lobby, the match and the results: a mute
+ * button on anyone else's line, shown on hover or focus (always on a touch screen), and no
+ * message field while chat is off (Settings › General › Online chat). */
+#lobby-waiting-room .chat-mute-btn,
+#match-results-modal .chat-mute-btn,
+#online-multiplayer-container .chat-mute-btn {
+    float: right;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    margin: -2px 0 0 8px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--sb-text-faint);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity var(--sb-dur-2) var(--sb-ease-lock), color var(--sb-dur-2) var(--sb-ease-lock), background var(--sb-dur-2) var(--sb-ease-lock), border-color var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#lobby-waiting-room .player-message:hover .chat-mute-btn,
+#match-results-modal .player-message:hover .chat-mute-btn,
+#online-multiplayer-container .player-message:hover .chat-mute-btn,
+#lobby-waiting-room .chat-mute-btn:focus-visible,
+#match-results-modal .chat-mute-btn:focus-visible,
+#online-multiplayer-container .chat-mute-btn:focus-visible {
+    opacity: 1;
+}
+
+#lobby-waiting-room .chat-mute-btn:hover,
+#match-results-modal .chat-mute-btn:hover,
+#online-multiplayer-container .chat-mute-btn:hover {
+    border-color: var(--sb-line-strong);
+    background: rgba(var(--sb-cream-rgb), 0.06);
+    color: var(--sb-text);
+}
+
+#lobby-waiting-room .chat-mute-btn:focus-visible,
+#match-results-modal .chat-mute-btn:focus-visible,
+#online-multiplayer-container .chat-mute-btn:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
+    outline-offset: 1px;
+}
+
+@media (hover: none) {
+    #lobby-waiting-room .chat-mute-btn,
+    #match-results-modal .chat-mute-btn,
+    #online-multiplayer-container .chat-mute-btn {
+        opacity: 0.7;
+    }
+}
+
+#lobby-waiting-room .online-chat.is-chat-off .chat-input-row,
+#match-results-modal .online-chat.is-chat-off .chat-input-row,
+#online-multiplayer-container .online-chat.is-chat-off .chat-input-area {
+    display: none;
+}
+
 /* Avatar + name (src/ui/components/player-card.js): a rounded-square tile framed in
  * the player's hue (--avatar-color). Its own class names, never the board's .player-card. */
 .mp-avatar-card {
@@ -2239,6 +2299,36 @@
 #lobby-waiting-room .player-kick-btn:hover {
     border-color: rgba(var(--sb-danger-rgb), 0.45);
     background: rgba(var(--sb-danger-rgb), 0.12);
+    color: var(--sb-danger);
+}
+
+/* Mute this player's chat (top left; the host's remove button is top right). Pressed = muted. */
+#lobby-waiting-room .player-mute-btn {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border-radius: 9px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--sb-text-faint);
+    cursor: pointer;
+    transition: color var(--sb-dur-2) var(--sb-ease-lock), background var(--sb-dur-2) var(--sb-ease-lock), border-color var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#lobby-waiting-room .player-mute-btn:hover {
+    border-color: var(--sb-line-strong);
+    background: rgba(var(--sb-cream-rgb), 0.06);
+    color: var(--sb-text);
+}
+
+#lobby-waiting-room .player-mute-btn[aria-pressed="true"] {
+    border-color: rgba(var(--sb-danger-rgb), 0.4);
+    background: rgba(var(--sb-danger-rgb), 0.1);
     color: var(--sb-danger);
 }
 

@@ -539,6 +539,10 @@ class MainMenu {
             if (this.modal) this.modal.dataset.current = mode;
             this.light?.to(mode);
             this.renderStage();
+            // The world behind the menu follows (IntroAnimation.syncMenuLayout).
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('menu:currentChanged', { detail: { mode } }));
+            }
         };
         // A pointer sweeping down the list should not flicker the stage.
         if (immediate) apply();
