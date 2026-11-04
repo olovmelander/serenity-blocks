@@ -27,6 +27,7 @@ import {
     ODYSSEY_BREACH_P, ODYSSEY_MASSIFS, ODYSSEY_SEA_LEVEL, odysseyWorldHeight,
 } from './world/odyssey-world-height.js';
 import { reportWorldBuildFailure } from './world/world-build-failure-report.js';
+import { ONE_WORLD_CHAPTERS } from './chapter-environments/registry.js';
 import {
     qualityRebuildReason, readOdysseyQualityProfile, readOdysseyRenderScale,
 } from './odyssey-quality-profile.js';
@@ -249,8 +250,6 @@ function readPixelRatioOverrideFromUrl() {
     return Math.min(2, Math.max(0.5, value));
 }
 
-/** Chapters whose ground the continuous Act II world replaces. */
-const ONE_WORLD_CHAPTERS = [2, 3, 4, 5];
 // The world's OUTPUT CONTRACT (output scale, saturation, sky radius, exposure ownership)
 // moved 2026-08-13 to world/odyssey-world-grade.js beside the world it configures, so the
 // board and the cloud playground rig grade by construction instead of by agreement — the
@@ -329,13 +328,6 @@ export function pacedSweepDistance(from, to, chapterPositions) {
 function readGlideCompileHeadStartMs() {
     const value = Number.parseFloat(readUrlValue('odysseyGlideCompileMs'));
     return Number.isFinite(value) && value >= 0 ? Math.min(value, 2000) : GLIDE_COMPILE_HEAD_START_MS;
-}
-
-/** Whether a board builds the One World (`?odysseyOneWorld=0` forces the legacy dioramas). */
-function isOneWorldRequested(options = {}) {
-    const oneWorldParam = getUrlSearchParams()?.get('odysseyOneWorld');
-    return options.oneWorld === true
-        || (options.oneWorld !== false && oneWorldParam !== '0' && oneWorldParam !== 'false');
 }
 
 /**
@@ -655,15 +647,10 @@ export class OdysseyBoardController {
             || readBooleanUrlFlag('odysseyChapterEvict'))
             && !this.restrictStartupChapterLoading;
         this.chapterEvictionWindow = Number.parseInt(readUrlValue('odysseyChapterEvictWindow'), 10) || 2;
-        // ONE WORLD (default OFF; opt-in ?odysseyOneWorld=1). Replaces the chapter-2..5 diorama
-        // environments with a single continuous surface — see
-        // docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md. Flagged rather than switched so the shipped
-        // journey is bit-identical until it is capture-verified in the real game.
-        // ONE WORLD IS NOW THE DEFAULT PATH for chapters 2-5 (Wave 3). `?odysseyOneWorld=0`
-        // forces the legacy dioramas back — a one-URL revert, kept because this replaces the
-        // ground under two thirds of the journey and a single query parameter is a cheaper
-        // escape hatch than a rebuild.
-        this.oneWorldEnabled = isOneWorldRequested(options);
+        // ONE WORLD (ADR-0022, docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md): Act II, chapters 2-5, is a
+        // single continuous surface. False only after a world that would not build or compile
+        // has been given up (_abandonOneWorld).
+        this.oneWorldEnabled = true;
         this.oneWorld = null;
         this._oneWorldActT = 0;
         // undefined until the first update; `!== false` above keeps pre-gate behaviour then.
@@ -985,11 +972,10 @@ export class OdysseyBoardController {
      * level presentations, path layout and quality. Never throws; the board starts its own bake
      * if this could not.
      * @param {{getAllLevelPresentations?: Function, getPresentationLayout?: Function}} levelRegistry
-     * @returns {?object} the bake handle, or null when no world will be built
+     * @returns {?object} the bake handle, or null when it could not start
      */
     static prestartWorldBake(levelRegistry) {
         try {
-            if (!isOneWorldRequested()) return null;
             const levelData = levelRegistry?.getAllLevelPresentations?.() ?? [];
             setOdysseyPathLayout(derivePresentationLayout(levelData, levelRegistry?.getPresentationLayout?.() ?? null));
             return startWorldBake(worldBakeRequest(readWorldBuildOptions(readOdysseyQualityProfile().tier)));
@@ -1090,7 +1076,6 @@ export class OdysseyBoardController {
             // only VERY fast scrolls drop detail; lower = medium scrolls do too). Default 0.0015
             // (must stay below the ~0.0025/frame reachable at the 0.15 maxScrollVelocity cap).
             lodFastThreshold: Number.parseFloat(readUrlValue('odysseyLodFastSpeed')) || undefined,
-            suppressedChapters: this.oneWorldEnabled ? ONE_WORLD_CHAPTERS : [],
         });
         this.environmentManager.configureChapterBuilds(this._chapterBuildGate());
 
@@ -1280,10 +1265,9 @@ export class OdysseyBoardController {
 
         trace.begin('world');
         if (this.oneWorldEnabled) {
-            // A feature flag must never be able to brick boot. If the world fails to build we
-            // log it and fall back to the shipped chapter environments rather than leaving the
-            // journey with no ground at all — the failure mode that cost a capture cycle here
-            // was a silent throw inside init, which just hangs bootstrap with no diagnostic.
+            // A failed world must never be able to brick boot: the failure mode that cost a
+            // capture cycle here was a silent throw inside init, which just hangs bootstrap with
+            // no diagnostic. It is logged, the player is told, and the journey plays on.
             try {
                 const { weakLane } = this._worldBakeOptions ?? this._readWorldBuildOptions();
                 // Landed bakes (or the synchronous twin's); a bake that failed outright falls
@@ -1413,10 +1397,7 @@ export class OdysseyBoardController {
                 this.scene.add(this.oneWorld.group);
                 console.log('[OdysseyBoard] One World enabled —', JSON.stringify(this.oneWorld.stats));
             } catch (error) {
-                console.error('[OdysseyBoard] One World failed to build; falling back', error);
-                // The world now builds AFTER the startup chapter creates (item 2.1), so lifting
-                // the suppression here no longer re-creates chapters 2-5 in the startup loop;
-                // the background loader picks them up (they are outside the startup set).
+                console.error('[OdysseyBoard] One World failed to build; playing on without it', error);
                 this._abandonOneWorld(error);
             }
         }
@@ -3047,20 +3028,16 @@ export class OdysseyBoardController {
 
     /**
      * A world whose node graph cannot build draws broken or not at all, for two thirds of the
-     * journey, with nothing on screen saying why (audit 2026-10-18). Fall back as a failed build
-     * does, and load the chapter the camera is in now.
+     * journey, with nothing on screen saying why (audit 2026-10-18). Give it up as a failed
+     * build is.
      * @param {*} error
      * @param {?THREE.Object3D} group the world group that failed to compile
-     * @returns {?Promise<boolean>} the request for the camera's chapter, if one was made
      * @private
      */
     _abandonWorldAfterFailedCompile(error, group) {
-        if (!group || this._disposed || this.oneWorld?.group !== group) return null;
+        if (!group || this._disposed || this.oneWorld?.group !== group) return;
         this._abandonOneWorld(error);
-        const here = this.environmentManager?.getBlendState?.(this.cameraController?.getCurrentPosition?.() ?? 0);
-        return Number.isFinite(here?.activeChapter)
-            ? this._requestChapterEnvironment(here.activeChapter, { urgent: true })
-            : null;
+        this.corridorField?.fillSuppressedChapters();
     }
 
     /**
@@ -3394,11 +3371,11 @@ export class OdysseyBoardController {
     }
 
     /**
-     * Give up on the One World and hand chapters 2-5 back to their dioramas — LOUDLY, after
-     * the fallback is arranged (Wave 4/6 audit prerequisite): a player-visible banner and a
-     * persisted localStorage log. Silent recovery is how we would have retired the fallback
-     * while some machine quietly needed it. Shared by a failed build and a failed post-reveal
-     * compile.
+     * Give up on the One World (ADR-0022): chapters 2-5 play on without their ground, against
+     * the corridor's sheets and the atmosphere, and the journey stays playable. LOUDLY: a
+     * player-visible banner and a persisted localStorage log, because that state is
+     * self-consistent enough to pass for a quieter map. Shared by a failed build and a failed
+     * post-reveal compile.
      * @private
      */
     _abandonOneWorld(error) {
@@ -3412,11 +3389,10 @@ export class OdysseyBoardController {
                 world.dispose?.();
             } catch { /* already broken; the scene no longer holds it */ }
         }
-        if (this.environmentManager) this.environmentManager.suppressedChapters = new Set();
-        // Reporting must never break the recovery, hence its own guard.
+        // Reporting must never break the journey, hence its own guard.
         try {
             reportWorldBuildFailure(error);
-        } catch { /* diagnostic only — never let reporting hurt the fallback */ }
+        } catch { /* diagnostic only */ }
     }
 
     /**
@@ -3727,7 +3703,8 @@ export class OdysseyBoardController {
                 // is never empty void (reads chapter-profile + path-utils; one cohesive rig).
                 this.corridorField = new OdysseyCorridorField(this.scene, {
                     // Act II is a continuous landscape now, not a set piece with void around
-                    // it — its parallax sheets would be overdraw in front of a real horizon.
+                    // it — its parallax sheets would be overdraw in front of a real horizon
+                    // (and are its backdrop when the world could not be built).
                     suppressedChapters: this.oneWorldEnabled ? ONE_WORLD_CHAPTERS : [],
                 });
                 // THE STEAM QUENCH — the ch1 -> Act II occlusion moment (playground-proven in
@@ -4857,11 +4834,12 @@ export class OdysseyBoardController {
             await this._requestGlideChapters(currentChapter, targetChapter);
             if (!isCurrent()) return false;
             // A request can fail, still be pending, or resolve without creating scenery.
-            // One World supplies suppressed chapters without a separate environment.
+            // The One World's chapters have no environment of their own: they wait for the world
+            // while it is coming, and stay reachable if it was given up (ADR-0022).
             const hasEnvironment = this.environmentManager?.environments?.has(targetChapter);
-            const hasWorldScenery = this.oneWorld
+            const worldChapterReady = (this.oneWorld || this.oneWorldEnabled === false)
                 && this.environmentManager?.suppressedChapters?.has(targetChapter);
-            if (!hasEnvironment && !hasWorldScenery) return false;
+            if (!hasEnvironment && !worldChapterReady) return false;
             await this._compileGlideChapters(currentChapter, targetChapter);
             if (!isCurrent()) return false;
             // Reduced motion cuts instead of gliding 0.9-3.5 s (audit 2026-10-18). A caller's
@@ -4967,7 +4945,8 @@ export class OdysseyBoardController {
 
     /**
      * Whether everything the opening sweep flies through is ready: each chapter after the one on
-     * screen built, compiled and render-warmed, or, for the One World's chapters, the world compiled.
+     * screen built, compiled and render-warmed, or, for the One World's chapters, the world compiled
+     * (nothing to wait for once the world is given up).
      * @param {number} fromChapter
      * @param {number} toChapter
      * @returns {boolean}
@@ -4977,8 +4956,8 @@ export class OdysseyBoardController {
         const suppressed = this.environmentManager?.suppressedChapters;
         const step = toChapter >= fromChapter ? 1 : -1;
         for (let ch = fromChapter + step; ch !== toChapter + step; ch += step) {
-            if (this.oneWorld && suppressed?.has(ch)) {
-                if (!this._worldCompiledForSweep()) return false;
+            if (suppressed?.has(ch)) {
+                if (this.oneWorld && !this._worldCompiledForSweep()) return false;
             } else {
                 const env = this.environmentManager?.environments?.get(ch);
                 if (!env || !env.prewarmed || !env._renderWarmed) return false;
@@ -4999,7 +4978,7 @@ export class OdysseyBoardController {
 
     /**
      * Each chapter's state on the opening sweep's way, for the log and the probes: 'world' (drawn by
-     * the One World, compiled), 'world-cold', 'warm', 'compiled', 'built' or 'missing'.
+     * the One World, compiled), 'world-cold', 'no-world', 'warm', 'compiled', 'built' or 'missing'.
      * @param {number} fromChapter
      * @param {number} toChapter
      * @returns {Record<number, string>}
@@ -5011,7 +4990,8 @@ export class OdysseyBoardController {
         const step = toChapter >= fromChapter ? 1 : -1;
         for (let ch = fromChapter + step; ch !== toChapter + step; ch += step) {
             const env = this.environmentManager?.environments?.get(ch);
-            if (this.oneWorld && suppressed?.has(ch)) out[ch] = this._worldCompiledForSweep() ? 'world' : 'world-cold';
+            if (suppressed?.has(ch) && !this.oneWorld) out[ch] = 'no-world';
+            else if (suppressed?.has(ch)) out[ch] = this._worldCompiledForSweep() ? 'world' : 'world-cold';
             else if (!env) out[ch] = 'missing';
             else if (env._renderWarmed) out[ch] = 'warm';
             else out[ch] = env.prewarmed ? 'compiled' : 'built';

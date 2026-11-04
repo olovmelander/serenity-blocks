@@ -12,7 +12,7 @@
  * octave count can vary per call site.
  *
  * `snoise3` is a TSL port of the Ashima simplex `snoise` the four chapters' private
- * inline GLSL used (earth-core / deep-ocean / mountain-peaks / surface-world), ~[-1,1].
+ * inline GLSL used in the chapter shaders, ~[-1,1].
  * It replaced three's `mx_noise_float` stand-in on 2026-08-21: MaterialX's integer-hash
  * Perlin made the D3D compiler take 7 s on ONE lava-lake pipeline (see `simplex3` below).
  *
@@ -294,7 +294,7 @@ const snoise3Calibrated = /* @__PURE__ */ Fn(([p]) => {
 
 /**
  * Simplex-family gradient noise in ~[-1,1] with `mx_noise_float`'s distribution (see above) —
- * the `snoise` used by earth-core / deep-ocean / mountain-peaks / surface-world.
+ * the `snoise` the chapter shaders use.
  */
 export function snoise3(pInput) {
     if (!USE_SIMPLEX) return mxNoiseFloat(vec3(pInput));

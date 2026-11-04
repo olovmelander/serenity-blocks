@@ -16,21 +16,23 @@ import { fileURLToPath } from 'node:url';
 import { CHAPTER_CONFIGS } from '../../src/core/odyssey/data/chapters.js';
 import { ODYSSEY_CHAPTER_PROFILES } from '../../src/rendering/odyssey/chapter-environments/shared/chapter-profile.js';
 import {
-    CHAPTER_SCENES, getChapterScene, exportNamesForScene,
+    CHAPTER_SCENES, ONE_WORLD_CHAPTERS, getChapterScene, exportNamesForScene,
 } from '../../src/rendering/odyssey/chapter-environments/registry.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const envDir = path.join(repoRoot, 'src', 'rendering', 'odyssey', 'chapter-environments');
 
 const ids = (list) => [...list].map((e) => e.id).sort((a, b) => a - b);
+/** Every chapter: the ones with a scene and the ones the One World draws. */
+const allChapterIds = () => [...ids(CHAPTER_SCENES), ...ONE_WORLD_CHAPTERS].sort((a, b) => a - b);
 
 describe('chapter registry — id-set equality (the anti-drift pin)', () => {
-    it('registry ids == core CHAPTER_CONFIGS ids', () => {
-        expect(ids(CHAPTER_SCENES)).toEqual(ids(CHAPTER_CONFIGS));
+    it('registry ids + the One World chapters == core CHAPTER_CONFIGS ids', () => {
+        expect(allChapterIds()).toEqual(ids(CHAPTER_CONFIGS));
     });
 
-    it('registry ids == ODYSSEY_CHAPTER_PROFILES ids', () => {
-        expect(ids(CHAPTER_SCENES)).toEqual(ids(ODYSSEY_CHAPTER_PROFILES));
+    it('registry ids + the One World chapters == ODYSSEY_CHAPTER_PROFILES ids', () => {
+        expect(allChapterIds()).toEqual(ids(ODYSSEY_CHAPTER_PROFILES));
     });
 
     it('sceneIds are unique kebab-case', () => {
@@ -64,9 +66,10 @@ describe('chapter registry — module wiring is real', () => {
         expect(entry.id).toBeGreaterThanOrEqual(1);
     });
 
-    it('getChapterScene resolves every core chapter and rejects unknowns', () => {
+    it('getChapterScene resolves every chapter with a scene and rejects the rest', () => {
         for (const chapter of CHAPTER_CONFIGS) {
-            expect(getChapterScene(chapter.id)?.sceneId).toBeTruthy();
+            if (ONE_WORLD_CHAPTERS.includes(chapter.id)) expect(getChapterScene(chapter.id)).toBe(null);
+            else expect(getChapterScene(chapter.id)?.sceneId).toBeTruthy();
         }
         expect(getChapterScene(999)).toBe(null);
     });

@@ -1,16 +1,17 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import {
+    CHAPTER_SCENES, ONE_WORLD_CHAPTERS, getChapterScene,
+} from '../chapter-environments/registry.js';
 
 /**
- * WAVE 3 — One World is the DEFAULT path, and the escape hatch is real.
+ * ADR-0022 — Act II IS the One World, and the old chapter 2-5 scenes are gone for good.
  *
- * These are source assertions rather than a booted board, deliberately: constructing
- * OdysseyBoardController needs a WebGPU device, and the thing worth pinning here is a POLICY
- * (which path ships, and whether it can be turned off) rather than a rendering behaviour. The
- * behaviour is covered by the in-game captures; this catches the policy silently flipping back
- * — or, more likely, someone "simplifying" the tri-state flag into a plain truthy read and
- * quietly deleting the only way a user can get the legacy journey back.
+ * Mostly source assertions, deliberately: constructing OdysseyBoardController needs a WebGPU
+ * device, and the thing worth pinning here is a POLICY (what ships, and that nothing can bring
+ * the old scenes back) rather than a rendering behaviour. The behaviour is covered by the
+ * in-game captures.
  */
 
 const ROOT = path.resolve(
@@ -22,50 +23,51 @@ const BOARD = readFileSync(
     'utf8',
 );
 
-describe('One World ships by default', () => {
-    it('does not gate itself behind an opt-in truthy flag read', () => {
-        // The opt-in form. If this ever comes back, the rebuild has silently stopped shipping.
-        expect(BOARD).not.toMatch(/oneWorldEnabled\s*=\s*options\.oneWorld === true\s*\|\|\s*readBooleanUrlFlag\('odysseyOneWorld'\)/);
-        expect(BOARD).toMatch(/oneWorldEnabled/);
+describe('Act II is the One World', () => {
+    it('has no switch that turns the world off', () => {
+        expect(BOARD).not.toMatch(/odysseyOneWorld/);
+        expect(BOARD).not.toMatch(/options\.oneWorld/);
+        expect(BOARD).toMatch(/this\.oneWorldEnabled = true;/);
     });
 
-    it('keeps an explicit off switch — ?odysseyOneWorld=0 and options.oneWorld === false', () => {
-        expect(BOARD).toMatch(/oneWorldParam !== '0'/);
-        expect(BOARD).toMatch(/options\.oneWorld !== false/);
+    it('draws exactly chapters 2-5, and they have no scene of their own', () => {
+        // Ch1 (earth core) and Ch6+ (space onward) keep their own environments: the world's
+        // height field does not describe them.
+        expect([...ONE_WORLD_CHAPTERS]).toEqual([2, 3, 4, 5]);
+        ONE_WORLD_CHAPTERS.forEach((id) => expect(getChapterScene(id)).toBe(null));
+        expect(CHAPTER_SCENES.map((scene) => scene.id)).toEqual([1, 6, 7, 8]);
     });
 
-    it('suppresses exactly the chapters the world draws, and no others', () => {
-        const match = BOARD.match(/const ONE_WORLD_CHAPTERS = \[([^\]]+)\]/);
-        expect(match, 'ONE_WORLD_CHAPTERS must exist').toBeTruthy();
-        const ids = match[1].split(',').map((t) => Number(t.trim()));
-        // Act II is chapters 2-5. Ch1 (earth core) and Ch6+ (space onward) keep their own
-        // environments — the world's height field does not describe them, so suppressing one
-        // would leave a chapter with no ground at all rather than with the world's ground.
-        expect(ids).toEqual([2, 3, 4, 5]);
+    it('the old scenes stay gone', () => {
+        ['deep-ocean', 'surface-world', 'mountain-peaks', 'sky-drift'].forEach((scene) => {
+            const module = path.join(ROOT, `src/rendering/odyssey/chapter-environments/${scene}.js`);
+            expect(existsSync(module), `${scene}.js is back`).toBe(false);
+        });
     });
 
-    it('still builds the world inside a try/catch that falls back to the dioramas', () => {
-        // A throw in world construction must not take the whole board down now that this is
-        // the default path — the legacy chapters are the fallback, and they only exist if
-        // suppression is undone when the build fails.
+    it('builds the world inside a try/catch, and gives it up loudly', () => {
+        // A throw in world construction must not take the whole board down. The journey plays
+        // on without the world, and the player is told why it looks the way it does.
         const idx = BOARD.indexOf('createOdysseyWorld(');
         expect(idx).toBeGreaterThan(-1);
         const before = BOARD.slice(Math.max(0, idx - 900), idx);
         expect(before).toMatch(/try\s*\{/);
-        // REPLACED 2026-08-13 (same requirement, STRONGER assertion): this read
-        // `BOARD.slice(idx, idx + 2200)` for both `catch` and the un-suppress, so adding a
-        // comment to the option list could break it — and worse, a fixed window never
-        // actually proved the reset was INSIDE the catch. Anchor on the catch itself.
         const catchIdx = BOARD.indexOf('catch', idx);
         expect(catchIdx).toBeGreaterThan(idx);
-        const catchBlock = BOARD.slice(catchIdx, catchIdx + 800);
-        // The fallback moved into one method shared with a failed post-reveal compile
-        // (audit 2026-10-18); the catch must still call it, and it must still undo both.
-        expect(catchBlock).toMatch(/this\._abandonOneWorld\(error\)/);
+        expect(BOARD.slice(catchIdx, catchIdx + 800)).toMatch(/this\._abandonOneWorld\(error\)/);
         const methodIdx = BOARD.indexOf('_abandonOneWorld(error) {');
         expect(methodIdx).toBeGreaterThan(-1);
         const method = BOARD.slice(methodIdx, methodIdx + 800);
         expect(method).toMatch(/oneWorldEnabled = false/);
-        expect(method).toMatch(/suppressedChapters = new Set\(\)/);
+        // The chapters stay the world's: there is nothing to hand them back to.
+        expect(method).not.toMatch(/suppressedChapters/);
+    });
+
+    it('gives the world\'s chapters their corridor backdrop when the world is missing', () => {
+        // Built after the world: a failed build leaves the sheets in (oneWorldEnabled is false).
+        expect(BOARD).toMatch(/new OdysseyCorridorField\(this\.scene, \{[\s\S]{0,300}suppressedChapters: this\.oneWorldEnabled \? ONE_WORLD_CHAPTERS : \[\]/);
+        // A world that fails to compile later goes after the field is built: it fills them in.
+        const idx = BOARD.indexOf('_abandonWorldAfterFailedCompile(error, group) {');
+        expect(BOARD.slice(idx, idx + 300)).toMatch(/this\.corridorField\?\.fillSuppressedChapters\(\)/);
     });
 });

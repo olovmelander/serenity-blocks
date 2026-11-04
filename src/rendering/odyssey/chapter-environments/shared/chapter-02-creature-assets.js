@@ -8,12 +8,6 @@
  *     (composition/odyssey-whale-pass.js), built, rigged and keyed in headless Blender by
  *     scripts/blender/odyssey/odyssey_whales.py. It replaced `whale-glide.glb`, a photo-to-3D
  *     mesh whose auto-rig was backwards.
- *     The Deep Ocean diorama, which only the ADR-0015 recovery path builds
- *     (`?odysseyOneWorld=0` or a world-build failure), swims it too (deep-ocean-manta.js).
- *
- * `manta-glide.glb`, the diorama's old hero manta (a photo-to-3D mesh whose wings curled down,
- * with two lumps hanging below), was removed on 2026-11-03 (owner's call); the diorama's
- * billboard manta trio carries the mantas.
  *
  * IMPORTANT: this module is intentionally tolerant of an EMPTY asset directory.
  * `import.meta.glob` returns `{}` when no .glb is present, so the chapter builds and renders

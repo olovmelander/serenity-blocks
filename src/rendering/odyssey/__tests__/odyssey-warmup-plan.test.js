@@ -106,7 +106,7 @@ describe('buildRenderWarmOrder (post-reveal background render-warm sweep)', () =
         expect(buildRenderWarmOrder({ total: 5, focus: 3 })).toEqual([3, 2, 4, 1, 5]);
     });
 
-    it('warms every chapter when nothing is suppressed (legacy diorama path)', () => {
+    it('warms every chapter when nothing is suppressed', () => {
         expect(buildRenderWarmOrder({ total: 8, focus: 1 }).sort((a, b) => a - b))
             .toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     });

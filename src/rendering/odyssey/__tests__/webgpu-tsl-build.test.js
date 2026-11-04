@@ -18,11 +18,7 @@ import { uniform } from 'three/tsl';
 const MODULES = [
     '../chapter-environments/black-hole-transcendence.tsl.js',
     '../chapter-environments/cosmic-expanse.tsl.js',
-    '../chapter-environments/deep-ocean.tsl.js',
     '../chapter-environments/earth-core.tsl.js',
-    '../chapter-environments/mountain-peaks.tsl.js',
-    '../chapter-environments/sky-drift.tsl.js',
-    '../chapter-environments/surface-world.tsl.js',
     '../chapter-environments/urban-dreams.tsl.js',
     '../composition/odyssey-atmosphere-dome.tsl.js',
     '../level-node-manager.tsl.js',

@@ -16,8 +16,8 @@
  *    tests/unit/chapter-registry-consistency.test.js;
  *  - the GPU-gate scene list is pinned ⊇ these sceneIds
  *    (tests/unit/odyssey-gpu-gate-coverage.test.js);
- *  - id-set equality with core CHAPTER_CONFIGS and ODYSSEY_CHAPTER_PROFILES is
- *    test-enforced, so none of the three lists can drift.
+ *  - these ids plus ONE_WORLD_CHAPTERS equal core CHAPTER_CONFIGS and
+ *    ODYSSEY_CHAPTER_PROFILES, test-enforced, so none of the lists can drift.
  *
  * PURE DATA + thunks: no three.js import, safe to import in node tests. The
  * `load` thunks keep EXPLICIT static-analyzable import paths (no template
@@ -27,14 +27,16 @@
 
 export const CHAPTER_SCENES = Object.freeze([
     Object.freeze({ id: 1, sceneId: 'earth-core', load: () => import('./earth-core.js') }),
-    Object.freeze({ id: 2, sceneId: 'deep-ocean', load: () => import('./deep-ocean.js') }),
-    Object.freeze({ id: 3, sceneId: 'surface-world', load: () => import('./surface-world.js') }),
-    Object.freeze({ id: 4, sceneId: 'mountain-peaks', load: () => import('./mountain-peaks.js') }),
-    Object.freeze({ id: 5, sceneId: 'sky-drift', load: () => import('./sky-drift.js') }),
     Object.freeze({ id: 6, sceneId: 'cosmic-expanse', load: () => import('./cosmic-expanse.js') }),
     Object.freeze({ id: 7, sceneId: 'black-hole-transcendence', load: () => import('./black-hole-transcendence.js') }),
     Object.freeze({ id: 8, sceneId: 'urban-dreams', load: () => import('./urban-dreams.js') }),
 ]);
+
+/**
+ * The chapters with no scene of their own: Act II is the One World (ADR-0022), so they are never
+ * created, shown or faded by the chapter manager.
+ */
+export const ONE_WORLD_CHAPTERS = Object.freeze([2, 3, 4, 5]);
 
 /** @type {Map<number, (typeof CHAPTER_SCENES)[number]>} */
 const byId = new Map(CHAPTER_SCENES.map((entry) => [entry.id, entry]));

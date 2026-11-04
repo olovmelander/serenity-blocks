@@ -8,7 +8,7 @@
  * can be eyeballed and any WGSL/TSL compile error surfaced before the whole board is flipped.
  *
  * Open `http://localhost:5173/odyssey-webgpu-pilot.html` (after `npm run dev`).
- *   ?chapter=earth-core   start on a specific chapter (default deep-ocean)
+ *   ?chapter=cosmic-expanse   start on a specific chapter (default earth-core)
  *   ?forceWebGL=1         exercise the automatic WebGL2 fallback backend (look MUST match)
  *   ?dist=120             override camera distance
  * Keys: [n]/→ next chapter, [p]/← previous, [1..7] jump.
@@ -23,21 +23,7 @@ import { OdysseyTslPipeline } from '../odyssey-post/odyssey-tsl-pipeline.js';
 
 const CHAPTERS = [
     {
-        key: 'deep-ocean', label: 'Deep Ocean', fn: 'createDeepOceanPilotTSL', dist: 70, lookY: 25, sky: 0x001030, fog: 0x002040, fogD: 0.004, load: () => import('../chapter-environments/deep-ocean.tsl.js'),
-    },
-    {
         key: 'earth-core', label: 'Earth Core', fn: 'createEarthCorePilotTSL', dist: 150, lookY: 0, sky: 0x1a0a00, fog: 0x2d1500, fogD: 0.004, load: () => import('../chapter-environments/earth-core.tsl.js'),
-    },
-    {
-        // Chapter 3 — was silently exempt from the GPU gate: the assembler existed
-        // in surface-world.tsl.js but was never wired here (plan §3c.1).
-        key: 'surface-world', label: 'Surface World', fn: 'createSurfaceWorldPilotTSL', dist: 260, lookY: 25, sky: 0x2a2010, fog: 0xb08a50, fogD: 0.0015, load: () => import('../chapter-environments/surface-world.tsl.js'),
-    },
-    {
-        key: 'mountain-peaks', label: 'Mountains', fn: 'createMountainPeaksPilotTSL', dist: 700, lookY: 120, sky: 0x2c3e50, fog: 0x95a5a6, fogD: 0.0006, load: () => import('../chapter-environments/mountain-peaks.tsl.js'),
-    },
-    {
-        key: 'sky-drift', label: 'Sky & Drift', fn: 'createSkyDriftPilotTSL', dist: 320, lookY: 0, sky: 0x1a1a2e, fog: 0x16213e, fogD: 0.0012, load: () => import('../chapter-environments/sky-drift.tsl.js'),
     },
     {
         key: 'cosmic-expanse', label: 'Space', fn: 'createCosmicExpansePilotTSL', dist: 170, lookY: 0, sky: 0x05060f, fog: 0x1a1a2e, fogD: 0.0035, load: () => import('../chapter-environments/cosmic-expanse.tsl.js'),

@@ -412,14 +412,6 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
             notes: 'Adaptive quality can subsequently change this value.',
         },
     ),
-    parameter(
-        'odysseyOneWorld',
-        'Uses one continuous landscape across chapters 2–5; disabling restores the legacy chapter scenes.',
-        '0 or false disables; other values enable',
-        'On',
-        '0',
-        { scope: 'Odyssey, chapters 2–5' },
-    ),
     toggle('odysseyWorldBakeSync', 'Runs world scenery preparation on the main thread instead of workers.', {
         scope: WORLD_SCOPE,
     }),
@@ -670,19 +662,6 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
             scope: 'Odyssey chapter 1: Earth Core', sources: [EARTH],
         },
     ),
-    parameter(
-        'ch3HeroMirror',
-        'Uses a real planar mirror for the legacy Surface World lake.',
-        '1 or true enables; 0 or false disables',
-        'On at High, Ultra and Extreme; off at lower quality',
-        '1',
-        {
-            scope: 'Odyssey chapter 3 legacy scene (odysseyOneWorld=0)',
-            sources: ['src/rendering/odyssey/chapter-environments/surface-world.js'],
-            notes: 'Without an explicit URL value, '
-                + 'localStorage odyssey.ch3HeroMirror=1 or 0 overrides the quality default.',
-        },
-    ),
     ...[
         ['odysseyCh6NoDome', 'Removes the space chapter’s background dome.'],
         ['odysseyCh6NoHeroes', 'Removes the space chapter’s black hole, gas giant and galaxy.'],
@@ -733,10 +712,10 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
     parameter(
         'chapter',
         'Chooses the first isolated scene shown in the Odyssey renderer pilot.',
-        'deep-ocean, earth-core, surface-world, mountain-peaks, sky-drift, cosmic-expanse, '
-            + 'black-hole-transcendence, urban-dreams, path, level-nodes or threshold-breach',
-        'deep-ocean',
+        'earth-core, cosmic-expanse, black-hole-transcendence, urban-dreams, path, level-nodes or '
+            + 'threshold-breach',
         'earth-core',
+        'cosmic-expanse',
         {
             scope: 'odyssey-webgpu-pilot.html only',
             sources: [PILOT],

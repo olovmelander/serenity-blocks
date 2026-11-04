@@ -101,7 +101,7 @@ const delay = (ms) => new Promise((resolve) => {
 function parseArgs(argv) {
     const result = {};
     // Repeated options ACCUMULATE into an array instead of last-one-wins. This bug produced a
-    // silently wrong measurement: `--url-flag odysseyOneWorld=1 --url-flag odysseyWorldNoClouds=1`
+    // silently wrong measurement: `--url-flag odysseyHideLevelNodes=1 --url-flag odysseyWorldNoClouds=1`
     // dropped the first flag, the capture booted the LEGACY path, and its success was read as a
     // clean bisect of the One World boot stall — the manifest's urlFlags list was the only tell.
     const store = (key, value) => {
@@ -166,7 +166,7 @@ function makeUrl() {
         captureBust: String(Date.now()),
     });
     if (FORCE_WEBGL) params.set('forceWebGL', '1');
-    // Pass arbitrary extra flags through: --url-flag odysseyOneWorld=1
+    // Pass arbitrary extra flags through: --url-flag odysseyWorldNoClouds=1
     []
         .concat(args['url-flag'] || args.urlFlag || [])
         .forEach((entry) => {

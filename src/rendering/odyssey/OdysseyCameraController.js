@@ -160,10 +160,8 @@ const CHAPTER_FRAMING_OVERRIDES = Object.freeze({
         lookRight: -4.0,
         lookUp: 1.0,
     }),
-    // 3 — Surface (living): the baseline look down the coast toward the massif. (Until the
-    // 2026-10-20 overhaul this leaned LEFT toward the diorama chapter's Great Tree; that tree
-    // only exists on the ?odysseyOneWorld=0 path, so in the shipped world the bias aimed at
-    // nothing. The per-orb shots in CHAPTER_3_SHOTS now carry the composition.)
+    // 3 — Surface (living): the baseline look down the coast toward the massif. The per-orb
+    // shots in CHAPTER_3_SHOTS carry the composition.
     3: Object.freeze({
         lookForward: 2.0,
         lookUp: 1.2,

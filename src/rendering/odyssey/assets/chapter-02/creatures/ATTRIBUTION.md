@@ -4,7 +4,7 @@ Project-owned original assets. License: proprietary-original. No third-party att
 
 | file | role | made by |
 | --- | --- | --- |
-| `humpback-swim.glb` | the humpback mother and calf of the whale pass (`composition/odyssey-whale-pass.js`), and the whale of the Deep Ocean diorama on the ADR-0015 recovery path (`?odysseyOneWorld=0`) | `scripts/blender/odyssey/odyssey_whales.py` |
+| `humpback-swim.glb` | the humpback mother and calf of the whale pass (`composition/odyssey-whale-pass.js`) | `scripts/blender/odyssey/odyssey_whales.py` |
 
 ## humpback-swim.glb (2026-11-03)
 

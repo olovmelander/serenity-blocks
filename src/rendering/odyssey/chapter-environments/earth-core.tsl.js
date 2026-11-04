@@ -2000,8 +2000,7 @@ export function createSeleniteCrystalsTSL(uTime, uPulseIntensity = uniform(0), o
 
 /**
  * Assemble the converted Earth Core materials into one group + a single uTime uniform
- * the caller ticks each frame. Mirrors deep-ocean.tsl.js's createDeepOceanPilotTSL —
- * used by the standalone WebGPU pilot validation page.
+ * the caller ticks each frame. Used by the standalone WebGPU pilot validation page.
  */
 export function createEarthCorePilotTSL() {
     const uTime = uniform(0);

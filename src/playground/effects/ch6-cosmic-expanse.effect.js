@@ -1,7 +1,7 @@
 /* eslint-disable import/no-unresolved, import/no-extraneous-dependencies, no-console */
 // FULL Chapter-6 (Cosmic Expanse / Space) Odyssey composition harness.
 //
-// Mirrors ch5-sky-drift.effect.js: it mounts the shipping createCosmicExpanseEnvironment(),
+// Mounts the shipping createCosmicExpanseEnvironment(),
 // the real OdysseyPathRenderer, and the live OdysseyCameraController/Director against the
 // current path data — so tuning the hero placement (APPROACH endpoints), the camera framing
 // and the TSL builders here ports directly into Odyssey mode.

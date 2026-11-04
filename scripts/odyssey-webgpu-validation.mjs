@@ -11,7 +11,7 @@
  *   npm run validate:odyssey:webgpu                        # WebGPU backend (asserts WebGPU)
  *   ODYSSEY_FORCE_WEBGL=1 npm run validate:odyssey:webgpu  # WebGL2 fallback (asserts WebGL2)
  * Env:
- *   ODYSSEY_VALIDATION_SCENES=deep-ocean,path   # optional subset (default: all)
+ *   ODYSSEY_VALIDATION_SCENES=earth-core,path   # optional subset (default: all)
  *   ODYSSEY_VALIDATION_READY_TIMEOUT_MS=90000    # per-scene readiness budget (software raster is slow)
  *   ODYSSEY_SHOW_WINDOW=1                         # show the window (debugging)
  *
@@ -35,11 +35,9 @@ const READY_TIMEOUT_MS = Number(process.env.ODYSSEY_VALIDATION_READY_TIMEOUT_MS 
 const ARTIFACT_DIR = path.join(ROOT, 'artifacts', 'odyssey', 'webgpu-validation', FORCE_WEBGL ? 'webgl2' : 'webgpu');
 
 // Every chapter in the chapter registry (CHAPTER_SCENES) plus the 3 non-chapter
-// pilot scenes. Chapter 3 (surface-world) was silently exempt for months.
-// Pinned ⊇ the registry by tests/unit/odyssey-gpu-gate-coverage.test.js.
+// pilot scenes. Pinned ⊇ the registry by tests/unit/odyssey-gpu-gate-coverage.test.js.
 const ALL_SCENES = [
-    'deep-ocean', 'earth-core', 'surface-world', 'mountain-peaks', 'sky-drift',
-    'cosmic-expanse', 'black-hole-transcendence', 'urban-dreams',
+    'earth-core', 'cosmic-expanse', 'black-hole-transcendence', 'urban-dreams',
     'path', 'level-nodes', 'threshold-breach',
 ];
 const SCENE_FILTER = (process.env.ODYSSEY_VALIDATION_SCENES || '')

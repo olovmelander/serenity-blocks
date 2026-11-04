@@ -85,20 +85,6 @@ const CONFIGURATIONS = [
         flags: { odysseyHideLevelNodes: '1' },
         note: '55 nodes x 3 nested transparent shells hidden',
     },
-    // One World is the DEFAULT path since Wave 3, so `baseline` IS One World and the old
-    // `one-world` configuration compared it against itself — a guaranteed zero delta that
-    // would have read as "the rebuild costs nothing". The comparison that means something now
-    // is against the LEGACY dioramas, which is what the escape hatch restores.
-    {
-        id: 'legacy-dioramas',
-        flags: { odysseyOneWorld: '0' },
-        note: 'chapters 2-5 back to their own environments (the ?odysseyOneWorld=0 fallback)',
-    },
-    {
-        id: 'legacy-no-level-nodes',
-        flags: { odysseyOneWorld: '0', odysseyHideLevelNodes: '1' },
-        note: 'legacy dioramas without the orb group',
-    },
     // THE SEA PLATE (Ghibli-water plan, Wave 0). One ungated DoubleSide transparent clipmap
     // that draws across the whole act window (p 0.063-0.678) and whose total cost had never
     // been measured because nothing could switch it off. Run as

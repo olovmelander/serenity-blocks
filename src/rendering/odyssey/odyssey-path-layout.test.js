@@ -1,10 +1,5 @@
 import * as THREE from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
-import {
-    resolveSurfaceWorldAuroraPreviewState,
-    updateSurfaceWorldEnvironment,
-    resolveSurfaceWorldVisibilityState,
-} from './chapter-environments/surface-world.js';
 import { OdysseyPathRenderer } from './OdysseyPathRenderer.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
 import { odysseyWorldHeight } from './world/odyssey-world-height.js';
@@ -67,12 +62,9 @@ describe('odyssey path layout', () => {
     });
 
     it('keeps the Sky Drift spline above the summit mass of the world it actually flies over', () => {
-        // SPEC-AUTHORITY FLIP (2026-08-12): this used to measure clearance against the LEGACY
-        // diorama silhouette (canonical specs + mountainCpuDisplacement) — a proxy for ground
-        // the default path no longer renders. It now measures against the One World height
-        // field itself, which is the surface under the camera in the shipped build. Same 60u
-        // contract; measured 112.3u at the tightest point (p=0.500, the summit crossing) when
-        // this was rewritten, so a failure here means the rail or the terrain moved, not noise.
+        // Measured against the One World height field, the surface under the camera. 112.3u at
+        // the tightest point (p=0.500, the summit crossing) when this was written, so a failure
+        // here means the rail or the terrain moved, not noise.
         const positions = getActiveOdysseyChapterPositions();
         const ch5Start = positions[4];
         const ch6Start = positions[5];
@@ -190,75 +182,5 @@ describe('odyssey path layout', () => {
         expect(resetPoint.x).toBeCloseTo(baselinePoint.x, 6);
         expect(resetPoint.y).toBeCloseTo(baselinePoint.y, 6);
         expect(resetPoint.z).toBeCloseTo(baselinePoint.z, 6);
-    });
-
-    it('reveals chapter 3 surface elements off the path probe instead of raw camera offset', () => {
-        const atSurface = resolveSurfaceWorldVisibilityState({
-            waterSurfaceY: 204,
-            surfaceProbeY: 204,
-            cameraY: 203,
-        });
-        expect(atSurface.isUnderwater).toBe(false);
-        expect(atSurface.surfaceOpacity).toBeGreaterThan(0.9);
-
-        const deepBelowSurface = resolveSurfaceWorldVisibilityState({
-            waterSurfaceY: 204,
-            surfaceProbeY: 192,
-            cameraY: 180,
-        });
-        expect(deepBelowSurface.isUnderwater).toBe(true);
-        expect(deepBelowSurface.surfaceOpacity).toBe(0);
-
-        const aboveSurface = resolveSurfaceWorldVisibilityState({
-            waterSurfaceY: 204,
-            surfaceProbeY: 206,
-            cameraY: 205,
-        });
-        expect(aboveSurface.isUnderwater).toBe(false);
-        expect(aboveSurface.surfaceOpacity).toBe(1);
-    });
-
-    it('keeps the chapter 3 aurora preview disabled for the Sky Drift handoff', () => {
-        const previewState = resolveSurfaceWorldAuroraPreviewState(0.30);
-        expect(previewState.previewVisible).toBe(false);
-        expect(previewState.previewOpacity).toBe(0);
-    });
-
-    it('uses progress-based probing when updating the surface world environment', () => {
-        const uniform = { value: 1, __odysseyBaseOpacity: 1 };
-        const auroraUniform = { value: 1, __odysseyBaseOpacity: 1 };
-        const element = { visible: false };
-        const auroraPreview = { visible: false };
-        const group = {
-            userData: {
-                uniforms: { uTime: { value: 0 } },
-                waterSurfaceY: 204,
-                surfaceElements: [element, auroraPreview],
-                surfaceOpacityUniformTargets: [uniform],
-                auroraPreviewOpacityUniformTargets: [auroraUniform],
-                auroraPreview,
-                snowBlendUniformTargets: [],
-                skyElement: { visible: false },
-                foothillBridge: null,
-                butterflies: null,
-                snowTransition: null,
-            },
-        };
-        const camera = {
-            position: {
-                y: 190,
-            },
-        };
-
-        // Probe PAST the chapter-entry ramp (the creative plan fades all surface
-        // elements in across the first ~7% of Chapter 3 so the landscape slab cannot
-        // pop at the breach) — this test verifies the progress-based probing itself.
-        updateSurfaceWorldEnvironment(group, 0, 1, camera, 0.24);
-
-        expect(element.visible).toBe(true);
-        expect(uniform.value).toBeGreaterThan(0.9);
-        expect(auroraPreview.visible).toBe(false);
-        expect(auroraUniform.value).toBe(0);
-        expect(group.userData.skyElement.visible).toBe(true);
     });
 });

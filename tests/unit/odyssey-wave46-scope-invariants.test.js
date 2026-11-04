@@ -1,16 +1,15 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { ONE_WORLD_CHAPTERS } from '../../src/rendering/odyssey/chapter-environments/registry.js';
 
 /**
- * WAVES 4 AND 6 — the deletions that must NOT happen, encoded so they cannot be re-proposed.
+ * WHAT THE RETIRED CHAPTERS DID NOT TAKE WITH THEM.
  *
- * Both waves were written as "delete code only the ?odysseyOneWorld=0 fallback reaches". A
- * 13-agent audit tested that premise with two independent adversarial lenses per target and
- * ALL EIGHT passes refuted it. The plan now records the corrected scope in prose — but prose
- * does not fail a build, and this exact claim has already been believed twice. These tests
- * are the enforcement: each one pins a specific consumer whose existence makes a proposed
- * deletion unsafe, so re-deriving the wrong plan breaks a test instead of the game.
+ * The chapter 2-5 scenes are gone (ADR-0022), but the seam machinery they grew up with is not
+ * theirs alone: the chapters that still draw depend on it. Each test here pins a consumer whose
+ * existence makes a further deletion unsafe, so a tidy-up of "old diorama code" breaks a test
+ * instead of the game.
  *
  * If one of these fails, do not "fix" it by loosening the test. It means someone deleted a
  * live consumer, and the question is whether that consumer was supposed to die first.
@@ -22,49 +21,6 @@ const ROOT = path.resolve(
 );
 const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
 const CHAPTER_DIR = 'src/rendering/odyssey/chapter-environments';
-
-describe('Wave 4 — the canonical chain has live consumers outside the suppressed chapters', () => {
-    it('the WINTER THEME has let go of mountain-language; the dioramas the kept fallback draws have not', () => {
-        // Until its from-scratch rebuild (2026-10) a shipped game theme, unrelated to Odyssey's
-        // chapters, imported the shared alpine language for its own mountains: the single biggest
-        // miss in the original scoping, and what this test pinned. That consumer was retired on
-        // purpose — the rebuilt theme plans its own fells (src/themes/winter/winter-core.js) — so
-        // the theme is no longer a reason the module cannot go, and it must not quietly become one
-        // again.
-        const winter = read('src/themes/winter/winter-theme.js');
-        expect(winter).not.toMatch(/rendering\/odyssey\//);
-        // What keeps mountain-language alive now is Odyssey itself: the chapter 3 and 4 dioramas
-        // import it, and ADR-0015 keeps those as the crash-recovery path. Deleting it is still not
-        // a delete that costs nothing.
-        ['surface-world.tsl.js', 'mountain-peaks.tsl.js', 'mountain-peaks.js'].forEach((consumer) => {
-            expect(read(`${CHAPTER_DIR}/${consumer}`), consumer).toMatch(/from '\.\/shared\/mountain-language\.js'/);
-        });
-        expect(read(`${CHAPTER_DIR}/shared/canonical-mountain-range.js`)).toMatch(/from '\.\/mountain-language\.js'/);
-    });
-
-    it('canonical-mountain-range is reachable from playground effects (a DEV page since 2026-08-21)', () => {
-        // The playground is no longer a production rollup input (app boot, 2026-08-21: its
-        // static graph reached Odyssey chapter modules and Rollup merged them into the
-        // playground entry chunk, so the game's lazy chapter loads ran the playground's init).
-        // The effects still exist for the dev page, and six themes import effects directly —
-        // so deleting the module still breaks real builds, just through the themes now.
-        const vite = read('vite.config.js');
-        expect(vite).not.toMatch(/playground: path.resolve(projectRoot, 'playground.html')/);
-        expect(vite).toMatch(/no longer a production input/);
-        const effects = readdirSync(path.join(ROOT, 'src/playground/effects'))
-            .filter((f) => f.endsWith('.effect.js'))
-            .filter((f) => read(`src/playground/effects/${f}`).includes('canonical-mountain-range'));
-        expect(effects.length).toBeGreaterThan(0);
-    });
-
-    it('the LIVE world still derives its silhouette from the shared spec authority', () => {
-        // Wave 4's deletable part is done: the peak geometry moved to world/odyssey-peak-specs.js
-        // and the legacy builder derives from it. What must not regress is that direction.
-        expect(existsSync(path.join(ROOT, 'src/rendering/odyssey/world/odyssey-peak-specs.js'))).toBe(true);
-        expect(read(`${CHAPTER_DIR}/shared/canonical-mountain-range.js`))
-            .toMatch(/import \{ ODYSSEY_PEAK_SPECS \}/);
-    });
-});
 
 describe('Wave 6 — most ecotone bridges belong to chapters that still draw', () => {
     /** The real construct, not the comment string the plan counted. */
@@ -86,11 +42,8 @@ describe('Wave 6 — most ecotone bridges belong to chapters that still draw', (
         expect(total).toBeGreaterThanOrEqual(30);
     });
 
-    it('none of chapters 1, 7, 8 is suppressed by One World', () => {
-        const board = read('src/rendering/odyssey/OdysseyBoardController.js');
-        const ids = board.match(/const ONE_WORLD_CHAPTERS = \[([^\]]+)\]/)[1]
-            .split(',').map((t) => Number(t.trim()));
-        [1, 6, 7, 8].forEach((id) => expect(ids).not.toContain(id));
+    it('none of chapters 1, 6, 7, 8 is drawn by the One World', () => {
+        [1, 6, 7, 8].forEach((id) => expect(ONE_WORLD_CHAPTERS).not.toContain(id));
     });
 
     it('SEAM_56 survives — it is what the player sees at the 5->6 act edge', () => {
@@ -100,12 +53,5 @@ describe('Wave 6 — most ecotone bridges belong to chapters that still draw', (
         expect(bridges).toMatch(/SEAM_56_AURORA_BRIDGE/);
         expect(read('src/rendering/odyssey/ChapterEnvironmentManager.js'))
             .toMatch(/SEAM_56_AURORA_BRIDGE/);
-    });
-
-    it("ch2's fallback-only bridges are KEPT, because the fallback is kept", () => {
-        // The audit listed these as the one safe deletion. They stopped being safe the moment
-        // we decided to keep ?odysseyOneWorld=0 as a real crash-recovery path (ADR-0015):
-        // deleting them degrades the recovery instead of costing nothing.
-        expect(bridgesIn(`${CHAPTER_DIR}/deep-ocean.tsl.js`)).toBeGreaterThan(0);
     });
 });
