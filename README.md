@@ -77,6 +77,8 @@ player always sees it.
 
 ## Legal
 
+Copyright © 2025–2026 Olov Melander. All rights reserved: see [`COPYRIGHT.md`](COPYRIGHT.md).
+
 Serenity Blocks is an independent game and is **not affiliated with, endorsed by, or
 sponsored by The Tetris Company, LLC or Tetris Holding, LLC.** TETRIS® is a registered
 trademark of Tetris Holding, LLC. Third-party asset attributions are listed in
