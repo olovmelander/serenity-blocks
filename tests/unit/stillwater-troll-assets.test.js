@@ -215,13 +215,11 @@ describe('Stillwater figure assets', () => {
         }
     });
 
-    it('keeps the troll\'s source asset, and every shipping mesh far smaller than it', () => {
-        expect(existsSync(assetUrl('troll.glb'))).toBe(true);
-        const sourceSize = statSync(assetUrl('troll.glb')).size;
-        // (A tenth of it at most: the finest troll, his mane in hundreds of locks and the way each
-        // of them runs, is about a megabyte.)
+    it('keeps every shipping mesh small', () => {
+        // (The finest troll, his mane in hundreds of locks and the way each of them runs, is about
+        // a megabyte.)
         LODS.forEach(({ file }) => {
-            expect(statSync(assetUrl(file)).size, file).toBeLessThan(sourceSize * 0.1);
+            expect(statSync(assetUrl(file)).size, file).toBeLessThan(1_100_000);
         });
     });
 });

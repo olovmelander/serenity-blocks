@@ -1,7 +1,7 @@
 """The troll: the old troll of the wood, built from numbers (troll_shape.py) into a body that can be posed.
 
-He keeps the character of the theme's own sculpt (assets/troll.glb: a stocky old troll with a long
-nose, long ears, big hands and feet and a cloak of matted hair to his knees) but is drawn clean:
+He is the author's character, a stocky old troll with a long nose, long ears, big hands and feet
+and a cloak of matted hair to his knees, drawn clean:
 smooth masses blended into one another under a mane of matted moss locks, a moss beard and bushy
 brows, a wrapped loincloth and a few small mushrooms in his moss. The surface is one signed
 distance field meshed once, cut into four LODs, weighted to the 21-bone skeleton (bone heat for
