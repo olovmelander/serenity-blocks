@@ -218,8 +218,9 @@ own: `phase` (`boot`, `open`, `title` or `menu`), `opening` (seconds into the op
 `title`, `ui`, `quality`, `px`, `py`, `noPost` and `reduce`. The removed
 `serenity-warp-classic-profile` and `serenity-warp-tunnel-surge` effects took the `surge`
 entry with them. `introV2=0` and `forceWebGL=1` still put the intro on its fallback, which is
-now the same world on three's WebGL2 backend. Use `effect=intro-world&t=23.85` to see the
-first stack lock.
+now the same world on three's WebGL2 backend. Use `effect=intro-world&t=24` to see the first
+gathering. The flock's fit to the menu (2026-11-04) adds `mode` and `row`, the current mode and
+row behind `phase=menu&ui=1`.
 
 Grainfields (2026-10-18), a new theme in Misty Lake's place, adds the capture flags
 `grainfieldsForceWebGL`, `grainfieldsTime`, `grainfieldsFixedDt`, `grainfieldsParts` and

@@ -113,12 +113,14 @@ export class IntroAnimation {
         this.currentPhase = INTRO_PHASES.BOOT;
         this.menuBgReady = false;
         this.menuLayoutRaf = null;
+        this.menuCurrentRaf = null;
         this.menuLayoutTrackingInstalled = false;
         this.menuLayoutResizeObserver = null;
         this.menuLayoutObservedElement = null;
         this.worldPointerListenerInstalled = false;
         this.boundMenuLayoutUpdate = this.scheduleMenuLogoLayoutUpdate.bind(this);
         this.boundMenuModalChange = this.handleMenuModalChange.bind(this);
+        this.boundMenuCurrentChange = this.onMenuCurrentChange.bind(this);
         this.boundIntroWorldPointerDown = this.handleIntroWorldPointerDown.bind(this);
         const params = typeof window !== 'undefined'
             ? new URLSearchParams(window.location.search)
@@ -402,6 +404,7 @@ export class IntroAnimation {
         window.addEventListener('resize', this.boundMenuLayoutUpdate, { passive: true });
         window.addEventListener('modalShown', this.boundMenuModalChange);
         window.addEventListener('modalHidden', this.boundMenuModalChange);
+        window.addEventListener('menu:currentChanged', this.boundMenuCurrentChange);
         this.menuLayoutTrackingInstalled = true;
         this.refreshMenuLogoLayoutObserver();
         this.scheduleMenuLogoLayoutUpdate();
@@ -411,6 +414,10 @@ export class IntroAnimation {
         if (this.menuLayoutRaf !== null && typeof cancelAnimationFrame === 'function') {
             cancelAnimationFrame(this.menuLayoutRaf);
             this.menuLayoutRaf = null;
+        }
+        if (this.menuCurrentRaf !== null && typeof cancelAnimationFrame === 'function') {
+            cancelAnimationFrame(this.menuCurrentRaf);
+            this.menuCurrentRaf = null;
         }
 
         if (this.menuLayoutResizeObserver) {
@@ -423,6 +430,7 @@ export class IntroAnimation {
             window.removeEventListener('resize', this.boundMenuLayoutUpdate);
             window.removeEventListener('modalShown', this.boundMenuModalChange);
             window.removeEventListener('modalHidden', this.boundMenuModalChange);
+            window.removeEventListener('menu:currentChanged', this.boundMenuCurrentChange);
             this.menuLayoutTrackingInstalled = false;
         }
     }
@@ -475,9 +483,11 @@ export class IntroAnimation {
     }
 
     /**
-     * Tell the world where the main menu stands (screen fractions): its murmuration keeps out of the
-     * navigation and the logo, and its light is softened behind the navigation, the stage card
-     * and the dock. Measured on layout changes only, never per frame.
+     * Tell the world where the main menu stands (screen fractions): its murmuration circles the
+     * stage card down the free gutters, flows round the navigation, the logo and the dock, wears
+     * the current mode's light and runs a thread from the current row into the card, and the
+     * world's light is softened behind all of them. Measured on layout changes and when the
+     * current mode moves, never per frame.
      */
     syncMenuLayout() {
         const renderer = this.threeRenderer;
@@ -499,13 +509,36 @@ export class IntroAnimation {
         const brand = frac('.sb-menu__brand', 14);
         const stage = frac('.sb-stage');
         const dock = frac('.sb-menu__footer');
+        // The stacked layout has no stage card: the column itself is the panel the flock circles.
+        const column = [brand, nav, dock].filter(Boolean);
+        const panel = stage || (column.length ? {
+            x0: Math.min(...column.map((r) => r.x0)),
+            y0: Math.min(...column.map((r) => r.y0)),
+            x1: Math.max(...column.map((r) => r.x1)),
+            y1: Math.max(...column.map((r) => r.y1)),
+        } : null);
         renderer.setMenuLayout({
-            avoid: [nav, brand].filter(Boolean),
+            stage: panel,
+            nav: stage ? nav : null,
+            brand: stage ? brand : null,
+            dock: stage ? dock : null,
+            row: frac('.sb-modes .game-mode-card.is-current'),
+            mode: document.querySelector('.sb-menu')?.dataset?.current ?? null,
             calm: [
-                nav && { ...nav, level: 0.55 },
+                nav && { ...nav, level: 0.9 },
                 stage && { ...stage, level: 0.8 },
-                dock && { ...dock, level: 0.35 },
+                dock && { ...dock, level: 0.6 },
+                brand && { ...brand, level: 0.7 },
             ].filter(Boolean),
+        });
+    }
+
+    /** The current mode moved: the flock's thread and its light follow, a frame later. */
+    onMenuCurrentChange() {
+        if (this.menuCurrentRaf !== null || typeof requestAnimationFrame !== 'function') return;
+        this.menuCurrentRaf = requestAnimationFrame(() => {
+            this.menuCurrentRaf = null;
+            this.syncMenuLayout();
         });
     }
 

@@ -8,7 +8,85 @@ WebGPURenderer**, the WebGL2 backend as its fallback, and redesigns the loading 
 the logo it keeps. The boot's machinery (startup pipeline, studio-ident hold, boot warp, title
 handoff, menu wordmark flight, parked menu renderer) is kept and fed by the new world.
 
+## Fitted to the interface (2026-11-04)
+
+The murmuration below was a spray on the title and, behind the menu, almost nothing: it flew "to
+the right of the navigation", which is exactly where the stage card stands, so about nine tenths
+of it was hidden, scraps showed round the card's edges, and the rest ghosted through its glass.
+This pass rebuilds its body and makes it know the interface. The look is judged in the real game
+at the owner's window (1707 x 1067).
+
+**The line.** The flock's middle was a formula in the vertex stage, so it could only ever be an
+ellipse. It is now a uniform cubic B-spline of 28 points that the world writes every frame
+(`writeFlockLine`), with a width share per point. It is still a closed form of time, so a seek
+still lands where playing would, and the path can be any shape. The motes read the spline, its
+tangent and a lent hue per point; a touch now reads the same points on the CPU.
+
+**The body.**
+
+| Was | Is |
+|---|---|
+| Motes spread evenly along the flock, so where it tapers they crowded into bright leaf shapes | Spread by the flock's width (an inverse-CDF sampler): its tips thin out to wisps |
+| A hard-edged disc across it, a spray of dots | 68 % fly in fine streams (strands at one place across the sheet, over a stretch of its length, some burning brighter), the rest are Gaussian dust with a few stragglers: silk with a soft edge |
+| A flat sheet | A sheet that folds: an S across it travels down the flock, and turned edge on each fold gathers the motes along a fine bright line |
+| The split carved a hard black slit (each stream only spread outward from the gap) | Each stream keeps its full spread and it opens a stretch at a time: a valley of thinner light |
+| Evenly spaced banking turns read as a row of fins | Detuned along the flock |
+| One size and brightness | Dust, sparks and a few wide faint motes for the body of light under them; a little larger and brighter nearer the eye |
+
+**The title.** The ring was a lumpy potato in world units, not concentric with the wordmark, and
+the leaning camera slid it about. It is now an ellipse measured from the wordmark's rect through
+the live camera every frame, so it stays locked to the logo on screen, round the tagline and
+clear of the prompt. Its outline barely breathes, its motes lie evenly by rank (`FLOCK_RANK_FIT`),
+and each carries half the light: the same motes in a tenth of the area burned white and turned
+the sky to milk. The flock no longer only fades near the wordmark, it flows round it.
+
+**The menu.** The flock flies a circuit round the stage card (`stageCircuit`, `circuitPoint`): a
+rounded path down the middle of the free band on each side, between card and navigation, card and
+dock, card and the frame's edge, re-fitted when the layout changes (it glides, it does not jump).
+Its width follows the gutter it is in, so it fans out in the wide bands and narrows to pass under
+the card. It flies the way the free flock flies and the same angle lands on the same side, so
+Begin pours it across, head first, without crossing the card.
+
+- **The panels.** The motes used to fade near two rects. Now the card, navigation, logo and dock
+  are rounded boxes with a soft wall (`setRects`): a mote pushed against one slides along its edge,
+  so the flock takes the panel's outline and crowds into a soft rim of light on it.
+- **The mode's light.** The current mode lends the flock its light, as it lends the page: the hue
+  reaches the head first and runs down to the tail. The page's pastels are deepened for light
+  (added up in a dense flock they wash to white), and they run the flock's whole length, because
+  at its tail a hue meeting the logo's spectrum added up to grey.
+- **The thread.** 3 % of the motes leave the flock for a fine stream of light from the current row
+  into the card, level out of the row and level into the card, in the mode's hue: the list and the
+  stage visibly joined. It glides when the current row moves (`menu:currentChanged`) and is absent
+  where there is no gutter to cross.
+- **The frame.** On the breath the title's flock gathers, behind the menu it closes round the card:
+  its head runs ahead and its tail falls back until they meet, every wave along it comes round to a
+  whole number so the two ends join as one sheet, it holds, and lets go on the out-breath. (The old
+  reason for no gathering here, that the ring would cross the navigation, went with the circuit.)
+- **The stacked layout** has no stage card: the column of logo, list and dock is the panel it
+  circles, and it no longer ghosts through the list.
+
+**The scene.** The flock is the show, so the rest stepped back: the far motes are finer and
+quieter, and the near discs fainter, or the flock's fine dots are lost among them; the veils' cores
+are thinner, and the hero veil passes under the begin prompt instead of through it; the post's calm
+now covers the logo too and holds the navigation's background far lower. The lens fringe is a
+quarter of what it was, because on a dot two pixels wide it painted a red and a blue edge (the "warm
+stars"). The waves' front is a hairline in the logo's spectrum, not the grey disc it was.
+
+**A bug found on the way.** `.intro-shimmer` was a bare bar sweeping the sky on both sides of the
+wordmark, on every boot and again every 7.5 s on the title. It is now masked by the logo itself, so
+it only touches the letters. The mask stays still and the streak moves inside it, by `transform`.
+
+Checked in the real game (WebGPU, High, 30 fps cap, clean consoles): the opening, the title, the
+gathering, Begin; eight modes behind the real card; the frame closing in Odyssey gold and Local
+Versus rose; Settings over the menu and back; 1707 x 1067, 1920 x 1080, 2560 x 1080, 1280 x 720,
+1024 x 768, 820 x 1180, 390 x 844. Playground: WebGL2 backend, Medium and Low; every material builds
+on both backends at High and Low. The frame rate was not measured: it adds a little vertex work (the
+spline and six rounded boxes per mote), and an uncapped comparison waits for a full-speed session.
+
 ## The murmuration (2026-11-03)
+
+The section below is the first murmuration. Where it differs from the pass above, the pass above
+is what ships.
 
 The rising pieces and the stack are gone. In their place flies **one great murmuration of
 light** (`intro-world-murmuration.js`, about 110 000 motes on High, 52 000 on Medium, 18 000 on
@@ -83,22 +161,23 @@ is on the boot path; `intro-visual-config.js` keeps only the phase names and the
 
 | Module | What it holds |
 |---|---|
-| `intro-world-core.js` | Pure (no three): the palette, the breath and its exact integral (the rise clock), the camera poses and the opening's curves, the murmuration's seeds, its state at a moment and its middle line (a CPU twin of the vertex stage), the gathering's rhythm. |
+| `intro-world-core.js` | Pure (no three): the palette and the modes' hues, the breath and its exact integral (the rise clock), the camera poses and the opening's curves, the murmuration's seeds, its state at a moment, its line (`writeFlockLine`), the circuit round the stage card, the gathering's rhythm. |
 | `intro-world-tsl.js` | Laid-out helpers (`fl_*`): hashes, Fresnel, quaternion rotate, `fl_sky` (the sky as one function of a direction) and `fl_skySoft` (its cheap twin for reflections and air); the baked 128² fBm grain. |
 | `intro-world-sky.js` | The sky on a sphere round the eye, drawn after the opaque pieces; the haze's grain projected on a plane far below. |
 | `intro-world-veils.js` | Four ribbons in one draw: built on the CPU along curves, billowed by two travelling waves in the vertex stage with analytic normals; premultiplied additive light. |
-| `intro-world-murmuration.js` | The murmuration: one instanced draw of point motes placed in the vertex stage from the frame's closed-form state (seven `vec4` rows), the title's and the navigation's rects as quiet zones. |
+| `intro-world-murmuration.js` | The murmuration: one instanced draw of point motes placed in the vertex stage from the frame's closed-form state (six `vec4` rows), the flock's line and lent hue (a B-spline of 28 points), the thread, and the interface's panels as rounded boxes the motes flow round. |
 | `intro-world-motes.js` | Instanced quads placed in the vertex stage from static seeds and the rise clock. |
 | `intro-world-post.js` | One scene pass (MSAA on High), bloom on a max-channel knee, and one output pass: the waves (opening, begin, stack lock), calm rects, hue-preserving filmic, a grade by scaling only, vignette, grain and dither. |
-| `intro-world.js` | The world: builds the parts, owns the shared uniforms, integrates the clocks, directs the camera, the opening, the title/menu blend, the stack, touches and quiet zones; `seek(t)` for captures. |
+| `intro-world.js` | The world: builds the parts, owns the shared uniforms, integrates the clocks, directs the camera, the opening, the title/menu blend, the gathering and the frame round the card, touches, and the fit to the wordmark and the menu's layout; `seek(t)` for captures. |
 
 No compute, no scene lights, no MaterialX noise: about a dozen pipelines, created
 asynchronously under the loading screen (`IntroAnimation.beginIntroPipelineSession`).
 
 **Boot integration.** `IntroAnimation.revealTitle()` (called at the warp's handoff, or after the
 CSS fallback) begins the opening with the cover's dissolve time and the logo's centre;
-`handleInteraction()` sends the begin wave; `syncMenuLayout()` measures the menu once per layout
-change and hands the renderer its avoid and calm rects. The boot warp keeps its gating and
+`handleInteraction()` sends the begin wave; `syncMenuLayout()` measures the menu on a layout
+change and when the current mode moves (`menu:currentChanged`), never per frame, and hands the
+renderer its panels, the current row and mode, and its calm rects. The boot warp keeps its gating and
 timing; its overlay (`boot-aurora-scene.js`) is now the bridging glow. The loading screen's
 progress line follows `markStartup` through a listener registry
 (`startup-debug.js` `onStartupMark`, `startup-progress.js`).

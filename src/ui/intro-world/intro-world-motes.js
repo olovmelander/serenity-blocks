@@ -63,7 +63,7 @@ export function createMotes(u, { count = 1400 } = {}) {
 
     // Size in world units: a point far away, a soft disc near the eye.
     const big = seed.w.mul(seed.w).mul(seed.w);
-    const size = mix(float(0.05), float(0.16), big).mul(hh.mul(0.06).add(0.4)).add(near.mul(0.9));
+    const size = mix(float(0.042), float(0.105), big).mul(hh.mul(0.06).add(0.4)).add(near.mul(0.9));
     const view = cameraViewMatrix.mul(vec4(center, 1.0));
     const corner = positionGeometry.xy.mul(size);
     const material = new THREE.MeshBasicNodeMaterial({
@@ -95,7 +95,7 @@ export function createMotes(u, { count = 1400 } = {}) {
         const twinkle = sin(u.time.mul(fract(s.w.mul(5.1)).mul(2.0).add(0.6)).add(s.x.mul(31.0))).mul(0.3).add(0.75);
         // Brighter low down, where they rise out of the light.
         const low = vEdge.mul(0.8).add(0.5);
-        const gain = mix(float(0.85), float(0.05), vNear).mul(u.moteGain);
+        const gain = mix(float(0.6), float(0.028), vNear).mul(u.moteGain);
         const rgb = tint.mul(shape).mul(twinkle).mul(low).mul(u.breath.mul(0.4).add(0.8))
             .mul(gain);
         return vec4(max(rgb, vec3(0.0)), 0.0);

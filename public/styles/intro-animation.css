@@ -198,6 +198,7 @@
 /* Resolve the title behind the aurora before the sweeping curtain exposes it. */
 .intro-title-container.intro-title-hold .intro-title,
 .intro-title-container.intro-title-hold .intro-shimmer,
+.intro-title-container.intro-title-hold .intro-shimmer::before,
 .intro-title-container.intro-title-hold .intro-eyebrow,
 .intro-title-container.intro-title-hold .intro-subtitle {
     animation: none !important;
@@ -268,7 +269,7 @@
 .intro-title-connected .intro-subtitle {
     animation-delay: calc(var(--sb-opening-duration, 3200ms) * 0.65);
 }
-.intro-title-connected .intro-shimmer {
+.intro-title-connected .intro-shimmer::before {
     animation: shimmerReveal 1.2s ease-in-out calc(var(--sb-opening-duration, 3200ms) * 0.8) both;
 }
 @keyframes connectedTitleArrive {
@@ -440,8 +441,21 @@
     }
 }
 
-/* Holographic shimmer effect */
+/* Holographic shimmer effect: the logo's own shape masks it, so the streak only ever touches
+   the letters (unmasked it was a bare bar crossing the sky on either side of the wordmark). */
 .intro-shimmer {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    -webkit-mask: url('../assets/branding/serenity-blocks-logo.svg') center / contain no-repeat;
+    mask: url('../assets/branding/serenity-blocks-logo.svg') center / contain no-repeat;
+    /* Screen-blend so the streak ADDS light to the letters as it passes. */
+    mix-blend-mode: screen;
+    pointer-events: none;
+}
+
+.intro-shimmer::before {
+    content: '';
     position: absolute;
     top: 0;
     left: -60%;
@@ -454,10 +468,7 @@
             rgba(236, 248, 255, 0.55) 50%,
             rgba(180, 230, 255, 0) 62%,
             transparent 100%);
-    /* Screen-blend so the streak ADDS light to the letters as it passes. */
-    mix-blend-mode: screen;
     opacity: 0.9;
-    pointer-events: none;
     /* C2 — one bright specular sweep as the letters finish landing (the title
        feels "forged"), then a subtle recurring glint. */
     animation:
@@ -580,7 +591,7 @@
 
     .intro-title,
     .intro-wordmark,
-    .intro-shimmer,
+    .intro-shimmer::before,
     .intro-chromatic,
     .intro-warp-overlay,
     .intro-loading-indicator,
@@ -620,7 +631,8 @@
     transition: opacity 0.3s ease-out;
 }
 
-.shrink-to-logo .intro-shimmer { animation: none !important; opacity: 0; }
+.shrink-to-logo .intro-shimmer { opacity: 0; }
+.shrink-to-logo .intro-shimmer::before { animation: none !important; }
 
 /* Main menu: keep the intro title as the logo — hide the static menu logo instead. */
 body.start-modal-open .intro-title-container.shrink-to-logo {
@@ -710,6 +722,9 @@ body.start-modal-open .intro-title-container.shrink-to-logo .intro-title {
 
 body.start-modal-open .intro-title-container.shrink-to-logo .intro-shimmer {
     opacity: 0 !important;
+}
+
+body.start-modal-open .intro-title-container.shrink-to-logo .intro-shimmer::before {
     animation: none !important;
 }
 
