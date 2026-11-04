@@ -1,5 +1,5 @@
-import { sanitizeCssColor } from '../utils/dom-safety.js';
 import { menuCoversGame } from './sheet-input.js';
+import { appendChatMessage } from './chat-moderation.js';
 
 export class InGameChat {
     constructor(gameState) {
@@ -82,7 +82,8 @@ export class InGameChat {
     }
 
     /**
-     * Add a message to the right panel chat
+     * Add a message to the right panel chat, if this player is shown it (chat-moderation.js:
+     * chat on, author not muted).
      * @param {Object|string} msg - Message object with playerName/message/steamId, or string for system messages
      * @param {boolean} silent - If true, don't play sound
      */
@@ -90,39 +91,10 @@ export class InGameChat {
         this.messages.push(msg);
         if (this.messages.length > 50) this.messages.shift();
 
-        const messagesContainer = this.getRightPanelMessages();
-        if (!messagesContainer) return;
-
-        const el = document.createElement('div');
-
-        // Handle both object format and string format (for system messages)
-        if (typeof msg === 'string') {
-            // System message
-            el.className = 'system-message';
-            el.textContent = msg;
-        } else {
-            // Player message - get player color
-            const playerColor = sanitizeCssColor(msg.color || this.getPlayerColor(msg.steamId), '#a78bfa');
-            el.className = 'player-message';
-            el.style.setProperty('--player-color', playerColor);
-            el.innerHTML = `
-                <span class="color-indicator" aria-hidden="true"></span>
-                <span class="author">${this.escapeHtml(msg.playerName)}</span>
-                <span class="text">${this.escapeHtml(msg.message ?? msg.text ?? '')}</span>
-            `;
-        }
-
-        messagesContainer.appendChild(el);
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
-    }
-
-    /**
-     * Escape HTML to prevent XSS
-     */
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+        appendChatMessage(this.getRightPanelMessages(), msg, {
+            localPlayerId: this.gameState?.localPlayerId,
+            colorOf: (steamId) => this.getPlayerColor(steamId),
+        });
     }
 
     /**

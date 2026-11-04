@@ -1193,6 +1193,26 @@
                                 </label>
                             </div>
                         </div>
+                        <div class="settings-section">
+                            <h3 class="settings-section-title">Online chat</h3>
+                            <div class="setting setting--toggle">
+                                <div class="setting-text">
+                                    <label for="online-chat-toggle">Show chat</label>
+                                    <p class="setting-help" id="online-chat-toggle-help">Players' messages in online lobbies, matches and results. When off, you see none and can send none; the game's own notices still show.</p>
+                                </div>
+                                <label class="cs-toggle">
+                                    <input type="checkbox" class="cs-toggle-input sb-toggle" id="online-chat-toggle" role="switch" aria-describedby="online-chat-toggle-help">
+                                    <span class="cs-toggle-state" aria-hidden="true"></span>
+                                </label>
+                            </div>
+                            <div class="setting setting--list">
+                                <div class="setting-text">
+                                    <span class="setting-label" id="chat-muted-label">Muted players</span>
+                                    <p class="setting-help" id="chat-muted-help">Mute someone from their card in a lobby, or from one of their messages. Only you see the difference: they aren't told, and the list stays on this computer.</p>
+                                </div>
+                                <ul class="chat-muted-list" id="chat-muted-list" aria-labelledby="chat-muted-label" aria-describedby="chat-muted-help"></ul>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
