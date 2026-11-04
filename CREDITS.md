@@ -4,19 +4,21 @@
 
 ## Music
 
-All 61 tracks were made by Olov Melander with Suno (AI music generation). Each file carries a
+All 65 tracks were made by Olov Melander with Suno (AI music generation). Each file carries a
 cover image that Suno generated with it.
 
 Aether Tides · Astral Weave · Aurora · Bioluminescence · Black Hole · Blood Moon ·
-Candlelit Monastery · Cherry Blossom Garden · Chiral Gold · Chromadelic Highway · Cinder Drift ·
-Cosmic Noir · Crystal Cave · Echoes of the Soul · Ethereal Echoes · Fall · Falling Pieces ·
-Floating Islands · Fluid Dreams · Galaxy · Geode Crystalline · Golden Forest · Grainfields ·
+Candlelit Monastery · Cherry Blossom Garden · Chiral Gold · Chromadelic Highway ·
+Chromatic Impasto · Cinder Drift · Cosmic Noir · Crystal Cave · Echoes of the Soul ·
+Ethereal Echoes · Fall · Falling Pieces · Floating Islands · Fluid Dreams · Galaxy ·
+Geode Crystalline · Golden Forest · Grainfields ·
 Halcyon Apex · High Coast · Himalayan Peak · Ice Temple · Kaleidosonic · Koi Pond ·
 Luminous Tides · Lunara · Meditation Temple · Moonlit Greenhouse · Murmuration · Neon Dusk ·
 Neon Quarter · Nimbus Veil · Ocean Deep · Painted Ages · Pyrestorm · Rainbark · Rainbow Terraces ·
 Sakura Twilight · Serenity Warp · Shifting Sands · Solar Eclipse · Spring · Star Cradle ·
 Starlight · Stellar Drift · Stellar Velocity · Stillwater · Summer · Sunbraid · Sunfall · Sunset ·
-Supernova · Synthwave Sunset · Thermal Bloom · Waves · Wolfhour
+Supernova · Synthwave Sunset · Thermal Bloom · Verdant Hills · Vesper Chrysalis · Waves · Winter ·
+Wolfhour
 
 ## Voice
 

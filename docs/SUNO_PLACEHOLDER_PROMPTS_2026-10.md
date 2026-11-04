@@ -5,10 +5,11 @@ Date: 2026-10-24. 32 of the 63 themes played Blood Moon's recording as a placeho
 prompt for each, written from what the theme shows today (its theme file header and
 `docs/theme-concepts/reference/catalog.md`).
 
-**Status (2026-10-24):** 25 are recorded and in the game. Each one is wired to its theme in
+**Status (2026-11-04):** 29 are recorded and in the game. Each one is wired to its theme in
 `AUTHORED_SONGS` and titled as its placeholder was, so saved track keys still hold. **Still
-placeholders:** Chromatic Impasto, Tornado, Verdant Hills, Vesper Chrysalis, Void Ember,
-Voltage Storm, Winter.
+placeholders:** Tornado, Void Ember, Voltage Storm. Their prompts were rewritten on 2026-11-04
+(see *The calm brief*). **Abyme** gets a prompt here too: the theme is
+not in the game yet, and it will play the placeholder when it lands unless a song is ready.
 
 ## How to use
 
@@ -17,9 +18,9 @@ Voltage Storm, Winter.
    save key from its title, so keeping the name means nothing has to be migrated.
 3. **Style of Music:** paste the theme's *Style* block.
 4. **Exclude styles** (under More options): paste the theme's *Exclude* block.
-5. Pick a take of 3–5 minutes that does not stop abruptly: the game repeats a track when it
-   ends.
-6. *Optional, for a song with a drop:* the Lyrics box disappears while Instrumental is on. To
+5. Pick a take of 3–5 minutes that does not stop abruptly: when a track ends the game goes
+   straight into the next collected song, and an Odyssey level repeats its own.
+6. *Optional, only for a song with a drop (the prompts still to record have none):* the Lyrics box disappears while Instrumental is on. To
    place the drop yourself, turn Instrumental off and paste the section tags below as the
    lyrics (vocals stay excluded). If a take comes back with a voice in it anyway, turn
    Instrumental back on and leave the tags out.
@@ -34,33 +35,54 @@ Voltage Storm, Winter.
 [Outro]
 ```
 
+## The calm brief (2026-11-04)
+
+The owner asked for the remaining songs to be calmer, with better atmosphere and bass, and to
+fit the game. These prompts replace the earlier ones for Chromatic Impasto, Tornado, Void Ember
+and Voltage Storm, and Abyme's is written the same way.
+
+- **What the takes that worked measure.** Verdant Hills, Vesper Chrysalis and Winter have almost
+  nothing above 2 kHz (-51 to -58 dB, against -34 to -40 dB for Pyrestorm, Supernova, Chromadelic
+  Highway and Stellar Velocity), their level below 60 Hz sits within about 3 dB of the 120-500 Hz
+  band, and their loudness range is a narrow 4.6-5.9 LU. Chromatic Impasto's take, made after
+  this brief, sits on the same bass at -62 dB above 2 kHz, the darkest of the four.
+- **What the prompts do.** They open as those three did: *deep <place> ambient*, then a *warm
+  deep sub-bass drone felt in the whole body*. There is no beat, build or drop: *beatless* and
+  *steady and soft* say so in the Style box, and the Exclude box holds the rest. *Cinematic, dark,
+  ominous, massive, huge, heavy, tension, ostinato* and *drop* are gone, because those words ask
+  for trailer brass and drums.
+- **Still varied.** Each song has one lead shape over the same floor: held low piano chords
+  (Chromatic Impasto), long lap steel notes (Tornado), one breathing drone (Void Ember), a slow
+  bass pulse (Voltage Storm), a falling motif (Abyme). Each keeps its theme's field recording.
+- **Choosing a take.** Prefer the steadiest one: no kick, no surge, nothing that would pull the
+  eye off the board. Judge the bass on headphones or a subwoofer, not on laptop speakers.
+
 ## The sound
+
+The 2026-10-24 brief, which the recorded songs follow.
 
 Slow, dark and deep: a drone underneath and a sub-bass you feel in the whole body, 46–76 BPM,
 with few bright sounds. **Astral Weave** and **Chiral Gold** came out right and are kept as they
 were. The beat-driven version before this one came out too fast and too bright.
 
 - **Beat:** none at all (Golden Forest, Kaleidosonic, Nebula Flow, Sakura Twilight, Solar Eclipse,
-  Summer, Vesper Chrysalis, Void Ember); a slow kick heartbeat or muffled hand drum (Fall,
-  Halcyon Apex, Koi Pond, Painted Ages, Sunfall, Thermal Bloom, Verdant Hills); or a slow heavy
-  half-time beat (Chromadelic Highway, Luminous Tides, Pyrestorm, Serenity Warp, Supernova,
-  Tornado, Voltage Storm).
+  Summer, Vesper Chrysalis); a slow kick heartbeat or muffled hand drum (Fall, Halcyon Apex,
+  Koi Pond, Painted Ages, Sunfall, Thermal Bloom, Verdant Hills); or a slow heavy half-time beat
+  (Chromadelic Highway, Luminous Tides, Pyrestorm, Serenity Warp, Supernova).
 - **Drops:** about a third build into a deep sub-bass drop (Chromadelic Highway, High Coast,
-  Pyrestorm, Serenity Warp, Solar Eclipse, Stellar Velocity, Sunfall, Supernova, Thermal Bloom,
-  Tornado, Voltage Storm).
+  Pyrestorm, Serenity Warp, Solar Eclipse, Stellar Velocity, Sunfall, Supernova, Thermal Bloom).
 - **Colour:** each theme keeps its own instrument, played low: koto, shakuhachi, guzheng,
   nyckelharpa, handpan, lap steel, cello, low piano. Its field recording stays too: surf,
   thunder, ice, dripping caves, steam.
 - **Mood:** warm (Sunset, Golden Forest, Summer), cold (Winter, High Coast), ominous
-  (Pyrestorm, Tornado, Voltage Storm), sacred (Halcyon Apex, Kaleidosonic), cosmic (Nebula Flow,
-  Solar Eclipse, Void Ember).
+  (Pyrestorm), sacred (Halcyon Apex, Kaleidosonic), cosmic (Nebula Flow, Solar Eclipse).
 - **Film-score weight** in the vast themes, in the spirit of a Hans Zimmer score: huge low
   brass, a deep pipe organ, pulsing low string ostinatos, a ticking clock pulse, slow
   crescendos (Chromadelic Highway, Golden Forest, Halcyon Apex, High Coast, Luminous Tides,
   Nebula Flow, Nimbus Veil, Painted Ages, Pyrestorm, Rainbow Terraces, Serenity Warp, Solar
-  Eclipse, Stellar Velocity, Sunfall, Supernova, Tornado, Void Ember, Voltage Storm, Winter).
-  The intimate themes stay small: Chromatic Impasto, Fall, Kaleidosonic, Koi Pond,
-  Sakura Twilight, Summer, Sunset, Synthwave Sunset, Thermal Bloom, Verdant Hills, Vesper Chrysalis.
+  Eclipse, Stellar Velocity, Sunfall, Supernova, Winter). The intimate themes stay small: Fall,
+  Kaleidosonic, Koi Pond, Sakura Twilight, Summer, Sunset, Synthwave Sunset, Thermal Bloom,
+  Verdant Hills, Vesper Chrysalis.
 
 Every *Exclude* block shuts out vocals, fast and upbeat styles, and the bright end (sparkle,
 glockenspiel, celesta, chimes, high leads), plus whatever that theme could pull Suno toward.
@@ -68,11 +90,28 @@ The prompts name no artists, because Suno rejects artist names.
 
 ## Placing a finished track
 
-Save it as `public/assets/music/<song-name>.mp3` (for example `astral-weave.mp3`), add
-`'<theme-id>': ['<Song Name>', '<song-name>.mp3']` to `AUTHORED_SONGS` in
-`src/core/progression/theme-music-catalog.js`, and run `node generate-songs.js`.
+Save it as `public/assets/music/<theme-id>.mp3` (for example `astral-weave.mp3`) with its title
+tag set to the song's name, add `'<theme-id>': ['<Song Name>', '<theme-id>.mp3']` to
+`AUTHORED_SONGS` in `src/core/progression/theme-music-catalog.js`, and run
+`node generate-songs.js`. Then update the counts and the placeholder list in
+`tests/unit/theme-music-catalog.test.js`, the count and the list in `CREDITS.md`, and
+`scripts/validate-theme-music.mjs` if the theme is the placeholder it plays (Void Ember today).
 
 ---
+
+## Abyme
+`abyme`: the board carved in black stone at every scale; the view sinks for ever into one cell,
+and each larger scale replays the play later and slower. *(Not in the game yet. Prompt not yet
+tried.)*
+
+**Style**
+```
+deep minimal ambient, instrumental, sinking slowly and endlessly through carved black stone, a warm deep sub-bass drone felt in the whole body, a low tone that keeps falling and never arrives, a few soft felted low piano notes that return lower and slower each time, a soft distant pipe organ, polished cavernous reverb, beatless, weightless, hypnotic and still, steady and soft, 50 BPM, G-sharp minor
+```
+**Exclude**
+```
+vocals, singing, voice, choir, humming, lyrics, drums, percussion, drop, build-up, climax, trailer music, brass, horror, fast tempo, upbeat, bright, sparkly, glockenspiel, celesta, chimes, high-pitched lead
+```
 
 ## Astral Weave
 `astral-weave`: a great string-art loom hangs in a river of nebula; each clear weaves a petal
@@ -118,11 +157,11 @@ stroke, and every level is a new painting period.
 
 **Style**
 ```
-dark ambient IDM, instrumental, a painter's studio at night, slow muffled glitch percussion, thick tape-saturated low piano chords, bowed cello smears like heavy oil paint, deep warm sub-bass swells that fill the body, detuned analog drones, murky and textural, contemplative, 66 BPM, F minor
+deep studio ambient, instrumental, a quiet painter's studio at night under one warm lamp, a warm deep sub-bass drone felt in the whole body, soft felted low piano chords left to ring and blur, slow bowed cello held long and low, tape-saturated pads smearing into each other like wet oil paint, faint brush on canvas and room tone, beatless, unhurried, intimate and warm, steady and soft, 58 BPM, F minor
 ```
 **Exclude**
 ```
-vocals, singing, voice, choir, humming, lyrics, fast tempo, upbeat, happy, bright, sparkly, glockenspiel, celesta, chimes, high-pitched lead, jazz, EDM
+vocals, singing, voice, choir, humming, lyrics, drums, percussion, glitch, drop, build-up, climax, fast tempo, upbeat, bright, sparkly, glockenspiel, celesta, chimes, high-pitched lead, jazz, EDM
 ```
 
 ## Fall
@@ -417,11 +456,11 @@ the low sun lights the field through rain shafts.
 
 **Style**
 ```
-dark cinematic prairie drone, instrumental, a wheat field under a slowly turning supercell, a pulsing low string ostinato building tension, slow low lap steel swells, massive rumbling sub-bass, wind and distant thunder textures, a heavy slow half-time beat, ominous golden light, brooding, slow build into a deep rolling sub-bass drop, 64 BPM, D minor
+deep prairie ambient, instrumental, a wheat field in the last golden light with a storm turning slowly far away, a warm deep sub-bass drone felt in the whole body, thunder so distant it is only a low roll, long soft low lap steel notes fading into reverb, slow low bowed strings, wind moving through the wheat, beatless, patient, wide and still, steady and soft, 54 BPM, D minor
 ```
 **Exclude**
 ```
-vocals, singing, voice, choir, humming, lyrics, fast tempo, upbeat, happy, bright, sparkly, glockenspiel, celesta, chimes, high-pitched lead, country, rock
+vocals, singing, voice, choir, humming, lyrics, drums, percussion, drop, build-up, climax, tension, ostinato, trailer music, brass, fast tempo, upbeat, bright, sparkly, glockenspiel, celesta, chimes, high-pitched lead, country, rock
 ```
 
 ## Verdant Hills
@@ -456,11 +495,11 @@ crust; a belt of cinders and one dead world far off.
 
 **Style**
 ```
-dark cinematic drone, instrumental, a dying star like a banked coal in an empty sky, massive warm low drones, distant huge low brass swells, a slow pulsing sub-bass heartbeat, crackling ember textures, saturated tape swells, distant metallic resonances, melancholy and vast, beatless, huge reverb, 46 BPM, C minor
+deep space ambient, instrumental, a dying star glowing like a banked coal in an empty sky, a warm deep sub-bass drone that swells and sinks as slowly as breathing, felt in the whole body, one low tape-saturated pad, faint ember crackle, a soft bowed metal resonance far away in a huge reverb, beatless, weightless, melancholy and warm, steady and soft, 46 BPM, C minor
 ```
 **Exclude**
 ```
-vocals, singing, voice, choir, humming, lyrics, fast tempo, upbeat, happy, bright, sparkly, glockenspiel, celesta, chimes, high-pitched lead, drums, metal
+vocals, singing, voice, choir, humming, lyrics, drums, percussion, drop, build-up, climax, trailer music, brass, horror, fast tempo, upbeat, bright, sparkly, glockenspiel, celesta, chimes, high-pitched lead, heavy metal
 ```
 
 ## Voltage Storm
@@ -469,11 +508,11 @@ the water and take the lightning, rain and reflections everywhere.
 
 **Style**
 ```
-dark cinematic electronic drone, instrumental, a supercell over a flooded plain at dusk, a ticking clock pulse, pulsing low strings, humming high-voltage drones in the low register, massive rolling sub-bass felt in the body, crackling electric textures, rain and distant thunder, a slow heavy half-time beat, tense and hypnotic, charge building into a deep sub-bass drop, 68 BPM, F-sharp minor
+deep electric ambient, instrumental, soft rain on a flooded plain at dusk with a storm far out on the horizon, a warm deep sub-bass pulse as slow as breathing, felt in the whole body, a low transformer hum tuned to the key, slow analog synth pads, faint static crackle, rain on still water and distant thunder, beatless, hypnotic and hushed, steady and soft, 62 BPM, F-sharp minor
 ```
 **Exclude**
 ```
-vocals, singing, voice, choir, humming, lyrics, fast tempo, upbeat, happy, bright, sparkly, glockenspiel, celesta, chimes, high-pitched lead, hard techno, industrial
+vocals, singing, voice, choir, humming, lyrics, drums, percussion, drop, build-up, climax, tension, ticking, ostinato, trailer music, brass, fast tempo, upbeat, bright, sparkly, glockenspiel, celesta, chimes, high-pitched lead, hard techno, industrial
 ```
 
 ## Winter

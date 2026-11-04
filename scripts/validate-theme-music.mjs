@@ -351,7 +351,7 @@ try {
     report.checks.scope = await page.evaluate(async () => {
         const audit = window.__musicAudit;
         await audit.reset();
-        const song = audit.getSong('vesper-chrysalis');
+        const song = audit.getSong('void-ember');
         audit.scopeCurrent = true;
         audit.scope = audit.sound.setOdysseyMusicContext({
             trackKey: song.trackKey,
@@ -367,7 +367,7 @@ try {
         && !window.__musicAudit.sound.audioElement?.paused
         && window.__musicAudit.sound.audioElement?.currentTime > 0.05, report.checks.scope.trackKey);
     report.checks.placeholderPlayback = await page.evaluate(() => window.__musicAudit.media());
-    assert.match(report.checks.placeholderPlayback.src, /blood-moon\.mp3\?song=vesper-chrysalis/);
+    assert.match(report.checks.placeholderPlayback.src, /blood-moon\.mp3\?song=void-ember/);
     assert.ok(report.checks.placeholderPlayback.duration > 1);
     report.checks.resume = await page.evaluate(async () => {
         const audit = window.__musicAudit;
