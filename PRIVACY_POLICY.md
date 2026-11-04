@@ -7,8 +7,8 @@ game is sent to the developer.
 
 ## On your computer
 
-The game keeps your settings, progress, records, breathing practice and saved replays on your
-computer, in the game's data folder. If the game crashes, a crash report is written to the same
+The game keeps your settings, progress, records, breathing practice, saved replays and the list of
+players you have muted in online chat on your computer, in the game's data folder. If the game crashes, a crash report is written to the same
 folder and stays there; it is only ever sent anywhere if you send it yourself, for example when
 asking for help. A short log of the game's connection to Steam is kept there too.
 
@@ -29,6 +29,11 @@ When you play through Steam, these features use your Steam account. Valve runs t
   During a match the game connects your computer to theirs (peer to peer), directly when it can,
   so players in your match can see your IP address, as in most online games. The game only
   connects to players in the lobby you are in.
+- **Chat**: messages you type in an online lobby, match or results screen go to the players in
+  that lobby, passed on by the lobby's host. Each player's game keeps them only while the session
+  lasts and never saves them. In Settings › General you can turn chat off, or see and change who
+  you have muted: a muted player's messages are hidden from you, they aren't told, and the list
+  stays on your computer.
 
 If you play without Steam, none of this happens.
 
@@ -37,4 +42,4 @@ If you play without Steam, none of this happens.
 Ask at the contact address above. The developer holds no personal data about you; for data Valve
 holds about your Steam account, see the Steam Privacy Policy.
 
-*Last updated: 3 November 2026.*
+*Last updated: 4 November 2026.*

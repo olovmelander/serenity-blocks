@@ -396,6 +396,40 @@
     text-wrap: pretty;
 }
 
+/* ---- Online chat: the players muted on this computer (src/ui/chat-moderation.js) ------ */
+#settings-modal .chat-muted-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 220px;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+}
+
+#settings-modal .chat-muted-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 40px;
+}
+
+#settings-modal .chat-muted-name {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--sb-text);
+    font: 600 0.875rem / 1.3 var(--sb-font-text);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#settings-modal .chat-muted-empty {
+    color: var(--sb-text-faint);
+    font: 500 0.8125rem / 1.45 var(--sb-font-text);
+}
+
 #settings-modal .setting-status[data-tone='success'] { color: var(--sb-success); }
 #settings-modal .setting-status[data-tone='error'] { color: var(--sb-danger); }
 

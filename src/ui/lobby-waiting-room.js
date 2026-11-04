@@ -18,6 +18,10 @@ import {
     closeLayer, conditionLabel, confirmSheet, describeGoal, mpIcon, openLayer,
 } from './components/mp-sheet.js';
 import { describeMatchLevelRule } from '../core/multiplayer/match-level-rule.js';
+import {
+    appendChatMessage, chatIcon, chatModerationNote, isChatOn, isMuted, onChatModerationChange,
+    renderChatLog, setPlayerMuted,
+} from './chat-moderation.js';
 
 const WELCOME = 'Welcome to the lobby.';
 
@@ -213,20 +217,20 @@ export class LobbyWaitingRoom {
 
                 // Check if Steam is available
                 if (!steamService.isOnline) {
-                    this.addChatMessage('Invites need Steam, which is not running.', true);
+                    this.addChatMessage('Invites need Steam, which is not running.');
                     return;
                 }
 
                 const lobbyId = this.gameState?.network?.currentLobbyId || null;
                 if (!lobbyId) {
-                    this.addChatMessage('There is no lobby to invite to yet.', true);
+                    this.addChatMessage('There is no lobby to invite to yet.');
                     return;
                 }
 
                 const opened = await steamService.openLobbyInviteDialog(lobbyId);
                 if (!opened) {
                     console.warn('[LobbyWaitingRoom] Unable to open Steam invite dialog');
-                    this.addChatMessage('The Steam invite window did not open. Try Shift+Tab for the Steam overlay.', true);
+                    this.addChatMessage('The Steam invite window did not open. Try Shift+Tab for the Steam overlay.');
                 }
             });
         }
@@ -249,7 +253,7 @@ export class LobbyWaitingRoom {
 
         const sendChat = () => {
             const text = chatInput.value.trim();
-            if (text && this.gameState) {
+            if (text && this.gameState && isChatOn()) {
                 const localPlayer = this.gameState.getLocalPlayer?.() || this.gameState.players?.get(this.gameState.localPlayerId);
                 const playerColor = localPlayer?.color || '#a78bfa';
                 const msgData = {
@@ -312,20 +316,7 @@ export class LobbyWaitingRoom {
             this.updateUI();
 
             // Load chat history (re-render so a reopened room never duplicates it).
-            const chatEl = this.container.querySelector('#lobby-chat-messages');
-            if (chatEl && this.gameState && this.gameState.chatHistory) {
-                chatEl.innerHTML = `<div class="system-message">${WELCOME}</div>`;
-
-                this.gameState.chatHistory.forEach((msg) => {
-                    if (!msg.playerName) {
-                        // System message
-                        this.addChatMessage(msg.text || msg.message, true);
-                    } else {
-                        // Player message - pass full object for color support
-                        this.addChatMessage(msg);
-                    }
-                });
-            }
+            this.renderChat();
 
             // Initial focus: the one primary action for this player.
             const primary = [this.$('start-match-btn'), this.$('ready-btn')]
@@ -346,6 +337,16 @@ export class LobbyWaitingRoom {
             MULTIPLAYER_EVENTS.PLAYER_LIST_CHANGED,
             this.playerListChangeHandler,
         );
+
+        // A mute, an unmute or chat turned off redraws the cards' mute buttons and the chat.
+        this.chatModerationUnsub?.();
+        this.chatModerationUnsub = onChatModerationChange((change) => {
+            this._lastPlayerListSig = null;
+            this.updatePlayerList();
+            this.renderChat();
+            const note = chatModerationNote(change);
+            if (note) this.addChatMessage(note);
+        });
 
         console.log('✅ Waiting room visible');
     }
@@ -374,6 +375,8 @@ export class LobbyWaitingRoom {
             this.playerListChangeUnsub = null;
             this.playerListChangeHandler = null;
         }
+        this.chatModerationUnsub?.();
+        this.chatModerationUnsub = null;
     }
 
     /**
@@ -474,7 +477,7 @@ export class LobbyWaitingRoom {
         const hostId = this.gameState.network?.hostSteamId;
         const localId = this.gameState.localPlayerId;
         const roster = players
-            .map((p) => `${p.steamId}:${p.name}:${p.isReady ? 1 : 0}:${p.color}:${p.steamId === hostId ? 1 : 0}`)
+            .map((p) => `${p.steamId}:${p.name}:${p.isReady ? 1 : 0}:${p.color}:${p.steamId === hostId ? 1 : 0}:${isMuted(p.steamId) ? 1 : 0}`)
             .sort()
             .join('|');
         const sig = `${players.length}@${localId || ''}@${this.gameState.matchConfig?.maxPlayers || ''}|${roster}`;
@@ -492,10 +495,13 @@ export class LobbyWaitingRoom {
             console.warn('[LobbyWaitingRoom] Failed to preload avatars:', err.message);
         });
 
-        // Clear and rebuild player cards with real avatars (keep focus on a kick
+        // Clear and rebuild player cards with real avatars (keep focus on a kick or mute
         // button that survives the rebuild).
-        const focusedKick = listEl.contains(document.activeElement)
-            ? document.activeElement.dataset.steamId : null;
+        const focusedKey = listEl.contains(document.activeElement)
+            ? document.activeElement.dataset.focusKey : null;
+        const keepFocus = (button) => {
+            if (focusedKey && focusedKey === button.dataset.focusKey) queueMicrotask(() => button.focus({ preventScroll: true }));
+        };
         listEl.innerHTML = '';
 
         players.forEach((player) => {
@@ -504,8 +510,9 @@ export class LobbyWaitingRoom {
             const isReady = player.isReady || isHost;
             const playerColor = sanitizeCssColor(player.color, '#808080');
 
+            const muted = !isLocal && isMuted(player.steamId);
             const cardEl = document.createElement('div');
-            cardEl.className = `lobby-player-card ${isReady ? 'ready' : 'not-ready'} ${isLocal ? 'local' : ''} ${isHost ? 'host' : ''}`.trim();
+            cardEl.className = `lobby-player-card ${isReady ? 'ready' : 'not-ready'} ${isLocal ? 'local' : ''} ${isHost ? 'host' : ''} ${muted ? 'muted' : ''}`.replace(/\s+/g, ' ').trim();
             cardEl.style.setProperty('--player-color', playerColor);
             cardEl.setAttribute('role', 'listitem');
 
@@ -530,7 +537,7 @@ export class LobbyWaitingRoom {
             // Role: host / you / player
             const statusEl = document.createElement('div');
             statusEl.className = 'player-status';
-            const roles = [isHost ? 'Host' : '', isLocal ? 'You' : ''].filter(Boolean);
+            const roles = [isHost ? 'Host' : '', isLocal ? 'You' : '', muted ? 'Muted' : ''].filter(Boolean);
             statusEl.innerHTML = `${isHost ? mpIcon('crown', 13) : ''}<span>${roles.join(' · ') || 'Player'}</span>`;
             cardEl.appendChild(statusEl);
 
@@ -546,6 +553,7 @@ export class LobbyWaitingRoom {
                 kickBtn.type = 'button';
                 kickBtn.className = 'player-kick-btn';
                 kickBtn.dataset.steamId = player.steamId;
+                kickBtn.dataset.focusKey = `kick:${player.steamId}`;
                 kickBtn.setAttribute('aria-label', `Remove ${displayName} from the lobby`);
                 kickBtn.innerHTML = mpIcon('remove', 16);
                 kickBtn.addEventListener('click', async (e) => {
@@ -560,7 +568,26 @@ export class LobbyWaitingRoom {
                     if (confirmed) this.gameState.kickPlayer(player.steamId);
                 });
                 cardEl.appendChild(kickBtn);
-                if (focusedKick && focusedKick === player.steamId) queueMicrotask(() => kickBtn.focus({ preventScroll: true }));
+                keepFocus(kickBtn);
+            }
+
+            // Anyone else's chat can be muted, on this computer only (chat-moderation.js).
+            if (!isLocal && player.steamId) {
+                const muteBtn = document.createElement('button');
+                muteBtn.type = 'button';
+                muteBtn.className = 'player-mute-btn';
+                muteBtn.dataset.steamId = player.steamId;
+                muteBtn.dataset.focusKey = `mute:${player.steamId}`;
+                muteBtn.setAttribute('aria-pressed', String(muted));
+                muteBtn.setAttribute('aria-label', `Mute ${displayName}'s chat`);
+                muteBtn.title = muted ? `Unmute ${displayName}` : `Mute ${displayName}`;
+                muteBtn.innerHTML = chatIcon(muted ? 'mute' : 'volume', 16);
+                muteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    setPlayerMuted(player.steamId, displayName, !muted);
+                });
+                cardEl.appendChild(muteBtn);
+                keepFocus(muteBtn);
             }
 
             listEl.appendChild(cardEl);
@@ -750,39 +777,28 @@ export class LobbyWaitingRoom {
     }
 
     /**
-   * Add chat message
-   * @param {Object|string} message - Message object with playerName/message/steamId/color, or string for system messages
-   * @param {boolean} isSystem - Whether this is a system message (only used for string messages)
+   * Add a chat line, if this player is shown it (chat-moderation.js).
+   * @param {Object|string} message - { playerName, message, steamId, color }, or a string for the
+   *   game's own line (invites, mutes)
    */
-    addChatMessage(message, isSystem = true) {
+    addChatMessage(message) {
         if (!this.container) return;
         const chatEl = this.container.querySelector('#lobby-chat-messages');
+        appendChatMessage(chatEl, message, this.chatLogOptions());
+    }
+
+    /** Draw the whole chat from the game state's history (chat-moderation.js filters it). */
+    renderChat() {
+        const chatEl = this.container?.querySelector('#lobby-chat-messages');
         if (!chatEl) return;
+        renderChatLog(chatEl, [WELCOME, ...(this.gameState?.chatHistory || [])], this.chatLogOptions());
+    }
 
-        const msgDiv = document.createElement('div');
-
-        // Handle both object format and string format
-        if (typeof message === 'string') {
-            // Legacy string format or system message
-            const msgClass = isSystem ? 'system-message' : 'player-message';
-            msgDiv.className = msgClass;
-            msgDiv.textContent = message;
-        } else {
-            // Object format with player info
-            const playerColor = sanitizeCssColor(
-                this.getPlayerColor(message.steamId) || message.color,
-            );
-            msgDiv.className = 'player-message';
-            msgDiv.style.setProperty('--player-color', playerColor);
-            msgDiv.innerHTML = `
-        <span class="color-indicator" aria-hidden="true"></span>
-        <span class="author">${escapeHtml(message.playerName)}</span>
-        <span class="text">${escapeHtml(message.message ?? message.text ?? '')}</span>
-      `;
-        }
-
-        chatEl.appendChild(msgDiv);
-        chatEl.scrollTop = chatEl.scrollHeight;
+    chatLogOptions() {
+        return {
+            localPlayerId: this.gameState?.localPlayerId,
+            colorOf: (steamId) => this.getPlayerColor(steamId),
+        };
     }
 
     /**

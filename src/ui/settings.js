@@ -15,6 +15,7 @@ import { resolveBreathWorldId } from './effects/breathing/breath-catalogue.js';
 import { developerSurfacesEnabled } from './developer-surfaces.js';
 import { findBoundAction, isBindableKey, normalizeBindingKey } from './binding-keys.js';
 import { armTwoPressQuit, canQuitDesktop } from './desktop-quit.js';
+import { mutedPlayers, onChatModerationChange, unmutePlayer } from './chat-moderation.js';
 
 /** Saved game modes the game has since renamed: Fault Lines became Stillfall (2026-10-18). */
 const RENAMED_GAME_MODES = Object.freeze({ 'fault-lines': GAME_MODES.STILLFALL });
@@ -81,6 +82,7 @@ const DEFAULT_CONFIG = {
     // Background Tab Behavior - throttle rendering when tab is hidden
     backgroundTabBehavior: 'reduce', // 'pause' | 'reduce' | 'continue'
     pauseOnFocusLoss: true, // pause a local run on alt-tab, minimize or pad loss (src/ui/focus-pause.js)
+    onlineChat: true, // show players' chat in online lobbies, matches and results (src/ui/chat-moderation.js)
     keyBindings: {
         moveLeft: 'ArrowLeft',
         moveRight: 'ArrowRight',
@@ -1352,6 +1354,59 @@ function setupSettingsSheet(listen, signal) {
  * Credits & legal: the credits, third-party notices and licences and the privacy page, read in
  * the game (src/ui/legal/legal-documents.js), loaded when the section is first opened.
  */
+/**
+ * Settings › General › Online chat: chat on or off, and the players muted on this computer
+ * (src/ui/chat-moderation.js), each with an Unmute button.
+ */
+function setupOnlineChatSettings(listen, signal, settingsManager, settings) {
+    const toggle = document.getElementById('online-chat-toggle');
+    if (toggle) {
+        toggle.checked = settings.onlineChat !== false;
+        listen(toggle, 'change', (e) => {
+            settingsManager.update({ onlineChat: e.target.checked });
+            settingsManager.save();
+        });
+    }
+
+    const list = document.getElementById('chat-muted-list');
+    if (!list) return;
+    const row = ({ steamId, name }) => {
+        const item = document.createElement('li');
+        item.className = 'chat-muted-row';
+        const label = document.createElement('span');
+        label.className = 'chat-muted-name';
+        label.textContent = name || 'A player';
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'sb-btn sb-btn--quiet chat-unmute-btn';
+        button.textContent = 'Unmute';
+        button.setAttribute('aria-label', `Unmute ${name || 'this player'}`);
+        button.addEventListener('click', () => {
+            const index = [...list.querySelectorAll('.chat-unmute-btn')].indexOf(button);
+            unmutePlayer(steamId);
+            // The list redraws at once: keep the keyboard on the next row, or the toggle.
+            const buttons = list.querySelectorAll('.chat-unmute-btn');
+            (buttons[Math.min(index, buttons.length - 1)] || toggle)?.focus({ preventScroll: true });
+        });
+        item.append(label, button);
+        return item;
+    };
+    const draw = () => {
+        const muted = mutedPlayers();
+        if (muted.length) {
+            list.replaceChildren(...muted.map(row));
+        } else {
+            const empty = document.createElement('li');
+            empty.className = 'chat-muted-empty';
+            empty.textContent = 'No one is muted.';
+            list.replaceChildren(empty);
+        }
+    };
+    draw();
+    const unsubscribe = onChatModerationChange(draw);
+    signal.addEventListener('abort', unsubscribe, { once: true });
+}
+
 function setupLegalDocuments(listen, signal) {
     const modal = document.getElementById('settings-modal');
     const panel = document.getElementById('settings-legal');
@@ -1450,6 +1505,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     setupSettingsTabs();
     setupLegalDocuments(listen, controller.signal);
     setupUrlParameterReference(listen, controller.signal);
+    setupOnlineChatSettings(listen, controller.signal, settingsManager, settings);
 
     // Setup controls sub-tab switching
     setupControlsSubTabs();

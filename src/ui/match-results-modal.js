@@ -16,6 +16,9 @@ import {
     closeLayer, describeGoal, mpIcon, openLayer,
 } from './components/mp-sheet.js';
 import { primaryMetric } from './scoreboard-metrics.js';
+import {
+    appendChatMessage, chatModerationNote, isChatOn, onChatModerationChange, renderChatLog,
+} from './chat-moderation.js';
 
 // What each player did, in the order it matters; the column that decided the match is
 // marked. Pace once (pieces per second; blocks per minute was the same number times 60),
@@ -167,7 +170,7 @@ export class MatchResultsModal {
 
         const sendChat = () => {
             const text = chatInput.value.trim();
-            if (!text) return;
+            if (!text || !isChatOn()) return;
 
             const localPlayer = this.gameState?.getLocalPlayer?.()
         || this.gameState?.players?.get(this.gameState?.localPlayerId);
@@ -199,7 +202,7 @@ export class MatchResultsModal {
             if (this.gameState?.chatHistory) {
                 this.gameState.chatHistory.push(payload);
             }
-            this.addChatMessage({ ...payload, playerName: 'You' });
+            this.addChatMessage({ ...payload, playerName: 'You', steamId: this.gameState?.localPlayerId });
             chatInput.value = '';
         };
 
@@ -224,36 +227,27 @@ export class MatchResultsModal {
     }
 
     /**
-   * Add chat message
-   * @param {Object|string} message - Message object with playerName/message/steamId/color, or string for system messages
-   * @param {boolean} isSystem - Whether this is a system message (only used for string messages)
+   * Add a chat line, if this player is shown it (chat-moderation.js).
+   * @param {Object|string} message - { playerName, message, steamId, color }, or a string for the
+   *   game's own line
    */
-    addChatMessage(message, isSystem = true) {
+    addChatMessage(message) {
         if (!this.container) return;
-        const chatEl = this.container.querySelector('#results-chat-messages');
+        appendChatMessage(this.container.querySelector('#results-chat-messages'), message, this.chatLogOptions());
+    }
+
+    /** Draw the whole chat from the game state's history (chat-moderation.js filters it). */
+    renderChat() {
+        const chatEl = this.container?.querySelector('#results-chat-messages');
         if (!chatEl) return;
+        renderChatLog(chatEl, this.gameState?.chatHistory || [], this.chatLogOptions());
+    }
 
-        const msgDiv = document.createElement('div');
-
-        // Handle both object format and string format
-        if (typeof message === 'string') {
-            // Legacy string format or system message
-            msgDiv.className = isSystem ? 'system-message' : 'player-message';
-            msgDiv.textContent = message;
-        } else {
-            // Object format with player info
-            const color = playerColor(message.color || this.getPlayerColor(message.steamId), '#a78bfa');
-            msgDiv.className = 'player-message';
-            msgDiv.style.setProperty('--player-color', color);
-            msgDiv.innerHTML = `
-        <span class="color-indicator" aria-hidden="true"></span>
-        <span class="author">${this.escapeHtml(message.playerName)}</span>
-        <span class="text">${this.escapeHtml(message.message ?? message.text ?? '')}</span>
-      `;
-        }
-
-        chatEl.appendChild(msgDiv);
-        chatEl.scrollTop = chatEl.scrollHeight;
+    chatLogOptions() {
+        return {
+            localPlayerId: this.gameState?.localPlayerId,
+            colorOf: (steamId) => this.getPlayerColor(steamId),
+        };
     }
 
     /**
@@ -284,21 +278,15 @@ export class MatchResultsModal {
             this.chatUnsub = onMultiplayerEvent(MULTIPLAYER_EVENTS.CHAT_MESSAGE, this.chatHandler);
         }
 
-        // Restore chat history
-        const chatEl = this.container.querySelector('#results-chat-messages');
-        if (chatEl) {
-            chatEl.innerHTML = '';
-            if (this.gameState && this.gameState.chatHistory) {
-                this.gameState.chatHistory.forEach((msg) => {
-                    if (!msg.playerName) {
-                        // System message
-                        this.addChatMessage(msg.text || msg.message, true);
-                    } else {
-                        // Player message - pass full object for color support
-                        this.addChatMessage(msg);
-                    }
-                });
-            }
+        // Restore chat history, and redraw it on a mute, an unmute or chat turned off.
+        this.renderChat();
+        if (!this.chatModerationUnsub) {
+            this.chatModerationUnsub = onChatModerationChange((change) => {
+                if (!this.isVisible) return;
+                this.renderChat();
+                const note = chatModerationNote(change);
+                if (note) this.addChatMessage(note);
+            });
         }
 
         this.container.classList.remove('hidden');
@@ -568,6 +556,8 @@ export class MatchResultsModal {
             this.chatUnsub = null;
             this.chatHandler = null;
         }
+        this.chatModerationUnsub?.();
+        this.chatModerationUnsub = null;
         this._stopAutoReturnCountdown();
         if (this.container) {
             closeLayer(this.container);

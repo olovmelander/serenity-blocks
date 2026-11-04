@@ -135,8 +135,9 @@ export const FLAG_REGISTRY = [
         default: false,
         purpose: 'opt-in protocol-v2 raw snapshot frames for the plan §6A.4 two-peer bandwidth soak',
         kind: 'refactor',
-        // Re-dated from 2026-10-31: the two-machine soak that graduates it has not run yet (ADR-0013).
-        expiry: '2026-11-30',
+        // Re-dated from 2026-10-31, then from 2026-11-30: the two-machine soak that graduates it has
+        // not run yet (ADR-0013).
+        expiry: '2026-12-31',
         reader: 'flags',
     },
 
