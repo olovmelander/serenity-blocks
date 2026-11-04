@@ -12,9 +12,8 @@ The other nine decisions are less urgent, but almost all are cheapest right now.
 - **Keys:** move Player 1's flip key from A to X and Player 2's hard drop from Shift to F.
 - **VSync:** replace the inert toggle with an FPS limit.
 - **Developer surfaces:** split release and diagnostics builds at build time.
-- **Distribution:** stop publishing the full game on Pages, and take the repo private before announcement.
 
-Two inputs that only the owner can supply gate most of this work: the real Steam AppID, and a booked session with two Windows machines and two Steam accounts. A lawyer still has to answer four questions: whether the bare `"license": "MIT"` already granted rights, how much protection AI-authored material gets, whether the name is clear, and whether the store art passes the Tetris total-look review.
+Two inputs that only the owner can supply gate most of this work: the real Steam AppID, and a booked session with two Windows machines and two Steam accounts.
 
 ## One hard date, two owner inputs and the first tester build set the order
 
@@ -31,7 +30,6 @@ Research is current as of 2026-10-13, against repo HEAD `3611f9b` on the audit f
 | 7 | Key defaults | Bind by `KeyboardEvent.code`; P1 flip A→X; P2 hard drop Shift→F; migrate untouched defaults only; block local Start on conflicts | This week |
 | 8 | VSync | Remove the toggle and add an FPS limit in the render loop | Before launch (audit: weeks 4–8) |
 | 9 | Developer surfaces | A build-time release/diagnostics split, `devTools:false` in release, diagnostics on a password-protected `qa` branch | Weeks 2–3; before any public build |
-| 10 | Licence and distribution | All rights reserved now; stop the full-game Pages deploy; a private repo plus a public landing repo; notices, a credits screen, AI disclosure and a privacy policy; counsel review | Licence in the next commit; visibility before announcement; Steam items before review |
 
 The audit's sequencing already groups the work by week ([audit Part 7](REPOSITORY_AUDIT_2026-10-13.md)):
 
@@ -400,7 +398,6 @@ The goal is no one-click cheat surface, not anti-cheat; online integrity still r
 
 - **This is established practice.** Competitive games stamp every replay and score with a version and the rule variants in force. osu! stores a game-version field and a mods bitmask ([osu! replay format](https://osu.ppy.sh/wiki/en/Client/File_formats/osr_%28file_format%29)). TETR.IO ships rule parameters as data and aligns rule changes with seasons ([TetrisWiki: TETR.IO](https://tetris.wiki/TETR.IO)).
 - **The moment is unusually cheap.** Steam leaderboards don't work at all yet (SCORE-02), so splitting a leaderboard costs nothing now and real effort later.
-- **The legal side is favourable.** *Tetris Holding v. Xio* held that "the game mechanics and the rules are not entitled to protection", and that the rights holder "has given the rules of its game to the public domain". Liability rested on wholesale copying of the look ([Xio opinion](https://www.govinfo.gov/content/pkg/USCOURTS-njd-3_09-cv-06115/pdf/USCOURTS-njd-3_09-cv-06115-0.pdf)). The repo's legal review already rates standard kicks and lock delay Low ([tetris_legal_review.md](../tetris_legal_review.md)).
 - **Adopt standard behaviour, keep presentation different:** no hold, the flat-side-up spawn, fused borderless pieces, and no third-party rule names in the UI.
 
 **Step 1: the registry.**
@@ -488,104 +485,7 @@ The only sourced convention, the Guideline keyboard map, uses the arrows to move
 - **Per-seat handling settings.**
 - **An opt-in "Up = hard drop" gamepad preset.**
 
-## Reserve all rights today and stop giving the full game away on Pages
-
-### The licence: declare all rights reserved in the next commit
-
-**The repo isn't unlicensed; it's ambiguously MIT.**
-
-- `package.json` declares `"license": "MIT"`, with an empty author and no `private` flag ([package.json](../package.json)).
-- There is no LICENSE file; GitHub's API reports `license: null` ([GitHub API](https://api.github.com/repos/olovmelander/serenity-blocks)).
-- That `package.json` ships inside every packaged `app.asar`.
-
-npm documents the field as telling people "how they are permitted to use it" ([npm docs](https://docs.npmjs.com/cli/v11/configuring-npm/package-json)). MIT permits anyone to "use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies" if the notice is kept ([OSI: MIT](https://opensource.org/license/mit)). A recipient could therefore argue they hold an MIT licence to the code. The argument is weaker for the 529 MB of music and for the art, and only a lawyer can weigh it.
-
-**Recommended, in the next commit:**
-
-1. **`package.json`.** Set `"license": "UNLICENSED"` (or `"SEE LICENSE IN LICENSE"`), `"private": true`, and an author.
-2. **A LICENSE or COPYRIGHT file** stating "Copyright © 2025–2026 [the owner, or the owner's company]. All rights reserved", covering code and project-original assets. It should include:
-   - an effective commit;
-   - carve-outs for third-party material;
-   - while the repo is public, a line saying that GitHub's terms allow viewing and forking on GitHub but grant nothing more ([GitHub Terms of Service](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service)).
-
-**The change only works going forward.** When Aseprite moved from GPLv2 to a proprietary licence, a community fork carried on from the last GPL commit ([Wikipedia: Aseprite](https://en.wikipedia.org/wiki/Aseprite)). So don't rewrite history, and let a lawyer word any reference to the earlier value.
-
-**All rights reserved is reversible; a grant isn't.** The code can still be opened after the sales tail, under MIT or Apache-2.0, with the assets and name reserved: the Amnesia model ([GamingOnLinux](https://www.gamingonlinux.com/2020/09/amnesia-the-dark-descent-and-amnesia-a-machine-for-pigs-go-open-source)). Avoid copyleft, which Valve calls "problematic" with the Steamworks SDK ([Steamworks: open source](https://partner.steamgames.com/doc/sdk/uploading/distributing_opensource)).
-
-**Who holds the copyright.** In the shallow clone at `3611f9b`, the owner is the only human author, with 89 of 283 commits; 194 were authored by an AI agent (`git shortlog -sne`). Relicensing therefore needs no one else's consent. But how strong the reserved copyright is, is itself a question for counsel.
-
-### Visibility and Pages: stop shipping the free game, then go private
-
-**The bigger commercial leak is Pages, not the source.** CI deploys the entire game, with every theme and all the music, to GitHub Pages on every push. It does so from a 697 MB `dist`, against Pages' 1 GB limit ([audit R-42, BOOT-14](REPOSITORY_AUDIT_2026-10-13.md)).
-
-A public repo also exposes:
-
-- 1.52 GB of tracked assets;
-- design documents that name Tetris products;
-- the project's own legal review and evidence folder, which the review itself calls potential "evidence of access" ([tetris_legal_review.md](../tetris_legal_review.md)).
-
-The Tetris rights holder has sent takedowns to GitHub repositories before ([GitHub DMCA notice, 2023](https://github.com/github/dmca/blob/master/2023/02/2023-02-10-tetris.md)), and one would disable this repo along with its CI and Pages pipeline. As recently as September 2026, it publicly disavowed the White House's falling-block game ([Dexerto](https://www.dexerto.com/gaming/white-house-pulls-tetris-clone-from-online-arcade-after-legal-threat-3407022/)).
-
-**Recommended:**
-
-1. **Decide what Pages should host** — a landing page, a deliberately limited demo, or nothing — and stop the full-game deploy.
-2. **Stand up the replacement** in a small, separate public repo.
-3. **Check any custom-domain DNS.**
-4. **Make the main repo private.** On GitHub Free this unpublishes Pages automatically and leaves existing public forks public ([GitHub: repository visibility](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/setting-repository-visibility)). With 0 forks and 0 stars, there will never be a cheaper moment.
-5. **Tidy up around the flip.**
-   - Move the legal material to a private location shared with counsel.
-   - Enable secret scanning and push protection.
-   - Require a contributor licence agreement (CLA) before accepting outside contributions.
-   - Do any history rewrite or Git LFS migration only after the repo is private.
-
-One unknown remains: the Actions-minute cost of running this CI in a private repo.
-
-### Steam distribution obligations that apply under any licence
-
-**SDK and secrets.** The Steamworks SDK Access Agreement lets a developer distribute only the `redistributable_bin` files, "along with the Licensee Software in object code form" ([SDK Access Agreement](https://partner.steamgames.com/documentation/sdk_access_agreement)). The repo complies today: it tracks no Steam binaries or headers, and it takes the DLL from the npm package at build time. It should never vendor them. Keys, steamcmd credentials and partner-site exports, which Valve marks confidential, never belong in any repo.
-
-**Notices.** Every build must carry:
-
-- the full MIT notices for Phaser, three.js and the Steam binding;
-- Apache-2.0 for the Draco decoders, or delete the decoders, since no code reads them;
-- the four OFL font licences ([OFL](https://openfontlicense.org));
-- Electron's `LICENSE.electron.txt` and `LICENSES.chromium.html`;
-- the CC BY 4.0 attributions, with changes noted ([CREDITS.md](../CREDITS.md)).
-
-Today the bundle keeps only `@license` pointer comments. Generate a `THIRD_PARTY_NOTICES.txt` at build time, and fail the release gate if any notice file is missing. Add the in-app Credits & Legal screen that both the audit and the legal review ask for (R-43, TM-5).
-
-**Provenance gaps to close before submission.** Document these, or replace them:
-
-- the **467 ElevenLabs voice lines** under `public/assets/audio/breathwork/voices/` are absent from CREDITS.md ([scripts/generate-tts.js](../scripts/generate-tts.js));
-- the intro sounds `begin.ogg` and `warp.ogg` have no recorded origin;
-- neither do the Neon District source paintings ([scripts/neon-district/source-art/README.md](../scripts/neon-district/source-art/README.md)).
-
-**Store review requirements.**
-
-- **Content Survey.** It must be completed before review. Its AI section covers pre-generated content that "ships with your game and is consumed by players":
-  - the roughly 36 Suno tracks;
-  - the ElevenLabs narration;
-  - the TRELLIS, TripoSR and UniRig models;
-  - any AI-assisted store art.
-
-  AI coding assistance falls under "efficiency gains", which Valve says "is not the focus of this section" ([Content Survey](https://partner.steamgames.com/doc/gettingstarted/contentsurvey); [Outlook Respawn](https://respawn.outlookindia.com/gaming/gaming-news/valve-clarifies-steam-ai-policy-focus-shifts-to-content-consumed)). The same survey generates the regional ratings.
-- **Accessibility.** The Accessibility Feature Wizard is optional, but its answers are searchable ([Steamworks: accessibility features](https://partner.steamgames.com/doc/accessibility_features)).
-- **EULA.** The Steam Subscriber Agreement already covers buyers, so a custom EULA is optional ([Steamworks: SSA](https://partner.steamgames.com/doc/marketing/branding/ssa)).
-- **Privacy policy.** Publish a short one anyway, linked from the store's website field and from Settings. It should state that:
-  - Valve handles accounts;
-  - multiplayer is peer-to-peer and exchanges Steam IDs, and, until Stage 2 lands, possibly IP addresses;
-  - saves are stored locally, plus Steam Cloud;
-  - there are no analytics.
-
-**EU AI Act.** Article 50 has applied since 2 August 2026, but it mainly binds the providers of generative tools. Creative works face only a light disclosure duty, and only for deep fakes ([AI Act Article 50](https://artificialintelligenceact.eu/article/50/)). A Voice Library voice cloned from a real actor is the one edge case.
-
-**Tetris and trademark posture.** The legal review rates the Tetris posture Medium: "a conditional no-go for commercial storefront submission pending counsel review" ([tetris_legal_review.md](../tetris_legal_review.md)). It:
-
-- names store art and screenshots, which don't exist yet, as the main control point;
-- calls the seven-piece intro decoration "the highest-leverage remaining visual item";
-- flags the live US mark WORD SERENITY (Reg. 6,138,055, class 9) for name clearance; EU and Swedish registers have never been searched.
-
-Running `check:ip-strings` and `check:palette` on pull requests, rather than after merge (REPO-04), keeps that work from regressing.
+Notes on licensing and distribution are kept outside this repository.
 
 ## Each proof has one right place to run
 
@@ -607,23 +507,6 @@ The three environments can prove different things:
 | 8 VSync | Cap-interval logic; the settings migration drops `vsyncEnabled` | Frame rate at every cap on 60 Hz and 144 Hz displays; "Match display" performance unchanged; Odyssey honours the cap | — |
 | 9 Dev gating | Release `dist` contains no `UrlParametersView`, `unlockAll`, `OdysseyLayoutEditor` or `openDevTools`; `--serenity-selftest` passes; harnesses green in diagnostics mode | F12 and the Settings button are gone in release; `--remote-debugging-port` exits; the diagnostics build opens CDP; `validate:windows:*` | The diagnostics build installs from the password-protected `qa` branch |
 | 10 Licence | `package.json` fields; LICENSE; generated notices; the gate fails on a missing notice or a shipped `steam_appid.txt`; IP-string and palette gates on PRs | — (GitHub settings are owner actions) | Partner site: Content Survey, accessibility wizard, controller level after Deck testing, privacy link, EULA choice, check for any EU trader-details requirement |
-
-## Questions only the owner or a lawyer can answer
-
-The research can recommend, but these calls depend on the owner's plans, money and risk appetite, or on law that the notes deliberately don't settle.
-
-| # | Owner decides | Lawyer decides |
-|---|---|---|
-| 1 | Can two Windows machines, two Steam accounts and about 2.5 hours be booked for 22–28 October, plus a third client for scenario F? If not, accept one re-date to no later than 15 December? | — |
-| 2 | When will the real AppID exist? Is any non-Steam (NSIS) channel wanted? A native Linux build later, or Proton only? | Confidentiality terms of the Steam Distribution Agreement, which the research didn't review |
-| 3 | Is a mirrored, single-maintainer fork acceptable? Are replays attached to leaderboards wanted (pipelab lacks the attach call)? Would boards ever move to the server-written Trusted model? What overlay default after the A/B test? | Whether shipping Valve binaries redistributed through a third-party npm binding is fine under the SDK agreement |
-| 4 | The spectator cap; the "Invite only" relabel until invites work; Public lobbies before Stage 2, or friends-only; drop-in policy | Whether the developer is a GDPR controller for the P2P exchange of Steam IDs and IPs, and what the privacy notice must say |
-| 5 | The launch date, which decides 44 versus 45 or 46; whether any outside tester has local saves, which decides the migration release; the crash backend and consent; whether to sign an NSIS build | Consent wording for any crash-report uploads |
-| 6 | Score T-spins, back-to-back and combos, or drop the announcements; lock-out; spawn column; PRNG; assist kicks for relaxed modes; the garbage curve and cap after simulation; a 180° table | "T-spin" as a player-facing label; whether rotation behaviour belongs in counsel's total-look review |
-| 7 | F or R for Player 2's hard drop; restart or keep DAS charge on reactivation; move gamepad hard drop off B; ship an "Up = hard drop" preset | — (key layouts are functional, so low risk) |
-| 8 | Which caps to offer, including 40 for handhelds; an uncapped benchmark flag in diagnostics builds | — |
-| 9 | Which support affordances ship in release; who receives the `qa` password | — |
-| 10 | What Pages hosts, and the web build's support level; when to go private; whether to open the code later; the legal entity; a trademark filing budget; whether to have a EULA | The effect of the bare MIT declaration and the wording of the fix; protection for AI-authored code, music, voice and models, and which vendor terms apply; US copyright registration; name clearance and an EU or Swedish filing; the Tetris review's P0 items and the store art; EU Digital Services Act trader status and consumer law; EULA validity; litigation risk from the public legal documents |
 
 ## Conclusion
 

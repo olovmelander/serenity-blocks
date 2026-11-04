@@ -242,8 +242,6 @@ See Part 2 for the full cleanup plan. Headlines:
 | HOW_TO_RUN.md | merge useful bits into README, delete | `testSteam()`/`testFFA()` helpers don't exist; Linux commands |
 | PHASER_QUICKSTART.md, public/README.md | delete | stale (rc.5; old workspace paths) |
 | CREDITS.md, steam_appid.txt | keep | functional |
-| tetris_legal_review.md, quadra-provenance-attestation.md | **move** to `docs/legal/` (update cites in pages.yml, ip-string-gate, palette check) — never delete | legal |
-| game_description.md, single_player_death.md | keep / move with legal docs | audited by the legal review |
 | AUTO_DROP_*.txt ×2, RECOMMENDATIONS.md, PHASE_1_COMPLETE.md | delete | fixed/obsolete |
 | PERFORMANCE_STABILITY_AUDIT.md, PERF_REMEDIATION_LOG.md, ODYSSEY_MODE_PERFORMANCE_AUDIT.md | archive under `docs/archive/2026-07-perf-audit/` (update code-comment refs) | dated records; one "done" item is contradicted by code (overlay canvas, Part 1 #7) |
 | PLAN-*.md ×5 | archive, marked DONE (#306) | executed |
