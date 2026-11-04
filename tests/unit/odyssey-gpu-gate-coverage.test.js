@@ -19,7 +19,7 @@ const read = (p) => readFileSync(path.join(repoRoot, p), 'utf8');
 
 function chapterBasenames() {
     const names = CHAPTER_SCENES.map((entry) => entry.sceneId);
-    expect(names.length).toBeGreaterThanOrEqual(8);
+    expect(names.length).toBeGreaterThanOrEqual(4);
     return names;
 }
 

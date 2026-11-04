@@ -1,20 +1,16 @@
 /**
  * LOUD failure reporting for a One World build failure.
  *
- * Why this exists (Wave 4/6 audit, 2026-08-12): the board's catch around
- * `createOdysseyWorld()` recovers by un-suppressing the legacy chapter dioramas — which
- * works, and today makes the failure INVISIBLE. A player on a driver where the world's
- * TSL fails to compile plays the fallback forever and reports nothing; we would retire
- * the `?odysseyOneWorld=0` hatch believing the world builds everywhere. Worse, once the
- * dioramas are eventually deleted, the same silent catch degrades to a fog-coloured void
- * for two thirds of the journey — self-consistent enough to pass a smoke test.
+ * Why this exists (Wave 4/6 audit, 2026-08-12; ADR-0022): the board's catch around
+ * `createOdysseyWorld()` plays on without the world. Chapters 2-5 then have no ground, against
+ * the corridor's sheets and the atmosphere, and that state is self-consistent enough to pass a
+ * smoke test and to look to a player like a quieter map.
  *
  * So the failure must be LOUD in two directions:
  *  - to the PLAYER: a dismissible on-screen banner naming what happened, so "the game
  *    looks different" has an explanation attached;
- *  - to US: a persisted localStorage log (capped ring) that a later session — or the
- *    hatch-retirement decision itself — can read to answer "has this machine ever failed
- *    to build the world?" with data instead of hope.
+ *  - to US: a persisted localStorage log (capped ring) that a later session can read to
+ *    answer "has this machine ever failed to build the world?" with data instead of hope.
  *
  * Deliberately dependency-free and DOM-guarded: it must work when the renderer is in an
  * arbitrary broken state (that is precisely when it runs), and it must be a no-op under
@@ -79,9 +75,9 @@ function showBanner(failureCount, doc) {
         'border:1px solid #a04048', 'border-radius:8px',
         'font:13px/1.45 system-ui,sans-serif', 'box-shadow:0 4px 18px rgba(0,0,0,0.5)',
     ].join(';');
-    banner.textContent = 'Odyssey: the continuous world failed to build on this device, '
-        + 'so the legacy chapter environments are being used instead. The journey remains '
-        + `fully playable. (Recorded failure #${failureCount} — please report this.)`;
+    banner.textContent = 'Odyssey: the world could not be built on this device, so chapters '
+        + '2 to 5 will play without their scenery. The journey remains fully playable. '
+        + `(Recorded failure #${failureCount} — please report this.)`;
 
     const dismiss = doc.createElement('button');
     dismiss.type = 'button';
@@ -98,8 +94,8 @@ function showBanner(failureCount, doc) {
 }
 
 /**
- * Report a One World build failure loudly. Call from the board's catch AFTER arranging
- * the fallback — reporting must never be able to prevent the recovery it reports on.
+ * Report a One World build failure loudly. Call from the board's catch AFTER the world is
+ * out of the scene — reporting must never be able to stand in the way of playing on.
  * Safe in every environment: no DOM → storage only; no storage → banner only; neither →
  * silent no-op (the console.error at the call site still fires).
  */

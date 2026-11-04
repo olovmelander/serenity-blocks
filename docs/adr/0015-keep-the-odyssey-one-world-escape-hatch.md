@@ -1,6 +1,6 @@
 # 0015 — Keep the Odyssey One World escape hatch
 
-- **Status:** accepted
+- **Status:** superseded by [ADR-0022](0022-retire-the-old-chapter-worlds.md)
 - **Date:** 2026-08-12
 - **Plan hook:** ODYSSEY_ONE_WORLD_PLAN_2026-08.md § "Wave 4/6 deletion manifest (audited)"
 

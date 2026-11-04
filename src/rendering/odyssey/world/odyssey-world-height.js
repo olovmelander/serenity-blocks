@@ -104,9 +104,8 @@ export const ODYSSEY_MASSIF_FOOT_Y = 297.5556;
 export const ODYSSEY_ABYSS_DEPTH = 207;
 
 /**
- * The canonical peaks, transcribed from shared/canonical-mountain-range.js. `radius` is the
- * shipped `size * MOUNTAIN_DISPLACEMENT.coneRadiusFrac` (0.45), i.e. the footprint the
- * displaced cone actually reaches — not the plane it was drawn on.
+ * The canonical peaks (odyssey-peak-specs.js). `radius` is `size * PEAK_CONE_RADIUS_FRAC` (0.45),
+ * the footprint the peak actually reaches.
  */
 export const ODYSSEY_MASSIFS = Object.freeze([
     Object.freeze({

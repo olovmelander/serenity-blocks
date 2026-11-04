@@ -20,10 +20,10 @@ import {
     getChapterTransitionForChapter,
 } from './chapter-environments/shared/chapter-profile.js';
 import {
-    CHAPTER_SCENES, getChapterScene, exportNamesForScene, stepsExportNameForScene,
+    CHAPTER_SCENES, ONE_WORLD_CHAPTERS, getChapterScene, exportNamesForScene, stepsExportNameForScene,
 } from './chapter-environments/registry.js';
 import {
-    seedChapterLightPool, releaseChapterLights, syncChapterLightSlots, growChapterLightPool,
+    seedChapterLightPool, releaseChapterLights, syncChapterLightSlots,
 } from './chapter-environments/shared/chapter-light-pool.js';
 import {
     SEAM_56_COLOUR_HALF_WIDTH,
@@ -122,15 +122,6 @@ const JOURNEY_END_BAND = 0.18;
 // moved to chapter-environments/shared/seam-bridges.js (E3 — one source of truth; OdysseyDirector
 // imports the SAME constants). The wide smootherstep'd colour window bridges Sky violet -> Space
 // near-black through a deep teal midpoint so the change reads smooth, not a snap.
-
-// 5→6 carry: the inherited summit chain + aurora are world-locked DEEP ahead (the camera
-// never physically passes the hero peak in Ch6 — it stays ~400u in front), so they would
-// "pop" the instant the manager flipped the Ch5 group invisible. Hold the Ch5 env fully
-// present while the peak/aurora are still prominent, then ease the whole env opacity to 0
-// over a long tail so they DISSOLVE as the camera moves on (sky-drift.js multiplies this
-// chapterOpacity into the summit-ring + aurora NodeMaterials, which the manager can't reach).
-const SEAM_56_CARRY_HOLD_BAND = 0.4; // fraction of Space span the Ch5 env stays fully present
-const SEAM_56_AURORA_CARRY_BAND = 0.85; // fraction of Space span by which the Ch5 env has faded out
 
 // 5→6 EARTH-AT-SUMMIT ignite: Chapter 6 owns the hero gas giant the player sees from the
 // mountain top, but the chapter used to be hard-zero until the boundary — by which point
@@ -427,13 +418,9 @@ export class ChapterEnvironmentManager {
         // anyway. Set BELOW the 0.26 maxScrollVelocity cap (~0.0043/frame at 60fps) so it still
         // fires within the (now lower 0.15) cap range. Tunable.
         this._lodFastThreshold = Number.isFinite(options.lodFastThreshold) ? options.lodFastThreshold : 0.0015;
-        // ONE WORLD (docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md): chapters whose environment is
-        // being provided by something else — the continuous Act II world — and which must
-        // therefore never be created, shown or faded here. Empty by default, so the shipped
-        // path is untouched.
-        this.suppressedChapters = new Set(
-            Array.isArray(options.suppressedChapters) ? options.suppressedChapters : [],
-        );
+        // ONE WORLD (ADR-0022): the chapters the continuous Act II world draws have no scene of
+        // their own, and are never created, shown or faded here.
+        this.suppressedChapters = new Set(ONE_WORLD_CHAPTERS);
 
         // Container for all chapter environments
         this.environmentGroup = new THREE.Group();
@@ -461,10 +448,8 @@ export class ChapterEnvironmentManager {
         // chapters 3–8 are created in the background after the reveal (each creation used to
         // re-create every visible pipeline synchronously). Chapters' own lights are VIRTUAL
         // (acquireChapterLight(): never rendered) and are copied into the slots each frame by
-        // syncChapterLightSlots() below; see chapter-light-pool.js. Sized for the chapters built
-        // HERE: the ones the One World draws never light the rig (4 slots with it on, not 9; see
-        // deriveRigSlots), and handing them back grows it (the suppressedChapters setter).
-        seedChapterLightPool(this.persistentLightRig, undefined, { without: this.suppressedChapters });
+        // syncChapterLightSlots() below; see chapter-light-pool.js.
+        seedChapterLightPool(this.persistentLightRig);
         // Scratch matrix/vector reused when baking a reparented light's world placement.
         this._lightReparentMatrix = new THREE.Matrix4();
         this._lightReparentPos = new THREE.Vector3();
@@ -742,23 +727,6 @@ export class ChapterEnvironmentManager {
         }
     }
 
-    /** Chapters drawn by something else (the One World): never created, shown or faded here. */
-    get suppressedChapters() {
-        return this._suppressedChapters;
-    }
-
-    /**
-     * Chapters handed back (the One World abandoned, ADR-0015) light the rig again: the pool grows
-     * to them at once, so the lit pipelines rebuild before their dioramas are even built.
-     * @param {Iterable<number>|null} chapters
-     */
-    set suppressedChapters(chapters) {
-        this._suppressedChapters = chapters instanceof Set ? chapters : new Set(chapters || []);
-        if (this.persistentLightRig) {
-            growChapterLightPool({ without: this._suppressedChapters, rig: this.persistentLightRig });
-        }
-    }
-
     /**
      * Create a single chapter's environment (loads module dynamically)
      * @param {number} chapterId
@@ -777,9 +745,7 @@ export class ChapterEnvironmentManager {
             return this.environments.get(chapterId).group;
         }
 
-        // A suppressed chapter's ground is drawn by the continuous world instead. Returning
-        // null here is what keeps its ~18 materials off the startup compile path, which is the
-        // largest single startup win in the rebuild.
+        // A suppressed chapter's ground is drawn by the continuous world instead.
         if (this.suppressedChapters.has(chapterId)) return null;
 
         // One build per chapter at a time. The background loader, residency and the board's
@@ -816,8 +782,6 @@ export class ChapterEnvironmentManager {
             console.warn(`[ChapterEnvironmentManager] No module for chapter ${chapterId}`);
             return null;
         }
-        // A chapter the rig was sized without (the set edited in place): it gets its slots.
-        growChapterLightPool({ without: this.suppressedChapters, rig: this.persistentLightRig });
 
         if (sliced && typeof def.createSteps === 'function') {
             // Registered in the turn (or the hurry) that runs its last step; a teardown before
@@ -1149,10 +1113,7 @@ export class ChapterEnvironmentManager {
         const tried = new Set();
         const loadNext = () => {
             if (this._disposed) return; // dispose() ends the chain; nothing reschedules
-            // The continuous world draws the chapters it suppresses, so they cost no build slot.
-            // Read at every slot: when the world is abandoned (ADR-0015) the set empties and the
-            // loader still builds their dioramas.
-            const pending = remaining.filter((id) => !tried.has(id) && !this.suppressedChapters?.has?.(id));
+            const pending = remaining.filter((id) => !tried.has(id));
             if (pending.length === 0) {
                 console.log('[ChapterEnvironmentManager] All chapters loaded in background');
                 return;
@@ -1335,16 +1296,6 @@ export class ChapterEnvironmentManager {
                     ? staggeredIncoming(ecotone.t)
                     : staggeredOutgoing(ecotone.t);
                 if (mode === 'progress'
-                    && chapterId === 5
-                    && this._resolvedBlendState.ecotone.boundaryId === '5-6') {
-                    const boundary = this._resolvedBlendState.ecotone.boundaryPosition
-                        ?? this.chapterPositions[5];
-                    const end = this._resolvedBlendState.ecotone.end ?? boundary;
-                    progressOpacity = this.cameraProgress <= boundary
-                        ? 1
-                        : smoothstep01((end - this.cameraProgress) / Math.max(1e-5, end - boundary));
-                }
-                if (mode === 'progress'
                     && chapterId === 6
                     && this._resolvedBlendState.ecotone.boundaryId === '5-6') {
                     const boundary = this._resolvedBlendState.ecotone.boundaryPosition
@@ -1353,11 +1304,6 @@ export class ChapterEnvironmentManager {
                     progressOpacity = this.cameraProgress <= boundary
                         ? 0
                         : smoothstep01((this.cameraProgress - boundary) / Math.max(1e-5, end - boundary));
-                    coverageOpacity = progressOpacity;
-                }
-                if (mode === 'progress'
-                    && chapterId === 5
-                    && this._resolvedBlendState.ecotone.boundaryId === '5-6') {
                     coverageOpacity = progressOpacity;
                 }
             }
@@ -1370,37 +1316,6 @@ export class ChapterEnvironmentManager {
                 const seamInBoost = this._seamInBoostFor(chapterId, this.cameraProgress);
                 if (seamInBoost > progressOpacity) progressOpacity = seamInBoost;
                 if (seamInBoost > coverageOpacity) coverageOpacity = seamInBoost;
-                // 5->6 carry of the Ch5 env. Inert on the default path (chapter 5 is suppressed
-                // by the One World and never created) but LIVE on the ADR-0015 recovery path
-                // (?odysseyOneWorld=0 or a world-build failure), where it is what keeps the
-                // inherited summit + aurora from popping — so it stays.
-                if (chapterId === 5) {
-                    const boundary56 = this.chapterPositions[5];
-                    const nextBoundary = this.chapterPositions[6] ?? 1;
-                    if (Number.isFinite(boundary56)
-                        && Number.isFinite(nextBoundary)
-                        && nextBoundary > boundary56
-                        && this.cameraProgress > boundary56) {
-                        const spaceSpan = nextBoundary - boundary56;
-                        // Gone before chapter 7 arrives (audit 2026-10-18): carried to 0.8534
-                        // while chapter 7 appeared at 0.8487, three lit chapters overran the
-                        // light pool's adjacent-pair slots and the dropped lights popped.
-                        const carryEnd = Math.min(
-                            boundary56 + spaceSpan * SEAM_56_AURORA_CARRY_BAND,
-                            nextBoundary - seamHalfWidth(6),
-                        );
-                        const holdEnd = Math.min(boundary56 + spaceSpan * SEAM_56_CARRY_HOLD_BAND, carryEnd);
-                        // Hold fully present, then ease to 0 over the tail — a long graceful
-                        // dissolve of the inherited peaks/aurora instead of a hard pop.
-                        const carry = this.cameraProgress <= holdEnd
-                            ? 1
-                            : 1 - smoothstep01(
-                                (this.cameraProgress - holdEnd) / Math.max(1e-5, carryEnd - holdEnd),
-                            );
-                        if (carry > progressOpacity) progressOpacity = carry;
-                        if (carry > coverageOpacity) coverageOpacity = carry;
-                    }
-                }
             }
 
             const opacity = mode === 'progress'
@@ -1469,13 +1384,6 @@ export class ChapterEnvironmentManager {
             env.lastCoverage = coverage;
             env.lastVisible = isVisible;
         });
-
-        // The L5 canonical-range dedup that used to live here (electing ONE of the three
-        // byte-identical ch3/ch4/ch5 hero-chain copies per frame via userData.rangeAuthority)
-        // was deleted 2026-08-12: with chapters 3-5 suppressed by One World, at most one host
-        // exists at a time, so there is nothing left to deduplicate. Audited before removal —
-        // this was the sole writer of rangeAuthority, and the sole reader (surface-world.js)
-        // dropped its token in the same commit.
 
         // B7 — graceful journey-end ramp on the finale env (held by urban env / post).
         if (mode === 'progress') {
@@ -1758,10 +1666,7 @@ export class ChapterEnvironmentManager {
         // (OdysseyBoardController — mid-act handoff weight is exactly 1 at both bands), and
         // the sky/ambient writes are skipped wholesale by the `atmosphereOwned` early-return
         // below (the atmosphere rig owns them whenever the cinematic journey is active, which
-        // is the default and has no live opt-out). Under `?odysseyOneWorld=0` the generic
-        // narrow profile lerp above still bridges both boundaries — and ch3/ch4 carry
-        // byte-identical fog/sky colours since the daylight re-palette, so even there the
-        // difference is band width, not colour. The DIRECTOR's copies of these windows are
+        // is the default and has no live opt-out). The DIRECTOR's copies of these windows are
         // NOT dead — they feed the live OdysseyAtmosphere rig — and were deliberately kept.
         // SEAM 5-6 below is different in kind: it sits at an ACT EDGE, where the world fog
         // weight ramps to 0, so its output is exactly what the player sees.

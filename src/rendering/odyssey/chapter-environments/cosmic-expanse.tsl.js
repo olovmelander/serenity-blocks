@@ -870,8 +870,7 @@ export function* createHeroPlanetTSLSteps(uTime, { aurora = true } = {}) {
 
 /**
  * Assemble the converted materials into one group + a single uTime/uEnergy uniform the
- * caller ticks each frame. Mirrors deep-ocean.tsl.js's createDeepOceanPilotTSL — used by
- * the standalone WebGPU pilot validation page. Mesh placement (positions/rotations/scale)
+ * caller ticks each frame. Used by the standalone WebGPU pilot validation page. Mesh placement (positions/rotations/scale)
  * matches createCosmicExpanseEnvironment in cosmic-expanse.js.
  */
 export function createCosmicExpansePilotTSL() {

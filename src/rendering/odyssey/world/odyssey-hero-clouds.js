@@ -12,8 +12,7 @@
  * the mountains or sort correctly against the deck, because `renderOrder` strictly dominates depth
  * (`RenderList.js:12-31`); and a flat card has no vertical mass, which is the entire point of a
  * hero. This repo has the last failure written down in the owner's own words — a billboard whose
- * "plane boundary itself became the silhouette: a dead-straight vertical cut"
- * (`surface-world.tsl.js:2746-2752`).
+ * "plane boundary itself became the silhouette: a dead-straight vertical cut".
  *
  * Real opaque lobes delete all three problems rather than managing them: no billboard basis, no
  * sorting scheme (hardware depth resolves every case per fragment), and a silhouette that is a

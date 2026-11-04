@@ -4,7 +4,6 @@ import {
     it,
     vi,
 } from 'vitest';
-import { createSkyDriftEnvironment } from './sky-drift.js';
 import { createCosmicExpanseEnvironment, CH6_AMBIENT_ALL } from './cosmic-expanse.js';
 import {
     createBlackHoleTranscendenceEnvironment,
@@ -32,16 +31,6 @@ function stubCanvasDocument() {
 }
 
 describe('Odyssey P4 chapter environment anchors', () => {
-    it('adds cloud deck, aurora, and weather layers to chapter 5', () => {
-        stubCanvasDocument();
-
-        const group = createSkyDriftEnvironment({ particleCount: 8 });
-
-        expect(group.userData.cloudDecks?.name).toBe('cloud-deck-break');
-        expect(group.userData.aurora?.name).toBe('aurora-ribbons');
-        expect(group.userData.rainVeils?.name).toBe('rain-veil-particles');
-    });
-
     it('uses a volumetric black-hole anchor and hero planet in chapter 6', () => {
         const group = createCosmicExpanseEnvironment({ particleCount: 8, ambient: CH6_AMBIENT_ALL });
 

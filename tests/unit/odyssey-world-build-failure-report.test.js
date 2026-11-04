@@ -11,12 +11,10 @@ import {
 /**
  * WAVE 4/6 AUDIT PREREQUISITE — a One World build failure must be LOUD.
  *
- * The board's catch recovers into the legacy dioramas, which today makes the failure
- * invisible: a machine where the world never builds plays the fallback forever and
- * reports nothing, and the hatch-retirement decision gets made on the belief that the
- * world builds everywhere. These tests pin the two loud channels (persisted log +
- * player-visible banner) and — critically — that reporting can never break the recovery
- * it reports on.
+ * The board's catch plays on without the world, a state self-consistent enough to look like a
+ * quieter map: a machine where the world never builds would report nothing. These tests pin
+ * the two loud channels (persisted log + player-visible banner) and — critically — that
+ * reporting can never break the journey it reports on.
  */
 
 function makeStorage(initial = {}) {
@@ -102,7 +100,7 @@ describe('world build failure report', () => {
         );
         expect(banners).toHaveLength(1);
         expect(banners[0].attrs.role).toBe('alert');
-        expect(banners[0].textContent).toContain('legacy chapter environments');
+        expect(banners[0].textContent).toContain('without their scenery');
         expect(banners[0].textContent).toContain('fully playable');
     });
 
@@ -142,8 +140,8 @@ describe('world build failure report', () => {
 
     it('the board wires it into the fallback catch, AFTER the recovery, in its own guard', () => {
         // Source assertion, deliberately: constructing the board needs a WebGPU device.
-        // What must not silently regress is the ORDER (report after the suppression reset,
-        // so reporting can never prevent the fallback) and the inner try (a reporting throw
+        // What must not silently regress is the ORDER (report after the world has left the
+        // scene, so reporting can never keep it there) and the inner try (a reporting throw
         // must not escape into the catch's caller).
         const src = readFileSync(
             path.resolve(
@@ -166,7 +164,7 @@ describe('world build failure report', () => {
         const methodIdx = src.indexOf('_abandonOneWorld(error) {');
         expect(methodIdx).toBeGreaterThan(-1);
         const body = src.slice(methodIdx, methodIdx + 1200);
-        const resetIdx = body.indexOf('suppressedChapters = new Set()');
+        const resetIdx = body.indexOf('this.scene?.remove(world.group)');
         const reportIdx = body.indexOf('reportWorldBuildFailure(error)');
         expect(resetIdx).toBeGreaterThan(-1);
         expect(reportIdx).toBeGreaterThan(resetIdx);

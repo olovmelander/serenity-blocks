@@ -72,9 +72,8 @@ function buildAuroraCurtainNodes(uTime, uLayerOffset) {
 }
 
 /**
- * Resolve the shared time as a TSL node. Post-migration callers (mountain-peaks.js /
- * surface-world.js) pass a TSL `uniform()` node for `uniforms.uTime`, which the graph
- * uses directly. A defensive `uniform()` wrapper is returned for the legacy
+ * Resolve the shared time as a TSL node. Post-migration callers pass a TSL `uniform()`
+ * node for `uniforms.uTime`, which the graph uses directly. A defensive `uniform()` wrapper is returned for the legacy
  * `{ value }` plain-object form so a stale caller still constructs without throwing.
  * @param {*} sharedTime the caller's `uniforms.uTime`
  * @returns {*} a TSL float node usable in the graph (supports `.mul`)

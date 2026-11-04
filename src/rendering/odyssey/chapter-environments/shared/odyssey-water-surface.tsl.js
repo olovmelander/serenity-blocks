@@ -44,8 +44,8 @@ import {
 import { snoise3 } from './odyssey-tsl-noise.js';
 import { ODYSSEY_SUN } from './chapter-profile.js';
 
-// The ONE sun the whole underwater→surface stretch shares — byte-identical to surface-world's
-// SURFACE_SUN_DIR so the god-rays the diver rises toward and the sea/lake glitter agree.
+// The ONE sun the whole underwater→surface stretch shares, so the god-rays the diver rises
+// toward and the sea/lake glitter agree.
 export const ODYSSEY_WATER_SUN_DIR = new THREE.Vector3(...ODYSSEY_SUN).normalize();
 
 // The ONE water palette — byte-identical to Ch2's uDeepColor/uSurfaceColor + caustic crest and to

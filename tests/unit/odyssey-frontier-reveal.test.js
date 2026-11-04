@@ -315,21 +315,4 @@ describe('background work is ordered around where the player is', () => {
         expect(built).toEqual([8, 1]);
         expect(vi.getTimerCount()).toBe(0);
     });
-
-    it('still builds the world\'s chapters once the world is abandoned (ADR-0015)', async () => {
-        vi.useFakeTimers();
-        vi.spyOn(console, 'log').mockImplementation(() => {});
-        const manager = Object.create(ChapterEnvironmentManager.prototype);
-        manager.environments = new Map();
-        manager.suppressedChapters = new Set([2, 3, 4, 5]);
-        manager.cameraProgress = 0;
-        manager.updateVisibility = vi.fn();
-        const built = [];
-        manager.createChapterEnvironment = vi.fn(async (id) => { built.push(id); return null; });
-
-        manager.loadChaptersInBackground([1], { canRunTask: () => true, focusChapter: 1 });
-        manager.suppressedChapters = new Set(); // _abandonOneWorld hands 2-5 back
-        await vi.advanceTimersByTimeAsync(10_000);
-        expect(built).toEqual([2, 3, 4, 5, 6, 7, 8]);
-    });
 });
