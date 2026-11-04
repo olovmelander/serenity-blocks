@@ -216,7 +216,7 @@ function tuft(x, y, z) {
 
 /** Where the eyes are painted. */
 const EYE = FOX_MARKS.eye;
-const EYE_SIZE = 0.0145;
+const EYE_SIZE = 0.0165;
 const NOSE_SIZE = 0.021;
 
 /**
@@ -244,7 +244,7 @@ function coat(pos, nor, sees) {
 
         // Paint: the nose, the eyes with a soft rim, a shade in the hollows of the ears.
         const toNose = Math.hypot(x - nose[0], (y - nose[1]) * 1.25, z - nose[2]);
-        const toEye = Math.hypot(ax - EYE[0], y - EYE[1], (z - EYE[2]) * 0.6);
+        const toEye = Math.hypot(ax - EYE[0], y - EYE[1], (z - EYE[2]) * 0.9);
         const forward = nor[i * 3 + 2];
         const hollow = smooth(0.565, 0.6, y) * smooth(0.25, 0.7, forward) * 0.45;
         const dark = Math.max(

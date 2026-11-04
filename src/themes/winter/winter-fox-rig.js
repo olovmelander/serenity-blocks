@@ -48,10 +48,10 @@ export const FOX_BONES = Object.freeze([
 
 /** Points on the animal that are not joints (model metres, at rest). */
 export const FOX_MARKS = Object.freeze({
-    nose: Object.freeze([0, 0.455, 0.565]),
+    nose: Object.freeze([0, 0.452, 0.535]),
     tailTip: Object.freeze([0, 0.19, -0.515]),
     /** Its left eye (the right is its mirror), where the rigging script paints it. */
-    eye: Object.freeze([0.064, 0.497, 0.44]),
+    eye: Object.freeze([0.058, 0.492, 0.462]),
     /** Where each paw meets the snow. */
     pawFL: Object.freeze([0.077, 0, 0.225]),
     pawFR: Object.freeze([-0.077, 0, 0.225]),

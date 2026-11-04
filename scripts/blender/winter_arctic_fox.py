@@ -11,10 +11,10 @@ or by hand (headless; nothing in an open Blender session is touched):
         --skeleton <bones.json> --out <arctic-fox-mesh.glb> [--preview <dir>]
 
 An arctic fox in its winter coat, from what makes one read as itself near or far: a round, compact
-body on short legs, the coat so deep it hides the neck; a ruff that fills the chest; a short, broad
-head, wide across the cheeks, with a short muzzle and small round ears that barely stand out of the
-fur; thick legs ending in paws furred right over the toes; and a great soft brush of a tail, near
-as long as the body, that it carries low and curls up at the tip.
+body on short legs, the coat so deep it hides the neck; a ruff that fills the chest; a big round
+head, wide across the cheeks, with a short muzzle and soft round ears, more cub than wolf; legs
+ending in round paws furred right over the toes; and a great soft brush of a tail, near as long as
+the body, that it carries low and curls up at the tip.
 
 How it is made (the meshing is the Grainfields horse's, scripts/blender/grainfields/horse_sdf.py,
 and the coat's tools the polar bear's):
@@ -114,50 +114,49 @@ def design(J, M):
     # The trunk: a deep chest, a full belly (the winter coat hides the waist), a round rump,
     # shoulders and haunches under the fur.
     trunk = Union([
-        Ellipsoid(P(0, 0.332, 0.13), (0.112, 0.112, 0.16)),
-        Ellipsoid(P(0, 0.328, -0.01), (0.112, 0.105, 0.2)),
-        Ellipsoid(P(0, 0.33, -0.13), (0.114, 0.108, 0.125)),
-        *[(Ellipsoid(P(0.078 * s, 0.33, 0.18), (0.05, 0.09, 0.07)), 0.04) for s in sides],
-        *[(Ellipsoid(P(0.08 * s, 0.315, -0.1), (0.052, 0.09, 0.09)), 0.04) for s in sides],
-    ], k=0.06)
+        Ellipsoid(P(0, 0.325, 0.13), (0.132, 0.128, 0.165)),
+        Ellipsoid(P(0, 0.318, -0.01), (0.136, 0.126, 0.2)),
+        Ellipsoid(P(0, 0.322, -0.13), (0.134, 0.124, 0.135)),
+        *[(Ellipsoid(P(0.086 * s, 0.32, 0.18), (0.056, 0.095, 0.075)), 0.045) for s in sides],
+        *[(Ellipsoid(P(0.09 * s, 0.305, -0.1), (0.058, 0.095, 0.095)), 0.045) for s in sides],
+    ], k=0.07)
 
     # The neck hardly shows: it rises out of the chest inside the ruff.
     neck = Union([
-        Tube([P(0, 0.385, 0.2), P(0, 0.435, 0.27), P(0, 0.478, 0.335)], [0.108, 0.1, 0.09], k=0.03),
-        (Ellipsoid(P(0, 0.365, 0.25), (0.118, 0.115, 0.1)), 0.05),
-        (Ellipsoid(P(0, 0.452, 0.3), (0.112, 0.094, 0.082)), 0.04),
+        Tube([P(0, 0.385, 0.2), P(0, 0.435, 0.27), P(0, 0.478, 0.335)], [0.118, 0.112, 0.102], k=0.03),
+        (Ellipsoid(P(0, 0.36, 0.25), (0.138, 0.13, 0.112)), 0.05),
+        (Ellipsoid(P(0, 0.448, 0.3), (0.13, 0.108, 0.09)), 0.04),
     ], k=0.04)
 
     # The head: short and broad, wide across the cheeks, a soft stop down to a short muzzle.
     nose = np.asarray(M["nose"], dtype=np.float64)
     head = Union([
-        Ellipsoid(P(0, 0.508, 0.385), (0.07, 0.062, 0.08)),
-        *[(Ellipsoid(P(0.062 * s, 0.468, 0.36), (0.056, 0.054, 0.062)), 0.04) for s in sides],
-        *[(Ellipsoid(P(0.044 * s, 0.516, 0.44), (0.021, 0.014, 0.019)), 0.018) for s in sides],
-        RoundCone(P(0, 0.48, 0.435), nose + P(0, 0.006, -0.016), 0.047, 0.0145, (X_AXIS, 0.92)),
-        RoundCone(P(0, 0.452, 0.435), nose + P(0, -0.014, -0.03), 0.034, 0.012),
-        (Ellipsoid(nose + P(0, 0.002, -0.008), (0.013, 0.0105, 0.01)), 0.006),
-    ], k=0.018)
+        Ellipsoid(P(0, 0.512, 0.385), (0.088, 0.078, 0.088)),
+        *[(Ellipsoid(P(0.076 * s, 0.466, 0.365), (0.07, 0.066, 0.072)), 0.04) for s in sides],
+        RoundCone(P(0, 0.476, 0.44), nose + P(0, 0.006, -0.018), 0.05, 0.0185, (X_AXIS, 0.96)),
+        RoundCone(P(0, 0.452, 0.44), nose + P(0, -0.014, -0.028), 0.036, 0.015),
+        (Ellipsoid(nose + P(0, 0.002, -0.008), (0.0145, 0.0115, 0.0105)), 0.006),
+    ], k=0.024)
 
     # Ears: small and round, set wide, cupped forward and out.
     ears = []
     for s in sides:
-        base = P(0.052 * s, 0.552, 0.352)
-        tip = P(0.073 * s, 0.622, 0.336)
+        base = P(0.062 * s, 0.566, 0.358)
+        tip = P(0.09 * s, 0.626, 0.344)
         facing = _unit((0.45 * s, 0.1, 1.0))
-        ear = RoundCone(base, tip, 0.045, 0.014, (facing, 0.42))
-        cup = Ellipsoid(base * 0.45 + tip * 0.55 + facing * 0.013, (0.0215, 0.03, 0.0115), along=facing)
+        ear = RoundCone(base, tip, 0.046, 0.024, (facing, 0.44))
+        cup = Ellipsoid(base * 0.45 + tip * 0.55 + facing * 0.013, (0.0265, 0.031, 0.0125), along=facing)
         ears.append(Carve(ear, cup, 0.004))
 
     def paw(ball, ahead):
         """A paw furred over its toes: a soft pad and four rounded toes along its front."""
         across = np.array([ahead[2], 0.0, -ahead[0]])
         centre = ball + P(0, 0.024, 0) - ahead * 0.012
-        parts = [Ellipsoid(centre, (0.03, 0.023, 0.044), along=ahead)]
+        parts = [Ellipsoid(centre, (0.034, 0.026, 0.046), along=ahead)]
         for k in range(4):
             a = (k - 1.5) / 1.5
-            toe = ball + across * (0.02 * a) + ahead * (0.027 - 0.012 * a * a) + P(0, 0.012, 0)
-            parts.append((Ellipsoid(toe, (0.0115, 0.0125, 0.0155), along=ahead), 0.009))
+            toe = ball + across * (0.022 * a) + ahead * (0.027 - 0.012 * a * a) + P(0, 0.013, 0)
+            parts.append((Ellipsoid(toe, (0.0135, 0.0145, 0.0165), along=ahead), 0.011))
         return Union(parts, k=0.012)
 
     def front(side):
@@ -187,7 +186,7 @@ def design(J, M):
 
     # The tail: a great brush along its chain, widest two thirds of the way, ending in a soft point.
     brush = _along([J["tail1"], J["tail2"], J["tail3"], J["tail4"], M["tailTip"]],
-                   [0.044, 0.06, 0.072, 0.05, 0.008], 20)
+                   [0.05, 0.076, 0.094, 0.07, 0.012], 20)
 
     body = Union([(trunk, 0.0), (neck, 0.05), (head, 0.05), *[(ear, 0.012) for ear in ears],
                   *[(leg, 0.03) for leg in legs]])
@@ -223,7 +222,7 @@ def design(J, M):
                 centre = chain[i] * (1 - t) + chain[i + 1] * t
                 ahead = _unit(chain[i + 1] - chain[i])
                 spoke = np.array([s * math.sin(angle), math.cos(angle), 0.0])
-                start = centre + spoke * 0.06
+                start = centre + spoke * 0.08
                 direction = ahead + spoke * 0.07
                 tail_roots.append((start, direction, 0.05 + 0.03 * _hash01(k, 9.0 + row), 0.013))
 

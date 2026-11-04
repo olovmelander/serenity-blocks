@@ -160,12 +160,12 @@ export function createFox(u, gltf, { shells = 14 } = {}) {
         const toView = toEye.div(max(length(toEye), 1e-3)).toVar();
         const N = normalize(normalWorld).toVar();
         // Its eyes are drawn here, crisp, where the rigging script left a soft dark patch for
-        // them (paint between vertices is a smudge): one dark almond each, slanted as a fox's
+        // them (paint between vertices is a smudge): one dark, nearly round almond each, slanted as a fox's
         // are, its outer corner higher and further back. Its lid shuts it to a line.
         const fromEye = vec3(vBase.x.abs().sub(FOX_EYE[0]), vBase.y.sub(FOX_EYE[1]), vBase.z.sub(FOX_EYE[2]));
         const along = dot(fromEye, vec3(EYE_SLANT[0], EYE_SLANT[1], EYE_SLANT[2]));
         const across = max(dot(fromEye, fromEye).sub(along.mul(along)), 0.0).sqrt();
-        const almond = float(1.0).sub(smoothstep(0.0095, 0.012, length(vec2(along.mul(0.72), across.mul(1.45)))));
+        const almond = float(1.0).sub(smoothstep(0.0105, 0.0125, length(vec2(along.mul(0.92), across.mul(1.15)))));
         const eye = almond.mul(float(1.0).sub(smoothstep(0.0012, 0.0035, across).mul(u.foxEyes)));
         const patch = float(1.0).sub(smoothstep(0.02, 0.03, length(fromEye)));
         const paint = max(clamp(vCoat.z, 0.0, 1.0).mul(float(1.0).sub(patch)), eye);
