@@ -67,10 +67,9 @@
     "themeId": "chromatic-impasto",
     "trackKey": "ChromaticImpasto",
     "name": "Chromatic Impasto",
-    "file": "blood-moon.mp3",
-    "path": "./assets/music/blood-moon.mp3?song=chromatic-impasto",
-    "placeholder": true,
-    "placeholderSource": "blood-moon.mp3"
+    "file": "chromatic-impasto.mp3",
+    "path": "./assets/music/chromatic-impasto.mp3",
+    "placeholder": false
   },
   {
     "name": "Cinder Drift",
@@ -460,19 +459,17 @@
     "themeId": "verdant-hills",
     "trackKey": "VerdantHills",
     "name": "Verdant Hills",
-    "file": "blood-moon.mp3",
-    "path": "./assets/music/blood-moon.mp3?song=verdant-hills",
-    "placeholder": true,
-    "placeholderSource": "blood-moon.mp3"
+    "file": "verdant-hills.mp3",
+    "path": "./assets/music/verdant-hills.mp3",
+    "placeholder": false
   },
   {
     "themeId": "vesper-chrysalis",
     "trackKey": "VesperChrysalis",
     "name": "Vesper Chrysalis",
-    "file": "blood-moon.mp3",
-    "path": "./assets/music/blood-moon.mp3?song=vesper-chrysalis",
-    "placeholder": true,
-    "placeholderSource": "blood-moon.mp3"
+    "file": "vesper-chrysalis.mp3",
+    "path": "./assets/music/vesper-chrysalis.mp3",
+    "placeholder": false
   },
   {
     "themeId": "void-ember",
@@ -504,10 +501,9 @@
     "themeId": "winter",
     "trackKey": "Winter",
     "name": "Winter",
-    "file": "blood-moon.mp3",
-    "path": "./assets/music/blood-moon.mp3?song=winter",
-    "placeholder": true,
-    "placeholderSource": "blood-moon.mp3"
+    "file": "winter.mp3",
+    "path": "./assets/music/winter.mp3",
+    "placeholder": false
   },
   {
     "name": "Wolfhour",

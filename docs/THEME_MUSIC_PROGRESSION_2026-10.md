@@ -7,6 +7,10 @@ Date: 2026-10-08. Status: implemented and verified on the feature branch; native
 > recordings and 7 placeholders (Winter, Tornado, Verdant Hills, Chromatic Impasto, Voltage
 > Storm, Void Ember, Vesper Chrysalis), which still play Blood Moon's file under a URL of
 > their own (2026-10-22). Prompts and status: `docs/SUNO_PLACEHOLDER_PROMPTS_2026-10.md`.
+>
+> **Update 2026-11-04:** Winter, Verdant Hills, Vesper Chrysalis and Chromatic Impasto have
+> recordings of their own. The collection is 60 recordings and 3 placeholders (Tornado, Voltage
+> Storm, Void Ember).
 
 Every active theme has exactly one soundtrack assignment and its own song file. The active
 collection contains **62 themes and 62 songs**. Forest and **Echoes of the Soul** are available

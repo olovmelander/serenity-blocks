@@ -65,6 +65,11 @@ const AUTHORED_SONGS = Object.freeze({
     'stellar-velocity': ['Stellar Velocity', 'stellar-velocity.mp3'],
     'painted-ages': ['Painted Ages', 'painted-ages.mp3'],
     'thermal-bloom': ['Thermal Bloom', 'thermal-bloom.mp3'],
+    // Recorded 2026-11-04, the same way.
+    winter: ['Winter', 'winter.mp3'],
+    'verdant-hills': ['Verdant Hills', 'verdant-hills.mp3'],
+    'vesper-chrysalis': ['Vesper Chrysalis', 'vesper-chrysalis.mp3'],
+    'chromatic-impasto': ['Chromatic Impasto', 'chromatic-impasto.mp3'],
 });
 
 /** What a theme without a recording of its own plays. */

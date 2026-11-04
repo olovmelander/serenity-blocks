@@ -27,12 +27,28 @@ describe('one soundtrack per collectible theme', () => {
             expect(new Set(THEME_MUSIC_CATALOG.map((song) => song[field])).size).toBe(63);
         }
         // Placeholders share Blood Moon's file; every recording is its own.
-        expect(new Set(THEME_MUSIC_CATALOG.map((song) => song.file)).size).toBe(56);
-        expect(THEME_MUSIC_CATALOG.filter((song) => !song.placeholder)).toHaveLength(56);
+        expect(new Set(THEME_MUSIC_CATALOG.map((song) => song.file)).size).toBe(60);
+        expect(THEME_MUSIC_CATALOG.filter((song) => !song.placeholder)).toHaveLength(60);
         expect(THEME_MUSIC_CATALOG.filter((song) => song.placeholder).map((song) => song.themeId)).toEqual([
-            'winter', 'tornado', 'verdant-hills', 'chromatic-impasto', 'voltage-storm', 'void-ember',
-            'vesper-chrysalis',
+            'tornado', 'voltage-storm', 'void-ember',
         ]);
+    });
+
+    it.each([
+        ['winter', 'Winter', 'winter.mp3'],
+        ['verdant-hills', 'VerdantHills', 'verdant-hills.mp3'],
+        ['vesper-chrysalis', 'VesperChrysalis', 'vesper-chrysalis.mp3'],
+        ['chromatic-impasto', 'ChromaticImpasto', 'chromatic-impasto.mp3'],
+    ])('gives %s its own recording under the key it had as a placeholder', (themeId, trackKey, file) => {
+        expect(getThemeMusic(themeId)).toMatchObject({
+            trackKey, file, path: `./assets/music/${file}`, placeholder: false,
+        });
+        expect(getThemeMusic(themeId)).not.toHaveProperty('placeholderSource');
+        expect(shippedManifest.find((song) => song.themeId === themeId)).toMatchObject({
+            trackKey, file, path: `./assets/music/${file}`, placeholder: false,
+        });
+        expect(shippedManifest.find((song) => song.themeId === themeId)).not.toHaveProperty('placeholderSource');
+        expect(files).toContain(file);
     });
 
     it('keeps Forest’s existing default recording and stable default key', () => {
