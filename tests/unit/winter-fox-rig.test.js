@@ -339,8 +339,7 @@ describe('winter fox rig: the asset', () => {
     it('carries no clips, and is stamped by the script that rigged it', () => {
         expect(json.animations ?? []).toEqual([]);
         expect(json.asset.generator).toMatch(/rig-fox\.mjs/);
-        // (The stamp is how the script knows the mesh is already straightened: without it a
-        // re-rig would turn the head a second time.)
+        // (The stamp says which version of the script rigged it: re-rigging keeps the mesh.)
         const version = Number(readFileSync(RIG_SCRIPT, 'utf8').match(/const RIG_VERSION = (\d+);/)?.[1]);
         expect(version).toBeGreaterThan(0);
         expect(json.asset.extras?.winterFoxRig).toBe(version);
@@ -448,9 +447,8 @@ describe('winter fox rig: the asset', () => {
         expect(run.stdout).toMatch(/the asset matches/);
     }, 120_000);
 
-    // (The script straightens a mesh it has not rigged before, and knows one it has by its
-    // stamp. A file another version of it rigged is neither: its head would be turned a second
-    // time. It is refused.)
+    // (A file another version of the script rigged was laid out for another skeleton or coat: it
+    // is modelled again, not rigged over.)
     it('is not rigged over by another version of the script: a stamp that is not its own is refused', () => {
         const asset = readFileSync(ASSET);
         // The asset as it is, but for its stamp: one version on. (A binary glTF is a header,

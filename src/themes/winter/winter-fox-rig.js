@@ -28,10 +28,10 @@ export const FOX_BONES = Object.freeze([
     ['chest', 'spine', 0, 0.34, 0.12],
     ['neck', 'chest', 0, 0.42, 0.22],
     ['head', 'neck', 0, 0.5, 0.33],
-    ['tail1', 'hips', 0.012, 0.3, -0.18],
-    ['tail2', 'tail1', 0.02, 0.2, -0.28],
-    ['tail3', 'tail2', 0.025, 0.145, -0.37],
-    ['tail4', 'tail3', 0.03, 0.15, -0.445],
+    ['tail1', 'hips', 0, 0.3, -0.18],
+    ['tail2', 'tail1', 0, 0.2, -0.28],
+    ['tail3', 'tail2', 0, 0.145, -0.37],
+    ['tail4', 'tail3', 0, 0.15, -0.445],
     ['armL', 'chest', 0.085, 0.29, 0.205],
     ['foreL', 'armL', 0.077, 0.165, 0.19],
     ['handL', 'foreL', 0.077, 0.055, 0.195],
@@ -49,7 +49,7 @@ export const FOX_BONES = Object.freeze([
 /** Points on the animal that are not joints (model metres, at rest). */
 export const FOX_MARKS = Object.freeze({
     nose: Object.freeze([0, 0.455, 0.565]),
-    tailTip: Object.freeze([0.03, 0.19, -0.515]),
+    tailTip: Object.freeze([0, 0.19, -0.515]),
     /** Its left eye (the right is its mirror), where the rigging script paints it. */
     eye: Object.freeze([0.064, 0.497, 0.44]),
     /** Where each paw meets the snow. */
