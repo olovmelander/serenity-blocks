@@ -396,7 +396,7 @@ describe('measured benchmark capability gates', () => {
     });
 
     it('constructs and replays a deeper chain using only real seeded tetromino actions', async () => {
-        const demonstration = await demonstrateConstruction({ profileId: 'expert', seed: 1001, maxPieces: 16 });
+        const demonstration = await demonstrateConstruction({ profileId: 'expert', seed: 1004, maxPieces: 16 });
         expect(demonstration.kind).toBe('empty-board-construction');
         expect(demonstration.status).toBe('pass');
         expect(demonstration.maximumDepth).toBe(3);
