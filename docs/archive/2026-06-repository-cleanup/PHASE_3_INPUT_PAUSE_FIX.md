@@ -229,5 +229,5 @@ After this fix:
 - The game remains paused through both the round-end overlay (~3s) and countdown (~3s)
 - Unpause only happens after countdown completes in `_showCountdown()` line 640
 - The `isPaused` flag is checked in the game loop, blocking all physics updates
-- This is the correct behavior for competitive Tetris - clean transitions between rounds
+- This is the correct behavior for competitive block-stacking - clean transitions between rounds
 

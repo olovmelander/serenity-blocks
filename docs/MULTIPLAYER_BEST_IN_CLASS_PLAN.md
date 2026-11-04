@@ -1,7 +1,7 @@
 # Serenity Blocks — Online Multiplayer: Best‑in‑Class Improvement Plan
 
 **Status:** working draft · **Date:** 2026‑06‑22
-**Basis:** 26‑agent code audit (each root cause adversarially re‑verified) + web research on competitive‑Tetris netcode (TETR.IO, Jstris) and real‑time rendering (Gaffer On Games, Valve/Gambetta).
+**Basis:** 26‑agent code audit (each root cause adversarially re‑verified) + web research on competitive‑block-stacking netcode (TETR.IO, Jstris) and real‑time rendering (Gaffer On Games, Valve/Gambetta).
 **Scope:** the host‑authoritative P2P (Steam) FFA mode — `src/core/multiplayer/`, `src/core/network/`, `src/core/steam/`, `src/ui/` multiplayer surfaces, `OnlineMultiplayerMode.js`.
 
 > ⚠️ Several first‑pass audit claims were **refuted on re‑verification**. This plan is built on the *verified* conclusions, noted inline as **[verified]** / **[corrected]** so we don't fix the wrong thing.
@@ -42,7 +42,7 @@ Keep the **host‑authoritative** model and the **local‑prediction** that alre
 
 > **Predict your own board · Interpolate opponents (render "in the past") · Reliable keyframes + unreliable deltas · Deterministic, frame‑ordered garbage · Discrete events animated as cosmetic‑only tweens.**
 
-Explicitly **not** doing: pure delay‑based lockstep (couples everyone to the worst ping — the old Puyo Puyo Tetris "mud" feel) or full N‑way rollback (overkill; Tetris boards barely interact frame‑to‑frame — they interact only through *delayed* garbage, which we adjudicate on the host). The optional long‑horizon upgrade is TETR.IO‑style **input‑relay** (send keystrokes, re‑simulate opponents locally) — the ultimate smoothness, gated on full determinism.
+Explicitly **not** doing: pure delay‑based lockstep (couples everyone to the worst ping — the old a versus block puzzle "mud" feel) or full N‑way rollback (overkill; block-stacking boards barely interact frame‑to‑frame — they interact only through *delayed* garbage, which we adjudicate on the host). The optional long‑horizon upgrade is TETR.IO‑style **input‑relay** (send keystrokes, re‑simulate opponents locally) — the ultimate smoothness, gated on full determinism.
 
 ---
 
@@ -152,4 +152,4 @@ Do these behind the playground/test harness with deterministic replay tests.
 - This is the **steamworks.js 0.4.0** transport (single P2P channel, channel‑less API) — "reliable vs unreliable" is the SendType arg (`Reliable=2` vs `UnreliableNoDelay=1`), not separate channels.
 
 ## 7. Sources (research)
-TETR.IO Ribbon/observing docs; Gaffer On Games (snapshot interpolation, fix‑your‑timestep, state sync, delta compression); Valve Source multiplayer networking / interpolation / prediction / lag compensation; Gambetta client‑server architecture series; GGPO/rollback explainers; tetris.wiki garbage/lock‑delay; geckos.io snapshot‑interpolation. (Full URL list in the audit transcript.)
+TETR.IO Ribbon/observing docs; Gaffer On Games (snapshot interpolation, fix‑your‑timestep, state sync, delta compression); Valve Source multiplayer networking / interpolation / prediction / lag compensation; Gambetta client‑server architecture series; GGPO/rollback explainers; the genre wiki garbage/lock‑delay; geckos.io snapshot‑interpolation. (Full URL list in the audit transcript.)

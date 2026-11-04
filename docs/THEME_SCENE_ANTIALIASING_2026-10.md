@@ -1,6 +1,6 @@
 # Scene antialiasing in ten themes (2026-10-16)
 
-Olov found the edges of High Coast's trees and islands "not as high resolution" as Sky Children's,
+Olov found the edges of High Coast's trees and islands "not as high resolution" as Rainbow Terraces's,
 and asked for the same fix in High Coast, Fall, Forest, Golden Forest, Summer (`summer`),
 Moonlit Greenhouse, Sakura Twilight, Shifting Sands, Stillwater and Verdant Hills.
 
@@ -9,7 +9,7 @@ Moonlit Greenhouse, Sakura Twilight, Shifting Sands, Stillwater and Verdant Hill
 Every one of these themes draws its scene through a post stack: `pass(scene, camera)` into a
 render target of its own, graded, then one full-screen quad to the canvas. The renderer's
 `antialias` option only multisamples the CANVAS, which receives that one quad, so it never
-reaches the picture. Sky Children's pass takes 4× MSAA from High up (`samples: 4`); here:
+reaches the picture. Rainbow Terraces's pass takes 4× MSAA from High up (`samples: 4`); here:
 
 | Theme | Before | Why it read as low resolution |
 |---|---|---|
@@ -20,7 +20,7 @@ reaches the picture. Sky Children's pass takes 4× MSAA from High up (`samples: 
 | Moonlit Greenhouse | MSAA from High up, FXAA on Medium | The leaves, the lattice and the moths are cut-outs: a discard covers a whole pixel, so MSAA does not smooth them. Low had no antialiasing |
 
 The display here runs at a device pixel ratio of 1 (1600 × 900, see the machine memory), so no
-supersampling hides it either. The pixel-ratio caps were the same as Sky Children's or higher.
+supersampling hides it either. The pixel-ratio caps were the same as Rainbow Terraces's or higher.
 
 ## What changed
 

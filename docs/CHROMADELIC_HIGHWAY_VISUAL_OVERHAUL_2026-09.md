@@ -64,7 +64,7 @@ envelopes scale their speed, never their phase.
 
 - **Lens:** 60° vertical, Hor+, horizontal FOV capped at 104°. Rest pose (0, 84, 280) looking at
   (0, 36, −720): the vanishing point sits at sy ≈ 0.458, always behind the card. Pace widens the
-  FOV (Medium+) and a Tetris surges it +1.6°.
+  FOV (Medium+) and a Quad surges it +1.6°.
 - **Anchors** (in viewport heights from the centre, pushed outward on wide screens): hero
   (−0.50, +0.19) at depth 3600, Ø 0.27 H growing 0.004 H per level; moon orbiting it (transits
   every 96 s); ringed ice giant (+0.63, +0.31) at 5200, raised above the HUD when needed; binary
@@ -124,7 +124,7 @@ pile-ups; the shader caps the wave sum.
 | Piece lock | faint cyan band + rail tick (rate-limited to one per 0.35 s) |
 | Combo c | a band climbing magenta → violet → blue → azure; meteors at c = 3, 6, 9…; one comet per chain at c ≥ 5 (re-armed by every new chain, ≥ 20 s apart) |
 | Line clear (n ≤ 3) | n orange bands, star twinkle wave, hero storm flashes |
-| Tetris | three staggered beats: bands out of the card (0–150 ms), white-hot ring cascade (150–550 ms), streak warp (300–1100 ms); FOV surge; a light contrast dip |
+| Quad | three staggered beats: bands out of the card (0–150 ms), white-hot ring cascade (150–550 ms), streak warp (300–1100 ms); FOV surge; a light contrast dip |
 | Level up | violet band + violet cascade, binary flare, nebula breath, twinkle wave; the ring palette steps +30° (easing the short way round the wheel; a lower level = a new game snaps it) and the nebula swings, persistently; the hero grows a little |
 
 ## 6. Post and grade
@@ -193,7 +193,7 @@ release claim.
 ## 9. Validation
 
 - Playground (WebGPU) and in-game captures at 1600×769 and 1920×1080, WebGPU and WebGL2 backends,
-  Low / High / Extreme tiers; Tetris beats at +0.2 s / +0.4 s; false-colour view (1.5 % of the
+  Low / High / Extreme tiers; Quad beats at +0.2 s / +0.4 s; false-colour view (1.5 % of the
   visible frame above the bloom threshold at rest, all thin emitters). Zero console errors or
   WebGPU validation messages.
 - Unit tests: `tests/unit/chromadelic-highway-world.test.js` (composition at five aspects, CSS

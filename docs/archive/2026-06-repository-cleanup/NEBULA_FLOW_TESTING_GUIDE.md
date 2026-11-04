@@ -50,7 +50,7 @@ The default scheme is "Cosmic" (purple/blue). To test other schemes, you'll need
 1. Play the game and clear lines
 2. [ ] Single line clear → 1 splat appears
 3. [ ] Double line clear → 2 splats appear
-4. [ ] Triple/Tetris → 3-4 splats appear
+4. [ ] Triple/Quad → 3-4 splats appear
 
 **Combos:**
 1. Clear multiple lines in succession quickly

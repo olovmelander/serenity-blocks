@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "generatedAt": "2026-08-21T06:36:00.189Z",
   "runId": "2026-08-21T06-12-57-693Z",
-  "theme": "sky-children",
+  "theme": "rainbow-terraces",
   "themeMeta": {
-    "displayName": "Sky Children",
-    "module": "./sky-children-v2/sky-children-v2-theme.js",
+    "displayName": "Rainbow Terraces",
+    "module": "./rainbow-terraces/rainbow-terraces-theme.js",
     "resourceProfile": "heavy-gpu",
     "performanceClass": "heavy"
   },
@@ -218,7 +218,7 @@
         "id": "target-theme-card-present",
         "passed": true,
         "details": {
-          "themeId": "sky-children"
+          "themeId": "rainbow-terraces"
         }
       },
       {
@@ -235,8 +235,8 @@
         "id": "theme-card-applied-target",
         "passed": true,
         "details": {
-          "actual": "sky-children",
-          "expected": "sky-children"
+          "actual": "rainbow-terraces",
+          "expected": "rainbow-terraces"
         }
       },
       {
@@ -251,8 +251,8 @@
         "id": "theme-setting-committed",
         "passed": true,
         "details": {
-          "actual": "sky-children",
-          "expected": "sky-children"
+          "actual": "rainbow-terraces",
+          "expected": "rainbow-terraces"
         }
       },
       {
@@ -268,16 +268,16 @@
         "id": "active-name-first-target",
         "passed": true,
         "details": {
-          "actual": "sky-children",
-          "expected": "sky-children"
+          "actual": "rainbow-terraces",
+          "expected": "rainbow-terraces"
         }
       },
       {
         "id": "active-instance-name-first-target",
         "passed": true,
         "details": {
-          "actual": "sky-children",
-          "expected": "sky-children"
+          "actual": "rainbow-terraces",
+          "expected": "rainbow-terraces"
         }
       },
       {
@@ -318,7 +318,7 @@
         "id": "single-active-container-first-target",
         "passed": true,
         "details": [
-          "sky-children-theme"
+          "rainbow-terraces-theme"
         ]
       },
       {
@@ -1115,7 +1115,7 @@
         "id": "second-target-selection",
         "passed": true,
         "details": {
-          "activeThemeName": "sky-children"
+          "activeThemeName": "rainbow-terraces"
         }
       },
       {
@@ -1131,16 +1131,16 @@
         "id": "active-name-second-target",
         "passed": true,
         "details": {
-          "actual": "sky-children",
-          "expected": "sky-children"
+          "actual": "rainbow-terraces",
+          "expected": "rainbow-terraces"
         }
       },
       {
         "id": "active-instance-name-second-target",
         "passed": true,
         "details": {
-          "actual": "sky-children",
-          "expected": "sky-children"
+          "actual": "rainbow-terraces",
+          "expected": "rainbow-terraces"
         }
       },
       {
@@ -1181,7 +1181,7 @@
         "id": "single-active-container-second-target",
         "passed": true,
         "details": [
-          "sky-children-theme"
+          "rainbow-terraces-theme"
         ]
       },
       {
@@ -1550,17 +1550,17 @@
     },
     "secondSelectionReturned": null,
     "activeTheme": {
-      "name": "sky-children",
-      "instanceName": "sky-children",
+      "name": "rainbow-terraces",
+      "instanceName": "rainbow-terraces",
       "isActive": true,
       "lifecycleState": "running",
       "activeContainerIds": [
-        "sky-children-theme"
+        "rainbow-terraces-theme"
       ]
     }
   },
   "screenshot": {
-    "path": "docs\\theme-screenshots\\sky-children.png",
+    "path": "docs\\theme-screenshots\\rainbow-terraces.png",
     "passed": true,
     "width": 1584,
     "height": 787,

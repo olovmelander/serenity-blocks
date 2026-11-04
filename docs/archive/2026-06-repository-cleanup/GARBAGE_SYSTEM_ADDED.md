@@ -93,7 +93,7 @@ window.showLobbyBrowser();
 ### Scenario: Clear 4 Lines in 1v1
 
 **You (Host):**
-1. Clear 4 lines (Tetris!)
+1. Clear 4 lines (Quad!)
 2. Get +2000 points
 3. Console: `💥 Opponent receives 3 garbage lines`
 
@@ -261,7 +261,7 @@ Check if topped out
 
 ## 🎉 Celebrate!
 
-You now have a **fully functional FFA multiplayer Tetris game**!
+You now have a **fully functional FFA multiplayer block-stacking game**!
 
 - ✅ Multiple players can play
 - ✅ Pieces move and render

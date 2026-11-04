@@ -76,4 +76,4 @@ This document summarizes the Phase 3 work completed for Online Multiplayer, focu
 
 ## Impact
 
-These changes collectively bridge the gap between a "functional" prototype and a "playable" alpha. The game now handles the subtleties of high-speed Tetris stacking (buffered inputs, instant reaction to garbage) that are required for competitive play.
+These changes collectively bridge the gap between a "functional" prototype and a "playable" alpha. The game now handles the subtleties of high-speed block stacking stacking (buffered inputs, instant reaction to garbage) that are required for competitive play.

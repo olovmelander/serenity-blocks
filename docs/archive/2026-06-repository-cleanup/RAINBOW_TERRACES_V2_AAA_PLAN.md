@@ -1,9 +1,9 @@
-# Sky Children V2 — AAA "Cloud Sea Sunset" Rebuild Plan
+# Rainbow Terraces V2 — AAA "Cloud Sea Sunset" Rebuild Plan
 
 > Status: **PHASE 6 SHIPPED** (2026-06-01). Supersedes the *implementation approach* of
-> `docs/SKY_CHILDREN_WEBGPU_THEME_PLAN.md` (keep that doc as the **technique/look
+> `docs/RAINBOW_TERRACES_WEBGPU_THEME_PLAN.md` (keep that doc as the **technique/look
 > reference**; this doc replaces its raw-WGSL delivery path with the repo's proven
-> TSL-on-`three/webgpu` AAA architecture). Honors `docs/SKY_CHILDREN_ART_DIRECTION.md`
+> TSL-on-`three/webgpu` AAA architecture). Honors `docs/RAINBOW_TERRACES_ART_DIRECTION.md`
 > (the locked look bible) verbatim.
 
 ---
@@ -11,7 +11,7 @@
 ## 0. North Star & Scope
 
 **Emotional target (locked):** the *"Valley of Triumph / Sunset"* state of *Sky:
-Children of the Light*, rendered in *Journey*'s painterly lighting language — warm-gold
+a calm flying adventure*, rendered in *Journey*'s painterly lighting language — warm-gold
 highlights, cool-violet shadows, soft atmospheric depth, readable silhouettes, and
 board-safe contrast. The hero subject of this art direction is **the cloud sea seen at
 golden hour from above**, not a meadow.
@@ -34,7 +34,7 @@ parameter, gaps.
 
 ---
 
-## 1. Honest Assessment of `sky-children-v2` Today
+## 1. Honest Assessment of `rainbow-terraces` Today
 
 ### What works and should be preserved
 - The **TSL `sky-core` materials** (`src/themes/shared/sky-core/sky-core-materials.js`)
@@ -68,10 +68,10 @@ parameter, gaps.
 6. **Manual per-frame uniform fan-out + per-frame `new THREE.Vector3()`** in
    `updateCamera`. Avoidable GC pressure.
 7. **Validation/diagnostics bloat.** ~600 lines of `visualGate`/`perfGate`/`flowerDiagnostics`/
-   `installCompatibilityHelpers` (`skyChildrenPhase1..7`) ride along in the runtime.
+   `installCompatibilityHelpers` (`rainbowTerracesPhase1..7`) ride along in the runtime.
    Valuable as tooling, but they belong behind a debug flag, not in the hot path.
 
-### Visual gaps vs the locked anchors (`SKY_CHILDREN_ART_DIRECTION.md` §"Style Anchors")
+### Visual gaps vs the locked anchors (`RAINBOW_TERRACES_ART_DIRECTION.md` §"Style Anchors")
 | Anchor (LOCKED) | Today | Target technique (this plan) |
 |---|---|---|
 | 1. No black shadows | ❌ stock ambient/hemi fill | Colored-shadow blend in every material (§3.3) |
@@ -86,10 +86,10 @@ parameter, gaps.
 ## 2. Target Architecture (mirror `himalayan-peak/`)
 
 ### 2.1 Thin orchestrator
-`sky-children-v2-theme.js` becomes a thin shell (≈ Himalayan's 395 lines): owns the
+`rainbow-terraces-theme.js` becomes a thin shell (≈ Himalayan's 395 lines): owns the
 `WebGPURenderer`, scene, camera, the **shared uniform block**, the frame loop, and event
 wiring. All visual logic moves into subsystems. Directory layout to add under
-`src/themes/sky-children-v2/`:
+`src/themes/rainbow-terraces/`:
 
 ```
 composition/   mood-director.js        (the spine — see §2.2)
@@ -102,7 +102,7 @@ rendering/     sky-dome.js             (scattering sunset sky + sun + stars)
 sim/           glints.js               (pollen/spark motes — analytic, no compute)
                sky-manta.js            (optional far silhouettes / birds)
 post/          sky-pipeline.js         (cinematic MRT post — see §3.3)
-sky-children-noise.js                  (shared TSL noise lib, ported from himalayan-noise)
+rainbow-terraces-noise.js                  (shared TSL noise lib, ported from himalayan-noise)
 ```
 
 Keep `sky-core-*` shared modules where they still serve (terrain-field sampling, quality
@@ -125,7 +125,7 @@ Reverie (cool cloud-sea, idle)  →  Warming  →  Triumph (full sunset ignition
 - Transients layered on top: `gust` (cloud + grass + glints), `ignite` (sunset flare on
   big clears), `flare` (sun lens-flare/god-ray punch), `sparkle` (glitter burst),
   `cameraPunch`. Dependency-free (no THREE import), trivially unit-testable.
-- Accent palette eases toward tiered hexes (single→tetris→combo→surge), exactly mirroring
+- Accent palette eases toward tiered hexes (single→quad→combo→surge), exactly mirroring
   `ASCENT_ACCENTS`, but recolored to the look-bible Sunset palette
   (`#F6C063 #E58D4A #F3EBDD #8FB6D8 #6A71B8`).
 
@@ -168,7 +168,7 @@ the background frame budget):
 
 **Layer A — the sea floor (volumetric-lit cloud deck).** A large displaced plane (or
 shallow dome) below/around the camera, vertex-displaced by 3D FBM+Worley (port the
-`noise3d`/`worley_3d` from the WGSL plan §3.1 into TSL `Fn`s in `sky-children-noise.js`).
+`noise3d`/`worley_3d` from the WGSL plan §3.1 into TSL `Fn`s in `rainbow-terraces-noise.js`).
 Shade it as a *thin cloud volume* per the WGSL plan §3.2, expressed in TSL:
 - **Beer's-law absorption** `exp(-density*depth)` for the lit/shadow split,
 - **powder effect** `1-exp(-density*2)` to keep thin edges from blowing out,
@@ -207,7 +207,7 @@ Port `rendering/sky-dome.js`, retuned for sunset:
 
 ### 3.3 HERO — Painterly Journey Lighting + Cinematic Post
 This is where the locked anchors live. Build a small shared TSL shading library
-(`sky-children-lighting.js`) and call it from every surface material:
+(`rainbow-terraces-lighting.js`) and call it from every surface material:
 - **Wrapped diffuse** (soft light wrap, anchor #2): `saturate((NdotL + wrap)/(1+wrap))`
   with `wrap≈0.5` — no hard terminator. (Cleaner than Journey's `4*NdotL` "contrast" hack,
   which sharpens; we want softness here. Keep the optional `N.y` compression for the
@@ -268,7 +268,7 @@ This is where the locked anchors live. Build a small shared TSL shading library
 |---|---|---|---|
 | PIECE_LOCK | +0.012 | small gust | a breath of wind over the sea |
 | HARD_DROP | +0.04 | gust + cameraPunch + chroma | a gust + tiny dolly |
-| LINE_CLEAR (1–4) | +0.12 + lines·0.07 | ignite (tetris=big), flare, sparkle, bloom, accent tier | the light *answers* — sunset ignites, glitter bursts |
+| LINE_CLEAR (1–4) | +0.12 + lines·0.07 | ignite (quad=big), flare, sparkle, bloom, accent tier | the light *answers* — sunset ignites, glitter bursts |
 | COMBO (≥4 / ≥7) | up to +0.55 | flare, sparkle, cameraPunch, surge accent | sustained triumph; fuchsia-rose alpenglow at high combo |
 | LEVEL_UP | +0.08 | gust + flare | a fresh warm sweep |
 | GAME_OVER | → idle floor | slow cameraPunch pull-back | exhale back to cool Reverie |
@@ -296,7 +296,7 @@ Decay rates copied from Himalayan and retuned so the warm/cool split never fully
 5. **Adaptive resolution:** keep the existing adaptive scaler (it's good), simplified to
    drive `renderScale` + post on/off; drop the flower-density adaptive coupling.
 6. **Move diagnostics behind `?skyV2Debug`:** `visualGate`/`perfGate`/`flowerDiagnostics`/
-   `skyChildrenPhaseN` compat shims load only when the debug flag is set.
+   `rainbowTerracesPhaseN` compat shims load only when the debug flag is set.
 
 Budget target (carry forward existing gate): render p95 ≤ ~10.5 ms, post p95 ≤ ~2 ms at
 tier `High`.
@@ -354,18 +354,18 @@ Each phase: code-complete → `npm run build` + lint clean → **WebGPU browser-
 ## 10. Validation
 
 - Keep the **six hero bookmarks** (`HERO_SHOTS`) + the Phase-0 reference board
-  (`docs/SKY_CHILDREN_PHASE0_REFERENCE_BOARD.md`); add cloud-sea-specific shots.
+  (`docs/RAINBOW_TERRACES_PHASE0_REFERENCE_BOARD.md`); add cloud-sea-specific shots.
 - Re-use the existing `visualGate`/`perfGate` shape (behind the debug flag) but rewrite the
   visual metrics to score the *new* anchors (warm/cool delta, rim presence, glitter
   stability, fog continuity) instead of flower coverage.
-- Log every style regression in `docs/SKY_CHILDREN_LOOK_LOG.md` per its existing workflow;
+- Log every style regression in `docs/RAINBOW_TERRACES_LOOK_LOG.md` per its existing workflow;
   block merge on warm/cool balance, silhouette readability, or atmosphere-continuity
   regressions (the look bible's merge gate).
 
 ---
 
 ### Sources / Inspiration
-- *Art of Sky: Children of the Light* (GDC 2020, Yuichiro Tanabe) — emotional time-of-day framing.
+- *Art of a calm flying adventure* (GDC 2020, Yuichiro Tanabe) — emotional time-of-day framing.
 - *Sand Rendering in Journey* (GDC 2013, John Edwards) — wrapped diffuse, ocean specular, glitter, colored shadows.
 - *Glitter, Fur and Shadows* (GDC 2025) — procedural glitter, self-shadowing direction.
 - *The Real-time Volumetric Cloudscapes of Horizon Zero Dawn* (Schneider/Guerrilla, SIGGRAPH 2015) — why we *approximate* rather than full-raymarch on a background budget.
@@ -485,8 +485,8 @@ rebuild), analytic/instanced (no compute), dispose in teardown, scale by quality
 Flowers + birds alone will close most of the "aliveness" gap to the key art.
 
 ### Sources / inspiration (Phase 7)
-- *Art of Sky: Children of the Light* (GDC 2020, Y. Tanabe) — emotional time-of-day worlds,
-  light as theme: https://gdcvault.com/play/1026903/Art-of-Sky-Children-of
+- *Art of a calm flying adventure* (GDC 2020, Y. Tanabe) — emotional time-of-day worlds,
+  light as theme
 - Sky environment art (R. Yoshino, ArtStation) + concept refs — island/flower/arch staging.
 - In-repo reuse: `shared/sky-core/sky-core-flower-carpet-field.js` (flower oracle),
   `himalayan-peak/rendering/peak-eagles.js` (procedural flyer), instancing in

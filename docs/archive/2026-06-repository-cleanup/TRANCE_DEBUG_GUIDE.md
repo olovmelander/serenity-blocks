@@ -50,7 +50,7 @@ Look for these potential errors:
 ```
 [TranceStateEffects] Board dimensions: {boardWidth: 300, boardHeight: 600}
 ```
-**Expected**: For standard Tetris board: 300px width (10 cols × 30px), 600px height (20 rows × 30px)
+**Expected**: For standard block-stacking board: 300px width (10 cols × 30px), 600px height (20 rows × 30px)
 
 ### Step 3: Inspect Scene Objects
 

@@ -685,7 +685,7 @@ We've built a **production-ready FFA combat system** with:
 - Seamless host migration (resilient)
 - 100% test success (fully verified)
 
-**You now have a fully functional multiplayer Tetris game that rivals AAA titles!** 🎮
+**You now have a fully functional multiplayer block-stacking game that rivals AAA titles!** 🎮
 
 Only 2 phases left:
 - **Phase 4:** UI (make it pretty!)

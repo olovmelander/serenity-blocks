@@ -158,7 +158,7 @@ Every layer must have a role and an intensity ceiling.
 | Move/rotate | Almost subliminal local twinkle or dust response; never a camera event | 1–2 |
 | Ordinary lock | Cell-accurate inward breath, stellar seal, and one shallow sky ripple | 3 |
 | Line clear | Row-aligned light travel with meteor punctuation proportional to clear count | 4–6 |
-| Tetris/T-spin/B2B | One dominant authored gesture with restrained modifiers | 6–8 |
+| Quad/T-spin/B2B | One dominant authored gesture with restrained modifiers | 6–8 |
 | High combo/perfect clear | Rare celestial memory: constellation birth or optional gravitational wish | 9–10 |
 
 Rules:
@@ -231,7 +231,7 @@ Composition target:
   it. Dirty-upload only active nodes and edges.
 - Meteors must have a meaningful radiant and trajectory. Implement `spread` or remove
   the option; a lock/combo cue must look spatially caused by the board event.
-- Reserve the hero fireball for Tetris/perfect clear/high-combo milestones. Ordinary
+- Reserve the hero fireball for Quad/perfect clear/high-combo milestones. Ordinary
   locks receive no meteor.
 
 ### 4.6 Camera and post
@@ -297,9 +297,9 @@ contract, `COMBO` sets the pending cascade resonance and the immediately followi
 |---|---|---|
 | Lock, no clear | Cell-centered stellar seal + one shallow wave | Tiny dust inhale |
 | Single/double/triple | Row-aligned horizon sweep; length/brightness scales with rows | 0/1/2 small meteors; no constellation |
-| Tetris | Four linked row sweeps resolving bottom-to-top, then one hero meteor | One camera/FOV breath; combo color tint |
+| Quad | Four linked row sweeps resolving bottom-to-top, then one hero meteor | One camera/FOV breath; combo color tint |
 | T-spin | Compact rotating vortex around the piece centroid | Thin counter-rotating ring; no large chromatic split |
-| B2B | The qualifying Tetris/T-spin remains dominant | One timeline-owned echo 160–220 ms later |
+| B2B | The qualifying Quad/T-spin remains dominant | One timeline-owned echo 160–220 ms later |
 | Resonance/combo 1–3 | Warmer seal and slightly longer dust gather | None |
 | Resonance/combo 4–6 | One clean expanding ring and visible sky current | One small sign seed, not persistent |
 | Resonance/combo 7–9 | Brief nova inhale/release and hero meteor | One readable constellation trace |
@@ -308,7 +308,7 @@ contract, `COMBO` sets the pending cascade resonance and the immediately followi
 
 Implementation rules:
 
-- Dominance order: perfect clear > combo apex > Tetris/T-spin > ordinary line clear >
+- Dominance order: perfect clear > combo apex > Quad/T-spin > ordinary line clear >
   lock.
 - T-spin, B2B, combo, cascade depth, and clear count are modifiers on the dominant
   cue, not independent shows.
@@ -354,7 +354,7 @@ Use the umbrella 20-second scripted loop shape and emit at least
 | Viewport | 1920×1080; 2560×1440 where hardware permits |
 | DPR | 1.0; 1.25; 1.5. Test 2.0 only as an explicit stress case, not an unconditional target. |
 | Tier | Low; High; Extreme, with tier and effect scale pinned |
-| Scenario | 20 s idle; 60 ordinary locks; repeated Tetris; combo-10 apex; pause/hidden resume; resize |
+| Scenario | 20 s idle; 60 ordinary locks; repeated Quad; combo-10 apex; pause/hidden resume; resize |
 | Accessibility | default; reduced motion/effects |
 | Lifecycle | 60 activate/deactivate cycles; renderer/device-loss recovery path |
 
@@ -415,7 +415,7 @@ same-device before/after deltas are evidence, cross-device timestamps are not.
 
 **Work:** repair deterministic playground time/seed/seek, bounded timestamp resolution,
 Starlight diagnostics, and the missing isolated effects. Record baseline artifacts for
-rest, lock, Tetris, and combo-10 on WebGPU and forceWebGL.
+rest, lock, Quad, and combo-10 on WebGPU and forceWebGL.
 
 **Exit:** fixed inputs reproduce the same frame; console is clean without timestamp
 overflow; performance JSON includes pinned environment metadata; no full-theme art
@@ -443,7 +443,7 @@ sky is materially cheaper or delivers an explicitly accepted GPU cost.
 ### Phase 3 — Lock piece and reaction grammar
 
 **Work:** build the cell-centered stellar seal and `StarlightReactionDirector` in
-`starlight-lock-combo.effect.js`. Author ordinary lock, line counts, Tetris, T-spin,
+`starlight-lock-combo.effect.js`. Author ordinary lock, line counts, Quad, T-spin,
 B2B, combo tiers, and perfect-clear dominance on one theme-time timeline.
 
 **Exit:** a scripted resolution emits one dominant cue; no pool thrash or independent
@@ -504,7 +504,7 @@ The theme is ready only when all of the following are true:
 - A rest screenshot has clear near/mid/far depth, intentional negative space, a
   recognizable galactic flow, and readable star-temperature hierarchy.
 - The playfield is the highest-priority object at all tiers and common aspect ratios.
-- An ordinary lock is precise, satisfying, and local. Tetris, T-spin, B2B, combo tiers,
+- An ordinary lock is precise, satisfying, and local. Quad, T-spin, B2B, combo tiers,
   and perfect clear are distinct without becoming unrelated visual languages.
 - One resolution never produces an accidental stack of independent spectacles.
 - The apex is rare enough to feel earned and leaves one readable visual memory.

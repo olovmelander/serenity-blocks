@@ -49,9 +49,9 @@ aggregate draws and 85,739 triangles. `renderer.info.programs` is unavailable on
 renderer and is not counted as zero.
 
 Every response-enabled quality tier now constructs the bounded `lean-four-wake` water
-response graph. It preserves the four opposing Tetris depth wakes while avoiding the
+response graph. It preserves the four opposing Quad depth wakes while avoiding the
 former repeated fragment-graph work. The final
-[High WebGPU Tetris capture](../artifacts/themes/stillwater/wave8/final-playground/water-high-tetris-lean-periodic-webgpu-v5.png)
+[High WebGPU Quad capture](../artifacts/themes/stillwater/wave8/final-playground/water-high-quad-lean-periodic-webgpu-v5.png)
 visually verifies that composition with one ready WebGPU canvas and no shader, pipeline,
 or console error. High still retains its 0.30-scale planar reflection and 0.45-scale
 selective bloom; the response optimization did not flatten the premium tier.

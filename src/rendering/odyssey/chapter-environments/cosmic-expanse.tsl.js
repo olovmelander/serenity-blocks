@@ -542,7 +542,7 @@ export function createHeroPlanetSurfaceTSL(uTime, { aurora = true, uAuroraReveal
     // that stays put, which is what a planet actually does.
     const dTerm = dot(normalize(normalWorld), normalize(uLightDir));
     // WAVE 4 (Space overhaul §5) — the continuous diffuse ramp becomes THREE flat value
-    // bands with ~8% soft thresholds, plus a thin warm terminator line (the Ghibli
+    // bands with ~8% soft thresholds, plus a thin warm terminator line (the painted
     // sunset edge, authored width, not physical). Shade is a HUE statement: the night
     // side shifts cool-indigo with saturation held and a non-black floor — never a
     // plain multiply toward black (probe-verified paint, ch6-painted-cosmos).

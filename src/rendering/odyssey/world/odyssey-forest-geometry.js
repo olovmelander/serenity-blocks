@@ -14,7 +14,7 @@ import {
  * is EDITED NORMALS, not geometry and not lighting tech. The Witness transfers normals from an
  * enclosing blob onto the canopy so a chaotic cluster shades as one smooth convex mass; Alba
  * shipped an entire game on vertex normal-transfer with zero normal maps; every community
- * Ghibli-tree recipe converges on the same move; and the fluffytree shader computes exactly
+ * painted-tree recipe converges on the same move; and the fluffytree shader computes exactly
  * this analytically (`normalize(worldPos - treeCentre)`) instead of baking it. Both builders
  * below therefore bake a BLOB NORMAL FIELD and throw the face normals away. Wave 0b already
  * proved the effect on the incumbent cones, measured against the reference bar.

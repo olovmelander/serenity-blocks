@@ -7,10 +7,10 @@ replaces the rings' palette, the level palette step and the event table.
 
 Evidence: [reports/chromadelic-highway-spectrum/](../reports/chromadelic-highway-spectrum/):
 `six-movements-playground.jpg` (one frame per movement), `ring-forms.jpg` (every form forced in
-turn), `events-chase-prism-levelup.jpg` (clear chase, Tetris prism, level-up repaint, combo),
+turn), `events-chase-prism-levelup.jpg` (clear chase, Quad prism, level-up repaint, combo),
 `ingame-drift-level1.jpg` (the real game at level 1, 0 lines: the spectrum drifting by itself),
 `ingame-prism-level1.jpg`, `chord-horizon-mist-high.jpg`, `triad-extreme.jpg`,
-`ember-webgl2.jpg`, `tetris-prism-burst.jpg`, `perf-ab-rtx3070.txt`.
+`ember-webgl2.jpg`, `quad-prism-burst.jpg`, `perf-ab-rtx3070.txt`.
 
 ## 1. The ask and what changed
 
@@ -34,7 +34,7 @@ After:
   passing over them, every ring pools its light on the glass road, and the nebula turns with the
   movement.
 - **Effects.** Rings flare as they clear the card edge. Clears send chase lights filling every arch
-  from its feet to its crown. A Tetris turns every arch into the spectrum as the cascade passes,
+  from its feet to its crown. A Quad turns every arch into the spectrum as the cascade passes,
   and the next three rings out are prism arcs. A level-up repaints the tunnel: a cascade in the
   next movement's first colour sweeps from the board to the lens and re-dresses every ring it
   passes (the whole tunnel wears the new movement within 0.7 s). Event bands take the newest
@@ -104,7 +104,7 @@ centred on each boundary, resting 15 % at each end).
 | Piece lock | A band in the newest ring's colour + rail tick (rate-limited to one per 0.35 s) |
 | Combo c | A band climbing the wheel from the newest ring's hue (+25° per step); the packets race (rate +1.4 rad/s at c ≥ 6, eased back over 2.5 s); meteors at c = 3, 6, 9…; one comet per chain at c ≥ 5 |
 | Line clear (n ≤ 3) | n bands in the newest ring's colour (its complement for a triple); chase lights fill every arch from its feet to its crown, one front per line; star twinkle; the planets catch it (2026-10-26: [CHROMADELIC_HIGHWAY_PLANET_EVENTS_2026-10.md](CHROMADELIC_HIGHWAY_PLANET_EVENTS_2026-10.md)) |
-| Tetris | Bands out of the card (0–150 ms); a prism cascade (150 ms on) turning every arch into the spectrum as it passes; streak warp (300 ms on); FOV surge; the next three rings out are prism arcs |
+| Quad | Bands out of the card (0–150 ms); a prism cascade (150 ms on) turning every arch into the spectrum as it passes; streak warp (300 ms on); FOV surge; the next three rings out are prism arcs |
 | Level up | The spectrum steps to the next movement at once; a cascade in its first colour repaints every ring it passes, board to lens (~0.7 s); violet band, binary flare, nebula breath, twinkle wave; the hero grows a little (+0.5 s) |
 
 The road bands now flash a ring at 60 % (the chase and the cascade carry the rings' own event
@@ -113,11 +113,11 @@ light), so a clear no longer whitens every arch at once.
 ## 5. Validation
 
 - Playground (WebGPU, RTX 3070): contact sheets across all six movements, every form forced in
-  turn (`ringForm=`), events at several ages (clear 1/3 lines, Tetris, level-up), High, Extreme
+  turn (`ringForm=`), events at several ages (clear 1/3 lines, Quad, level-up), High, Extreme
   (4× MSAA) and Minimal; WebGL2 backend (`forceWebGL=1`). Zero console errors or WebGPU validation
   messages on every path.
 - Real game (dev server, WebGPU): the theme boots, runs at level 1 with the spectrum drifting, takes
-  LINE_CLEAR / COMBO / LEVEL_UP from the game's event bus (level 2 stepped one movement; the Tetris
+  LINE_CLEAR / COMBO / LEVEL_UP from the game's event bus (level 2 stepped one movement; the Quad
   echo's prism arcs came out next), no theme errors in the console.
 - Unit tests: `tests/unit/chromadelic-highway-spectrum.test.js` (colour law, every 30° of the wheel
   reached in a cycle, a full rainbow in the first movement, every pattern/shape/prism appears, an

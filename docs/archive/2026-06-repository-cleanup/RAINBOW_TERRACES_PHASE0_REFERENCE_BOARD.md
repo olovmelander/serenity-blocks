@@ -1,8 +1,8 @@
-# Sky Children Phase 0 Reference Board
+# Rainbow Terraces Phase 0 Reference Board
 
 ## Purpose
 
-This board is the locked Phase 0 visual reference set for the Sky Children theme.
+This board is the locked Phase 0 visual reference set for the Rainbow Terraces theme.
 - Total curated frames: `16` (within the required `12-20` range).
 - Mood grouping: `sunset`, `cloud sea`, `interior haze`.
 - Sources: official Sky/Journey media and conference material captures.

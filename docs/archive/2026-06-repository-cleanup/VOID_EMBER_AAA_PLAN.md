@@ -13,7 +13,7 @@
 | **★ Living Star Volumetric** — a true 3D bounded raymarch of a plasma star: granulation convection cells, domain-warped filaments, sunspots, churning chromosphere + corona | Sangil Lee's realistic-sun shaders; Inigo Quilez volumetric clouds | Replaces today's flat 2D radial glow ([scene.wgsl:257-300](../src/themes/void-ember/wgsl/scene.wgsl#L257)) with a star that *boils and breathes*. This is the single biggest WOW upgrade — depth, surface, and motion where there is currently a gradient. |
 | **Physically-grounded light** — Beer–Lambert absorption + Henyey–Greenstein phase scattering for the volume, and a **black-body / Planckian-locus** temperature ramp driving every emissive surface | Maxime Heckel volumetric cloudscapes; the Planckian locus | Separates "orange gradient" from *real incandescent matter*. The star glows by temperature (deep-red shell → amber → white-hot core → blue when raging), so colour is physical, not hand-keyed. Temperature is gameplay-driven. |
 | **Cinematic optics stack** — anamorphic lens-flare composite (ghosts + halo + horizontal streak + diffraction starburst), dual-filter bloom pyramid, screen-space heat-haze refraction, gravitational lensing of the background, ACES + chromatic aberration + film grain | Froyok/Bart Wronski lens-flare work; Kawase/dual-filter bloom | Makes the whole frame feel *shot through a real anamorphic cine lens*. Replaces the single-pass tap bloom + uniform starburst ([post.wgsl:107-151](../src/themes/void-ember/wgsl/post.wgsl#L107)) that currently reads as a default lens-flare star. |
-| **Stellar Conductor** (the choreography layer) | mirrors `StormDirector` (Winter) / `StageConductor` (Electric Dreams) | The star *is* the game's emotional state. Idle = a calm, slow-breathing ember; combos agitate the surface; line clears fire coronal-mass-ejection rings; tetris/level-up detonate a flare-nova; sustained pressure drives the colour temperature up and the corona wild. |
+| **Stellar Conductor** (the choreography layer) | mirrors `StormDirector` (Winter) / `StageConductor` (Electric Dreams) | The star *is* the game's emotional state. Idle = a calm, slow-breathing ember; combos agitate the surface; line clears fire coronal-mass-ejection rings; quad/level-up detonate a flare-nova; sustained pressure drives the colour temperature up and the corona wild. |
 
 These compound: better physics **and** better visuals **and** a clearer identity at once — they are not trade-offs against each other.
 
@@ -120,7 +120,7 @@ Channels (superset of today's runtime in [void-ember-theme.js:139-162](../src/th
 - `coronaEnergy` — corona reach + prominence whip
 - `breath` — slow idle pulse (always on)
 - `cmePulse` — coronal-mass-ejection ring (line clears)
-- `novaFlash` — full flare-nova (tetris / level-up)
+- `novaFlash` — full flare-nova (quad / level-up)
 - `cameraPush` / `parallax` — virtual-camera shove on impacts
 - plus the existing shock/flare/flash/intensity/pulse, repurposed
 
@@ -139,7 +139,7 @@ Channels (superset of today's runtime in [void-ember-theme.js:139-162](../src/th
 | Piece lock | tiny inward pulse, brief heat tick | small spark puff | — |
 | Hard drop | core flash + downward heat jolt | radial spark burst | small impact bloom, micro camera punch |
 | Single/double line | CME ring expands from core, temp tick | wave of embers along ring | brief flare ghost |
-| Tetris | flare-nova: white-blue flash, corona detonation, 250ms surface storm | radial detonation + trails | bloom +, starburst spike, 1-frame anamorphic flare, CA pulse |
+| Quad | flare-nova: white-blue flash, corona detonation, 250ms surface storm | radial detonation + trails | bloom +, starburst spike, 1-frame anamorphic flare, CA pulse |
 | Combo 4 | agitation ramp, filaments whip | sparks accelerate | streak intensifies |
 | Combo 7+ | sustained inferno: temp climbs, 3 prominences whip, corona max | dense ember storm | god-rays surge, camera dolly-push + parallax, saturation up |
 | Level up | temperature step + colour drift sweep | ember colour shift | LUT-style grade cross-fade |
@@ -259,7 +259,7 @@ Gated by exit criteria; nothing advances until criteria are met. Critical path: 
 | **5. Particles + curl-noise flow** | Upgrade `flow.wgsl` to divergence-free curl noise; multi-class embers + trails in `particles.wgsl`; black-body per-particle colour | Sparks rise/trail, cinders tumble, dust catches light; all heat-coloured | 1.5 d |
 | **6. Virtual camera + parallax** | Layer parallax offsets + event-driven camera push/dolly in the conductor & uniforms | Background, nebula, embers parallax believably; impacts shove the camera | 1 d |
 | **7. Presets + adaptive + reactivity wiring** | Calibrate all 6 tiers; point the governor at star/nebula steps → bloom → renderScale → tier; wire every event to a distinct conductor beat | Hits target FPS per tier; every gameplay event has a visible, distinct response | 1.5 d |
-| **8. Fallback + polish + profile + ship** | Refresh Canvas2D fallback; Chrome GPU profile; spike hunt; dispose/teardown audit; 10× theme-swap memory check; browser-verify on WebGPU **and** WebGL/2D | 60 FPS sustained Ultra; no spikes > 18 ms over an idle→tetris→10×combo→game-over run; flat memory across swaps | 1.5 d |
+| **8. Fallback + polish + profile + ship** | Refresh Canvas2D fallback; Chrome GPU profile; spike hunt; dispose/teardown audit; 10× theme-swap memory check; browser-verify on WebGPU **and** WebGL/2D | 60 FPS sustained Ultra; no spikes > 18 ms over an idle→quad→10×combo→game-over run; flat memory across swaps | 1.5 d |
 
 ---
 
@@ -283,7 +283,7 @@ Gated by exit criteria; nothing advances until criteria are met. Critical path: 
 Ships only when ALL are true:
 
 - [ ] **60 FPS sustained on Ultra** (1080p) on RTX 3070 / M-class, verified via the timestamp-query governor + Chrome perf overlay over a 5-minute soak.
-- [ ] **No frame-time spikes > 18 ms** during idle → hard-drop → tetris → 10× combo → level-up → game-over.
+- [ ] **No frame-time spikes > 18 ms** during idle → hard-drop → quad → 10× combo → level-up → game-over.
 - [ ] **The star reads as a living 3D body** — granulated, limbed, boiling — in a side-by-side vs. the current build.
 - [ ] **The void has depth** — nebula + multi-layer starfield + parallax; the lone-blue-dot artifact is gone.
 - [ ] **All incandescent matter shares the black-body model** (star, sparks, prominences, CME rings).

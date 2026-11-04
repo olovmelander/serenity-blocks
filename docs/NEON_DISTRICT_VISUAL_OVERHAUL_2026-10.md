@@ -151,7 +151,7 @@ district, so `seek(t)` still reproduces any frame.
 
 ![Fly-posted walls with the new poster designs, a bar and a noodle bar with people in them](neon-district-captures/alive.webp)
 
-**People in the shops.** Since 2026-10-26 the people are a cast of cyberpunk characters baked in
+**People in the shops.** Since 2026-10-26 the people are a cast of neon-noir characters baked in
 Blender, cel-shaded and inked, and lit by each room (they were flat signed-distance silhouettes,
 `ndFigure`, until then); see [NEON_DISTRICT_PEOPLE_2026-10.md](NEON_DISTRICT_PEOPLE_2026-10.md).
 Each room has up to four:

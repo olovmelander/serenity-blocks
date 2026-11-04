@@ -167,7 +167,7 @@ geometrically viable at depth. It is the breach's only payoff image. Use `smooth
 **Per-channel Beer–Lambert extinction.** Replace the single grey scalar with a vec3 so red dies
 first — the one change that makes water read as water rather than as blue fog. Subnautica's trick
 of decoupling the absorption used for *colour* from the one used for *fade* is what lets a stylised
-palette survive a physical ramp. Ponyo's banded sea is then a quantisation of that ramp, not a
+palette survive a physical ramp. a painted film's banded sea is then a quantisation of that ramp, not a
 different model.
 
 **Fish swim.** The standard travelling-sine along the body axis with amplitude growing toward the
@@ -554,7 +554,7 @@ premise is measured false is rescoped in this file, annotated at the claim, orig
 > **OUTCOME — Wave 4, DONE 2026-08-13.**
 >
 > **The extinction bullet was consumed by Wave 1's landing** — the per-channel Beer–Lambert
-> vec3 and the Ponyo depth bands shipped there (this file, Wave 1 OUTCOME), and red
+> vec3 and the a painted film depth bands shipped there (this file, Wave 1 OUTCOME), and red
 > demonstrably dies with distance in the committed captures: at p=0.185 the near sand is
 > warm, the far column pure blue. Not re-done here; recorded so the bullet has an owner.
 >
@@ -679,7 +679,7 @@ this file. `grep -c '^- \[ \]' docs/ODYSSEY_ACT_II_SEAM_AND_OCEAN_PLAN_2026-08.m
   ribbon are the only content there, and the beat sheet relies on them as the metronome.
 - Whether the act-gate change interacts with cold-compile/boot-warp (the repo has a documented
   `compileAsync`-under-live-loop poisoning trap).
-- Reference images are **not** committed. Ghibli's "free-use within the bounds of common sense" is
+- Reference images are **not** committed. the painted tradition's "free-use within the bounds of common sense" is
   not a licence, and Steam press stills are no different; local iteration only, nothing in the repo.
 
 ---

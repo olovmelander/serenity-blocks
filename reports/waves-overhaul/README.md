@@ -40,9 +40,9 @@ The deterministic scene captures use seed 187 and theme time 8 seconds.
 | [Combo splashes](webgpu-combo.jpg) | Native WebGPU, combo 7 at 0.35 seconds |
 | [Production desktop](production-desktop-idle.jpg) | Built game, node WebGL2, High, real solo board and HUD |
 | [Production lock](production-desktop-lock.jpg) | Canonical gameplay callback, wall ripple and droplets |
-| [Production four-line clear](production-desktop-tetris.jpg) | Canonical gameplay callback, travelling swell and staggered impacts |
+| [Production four-line clear](production-desktop-quad.jpg) | Canonical gameplay callback, travelling swell and staggered impacts |
 | [Production combo](production-desktop-combo.jpg) | Canonical combo 7 callback |
-| [Production portrait](production-portrait-tetris.jpg) | Built game, node WebGL2, Low, 390 × 844, real board |
+| [Production portrait](production-portrait-quad.jpg) | Built game, node WebGL2, Low, 390 × 844, real board |
 
 ![Sunlit ocean barrel with combo splashes](webgpu-combo.jpg)
 
@@ -55,7 +55,7 @@ Run `npm run dev:playground` and open one effect at a time:
 ```text
 /playground.html?effect=waves&orbit=0&t=8&seed=187&quality=High
 /playground.html?effect=waves&orbit=0&t=8&seed=187&quality=High&forceWebGL=1&event=combo&combo=7&eventAge=0.35
-/playground.html?effect=waves&orbit=0&t=8&seed=187&quality=Low&forceWebGL=1&board=1&event=tetris&eventAge=0.35
+/playground.html?effect=waves&orbit=0&t=8&seed=187&quality=Low&forceWebGL=1&board=1&event=quad&eventAge=0.35
 ```
 
 The playground imports the production scene, director, and post modules.

@@ -284,7 +284,7 @@ with no seams. This replaces the old multi-pass alpha-overlay hack.
 **Step B — outer rim (Fresnel-style) on the merged contour ONLY.**
 After the body fill, stroke the (hardened, single-loop) contour once:
 `graphics.lineStyle(Math.max(1, bs*0.04), 0xffffff, rimAlpha)` → `strokePath()` over the contour
-points. This is the Tetris-Effect signature and, being on the outer perimeter only, never creates
+points. This is the flow-state signature and, being on the outer perimeter only, never creates
 an internal seam. `rimAlpha` defaults ~0.45 and is **theme-driven and reduced-motion-gated**
 (§6). On already-bright colors (yellow J `#ffff00`, cyan S `#00ffff` — `constants.js:31-39`) cap
 rim alpha lower (≤0.3) to preserve contrast.

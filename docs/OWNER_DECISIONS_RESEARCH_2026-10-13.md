@@ -386,9 +386,9 @@ The goal is no one-click cheat surface, not anti-cheat; online integrity still r
 
 **What the audit found:**
 
-- **The rotation bug is an index, not a table.** The repo's 90° kick tables match the standard entry for entry. But T, J and L spawn flat side up, which is standard state 2, while the lookup treats spawn as state 0. Every transition in the standard table is the left-right mirror of the transition two states away, so **all eight T/J/L transitions kick the wrong way** ([TetrisWiki: SRS](https://tetris.wiki/Super_Rotation_System); [audit CORE-02](REPOSITORY_AUDIT_2026-10-13.md)).
+- **The rotation bug is an index, not a table.** The repo's 90° kick tables match the standard entry for entry. But T, J and L spawn flat side up, which is standard state 2, while the lookup treats spawn as state 0. Every transition in the standard table is the left-right mirror of the transition two states away, so **all eight T/J/L transitions kick the wrong way** (the genre wiki: SRS; [audit CORE-02](REPOSITORY_AUDIT_2026-10-13.md)).
 - **A non-standard fallback runs after the table.** A ±1/±2 horizontal fallback can arm T-spin detection (CORE-09).
-- **The lock-reset counter never refreshes.** Lock delay matches the modern 500 ms and 15 resets, but the counter isn't refreshed when the piece descends. A piece that spends its resets on a ledge, slides off and falls eight rows locks one frame after landing ([src/core/game.js](../src/core/game.js); [audit CORE-08](REPOSITORY_AUDIT_2026-10-13.md)). Modern games refresh the counter when the piece reaches a lower row. Most games after 2007 capped resets, because unlimited resets were seen as game-breaking ([TetrisWiki: Lock delay](https://tetris.wiki/Lock_delay); [TetrisWiki: Infinity](https://tetris.wiki/Infinity)).
+- **The lock-reset counter never refreshes.** Lock delay matches the modern 500 ms and 15 resets, but the counter isn't refreshed when the piece descends. A piece that spends its resets on a ledge, slides off and falls eight rows locks one frame after landing ([src/core/game.js](../src/core/game.js); [audit CORE-08](REPOSITORY_AUDIT_2026-10-13.md)). Modern games refresh the counter when the piece reaches a lower row. Most games after 2007 capped resets, because unlimited resets were seen as game-breaking (the genre wiki: Lock delay; the genre wiki: Infinity).
 - **Garbage has two inconsistent implementations.**
   - **Local:** player-count scaling is computed but never applied. In three-player play, a clear reported as 3 lines delivers 4 to each opponent ([audit INPUT-04](REPOSITORY_AUDIT_2026-10-13.md)).
   - **Online:** the router cancels incoming garbage first, then scales by 1 − 0.1 per extra opponent, with rounding and a 1-line floor. Calling the repo's own `applyAttackScaling` shows that in 8-player online, a double, a triple and a four-line clear each send **one line per opponent** ([src/core/multiplayer/ffa-attack-router.js](../src/core/multiplayer/ffa-attack-router.js)).
@@ -396,7 +396,7 @@ The goal is no one-click cheat surface, not anti-cheat; online integrity still r
 
 **Recommended: build the registry first, then ship every outcome-changing fix as one "generation 3" before launch.**
 
-- **This is established practice.** Competitive games stamp every replay and score with a version and the rule variants in force. osu! stores a game-version field and a mods bitmask ([osu! replay format](https://osu.ppy.sh/wiki/en/Client/File_formats/osr_%28file_format%29)). TETR.IO ships rule parameters as data and aligns rule changes with seasons ([TetrisWiki: TETR.IO](https://tetris.wiki/TETR.IO)).
+- **This is established practice.** Competitive games stamp every replay and score with a version and the rule variants in force. osu! stores a game-version field and a mods bitmask ([osu! replay format](https://osu.ppy.sh/wiki/en/Client/File_formats/osr_%28file_format%29)). TETR.IO ships rule parameters as data and aligns rule changes with seasons (the genre wiki: TETR.IO).
 - **The moment is unusually cheap.** Steam leaderboards don't work at all yet (SCORE-02), so splitting a leaderboard costs nothing now and real effort later.
 - **Adopt standard behaviour, keep presentation different:** no hold, the flat-side-up spawn, fused borderless pieces, and no third-party rule names in the UI.
 
@@ -450,7 +450,7 @@ The goal is no one-click cheat surface, not anti-cheat; online integrity still r
 - **Shift is a hazard.** Player 2's hard drop is Shift, and pressing Shift five times opens Windows' Sticky Keys prompt ([Zapier](https://zapier.com/blog/turn-off-sticky-keys-windows/)).
 - **Opposite directions aren't resolved.** Holding ← and then → for 400 ms gives 9 moves left and 4 right (INPUT-13).
 
-The only sourced convention, the Guideline keyboard map, uses the arrows to move, Up to rotate clockwise, Z to rotate counter-clockwise, Down and Space to drop, and C or Shift for hold ([TetrisWiki: Guideline](https://tetris.wiki/Tetris_Guideline)). It gives X no role. Binding C would turn a habitual hold press into a surprise 180° turn.
+The only sourced convention, the Guideline keyboard map, uses the arrows to move, Up to rotate clockwise, Z to rotate counter-clockwise, Down and Space to drop, and C or Shift for hold (the genre wiki: Guideline). It gives X no role. Binding C would turn a habitual hold press into a surprise 180° turn.
 
 | Action | Player 1 now | **Player 1 proposed** | Player 2 now | **Player 2 proposed** |
 |---|---|---|---|---|

@@ -55,7 +55,7 @@ Expected in **Window 2** (top-right):
 
 ### Test 3: Attack Indicators (1 minute)
 
-**Window 1:** Clear 4 lines (Tetris)
+**Window 1:** Clear 4 lines (Quad)
 
 Expected in **Window 1** (center):
 - ✅ **Yellow/gold arrow** appears
@@ -108,7 +108,7 @@ Expected:
 2. **Clear 3 lines:**
    - ✅ **Yellow flash**
 
-3. **Clear 4 lines (Tetris):**
+3. **Clear 4 lines (Quad):**
    - ✅ **Orange flash**
    - ✅ **Gold flash** when sending garbage
 

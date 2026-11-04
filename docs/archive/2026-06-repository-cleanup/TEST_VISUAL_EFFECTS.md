@@ -47,7 +47,7 @@ Quick guide to test the newly implemented shared effects system for both single-
 **How to Test**:
 - Clear 1 line (Single)
 - Clear 2 lines (Double)
-- Clear 4 lines (Tetris)
+- Clear 4 lines (Quad)
 
 ---
 

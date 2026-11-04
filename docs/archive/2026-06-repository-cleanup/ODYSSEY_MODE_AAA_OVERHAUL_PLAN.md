@@ -37,7 +37,7 @@
 >
 > **⚠️ Renderer-swap deferral (important correction to the plan-as-written):** the board's content is **42 raw GLSL `ShaderMaterial`s** (path + nodes + all 8 envs). A `three/webgpu` `WebGPURenderer` renders **only TSL node materials**, so swapping the renderer now would break every board shader. The WebGPU renderer migration + the TSL `OdysseyPipeline` (MRT selective bloom / god-rays / DOF) are therefore **deferred until those materials are converted to TSL** (a coordinated later effort). P1–P3 deliver the filmic finish + unified atmosphere + diegetic path on WebGL in the meantime — which is also the permanent fallback path the plan requires.
 
-> **North star reference**: **Tetris Effect: Connected — Journey Mode.** It is literally a block game whose levels are themed worlds that flow seamlessly into one another and pulse with the music. That is exactly what Odyssey is reaching for. Everything below is in service of that bar.
+> **North star reference**: *a flow-state block puzzle — Journey Mode.** It is literally a block game whose levels are themed worlds that flow seamlessly into one another and pulse with the music. That is exactly what Odyssey is reaching for. Everything below is in service of that bar.
 
 ---
 
@@ -68,7 +68,7 @@ Odyssey already has a *strong skeleton*: a real 3D Catmull-Rom ascent spline ([o
 | **2** | **`OdysseyDirector`** — one conductor mapping *journey progress + audio energy + game events* → atmosphere, light, path, nodes, camera, post | Per-chapter duplicated lights/fog/stars; static FOV; no audio | The "spine." Every subsystem reads one source of truth, so the ascent feels *authored* and *alive*, not assembled. Mirrors `StormDirector`/`AltitudeDirector`/`fxState`. |
 | **3** | **Diegetic path & per-world level-node identity** — the path *becomes* each world (lava-crust river → luminous current → forest ley-line → ridge cairn-line → jet-stream ribbon → stellar stream → event-horizon filament → neon data-line); orbs adopt each world's material | One rainbow triple-tube; one glass marble for all 55 | Makes progression feel **deliberate and integrated** instead of "a glowing pipe floating in front of a backdrop." This is the literal answer to "perfectly integrate the level paths with each environment." |
 | **4** | **Threshold Transition Director** — each of the 7 boundaries is a staged, high-impact *breach* (surface, cloud-deck, atmosphere-edge, event-horizon, …) | An opacity crossfade + color lerp | The "wow moment" between worlds. The narrative outros finally *happen on screen*. |
-| **5** | **Audio-visual synergy layer** — board subscribes to `AudioAnalyzer`; per-chapter signature tracks + transition stingers; path/nodes/atmosphere pulse and flow to bass/beat | Identical `'Ambient'` placeholder; silent visuals | Turns the map into a **Tetris-Effect-grade audio-reactive instrument**. The journey *grooves*. |
+| **5** | **Audio-visual synergy layer** — board subscribes to `AudioAnalyzer`; per-chapter signature tracks + transition stingers; path/nodes/atmosphere pulse and flow to bass/beat | Identical `'Ambient'` placeholder; silent visuals | Turns the map into a **flow-state-grade audio-reactive instrument**. The journey *grooves*. |
 
 These compound: a consistent world-class finish (1), driven by one living spine (2), where the path and nodes belong to each world (3), the worlds breach into each other cinematically (4), all of it breathing to music (5).
 
@@ -80,10 +80,10 @@ What world-class progression maps and audio-visual games do, and the concrete le
 
 | Reference | Technique | Apply to Odyssey |
 |---|---|---|
-| **Tetris Effect: Connected — Journey Mode** (the direct analogue) | Each level is a themed world; particles, terrain, and lighting **pulse and flow with the music**; zones **dissolve seamlessly** into the next; a constellation/ribbon connects the journey. | The whole plan's north star: per-chapter signature audio (§5), beat-reactive path/nodes/atmosphere (Pillar 5), seamless threshold breaches (§6). |
-| **Journey (thatgamecompany)** | **Establishing vista beats** (the held reveal of the mountain); **aerial perspective** for vastness; **light as the goal**; near-zero UI. | Add a **chapter-arrival vista beat** (camera pulls back, holds the new world, title card) before settling into follow. Drive depth with fog/aerial-perspective tied to the director. |
+| *a flow-state block puzzle — Journey Mode** (the direct analogue) | Each level is a themed world; particles, terrain, and lighting **pulse and flow with the music**; zones **dissolve seamlessly** into the next; a constellation/ribbon connects the journey. | The whole plan's north star: per-chapter signature audio (§5), beat-reactive path/nodes/atmosphere (Pillar 5), seamless threshold breaches (§6). |
+| **a desert-pilgrimage game** | **Establishing vista beats** (the held reveal of the mountain); **aerial perspective** for vastness; **light as the goal**; near-zero UI. | Add a **chapter-arrival vista beat** (camera pulls back, holds the new world, title card) before settling into follow. Drive depth with fog/aerial-perspective tied to the director. |
 | **Ori / Gris** | The traversal path is **diegetic** (spirit trails, ascending color); **color/light is progress**; painterly parallax depth. | Diegetic path per world (Pillar 3); the ascent **warms/cools and saturates** with progress and combo (director grade). |
-| **Super Mario Galaxy / Sky: Children of the Light — overworld** | Nodes sit **in** the world geometry, not floating on a HUD plane; the map is a **place** with weather and life; selected node has unmistakable focal pop. | Node redesign reads focal hierarchy (current = blazing, completed = settled, locked = dormant) and seats orbs into world materials. |
+| **Super Mario Galaxy / a calm flying adventure — overworld** | Nodes sit **in** the world geometry, not floating on a HUD plane; the map is a **place** with weather and life; selected node has unmistakable focal pop. | Node redesign reads focal hierarchy (current = blazing, completed = settled, locked = dormant) and seats orbs into world materials. |
 | **God of War (2018) — "one-shot" camera** | No hard cuts; the camera **flows continuously** through space and transitions; motion communicates geography. | Keep the continuous-spline camera; make transitions *camera-led breaches* (a move + FOV + roll), never a fade-to-black. |
 | **Ratchet & Clank: Rift Apart — rift jumps** | Instant world swaps sold as a **rip/portal** with a burst, suction, and arrival pop. | The level-entry orb-portal (already a state machine) gets the AAA finish; chapter breaches borrow its suction/arrival language at lower intensity. |
 | **Destiny / Horizon skyboxes** | **Hero celestial/landmark anchors** (a planet, a peak, a megastructure) give each zone an unmistakable silhouette and a sense of scale. | Each chapter gets **one hero anchor** (the magma vault, the leviathan light shaft, the hero summit, the accretion disk, the city spire) — see §5. |
@@ -211,7 +211,7 @@ New `ChapterThresholdDirector` listens for boundary crossings (already detected:
 - **Reactive visuals:** bass → path head-glow + atmosphere fog density breath; beat → node focal pulse + subtle star twinkle + a gentle bloom tick; sustained energy → exposure/grade warming + camera drift speed. All clamped and eased so it *grooves* without strobing.
 - **Transition cues already exist** (`orbCharge`, `breach`, `warpRush`, `arrivalHit` in [OrbPortalTransitionDirector.js](../src/core/odyssey/OrbPortalTransitionDirector.js)) — extend the cue map with chapter-breach stingers.
 
-This is what elevates Odyssey from "pretty map" to "Tetris-Effect-grade instrument."
+This is what elevates Odyssey from "pretty map" to "flow-state-grade instrument."
 
 ---
 
@@ -290,7 +290,7 @@ Each phase is independently shippable and verifiable (WebGL path locally; WebGPU
 ## 9. Risks & Gotchas
 
 - **WebGPU cannot be validated on this box** (WSL/Electron, per project memory). Always keep the WebGL fallback fully shippable; gate user-verified WebGPU claims to Windows Chrome screenshots in `docs/validation/odyssey/`.
-- **MRT discipline:** with selective bloom, *every* bloom-eligible material needs an `emissiveNode`; atmosphere/mid-env must not, or the frame washes out (the documented neon-district/sky-children failure mode). Audit on each new material.
+- **MRT discipline:** with selective bloom, *every* bloom-eligible material needs an `emissiveNode`; atmosphere/mid-env must not, or the frame washes out (the documented neon-district/rainbow-terraces failure mode). Audit on each new material.
 - **TSL `.assign()` in plain-JS helpers throws/silently drops** ("No stack defined") — build fresh const+`.add()` chains in struct-returning shade helpers (the himalayan ridge-terrain pattern). Applies to any new TSL path/node/anchor materials.
 - **Don't break level entry.** The orb-portal state machine and compositor ([OrbPortalTransitionDirector.js](../src/core/odyssey/OrbPortalTransitionDirector.js)) are load-bearing and well-tested; the chapter-threshold work *borrows* its language but must not destabilize it. Keep [odyssey-path-layout.test.js](../src/rendering/odyssey/odyssey-path-layout.test.js) and theme-icon-resolver tests green.
 - **Editor mode** (`OdysseyLayoutEditor`, 2266 lines) consumes the path/curve; any path API change must keep its hooks working.

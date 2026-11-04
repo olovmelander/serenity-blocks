@@ -108,7 +108,7 @@ After: `this.boardScene` is updated when scene starts, SharedEffects is initiali
 - ✅ Cyan particles fly up
 - ✅ Subtle shake
 
-**Clear 4 lines (Tetris)**:
+**Clear 4 lines (Quad)**:
 - ✅ Strong flash
 - ✅ LOTS of particles
 - ✅ Strong shake

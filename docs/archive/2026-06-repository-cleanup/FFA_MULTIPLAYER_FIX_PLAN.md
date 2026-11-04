@@ -837,7 +837,7 @@ Based on codebase analysis:
 - **Mitigation:** Input prediction for peers (Phase 5)
 
 ### Why 30Hz State Sync?
-- **Balance:** Smooth enough for Tetris, low bandwidth
+- **Balance:** Smooth enough for block stacking, low bandwidth
 - **Alternative:** 60Hz for ultra-responsive (higher bandwidth)
 
 ### Why Canvas vs Phaser for Multiplayer Boards?

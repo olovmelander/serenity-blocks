@@ -12,7 +12,7 @@ blessing), and the owner's own in-game look verdicts. This header was missed in 
 `f9d4fba8` annotation pass that added the outcome blocks — found by the §7 sweep.
 Owner asks: (1) significantly longer, grander space sequence before the black hole;
 (2) planets / stars / auroras / nebulas / cosmic phenomena redesigned to the Act I/II
-stylized direction (Ghibli, The Witness, Firewatch, Europa, Journey); (3) more vivid,
+stylized direction (painterly, The Witness, Firewatch, Europa, Journey); (3) more vivid,
 atmospheric, "alive" lighting and composition; (4) a smoother, more cohesive journey
 from atmosphere into deep space.
 
@@ -160,8 +160,8 @@ builds *on top of* this machinery; no wave may rewrite it wholesale.
 
 Drop into `public/playground-refs/ch6-*` for `?ref=…&refMode=split`:
 
-- Ghibli official stills (ghibli.jp/works — free archive): *Castle in the Sky* Laputa
-  night reveal + Levistone glow; *Howl's Moving Castle* star-catching scene.
+- painterly official stills (painterly.jp/works — free archive): *Castle in the Sky* a painted film
+  night reveal + Levistone glow; *a painted film* star-catching scene.
 - The Witness clouds page (artofluis.com) — band structure and silhouette discipline.
 - Eyvind Earle (wikiart.org/en/eyvind-earle) — hard-edged colour bands, rim-lit
   silhouettes: practically a spec for banded space art. Roger Dean
@@ -193,7 +193,7 @@ star colour gamut, aurora hue window. Verdicts are judged against numbers, not v
 4. **Palette drift.** The violet/orange sci-fi default ignores the limited-palette,
    declared-collision law (warm and cool never mix in one frame except at an authored
    collision — which here is the black-hole approach, not every sprite).
-5. **Pure-black void.** "Nothing in a Ghibli frame is ever pure black" — the void needs
+5. **Pure-black void.** "Nothing in a painted frame is ever pure black" — the void needs
    the Act I black lift family (≈ 0.017, 0.021, 0.036) and stacked hue bands for depth,
    not RGB-zero.
 6. **Scale is authored short.** The owner wants grander and longer; the chapter's
@@ -271,7 +271,7 @@ and every `SEAM_56_*` band, and re-run the framing assertions (<40° off-axis).
   nowhere". Surfaces follow the asteroid template (wrapped view-space key + warm
   bounce + fresnel rim + never-black floor) — it is already the chapter's proven
   banded-space-shading recipe and is immune to instanced-normal handling.
-- **Aerial-in-space**: depth = stacked hue bands (Ponyo law), authored into the
+- **Aerial-in-space**: depth = stacked hue bands (a painted film law), authored into the
   backdrop bake and the nebula band palette — not fog (`material.fog=false` everywhere,
   test-guarded; the trap has recurred 4×).
 - **Ascent ramps**: two small altitude-keyed ramps (zenith, horizon) drive the 5→6
@@ -358,7 +358,7 @@ Mystic Mountain heic1007a, Orion heic0601a (ESA/NASA image pages).
 2. One key light; emission is darkness-gated; no additive glow without a job.
 3. Shade = hue shift (cool toward void / warm toward key), saturation never collapses.
 4. 2–3 value bands, ~8 % soft thresholds, band interiors FLAT; over-extended ramp ends
-   are the softness dial (Witness↔Ghibli).
+   are the softness dial (Witness↔painterly).
 5. Silhouette-first: every nebula/mass/disc reads as a shape at squint; detail lives at
    edges; silhouettes never boil.
 6. Limited palette from the colour script (roles/slots, shared NODES not copied hex —

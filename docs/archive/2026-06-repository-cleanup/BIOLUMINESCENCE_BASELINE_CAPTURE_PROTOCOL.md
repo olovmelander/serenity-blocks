@@ -39,7 +39,7 @@ We define 5 key shots (A-E) that must be captured for every major release/phase.
 
 ### Shot B: Line Clear Reaction
 - **Timestamp:** T = 12.0 seconds.
-- **Event:** A "Tetris" (4-line clear) triggered at T=11.5s.
+- **Event:** A "Quad" (4-line clear) triggered at T=11.5s.
 - **Purpose:** Evaluate "Event Spectacle Restraint" and flash intensity.
 - **Success Criteria:**
     - Bloom burst does not white-out the board.
@@ -53,9 +53,9 @@ We define 5 key shots (A-E) that must be captured for every major release/phase.
     - Particle count matches budget (e.g., 2000 active).
     - Frame rate (if profiling) > 55fps.
 
-### Shot D: The "Tetris" Pulse
+### Shot D: The "Quad" Pulse
 - **Timestamp:** T = 25.0 seconds.
-- **Event:** Single Tetris clear at T=24.5s.
+- **Event:** Single Quad clear at T=24.5s.
 - **Purpose:** Specific check for the "heartbeat" synchronization effect.
 
 ### Shot E: WebGL Fallback Parity
@@ -75,7 +75,7 @@ Use the following snippet in the DevTools console to auto-capture if the harness
 ```javascript
 async function captureBaseline() {
     const times = [5000, 12000, 20000, 25000];
-    const labels = ['A_Idle', 'B_LineClear', 'C_Combo', 'D_Tetris'];
+    const labels = ['A_Idle', 'B_LineClear', 'C_Combo', 'D_Quad'];
     
     for (let i = 0; i < times.length; i++) {
         // Seek/Wait implementation depends on harness

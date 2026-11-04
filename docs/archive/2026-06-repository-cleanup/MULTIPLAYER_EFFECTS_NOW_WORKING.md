@@ -142,7 +142,7 @@ window.testMultiplayer(2)
 2. **Line Clear Effects**:
    - Clear 1 line → white flash + cyan particles + shake
    - Clear 2 lines → more intense effects
-   - Clear 4 lines (Tetris) → strong shake + lots of particles
+   - Clear 4 lines (Quad) → strong shake + lots of particles
 
 3. **Combo Effects**:
    - Clear lines consecutively → "2x COMBO!" popup

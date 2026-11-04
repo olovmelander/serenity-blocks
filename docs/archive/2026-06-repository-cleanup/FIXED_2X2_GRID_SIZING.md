@@ -94,7 +94,7 @@ testMultiplayer(5)
 │ ┌─────┬─────┐   │  ┌─────────┐ │              │
 │ │Alice│ Bob │   │  │         │ │              │
 │ │ 👤  │ 👤  │   │  │  Your   │ │              │
-│ └─────┴─────┘   │  │ Tetris  │ │              │
+│ └─────┴─────┘   │  │ Board  │ │              │
 │ ┌─────┬─────┐   │  │ Canvas  │ │              │
 │ │Char │Diana│   │  │         │ │              │
 │ │ 👤  │ 👤  │   │  └─────────┘ │              │
@@ -186,7 +186,7 @@ document.querySelectorAll('.opponent-canvas-wrapper').length
 - **Padding:** 12px per side
 - **Available width per cell:** (520 - 12 - 24) / 2 = **242px**
 - **Available height per cell:** (100vh - 80px) / 2 = **~460px**
-- **Canvas aspect ratio:** 1:2 (maintains Tetris proportions)
+- **Canvas aspect ratio:** 1:2 (maintains board proportions)
 
 ### CSS Grid Properties:
 ```css
@@ -204,7 +204,7 @@ You now have a **perfect 2x2 grid** that:
 - ✅ Shows all 4 opponents simultaneously
 - ✅ Fits everything on screen (no scrolling)
 - ✅ Scales canvases proportionally
-- ✅ Maintains Tetris aspect ratio
+- ✅ Maintains block-stacking aspect ratio
 - ✅ Looks professional and clean
 
 ---

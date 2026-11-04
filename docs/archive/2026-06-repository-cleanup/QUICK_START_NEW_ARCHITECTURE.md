@@ -39,7 +39,7 @@ Navigate to `http://localhost:5173`
 #### On Page Load:
 - ✅ **"SERENITY BLOCKS"** title
 - ✅ **Three mode buttons**: Single Player (active), Local 2P, Online MP
-- ✅ **Mode description**: "Classic Tetris experience with progressive difficulty"
+- ✅ **Mode description**: "Classic block-stacking experience with progressive difficulty"
 - ✅ **"START GAME"** button (big, prominent, purple gradient)
 - ✅ **Background theme** playing with animated effects
 - ❌ **NO game pieces spawning**
@@ -93,7 +93,7 @@ Navigate to `http://localhost:5173`
 │  [Single Player] [Local 2P]    │
 │  [Online MP]                    │
 │                                 │
-│  Classic Tetris experience      │
+│  Classic block-stacking experience      │
 │  with progressive difficulty    │
 │                                 │
 │     ┌──────────────┐            │

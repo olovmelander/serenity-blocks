@@ -191,7 +191,7 @@ const TAIL_LIGHT = vec3(1.0, 0.1, 0.05);
 const TEAL_SIGN = vec3(0.15, 0.8, 0.7);
 
 /**
- * One row of a night city's lights seen far out of focus: at most one disc per cell along x, at
+ * One row of a city's lights at night seen far out of focus: at most one disc per cell along x, at
  * `y0` (give or take `spread`) above the sill, each with its own size, colour and brightness. A slow
  * noise along the row gathers the lights into clusters with dark gaps between them. Every disc fits
  * inside its cell (size < 0.2 / cells), so no cell edge ever cuts one.
@@ -229,7 +229,7 @@ const cityRow = /* @__PURE__ */ Fn(([p, up, y0, spread, cells, size, density, sa
 });
 
 /**
- * The night city through the window, far out of focus: dark sky above, the faint sodium haze of the
+ * The city at night through the window, far out of focus: dark sky above, the faint sodium haze of the
  * streets near the bottom, a soft skyline of dark blocks, and its lights in a few clustered rows,
  * streets low down, lit floors on the blocks, and a few large, dim discs nearer the lens.
  * `up` is the height above the sill.

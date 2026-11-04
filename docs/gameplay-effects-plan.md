@@ -14,7 +14,7 @@ The tech is **not** the bottleneck — the wiring is. The engine already has a T
 post-processing stack, a WebGPU fluid-sim theme, an audio-reactive director, pooling,
 tweens, and a spring-physics juice system. The gaps are: **flat-filled blocks**, a
 **gorgeous background/post-FX stack that barely reacts to gameplay**, **no escalation
-model** (a single clear ≈ a Tetris; cascades 2–9 are invisible; perfect clears are
+model** (a single clear ≈ a Quad; cascades 2–9 are invisible; perfect clears are
 silent), and **no shared effect orchestrator**.
 
 ---
@@ -39,9 +39,9 @@ silent), and **no shared effect orchestrator**.
 
 1. **Blocks are flat `fillRect`** — `src/rendering/phaser/base-board-scene.js:942`
    (`drawBlock`). Biggest "looks cheap" tell; runs every frame for every cell.
-2. **Background/post-FX stack barely reacts to gameplay.** The Tetris-Effect magic is a
+2. **Background/post-FX stack barely reacts to gameplay.** The flow-state magic is a
    line clear rippling into the *whole world*. Machinery exists but isn't generalized.
-3. **No escalation model.** Single clear ≈ Tetris; cascades 2–9 produce nothing
+3. **No escalation model.** Single clear ≈ Quad; cascades 2–9 produce nothing
    (`src/rendering/phaser/shared-effects.js:638`); B2B and perfect clears aren't celebrated.
 4. **No shared effect orchestrator.** Effects are ad-hoc `delayedCall` chains; no
    event→effect registry, no intensity bus, no hit-stop controller.
@@ -57,11 +57,11 @@ from `lineCount × comboTier × b2b × cascadeDepth`. Centralizes logic currentl
 across `shared-effects.js`, `board-juice.js`, and per-mode callbacks. Tune one curve,
 everything scales; free quality-tier downgrading.
 
-### B. Bridge gameplay → background/post-FX world (the Tetris-Effect move)
+### B. Bridge gameplay → background/post-FX world (the flow-state move)
 Generalize `src/themes/electric-dreams-v3/sim/fluid-emitters.js:104`. Feed a `gameMetrics`
 object (recent clears, combo, cascade depth, time-since-clear, danger level) into
 `src/rendering/odyssey/composition/OdysseyDirector.js` so the entire scene responds:
-bloom blooms on a Tetris, exposure pulses on combos, clears send a shockwave ring across
+bloom blooms on a Quad, exposure pulses on combos, clears send a shockwave ring across
 the background dome.
 
 ### C. Upgrade the block material (highest per-pixel ROI)
@@ -69,12 +69,12 @@ Replace flat `fillRect` with one of:
 - **Pre-rendered block skins** — beveled/glossy/emissive RoundedRect textures cached per
   theme color (like `ensureCircleTexture` in `src/rendering/phaser/utils/graphics.js:17`), then blit.
 - **Connected/merged piece rendering** — round only the *outer* corners so a tetromino
-  reads as one glossy shape (modern Tetris standard).
+  reads as one glossy shape (modern block-stacking standard).
 - **Custom Phaser WebGL pipeline** for inner glow + rim light + gradient + emissive pulse
   on the *active* piece (the 3-layer split already isolates active piece from locked board).
 
 ### D. Hit-stop / time-scale controller
-20–80ms freeze-frames on big impacts (Tetris, hard-drop lock, perfect clear). Cheapest,
+20–80ms freeze-frames on big impacts (Quad, hard-drop lock, perfect clear). Cheapest,
 most visceral juice trick. Gate behind reduced-motion.
 
 ---
@@ -89,7 +89,7 @@ most visceral juice trick. Gate behind reduced-motion.
 | **Soft drop** | No feedback | Speed-lines + motion-blur trail while held; ramps with speed | `game.js`, `src/ui/controls.js`, `shared-effects.js` |
 | **Hard drop** | Beam + ripple + dip/bounce (good) | **Landing dust at contact cells** + directional shockwave + shake (scaled to distance) + 30–50ms hit-stop | `game.js`, `shared-effects.js` |
 | **Lock** | Ripple, no pre-lock cue (`shared-effects.js:171`) | **Lock-delay telegraph**: rim brightens/pulses faster as the ~500ms delay drains | `game.js`, `shared-effects.js` |
-| **Line clear** | Flash + particles, 1 line ≈ 4 lines | **Tier hard**: Single = clean slice; Double/Triple = brighter + dust; **Tetris = white flash + full-width beam + big shake + hit-stop + background shockwave** | `physics.js`, `shared-effects.js` |
+| **Line clear** | Flash + particles, 1 line ≈ 4 lines | **Tier hard**: Single = clean slice; Double/Triple = brighter + dust; **Quad = white flash + full-width beam + big shake + hit-stop + background shockwave** | `physics.js`, `shared-effects.js` |
 | **Combo** | Popup + particles (good) | Escalating audio pitch + accumulating screen "heat" (rising bloom/vignette/chromatic per step) | `shared-effects.js`, `OdysseyDirector.js` |
 | **Cascade** | **Invisible 2–9**, mega text 10+ (`shared-effects.js:638`) | Per-stage ripple + rising chime pitch crescendo (Puyo-style) | `physics.js`, `shared-effects.js` |
 | **B2B** | Not visualized | Distinct color/sound signature + persistent "charged" border aura while alive | `physics.js`, `shared-effects.js` |
@@ -105,8 +105,8 @@ most visceral juice trick. Gate behind reduced-motion.
 
 ## Signature "wow" moments
 
-- **The Tetris flash** — one unmistakable quad-clear punch (white-out → beam → shake →
-  hit-stop → background shockwave). Make players *want* to wait for tetrises.
+- **The Quad flash** — one unmistakable quad-clear punch (white-out → beam → shake →
+  hit-stop → background shockwave). Make players *want* to wait for quads.
 - **Perfect-clear supernova** — biggest untapped moment; reward exists in scoring but is
   visually silent. Should be the most beautiful thing in the game.
 - **Combo "heat" takeover** — screen progressively saturates with bloom/chromatic/particles,
@@ -136,7 +136,7 @@ most visceral juice trick. Gate behind reduced-motion.
 3. **Fix silent events** — cascade 2–9 feedback + perfect-clear celebration + emit missing
    events. High impact, low effort, fills embarrassing gaps.
 4. **Gameplay → background bridge** (Foundation B) — the "wow" multiplier; unlocks
-   Tetris-Effect-class moments across all themes.
+   flow-state-class moments across all themes.
 5. **Beat-synced board + combo heat** — leverages the audio reactor for ambient magic.
 6. **T-spin + hold + wall-kick sparks** — completeness and competitive feel.
 

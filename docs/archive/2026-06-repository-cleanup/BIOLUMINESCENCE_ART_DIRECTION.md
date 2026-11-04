@@ -44,7 +44,7 @@ This document defines the strict art direction for the "Bioluminescence" theme u
 - **Principle:** The scene must read as a vast 3D volume, not a flat backdrop.
 - **Three Biome Bands (Subnautica Composition):**
     1.  **Band A — Foreground Fungal Grove (20-35% frame):** Board-adjacent framing elements, high-detail mushrooms and vine tendrils, controllable occlusion. Occasional large, out-of-focus spores passing near camera.
-    2.  **Band B — Mid Cavern Corridor (35-55% frame):** Dominant storytelling layer with mushroom/crystal/mycelium ecosystem and the Tetris board. This is where the play area lives.
+    2.  **Band B — Mid Cavern Corridor (35-55% frame):** Dominant storytelling layer with mushroom/crystal/mycelium ecosystem and the block-stacking board. This is where the play area lives.
     3.  **Band C — Far Abyss Chamber (20-35% frame):** Large silhouettes of distant cave formations, sparse pulses, deep negative space receding into volumetric fog.
 - **Rules:**
     - Board readability pocket remains protected in all event states.
@@ -88,13 +88,13 @@ Every mushroom in the current theme is identical teal. The upgrade must include:
 ### The "Hero" Shot
 A successful frame should contain:
 - **Left/Right Balance:** Asymmetrical organic framing (e.g., large mushroom cluster on left, receding cave path on right).
-- **Central Focus:** The Tetris board is framed by the cave opening (negative space), ensuring gameplay visibility.
+- **Central Focus:** The block-stacking board is framed by the cave opening (negative space), ensuring gameplay visibility.
 - **Verticality:** Stalactites hanging from top, stalagmites/mushrooms from bottom, creating a "teeth" effect that frames the board.
 
 ### Readability Safe-Zones
-- **Tetris Board:** The area immediately behind the board must be low-frequency and low-contrast.
+- **Board:** The area immediately behind the board must be low-frequency and low-contrast.
 - **Active Piece Area:** No bright particles or flashing lights should cross the active piece drop zone.
-- **Board ROI contrast:** >= 4.5:1 during `LINE_CLEAR`, `COMBO`, and `TETRIS` events.
+- **Board ROI contrast:** >= 4.5:1 during `LINE_CLEAR`, `COMBO`, and `QUAD` events.
 - **Bloom budget:** Capped per quality tier. Non-emissive leakage in bright bloom mask <= 3.0% of bright pixels.
 
 ---
@@ -129,7 +129,7 @@ The mycelium network is the **defining feature** of this theme — a bioluminesc
 ### Behavior
 - **Idle:** Faint ambient glow, barely visible. Subtle rhythmic pulse every 8-15s.
 - **Event-triggered:** Game events propagate brightness waves along the network from the event source outward. The wave travels at a biologically plausible speed (not instantaneous), creating a "neural signal" effect.
-- **TETRIS event:** Full network fires simultaneously, then desynchronizes back to ambient state over 2s.
+- **QUAD event:** Full network fires simultaneously, then desynchronizes back to ambient state over 2s.
 
 ### Bloom & Brightness
 - Bloom weight: 0.50 (moderate — visible glow but never competing with mushroom/crystal tier).
@@ -145,13 +145,13 @@ The mycelium network is the **defining feature** of this theme — a bioluminesc
 | **Line Clear** | Flash of **White-Cyan** light. Cave briefly illuminates. Mycelium pulse from event location. Water ripple. | 0.8s decay |
 | **Combo (1-3)** | Progressive brightening of nearby organisms. Spore density increases. Atmosphere lifts slightly. | 1.0s sustained decay |
 | **Combo (4+)** | Above + broader atmosphere shift, water glow intensifies, fog density decreases to reveal more depth. | 1.5s sustained decay |
-| **Tetris** | Major "Heartbeat" event. All organisms pulse in unison once, full mycelium network fires, atmosphere peaks. Then rapid desynchronization back to calm baseline. | 2.0s decay |
+| **Quad** | Major "Heartbeat" event. All organisms pulse in unison once, full mycelium network fires, atmosphere peaks. Then rapid desynchronization back to calm baseline. | 2.0s decay |
 | **Top Out** | Lights dim rapidly to black (power down). All emissive intensities decay to zero over 1.5s. Spores settle. Mycelium goes dark. Final state: only Abyss Navy (`#020810`) remains. | 1.5s to darkness |
 
 ### Event Restraint Rules
 - Combo effects must not hide board edges or piece contrast.
 - Event-driven luminance shifts avoid strobe-like behavior.
-- Chromatic aberration remains subtle and event-scaled (baseline near-zero, peak during TETRIS only).
+- Chromatic aberration remains subtle and event-scaled (baseline near-zero, peak during QUAD only).
 - More than 0.5s of sustained highlight clipping during normal play is an automatic reject.
 
 ---

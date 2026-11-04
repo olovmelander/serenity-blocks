@@ -5,11 +5,11 @@
 > the 2026-10 masterpiece pass instead, so do not resume them from here. Current entry point:
 > [ODYSSEY_MASTERPIECE_PASS_2026-10.md](ODYSSEY_MASTERPIECE_PASS_2026-10.md) §2–§3.
 
-# Odyssey — the Ghibli Water (plan, 2026-08-13)
+# Odyssey — the painted Water (plan, 2026-08-13)
 
 **Brief (user, verbatim):** *"Now we need to work on the water surface using water shaders from
 threejs webgpu r183 (i think r183 is the correct one, right me if i am wrong). I want the water
-to have this studio ghibli style. Do research online, investigate, plan and help me improve the
+to have this studio painterly style. Do research online, investigate, plan and help me improve the
 water surface in act II."*
 
 **Status when written (2026-08-13): plan only. Superseded by the banner above — Waves 0–2b
@@ -19,7 +19,7 @@ have shipped since (tracker in §6b).**
 
 ## 0. How this plan was made
 
-Six research agents ran in parallel (Ghibli visual anatomy, portable stylized-water technique,
+Six research agents ran in parallel (painterly visual anatomy, portable stylized-water technique,
 the r181 TSL water sources, a line-verified audit of the shipped water material, the
 visibility/budget map, and a critic that READ the fresh captures), then a completeness critic
 audited every finding against the tree. The critic **confirmed every code anchor**, refuted two
@@ -43,9 +43,9 @@ WaterMesh toward realism (Schlick F0 0.3 → 0.02, haze removed, Lambert base dr
 other reasons). Meanwhile this codebase carries four documented r181-specific behaviours that
 new versions would re-litigate. **Decision: stay on r181.2, harvest, don't upgrade.**
 
-**And neither addon is the Ghibli look.** Both are realism machines — planar `reflector()`
+**And neither addon is the painted look.** Both are realism machines — planar `reflector()`
 mirrors, photographic normal maps, physical fresnel; Water2 adds true screen-space refraction
-(VERIFIED `WaterMesh.js:160-176`, `Water2Mesh.js:159-175`). Ghibli water is matte painted
+(VERIFIED `WaterMesh.js:160-176`, `Water2Mesh.js:159-175`). painted water is matte painted
 colour with hard-edged painted light. What we take from them is **parts** (§4), not the look.
 
 ---
@@ -100,13 +100,13 @@ layout the shipped game derives.
 
 ## 3. The target, distilled from the reference research
 
-What "Ghibli water" concretely is (all sourced; the anatomy agent's URLs are in §9):
+What "painted water" concretely is (all sourced; the anatomy agent's URLs are in §9):
 
-- **Matte paint, zero gloss.** Every Ghibli background is opaque poster colour (Nicker); every
+- **Matte paint, zero gloss.** Every painted background is opaque poster colour (Nicker); every
   "shine" is a painted opaque shape. → No PBR specular lobe anywhere. Painted glints only.
 - **A narrow, nameable palette.** The sea ramp is 4-ish pigment stops on a teal/slate axis —
   cerulean light → cobalt mid → Prussian/ultramarine deep, viridian for shallows — never pure
-  saturated blue, always against a warm accent (Ponyo's coral/gold). Film-derived anchors:
+  saturated blue, always against a warm accent (a painted film's coral/gold). Film-derived anchors:
   `#278B9A` teal, `#5A6F80` slate.
 - **Foam is flat white with a drawn edge.** Two-material logic: blue coat + white coat and a
   mask. Shoreline grammar = a nearly-static solid band hugging the shore contour + 1–2
@@ -114,10 +114,10 @@ What "Ghibli water" concretely is (all sourced; the anatomy agent's URLs are in 
   open water. No gradients inside the foam.
 - **Specular is discrete painted cells** confined to a mid/far distance band toward the sun —
   never continuous gloss.
-- **Reflections are a soft additive colour wash** over flat paint (Spirited Away composited a
+- **Reflections are a soft additive colour wash** over flat paint (a painted film composited a
   separately-rendered reflection component *onto* painted water) — never a mirror image.
 - **The horizon nearly dissolves** — far sea blends to sky colour; silhouettes carry the line.
-  In Ponyo the horizon *itself* undulates ("get rid of straight lines" — Miyazaki's written
+  In a painted film the horizon *itself* undulates ("get rid of straight lines" — Miyazaki's written
   mandate).
 - **The two signature motions:** line boil (contours wobble constantly, hand-drawn, effectively
   time-stepped ~8–12 fps) and wave crests as authored curved silhouettes, not wave-spectrum
@@ -265,7 +265,7 @@ Three hard facts (critic-verified):
 > look-per-ms" premise assumed the ch3 topside was the big canvas. It is not: at the shipped
 > framing it is a tenth of one frame at 3.6 px/m, while the **ch2 underside is the full frame
 > for 0.11 of the journey**. Waves are NOT re-ordered here (that is §7 owner territory), but
-> Wave 1 must be judged at the breach/underside stations too, and the fine-grain Ghibli
+> Wave 1 must be judged at the breach/underside stations too, and the fine-grain painterly
 > devices — scalloped foam, sparkle cells, line boil — are worth less at 3.6 px/m than the
 > colour architecture is. A fresh ch2 capture (post-Wave-5, `--keep`) also **refutes
 > look-critic rank 3**: the Snell window is plainly visible as a bright disc overhead, so that
@@ -310,7 +310,7 @@ Three hard facts (critic-verified):
 > two identical stops — the very "1–2 flat blues" being fixed.
 >
 > **Fresnel two-tone + horizon dissolve.** The sky arrives as a colour wash (no reflector, no
-> image — Spirited Away's sea was painted flat with a reflection composited *over* it), and the
+> image — a painted film's sea was painted flat with a reflection composited *over* it), and the
 > far water then converges on the sky: 80% by 1.2 km, capped below 1 so the horizon never
 > becomes a hard line of its own.
 >
@@ -344,7 +344,7 @@ Three hard facts (critic-verified):
 > **OUTCOME — Waves 0+1+2 MEASURED AND CLOSED, 2026-08-13 (cold-machine session after the
 > user's restart). The full ledger:**
 >
-> | station | pre-Ghibli | waves 1+2 ungated | + regime branch | max | waterMs total |
+> | station | pre-painted-water | waves 1+2 ungated | + regime branch | max | waterMs total |
 > |---|---|---|---|---|---|
 > | deep p=0.115 | 13.11 | 15.47/15.47 (**over max**) | **12.909/12.982**, drift −0.066 | 14.2 ✓ | 4.52 → **2.03** |
 > | shallows p=0.16 | 6.16 | 7.80/8.19 | **6.030/6.030**, drift 0.000 | 8.5 ✓ | 3.54 → **1.77** |
@@ -355,7 +355,7 @@ Three hard facts (critic-verified):
 > **The water's total cost is measured for the first time** (the Wave 0 lever): ~2 ms where
 > it fills the frame, one timer tick at ch4 under the cloud deck, zero in Act I.
 >
-> **The ungated Ghibli package initially BLEW the deep budget (+2.36 ms), and the fix was
+> **The ungated painterly package initially BLEW the deep budget (+2.36 ms), and the fix was
 > structural, not a downgrade.** Both hot stations are underwater frames, and every submerged
 > pixel was paying for the full topside stack — quantised ramp, fresnel, glint, whitecaps and
 > their noise, horizon dissolve, shore band — then discarding it in the final mix, because a
@@ -512,7 +512,7 @@ Both runs: `--chapter 2 --frames 4 --time 9 --burst 0`, High, WebGPU, 1280x720, 
   two log hits are an unrelated CSP warning and an unrelated `forest` theme prewarm timeout.
 - `npm run lint` clean on the file. ⚠️ The suite figure originally recorded here ("240/240") matches no suite in this repo and could not be reproduced; it is replaced with a MEASURED one, taken at commit time with this change applied alone to 1942eb7c: **338 files / 3338 tests green** (3338 rather than the tree's 3342 because the north-coast change's four island tests are not part of this change).
 
-### Wave 3 — The shore grammar (the Totoro edge)
+### Wave 3 — The shore grammar (the a painted film edge)
 - Scalloped foam: static shore band + 1–2 travelling rings (K7), broken by noise (K6's AA'd
   threshold), thresholded to flat white, widths from Wave 0's px/m; dark-offset second sample
   (K1) as the drawn edge's shadow.
@@ -524,11 +524,11 @@ Both runs: `--chapter 2 --frames 4 --time 9 --burst 0`, High, WebGPU, 1280x720, 
 - **Acceptance:** the shoreline capture reads a scalloped, segmented, *moving* foam edge at
   rail distance; no return of the "2.6 u band reads as fog" failure; pairs hold.
 
-### Wave 4 — The signatures (what makes it Ghibli, not just toon)
+### Wave 4 — The signatures (what makes it painterly, not just toon)
 - K11 line boil on foam contours + crest lines (playground spike first: stepped-time jitter at
   8–12 fps equivalents, screenshots at two time steps to prove the boil).
 - K1 third-sample painted sparkle cells in the far band.
-- OPTIONAL, owner-gated: the Ponyo undulating horizon (vertex swell amplification confined to
+- OPTIONAL, owner-gated: the a painted film undulating horizon (vertex swell amplification confined to
   the far rings, or a painted horizon band) — spike before commitment (§7.4).
 - **Acceptance:** boil visible across two captures at different `--time`; sparkle band reads
   as discrete cells; budgets hold.
@@ -547,26 +547,26 @@ Both runs: `--chapter 2 --frames 4 --time 9 --burst 0`, High, WebGPU, 1280x720, 
 - [x] **Wave 2** — motion: 3-wave analytic swell + per-fragment field, whitecaps, camera-distance envelopes (replaced the terracing spacing-fade), root-pinned regime branch (ledger STALE — see the corrections in the OUTCOME; re-measure on a quiet machine)
 - [x] **Wave 2b** — morph-band squares: fragment reads of raw `w.worldXZ` re-ran the clipmap `floor()` on interpolated attributes → square annuli on the underside; fixed with `positionWorld.xz` + two varyings, capture-verified against a same-tree TRUEBEFORE (2026-08-14)
 - [ ] **Wave 3** — shore grammar: scalloped travelling foam, wet sand, animated waterline
-- [ ] **Wave 4** — signatures: line boil, sparkle cells, (optional) Ponyo horizon
+- [ ] **Wave 4** — signatures: line boil, sparkle cells, (optional) a painted film horizon
 - [ ] **Wave 5** — underside per §7.1 decision
 
 ## 7. Decisions needed from the owner
 
 1. **The underside conflict.** Wave 5 of the seam plan shipped a measured, capture-verified
-   underside (Snell window, TIR, per-channel grey-down with depth). The Ghibli mandate says
+   underside (Snell window, TIR, per-channel grey-down with depth). The painted mandate says
    underwater goes *more saturated*, and the look-critic ranks the (stale-captured) underside
-   a top-3 defect. Freeze it, or re-grade it Ghibli-ward? Fresh ch2 captures land in Wave 0 to
+   a top-3 defect. Freeze it, or re-grade it painterly-ward? Fresh ch2 captures land in Wave 0 to
    inform this.
 2. **The ch3 basin lake holds no water** — its floor is above sea level, so the sea plate
-   cannot fill it. Shoreline-only Ghibli water, lower the basin, or a dedicated lake sheet
+   cannot fill it. Shoreline-only painted water, lower the basin, or a dedicated lake sheet
    (the dormant legacy membrane's radial-edge lake is a ready harvest)? Affects scope of every
    topside wave.
 3. **The ch4 world Lane B lane is 2.9 ms over its aspirational max** with a deliberately-null
    baseline (One World plan §7.1's pending optimize-vs-re-budget call). Topside water spend at
    altitude lands in that lane. This plan treats ch4/ch5 as no-spend until that call is made —
    confirm, or make the call.
-4. **How bold is Ponyo mode?** Line boil and an undulating horizon are strong flavours.
-   Ship-default, or behind a per-chapter stylization dial (the Spirited Away production itself
+4. **How bold is a painted film mode?** Line boil and an undulating horizon are strong flavours.
+   Ship-default, or behind a per-chapter stylization dial (the a painted film production itself
    varied water style per sequence)?
 
 ## 8. Open questions this plan will not pretend to answer
@@ -578,17 +578,17 @@ Both runs: `--chapter 2 --frames 4 --time 9 --burst 0`, High, WebGPU, 1280x720, 
   has priced).
 - Whether the sparkle band survives 720p without shimmer (the AA'd threshold is the tool; the
   capture decides).
-- Reference imagery: Ghibli stills stay **local-only** (not committed) — same ruling as the
+- Reference imagery: painterly stills stay **local-only** (not committed) — same ruling as the
   seam plan.
 
 ## 9. Provenance
 
-Workflow `ghibli-water-research` (wf_98fa5f93-3e0), 7 agents, 2026-08-13; full findings in the
+Workflow `painted-water-research` (wf_98fa5f93-3e0), 7 agents, 2026-08-13; full findings in the
 session task output. Key sources: gordonnl "The Ocean" (Wind Waker), roystan.net toon water,
 cyanilux shoreline breakdown, halisavakis stylized water, halfpastyellow water, GPU Gems ch.1,
-nightshift glitter guide, jpanuelos Ghibli water (Totoro shoreline), xrender Ghibli sea recipe,
-hyperallergic Ponyo exhibition (Miyazaki's straight-lines mandate), xsisupport (Spirited Away
-CG supervisor), mlecznymlecz Ghibli colour analysis, ghibli R palettes, Clip Studio anime-water
+nightshift glitter guide, jpanuelos painted water (a painted film shoreline), xrender Painted sea recipe,
+hyperallergic a painted film exhibition (Miyazaki's straight-lines mandate), xsisupport (a painted film
+CG supervisor), mlecznymlecz painterly colour analysis, painterly R palettes, Clip Studio anime-water
 tutorial. Local anchors: `odyssey-world-renderer.js:754-822` (the shipped water),
 `WaterMesh.js:115-176`, `Water2Mesh.js:87-175`, `odyssey-water-surface.tsl.js:62-251` (legacy
 harvest), `perf-budgets.json:68-122`. Captures: `artifacts/odyssey/wave-v/chapter-03-high-webgpu/`

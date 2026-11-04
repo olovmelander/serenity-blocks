@@ -11,7 +11,7 @@ Before: `origin/main` 6bed3920. After: branch `feature/synthwave-sunset-visual-o
 | `after-playground-menu-centred.jpg` | `?effect=synthwave-sunset&board=0` — the centred "menu" shot |
 | `after-playground-game.jpg` | Mock board + HUD: the sun is solved into the free zone left of the board |
 | `after-playground-game-combo.jpg` | Combo ×4: grid shifts to violet, sun corona sparks |
-| `after-playground-tetris-clear.jpg` | Tetris: sun flare, corona, sonar ring on the grid, horizon flash |
+| `after-playground-quad-clear.jpg` | Quad: sun flare, corona, sonar ring on the grid, horizon flash |
 | `after-playground-piece-lock.jpg` | Piece locks: neon tetromino cells on the grid |
 | `after-playground-low-tier.jpg` | `quality=Low` (no bloom) |
 | `after-playground-webgl2-menu.jpg` | `forceWebGL=1` — the WebGL2 backend renders the same node path |

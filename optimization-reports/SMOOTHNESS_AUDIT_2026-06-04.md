@@ -51,7 +51,7 @@ Ranked by ROI across all dimensions:
 
 **Hold piece is a no-op** — `SinglePlayerMode.js:588-600`
 `window.hold` only calls the (undefined) `originalInputs.hold` and records a demo input. Core `game.js` has no hold logic; `holdEnabled` config is set-only and never read; no hold key is bound.
-*Impact:* A core modern convenience (save an I for a Tetris) is entirely missing.
+*Impact:* A core modern convenience (save an I for a Quad) is entirely missing.
 *Fix:* Add `heldPiece`/`holdUsedThisTurn` to GameState; export `holdPiece(gameState, spawnCallbacks)` as a pure core fn (swap or stash, re-spawn via the existing next-piece routine, reset lock state, invalidate ghost cache). Wire `window.hold`, implement `DemoPlayer` `case 'hold'`, add a `hold` keybinding (`'c'` or Shift) to all binding sets, add a hold-slot UI, and finally **read** `holdEnabled` so Odyssey modifiers take effect.
 
 **Soft drop hardcoded to 50ms** — `controls.js:81-83, 92-94, 123-130`

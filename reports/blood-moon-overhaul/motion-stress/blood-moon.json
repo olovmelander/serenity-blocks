@@ -539,7 +539,7 @@
       "running": true,
       "intervalMs": 900,
       "events": [
-        "tetris",
+        "quad",
         "tspin",
         "perfectClear"
       ],
@@ -625,7 +625,7 @@
       "running": true,
       "intervalMs": 900,
       "events": [
-        "tetris",
+        "quad",
         "tspin",
         "perfectClear"
       ],

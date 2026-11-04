@@ -246,8 +246,8 @@ Goal: make every theme obey the same contract.
 
 5. Start with heavy/high-risk themes:
    - `src/themes/wolfhour/wolfhour-theme.js`
-   - `src/themes/sky-children/sky-children-theme.js`
-   - `src/themes/sky-children-v2/sky-children-v2-theme.js`
+   - `src/themes/rainbow-terraces/rainbow-terraces-theme.js`
+   - `src/themes/rainbow-terraces/rainbow-terraces-theme.js`
    - `src/themes/ice-temple/`
    - `src/themes/nebula-flow/`
 

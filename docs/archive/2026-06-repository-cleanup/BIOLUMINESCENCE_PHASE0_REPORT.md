@@ -24,7 +24,7 @@ Phase 0 "Baseline Lock" has been fully implemented. The `bioluminescence-theme.j
 | A. Idle | [ ] | |
 | B. Line Clear | [ ] | |
 | C. Combo | [ ] | |
-| D. Tetris | [ ] | |
+| D. Quad | [ ] | |
 | E. Fallback | [ ] | |
 
 ## 4. Verification of Determinism

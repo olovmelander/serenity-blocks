@@ -58,7 +58,7 @@ Scope:
 ### 1.3 Anti-Goals (Automatic Reject)
 
 - Persistent full-screen bloom haze.
-- Neon/cyberpunk clipping or hard-edged glows.
+- Neon/neon-noir clipping or hard-edged glows.
 - Aggressive camera motion or strobing transitions.
 - Straight-line robotic particle drift.
 - Any effect that degrades board readability under combo stress.
@@ -1054,9 +1054,9 @@ Per-phase mandatory checklist:
 ## 16) References
 
 Art and direction references:
-- thatgamecompany: Sky: Children of the Light
-- thatgamecompany: Journey
-- Giant Squid: ABZU
+- a calm-games studio: a calm flying adventure
+- a calm-games studio: Journey
+- Giant Squid: an underwater game
 
 Project implementation references:
 - `src/themes/black-hole/`

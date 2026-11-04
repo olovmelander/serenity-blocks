@@ -169,7 +169,7 @@ An urban scene at dusk with neon lights beginning to glow. Captures the transiti
 A retro-futuristic sunset scene with a grid pattern overlay. The sun moves with animated rays in a distinctive 1980s synthwave aesthetic with vibrant pinks, purples, and oranges.
 
 ### Neon District *(NEW)*
-A 3D cyberpunk Blade Runner-style immersive street-level view surrounded by towering neon-lit megastructures. Features procedural buildings with glowing windows and Kanji neon signage, rain particle system, atmospheric purple fog, flying vehicles, reflective wet streets, and heavy bloom post-processing.
+A 3D neon-noir Blade Runner-style immersive street-level view surrounded by towering neon-lit megastructures. Features procedural buildings with glowing windows and Kanji neon signage, rain particle system, atmospheric purple fog, flying vehicles, reflective wet streets, and heavy bloom post-processing.
 
 ---
 
@@ -226,4 +226,4 @@ A meditative scene inspired by Tibetan singing bowls. Calm and peaceful with vis
 
 ---
 
-*Each theme is designed to create a unique visual and emotional experience, transforming your Tetris gameplay into an immersive journey through different worlds and atmospheres.*
+*Each theme is designed to create a unique visual and emotional experience, transforming your gameplay into an immersive journey through different worlds and atmospheres.*

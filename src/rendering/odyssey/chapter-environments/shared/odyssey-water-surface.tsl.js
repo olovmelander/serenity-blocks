@@ -171,7 +171,7 @@ export function buildOdysseyWaterSurface(uTime, {
     const depthFactor = smoothstep(20.0, 240.0, camDist);
     const winterT = smoothstep(0.7, 0.95, uSeason);
     // PAINTERLY-ASCENT REPALETTE (2026-08, Wave A): clean bright TURQUOISE→blue lake body (was dark
-    // teal) so the surface reads as the clear Ghibli/Genshin lake of the reference. Only the ABOVE
+    // teal) so the surface reads as the clear painted lake of the reference. Only the ABOVE
     // branch changes — the BELOW underwater ceiling (Ch2 breach) is untouched; surfacing into the
     // now-blue Ch3 sky is consistent for the breach too. Overshoot for the in-game ACES/exposure wash.
     const bodyCol = mix(vec3(0.08, 0.56, 0.62), vec3(0.05, 0.30, 0.60), depthFactor); // richer turquoise near → deep blue far

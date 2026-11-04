@@ -48,7 +48,7 @@
 - **2026-07-26 — Wave 2 (backlit moon-rim) + Wave 3 (prop life) DONE, verified.**
   - **Wave 2 · A4 backlit moonlit rim** (`koi-pond-landscape.js`): tree crowns, grass tips,
     and the troll now emit a cool HDR edge rim keyed on `pow(1-dot(N,viewDir),k)·moonFacing`
-    (feeds bloom) — the Ghibli-night motif; foliage/silhouettes read as moonlit instead of
+    (feeds bloom) — the painted-night motif; foliage/silhouettes read as moonlit instead of
     flat dark masses. (Full unified depth-fog B1 still deferred; existing FogExp2 carries
     depth for now.)
   - **Wave 3 prop life:** lantern → HDR flame with low-freq flicker + warm-bounce pool
@@ -212,7 +212,7 @@ shared `disposeBloomNodeDeep` (`src/themes/shared/bloom-dispose.js`) this theme 
   water; apply as color-lerp, not alpha, on additives.
 - **A4.** Backlit moon-rim: `pow(saturate(dot(-normalWorld, moonDir)), k)` masked by
   distance/silhouette, added as a cool emissive rim (feeds bloom) on trees / grass tips / koi
-  / troll — the defining Ghibli-night motif.
+  / troll — the defining painted-night motif.
 - Add vignette + blue-noise dither in the same post pass (kills near-black sky banding).
 
 ### Wave 3 — HERO PROP LIFE (each its own session)

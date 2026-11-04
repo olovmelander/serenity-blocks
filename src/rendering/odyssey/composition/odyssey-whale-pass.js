@@ -3,7 +3,7 @@
  * THE WHALE PASS — a humpback mother and calf circling over the Act I ascent.
  *
  * The camera climbs the water column looking UP toward the bright surface, so a whale crossing
- * overhead is a SILHOUETTE against the light — the most iconic image underwater (ABZÛ, the
+ * overhead is a SILHOUETTE against the light — the most iconic image underwater (an underwater game, the
  * Big Blue).
  *
  * THE ANIMALS (2026-11-03): `humpback-swim.glb`, built, rigged and keyed in Blender

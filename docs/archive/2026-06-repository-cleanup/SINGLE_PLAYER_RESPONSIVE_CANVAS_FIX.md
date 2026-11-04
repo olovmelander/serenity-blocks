@@ -172,7 +172,7 @@ All tests show the game canvas is:
 ### Viewport Considerations:
 - **200px reserved**: Stats bar, padding, settings button, margins
 - **250px reserved (mobile)**: Additional space for mobile UI elements
-- **1:2 aspect ratio**: Maintains classic Tetris proportions
+- **1:2 aspect ratio**: Maintains classic block-stacking proportions
 
 ---
 

@@ -488,7 +488,7 @@
   "keyMotifs": "A full moon over mountain peaks, a god-ray starburst, a moon reflection strip on the lake, an aurora ribbon, shooting stars.",
   "motion": "Drifting clouds, mist layers, an aurora ribbon, gentle waves, pointer parallax, camera breathing.",
   "gameplayFx": "Event handlers at L880-930. Clear: moon pulse, 2-4 shooting stars and a lake highlight. Combo: aurora intensity, a warm horizon shift and a mountain rim. Lock: a 35% chance of a lake ripple.",
-  "tech": "WebGLRenderer, 17 ShaderMaterials, EffectComposer (UnrealBloom threshold 0.4 plus a 'Ghibli grade' pass), FogExp2, a 3-plane moon (disc, anamorphic streak, halo), fbm ridge planes.",
+  "tech": "WebGLRenderer, 17 ShaderMaterials, EffectComposer (UnrealBloom threshold 0.4 plus a 'Painted grade' pass), FogExp2, a 3-plane moon (disc, anamorphic streak, halo), fbm ridge planes.",
   "motifsToAvoidReusing": "A moon over mountain peaks; a moon god-ray starburst; an alpine lake reflection strip; shooting stars; navy-blue night."
  },
  {
@@ -614,7 +614,7 @@
  {
   "id": "neon-district",
   "name": "Neon District",
-  "setting": "A rain-soaked cyberpunk street canyon seen from its centre line; the city scrolls past forever (docs/NEON_DISTRICT_VISUAL_OVERHAUL_2026-10.md, captures in docs/neon-district-captures/).",
+  "setting": "A rain-soaked neon-noir street canyon seen from its centre line; the city scrolls past forever (docs/NEON_DISTRICT_VISUAL_OVERHAUL_2026-10.md, captures in docs/neon-district-captures/).",
   "timeOfDay": "night, raining",
   "dominantPalette": "Hot pink, teal, ultraviolet and acid-gold neon on wet dark asphalt. Five level palettes: signal, harbour, arcade, lantern, ultraviolet. Pieces I #ff2ea6 O #7a5cff T #20e0d0 S #ff6a1a Z #3a86ff J #ffd21a L #c04bff, garbage #444466.",
   "keyMotifs": "Shops set back behind wet glass with interior-mapped rooms by trade (some shuttered and fly-posted), tube-neon signs with glyph script, the district's own campaigns on every surface (eight board-verb brands, Sukha's breathing adverts, Serenity Transit travel posters for the other worlds) as LED playlists, floodlit roof boards, paste-up poster walls, animated tube logos and blade words; interior-mapped lit windows, lanterns and cables, skybridges, megatowers in smog, wet-road mirror, rain and steam, flying traffic, combo hologram ('x3'), drone-show dragon.",

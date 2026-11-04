@@ -1,6 +1,6 @@
 # Neon District — AAA Visual Upgrade Plan
 
-> **Goal**: Take Neon District from "a competent cyberpunk street" to **a screenshot you'd put on a Steam page** — a rain-soaked Night City canyon where neon *bleeds into the wet asphalt*, the air is thick with colored volumetric fog and god-rays, a hero moon hangs huge over a living skyline, and flying cars streak motion-blurred trails between the towers. The player who loads this theme should think **"wait, this runs in a browser?"**
+> **Goal**: Take Neon District from "a competent neon-noir street" to **a screenshot you'd put on a Steam page** — a rain-soaked city at night canyon where neon *bleeds into the wet asphalt*, the air is thick with colored volumetric fog and god-rays, a hero moon hangs huge over a living skyline, and flying cars streak motion-blurred trails between the towers. The player who loads this theme should think **"wait, this runs in a browser?"**
 
 > **Status**: Planning. Nothing here is implemented yet. Phased so each phase ships independently and is reversible. Every change is gated by quality preset + a `?nd*` debug flag.
 
@@ -10,9 +10,9 @@
 
 ## North Star — The Look We're Chasing
 
-The reference is **Blade Runner 2049 / Cyberpunk 2077 Night City at street level in the rain.** The defining traits of that look, and where Neon District sits today:
+The reference is **Blade Runner 2049 / a neon-noir open-world game city at night at street level in the rain.** The defining traits of that look, and where Neon District sits today:
 
-| AAA cyberpunk trait | Night City / BR2049 | Neon District today |
+| AAA neon-noir trait | city at night / BR2049 | Neon District today |
 |---|---|---|
 | **Neon reflected in wet street** | Ray-traced reflections of every sign, window, car | ❌ Fake 128px purple cube map; road can't mirror the scene |
 | **Thick volumetric fog + colored god-rays** | Volumetric fog is the single most "atmospheric" setting | ❌ Only a flat depth-color fog in post; no light shafts |
@@ -23,7 +23,7 @@ The reference is **Blade Runner 2049 / Cyberpunk 2077 Night City at street level
 | **Dense, layered, parallaxing depth** | Foreground silhouettes → mid traffic → far skyline | ✅ Strong: mega-tower, skyline, 8 traffic bands |
 | **Reactive, cinematic camera** | — | ⚠️ Great idle sway, but no gameplay reactivity |
 
-Industry confirmation: in Cyberpunk 2077, disabling **Screen Space Reflections** "removes reflections from wet roads and specular surfaces," and **volumetric fog** is described as among the most taxing *and* most transformative settings — it generates depth, god-rays, and the rain-soaked atmosphere ([rendering analysis](https://zhangdoa.com/rendering-analysis-cyberpunk-2077/), [PCGamesN ray-tracing breakdown](https://www.pcgamesn.com/cyberpunk-2077/ray-tracing-techniques)). Modern real-time cyberpunk workflows lean hard on **layered volumetric fog → god-rays → ray-traced neon reflections in puddles** ([D5 Render cyberpunk city guide](https://www.d5render.com/posts/cyberpunk-city)). Those three are exactly Neon District's three biggest gaps.
+Industry confirmation: in a neon-noir open-world game, disabling **Screen Space Reflections** "removes reflections from wet roads and specular surfaces," and **volumetric fog** is described as among the most taxing *and* most transformative settings — it generates depth, god-rays, and the rain-soaked atmosphere (rendering analysis, PCGamesN ray-tracing breakdown). Modern real-time neon-noir workflows lean hard on **layered volumetric fog → god-rays → ray-traced neon reflections in puddles** (D5 Render neon-noir city guide). Those three are exactly Neon District's three biggest gaps.
 
 ---
 
@@ -31,7 +31,7 @@ Industry confirmation: in Cyberpunk 2077, disabling **Screen Space Reflections**
 
 | # | Move | Why it transforms the theme | Cost |
 |---|---|---|---|
-| 1 | **Real reflections on the wet street** (SSR on WebGPU + real HDR env fallback) | THE cyberpunk money shot. Right now the road reflects a 128px fake purple cube; making it mirror the actual neon/windows/sky is the single biggest "AAA vs. tech demo" leap. | High |
+| 1 | **Real reflections on the wet street** (SSR on WebGPU + real HDR env fallback) | THE neon-noir money shot. Right now the road reflects a 128px fake purple cube; making it mirror the actual neon/windows/sky is the single biggest "AAA vs. tech demo" leap. | High |
 | 2 | **Volumetric fog + colored god-rays** | The air is empty. Thick street-level fog tinted by nearby signs, with light shafts stabbing down from searchlights/windows, is what gives the canyon *atmosphere and depth*. | Medium–High |
 | 3 | **Cinematic post stack** (DOF bokeh + anamorphic streaks + LUT grade + restored grain/CA + vehicle motion blur) | r181 ships every one of these as a ready TSL node. Together they turn "clean render" into "album cover." Distant neon → bokeh circles, every light → anamorphic streak, whole frame → filmic grade. | Medium |
 | 4 | **Hero sky** (glowing moon with halo + lens flare, drifting smog/cloud strata, distant heat-lightning) | The upper half of the frame is dead black in the screenshots. A looming, bloom-driven moon + parallax cloud bands + occasional sheet-lightning makes the sky earn its screen space. | Medium |
@@ -65,7 +65,7 @@ Read of the current implementation so the plan builds on reality. Strong, mature
 
 **Lighting** ([setupSceneLighting:7340](../src/themes/neon-district/neon-district-theme.js#L7340)): ambient + top-down moonlight directional (4096 shadow map) + fill + hemisphere + 2–4 point lights. Env = the fake purple cube. No volumetric shafts.
 
-**Composition / camera** ([updateCameraSway:8365](../src/themes/neon-district/neon-district-theme.js#L8365)): sophisticated idle choreography — multi-frequency sway, pointer parallax, vertical rise with a "peak nod" toward the moon, subtle roll. Excellent resting state. But **nothing reacts to gameplay** (line clears, combos, Tetris) and there's no DOF-framing.
+**Composition / camera** ([updateCameraSway:8365](../src/themes/neon-district/neon-district-theme.js#L8365)): sophisticated idle choreography — multi-frequency sway, pointer parallax, vertical rise with a "peak nod" toward the moon, subtle roll. Excellent resting state. But **nothing reacts to gameplay** (line clears, combos, Quad) and there's no DOF-framing.
 
 **Reactive FX already wired** (great hooks to amplify): [triggerComboEffects:7583](../src/themes/neon-district/neon-district-theme.js#L7583), [spawnComboSparks:7618](../src/themes/neon-district/neon-district-theme.js#L7618), [triggerNeonSignSurge:7735](../src/themes/neon-district/neon-district-theme.js#L7735), [spawnLightningArc:7741](../src/themes/neon-district/neon-district-theme.js#L7741), [triggerGlitchWave:7848](../src/themes/neon-district/neon-district-theme.js#L7848).
 
@@ -93,7 +93,7 @@ The official [WebGPU SSR example](https://threejs.org/examples/webgpu_postproces
 
 ## 2. The Cinematic Vision
 
-You're standing in a rain-drenched canyon between mega-towers, looking down a street that races toward a colossal hologram-haloed moon. The wet asphalt is a **second sky** — it mirrors the magenta ramen sign, the cyan window grids, the streaking tail-lights of a passing spinner, all smeared and shimmering through the ripples. The air is *thick*: a violet volumetric fog pools at street level, and shafts of colored light from the searchlights and the brightest signs cut visible god-rays through it. Rain falls lit by the neon it passes — pink near the ramen shop, cyan under the cosmic-bar sign — and beads on the camera lens. Distant signs melt into soft bokeh circles; every bright light throws a horizontal anamorphic streak. The whole frame is graded teal-shadow / magenta-highlight. On a line clear the camera dollies forward into the canyon as a shockwave ripples the puddles and the signs surge brighter; on a Tetris, sheet-lightning flashes the smog and the moon flares.
+You're standing in a rain-drenched canyon between mega-towers, looking down a street that races toward a colossal hologram-haloed moon. The wet asphalt is a **second sky** — it mirrors the magenta ramen sign, the cyan window grids, the streaking tail-lights of a passing spinner, all smeared and shimmering through the ripples. The air is *thick*: a violet volumetric fog pools at street level, and shafts of colored light from the searchlights and the brightest signs cut visible god-rays through it. Rain falls lit by the neon it passes — pink near the ramen shop, cyan under the cosmic-bar sign — and beads on the camera lens. Distant signs melt into soft bokeh circles; every bright light throws a horizontal anamorphic streak. The whole frame is graded teal-shadow / magenta-highlight. On a line clear the camera dollies forward into the canyon as a shockwave ripples the puddles and the signs surge brighter; on a Quad, sheet-lightning flashes the smog and the moon flares.
 
 **Design rule:** the wet road (bottom third) and the neon canyon (middle) are the stars. This plan makes the **air between them** (fog/god-rays/DOF/rain) and the **sky above** (moon/clouds/lightning) earn their screen space, and ties the wet road to *real* reflections so the floor stops being a flat purple wash.
 
@@ -134,7 +134,7 @@ The canyon air is empty. Fill it.
 
 **WebGL fallback:** the existing depth-color fog + a single cheap radial god-ray `ShaderPass`; skip ray-marched volume.
 
-**Outcome:** depth, mood, and the unmistakable "rain-soaked Night City" air.
+**Outcome:** depth, mood, and the unmistakable "rain-soaked city at night" air.
 
 ---
 
@@ -144,15 +144,15 @@ Compose these in `NeonDistrictPost` *after* bloom, fused where possible into a s
 
 **3a. Depth-of-field (bokeh).** `dof()` keyed off the existing linear-depth node — focus the mid-street, let distant signs melt into glowing bokeh circles and near rain/foreground softly defocus. The single biggest "cinematic" multiplier and it makes the dense distant neon read as *atmosphere* instead of noise (cf. the busy aliased far-field in screenshot 1).
 
-**3b. Anamorphic light streaks.** `anamorphic()` over the bloom source → horizontal streaks off every bright sign/headlight. This is *the* synthwave/cyberpunk lens signature and it makes screenshots pop.
+**3b. Anamorphic light streaks.** `anamorphic()` over the bloom source → horizontal streaks off every bright sign/headlight. This is *the* synthwave/neon-noir lens signature and it makes screenshots pop.
 
 **3c. Restore radial chromatic aberration + film grain.** They were removed wholesale for perf ([forced to 0:86-90](../src/themes/neon-district/neon-district-post.js#L86)); bring them back as *radial* CA (0 at center, a few px at corners) + subtle grain, gated to High+ and driven up briefly on combo/glitch events (hooks already exist, [triggerGlitchWave:7848](../src/themes/neon-district/neon-district-theme.js#L7848)). Use `chromaticAberration()` / `FilmNode.js`.
 
-**3d. Filmic LUT color grade.** `lut3D()` with a teal-shadow / magenta-highlight cyberpunk LUT for one unified, graded palette instead of per-material tinting. Ship a baked `.cube`/`.png` LUT to match the menu-AAA art direction.
+**3d. Filmic LUT color grade.** `lut3D()` with a teal-shadow / magenta-highlight neon-noir LUT for one unified, graded palette instead of per-material tinting. Ship a baked `.cube`/`.png` LUT to match the menu-AAA art direction.
 
 **3e. Lens flare on the moon + hero sign.** `lensflare()` anchored to the moon (Phase 4a) and optionally the single brightest hero sign — ghosts + halo that bloom with the moon's glow.
 
-**3f. Motion blur for the flying cars.** `motionBlur()` (velocity-buffer) so spinners leave the long light-trails that sell speed in Night City flythroughs.
+**3f. Motion blur for the flying cars.** `motionBlur()` (velocity-buffer) so spinners leave the long light-trails that sell speed in city at night flythroughs.
 
 **3g. Tiered bloom.** Split today's single bloom ([bloom():33](../src/themes/neon-district/neon-district-post.js#L33)) into a tight high-threshold core + a wide soft bloom for "neon bleeding into the dark," and lift the conservative strengths.
 
@@ -168,7 +168,7 @@ The top half of the frame is dead. Wake it up.
 
 **4b. Drifting smog / cloud strata.** 2–3 slow horizontal cloud/smog bands high in the sky (additive, drifting opposite directions, FBM-textured), tinted from the palette, occasionally backlit by the moon. Turns the flat gradient into living atmosphere.
 
-**4c. Distant heat-/sheet-lightning.** Occasional silent sheet-lightning behind the far skyline that briefly flashes the smog and rim-lights the towers — reuse [spawnLightningArc:7741](../src/themes/neon-district/neon-district-theme.js#L7741), trigger ambiently + on Tetris.
+**4c. Distant heat-/sheet-lightning.** Occasional silent sheet-lightning behind the far skyline that briefly flashes the smog and rim-lights the towers — reuse [spawnLightningArc:7741](../src/themes/neon-district/neon-district-theme.js#L7741), trigger ambiently + on Quad.
 
 **4d. Aurora / sky-glow shimmer.** A faint animated city-glow band on the horizon (the "light pollution" dome) so the bottom of the sky glows where the city is densest.
 
@@ -180,7 +180,7 @@ The top half of the frame is dead. Wake it up.
 
 Make the buildings feel inhabited, not printed.
 
-**5a. Colored window emissive.** Windows are white/warm only ([winColor:368](../src/themes/neon-district/neon-district-materials.js#L368)). Add a minority of cyan/magenta/amber lit windows (hash-driven per cell) for the chromatic variety Night City has — and let the colored windows feed the SSR reflections + fog tint.
+**5a. Colored window emissive.** Windows are white/warm only ([winColor:368](../src/themes/neon-district/neon-district-materials.js#L368)). Add a minority of cyan/magenta/amber lit windows (hash-driven per cell) for the chromatic variety city at night has — and let the colored windows feed the SSR reflections + fog tint.
 
 **5b. Parallax window interiors.** Fake-3D interior depth via parallax-occlusion-style UV offset in the building shader (interior box illusion) so windows have *depth* instead of being flat lit rectangles. Big perceived-quality jump for ~free fragment cost; gate to near LOD only.
 
@@ -214,7 +214,7 @@ The idle sway is already excellent ([updateCameraSway:8365](../src/themes/neon-d
 
 **7a. Reactive camera channel.** Add an event-driven offset on top of the idle sway:
 - **Line clear** → short dolly-push down the canyon, then ease back; a puddle shockwave ripple.
-- **Tetris** → bigger push + brief FOV widen (dolly-zoom) + sheet-lightning (4c) + moon flare.
+- **Quad** → bigger push + brief FOV widen (dolly-zoom) + sheet-lightning (4c) + moon flare.
 - **Combo ≥ N** → slow saturation/LUT-mix ramp + tighter bloom + sign surge ([triggerNeonSignSurge:7735](../src/themes/neon-district/neon-district-theme.js#L7735)).
 
 **7b. Graduated parallax depth.** Extend the existing pointer parallax to the new fog, cloud strata, and moon at graduated strengths so movement reveals real depth between layers.

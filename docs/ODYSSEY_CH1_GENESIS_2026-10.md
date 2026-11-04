@@ -3,7 +3,7 @@
 **Status: LANDED on `feature/odyssey-ch1-genesis`.** The owner's brief: improve Earth Core's
 visuals and atmosphere "in the best way you can think of" — "this amazing start of Odyssey mode".
 Builds on the [Act I rebirth plan](ODYSSEY_ACT_I_REBIRTH_PLAN_2026-08.md)'s light language (ONE warm
-key below — the lava — and darkness-gated response; Ghibli softness) and on the masterpiece and
+key below — the lava — and darkness-gated response; painterly softness) and on the masterpiece and
 seamless passes (the First Heart on the rail, basalt bundles, fissure fields, the lit steam shaft).
 
 ## 0. What the opening looked like (captured, main `bbdf5390`)

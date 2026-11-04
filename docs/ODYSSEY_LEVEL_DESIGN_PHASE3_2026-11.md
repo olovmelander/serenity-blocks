@@ -46,7 +46,7 @@ the fastest-first "Orb time" board (Steam upload and results sheet), since lasti
   15-minute cap at every pace). The ramp halves the drop every 2:30 on the simulation clock and is the orb's only
   speed driver (validated). At the goal the pieces fall at 112 ms, inside chapter 6's floor.
 - **Survival stars from a person model.** At fast drops the bots slide pieces along the stack during the lock delay,
-  so they outlast any ramp. Classic Tetris speeds put most players' limit near 67 ms a row, regular players near 50
+  so they outlast any ramp. Classic block-stacking speeds put most players' limit near 67 ms a row, regular players near 50
   and strong ones near 33. On the ramp, 3:00 is 74 ms and 5:00 is 43 ms. The gates and the rules checker set the bots'
   free-stars verdict aside for survival orbs only.
 - **Rubble counted by cell type.** Physics rebuilds pieces from the grid after every clear and drops `isGarbage`; the

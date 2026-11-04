@@ -1,9 +1,7 @@
 # Rainbow Terraces: the high country with the sun behind you
 
-> **Renamed 2026-10-18.** This theme was called Sky Children (with the working subtitle
-> "Irisfall") until 2026-10-18. Both names belong to other games, so it became **Rainbow Terraces**
-> (id `rainbow-terraces`, Odyssey orb 34 "Where Color Falls"); the old ids `sky-children` and
-> `sky-children-v2` resolve to it for old saves.
+> **Renamed 2026-10-18.** This theme had an earlier working name. It is **Rainbow Terraces** (id
+> `rainbow-terraces`, Odyssey orb 34 "Where Color Falls"); its old ids resolve to it for old saves.
 
 Implemented 2026-10-11/12 on `ccr-10c88c36-tbdwqd`, with Three.js 0.186.1 (`WebGPURenderer`, TSL,
 the WebGL2 backend as the fallback). A from-scratch rebuild in `src/themes/rainbow-terraces/`
@@ -338,7 +336,7 @@ The owner: "the rainbow just pops, it must be drawn in the most beautiful way wh
 **Verified:** on the RTX (WebGPU), playground frames before and after: the four-line clear at
 1.55-10.4 s (the light kindling, both fronts, the whole bow, the fade), a link painting and a chain
 of three and seven, the Rose and Moonbow hours, a phone; the thread at 0.35 s and 0.2 s side by
-side. The real game booted from a save naming `sky-children` and `SkyChildren` (healed on load to the
+side. The real game booted from a save naming `rainbow-terraces` and `RainbowTerraces` (healed on load to the
 new id and key, the theme ran on WebGPU at High, no dropped events, a clean console) through a chain
 and a four-line clear, the bow drawn on behind the real board. The theme's tests (new: the reveal
 never changes the bow's light by more than 3 % of its height in a frame; the bow whole under the

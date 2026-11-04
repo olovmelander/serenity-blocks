@@ -5081,8 +5081,8 @@
       }
     },
     {
-      "id": "sky-children",
-      "module": "./sky-children-v2/sky-children-v2-theme.js",
+      "id": "rainbow-terraces",
+      "module": "./rainbow-terraces/rainbow-terraces-theme.js",
       "low": {
         "capturedAt": "2026-10-04T09:35:43.980Z",
         "quality": "Low",

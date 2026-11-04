@@ -132,7 +132,7 @@ describe('geometry', () => {
 // displaces VERTICALLY ONLY, so its .xz IS the smooth clipmap coordinate), or it reads an
 // explicit `varying()`. It never reads `w.worldXZ`.
 //
-// Governing write-up: docs/ODYSSEY_GHIBLI_WATER_PLAN_2026-08.md §Wave 2b.
+// Governing write-up: docs/ODYSSEY_PAINTED_WATER_PLAN_2026-08.md §Wave 2b.
 describe('clipmap stage discipline in the water material', () => {
     const RENDERER = join(dirname(fileURLToPath(import.meta.url)), 'odyssey-world-renderer.js');
     /**

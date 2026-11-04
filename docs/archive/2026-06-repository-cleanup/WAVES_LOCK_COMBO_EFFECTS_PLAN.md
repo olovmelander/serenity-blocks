@@ -104,7 +104,7 @@ Fires on `LINE_CLEAR`. Re-uses the lock droplet system but at **much higher inte
 | 1     | 2              | 0.6             | 0.3         | 0.2        |
 | 2     | 4              | 1.0             | 0.5         | 0.35       |
 | 3     | 6              | 1.5             | 0.7         | 0.55       |
-| 4 (tetris) | 8         | 2.2             | 1.0         | 0.8        |
+| 4 (quad) | 8         | 2.2             | 1.0         | 0.8        |
 
 ---
 
@@ -214,7 +214,7 @@ Total particle-system count on Extreme stays under 32, well below the budget use
 
 ### Phase 5 — Tuning & QA
 1. Run through the full quality-preset matrix: Extreme → Minimal. Verify no frame-time regression > 1ms at High vs baseline when idle; bursts stay under 4ms at Extreme.
-2. Tetris (4-line) + 5-combo sequence should look unambiguously more impressive than a single-line clear with no combo. Record side-by-side captures.
+2. Quad (4-line) + 5-combo sequence should look unambiguously more impressive than a single-line clear with no combo. Record side-by-side captures.
 3. Verify `cleanup()` disposes every pool (geometry + material) — use Three.js `renderer.info.memory` before/after a theme swap.
 4. Check that disabling `window.settings.backgroundComboEffects` kills all new effects identically to the existing handlers.
 
@@ -238,6 +238,6 @@ Total particle-system count on Extreme stays under 32, well below the budget use
 - Locking a piece visibly **splashes** the barrel wall and flashes the caustics — the player can feel each placement.
 - Clearing a line sends a swell rolling toward the exit, with spray and foam proportional to line count.
 - A 3+ combo unmistakably "opens the barrel": god-rays break through, the exit glows hot-white, and plankton streaks chase along the wall.
-- A tetris-with-big-combo is the most spectacular visual in the theme, bar none.
+- A quad-with-big-combo is the most spectacular visual in the theme, bar none.
 - Frame time on High preset stays within 1ms of current baseline when idle and under 4ms during peak bursts.
 - No effect breaks the surf-tunnel metaphor. A surfer watching the screen should recognise every element.

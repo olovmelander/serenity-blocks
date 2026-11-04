@@ -235,7 +235,7 @@ Error: Cannot read property...
    - Expected: Small particle burst
    - Console: Should see `[ParticleCompat] Particle emitter created`
 
-2. **Clear Multiple Lines (Tetris)**
+2. **Clear Multiple Lines (Quad)**
    - Expected: Larger particle burst
    - Console: Should see multiple emitter creations
 

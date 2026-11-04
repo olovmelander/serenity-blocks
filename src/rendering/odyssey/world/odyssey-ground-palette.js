@@ -66,7 +66,7 @@ export const ODYSSEY_GROUND_PALETTE = Object.freeze({
     // Re-authored to ~.368/.342/.290 at IDENTICAL luma, so the G3 value ladder and every
     // measurement taken against it are untouched: this moves hue only.
     // Cooled toward a violet-grey (item 6): the warm beige rock pole and the cream snow pole
-    // converged on one sand colour across the whole massif. Ghibli stone is a cool grey that
+    // converged on one sand colour across the whole massif. Painted stone is a cool grey that
     // takes the sky; the warmth now comes from the light (sun colour, alpenglow), not the rock.
     rock: Object.freeze({
         damp: Object.freeze([0.270, 0.272, 0.282]),
@@ -163,7 +163,7 @@ export const ODYSSEY_GROUND_SHADE = Object.freeze({
     /**
      * THE TERMINATOR, and the mistake worth keeping.
      *
-     * The Ghibli two-mass law says light and shadow separate with a narrow terminator and that
+     * The painted two-mass law says light and shadow separate with a narrow terminator and that
      * mid-tones live on the LIT side only. The first cut read that as "everything above the
      * window is fully lit" and used [0.015, 0.34] — which is narrow, but measured against the
      * wrong quantity: a face at ndl 0.3 is genuinely dimmer than a face at ndl 1.0, so

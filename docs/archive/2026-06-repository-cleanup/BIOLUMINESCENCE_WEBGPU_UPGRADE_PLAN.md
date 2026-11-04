@@ -90,7 +90,7 @@ Scope:
 - Organic glow hierarchy: mushrooms and crystals lead; mycelium, spores, and water support.
 - Living cave rhythm: ambient breathing and event reactions feel biological, never synthetic.
 - Depth continuity: near, mid, and far cave layers stay readable in still frames and during events.
-- Restraint under stress: combo/TETRIS escalation is dramatic but never obscures board readability.
+- Restraint under stress: combo/QUAD escalation is dramatic but never obscures board readability.
 
 ### Anti-Goals (Automatic Reject)
 - Full-frame neon haze that removes contrast structure.
@@ -149,14 +149,14 @@ Every mushroom in the current theme is identical teal. The upgrade must include:
 - Event escalation:
   - `LINE_CLEAR`: local pulse + mild atmospheric lift.
   - `COMBO`: broader spore density and mycelium activation.
-  - `TETRIS`: full-cave synchronized wave with fast decay back to calm baseline.
+  - `QUAD`: full-cave synchronized wave with fast decay back to calm baseline.
 
 ### Hero Frames and Acceptance Shots
 Phase 0 baseline pack must lock these deterministic captures:
 - Shot A: idle cave mood (no event, 8 seconds).
 - Shot B: `LINE_CLEAR` readability anchor.
 - Shot C: sustained `COMBO` (n >= 6) stress.
-- Shot D: `TETRIS` signature pulse moment.
+- Shot D: `QUAD` signature pulse moment.
 - Shot E: forced WebGL fallback parity (`?forceWebGL=1`).
 
 ### Bioluminescence Fidelity Rubric (Signoff Required)
@@ -340,7 +340,7 @@ World-class execution requires explicit quantitative pass/fail gates:
 |----------|------|-----------|
 | Visual parity | Fallback parity diff (same seed, fixed dt, matched camera) | <= 2.5% changed pixels outside approved glow ROIs |
 | Redesign delta vs legacy | Legacy-vs-target diff on Shot A + Shot C (matched camera, board ROI excluded) | >= 25% changed pixels |
-| Visual readability | Board ROI contrast during `LINE_CLEAR`, `COMBO`, `TETRIS` anchors | >= 4.5:1 |
+| Visual readability | Board ROI contrast during `LINE_CLEAR`, `COMBO`, `QUAD` anchors | >= 4.5:1 |
 | Bloom containment | Non-emissive leakage in bright bloom mask | <= 3.0% of bright pixels |
 | Mood fidelity | Darkness ratio in hero frames | 40% - 65% of frame remains dark-value dominant |
 | Art-direction fidelity | Subnautica-inspired rubric score (`High`, `Ultra`, WebGL fallback) | each category >= 4, average >= 4.4 |
@@ -544,7 +544,7 @@ Telemetry minimums for baseline reports:
 - CPU frame stats: `avg`, `p50`, `p95`, `p99`, variance.
 - GPU pass stats (when available): compute, scene pass, bloom, grading.
 - Runtime counters: draw calls, geometry count, texture count, buffer count.
-- Event counters: `PIECE_LOCK`, `LINE_CLEAR`, `COMBO`, `TETRIS`.
+- Event counters: `PIECE_LOCK`, `LINE_CLEAR`, `COMBO`, `QUAD`.
 
 When timestamps are unavailable, the harness still reports CPU-side frame metrics and marks GPU pass timings as `unsupported`.
 
@@ -617,7 +617,7 @@ Event handlers push multi-channel envelopes:
 PIECE_LOCK:   pushReactiveEnvelope({ pulse: 0.15, spore: 0.5, mycelium: 0.1 })   // spore: discrete burst, not subtle
 LINE_CLEAR:   pushReactiveEnvelope({ pulse: 0.2+lines*0.1, bloom: 0.08+lines*0.06, water: 0.15+lines*0.1, mycelium: 0.3 })
 COMBO(n):     pushReactiveEnvelope({ pulse: 0.2+n*0.1, bloom: 0.1+n*0.08, spore: 0.3+n*0.15, atmosphere: 0.2+n*0.1 })
-TETRIS:       pushReactiveEnvelope({ pulse: 1.0, bloom: 0.5, spore: 1.0, mycelium: 1.0, atmosphere: 0.8, water: 0.6, exposure: 0.4 })
+QUAD:       pushReactiveEnvelope({ pulse: 1.0, bloom: 0.5, spore: 1.0, mycelium: 1.0, atmosphere: 0.8, water: 0.6, exposure: 0.4 })
 TOP_OUT:      pushReactiveEnvelope({ pulse: -1.0, bloom: -1.0, spore: -1.0, mycelium: -1.0, atmosphere: -1.0, water: -1.0, exposure: -0.5 })  // negative = force decay to zero
 ```
 
@@ -661,7 +661,7 @@ Animation loop reads envelope channels to drive each subsystem independently. Th
 - [ ] Add deterministic controls (`bioluminescenceSeed`, `bioluminescenceFixedDt`, canned event playback).
 - [ ] Record baseline metrics: FPS, 1% low, frame-time variance, draw calls, memory.
 - [ ] Record capability snapshot + downgrade reason log for each backend run.
-- [ ] Capture readability anchors during `PIECE_LOCK`, `LINE_CLEAR`, `COMBO`, `TETRIS` events.
+- [ ] Capture readability anchors during `PIECE_LOCK`, `LINE_CLEAR`, `COMBO`, `QUAD` events.
 - [ ] Score Shot A-E using the Subnautica-inspired fidelity rubric for `High`, `Ultra`, and forced WebGL fallback.
 - [ ] Compute intentional redesign delta against legacy baseline for Shot A and Shot C.
 - [ ] Capture baseline at `Minimal`, `High`, and `Extreme` presets.
@@ -1588,7 +1588,7 @@ The defining feature:
 | **LINE_CLEAR** | `{ pulse: 0.2+lines*0.1, bloom: 0.08+lines*0.06, water: 0.15+lines*0.1, mycelium: 0.3 }` | 0.8s decay |
 | **COMBO (1-3)** | `{ pulse: 0.2+n*0.1, bloom: 0.1+n*0.08, spore: 0.3+n*0.15, atmosphere: 0.2+n*0.1 }` | Sustained, 1s decay |
 | **COMBO (4+)** | Above + `{ atmosphere: 0.5, water: 0.3 }` | Sustained, 1.5s decay |
-| **TETRIS** | `{ pulse: 1.0, bloom: 0.5, spore: 1.0, mycelium: 1.0, atmosphere: 0.8, water: 0.6, exposure: 0.4 }` | 2s decay |
+| **QUAD** | `{ pulse: 1.0, bloom: 0.5, spore: 1.0, mycelium: 1.0, atmosphere: 0.8, water: 0.6, exposure: 0.4 }` | 2s decay |
 | **TOP_OUT** | Force all channels to zero via negative push. Spores settle, mycelium goes dark, atmosphere collapses to Abyss Navy. | 1.5s forced decay |
 
 Animation loop reads envelope channels to update uniforms:
@@ -1628,7 +1628,7 @@ this.mushroomCapUniforms?.uPulseIntensity?.setValue(env.pulse);
 
 **Exit Criteria:**
 - Game events create satisfying, visible, layered reactions.
-- TETRIS event is spectacular and memorable.
+- QUAD event is spectacular and memorable.
 - Animation feels alive even during idle.
 - Stable 60fps at High on mid-range desktop GPU.
 
@@ -1741,7 +1741,7 @@ const QUALITY_PRESETS = {
 - [ ] Per-mushroom color variation is visible (not all identical teal)
 - [ ] Spores and fireflies have distinct movement patterns
 - [ ] Game events are satisfying at all combo levels
-- [ ] TETRIS event is the most spectacular moment in the scene
+- [ ] QUAD event is the most spectacular moment in the scene
 - [ ] WebGL fallback is still visually impressive
 - [ ] Cave ceiling uses organic shapes (voronoi), not projected circles
 - [ ] Background depth layers create sense of vast cave
@@ -1912,7 +1912,7 @@ Phase 7 ──> Phase 8 (Quality & Tuning) ──> Phase 9 (QA & Validation)
 | Metric | Target |
 |--------|--------|
 | **Visual Impact** | First impression is high-contrast, living cave mood in approved camera set |
-| **Signature Moment** | Mycelium pulse on `TETRIS` is clearly visible and repeatable |
+| **Signature Moment** | Mycelium pulse on `QUAD` is clearly visible and repeatable |
 | **Crystal Fix** | Crystals show internal colored volume, no whiteout |
 | **Mushroom SSS** | Cap edges show light transmission, per-mushroom color variation visible |
 | **Darkness Ratio** | >= 40% of screen area remains very dark |

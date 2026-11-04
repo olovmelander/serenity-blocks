@@ -1176,7 +1176,7 @@ Tech split in this slice:
 - **Motion**: drifting clouds, mist layers, aurora ribbon, gentle waves, pointer parallax.
 - **Gameplay FX** (L880-930): clear = moon pulse + 2-4 shooting stars + lake highlight; combo =
   aurora intensity + warm horizon + mountain rim; lock = 35 % chance lake ripple.
-- **Tech**: `WebGLRenderer` + 17 `ShaderMaterial`s + `EffectComposer` (UnrealBloom 0.4 + "Ghibli
+- **Tech**: `WebGLRenderer` + 17 `ShaderMaterial`s + `EffectComposer` (UnrealBloom 0.4 + "painterly
   grade"), FogExp2, 3-plane moon (disc + anamorphic streak + halo), fbm ridge planes.
 - **Do not reuse**: moon over mountain peaks, moon god-ray starburst, alpine lake reflection strip,
   shooting stars, navy-blue night.
@@ -1376,7 +1376,7 @@ Registry entries are in `src/themes/theme-registry.js:325-428`. The groups are: 
 
 ### 47. rainbow-terraces — "Rainbow Terraces: the high country with the sun behind you" (`docs/RAINBOW_TERRACES_VISUAL_OVERHAUL_2026-10.md`)
 
-- **Files.** Module `src/themes/rainbow-terraces/`; icon at `src/themes/rainbow-terraces/rainbow-terraces-theme-icon.png` (registry `:336`), copied to `public/assets/themes/rainbow-terraces-theme-icon.png`. The theme was called Sky Children (id `sky-children`) until 2026-10-18; the old V2 module (`src/themes/sky-children-v2/`) was deleted that day. The registry maps both old ids here.
+- **Files.** Module `src/themes/rainbow-terraces/`; icon at `src/themes/rainbow-terraces/rainbow-terraces-theme-icon.png` (registry `:336`), copied to `public/assets/themes/rainbow-terraces-theme-icon.png`. The theme was called Rainbow Terraces (id `rainbow-terraces`) until 2026-10-18; the old V2 module (`src/themes/rainbow-terraces/`) was deleted that day. The registry maps both old ids here.
 - **Icon.** The Spring Isle close up at the gilded hour: a moss crown with cypresses and a stone gateway hung with a bronze bell, a cream travertine cascade of jade pools, the Mother Fall pouring off its shoulder with the bow's leg standing in her spray, a cumulus tower over a slate storm behind.
 - **Setting.** The eye stands on a stone overlook (a balustrade, a mossy travertine outcrop) at the edge of a high country with the sun low behind it, so the whole frame is composed round the antisolar point.
   - The Spring Isle: an upturned mountain of bedded rock (leaning, lobed), its crown with trees, the gateway and the cascade, the Mother Fall dropping the frame's height into the Deep.
@@ -1483,7 +1483,7 @@ Registry entries are in `src/themes/theme-registry.js:325-428`. The groups are: 
 ### 51. neon-district ("Neon District")
 
 - **Files.** Doc `docs/NEON_DISTRICT_VISUAL_OVERHAUL_2026-10.md` ("the rain canyon"). Captures in `docs/neon-district-captures/` (street, ingame, events, dragon, portrait).
-- **Icon.** A rainy cyberpunk street at night: a pink and cyan neon sign canyon, a wet road reflecting everything, a crosswalk, yellow centre lines.
+- **Icon.** A rainy neon-noir street at night: a pink and cyan neon sign canyon, a wet road reflecting everything, a crosswalk, yellow centre lines.
 - **Look.** A street canyon in the rain, looking up its centre line.
   - Shopfronts, tube-neon blades, interior-mapped lit windows, lanterns and cables, skybridges, gantries, megatowers in smog.
   - The whole city mirrored in the wet road, an endless scroll.

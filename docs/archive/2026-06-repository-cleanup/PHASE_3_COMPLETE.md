@@ -236,7 +236,7 @@ Player 4 attacks → Player 1, 2, 3 (50% damage each)
 
 ## Attack Scaling Impact
 
-### Example: 4-line clear (Tetris)
+### Example: 4-line clear (Quad)
 
 **Without scaling (boring rules):**
 - 2 players: 4 garbage lines

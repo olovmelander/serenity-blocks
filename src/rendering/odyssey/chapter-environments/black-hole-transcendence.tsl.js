@@ -462,7 +462,7 @@ export function createVoidDomeTSL(uTime = uniform(0), uEnergy = uniform(0.4), op
 
     const dir = normalize(positionLocal);
     const h = dir.y.mul(0.5).add(0.5);
-    // Never RGB-zero (a Ghibli frame is never dead black), but a void, not a violet room.
+    // Never RGB-zero (a painted frame is never dead black), but a void, not a violet room.
     const base = mix(vec3(0.004, 0.003, 0.010), vec3(0.010, 0.006, 0.022), h);
 
     const q = dir.mul(2.1).add(vec3(0.0, 0.0, uTime.mul(0.004)));

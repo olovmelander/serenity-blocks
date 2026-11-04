@@ -1,16 +1,16 @@
 {
-  "event": "tetris",
+  "event": "quad",
   "theme": "stellar-drift",
   "isActive": true,
   "isPaused": false,
   "lifecycle": "running",
   "generation": 2,
   "time": 7.999999999999977,
-  "quality": "High",
+  "quality": "Low",
   "backend": "WebGL2",
   "post": {
-    "quality": "High",
-    "disabled": false,
+    "quality": "Low",
+    "disabled": true,
     "useMRT": false
   },
   "frame": {
@@ -24,12 +24,12 @@
       {
         "id": 0,
         "active": true,
-        "angle": 2.4283239923040867,
+        "angle": 2.9099055822062248,
         "direction": 1,
         "age": 0.5999999999999979,
         "duration": 2.2,
         "strength": 0.72,
-        "seed": 0.8596322016460906,
+        "seed": 0.744920267489712,
         "kind": "clear",
         "impacted": false,
         "progress": 0.27272727272727176
@@ -37,12 +37,12 @@
       {
         "id": 1,
         "active": true,
-        "angle": 4.086763859006229,
+        "angle": 4.490775259930842,
         "direction": -1,
         "age": 0.5199999999999978,
         "duration": 2.2,
         "strength": 0.6335999999999999,
-        "seed": 0.8483753429355281,
+        "seed": 0.906502914951989,
         "kind": "clear",
         "impacted": false,
         "progress": 0.23636363636363533
@@ -51,19 +51,19 @@
     "comets": []
   },
   "render": {
-    "calls": 268,
-    "frameCalls": 14,
-    "drawCalls": 33,
-    "triangles": 46021,
+    "calls": 34,
+    "frameCalls": 2,
+    "drawCalls": 16,
+    "triangles": 28555,
     "points": 0,
     "lines": 0,
     "timestamp": 0
   },
   "board": {
-    "x": 545,
-    "y": 76.5,
-    "width": 350,
-    "height": 762
+    "x": 21.5,
+    "y": 45,
+    "width": 347,
+    "height": 756
   },
   "boardCanvasCount": 1,
   "themeCanvasCount": 1,
@@ -77,7 +77,7 @@
       45
     ],
     "fov": 48,
-    "aspect": 1.6
+    "aspect": 0.46208530805687204
   },
   "cssLayers": [
     {

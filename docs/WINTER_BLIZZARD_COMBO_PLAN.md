@@ -17,7 +17,7 @@ A single scalar **`S = intensity ∈ [0,1]`** (eased, never set directly) drives
 | **WHITEOUT** | `0.70 – 1.0` | Driving blizzard. Snow blasts near-horizontal in sheets. Fog pulls inward — distant peaks dissolve into pale haze, colour drains toward white. Aurora is a vivid rippling curtain. The whole frame reads VELOCITY. Reserved for sustained high combos / big clears. |
 | **RESOLUTION** | decaying `S`, 5–14s silent | The storm *settles*, doesn't snap. Wind relaxes, fog recedes, snow re-verticalizes, aurora drifts back to calm teal. A graceful exhale that rewards the player's run with a visible cool-down. |
 
-**Hierarchy principle (juice research):** routine play stays serene; a Tetris *noticeably* stirs the storm; a Perfect Clear is an unmistakable, rare crescendo. Over-juicing measurably reduces satisfaction — big effects are RESERVED so they keep impact.
+**Hierarchy principle (juice research):** routine play stays serene; a Quad *noticeably* stirs the storm; a Perfect Clear is an unmistakable, rare crescendo. Over-juicing measurably reduces satisfaction — big effects are RESERVED so they keep impact.
 
 ---
 
@@ -51,7 +51,7 @@ All magnitudes are MULTIPLIERS / ADDENDS on the per-tier SNOW_TIERS baselines (f
 | **COMBO ×8** | Near-whiteout; fog thickens, streaks max, aurora vivid. | `bump(0.48,{whiteout:0.4, flare:0.6, trauma:0.3, accent:magenta})` | whiteout ~0.5s |
 | **COMBO ×10+** | Full blizzard wall; horizontal sheets, pale haze, magenta surge. | `bump(min(0.5,combo·0.06),{whiteout:0.6, flare:0.85, trauma:0.4})` | S held at top |
 | **LINE_CLEAR 1–3** | Gust + small accent flash by tier. | `bump(0.12+lines·0.06+combo·0.04,{gust, flare, kick, accent:tier})` | gust ~0.5s |
-| **TETRIS (4)** | Bigger gust + soft white flash + aurora flare. | adds `whiteout:0.7, kick:0.9, trauma:0.45` | flash fast-up ~80ms / slow ~400ms |
+| **QUAD (4)** | Bigger gust + soft white flash + aurora flare. | adds `whiteout:0.7, kick:0.9, trauma:0.45` | flash fast-up ~80ms / slow ~400ms |
 | **T-SPIN** | A swirling **vortex burst** — air spins around the clear. | NEW `onTwist(lines)`: `bump(...,{flare:0.5, vortex:1.2, accent:violet, trauma:0.25})`, `curlStr ×1.6` ~0.8s | vortex ~0.8s |
 | **PERFECT_CLEAR** | **Whiteout bloom + aurora flare** — the reserved crescendo. | NEW `onPerfectClear()`: `bump(0.4,{whiteout:1.0, flare:1.0, kick:0.6, trauma:0.55})` | whiteout fast-up / slow ~600ms |
 | **LEVEL_UP** | Sustained step-up; raises the idle floor so later levels live in a windier night. | `onLevelUp()` + raise `idleFloor` +0.015 (cap ~0.3) + `gust:0.5, flare:0.4` | permanent floor shift |
@@ -74,7 +74,7 @@ All magnitudes are MULTIPLIERS / ADDENDS on the per-tier SNOW_TIERS baselines (f
 **File:** `src/themes/winter/rendering/snow-renderer.js` — add `uStretch` (default 0); in `vertexNode`, stretch the billboard along the view-space velocity axis (`velocities.element` already read for colour). Round dots → motion streaks as S climbs. No new particles.
 
 ### 3.4 Whiteout / fog overlay + flash
-- Fog already per-tier (`uFogStr`). For the **flash** (Tetris/Perfect-Clear), drive the aurora's existing `uWhiteout` pale-wash uniform. **`useMRT:false` in WinterPipeline = NO emissive bloom** → do NOT use emissive overdrive for the flash; use the whiteout wash + post grade.
+- Fog already per-tier (`uFogStr`). For the **flash** (Quad/Perfect-Clear), drive the aurora's existing `uWhiteout` pale-wash uniform. **`useMRT:false` in WinterPipeline = NO emissive bloom** → do NOT use emissive overdrive for the flash; use the whiteout wash + post grade.
 - **WinterPipeline overshoot:** in-game = exposure 0.82 + ACES + cold tint (cuts R, boosts B). Tune accent/flash **bright/warm** in the flat playground; they read dimmer/cooler in-game.
 
 ### 3.5 Camera shake (decaying trauma, rotational-biased, tiny)

@@ -1,6 +1,6 @@
 # Odyssey — AAA WebGPU Cinematic Overhaul · MASTER PLAN
 
-> **The one ambition:** turn the Odyssey level-select into a single, continuous, technically-outstanding cinematic ascent — *Tetris Effect: Connected — Journey Mode* rendered in **WebGPU/TSL** like the rest of the game's themes, where the camera flies one unbroken take up a path that threads through eight worlds, every world is a GPU-driven showpiece, the seams between worlds are designed "wow" beats quantized to the music, and the whole journey breathes. No menu cuts. No flat backdrops. No WebGL holdout.
+> **The one ambition:** turn the Odyssey level-select into a single, continuous, technically-outstanding cinematic ascent — a flow-state block puzzle — Journey Mode* rendered in **WebGPU/TSL** like the rest of the game's themes, where the camera flies one unbroken take up a path that threads through eight worlds, every world is a GPU-driven showpiece, the seams between worlds are designed "wow" beats quantized to the music, and the whole journey breathes. No menu cuts. No flat backdrops. No WebGL holdout.
 >
 > **This is the master plan.** It unifies and supersedes the framing of two siblings, which remain the detailed references:
 > - [ODYSSEY_CINEMATIC_JOURNEY_PLAN.md](ODYSSEY_CINEMATIC_JOURNEY_PLAN.md) — the deep **cohesion** design for path · camera · travel · themes · transitions and the cross-dimension **alignment matrix**. *Authority for §5 here.*
@@ -35,7 +35,7 @@ One scalar — **journey progress `t ∈ [0,1]`** (camera arc-length up the spli
 | **III — Beyond** | Sky · Space | golden afternoon → no-air starfield | vast, slow, wide FOV | cloud-sea + crepuscular rays · **raymarched nebula** + hero planet |
 | **IV — Transcendence** | Black Hole · Neon City | eclipse (emissive-only) → night, artificial light | abstract → kinetic, **dolly-zoom** | **ray-bent gravitational lensing + accretion disk** · neon megastructure + wet reflections |
 
-The light, fog, exposure, and grade **ease continuously** along `t` (one moving sky), while **audio energy** layers a faster pulse on top (bloom swell, particle bursts, path flow, gentle forward drift) so the climb **grooves with the music** — the synesthetic coupling at the heart of Tetris Effect (Appendix A1).
+The light, fog, exposure, and grade **ease continuously** along `t` (one moving sky), while **audio energy** layers a faster pulse on top (bloom swell, particle bursts, path flow, gentle forward drift) so the climb **grooves with the music** — the synesthetic coupling at the heart of a flow-state block puzzle (Appendix A1).
 
 Three things make it read as AAA rather than a tech demo, and they compound:
 1. **A world-class rendering core** (WebGPU/TSL, selective HDR bloom, ACES, volumetrics, GPU-compute particles) — §3.
@@ -64,7 +64,7 @@ A is the precondition: compute particles, selective bloom, raymarched volumetric
 
 ### 3.1 Verdict: a clean single-codebase migration (not a dual path)
 
-**Confirmed from three.js 0.181.2 source and from shipped themes:** `WebGPURenderer` auto-installs a **WebGL2 fallback backend** (`getFallback → new WebGLBackend`), and **TSL `NodeMaterial`s run on both backends** through the same `Nodes` code-generator (WGSL on WebGPU, GLSL on WebGL2). The cleanest themes (`shifting-sands`, `stellar-drift`, `pyrestorm-v2`, `sky-children-v2`, `electric-dreams-v3`) ship **TSL-only with zero `ShaderMaterial`** and still run on WebGL2. ([survey: three.webgpu.js `getFallback`; shifting-sands-theme.js:404; stellar-drift 0/69 ShaderMaterials])
+**Confirmed from three.js 0.181.2 source and from shipped themes:** `WebGPURenderer` auto-installs a **WebGL2 fallback backend** (`getFallback → new WebGLBackend`), and **TSL `NodeMaterial`s run on both backends** through the same `Nodes` code-generator (WGSL on WebGPU, GLSL on WebGL2). The cleanest themes (`shifting-sands`, `stellar-drift`, `pyrestorm-v2`, `rainbow-terraces`, `electric-dreams-v3`) ship **TSL-only with zero `ShaderMaterial`** and still run on WebGL2. ([survey: three.webgpu.js `getFallback`; shifting-sands-theme.js:404; stellar-drift 0/69 ShaderMaterials])
 
 → **We convert each board material to TSL exactly once and retire the GLSL path entirely.** The old plan's "swapping the renderer would break every board shader" is *true for the board as-is* (WebGPURenderer refuses raw `ShaderMaterial` + the jsm `EffectComposer` chain) but is an argument *for* converting, not for a dual path. Target the `shifting-sands`/`pyrestorm-v2` model, **not** winter's legacy `isWebGPU ? node : ShaderMaterial` fork.
 
@@ -220,7 +220,7 @@ A `SeamDirector` owns each seam as data keyed off **camera arc-length** (determi
 
 ---
 
-## 6. Audio-visual synergy — the Tetris Effect coupling
+## 6. Audio-visual synergy — a flow-state block puzzle coupling
 
 The north star is synesthesia: vision : audio : (haptic) at ~1:1:1 (Appendix A1). Concretely, drive the new TSL uniforms (`emissiveIntensity`, `bloomStrength`, `fogDensity`, `particleEmission`, `curlSpeed`, travel-drift) from `OdysseyAudioReactor`/`OdysseyDirector` (already present): **bass → path head-glow + particle bursts + forward surge; beat → node focal pulse + bloom tick; sustained energy → exposure/grade warming + drift speed.** Use the browser-proven recipe (one `AnalyserNode`, FFT split into smoothed/clamped bass/mid/treble, beat detection off-thread). Adopt the **excitation/relaxation curve**: ramp density/bloom/speed to a crescendo approaching each chapter node, then **drop into a euphoric trough** at the node (the breathe/level-select moment). Quantize seam breaches to the downbeat (§5.4). Gate audio behind a user gesture (autoplay policy).
 
@@ -299,7 +299,7 @@ Recommended defaults in **bold**; these shape the work.
 
 Fetched and synthesized from real sources; full notes in the research run.
 
-**A1 — Tetris Effect / Enhance (the north star).** 1:1:1 synesthesia (every event = visual pulse + beat-quantized note + haptic); excitation/relaxation flow oscillation (crescendo → euphoric trough); additive vertical music stems tied to progress; seams as multi-sensory "travel events" (morph + downbeat + jolt); the Zone time-stop climax. → drives §1, §5.4, §6.
+**A1 — a flow-state block puzzle / Enhance (the north star).** 1:1:1 synesthesia (every event = visual pulse + beat-quantized note + haptic); excitation/relaxation flow oscillation (crescendo → euphoric trough); additive vertical music stems tied to progress; seams as multi-sensory "travel events" (morph + downbeat + jolt); the Zone time-stop climax. → drives §1, §5.4, §6.
 · Codrops Web-Audio→shader-uniform recipe (FFT bands → smoothed uniforms → curl-noise particles).
 
 **A2 — Seamless transitions.** Noise-driven **dissolve** with glowing HDR edge band + frontier particles (tympanus.net/codrops 2025-02-17; danielilett.com 2020-04-15-tut5-4). **Whiteout breach as load-mask** (Rift Apart, digitaltrends.com Fitzgerald interview). **Render-target cross-dissolve/morph** (blog.maximeheckel.com render-targets). **Stencil/RT portals** (discourse.threejs.org/t/22425). **God-of-War throat masking** (pushsquare.com / playstationlifestyle.net). **Beat-synced audio bridge** — horizontal re-sequencing + vertical layering + stingers (ollybradbury.wordpress.com). → §5.4.

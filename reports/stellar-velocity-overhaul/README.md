@@ -35,7 +35,7 @@ Run `npm run dev:playground`, then open:
 ```text
 /playground.html?effect=stellar-velocity&orbit=0&t=8&seed=187&quality=High&compute=1&mrt=1
 /playground.html?effect=stellar-velocity&orbit=0&t=8&seed=187&quality=High&forceWebGL=1&event=combo&combo=8&eventAge=1.5
-/playground.html?effect=stellar-velocity&orbit=0&t=8&seed=187&quality=Low&forceWebGL=1&board=1&event=tetris&eventAge=1.6
+/playground.html?effect=stellar-velocity&orbit=0&t=8&seed=187&quality=Low&forceWebGL=1&board=1&event=quad&eventAge=1.6
 ```
 
 Use a fresh page load for each fixed-time capture. The portrait guide models the

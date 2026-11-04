@@ -17,7 +17,7 @@
    - Opponents now arranged in a 2-column grid
    - Perfect for 2-4 opponents
    - Wider left sidebar (640px) to fit 2x2 grid
-   - Maintains Tetris board aspect ratio (1:2)
+   - Maintains block-stacking board aspect ratio (1:2)
 
 ---
 
@@ -35,7 +35,7 @@
 ├─────────────────────┤  Level: 1  Frags: 0    │ System: Match started │
 │ [Alice]   [Bob]     │ ┌────────────────────┐ │                       │
 │  👤        👤       │ │                    │ │ [Chat messages]       │
-│                     │ │    Your Tetris     │ │                       │
+│                     │ │    Your Board     │ │                       │
 │ [Charlie] [Diana]   │ │      Canvas        │ │                       │
 │  👤        👤       │ │     (Large)        │ │                       │
 │                     │ └────────────────────┘ │ [Type message...]     │
@@ -87,7 +87,7 @@
 }
 
 .opponent-canvas-wrapper {
-  aspect-ratio: 1 / 2; /* Maintain Tetris proportions */
+  aspect-ratio: 1 / 2; /* Maintain board proportions */
 }
 ```
 

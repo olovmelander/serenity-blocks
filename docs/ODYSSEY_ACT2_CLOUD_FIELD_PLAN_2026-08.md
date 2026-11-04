@@ -54,7 +54,7 @@ plan's Wave 5.
    silhouette reading "puffy". The Witness spends a blended edge pass on it; SoT a blur
    composite. Our first line is the quantised fresnel edge the retired heroes already
    shipped + a dithered near-dissolve; the rim SHELL and MSAA are parked, priced fallbacks.
-   Wave 0b exists to falsify this for two sessions' cost, against a Ghibli/Dedene ramp bar
+   Wave 0b exists to falsify this for two sessions' cost, against a painted/Dedene ramp bar
    (2-3 value bands, warm-lit/blue-shadow, flat bases).
 
 ## 1b. THE REFERENCE BAR — measured from the owner's three Witness screenshots (2026-08-14)
@@ -143,7 +143,7 @@ below y≈484 (most of the act), and at eye height it presents paper-thin billow
   hero builder scaled to ~26-30 masses / ~30k tris, hero material UNCHANGED (zero new shader
   code). Pairs at ch4 p=0.42 + ch5 p=0.569. **Gate F1: fieldMs ≤ 0.50 ch5 / ≤ 0.35 ch4.**
 - **0b:** `?field=1` on the existing rig; probe geometry re-shaded with the full paint stack
-  (correct-sign Mie), sheet off, graded, judged against a Ghibli/Dedene reference at 2-3
+  (correct-sign Mie), sheet off, graded, judged against a painted/Dedene reference at 2-3
   spline stations. **Owner decision D0: does quantised paint on lobed geometry clear the
   coherence bar AT ALL?** No → pivot back to evolve-the-deck; sunk cost two sessions.
 - Export `makeRng` from `odyssey-hero-clouds.js` (one line; module stays retired).
@@ -560,7 +560,7 @@ fill.
 - **D2**: does ch4 get a corridor tease, or does the fly-through stay ch5-only?
 - **D3**: water coupling (Wave 6). **D4**: MSAA/A2C measurement, only if F4 fires.
 - **D5**: low-tier mass count.
-- Please drop the two Witness screenshots + 1-2 Ghibli/Dedene cloud refs into
+- Please drop the two Witness screenshots + 1-2 painterly/Dedene cloud refs into
   `public/playground-refs/` — Wave 0b's bar is judged against them in split mode.
 
 ## 8. Files

@@ -299,7 +299,7 @@ FFAGameStateP2P
 **Implementation**:
 1. Add lightweight CSS-based flash effects for opponent canvases
 2. Add danger indicator (red border) when opponent near top
-3. Optionally add particle burst (single burst, not continuous) for opponent T-spins/Tetrises
+3. Optionally add particle burst (single burst, not continuous) for opponent T-spins/Quads
 
 **Expected Result**:
 - ✅ Visual feedback from opponent actions
@@ -498,7 +498,7 @@ FFAGameStateP2P
 
 ### Stretch Goals
 - 🌟 Custom particle shapes per piece color
-- 🌟 Screen shake on T-spin/Tetris
+- 🌟 Screen shake on T-spin/Quad
 - 🌟 Victory animation when winning FFA
 
 ---

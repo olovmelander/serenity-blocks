@@ -164,7 +164,7 @@ Ctrl + Shift + R (BOTH windows!)
 1. Create room "test"
 2. Wait for player 2
 3. Click "Start Match"
-4. Play tetris → **should see your pieces AND opponent's pieces**
+4. Play quad → **should see your pieces AND opponent's pieces**
 5. Clear lines → **garbage should be sent**
 6. **New piece spawns after each lock** → NO FREEZE!
 
@@ -172,7 +172,7 @@ Ctrl + Shift + R (BOTH windows!)
 1. Join room "test"
 2. Click "Ready"
 3. Wait for host to start
-4. Play tetris → **should see your pieces AND opponent's pieces**
+4. Play quad → **should see your pieces AND opponent's pieces**
 5. Clear lines → **garbage should be sent**
 6. **New piece spawns after each lock** → NO FREEZE!
 

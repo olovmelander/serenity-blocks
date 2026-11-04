@@ -50,13 +50,13 @@ Everything else is replaced.
 ## 3. The Cinematic Vision
 
 ### Hero composition
-A single living fluid mass dominates the center of frame. It pulses with the music. Smaller satellite droplets orbit and rejoin it. Game events inject visible force into the fluid — line clears push outward, combos summon vortices, tetrises detonate ring-shaped waves. **The fluid IS the game's emotional state visualized.**
+A single living fluid mass dominates the center of frame. It pulses with the music. Smaller satellite droplets orbit and rejoin it. Game events inject visible force into the fluid — line clears push outward, combos summon vortices, quads detonate ring-shaped waves. **The fluid IS the game's emotional state visualized.**
 
-Light from emissive fluid regions actually bounces — the wall behind the fluid glows magenta where the magenta blob is near it. Move the blob, the magenta glow moves with it (this is radiance cascades GI). No game asset has ever done this in a Tetris background before.
+Light from emissive fluid regions actually bounces — the wall behind the fluid glows magenta where the magenta blob is near it. Move the blob, the magenta glow moves with it (this is radiance cascades GI). No game asset has ever done this in a Quad background before.
 
 The camera is choreographed:
 - **Idle** — slow 18-second lazy orbit, like floating in zero-G
-- **Tetris clear** — dramatic dolly-push toward the impact point, motion blur, then settle
+- **Quad clear** — dramatic dolly-push toward the impact point, motion blur, then settle
 - **Combo 7+** — dolly-zoom (Vertigo effect) over 1.2s, the entire scene saturates
 - **Game over** — slow pull-back to reveal scale, fluid de-saturates and slows
 
@@ -68,7 +68,7 @@ The `StageConductor` already tracks game progression as "acts". V3 visualizes th
 |---|---|---|
 | **I — Drift** (early game) | Sparse, ambient | Slow fluid motion, cool palette (teal/violet/indigo), gentle GI from one warm key light |
 | **II — Build** (combos starting) | Building energy | Fluid agitates, palette warms (cyan/magenta dominant), rim lights snap in, particles accelerate |
-| **III — Surge** (high combos, tetrises) | Peak intensity | Fluid turbulent and chaotic, full saturation, all 3 lights firing, motion blur prominent, lens flares trigger on impacts |
+| **III — Surge** (high combos, quads) | Peak intensity | Fluid turbulent and chaotic, full saturation, all 3 lights firing, motion blur prominent, lens flares trigger on impacts |
 
 The conductor's `phrasePhase` (already tracks 4-bar musical phrases) drives camera breathing, fluid pulse, and bloom modulation — so the visuals feel *musical*, not just reactive.
 
@@ -252,7 +252,7 @@ The current theme is reactive but not narrative. V3 makes the theme tell a story
 | Soft drop | — | — | — | — |
 | Hard drop | small punch toward board | shockwave ring outward | brief overbright | small impact bloom |
 | Single line | — | wave outward along clear line | accent color cascade boost | — |
-| Tetris | dolly-push 0.4u | radial detonation, 200ms vortex | full-scene flash of accent | bloom +0.3, chromatic +0.005, 1-frame lens flare |
+| Quad | dolly-push 0.4u | radial detonation, 200ms vortex | full-scene flash of accent | bloom +0.3, chromatic +0.005, 1-frame lens flare |
 | Combo 4 | slow zoom (3°) | swirl injection | accent color shift | chromatic pulse |
 | Combo 7+ | dolly-zoom 1.2s (Vertigo) | 3 simultaneous vortices, palette desaturate-then-resaturate | full-scene secondary light burst | god-rays surge, motion blur amplified |
 | Level up | sweep left to right | color drift across fluid mass | palette shift | LUT cross-fade |
@@ -309,7 +309,7 @@ Phases are gated by exit criteria — no advancing until criteria met. Phases 4-
 V3 ships only when ALL of these are true:
 
 - [ ] **60 FPS sustained on Ultra** on RTX 3070 / M1 Pro, verified via `renderer.info` + Chrome perf overlay (10-minute soak test)
-- [ ] **No frame-time spikes > 18ms** during a stress sequence (idle → 4-line tetris → 10x combo → game over)
+- [ ] **No frame-time spikes > 18ms** during a stress sequence (idle → 4-line quad → 10x combo → game over)
 - [ ] **First frame visible within 200ms** of theme.start() being called
 - [ ] **Side-by-side video** vs. current implementation clearly demonstrates: (a) fluid behavior, (b) GI light bounce, (c) cinematic camera moves, (d) AAA-grade post
 - [ ] **All 6 quality presets** hit their target FPS on at least one representative device
@@ -324,7 +324,7 @@ V3 ships only when ALL of these are true:
 ## 9. Out of Scope (Deliberate Cuts)
 
 - No multi-camera setups (single perspective camera only)
-- No fluid-blob collision with the Tetris board (board is invisible to fluid)
+- No fluid-blob collision with the block-stacking board (board is invisible to fluid)
 - No editable color picker — palette locked to harmony
 - No video texture / image asset dependencies — everything procedural
 - No VR / AR rendering paths

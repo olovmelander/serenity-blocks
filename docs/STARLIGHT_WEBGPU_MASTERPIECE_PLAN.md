@@ -89,7 +89,7 @@ The hybrid takes each concept's **strength** and uses the other two to patch its
 2. **B — strictly event-bound wishing stars** (never timer; hash-gated, long quiet gaps). → §6, §8.
 3. **C — coherent curl-noise stardust current as baseline idle motion** (divergence-free `mx_noise_vec3` finite-difference, octaves 1→4 by tier). → §5.
 4. **All — slow global "sky breath" twinkle envelope** (hashed per-star phase/freq under a slow global inhale/exhale; keep at EVERY tier). → §3 starfield, §5.
-5. **A — fireball/bolide terminal flash** (one-frame additive screen flash + bloom spike, white→warm ~0.2s) on Tetris/big combo. → §6, §8, §9.
+5. **A — fireball/bolide terminal flash** (one-frame additive screen flash + bloom spike, white→warm ~0.2s) on Quad/big combo. → §6, §8, §9.
 6. **A — game-over comet** (drifts across 15–20s) paired WITH B's constellation coalesce → two-part reverent sign-off. → §6, §7, §8.
 7. **B+C — warm-gold-against-cool-calm** contrast lever. → palette, §3.
 8. **B — staggered, arc-length-masked LINE GROWTH** for constellation segments (dots pop ~150ms cascade, then lines grow via per-segment `progress` 0→1, lerped). → §7.
@@ -251,7 +251,7 @@ CPU-seeded in `_initParticleState()`: spawn on a wide flat-ish slab (sky canopy,
 2. **Slow global breeze + faint buoyancy** under the curl so the whole cloud has lazy coherent motion: `vXYZ.addAssign(vec3(uBreezeX, uBuoyancy, 0).mul(dt))`.
 3. **Twinkle** (read by renderer, computed here for cheapness): per-particle `tw = pow(sin(time·twFreq + twPhase)·0.5+0.5, 3.0)` stored into a spare channel; drives renderer size + HDR emissive. Under a global `uSkyBreath` low-freq envelope.
 4. **Formations (constellation/spiral morph).** Keep edv3 shape attraction (`toTarget · shapeStr · tgt.w · 11.0`) verbatim; per-particle staggered arrival via `smoothstep(hash(index)·spread, …, time − morphStart)` so the figure GATHERS over ~1s instead of snapping. Critically-damped spring optional refinement.
-5. **Shooting-star burst impulses** map onto the EXISTING impulse system 1:1 (zero new plumbing): RADIAL ripple on line clear, VORTEX swirl on Tetris, ATTRACTOR ping on piece-lock. (The visible meteor streaks themselves are Layer 5 / `meteor-system.js`; the dust REACTION to them uses impulses here.)
+5. **Shooting-star burst impulses** map onto the EXISTING impulse system 1:1 (zero new plumbing): RADIAL ripple on line clear, VORTEX swirl on Quad, ATTRACTOR ping on piece-lock. (The visible meteor streaks themselves are Layer 5 / `meteor-system.js`; the dust REACTION to them uses impulses here.)
 6. Damping (`uDamping≈0.985`), speed cap (`uMaxSpeed≈8`), integrate, age/respawn, energy←speed — all unchanged from edv3.
 
 ### `STARDUST_BUDGETS` (per tier)
@@ -273,20 +273,20 @@ Per-frame `update(delta, time, {...})` caps `uDelta` at 0.033, calls `decayImpul
 
 ### Spawn cadence — STRICTLY event-bound (the B graft)
 - **Never a timer.** Hash-gated Poisson with long quiet gaps drives only a *very* rare ambient drift at idle (one faint streak every tens of seconds). Everything else is pushed by game events (§8).
-- **Rarity roll per spawn:** faint streak (common) → bright streak (uncommon) → colored streak (rare) → fireball/bolide (very rare; Tetris/big combo only) → comet (ultra-rare; game-over only). Bias hard toward gaps so each event lands as "did you see that?!".
+- **Rarity roll per spawn:** faint streak (common) → bright streak (uncommon) → colored streak (rare) → fireball/bolide (very rare; Quad/big combo only) → comet (ultra-rare; game-over only). Bias hard toward gaps so each event lands as "did you see that?!".
 
 ### Trail rendering
 - **Head + streak:** velocity-stretched billboard (single quad). In the `positionNode`: orient local +Y to `normalize(velocity)` in view space (basis from camera-forward × velocity), scale that axis by `clamp(length(velocity)·kStretch, minLen, maxLen)`. Fragment uses `uv.y` as the tail parameter for the **heat gradient** (white-blue core → gold → deep red → transparent), × inverse-distance head glow `clamp(k/d,0,1)`, × age-fade. `AdditiveBlending`, `depthWrite:false`. Bloom carries the brightness.
 - **Showers fan from a radiant** point above the board: each meteor's direction = `normalize(spawnPos − R)` + small jitter (the single most important "real shower" cue).
 
 ### Rare fireball / bolide
-- Larger head, fatter/longer trail, more saturated heat ramp, a few child sparks mid-flight (optional). **Terminal flash:** at end-of-life, spike head emissive + a one-frame additive screen flash + momentary bloom-strength spike, white→warm decaying over ~0.2s (drives `fxState.bloomPunch`/a `flashPunch` scalar). This is A's "lit up the whole sky" apex moment (Tetris/big combo).
+- Larger head, fatter/longer trail, more saturated heat ramp, a few child sparks mid-flight (optional). **Terminal flash:** at end-of-life, spike head emissive + a one-frame additive screen flash + momentary bloom-strength spike, white→warm decaying over ~0.2s (drives `fxState.bloomPunch`/a `flashPunch` scalar). This is A's "lit up the whole sky" apex moment (Quad/big combo).
 
 ### Comet (game-over only)
 - Slow drift across the backdrop over 15–20s; a glowing coma head (inverse-distance glow + bloom) + a straight tapering ion tail (blue `#86B7FF`); paired WITH the game-over constellation coalesce (§7) for a two-part reverent sign-off.
 
 ### Event tie-ins (summary; full map §8)
-single LINE_CLEAR → 1 faint streak from cleared-row sky region · COMBO/multi-line → radiant shower (N∝lines) · HARD_DROP → 1 fast bright streak down the drop column · TETRIS/big combo → fireball + terminal flash · GAME_OVER → comet + constellation.
+single LINE_CLEAR → 1 faint streak from cleared-row sky region · COMBO/multi-line → radiant shower (N∝lines) · HARD_DROP → 1 fast bright streak down the drop column · QUAD/big combo → fireball + terminal flash · GAME_OVER → comet + constellation.
 
 ---
 
@@ -319,7 +319,7 @@ Architecture (verbatim from edv3, the Feasibility judge's explicit "keep exactly
 | **LINE_CLEAR (1)** | RADIAL ripple near cleared row | 1 faint streak / wishing star from cleared-row sky region | global breath inhales + brief twinkle amp | — | small `bloomPunch` tick |
 | **LINE_CLEAR (multi) / COMBO** | outward impulse; trail color teal→gold as chain climbs | radiant shower, N∝lines/combo, brighter tier with combo | twinkle freq climbs, decays on break | slight dolly | bloom + vignette rise then decay |
 | **HARD_DROP** | downward curl gust along drop column | 1 fast bright streak down the column | one bright glint | micro `dolly`/`vertigo` settle (clamped) | additive luminance ping at impact |
-| **TETRIS / big combo** | VORTEX swirl; big combo → constellation/spiral morph holds then dissolves | **FIREBALL/BOLIDE + terminal flash** | — | `fovPunch` (clamped) | one-frame screen flash + bloom-strength spike, white→warm ~0.2s |
+| **QUAD / big combo** | VORTEX swirl; big combo → constellation/spiral morph holds then dissolves | **FIREBALL/BOLIDE + terminal flash** | — | `fovPunch` (clamped) | one-frame screen flash + bloom-strength spike, white→warm ~0.2s |
 | **GAME_OVER** | dust loses buoyancy, settles, desaturates → **coalesces into reserved constellation** (staggered self-draw), holds, dissolves | **slow comet** drifts across 15–20s as it dissolves | twinkle calms to low breath | gentle `pullBack` | global dim + cool-grade shift |
 
 ---
@@ -438,7 +438,7 @@ Each milestone is independently shippable/verifiable.
 - **Phase 1 — The subject (starfield).** Build `deep-starfield.js` + `star-data.js` (the playground-proven effect). Wire parallax + sky-breath twinkle + board-column density reduction. **Verify:** crisp deep-field canopy, no shimmer, board reads first. This phase alone is already a shippable upgrade over the old CSS theme and is the no-compute fallback.
 - **Phase 2 — Post.** Port `StarlightPostPipeline` + profiles; MRT selective bloom + ACES + grade + vignette + grain. **Verify:** stars glow, sky doesn't; board footprint vignette.
 - **Phase 3 — Living current (stardust).** Port `StardustSim` (curl-noise) + `stardust-renderer.js` behind `_computeAvailable`/`_computeFailedOnce`. **Verify:** coherent drift at idle, graceful no-compute fallback to Phase 1.
-- **Phase 4 — Events + meteors.** Port `stardust-emitters.js` (impulse map) + `meteor-system.js`/`meteor-renderer.js` (event-bound, radiant, fireball flash) + camera event hooks. **Verify:** each event response from §8; wishing star on line clear; fireball on Tetris.
+- **Phase 4 — Events + meteors.** Port `stardust-emitters.js` (impulse map) + `meteor-system.js`/`meteor-renderer.js` (event-bound, radiant, fireball flash) + camera event hooks. **Verify:** each event response from §8; wishing star on line clear; fireball on Quad.
 - **Phase 5 — Magic layer.** Add `constellation-lines.js` + `fillConstellation` + the GAME_OVER coalesce + farewell comet; add thin `aurora-band.js` (High+) + `wisp-orbs.js`. **Verify:** self-drawing constellation on game over (the signature beat); aurora stays a whisper.
 - **Phase 6 — Tiering & polish.** Wire all `*_BUDGETS`/profiles, adaptive downscale, GPU-health degrade; enforce the wonder-budget rule; tune per-event magnitudes; refresh tetromino palette. **Verify:** reads correctly Minimal→Extreme and at 0.65 render scale; magic survives down-tiers.
 

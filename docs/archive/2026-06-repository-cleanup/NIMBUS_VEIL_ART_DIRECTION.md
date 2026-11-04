@@ -8,7 +8,7 @@ This packet locks visual direction for Phase 0 and is the source of truth for ba
 
 ## Inspiration Guardrail
 
-Use Sky: Children of the Light as a mood reference only.
+Use a calm flying adventure as a mood reference only.
 
 - Keep Nimbus palette, motion language, and composition identity original.
 - Do not copy characters, symbols, camera staging, iconography, or signature set pieces.

@@ -187,7 +187,7 @@ _getPhysicsCallbacks() {
         onRotate: () => this.deps.soundManager.sfxPlayer.playRotate(),
         onLineClear: (lines) => {
             if (lines === 4) {
-                this.deps.soundManager.sfxPlayer.playTetris();
+                this.deps.soundManager.sfxPlayer.playQuad();
             } else {
                 this.deps.soundManager.sfxPlayer.playLineClear();
             }
@@ -520,7 +520,7 @@ Player builds up → shouldExpandGrid() → expandGridIfNeeded()
 ### Sound System ✅
 **Integration:** Uses existing SoundManager
 - Move, rotate, drop sounds
-- Line clear / Tetris sounds
+- Line clear / Quad sounds
 - Hard drop sounds
 - All SFX work correctly
 
@@ -571,7 +571,7 @@ Player builds up → shouldExpandGrid() → expandGridIfNeeded()
 ✅ **Play Infinity Mode:**
 - Select Infinity Mode from start screen
 - Click "Start Game"
-- Play standard Tetris gameplay
+- Play standard block-stacking gameplay
 - Build upward infinitely
 
 ✅ **Build Upward:**

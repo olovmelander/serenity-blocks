@@ -10,7 +10,7 @@
  * they run on the WebGPURenderer and its WebGL2 fallback (one codebase, both backends).
  *
  * Urban Dreams is the highest-contrast world: a neon megastructure over a procedurally
- * lit night city with wet reflections, holographic signage and rain. The live chapter
+ * lit city at night with wet reflections, holographic signage and rain. The live chapter
  * imports ODYSSEY_NOISE_GLSL (od_* value noise), so the `fbm2`/`od_hash21` calls map to
  * `fbm2`/`hash21` from the shared TSL noise lib at the same scales/frequencies.
  *
@@ -745,7 +745,7 @@ export function createCityBlocksTSL(uTime, uEnergy, {
     const geometries = [];
     const materials = [];
 
-    // A NIGHT CITY the camera flies over and through. This group is parented into the
+    // A CITY-AT-NIGHT the camera flies over and through. This group is parented into the
     // path-aligned corridor container (urban-dreams.js) and the camera rides that same
     // stage frame, so local -Z is the camera's travel and local +Y is screen-up.
     //

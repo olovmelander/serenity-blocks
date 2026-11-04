@@ -1,12 +1,12 @@
-# Sky Children Look Log
+# Rainbow Terraces Look Log
 
 ## Purpose
 
 Track style regressions and corrective parameter diffs during implementation.
 
 Use this log for every snapshot review cycle described in:
-- `docs/SKY_CHILDREN_ART_DIRECTION.md`
-- `docs/SKY_CHILDREN_WEBGPU_THEME_PLAN.md`
+- `docs/RAINBOW_TERRACES_ART_DIRECTION.md`
+- `docs/RAINBOW_TERRACES_WEBGPU_THEME_PLAN.md`
 
 ## Logging Rules
 

@@ -586,7 +586,7 @@ A subtle distortion effect around the core simulating light bending:
 | Event | Effect |
 |-------|--------|
 | `PIECE_LOCK` (enhanced) | Corona particles erupt in the direction corresponding to piece placement |
-| `LINE_CLEAR` x4 (Tetris) | Massive supernova pulse: all effects at 3x intensity, screen-wide shockwave, temporary white flash on core |
+| `LINE_CLEAR` x4 (Quad) | Massive supernova pulse: all effects at 3x intensity, screen-wide shockwave, temporary white flash on core |
 | `COMBO` > 5 | Color palette temporarily shifts to ultra-bright white/cyan, "overcharged" state |
 
 ---

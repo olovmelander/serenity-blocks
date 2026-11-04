@@ -364,7 +364,7 @@ Your game is fully functional and playable **right now**!
 
 ## 🎉 Achievements Unlocked
 
-- ✅ Built a fully functional multiplayer Tetris game
+- ✅ Built a fully functional multiplayer block-stacking game
 - ✅ Implemented host-authoritative networking
 - ✅ Created Quadra-style garbage system
 - ✅ Added defensive mechanics (garbage counter)
@@ -379,13 +379,13 @@ Your game is fully functional and playable **right now**!
 **Inspiration:** Quadra (quadra.sourceforge.net)  
 **Framework:** Phaser 4  
 **Networking:** Custom P2P (mock Steam)  
-**Design:** Tetris 99, Jstris, Tetr.io inspiration
+**Design:** a 99-player battle stacker, Jstris, Tetr.io inspiration
 
 ---
 
 ## 🎮 Final Notes
 
-**This is a fully functional, playable FFA multiplayer Tetris game!**
+**This is a fully functional, playable FFA multiplayer block-stacking game!**
 
 Everything you need for competitive play is working:
 - Smooth 60 FPS gameplay

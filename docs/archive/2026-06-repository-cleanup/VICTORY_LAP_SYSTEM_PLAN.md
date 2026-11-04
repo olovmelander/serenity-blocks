@@ -341,7 +341,7 @@ stars: {
 
 Review all 55 levels to ensure star requirements make sense with Victory Lap:
 
-- **Lines levels:** 3-star can require faster time or more tetrises
+- **Lines levels:** 3-star can require faster time or more quads
 - **Cascade levels:** 3-star can require more cascades or deeper chains
 - **Score levels:** 3-star can require higher score thresholds
 - **Time survival:** 3-star can require longer survival

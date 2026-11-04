@@ -191,7 +191,7 @@ The current v6 comprehensive production lane captures all 11 canonical event inp
 | Lock | [Rune Dimple](../artifacts/themes/stillwater/wave8/v6-comprehensive-wave0-8/stillwater-production-event-lock.png) | 0 | lock glance | 46 |
 | Hard drop | [Stonefall Dimple](../artifacts/themes/stillwater/wave8/v6-comprehensive-wave0-8/stillwater-production-event-hard-drop.png) | 8 | lock glance | 46 |
 | Line clear | [Reed Whisper](../artifacts/themes/stillwater/wave8/v6-comprehensive-wave0-8/stillwater-production-event-line-clear.png) | 1 | line turn/pause | 46 |
-| Tetris | [The Lake Opens](../artifacts/themes/stillwater/wave8/v6-comprehensive-wave0-8/stillwater-production-event-tetris.png) | 1 | line turn/pause | 47 |
+| Quad | [The Lake Opens](../artifacts/themes/stillwater/wave8/v6-comprehensive-wave0-8/stillwater-production-event-quad.png) | 1 | line turn/pause | 47 |
 | Combo 4 | [Mycelium relay](../artifacts/themes/stillwater/wave8/v6-comprehensive-wave0-8/stillwater-production-event-combo-4.png) | 1 | line turn/pause | 46 |
 | Combo 7 | [Canopy notice](../artifacts/themes/stillwater/wave8/v6-comprehensive-wave0-8/stillwater-production-event-combo-7.png) | 1 | combo wary | 46 |
 | Combo 10 | [Forest Remembers](../artifacts/themes/stillwater/wave8/v6-comprehensive-wave0-8/stillwater-production-event-combo-10.png) | 3 | combo delight | 48 |
@@ -203,7 +203,7 @@ The current v6 comprehensive production lane captures all 11 canonical event inp
 All 11/11 report `PASS`, observe exactly one expected route increment, keep every
 instrumented fixed-resource identity stable, hold renderer geometries/textures stable
 across screenshot capture, and report `perEventResourceCreation=0`. B2B is explicitly
-gated on echo route 4 rather than inferred from a shared Tetris silhouette. Hard drop and
+gated on echo route 4 rather than inferred from a shared Quad silhouette. Hard drop and
 level up are production-routed events, not playground-only presets; level 12 reaches a
 0.705 enrichment target in its phase-locked capture.
 
@@ -212,7 +212,7 @@ and [historical v5 forced-WebGL2 perfect clear](../artifacts/themes/stillwater/w
 retain the event identity, but are not current-v6 captures.
 
 The historical v5
-[native-WebGPU Tetris water capture](../artifacts/themes/stillwater/wave8/final-playground/water-high-tetris-lean-periodic-webgpu-v5.png)
+[native-WebGPU Quad water capture](../artifacts/themes/stillwater/wave8/final-playground/water-high-quad-lean-periodic-webgpu-v5.png)
 visually verifies the optimized premium response graph after the performance fix. Its
 sidecar reports `ready=true`, one canvas, native WebGPU, `lean-four-wake`, ten fixed
 response slots (320 bytes), one active reserved special slot, four converging depth wakes,

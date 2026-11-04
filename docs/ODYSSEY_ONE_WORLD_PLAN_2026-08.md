@@ -1693,7 +1693,7 @@ not as a result.
 - three.js r181 source as ground truth: `TextureNode.js`, `NodeMaterial.js`, `Renderer.js`,
   `PassNode.js`, `WGSLNodeBuilder.js`, `Background.js`, `three/addons/tsl/display/*`
 - GDC: *The Art of Journey* (Matt Nava), *Designing Journey* (Jenova Chen), Journey sand
-  rendering (John Edwards), *Creating the Art of ABZÛ*, *The Art of Firewatch* / *Making the
+  rendering (John Edwards), *Creating the Art of an underwater game*, *The Art of Firewatch* / *Making the
   World of Firewatch* (Jane Ng), *Guiding Wind* (Ghost of Tsushima)
 - Hardware: [Radeon 610M](https://gadgetversus.com/graphics-card/amd-radeon-610m-specs/),
   [RTX 5070 Ti](https://cputronic.com/en/gpu/nvidia-geforce-rtx-5070-ti)

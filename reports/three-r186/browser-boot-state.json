@@ -405,7 +405,7 @@
         "wakeSlots": 10,
         "responseSlotBytes": 320,
         "reservedSpecialSlot": 0,
-        "tetrisDepthWakes": 4,
+        "quadDepthWakes": 4,
         "lakeRings": 22,
         "lakeVertices": 2205,
         "lakeTriangles": 4224,

@@ -4,7 +4,7 @@
 
 Create a new visually stunning WebGPU theme called **"Chiral Gold"** for Serenity Blocks, inspired by:
 - **A gold-on-black aesthetic**: Dark cinematic atmosphere, brilliant golden metallic particles, high contrast between deep blacks and bright gold, wet/metallic light catching, volumetric golden beams
-- **Tetris Effect's synesthesia**: Every gameplay action triggers synchronized visual responses. Particles pulse with the music beat. The player feels like part of the visual experience
+- *that game's synesthesia**: Every gameplay action triggers synchronized visual responses. Particles pulse with the music beat. The player feels like part of the visual experience
 - Pure dark void with floating golden particles - **no reflective plane**
 - Music-reactive particles using real-time audio frequency analysis (new capability)
 
@@ -538,7 +538,7 @@ Add to `src/themes/theme-registry.js` in the `cosmic` group:
    - broken fallback visuals in any guarded mode
 5. Minimal/Low prioritize smooth coherent visuals over feature parity.
 
-## 15. Tetris-Effect Choreography Rules
+## 15. Music-Reactive Choreography Rules
 
 1. Ambient movement is always active; gameplay events inject accents rather than replacing ambient flow.
 2. Event hierarchy:

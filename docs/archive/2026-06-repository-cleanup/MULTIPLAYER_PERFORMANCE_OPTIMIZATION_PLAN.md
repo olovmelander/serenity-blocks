@@ -11,7 +11,7 @@ This document outlines a comprehensive plan to diagnose and optimize multiplayer
 ## Problem Statement
 
 ### Current State
-- **Single-player**: Smooth, responsive, feels exactly like Tetris should
+- **Single-player**: Smooth, responsive, feels exactly like block stacking should
 - **Multiplayer (5 players)**: Functional but occasionally laggy
   - Tetrominos occasionally stop when holding move buttons
   - Overall responsiveness is degraded

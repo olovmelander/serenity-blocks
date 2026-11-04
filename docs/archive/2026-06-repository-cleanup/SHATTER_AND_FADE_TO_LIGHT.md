@@ -645,7 +645,7 @@ The animation is successful if:
 
 **Philosophy:** Beauty in defeat, dignity in endings, transformation over punishment
 
-**Impact:** Players will remember this. It elevates the game from "just another Tetris" to an emotional, artistic experience.
+**Impact:** Players will remember this. It elevates the game from "just another block stacker" to an emotional, artistic experience.
 
 ---
 

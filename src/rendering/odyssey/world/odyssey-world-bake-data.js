@@ -246,7 +246,7 @@ export function bakeMacroData(res = 512) {
  * coverage threshold across value noise produces amoebae: soft, round-cornered, featureless
  * blobs with no top, no bottom and no edge. That is the entire reason Act II's sky reads as
  * salt-and-pepper static — no amount of shading can put a cloud shape into a field that has
- * none. The Ghibli/Witness distillation is explicit that the silhouette is where all the
+ * none. The painterly distillation is explicit that the silhouette is where all the
  * frequency lives and the interior stays flat, so the fix belongs HERE, in the field, not in
  * the fragment shader.
  *
@@ -399,7 +399,7 @@ function bakeCloudSilhouette(res, vn) {
     // crown. The gaps between clusters are the sky, and they only exist if the clusters are
     // placed sparsely on purpose.
     // NOTE this field is a PLAN view: the deck is a horizontal sheet, so what the viewer reads
-    // as the cloud's outline is this field's contour seen from below or above. The Ghibli
+    // as the cloud's outline is this field's contour seen from below or above. The painted
     // "flat base" rule belongs to vertical faces and does not apply here; the scalloped
     // contour does, and that is exactly what a union of discs produces.
     const discs = [];

@@ -72,7 +72,7 @@ The table is ranked by S+K+C+G; ties are broken by S+K, then G. The worst themes
 
 | # | theme | S·K·C·G | suspected start cost | pipeline drivers | compile red flags (file:line) | per-frame CPU suspects (file:line) | per-frame GPU suspects | quick wins |
 |---|---|---|---|---|---|---|---|---|
-| 1 | sky-children | 5·5·4·5 | `world.build()` is synchronous after the renderer await. It runs 5 uncached 512² bakes (`world.js:471-476`, `core.js:919-1287`), 1M `toHalfFloat` calls (`tsl.js:136`) and CPU-noise isles (`isles.js:2809-2976`) [c] | 13 scene materials (5 distinct stone graphs); MSAA-4, bloom, output [c] | (a) lamp loop ×10 (`isles.js:2424`), deep shelves ×2-3 (`tsl.js:1083`); (c) dome `skyColour` (`tsl.js:1137-1262`); (d) `skyBase` has no layout, ~30 copies (`tsl.js:200`) [c] | 1100 closed-form spray puffs, one `subarray` per puff in the sort (`fx.js:348-350`); full uploads (`fx.js:135`, `354`) [c] | sky dome + optics sea + 1100 spray billboards (overdraw [s]) + MSAA-4 | module-cache the bakes, as rainbark does; indexed copy + `addUpdateRange` (`fx.js:349`); `setLayout` on `skyBase` |
+| 1 | rainbow-terraces | 5·5·4·5 | `world.build()` is synchronous after the renderer await. It runs 5 uncached 512² bakes (`world.js:471-476`, `core.js:919-1287`), 1M `toHalfFloat` calls (`tsl.js:136`) and CPU-noise isles (`isles.js:2809-2976`) [c] | 13 scene materials (5 distinct stone graphs); MSAA-4, bloom, output [c] | (a) lamp loop ×10 (`isles.js:2424`), deep shelves ×2-3 (`tsl.js:1083`); (c) dome `skyColour` (`tsl.js:1137-1262`); (d) `skyBase` has no layout, ~30 copies (`tsl.js:200`) [c] | 1100 closed-form spray puffs, one `subarray` per puff in the sort (`fx.js:348-350`); full uploads (`fx.js:135`, `354`) [c] | sky dome + optics sea + 1100 spray billboards (overdraw [s]) + MSAA-4 | module-cache the bakes, as rainbark does; indexed copy + `addUpdateRange` (`fx.js:349`); `setLayout` on `skyBase` |
 | 2 | forest | 5·5·4·4 | serial renderer → 14-file load (`theme.js:199`, `227`); full-scene shadow prime inside `createScene` requests ~60 pipelines at once (`post.js:103-119`); all 11 firefly figures laid out eagerly (`firefly-director.js:101`) [c] | ~37 materials: one per bark asset and one per foliage bucket (`trees.js:174`, `316`); ~24 shadow variants; godrays, blur, bloom, FXAA [c] | (a) 5-pulse `glow()` unrolled in ~20 graphs (`light.js:298-308`); `pulseShove`/`stir` ×5 (`light.js:329`, `413`) [c] | 1056-fly sim + 9216-exp light field + 3 × 38 KB uploads (`firefly-sim.js:302-447`, `light-field.js:76-81`); `getFrame` built ×2 (`theme.js:559-560`); 0.75 s gBCR poll (`stage.js:29`) [c] | godrays 26 steps; 4 mist planes running `glow()`; 16 shadow redraws in 20 s [c] | tree materials via geometry attributes, as `sakura-forest.js:141-145` (bark+foliage ~20 → 3-6); pulse `Loop` as `sakura-light.js:206`; lazy figures |
 | 3 | summer | 5·4·3·5 | lake map: 196k texels × 2 `summerShores()` objects = ~393k allocations (`terrain.js:83-95`, `180-196`); meadow scatter of 55k plants with ≤8 tries each (`meadow.js:200-300`); full-scene prime (`post.js:100-116`) [c] | ~44 materials: bark/foliage per bucket, 4 mist + 5 garland materials with baked literals (`atmosphere.js:119`, `garlands.js:46`); shadow 2048×1024; reflector at 0.5 [c] | (a) `meadowWind` 6 waves (`light.js:337-346`); lake rings ×8 (`lake.js:100`); flower `answer()` ×2 (`meadow.js:247`) [c] | petal sim over 2400 + 2 full uploads (`petals.js:166-176`); `getFrame` ×2 (`theme.js:504-505`); `aimSun` every frame (`light.js:207-245`) [c] | mirror = second scene render incl. cumulus; 32k grass + 23.6k flowers with 6-wave vertex wind; shadow map re-rendered whenever the drifting sun moves 0.03° (`light.js:207-221`) [s] | allocation-free or cached `summerShores` maps; re-aim the sun only on level turns; uniform-driven mist/garland materials |
 | 4 | verdant-hills | 4·4·4·5 | serial renderer → 6 GLB + 3 PNG (`theme.js:182`, `210`); synchronous terrain of 60k heights + 60k `.set([..])` (`terrain.js:392-418`); 62k-plant scatter (`meadow.js:91-92`, `composition.js:137-175`) [c] | ~22 materials (bark per asset, foliage per bucket, `trees.js:177`, `325`); cloud-march RT at 0.5; shafts RTT; shadow 2048² [c] | (c) cumulus `Loop(48)` with 3 inlined `cloudDensity` per step (`sky.js:100-143`); homestead 11-albedo uber-graph (`homestead.js:151-193`); (a) 6-ring wind in 2 materials (`light.js:508`) [c] | `getFrame` ×2 + spreads (`theme.js:504-514`, `world.js:167`); 2400-seed sim calling the analytic `groundHeight` + ~77 KB/frame unconditional upload (`seed-sim.js:244`, `seeds.js:164-174`); 0.75 s poll [c] | 48-step cloud march every frame; ~3.17M double-sided grass triangles with vertex wind; shafts 20; FXAA [c] | one `getFrame` with pooled objects; skip the seed upload when idle; march clouds every other frame or with 32 steps; prefetch assets before the renderer await |
@@ -152,7 +152,7 @@ The table is ranked by S+K+C+G; ties are broken by S+K, then G. The worst themes
   - thermal-bloom ≈ 18M (`thermal-bloom-bake.js:255`)
   - sunset ≈ 14M (`sunset-core.js:263`, `290`)
   - koi-pond ≈ 10M (`koi-pond-bed.js:32-126`)
-  - sky-children (5 × 512², `sky-children-world.js:471`)
+  - rainbow-terraces (5 × 512², `rainbow-terraces-world.js:471`)
   - stellar-drift ≈ 6.3M + 1.4M half floats
 - Fix template: `cinder-drift-tsl.js:106-122` (`bakedOnce`) or `pyrestorm-world.js:76-88`, caching the half-float mip arrays too, since cinder re-converts them every build.
 - Caveat: the forest family's 65k noise consumes the theme rng, so memoizing it shifts later layouts [s].
@@ -170,13 +170,13 @@ The table is ranked by S+K+C+G; ties are broken by S+K, then G. The worst themes
 **P4. Template post stack** [c]:
 - 56 themes use `bloom()`. BloomNode = 7 pipelines, 11 RTs and 12 passes per frame.
 - Most add a full-res output pass with 5 calm-rect SDFs plus 6-16 JS-unrolled ray/shaft/streak taps.
-- 21 themes run an MSAA-4 HalfFloat scene pass on High: bioluminescence, chiral-gold, cinder-drift, geode, halcyon-apex, himalayan-peak, ice-temple, lunara, neon-district, neon-dusk, nimbus-veil, ocean, sky-children, stellar-drift, stillwater, synthwave-sunset, tornado, vesper-chrysalis, void-ember, voltage-storm, winter. Aurora and parhelion inherit it when AA is on.
+- 21 themes run an MSAA-4 HalfFloat scene pass on High: bioluminescence, chiral-gold, cinder-drift, geode, halcyon-apex, himalayan-peak, ice-temple, lunara, neon-district, neon-dusk, nimbus-veil, ocean, rainbow-terraces, stellar-drift, stillwater, synthwave-sunset, tornado, vesper-chrysalis, void-ember, voltage-storm, winter. Aurora and parhelion inherit it when AA is on.
 - Without FXAA, the output pass IS the final composite, so it compiles **synchronously** even under the async session (§0.2).
 - 16 themes end in `fxaa()`. That adds a full-res RTT + pass every frame (`node_modules/three/examples/jsm/tsl/display/FXAANode.js:364`), but their heavy output pass then compiles async and only the small FXAA quad is synchronous.
 
 **P5. Uniform-reading lighting/sky helpers as plain JS, inlined per call site** (the theme headers deliberately avoid `setLayout`, see `sakura-light.js:164-171`) [c].
 - Large copies per material:
-  - sky-children `skyBase` ~30
+  - rainbow-terraces `skyBase` ~30
   - rainbark `rbAir` ~7 in the backdrop
   - moonlit-greenhouse `mgSurface` in ~15 materials
   - halcyon `ha*`
@@ -205,7 +205,7 @@ The table is ranked by S+K+C+G; ties are broken by S+K, then G. The worst themes
 
 **P8. Whole-buffer instanced uploads with no update range, often while idle** [c].
 - Per frame:
-  - sky-children spray/glows
+  - rainbow-terraces spray/glows
   - forest, summer, golden-forest, sakura CPU particle sims (sakura ~240 KB)
   - verdant seeds (~77 KB)
   - koi spray/pools
@@ -240,10 +240,10 @@ The table is ranked by S+K+C+G; ties are broken by S+K, then G. The worst themes
 - plus the double-sided transparent shells in pyrestorm (anvil) and tornado.
 
 **Worst themes per axis** (from the scores):
-- **start:** sky-children, forest, summer, serenity-warp, sunset, pyrestorm (first visit), then thermal-bloom, verdant-hills, high-coast, chiral-gold, crystal-cave, koi-pond.
-- **compile:** sky-children, forest, rainbark, chiral-gold, fluid-dreams, solar-eclipse, then summer, verdant-hills, high-coast, thermal-bloom, serenity-warp, sunset, pyrestorm, aurora, moonlit-greenhouse, stillwater.
-- **frame CPU:** sky-children, forest, sakura-twilight, verdant-hills, cinder-drift.
-- **frame GPU:** kaleidosonic, fluid-dreams, sky-children, moonlit-greenhouse, thermal-bloom, summer, verdant-hills, high-coast, crystal-cave, neon-district, misty-lake, serenity-warp, murmuration, chiral-gold, stellar-velocity.
+- **start:** rainbow-terraces, forest, summer, serenity-warp, sunset, pyrestorm (first visit), then thermal-bloom, verdant-hills, high-coast, chiral-gold, crystal-cave, koi-pond.
+- **compile:** rainbow-terraces, forest, rainbark, chiral-gold, fluid-dreams, solar-eclipse, then summer, verdant-hills, high-coast, thermal-bloom, serenity-warp, sunset, pyrestorm, aurora, moonlit-greenhouse, stillwater.
+- **frame CPU:** rainbow-terraces, forest, sakura-twilight, verdant-hills, cinder-drift.
+- **frame GPU:** kaleidosonic, fluid-dreams, rainbow-terraces, moonlit-greenhouse, thermal-bloom, summer, verdant-hills, high-coast, crystal-cave, neon-district, misty-lake, serenity-warp, murmuration, chiral-gold, stellar-velocity.
 
 ---
 
@@ -257,7 +257,7 @@ The table is ranked by S+K+C+G; ties are broken by S+K, then G. The worst themes
      - `src/themes/sunset/sunset-core.js:263`, `290`
      - `src/themes/voltage-storm/voltage-storm-world.js:253`
      - `src/themes/koi-pond/koi-pond-bed.js:191`
-     - `src/themes/sky-children/sky-children-world.js:471-476`
+     - `src/themes/rainbow-terraces/rainbow-terraces-world.js:471-476`
    - Effect: every rebuild, re-entry and Level-mode return skips tens to hundreds of ms of main thread [s]. The first visit is unchanged.
 2. **Start fetches and bakes before `await this.createRenderer()`** (P2), then await both.
    - Sites:
@@ -302,7 +302,7 @@ Runners-up:
   - long tasks inside `createScene` (Performance trace)
   - `switchWallMs` and `firstFrameGpuDoneMs` on an **uncovered** switch (Hub › Themes, or the Level-mode level-up), against the overlay-covered mode start (§0.1)
 - **Compile:**
-  - per-pipeline rows for sky-children (stone/dome), rainbark (backdrop/near trunk), chiral-gold (6 tower PBR), fluid-dreams (liquid), solar-eclipse (dome), stillwater (water, post-rebuild), aurora (curtain), high-coast (cumulus, land, sea), forest (bark/foliage count)
+  - per-pipeline rows for rainbow-terraces (stone/dome), rainbark (backdrop/near trunk), chiral-gold (6 tower PBR), fluid-dreams (liquid), solar-eclipse (dome), stillwater (water, post-rebuild), aurora (curtain), high-coast (cumulus, land, sea), forest (bark/foliage count)
   - for P3: count `createRenderPipeline` calls with the reflector on and off in stillwater
 - **Per frame:**
   - GPU: kaleidosonic, fluid-dreams, verdant-hills (cloud march), moonlit-greenhouse, thermal-bloom, koi-pond (shadow), voltage-storm at rest (shock loop)
@@ -314,8 +314,8 @@ Runners-up:
 
 Each section repeats the theme's score and lists every finding with file:line and its tag. Paths are relative to the prefix stated in each section.
 
-### 1. sky-children — S5 K5 C4 G5
-Own WebGPURenderer (antialias off, depth off), RenderPipeline post, `safeAnimate`. Path prefix `src/themes/sky-children/sky-children-`.
+### 1. rainbow-terraces — S5 K5 C4 G5
+Own WebGPURenderer (antialias off, depth off), RenderPipeline post, `safeAnimate`. Path prefix `src/themes/rainbow-terraces/rainbow-terraces-`.
 - **Start:**
   - `world.build()` runs fully synchronously after `await createRenderer` (`theme.js:258` → `293-302`). It has no time slicing and no module cache for bakes (`world.js:471-476`) [c].
   - High-tier bakes, all at 512² (`quality.js:148-164`) [c]:

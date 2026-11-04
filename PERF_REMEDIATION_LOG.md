@@ -45,7 +45,7 @@ The current High idle graph is 45 draws / 85,739 triangles, initially
 28 renderer geometries / 18 textures. After one-time pool, post, and resize warmup, the
 11 production event captures hold renderer memory at 31 geometries / 24 textures, span
 45–48 draws and 85,739–87,211 triangles, preserve every fixed-resource identity, and
-create zero resources per event. Coverage is lock, hard drop, line clear, Tetris,
+create zero resources per event. Coverage is lock, hard drop, line clear, Quad,
 combo 4/7/10, T-spin, back-to-back, perfect clear, and level up: 11/11 pass on the real
 production board with strict board-readiness checks. Atmosphere buffers are fixed to the
 constructed tier instead of one maximum-size allocation:

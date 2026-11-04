@@ -344,7 +344,7 @@ export function createWinterPostProcessing(renderer, scene, camera, params = {})
 13. **Ice Crystal Crashes** (high combo effects)
 14. **Blizzard Waves** (line clear effects)
 15. **Frost Snap + Shockwave** (piece lock effects)
-16. **Frozen Lightning** (tetris effects)
+16. **Frozen Lightning** (quad effects)
 
 **Tasks**:
 - [ ] Create `winter-materials.js` with factory functions for each material type.

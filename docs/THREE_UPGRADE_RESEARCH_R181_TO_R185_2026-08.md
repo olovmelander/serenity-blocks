@@ -211,7 +211,7 @@ zero SkinnedMesh with positionNode exists anywhere):
 3. **Masks/pivots/rotations computed from `positionLocal` inside `positionNode`
    (high):** masks saturate at world heights; rotations pivot in the wrong space.
    Sites: `surface-world.tsl.js` `vegetationSwayNode`(:1488) + `floraSwayNodeShared`
-   (:1527) — **two function fixes cover six break rows**; sky-children-v2 `sky-birds.js`
+   (:1527) — **two function fixes cover six break rows**; rainbow-terraces `sky-birds.js`
    wing flap; koi-pond forest/fish/tails; ocean fish/reef-dwellers; golden-forest
    tree/reed wind masks; winter `framing-spruces` belt; summer trees (material injected
    from `summer-meadow.effect.js` — load-bearing playground→theme link);
@@ -263,7 +263,7 @@ emissive buffer; on r185 they opaquely stomp black over any glow behind them.** 
   HIGH: stellar-drift, winter, neon-dusk, chromadelic-highway, cosmic-noir, ocean,
   synthwave-sunset (+neon-district/lunara/wolfhour/astral-weave when their gates enable
   MRT). MEDIUM: chiral-gold, stellar-velocity, ice-temple, golden-forest, black-hole,
-  stillwater, starlight, shifting-sands. LOW: fluid-dreams, sky-children-v2, tornado,
+  stillwater, starlight, shifting-sands. LOW: fluid-dreams, rainbow-terraces, tornado,
   electric-dreams-v3, himalayan-peak. **Odyssey production: NOT affected** — the TSL
   pipeline defaults `useMRT ?? false` and `OdysseyBoardController` never passes it.
 - **Fix-forward (r185 API):** keep the mrt node instance and call
@@ -617,7 +617,7 @@ mocks of `three/webgpu`: shapes fine.
 > hole re-captured at 0 errors. The refreshed `docs/theme-screenshots/` (61 PNGs + per-theme
 > `results/*.json`) is the **new r185 visual baseline**; the 5 previously committed captures
 > were different-era theme builds (composition/resolution/menu state) so they are NOT an
-> upgrade A/B — except `sky-children-v2`, **byte-identical** across the upgrade. Stellar-drift
+> upgrade A/B — except `rainbow-terraces`, **byte-identical** across the upgrade. Stellar-drift
 > closed: black asteroid silhouettes are intended and present in the r181 capture; the 5 "uv
 > not found" warnings were pre-existing (identical r181 AttributeNode behavior) — silenced by
 > giving the three uv-less `Points` geometries a centre uv, which also makes those particle

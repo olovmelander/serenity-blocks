@@ -3,7 +3,7 @@
  * CHAPTER 2'S FISH (item 3, Blender hulls 2026-11-01): four SCHOOLS on ribbon paths in the deep
  * ocean climb, countershaded and flashing, one draw.
  *
- * ABZU's documented technique, ported to TSL: instanced static meshes animated ENTIRELY in the
+ * an underwater game's documented technique, ported to TSL: instanced static meshes animated ENTIRELY in the
  * vertex stage with waves — no skeletons, no CPU skinning, vertex-ALU only.
  *
  * WAS (until 2026-10): 110 copies of one hull each circling its OWN seed point, shaded near-black,

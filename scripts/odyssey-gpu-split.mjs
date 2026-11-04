@@ -85,7 +85,7 @@ const CONFIGURATIONS = [
         flags: { odysseyHideLevelNodes: '1' },
         note: '55 nodes x 3 nested transparent shells hidden',
     },
-    // THE SEA PLATE (Ghibli-water plan, Wave 0). One ungated DoubleSide transparent clipmap
+    // THE SEA PLATE (painted-water plan, Wave 0). One ungated DoubleSide transparent clipmap
     // that draws across the whole act window (p 0.063-0.678) and whose total cost had never
     // been measured because nothing could switch it off. Run as
     // `--only baseline,no-water,baseline-repeat` so the differential AND its drift bound come

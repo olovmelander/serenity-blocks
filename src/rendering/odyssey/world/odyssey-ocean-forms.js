@@ -8,7 +8,7 @@
  * shape, both seated on the CPU height mirror the drawn bed displaces to:
  *  - ROCK SPIRES rise from the deep bowl around the column. Their tops stop well under the
  *    surface, and the water's per-channel extinction turns them into stacked silhouettes — the
- *    depth layering Ponyo's plates are built from.
+ *    depth layering a painted film's plates are built from.
  *  - KELP climbs the shelf where the bowl rises toward the island, swaying toward the light.
  * Nothing is placed inside the rail's corridor, so the path, the orbs and their close-ups stay
  * clear. Placement is deterministic (seeded) and pure; the world renderer owns the materials.
@@ -137,7 +137,7 @@ export function planOceanForms({
 
 /**
  * A unit rock spire: base ring at y 0, rounded crown at y 1, radius ~1 at the base, tapering.
- * Faceted (non-indexed) so it reads as carved rock in the flat-lit Ghibli language, with a
+ * Faceted (non-indexed) so it reads as carved rock in the flat-lit painterly language, with a
  * seeded wobble so no two rings are round.
  * @param {number} [seed]
  * @returns {THREE.BufferGeometry}

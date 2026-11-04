@@ -1280,7 +1280,7 @@ Predefined style packs independent of themes:
 ```javascript
 const STYLE_PACKS = {
     'classic': { /* NES colors */ },
-    'neon': { /* Bright cyberpunk */ },
+    'neon': { /* Bright neon-noir */ },
     'pastel': { /* Soft colors */ },
     'monochrome': { /* Grayscale */ },
     'retro': { /* 80s aesthetic */ }

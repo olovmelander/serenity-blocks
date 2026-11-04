@@ -24,7 +24,7 @@
 
 
 **Goal.** Turn Act II's ground — grass, sand, rock, snow, the mountain — from four flat
-constants under a ±3.5% sine plaid into a PAINTED TERRAIN with Witness/Ghibli material
+constants under a ±3.5% sine plaid into a PAINTED TERRAIN with Witness/painterly material
 identity: a baked macro colour layer (the ji-nuri base coat) that owns hue at the
 hundred-metre scale, colour-matched tiled detail that owns texture at the metre scale and
 melts to the macro with distance, authored material boundaries instead of smoothstep
@@ -37,7 +37,7 @@ the unlit analytic-sun contract all stay; what changes is what the bakes CONTAIN
 the fragment graph does with values it already fetches.
 
 **Provenance.** 2026-08-14: 7-agent research workflow (4 cited online sweeps — the-witness.net
-devlog + Wolfire's colour-matching posts + GDC 2014 deck read first-hand, a Ghibli/Oga
+devlog + Wolfire's colour-matching posts + GDC 2014 deck read first-hand, a painted/Oga
 ground-language distillation, a TSL/WebGPU terrain-technique survey priced in fetches, a
 premium-vs-playdough property analysis — plus 2 repo deep-reads (ground pipeline
 archaeology, perf/ledger constraints) and 1 measurement agent that sampled ground swatches
@@ -48,7 +48,7 @@ plan names (Witness village paths/lawns/white rock; Witness autumn ground/strati
 ledges; Witness lake sand cliffs/travertine; Firewatch canyon rock/grass/dirt; Firewatch
 dusk hills). This plan lives alongside
 [ODYSSEY_ACT2_FOREST_PLAN_2026-08.md](ODYSSEY_ACT2_FOREST_PLAN_2026-08.md) and
-[ODYSSEY_GHIBLI_WATER_PLAN_2026-08.md](ODYSSEY_GHIBLI_WATER_PLAN_2026-08.md), reuses their
+[ODYSSEY_PAINTED_WATER_PLAN_2026-08.md](ODYSSEY_PAINTED_WATER_PLAN_2026-08.md), reuses their
 measured laws, and touches the same file (`odyssey-world-renderer.js`) but a disjoint slot:
 the ground material's fragment graph and the bake functions. No new NodeMaterial is
 created — the entire overhaul happens inside `groundMat.colorNode` and the bakes, so the
@@ -84,16 +84,16 @@ fog/dispose lint lists do not change shape.
    language, as does rolling terrain, and hard architectural surfaces… it helps inform the
    player what materials the surfaces are made from"). Steep terrain in The Witness is not
    the heightfield at all — "make the walls steep by putting mesh objects in there."
-5. **Ghibli's base coat is where the beauty lives.** Kazuo Oga paints the ji-nuri —
+5. **the painted tradition's base coat is where the beauty lives.** Kazuo Oga paints the ji-nuri —
    a soft wet-in-wet colour field, 30–60 minutes, before anything dries: "a bad base coat
    meant a bad painting" (Animation Obsessive). Detail is sparse crisp accents placed ON a
    gradient, never a uniform field of texture. Each material is 2–4 authored colours (lit,
    shadow, accent, distance) blended smoothly — not a continuous procedural hue ramp.
-6. **Ghibli value law: two masses first.** Light side and shadow side separate near-binary;
+6. **painterly value law: two masses first.** Light side and shadow side separate near-binary;
    mid-tones live on the LIT side only; the shadow side is one unified hue-shifted colour
    (GVAAT study). "Everything darker steps back, everything lighter steps forward." Contact
    lines (under trees, path edges) are painted occlusion bands — darker AND warmer.
-7. **Ghibli specificity beats noise octaves.** Oga stopped painting "weeds vaguely" and
+7. **painterly specificity beats noise octaves.** Oga stopped painting "weeds vaguely" and
    painted recognisable species; Tanaka: he "extracts the essence… then augments." The
    grammar of a meadow: wind-swept lighter stroke bands across slopes, sparse clustered
    accents, roots darkening at contacts. More octaves of noise is the opposite of this.
@@ -224,7 +224,7 @@ Three layers, mirroring §1:
 - **Layer 3 — light and edges, pure ALU on existing values.** (a) The two-model shadow:
   vegetation/sand shade = chroma-preserving luma ×~0.55; rock shade = desaturate toward
   warm-mauve neutral; deep shade floor red-enriched, never blue-black (G1); shadow-side
-  value converges (G8) while the terminator stays narrow (Ghibli two-mass law). (b)
+  value converges (G8) while the terminator stays narrow (painterly two-mass law). (b)
   Boundary shaping: blend factors biased by tile height (sand fills BETWEEN grass tufts,
   rock pokes THROUGH thin snow), thresholds perturbed by the snow-jitter fetch's unused
   `.rg` (already paid for), and a 1–2 m edge-accent band (darker + warmer grass lip where
@@ -652,7 +652,7 @@ than the shipped graph they were replacing:
 The mistake the first two shared was treating the measured ratio as something a REMAP has to
 produce. It is not: plain Lambert already produces it — a face at ndl 0.35 beside one at ndl
 0.70 is half as bright, which IS the measured band. What the shipped graph had wrong was only
-the floor. The Ghibli two-mass law survives as the S-curve's shoulders; the hard gate a painter
+the floor. The painted two-mass law survives as the S-curve's shoulders; the hard gate a painter
 can draw by hand and a heightfield cannot does not.
 
 ### The G-bar, measured on our own captures (shoreline station, graded rig)
@@ -757,7 +757,7 @@ be re-opened against the same evidence.**
 
 
 - **D-ref (optional, any time):** the five refs cover every named surface; if the owner
-  wants a specifically GHIBLI meadow/path target (Totoro/Oga board), drop it as
+  wants a specifically PAINTERLY meadow/path target (a painted film/Oga board), drop it as
   `act2-ground-ref1.png` and Wave 0c's bar gains a row.
 - **D-path (Wave 1):** does the island carry a visible journey-trail wear line under the
   rail (the Witness "people walked here" statement, ~1.2× ground luma per G3)? Bake

@@ -20,12 +20,12 @@
 {
   "name": "serenity-blocks",
   "version": "1.0.0",
-  "description": "A modern Tetris-inspired puzzle game built with Phaser 4",
+  "description": "A modern block-stacking-inspired puzzle game built with Phaser 4",
   "dependencies": {
     "phaser": "^4.0.0"
   },
   "keywords": [
-    "tetris",
+    "quad",
     "puzzle",
     "game",
     "phaser",
