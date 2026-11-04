@@ -1,12 +1,24 @@
+import {
+    chatModerationNote, isChatOn, onChatModerationChange, renderChatLog,
+} from './chat-moderation.js';
+
 /**
  * OnlineChat - Chat component for online multiplayer
  *
- * Handles sending and receiving chat messages
+ * Handles sending and receiving chat messages. What this player is shown (chat on or off,
+ * muted players) is chat-moderation.js's; a mute or chat turned off redraws the log.
  */
 export class OnlineChat {
-    constructor(container, onSend) {
+    /**
+     * @param {HTMLElement | null} container
+     * @param {(text: string) => void} onSend
+     * @param {{ localPlayerId?: string | null, colorOf?: (steamId: string) => (string | null | undefined) }} [options]
+     */
+    constructor(container, onSend, { localPlayerId = null, colorOf } = {}) {
         this.container = container;
         this.onSend = onSend;
+        this.localPlayerId = localPlayerId;
+        this.colorOf = colorOf;
         this.messagesContainer = null;
         this.inputEl = null;
         this.sendBtn = null;
@@ -15,6 +27,11 @@ export class OnlineChat {
 
         this._initializeDOM();
         this._setupEventListeners();
+        this._moderationUnsub = onChatModerationChange((change) => {
+            const note = chatModerationNote(change);
+            if (note) this.addSystemMessage(note);
+            else this.render();
+        });
     }
 
     /**
@@ -60,7 +77,7 @@ export class OnlineChat {
         if (!this.inputEl) return;
 
         const text = this.inputEl.value.trim();
-        if (!text) return;
+        if (!text || !isChatOn()) return;
 
         if (this.onSend) {
             this.onSend(text);
@@ -71,7 +88,7 @@ export class OnlineChat {
 
     /**
      * Add a received message
-     * @param {Object} message - { author: string, text: string, isSystem?: boolean, color?: string }
+     * @param {Object} message - { author: string, text: string, steamId?: string, isSystem?: boolean, color?: string }
      */
     addMessage(message) {
         this.messages.push({
@@ -85,7 +102,6 @@ export class OnlineChat {
         }
 
         this.render();
-        this._scrollToBottom();
     }
 
     /**
@@ -100,66 +116,13 @@ export class OnlineChat {
     }
 
     /**
-     * Render the chat messages
+     * Render the chat messages (renderChatLog leaves out what this player is not shown)
      */
     render() {
-        if (!this.messagesContainer) return;
-
-        const html = this.messages.map((msg) => {
-            if (msg.isSystem) {
-                return `
-                    <div class="system-message">
-                        ${this._escapeHtml(msg.text)}
-                    </div>
-                `;
-            }
-
-            const nameColor = this._sanitizeColor(msg.color);
-            return `
-                <div class="player-message" style="--player-color:${nameColor}">
-                    <span class="color-indicator" aria-hidden="true"></span>
-                    <span class="author">${this._escapeHtml(msg.author)}</span>
-                    <span class="text">${this._escapeHtml(msg.text)}</span>
-                </div>
-            `;
-        }).join('');
-
-        this.messagesContainer.innerHTML = html;
-    }
-
-    /**
-     * Scroll chat to bottom
-     */
-    _scrollToBottom() {
-        if (this.messagesContainer) {
-            this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
-        }
-    }
-
-    /**
-     * Escape HTML
-     */
-    _escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text || '';
-        return div.innerHTML;
-    }
-
-    /**
-     * Restrict a peer-supplied color to a safe CSS color token before it is
-     * interpolated into a style attribute. Without this, a crafted color string
-     * could break out of the attribute (CSS injection). Falls back to the
-     * default when the value is not a plain hex / rgb() / hsl() / named color.
-     */
-    _sanitizeColor(color) {
-        const fallback = '#a78bfa';
-        if (typeof color !== 'string') return fallback;
-        const value = color.trim();
-        const safe = /^#[0-9a-fA-F]{3,8}$/.test(value)
-            || /^rgba?\([\d.,\s%]+\)$/.test(value)
-            || /^hsla?\([\d.,\s%]+\)$/.test(value)
-            || /^[a-zA-Z]{1,32}$/.test(value);
-        return safe ? value : fallback;
+        renderChatLog(this.messagesContainer, this.messages, {
+            localPlayerId: this.localPlayerId,
+            colorOf: this.colorOf,
+        });
     }
 
     /**
@@ -185,6 +148,8 @@ export class OnlineChat {
      * Clean up
      */
     destroy() {
+        this._moderationUnsub?.();
+        this._moderationUnsub = null;
         this.clear();
         if (this.sendBtn) this.sendBtn.onclick = null;
         if (this.inputEl) this.inputEl.onkeydown = null;

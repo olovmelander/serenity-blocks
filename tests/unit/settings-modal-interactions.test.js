@@ -190,6 +190,9 @@ describe('settings modal interactions', () => {
             style: {},
             classList: createClassList(),
             addEventListener: vi.fn(),
+            append: vi.fn(),
+            replaceChildren: vi.fn(),
+            setAttribute: vi.fn(),
             value: '',
             checked: false,
         });
@@ -225,6 +228,7 @@ describe('settings modal interactions', () => {
             }),
             querySelectorAll: vi.fn(() => []),
             querySelector: vi.fn(() => null),
+            createElement: vi.fn((type) => createDummyElement(type)),
         });
 
         const settings = {

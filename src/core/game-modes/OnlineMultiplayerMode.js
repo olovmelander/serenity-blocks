@@ -1107,24 +1107,13 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // Chat
         const chatContainer = document.querySelector('.online-chat');
         if (chatContainer) {
-            this.chat = new OnlineChat(chatContainer, (text) => {
-                // Send chat message via network
-                this._sendChatMessage(text);
-            });
+            // What this player is shown (chat on, nobody muted) is ui/chat-moderation.js's.
+            const localPlayerId = this.ffaGameState?.localPlayerId;
+            const colorOf = (steamId) => this._getPlayerColor(steamId);
+            this.chat = new OnlineChat(chatContainer, (text) => this._sendChatMessage(text), { localPlayerId, colorOf });
             this.chat.addSystemMessage('Match started. Good luck.');
-
-            // Restore chat history from game state
-            if (this.ffaGameState && this.ffaGameState.chatHistory) {
-                this.ffaGameState.chatHistory.forEach((msg) => {
-                    const isSystem = !msg.playerName;
-                    this.chat.addMessage({
-                        author: isSystem ? 'System' : msg.playerName,
-                        text: isSystem ? (msg.text || msg.message) : msg.message,
-                        isSystem: isSystem,
-                        color: msg.color || this._getPlayerColor(msg.steamId),
-                    });
-                });
-            }
+            // Restore chat history from game state (history lines are in a shape OnlineChat draws).
+            (this.ffaGameState?.chatHistory || []).forEach((msg) => this.chat.addMessage(msg));
         }
 
         console.log('[OnlineMultiplayer] Right panel initialized');
@@ -1172,13 +1161,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // Chat as the game state took it: capped, rate-limited, its author bound to the
         // sender (multiplayer/ffa/chat-relay.js). The raw wire message let a peer name
         // itself anyone on the host's screen.
-        const chatHandler = (detail) => {
-            this.chat?.addMessage({
-                author: detail.playerName,
-                text: detail.message,
-                color: detail.color || this._getPlayerColor(detail.steamId),
-            });
-        };
+        const chatHandler = (detail) => this.chat?.addMessage(detail);
         const chatUnsub = onMultiplayerEvent(MULTIPLAYER_EVENTS.CHAT_MESSAGE, chatHandler);
 
         // A4d: the host returned everyone to the lobby (manual or idle auto-advance).
@@ -2437,6 +2420,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             this.chat.addMessage({
                 author: 'You',
                 text,
+                steamId: this.ffaGameState.localPlayerId,
                 color: localColor,
             });
         }
