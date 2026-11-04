@@ -50,7 +50,7 @@ export const BLOOM_THRESHOLD = 1.0;
 export const BLOOM_KNEE = 0.35;
 export const BLOOM_RADIUS = 0.45;
 /** Calm rects the output pass evaluates (menu navigation, card, header, title…). */
-export const CALM_RECTS_MAX = 4;
+export const CALM_RECTS_MAX = 5;
 /** Waves alive at once: the opening's exhale, the begin wave, a stack's lock. */
 export const WAVES_MAX = 3;
 
@@ -158,7 +158,7 @@ export class IntroWorldPost {
 
             // ── The exhale waves: a ring of light, and the picture bent where it passes ──
             const bend = vec2(0.0).toVar();
-            const waveLight = float(0.0).toVar();
+            const waveLight = vec3(0.0).toVar();
             for (let i = 0; i < WAVES_MAX; i++) {
                 const w = this.uWaves[i];
                 const rel = st.sub(w.xy).mul(aspect).toVar();
@@ -167,15 +167,19 @@ export class IntroWorldPost {
                 const x = d.sub(w.z).div(0.045);
                 const ring = exp(x.mul(x).negate()).mul(w.w);
                 const lead = exp(d.sub(w.z).div(0.009).pow2().negate()).mul(w.w);
-                bend.addAssign(normalize(rel.add(vec2(1e-5, 0.0))).div(aspect).mul(ring.mul(x).mul(-0.012)));
-                waveLight.addAssign(lead.mul(0.12).add(ring.mul(0.012)));
+                const way = normalize(rel.add(vec2(1e-5, 0.0)));
+                bend.addAssign(way.div(aspect).mul(ring.mul(x).mul(-0.012)));
+                // The front wears the logo's spectrum round it: lavender to the left, mint to the
+                // right. (White at this level reads as a grey disc drawn over the world.)
+                const front = mix(vec3(0.47, 0.37, 1.0), vec3(0.42, 0.9, 0.72), way.x.mul(0.5).add(0.5));
+                waveLight.addAssign(front.mul(lead.mul(0.055).add(ring.mul(0.006))));
             }
             const sst = st.sub(bend).toVar();
             const S = vec3(sceneColor.sample(sst).rgb).toVar();
             if (look.fringe) {
                 const fromCentre = sst.sub(0.5);
                 const r2 = fromCentre.dot(fromCentre);
-                const spread = fromCentre.mul(r2.mul(0.0024).add(length(bend).mul(0.6)));
+                const spread = fromCentre.mul(r2.mul(0.0006).add(length(bend).mul(0.6)));
                 If(length(spread).greaterThan(1e-4), () => {
                     S.assign(vec3(
                         sceneColor.sample(sst.sub(spread)).level(0).r,
@@ -195,8 +199,7 @@ export class IntroWorldPost {
                 const B = vec3(this.bloomNode.getTextureNode().sample(sst).rgb);
                 glare.assign(B.mul(float(1.0).sub(calm.mul(0.75))));
             }
-            const waveCol = vec3(0.72, 0.9, 1.0);
-            const H = S.add(glare).add(waveCol.mul(waveLight));
+            const H = S.add(glare).add(waveLight);
 
             // ── Tone map + grade ──
             const X = H.mul(this.uExposure);

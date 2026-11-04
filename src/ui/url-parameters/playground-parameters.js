@@ -6085,6 +6085,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'Off.',
             '1',
         ],
+        ['mode', 'With phase=menu: the current mode, whose light the flock wears.', 'A menu mode id.', 'single.', 'odyssey'],
+        ['row', 'With phase=menu: the current row, where the flock\'s thread starts.', '0 to 7, from the top.', '0.', '7'],
         ['px', 'Hold a horizontal pointer-parallax offset.', '-1 to 1.', '0.', '0.5'],
         ['py', 'Hold a vertical pointer-parallax offset.', '-1 to 1.', '0.', '-0.3'],
         ['noPost', 'Render the raw scene without bloom, waves or grade.', '1 enables.', 'Off.', '1'],
@@ -6098,7 +6100,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
         defaultValue,
         example: `${name}=${value}`,
         notes: 'Use on playground.html with effect=intro-world (First Light, the opening and menu world); '
-            + 't=<seconds> gives a deterministic capture, and t=23.85 shows the first stack locking.',
+            + 't=<seconds> gives a deterministic capture; t=24 shows the first gathering, round the title '
+            + 'or, with phase=menu, round the stage card.',
         sources: ['src/playground/effects/intro-world.effect.js'],
     })),
     ...[

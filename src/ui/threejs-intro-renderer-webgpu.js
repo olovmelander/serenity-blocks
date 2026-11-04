@@ -192,19 +192,17 @@ export default class ThreeJSIntroRendererWebGPU {
     }
 
     /**
-     * The main menu's layout (screen fractions, y down): `avoid` the murmuration keeps out of (the
-     * navigation and the logo), `calm` the light the post softens behind (navigation, card).
+     * The main menu's layout (screen fractions, y down; IntroWorld.setMenuLayout): the stage card
+     * the murmuration circles, the panels it flows round, the current row and mode, and the
+     * light the post softens. Empty while the menu is covered.
      */
-    setMenuLayout({ avoid = [], calm = [] } = {}) {
-        this.menuLayout = { avoid, calm };
+    setMenuLayout(layout = {}) {
+        this.menuLayout = layout;
         if (this.isBackgroundMode) this.applyMenuLayout();
     }
 
     applyMenuLayout() {
-        if (!this.world) return;
-        const layout = this.isBackgroundMode ? this.menuLayout : null;
-        this.world.setAvoidRects(layout?.avoid || []);
-        this.world.setCalmRects(layout?.calm || []);
+        this.world?.setMenuLayout(this.isBackgroundMode ? this.menuLayout : null);
     }
 
     setAudioPulse(pulse) {

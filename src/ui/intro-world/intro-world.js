@@ -9,10 +9,12 @@
  *     yet drawn) the eye rises and draws back while the veils unfurl, the murmuration pours up out
  *     of the light below and a wave of light leaves the logo;
  *   - the modes: the title (a halo behind the wordmark, the murmuration flying round it) and the
- *     menu (the light lower, calmer; the murmuration to the right of the navigation), blended over
- *     a second and a half;
+ *     menu (the light lower, calmer; the murmuration on a circuit round the stage card, down the
+ *     free gutters of the layout, in the current mode's light, with a thread of light from the
+ *     current row into the card), blended over a second and a half;
  *   - the gathering: on every third breath on the title the whole flock pours into a ring of
- *     light round the wordmark, and a wave of light leaves it as the ring closes;
+ *     light fitted to the wordmark, and a wave of light leaves it as the ring closes; behind the
+ *     menu, on the same breath, it closes round the stage card into a frame of light;
  *   - the music: the flock swells and brightens with the soundtrack's level;
  *   - the player's touch: the pointer's parallax, a click that sends a pulse of light along the
  *     flock, the begin wave when the title is dismissed.
@@ -23,7 +25,9 @@
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import {
+    FLOCK_POINTS,
     GATHER,
+    MODE_HUES,
     MURMURATION,
     OPENING_RISE,
     OPENING_SECONDS,
@@ -34,12 +38,14 @@ import {
     easeOutCubic,
     gatherPhase,
     gatherSlot,
-    halfHeightAt,
+    lerp,
     murmurationAt,
-    murmurationLine,
     openingState,
     riseClock,
     smoothstep,
+    srgbToLinear,
+    stageCircuit,
+    writeFlockLine,
 } from './intro-world-core.js';
 import { bakeGrainTexture } from './intro-world-tsl.js';
 import { createSky } from './intro-world-sky.js';
@@ -67,6 +73,19 @@ const MURMUR_GAIN = 1.25;
 const MURMUR_REFERENCE = 110000;
 
 const damp = (current, target, rate, dt) => current + (target - current) * (1 - Math.exp(-rate * dt));
+/** How fast the flock's path follows the layout, and the current row's thread follows the row. */
+const LAYOUT_GLIDE = 6;
+const THREAD_GLIDE = 10;
+/** A pastel deepened for light: added up in a dense flock the page's pastels wash to white. */
+const deepen = (rgb) => {
+    const c = rgb.map((v) => v ** 1.5);
+    const peak = Math.max(...c, 1e-4);
+    return c.map((v) => v / peak);
+};
+/** The rect keys of a menu layout. */
+const LAYOUT_RECTS = ['stage', 'nav', 'brand', 'dock', 'row'];
+/** The thread needs this much gutter (frame heights) between the row and the card. */
+const THREAD_MIN_GAP = 0.05;
 
 export class IntroWorld {
     /**
@@ -107,8 +126,20 @@ export class IntroWorld {
         this.motion = 1;
         this.motionTarget = 1;
         this.titleRect = null;
-        this.avoidRects = [];
+        // The menu as it stands, and the layout the flock flies (it glides to the real one).
+        this.layout = null;
+        this.flown = null;
+        this.onStage = 0;
+        this.threadAmount = 0;
         this.calmRects = [];
+        // The flock's line and the light lent along it, written every frame.
+        this.line = new Float32Array(FLOCK_POINTS * 4);
+        this.hues = new Float32Array(FLOCK_POINTS * 4);
+        this.modeHue = [0, 0, 0];
+        this.modeHueOn = 0;
+        this.closed = 0;
+        this.threadPoints = new Float32Array(12);
+        this._plane = [0, 0, 0];
         this.beginWave = null;
         this.logoOrigin = { x: 0.5, y: 0.47 };
         this.camera = null;
@@ -156,14 +187,24 @@ export class IntroWorld {
         this.titleRect = rect && rect.width > 0 && rect.height > 0 ? { ...rect } : null;
     }
 
-    /** Screen-fraction rects (y down) the flock keeps out of (the menu's navigation…). */
-    setAvoidRects(rects) {
-        this.avoidRects = Array.isArray(rects) ? rects.filter(Boolean) : [];
-    }
-
-    /** Screen-fraction rects (y down) whose light the post softens, with a level each. */
-    setCalmRects(rects) {
-        this.calmRects = Array.isArray(rects) ? rects.filter(Boolean) : [];
+    /**
+     * The main menu as it stands (screen fractions, y down), or null when it is covered: `stage`
+     * the card the flock circles, `nav`, `brand` and `dock` the panels it flows round, `row` the
+     * current row its thread starts from, `mode` the current mode (it lends the flock its light),
+     * `calm` the rects whose light the post softens, with a level each.
+     */
+    setMenuLayout(layout) {
+        const next = layout?.stage ? layout : null;
+        this.layout = next;
+        this.calmRects = Array.isArray(layout?.calm) ? layout.calm.filter(Boolean) : [];
+        const hue = next && MODE_HUES[next.mode];
+        if (hue) {
+            this.modeHue = deepen(srgbToLinear(hue));
+            this.modeHueOn = 1;
+        } else {
+            this.modeHueOn = 0;
+        }
+        if (next && !this.flown) this.flown = LAYOUT_RECTS.reduce((all, key) => ({ ...all, [key]: next[key] ? { ...next[key] } : null }), {});
     }
 
     setPointer(x, y) {
@@ -268,7 +309,57 @@ export class IntroWorld {
         this.pointer.y = damp(this.pointer.y, this.pointerTarget.y, 2.2, step);
         this.motion = damp(this.motion, this.motionTarget, 2.5, step);
         this.flockFlash *= Math.exp(-step * 2.4);
+        this.glideLayout(step);
         this.pose();
+    }
+
+    /** The flock's path follows the layout (a resize, the current row moving down the list). */
+    glideLayout(step) {
+        const { layout } = this;
+        const onMenu = this.mode === 'menu' && layout;
+        this.onStage = damp(this.onStage, onMenu ? 1 : 0, 2.4, step);
+        if (!layout || !this.flown) {
+            this.threadAmount = damp(this.threadAmount, 0, 3, step);
+            this.tintLine(step);
+            return;
+        }
+        for (const key of LAYOUT_RECTS) {
+            const target = layout[key];
+            // (A panel can leave the layout: the stacked menu has no card beside its list.)
+            if (!target || !this.flown[key]) {
+                this.flown[key] = target ? { ...target } : null;
+                continue;
+            }
+            const rate = key === 'row' ? THREAD_GLIDE : LAYOUT_GLIDE;
+            for (const side of ['x0', 'y0', 'x1', 'y1']) {
+                this.flown[key][side] = damp(this.flown[key][side], target[side], rate, step);
+            }
+        }
+        this.threadAmount = damp(this.threadAmount, onMenu && this.threadFits(layout) ? 1 : 0, 2.2, step);
+        this.tintLine(step);
+    }
+
+    /** The current mode's light reaches the flock's head first and runs down it to the tail. */
+    tintLine(step) {
+        const { hues, modeHue } = this;
+        const lent = this.modeHueOn * this.onStage;
+        for (let i = 0; i < FLOCK_POINTS; i++) {
+            const s = clamp01((i - 1) / (FLOCK_POINTS - 3));
+            const k = step === null ? 1 : 1 - Math.exp(-lerp(6, 1.1, s) * step);
+            const row = i * 4;
+            hues[row] += (modeHue[0] - hues[row]) * k;
+            hues[row + 1] += (modeHue[1] - hues[row + 1]) * k;
+            hues[row + 2] += (modeHue[2] - hues[row + 2]) * k;
+            // (Evenly when it closes round the card, where its head meets its tail.)
+            const share = lerp(lerp(0.86, 0.62, s), 0.74, this.closed);
+            hues[row + 3] += (lent * share - hues[row + 3]) * k;
+        }
+    }
+
+    /** Is there a gutter between the current row and the card for the thread to cross? */
+    threadFits(layout) {
+        const { row, stage } = layout;
+        return Boolean(row && stage && (stage.x0 - row.x1) * this.viewport.aspect >= THREAD_MIN_GAP);
     }
 
     /**
@@ -287,6 +378,16 @@ export class IntroWorld {
         this.pointer = { ...this.pointerTarget };
         this.motion = this.motionTarget;
         this.riseBase = riseClock(this.time) * (0.35 + 0.65 * this.motion);
+        // A seek lands where the layout has long since settled.
+        const onMenu = this.mode === 'menu' && this.layout;
+        this.onStage = onMenu ? 1 : 0;
+        if (this.layout) {
+            this.flown = LAYOUT_RECTS.reduce((all, key) => ({
+                ...all, [key]: this.layout[key] ? { ...this.layout[key] } : null,
+            }), {});
+        }
+        this.threadAmount = onMenu && this.threadFits(this.layout) ? 1 : 0;
+        this.tintLine(null);
         this.pose();
     }
 
@@ -313,7 +414,7 @@ export class IntroWorld {
         // The world is luminous from its first frame (the eye starts in the light below); the
         // opening adds the veils, the halo and the last of the light.
         // The veils are the murmuration's sky now, not the show: they keep to a quieter light.
-        u.veilGain.value = (0.7 + 0.3 * open.light) * (1 - 0.3 * menu) * 0.55;
+        u.veilGain.value = (0.7 + 0.3 * open.light) * (1 - 0.45 * menu) * 0.55;
         u.moteGain.value = (0.7 + 0.3 * open.light) * (1 - 0.25 * menu) * (1 + this.audio * 0.35);
         const haloGain = (1 - menu) * open.halo * (this.titleRect ? 1 : 0.6);
         const hazeGain = (0.85 + 0.15 * open.light) * (1 - 0.18 * menu);
@@ -372,42 +473,164 @@ export class IntroWorld {
         return { ...phase, join: phase.join * away, tau: slot.tau };
     }
 
+    /** A screen fraction (y down) on the plane z, through the live camera. */
+    toPlane(x, y, z) {
+        const cam = this.camera;
+        const hit = this._plane;
+        this._ndc.set(x * 2 - 1, 1 - y * 2, 0.5).unproject(cam);
+        this._dir.copy(this._ndc).sub(cam.position);
+        const t = (z - cam.position.z) / this._dir.z;
+        hit[0] = cam.position.x + this._dir.x * t;
+        hit[1] = cam.position.y + this._dir.y * t;
+        hit[2] = z;
+        return hit;
+    }
+
+    /**
+     * The panels the flock flows round. The wordmark and its prompt on the title; the menu's
+     * card, navigation, logo and dock behind the menu: each comes in with its screen, so a mote
+     * is never shoved.
+     */
+    panels(menu) {
+        const { aspect, width: W, height: H } = this.viewport;
+        const list = [];
+        const add = (r, law, on) => {
+            if (on <= 0.001) return;
+            const x0 = r.x0 * aspect;
+            const x1 = r.x1 * aspect;
+            list.push({
+                cx: (x0 + x1) / 2,
+                cy: (r.y0 + r.y1) / 2,
+                hx: (x1 - x0) / 2,
+                hy: (r.y1 - r.y0) / 2,
+                radius: law.radius,
+                reach: law.reach * on,
+                fadeFrom: lerp(-2, law.fadeFrom, on),
+                fadeTo: lerp(-1.9, law.fadeTo, on),
+            });
+        };
+        const title = 1 - smoothstep(0, 0.5, menu);
+        const r = this.titleRect;
+        if (r) {
+            add({
+                x0: r.x / W, y0: r.y / H, x1: (r.x + r.width) / W, y1: (r.y + r.height) / H,
+            }, {
+                radius: 0.03, reach: 0.06, fadeFrom: -0.012, fadeTo: 0.05,
+            }, title);
+            const q = r.prompt;
+            if (q) {
+                add({
+                    x0: q.x / W, y0: q.y / H, x1: (q.x + q.width) / W, y1: (q.y + q.height) / H,
+                }, {
+                    radius: 0.02, reach: 0, fadeFrom: 0, fadeTo: 0.05,
+                }, title);
+            }
+        }
+        const f = this.flown;
+        if (f) {
+            const on = this.onStage;
+            add(f.stage, {
+                radius: 28 / H, reach: 0.03, fadeFrom: -0.014, fadeTo: 0.004,
+            }, on);
+            if (f.nav) {
+                add(f.nav, {
+                    radius: 0.02, reach: 0.045, fadeFrom: -0.006, fadeTo: 0.03,
+                }, on);
+            }
+            if (f.brand) {
+                add(f.brand, {
+                    radius: 0.02, reach: 0.045, fadeFrom: -0.006, fadeTo: 0.03,
+                }, on);
+            }
+            if (f.dock) {
+                add(f.dock, {
+                    radius: 0.01, reach: 0.022, fadeFrom: -0.012, fadeTo: 0.018,
+                }, on);
+            }
+        }
+        return list;
+    }
+
+    /** The ring stands round the wordmark and its tagline, wherever the camera has drifted. */
+    fitRing(m) {
+        const r = this.titleRect;
+        if (!r) return;
+        const { width: W, height: H } = this.viewport;
+        const { z } = MURMURATION;
+        const cx = (r.x + r.width / 2) / W;
+        const cy = (r.y + r.height * 0.56) / H;
+        const ax = Math.min((r.width * 0.73 + 30) / W, 0.47) * m.ringBreath;
+        const ay = Math.min((r.height * 0.73 + 100) / H, 0.44) * m.ringBreath;
+        const [x, y] = this.toPlane(cx, cy, z);
+        const [xr] = this.toPlane(cx + ax, cy, z);
+        const yt = this.toPlane(cx, cy - ay, z)[1];
+        m.ring = [x, y, Math.abs(xr - x), Math.abs(yt - y)];
+    }
+
+    /** The thread from the current row into the card: level out of the row, level into the card. */
+    poseThread() {
+        const f = this.flown;
+        if (!f?.row || !f.stage || this.threadAmount <= 0.001) {
+            this.murmuration.writeThread({
+                points: this.threadPoints, amount: 0, width: 0, flow: 0,
+            });
+            return;
+        }
+        const { row, stage } = f;
+        const { z } = MURMURATION;
+        const y0 = (row.y0 + row.y1) / 2;
+        const cardMid = (stage.y0 + stage.y1) / 2;
+        const y1 = Math.max(stage.y0 + 0.08, Math.min(stage.y1 - 0.08, lerp(y0, cardMid, 0.3)));
+        const x0 = row.x1;
+        const x1 = stage.x0;
+        const gap = x1 - x0;
+        const out = this.threadPoints;
+        const put = (i, x, y) => {
+            const p = this.toPlane(x, y, z);
+            out[i] = p[0];
+            out[i + 1] = p[1];
+            out[i + 2] = p[2];
+        };
+        put(0, x0, y0);
+        put(3, x0 + gap * 0.5, y0);
+        put(6, x1 - gap * 0.5, y1);
+        put(9, x1, y1);
+        this.murmuration.writeThread({
+            points: out, amount: this.threadAmount, width: 0.2, flow: this.riseBase * 0.17,
+        });
+    }
+
+    /** Behind the menu the same breath closes the flock round the stage card, and lets it go. */
+    closingNow() {
+        const slot = gatherSlot(this.time);
+        if (!slot || this.motion < 0.5 || this.onStage <= 0) return null;
+        const phase = gatherPhase(slot.tau);
+        const here = smoothstep(0.5, 1, this.onStage);
+        return { join: phase.join * here, flash: phase.flash * here };
+    }
+
     poseMurmuration(open, breath, menu) {
         const cam = this.camera;
         if (!cam) return;
         const { aspect } = this.viewport;
         const gathering = this.gatheringNow(menu);
+        const closing = this.closingNow();
+        this.closed = closing ? closing.join : 0;
         this._gatherWave = null;
-        const avoid = [...this.avoidRects];
-        if (this.titleRect && menu < 0.5) {
-            const r = this.titleRect;
-            const { width: W, height: H } = this.viewport;
-            avoid.push({
-                x0: (r.x - r.width * 0.04) / W,
-                y0: (r.y - r.height * 0.06) / H,
-                x1: (r.x + r.width * 1.04) / W,
-                y1: (r.y + r.height * 1.06) / H,
-            });
-            // ...and the begin prompt under it.
-            const q = r.prompt;
-            if (q) {
-                avoid.push({
-                    x0: (q.x - q.width * 0.1) / W,
-                    y0: (q.y - q.height * 0.3) / H,
-                    x1: (q.x + q.width * 1.1) / W,
-                    y1: (q.y + q.height * 1.3) / H,
-                });
-            }
-        }
-        this.murmuration.setAvoid(avoid);
+        this.murmuration.setRects(this.panels(menu));
         const m = murmurationAt({
-            time: this.time, breath, aspect, menu, motion: this.motion, gather: gathering ? gathering.join : 0,
+            time: this.time,
+            breath,
+            aspect,
+            menu,
+            motion: this.motion,
+            gather: gathering ? gathering.join : 0,
+            close: closing ? closing.join : 0,
         });
-        // While the world opens it pours up out of the light below.
-        m.center[1] -= (1 - open.rise) * halfHeightAt(MURMURATION.z) * 1.5;
+        this.fitRing(m);
         // The music: the flock swells and brightens with the soundtrack's level.
         m.width *= 1 + this.audio * 0.12;
-        const flash = Math.max(this.flockFlash, gathering ? gathering.flash : 0);
+        const flash = Math.max(this.flockFlash, gathering ? gathering.flash * 0.6 : 0, closing ? closing.flash * 0.45 : 0);
         m.light *= (0.3 + 0.7 * open.light) * (1 + flash * 1.2) * (1 + this.audio * 0.55);
         if (this.pulse) {
             m.pulse = this.time - this.pulse.at;
@@ -415,13 +638,26 @@ export class IntroWorld {
             m.pulseAmp = 1;
             if (m.pulse > 4) this.pulse = null;
         }
-        this.murmuration.write(m);
+        this.murmuration.write(m, MURMURATION.z);
+        const circuit = this.onStage > 0.001 && this.flown?.stage ? stageCircuit(this.flown, aspect) : null;
+        const frame = 2 * (cam.position.z - MURMURATION.z) * Math.tan((cam.fov * Math.PI) / 360);
+        writeFlockLine(m, this.line, {
+            circuit,
+            onCircuit: this.onStage,
+            risen: this.openingProgress(),
+            toWorld: (x, y, z) => this.toPlane(x, y, z),
+            worldPerFrame: frame,
+        });
+        this.murmuration.writeLine(this.line);
+        this.murmuration.writeHues(this.hues);
+        this.poseThread();
         // Where the flock's line is on screen, for a touch.
-        const line = this._flockLine || (this._flockLine = Array.from({ length: 25 }, () => ({ x: 0, y: 0 })));
+        const line = this._flockLine
+            || (this._flockLine = Array.from({ length: FLOCK_POINTS - 2 }, () => ({ x: 0, y: 0 })));
         const v = this._ndc;
         line.forEach((p, i) => {
-            const [x, y, z] = murmurationLine(m, i / (line.length - 1));
-            v.set(x, y, z).project(cam);
+            const row = (i + 1) * 4;
+            v.set(this.line[row], this.line[row + 1], this.line[row + 2]).project(cam);
             p.x = v.x;
             p.y = v.y;
         });
@@ -498,6 +734,8 @@ export class IntroWorld {
             menu: Math.round(this.menuBlend * 1000) / 1000,
             murmuration: this.tier.murmuration,
             motes: this.tier.motes,
+            onStage: Math.round(this.onStage * 1000) / 1000,
+            thread: Math.round(this.threadAmount * 1000) / 1000,
         };
     }
 
