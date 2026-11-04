@@ -65,18 +65,25 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
     },
     // Pace the first boss to what chapter 1 taught (420 → 246 ms instead of 205 → 120), 30 lines instead of 40.
     // Pass 2: its three stars came on their own in a cascade well, even at casual pace, so two stars ask for 4
-    // cascades and three for 7 cascades and a 4-wave chain.
+    // cascades and three for 7 cascades and a 4-wave chain. A long run of cascades counts as much as the deep chain:
+    // three stars ask for 7 cascades, a 3-wave chain, and either 11 cascades or a 4-wave chain.
     4: {
         mechanics: { speed: { startLevel: 3, fixedDropInterval: 420, levelProgression: true } },
         victory: {
             primary: { type: 'lines', target: 30 },
             bonuses: [
-                { type: 'cascade', target: 7, description: 'Trigger 7 cascades' },
+                { type: 'cascade', target: 11, description: 'Trigger 11 cascades' },
                 { type: 'max-cascade-depth', target: 4, description: 'Trigger a 4-wave chain' },
             ],
         },
         modifiers: { active: ['gravity-cascade'] },
-        stars: { one: { lines: 30 }, two: { lines: 30, cascades: 4 }, three: { lines: 30, bonuses: 2 } },
+        stars: {
+            one: { lines: 30 },
+            two: { lines: 30, cascades: 4 },
+            three: {
+                lines: 30, cascades: 7, maxCascadeDepth: 3, bonuses: 1,
+            },
+        },
     },
     // Keep.
     5: { role: 'rival' },
@@ -355,16 +362,20 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         role: 'teach',
         mechanicFocus: 'quads',
     },
-    // Drop the inert multiplier. The chain asks fit the chapter: 3 and 4 waves instead of 4 and 5.
+    // Drop the inert multiplier. The chain asks fit the chapter: 3 and 4 waves instead of 4 and 5. Three stars take
+    // a 3-wave chain and either a 4-wave chain or the ten cascades within 70 pieces.
     30: {
         modifiers: { active: ['gravity-cascade'] },
         victory: {
-            bonuses: [{ type: 'max-cascade-depth', target: 4, description: 'Trigger a 4-wave chain' }],
+            bonuses: [
+                { type: 'max-cascade-depth', target: 4, description: 'Trigger a 4-wave chain' },
+                { type: 'pieces', target: 70, description: 'Finish within 70 pieces' },
+            ],
         },
         stars: {
             one: { cascades: 10 },
             two: { cascades: 10, maxCascadeDepth: 3 },
-            three: { cascades: 10, maxCascadeDepth: 4 },
+            three: { cascades: 10, maxCascadeDepth: 3, bonuses: 1 },
         },
     },
     // Pass 2: chapter 5 tests the Quads it teaches on orb 29: 4 Quads within 150 s at a steady 240 ms, instead of

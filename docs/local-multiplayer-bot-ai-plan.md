@@ -57,22 +57,7 @@ score =
 
 Academic survey material summarizes this Dellacherie controller as a leading one-piece controller, and lists the same six-term formula: https://citeseerx.ist.psu.edu/document?doi=1d724d4f65598a33449b710f07393f5f10157173&repid=rep1&type=pdf
 
-El-Tetris is a tuned derivative of the Dellacherie feature family. PyPI's `pytetris` page reproduces the six features, definitions, and common El-Tetris weights:
-
-```js
-const EL_TETRIS_WEIGHTS = {
-  landingHeight: -4.500158825082766,
-  erodedPieceCells: 3.4181268101392694,
-  rowTransitions: -3.2178882868487753,
-  columnTransitions: -3.2178882868487753,
-  holes: -7.899265427351652,
-  wellSums: -3.3855972247263626,
-};
-```
-
-Source: https://pypi.org/project/pytetris/
-
-Note: Some mirrored El-Tetris writeups use `-9.348695305445199` for column transitions. Because sources disagree and the original article is not currently a dependable commercial code source, Serenity should standardize on the Dellacherie integer profile first, then tune against our own cascade fixtures and replay data.
+The weights the bots ship with are this project's own, fitted by its headless simulator against the Odyssey balance gates (`BOARD_SHAPE_WEIGHTS` in `src/core/ai/board-evaluator.js`).
 
 Colin Fahey's Tetris AI work is useful for two design principles:
 
@@ -206,8 +191,6 @@ No external code, assets, sounds, images, or libraries should be imported for th
 | Hard Drop Quadra page | Mechanics research | CC BY-SA 4.0 page license | Link/cite only. Do not copy text/assets into shipped game. |
 | TetrisWiki Quadra page | Mechanics research | CC BY-NC-SA 4.0 page license | Link/cite only. Non-commercial share-alike content is not suitable for commercial runtime assets. |
 | Colin Fahey Tetris page | AI/pathfinding research | No clear reusable code license for our purposes | Link/cite only. Reimplement concepts independently. |
-| `pytetris` package | El-Tetris weight reference | PyPI metadata says MIT plus "Free for non-commercial use", which is ambiguous for commercial use | Do not import. Numeric weights can be treated as research reference only; prefer Dellacherie default and local tuning. |
-| `YuhanXiaoJY/Implementation-of-El-Tetris` | Search result for El-Tetris implementation | GitHub API reports no license | Do not use. |
 | NeurIPS CBMPI Tetris paper | Research reference | Research publication, not runtime code | Cite only. |
 
 All new Serenity bot code should be written from scratch in this repo and distributed under the repo's existing MIT license.

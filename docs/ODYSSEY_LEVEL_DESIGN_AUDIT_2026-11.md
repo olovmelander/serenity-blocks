@@ -1689,3 +1689,44 @@ out ends on the normal results sheet.
 
 **Phase 3's follow-up, the star-time floor:** no time-only three-star time falls under 1.10 pieces/s on any orb. The
 only gaps against the ladder are its 5-second rounding, which R2 allows.
+
+### 8.10 The bots' weights, re-fitted (2026-11-04)
+
+The five board-shape weights every puzzle bot plays by (`BOARD_SHAPE_WEIGHTS` in
+`src/core/ai/board-evaluator.js`) are now fitted by this project's own headless simulator: versus and
+local bots, the Odyssey rivals (tiers 1-8) and the benchmark's cascade, expert and duelist profiles.
+The stacker and Quad profiles do not use them.
+
+| Weight | Value |
+|---|---|
+| landingHeight | -8.48 |
+| erodedPieceCells | 6.10 |
+| rowTransitions | -1.37 |
+| columnTransitions | -8.17 |
+| wellSums | -6.48 |
+
+Measured on main over the 15 gate seeds, against the same run on the previous weights:
+
+| | Previous | Re-fitted | With the two orbs below |
+|---|---|---|---|
+| Gates passed | 9/9 | 8/9 | **9/9** |
+| Best three-star rate, orb 4 | 47% | 20% | 80% |
+| Best three-star rate, orb 30 | 60% | 27% | 73% |
+| Chapter 8 rival: skilled / regular | 13/15, 4/15 | 12/15, 3/15 | 12/15, 3/15 |
+
+The rivals stay in balance. What the new weights lose is deliberate 4-wave chains, so the two orbs whose top
+mark rested on one fell under the 30% floor. That is the bots' reading, not a player's: a person's odds of a
+4-wave chain did not move. So both orbs are eased strictly: every run that earned three stars before still does,
+and a second route is added beside the chain, as orb 22 already has.
+
+- **Orb 4:** three stars ask for 7 cascades, a 3-wave chain, and either 11 cascades or a 4-wave chain (was 7
+  cascades and a 4-wave chain).
+- **Orb 30:** three stars ask for 10 cascades, a 3-wave chain, and either a 4-wave chain or finishing within 70
+  pieces (was 10 cascades and a 4-wave chain).
+
+Neither is free: a stacker earns three stars on orb 4 on 0 of 15 seeds and on orb 30 on 1 of 15. The stars were
+confirmed by the game's own rules in a fresh run of both orbs, not only by the offline score.
+
+Two seeded demonstrations moved to seeds that show what they prove (the cascade player's final drain on orb 49,
+seed 40; the expert's empty-board chain, seed 1004). Over the seeds scanned the expert still builds a chain of
+depth 3 or 4 from an empty board on 13 of 40, and most orb 49 runs end on a multi-wave drain.
