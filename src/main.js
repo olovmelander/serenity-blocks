@@ -1114,19 +1114,18 @@ class SerenityBlocks {
         // Listen for main-process window focus/blur events — more reliable than
         // visibilitychange for alt-tab on Windows where focus changes may not
         // trigger a visibility state update in Electron.
-        if (window.electronAPI?.onRuntimeEvent) {
-            window.electronAPI.onRuntimeEvent((payload) => {
-                if (payload?.type !== 'window-focus-changed') return;
-                const isFocused = !!payload.payload?.focused;
-                if (isFocused && !this.isTabVisible) {
-                    this.isTabVisible = true;
-                    this.handleVisibilityChange(true);
-                } else if (!isFocused && this.isTabVisible && this.backgroundTabBehavior !== 'continue') {
-                    this.isTabVisible = false;
-                    this.handleVisibilityChange(false);
-                }
-            });
-        }
+        const focusUnsubscribe = window.electronAPI?.onRuntimeEvent?.((payload) => {
+            if (payload?.type !== 'window-focus-changed') return;
+            const isFocused = !!payload.focused;
+            if (isFocused && !this.isTabVisible) {
+                this.isTabVisible = true;
+                this.handleVisibilityChange(true);
+            } else if (!isFocused && this.isTabVisible && this.backgroundTabBehavior !== 'continue') {
+                this.isTabVisible = false;
+                this.handleVisibilityChange(false);
+            }
+        });
+        if (focusUnsubscribe) this.cleanupHandlers.push(focusUnsubscribe);
 
         console.log('[Visibility] Background tab throttling initialized:', this.backgroundTabBehavior);
     }

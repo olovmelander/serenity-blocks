@@ -184,6 +184,26 @@ describe('Steam Cloud service → preload → native handler contract', () => {
         });
     });
 
+    it.each(['typed array', 'DataView', 'empty view'])('writes only the selected bytes of an ArrayBuffer %s', async (kind) => {
+        const backing = Uint8Array.from(Buffer.from('prefix{"owned":true}suffix'));
+        const start = 6;
+        const length = backing.length - start - 6;
+        const view = kind === 'DataView'
+            ? new DataView(backing.buffer, start, length)
+            : backing.subarray(start, kind === 'empty view' ? start : start + length);
+        const expected = kind === 'empty view' ? '' : '{"owned":true}';
+        const cloud = createCloud();
+        const service = await createService(createNativeHarness({ cloud: cloud.api }));
+
+        expect(await service.cloudWrite('unlocks.json', view)).toEqual({ supported: true, success: true });
+        expect(cloud.api.writeFile).toHaveBeenCalledWith('unlocks.json', expected);
+
+        const fileWrite = vi.fn(() => true);
+        const legacy = createNativeHarness({ remoteStorage: { fileWrite } });
+        await legacy.electronAPI.invoke('steam:cloudWrite', 'unlocks.json', view);
+        expect(fileWrite).toHaveBeenCalledWith('unlocks.json', Buffer.from(expected));
+    });
+
     it('passes file names positionally for presence and timestamp queries too', async () => {
         const cloud = createCloud();
         cloud.files.set('unlocks.json', '{}');

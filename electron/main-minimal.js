@@ -98,14 +98,16 @@ app.on('second-instance', () => {
   }
 });
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  if (gotLock) createWindow();
+});
 
 app.on('window-all-closed', () => {
   app.quit();
 });
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
+  if (gotLock && BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
 });
