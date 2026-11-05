@@ -6,7 +6,7 @@
  */
 
 import {
-    COLS, HIDDEN_ROWS, BLOCK_SIZE, SHAPES, COLORS,
+    COLS, HIDDEN_ROWS, BLOCK_SIZE, SHAPES, COLORS, LEVEL_SPEEDS,
 } from '../core/constants.js';
 import { generateBoard } from '../core/board.js';
 import { drawPieceSolid, trimShape } from './canvas/canvas-drawing-utils.js';
@@ -18,11 +18,7 @@ const COMBO_COLOR_STEPS = [
     { max: Infinity, color: '#d946ef' }, // Magenta
 ];
 
-// PERFORMANCE: Cache DOM elements and constants for updateStats
-const LEVEL_SPEEDS = [
-    1000, 900, 800, 700, 600, 500, 400, 350, 300, 250, 200, 175, 150, 125, 100, 90, 80, 70, 60, 50,
-];
-
+// PERFORMANCE: Cache DOM elements for updateStats
 const statElements = {
     score: null,
     lines: null,

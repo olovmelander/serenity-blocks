@@ -5,6 +5,7 @@
  * (public/styles/keystone-modals.css; docs/MENU_UI_OVERHAUL_2026-10.md).
  */
 
+import { LEVEL_SPEEDS } from '../core/constants.js';
 import { STEAM_LEADERBOARDS } from '../core/steam/steam-config.js';
 import steamService from '../core/steam/steam-service.js';
 import {
@@ -228,11 +229,6 @@ export function showStartModal(modalManager) {
  * "Experimental Session · Unranked", "Not added to legacy rankings", "Career Best",
  * "Rank #N". */
 
-const LEVEL_SPEEDS = [
-    1000, 900, 800, 700, 600, 500, 400, 350, 300, 250, 200, 175, 150, 125, 100, 90, 80, 70, 60,
-    50,
-];
-
 /** Keycaps for a sheet's primary button: Enter, or A on a controller. */
 const PRIMARY_KEYS = '<kbd class="sb-kbd" data-key aria-hidden="true">Enter</kbd>'
     + '<kbd class="sb-kbd" data-pad aria-hidden="true">A</kbd>';
@@ -244,7 +240,7 @@ function formatDuration(durationMs) {
 }
 
 /** Score, pace and efficiency figures shared by game over and replay complete. */
-function computeResultFigures({
+export function computeResultFigures({
     score, lines, piecesPlaced, dropInterval,
 }, durationMs) {
     const totalMinutes = durationMs / 60000;
@@ -597,7 +593,7 @@ export async function showDemoCompleteModal(
     }
 
     const {
-        score = 0, lines = 0, level = 1, dropInterval = 1000, startTime, piecesPlaced = 0,
+        score = 0, lines = 0, level = 1, dropInterval = LEVEL_SPEEDS[0], startTime, piecesPlaced = 0,
     } = gameState || {};
     const state = {
         score, lines, level, dropInterval, piecesPlaced,
