@@ -61,11 +61,12 @@ export function startOdysseyGameplayLoop(mode, session, { renderStats = () => {}
 
         if (usesFixedLoop) return;
 
-        // Still Air keeps its pace and ends on the attempt's clock, whatever the HUD's throttle does.
-        tickOdysseyCharms(mode, session);
         // Legacy simulation decisions retain their established render cadence.
         mode._checkVictoryConditions();
         if (!mode._isLevelSessionActive(session)) return;
+        // Still Air keeps its pace and ends on the attempt's clock, whatever the HUD's throttle does.
+        // After the victory check, which moves a speed ramp: gravity's next frame reads what is left.
+        tickOdysseyCharms(mode, session);
 
         // Check failure conditions for tall boards (Infinity Mode logic)
         if (gameState.isInfinityMode && !gameState.isProcessingPhysics) {

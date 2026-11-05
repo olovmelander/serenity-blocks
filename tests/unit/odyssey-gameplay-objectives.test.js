@@ -18,6 +18,7 @@ import { getLevelById } from '../../src/core/odyssey/data/levels.js';
 import { createFailureModal } from '../../src/ui/odyssey/FailureModal.js';
 import { formatOdysseyMapObjective } from '../../src/ui/odyssey/objective-copy.js';
 import { handleOdysseyPauseAction } from '../../src/ui/odyssey/odyssey-pause-actions.js';
+import { beginOdysseyStillAir } from '../../src/core/odyssey/odyssey-charm-use.js';
 import { hardDrop, move } from '../../src/core/game.js';
 import { markBoardDirty, rebuildBoardGridFromPieces } from '../../src/core/board.js';
 import {
@@ -871,6 +872,45 @@ describe('An orb\'s ending', () => {
             await expect(mode.onStop()).resolves.toBeUndefined();
 
             expect(error).toHaveBeenCalled();
+        });
+    });
+
+    describe('Still Air on a speed ramp', () => {
+        it('holds the slow pace against the ramp, frame after frame', () => {
+            const harness = createMode(getLevelById(39));
+            const { mode, session, frameRateController } = harness;
+            mode.levelStartTime = performance.now() - 60000;
+            mode.levelPausedMs = 0;
+            mode._pauseStartedAt = null;
+            mode._startGameLoop(session);
+            session.hybridEngine.updateTime(60);
+            const ramped = session.gameState.dropInterval;
+            expect(ramped).toBeLessThan(500);
+
+            beginOdysseyStillAir(session, mode._elapsedLevelMs());
+            for (let frame = 0; frame < 3; frame += 1) {
+                frameRateController.render();
+                expect(session.gameState.dropInterval).toBeGreaterThanOrEqual(1500);
+            }
+        });
+
+        it('gives the pace back to the ramp when it ends', () => {
+            const harness = createMode(getLevelById(39));
+            const { mode, session, frameRateController } = harness;
+            mode.levelStartTime = performance.now() - 60000;
+            mode.levelPausedMs = 0;
+            mode._pauseStartedAt = null;
+            mode._startGameLoop(session);
+            session.hybridEngine.updateTime(60);
+
+            beginOdysseyStillAir(session, mode._elapsedLevelMs());
+            frameRateController.render();
+            session.charms.stillAir.until = 0;
+            frameRateController.render();
+            frameRateController.render();
+
+            expect(session.charms.stillAir).toBeNull();
+            expect(session.gameState.dropInterval).toBeLessThan(500);
         });
     });
 });
