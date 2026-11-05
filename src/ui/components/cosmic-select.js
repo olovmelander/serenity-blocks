@@ -51,6 +51,21 @@ function isEnhanceable(select) {
         && select.dataset.cosmicSkip !== 'true';
 }
 
+/** Hide the native control while enhanced, preserving its original accessibility. */
+function hideNativeSelect(select) {
+    const original = ['aria-hidden', 'tabindex'].map((name) => [name, select.getAttribute(name)]);
+    select.classList.add('cosmic-select__native');
+    select.setAttribute('aria-hidden', 'true');
+    select.setAttribute('tabindex', '-1');
+    return () => {
+        select.classList.remove('cosmic-select__native');
+        original.forEach(([name, value]) => {
+            if (value === null) select.removeAttribute(name);
+            else select.setAttribute(name, value);
+        });
+    };
+}
+
 export function enhanceSelect(select, { label = null } = {}) {
     if (!isEnhanceable(select)) return null;
     select.dataset.cosmicEnhanced = 'true';
@@ -88,9 +103,7 @@ export function enhanceSelect(select, { label = null } = {}) {
     listbox.hidden = true;
 
     // Native select stays in the DOM (form source of truth) but visually hidden.
-    select.classList.add('cosmic-select__native');
-    select.setAttribute('aria-hidden', 'true');
-    select.setAttribute('tabindex', '-1');
+    const restoreNativeSelect = hideNativeSelect(select);
     select.parentNode.insertBefore(wrapper, select);
     wrapper.append(trigger, select, listbox);
 
@@ -272,9 +285,7 @@ export function enhanceSelect(select, { label = null } = {}) {
         destroy: () => {
             close();
             select.removeEventListener('change', renderValue);
-            select.classList.remove('cosmic-select__native');
-            select.removeAttribute('aria-hidden');
-            select.removeAttribute('tabindex');
+            restoreNativeSelect();
             delete select.dataset.cosmicEnhanced;
             wrapper.parentNode?.insertBefore(select, wrapper);
             wrapper.remove();
@@ -300,25 +311,29 @@ export function enhanceSegmented(select, { label = null } = {}) {
     group.setAttribute('role', 'radiogroup');
     group.setAttribute('aria-label', accessibleName);
 
-    select.classList.add('cosmic-select__native');
-    select.setAttribute('aria-hidden', 'true');
-    select.setAttribute('tabindex', '-1');
+    const restoreNativeSelect = hideNativeSelect(select);
     select.parentNode.insertBefore(group, select);
     group.appendChild(select);
 
     let segments = [];
 
     const renderChecked = () => {
-        segments.forEach((seg) => {
+        const options = Array.from(select.options);
+        const checkedIndex = options.findIndex((option) => option.value === select.value && !option.disabled);
+        const tabStop = checkedIndex < 0 ? options.findIndex((option) => !option.disabled) : checkedIndex;
+        segments.forEach((seg, index) => {
+            seg.disabled = Boolean(select.disabled || options[index]?.disabled);
             const checked = seg.dataset.value === select.value;
             seg.setAttribute('aria-checked', checked ? 'true' : 'false');
             seg.classList.toggle('is-checked', checked);
-            seg.tabIndex = checked ? 0 : -1;
+            seg.tabIndex = index === tabStop && !seg.disabled ? 0 : -1;
         });
         group.classList.toggle('is-disabled', select.disabled);
     };
 
     const commit = (value) => {
+        const option = Array.from(select.options).find((entry) => entry.value === value);
+        if (select.disabled || !option || option.disabled) return;
         if (select.value !== value) {
             select.value = value;
             select.dispatchEvent(new Event('change', { bubbles: true }));
@@ -347,13 +362,19 @@ export function enhanceSegmented(select, { label = null } = {}) {
     // menu (they used to change the value, so walking a form changed Players 2 to 3).
     group.setAttribute('aria-orientation', 'horizontal');
     group.addEventListener('keydown', (event) => {
-        if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+        if (select.disabled || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+        renderChecked();
+        const enabled = segments.filter((seg) => !seg.disabled);
+        if (!enabled.length) return;
         event.preventDefault();
         const dir = event.key === 'ArrowRight' ? 1 : -1;
-        const current = segments.findIndex((seg) => seg.dataset.value === select.value);
-        const next = (current + dir + segments.length) % segments.length;
-        commit(segments[next].dataset.value);
-        segments[next].focus();
+        const current = enabled.findIndex((seg) => seg.dataset.value === select.value);
+        const first = dir > 0 ? 0 : enabled.length - 1;
+        const next = current < 0
+            ? first
+            : (current + dir + enabled.length) % enabled.length;
+        commit(enabled[next].dataset.value);
+        enabled[next].focus();
     });
 
     select.addEventListener('change', renderChecked);
@@ -365,7 +386,7 @@ export function enhanceSegmented(select, { label = null } = {}) {
         syncDisabled: renderChecked,
         destroy: () => {
             select.removeEventListener('change', renderChecked);
-            select.classList.remove('cosmic-select__native');
+            restoreNativeSelect();
             delete select.dataset.cosmicEnhanced;
             group.parentNode?.insertBefore(select, group);
             group.remove();
