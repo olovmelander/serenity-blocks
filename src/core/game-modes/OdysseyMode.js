@@ -75,7 +75,9 @@ import {
     cancelOdysseyEntryPresence, createOdysseyEntryPresence, runOdysseyEntryReadyCue, restartOdysseyLevelInPlace,
     returnToOdysseyWorld, isOdysseyScenicJourney, isOdysseyWorldInterlude, noticeOdysseyEntryAbort,
 } from '../../ui/odyssey/odyssey-journey-flow.js';
-import { completeOdysseyLevel, deferFinishPastCascade, settleOdysseyLevelEnd } from './odyssey-completion.js';
+import {
+    completeOdysseyLevel, deferFinishPastCascade, drainAndBankOdysseyLap, settleOdysseyLevelEnd,
+} from './odyssey-completion.js';
 import {
     applyOdysseyBoardAudioPolicy, captureOdysseyBoardTrack, releaseOdysseyLevelMusic, releaseOdysseyBoardMusic,
 } from './odyssey-audio-policy.js';
@@ -621,8 +623,7 @@ export class OdysseyMode extends BaseGameMode {
         this.levelCompleting = false;
         await super.onStop();
 
-        console.log('[Odyssey] Stopping...');
-        await this._drainLevelSession(session);
+        await drainAndBankOdysseyLap(this, session);
 
         if (!isOdysseyScenicJourney(this)) this._restoreTransitionMusicDuck(180);
         this.isEnteringLevel = false;
@@ -684,8 +685,6 @@ export class OdysseyMode extends BaseGameMode {
         disposeOdysseyTowerLook(this);
         await releaseOdysseyThemeAccess(this);
         await super.onDeactivate();
-
-        console.log('[Odyssey] Deactivating...');
 
         // Fixed/unknown clocks are presentation-only until §5.8 versions the
         // campaign save and Steam result sinks.

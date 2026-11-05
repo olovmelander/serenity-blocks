@@ -42,26 +42,14 @@ export function deferFinishPastCascade(mode, session) {
     return true;
 }
 
-/** Save one retired attempt before choosing the next step of the journey. */
-export async function completeOdysseyLevel(mode, results) {
-    // Prevent multiple completions
-    const session = mode._activeLevelSession;
-    if (mode.levelCompleting || !mode._isLevelSessionActive(session)) return;
-    mode.levelCompleting = true;
-    if (session.simulationClock === DEMO_LEGACY_SIMULATION_CLOCK && mode.levelStartTime) {
-        session.hybridEngine.updateTime(mode._elapsedLevelMs() / 1000);
-    }
-    const { retirementGeneration } = mode._retireLevelSession(session);
+/**
+ * Work one retired attempt's clear out and save it. Nothing here presents anything, so a player
+ * on their way out keeps the clear as well.
+ * @returns {Object} the results the sheet shows
+ */
+function saveOdysseyClear(mode, session, results) {
     const { gameState, hybridEngine, levelId } = session;
     const writesLegacyResults = canWriteLegacySimulationResults(session.simulationClock);
-
-    console.log(`[Odyssey] Level ${levelId} completed!`, results);
-    // The well answers the goal while the attempt drains and saves beneath it. It is cosmetic:
-    // a failure here can never block or delay the save.
-    const flourish = new Promise((resolve) => { resolve(mode._celebrateGoalReached?.(session)); })
-        .catch(() => {});
-    await mode._drainLevelSession(session);
-    if (!mode._isLevelSessionCurrent(session, retirementGeneration)) return;
 
     // Calculate final metrics
     hybridEngine?.updateScore(session.duel?.score ?? (gameState.score || 0));
@@ -141,6 +129,51 @@ export async function completeOdysseyLevel(mode, results) {
             console.warn('[Odyssey] Steam stats sync failed:', err.message);
         });
     }
+
+    return finalResults;
+}
+
+/**
+ * Drain an attempt that is being stopped. A player who leaves a showcase lap for the main menu, or
+ * closes the game, has met the goal: the clear is saved on the way out, with no sheet. (The pause
+ * sheet's ways out end the orb as Finish does, ui/odyssey/odyssey-pause-actions.js.) The drain
+ * comes first so a cascade's waves count, and a save that fails never holds up leaving.
+ */
+export async function drainAndBankOdysseyLap(mode, session) {
+    await mode._drainLevelSession(session);
+    if (!session?.gameState?.victoryLapActive) return;
+    session.gameState.victoryLapActive = false;
+    try {
+        if (session.simulationClock === DEMO_LEGACY_SIMULATION_CLOCK && mode.levelStartTime) {
+            session.hybridEngine.updateTime(mode._elapsedLevelMs() / 1000);
+        }
+        saveOdysseyClear(mode, session, {});
+    } catch (error) {
+        console.error('[Odyssey] Could not save the clear on the way out:', error);
+    }
+}
+
+/** Save one retired attempt before choosing the next step of the journey. */
+export async function completeOdysseyLevel(mode, results) {
+    // Prevent multiple completions
+    const session = mode._activeLevelSession;
+    if (mode.levelCompleting || !mode._isLevelSessionActive(session)) return;
+    mode.levelCompleting = true;
+    if (session.simulationClock === DEMO_LEGACY_SIMULATION_CLOCK && mode.levelStartTime) {
+        session.hybridEngine.updateTime(mode._elapsedLevelMs() / 1000);
+    }
+    const { retirementGeneration } = mode._retireLevelSession(session);
+    const writesLegacyResults = canWriteLegacySimulationResults(session.simulationClock);
+
+    console.log(`[Odyssey] Level ${session.levelId} completed!`, results);
+    // The well answers the goal while the attempt drains and saves beneath it. It is cosmetic:
+    // a failure here can never block or delay the save.
+    const flourish = new Promise((resolve) => { resolve(mode._celebrateGoalReached?.(session)); })
+        .catch(() => {});
+    await mode._drainLevelSession(session);
+    if (!mode._isLevelSessionCurrent(session, retirementGeneration)) return;
+
+    const finalResults = saveOdysseyClear(mode, session, results);
 
     // The ceremony arrives through the showpiece's afterglow when the well played one.
     if (await flourish === true) finalResults.showpiece = true;

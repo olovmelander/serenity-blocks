@@ -17,6 +17,7 @@ import { OdysseyStateManager } from '../../src/core/odyssey/OdysseyStateManager.
 import { getLevelById } from '../../src/core/odyssey/data/levels.js';
 import { createFailureModal } from '../../src/ui/odyssey/FailureModal.js';
 import { formatOdysseyMapObjective } from '../../src/ui/odyssey/objective-copy.js';
+import { handleOdysseyPauseAction } from '../../src/ui/odyssey/odyssey-pause-actions.js';
 import { hardDrop, move } from '../../src/core/game.js';
 import { markBoardDirty, rebuildBoardGridFromPieces } from '../../src/core/board.js';
 import {
@@ -732,5 +733,144 @@ describe('An orb\'s ending', () => {
         expect(returnToBoard).toHaveBeenCalledOnce();
         await expect(settleOdysseyLevelEnd({ returnToBoard }, Promise.resolve('done'))).resolves.toBe('done');
         expect(error).toHaveBeenCalled();
+    });
+
+    describe('leaving a showcase lap with the goal met', () => {
+        beforeEach(() => {
+            const values = new Map();
+            vi.stubGlobal('localStorage', {
+                getItem: (key) => values.get(key) ?? null,
+                setItem: (key, value) => values.set(key, String(value)),
+                removeItem: (key) => values.delete(key),
+            });
+            vi.stubGlobal('window', {
+                location: { search: '' },
+                matchMedia: () => ({ matches: false }),
+                addEventListener: () => {},
+                removeEventListener: () => {},
+                dispatchEvent: () => {},
+            });
+            vi.stubGlobal('document', {
+                hidden: false,
+                body: { classList: { add() {}, remove() {}, contains: () => false } },
+                getElementById: () => null,
+                querySelector: () => null,
+                querySelectorAll: () => [],
+                createElement: () => ({ style: {}, classList: { add() {}, remove() {} }, appendChild() {}, remove() {} }),
+            });
+        });
+
+        afterEach(() => {
+            vi.unstubAllGlobals();
+        });
+
+        function reachGoalWithSaves(options = {}) {
+            const harness = createMode(getLevelById(32), { persistResults: true, ...options });
+            const { mode, session } = harness;
+            mode.isActive = true;
+            for (let sequence = 0; sequence < session.levelConfig.victory.primary.target; sequence++) {
+                session.hybridEngine.victoryEvaluator.onCascade(4);
+            }
+            mode._checkVictoryConditions(session);
+            expect(session.gameState.victoryLapActive).toBe(true);
+            return harness;
+        }
+
+        it.each(['map', 'retry'])('ends the orb as Finish does from the pause sheet (%s)', async (action) => {
+            const harness = reachGoalWithSaves();
+            const { mode } = harness;
+            const restart = vi.spyOn(mode, '_restartLevelInPlace').mockResolvedValue();
+
+            expect(handleOdysseyPauseAction(mode, { action })).toBe(true);
+            await vi.waitFor(() => expect(mode._showLevelResults).toHaveBeenCalledOnce());
+            await finishUi(harness, true);
+
+            expect(mode.completeLevel).toHaveBeenCalledOnce();
+            expect(mode.odysseyState.isLevelCompleted(32)).toBe(true);
+            expect(mode.odysseyState.isLevelUnlocked(33)).toBe(true);
+            expect(restart).not.toHaveBeenCalled();
+        });
+
+        it('leaves the pause sheet alone before the goal is met', () => {
+            const { mode } = createMode(getLevelById(32), { persistResults: true });
+            mode.isActive = true;
+            const restart = vi.spyOn(mode, '_restartLevelInPlace').mockResolvedValue();
+
+            expect(handleOdysseyPauseAction(mode, { action: 'retry' })).toBe(true);
+
+            expect(restart).toHaveBeenCalledOnce();
+            expect(mode.completeLevel).not.toHaveBeenCalled();
+        });
+
+        it('keeps the clear when the player goes to the main menu or closes the game', async () => {
+            const { mode, session } = reachGoalWithSaves();
+
+            await mode.onStop();
+
+            expect(mode.odysseyState.isLevelCompleted(32)).toBe(true);
+            expect(mode.odysseyState.isLevelUnlocked(33)).toBe(true);
+            expect(session.gameState.victoryLapActive).toBe(false);
+            expect(mode._showLevelResults).not.toHaveBeenCalled();
+            expect(mode._syncSteamStats).toHaveBeenCalledOnce();
+        });
+
+        it('waits for a cascade under way, so its waves count toward the saved stars', async () => {
+            const { mode, session } = reachGoalWithSaves();
+            const cascade = deferred();
+            session.gameState.isProcessingPhysics = true;
+            session.gameState.latestPhysicsPromise = cascade.promise;
+
+            const stop = mode.onStop();
+            await Promise.resolve();
+            expect(mode.odysseyState.isLevelCompleted(32)).toBe(false);
+
+            session.gameState.isProcessingPhysics = false;
+            session.gameState.latestPhysicsPromise = null;
+            cascade.resolve();
+            await stop;
+
+            expect(mode.odysseyState.isLevelCompleted(32)).toBe(true);
+        });
+
+        it('saves one clear when Finish already ended the orb', async () => {
+            const harness = reachGoalWithSaves();
+            const { mode } = harness;
+            const save = vi.spyOn(mode.odysseyState, 'completeLevel');
+
+            mode._finishVictoryLap();
+            await vi.waitFor(() => expect(mode._showLevelResults).toHaveBeenCalledOnce());
+            await mode.onStop();
+
+            expect(save).toHaveBeenCalledOnce();
+        });
+
+        it('saves nothing when the player leaves before the goal is met', async () => {
+            const { mode } = createMode(getLevelById(32), { persistResults: true });
+            mode.isActive = true;
+            const save = vi.spyOn(mode.odysseyState, 'completeLevel');
+
+            await mode.onStop();
+
+            expect(save).not.toHaveBeenCalled();
+        });
+
+        it('saves nothing from an unranked simulation clock', async () => {
+            const { mode } = reachGoalWithSaves({ fixed: true });
+            const save = vi.spyOn(mode.odysseyState, 'completeLevel');
+
+            await mode.onStop();
+
+            expect(save).not.toHaveBeenCalled();
+        });
+
+        it('lets the player leave even when the save fails', async () => {
+            const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+            const { mode } = reachGoalWithSaves();
+            mode.odysseyState.completeLevel = vi.fn(() => { throw new Error('disk full'); });
+
+            await expect(mode.onStop()).resolves.toBeUndefined();
+
+            expect(error).toHaveBeenCalled();
+        });
     });
 });
