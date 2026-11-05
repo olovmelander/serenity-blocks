@@ -1,0 +1,205 @@
+{
+  "schema_version": 1,
+  "pass": 2,
+  "recorded_utc": "2026-11-05T23:54:29.637350+00:00",
+  "repository": "olovmelander/serenity-blocks",
+  "pull_request": "https://github.com/olovmelander/serenity-blocks/pull/358",
+  "original_baseline_commit": "04b0b613daae153dedffbef47fcba43817f30405",
+  "previous_audit_commit": "6aba8f4fd7d9c2a18f44e620a565d3336661266f",
+  "validated_code_commit": "6f283886720f18e9380d765cfe4a62434b3ba283",
+  "environment": {
+    "platform": "Linux",
+    "node": "v24.22.1",
+    "installation": "npm ci --ignore-scripts",
+    "test_workers": 2,
+    "electron_binary_installed": false
+  },
+  "changes": [
+    {
+      "commit": "b5c01a6",
+      "area": "Deferred cloud initialization and first-gesture audio cleanup",
+      "added_cases": 4,
+      "pre_fix_failures": 2,
+      "focused_passed": 161
+    },
+    {
+      "commit": "3f4f82d",
+      "area": "Retired invite callbacks, current match state and native subscriptions",
+      "added_cases": 12,
+      "pre_fix_failures": 9,
+      "focused_passed": 512
+    },
+    {
+      "commit": "8eb5273",
+      "area": "Managed start ownership for restarted cached modes",
+      "added_cases": 8,
+      "pre_fix_failures": 5,
+      "focused_passed": 122
+    },
+    {
+      "commit": "392ebd3",
+      "area": "Direct-child shutdown escalation in eight scripts",
+      "added_cases": 14,
+      "pre_fix_failures": 8,
+      "focused_passed": 48
+    },
+    {
+      "commit": "6f28388",
+      "area": "Odyssey completion fields, containers, counters, legacy migration and dates",
+      "added_cases": 40,
+      "pre_fix_failures": 29,
+      "focused_passed": 196
+    }
+  ],
+  "integrated_tests": {
+    "command": "npm test -- --maxWorkers=2 --reporter=json --outputFile=/workspace/serenity-audit/pass2-integrated-tests.json",
+    "success": true,
+    "files": 1373,
+    "passed": 24607,
+    "failed": 0,
+    "skipped": 3,
+    "failed_files": [],
+    "started_utc": "2026-11-05T23:45:04.099000+00:00",
+    "duration_seconds": 505.587
+  },
+  "new_cases": 78,
+  "reproduced_pre_fix_failures": 53,
+  "baseline_vs_introduced": "Previous audit suite: 24,529 passed / 3 skipped. Pass 2 adds 78 passing cases, with no introduced suite failures. Deferred cloud lifetime/retry cases reproduce identically on original baseline 04b0b613.",
+  "gates": [
+    {
+      "check": "typecheck",
+      "command": "npm run typecheck",
+      "exit_code": 0
+    },
+    {
+      "check": "ts-ratchet",
+      "command": "node scripts/ts-ratchet-check.mjs",
+      "exit_code": 0
+    },
+    {
+      "check": "lint",
+      "command": "npm run lint:ci",
+      "exit_code": 0
+    },
+    {
+      "check": "architecture",
+      "command": "node scripts/architecture-fitness-check.mjs",
+      "exit_code": 0
+    },
+    {
+      "check": "boundaries",
+      "command": "npm run check:boundaries",
+      "exit_code": 0
+    },
+    {
+      "check": "theme-lifecycle",
+      "command": "npm run audit:theme-lifecycle",
+      "exit_code": 0
+    },
+    {
+      "check": "release-gates",
+      "command": "npm run check:release-gates",
+      "exit_code": 0
+    },
+    {
+      "check": "perf-budgets",
+      "command": "npm run perf:budgets:gate",
+      "exit_code": 0
+    },
+    {
+      "check": "whitespace",
+      "command": "git diff 6aba8f4 --check",
+      "exit_code": 0
+    },
+    {
+      "check": "build",
+      "command": "npm run build",
+      "exit_code": 0
+    },
+    {
+      "check": "ip-strings",
+      "command": "npm run check:ip-strings",
+      "exit_code": 0
+    },
+    {
+      "check": "pages-artifact",
+      "command": "npm run check:pages-artifact",
+      "exit_code": 0
+    }
+  ],
+  "lint": {
+    "errors": 432,
+    "warnings": 1999,
+    "fatal": 0,
+    "ceiling": 432,
+    "changed": false
+  },
+  "architecture": "All ratchets unchanged and passing; no ceiling raised.",
+  "boundaries": {
+    "modules": 2121,
+    "dependencies": 7781,
+    "violations": 0
+  },
+  "build": {
+    "seconds": 44.85,
+    "entry_chunks": 3,
+    "entry_kib_rounded": 12,
+    "main_chunks": 4,
+    "main_kib_rounded": 1307
+  },
+  "browser_smoke": {
+    "checks": [
+      {
+        "name": "production menu boot",
+        "ready": true,
+        "cards": 8
+      },
+      {
+        "name": "settings controls navigation",
+        "open": true,
+        "modalClass": "modal visible",
+        "controlsVisible": true,
+        "settingsAvailable": true
+      }
+    ],
+    "exceptions": [],
+    "errors": [
+      "[SoundManager] Music switch failed: NotAllowedError: play() failed because the user didn't interact with the document first. https://goo.gl/xX8pDD",
+      "[SoundManager] Music switch failed: NotAllowedError: play() failed because the user didn't interact with the document first. https://goo.gl/xX8pDD",
+      "[SoundManager] Music switch failed: NotAllowedError: play() failed because the user didn't interact with the document first. https://goo.gl/xX8pDD"
+    ],
+    "failedRequests": [
+      {
+        "requestId": "43347.112",
+        "timestamp": 4807.010665,
+        "type": "Media",
+        "errorText": "net::ERR_ABORTED",
+        "canceled": true
+      }
+    ],
+    "passed": true
+  },
+  "browser_note": "Production dist in isolated headless Chromium; intro/theme-warm skips. Eight menu cards and Controls settings passed; zero uncaught exceptions. Three expected no-trusted-gesture autoplay errors and one canceled media request; no full audio or visual validation claimed.",
+  "independent_reviews": [
+    "Frozen-input and symmetric malformed-date save checks; findings incorporated before freeze.",
+    "Actual-module managed/direct start interleavings; 21 manager tests rechecked.",
+    "Root reviewed integrated production diff and all evidence; real-child tests reap fixtures."
+  ],
+  "initial_pass_ci": {
+    "head": "6aba8f4fd7d9c2a18f44e620a565d3336661266f",
+    "run_id": 42126922863,
+    "test": "success",
+    "build": "success",
+    "deploy": "skipped"
+  },
+  "current_github_ci": "Will run after this checkpoint is pushed; local results are not a remote CI result.",
+  "deferred_cloud_evidence": "pass-02-deferred-cloud.json",
+  "limits": [
+    "No authenticated Steam or two-machine sync",
+    "No Windows or physical controller validation",
+    "No real GPU capture/performance or theme visual changes",
+    "Direct-child termination only; wrapper descendants remain unverified",
+    "No release approval, main merge or deployment; existing privacy contact placeholder remains",
+    "Dependency manifests unchanged; dependency findings remain in initial ledger"
+  ]
+}

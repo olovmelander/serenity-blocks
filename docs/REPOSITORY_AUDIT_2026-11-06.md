@@ -1,6 +1,6 @@
 # Repository audit and safe fixes — 2026-11-05/06
 
-**Status:** initial audited fix batch verified locally and available in draft PR #358; scheduled follow-up passes remain pending. This is an evidence record, not a new architectural roadmap. The remaining observations require fresh reproduction and the existing architecture constraints before implementation.
+**Status:** the initial batch passed local checks and GitHub CI. Continuation pass 2 adds five committed fix batches verified locally for the same draft PR #358. Later scheduled passes remain pending. This is an evidence record, not a new architectural roadmap.
 
 - Repository: `olovmelander/serenity-blocks`
 - Baseline: `04b0b613daae153dedffbef47fcba43817f30405`
@@ -110,9 +110,25 @@ Commit: `4a9b8a0`. Baseline failures reproduced; 117 startup tests and 46 cleanu
 
 Commits: `8d056d5`, `841ecd7`, `718d666`. Tooling regressions reproduced 12 failures before fixes; 20 budget/boot tests and 33 GPU coverage/report tests passed. The actual workflow shell was checked with a simulated Electron exit that left no report: it correctly failed rather than accepting a seeded stale success. No GPU sweep was required or claimed for these report/selection changes.
 
+### Continuation pass 2: save records and lifecycle ownership
+
+Five disjoint audits added 78 regression/control cases, including 53 demonstrated pre-fix failures. Independent save review caught additional date coercion and legacy-container cases before integration. The fixes preserve save versions, gameplay rules, invitation queue policy and existing shutdown grace periods.
+
+| Area / commit | Reproduced defect and resulting behavior | Focused verification |
+|---|---|---|
+| Deferred startup — `b5c01a6` | A late Steam Cloud import could construct and publish a manager after app cleanup. First-gesture audio listeners also survived teardown. The import checks existing cleanup ownership; click/keyboard listeners share an abort signal retired synchronously by cleanup. | 4 new cases, 2 pre-fix failures; 161 neighboring tests passed |
+| Invitations / native subscriptions — `3f4f82d` | Pending friend lookup, activation and visible-toast callbacks could act after destruction. Acceptance also used match state captured when the toast appeared. Retired callbacks are inert; acceptance checks current match state. Explicit transport shutdown releases both native peer-event subscriptions, including partial registration. | 12 new cases, 9 pre-fix failures; 512 neighboring tests passed |
+| Cached-mode starts — `8eb5273` | An old theme/audio wait could announce a newer run twice, or its rejection could stop the restarted cached instance. Each accepted managed start now owns its post-await work and rollback. Original errors still reach their callers, and owned failed starts still roll back. | 8 new cases, 5 pre-fix failures; 122 neighboring tests passed; independent review reran all 21 manager tests |
+| Capture processes — `392ebd3` | Eight scripts treated `ChildProcess.killed` as proof of exit, so a child ignoring SIGTERM never received the intended SIGKILL. They now inspect actual exit/signal state, preserving 600/800 ms grace and existing Windows taskkill branches. | 14 new cases, 8 pre-fix failures with real subprocesses; 48 neighboring tests passed; fixture children reaped |
+| Odyssey records — `6f28388` | Invalid optional score/time/attempt/bonus fields could poison the next completion or erase good cloud data. Malformed maps, unlock lists and counters now normalize without losing valid earned clears. The v1 array-map loophole is closed. Invalid date types and out-of-range timestamps cannot overwrite a valid completion date or throw during merge. | 40 new cases, 29 pre-fix failures; 196 neighboring tests passed; independent frozen-input and symmetric merge checks |
+
+Compatibility controls retain sparse legacy records, numeric zeros, fractional times, theme history, unknown metadata, supported numeric/ISO dates, and New Journey replacement precedence. The historical zero-time comparison convention is unchanged. Mode selection ordering, direct mode starts, full cloud-manager disposal and descendant process-tree shutdown are outside these bounded fixes; see the remaining observations.
+
 ## Integration verification
 
-The compact evidence ledger is [reports/repository-audit-2026-11-06/validation.json](../reports/repository-audit-2026-11-06/validation.json). It records the tested commit, environment, exact results and limits.
+The [initial evidence ledger](../reports/repository-audit-2026-11-06/validation.json) and [pass 2 ledger](../reports/repository-audit-2026-11-06/pass-02-validation.json) record tested commits, environment, exact results and limits.
+
+**Pass 2 integration:** code `6f28388` passed **24,607 tests, 3 skipped, zero failures across 1,373 files** in 505.59 seconds. The 78-test increase matches the added cases. Typecheck, TypeScript/lint/architecture ratchets, boundaries, theme lifecycle, development release gates, performance-budget checks, build, boot closure, IP strings, Pages artifact and whitespace checks all passed. Lint remains 432 errors / 1,999 warnings / zero fatal errors at its existing ceiling; architecture ceilings were not increased. The production build took 44.85 seconds, with entry 3 chunks / 12 KB and main 4 chunks / 1,307 KB. Chromium again opened all eight menu cards and Controls settings with no uncaught exceptions; three no-gesture autoplay errors and one canceled media request are recorded, not presented as full audio validation. No new failing suite was introduced. The table below retains the initial-pass comparison.
 
 | Check | Initial integration result |
 |---|---|
@@ -145,16 +161,19 @@ Raw local logs, browser results and per-area notes live under `/workspace/sereni
 
 These are investigations, not permission to implement architectural changes blindly. Existing ADRs and the umbrella plan still govern them.
 
-1. **Save validation:** inspect Odyssey auxiliary fields (`bestScore`, `bestTime`, attempts, completed bonuses) and malformed cloud-only containers while preserving valid legacy data.
-2. **Deferred app work:** reproduce late Steam Cloud manager adoption after app cleanup and first-gesture audio listeners surviving teardown; add ownership checks only with a concrete lifecycle harness.
-3. **Already-started invites:** the existing invite disposer stops subscriptions/queued invitations but does not fence an already-awaiting friend lookup or lobby activation.
-4. **Lazy mode selection:** overlapping mode-load requests can resolve out of order. A request-generation or serialization policy needs dedicated UI-flow testing; same-instance start ownership deserves further review beyond the repaired stop/deactivate continuations.
+Pass 2's [cloud lifetime/retry evidence](../reports/repository-audit-2026-11-06/pass-02-deferred-cloud.json) records identical original-baseline and audit outcomes, plus the compatibility constraints for the next pass. The reusable local harness is `/workspace/serenity-audit/pass2-cloud-lifecycle-repro.mjs`.
+
+1. **Cloud-manager lifetime and retry durability:** pass 2 fixes late adoption. A separate read-only reproduction confirmed that an initialized manager retains two timers and six subscriptions after app cleanup, and an already-started cloud download can still update/save disposed settings. Two write races are the next priority: (a) while a settings upload awaits IPC, queueing another category serializes only `pendingUploads`, dropping the in-flight settings entry and its dirty-key metadata from the restart ledger; (b) upload volume 0.7, edit it to 0.9 before acknowledgment, then acknowledge the old upload: `_forgetLocalEdits` clears the newer same-key edit, and the next session can replace 0.9 with cloud 0.7. Both write races and the lifetime gaps reproduce identically on original baseline `04b0b613`; they were not introduced by this audit. Address them with controlled in-flight write/restart regressions and acknowledgment ownership. Disposal must preserve the desktop quit order (mode/settings save, then pending cloud flush), unsent retries and upload acknowledgments; simply destroying the manager at the start of app cleanup would lose legitimate saves.
+2. **Partial app initialization:** cleanup during awaited manager setup needs a separate partial-initialization harness. Pass 2 covers deferred cloud imports and first-gesture listeners after manager setup.
+3. **Already-started mode operations:** destroyed invites cannot perform late follow-up starts; they cannot cancel activation already inside the mode manager. Native transport owners must still call shutdown after partial initialization failure; the current online-mode owner does so.
+4. **Lazy mode selection:** pass 2 concretely reproduced late lazy loading overriding a newer selection, a draining old deactivation overriding a third mode, construction/activation after cleanup, and an old activation failure clearing a reactivated cached instance. Silent generation-based early returns would let existing callers start the wrong mode or apply stale demo/invite payloads. Fix manager and UI continuation contracts together. Managed cached-mode start completion is now fenced, but direct `onStart()` restarts and stale caller error presentation remain outside that guarantee.
 5. **Already-running GPU recovery:** a late failure may route out a replacement surface. Blanket registration checks would suppress legitimate self-rebuild failures, so explicit mode/recovery ownership is needed. Visual changes still require the repository's screenshot workflow.
-6. **Capture-process cleanup:** the GPU harness's existing `ChildProcess.killed` check means signal sent, not process exited. npm/Windows process-tree shutdown needs isolated lifecycle tests before replacement.
+6. **Capture-process trees:** pass 2 fixes direct-child escalation in eight scripts. npm/npx wrapper descendants, `odyssey-gpu-split.mjs` single-signal cleanup and Windows process-tree behavior still need isolated descendant/port tests and platform validation.
 7. **Steam hardware/API coverage:** native friend/leaderboard capabilities are absent in the pinned binding, borderless-window frame behavior needs platform work, and the two-machine protocol soak remains unperformed. `wireV2` currently expires 2026-12-31; older October references are historical, not a reason to alter policy.
 8. **Cross-device statistics:** maximum merges cannot fully count independent concurrent games on different devices. A per-device counter/save-model change is beyond a safe incidental fix.
 9. **Dependencies:** six development-only packaging dependencies are affected by a moderate minimatch advisory. npm proposes a breaking builder downgrade; no automatic downgrade/override was applied.
 10. **Dormant paths:** legacy texture-cache and batching helpers have candidate weaknesses but no active consumers were established. Do not churn unused code without confirming live callers.
+11. **Shipping metadata:** the development release gate still warns that `PRIVACY_POLICY.md` lacks a contact address. A store build needs the owner’s real contact information; no address was invented.
 
 ## Overnight continuation
 
@@ -163,3 +182,4 @@ Hourly follow-up audit passes and a morning summary were scheduled using the use
 ### Pass log
 
 - Initial pass: code fixes, independent reviews, full local suite and build/gates complete. The final local suite passed 24,529 tests with three skips across 1,368 files. GitHub CI is separately checking the branch; its static gates have passed and its full test/build result was still pending at this checkpoint. A managed-environment restart preserved files/commits but terminated the first changed-branch test process before it produced a result; the full run was restarted after the Electron-import fix. Main has not been merged or deployed.
+- Pass 2 began 2026-11-05 23:38 UTC. Confirmed initial head `6aba8f4` passed GitHub run `42126922863`: test and build succeeded, deployment skipped. Five additional safe fix batches are committed through `6f28388`, with 78 new cases and 53 pre-fix failures reproduced. Integrated verification finished at 23:53 UTC: 24,607 passed / 3 skipped / zero failures across 1,373 files; build, all applicable gates and Chromium menu/settings smoke passed. The same draft PR is updated. Remote CI for this new checkpoint remains separate from these local results. Read-only follow-up recorded two pre-existing cloud retry/acknowledgment defects and lifetime gaps, with identical original-baseline reproductions, as the next pass’s priority. No merge or deployment.
