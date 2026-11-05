@@ -43,6 +43,29 @@
 /** The mode of a score or statistics record saved before records carried their mode. */
 export const LEGACY_SCORE_MODE = 'single';
 
+/** Scores kept for each mode, on this device and in the Steam Cloud copy. */
+export const SCORES_PER_MODE = 100;
+
+/**
+ * Each mode's best `limit` scores, highest first (ties: the newest first), so one mode's
+ * runs never push another's out (pure, for the tests).
+ * @param {Array<{score?: number, timestamp?: number, mode?: string}>} entries
+ * @param {number} [limit]
+ */
+export function keepTopScoresPerMode(entries, limit = SCORES_PER_MODE) {
+    const sorted = [...entries].sort((a, b) => {
+        if ((b.score ?? 0) !== (a.score ?? 0)) return (b.score ?? 0) - (a.score ?? 0);
+        return (b.timestamp ?? 0) - (a.timestamp ?? 0);
+    });
+    const kept = new Map();
+    return sorted.filter((entry) => {
+        const mode = entry.mode || LEGACY_SCORE_MODE;
+        const count = kept.get(mode) || 0;
+        kept.set(mode, count + 1);
+        return count < limit;
+    });
+}
+
 /** @type {readonly (keyof ModeStatistics)[]} */
 const MODE_COUNTERS = ['totalGames', 'totalScore', 'totalLines', 'highestScore', 'highestLevel'];
 

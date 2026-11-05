@@ -13,6 +13,7 @@ import {
 } from 'vitest';
 import { SteamCloudSyncManager } from '../../src/core/steam/steam-cloud-sync.js';
 import { OdysseyStateManager } from '../../src/core/odyssey/OdysseyStateManager.js';
+import { HighScoreManager } from '../../src/ui/high-scores.js';
 
 const steam = vi.hoisted(() => ({
     cloud: new Map(),
@@ -26,6 +27,7 @@ const steam = vi.hoisted(() => ({
 vi.mock('../../src/core/steam/steam-service.js', () => ({ default: steam }));
 
 const ODYSSEY = 'odyssey.json';
+const HIGHSCORES = 'highscores.json';
 const CLEAR = {
     stars: 3, score: 1000, time: 60, lines: 10, combo: 2,
 };
@@ -70,6 +72,52 @@ function odysseyDoc(overrides = {}) {
 const charms = (found, used, bag = {}, falls = 0) => ({
     bag, found, used, streak: { levelId: falls ? 7 : null, falls },
 });
+
+/** A real HighScoreManager over the one transaction importHighScores runs. */
+function scoreManager(rows) {
+    const manager = new HighScoreManager();
+    let store = rows.map((row, index) => ({ ...row, id: index + 1 }));
+    manager.getAllScores = async () => store.map((row) => ({ ...row }));
+    manager.db = {
+        transaction: () => {
+            const transaction = {
+                objectStore: () => ({
+                    clear: () => { store = []; },
+                    add: (row) => { store.push({ ...row, id: store.length + 1 }); },
+                }),
+            };
+            queueMicrotask(() => queueMicrotask(() => transaction.oncomplete?.()));
+            return transaction;
+        },
+    };
+    manager.rows = () => store;
+    return manager;
+}
+
+const countByMode = (rows) => rows.reduce((counts, row) => {
+    counts[row.mode] = (counts[row.mode] || 0) + 1;
+    return counts;
+}, {});
+
+/** 100 Single Player scores below 60 Infinity scores, each run linked to its replay. */
+function twoModes() {
+    const rows = [];
+    for (let i = 0; i < 100; i += 1) {
+        rows.push({
+            score: 1000 + i, lines: 10, level: 2, timestamp: 1000 + i, mode: 'single', demoId: 500 + i,
+        });
+    }
+    for (let i = 0; i < 60; i += 1) {
+        rows.push({
+            score: 90000 + i, lines: 40, level: 9, timestamp: 2000 + i, mode: 'infinity', demoId: 700 + i,
+        });
+    }
+    return rows;
+}
+
+const OTHER_DEVICES_SCORE = {
+    score: 95000, lines: 50, level: 10, timestamp: 3000, mode: 'infinity',
+};
 
 beforeEach(() => {
     syncs = [];
@@ -284,5 +332,66 @@ describe('New Journey with Steam Cloud on', () => {
         state.save();
 
         expect(saved().journeyStartedAt).toBe(stamp);
+    });
+});
+
+describe('the score merge across two devices', () => {
+    function devices() {
+        const manager = scoreManager(twoModes());
+        steam.cloud.set(HIGHSCORES, JSON.stringify({ version: 1, highScores: [OTHER_DEVICES_SCORE] }));
+        const { sync } = device({ highScoreManager: manager });
+        return { manager, sync };
+    }
+
+    it('keeps every mode\'s scores', async () => {
+        const { manager, sync } = devices();
+
+        await upload(sync, HIGHSCORES);
+
+        expect(countByMode(manager.rows())).toEqual({ single: 100, infinity: 61 });
+    });
+
+    it('keeps the replay links on this device\'s scores', async () => {
+        const { manager, sync } = devices();
+
+        await upload(sync, HIGHSCORES);
+
+        expect(manager.rows().filter((row) => row.demoId).length).toBe(160);
+    });
+
+    it('takes the other device\'s score in, without a replay it does not have', async () => {
+        const { manager, sync } = devices();
+
+        await upload(sync, HIGHSCORES);
+
+        const arrived = manager.rows().find((row) => row.score === OTHER_DEVICES_SCORE.score);
+        expect(arrived).toBeTruthy();
+        expect(arrived.demoId).toBeUndefined();
+    });
+
+    it('does not trim the cloud copy', async () => {
+        const { sync } = devices();
+
+        await upload(sync, HIGHSCORES);
+
+        expect(countByMode(cloudDoc(HIGHSCORES).highScores)).toEqual({ single: 100, infinity: 61 });
+    });
+
+    it('keeps each mode\'s best hundred, not the best hundred overall', () => {
+        const { sync } = device();
+
+        const merged = sync._mergeHighScores(twoModes(), [OTHER_DEVICES_SCORE]);
+
+        expect(countByMode(merged)).toEqual({ single: 100, infinity: 61 });
+    });
+
+    it('trims a mode past its hundred, lowest first', () => {
+        const { sync } = device();
+        const extra = { score: 1, lines: 1, level: 1, timestamp: 1, mode: 'single' };
+
+        const merged = sync._mergeHighScores(twoModes(), [extra]);
+
+        expect(countByMode(merged)).toEqual({ single: 100, infinity: 60 });
+        expect(merged.some((row) => row.score === 1)).toBe(false);
     });
 });

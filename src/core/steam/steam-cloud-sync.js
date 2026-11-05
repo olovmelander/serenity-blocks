@@ -4,7 +4,7 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { migrateOdysseyProgressData } from '../odyssey/OdysseyStateManager.js';
 import { ODYSSEY_SAVE_VERSION, getOdysseyCompletionThemeIds } from '../odyssey/odyssey-progress-schema.js';
 import { resolveOwnedMusicPreference } from '../progression/music-preference.js';
-import { mergeStatisticsSnapshots } from '../progression/score-statistics.js';
+import { keepTopScoresPerMode, mergeStatisticsSnapshots } from '../progression/score-statistics.js';
 import { CONTROLLER_LAYOUT_VERSION, migrateSerenityPadLayout } from '../controller-layout.js';
 
 const CLOUD_FILES = {
@@ -549,7 +549,7 @@ export class SteamCloudSyncManager {
         const merged = this._mergeHighScores(local, incoming.highScores || incoming.scores || []);
         const localKeys = new Set(local.map(scoreKey));
         if (merged.some((entry) => !localKeys.has(scoreKey(entry)))) {
-            await this._applyHighScores({ highScores: merged }, { merge: false });
+            await this._applyHighScores({ highScores: merged }, { merge: true });
         }
     }
 
@@ -630,7 +630,7 @@ export class SteamCloudSyncManager {
         if (!merged) return;
 
         if (fileName === CLOUD_FILES.HIGHSCORES) {
-            await this._applyHighScores(merged, { merge: false });
+            await this._applyHighScores(merged, { merge: true });
         } else if (fileName === CLOUD_FILES.STATS) {
             await this._applyStats(merged, { merge: false });
         } else if (fileName === CLOUD_FILES.ODYSSEY) {
@@ -750,6 +750,10 @@ export class SteamCloudSyncManager {
         }
     }
 
+    /**
+     * Merge in place (merge: true): this device's records keep their replay links, because an
+     * import strips them from what it is handed and local records win its de-duplication.
+     */
     async _applyHighScores(data, { merge = true } = {}) {
         if (!this.highScoreManager || !data) return;
         const entries = data.highScores || data.scores || [];
@@ -953,14 +957,7 @@ export class SteamCloudSyncManager {
             deduped.push(entry);
         }
 
-        deduped.sort((a, b) => {
-            if ((b.score ?? 0) !== (a.score ?? 0)) {
-                return (b.score ?? 0) - (a.score ?? 0);
-            }
-            return (b.timestamp ?? 0) - (a.timestamp ?? 0);
-        });
-
-        return deduped.slice(0, 100);
+        return keepTopScoresPerMode(deduped);
     }
 
     _mergeStatistics(localStats, cloudStats) {
