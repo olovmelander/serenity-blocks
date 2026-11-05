@@ -17,13 +17,14 @@
  *
  * Exits non-zero if any scene failed to signal ready, initialized the wrong
  * backend, or logged a shader/pipeline error (CI-friendly). The full scene list
- * is pinned ⊇ the chapter registry by tests/unit/odyssey-gpu-gate-coverage.test.js.
+ * derives from the chapter registry plus the pilot's non-chapter scenes.
  */
 
 import electron from 'electron';
 import { spawn } from 'child_process';
-import { mkdir, writeFile } from 'fs/promises';
+import { writeFile } from 'fs/promises';
 import path from 'path';
+import { resetValidationReport, resolveValidationScenes } from './odyssey-gpu-validation-report.mjs';
 
 const ROOT = process.cwd();
 const { app, BrowserWindow } = electron;
@@ -33,16 +34,7 @@ const FORCE_WEBGL = process.env.ODYSSEY_FORCE_WEBGL === '1';
 const SHOW = process.env.ODYSSEY_SHOW_WINDOW === '1';
 const READY_TIMEOUT_MS = Number(process.env.ODYSSEY_VALIDATION_READY_TIMEOUT_MS || 90000);
 const ARTIFACT_DIR = path.join(ROOT, 'artifacts', 'odyssey', 'webgpu-validation', FORCE_WEBGL ? 'webgl2' : 'webgpu');
-
-// Every chapter in the chapter registry (CHAPTER_SCENES) plus the 3 non-chapter
-// pilot scenes. Pinned ⊇ the registry by tests/unit/odyssey-gpu-gate-coverage.test.js.
-const ALL_SCENES = [
-    'earth-core', 'cosmic-expanse', 'black-hole-transcendence', 'urban-dreams',
-    'path', 'level-nodes', 'threshold-breach',
-];
-const SCENE_FILTER = (process.env.ODYSSEY_VALIDATION_SCENES || '')
-    .split(',').map((s) => s.trim()).filter(Boolean);
-const SCENES = SCENE_FILTER.length ? ALL_SCENES.filter((s) => SCENE_FILTER.includes(s)) : ALL_SCENES;
+const REPORT_PATH = path.join(ARTIFACT_DIR, 'report.json');
 
 const SHADER_ERR = /WGSL|ShaderModule|RenderPipeline|No stack defined|not declared|TSL:|uv.*not found|attribute.*not found/i;
 
@@ -105,7 +97,8 @@ async function waitForReady(win, timeoutMs) {
 }
 
 async function run() {
-    await mkdir(ARTIFACT_DIR, { recursive: true });
+    await resetValidationReport(REPORT_PATH);
+    const scenes = resolveValidationScenes(process.env.ODYSSEY_VALIDATION_SCENES || '');
     devServer = startDevServer();
     await waitForServer(`http://127.0.0.1:${PORT}/odyssey-webgpu-pilot.html`);
 
@@ -115,7 +108,7 @@ async function run() {
     });
 
     const results = [];
-    for (const scene of SCENES) {
+    for (const scene of scenes) {
         const consoleErrors = [];
         const onConsole = (_e, _level, message) => { if (SHADER_ERR.test(message)) consoleErrors.push(message.slice(0, 200)); };
         win.webContents.on('console-message', onConsole);
@@ -157,7 +150,7 @@ async function run() {
 
     const failed = results.filter((r) => !r.ok);
     console.log(`\n=== ${results.length - failed.length}/${results.length} scenes clean (${FORCE_WEBGL ? 'WebGL2' : 'WebGPU'} backend) ===`);
-    await writeFile(path.join(ARTIFACT_DIR, 'report.json'), JSON.stringify(results, null, 2));
+    await writeFile(REPORT_PATH, JSON.stringify(results, null, 2));
     win.destroy();
     return failed.length === 0 ? 0 : 1;
 }
