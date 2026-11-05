@@ -2868,6 +2868,7 @@ class SerenityBlocks {
                 console.error('[Main] Failed to start game from card selection:', error);
                 releaseLoadingSurface();
                 dismissCinematicLoadingOverlay(300);
+                this.modalManager.show('start');
                 window.dispatchEvent(new CustomEvent('serenity:toast', { detail: { type: 'error', message: `The game could not start. ${error.message}` } }));
             }
         };

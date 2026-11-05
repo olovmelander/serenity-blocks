@@ -1631,7 +1631,11 @@ export class ThemeManager {
         const pendingStart = themeInstance._startInFlight;
         if (pendingStart) {
             try {
-                await pendingStart;
+                await withTimeout(
+                    pendingStart,
+                    this.getThemeLifecycleTimeout(themeName),
+                    `Theme "${themeName}" warm start`,
+                );
             } catch {
                 return false;
             }
@@ -2195,7 +2199,8 @@ export class ThemeManager {
             }
             if (error?.standDown) console.log(`[ThemeManager] ${error.message}`);
             else console.warn(`[ThemeManager] prewarmTheme failed for "${themeName}":`, error);
-            if (theme && this.activeTheme !== theme) {
+            // As above: an instance an entry is starting is that entry's, and it starts it again.
+            if (theme && this.activeTheme !== theme && !this.activationsInFlight.has(theme)) {
                 this.disposeThemeInstance(theme, themeName, {
                     removeFromCache: true,
                 });
@@ -2326,6 +2331,59 @@ export class ThemeManager {
     }
 
     async resumeThemes() {
+        const { suspensionGeneration } = this;
+        const intentGeneration = this.themeIntentGeneration;
+        try {
+            return await this._resumeSuspendedTheme();
+        } catch (error) {
+            return this._recoverFromFailedEntry(error, suspensionGeneration, intentGeneration);
+        }
+    }
+
+    /**
+     * A theme that cannot start must never keep the player from the game, and a theme picked on
+     * the menu first starts here, at mode entry: fall back to Forest as a switch does, and with no
+     * Forest either, play over the plain background with themes live, so a later pick still works.
+     * An Odyssey world has its own plain path, so its failure stays with its caller.
+     * @param {unknown} error
+     * @param {number} suspensionGeneration
+     * @param {number} intentGeneration
+     * @returns {Promise<undefined>}
+     */
+    async _recoverFromFailedEntry(error, suspensionGeneration, intentGeneration) {
+        console.error('[ThemeManager] Failed to resume themes:', error);
+        if (this.isOdysseyThemeScopeActive()) throw error;
+        const playerLeft = this.isDisposed || suspensionGeneration !== this.suspensionGeneration;
+        const failedThemeName = this.pendingThemeName || this.activeThemeName;
+        this.pendingThemeInstance = null;
+        this.pendingThemeName = null;
+        if (playerLeft) return undefined;
+        if (intentGeneration !== this.themeIntentGeneration) return this.resumeThemes();
+
+        if (!this.activeTheme && failedThemeName !== 'forest') {
+            console.warn('[ThemeManager] Falling back to forest theme after a failed mode entry');
+            try {
+                const forestTheme = await this.loadTheme('forest');
+                if (this.disposedThemeInstances.has(forestTheme)) {
+                    throw new Error('Forest fallback loaded a disposed instance');
+                }
+                this.pendingThemeInstance = forestTheme;
+                this.pendingThemeName = 'forest';
+                await this.activateThemeInstance(forestTheme, 'forest');
+                if (this.activeTheme === forestTheme) return undefined;
+            } catch (fallbackError) {
+                console.error('[ThemeManager] Forest fallback failed at mode entry:', fallbackError);
+                this.pendingThemeInstance = null;
+                this.pendingThemeName = null;
+            }
+        }
+        if (this.isDisposed || suspensionGeneration !== this.suspensionGeneration) return undefined;
+        this.activeThemeName = this.activeTheme ? this.activeThemeName : null;
+        this.themesSuspended = false;
+        return undefined;
+    }
+
+    async _resumeSuspendedTheme() {
         // A switch requested while themes are suspended can still be loading its
         // target. Wait for that transaction to publish the latest pending owner
         // before deciding what to resume; otherwise the outgoing name can be
