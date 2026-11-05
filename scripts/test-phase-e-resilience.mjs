@@ -1,5 +1,6 @@
 import electron from 'electron';
 import { spawn } from 'child_process';
+import { stopChildProcess } from './lib/stop-child-process.mjs';
 
 const ROOT = process.cwd();
 const { app, BrowserWindow } = electron;
@@ -45,10 +46,7 @@ async function stopDevServer() {
     if (!devServerProcess) return;
     const proc = devServerProcess;
     devServerProcess = null;
-    if (proc.killed) return;
-    proc.kill('SIGTERM');
-    await delay(800);
-    if (!proc.killed) proc.kill('SIGKILL');
+    await stopChildProcess(proc);
 }
 
 async function waitForServer(url, timeoutMs = 60_000) {

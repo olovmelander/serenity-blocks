@@ -25,6 +25,7 @@ import { spawn } from 'child_process';
 import { writeFile } from 'fs/promises';
 import path from 'path';
 import { resetValidationReport, resolveValidationScenes } from './odyssey-gpu-validation-report.mjs';
+import { stopChildProcess } from './lib/stop-child-process.mjs';
 
 const ROOT = process.cwd();
 const { app, BrowserWindow } = electron;
@@ -160,7 +161,7 @@ app.whenReady().then(async () => {
     let code = 1;
     try { code = await run(); } catch (e) { console.error('validation failed:', e?.stack || e); }
     finally {
-        if (devServer && !devServer.killed) { devServer.kill('SIGTERM'); await delay(600); if (!devServer.killed) devServer.kill('SIGKILL'); }
+        await stopChildProcess(devServer, 600);
         app.exit(code);
     }
 });

@@ -230,7 +230,7 @@ function startDevServer() {
  * before the orphans were swept by hand. `taskkill /T` walks the tree.
  */
 function killProcessTree(proc) {
-    if (!proc || proc.killed || !proc.pid) return;
+    if (!proc?.pid || proc.exitCode !== null || proc.signalCode !== null) return;
     if (process.platform === 'win32') {
         try {
             spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { stdio: 'ignore' });
@@ -246,10 +246,10 @@ async function stopDevServer() {
     if (!devServerProcess) return;
     const proc = devServerProcess;
     devServerProcess = null;
-    if (!proc.killed) {
+    if (proc.exitCode === null && proc.signalCode === null) {
         killProcessTree(proc);
         await delay(800);
-        if (!proc.killed && process.platform !== 'win32') proc.kill('SIGKILL');
+        if (proc.exitCode === null && proc.signalCode === null && process.platform !== 'win32') proc.kill('SIGKILL');
     }
 }
 

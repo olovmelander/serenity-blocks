@@ -19,6 +19,7 @@ import electron from 'electron';
 import { spawn } from 'child_process';
 import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
+import { stopChildProcess } from './lib/stop-child-process.mjs';
 
 const ROOT = process.cwd();
 const { app, BrowserWindow } = electron;
@@ -80,11 +81,7 @@ async function stopDevServer() {
     if (!devServerProcess) return;
     const proc = devServerProcess;
     devServerProcess = null;
-    if (!proc.killed) {
-        proc.kill('SIGTERM');
-        await delay(800);
-        if (!proc.killed) proc.kill('SIGKILL');
-    }
+    await stopChildProcess(proc);
 }
 
 function createWindow() {

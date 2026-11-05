@@ -3,6 +3,7 @@ import { spawn } from 'child_process';
 import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
+import { stopChildProcess } from './lib/stop-child-process.mjs';
 
 const ROOT = process.cwd();
 const { app, BrowserWindow } = electron;
@@ -114,14 +115,7 @@ async function stopDevServer() {
     const proc = devServerProcess;
     devServerProcess = null;
 
-    if (proc.killed) return;
-
-    proc.kill('SIGTERM');
-    await delay(800);
-
-    if (!proc.killed) {
-        proc.kill('SIGKILL');
-    }
+    await stopChildProcess(proc);
 
     const devLogPath = path.join(ARTIFACT_DIR, 'dev-server.log');
     const logText = Array.isArray(proc._logChunks) ? proc._logChunks.join('') : '';
