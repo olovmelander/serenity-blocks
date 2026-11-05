@@ -3,13 +3,15 @@ import {
 } from 'vitest';
 import {
     ODYSSEY_CHARM_REFUSALS, activateOdysseyCharm, applyOdysseyLongBreath, applyOdysseyTide, beginOdysseyStillAir,
-    createOdysseyCharmRun, describeOdysseyCharmRun, odysseyCharmRefusal, odysseyCharmsAllowed, odysseyCharmsUsed,
+    createOdysseyCharmRun, describeOdysseyCharmRun, odysseyCharmFloor, odysseyCharmRefusal, odysseyCharmsAllowed,
+    odysseyCharmsUsed,
     odysseyLevelNowMs, odysseyTideRows, reviveOdysseyWell, sweepLowestRows, syncOdysseyCharmHud, tickOdysseyCharms,
     tickOdysseyStillAir, tryOdysseyHearth,
 } from '../../src/core/odyssey/odyssey-charm-use.js';
 import {
     ODYSSEY_LONG_BREATH_SECONDS, ODYSSEY_STILL_AIR_MS, ODYSSEY_TIDE_ROWS,
 } from '../../src/core/odyssey/odyssey-charm-bag.js';
+import { topRubbleRow } from '../../src/core/odyssey/odyssey-rubble.js';
 import { GameState } from '../../src/core/game.js';
 import { createBoardGrid, rebuildBoardGridFromPieces } from '../../src/core/board.js';
 import { VictoryConditionEvaluator } from '../../src/core/odyssey/VictoryConditionEvaluator.js';
@@ -493,5 +495,79 @@ describe('The tray and the tick', () => {
         expect(other.charms.stillAir).not.toBeNull();
         expect(() => syncOdysseyCharmHud({ odysseyHUD: null }, session)).not.toThrow();
         expect(() => tickOdysseyCharms(null, null)).not.toThrow();
+    });
+});
+
+describe('a floor above the well\'s floor', () => {
+    const rubbleRow = (y) => piece('R', [[1, 1, 1]], 0, y);
+
+    it('sweeps above it, and leaves what is below it where it was', () => {
+        const pieces = [rubbleRow(23), rubbleRow(22), piece('I', [[1], [1], [1], [1]], 5, 18)];
+
+        const swept = sweepLowestRows(pieces, 2, 21);
+
+        expect(swept.removed).toBe(2);
+        expect(swept.pieces.filter((p) => p.shapeKey === 'R').map((p) => p.y)).toEqual([23, 22]);
+        const stack = swept.pieces.find((p) => p.shapeKey === 'I');
+        expect(stack.y).toBe(20);
+        expect(stack.shape).toEqual([[1], [1], [0], [0]]);
+    });
+
+    it('splits a piece that stands across it: its foot stays, the rest settles', () => {
+        const pieces = [piece('I', [[1], [1], [1], [1]], 5, 19)]; // rows 19 to 22
+
+        const swept = sweepLowestRows(pieces, 1, 21);
+
+        expect(swept.removed).toBe(1); // row 21
+        const grid = rebuildBoardGridFromPieces(swept.pieces, createBoardGrid());
+        expect([19, 20, 21, 22].map((row) => Boolean(grid[row][5]))).toEqual([false, true, true, true]);
+    });
+
+    it('keeps what is below it when Hearth empties the well', () => {
+        const gameState = createWell([rubbleRow(23), rubbleRow(22), piece('I', [[1], [1], [1], [1]], 5, 18)]);
+
+        expect(reviveOdysseyWell(gameState, { floorRow: 21 })).toBe(true);
+
+        expect(gameState.lockedPieces.map((p) => p.y)).toEqual([23, 22]);
+        expect(cells(gameState.boardGrid)).toBe(6);
+    });
+
+    it('empties everything with no floor given, as it always did', () => {
+        const gameState = createWell();
+
+        reviveOdysseyWell(gameState);
+
+        expect(gameState.lockedPieces).toEqual([]);
+    });
+
+    it('flashes the rows it sweeps, not the floor of the well', () => {
+        expect(odysseyTideRows(createWell(), 4, 21)).toEqual([21, 20, 19, 18]);
+    });
+});
+
+describe('topRubbleRow', () => {
+    const rubble = { type: 'GARBAGE' };
+
+    it('finds the highest row holding rubble', () => {
+        expect(topRubbleRow([[null], [null], [rubble], [rubble]])).toBe(2);
+    });
+
+    it('is past the bottom of a well with no rubble', () => {
+        expect(topRubbleRow([[null], [null]])).toBe(2);
+        expect(topRubbleRow(null)).toBe(0);
+    });
+});
+
+describe('the rows a charm may touch', () => {
+    const well = (grid) => ({ gameState: { boardGrid: grid } });
+    const dig = { victory: { primary: { type: 'rubble', target: 6 } } };
+    const grid = [[null], [null], [{ type: 'GARBAGE' }]];
+
+    it('stop above the rubble on an orb that asks for digging', () => {
+        expect(odysseyCharmFloor({ ...well(grid), levelConfig: dig })).toBe(1);
+    });
+
+    it('run to the floor on any other orb', () => {
+        expect(odysseyCharmFloor({ ...well(grid), levelConfig: UNTIMED })).toBe(2);
     });
 });

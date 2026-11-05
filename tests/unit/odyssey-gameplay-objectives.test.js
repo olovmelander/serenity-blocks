@@ -18,7 +18,9 @@ import { getLevelById } from '../../src/core/odyssey/data/levels.js';
 import { createFailureModal } from '../../src/ui/odyssey/FailureModal.js';
 import { formatOdysseyMapObjective } from '../../src/ui/odyssey/objective-copy.js';
 import { handleOdysseyPauseAction } from '../../src/ui/odyssey/odyssey-pause-actions.js';
-import { beginOdysseyStillAir } from '../../src/core/odyssey/odyssey-charm-use.js';
+import { activateOdysseyCharm, beginOdysseyStillAir } from '../../src/core/odyssey/odyssey-charm-use.js';
+import { addOdysseyCharm } from '../../src/core/odyssey/odyssey-charm-bag.js';
+import { countRubbleRows, topRubbleRow } from '../../src/core/odyssey/odyssey-rubble.js';
 import { hardDrop, move } from '../../src/core/game.js';
 import { markBoardDirty, rebuildBoardGridFromPieces } from '../../src/core/board.js';
 import {
@@ -911,6 +913,146 @@ describe('An orb\'s ending', () => {
 
             expect(session.charms.stillAir).toBeNull();
             expect(session.gameState.dropInterval).toBeLessThan(500);
+        });
+    });
+
+    describe('a dig orb and the charms', () => {
+        const DIG_ORBS = [8, 21, 42];
+
+        beforeEach(() => {
+            const values = new Map();
+            vi.stubGlobal('localStorage', {
+                getItem: (key) => values.get(key) ?? null,
+                setItem: (key, value) => values.set(key, String(value)),
+                removeItem: (key) => values.delete(key),
+            });
+            vi.stubGlobal('window', {
+                location: { search: '' },
+                matchMedia: () => ({ matches: false }),
+                addEventListener: () => {},
+                removeEventListener: () => {},
+                dispatchEvent: () => {},
+            });
+            vi.stubGlobal('document', {
+                hidden: false,
+                body: { classList: { add() {}, remove() {}, contains: () => false }, appendChild: vi.fn() },
+                getElementById: () => null,
+                querySelector: () => null,
+                querySelectorAll: () => [],
+                createElement: () => ({ style: {}, classList: { add() {}, remove() {} }, appendChild() {}, remove() {} }),
+                addEventListener: () => {},
+                removeEventListener: () => {},
+            });
+        });
+
+        afterEach(() => {
+            vi.unstubAllGlobals();
+        });
+
+        function orb(levelId) {
+            const harness = createMode(getLevelById(levelId), { persistResults: true });
+            const { mode } = harness;
+            mode.isActive = true;
+            mode.levelRunStarted = true;
+            mode.levelStartTime = performance.now();
+            return harness;
+        }
+
+        /** Four cells standing on the rubble, as a player's stack would. */
+        function stackOnRubble({ gameState }) {
+            const top = topRubbleRow(gameState.boardGrid);
+            gameState.lockedPieces.push({
+                pieceId: 9001, shapeKey: 'I', color: '#fff', x: 0, y: top - 4, shape: [[1], [1], [1], [1]],
+            });
+            rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
+            markBoardDirty(gameState);
+            return top;
+        }
+
+        const giveCharm = (mode, charmId) => addOdysseyCharm(mode.odysseyState.charms, charmId);
+        const rowsAbove = (grid, top) => grid.slice(0, top).flat().filter(Boolean).length;
+
+        it.each(DIG_ORBS)('orb %i is a dig', (levelId) => {
+            expect(getLevelById(levelId).victory.primary.type).toBe('rubble');
+        });
+
+        it.each(DIG_ORBS)('Hearth on orb %i saves the attempt and leaves the rubble', async (levelId) => {
+            const { mode, session } = orb(levelId);
+            const { gameState } = session;
+            const rubble = countRubbleRows(gameState.boardGrid);
+            expect(rubble).toBeGreaterThan(0);
+            const top = stackOnRubble(session);
+            session.charms.hearthArmed = true;
+
+            gameState.isGameOver = true; // spawnPiece's top-out
+            await mode._handleGameOver(session);
+            mode._checkVictoryConditions(session);
+
+            expect(mode.completeLevel).not.toHaveBeenCalled();
+            expect(mode.failLevel).not.toHaveBeenCalled();
+            expect(gameState.isGameOver).toBe(false);
+            expect(countRubbleRows(gameState.boardGrid)).toBe(rubble);
+            expect(rowsAbove(gameState.boardGrid, top)).toBe(0);
+            expect(session.hybridEngine.getMetrics().rubbleCleared).toBe(0);
+        });
+
+        it('Tide sweeps the stack on the rubble, never the rubble', () => {
+            const { mode, session } = orb(8);
+            const { gameState } = session;
+            const top = stackOnRubble(session);
+            giveCharm(mode, 'tide');
+
+            expect(activateOdysseyCharm(mode, 'tide').ok).toBe(true);
+            mode._checkVictoryConditions(session);
+
+            expect(rowsAbove(gameState.boardGrid, top)).toBe(0);
+            expect(countRubbleRows(gameState.boardGrid)).toBe(6);
+            expect(session.hybridEngine.getMetrics().rubbleCleared).toBe(0);
+            expect(mode.completeLevel).not.toHaveBeenCalled();
+        });
+
+        it('refuses Tide over bare rubble, at no cost', () => {
+            const { mode, session } = orb(8);
+            giveCharm(mode, 'tide');
+            const before = mode.odysseyState.getCharmCount('tide');
+
+            const press = activateOdysseyCharm(mode, 'tide');
+
+            expect(press).toMatchObject({ ok: false, reason: 'empty-floor' });
+            expect(mode.odysseyState.getCharmCount('tide')).toBe(before);
+            expect(countRubbleRows(session.gameState.boardGrid)).toBe(6);
+        });
+
+        it('leaves the goal reachable: the rubble is all still there to dig', async () => {
+            const { mode, session } = orb(8);
+            stackOnRubble(session);
+            session.charms.hearthArmed = true;
+            session.gameState.isGameOver = true;
+            await mode._handleGameOver(session);
+
+            const metrics = session.hybridEngine.getMetrics();
+
+            expect(metrics.rubbleLeft).toBe(6);
+            expect(metrics.rubbleLeft + metrics.rubbleCleared).toBeGreaterThanOrEqual(6);
+        });
+
+        it('keeps Tide and Hearth as they were on an orb that does not ask for digging', async () => {
+            const levelId = Array.from({ length: 60 }, (_, index) => index + 1).find((id) => {
+                const level = getLevelById(id);
+                return level?.mechanics?.board?.startingRows > 0 && level.victory.primary.type === 'lines'
+                    && !level.mechanics.versus;
+            });
+            const { mode, session } = orb(levelId);
+            const { gameState } = session;
+            const rubble = countRubbleRows(gameState.boardGrid);
+            expect(rubble).toBeGreaterThan(0);
+            session.charms.hearthArmed = true;
+
+            gameState.isGameOver = true;
+            await mode._handleGameOver(session);
+
+            expect(countRubbleRows(gameState.boardGrid)).toBe(0);
+            expect(gameState.lockedPieces).toEqual([]);
         });
     });
 });
