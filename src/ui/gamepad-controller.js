@@ -2659,6 +2659,10 @@ export class GamepadController {
         if (this.waitingForStartRelease[slot]) {
             // Keep pause state in sync while ignoring the action
             prevState.pause = this.isButtonPressed(gamepad, config.pause);
+            // Player 1's is let go with the settings button above; nothing else looks after these.
+            if (slot !== 0 && !prevState.pause && !gamepad.buttons[BUTTON_MAP.START]?.pressed) {
+                this.waitingForStartRelease[slot] = false;
+            }
         } else if (this.isButtonJustPressed(gamepad, config.pause, prevState, 'pause')) {
             if (actions.pause) {
                 actions.pause();
