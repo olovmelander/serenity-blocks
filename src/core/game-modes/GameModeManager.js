@@ -32,6 +32,7 @@ export class GameModeManager {
         this.modes = new Map();
         this.currentMode = null;
         this.currentModeId = null;
+        this.startOperations = new WeakMap();
 
         // Event handlers
         this.eventHandlers = new Map();
@@ -268,10 +269,15 @@ export class GameModeManager {
         console.log(`[GameModeManager] Starting mode: ${this.currentModeId}`, options);
         const mode = this.currentMode;
         const modeId = this.currentModeId;
+        // Cached instances can be stopped and restarted while an earlier start
+        // still awaits shared theme/audio work. Only its own run may complete.
+        const operation = {};
+        this.startOperations.set(mode, operation);
+        const ownsStart = () => this.startOperations.get(mode) === operation;
 
         try {
             await mode.onStart(options);
-            if (this.currentMode !== mode) return;
+            if (!ownsStart() || this.currentMode !== mode) return;
 
             if (!mode.isRunning) {
                 console.log(
@@ -297,7 +303,7 @@ export class GameModeManager {
                 && this.deps?.themeManager?.resumeThemes) {
                 await this.deps.themeManager.resumeThemes();
             }
-            if (this.currentMode !== mode || !mode.isRunning) return;
+            if (!ownsStart() || this.currentMode !== mode || !mode.isRunning) return;
             if (startRuntimePolicy.syncMusicPlayback
                 && this.deps?.soundManager?.ensureTrackPlaybackSynced) {
                 await this.deps.soundManager.ensureTrackPlaybackSynced({
@@ -305,13 +311,13 @@ export class GameModeManager {
                     force: true,
                 });
             }
-            if (this.currentMode !== mode || !mode.isRunning) return;
+            if (!ownsStart() || this.currentMode !== mode || !mode.isRunning) return;
 
             this._emitEvent('modeStarted', { modeId, mode });
             console.log(`[GameModeManager] Mode ${modeId} started successfully`);
         } catch (error) {
             console.error(`[GameModeManager] Failed to start mode ${modeId}:`, error);
-            if (mode.isRunning) {
+            if (ownsStart() && mode.isRunning) {
                 try {
                     await mode.onStop();
                 } catch (cleanupError) {
