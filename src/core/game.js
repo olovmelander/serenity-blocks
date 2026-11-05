@@ -473,6 +473,7 @@ export function restoreBoardState(gameState, snapshot = {}, policy = {}) {
         }
         gameState.boardCache = null;
         gameState.boardCacheDirty = true;
+        invalidateGhostCache(gameState);
     }
 
     if (policy.adoptSpeed) {
