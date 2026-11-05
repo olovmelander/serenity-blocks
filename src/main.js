@@ -2142,6 +2142,8 @@ class SerenityBlocks {
             this.soundManager.startBackgroundMusic();
         }
 
+        const audioUnlockController = new AbortController();
+        this.cleanupHandlers.push(() => audioUnlockController.abort());
         const resumeAudio = () => {
             this.soundManager.resumeAudioContext();
             if (this.soundManager?.ensureTrackPlaybackSynced) {
@@ -2154,13 +2156,10 @@ class SerenityBlocks {
             } else if (this.soundManager?.startBackgroundMusic) {
                 this.soundManager.startBackgroundMusic();
             }
-            document.removeEventListener('click', resumeAudio);
-            document.removeEventListener('keydown', resumeAudio);
+            audioUnlockController.abort();
         };
-
-        document.addEventListener('click', resumeAudio);
-        document.addEventListener('keydown', resumeAudio);
-
+        document.addEventListener('click', resumeAudio, { signal: audioUnlockController.signal });
+        document.addEventListener('keydown', resumeAudio, { signal: audioUnlockController.signal });
         // Theme manager
         this.themeCollection = getThemeCollection();
         sanitizeCollectionThemeSetting(this);
@@ -2231,6 +2230,7 @@ class SerenityBlocks {
         if (!isSafeMode) {
             this.scheduleDeferredStartupTask('steam-cloud-sync', async () => {
                 const { default: SteamCloudSyncManager } = await import('./core/steam/steam-cloud-sync.js');
+                if (this.isCleaningUp) return;
                 this.cloudSyncManager = new SteamCloudSyncManager({
                     themeCollection: this.themeCollection,
                     getOdysseyState: () => this.gameModeManager?.getMode?.('odyssey')?.odysseyState,
