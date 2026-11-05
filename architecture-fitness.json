@@ -3,10 +3,10 @@
   "capturedAt": "2026-11-05",
   "metrics": {
     "lines:ffa-p2p-game-state": 4308,
-    "lines:main": 5112,
+    "lines:main": 5111,
     "lines:OdysseyMode": 4185,
     "lines:LocalMultiplayerMode": 2304,
-    "lines:OnlineMultiplayerMode": 2768,
+    "lines:OnlineMultiplayerMode": 2766,
     "shader-material:hits": 20,
     "shader-material:files": 2,
     "core-nondeterminism": 184,
