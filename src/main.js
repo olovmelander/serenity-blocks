@@ -4313,7 +4313,8 @@ class SerenityBlocks {
         this.gameplayInputQueue = [];
         this.inputController?.clearTimers?.();
         this.gamepadController?.clearAllDasTimers?.();
-        this.modalManager.hideAll();
+        // A results sheet that arrived under Settings stays: it is the way on from a finished run.
+        if (!this.modalManager.isVisible('gameOver')) this.modalManager.hideAll();
         this.lastTime = performance.now();
     }
 

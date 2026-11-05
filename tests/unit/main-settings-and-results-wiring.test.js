@@ -23,6 +23,13 @@ function block(from) {
     throw new Error('unbalanced block');
 }
 
+function method(name) {
+    const at = main.indexOf(`\n    ${name}() {`);
+    expect(at).toBeGreaterThan(-1);
+    // eslint-disable-next-line no-new-func -- runs the method as src/main.js has it
+    return new Function(block(at));
+}
+
 describe('the saved sound set', () => {
     it('is applied at launch, with the volumes', () => {
         const sync = block(main.indexOf('// Sync volume settings immediately after creation/loading'));
@@ -72,5 +79,60 @@ describe('the saved sound set', () => {
         themeLinkHandler().call(stub, true, {});
 
         expect(stub.soundManager.setSoundSet).not.toHaveBeenCalled();
+    });
+});
+
+describe('the results sheet and Settings', () => {
+    const openSettingsMenu = method('openSettingsMenu');
+    const resumeGame = method('resumeGame');
+
+    function stoppedRun() {
+        const visible = new Set();
+        const mode = { isRunning: false, isPaused: false, getModeId: () => 'single' };
+        return {
+            visible,
+            app: {
+                // The app's own state: the run's state, which is over, belongs to the mode.
+                gameState: { isGameOver: false, isPaused: false },
+                gameplayInputQueue: [],
+                inputController: { clearTimers() {} },
+                gamepadController: { clearAllDasTimers() {} },
+                gameModeManager: { getCurrentMode: () => mode },
+                serenityHub: null,
+                modalManager: {
+                    show: (name) => visible.add(name),
+                    hide: (name) => visible.delete(name),
+                    isVisible: (name) => visible.has(name),
+                    hideAll: () => visible.clear(),
+                },
+            },
+        };
+    }
+
+    it('keeps the sheet when Settings, opened just before it arrived, closes over it', () => {
+        vi.spyOn(console, 'log').mockImplementation(() => {});
+        const { app, visible } = stoppedRun();
+
+        openSettingsMenu.call(app); // Escape in the moment after the top-out
+        visible.add('gameOver'); // the sheet arrives under Settings
+        visible.delete('settings'); // the player closes Settings
+        resumeGame.call(app);
+
+        expect(visible.has('gameOver')).toBe(true);
+        expect(app.gameState.isPaused).toBe(false);
+        vi.restoreAllMocks();
+    });
+
+    it('still clears the screen when there is no sheet to keep', () => {
+        vi.spyOn(console, 'log').mockImplementation(() => {});
+        const { app, visible } = stoppedRun();
+
+        openSettingsMenu.call(app);
+        visible.add('leftover');
+        visible.delete('settings');
+        resumeGame.call(app);
+
+        expect(visible.size).toBe(0);
+        vi.restoreAllMocks();
     });
 });
