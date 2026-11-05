@@ -9995,7 +9995,7 @@ body.cursor-hidden * {
     color: #64ff64;
 }
 
-.demo-actions .btn-share:hover {
+.demo-actions .btn-export:hover {
     background: rgba(100, 200, 255, 0.2);
     border-color: rgba(100, 200, 255, 0.4);
     color: #64c8ff;
