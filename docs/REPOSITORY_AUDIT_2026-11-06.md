@@ -5,6 +5,7 @@
 - Repository: `olovmelander/serenity-blocks`
 - Baseline: `04b0b613daae153dedffbef47fcba43817f30405`
 - Audit branch: `audit/overnight-2026-11-05`
+- Review: [draft PR #358](https://github.com/olovmelander/serenity-blocks/pull/358)
 - Initial work began: 2026-11-05 22:26 UTC.
 - Scope: conservative correctness, persistence, lifecycle, input, desktop, networking and tooling repairs. No gameplay balance, save-schema version, protocol policy, renderer architecture, shader, theme artwork, major dependency upgrade, release, main merge or deployment change.
 
@@ -105,8 +106,9 @@ Commit: `4a9b8a0`. Baseline failures reproduced; 117 startup tests and 46 cleanu
 4. **Performance medians:** null/blank/boolean/array medians no longer become fake zero measurements. Valid legacy run data remains the fallback; real zeros and numeric strings still work.
 5. **GPU scene/report completeness:** unknown filters fail before rendering; the expected chapter set derives from the registry. Empty, incomplete, duplicate, malformed or failing reports cannot pass the CI verdict.
 6. **Fresh GPU verdicts:** the harness and workflow invalidate the previous report before startup, so an early crash cannot reuse an older successful result.
+7. **CI without a native binary:** theme benchmark report helpers now resolve Electron only when launching a worker. Importing pure report code no longer attempts a binary download or prevents test collection after `npm ci --ignore-scripts`. The baseline full suite exposed this; a regression plus existing reducer tests passed 10/10 after repair.
 
-Commits: `8d056d5`, `841ecd7`. Tooling regressions reproduced 12 failures before fixes; 20 budget/boot tests and 33 GPU coverage/report tests passed. The actual workflow shell was checked with a simulated Electron exit that left no report: it correctly failed rather than accepting a seeded stale success. No GPU sweep was required or claimed for these report/selection changes.
+Commits: `8d056d5`, `841ecd7`, `718d666`. Tooling regressions reproduced 12 failures before fixes; 20 budget/boot tests and 33 GPU coverage/report tests passed. The actual workflow shell was checked with a simulated Electron exit that left no report: it correctly failed rather than accepting a seeded stale success. No GPU sweep was required or claimed for these report/selection changes.
 
 ## Integration verification
 
@@ -114,20 +116,20 @@ The final compact evidence ledger will be stored at `reports/repository-audit-20
 
 | Check | Initial integration result |
 |---|---|
-| Baseline full Vitest suite | Running; result pending |
+| Baseline full Vitest suite | 24,366 passed, 3 skipped, zero failed assertions; one file failed to import without the optional Electron binary |
 | Changed-branch full Vitest suite | Running; result pending |
 | Type checking | Passed after source fixes |
 | TypeScript coverage ratchet | Passed; no lost checked files |
-| Lint ratchet | Passed preliminary run; 434 errors vs existing 435 ceiling, no fatal errors; final run pending |
-| Architecture ratchets | Passed; main and online-mode line counts shrank |
+| Lint ratchet | Passed final run: 432 errors, 1,999 warnings, zero fatal errors; ceiling lowered from 435 to 432 |
+| Architecture ratchets | Passed; main and online-mode line ceilings lowered to lock in their reductions |
 | Import boundaries | Passed: 2,121 modules / 7,781 dependencies |
 | Theme lifecycle audit | Passed |
-| Production build / boot closure | First build passed: entry 3 chunks / 12 KB; main 4 chunks / 1,306 KB; final build pending |
-| IP-string and Pages-artifact gates | Passed after the first production build |
+| Production build / boot closure | Final build passed: entry 3 chunks / 12 KB; main 4 chunks / 1,306 KB |
+| IP-string and Pages-artifact gates | Passed after the final production build |
 | Release gates | Passed in development mode; this is not release approval |
 | Performance budget gate | Passed against committed evidence; no new performance measurement claimed |
 | Production dependency audit | Zero vulnerabilities |
-| Full dependency audit | Six moderate development-tool advisories, no high/critical findings |
+| Full dependency audit | Six development packages affected by one moderate minimatch advisory; no high/critical findings |
 | Whitespace and source syntax checks | Passed for changed files |
 
 Browser/storage evidence:
@@ -151,7 +153,7 @@ These are investigations, not permission to implement architectural changes blin
 6. **Capture-process cleanup:** the GPU harness's existing `ChildProcess.killed` check means signal sent, not process exited. npm/Windows process-tree shutdown needs isolated lifecycle tests before replacement.
 7. **Steam hardware/API coverage:** native friend/leaderboard capabilities are absent in the pinned binding, borderless-window frame behavior needs platform work, and the two-machine protocol soak remains unperformed. `wireV2` currently expires 2026-12-31; older October references are historical, not a reason to alter policy.
 8. **Cross-device statistics:** maximum merges cannot fully count independent concurrent games on different devices. A per-device counter/save-model change is beyond a safe incidental fix.
-9. **Dependencies:** six moderate development-only packaging advisories trace through minimatch/electron-builder. npm proposes a breaking builder downgrade; no automatic downgrade/override was applied.
+9. **Dependencies:** six development-only packaging dependencies are affected by a moderate minimatch advisory. npm proposes a breaking builder downgrade; no automatic downgrade/override was applied.
 10. **Dormant paths:** legacy texture-cache and batching helpers have candidate weaknesses but no active consumers were established. Do not churn unused code without confirming live callers.
 
 ## Overnight continuation
@@ -160,4 +162,4 @@ Hourly follow-up audit passes and a morning summary were scheduled using the use
 
 ### Pass log
 
-- Initial pass: code fixes and independent reviews complete; integration verification running. Main has not been merged or deployed.
+- Initial pass: code fixes and independent reviews complete; integration verification running. A managed-environment restart preserved files/commits but terminated the first changed-branch test process before it produced a result; the full run was restarted after the Electron-import fix. Main has not been merged or deployed.
