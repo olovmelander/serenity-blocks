@@ -659,7 +659,7 @@ export class MultiPlayerState {
         const attackId = `P${playerIndex + 1}-A${sequence}`;
         attack.withId(attackId);
 
-        let totalLines = attack.getTotalLines();
+        const unscaledLines = attack.getTotalLines();
 
         // Per-cascade traces are debug-level: production builds strip console.debug, and these
         // logged two or three lines for every cascade of a duel (Odyssey audit 2026-10-18).
@@ -668,10 +668,11 @@ export class MultiPlayerState {
         );
 
         // Apply attack scaling based on player count
-        totalLines = this._scaleAttackForPlayerCount(totalLines);
+        const totalLines = this._scaleAttackForPlayerCount(unscaledLines);
+        const scaledAttack = this._attackWithLines(attack, totalLines);
 
         console.debug(
-            `[MultiPlayerState]   Total attack rows: ${totalLines} (scaled from ${attack.getTotalLines()})`,
+            `[MultiPlayerState]   Total attack rows: ${totalLines} (scaled from ${unscaledLines})`,
         );
 
         // Blind / Full Blind attacks carry an effect even when they add no garbage
@@ -715,7 +716,7 @@ export class MultiPlayerState {
             // The per-opponent handicap reduces this attack's normal garbage
             // lines for stronger players; entries are expanded per target so the
             // reduction can differ per opponent.
-            const targetAttack = this._applyHandicapForTarget(attack, attackerState, targetIndex);
+            const targetAttack = this._applyHandicapForTarget(scaledAttack, attackerState, targetIndex);
             const entries = targetAttack.expandEntries(context);
             const queueableEntries = [];
             const lineEntries = entries.filter((entry) => entry.type === 'line');
@@ -824,6 +825,19 @@ export class MultiPlayerState {
             return Math.ceil(totalLines * 0.75); // 75% damage for 3 players
         }
         return Math.ceil(totalLines * 0.5); // 50% damage for 4+ players
+    }
+
+    /**
+     * The same attack, cut to its first `lines` rows: clean rows first, as online trims its own.
+     * @param {GarbageAttack} attack
+     * @param {number} lines
+     * @returns {GarbageAttack}
+     */
+    _attackWithLines(attack, lines) {
+        if (lines >= attack.getTotalLines()) return attack;
+        const cleanMasks = attack.cleanMasks.slice(0, lines);
+        const holeMasks = attack.holeMasks.slice(0, lines - cleanMasks.length);
+        return GarbageAttack.fromJSON({ ...attack.toJSON(), cleanMasks, holeMasks }).withId(attack.id);
     }
 
     /**
