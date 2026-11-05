@@ -91,6 +91,7 @@ const scoreKey = (entry) => [
     entry.level ?? 0,
     entry.timestamp ?? 0,
 ].join('|');
+const journeyStampOf = (data) => (typeof data?.journeyStartedAt === 'string' ? data.journeyStartedAt : '');
 const isCompletedOrb = (value) => isRecord(value)
     && Number.isInteger(value.stars) && value.stars >= 1 && value.stars <= 3;
 
@@ -870,7 +871,26 @@ export class SteamCloudSyncManager {
         migrateOdysseyProgressData(cloudData);
         if (Number(localData?.version) !== ODYSSEY_SAVE_VERSION
             || Number(cloudData?.version) !== ODYSSEY_SAVE_VERSION) return null;
+
+        // New Journey erased one side. A union would bring the old journey back, so the later
+        // journey replaces the earlier whole, on this device and on the player's others.
+        const localJourney = journeyStampOf(localData);
+        const cloudJourney = journeyStampOf(cloudData);
+        if (localJourney !== cloudJourney) {
+            return {
+                ...(localJourney > cloudJourney ? localData : cloudData),
+                lastSaveDate: new Date().toISOString(),
+            };
+        }
+
         const merged = { ...localData, ...cloudData };
+        merged.charms = this._laterCharms(localData, cloudData);
+        merged.onboarding = {
+            ...localData.onboarding,
+            ...cloudData.onboarding,
+            arrivalSeen: localData.onboarding?.arrivalSeen === true
+                || cloudData.onboarding?.arrivalSeen === true,
+        };
 
         const localUnlocked = new Set(localData.unlockedLevels || []);
         const cloudUnlocked = new Set(cloudData.unlockedLevels || []);
@@ -903,6 +923,20 @@ export class SteamCloudSyncManager {
         merged.lastSaveDate = new Date().toISOString();
 
         return merged;
+    }
+
+    /**
+     * The charm bag of the side further along. A bag can't be a union (a spent charm would come
+     * back), and lastSaveDate can't decide it: every merge restamps a document, stale or not.
+     * But found and used only grow within a journey, so the side that has seen more charms is
+     * the later one. A tie, as after a fall that only moves the streak, goes to the later save.
+     */
+    _laterCharms(localData, cloudData) {
+        const seen = ({ charms }) => (Number(charms?.found) || 0) + (Number(charms?.used) || 0);
+        const lead = seen(localData) - seen(cloudData);
+        if (lead !== 0) return lead > 0 ? localData.charms : cloudData.charms;
+        const cloudIsLater = (toTimestamp(cloudData.lastSaveDate) ?? 0) > (toTimestamp(localData.lastSaveDate) ?? 0);
+        return (cloudIsLater ? cloudData.charms : localData.charms) ?? localData.charms ?? cloudData.charms;
     }
 
     _mergeHighScores(localScores, cloudScores) {
