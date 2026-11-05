@@ -1576,9 +1576,10 @@ export class BreathworkSessionManager {
                 mode: this.holdState ? 'open' : 'timed',
                 endedBy: this.holdState?.endedBy || 'timer',
             });
-        } else if (phase.type === 'recovery' && finished) {
-            this.measure.rounds += 1;
         }
+        // A round is done when its last stage is. Its stages differ from session to session.
+        const next = this.activeSession.phases[this.currentPhaseIndex + 1];
+        if (finished && phase.round > 0 && next?.round !== phase.round) this.measure.rounds += 1;
     }
 
     /** Advance to the next phase. @private */
