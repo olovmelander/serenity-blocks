@@ -2122,6 +2122,7 @@ class SerenityBlocks {
         if (this.soundManager) {
             this.soundManager.setMusicVolume(currentSettings.musicVolume);
             this.soundManager.setSFXVolume(currentSettings.sfxVolume);
+            this.soundManager.setSoundSet(currentSettings.soundSet);
         }
         if (!Array.isArray(this.soundManager.songsData) || this.soundManager.songsData.length === 0) {
             if (deferStartupAudio) {
@@ -2868,6 +2869,7 @@ class SerenityBlocks {
                 console.error('[Main] Failed to start game from card selection:', error);
                 releaseLoadingSurface();
                 dismissCinematicLoadingOverlay(300);
+                this.modalManager.show('start');
                 window.dispatchEvent(new CustomEvent('serenity:toast', { detail: { type: 'error', message: `The game could not start. ${error.message}` } }));
             }
         };
@@ -3056,16 +3058,10 @@ class SerenityBlocks {
                 }
             },
             onThemeLinkedSfxChange: (enabled) => {
-                console.log('[Main] Theme-Linked SFX toggled:', enabled);
-                if (enabled) {
-                    // Immediately apply sound set based on current theme
-                    const currentTheme = this.themeManager.activeThemeName;
-                    if (currentTheme) {
-                        const soundSet = THEME_SFX_MAP[currentTheme] || 'Zen';
-                        console.log(`[Main] Theme-Linked SFX enabled: Setting ${soundSet} for theme ${currentTheme}`);
-                        this.soundManager.setSoundSet(soundSet);
-                    }
-                }
+                // On: the current theme's set, at once. Off: back to the player's own.
+                const currentTheme = this.themeManager.activeThemeName;
+                if (!enabled) this.soundManager.setSoundSet(this.settingsManager.get().soundSet);
+                else if (currentTheme) this.soundManager.setSoundSet(THEME_SFX_MAP[currentTheme] || 'Zen');
             },
             onGameModeChange: async (mode) => {
                 console.log('[Main] Game mode changed to:', mode);
@@ -3941,7 +3937,7 @@ class SerenityBlocks {
             this.soundManager.setTrack(settings.musicTrack);
         }
         if (changes.soundSet) {
-            this.soundManager.sfxPlayer.setSoundSet(settings.soundSet);
+            this.soundManager.setSoundSet(settings.soundSet);
         }
 
         if (changes.pieceLockRippleColor) {
@@ -4317,7 +4313,8 @@ class SerenityBlocks {
         this.gameplayInputQueue = [];
         this.inputController?.clearTimers?.();
         this.gamepadController?.clearAllDasTimers?.();
-        this.modalManager.hideAll();
+        // A results sheet that arrived under Settings stays: it is the way on from a finished run.
+        if (!this.modalManager.isVisible('gameOver')) this.modalManager.hideAll();
         this.lastTime = performance.now();
     }
 
@@ -4551,9 +4548,8 @@ class SerenityBlocks {
             }
 
             currentMode?._maybeExpandPlayerGrid?.(playerState, sceneRef());
-            const nextCanvases = playerNum === 1
-                ? (currentMode?.p1NextCanvases || this.p1NextCanvases)
-                : (currentMode?.p2NextCanvases || this.p2NextCanvases);
+            const nextCanvases = currentMode?.playerNextCanvases?.get(playerNum)
+                || (playerNum === 1 ? this.p1NextCanvases : this.p2NextCanvases);
 
             spawnPiece(
                 playerState,

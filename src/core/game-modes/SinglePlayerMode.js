@@ -300,11 +300,7 @@ export class SinglePlayerMode extends BaseGameMode {
 
             this.playbackControls.show();
 
-            // Show "Watching Replay" indicator
-            const demoIndicator = document.getElementById('demo-indicator');
-            if (demoIndicator) {
-                demoIndicator.classList.add('visible');
-            }
+            this._setDemoIndicator(true);
 
             // Start Phaser board scene
             this._startPhaserBoardScene();
@@ -630,6 +626,7 @@ export class SinglePlayerMode extends BaseGameMode {
             this.demoPlayer.onPlaybackEnd = null;
             this.demoPlayer.stopPlayback();
             this.playbackControls.hide();
+            this._setDemoIndicator(false);
         }
 
         let demo = null;
@@ -822,12 +819,31 @@ export class SinglePlayerMode extends BaseGameMode {
         }, this.gameState);
     }
 
+    /** The "Watching Replay" badge, up for as long as a replay is. */
+    _setDemoIndicator(visible) {
+        document.getElementById('demo-indicator')?.classList.toggle('visible', visible);
+    }
+
+    /**
+     * A recording holds accepted commands only, so the hit-stop was over when this one's key
+     * landed. Its frame can still round to inside the replay's hit-stop, which counts in whole
+     * ticks: end it here, as it had ended, or the command is refused and the replay plays on as
+     * another game.
+     */
+    _endHitStopForReplayCommand() {
+        const { gameState } = this;
+        gameState.hitStopRemaining = 0;
+        gameState.hitStopTicks = 0;
+        gameState._hitStopTickSourceMs = 0;
+    }
+
     _applyCommand(command, options = {}) {
         const { type, value } = this._normalizeCommand(command);
         if (!type || !this.gameState) return false;
 
         const replayCommand = options.record === false || this.gameState.isReplay;
         if (this.isPlayingDemo && !replayCommand) return false;
+        if (replayCommand) this._endHitStopForReplayCommand();
         if (
             this.gameState.isPaused
             || this.gameState.isGameOver

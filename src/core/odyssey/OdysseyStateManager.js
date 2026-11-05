@@ -103,6 +103,9 @@ export class OdysseyStateManager {
         this.unlockedLevels = new Set([1]); // Level 1 always unlocked
         this.completedLevels = new Map(); // levelId → LevelCompletion
         this.retiredCompletions = {}; // Stable retired identity → historical completion
+        // When New Journey last erased this save. Steam Cloud merges progress as a union, which
+        // would bring an erased journey back, so the later journey replaces the earlier whole.
+        this.journeyStartedAt = null;
 
         // Onboarding marks travel with the journey; a new journey starts them over
         this.onboarding = { arrivalSeen: false };
@@ -145,6 +148,7 @@ export class OdysseyStateManager {
             unlockedLevels: Array.from(this.unlockedLevels),
             completedLevels: Object.fromEntries(this.completedLevels),
             retiredCompletions: { ...this.retiredCompletions },
+            journeyStartedAt: this.journeyStartedAt,
             statistics: { ...this.statistics },
             onboarding: { ...this.onboarding },
             charms: serializeOdysseyCharmState(this.charms),
@@ -203,6 +207,7 @@ export class OdysseyStateManager {
             this.unlockedLevels = new Set(data.unlockedLevels || [1]);
             this.completedLevels = new Map(Object.entries(data.completedLevels || {}));
             this.retiredCompletions = { ...data.retiredCompletions };
+            this.journeyStartedAt = typeof data.journeyStartedAt === 'string' ? data.journeyStartedAt : null;
             this.statistics = { ...this.statistics, ...data.statistics };
             this.onboarding = { arrivalSeen: data.onboarding?.arrivalSeen === true };
             this.charms = normalizeOdysseyCharmState(data.charms);
@@ -306,6 +311,7 @@ export class OdysseyStateManager {
         this.unlockedLevels = new Set([1]);
         this.completedLevels = new Map();
         this.retiredCompletions = {};
+        this.journeyStartedAt = new Date().toISOString();
         this.onboarding = { arrivalSeen: false };
         this.charms = createOdysseyCharmState();
         this.statistics = {

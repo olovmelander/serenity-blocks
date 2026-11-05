@@ -839,6 +839,7 @@ export class GamepadController {
             if (slot === 0) {
                 const gameOverModal = document.getElementById('game-over-modal');
                 if (gameOverModal && gameOverModal.classList.contains('visible')) {
+                    this.clearDasTimers(slot);
                     this.processGameOverInput(freshGamepad, slot);
                     continue; // Don't process other input while game over modal is visible
                 }
@@ -1334,8 +1335,8 @@ export class GamepadController {
         });
 
         // Clear all previous button states
-        for (let i = 0; i < this.previousStates.length; i++) {
-            this.previousStates[i] = {};
+        this.forgetHeldInput();
+        for (let i = 0; i < this.menuRepeat.length; i++) {
             this.menuRepeat[i] = {};
         }
 
@@ -1362,8 +1363,8 @@ export class GamepadController {
         });
 
         // Clear all previous button states
-        for (let i = 0; i < this.previousStates.length; i++) {
-            this.previousStates[i] = {};
+        this.forgetHeldInput();
+        for (let i = 0; i < this.menuRepeat.length; i++) {
             this.menuRepeat[i] = {};
         }
     }
@@ -1569,9 +1570,7 @@ export class GamepadController {
 
         // Clear all previous button states to prevent double-triggering
         // when switching from game mode to menu mode
-        for (let i = 0; i < this.previousStates.length; i++) {
-            this.previousStates[i] = {};
-        }
+        this.forgetHeldInput();
         console.log('[Gamepad] Cleared previous button states');
 
         // Focus first element after a short delay to ensure modal is rendered
@@ -1612,9 +1611,7 @@ export class GamepadController {
 
         // Clear all previous button states to prevent double-triggering
         // when switching from menu mode back to game mode
-        for (let i = 0; i < this.previousStates.length; i++) {
-            this.previousStates[i] = {};
-        }
+        this.forgetHeldInput();
         console.log('[Gamepad] Cleared previous button states');
     }
 
@@ -2662,6 +2659,10 @@ export class GamepadController {
         if (this.waitingForStartRelease[slot]) {
             // Keep pause state in sync while ignoring the action
             prevState.pause = this.isButtonPressed(gamepad, config.pause);
+            // Player 1's is let go with the settings button above; nothing else looks after these.
+            if (slot !== 0 && !prevState.pause && !gamepad.buttons[BUTTON_MAP.START]?.pressed) {
+                this.waitingForStartRelease[slot] = false;
+            }
         } else if (this.isButtonJustPressed(gamepad, config.pause, prevState, 'pause')) {
             if (actions.pause) {
                 actions.pause();
@@ -2788,6 +2789,18 @@ export class GamepadController {
         this.stopDas(slot, 'left');
         this.stopDas(slot, 'right');
         this.stopDas(slot, 'down');
+    }
+
+    /**
+     * Forget what the pads hold, on a switch between play and the menus. A repeat stops when its
+     * release is seen, and with these states gone that release never comes: the repeats go with
+     * them, or one drives the next run with nothing held.
+     */
+    forgetHeldInput() {
+        this.clearAllDasTimers();
+        for (let i = 0; i < this.previousStates.length; i++) {
+            this.previousStates[i] = {};
+        }
     }
 
     /**

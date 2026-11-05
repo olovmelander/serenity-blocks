@@ -18,7 +18,7 @@
 import {
     app, BrowserWindow, crashReporter, dialog, screen, ipcMain, powerMonitor, Menu, shell, session,
 } from 'electron';
-import { join, dirname, resolve, sep } from 'path';
+import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { appendFileSync, mkdirSync, readFileSync } from 'fs';
 import inspector from 'node:inspector';
@@ -26,6 +26,7 @@ import {
     createContentSecurityPolicy,
     extractInlineScriptHashes,
 } from './content-security-policy.js';
+import { isPathInside } from './app-path.js';
 import { buildDebugToolsStatus } from './debug-tools.js';
 import { classifyGpuHealth } from './gpu-health.js';
 import {
@@ -131,9 +132,7 @@ function isAllowedAppNavigation(targetUrl) {
             return false;
         }
 
-        const distRoot = resolve(app.getAppPath(), 'dist');
-        const targetPath = resolve(fileURLToPath(parsed));
-        return targetPath === join(distRoot, 'index.html') || targetPath.startsWith(`${distRoot}${sep}`);
+        return isPathInside(resolve(app.getAppPath(), 'dist'), fileURLToPath(parsed));
     } catch {
         return false;
     }

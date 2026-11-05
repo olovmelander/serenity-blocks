@@ -657,7 +657,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this._setupInputHandlers();
         this._setupScoreboardOverlayHotkey();
 
-        this._uiSetupComplete = true;
+        // A drop-in's match went live during the await on the board: no countdown waits on this.
+        this._uiSetupComplete = !this.isInMatch;
         console.log('[OnlineMultiplayer] ✅ Match UI ready (waiting for countdown)');
     }
 
@@ -2594,8 +2595,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.garbageFlashTimers = {};
         this.networkStats = null;
         this.snapshotStats = null;
-
-        console.log('[OnlineMultiplayer] Game rendering cleaned up');
+        this._uiSetupComplete = false;
     }
 
     /**
@@ -2674,11 +2674,10 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             this._victoryBeatTimer = null;
         }
 
-        // Clean up game rendering first
-        if (this.isInMatch) {
-            this._cleanupGameRendering();
-            this.isInMatch = false;
-        }
+        // Clean up game rendering first, always: the stage goes up before the countdown, while
+        // isInMatch is still false, and a player can leave from there.
+        this._cleanupGameRendering();
+        this.isInMatch = false;
 
         // Leave current lobby
         if (this.currentLobbyId && this.steamNetworking) {
@@ -2711,6 +2710,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.cleanupHandlers = [];
         this.lastSyncTime = 0;
         this.lastNextPieceIds = '';
+        this.matchPreparingUnsub = null;
         this.matchStartedUnsub = null;
         this.matchResultsUnsub = null;
         this.renderFrameUnsub = null;

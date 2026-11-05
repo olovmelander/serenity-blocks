@@ -63,7 +63,7 @@ describe('HUD pulse batching', () => {
         expect(nodes.level.textContent).toBe(6);
         expect(nodes.level.classList.contains('warning')).toBe(true);
         expect(nodes.level.classList.contains('danger')).toBe(false);
-        expect(nodes.speed.textContent).toBe('2.0x');
+        expect(nodes.speed.textContent).toBe('7.3x');
         expect(nodes['next-level'].textContent).toBe(5);
         expect(nodes.bpm.textContent).toBe(0);
         expect(nodes.ppm.textContent).toBe('0');

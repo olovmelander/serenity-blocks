@@ -4,7 +4,7 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { migrateOdysseyProgressData } from '../odyssey/OdysseyStateManager.js';
 import { ODYSSEY_SAVE_VERSION, getOdysseyCompletionThemeIds } from '../odyssey/odyssey-progress-schema.js';
 import { resolveOwnedMusicPreference } from '../progression/music-preference.js';
-import { mergeStatisticsSnapshots } from '../progression/score-statistics.js';
+import { keepTopScoresPerMode, mergeStatisticsSnapshots } from '../progression/score-statistics.js';
 import { CONTROLLER_LAYOUT_VERSION, migrateSerenityPadLayout } from '../controller-layout.js';
 
 const CLOUD_FILES = {
@@ -91,6 +91,7 @@ const scoreKey = (entry) => [
     entry.level ?? 0,
     entry.timestamp ?? 0,
 ].join('|');
+const journeyStampOf = (data) => (typeof data?.journeyStartedAt === 'string' ? data.journeyStartedAt : '');
 const isCompletedOrb = (value) => isRecord(value)
     && Number.isInteger(value.stars) && value.stars >= 1 && value.stars <= 3;
 
@@ -548,7 +549,7 @@ export class SteamCloudSyncManager {
         const merged = this._mergeHighScores(local, incoming.highScores || incoming.scores || []);
         const localKeys = new Set(local.map(scoreKey));
         if (merged.some((entry) => !localKeys.has(scoreKey(entry)))) {
-            await this._applyHighScores({ highScores: merged }, { merge: false });
+            await this._applyHighScores({ highScores: merged }, { merge: true });
         }
     }
 
@@ -629,7 +630,7 @@ export class SteamCloudSyncManager {
         if (!merged) return;
 
         if (fileName === CLOUD_FILES.HIGHSCORES) {
-            await this._applyHighScores(merged, { merge: false });
+            await this._applyHighScores(merged, { merge: true });
         } else if (fileName === CLOUD_FILES.STATS) {
             await this._applyStats(merged, { merge: false });
         } else if (fileName === CLOUD_FILES.ODYSSEY) {
@@ -749,6 +750,10 @@ export class SteamCloudSyncManager {
         }
     }
 
+    /**
+     * Merge in place (merge: true): this device's records keep their replay links, because an
+     * import strips them from what it is handed and local records win its de-duplication.
+     */
     async _applyHighScores(data, { merge = true } = {}) {
         if (!this.highScoreManager || !data) return;
         const entries = data.highScores || data.scores || [];
@@ -870,7 +875,26 @@ export class SteamCloudSyncManager {
         migrateOdysseyProgressData(cloudData);
         if (Number(localData?.version) !== ODYSSEY_SAVE_VERSION
             || Number(cloudData?.version) !== ODYSSEY_SAVE_VERSION) return null;
+
+        // New Journey erased one side. A union would bring the old journey back, so the later
+        // journey replaces the earlier whole, on this device and on the player's others.
+        const localJourney = journeyStampOf(localData);
+        const cloudJourney = journeyStampOf(cloudData);
+        if (localJourney !== cloudJourney) {
+            return {
+                ...(localJourney > cloudJourney ? localData : cloudData),
+                lastSaveDate: new Date().toISOString(),
+            };
+        }
+
         const merged = { ...localData, ...cloudData };
+        merged.charms = this._laterCharms(localData, cloudData);
+        merged.onboarding = {
+            ...localData.onboarding,
+            ...cloudData.onboarding,
+            arrivalSeen: localData.onboarding?.arrivalSeen === true
+                || cloudData.onboarding?.arrivalSeen === true,
+        };
 
         const localUnlocked = new Set(localData.unlockedLevels || []);
         const cloudUnlocked = new Set(cloudData.unlockedLevels || []);
@@ -905,6 +929,20 @@ export class SteamCloudSyncManager {
         return merged;
     }
 
+    /**
+     * The charm bag of the side further along. A bag can't be a union (a spent charm would come
+     * back), and lastSaveDate can't decide it: every merge restamps a document, stale or not.
+     * But found and used only grow within a journey, so the side that has seen more charms is
+     * the later one. A tie, as after a fall that only moves the streak, goes to the later save.
+     */
+    _laterCharms(localData, cloudData) {
+        const seen = ({ charms }) => (Number(charms?.found) || 0) + (Number(charms?.used) || 0);
+        const lead = seen(localData) - seen(cloudData);
+        if (lead !== 0) return lead > 0 ? localData.charms : cloudData.charms;
+        const cloudIsLater = (toTimestamp(cloudData.lastSaveDate) ?? 0) > (toTimestamp(localData.lastSaveDate) ?? 0);
+        return (cloudIsLater ? cloudData.charms : localData.charms) ?? localData.charms ?? cloudData.charms;
+    }
+
     _mergeHighScores(localScores, cloudScores) {
         const combined = [...localScores, ...cloudScores].map((entry) => ({
             ...entry,
@@ -919,14 +957,7 @@ export class SteamCloudSyncManager {
             deduped.push(entry);
         }
 
-        deduped.sort((a, b) => {
-            if ((b.score ?? 0) !== (a.score ?? 0)) {
-                return (b.score ?? 0) - (a.score ?? 0);
-            }
-            return (b.timestamp ?? 0) - (a.timestamp ?? 0);
-        });
-
-        return deduped.slice(0, 100);
+        return keepTopScoresPerMode(deduped);
     }
 
     _mergeStatistics(localStats, cloudStats) {

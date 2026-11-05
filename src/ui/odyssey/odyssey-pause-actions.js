@@ -22,6 +22,12 @@ export function handleOdysseyPauseAction(mode, { action } = {}) {
     // and Retry raced it to the map (audit 2026-10-23).
     if (mode._boardReturnOperation) return false;
     if (!mode.currentLevelConfig || !mode._activeLevelSession) return false;
+    // The goal is met, so leaving must not throw the clear away: the orb ends as Finish ends it,
+    // with its stars and unlocks, and the results offer the way on.
+    if (mode._activeLevelSession.gameState?.victoryLapActive && (action === 'retry' || action === 'map')) {
+        mode._finishVictoryLap();
+        return true;
+    }
     let run = null;
     if (action === 'retry') run = mode._restartLevelInPlace();
     else if (action === 'map') run = mode.returnToBoard();
