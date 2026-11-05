@@ -79,16 +79,16 @@ describe('Replay menu payload ownership', () => {
         expect(full[0]).toEqual(recording);
     });
 
-    it('loads only the requested recording when sharing a menu card', async () => {
+    it('loads only the requested recording when exporting a menu card', async () => {
         const full = { id: 7, inputs: [{ frame: 1 }] };
-        const demoManager = { loadDemo: vi.fn(async () => full), exportToURL: vi.fn(async () => 'replay-url') };
-        const writeText = vi.fn(async () => {});
-        vi.stubGlobal('navigator', { clipboard: { writeText } });
-        vi.stubGlobal('alert', vi.fn());
-        await DemoBrowser.prototype.shareDemo.call({ demoManager }, { id: 7, metadata: { score: 42 } });
+        const demoManager = { loadDemo: vi.fn(async () => full), exportToJSON: vi.fn(() => '{}') };
+        const link = { click: vi.fn(), remove: vi.fn() };
+        vi.stubGlobal('document', { createElement: () => link, body: { appendChild: vi.fn() } });
+        vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:replay'), revokeObjectURL: vi.fn() });
+        await DemoBrowser.prototype.exportDemo.call({ demoManager }, { id: 7, metadata: { score: 42 } });
         expect(demoManager.loadDemo).toHaveBeenCalledWith(7);
-        expect(demoManager.exportToURL).toHaveBeenCalledWith(full);
-        expect(writeText).toHaveBeenCalledWith('replay-url');
+        expect(demoManager.exportToJSON).toHaveBeenCalledWith(full);
+        expect(link.click).toHaveBeenCalledOnce();
     });
 
     it('ignores a replay-menu load that finishes after close', async () => {

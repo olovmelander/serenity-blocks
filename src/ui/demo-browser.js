@@ -1,6 +1,6 @@
 /**
  * @fileoverview Replays sheet (#demo-browser-modal): the saved replays, newest first,
- * each with Play, Share and Delete. A Keystone sheet (public/styles/keystone-modals.css);
+ * each with Play, Export and Delete. A Keystone sheet (public/styles/keystone-modals.css);
  * it sits outside ModalManager, so it announces itself with the same modalShown /
  * modalHidden events, which give it focus handling and Escape (src/ui/sheet-input.js).
  */
@@ -233,8 +233,8 @@ export class DemoBrowser {
                 <button type="button" class="demo-action btn-play" aria-label="Play ${escapeHtml(subject)}">
                     ${csIcon('play', 18)}<span class="demo-action__label" aria-hidden="true">Play</span>
                 </button>
-                <button type="button" class="demo-action btn-share" aria-label="Share ${escapeHtml(subject)}">
-                    ${csIcon('chain', 18)}<span class="demo-action__label" aria-hidden="true">Share</span>
+                <button type="button" class="demo-action btn-export" aria-label="Export ${escapeHtml(subject)} as a file">
+                    ${csIcon('send', 18)}<span class="demo-action__label" aria-hidden="true">Export</span>
                 </button>
                 <button type="button" class="demo-action btn-delete" aria-label="Delete ${escapeHtml(subject)}">
                     ${TRASH_ICON}<span class="demo-action__label" aria-hidden="true">Delete</span>
@@ -244,7 +244,7 @@ export class DemoBrowser {
 
         // Add listeners
         card.querySelector('.btn-play').addEventListener('click', () => this.playDemo(demo.id));
-        card.querySelector('.btn-share').addEventListener('click', () => this.shareDemo(demo));
+        card.querySelector('.btn-export').addEventListener('click', () => this.exportDemo(demo));
 
         // Delete asks twice, in place: the first press arms it, the second deletes.
         const deleteBtn = card.querySelector('.btn-delete');
@@ -314,20 +314,24 @@ export class DemoBrowser {
         }
     }
 
-    async shareDemo(demo) {
+    /** A replay as a file, to send to someone: Import file opens it on their device. */
+    async exportDemo(demo) {
         try {
             // If full demo data isn't in the list item, load it
-            let fullDemo = demo;
-            if (!demo.inputs) {
-                fullDemo = await this.demoManager.loadDemo(demo.id);
-            }
-
-            const url = await this.demoManager.exportToURL(fullDemo);
-            await navigator.clipboard.writeText(url);
-            notify(this, 'Replay link copied to the clipboard.', 'success');
+            const fullDemo = demo.inputs ? demo : await this.demoManager.loadDemo(demo.id);
+            const blob = new Blob([this.demoManager.exportToJSON(fullDemo)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `serenity-replay-${fullDemo.metadata?.score ?? 0}-${fullDemo.timestamp ?? 0}.json`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            notify(this, 'Replay file ready. Import file opens it on another device.', 'success');
         } catch (err) {
-            console.error('Failed to share demo:', err);
-            notify(this, 'The replay link could not be copied.', 'error');
+            console.error('Failed to export demo:', err);
+            notify(this, 'The replay file could not be made.', 'error');
         }
     }
 

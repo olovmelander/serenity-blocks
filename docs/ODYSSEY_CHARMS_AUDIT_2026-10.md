@@ -123,7 +123,10 @@ three; no points charm is needed, because score orbs fail by top-out or by clock
 | **Hearth** | 4 | arm it: your next top-out empties the well and play goes on | the one mistake that ends a long attempt | yes; the rival gets no knockout | — |
 
 Numbers are the gem system's, proven in its tests; they are tuning knobs, not commitments.
-Nothing a charm clears counts toward a goal (Tide bypasses the line-clear path, as before).
+Nothing a charm clears counts toward a goal (Tide bypasses the line-clear path, as before). On an
+orb that asks for digging (8, 21, 42) the rubble is the goal itself, so charms stop at it: Hearth
+empties the well down to the rubble and Tide sweeps the rows above it, refused over bare rubble.
+A charm can save such an attempt, and only play digs (2026-11-05).
 
 *Not included:* Keel and Low Tide (they can only act before the orb starts, which is F2);
 Kindle/Swell/Afterglow (F7). If a points charm is wanted later, "Kindle: clears score ×1.5 for

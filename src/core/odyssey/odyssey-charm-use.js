@@ -8,7 +8,9 @@
  * ending the orb. Each is used once an attempt and is gone from the bag on use, whatever the
  * attempt comes to. Nothing a charm clears counts toward a goal: Tide and Hearth rewrite the
  * well through the restore boundary replays use (the grid, caches and the Infinity camera stay
- * in step), never through the line-clear path. Still Air's clock is ticked from the gameplay
+ * in step), never through the line-clear path. On an orb that asks for digging the rubble is the
+ * goal itself, so they stop at it (odysseyCharmFloor): a charm can save the attempt there, but
+ * only play digs. Still Air's clock is ticked from the gameplay
  * loop (tickOdysseyCharms), not from the HUD's throttled refresh, so it ends when it should.
  *
  * Fixed-tick attempts (fixed60-v1, the dev flag, unranked) refuse every charm: a well rewrite
@@ -18,6 +20,7 @@
 import { markBoardDirty, rebuildBoardGridFromPieces } from '../board.js';
 import { restoreBoardState } from '../game.js';
 import { DEMO_FIXED_SIMULATION_CLOCK } from '../demo/DemoRecorder.js';
+import { topRubbleRow } from './odyssey-rubble.js';
 import {
     ODYSSEY_CHARMS, ODYSSEY_LONG_BREATH_SECONDS, ODYSSEY_STILL_AIR_MS, ODYSSEY_STILL_AIR_SLOWEST_MS,
     ODYSSEY_TIDE_ROWS, odysseyCharmById, odysseyCharmTitle, odysseyLevelHasClock,
@@ -68,9 +71,34 @@ export function odysseyCharmsUsed(session) {
 // =============================
 
 /**
- * Remove the lowest `rows` rows of a well and settle everything above by the same distance.
- * Pure: returns new pieces with fresh shape matrices. A stack always rests on the floor, so
- * every surviving cell keeps its support and nothing is left floating.
+ * The lowest row a charm may touch. The well's floor, but on an orb that asks for digging, the
+ * row above the rubble: the rubble is the goal, and a charm must not do the digging or leave
+ * the goal with nothing to dig.
+ * @param {{ gameState?: { boardGrid?: unknown[][] }, levelConfig?: object } | null} [session]
+ * @returns {number}
+ */
+export function odysseyCharmFloor(session) {
+    const grid = session?.gameState?.boardGrid;
+    const digs = session?.levelConfig?.victory?.primary?.type === 'rubble';
+    return (digs ? topRubbleRow(grid) : (grid?.length || 0)) - 1;
+}
+
+/** One piece's cells in the rows `keep` accepts, or null if it has none there. */
+function pieceCellsWhere(piece, keep) {
+    let kept = 0;
+    const shape = piece.shape.map((row, dy) => row.map((cell, dx) => {
+        if (!piece.shape[dy][dx] || !keep(Math.floor(piece.y + dy))) return 0;
+        kept++;
+        return cell;
+    }));
+    return kept > 0 ? { ...piece, shape } : null;
+}
+
+/**
+ * Remove the lowest `rows` rows above `floorRow` and settle everything above them by the same
+ * distance; what lies below `floorRow` stays where it is, and a piece standing across it is
+ * cut there. Pure: returns new pieces with fresh shape matrices. A stack always rests on what is
+ * below it, so every surviving cell keeps its support and nothing is left floating.
  * @returns {{ pieces: object[], removed: number }} the settled pieces and the cells swept away
  */
 export function sweepLowestRows(lockedPieces, rows, floorRow) {
@@ -78,21 +106,12 @@ export function sweepLowestRows(lockedPieces, rows, floorRow) {
     let removed = 0;
     const pieces = [];
     for (const piece of lockedPieces || []) {
-        let remaining = 0;
-        const shape = piece.shape.map((row) => row.slice());
-        for (let dy = 0; dy < shape.length; dy++) {
-            const swept = Math.floor(piece.y + dy) >= cutFrom;
-            for (let dx = 0; dx < shape[dy].length; dx++) {
-                if (!shape[dy][dx]) continue;
-                if (swept) {
-                    shape[dy][dx] = 0;
-                    removed++;
-                } else {
-                    remaining++;
-                }
-            }
-        }
-        if (remaining > 0) pieces.push({ ...piece, shape, y: piece.y + rows });
+        const below = pieceCellsWhere(piece, (row) => row > floorRow);
+        const above = pieceCellsWhere(piece, (row) => row < cutFrom);
+        if (below) pieces.push(below);
+        if (above) pieces.push({ ...above, y: piece.y + rows });
+        removed += piece.shape.flat().filter(Boolean).length
+            - [below, above].reduce((sum, part) => sum + (part ? part.shape.flat().filter(Boolean).length : 0), 0);
     }
     return { pieces, removed };
 }
@@ -121,15 +140,14 @@ function replaceWell(gameState, pieces, grid = sweptGrid(gameState, pieces)) {
 }
 
 /** The rows Tide would sweep, lowest last, for the flash and the particles. */
-export function odysseyTideRows(gameState, rows = ODYSSEY_TIDE_ROWS) {
-    const floor = (gameState?.boardGrid?.length || 0) - 1;
+export function odysseyTideRows(gameState, rows = ODYSSEY_TIDE_ROWS, floor = (gameState?.boardGrid?.length || 0) - 1) {
     return floor < 0 ? [] : Array.from({ length: Math.min(rows, floor + 1) }, (_, index) => floor - index);
 }
 
 /** Tide: the lowest rows wash away; refused mid-cascade, after a top-out, or over an empty floor. */
-export function applyOdysseyTide(gameState, rows = ODYSSEY_TIDE_ROWS) {
+export function applyOdysseyTide(gameState, rows = ODYSSEY_TIDE_ROWS, floor = (gameState?.boardGrid?.length || 0) - 1) {
     if (!gameState?.boardGrid?.length || gameState.isProcessingPhysics || gameState.isGameOver) return false;
-    const { pieces, removed } = sweepLowestRows(gameState.lockedPieces, rows, gameState.boardGrid.length - 1);
+    const { pieces, removed } = sweepLowestRows(gameState.lockedPieces, rows, floor);
     if (removed === 0) return false;
     const grid = sweptGrid(gameState, pieces);
     if (pieceInTheWay(gameState, grid)) return false;
@@ -191,13 +209,17 @@ export function applyOdysseyLongBreath(session) {
 // =============================
 
 /**
- * Empty a well and let play go on: the piece in hand stays, or a new one is dealt.
+ * Empty a well down to `floorRow` and let play go on: the piece in hand stays, or a new one is
+ * dealt. With no floor given, the whole well goes.
  * @param {object} gameState
- * @param {{ spawn?: () => void }} [options]
+ * @param {{ spawn?: () => void, floorRow?: number }} [options]
  */
-export function reviveOdysseyWell(gameState, { spawn } = {}) {
+export function reviveOdysseyWell(gameState, { spawn, floorRow } = {}) {
     if (!gameState?.boardGrid?.length) return false;
-    replaceWell(gameState, []);
+    const kept = (gameState.lockedPieces || [])
+        .map((piece) => pieceCellsWhere(piece, (row) => row > (floorRow ?? gameState.boardGrid.length - 1)))
+        .filter(Boolean);
+    replaceWell(gameState, kept);
     gameState.isGameOver = false;
     gameState.isAlive = true;
     gameState.dropCounter = 0;
@@ -216,7 +238,10 @@ export function tryOdysseyHearth(mode, session) {
     if (!run?.hearthArmed || run.hearthUsed) return false;
     const { gameState } = session;
     if (!mode?._isLevelSessionActive?.(session) || gameState?.victoryLapActive) return false;
-    const revived = reviveOdysseyWell(gameState, { spawn: () => session.physicsCallbacks?.spawnPiece?.() });
+    const revived = reviveOdysseyWell(gameState, {
+        spawn: () => session.physicsCallbacks?.spawnPiece?.(),
+        floorRow: odysseyCharmFloor(session),
+    });
     if (!revived) return false;
     run.hearthArmed = false;
     run.hearthUsed = true;
@@ -276,7 +301,7 @@ export function odysseyCharmRefusal(mode, session, charmId, count) {
     if (standing) return standing;
     if (charmId === 'tide') {
         if (gameState.isProcessingPhysics) return 'cascade';
-        const floor = (gameState.boardGrid?.length || 0) - 1;
+        const floor = odysseyCharmFloor(session);
         const swept = floor < 0 ? null : sweepLowestRows(gameState.lockedPieces, ODYSSEY_TIDE_ROWS, floor);
         if (!swept || swept.removed === 0) return 'empty-floor';
         if (pieceInTheWay(gameState, sweptGrid(gameState, swept.pieces))) return 'piece-in-way';
@@ -303,8 +328,9 @@ export function activateOdysseyCharm(mode, charmId) {
     const sfx = mode.deps?.soundManager?.sfxPlayer;
     let applied = false;
     if (charmId === 'tide') {
-        const rows = odysseyTideRows(gameState);
-        applied = applyOdysseyTide(gameState);
+        const floor = odysseyCharmFloor(session);
+        const rows = odysseyTideRows(gameState, ODYSSEY_TIDE_ROWS, floor);
+        applied = applyOdysseyTide(gameState, ODYSSEY_TIDE_ROWS, floor);
         if (applied) {
             // The impact's weight without the "Quad" callout four lines would earn: nothing Tide clears counts.
             effects?.playLineClearImpact?.(Math.min(ODYSSEY_TIDE_ROWS, 3), 1);

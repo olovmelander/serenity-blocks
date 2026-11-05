@@ -176,12 +176,13 @@ export class DemoManager {
     }
 
     /**
-     * Export demo to JSON string
+     * Export demo to JSON string, without this device's id: it means nothing on another.
      * @param {Object} demo - Demo object
      * @returns {string} JSON string
      */
     exportToJSON(demo) {
-        return JSON.stringify(demo, null, 2);
+        const { id, ...portable } = demo;
+        return JSON.stringify(portable, null, 2);
     }
 
     /**
@@ -195,64 +196,12 @@ export class DemoManager {
             if (!demo.version || !demo.inputs) {
                 throw new Error('Invalid demo format');
             }
+            // The store numbers it: an id from a file could already be taken here.
+            delete demo.id;
             return demo;
         } catch (e) {
             console.error('Failed to import demo:', e);
             return null;
         }
-    }
-
-    /**
-     * Generate a shareable URL for the demo (compressed)
-     * @param {Object} demo - Demo object
-     * @returns {Promise<string>} Shareable URL
-     */
-    async exportToURL(demo) {
-        try {
-            const jsonStr = JSON.stringify(demo);
-            // Use CompressionStream if available (modern browsers)
-            if (window.CompressionStream) {
-                const stream = new Blob([jsonStr]).stream();
-                const compressedReadableStream = stream.pipeThrough(new CompressionStream('gzip'));
-                const compressedResponse = await new Response(compressedReadableStream);
-                const blob = await compressedResponse.blob();
-                const buffer = await blob.arrayBuffer();
-                // Convert to base64
-                const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-                return `${window.location.origin}${window.location.pathname}?demo=${base64}`;
-            }
-            // Fallback or just return error
-            console.warn('CompressionStream not supported');
-            return null;
-        } catch (e) {
-            console.error('Failed to export to URL:', e);
-            return null;
-        }
-    }
-
-    /**
-     * Import demo from URL parameter
-     * @param {string} base64Data - Base64 encoded compressed data
-     * @returns {Promise<Object>} Demo object
-     */
-    async importFromURL(base64Data) {
-        try {
-            if (window.DecompressionStream) {
-                const binaryString = atob(base64Data);
-                const bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) {
-                    bytes[i] = binaryString.charCodeAt(i);
-                }
-                const stream = new Blob([bytes]).stream();
-                const decompressedReadableStream = stream.pipeThrough(new DecompressionStream('gzip'));
-                const resp = await new Response(decompressedReadableStream);
-                const jsonStr = await resp.text();
-                return JSON.parse(jsonStr);
-            }
-        } catch (e) {
-            console.error('Failed to import from URL:', e);
-            return null;
-        }
-        return null;
     }
 }
