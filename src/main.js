@@ -4551,9 +4551,8 @@ class SerenityBlocks {
             }
 
             currentMode?._maybeExpandPlayerGrid?.(playerState, sceneRef());
-            const nextCanvases = playerNum === 1
-                ? (currentMode?.p1NextCanvases || this.p1NextCanvases)
-                : (currentMode?.p2NextCanvases || this.p2NextCanvases);
+            const nextCanvases = currentMode?.playerNextCanvases?.get(playerNum)
+                || (playerNum === 1 ? this.p1NextCanvases : this.p2NextCanvases);
 
             spawnPiece(
                 playerState,
