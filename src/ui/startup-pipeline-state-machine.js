@@ -60,6 +60,9 @@ export function waitForStartupStep(value, signal) {
         return Promise.resolve(value);
     }
     if (signal.aborted) {
+        // The caller started this work before passing it here. Its eventual
+        // rejection still needs an observer after startup has been skipped.
+        Promise.resolve(value).catch(() => {});
         return Promise.reject(abortErrorFromSignal(signal));
     }
 

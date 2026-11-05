@@ -31,6 +31,9 @@ export function cleanupApplication(app) {
         console.log('🧹 Application cleaned up');
     });
 
+    // Stop new gameplay input and invite joins before mode teardown emits events.
+    attemptCleanup(() => app.gamepadController?.destroy?.());
+    attemptCleanup(() => app.steamInviteManager?.destroy?.());
     attemptCleanup(() => app.settingsManager?.dispose?.());
     for (const handler of app.cleanupHandlers.splice(0)) attemptCleanup(() => handler?.());
     attemptCleanup(() => app.stopFPSMonitor?.());

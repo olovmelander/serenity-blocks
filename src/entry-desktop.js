@@ -9,7 +9,11 @@ if (typeof window !== 'undefined') {
     const startupShell = window.__serenityStartupShell || window.__serenityStartupBridge;
     startupShell?.set?.('Importing main application');
     try {
-        window.electronAPI?.invoke?.('desktop:startup-mark', { phase: 'renderer-entry-started' });
+        Promise.resolve(window.electronAPI?.invoke?.('desktop:startup-mark', {
+            phase: 'renderer-entry-started',
+        })).catch((error) => {
+            console.warn('[DesktopEntry] Failed to report renderer entry start:', error);
+        });
     } catch (error) {
         console.warn('[DesktopEntry] Failed to report renderer entry start:', error);
     }
