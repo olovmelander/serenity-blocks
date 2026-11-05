@@ -55,6 +55,22 @@ const isRecord = (value) => value && typeof value === 'object' && !Array.isArray
 export const isOdysseyCompletion = (value) => isRecord(value)
     && Number.isInteger(value.stars) && value.stars >= 1 && value.stars <= 3;
 
+/** Keep an earned clear while discarding damaged optional record values. */
+export function normalizeOdysseyCompletion(value) {
+    if (!isOdysseyCompletion(value)) return null;
+    const completion = { ...value };
+    ['bestScore', 'bestTime', 'attempts'].forEach((key) => {
+        if (!Number.isFinite(completion[key]) || completion[key] < 0
+            || (key === 'attempts' && !Number.isInteger(completion[key]))) delete completion[key];
+    });
+    if (Array.isArray(completion.completedBonuses)) {
+        completion.completedBonuses = completion.completedBonuses.map((bonus) => bonus === true);
+    } else {
+        delete completion.completedBonuses;
+    }
+    return completion;
+}
+
 /** Interpret only archive identities authored by a supported campaign migration. */
 export function getRetiredOdysseyCompletions(progress) {
     const completion = progress?.retiredCompletions?.['v3:10'];

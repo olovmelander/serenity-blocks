@@ -12,7 +12,7 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { getLevelRegistry } from './LevelRegistry.js';
 import {
     ODYSSEY_SAVE_VERSION, getOdysseyCompletionThemeIds, snapshotLegacyOdysseyThemes, migrateV3OdysseyCampaign,
-    migrateV4OdysseyCampaign, isOdysseyCompletion,
+    migrateV4OdysseyCampaign, normalizeOdysseyCompletion,
 } from './odyssey-progress-schema.js';
 import {
     claimOdysseyPity, createOdysseyCharmState, dropOdysseyCharms, normalizeOdysseyCharmState, odysseyCharmBagEntries,
@@ -50,7 +50,7 @@ export function migrateOdysseyProgressData(data) {
             // Numeric ids in the array form.
             data.unlockedLevels = data.unlockedLevels.map(shiftId);
         }
-        if (data.completedLevels && typeof data.completedLevels === 'object') {
+        if (isRecord(data.completedLevels)) {
             // STRING keys in the map form — the type asymmetry is the trap here.
             const migrated = {};
             Object.entries(data.completedLevels).forEach(([key, value]) => {
@@ -273,12 +273,13 @@ export class OdysseyStateManager {
         const completed = new Map();
         this.completedLevels.forEach((completion, levelId) => {
             const numericId = Number(levelId);
+            const normalized = normalizeOdysseyCompletion(completion);
             if (!Number.isInteger(numericId) || numericId < 1 || numericId > totalLevels
-                || !isOdysseyCompletion(completion)) return;
+                || !normalized) return;
             const canonicalId = String(numericId);
             // Recover aliases such as "08" only when the real key has no valid completion.
             if (!completed.has(canonicalId) || String(levelId) === canonicalId) {
-                completed.set(canonicalId, completion);
+                completed.set(canonicalId, normalized);
             }
         });
         this.completedLevels = completed;

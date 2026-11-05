@@ -2,7 +2,9 @@ import steamService from './steam-service.js';
 import { STEAM_EVENTS, STEAM_STORAGE_KEYS } from './steam-config.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { migrateOdysseyProgressData } from '../odyssey/OdysseyStateManager.js';
-import { ODYSSEY_SAVE_VERSION, getOdysseyCompletionThemeIds } from '../odyssey/odyssey-progress-schema.js';
+import {
+    ODYSSEY_SAVE_VERSION, getOdysseyCompletionThemeIds, normalizeOdysseyCompletion,
+} from '../odyssey/odyssey-progress-schema.js';
 import { resolveOwnedMusicPreference } from '../progression/music-preference.js';
 import { LEGACY_SCORE_MODE, keepTopScoresPerMode, mergeStatisticsSnapshots } from '../progression/score-statistics.js';
 import { CONTROLLER_LAYOUT_VERSION, migrateSerenityPadLayout } from '../controller-layout.js';
@@ -93,8 +95,10 @@ const scoreKey = (entry) => [
     entry.timestamp ?? 0,
 ].join('|');
 const journeyStampOf = (data) => (typeof data?.journeyStartedAt === 'string' ? data.journeyStartedAt : '');
-const isCompletedOrb = (value) => isRecord(value)
-    && Number.isInteger(value.stars) && value.stars >= 1 && value.stars <= 3;
+const completionEntries = (records) => Object.entries(isRecord(records) ? records : {})
+    .map(([id, entry]) => [id, normalizeOdysseyCompletion(entry)]).filter(([, entry]) => entry);
+const odysseyCounters = (statistics) => Object.fromEntries(Object.entries(isRecord(statistics) ? statistics : {})
+    .map(([key, value]) => [key, Number.isFinite(value) && value >= 0 ? value : 0]));
 
 const pickKeys = (obj, keys) => {
     const output = {};
@@ -107,11 +111,12 @@ const pickKeys = (obj, keys) => {
 };
 
 const toTimestamp = (value) => {
-    if (!value) return null;
+    if (!value || (typeof value !== 'string' && typeof value !== 'number')
+        || (typeof value === 'string' && !value.trim())) return null;
     const parsed = Date.parse(value);
     if (Number.isFinite(parsed)) return parsed;
     const asNumber = Number(value);
-    return Number.isFinite(asNumber) ? asNumber : null;
+    return Number.isFinite(asNumber) && Number.isFinite(new Date(asNumber).getTime()) ? asNumber : null;
 };
 
 export class SteamCloudSyncManager {
@@ -807,11 +812,9 @@ export class SteamCloudSyncManager {
     }
 
     _mergeOdysseyCompletions(localCompleted = {}, cloudCompleted = {}) {
-        const mergedCompleted = Object.fromEntries(Object.entries(localCompleted)
-            .filter(([, entry]) => isCompletedOrb(entry)));
+        const mergedCompleted = Object.fromEntries(completionEntries(localCompleted));
 
-        Object.entries(cloudCompleted).forEach(([levelId, cloudEntry]) => {
-            if (!isCompletedOrb(cloudEntry)) return;
+        completionEntries(cloudCompleted).forEach(([levelId, cloudEntry]) => {
             const localEntry = mergedCompleted[levelId] || {};
             const mergedEntry = {
                 ...localEntry,
@@ -848,12 +851,14 @@ export class SteamCloudSyncManager {
 
             const localDate = toTimestamp(localEntry.completionDate);
             const cloudDate = toTimestamp(cloudEntry.completionDate);
-            if (localDate && cloudDate) {
+            if (localDate !== null && cloudDate !== null) {
                 mergedEntry.completionDate = new Date(Math.min(localDate, cloudDate)).toISOString();
-            } else if (cloudEntry.completionDate) {
+            } else if (cloudDate !== null) {
                 mergedEntry.completionDate = cloudEntry.completionDate;
-            } else if (localEntry.completionDate) {
+            } else if (localDate !== null) {
                 mergedEntry.completionDate = localEntry.completionDate;
+            } else {
+                delete mergedEntry.completionDate;
             }
 
             mergedCompleted[levelId] = mergedEntry;
@@ -879,8 +884,13 @@ export class SteamCloudSyncManager {
         const localJourney = journeyStampOf(localData);
         const cloudJourney = journeyStampOf(cloudData);
         if (localJourney !== cloudJourney) {
+            const later = localJourney > cloudJourney ? localData : cloudData;
             return {
-                ...(localJourney > cloudJourney ? localData : cloudData),
+                ...later,
+                unlockedLevels: Array.isArray(later.unlockedLevels) ? later.unlockedLevels : [],
+                completedLevels: this._mergeOdysseyCompletions(later.completedLevels),
+                retiredCompletions: this._mergeOdysseyCompletions(later.retiredCompletions),
+                statistics: odysseyCounters(later.statistics),
                 lastSaveDate: new Date().toISOString(),
             };
         }
@@ -894,8 +904,8 @@ export class SteamCloudSyncManager {
                 || cloudData.onboarding?.arrivalSeen === true,
         };
 
-        const localUnlocked = new Set(localData.unlockedLevels || []);
-        const cloudUnlocked = new Set(cloudData.unlockedLevels || []);
+        const localUnlocked = new Set(Array.isArray(localData.unlockedLevels) ? localData.unlockedLevels : []);
+        const cloudUnlocked = new Set(Array.isArray(cloudData.unlockedLevels) ? cloudData.unlockedLevels : []);
         merged.unlockedLevels = Array.from(new Set([...localUnlocked, ...cloudUnlocked]));
 
         merged.completedLevels = this._mergeOdysseyCompletions(localData.completedLevels, cloudData.completedLevels);
@@ -905,8 +915,8 @@ export class SteamCloudSyncManager {
         merged.currentChapter = Math.max(localData.currentChapter || 1, cloudData.currentChapter || 1);
         merged.currentLevel = Math.max(localData.currentLevel || 1, cloudData.currentLevel || 1);
 
-        const localStats = localData.statistics || {};
-        const cloudStats = cloudData.statistics || {};
+        const localStats = odysseyCounters(localData.statistics);
+        const cloudStats = odysseyCounters(cloudData.statistics);
         merged.statistics = {
             ...localStats,
             ...cloudStats,
