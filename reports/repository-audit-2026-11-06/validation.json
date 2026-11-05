@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "recorded_utc": "2026-11-05T23:04:07.274550+00:00",
+  "repository": "olovmelander/serenity-blocks",
+  "pull_request": "https://github.com/olovmelander/serenity-blocks/pull/358",
+  "baseline_commit": "04b0b613daae153dedffbef47fcba43817f30405",
+  "validated_code_commit": "326c99c56da11ae7ee99424de2aa6afef2570086",
+  "environment": {
+    "platform": "Linux",
+    "node": "v24.22.1",
+    "installation": "npm ci --ignore-scripts",
+    "test_workers": 2,
+    "electron_binary_installed": false
+  },
+  "baseline_tests": {
+    "success": false,
+    "files": 1346,
+    "passed": 24366,
+    "failed": 0,
+    "skipped": 3,
+    "failed_files": [
+      {
+        "file": "unit/theme-fleet-bench.test.js",
+        "message": "Electron failed to install correctly. Please delete `node_modules/electron` and run \"npx install-electron --no\" manually."
+      }
+    ],
+    "started_utc": "2026-11-05T22:41:01.448000+00:00",
+    "duration_seconds": 548.49
+  },
+  "integrated_tests": {
+    "success": true,
+    "files": 1368,
+    "passed": 24529,
+    "failed": 0,
+    "skipped": 3,
+    "failed_files": [],
+    "started_utc": "2026-11-05T22:54:36.116000+00:00",
+    "duration_seconds": 491.38
+  },
+  "interrupted_run": "A managed-environment restart terminated an earlier integrated run before it produced a report; it is not counted as passing.",
+  "passed_checks": [
+    "npm run typecheck",
+    "node scripts/ts-ratchet-check.mjs",
+    "node scripts/lint-ratchet-check.mjs --update",
+    "node scripts/architecture-fitness-check.mjs --update",
+    "npm run check:boundaries",
+    "npm run audit:theme-lifecycle",
+    "npm run build",
+    "npm run check:ip-strings",
+    "npm run check:pages-artifact",
+    "npm run check:release-gates",
+    "npm run perf:budgets:gate",
+    "npm audit --omit=dev --audit-level=high",
+    "npm audit --audit-level=high",
+    "git diff --check"
+  ],
+  "lint": {
+    "errors": 432,
+    "warnings": 1999,
+    "fatal": 0,
+    "previous_ceiling": 435,
+    "new_ceiling": 432
+  },
+  "boot_closure": {
+    "entry_chunks": 3,
+    "entry_kib_rounded": 12,
+    "main_chunks": 4,
+    "main_kib_rounded": 1306
+  },
+  "production_dependency_vulnerabilities": 0,
+  "full_dependency_audit": {
+    "info": 0,
+    "low": 0,
+    "moderate": 6,
+    "high": 0,
+    "critical": 0,
+    "total": 6
+  },
+  "advisory_note": "The six moderate entries are affected development packages in the minimatch/electron-builder chain, not six distinct advisories. No high or critical findings. No package version changes.",
+  "browser_smoke": {
+    "passed": true,
+    "checks": [
+      {
+        "name": "production menu boot",
+        "ready": true,
+        "cards": 8
+      },
+      {
+        "name": "settings controls navigation",
+        "open": true,
+        "modalClass": "modal visible",
+        "controlsVisible": true,
+        "settingsAvailable": true
+      }
+    ],
+    "uncaught_exceptions": 0,
+    "expected_console_errors": [
+      "[SoundManager] Music switch failed: NotAllowedError: play() failed because the user didn't interact with the document first. https://goo.gl/xX8pDD",
+      "[SoundManager] Music switch failed: NotAllowedError: play() failed because the user didn't interact with the document first. https://goo.gl/xX8pDD",
+      "[SoundManager] Music switch failed: NotAllowedError: play() failed because the user didn't interact with the document first. https://goo.gl/xX8pDD"
+    ],
+    "note": "Headless Chromium, isolated profile, skipIntro=1 and noThemeWarm=1. Autoplay denials were expected without a trusted gesture."
+  },
+  "independent_browser_checks": {
+    "enhanced_select_dom_checks": 9,
+    "indexeddb_concurrent_save_import_pairs": 20,
+    "retained_score_rows": 22,
+    "retained_local_games": 21,
+    "rollback_and_replace_verified": true
+  },
+  "github_ci": {
+    "code_commit": "326c99c56da11ae7ee99424de2aa6afef2570086",
+    "run_id": 42125478131,
+    "status_at_recording": "in_progress",
+    "static_gates": "passed",
+    "full_test_and_build": "pending"
+  },
+  "limits": [
+    "No authenticated Steam session",
+    "No Windows or physical controller validation",
+    "No real GPU performance capture or complete visual scene sweep",
+    "Development release gate only; no release approval",
+    "No merge or deployment"
+  ]
+}

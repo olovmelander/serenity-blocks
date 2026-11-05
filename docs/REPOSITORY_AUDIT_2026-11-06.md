@@ -1,6 +1,6 @@
 # Repository audit and safe fixes — 2026-11-05/06
 
-**Status:** initial integration verification in progress. This is an evidence record, not a new architectural roadmap. The remaining observations require fresh reproduction and the existing architecture constraints before implementation.
+**Status:** initial audited fix batch verified locally and available in draft PR #358; scheduled follow-up passes remain pending. This is an evidence record, not a new architectural roadmap. The remaining observations require fresh reproduction and the existing architecture constraints before implementation.
 
 - Repository: `olovmelander/serenity-blocks`
 - Baseline: `04b0b613daae153dedffbef47fcba43817f30405`
@@ -112,12 +112,12 @@ Commits: `8d056d5`, `841ecd7`, `718d666`. Tooling regressions reproduced 12 fail
 
 ## Integration verification
 
-The final compact evidence ledger will be stored at `reports/repository-audit-2026-11-06/validation.json`.
+The compact evidence ledger is [reports/repository-audit-2026-11-06/validation.json](../reports/repository-audit-2026-11-06/validation.json). It records the tested commit, environment, exact results and limits.
 
 | Check | Initial integration result |
 |---|---|
 | Baseline full Vitest suite | 24,366 passed, 3 skipped, zero failed assertions; one file failed to import without the optional Electron binary |
-| Changed-branch full Vitest suite | Running; result pending |
+| Changed-branch full Vitest suite | **24,529 passed, 3 skipped, zero failures across 1,368 files** |
 | Type checking | Passed after source fixes |
 | TypeScript coverage ratchet | Passed; no lost checked files |
 | Lint ratchet | Passed final run: 432 errors, 1,999 warnings, zero fatal errors; ceiling lowered from 435 to 432 |
@@ -162,4 +162,4 @@ Hourly follow-up audit passes and a morning summary were scheduled using the use
 
 ### Pass log
 
-- Initial pass: code fixes and independent reviews complete; integration verification running. A managed-environment restart preserved files/commits but terminated the first changed-branch test process before it produced a result; the full run was restarted after the Electron-import fix. Main has not been merged or deployed.
+- Initial pass: code fixes, independent reviews, full local suite and build/gates complete. The final local suite passed 24,529 tests with three skips across 1,368 files. GitHub CI is separately checking the branch; its static gates have passed and its full test/build result was still pending at this checkpoint. A managed-environment restart preserved files/commits but terminated the first changed-branch test process before it produced a result; the full run was restarted after the Electron-import fix. Main has not been merged or deployed.
