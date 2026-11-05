@@ -41,10 +41,10 @@ const REPORTS_DIR = path.join(ROOT, 'reports', 'odyssey-perf');
  */
 export function validateBudgetsShape(budgetsDoc) {
     const problems = [];
-    if (!budgetsDoc || typeof budgetsDoc !== 'object') {
+    if (!budgetsDoc || typeof budgetsDoc !== 'object' || Array.isArray(budgetsDoc)) {
         return ['document is not an object'];
     }
-    if (!budgetsDoc.budgets || typeof budgetsDoc.budgets !== 'object') {
+    if (!budgetsDoc.budgets || typeof budgetsDoc.budgets !== 'object' || Array.isArray(budgetsDoc.budgets)) {
         return ['missing top-level "budgets" object'];
     }
 
@@ -105,14 +105,14 @@ function main() {
     }
 
     // 2. Budgets file parses + structural lint.
-    let budgetsDoc = null;
+    let budgetsDoc;
     try {
         budgetsDoc = JSON.parse(readFileSync(path.join(ROOT, 'perf-budgets.json'), 'utf8'));
     } catch (error) {
         console.error(`[perf-budgets-gate] FAIL: perf-budgets.json unreadable: ${error.message}`);
         ok = false;
     }
-    if (budgetsDoc) {
+    if (budgetsDoc !== undefined) {
         const problems = validateBudgetsShape(budgetsDoc);
         if (problems.length) {
             console.error('[perf-budgets-gate] FAIL: perf-budgets.json shape problems:');

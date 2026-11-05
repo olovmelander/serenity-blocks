@@ -8,16 +8,35 @@
  */
 import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = path.join(ROOT, 'dist');
 const manifest = JSON.parse(readFileSync(path.join(DIST, 'manifest.json'), 'utf8'));
 const print = process.argv.includes('--print');
 
-const size = (file) => { try { return statSync(path.join(DIST, file)).size; } catch { return 0; } };
+const failures = [];
+const size = (file) => {
+    try {
+        const stat = statSync(path.join(DIST, file));
+        if (!stat.isFile()) throw new Error('not a file');
+        return stat.size;
+    } catch {
+        failures.push(`missing or unreadable boot chunk: ${file}`);
+        return 0;
+    }
+};
 const closure = (key) => {
     const seen = new Set();
-    const walk = (k) => { if (seen.has(k) || !manifest[k]) return; seen.add(k); (manifest[k].imports || []).forEach(walk); };
+    const walk = (k) => {
+        if (seen.has(k)) return;
+        if (!manifest[k]) {
+            failures.push(`static import missing from manifest: ${k}`);
+            return;
+        }
+        seen.add(k);
+        (manifest[k].imports || []).forEach(walk);
+    };
     walk(key);
     return [...seen];
 };
@@ -32,7 +51,6 @@ if (!entryKey || !mainKey) { console.error('check-boot-closure: entry or main ch
 
 const entry = describe(closure(entryKey));
 const main = describe(closure(mainKey));
-const failures = [];
 const LAZY = /^(theme-(?!shared$)|mode-|phaser$|three$|draco|playground)/;
 for (const item of main) {
     const name = chunkName(item.file);
