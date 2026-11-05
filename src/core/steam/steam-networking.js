@@ -1283,10 +1283,14 @@ export class SteamNetworking {
 
         // Close all P2P connections via steamworks.js preload API
         this.connectedPeers.forEach((peerInfo, steamId) => {
-            ipcRenderer.invoke('steam:closeP2PSession', steamId);
+            ipcRenderer.invoke('steam:closeP2PSession', steamId).catch((err) => {
+                console.warn('⚠️ Failed to close P2P session:', err);
+            });
         });
 
-        ipcRenderer.invoke('steam:leaveLobby');
+        ipcRenderer.invoke('steam:leaveLobby').catch((err) => {
+            console.warn('⚠️ Failed to leave lobby:', err);
+        });
         this._resetLobbySession();
         this.isHost = false;
 
@@ -1398,7 +1402,9 @@ export class SteamNetworking {
             return;
         }
         try {
-            ipcRenderer.invoke('steam:setLobbyData', this.currentLobbyId, 'status', String(status));
+            ipcRenderer.invoke('steam:setLobbyData', this.currentLobbyId, 'status', String(status)).catch((err) => {
+                console.warn('⚠️ Failed to set lobby status:', err);
+            });
         } catch (err) {
             console.warn('⚠️ Failed to set lobby status:', err);
         }
@@ -2007,6 +2013,12 @@ export class SteamNetworking {
      * peer decodes round-2 state against round-1 data → corrupted/frozen peer board.
      */
     resetSnapshotBaselines() {
+        // A delayed delta still belongs to the old baseline/round. Retire its send
+        // before a new keyframe or lobby can reuse this transport.
+        this.outgoingSnapshotState.forEach((state) => {
+            if (state?.timer != null) clearTimeout(state.timer);
+        });
+        this.outgoingSnapshotState.clear();
         this.lastKeyframeSnapshot = null;
         this.lastBroadcastSnapshot = null;
         this.lastFullSnapshotAt = 0;

@@ -27,10 +27,14 @@ export function capPeerText(value, max) {
     let out = '';
     for (const char of value) {
         const code = char.codePointAt(0) ?? 0;
-        if (code >= 32 && code !== 127 && !HIDDEN_FORMAT_CHARS.test(char)) out += char;
+        if (code >= 32 && code !== 127 && !HIDDEN_FORMAT_CHARS.test(char)) {
+            // Keep the existing UTF-16 size cap without cutting an emoji in half.
+            if (out.length + char.length > max) break;
+            out += char;
+        }
         if (out.length >= max) break;
     }
-    return out.slice(0, max).trim();
+    return out.trim();
 }
 
 /**

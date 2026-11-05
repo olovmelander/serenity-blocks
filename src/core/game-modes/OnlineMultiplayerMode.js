@@ -171,12 +171,12 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         return 'Online Multiplayer (FFA)';
     }
 
-    /**
-     * Called when online multiplayer mode is selected
-     */
+    /** Prepare online UI while this activation still owns the mode. */
     async onActivate() {
+        const activation = {};
+        this._onlineActivation = activation;
         await super.onActivate();
-
+        if (this._onlineActivation !== activation || !this.isActive) return;
         // Hide both single player and local multiplayer containers
         const singlePlayerContainer = document.getElementById('single-player-container');
         if (singlePlayerContainer) {
@@ -195,9 +195,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         }
 
         try {
-            // Initialize Steam networking
             await this.initializeSteamNetworking();
-
+            if (this._onlineActivation !== activation || !this.isActive) return;
             // SB-02: re-arm the P2P poll on re-entry (instance is cached; deactivate stops it).
             this.steamNetworking.startP2PPolling();
 
@@ -213,34 +212,34 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             this.initializeLobbyUI();
             this._ensureMatchResultsModal();
 
-            // Show lobby browser
             await this.showLobbyBrowser();
         } catch (error) {
+            if (this._onlineActivation !== activation || !this.isActive) return;
             console.error('[OnlineMultiplayer] Failed to activate:', error);
             window.dispatchEvent(new CustomEvent('serenity:toast', { detail: { message: `Online play could not start. ${error.message}`, type: 'error' } }));
             throw error;
         }
     }
 
-    /**
-     * Initialize Steam networking
-     */
+    /** Initialize one shared transport; failed attempts remain retryable. */
     async initializeSteamNetworking() {
-        if (this.steamNetworking) {
-            console.log('[OnlineMultiplayer] Steam already initialized');
-            return;
+        if (this.steamNetworking) return;
+        if (!this._steamNetworkingInit) {
+            const network = new SteamNetworking();
+            this._steamNetworkingInit = (async () => {
+                try {
+                    if (!await network.init()) throw new Error('Failed to initialize Steam networking');
+                    network.stopP2PPolling(); // Only the current activation may re-arm polling.
+                    this.steamNetworking = network;
+                } catch (error) {
+                    network.shutdown();
+                    throw error;
+                } finally {
+                    this._steamNetworkingInit = null;
+                }
+            })();
         }
-
-        console.log('[OnlineMultiplayer] Initializing Steam networking...');
-
-        this.steamNetworking = new SteamNetworking();
-        const success = await this.steamNetworking.init();
-
-        if (!success) {
-            throw new Error('Failed to initialize Steam networking');
-        }
-
-        console.log('[OnlineMultiplayer] ✅ Steam networking initialized');
+        await this._steamNetworkingInit;
     }
 
     /**
@@ -2664,10 +2663,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         console.log('[OnlineMultiplayer] ✅ Game stopped');
     }
 
-    /**
-     * Called when mode is deselected
-     */
+    /** Retire pending activation work before cleaning up the online mode. */
     async onDeactivate() {
+        this._onlineActivation = null;
         await super.onDeactivate();
         if (this._victoryBeatTimer) {
             clearTimeout(this._victoryBeatTimer);

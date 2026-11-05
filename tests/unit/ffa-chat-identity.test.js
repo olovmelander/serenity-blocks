@@ -18,6 +18,7 @@ function makeHandlerNetwork() {
     return {
         handlers,
         hostSteamId: HOST_ID,
+        sendP2PMessage: vi.fn(),
         on: vi.fn((messageType, handler) => {
             if (!handlers.has(messageType)) handlers.set(messageType, []);
             handlers.get(messageType).push(handler);
@@ -114,6 +115,31 @@ describe('FFAGameStateP2P chat identity binding', () => {
             MessageTypes.GAME_CHAT,
             canonical,
             PEER_ID,
+        );
+        state._networkHandlerRegistry.dispose();
+    });
+
+    it.each([PEER_ID, 'S1'])('relays %s chat to spectators without echoing to its sender', (sender) => {
+        const state = makeHostState();
+        state.players.set(PEER_ID, { name: 'Canonical Peer', color: '#12ab34' });
+        state.spectators = new Set(['S1', 'S2']);
+
+        dispatchChat(state, sender, {
+            message: 'hello watchers', steamId: HOST_ID, playerName: 'Forged Host',
+        });
+
+        const relayed = state.chatHistory[0];
+        expect(relayed).toMatchObject({
+            message: 'hello watchers',
+            steamId: sender,
+            playerName: sender === PEER_ID ? 'Canonical Peer' : 'Spectator',
+        });
+        expect(state.broadcastToPeers).toHaveBeenCalledExactlyOnceWith(
+            MessageTypes.GAME_CHAT, relayed, sender,
+        );
+        const recipients = sender === PEER_ID ? ['S1', 'S2'] : ['S2'];
+        expect(state.network.sendP2PMessage.mock.calls).toEqual(
+            recipients.map((steamId) => [steamId, MessageTypes.GAME_CHAT, relayed]),
         );
         state._networkHandlerRegistry.dispose();
     });

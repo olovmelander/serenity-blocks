@@ -69,6 +69,12 @@ export function handleFfaChat(game, msg, now = Date.now()) {
         emitMultiplayerEvent(MULTIPLAYER_EVENTS.CHAT_MESSAGE, { ...resolved });
     }
     // The host relays to the others; the sender already shows its own message.
-    if (game.isHost) game.broadcastToPeers(MessageTypes.GAME_CHAT, resolved, msg.from);
+    if (game.isHost) {
+        game.broadcastToPeers(MessageTypes.GAME_CHAT, resolved, msg.from);
+        // Watchers are connected peers but deliberately absent from the player roster.
+        game.spectators?.forEach((steamId) => {
+            if (steamId !== msg.from) game.network.sendP2PMessage(steamId, MessageTypes.GAME_CHAT, resolved);
+        });
+    }
     return true;
 }
