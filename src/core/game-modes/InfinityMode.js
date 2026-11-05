@@ -134,6 +134,7 @@ export class InfinityMode extends BaseGameMode {
         this._stoppedSession = null;
         this._stopPromise = null;
         this.isProcessingGameOver = false;
+        this._recordedRuns = new WeakSet();
     }
 
     /**
@@ -373,6 +374,8 @@ export class InfinityMode extends BaseGameMode {
             this._explorationOwnsPause = false;
         }
         super.onPause();
+        const stats = this.gameState?.infinityStats;
+        if (stats && !stats.pausedAt) stats.pausedAt = Date.now();
         this._fixedTickInputBinding?.clear();
         console.log('[Infinity] Game paused');
 
@@ -394,6 +397,7 @@ export class InfinityMode extends BaseGameMode {
             this._endExploration({ resumeMode: false });
         }
         super.onResume();
+        this._closeRunPause(this.gameState);
 
         if (
             this._fixedTickEnabled
@@ -564,15 +568,21 @@ export class InfinityMode extends BaseGameMode {
         }
 
         const session = this._activeSession;
+        // Infinity only ends by itself at the roof, so most runs end here, with the player
+        // leaving: the menu, a restart or closing the game. A game over records its own.
+        const leavingRun = !this.isProcessingGameOver;
         // BaseGameMode has no await today, so this retires the public running
         // flag synchronously. The captured transaction still joins its promise.
         const baseStopPromise = super.onStop();
         const completion = this._stopCapturedSession(session, baseStopPromise);
         const trackedStop = completion
-            .then((stoppedSession) => {
+            .then(async (stoppedSession) => {
                 if (this._activeSession === session) {
                     this._activeSession = null;
                     this._stoppedSession = stoppedSession;
+                }
+                if (leavingRun && stoppedSession.gameState.score > 0) {
+                    await this._recordRun(stoppedSession);
                 }
                 return stoppedSession;
             })
@@ -613,6 +623,7 @@ export class InfinityMode extends BaseGameMode {
         // this.gameState inside the remainder of this transaction.
         gameState.isGameOver = true;
         gameState.isStopped = true;
+        this._closeRunPause(gameState);
         this._stopGameLoop(gameState);
         this._fixedTickEnabled = false;
 
@@ -1697,32 +1708,7 @@ export class InfinityMode extends BaseGameMode {
         }
         const { gameState, simulationClock } = stoppedSession;
         const writesLegacyResults = canWriteLegacySimulationResults(simulationClock);
-
-        let scoreSaved = true;
-        if (writesLegacyResults) {
-            // Save high score (using standard system for now). A storage failure still
-            // shows the results, marked unsaved.
-            // Records shows a run by its deepest cascade and its length (timed as on Steam).
-            const runStart = gameState.infinityStats?.sessionStartTime || gameState.startTime || Date.now();
-            scoreSaved = await saveRunScore(this.deps.highScoreManager, {
-                score: gameState.score,
-                lines: gameState.lines,
-                level: gameState.level,
-                mode: 'infinity', // Tag as infinity mode
-                cascade: gameState.infinityStats?.maxComboDepth || 0,
-                duration: Math.max(1, Math.round((Date.now() - runStart) / 1000)),
-            }, '[Infinity]');
-
-            // Sync Steam stats/leaderboards in the background (best-effort).
-            this._syncSteamStats(stoppedSession).catch((err) => {
-                console.warn('[Infinity] Steam stats sync failed:', err.message);
-            });
-        } else {
-            console.info(
-                '[Infinity] Experimental simulation clock; legacy score/stat writes skipped:',
-                simulationClock,
-            );
-        }
+        const scoreSaved = await this._recordRun(stoppedSession);
 
         if (deathBeat) await deathBeat;
         if (!this._ownsStoppedSessionUi(stoppedSession)) {
@@ -1770,6 +1756,71 @@ export class InfinityMode extends BaseGameMode {
     }
 
     /**
+     * Keep one finished run, however it ended: the local high score and, in the background,
+     * Steam's stats. A storage failure is reported, so the results can show the run unsaved.
+     * The board can die in the same moment the player leaves: a run is recorded once.
+     * @param {Readonly<{ gameState: GameState, simulationClock: unknown }>} stoppedSession
+     * @returns {Promise<boolean>} whether the score was saved, or needed no saving
+     * @private
+     */
+    async _recordRun(stoppedSession) {
+        const { gameState, simulationClock } = stoppedSession;
+        if (this._recordedRuns.has(gameState)) return true;
+        this._recordedRuns.add(gameState);
+
+        if (!canWriteLegacySimulationResults(simulationClock)) {
+            console.info(
+                '[Infinity] Experimental simulation clock; legacy score/stat writes skipped:',
+                simulationClock,
+            );
+            return true;
+        }
+
+        // Records shows a run by its deepest cascade and its length (timed as on Steam).
+        const scoreSaved = await saveRunScore(this.deps.highScoreManager, {
+            score: gameState.score,
+            lines: gameState.lines,
+            level: gameState.level,
+            mode: 'infinity', // Tag as infinity mode
+            cascade: gameState.infinityStats?.maxComboDepth || 0,
+            duration: Math.max(1, Math.round(this._runLengthMs(gameState) / 1000)),
+        }, '[Infinity]');
+
+        // Sync Steam stats/leaderboards in the background (best-effort).
+        this._syncSteamStats(stoppedSession).catch((err) => {
+            console.warn('[Infinity] Steam stats sync failed:', err.message);
+        });
+        return scoreSaved;
+    }
+
+    /**
+     * How long a run has been played. The run's clock leaves pauses out (_closeRunPause).
+     * @param {GameState} gameState
+     * @returns {number} milliseconds
+     * @private
+     */
+    _runLengthMs(gameState) {
+        const now = Date.now();
+        return now - (gameState.infinityStats?.sessionStartTime || gameState.startTime || now);
+    }
+
+    /**
+     * Take a pause out of the run's clock. Records, Steam and the results sheet all count from
+     * the run's start, so moving the start keeps a pause out of every one of them: leaving a
+     * paused game on the menu must not be a way to post a long run.
+     * @param {GameState|null|undefined} gameState
+     * @private
+     */
+    _closeRunPause(gameState) {
+        const stats = gameState?.infinityStats;
+        if (!stats?.pausedAt) return;
+        const pausedFor = Date.now() - stats.pausedAt;
+        stats.pausedAt = 0;
+        stats.sessionStartTime += pausedFor;
+        gameState.startTime += pausedFor;
+    }
+
+    /**
      * Whether one stopped generation still owns the mode's result UI.
      * @param {Object|null} stoppedSession
      * @returns {boolean}
@@ -1802,8 +1853,7 @@ export class InfinityMode extends BaseGameMode {
             return;
         }
 
-        const startTime = gameState.infinityStats?.sessionStartTime || gameState.startTime || Date.now();
-        const durationMs = Date.now() - startTime;
+        const durationMs = this._runLengthMs(gameState);
         const durationSeconds = Math.max(1, Math.round(durationMs / 1000));
         const durationMinutes = Math.max(1, Math.round(durationMs / 60000));
 

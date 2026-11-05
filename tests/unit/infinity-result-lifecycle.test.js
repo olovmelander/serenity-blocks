@@ -665,4 +665,196 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
             expect.objectContaining({ includeLegacyResults: true, scoreSaved: false }),
         );
     });
+
+    describe('a run the player leaves', () => {
+        it('keeps it: the score, the records and Steam', async () => {
+            const { highScoreManager, mode } = createMode();
+            const session = await startSession(mode);
+            session.gameState.score = 4321;
+            session.gameState.lines = 17;
+            session.gameState.level = 4;
+
+            await mode.onStop();
+
+            expect(highScoreManager.addScore).toHaveBeenCalledOnce();
+            expect(highScoreManager.addScore).toHaveBeenCalledWith(expect.objectContaining({
+                score: 4321, lines: 17, level: 4, mode: 'infinity',
+            }));
+            await vi.waitFor(() => expect(moduleMocks.uploadScore).toHaveBeenCalledTimes(3));
+            expect(moduleMocks.showGameOverModal).not.toHaveBeenCalled();
+        });
+
+        it('has the score saved before the stop settles, so a quit cannot outrun it', async () => {
+            const { highScoreManager, mode } = createMode();
+            const session = await startSession(mode);
+            session.gameState.score = 100;
+            const addScore = createDeferred();
+            highScoreManager.addScore.mockImplementation(() => addScore.promise);
+            let settled = false;
+
+            const stop = mode.onStop().then(() => { settled = true; });
+            await vi.waitFor(() => expect(highScoreManager.addScore).toHaveBeenCalledOnce());
+            expect(settled).toBe(false);
+
+            addScore.resolve();
+            await stop;
+            expect(settled).toBe(true);
+        });
+
+        it('keeps nothing for a run that never scored', async () => {
+            const { highScoreManager, mode } = createMode();
+            await startSession(mode);
+
+            await mode.onStop();
+
+            expect(highScoreManager.addScore).not.toHaveBeenCalled();
+            expect(moduleMocks.uploadScore).not.toHaveBeenCalled();
+        });
+
+        it('keeps it through deactivation as well', async () => {
+            const { highScoreManager, mode } = createMode();
+            const session = await startSession(mode);
+            session.gameState.score = 250;
+
+            await mode.onDeactivate();
+
+            expect(highScoreManager.addScore).toHaveBeenCalledOnce();
+        });
+
+        it('keeps nothing from an unranked simulation clock', async () => {
+            const { highScoreManager, mode } = createMode();
+            const session = await startSession(mode, { simulationClock: DEMO_FIXED_SIMULATION_CLOCK });
+            session.gameState.score = 250;
+
+            await mode.onStop();
+
+            expect(canWriteLegacySimulationResults(session.simulationClock)).toBe(false);
+            expect(highScoreManager.addScore).not.toHaveBeenCalled();
+        });
+
+        it('saves a game over once, not again through its own stop', async () => {
+            const { highScoreManager, mode } = createMode();
+            const session = await startSession(mode);
+            session.gameState.score = 4321;
+
+            await mode._handleGameOver(session.generation);
+
+            expect(highScoreManager.addScore).toHaveBeenCalledOnce();
+            expect(moduleMocks.showGameOverModal).toHaveBeenCalledOnce();
+        });
+
+        it('saves once when the board dies while the player is already leaving', async () => {
+            const { highScoreManager, mode } = createMode();
+            const session = await startSession(mode);
+            session.gameState.score = 4321;
+
+            const stop = mode.onStop();
+            await mode._handleGameOver(session.generation);
+            await stop;
+
+            expect(highScoreManager.addScore).toHaveBeenCalledOnce();
+            await vi.waitFor(() => expect(moduleMocks.uploadScore).toHaveBeenCalledTimes(3));
+        });
+
+        it('keeps the first run and the second apart across a restart', async () => {
+            const { highScoreManager, mode } = createMode();
+            const first = await startSession(mode);
+            first.gameState.score = 111;
+            await mode.onStop();
+            const second = await startSession(mode);
+            second.gameState.score = 222;
+            await mode.onStop();
+
+            expect(highScoreManager.addScore.mock.calls.map(([entry]) => entry.score)).toEqual([111, 222]);
+        });
+    });
+
+    describe('the run\'s clock', () => {
+        const MINUTE = 60000;
+
+        function useClock() {
+            let now = 1_000_000;
+            vi.spyOn(Date, 'now').mockImplementation(() => now);
+            return { advance: (ms) => { now += ms; } };
+        }
+
+        it('leaves a pause out of the saved length', async () => {
+            const clock = useClock();
+            const { highScoreManager, mode } = createMode();
+            const session = await startSession(mode);
+            session.gameState.score = 500;
+
+            clock.advance(2 * MINUTE);
+            mode.onPause();
+            clock.advance(60 * MINUTE);
+            mode.onResume();
+            clock.advance(3 * MINUTE);
+            await mode.onStop();
+
+            expect(highScoreManager.addScore).toHaveBeenCalledWith(expect.objectContaining({ duration: 300 }));
+        });
+
+        it('leaves out the pause a player quits from', async () => {
+            const clock = useClock();
+            const { highScoreManager, mode } = createMode();
+            const session = await startSession(mode);
+            session.gameState.score = 500;
+
+            clock.advance(5 * MINUTE);
+            mode.onPause();
+            clock.advance(180 * MINUTE);
+            await mode.onStop();
+
+            expect(highScoreManager.addScore).toHaveBeenCalledWith(expect.objectContaining({ duration: 300 }));
+        });
+
+        it('sends Steam the same paused-free length', async () => {
+            const clock = useClock();
+            const { mode } = createMode();
+            const session = await startSession(mode);
+            session.gameState.score = 500;
+
+            clock.advance(MINUTE);
+            mode.onPause();
+            clock.advance(600 * MINUTE);
+            await mode.onStop();
+
+            await vi.waitFor(() => expect(moduleMocks.setStatMax).toHaveBeenCalledWith('infinity_best_time', 60));
+        });
+
+        it('counts layered pauses once', async () => {
+            const clock = useClock();
+            const { highScoreManager, mode } = createMode();
+            const session = await startSession(mode);
+            session.gameState.score = 500;
+
+            clock.advance(MINUTE);
+            mode.onPause();
+            clock.advance(MINUTE);
+            mode.onPause();
+            clock.advance(MINUTE);
+            mode.onResume();
+            clock.advance(MINUTE);
+            await mode.onStop();
+
+            expect(highScoreManager.addScore).toHaveBeenCalledWith(expect.objectContaining({ duration: 120 }));
+        });
+
+        it('gives the results sheet\'s clock the same paused-free start', async () => {
+            const clock = useClock();
+            const { mode } = createMode();
+            const session = await startSession(mode);
+            session.gameState.score = 500;
+            const { gameState } = session;
+
+            clock.advance(MINUTE);
+            mode.onPause();
+            clock.advance(10 * MINUTE);
+            mode.onResume();
+
+            expect(Date.now() - gameState.startTime).toBe(MINUTE);
+            expect(Date.now() - gameState.infinityStats.sessionStartTime).toBe(MINUTE);
+            await mode.onStop();
+        });
+    });
 });
