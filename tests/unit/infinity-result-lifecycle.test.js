@@ -1,6 +1,8 @@
 import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { STEAM_LEADERBOARDS } from '../../src/core/steam/steam-config.js';
 
 const moduleMocks = vi.hoisted(() => ({
     incrementStat: vi.fn(),
@@ -334,7 +336,7 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
         session.gameState.lines = 17;
         session.gameState.level = 4;
         session.gameState.currentTopRow = 23;
-        session.gameState.infinityStats.maxComboDepth = 5;
+        session.gameState.infinityStats.maxComboComplexity = 5;
 
         await mode._handleGameOver(session.generation);
         await vi.waitFor(() => expect(moduleMocks.uploadScore).toHaveBeenCalledTimes(3));
@@ -855,6 +857,43 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
             expect(Date.now() - gameState.startTime).toBe(MINUTE);
             expect(Date.now() - gameState.infinityStats.sessionStartTime).toBe(MINUTE);
             await mode.onStop();
+        });
+    });
+
+    describe('a run\'s best cascade', () => {
+        it('is the longest chain, not the most lines from one piece', async () => {
+            const { highScoreManager, mode } = createMode();
+            const session = await startSession(mode);
+            session.gameState.score = 500;
+            session.gameState.infinityStats.maxComboDepth = 4; // a plain quad...
+            session.gameState.infinityStats.maxComboComplexity = 1; // ...is a chain of one
+
+            await mode.onStop();
+
+            expect(highScoreManager.addScore).toHaveBeenCalledWith(expect.objectContaining({ cascade: 1 }));
+        });
+
+        it('goes to Steam as the same chain', async () => {
+            const { mode } = createMode();
+            const session = await startSession(mode);
+            session.gameState.score = 500;
+            session.gameState.infinityStats.maxComboDepth = 9;
+            session.gameState.infinityStats.maxComboComplexity = 3;
+
+            await mode.onStop();
+
+            await vi.waitFor(() => expect(moduleMocks.setStatMax).toHaveBeenCalledWith('best_cascade', 3));
+            expect(moduleMocks.uploadScore).toHaveBeenCalledWith(
+                STEAM_LEADERBOARDS.INFINITY_BEST_CASCADE,
+                3,
+                expect.objectContaining({ bestCascade: 3 }),
+            );
+        });
+
+        it('is the same chain on the results sheet\'s leaderboard', () => {
+            const modals = readFileSync('src/ui/modals.js', 'utf8');
+
+            expect(modals).toContain('const bestCascade = gameState?.infinityStats?.maxComboComplexity || 0;');
         });
     });
 });

@@ -1782,7 +1782,7 @@ export class InfinityMode extends BaseGameMode {
             lines: gameState.lines,
             level: gameState.level,
             mode: 'infinity', // Tag as infinity mode
-            cascade: gameState.infinityStats?.maxComboDepth || 0,
+            cascade: gameState.infinityStats?.maxComboComplexity || 0,
             duration: Math.max(1, Math.round(this._runLengthMs(gameState) / 1000)),
         }, '[Infinity]');
 
@@ -1857,7 +1857,7 @@ export class InfinityMode extends BaseGameMode {
         const durationSeconds = Math.max(1, Math.round(durationMs / 1000));
         const durationMinutes = Math.max(1, Math.round(durationMs / 60000));
 
-        const bestCascade = gameState.infinityStats?.maxComboDepth || 0;
+        const bestCascade = gameState.infinityStats?.maxComboComplexity || 0;
 
         const scoreDetails = {
             score: gameState.score,

@@ -428,7 +428,7 @@ export async function showGameOverModal(
             const isInfinity = !!gameState?.isInfinityMode;
             const sessionStart = gameState?.infinityStats?.sessionStartTime || gameState.startTime || Date.now();
             const durationSeconds = Math.max(1, Math.round((Date.now() - sessionStart) / 1000));
-            const bestCascade = gameState?.infinityStats?.maxComboDepth || 0;
+            const bestCascade = gameState?.infinityStats?.maxComboComplexity || 0;
 
             const boards = isInfinity
                 ? [
