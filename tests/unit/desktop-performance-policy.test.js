@@ -78,6 +78,17 @@ describe('desktop performance policy', () => {
         expect(adjustment.reason).toBe('frame_time_pressure');
     });
 
+    it('reports a change only until pressure reaches the minimum render scale', () => {
+        const adjust = (currentRenderScale) => evaluateDynamicResolutionAdjustment({
+            currentRenderScale,
+            baselineRenderScale: 1,
+            releaseGates: { frameTime: { p95: 22, p99: 24 } },
+            now: 10000,
+        });
+        expect(adjust(0.55)).toMatchObject({ nextRenderScale: 0.5, changed: true, pressure: true });
+        expect(adjust(0.5)).toMatchObject({ nextRenderScale: 0.5, changed: false, pressure: true });
+    });
+
     it('marks recovered dynamic resolution as persist-eligible after a stable window', () => {
         const now = Date.now();
         const adjustment = evaluateDynamicResolutionAdjustment({
@@ -173,7 +184,11 @@ describe('a display that cannot present the target rate is not frame-time pressu
     it('lets a lowered scale climb back while the display holds its pace', () => {
         const a = step(0.9, LAPTOP, 60000, 40000, { lastTickPressure: false });
         expect(a).toMatchObject({ changed: true, reason: 'frame_time_recovered', nextRenderScale: 0.95 });
-        expect(walk([...Array(2).fill({ frameTime: { p10: 4.9, p50: 5.5, p95: 20, p99: 30 } }), ...Array(12).fill(LAPTOP)]))
+        expect(walk([...Array(2).fill({
+            frameTime: {
+                p10: 4.9, p50: 5.5, p95: 20, p99: 30,
+            },
+        }), ...Array(12).fill(LAPTOP)]))
             .toBe(1);
     });
 

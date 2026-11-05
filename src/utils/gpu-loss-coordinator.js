@@ -64,8 +64,11 @@ export class GpuLossCoordinator {
      * @returns {() => void} unregister
      */
     registerSurface(label, surface) {
-        this.surfaces.set(label, { ...surface, attempts: 0 });
-        return () => this.unregisterSurface(label);
+        const registered = { ...surface, attempts: 0 };
+        this.surfaces.set(label, registered);
+        return () => {
+            if (this.surfaces.get(label) === registered) this.unregisterSurface(label);
+        };
     }
 
     /** @param {string} label */
@@ -106,8 +109,12 @@ export class GpuLossCoordinator {
         }
         surface.attempts += 1;
         Promise.resolve()
-            .then(() => surface.recover())
-            .then(() => { this.stats.recovered += 1; })
+            .then(async () => {
+                // A mode switch or teardown may retire this surface before the microtask runs.
+                if (this.surfaces.get(payload.label) !== surface) return;
+                await surface.recover();
+                this.stats.recovered += 1;
+            })
             .catch((err) => {
                 console.error(`[GpuLossCoordinator] recovery for "${payload.label}" failed:`, err);
                 this.stats.routedOut += 1;

@@ -79,6 +79,10 @@ export class AssetManager {
             const asset = await loadPromise;
             const loadTime = performance.now() - startTime;
 
+            // clear()/remove() retire pending cache writes. The caller still receives
+            // its asset, but an older completion must not replace a newer request.
+            if (this.loading.get(url) !== loadPromise) return asset;
+
             // Store in cache
             this.cache.set(url, asset);
             this.cacheOrder.push(url);
@@ -106,7 +110,7 @@ export class AssetManager {
             console.error(`[AssetManager] Failed to load: ${url}`, error);
             throw error;
         } finally {
-            this.loading.delete(url);
+            if (this.loading.get(url) === loadPromise) this.loading.delete(url);
         }
     }
 
@@ -325,7 +329,9 @@ export class AssetManager {
                 asset.src = '';
             }
             break;
+        default:
             // JSON, text, blob - garbage collected automatically
+            break;
         }
     }
 
@@ -357,10 +363,11 @@ export class AssetManager {
      * @param {string} url - Asset URL
      */
     remove(url) {
+        this.loading.delete(url);
         const asset = this.cache.get(url);
         const meta = this.metadata.get(url);
 
-        if (asset) {
+        if (this.cache.has(url)) {
             this.cleanupAsset(asset, meta?.type);
             this.cache.delete(url);
             this.metadata.delete(url);
@@ -403,7 +410,7 @@ export class AssetManager {
             .reduce((sum, meta) => sum + meta.size, 0);
 
         const hitRate = this.stats.cacheHits + this.stats.cacheMisses > 0
-            ? (this.stats.cacheHits / (this.stats.cacheHits + this.stats.cacheMisses) * 100).toFixed(2)
+            ? ((this.stats.cacheHits / (this.stats.cacheHits + this.stats.cacheMisses)) * 100).toFixed(2)
             : '0.00';
 
         return {
