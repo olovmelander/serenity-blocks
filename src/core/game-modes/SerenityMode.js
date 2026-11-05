@@ -63,6 +63,15 @@ export class SerenityMode extends BaseGameMode {
     /**
      * Called when Serenity mode is selected
      */
+    /** Hand the controller to Serenity's controls. One the player disabled stays off. */
+    _prepareGamepad() {
+        const { gamepadController, settingsManager } = this.deps;
+        if (!gamepadController) return;
+        if (settingsManager?.get?.().gamepadEnabled !== false) gamepadController.enable();
+        // Disable menu navigation mode so Serenity controls work
+        gamepadController.disableMenuNavigation();
+    }
+
     async onActivate() {
         await super.onActivate();
 
@@ -116,13 +125,7 @@ export class SerenityMode extends BaseGameMode {
         }
         console.log('[Serenity] Serenity Hub initialized');
 
-        // Ensure gamepad controller is enabled for Serenity Mode
-        if (this.deps.gamepadController) {
-            this.deps.gamepadController.enable();
-            // Disable menu navigation mode so Serenity controls work
-            this.deps.gamepadController.disableMenuNavigation();
-            console.log('[Serenity] Gamepad controller enabled and menu navigation disabled');
-        }
+        this._prepareGamepad();
 
         // Ensure selected track and audible playback are synchronized.
         await this._ensureMusicPlaying();
