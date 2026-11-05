@@ -82,6 +82,11 @@ function scoreManager(rows) {
         transaction: () => {
             const transaction = {
                 objectStore: () => ({
+                    getAll: () => {
+                        const request = { result: store.map((row) => ({ ...row })) };
+                        queueMicrotask(() => request.onsuccess?.());
+                        return request;
+                    },
                     clear: () => { store = []; },
                     add: (row) => { store.push({ ...row, id: store.length + 1 }); },
                 }),
@@ -336,6 +341,28 @@ describe('New Journey with Steam Cloud on', () => {
 });
 
 describe('the score merge across two devices', () => {
+    it('downloads a matching run in another mode and keeps the local replay link', async () => {
+        const run = { score: 1000, lines: 10, level: 2, timestamp: 1000 };
+        const manager = scoreManager([{ ...run, mode: 'single', demoId: 7 }]);
+        steam.cloud.set(HIGHSCORES, JSON.stringify({
+            version: 1, highScores: [{ ...run, mode: 'infinity', demoId: 8 }],
+        }));
+        const { sync } = device({ highScoreManager: manager });
+        await upload(sync, HIGHSCORES);
+        expect(countByMode(manager.rows())).toEqual({ single: 1, infinity: 1 });
+        expect(manager.rows().find((row) => row.mode === 'single').demoId).toBe(7);
+        expect(manager.rows().find((row) => row.mode === 'infinity').demoId).toBeUndefined();
+        expect(countByMode(cloudDoc(HIGHSCORES).highScores)).toEqual({ single: 1, infinity: 1 });
+    });
+
+    it('recognizes a legacy run as Single Player while keeping a matching Infinity run', () => {
+        const { sync } = device();
+        const run = { score: 1000, lines: 10, level: 2, timestamp: 1000 };
+        expect(sync._mergeHighScores([run], [
+            { ...run, mode: 'single' }, { ...run, mode: 'infinity' },
+        ])).toEqual([run, { ...run, mode: 'infinity' }]);
+    });
+
     function devices() {
         const manager = scoreManager(twoModes());
         steam.cloud.set(HIGHSCORES, JSON.stringify({ version: 1, highScores: [OTHER_DEVICES_SCORE] }));

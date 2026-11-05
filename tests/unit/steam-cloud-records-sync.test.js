@@ -12,6 +12,7 @@ import {
 } from 'vitest';
 import { SteamCloudSyncManager } from '../../src/core/steam/steam-cloud-sync.js';
 import { createEmptyStatistics, mergeStatisticsSnapshots } from '../../src/core/progression/score-statistics.js';
+import { CONTROLLER_LAYOUT_VERSION } from '../../src/core/controller-layout.js';
 
 const steam = vi.hoisted(() => ({
     cloud: new Map(),
@@ -136,6 +137,74 @@ afterEach(() => {
 });
 
 describe('Steam Cloud scores, stats and settings across devices', () => {
+    it('retains a local game committed after the statistics conflict snapshot was read', async () => {
+        const device = createDevice();
+        device.play(1000);
+        steam.cloud.set('stats.json', JSON.stringify({ stats: { ...device.state.stats, highestLevel: 5 } }));
+        const store = device.manager.highScoreManager;
+        const importStatistics = store.importStatistics;
+        vi.spyOn(store, 'importStatistics').mockImplementationOnce((incoming, options) => {
+            // A save can already be queued behind the snapshot's readonly transaction.
+            // Its commit reaches the store before the cloud import's write transaction.
+            device.play(500);
+            return importStatistics(incoming, options);
+        });
+
+        await device.run((manager) => manager._mergeConflict('stats.json', {}));
+        expect(device.state.stats).toMatchObject({ totalGames: 2, totalScore: 1500, highestLevel: 5 });
+        expect(cloudDoc('stats.json').stats).toMatchObject({ totalGames: 2, totalScore: 1500, highestLevel: 5 });
+        expect(device.manager.manifest.files['stats.json'].hash)
+            .toBe(await device.manager._computeHash(steam.cloud.get('stats.json')));
+    });
+
+    it('does not acknowledge a conflict snapshot when its upload fails', async () => {
+        const device = createDevice();
+        device.play(1000);
+        const previous = { hash: 'last-acknowledged-copy', updatedAt: clock };
+        device.manager.manifest.files['stats.json'] = previous;
+        steam.cloud.set('stats.json', JSON.stringify({ stats: { ...device.state.stats, highestLevel: 5 } }));
+        steam.cloudWrite.mockImplementation(async (file, data) => {
+            if (file === 'stats.json') return { supported: true, success: false };
+            steam.cloud.set(file, data);
+            return { supported: true, success: true };
+        });
+
+        await device.run((manager) => manager._mergeConflict('stats.json', {}));
+        expect(device.manager.pendingUploads.has('stats.json')).toBe(true);
+        expect(device.manager.manifest.files['stats.json']).toEqual(previous);
+    });
+
+    it('preserves a current customized Y/View layout through a keybind conflict', () => {
+        const device = createDevice({ settings: {
+            controllerLayoutVersion: CONTROLLER_LAYOUT_VERSION,
+            serenityGamepadBindings: { toggleHub: 3, toggleControlHints: 8 },
+        } });
+        const merged = device.manager._mergeData('keybinds.json', {
+            keyBindings: {},
+            controllerLayoutVersion: CONTROLLER_LAYOUT_VERSION,
+            serenityGamepadBindings: { toggleHub: 3, toggleControlHints: 8 },
+        }, { keyBindings: { moveLeft: 'a' } });
+        device.manager._applyKeybinds(merged);
+        expect(device.state.settings.serenityGamepadBindings).toEqual({ toggleHub: 3, toggleControlHints: 8 });
+        expect(device.state.settings.controllerLayoutVersion).toBe(CONTROLLER_LAYOUT_VERSION);
+    });
+
+    it('migrates each legacy pad layout before combining it with current keybinds', () => {
+        const device = createDevice();
+        const merged = device.manager._mergeData('keybinds.json', {
+            keyBindings: {},
+            controllerLayoutVersion: CONTROLLER_LAYOUT_VERSION,
+            serenityGamepadBindings: { toggleHub: 10, toggleControlHints: 11 },
+        }, {
+            keyBindings: {},
+            controllerLayoutVersion: 1,
+            serenityGamepadBindings: { toggleHub: 3, toggleControlHints: 8 },
+        });
+        device.manager._applyKeybinds(merged);
+        expect(device.state.settings.serenityGamepadBindings).toEqual({ toggleHub: 8, toggleControlHints: 3 });
+        expect(device.state.settings.controllerLayoutVersion).toBe(CONTROLLER_LAYOUT_VERSION);
+    });
+
     it("downloads the cloud copy on a new device's first sync instead of replacing it", async () => {
         const original = createDevice({ settings: { musicVolume: 0.2, keyBindings: { moveLeft: 'a' } } });
         original.play(50000);

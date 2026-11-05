@@ -681,6 +681,12 @@ export class SettingsManager {
      */
     reset() {
         this.settings = applyCursorSettingDefaults({ ...DEFAULT_CONFIG });
+        this.normalizedBindings = Object.fromEntries(
+            Object.entries(BINDING_SANITIZERS).map(([key, sanitize]) => {
+                this.settings[key] = sanitize(this.settings[key]);
+                return [key, this.settings[key]];
+            }),
+        );
         this.save();
     }
 

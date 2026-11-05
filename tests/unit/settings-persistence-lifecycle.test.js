@@ -60,6 +60,29 @@ function managerWithBaseline() {
 }
 
 describe('live settings and coalesced persistence', () => {
+    it('keeps default bindings intact when a binding is mutated after resetting settings', () => {
+        const manager = managerWithBaseline();
+        const keyboardDefault = manager.get().keyBindings.moveLeft;
+        const gamepadDefault = manager.get().gamepadBindings.moveLeft;
+        manager.reset();
+        const { keyBindings, gamepadBindings } = manager.get();
+        try {
+            keyBindings.moveLeft = 'j';
+            gamepadBindings.moveLeft = 10;
+            manager.save();
+
+            const fresh = new SettingsManager();
+            expect(fresh.get().keyBindings.moveLeft).toBe(keyboardDefault);
+            expect(fresh.get().gamepadBindings.moveLeft).toBe(gamepadDefault);
+            manager.reset();
+            expect(manager.get().keyBindings.moveLeft).toBe(keyboardDefault);
+            expect(manager.get().gamepadBindings.moveLeft).toBe(gamepadDefault);
+        } finally {
+            keyBindings.moveLeft = keyboardDefault;
+            gamepadBindings.moveLeft = gamepadDefault;
+        }
+    });
+
     it('applies every preview immediately, retains binding identity, and persists one final value', () => {
         const manager = managerWithBaseline();
         const bindings = manager.get().keyBindings;

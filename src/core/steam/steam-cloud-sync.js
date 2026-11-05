@@ -4,7 +4,7 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { migrateOdysseyProgressData } from '../odyssey/OdysseyStateManager.js';
 import { ODYSSEY_SAVE_VERSION, getOdysseyCompletionThemeIds } from '../odyssey/odyssey-progress-schema.js';
 import { resolveOwnedMusicPreference } from '../progression/music-preference.js';
-import { keepTopScoresPerMode, mergeStatisticsSnapshots } from '../progression/score-statistics.js';
+import { LEGACY_SCORE_MODE, keepTopScoresPerMode, mergeStatisticsSnapshots } from '../progression/score-statistics.js';
 import { CONTROLLER_LAYOUT_VERSION, migrateSerenityPadLayout } from '../controller-layout.js';
 
 const CLOUD_FILES = {
@@ -86,6 +86,7 @@ const safeParse = (raw) => {
 
 const isRecord = (value) => value && typeof value === 'object' && !Array.isArray(value);
 const scoreKey = (entry) => [
+    entry.mode || LEGACY_SCORE_MODE,
     entry.score ?? 0,
     entry.lines ?? 0,
     entry.level ?? 0,
@@ -632,7 +633,9 @@ export class SteamCloudSyncManager {
         if (fileName === CLOUD_FILES.HIGHSCORES) {
             await this._applyHighScores(merged, { merge: true });
         } else if (fileName === CLOUD_FILES.STATS) {
-            await this._applyStats(merged, { merge: false });
+            // A local score write may already be queued after our read snapshot.
+            // Keep its counters when the final IndexedDB write acquires the store.
+            await this._applyStats(merged, { merge: true });
         } else if (fileName === CLOUD_FILES.ODYSSEY) {
             if (!this._applyOdyssey(merged)) return;
         } else if (fileName === CLOUD_FILES.SETTINGS) {
@@ -640,15 +643,9 @@ export class SteamCloudSyncManager {
         } else if (fileName === CLOUD_FILES.KEYBINDS) {
             this._applyKeybinds(merged);
         }
+        // Only the uploader can acknowledge the exact document it successfully wrote.
+        // Its live union may include newer local changes than this merge snapshot.
         await this.queueUpload(fileName, { flush: true });
-        if (fileName === CLOUD_FILES.ODYSSEY) return;
-
-        const hash = await this._computeHash(JSON.stringify(merged));
-        this._updateManifestEntry(fileName, {
-            hash,
-            updatedAt: this.now(),
-            json: JSON.stringify(merged),
-        });
     }
 
     async _applyCloudData(fileName, data) {
@@ -800,9 +797,10 @@ export class SteamCloudSyncManager {
                     ...(cloudKeys.serenityKeyBindings || {}),
                 },
                 serenityGamepadBindings: {
-                    ...(localKeys.serenityGamepadBindings || {}),
-                    ...(cloudKeys.serenityGamepadBindings || {}),
+                    ...migrateSerenityPadLayout(localKeys.serenityGamepadBindings, localKeys.controllerLayoutVersion),
+                    ...migrateSerenityPadLayout(cloudKeys.serenityGamepadBindings, cloudKeys.controllerLayoutVersion),
                 },
+                controllerLayoutVersion: CONTROLLER_LAYOUT_VERSION,
             };
         }
         return cloudData;
