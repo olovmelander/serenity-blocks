@@ -10,7 +10,7 @@
     "shader-material:hits": 20,
     "shader-material:files": 2,
     "core-nondeterminism": 184,
-    "core-dom-globals": 314,
+    "core-dom-globals": 310,
     "core-raf-drivers": 21,
     "resize-listeners": 13,
     "event-bus-files": 1,
