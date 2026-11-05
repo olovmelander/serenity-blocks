@@ -300,11 +300,7 @@ export class SinglePlayerMode extends BaseGameMode {
 
             this.playbackControls.show();
 
-            // Show "Watching Replay" indicator
-            const demoIndicator = document.getElementById('demo-indicator');
-            if (demoIndicator) {
-                demoIndicator.classList.add('visible');
-            }
+            this._setDemoIndicator(true);
 
             // Start Phaser board scene
             this._startPhaserBoardScene();
@@ -630,6 +626,7 @@ export class SinglePlayerMode extends BaseGameMode {
             this.demoPlayer.onPlaybackEnd = null;
             this.demoPlayer.stopPlayback();
             this.playbackControls.hide();
+            this._setDemoIndicator(false);
         }
 
         let demo = null;
@@ -820,6 +817,11 @@ export class SinglePlayerMode extends BaseGameMode {
             d: value,
             q: Boolean(options.queued),
         }, this.gameState);
+    }
+
+    /** The "Watching Replay" badge, up for as long as a replay is. */
+    _setDemoIndicator(visible) {
+        document.getElementById('demo-indicator')?.classList.toggle('visible', visible);
     }
 
     /**
