@@ -162,10 +162,37 @@ describe('restorable replay checkpoints are kept', () => {
         expect(player.gameState.board).toBe(player.gameState.boardGrid);
     });
 
-    it('still rejects an Infinity checkpoint in a non-Infinity session as a rule mismatch', async () => {
+    it('never adopts an Infinity checkpoint in a non-Infinity session, and replays from the seed', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const expected = seekingPlayer(recording());
         const player = seekingPlayer(recording({ checkpoints: [checkpoint({ infinity: true })] }));
         expect(player.checkpoints).toHaveLength(1);
-        await expect(player.seek(500)).rejects.toThrow('Infinity checkpoint requires an Infinity session');
-        expect(player.gameState.score).toBe(0);
+        await expected.seek(500);
+
+        await expect(player.seek(500)).resolves.toBeUndefined();
+
+        expect(warn).toHaveBeenCalledWith(
+            '[DemoPlayer] Skipping a checkpoint that cannot be restored:',
+            expect.objectContaining({ message: 'Infinity checkpoint requires an Infinity session' }),
+        );
+        expect(player.gameState.isInfinityMode).toBe(false);
+        expect(player.isSeeking).toBe(false);
+        expect(player.gameState.suppressExternalInput).toBe(true);
+        expect(captureGameStateSnapshot(player.gameState)).toEqual(captureGameStateSnapshot(expected.gameState));
+        expect(player.checkpoints).toHaveLength(0);
+    });
+
+    it('replays from the seed when an Infinity checkpoint has an incomplete rule descriptor', async () => {
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const saved = checkpoint({ infinity: true });
+        delete saved.state.infinityVisibleRows;
+        const expected = seekingPlayer(recording(), { infinity: true });
+        const player = seekingPlayer(recording({ checkpoints: [saved] }), { infinity: true });
+        await expected.seek(500);
+
+        await expect(player.seek(500)).resolves.toBeUndefined();
+
+        expect(player.isSeeking).toBe(false);
+        expect(captureGameStateSnapshot(player.gameState)).toEqual(captureGameStateSnapshot(expected.gameState));
     });
 });

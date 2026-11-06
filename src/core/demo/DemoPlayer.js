@@ -311,17 +311,30 @@ export class DemoPlayer {
         await this._waitForPhysics(owner);
         if (!this._ownsReplay(owner)) return;
 
-        const checkpoint = this._findCheckpoint(targetMs);
+        let checkpoint = this._findCheckpoint(targetMs);
+        while (checkpoint) {
+            try {
+                restoreGameStateSnapshot(this.gameState, checkpoint.state, {
+                    seed: this.demo.initialState.seed,
+                    isReplay: true,
+                    isSeeking: true,
+                    suppressExternalInput: true,
+                    // V1/v2 demos store already-expanded accepted commands. Their
+                    // checkpoint input engine must stay dark or DAS repeats apply twice.
+                    restorePlayerInput: false,
+                });
+                break;
+            } catch (error) {
+                // The session's rules refuse this checkpoint (an Infinity one in another
+                // mode, say). It is never adopted; replay from an earlier state instead
+                // of leaving the seek stuck half-way.
+                console.warn('[DemoPlayer] Skipping a checkpoint that cannot be restored:', error);
+                const refused = checkpoint;
+                this.checkpoints = this.checkpoints.filter((entry) => entry !== refused);
+                checkpoint = this._findCheckpoint(targetMs);
+            }
+        }
         if (checkpoint) {
-            restoreGameStateSnapshot(this.gameState, checkpoint.state, {
-                seed: this.demo.initialState.seed,
-                isReplay: true,
-                isSeeking: true,
-                suppressExternalInput: true,
-                // V1/v2 demos store already-expanded accepted commands. Their
-                // checkpoint input engine must stay dark or DAS repeats apply twice.
-                restorePlayerInput: false,
-            });
             this.currentInputIndex = checkpoint.inputIndex || 0;
             this.lastSimulatedTime = this._checkpointTime(checkpoint);
         } else {
@@ -347,7 +360,9 @@ export class DemoPlayer {
         if (!this._ownsReplay(owner)) return;
         if (this.callbacks.drawCallback) this.callbacks.drawCallback();
         if (!this._ownsReplay(owner)) return;
-        if (this.isPlaying && !this.isPaused) {
+        // The loop keeps ticking while paused (it only skips advancing), and
+        // resumePlayback relies on that. Restart it even after a paused scrub.
+        if (this.isPlaying) {
             this._scheduleLoop();
         }
     }

@@ -100,6 +100,32 @@ describe('replay frame ownership', () => {
     });
 });
 
+describe('scrubbing a paused replay', () => {
+    it('keeps the frame loop alive so Play resumes after the seek', async () => {
+        const frames = [];
+        vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => {
+            frames.push(callback);
+            return frames.length;
+        }));
+        vi.stubGlobal('cancelAnimationFrame', vi.fn());
+        const player = new DemoPlayer({});
+        expect(player.loadDemo(recording())).toBe(true);
+        const state = new GameState();
+        player.startPlayback({ spawnPiece: () => spawnPiece(state) }, state);
+        player.pausePlayback();
+
+        await player.seek(500);
+
+        expect(player.isPaused).toBe(true);
+        expect(player.animationId).not.toBeNull();
+        player.resumePlayback();
+        const loop = vi.spyOn(player, '_loop');
+        frames.at(-1)();
+        expect(loop).toHaveBeenCalledOnce();
+        player.stopPlayback({ notify: false });
+    });
+});
+
 describe('invalid optional replay checkpoints', () => {
     it.each([-1, 0.5, 3])('replays from valid state when a checkpoint input index is %s', async (inputIndex) => {
         const expected = seekingPlayer(recording());
