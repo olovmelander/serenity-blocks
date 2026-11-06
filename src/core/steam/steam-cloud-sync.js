@@ -119,6 +119,16 @@ const toTimestamp = (value) => {
     return Number.isFinite(asNumber) && Number.isFinite(new Date(asNumber).getTime()) ? asNumber : null;
 };
 
+const releaseSubscriptions = (subscriptions) => {
+    subscriptions.splice(0).forEach((unsubscribe) => {
+        try {
+            unsubscribe?.();
+        } catch (error) {
+            console.warn('[SteamCloud] Subscription cleanup failed:', error);
+        }
+    });
+};
+
 export class SteamCloudSyncManager {
     constructor({
         settingsManager, highScoreManager, themeCollection, getOdysseyState, now = cloudWallClock,
@@ -137,6 +147,12 @@ export class SteamCloudSyncManager {
         this.syncInProgress = false;
         this.suppressLocalEvents = false;
         this.periodicTimer = null;
+        this.initialSyncTimer = null;
+        this.initialized = false;
+        this.backgroundSyncStopped = false;
+        this.disposed = false;
+        this.localSubscriptions = [];
+        this.backgroundSubscriptions = [];
         this.flushPromise = null;
         this.flushRequested = false;
         this.uploadingEntries = new Map();
@@ -152,18 +168,20 @@ export class SteamCloudSyncManager {
     }
 
     initialize() {
+        if (this.initialized || this.backgroundSyncStopped) return;
+        this.initialized = true;
         this._registerEventHandlers();
         this._scheduleInitialSync();
         this._schedulePeriodicSync();
     }
 
     _registerEventHandlers() {
-        this.themeCollection?.subscribe((event) => {
-            if (this.suppressLocalEvents || event.source === 'cloud') return;
+        this.localSubscriptions.push(this.themeCollection?.subscribe((event) => {
+            if (this.disposed || this.suppressLocalEvents || event.source === 'cloud') return;
             this.queueUpload(CLOUD_FILES.UNLOCKS);
-        });
-        eventBus.on(EVENTS.SETTINGS_CHANGED, (event) => {
-            if (this.suppressLocalEvents) return;
+        }));
+        this.localSubscriptions.push(eventBus.on(EVENTS.SETTINGS_CHANGED, (event) => {
+            if (this.disposed || this.suppressLocalEvents) return;
             const dirtyKeys = event?.dirtyKeys;
             // Older save callers omit metadata; keep their full sync behavior.
             if (!dirtyKeys || dirtyKeys.some((key) => CLOUD_SETTINGS_KEYS.includes(key))) {
@@ -174,43 +192,65 @@ export class SteamCloudSyncManager {
                 this._noteLocalEdits(CLOUD_FILES.KEYBINDS, dirtyKeys, CLOUD_KEYBIND_KEYS);
                 this.queueUpload(CLOUD_FILES.KEYBINDS);
             }
-        });
+        }));
 
-        eventBus.on(EVENTS.ODYSSEY_SAVED, () => {
-            if (this.suppressLocalEvents) return;
+        this.localSubscriptions.push(eventBus.on(EVENTS.ODYSSEY_SAVED, () => {
+            if (this.disposed || this.suppressLocalEvents) return;
             this.queueUpload(CLOUD_FILES.ODYSSEY);
-        });
+        }));
 
-        eventBus.on(EVENTS.HIGH_SCORE_SAVED, () => {
-            if (this.suppressLocalEvents) return;
+        this.localSubscriptions.push(eventBus.on(EVENTS.HIGH_SCORE_SAVED, () => {
+            if (this.disposed || this.suppressLocalEvents) return;
             this.queueUpload(CLOUD_FILES.HIGHSCORES);
             this.queueUpload(CLOUD_FILES.STATS);
-        });
+        }));
 
-        steamService.on('steam:reconnected', () => {
-            this.syncFromCloud();
-        });
+        this.backgroundSubscriptions.push(steamService.on('steam:reconnected', () => {
+            if (!this.backgroundSyncStopped) this.syncFromCloud();
+        }));
 
-        steamService.on(STEAM_EVENTS.CAPABILITIES_UPDATED, (caps) => {
-            if (caps?.cloud) {
+        this.backgroundSubscriptions.push(steamService.on(STEAM_EVENTS.CAPABILITIES_UPDATED, (caps) => {
+            if (!this.backgroundSyncStopped && caps?.cloud) {
                 this.syncFromCloud();
                 this._flushPendingUploads();
             }
-        });
+        }));
+    }
+
+    /** Stop passive work, but still capture the settings/mode saves made during cleanup. */
+    quiesceBackgroundSync() {
+        this.backgroundSyncStopped = true;
+        clearTimeout(this.initialSyncTimer);
+        clearInterval(this.periodicTimer);
+        clearTimeout(this.flushTimer);
+        this.initialSyncTimer = null;
+        this.periodicTimer = null;
+        this.flushTimer = null;
+        releaseSubscriptions(this.backgroundSubscriptions);
+    }
+
+    /** Called after final local saves. Explicit quit flushes and uploader unions remain usable. */
+    dispose() {
+        this.quiesceBackgroundSync();
+        this.disposed = true;
+        releaseSubscriptions(this.localSubscriptions);
     }
 
     _scheduleInitialSync() {
-        setTimeout(() => {
-            this.syncFromCloud();
+        if (this.backgroundSyncStopped) return;
+        this.initialSyncTimer = setTimeout(() => {
+            this.initialSyncTimer = null;
+            if (!this.backgroundSyncStopped) this.syncFromCloud();
         }, 2500);
     }
 
     _schedulePeriodicSync() {
-        if (this.periodicTimer) {
+        if (this.backgroundSyncStopped) return;
+        if (this.periodicTimer !== null) {
             clearInterval(this.periodicTimer);
         }
         this.periodicTimer = setInterval(() => {
-            this.syncFromCloud();
+            if (!this.backgroundSyncStopped) this.syncFromCloud();
         }, 15 * 60 * 1000);
     }
 
@@ -231,11 +271,13 @@ export class SteamCloudSyncManager {
     }
 
     _scheduleFlush() {
-        if (this.flushTimer) {
+        if (this.backgroundSyncStopped) return;
+        if (this.flushTimer !== null) {
             clearTimeout(this.flushTimer);
         }
         this.flushTimer = setTimeout(() => {
-            this._flushPendingUploads();
+            this.flushTimer = null;
+            if (!this.backgroundSyncStopped) this._flushPendingUploads();
         }, this.debounceMs);
     }
 
@@ -361,17 +403,17 @@ export class SteamCloudSyncManager {
     }
 
     async syncFromCloud() {
-        if (this.syncInProgress) return;
+        if (this.backgroundSyncStopped || this.syncInProgress) return;
         this.syncInProgress = true;
 
         try {
             await steamService.waitForInit();
-            if (!steamService.isAvailable()) return;
+            if (this.backgroundSyncStopped || !steamService.isAvailable()) return;
             const capabilities = steamService.getCapabilities ? steamService.getCapabilities() : {};
             if (capabilities.cloud === false) return;
 
             const manifestResponse = await steamService.cloudRead(CLOUD_FILES.MANIFEST);
-            if (!manifestResponse?.supported || manifestResponse.success === false) {
+            if (this.backgroundSyncStopped || !manifestResponse?.supported || manifestResponse.success === false) {
                 return;
             }
 
@@ -386,10 +428,12 @@ export class SteamCloudSyncManager {
             this.cloudManifestSeen = cloudManifest;
 
             await this._bootstrapLocalManifest();
+            if (this.backgroundSyncStopped) return;
 
             const files = Object.values(CLOUD_FILES).filter((file) => file !== CLOUD_FILES.MANIFEST);
             for (const fileName of files) {
                 await this._syncFile(fileName, cloudManifest);
+                if (this.backgroundSyncStopped) return;
             }
 
             await this._uploadManifest();
@@ -399,10 +443,12 @@ export class SteamCloudSyncManager {
     }
 
     async _syncFile(fileName, cloudManifest) {
+        if (this.backgroundSyncStopped) return;
         // Local edits remain the authority until their queued snapshot has been
         // built and acknowledged. A cloud refresh must not replace that source
         // while the debounce or an asynchronous upload is still in progress.
         if (this.flushPromise) await this.flushPromise;
+        if (this.backgroundSyncStopped) return;
         const cloudEntry = cloudManifest.files?.[fileName] || null;
         if (WHOLE_DOCUMENTS.has(fileName) && !this.reconciledFiles.has(fileName)
             && this.pendingUploads.has(fileName) && cloudEntry) {
@@ -412,7 +458,7 @@ export class SteamCloudSyncManager {
         this.reconciledFiles.add(fileName);
         if (this.pendingUploads.has(fileName)) {
             await this._flushPendingUploads();
-            if (this.pendingUploads.has(fileName)) return;
+            if (this.backgroundSyncStopped || this.pendingUploads.has(fileName)) return;
         }
         const localEntry = this.manifest.files?.[fileName] || null;
 
@@ -420,6 +466,7 @@ export class SteamCloudSyncManager {
         // just the timestamp-tie conflict path used by settings documents.
         if (fileName === CLOUD_FILES.UNLOCKS && this.themeCollection) {
             const liveHash = await this._computeHash(JSON.stringify(this.themeCollection.exportData()));
+            if (this.backgroundSyncStopped) return;
             if (cloudEntry && (localEntry?.hash !== cloudEntry.hash || liveHash !== cloudEntry.hash)) {
                 await this._mergeUnlocksFromCloud();
             } else if (!cloudEntry) await this.queueUpload(fileName, { flush: true });
@@ -463,8 +510,9 @@ export class SteamCloudSyncManager {
      * here, and upload that union.
      */
     async _adoptCloudUnderLocalEdits(fileName, cloudEntry) {
+        if (this.backgroundSyncStopped) return;
         const response = await steamService.cloudRead(fileName);
-        if (!response?.supported || response.success === false) return;
+        if (this.backgroundSyncStopped || !response?.supported || response.success === false) return;
         // Save live slider edits first, so their keys are noted before they are read.
         this._flushLiveSettingsBeforeCloudApply(fileName);
         this.reconciledFiles.add(fileName);
@@ -499,6 +547,7 @@ export class SteamCloudSyncManager {
         this.pendingUploads.delete(fileName);
         this._savePending();
         const hash = await this._computeHash(response.data);
+        if (this.backgroundSyncStopped) return;
         this._updateManifestEntry(fileName, {
             hash, updatedAt: cloudEntry.updatedAt || this.now(), json: response.data,
         });
@@ -542,7 +591,9 @@ export class SteamCloudSyncManager {
     }
 
     async _mergeUnlocksFromCloud() {
+        if (this.backgroundSyncStopped) return;
         const response = await steamService.cloudRead(CLOUD_FILES.UNLOCKS);
+        if (this.backgroundSyncStopped) return;
         if (!response?.supported || response.success === false || !response.data) return;
         const incoming = safeParse(response.data);
         if (!incoming) return;
@@ -613,8 +664,10 @@ export class SteamCloudSyncManager {
     }
 
     async _downloadAndApply(fileName, cloudEntry) {
+        if (this.backgroundSyncStopped) return;
         const localSnapshot = this._captureLocalReadState(fileName);
         const response = await steamService.cloudRead(fileName);
+        if (this.backgroundSyncStopped) return;
         if (!response?.supported || response.success === false || !response.data) return;
 
         const parsed = safeParse(response.data);
@@ -622,13 +675,14 @@ export class SteamCloudSyncManager {
         // Finish hashing before the final guard. A newer acknowledged local
         // upload during this await invalidates the incoming data and manifest.
         const hash = await this._computeHash(response.data);
+        if (this.backgroundSyncStopped) return;
         this._flushLiveSettingsBeforeCloudApply(fileName);
         if (this._hasLocalChangesSinceRead(fileName, localSnapshot)) return;
 
         const application = this._applyCloudData(fileName, parsed);
         const appliedSnapshot = this._captureLocalReadState(fileName);
         const applied = await application;
-        if (applied === false) return;
+        if (this.backgroundSyncStopped || applied === false) return;
         if (this._hasLocalChangesSinceRead(fileName, appliedSnapshot)) return;
         if (fileName === CLOUD_FILES.ODYSSEY) {
             // The disk now holds a union, which can differ from the download.
@@ -641,8 +695,10 @@ export class SteamCloudSyncManager {
     }
 
     async _mergeConflict(fileName, cloudEntry) {
+        if (this.backgroundSyncStopped) return;
         const localSnapshot = this._captureLocalReadState(fileName);
         const response = await steamService.cloudRead(fileName);
+        if (this.backgroundSyncStopped) return;
         if (!response?.supported || response.success === false || !response.data) return;
         const cloudData = safeParse(response.data);
         if (!cloudData) return;
@@ -650,6 +706,7 @@ export class SteamCloudSyncManager {
         if (this._hasLocalChangesSinceRead(fileName, localSnapshot)) return;
 
         const localPayload = await this._buildLocalPayload(fileName);
+        if (this.backgroundSyncStopped) return;
         const localData = safeParse(localPayload?.json);
         if (!localPayload || !localData) return;
         this._flushLiveSettingsBeforeCloudApply(fileName);
@@ -673,10 +730,15 @@ export class SteamCloudSyncManager {
         }
         // Only the uploader can acknowledge the exact document it successfully wrote.
         // Its live union may include newer local changes than this merge snapshot.
+        if (this.backgroundSyncStopped) return;
         await this.queueUpload(fileName, { flush: true });
     }
 
     async _applyCloudData(fileName, data) {
+        // These imports do not emit local-save events. Suppressing across their
+        // asynchronous transactions would discard real settings/mode saves, including quit saves.
+        if (fileName === CLOUD_FILES.HIGHSCORES) return this._applyHighScores(data);
+        if (fileName === CLOUD_FILES.STATS) return this._applyStats(data);
         this.suppressLocalEvents = true;
 
         try {
@@ -686,10 +748,6 @@ export class SteamCloudSyncManager {
                 this._applyKeybinds(data);
             } else if (fileName === CLOUD_FILES.ODYSSEY) {
                 return this._applyOdyssey(data);
-            } else if (fileName === CLOUD_FILES.HIGHSCORES) {
-                await this._applyHighScores(data);
-            } else if (fileName === CLOUD_FILES.STATS) {
-                await this._applyStats(data);
             } else if (fileName === CLOUD_FILES.UNLOCKS) {
                 this.themeCollection?.applyCloudData(data);
             }
@@ -1206,18 +1264,20 @@ export class SteamCloudSyncManager {
     async _pushAllLocal() {
         const files = Object.values(CLOUD_FILES).filter((file) => file !== CLOUD_FILES.MANIFEST);
         for (const file of files) {
+            if (this.backgroundSyncStopped) return;
             await this.queueUpload(file, { flush: true });
         }
     }
 
     async _bootstrapLocalManifest() {
-        if (this.manifest?.files && Object.keys(this.manifest.files).length > 0) {
+        if (this.backgroundSyncStopped || (this.manifest?.files && Object.keys(this.manifest.files).length > 0)) {
             return;
         }
 
         const files = Object.values(CLOUD_FILES).filter((file) => file !== CLOUD_FILES.MANIFEST);
         for (const file of files) {
             const payload = await this._buildLocalPayload(file, { includeUpdatedAt: false });
+            if (this.backgroundSyncStopped) return;
             if (!payload) continue;
             this._updateManifestEntry(file, payload);
         }

@@ -17,6 +17,8 @@ export function cleanupApplication(app) {
         } catch (error) {
             console.warn('[Main] Game mode cleanup failed:', error);
         }
+        // Final settings/mode saves are now captured; explicit quit flushing still follows cleanup.
+        attemptCleanup(() => app.cloudSyncManager?.dispose?.());
         // SerenityMode still needs the shared hub while deactivating.
         attemptCleanup(() => app.modalManager?.destroy?.());
         attemptCleanup(() => app.serenityHub?.destroy?.());
@@ -32,6 +34,7 @@ export function cleanupApplication(app) {
     });
 
     // Stop new gameplay input and invite joins before mode teardown emits events.
+    attemptCleanup(() => app.cloudSyncManager?.quiesceBackgroundSync?.());
     attemptCleanup(() => app.gamepadController?.destroy?.());
     attemptCleanup(() => app.steamInviteManager?.destroy?.());
     attemptCleanup(() => app.settingsManager?.dispose?.());
