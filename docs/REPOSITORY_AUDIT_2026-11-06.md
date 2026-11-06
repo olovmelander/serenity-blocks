@@ -252,6 +252,6 @@ Hourly follow-up audit passes and a morning summary were scheduled using the use
 
 **Open risks, each needing a design decision:** mode-entry intent ordering across caller awaits (item 4), partial app-initialization ownership and rollback (item 2), already-running GPU recovery ownership (item 5), cross-device statistics counting (item 8), the development-only minimatch advisory (item 9) and the privacy-policy contact address (item 11). Their reproductions and original-baseline comparisons are in the deferred-evidence files.
 
-**Observed, not fixed:** the High Coast `half-float` micro-benchmark can fail under full parallel load because it compares single wall-clock timings.
+**Flaky benchmark, fixed:** the High Coast `half-float` micro-benchmark compared single wall-clock timings. It failed once locally under full parallel load and once in GitHub CI on `48ae5f9`, where it measured 68.8 ms against a 56.7 ms bound. Commit `a797031` keeps each side's fastest of five interleaved runs and leaves the 0.75 bound unchanged. The measured speedup is a steady 2–2.7×. The test passed 10/10 alone and 10/10 with all cores saturated, and it still fails if the new implementation is no faster than the old one.
 
 **Independent review:** four reviewers, one per area, found no blockers. Five findings were fixed with regression tests (see *Independent review and follow-up fixes*); the remaining minor items are listed there.
