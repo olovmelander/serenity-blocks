@@ -399,15 +399,17 @@ export class DemoPlayer {
     }
 
     _scheduleLoop() {
-        if (!this.isPlaying || this.animationId) return;
+        if (!this.isPlaying || this.animationId !== null) return;
+        const token = this.seekToken;
         this.animationId = requestNextFrame(() => {
+            if (token !== this.seekToken) return;
             this.animationId = null;
             this._loop();
         });
     }
 
     _cancelScheduledFrame() {
-        if (!this.animationId) return;
+        if (this.animationId === null) return;
         cancelNextFrame(this.animationId);
         this.animationId = null;
     }
@@ -805,6 +807,13 @@ export class DemoPlayer {
                 .filter((checkpoint) => (
                     checkpoint?.state
                     && isStableDemoCheckpointSnapshot(checkpoint.state)
+                    // A damaged optional checkpoint must not skip commands or
+                    // index a fractional slot. Replay from an earlier state.
+                    && (!Number.isFinite(checkpoint.inputIndex) || (
+                        Number.isInteger(checkpoint.inputIndex)
+                        && checkpoint.inputIndex >= 0
+                        && checkpoint.inputIndex <= inputs.length
+                    ))
                 ))
                 .map((checkpoint) => {
                     const frame = Number.isFinite(checkpoint.f)
