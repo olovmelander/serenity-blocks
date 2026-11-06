@@ -417,3 +417,80 @@ Not done: no phone or integrated-GPU reading, no perf-lane reading; the Blender 
 the rig came back black through the MCP (the scene is there to open). Ideas left: a skein that
 sometimes flies obliquely toward or away from the eye (it is always seen side-on now, so the
 wings' plan and the M of the glide show only in the bank), and gulls answering the lanterns.
+
+## The longtail boat, modelled in Blender (2026-11-06)
+
+Now and then a Thai longtail boat (ruea hang yao) crosses the far sea: it comes into the picture
+past one edge a few hundred metres out, crosses at an unhurried pace and leaves past the other.
+Nothing in play calls it; it belongs to the evening, like the turning day. By day it is a painted
+boat in the light, against a low sun a silhouette on the road of light, and from dusk its lantern
+is lit and the sea mirrors that light as it mirrors the lanterns.
+
+![The longtail in Blender (side view), and in the playground at noon, at sunset and at dusk](sunset-overhaul/longtail-boat.jpg)
+
+**The model.** `scripts/blender/sunset_longtail.py` builds it in Blender 5.2 and writes
+`src/themes/sunset/sunset-longtail-model.js` (1,178 triangles, about 43 KB in the theme's own
+chunk). It is built for the silhouette that names a longtail at 40–60 px: a long, narrow teak hull
+whose bow sweeps up into a tall prow wrapped in coloured garlands and ribbons with a pennant on its
+tip, a faded tarp canopy on four poles, the boatman standing at the stern with the tiller, two
+passengers under the canopy, a car engine on its pivot with the long propeller shaft angled down
+astern into the water, and a lantern on the canopy's front bar. Real size, 11 m from the transom
+to the prow's tip; the waterline is y = 0. Each part is its own Blender object; the export reads
+them back evaluated and triangulated, flat for boxes and posts, smooth for the hull, with a linear
+paint colour and a lantern flag per vertex. The rebuild is byte for byte.
+
+    blender --background --factory-startup --python scripts/blender/sunset_longtail.py -- \
+        --out src/themes/sunset/sunset-longtail-model.js [--preview <dir>]
+
+From a live Blender (the MCP): `runpy.run_path("scripts/blender/sunset_longtail.py",
+run_name="sunset_longtail")["show"]()` builds the same boat in a scene of its own
+("SunsetLongtail") and leaves every other scene alone. `--preview` renders side, three-quarter,
+front, top and a silhouette against an evening sky with Workbench (headless here through Mesa's
+llvmpipe EGL).
+
+**The passages** (`sunset-boat.js`, `BOAT`). The first comes 60–150 s after a start (a seek, a
+rebuild); after a passage leaves, the next sets out 180–420 s later. Each runs along a course
+260–420 m out, turned up to 9° off square to the view, at 4.6–6.6 m/s, from 7° past one edge of
+the frame to 7° past the other: about a minute and a half to two minutes across a wide frame,
+less across a phone's. Left to right or right to left at random. The plan comes from a generator
+of the boat's own, restarted at every seek, so a seek to a time always shows the same boat (or
+none). It rides the same swell the lanterns do (three quarters of `seaHeight` under it, pitch and
+roll from `seaSlope` along and across its course).
+
+**The light** is the gulls': the sky the paint faces and the sea's light from below, the sun or
+the moon on the faces turned to it, a silhouette against a low light, a thin rim close to the
+light, and the far sea's own haze between the eye and the boat. The lantern's glass is lit from
+dusk (`lampForSun`: lit below the horizon, out from 5° up); its light joins the glows (a few
+pixels across however far away) and the lamps the sea mirrors.
+
+**The mirror.** This far out the sea is nearly a mirror of the pale low sky, and the first
+captures showed a boat hanging in that sky. So the boat is drawn a second time, mirrored about the
+water under it (a child mesh whose matrix is `boat⁻¹ · mirror · boat`): only what stands above the
+water, tinted, broken into bands by the ripples and fading downward (`MIRROR`). The sea's surface
+lies in front of the mirrored hull, so the mirror's vertex stage draws it at 45 % of its distance
+along the same lines of sight: the same place on screen, in front of the far water it sits on and
+still behind any lantern nearer than it.
+
+**Reproduce.** Playground: `?effect=sunset&t=30&quality=High&board=1&hour=18&boat=1&boatAge=26&boatRange=300`
+(`boat=-1` right to left; `boatSlant=<deg>`, `boatSpeed=<m/s>`); `hour=12` for noon,
+`hour=19.3` for dusk with the lantern lit. `parts=…,boat` draws it in a part capture.
+
+**Verification (2026-11-06, on main fdbea971 plus this change).**
+
+- **Playground** (headless Chromium in a cloud session, WebGPU on SwiftShader at High; the
+  chrome-devtools MCP was not available): noon, sunset and dusk at 1600 × 900, Low on the WebGL2
+  backend at golden hour, and portrait (430 × 850) at the afterglow; no console warning or error.
+- **Unit tests**: `tests/unit/sunset-boat.test.js` (new): the model as Blender wrote it (real
+  size, waterline, hull facing outward, only the lantern's glass lit); a passage entering and
+  leaving past the frame's edges at its range, its bow along its course, always under the horizon;
+  the timing over an hour (first passage, gaps, never two at once, on the water a fifth to a third
+  of the time); the same boat after a seek; riding the swell; the lantern from dusk; the mirror
+  mirrored about the water; in the world, sent across, in the picture just under the horizon,
+  left out by a part capture. The shader gate builds both materials for WGSL and GLSL with the rest
+  of the world.
+- **Cost by construction**: two draws of 1,178 triangles while a boat is in sight (the boat and
+  its mirror), none otherwise; one lantern glow and one mirrored lamp at night.
+
+Not done: no wake (at this range it would be a pixel or two), no real-game or real-GPU capture
+here, and a rebuild in place (a quality change) starts the boat's evening over, so a boat
+mid-passage leaves the picture then.

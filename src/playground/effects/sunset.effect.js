@@ -23,8 +23,11 @@
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
  *   flock=<n>&flockAge=<s>   send n birds across the light and show them <s> seconds later
+ *   boat=1|-1&boatAge=<s>    send the longtail boat across (1 left to right, -1 right to left)
+ *                            and show it <s> seconds later (boatRange=<m>, boatSlant=<deg>,
+ *                            boatSpeed=<m/s>); it otherwise comes every few minutes by itself
  *   demo=1                   live only: play a looping gameplay script
- *   parts=sky,sea,...        draw only these parts (sky, sea, lanterns, glows, birds)
+ *   parts=sky,sea,...        draw only these parts (sky, sea, lanterns, glows, birds, boat)
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
  *   bloom=0|1                override the tier's bloom
@@ -211,6 +214,12 @@ export function create({
     const liftAge = num(params, 'liftAge', 8);
     const flock = Math.max(0, Math.round(num(params, 'flock', 0)));
     const flockAge = num(params, 'flockAge', 9);
+    const boatDir = params.has('boat') ? Math.sign(num(params, 'boat', 1)) || 1 : 0;
+    const boatAge = num(params, 'boatAge', 40);
+    const boatOptions = { dir: boatDir };
+    if (params.has('boatRange')) boatOptions.range = num(params, 'boatRange', 320);
+    if (params.has('boatSlant')) boatOptions.slant = num(params, 'boatSlant', 0);
+    if (params.has('boatSpeed')) boatOptions.speed = num(params, 'boatSpeed', 5.5);
     const colorParam = params.get('color');
     const eventColor = colorParam ? `#${colorParam.replace('#', '')}` : PIECE_COLORS[2];
     const fireEvent = () => {
@@ -237,8 +246,9 @@ export function create({
         // The playground seeks every frame while ?t= is pinned: replay once, then hold.
         if (sought === time) return;
         sought = time;
-        const lead = Math.max(eventName ? eventAge : 0, lifts > 0 ? liftAge : 0, flock > 0 ? flockAge : 0)
-            + LEAD + warmLocks * 0.45 + (holdCombo ? 6 : 0);
+        const staged = [eventName ? eventAge : 0, lifts > 0 ? liftAge : 0, flock > 0 ? flockAge : 0];
+        if (boatDir) staged.push(boatAge);
+        const lead = Math.max(...staged) + LEAD + warmLocks * 0.45 + (holdCombo ? 6 : 0);
         const start = Math.max(0, time - lead);
         world.seek(start);
         if (level > 1) world.levelUp(level, { silent: true });
@@ -290,6 +300,7 @@ export function create({
             })]);
         }
         if (flock > 0) actions.push([time - flockAge, () => world.sendFlock(flock)]);
+        if (boatDir) actions.push([time - boatAge, () => world.sendBoat(boatOptions)]);
         if (eventName) actions.push([time - eventAge, fireEvent]);
         actions.sort((a, b) => a[0] - b[0]);
         actions.forEach(([at, act]) => {
