@@ -32,6 +32,7 @@ export class GameModeManager {
         this.modes = new Map();
         this.currentMode = null;
         this.currentModeId = null;
+        this.activationOperations = new WeakMap();
         this.startOperations = new WeakMap();
 
         // Event handlers
@@ -228,19 +229,23 @@ export class GameModeManager {
 
         // Activate new mode
         console.log(`[GameModeManager] Activating mode: ${modeId}`);
+        // A cached instance can be reactivated before its earlier hook settles.
+        const operation = {};
+        this.activationOperations.set(mode, operation);
+        const ownsActivation = () => this.activationOperations.get(mode) === operation;
         this.currentMode = mode;
         this.currentModeId = modeId;
 
         try {
             await mode.onActivate();
-            if (this.currentMode !== mode) return;
+            if (!ownsActivation() || this.currentMode !== mode) return;
             this._emitEvent('modeActivated', { modeId, mode });
             console.log(`[GameModeManager] Mode ${modeId} activated successfully`);
         } catch (error) {
             console.error(`[GameModeManager] Failed to activate mode ${modeId}:`, error);
             // Only clear the mode THIS call installed. A slow activation that fails after
             // the player has moved on must not wipe the mode they switched to.
-            if (this.currentMode === mode) {
+            if (ownsActivation() && this.currentMode === mode) {
                 this.currentMode = null;
                 this.currentModeId = null;
             }
