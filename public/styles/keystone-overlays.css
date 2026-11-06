@@ -2682,14 +2682,14 @@ body:not(.serenity-mode) #serenity-effects {
     pointer-events: none;
 }
 
-/* The eyebrow shares its row with Play all and ×; the theme's name has the width to itself. */
+/* The eyebrow shares its row with Repeat, Play all and ×; the theme's name has the width to itself. */
 #serenity-effects .serenity-effects__head {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
     grid-template-areas:
-        'eyebrow all close'
-        'title title title'
-        'line line line';
+        'eyebrow repeat all close'
+        'title title title title'
+        'line line line line';
     align-items: center;
     column-gap: 8px;
 }
@@ -2698,6 +2698,7 @@ body:not(.serenity-mode) #serenity-effects {
 #serenity-effects .serenity-effects__head .serenity-effects__eyebrow { grid-area: eyebrow; }
 #serenity-effects .serenity-effects__head .serenity-effects__title { grid-area: title; margin-top: 10px; }
 #serenity-effects .serenity-effects__head .serenity-effects__subtitle { grid-area: line; }
+#serenity-effects .serenity-effects__head .serenity-effects__repeat { grid-area: repeat; }
 #serenity-effects .serenity-effects__head .serenity-effects__all { grid-area: all; }
 #serenity-effects .serenity-effects__head .serenity-effects__close { grid-area: close; }
 
@@ -2759,7 +2760,7 @@ body:not(.serenity-mode) #serenity-effects {
     gap: 6px;
 }
 
-#serenity-effects :is(.serenity-effects__effect, .serenity-effects__all, .serenity-effects__close) {
+#serenity-effects :is(.serenity-effects__effect, .serenity-effects__repeat, .serenity-effects__all, .serenity-effects__close) {
     min-height: 38px;
     padding: 0 13px;
     border-radius: 11px;
@@ -2778,8 +2779,9 @@ body:not(.serenity-mode) #serenity-effects {
         box-shadow var(--sb-dur-2) var(--sb-ease-lock);
 }
 
+#serenity-effects :is(.serenity-effects__repeat, .serenity-effects__all) { min-height: 40px; }
+
 #serenity-effects .serenity-effects__all {
-    min-height: 40px;
     border-color: rgba(var(--fx-accent), 0.45);
     color: rgb(var(--fx-accent));
 }
@@ -2792,13 +2794,13 @@ body:not(.serenity-mode) #serenity-effects {
     letter-spacing: 0;
 }
 
-#serenity-effects :is(.serenity-effects__effect, .serenity-effects__all, .serenity-effects__close):hover {
+#serenity-effects :is(.serenity-effects__effect, .serenity-effects__repeat, .serenity-effects__all, .serenity-effects__close):hover {
     border-color: rgba(var(--sb-cream-rgb), 0.42);
     background: linear-gradient(180deg, rgba(38, 33, 80, 0.8), rgba(16, 13, 38, 0.86));
     color: rgb(var(--sb-cream-rgb));
 }
 
-#serenity-effects :is(.serenity-effects__effect, .serenity-effects__all, .serenity-effects__close):active {
+#serenity-effects :is(.serenity-effects__effect, .serenity-effects__repeat, .serenity-effects__all, .serenity-effects__close):active {
     transform: translateY(1px);
 }
 
@@ -2825,15 +2827,16 @@ body:not(.serenity-mode) #serenity-effects {
     to { transform: scaleX(1); }
 }
 
-/* The effect that is playing, and Play all while it walks through them: the world's light. */
-#serenity-effects :is(.serenity-effects__effect.is-playing, .serenity-effects__all.is-on) {
+/* The effect that is playing, Play all while it walks through them, and Repeat when on: the
+   world's light. */
+#serenity-effects :is(.serenity-effects__effect.is-playing, .serenity-effects__repeat.is-on, .serenity-effects__all.is-on) {
     border-color: rgba(var(--fx-accent), 0.7);
     background: rgba(var(--fx-accent), 0.12);
     color: rgb(var(--fx-accent));
     box-shadow: 0 0 18px rgba(var(--fx-accent), 0.28);
 }
 
-#serenity-effects :is(.serenity-effects__effect, .serenity-effects__all, .serenity-effects__close):focus-visible {
+#serenity-effects :is(.serenity-effects__effect, .serenity-effects__repeat, .serenity-effects__all, .serenity-effects__close):focus-visible {
     outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
     outline-offset: 2px;
 }
@@ -2905,8 +2908,8 @@ body:not(.serenity-mode) #serenity-effects {
     #serenity-effects.is-open { transform: none; }
 
     #serenity-effects .serenity-effects__head {
-        grid-template-columns: minmax(0, 1fr) auto auto;
-        grid-template-areas: 'title all close';
+        grid-template-columns: minmax(0, 1fr) auto auto auto;
+        grid-template-areas: 'title repeat all close';
         column-gap: 8px;
         padding: 0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
     }

@@ -187,8 +187,8 @@ export class SerenityWorldBar {
      * @param {string} state.restChip @param {string} state.restLabel
      * @param {boolean} [state.arriving] the theme is still being built
      * @param {boolean} [state.effectsOpen] the effects tray is open
-     * @param {{index: number, total: number}|null} [state.effectsTour] where Play all has got to
-     *   (0-based), while it runs
+     * @param {{index: number, total: number, repeat?: boolean}|null} [state.effectsTour] where
+     *   Play all has got to (0-based), while it runs, and whether it goes round again
      */
     update(state) {
         const alone = !(state.total > 1);
@@ -211,8 +211,9 @@ export class SerenityWorldBar {
         const tour = state.effectsTour || null;
         const folded = Boolean(tour) && !state.effectsOpen;
         setText(this.effectsText, folded ? `Effects · ${tour.index + 1} of ${tour.total}` : 'Effects');
+        const looping = tour?.repeat ? ' on repeat' : '';
         this.effectsChip.setAttribute('aria-label', folded
-            ? `Theme effects: playing every effect, ${tour.index + 1} of ${tour.total}`
+            ? `Theme effects: playing every effect${looping}, ${tour.index + 1} of ${tour.total}`
             : 'Theme effects: watch what this theme does when you play');
         this.effectsChip.classList.toggle('is-on', Boolean(state.effectsOpen) || Boolean(tour));
         this.effectsChip.setAttribute('aria-expanded', String(Boolean(state.effectsOpen)));
