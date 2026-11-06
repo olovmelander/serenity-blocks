@@ -139,4 +139,42 @@ describe('GpuLossCoordinator — coordinated WebGPU recovery', () => {
         bus.fireLoss({ type: 'webgpu', label: 'theme' });
         expect(recover).not.toHaveBeenCalled();
     });
+
+    it('an older unregister callback cannot remove a replacement with the same label', async () => {
+        const oldRecover = vi.fn();
+        const recover = vi.fn();
+        const unregisterOld = coord.registerSurface('theme', { recover: oldRecover });
+        coord.registerSurface('theme', { recover });
+        unregisterOld();
+        bus.fireLoss({ type: 'webgpu', label: 'theme' });
+        await flush();
+        expect(oldRecover).not.toHaveBeenCalled();
+        expect(recover).toHaveBeenCalledOnce();
+    });
+
+    it.each(['unregister', 'dispose'])('does not start queued recovery after %s', async (action) => {
+        const recover = vi.fn();
+        const unregister = coord.registerSurface('theme', { recover });
+        bus.fireLoss({ type: 'webgpu', label: 'theme' });
+        if (action === 'unregister') unregister();
+        else coord.dispose();
+        await flush();
+        expect(recover).not.toHaveBeenCalled();
+        expect(coord.getStats().recovered).toBe(0);
+    });
+
+    it('still routes out when recovery unregisters its old renderer and then fails', async () => {
+        const routeOut = vi.fn();
+        const unregister = coord.registerSurface('theme', {
+            recover: async () => {
+                unregister(); // Rebuilding themes retire their old graph before creating a new one.
+                throw new Error('fallback renderer failed');
+            },
+            routeOut,
+        });
+        bus.fireLoss({ type: 'webgpu', label: 'theme' });
+        await flush();
+        expect(routeOut).toHaveBeenCalledOnce();
+        expect(coord.getStats().routedOut).toBe(1);
+    });
 });

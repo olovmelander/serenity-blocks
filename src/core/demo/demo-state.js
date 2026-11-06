@@ -75,6 +75,44 @@ export function isStableDemoCheckpointSnapshot(snapshot) {
     return Boolean(snapshot.currentPiece);
 }
 
+const isAbsent = (value) => value === undefined || value === null;
+const isRecord = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
+const isGrid = (rows) => Array.isArray(rows) && rows.length > 0 && rows.every(Array.isArray);
+const isPieceSnapshot = (piece) => isRecord(piece)
+    && isGrid(piece.shape)
+    && Number.isFinite(piece.x)
+    && Number.isFinite(piece.y);
+
+/**
+ * Whether a saved checkpoint has the container shapes restore and the next
+ * spawn rely on. Optional fields restore defaults when absent; a present field
+ * of the wrong shape would throw part-way through a seek (or on the first
+ * spawn after it), so the player drops that checkpoint at load and replays
+ * from an earlier one or the seed. Rule checks such as the Infinity spawn
+ * descriptor stay with restore, which rejects them before touching state.
+ * @param {object} snapshot
+ * @returns {boolean}
+ */
+export function isRestorableDemoCheckpointSnapshot(snapshot) {
+    if (!isRecord(snapshot)) return false;
+    const {
+        currentPiece, lockedPieces, nextPieces, boardGrid, board,
+    } = snapshot;
+    if (!isAbsent(currentPiece) && !isPieceSnapshot(currentPiece)) return false;
+    if (!isAbsent(lockedPieces) && !(Array.isArray(lockedPieces) && lockedPieces.every(isPieceSnapshot))) {
+        return false;
+    }
+    if (!isAbsent(nextPieces) && !(Array.isArray(nextPieces)
+        && nextPieces.every((key) => typeof key === 'string' && key.length > 0))) {
+        return false;
+    }
+    if (!isAbsent(boardGrid) && !isGrid(boardGrid)) return false;
+    if (!snapshot.isInfinityMode && !isAbsent(board) && !isGrid(board)) return false;
+    if (!isAbsent(snapshot.lastPlacedPieceX) && !Array.isArray(snapshot.lastPlacedPieceX)) return false;
+    return ['pieceCounts', 'lineClearCounts', 'comboState', 'handicaps']
+        .every((key) => isAbsent(snapshot[key]) || isRecord(snapshot[key]));
+}
+
 export function captureGameStateSnapshot(gameState) {
     if (!gameState) return null;
 

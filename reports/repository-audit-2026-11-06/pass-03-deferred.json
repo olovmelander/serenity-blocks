@@ -1,0 +1,635 @@
+{
+  "schema_version": 1,
+  "pass": 3,
+  "recorded_utc": "2026-11-06T00:59:49.600582+00:00",
+  "original_baseline_commit": "04b0b613daae153dedffbef47fcba43817f30405",
+  "current_code_commit": "76f9d9989aaabf0eafee23691831cb51a5ff55a8",
+  "status": "Read-only investigations; these broader defects are not repaired by the pass-3 fixes.",
+  "mode_entry": {
+    "method": "Real complete main.js callbacks and GameModeManager; inert UI services and deferred mode hooks",
+    "baseline_matches_current": true,
+    "outcomes": [
+      {
+        "scenario": "settings callback late load restores stale mode and selection",
+        "finalMode": "serenity",
+        "uiSelections": [
+          "single",
+          "serenity"
+        ],
+        "latestRequested": "single"
+      },
+      {
+        "scenario": "settings callback resumes old stop and deactivates later selected mode",
+        "laterModeWasDeactivated": true,
+        "finalMode": "serenity",
+        "finalRunning": true
+      },
+      {
+        "scenario": "superseded replay activation starts another selected mode with its demo payload",
+        "startedMode": "serenity",
+        "payloadHasDemo": true,
+        "selectionRequestedStart": false
+      },
+      {
+        "scenario": "old card error dismisses newer loading overlay and reopens menu",
+        "dismissedOverlay": "SINGLE PLAYER",
+        "whileReplacementStarting": true,
+        "errorToast": true
+      }
+    ],
+    "reproduction": "Run complete main.js settings, demo-start and mode-card callbacks with the real GameModeManager. Hold the first mode import, stop or activation; complete a newer selection; release or reject the first operation.",
+    "next_scope": "Begin intent ownership before caller awaits, capture outgoing and requested modes, scope demo payload/start to the accepted instance, and guard success/error UI plus loading-overlay ownership. Preserve owned rollback and conditional configuration startup; silent manager no-ops do not provide this caller contract.",
+    "local_harness": "/workspace/serenity-audit/pass3-mode-flows-repro.mjs"
+  },
+  "replay_snapshot": {
+    "method": "Actual DemoPlayer load/seek/restore and normal render/spawn consumers, with controlled v2 snapshots at valid command indexes.",
+    "baseline_matches_current": true,
+    "malformed_cases": 8,
+    "valid_controls": 5,
+    "expected_policy_rejection_controls": 1,
+    "outcomes": [
+      {
+        "name": "currentPiece.shape contains a null row",
+        "control": false,
+        "expectedPolicyError": false,
+        "loaded": true,
+        "phase": "seek",
+        "error": "TypeError: Cannot read properties of null (reading 'slice')",
+        "scoreBeforeReset": 0,
+        "inputSuppressedBeforeReset": false,
+        "isSeeking": true,
+        "pooledPiecesUnreachableAfterReset": 1
+      },
+      {
+        "name": "currentPiece is a boolean",
+        "control": false,
+        "expectedPolicyError": false,
+        "loaded": true,
+        "phase": "seek",
+        "error": "TypeError: Cannot read properties of undefined (reading 'length')",
+        "scoreBeforeReset": 0,
+        "inputSuppressedBeforeReset": true,
+        "isSeeking": true,
+        "pooledPiecesUnreachableAfterReset": 0
+      },
+      {
+        "name": "legacy lockedPieces is a noniterable record",
+        "control": false,
+        "expectedPolicyError": false,
+        "loaded": true,
+        "phase": "seek",
+        "error": "TypeError: gameState.lockedPieces is not iterable",
+        "scoreBeforeReset": 0,
+        "inputSuppressedBeforeReset": false,
+        "isSeeking": true,
+        "pooledPiecesUnreachableAfterReset": 0
+      },
+      {
+        "name": "lockedPieces contains a null piece",
+        "control": false,
+        "expectedPolicyError": false,
+        "loaded": true,
+        "phase": "seek",
+        "error": "TypeError: Cannot read properties of null (reading 'pieceId')",
+        "scoreBeforeReset": 0,
+        "inputSuppressedBeforeReset": true,
+        "isSeeking": true,
+        "pooledPiecesUnreachableAfterReset": 0
+      },
+      {
+        "name": "boardGrid contains a null row",
+        "control": false,
+        "expectedPolicyError": false,
+        "loaded": true,
+        "phase": "seek",
+        "error": "TypeError: Cannot read properties of null (reading 'map')",
+        "scoreBeforeReset": 0,
+        "inputSuppressedBeforeReset": true,
+        "isSeeking": true,
+        "pooledPiecesUnreachableAfterReset": 0
+      },
+      {
+        "name": "nextPieces is a record",
+        "control": false,
+        "expectedPolicyError": false,
+        "loaded": true,
+        "phase": "post-seek consumer",
+        "error": "TypeError: gameState.nextPieces.shift is not a function",
+        "scoreBeforeReset": 0,
+        "inputSuppressedBeforeReset": true,
+        "isSeeking": false,
+        "pooledPiecesUnreachableAfterReset": 0
+      },
+      {
+        "name": "pieceCounts is a number",
+        "control": false,
+        "expectedPolicyError": false,
+        "loaded": true,
+        "phase": "post-seek consumer",
+        "error": "TypeError: Cannot create property 'S' on number '1'",
+        "scoreBeforeReset": 0,
+        "inputSuppressedBeforeReset": true,
+        "isSeeking": false,
+        "pooledPiecesUnreachableAfterReset": 1
+      },
+      {
+        "name": "Infinity boardGrid contains a null row",
+        "control": false,
+        "expectedPolicyError": false,
+        "loaded": true,
+        "phase": "seek",
+        "error": "TypeError: Cannot read properties of null (reading 'some')",
+        "scoreBeforeReset": 0,
+        "inputSuppressedBeforeReset": false,
+        "isSeeking": true,
+        "pooledPiecesUnreachableAfterReset": 0
+      },
+      {
+        "name": "valid complete normal checkpoint",
+        "control": true,
+        "expectedPolicyError": false,
+        "loaded": true,
+        "phase": "complete",
+        "error": null,
+        "scoreBeforeReset": 0,
+        "inputSuppressedBeforeReset": true,
+        "isSeeking": false,
+        "pooledPiecesUnreachableAfterReset": 0
+      },
+      {
+        "name": "valid legacy checkpoint omits added optional clocks/input/counters",
+        "control": true,
+        "expectedPolicyError": false,
+        "loaded": true,
+        "phase": "complete",
+        "error": null,
+        "scoreBeforeReset": 0,
+        "inputSuppressedBeforeReset": true,
+        "isSeeking": false,
+        "pooledPiecesUnreachableAfterReset": 0
+      },
+      {
+        "name": "valid terminal checkpoint has no currentPiece",
+        "control": true,
+        "expectedPolicyError": false,
+        "loaded": true,
+        "phase": "complete",
+        "error": null,
+        "scoreBeforeReset": 0,
+        "inputSuppressedBeforeReset": true,
+        "isSeeking": false,
+        "pooledPiecesUnreachableAfterReset": 0
+      },
+      {
+        "name": "valid matching Infinity descriptor",
+        "control": true,
+        "expectedPolicyError": false,
+        "loaded": true,
+        "phase": "complete",
+        "error": null,
+        "scoreBeforeReset": 0,
+        "inputSuppressedBeforeReset": true,
+        "isSeeking": false,
+        "pooledPiecesUnreachableAfterReset": 0
+      },
+      {
+        "name": "valid legacy Infinity checkpoint omits descriptor",
+        "control": true,
+        "expectedPolicyError": false,
+        "loaded": true,
+        "phase": "complete",
+        "error": null,
+        "scoreBeforeReset": 0,
+        "inputSuppressedBeforeReset": true,
+        "isSeeking": false,
+        "pooledPiecesUnreachableAfterReset": 0
+      },
+      {
+        "name": "intentional Infinity descriptor mismatch rejects before reset",
+        "control": true,
+        "expectedPolicyError": true,
+        "loaded": true,
+        "phase": "seek",
+        "error": "TypeError: Infinity checkpoint requires an Infinity session",
+        "scoreBeforeReset": 77,
+        "inputSuppressedBeforeReset": true,
+        "isSeeking": true,
+        "pooledPiecesUnreachableAfterReset": 0
+      }
+    ],
+    "reproduction": "Start with a valid recorded snapshot. Independently replace currentPiece.shape with [null], currentPiece with true, lockedPieces with an object or [null], boardGrid with a null row, nextPieces with an object, or pieceCounts with a number. Load and seek; invoke normal spawn when failure is delayed until consumption. Repeat null board row with a matching Infinity descriptor.",
+    "next_scope": "Validate optional checkpoint structure before pooled-piece acquisition or live-state mutation. Discard structurally unusable optional checkpoints and replay from a valid earlier checkpoint or seed, while preserving legacy defaults, terminal null pieces and explicit Infinity session policy rejection. Do not blanket-swallow restore errors.",
+    "local_harness": "/workspace/serenity-audit/pass3-replay-snapshot-review.mjs",
+    "fallback_experiment": {
+      "baseline_matches_current": true,
+      "outcomes": [
+        {
+          "name": "legacy v1 normal",
+          "seedFallbackMatchesExactly": true,
+          "priorCheckpointMatchesExceptDerivedBlindMetadata": true,
+          "exactSnapshotMatchAfterOmittingKnownBadCheckpoint": false,
+          "differences": [
+            {
+              "key": "blindTimers",
+              "expected": {
+                "field": 0,
+                "fieldMax": 0,
+                "pending": 0,
+                "pendingMax": 0
+              },
+              "actual": {
+                "field": 0,
+                "fieldMax": 0,
+                "pending": 0,
+                "pendingMax": 0,
+                "fieldTicks": 0,
+                "fieldMaxTicks": 0,
+                "pendingTicks": 0,
+                "pendingMaxTicks": 0,
+                "_blindTickSourceField": 0,
+                "_blindTickSourceFieldMax": 0,
+                "_blindTickSourcePending": 0,
+                "_blindTickSourcePendingMax": 0,
+                "_blindTickDurationMs": 16.666666666666668
+              }
+            }
+          ],
+          "expectedHash": "82e54d9c726ee806e066c9e4bc597bd69050348bf4f33e868ef176beaee80e0c",
+          "actualHash": "cfc9927838f68373ceaab73bc0ab9e19a59d2e43eeac7f57ed73a49b53bcdfc3",
+          "inputIndex": 4,
+          "retainsPriorCheckpoint": true,
+          "isSeeking": false
+        },
+        {
+          "name": "v2 normal",
+          "seedFallbackMatchesExactly": true,
+          "priorCheckpointMatchesExceptDerivedBlindMetadata": true,
+          "exactSnapshotMatchAfterOmittingKnownBadCheckpoint": false,
+          "differences": [
+            {
+              "key": "blindTimers",
+              "expected": {
+                "field": 0,
+                "fieldMax": 0,
+                "pending": 0,
+                "pendingMax": 0
+              },
+              "actual": {
+                "field": 0,
+                "fieldMax": 0,
+                "pending": 0,
+                "pendingMax": 0,
+                "fieldTicks": 0,
+                "fieldMaxTicks": 0,
+                "pendingTicks": 0,
+                "pendingMaxTicks": 0,
+                "_blindTickSourceField": 0,
+                "_blindTickSourceFieldMax": 0,
+                "_blindTickSourcePending": 0,
+                "_blindTickSourcePendingMax": 0,
+                "_blindTickDurationMs": 16.666666666666668
+              }
+            }
+          ],
+          "expectedHash": "82e54d9c726ee806e066c9e4bc597bd69050348bf4f33e868ef176beaee80e0c",
+          "actualHash": "cfc9927838f68373ceaab73bc0ab9e19a59d2e43eeac7f57ed73a49b53bcdfc3",
+          "inputIndex": 4,
+          "retainsPriorCheckpoint": true,
+          "isSeeking": false
+        },
+        {
+          "name": "v2 deterministic Infinity",
+          "seedFallbackMatchesExactly": true,
+          "priorCheckpointMatchesExceptDerivedBlindMetadata": true,
+          "exactSnapshotMatchAfterOmittingKnownBadCheckpoint": false,
+          "differences": [
+            {
+              "key": "blindTimers",
+              "expected": {
+                "field": 0,
+                "fieldMax": 0,
+                "pending": 0,
+                "pendingMax": 0
+              },
+              "actual": {
+                "field": 0,
+                "fieldMax": 0,
+                "pending": 0,
+                "pendingMax": 0,
+                "fieldTicks": 0,
+                "fieldMaxTicks": 0,
+                "pendingTicks": 0,
+                "pendingMaxTicks": 0,
+                "_blindTickSourceField": 0,
+                "_blindTickSourceFieldMax": 0,
+                "_blindTickSourcePending": 0,
+                "_blindTickSourcePendingMax": 0,
+                "_blindTickDurationMs": 16.666666666666668
+              }
+            }
+          ],
+          "expectedHash": "01fd03237fd0bb0ea05d6fb43ceb9011265077e9a19655fa228963a149676632",
+          "actualHash": "de749588a42959d8fd43329ef957089dc5f082b671c4fdd9fdf40295034fef2a",
+          "inputIndex": 4,
+          "retainsPriorCheckpoint": true,
+          "isSeeking": false
+        }
+      ],
+      "note": "Manually omit an explicitly known damaged checkpoint, without implementing a validator. Seed replay matches exactly in all three cases. Earlier valid checkpoint replay matches gameplay state but raw snapshot equality is false because existing blind-timer restore adds derived zero tick/cache fields; the complete differences are retained."
+    }
+  },
+  "partial_initialization": {
+    "method": "Complete actual init, initializeManagers, initializePhaserGame, applyDisplaySettings, applyFrameRateSettings, scheduleDeferredStartupTask bodies; actual cleanup and late-adoption helpers; inert resources and controlled native/asset awaits.",
+    "limits": [
+      "No renderer, browser BFCache, or native Electron execution.",
+      "Partial-cleanup scenarios explicitly invoke the app API; ordinary bootstrap only installs its teardown after completed initialization/adoption.",
+      "The degraded-path case executes the real late-wiring closures, not the entire intro/watchdog pipeline."
+    ],
+    "baseline_matches_current_except_expected_handler_count": true,
+    "comparison_note": "The audit has one extra pending audio-abort cleanup registration from pass 2 in late-initialization paths. All resource, state, deferred-work, failure and adoption outcomes shown here match the original baseline.",
+    "outcomes": [
+      {
+        "name": "cleanup-during-phaser-import",
+        "secondCleanupSamePromise": true,
+        "isCleaningUp": true,
+        "isInitialized": true,
+        "lateResources": [
+          {
+            "name": "phaser",
+            "cleaned": 0
+          },
+          {
+            "name": "high-scores",
+            "cleaned": 0
+          },
+          {
+            "name": "demos",
+            "cleaned": 0
+          },
+          {
+            "name": "settings",
+            "cleaned": 0
+          },
+          {
+            "name": "display",
+            "cleaned": 0
+          },
+          {
+            "name": "modal",
+            "cleaned": 0
+          },
+          {
+            "name": "theme",
+            "cleaned": 0
+          },
+          {
+            "name": "input",
+            "cleaned": 0
+          },
+          {
+            "name": "gamepad",
+            "cleaned": 0
+          },
+          {
+            "name": "mode-ui",
+            "cleaned": 0
+          },
+          {
+            "name": "game-mode-manager",
+            "cleaned": 0
+          }
+        ],
+        "uncancelledScheduled": 3,
+        "queuedDeferredTasks": 0
+      },
+      {
+        "name": "cleanup-during-display-list",
+        "secondCleanupSamePromise": true,
+        "isCleaningUp": true,
+        "isInitialized": true,
+        "lateResources": [
+          {
+            "name": "modal",
+            "cleaned": 0
+          },
+          {
+            "name": "theme",
+            "cleaned": 0
+          },
+          {
+            "name": "input",
+            "cleaned": 0
+          },
+          {
+            "name": "gamepad",
+            "cleaned": 0
+          },
+          {
+            "name": "mode-ui",
+            "cleaned": 0
+          },
+          {
+            "name": "game-mode-manager",
+            "cleaned": 0
+          }
+        ],
+        "uncancelledScheduled": 3,
+        "queuedDeferredTasks": 0
+      },
+      {
+        "name": "cleanup-during-display-mode",
+        "secondCleanupSamePromise": true,
+        "isCleaningUp": true,
+        "isInitialized": true,
+        "lateResources": [
+          {
+            "name": "modal",
+            "cleaned": 0
+          },
+          {
+            "name": "theme",
+            "cleaned": 0
+          },
+          {
+            "name": "input",
+            "cleaned": 0
+          },
+          {
+            "name": "gamepad",
+            "cleaned": 0
+          },
+          {
+            "name": "mode-ui",
+            "cleaned": 0
+          },
+          {
+            "name": "game-mode-manager",
+            "cleaned": 0
+          }
+        ],
+        "uncancelledScheduled": 3,
+        "queuedDeferredTasks": 0
+      },
+      {
+        "name": "cleanup-during-frame-vsync",
+        "secondCleanupSamePromise": true,
+        "isCleaningUp": true,
+        "isInitialized": true,
+        "lateResources": [
+          {
+            "name": "modal",
+            "cleaned": 0
+          },
+          {
+            "name": "theme",
+            "cleaned": 0
+          },
+          {
+            "name": "input",
+            "cleaned": 0
+          },
+          {
+            "name": "gamepad",
+            "cleaned": 0
+          },
+          {
+            "name": "mode-ui",
+            "cleaned": 0
+          },
+          {
+            "name": "game-mode-manager",
+            "cleaned": 0
+          }
+        ],
+        "uncancelledScheduled": 0,
+        "queuedDeferredTasks": 3
+      },
+      {
+        "name": "cleanup-during-audio-tracks",
+        "secondCleanupSamePromise": true,
+        "isCleaningUp": true,
+        "isInitialized": true,
+        "lateResources": [
+          {
+            "name": "theme",
+            "cleaned": 0
+          },
+          {
+            "name": "input",
+            "cleaned": 0
+          },
+          {
+            "name": "gamepad",
+            "cleaned": 0
+          },
+          {
+            "name": "mode-ui",
+            "cleaned": 0
+          },
+          {
+            "name": "game-mode-manager",
+            "cleaned": 0
+          }
+        ],
+        "uncancelledScheduled": 3,
+        "queuedDeferredTasks": 0
+      },
+      {
+        "name": "failed-initialization-at-phaser-import",
+        "cleanupInvoked": false,
+        "allocatedResources": [
+          {
+            "name": "sound",
+            "cleaned": 0
+          },
+          {
+            "name": "webgl",
+            "cleaned": 0
+          }
+        ],
+        "isCleaningUp": false,
+        "isInitialized": false,
+        "lateResources": [],
+        "uncancelledScheduled": 0,
+        "queuedDeferredTasks": 0
+      },
+      {
+        "name": "failed-initialization-at-audio-tracks",
+        "cleanupInvoked": false,
+        "allocatedResources": [
+          {
+            "name": "sound",
+            "cleaned": 0
+          },
+          {
+            "name": "webgl",
+            "cleaned": 0
+          },
+          {
+            "name": "phaser",
+            "cleaned": 0
+          },
+          {
+            "name": "high-scores",
+            "cleaned": 0
+          },
+          {
+            "name": "demos",
+            "cleaned": 0
+          },
+          {
+            "name": "settings",
+            "cleaned": 0
+          },
+          {
+            "name": "display",
+            "cleaned": 0
+          },
+          {
+            "name": "modal",
+            "cleaned": 0
+          }
+        ],
+        "isCleaningUp": false,
+        "isInitialized": false,
+        "lateResources": [],
+        "uncancelledScheduled": 0,
+        "queuedDeferredTasks": 0
+      },
+      {
+        "name": "experimental-inner-return-is-insufficient",
+        "isCleaningUp": true,
+        "isInitialized": true,
+        "lateResources": [
+          {
+            "name": "game-mode-manager",
+            "cleaned": 0
+          }
+        ],
+        "uncancelledScheduled": 0,
+        "queuedDeferredTasks": 0
+      },
+      {
+        "name": "control-cleanup-after-complete-init",
+        "isCleaningUp": true,
+        "isInitialized": false,
+        "lateResources": [],
+        "uncancelledScheduled": 0,
+        "queuedDeferredTasks": 0
+      },
+      {
+        "name": "degraded-path-pagehide-before-late-adoption",
+        "cleaningUpBeforeRelease": false,
+        "publishedAfterPriorPagehide": true,
+        "isCleaningUp": false,
+        "isInitialized": true,
+        "lateResources": [],
+        "uncancelledScheduled": 3,
+        "queuedDeferredTasks": 0
+      }
+    ],
+    "reproduction": "Pause each actual Phaser import, display enumeration, display-mode, VSync or audio-track await; explicitly call and await cleanup, then release initialization. Separately reject Phaser/audio initialization, test a guard only inside initializeManagers, and deliver pagehide before the real degraded-path late adoption closure.",
+    "next_scope": "Bootstrap must own lifetime before initialization/adoption. Carry retirement through outer init and each awaited setup; dispose allocations on partial failure and prevent late publication, UI wiring and deferred scheduling. Preserve the original initialization error and working completed-init cleanup. Actual browser BFCache/native quit reachability needs separate validation.",
+    "local_harness": "/workspace/serenity-audit/pass3-partial-init-repro.mjs"
+  }
+}

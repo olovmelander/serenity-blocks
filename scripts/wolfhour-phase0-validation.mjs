@@ -1,8 +1,8 @@
 import electron from 'electron';
-import { spawn } from 'child_process';
 import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
+import { spawnOwnedProcess, stopChildProcess } from './lib/stop-child-process.mjs';
 
 const ROOT = process.cwd();
 const { app, BrowserWindow } = electron;
@@ -81,7 +81,7 @@ function startDevServer() {
         '--strictPort',
     ];
 
-    const proc = spawn(command, args, {
+    const proc = spawnOwnedProcess(command, args, {
         cwd: ROOT,
         stdio: ['ignore', 'pipe', 'pipe'],
         env: {
@@ -114,14 +114,7 @@ async function stopDevServer() {
     const proc = devServerProcess;
     devServerProcess = null;
 
-    if (proc.killed) return;
-
-    proc.kill('SIGTERM');
-    await delay(800);
-
-    if (!proc.killed) {
-        proc.kill('SIGKILL');
-    }
+    await stopChildProcess(proc);
 
     const devLogPath = path.join(ARTIFACT_DIR, 'dev-server.log');
     const logText = Array.isArray(proc._logChunks) ? proc._logChunks.join('') : '';

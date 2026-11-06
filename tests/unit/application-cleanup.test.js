@@ -30,6 +30,35 @@ function fixture() {
 }
 
 describe('application cleanup ownership', () => {
+    it('stops controller input and queued invites before asynchronous mode retirement', async () => {
+        const { app } = fixture();
+        const receiveInput = vi.fn();
+        const joinInvite = vi.fn();
+        const listeners = new Set([receiveInput, joinInvite]);
+        app.gamepadController = { destroy: vi.fn(() => listeners.delete(receiveInput)) };
+        app.steamInviteManager = { destroy: vi.fn(() => listeners.delete(joinInvite)) };
+        let retire;
+        app.gameModeManager = {
+            cleanup: async () => {
+                // Mode teardown may dispatch menu events before its work drains.
+                for (const listener of listeners) listener();
+                await new Promise((resolve) => { retire = resolve; });
+            },
+        };
+
+        const completion = cleanupApplication(app);
+        expect(listeners.size).toBe(0);
+        await Promise.resolve();
+        expect(receiveInput).not.toHaveBeenCalled();
+        expect(joinInvite).not.toHaveBeenCalled();
+        expect(app.isInitialized).toBe(true);
+        retire();
+        await completion;
+        await cleanupApplication(app);
+        expect(app.gamepadController.destroy).toHaveBeenCalledTimes(1);
+        expect(app.steamInviteManager.destroy).toHaveBeenCalledTimes(1);
+    });
+
     it('returns the same completion Promise and retires modes before destroying shared dependencies', async () => {
         const { app, calls } = fixture();
         let retire;

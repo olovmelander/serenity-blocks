@@ -912,7 +912,7 @@ app.whenReady().then(() => {
     powerMonitor.on('resume', () => emitRuntimeEvent('power-resume'));
     powerMonitor.on('on-battery', () => emitRuntimeEvent('power-on-battery'));
     powerMonitor.on('on-ac', () => emitRuntimeEvent('power-on-ac'));
-    powerMonitor.on('speed-limit-change', (_event, limit) => {
+    powerMonitor.on('speed-limit-change', ({ limit }) => {
         emitRuntimeEvent('power-speed-limit-change', { limit });
     });
 

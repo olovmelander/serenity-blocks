@@ -55,13 +55,16 @@ export class DemoManager {
         const savedId = await new Promise((resolve, reject) => {
             const transaction = this.db.transaction([this.STORE_NAME], 'readwrite');
             const store = transaction.objectStore(this.STORE_NAME);
+            let id;
+            transaction.oncomplete = () => resolve(id);
+            transaction.onabort = () => reject(transaction.error || new Error('Replay save aborted'));
 
             // Ensure timestamp is present
             if (!demo.timestamp) demo.timestamp = Date.now();
 
             const request = store.add(demo);
 
-            request.onsuccess = () => resolve(request.result);
+            request.onsuccess = () => { id = request.result; };
             request.onerror = () => reject(request.error);
         });
 
@@ -84,17 +87,19 @@ export class DemoManager {
         await new Promise((resolve, reject) => {
             const transaction = this.db.transaction([this.STORE_NAME], 'readwrite');
             const store = transaction.objectStore(this.STORE_NAME);
+            transaction.oncomplete = () => resolve();
+            transaction.onabort = () => reject(transaction.error || new Error('Replay prune aborted'));
             const countRequest = store.count();
             countRequest.onerror = () => reject(countRequest.error);
             countRequest.onsuccess = () => {
                 let excess = countRequest.result - MAX_STORED_DEMOS;
-                if (excess <= 0) { resolve(); return; }
+                if (excess <= 0) return;
                 // Walk the timestamp index ascending (oldest first), deleting.
                 const cursorRequest = store.index('timestamp').openCursor();
                 cursorRequest.onerror = () => reject(cursorRequest.error);
                 cursorRequest.onsuccess = () => {
                     const cursor = cursorRequest.result;
-                    if (!cursor || excess <= 0) { resolve(); return; }
+                    if (!cursor || excess <= 0) return;
                     cursor.delete();
                     excess -= 1;
                     cursor.continue();
@@ -168,9 +173,10 @@ export class DemoManager {
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction([this.STORE_NAME], 'readwrite');
             const store = transaction.objectStore(this.STORE_NAME);
+            transaction.oncomplete = () => resolve();
+            transaction.onabort = () => reject(transaction.error || new Error('Replay deletion aborted'));
             const request = store.delete(id);
 
-            request.onsuccess = () => resolve();
             request.onerror = () => reject(request.error);
         });
     }
@@ -193,7 +199,8 @@ export class DemoManager {
     importFromJSON(jsonStr) {
         try {
             const demo = JSON.parse(jsonStr);
-            if (!demo.version || !demo.inputs) {
+            if (!demo || typeof demo !== 'object' || Array.isArray(demo)
+                || !demo.version || !Array.isArray(demo.inputs)) {
                 throw new Error('Invalid demo format');
             }
             // The store numbers it: an id from a file could already be taken here.

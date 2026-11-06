@@ -88,9 +88,10 @@ describe('focus pause wiring', () => {
 
     it('also listens to the desktop window focus reported by the main process', () => {
         const { app, runtime } = harness();
-        runtime({ type: 'window-focus-changed', payload: { focused: true } });
+        // The shape electron/main.js emitRuntimeEvent sends: { type, ...payload }.
+        runtime({ type: 'window-focus-changed', focused: true });
         expect(app.openSettingsMenu).not.toHaveBeenCalled();
-        runtime({ type: 'window-focus-changed', payload: { focused: false } });
+        runtime({ type: 'window-focus-changed', focused: false });
         expect(app.openSettingsMenu).toHaveBeenCalledTimes(1);
     });
 

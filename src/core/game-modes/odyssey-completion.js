@@ -36,7 +36,7 @@ export function deferFinishPastCascade(mode, session) {
             .catch(() => {})
             .then(() => {
                 session.finishAfterCascade = null;
-                mode._finishVictoryLap();
+                if (mode._isLevelSessionActive(session)) mode._finishVictoryLap();
             });
     }
     return true;

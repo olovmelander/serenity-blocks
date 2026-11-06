@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "examined_code_commit": "6f283886720f18e9380d765cfe4a62434b3ba283",
+  "original_baseline_commit": "04b0b613daae153dedffbef47fcba43817f30405",
+  "scope": "Read-only follow-up of cloud lifetime and pending-write durability",
+  "network_calls": false,
+  "baseline_results": [
+    {
+      "scenario": "initialized cloud manager remains live after app cleanup",
+      "before": {
+        "timers": 2,
+        "bus": 3,
+        "steam": 2,
+        "collection": true
+      },
+      "afterCleanup": {
+        "originalTimersRetained": 2,
+        "backgroundSyncCalls": 4,
+        "pendingAfterRetiredEvents": [
+          "settings.json",
+          "odyssey.json",
+          "highscores.json",
+          "stats.json",
+          "unlocks.json"
+        ]
+      }
+    },
+    {
+      "scenario": "already-started download applies after cleanup",
+      "calls": [
+        {
+          "call": "flushPendingSave",
+          "disposed": true
+        },
+        {
+          "call": "update",
+          "disposed": true
+        },
+        {
+          "call": "save",
+          "disposed": true
+        }
+      ],
+      "volumeAfterRetiredApply": 0.2
+    },
+    {
+      "scenario": "quit must capture cleanup saves before flush/disposal",
+      "order": [
+        "settings-dispose",
+        "mode-cleanup",
+        "cloud-flush"
+      ],
+      "persistedUnacknowledged": [
+        "settings.json",
+        "odyssey.json"
+      ],
+      "restoredPending": [
+        "settings.json",
+        "odyssey.json"
+      ]
+    },
+    {
+      "scenario": "in-flight upload disappears from restart ledger when unrelated save queues",
+      "beforeOtherSave": [
+        "settings.json"
+      ],
+      "afterOtherSave": [
+        "odyssey.json"
+      ],
+      "restartedSettingsPending": false,
+      "restartedSettingsEdits": false
+    },
+    {
+      "scenario": "old upload acknowledgment forgets newer edit to same key before restart",
+      "latestLocalValue": 0.9,
+      "valueAfterRestartCloudRead": 0.7,
+      "pendingEditKeys": []
+    }
+  ],
+  "audit_results": [
+    {
+      "scenario": "initialized cloud manager remains live after app cleanup",
+      "before": {
+        "timers": 2,
+        "bus": 3,
+        "steam": 2,
+        "collection": true
+      },
+      "afterCleanup": {
+        "originalTimersRetained": 2,
+        "backgroundSyncCalls": 4,
+        "pendingAfterRetiredEvents": [
+          "settings.json",
+          "odyssey.json",
+          "highscores.json",
+          "stats.json",
+          "unlocks.json"
+        ]
+      }
+    },
+    {
+      "scenario": "already-started download applies after cleanup",
+      "calls": [
+        {
+          "call": "flushPendingSave",
+          "disposed": true
+        },
+        {
+          "call": "update",
+          "disposed": true
+        },
+        {
+          "call": "save",
+          "disposed": true
+        }
+      ],
+      "volumeAfterRetiredApply": 0.2
+    },
+    {
+      "scenario": "quit must capture cleanup saves before flush/disposal",
+      "order": [
+        "settings-dispose",
+        "mode-cleanup",
+        "cloud-flush"
+      ],
+      "persistedUnacknowledged": [
+        "settings.json",
+        "odyssey.json"
+      ],
+      "restoredPending": [
+        "settings.json",
+        "odyssey.json"
+      ]
+    },
+    {
+      "scenario": "in-flight upload disappears from restart ledger when unrelated save queues",
+      "beforeOtherSave": [
+        "settings.json"
+      ],
+      "afterOtherSave": [
+        "odyssey.json"
+      ],
+      "restartedSettingsPending": false,
+      "restartedSettingsEdits": false
+    },
+    {
+      "scenario": "old upload acknowledgment forgets newer edit to same key before restart",
+      "latestLocalValue": 0.9,
+      "valueAfterRestartCloudRead": 0.7,
+      "pendingEditKeys": []
+    }
+  ],
+  "interpretation": "These are assertions of observed defects/control behavior, not desired-behavior tests. All outcomes are identical on the untouched original baseline and this pass. No production changes for these cases were included in pass 2.",
+  "next_pass_constraints": [
+    "Persist every unacknowledged batch entry; newer queued entries for the same document must win.",
+    "Acknowledge exact per-key edit revisions; retain the existing persisted edits string-array compatibility.",
+    "Preserve cleanup-generated settings and mode saves before explicit final cloud flush.",
+    "Do not bypass first cloud reconciliation for whole settings/keybind documents.",
+    "Do not suppress union-before-upload reads when quiescing passive synchronization.",
+    "Preserve existing two-second desktop quit policy."
+  ]
+}

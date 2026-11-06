@@ -108,6 +108,13 @@ describe('exporting a replay', () => {
 });
 
 describe('importing a replay file', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it.each([true, 'not an input list', {}])('rejects a malformed input list: %j', (inputs) => {
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        expect(new DemoManager().importFromJSON(JSON.stringify({ ...replay(), inputs }))).toBeNull();
+    });
+
     it('ignores an id in the file, so a replay here with that id is not in the way', () => {
         const demo = new DemoManager().importFromJSON(JSON.stringify(replay()));
 

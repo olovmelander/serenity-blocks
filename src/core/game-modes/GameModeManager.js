@@ -32,6 +32,8 @@ export class GameModeManager {
         this.modes = new Map();
         this.currentMode = null;
         this.currentModeId = null;
+        this.activationOperations = new WeakMap();
+        this.startOperations = new WeakMap();
 
         // Event handlers
         this.eventHandlers = new Map();
@@ -227,18 +229,23 @@ export class GameModeManager {
 
         // Activate new mode
         console.log(`[GameModeManager] Activating mode: ${modeId}`);
+        // A cached instance can be reactivated before its earlier hook settles.
+        const operation = {};
+        this.activationOperations.set(mode, operation);
+        const ownsActivation = () => this.activationOperations.get(mode) === operation;
         this.currentMode = mode;
         this.currentModeId = modeId;
 
         try {
             await mode.onActivate();
+            if (!ownsActivation() || this.currentMode !== mode) return;
             this._emitEvent('modeActivated', { modeId, mode });
             console.log(`[GameModeManager] Mode ${modeId} activated successfully`);
         } catch (error) {
             console.error(`[GameModeManager] Failed to activate mode ${modeId}:`, error);
             // Only clear the mode THIS call installed. A slow activation that fails after
             // the player has moved on must not wipe the mode they switched to.
-            if (this.currentMode === mode) {
+            if (ownsActivation() && this.currentMode === mode) {
                 this.currentMode = null;
                 this.currentModeId = null;
             }
@@ -266,13 +273,20 @@ export class GameModeManager {
 
         console.log(`[GameModeManager] Starting mode: ${this.currentModeId}`, options);
         const mode = this.currentMode;
+        const modeId = this.currentModeId;
+        // Cached instances can be stopped and restarted while an earlier start
+        // still awaits shared theme/audio work. Only its own run may complete.
+        const operation = {};
+        this.startOperations.set(mode, operation);
+        const ownsStart = () => this.startOperations.get(mode) === operation;
 
         try {
             await mode.onStart(options);
+            if (!ownsStart() || this.currentMode !== mode) return;
 
             if (!mode.isRunning) {
                 console.log(
-                    `[GameModeManager] Mode ${this.currentModeId} start deferred (awaiting mode-specific setup)`,
+                    `[GameModeManager] Mode ${modeId} start deferred (awaiting mode-specific setup)`,
                 );
                 return;
             }
@@ -294,6 +308,7 @@ export class GameModeManager {
                 && this.deps?.themeManager?.resumeThemes) {
                 await this.deps.themeManager.resumeThemes();
             }
+            if (!ownsStart() || this.currentMode !== mode || !mode.isRunning) return;
             if (startRuntimePolicy.syncMusicPlayback
                 && this.deps?.soundManager?.ensureTrackPlaybackSynced) {
                 await this.deps.soundManager.ensureTrackPlaybackSynced({
@@ -301,17 +316,18 @@ export class GameModeManager {
                     force: true,
                 });
             }
+            if (!ownsStart() || this.currentMode !== mode || !mode.isRunning) return;
 
-            this._emitEvent('modeStarted', { modeId: this.currentModeId, mode });
-            console.log(`[GameModeManager] Mode ${this.currentModeId} started successfully`);
+            this._emitEvent('modeStarted', { modeId, mode });
+            console.log(`[GameModeManager] Mode ${modeId} started successfully`);
         } catch (error) {
-            console.error(`[GameModeManager] Failed to start mode ${this.currentModeId}:`, error);
-            if (mode.isRunning) {
+            console.error(`[GameModeManager] Failed to start mode ${modeId}:`, error);
+            if (ownsStart() && mode.isRunning) {
                 try {
                     await mode.onStop();
                 } catch (cleanupError) {
                     console.error(
-                        `[GameModeManager] Failed to roll back mode ${this.currentModeId}:`,
+                        `[GameModeManager] Failed to roll back mode ${modeId}:`,
                         cleanupError,
                     );
                 }
@@ -370,16 +386,21 @@ export class GameModeManager {
         }
 
         console.log(`[GameModeManager] Stopping mode: ${this.currentModeId}`);
+        const mode = this.currentMode;
+        const modeId = this.currentModeId;
 
         try {
-            await this.currentMode.onStop();
+            await mode.onStop();
+            // Cleanup belongs to the captured mode; shared presentation belongs
+            // to whoever is current when the asynchronous cleanup finishes.
+            if (this.currentMode !== mode || mode.isRunning) return;
             if (this.deps?.themeManager?.suspendThemes) {
                 this.deps.themeManager.suspendThemes();
             }
-            this._emitEvent('modeStopped', { modeId: this.currentModeId, mode: this.currentMode });
-            console.log(`[GameModeManager] Mode ${this.currentModeId} stopped successfully`);
+            this._emitEvent('modeStopped', { modeId, mode });
+            console.log(`[GameModeManager] Mode ${modeId} stopped successfully`);
         } catch (error) {
-            console.error(`[GameModeManager] Failed to stop mode ${this.currentModeId}:`, error);
+            console.error(`[GameModeManager] Failed to stop mode ${modeId}:`, error);
             throw error;
         }
     }
@@ -395,10 +416,13 @@ export class GameModeManager {
         }
 
         console.log(`[GameModeManager] Deactivating mode: ${this.currentModeId}`);
+        const mode = this.currentMode;
+        const modeId = this.currentModeId;
 
         try {
-            await this.currentMode.onDeactivate();
-            this._emitEvent('modeDeactivated', { modeId: this.currentModeId, mode: this.currentMode });
+            await mode.onDeactivate();
+            if (this.currentMode !== mode || mode.isActive) return;
+            this._emitEvent('modeDeactivated', { modeId, mode });
             this.currentMode = null;
             this.currentModeId = null;
             console.log('[GameModeManager] Mode deactivated successfully');
@@ -501,7 +525,7 @@ export class GameModeManager {
         const handlers = this.eventHandlers.get(event);
 
         if (handlers) {
-            handlers.forEach((handler) => {
+            [...handlers].forEach((handler) => {
                 try {
                     handler(data);
                 } catch (error) {

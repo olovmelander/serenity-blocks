@@ -41,9 +41,14 @@ function demoStore(records) {
     return manager;
 }
 
-function scoreStore({ failWrite = false } = {}) {
+function scoreStore({ failWrite = false, existing = [] } = {}) {
     const records = [];
     const store = {
+        getAll: vi.fn(() => {
+            const request = { result: existing };
+            queueMicrotask(() => request.onsuccess());
+            return request;
+        }),
         clear: vi.fn(),
         add: vi.fn((entry) => {
             if (failWrite) throw new DOMException('Record cannot be cloned', 'DataCloneError');
@@ -136,10 +141,9 @@ describe('Replay menu payload ownership', () => {
 
 describe('Cloud high-score imports', () => {
     it('commits sorted, deduplicated and bounded results in one transaction', async () => {
-        const h = scoreStore();
-        h.manager.getAllScores = vi.fn(async () => [{
+        const h = scoreStore({ existing: [{
             id: 1, score: 500, lines: 2, level: 1, timestamp: 10,
-        }]);
+        }] });
         const incoming = Array.from({ length: 105 }, (_, index) => ({
             score: index, lines: 1, level: 1, timestamp: index,
         }));
@@ -149,7 +153,7 @@ describe('Cloud high-score imports', () => {
         let settled = false;
         const pending = h.manager.importHighScores(incoming).then((count) => { settled = true; return count; });
         await Promise.resolve();
-        expect(h.manager.db.transaction).toHaveBeenCalledTimes(1);
+        expect(h.manager.db.transaction).toHaveBeenCalledExactlyOnceWith(['highScores'], 'readwrite');
         expect(h.store.clear).toHaveBeenCalledTimes(1);
         expect(h.records).toHaveLength(100);
         expect(h.records[0].score).toBe(500);
@@ -161,10 +165,9 @@ describe('Cloud high-score imports', () => {
     });
 
     it('imports only scores, with numeric counters and no link to another device\'s replay (SCORE-17)', async () => {
-        const h = scoreStore();
-        h.manager.getAllScores = vi.fn(async () => [{
+        const h = scoreStore({ existing: [{
             id: 1, score: 900, lines: 9, level: 3, timestamp: 50, demoId: 4,
-        }]);
+        }] });
         const pending = h.manager.importHighScores([
             // This device's own record, back from the Cloud with the other device's replay ID.
             {
@@ -191,10 +194,9 @@ describe('Cloud high-score imports', () => {
     });
 
     it("keeps each mode's own 100, so Infinity runs from the Cloud never push Single Player out", async () => {
-        const h = scoreStore();
-        h.manager.getAllScores = vi.fn(async () => [{
+        const h = scoreStore({ existing: [{
             id: 1, score: 4000, lines: 30, level: 5, timestamp: 1, mode: 'single',
-        }]);
+        }] });
         const runs = Array.from({ length: 120 }, (_, index) => ({
             score: 900000 + index, lines: 200, level: 20, timestamp: 100 + index, mode: 'infinity', cascade: 7,
         }));
@@ -205,6 +207,33 @@ describe('Cloud high-score imports', () => {
         expect(h.records.find((record) => record.mode === 'infinity').cascade).toBe(7);
         h.transaction.oncomplete();
         await expect(pending).resolves.toBe(101);
+    });
+
+    it('keeps matching runs in different modes while recognizing a legacy Single Player duplicate', async () => {
+        const run = { score: 500, lines: 2, level: 1, timestamp: 10 };
+        const h = scoreStore({ existing: [{ ...run, id: 1, demoId: 12 }] });
+        const pending = h.manager.importHighScores([
+            { ...run, mode: 'single' },
+            { ...run, mode: 'infinity' },
+        ]);
+        await Promise.resolve();
+        expect(h.records).toEqual([{ ...run, demoId: 12 }, { ...run, mode: 'infinity' }]);
+        h.transaction.oncomplete();
+        await expect(pending).resolves.toBe(2);
+    });
+
+    it('reads local scores under the same write transaction that replaces them', async () => {
+        const local = { score: 500, lines: 2, level: 1, timestamp: 10, demoId: 12 };
+        const h = scoreStore({ existing: [local] });
+        const separateRead = vi.spyOn(h.manager, 'getAllScores');
+        const pending = h.manager.importHighScores([{ score: 200, lines: 1, level: 1, timestamp: 20 }]);
+        expect(h.manager.db.transaction).toHaveBeenCalledExactlyOnceWith(['highScores'], 'readwrite');
+        expect(separateRead).not.toHaveBeenCalled();
+        await Promise.resolve();
+        expect(h.store.getAll).toHaveBeenCalledOnce();
+        expect(h.records[0]).toEqual(local);
+        h.transaction.oncomplete();
+        await expect(pending).resolves.toBe(2);
     });
 
     it('aborts the replacement on a write failure and rejects transaction aborts', async () => {

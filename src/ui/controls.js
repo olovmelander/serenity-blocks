@@ -902,6 +902,10 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
             inputController.clearTimers();
             inputController.heldKeyCodes.clear();
             inputController.keyMap = {};
+        } else {
+            // A hidden document can miss keyup without a window blur. Drop the
+            // physical latches on return so the first fresh press works again.
+            inputController.clearFixedTickInput({ dropPhysicalLatches: true });
         }
     };
     inputController.handleVisibilityChange = handleVisibilityChange;

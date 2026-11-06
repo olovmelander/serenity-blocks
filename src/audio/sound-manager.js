@@ -160,7 +160,9 @@ export class SoundManager {
         }
         this.bindRuntimeAudioHooks();
         if (this.audioContext.state === 'suspended') {
-            this.audioContext.resume();
+            Promise.resolve(this.audioContext.resume()).catch((error) => {
+                console.warn('[SoundManager] Unable to resume audio context:', error);
+            });
         }
     }
 

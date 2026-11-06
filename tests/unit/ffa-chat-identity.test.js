@@ -18,6 +18,7 @@ function makeHandlerNetwork() {
     return {
         handlers,
         hostSteamId: HOST_ID,
+        sendP2PMessage: vi.fn(),
         on: vi.fn((messageType, handler) => {
             if (!handlers.has(messageType)) handlers.set(messageType, []);
             handlers.get(messageType).push(handler);
@@ -115,6 +116,45 @@ describe('FFAGameStateP2P chat identity binding', () => {
             canonical,
             PEER_ID,
         );
+        state._networkHandlerRegistry.dispose();
+    });
+
+    it.each([PEER_ID, 'S1'])('relays %s chat to spectators without echoing to its sender', (sender) => {
+        const state = makeHostState();
+        state.players.set(PEER_ID, { name: 'Canonical Peer', color: '#12ab34' });
+        state.spectators = new Set(['S1', 'S2']);
+
+        dispatchChat(state, sender, {
+            message: 'hello watchers', steamId: HOST_ID, playerName: 'Forged Host',
+        });
+
+        const relayed = state.chatHistory[0];
+        expect(relayed).toMatchObject({
+            message: 'hello watchers',
+            steamId: sender,
+            playerName: sender === PEER_ID ? 'Canonical Peer' : 'Spectator',
+        });
+        expect(state.broadcastToPeers).toHaveBeenCalledExactlyOnceWith(
+            MessageTypes.GAME_CHAT, relayed, sender,
+        );
+        const recipients = sender === PEER_ID ? ['S1', 'S2'] : ['S2'];
+        expect(state.network.sendP2PMessage.mock.calls).toEqual(
+            recipients.map((steamId) => [steamId, MessageTypes.GAME_CHAT, relayed]),
+        );
+        state._networkHandlerRegistry.dispose();
+    });
+
+    it('sends one copy to a peer listed as both a player and a spectator', () => {
+        const state = makeHostState();
+        state.players.set(PEER_ID, { name: 'Canonical Peer', color: '#12ab34' });
+        state.players.set('P2', { name: 'Rejoined Watcher', color: '#3456ab' });
+        state.spectators = new Set(['P2', 'S1']);
+
+        dispatchChat(state, PEER_ID, { message: 'once each' });
+
+        const relayed = state.chatHistory[0];
+        expect(state.broadcastToPeers).toHaveBeenCalledExactlyOnceWith(MessageTypes.GAME_CHAT, relayed, PEER_ID);
+        expect(state.network.sendP2PMessage.mock.calls).toEqual([['S1', MessageTypes.GAME_CHAT, relayed]]);
         state._networkHandlerRegistry.dispose();
     });
 });

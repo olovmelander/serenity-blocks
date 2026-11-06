@@ -22,6 +22,7 @@ export class SteamInviteManager {
         this._gameEndedHandler = null;
         this._returnToMenuHandler = null;
         this._modalHiddenHandler = null;
+        this.destroyed = false;
 
         this._bind();
     }
@@ -57,11 +58,12 @@ export class SteamInviteManager {
     }
 
     async _handleInvite(invite) {
-        if (!invite?.lobbyId) {
+        if (this.destroyed || !invite?.lobbyId) {
             return;
         }
 
         const friendName = await this._resolveFriendName(invite.friendSteamId);
+        if (this.destroyed) return;
         const isBusy = this._isBusy();
         const modeId = this.gameModeManager.getCurrentModeId();
         const lowKey = modeId === GAME_MODES.SERENITY;
@@ -79,7 +81,8 @@ export class SteamInviteManager {
             timeoutMs: 10000,
             lowKey,
             onAccept: () => {
-                if (isBusy) {
+                if (this.destroyed) return;
+                if (this._isBusy()) {
                     this._enqueueInvite(invite);
                 } else {
                     this._joinLobby(invite.lobbyId);
@@ -92,7 +95,7 @@ export class SteamInviteManager {
     }
 
     _enqueueInvite(invite) {
-        if (!invite?.lobbyId) return;
+        if (this.destroyed || !invite?.lobbyId) return;
         if (this.pendingInviteIds.has(invite.lobbyId)) return;
 
         this.pendingInvites.push(invite);
@@ -147,7 +150,7 @@ export class SteamInviteManager {
     }
 
     async _tryJoinPending(trigger) {
-        if (!this.pendingInvites.length) return;
+        if (this.destroyed || !this.pendingInvites.length) return;
         if (this._isBusy()) return;
 
         const invite = this._dequeueInvite();
@@ -156,7 +159,7 @@ export class SteamInviteManager {
     }
 
     async _joinLobby(lobbyId) {
-        if (!lobbyId) return;
+        if (this.destroyed || !lobbyId) return;
 
         try {
             this._removePendingInvite(lobbyId);
@@ -165,6 +168,7 @@ export class SteamInviteManager {
 
             if (modeId !== GAME_MODES.ONLINE_MULTIPLAYER) {
                 await this.gameModeManager.activateMode(GAME_MODES.ONLINE_MULTIPLAYER);
+                if (this.destroyed) return;
                 await this.gameModeManager.startCurrentMode({ lobbyId, invite: true });
                 return;
             }
@@ -190,6 +194,7 @@ export class SteamInviteManager {
     }
 
     destroy() {
+        this.destroyed = true;
         this.unsubscribers.forEach((unsub) => unsub());
         this.unsubscribers = [];
         if (this.pendingMatchUnsub) {

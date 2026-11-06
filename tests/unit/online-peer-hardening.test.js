@@ -7,7 +7,9 @@
 import {
     afterEach, describe, expect, it, vi,
 } from 'vitest';
-import { capPeerText, MAX_NAME_CHARS, peerColor } from '../../src/core/network/peer-text.js';
+import {
+    capPeerText, MAX_CHAT_CHARS, MAX_NAME_CHARS, peerColor,
+} from '../../src/core/network/peer-text.js';
 import { adoptHostRoster } from '../../src/core/multiplayer/ffa/presence.js';
 import { MAX_LOBBY_PLAYERS, mergeHostMatchConfig } from '../../src/core/multiplayer/ffa/host-match-config.js';
 import { REJOIN_MIN_INTERVAL_MS, serveRejoin } from '../../src/core/multiplayer/ffa/join-handshake.js';
@@ -82,6 +84,13 @@ describe('peer names', () => {
         const family = '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}';
         expect(capPeerText(family, MAX_NAME_CHARS)).toBe(family);
         expect(capPeerText('\u0645\u06CC\u200C\u062E\u0648\u0627\u0645', MAX_NAME_CHARS)).toContain('\u200C');
+    });
+
+    it.each([MAX_NAME_CHARS, MAX_CHAT_CHARS])('preserves complete code points at the %i-unit cap', (max) => {
+        const almostFull = 'a'.repeat(max - 1);
+        expect(capPeerText(`${almostFull}🌿tail`, max)).toBe(almostFull);
+        const exactFit = `${'a'.repeat(max - 2)}🌿`;
+        expect(capPeerText(`${exactFit}tail`, max)).toBe(exactFit);
     });
 });
 

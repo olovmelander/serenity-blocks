@@ -80,6 +80,15 @@ describe('event bus — unsubscribe & off', () => {
 });
 
 describe('event bus — once', () => {
+    it('off(name, handler) cancels a once listener by its original handler', () => {
+        const handler = vi.fn();
+        eventBus.once('t:once-off', handler);
+        eventBus.off('t:once-off', handler);
+        eventBus.emit('t:once-off');
+        expect(handler).not.toHaveBeenCalled();
+        expect(eventBus.listenerCount('t:once-off')).toBe(0);
+    });
+
     it('fires exactly once then auto-removes (the optimizer once bug)', () => {
         const h = vi.fn();
         eventBus.once('t:once', h);
@@ -88,6 +97,84 @@ describe('event bus — once', () => {
         expect(h).toHaveBeenCalledTimes(1);
         expect(h).toHaveBeenCalledWith(1);
         expect(eventBus.listenerCount('t:once')).toBe(0);
+    });
+
+    it('fires only once when an earlier listener emits the same event recursively', () => {
+        const handler = vi.fn();
+        eventBus.on('t:once-reentrant', (value) => {
+            if (value === 'outer') eventBus.emit('t:once-reentrant', 'inner');
+        });
+        eventBus.once('t:once-reentrant', handler);
+        eventBus.emit('t:once-reentrant', 'outer');
+        expect(handler.mock.calls).toEqual([['inner']]);
+    });
+
+    it('removes itself before its own handler emits the same event', () => {
+        const handler = vi.fn(() => eventBus.emit('t:once-self', 'inner'));
+        eventBus.once('t:once-self', handler);
+        eventBus.emit('t:once-self', 'outer');
+        expect(handler.mock.calls).toEqual([['outer']]);
+        expect(eventBus.listenerCount('t:once-self')).toBe(0);
+    });
+});
+
+describe('event bus — deferred delivery', () => {
+    beforeEach(() => { vi.useFakeTimers({ now: 1000 }); });
+    afterEach(() => {
+        vi.clearAllTimers();
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+    });
+
+    it.each([
+        ['debounce', { debounceMs: 50 }],
+        ['throttle', { throttleMs: 50 }],
+        ['raf', { rafThrottle: true }],
+    ])('isolates errors from %s listeners and reports their original handler', (_name, options) => {
+        const error = new Error('deferred failure');
+        const handler = vi.fn(() => { throw error; });
+        const after = vi.fn();
+        const report = vi.spyOn(eventBus, 'onListenerError').mockImplementation(() => {});
+        eventBus.on('t:deferred-error', handler, options);
+        eventBus.on('t:deferred-error', after, options);
+        eventBus.emit('t:deferred-error', 1);
+        handler.mockClear();
+        after.mockClear();
+        report.mockClear();
+        eventBus.emit('t:deferred-error', 2);
+
+        expect(() => vi.advanceTimersByTime(100)).not.toThrow();
+        expect(handler).toHaveBeenCalledWith(2);
+        expect(after).toHaveBeenCalledWith(2);
+        expect(report).toHaveBeenCalledWith('t:deferred-error', error, handler);
+    });
+
+    it('does not redeliver an overdue throttle timer after a newer immediate delivery', () => {
+        const handler = vi.fn();
+        eventBus.on('t:throttle-overdue', handler, { throttleMs: 100 });
+        eventBus.emit('t:throttle-overdue', 1);
+        vi.advanceTimersByTime(10);
+        eventBus.emit('t:throttle-overdue', 2);
+        // A queued timer can be overdue when the main thread is blocked or the clock advances.
+        vi.setSystemTime(1200);
+        eventBus.emit('t:throttle-overdue', 3);
+        vi.advanceTimersByTime(100);
+        expect(handler.mock.calls).toEqual([[1], [3]]);
+    });
+
+    it.each([
+        ['debounce', { debounceMs: 50 }],
+        ['throttle', { throttleMs: 50 }],
+        ['raf', { rafThrottle: true }],
+    ])('cancels queued %s work when unsubscribed', (_name, options) => {
+        const handler = vi.fn();
+        const unsubscribe = eventBus.on('t:deferred-cancel', handler, options);
+        eventBus.emit('t:deferred-cancel', 1);
+        handler.mockClear();
+        eventBus.emit('t:deferred-cancel', 2);
+        unsubscribe();
+        vi.advanceTimersByTime(100);
+        expect(handler).not.toHaveBeenCalled();
     });
 });
 

@@ -77,6 +77,52 @@ describe("Steam's word on departures", () => {
         expect(late).not.toHaveBeenCalled();
     });
 
+    it('releases preload listeners on shutdown and can bind them again', () => {
+        const net = network({ isHost: true });
+        const handlers = new Map();
+        const removals = [];
+        const api = {
+            on: vi.fn((channel, callback) => {
+                handlers.set(channel, callback);
+                const off = vi.fn(() => handlers.delete(channel));
+                removals.push(off);
+                return off;
+            }),
+        };
+        net._listenForSteamPeerEvents(api);
+        net._listenForSteamPeerEvents(api);
+        expect(api.on).toHaveBeenCalledTimes(2);
+
+        net.shutdown();
+        net.shutdown();
+        expect(handlers.size).toBe(0);
+        expect(removals[0]).toHaveBeenCalledOnce();
+        expect(removals[1]).toHaveBeenCalledOnce();
+
+        net._listenForSteamPeerEvents(api);
+        net.currentLobbyId = 'replacement';
+        const gone = vi.fn();
+        net.onPeerGone(gone);
+        handlers.get('steam:lobbyMember')({ lobbyId: 'replacement', steamId: 'P1', change: 'left' });
+        expect(api.on).toHaveBeenCalledTimes(4);
+        expect(gone).toHaveBeenCalledExactlyOnceWith('P1', 'lobby_left');
+        net.shutdown();
+        expect(handlers.size).toBe(0);
+    });
+
+    it('releases an earlier preload listener if a later subscription fails during initialization', () => {
+        const net = network();
+        const off = vi.fn();
+        const api = {
+            on: vi.fn()
+                .mockReturnValueOnce(off)
+                .mockImplementationOnce(() => { throw new Error('bridge unavailable'); }),
+        };
+        expect(() => net._listenForSteamPeerEvents(api)).toThrow('bridge unavailable');
+        net.shutdown();
+        expect(off).toHaveBeenCalledOnce();
+    });
+
     it("reads Steam's member change as a number or as its name", () => {
         expect(lobbyMemberChange(1)).toBe('left');
         expect(lobbyMemberChange(2)).toBe('disconnected');

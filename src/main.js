@@ -1114,19 +1114,18 @@ class SerenityBlocks {
         // Listen for main-process window focus/blur events — more reliable than
         // visibilitychange for alt-tab on Windows where focus changes may not
         // trigger a visibility state update in Electron.
-        if (window.electronAPI?.onRuntimeEvent) {
-            window.electronAPI.onRuntimeEvent((payload) => {
-                if (payload?.type !== 'window-focus-changed') return;
-                const isFocused = !!payload.payload?.focused;
-                if (isFocused && !this.isTabVisible) {
-                    this.isTabVisible = true;
-                    this.handleVisibilityChange(true);
-                } else if (!isFocused && this.isTabVisible && this.backgroundTabBehavior !== 'continue') {
-                    this.isTabVisible = false;
-                    this.handleVisibilityChange(false);
-                }
-            });
-        }
+        const focusUnsubscribe = window.electronAPI?.onRuntimeEvent?.((payload) => {
+            if (payload?.type !== 'window-focus-changed') return;
+            const isFocused = !!payload.focused;
+            if (isFocused && !this.isTabVisible) {
+                this.isTabVisible = true;
+                this.handleVisibilityChange(true);
+            } else if (!isFocused && this.isTabVisible && this.backgroundTabBehavior !== 'continue') {
+                this.isTabVisible = false;
+                this.handleVisibilityChange(false);
+            }
+        });
+        if (focusUnsubscribe) this.cleanupHandlers.push(focusUnsubscribe);
 
         console.log('[Visibility] Background tab throttling initialized:', this.backgroundTabBehavior);
     }
@@ -2143,6 +2142,8 @@ class SerenityBlocks {
             this.soundManager.startBackgroundMusic();
         }
 
+        const audioUnlockController = new AbortController();
+        this.cleanupHandlers.push(() => audioUnlockController.abort());
         const resumeAudio = () => {
             this.soundManager.resumeAudioContext();
             if (this.soundManager?.ensureTrackPlaybackSynced) {
@@ -2155,13 +2156,10 @@ class SerenityBlocks {
             } else if (this.soundManager?.startBackgroundMusic) {
                 this.soundManager.startBackgroundMusic();
             }
-            document.removeEventListener('click', resumeAudio);
-            document.removeEventListener('keydown', resumeAudio);
+            audioUnlockController.abort();
         };
-
-        document.addEventListener('click', resumeAudio);
-        document.addEventListener('keydown', resumeAudio);
-
+        document.addEventListener('click', resumeAudio, { signal: audioUnlockController.signal });
+        document.addEventListener('keydown', resumeAudio, { signal: audioUnlockController.signal });
         // Theme manager
         this.themeCollection = getThemeCollection();
         sanitizeCollectionThemeSetting(this);
@@ -2232,6 +2230,7 @@ class SerenityBlocks {
         if (!isSafeMode) {
             this.scheduleDeferredStartupTask('steam-cloud-sync', async () => {
                 const { default: SteamCloudSyncManager } = await import('./core/steam/steam-cloud-sync.js');
+                if (this.isCleaningUp) return;
                 this.cloudSyncManager = new SteamCloudSyncManager({
                     themeCollection: this.themeCollection,
                     getOdysseyState: () => this.gameModeManager?.getMode?.('odyssey')?.odysseyState,

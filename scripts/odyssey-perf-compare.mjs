@@ -51,9 +51,7 @@ function numberAt(obj, pathParts) {
     for (const part of pathParts) {
         current = current?.[part];
     }
-    if (current === null || current === undefined || current === '') return null;
-    const number = Number(current);
-    return Number.isFinite(number) ? number : null;
+    return finiteOrNull(current);
 }
 
 /** A session file is either the legacy flat single-run payload or the v2
@@ -76,10 +74,8 @@ function normalizeSession(session) {
 
 /** Read a named metric: aggregate median when present, else legacy flat path. */
 function metricValue(normalized, name, flatParts) {
-    const aggregate = normalized.aggregate?.[name];
-    if (aggregate && Number.isFinite(Number(aggregate.median))) {
-        return Number(aggregate.median);
-    }
+    const aggregateMedian = finiteOrNull(normalized.aggregate?.[name]?.median);
+    if (aggregateMedian !== null) return aggregateMedian;
     if (name === 'spikes') {
         const spikes = normalized.flat?.browser?.perf?.spikes;
         return Array.isArray(spikes) ? spikes.length : null;
@@ -175,7 +171,8 @@ function budgetChecks(budgets, candidate) {
 }
 
 function finiteOrNull(value) {
-    if (value === null || value === undefined || value === '') return null;
+    if (typeof value !== 'number' && typeof value !== 'string') return null;
+    if (typeof value === 'string' && value.trim() === '') return null;
     const number = Number(value);
     return Number.isFinite(number) ? number : null;
 }

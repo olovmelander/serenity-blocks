@@ -342,7 +342,7 @@ export class DemoBrowser {
             await this.refreshList();
             notify(this, 'Replay deleted.', 'success');
             // The pressed button is gone; keep focus inside the sheet.
-            if (hadFocus) {
+            if (hadFocus && this.isOpen()) {
                 (this.listContainer?.querySelector('.btn-play') || document.getElementById('import-demo-btn'))
                     ?.focus({ preventScroll: true });
             }

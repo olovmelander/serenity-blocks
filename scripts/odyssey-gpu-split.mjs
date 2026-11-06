@@ -31,6 +31,7 @@ import electron from 'electron';
 import { spawn } from 'child_process';
 import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
+import { spawnOwnedProcess, stopChildProcess } from './lib/stop-child-process.mjs';
 
 const { app, BrowserWindow } = electron;
 const ROOT = process.cwd();
@@ -299,53 +300,61 @@ const ONLY = args.only ? String(args.only).split(',').map((t) => t.trim()) : nul
 let devServer = null;
 
 /**
- * Kill the dev server AND ITS CHILDREN.
+ * Stop the dev server AND ITS CHILDREN.
  *
- * The server is spawned with `shell: true` on Windows, so `devServer.kill()` reaps the shell
- * and leaves node/Vite listening. Because every run uses `--strictPort`, the NEXT invocation
- * then fails with "dev server did not start in 90s" — a leak that presents as a harness bug.
- * The 2026-08-12 Act I session lost three measurement runs to it (and wedged one half-run
- * holding the port) before the orphans were swept by hand. Kill the tree instead.
+ * The server is a wrapper (`npx`, and `shell: true` on Windows), so signalling only the
+ * wrapper leaves node/Vite listening. Because every run uses `--strictPort`, the NEXT
+ * invocation then fails with "dev server did not start in 90s" — a leak that presents as a
+ * harness bug. The 2026-08-12 Act I session lost three measurement runs to it (and wedged one
+ * half-run holding the port) before the orphans were swept by hand. Windows kills the tree
+ * with taskkill; POSIX signals the process group the server was spawned into, escalating to
+ * SIGKILL if it ignores SIGTERM, and is awaited so the app does not quit first.
  */
-function killDevServerTree() {
+async function stopDevServer() {
     const proc = devServer;
     devServer = null;
-    if (!proc || proc.killed || !proc.pid) return;
-    if (process.platform === 'win32') {
-        try {
-            spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { stdio: 'ignore' });
-            return;
-        } catch { /* fall through to the POSIX path */ }
+    if (!proc?.pid) return;
+    if (process.platform !== 'win32') {
+        await stopChildProcess(proc);
+        return;
     }
-    proc.kill();
+    if (proc.exitCode !== null || proc.signalCode !== null) return;
+    try {
+        spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { stdio: 'ignore' });
+    } catch {
+        proc.kill();
+    }
 }
 
 const wait = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 const fmt = (v) => (Number.isFinite(v) ? `${v.toFixed(2)}ms` : '—');
 
-async function startDevServer() {
+function startDevServer() {
+    return spawnOwnedProcess(
+        process.platform === 'win32' ? 'npx.cmd' : 'npx',
+        ['vite', '--port', String(PORT), '--strictPort'],
+        {
+            cwd: ROOT,
+            stdio: ['ignore', 'pipe', 'pipe'],
+            shell: process.platform === 'win32',
+            // Isolated dep cache: sharing node_modules/.vite with an interactive dev
+            // server corrupts the optimizer and wedges BOTH servers (the "everything
+            // freezes" bug). Port-scoped so concurrent harnesses cannot collide either.
+            env: { ...process.env, VITE_CACHE_DIR: `node_modules/.vite-harness-${PORT}` },
+        },
+    );
+}
+
+function waitForDevServer(proc) {
     return new Promise((resolve, reject) => {
-        devServer = spawn(
-            process.platform === 'win32' ? 'npx.cmd' : 'npx',
-            ['vite', '--port', String(PORT), '--strictPort'],
-            {
-                cwd: ROOT,
-                stdio: ['ignore', 'pipe', 'pipe'],
-                shell: process.platform === 'win32',
-                // Isolated dep cache: sharing node_modules/.vite with an interactive dev
-                // server corrupts the optimizer and wedges BOTH servers (the "everything
-                // freezes" bug). Port-scoped so concurrent harnesses cannot collide either.
-                env: { ...process.env, VITE_CACHE_DIR: `node_modules/.vite-harness-${PORT}` },
-            },
-        );
         const timer = setTimeout(() => reject(new Error('dev server did not start in 90s')), 90000);
-        devServer.stdout.on('data', (chunk) => {
+        proc.stdout.on('data', (chunk) => {
             if (String(chunk).includes('ready in') || String(chunk).includes(String(PORT))) {
                 clearTimeout(timer);
                 setTimeout(resolve, 1200);
             }
         });
-        devServer.on('error', reject);
+        proc.on('error', reject);
     });
 }
 
@@ -622,7 +631,8 @@ app.whenReady().then(async () => {
     const results = [];
     try {
         process.stdout.write(`[gpu-split] lane ${LANE} (${QUALITY}), starting dev server...\n`);
-        await startDevServer();
+        devServer = startDevServer();
+        await waitForDevServer(devServer);
         const selected = ONLY
             ? CONFIGURATIONS.filter((c) => ONLY.includes(c.id))
             : CONFIGURATIONS;
@@ -718,7 +728,7 @@ app.whenReady().then(async () => {
         process.stderr.write(`[gpu-split] FAILED: ${error?.stack || error}\n`);
         process.exitCode = 1;
     } finally {
-        killDevServerTree();
+        await stopDevServer();
         app.quit();
     }
 });

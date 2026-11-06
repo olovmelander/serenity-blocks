@@ -20,6 +20,7 @@ import {
 import { clearPlayerInput } from '../player-input-state.js';
 import {
     captureGameStateSnapshot,
+    isRestorableDemoCheckpointSnapshot,
     isStableDemoCheckpointSnapshot,
     isStableDemoCheckpointState,
     restoreGameStateSnapshot,
@@ -241,6 +242,9 @@ export class DemoPlayer {
         this.lastWallTime = nowMs();
         this.isPaused = false;
         if (this.gameState && !this.isSeeking) this.gameState.isPaused = false;
+        // A seek finished while paused leaves no frame loop; a running seek
+        // restarts it itself when it completes.
+        if (!this.isSeeking) this._scheduleLoop();
     }
 
     /**
@@ -310,17 +314,30 @@ export class DemoPlayer {
         await this._waitForPhysics(owner);
         if (!this._ownsReplay(owner)) return;
 
-        const checkpoint = this._findCheckpoint(targetMs);
+        let checkpoint = this._findCheckpoint(targetMs);
+        while (checkpoint) {
+            try {
+                restoreGameStateSnapshot(this.gameState, checkpoint.state, {
+                    seed: this.demo.initialState.seed,
+                    isReplay: true,
+                    isSeeking: true,
+                    suppressExternalInput: true,
+                    // V1/v2 demos store already-expanded accepted commands. Their
+                    // checkpoint input engine must stay dark or DAS repeats apply twice.
+                    restorePlayerInput: false,
+                });
+                break;
+            } catch (error) {
+                // The session's rules refuse this checkpoint (an Infinity one in another
+                // mode, say). It is never adopted; replay from an earlier state instead
+                // of leaving the seek stuck half-way.
+                console.warn('[DemoPlayer] Skipping a checkpoint that cannot be restored:', error);
+                const refused = checkpoint;
+                this.checkpoints = this.checkpoints.filter((entry) => entry !== refused);
+                checkpoint = this._findCheckpoint(targetMs);
+            }
+        }
         if (checkpoint) {
-            restoreGameStateSnapshot(this.gameState, checkpoint.state, {
-                seed: this.demo.initialState.seed,
-                isReplay: true,
-                isSeeking: true,
-                suppressExternalInput: true,
-                // V1/v2 demos store already-expanded accepted commands. Their
-                // checkpoint input engine must stay dark or DAS repeats apply twice.
-                restorePlayerInput: false,
-            });
             this.currentInputIndex = checkpoint.inputIndex || 0;
             this.lastSimulatedTime = this._checkpointTime(checkpoint);
         } else {
@@ -399,15 +416,17 @@ export class DemoPlayer {
     }
 
     _scheduleLoop() {
-        if (!this.isPlaying || this.animationId) return;
+        if (!this.isPlaying || this.animationId !== null) return;
+        const token = this.seekToken;
         this.animationId = requestNextFrame(() => {
+            if (token !== this.seekToken) return;
             this.animationId = null;
             this._loop();
         });
     }
 
     _cancelScheduledFrame() {
-        if (!this.animationId) return;
+        if (this.animationId === null) return;
         cancelNextFrame(this.animationId);
         this.animationId = null;
     }
@@ -805,6 +824,14 @@ export class DemoPlayer {
                 .filter((checkpoint) => (
                     checkpoint?.state
                     && isStableDemoCheckpointSnapshot(checkpoint.state)
+                    && isRestorableDemoCheckpointSnapshot(checkpoint.state)
+                    // A damaged optional checkpoint must not skip commands or
+                    // index a fractional slot. Replay from an earlier state.
+                    && (!Number.isFinite(checkpoint.inputIndex) || (
+                        Number.isInteger(checkpoint.inputIndex)
+                        && checkpoint.inputIndex >= 0
+                        && checkpoint.inputIndex <= inputs.length
+                    ))
                 ))
                 .map((checkpoint) => {
                     const frame = Number.isFinite(checkpoint.f)

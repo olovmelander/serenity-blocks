@@ -12,7 +12,7 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { getLevelRegistry } from './LevelRegistry.js';
 import {
     ODYSSEY_SAVE_VERSION, getOdysseyCompletionThemeIds, snapshotLegacyOdysseyThemes, migrateV3OdysseyCampaign,
-    migrateV4OdysseyCampaign,
+    migrateV4OdysseyCampaign, normalizeOdysseyCompletion,
 } from './odyssey-progress-schema.js';
 import {
     claimOdysseyPity, createOdysseyCharmState, dropOdysseyCharms, normalizeOdysseyCharmState, odysseyCharmBagEntries,
@@ -27,6 +27,7 @@ const STORAGE_KEY = 'serenityBlocks_odysseyProgress';
 // world, so the version gate is load-bearing, not advisory.
 const V2_SHIFT_FROM_ID = 42;
 const V2_SHIFT = 4;
+const isRecord = (value) => value && typeof value === 'object' && !Array.isArray(value);
 
 /**
  * Migrate a raw odyssey progress document IN PLACE to the current save version and
@@ -49,7 +50,7 @@ export function migrateOdysseyProgressData(data) {
             // Numeric ids in the array form.
             data.unlockedLevels = data.unlockedLevels.map(shiftId);
         }
-        if (data.completedLevels && typeof data.completedLevels === 'object') {
+        if (isRecord(data.completedLevels)) {
             // STRING keys in the map form — the type asymmetry is the trap here.
             const migrated = {};
             Object.entries(data.completedLevels).forEach(([key, value]) => {
@@ -189,6 +190,7 @@ export class OdysseyStateManager {
             }
 
             const data = JSON.parse(savedData);
+            if (!isRecord(data)) throw new Error('Odyssey save must be an object');
             if (Number(data.version) > ODYSSEY_SAVE_VERSION) {
                 this.unsupportedSaveVersion = true;
                 return false;
@@ -204,11 +206,14 @@ export class OdysseyStateManager {
             // Restore state
             this.currentChapter = data.currentChapter || 1;
             this.currentLevel = data.currentLevel || 1;
-            this.unlockedLevels = new Set(data.unlockedLevels || [1]);
-            this.completedLevels = new Map(Object.entries(data.completedLevels || {}));
+            this.unlockedLevels = new Set(Array.isArray(data.unlockedLevels) ? data.unlockedLevels : [1]);
+            this.completedLevels = new Map(Object.entries(isRecord(data.completedLevels) ? data.completedLevels : {}));
             this.retiredCompletions = { ...data.retiredCompletions };
             this.journeyStartedAt = typeof data.journeyStartedAt === 'string' ? data.journeyStartedAt : null;
             this.statistics = { ...this.statistics, ...data.statistics };
+            Object.entries(this.statistics).forEach(([key, value]) => {
+                if (!Number.isFinite(value) || value < 0) this.statistics[key] = 0;
+            });
             this.onboarding = { arrivalSeen: data.onboarding?.arrivalSeen === true };
             this.charms = normalizeOdysseyCharmState(data.charms);
             this._normalizeProgressState();
@@ -259,19 +264,25 @@ export class OdysseyStateManager {
         this.unlockedLevels = new Set(
             [...this.unlockedLevels]
                 .map((levelId) => Number(levelId))
-                .filter((levelId) => Number.isFinite(levelId) && levelId >= 1 && levelId <= totalLevels),
+                .filter((levelId) => Number.isInteger(levelId) && levelId >= 1 && levelId <= totalLevels),
         );
         if (this.unlockedLevels.size === 0) {
             this.unlockedLevels.add(1);
         }
 
-        this.completedLevels = new Map(
-            [...this.completedLevels.entries()]
-                .filter(([levelId]) => {
-                    const numericId = Number(levelId);
-                    return Number.isFinite(numericId) && numericId >= 1 && numericId <= totalLevels;
-                }),
-        );
+        const completed = new Map();
+        this.completedLevels.forEach((completion, levelId) => {
+            const numericId = Number(levelId);
+            const normalized = normalizeOdysseyCompletion(completion, { minStars: 0 });
+            if (!Number.isInteger(numericId) || numericId < 1 || numericId > totalLevels
+                || !normalized) return;
+            const canonicalId = String(numericId);
+            // Recover aliases such as "08" only when the real key has no valid completion.
+            if (!completed.has(canonicalId) || String(levelId) === canonicalId) {
+                completed.set(canonicalId, normalized);
+            }
+        });
+        this.completedLevels = completed;
 
         // Every cleared orb is open and opens the next, whatever the save says. A v4 player who
         // had beaten a chapter's duel kept it cleared when it moved to the chapter's end, but

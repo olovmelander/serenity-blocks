@@ -9,6 +9,9 @@ export function scheduleBrowserIdleTask(task, { delayMs = 0, timeout = 2000 } = 
     let timeoutId = null;
     let idleId = null;
     let cancelled = false;
+    const reportFailure = (error) => {
+        console.warn('[Startup] Deferred task failed:', error);
+    };
 
     const runTask = () => {
         if (cancelled) {
@@ -17,9 +20,11 @@ export function scheduleBrowserIdleTask(task, { delayMs = 0, timeout = 2000 } = 
 
         idleId = null;
         timeoutId = null;
-        Promise.resolve(task()).catch((error) => {
-            console.warn('[Startup] Deferred task failed:', error);
-        });
+        try {
+            Promise.resolve(task()).catch(reportFailure);
+        } catch (error) {
+            reportFailure(error);
+        }
     };
 
     const startTask = () => {
@@ -41,7 +46,7 @@ export function scheduleBrowserIdleTask(task, { delayMs = 0, timeout = 2000 } = 
 
     return () => {
         cancelled = true;
-        if (timeoutId) {
+        if (timeoutId !== null) {
             clearTimeout(timeoutId);
             timeoutId = null;
         }

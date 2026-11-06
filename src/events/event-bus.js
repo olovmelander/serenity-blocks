@@ -47,6 +47,10 @@ function throttleWrap(fn, ms) {
         const now = Date.now();
         const remaining = ms - (now - last);
         if (remaining <= 0) {
+            if (timer !== null) {
+                clearTimeout(timer);
+                timer = null;
+            }
             last = now;
             fn(lastPayload);
         } else if (timer === null) {
@@ -117,9 +121,17 @@ class EventBus {
     on(eventName, handler, options = {}) {
         this._assertKnown(eventName, 'on');
         let deliver = handler;
-        if (options.debounceMs) deliver = debounceWrap(handler, options.debounceMs);
-        else if (options.throttleMs) deliver = throttleWrap(handler, options.throttleMs);
-        else if (options.rafThrottle) deliver = rafThrottleWrap(handler);
+        // Deferred callbacks run after emit() has returned, outside its try/catch.
+        const deliverDeferred = (/** @type {any} */ payload) => {
+            try {
+                handler(payload);
+            } catch (err) {
+                this.onListenerError(eventName, err, handler);
+            }
+        };
+        if (options.debounceMs) deliver = debounceWrap(deliverDeferred, options.debounceMs);
+        else if (options.throttleMs) deliver = throttleWrap(deliverDeferred, options.throttleMs);
+        else if (options.rafThrottle) deliver = rafThrottleWrap(deliverDeferred);
         // The wrappers expose .cancel; a bare handler does not.
         const cancel = deliver === handler ? undefined : /** @type {any} */ (deliver).cancel;
         /** @type {ListenerEntry} */
@@ -138,12 +150,16 @@ class EventBus {
     once(eventName, handler) {
         /** @type {ListenerEntry} */
         let entry;
+        let fired = false;
         const wrapper = (/** @type {any} */ payload) => {
-            this._removeEntry(eventName, entry); // off by WRAPPER identity — fixes the optimizer once() bug
+            // A recursive emit can consume this listener before an outer emit's snapshot reaches it.
+            if (fired) return;
+            fired = true;
+            this._removeEntry(eventName, entry); // Remove this registration before invoking a reentrant handler.
             handler(payload);
         };
         this._assertKnown(eventName, 'once');
-        entry = { original: wrapper, deliver: wrapper, cancel: undefined };
+        entry = { original: handler, deliver: wrapper, cancel: undefined };
         if (!this.listeners.has(eventName)) this.listeners.set(eventName, new Set());
         const set = this.listeners.get(eventName);
         if (set) set.add(entry);

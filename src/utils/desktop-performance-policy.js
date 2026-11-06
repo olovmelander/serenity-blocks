@@ -311,9 +311,10 @@ export function evaluateDynamicResolutionAdjustment({
     }
 
     if (elapsedSinceChange >= 6000 && pressure) {
+        const nextRenderScale = clampRenderScale(currentScale - DYNAMIC_SCALE_STEP_DOWN);
         return {
-            nextRenderScale: clampRenderScale(currentScale - DYNAMIC_SCALE_STEP_DOWN),
-            changed: true,
+            nextRenderScale,
+            changed: nextRenderScale !== currentScale,
             reason: 'frame_time_pressure',
             persistEligible: false,
             pressure,

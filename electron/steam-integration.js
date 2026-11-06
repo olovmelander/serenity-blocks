@@ -141,7 +141,7 @@ function normalizeStatArgs(nameOrPayload, value) {
 function resolveCloudWriteBuffer(data) {
     if (Buffer.isBuffer(data)) return data;
     if (data instanceof ArrayBuffer) return Buffer.from(new Uint8Array(data));
-    if (ArrayBuffer.isView(data)) return Buffer.from(data.buffer);
+    if (ArrayBuffer.isView(data)) return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
     if (typeof data === 'string') return Buffer.from(data, 'utf8');
     if (data === null || data === undefined) return Buffer.from('', 'utf8');
     return Buffer.from(JSON.stringify(data), 'utf8');
@@ -750,7 +750,7 @@ export function registerSteamIPC() {
         try {
             const { name, value: v } = normalizeStatArgs(nameOrPayload, value);
             if (!name) return false;
-            steamworksClient.stats.setInt(name, Number.isFinite(v) ? Math.floor(v) : 0);
+            if (steamworksClient.stats.setInt(name, Number.isFinite(v) ? Math.floor(v) : 0) === false) return false;
             return steamworksClient.stats.store();
         } catch { return false; }
     });
@@ -763,7 +763,7 @@ export function registerSteamIPC() {
             const safeValue = Number.isFinite(v) ? Math.floor(v) : 0;
             const current = steamworksClient.stats.getInt(name) ?? 0;
             if (safeValue > current) {
-                steamworksClient.stats.setInt(name, safeValue);
+                if (steamworksClient.stats.setInt(name, safeValue) === false) return false;
                 return steamworksClient.stats.store();
             }
             return true;
@@ -777,7 +777,7 @@ export function registerSteamIPC() {
             if (!name) return false;
             const delta = Number.isFinite(a) ? Math.floor(a) : 1;
             const current = steamworksClient.stats.getInt(name) ?? 0;
-            steamworksClient.stats.setInt(name, current + delta);
+            if (steamworksClient.stats.setInt(name, current + delta) === false) return false;
             return steamworksClient.stats.store();
         } catch { return false; }
     });

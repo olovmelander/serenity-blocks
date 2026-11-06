@@ -58,6 +58,10 @@ export class OnlineChat {
             // game-input handlers (same isolation as the lobby and results chats).
             // Enter sends and hands the keyboard back to the game; Escape just leaves.
             this.inputEl.onkeydown = (e) => {
+                e.stopPropagation();
+                // Enter confirms and Escape cancels an IME candidate. Neither
+                // should send the unfinished message or move focus out of chat.
+                if (e.isComposing || e.keyCode === 229) return;
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     this._handleSend();
@@ -65,7 +69,6 @@ export class OnlineChat {
                 } else if (e.key === 'Escape') {
                     this.inputEl.blur();
                 }
-                e.stopPropagation();
             };
         }
     }

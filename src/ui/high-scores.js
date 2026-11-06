@@ -406,46 +406,61 @@ export class HighScoreManager {
     async importHighScores(entries = [], { merge = true } = {}) {
         if (!this.db) await this.init();
         const incoming = (Array.isArray(entries) ? entries : []).map(sanitizeImportedScore).filter(Boolean);
-        const existing = merge ? await this.getAllScores() : [];
 
-        const combined = [...existing, ...incoming].map((entry) => {
-            const clone = { ...entry };
-            delete clone.id;
-            return clone;
-        });
-
-        const deduped = [];
-        const seen = new Set();
-        for (const entry of combined) {
-            const key = [
-                entry.score ?? 0,
-                entry.lines ?? 0,
-                entry.level ?? 0,
-                entry.timestamp ?? 0,
-            ].join('|');
-            if (seen.has(key)) continue;
-            seen.add(key);
-            deduped.push(entry);
-        }
-
-        const trimmed = keepTopScoresPerMode(deduped);
-        // One commit prevents repeated transaction overhead and keeps the old
-        // scores intact if any imported record fails to write.
-        await new Promise((resolve, reject) => {
+        // Read, merge and replace under one write lock: a local score saved during
+        // a separate readonly snapshot could otherwise be erased by the replacement.
+        return new Promise((resolve, reject) => {
             const transaction = this.db.transaction([this.STORES.HIGH_SCORES], 'readwrite');
-            transaction.oncomplete = () => resolve();
-            transaction.onabort = () => reject(transaction.error || new Error('High score import aborted'));
-            transaction.onerror = () => reject(transaction.error);
-            try {
-                const store = transaction.objectStore(this.STORES.HIGH_SCORES);
-                store.clear();
-                for (const entry of trimmed) store.add(entry);
-            } catch (error) {
+            let count = 0;
+            let failure = null;
+            transaction.oncomplete = () => resolve(count);
+            transaction.onabort = () => reject(failure || transaction.error || new Error('High score import aborted'));
+            transaction.onerror = (event) => {
+                failure = failure || event.target.error || transaction.error;
+            };
+            const abort = (error) => {
+                failure = error;
                 transaction.abort();
                 reject(error);
+            };
+            try {
+                const store = transaction.objectStore(this.STORES.HIGH_SCORES);
+                const write = (existing) => {
+                    try {
+                        const deduped = [];
+                        const seen = new Set();
+                        for (const entry of [...existing, ...incoming]) {
+                            const key = [
+                                entry.mode || LEGACY_SCORE_MODE,
+                                entry.score ?? 0,
+                                entry.lines ?? 0,
+                                entry.level ?? 0,
+                                entry.timestamp ?? 0,
+                            ].join('|');
+                            if (seen.has(key)) continue;
+                            seen.add(key);
+                            const clone = { ...entry };
+                            delete clone.id;
+                            deduped.push(clone);
+                        }
+                        const trimmed = keepTopScoresPerMode(deduped);
+                        count = trimmed.length;
+                        store.clear();
+                        for (const entry of trimmed) store.add(entry);
+                    } catch (error) {
+                        abort(error);
+                    }
+                };
+                if (merge) {
+                    const request = store.getAll();
+                    request.onsuccess = () => write(request.result || []);
+                } else {
+                    write([]);
+                }
+            } catch (error) {
+                abort(error);
             }
         });
-        return trimmed.length;
     }
 
     async importStatistics(statistics = {}, { merge = true } = {}) {

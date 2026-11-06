@@ -155,6 +155,8 @@ export class SteamNetworking {
         this.peerIntake = new PeerIntake();
         /** @type {Set<(steamId: string, reason: string) => void>} */
         this.peerGoneHandlers = new Set();
+        /** @type {Array<() => void>} */
+        this._steamPeerEventUnsubscribers = [];
 
         // Mock mode for local testing - use mock if Steam API is not available via preload
         this.mockMode = SteamConfig.mockMode || !hasSteamworks;
@@ -1283,10 +1285,14 @@ export class SteamNetworking {
 
         // Close all P2P connections via steamworks.js preload API
         this.connectedPeers.forEach((peerInfo, steamId) => {
-            ipcRenderer.invoke('steam:closeP2PSession', steamId);
+            ipcRenderer.invoke('steam:closeP2PSession', steamId).catch((err) => {
+                console.warn('⚠️ Failed to close P2P session:', err);
+            });
         });
 
-        ipcRenderer.invoke('steam:leaveLobby');
+        ipcRenderer.invoke('steam:leaveLobby').catch((err) => {
+            console.warn('⚠️ Failed to leave lobby:', err);
+        });
         this._resetLobbySession();
         this.isHost = false;
 
@@ -1335,6 +1341,8 @@ export class SteamNetworking {
    * Cleanup on shutdown
    */
     shutdown() {
+        this._steamPeerEventsBound = false;
+        this._steamPeerEventUnsubscribers.splice(0).forEach((unsubscribe) => unsubscribe());
         this._clearNetworkImpairmentTimers();
         this.stopP2PPolling();
         this.incomingSnapshotBaselines.clear();
@@ -1398,7 +1406,9 @@ export class SteamNetworking {
             return;
         }
         try {
-            ipcRenderer.invoke('steam:setLobbyData', this.currentLobbyId, 'status', String(status));
+            ipcRenderer.invoke('steam:setLobbyData', this.currentLobbyId, 'status', String(status)).catch((err) => {
+                console.warn('⚠️ Failed to set lobby status:', err);
+            });
         } catch (err) {
             console.warn('⚠️ Failed to set lobby status:', err);
         }
@@ -2007,6 +2017,12 @@ export class SteamNetworking {
      * peer decodes round-2 state against round-1 data → corrupted/frozen peer board.
      */
     resetSnapshotBaselines() {
+        // A delayed delta still belongs to the old baseline/round. Retire its send
+        // before a new keyframe or lobby can reuse this transport.
+        this.outgoingSnapshotState.forEach((state) => {
+            if (state?.timer != null) clearTimeout(state.timer);
+        });
+        this.outgoingSnapshotState.clear();
         this.lastKeyframeSnapshot = null;
         this.lastBroadcastSnapshot = null;
         this.lastFullSnapshotAt = 0;
@@ -2364,19 +2380,21 @@ export class SteamNetworking {
      * Steam's lobby-member and P2P-failure callbacks, forwarded by the Electron main
      * process (electron/steam-integration.js). A quit or a lobby leave reaches the
      * others at once instead of after the silence timeout.
-     * @param {{on?: (channel: string, callback: (event: any) => void) => unknown}|null} [api]
+     * @param {{on?: (channel: string, callback: (event: any) => void) => (() => void) | void} | null} [api]
      */
     _listenForSteamPeerEvents(api = electronApi) {
         if (this._steamPeerEventsBound || typeof api?.on !== 'function') return;
         this._steamPeerEventsBound = true;
-        api.on('steam:lobbyMember', (event) => {
+        const unsubscribeLobby = api.on('steam:lobbyMember', (event) => {
             if (!event || !this.currentLobbyId || String(event.lobbyId) !== String(this.currentLobbyId)) return;
             if (!LOBBY_DEPARTURES.has(event.change)) return;
             this._reportPeerGone(String(event.steamId), `lobby_${event.change}`);
         });
-        api.on('steam:p2pSessionFailed', (event) => {
+        if (typeof unsubscribeLobby === 'function') this._steamPeerEventUnsubscribers.push(unsubscribeLobby);
+        const unsubscribeP2P = api.on('steam:p2pSessionFailed', (event) => {
             if (event?.steamId && this.currentLobbyId) this._reportPeerGone(String(event.steamId), 'p2p_failed');
         });
+        if (typeof unsubscribeP2P === 'function') this._steamPeerEventUnsubscribers.push(unsubscribeP2P);
     }
 
     /**

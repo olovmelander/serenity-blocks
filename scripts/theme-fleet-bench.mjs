@@ -28,7 +28,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import electronPath from 'electron';
 import { getThemeIds } from '../src/themes/theme-registry.js';
 import { summarizeCell } from './lib/theme-fleet-bench-page.mjs';
 
@@ -68,6 +67,8 @@ export function buildTable(rows, { budgetMs }) {
 }
 
 async function runWorker(specPath, timeoutMs) {
+    // Report helpers also run in CI, where Electron's binary is not installed.
+    const { default: electronPath } = await import('electron');
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
     return new Promise((resolve) => {

@@ -208,6 +208,7 @@ export class GamepadController {
         this.connected = [false, false, false, false];
         this.deadzone = 0.25; // Analog stick deadzone
         this.pollInterval = null;
+        this.pollGeneration = 0;
         this.gameActions = null;
         this.enabled = false;
         this.fixedTickInputAdapter = null;
@@ -704,12 +705,16 @@ export class GamepadController {
      * Start polling gamepads
      */
     startPolling() {
-        if (this.pollInterval) return;
+        if (this.pollInterval !== null) return;
 
+        const generation = ++this.pollGeneration;
         this.lastPollTime = performance.now();
         const loop = (timestamp) => {
+            if (generation !== this.pollGeneration) return;
             this.lastPollTime = timestamp;
             this.poll();
+            // An input callback may stop or replace this loop during poll().
+            if (generation !== this.pollGeneration) return;
             this.pollInterval = requestAnimationFrame(loop);
         };
 
@@ -722,7 +727,8 @@ export class GamepadController {
      * Stop polling gamepads
      */
     stopPolling() {
-        if (this.pollInterval) {
+        this.pollGeneration += 1;
+        if (this.pollInterval !== null) {
             cancelAnimationFrame(this.pollInterval);
             this.pollInterval = null;
             console.log('[Gamepad] Stopped polling');

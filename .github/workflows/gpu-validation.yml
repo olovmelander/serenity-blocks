@@ -39,8 +39,8 @@ jobs:
     # Pinned to 22.04: stable, well-known Electron runtime deps (24.04 renamed
     # several to the -t64 ABI, which churns the apt list).
     runs-on: ubuntu-22.04
-    # Full 11-scene sweep; each scene is bounded by the harness's 90s readiness
-    # timeout, so worst case (all time out) is ~11*90s + boot, well under this.
+    # The full registry-derived scene sweep; the harness bounds each scene's
+    # readiness wait at 90 seconds, with this job limit covering the whole run.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -75,18 +75,13 @@ jobs:
       # (harness crashed before writing) is a failure.
       - name: Validate — WebGL2 render + honest verdict
         run: |
+          validation_report="artifacts/odyssey/webgpu-validation/webgl2/report.json"
+          # Clear even if Electron crashes before the harness itself starts.
+          rm -f "$validation_report"
           set +e
           node scripts/run-electron.mjs scripts/odyssey-webgpu-validation.mjs
           echo "electron exit: $? (informational — verdict is read from report.json)"
-          node -e '
-            const fs = require("fs");
-            const p = "artifacts/odyssey/webgpu-validation/webgl2/report.json";
-            if (!fs.existsSync(p)) { console.error("GATE FAIL: no report.json — the harness did not complete"); process.exit(1); }
-            const r = JSON.parse(fs.readFileSync(p, "utf8"));
-            const bad = r.filter((x) => !x.ok);
-            console.log(`GPU render verdict: ${r.length - bad.length}/${r.length} scenes clean`);
-            if (bad.length) { console.error("GATE FAIL:\n" + bad.map((b) => `  ${b.scene}: ${(b.reasons || []).join("; ")}`).join("\n")); process.exit(1); }
-          '
+          node scripts/odyssey-gpu-validation-report.mjs "$validation_report"
         env:
           ODYSSEY_FORCE_WEBGL: '1'
 
