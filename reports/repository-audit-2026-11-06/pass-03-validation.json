@@ -1,0 +1,242 @@
+{
+  "schema_version": 1,
+  "pass": 3,
+  "recorded_utc": "2026-11-06T01:01:42.793403+00:00",
+  "repository": "olovmelander/serenity-blocks",
+  "pull_request": "https://github.com/olovmelander/serenity-blocks/pull/358",
+  "original_baseline_commit": "04b0b613daae153dedffbef47fcba43817f30405",
+  "previous_audit_commit": "37ebd9899d381656e1f2cba59b11b562dfb8720e",
+  "validated_code_commit": "76f9d9989aaabf0eafee23691831cb51a5ff55a8",
+  "environment": {
+    "platform": "Linux",
+    "node": "v24.22.1",
+    "installation": "npm ci --ignore-scripts",
+    "test_workers": 2,
+    "electron_binary_installed": false
+  },
+  "changes": [
+    {
+      "commit": "2c4849e",
+      "area": "Cached-mode activation completion ownership",
+      "added_cases": 6,
+      "pre_fix_failures": 2,
+      "focused_passed": 58
+    },
+    {
+      "commit": "3ab977c",
+      "area": "Replay frame and delayed focus ownership; finite command-index validity",
+      "added_cases": 10,
+      "pre_fix_failures": 7,
+      "focused_passed": 163
+    },
+    {
+      "commit": "1d52a7d",
+      "area": "Owned POSIX npm/npx process groups and idempotent cleanup",
+      "added_cases": 11,
+      "pre_fix_failures": 10,
+      "focused_passed": 59
+    },
+    {
+      "commit": "d6ef92c",
+      "area": "Whole-batch cloud retry durability and exact per-key revision acknowledgments",
+      "added_cases": 12,
+      "pre_fix_failures": 8,
+      "focused_passed": 142
+    },
+    {
+      "commit": "76f9d99",
+      "area": "Passive cloud retirement, final-save capture and explicit flush compatibility",
+      "added_cases": 17,
+      "pre_fix_failures": 14,
+      "focused_passed": 174
+    }
+  ],
+  "integrated_tests": {
+    "command": "npm test -- --maxWorkers=2 --reporter=json --outputFile=/workspace/serenity-audit/pass3-integrated-tests.json",
+    "success": true,
+    "files": 1379,
+    "passed": 24663,
+    "failed": 0,
+    "skipped": 3,
+    "failed_files": [],
+    "started_utc": "2026-11-06T00:52:05.425000+00:00",
+    "duration_seconds": 510.493
+  },
+  "new_cases": 56,
+  "reproduced_pre_fix_failures": 41,
+  "baseline_vs_introduced": "Previous audit suite: 24,607 passed / 3 skipped. Pass 3 adds 56 passing cases, with no introduced suite failures. Deferred caller-flow, malformed snapshot and partial-initialization findings reproduce on original baseline 04b0b613.",
+  "gates": [
+    {
+      "check": "typecheck",
+      "command": "npm run typecheck",
+      "exit_code": 0
+    },
+    {
+      "check": "ts-ratchet",
+      "command": "node scripts/ts-ratchet-check.mjs",
+      "exit_code": 0
+    },
+    {
+      "check": "lint",
+      "command": "npm run lint:ci",
+      "exit_code": 0
+    },
+    {
+      "check": "architecture",
+      "command": "node scripts/architecture-fitness-check.mjs",
+      "exit_code": 0
+    },
+    {
+      "check": "boundaries",
+      "command": "npm run check:boundaries",
+      "exit_code": 0
+    },
+    {
+      "check": "theme-lifecycle",
+      "command": "npm run audit:theme-lifecycle",
+      "exit_code": 0
+    },
+    {
+      "check": "release-gates",
+      "command": "npm run check:release-gates",
+      "exit_code": 0
+    },
+    {
+      "check": "perf-budgets",
+      "command": "npm run perf:budgets:gate",
+      "exit_code": 0
+    },
+    {
+      "check": "whitespace",
+      "command": "git diff 37ebd98 --check",
+      "exit_code": 0
+    },
+    {
+      "check": "build",
+      "command": "npm run build",
+      "exit_code": 0
+    },
+    {
+      "check": "ip-strings",
+      "command": "npm run check:ip-strings",
+      "exit_code": 0
+    },
+    {
+      "check": "pages-artifact",
+      "command": "npm run check:pages-artifact",
+      "exit_code": 0
+    }
+  ],
+  "lint": {
+    "errors": 432,
+    "warnings": 1999,
+    "fatal": 0,
+    "ceiling": 432,
+    "changed": false
+  },
+  "architecture": "All ratchets unchanged and passing; no ceiling raised.",
+  "boundaries": {
+    "modules": 2121,
+    "dependencies": 7781,
+    "violations": 0
+  },
+  "build": {
+    "seconds": 42.2,
+    "entry_chunks": 3,
+    "entry_kib_rounded": 12,
+    "main_chunks": 4,
+    "main_kib_rounded": 1307
+  },
+  "browser_smoke": {
+    "checks": [
+      {
+        "name": "production menu boot",
+        "ready": true,
+        "cards": 8
+      },
+      {
+        "name": "settings controls navigation",
+        "open": true,
+        "modalClass": "modal visible",
+        "controlsVisible": true,
+        "settingsAvailable": true
+      },
+      {
+        "name": "production cloud cleanup",
+        "ready": true,
+        "before": {
+          "initialized": true,
+          "localSubscriptions": 4,
+          "backgroundSubscriptions": 2
+        },
+        "disposed": true,
+        "backgroundSyncStopped": true,
+        "localSubscriptions": 0,
+        "backgroundSubscriptions": 0,
+        "initialTimer": null,
+        "periodicTimer": null,
+        "flushTimer": null
+      }
+    ],
+    "exceptions": [],
+    "errors": [
+      "[SoundManager] Music switch failed: NotAllowedError: play() failed because the user didn't interact with the document first. https://goo.gl/xX8pDD",
+      "[SoundManager] Music switch failed: NotAllowedError: play() failed because the user didn't interact with the document first. https://goo.gl/xX8pDD",
+      "[SoundManager] Music switch failed: NotAllowedError: play() failed because the user didn't interact with the document first. https://goo.gl/xX8pDD"
+    ],
+    "failedRequests": [
+      {
+        "requestId": "61268.112",
+        "timestamp": 8861.998483,
+        "type": "Media",
+        "errorText": "net::ERR_ABORTED",
+        "canceled": true
+      }
+    ],
+    "passed": true
+  },
+  "browser_note": "Production dist in isolated headless Chromium with intro/theme-warm skips. Eight menu cards, Controls settings and initialized cloud cleanup passed; zero uncaught exceptions. Cleanup retired four local/two passive subscriptions and all three timer handles. Three expected no-trusted-gesture autoplay errors and one canceled media request; no full audio, native Steam or visual validation claimed.",
+  "real_vite_process_smoke": {
+    "port": 38315,
+    "runs": [
+      {
+        "run": 1,
+        "wrapperPid": 56385,
+        "vitePid": 56398,
+        "portReleased": true
+      },
+      {
+        "run": 2,
+        "wrapperPid": 56418,
+        "vitePid": 56430,
+        "portReleased": true
+      }
+    ],
+    "immediatePortReuse": true
+  },
+  "process_note": "Two actual Vite starts through npm in a spaced/Unicode temporary directory; owned group cleanup released the strict port, allowing immediate reuse. Offline npx and exited-wrapper fixtures are covered by the real-subprocess regressions. Native Windows behavior and intentionally separate-session descendants are outside this evidence.",
+  "independent_reviews": [
+    "Cloud cached retry revisions through repeated failures, waiting batch entries, new edits and restart; review findings incorporated before freeze.",
+    "Cloud lifetime review exercised six actual-module scenarios; uploader review exercised four grouped final-flush/remote-union/restart scenarios.",
+    "Capture review reran 25 process cases; real Vite smoke verified released/reusable ports.",
+    "Root reviewed the integrated production diff, focused before/after evidence and full suite; source stayed frozen during final integration."
+  ],
+  "prior_pass_ci": {
+    "head": "37ebd9899d381656e1f2cba59b11b562dfb8720e",
+    "run_id": 42132957249,
+    "conclusion": "success",
+    "test": "success",
+    "build": "success",
+    "deploy": "skipped"
+  },
+  "current_github_ci": "Will run after this checkpoint is pushed; local results are not a remote CI result.",
+  "deferred_evidence": "pass-03-deferred.json",
+  "limits": [
+    "No authenticated Steam or two-device/offline/quit-interruption validation; in-flight IPC and record transactions may finish after retirement.",
+    "No Windows or physical controller validation.",
+    "No real GPU capture/performance or theme visual changes.",
+    "Ordinary quit reachability for pending app initialization and browser BFCache timing remain unverified.",
+    "No release approval, main merge or deployment; existing privacy contact placeholder remains.",
+    "Dependency manifests and versions unchanged; dependency findings remain in initial ledger."
+  ]
+}
