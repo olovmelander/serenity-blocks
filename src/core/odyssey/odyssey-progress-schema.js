@@ -55,9 +55,15 @@ const isRecord = (value) => value && typeof value === 'object' && !Array.isArray
 export const isOdysseyCompletion = (value) => isRecord(value)
     && Number.isInteger(value.stars) && value.stars >= 1 && value.stars <= 3;
 
-/** Keep an earned clear while discarding damaged optional record values. */
-export function normalizeOdysseyCompletion(value) {
-    if (!isOdysseyCompletion(value)) return null;
+/**
+ * Keep an earned clear while discarding damaged optional record values.
+ * Local saves pass `minStars: 0`: older builds could record a clear without a
+ * star, and dropping it on load would erase that progress for good.
+ */
+export function normalizeOdysseyCompletion(value, { minStars = 1 } = {}) {
+    if (!isRecord(value) || !Number.isInteger(value.stars) || value.stars < minStars || value.stars > 3) {
+        return null;
+    }
     const completion = { ...value };
     ['bestScore', 'bestTime', 'attempts'].forEach((key) => {
         if (!Number.isFinite(completion[key]) || completion[key] < 0

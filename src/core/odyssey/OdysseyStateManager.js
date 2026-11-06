@@ -273,7 +273,7 @@ export class OdysseyStateManager {
         const completed = new Map();
         this.completedLevels.forEach((completion, levelId) => {
             const numericId = Number(levelId);
-            const normalized = normalizeOdysseyCompletion(completion);
+            const normalized = normalizeOdysseyCompletion(completion, { minStars: 0 });
             if (!Number.isInteger(numericId) || numericId < 1 || numericId > totalLevels
                 || !normalized) return;
             const canonicalId = String(numericId);

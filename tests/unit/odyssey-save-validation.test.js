@@ -45,7 +45,6 @@ describe('Odyssey save validation', () => {
                 2: null,
                 3: false,
                 4: { stars: '3' },
-                5: { stars: 0 },
                 6: { stars: 4 },
                 7.5: { stars: 1 },
                 '08': { stars: 1 },
@@ -60,6 +59,25 @@ describe('Odyssey save validation', () => {
         expect(state.getLevelCompletion(8)).toEqual({ stars: 1 });
         expect(state.save()).toBe(true);
         expect(new OdysseyStateManager().getProgressSummary()).toEqual(state.getProgressSummary());
+    });
+
+    it('keeps a well-formed clear an older build saved without a star', () => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            version: ODYSSEY_SAVE_VERSION,
+            unlockedLevels: [1, 2, 3],
+            completedLevels: {
+                1: { stars: 1, bestScore: 100 },
+                2: { stars: 0, bestScore: 450, attempts: 3 },
+            },
+        }));
+        const state = new OdysseyStateManager();
+
+        expect(state.load()).toBe(true);
+        expect(state.isLevelCompleted(2)).toBe(true);
+        expect(state.getLevelCompletion(2)).toEqual({ stars: 0, bestScore: 450, attempts: 3 });
+        expect(state.getProgressSummary()).toMatchObject({ completedLevels: 2, totalStars: 1, currentLevel: 3 });
+        expect(state.save()).toBe(true);
+        expect(new OdysseyStateManager().isLevelCompleted(2)).toBe(true);
     });
 
     it('tolerates malformed containers without leaving partially loaded progress', () => {
