@@ -139,10 +139,11 @@ export class SteamCloudSyncManager {
         this.periodicTimer = null;
         this.flushPromise = null;
         this.flushRequested = false;
-        this.uploadingFiles = new Set();
+        this.uploadingEntries = new Map();
         // Settings and keybind keys edited here since this device's last acknowledged
         // upload of their document: the only keys it may keep over the cloud copy.
         this.localEdits = new Map();
+        this.localEditRevisions = new Map();
         // The cloud manifest this session last read, and the whole documents whose cloud
         // copy it has reconciled with. Null until the first read: no manifest goes up.
         this.cloudManifestSeen = null;
@@ -277,12 +278,18 @@ export class SteamCloudSyncManager {
 
         const entries = Array.from(this.pendingUploads.entries())
             .filter(([fileName]) => this._mayUpload(fileName));
+        // Every unacknowledged batch entry remains durable, including files
+        // waiting behind the active upload when another save rewrites the ledger.
+        entries.forEach(([fileName, entry]) => this.uploadingEntries.set(fileName, entry));
         entries.forEach(([fileName]) => this.pendingUploads.delete(fileName));
         for (const [fileName, entry] of entries) {
             const { payload: cachedPayload } = entry;
             let payload = cachedPayload;
-            const editsSent = new Set(this.localEdits.get(fileName));
-            this.uploadingFiles.add(fileName);
+            // A cached retry owns the revisions in that payload, even if a newer
+            // save arrives while this file waits behind another batch entry.
+            const editsSent = (cachedPayload && entry.editRevisions)
+                || new Map([...(this.localEdits.get(fileName) || [])]
+                    .map((key) => [key, this.localEditRevisions.get(fileName)?.get(key)]));
             try {
                 if (fileName === CLOUD_FILES.UNLOCKS && this.themeCollection) {
                     // A queued local grant can upload BEFORE initial sync, or
@@ -341,12 +348,12 @@ export class SteamCloudSyncManager {
             } catch (error) {
                 console.warn('[SteamCloud] Upload deferred:', fileName, error.message);
             } finally {
-                this.uploadingFiles.delete(fileName);
+                this.uploadingEntries.delete(fileName);
             }
             // Retain the exact failed payload, but never replace newer edits that
             // arrived while hashing or uploading this entry.
             if (!this.pendingUploads.has(fileName)) {
-                this.pendingUploads.set(fileName, { ...entry, payload });
+                this.pendingUploads.set(fileName, { ...entry, payload, editRevisions: editsSent });
             }
         }
         this._savePending();
@@ -505,17 +512,33 @@ export class SteamCloudSyncManager {
         // Older save callers omit the changed keys; there is nothing to keep for them.
         if (!dirtyKeys) return;
         const edits = this.localEdits.get(fileName) || new Set();
+        const revisions = this.localEditRevisions.get(fileName) || new Map();
         dirtyKeys.forEach((key) => {
-            if (cloudKeys.includes(key)) edits.add(key);
+            if (cloudKeys.includes(key)) {
+                edits.add(key);
+                revisions.set(key, {});
+            }
         });
-        if (edits.size > 0) this.localEdits.set(fileName, edits);
+        if (edits.size > 0) {
+            this.localEdits.set(fileName, edits);
+            this.localEditRevisions.set(fileName, revisions);
+        }
     }
 
-    _forgetLocalEdits(fileName, sentKeys) {
+    _forgetLocalEdits(fileName, sentEdits) {
         const edits = this.localEdits.get(fileName);
         if (!edits) return;
-        sentKeys.forEach((key) => edits.delete(key));
-        if (edits.size === 0) this.localEdits.delete(fileName);
+        const revisions = this.localEditRevisions.get(fileName);
+        // An older snapshot cannot acknowledge a subsequent edit to the same key.
+        sentEdits.forEach((revision, key) => {
+            if (revisions?.get(key) !== revision) return;
+            edits.delete(key);
+            revisions?.delete(key);
+        });
+        if (edits.size === 0) {
+            this.localEdits.delete(fileName);
+            this.localEditRevisions.delete(fileName);
+        }
     }
 
     async _mergeUnlocksFromCloud() {
@@ -582,7 +605,7 @@ export class SteamCloudSyncManager {
     }
 
     _hasLocalChangesSinceRead(fileName, snapshot) {
-        if (this.pendingUploads.has(fileName) || this.uploadingFiles.has(fileName)
+        if (this.pendingUploads.has(fileName) || this.uploadingEntries.has(fileName)
             || this.manifest.files?.[fileName] !== snapshot.entry) return true;
         if (!snapshot.keys || !this.settingsManager) return false;
         if (snapshot.keys.some((key) => this.settingsManager.dirtyKeys?.has(key))) return true;
@@ -1170,7 +1193,7 @@ export class SteamCloudSyncManager {
     /** Uploads not yet acknowledged survive a restart; the next session's sync sends them. */
     _savePending() {
         const files = {};
-        this.pendingUploads.forEach((entry, fileName) => {
+        new Map([...this.uploadingEntries, ...this.pendingUploads]).forEach((entry, fileName) => {
             files[fileName] = { queuedAt: entry.queuedAt, edits: [...(this.localEdits.get(fileName) || [])] };
         });
         try {
