@@ -1,16 +1,33 @@
 import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 
-// Only children created here own a process group. An arbitrary ChildProcess must
-// never cause signaling of the caller's group or an unrelated negative PID.
-const ownedGroups = new WeakMap();
-
-// Owned groups not yet stopped. `detached` also moves a group out of the terminal's
-// session, so Ctrl+C or a closed terminal no longer reaches its server by itself:
-// forward those, and an ordinary exit, to every group this process still owns.
-const liveGroups = new Set();
+// One registry per process, however many copies of this module are loaded, so
+// two copies never both step aside for each other's signal handler.
+const REGISTRY = Symbol.for('serenity-blocks.owned-process-groups');
+const registry = globalThis[REGISTRY] ??= {
+    // Only children created here own a process group. An arbitrary ChildProcess must
+    // never cause signaling of the caller's group or an unrelated negative PID.
+    ownedGroups: new WeakMap(),
+    // Owned groups not yet stopped. `detached` also moves a group out of the terminal's
+    // session, so Ctrl+C or a closed terminal no longer reaches its server by itself:
+    // forward those, and an ordinary exit, to every group this process still owns.
+    liveGroups: new Set(),
+    hooksInstalled: false,
+};
+const { ownedGroups, liveGroups } = registry;
 const FORWARDED_SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'];
-let exitHooksInstalled = false;
+
+function signalGroup(child, signal) {
+    try {
+        process.kill(-child.pid, signal);
+        return true;
+    } catch (error) {
+        // ESRCH: the group is gone. EPERM: macOS reports a group of only zombies
+        // this way; there is nothing left that this process may stop.
+        if (error.code === 'ESRCH' || error.code === 'EPERM') return false;
+        throw error;
+    }
+}
 
 function terminateLiveGroups() {
     for (const child of liveGroups) {
@@ -30,9 +47,12 @@ function forwardSignal(signal) {
 }
 
 function installExitHooks() {
-    if (exitHooksInstalled) return;
-    exitHooksInstalled = true;
+    if (registry.hooksInstalled) return;
+    registry.hooksInstalled = true;
     process.on('exit', terminateLiveGroups);
+    // Electron's main process already turns these signals into a clean quit that
+    // ends with 'exit'; a Node listener would replace that with an abrupt kill.
+    if (process.versions.electron && process.type === 'browser') return;
     for (const signal of FORWARDED_SIGNALS) process.on(signal, forwardSignal);
 }
 
@@ -46,16 +66,6 @@ export function spawnOwnedProcess(command, args, options = {}) {
         installExitHooks();
     }
     return child;
-}
-
-function signalGroup(child, signal) {
-    try {
-        process.kill(-child.pid, signal);
-        return true;
-    } catch (error) {
-        if (error.code === 'ESRCH') return false;
-        throw error;
-    }
 }
 
 /** Stop a direct child, or its explicitly owned POSIX group (even after wrapper exit). */

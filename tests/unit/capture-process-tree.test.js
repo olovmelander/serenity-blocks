@@ -186,11 +186,16 @@ require('node:child_process').spawn(process.execPath, ['server.mjs', '--port', '
 
 // `detached` puts an owned group in its own session, out of reach of the terminal's
 // Ctrl+C and hang-up. The harness must forward those (and a plain exit) itself.
-async function startHarness(root, port, { ownHandler = false, exitAfterReady = false } = {}) {
+async function startHarness(root, port, { ownHandler = false, exitAfterReady = false, copies = 1 } = {}) {
     const helper = new URL('../../scripts/lib/stop-child-process.mjs', import.meta.url).href;
+    // A query string loads a second, separate instance of the same module.
+    const copyUrls = Array.from({ length: copies }, (_, index) => `${helper}?copy=${index}`);
     await writeFile(path.join(root, 'harness.mjs'), `
-import { spawnOwnedProcess } from ${JSON.stringify(helper)};
+const spawners = [];
+for (const url of ${JSON.stringify(copyUrls)}) spawners.push((await import(url)).spawnOwnedProcess);
+const [spawnOwnedProcess, ...otherCopies] = spawners;
 ${ownHandler ? "process.on('SIGINT', () => process.stdout.write('handled\\n'));" : ''}
+for (const spawnIdle of otherCopies) spawnIdle(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
 const server = spawnOwnedProcess(process.execPath, ['server.mjs', '--port', '${port}'], { stdio: 'ignore' });
 setInterval(() => {}, 1000);
 process.stdout.write('spawned ' + server.pid + '\\n');
@@ -220,6 +225,35 @@ describe.skipIf(process.platform === 'win32')('owned groups follow their harness
             expect(endedBy).toBe(signal);
             await expectPortClosed(port);
         });
+    });
+
+    it('still ends by Ctrl+C when two copies of the helper are loaded', async () => {
+        await withServerFixture(async ({ root, port, children }) => {
+            const { harness } = await startHarness(root, port, { copies: 2 });
+            children.push(harness);
+            const exited = once(harness, 'exit');
+            process.kill(-harness.pid, 'SIGINT');
+            const [code, endedBy] = await Promise.race([exited, delay(3000).then(() => ['still running', null])]);
+            expect(code).toBeNull();
+            expect(endedBy).toBe('SIGINT');
+            await expectPortClosed(port);
+        });
+    });
+
+    it('treats a group it may no longer signal as already stopped', async () => {
+        const child = processes.spawnOwnedProcess(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+        const realKill = process.kill.bind(process);
+        const kill = vi.spyOn(process, 'kill').mockImplementation((pid, signal) => {
+            if (pid === -child.pid) throw Object.assign(new Error('kill EPERM'), { code: 'EPERM' });
+            return realKill(pid, signal);
+        });
+        try {
+            await expect(processes.stopChildProcess(child, 30)).resolves.toBeUndefined();
+        } finally {
+            kill.mockRestore();
+            realKill(-child.pid, 'SIGKILL');
+            if (child.exitCode === null && child.signalCode === null) await once(child, 'exit');
+        }
     });
 
     it('stops the server when the harness exits without cleaning up', async () => {
