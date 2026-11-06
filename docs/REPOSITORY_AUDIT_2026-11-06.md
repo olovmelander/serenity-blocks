@@ -149,6 +149,32 @@ Two batches close the remaining bounded findings and one regression introduced i
 
 No gameplay, replay clock, save version, visual, dependency or protocol change is included. The replay validator changes only which saved checkpoints a seek may start from. The seed and earlier valid checkpoints remain the deterministic path, as the pass-3 fallback experiment showed.
 
+### Independent review and follow-up fixes
+
+After pass 4, four independent reviewers read the complete production diff against `04b0b61`, divided into persistence/cloud, mode/replay lifecycle, UI/events/multiplayer and Electron/tooling. They were given the code and the baseline, not the audit's conclusions. Together they made about 2,500 focused test runs (some overlapping), plus replay round-trip simulations and checks against real repository data. None found a blocker. Each area was judged safe to merge, with most changes fixing real bugs and the rest harmless hardening.
+
+Five findings were fixed, each with tests that fail before the fix (8 cases in total):
+
+| Finding / commit | Resolution |
+|---|---|
+| Local Odyssey load dropped well-formed 0-star clears (pass 2) — `dd7e3b0` | Local saves kept these before this branch, and the save format documents 0–3 stars. Older builds could record such a clear when a one-star tier asked for more than clearing the level. Local load now accepts 0–3 stars and still rejects damaged records. Cloud merging keeps its existing 1–3 rule, unchanged from main. |
+| A checkpoint refused by session rules still made a seek reject, and a paused scrub left playback frozen — `d741361` | A refused checkpoint is never adopted. It is logged and dropped, and the seek replays from an earlier checkpoint or the seed. Seek now restarts the frame loop whenever playback is active. The freeze was already present on main. |
+| `focus-pause.js` read the same wrong runtime-event shape fixed in `main.js` — `7d50c99` | It now reads `event.focused`, the shape `electron/main.js` sends. Its test used the wrong shape too and now uses the real one. |
+| Spectator chat relay sent twice to a peer on both rosters — `809322a` | The spectator loop skips peers already reached by the player broadcast. |
+| Capture-helper signal forwarding (pass 4) replaced Electron's clean quit, could be disabled by a second module copy, and rethrew EPERM — `294b3fa` | Electron's main process keeps its own signal handling and relies on the exit hook. This was checked under Electron 44 with xvfb: Ctrl+C, SIGTERM and SIGHUP each quit cleanly and stop the server. One registry is shared per process, and EPERM counts as already gone. |
+
+Reviewed and left as they are (all minor):
+
+- The click-time invitation re-check can queue a "Join" silently or join a "Queue" at once; both avoid worse outcomes.
+- Snapshot send-rate state now resets per round.
+- A mode-manager stop guard treats an empty slot like a replacement; no caller reaches this.
+- Signalling a group number after it has emptied carries a theoretical PID-reuse risk.
+- The command-line GPU gate ignores a local scene filter.
+- One GPU coverage test became tautological.
+- Quitting during a brand-new cloud's first full upload leaves later files unqueued until their next save; a crash in the baseline does the same.
+
+The persistence reviewer also noted that main's cloud merge already drops 0-star clears; that remains unchanged.
+
 ## Integration verification
 
 The [initial evidence ledger](../reports/repository-audit-2026-11-06/validation.json), [pass 2 ledger](../reports/repository-audit-2026-11-06/pass-02-validation.json), [pass 3 ledger](../reports/repository-audit-2026-11-06/pass-03-validation.json) and [pass 4 ledger](../reports/repository-audit-2026-11-06/pass-04-validation.json) record tested commits, environment, exact results and limits.
@@ -218,10 +244,12 @@ Hourly follow-up audit passes and a morning summary were scheduled using the use
 
 ### Final summary
 
-**Completed and verified:** four passes, 29 commits on top of baseline `04b0b61`. Across them: desktop/native correctness; persistence, cloud retry and record sanitizing; mode, replay, input and event lifecycle ownership; multiplayer transport cleanup; startup/teardown containment; replay checkpoint validation; and validation-gate and capture-tooling hardening. Each fix comes with regression tests that were run against the code before the fix. The initial pass records its pre-fix failures per area above; passes 2–4 recorded 53, 41 and 16. Passes 1–3 passed GitHub test/build CI; pass 4's CI runs after push.
+**Completed and verified:** four passes and an independent review, 35 commits on top of baseline `04b0b61`. Across them: desktop/native correctness; persistence, cloud retry and record sanitizing; mode, replay, input and event lifecycle ownership; multiplayer transport cleanup; startup/teardown containment; replay checkpoint validation; and validation-gate and capture-tooling hardening. Each fix comes with regression tests that were run against the code before the fix. The initial pass records its pre-fix failures per area above; passes 2–4 recorded 53, 41 and 16. Passes 1–3 passed GitHub test/build CI; pass 4's CI runs after push.
 
 **Did not run:** every scheduled pass after pass 3, including the morning summary, until this manual finalization. No authenticated Steam session, physical controller, Windows desktop, native Windows process-tree check, two-device cloud run or real GPU performance run was performed in any pass.
 
 **Open risks, each needing a design decision:** mode-entry intent ordering across caller awaits (item 4), partial app-initialization ownership and rollback (item 2), already-running GPU recovery ownership (item 5), cross-device statistics counting (item 8), the development-only minimatch advisory (item 9) and the privacy-policy contact address (item 11). Their reproductions and original-baseline comparisons are in the deferred-evidence files.
 
 **Observed, not fixed:** the High Coast `half-float` micro-benchmark can fail under full parallel load because it compares single wall-clock timings.
+
+**Independent review:** four reviewers, one per area, found no blockers. Five findings were fixed with regression tests (see *Independent review and follow-up fixes*); the remaining minor items are listed there.
