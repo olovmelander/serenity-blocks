@@ -171,5 +171,66 @@
     "POSIX process-group behavior is not native Windows validation; Windows taskkill branches are unchanged.",
     "An uncatchable SIGKILL of a harness still leaves its detached group running.",
     "No GPU sweep, authenticated Steam, physical controller or Windows desktop validation."
-  ]
+  ],
+  "independent_review": {
+    "recorded_utc": "2026-11-06T08:03:58.236168+00:00",
+    "method": "Four independent reviewers read the full production diff 04b0b613..82bc20f by area (persistence/cloud, mode/replay lifecycle, UI/events/multiplayer, Electron/tooling), given code and baseline only. About 2,500 focused test runs (some overlapping), plus replay round-trip simulations and checks against repository data.",
+    "blockers": 0,
+    "verdict": "Each area judged safe to merge; most changes fix real bugs, the rest harmless hardening.",
+    "fixed": [
+      {
+        "commit": "dd7e3b0",
+        "finding": "Local Odyssey load dropped well-formed 0-star clears (pass 2 policy); now kept on local load, cloud 1-3 rule unchanged",
+        "new_cases": 1,
+        "pre_fix_failures": 1
+      },
+      {
+        "commit": "d741361 + b58561c",
+        "finding": "Rule-refused checkpoint left a seek stuck; pause, scrub, play froze the replay (pre-existing on main)",
+        "new_cases": 3,
+        "pre_fix_failures": 3,
+        "note": "d741361 first restarted the loop at seek end, which broke two existing demo-seek-performance cases in the full suite; b58561c moved the restart into resumePlayback and restored them."
+      },
+      {
+        "commit": "7d50c99",
+        "finding": "focus-pause.js read the wrong runtime-event shape (same bug fixed in main.js)",
+        "new_cases": 0,
+        "pre_fix_failures": 1,
+        "note": "existing test corrected to the shape electron/main.js sends"
+      },
+      {
+        "commit": "809322a",
+        "finding": "Spectator chat relay duplicated messages to a peer on both rosters",
+        "new_cases": 1,
+        "pre_fix_failures": 1
+      },
+      {
+        "commit": "294b3fa",
+        "finding": "Pass-4 signal forwarding replaced Electron's clean quit, could be disabled by a second module copy, and rethrew EPERM",
+        "new_cases": 2,
+        "pre_fix_failures": 2,
+        "electron_check": "Electron 44.9.3 under xvfb: SIGINT, SIGTERM and SIGHUP each produced before-quit and exit (code 0) and stopped the owned server; before the fix Electron ended by the raw signal with no before-quit."
+      }
+    ],
+    "left_as_minor": [
+      "Invitation acceptance re-checks busy state at click time",
+      "Snapshot send-rate state resets per round",
+      "Mode-manager stop guard treats an empty slot as a replacement (no caller reaches it)",
+      "Theoretical PID reuse when signalling an emptied group",
+      "Command-line GPU gate ignores a local scene filter; one GPU coverage test is tautological",
+      "Quitting during a brand-new cloud's first full upload leaves later files unqueued until their next save"
+    ],
+    "integrated_tests": {
+      "validated_code_commit": "b58561c2",
+      "command": "npx vitest run --reporter=dot",
+      "success": true,
+      "files": 1380,
+      "passed": 24690,
+      "failed": 0,
+      "skipped": 3,
+      "duration_seconds": 655.54,
+      "superseded_run": "At 6632a88 the suite had 2 failures in tests/unit/demo-seek-performance.test.js caused by d741361; fixed in b58561c."
+    },
+    "gates": "typecheck, ts/lint/architecture ratchets (unchanged baselines), boundaries, theme lifecycle, release (development), perf budgets, whitespace; build with NODE_OPTIONS=--max-old-space-size=6144 (entry 3 chunks / 12 KB, main 4 chunks / 1,308 KB), boot closure, IP strings and Pages artifact all passed"
+  }
 }

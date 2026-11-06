@@ -163,6 +163,8 @@ Five findings were fixed, each with tests that fail before the fix (8 cases in t
 | Spectator chat relay sent twice to a peer on both rosters — `809322a` | The spectator loop skips peers already reached by the player broadcast. |
 | Capture-helper signal forwarding (pass 4) replaced Electron's clean quit, could be disabled by a second module copy, and rethrew EPERM — `294b3fa` | Electron's main process keeps its own signal handling and relies on the exit hook. This was checked under Electron 44 with xvfb: Ctrl+C, SIGTERM and SIGHUP each quit cleanly and stop the server. One registry is shared per process, and EPERM counts as already gone. |
 
+After these fixes, code `b58561c` passed the full suite: **24,690 tests passed and 3 skipped, with zero failures, across 1,380 files**. The build, boot closure, IP-string, Pages-artifact and static gates also passed. An intermediate version of the replay fix broke two existing seek tests in the full suite; it was corrected before this result.
+
 Reviewed and left as they are (all minor):
 
 - The click-time invitation re-check can queue a "Join" silently or join a "Queue" at once; both avoid worse outcomes.
