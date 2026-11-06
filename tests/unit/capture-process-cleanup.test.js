@@ -84,6 +84,7 @@ describe('capture child-process cleanup', () => {
     it.skipIf(process.platform === 'win32').each([
         'odyssey-aaa-board-capture.mjs',
         'odyssey-chapter-capture.mjs',
+        'odyssey-gpu-split.mjs',
         'odyssey-webgpu-validation.mjs',
         'odyssey-perf-baseline.mjs',
         'odyssey-portal-transition-validation.mjs',

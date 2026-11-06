@@ -107,6 +107,7 @@ describe.skipIf(process.platform === 'win32')('owned POSIX capture process group
     it.each([
         'odyssey-aaa-board-capture.mjs',
         'odyssey-chapter-capture.mjs',
+        'odyssey-gpu-split.mjs',
         'odyssey-webgpu-validation.mjs',
         'odyssey-perf-baseline.mjs',
         'odyssey-portal-transition-validation.mjs',
@@ -180,5 +181,68 @@ require('node:child_process').spawn(process.execPath, ['server.mjs', '--port', '
             unrelated.kill('SIGKILL');
             await once(unrelated, 'exit');
         }
+    });
+});
+
+// `detached` puts an owned group in its own session, out of reach of the terminal's
+// Ctrl+C and hang-up. The harness must forward those (and a plain exit) itself.
+async function startHarness(root, port, { ownHandler = false, exitAfterReady = false } = {}) {
+    const helper = new URL('../../scripts/lib/stop-child-process.mjs', import.meta.url).href;
+    await writeFile(path.join(root, 'harness.mjs'), `
+import { spawnOwnedProcess } from ${JSON.stringify(helper)};
+${ownHandler ? "process.on('SIGINT', () => process.stdout.write('handled\\n'));" : ''}
+const server = spawnOwnedProcess(process.execPath, ['server.mjs', '--port', '${port}'], { stdio: 'ignore' });
+setInterval(() => {}, 1000);
+process.stdout.write('spawned ' + server.pid + '\\n');
+${exitAfterReady ? "process.stdin.once('data', () => process.exit(0));" : ''}
+`);
+    // Its own group stands in for the terminal's foreground job.
+    const harness = spawn(process.execPath, ['harness.mjs'], { cwd: root, stdio: ['pipe', 'pipe', 'inherit'], detached: true });
+    const output = [];
+    harness.stdout.on('data', (chunk) => output.push(String(chunk)));
+    await listening(port);
+    return { harness, output };
+}
+
+describe.skipIf(process.platform === 'win32')('owned groups follow their harness', () => {
+    it.each([
+        ['Ctrl+C', 'SIGINT', true],
+        ['a closed terminal', 'SIGHUP', true],
+        ['a direct termination', 'SIGTERM', false],
+    ])('%s stops the server and still ends the harness by %s', async (_name, signal, toJob) => {
+        await withServerFixture(async ({ root, port, children }) => {
+            const { harness } = await startHarness(root, port);
+            children.push(harness);
+            const exited = once(harness, 'exit');
+            process.kill(toJob ? -harness.pid : harness.pid, signal);
+            const [code, endedBy] = await exited;
+            expect(code).toBeNull();
+            expect(endedBy).toBe(signal);
+            await expectPortClosed(port);
+        });
+    });
+
+    it('stops the server when the harness exits without cleaning up', async () => {
+        await withServerFixture(async ({ root, port, children }) => {
+            const { harness } = await startHarness(root, port, { exitAfterReady: true });
+            children.push(harness);
+            const exited = once(harness, 'exit');
+            harness.stdin.write('go\n');
+            expect((await exited)[0]).toBe(0);
+            await expectPortClosed(port);
+        });
+    });
+
+    it('leaves a harness that handles Ctrl+C itself running', async () => {
+        await withServerFixture(async ({ root, port, children }) => {
+            const { harness, output } = await startHarness(root, port, { ownHandler: true });
+            children.push(harness);
+            process.kill(-harness.pid, 'SIGINT');
+            await expectPortClosed(port);
+            for (let attempt = 0; attempt < 50 && !output.join('').includes('handled'); attempt++) await delay(10);
+            expect(output.join('')).toContain('handled');
+            expect(harness.exitCode).toBeNull();
+            expect(harness.signalCode).toBeNull();
+        });
     });
 });
