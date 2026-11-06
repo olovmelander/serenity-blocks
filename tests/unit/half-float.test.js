@@ -84,14 +84,21 @@ describe('High Coast field texture data', () => {
 
     it('converts a 1024-post field much faster than before', () => {
         const { field, heights, sky } = makeField(1024, 9);
-        const time = (fn) => {
-            fn(heights, sky, field); // warm the JIT
+        const once = (fn) => {
             const t0 = performance.now();
             fn(heights, sky, field);
             return performance.now() - t0;
         };
-        const before = time(fieldTextureDataBefore);
-        const now = time(fieldTextureData);
+        // Warm the JIT, then keep each side's fastest of several interleaved runs: one
+        // GC pause or scheduler stall on a busy runner must not decide the comparison.
+        once(fieldTextureDataBefore);
+        once(fieldTextureData);
+        let before = Infinity;
+        let now = Infinity;
+        for (let run = 0; run < 5; run++) {
+            before = Math.min(before, once(fieldTextureDataBefore));
+            now = Math.min(now, once(fieldTextureData));
+        }
         // Loose bound (shared CI runners); locally ~5x.
         expect(now).toBeLessThan(before * 0.75);
     });
