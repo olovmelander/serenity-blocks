@@ -1,0 +1,175 @@
+{
+  "schema_version": 1,
+  "pass": 4,
+  "recorded_utc": "2026-11-06T06:51:06.152884+00:00",
+  "repository": "olovmelander/serenity-blocks",
+  "pull_request": "https://github.com/olovmelander/serenity-blocks/pull/358",
+  "original_baseline_commit": "04b0b613daae153dedffbef47fcba43817f30405",
+  "previous_audit_commit": "a086b27bec1079e1f874632038efa4578040904b",
+  "previous_audit_ci": {
+    "commit": "a086b27",
+    "run": "https://github.com/olovmelander/serenity-blocks/actions/runs/42141148319",
+    "test": "success",
+    "build": "success",
+    "deploy": "skipped"
+  },
+  "validated_code_commit": "c9f2f2ae",
+  "environment": {
+    "platform": "Linux",
+    "node": "v22.23.4",
+    "installation": "npm ci --ignore-scripts",
+    "electron_binary_installed": false
+  },
+  "changes": [
+    {
+      "commit": "5ef7f7f",
+      "area": "Replay checkpoint structure validated at load; damaged checkpoints fall back to an earlier one or the seed",
+      "added_cases": 14,
+      "pre_fix_failures": 9,
+      "focused_passed": 200
+    },
+    {
+      "commit": "c9f2f2a",
+      "area": "Owned capture-server groups follow SIGINT/SIGTERM/SIGHUP and exit; odyssey-gpu-split.mjs adopts the owned start/stop",
+      "added_cases": 7,
+      "pre_fix_failures": 7,
+      "focused_passed": 32,
+      "regression_of": "1d52a7d (pass 3): detached groups left the terminal session, so Ctrl+C and hang-up no longer reached the server"
+    }
+  ],
+  "integrated_tests": {
+    "command": "npx vitest run --reporter=dot",
+    "success": false,
+    "files": 1380,
+    "passed": 24683,
+    "failed": 1,
+    "skipped": 3,
+    "duration_seconds": 680.76,
+    "failed_files": [
+      "tests/unit/half-float.test.js"
+    ],
+    "failure_classification": "Wall-clock micro-benchmark 'converts a 1024-post field much faster than before' compares two single timings (78.30 ms vs a 75.06 ms bound) while all workers were saturated. The audit branch does not change this test or its source. Rerun alone: 3/3 passes. Not introduced by pass 4.",
+    "isolated_rerun": {
+      "command": "npx vitest run tests/unit/half-float.test.js",
+      "runs": 3,
+      "passed_each": 3
+    },
+    "total_cases": 24687
+  },
+  "new_cases": 21,
+  "reproduced_pre_fix_failures": 16,
+  "baseline_vs_introduced": "Pass 3 suite: 24,663 passed / 3 skipped (24,666 cases). Pass 4 runs 24,687 cases: 24,683 passed, 3 skipped, 1 load-sensitive timing failure in an unchanged file that passes alone. The 21-case increase matches the added cases.",
+  "gates": [
+    {
+      "check": "typecheck",
+      "command": "npm run typecheck",
+      "exit_code": 0
+    },
+    {
+      "check": "ts-ratchet",
+      "command": "node scripts/ts-ratchet-check.mjs",
+      "exit_code": 0
+    },
+    {
+      "check": "lint",
+      "command": "npm run lint:ci",
+      "exit_code": 0
+    },
+    {
+      "check": "architecture",
+      "command": "node scripts/architecture-fitness-check.mjs",
+      "exit_code": 0
+    },
+    {
+      "check": "boundaries",
+      "command": "npm run check:boundaries",
+      "exit_code": 0
+    },
+    {
+      "check": "theme-lifecycle",
+      "command": "npm run audit:theme-lifecycle",
+      "exit_code": 0
+    },
+    {
+      "check": "release-gates",
+      "command": "npm run check:release-gates",
+      "exit_code": 0
+    },
+    {
+      "check": "perf-budgets",
+      "command": "npm run perf:budgets:gate",
+      "exit_code": 0
+    },
+    {
+      "check": "production-dependency-audit",
+      "command": "npm audit --omit=dev --audit-level=high",
+      "exit_code": 0
+    },
+    {
+      "check": "whitespace",
+      "command": "git diff a086b27 --check",
+      "exit_code": 0
+    },
+    {
+      "check": "build",
+      "command": "NODE_OPTIONS=--max-old-space-size=6144 npm run build",
+      "exit_code": 0
+    },
+    {
+      "check": "ip-strings",
+      "command": "npm run check:ip-strings",
+      "exit_code": 0
+    },
+    {
+      "check": "pages-artifact",
+      "command": "npm run check:pages-artifact",
+      "exit_code": 0
+    }
+  ],
+  "lint": {
+    "errors": 432,
+    "warnings": 1999,
+    "fatal": 0,
+    "ceiling": 432,
+    "changed": false
+  },
+  "architecture": "All ratchets unchanged and passing; no ceiling raised.",
+  "boundaries": {
+    "modules": 2121,
+    "dependencies": 7781,
+    "violations": 0
+  },
+  "build": {
+    "seconds": 42.41,
+    "entry_chunks": 3,
+    "entry_kib_rounded": 12,
+    "main_chunks": 4,
+    "main_kib_rounded": 1308,
+    "note": "Node 22 default heap ran out during vite build in this container; rerun with NODE_OPTIONS=--max-old-space-size=6144 passed. CI uses Node 24.",
+    "command": "NODE_OPTIONS=--max-old-space-size=6144 npm run build"
+  },
+  "process_reproduction": {
+    "method": "Standalone harness in its own process group spawning a fixture HTTP server with plain spawn (pre-pass-3) or spawnOwnedProcess; SIGINT/SIGHUP sent to the harness group, SIGTERM to the harness alone.",
+    "pre_pass_3_plain_spawn": {
+      "SIGINT": "server stopped",
+      "SIGHUP": "server stopped",
+      "SIGTERM": "server still listening"
+    },
+    "pass_3_owned_group": {
+      "SIGINT": "server still listening",
+      "SIGHUP": "server still listening",
+      "SIGTERM": "server still listening"
+    },
+    "pass_4_owned_group": {
+      "SIGINT": "server stopped; harness ended by SIGINT",
+      "SIGHUP": "server stopped; harness ended by SIGHUP",
+      "SIGTERM": "server stopped; harness ended by SIGTERM"
+    }
+  },
+  "limits": [
+    "No browser smoke was rerun: pass 4 changes replay checkpoint selection and Node capture tooling only.",
+    "POSIX process-group behavior is not native Windows validation; Windows taskkill branches are unchanged.",
+    "An uncatchable SIGKILL of a harness still leaves its detached group running.",
+    "No GPU sweep, authenticated Steam, physical controller or Windows desktop validation."
+  ]
+}
