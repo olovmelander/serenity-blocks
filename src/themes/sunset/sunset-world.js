@@ -69,11 +69,12 @@ import { createSea } from './sunset-sea.js';
 import { LanternPool, MOTE_SECONDS, moteAt } from './sunset-lantern-pool.js';
 import { createGlows, createLanterns } from './sunset-lanterns.js';
 import { createFlock } from './sunset-birds.js';
+import { createBoat, lampForSun } from './sunset-boat.js';
 
 export { REST_RIG, fovForAspect };
 
 /** The parts a capture can show alone. */
-export const SUNSET_PARTS = Object.freeze(['sky', 'sea', 'lanterns', 'glows', 'birds']);
+export const SUNSET_PARTS = Object.freeze(['sky', 'sea', 'lanterns', 'glows', 'birds', 'boat']);
 
 /** The sun's and the moon's angular radius (degrees): larger than life, as a long lens sees them. */
 export const SUN_RADIUS = 1.45;
@@ -330,9 +331,11 @@ export class SunsetWorld {
             tier, U, skyNoise: this.skyNoise, seaNoise: this.seaNoise, seaVariance: sea.variance, rows: this.rows,
         });
         this.parts.lanterns = createLanterns({ capacity: tier.lanterns, U });
-        const glowCapacity = tier.lanterns + tier.motes * MOTE_TRAIL + tier.drops;
+        // (One more for the boat's lantern.)
+        const glowCapacity = tier.lanterns + tier.motes * MOTE_TRAIL + tier.drops + 1;
         this.parts.glows = createGlows({ capacity: glowCapacity, U });
         this.parts.birds = createFlock({ count: tier.birds, U, seed: this.seed });
+        this.parts.boat = createBoat({ U, seed: this.seed });
         Object.values(this.parts).forEach((part) => this.group.add(part.mesh));
         this.scene.add(this.group);
         return this;
@@ -379,7 +382,10 @@ export class SunsetWorld {
     showOnlyParts(names) {
         const wanted = new Set(names);
         Object.keys(this.parts).forEach((name) => {
-            this.parts[name].mesh.visible = wanted.has(name);
+            const part = this.parts[name];
+            // (The boat shows itself only while it sails: it is told, not switched.)
+            if (typeof part.setShown === 'function') part.setShown(wanted.has(name));
+            else part.mesh.visible = wanted.has(name);
         });
     }
 
@@ -405,6 +411,8 @@ export class SunsetWorld {
         this.ember = 0;
         this.haloHeld = 0;
         this.restoreDay(0);
+        // The boat's evening starts over too: none on the water, the first a while off.
+        this.parts.boat?.restart(this.clock);
         s.pitch = null;
         this.setAz = this.frame.setAz;
         this.riseAz = this.frame.riseAz;
@@ -715,6 +723,20 @@ export class SunsetWorld {
      * Call `n` birds across the light. A flock still on its way in takes them (the skein grows
      * with the chain); one called later sets out beside it. Nothing is refused, nothing restarted.
      */
+    /** Half the frame's horizontal field of view (degrees): where the boat comes in and goes out. */
+    halfView() {
+        const vertical = fovForAspect(this.aspect) * DEG;
+        return Math.atan(Math.tan(vertical / 2) * this.aspect) / DEG;
+    }
+
+    /**
+     * Send the boat across now (the playground stages a passage): `dir` 1 left to right, -1 right
+     * to left; `range`, `speed` and `slant` as BOAT has them. It otherwise comes by itself.
+     */
+    sendBoat(options = {}) {
+        this.parts.boat?.send(this.clock, this.halfView(), options);
+    }
+
     sendFlock(n) {
         const s = this.state;
         if (!this.parts.birds || n <= 0) return;
@@ -927,6 +949,8 @@ export class SunsetWorld {
         this.lampBoost = 1 + 0.22 * level + 0.3 * fever + 0.25 * punch;
         this.airBoost = 1 + 0.3 * level + 0.6 * fever;
 
+        // The boat first: its lantern joins the glows and the lamps the sea mirrors.
+        this.parts.boat?.update(this.clock, { halfView: this.halfView(), night: lampForSun(this.sunArc.el) });
         this.updateLanterns(camera);
         this.parts.birds.update(this.clock);
         U.counts.value.set(this.ringCount, 0, this._lampCount ?? 0, 0);
@@ -999,6 +1023,17 @@ export class SunsetWorld {
             const score = (glow / (1 + far * 0.03)) * (fy < 40 ? 1 : 0.25);
             lamps.push({
                 x: st.x, y: fy, z: st.z, glow, rgb: r.rgb, score,
+            });
+        }
+        // The boat's lantern, lit from dusk: a small warm light far out, and its road on the sea.
+        const boatLamp = this.parts.boat?.lampLight();
+        if (boatLamp) {
+            const { rgb } = boatLamp;
+            const g = boatLamp.glow;
+            glows.push(boatLamp.x, boatLamp.y, boatLamp.z, 0.45, rgb[0] * g, rgb[1] * g, rgb[2] * g);
+            const far = Math.hypot(boatLamp.x - eye.x, boatLamp.z - eye.z);
+            lamps.push({
+                x: boatLamp.x, y: boatLamp.y, z: boatLamp.z, glow: g * 2.2, rgb, score: g / (1 + far * 0.03),
             });
         }
         // The drops of a splash: thrown up, falling back.
@@ -1099,6 +1134,7 @@ export class SunsetWorld {
             lifted: s.lifted,
             flocks: s.flocks,
             birds: this.parts.birds?.airborne?.(clock) ?? 0,
+            boat: this.parts.boat?.getState?.() ?? null,
             sun: { ...this.sunScreen },
         };
     }
