@@ -101,7 +101,7 @@ describe('replay frame ownership', () => {
 });
 
 describe('scrubbing a paused replay', () => {
-    it('keeps the frame loop alive so Play resumes after the seek', async () => {
+    it('restarts the frame loop when Play follows a paused seek', async () => {
         const frames = [];
         vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => {
             frames.push(callback);
@@ -117,8 +117,8 @@ describe('scrubbing a paused replay', () => {
         await player.seek(500);
 
         expect(player.isPaused).toBe(true);
-        expect(player.animationId).not.toBeNull();
         player.resumePlayback();
+        expect(player.animationId).not.toBeNull();
         const loop = vi.spyOn(player, '_loop');
         frames.at(-1)();
         expect(loop).toHaveBeenCalledOnce();

@@ -242,6 +242,9 @@ export class DemoPlayer {
         this.lastWallTime = nowMs();
         this.isPaused = false;
         if (this.gameState && !this.isSeeking) this.gameState.isPaused = false;
+        // A seek finished while paused leaves no frame loop; a running seek
+        // restarts it itself when it completes.
+        if (!this.isSeeking) this._scheduleLoop();
     }
 
     /**
@@ -360,9 +363,7 @@ export class DemoPlayer {
         if (!this._ownsReplay(owner)) return;
         if (this.callbacks.drawCallback) this.callbacks.drawCallback();
         if (!this._ownsReplay(owner)) return;
-        // The loop keeps ticking while paused (it only skips advancing), and
-        // resumePlayback relies on that. Restart it even after a paused scrub.
-        if (this.isPlaying) {
+        if (this.isPlaying && !this.isPaused) {
             this._scheduleLoop();
         }
     }
