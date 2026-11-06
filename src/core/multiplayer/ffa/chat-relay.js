@@ -73,7 +73,10 @@ export function handleFfaChat(game, msg, now = Date.now()) {
         game.broadcastToPeers(MessageTypes.GAME_CHAT, resolved, msg.from);
         // Watchers are connected peers but deliberately absent from the player roster.
         game.spectators?.forEach((steamId) => {
-            if (steamId !== msg.from) game.network.sendP2PMessage(steamId, MessageTypes.GAME_CHAT, resolved);
+            // A peer on both rosters already received it as a player.
+            if (steamId !== msg.from && !game.players?.has(steamId)) {
+                game.network.sendP2PMessage(steamId, MessageTypes.GAME_CHAT, resolved);
+            }
         });
     }
     return true;

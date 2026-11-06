@@ -143,4 +143,18 @@ describe('FFAGameStateP2P chat identity binding', () => {
         );
         state._networkHandlerRegistry.dispose();
     });
+
+    it('sends one copy to a peer listed as both a player and a spectator', () => {
+        const state = makeHostState();
+        state.players.set(PEER_ID, { name: 'Canonical Peer', color: '#12ab34' });
+        state.players.set('P2', { name: 'Rejoined Watcher', color: '#3456ab' });
+        state.spectators = new Set(['P2', 'S1']);
+
+        dispatchChat(state, PEER_ID, { message: 'once each' });
+
+        const relayed = state.chatHistory[0];
+        expect(state.broadcastToPeers).toHaveBeenCalledExactlyOnceWith(MessageTypes.GAME_CHAT, relayed, PEER_ID);
+        expect(state.network.sendP2PMessage.mock.calls).toEqual([['S1', MessageTypes.GAME_CHAT, relayed]]);
+        state._networkHandlerRegistry.dispose();
+    });
 });
