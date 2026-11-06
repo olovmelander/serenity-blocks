@@ -73,7 +73,8 @@ export function installFocusPause(app, { win = window, doc = document } = {}) {
     // Electron reports focus from the main process too: on Windows an alt-tab does not
     // always reach the page as a blur.
     const stopRuntimeEvents = win.electronAPI?.onRuntimeEvent?.((/** @type {any} */ event) => {
-        if (event?.type === 'window-focus-changed' && event.payload?.focused === false) onBlur();
+        // The main process sends { type, ...payload } (electron/main.js emitRuntimeEvent).
+        if (event?.type === 'window-focus-changed' && event.focused === false) onBlur();
     });
     app.cleanupHandlers.push(() => {
         win.removeEventListener('blur', onBlur);
