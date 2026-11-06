@@ -401,4 +401,72 @@ describe('the player', () => {
         expect(player.skip(1)).toBe(false);
         expect(player.touring).toBe(true);
     });
+
+    describe('on repeat', () => {
+        const round = () => EFFECTS.map((effect) => effect.id);
+        // A round's length depends on what the effect before left (a plain piece after a
+        // clear), so walk the clock until Play all has reached the step wanted.
+        const untilStep = (count) => {
+            for (let ms = 0; tour.length < count && ms < 30 * 60 * 1000; ms += 250) {
+                vi.advanceTimersByTime(250);
+            }
+            expect(tour.length).toBeGreaterThanOrEqual(count);
+        };
+
+        it('starts over from the first effect after the last, round after round', () => {
+            player.setRepeat(true);
+            player.playAll();
+            untilStep(2 * EFFECTS.length + 1);
+            expect(tour.slice(0, 2 * EFFECTS.length).map(([id]) => id)).toEqual([...round(), ...round()]);
+            expect(tour[EFFECTS.length]).toEqual(['lock', 0, EFFECTS.length]);
+            expect(player.touring).toBe(true);
+            // It never reaches the end, so it never says every effect played.
+            expect(done).toBe(0);
+        });
+
+        it('stops at once when asked, wherever it is in a round', () => {
+            player.setRepeat(true);
+            player.playAll();
+            untilStep(EFFECTS.length + 3);
+            player.stop();
+            const sent = emitted.length;
+            const steps = tour.length;
+            vi.advanceTimersByTime(10 * 60 * 1000);
+            expect(emitted).toHaveLength(sent);
+            expect(tour).toHaveLength(steps);
+            expect(states.at(-1)).toEqual({ playing: null, touring: false, ms: 0 });
+        });
+
+        it('follows a change made while a round runs', () => {
+            player.playAll();
+            player.setRepeat(true);
+            untilStep(EFFECTS.length + 1);
+            expect(tour[EFFECTS.length]).toEqual(['lock', 0, EFFECTS.length]);
+            player.setRepeat(false);
+            vi.advanceTimersByTime(10 * 60 * 1000);
+            expect(tour.map(([id]) => id)).toEqual([...round(), ...round()]);
+            expect(player.touring).toBe(false);
+            expect(done).toBe(1);
+        });
+
+        it('steps round the ends: on from the last to the first, back from the first to the last', () => {
+            player.setRepeat(true);
+            player.playAll();
+            expect(player.skip(-1)).toBe(true);
+            expect(tour.at(-1)).toEqual(['fever', EFFECTS.length - 1, EFFECTS.length]);
+            expect(player.skip(1)).toBe(true);
+            expect(tour.at(-1)).toEqual(['lock', 0, EFFECTS.length]);
+            // Later in an effect, back plays this one again, as without repeat.
+            clock += RESTART_MS;
+            player.skip(-1);
+            expect(tour.at(-1)).toEqual(['lock', 0, EFFECTS.length]);
+        });
+
+        it('is off unless asked for, and can start on', () => {
+            expect(player.repeat).toBe(false);
+            const looping = new SerenityEffects({ emit: () => {}, repeat: true });
+            expect(looping.repeat).toBe(true);
+            looping.destroy();
+        });
+    });
 });

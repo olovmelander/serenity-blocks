@@ -480,7 +480,8 @@ export function emitEffectStep(step) {
 /**
  * Plays effects one at a time: a new one ends the one before it (play never overlaps two
  * locks). "Play all" walks through every effect in the tray's order, and can step forward or
- * back while it does.
+ * back while it does. With repeat on, it goes round again from the first after the last,
+ * until it is stopped.
  *
  * @typedef {{ playing: string|null, touring: boolean, ms: number }} EffectsState `ms`: how long
  *   the playing effect stays lit (its events and the linger after them); 0 when none plays
@@ -497,6 +498,7 @@ export class SerenityEffects {
      * @param {(effect: EffectDefinition, index: number, total: number) => void} [options.onTourStep]
      * @param {() => void} [options.onTourDone] Play all reached the end (not when it was stopped)
      * @param {() => number} [options.now] the clock Play all's previous reads (ms)
+     * @param {boolean} [options.repeat] Play all starts over after the last effect
      */
     constructor({
         emit = emitEffectStep,
@@ -507,6 +509,7 @@ export class SerenityEffects {
         onTourStep = () => {},
         onTourDone = () => {},
         now = () => Date.now(),
+        repeat = false,
     } = {}) {
         this.emit = emit;
         this.setTimer = setTimer;
@@ -515,6 +518,7 @@ export class SerenityEffects {
         this.onTourStep = onTourStep;
         this.onTourDone = onTourDone;
         this.now = now;
+        this.repeat = Boolean(repeat);
         this.ctx = createEffectContext({ colorFor });
         /** @type {any[]} */
         this.timers = [];
@@ -546,16 +550,29 @@ export class SerenityEffects {
     }
 
     /**
+     * Repeat on: Play all goes round again after the last effect (a round already running too).
+     * @param {boolean} on
+     */
+    setRepeat(on) {
+        this.repeat = Boolean(on);
+    }
+
+    /**
      * While Play all runs: on to the next effect now (1), or back (-1): this one again once it
-     * has played a while, else the one before.
+     * has played a while, else the one before. With repeat on, both wrap round the ends.
      * @param {number} direction @returns {boolean} whether it moved
      */
     skip(direction) {
         if (!this.touring) return false;
         let index = this.tourIndex;
         if (direction > 0) index += 1;
-        else if (this.now() - this.tourStartedAt < RESTART_MS) index = Math.max(0, index - 1);
-        if (index >= EFFECTS.length) return false;
+        else if (this.now() - this.tourStartedAt < RESTART_MS) {
+            index = index > 0 || !this.repeat ? Math.max(0, index - 1) : EFFECTS.length - 1;
+        }
+        if (index >= EFFECTS.length) {
+            if (!this.repeat) return false;
+            index = 0;
+        }
         this._tourFrom(index);
         return true;
     }
@@ -565,6 +582,10 @@ export class SerenityEffects {
         this._cancel();
         this.touring = true;
         const next = (index) => {
+            if (index >= EFFECTS.length && this.repeat) {
+                next(0);
+                return;
+            }
             if (index >= EFFECTS.length) {
                 this._settle();
                 this.onTourDone();

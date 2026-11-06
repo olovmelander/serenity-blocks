@@ -1,7 +1,7 @@
 /**
  * The effects tray: press an effect and watch what the theme does with it.
  *
- *     ■ EFFECTS                                 [ Play all ]  [ × ]
+ *     ■ EFFECTS                      [ Repeat ]  [ Play all ]  [ × ]
  *     Firefly Night
  *     What it does when you play
  *     Pieces       [Lock] [Hard drop]
@@ -19,6 +19,8 @@
  * has the whole screen; the world bar's dock offers Stop meanwhile. It steps aside whenever
  * something else has the screen (the Hub, the breathing guide, the rest veil). While it is in
  * view it owns Esc, as the Hub does; folded away while Play all runs, Esc stops that first.
+ * Repeat is a toggle, as in a music player: on, Play all starts over after the last effect
+ * and goes round until it is stopped.
  *
  * The line under the theme's name says what the effect under the pointer (or the keyboard's
  * focus, or the one playing) is; the playing effect's button fills with a thin line for as long
@@ -45,17 +47,19 @@ export class SerenityEffectsTray {
      * @param {object} options
      * @param {(id: string) => void} options.onPlay
      * @param {() => void} options.onPlayAll a press on Play all (or Stop, while it plays)
+     * @param {() => void} [options.onRepeat] a press on Repeat
      * @param {() => void} options.onClose
      * @param {() => void} [options.onStop] Esc while Play all runs with the tray folded away
      * @param {{ effects: string, previous: string, next: string }} [options.keys] keycap text
      * @param {HTMLElement} [options.host]
      */
     constructor({
-        onPlay, onPlayAll, onClose, onStop = () => {}, keys = { effects: 'E', previous: '←', next: '→' },
-        host = document.body,
+        onPlay, onPlayAll, onClose, onStop = () => {}, onRepeat = () => {},
+        keys = { effects: 'E', previous: '←', next: '→' }, host = document.body,
     }) {
         this.onPlay = onPlay;
         this.onPlayAll = onPlayAll;
+        this.onRepeat = onRepeat;
         this.onClose = onClose;
         this.onStop = onStop;
         this.isOpen = false;
@@ -89,6 +93,11 @@ export class SerenityEffectsTray {
         this.title.id = `${TRAY_ID}-title`;
         this.subtitle = el('p', 'serenity-effects__subtitle', SUBTITLE);
         titles.append(eyebrow, this.title, this.subtitle);
+        this.repeat = el('button', 'serenity-effects__repeat', 'Repeat');
+        this.repeat.type = 'button';
+        this.repeat.dataset.action = 'repeat';
+        this.repeat.setAttribute('aria-label', 'Repeat Play all');
+        this.setRepeat(false);
         this.playAll = el('button', 'serenity-effects__all', 'Play all');
         this.playAll.type = 'button';
         this.playAll.dataset.action = 'all';
@@ -96,7 +105,7 @@ export class SerenityEffectsTray {
         close.type = 'button';
         close.dataset.action = 'close';
         close.setAttribute('aria-label', 'Close effects');
-        head.append(titles, this.playAll, close);
+        head.append(titles, this.repeat, this.playAll, close);
 
         const groups = el('div', 'serenity-effects__groups');
         EFFECT_GROUPS.forEach((group) => {
@@ -138,6 +147,7 @@ export class SerenityEffectsTray {
             const action = target.closest?.('[data-action]')?.dataset.action;
             if (effect) this.onPlay(effect.dataset.effect);
             else if (action === 'all') this.onPlayAll();
+            else if (action === 'repeat') this.onRepeat();
             else if (action === 'close') this.onClose();
         }, { signal });
         // A press on a button must not also reach Serenity's own Space / Enter shortcuts.
@@ -241,6 +251,12 @@ export class SerenityEffectsTray {
         this.playAll.textContent = touring ? 'Stop' : 'Play all';
         this.playAll.classList.toggle('is-on', touring);
         this.playAll.setAttribute('aria-label', touring ? 'Stop playing every effect' : 'Play every effect in turn');
+    }
+
+    /** @param {boolean} on whether Play all goes round again after the last effect */
+    setRepeat(on) {
+        this.repeat.setAttribute('aria-pressed', String(Boolean(on)));
+        this.repeat.classList.toggle('is-on', Boolean(on));
     }
 
     /** The line under the name: the effect reached for, else the one playing, else what this is. */

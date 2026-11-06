@@ -276,6 +276,7 @@ export const DEFAULT_SETTINGS = {
     breathingOverTheme: false, // In Serenity Mode, breathe over the theme (its camera follows you), not in a world
     serenityDrift: 'off', // Serenity Mode drifts between themes: 'off' | 'music' | '10' | '20' | '30' (minutes)
     serenityDriftPace: 'music', // The pace D turns drift back on with (the last one chosen)
+    serenityEffectsRepeat: false, // Serenity Mode's effects tray: Play all goes round again after the last effect
 
     // Control settings
     controlScheme: 'Keyboard',

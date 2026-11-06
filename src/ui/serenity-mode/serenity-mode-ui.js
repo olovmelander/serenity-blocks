@@ -56,7 +56,10 @@ export class SerenityModeUi {
         this.touch = null;
         this.effects = null;
         this.effectsTray = null;
-        /** Where Play all has got to, while it runs. @type {{index: number, total: number}|null} */
+        /**
+         * Where Play all has got to, while it runs, and whether it goes round again.
+         * @type {{index: number, total: number, repeat: boolean}|null}
+         */
         this.effectsTour = null;
         this.resting = false;
         this.restAsleep = false;
@@ -136,6 +139,7 @@ export class SerenityModeUi {
         });
         this.effects = new SerenityEffects({
             colorFor: (shapeKey) => this.pieceColor(shapeKey),
+            repeat: this.settings.serenityEffectsRepeat === true,
             onChange: (state) => {
                 if (!state.touring) this.effectsTour = null;
                 this.effectsTray?.setState(state);
@@ -144,7 +148,7 @@ export class SerenityModeUi {
             },
             onTourStep: (effect, index, total) => {
                 // The dock counts ("Effects · 6 of 16"); the notice names the effect.
-                this.effectsTour = { index, total };
+                this.effectsTour = { index, total, repeat: this.effects.repeat };
                 showSerenityNotice(effect.name, 3200);
             },
             onTourDone: () => showSerenityNotice('Every effect played'),
@@ -152,6 +156,7 @@ export class SerenityModeUi {
         this.effectsTray = new SerenityEffectsTray({
             onPlay: (id) => this.playEffect(id),
             onPlayAll: () => this.playAllEffects(),
+            onRepeat: () => this.toggleEffectsRepeat(),
             onClose: () => this.closeEffects(),
             onStop: () => this.stopEffects(),
             keys: {
@@ -160,6 +165,7 @@ export class SerenityModeUi {
                 next: keycap(this.mode.keyFor('nextTheme')),
             },
         });
+        this.effectsTray.setRepeat(this.effects.repeat);
         this.wakeLock = new ScreenWakeLock();
         this.wakeLock.acquire();
         this.media = new SerenityMediaSession({
@@ -463,6 +469,21 @@ export class SerenityModeUi {
             this.bar?.announce();
             if (fromKeyboard) this.bar?.focusStop();
         }
+    }
+
+    /**
+     * Repeat on or off: Play all goes round again after the last effect, until it is stopped.
+     * A round already running follows the choice, and the choice is remembered.
+     */
+    toggleEffectsRepeat() {
+        if (!this.effects) return;
+        const on = !this.effects.repeat;
+        this.effects.setRepeat(on);
+        this.effectsTray?.setRepeat(on);
+        if (this.effectsTour) this.effectsTour = { ...this.effectsTour, repeat: on };
+        this.deps.settingsManager?.update?.({ serenityEffectsRepeat: on });
+        this.deps.settingsManager?.scheduleSave?.();
+        this.refresh();
     }
 
     /** Why the theme may not answer: its reactions are switched off in Settings. */
