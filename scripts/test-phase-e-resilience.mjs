@@ -1,6 +1,5 @@
 import electron from 'electron';
-import { spawn } from 'child_process';
-import { stopChildProcess } from './lib/stop-child-process.mjs';
+import { spawnOwnedProcess, stopChildProcess } from './lib/stop-child-process.mjs';
 
 const ROOT = process.cwd();
 const { app, BrowserWindow } = electron;
@@ -31,7 +30,7 @@ function startDevServer() {
     const command = isWindows ? 'npx.cmd' : 'npx';
     const args = ['vite', '--host', '127.0.0.1', '--port', String(DEV_SERVER_PORT), '--strictPort'];
 
-    const proc = spawn(command, args, {
+    const proc = spawnOwnedProcess(command, args, {
         cwd: ROOT,
         stdio: ['ignore', 'pipe', 'pipe'],
         // Isolated dep cache — see vite.config.js cacheDir. Sharing node_modules/.vite with

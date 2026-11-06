@@ -1,9 +1,8 @@
 import electron from 'electron';
-import { spawn } from 'child_process';
 import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
-import { stopChildProcess } from './lib/stop-child-process.mjs';
+import { spawnOwnedProcess, stopChildProcess } from './lib/stop-child-process.mjs';
 
 const ROOT = process.cwd();
 const { app, BrowserWindow } = electron;
@@ -82,7 +81,7 @@ function startDevServer() {
         '--strictPort',
     ];
 
-    const proc = spawn(command, args, {
+    const proc = spawnOwnedProcess(command, args, {
         cwd: ROOT,
         stdio: ['ignore', 'pipe', 'pipe'],
         env: {

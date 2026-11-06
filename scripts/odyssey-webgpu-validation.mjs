@@ -21,11 +21,10 @@
  */
 
 import electron from 'electron';
-import { spawn } from 'child_process';
 import { writeFile } from 'fs/promises';
 import path from 'path';
 import { resetValidationReport, resolveValidationScenes } from './odyssey-gpu-validation-report.mjs';
-import { stopChildProcess } from './lib/stop-child-process.mjs';
+import { spawnOwnedProcess, stopChildProcess } from './lib/stop-child-process.mjs';
 
 const ROOT = process.cwd();
 const { app, BrowserWindow } = electron;
@@ -67,7 +66,7 @@ function applyGpuSwitches() {
 }
 
 function startDevServer() {
-    const proc = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'], {
+    const proc = spawnOwnedProcess('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'], {
         cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], shell: process.platform === 'win32', env: { ...process.env, FORCE_COLOR: '0' },
     });
     proc.stdout.on('data', () => {});

@@ -5,7 +5,7 @@ import {
     mkdir, rm, writeFile,
 } from 'fs/promises';
 import path from 'path';
-import { stopChildProcess } from './lib/stop-child-process.mjs';
+import { spawnOwnedProcess, stopChildProcess } from './lib/stop-child-process.mjs';
 
 const ROOT = process.cwd();
 const args = parseArgs(process.argv.slice(2));
@@ -95,7 +95,7 @@ function startDevServer() {
         ]
         : ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'];
 
-    const proc = spawn(command, commandArgs, {
+    const proc = spawnOwnedProcess(command, commandArgs, {
         cwd: ROOT,
         stdio: args.verbose ? 'inherit' : ['ignore', 'pipe', 'pipe'],
         env: { ...process.env, FORCE_COLOR: '0' },
@@ -112,18 +112,16 @@ async function stopDevServer() {
     if (!devServer) return;
     const proc = devServer;
     devServer = null;
-    if (proc.pid && proc.exitCode === null && proc.signalCode === null) {
-        if (process.platform === 'win32') {
-            await new Promise((resolve) => {
-                const killer = spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], {
-                    stdio: args.verbose ? 'inherit' : 'ignore',
-                });
-                killer.on('exit', resolve);
-                killer.on('error', resolve);
-            });
-            return;
-        }
+    if (process.platform !== 'win32') {
         await stopChildProcess(proc);
+    } else if (proc.pid && proc.exitCode === null && proc.signalCode === null) {
+        await new Promise((resolve) => {
+            const killer = spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], {
+                stdio: args.verbose ? 'inherit' : 'ignore',
+            });
+            killer.on('exit', resolve);
+            killer.on('error', resolve);
+        });
     }
 }
 

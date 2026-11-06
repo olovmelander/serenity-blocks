@@ -19,6 +19,7 @@ import electron from 'electron';
 import { spawn } from 'child_process';
 import { mkdir, rm, writeFile } from 'fs/promises';
 import path from 'path';
+import { spawnOwnedProcess, stopChildProcess } from './lib/stop-child-process.mjs';
 
 const ROOT = process.cwd();
 const { app, BrowserWindow } = electron;
@@ -204,7 +205,7 @@ function startDevServer() {
             '--strictPort',
         ]
         : ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'];
-    const proc = spawn(
+    const proc = spawnOwnedProcess(
         command,
         commandArgs,
         {
@@ -246,10 +247,11 @@ async function stopDevServer() {
     if (!devServerProcess) return;
     const proc = devServerProcess;
     devServerProcess = null;
-    if (proc.exitCode === null && proc.signalCode === null) {
+    if (process.platform !== 'win32') {
+        await stopChildProcess(proc);
+    } else if (proc.exitCode === null && proc.signalCode === null) {
         killProcessTree(proc);
         await delay(800);
-        if (proc.exitCode === null && proc.signalCode === null && process.platform !== 'win32') proc.kill('SIGKILL');
     }
 }
 
