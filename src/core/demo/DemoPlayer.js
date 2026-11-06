@@ -20,6 +20,7 @@ import {
 import { clearPlayerInput } from '../player-input-state.js';
 import {
     captureGameStateSnapshot,
+    isRestorableDemoCheckpointSnapshot,
     isStableDemoCheckpointSnapshot,
     isStableDemoCheckpointState,
     restoreGameStateSnapshot,
@@ -807,6 +808,7 @@ export class DemoPlayer {
                 .filter((checkpoint) => (
                     checkpoint?.state
                     && isStableDemoCheckpointSnapshot(checkpoint.state)
+                    && isRestorableDemoCheckpointSnapshot(checkpoint.state)
                     // A damaged optional checkpoint must not skip commands or
                     // index a fractional slot. Replay from an earlier state.
                     && (!Number.isFinite(checkpoint.inputIndex) || (
