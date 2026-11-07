@@ -143,6 +143,8 @@ export class IntroAnimation {
         if (soundManager) {
             this.setSoundManager(soundManager);
         }
+        // The boot warp's sound and the begin confirm render in a worker, well before either plays.
+        this.soundManager?.prewarmLaunchSounds?.();
 
         this.ensureIntroMusic();
 

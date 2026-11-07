@@ -16,8 +16,11 @@ import {
     DEFAULT_MUSIC_TRACK, getThemeMusic, getThemeForMusic, resolveMusicTrackKey,
 } from '../core/progression/theme-music-catalog.js';
 import { random } from '../utils/helpers.js';
-import { renderLaunchSound } from './launch-sounds.js';
+import { LAUNCH_SOUND_NAMES, renderLaunchSound } from './launch-sounds.js';
 
+// The launch sounds hold nothing far above 1 kHz: they render at this fixed rate (Web Audio
+// resamples on playback), which halves their cost and lets them render before any AudioContext.
+const LAUNCH_SOUND_RATE = 24000;
 const NOISE_CACHE_BYTES = 4 * 1024 * 1024;
 const ONE_SHOT_CACHE_BYTES = 16 * 1024 * 1024;
 const AUDIO_CACHE_ENTRIES = 16;
@@ -89,6 +92,8 @@ export class SoundManager {
         this.audioResourceToken = 0;
         this.oneShotBuffers = new Map();
         this.oneShotLoads = new Map();
+        this.launchSoundPcm = new Map();
+        this.launchSoundWorker = null;
         this.noiseBuffers = new Map();
         this.activeAudioVoices = new Set();
         this.soundEffectTimers = new Set();
@@ -258,7 +263,7 @@ export class SoundManager {
     }
 
     /**
-     * Play a one-shot audio FILE (e.g. the boot warp whoosh) through the SFX bus, honoring
+     * Play a one-shot audio FILE (a sample, e.g. an .ogg) through the SFX bus, honoring
      * mute + SFX volume. Decodes once and caches the buffer. Best-effort — never throws.
      * Uses XHR (works with file:// in packaged Electron) + Web Audio so it routes through
      * the same limiter/volume as the procedural SFX.
@@ -290,9 +295,39 @@ export class SoundManager {
     }
 
     /**
+     * Render the launch sounds in a module Worker ahead of the moments they play: the warp starts
+     * on the boot reveal, where rendering it on this thread (tens of ms) would cost frames. Called
+     * as the intro starts. Without a Worker, or if it fails, a sound renders when first played.
+     */
+    prewarmLaunchSounds() {
+        const names = LAUNCH_SOUND_NAMES.filter((name) => !this.launchSoundPcm.has(name));
+        if (!names.length || this.launchSoundWorker || typeof Worker === 'undefined') return;
+        let worker = null;
+        try {
+            worker = new Worker(new URL('./launch-sounds.worker.js', import.meta.url), { type: 'module' });
+        } catch {
+            return;
+        }
+        this.launchSoundWorker = worker;
+        let left = names.length;
+        const done = () => {
+            worker.terminate();
+            if (this.launchSoundWorker === worker) this.launchSoundWorker = null;
+        };
+        worker.onmessage = (event) => {
+            const { name, rendered } = event?.data || {};
+            if (rendered && !this.launchSoundPcm.has(name)) this.launchSoundPcm.set(name, rendered);
+            left -= 1;
+            if (left <= 0) done();
+        };
+        worker.onerror = done;
+        names.forEach((name) => worker.postMessage({ name, sampleRate: LAUNCH_SOUND_RATE }));
+    }
+
+    /**
      * Play one of the launch sounds ('begin', 'warp'): synthesised by src/audio/launch-sounds.js,
-     * rendered once per sample rate, and played like a one-shot file (SFX bus, mute, volume).
-     * Best-effort: never throws.
+     * rendered once (prewarmLaunchSounds, or here on first play), and played like a one-shot file
+     * (SFX bus, mute, volume). Best-effort: never throws.
      * @param {string} name
      * @param {{volume?: number}} [options]
      */
@@ -301,10 +336,13 @@ export class SoundManager {
             this.resumeAudioContext();
             if (!this.audioContext || this.isMuted) return;
             const { audioContext } = this;
-            const key = `launch:${name}@${audioContext.sampleRate}`;
+            const key = `launch:${name}`;
             let buffer = this.oneShotBuffers.get(key);
             if (!buffer) {
-                const rendered = renderLaunchSound(name, audioContext.sampleRate);
+                if (!this.launchSoundPcm.has(name)) {
+                    this.launchSoundPcm.set(name, renderLaunchSound(name, LAUNCH_SOUND_RATE));
+                }
+                const rendered = this.launchSoundPcm.get(name);
                 if (!rendered) return;
                 buffer = audioContext.createBuffer(rendered.channels.length, rendered.channels[0].length, rendered.sampleRate);
                 rendered.channels.forEach((data, channel) => buffer.getChannelData(channel).set(data));
@@ -2080,6 +2118,8 @@ export class SoundManager {
         for (const load of this.oneShotLoads.values()) load.abort?.();
         this.oneShotLoads.clear();
         this.oneShotBuffers.clear();
+        this.launchSoundWorker?.terminate();
+        this.launchSoundWorker = null;
         this.noiseBuffers.clear();
         for (const voice of this.activeAudioVoices) voice.stop();
         this.activeAudioVoices.clear();

@@ -214,12 +214,12 @@ describe('audio cancellation, cache ownership and transient graphs', () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 
-    it('renders a launch sound once per context and plays it through the SFX bus', () => {
+    it('renders a launch sound once, at its own low rate, and plays it through the SFX bus', () => {
         const { manager, context, sources } = createManager();
         manager.playLaunchSound('warp', { volume: 0.9 });
         manager.playLaunchSound('warp', { volume: 0.9 });
         expect(context.createBuffer).toHaveBeenCalledOnce();
-        expect(context.createBuffer.mock.calls[0]).toEqual([2, 6 * 48000, 48000]);
+        expect(context.createBuffer.mock.calls[0]).toEqual([2, 6 * 24000, 24000]);
         expect(sources).toHaveLength(2);
         expect(sources[0].buffer).toBe(sources[1].buffer);
         expect(sources[0].start).toHaveBeenCalled();
@@ -228,6 +228,64 @@ describe('audio cancellation, cache ownership and transient graphs', () => {
         manager.isMuted = true;
         manager.playLaunchSound('begin');
         expect(sources).toHaveLength(2);
+    });
+
+    it('prerenders the launch sounds in a worker, which the first play then uses', () => {
+        const posted = [];
+        const workers = [];
+        vi.stubGlobal('Worker', class {
+            constructor(url, options) {
+                this.url = String(url);
+                this.options = options;
+                this.terminate = vi.fn();
+                workers.push(this);
+            }
+
+            postMessage(message) { posted.push(message); }
+        });
+        const { manager, context } = createManager();
+        manager.prewarmLaunchSounds();
+        manager.prewarmLaunchSounds(); // one worker at a time
+        expect(workers).toHaveLength(1);
+        expect(workers[0].url).toContain('launch-sounds.worker.js');
+        expect(workers[0].options).toEqual({ type: 'module' });
+        expect(posted).toEqual([
+            { name: 'begin', sampleRate: 24000 },
+            { name: 'warp', sampleRate: 24000 },
+        ]);
+        const pcm = (seconds) => ({
+            sampleRate: 24000,
+            channels: [new Float32Array(seconds * 24000), new Float32Array(seconds * 24000)],
+        });
+        const warp = pcm(1);
+        workers[0].onmessage({ data: { name: 'warp', rendered: warp } });
+        workers[0].onmessage({ data: { name: 'begin', rendered: pcm(1) } });
+        expect(workers[0].terminate).toHaveBeenCalledOnce();
+        expect(manager.launchSoundWorker).toBeNull();
+        manager.playLaunchSound('warp');
+        // The worker's samples, not a fresh render (which would be 6 s long).
+        expect(context.createBuffer.mock.calls[0]).toEqual([2, 24000, 24000]);
+        // Everything prerendered: no second worker.
+        manager.prewarmLaunchSounds();
+        expect(workers).toHaveLength(1);
+    });
+
+    it('falls back to rendering on first play when the launch-sound worker fails', () => {
+        const workers = [];
+        vi.stubGlobal('Worker', class {
+            constructor() {
+                this.terminate = vi.fn();
+                workers.push(this);
+            }
+
+            postMessage() {}
+        });
+        const { manager, context } = createManager();
+        manager.prewarmLaunchSounds();
+        workers[0].onerror(new Event('error'));
+        expect(workers[0].terminate).toHaveBeenCalledOnce();
+        manager.playLaunchSound('begin');
+        expect(context.createBuffer.mock.calls[0]).toEqual([2, Math.round(3.2 * 24000), 24000]);
     });
 
     it('concurrent cold one-shots share fetch/decode but retain independent playback sources', async () => {
