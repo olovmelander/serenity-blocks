@@ -44,6 +44,7 @@ function makeCanvasContext() {
         lineTo: vi.fn(),
         arc: vi.fn(),
         fillRect: vi.fn(),
+        createLinearGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
         set fillStyle(value) { this._fillStyle = value; },
         get fillStyle() { return this._fillStyle; },
         set strokeStyle(value) { this._strokeStyle = value; },
@@ -141,7 +142,7 @@ describe('opponent watcher animation quality', () => {
         expect(ghostY).toBe(23);
     });
 
-    it('draws opponent ghosts through the unified styled path', () => {
+    it('lights where an opponent piece will land instead of drawing a copy of it', () => {
         const watcher = makeWatcher();
         const ctx = makeCanvasContext();
 
@@ -153,10 +154,14 @@ describe('opponent watcher animation quality', () => {
             y: 7.4,
         }, 18, 8, new Map());
 
-        expect(ctx.rect).toHaveBeenCalled();
-        expect(ctx.fill).toHaveBeenCalled();
-        expect(ctx.stroke).toHaveBeenCalled();
-        expect(ctx.fillRect).not.toHaveBeenCalled();
+        // One run of four columns: a rising glow and its surface line, both plain rects.
+        expect(ctx.fillRect).toHaveBeenCalledTimes(2);
+        expect(ctx.createLinearGradient).toHaveBeenCalledOnce();
+        expect(ctx.stroke).not.toHaveBeenCalled();
+        // The surface sits under the landing row: (18 - 4 + 1) rows of 8 px.
+        const [, lineY, lineW, lineH] = ctx.fillRect.mock.calls[1];
+        expect(lineY + lineH).toBe(120);
+        expect(lineW).toBe(32);
     });
 
     it('positions opponent hard-drop bursts from the dropped piece payload', () => {

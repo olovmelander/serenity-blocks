@@ -33,6 +33,7 @@ import {
     createMomentFxOwner, playKnockoutFx, playRoundWinFx, playVictoryFx, restoreKnockoutFx,
 } from './fx/fx-moments.js';
 import { prefersReducedFlashing } from '../../utils/photosensitivity.js';
+import { isLightBlue } from '../../ui/board-walls.js';
 
 // Constants
 const RIPPLE_PARTICLE_LIFESPAN = 650;
@@ -822,6 +823,9 @@ export class SharedEffects {
      * @param {number} [alpha=0.4]
      */
     _boardEdgePulse(color = 0xffffff, alpha = 0.4) {
+        // The walls never light up light blue around the dark field (board-walls.js): lavender instead.
+        // eslint-disable-next-line no-param-reassign
+        if (isLightBlue(toneCss(color))) color = TONE.LAVENDER;
         const width = this.scene.cols * this.scene.blockSize;
         const height = this.scene.rows * this.scene.blockSize;
         if (this._lit()) {

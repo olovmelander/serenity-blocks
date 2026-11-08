@@ -1,5 +1,6 @@
 import { COLORS, SHAPES } from '../core/constants.js';
-import { drawPieceSolid, drawPieceStyledUnified } from '../rendering/canvas/canvas-drawing-utils.js';
+import { drawLandingGlowCanvas, drawPieceSolid } from '../rendering/canvas/canvas-drawing-utils.js';
+import { garbageMaterialColor } from '../rendering/board-look.js';
 import { TetrominoStyleManager } from '../rendering/tetromino-style-manager.js';
 import { CanvasBoardEffects } from './effects/canvas-board-effects.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
@@ -774,13 +775,15 @@ export class OpponentWatchManager {
     _getCellColor(cell, cache) {
         if (!cell || cell === 0) return null;
         if (typeof cell === 'string') {
+            if (cell === 'GARBAGE' || cell === 'CLEAN_GARBAGE') return this._garbageColor(cell);
             const fallback = COLORS[cell] || cell;
             return COLORS[cell]
                 ? this._getThemedColor(cell, fallback, cache)
                 : fallback;
         }
         if (typeof cell === 'number') {
-            return '#808080';
+            // A filled cell with no type: drawn in the world's material, never a neutral grey.
+            return this._garbageColor('GARBAGE');
         }
 
         let colorValue = cell.color;
@@ -789,14 +792,39 @@ export class OpponentWatchManager {
         }
 
         if (cell.type) {
-            const isGarbage = cell.type === 'GARBAGE' || cell.type === 'CLEAN_GARBAGE';
-            const isCustomColor = cell.color && cell.color !== '#808080';
-            if (!isGarbage || !isCustomColor) {
-                colorValue = this._getThemedColor(cell.type, colorValue, cache);
-            }
+            if (cell.type === 'GARBAGE' || cell.type === 'CLEAN_GARBAGE') return this._garbageColor(cell.type, colorValue);
+            colorValue = this._getThemedColor(cell.type, colorValue, cache);
         }
 
-        return colorValue || '#808080';
+        return colorValue || this._garbageColor('GARBAGE');
+    }
+
+    /**
+     * Garbage in the world's own material, tinted by its sender, as on the main boards
+     * (board-look.js).
+     * @param {string} type 'GARBAGE' or 'CLEAN_GARBAGE'
+     * @param {string} [color] the sender's colour, or the plain grey
+     * @returns {string} #rrggbb
+     */
+    _garbageColor(type, color) {
+        const material = this._getStyleManager()?.getWorldGarbage?.() || null;
+        const key = `${material}|${type}|${color}`;
+        if (!this._garbageColors) this._garbageColors = new Map();
+        const cached = this._garbageColors.get(key);
+        if (cached) return cached;
+        const toInt = (value) => {
+            const parsed = Number.parseInt(String(value || '').replace('#', ''), 16);
+            return Number.isNaN(parsed) ? null : parsed;
+        };
+        const plain = !color || color === COLORS.GARBAGE || color === COLORS.CLEAN_GARBAGE;
+        const int = garbageMaterialColor(toInt(material), {
+            attackerInt: plain ? null : toInt(color),
+            clean: type === 'CLEAN_GARBAGE',
+        });
+        const hex = `#${int.toString(16).padStart(6, '0')}`;
+        if (this._garbageColors.size > 64) this._garbageColors.clear();
+        this._garbageColors.set(key, hex);
+        return hex;
     }
 
     _getGhostAlpha(gridX, gridY) {
@@ -2179,10 +2207,11 @@ export class OpponentWatchManager {
 
         const pieceType = piece.type || piece.shapeKey;
         const fallbackColor = this._getPieceFallbackColor(piece, pieceType);
-        const styleConfig = this._buildPieceStyleConfig(pieceType, fallbackColor, colorCache);
+        const color = this._getThemedColor(pieceType, fallbackColor, colorCache) || fallbackColor;
         const offsetX = Math.round(Number(piece.x) || 0) * blockSize;
         const offsetY = (Math.floor(pieceY) - 4) * blockSize;
-        drawPieceStyledUnified(ctx, shape, offsetX, offsetY, blockSize, styleConfig, true, 1.0);
+        // Where the piece will land, the surface lights up: no see-through copy (board-look.js).
+        drawLandingGlowCanvas(ctx, shape, offsetX, offsetY, blockSize, color);
     }
 
     _drawCurrentPiece(ctx, piece, blockSize, colorCache) {

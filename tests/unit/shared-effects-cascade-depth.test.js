@@ -103,11 +103,12 @@ describe('cascade depth', () => {
         expect(slabTint(deep)).toBe(mixColor(TONE.CREAM, TONE.GOLD, 0.5));
     });
 
-    it('from the third wave the well\'s walls glow in the chain\'s tone, and it blooms', () => {
+    it('from the third wave the well\'s walls glow, never light blue, and the chain\'s tone blooms', () => {
         wave(fx, [23], 3);
         const glows = wallGlows(scene);
         expect(glows.length).toBeGreaterThanOrEqual(2);
-        glows.forEach((glow) => expect(glow.tint).toBe(TONE.AQUA));
+        // The chain's tone is aqua here; on the walls round the dark field it turns lavender.
+        glows.forEach((glow) => expect(glow.tint).toBe(TONE.LAVENDER));
         expect(bloom(scene)?.tint).toBe(TONE.AQUA);
     });
 
