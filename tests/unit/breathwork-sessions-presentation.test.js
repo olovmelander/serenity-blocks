@@ -394,7 +394,7 @@ describe('Sukha preparation choices', () => {
         ack.checked = true;
         ack.fire('change', { target: { checked: true } });
         expect(flow('.sukha-flow__begin').disabled).toBe(false);
-        expect(stored.get('serenity.breathSafetyRead')).toBe('2026-11-03');
+        expect(stored.get('serenity.breathSafetyRead')).toBe('2026-11-08');
         // Gentle sessions show the plain line, with the wellness words, and no note.
         for (const id of ['FIRST', 'TIDE', 'ROOTS', 'UNWIND', 'REST', 'FLOW']) {
             expect(tab.getSessionDetails(id).strong, id).toBe(false);
@@ -457,20 +457,22 @@ describe('Sukha results and your practice', () => {
         round: index + 1, seconds: value, suggested: [60, 90, 120][index], mode: 'open',
     }));
 
-    it('shows what you measured: your holds round by round, and a new best when you beat it', () => {
+    it('shows your holds round by round, and never a best, a record or a hold time to beat', () => {
         tab.startSession('BASE');
         manager.startSession.mock.calls[0][2]({
             sessionName: 'Sukha Homecoming', totalDuration: 1500, rounds: 3, breaths: 110, holds: holds(64, 95, 118),
         });
-        expect(flow('.sukha-flow__stats').innerHTML).toContain('<dd>1:58</dd>');
-        expect(flow('.sukha-flow__stats').innerHTML).toContain('<dt>Longest hold</dt>');
+        expect(flow('.sukha-flow__stats').innerHTML).toContain('<dt>Holds at your pace</dt><dd>3</dd>');
+        expect(flow('.sukha-flow__stats').innerHTML).not.toContain('Longest hold');
+        expect(flow('.sukha-flow__stats').innerHTML).not.toContain('1:58');
+        // The flow has no place for a record or a best at all.
+        expect(tab.flow.innerHTML).not.toMatch(/sukha-flow__(record|best)\b/);
         const chart = flow('.sukha-flow__holds-chart');
         expect(chart.hidden).toBe(false);
         expect(chart.innerHTML.match(/<li /g)).toHaveLength(3);
         expect(chart.innerHTML).toContain('<b>1:35</b>');
         expect(chart.innerHTML).toContain('marks show the suggested length');
-        // A first measured hold is a beginning, not a record.
-        expect(flow('.sukha-flow__record').hidden).toBe(true);
+        expect(chart.innerHTML).not.toContain('is-best');
         expect(flow('.sukha-flow__streak-line').textContent).toBe('Practised today · 1 session · 25 min of practice');
         clickFlow({ '.sukha-flow__finish': true });
 
@@ -478,13 +480,13 @@ describe('Sukha results and your practice', () => {
         manager.startSession.mock.calls[1][2]({
             sessionName: 'Sukha Homecoming', totalDuration: 1520, rounds: 3, breaths: 110, holds: holds(70, 101, 131),
         });
-        expect(flow('.sukha-flow__record').hidden).toBe(false);
-        expect(flow('.sukha-flow__record').innerHTML).toContain('New best hold: 2:11');
-        expect(flow('.sukha-flow__record').innerHTML).toContain('was 1:58');
-        expect(flow('.sukha-flow__holds-chart').innerHTML).toContain('previous best 1:58');
-        tab.showPrepScreen('BASE');
-        expect(flow('.sukha-flow__best').hidden).toBe(false);
-        expect(flow('.sukha-flow__best').textContent).toBe('Your best hold in Sukha Homecoming: 2:11');
+        // Holding longer the next time is not a record either.
+        expect(flow('.sukha-flow__holds-chart').innerHTML).not.toMatch(/best/i);
+        expect(flow('.sukha-flow__holds-chart').innerHTML).toContain('<b>2:11</b>');
+        expect(flow('.sukha-flow__stats').innerHTML).toContain('<dt>Holds at your pace</dt><dd>3</dd>');
+        clickFlow({ '.sukha-flow__finish': true });
+        tab.setActive(true);
+        expect(container.querySelector('[data-mine="BASE"]').textContent).toBe('You · 2 completed');
     });
 
     it('keeps the practice of a session you ended, but does not call it completed', () => {

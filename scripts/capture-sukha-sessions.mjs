@@ -2,11 +2,11 @@
  * Capture the Sukha sessions inside the real game: the catalogue with your practice, the
  * preparation screen, the countdown, a session's stages (arrival, a round's card, an open hold
  * counting up and then ready to end, the recovery, Rest's soft pause, Flow's rhythm kept on your
- * own, the natural rest and the closing) and the result with its holds and a new best.
+ * own, the natural rest and the closing) and the result with its holds.
  *
  * It boots index.html, enters Serenity Mode through the menu, opens the Hub's Sukha tab and drives
  * the flow with clicks; stages are stepped through the session manager (a real session is twenty
- * minutes). A few days of practice are seeded first so the streak and best-hold lines show.
+ * minutes). A few days of practice are seeded first so the streak and the week show.
  * Headless Chromium on SwiftShader, like scripts/capture-breathing-ingame.mjs: pixels, not timings
  * (ADR-0016).
  *
@@ -167,7 +167,7 @@ async function elapsed(seconds) {
 try {
     await page.routeWebSocket(/.*/, () => {});
     await page.addInitScript(() => {
-        // A few days of practice, so the streak, the week and the best hold have something to say.
+        // A few days of practice, so the streak and the week have something to say.
         if (!localStorage.getItem('serenity.sukhaSessions')) {
             const day = (days) => Date.now() - days * 86400000;
             const open = (round, seconds, suggested) => ({
@@ -274,7 +274,7 @@ try {
         await shot('closing', { freezeAt: 3400 });
     }
 
-    // The result: three measured holds, the last a new best (the seeded best is 1:42).
+    // The result: three measured holds (never scored or compared with the seeded sittings).
     await page.evaluate(() => {
         const manager = window.serenityBlocks.serenityHub.sessionManager;
         manager.sessionStartTime = Date.now() - 1508000;

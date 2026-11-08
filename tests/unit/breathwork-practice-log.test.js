@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-    MAX_ENTRIES, PRACTICE_KEY, bestHoldFor, formatPracticeTime, readPracticeLog, recordPractice, summarizePractice,
+    MAX_ENTRIES, PRACTICE_KEY, formatPracticeTime, readPracticeLog, recordPractice, summarizePractice,
 } from '../../src/ui/effects/breathwork-practice-log.js';
 
 const memory = (initial = {}) => {
@@ -39,18 +39,15 @@ describe('Sukha practice log', () => {
         expect(log.entries.map((entry) => entry.completed)).toEqual([true, false]);
     });
 
-    it('calls a longer open hold a personal best, but not your first one, and never a timed pause', () => {
+    it('keeps your holds with the sitting, but never compares them or names a best', () => {
         const store = memory();
-        const first = recordPractice({ id: 'BASE', seconds: 1500, holds: [open(1, 70), open(2, 95)] }, store, day(2));
-        expect(first).toMatchObject({ personalBest: false, previousBest: 0, longestHold: 95 });
-        const better = recordPractice({ id: 'BASE', seconds: 1500, holds: [open(1, 80), open(2, 101)] }, store, day(1));
-        expect(better).toMatchObject({ personalBest: true, previousBest: 95, longestHold: 101 });
-        const timed = recordPractice({
-            id: 'REST', seconds: 1100, holds: [{ round: 1, seconds: 300, mode: 'timed' }],
-        }, store, day(0));
-        expect(timed.longestHold).toBe(0);
-        expect(bestHoldFor(readPracticeLog(store), 'BASE')).toBe(101);
-        expect(bestHoldFor(readPracticeLog(store), 'ELIXIR')).toBe(0);
+        recordPractice({ id: 'BASE', seconds: 1500, holds: [open(1, 70), open(2, 95)] }, store, day(2));
+        const longer = recordPractice({ id: 'BASE', seconds: 1500, holds: [open(1, 80), open(2, 101)] }, store, day(1));
+        // A longer hold is not a better one: the result carries no best, record or comparison.
+        expect(Object.keys(longer).sort()).toEqual(['log', 'recorded']);
+        const log = readPracticeLog(store);
+        expect(log.entries.map((entry) => entry.holds.map((hold) => hold.seconds))).toEqual([[70, 95], [80, 101]]);
+        expect(summarizePractice(log, day(0)).bySession.BASE).toEqual({ count: 2, lastAt: day(1) });
     });
 
     it('counts a streak of days ending today, or yesterday while today is still open', () => {
@@ -71,7 +68,7 @@ describe('Sukha practice log', () => {
         recordPractice({
             id: 'BASE', seconds: 400, completed: false, holds: [open(1, 90)],
         }, store, day(0));
-        expect(summarizePractice(readPracticeLog(store), day(0)).bySession.BASE).toEqual({ count: 1, bestHold: 90, lastAt: day(0) });
+        expect(summarizePractice(readPracticeLog(store), day(0)).bySession.BASE).toEqual({ count: 1, lastAt: day(0) });
     });
 
     it('keeps only the newest sittings', () => {

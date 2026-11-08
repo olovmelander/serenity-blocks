@@ -4,8 +4,8 @@
  *
  * The catalogue lives in the Hub's tab. Everything after "Begin" is its own full-screen
  * surface, so preparing for twenty minutes of breathwork is never squeezed into a side panel.
- * Timing, voice and stages belong to BreathworkSessionManager; your practice (history, streak,
- * best holds) to breathwork-practice-log.js; this file only presents them.
+ * Timing, voice and stages belong to BreathworkSessionManager; your practice (history and streak)
+ * to breathwork-practice-log.js; this file only presents them.
  */
 import { csIcon } from '../components/cosmic-icons.js';
 import { breathPosterUrl, getBreathWorld } from '../effects/breathing/breath-catalogue.js';
@@ -17,7 +17,7 @@ import {
 } from '../effects/breathing/breath-safety.js';
 import { THEME_LOCK_ICON } from './ThemeCollectionView.js';
 import {
-    MIN_PRACTICE_SECONDS, formatPracticeTime, longestOpenHold, readPracticeLog, recordPractice,
+    MIN_PRACTICE_SECONDS, formatPracticeTime, readPracticeLog, recordPractice,
     summarizePractice,
 } from '../effects/breathwork-practice-log.js';
 
@@ -370,7 +370,6 @@ export class SessionsTab {
             const mine = summary.bySession[sessionId];
             const parts = [];
             if (mine?.count) parts.push(`${mine.count} completed`);
-            if (mine?.bestHold) parts.push(`best hold ${formatClock(mine.bestHold)}`);
             line.hidden = !parts.length;
             line.textContent = parts.length ? `You · ${parts.join(' · ')}` : '';
         });
@@ -420,7 +419,6 @@ export class SessionsTab {
                     <div class="sukha-flow__journey" aria-label="How the session unfolds">
                         <div class="sukha-flow__track"></div>
                         <ol class="sukha-flow__rounds"></ol>
-                        <p class="sukha-flow__best" hidden></p>
                     </div>
                 </div>
                 <div class="sukha-flow__setup">
@@ -464,7 +462,6 @@ export class SessionsTab {
             <div class="sukha-flow__panel sukha-flow__panel--complete" data-panel="complete">
                 <span class="sb-eyebrow sukha__eyebrow">Session complete</span>
                 <h2 class="sukha-flow__done-name"></h2>
-                <p class="sukha-flow__record" hidden></p>
                 <dl class="sukha-flow__stats"></dl>
                 <figure class="sukha-flow__holds-chart" hidden></figure>
                 <p class="sukha-flow__streak-line" hidden></p>
@@ -673,10 +670,6 @@ export class SessionsTab {
             ...rounds,
             rest ? `<li>${thumbs([rest])}<b>Rest</b> ${formatClock(rest.seconds)} of natural breath</li>` : '',
         ].join('');
-        const best = summarizePractice(readPracticeLog(storage())).bySession[sessionId]?.bestHold || 0;
-        const bestLine = flow.querySelector('.sukha-flow__best');
-        bestLine.hidden = !(info.openHolds && best > 0);
-        bestLine.textContent = bestLine.hidden ? '' : `Your best hold in ${info.name}: ${formatClock(best)}`;
     }
 
     /** Begin is ready unless a strong session still needs its one-time safety note read. */
@@ -937,8 +930,11 @@ export class SessionsTab {
         if (name.textContent !== text) name.textContent = text;
     }
 
-    /** Your holds, one bar per round, each beside the length it was suggested. */
-    renderHoldsChart(holds, previousBest) {
+    /**
+     * Your holds, one bar per round, each beside the length it was suggested. No bar is picked out
+     * and nothing is compared with other sittings: a longer hold is not a better one.
+     */
+    renderHoldsChart(holds) {
         const chart = this.flow.querySelector('.sukha-flow__holds-chart');
         const open = holds.filter((hold) => hold.mode === 'open');
         chart.hidden = !open.length;
@@ -946,11 +942,10 @@ export class SessionsTab {
             chart.innerHTML = '';
             return;
         }
-        const top = Math.max(...open.map((hold) => Math.max(hold.seconds, hold.suggested)), previousBest, 1);
-        const best = Math.max(...open.map((hold) => hold.seconds));
-        chart.innerHTML = `<figcaption>Your holds <small>${previousBest > 0 ? `previous best ${formatClock(previousBest)}` : 'marks show the suggested length'}</small></figcaption>
+        const top = Math.max(...open.map((hold) => Math.max(hold.seconds, hold.suggested)), 1);
+        chart.innerHTML = `<figcaption>Your holds <small>marks show the suggested length</small></figcaption>
             <ol>${open.map((hold) => `
-                <li class="${hold.seconds === best ? 'is-best' : ''}" style="--h:${(hold.seconds / top).toFixed(3)};--s:${(hold.suggested / top).toFixed(3)}">
+                <li style="--h:${(hold.seconds / top).toFixed(3)};--s:${(hold.suggested / top).toFixed(3)}">
                     <span class="sukha-flow__bar"><i></i></span>
                     <b>${formatClock(hold.seconds)}</b>
                     <small>Round ${hold.round}</small>
@@ -976,9 +971,10 @@ export class SessionsTab {
         flow.dataset.session = stats.sessionId || '';
         if (info.poster) flow.querySelector('.sukha-flow__art').style.backgroundImage = `url('${info.poster}')`;
         flow.querySelector('.sukha-flow__done-name').textContent = stats.sessionName || info.name || 'Sukha session';
-        const longest = longestOpenHold(holds);
-        let last = [info.maxHold || '—', 'Longest hold'];
-        if (longest > 0) last = [formatClock(longest), 'Longest hold'];
+        // Holds you end yourself are never scored: the result counts them, it never times the longest.
+        const openHeld = holds.filter((hold) => hold.mode === 'open' && hold.seconds > 0).length;
+        let last = [info.maxHold || '—', 'Holds'];
+        if (openHeld) last = [openHeld, 'Holds at your pace'];
         else if (holds.length) last = [info.maxHold, 'Longest pause'];
         else if (info.carrySeconds) last = [formatClock(info.carrySeconds), 'On your own'];
         else if (info.longestOutBreath) last = [`${info.longestOutBreath} sec`, 'Longest out-breath'];
@@ -988,11 +984,7 @@ export class SessionsTab {
             [stats.breaths ?? info.breaths ?? 0, 'Guided breaths'],
             last,
         ].map(([value, label]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('');
-        const badge = flow.querySelector('.sukha-flow__record');
-        badge.hidden = !record.personalBest;
-        badge.innerHTML = record.personalBest
-            ? `${csIcon('trophy', 15)} New best hold: ${formatClock(record.longestHold)} <small>was ${formatClock(record.previousBest)}</small>` : '';
-        this.renderHoldsChart(holds, record.previousBest);
+        this.renderHoldsChart(holds);
         const summary = summarizePractice(record.log);
         const streak = flow.querySelector('.sukha-flow__streak-line');
         streak.hidden = !record.recorded;

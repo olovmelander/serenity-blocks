@@ -67,12 +67,16 @@ marks a hold's suggested length. On phones that can vibrate, light pulses mark t
 40 breaths"), as do the arrival and the rest; the header steps back while it shows.
 
 **The result measures what you did:** time for yourself, rounds and breaths completed, and your
-holds round by round as a chart beside their suggested lengths. A hold longer than your best in that
-session is a **new best**; the result says by how much. Then your streak and totals. Before, three
-of the four figures were constants from the session's definition.
+holds round by round as a chart beside their suggested lengths. Then your streak and totals. Before,
+three of the four figures were constants from the session's definition.
+
+**Holds are never scored (2026-11-08).** A longer hold is not a better one, and chasing one is how
+people black out. So nothing names a best or compares sittings: the personal best, its trophy, the
+"best hold" lines and the chart's "previous best" are gone, no bar is picked out, and the last
+figure counts your *holds at your pace* instead of timing the longest.
 
 **Your practice in the catalogue:** days in a row, the last seven days, sessions completed and time
-practised, and on each card what you have done in it ("You · 3 completed · best hold 1:42"). A
+practised, and on each card what you have done in it ("You · 3 completed"). A
 session you end after a minute or more still counts as practice (not as completed).
 
 **Preparation:** the journey shows the world each stage is set in; *Voice guidance*, *Bells*,
@@ -234,7 +238,7 @@ it begins, its cue words on the first three breaths and on one in ten after
 | `src/ui/effects/breathwork-practice-log.js` (new) | The practice log: entries, totals, streak, the week, best open hold per session, personal-best detection. Pure functions over a storage object. |
 | `src/ui/effects/breathwork-chimes.js` (new) | Bells, breath tones and vibration, synthesised on the game's AudioContext through its effects bus (so the game's mute and effects volume apply). No audio files. |
 | `src/ui/effects/breathing/breathing-guide.js` | Guidance modes (`paced`, `open-hold`, `timed-hold`, `carry`, `natural`, `closing`), the hold dial, the Breathe-in button, title cards, the intention line, a screen-reader announcer, the end confirmation that holds the session, gamepad actions. |
-| `src/ui/serenity-hub/SessionsTab.js` | Catalogue with your practice, preparation (journey with worlds, remembered switches, one-time safety note), countdown, result with the holds chart, best and streak; records ended sessions; holds the session under the Hub. |
+| `src/ui/serenity-hub/SessionsTab.js` | Catalogue with your practice, preparation (journey with worlds, remembered switches, one-time safety note), countdown, result with the holds chart and streak; records ended sessions; holds the session under the Hub. |
 | `src/ui/gamepad-controller.js`, `SerenityHub.js` | A and B reach a session when the Hub is closed. |
 | `public/styles/breathing-guide.css`, `breathwork-sessions.css` | The new pieces' styles, with phone and short-landscape layouts and reduced motion. |
 | `src/ui/effects/breathwork-audio-manager.js` | Plays the voice and cues. Skips any clip that is not recorded (`isRecorded`): nothing loaded, played or scheduled; a chain moves on. |

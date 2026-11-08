@@ -48,7 +48,10 @@ describe('breathing safety note (breath-safety.js)', () => {
     });
 
     it('names the people who should not practise it, and never asks for a squeeze', () => {
-        for (const words of ['pregnant', 'epilepsy', 'blood-pressure', 'fainting', 'water', 'driving', 'standing']) {
+        for (const words of [
+            'pregnant', 'epilepsy', 'blood-pressure', 'fainting', 'water', 'driving', 'standing',
+            'Not for children', 'asthma or COPD', 'a past stroke', 'Never force a hold', 'chest pain',
+        ]) {
             expect(BREATH_CAUTION_TEXT).toContain(words);
         }
         const manager = new BreathworkSessionManager({});
