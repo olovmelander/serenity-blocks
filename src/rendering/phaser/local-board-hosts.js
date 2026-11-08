@@ -97,7 +97,7 @@ export async function createLocalMultiplayerBoards(mode) {
             phaserGame.scene.add(sceneKey, boardScene, true);
             console.log(`[LocalMultiplayer] Player ${i} scene created: `, boardScene.scene?.key);
 
-            // A board in a well (board-look.js draws its landing glow and garbage).
+            // A board in a well (board-look.js draws its landing shadow and garbage).
             boardScene.setWellStyle?.(true);
 
             // Store references

@@ -7,12 +7,12 @@
 import { COLS, ROWS, HIDDEN_ROWS } from '../../core/constants.js';
 import { calculateGhostY as calculateGhostYCore } from '../../core/pieces.js';
 import { hexToRgb } from '../../utils/helpers.js';
-import { landingRuns, mixColor } from '../board-look.js';
+import { landingShadowRects, mixColor } from '../board-look.js';
 
 /**
- * The landing glow on a 2D canvas, as the Phaser boards draw it (board-look.js): under each
- * column of the piece, at the row it lands on, a soft light rises from the surface and a thin
- * bright line marks it. Never a see-through copy of the piece.
+ * The landing shadow on a 2D canvas, as the Phaser boards draw it (board-look.js): the piece's
+ * whole shape where it will land, a smooth shadow in its own colour, faint at the top and
+ * deepening toward where it rests. Plain gradient rects, no lines.
  * @param {CanvasRenderingContext2D} ctx
  * @param {ArrayLike<ArrayLike<unknown>>} shape the piece's cells
  * @param {number} offsetX px of the shape's left edge
@@ -21,28 +21,22 @@ import { landingRuns, mixColor } from '../board-look.js';
  * @param {string} color the piece's colour (#rrggbb)
  * @param {number} [pulse] 0..1
  */
-export function drawLandingGlowCanvas(ctx, shape, offsetX, offsetY, blockSize, color, pulse = 0.5) {
+export function drawLandingShadowCanvas(ctx, shape, offsetX, offsetY, blockSize, color, pulse = 0.5) {
     const parsed = Number.parseInt(String(color || '').replace('#', ''), 16);
-    const light = mixColor(Number.isNaN(parsed) ? 0xffffff : parsed, 0xffffff, 0.35);
-    const rgb = `${(light >> 16) & 255}, ${(light >> 8) & 255}, ${light & 255}`;
-    const glowAlpha = 0.18 + 0.16 * pulse;
-    const lineAlpha = 0.5 + 0.3 * pulse;
-    const rise = blockSize * 0.9;
-    const line = Math.max(1, blockSize * 0.08);
+    const tint = mixColor(Number.isNaN(parsed) ? 0xffffff : parsed, 0xffffff, 0.2);
+    const rgb = `${(tint >> 16) & 255}, ${(tint >> 8) & 255}, ${tint & 255}`;
     ctx.save();
-    for (const run of landingRuns(shape)) {
-        const x = offsetX + run.x0 * blockSize;
-        const w = (run.x1 - run.x0 + 1) * blockSize;
-        const surface = offsetY + (run.bottom + 1) * blockSize;
-        const gradient = ctx.createLinearGradient?.(0, surface - rise, 0, surface);
+    for (const rect of landingShadowRects(shape, { pulse })) {
+        const x = offsetX + rect.x * blockSize;
+        const y = offsetY + rect.y * blockSize;
+        const h = rect.h * blockSize;
+        const gradient = ctx.createLinearGradient?.(0, y, 0, y + h);
         if (gradient) {
-            gradient.addColorStop(0, `rgba(${rgb}, 0)`);
-            gradient.addColorStop(1, `rgba(${rgb}, ${glowAlpha})`);
+            gradient.addColorStop(0, `rgba(${rgb}, ${rect.top})`);
+            gradient.addColorStop(1, `rgba(${rgb}, ${rect.bottom})`);
         }
-        ctx.fillStyle = gradient || `rgba(${rgb}, ${glowAlpha * 0.5})`;
-        ctx.fillRect(x, surface - rise, w, rise);
-        ctx.fillStyle = `rgba(${rgb}, ${lineAlpha})`;
-        ctx.fillRect(x, surface - line, w, line);
+        ctx.fillStyle = gradient || `rgba(${rgb}, ${(rect.top + rect.bottom) / 2})`;
+        ctx.fillRect(x, y, rect.w * blockSize, h);
     }
     ctx.restore();
 }

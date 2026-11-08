@@ -1,9 +1,9 @@
 /**
  * @fileoverview Two things every board draws besides the pieces and the stack:
  *
- * - The landing glow. Where the falling piece will land, the surface under each of its
- *   columns lights up softly in the piece's colour. It is light on the landing spot, never a
- *   second, see-through copy of the piece.
+ * - The landing shadow. Where the falling piece will land, its whole shape lies as a smooth
+ *   shadow in its own colour: faint at the top, deepening toward where it rests, with a little
+ *   light spilling onto the stack below. No outline and no edge lines.
  * - Garbage, in the world's own material: the GARBAGE colour of the theme's palette, lifted
  *   until it reads on the dark field, faintly tinted by the player who sent it, every other
  *   row a shade darker so it lies in layers. It is never a neutral grey.
@@ -149,11 +149,61 @@ export function landingRuns(shape) {
     return runs;
 }
 
+/** The shadow's alpha at its top edge and where it rests, for a pulse of 0..1. */
+export function landingShadowAlphas(pulse = 0.5) {
+    return { top: 0.12 + 0.04 * pulse, bottom: 0.34 + 0.08 * pulse };
+}
+
 /**
- * The landing glow: under each column of the falling piece, at the row it will land on, a soft
- * light rises from the surface, a thin bright line marks the surface itself, and a little light
- * spills onto what lies beneath.
- * @param {object} graphics a Phaser Graphics (fillGradientStyle, fillStyle, fillRect)
+ * The landing shadow as plain rects, in cells from the shape's origin: one rect per run of
+ * neighbouring cells in a row, each with the alpha of its top and bottom edge (the alpha rises
+ * evenly from the shape's top to its base, so stacked rows meet without a seam), and under each
+ * column's lowest cell a short spill of light fading onto what lies beneath.
+ * @param {ArrayLike<ArrayLike<unknown>>} shape the piece's cells
+ * @param {{landingY?: number, firstVisibleRow?: number, pulse?: number}} [options]
+ *   landingY: the board row of the shape's top; rows above firstVisibleRow are left out.
+ * @returns {{x: number, y: number, w: number, h: number, top: number, bottom: number}[]}
+ */
+export function landingShadowRects(shape, { landingY = 0, firstVisibleRow = -Infinity, pulse = 0.5 } = {}) {
+    const rows = [];
+    for (let y = 0; y < shape.length; y++) {
+        const row = shape[y];
+        if (!row || landingY + y < firstVisibleRow) continue;
+        for (let x = 0; x < row.length; x++) if (row[x]) rows.push([x, y]);
+    }
+    if (rows.length === 0) return [];
+    const minY = Math.min(...rows.map(([, y]) => y));
+    const maxY = Math.max(...rows.map(([, y]) => y)) + 1;
+    const { top, bottom } = landingShadowAlphas(pulse);
+    const alphaAt = (y) => top + (bottom - top) * ((y - minY) / (maxY - minY));
+    const rects = [];
+    for (let y = minY; y < maxY; y++) {
+        const cells = rows.filter(([, cy]) => cy === y).map(([cx]) => cx).sort((a, b) => a - b);
+        let start = null;
+        cells.forEach((x, i) => {
+            if (start === null) start = x;
+            if (cells[i + 1] !== x + 1) {
+                rects.push({
+                    x: start, y, w: x - start + 1, h: 1, top: alphaAt(y), bottom: alphaAt(y + 1),
+                });
+                start = null;
+            }
+        });
+    }
+    // The spill: light pooling onto the stack under each column's lowest cell.
+    landingRuns(shape).forEach((run) => {
+        if (landingY + run.bottom < firstVisibleRow) return;
+        rects.push({
+            x: run.x0, y: run.bottom + 1, w: run.x1 - run.x0 + 1, h: 0.35, top: bottom * 0.55, bottom: 0,
+        });
+    });
+    return rects;
+}
+
+/**
+ * The landing shadow on a Phaser Graphics: the piece's whole shape where it will land, a smooth
+ * shadow in its own colour (landingShadowRects). Plain gradient rects, no lines.
+ * @param {object} graphics a Phaser Graphics (fillGradientStyle, fillRect)
  * @param {object} options
  * @param {ArrayLike<ArrayLike<unknown>>} options.shape the piece's cells
  * @param {number} options.originX the piece's column
@@ -163,26 +213,17 @@ export function landingRuns(shape) {
  * @param {number} options.pulse 0..1, the board's slow breathing pulse
  * @param {number} [options.firstVisibleRow] rows above this are not drawn (hidden rows)
  */
-export function drawLandingGlow(graphics, {
+export function drawLandingShadow(graphics, {
     shape, originX, landingY, blockSize, colorInt, pulse, firstVisibleRow = -Infinity,
 }) {
-    const light = mixColor(colorInt, 0xffffff, 0.35);
-    const glowAlpha = 0.18 + 0.16 * pulse;
-    const lineAlpha = 0.5 + 0.3 * pulse;
-    const rise = blockSize * 0.9;
-    const spill = blockSize * 0.3;
-    const line = Math.max(1.5, blockSize * 0.08);
-    for (const run of landingRuns(shape)) {
-        const row = landingY + run.bottom;
-        if (row < firstVisibleRow) continue;
-        const x = (originX + run.x0) * blockSize;
-        const w = (run.x1 - run.x0 + 1) * blockSize;
-        const surface = (row + 1) * blockSize;
-        graphics.fillGradientStyle(light, light, light, light, 0, 0, glowAlpha, glowAlpha);
-        graphics.fillRect(x, surface - rise, w, rise);
-        graphics.fillGradientStyle(light, light, light, light, glowAlpha * 0.6, glowAlpha * 0.6, 0, 0);
-        graphics.fillRect(x, surface, w, spill);
-        graphics.fillStyle(light, lineAlpha);
-        graphics.fillRect(x, surface - line, w, line);
+    const color = mixColor(colorInt, 0xffffff, 0.2);
+    for (const rect of landingShadowRects(shape, { landingY, firstVisibleRow, pulse })) {
+        graphics.fillGradientStyle(color, color, color, color, rect.top, rect.top, rect.bottom, rect.bottom);
+        graphics.fillRect(
+            (originX + rect.x) * blockSize,
+            (landingY + rect.y) * blockSize,
+            rect.w * blockSize,
+            rect.h * blockSize,
+        );
     }
 }

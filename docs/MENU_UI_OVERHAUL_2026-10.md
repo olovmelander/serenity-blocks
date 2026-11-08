@@ -680,8 +680,10 @@ play, and how are they doing" at a glance, and every number lives in one place.
   pieces and the stack keep the game's solid, fused shapes. Garbage is the world's own
   material (its palette's GARBAGE colour), lifted until it reads on the dark field, faintly
   tinted by the attacker and laid in rows a shade apart, so it never passes for a stack of
-  pieces and its holes stay plain to see. There is no see-through copy of the piece: where
-  it will land, the surface under each of its columns glows softly in its colour.
+  pieces and its holes stay plain to see. Where the piece will land,
+  its whole shape lies as a smooth shadow in its own colour, faint at the top
+  and deepening toward where it rests, with no outline (2026-11-08: the glow alone did not
+  show the shape well enough to play by).
   (`BaseBoardScene.setWellStyle` still marks the boards in a well; the look no longer
   depends on it.)
 - **The match told as it happens:** a streak flies from the attacker's board to each

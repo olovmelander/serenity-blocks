@@ -1643,7 +1643,7 @@ export class SinglePlayerMode extends BaseGameMode {
         if (!phaserGame?.scene) return;
 
         const boardScene = phaserGame.scene.getScene('BoardScene');
-        // A board in a well (board-look.js draws its landing glow and garbage).
+        // A board in a well (board-look.js draws its landing shadow and garbage).
         boardScene?.setWellStyle?.(true);
         if (boardScene) {
             if (boardScene.scene.isActive()) {

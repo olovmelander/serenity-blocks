@@ -142,7 +142,7 @@ describe('opponent watcher animation quality', () => {
         expect(ghostY).toBe(23);
     });
 
-    it('lights where an opponent piece will land instead of drawing a copy of it', () => {
+    it('lays a smooth shadow where an opponent piece will land, with no lines', () => {
         const watcher = makeWatcher();
         const ctx = makeCanvasContext();
 
@@ -154,14 +154,11 @@ describe('opponent watcher animation quality', () => {
             y: 7.4,
         }, 18, 8, new Map());
 
-        // One run of four columns: a rising glow and its surface line, both plain rects.
+        // A flat I: the shadow is one row of four cells, then the spill under it. No strokes.
         expect(ctx.fillRect).toHaveBeenCalledTimes(2);
-        expect(ctx.createLinearGradient).toHaveBeenCalledOnce();
         expect(ctx.stroke).not.toHaveBeenCalled();
-        // The surface sits under the landing row: (18 - 4 + 1) rows of 8 px.
-        const [, lineY, lineW, lineH] = ctx.fillRect.mock.calls[1];
-        expect(lineY + lineH).toBe(120);
-        expect(lineW).toBe(32);
+        const [x, y, w, h] = ctx.fillRect.mock.calls[0];
+        expect([x, y, w, h]).toEqual([24, 112, 32, 8]);
     });
 
     it('positions opponent hard-drop bursts from the dropped piece payload', () => {
