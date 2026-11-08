@@ -18,6 +18,11 @@ export const GARBAGE_MIN_LUMINANCE = 0.075;
 export const CLEAN_GARBAGE_MIN_LUMINANCE = 0.11;
 /** Nor lighter than this, so garbage never passes for a piece. */
 export const GARBAGE_MAX_LUMINANCE = 0.2;
+/**
+ * Garbage is a muted material (HSL saturation at most this): a near-black navy lifted to be
+ * readable would otherwise turn a vivid royal blue that reads as a piece.
+ */
+export const GARBAGE_MAX_SATURATION = 0.42;
 /** How much of the sender's colour shows in the garbage they sent. */
 export const GARBAGE_ATTACKER_TINT = 0.22;
 /** Every other garbage row is this much darker, so the rows read as layers of material. */
@@ -77,13 +82,16 @@ function fromHsl(h, s, l) {
 }
 
 /**
- * The same hue and saturation, lighter or darker until its luminance lies in [min, max].
- * Luminance rises with HSL lightness, so a bisection on lightness finds the nearest fit.
+ * The same hue, saturation no higher than `saturationCap`, lighter or darker until its luminance
+ * lies in [min, max]. Luminance rises with HSL lightness, so a bisection on lightness finds the
+ * nearest fit.
  */
-export function clampLuminance(int, min, max) {
-    const luminance = relativeLuminance(int);
-    if (luminance >= min && luminance <= max) return int;
-    const [h, s, l] = toHsl(int);
+export function clampLuminance(int, min, max, saturationCap = 1) {
+    const [h, raw, l] = toHsl(int);
+    const s = Math.min(raw, saturationCap);
+    const start = s < raw ? fromHsl(h, s, l) : int;
+    const luminance = relativeLuminance(start);
+    if (luminance >= min && luminance <= max) return start;
     const target = luminance < min ? min : max;
     let low = luminance < min ? l : 0;
     let high = luminance < min ? 1 : l;
@@ -106,7 +114,7 @@ export function garbageMaterialColor(materialInt, { attackerInt = null, clean = 
     let color = Number.isFinite(materialInt) ? materialInt : FALLBACK_GARBAGE_MATERIAL;
     if (Number.isFinite(attackerInt)) color = mixColor(color, attackerInt, GARBAGE_ATTACKER_TINT);
     const min = clean ? CLEAN_GARBAGE_MIN_LUMINANCE : GARBAGE_MIN_LUMINANCE;
-    return clampLuminance(color, min, GARBAGE_MAX_LUMINANCE);
+    return clampLuminance(color, min, GARBAGE_MAX_LUMINANCE, GARBAGE_MAX_SATURATION);
 }
 
 /** One garbage row's shade: every other row (by its row in the world) a little darker. */

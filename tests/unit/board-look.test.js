@@ -2,8 +2,8 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-    CLEAN_GARBAGE_MIN_LUMINANCE, FALLBACK_GARBAGE_MATERIAL, GARBAGE_MAX_LUMINANCE, GARBAGE_MIN_LUMINANCE,
-    drawLandingGlow, garbageMaterialColor, garbageRowShade, landingRuns, relativeLuminance,
+    CLEAN_GARBAGE_MIN_LUMINANCE, FALLBACK_GARBAGE_MATERIAL, GARBAGE_MAX_LUMINANCE, GARBAGE_MAX_SATURATION,
+    GARBAGE_MIN_LUMINANCE, drawLandingGlow, garbageMaterialColor, garbageRowShade, landingRuns, relativeLuminance,
 } from '../../src/rendering/board-look.js';
 import { TetrominoStyleManager } from '../../src/rendering/tetromino-style-manager.js';
 
@@ -30,6 +30,15 @@ const hue = (int) => {
     else if (max === g) h = (b - r) / d + 2;
     else h = (r - g) / d + 4;
     return (h * 60 + 360) % 360;
+};
+
+/** HSL saturation, 0..1. */
+const saturation = (int) => {
+    const [r, g, b] = [(int >> 16) & 255, (int >> 8) & 255, int & 255].map((c) => c / 255);
+    const max = Math.max(r, g, b); const min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    if (max === min) return 0;
+    return l > 0.5 ? (max - min) / (2 - max - min) : (max - min) / (max + min);
 };
 
 /** Every world's own garbage colour, read from its palette file. */
@@ -93,6 +102,8 @@ describe('garbage in the world\'s own material', () => {
         for (const [name, material] of worlds) {
             const color = garbageMaterialColor(material);
             const luminance = relativeLuminance(color);
+            // A muted material, never a vivid colour that could pass for a piece.
+            expect(saturation(color), name).toBeLessThanOrEqual(GARBAGE_MAX_SATURATION + 0.02);
             expect(luminance, name).toBeGreaterThanOrEqual(GARBAGE_MIN_LUMINANCE - 0.002);
             expect(luminance, name).toBeLessThanOrEqual(GARBAGE_MAX_LUMINANCE + 0.002);
             const before = hue(material);
