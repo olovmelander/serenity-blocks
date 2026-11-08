@@ -11,7 +11,7 @@ import {
     usesDeterministicInfinitySpawn,
 } from '../../core/infinity-spawn-policy.js';
 import { TetrominoStyleManager } from '../tetromino-style-manager.js';
-import { drawLandingGlow, garbageMaterialColor, garbageRowShade } from '../board-look.js';
+import { drawLandingShadow, garbageMaterialColor, garbageRowShade } from '../board-look.js';
 
 const DEFAULT_PARTICLE_KEY = 'common-circle-4px';
 const DEFAULT_SHAKE_INTENSITY = 0.002;
@@ -133,7 +133,7 @@ export function createBaseBoardScene(
             this._invalidatePresentation = () => { this._boardDirty = true; };
             this._reducedMotionQuery = null;
             // Whether the board sits in a well (setWellStyle). Every board draws the same
-            // landing glow and garbage material (board-look.js); the flag records the setting.
+            // landing shadow and garbage material (board-look.js); the flag records the setting.
             this.wellStyle = false;
             this._garbageColorCache = new Map();
 
@@ -255,7 +255,7 @@ export function createBaseBoardScene(
 
         /**
          * Mark the board as one in a well (local versus, single player, Infinity and Odyssey).
-         * The landing glow and the garbage material are the same on every board (board-look.js).
+         * The landing shadow and the garbage material are the same on every board (board-look.js).
          * @param {boolean} [enabled]
          */
         setWellStyle(enabled = true) {
@@ -1303,13 +1303,13 @@ export function createBaseBoardScene(
             const ghostY = getGhostLandingY(this.gameState);
             const skipHiddenRows = !this.gameState?.isInfinityMode;
 
-            // Where the piece will land, the surface under it lights up (board-look.js): a glow
-            // on the landing spot, never a see-through copy of the piece.
+            // Where the piece will land, its whole shape lies as a smooth shadow in its own colour
+            // (board-look.js): faint at the top, deepening toward where it rests, no lines.
             const pieceCenterX = Math.floor(piece.x + piece.shape[0].length / 2);
             const pieceCenterY = Math.floor(ghostY + piece.shape.length / 2);
             // Reduced motion: freeze the pulse at its midpoint.
             const pulse = this._reducedMotion() ? 0.5 : this._getPulseIntensity(pieceCenterX, pieceCenterY);
-            this.drawLandingGlow(this.pieceGraphics, {
+            this.drawLandingShadow(this.pieceGraphics, {
                 shape: piece.shape,
                 originX: piece.x,
                 landingY: ghostY,
@@ -1320,9 +1320,9 @@ export function createBaseBoardScene(
             });
         }
 
-        /** The landing glow (board-look.js), on this board's graphics. */
-        drawLandingGlow(graphics, options) {
-            drawLandingGlow(graphics, options);
+        /** The landing shadow (board-look.js), on this board's graphics. */
+        drawLandingShadow(graphics, options) {
+            drawLandingShadow(graphics, options);
         }
 
         /**

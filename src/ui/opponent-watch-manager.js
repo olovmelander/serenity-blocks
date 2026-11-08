@@ -1,5 +1,5 @@
 import { COLORS, SHAPES } from '../core/constants.js';
-import { drawLandingGlowCanvas, drawPieceSolid } from '../rendering/canvas/canvas-drawing-utils.js';
+import { drawLandingShadowCanvas, drawPieceSolid } from '../rendering/canvas/canvas-drawing-utils.js';
 import { garbageMaterialColor } from '../rendering/board-look.js';
 import { TetrominoStyleManager } from '../rendering/tetromino-style-manager.js';
 import { CanvasBoardEffects } from './effects/canvas-board-effects.js';
@@ -2210,8 +2210,8 @@ export class OpponentWatchManager {
         const color = this._getThemedColor(pieceType, fallbackColor, colorCache) || fallbackColor;
         const offsetX = Math.round(Number(piece.x) || 0) * blockSize;
         const offsetY = (Math.floor(pieceY) - 4) * blockSize;
-        // Where the piece will land, the surface lights up: no see-through copy (board-look.js).
-        drawLandingGlowCanvas(ctx, shape, offsetX, offsetY, blockSize, color);
+        // Where the piece will land, a smooth shadow in its colour, no lines (board-look.js).
+        drawLandingShadowCanvas(ctx, shape, offsetX, offsetY, blockSize, color);
     }
 
     _drawCurrentPiece(ctx, piece, blockSize, colorCache) {

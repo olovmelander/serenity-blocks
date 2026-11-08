@@ -821,7 +821,7 @@ export class InfinityMode extends BaseGameMode {
         this.boardScene = phaserGame.scene.getScene('BoardScene');
 
         if (this.boardScene) {
-            // A board in a well (board-look.js draws its landing glow and garbage).
+            // A board in a well (board-look.js draws its landing shadow and garbage).
             this.boardScene.setWellStyle?.(true);
             this.boardScene.scene.setVisible(true);
             if (this.boardScene.scene.isActive()) {

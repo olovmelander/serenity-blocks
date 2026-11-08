@@ -3,7 +3,8 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
     CLEAN_GARBAGE_MIN_LUMINANCE, FALLBACK_GARBAGE_MATERIAL, GARBAGE_MAX_LUMINANCE, GARBAGE_MAX_SATURATION,
-    GARBAGE_MIN_LUMINANCE, drawLandingGlow, garbageMaterialColor, garbageRowShade, landingRuns, relativeLuminance,
+    GARBAGE_MIN_LUMINANCE, drawLandingShadow, garbageMaterialColor, garbageRowShade, landingRuns,
+    landingShadowAlphas, landingShadowRects, relativeLuminance,
 } from '../../src/rendering/board-look.js';
 import { TetrominoStyleManager } from '../../src/rendering/tetromino-style-manager.js';
 
@@ -52,7 +53,7 @@ function worldGarbage() {
     });
 }
 
-describe('the landing glow', () => {
+describe('the landing shadow', () => {
     it('finds the surface under each column the piece lands with', () => {
         expect(landingRuns(T_UP)).toEqual([{ x0: 0, x1: 2, bottom: 1 }]);
         expect(landingRuns(T_DOWN)).toEqual([
@@ -62,32 +63,43 @@ describe('the landing glow', () => {
         expect(landingRuns(S)).toEqual([{ x0: 0, x1: 1, bottom: 1 }, { x0: 2, x1: 2, bottom: 0 }]);
     });
 
-    it('lights the landing surface with plain rects, never tracing the piece', () => {
+    it('covers every cell of the piece, row by row, deepening toward where it rests', () => {
+        const body = landingShadowRects(T_DOWN).filter((rect) => rect.h === 1);
+        expect(body.map(({ x, y, w }) => [x, y, w])).toEqual([[0, 0, 3], [1, 1, 1]]);
+        const { top, bottom } = landingShadowAlphas(0.5);
+        expect(body[0].top).toBeCloseTo(top);
+        expect(body[1].bottom).toBeCloseTo(bottom);
+        // Stacked rows meet at the same alpha, so the shadow has no seam.
+        expect(body[0].bottom).toBeCloseTo(body[1].top);
+        expect(bottom).toBeGreaterThan(top);
+    });
+
+    it('spills a little light under each column it rests on', () => {
+        const spill = landingShadowRects(T_DOWN).filter((rect) => rect.h < 1);
+        expect(spill.map(({ x, y, w }) => [x, y, w])).toEqual([[0, 1, 1], [1, 2, 1], [2, 1, 1]]);
+        spill.forEach((rect) => expect(rect.bottom).toBe(0));
+    });
+
+    it('draws only soft filled rects in the colour of the piece: no outline and no lines', () => {
         const graphics = recorder();
-        drawLandingGlow(graphics, {
+        drawLandingShadow(graphics, {
             shape: T_DOWN, originX: 3, landingY: 10, blockSize: 20, colorInt: 0xff8844, pulse: 0.5,
         });
         const names = new Set(graphics.calls.map(([name]) => name));
-        expect([...names].sort()).toEqual(['fillGradientStyle', 'fillRect', 'fillStyle']);
-        // Each column's bright surface line sits on the row it lands on: 220 px under the arms, 240 under the stem.
-        const lines = graphics.calls.filter(([name, , , , h]) => name === 'fillRect' && h === 1.6);
-        expect(lines.map(([, x, y, w]) => [x, y + 1.6, w])).toEqual([[60, 220, 20], [80, 240, 20], [100, 220, 20]]);
+        expect([...names].sort()).toEqual(['fillGradientStyle', 'fillRect']);
+        const rects = graphics.calls.filter(([name]) => name === 'fillRect').map(([, x, y, w, h]) => [x, y, w, h]);
+        expect(rects.slice(0, 2)).toEqual([[60, 200, 60, 20], [80, 220, 20, 20]]);
     });
 
     it('breathes with the pulse and stays out of the hidden rows', () => {
-        const alphaAt = (pulse) => {
-            const graphics = recorder();
-            drawLandingGlow(graphics, {
-                shape: T_UP, originX: 0, landingY: 5, blockSize: 20, colorInt: 0x44aaff, pulse,
-            });
-            return graphics.calls.find(([name]) => name === 'fillStyle')[2];
-        };
-        expect(alphaAt(1)).toBeGreaterThan(alphaAt(0));
+        expect(landingShadowAlphas(1).bottom).toBeGreaterThan(landingShadowAlphas(0).bottom);
         const hidden = recorder();
-        drawLandingGlow(hidden, {
+        drawLandingShadow(hidden, {
             shape: T_UP, originX: 0, landingY: 1, blockSize: 20, colorInt: 0x44aaff, pulse: 0.5, firstVisibleRow: 4,
         });
         expect(hidden.calls).toEqual([]);
+        const partly = landingShadowRects(T_UP, { landingY: 3, firstVisibleRow: 4 });
+        expect(partly.filter((rect) => rect.h === 1).map(({ y }) => y)).toEqual([1]);
     });
 });
 
