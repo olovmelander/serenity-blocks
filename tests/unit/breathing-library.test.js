@@ -80,7 +80,7 @@ describe('breathing library', () => {
         expect(guide.start).not.toHaveBeenCalled();
         const ack = caution.querySelector('.breath-lib__ack-input');
         container.fire('change', { target: Object.assign(targetMatching({ '.breath-lib__ack-input': ack }), { checked: true }) });
-        expect(stored.get('serenity.breathSafetyRead')).toBe('2026-11-03');
+        expect(stored.get('serenity.breathSafetyRead')).toBe('2026-11-08');
         expect(hero('.breath-lib__begin').disabled).toBe(false);
         expect(caution.querySelector('.breath-lib__ack').hidden).toBe(true);
         click({ '.breath-lib__begin': true });

@@ -524,15 +524,6 @@
     background-size: cover;
 }
 
-.sukha-flow__best {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 18px 0 0;
-    color: rgb(var(--session));
-    font: 600 var(--sb-fs-small) / 1.4 var(--sb-font-text);
-}
-
 /* The preparation panel. */
 .sukha-flow__setup {
     position: relative;
@@ -796,26 +787,6 @@
     letter-spacing: -0.015em;
 }
 
-.sukha-flow__record {
-    display: inline-flex;
-    align-items: center;
-    gap: 9px;
-    margin: -10px 0 24px;
-    padding: 8px 12px;
-    border-radius: 9px;
-    border: 1px solid rgba(var(--sb-gold-rgb), 0.5);
-    background: rgba(var(--sb-gold-rgb), 0.1);
-    color: var(--sb-gold);
-    font: 600 0.6875rem / 1 var(--sb-font-display);
-    letter-spacing: 0.08em;
-}
-
-.sukha-flow__record small {
-    color: rgba(var(--sb-gold-rgb), 0.75);
-    font: 500 0.75rem / 1 var(--sb-font-text);
-    letter-spacing: 0;
-}
-
 .sukha-flow__stats {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -921,10 +892,6 @@
 
 .sukha-flow__holds-chart li:nth-child(2) .sukha-flow__bar i { animation-delay: 0.12s; }
 .sukha-flow__holds-chart li:nth-child(3) .sukha-flow__bar i { animation-delay: 0.24s; }
-
-.sukha-flow__holds-chart li.is-best .sukha-flow__bar i {
-    background: linear-gradient(180deg, var(--sb-gold), rgba(var(--sb-gold-rgb), 0.35));
-}
 
 .sukha-flow__holds-chart b {
     color: var(--sb-text);

@@ -15,14 +15,16 @@ export const STRONG_BREATH_CYCLE_SECONDS = 5;
 
 export const BREATH_CAUTION_TEXT = 'Fast breathing, and holding your breath after it, can make you '
     + 'light-headed or faint. Sit or lie down. Never practise in or near water or a bath, while driving, '
-    + 'or standing. Do not practise it if you are pregnant, or have epilepsy or have had seizures, a heart '
-    + 'or blood-pressure condition, or a history of fainting. Stop and breathe normally if you feel unwell.';
+    + 'or standing. Not for children. Do not practise it if you are pregnant, or have epilepsy or have had '
+    + 'seizures, a heart or blood-pressure condition, asthma or COPD, a past stroke, or a history of fainting. '
+    + 'Never force a hold: breathe whenever you need to. Stop and breathe normally if you feel chest pain '
+    + 'or feel unwell.';
 
 export const BREATH_WELLNESS_TEXT = 'For relaxation only: not medical advice, treatment or a medical device.';
 
 const SAFETY_KEY = 'serenity.breathSafetyRead';
 /** Bump when BREATH_CAUTION_TEXT changes in substance: everyone reads the new note once. */
-export const BREATH_SAFETY_VERSION = '2026-11-03';
+export const BREATH_SAFETY_VERSION = '2026-11-08';
 
 /** True for a [in, hold, out, rest] rhythm fast enough to need the note. */
 export function isStrongPattern(pattern) {
