@@ -11,7 +11,7 @@ import {
     usesDeterministicInfinitySpawn,
 } from '../../core/infinity-spawn-policy.js';
 import { TetrominoStyleManager } from '../tetromino-style-manager.js';
-import { drawWellGhost, wellGarbageColor } from './well-board-style.js';
+import { drawLandingGlow, garbageMaterialColor, garbageRowShade } from '../board-look.js';
 
 const DEFAULT_PARTICLE_KEY = 'common-circle-4px';
 const DEFAULT_SHAKE_INTENSITY = 0.002;
@@ -132,8 +132,10 @@ export function createBaseBoardScene(
             this._blindOverlayCache = null;
             this._invalidatePresentation = () => { this._boardDirty = true; };
             this._reducedMotionQuery = null;
-            // Boards in a well opt in (setWellStyle): slate garbage, a coloured ghost.
+            // Whether the board sits in a well (setWellStyle). Every board draws the same
+            // landing glow and garbage material (board-look.js); the flag records the setting.
             this.wellStyle = false;
+            this._garbageColorCache = new Map();
 
             // No caching needed - simple is better
         }
@@ -252,8 +254,8 @@ export function createBaseBoardScene(
         }
 
         /**
-         * The well's look (well-board-style.js): solid slate garbage and the ghost in the
-         * piece's colour — local versus, single player, Infinity and Odyssey.
+         * Mark the board as one in a well (local versus, single player, Infinity and Odyssey).
+         * The landing glow and the garbage material are the same on every board (board-look.js).
          * @param {boolean} [enabled]
          */
         setWellStyle(enabled = true) {
@@ -1001,8 +1003,12 @@ export function createBaseBoardScene(
                 let colorValue = cell.color;
                 if (typeof colorValue === 'string' && COLORS[colorValue]) colorValue = COLORS[colorValue];
                 const isGarbage = cell.type === 'GARBAGE' || cell.type === 'CLEAN_GARBAGE';
-                const isCustomColor = cell.color && cell.color !== '#808080';
-                if (!isGarbage || !isCustomColor) colorValue = this.getThemedColor(cell.type, colorValue);
+                if (isGarbage) {
+                    const garbage = { colorInt: this.garbageColorInt(cell.type, cell.color), isGarbage };
+                    colorCache.set(cacheKey, garbage);
+                    return garbage;
+                }
+                colorValue = this.getThemedColor(cell.type, colorValue);
                 const resolved = { colorInt: this.colorToInt(colorValue), isGarbage };
                 colorCache.set(cacheKey, resolved);
                 return resolved;
@@ -1041,8 +1047,8 @@ export function createBaseBoardScene(
                     const w = Math.round((worldX + 1) * bs) - px;
                     const h = Math.round((worldY + 1) * bs) - py;
                     if (isGarbage) {
-                        // Matte; in a well it is slate, tinted by the attacker.
-                        staticLayer.fillStyle(this.wellStyle ? wellGarbageColor(colorInt) : colorInt, 1);
+                        // Matte, in the world's material, every other row a shade darker.
+                        staticLayer.fillStyle(garbageRowShade(colorInt, worldY), 1);
                     } else {
                         const top = shadeColorAt(colorInt, worldY);
                         const bot = shadeColorAt(colorInt, worldY + 1);
@@ -1269,13 +1275,10 @@ export function createBaseBoardScene(
                 if (!piece.isAnimating) continue;
                 this._animatedPieces[activeCount++] = piece;
                 if (typeof piece.animationOffset !== 'number' || piece.animationOffset === 0) continue;
-                let colorValue = piece.color;
                 const isGarbage = piece.type === 'GARBAGE' || piece.type === 'CLEAN_GARBAGE';
-                const isCustomColor = piece.color && piece.color !== '#808080';
-                if (!isGarbage || !isCustomColor) {
-                    colorValue = this.getThemedColor(piece.type, piece.color);
-                }
-                const colorInt = this.colorToInt(colorValue);
+                const colorInt = isGarbage
+                    ? this.garbageColorInt(piece.type, piece.color)
+                    : this.colorToInt(this.getThemedColor(piece.type, piece.color));
                 // Garbage stays matte (no gradient/rim); playable pieces get depth.
                 const fx = isGarbage ? MATTE_PIECE_EFFECTS : this._pieceFx(piece.type);
                 // Animated pieces shift by a fractional animationOffset.
@@ -1300,29 +1303,51 @@ export function createBaseBoardScene(
             const ghostY = getGhostLandingY(this.gameState);
             const skipHiddenRows = !this.gameState?.isInfinityMode;
 
-            // The ghost is a single translucent silhouette — NO gradient/gloss/rim
-            // depth (that would turn it into a bright box competing with the active
-            // piece). One shared pulse alpha across all cells keeps it fused.
-            const minAlpha = 0.1;
-            const maxAlpha = 0.35;
+            // Where the piece will land, the surface under it lights up (board-look.js): a glow
+            // on the landing spot, never a see-through copy of the piece.
             const pieceCenterX = Math.floor(piece.x + piece.shape[0].length / 2);
             const pieceCenterY = Math.floor(ghostY + piece.shape.length / 2);
             // Reduced motion: freeze the pulse at its midpoint.
             const pulse = this._reducedMotion() ? 0.5 : this._getPulseIntensity(pieceCenterX, pieceCenterY);
-            const alpha = minAlpha + (maxAlpha - minAlpha) * pulse;
+            this.drawLandingGlow(this.pieceGraphics, {
+                shape: piece.shape,
+                originX: piece.x,
+                landingY: ghostY,
+                blockSize: this.blockSize,
+                colorInt: this.colorToInt(this.getThemedColor(piece.type, piece.color)),
+                pulse,
+                firstVisibleRow: skipHiddenRows ? this.hiddenRows : -Infinity,
+            });
+        }
 
-            const geometry = this._getPieceGeometry(piece.shape, ghostY, skipHiddenRows);
-            if (this.wellStyle) {
-                const colorInt = this.colorToInt(this.getThemedColor(piece.type, piece.color));
-                const [ox, oy] = [piece.x * this.blockSize, ghostY * this.blockSize];
-                drawWellGhost(this, this.pieceGraphics, geometry.loops, colorInt, ox, oy, pulse);
-                return;
-            }
-            // Translucent fill MUST use the single contour polygon — per-cell rects
-            // double-cover at their overlap and produce brighter internal seam lines.
-            this.fillContour(this.pieceGraphics, geometry.loops, 0xffffff, alpha, piece.x * this.blockSize, ghostY * this.blockSize);
-            // A faint cyan outer outline is the ghost's only edge treatment.
-            this.strokeLoops(this.pieceGraphics, geometry.loops, 0x64c8ff, 1, alpha * 0.7, piece.x * this.blockSize, ghostY * this.blockSize);
+        /** The landing glow (board-look.js), on this board's graphics. */
+        drawLandingGlow(graphics, options) {
+            drawLandingGlow(graphics, options);
+        }
+
+        /**
+         * Garbage in the world's own material (board-look.js): the theme's GARBAGE colour, tinted
+         * by the sender when the cells carry one, kept readable on the dark field.
+         * @param {string} type 'GARBAGE' or 'CLEAN_GARBAGE'
+         * @param {string} [color] the cells' colour: a sender's colour, or the plain grey
+         * @returns {number} 0xRRGGBB
+         */
+        garbageColorInt(type, color) {
+            const material = this.styleManager?.getWorldGarbage?.() || null;
+            const key = `${material}|${type}|${color}`;
+            const cached = this._garbageColorCache?.get(key);
+            if (cached !== undefined) return cached;
+            let value = color;
+            if (typeof value === 'string' && COLORS[value]) value = COLORS[value];
+            const plain = !value || value === COLORS.GARBAGE || value === COLORS.CLEAN_GARBAGE;
+            const result = garbageMaterialColor(material ? this.colorToInt(material) : null, {
+                attackerInt: plain ? null : this.colorToInt(value),
+                clean: type === 'CLEAN_GARBAGE',
+            });
+            if (!this._garbageColorCache) this._garbageColorCache = new Map();
+            if (this._garbageColorCache.size > 64) this._garbageColorCache.clear();
+            this._garbageColorCache.set(key, result);
+            return result;
         }
 
         drawCurrentPiece() {

@@ -49,6 +49,7 @@ export class TetrominoStyleManager {
         this.settingsManager = settingsManager;
 
         this.cachedConfig = null;
+        this.cachedWorldGarbage = null;
         this.eventUnsubscribers = [];
         this.onChange = onChange;
         this.cachedPhaserEffects = null;
@@ -99,6 +100,16 @@ export class TetrominoStyleManager {
             effects: this.cachedConfig.effects,
             rendererOverrides: this.cachedConfig.rendererOverrides,
         };
+    }
+
+    /**
+     * The active world's garbage material (its palette's GARBAGE colour), whatever colours the
+     * pieces wear; null when no world is loaded.
+     * @returns {string|null}
+     */
+    getWorldGarbage() {
+        if (!this.cachedConfig) this._cacheCurrentStyle();
+        return this.cachedWorldGarbage ?? null;
     }
 
     /**
@@ -170,6 +181,7 @@ export class TetrominoStyleManager {
         this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
         this.cachedConfig = null;
+        this.cachedWorldGarbage = null;
         this.cachedPhaserEffects = null;
     }
 
@@ -224,9 +236,12 @@ export class TetrominoStyleManager {
 
         const settings = settingsManager?.get();
         const themeBasedEnabled = settings?.themeBasedTetrominos ?? true;
+        const worldConfig = themeManager?.activeTheme?.getTetrominoConfig?.() || null;
+        // Garbage is the world's own material even when the pieces wear the default colours.
+        this.cachedWorldGarbage = typeof worldConfig?.colors?.GARBAGE === 'string' ? worldConfig.colors.GARBAGE : null;
 
         if (themeBasedEnabled && themeManager?.activeTheme) {
-            const themeConfig = themeManager.activeTheme.getTetrominoConfig?.();
+            const themeConfig = worldConfig;
 
             if (themeConfig) {
                 this.cachedConfig = this._validateConfig(themeConfig);
