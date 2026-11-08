@@ -8,8 +8,10 @@
  *   entry = { id, at, seconds, completed, rounds, breaths, holds: [{ round, seconds, suggested, mode }],
  *             intention }
  *
- * A hold's `mode` is 'open' when you chose when to breathe (Homecoming and Phoenix): only those are
- * personal records. Timed pauses are part of a rhythm, not a measure of anything.
+ * A hold's `mode` is 'open' when you chose when to breathe (Homecoming and Phoenix), 'timed' when it
+ * was part of a rhythm. Holds are kept as a note of the sitting, never as a score: nothing here
+ * compares one hold with another or names a best. A longer hold is not a better one, and chasing
+ * one is how people black out.
  *
  * Pure functions take the storage they use, so tests and the game share one implementation.
  */
@@ -75,18 +77,6 @@ export function readPracticeLog(storage = defaultStorage()) {
     };
 }
 
-/** The longest hold you chose the end of, in seconds (0 when there were none). */
-export function longestOpenHold(holds = []) {
-    return holds.reduce((best, hold) => (hold.mode === 'open' ? Math.max(best, hold.seconds) : best), 0);
-}
-
-/** Your best open hold in one session, across every sitting the log remembers. */
-export function bestHoldFor(log, sessionId) {
-    return log.entries.reduce((best, entry) => (
-        entry.id === sessionId ? Math.max(best, longestOpenHold(entry.holds)) : best
-    ), 0);
-}
-
 const dayKey = (time) => {
     const date = new Date(time);
     return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
@@ -122,9 +112,8 @@ export function summarizePractice(log, now = Date.now()) {
         .reduce((sum, entry) => sum + entry.seconds, 0);
     const bySession = {};
     log.entries.forEach((entry) => {
-        const stats = bySession[entry.id] || { count: 0, bestHold: 0, lastAt: 0 };
+        const stats = bySession[entry.id] || { count: 0, lastAt: 0 };
         if (entry.completed) stats.count += 1;
-        stats.bestHold = Math.max(stats.bestHold, longestOpenHold(entry.holds));
         stats.lastAt = Math.max(stats.lastAt, entry.at);
         bySession[entry.id] = stats;
     });
@@ -142,22 +131,12 @@ export function summarizePractice(log, now = Date.now()) {
 
 /**
  * Add one sitting. A sitting shorter than MIN_PRACTICE_SECONDS is ignored unless it completed.
- * @returns {{recorded: boolean, previousBest: number, longestHold: number, personalBest: boolean,
- *   log: ReturnType<typeof readPracticeLog>}}
+ * @returns {{recorded: boolean, log: ReturnType<typeof readPracticeLog>}}
  */
 export function recordPractice(entry, storage = defaultStorage(), now = Date.now()) {
     const log = readPracticeLog(storage);
     const clean = cleanEntry({ at: now, ...entry });
-    const longestHold = clean ? longestOpenHold(clean.holds) : 0;
-    const previousBest = clean ? bestHoldFor(log, clean.id) : 0;
-    const result = {
-        recorded: false,
-        previousBest,
-        longestHold,
-        // Your first measured hold is a beginning, not a record.
-        personalBest: previousBest > 0 && longestHold > previousBest,
-        log,
-    };
+    const result = { recorded: false, log };
     if (!clean || (!clean.completed && clean.seconds < MIN_PRACTICE_SECONDS)) return result;
     log.entries.push(clean);
     if (log.entries.length > MAX_ENTRIES) log.entries.splice(0, log.entries.length - MAX_ENTRIES);
