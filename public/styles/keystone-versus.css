@@ -47,8 +47,9 @@
    stats under the board. The first column is the meter and the air to the well. */
 #multiplayer-container .player-card[data-player] {
     --lv-u: var(--lv-unit, 1);
-    /* The well's walls: the seat's hue, a touch lifted; danger and knock-out recolour it. */
-    --lv-wall: color-mix(in srgb, var(--player-primary, #b8a4ff) 82%, #fff6e9);
+    /* The well's walls: the seat's hue, a touch lifted and never light blue (--player-wall,
+       src/ui/board-walls.js); danger and knock-out recolour it. */
+    --lv-wall: var(--player-wall, color-mix(in srgb, var(--player-primary, #b8a4ff) 82%, #fff6e9));
     --lv-wall-glow: color-mix(in srgb, var(--player-primary, #b8a4ff) 34%, transparent);
     position: relative;
     display: grid;

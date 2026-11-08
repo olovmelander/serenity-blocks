@@ -1429,7 +1429,7 @@
 #single-player-container .player-board-section[data-goal-reduced-motion='true']::after { display: none; }
 .player-board-section[data-goal-reduced-motion='true'] #single-player-border.odyssey-goal-flare {
     animation: none;
-    border-color: var(--odyssey-goal-color, #f3d28d);
+    border-color: var(--odyssey-goal-wall, var(--odyssey-goal-color, #f3d28d));
 }
 @keyframes ody-goal-flare {
     18% {
@@ -1440,7 +1440,8 @@
             inset 0 0 44px color-mix(in srgb, var(--odyssey-goal-color, #f3d28d) 42%, transparent);
     }
     100% {
-        border-color: var(--odyssey-goal-color, #f3d28d);
+        /* The chapter's colour, deepened if light blue (--odyssey-goal-wall, board-walls.js). */
+        border-color: var(--odyssey-goal-wall, var(--odyssey-goal-color, #f3d28d));
         box-shadow:
             0 10px 36px -6px color-mix(in srgb, var(--odyssey-goal-color, #f3d28d) 58%, transparent),
             inset 0 0 18px color-mix(in srgb, var(--odyssey-goal-color, #f3d28d) 22%, transparent);

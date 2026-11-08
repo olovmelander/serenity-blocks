@@ -23,6 +23,7 @@ import { showLocalMatchEnd } from '../../ui/local-match-end-overlay.js';
 import { LocalMatchConfigModal } from '../../ui/local-match-config-modal.js';
 import { LocalVersusHud, versusGoal } from '../../ui/local-versus-hud.js';
 import { applyVersusLayout, readVersusViewport, versusLayout } from '../../ui/local-versus-layout.js';
+import { applyPlayerColor } from '../../ui/board-walls.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import {
     showCinematicLoadingOverlay, waitForCinematicLoadingOverlayPresented, dismissCinematicLoadingOverlay,
@@ -1777,20 +1778,19 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     /**
-     * Apply player-specific colors to UI elements
+     * Each seat's hue (its team's in team play) for keystone-versus.css: the plate, the walls
+     * (never light blue: board-walls.js) and the queue's first tile.
      * @private
      */
     _applyPlayerColors() {
         const numPlayers = this.matchConfig?.numPlayers || 2;
 
-        // Each seat's hue (its team's in team play) for keystone-versus.css: the plate,
-        // the board frame and the queue's first tile.
         for (let i = 1; i <= numPlayers; i++) {
             const scheme = this._getPlayerColorScheme(i - 1);
             const primary = scheme?.primary || '#3b82f6';
             const playerCard = document.getElementById(`player-${i}-card`);
             if (playerCard) {
-                playerCard.style.setProperty('--player-primary', primary);
+                applyPlayerColor(playerCard, primary);
                 playerCard.style.setProperty('--player-primary-light', scheme?.light || primary);
                 playerCard.style.setProperty('--player-glow', scheme?.glow || `${primary}80`);
             }
