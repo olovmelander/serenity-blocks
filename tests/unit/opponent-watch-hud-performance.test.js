@@ -143,11 +143,12 @@ describe('opponent HUD changed-value presentation', () => {
         watcher.updateFromState([snapshot({ frags: 2, color: '#fb7185' })]);
 
         expect(board.nodes['.opponent-frags'].textContent).toBe('2 frags');
-        // The colour is one variable on the station: the stylesheet draws the walls, the
-        // plate's edge and the next tile from it (keystone-online.css).
+        // The colour is two variables on the station: the stylesheet draws the plate's edge
+        // and the next tile from the colour, the walls from its wall (keystone-online.css).
         expect(board.element.style['--player-primary']).toBe('#fb7185');
+        expect(board.element.style['--player-wall']).toBe('#fc8997');
         expect(counts.texts).toBe(1);
-        expect(counts.styles).toBe(1);
+        expect(counts.styles).toBe(2);
         expect(counts.clears).toBe(0);
         expect(counts.selectors).toBe(0);
         expect(counts.classes).toBe(0);
@@ -254,6 +255,8 @@ describe('opponent HUD changed-value presentation', () => {
         expect(watcher._renderSigs.has('P2')).toBe(false);
         expect(board.nodes['.opponent-frags'].textContent).toBe('0 frags');
         expect(board.element.style['--player-primary']).toBe('#22d3ee');
+        // A light-blue player: the walls are deepened (board-walls.js).
+        expect(board.element.style['--player-wall']).toBe('#1194a7');
         expect(board.garbageFill).toBe(board.nodes['.opponent-garbage-fill']);
         expect(board.garbageFill.style.height).toBe('5%');
         expect(board.garbageSegments.children[0].style.background).toBe('#f00');

@@ -12,6 +12,7 @@
  */
 import { emitEffectStep } from '../serenity-mode/serenity-effects.js';
 import { buildOdysseyShowpiece, odysseyShowpieceDuration } from './odyssey-showpiece.js';
+import { deepenLightBlue } from '../board-walls.js';
 
 /** The default reel's length: every theme's showpiece holds the stage this long. */
 export const GOAL_FLOURISH_MS = odysseyShowpieceDuration(buildOdysseyShowpiece());
@@ -71,6 +72,8 @@ export function playOdysseyGoalFlourish(mode, session, { reducedMotion = false }
     inFlight = { timers: [], resolve: null };
     const color = CHAPTER_COLORS[(session.levelConfig?.chapter || 1) - 1] || CHAPTER_COLORS[0];
     well.style.setProperty('--odyssey-goal-color', color);
+    // The flare ends with the walls in the chapter's colour: never a light blue (board-walls.js).
+    well.style.setProperty('--odyssey-goal-wall', deepenLightBlue(color) || color);
     well.dataset.goalReducedMotion = String(reducedMotion);
     // Restart cleanly if an earlier flare is still settling.
     well.getBoundingClientRect?.();

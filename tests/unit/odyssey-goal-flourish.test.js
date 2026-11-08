@@ -10,6 +10,7 @@ import {
 } from '../../src/ui/odyssey/odyssey-showpiece.js';
 import { completeOdysseyLevel } from '../../src/core/game-modes/odyssey-completion.js';
 import { DEMO_LEGACY_SIMULATION_CLOCK } from '../../src/core/demo/DemoRecorder.js';
+import { isLightBlue } from '../../src/ui/board-walls.js';
 
 function element(id = '') {
     const classes = new Set();
@@ -105,6 +106,10 @@ describe('Odyssey goal flourish', () => {
         expect(border.classList.contains('odyssey-goal-flare')).toBe(true);
         expect(well.classList.contains('odyssey-goal-sweep')).toBe(true);
         expect(well.style.setProperty).toHaveBeenCalledWith('--odyssey-goal-color', '#8cd3ed');
+        // Chapter 2's colour is light blue: the walls end the flare in a deeper one.
+        expect(isLightBlue('#8cd3ed')).toBe(true);
+        expect(well.style.setProperty).toHaveBeenCalledWith('--odyssey-goal-wall', '#1e92bd');
+        expect(isLightBlue('#1e92bd')).toBe(false);
         await vi.advanceTimersByTimeAsync(GOAL_FLOURISH_MS - 1);
         expect(combos.map((payload) => payload.comboCount)).toEqual([2, 3, 4, 5, 6]);
         expect(perfectClears).toEqual([expect.objectContaining({ depth: 4, source: 'odyssey-goal', levelId: 7 })]);

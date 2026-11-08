@@ -4,6 +4,7 @@ import { TetrominoStyleManager } from '../rendering/tetromino-style-manager.js';
 import { CanvasBoardEffects } from './effects/canvas-board-effects.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
 import { escapeAttribute, sanitizeCssColor } from '../utils/dom-safety.js';
+import { applyPlayerColor } from './board-walls.js';
 import { createSpectatorPadControls } from './spectator-pad-controls.js';
 import { menuCoversGame } from './sheet-input.js';
 import {
@@ -1410,8 +1411,9 @@ export class OpponentWatchManager {
         div.className = `opponent-mini-board ${startDead ? 'dead' : ''} ${startWaiting ? 'waiting' : ''}`.trim();
         div.dataset.playerId = playerId;
 
-        // Colours come from peers; only a hex colour may reach CSS (peerColor).
-        if (player.color) div.style.setProperty('--player-primary', sanitizeCssColor(player.color));
+        // Colours come from peers; only a hex colour may reach CSS (peerColor). The walls get
+        // a deepened one if it is light blue (board-walls.js).
+        if (player.color) applyPlayerColor(div, sanitizeCssColor(player.color));
         div.innerHTML = `
             <div class="opponent-plate">
                 <span class="opponent-name">${this._escapeHtml(player.name)}</span>
@@ -1572,11 +1574,11 @@ export class OpponentWatchManager {
                     hud.frags = frags;
                 }
 
-                // The player's colour: the stylesheet draws the well's walls, the plate's
-                // edge and the next tile from it (keystone-online.css).
+                // The player's colour: the stylesheet draws the well's walls (--player-wall), the
+                // plate's edge and the next tile from it (keystone-online.css).
                 if (state.color && hud.color !== state.color) {
                     hud.color = state.color;
-                    board.element.style.setProperty('--player-primary', sanitizeCssColor(state.color));
+                    applyPlayerColor(board.element, sanitizeCssColor(state.color));
                 }
 
                 if (garbage) this._updateGarbageMeter(board, state);
@@ -2367,8 +2369,8 @@ export function wireSpectatorSpotlight(watchManager, { getPlayerColor } = {}) {
             // The watched player's colour: the stylesheet draws the plate's edge and the
             // well's walls from it (keystone-online.css), as on every other board.
             const color = sanitizeCssColor(player?.color || (player?.id && getPlayerColor?.(player.id)), '#5eead4');
-            playerCardEl?.style.setProperty('--player-primary', color);
-            eyeEl?.closest('.spectator-spotlight')?.style.setProperty('--player-primary', color);
+            applyPlayerColor(playerCardEl, color);
+            applyPlayerColor(eyeEl?.closest('.spectator-spotlight'), color);
         },
     });
 }
