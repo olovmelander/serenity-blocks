@@ -96,10 +96,11 @@ describe('retained Phaser presentation preserves real command buffers', () => {
         const scene = board();
         const body = vi.spyOn(scene, 'fillFusedBody');
         const gloss = vi.spyOn(scene, 'glossPass');
-        const alphas = new Set();
-        const realFill = scene.fillContour.bind(scene);
-        vi.spyOn(scene, 'fillContour').mockImplementation((...args) => {
-            alphas.add(args[3]); return realFill(...args);
+        // The landing glow breathes with the board's pulse: a new pulse every frame.
+        const pulses = new Set();
+        const realGlow = scene.drawLandingGlow.bind(scene);
+        vi.spyOn(scene, 'drawLandingGlow').mockImplementation((graphics, options) => {
+            pulses.add(options.pulse); return realGlow(graphics, options);
         });
         const layer = scene.pieceGraphics;
         for (let frame = 0; frame < 120; frame++) {
@@ -118,7 +119,7 @@ describe('retained Phaser presentation preserves real command buffers', () => {
         // The reference draws above add 120 calls; retained presentation adds 1.
         expect(body).toHaveBeenCalledTimes(121);
         expect(gloss).toHaveBeenCalledTimes(121);
-        expect(alphas.size).toBe(120);
+        expect(pulses.size).toBe(120);
         expect(scene.add.graphics).toHaveBeenCalledTimes(4);
         layer.strokeRect(3, 5, 8, 11);
         const reference = graphics();

@@ -161,7 +161,8 @@
 #online-multiplayer-container #online-player-card.player-card {
     --ov-u: var(--ov-unit, 1);
     max-height: none;
-    --ov-wall: color-mix(in srgb, var(--player-primary, #b8a4ff) 82%, #fff6e9);
+    /* The walls: your hue, a touch lifted and never light blue (--player-wall, board-walls.js). */
+    --ov-wall: var(--player-wall, color-mix(in srgb, var(--player-primary, #b8a4ff) 82%, #fff6e9));
     --ov-wall-glow: color-mix(in srgb, var(--player-primary, #b8a4ff) 34%, transparent);
     position: relative;
     display: grid;
@@ -483,7 +484,7 @@
 
 #online-multiplayer-container .opponent-mini-board {
     --ow-u: var(--ov-field-unit, 1);
-    --ow-wall: color-mix(in srgb, var(--player-primary, #b8a4ff) 78%, #fff6e9);
+    --ow-wall: var(--player-wall, color-mix(in srgb, var(--player-primary, #b8a4ff) 78%, #fff6e9));
     --ow-wall-glow: color-mix(in srgb, var(--player-primary, #b8a4ff) 30%, transparent);
     position: relative;
     display: grid;
@@ -704,7 +705,12 @@
     opacity: 0.55;
 }
 
-/* A spectator's pick: the plate lifts in the player's colour. */
+/* A spectator's pick: its outline (multiplayer-ui.css) in the walls' colour, never a light
+   blue; the plate lifts in the player's colour. */
+#online-multiplayer-container .opponent-mini-board.spotlighted {
+    outline-color: var(--player-wall, color-mix(in srgb, var(--player-primary, #b8a4ff) 82%, #fff6e9));
+}
+
 #online-multiplayer-container .opponent-mini-board.spotlighted .opponent-plate {
     border-color: color-mix(in srgb, var(--player-primary, #b8a4ff) 70%, transparent);
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--player-primary, #b8a4ff) 40%, transparent);
@@ -867,13 +873,14 @@
     box-shadow: none;
 }
 
-/* The walls: left, right and floor in the watched player's hue; the top stays open. */
+/* The walls: left, right and floor in the watched player's hue (never light blue:
+   --player-wall, board-walls.js); the top stays open. */
 #online-multiplayer-container .spectator-spotlight-canvas {
-    border: 3px solid color-mix(in srgb, var(--player-primary, #9ee8ed) 82%, #fff6e9);
+    border: 3px solid var(--player-wall, color-mix(in srgb, var(--player-primary, #b8a4ff) 82%, #fff6e9));
     border-top: 0;
     border-radius: 0 0 12px 12px;
     background: rgba(9, 8, 24, 0.9);
-    box-shadow: 0 10px 28px -8px color-mix(in srgb, var(--player-primary, #9ee8ed) 34%, transparent);
+    box-shadow: 0 10px 28px -8px color-mix(in srgb, var(--player-primary, #b8a4ff) 34%, transparent);
 }
 
 #online-multiplayer-container .spectator-spotlight-hint {

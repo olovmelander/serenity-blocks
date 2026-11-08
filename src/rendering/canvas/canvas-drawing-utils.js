@@ -7,6 +7,45 @@
 import { COLS, ROWS, HIDDEN_ROWS } from '../../core/constants.js';
 import { calculateGhostY as calculateGhostYCore } from '../../core/pieces.js';
 import { hexToRgb } from '../../utils/helpers.js';
+import { landingRuns, mixColor } from '../board-look.js';
+
+/**
+ * The landing glow on a 2D canvas, as the Phaser boards draw it (board-look.js): under each
+ * column of the piece, at the row it lands on, a soft light rises from the surface and a thin
+ * bright line marks it. Never a see-through copy of the piece.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {ArrayLike<ArrayLike<unknown>>} shape the piece's cells
+ * @param {number} offsetX px of the shape's left edge
+ * @param {number} offsetY px of the shape's top edge at its landing row
+ * @param {number} blockSize px per cell
+ * @param {string} color the piece's colour (#rrggbb)
+ * @param {number} [pulse] 0..1
+ */
+export function drawLandingGlowCanvas(ctx, shape, offsetX, offsetY, blockSize, color, pulse = 0.5) {
+    const parsed = Number.parseInt(String(color || '').replace('#', ''), 16);
+    const light = mixColor(Number.isNaN(parsed) ? 0xffffff : parsed, 0xffffff, 0.35);
+    const rgb = `${(light >> 16) & 255}, ${(light >> 8) & 255}, ${light & 255}`;
+    const glowAlpha = 0.18 + 0.16 * pulse;
+    const lineAlpha = 0.5 + 0.3 * pulse;
+    const rise = blockSize * 0.9;
+    const line = Math.max(1, blockSize * 0.08);
+    ctx.save();
+    for (const run of landingRuns(shape)) {
+        const x = offsetX + run.x0 * blockSize;
+        const w = (run.x1 - run.x0 + 1) * blockSize;
+        const surface = offsetY + (run.bottom + 1) * blockSize;
+        const gradient = ctx.createLinearGradient?.(0, surface - rise, 0, surface);
+        if (gradient) {
+            gradient.addColorStop(0, `rgba(${rgb}, 0)`);
+            gradient.addColorStop(1, `rgba(${rgb}, ${glowAlpha})`);
+        }
+        ctx.fillStyle = gradient || `rgba(${rgb}, ${glowAlpha * 0.5})`;
+        ctx.fillRect(x, surface - rise, w, rise);
+        ctx.fillStyle = `rgba(${rgb}, ${lineAlpha})`;
+        ctx.fillRect(x, surface - line, w, line);
+    }
+    ctx.restore();
+}
 
 /**
  * Calculate optimal block size based on available space

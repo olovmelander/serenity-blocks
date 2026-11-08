@@ -32,8 +32,8 @@ import {
 import {
     createMomentFxOwner, playKnockoutFx, playRoundWinFx, playVictoryFx, restoreKnockoutFx,
 } from './fx/fx-moments.js';
-import { wellGarbageColor } from './well-board-style.js';
 import { prefersReducedFlashing } from '../../utils/photosensitivity.js';
+import { isLightBlue } from '../../ui/board-walls.js';
 
 // Constants
 const RIPPLE_PARTICLE_LIFESPAN = 650;
@@ -823,6 +823,9 @@ export class SharedEffects {
      * @param {number} [alpha=0.4]
      */
     _boardEdgePulse(color = 0xffffff, alpha = 0.4) {
+        // The walls never light up light blue around the dark field (board-walls.js): lavender instead.
+        // eslint-disable-next-line no-param-reassign
+        if (isLightBlue(toneCss(color))) color = TONE.LAVENDER;
         const width = this.scene.cols * this.scene.blockSize;
         const height = this.scene.rows * this.scene.blockSize;
         if (this._lit()) {
@@ -1971,13 +1974,17 @@ export class SharedEffects {
     _cellColorInt(cell) {
         let colorValue = cell?.color;
         const isGarbage = cell?.type === 'GARBAGE' || cell?.type === 'CLEAN_GARBAGE';
+        // Garbage debris is the world's material, as on the board (board-look.js).
+        if (isGarbage && typeof this.scene?.garbageColorInt === 'function') {
+            return this.scene.garbageColorInt(cell.type, cell.color);
+        }
         const isCustomColor = cell?.color && cell.color !== '#808080';
         if (typeof this.scene?.getThemedColor === 'function' && (!isGarbage || !isCustomColor)) {
             colorValue = this.scene.getThemedColor(cell?.type, colorValue);
         }
         if (typeof this.scene?.colorToInt === 'function') {
             const int = this.scene.colorToInt(colorValue) || 0xffffff;
-            return isGarbage && this.scene.wellStyle ? wellGarbageColor(int) : int;
+            return int;
         }
         if (typeof colorValue === 'string') {
             return parseInt(colorValue.replace('#', ''), 16) || 0xffffff;

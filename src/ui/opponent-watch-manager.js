@@ -1,9 +1,11 @@
 import { COLORS, SHAPES } from '../core/constants.js';
-import { drawPieceSolid, drawPieceStyledUnified } from '../rendering/canvas/canvas-drawing-utils.js';
+import { drawLandingGlowCanvas, drawPieceSolid } from '../rendering/canvas/canvas-drawing-utils.js';
+import { garbageMaterialColor } from '../rendering/board-look.js';
 import { TetrominoStyleManager } from '../rendering/tetromino-style-manager.js';
 import { CanvasBoardEffects } from './effects/canvas-board-effects.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
 import { escapeAttribute, sanitizeCssColor } from '../utils/dom-safety.js';
+import { applyPlayerColor } from './board-walls.js';
 import { createSpectatorPadControls } from './spectator-pad-controls.js';
 import { menuCoversGame } from './sheet-input.js';
 import {
@@ -773,13 +775,15 @@ export class OpponentWatchManager {
     _getCellColor(cell, cache) {
         if (!cell || cell === 0) return null;
         if (typeof cell === 'string') {
+            if (cell === 'GARBAGE' || cell === 'CLEAN_GARBAGE') return this._garbageColor(cell);
             const fallback = COLORS[cell] || cell;
             return COLORS[cell]
                 ? this._getThemedColor(cell, fallback, cache)
                 : fallback;
         }
         if (typeof cell === 'number') {
-            return '#808080';
+            // A filled cell with no type: drawn in the world's material, never a neutral grey.
+            return this._garbageColor('GARBAGE');
         }
 
         let colorValue = cell.color;
@@ -788,14 +792,39 @@ export class OpponentWatchManager {
         }
 
         if (cell.type) {
-            const isGarbage = cell.type === 'GARBAGE' || cell.type === 'CLEAN_GARBAGE';
-            const isCustomColor = cell.color && cell.color !== '#808080';
-            if (!isGarbage || !isCustomColor) {
-                colorValue = this._getThemedColor(cell.type, colorValue, cache);
-            }
+            if (cell.type === 'GARBAGE' || cell.type === 'CLEAN_GARBAGE') return this._garbageColor(cell.type, colorValue);
+            colorValue = this._getThemedColor(cell.type, colorValue, cache);
         }
 
-        return colorValue || '#808080';
+        return colorValue || this._garbageColor('GARBAGE');
+    }
+
+    /**
+     * Garbage in the world's own material, tinted by its sender, as on the main boards
+     * (board-look.js).
+     * @param {string} type 'GARBAGE' or 'CLEAN_GARBAGE'
+     * @param {string} [color] the sender's colour, or the plain grey
+     * @returns {string} #rrggbb
+     */
+    _garbageColor(type, color) {
+        const material = this._getStyleManager()?.getWorldGarbage?.() || null;
+        const key = `${material}|${type}|${color}`;
+        if (!this._garbageColors) this._garbageColors = new Map();
+        const cached = this._garbageColors.get(key);
+        if (cached) return cached;
+        const toInt = (value) => {
+            const parsed = Number.parseInt(String(value || '').replace('#', ''), 16);
+            return Number.isNaN(parsed) ? null : parsed;
+        };
+        const plain = !color || color === COLORS.GARBAGE || color === COLORS.CLEAN_GARBAGE;
+        const int = garbageMaterialColor(toInt(material), {
+            attackerInt: plain ? null : toInt(color),
+            clean: type === 'CLEAN_GARBAGE',
+        });
+        const hex = `#${int.toString(16).padStart(6, '0')}`;
+        if (this._garbageColors.size > 64) this._garbageColors.clear();
+        this._garbageColors.set(key, hex);
+        return hex;
     }
 
     _getGhostAlpha(gridX, gridY) {
@@ -1410,8 +1439,9 @@ export class OpponentWatchManager {
         div.className = `opponent-mini-board ${startDead ? 'dead' : ''} ${startWaiting ? 'waiting' : ''}`.trim();
         div.dataset.playerId = playerId;
 
-        // Colours come from peers; only a hex colour may reach CSS (peerColor).
-        if (player.color) div.style.setProperty('--player-primary', sanitizeCssColor(player.color));
+        // Colours come from peers; only a hex colour may reach CSS (peerColor). The walls get
+        // a deepened one if it is light blue (board-walls.js).
+        if (player.color) applyPlayerColor(div, sanitizeCssColor(player.color));
         div.innerHTML = `
             <div class="opponent-plate">
                 <span class="opponent-name">${this._escapeHtml(player.name)}</span>
@@ -1572,11 +1602,11 @@ export class OpponentWatchManager {
                     hud.frags = frags;
                 }
 
-                // The player's colour: the stylesheet draws the well's walls, the plate's
-                // edge and the next tile from it (keystone-online.css).
+                // The player's colour: the stylesheet draws the well's walls (--player-wall), the
+                // plate's edge and the next tile from it (keystone-online.css).
                 if (state.color && hud.color !== state.color) {
                     hud.color = state.color;
-                    board.element.style.setProperty('--player-primary', sanitizeCssColor(state.color));
+                    applyPlayerColor(board.element, sanitizeCssColor(state.color));
                 }
 
                 if (garbage) this._updateGarbageMeter(board, state);
@@ -2177,10 +2207,11 @@ export class OpponentWatchManager {
 
         const pieceType = piece.type || piece.shapeKey;
         const fallbackColor = this._getPieceFallbackColor(piece, pieceType);
-        const styleConfig = this._buildPieceStyleConfig(pieceType, fallbackColor, colorCache);
+        const color = this._getThemedColor(pieceType, fallbackColor, colorCache) || fallbackColor;
         const offsetX = Math.round(Number(piece.x) || 0) * blockSize;
         const offsetY = (Math.floor(pieceY) - 4) * blockSize;
-        drawPieceStyledUnified(ctx, shape, offsetX, offsetY, blockSize, styleConfig, true, 1.0);
+        // Where the piece will land, the surface lights up: no see-through copy (board-look.js).
+        drawLandingGlowCanvas(ctx, shape, offsetX, offsetY, blockSize, color);
     }
 
     _drawCurrentPiece(ctx, piece, blockSize, colorCache) {
@@ -2367,8 +2398,8 @@ export function wireSpectatorSpotlight(watchManager, { getPlayerColor } = {}) {
             // The watched player's colour: the stylesheet draws the plate's edge and the
             // well's walls from it (keystone-online.css), as on every other board.
             const color = sanitizeCssColor(player?.color || (player?.id && getPlayerColor?.(player.id)), '#5eead4');
-            playerCardEl?.style.setProperty('--player-primary', color);
-            eyeEl?.closest('.spectator-spotlight')?.style.setProperty('--player-primary', color);
+            applyPlayerColor(playerCardEl, color);
+            applyPlayerColor(eyeEl?.closest('.spectator-spotlight'), color);
         },
     });
 }

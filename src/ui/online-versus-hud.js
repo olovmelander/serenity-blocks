@@ -13,6 +13,7 @@ import { readVersusViewport, versusParts } from './local-versus-layout.js';
 import { primaryMetric } from './scoreboard-metrics.js';
 import { describeGoal } from './components/mp-sheet.js';
 import { COLS, ROWS } from '../core/constants.js';
+import { applyPlayerColor } from './board-walls.js';
 
 /** How long a round's outcome stays up (the host's beat is ROUND_OVER_BEAT_MS). */
 export const ROUND_BANNER_MS = 2300;
@@ -131,7 +132,7 @@ export class OnlineVersusHud {
     setColor(color) {
         if (!color || color === this._color) return;
         this._color = color;
-        this._el('online-player-card')?.style.setProperty('--player-primary', color);
+        applyPlayerColor(this._el('online-player-card'), color);
     }
 
     /** @param {string} name */

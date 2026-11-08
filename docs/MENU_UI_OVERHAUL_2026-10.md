@@ -676,14 +676,14 @@ play, and how are they doing" at a glance, and every number lives in one place.
   turn coral and breathe, and they calm only once it is three rows lower (no flicker at
   the line). A knocked-out well goes quiet. The whole well, meter included, shakes and
   dips with the board's juice.
-- **The boards' look (`src/rendering/phaser/well-board-style.js`, every well):**
-  pieces and the stack keep the game's solid, fused shapes. Garbage is one solid slate
-  fill faintly tinted by the attacker, so it never passes for a stack of pieces and its
-  holes stay plain to see. The ghost is the piece's own colour, faint inside and
-  outlined, where it will land. Local versus, single player and Infinity turn it on
-  (`BaseBoardScene.setWellStyle`, from `local-board-hosts.js`, `SinglePlayerMode` and
-  `InfinityMode`, which turn it off again on leaving); Odyssey and the other modes keep
-  the base look.
+- **The boards' look (`src/rendering/board-look.js`, every board since 2026-11-08):**
+  pieces and the stack keep the game's solid, fused shapes. Garbage is the world's own
+  material (its palette's GARBAGE colour), lifted until it reads on the dark field, faintly
+  tinted by the attacker and laid in rows a shade apart, so it never passes for a stack of
+  pieces and its holes stay plain to see. There is no see-through copy of the piece: where
+  it will land, the surface under each of its columns glows softly in its colour.
+  (`BaseBoardScene.setWellStyle` still marks the boards in a well; the look no longer
+  depends on it.)
 - **The match told as it happens:** a streak flies from the attacker's board to each
   target's meter with the lines it carries; a frag pops "+1" on the plate; the
   knock-out card names who did it ("By Ada" in their colour) or says "Topped out"; and as

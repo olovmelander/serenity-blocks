@@ -3,8 +3,8 @@
  * [data-board='well']`, set by SinglePlayerMode and InfinityMode).
  *
  * The board stands in an open-top well, as in local versus (keystone-versus.css): walls
- * in the mode's hue (lavender for single player, aqua for Infinity) rise from the floor
- * and fade out toward the top, the glass is plain, the pieces meet both walls, and the
+ * in the mode's hue (lavender for single player, a deep aqua for Infinity) rise from the
+ * floor and fade out toward the top, the glass is plain, the pieces meet both walls, and the
  * next queue stands on the well's mouth. Single player keeps its numbers in one ledger
  * beside the well; Infinity has its HUD on the left and the tower map on the right
  * (src/ui/infinity/InfinityHUD.js, InfinityMinimap.js).
@@ -85,6 +85,14 @@
     max-height: none;
     margin: 0;
     padding: var(--sp-top) 16px var(--sp-bottom);
+}
+
+/* Infinity's walls: its aqua deepened, boardWallColor('#9ee8ed') (src/ui/board-walls.js), so
+   the dark field never wears a light-blue frame; the HUD keeps the aqua. Odyssey borrows this
+   layout and keeps its gold (keystone-overlays.css); :where() leaves Still Air and danger,
+   below, winning. */
+.single-player-stage[data-board='well'].infinity-mode-active:not(:where([data-odyssey-board])) {
+    --sp-wall: #249597;
 }
 
 /* ---- The column: the queue over the well ------------------------------------------- */
