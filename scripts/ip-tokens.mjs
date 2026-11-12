@@ -10,7 +10,10 @@
  *    tracked file names and held at or under the committed baseline in ip-token-ratchet.json, so a
  *    new use fails at once while the count is burned down (`--update` lowers the baseline; it never
  *    raises it).
+ *
+ * Class D, further down: the house words (HOUSE_PHRASES).
  */
+import { createRequire } from 'node:module';
 
 /**
  * Class A: the genre mark. Shipped surfaces only (public/, index.html, the runtime source, dist/
@@ -50,6 +53,154 @@ export const RATCHET_TOKENS = [
     { id: 'sky-children', re: /sky[\s_-]?children/gi },
     { id: 'thatgamecompany', re: /thatgamecompany|\babz[uû]\b|journey\s+\((?:game|thatgamecompany)/gi },
 ];
+
+/**
+ * Class D: house words (2026-11-12). The game describes itself in its own terms, never by
+ * pointing at an older game of its kind, and it has its own names for its moments (an emptied
+ * well is a "Clean canvas"). Checked in the runtime text (tracked text under src/, electron/ and
+ * public/, and index.html; test files aside), in README.md and game_description.md, and in the
+ * built dist/.
+ *
+ * A phrase is looked for in the whole text of a file, comments included. One marked `shownOnly`
+ * is looked for only where a player can read it: in a script, its string and template literals
+ * (the code keeps its internal names for the event, and its comments about them); in any other
+ * file, the whole text.
+ *
+ * @typedef {{ id: string, re: RegExp, shownOnly?: boolean }} HousePhrase
+ */
+
+/** @type {HousePhrase[]} */
+export const HOUSE_PHRASES = [
+    { id: 'classic game', re: /\bclassic\s+games?\b/gi },
+    { id: 'classic falling-block', re: /\bclassic\s+falling[\s-]+blocks?\b/gi },
+    { id: 'classic block puzzle', re: /\bclassic\s+block[\s-]+puzzles?\b/gi },
+    { id: 'classic puzzle', re: /\bclassic\s+puzzles?\b/gi },
+    { id: 'familiar puzzle', re: /\bfamiliar\s+puzzles?\b/gi },
+    { id: 'perfect clear', re: /\bperfect\s+clears?\b/gi, shownOnly: true },
+];
+
+/**
+ * Files that still carry a house phrase while its rewording lands on another branch, as
+ * path -> phrase ids. A listed hit is reported, not failed; an entry whose file no longer has
+ * the phrase fails the gate, so it is removed with the merge that makes it stale.
+ * @type {Map<string, string[]>}
+ */
+export const HOUSE_PHRASES_PENDING = new Map([
+    // The online match setup's garbage note ("as in the classic game") is being reworded on
+    // another branch. Remove this entry when that branch is merged: the gate fails on it then.
+    ['src/ui/match-config-modal.js', ['classic game']],
+]);
+
+const HOUSE_FILES = new Set(['index.html', 'README.md', 'game_description.md']);
+const HOUSE_ROOTS = /^(src|electron|public)\//;
+const TEST_FILE = /(^|\/)__tests__\/|\.test\.[cm]?[jt]s$/;
+const SCRIPT_FILE = /\.(js|mjs|cjs|ts|mts)$/i;
+
+/** Whether a tracked path is one the house words are checked in. */
+export function isHouseSurface(path) {
+    return HOUSE_FILES.has(path) || (HOUSE_ROOTS.test(path) && !TEST_FILE.test(path));
+}
+
+const requireHere = createRequire(import.meta.url);
+/** @type {typeof import('typescript') | null} */
+let ts = null;
+
+/**
+ * The string and template literals of a script, as { text, line }: what the program can put on
+ * screen. Comments, identifiers and regular expressions are left out. Parsed with the
+ * TypeScript compiler (loaded on first use), so a quote in a regular expression or a comment
+ * marker in a string cannot mislead it.
+ * @param {string} source
+ * @param {string} [fileName]
+ * @returns {Array<{ text: string, line: number }>}
+ */
+export function scriptLiterals(source, fileName = 'script.js') {
+    ts ??= requireHere('typescript');
+    const { SyntaxKind } = ts;
+    const kind = /\.m?ts$/i.test(fileName) ? ts.ScriptKind.TS : ts.ScriptKind.JS;
+    const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, false, kind);
+    const pieces = new Set([
+        SyntaxKind.StringLiteral, SyntaxKind.NoSubstitutionTemplateLiteral,
+        SyntaxKind.TemplateHead, SyntaxKind.TemplateMiddle, SyntaxKind.TemplateTail,
+    ]);
+    const literals = [];
+    /** @param {import('typescript').Node} node */
+    const visit = (node) => {
+        if (pieces.has(node.kind)) {
+            const { text } = /** @type {import('typescript').LiteralLikeNode} */ (node);
+            literals.push({ text, line: file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1 });
+        }
+        ts.forEachChild(node, visit);
+    };
+    visit(file);
+    return literals;
+}
+
+/**
+ * The house phrases in one file, as { id, line, context }.
+ * @param {string} path  forward slashes; its extension decides how a `shownOnly` phrase is read
+ * @param {string} source
+ * @returns {Array<{ id: string, line: number, context: string }>}
+ */
+export function findHousePhrases(path, source) {
+    const hits = [];
+    let literals = null;
+    for (const phrase of HOUSE_PHRASES) {
+        if (source.search(phrase.re) < 0) continue;
+        if (phrase.shownOnly && SCRIPT_FILE.test(path)) {
+            literals ??= scriptLiterals(source, path);
+            for (const literal of literals) {
+                for (const hit of findToken(phrase, literal.text)) {
+                    hits.push({ id: phrase.id, line: literal.line + hit.line - 1, context: hit.context });
+                }
+            }
+        } else {
+            for (const hit of findToken(phrase, source)) hits.push({ id: phrase.id, ...hit });
+        }
+    }
+    return hits;
+}
+
+/**
+ * Screen tracked files for the house phrases.
+ * @param {string[]} paths  tracked paths, forward slashes
+ * @param {(path: string) => string | null} readText  a file's text, or null to pass it over
+ * @param {Map<string, string[]>} [pending]
+ * @returns {{ violations: string[], notes: string[], fileCount: number }}  `notes` are the
+ *   pending hits; a pending entry with no hit left is a violation
+ */
+export function screenHouseWords(paths, readText, pending = HOUSE_PHRASES_PENDING) {
+    const violations = [];
+    const notes = [];
+    const seen = new Set();
+    let fileCount = 0;
+    for (const path of paths) {
+        if (!isHouseSurface(path)) continue;
+        const text = readText(path);
+        if (text === null) continue;
+        fileCount++;
+        const allowed = pending.get(path) ?? [];
+        for (const hit of findHousePhrases(path, text)) {
+            const line = `${path}:${hit.line}: "${hit.id}" …${hit.context}…`;
+            if (allowed.includes(hit.id)) {
+                seen.add(`${path}\n${hit.id}`);
+                notes.push(`${line} (pending: HOUSE_PHRASES_PENDING)`);
+            } else {
+                violations.push(`${line} — house words`);
+            }
+        }
+    }
+    for (const [path, ids] of pending) {
+        for (const id of ids) {
+            if (seen.has(`${path}\n${id}`)) continue;
+            violations.push(
+                `${path} no longer carries "${id}": remove its entry from HOUSE_PHRASES_PENDING `
+                    + '(scripts/ip-tokens.mjs)',
+            );
+        }
+    }
+    return { violations, notes, fileCount };
+}
 
 /** Matches of one token in a text, as { line, context }. */
 export function findToken(token, source) {
