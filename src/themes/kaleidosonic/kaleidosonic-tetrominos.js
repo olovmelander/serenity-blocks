@@ -1,19 +1,21 @@
 /**
- * Kaleidosonic — seven notes in psychedelic jewel tones, solid in every board and preview:
- * aqua, sunflower gold, hot magenta, jade, ember, ultraviolet and sky. Two roles are deliberately
- * reassigned (3/7 sit in the conventional bands); every pair stays ΔE > 15 under protan, deutan
- * and tritan simulation, and the closest pairs are held apart in lightness.
+ * Kaleidosonic — seven notes in psychedelic jewel tones, solid in every board and preview: ember,
+ * ultraviolet, jade, hot magenta, aqua, sunflower gold and sky, in piece order. The order is the
+ * world's own: no piece wears the colour its shape usually has (the palette gate reads 0/7, with
+ * its bands widened too). Every pair stays ΔE > 15 under protan, deutan and tritan simulation, and
+ * the closest pairs are held apart in lightness. kaleidosonic-core.js carries the same table by
+ * piece code.
  */
 export const KALEIDOSONIC_TETROMINOS = {
     version: 2,
     colors: {
-        I: '#2EE6D0',
-        O: '#FFD23F',
-        T: '#E8329E',
-        S: '#15A05A',
-        Z: '#FF8A45',
-        J: '#7B4DFF',
-        L: '#5AB0FF',
+        I: '#FF8A45', // ember
+        O: '#7B4DFF', // ultraviolet
+        T: '#15A05A', // jade
+        S: '#E8329E', // hot magenta
+        Z: '#2EE6D0', // aqua
+        J: '#FFD23F', // sunflower gold
+        L: '#5AB0FF', // sky
         GARBAGE: '#2E2440',
         CLEAN_GARBAGE: '#E9DEF5',
     },
