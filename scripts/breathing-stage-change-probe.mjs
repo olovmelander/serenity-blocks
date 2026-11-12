@@ -182,7 +182,7 @@ const START_SESSION = `async ({ id, mode, shorten, tier }) => {
     // The countdown: three beats.
     await pause(2900);
     P.log('startSession', { id });
-    manager.startSession(id, null, null, { openHolds: false, sounds: false, vibration: false });
+    manager.startSession(id, null, null, { sounds: false, vibration: false });
     // A stage made at start (none was prepared) is hooked as soon as it exists.
     const t1 = performance.now();
     while (!P.hook(guide.stage) && performance.now() - t1 < 30000) await pause(20);

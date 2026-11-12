@@ -20,7 +20,7 @@ import { BREATH_WORLDS, resolveBreathWorldId } from './breath-catalogue.js';
 
 export const BREATH_COLLECTION_STORAGE_KEY = 'serenityBlocks_breathCollection';
 export const BREATH_COLLECTION_VERSION = 1;
-/** Open from the start: balance, sleep, focus and stillness, so the right one is always there. */
+/** Open from the start: balance, evening, focus and stillness, so there is always one to begin with. */
 export const STARTER_WORLDS = Object.freeze(['coherence', 'calm-sleep', 'box-breathing', 'zen-garden']);
 export const STARTER_SESSIONS = Object.freeze(['FIRST']);
 /** Breathing time that opens the next world and session for a player who does not travel. */

@@ -1,12 +1,15 @@
 /**
- * Breathing on your own, wired into the game once: the guide, the worlds you may choose (the ones
- * you have found), the time that counts as practice (and can open the next world), and each
- * world's sound: its voice (the Voice switch) and the breath tone. main.js only starts it.
+ * Breathing on your own, wired into the game once: the guide, the worlds you may practise (the
+ * ones you have found; a fast one only once its safety note is read), the time that counts as
+ * practice (and can open the next world), and each world's sound: its voice (the Voice switch)
+ * and the breath tone. main.js only starts it.
  */
 import { initBreathingGuide } from './breathing-guide.js';
+import { getBreathWorld } from './breath-catalogue.js';
 import { getBreathCollection } from './breath-collection-store.js';
 import { announceBreathOpenings } from './breath-openings.js';
 import { trackStandalonePractice } from './breath-practice.js';
+import { canPractise } from './breath-safety.js';
 import { startWorldVoice } from './world-voice.js';
 
 /**
@@ -16,7 +19,8 @@ import { startWorldVoice } from './world-voice.js';
 export function startStandaloneBreathing(app) {
     const guide = initBreathingGuide();
     const breath = getBreathCollection();
-    guide.canChoose = (id) => breath.isWorldOpen(id);
+    // The one gate for starting a world or moving to it, whatever asks (keys, pad, Hub, settings).
+    guide.canChoose = (id) => breath.isWorldOpen(id) && canPractise(getBreathWorld(id).pattern);
     const tracker = trackStandalonePractice({
         guide,
         onRecorded: () => announceBreathOpenings(breath.reconcile({ source: 'practice' })),

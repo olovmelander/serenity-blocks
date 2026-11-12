@@ -96,7 +96,8 @@ const MODES = {
         eyebrow: 'Breathe · Guided breathwork',
         title: 'Sukha Sessions',
         wordmark: { file: 'sukha-sessions', tall: true },
-        lede: 'Nine voice-guided sessions in the breathing worlds, from the short Sukha First Breath to the deep holds of Sukha Phoenix. The Odyssey and your practice open them, one by one.',
+        lede: 'Nine voice-guided sessions in the breathing worlds, from the short Sukha First Breath to the strong '
+            + 'rounds of Sukha Phoenix. The Odyssey and your practice open them, one by one.',
         action: 'Choose a session',
     },
     odyssey: {

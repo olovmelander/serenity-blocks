@@ -1,7 +1,9 @@
 import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
-import { BreathworkSessionManager, MAX_OPEN_HOLD_SECONDS } from '../../src/ui/effects/breathwork-session-manager.js';
+import {
+    BreathworkSessionManager, HOLD_REMINDER_SECONDS, MAX_OPEN_HOLD_SECONDS,
+} from '../../src/ui/effects/breathwork-session-manager.js';
 import { worldCuePairs } from '../../src/ui/effects/breathing/breath-catalogue.js';
 import { createCueDraw } from '../../src/ui/effects/breathing/cue-variety.js';
 
@@ -79,8 +81,9 @@ function at(sessionId, index, options) {
 describe('open holds', () => {
     it('lets you end a Base hold when you breathe in, and measures it', async () => {
         at('BASE', RETENTION);
-        expect(indicator.setGuidance).toHaveBeenLastCalledWith({ mode: 'open-hold', suggested: 60, cap: 120 });
-        expect(indicator.announce).toHaveBeenLastCalledWith('Hold on empty lungs. Breathe in whenever you need to: press Space or tap.');
+        expect(indicator.setGuidance).toHaveBeenLastCalledWith({ mode: 'open-hold' });
+        expect(indicator.announce)
+            .toHaveBeenLastCalledWith('Hold on empty lungs. Breathe in whenever you want to: press Space or tap.');
         // A tap meant for the stage before cannot end the hold in its first moment.
         expect(manager.breathe()).toBe(false);
         await vi.advanceTimersByTimeAsync(60000);
@@ -96,18 +99,37 @@ describe('open holds', () => {
         expect(indicator.setGuidance).toHaveBeenLastCalledWith({ mode: 'paced' });
     });
 
-    it('brings you back at the safety limit', async () => {
+    it('says to breathe in now at the limit, the same in every round, and moves to the recovery breath', async () => {
+        expect(MAX_OPEN_HOLD_SECONDS).toBe(90);
         at('ELIXIR', RETENTION + 3);
-        // A 90 s suggestion would allow 180 s; the two-minute ceiling ends it at 120.
-        expect(manager.holdState.cap).toBe(120);
-        await vi.advanceTimersByTimeAsync(119000);
+        await vi.advanceTimersByTimeAsync(89000);
         expect(manager.currentPhaseIndex).toBe(RETENTION + 3);
+        expect(indicator.showChapter).not.toHaveBeenCalledWith(expect.objectContaining({ title: 'Breathe in now' }));
         await vi.advanceTimersByTimeAsync(1000);
         expect(manager.currentPhaseIndex).toBe(RECOVERY + 3);
-        expect(manager.measure.holds[0]).toMatchObject({ seconds: 120, endedBy: 'limit' });
-        expect(MAX_OPEN_HOLD_SECONDS).toBe(120);
-        expect(manager._holdCap({ duration: 120 })).toBe(120);
-        expect(manager._holdCap({ duration: 60 })).toBe(120);
+        expect(manager.measure.holds[0]).toMatchObject({ seconds: 90, endedBy: 'limit' });
+        // A distinct cue on screen and for a screen reader, beside the recovery breath's own.
+        expect(indicator.showChapter).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Breathe in now' }));
+        expect(indicator.announce).toHaveBeenLastCalledWith('Breathe in now. One full breath in.');
+        expect(indicator.setGuidance).toHaveBeenLastCalledWith({ mode: 'paced' });
+    });
+
+    it('gives every hold the same reminder, never a longer one to reach round by round', () => {
+        expect(HOLD_REMINDER_SECONDS).toBe(60);
+        Object.entries(manager.SESSIONS).forEach(([id, session]) => {
+            session.phases.filter((phase) => phase.type === 'retention').forEach((phase) => {
+                expect(phase.duration, `${id} round ${phase.round}`).toBe(HOLD_REMINDER_SECONDS);
+            });
+        });
+        expect(HOLD_REMINDER_SECONDS).toBeLessThan(MAX_OPEN_HOLD_SECONDS);
+    });
+
+    it('does not show a card at the limit when you breathed in yourself', async () => {
+        at('BASE', RETENTION);
+        await vi.advanceTimersByTimeAsync(20000);
+        manager.breathe();
+        expect(manager.currentPhaseIndex).toBe(RECOVERY);
+        expect(indicator.showChapter).not.toHaveBeenCalledWith(expect.objectContaining({ title: 'Breathe in now' }));
     });
 
     it('keeps the hold paused when you pause, then measures only the time you held', async () => {
@@ -122,13 +144,30 @@ describe('open holds', () => {
         expect(manager.measure.holds[0].seconds).toBe(40);
     });
 
-    it('gives each hold its suggested length when you asked for timed holds', async () => {
+    it('has no timed holds: an old choice of them is ignored, and the hold ends when you breathe in', async () => {
         at('BASE', RETENTION, { openHolds: false });
-        expect(indicator.setGuidance).toHaveBeenLastCalledWith({ mode: 'timed-hold', suggested: 60, cap: 60 });
-        expect(manager.breathe()).toBe(false);
-        await vi.advanceTimersByTimeAsync(60000);
+        expect(indicator.setGuidance).toHaveBeenLastCalledWith({ mode: 'open-hold' });
+        await vi.advanceTimersByTimeAsync(5000);
+        expect(manager.breathe()).toBe(true);
         expect(manager.currentPhaseIndex).toBe(RECOVERY);
-        expect(manager.measure.holds[0]).toMatchObject({ seconds: 60, mode: 'timed', endedBy: 'timer' });
+        expect(manager.measure.holds[0]).toMatchObject({ seconds: 5, mode: 'open', endedBy: 'you' });
+    });
+
+    it('reports no clock for a hold: only whether its reminder has sounded', async () => {
+        const progress = vi.fn();
+        manager.startSession('BASE', progress, vi.fn());
+        manager.currentPhaseIndex = RETENTION;
+        manager._runPhase();
+        await vi.advanceTimersByTimeAsync(30000);
+        const report = progress.mock.lastCall[0];
+        expect(report).toMatchObject({ phase: 'retention', holdReady: false, phaseProgress: 1 });
+        expect(report).not.toHaveProperty('holdElapsed');
+        expect(report).not.toHaveProperty('holdSuggested');
+        const shown = indicator.updateProgress.mock.lastCall[0];
+        expect(shown).not.toHaveProperty('holdElapsed');
+        expect(shown).not.toHaveProperty('holdSuggested');
+        await vi.advanceTimersByTimeAsync(31000);
+        expect(progress.mock.lastCall[0].holdReady).toBe(true);
     });
 });
 
@@ -399,7 +438,7 @@ describe('what you practised', () => {
                     type: 'active', breaths: 5, pattern: [1, 0, 1, 0], round: 1,
                 },
                 {
-                    type: 'retention', hold: 'open', duration: 10, round: 1,
+                    type: 'retention', duration: 10, round: 1,
                 },
                 { type: 'recovery', duration: 4, round: 1 },
             ],
@@ -415,7 +454,6 @@ describe('what you practised', () => {
             completed: true,
             rounds: 1,
             breaths: 5,
-            longestHold: 14,
             totalDuration: 28,
             holds: [{
                 round: 1, seconds: 14, suggested: 10, mode: 'open', endedBy: 'you',

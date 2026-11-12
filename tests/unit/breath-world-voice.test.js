@@ -296,6 +296,30 @@ describe('The breath tone of a practice on your own', () => {
         expect(chimes.tone.mock.calls).toEqual([['in', 3], ['out', 2]]);
     });
 
+    it('leaves the rest after the fire breath quiet: no words to feed the fire, no tones to pace it', async () => {
+        guide.currentTechnique = 'volcanic-fire';
+        guide.pattern = [3, 0, 2, 0];
+        guide.isActive = true;
+        start();
+        await settle();
+        introDone();
+        breath();
+        voice.playCue.mockClear();
+        chimes.tone.mockClear();
+        // Its thirty breaths done, the guide rests in slow natural breathing.
+        guide.isResting = true;
+        guide.pattern = [4, 1, 6, 1];
+        for (let index = 0; index < CUE_EVERY * 2; index += 1) breath();
+        expect(voice.playCue).not.toHaveBeenCalled();
+        expect(chimes.tone).not.toHaveBeenCalled();
+        expect(voice.stopAll).toHaveBeenCalled();
+        // Begun again while it still rests: no introduction to thirty quick breaths either.
+        voice.playVoiceWithCallback.mockClear();
+        announce('breathingGuideChange');
+        await settle();
+        expect(voice.playVoiceWithCallback).not.toHaveBeenCalled();
+    });
+
     it('is on all the time: silent only in a Sukha session (it has its own) and once the practice stops', async () => {
         switchOn = false;
         const worldVoice = start();

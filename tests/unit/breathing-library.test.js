@@ -4,6 +4,9 @@ import {
 import { BreathingTab } from '../../src/ui/serenity-hub/BreathingTab.js';
 import { BreathCollectionService } from '../../src/ui/effects/breathing/breath-collection.js';
 import { BREATH_WORLDS } from '../../src/ui/effects/breathing/breath-catalogue.js';
+import {
+    BREATH_CAUTION, BREATH_SAFETY_ACK, BREATH_SAFETY_VERSION,
+} from '../../src/ui/effects/breathing/breath-safety.js';
 import { looseNode, looseWindow, targetMatching } from './helpers/loose-dom.js';
 
 let container;
@@ -58,7 +61,7 @@ describe('breathing library', () => {
         // The guide still holds another world; Begin starts the saved choice, so the hero shows it.
         createTab();
         expect(hero('.breath-lib__name').textContent).toBe('Moonlit Waters');
-        expect(hero('.breath-lib__eyebrow').textContent).toBe('Sleep · In for 4, hold for 7, out for 8.');
+        expect(hero('.breath-lib__eyebrow').textContent).toBe('Evening · In for 4, hold for 7, out for 8.');
         expect(hero('.breath-rhythm').getAttribute('aria-label')).toBe('Inhale 4s → Hold 7s → Exhale 8s');
         expect(hero('.breath-lib__cycle').textContent).toBe('19 s per breath · about 3.2 a minute');
         expect(hero('.breath-lib__begin').textContent).toBe('Begin Moonlit Waters');
@@ -78,13 +81,53 @@ describe('breathing library', () => {
         expect(hero('.breath-lib__begin').disabled).toBe(true);
         click({ '.breath-lib__begin': true });
         expect(guide.start).not.toHaveBeenCalled();
+        // It runs for its breaths and rests: the hero says so where a gentle world gives its pace.
+        expect(hero('.breath-lib__cycle').textContent).toBe('5 s per breath · 30 breaths, then a rest');
         const ack = caution.querySelector('.breath-lib__ack-input');
         container.fire('change', { target: Object.assign(targetMatching({ '.breath-lib__ack-input': ack }), { checked: true }) });
-        expect(stored.get('serenity.breathSafetyRead')).toBe('2026-11-08');
+        expect(stored.get('serenity.breathSafetyRead')).toBe(BREATH_SAFETY_VERSION);
         expect(hero('.breath-lib__begin').disabled).toBe(false);
         expect(caution.querySelector('.breath-lib__ack').hidden).toBe(true);
         click({ '.breath-lib__begin': true });
         expect(guide.start).toHaveBeenCalledOnce();
+    });
+
+    it('draws the note as a lead line and a short list, with the tick that names what it asks', () => {
+        createTab();
+        const html = container.innerHTML;
+        expect(html).toContain(`<span>${BREATH_CAUTION.lead}</span>`);
+        expect(html.match(/<ul class="breath-note__points">/g)).toHaveLength(1);
+        BREATH_CAUTION.points.forEach((point) => expect(html).toContain(`<li>${point}</li>`));
+        expect(html).toContain(`<span>${BREATH_SAFETY_ACK}</span>`);
+        expect(html).not.toContain('I understand');
+        // The voice is named for what it is beside its switch.
+        expect(html).toContain('The guide\'s voice is AI-generated.');
+    });
+
+    it('only shows a fast world whose note is unread: its card never gives it to the guide or a practice', () => {
+        const stored = new Map();
+        win.localStorage = {
+            getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value),
+        };
+        const tab = createTab();
+        click({ '.breath-world': cards[6] });
+        expect(guide.setTechnique).not.toHaveBeenCalled();
+        expect(tab.serenityMode.deps.settingsManager.update).not.toHaveBeenCalled();
+        expect(hero('.breath-lib__name').textContent).toBe('Volcanic Fire');
+        expect(hero('.breath-lib__caution').hidden).toBe(false);
+        expect(hero('.breath-lib__begin').disabled).toBe(true);
+        // While a practice runs the card is still shown, over what is playing.
+        guide.isActive = true;
+        win.dispatchEvent({ type: 'breathingGuideChange', detail: { active: true } });
+        expect(hero('.breath-lib__name').textContent).toBe('Aurora Dreams');
+        click({ '.breath-world': cards[6] });
+        expect(guide.setTechnique).not.toHaveBeenCalled();
+        expect(hero('.breath-lib__name').textContent).toBe('Volcanic Fire');
+        expect(hero('.breath-lib__caution').querySelector('.breath-lib__ack').hidden).toBe(false);
+        // Another world's card moves the practice as before, and the hero follows what is playing.
+        click({ '.breath-world': cards[4] });
+        expect(guide.setTechnique).toHaveBeenLastCalledWith('coherence');
+        expect(hero('.breath-lib__name').textContent).toBe('Heart Glow');
     });
 
     it('shows no safety note with a gentle world', () => {
