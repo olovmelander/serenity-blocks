@@ -9,7 +9,8 @@
  * The navigator's grammar (odyssey-outcome-sheet.js, public/styles/odyssey-outcome.css): the
  * orb's world as the hero in its chapter's light, the orb's name, the stars landing a beat apart
  * and why, the run in figures, then what the clear left (a first-clear theme); the leaderboard
- * has a column of its own, and Continue sits in a footer that never scrolls away.
+ * has a column of its own, and Continue sits in a footer that never scrolls away. The column
+ * is there only where the Steam client offers leaderboards (steam-leaderboard-panel.js).
  */
 
 import { STEAM_LEADERBOARDS } from '../../core/steam/steam-config.js';
@@ -17,6 +18,7 @@ import {
     SteamLeaderboardPanel,
     formatMilliseconds,
     formatNumber,
+    steamLeaderboardsAvailable,
 } from '../components/steam-leaderboard-panel.js';
 import {
     appendKeyHint, createKeystoneSheet, el, isSettingsOverSheet,
@@ -68,8 +70,10 @@ export function createResultsModal({
         variant: 'results',
     });
     const orb = describeOdysseyOutcomeOrb(levelConfig);
+    // No leaderboards from this Steam client: no column, and nothing said about one.
+    const showLeaderboards = includeLegacyResults && steamLeaderboardsAvailable();
     const { main, side, footer } = createOdysseyOutcomeFrame(modal, panel, {
-        orb, state: 'cleared', side: includeLegacyResults,
+        orb, state: 'cleared', side: showLeaderboards,
     });
 
     // Result first: where the orb lies, its name, the stars and the run. Reward second.
@@ -134,7 +138,7 @@ export function createResultsModal({
         unrankedNotice.appendChild(el(
             'span',
             '',
-            'Run stars are a preview. Campaign progress and leaderboard results were not saved.',
+            'Run stars are a preview. Campaign progress was not saved.',
         ));
         main.appendChild(unrankedNotice);
     }
@@ -144,7 +148,7 @@ export function createResultsModal({
         ? createThemeUnlockReward(results.themeUnlock, { reducedMotion: results.reducedMotion === true }) : null;
     if (themeReward) main.appendChild(themeReward);
 
-    if (includeLegacyResults && side) {
+    if (showLeaderboards && side) {
         // Steam leaderboard panel (level time + total stars), in its own column so a long board
         // never pushes Continue away. Experimental clocks never construct this view because
         // mount() immediately reads cached/live entries from the unversioned legacy boards.

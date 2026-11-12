@@ -6,17 +6,25 @@
  * - Chat on or off is the `onlineChat` setting (Settings › General › Online chat). Off, no
  *   player's message is shown or sent: each chat log keeps only the game's own lines and one
  *   saying chat is off, and its message field is hidden.
+ * - Chat with players you do not know is opt-in. In a public match (one anyone can join:
+ *   core/multiplayer/lobby-type.js) chat is off in the same way, for players and for those
+ *   watching, unless the `publicMatchChat` setting ("Chat in public matches", off by default)
+ *   is on. Friends and invite-only matches follow `onlineChat` alone. The mode tells this
+ *   module which kind of match the player is in (setChatLobbyType).
  * - Muting is this player's alone. The muted player is not told; the host still relays their
  *   messages to everyone else (core/multiplayer/ffa/chat-relay.js does not change); this game
  *   just does not show them. The list stays on this computer (localStorage, by Steam ID with
  *   the name shown when muted, so Settings can list it). It is never sent anywhere and is not
  *   part of the settings Steam Cloud keeps.
+ * - Beside each mute button is "View Steam profile": it opens that player's profile in the
+ *   Steam overlay, where Steam's own tools to block or report a player are.
  *
  * Every chat log draws through renderChatLog() / appendChatMessage() and redraws on
  * onChatModerationChange(), so a mute also hides what that player already said, and an unmute
  * brings it back. Styles: public/styles/keystone-multiplayer.css (`.chat-mute-btn`,
- * `.is-chat-off`, `.player-mute-btn`).
+ * `.chat-profile-btn`, `.is-chat-off`, `.player-mute-btn`, `.player-profile-btn`).
  */
+import steamService from '../core/steam/steam-service.js';
 import { sanitizeCssColor } from '../utils/dom-safety.js';
 import { csIconInner } from './components/cosmic-icons.js';
 
@@ -25,6 +33,10 @@ export const CHAT_MUTES_KEY = 'serenityBlocks.chatMutes';
 export const MAX_CHAT_MUTES = 500;
 const MAX_NAME_CHARS = 32;
 export const CHAT_OFF_NOTE = 'Chat is off. Turn it on in Settings › General.';
+export const PUBLIC_CHAT_OFF_NOTE = 'Chat is off in public matches. To chat with players you don\'t know, '
+    + 'turn on "Chat in public matches" in Settings › General.';
+/** What the "View Steam profile" buttons say on hover: where Steam's own tools are. */
+export const STEAM_PROFILE_HINT = 'View Steam profile. Steam\'s tools to block or report a player are there.';
 
 /**
  * @typedef {{ steamId: string, name: string, at: number }} ChatMute
@@ -34,6 +46,11 @@ export const CHAT_OFF_NOTE = 'Chat is off. Turn it on in Settings › General.';
 
 /** @type {Map<string, { name: string, at: number }> | null} */
 let mutes = null;
+/**
+ * The match this player is in, as chat treats it; null outside one.
+ * @type {'public' | 'friends' | 'private' | null}
+ */
+let lobbyType = null;
 /** @type {Set<(change: ChatModerationChange) => void>} */
 const listeners = new Set();
 let listeningToSettings = false;
@@ -102,19 +119,53 @@ function listenToSettings() {
     listeningToSettings = true;
     win.addEventListener('settingsChanged', (event) => {
         const { detail } = /** @type {CustomEvent} */ (event);
-        if (detail && Object.prototype.hasOwnProperty.call(detail, 'onlineChat')) {
-            notify({ kind: 'chat', on: detail.onlineChat !== false });
-        }
+        const changed = (key) => Boolean(detail) && Object.prototype.hasOwnProperty.call(detail, key);
+        if (changed('onlineChat') || changed('publicMatchChat')) notify({ kind: 'chat', on: isChatOn() });
     });
 }
 
-/** Whether online chat is on (the `onlineChat` setting; on unless turned off). */
-export function isChatOn() {
+/** The two chat settings as they stand ({} when they cannot be read). */
+function chatSettings() {
     try {
-        return /** @type {any} */ (globalThis.window)?.settingsManager?.get?.()?.onlineChat !== false;
+        return /** @type {any} */ (globalThis.window)?.settingsManager?.get?.() ?? {};
     } catch {
-        return true;
+        return {};
     }
+}
+
+/**
+ * Tell chat which kind of match this player is in: `friends` or `private` (among friends),
+ * anything else for a public one, null on leaving. Every chat log redraws.
+ * @param {unknown} type
+ */
+export function setChatLobbyType(type) {
+    let next = null;
+    if (type !== null && type !== undefined) next = type === 'friends' || type === 'private' ? type : 'public';
+    if (next === lobbyType) return;
+    lobbyType = /** @type {typeof lobbyType} */ (next);
+    notify({ kind: 'chat', on: isChatOn() });
+}
+
+/**
+ * Why this player has no chat right now: `setting` (chat is turned off), `public` (a public
+ * match, and "Chat in public matches" is off), or null when chat is on.
+ * @returns {'setting' | 'public' | null}
+ */
+export function chatOffReason() {
+    const settings = chatSettings();
+    if (settings.onlineChat === false) return 'setting';
+    if (lobbyType === 'public' && settings.publicMatchChat !== true) return 'public';
+    return null;
+}
+
+/** Whether this player sees and sends chat right now. */
+export function isChatOn() {
+    return chatOffReason() === null;
+}
+
+/** The line a chat log shows while chat is off: why, and where to turn it on. */
+export function chatOffNote() {
+    return chatOffReason() === 'public' ? PUBLIC_CHAT_OFF_NOTE : CHAT_OFF_NOTE;
 }
 
 /** @param {unknown} steamId */
@@ -282,8 +333,46 @@ export function createChatMessageElement(msg, { localPlayerId = null, colorOf, d
             mutePlayer(entry.steamId, entry.name);
         });
         el.appendChild(button);
+        const profile = createSteamProfileButton(entry.steamId, entry.name, { doc, className: 'chat-profile-btn' });
+        if (profile) el.appendChild(profile);
     }
     return el;
+}
+
+/**
+ * Whether a player has a Steam profile to open: a SteamID64 (not a test lobby's stand-in).
+ * @param {unknown} steamId
+ */
+export function hasSteamProfile(steamId) {
+    return /^\d{17}$/.test(idOf(steamId));
+}
+
+/**
+ * A "View Steam profile" button for another player, or null when they have no Steam profile.
+ * It opens their profile in the Steam overlay; its tooltip says Steam's block and report tools
+ * are there.
+ * @param {unknown} steamId
+ * @param {string} name  the player's name, for the button's label
+ * @param {{ className?: string, size?: number, doc?: Document }} [options]
+ * @returns {HTMLButtonElement | null}
+ */
+export function createSteamProfileButton(steamId, name, {
+    className = 'chat-profile-btn', size = 14, doc = globalThis.document,
+} = {}) {
+    const id = idOf(steamId);
+    if (!hasSteamProfile(id)) return null;
+    const button = doc.createElement('button');
+    button.type = 'button';
+    button.className = className;
+    button.dataset.steamId = id;
+    button.setAttribute('aria-label', `View ${name || 'this player'}'s Steam profile`);
+    button.title = STEAM_PROFILE_HINT;
+    button.innerHTML = chatIcon('human', size);
+    button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        steamService.activateOverlayToUser(id);
+    });
+    return button;
 }
 
 /**
@@ -299,7 +388,7 @@ export function renderChatLog(container, messages, options = {}) {
     const on = isChatOn();
     markChatPanel(container, on);
     const lines = [...messages].filter((msg) => isChatMessageShown(msg, options.localPlayerId));
-    if (!on) lines.push(CHAT_OFF_NOTE);
+    if (!on) lines.push(chatOffNote());
     container.replaceChildren(...lines.map((msg) => createChatMessageElement(msg, options)));
     container.scrollTop = container.scrollHeight;
 }
@@ -338,8 +427,10 @@ export function chatIcon(name, size = 14) {
         + `${csIconInner(name)}</svg>`;
 }
 
-/** Tests only: forget the cached list and every listener. */
+/** Tests only: forget the cached list, the match and every listener (the settings one too). */
 export function resetChatModerationForTests() {
     mutes = null;
+    lobbyType = null;
     listeners.clear();
+    listeningToSettings = false;
 }

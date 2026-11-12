@@ -273,7 +273,6 @@ class MainMenuPlayerCard {
             this.statePill.textContent = 'Limited';
             this.statePill.classList.add('visible', 'partial');
             const missing = [];
-            if (!capabilities.leaderboards) missing.push('leaderboards');
             if (!capabilities.cloud) missing.push('cloud saves');
             if (!capabilities.achievements) missing.push('achievements');
             if (!capabilities.friends) missing.push('friends');

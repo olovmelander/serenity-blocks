@@ -11,9 +11,15 @@ export const PRIVACY_CONTACT_PLACEHOLDER = /to be added before release/i;
 
 /**
  * The privacy page (PRIVACY_POLICY.md, shown in Settings › Credits & legal) must name a contact
- * before a store build: a warning until then, an error under SERENITY_RELEASE=1.
+ * before a store build: a warning until then, and an error under SERENITY_RELEASE=1 or as soon as
+ * the game's own Steam AppID is set in electron/steam-app-id.js (from then on every packaged
+ * build starts Steam as the game, whether or not it was built as a release).
  */
-export function evaluatePrivacyPolicy({ root = process.cwd(), isReleaseBuild = false } = {}) {
+export function evaluatePrivacyPolicy({
+    root = process.cwd(),
+    isReleaseBuild = false,
+    releaseAppId = RELEASE_STEAM_APP_ID,
+} = {}) {
     const file = path.join(root, 'PRIVACY_POLICY.md');
     let text = '';
     try {
@@ -25,10 +31,14 @@ export function evaluatePrivacyPolicy({ root = process.cwd(), isReleaseBuild = f
         };
     }
     if (!PRIVACY_CONTACT_PLACEHOLDER.test(text)) return { diagnostics: [], failed: false };
-    const level = isReleaseBuild ? 'error' : 'warning';
+    const appIdSet = isReleaseSteamAppId(releaseAppId);
+    const blocking = isReleaseBuild || appIdSet;
+    const message = appIdSet && !isReleaseBuild
+        ? 'PRIVACY_POLICY.md still has no contact address, and the release Steam AppID is set; fill it in.'
+        : 'PRIVACY_POLICY.md still has no contact address; fill it in before a store build.';
     return {
-        diagnostics: [{ level, message: 'PRIVACY_POLICY.md still has no contact address; fill it in before a store build.' }],
-        failed: isReleaseBuild,
+        diagnostics: [{ level: blocking ? 'error' : 'warning', message }],
+        failed: blocking,
     };
 }
 

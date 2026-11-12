@@ -8,6 +8,9 @@ import { SteamNetworking } from '../steam/steam-networking.js';
 import steamService from '../steam/steam-service.js';
 import { FFAGameStateP2P } from '../multiplayer/ffa-p2p-game-state.js';
 import { readMatchLevelRule } from '../multiplayer/match-level-rule.js';
+import {
+    LOBBY_TYPE_KEY, chatLobbyType, createdLobbyType, joinedLobbyType, lobbyOffersJoinToFriends,
+} from '../multiplayer/lobby-type.js';
 import { LobbyBrowser } from '../../ui/lobby-browser.js';
 import { LobbyWaitingRoom } from '../../ui/lobby-waiting-room.js';
 import { MatchConfigModal } from '../../ui/match-config-modal.js';
@@ -23,6 +26,8 @@ import {
     createOutCard, createStatusCard, showOutCard, showStatusCard,
 } from '../../ui/keystone/out-card.js';
 import { OnlineChat } from '../../ui/online-chat.js';
+import { setChatLobbyType } from '../../ui/chat-moderation.js';
+import { ensureOnlinePlayNotice, hasSeenOnlinePlayNotice } from '../../ui/online-play-notice.js';
 import { menuCoversGame } from '../../ui/sheet-input.js';
 import { MultiplayerScoreboardOverlay } from '../../ui/multiplayer-scoreboard-overlay.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
@@ -71,6 +76,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         // State
         this.currentLobbyId = null;
+        this.lobbyType = null; // who can join the match we are in (multiplayer/lobby-type.js)
         this.isInMatch = false;
 
         // Game rendering
@@ -212,6 +218,14 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             this.initializeLobbyUI();
             this._ensureMatchResultsModal();
 
+            // First time here: what an online match shares, read before one can be joined.
+            // Backing out returns to the menu. A test lobby without Steam connects to nobody.
+            const understood = this.steamNetworking.mockMode === true || await ensureOnlinePlayNotice();
+            if (this._onlineActivation !== activation || !this.isActive) return;
+            if (!understood) {
+                await this.handleLobbyBrowserCancelled();
+                return;
+            }
             await this.showLobbyBrowser();
         } catch (error) {
             if (this._onlineActivation !== activation || !this.isActive) return;
@@ -250,8 +264,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             throw new Error('Steam networking must be initialized first');
         }
 
-        console.log('[OnlineMultiplayer] Initializing lobby UI...');
-
         // Create lobby browser with cancel callback
         this.lobbyBrowser = new LobbyBrowser(
             this.steamNetworking,
@@ -265,8 +277,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             (config) => this.handleCreateLobby(config),
             () => this.showLobbyBrowser(),
         );
-
-        console.log('[OnlineMultiplayer] ✅ Lobby UI initialized');
     }
 
     /**
@@ -297,8 +307,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         if (!this.lobbyBrowser) {
             throw new Error('Lobby browser not initialized');
         }
-
-        console.log('[OnlineMultiplayer] Showing lobby browser...');
         await this.lobbyBrowser.show();
     }
 
@@ -306,12 +314,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      * Called when lobby browser is cancelled
      */
     async handleLobbyBrowserCancelled() {
-        console.log('[OnlineMultiplayer] Lobby browser cancelled, returning to start modal');
-        console.log('[OnlineMultiplayer] Current mode state - isActive:', this.isActive, 'isRunning:', this.isRunning);
-
         // Manually deactivate this mode since we can't access gameModeManager
         // (gameModeManager is not in deps to avoid circular dependency)
-        console.log('[OnlineMultiplayer] Manually resetting mode state...');
         this.isActive = false;
         this.isRunning = false;
         this.isPaused = false;
@@ -326,18 +330,17 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         if (this.deps.modalManager) {
             this.deps.modalManager.show('start');
         }
-
-        console.log('[OnlineMultiplayer] handleLobbyBrowserCancelled complete - mode reset');
     }
 
     /**
      * Handle joining a lobby
      */
     async handleJoinLobby(lobbyId, options = {}) {
+        // Nothing is joined (an invite included) before the online notice has been read.
+        if (this.steamNetworking?.mockMode !== true && !hasSeenOnlinePlayNotice()) return;
         try {
             const asSpectator = !!options.asSpectator;
             this.isSpectator = asSpectator;
-            console.log(`[OnlineMultiplayer] Joining lobby: ${lobbyId}${asSpectator ? ' (SPECTATOR)' : ''}`);
 
             // Leave any existing lobby state before joining a new one
             if (this.currentLobbyId && this.currentLobbyId !== lobbyId && this.steamNetworking) {
@@ -387,14 +390,20 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             // Announce join to host (carries asSpectator so the host won't roster a spectator)
             this.ffaGameState.announceJoin();
 
-            // Fetch lobby name
+            // Fetch lobby name, and who can join: a match from the public list is public
+            // whatever its host says; chat and "Join game" follow it (multiplayer/lobby-type.js).
             let lobbyName = 'FFA Match';
+            let declared = null;
             try {
                 const name = await this.steamNetworking.getLobbyData(lobbyId, 'game_name');
                 if (name) lobbyName = name;
+                declared = await this.steamNetworking.getLobbyData(lobbyId, LOBBY_TYPE_KEY);
             } catch (err) {
                 console.warn('[OnlineMultiplayer] Failed to fetch lobby name:', err);
             }
+            const listed = !this.steamNetworking.mockMode && this.lobbyBrowser?.lists(lobbyId);
+            this.lobbyType = joinedLobbyType({ declared, listed });
+            setChatLobbyType(chatLobbyType(this.lobbyType));
 
             // Update game state with lobby info
             if (this.ffaGameState) {
@@ -406,8 +415,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
             // Show waiting room
             this.showWaitingRoom();
-
-            console.log('[OnlineMultiplayer] ✅ Joined lobby successfully');
         } catch (error) {
             console.error('[OnlineMultiplayer] Failed to join lobby:', error);
             this._clearLobbyRichPresence();
@@ -445,8 +452,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      */
     async handleCreateLobby(config) {
         try {
-            console.log('[OnlineMultiplayer] Creating new lobby with config:', config);
-
             // Create lobby via Steam
             const lobbyId = await this.steamNetworking.createLobby(config);
 
@@ -474,6 +479,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             };
 
             this.currentLobbyId = lobbyId;
+            this.lobbyType = createdLobbyType(config.lobbyType);
+            setChatLobbyType(chatLobbyType(this.lobbyType));
 
             // Update game state with lobby info
             if (this.ffaGameState) {
@@ -492,8 +499,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
             // Show waiting room
             this.showWaitingRoom();
-
-            console.log(`[OnlineMultiplayer] ✅ Lobby created: ${lobbyId}`);
         } catch (error) {
             console.error('[OnlineMultiplayer] Failed to create lobby:', error);
             throw error; // the create sheet stays open and shows the reason inline
@@ -507,8 +512,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         if (!this.ffaGameState) {
             throw new Error('Game state not initialized');
         }
-
-        console.log('[OnlineMultiplayer] Showing waiting room...');
 
         // Create waiting room UI if not already created
         if (!this.lobbyWaitingRoom) {
@@ -563,20 +566,16 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             );
             this.cleanupHandlers.push(this.matchStartedUnsub);
         }
-
-        console.log('[OnlineMultiplayer] ✅ Waiting room shown');
     }
 
     /**
      * Handle leaving lobby
      */
     handleLeaveLobby() {
-        console.log('[OnlineMultiplayer] Handling lobby leave...');
         this.matchResultsModal?.hide();
 
         // Leave current lobby via Steam
         if (this.currentLobbyId && this.steamNetworking) {
-            console.log('[OnlineMultiplayer] Leaving Steam lobby...');
             this.steamNetworking.leaveLobby();
             this.currentLobbyId = null;
         }
@@ -590,7 +589,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         }
 
         // Show lobby browser again
-        console.log('[OnlineMultiplayer] Returning to lobby browser...');
         this.showLobbyBrowser();
     }
 
@@ -2601,12 +2599,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      * Called when user clicks "Start Game" (or joins lobby)
      */
     async onStart(options = {}) {
-        console.log('[OnlineMultiplayer] Starting online game...');
-
         // For online multiplayer, the game starts through the lobby flow
         // If onStart is called before lobby selection, just wait for user interaction
         if (!this.lobbyBrowser) {
-            console.log('[OnlineMultiplayer] Waiting for lobby browser initialization...');
             return;
         }
 
@@ -2615,10 +2610,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         if (options?.lobbyId) {
             await this.handleJoinLobby(options.lobbyId);
-            return;
         }
-
-        console.log('[OnlineMultiplayer] Use lobby browser to create/join matches');
     }
 
     /**
@@ -2626,8 +2618,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      */
     onPause() {
         super.onPause();
-
-        console.log('[OnlineMultiplayer] Pause requested (may not be allowed in competitive)');
 
         // In competitive online multiplayer, pausing is typically not allowed
         // Players can leave, but the match continues for others
@@ -2638,8 +2628,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      */
     onResume() {
         super.onResume();
-
-        console.log('[OnlineMultiplayer] Resume requested');
     }
 
     /**
@@ -2725,10 +2713,17 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     }
 
     /**
-     * Update Steam Rich Presence for lobby joins (enables "Join Game")
+     * Update Steam Rich Presence for lobby joins (enables "Join Game"). Only a public or
+     * friends match is offered to friends: a private one, or one whose type is not known, sets
+     * no `connect` key and no group (the group is the lobby ID), so it is joined by invite or
+     * by the ID its host shares (multiplayer/lobby-type.js).
      */
     async _setLobbyRichPresence() {
         if (!this.currentLobbyId) {
+            return;
+        }
+        if (!lobbyOffersJoinToFriends(this.lobbyType)) {
+            this._clearLobbyRichPresence(true);
             return;
         }
 
@@ -2742,9 +2737,14 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     }
 
     /**
-     * Clear lobby-specific Rich Presence keys
+     * Clear lobby-specific Rich Presence keys. Called on every way out of a lobby, so it also
+     * forgets the match's type (chat goes back to its setting alone) unless `stillInLobby`.
      */
-    _clearLobbyRichPresence() {
+    _clearLobbyRichPresence(stillInLobby = false) {
+        if (!stillInLobby) {
+            this.lobbyType = null;
+            setChatLobbyType(null);
+        }
         steamService.clearRichPresenceKey('connect');
         steamService.clearRichPresenceKey('steam_player_group');
         steamService.clearRichPresenceKey('steam_player_group_size');

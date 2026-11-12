@@ -34,7 +34,7 @@ function steamApi(status) {
             if (channel === 'steam:getConnectionStatus') return status;
             if (channel === 'steam:getCapabilities') {
                 return {
-                    leaderboards: false, cloud: true, friends: true, achievements: true,
+                    leaderboards: false, cloud: true, friends: true, achievements: false,
                 };
             }
             if (channel === 'steam:getFriends') return [{ gameId: '480', inGame: true }];
@@ -124,7 +124,7 @@ describe('main menu player card', () => {
             if (channel === 'steam:getConnectionStatus') return online;
             if (channel === 'steam:getCapabilities') {
                 return {
-                    leaderboards: false, cloud: true, friends: true, achievements: true,
+                    leaderboards: false, cloud: true, friends: true, achievements: false,
                 };
             }
             if (channel === 'steam:getFriends') return [{ gameId: '480', inGame: true }];
@@ -136,7 +136,10 @@ describe('main menu player card', () => {
         expect(card.nameElement.textContent).toBe('Melolo');
         expect(card.statusText.textContent).toBe('Online');
         expect(card.statePill.textContent).toBe('Limited');
-        expect(card.statePill.title).toContain('leaderboards');
+        // What Steam lacks right now is named; leaderboards, which the game does not show
+        // without Steam's, are not.
+        expect(card.statePill.title).toContain('achievements');
+        expect(card.statePill.title).not.toContain('leaderboards');
         expect(card.friendsBadge.textContent).toBe('1 friend playing');
         expect(card.element.dataset.state).toBe('partial');
         expect(card.element.getAttribute('aria-disabled')).toBe('false');

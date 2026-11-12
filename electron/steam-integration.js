@@ -22,6 +22,8 @@ import { decodeP2PPacketBody, encodeP2PPacketBody, resolveP2PSendType } from './
 import { lobbyMemberChange } from './steam-peer-events.js';
 import { resolveSteamAppId as resolveSteamAppIdFor } from './steam-app-id.js';
 import { createP2PSessionGate } from './p2p-session-gate.js';
+import { steamLobbyType } from './steam-lobby-type.js';
+import { steamProfileUrl } from './steam-profile.js';
 
 // ---------------------------------------------------------------------------
 // State
@@ -37,7 +39,8 @@ let currentLobbyId = null;
 // data/owner/members/leave are only reachable via the Lobby OBJECT returned by
 // createLobby()/joinLobby(). Hold onto it for the lobby we're currently in.
 let currentLobby = null;
-// Accepts P2P sessions from members of currentLobby only (electron/p2p-session-gate.js).
+// Who the game opens P2P sessions with: lobby members only, and for everyone but the host,
+// the host alone (electron/p2p-session-gate.js).
 let p2pSessionGate = null;
 let steamOverlayEnabled = false;
 let steamCallbackHandles = [];
@@ -325,8 +328,9 @@ function registerSteamCallbacks() {
     // explicitly accept the session. Without this, two real machines join the same
     // lobby but never exchange game state (NET_HELLO/NET_WELCOME never arrive).
     // Accepting connects the two machines (directly when Steam can), so only members
-    // of our lobby are accepted (electron/p2p-session-gate.js); the app layer
-    // (_validateEnvelope: matchId/nonce/protocol) still authorizes each packet.
+    // of our lobby are accepted, and by everyone but the host only the host
+    // (electron/p2p-session-gate.js); the app layer (_validateEnvelope:
+    // matchId/nonce/protocol) still authorizes each packet.
     p2pSessionGate = createP2PSessionGate({
         accept: (steamId) => steamworksClient.networking.acceptP2PSession(BigInt(steamId)),
         isMember: isCurrentLobbyMember,
@@ -655,7 +659,7 @@ export function registerSteamIPC() {
         'steam:getLobbies', 'steam:getLobbyData', 'steam:setLobbyData',
         'steam:getLobbyMembers', 'steam:getLobbyOwner',
         'steam:sendP2PPacket', 'steam:readP2PPacket',
-        'steam:isP2PPacketAvailable', 'steam:closeP2PSession',
+        'steam:isP2PPacketAvailable', 'steam:closeP2PSession', 'steam:setP2PPeerPolicy',
         'steam:getDiagnostics',
     ];
     for (const ch of channels) {
@@ -996,11 +1000,20 @@ export function registerSteamIPC() {
         } catch { return false; }
     });
 
+    // 'steamid' is the player's profile, where Steam's own block and report tools are. 0.4.0's
+    // activateDialogToUser has no profile dialog, so the overlay's browser opens their profile
+    // page (electron/steam-profile.js); the other names are its own dialogs for that user.
     ipcMain.handle('steam:activateOverlayToUser', (_event, type, steamId) => {
         if (!steamworksClient) return false;
         try {
-            const dialog = OVERLAY_DIALOG[String(type || 'friends').toLowerCase()] ?? 0;
-            steamworksClient.overlay.activateDialogToUser(dialog, BigInt(steamId));
+            const kind = String(type || 'steamid').toLowerCase();
+            if (kind === 'steamid') {
+                const url = steamProfileUrl(steamId);
+                if (!url) return false;
+                steamworksClient.overlay.activateToWebPage(url);
+                return true;
+            }
+            steamworksClient.overlay.activateDialogToUser(OVERLAY_DIALOG[kind] ?? 0, BigInt(steamId));
             return true;
         } catch { return false; }
     });
@@ -1008,12 +1021,14 @@ export function registerSteamIPC() {
     // --- Lobbies ---
     ipcMain.handle('steam:createLobby', async (_event, options) => {
         if (!steamworksClient) throw new Error('Steam not initialized');
-        const { maxPlayers = 8, lobbyType = 'public' } = options || {};
-        const type = lobbyType === 'public' ? 2 : 1;
-        const lobby = await steamworksClient.matchmaking.createLobby(type, maxPlayers);
+        const { maxPlayers = 8, lobbyType = 'friends' } = options || {};
+        // public -> 2, friends -> 1, private -> 0 (electron/steam-lobby-type.js).
+        const lobby = await steamworksClient.matchmaking.createLobby(steamLobbyType(lobbyType), maxPlayers);
         p2pSessionGate?.clear();
         currentLobby = lobby;
         currentLobbyId = lobby.id.toString();
+        // We host: every member talks to us.
+        p2pSessionGate?.setPolicy({ isHost: true, hostSteamId: steamSteamId });
         return currentLobbyId;
     });
 
@@ -1025,8 +1040,12 @@ export function registerSteamIPC() {
         p2pSessionGate?.clear();
         currentLobby = lobby || null;
         currentLobbyId = lobby?.id ? lobby.id.toString() : String(lobbyId);
-        // Peers who asked while we were joining are members now.
-        p2pSessionGate?.onMembersChanged();
+        // We joined: we talk to the host alone, the lobby's owner until the game says who
+        // its host is (steam:setP2PPeerPolicy). Setting it also takes the requests of peers
+        // who asked while we were joining and are allowed now.
+        let ownerId = null;
+        try { ownerId = currentLobby?.getOwner?.()?.steamId64?.toString() ?? null; } catch {}
+        p2pSessionGate?.setPolicy({ isHost: false, hostSteamId: ownerId });
         return true;
     });
 
@@ -1099,6 +1118,11 @@ export function registerSteamIPC() {
     // real-Steam sends/reads silently failed (mock BroadcastChannel mode masked it).
     ipcMain.handle('steam:sendP2PPacket', (_event, steamId, data, sendType /* channel unused */) => {
         if (!steamworksClient) return false;
+        // Sending opens a session with the target: everyone but the host sends to the host
+        // alone (electron/p2p-session-gate.js).
+        if (p2pSessionGate && !p2pSessionGate.allowsSend(steamId)) {
+            return { sent: false, wireBytes: 0, refused: 'not-host' };
+        }
         try {
             // Serialize once at the physical send boundary. Byte views remain
             // byte-exact for the future raw/compact transport lane.
@@ -1146,6 +1170,16 @@ export function registerSteamIPC() {
     ipcMain.handle('steam:closeP2PSession', (_event, _steamId) => {
         // steamworks.js 0.4.0 exposes no closeP2PSession API — sessions time out on
         // their own. No-op kept so renderer calls remain harmless.
+    });
+
+    // The game's role in its match: whether it hosts, who its host is, and whether that host
+    // looks gone mid-match (src/core/steam/steam-networking.js _syncP2PPeerPolicy). It decides
+    // who P2P sessions are opened with (electron/p2p-session-gate.js). Outside a lobby there
+    // is no role to keep.
+    ipcMain.handle('steam:setP2PPeerPolicy', (_event, policy) => {
+        if (!currentLobby || !p2pSessionGate) return false;
+        p2pSessionGate.setPolicy(policy && typeof policy === 'object' ? policy : {});
+        return true;
     });
 
     // --- Diagnostics ---
