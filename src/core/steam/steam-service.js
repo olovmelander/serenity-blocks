@@ -639,9 +639,10 @@ class SteamService {
             return;
         }
 
+        // Leaderboards are not counted: where the Steam client has none, the game shows none
+        // (ui/components/steam-leaderboard-panel.js), so nothing is missing for the player.
         const capabilities = this.capabilities || {};
-        const anyMissing = !capabilities.leaderboards
-            || !capabilities.cloud
+        const anyMissing = !capabilities.cloud
             || !capabilities.friends
             || !capabilities.achievements;
 

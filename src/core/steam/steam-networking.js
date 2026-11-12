@@ -9,6 +9,7 @@
 
 import { SteamConfig } from './config.js';
 import { readFlag } from '../flags.js';
+import { LOBBY_TYPE_KEY, createdLobbyType } from '../multiplayer/lobby-type.js';
 import { getBinaryEncoder, getBinaryDecoder } from '../network/binary-encoding.js';
 import { NetworkImpairmentHarness, resolveImpairmentBootConfig } from '../network/network-impairment.js';
 import { PeerLiveness } from '../network/peer-liveness.js';
@@ -108,8 +109,14 @@ export class SteamNetworking {
         this.p2pPollingSession = null;
         this.steamId = null;
         this.playerName = null;
-        this.isHost = false;
-        this.hostSteamId = null;
+        /** @type {boolean} */
+        this._isHost = false;
+        /** @type {string|null} */
+        this._hostSteamId = null;
+        /** The host looks gone to this player mid-match (network/host-migration.js). */
+        this._hostSuspected = false;
+        /** @type {string|null} the role last told to the main process */
+        this._p2pPolicySignature = null;
         this.currentLobbyId = null;
         this.connectedPeers = new Map(); // Map<steamId, { name, isAlive, ... }>
         this.messageHandlers = new Map();
@@ -252,13 +259,69 @@ export class SteamNetworking {
     }
 
     /**
+     * Whether this player hosts the match, and who its host is. The match is a star through
+     * the host, so the two decide who this computer opens a P2P session with: a host with
+     * every member of its lobby, everyone else with the host alone. Each change is told to
+     * the main process, which holds the sessions (electron/p2p-session-gate.js).
+     */
+    get isHost() {
+        return this._isHost;
+    }
+
+    set isHost(value) {
+        this._isHost = value;
+        this._syncP2PPeerPolicy();
+    }
+
+    get hostSteamId() {
+        return this._hostSteamId;
+    }
+
+    set hostSteamId(value) {
+        // A (new) host is followed: it is no longer the one that looked gone.
+        if (value !== this._hostSteamId) this._hostSuspected = false;
+        this._hostSteamId = value;
+        this._syncP2PPeerPolicy();
+    }
+
+    /**
+     * Whether the host looks gone to this player mid-match (network/host-migration.js). Only
+     * then may another member of the lobby, the player taking over as host, reach this one.
+     * @param {boolean} suspected
+     */
+    setHostSuspected(suspected) {
+        const next = suspected === true;
+        if (next === this._hostSuspected) return;
+        this._hostSuspected = next;
+        this._syncP2PPeerPolicy();
+    }
+
+    /** Tell the main process this player's role when it changed (real Steam only). */
+    _syncP2PPeerPolicy() {
+        if (!ipcRenderer || this.mockMode !== false) return;
+        const policy = {
+            isHost: this._isHost === true,
+            hostSteamId: this._hostSteamId ? String(this._hostSteamId) : null,
+            hostSuspected: this._hostSuspected === true,
+        };
+        const signature = `${policy.isHost}|${policy.hostSteamId}|${policy.hostSuspected}`;
+        if (signature === this._p2pPolicySignature) return;
+        this._p2pPolicySignature = signature;
+        try {
+            Promise.resolve(ipcRenderer.invoke('steam:setP2PPeerPolicy', policy)).catch(() => {});
+        } catch {
+            // Best effort: the main process keeps the role it has.
+        }
+    }
+
+    /**
    * Create a Steam lobby (become host)
    */
     async createLobby(options = {}) {
         this._resetLobbySession();
         const {
             maxPlayers = 8,
-            lobbyType = 'public', // 'public' or 'friends'
+            lobbyType: chosenLobbyType, // 'public' | 'friends' | 'private' (multiplayer/lobby-type.js)
             gameName = 'FFA Match',
             endCondition = 'frags',
             endConditionValue = 10,
@@ -269,6 +332,8 @@ export class SteamNetworking {
         if (!this.lockProtocolSession(requiredProtocolVersion)) {
             throw new Error(`Unsupported required protocol version: ${requiredProtocolVersion}`);
         }
+        // A match is for friends unless its creator chose otherwise.
+        const lobbyType = createdLobbyType(chosenLobbyType);
 
         if (this.mockMode) {
             // Mock lobby for local testing
@@ -322,6 +387,13 @@ export class SteamNetworking {
             // Set lobby metadata
             await ipcRenderer.invoke('steam:setLobbyData', lobbyId, 'game_mode', 'ffa');
             await ipcRenderer.invoke('steam:setLobbyData', lobbyId, 'game_name', gameName);
+            // Who can join, for the players who do: their chat and "Join game" follow it.
+            await ipcRenderer.invoke(
+                'steam:setLobbyData',
+                lobbyId,
+                LOBBY_TYPE_KEY,
+                lobbyType,
+            );
             await ipcRenderer.invoke('steam:setLobbyData', lobbyId, 'end_condition', endCondition);
             await ipcRenderer.invoke('steam:setLobbyData', lobbyId, 'end_condition_value', endConditionValue.toString());
             await ipcRenderer.invoke(
@@ -395,6 +467,7 @@ export class SteamNetworking {
             const lobby = lobbies.find((l) => l.id === lobbyId);
             if (lobby) {
                 if (key === 'game_name') return lobby.gameName;
+                if (key === LOBBY_TYPE_KEY) return lobby.lobbyType;
                 if (key === 'end_condition') return lobby.endCondition;
                 if (key === 'end_condition_value') return lobby.endConditionValue;
             }
@@ -1707,6 +1780,7 @@ export class SteamNetworking {
     }
 
     _resetLobbySession() {
+        this._hostSuspected = false;
         this._resetProtocolSession();
         this.connectedPeers.clear();
         this.peerLiveness.clear();
@@ -1716,6 +1790,8 @@ export class SteamNetworking {
         this.hostSteamId = null;
         this.currentLobbyId = null;
         this.resetSnapshotBaselines();
+        // The main process forgets the role with the lobby: tell it afresh in the next one.
+        this._p2pPolicySignature = null;
     }
 
     _hasOutboundProtocolSession(targetSteamId, messageType) {

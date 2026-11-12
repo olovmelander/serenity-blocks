@@ -155,13 +155,44 @@ describe('behavioral release gates', () => {
 
     it('asks for the privacy contact before a store build', () => {
         const root = createGateWorkspace();
+        const noAppId = { root, releaseAppId: null };
         writeFileSync(join(root, 'PRIVACY_POLICY.md'), '# Privacy\nContact: [contact address to be added before release]\n');
-        expect(evaluatePrivacyPolicy({ root })).toMatchObject({ failed: false, diagnostics: [{ level: 'warning' }] });
-        expect(evaluatePrivacyPolicy({ root, isReleaseBuild: true })).toMatchObject({ failed: true, diagnostics: [{ level: 'error' }] });
+        expect(evaluatePrivacyPolicy(noAppId)).toMatchObject({ failed: false, diagnostics: [{ level: 'warning' }] });
+        expect(evaluatePrivacyPolicy({ ...noAppId, isReleaseBuild: true }))
+            .toMatchObject({ failed: true, diagnostics: [{ level: 'error' }] });
         writeFileSync(join(root, 'PRIVACY_POLICY.md'), '# Privacy\nContact: someone@example.com\n');
-        expect(evaluatePrivacyPolicy({ root, isReleaseBuild: true })).toEqual({ diagnostics: [], failed: false });
+        expect(evaluatePrivacyPolicy({ ...noAppId, isReleaseBuild: true })).toEqual({ diagnostics: [], failed: false });
         rmSync(join(root, 'PRIVACY_POLICY.md'));
-        expect(evaluatePrivacyPolicy({ root }).failed).toBe(true);
+        expect(evaluatePrivacyPolicy(noAppId).failed).toBe(true);
+    });
+
+    it('fails on a missing privacy contact as soon as the release Steam AppID is set', () => {
+        const root = createGateWorkspace();
+        const placeholder = '# Privacy\nContact: [contact address to be added before release]\n';
+        writeFileSync(join(root, 'PRIVACY_POLICY.md'), placeholder);
+
+        // No SERENITY_RELEASE here: the AppID alone makes it a blocker.
+        const withAppId = evaluatePrivacyPolicy({ root, releaseAppId: 123456 });
+        expect(withAppId.failed).toBe(true);
+        expect(withAppId.diagnostics).toEqual([
+            { level: 'error', message: expect.stringContaining('release Steam AppID is set') },
+        ]);
+        // Not Valve's test app, and not a value that is no AppID at all.
+        for (const releaseAppId of [480, null, 0, '123456']) {
+            expect(evaluatePrivacyPolicy({ root, releaseAppId }))
+                .toMatchObject({ failed: false, diagnostics: [{ level: 'warning' }] });
+        }
+
+        writeFileSync(join(root, 'PRIVACY_POLICY.md'), '# Privacy\nContact: someone@example.com\n');
+        expect(evaluatePrivacyPolicy({ root, releaseAppId: 123456 })).toEqual({ diagnostics: [], failed: false });
+    });
+
+    it("warns, and no more, about the repo's own privacy page until the AppID or the contact is set", () => {
+        const today = evaluatePrivacyPolicy({ root: process.cwd() });
+        const strict = evaluatePrivacyPolicy({ root: process.cwd(), releaseAppId: 123456 });
+        // Whichever the owner sets first, the gate holds until the contact is filled in.
+        expect(strict.failed).toBe(today.diagnostics.length > 0);
+        expect(today.diagnostics.every((d) => /contact address/.test(d.message))).toBe(true);
     });
 
     it("passes the repo's own packaging config", () => {

@@ -60,18 +60,49 @@ function createModal(options = {}) {
 }
 
 describe('Odyssey results modal compatibility', () => {
+    let capabilities;
+
     beforeEach(() => {
         vi.stubGlobal('document', {
             addEventListener: vi.fn(),
             createElement: vi.fn(createElement),
             removeEventListener: vi.fn(),
         });
+        // A Steam client that offers leaderboards; the one the game ships with has none.
+        ({ capabilities } = steamService);
+        steamService.capabilities = { ...capabilities, leaderboards: true };
     });
 
     afterEach(() => {
+        steamService.capabilities = capabilities;
         vi.useRealTimers();
         vi.restoreAllMocks();
         vi.unstubAllGlobals();
+    });
+
+    it('has no leaderboard column, and no word of one, when the Steam client offers none', () => {
+        steamService.capabilities = { ...capabilities, leaderboards: false };
+        const mountLeaderboard = vi.spyOn(SteamLeaderboardPanel.prototype, 'mount');
+        const getLeaderboard = vi.spyOn(steamService, 'getLeaderboard');
+
+        for (const includeLegacyResults of [true, false]) {
+            const modal = createModal({
+                includeLegacyResults,
+                levelConfig: {
+                    id: 8, name: 'Koi Sanctuary', chapter: 2, theme: { primary: 'koi-pond' },
+                },
+                levelId: 8,
+            });
+            expect(findByClass(modal, 'steam-leaderboard-panel')).toBeNull();
+            expect(findByClass(modal, 'sb-ody-outcome__side')).toBeNull();
+            expect(collectMarkup(modal)).not.toMatch(/leaderboard/i);
+            // The sheet is whole without it: the result, and Continue in the footer.
+            expect(findByClass(modal, 'sb-ody-title').textContent).toBe('Koi Sanctuary');
+            const footer = findByClass(modal, 'sb-ody-outcome__footer');
+            expect(findByClass(footer, 'sb-btn sb-btn--primary').textContent).toBe('Continue');
+        }
+        expect(mountLeaderboard).not.toHaveBeenCalled();
+        expect(getLeaderboard).not.toHaveBeenCalled();
     });
 
     it('shows experimental results without constructing or reading the legacy Steam view', () => {
@@ -83,7 +114,8 @@ describe('Odyssey results modal compatibility', () => {
 
         expect(markup).toContain('Experimental Session · Unranked');
         expect(markup).toContain('Run stars are a preview');
-        expect(markup).toContain('Campaign progress and leaderboard results were not saved');
+        expect(markup).toContain('Campaign progress was not saved');
+        expect(markup).not.toMatch(/leaderboard/i);
         expect(markup).toMatch(/4\D321/);
         expect(markup).toContain('18');
         expect(findByClass(modal, 'steam-leaderboard-panel')).toBeNull();

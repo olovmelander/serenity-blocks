@@ -51,6 +51,7 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: true,
       backgroundThrottling: false,
+      spellcheck: false,
     },
   });
 

@@ -101,6 +101,10 @@ export class HostMigration {
     check(now) {
         const game = this.gameState;
         if (game.isHost || game._disposed || game.handshakeComplete !== true) return;
+        // Tell the transport while the host looks gone mid-match, by the test a claim is
+        // believed by: only then does it take a session from the player taking over.
+        this.network.setHostSuspected?.(this.matchInProgress()
+            && (this.isElectionInProgress || this.hostSilenceMs(now) >= HOST_SUSPECT_MS));
         if (this.isElectionInProgress) {
             this._advanceElection(now);
             return;
@@ -127,6 +131,7 @@ export class HostMigration {
         this.electionStartedAt = now;
         this.electionReason = reason;
         this.goneHostId = this.network.hostSteamId;
+        this.network.setHostSuspected?.(true); // before a claim is sent or one arrives
         this._advanceElection(now);
     }
 

@@ -171,7 +171,7 @@ describe('Steam leaderboard request ownership', () => {
         expect(panel.updatedEl.textContent).toBe(currentUpdated);
     });
 
-    it('keeps the latest unavailable-board message when an old board completes', async () => {
+    it('takes itself off the sheet for a board Steam does not have, also when an old board completes', async () => {
         const score = deferred();
         const lines = deferred();
         steam.getLeaderboard.mockImplementation((board) => (
@@ -186,7 +186,9 @@ describe('Steam leaderboard request ownership', () => {
         score.resolve(response('old score'));
         await settle();
 
-        expect(panel.statusEl.textContent).toBe('Leaderboards unavailable (Steam API missing).');
+        // Nothing is said about a board that is not there: the panel is hidden.
+        expect(panel.container.hidden).toBe(true);
+        expect(panel.statusEl.textContent).toBe('');
         expect(panel.listEl.children).toHaveLength(0);
         expect(cache.data.get('lines-board|global|0|10').data.notice).toBe('Missing lines API');
         expect(cache.data.get('score-board|global|0|10').data.entries[0].name).toBe('old score');

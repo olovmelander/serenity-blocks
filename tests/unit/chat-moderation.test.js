@@ -7,10 +7,13 @@ import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
 import {
-    CHAT_MUTES_KEY, CHAT_OFF_NOTE, MAX_CHAT_MUTES, appendChatMessage, chatModerationNote,
-    isChatMessageShown, isMuted, mutePlayer, mutedPlayers, onChatModerationChange, renderChatLog,
-    resetChatModerationForTests, setPlayerMuted, unmutePlayer,
+    CHAT_MUTES_KEY, CHAT_OFF_NOTE, MAX_CHAT_MUTES, PUBLIC_CHAT_OFF_NOTE, STEAM_PROFILE_HINT,
+    appendChatMessage, chatModerationNote, chatOffNote, chatOffReason, createSteamProfileButton,
+    hasSteamProfile, isChatMessageShown, isChatOn, isMuted, mutePlayer, mutedPlayers,
+    onChatModerationChange, renderChatLog, resetChatModerationForTests, setChatLobbyType,
+    setPlayerMuted, unmutePlayer,
 } from '../../src/ui/chat-moderation.js';
+import steamService from '../../src/core/steam/steam-service.js';
 import { OnlineChat } from '../../src/ui/online-chat.js';
 import { InGameChat } from '../../src/ui/ingame-chat.js';
 import { handleFfaChat } from '../../src/core/multiplayer/ffa/chat-relay.js';
@@ -291,5 +294,143 @@ describe('chat-moderation in the match panel and the game state', () => {
         expect(game.chatHistory).toHaveLength(2);
         expect(log.children.map(lineText)).toEqual(['Bob: gg']);
         game.chat.destroy();
+    });
+});
+
+describe('chat-moderation: chat with players you do not know is opt-in', () => {
+    function setPublicChat(on) {
+        settings = { ...settings, publicMatchChat: on };
+        settingsListeners.forEach((fn) => fn({ detail: { publicMatchChat: on } }));
+    }
+
+    it('in a public match, shows and sends no chat until "Chat in public matches" is on', () => {
+        const { panel, log } = makeLog();
+        const input = { value: 'anyone?', blur: vi.fn() };
+        const elements = { 'chat-messages': log, 'chat-input': input, 'chat-send': {} };
+        vi.stubGlobal('document', { ...doc, getElementById: (id) => elements[id] || null });
+        const onSend = vi.fn();
+        const chat = new OnlineChat(panel, onSend, { localPlayerId: LOCAL });
+
+        setChatLobbyType('public');
+        expect(isChatOn()).toBe(false);
+        expect(chatOffReason()).toBe('public');
+        renderChatLog(log, history(), { localPlayerId: LOCAL, doc });
+        // The game's own lines stay; the last one says why there is no chat and how to get it.
+        expect(log.children.map(lineText)).toEqual(['Welcome to the lobby.', PUBLIC_CHAT_OFF_NOTE]);
+        expect(PUBLIC_CHAT_OFF_NOTE).toBe('Chat is off in public matches. To chat with players you don\'t know, '
+            + 'turn on "Chat in public matches" in Settings › General.');
+        expect(panel.classList.contains('is-chat-off')).toBe(true); // the message field is hidden
+        expect(appendChatMessage(log, { playerName: 'Bob', message: 'hi', steamId: BOB }, { doc })).toBe(false);
+        chat._handleSend();
+        expect(onSend).not.toHaveBeenCalled();
+
+        setPublicChat(true);
+        expect(isChatOn()).toBe(true);
+        renderChatLog(log, history(), { localPlayerId: LOCAL, doc });
+        expect(log.children.map(lineText)).toEqual(['Welcome to the lobby.', 'Alice: hi all', 'You: hello', 'Bob: gg']);
+        expect(panel.classList.contains('is-chat-off')).toBe(false);
+        chat._handleSend();
+        expect(onSend).toHaveBeenCalledWith('anyone?');
+        chat.destroy();
+    });
+
+    it('friends and invite-only matches follow the chat setting alone', () => {
+        for (const type of ['friends', 'private']) {
+            setChatLobbyType(type);
+            expect(isChatOn(), type).toBe(true);
+            expect(chatOffReason(), type).toBeNull();
+        }
+        setChat(false);
+        expect(isChatOn()).toBe(false);
+        expect(chatOffReason()).toBe('setting');
+        expect(chatOffNote()).toBe(CHAT_OFF_NOTE);
+    });
+
+    it('a match whose type is not known counts as public; outside a match nothing is narrowed', () => {
+        for (const type of ['', 'unknown', 0, 'Public']) {
+            setChatLobbyType(type);
+            expect(chatOffReason(), String(type)).toBe('public');
+        }
+        setChatLobbyType(null);
+        expect(isChatOn()).toBe(true);
+        setChatLobbyType(undefined);
+        expect(isChatOn()).toBe(true);
+    });
+
+    it('with all chat off, a public match says so the plain way, and turning public chat on changes nothing', () => {
+        setChatLobbyType('public');
+        settings = { onlineChat: false, publicMatchChat: true };
+        expect(chatOffReason()).toBe('setting');
+        expect(chatOffNote()).toBe(CHAT_OFF_NOTE);
+        expect(isChatOn()).toBe(false);
+    });
+
+    it('is off in a public match when the settings cannot be read', () => {
+        setChatLobbyType('public');
+        vi.stubGlobal('window', { settingsManager: { get: () => { throw new Error('not ready'); } } });
+        expect(isChatOn()).toBe(false);
+        vi.stubGlobal('window', {});
+        expect(isChatOn()).toBe(false);
+        setChatLobbyType('friends');
+        expect(isChatOn()).toBe(true);
+    });
+
+    it('tells every chat log when the match or either setting changes', () => {
+        const changes = [];
+        onChatModerationChange((change) => changes.push(change));
+        setChatLobbyType('public');
+        setChatLobbyType('public'); // no change: nothing told
+        setPublicChat(true);
+        setChatLobbyType('friends');
+        setChat(false);
+        setChatLobbyType(null);
+        expect(changes).toEqual([
+            { kind: 'chat', on: false },
+            { kind: 'chat', on: true },
+            { kind: 'chat', on: true },
+            { kind: 'chat', on: false },
+            { kind: 'chat', on: false },
+        ]);
+    });
+});
+
+describe('chat-moderation: View Steam profile', () => {
+    const STEAM_ALICE = '76561198000000002';
+
+    it('a player with a Steam ID has one; a test lobby\'s stand-in has none', () => {
+        expect(hasSteamProfile(STEAM_ALICE)).toBe(true);
+        expect(hasSteamProfile(76561198000000002n)).toBe(true);
+        for (const id of [ALICE, 'mock_host_1', '', null, undefined, '7656119800000000', `${STEAM_ALICE}x`]) {
+            expect(hasSteamProfile(id), String(id)).toBe(false);
+            expect(createSteamProfileButton(id, 'Alice', { doc })).toBeNull();
+        }
+    });
+
+    it('opens that player in the Steam overlay, and says Steam\'s block and report tools are there', () => {
+        const open = vi.spyOn(steamService, 'activateOverlayToUser').mockResolvedValue(true);
+        const button = createSteamProfileButton(STEAM_ALICE, 'Alice', { doc, className: 'player-profile-btn' });
+        expect(button.className).toBe('player-profile-btn');
+        expect(button.type).toBe('button');
+        expect(button.attributes['aria-label']).toBe('View Alice\'s Steam profile');
+        expect(button.title).toBe(STEAM_PROFILE_HINT);
+        expect(STEAM_PROFILE_HINT).toBe('View Steam profile. Steam\'s tools to block or report a player are there.');
+        button.click();
+        expect(open).toHaveBeenCalledWith(STEAM_ALICE);
+    });
+
+    it('sits beside Mute on another player\'s chat line, never on this player\'s own', () => {
+        const open = vi.spyOn(steamService, 'activateOverlayToUser').mockResolvedValue(true);
+        const { log } = makeLog();
+        renderChatLog(log, [
+            { playerName: 'Alice', message: 'hi all', steamId: STEAM_ALICE },
+            { playerName: 'Me', message: 'hello', steamId: '76561198000000009' },
+        ], { localPlayerId: '76561198000000009', doc });
+        const [alice, mine] = log.children;
+        expect(alice.children.map((child) => child.className))
+            .toEqual(['color-indicator', 'author', 'text', 'chat-mute-btn', 'chat-profile-btn']);
+        expect(mine.find('chat-profile-btn')).toBeNull();
+        alice.find('chat-profile-btn').click();
+        expect(open).toHaveBeenCalledWith(STEAM_ALICE);
+        expect(isMuted(STEAM_ALICE)).toBe(false); // viewing a profile mutes nobody
     });
 });
