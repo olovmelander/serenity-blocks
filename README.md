@@ -1,6 +1,9 @@
 # Serenity Blocks
 
-Serenity Blocks is a falling-block puzzle game with a Phaser-first gameplay renderer and Three.js/WebGL theme backgrounds.
+Serenity Blocks is a falling-block puzzle game set inside living 3D worlds, with music and guided
+breathing. Guide the falling pieces, complete rows, and build chains and cascades while the world
+around the board answers. The boards are drawn with Phaser 4 and the worlds with three.js (WebGPU,
+with a WebGL2 fallback). The game's own description is in [`game_description.md`](game_description.md).
 
 ## Quick Start
 
@@ -27,8 +30,9 @@ npm run preview
 
 ## Core Architecture
 
-- Gameplay rendering: Phaser 4 (`phaser@4.0.0-rc.5`)
-- Background themes: Three.js renderer managed by Phaser lifecycle
+- Gameplay rendering: Phaser 4 (`phaser` ^4.2.1, see `package.json`)
+- Worlds (themes): three.js (`three` 0.187.0), WebGPU/TSL with a WebGL2 fallback, managed by the
+  Phaser lifecycle
 - Runtime orchestration: `src/main.js`
 - Scene layer:
   - `src/rendering/phaser/board-scene.js`
@@ -45,17 +49,18 @@ npm run preview
 
 ## Documentation
 
-- `docs/PHASER_MIGRATION_PLAN.md` - Migration roadmap and phase status
-- `PHASER_QUICKSTART.md` - Phaser-first developer quickstart
-- `docs/PHASER_INTEGRATION.md` - Current integration and rendering flow
-- `docs/PHASER_ARCHITECTURE.md` - Scene graph and asset pipeline diagrams
-- `docs/PHASER_TROUBLESHOOTING.md` - Common Phaser/Vite runtime issues
-- `docs/part_9.md` - Phase 8 handoff summary and maintenance notes
-- `docs/qa-checklist.md` - Manual QA matrix
+- [`docs/ARCHITECTURE_INDEX.md`](docs/ARCHITECTURE_INDEX.md) - Index of the architecture and design records
+- [`docs/adr/`](docs/adr/) - Architecture decision records
+- [`HOW_TO_RUN.md`](HOW_TO_RUN.md) - Running the game in the browser or as a desktop app
+- [`PHASER_QUICKSTART.md`](PHASER_QUICKSTART.md) - Phaser-first developer quickstart
+- [`docs/WEBGPU_THREEJS_WORKFLOW.md`](docs/WEBGPU_THREEJS_WORKFLOW.md) - Building and checking a world
+- [`src/playground/README.md`](src/playground/README.md) - The effect playground
+- [`docs/archive/2026-06-repository-cleanup/`](docs/archive/2026-06-repository-cleanup/) - Archived
+  records of the move to Phaser (migration plan, integration, architecture, troubleshooting, QA checklist)
 
 ## Notes
 
-- The game uses Phaser for board rendering and keeps theme backgrounds in Three.js for visual flexibility.
+- The game uses Phaser for board rendering and three.js for the worlds behind the boards.
 - Legacy canvas paths remain only as guarded fallback paths.
 
 ## Accessibility
