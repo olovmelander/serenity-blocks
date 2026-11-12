@@ -31,7 +31,7 @@ Part 2: code inside the bundled three.js (r187) and its add-ons
 13. ltc_code (area-light shading and the ACES tone-mapping fit): its own BSD-style licence
 14. Filament (shading functions): Apache-2.0
 15. PCG hash: MIT
-16. triNoise3D: as distributed in three.js
+16. triNoise3D: removed from the game's build
 
 Part 3: code inside the bundled Phaser (4.2.1) engine
 
@@ -677,10 +677,10 @@ SOFTWARE.
 - **Upstream:** three.js's `triNoise3D` function (`src/nodes/math/TriNoise3D.js`) names its
   origin, https://github.com/cabbibo/glsl-tri-noise-3d. That repository's file is headed "Taken
   from https://www.shadertoy.com/view/4ts3z2" and "By NIMITZ (twitter: @stormoid)".
-- **Used in the game:** part of the bundled three.js shader library. The game's own shaders do
-  not call it.
-- **Licence:** as distributed in three.js under its MIT licence. three.js gives no copyright
-  line for it, and the repository it names publishes no licence file.
+- **Not in the game:** the game's own shaders never call it, and the game's build replaces its
+  body with a stub that returns 0 (`scripts/vite-plugins/strip-three-tri-noise.mjs`), so none of
+  its code ships. three.js gives no copyright line for it, and the repository it names publishes
+  no licence file.
 
 ---
 

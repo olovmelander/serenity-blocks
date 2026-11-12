@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findRvfcFingerprints } from './vite-plugins/strip-phaser-rvfc-polyfill.mjs';
+import { findTriNoiseFingerprints } from './vite-plugins/strip-three-tri-noise.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -126,6 +127,13 @@ if (!existsSync(assetsDir)) {
             'built bundle still contains the GPL-3.0 rvfc polyfill from Phaser '
             + `(found: ${rvfcFingerprints.join(', ')}).`,
         );
+    }
+
+    // three's triNoise3D has no confirmed licence; the build stubs it out
+    // (scripts/vite-plugins/strip-three-tri-noise.mjs) and its loop must never ship.
+    const triNoiseFingerprints = findTriNoiseFingerprints(jsBundleText);
+    if (triNoiseFingerprints.length > 0) {
+        fail(`built bundle still contains three's triNoise3D loop (found: ${triNoiseFingerprints.join(', ')}).`);
     }
 }
 

@@ -10,6 +10,7 @@ import {
 } from 'node:fs';
 import { createThemeThumbnailAssetPlugin } from './scripts/theme-thumbnail-assets.js';
 import { createStripPhaserRvfcPolyfillPlugin } from './scripts/vite-plugins/strip-phaser-rvfc-polyfill.mjs';
+import { createStripThreeTriNoisePlugin } from './scripts/vite-plugins/strip-three-tri-noise.mjs';
 
 // Resolve the project root to its real on-disk casing (canonical uppercase drive
 // letter on Windows). Without this, launching the dev server from a lowercase
@@ -116,6 +117,7 @@ export default defineConfig(({ command }) => ({
     // release build drops it. pages-artifact-check fails a build that still contains it, by any
     // of the plugin's three fingerprints.
     createStripPhaserRvfcPolyfillPlugin(),
+    createStripThreeTriNoisePlugin(),
   ],
 
   // Server configuration

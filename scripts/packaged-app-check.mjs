@@ -23,6 +23,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import asar from '@electron/asar';
 import { findRvfcFingerprints } from './vite-plugins/strip-phaser-rvfc-polyfill.mjs';
+import { findTriNoiseFingerprints } from './vite-plugins/strip-three-tri-noise.mjs';
 
 export const ENGINE_LICENCE_FILES = Object.freeze(['LICENSE.electron.txt', 'LICENSES.chromium.html']);
 export const RESOURCE_DOCUMENTS = Object.freeze([
@@ -128,6 +129,10 @@ export function checkPackagedApp({ appOutDir, resourcesDir = path.join(appOutDir
         const found = findRvfcFingerprints(text);
         if (found.length > 0) {
             problems.push(`app.asar/${rel} holds Phaser's video-frame polyfill (${found.join(', ')}).`);
+        }
+        const noise = findTriNoiseFingerprints(text);
+        if (noise.length > 0) {
+            problems.push(`app.asar/${rel} holds three's triNoise3D loop (${noise.join(', ')}).`);
         }
     }
     asar.uncache(archive);
