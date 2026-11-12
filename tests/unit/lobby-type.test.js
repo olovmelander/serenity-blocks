@@ -91,10 +91,10 @@ describe('the create sheet (src/ui/match-config-modal.js)', () => {
         expect(sheet).toContain('this.updateLobbyTypeUI(DEFAULT_LOBBY_TYPE);');
     });
 
-    it('says what each choice does, and that a public match shows the host\'s IP address', () => {
+    it('says what each choice does, and that a public match never shows the host\'s IP address', () => {
         expect(LOBBY_TYPE_HELP).toEqual({
             public: 'Anyone can find it in the list and join. '
-                + 'Everyone who joins can see your IP address, as in most online games.',
+                + 'Players who join see your Steam name, never your IP address.',
             friends: 'Only your Steam friends can join.',
             private: 'Hidden from the list — players join by invite or lobby ID.',
         });

@@ -375,6 +375,7 @@ export class SteamNetworking {
 
         // Real Steam mode via steamworks.js preload API
         try {
+            await this._requireRelayTransport();
             const lobbyId = await ipcRenderer.invoke('steam:createLobby', { maxPlayers, lobbyType });
             console.log(`✅ Lobby created: ${lobbyId}`);
 
@@ -411,6 +412,24 @@ export class SteamNetworking {
     }
 
     /**
+     * Online play runs through Steam's relays only, so no player sees another's IP address
+     * (electron/steam-relay-transport.js). When they could not be started on this computer,
+     * creating or joining a lobby stops here with a reason a player can read. A main process
+     * that does not know the channel answers null, which passes.
+     */
+    async _requireRelayTransport() {
+        let transport = null;
+        try {
+            transport = await ipcRenderer.invoke('steam:getNetworkTransport');
+        } catch {
+            transport = null;
+        }
+        if (transport?.mode === 'unavailable') {
+            throw new Error(transport.message || 'Online play is not available right now.');
+        }
+    }
+
+    /**
    * Join an existing Steam lobby
    */
     async joinLobby(lobbyId) {
@@ -442,6 +461,7 @@ export class SteamNetworking {
 
         // Real Steam mode via steamworks.js preload API
         try {
+            await this._requireRelayTransport();
             await ipcRenderer.invoke('steam:joinLobby', lobbyId);
             console.log(`✅ Joined lobby: ${lobbyId}`);
 

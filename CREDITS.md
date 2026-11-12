@@ -92,7 +92,8 @@ The fonts, each with its licence text beside it in `fonts/`:
 ### Software
 
 Serenity Blocks is built with Phaser and three.js (MIT) and runs on Electron (MIT), which
-includes Chromium; Steam features use steamworks.js (MIT). Their licences ship with the game in
+includes Chromium; Steam features use steamworks.js (MIT), and online play reaches Steam's
+relay network through koffi (MIT). Their licences ship with the game in
 `THIRD_PARTY_LICENSES.md`, `LICENSE.electron.txt` and `LICENSES.chromium.html`. Code from other
 projects inside the game and inside those libraries (shader noise and hashes, decoders and
 helpers) is listed with its copyright and licence in `THIRD_PARTY_NOTICES.md`. The game's own

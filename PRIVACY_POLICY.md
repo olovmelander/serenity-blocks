@@ -52,10 +52,13 @@ connection to Steam's servers itself; it sends nothing over it.
   many players are in it; when the match is open to anyone, everyone browsing the match list sees
   them. Players in your lobby see your Steam ID and your name, as your game reports it.
 - **Connections**: from the moment you join a lobby, also when you only watch, your computer is
-  connected to the match's host, peer to peer and directly when Steam can; the host is connected
-  to every player and everyone watching. If the host drops out during a match, one of the players
-  takes over and the others connect to that player. The players you are connected to can see your
-  IP address, as in most online games. The game connects only to players in the lobby you are in.
+  connected to the match's host; the host is connected to every player and everyone watching. If
+  the host drops out during a match, one of the players takes over and the others connect to that
+  player. Every connection goes through Steam's relay servers, never straight from one computer to
+  another, so the players you are connected to do not see your IP address. Valve's servers pass
+  the game's data on, as Steam's privacy policy describes. If Steam's relay network cannot be
+  reached on your computer, the game does not play online. The game connects only to players in
+  the lobby you are in.
 - **Chat**: messages you type in an online lobby, match or results screen go to the players in
   that lobby, passed on by the host. Each player's game keeps them only while the session lasts
   and never saves them. In a match open to anyone, you see no chat and can send none unless you

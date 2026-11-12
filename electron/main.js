@@ -396,6 +396,7 @@ const steamStubChannels = [
     'steam:getLobbyMembers', 'steam:getLobbyOwner',
     'steam:sendP2PPacket', 'steam:readP2PPacket',
     'steam:isP2PPacketAvailable', 'steam:closeP2PSession', 'steam:setP2PPeerPolicy',
+    'steam:getNetworkTransport',
 ];
 
 for (const channel of steamStubChannels) {

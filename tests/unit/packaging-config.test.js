@@ -65,6 +65,17 @@ describe('electron-builder packaging config', () => {
         expect(steam('linux').filter).not.toContain('!dist/linux64/**');
     });
 
+    it("ships koffi with each platform's own binary beside steamworks.js, without its link library", () => {
+        const copy = (platform, from) => manifest.build[platform].extraResources.find((entry) => entry.from === from);
+        expect(manifest.build.extraResources.map((entry) => entry.from)).not.toContain('node_modules/koffi');
+        for (const [platform, binary] of [['win', 'koffi-win32-x64'], ['linux', 'koffi-linux-x64']]) {
+            expect(copy(platform, 'node_modules/koffi').filter).toEqual(expect.arrayContaining(['LICENSE.txt', '!vendor/**']));
+            expect(copy(platform, `node_modules/@koromix/${binary}`).filter).toEqual(['**/*', '!**/*.lib']);
+        }
+        expect(copy('win', 'node_modules/@koromix/koffi-linux-x64')).toBeUndefined();
+        expect(copy('linux', 'node_modules/@koromix/koffi-win32-x64')).toBeUndefined();
+    });
+
     it('ships the credits, notices, licences, privacy page and copyright statement beside app.asar', () => {
         const copied = manifest.build.extraResources.map((entry) => entry.to);
         expect(copied).toEqual(expect.arrayContaining([
@@ -95,7 +106,7 @@ describe('electron-builder packaging config', () => {
 
     it('pins the engine versions exactly, in package.json and in the lockfile', () => {
         const lock = JSON.parse(readFileSync(new URL('package-lock.json', root), 'utf8'));
-        for (const name of ['phaser', 'three', 'steamworks.js']) {
+        for (const name of ['phaser', 'three', 'steamworks.js', 'koffi']) {
             expect(manifest.dependencies[name], name).toMatch(/^\d+\.\d+\.\d+$/);
             expect(lock.packages[''].dependencies[name], name).toBe(manifest.dependencies[name]);
             expect(lock.packages[`node_modules/${name}`].version, name).toBe(manifest.dependencies[name]);

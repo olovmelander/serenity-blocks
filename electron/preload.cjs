@@ -33,7 +33,7 @@ const allowedInvokeChannels = new Set([
     'steam:getLobbyMembers', 'steam:getLobbyOwner',
     'steam:sendP2PPacket', 'steam:readP2PPacket',
     'steam:isP2PPacketAvailable', 'steam:closeP2PSession', 'steam:setP2PPeerPolicy',
-    'steam:getDiagnostics',
+    'steam:getNetworkTransport', 'steam:getDiagnostics',
 ]);
 
 const allowedEventChannels = new Set([

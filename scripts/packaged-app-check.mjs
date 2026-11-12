@@ -9,7 +9,9 @@
  *    LICENSES.chromium.html, which Settings › Credits & legal and CREDITS.md point players to);
  *  - the game's credits, notices, bundled-package licences, privacy page and copyright statement
  *    in resources/ (package.json, build.extraResources);
- *  - the licence of the Steam module, in its folder under resources/native_modules/.
+ *  - the licence of the Steam module, in its folder under resources/native_modules/;
+ *  - koffi beside it, with its licence and a binary for the platform: online play's relay
+ *    transport (electron/steam-relay-transport.js) needs it, and refuses to play without it.
  *
  * Must not be there:
  *  - a link library (`*.lib`) or a steam_appid.txt, anywhere on disk or inside app.asar;
@@ -34,6 +36,14 @@ export const RESOURCE_DOCUMENTS = Object.freeze([
     'COPYRIGHT.md',
 ]);
 export const STEAM_MODULE_LICENCE = 'native_modules/steamworks.js/LICENSE';
+/** koffi, copied beside steamworks.js (package.json, build.<platform>.extraResources). */
+export const RELAY_MODULE_FILES = Object.freeze([
+    'native_modules/koffi/package.json',
+    'native_modules/koffi/index.cjs',
+    'native_modules/koffi/LICENSE.txt',
+]);
+/** koffi's binary: native_modules/@koromix/koffi-<platform>/<triplet>/koffi.node. */
+export const RELAY_BINARY = /^koffi-[^/]+\/[^/]+\/koffi\.node$/;
 
 const SCRIPT_OR_PAGE = /\.(js|mjs|cjs|html)$/i;
 
@@ -98,9 +108,14 @@ export function checkPackagedApp({ appOutDir, resourcesDir = path.join(appOutDir
         const why = missingOrEmpty(path.join(appOutDir, name));
         if (why) problems.push(`${name} ${why} beside the executable.`);
     }
-    for (const name of [...RESOURCE_DOCUMENTS, STEAM_MODULE_LICENCE]) {
+    for (const name of [...RESOURCE_DOCUMENTS, STEAM_MODULE_LICENCE, ...RELAY_MODULE_FILES]) {
         const why = missingOrEmpty(path.join(resourcesDir, ...name.split('/')));
         if (why) problems.push(`${resourcesLabel}/${name} ${why}.`);
+    }
+    const relayBinaries = [...filesUnder(path.join(resourcesDir, 'native_modules', '@koromix'))]
+        .filter((rel) => RELAY_BINARY.test(rel));
+    if (relayBinaries.length === 0) {
+        problems.push(`${resourcesLabel}/native_modules/@koromix holds no koffi binary (online play would be refused).`);
     }
 
     for (const rel of filesUnder(appOutDir)) {

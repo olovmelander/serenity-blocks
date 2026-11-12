@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import asar from '@electron/asar';
 import {
-    ENGINE_LICENCE_FILES, RESOURCE_DOCUMENTS, STEAM_MODULE_LICENCE, checkPackagedApp,
+    ENGINE_LICENCE_FILES, RELAY_MODULE_FILES, RESOURCE_DOCUMENTS, STEAM_MODULE_LICENCE, checkPackagedApp,
 } from '../../scripts/packaged-app-check.mjs';
 import { RVFC_FINGERPRINTS } from '../../scripts/vite-plugins/strip-phaser-rvfc-polyfill.mjs';
 
@@ -44,6 +44,8 @@ function completeOutside() {
     files[`resources/${STEAM_MODULE_LICENCE}`] = 'MIT License';
     files['resources/native_modules/steamworks.js/index.js'] = 'module.exports = {};';
     files['resources/native_modules/steamworks.js/dist/win64/steam_api64.dll'] = 'binary';
+    for (const name of RELAY_MODULE_FILES) files[`resources/${name}`] = `${name} text`;
+    files['resources/native_modules/@koromix/koffi-win32-x64/win32_x64/koffi.node'] = 'binary';
     files['Serenity Blocks.exe'] = 'binary';
     return files;
 }
@@ -80,6 +82,32 @@ describe('packaged desktop build contents (scripts/packaged-app-check.mjs)', () 
                 .find((entry) => entry.from === 'node_modules/steamworks.js');
             expect(`${steam.to}/LICENSE`, platform).toBe(STEAM_MODULE_LICENCE);
         }
+    });
+
+    it('copies koffi and its binary beside steamworks.js on both platforms, pinned to one version', () => {
+        expect(manifest.dependencies.koffi).toMatch(/^\d+\.\d+\.\d+$/);
+        const binaries = { win: '@koromix/koffi-win32-x64', linux: '@koromix/koffi-linux-x64' };
+        for (const [platform, binary] of Object.entries(binaries)) {
+            const copies = manifest.build[platform].extraResources;
+            const koffi = copies.find((entry) => entry.from === 'node_modules/koffi');
+            expect(koffi?.to, platform).toBe('native_modules/koffi');
+            const native = copies.find((entry) => entry.from === `node_modules/${binary}`);
+            expect(native?.to, platform).toBe(`native_modules/${binary}`);
+        }
+    });
+
+    it.each(RELAY_MODULE_FILES)('reports resources/%s missing', async (name) => {
+        const appOutDir = await packageBuild({ without: [`resources/${name}`] });
+        expect(checkPackagedApp({ appOutDir })).toEqual([`resources/${name} is missing.`]);
+    });
+
+    it('reports a package without a koffi binary', async () => {
+        const appOutDir = await packageBuild({
+            without: ['resources/native_modules/@koromix/koffi-win32-x64/win32_x64/koffi.node'],
+        });
+        expect(checkPackagedApp({ appOutDir })).toEqual([
+            'resources/native_modules/@koromix holds no koffi binary (online play would be refused).',
+        ]);
     });
 
     it('passes a complete package', async () => {

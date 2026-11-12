@@ -1,8 +1,10 @@
 /**
- * Which Steam P2P sessions the game opens and accepts (legacy ISteamNetworking).
+ * Which Steam P2P sessions the game opens and accepts.
  *
- * Opening a session lets Steam connect the two machines, directly when it can, which shows
- * each player the other's IP address. So the game connects to as few players as it needs:
+ * Online play runs through Steam's relays (electron/steam-relay-transport.js), so no session
+ * shows a player another's IP address; the legacy ISteamNetworking path, which connects directly
+ * when it can, is left only for development runs that ask for it. Either way the game connects to
+ * as few players as it needs:
  *
  * - Outside a lobby nothing is accepted, and never anyone who is not a member of the lobby it
  *   is in (a stranger who knows a SteamID is never connected).
@@ -23,6 +25,9 @@
  * A request can arrive a moment before its sender is allowed (they joined just now, or the
  * handover is a moment ahead of this player's own view of it), so it waits up to `waitMs` for
  * a member-list or role change and is then accepted or dropped.
+ *
+ * The relay transport hears of no requests (steamworks.js cannot pass that callback on): it asks
+ * `allowsSession` for each lobby member instead and accepts a pending request from those allowed.
  *
  * Pure (no Electron, no steamworks): electron/steam-integration.js wires it to the callbacks.
  */
@@ -153,6 +158,15 @@ export function createP2PSessionGate({
                 log(`Refused to send to ${id}: not the host of this match`);
             }
             return false;
+        },
+        /**
+         * Whether a session with this player may be accepted now: a member of our lobby whom
+         * the game's role lets it talk to.
+         * @param {unknown} steamId
+         */
+        allowsSession(steamId) {
+            const id = steamId == null ? '' : String(steamId);
+            return Boolean(id) && allows(id);
         },
         /** We left the lobby: drop every held request and forget the role. */
         clear() {

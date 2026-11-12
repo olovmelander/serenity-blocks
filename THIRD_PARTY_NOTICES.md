@@ -53,10 +53,12 @@ Part 3: code inside the bundled Phaser (4.2.1) engine
 32. Phaser files with their own copyright holders (RoboWhale, CodeAndWeb): MIT
 33. PNPOLY point-in-polygon test by W. Randolph Franklin: its own licence
 
-Part 4: the Steam integration module (steamworks.js)
+Part 4: the Steam integration module (steamworks.js) and the relay transport's FFI (koffi)
 
 34. steamworks.js: MIT
 35. Rust crates compiled into the steamworks.js module: MIT, ISC and others
+36. koffi: MIT
+37. Node-API headers compiled into the koffi module (node-addon-api, node-api-headers): MIT
 
 Apache License, Version 2.0 (full text)
 
@@ -1308,7 +1310,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ---
 
-# Part 4: the Steam integration module (steamworks.js)
+# Part 4: the Steam integration module (steamworks.js) and the relay transport's FFI (koffi)
 
 ## 34. steamworks.js
 
@@ -1495,6 +1497,48 @@ shall not be used in advertising or otherwise to promote the sale,
 use or other dealings in these Data Files or Software without prior
 written authorization of the copyright holder.
 ```
+
+## 36. koffi
+
+- **Upstream:** https://github.com/Koromix/koffi (version 3.3.5, with its prebuilt module for the
+  platform: `@koromix/koffi-win32-x64` or `@koromix/koffi-linux-x64`)
+- **Used in the game:** the desktop app calls Steam's networking interface through it, so that
+  online play runs through Steam's relay servers only (`electron/steam-relay-transport.js`).
+- **Licence:** MIT
+
+```text
+MIT License
+
+Copyright (C) 2026  Niels Martignène <niels.martignene@protonmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the “Software”), to deal in
+the Software without restriction, including without limitation the rights to use,
+copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the
+Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+```
+
+## 37. Node-API headers compiled into the koffi module
+
+koffi's compiled module (`koffi.node`) is built against these header libraries, both under the
+MIT License (the full text is the same as in section 36, with these copyright lines):
+
+- node-addon-api (https://github.com/nodejs/node-addon-api): Copyright (c) 2017 Node.js API
+  collaborators
+- node-api-headers (https://github.com/nodejs/node-api-headers): Copyright (c) 2021 Node.js
 
 ---
 

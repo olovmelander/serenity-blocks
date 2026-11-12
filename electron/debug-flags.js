@@ -7,8 +7,12 @@
  * - `SERENITY_MAIN_INSPECT_PORT` / `--serenity-main-inspect-port=`: the main-process
  *   inspector (only with diagnostics on).
  *
+ * - `SERENITY_ALLOW_DIRECT_P2P=1` (allowsDirectP2P): when Steam's relay transport cannot open,
+ *   play online over the legacy P2P calls, which connect directly and show IP addresses
+ *   (electron/steam-relay-transport.js), instead of refusing online play.
+ *
  * A store build (electron/steam-app-id.js: packaged, with the game's own AppID) ignores all
- * three: a player's game cannot be opened up by a variable in their environment. Development
+ * of them: a player's game cannot be opened up by a variable in their environment. Development
  * runs and packaged test builds without a release AppID keep them.
  *
  * Pure (no Electron): electron/main.js reads it; the unit tests pin it.
@@ -43,4 +47,15 @@ export function resolveDebugFlags({ env = {}, argv = [], storeBuild = false } = 
         // The inspector is a second opt-in on top of diagnostics, never on its own.
         mainInspectPort: diagnosticsEnabled ? requestedPort : 0,
     };
+}
+
+/**
+ * Whether online play may fall back to direct P2P connections when the relay transport cannot
+ * open. Never in a store build: there online play goes through Steam's relays or not at all.
+ * @param {object} [options]
+ * @param {Record<string, string | undefined>} [options.env]
+ * @param {boolean} [options.storeBuild]
+ */
+export function allowsDirectP2P({ env = {}, storeBuild = false } = {}) {
+    return !storeBuild && env.SERENITY_ALLOW_DIRECT_P2P === '1';
 }

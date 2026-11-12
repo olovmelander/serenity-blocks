@@ -118,6 +118,10 @@ describe('IP-string gate over the packaged desktop build (scripts/ip-packaged-sc
             'PRIVACY_POLICY.md': 'No servers.',
             'COPYRIGHT.md': 'All rights reserved.',
             'native_modules/steamworks.js/LICENSE': 'MIT',
+            'native_modules/koffi/package.json': '{"name":"koffi"}',
+            'native_modules/koffi/index.cjs': 'module.exports = {};',
+            'native_modules/koffi/LICENSE.txt': 'MIT',
+            'native_modules/@koromix/koffi-linux-x64/linux_x64/koffi.node': 'binary',
         };
         const clean = await packageBuild({ inside: CLEAN_APP, beside });
         await expect(afterPack({ appOutDir: join(clean.root, 'release', 'linux-unpacked') })).resolves.toBeUndefined();

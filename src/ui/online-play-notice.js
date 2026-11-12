@@ -17,13 +17,16 @@ import { focusSoon, openLayer } from './components/mp-sheet.js';
 
 export const ONLINE_NOTICE_KEY = 'serenityBlocks.onlinePlayNotice';
 
-/** For the player creating a public match, who hosts it (ui/match-config-modal.js). */
-export const HOST_IP_NOTE = 'Everyone who joins can see your IP address, as in most online games.';
+/**
+ * For the player creating a public match, who hosts it (ui/match-config-modal.js). Every
+ * connection goes through Steam's relays (electron/steam-relay-transport.js): a store build
+ * plays online no other way.
+ */
+export const HOST_IP_NOTE = 'Players who join see your Steam name, never your IP address.';
 export const ONLINE_NOTICE_TITLE = 'Before you play online';
-export const ONLINE_NOTICE_TEXT = 'An online match connects your computer directly to the match\'s host, '
-    + 'and the host\'s computer to everyone in the match. The players you are connected to can see your '
-    + 'IP address, as in most online games. Play with friends only if you would rather not share it with '
-    + 'strangers.';
+export const ONLINE_NOTICE_TEXT = 'An online match connects your computer to the match\'s host, and the '
+    + 'host\'s computer to everyone in the match, always through Steam\'s relay servers, so the players you '
+    + 'play with never see your IP address. They see your Steam name and Steam ID, and what you type in chat.';
 export const ONLINE_NOTICE_BUTTON = 'I understand';
 
 /** Read on a device whose storage cannot keep it: holds for this session. */

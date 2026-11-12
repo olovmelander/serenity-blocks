@@ -104,6 +104,26 @@
             "!**/*.lib",
             "!**/*.d.ts"
           ]
+        },
+        {
+          "from": "node_modules/koffi",
+          "to": "native_modules/koffi",
+          "filter": [
+            "package.json",
+            "LICENSE.txt",
+            "**/*.cjs",
+            "**/*.js",
+            "!doc/**",
+            "!vendor/**"
+          ]
+        },
+        {
+          "from": "node_modules/@koromix/koffi-win32-x64",
+          "to": "native_modules/@koromix/koffi-win32-x64",
+          "filter": [
+            "**/*",
+            "!**/*.lib"
+          ]
         }
       ],
       "signtoolOptions": {
@@ -136,6 +156,26 @@
             "!**/*.lib",
             "!**/*.d.ts"
           ]
+        },
+        {
+          "from": "node_modules/koffi",
+          "to": "native_modules/koffi",
+          "filter": [
+            "package.json",
+            "LICENSE.txt",
+            "**/*.cjs",
+            "**/*.js",
+            "!doc/**",
+            "!vendor/**"
+          ]
+        },
+        {
+          "from": "node_modules/@koromix/koffi-linux-x64",
+          "to": "native_modules/@koromix/koffi-linux-x64",
+          "filter": [
+            "**/*",
+            "!**/*.lib"
+          ]
         }
       ]
     }
@@ -151,6 +191,7 @@
   "author": "Olov Melander",
   "license": "UNLICENSED",
   "dependencies": {
+    "koffi": "3.3.5",
     "phaser": "4.2.1",
     "steamworks.js": "0.4.0",
     "three": "0.187.0"

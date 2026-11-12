@@ -100,9 +100,9 @@ describe('the online play notice', () => {
         expect(sheet.attributes['aria-modal']).toBe('true');
         expect(sheet.find('sb-confirm__title').textContent).toBe('Before you play online');
         expect(sheet.find('sb-confirm__message').textContent).toBe(
-            'An online match connects your computer directly to the match\'s host, and the host\'s computer '
-            + 'to everyone in the match. The players you are connected to can see your IP address, as in most '
-            + 'online games. Play with friends only if you would rather not share it with strangers.',
+            'An online match connects your computer to the match\'s host, and the host\'s computer to '
+            + 'everyone in the match, always through Steam\'s relay servers, so the players you play with '
+            + 'never see your IP address. They see your Steam name and Steam ID, and what you type in chat.',
         );
         const buttons = sheet.all('BUTTON');
         expect(buttons.map((button) => button.textContent)).toEqual(['I understand']);
