@@ -25,6 +25,7 @@ import {
 } from '../../src/themes/supernova/supernova-world.js';
 import { POST_LOOK, SupernovaPost } from '../../src/themes/supernova/supernova-post.js';
 import { fallbackLayout } from '../../src/themes/supernova/supernova-composition.js';
+import { materialXNoiseFunctions } from './helpers/materialx-noise.js';
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 120_000 });
 
@@ -244,7 +245,7 @@ describe.each(TIERS)('Supernova shaders at %s', (quality) => {
                     expect(Buffer.byteLength(code), `${name}, ${label} ${stage}`).toBeLessThan(STAGE_BUDGET);
                     expect(equalEdges(code), `${name}, ${label} ${stage}`).toEqual([]);
                 }
-                expect(`${vertex}\n${fragment}`, `${name}, ${label}`).not.toMatch(/mx_\w+/);
+                expect(materialXNoiseFunctions(`${vertex}\n${fragment}`), `${name}, ${label}`).toEqual([]);
                 expect(`${vertex}\n${fragment}`, `${name}, ${label}`).not.toMatch(/\bNaN\b|\bInfinity\b/);
                 expect(`${vertex}\n${fragment}`, `${name}, ${label}`).not.toMatch(/object Object/);
             }

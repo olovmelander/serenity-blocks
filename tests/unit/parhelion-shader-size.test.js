@@ -39,6 +39,7 @@ import {
     createGlintMaterial,
     createPillarMaterial,
 } from '../../src/playground/effects/parhelion-particles.js';
+import { materialXNoiseFunctions } from './helpers/materialx-noise.js';
 
 function buildShaders(material, object) {
     const mesh = object || new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
@@ -104,8 +105,7 @@ describe('parhelion dome WGSL size gate', () => {
     });
 
     it('never uses MaterialX noise', () => {
-        expect(wgsl).not.toMatch(/mx_/);
-        expect(fns.some((name) => name.startsWith('mx_'))).toBe(false);
+        expect(materialXNoiseFunctions(wgsl)).toEqual([]);
     });
 
     it('stays under 22 KB', () => {
@@ -150,7 +150,7 @@ describe('parhelion stone / snow fragments', () => {
         // 2026-10-20: drifts (analytic swells), the far stones' shadow loop and the lower-halo
         // glints (hashes on a projected grid) grew it from ≈ 10 KB; still three noise reads.
         const wgsl = buildFragment(createSnowMaterial(createSharedUniforms(), 'High'));
-        expect(wgsl).not.toMatch(/mx_/);
+        expect(materialXNoiseFunctions(wgsl)).toEqual([]);
         expect(bytes(wgsl)).toBeLessThan(15_500);
         // The far plain fades into the noise-free horizon air (ph_fogFar), never the dome's banks.
         expect(fnNames(wgsl)).toContain('ph_fogFar');
@@ -166,14 +166,15 @@ describe('parhelion stone / snow fragments', () => {
     it('stone fragment: no mx_, three noise evals at High (grain, streaks, lichen), under 10.5 KB', () => {
         const { geometry } = buildStoneGeometry();
         const wgsl = buildFragment(createStoneMaterial(createSharedUniforms(), 'High'), geometry);
-        expect(wgsl).not.toMatch(/mx_/);
+        expect(materialXNoiseFunctions(wgsl)).toEqual([]);
         expect(callCount(wgsl, 'od_noise2')).toBe(3);
         expect(bytes(wgsl)).toBeLessThan(10_500);
     });
 
     it('far stones fragment: small, no noise, no mx_', () => {
         const wgsl = buildFragment(createFarStoneMaterial(createSharedUniforms(), 'High'));
-        expect(wgsl).not.toMatch(/mx_|od_noise2/);
+        expect(wgsl).not.toMatch(/od_noise2/);
+        expect(materialXNoiseFunctions(wgsl)).toEqual([]);
         expect(bytes(wgsl)).toBeLessThan(5_000);
     });
 
@@ -229,7 +230,7 @@ describe('parhelion particles and pillars (§5.4–§5.6)', () => {
     it('diamond dust: analytic vertex stage with ONE arc loop, no mx_, no noise', () => {
         const material = createDustMaterial(u);
         const { vertex, fragment } = buildShaders(material, buildDustSprite(material, { count: 16 }, rng));
-        expect(vertex + fragment).not.toMatch(/mx_/);
+        expect(materialXNoiseFunctions(vertex + fragment)).toEqual([]);
         expect(vertex).not.toMatch(/od_noise2/);
         expect((vertex.match(/\bfor\s*\(/g) || []).length).toBe(1);
         expect(fnNames(vertex)).toContain('ph_calmBox');
@@ -241,7 +242,7 @@ describe('parhelion particles and pillars (§5.4–§5.6)', () => {
         const material = createGlintMaterial(u, bursts, 24);
         const sprite = buildGlintSprite(material, 8 * 24);
         const { vertex, fragment } = buildShaders(material, sprite);
-        expect(vertex + fragment).not.toMatch(/mx_/);
+        expect(materialXNoiseFunctions(vertex + fragment)).toEqual([]);
         const { attributes } = sprite.geometry;
         const instanced = Object.keys(attributes).filter((k) => attributes[k].isInstancedBufferAttribute);
         expect(instanced).toEqual([]);

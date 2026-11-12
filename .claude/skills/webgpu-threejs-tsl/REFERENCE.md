@@ -1,419 +1,306 @@
-# TSL Quick Reference
+# TSL quick reference (three r187)
+
+The API on one page, checked against the installed `three@0.187.0`. Where a line has a trap
+behind it, the gotcha's number is given. For anything not here, test the name
+(`node -e "import('three/tsl').then(m => console.log('name' in m))"`) before using it.
+
+## Contents
+
+[Imports](#imports) · [Types](#types) · [Operators](#operators) · [Math](#math) ·
+[Geometry and camera nodes](#geometry-and-camera-nodes) · [Screen](#screen-nodes) ·
+[Uniforms and attributes](#uniforms-attributes-varyings) · [Functions](#functions) ·
+[Control flow](#control-flow) · [Textures](#textures) · [Materials](#materials) ·
+[Post](#post) · [Noise and hashing](#noise-and-hashing) · [Compute](#compute) ·
+[Renderer](#renderer) · [Renamed and removed](#renamed-and-removed)
 
 ## Imports
 
 ```javascript
-// WebGPU Three.js
-import * as THREE from 'three/webgpu';
-
-// Core TSL
-import {
-  float, int, uint, bool,
-  vec2, vec3, vec4, color,
-  mat2, mat3, mat4,
-  uniform, texture, uv,
-  Fn, If, Loop, Break, Continue,
-  time, deltaTime
-} from 'three/tsl';
+import * as THREE from 'three/webgpu';                     // renderer, node materials, all of core
+import { Fn, If, Loop, float, uniform, vec3 } from 'three/tsl';   // EVERY TSL name, these included
+import { bloom } from 'three/addons/tsl/display/BloomNode.js';     // post nodes: one file each
 ```
+
+Never `from 'three'` in WebGPU code: a second copy of three breaks node materials.
 
 ## Types
 
-| TSL | WGSL | Example |
-|-----|------|---------|
-| `float(1.0)` | `f32` | Scalar float |
-| `int(1)` | `i32` | Signed integer |
-| `uint(1)` | `u32` | Unsigned integer |
-| `bool(true)` | `bool` | Boolean |
-| `vec2(x, y)` | `vec2<f32>` | 2D vector |
-| `vec3(x, y, z)` | `vec3<f32>` | 3D vector |
-| `vec4(x, y, z, w)` | `vec4<f32>` | 4D vector |
-| `color(0xff0000)` | `vec3<f32>` | RGB color |
-| `uniform(value)` | uniform | Dynamic value |
+| TSL | Shader type | Notes |
+|---|---|---|
+| `float(1.0)`, `int(1)`, `uint(1)`, `bool(true)` | scalar | a bare JS number is promoted where a node method takes it |
+| `vec2`, `vec3`, `vec4`, `ivec2`, `uvec2`, … | vector | `vec3(x)` splats; `vec3(selectNode)` can collapse to a scalar, spell out three (#177) |
+| `color(0xff8800)` | `vec3` | converted from sRGB to the linear working space; author scene-linear HDR light as `vec3` |
+| `mat2`, `mat3`, `mat4` | matrix | |
+
+Convert with `.toFloat()`, `.toInt()`, `.toUint()`, `.toVec3()`. Swizzle with `.xyz`, `.rgb`,
+`.xz`, `.zyx`.
 
 ## Operators
 
-| Operation | TSL | GLSL Equivalent |
-|-----------|-----|-----------------|
-| Add | `a.add(b)` | `a + b` |
-| Subtract | `a.sub(b)` | `a - b` |
-| Multiply | `a.mul(b)` | `a * b` |
-| Divide | `a.div(b)` | `a / b` |
-| Modulo | `a.mod(b)` | `mod(a, b)` |
-| Negate | `a.negate()` | `-a` |
-| Less Than | `a.lessThan(b)` | `a < b` |
-| Greater Than | `a.greaterThan(b)` | `a > b` |
-| Equal | `a.equal(b)` | `a == b` |
-| And | `a.and(b)` | `a && b` |
-| Or | `a.or(b)` | `a \|\| b` |
-| Assign | `a.assign(b)` | `a = b` |
-| Add Assign | `a.addAssign(b)` | `a += b` |
+Nodes are objects: JavaScript operators do not work on them. `-x` prints `NaN` into the shader
+and `1 + x` builds a string (#167, #213).
 
-## Swizzling
+| Meaning | TSL | Meaning | TSL |
+|---|---|---|---|
+| `a + b`, `a − b` | `a.add(b)`, `a.sub(b)` | `a < b`, `a > b` | `a.lessThan(b)`, `a.greaterThan(b)` |
+| `a × b`, `a ÷ b` | `a.mul(b)`, `a.div(b)` | `a ≤ b`, `a ≥ b` | `a.lessThanEqual(b)`, `a.greaterThanEqual(b)` |
+| `−a`, `1 − a` | `a.negate()`, `a.oneMinus()` | `a == b`, `a != b` | `a.equal(b)`, `a.notEqual(b)` (no `.equals`) |
+| modulo | `a.mod(b)`: floats `a − b·floor(a/b)`, ints `%` | and, or, not | `a.and(b)`, `a.or(b)`, `a.not()` |
+| assign | `v.assign(b)`, `v.addAssign(b)`, `v.mulAssign(b)` | clamp 0..1 | `a.saturate()` |
+
+## Math
+
+`abs sign floor ceil fract min max clamp mix step smoothstep sin cos tan asin acos atan exp log
+pow sqrt length distance dot cross normalize reflect refract fwidth dFdx dFdy`
+
+- `mix(a, b, t)` as a function. The chained form makes the RECEIVER the weight: `t.mix(a, b)`.
+  `a.mix(b, t)` blends with `a` as the factor.
+- `atan(y, x)` is the two-argument form; there is no `atan2`.
+- `smoothstep(lo, hi, x)`: equal edges are a hard WGSL error (#69); reversed edges are fine in a
+  shader. The JavaScript `THREE.MathUtils.smoothstep(x, min, max)` takes `x` FIRST (#70).
+- `pow(x, n)` with a base a hair below zero is NaN: clamp the base, write small integer powers
+  as products (#94). `normalize()` of a zero vector is NaN (#231).
+- Shaping: `parabola(x, k)` (a bump: 0, 1, 0), `gain(x, k)` (an S-curve), `pcurve(x, a, b)` (as
+  shipped, a 0→1 ease), `remap`, `remapClamp`.
+- Oscillators over a time node: `oscSine(t)`, `oscSquare(t)`, `oscTriangle(t)`, `oscSawtooth(t)`
+  all return 0..1 already.
+- Constants: `PI`, `TWO_PI` (`PI2` is deprecated).
+
+## Geometry and camera nodes
+
+| Node | Meaning |
+|---|---|
+| `positionGeometry` | the raw vertex attribute, before anything |
+| `positionLocal` | model space; inside a `positionNode` it already holds the instance matrix (#65) |
+| `positionWorld`, `positionView` | world and view space |
+| `normalGeometry`, `normalLocal`, `normalWorld`, `normalView` | pin the last two with `.toVar()` before a branch reads them (#205, #212) |
+| `uv()`, `uv(1)`, `vertexColor()`, `tangentLocal` | attributes |
+| `frontFacing` | bool, fragment stage |
+| `instanceIndex`, `vertexIndex`, `drawIndex` | built-in indices |
+| `cameraPosition`, `cameraNear`, `cameraFar` | |
+| `cameraViewMatrix`, `cameraProjectionMatrix`, `cameraWorldMatrix`, `cameraProjectionMatrixInverse` | inside a post chain these belong to the pipeline's quad camera (#165) |
+| `modelWorldMatrix`, `modelViewMatrix` | |
+
+`transformedNormalView` and `transformedNormalWorld` no longer exist: use `normalView` and
+`normalWorld`.
+
+## Screen nodes
+
+| Node | Meaning |
+|---|---|
+| `screenUV` | 0..1, **y = 0 at the TOP** on both backends |
+| `screenCoordinate` | the same in pixels |
+| `screenSize` | drawing buffer size, pixels |
+| `viewport` | `vec4(x, y, width, height)`, physical pixels; `viewportSize` is its `.zw` |
+| `viewportLinearDepth`, `linearDepth()` | scene depth and this fragment's, both 0..1 across near..far |
+| `viewportSharedTexture(uv)`, `viewportTexture(uv)`, `viewportMipTexture(uv)` | what is already drawn; the shared one is ONE texture for all targets (#240) |
+
+A render target's `v = 0` is its TOP row on both backends (#113).
+
+## Uniforms, attributes, varyings
 
 ```javascript
-const v = vec3(1, 2, 3);
-v.x        // 1
-v.xy       // vec2(1, 2)
-v.zyx      // vec3(3, 2, 1)
-v.rgb      // same as xyz
+const u = uniform(0.5);                          // .value from JavaScript; float, Vector2/3/4, Color, Matrix
+const n = uniform(0, 'int');                     // a typed uniform (a loop count)
+const rows = uniformArray(vector4Array, 'vec4'); // one uniform BUFFER; rows.element(i); 12 buffers a stage (#102)
+uniform(0).onRenderUpdate(({ deltaTime }) => deltaTime);            // the argument is the NodeFrame
+uniform(0).onObjectUpdate(({ object }) => object.userData.value);   // also onFrameUpdate
+
+const a = attribute('aPlace', 'vec4');           // any geometry attribute by name, interleaved too
+const v = varying(expression, 'vName');          // computed in the vertex stage, interpolated
 ```
 
-## Math Functions
+- Mutating a `Vector`/`Color` in place inside a uniform uploads every frame (#73).
+- A per-instance value read in the fragment stage is interpolated and comes back a few bits off:
+  store integers and `floor(x.add(0.5))`, or pass it flat (`src/themes/shared/flat-varying.js`) (#87).
+- A varying on a thin triangle is extrapolated under MSAA: clamp it (#105), or take it at the
+  centroid (`src/themes/shared/centroid-varying.js`).
+- WebGPU binds 8 vertex buffers a pipeline: pack instance attributes into one
+  `InstancedInterleavedBuffer` (#99).
+- `instancedBufferAttribute(typedArray, 'float')` is NOT instanced in r187; pass a real
+  `new THREE.InstancedBufferAttribute(array, n)`.
 
-| Function | Description |
-|----------|-------------|
-| `abs(x)` | Absolute value |
-| `sign(x)` | Sign (-1, 0, 1) |
-| `floor(x)` | Round down |
-| `ceil(x)` | Round up |
-| `fract(x)` | Fractional part |
-| `min(a, b)` | Minimum |
-| `max(a, b)` | Maximum |
-| `clamp(x, lo, hi)` | Clamp to range |
-| `mix(a, b, t)` | Linear interpolation |
-| `step(edge, x)` | Step function |
-| `smoothstep(a, b, x)` | Smooth step |
-| `sin(x)`, `cos(x)` | Trigonometry |
-| `pow(x, y)` | Power |
-| `sqrt(x)` | Square root |
-| `length(v)` | Vector length |
-| `distance(a, b)` | Distance |
-| `dot(a, b)` | Dot product |
-| `cross(a, b)` | Cross product |
-| `normalize(v)` | Unit vector |
-| `reflect(i, n)` | Reflection |
-
-## Geometry Nodes
-
-| Node | Description |
-|------|-------------|
-| `positionLocal` | Model space position |
-| `positionWorld` | World space position |
-| `positionView` | Camera space position |
-| `normalLocal` | Model space normal |
-| `normalWorld` | World space normal |
-| `normalView` | Camera space normal |
-| `uv()` | UV coordinates |
-| `uv(1)` | Secondary UVs |
-| `tangentLocal` | Tangent vector |
-| `vertexColor()` | Vertex colors |
-
-## Camera Nodes
-
-| Node | Description |
-|------|-------------|
-| `cameraPosition` | Camera world position |
-| `cameraNear` | Near plane |
-| `cameraFar` | Far plane |
-| `cameraViewMatrix` | View matrix |
-| `cameraProjectionMatrix` | Projection matrix |
-| `screenUV` | Screen UV (0-1) |
-| `screenSize` | Screen dimensions |
-
-## Time
-
-| Node | Description |
-|------|-------------|
-| `time` | Seconds since start |
-| `deltaTime` | Frame delta |
-| `oscSine(t)` | Sine wave (0-1) |
-| `oscSquare(t)` | Square wave |
-| `oscTriangle(t)` | Triangle wave |
-| `oscSawtooth(t)` | Sawtooth wave |
-
-## Material Properties
+## Functions
 
 ```javascript
-const mat = new THREE.MeshStandardNodeMaterial();
+// Inline: the body is re-emitted at EVERY call site (#81). Fine for a one-off, or for a
+// builder that reads the uniform bag or a texture.
+const tint = Fn(([c, k]) => c.mul(k));
 
-// Basic
-mat.colorNode = color(0xff0000);
-mat.opacityNode = float(0.8);
-mat.alphaTestNode = float(0.5);
+// Laid out: ONE real shader function. Must be pure (no captured uniform or texture, #93, #95),
+// flat (calls no other laid-out helper, #207), with parameter names no shader language
+// reserves (`from`, `input`, `filter`, … #178, #223).
+const hash21 = Fn(([pIn]) => {
+  const p3 = fract(vec3(pIn.x, pIn.y, pIn.x).mul(0.1031)).toVar();
+  p3.addAssign(dot(p3, p3.yzx.add(33.33)));
+  return fract(p3.x.add(p3.y).mul(p3.z));
+}).setLayout({ name: 'my_hash21', type: 'float', inputs: [{ name: 'pIn', type: 'vec2' }] });
+// Short form: Fn(fn, { pIn: 'vec2', return: 'float' })  (three names it fnNN)
 
-// PBR
-mat.roughnessNode = float(0.5);
-mat.metalnessNode = float(0.0);
-mat.emissiveNode = color(0x000000);
-mat.normalNode = normalMap(tex);
-
-// Physical (MeshPhysicalNodeMaterial)
-mat.clearcoatNode = float(1.0);
-mat.transmissionNode = float(0.9);
-mat.iridescenceNode = float(1.0);
-mat.sheenNode = float(1.0);
-
-// Vertex
-mat.positionNode = displaced;
+// A default is a plain JavaScript value until you make it a node
+const add = Fn(([a = float(1.0), b = float(2.0)]) => a.add(b));
 ```
 
-## Control Flow
+- A laid-out function's code is cached per backend and reused by every later material: that is
+  why it cannot read a uniform.
+- three names short-form functions `fnNN`. So do the MaterialX noises, which means a search of
+  the generated shader for `mx_` finds nothing: a shader gate uses `hasMaterialXNoise(text)` from
+  `tests/unit/helpers/materialx-noise.js`.
+
+## Control flow
+
+All of it exists only INSIDE a `Fn`: a bare `If(...)` at module level throws.
 
 ```javascript
-// If-Else
-If(condition, () => {
-  // true
-}).ElseIf(other, () => {
-  // other true
-}).Else(() => {
-  // false
-});
+const out = Fn(() => {
+  const N = normalize(normalWorld).toVar();        // pin shared values FIRST (#68, #171)
+  const value = float(0).toVar();                  // mutable: toVar() + assign()
 
-// Select (ternary)
-const result = select(condition, trueVal, falseVal);
+  If(cond, () => { value.assign(1.0); })
+    .ElseIf(other, () => { value.assign(0.5); })
+    .Else(() => { value.assign(0.0); });
 
-// Loop
-Loop(10, ({ i }) => {
-  // i = 0 to 9
-});
-
-// Loop control
-Break();
-Continue();
-Discard();  // Fragment only
+  const picked = select(cond, a, b);               // emitted as if/else: only one side runs;
+                                                   // select(cond, a, b).uniformFlow() evaluates both
+  Loop(8, ({ i }) => { value.addAssign(i.toFloat()); });
+  Loop({ start: int(0), end: u.count, type: 'int', condition: '<', name: 'w' }, ({ w }) => {
+    value.addAssign(rows.element(w).x);            // a NAMED loop hands its index over under that name (#155)
+  });
+  return vec4(N.mul(value), 1.0);
+})();
 ```
 
-## Custom Functions
+- A JavaScript reassignment (`x = x.add(1)`) inside `If` is invisible to the shader (#67).
+- A value written before an `.assign()` in JavaScript but first USED after it is computed after
+  it: pin it with `.toVar()` before the assignment (#200).
+- A node first built inside one branch is zero in the others (#68); never nest a `select` that
+  holds `Fn` calls inside another `select` (#89, WebGL2 only).
+- Property assignment (`copy.y = v`) works on a node you made (`vec3(node)`, `node.toVar()`).
+  On a shared node (`positionWorld.y = …`, a texture sample, a uniform) the write is lost.
+- `Break()`, `Continue()`, `Discard()` (or `cond.discard()`). `Return()` takes no value; an early
+  return with a value is the value returned from an `If` callback, in a laid-out `Fn` only.
+- `Loop` also takes a condition node (`Loop(v.lessThan(10), …)`, a while) and counts down
+  (`Loop({ start: 10 }, …)`).
+
+## Textures
 
 ```javascript
-// Basic function
-const myFn = Fn(([a, b]) => {
-  return a.add(b);
-});
-
-// With defaults
-const myFn = Fn(([a = 1.0, b = 2.0]) => {
-  return a.add(b);
-});
-
-// Usage
-myFn(x, y);
-myFn();  // uses defaults
+const t = texture(map, uvNode);        // automatic mip selection
+t.level(2.0)                           // an explicit mip: REQUIRED inside a branch or loop, and for
+                                       // a UV that jumps (atlas cells #98) or a blurred read (#104)
+t.bias(1.0)   t.grad(dx, dy)           // .grad() on a swappable placeholder loses its sampler (#274)
+t.sample(otherUv)                      // the same texture at another UV (reuse ONE node)
+t.load(ivec2Coord)                     // texel fetch, no filtering
+t.compare(depthRef)                    // shadow compare
+texture3D(volume, p)                   // texture3DLoad and texture3DLevel exist too
+node.value = otherTexture;             // repoint a node from JavaScript (ping-pong targets)
 ```
 
-## Compute Shaders
+- A filtered texture is continuous in value, not in slope: a normal from differences of a
+  magnified read shows the texel grid. Bake the gradient (#169, #246, #272, #273).
+- A texture captured by a laid-out `Fn` is not declared in later shaders (#93): sample in the
+  caller and pass the value in.
+- `normalMap(texture(tex))`, not `normalMap(tex)`. `pmremTexture(env, direction, roughness)`
+  needs all three outside a lit material.
+
+## Materials
+
+Themes use `MeshBasicNodeMaterial` (self-shaded) and `NodeMaterial` (full-screen passes). The
+lit ones (`MeshStandardNodeMaterial`, `MeshPhysicalNodeMaterial`, …) exist; `docs/materials.md`.
+
+| Slot | What it does | Trap |
+|---|---|---|
+| `colorNode` | diffuse colour (and alpha when transparent) | an opaque material's alpha is forced to 1 (#91) |
+| `emissiveNode` | ADDED to the output | on a Basic material, colour + emissive is twice the light (#119) |
+| `opacityNode`, `alphaTestNode`, `maskNode` | alpha, test, discard | all skipped when `fragmentNode` is set (#111) |
+| `positionNode` | vertex position, model space | return `positionLocal.add(offset)` (#65, #66) |
+| `vertexNode` | final clip-space position | the house form for billboards and full-screen parts |
+| `fragmentNode` | replaces the whole fragment path (colour, opacity, mask, MRT) | needed for an opaque material's own alpha |
+| `outputNode` | replaces the final colour AFTER the material ran (`output` is its result) | additive light: `vec4(rgb, 0)` with `premultipliedAlpha` (#90) |
+| `mrtNode` | per-material MRT override | |
+
+`side`, `transparent`, `depthWrite`, `depthTest`, `blending`, `alphaToCoverage`, `fog` are plain
+properties. `renderOrder` goes on the mesh, never on a `Group` (#206, #139). A caster that
+samples its own shadow map in `colorNode` breaks the shadow pass (#83).
+
+## Post
 
 ```javascript
-// Storage buffers (read-write)
-const positions = instancedArray(count, 'vec3');
-const values = instancedArray(count, 'float');
-
-// Read-only storage buffers
-const lookupTable = attributeArray(data, 'float');
-
-// Compute shader
-const compute = Fn(() => {
-  const pos = positions.element(instanceIndex);
-  pos.addAssign(vec3(0.01, 0, 0));
-})().compute(count);
-
-// Execute (after await renderer.init())
-renderer.compute(compute);
-
-// Workgroup size
-const compute2 = Fn(() => { /* ... */ })().compute(count, [64]);
+const pipeline = new THREE.RenderPipeline(renderer);            // PostProcessing is a deprecated alias
+const scenePass = pass(scene, camera, { samples });             // omitted: the renderer's count
+const sceneColor = scenePass.getTextureNode('output');          // also 'depth', an MRT name
+pipeline.outputColorTransform = false;                          // then tone and encode yourself, once:
+pipeline.outputNode = renderOutput(vec4(toned, 1.0), THREE.NoToneMapping);
+pipeline.render();
 ```
 
-## Post-Processing
+FXAA (tiers without MSAA) goes LAST, after that encode: `pipeline.outputNode = samples > 0 ?
+graded : fxaa(graded)`. Everything else, with every addon's signature: `docs/post-processing.md`.
+
+## Noise and hashing
+
+| Node | Notes |
+|---|---|
+| `hash(seed)` | the seed is cast to **uint** (a vector uses `.x` only, a negative float clamps to 0): pass an exact non-negative integer (#204). Returns [0, 1) |
+| `rand(uv)` | vec2 → [0, 1), the classic sine hash |
+| `interleavedGradientNoise(position)` | per-pixel dither; visible without a temporal filter (#201) |
+| `triNoise3D(p, speed, time)` | cheap animated 3D noise |
+| `mx_noise_*`, `mx_fractal_noise_*`, `mx_worley_noise_*` | exported, and BANNED in theme shaders: seconds of compile per pipeline (#80) |
+| `range(min, max)` | a hash of `instanceIndex`; its seed depends on creation order, so not reproducible across builds |
+
+House sources of noise: a laid-out hash like the one above, a 2D texture baked on the CPU and
+read at an explicit level, the 2D-lattice trick for 3D (#136), or the simplex port in
+`src/rendering/odyssey/chapter-environments/shared/odyssey-tsl-noise.js`.
+`docs/noise-and-utility-nodes.md` has the rest.
+
+## Compute
 
 ```javascript
-import { pass } from 'three/tsl';
-import { bloom } from 'three/addons/tsl/display/BloomNode.js';
-
-// r186: RenderPipeline is the real class (renamed from PostProcessing in r183;
-// the old name is a deprecated warn-once alias). The repo-wide rename has landed.
-const postProcessing = new THREE.RenderPipeline(renderer);
-const scenePass = pass(scene, camera);
-const color = scenePass.getTextureNode('output');
-
-// Apply effects
-const bloomPass = bloom(color);
-postProcessing.outputNode = color.add(bloomPass);
-
-// Render
-postProcessing.render();
-```
-
-## Common Patterns
-
-### Fresnel
-
-```javascript
-const viewDir = cameraPosition.sub(positionWorld).normalize();
-const fresnel = float(1).sub(normalWorld.dot(viewDir).saturate()).pow(3);
-```
-
-### Animated UV
-
-```javascript
-const animUV = uv().add(vec2(time.mul(0.1), 0));
-```
-
-### Noise Hash
-
-```javascript
-const noise = fract(position.dot(vec3(12.9898, 78.233, 45.543)).sin().mul(43758.5453));
-```
-
-### Dissolve
-
-```javascript
-const noise = hash(positionLocal.mul(50));
-If(noise.lessThan(threshold), () => Discard());
-```
-
-### Color Gradient
-
-```javascript
-const gradient = mix(colorA, colorB, positionLocal.y.mul(0.5).add(0.5));
-```
-
-## Node Materials
-
-| Material | Use Case |
-|----------|----------|
-| `MeshBasicNodeMaterial` | Unlit |
-| `MeshStandardNodeMaterial` | PBR |
-| `MeshPhysicalNodeMaterial` | Advanced PBR |
-| `MeshPhongNodeMaterial` | Phong shading |
-| `MeshToonNodeMaterial` | Cel shading |
-| `PointsNodeMaterial` | Point clouds |
-| `LineBasicNodeMaterial` | Lines |
-| `SpriteNodeMaterial` | Sprites |
-
-## Device Loss Handling
-
-```javascript
-// Listen for device loss
-renderer.backend.device.lost.then(async (info) => {
-  if (info.reason === 'unknown') {
-    // Unexpected loss - recover
-    await renderer.dispose();
-    await initWebGPU();  // Reinitialize
-  }
-});
-
-// Simulate loss for testing
-renderer.backend.device.destroy();
-```
-
-| Loss Reason | Meaning |
-|-------------|---------|
-| `'destroyed'` | Intentional via `destroy()` |
-| `'unknown'` | Unexpected (driver crash, timeout, etc.) |
-
-**Recovery tips:**
-- Always get fresh adapter before new device
-- Save/restore application state (not transient data)
-- Use Chrome `about:gpucrash` to test real GPU crashes
-
-## Compute Shader Built-ins
-
-| Node | Description |
-|------|-------------|
-| `instanceIndex` | Current instance/invocation index |
-| `vertexIndex` | Current vertex index |
-| `drawIndex` | Current draw call index |
-| `globalId` | Global invocation position (uvec3) |
-| `localId` | Local workgroup position (uvec3) |
-| `workgroupId` | Workgroup index (uvec3) |
-| `numWorkgroups` | Number of workgroups dispatched (uvec3) |
-| `subgroupSize` | Size of the subgroup |
-
-## Device Limits
-
-WebGPU devices use **default minimums** unless you request higher limits. This is critical for large buffers.
-
-```javascript
-// Three.js: pass requiredLimits to the renderer
-const renderer = new THREE.WebGPURenderer({
-  requiredLimits: {
-    maxBufferSize: 1024 * 1024 * 1024,            // 1 GiB
-    maxStorageBufferBindingSize: 1024 * 1024 * 512, // 512 MiB
-  },
-});
+const positions = instancedArray(count, 'vec4');           // per-instance storage, read-write
+const table = attributeArray(data, 'float').toReadOnly();  // per-vertex storage; read-only is opt-in
+const step = Fn(() => {
+  positions.element(instanceIndex).addAssign(vec4(0.01, 0, 0, 0));
+})().compute(count);                                       // workgroup [64] by default
 await renderer.init();
+renderer.compute(step);                                    // the FIRST call compiles synchronously
 ```
 
-| Limit | Default | Common Need |
-|-------|---------|-------------|
-| `maxBufferSize` | 256 MiB | Large vertex/storage buffers |
-| `maxStorageBufferBindingSize` | 128 MiB | Large compute buffers |
-| `maxStorageBuffersPerShaderStage` | 8 | Many storage buffers |
+Compute is the exception here (the WebGL2 backend needs a CPU twin). `docs/compute-shaders.md`.
 
-**Check before requesting:**
-```javascript
-const adapter = await navigator.gpu?.requestAdapter();
-if (adapter.limits.maxBufferSize >= desiredSize) {
-  // Safe to request
-}
-```
+## Renderer
 
-See `docs/limits-and-features.md` for full details.
+- `await renderer.init()` once, then `render()` and `compute()` synchronously. `render()` before
+  `init()` throws.
+- A failed WebGPU start does not throw: the renderer falls back to its WebGL2 backend. Ask
+  `renderer.backend.isWebGPUBackend`. Gate features on `renderer.isWebGPURenderer` (true on both
+  backends), not on the backend (ADR-0019).
+- `await renderer.dispose()`: it is async. Device loss arrives at `renderer.onDeviceLost`
+  (`docs/device-loss.md`).
+- `renderer.compileAsync(object, camera, scene)`; one call at a time per renderer
+  (`docs/three-r187.md`). A theme leaves pipelines to the theme manager.
+- Shadows: `renderer.shadowMap.enabled = true`, `PCFShadowMap` (the soft type is gone), and
+  `shadow(light)` from `three/tsl` in an unlit material (#84).
+- `requiredLimits` and features: `docs/limits-and-features.md`.
 
-## Version Notes (installed: 0.187.0 / r187)
+## Renamed and removed
 
-**r187 changes from the r186 pin** (audit: docs/THREE_UPGRADE_R186_TO_R187_2026-10.md; SKILL.md
-"r187 compile, override passes and generated code" has the details):
-- `compileAsync`'s drain binds each queued object's target + MRT, then the launch-time binding:
-  launch-only bindings need `ensurePrecompileRestoresLiveState(renderer)`.
-- Override passes key render objects by the source material too (five keys).
-- PMREMs are cube render targets; `CubeUVReflectionMapping` removed; reflections shift slightly.
-- ACES Filmic fit fix; PCF radius fix for non-square shadow maps; TSL type promotion.
-- `pixelationPass()`'s `pixelSize` is a Number only; `ViewportDepthNode.getProjectionDepth()` is
-  `projectionDepth()`; struct storage buffers are always arrays (`storage.element( 0 ).get( 'm' )`);
-  a custom light registers with `CustomLight.registerNode( CustomLightNode )`;
-  `iridescenceThicknessRange` is deprecated (`iridescenceThicknessMinimum` / `Maximum`).
-- The internal animation loop starts on first use, not at `init()`.
+| Was | Now (r187) |
+|---|---|
+| `THREE.PostProcessing` | `THREE.RenderPipeline` (alias warns) |
+| `atan2(y, x)`, `.equals()` | `atan(y, x)`, `.equal()` |
+| `transformedNormalView` / `World` | `normalView` / `normalWorld` |
+| `PI2` | `TWO_PI` |
+| `THREE.Clock` | `THREE.Timer`, or the rAF timestamp |
+| `PCFSoftShadowMap` | `PCFShadowMap` |
+| `renderAsync`, `clear*Async`, `hasFeatureAsync`, `initTextureAsync` | the sync call after `await renderer.init()` (`computeAsync` is not deprecated) |
+| `burn`, `dodge`, `screen`, `overlay` | `blendBurn`, `blendDodge`, `blendScreen`, `blendOverlay` |
+| `AnamorphicNode.js` | gone: BloomNode's `highPassFn` / `bloomTintColors` |
+| `reflector({ resolution })` | `reflector({ resolutionScale })` |
+| `backend.hasTimestamp(uid)` | `backend.hasTimestampQuery(uid)` |
+| `CubeUVReflectionMapping` | gone: PMREMs are cube render targets |
+| `iridescenceThicknessRange` | `iridescenceThicknessMinimum` / `Maximum` |
 
-**Retained r186 behavior (changes vs the r185 pin):**
-- Native `renderer.compileComputeAsync(nodes)` compiles without dispatching. Use the
-  repo's `webgpu-compute-pipeline-async.js` wrapper to verify GPU slots and guard
-  pending/failed dispatch; native compilation may resolve with an error flag.
-- Renderer/backend disposal is asynchronous; await it before destroying a shared
-  GPU device or nulling the backend device. Handle rejected disposal promises.
-- MRT merge now preserves blend modes; the prototype patch is removed. Explicit
-  `MaterialBlending` on emissive attachments remains necessary.
-- `compileAsync(scene, camera, targetScene = null, onProgress = null)` retains the
-  first three arguments and deferred builds; retain Odyssey's scoped target bindings.
-- WebGPU `PCFSoftShadowMap` is removed; use `PCFShadowMap`.
+---
 
-**Retained r185 behavior (changes vs the previous r181 pin):**
-- `PostProcessing` was renamed `RenderPipeline` in r183; in r185 `PostProcessing` is a
-  fully-functional deprecated warn-once alias. **Repo policy: construct
-  `RenderPipeline`** — the repo-wide rename has landed; a `PostProcessing` deprecation
-  warning now indicates a stray un-renamed site that needs fixing.
-- TSL `atan2` removed → two-arg `atan(y, x)`. TSL `.equals` removed → `.equal`.
-- MRT secondary attachments default to `NoBlending` — restore emissive blending via
-  `withEmissiveMaterialBlending(...)` from `src/themes/shared/mrt-blend.js`
-  (`setBlendMode('emissive', new BlendMode(MaterialBlending))`; r186 merges blend modes natively).
-- `positionNode` ordering **inverted** vs r181 (verified from generated WGSL): r181 ran
-  `positionNode` first (`positionLocal` inside it = raw geometry) and applied
-  instance/batch/skin matrices after its output; r185 applies the matrices first
-  (`positionLocal` is post-instance inside `positionNode`) and the node's output is
-  final. Portable idiom: masks/pivots/phases from `positionGeometry`, output
-  `positionLocal.add(displacement)`. A `positionGeometry`-only output on a real-matrix
-  InstancedMesh collapses instancing on r185.
-- `compileAsync` defers node building to a per-object main-thread-yielding loop — a
-  bind/compile/restore-synchronously recipe silently poisons the MRT-agnostic builder
-  cache. Use Odyssey's `warmup/post-target-compile.js` scoped binding helper,
-  retaining its side, call-depth and live-loop protections.
-- `backend.hasTimestamp(uid)` → `hasTimestampQuery(uid)`; `hasTimestamp` is now a
-  boolean **capability getter** — calling it like a function is a TypeError, and
-  truthiness checks silently changed meaning.
-- `BloomNode.dispose()` now disposes its own materials; the new public
-  `setResolutionScale()` replaces half-res `setSize` monkey-patching.
-
-**Still true from earlier releases:**
-- `PI2` is deprecated → use `TWO_PI`
-- `renderAsync()`/`computeAsync()`-style methods deprecated → `await renderer.init()` once, then sync `render()`/`compute()`
-- `transformedNormalView` → use `normalView`; `transformedNormalWorld` → use `normalWorld` (r178+)
-
-## Resources
-
-- [TSL Wiki](https://github.com/mrdoob/three.js/wiki/Three.js-Shading-Language)
-- [TSL Docs](https://threejs.org/docs/pages/TSL.html)
-- [WebGPU Examples](https://github.com/mrdoob/three.js/tree/master/examples)
-- [Three.js Docs](https://threejs.org/docs/)
-- [WebGPU Best Practices - Device Loss](https://toji.dev/webgpu-best-practices/device-loss)
+The API reference docs in this skill began as dgreenheck/webgpu-claude-skill (MIT) and have been
+rewritten against this repo's pinned three. Do not re-pull upstream over them.

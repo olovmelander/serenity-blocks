@@ -58,5 +58,16 @@ had also quietly pinned us for nine months, because on a `0.x` dependency a care
   `webgpu-backend-dispose-contract`, `odyssey-post-target-compile`,
   `base-theme-dispose-timestamp-quiesce`, `mrt-blend`, `async-render-pipelines-contract`,
   `three-r187-compute-pipeline-contract` (ADR-0020).
+- The skill's stamp and API names: `agent-skill-contract` fails until the
+  `webgpu-threejs-tsl` skill names the installed, pinned version and every three name it
+  imports exists in that package; `agent-skill-template` builds the skill's starter template to
+  WGSL and GLSL; `agent-skill-emission-contract` builds the shapes the skill's emission rules
+  describe and fails when the node builder changes what it emits for them (r187 did, silently:
+  a value shared by branches is now written in each, where r186 left the others reading zero).
+  `node .claude/skills/webgpu-threejs-tsl/scripts/audit.mjs` prints the findings.
+- The shader gates' MaterialX check: `materialx-noise-gate` proves the calibrated check in
+  `tests/unit/helpers/materialx-noise.js` fires on every MaterialX noise on both backends. (r187
+  began writing those functions under generated names, and the 41 gates that searched the
+  shader text for `mx_` passed whatever a shader held.)
 - `capture:themes` (61/61 required) and `perf:budgets:gate` before an upgrade is called done.
 - The plan template is the closed r185 document; its §12 phases are the checklist.

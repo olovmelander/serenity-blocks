@@ -22,6 +22,7 @@ import * as THREE from 'three/webgpu';
 import { context } from 'three/tsl';
 import { RAINBOW_TERRACES_PARTS, RainbowTerracesWorld } from '../../src/themes/rainbow-terraces/rainbow-terraces-world.js';
 import { POST_LOOK, RainbowTerracesPost } from '../../src/themes/rainbow-terraces/rainbow-terraces-post.js';
+import { materialXNoiseFunctions } from './helpers/materialx-noise.js';
 
 const TIERS = ['High', 'Minimal'];
 const BACKENDS = [['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilder]];
@@ -138,7 +139,7 @@ function expectClean({
         expect(Buffer.byteLength(out[stage]), `${name}, ${label} ${stage}`).toBeLessThan(budget(stage));
         expect(equalEdges(out[stage]), `${name}, ${label} ${stage}`).toEqual([]);
     }
-    expect(`${out.vertex}${out.fragment}`, `${name}, ${label}`).not.toMatch(/mx_\w+/);
+    expect(materialXNoiseFunctions(`${out.vertex}${out.fragment}`), `${name}, ${label}`).toEqual([]);
     if (label === 'WGSL') {
         expect(out.vertex, name).toMatch(/@vertex/);
         expect(out.fragment, name).toMatch(/@fragment/);

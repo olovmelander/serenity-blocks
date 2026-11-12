@@ -18,6 +18,7 @@ import * as THREE from 'three/webgpu';
 import { context } from 'three/tsl';
 import { NeonDuskWorld } from '../../src/themes/neon-dusk/neon-dusk-world.js';
 import { RIG } from '../../src/themes/neon-dusk/neon-dusk-tsl.js';
+import { hasMaterialXNoise } from './helpers/materialx-noise.js';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -122,7 +123,7 @@ function problemsOf({
             });
         }
     }
-    if (/mx_\w+/.test(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
+    if (hasMaterialXNoise(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
     return problems;
 }
 

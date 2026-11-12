@@ -1,12 +1,32 @@
-# WebGPU Performance Playbook (this repo)
+# WebGPU performance playbook (this repo)
 
-This distills the recurring findings from this repo's theme perf audits (wolfhour,
-ice-temple, stellar-drift, tornado, cosmic-noir, ocean, chromadelic, black-hole).
-Apply in order: **measure → gate → trim fill → trim CPU**.
+The recurring findings of this repo's theme performance work, in the order to apply them:
+**measure → gate → fill → node graph → draw calls → start-up → tiers**. The traps with their
+measurements are in `gotchas/performance-tiers.md`; read it with this file.
 
-## 1. Measure first — GPU timestamps, not FPS guesses
+## The two rules that come before any change
 
-FPS conflates CPU and GPU. r185 has real GPU timing (WebGPU `timestamp-query`):
+**Keep the look** (the owner's standing instruction: "be smart with our optimizations so we
+don't sacrifice the visual quality and effects of the themes"). Order the options for every
+slow spot:
+
+1. **No pixel changes**: cache or reuse work, faster code for the same output, skip what nobody
+   sees, spread builds over frames, start work earlier.
+2. **Visually equivalent**: lower resolution only for low-frequency effects with a good
+   upsample, early-outs where a term provably vanishes, reuse slow-changing results, distance LOD.
+3. **Only then trim** counts or steps, on non-High tiers, the least visible thing first.
+
+Prove each with before/after shots at the same frame (`?t=`) and an interleaved A/B. High must
+come out pixel-identical or the change is reverted.
+
+**A claim needs a verified instrument** (ADR-0016): GPU timestamps on real hardware, old and
+new served side by side and interleaved. A frame counter, a dev-server run and software
+rendering are not instruments. Speed runs heat the machine: ask the owner before any uncapped
+measurement, and keep ordinary captures at `maxFps=30`.
+
+## 1. Measure first: GPU timestamps, not FPS guesses
+
+FPS conflates CPU and GPU. three has real GPU timing (WebGPU `timestamp-query`):
 
 ```javascript
 const renderer = new THREE.WebGPURenderer({ trackTimestamp: true });
@@ -18,122 +38,152 @@ await renderer.resolveTimestampsAsync('compute');
 console.log(renderer.info.render.timestamp, renderer.info.compute.timestamp); // ms on GPU
 ```
 
-> **r185 backend API change:** `backend.hasTimestamp(uid)` was renamed
-> `backend.hasTimestampQuery(uid)`. `hasTimestamp` still exists but is now a boolean
-> **capability getter** — calling it like a function is a TypeError, and a bare
-> truthiness check (`if (backend.hasTimestamp)`) silently changed meaning from
-> "this uid has a query" to "timestamps are supported at all".
+- **The playground does this for you**: `profile=1&trackTimestamp=1`, warm the effect, call
+  `window.__PLAYGROUND__.profile.reset()`, then read `profile.snapshot()` for CPU, frame and GPU
+  p50/p95/p99 (`src/playground/README.md`). Missing timestamps are reported as unavailable,
+  never as a zero cost.
+- **The fleet bench** runs the real game per theme: `npm run perf:themes:bench`
+  (`docs/THEME_FLEET_240_HANDOVER_2026-10-27.md`). Budgets are gated by `npm run perf:budgets:gate`.
+- `backend.hasTimestampQuery(uid)` asks whether a uid has a query. `backend.hasTimestamp` is a
+  boolean capability getter: calling it is a TypeError, and a bare truthiness check means
+  "timestamps are supported at all".
 
 Quick bound diagnosis without tooling:
-- **Shrink the window / drop `setPixelRatio`** → FPS jumps = fill-bound (most themes
-  here are — additive overdraw).
-- FPS identical at 25% resolution → vertex- or CPU-bound; check draw-call count via
+
+- **Shrink the window or lower the pixel ratio** → frame time drops = fill-bound (most themes
+  are: additive overdraw and full-screen functions).
+- Frame time the same at a quarter of the resolution → vertex- or CPU-bound; check
   `renderer.info.render.drawCalls`.
-- Capture against the **production preview (`:4173`)**, not dev `:5173` — dev-server
-  overhead skews results (ocean audit).
-- chrome-devtools MCP captures can throttle `effectScale` below 0.64 — force
-  `effectScale=1` + `noDrs` when A/B-ing visuals, or the adaptive controller
-  invalidates the comparison.
+- **The integrated GPU is arithmetic-bound, the discrete one is not.** A sky-shader change that
+  costs nothing at High can cost 25 % at Low on the iGPU (gotcha #262, #269): time the lean
+  tiers there on their own.
+- Themes with dynamic resolution throttle under capture: switch it off with that theme's own
+  flag (`noDrs` for Neon Dusk, Nimbus Veil and Synthwave Sunset, `blackHoleNoDrs`,
+  `chromadelicBaseline`) before an A/B, or the controller invalidates the comparison.
+- Measure against a production build, not the dev server.
 
-## 2. Gate the frame loop (mandatory pattern)
+## 2. Gate the frame loop
 
-Every theme loop must honor `shouldRenderFrame()` (see `src/themes/base-theme.js`
-— reduced-quality throttling, hidden-tab pause) and clamp delta so a backgrounded
-tab doesn't integrate a giant timestep on return:
+A theme's loop goes through `BaseTheme.safeAnimate()` (`src/themes/base-theme.js`): it schedules
+the next frame first, registers the id, and gates on `shouldRenderFrame()` (hidden tab, frame
+pacing). Clamp the delta so a backgrounded tab does not integrate a giant step on return:
 
 ```javascript
-const loop = () => {
-  const id = requestAnimationFrame(loop); // schedule FIRST — the gate must skip work, not kill the loop
-  this.registerAnimation(id);
-  if (!this.shouldRenderFrame()) return;   // skips render AND compute dispatches
-  const dt = Math.min(clock.getDelta(), 0.1);
-  update(dt);
-  renderer.compute(computeNode);
-  postProcessing.render();
-};
+this.animate = this.safeAnimate((time) => {      // time: theme time in ms
+  const dt = Math.min((time - (this.lastTime ?? time)) / 1000, 0.05);
+  this.lastTime = time;
+  world.update(dt);
+  post.render();
+});
+this.animate();
 ```
 
-Order matters: every repo theme schedules the next frame *before* the gate (see
-`base-theme.js` `safeAnimate`) so a throttled/hidden frame only skips work. An
-early return **without** rescheduling permanently kills a self-scheduled rAF loop —
-that form is only safe inside `renderer.setAnimationLoop`.
-
-Missing this gate was the single most repeated finding across theme audits — a
-hidden tab kept burning compute dispatches + bloom every frame.
+- The newest adapters write the same thing out as `stepFrame(now)` with their own
+  `lastFrameMs` (`src/themes/serenity-warp/serenity-warp-theme.js`); either way the method stays
+  named `animate`.
+- A hand-rolled loop that returns early WITHOUT rescheduling kills itself for good. That form is
+  only safe inside `renderer.setAnimationLoop`.
+- `THREE.Clock` is deprecated (r183) and warns on construction. Use the rAF timestamp as above,
+  or `THREE.Timer` (`timer.update(time); timer.getDelta()`).
+- A missing gate was the most repeated finding of the early audits: a hidden tab kept paying
+  for compute dispatches and bloom every frame (gotcha #78).
 
 ## 3. Fill rate: the usual suspects, in order of payoff
 
-1. **Bloom input resolution.** The repo convention is a tier-scaled
-   `bloomDownsample` factor on the bloom source RT (see
-   `src/themes/wolfhour/wolfhour-post.js` — 0.58 at low tiers to 0.74 at Extreme).
-   Dropping ~0.8 → ~0.65 was repeatedly near-invisible and a top win.
-2. **Additive particle overdraw.** Layered additive quads are the #1 fill cost
-   (cosmic-noir). Tier-gate layer counts; shrink quads; prefer fewer, brighter
-   sprites over many dim ones.
-3. **Redundant post taps.** Every extra `texture()` sample of the scene pass costs
-   a full-screen read. Gate unused taps out of the graph entirely (chromadelic
-   found dead CA/grain taps still executing).
-4. **Reflections/mirrors.** `reflector()` re-renders the scene — always pass a
-   reduced `resolutionScale` (repo uses 0.4–0.5) and cull the reflected layer set.
-5. **Pixel ratio.** Cap it (`Math.min(devicePixelRatio, 2)`, lower on iGPU); a 1.25
-   vs 1.1 cap was a visible-sharpness bug in Odyssey, so match the theme baseline.
+1. **Bloom resolution.** `bloomNode.setResolutionScale()` per tier (three's default is 0.5 of
+   the drawing buffer; bloom is 12 full-screen draws a frame). Wolfhour:
+   `WOLFHOUR_POST_PROFILES.bloomDownsample` 0.56 at Minimal to 0.64 at Extreme, applied as
+   `setResolutionScale(0.5 * bloomDownsample)` in `src/themes/wolfhour/wolfhour-grade.js`;
+   Winter's `POST_LOOK.bloomResolution` runs 0.25–0.5.
+2. **A sky drawn first.** A dome or backdrop drawn before the solids shades every pixel, twice
+   with a mirror. Draw it LAST among the opaque parts, depth test on (gotcha #100).
+3. **Full-screen functions.** Every term is paid at every pixel. Branch out what only part of
+   the frame needs, and keep event terms out of the per-pixel path when no event is live
+   (gotcha #257, #269).
+4. **Additive particle overdraw.** Layered additive quads are a top fill cost. Budget the
+   total light per tier (gotcha #120): finer grain as the count rises, never just more quads.
+5. **Redundant post taps.** Every extra read of the scene pass is a full-screen fetch. Gate
+   unused taps out of the graph, and feed addons a texture, not an expression (an expression
+   costs a hidden full-screen pass: `docs/post-processing.md`).
+6. **Mirrors.** `reflector()` re-renders the scene: `bounces: false`, a tier-scaled
+   `resolutionScale`, the scene pass's `samples`, and a camera layer that keeps small things out.
+   Mirror the sky analytically instead (gotcha #137).
+7. **Pixel ratio.** Always `renderer.setPixelRatio(this.getEffectivePixelRatio(cap))`: it
+   applies the player's render scale and the tier policy. Give it a per-tier `cap`, never a
+   literal `Math.min(devicePixelRatio, 2)`.
+8. **Marches.** Space the steps by what the ray crosses, read grain once per pixel, cone-march
+   a dense field at low resolution first (gotcha #150, #115, #229).
 
 ## 4. Node-graph costs (TSL-specific traps)
 
-- **Multiplying by a 0-value uniform eliminates nothing** — the whole subgraph
-  still executes per fragment. Disable effects in JS: swap `outputNode` /
-  rebuild the material and set `needsUpdate = true`.
-- **In-place mutation of a `uniform(Color/Vector)` uploads every frame** — fine
-  when intended, but don't assume unchanged writes are free; skip the write when
-  the value didn't change (stellar-drift saved ~28 Color allocs/frame by reusing
-  scratch objects too).
-- **Fold constants at module scope.** Values that never change per frame should be
-  plain JS numbers baked into the graph (ice-temple froze fog-profile constants),
-  not uniforms — uniforms cost bind-group traffic.
-- **Hoist trig/matrix work out of per-frame JS loops** — compute once, write into
-  `instanceMatrix` directly (wolfhour meteors), and never call
-  `computeVertexNormals()` per frame (chromadelic's biggest single fix).
+- **A zero uniform eliminates nothing**: the subgraph still runs per fragment. Disable in
+  JavaScript: do not build the node, or swap `outputNode` and set `needsUpdate = true` (gotcha #72).
+- **A helper without `setLayout` is inlined at every call site**, a JavaScript `forEach` that
+  emits TSL unrolls it, and a node read in several scopes is emitted in each: all three grow the
+  shader and its compile time (gotcha #81, #101, #215, #228).
+- **`mx_noise_*` compiles slowly**: 20 evaluations took 7.3 s for one pipeline (gotcha #80).
+- **In-place mutation of a `uniform(Color/Vector)` uploads every frame**: fine when intended;
+  skip the write when the value did not change, and reuse scratch objects (gotcha #73).
+- **Fold constants in JavaScript.** A value that never changes is a plain number in the graph,
+  not a uniform.
+- **Hoist trig and matrix work out of per-frame JavaScript loops**, and never call
+  `computeVertexNormals()` per frame.
+- **An instance pool rewritten every frame** uploads only what it drew with `uploadUsed`
+  (`src/themes/shared/instance-upload.js`).
 
-## 5. Draw calls & geometry
+## 5. Draw calls and geometry
 
-- `InstancedMesh` for repeated geometry; write transforms straight into
-  `instanceMatrix.array`, set `needsUpdate` once.
-- `THREE.BatchedMesh` (in `three/webgpu` core exports) merges *different*
-  geometries sharing one material into one draw — the modern version of the ocean
-  audit's hand-merged corals (48 → 8 draws).
-- Freeze static transforms (`matrixAutoUpdate = false` + one `updateMatrix()`).
+- Instanced quads through `InstancedBufferGeometry` with one `InstancedInterleavedBuffer` per
+  pool is the house form (`docs/theme-foundation.md` §4); `InstancedMesh` when real instance
+  matrices are wanted (then write `instanceMatrix.array` directly and set `needsUpdate` once).
+- `THREE.BatchedMesh` merges different geometries that share one material into one draw.
+- Freeze static transforms (`matrixAutoUpdate = false` and one `updateMatrix()`).
+- Two geometries with the same attribute layout and material share a pipeline, so a pool can
+  switch geometry without a compile (gotcha #145).
 
 ## 6. Compute-pass hygiene
 
-- Build compute node objects **once** — `const computeNode = Fn(kernel)().compute(count)`
-  at init; only `renderer.compute(computeNode)` per frame. Re-creating the compute
-  node per frame recompiles pipelines (ice-temple "bind-loop-once" fix).
-- Skip dispatches when the effect is idle or invisible — gate with the same
-  `shouldRenderFrame()`.
-- Workgroup size: leave default or use `[64]`; only tune with timestamp data.
-- GPU→CPU readback (`getArrayBufferAsync`) stalls — debug only, never in the loop.
+- Build compute nodes **once** (`const computeNode = Fn(kernel)().compute(count)` at init); only
+  `renderer.compute(computeNode)` per frame. Re-creating the node recompiles its pipeline.
+- The first dispatch of a node creates its pipeline synchronously: compile ahead on a loading
+  surface (`docs/compute-shaders.md`).
+- Skip dispatches when the effect is idle or unseen, under the same frame gate.
+- Workgroup size: leave the default `[64]`; tune only with timestamp data.
+- GPU→CPU readback (`getArrayBufferAsync`) stalls: for tools and debugging, never in the loop.
 
-## 7. Startup & warm-up
+## 7. Start-up and warm-up
 
-- `renderer.compileAsync(scene, camera)` does NOT cover post-processing
-  (`PassNode`) pipelines or first-update node paths — the proven fix is to
-  actually render each pass/scene once off-screen or behind the loading overlay
-  (Odyssey warms by replaying the journey).
-- Cold `createScene()` ≈ ~1s main-thread shader build on this machine — never
-  build scenes mid-gameplay; warm before the intro (loading-screen work).
+- **The cost is pipelines**: one per mesh per pass it is drawn in (scene pass, mirror, shadow
+  pass, any direct `renderer.render()`), whatever the materials share. Count them, then cut
+  passes and keep sample counts equal (gotcha #96).
+- **An ordinary theme warms nothing by hand.** It puts its whole world in the scene before
+  `createScene()` resolves; the theme manager's async pipeline session compiles it behind the
+  loading screen (ADR-0020). Parked FX drawables need `warmParkedSoon`
+  (`src/themes/shared/warm-hidden-drawables.js`).
+- `renderer.compileAsync(scene, camera)` compiles for the target bound when it is called, not
+  for a `pass()`'s own target. `await scenePass.compileAsync(renderer)` covers the pass's scene;
+  the output quad and bloom still need one real `post.render()`. One `compileAsync` at a time
+  per renderer, and `(object, camera, scene)` is the argument order (`docs/three-r187.md`).
+- **CPU bakes cost start-up too.** Take them through `bakeOnce` (cached across rebuilds), run
+  first-visit bakes in the bake worker, and write the world's build as steps that yield
+  (`src/themes/shared/bake-cache.js`, `bake-worker-client.js`, `build-steps.js`). Time each
+  bake in Node.
 
 ## 8. Quality tiers
 
-- Read quality from `window.settings.graphicsQuality` (the live key — a past audit
-  wasted a pass reading a stale seeded key).
-- Tier-gate: particle counts, noise octaves, post effects, bloom downsample,
-  reflection resolutionScale, layer counts. Every theme already has a tier table —
-  extend it rather than inventing a new mechanism.
+- Read quality from `window.settings.effectQuality` (`'Minimal' | 'Low' | 'Medium' | 'High' |
+  'Ultra' | 'Extreme' | 'Custom'`, normalised by `normalizeQuality`). `graphicsQuality` is a
+  legacy fallback, never the live key.
+- **Every tier keeps the whole picture and every event.** A tier cuts counts, octaves, steps,
+  bloom and mirror resolution; it never drops a feature or a beat. Every theme has a tier table
+  (`<id>-quality.js`, `POST_LOOK` in `<id>-post.js`): extend it, do not invent a second mechanism.
+- Drop a term in JavaScript. A neutral constant fed through a non-linear function is not
+  neutral (gotcha #135). Capture the lowest tier before calling a surface done.
 
-## Checklist before/after any perf change
+## Checklist before and after any performance change
 
-1. A/B with identical camera + `?t=` phase-locked time, production build.
-2. Confirm byte-identical or imperceptible visuals at Extreme (the audits ship
-   only changes that preserve the intended look).
-3. Timestamp or FPS delta recorded in the PR/commit message.
-4. Verify hidden-tab and reduced-quality behavior still gates to ~0 cost.
+1. A/B with the same camera and a `?t=` phase-locked time, old and new interleaved, on the GPU
+   that is slow (usually the integrated one).
+2. High is pixel-identical; lower tiers are equivalent to the eye, shown side by side.
+3. The instrument and the numbers go in the commit message or the theme's record doc.
+4. Hidden-tab and reduced-quality behaviour still gate to about zero cost.
