@@ -85,11 +85,7 @@ export const HOUSE_PHRASES = [
  * the phrase fails the gate, so it is removed with the merge that makes it stale.
  * @type {Map<string, string[]>}
  */
-export const HOUSE_PHRASES_PENDING = new Map([
-    // The online match setup's garbage note ("as in the classic game") is being reworded on
-    // another branch. Remove this entry when that branch is merged: the gate fails on it then.
-    ['src/ui/match-config-modal.js', ['classic game']],
-]);
+export const HOUSE_PHRASES_PENDING = new Map();
 
 const HOUSE_FILES = new Set(['index.html', 'README.md', 'game_description.md']);
 const HOUSE_ROOTS = /^(src|electron|public)\//;
