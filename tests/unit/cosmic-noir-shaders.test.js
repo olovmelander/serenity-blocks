@@ -24,6 +24,7 @@ import * as THREE from 'three/webgpu';
 import { context } from 'three/tsl';
 import { CosmicNoirWorld, REST_RIG, fovForAspect } from '../../src/themes/cosmic-noir/cosmic-noir-world.js';
 import { fallbackLayout } from '../../src/themes/cosmic-noir/cosmic-noir-composition.js';
+import { materialXNoiseFunctions } from './helpers/materialx-noise.js';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -191,7 +192,9 @@ function problemsOf({
             unassignedReads(code).forEach((read) => problems.push(`${name}, WGSL ${stage}: unassigned ${read}`));
         }
     }
-    if (/mx_\w+/.test(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
+    // (By what the functions are: three r187 writes MaterialX noise under generated names.)
+    materialXNoiseFunctions(`${out.vertex}${out.fragment}`)
+        .forEach((fn) => problems.push(`${name}, ${label}: MaterialX noise (${fn})`));
     return problems;
 }
 
