@@ -506,10 +506,11 @@ script. `parts=` draws only the named parts; `falseColor=1` bands the pre-tone-m
 `?neonDistrictFalseColor=1`.
 
 The theme icon is the two-line clear wave through the playground's icon lens
-(`/playground.html?effect=neon-district&t=100&quality=High&icon=1&event=clear&lines=2&eventAge=0.8&combo=1`
+(`/playground.html?effect=neon-district&t=100&quality=High&icon=1&event=clear&lines=2&eventAge=0.8&combo=1&glass=0`
 in a square window), cropped to 74% of the frame around (0.5, 0.56), given a colour lift
-(contrast 1.22, saturation 1.55, brightness 1.06) and baked as a 512 px circle. The same file is
-kept at `public/assets/themes/neon-district-theme-icon.png`.
+(contrast 1.22, saturation 1.55, brightness 1.06) and baked as a 512 px circle. Re-baked on
+12 Nov 2026 from the current district (its street adverts drawn by the build script), with the
+rain on the glass off so the small icon stays clear.
 
 ## Captured previews
 
