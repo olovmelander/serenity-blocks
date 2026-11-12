@@ -195,7 +195,8 @@ function octahedronEdges(p, s) {
  * point is (tinted fill). `kind` is a uniform, so only one shape is ever evaluated.
  *  0 TESSERACT  a cube within a cube, turning inside out through the fourth dimension
  *  1 DIAMOND    an octahedron's edges round a smaller one turning inside it (Chiral Gold)
- *  2 TETROMINO  one solid glass piece, a T, L, I or S, never four cells (Serenity Warp)
+ *  2 POLYCUBE   one solid glass shape of seven cubes: a corner, a jack or a gate, never one of
+ *               the game's pieces and never its cells (Serenity Warp)
  *  3 ORBS       three liquid bubbles flowing into one another, thin-skinned like soap
  *               (Fluid Dreams, Chromatic Impasto)
  *  4 SWARM      motes of light inside a wheeling ring (Murmuration)
@@ -227,17 +228,27 @@ function crystal(kind, cIn, cell, seed, tm) {
         const q = abs(c);
         fill.assign(float(1).sub(smoothstep(-0.08, 0.02, q.x.add(q.y).add(q.z).sub(s1).mul(0.577))));
     }).ElseIf(kind.lessThan(2.5), () => {
-        // Four cells of `u` each, one solid: a bar of three with one more under its middle (T)
-        // or its end (L), a bar of four (I), or two bars of two side by side, offset (S).
+        // Seven cubes of half-size `u` each, one solid, three bars apiece, each turning about its
+        // own centre: a CORNER (three arms of two from one cube, along x, y and z), a JACK (six
+        // arms of one round a centre) or a GATE (an arch two cubes tall: two legs and a lintel).
+        // All three are solid in depth or bent out of a plane, so no view of them is one of the
+        // game's flat pieces.
         const u = 0.22;
-        const bar3 = box(c.sub(vec3(0, u, 0)), vec3(3 * u, u, u));
-        const tee = min(bar3, box(c.sub(vec3(0, -u, 0)), vec3(u, u, u)));
-        const ell = min(bar3, box(c.sub(vec3(2 * u, -u, 0)), vec3(u, u, u)));
-        const eye = box(c, vec3(4 * u, u, u));
-        const ess = min(box(c.sub(vec3(u, u, 0)), vec3(2 * u, u, u)), box(c.sub(vec3(-u, -u, 0)), vec3(2 * u, u, u)));
-        const solid = select(seed.lessThan(0.25), tee, select(seed.lessThan(0.5), ell, select(seed.lessThan(0.75), eye, ess)));
-        // Light from its outer skin only: inside, the two blocks' shared face would glow and
-        // show the cells (a piece is one solid shape).
+        // (each shape's own centre: its cubes' mean place)
+        const k = vec3((6 * u) / 7);
+        const corner = min(min(
+            box(c.add(k).sub(vec3(2 * u, 0, 0)), vec3(3 * u, u, u)),
+            box(c.add(k).sub(vec3(0, 2 * u, 0)), vec3(u, 3 * u, u)),
+        ), box(c.add(k).sub(vec3(0, 0, 2 * u)), vec3(u, u, 3 * u)));
+        const jack = min(min(box(c, vec3(3 * u, u, u)), box(c, vec3(u, 3 * u, u))), box(c, vec3(u, u, 3 * u)));
+        const g = c.add(vec3(0, (16 * u) / 7, 0));
+        const gate = min(min(
+            box(g.sub(vec3(0, 4 * u, 0)), vec3(3 * u, u, u)),
+            box(g.sub(vec3(-2 * u, 2 * u, 0)), vec3(u, 3 * u, u)),
+        ), box(g.sub(vec3(2 * u, 2 * u, 0)), vec3(u, 3 * u, u)));
+        const solid = select(seed.lessThan(1 / 3), corner, select(seed.lessThan(2 / 3), jack, gate));
+        // Light from its outer skin only: inside, the bars' shared faces would glow and show the
+        // cubes (a shape is one solid).
         d.assign(select(solid.greaterThan(0), solid.sub(V.edge * 0.5), float(0.12)));
         fill.assign(float(1).sub(smoothstep(-0.06, 0.01, solid)).mul(1.6));
     }).ElseIf(kind.lessThan(3.5), () => {

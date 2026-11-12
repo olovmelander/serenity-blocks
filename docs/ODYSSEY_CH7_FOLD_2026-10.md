@@ -154,7 +154,7 @@ the way between their orbs.
 | 51 | Chiral Gold | diamonds | gold, dark depths |
 | 52 | Voltage Storm | tesseracts | electric blue; the gates crackle into crawling arcs |
 | 53 | Murmuration | swarms of motes in wheeling rings | silver-violet |
-| 54 | Serenity Warp | glass tetrominoes (T, L, I, S) | a rainbow of pieces |
+| 54 | Serenity Warp | glass polycubes (corners, jacks, gates) | a rainbow of glass |
 | 55 | Kaleidosonic | tesseracts | the whole colour wheel |
 | 56 | Chromatic Impasto | bubbles | paint colours over a strong nebula |
 
@@ -164,8 +164,16 @@ the way between their orbs.
   is ever evaluated.
 - **Diamonds:** an octahedron's edges, by its symmetry three segments in one octant, round a
   smaller one turning inside it.
-- **Tetrominoes:** one solid piece each, lit from its outer skin only. Lit by its distance's
-  absolute value, the two blocks' shared face glowed inside and showed the cells.
+- **Polycubes:** seven cubes in one solid each, lit from its outer skin only (lit by its
+  distance's absolute value, the bars' shared faces glowed inside and showed the cubes). A
+  corner (three arms of two from one cube), a jack (six arms round a centre) or a gate (an arch
+  two cubes tall). Until 2026-11-12 the room was built of the game's own pieces (T, L, I, S);
+  these shapes are solid in depth or bent out of a plane, so no view of one is a game piece.
+
+![Orb 54's room: the old pieces (top left), the polycubes (top right), WebGL2, and the morph in from the swarms](images/odyssey-ch7-fold-2026-10/room54-polycubes.jpg)
+*Playground `effect=ch7-fall`, 1280 × 720, 30 fps cap: `p=0.9351&t=8` before and after, the same
+room on WebGL2 (`forceWebGL=1&t=12`), and `p=0.9310` as the swarms give way to it. No console
+messages.*
 - **Bubbles:** a thin skin whose hue swirls over the surface like a soap film.
 - **Motes:** each nudged off its lattice point. On the bare lattice they lined up in rows.
 
@@ -174,7 +182,7 @@ which grows out of it, and their light crossfades. Mixing the two distances dimm
 
 **The march.** It starts each ray a fixed random fraction of a step in (keyed by direction, so
 the pattern holds on the scene). Regular steps through a glowing surface printed stripes on the
-tetrominoes' faces.
+glass shapes' faces.
 
 **The trap, again.** Shared inputs built first inside one shape's branch read as zero in the
 others (`unassignedReads` caught it in the test). They are root-pinned at the top of `crystal`.
