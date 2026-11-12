@@ -2,7 +2,7 @@
  * @fileoverview Tests for the piece rotation primitive and the 7-bag randomizer.
  *
  * These cover two previously-untested foundations of the gameplay core:
- *  - rotateShape() rotation invariants (the basis of SRS rotation states), and
+ *  - rotateShape() rotation invariants (the basis of a piece's four facings), and
  *  - the 7-bag property (every 7-piece bag is a permutation of all piece types).
  * Both are fully deterministic and need no GPU/DOM (remediation Phase 3).
  */

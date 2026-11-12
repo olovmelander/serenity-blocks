@@ -41,9 +41,9 @@ const ACTIONS = [
 const ACTION_COST = [1, 1, 1, 1, 1, 4];
 
 /**
- * The kicks a turn tries, in order, as [dx, dy] board offsets: the SRS table's (y up, so
- * negated) for a left or right turn, then the legacy wall kicks; a flip tries only the
- * legacy ones. Indexed [from * 4 + to].
+ * The offsets a turn tries, in order, as [dx, dy] board offsets: the turn's own list (y up, so
+ * negated) for a left or right turn, then the plain sideways nudges; a flip tries only the
+ * nudges. Indexed [from * 4 + to].
  * @param {Record<string, number[][]>} table
  */
 function turnKicks(table) {
@@ -51,10 +51,10 @@ function turnKicks(table) {
     const byTurn = [];
     for (let from = 0; from < 4; from += 1) {
         for (let to = 0; to < 4; to += 1) {
-            const srs = (to - from + 4) % 4 === 2
+            const own = (to - from + 4) % 4 === 2
                 ? []
                 : (table[`${ROTATION_NAMES[from]}>${ROTATION_NAMES[to]}`] || [[0, 0]]).map(([dx, dy]) => [dx, -dy]);
-            byTurn[from * 4 + to] = [...srs, ...LEGACY_WALL_KICKS.map(([dx, dy]) => [dx, dy])];
+            byTurn[from * 4 + to] = [...own, ...LEGACY_WALL_KICKS.map(([dx, dy]) => [dx, dy])];
         }
     }
     return byTurn;

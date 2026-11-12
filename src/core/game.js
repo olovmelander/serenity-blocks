@@ -1004,8 +1004,8 @@ export function rotate(gameState, dir = 'right', playSoundCallback, addTrailCall
 
     const rotatedShape = rotateShapeMatrix(originalShape, dir);
     if (dir === 'flip') {
-        // 180-degree rotation has no SRS kick table in guideline play; allow the
-        // old horizontal probes so existing "flip" bindings remain useful.
+        // A half turn has no offset list of its own: when it does not fit in place, the piece
+        // tries one and two cells to either side, so the "flip" binding works next to a wall.
         const originalRotation = piece.rotation;
         piece.shape = rotatedShape;
         piece.rotation = toRotation;
@@ -1042,8 +1042,8 @@ export function rotate(gameState, dir = 'right', playSoundCallback, addTrailCall
         }
     }
 
-    // Keep the old edge feel after SRS: if a vertical piece is flush with a side,
-    // try the simple horizontal kicks that players expect from earlier builds.
+    // Last, the plain sideways nudges: an upright piece flush against a wall still turns by
+    // stepping one or two cells away from it, when none of the turn's own offsets fitted.
     if (tryBoardOffsetKicks(LEGACY_WALL_KICKS)) {
         return true;
     }
