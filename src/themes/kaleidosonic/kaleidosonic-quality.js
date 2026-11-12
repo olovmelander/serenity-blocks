@@ -2,7 +2,7 @@
  * Kaleidosonic — content tiers. Every tier keeps the whole picture and every event.
  *
  * steps        march budget of a view ray through the temple
- * folds        most folds of the field (the trance grows the temple finer up to this)
+ * folds        most inversions the net is drawn through (the trance grows the temple finer up to this)
  * strikes      most locks' wavefronts ringing at once (the newest are kept)
  * jewelCells   lattice cells a ray's walk visits for the jewels it passes
  * veins        the veins' strength (a small buffer draws each line many screen pixels wide)
@@ -19,7 +19,7 @@
 export const QUALITY = Object.freeze({
     Minimal: Object.freeze({
         steps: 34,
-        folds: 7,
+        folds: 3,
         strikes: 6,
         jewelCells: 5,
         veins: 0.5,
@@ -33,7 +33,7 @@ export const QUALITY = Object.freeze({
     }),
     Low: Object.freeze({
         steps: 46,
-        folds: 8,
+        folds: 4,
         strikes: 8,
         jewelCells: 6,
         veins: 0.62,
@@ -47,7 +47,7 @@ export const QUALITY = Object.freeze({
     }),
     Medium: Object.freeze({
         steps: 66,
-        folds: 9,
+        folds: 5,
         strikes: 10,
         jewelCells: 8,
         veins: 0.85,
@@ -61,7 +61,7 @@ export const QUALITY = Object.freeze({
     }),
     High: Object.freeze({
         steps: 96,
-        folds: 10,
+        folds: 5,
         strikes: 12,
         jewelCells: 10,
         veins: 1,
@@ -75,7 +75,7 @@ export const QUALITY = Object.freeze({
     }),
     Ultra: Object.freeze({
         steps: 120,
-        folds: 10,
+        folds: 5,
         strikes: 12,
         jewelCells: 10,
         veins: 1,
@@ -89,7 +89,7 @@ export const QUALITY = Object.freeze({
     }),
     Extreme: Object.freeze({
         steps: 150,
-        folds: 11,
+        folds: 5,
         strikes: 12,
         jewelCells: 12,
         veins: 1,

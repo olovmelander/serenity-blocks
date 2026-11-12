@@ -1,18 +1,18 @@
 /**
  * Kaleidosonic — renderer-free constants and maths (three-free, DOM-free).
  *
- * The world is the shape of a sound: a temple of folded light ray-marched from a kaleidoscopic
- * fractal, its stone veined with the glowing nodal lines of standing waves (cymatics). Every
- * piece that locks strikes a note: a spherical wavefront rings out from the place the piece maps
- * to, lighting the stone it crosses in the piece's colour and leaving ripples at the note's own
- * wavelength. A line clear sounds a harmonic (the temple's nodal lines light at a mode set by the
- * lines cleared) and the architecture refolds; a chain deepens the trance (the fractal grows
- * finer and the lens folds into a kaleidoscope); four lines dive one octave down into the
- * fractal's self-similar heart.
+ * The world is the shape of a sound: a temple of folded light ray-marched from a net of pearls
+ * strung on threads, its stone veined with the glowing nodal lines of standing waves (cymatics).
+ * Every piece that locks strikes a note: a spherical wavefront rings out from the place the piece
+ * maps to, lighting the stone it crosses in the piece's colour and leaving ripples at the note's
+ * own wavelength. A line clear sounds a harmonic (the temple's nodal lines light at a mode set by
+ * the lines cleared) and the architecture refolds; a chain deepens the trance (the net grows
+ * finer and the lens folds into a kaleidoscope); four lines dive one period down the net's own
+ * lattice.
  *
  * This module owns what the director, the world, the playground and the tests share: maths, the
- * piece codes and notes, the mood wheel's colours, and the event timings. Units are the fractal's
- * own (its outer shell is about four units across).
+ * piece codes and notes, the mood wheel's colours, and the event timings. Units are the net's own
+ * (its knots stand two units apart).
  */
 
 // ── Maths ─────────────────────────────────────────────────────────────────────────
@@ -150,7 +150,7 @@ export const SHAPES = Object.freeze({
 export const SHAPE_KEYS = Object.freeze(Object.keys(SHAPES));
 
 /**
- * Each piece is a note: the wavelength of the ripples its strike leaves on the stone (fractal
+ * Each piece is a note: the wavelength of the ripples its strike leaves on the stone (the net's
  * units; the long I rings highest, the square O lowest) and the pitch's own speed of sound.
  * Indexed by piece code.
  */
@@ -168,22 +168,53 @@ export const NOTES = Object.freeze([
 // ── The temple ────────────────────────────────────────────────────────────────────
 
 /**
- * The temple is an Apollonian sphere packing (Indra's net): space folded into a cube of side
- * PERIOD around every lattice point, inverted in a sphere, again and again. Floors and vaults lie
- * at y = 0 (mod PERIOD), hourglass pillars of pearls stand on the vertical lines x = z = 0 (mod
- * PERIOD), and every hall between them is hollowed by nested spherical voids that stack into
- * arches. `s` is the inversion radius squared: the clears refold the temple by moving it.
+ * The temple is the strung net (Indra's net): pearls strung on threads, and the whole net seen
+ * again, bent, round every knot.
+ *
+ * The net itself is plain: a knot pearl at every lattice point (PERIOD apart on every axis) and a
+ * straight thread along every lattice line between them. A point's place in it is found by
+ * folding: each coordinate becomes its distance to the nearest lattice plane (a mirror in every
+ * face of the cell), which lands the point in one corner cell with its knot at the origin.
+ *
+ * Then the net is drawn into itself. An inversion in the sphere of radius sqrt(s) round the knot
+ * turns the cell inside out: what lies near the knot is thrown far out across the lattice, so the
+ * space near every knot holds a small bent image of the whole net beyond it (pearls stay round,
+ * straight threads become arcs through the knot). Folding the thrown point finds its place in
+ * the net again, and the next inversion draws the net into that image in turn. The temple is
+ * every point whose path of folds and inversions ever touches a pearl or a thread: the net,
+ * its image round each knot, the images' images. `s` is the inversion's strength (its radius
+ * squared): the clears refold the temple by moving it, which slides the strung pearls along
+ * their threads and swells or tightens the arcs.
  */
 export const TEMPLE = Object.freeze({
     period: 2,
     /** The inversion's strength at rest and its bounds (the refolds walk between them). */
     s: 1.15,
     sMin: 1.04,
-    sMax: 1.32,
-    /** Folds of the field at rest / at the deepest trance (fractional counts blend). */
-    detailRest: 7,
-    detailDeep: 9,
+    sMax: 1.36,
+    /** Inversions the net is drawn through at rest / at the deepest trance (fractional counts blend). */
+    detailRest: 3,
+    detailDeep: 5,
 });
+
+/**
+ * The net's own measures, in the cell's units (a knot to the middle of its thread is 1).
+ *
+ *   pearl   a knot pearl's radius. Large enough that every fine image crowding a knot is inside
+ *           the pearl (what shows beyond its surface is at least pearl^2 / s the size of what
+ *           made it: nothing under a pixel two images down), small enough that its own image
+ *           never turns inside out over the hall (pearl < sMin / sqrt(3)).
+ *   thread  a thread's radius.
+ *   ease    how the reach to the net is eased before it is scaled back to the hall (see
+ *           templeDistance): 1 / (1 + ease * reach).
+ */
+export const NET = Object.freeze({
+    pearl: 0.45,
+    thread: 0.03,
+    ease: 2.5,
+});
+/** A pearl's colour gives way to its thread's over this much of their reaches' difference. */
+export const NET_JOIN = 0.02;
 
 /** A fold weight this close to 0 or 1 is taken as whole (the surface moves far less than a pixel). */
 export const FOLD_SNAP = 0.004;
@@ -209,7 +240,7 @@ export function foldSplit(folds, out = [0, 0]) {
 
 /**
  * The gem's facets: the six axes of the icosahedron (both ends: twelve facets), tilted a little so
- * no beam runs straight along the lattice's floors or pillars. Each facet throws its light out as
+ * no beam runs straight along the lattice's threads. Each facet throws its light out as
  * a narrow beam (kaleidosonic-light.js); the gem turns about the vertical, so the beams sweep the
  * halls.
  */
@@ -229,16 +260,20 @@ export const BEAM_K = 70;
 
 /**
  * The refolds a clear walks through, in order: each clear springs `s` to the next value (a chain
- * walks further). Chosen so neighbours differ enough to read as a new hall, never enough to close
- * the eye's corridor.
+ * walks further). A weak inversion keeps the strung pearls small and close to their knots, the
+ * threads between them bare; a strong one slides them out along the threads and swells the arcs
+ * into lace round every knot. Chosen so neighbours differ enough to read as a new hall, never
+ * enough to close the eye's corridor.
  */
-export const REFOLDS = Object.freeze([1.15, 1.22, 1.1, 1.27, 1.13, 1.19, 1.07, 1.24]);
+export const REFOLDS = Object.freeze([1.15, 1.25, 1.09, 1.31, 1.12, 1.21, 1.06, 1.28]);
 
 /**
- * The eye: halfway between a floor (y = 0) and its vault (y = 2), looking diagonally across the
- * pillar lattice along (−1, 0, −1), so the hall is a grid of pillars receding at every depth, not
- * a nave. The line x − z = EYE.lane is free of stone for a whole period: the four-line dive flies
- * down it by exactly one diagonal period and lands on the same view.
+ * The eye: in the open middle of a hall, level with the middle of the upright threads (y = 1,
+ * halfway between two rows of knots), looking diagonally across the lattice along (−1, 0, −1), so
+ * the hall is a grid of strung pillars receding at every depth, not a nave. Everything the net
+ * draws stays within s / 2 of a lattice line, and the eye is a whole unit from the nearest. The
+ * line x − z = EYE.lane is free of stone for a whole period: the four-line dive flies down it by
+ * exactly one diagonal period and lands on the same view.
  */
 export const EYE = Object.freeze({
     x: 1.3,
@@ -254,7 +289,7 @@ export const DIVE_LENGTH = TEMPLE.period * Math.SQRT2;
 
 /**
  * The lens. `fov` is the vertical field of view in degrees for a 16:9 frame; a phone (portrait)
- * widens it so the pillars still frame the card; `yaw`/`pitch` turn the eye off the diagonal
+ * widens it so the strung pillars still frame the card; `yaw`/`pitch` turn the eye off the diagonal
  * (degrees; positive yaw looks right, positive pitch looks up).
  */
 export const RIG = Object.freeze({
@@ -275,28 +310,144 @@ export function rigFor(aspect, out = {}) {
     return out;
 }
 
+/** One coordinate folded into the net's cell: its distance to the nearest lattice plane (0..1). */
+const cellFold = (v) => Math.abs(v - 2 * Math.floor(0.5 * v + 0.5));
+
+const SPLIT = [0, 0];
+
 /**
- * The Apollonian field on the CPU, the same arithmetic as the shader's (kaleidosonic-tsl.js):
- * the distance to the stone from a point, for event placement and the corridor tests.
+ * The strung net on the CPU, the same arithmetic as the shader's (kaleidosonic-tsl.js): a distance
+ * to the stone from a point that is never more than the true one (and negative inside the stone),
+ * for the march, event placement and the corridor tests.
+ *
+ * The point walks the net: fold into the cell, read the reach to the knot's pearl and its three
+ * threads, invert in the knot's sphere, fold again, read again... Folds keep lengths and an
+ * inversion scales them by s / r^2 round a point at radius r, so each level's reach, times every
+ * shrink (r^2 / s) on the way there, is the distance to that level's stone to first order. The
+ * nearest level wins.
+ *
+ * First order is too generous far from the stone, because an inversion shrinks what lies farther
+ * from its centre more: a ball of radius D round a point that lands at radius R comes from a ball
+ * of radius D * shrink / (1 + D / R), not D * shrink. So the reach is eased before it is scaled,
+ * reach / (1 + ease * |reach|): exact where it matters (slope 1 at the stone, so the march
+ * converges on it and the normals are true), and held back in the open (at most 1 / ease times
+ * the shrink). With NET.ease the field's slope is nowhere above 1 for every s and fold count the
+ * world uses, and a field that is negative in the stone and never steeper than 1 cannot overstep.
+ * Through one inversion that is arithmetic: a level's slope is at most 1 / (1 + ease D)^2 +
+ * D / (1 + ease D) * 2 / R, which stays under 1 while 2 / R <= ease (2 + ease D) / (1 + ease D);
+ * where R >= 0.8 that holds for any D, and where R < 0.8 the point has landed beside a knot
+ * whose pearl is at most R - pearl away, which keeps it true down to R = 0.52 (the walk never
+ * lands nearer than sMin / sqrt(3)). The deeper levels add the earlier inversions' share and are
+ * measured: tests/unit/kaleidosonic-core.test.js samples the slope and brute-forces the true
+ * distance; docs/KALEIDOSONIC_VISUAL_OVERHAUL_2026-10.md has the figures.
+ *
+ * `folds` may be fractional: the whole inversions are drawn, and the next level's stone grows
+ * out of them by the fraction (foldSplit), so the net gains detail without a pop.
  */
 export function templeDistance(x, y, z, s = TEMPLE.s, folds = TEMPLE.detailRest) {
+    const [whole, weight] = foldSplit(Math.max(0, folds), SPLIT);
+    const last = weight > 0 ? whole + 1 : whole;
+    const unS = 1 / s;
     let px = x;
     let py = y;
     let pz = z;
-    let scale = 1;
-    const n = Math.max(1, Math.round(folds));
-    for (let i = 0; i < n; i++) {
-        px = -1 + 2 * ((0.5 * px + 0.5) - Math.floor(0.5 * px + 0.5));
-        py = -1 + 2 * ((0.5 * py + 0.5) - Math.floor(0.5 * py + 0.5));
-        pz = -1 + 2 * ((0.5 * pz + 0.5) - Math.floor(0.5 * pz + 0.5));
-        const r2 = Math.max(px * px + py * py + pz * pz, 1e-9);
-        const k = s / r2;
+    let shrink = 1;
+    let d = 1000;
+    for (let level = 0; level <= last; level++) {
+        px = cellFold(px);
+        py = cellFold(py);
+        pz = cellFold(pz);
+        const qx = px * px;
+        const qy = py * py;
+        const qz = pz * pz;
+        const r2 = qx + qy + qz;
+        // a thread runs along each axis (the squared distance to the nearest is the least sum of
+        // two of the squares); the pearl sits on the knot
+        const reach = Math.min(
+            Math.sqrt(Math.min(qx + qy, qy + qz, qz + qx)) - NET.thread,
+            Math.sqrt(r2) - NET.pearl,
+        );
+        const term = (reach * shrink) / (Math.abs(reach) * NET.ease + 1);
+        d = level > whole ? d + (Math.min(d, term) - d) * weight : Math.min(d, term);
+        if (level === last) break;
+        const r2c = Math.max(r2, 1e-6);
+        const k = s / r2c;
         px *= k;
         py *= k;
         pz *= k;
-        scale *= k;
+        shrink *= r2c * unS;
     }
-    return (0.25 * Math.abs(py)) / scale;
+    return d;
+}
+
+/**
+ * What of the net a point of the stone belongs to (the shader's colour signal, same arithmetic):
+ * the level whose pearl or thread is nearest decides, and the point's place on it is read in
+ * that level's own cell. Into `out`:
+ *
+ *   [0] part   1 on a pearl, 0 on a thread, easing across the join over NET_JOIN
+ *   [1] depth  how many inversions down the piece is (0: the net itself)
+ *   [2] along  the place along the string, from its knot (0) to the middle of the thread (1);
+ *              on a pearl, pearl * the cosine of the angle from the nearest string's hole
+ *   [3] turn   the angle round the string (0..pi/2: the cell's mirrors repeat it)
+ *
+ * The level still growing in (a fractional `folds`) takes a point over by its weight: the four
+ * numbers ease from the stone it swells out of to its own, so nothing changes colour at once.
+ */
+export function templeTrap(x, y, z, s = TEMPLE.s, folds = TEMPLE.detailRest, out = [0, 0, 0, 0]) {
+    const [whole, weight] = foldSplit(Math.max(0, folds), SPLIT);
+    const last = weight > 0 ? whole + 1 : whole;
+    const unS = 1 / s;
+    let px = x;
+    let py = y;
+    let pz = z;
+    let shrink = 1;
+    let best = 1000;
+    out[0] = 0;
+    out[1] = 0;
+    out[2] = 0;
+    out[3] = 0;
+    for (let level = 0; level <= last; level++) {
+        px = cellFold(px);
+        py = cellFold(py);
+        pz = cellFold(pz);
+        const qx = px * px;
+        const qy = py * py;
+        const qz = pz * pz;
+        const r2 = qx + qy + qz;
+        const thread = Math.sqrt(Math.min(qx + qy, qy + qz, qz + qx)) - NET.thread;
+        const pearl = Math.sqrt(r2) - NET.pearl;
+        const reach = Math.min(thread, pearl);
+        const term = (reach * shrink) / (Math.abs(reach) * NET.ease + 1);
+        if (term < best) {
+            best = term;
+            // the two coordinates that turn round the string (the largest runs along it)
+            const onX = px >= Math.max(py, pz);
+            const onY = py >= pz;
+            let b = px;
+            let c = py;
+            if (onX) {
+                b = py;
+                c = pz;
+            } else if (onY) {
+                b = pz;
+                c = px;
+            }
+            const taking = level > whole ? weight : 1;
+            const kept = 1 - taking;
+            out[0] = out[0] * kept + clamp01((thread - pearl) / (2 * NET_JOIN) + 0.5) * taking;
+            out[1] = out[1] * kept + level * taking;
+            out[2] = out[2] * kept + Math.max(px, py, pz) * taking;
+            out[3] = out[3] * kept + Math.atan2(b, c + 1e-7) * taking;
+        }
+        const r2c = Math.max(r2, 1e-6);
+        const k = s / r2c;
+        px *= k;
+        py *= k;
+        pz *= k;
+        shrink *= r2c * unS;
+    }
+    return out;
 }
 
 /**
@@ -330,7 +481,7 @@ export function marchTemple(o, d, {
 /**
  * Linear colours, lit as under black light: `stoneA`/`stoneB` the two poles of a near-black
  * pearl; `neonA`/`neonB`/`neonC` the three fluorescent colours its veins and edges glow in (one
- * per region of the fractal's orbit trap, chosen to vibrate against each other and the core);
+ * per level of the net, chosen to vibrate against each other and the core);
  * `heart` the resonant core and its light; `haze` the dark air; `glow` the jewels' aura and the
  * pearl's sheen. Hue-ordered by the heart (rose, violet, azure, teal, jade, amber, back to rose)
  * so a step to a neighbour never passes through grey; the shader stages the neon change region by

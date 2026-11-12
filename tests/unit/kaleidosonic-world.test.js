@@ -1598,7 +1598,7 @@ describe('KaleidosonicWorld: fast play builds, it never pops', () => {
                     level: world.heat.level,
                     fever: world.heat.fever,
                     drone: world.u.heartState.value.y,
-                    floors: world.u.state.value.z,
+                    figures: world.u.state.value.z,
                     exposure: post.exposure,
                     saturation: post.saturation,
                 };
@@ -1621,12 +1621,12 @@ describe('KaleidosonicWorld: fast play builds, it never pops', () => {
             stepTo(w, world.time + 0.3);
             const peak = read();
             // the crescendo: the heat of play in full voice, the drone humming with no back-to-back,
-            // the floors' figures blazing, the colours richer, the iris closed a little
+            // the pearls' figures blazing, the colours richer, the iris closed a little
             expect(peak.level).toBeGreaterThan(0.8);
             expect(peak.fever).toBeGreaterThan(0.8);
             expect(world.heat.stage).toBe(3);
             expect(peak.drone).toBeGreaterThan(first.drone + 0.4);
-            expect(peak.floors).toBeGreaterThan(first.floors + 0.3);
+            expect(peak.figures).toBeGreaterThan(first.figures + 0.3);
             expect(peak.saturation).toBeGreaterThan(first.saturation + 0.1);
             expect(peak.exposure).toBeLessThan(first.exposure * 0.92);
             // the kaleidoscope wheels faster late in the chain than once its six sectors first stood open
@@ -1639,7 +1639,7 @@ describe('KaleidosonicWorld: fast play builds, it never pops', () => {
             expect(calm.level).toBeLessThan(0.1);
             expect(calm.fever).toBe(0);
             expect(calm.drone).toBeLessThan(0.05);
-            expect(calm.floors).toBeLessThan(0.05);
+            expect(calm.figures).toBeLessThan(0.05);
             expect(calm.exposure).toBeCloseTo(rest.exposure, 1);
             expect(world.folds).toEqual([0, 0, 0]);
         });
