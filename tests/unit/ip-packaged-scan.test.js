@@ -100,10 +100,25 @@ describe('IP-string gate over the packaged desktop build (scripts/ip-packaged-sc
     });
 
     it('afterPack passes a clean package and fails one with a disallowed name, or with no app.asar', async () => {
-        const clean = await packageBuild({ inside: CLEAN_APP });
+        // What afterPack also asks of every package (scripts/packaged-app-check.mjs), so that the
+        // names are the only thing wrong with the second one.
+        const beside = {
+            '../LICENSE.electron.txt': 'MIT',
+            '../LICENSES.chromium.html': '<p>BSD</p>',
+            'CREDITS.md': NOTICE,
+            'THIRD_PARTY_NOTICES.md': 'Notices.',
+            'THIRD_PARTY_LICENSES.md': 'Licences.',
+            'PRIVACY_POLICY.md': 'No servers.',
+            'COPYRIGHT.md': 'All rights reserved.',
+            'native_modules/steamworks.js/LICENSE': 'MIT',
+        };
+        const clean = await packageBuild({ inside: CLEAN_APP, beside });
         await expect(afterPack({ appOutDir: join(clean.root, 'release', 'linux-unpacked') })).resolves.toBeUndefined();
 
-        const dirty = await packageBuild({ inside: { ...CLEAN_APP, 'electron/main.js': '// a Tetris board' } });
+        const dirty = await packageBuild({
+            inside: { ...CLEAN_APP, 'electron/main.js': '// a Tetris board' },
+            beside,
+        });
         await expect(afterPack({ appOutDir: join(dirty.root, 'release', 'linux-unpacked') }))
             .rejects.toThrow(/1 disallowed name\(s\).*\n.*app\.asar\/electron\/main\.js:1: genre mark/);
 

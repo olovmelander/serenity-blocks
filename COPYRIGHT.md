@@ -6,13 +6,15 @@ Serenity Blocks is not open source. Its source code, music, narration, artwork, 
 every other part made for the game may not be used, copied, modified or distributed except as the
 law allows or as Olov Melander grants in writing.
 
+Some of the game's music, narration and pictures were made with AI tools; `CREDITS.md` says which.
+
 ## Third-party material
 
 Third-party material in this repository and in the game keeps its own licence. It is listed, with
 its licence and attribution, in:
 
-- [`CREDITS.md`](CREDITS.md): fonts, music, artwork, models and other assets;
-- [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md): third-party code;
+- `CREDITS.md`: fonts, music, artwork, models and other assets;
+- `THIRD_PARTY_NOTICES.md`: third-party code;
 - `THIRD_PARTY_LICENSES.md`: the bundled packages' licences, which the build generates and every
   build ships.
 

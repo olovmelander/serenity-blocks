@@ -1,12 +1,12 @@
 /**
  * Settings › Credits & legal: the game's credits, the notices and licences of the code it ships,
- * and its privacy page, read in the game itself, so a player in fullscreen, Big Picture or on a
- * Steam Deck can read them without a browser.
+ * its privacy page and its copyright statement, read in the game itself, so a player in
+ * fullscreen, Big Picture or on a Steam Deck can read them without a browser.
  *
  * The documents are the repository's own Markdown files, which the build places next to
- * index.html: vite.config.js copies CREDITS.md, THIRD_PARTY_NOTICES.md and PRIVACY_POLICY.md, and
- * Vite writes THIRD_PARTY_LICENSES.md (the bundled packages' licences). A dev server has the first
- * three at the site root and says the licences come with a build.
+ * index.html: vite.config.js copies CREDITS.md, THIRD_PARTY_NOTICES.md, PRIVACY_POLICY.md and
+ * COPYRIGHT.md, and Vite writes THIRD_PARTY_LICENSES.md (the bundled packages' licences). A dev
+ * server has the four copied files at the site root and says the licences come with a build.
  *
  * The renderer covers the Markdown these files use (headings, paragraphs, lists, tables, quotes,
  * code, emphasis, links). It escapes all text first and emits only its own tags. Links show their
@@ -18,6 +18,7 @@ export const LEGAL_DOCUMENTS = Object.freeze([
     Object.freeze({ id: 'notices', label: 'Notices', file: 'THIRD_PARTY_NOTICES.md' }),
     Object.freeze({ id: 'licences', label: 'Licences', file: 'THIRD_PARTY_LICENSES.md' }),
     Object.freeze({ id: 'privacy', label: 'Privacy', file: 'PRIVACY_POLICY.md' }),
+    Object.freeze({ id: 'copyright', label: 'Copyright', file: 'COPYRIGHT.md' }),
 ]);
 
 /** Shipped beside the game's executable, not in the page's folder (CREDITS.md says so too). */

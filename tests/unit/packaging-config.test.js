@@ -65,13 +65,46 @@ describe('electron-builder packaging config', () => {
         expect(steam('linux').filter).not.toContain('!dist/linux64/**');
     });
 
-    it('ships the credits, notices, licences and privacy page beside app.asar', () => {
+    it('ships the credits, notices, licences, privacy page and copyright statement beside app.asar', () => {
         const copied = manifest.build.extraResources.map((entry) => entry.to);
         expect(copied).toEqual(expect.arrayContaining([
-            'CREDITS.md', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_LICENSES.md', 'PRIVACY_POLICY.md',
+            'CREDITS.md', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_LICENSES.md', 'PRIVACY_POLICY.md', 'COPYRIGHT.md',
         ]));
         expect(manifest.build.extraResources.find((entry) => entry.to === 'THIRD_PARTY_LICENSES.md').from)
             .toBe('dist/THIRD_PARTY_LICENSES.md');
+        expect(manifest.build.extraResources.find((entry) => entry.to === 'COPYRIGHT.md').from).toBe('COPYRIGHT.md');
+        expect(copied).not.toContain('README.md');
+    });
+
+    it('checks the web build before packaging it, on Windows and on Linux', () => {
+        const check = 'scripts/pages-artifact-check.mjs';
+        const linux = manifest.scripts['build:linux'].split('&&').map((step) => step.trim());
+        expect(linux.indexOf(`node ${check}`)).toBe(linux.indexOf('vite build') + 1);
+        expect(linux.indexOf('electron-builder --linux')).toBe(linux.indexOf(`node ${check}`) + 1);
+
+        // build-win.mjs runs its steps in source order; runCommand exits the build on a failure.
+        const windows = readFileSync(new URL('scripts/build-win.mjs', root), 'utf8');
+        const viteAt = windows.indexOf("runCommandAsync('vite', ['build'])");
+        const checkAt = windows.indexOf(`runCommand('node', ['${check}'])`);
+        const packAt = windows.indexOf("runCommand('electron-builder'");
+        expect(viteAt).toBeGreaterThan(0);
+        expect(checkAt).toBeGreaterThan(viteAt);
+        expect(packAt).toBeGreaterThan(checkAt);
+        expect(manifest.build.afterPack).toBe('scripts/afterPack.cjs');
+    });
+
+    it('pins the engine versions exactly, in package.json and in the lockfile', () => {
+        const lock = JSON.parse(readFileSync(new URL('package-lock.json', root), 'utf8'));
+        for (const name of ['phaser', 'three', 'steamworks.js']) {
+            expect(manifest.dependencies[name], name).toMatch(/^\d+\.\d+\.\d+$/);
+            expect(lock.packages[''].dependencies[name], name).toBe(manifest.dependencies[name]);
+            expect(lock.packages[`node_modules/${name}`].version, name).toBe(manifest.dependencies[name]);
+        }
+        // The notices list the code inside these exact versions; an upgrade means reading them again.
+        const notices = readFileSync(new URL('THIRD_PARTY_NOTICES.md', root), 'utf8');
+        const threeRelease = `r${manifest.dependencies.three.split('.')[1]}`;
+        expect(notices).toContain(`# Part 2: code inside the bundled three.js (${threeRelease}) and its add-ons`);
+        expect(notices).toContain(`# Part 3: code inside the bundled Phaser (${manifest.dependencies.phaser}) engine`);
     });
 
     it('generates no auto-update config, since the app has no updater', () => {
