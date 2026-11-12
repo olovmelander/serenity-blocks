@@ -1,38 +1,43 @@
 /**
  * Cosmic Noir — content tiers. Every tier keeps the whole picture and every event.
  *
- * march       steps along a view ray through the smoke
- * taps        reads of the smoke toward the pulsar per lit step (0 = the beams light it flat)
- * detail      the finer read that frays the smoke's filaments
- * scale       the smoke's target, as a share of the drawing buffer
+ * march       the most steps a view ray takes to find the sea of smoke
+ * shadow      taps toward the lamp that find a swell's shadow on the sea (0 = shade by slope alone)
+ * fine        the sea's finest layer (wisps near the eye) and the ripples a lock leaves
+ * tower       the most steps a view ray takes to find the lighthouse and its rock
+ * air         arcs the lamp's light in the air is summed over along a view ray
+ * wisps       steps through the smoke that drifts past the lens (0 = none)
+ * splash      steps through the smoke a breaking wave throws up the rock
+ * spray       specks a breaking wave flings off it
+ * detail      the smoke in the air is read for its threads, and the galaxy for its dust
+ * scale       the air's target, as a share of the drawing buffer
  * noise       the baked smoke volume's edge, in texels
- * skyLayers   lattices of far stars behind the smoke
+ * sea         the baked sea field's edge, in texels
+ * skyLayers   lattices of far stars
  * dust        film dust specks on the print (the post)
  *
- * The drawing buffer itself grows with the tier's pixel ratio (High 1.15, Ultra 1.35, Extreme 1.5),
- * so a growing `scale` on top compounded: the smoke cost 2.4× High at Ultra and 4.1-4.8× at Extreme
- * (docs/THEME_FLEET_240_2026-10.md §8b), against 1.4× / 1.7× for the fleet. Ultra and Extreme keep
- * their extra march steps (less banding: what the eye reads in the smoke), and the smoke's
- * resolution still rises a step per tier: 1.11× High's pixels across at Ultra, 1.14× at Extreme.
+ * The drawing buffer itself grows with the tier's pixel ratio (High 1.15, Ultra 1.35, Extreme 1.6),
+ * so the air's target stops growing past High: what the upper tiers add is steps (finer shadows on
+ * the sea, cleaner shafts).
  */
 export const QUALITY = Object.freeze({
     Minimal: Object.freeze({
-        march: 12, taps: 0, detail: false, scale: 0.34, noise: 32, skyLayers: 1, dust: false,
+        march: 20, shadow: 0, fine: false, tower: 40, air: 8, wisps: 0, splash: 9, spray: 200, detail: false, scale: 0.34, noise: 32, sea: 128, skyLayers: 1, dust: false,
     }),
     Low: Object.freeze({
-        march: 16, taps: 0, detail: false, scale: 0.4, noise: 48, skyLayers: 2, dust: true,
+        march: 28, shadow: 4, fine: false, tower: 48, air: 10, wisps: 0, splash: 11, spray: 360, detail: false, scale: 0.4, noise: 48, sea: 128, skyLayers: 2, dust: true,
     }),
     Medium: Object.freeze({
-        march: 22, taps: 1, detail: true, scale: 0.45, noise: 64, skyLayers: 2, dust: true,
+        march: 40, shadow: 6, fine: true, tower: 56, air: 12, wisps: 4, splash: 14, spray: 640, detail: true, scale: 0.45, noise: 64, sea: 256, skyLayers: 2, dust: true,
     }),
     High: Object.freeze({
-        march: 30, taps: 1, detail: true, scale: 0.55, noise: 64, skyLayers: 3, dust: true,
+        march: 52, shadow: 8, fine: true, tower: 64, air: 14, wisps: 6, splash: 18, spray: 1000, detail: true, scale: 0.55, noise: 64, sea: 256, skyLayers: 3, dust: true,
     }),
     Ultra: Object.freeze({
-        march: 38, taps: 1, detail: true, scale: 0.52, noise: 64, skyLayers: 3, dust: true,
+        march: 64, shadow: 10, fine: true, tower: 72, air: 16, wisps: 6, splash: 22, spray: 1400, detail: true, scale: 0.52, noise: 64, sea: 256, skyLayers: 3, dust: true,
     }),
     Extreme: Object.freeze({
-        march: 46, taps: 1, detail: true, scale: 0.48, noise: 64, skyLayers: 3, dust: true,
+        march: 76, shadow: 12, fine: true, tower: 80, air: 18, wisps: 8, splash: 26, spray: 1800, detail: true, scale: 0.48, noise: 64, sea: 256, skyLayers: 3, dust: true,
     }),
 });
 

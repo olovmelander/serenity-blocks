@@ -1,5 +1,11 @@
 # Cosmic Noir — smoke in the searchlight (2026-10)
 
+> **The picture changed on 2026-11-12** (branch `feature/cosmic-noir-lighthouse`, not merged when
+> this was written): the lantern became a lighthouse on a rock in a sea of smoke under a rising
+> galaxy. See [COSMIC_NOIR_LIGHTHOUSE_2026-11.md](COSMIC_NOIR_LIGHTHOUSE_2026-11.md). This document
+> still describes the film (§2 "The film", §5), the event rules (§4) and the adapter; its
+> composition, lantern, smoke march, tiers, performance table and icon recipe are superseded there.
+
 Status: **Reference** (shipped design and evidence). Replaces the legacy theme in full: the old
 `cosmic-noir-theme.js` (4,895 lines: a ringed planet under a smoke nebula, ShaderMaterial and node
 materials side by side, an EffectComposer fallback, WebGPU compute sparks) and its four helper

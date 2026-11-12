@@ -81,7 +81,7 @@ const captureThemes = [
         'Cinder Drift',
         'columns, lake, shell, fissure, falls, smoke, shaft, embers, spatter, bombs, flashes, jets'],
 
-    ['cosmic-noir', 'cosmicNoir', 'Cosmic Noir', 'sky, smoke'],
+    ['cosmic-noir', 'cosmicNoir', 'Cosmic Noir', 'sky, smoke, sea, tower'],
 
     ['fluid-dreams',
         'fluidDreams',

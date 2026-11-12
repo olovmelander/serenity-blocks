@@ -14,7 +14,8 @@ import {
     COSMIC_NOIR_PARTS, CosmicNoirWorld, REST_RIG, SPIN_REST, fovForAspect,
 } from '../../src/themes/cosmic-noir/cosmic-noir-world.js';
 import {
-    CAGE, ECHO_LIFE, ECHO_SLOTS, NEGATIVE_GAP, PUFF_LIFE, PUFF_SLOTS, STOCK_STEP, TAU, stockPlace,
+    CAGE, ECHO_LIFE, ECHO_SLOTS, NEGATIVE_GAP, PUFF_LIFE, PUFF_SLOTS, ROLLER_RATE, SEA, SPLASH, STOCK_STEP, TAU,
+    farLampAt, stockPlace,
 } from '../../src/themes/cosmic-noir/cosmic-noir-core.js';
 import { fallbackLayout } from '../../src/themes/cosmic-noir/cosmic-noir-composition.js';
 import { BLACK_POINT, CosmicNoirPost } from '../../src/themes/cosmic-noir/cosmic-noir-post.js';
@@ -72,7 +73,15 @@ describe('cosmic noir world: built and torn down', () => {
         const { scene, world } = makeWorld();
         expect(scene.children).toContain(world.root);
         expect(world.parts.sky.mesh.parent).toBe(world.root);
-        expect(COSMIC_NOIR_PARTS).toEqual(['sky', 'smoke']);
+        // The spray is drawn after the backdrop, over it.
+        expect(world.parts.spray.mesh.parent).toBe(world.root);
+        expect(world.parts.spray.mesh.renderOrder).toBeGreaterThan(world.parts.sky.mesh.renderOrder);
+        expect(COSMIC_NOIR_PARTS).toEqual(['sky', 'smoke', 'sea', 'tower']);
+        // The spray belongs to the sea: switched off with it.
+        world.showOnlyParts(['sky', 'tower']);
+        expect(world.parts.spray.mesh.visible).toBe(false);
+        world.showOnlyParts(COSMIC_NOIR_PARTS);
+        expect(world.parts.spray.mesh.visible).toBe(true);
         world.dispose();
         expect(scene.children).not.toContain(world.root);
         world.dispose(); // twice is harmless
@@ -86,6 +95,9 @@ describe('cosmic noir world: built and torn down', () => {
         const sb = b.world.getState();
         ['spinPhase', 'cageFill', 'stockPlace', 'stock'].forEach((k) => expect(sb[k], k).toBe(sa[k]));
         expect(b.world.drift).toEqual(a.world.drift);
+        expect(b.world.seaRun).toEqual(a.world.seaRun);
+        expect(b.world.rollTurn).toBe(a.world.rollTurn);
+        expect(sb.waves).toEqual(sa.waves);
         expect(b.world.cageTurn).toBe(a.world.cageTurn);
     });
 
@@ -204,6 +216,26 @@ describe('cosmic noir world: the print drifts with the clock and turns with the 
 });
 
 describe('cosmic noir world: gameplay', () => {
+    it('lands a lock on the sea of smoke: a low lock near the eye, a high one further out', () => {
+        const { world, camera } = makeWorld();
+        frame(world, camera, 1 / 60, () => world.onLock({ u: 0.2, rows: [18, 19] }));
+        const low = world.puffSlots.find((s) => s.smoke > 0);
+        frame(world, camera, 1 / 60, () => world.onLock({ u: 0.2, rows: [2, 3] }));
+        const high = world.puffSlots.find((s) => s.smoke > 0 && s !== low);
+        const away = (slot) => Math.hypot(slot.from[0] - camera.position.x, slot.from[2] - camera.position.z);
+        // Both lie on the sea, in front of the eye; the puff rises off it.
+        for (const slot of [low, high]) {
+            expect(slot.from[1]).toBe(SEA.level);
+            expect(away(slot)).toBeGreaterThan(2);
+            expect(slot.vel[1]).toBeGreaterThan(0);
+        }
+        expect(away(high)).toBeGreaterThan(away(low) + 1);
+        // The row tells the shaders how old its ripples are.
+        frame(world, camera, 0.5);
+        const row = world.u.tables.puffs[1];
+        expect(row.w).toBeGreaterThan(0.4);
+    });
+
     it('puffs smoke from the card\'s nearer edge on a lock, which dies in PUFF_LIFE', () => {
         const { world, camera } = makeWorld();
         frame(world, camera, 1 / 60, () => world.onLock({ u: 0.1, rows: [9, 10] }));
@@ -246,6 +278,129 @@ describe('cosmic noir world: gameplay', () => {
         frame(calm.world, calm.camera, 1 / 60, () => calm.world.onClear({ lines: 4, rows: [16, 17, 18, 19] }));
         expect(calm.world.getState().negative).toBe(0);
         expect(calm.world.getPostState().flash).toBeGreaterThan(0.3);
+    });
+
+    it('runs an echo out over the sea as a ring, past the eye, while its shell in the air stays short of it', () => {
+        const { world, camera } = makeWorld();
+        frame(world, camera, 1 / 60, () => world.onClear({ lines: 1, rows: [19] }));
+        run(world, camera, 1.2);
+        const [row] = world.u.tables.echoes;
+        // (radius in the air, width, strength, radius on the sea)
+        expect(row.z).toBeGreaterThan(0);
+        expect(row.w).toBeGreaterThan(row.x * 1.5);
+        expect(row.x).toBeLessThan(Math.hypot(24, 8.4));
+    });
+
+    it('lets the far lighthouse answer four lines a breath later, on top of its own two flashes', () => {
+        const { world, camera } = makeWorld('Minimal', { at: 5 });
+        frame(world, camera, 1 / 60, () => world.onClear({ lines: 4, rows: [16, 17, 18, 19] }));
+        // Not yet: its own character alone.
+        expect(world.u.farLamp.value).toBeCloseTo(farLampAt(world.time), 6);
+        run(world, camera, 1.3);
+        expect(world.u.farLamp.value).toBeGreaterThan(farLampAt(world.time) + 0.5);
+        run(world, camera, 8);
+        expect(world.u.farLamp.value).toBeCloseTo(farLampAt(world.time), 2);
+        // Held steady under reduced motion: no flashing point.
+        const calm = makeWorld('Minimal', { reduce: true });
+        const steady = calm.world.u.farLamp.value;
+        run(calm.world, calm.camera, 3);
+        expect(calm.world.u.farLamp.value).toBe(steady);
+    });
+
+    it('runs the sea before the wind on an integrated clock, and heaves it higher in hot play', () => {
+        const { world, camera } = makeWorld();
+        const before = [...world.seaRun];
+        expect(world.getState().seaHeave).toBe(1);
+        run(world, camera, 2);
+        expect(world.seaRun).not.toEqual(before);
+        world.seaRun.forEach((v) => {
+            expect(v).toBeGreaterThanOrEqual(0);
+            expect(v).toBeLessThan(1);
+        });
+        // A frantic chain: the sea rises, smoothly, and never to the eye.
+        let prev = world.seaHeave;
+        for (let n = 1; n <= 12; n++) {
+            frame(world, camera, 1 / 60, () => {
+                world.onLock({ u: 0.4, rows: [18, 19], hardDrop: true });
+                world.onClear({ lines: 2, rows: [18, 19], combo: n });
+                world.onCombo(n);
+            });
+            for (let i = 0; i < 38; i++) {
+                frame(world, camera, 0.63 / 38);
+                expect(Math.abs(world.seaHeave - prev)).toBeLessThan(0.01);
+                prev = world.seaHeave;
+            }
+        }
+        expect(world.seaHeave).toBeGreaterThan(1.1);
+        expect(SEA.level + (SEA.swell + SEA.billow + SEA.wisp) * world.seaHeave).toBeLessThan(-0.4);
+    });
+
+    it('breaks a roller on the rock at every crest: the latest wave first, each as hard as its set stood', () => {
+        const { world, camera } = makeWorld('Minimal', { at: 0 });
+        expect(world.counts.waves).toBe(0);
+        expect(world.getState().waves.every((wave) => wave.strength === 0)).toBe(true);
+        const period = 1 / ROLLER_RATE;
+        // (To a little after the third crest has met the shore: the second still hangs.)
+        run(world, camera, period * 2.93, 1200);
+        expect(world.counts.waves).toBe(3);
+        const { waves } = world.getState();
+        expect(waves[0].age).toBeGreaterThan(0);
+        expect(waves[0].age).toBeLessThan(period);
+        expect(waves[1].age).toBeCloseTo(waves[0].age + period, 1);
+        waves.forEach((wave) => {
+            expect(wave.strength).toBeGreaterThan(0.1);
+            expect(wave.strength).toBeLessThanOrEqual(1.5);
+        });
+        // The shaders read the same rows, and the sea round the rock is churned while a plume is young.
+        expect(world.u.tables.splashes[0].x).toBeCloseTo(waves[0].age, 6);
+        expect(world.u.tables.splashes[0].y).toBeCloseTo(waves[0].strength, 6);
+        settle(world, camera, period * 4 - (3.4 / 20) * period + 1.2);
+        expect(world.getState().waves[0].age).toBeCloseTo(1.2, 3);
+        expect(world.u.seaRoll.value.w).toBeGreaterThan(0.05);
+        // A plume is gone before the wave after next: its row reads empty then.
+        expect(SPLASH.life).toBeLessThan(period * 2);
+    });
+
+    it('lands on the same breaking sea from a seek as from running there', () => {
+        const ran = makeWorld('Minimal', { at: 0 });
+        run(ran.world, ran.camera, 21, 2520);
+        const sought = makeWorld('Minimal', { at: 21 });
+        const a = ran.world.getState().waves;
+        const b = sought.world.getState().waves;
+        expect(ran.world.rollTurn).toBeCloseTo(sought.world.rollTurn, 6);
+        expect(a[0].strength).toBeGreaterThan(0);
+        a.forEach((wave, k) => {
+            expect(wave.strength).toBeCloseTo(b[k].strength, 1);
+            // (A plume that is gone has no age worth comparing.)
+            if (wave.strength > 0) expect(wave.age).toBeCloseTo(b[k].age, 1);
+        });
+    });
+
+    it('makes the sea surge on four lines: the next wave breaks hard however low its set stood', () => {
+        // The wave that meets the rock near 24 s rides between sets: by itself it throws a low burst.
+        const quiet = makeWorld('Minimal', { at: 18.5 });
+        run(quiet.world, quiet.camera, 6, 720);
+        const lapping = quiet.world.getState().waves[0];
+        expect(lapping.age).toBeLessThan(1);
+        expect(lapping.strength).toBeLessThan(0.5);
+        const surged = makeWorld('Minimal', { at: 18.5 });
+        frame(surged.world, surged.camera, 1 / 60, () => surged.world.onClear({ lines: 4, rows: [16, 17, 18, 19] }));
+        run(surged.world, surged.camera, 6, 720);
+        const great = surged.world.getState().waves[0];
+        expect(great.strength).toBeGreaterThan(0.9);
+        expect(great.strength).toBeGreaterThan(lapping.strength * 2);
+        expect(surged.world.u.seaSurge.value).toBeGreaterThan(0.2);
+        // The surge passes: the sea settles.
+        run(surged.world, surged.camera, 45, 1800);
+        expect(surged.world.getState().seaSurge).toBeLessThan(0.02);
+    });
+
+    it('throws less, and less often, under reduced motion', () => {
+        const live = makeWorld('Minimal', { at: 6.4 });
+        const calm = makeWorld('Minimal', { at: 6.4 / 0.4, reduce: true });
+        // The same crest on both clocks (reduced motion runs the sea at 0.4 of its pace).
+        const hard = live.world.getState().waves[0].strength;
+        expect(calm.world.getState().waves[0].strength).toBeCloseTo(hard * 0.6, 6);
     });
 
     it('spins the cage on a twist, and lets it settle back to its own slow turn', () => {
@@ -537,12 +692,20 @@ describe('cosmic noir world: the camera', () => {
         positions.forEach((p) => expect(p.length()).toBeLessThan(1));
     });
 
-    it('puts the lantern where the composition hangs it, beside the card', () => {
-        const { world } = makeWorld();
-        const { pulsarUv } = world.getState();
+    it('puts the lantern where the composition hangs it, beside the card, over a level horizon', () => {
+        const { world, camera } = makeWorld();
+        const { pulsarUv, horizon } = world.getState();
         const card = fallbackLayout(1600, 900).cards[0];
         expect(pulsarUv.x).toBeLessThan(card.x0);
         expect(pulsarUv.y).toBeGreaterThan(0.1);
         expect(pulsarUv.y).toBeLessThan(0.6);
+        // The sea's horizon lies below the lamp and inside the frame, and it is level: a point
+        // of the far sea to the left and one to the right land on the same row (but for the
+        // camera's slow drift).
+        expect(horizon).toBeGreaterThan(pulsarUv.y + 0.2);
+        expect(horizon).toBeLessThan(0.85);
+        const row = (x, z) => 0.5 - new THREE.Vector3(x, 0, z).project(camera).y * 0.5;
+        expect(row(-4000, -9000)).toBeCloseTo(horizon, 1);
+        expect(Math.abs(row(-4000, -9000) - row(9000, -4000))).toBeLessThan(0.02);
     });
 });
