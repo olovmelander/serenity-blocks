@@ -10,8 +10,11 @@
  * one builder cannot turn into a shader throws or warns here instead of leaving the temple
  * undrawn on someone's machine.
  *
- * Also gated: how often each march calls the field (a value read twice can be emitted twice: a
- * soft shadow once ran the whole fractal twice a step), that the beams are integrated in loops
+ * Also gated: that the shader's field and colour signal ARE the CPU twin's (the built WGSL
+ * helpers are run in JavaScript, statement by statement, and compared with templeDistance and
+ * templeTrap at sample points: the eye, the core and every strike are placed by the twin), how
+ * often each march calls the field (a value read twice can be emitted twice: a soft shadow once
+ * ran the whole field twice a step), that the beams are integrated in loops
  * (six beams unrolled at the two sites that draw them were 15 KB), each stage's size (a march
  * unrolled in JS instead of looped shows up as a module of hundreds of KB), MaterialX noise (`mx_*`), a
  * smoothstep whose two edges are the same constant (a hard WGSL error), a NaN/Infinity literal, a
@@ -30,7 +33,9 @@ import * as THREE from 'three/webgpu';
 import { context } from 'three/tsl';
 import { KALEIDOSONIC_PARTS, KaleidosonicWorld } from '../../src/themes/kaleidosonic/kaleidosonic-world.js';
 import { KaleidosonicPost, POST_LOOK } from '../../src/themes/kaleidosonic/kaleidosonic-post.js';
-import { PIECE_COLORS } from '../../src/themes/kaleidosonic/kaleidosonic-core.js';
+import {
+    PIECE_COLORS, TEMPLE, foldSplit, mulberry32, templeDistance, templeTrap,
+} from '../../src/themes/kaleidosonic/kaleidosonic-core.js';
 import { tierFor } from '../../src/themes/kaleidosonic/kaleidosonic-quality.js';
 import { hasMaterialXNoise } from './helpers/materialx-noise.js';
 
@@ -128,6 +133,215 @@ const helpers = (wgsl) => [...wgsl.matchAll(HELPER)].map((m) => ({ name: m[1], b
 
 /** What a helper's body names that is neither an argument nor a local: uniforms, arrays, textures. */
 const captures = (body) => body.match(/nodeUniform\d+|NodeBuffer_\w+|\bobject\.\w+|\brender\.\w+|texture\w*\(/g);
+
+/** What a WGSL helper may call, on numbers (vectors go through them component by component). */
+const WGSL_CALLS = {
+    abs: Math.abs,
+    floor: Math.floor,
+    sqrt: Math.sqrt,
+    min: Math.min,
+    max: Math.max,
+    mix: (a, b, k) => a * (1 - k) + b * k,
+    clamp: (v, lo, hi) => Math.min(Math.max(v, lo), hi),
+    atan: (y, x) => (x === undefined ? Math.atan(y) : Math.atan2(y, x)),
+    f32: (v) => v,
+    i32: Math.trunc,
+};
+
+/**
+ * A laid-out `ks_*` helper of a WGSL stage as a JavaScript function: its body run as it is written
+ * (vars, lets, for loops, if / else, return; + - * / and comparisons; swizzles; the calls above)
+ * over numbers and vectors, so a test can ask the SHADER what it makes of a point. `single` rounds
+ * every result to a 32-bit float, as the GPU does. Anything it does not know throws.
+ */
+function wgslFunction(wgsl, name, single = false) {
+    const found = new RegExp(`^fn ${name}\\s*\\(([^)]*)\\)[^{]*\\{([\\s\\S]*?)^\\}`, 'm').exec(wgsl);
+    if (!found) throw new Error(`no fn ${name} in the stage`);
+    const params = [...found[1].matchAll(/(\w+)\s*:/g)].map((m) => m[1]);
+    const tokens = found[2].match(/\d+\.?\d*(?:e[-+]?\d+)?|\w+|<=|>=|\+\+|[^\s\w]/g);
+    let at = 0;
+    const peek = () => tokens[at];
+    const take = (want) => {
+        const token = tokens[at];
+        at += 1;
+        if (want && token !== want) throw new Error(`${name}: expected ${want}, found ${token}`);
+        return token;
+    };
+    const round = single ? Math.fround : (v) => v;
+    /** fn over numbers and vectors alike, component by component. */
+    const each = (fn, ...args) => {
+        const sized = args.find(Array.isArray);
+        if (!sized) return round(fn(...args));
+        return sized.map((_, i) => round(fn(...args.map((a) => (Array.isArray(a) ? a[i] : a)))));
+    };
+    const grammar = {};
+    const type = () => {
+        take();
+        if (peek() === '<') {
+            take('<');
+            take();
+            take('>');
+        }
+    };
+    const primary = () => {
+        const token = take();
+        if (token === '(') {
+            const inner = grammar.expression();
+            take(')');
+            return inner;
+        }
+        if (/^\d/.test(token)) {
+            const value = Number(token);
+            return () => value;
+        }
+        const size = /^vec[234]$/.test(token) ? Number(token[3]) : 0;
+        if (size && peek() === '<') {
+            take('<');
+            take();
+            take('>');
+        }
+        if (peek() !== '(') {
+            return (env) => {
+                if (!(token in env)) throw new Error(`${name}: ${token} is read before it is set`);
+                return env[token];
+            };
+        }
+        take('(');
+        const args = [];
+        while (peek() !== ')') {
+            args.push(grammar.expression());
+            if (peek() === ',') take(',');
+        }
+        take(')');
+        if (size) {
+            return (env) => {
+                const flat = args.flatMap((a) => a(env));
+                return flat.length === 1 ? new Array(size).fill(flat[0]) : flat;
+            };
+        }
+        const fn = WGSL_CALLS[token];
+        if (!fn) throw new Error(`${name}: a call this reader does not know: ${token}`);
+        return (env) => each(fn, ...args.map((a) => a(env)));
+    };
+    const postfix = () => {
+        let value = primary();
+        while (peek() === '.') {
+            take('.');
+            const pick = [...take()].map((c) => 'xyzw'.indexOf(c));
+            const inner = value;
+            value = pick.length === 1 ? (env) => inner(env)[pick[0]] : (env) => pick.map((i) => inner(env)[i]);
+        }
+        return value;
+    };
+    const unary = () => {
+        if (peek() !== '-') return postfix();
+        take('-');
+        const inner = unary();
+        return (env) => each((v) => -v, inner(env));
+    };
+    const binary = (next, ops) => () => {
+        let left = next();
+        while (Object.prototype.hasOwnProperty.call(ops, peek())) {
+            const op = ops[take()];
+            const a = left;
+            const b = next();
+            left = (env) => op(a(env), b(env));
+        }
+        return left;
+    };
+    const product = binary(unary, {
+        '*': (a, b) => each((x, y) => x * y, a, b),
+        '/': (a, b) => each((x, y) => x / y, a, b),
+    });
+    const sum = binary(product, {
+        '+': (a, b) => each((x, y) => x + y, a, b),
+        '-': (a, b) => each((x, y) => x - y, a, b),
+    });
+    grammar.expression = binary(sum, {
+        '<': (a, b) => a < b, '>': (a, b) => a > b, '<=': (a, b) => a <= b, '>=': (a, b) => a >= b,
+    });
+    /** Statements up to a closing brace (or the end): run in order, stopping at a return. */
+    const block = (closed) => {
+        const statements = [];
+        while (at < tokens.length && peek() !== '}') statements.push(grammar.statement());
+        if (closed) take('}');
+        return (env) => {
+            for (const run of statements) {
+                const out = run(env);
+                if (out) return out;
+            }
+            return null;
+        };
+    };
+    grammar.statement = () => {
+        const token = take();
+        if (token === 'return') {
+            const value = grammar.expression();
+            take(';');
+            return (env) => ({ value: value(env) });
+        }
+        if (token === 'if') {
+            take('(');
+            const test = grammar.expression();
+            take(')');
+            take('{');
+            const yes = block(true);
+            let no = () => null;
+            if (peek() === 'else') {
+                take('else');
+                take('{');
+                no = block(true);
+            }
+            return (env) => (test(env) ? yes(env) : no(env));
+        }
+        if (token === 'for') {
+            take('(');
+            take('var');
+            const id = take();
+            take(':');
+            type();
+            take('=');
+            const start = grammar.expression();
+            take(';');
+            const test = grammar.expression();
+            take(';');
+            take(id);
+            take('++');
+            take(')');
+            take('{');
+            const body = block(true);
+            return (env) => {
+                for (env[id] = start(env); test(env); env[id] += 1) {
+                    const out = body(env);
+                    if (out) return out;
+                }
+                return null;
+            };
+        }
+        const id = token === 'var' || token === 'let' ? take() : token;
+        if (peek() === ':') {
+            take(':');
+            type();
+        }
+        if (peek() === ';') {
+            take(';');
+            return () => null;
+        }
+        take('=');
+        const value = grammar.expression();
+        take(';');
+        return (env) => {
+            env[id] = value(env);
+            return null;
+        };
+    };
+    const body = block(false);
+    return (...args) => {
+        const env = {};
+        params.forEach((param, i) => { env[param] = args[i]; });
+        return body(env).value;
+    };
+}
 
 /** smoothstep() calls whose two edges are the same constant: a hard error in WGSL. */
 function equalEdges(shader) {
@@ -289,22 +503,66 @@ describe.each(TIERS)('kaleidosonic shaders at %s', (quality) => {
         expect(temple).toHaveLength(2);
         const wgsl = temple.find((b) => b.label === 'WGSL').out.fragment;
         const fields = helpers(wgsl).filter((h) => /^ks_temple\d+$/.test(h.name)).map((h) => h.name);
-        expect(fields).toEqual([`ks_temple${Math.max(2, Math.round(folds))}`]);
+        expect(fields).toEqual([`ks_temple${Math.max(1, Math.round(folds))}`]);
     });
 
     it('calls the field once a site: the march, four normal taps, the occlusion tap; the scout, the light map', () => {
         const { folds } = tierFor(quality);
-        const field = new RegExp(`\\bks_temple${Math.max(2, Math.round(folds))}\\s*\\(`, 'g');
+        const field = new RegExp(`\\bks_temple${Math.max(1, Math.round(folds))}\\s*\\(`, 'g');
         // the definition's own `fn ks_templeN (` is not a call
         const calls = (wgsl, pattern) => (wgsl.match(pattern) || []).length - 1;
         const wgslOf = (object) => built.find((b) => b.object === object && b.label === 'WGSL').out.fragment;
         const { mesh, scout, lightMap } = world.parts.temple;
         // (the stone's shadows come from the light map: no shadow march)
         expect(calls(wgslOf(mesh), field)).toBe(1 + 4 + 1);
-        // the orbit trap colours the stone: read once, at the hit
+        // what of the net a hit belongs to colours the stone: read once, at the hit
         expect(calls(wgslOf(mesh), /\bks_templeTrap\d+\s*\(/g)).toBe(1);
         expect(calls(wgslOf(scout.quad), field)).toBe(1);
         expect(calls(wgslOf(lightMap.quad), field)).toBe(1);
+    });
+
+    it('walks the net as the CPU twin does: the built shader\'s own field and colour signal, run in JavaScript', () => {
+        const cap = Math.max(1, Math.round(tierFor(quality).folds));
+        const { mesh, scout, lightMap } = world.parts.temple;
+        const wgslOf = (object) => built.find((b) => b.object === object && b.label === 'WGSL').out.fragment;
+        const field = wgslFunction(wgslOf(mesh), `ks_temple${cap}`);
+        const asFloats = wgslFunction(wgslOf(mesh), `ks_temple${cap}`, true);
+        const trap = wgslFunction(wgslOf(mesh), `ks_templeTrap${cap}`);
+        // (the scout and the light map march the same field: the same text, so the same walk)
+        const text = (wgsl) => helpers(wgsl).find((h) => h.name === `ks_temple${cap}`).body;
+        expect(text(wgslOf(scout.quad))).toBe(text(wgslOf(mesh)));
+        expect(text(wgslOf(lightMap.quad))).toBe(text(wgslOf(mesh)));
+        // Every count the tier may be asked for: at rest, a level growing in, its deepest.
+        const counts = [...new Set([TEMPLE.detailRest, TEMPLE.detailRest + 0.37, cap - 0.25, cap])]
+            .filter((folds) => folds >= TEMPLE.detailRest && folds <= cap);
+        const random = mulberry32(9);
+        let compared = 0;
+        let stone = 0;
+        for (const s of [TEMPLE.sMin, TEMPLE.s, TEMPLE.sMax]) {
+            for (const folds of counts) {
+                const prm = [s, folds, ...foldSplit(folds)];
+                for (let i = 0; i < 70; i++) {
+                    const at = [random() * 6 - 3, random() * 6 - 3, random() * 6 - 3];
+                    const twin = templeDistance(...at, s, folds);
+                    const label = `(${at}) at s ${s}, ${folds} folds`;
+                    expect(field(at, prm), label).toBeCloseTo(twin, 12);
+                    // in the GPU's own 32-bit floats the walk lands within a hair of the twin's
+                    expect(Math.abs(asFloats(at, prm) - twin), label).toBeLessThan(2e-5);
+                    const mark = templeTrap(...at, s, folds);
+                    trap(at, prm).forEach((v, k) => expect(v, `${label}, mark ${k}`).toBeCloseTo(mark[k], 9));
+                    compared += 1;
+                    if (twin < 0) stone += 1;
+                }
+            }
+        }
+        expect(compared).toBeGreaterThanOrEqual(3 * 70);
+        // (the samples are in the stone and in the open air both)
+        expect(stone).toBeGreaterThan(10);
+        expect(compared - stone).toBeGreaterThan(100);
+        // The reader refuses what it does not know (a helper it cannot run is not silently skipped).
+        expect(() => wgslFunction(wgslOf(mesh), 'ks_noSuchHelper')).toThrow(/no fn/);
+        const unknown = 'fn ks_x ( a : f32 ) -> f32 {\n\treturn tan( a );\n}\n';
+        expect(() => wgslFunction(unknown, 'ks_x')).toThrow(/does not know/);
     });
 
     it('integrates the beams in loops: one beam call at the core\'s site and one at the jewels\'', () => {

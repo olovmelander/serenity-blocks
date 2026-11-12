@@ -20,7 +20,7 @@
  *               the view it lands on is the one it left), the whole temple resonating
  *   twist      turns the kaleidoscope: the eye rolls a full turn
  *   back-to-back  a drone: a ring of light round the core, held while the run lives
- *   perfect     every mirror aligns into one still mandala and the floors' pattern flares
+ *   perfect     every mirror aligns into one still mandala and the pearls' nodal figures flare
  *   level up    the mood wheel steps on (it also turns by itself with the clock)
  *   game over   the light sinks; a new run raises it again
  *
@@ -31,7 +31,7 @@
  * cycle. The heat of play is the crescendo, in four acts: calm (the temple as it is), warm (the
  * veins flow faster, the gem's beams sweep quicker, the core burns brighter, a quick hand's notes
  * ring louder), hot (the core starts to hum: the drone's rings round it with no back-to-back; the
- * kaleidoscope wheels faster), fever (the temple sings: the floors' Chladni figures blaze, the
+ * kaleidoscope wheels faster), fever (the temple sings: the pearls' nodal figures blaze, the
  * harmonics climb an overtone, the drone is full, the iris closes so the neon stays saturated).
  * A perfect clear's crown is the release: the whole chord in the core's colour, a held glow, and
  * the mandala stilling every motion. The kaleidoscope lets go stage by stage when the chain ends.
@@ -56,7 +56,10 @@ export const fovForAspect = (aspect) => rigFor(aspect).fov;
 
 const PIECE_LINEAR = PIECE_COLORS.map((c) => hexToLinear(c));
 const WRAP = 3600;
-/** A strike never rings out farther from the eye than this (open air beyond it: it hangs there). */
+/**
+ * A strike never rings out farther from the eye than this: a note is struck in the open air of the
+ * hall beside the card (the pearls stand farther off; its light and its wavefront reach them).
+ */
 const STRIKE_REACH = 1.15;
 /**
  * The breath and the pulse wrap here: a whole number of periods of every multiple the shaders
@@ -1103,7 +1106,7 @@ export class KaleidosonicWorld {
         u.heartState.value.set(pulseLight, this.drone, this.sink, hot);
         const surge = this.diveProgress * (1 - this.diveProgress) * 1.6;
         // a quick hand lights the veins before any chain does (the temple takes notice), a fever
-        // past the trance, and sets the floors' Chladni figures blazing; the frame's flash is held
+        // past the trance, and sets the pearls' nodal figures blazing; the frame's flash is held
         // back under Reduce flashing (ADR-0021), as the post's is
         u.state.value.set(
             this.trance + (1 - this.trance) * 0.45 * warm + 0.12 * fever,

@@ -1,7 +1,7 @@
 /**
  * Kaleidosonic — composition (CPU only, three-free).
  *
- * The frame around the card: the fractal temple's near masses on its left and right, the
+ * The frame around the card: the temple's near strings of pearls on its left and right, the
  * resonant core hanging in the open air on the left at the hero anchor (above the card on a
  * phone), and deep halls of folded stone receding behind the card into coloured haze.
  *

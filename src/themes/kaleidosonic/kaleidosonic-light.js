@@ -21,7 +21,7 @@ import {
 } from 'three/tsl';
 import { BEAM_AXES, BEAM_K } from './kaleidosonic-core.js';
 
-/** Distance (fractal units) the map looks for stone; beyond it the light is taken as unblocked. */
+/** Distance (the net's units) the map looks for stone; beyond it the light is taken as unblocked. */
 export const LIGHT_REACH = 3.2;
 
 /**

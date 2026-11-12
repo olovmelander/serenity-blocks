@@ -1,13 +1,13 @@
 /**
  * Kaleidosonic — a temple of folded light, the shape of a sound.
  *
- * The eye floats inside a kaleidoscopic fractal sanctum ray-marched in one pass: dark jewel-toned
+ * The eye floats inside a net of pearls strung on threads, ray-marched in one pass: dark jewel-toned
  * stone veined with the glowing nodal lines of standing waves, lit by a resonant core. Its moods
  * (palettes) turn on a wheel with the clock by themselves, and a level-up steps the wheel on;
  * every lock strikes a note (a wavefront in the piece's colour rings through the stone at the
  * piece's own pitch); a clear sounds a harmonic and refolds the architecture; a chain deepens the
- * trance (finer fractal, the lens folding into a kaleidoscope) and its release settles it; four
- * lines dive an octave down into the fractal; a twist twists the folds; back-to-back keeps a
+ * trance (a finer net, the lens folding into a kaleidoscope) and its release settles it; four
+ * lines dive one period down the lattice; a twist twists the folds; back-to-back keeps a
  * drone; a perfect clear aligns every fold into one still mandala; game over lets the light sink.
  *
  * Content lives in KaleidosonicWorld, shared with the playground. This adapter preserves the

@@ -19,6 +19,11 @@ To look at it: `npm run dev`, then `/playground.html?effect=kaleidosonic&t=10&bo
 with `eventAge`, `u`, `row`, `piece`, `lines`; `icon=1` the icon's lens). In the game:
 `/?unlockAll=1&skipIntro=1`.
 
+**2026-11-12:** the temple is now the strung net (see *The strung net* below): the sections up to
+it are brought in line with it; the performance and light passes are kept as they were written,
+and where they speak of floors, vaults or seven to eleven folds they describe the stone before it.
+The captures at the end are of that earlier stone too, until the net has been captured on a GPU.
+
 ## The idea
 
 Research (psychedelic visual phenomenology and art, cymatics, real-time fractal rendering) gave
@@ -32,27 +37,33 @@ three things the theme is built from:
   motif the fleet's research round had reserved for this slot, and "sound made visible" is on the
   catalogue's list of unclaimed event grammars. A struck singing bowl rings; here every piece is a
   struck note.
-- **The Apollonian sphere-inversion fractal** is Indra's net: an endless lattice of pearls in
-  which a jewel hangs in every cell. It ties the meditation heritage, the psychedelic and the orb's
-  old name ("Recursive Infinity") together, and gives the orb its new one ("Indra's Net"); it is exactly periodic (so a dive can fly one period
-  and land on the same view), and it is cheap enough to march in real time. KIFS, Mandelbox,
-  Mandelbulb and pseudo-Kleinian fields were prototyped beside it and dropped (blobby, blocky,
-  noisy or too busy). Every shader was written from the maths, not from shared shader code.
+- **Indra's net** is the temple: an endless lattice of pearls strung on threads, in which every
+  pearl holds the whole net again and a jewel hangs in every cell. Folding space into the
+  lattice's cell and turning the cell inside out in a sphere round its knot, again and again,
+  draws exactly that. It ties the meditation heritage, the psychedelic and the orb's old name
+  ("Recursive Infinity") together, and gives the orb its new one ("Indra's Net"); it is exactly
+  periodic (so a dive can fly one period and land on the same view), and it is cheap enough to
+  march in real time. Other folded fields were prototyped beside it and dropped (blobby, blocky,
+  noisy or too busy).
 
 ## The picture
 
-The eye floats halfway between a floor and its vault in a hall of the temple, looking diagonally
-across the pillar lattice (never down a nave: Ice Temple owns that). Hourglass pillars of pearls
-stand at every lattice line, nested spherical voids stack into arches, and halls recede into the
-mood's own darkness. The **core** — a faceted gem (twelve icosahedral facets lit from within in
-the mood's colours, sparkling edges) inside a turning twelve-lobed lotus corona with sound rings —
-hangs in the open air left of the card (above it on a phone). Its image hangs in the same place in
-every cell, so the halls recede through glowing **jewels** that light their own halls and twinkle.
+The eye floats in the open middle of a hall of the temple, looking diagonally across the lattice
+(never down a nave: Ice Temple owns that). A pearl hangs on every knot, a thread runs along every
+line between two knots, and round every knot the whole net is drawn again, small and bent:
+smaller pearls strung along each thread, arcs of thread looping from pearl to pearl, each arc
+strung with pearls of its own. The strings stand as pillars and lie as beams on every side, and
+the halls recede between them into the mood's own darkness. The **core** — a faceted gem (twelve
+icosahedral facets lit from within in the mood's colours, sparkling edges) inside a turning
+twelve-lobed lotus corona with sound rings — hangs in the open air left of the card (above it on a
+phone). Its image hangs in the same place in every cell, so the halls recede through glowing
+**jewels** that light their own halls and twinkle.
 
 Lit as under black light: near-black pearl stone, fluorescent rims, and **veins** — concentric
-nodal rings of the nearest source's standing wave cut by the stone, broken into twelve petals —
-in three neon colours per mood chosen region by region from the fractal's orbit trap. Floors and
-vaults carry each source's **Chladni figure** (nodal circles crossed by twelve diameters).
+nodal rings of the nearest source's standing wave cut by the stone (rings on the pearls, dashes
+along the threads), broken into twelve petals — in three neon colours per mood, one per level of
+the net. Every knot's pearl carries its own **nodal figure** (circles round each string's hole
+crossed by twelve meridians), and beads of light run along every thread from its knot.
 
 ## Moods: palette by clock and level
 
@@ -68,14 +79,14 @@ of two complements (which would go grey).
 
 | Event | The temple |
 |---|---|
-| Lock | A struck note at the stone beside the card the piece's column and row map to: a lotus of light blooms and closes at the struck point, the stone round it floods with the piece's colour, a wavefront crosses the stone, concentric ripples ring on at the piece's own wavelength (the I rings highest, the O lowest), and every jewel the front passes rings in its colour |
+| Lock | A struck note in the open air of the hall beside the card, where the piece's column and row point: a lotus of light blooms and closes at the struck point, the pearls and threads round it flood with the piece's colour, a wavefront crosses them, concentric ripples ring on at the piece's own wavelength (the I rings highest, the O lowest), and every jewel the front passes rings in its colour |
 | Hard drop | The same, stronger and faster, and the eye kicks back and returns |
-| Line clear | A harmonic: a shell of light leaves the core, nodal rings bloom round it (more lines, more shells), the whole temple resonates, jewels ring as the front passes, and the fractal refolds (its inversion springs to the next shape) |
-| Chain | The trance: the temple grows finer, veins brighten and flow faster, and the lens folds into a kaleidoscope — a mirror at 2, six sectors at 5, twelve at 8 (alternate sectors take the mood's other colour) — the core's images becoming a crown of jewels round the card; a broken chain lets the mirrors go |
+| Line clear | A harmonic: a shell of light leaves the core, nodal rings bloom round it (more lines, more shells), the whole temple resonates, jewels ring as the front passes, and the net refolds (its inversion springs to the next strength: the strung pearls slide along their threads, the arcs swell or tighten) |
+| Chain | The trance: the temple grows finer (the net is drawn up to two levels deeper: smaller pearls bud along every arc), veins brighten and flow faster, and the lens folds into a kaleidoscope — a mirror at 2, six sectors at 5, twelve at 8 (alternate sectors take the mood's other colour) — the core's images becoming a crown of jewels round the card; a broken chain lets the mirrors go |
 | Four lines | The dive: the temple streams past as the eye flies one diagonal lattice period down its free lane, the lens breathing wider, and lands on exactly the view it left |
 | T-spin | The kaleidoscope turns: the eye rolls a full turn |
 | Back-to-back | A drone: nodal rings pulse steadily round the core |
-| Perfect clear | Every mirror aligns into one still mandala and the floors' figures flare |
+| Perfect clear | Every mirror aligns into one still mandala and the pearls' figures flare |
 | Level up | The mood wheel steps on (with a flare of the core) |
 | Game over | The light sinks and the rings flow back into the core; a new run raises it |
 
@@ -91,18 +102,20 @@ own player's card.
 
 - **One full-screen material** (`kaleidosonic-temple.js`): every view ray is folded through the
   kaleidoscope (`ksLensFold`, three continuous stages about the core's live bearing), then marched
-  through the Apollonian field (`createTempleField`: fold into the cell, invert, repeat; a
-  fractional fold count blended between whole counts so the trance grows the temple finer without
-  a pop), each ray starting where a small scout pass found its block of pixels still in open air
-  (see *Performance pass*). Shading, veins, strikes, harmonics, jewels (an Amanatides–Woo walk through the cells the
-  ray crosses), the gem (an analytic ray–sphere hit with facets snapped to the icosahedron's axes)
-  and the fog all happen in that one pass.
+  through the strung net (`createTempleField`: fold into the cell, read the reach to the knot's
+  pearl and threads, invert, repeat; a fractional count of inversions grows the next level out of
+  the one before, so the trance draws the temple finer without a pop), each ray starting where a
+  small scout pass found its block of pixels still in open air (see *Performance pass*). Shading,
+  veins, strikes, harmonics, jewels (a walk, cell by cell, through the cells the ray crosses), the
+  gem (an analytic ray–sphere hit with facets snapped to the icosahedron's axes) and the fog all
+  happen in that one pass.
 - **The world** (`kaleidosonic-world.js`) owns the uniform bag, the eye's rig, the core's place
   (searched for open air with a long free view at the hero anchor), strike targeting (a CPU march
-  of the same field from the rest eye), the mood wheel, the refold spring, the trance, the folds,
-  the dive and every event slot. Phases whose rate gameplay changes (the veins' flow, the core's
-  pulse) are integrated and wrapped; strikes' and harmonics' ages are written each frame, so the
-  shader never compares against a clock.
+  of the same field from the rest eye: `templeDistance`, the shader's arithmetic line for line),
+  the mood wheel, the refold spring, the trance, the folds, the dive and every event slot. Phases
+  whose rate gameplay changes (the veins' flow, the core's pulse) are integrated and wrapped;
+  strikes' and harmonics' ages are written each frame, so the shader never compares against a
+  clock.
 - **Post** (`kaleidosonic-post.js`): calm zones over cards and HUD, a hue-preserving max-channel
   bloom, a chromatic fringe that only the resonance and the dive bring out, a hue-preserving filmic
   and a grade that adds nothing to the blacks.
@@ -111,14 +124,17 @@ own player's card.
 
 ## Quality tiers
 
-| Tier | March steps | Folds | Strikes | Jewel cells | Veins | Light map | Beams | Jewel beams (shadowed) | Mirrored jewels |
+| Tier | March steps | Inversions (most) | Strikes | Jewel cells | Veins | Light map | Beams | Jewel beams (shadowed) | Mirrored jewels |
 |---|---|---|---|---|---|---|---|---|---|
-| Minimal | 34 | 7 | 6 | 5 | 0.5 | 96² | 6 | — | — |
-| Low | 46 | 8 | 8 | 6 | 0.62 | 128² | 6 | 1 cell (1) | 1 cell |
-| Medium | 66 | 9 | 10 | 8 | 0.85 | 192² | 12 | 2 cells (2) | 1 cell |
-| High | 96 | 10 | 12 | 10 | 1 | 256² | 12 | 3 cells (2) | 2 cells |
-| Ultra | 120 | 10 | 12 | 10 | 1 | 320² | 12 | 4 cells (3) | 2 cells |
-| Extreme | 150 | 11 | 12 | 12 | 1 | 384² | 12 | 5 cells (3) | 3 cells |
+| Minimal | 34 | 3 | 6 | 5 | 0.5 | 96² | 6 | — | — |
+| Low | 46 | 4 | 8 | 6 | 0.62 | 128² | 6 | 1 cell (1) | 1 cell |
+| Medium | 66 | 5 | 10 | 8 | 0.85 | 192² | 12 | 2 cells (2) | 1 cell |
+| High | 96 | 5 | 12 | 10 | 1 | 256² | 12 | 3 cells (2) | 2 cells |
+| Ultra | 120 | 5 | 12 | 10 | 1 | 320² | 12 | 4 cells (3) | 2 cells |
+| Extreme | 150 | 5 | 12 | 12 | 1 | 384² | 12 | 5 cells (3) | 3 cells |
+
+The net is drawn through three inversions at rest and five at the deepest trance; a tier's count is
+the most it draws (Minimal keeps the rest shape through a chain, Low grows one level).
 
 Bloom from Medium up; the chromatic fringe from Medium up; beam spots on the stone from Medium up.
 Every tier keeps every feature and every event. (Until the light pass, Ultra and Extreme had a
@@ -139,7 +155,8 @@ Every tier keeps every feature and every event. (Until the light pass, Ultra and
 - **A strike's shell drawn in the air** read as a soap bubble and stacked into a wash; only a
   hair-thin, short-lived rim stays in the air, the light lives on the stone.
 - **A Faraday quasipattern** seen far off its centre on a vault reads as scribbles; the floors carry
-  a circular plate's Chladni figure per source instead.
+  a circular plate's Chladni figure per source instead. (The floors and vaults went with the strung
+  net: each pearl carries its own nodal figure now.)
 - **Strikes over a tier's cap** must drop the oldest, not the newest (found by the test agent).
 - **A lock's flare lit the stone**: the core's light carried every event's flare, so each lock
   pulsed the whole temple. The flare now brightens only the core's corona and gem; the stone keeps
@@ -354,6 +371,209 @@ as loops. All 7 Kaleidosonic test files pass (280 tests); typecheck, the lint ra
 baseline), dependency boundaries, perf budgets and the production build pass. The full suite's
 four red files (game-over modal, Odyssey briefing, records view, TTS recorder) fail the same way
 on `main`.
+
+## The strung net (2026-11-12)
+
+The temple's stone is rebuilt as Indra's net taken at its word: pearls strung on threads, and the
+whole net drawn again round every knot. The floors, vaults and sheets of the earlier stone are
+gone; the halls are now open on every side between strings of pearls. This section is the field's
+design: what it is, why its distance never oversteps, what colours it, and how gameplay plays it.
+
+**Not yet seen on a GPU.** The session that built it had no GPU: the pictures it was judged by are
+CPU renders of the field's CPU twin (the same arithmetic, simple light), and the shaders are
+checked by building them and running the built field in JavaScript against that twin. The
+captures further down are still of the earlier stone. See *Verify on a real GPU* below.
+
+### What it is
+
+- **The net.** Knots stand two units apart on every axis. A pearl of radius 0.45 sits on every
+  knot and a thread of radius 0.03 runs along every lattice line between two knots (`NET` in
+  `kaleidosonic-core.js`). A point finds its place in the net by folding: each coordinate becomes
+  its distance to the nearest lattice plane, `|x − 2·floor(x/2 + 1/2)|`. That is a mirror in every
+  face of the cell, continuous everywhere, and it lands the point in one corner cell with its knot
+  at the origin. There the squared distance to the nearest thread is the least sum of two of the
+  squared coordinates, and to the knot the sum of all three, so the **reach** to the net is
+  `min(√(least pair) − 0.03, √(all three) − 0.45)`.
+- **The net in every knot.** An inversion in the sphere of radius √s round the knot,
+  `p → s·p / |p|²`, turns the cell inside out: what lies near the knot is thrown far out across
+  the lattice, so the space round every knot holds a small, bent image of the whole net beyond
+  it. A pearl stays a sphere through an inversion and a straight thread becomes an arc through
+  the knot. Folding the thrown point finds its place in the net again, and the next inversion
+  draws the net into that image in turn.
+- **The temple** is every point whose walk (fold, invert, fold, invert, …) ever lands in a pearl
+  or a thread: the net itself (level 0), its image round each knot (level 1), the images' images.
+  Three inversions at rest, five at the deepest trance.
+- **What that looks like.** Along every thread a string of ever smaller pearls runs from the knot
+  toward the middle of the thread (the next knot's pearl seen through one, two, three
+  inversions), and arcs of thread loop from pearl to pearl, strung with pearls of their own.
+  Everything the walk draws lies within s / 2 of a lattice line, so the middle of every hall is
+  open air: the eye, the core and its jewels hang there.
+- **Why the pearl is 0.45.** Round a knot the images crowd without end, each level finer; the
+  knot's own pearl covers them. What still shows beyond its surface is at least 0.45² / s (about
+  a sixth) the size of what made it, so two levels down the finest thread on show is still about
+  a pixel wide at 1080p instead of a fuzz. A smaller pearl (0.36 was tried) shows more lace and
+  reads as foam at full size. It must also stay under sMin / √3 = 0.60, or its own image would
+  turn inside out and fill the hall.
+- **A mirror, not a wrap.** The earlier field wrapped each coordinate into its cell; this one
+  mirrors it. The walk is then continuous across every cell face whatever is strung in the cell,
+  and one corner of the cell describes all of it.
+
+### The distance, and why it never oversteps
+
+Folds keep lengths and an inversion scales them by s / r² round a point at radius r. So a level's
+reach, times every *shrink* (r² / s) on the way to it, is the distance to that level's stone to
+first order, and the nearest level wins:
+
+```
+distance = min over levels of  reach · shrink / (1 + ease · |reach|),      ease = 2.5
+```
+
+The division is the safety, and it is not a constant factor. First order is right at the stone
+and too generous away from it, because an inversion shrinks what lies farther from its centre
+more: a ball of radius D round a point that lands at radius R comes from a ball of radius
+D · shrink / (1 + D / R), not D · shrink. Easing the reach as D / (1 + ease · D) keeps slope 1 at
+the stone (the march converges on it in a few steps and the normals are true) and holds the field
+back in the open (never more than shrink / ease).
+
+Why ease = 2.5 is enough. A field that is negative inside the stone and whose slope is nowhere
+above 1 can never be more than the distance to the stone. A level's slope is at most
+
+```
+1 / (1 + ease·D)²  +  D / (1 + ease·D) · |∇shrink|
+```
+
+(the first term because the reach changes by at most 1 / shrink per unit walked), which is at most
+1 whenever `|∇shrink| ≤ ease · (2 + ease·D) / (1 + ease·D)`: between ease, far from the net, and
+2 · ease at it. Through one inversion `|∇shrink| = 2 / R`. Where R ≥ 0.8 that is at most 2.5.
+Where R < 0.8 the point has landed in the cell round the origin within 0.8 of its knot, whose
+pearl is then at most R − 0.45 away, so the bound is at least 3.8, and 2 / R stays under it down
+to R = 0.52; the walk never lands nearer than sMin / √3 = 0.60. So one inversion is proven.
+Deeper levels add the earlier inversions' share to `|∇shrink|`; those are measured:
+
+| s | steepest slope anywhere | steepest more than 0.05 from the stone |
+|---|---|---|
+| 1.04 (sMin) | 1.000 | 0.79 |
+| 1.15 (rest) | 1.000 | 0.86 |
+| 1.25 | 1.000 | 0.89 |
+| 1.31 (a chain's climb) | 1.000 | 0.88 |
+| 1.36 (sMax) | 1.000 | 0.90 |
+| 1.45 (beyond what the world asks) | 1.000 | 0.90 |
+
+(600 000 points for each of three, four and a half and five inversions, half of them placed deep
+in the images by walking back out from a chosen place in the cell; the slope by central
+differences. With ease = 2 the slope reached 1.03 at s = 1.32 and 1.08 at 1.42; with 2.25 it held
+to 1.36.)
+
+`tests/unit/kaleidosonic-core.test.js` keeps both halves of the claim: 36 800 point pairs across
+every refold, both bounds and four fold counts (no pair's values differ by more than the distance
+between the points), and a brute-force search of the ball the field promises is empty, along
+forty rays in 200 even steps, at more than 700 points (no stone found). The search owes nothing
+to the field's own word.
+
+**Growing a level in.** A fractional count of inversions runs the whole ones and then eases the
+next level's stone in by the fraction: `mix(d, min(d, next), weight)`. A level only ever adds
+stone to the one before (the temple is the union of its levels), so the new pearls swell out of
+the surface they are strung on as the trance deepens, and nothing pops or dissolves. The colour
+signal eases with them: the growing level takes a point over by the same weight, so the stone a
+pearl swells out of turns to the pearl's colours as it swells, not at once.
+
+### What colours it
+
+`createTempleTrap` (and `templeTrap`, its CPU twin) reads, once per pixel at the hit, which level's
+pearl or thread the point belongs to (the nearest level), and where on it the point lies in that
+level's own cell:
+
+| Signal | What it is | What the shading does with it |
+|---|---|---|
+| part | 1 on a pearl, 0 on a thread, easing across the join | threads take the beads of light; a thread glows in the neon before its pearl's |
+| depth | how many inversions down the piece is | one of the mood's three neons per level; the pearl's two poles and its film turn from level to level; the net's own pearls (depth 0) carry the nodal figure |
+| along | the place along the string, knot (0) to mid-thread (1); on a pearl, 0.45 × the cosine of the angle from the nearest string's hole | beads of light run along it; the film's thickness and the pearl's poles turn with it, so every pearl is ringed round its strings' holes |
+| turn | the angle round the string (0 to a quarter turn: the cell's mirrors repeat it) | the twelve meridians of a pearl's figure |
+
+Because the signal is read in the level's own cell, every image of a pearl or a thread is
+coloured in its own measure, bent as it is bent: a ring round a string's hole is still a ring.
+
+- **Pearls.** The nacre is as it was (lustre, the core and the nearest jewels mirrored, a thin
+  film), now on large smooth spheres, with the film's thickness turning round each pearl from its
+  strings' holes. The great pearls, one on every knot, carry their own nodal figure: circles round
+  each string's hole crossed by twelve meridians, flowing with the breath and brightest near the
+  pearl's source (the figure the floors used to carry; it fades where a pearl is too small on
+  screen to hold it). The smaller pearls strung between the knots keep the source's rings.
+- **Threads.** The resonant light: beads of light running along every string from its knot (five
+  between a knot and the middle of its thread, inward when the light sinks), in the string's own
+  measure, so the arcs of every image carry them smaller. The standing-wave veins still cut the
+  stone: rings on the pearls, dashes along the threads.
+
+### How the events play it
+
+| Event | The net |
+|---|---|
+| Lock | The note is struck in the open air beside the card (the pearls stand about half a unit further off): the lotus blooms there, the strike's light pools in the mist, the pearls and threads round it flood with the piece's colour (the flood now reaches them: falloff 4 per unit², was 10), and the wavefront crosses them |
+| Clear | The inversion springs to its next strength (`REFOLDS`: 1.15, 1.25, 1.09, 1.31, 1.12, 1.21, 1.06, 1.28). A weak inversion keeps the strung pearls small and close to their knots with bare thread between; a strong one slides them out along the threads and swells the arcs into lace round every knot. The next knot's pearl sits 0.527 · s along its thread and is 0.118 · s in radius, so a step of 0.2 moves it a tenth of a unit |
+| Chain | Climbs toward the strongest shape (1.31) as before, and the trance draws the net up to two levels deeper, each level growing out of the last by the fraction |
+| Four lines | The dive flies the same lane. It passes 0.42 from an upright thread at mid-flight: a string of pearls sweeps close by. The lane's clearance is at least 0.13 by the field (about 0.2 true) for every shape, rest and deep |
+| Perfect clear, fever | The knot pearls' nodal figures flare (the floors' did) |
+
+### What else moved
+
+- **Tiers** count inversions now (3 / 4 / 5 / 5 / 5 / 5, were 7 to 11 folds).
+- **The refold walk** is wider (1.06 to 1.31, was 1.07 to 1.27) and sMax is 1.36 (was 1.32): the
+  net answers a refold by sliding and swelling, which needs a longer stroke to read as a new hall.
+- **Occlusion.** The field's slope at the stone is 1 where the earlier one's was about a third,
+  so the tap along the normal reads an open face as open: a share of 0.42 (`AO_OPEN`) keeps the
+  stone as dark as it was tuned (mean occlusion at High 0.117 before, 0.121 after, from a CPU
+  replica of the march).
+- **The core's place** is found as before (the roomiest point along the hero ray); its clearance
+  is at least 0.2 by the field at every shape and depth on every frame tried (16:9, 21:9, 16:10,
+  4:3, 1:1, phone).
+
+### Cost
+
+- **Per call**, by operations in the built WGSL: 27 a level (two square roots, two divisions)
+  against 10 a fold, so 103 at rest (three inversions) against 73 (seven folds), and 157 against
+  93 at the deepest.
+- **Per pixel**, the march takes fewer steps because the slope at the stone is 1: from the eye at
+  a 1080p footprint, with no scout, 38 steps against 52 at rest and 35 against 45 deep (a CPU
+  replica). Rays that run out of steps: 48 % against 70 % at Minimal's 34, 1 % against 8 % at
+  High's 96.
+- Together about 5 % more field work a pixel at rest and 30 % more at the deepest trance. **Not
+  timed on a GPU.**
+- The temple's fragment shader is 56.0 KB of WGSL at High and Extreme (was 51.8), under the
+  gate's 64 KB; the scout's is 7.4 KB and the light map's 5.8 KB.
+
+### Verification
+
+- **The shader is the twin.** The shader gate builds the temple, the scout and the light map at
+  three tiers and runs the built `ks_temple*` and `ks_templeTrap*` WGSL in JavaScript, statement
+  by statement, against `templeDistance` and `templeTrap`: equal to twelve digits in doubles, and
+  within 2e-5 in 32-bit floats, at points in the stone and in the open, for sMin, rest and sMax,
+  at rest, with a level growing in, and at the tier's deepest.
+- **The field.** Besides the two overstep tests: the temple repeats every period and mirrors in
+  every cell face; a pearl on every knot and a thread along every line for every shape; the next
+  knot's pearl where the inversion's arithmetic puts it; more inversions only add stone; a level
+  grows in monotonically and in even steps, its colours easing in with it; the colour signal on
+  a pearl, on a thread and across their join; the dive's lane and the eye's place clear for every
+  shape, rest and deep.
+- **Static gates**: typecheck, ts-ratchet, lint ratchet, architecture fitness, dependency
+  boundaries, theme lifecycle, the IP-string gate.
+
+**Verify on a real GPU.** `npm run dev:playground`, then
+`/playground.html?effect=kaleidosonic&t=10&mood=0&maxFps=30`:
+
+| Add | Look for |
+|---|---|
+| (nothing) | open air round the eye and the core; a great dark pearl with its nacre on every knot; a string of smaller pearls along the upright thread at the left; clean rims, no speckle or holes on thin threads |
+| `&board=1` | the card and HUD over it; the core left of the card |
+| `&locks=1&clears=1&event=lock&eventAge=3`, then `locks=3&clears=3` and `locks=6&clears=6` | the refold walk, settled: s = 1.25, then the strongest (1.31: lace round every knot) and the weakest (1.06: small pearls close to their knots, bare thread between) |
+| `&combo=4`, `&combo=9` | the climb to the strongest shape and the net drawn deeper (fine pearls budding along the arcs, no foam), through the kaleidoscope's mirror at 4 and all its stages at 9 |
+| `&event=lock&u=0.15&row=14&piece=O&eventAge=0.2` | the lotus in the air left of the card, the pearls round it flooding gold; `eventAge=0.7` the front crossing them |
+| `&event=quad&eventAge=1.4` | the dive at mid-flight: the string of pearls sweeping close, nothing through the lens |
+| `&event=perfect&eventAge=2.0&mood=5` | the knot pearls' figures flaring; circles round each string's hole, twelve meridians, no seams |
+| `&quality=Minimal`, `&forceWebGL=1`, a 390 × 844 frame | thin threads surviving 34 steps; the WebGL2 backend; the core above the card |
+| `&scout=0` | the same frame without the scout pass (no block seams with it) |
+
+And the console: no WebGPU validation message (the pearl's figure and the beads take screen
+derivatives inside the hit branch, as the veins always have).
 
 ## Captures
 

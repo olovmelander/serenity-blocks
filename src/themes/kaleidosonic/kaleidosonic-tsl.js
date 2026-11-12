@@ -7,11 +7,11 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, If, Loop, abs, atan, cos, dot, float, floor, fract, int, max, min, mix, normalize, sign, sin, step,
-    uniform, uniformArray, vec2, vec3, vec4,
+    Fn, If, Loop, abs, atan, clamp, cos, dot, float, floor, fract, int, max, min, mix, normalize, select, sign, sin,
+    sqrt, step, uniform, uniformArray, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
-    BEAM_AXES, MOODS, MOOD_COLOURS, TEMPLE, foldSplit,
+    BEAM_AXES, MOODS, MOOD_COLOURS, NET, NET_JOIN, TEMPLE, foldSplit,
 } from './kaleidosonic-core.js';
 
 export * from './kaleidosonic-core.js';
@@ -46,39 +46,66 @@ export const ksHash31 = /* @__PURE__ */ Fn(([pIn]) => {
 export const ksLuma = (c) => dot(c, vec3(0.2126, 0.7152, 0.0722));
 export const ksMax3 = (c) => max(c.x, max(c.y, c.z));
 
-/** The lattice fold into [-1, 1): fract(p / 2 + 1 / 2) · 2 − 1, written with three ops fewer. */
-const latticeFold = (p) => p.sub(floor(p.mul(0.5).add(0.5)).mul(2.0));
+/**
+ * The net's cell: every coordinate becomes its distance to the nearest lattice plane (0..1), a
+ * mirror in each face of the cell, so the fold is continuous everywhere.
+ */
+const cellFold = (p) => abs(p.sub(floor(p.mul(0.5).add(0.5)).mul(2.0)));
 
 /**
- * The temple's field: the Apollonian fold-and-invert, run to a fractional number of folds (whole
- * folds `prm.z`, then the next one blended in by `prm.w`, so the temple grows finer without a
- * pop), with an inversion strength `prm.x`. prm is the shape uniform: (s, folds, whole, weight),
- * the last two from foldSplit(). Returns the distance only: the march calls it every step, so it
- * carries no orbit trap (createTempleTrap reads that once, at the hit) and runs no fold it would
- * weigh by 0. `maxFolds` is the tier's cap; the world never asks for fewer folds than
+ * The temple's field, the strung net (templeDistance in kaleidosonic-core.js is the same
+ * arithmetic, and says why it never oversteps): the point walks the net, folding into the cell,
+ * reading its reach to the knot's pearl and its threads, inverting in the knot's sphere, and the
+ * nearest level's eased reach, scaled back by every shrink on the way, is the distance. prm is
+ * the shape uniform: (s, folds, whole, weight), the last two from foldSplit(): `prm.z` whole
+ * inversions, then the next level's stone grown out of them by `prm.w`, so the net gains detail
+ * without a pop. Returns the distance only: the march calls it every step, so it carries no
+ * colour signal (createTempleTrap reads that once, at the hit) and walks no level it would weigh
+ * by 0. `maxFolds` is the tier's cap; the world never asks for fewer inversions than
  * TEMPLE.detailRest, which run as a fixed loop the compiler can unroll.
  */
 export function createTempleField(maxFolds) {
-    const cap = Math.max(2, Math.round(maxFolds));
+    const cap = Math.max(1, Math.round(maxFolds));
     const base = Math.min(cap, Math.floor(TEMPLE.detailRest));
     return Fn(([pIn, prm]) => {
         const p = pIn.toVar();
-        const scale = float(1).toVar();
-        const fold = () => {
-            p.assign(latticeFold(p));
-            const k = prm.x.div(max(dot(p, p), 1e-6)).toVar();
-            p.mulAssign(k);
-            scale.mulAssign(k);
+        const shrink = float(1).toVar();
+        const r2 = float(1).toVar();
+        const d = float(1000).toVar();
+        const unS = float(1).div(prm.x).toVar();
+        // one level of the net: fold into the cell, the eased reach to its pearl and threads
+        // (a thread runs along each axis: the squared distance to the nearest is the least sum of
+        // two of the squares), scaled back to the hall
+        const level = () => {
+            p.assign(cellFold(p));
+            const q = p.mul(p).toVar();
+            const pair = q.add(q.yzx).toVar();
+            r2.assign(pair.x.add(q.z));
+            const reach = min(
+                sqrt(min(pair.x, min(pair.y, pair.z))).sub(NET.thread),
+                sqrt(r2).sub(NET.pearl),
+            ).toVar();
+            return reach.mul(shrink).div(abs(reach).mul(NET.ease).add(1.0)).toVar();
         };
-        Loop(base, fold);
-        // the trance's further folds (the same count for every pixel: no divergence)
+        // the knot's sphere turns the cell inside out
+        const invert = () => {
+            const r2c = max(r2, 1e-6).toVar();
+            p.mulAssign(prm.x.div(r2c));
+            shrink.mulAssign(r2c.mul(unS));
+        };
+        const drawn = () => {
+            d.assign(min(d, level()));
+            invert();
+        };
+        Loop(base, drawn);
+        // the trance's further levels (the same count for every pixel: no divergence)
         Loop({
             start: int(base), end: int(prm.z), type: 'int', condition: '<', name: 'fd',
-        }, fold);
-        const d = abs(p.y).mul(0.25).div(scale).toVar();
+        }, drawn);
+        d.assign(min(d, level()));
         If(prm.w.greaterThan(0.0), () => {
-            fold();
-            d.assign(mix(d, abs(p.y).mul(0.25).div(scale), prm.w));
+            invert();
+            d.assign(mix(d, min(d, level()), prm.w));
         });
         return d;
     }).setLayout({
@@ -89,27 +116,57 @@ export function createTempleField(maxFolds) {
 }
 
 /**
- * The orbit trap at a point of the field (same prm): the orbit's nearest approach to the cell's
- * planes and centre, (|x|, |z|, r²), which colours the pearl. It runs every fold the distance may
- * have (the blended one too, at any weight), as the field always has.
+ * What of the net a point of the stone belongs to (same prm; templeTrap in kaleidosonic-core.js
+ * is the same arithmetic): the level whose pearl or thread is nearest decides, and the point's
+ * place on it is read in that level's own cell. Returns (part: 1 on a pearl, 0 on a thread;
+ * depth: inversions down; along: the place along the string from its knot, or on a pearl the
+ * pearl's radius times the cosine of the angle from the string's hole; turn: the angle round the
+ * string). It walks every level the distance may have; the level still growing in takes a point
+ * over by its weight, so the stone it swells out of changes colour as it swells, never at once.
  */
 export function createTempleTrap(maxFolds) {
-    const cap = Math.max(2, Math.round(maxFolds));
+    const cap = Math.max(1, Math.round(maxFolds));
     return Fn(([pIn, prm]) => {
         const p = pIn.toVar();
-        const trap = vec4(1000).toVar();
+        const shrink = float(1).toVar();
+        const best = float(1000).toVar();
+        const mark = vec4(0).toVar();
+        const unS = float(1).div(prm.x).toVar();
+        const levels = min(int(prm.z).add(select(prm.w.greaterThan(0.0), int(2), int(1))), int(cap + 1));
         Loop({
-            start: int(0), end: min(int(prm.z).add(1), int(cap)), type: 'int', condition: '<', name: 'tf',
-        }, () => {
-            p.assign(latticeFold(p));
-            const r2 = max(dot(p, p), 1e-6).toVar();
-            trap.assign(min(trap, vec4(abs(p), r2)));
-            p.mulAssign(prm.x.div(r2));
+            start: int(0), end: levels, type: 'int', condition: '<', name: 'tf',
+        }, ({ tf }) => {
+            p.assign(cellFold(p));
+            const q = p.mul(p).toVar();
+            const pair = q.add(q.yzx).toVar();
+            const r2 = pair.x.add(q.z).toVar();
+            const thread = sqrt(min(pair.x, min(pair.y, pair.z))).sub(NET.thread).toVar();
+            const pearl = sqrt(r2).sub(NET.pearl).toVar();
+            const reach = min(thread, pearl).toVar();
+            const term = reach.mul(shrink).div(abs(reach).mul(NET.ease).add(1.0)).toVar();
+            If(term.lessThan(best), () => {
+                best.assign(term);
+                // the two coordinates that turn round the string (the largest runs along it)
+                const onX = p.x.greaterThanEqual(max(p.y, p.z));
+                const onY = p.y.greaterThanEqual(p.z);
+                const b = select(onX, p.y, select(onY, p.z, p.x));
+                const c = select(onX, p.z, select(onY, p.x, p.y));
+                const taking = select(tf.greaterThan(int(prm.z)), prm.w, float(1.0));
+                mark.assign(mix(mark, vec4(
+                    clamp(thread.sub(pearl).div(2 * NET_JOIN).add(0.5), 0.0, 1.0),
+                    float(tf),
+                    max(p.x, max(p.y, p.z)),
+                    atan(b, c.add(1e-7)),
+                ), taking));
+            });
+            const r2c = max(r2, 1e-6).toVar();
+            p.mulAssign(prm.x.div(r2c));
+            shrink.mulAssign(r2c.mul(unS));
         });
-        return trap.xzw;
+        return mark;
     }).setLayout({
         name: `ks_templeTrap${cap}`,
-        type: 'vec3',
+        type: 'vec4',
         inputs: [{ name: 'pIn', type: 'vec3' }, { name: 'prm', type: 'vec4' }],
     });
 }
@@ -206,7 +263,7 @@ export function createUniforms() {
         pixelAngle: uniform(0.0012),
         /** The drawing buffer (pixels) and the scout's target over it (texels): (w, h, sw, sh). */
         scout: uniform(new THREE.Vector4(1, 1, 1, 1)),
-        /** (inversion strength s, folds (fractional), whole folds, the next fold's weight): foldSplit. */
+        /** (inversion strength s, inversions (fractional), whole ones, the next level's weight): foldSplit. */
         shape: uniform(new THREE.Vector4(TEMPLE.s, TEMPLE.detailRest, ...foldSplit(TEMPLE.detailRest))),
         /** The dive's offset of the temple's coordinates (the stone flows past the eye). */
         dive: uniform(new THREE.Vector3(0, 0, 0)),
