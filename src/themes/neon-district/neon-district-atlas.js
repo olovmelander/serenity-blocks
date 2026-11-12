@@ -58,8 +58,8 @@ export const SHOPFRONT_CELLS = Object.freeze([
         src: 'storefront_09.jpg',
         rect: [0.50742, 0.19953, 0.74258, 0.39202],
         aspect: 1.2236,
-        glow: [0.606, 0.605, 1],
-        luma: 0.1271,
+        glow: [0.605, 0.61, 1],
+        luma: 0.1269,
     },
     {
         src: 'storefront_11.jpg',
@@ -121,8 +121,8 @@ export const SHOPFRONT_CELLS = Object.freeze([
         src: 'storefront_10.jpg',
         rect: [0.66875, 0.83177, 0.99727, 0.96635],
         aspect: 2.4448,
-        glow: [0.65, 0.62, 1],
-        luma: 0.0947,
+        glow: [0.649, 0.625, 1],
+        luma: 0.0945,
     },
 ]);
 
@@ -995,8 +995,8 @@ export const BILLBOARD_CELLS = Object.freeze([
         ring: null,
         rect: [0.00146, 0.89732, 0.146, 0.99023],
         aspect: 1.7778,
-        glow: [1, 0.715, 0.709],
-        luma: 0.1171,
+        glow: [1, 0.921, 0.804],
+        luma: 0.1622,
     },
     {
         id: 'transit-mode-stillfall',
@@ -1007,8 +1007,8 @@ export const BILLBOARD_CELLS = Object.freeze([
         ring: null,
         rect: [0.14893, 0.89732, 0.29346, 0.99023],
         aspect: 1.7778,
-        glow: [1, 0.773, 0.545],
-        luma: 0.0752,
+        glow: [1, 0.773, 0.546],
+        luma: 0.0702,
     },
     {
         id: 'transit-mode-odyssey',
