@@ -19,6 +19,7 @@ import {
 import {
     buildLakeNoise3D, makeLakeNoiseSampler,
 } from '../../src/rendering/odyssey/chapter-environments/shared/odyssey-lake-noise-bake.js';
+import { materialXNoiseFunctions } from './helpers/materialx-noise.js';
 
 const within = (value, target, relTol) => Math.abs(value - target) <= Math.abs(target) * relTol;
 
@@ -227,7 +228,8 @@ describe('the three side', () => {
         builder.material = material;
         builder.build();
         const wgsl = builder.fragmentShader;
-        expect(wgsl).not.toMatch(/od_simplex3|od_snoise3|mx_perlin/);
+        expect(wgsl).not.toMatch(/od_simplex3|od_snoise3/);
+        expect(materialXNoiseFunctions(wgsl)).toEqual([]);
         const fetches = (wgsl.match(/textureSample\w*\(/g) || []).length;
         expect(fetches).toBeGreaterThanOrEqual(19);
         expect(wgsl).toMatch(/texture_3d<f32>/);

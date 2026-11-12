@@ -22,6 +22,7 @@ import { HIMALAYAN_PEAK_PARTS, HimalayanPeakWorld } from '../../src/themes/himal
 import { planMassif } from '../../src/themes/himalayan-peak/himalayan-peak-assets.js';
 import { createEagle } from '../../src/themes/himalayan-peak/himalayan-peak-eagle.js';
 import { QUALITY } from '../../src/themes/himalayan-peak/himalayan-peak-quality.js';
+import { materialXNoiseFunctions } from './helpers/materialx-noise.js';
 
 const TIERS = ['High', 'Minimal'];
 const BACKENDS = [['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilder]];
@@ -179,7 +180,7 @@ describe.each(TIERS)('himalayan peak shaders at %s', (quality) => {
                 expect(Buffer.byteLength(out[stage]), `${name}, ${label} ${stage}`).toBeLessThan(STAGE_BUDGET);
                 expect(equalEdges(out[stage]), `${name}, ${label} ${stage}`).toEqual([]);
             }
-            expect(`${out.vertex}${out.fragment}`, `${name}, ${label}`).not.toMatch(/mx_\w+/);
+            expect(materialXNoiseFunctions(`${out.vertex}${out.fragment}`), `${name}, ${label}`).toEqual([]);
         });
         expect(built[name].WGSL.vertex).toMatch(/@vertex/);
         expect(built[name].WGSL.fragment).toMatch(/@fragment/);

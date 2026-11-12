@@ -22,6 +22,7 @@ import { context, vec3, positionLocal } from 'three/tsl';
 import {
     snoise3, simplex3, noise3, fbm3, hash31,
 } from '../../src/rendering/odyssey/chapter-environments/shared/odyssey-tsl-noise.js';
+import { materialXNoiseFunctions } from './helpers/materialx-noise.js';
 
 function buildFragment(colorNode) {
     const material = new THREE.MeshBasicNodeMaterial();
@@ -73,8 +74,7 @@ describe('odyssey-tsl-noise emission contract (WGSL)', () => {
         expect(fns).toContain('od_snoise3');
         expect(fns).toContain('od_simplex3');
         expect(fns).toContain('od_permute4');
-        expect(fns).not.toEqual(expect.arrayContaining([expect.stringMatching(/^mx_/)]));
-        expect(wgsl).not.toMatch(/mx_perlin|mx_bjfinal|mx_hash_int/);
+        expect(materialXNoiseFunctions(wgsl)).toEqual([]);
         // 20 CALLS, one body: the simplex math is not inlined per evaluation.
         expect(callCount(wgsl, 'od_snoise3')).toBe(20);
         expect(wgsl.split('fn od_simplex3').length - 1).toBe(1);

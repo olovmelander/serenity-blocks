@@ -19,6 +19,7 @@ import { context } from 'three/tsl';
 import {
     MOONLIT_GREENHOUSE_PARTS, MoonlitGreenhouseWorld,
 } from '../../src/themes/moonlit-greenhouse/moonlit-greenhouse-world.js';
+import { materialXNoiseFunctions } from './helpers/materialx-noise.js';
 
 const TIERS = ['High', 'Minimal'];
 const BACKENDS = [['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilder]];
@@ -152,7 +153,7 @@ describe.each(TIERS)('moonlit greenhouse shaders at %s', (quality) => {
                     // A JS minus on a node prints NaN; an infinity is as bad.
                     expect(out[stage], `${key}, ${label} ${stage}`).not.toMatch(/\bNaN\b|\bInfinity\b/);
                 }
-                expect(`${out.vertex}${out.fragment}`, `${key}, ${label}`).not.toMatch(/mx_\w+/);
+                expect(materialXNoiseFunctions(`${out.vertex}${out.fragment}`), `${key}, ${label}`).toEqual([]);
             });
             expect(built[key].WGSL.fragment, key).toMatch(/@fragment/);
             expect(built[key].GLSL.fragment, key).toMatch(/void main\(\)/);

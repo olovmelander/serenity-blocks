@@ -23,6 +23,7 @@ import { context } from 'three/tsl';
 import { ChromaticImpastoWorld, REST_RIG } from '../../src/themes/chromatic-impasto/chromatic-impasto-world.js';
 import { ChromaticImpastoPost, POST_LOOK } from '../../src/themes/chromatic-impasto/chromatic-impasto-post.js';
 import { fallbackLayout } from '../../src/themes/chromatic-impasto/chromatic-impasto-composition.js';
+import { hasMaterialXNoise } from './helpers/materialx-noise.js';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -194,7 +195,7 @@ function problemsOf({
         equalEdges(code).forEach((call) => problems.push(`${name}, ${label} ${stage}: equal edges in ${call}`));
         if (/\bNaN\b|\bInfinity\b/.test(code)) problems.push(`${name}, ${label} ${stage}: a NaN or Infinity literal`);
     }
-    if (/mx_\w+/.test(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
+    if (hasMaterialXNoise(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
     const entry = label === 'WGSL' ? [/@vertex/, /@fragment/] : [/void main\(\)/, /void main\(\)/];
     if (!entry[0].test(out.vertex)) problems.push(`${name}, ${label}: the vertex stage has no entry point`);
     if (!entry[1].test(out.fragment)) problems.push(`${name}, ${label}: the fragment stage has no entry point`);

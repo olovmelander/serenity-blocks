@@ -13,6 +13,7 @@ import * as THREE from 'three/webgpu';
 import { context } from 'three/tsl';
 import { REST_RIG, ThermalBloomWorld, fovForAspect } from '../../src/themes/thermal-bloom/thermal-bloom-world.js';
 import { fallbackLayout } from '../../src/themes/thermal-bloom/thermal-bloom-composition.js';
+import { materialXNoiseFunctions } from './helpers/materialx-noise.js';
 
 /** Bytes a stage may take (KiB): twice the largest (the basin's fragment, ~64 KiB) when written. */
 const STAGE_BUDGET_KIB = 128;
@@ -90,7 +91,7 @@ describe('Thermal Bloom shaders (WGSL, built on the CPU)', () => {
                 expect(vertex.length, `${name} vertex`).toBeGreaterThan(200);
                 expect(fragment.length, `${name} fragment`).toBeGreaterThan(200);
                 for (const [stage, wgsl] of [['vertex', vertex], ['fragment', fragment]]) {
-                    expect(wgsl, `${name} ${stage}: MaterialX noise`).not.toMatch(/\bmx_/);
+                    expect(materialXNoiseFunctions(wgsl), `${name} ${stage}: MaterialX noise`).toEqual([]);
                     expect(uniformBuffers(wgsl), `${name} ${stage} uniform buffers`)
                         .toBeLessThanOrEqual(MAX_UNIFORM_BUFFERS);
                     expect(kib(wgsl), `${name} ${stage} KiB`).toBeLessThan(STAGE_BUDGET_KIB);

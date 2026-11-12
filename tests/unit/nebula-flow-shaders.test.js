@@ -28,6 +28,7 @@ import {
 import * as THREE from 'three/webgpu';
 import { context } from 'three/tsl';
 import { NEBULA_FLOW_PARTS, NebulaFlowWorld } from '../../src/themes/nebula-flow/nebula-flow-world.js';
+import { materialXNoiseFunctions } from './helpers/materialx-noise.js';
 
 const TIERS = ['High', 'Minimal'];
 const BACKENDS = [['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilder]];
@@ -242,7 +243,7 @@ describe.each(TIERS)('nebula flow shaders at %s', (quality) => {
                 expect(Buffer.byteLength(out[stage]), `${name}, ${label} ${stage}`).toBeLessThan(STAGE_BUDGET);
                 expect(equalEdges(out[stage]), `${name}, ${label} ${stage}`).toEqual([]);
             });
-            expect(`${out.vertex}${out.fragment}`, `${name}, ${label}`).not.toMatch(/mx_\w+/);
+            expect(materialXNoiseFunctions(`${out.vertex}${out.fragment}`), `${name}, ${label}`).toEqual([]);
         });
         expect(built[name].WGSL.vertex).toMatch(/@vertex/);
         expect(built[name].WGSL.fragment).toMatch(/@fragment/);

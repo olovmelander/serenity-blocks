@@ -19,6 +19,7 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import { context } from 'three/tsl';
+import { hasMaterialXNoise } from './helpers/materialx-noise.js';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -170,7 +171,7 @@ function problemsOf({
             problems.push(`${name}, ${label} ${stage}: a NaN, Infinity or [object Object] literal`);
         }
     }
-    if (/mx_\w+/.test(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
+    if (hasMaterialXNoise(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
     const entry = label === 'WGSL' ? [/@vertex/, /@fragment/] : [/void main\(\)/, /void main\(\)/];
     if (!entry[0].test(out.vertex)) problems.push(`${name}, ${label}: the vertex stage has no entry point`);
     if (!entry[1].test(out.fragment)) problems.push(`${name}, ${label}: the fragment stage has no entry point`);

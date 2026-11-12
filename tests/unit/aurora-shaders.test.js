@@ -17,6 +17,7 @@ import {
 import * as THREE from 'three/webgpu';
 import { context } from 'three/tsl';
 import { AuroraWorld } from '../../src/themes/aurora/aurora-world.js';
+import { hasMaterialXNoise } from './helpers/materialx-noise.js';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -110,7 +111,7 @@ function problemsOf({
         if (/\bNaN\b|\bInfinity\b/.test(code)) problems.push(`${name}, ${label} ${stage}: a NaN or Infinity literal`);
         if (/object Object/.test(code)) problems.push(`${name}, ${label} ${stage}: a node was stringified`);
     }
-    if (/mx_\w+/.test(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
+    if (hasMaterialXNoise(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
     return problems;
 }
 
