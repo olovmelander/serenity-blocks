@@ -80,6 +80,14 @@ const FIGURE_REACH = 0.6;
 /** The beads of light on a string: radians per unit of its length (five beads from knot to mid-thread). */
 const STRING_K = TAU * 5;
 /**
+ * A bead's half width (to half its light): about 0.68 rad of the string's measure (its profile is
+ * ((1 + cos) / 2)^6), but never more than BEAD_HALF_PX pixels. A thread close to the eye is many
+ * pixels wide, and a bead its own length would fill it as one block of flat neon; held to a few
+ * pixels it is a thin ring of light running round the thread, as the far beads are dots.
+ */
+const BEAD_HALF_RAD = 0.68;
+const BEAD_HALF_PX = 2;
+/**
  * The stone's occlusion, from the field a step off the stone along its normal: the step (units)
  * and the share of light an open face keeps (the stone is lit as under black light: its faces stay
  * dark and its gloss, veins and rims carry the light).
@@ -558,11 +566,16 @@ export function createTemple(u, tier, { scout: useScout = true } = {}) {
             // ── on the threads: the resonant light, beads of it running along every string from
             // its knot (in the string's own measure, so every arc of every image carries them,
             // smaller as the arc is smaller; inward as the light sinks); where they crowd under a
-            // pixel they fade ──
+            // pixel they fade, and on a thread close to the eye each is a thin ring (BEAD_HALF_PX) ──
             const run = along.mul(STRING_K).sub(breath.mul(2.0)).add(depth.mul(2.1)).toVar();
-            const swell = cos(run).mul(0.5).add(0.5).toVar();
+            const fwRun = fwidth(run).toVar();
+            // the place on the nearest bead (-π..π), narrowed where the bead would be wider than
+            // BEAD_HALF_PX (far beads keep their own width: the squeeze is 1)
+            const off = run.sub(floor(run.div(TAU).add(0.5)).mul(TAU));
+            const squeeze = max(float(1), float(BEAD_HALF_RAD / BEAD_HALF_PX).div(max(fwRun, 1e-4)));
+            const swell = cos(clamp(off.mul(squeeze), -Math.PI, Math.PI)).mul(0.5).add(0.5).toVar();
             const swell2 = swell.mul(swell);
-            const bead = swell2.mul(swell2).mul(swell2).mul(float(1).sub(smoothstep(0.5, 1.6, fwidth(run))));
+            const bead = swell2.mul(swell2).mul(swell2).mul(float(1).sub(smoothstep(0.5, 1.6, fwRun)));
             vein.assign(mix(max(vein, bead.mul(0.8)), vein, part));
 
             // ── on the knots' pearls: each pearl's own nodal figure ──

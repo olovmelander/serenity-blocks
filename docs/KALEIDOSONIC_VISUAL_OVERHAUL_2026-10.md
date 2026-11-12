@@ -379,10 +379,11 @@ whole net drawn again round every knot. The floors, vaults and sheets of the ear
 gone; the halls are now open on every side between strings of pearls. This section is the field's
 design: what it is, why its distance never oversteps, what colours it, and how gameplay plays it.
 
-**Not yet seen on a GPU.** The session that built it had no GPU: the pictures it was judged by are
-CPU renders of the field's CPU twin (the same arithmetic, simple light), and the shaders are
-checked by building them and running the built field in JavaScript against that twin. The
-captures further down are still of the earlier stone. See *Verify on a real GPU* below.
+The session that built it had no GPU: it was judged by CPU renders of the field's CPU twin (the
+same arithmetic, simple light), and the shaders are checked by building them and running the
+built field in JavaScript against that twin. It was then seen on a GPU the same day (*Seen on a
+GPU* below, with one fix). The captures in *Captures* further down are still of the earlier
+stone; [strung-net.jpg](kaleidosonic-captures/strung-net.jpg) is the net.
 
 ### What it is
 
@@ -501,8 +502,11 @@ coloured in its own measure, bent as it is bent: a ring round a string's hole is
   screen to hold it). The smaller pearls strung between the knots keep the source's rings.
 - **Threads.** The resonant light: beads of light running along every string from its knot (five
   between a knot and the middle of its thread, inward when the light sinks), in the string's own
-  measure, so the arcs of every image carry them smaller. The standing-wave veins still cut the
-  stone: rings on the pearls, dashes along the threads.
+  measure, so the arcs of every image carry them smaller. A bead is about 0.68 rad of the
+  string's measure to half its light, but never more than 2 px (`BEAD_HALF_PX`): on a thread
+  close to the eye a bead its own length is wider than the thread, and filled it as one block of
+  flat neon; held to a few pixels it is a thin ring running round the thread. The standing-wave
+  veins still cut the stone: rings on the pearls, dashes along the threads.
 
 ### How the events play it
 
@@ -556,6 +560,21 @@ coloured in its own measure, bent as it is bent: a ring round a string's hole is
   shape, rest and deep.
 - **Static gates**: typecheck, ts-ratchet, lint ratchet, architecture fitness, dependency
   boundaries, theme lifecycle, the IP-string gate.
+- **Seen on a GPU (2026-11-12).** The playground on an RTX laptop GPU (WebGPU, and WebGL2 with
+  `forceWebGL=1`), 30 fps cap, every row of the table below: open air round the eye and the core,
+  pearls on every knot, no holes or block seams, no console messages. One fault, fixed: at
+  `combo=9` hard-edged blocks of flat neon (orange in the rose mandala, pink in the teal chime)
+  sat at the frame's edges in every sector. A CPU replay of those pixels' rays through
+  `templeDistance` / `templeTrap` put them on a level-0 upright thread about 1.5 from the eye,
+  `along` ≈ 0.86: one bead covering the thread's whole width, cut by the kaleidoscope's walls.
+  The bead's width is now held in pixels (above). The scattered single-pixel beads on the far
+  lace are the far beads as designed (1 to 2 px), unchanged.
+
+![The strung net on a GPU](kaleidosonic-captures/strung-net.jpg)
+*WebGPU, High, 1600 × 900, `t=10`: at rest with the card (`board=1`); `combo=9` (all three
+stages of the kaleidoscope, after the bead fix); the four-line dive at 1.5 s; a perfect clear in
+the amber gong (`mood=5`); a lock's flood (`locks=3&clears=3&event=lock&eventAge=3`); WebGL2 at
+`combo=4`.*
 
 **Verify on a real GPU.** `npm run dev:playground`, then
 `/playground.html?effect=kaleidosonic&t=10&mood=0&maxFps=30`:
