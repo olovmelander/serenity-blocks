@@ -57,12 +57,12 @@ import { canWriteLegacySinglePlayerResults } from './single-player-result-compat
 import { saveRunScore } from '../progression/run-score.js';
 
 /**
- * SinglePlayerMode - Classic single-player falling-block experience
+ * SinglePlayerMode - one player, one well: every level a little faster
  *
  * Manages:
  * - Single GameState instance
  * - Single Phaser board scene
- * - Classic game loop
+ * - The game loop (fall, lock, clear, level)
  * - Score tracking and high scores
  * - Demo recording and playback
  */

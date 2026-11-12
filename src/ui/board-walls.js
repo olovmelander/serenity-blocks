@@ -17,9 +17,13 @@
 export const WALL_LIFT = '#fff6e9';
 export const WALL_HUE_SHARE = 0.82;
 
-/** Light blue: a hue in this band, at least this saturated and this bright (WCAG luminance). */
+/**
+ * Light blue: a hue in this band, at least this saturated and this bright (WCAG luminance). The
+ * band runs from cyan through sky to a clear mid blue (235°), so a bright blue player's lifted
+ * wall (#5090fb) is deepened too; violets start beyond it.
+ */
 export const LIGHT_BLUE = Object.freeze({
-    hueMin: 170, hueMax: 215, minSaturation: 0.25, minLuminance: 0.25,
+    hueMin: 170, hueMax: 235, minSaturation: 0.25, minLuminance: 0.25,
 });
 
 const clamp01 = (value) => Math.min(1, Math.max(0, value));
@@ -129,7 +133,7 @@ export function hslToRgb({ h, s, l }) {
 }
 
 /**
- * Whether a colour reads as light blue (its alpha aside): a hue from 170° to 215°, HSL
+ * Whether a colour reads as light blue (its alpha aside): a hue from 170° to 235°, HSL
  * saturation of at least 0.25 and a WCAG relative luminance of at least 0.25.
  * @param {string | { r: number, g: number, b: number }} color
  */

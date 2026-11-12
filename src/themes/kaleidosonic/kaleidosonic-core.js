@@ -92,7 +92,7 @@ export const PIECE_CODE = Object.freeze({
 export const PIECE_ORDER = Object.freeze(['I', 'T', 'Z', 'L', 'S', 'J', 'O', 'GARBAGE']);
 /** The board's piece colours by code (kaleidosonic-tetrominos.js carries the same table). */
 export const PIECE_COLORS = Object.freeze([
-    '#2EE6D0', '#E8329E', '#FF8A45', '#5AB0FF', '#15A05A', '#7B4DFF', '#FFD23F', '#2E2440',
+    '#FF8A45', '#15A05A', '#2EE6D0', '#5AB0FF', '#E8329E', '#FFD23F', '#7B4DFF', '#2E2440',
 ]);
 
 export function pieceCode(shape) {

@@ -244,13 +244,14 @@ describe('the move\'s finale', () => {
         expect(words(scene)).toEqual([]);
     });
 
-    it('a single clear\'s clean canvas is a perfect clear', () => {
+    it('a single clear\'s clean canvas says "Clean canvas" alone', () => {
         gs.lockedPieces = [floorRow()];
         rebuild(gs);
         wave(fx, [20, 21, 22, 23], 1);
         scene.texts.length = 0;
         fx.playPerfectClear(4);
-        expect(words(scene)).toEqual(expect.arrayContaining(['PERFECT CLEAR', 'Clean canvas']));
+        // No kicker over it: the words stand by themselves.
+        expect(words(scene)).toEqual(['Clean canvas']);
     });
 
     it('each wave\'s count replaces the last one\'s', () => {

@@ -7,7 +7,7 @@
  * It listens to the game's own events for one Infinity session: LINE_CLEAR (each wave of a
  * chain), PIECE_LOCK (the next piece closes the chain before it) and PERFECT_CLEAR. A chain that
  * was big enough becomes a mark when it closes: "6-chain cascade", "Four lines at once",
- * "Perfect clear". The tower map and the ascent's overlay draw them; the overlay names the one
+ * "Clean canvas". The tower map and the ascent's overlay draw them; the overlay names the one
  * the view passes.
  */
 
@@ -43,7 +43,7 @@ export const MEMORY = Object.freeze({
 export function describeMoment({
     chain, lines, waveLines, perfect,
 }) {
-    if (perfect) return { kind: 'perfect', label: 'Perfect clear', weight: 1000 + lines };
+    if (perfect) return { kind: 'perfect', label: 'Clean canvas', weight: 1000 + lines };
     if (chain >= MEMORY.MIN_CHAIN) {
         const suffix = lines > chain ? ` · ${lines} lines` : '';
         return { kind: 'chain', label: `${chain}-chain cascade${suffix}`, weight: chain * 10 + lines };

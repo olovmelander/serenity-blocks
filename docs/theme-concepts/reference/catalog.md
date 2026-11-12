@@ -640,7 +640,7 @@ Status split:
 - **Icon:** a kaleidoscope mandala: six glowing jewels (gold and magenta, alternating) in a ring round a neon filigree flower, on near-black pearl stone.
 - **Setting:** inside a real-time ray-marched Apollonian sphere-inversion fractal (Indra's net): an endless hall of hourglass pearl pillars between fractal floors and vaults, nested spherical voids stacking into arches, seen diagonally across the pillar lattice. A faceted gem core with a twelve-lobed lotus corona hangs left of the card; its image repeats in every lattice cell as receding jewels.
 - **Palette:** black-light poster: near-black pearl, fluorescent rims, three neon vein colours per mood. Six moods (`kaleidosonic-core.js`), hue-ordered by the core: rose mandala, violet hum, azure bell, teal chime, jade drone, amber gong, each with its own dark fog; one per 100 s of clock, resting 15 % at each end, a level-up adds one.
-- **Pieces** (`kaleidosonic-tetrominos.js`): I `#2EE6D0`, O `#FFD23F`, T `#E8329E`, S `#15A05A`, Z `#FF8A45`, J `#7B4DFF`, L `#5AB0FF`, GARBAGE `#2E2440`. Jewel tones; the palette gate scores 3/7; worst CVD pair ΔE 15.7.
+- **Pieces** (`kaleidosonic-tetrominos.js`): I `#FF8A45`, O `#7B4DFF`, T `#15A05A`, S `#E8329E`, Z `#2EE6D0`, J `#FFD23F`, L `#5AB0FF`, GARBAGE `#2E2440`. Jewel tones; the palette gate scores 0/7, exact and widened; worst CVD pair ΔE 15.7.
 - **Motion:** veins (nodal rings of each source's standing wave, twelve petals) flow outward with an integrated breath; jewels twinkle on their own phases; the eye drifts slowly; the core pulses.
 - **Gameplay FX:**
   - Lock: a struck note at the stone beside the card the column and row map to: a lotus of light blooms and closes, the stone floods with the piece colour, a wavefront crosses the stone, ripples ring on at the piece's own wavelength, passed jewels ring in its colour. Hard drop: stronger, faster, an eye kick.
@@ -1522,7 +1522,7 @@ mountains, box city, neon grid) is Neon Dusk's.
 - **Palette.**
   - Sky: tangerine and gold horizon, coral and dusty rose, mauve, teal-indigo zenith; an orange sun with its green low.
   - Lights: warm bulb gold, flamingo pink and mint neon, lemon; pastel stucco (pink, mint, lemon, lilac).
-  - Pieces (`synthwave-sunset-tetrominos.js`): I `#FFD36E`, O `#FF9440`, T `#F24FAE`, S `#6CF5C9`, Z `#D92B4A`, J `#4FB4FF`, L `#8A55F5` (gate 3/7).
+  - Pieces (`synthwave-sunset-tetrominos.js`): I `#FFD36E`, O `#4FB4FF`, T `#FF9440`, S `#F24FAE`, Z `#6CF5C9`, J `#D92B4A`, L `#8A55F5` (gate 0/7, exact and widened).
 - **Gameplay FX** (`synthwave-sunset-world.js`).
 
   | Event | Response |
@@ -1687,7 +1687,7 @@ mountains, box city, neon grid) is Neon Dusk's.
 - **Palette.**
   - Violet, rose and magenta with amber and gold; cyan crystal and wing rims.
   - Six hours: rose dusk, ember hour, violet hour, blue hour, aurora night, first light. One every 2 minutes, plus the level.
-  - Pieces (`vesper-chrysalis-tetrominos.js:12-19`): I `#9fe8ff`, O `#ffb347`, T `#e0629a`, S `#8a5cff`, Z `#ff7a1a`, J `#c8f4ff`, L `#ffd88a`, GARBAGE `#2a2140`.
+  - Pieces (`vesper-chrysalis-tetrominos.js`): I `#ffd88a`, O `#e0629a`, T `#ffb347`, S `#8a5cff`, Z `#c8f4ff`, J `#ff7a1a`, L `#9fe8ff`, GARBAGE `#2a2140` (gate 0/7, exact and widened).
 - **Gameplay FX** (doc).
 
   | Event | Response |

@@ -107,8 +107,8 @@ export function rotateShape(shape, direction = 'right') {
 }
 
 /**
- * Get wall kick offsets for rotation attempts
- * Implements simplified SRS (Super Rotation System) wall kicks
+ * The sideways steps a turn tries when the piece does not fit where it stands:
+ * in place first, then one and two cells to either side.
  * @returns {Array} Array of x-offsets to try for rotation
  */
 export function getWallKickOffsets() {

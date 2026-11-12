@@ -3,19 +3,21 @@
  *
  * The falling pieces read as shards of the relic: icy-cyan and violet crystal
  * with molten-amber accents, softly glowing to sit inside the twilight scene.
+ * The shards are dealt to the pieces in the relic's own order: no piece wears the
+ * colour its shape usually has (the palette gate reads 0/7, with its bands widened too).
  */
 
 export const VESPER_CHRYSALIS_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#9fe8ff', // icy cyan
-        O: '#ffb347', // amber
-        T: '#e0629a', // magenta
+        I: '#ffd88a', // gold
+        O: '#e0629a', // magenta
+        T: '#ffb347', // amber
         S: '#8a5cff', // violet
-        Z: '#ff7a1a', // molten amber
-        J: '#c8f4ff', // pale cyan
-        L: '#ffd88a', // gold
+        Z: '#c8f4ff', // pale cyan
+        J: '#ff7a1a', // molten amber
+        L: '#9fe8ff', // icy cyan
         GARBAGE: '#2a2140',
         CLEAN_GARBAGE: '#5a4a7a',
     },

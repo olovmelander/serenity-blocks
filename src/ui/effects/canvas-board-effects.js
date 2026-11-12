@@ -485,7 +485,8 @@ export class CanvasBoardEffects {
             delay: i * 0.08,
         }));
         this.spawnBurstParticles(this.width / 2, this.height * 0.75, this.isFocused ? 28 : 18, 80, TONE.GOLD);
-        const kicker = waves >= 2 ? `Combo \u00d7${waves} \u00b7 ${lines} lines` : 'Perfect clear';
+        // A chain leads with what it took; a single clear lets the words stand alone.
+        const kicker = waves >= 2 ? `Combo \u00d7${waves} \u00b7 ${lines} lines` : null;
         this._callout({
             kicker, title: 'Clean canvas', tone: TONE.GOLD, y: 0.48, hold: 760,
         });

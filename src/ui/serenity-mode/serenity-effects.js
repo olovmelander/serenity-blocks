@@ -368,7 +368,7 @@ export const EFFECTS = [
         id: 'twist',
         group: 'moments',
         label: 'Twist',
-        name: 'Twist double',
+        name: 'Twist · two lines',
         build: (s, ctx) => {
             freshChain(s, ctx);
             // The T turned point-down into its slot: its bar and its point are the two rows.
@@ -380,8 +380,8 @@ export const EFFECTS = [
     {
         id: 'perfect-clear',
         group: 'moments',
-        label: 'Perfect clear',
-        name: 'Perfect clear · the board empties',
+        label: 'Clean canvas',
+        name: 'Clean canvas · the board empties',
         build: (s, ctx) => {
             freshChain(s, ctx);
             quad(s, ctx);
@@ -415,7 +415,7 @@ export const EFFECTS = [
         id: 'fever',
         group: 'buildup',
         label: 'Fever',
-        name: 'Fever · a twelve-clear chain to a perfect clear',
+        name: 'Fever · a twelve-clear chain to a clean canvas',
         build: fever,
     },
 ];
