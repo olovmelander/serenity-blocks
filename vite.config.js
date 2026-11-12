@@ -53,7 +53,7 @@ function createCopyLegalNoticesPlugin() {
       outputDir = resolveBuildOutputDir(config);
     },
     closeBundle() {
-      for (const file of ['CREDITS.md', 'THIRD_PARTY_NOTICES.md', 'PRIVACY_POLICY.md', 'README.md']) {
+      for (const file of ['CREDITS.md', 'THIRD_PARTY_NOTICES.md', 'PRIVACY_POLICY.md', 'COPYRIGHT.md']) {
         const src = path.resolve(projectRoot, file);
         const dest = path.resolve(outputDir, file);
         if (!existsSync(src)) {
@@ -109,11 +109,12 @@ export default defineConfig(({ command }) => ({
     // Copy top-level legal/credit notices into the build output so they ship with
     // both the web build (dist → GitHub Pages) and the Electron build (which packs
     // dist/**/*). Required so third-party attributions (CC-BY and the like)
-    // actually reach end users.
+    // actually reach end users. The copyright statement ships; the developer README does not.
     createCopyLegalNoticesPlugin(),
     // Phaser inlines a requestVideoFrameCallback polyfill copied from a GPL-3.0 project; the
     // game never needs it (Chromium has the API, and no Phaser video objects are used), so the
-    // release build drops it. pages-artifact-check fails a build that still contains it.
+    // release build drops it. pages-artifact-check fails a build that still contains it, by any
+    // of the plugin's three fingerprints.
     createStripPhaserRvfcPolyfillPlugin(),
   ],
 

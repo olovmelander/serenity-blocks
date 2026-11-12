@@ -2,6 +2,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findRvfcFingerprints } from './vite-plugins/strip-phaser-rvfc-polyfill.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -37,7 +38,9 @@ const manifestPath = path.join(distDir, 'manifest.json');
 const hiddenManifestPath = path.join(distDir, '.vite', 'manifest.json');
 const assetsDir = path.join(distDir, 'assets');
 const playgroundReferencesDir = path.join(distDir, 'playground-refs');
-const requiredLegalNotices = ['CREDITS.md', 'THIRD_PARTY_NOTICES.md', 'PRIVACY_POLICY.md', 'README.md'];
+const requiredLegalNotices = ['CREDITS.md', 'THIRD_PARTY_NOTICES.md', 'PRIVACY_POLICY.md', 'COPYRIGHT.md'];
+// The developer README is for the repository; a release carries COPYRIGHT.md in its place.
+const developerReadmePath = path.join(distDir, 'README.md');
 // Written by Vite's build.license from the bundled packages; the bundle itself carries no notices.
 const bundledLicensesPath = path.join(distDir, 'THIRD_PARTY_LICENSES.md');
 const requiredBundledLicenses = ['phaser', 'three'];
@@ -67,6 +70,10 @@ if (existsSync(hiddenManifestPath)) {
 
 if (existsSync(playgroundReferencesDir)) {
     fail(`${distLabel}/playground-refs exists; local visual references must not ship.`);
+}
+
+if (existsSync(developerReadmePath)) {
+    fail(`${distLabel}/README.md exists; the developer README must not ship.`);
 }
 
 for (const file of requiredLegalNotices) {
@@ -111,9 +118,14 @@ if (!existsSync(assetsDir)) {
     }
 
     // Phaser's requestVideoFrameCallback polyfill is GPL-3.0 code; the build strips it
-    // (scripts/vite-plugins/strip-phaser-rvfc-polyfill.mjs) and it must never ship.
-    if (jsBundleText.includes('_rvfcpolyfillmap')) {
-        fail('built bundle still contains the GPL-3.0 rvfc polyfill from Phaser.');
+    // (scripts/vite-plugins/strip-phaser-rvfc-polyfill.mjs) and it must never ship. Any one of
+    // the plugin's fingerprints fails the build, so a reworded polyfill is still caught.
+    const rvfcFingerprints = findRvfcFingerprints(jsBundleText);
+    if (rvfcFingerprints.length > 0) {
+        fail(
+            'built bundle still contains the GPL-3.0 rvfc polyfill from Phaser '
+            + `(found: ${rvfcFingerprints.join(', ')}).`,
+        );
     }
 }
 
