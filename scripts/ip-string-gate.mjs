@@ -12,7 +12,8 @@
  *      4. release/**                — each packaged desktop build's app.asar and the files beside
  *                                     it, when present (scripts/ip-packaged-scan.mjs, which
  *                                     scripts/afterPack.cjs also runs on every build it packages)
- *    The only allowance: the CREDITS.md / README.md copies in dist (the legal notice). Code
+ *    The only allowance: the CREDITS.md copy in dist (the legal notice; the developer README no
+ *    longer ships, scripts/pages-artifact-check.mjs fails a dist that holds one). Code
  *    names its own things (a four-line clear is a quad, its event 'quad', its Odyssey goal
  *    'quads'), so identifiers, keys and string literals get no exemption either.
  *
@@ -61,7 +62,7 @@ const UPDATE = process.argv.includes('--update');
 
 const TEXT_EXT = /\.(js|mjs|css|html|svg|json|txt|md|xml|webmanifest)$/i;
 const TREE_TEXT_EXT = /\.(js|mjs|cjs|ts|mts|css|html|svg|json|txt|md|xml|webmanifest|ya?ml|py|sh|cmd|bat|ps1|glsl|wgsl|csv|toml)$/i;
-const ALLOWED_FILES = new Set(['dist/CREDITS.md', 'dist/README.md']);
+const ALLOWED_FILES = new Set(['dist/CREDITS.md']);
 const TREE_SKIP = new Set([
     SELF, 'scripts/ip-tokens.mjs', 'tests/unit/ip-tokens.test.js', 'tests/unit/ip-packaged-scan.test.js',
     RATCHET_FILE, 'package-lock.json',

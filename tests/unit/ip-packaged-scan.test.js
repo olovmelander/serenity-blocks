@@ -46,7 +46,7 @@ const CLEAN_APP = {
     'dist/index.html': '<title>Serenity Blocks</title>',
     'dist/assets/index-abc123.js': 'const quad = "Quad"; export default quad;',
     'dist/CREDITS.md': NOTICE,
-    'dist/README.md': NOTICE,
+    'dist/COPYRIGHT.md': 'All rights reserved.',
     'electron/main.js': 'module.exports = {};',
 };
 
@@ -81,6 +81,13 @@ describe('IP-string gate over the packaged desktop build (scripts/ip-packaged-sc
             expect.stringMatching(/^app\.asar\/dist\/assets\/index-abc123\.js:1: genre mark/),
             expect.stringMatching(/^THIRD_PARTY_NOTICES\.md:1: world name/),
         ]));
+    });
+
+    it('holds a README inside the package to the rules: only the credits carry the notice', async () => {
+        const { resourcesDir } = await packageBuild({ inside: { ...CLEAN_APP, 'dist/README.md': NOTICE } });
+        const { violations } = scanPackagedApp(resourcesDir);
+        expect(violations.length).toBeGreaterThan(0);
+        for (const violation of violations) expect(violation).toMatch(/^app\.asar\/dist\/README\.md:1: /);
     });
 
     it('does not scan the third-party packages copied beside app.asar', async () => {
