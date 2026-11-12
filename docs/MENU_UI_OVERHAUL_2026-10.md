@@ -255,14 +255,17 @@ in the corner. It now opens with a picture of the mode, taken from the game itse
   | Mode | Picture |
   |---|---|
   | Single Player | Waves: a stack in the well, the right column open, an I piece over it |
-  | Infinity | Galaxy: an 80-row tower, the camera at its top, the tower map beside it |
+  | Infinity | Halcyon Apex: an 80-row tower, the camera at its top, the tower map beside it |
   | Local Versus | Sakura Twilight: four bots playing |
-  | Online Versus | Rainbow Terraces: a six-player match |
+  | Online Versus | Fall: a six-player match |
   | Serenity | Golden Forest |
   | Odyssey | The chapter the player's next level is in (`odyssey-<n>.webp`, 1–8), with a caption ("Chapter 4 · Mountains") |
   | Sukha Sessions | The poster of the newest session open on the breath path (`public/assets/breathing/<world>.webp`), with the session's name as caption |
 
   The Odyssey and Sukha pictures follow the player, so the stage shows where they are.
+  Retaken on 12 Nov 2026 on the current board (landing shadow, world garbage, Single
+  Player's violet walls); Infinity and Online Versus moved to worlds whose piece colours are
+  calm, so the pictures lead with the world rather than a field of saturated pieces.
 - **Layout:** the picture lies across the top of the panel (`--sb-art-h`: 176–300 px,
   160–210 px in windows under 800 px tall) and fades into it by a mask. The eyebrow and
   wordmark rise into the fade (`--sb-art-rise`), so the copy below stays on plain glass. A
