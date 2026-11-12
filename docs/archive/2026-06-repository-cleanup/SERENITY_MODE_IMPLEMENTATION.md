@@ -13,13 +13,13 @@ Serenity Mode is a peaceful, non-interactive game mode that allows users to enjo
 - **Music Integration**: Automatically plays music on mode start
 
 ### 2. Breathing Indicator
-A beautiful, subtle breathing guide to aid in meditation and relaxation:
+A subtle breathing guide:
 - **Visual Guide**: Pulsing circle that expands and contracts
 - **Text Prompts**: Optional "Breathe In", "Hold", "Breathe Out" labels
 - **Three Breathing Patterns**:
-  - **Relaxation (4-2-6-2)**: 4s inhale, 2s hold, 6s exhale, 2s hold - promotes deep relaxation
-  - **Box Breathing (4-4-4-4)**: Equal timing - enhances focus and reduces stress
-  - **Calm (4-7-8)**: 4s inhale, 7s hold, 8s exhale - aids sleep and reduces anxiety
+  - **Relaxation (4-2-6-2)**: 4s inhale, 2s hold, 6s exhale, 2s hold
+  - **Box Breathing (4-4-4-4)**: Equal timing
+  - **Calm (4-7-8)**: 4s inhale, 7s hold, 8s exhale
 - **Toggle On/Off**: Press Space to show/hide the guide
 - **Customizable**: Settings available in Visual settings tab
 

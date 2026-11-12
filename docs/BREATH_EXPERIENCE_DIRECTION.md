@@ -88,7 +88,7 @@ back by Speech to Text, so all lines play as one speaker and say their words. Se
 - **The breath has a sound.** A soft tone rises on every breath in and falls on every breath out,
   beside the voice, in every world and every Sukha session, all the time: no switch turns it off.
 - **Sound marks the structure.** A singing bowl opens a session and each round and closes the
-  session. A small bell marks a hold's suggested length. The voice never speaks over itself.
+  session. A small bell is a hold's reminder after a minute. The voice never speaks over itself.
 - **The voice is always heard.** It plays at the full effects volume, and the music dips under it
   while it speaks (to 40%), coming back a moment after the last word, so even with the music
   turned all the way up every word comes through.
@@ -108,12 +108,12 @@ them, named as such:
 | Rest | Moonlit Waters, Cosmic Nebula | 4-7-8 learned step by step, drifting among the stars between rounds |
 | Flow | Sacred Geometry, Crystal Prism | The square, the triangle, the wider square |
 | Base | Electric Storm | Steady breathing that charges the storm, then stillness you end yourself |
-| Elixir | Volcanic Fire | The fire's power breathing, then deep holds |
+| Elixir | Volcanic Fire | The fire's strong breathing, then holds you end yourself |
 
 ## Finding the worlds
 
 - Four worlds and First Breath are open from the start: Heart Glow, Moonlit Waters, Sacred Geometry
-  and Zen Garden. Someone who opens the game to sleep or to calm down finds the right world ready.
+  and Zen Garden. Someone who opens the game in the evening, or for a quiet moment, finds a world ready.
 - Each Odyssey chapter you finish opens one world and the session that features it.
 - Practice opens them too, so nobody who only breathes is ever blocked.
 - Nothing you have already used is taken away.
