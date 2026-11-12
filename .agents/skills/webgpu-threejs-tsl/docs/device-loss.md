@@ -1,359 +1,148 @@
-# WebGPU Device Loss Handling
+# WebGPU device loss
 
-## What Is Device Loss?
+A device is lost when the GPU driver cannot go on: a driver crash or update, heavy memory
+pressure, a shader that runs so long the OS resets the adapter (a TDR), a laptop switching
+GPUs. The `GPUDevice` and everything made with it (buffers, textures, pipelines) are dead from
+that moment; nothing is restored. On this repo's dev machine a full-journey capture has done
+exactly that to the integrated GPU, which is why the workflow says one small effect at a time.
 
-Device loss occurs when the GPU driver cannot continue processing commands. Causes include:
+Read this when a renderer dies mid-session, when you write or change a surface's recovery, or
+when you create or dispose a renderer outside `BaseTheme`.
 
-- Driver crashes
-- Extreme resource pressure
-- Long-running shaders (GPU watchdog triggers after ~10 seconds)
-- Driver updates
-- Significant device configuration changes
+## In this repo: do not hand-roll it
 
-When a device is lost, the `GPUDevice` object and **all objects created with it become unusable**. All buffers, textures, pipelines, and GPU memory are discarded.
-
-## Listening for Device Loss
-
-Detect loss by attaching a callback to the device's `lost` promise:
+A theme never listens for loss itself. The adapter does two things, and both are boilerplate
+you clone (`setupGpuResilience()` in `src/themes/serenity-warp/serenity-warp-theme.js`):
 
 ```javascript
-const adapter = await navigator.gpu.requestAdapter();
-if (!adapter) { return; }
-const device = await adapter.requestDevice();
-
-device.lost.then((info) => {
-  console.error('WebGPU device lost:', info.message);
-  // Handle recovery
+this.setupRendererResilience(renderer, {                 // src/themes/base-theme.js
+    webgpuDevice: this.isWebGPU ? renderer.backend?.device : null,
+});
+if (!this.isWebGPU) return;   // WebGL2: BaseTheme's CONTEXT_RESTORED restart covers it
+this.gpuSurfaceUnregister = registerGpuSurface(this.name, {   // src/utils/gpu-loss-coordinator.js
+    recover: async () => {
+        if (this.gpuRecoveryAttempted) throw new Error('… WebGPU recovery already attempted.');
+        this.gpuRecoveryAttempted = true;
+        this.forceWebGL = true;                          // one retry, on the WebGL2 backend
+        if (this.isActive) await this.createScene();
+    },
 });
 ```
 
-**Important:** Don't `await` this promise directly - it will block indefinitely if loss never occurs.
+What that gives:
 
-### Device Loss Information
+- Losses flow through `gpuResilience.monitorWebGPU()` / `monitorWebGL()`
+  (`src/utils/gpu-context-resilience.js`) onto the bus as `EVENTS.CONTEXT_LOST`, and the
+  coordinator is the one consumer.
+- **A WebGPU surface gets ONE recovery**: rebuild on the WebGL2 backend. A second loss routes
+  out to the main menu. A retry loop is the wrong move: a GPU that was reset loses the next
+  device too.
+- An uncaptured GPU **error** (validation, out of memory) is counted for diagnostics and never
+  triggers recovery; recovering on every error would storm.
+- The surface label must equal `this.name`.
+- In `disposeRuntime()`, call `removeRendererResilience()` BEFORE `disposeRenderer()`. A dispose
+  is not a loss, and in the other order the destroyed device is reported as one.
 
-The `GPUDeviceLostInfo` object provides:
+## What three r187 does
 
-| Property | Description |
-|----------|-------------|
-| `reason` | `'destroyed'` (intentional via `destroy()`) or `'unknown'` (unexpected) |
-| `message` | Human-readable debugging info (don't parse programmatically) |
+- **three hooks the device itself.** `WebGPUBackend.init` attaches to `device.lost` and calls
+  `renderer.onDeviceLost({ api, message, reason, originalEvent })`. A WebGL context loss on the
+  WebGL2 backend arrives on the same callback. A loss whose reason is `'destroyed'` (your own
+  `device.destroy()` or `renderer.dispose()`) is dropped and never reaches it.
+- **The default handler matters.** `renderer.onDeviceLost` defaults to a handler that logs and
+  sets `_isDeviceLost`, the flag that makes `render()`, `compute()`, `compileAsync()` and
+  `compileComputeAsync()` return silently. Replace it without calling the default and three keeps
+  issuing commands to a dead device:
 
-```javascript
-device.lost.then((info) => {
-  if (info.reason === 'unknown') {
-    // Unexpected loss - attempt recovery
-    handleUnexpectedDeviceLoss();
-  } else {
-    // Intentional destruction - expected behavior
-  }
-});
-```
+  ```javascript
+  const threeDefault = renderer.onDeviceLost;
+  renderer.onDeviceLost = (info) => { threeDefault.call(renderer, info); recover(info); };
+  ```
 
-### Devices Starting Lost
+- **`renderer.backend.device` exists only on the WebGPU backend.** Code that reads
+  `renderer.backend.device.lost` throws on the WebGL2 backend. Test
+  `renderer.backend.isWebGPUBackend === true` first.
+- **A failed WebGPU start does not throw.** When there is no adapter, or `requestDevice()`
+  rejects (an unsupported `requiredLimits` included), `WebGPURenderer` warns and switches to its
+  WebGL2 backend; `await renderer.init()` rejects only if that fails too. So "did I get WebGPU?"
+  is `renderer.backend.isWebGPUBackend`, not a `try`/`catch`.
+- **Uncaptured errors** go to `renderer.onError({ api, type, message, originalEvent })`. three
+  installs it by assignment (`device.onuncapturederror = …`), so on a device shared by several
+  renderers the last one initialised replaces the others. The repo listens with
+  `addEventListener('uncapturederror')` instead (`src/utils/gpu-context-resilience.js`).
+- **Drive the loop with `renderer.setAnimationLoop(fn)`**, which `dispose()` stops. A hand-made
+  `requestAnimationFrame` loop keeps running against the old renderer after a recovery, and each
+  recovery adds another.
 
-`adapter.requestDevice()` always returns a `GPUDevice`, but it may already be lost if creation failed. This occurs when the adapter was "consumed" (used previously) or "expired."
+## Disposing a renderer
 
-**Best practice:** Always get a new adapter right before requesting a device.
+- **`dispose()` is async**: `await renderer.dispose()` before you destroy or null a device or
+  release a shared device's owner. It awaits a pending `init()` and rethrows its rejection, so
+  observe the rejection even in fire-and-forget cleanup (`src/ui/boot-warp-transition.js`).
+- It destroys the device only if the renderer created it. A renderer handed a `device` (the
+  shared warm device, `src/rendering/webgpu-device-warm.js`) leaves it alive.
+- It does not remove the canvas, and it cannot unhook `device.lost`. On a shared device that
+  promise never settles, so its callback keeps every disposed renderer reachable, with its swap
+  chain and render targets (about 70 MB of VRAM per Odyssey visit, measured). After disposing a
+  renderer that ran on the warm device, call `releaseDisposedRenderer(renderer)`:
 
-## Recovery Strategies
+  ```javascript
+  Promise.resolve(renderer.dispose()).finally(() => releaseDisposedRenderer(renderer));
+  ```
 
-### Minimal Recovery (Page Reload)
+- A disposed renderer cannot be initialised again (`_initialized` is never reset): make a new one.
+- `BaseTheme.disposeRenderer()` does all of this for a theme. Call it; do not copy it.
 
-For simple applications:
+## A standalone surface (outside BaseTheme)
 
-```javascript
-device.lost.then((info) => {
-  if (info.reason === 'unknown') {
-    // Warn user before reload
-    alert('Graphics error occurred. The page will reload.');
-    location.reload();
-  }
-});
-```
-
-### Restart GPU Content Only (Recommended for Three.js)
-
-Recreate the device and reconfigure the canvas without full page reload:
+Only for a surface that cannot use the theme machinery (a tool page, a prototype). Keep the
+repo's policy: one recovery, then stop.
 
 ```javascript
 import * as THREE from 'three/webgpu';
 
-let renderer;
-let scene, camera;
+let renderer = null;
+let recoveries = 0;
 
-async function initWebGPU() {
-  renderer = new THREE.WebGPURenderer();
-  await renderer.init();
+async function start() {
+  const r = new THREE.WebGPURenderer({ antialias: true });
+  const threeDefault = r.onDeviceLost;           // logs, and stops render()/compute()
+  r.onDeviceLost = (info) => { threeDefault.call(r, info); recover(r, info); };
 
-  // Access the underlying WebGPU device
-  const device = renderer.backend.device;
-
-  device.lost.then((info) => {
-    console.error('Device lost:', info.message);
-    if (info.reason === 'unknown') {
-      // Dispose current renderer
-      renderer.dispose();
-      // Reinitialize
-      initWebGPU();
-    }
-  });
-
-  // Configure canvas
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  document.body.appendChild(renderer.domElement);
-
-  // Recreate scene content
+  await r.init();                                // also resolves on the WebGL2 fallback
+  renderer = r;
+  r.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(r.domElement);
   setupScene();
+  r.setAnimationLoop(animate);                   // stopped by dispose()
 }
 
-function setupScene() {
-  scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-  // ... add meshes, lights, etc.
-}
-
-initWebGPU();
-```
-
-### Restore with Application State
-
-For applications with user progress or configuration:
-
-```javascript
-let appState = {
-  cameraPosition: { x: 0, y: 5, z: 10 },
-  settings: {},
-  // Don't save transient data like particle positions
-};
-
-// Save state periodically
-function saveState() {
-  appState.cameraPosition = {
-    x: camera.position.x,
-    y: camera.position.y,
-    z: camera.position.z
-  };
-  localStorage.setItem('appState', JSON.stringify(appState));
-}
-
-// Restore on recovery
-async function initWebGPU() {
-  renderer = new THREE.WebGPURenderer();
-  await renderer.init();
-
-  const savedState = localStorage.getItem('appState');
-  if (savedState) {
-    appState = JSON.parse(savedState);
-  }
-
-  setupScene();
-
-  // Restore camera position
-  camera.position.set(
-    appState.cameraPosition.x,
-    appState.cameraPosition.y,
-    appState.cameraPosition.z
-  );
-
-  renderer.backend.device.lost.then((info) => {
-    if (info.reason === 'unknown') {
-      saveState();
-      renderer.dispose();
-      initWebGPU();
-    }
-  });
+async function recover(lost) {
+  if (renderer !== lost) return;                 // a stale callback from a replaced renderer
+  renderer = null;
+  lost.domElement.remove();
+  try { await lost.dispose(); } catch { /* its init had failed */ }
+  if (++recoveries > 1) { showError('Graphics device lost.'); return; }
+  await start();
 }
 ```
 
-## When Recovery Fails
+Keep what the player must not lose (progress, settings) outside the GPU; let transient state
+(particle positions, a simulation's fields) start again.
 
-If `requestAdapter()` returns `null` after device loss, the OS or browser has blocked GPU access:
+## Testing the recovery path
 
-```javascript
-async function initWebGPU() {
-  const adapter = await navigator.gpu.requestAdapter();
+- `device.destroy()` does **not** exercise three's path: three ignores reason `'destroyed'`.
+  Call the hook instead:
 
-  if (!adapter) {
-    // Check if this is initial failure or post-loss failure
-    if (hadPreviousDevice) {
-      showMessage('GPU access lost. Please restart your browser.');
-    } else {
-      showMessage('WebGPU is not supported on this device.');
-    }
-    return;
-  }
+  ```javascript
+  renderer.onDeviceLost({ api: 'WebGPU', message: 'simulated', reason: 'unknown', originalEvent: null });
+  ```
 
-  // Continue with device creation...
-}
-```
-
-## Testing Device Loss
-
-### Using destroy()
-
-Call `device.destroy()` to simulate loss:
-
-```javascript
-let simulatedLoss = false;
-
-function simulateDeviceLoss() {
-  simulatedLoss = true;
-  renderer.backend.device.destroy();
-}
-
-// In your device.lost handler:
-device.lost.then((info) => {
-  if (info.reason === 'unknown' || simulatedLoss) {
-    simulatedLoss = false;
-    // Treat as unexpected loss for testing
-    handleDeviceLoss();
-  }
-});
-
-// Add debug keybinding
-window.addEventListener('keydown', (e) => {
-  if (e.key === 'L' && e.ctrlKey && e.shiftKey) {
-    simulateDeviceLoss();
-  }
-});
-```
-
-**Limitations of destroy():**
-- Unmaps buffers immediately (real loss doesn't)
-- Always allows device recovery (real loss may not)
-
-### Chrome GPU Process Crash Testing
-
-Navigate to `about:gpucrash` in a **separate tab** to crash the GPU process.
-
-Chrome enforces escalating restrictions:
-
-| Crash | Effect |
-|-------|--------|
-| 1st | New adapters allowed |
-| 2nd within 2 min | Adapter requests fail (resets on page refresh) |
-| 3rd within 2 min | All pages blocked (reset after 2 min or browser restart) |
-| 3-6 within 5 min | GPU process stops restarting; browser restart required |
-
-### Chrome Testing Flags
-
-Bypass crash limits for development:
-
-```bash
-# macOS
-/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
-  --disable-domain-blocking-for-3d-apis \
-  --disable-gpu-process-crash-limit
-
-# Windows
-chrome.exe --disable-domain-blocking-for-3d-apis --disable-gpu-process-crash-limit
-
-# Linux
-google-chrome --disable-domain-blocking-for-3d-apis --disable-gpu-process-crash-limit
-```
-
-## Complete Example
-
-```javascript
-import * as THREE from 'three/webgpu';
-import { color, time, oscSine } from 'three/tsl';
-
-let renderer, scene, camera, mesh;
-let hadPreviousDevice = false;
-
-async function init() {
-  // Check WebGPU support
-  if (!navigator.gpu) {
-    showError('WebGPU not supported');
-    return;
-  }
-
-  // Create renderer
-  renderer = new THREE.WebGPURenderer({ antialias: true });
-
-  try {
-    await renderer.init();
-  } catch (e) {
-    if (hadPreviousDevice) {
-      showError('GPU recovery failed. Please restart browser.');
-    } else {
-      showError('Failed to initialize WebGPU.');
-    }
-    return;
-  }
-
-  hadPreviousDevice = true;
-
-  // Setup device loss handler
-  const device = renderer.backend.device;
-  device.lost.then(handleDeviceLoss);
-
-  // Setup scene
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  document.body.appendChild(renderer.domElement);
-
-  scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.z = 5;
-
-  const geometry = new THREE.BoxGeometry();
-  const material = new THREE.MeshStandardNodeMaterial();
-  material.colorNode = color(0x00ff00).mul(oscSine(time));
-
-  mesh = new THREE.Mesh(geometry, material);
-  scene.add(mesh);
-
-  const light = new THREE.DirectionalLight(0xffffff, 1);
-  light.position.set(5, 5, 5);
-  scene.add(light);
-  scene.add(new THREE.AmbientLight(0x404040));
-
-  animate();
-}
-
-function handleDeviceLoss(info) {
-  console.error('Device lost:', info.reason, info.message);
-
-  if (info.reason === 'unknown') {
-    // Cleanup
-    if (renderer) {
-      renderer.domElement.remove();
-      renderer.dispose();
-    }
-
-    // Attempt recovery after short delay
-    setTimeout(() => {
-      init();
-    }, 100);
-  }
-}
-
-function animate() {
-  if (!renderer) return;
-
-  requestAnimationFrame(animate);
-  mesh.rotation.x += 0.01;
-  mesh.rotation.y += 0.01;
-  renderer.render(scene, camera);
-}
-
-function showError(message) {
-  const div = document.createElement('div');
-  div.textContent = message;
-  div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);padding:20px;background:#f44;color:#fff;border-radius:8px;';
-  document.body.appendChild(div);
-}
-
-init();
-```
-
-## Best Practices
-
-1. **Always listen for device loss** - Even if you just show an error message
-2. **Get a fresh adapter before each device request** - The GPU hardware may have changed
-3. **Don't parse the message field** - It's implementation-specific and changes between browsers
-4. **Save critical application state** - Restore user progress after recovery
-5. **Don't save transient state** - Particle positions, physics state can be reset
-6. **Test your recovery path** - Use `destroy()` and Chrome's `about:gpucrash`
-7. **Handle adapter failure gracefully** - Distinguish between initial failure and post-loss failure
-8. **Add a short delay before recovery** - Give the system time to stabilize
+- The repo's own monitor (`gpuResilience.monitorWebGPU`) listens to the raw promise and does
+  broadcast a destroy, marked `destroyed: true`, which the coordinator ignores. The coordinator
+  is unit-testable with no GPU: construct `GpuLossCoordinator` with a mock bus and emit
+  `CONTEXT_LOST`.
+- A real GPU-process crash: `about:gpucrash` in a separate Chrome tab. Chrome restricts WebGPU
+  after repeated crashes; this file does not vouch for the exact thresholds (they are browser
+  behaviour, not checked against any source here).

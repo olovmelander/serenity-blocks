@@ -1,4 +1,11 @@
-# TSL Node Materials
+# TSL Node Materials (three r187)
+
+Every `*NodeMaterial` and node slot. **House default:** themes are self-shaded, so nearly
+every material here is a `MeshBasicNodeMaterial` (light computed in its own `colorNode`,
+scene-linear HDR) or a bare `NodeMaterial` with a `fragmentNode` for a full-screen pass. The
+lit materials below (Standard, Physical, …) work, but a theme has no scene lights for them to
+answer to. The traps of alpha, blending, masks and draw order are in
+`gotchas/materials-draw-order.md`.
 
 ## Available Material Types
 
@@ -12,10 +19,10 @@
 | `MeshLambertNodeMaterial` | Diffuse-only lighting |
 | `MeshNormalNodeMaterial` | Visualize normals |
 | `MeshMatcapNodeMaterial` | Matcap texture shading |
-| `PointsNodeMaterial` | For point clouds |
+| `PointsNodeMaterial` | Points. On `THREE.Points` a WebGPU point is ONE pixel and `sizeNode` is ignored; put it on a `THREE.Sprite` (with `sprite.count`) for sized, instanced points |
 | `LineBasicNodeMaterial` | For lines |
 | `LineDashedNodeMaterial` | For dashed lines |
-| `SpriteNodeMaterial` | For sprites/billboards |
+| `SpriteNodeMaterial` | Camera-facing quads: `positionNode` is the sprite's CENTRE; also `scaleNode`, `rotationNode`; instance with `sprite.count` |
 
 ## Creating Node Materials
 
@@ -110,10 +117,9 @@ material.iridescenceNode = float(1.0);
 material.iridescenceIORNode = float(1.3);
 material.iridescenceThicknessNode = float(400);
 
-// Sheen (fabric effect)
-material.sheenNode = float(1.0);
+// Sheen (fabric effect): sheenNode IS the sheen colour (vec3). There is no sheenColorNode.
+material.sheenNode = color(0xffffff);
 material.sheenRoughnessNode = float(0.5);
-material.sheenColorNode = color(0xffffff);
 
 // Anisotropy (brushed metal) — direction/rotation is encoded in the node's xy
 material.anisotropyNode = float(1.0);
@@ -172,11 +178,19 @@ material.vertexNode = customVertexPosition;
 ## Fragment Override
 
 ```javascript
-// Complete fragment output override
+// Complete fragment override. It replaces the whole path: colorNode, opacityNode,
+// alphaTestNode, maskNode and the MRT outputs are all skipped (gotcha #111). Fog and the
+// premultiply step still apply. It is how an OPAQUE material writes its own alpha (gotcha #91).
 material.fragmentNode = vec4(finalColor, 1.0);
 
-// Output node (respects lighting)
-material.outputNode = outputStruct;
+// Replace the final colour. The material still runs; its result is the `output` node.
+material.outputNode = vec4(output.rgb.mul(tint), output.a);   // import { output } from 'three/tsl'
+
+// The house form for light that only adds: premultiplied additive, alpha left alone (gotcha #90)
+material.blending = THREE.AdditiveBlending;
+material.premultipliedAlpha = true;
+material.depthWrite = false;
+material.outputNode = vec4(light, 0.0);
 ```
 
 ## Geometry Attributes
@@ -249,11 +263,12 @@ import {
 
 ```javascript
 import {
-  screenUV,         // Screen UV (0-1)
+  screenUV,         // Screen UV (0-1), y = 0 at the TOP on both backends
   screenCoordinate, // Pixel coordinates
   screenSize,       // Screen dimensions
   viewportUV,       // Viewport UV
-  viewport,         // Viewport dimensions
+  viewport,         // Viewport rectangle: vec4(x, y, width, height), physical pixels
+  viewportSize,     // viewport.zw
   depth             // Fragment depth
 } from 'three/tsl';
 ```
@@ -264,7 +279,7 @@ import {
 
 ```javascript
 import * as THREE from 'three/webgpu';
-import { color, time, oscSine, mix } from 'three/tsl';
+import { color, float, time, oscSine, mix } from 'three/tsl';
 
 const material = new THREE.MeshStandardNodeMaterial();
 
@@ -290,7 +305,7 @@ material.colorNode = triplanarTexture(
   texture(diffuseMap),
   null,           // Y-axis texture (optional)
   null,           // Z-axis texture (optional)
-  float(0.1)      // Blend sharpness
+  float(0.1)      // texture SCALE: coordinates are positionLocal * scale (5th/6th: position, normal)
 );
 ```
 
@@ -335,30 +350,26 @@ material.emissiveNode = color(0x00ffff).mul(fresnel());
 ```javascript
 import * as THREE from 'three/webgpu';
 import {
-  color, float, hash, positionLocal, uniform,
-  If, Discard, smoothstep
+  Fn, color, float, positionLocal, rand, smoothstep, uniform,
 } from 'three/tsl';
 
 const threshold = uniform(0.5);
 
 const material = new THREE.MeshStandardNodeMaterial();
 
-// Discard must run INSIDE a node graph that the material evaluates —
-// a bare If()/Discard() at module scope is attached to nothing and does nothing.
-material.colorNode = Fn(() => {
-  const noise = hash(positionLocal.mul(50));
+// A builder, called inside each Fn below, so each graph pins its own copy.
+// rand() is three's vec2 -> [0, 1) hash. (hash() casts its seed to uint and uses .x only:
+// hash(positionLocal.mul(50)) gives bands along x, not grain.)
+const grain = () => rand(positionLocal.xy.add(positionLocal.z).mul(50).floor()).toVar();
 
-  If(noise.lessThan(threshold), () => {
-    Discard();
-  });
-
-  return color(0x333333);
-})();
+// maskNode discards where the mask is false. If() exists only inside a Fn: at module scope it
+// throws, and a bare Discard() there builds a node that is attached to nothing.
+material.maskNode = Fn(() => grain().greaterThanEqual(threshold))();
+material.colorNode = color(0x333333);
 
 // Edge glow
 material.emissiveNode = Fn(() => {
-  const noise = hash(positionLocal.mul(50));
-  const edge = smoothstep(threshold, threshold.add(0.1), noise);
+  const edge = smoothstep(threshold, threshold.add(0.1), grain());
   return color(0xff5500).mul(float(1.0).sub(edge));
 })();
 ```

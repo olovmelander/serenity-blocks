@@ -1,4 +1,10 @@
-# WGSL Integration
+# WGSL Integration (three r187)
+
+**WebGPU backend only, and not used in this repo.** A `wgslFn` is parsed as WGSL whatever the
+backend: when the WebGL2 backend (`GLSLNodeBuilder`) builds a material that holds one, the build
+throws. The WebGL2 backend is a player surface (ADR-0019) and every theme's shader test builds
+both, so nothing under `src/` calls `wgslFn`. Write helpers as TSL `Fn`s with a layout
+(`docs/core-concepts.md`). This file is kept for tools and experiments that run on WebGPU alone.
 
 TSL allows embedding raw WGSL (WebGPU Shading Language) code when you need direct GPU control.
 
@@ -60,15 +66,8 @@ const GGX = wgslFn(`
 ### Noise Functions
 
 ```javascript
+// wgslFn calls the FIRST function in the string: the entry point goes first, helpers after it.
 const simplexNoise = wgslFn(`
-  fn mod289(x: vec3<f32>) -> vec3<f32> {
-    return x - floor(x * (1.0 / 289.0)) * 289.0;
-  }
-
-  fn permute(x: vec3<f32>) -> vec3<f32> {
-    return mod289(((x * 34.0) + 1.0) * x);
-  }
-
   fn snoise(v: vec2<f32>) -> f32 {
     let C = vec4<f32>(
       0.211324865405187,
@@ -112,6 +111,14 @@ const simplexNoise = wgslFn(`
 
     return 130.0 * dot(m, g);
   }
+
+  fn mod289(x: vec3<f32>) -> vec3<f32> {
+    return x - floor(x * (1.0 / 289.0)) * 289.0;
+  }
+
+  fn permute(x: vec3<f32>) -> vec3<f32> {
+    return mod289(((x * 34.0) + 1.0) * x);
+  }
 `);
 
 // Use noise
@@ -120,10 +127,10 @@ const noiseValue = simplexNoise(uv().mul(10.0));
 
 ### FBM (Fractal Brownian Motion)
 
-Each `wgslFn` compiles standalone — `fbm` below can only call `snoise` if that
-function is passed as an *include* (second argument), or defined in the same
-string. Calling a function from a different `wgslFn` without the include does
-not link.
+Each `wgslFn` exposes the first function in its string; the other functions in that string are
+emitted with it and can be called from it. A function from a DIFFERENT `wgslFn` links only when
+that one is passed as an *include* (second argument). A helper that two `wgslFn`s need must live
+in one `wgslFn` of its own that both include: defined in both strings, it is emitted twice.
 
 ```javascript
 // snoise defined in its own wgslFn (see above) — pass it as an include:

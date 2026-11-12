@@ -10,7 +10,7 @@ Three things do the heavy lifting:
 
 | Piece | What it is | What it gives you |
 | --- | --- | --- |
-| `webgpu-threejs-tsl` skill | A reusable skill (from [dgreenheck/webgpu-claude-skill](https://github.com/dgreenheck/webgpu-claude-skill), MIT) | Authoritative WebGPU + TSL knowledge: renderer setup, node materials, compute shaders, post FX, WGSL interop, device-loss handling. Reference docs + runnable examples + templates. |
+| `webgpu-threejs-tsl` skill | This repo's own skill. Its API reference docs began as [dgreenheck/webgpu-claude-skill](https://github.com/dgreenheck/webgpu-claude-skill) (MIT) and have since been rewritten against the pinned three | The house rules every theme follows, some two hundred numbered gotchas the repo has paid for, how a theme is built here, the API reference (node materials, post chain, compute, device loss) checked against the installed three, and a starter template. |
 | Chrome DevTools MCP | `chrome-devtools-mcp` (Google) | The agent opens `localhost`, screenshots the live `<canvas>`, and reads the console — the visual feedback loop that closes the agent's blindness. |
 | The **playground** | `/playground.html` (this repo) | A standalone page that mounts ONE effect in isolation with HMR, deterministic time, a screenshot-ready signal, and a reference-image overlay. Iterate a shader in seconds, then port it into a theme. See [`src/playground/README.md`](../src/playground/README.md). |
 
@@ -107,7 +107,10 @@ reference → iterate → port into the theme.**
 
 ## Authoring a theme (the repo conventions)
 
-A theme is **authored code**, not generated. The contract:
+A theme is **authored code**, not generated. The full contract (the files of a modern theme,
+the lifecycle rules, events, tiers, the shared modules, tests and gates) is the skill's
+`docs/theme-foundation.md`, and the whole procedure for a new theme is
+[`docs/theme-concepts/PLAYBOOK.md`](theme-concepts/PLAYBOOK.md). In short:
 
 - A class extending [`BaseTheme`](../src/themes/base-theme.js) in
   `src/themes/<id>/<id>-theme.js`, implementing `createScene()` and
@@ -129,8 +132,9 @@ A theme is **authored code**, not generated. The contract:
 2. **Loader** — nothing to do: `theme-manager.js` lazy-loads via
    `import.meta.glob('./**/*-theme.js')`, so a correctly-named `<id>-theme.js` is picked
    up automatically.
-3. **Container** — add `<div id="<id>-theme" class="theme-container"></div>` to
-   `index.html`.
+3. **Container** — the registry creates `#<id>-theme` on first activation when `index.html`
+   has none (`ensureThemeContainer` in `theme-registry.js`); most older themes still have a
+   hand-written `<div id="<id>-theme" class="theme-container"></div>` there.
 
 Plus an icon and the tetromino piece config (`getTetrominoConfig()`).
 
@@ -166,25 +170,48 @@ Record provenance + license in a per-theme `ATTRIBUTION.md` next to the asset (t
 ```
 .claude/skills/webgpu-threejs-tsl/   # the copy you edit (Claude Code loads it)
 .agents/skills/webgpu-threejs-tsl/   # byte-for-byte mirror (Codex and Antigravity load it)
-  SKILL.md          # entry point, auto-loaded; carries the three version stamp
-  REFERENCE.md      # API quick-reference
-  docs/             # core-concepts, materials, compute-shaders, post-processing,
-                    #   noise-and-utility-nodes, scene-techniques, performance,
+  SKILL.md          # the entry point, loaded whole on every use: the loop, the rules that hold
+                    #   in every shader, and where to look. Small on purpose (a size budget)
+  REFERENCE.md      # the API on one page
+  gotchas/          # every hard-won lesson, one per line, in 15 topic files, each row with a
+                    #   permanent number ("gotcha #94"); README.md says how to add one
+  docs/             # theme-foundation (how a theme is built here), three-r187 (what the pinned
+                    #   version changed), core-concepts, materials, post-processing,
+                    #   noise-and-utility-nodes, scene-techniques, performance, compute-shaders,
                     #   wgsl-integration, limits-and-features, device-loss
-  examples/         # basic-setup, custom-material, earth-shader, particle-system, post-processing
-  templates/        # webgpu-project, compute-shader
+  templates/        # theme-starter.effect.js: the smallest world that keeps every house rule
+  scripts/          # audit.mjs: checks the skill against the installed three and this repo
+                    #   gotcha.mjs: find a gotcha by number or words, printed whole
+                    #   shot.mjs: capture a playground URL with a private headless Chrome
 ```
+
+Until 2026-11 the gotchas were one table inside `SKILL.md`, which had grown to 160 KB loaded on
+every use. They now live in `gotchas/<topic>.md`. A row's number is permanent; numbers 63 to
+188 are the ones the theme concept docs already cite.
 
 Updating the skill:
 
-1. Edit the `.claude/skills/webgpu-threejs-tsl/` copy.
+1. Edit the `.claude/skills/webgpu-threejs-tsl/` copy. A new gotcha is a row at the end of the
+   matching `gotchas/<topic>.md`, numbered from that file's block (`gotchas/README.md`). Nothing
+   about a gotcha goes in `SKILL.md` unless it holds for every shader, and then it is one line.
 2. Mirror it byte-for-byte to `.agents/skills/webgpu-threejs-tsl/` (same files, same
    bytes). `tests/unit/agent-skill-mirror.test.js` fails when the two copies differ, and
    when the old orphan copy at `.agents/webgpu-threejs-tsl/` reappears.
-3. At every three.js bump, re-stamp the three version in the skill in the bump commit and
-   re-verify the migration-sensitive APIs against the installed package
-   ([ADR-0018](adr/0018-three-js-pinning-and-upgrade-protocol.md)).
+3. Run `node .claude/skills/webgpu-threejs-tsl/scripts/audit.mjs`. It checks the version
+   stamp, `SKILL.md`'s size, every imported three name against the installed package, the
+   gotcha tables (one line, four cells, unique numbers, every cited `#NN` real) and every repo
+   path the skill points at. `tests/unit/agent-skill-contract.test.js` fails on its "hard"
+   findings; its "soft" findings are precedent files a rebuilt theme no longer has, to repoint.
+   `tests/unit/agent-skill-template.test.js` builds the template to WGSL and GLSL, and
+   `tests/unit/agent-skill-emission-contract.test.js` builds the shapes the skill's emission
+   rules are about and holds each rule to what the installed three really emits.
+4. At every three.js bump, in the bump commit: re-run the audit, fix what it finds, rewrite
+   `docs/three-r<N>.md` for the new version and re-stamp `SKILL.md`'s description
+   ([ADR-0018](adr/0018-three-js-pinning-and-upgrade-protocol.md)). The contract test fails
+   until the stamp matches `package.json`.
 
 Do **not** re-pull the upstream repo over it. This copy has diverged from upstream on
 purpose: it carries the repo-specific rules and the checks made against the pinned three
-(0.186.1 today), and an upstream copy would silently replace them.
+(0.187.0 today), and an upstream copy would silently replace them. Its generic standalone
+examples were removed in 2026-11 (they contradicted the house rules and three of them had
+bugs on r187); real themes and the template are the examples now.
