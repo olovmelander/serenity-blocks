@@ -964,7 +964,7 @@ export async function processPhysicsLegacy(gameState, callbacks) {
             perfectClearBonus = Math.round(perfectClearBonus * gameState.comboMultiplier);
         }
         gameState.score += perfectClearBonus;
-        physicsLog(`[Physics] Perfect clear bonus: +${perfectClearBonus} points (depth=${depth})`);
+        physicsLog(`[Physics] Clean canvas bonus: +${perfectClearBonus} points (depth=${depth})`);
         if (callbacks.onScoreAdd) callbacks.onScoreAdd(perfectClearBonus);
         if (callbacks.onPerfectClear) callbacks.onPerfectClear(depth, perfectClearBonus);
     }

@@ -260,7 +260,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'animal',
         category: 'Playground',
         scope: 'playground.html — forest',
-        description: 'Choose which animal the Forest fireflies gather into on four lines or a perfect clear.',
+        description: 'Choose which animal the Forest fireflies gather into on four lines or a clean canvas.',
         values: 'stag, moose, bear, wolf, owl, fox, hare, lynx, boar, capercaillie, squirrel, or hedgehog; '
             + 'any other value leaves the choice to the shuffled round.',
         defaultValue: 'A shuffled round of all twelve, as in the game.',

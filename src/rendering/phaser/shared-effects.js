@@ -2365,7 +2365,8 @@ export class SharedEffects {
         // Celebration callout first, so it owns the centre lane.
         this._dismissRecentCallout();
         this._showBanner({
-            kicker: waves >= 2 ? `Combo \u00d7${waves} \u00b7 ${lines} lines` : 'Perfect clear',
+            // A chain leads with what it took; a single clear lets the words stand alone.
+            kicker: waves >= 2 ? `Combo \u00d7${waves} \u00b7 ${lines} lines` : null,
             title: 'Clean canvas',
             y: centerY,
             titleSize: Math.round(36 + 6 * power),
@@ -2779,13 +2780,14 @@ export class SharedEffects {
         const centerX = boardWidth / 2;
         const centerY = boardHeight / 2;
 
-        // "Twist" leads; the line count is the qualifier beneath it.
-        const qualifiers = [null, 'Single', 'Double', 'Triple'];
+        // "Twist" leads; the lines it cleared are the quiet line beneath it ("2 lines"), as a
+        // chain's summary counts its own. A twist that clears nothing is the word alone.
+        const lines = Math.max(0, Math.floor(Number(lineCount) || 0));
         this._showBanner({
             title: 'Twist',
-            subtitle: qualifiers[Math.min(lineCount, 3)],
+            subtitle: lines > 0 ? `${lines} line${lines === 1 ? '' : 's'}` : null,
             y: centerY * 0.75,
-            titleSize: lineCount >= 2 ? 40 : 34,
+            titleSize: lines >= 2 ? 40 : 34,
             subtitleSize: 18,
             accent: TONE.AQUA,
             hold: 300,

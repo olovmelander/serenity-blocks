@@ -254,7 +254,7 @@ export class LocalMatchConfigModal {
                   <div class="sb-mp-field" id="match-mode-group">
                     <span class="sb-mp-field__label" id="match-mode-label">Game mode</span>
                     <select id="match-mode" name="matchMode" aria-label="Game mode">
-                      <option value="ffa" selected>Classic</option>
+                      <option value="ffa" selected>Standard</option>
                       <option value="infinity-lms">Infinity</option>
                     </select>
                     <p class="sb-mp-help" id="match-mode-help"></p>
