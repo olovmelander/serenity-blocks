@@ -23,6 +23,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { REST_RIG, SolarEclipseWorld, fovForAspect } from '../../src/themes/solar-eclipse/solar-eclipse-world.js';
 import { fallbackLayout } from '../../src/themes/solar-eclipse/solar-eclipse-composition.js';
+import { hasMaterialXNoise } from './helpers/materialx-noise.js';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -164,7 +165,7 @@ function problemsOf({
             problems.push(`${name}, ${label} ${stage}: a NaN, Infinity or [object Object] literal`);
         }
     }
-    if (/mx_\w+/.test(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
+    if (hasMaterialXNoise(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
     const entry = label === 'WGSL' ? [/@vertex/, /@fragment/] : [/void main\(\)/, /void main\(\)/];
     if (!entry[0].test(out.vertex)) problems.push(`${name}, ${label}: the vertex stage has no entry point`);
     if (!entry[1].test(out.fragment)) problems.push(`${name}, ${label}: the fragment stage has no entry point`);

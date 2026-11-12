@@ -19,6 +19,7 @@ import * as THREE from 'three/webgpu';
 import { context } from 'three/tsl';
 import { REST_RIG, StellarDriftWorld, fovForAspect } from '../../src/themes/stellar-drift/stellar-drift-world.js';
 import { fallbackLayout } from '../../src/themes/stellar-drift/stellar-drift-composition.js';
+import { hasMaterialXNoise } from './helpers/materialx-noise.js';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -176,7 +177,7 @@ function problemsOf({
             unassignedReads(code).forEach((read) => problems.push(`${name}, WGSL ${stage}: unassigned ${read}`));
         }
     }
-    if (/mx_\w+/.test(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
+    if (hasMaterialXNoise(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
     return problems;
 }
 

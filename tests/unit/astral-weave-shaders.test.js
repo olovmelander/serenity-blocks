@@ -19,6 +19,7 @@ import * as THREE from 'three/webgpu';
 import { context } from 'three/tsl';
 import { AstralWeaveWorld } from '../../src/themes/astral-weave/astral-weave-world.js';
 import { fallbackLayout } from '../../src/themes/astral-weave/astral-weave-composition.js';
+import { hasMaterialXNoise } from './helpers/materialx-noise.js';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -116,7 +117,7 @@ function problemsOf({
     // vertex stage that hands on more fails its pipeline on the device, not in the builder.
     const varyings = new Set(`${out.vertex}`.match(/nodeVarying\d+/g) || []).size;
     if (label === 'WGSL' && varyings > 15) problems.push(`${name}, ${label}: ${varyings} varyings, over 15`);
-    if (/mx_\w+/.test(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
+    if (hasMaterialXNoise(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
     return problems;
 }
 

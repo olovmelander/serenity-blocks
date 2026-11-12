@@ -1,4 +1,10 @@
-# TSL Core Concepts
+# TSL Core Concepts (three r187)
+
+Types, operators, uniforms, functions and control flow, with samples that were built through
+three's own node builders on r187. Read it when writing nontrivial TSL. Two things this file
+only touches on are the cause of most shader faults in this repo, and have their own files:
+where the builder writes a node's code (`gotchas/tsl-emission.md`) and how a shared helper
+`Fn` must be written (`gotchas/tsl-functions-loops.md`).
 
 ## Types and Constructors
 
@@ -98,14 +104,15 @@ const animatedValue = uniform(0).onFrameUpdate((frame) => {
   return Math.sin(frame.time);
 });
 
-// Update per object render
-const perObjectValue = uniform(0).onObjectUpdate((object) => {
+// Update per object render. The callback's argument is the NodeFrame, not the object:
+// destructure what you need from it.
+const perObjectValue = uniform(0).onObjectUpdate(({ object }) => {
   return object.userData.customValue;
 });
 
-// Update once per render cycle
-const renderValue = uniform(0).onRenderUpdate((state) => {
-  return state.delta;
+// Update once per render cycle (the frame has `deltaTime`, there is no `delta`)
+const renderValue = uniform(0).onRenderUpdate(({ deltaTime }) => {
+  return deltaTime;
 });
 ```
 
@@ -121,9 +128,12 @@ a.add(b)   // a + b
 a.sub(b)   // a - b
 a.mul(b)   // a * b
 a.div(b)   // a / b
-a.mod(b)   // a % b
+a.mod(b)   // floats: a - b * floor(a / b) (GLSL mod); ints: a % b
 a.negate() // -a
 ```
+
+A JavaScript operator on a node is never an operator: `-a` coerces the node to `NaN` and prints
+it into the shader, and `1 + a` concatenates a string (gotcha #167, #213).
 
 ### Comparison
 ```javascript
@@ -200,9 +210,13 @@ myProp.assign(vec3(1, 0, 0));
 
 | Pattern | Works? | Why |
 |---------|--------|-----|
-| `node.y = value` | ✅ | Property setter - TSL intercepts |
-| `node.x.assign(value)` | ✅ | TSL method call |
+| `copy.y = value` where `copy = vec3(node)` or `node.toVar()` | ✅ | your own node: r187 declares it as a variable when it is assigned |
+| `positionWorld.y = value`, or assigning to a texture sample or a uniform | ❌ | a shared node: the write is silently lost (or invalid, for a uniform) |
+| `node.x.assign(value)` on your own node | ✅ | TSL method call |
 | `variable = variable.add(1)` | ❌ | JS variable reassignment |
+
+Everything in this section runs INSIDE a `Fn`: `If`, `Loop` and `.assign()` need the function's
+flow to write into, and a bare `If(...)` at module level throws.
 
 **This WORKS (vec3 property assignment):**
 ```javascript
@@ -223,7 +237,9 @@ return value;  // Returns ORIGINAL node!
 
 **Solutions for scalars:**
 ```javascript
-// ✅ Use select() for conditional values
+// ✅ Use select() for conditional values. It is a BRANCH, not a blend: with a scalar condition
+// it is emitted as if/else and only one side runs, so a node first built inside one side is
+// zero on the other (gotcha #68). select(c, a, b).uniformFlow() evaluates both sides instead.
 const result = select(condition, valueIfTrue, valueIfFalse);
 
 // ✅ Use .toVar() for mutable variables
@@ -312,21 +328,24 @@ Loop(100, ({ i }) => {
 ### Flow Control
 
 ```javascript
-import { Discard, Return } from 'three/tsl';
+import { Discard, Fn, If } from 'three/tsl';
 
-// Discard fragment (make transparent)
-If(alpha.lessThan(0.5), () => {
-  Discard();
-});
+// Discard the fragment: three equivalent spellings, all inside a Fn
+If(alpha.lessThan(0.5), () => { Discard(); });
+Discard(alpha.lessThan(0.5));
+alpha.lessThan(0.5).discard();
 
-// Return from function
-const myFn = Fn(() => {
-  If(condition, () => {
-    Return(vec3(1, 0, 0));
-  });
+// Early return WITH a value: return it from the If callback. Needs a Fn with a layout.
+const myFn = Fn(([c]) => {
+  If(c.greaterThan(0.5), () => vec3(1, 0, 0));   // emits `return vec3<f32>( 1.0, 0.0, 0.0 );`
   return vec3(0, 0, 1);
-});
+}, { c: 'float', return: 'vec3' });
 ```
+
+In a `Fn` without a layout the early return is dropped with a warning ("Return statement used
+in an inline 'Fn()'"). `Return()` takes no argument and emits a bare `return;`: it is only for
+functions with no value (a compute kernel). On a material, prefer `maskNode` for a cut-out; a
+material with a `fragmentNode` ignores it and must discard itself (gotcha #111).
 
 ## Custom Functions with Fn()
 
@@ -344,7 +363,10 @@ const result = addVectors(vec3(1, 0, 0), vec3(0, 1, 0));
 
 ### Default Parameters
 ```javascript
-const oscillate = Fn(([frequency = 1.0, amplitude = 1.0]) => {
+// A default is a plain JavaScript value until you make it a node: `a = 1.0` then `a.add(b)`
+// throws. These two work only because they are handed to a node's method; write float(1.0)
+// whenever the default itself is the receiver.
+const oscillate = Fn(([frequency = float(1.0), amplitude = float(1.0)]) => {
   return time.mul(frequency).sin().mul(amplitude);
 });
 
@@ -353,6 +375,34 @@ oscillate();           // Uses defaults
 oscillate(2.0);        // frequency = 2.0
 oscillate(2.0, 0.5);   // frequency = 2.0, amplitude = 0.5
 ```
+
+### Layouts: one shader function instead of a copy per call
+
+A plain `Fn` is INLINE: its body is written again at every call site. A helper called twenty
+times is twenty copies, tens of KB of shader and seconds of compile (gotcha #81). Give a shared
+helper a layout and the builder writes one real function:
+
+```javascript
+const hash21 = Fn(([pIn]) => {
+  const p3 = fract(vec3(pIn.x, pIn.y, pIn.x).mul(0.1031)).toVar();
+  p3.addAssign(dot(p3, p3.yzx.add(33.33)));
+  return fract(p3.x.add(p3.y).mul(p3.z));
+}).setLayout({ name: 'my_hash21', type: 'float', inputs: [{ name: 'pIn', type: 'vec2' }] });
+
+// Short form (three names the function fnNN):
+const hash21b = Fn(([pIn]) => fract(pIn.x.mul(0.1031)), { pIn: 'vec2', return: 'float' });
+```
+
+A laid-out function's code is generated once and reused by every later material on that
+backend, so it must depend only on its parameters:
+
+- no captured uniform, uniform array or texture (gotcha #93, #95): pass values in;
+- no call to another laid-out helper (the WebGL2 backend then compiles the material twice, #207);
+- no parameter named with a word WGSL or GLSL reserves: `from`, `of`, `type`, `set`, `get`,
+  `use`, `target`, `filter`, `input`, `mod`, `new`, `smooth`, … (gotcha #178, #223).
+
+A helper that reads the uniform bag or a texture stays an inline `Fn`, or a plain JavaScript
+function called inside a material's `Fn`.
 
 ### Named Parameters (Object Style)
 ```javascript
@@ -480,8 +530,10 @@ EPSILON   // Very small number
 ```javascript
 import { hash, checker, remap, range, rotate } from 'three/tsl';
 
-// Pseudo-random hash
-hash(seed)                    // Returns 0-1
+// Pseudo-random hash. The seed is CAST TO UINT: pass an exact, non-negative integer
+// (instanceIndex, a floored cell id shifted positive). A float in 0..1 hashes to one value,
+// a vector uses .x only, a negative float clamps to 0 (gotcha #204). Returns [0, 1).
+hash(seed)
 
 // Checkerboard pattern
 checker(uv())                 // Returns 0 or 1

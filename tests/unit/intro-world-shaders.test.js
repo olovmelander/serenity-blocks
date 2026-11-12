@@ -15,6 +15,7 @@ import {
 import * as THREE from 'three/webgpu';
 import { context } from 'three/tsl';
 import { IntroWorld } from '../../src/ui/intro-world/intro-world.js';
+import { materialXNoiseFunctions } from './helpers/materialx-noise.js';
 
 const TIERS = ['High', 'Low'];
 const BACKENDS = [['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilder]];
@@ -139,7 +140,7 @@ describe.each(TIERS)('First Light shaders at %s', (quality) => {
                     expect(reversedEdges(out[stage]), `${key}, ${label} ${stage}`).toEqual([]);
                     expect(out[stage], `${key}, ${label} ${stage}`).not.toMatch(/\bNaN\b|\bInfinity\b|object Object/);
                 }
-                expect(`${out.vertex}${out.fragment}`, `${key}, ${label}`).not.toMatch(/mx_\w+/);
+                expect(materialXNoiseFunctions(`${out.vertex}${out.fragment}`), `${key}, ${label}`).toEqual([]);
             });
         });
     });

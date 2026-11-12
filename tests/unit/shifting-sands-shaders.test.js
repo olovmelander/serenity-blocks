@@ -24,6 +24,7 @@ import * as THREE from 'three/webgpu';
 import { context } from 'three/tsl';
 import { ShiftingSandsWorld } from '../../src/themes/shifting-sands/shifting-sands-world.js';
 import { POST_LOOK, ShiftingSandsPost } from '../../src/themes/shifting-sands/shifting-sands-post.js';
+import { hasMaterialXNoise } from './helpers/materialx-noise.js';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -189,7 +190,7 @@ function problemsOf({
         if (/\bNaN\b|\bInfinity\b/.test(code)) problems.push(`${name}, ${label} ${stage}: a NaN or Infinity literal`);
         if (/object Object/.test(code)) problems.push(`${name}, ${label} ${stage}: a node stringified into the code`);
     }
-    if (/mx_\w+/.test(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
+    if (hasMaterialXNoise(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
     const entry = label === 'WGSL' ? [/@vertex/, /@fragment/] : [/void main\(\)/, /void main\(\)/];
     if (!entry[0].test(out.vertex)) problems.push(`${name}, ${label}: the vertex stage has no entry point`);
     if (!entry[1].test(out.fragment)) problems.push(`${name}, ${label}: the fragment stage has no entry point`);

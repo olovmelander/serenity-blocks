@@ -19,6 +19,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { parseCrystalCaveCavern } from '../../src/themes/crystal-cave/crystal-cave-assets.js';
 import { CrystalCavePost } from '../../src/themes/crystal-cave/crystal-cave-post.js';
 import { CrystalCaveWorld } from '../../src/themes/crystal-cave/crystal-cave-world.js';
+import { hasMaterialXNoise } from './helpers/materialx-noise.js';
 
 vi.setConfig({ testTimeout: 120_000 });
 
@@ -126,7 +127,7 @@ function problemsOf({
         if (/\bNaN\b|\bInfinity\b/.test(code)) problems.push(`${name}, ${label} ${stage}: a NaN or Infinity literal`);
         if (/object Object/.test(code)) problems.push(`${name}, ${label} ${stage}: a stringified node`);
     }
-    if (/mx_\w+/.test(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
+    if (hasMaterialXNoise(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
     return problems;
 }
 

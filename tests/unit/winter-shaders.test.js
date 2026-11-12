@@ -34,6 +34,7 @@ import { QUALITY } from '../../src/themes/winter/winter-quality.js';
 import {
     FOX_SCALE, SPIRIT_RUN, bakeNoise, createNoiseTexture, createShadowTexture, createWinterUniforms, foxRound,
 } from '../../src/themes/winter/winter-tsl.js';
+import { materialXNoiseFunctions } from './helpers/materialx-noise.js';
 
 const TIERS = ['High', 'Minimal'];
 const BACKENDS = [['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilder]];
@@ -294,7 +295,7 @@ describe.each(TIERS)('winter shaders at %s', (quality) => {
                 expect(equalEdges(out[stage]), `${name}, ${label} ${stage}`).toEqual([]);
             }
             // No MaterialX noise anywhere (a DXC compile pathology): the noise is a baked texture.
-            expect(`${out.vertex}${out.fragment}`, `${name}, ${label}`).not.toMatch(/mx_\w+/);
+            expect(materialXNoiseFunctions(`${out.vertex}${out.fragment}`), `${name}, ${label}`).toEqual([]);
         });
         expect(built[name].WGSL.vertex).toMatch(/@vertex/);
         expect(built[name].WGSL.fragment).toMatch(/@fragment/);

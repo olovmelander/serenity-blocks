@@ -19,6 +19,7 @@ import * as THREE from 'three/webgpu';
 import { context } from 'three/tsl';
 import { REST_RIG, VoltageStormWorld, fovForAspect } from '../../src/themes/voltage-storm/voltage-storm-world.js';
 import { fallbackLayout } from '../../src/themes/voltage-storm/voltage-storm-composition.js';
+import { hasMaterialXNoise } from './helpers/materialx-noise.js';
 
 vi.setConfig({ testTimeout: 120_000 });
 
@@ -123,7 +124,7 @@ function problemsOf({
             });
         }
     }
-    if (/mx_\w+/.test(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
+    if (hasMaterialXNoise(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
     return problems;
 }
 

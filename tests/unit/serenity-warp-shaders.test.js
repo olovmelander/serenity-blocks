@@ -29,6 +29,7 @@ import { POST_LOOK, SerenityWarpPost } from '../../src/themes/serenity-warp/sere
 import { fallbackLayout } from '../../src/themes/serenity-warp/serenity-warp-composition.js';
 import { QUALITY } from '../../src/themes/serenity-warp/serenity-warp-quality.js';
 import { SHAPES, cellsFromMatrix } from '../../src/themes/serenity-warp/serenity-warp-core.js';
+import { hasMaterialXNoise } from './helpers/materialx-noise.js';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -216,7 +217,7 @@ function problemsOf({
             if (RESERVED.has(param)) problems.push(`${name}, ${label} ${stage}: ${m[1]} takes reserved word "${param}"`);
         }));
     }
-    if (/mx_\w+/.test(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
+    if (hasMaterialXNoise(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
     const entry = label === 'WGSL' ? [/@vertex/, /@fragment/] : [/void main\(\)/, /void main\(\)/];
     if (!entry[0].test(out.vertex)) problems.push(`${name}, ${label}: the vertex stage has no entry point`);
     if (!entry[1].test(out.fragment)) problems.push(`${name}, ${label}: the fragment stage has no entry point`);

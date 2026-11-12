@@ -75,9 +75,13 @@ Read these before you change anything. They are short and they override habit:
    - ADR-0020: the theme manager's async pipeline session covers ordinary themes; a theme must
      **not** define `buildsPipelinesAsync`.
 3. `docs/WEBGPU_THREEJS_WORKFLOW.md` and `src/playground/README.md` (the playground contract).
-4. `.claude/skills/webgpu-threejs-tsl/SKILL.md`, especially its gotcha table. In these docs a
-   gotcha written **`#NN` is the line number of that row in SKILL.md** (unchanged between
-   `5d3478d` and `585ab55`). If the file has changed, find the row by its words.
+4. The `webgpu-threejs-tsl` skill: `.claude/skills/webgpu-threejs-tsl/SKILL.md` (the rules that
+   hold in every shader), its `docs/theme-foundation.md` (the contract below in short, with
+   what has changed since this playbook was written) and its `gotchas/` folder. In these docs a
+   gotcha written **`#NN` is the row's permanent number**: the line that starts `| #NN |` in one
+   of `.claude/skills/webgpu-threejs-tsl/gotchas/*.md`. (The numbers were line numbers of
+   `SKILL.md` when the whole table lived there; they were kept as ids when it was split in
+   2026-11, so every `#NN` in this folder still resolves.)
 5. The concept file. Each one opens with a "How to use this file" box and a precedence rule
    (usually: the amended section overrides the original proposal; the build plan already folds
    the amendments in). Follow it.
@@ -719,7 +723,7 @@ frame added six files):
 | `tests/unit/NEW_ID-composition.test.js` | `fallbackLayout`, `readLayoutRects` over rect doubles, selectors | `rainbark-composition.test.js` |
 | `tests/unit/NEW_ID-world.test.js` | a real world in a `THREE.Scene` (no renderer): `makeWorld('Minimal', …)`, `settle()`, counts, order and bounds of what each event does | `rainbark-world.test.js` |
 | `tests/unit/NEW_ID-theme.test.js` | the shell with mocked renderer, world and post: registry entry, icon exists, `name === id`, static bans, the five flags, WebGL2 when no GPU, the six pixel-ratio caps, lifecycle; a final block imports the **real** world and post and builds every tier ("the node graphs are built, never compiled") | `rainbark-theme.test.js` (1680 lines) |
-| `tests/unit/NEW_ID-shaders.test.js` (recommended) | build each part's node material with `WGSLNodeBuilder` and `GLSLNodeBuilder` against a stub renderer, High and Minimal: no warnings, no throw, each stage < 48 KB, no equal-edge `smoothstep`, no `mx_`, laid-out helpers emitted once | the inline helper in `tests/unit/himalayan-peak-shaders.test.js:27-72` |
+| `tests/unit/NEW_ID-shaders.test.js` (recommended) | build each part's node material with `WGSLNodeBuilder` and `GLSLNodeBuilder` against a stub renderer, High and Minimal: no warnings, no throw, each stage < 48 KB, no equal-edge `smoothstep`, no MaterialX noise (`hasMaterialXNoise` from `tests/unit/helpers/materialx-noise.js`; a search for `mx_` in the generated text finds nothing on r187), laid-out helpers emitted once | the inline helper in `tests/unit/himalayan-peak-shaders.test.js:27-72` |
 | `tests/unit/NEW_ID-rename-migration.test.js` | old saves resolve (§4.4) | `rainbark-rename-migration.test.js` |
 
 ---
@@ -873,8 +877,10 @@ over, meditation and multiplayer lanes). For each beat:
   `docs/NEW_UPPER_VISUAL_OVERHAUL_<yyyy-mm>.md` (the precedent is
   `docs/SERENITY_WARP_VISUAL_OVERHAUL_2026-10.md`), curated captures under
   `docs/NEW_ID-captures/` (webp, small), a row in `docs/ARCHITECTURE_INDEX.md`, gotcha rows you
-  discovered in **both** `.claude/skills/webgpu-threejs-tsl/SKILL.md` and
-  `.agents/skills/webgpu-threejs-tsl/SKILL.md` (byte-identical; `agent-skill-mirror.test.js`).
+  discovered, each at the end of the matching `gotchas/<topic>.md` in **both**
+  `.claude/skills/webgpu-threejs-tsl/` and `.agents/skills/webgpu-threejs-tsl/` (byte-identical;
+  `agent-skill-mirror.test.js` and `agent-skill-contract.test.js`; the format is in that
+  folder's `README.md`).
 
 ### 3.6 Final adversarial review
 
@@ -1759,7 +1765,7 @@ A replacement adds files and tests and should never remove passing ones except t
 15. **Determinism**: `seek(t)` plus fixed steps reproduces any frame; integrated phases wrapped;
     springs sub-stepped (Serenity Warp at 1/120 s).
 
-### 7.2 Gotcha digest (`#NN` = line in `.claude/skills/webgpu-threejs-tsl/SKILL.md`)
+### 7.2 Gotcha digest (`#NN` = the row `| #NN |` in `.claude/skills/webgpu-threejs-tsl/gotchas/`)
 
 | # | Symptom | Rule |
 |---|---|---|

@@ -17,6 +17,7 @@ import {
 import * as THREE from 'three/webgpu';
 import { context } from 'three/tsl';
 import { NeonDistrictWorld } from '../../src/themes/neon-district/neon-district-world.js';
+import { materialXNoiseFunctions } from './helpers/materialx-noise.js';
 
 vi.setConfig({ testTimeout: 120_000 });
 
@@ -127,7 +128,7 @@ describe.each(['High', 'Low'])('neon-district shop shaders at %s', (quality) => 
             expect(equalEdges(code)).toEqual([]);
             expect(/\bNaN\b|\bInfinity\b/.test(code)).toBe(false);
             expect(/object Object/.test(code)).toBe(false);
-            expect(/mx_\w+/.test(code)).toBe(false);
+            expect(materialXNoiseFunctions(code)).toEqual([]);
             if (label === 'WGSL') expect(undeclaredBindings(code)).toEqual([]);
         }
     });

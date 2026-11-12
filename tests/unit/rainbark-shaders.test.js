@@ -17,6 +17,7 @@ import {
 import * as THREE from 'three/webgpu';
 import { context } from 'three/tsl';
 import { RAINBARK_PARTS, RainbarkWorld } from '../../src/themes/rainbark/rainbark-world.js';
+import { materialXNoiseFunctions } from './helpers/materialx-noise.js';
 
 const TIERS = ['Minimal', 'Ultra'];
 const BACKENDS = [['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilder]];
@@ -145,7 +146,7 @@ describe.each(TIERS)('Rainbark shaders at %s', (quality) => {
                     expect(out[stage], `${key}, ${label} ${stage}`).not.toMatch(/\bNaN\b|\bInfinity\b/);
                     expect(equalEdges(out[stage]), `${key}, ${label} ${stage}`).toEqual([]);
                 }
-                expect(`${out.vertex}${out.fragment}`, `${key}, ${label}`).not.toMatch(/\bmx_\w+/);
+                expect(materialXNoiseFunctions(`${out.vertex}${out.fragment}`), `${key}, ${label}`).toEqual([]);
             });
         });
     });

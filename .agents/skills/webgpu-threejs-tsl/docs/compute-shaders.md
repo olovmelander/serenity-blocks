@@ -2,6 +2,24 @@
 
 Compute shaders run on the GPU for parallel processing of data. TSL makes them accessible through JavaScript.
 
+**House policy: compute is the exception.** A theme uses compute only when the concept truly
+needs it, and then with a CPU twin, because the WebGL2 backend is a player surface (ADR-0019)
+and the repo's compute wrapper reports it `unsupported` there. Most "particle" effects in this
+repo are instanced quads with closed-form motion in the vertex stage and need no compute at all
+(`docs/theme-foundation.md` §4). Murmuration (`src/themes/murmuration/`) and Astral Weave's dust
+(`src/themes/astral-weave/astral-weave-dust.js`) are the compute precedents. On a loading
+surface, pipelines are compiled through `src/rendering/webgpu-compute-pipeline-async.js`
+(ADR-0020), never by a first `renderer.compute()` in front of the player.
+
+## Contents
+
+- [Mutation: node assignment vs JS reassignment](#critical-tsl-node-property-assignment-vs-js-variable-reassignment)
+- [Basic setup](#basic-setup) · [Storage buffers](#storage-buffers) · [Patterns](#compute-shader-patterns)
+- [Workgroups and synchronization](#workgroups-and-synchronization) · [Atomics](#atomic-operations)
+- [Using compute results in materials](#using-compute-results-in-materials)
+- [Execution, compiling ahead and disposal](#execution-methods)
+- [Reading back data](#reading-back-data-gpu-to-cpu) · [Complete example](#complete-example-particle-system)
+
 ## CRITICAL: TSL Node Property Assignment vs JS Variable Reassignment
 
 **TSL can intercept property assignments on nodes, but NOT JavaScript variable reassignment.**
@@ -152,17 +170,26 @@ await renderer.init();
 renderer.compute(computeShader);
 ```
 
-### Read-Only Storage Buffers
+### Per-vertex vs per-instance storage, and read-only access
+
+`instancedArray()` and `attributeArray()` differ only in the attribute behind them:
+`StorageInstancedBufferAttribute` (one element per instance) versus `StorageBufferAttribute`
+(one element per vertex). **Both are read-write in compute.** Read-only is a separate switch,
+`.toReadOnly()`. In the vertex and fragment stages every storage buffer is bound read-only
+regardless.
 
 ```javascript
 import { attributeArray } from 'three/tsl';
 
-// attributeArray() creates read-only storage buffers (vs instancedArray for read-write)
-const lookupTable = attributeArray(data, 'float');
-
-// Use in compute or materials - data is read-only on GPU
+const lookupTable = attributeArray(data, 'float').toReadOnly(); // var<storage, read> in compute
 const value = lookupTable.element(index);
 ```
+
+**Prefer `'vec4'` to `'vec3'` for anything seeded from the CPU more than once or read back.**
+WGSL cannot pack `vec3` in a storage buffer, so three pads a `'vec3'` storage attribute to four
+floats on first upload (`attribute.itemSize` becomes 4 and `attribute.array` a new padded
+array), and a later CPU write through the original stride of 3 scrambles it. Re-seed with a
+compute pass instead (`reseat()` in `src/themes/astral-weave/astral-weave-dust.js`).
 
 ## Storage Buffers
 
@@ -261,12 +288,16 @@ const computeUpdate = Fn(() => {
   });
 })().compute(count);
 
-// In animation loop
-function animate() {
-  deltaTimeUniform.value = clock.getDelta();
+// In animation loop. THREE.Clock is deprecated (r183) and warns: use THREE.Timer, or the
+// rAF timestamp and your own last-frame time as the themes do.
+const timer = new THREE.Timer();
+function animate(time) {            // setAnimationLoop passes the frame timestamp
+  timer.update(time);
+  deltaTimeUniform.value = Math.min(timer.getDelta(), 0.1);
   renderer.compute(computeUpdate);
   renderer.render(scene, camera);
 }
+renderer.setAnimationLoop(animate);
 ```
 
 ### Attraction to Point
@@ -291,6 +322,10 @@ const computeAttract = Fn(() => {
 ```
 
 ### Neighbor Interaction (Boids-like)
+
+This loop is O(N²): every particle tests every other, each dispatch. Keep N in the low
+thousands or bin the particles into a spatial grid first. At the 100 000 used elsewhere on
+this page it is 10¹⁰ tests a frame, which is how an integrated GPU gets reset by the driver.
 
 ```javascript
 const computeBoids = Fn(() => {
@@ -351,21 +386,26 @@ const computeBoids = Fn(() => {
 ### Workgroup Size
 
 ```javascript
-// Default workgroup size is typically 64 or 256
-// Pass workgroup size as an array
+// Default workgroup size is [64] (padded to [64, 1, 1]); pass 1–3 positive integers to override.
 const computeShader = Fn(() => {
   // shader code
 })().compute(count, [64]);
 
-// 2D workgroup
-const compute2D = Fn(() => {
-  // shader code
-})().compute(width * height, [8, 8]);
+// A NUMERIC count is always a 1D dispatch: ceil(count / 64) workgroups of 8×8 along X.
+// Use instanceIndex here; globalId.xy is NOT a width × height grid.
+const computeLinear = Fn(() => { /* … */ })().compute(width * height, [8, 8]);
+
+// A true 2D grid: pass the dispatch size (workgroup counts) as an array. three emits no
+// automatic `instanceIndex >= count` guard in this form, so bound-check globalId yourself.
+const compute2D = Fn(() => { /* use globalId.xy */ })()
+  .compute([Math.ceil(width / 8), Math.ceil(height / 8)], [8, 8]);
 ```
 
 ### Compute Builtins
 
 ```javascript
+// subgroupSize / subgroupIndex / invocationSubgroupIndex need renderer.hasFeature('subgroups')
+// (the WGSL builder reports an error without it).
 import {
   globalId, localId, workgroupId, numWorkgroups, subgroupSize,
   invocationLocalIndex, invocationSubgroupIndex, subgroupIndex
@@ -388,20 +428,27 @@ const computeShader = Fn(() => {
 
 ### Barriers
 
+`workgroupBarrier()` pairs with `workgroupArray()` (memory shared by the invocations of ONE
+workgroup); `storageBarrier()` is the one for storage buffers (`instancedArray`,
+`attributeArray`); `textureBarrier()` for storage textures.
+
 ```javascript
-import { workgroupBarrier, storageBarrier, textureBarrier } from 'three/tsl';
+import { workgroupArray, workgroupBarrier, invocationLocalIndex } from 'three/tsl';
+
+const WG = 64;
+const scratch = workgroupArray('float', WG);     // shared by the invocations of one workgroup
 
 const computeShader = Fn(() => {
-  // Write data
-  sharedData.element(localIndex).assign(value);
-
-  // Ensure all workgroup threads reach this point
-  workgroupBarrier();
-
-  // Now safe to read data written by other threads
-  const neighborValue = sharedData.element(localIndex.add(1));
-})().compute(count);
+  scratch.element(invocationLocalIndex).assign(values.element(instanceIndex));
+  workgroupBarrier();                            // every invocation of the workgroup reaches here
+  const next = scratch.element(invocationLocalIndex.add(1).mod(WG));
+  values.element(instanceIndex).assign(next);
+})().compute(count, [WG]);
 ```
+
+Any barrier switches off the automatic out-of-range guard (three stops emitting
+`if (instanceIndex >= count) return` once a barrier is in the kernel): make `count` a multiple
+of the workgroup size, or guard the writes yourself.
 
 ## Atomic Operations
 
@@ -442,6 +489,8 @@ material.positionNode = positionLocal.add(positions.element(instanceIndex));
 material.colorNode = colors.element(instanceIndex);
 
 const mesh = new THREE.InstancedMesh(geometry, material, count);
+mesh.frustumCulled = false;   // positions live in the GPU buffer, not in instanceMatrix:
+                              // the mesh's bounds are one small sphere at the origin
 scene.add(mesh);
 ```
 
@@ -452,9 +501,11 @@ instead and build the clip-space position yourself — see the working pattern i
 ### Point/Sprite Particles with Computed Positions
 
 For `PointsNodeMaterial`/`SpriteNodeMaterial`, `positionNode` means the particle
-**center** (unlike mesh materials, where it replaces vertex positions). The r185
-pattern for instanced particles is a `THREE.Sprite` with the storage buffer bound
-via `.toAttribute()`:
+**center** (unlike mesh materials, where it replaces vertex positions). The pattern for
+instanced particles is a `THREE.Sprite` with the storage buffer bound via `.toAttribute()`.
+Do not use `THREE.Points` for this: WebGPU point primitives are one pixel (`sizeNode` is
+ignored), and a `Points` object draws one instance, so `positions.element(instanceIndex)`
+reads element 0 for every vertex.
 
 ```javascript
 const material = new THREE.PointsNodeMaterial();
@@ -482,26 +533,48 @@ renderer.compute(computeInit);
 renderer.compute(computePhysics);
 renderer.compute(computeCollisions);
 
-// Note: computeAsync() remains deprecated in r186; compileComputeAsync() is different.
-// Use await renderer.init() at startup, then renderer.compute() synchronously.
+// computeAsync() is not deprecated in r187, but it only awaits init() and then calls compute():
+// it does not wait for the GPU and does not compile off-thread. Prefer: await renderer.init()
+// once, then renderer.compute() (before init it warns and returns a Promise).
+// Deprecated wrappers: renderAsync, clear*Async, hasFeatureAsync, initTextureAsync.
+// Removed: waitForGPU().
 ```
 
-### Compile before dispatch on loading surfaces (r186)
+`renderer.compute(nodes, dispatchSize)` takes a second argument for nodes made with
+`computeKernel()`; it throws for nodes made with `.compute(count)`.
+
+**The first `renderer.compute()` of a node creates its pipeline synchronously**
+(`device.createComputePipeline`). A one-shot kernel fired from an event handler therefore
+hitches on first use unless it was compiled ahead.
+
+### Compile before dispatch on loading surfaces
 
 The native `renderer.compileComputeAsync(nodes)` builds nodes and GPU pipelines
-without dispatching. Use the repository wrapper on intro/boot/loading surfaces:
+without dispatching. Use the repository wrapper on intro/boot/loading surfaces (ADR-0020):
 
 ```javascript
 import { compileComputeAsync } from '../../rendering/webgpu-compute-pipeline-async.js';
 const result = await compileComputeAsync(renderer, computeShader, { timeoutMs: 9000 });
 if (result.status === 'ready') renderer.compute(computeShader);
+// status: 'ready' | 'failed' | 'timeout' | 'unsupported' | 'device-lost'
 ```
 
-Native compilation can resolve despite pipeline creation failure. The wrapper checks
-cached GPU slots and guards both the asynchronous node-build interval and pending/failed
-backend pipelines. A timeout leaves those guards active until native work settles.
-The r185 descriptor hook and `syncComputePipelines` rollback were removed. WebGL2
-compute is unsupported; retain the caller's existing fallback path.
+Native compilation resolves even when pipeline creation failed, and a dispatch does not check
+the pipeline's slot. The wrapper checks cached GPU slots and guards both the asynchronous
+node-build interval and pending/failed backend pipelines. A timeout leaves those guards active
+until native work settles.
+
+On the WebGL2 backend the wrapper returns `status: 'unsupported'` (it only guards the WebGPU
+backend). three's WebGL2 backend can still run simple compute nodes through transform feedback
+(numeric count only; atomics, barriers and compute builtins are WebGPU-only), so keep the
+caller's fallback path: a CPU twin of the simulation.
+
+### Disposing compute resources
+
+- `computeNode.dispose()` frees the pipeline, bindings and node data. It does NOT free storage
+  buffers: those go with `storageNode.value.dispose()` or with `renderer.dispose()`.
+- Dispose compute nodes before their renderer.
+- `await renderer.dispose()`: it is async (`docs/three-r187.md`, `docs/device-loss.md`).
 
 ## Reading Back Data (GPU to CPU)
 
@@ -511,9 +584,13 @@ that backs the storage node:
 ```javascript
 const positions = instancedArray(count, 'vec3');
 
-// ... after some compute passes ...
+// ... after at least one compute pass (the GPU buffer exists from first use) ...
 const arrayBuffer = await renderer.getArrayBufferAsync(positions.value);
 const data = new Float32Array(arrayBuffer);
+// vec3 storage is padded to vec4 on the GPU: FOUR floats per element.
+const x = data[i * 4], y = data[i * 4 + 1], z = data[i * 4 + 2];
+// getArrayBufferAsync(attribute, target = null, offset = 0, count = -1): offset and count are
+// BYTES (multiples of 4); target may be an ArrayBuffer or a reusable THREE.ReadbackBuffer.
 ```
 
 (`readRenderTargetPixelsAsync` is the different API for reading *render targets*,
@@ -588,26 +665,27 @@ const computeUpdate = Fn(() => {
   });
 })().compute(count);
 
-// Material
+// Material: a Sprite, so the size is honoured and every particle is its own instance
 const material = new THREE.PointsNodeMaterial();
-material.positionNode = positions.element(instanceIndex);
+material.positionNode = positions.toAttribute();   // particle centre, per instance
 material.sizeNode = float(3.0);
 material.colorNode = vec3(1, 0.5, 0.2);
 
-// Geometry (dummy positions)
-const geometry = new THREE.BufferGeometry();
-geometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(count * 3), 3));
-
-const points = new THREE.Points(geometry, material);
-scene.add(points);
+const particles = new THREE.Sprite(material);
+particles.count = count;
+particles.frustumCulled = false;                   // centres come from the GPU buffer
+scene.add(particles);
 
 // Init (after await renderer.init())
 renderer.compute(computeInit);
 
 // Animation loop
-function animate() {
-  dt.value = Math.min(clock.getDelta(), 0.1);
+const timer = new THREE.Timer();
+function animate(time) {
+  timer.update(time);
+  dt.value = Math.min(timer.getDelta(), 0.1);
   renderer.compute(computeUpdate);
   renderer.render(scene, camera);
 }
+renderer.setAnimationLoop(animate);
 ```

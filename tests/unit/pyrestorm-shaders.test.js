@@ -24,6 +24,7 @@ import * as THREE from 'three/webgpu';
 import { PYRESTORM_PARTS, PyrestormWorld } from '../../src/themes/pyrestorm/pyrestorm-world.js';
 import { PIECE_COLORS } from '../../src/themes/pyrestorm/pyrestorm-core.js';
 import { POST_LOOK, PyrestormPost } from '../../src/themes/pyrestorm/pyrestorm-post.js';
+import { materialXNoiseFunctions } from './helpers/materialx-noise.js';
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 120_000 });
 
@@ -245,7 +246,7 @@ describe.each(TIERS)('Pyrestorm shaders at %s', (quality) => {
                     expect(Buffer.byteLength(code), `${name}, ${label} ${stage}`).toBeLessThan(STAGE_BUDGET);
                     expect(equalEdges(code), `${name}, ${label} ${stage}`).toEqual([]);
                 }
-                expect(`${vertex}\n${fragment}`, `${name}, ${label}`).not.toMatch(/mx_\w+/);
+                expect(materialXNoiseFunctions(`${vertex}\n${fragment}`), `${name}, ${label}`).toEqual([]);
                 expect(`${vertex}\n${fragment}`, `${name}, ${label}`).not.toMatch(/\bNaN\b|\bInfinity\b/);
             }
         }

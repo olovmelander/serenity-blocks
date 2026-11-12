@@ -35,6 +35,7 @@ import { VOID_EMBER_TETROMINOS } from '../../src/themes/void-ember/void-ember-te
 import {
     PLATES, bakePlates, createPlatesTexture, cubeFace, plateAtlasSize,
 } from '../../src/themes/void-ember/void-ember-tsl.js';
+import { hasMaterialXNoise } from './helpers/materialx-noise.js';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -225,7 +226,7 @@ function problemsOf({
             problems.push(`${name}, ${label} ${stage}: ${m[1]} takes reserved word "${param}"`);
         }));
     }
-    if (/mx_\w+/.test(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
+    if (hasMaterialXNoise(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
     const entry = label === 'WGSL' ? [/@vertex/, /@fragment/] : [/void main\(\)/, /void main\(\)/];
     if (!entry[0].test(out.vertex)) problems.push(`${name}, ${label}: the vertex stage has no entry point`);
     if (!entry[1].test(out.fragment)) problems.push(`${name}, ${label}: the fragment stage has no entry point`);
