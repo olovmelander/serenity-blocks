@@ -255,6 +255,8 @@ describe('swarm show: clears', () => {
         // 'free' is the release state and the heart belongs to game over.
         expect(RANDOM_SHAPE_POOL).not.toContain('free');
         expect(RANDOM_SHAPE_POOL).not.toContain('heart');
+        // The flock never draws the game's pieces.
+        expect(RANDOM_SHAPE_POOL.filter((name) => /tetromino/i.test(name))).toEqual([]);
         // The twist's knots and the perfect clear's blooms are private lists: roll through them.
         const asked = new Set();
         for (let roll = 0.02; roll < 1; roll += 0.04) {

@@ -13,15 +13,22 @@
  */
 
 import { app, BrowserWindow, ipcMain } from 'electron';
-import { join, resolve } from 'path';
+import { dirname, join, resolve } from 'path';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { createRequire } from 'module';
 import net from 'net';
 import { decodeP2PPacketBody, encodeP2PPacketBody, resolveP2PSendType } from './p2p-packet-codec.js';
 import { lobbyMemberChange } from './steam-peer-events.js';
-import { resolveSteamAppId as resolveSteamAppIdFor } from './steam-app-id.js';
+import { isStoreBuild, resolveSteamAppId as resolveSteamAppIdFor } from './steam-app-id.js';
 import { createP2PSessionGate } from './p2p-session-gate.js';
+import { steamLobbyType } from './steam-lobby-type.js';
+import { steamProfileUrl } from './steam-profile.js';
+import { allowsDirectP2P } from './debug-flags.js';
+import {
+    RESULT_OK, SESSION_STATE, openRelayTransport, steamApiLibraryPath,
+} from './steam-relay-transport.js';
+import { RELAY_UNAVAILABLE_MESSAGE, describeNetworkTransport, lobbyAllowed } from './steam-network-transport.js';
 
 // ---------------------------------------------------------------------------
 // State
@@ -37,8 +44,22 @@ let currentLobbyId = null;
 // data/owner/members/leave are only reachable via the Lobby OBJECT returned by
 // createLobby()/joinLobby(). Hold onto it for the lobby we're currently in.
 let currentLobby = null;
-// Accepts P2P sessions from members of currentLobby only (electron/p2p-session-gate.js).
+// Who the game opens P2P sessions with: lobby members only, and for everyone but the host,
+// the host alone (electron/p2p-session-gate.js).
 let p2pSessionGate = null;
+// How online play reaches other players (electron/steam-network-transport.js): through Steam's
+// relays (electron/steam-relay-transport.js), or not at all. Direct P2P (the legacy calls, which
+// show IP addresses) only in a development run that asks for it (SERENITY_ALLOW_DIRECT_P2P).
+let relayTransport = null;
+let networkMode = 'none';
+let networkReason = 'Steam is not running';
+// Players the relay transport has exchanged packets with in this lobby, and the state each
+// session was last seen in (sessions are closed when we leave; a broken one is reported).
+const relayPeers = new Map();
+let relayAcceptedAt = 0;
+let relayCheckedAt = 0;
+const RELAY_ACCEPT_EVERY_MS = 200;
+const RELAY_CHECK_EVERY_MS = 1000;
 let steamOverlayEnabled = false;
 let steamCallbackHandles = [];
 let steamStatusPending = false;
@@ -325,18 +346,32 @@ function registerSteamCallbacks() {
     // explicitly accept the session. Without this, two real machines join the same
     // lobby but never exchange game state (NET_HELLO/NET_WELCOME never arrive).
     // Accepting connects the two machines (directly when Steam can), so only members
-    // of our lobby are accepted (electron/p2p-session-gate.js); the app layer
-    // (_validateEnvelope: matchId/nonce/protocol) still authorizes each packet.
+    // of our lobby are accepted, and by everyone but the host only the host
+    // (electron/p2p-session-gate.js); the app layer (_validateEnvelope:
+    // matchId/nonce/protocol) still authorizes each packet.
     p2pSessionGate = createP2PSessionGate({
         accept: (steamId) => steamworksClient.networking.acceptP2PSession(BigInt(steamId)),
         isMember: isCurrentLobbyMember,
         log: steamLog,
     });
+    // Only a development run that allows direct play accepts these: otherwise online play runs
+    // through Steam's relays, and a peer asking the legacy way (which connects directly) is
+    // never accepted.
+    const ignoredDirectRequests = new Set();
     const p2pSessionRequestHandle = steamworksClient.callback.register(
         steamworksModule.SteamCallback.P2PSessionRequest,
         (payload) => {
             const remote = normalizeSteamId(payload?.remote);
-            if (remote) p2pSessionGate?.onRequest(remote);
+            if (!remote) return;
+            if (networkMode !== 'direct') {
+                if (!ignoredDirectRequests.has(remote) && ignoredDirectRequests.size < 64) {
+                    ignoredDirectRequests.add(remote);
+                    steamLog(`Ignored a direct P2P session request from ${remote} `
+                        + '(online play runs through Steam\'s relays)');
+                }
+                return;
+            }
+            p2pSessionGate?.onRequest(remote);
         },
     );
 
@@ -379,6 +414,128 @@ function registerSteamCallbacks() {
 // Steam init
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Network transport: Steam's relays only (electron/steam-relay-transport.js)
+// ---------------------------------------------------------------------------
+
+/** koffi, from beside steamworks.js in a packaged build, from node_modules in development. */
+function loadKoffi() {
+    if (app.isPackaged) {
+        const entry = join(process.resourcesPath, 'native_modules', 'koffi', 'index.cjs');
+        return createRequire(entry)(entry);
+    }
+    return createRequire(import.meta.url)('koffi');
+}
+
+/**
+ * Open the relay transport once Steam runs. If it cannot open, online play is refused
+ * (`unavailable`), unless a development run allows the direct legacy calls.
+ * @param {string | null} steamworksDir
+ */
+function startNetworkTransport(steamworksDir) {
+    relayTransport?.dispose();
+    relayTransport = null;
+    relayPeers.clear();
+    let koffi = null;
+    let reason = null;
+    try {
+        koffi = loadKoffi();
+    } catch (error) {
+        reason = `koffi did not load: ${error?.message || error}`;
+    }
+    if (koffi) {
+        const opened = openRelayTransport({
+            koffi,
+            libraryPath: steamApiLibraryPath(steamworksDir, process.platform, join),
+            maxMessageBytes: MAX_P2P_PACKET_BYTES,
+            log: steamLog,
+        });
+        if (opened.ok) {
+            relayTransport = opened.transport;
+            networkMode = 'relay';
+            networkReason = null;
+            return;
+        }
+        ({ reason } = opened);
+    }
+    const directAllowed = allowsDirectP2P({
+        env: process.env,
+        storeBuild: isStoreBuild({ isPackaged: app.isPackaged }),
+    });
+    networkMode = directAllowed ? 'direct' : 'unavailable';
+    networkReason = reason;
+    steamLog(directAllowed
+        ? `WARN: relay transport unavailable (${reason}); SERENITY_ALLOW_DIRECT_P2P: `
+            + 'online play connects directly and shows IP addresses'
+        : `WARN: relay transport unavailable (${reason}); online play is refused`);
+}
+
+/** The lobby's members other than us, as SteamID64 strings. */
+function otherLobbyMembers() {
+    if (!currentLobby) return [];
+    try {
+        return (currentLobby.getMembers?.() || [])
+            .map((member) => normalizeSteamId(member))
+            .filter((id) => id && id !== steamSteamId);
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Keep the relay sessions right, called as packets are read: accept the pending session of
+ * every lobby member the gate allows (steamworks.js cannot pass the request callback on), and
+ * now and then look at each session: report one that broke, and close one that is not relayed
+ * (which, with ICE off, should never happen).
+ */
+function pumpRelaySessions() {
+    if (!relayTransport || !currentLobby) return;
+    const now = Date.now();
+    if (now - relayAcceptedAt >= RELAY_ACCEPT_EVERY_MS) {
+        relayAcceptedAt = now;
+        for (const steamId of otherLobbyMembers()) {
+            const accepted = p2pSessionGate?.allowsSession(steamId) && relayTransport.acceptFrom(steamId);
+            if (accepted && !relayPeers.has(steamId)) {
+                relayPeers.set(steamId, SESSION_STATE.none);
+                steamLog(`Accepted a relayed session from lobby member ${steamId}`);
+            }
+        }
+    }
+    if (now - relayCheckedAt < RELAY_CHECK_EVERY_MS) return;
+    relayCheckedAt = now;
+    for (const [steamId, before] of relayPeers) {
+        const session = relayTransport.session(steamId);
+        if (session.state === before) continue;
+        relayPeers.set(steamId, session.state);
+        if (session.state === SESSION_STATE.connected) {
+            steamLog(`Session with ${steamId}: connected, relayed=${session.relayed}, `
+                + `peer address known=${session.addressKnown}`);
+            if (session.layoutOk && !session.relayed) {
+                steamLog(`WARN: session with ${steamId} is not relayed; closing it`);
+                relayTransport.close(steamId);
+                relayPeers.delete(steamId);
+                sendToRenderer('steam:p2pSessionFailed', { steamId, error: 'not-relayed' });
+            }
+        } else if (session.state === SESSION_STATE.closedByPeer || session.state === SESSION_STATE.problem) {
+            steamLog(`WARN: relayed session with ${steamId} ended (state ${session.state})`);
+            sendToRenderer('steam:p2pSessionFailed', { steamId, error: session.state });
+        }
+    }
+}
+
+/** We left the lobby (or Steam is going): close every relayed session. */
+function closeRelaySessions() {
+    if (!relayTransport) return;
+    for (const steamId of relayPeers.keys()) {
+        try {
+            relayTransport.close(steamId);
+        } catch (error) {
+            steamLog(`WARN: closing the relayed session with ${steamId} failed: ${error?.message || error}`);
+        }
+    }
+    relayPeers.clear();
+}
+
 async function initSteamworks(retries = 3) {
     if (steamInitialized && steamworksClient) {
         steamLog('initSteamworks: already initialized');
@@ -401,6 +558,9 @@ async function initSteamworks(retries = 3) {
             const override = app.isPackaged ? null : process.env.STEAMWORKS_MODULE;
             steamLog(`initSteamworks attempt ${attempt}/${retries}: loading steamworks.js (platform=${process.platform}, override=${override || 'none'}, packaged=${app.isPackaged})`);
             let steamworks;
+            // Where steamworks.js (and the Steam API library it loads) lives: the relay
+            // transport calls into that same library. A stubbed module has none.
+            let steamworksDir = null;
             if (override) {
                 steamworks = await import(override);
             } else if (app.isPackaged) {
@@ -410,9 +570,11 @@ async function initSteamworks(retries = 3) {
                 // Anchor require to steamworks.js dir so its relative require('./dist/...') works
                 const nativeRequire = createRequire(steamworksEntry);
                 steamworks = nativeRequire(steamworksEntry);
+                steamworksDir = dirname(steamworksEntry);
             } else {
                 const devRequire = createRequire(import.meta.url);
                 steamworks = devRequire('steamworks.js');
+                steamworksDir = dirname(devRequire.resolve('steamworks.js'));
             }
             steamworksModule = steamworks;
             steamLog(`Module loaded. exports: ${Object.keys(steamworks).join(', ')}`);
@@ -436,6 +598,8 @@ async function initSteamworks(retries = 3) {
                 steamSteamId = steamworksClient.localplayer.getSteamId().steamId64.toString();
                 steamPlayerName = steamworksClient.localplayer.getName();
                 steamLog(`Steam initialized: player="${steamPlayerName}" steamId=${steamSteamId}`);
+                // Before any callback can accept a session: online play goes through the relays.
+                startNetworkTransport(steamworksDir);
                 registerSteamCallbacks();
                 return true;
             }
@@ -655,8 +819,8 @@ export function registerSteamIPC() {
         'steam:getLobbies', 'steam:getLobbyData', 'steam:setLobbyData',
         'steam:getLobbyMembers', 'steam:getLobbyOwner',
         'steam:sendP2PPacket', 'steam:readP2PPacket',
-        'steam:isP2PPacketAvailable', 'steam:closeP2PSession',
-        'steam:getDiagnostics',
+        'steam:isP2PPacketAvailable', 'steam:closeP2PSession', 'steam:setP2PPeerPolicy',
+        'steam:getNetworkTransport', 'steam:getDiagnostics',
     ];
     for (const ch of channels) {
         try { ipcMain.removeHandler(ch); } catch {}
@@ -996,41 +1160,69 @@ export function registerSteamIPC() {
         } catch { return false; }
     });
 
+    // 'steamid' is the player's profile, where Steam's own block and report tools are. 0.4.0's
+    // activateDialogToUser has no profile dialog, so the overlay's browser opens their profile
+    // page (electron/steam-profile.js); the other names are its own dialogs for that user.
     ipcMain.handle('steam:activateOverlayToUser', (_event, type, steamId) => {
         if (!steamworksClient) return false;
         try {
-            const dialog = OVERLAY_DIALOG[String(type || 'friends').toLowerCase()] ?? 0;
-            steamworksClient.overlay.activateDialogToUser(dialog, BigInt(steamId));
+            const kind = String(type || 'steamid').toLowerCase();
+            if (kind === 'steamid') {
+                const url = steamProfileUrl(steamId);
+                if (!url) return false;
+                steamworksClient.overlay.activateToWebPage(url);
+                return true;
+            }
+            steamworksClient.overlay.activateDialogToUser(OVERLAY_DIALOG[kind] ?? 0, BigInt(steamId));
             return true;
         } catch { return false; }
     });
 
     // --- Lobbies ---
+    // How online play reaches other players: through Steam's relays, or not at all in a store
+    // build (electron/steam-network-transport.js). The page asks before creating or joining.
+    ipcMain.handle('steam:getNetworkTransport', () => describeNetworkTransport({
+        mode: networkMode,
+        reason: networkReason,
+        relayNetwork: relayTransport ? relayTransport.relayNetworkStatus() : null,
+    }));
+
     ipcMain.handle('steam:createLobby', async (_event, options) => {
         if (!steamworksClient) throw new Error('Steam not initialized');
-        const { maxPlayers = 8, lobbyType = 'public' } = options || {};
-        const type = lobbyType === 'public' ? 2 : 1;
-        const lobby = await steamworksClient.matchmaking.createLobby(type, maxPlayers);
+        if (!lobbyAllowed(networkMode)) throw new Error(RELAY_UNAVAILABLE_MESSAGE);
+        const { maxPlayers = 8, lobbyType = 'friends' } = options || {};
+        // public -> 2, friends -> 1, private -> 0 (electron/steam-lobby-type.js).
+        const lobby = await steamworksClient.matchmaking.createLobby(steamLobbyType(lobbyType), maxPlayers);
+        closeRelaySessions();
         p2pSessionGate?.clear();
         currentLobby = lobby;
         currentLobbyId = lobby.id.toString();
+        // We host: every member talks to us.
+        p2pSessionGate?.setPolicy({ isHost: true, hostSteamId: steamSteamId });
         return currentLobbyId;
     });
 
     ipcMain.handle('steam:joinLobby', async (_event, lobbyId) => {
         if (!steamworksClient) throw new Error('Steam not initialized');
+        if (!lobbyAllowed(networkMode)) throw new Error(RELAY_UNAVAILABLE_MESSAGE);
         // joinLobby() RESOLVES to the Lobby object — keep it; it's the only handle
         // to the lobby's owner/members/data in steamworks.js 0.4.0.
         const lobby = await steamworksClient.matchmaking.joinLobby(BigInt(lobbyId));
+        closeRelaySessions();
         p2pSessionGate?.clear();
         currentLobby = lobby || null;
         currentLobbyId = lobby?.id ? lobby.id.toString() : String(lobbyId);
-        // Peers who asked while we were joining are members now.
-        p2pSessionGate?.onMembersChanged();
+        // We joined: we talk to the host alone, the lobby's owner until the game says who
+        // its host is (steam:setP2PPeerPolicy). Setting it also takes the requests of peers
+        // who asked while we were joining and are allowed now.
+        let ownerId = null;
+        try { ownerId = currentLobby?.getOwner?.()?.steamId64?.toString() ?? null; } catch {}
+        p2pSessionGate?.setPolicy({ isHost: false, hostSteamId: ownerId });
         return true;
     });
 
     ipcMain.handle('steam:leaveLobby', () => {
+        closeRelaySessions();
         p2pSessionGate?.clear();
         if (!currentLobby) { currentLobbyId = null; return; }
         try { currentLobby.leave(); } catch {}
@@ -1099,6 +1291,13 @@ export function registerSteamIPC() {
     // real-Steam sends/reads silently failed (mock BroadcastChannel mode masked it).
     ipcMain.handle('steam:sendP2PPacket', (_event, steamId, data, sendType /* channel unused */) => {
         if (!steamworksClient) return false;
+        // No relay and no development permission to connect directly: nothing is sent.
+        if (!lobbyAllowed(networkMode)) return { sent: false, wireBytes: 0, refused: 'no-relay' };
+        // Sending opens a session with the target: everyone but the host sends to the host
+        // alone (electron/p2p-session-gate.js).
+        if (p2pSessionGate && !p2pSessionGate.allowsSend(steamId)) {
+            return { sent: false, wireBytes: 0, refused: 'not-host' };
+        }
         try {
             // Serialize once at the physical send boundary. Byte views remain
             // byte-exact for the future raw/compact transport lane.
@@ -1110,6 +1309,13 @@ export function registerSteamIPC() {
                 return { sent: false, wireBytes: buffer.byteLength, refused: 'oversize' };
             }
             const type = resolveP2PSendType(sendType, buffer.byteLength); // default: Reliable
+            if (relayTransport) {
+                const id = String(steamId);
+                if (!relayPeers.has(id)) relayPeers.set(id, SESSION_STATE.none);
+                const result = relayTransport.send(id, buffer, type);
+                if (result !== RESULT_OK) steamLog(`WARN: relayed send to ${id} failed (EResult ${result})`);
+                return { sent: result === RESULT_OK, wireBytes: buffer.byteLength };
+            }
             const sent = steamworksClient.networking.sendP2PPacket(BigInt(steamId), type, buffer);
             return { sent, wireBytes: buffer.byteLength };
         } catch (err) {
@@ -1120,6 +1326,25 @@ export function registerSteamIPC() {
 
     ipcMain.handle('steam:readP2PPacket', () => {
         if (!steamworksClient) return null;
+        if (relayTransport) {
+            try {
+                pumpRelaySessions();
+                const message = relayTransport.next();
+                if (!message) return null;
+                // Only lobby members the gate allows have a session; anyone else's packet
+                // could not have arrived. Kept for the session bookkeeping.
+                if (!relayPeers.has(message.steamId)) relayPeers.set(message.steamId, SESSION_STATE.none);
+                return {
+                    steamId: message.steamId,
+                    data: decodeP2PPacketBody(message.data),
+                    wireBytes: message.data.byteLength,
+                };
+            } catch (err) {
+                steamLog(`WARN: relayed read failed: ${err.message}`);
+                return null;
+            }
+        }
+        if (networkMode !== 'direct') return null;
         try {
             const size = steamworksClient.networking.isP2PPacketAvailable();
             if (!size) return null;
@@ -1140,18 +1365,40 @@ export function registerSteamIPC() {
 
     ipcMain.handle('steam:isP2PPacketAvailable', () => {
         if (!steamworksClient) return 0;
+        if (relayTransport) {
+            try { return relayTransport.peekSize(); } catch { return 0; }
+        }
+        if (networkMode !== 'direct') return 0;
         try { return steamworksClient.networking.isP2PPacketAvailable() || 0; } catch { return 0; }
     });
 
-    ipcMain.handle('steam:closeP2PSession', (_event, _steamId) => {
-        // steamworks.js 0.4.0 exposes no closeP2PSession API — sessions time out on
-        // their own. No-op kept so renderer calls remain harmless.
+    ipcMain.handle('steam:closeP2PSession', (_event, steamId) => {
+        // The relay transport closes the session at once. steamworks.js 0.4.0 has no
+        // closeP2PSession for the legacy calls: their sessions time out on their own.
+        if (!relayTransport || steamId == null) return;
+        try {
+            relayTransport.close(String(steamId));
+        } catch (error) {
+            steamLog(`WARN: closing the relayed session with ${steamId} failed: ${error?.message || error}`);
+        }
+        relayPeers.delete(String(steamId));
+    });
+
+    // The game's role in its match: whether it hosts, who its host is, and whether that host
+    // looks gone mid-match (src/core/steam/steam-networking.js _syncP2PPeerPolicy). It decides
+    // who P2P sessions are opened with (electron/p2p-session-gate.js). Outside a lobby there
+    // is no role to keep.
+    ipcMain.handle('steam:setP2PPeerPolicy', (_event, policy) => {
+        if (!currentLobby || !p2pSessionGate) return false;
+        p2pSessionGate.setPolicy(policy && typeof policy === 'object' ? policy : {});
+        return true;
     });
 
     // --- Diagnostics ---
     ipcMain.handle('steam:getDiagnostics', () => ({
         steamInitialized, steamServerConnected, steamSteamId,
         steamPlayerName, steamAppId, steamStatusPending,
+        networkMode, networkReason, relayCounts: relayTransport?.counts() ?? null,
         platform: process.platform,
         arch: process.arch, isPackaged: app.isPackaged,
     }));
@@ -1169,9 +1416,14 @@ export function cleanupSteam() {
             steamworksClient.localplayer?.setRichPresence?.('status');
             steamworksClient.localplayer?.setRichPresence?.('connect');
         } catch {}
+        closeRelaySessions();
         try { currentLobby?.leave?.(); } catch {}
         steamworksClient = null;
     }
+    relayTransport?.dispose();
+    relayTransport = null;
+    networkMode = 'none';
+    networkReason = 'Steam is not running';
     currentLobby = null;
     currentLobbyId = null;
     p2pSessionGate?.clear();

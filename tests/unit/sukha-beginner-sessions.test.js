@@ -49,7 +49,8 @@ const worldOf = (sessionId, phase) => {
 describe('Sukha beginner sessions', () => {
     it.each(BEGINNER)('%s is short, gentle and ends in rest', (sessionId) => {
         const session = manager.SESSIONS[sessionId];
-        expect(session.intensity).toBe('Gentle');
+        // Sunrise has a minute of quick breathing: it is not called gentle.
+        expect(session.intensity).toBe(sessionId === 'SUNRISE' ? 'Moderate' : 'Gentle');
         expect(session.totalRounds).toBe(sessionId === 'FIRST' ? 3 : 2);
         const seconds = session.phases.reduce((sum, phase) => sum + secondsOf(phase), 0);
         expect(seconds).toBeGreaterThanOrEqual(200);

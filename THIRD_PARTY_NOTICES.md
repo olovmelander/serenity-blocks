@@ -27,30 +27,38 @@ Part 2: code inside the bundled three.js (r187) and its add-ons
 9. Basis Universal transcoder: Apache-2.0
 10. AMD FidelityFX Super Resolution 1 (RCAS sharpening): MIT
 11. three-good-godrays: zlib
+12. earcut (three.js's copy): ISC
+13. ltc_code (area-light shading and the ACES tone-mapping fit): its own BSD-style licence
+14. Filament (shading functions): Apache-2.0
+15. PCG hash: MIT
+16. triNoise3D: removed from the game's build
 
 Part 3: code inside the bundled Phaser (4.2.1) engine
 
-12. eventemitter3: MIT
-13. Matter.js, including code it credits to others: MIT and others
-14. poly-decomp.js: MIT
-15. earcut: ISC
-16. Simplify.js: BSD-2-Clause
-17. RBush: MIT
-18. quickselect: ISC
-19. psrdnoise: MIT
-20. base64-arraybuffer: MIT
-21. gl-matrix: MIT
-22. vecmath: MIT
-23. klasse: BSD-2-Clause
-24. jQuery (extend, isPlainObject): MIT
-25. stable: MIT
-26. line-circle-collision: MIT
-27. Phaser files with their own copyright holders (RoboWhale, CodeAndWeb): MIT
+17. eventemitter3: MIT
+18. Matter.js, including code it credits to others: MIT and others
+19. poly-decomp.js: MIT
+20. earcut (Phaser's copy): ISC
+21. Simplify.js: BSD-2-Clause
+22. RBush: MIT
+23. quickselect: ISC
+24. psrdnoise: MIT
+25. base64-arraybuffer: MIT
+26. gl-matrix: MIT
+27. vecmath: MIT
+28. klasse: BSD-2-Clause
+29. jQuery (extend, isPlainObject): MIT
+30. stable: MIT
+31. line-circle-collision: MIT
+32. Phaser files with their own copyright holders (RoboWhale, CodeAndWeb): MIT
+33. PNPOLY point-in-polygon test by W. Randolph Franklin: its own licence
 
-Part 4: the Steam integration module (steamworks.js)
+Part 4: the Steam integration module (steamworks.js) and the relay transport's FFI (koffi)
 
-28. steamworks.js: MIT
-29. Rust crates compiled into the steamworks.js module: MIT, ISC and others
+34. steamworks.js: MIT
+35. Rust crates compiled into the steamworks.js module: MIT, ISC and others
+36. koffi: MIT
+37. Node-API headers compiled into the koffi module (node-addon-api, node-api-headers): MIT
 
 Apache License, Version 2.0 (full text)
 
@@ -141,7 +149,16 @@ SOFTWARE.
     Aurora breathing world (https://iquilezles.org/articles/morenoise);
   - small distance and blending functions from the same articles (rounded box, box frame, uneven
     capsule, smooth minimum), in several themes and Odyssey scenes (among them the corridor of
-    chapter 7's other dimension).
+    chapter 7's other dimension);
+  - the cosine colour palette (https://iquilezles.org/articles/palettes), with the article's
+    first set of numbers, for the rainbow of the Chromadelic Highway theme (in TSL and in
+    JavaScript);
+  - the smooth HSV-to-RGB conversion (the hue ramps of HSV, eased by a cubic), for the neon
+    colours of the Chromadelic Highway theme (in TSL and in JavaScript);
+  - the ellipsoid distance bound (https://iquilezles.org/articles/ellipsoids), for the nebulae of
+    Odyssey's space chapter (in JavaScript) and the stones of the Zen Garden breathing world;
+  - the rotation matrix that turns each octave of an fBm (the `m3` of
+    https://iquilezles.org/articles/morenoise), in the nebula of the Murmuration theme.
 - **Licence:** MIT
 
 ```text
@@ -510,6 +527,163 @@ the following restrictions:
 3. This notice may not be removed or altered from any source distribution.
 ```
 
+## 12. earcut (three.js's copy)
+
+- **Upstream:** https://github.com/mapbox/earcut (version 3.0.2). three.js's
+  `src/extras/lib/earcut.js` is headed "copy of mapbox/earcut version 3.0.2" and names
+  https://github.com/mapbox/earcut/tree/v3.0.2. It carries no copyright line of its own and is
+  used as distributed in three.js under its MIT licence. Phaser bundles an older copy of its
+  own (section 20).
+- **Used in the game:** triangulating the outlines that three.js extrudes into solid shapes, in
+  the High Coast, Rainbow Terraces, Serenity Warp and Wolfhour themes and the charms of
+  Odyssey mode.
+- **Licence:** ISC. The licence file at that tag of the upstream repository:
+
+```text
+ISC License
+
+Copyright (c) 2024, Mapbox
+
+Permission to use, copy, modify, and/or distribute this software for any purpose
+with or without fee is hereby granted, provided that the above copyright notice
+and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+THIS SOFTWARE.
+```
+
+## 13. ltc_code (area-light shading and the ACES tone-mapping fit)
+
+- **Upstream:** https://github.com/selfshadow/ltc_code, the reference code of the paper named
+  in the licence below. Two parts of three.js name it as their origin, in the node library and
+  again in the GLSL shader library. three.js's files carry no copyright line for either, and
+  both are used as distributed in three.js under its MIT licence:
+  - the shading of rectangular area lights (`src/nodes/functions/BSDF/LTC.js`), headed
+    "Real-Time Polygonal-Light Shading with Linearly Transformed Cosines by Eric Heitz, Jonathan
+    Dupuy, Stephen Hill and David Neubelt" and "code: https://github.com/selfshadow/ltc_code/";
+  - the curve and colour matrices of the ACES filmic tone mapping (`RRTAndODTFit` in
+    `src/nodes/display/ToneMappingFunctions.js`), marked "source:
+    https://github.com/selfshadow/ltc_code/blob/master/webgl/shaders/ltc/ltc_blit.fs".
+- **Used in the game:** the ACES filmic tone mapping of several themes (among them Fall, Forest,
+  Golden Forest, Sakura Twilight, Summer, Verdant Hills and Wolfhour) and of the warp shown at
+  launch. The area-light shading is part of the bundled three.js lighting code; the game
+  creates no rectangular area light.
+- **Licence:** the upstream repository's own licence file, reproduced here. It asks for a
+  reference to the paper, which its text gives.
+
+```text
+Copyright (c) 2017, Eric Heitz, Jonathan Dupuy, Stephen Hill and David Neubelt.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* If you use (or adapt) the source code in your own work, please include a
+  reference to the paper:
+
+  Real-Time Polygonal-Light Shading with Linearly Transformed Cosines.
+  Eric Heitz, Jonathan Dupuy, Stephen Hill and David Neubelt.
+  ACM Transactions on Graphics (Proceedings of ACM SIGGRAPH 2016) 35(4), 2016.
+  Project page: https://eheitzresearch.wordpress.com/415-2/
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+## 14. Filament (shading functions)
+
+- **Upstream:** https://github.com/google/filament. three.js's physically based shading marks
+  several small functions with links to Filament's shaders and documentation, in the node
+  library and again in the GLSL shader library. three.js's files carry no Filament copyright
+  line, and the code is used as distributed in three.js under its MIT licence:
+  - the sheen terms `D_Charlie` and `V_Neubelt` (`src/nodes/functions/BSDF/BRDF_Sheen.js`:
+    "https://github.com/google/filament/blob/master/shaders/src/brdf.fs");
+  - the anisotropic reflection terms `D_GGX_Anisotropic` and
+    `V_GGX_SmithCorrelated_Anisotropic`, and the bent normal used with them (links to
+    https://google.github.io/filament/Filament.md.html);
+  - the lowest roughness a surface may have ("Matches Filament's desktop
+    MIN_PERCEPTUAL_ROUGHNESS") and the mapping from roughness to a level of the prefiltered
+    environment map ("Filament: perceptualRoughnessToLod()");
+  - the AgX tone mapping (marked in the GLSL shader library, whose code the node library
+    repeats: "AgX Tone Mapping implementation based on Filament, which in turn is based on
+    Blender's implementation using rec 2020 primaries",
+    https://github.com/google/filament/pull/7236).
+- **Used in the game:** the AgX tone mapping of most themes, and the roughness limit and
+  environment lighting of three.js's standard materials, which Odyssey mode and a few themes
+  use. The sheen and anisotropic terms are part of the bundled three.js shading code; none of
+  the game's materials switches them on.
+- **Licence:** Filament is licensed under the Apache License, Version 2.0 (full text at the
+  end). Its licence file carries the line "Copyright 2023 The Android Open Source Project";
+  the project publishes no NOTICE file.
+
+## 15. PCG hash
+
+- **Upstream:** https://www.pcg-random.org, the PCG family of random number generators.
+  three.js's `hash` function (`src/nodes/math/Hash.js`) is marked "Taken from
+  https://www.shadertoy.com/view/XlGcRh, originally from pcg-random.org". Phaser's
+  `Phaser.Math.Hash` holds the same generator and points to https://www.pcg-random.org/.
+  Neither carries a copyright line; they are used as distributed in three.js and in Phaser
+  under their MIT licences. The multiplier, the increment and the output step are those of the
+  PCG project's C library (https://github.com/imneme/pcg-c, `include/pcg_variants.h`), whose
+  notice is reproduced here.
+- **Used in the game:** three.js's `hash`, in the shaders of several themes (among them Black
+  Hole, Fall, Forest, Golden Forest, Verdant Hills and Wolfhour), of Odyssey mode and of
+  Infinity mode. Phaser's copy is part of the Phaser bundle.
+- **Licence:** the PCG library is offered under the Apache License, Version 2.0 or the MIT
+  License, and is used here under the MIT License. Its `LICENSE-MIT.txt`:
+
+```text
+Copyright (c) 2014-2017 Melissa O'Neill and PCG Project contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## 16. triNoise3D
+
+- **Upstream:** three.js's `triNoise3D` function (`src/nodes/math/TriNoise3D.js`) names its
+  origin, https://github.com/cabbibo/glsl-tri-noise-3d. That repository's file is headed "Taken
+  from https://www.shadertoy.com/view/4ts3z2" and "By NIMITZ (twitter: @stormoid)".
+- **Not in the game:** the game's own shaders never call it, and the game's build replaces its
+  body with a stub that returns 0 (`scripts/vite-plugins/strip-three-tri-noise.mjs`), so none of
+  its code ships. three.js gives no copyright line for it, and the repository it names publishes
+  no licence file.
+
 ---
 
 # Part 3: code inside the bundled Phaser (4.2.1) engine
@@ -517,7 +691,7 @@ the following restrictions:
 The game bundles Phaser's prebuilt `dist/phaser.esm.js`. That build contains the third-party
 code below. The game's build strips source comments, so the notices are reproduced here.
 
-## 12. eventemitter3
+## 17. eventemitter3
 
 - **Upstream:** https://github.com/primus/eventemitter3 (version 5)
 - **Used in the game:** Phaser's event system.
@@ -547,7 +721,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## 13. Matter.js, including code it credits to others
+## 18. Matter.js, including code it credits to others
 
 - **Upstream:** https://github.com/liabru/matter-js (version 0.20.0, bundled in Phaser)
 - **Used in the game:** part of Phaser's bundled Matter physics module.
@@ -680,7 +854,7 @@ SOFTWARE.
 **Convexity test** (`Vertices.isConvex`), credited in the source as "Copyright (c) Paul Bourke
 (use permitted)", from http://paulbourke.net/geometry/polygonmesh/.
 
-## 14. poly-decomp.js
+## 19. poly-decomp.js
 
 - **Upstream:** https://github.com/schteppe/poly-decomp.js (version 0.3.0, by Stefan Hedman)
 - **Used in the game:** concave polygon decomposition in Phaser's Matter physics module.
@@ -709,9 +883,10 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-## 15. earcut
+## 20. earcut (Phaser's copy)
 
-- **Upstream:** https://github.com/mapbox/earcut (version 2.2.4)
+- **Upstream:** https://github.com/mapbox/earcut (version 2.2.4). three.js bundles a newer copy
+  of its own (section 12).
 - **Used in the game:** polygon triangulation in Phaser (`Phaser.Geom.Polygon.Earcut`).
 - **Licence:** ISC
 
@@ -733,7 +908,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-## 16. Simplify.js
+## 21. Simplify.js
 
 - **Upstream:** https://github.com/mourner/simplify-js
 - **Used in the game:** polyline simplification in Phaser (`Phaser.Geom.Polygon.Simplify`).
@@ -764,7 +939,7 @@ TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF TH
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-## 17. RBush
+## 22. RBush
 
 - **Upstream:** https://github.com/mourner/rbush (Phaser's `Phaser.Structs.RTree` is a fork of
   RBush 2)
@@ -796,7 +971,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-## 18. quickselect
+## 23. quickselect
 
 - **Upstream:** https://github.com/mourner/quickselect
 - **Used in the game:** Phaser's `Phaser.Utils.Array.QuickSelect`, used by its spatial index.
@@ -820,7 +995,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-## 19. psrdnoise
+## 24. psrdnoise
 
 - **Upstream:** https://github.com/stegu/psrdnoise (`psrdnoise2.glsl` and `psrdnoise3.glsl`,
   version 2021-12-02)
@@ -849,7 +1024,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-## 20. base64-arraybuffer
+## 25. base64-arraybuffer
 
 - **Upstream:** https://github.com/niklasvh/base64-arraybuffer
 - **Used in the game:** Phaser's base64 conversion utilities.
@@ -880,7 +1055,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-## 21. gl-matrix
+## 26. gl-matrix
 
 - **Upstream:** https://github.com/toji/gl-matrix
 - **Used in the game:** Phaser's vector, matrix and quaternion classes, which are adapted from it.
@@ -909,7 +1084,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-## 22. vecmath
+## 27. vecmath
 
 - **Upstream:** https://github.com/mattdesl/vecmath (by Matt DesLauriers)
 - **Used in the game:** Phaser's vector and matrix classes, which are adapted from gl-matrix
@@ -939,7 +1114,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-## 23. klasse
+## 28. klasse
 
 - **Upstream:** https://github.com/mattdesl/klasse (by Matt DesLauriers)
 - **Used in the game:** Phaser's `Class` utility, which is taken from it.
@@ -970,7 +1145,7 @@ TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF TH
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-## 24. jQuery (extend, isPlainObject)
+## 29. jQuery (extend, isPlainObject)
 
 - **Upstream:** https://github.com/jquery/jquery
 - **Used in the game:** Phaser's `Phaser.Utils.Objects.Extend` and `IsPlainObject`, which are
@@ -1000,7 +1175,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-## 25. stable
+## 30. stable
 
 - **Upstream:** https://github.com/Two-Screen/stable (version 0.1.8)
 - **Used in the game:** Phaser's `Phaser.Utils.Array.StableSort`, which is based on it.
@@ -1028,7 +1203,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## 26. line-circle-collision
+## 31. line-circle-collision
 
 - **Upstream:** https://github.com/mattdesl/line-circle-collision
 - **Used in the game:** Phaser's `Phaser.Geom.Intersects.LineToCircle`, which is based on it.
@@ -1057,7 +1232,7 @@ OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-## 27. Phaser files with their own copyright holders
+## 32. Phaser files with their own copyright holders
 
 - **Upstream:** https://github.com/phaserjs/phaser. Two Phaser files carry their own copyright
   holder and the MIT licence: `Phaser.Math.Median` ("@copyright 2021 RoboWhale", by
@@ -1089,11 +1264,55 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
+## 33. PNPOLY point-in-polygon test by W. Randolph Franklin
+
+- **Upstream:** "PNPOLY - Point Inclusion in Polygon Test" by W. Randolph Franklin,
+  https://wrfranklin.org/Research/Short_Notes/pnpoly.html. Phaser's
+  `Phaser.Geom.Polygon.Contains` is marked "Adapted from
+  http://www.ecse.rpi.edu/Homepages/wrf/Research/Short_Notes/pnpoly.html by Jonas Raoni Soares
+  Silva"; that address no longer answers, and the page is now at the author's own site.
+- **Used in the game:** Phaser's test of whether a point lies inside a polygon.
+- **Licence:** the page's "License to Use", reproduced here.
+
+```text
+Copyright (c) 1970-2003, Wm. Randolph Franklin
+
+Permission is hereby granted, free of charge, to any person
+obtaining a copy of this software and associated documentation
+files (the "Software"), to deal in the Software without
+restriction, including without limitation the rights to use,
+copy, modify, merge, publish, distribute, sublicense, and/or
+sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following
+conditions:
+
+1. Redistributions of source code must retain the above
+   copyright notice, this list of conditions and the following
+   disclaimers.
+
+2. Redistributions in binary form must reproduce the above
+   copyright notice in the documentation and/or other materials
+   provided with the distribution.
+
+3. The name of W. Randolph Franklin may not be used to
+   endorse or promote products derived from this Software without
+   specific prior written permission.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
 ---
 
-# Part 4: the Steam integration module (steamworks.js)
+# Part 4: the Steam integration module (steamworks.js) and the relay transport's FFI (koffi)
 
-## 28. steamworks.js
+## 34. steamworks.js
 
 - **Upstream:** https://github.com/ceifa/steamworks.js (version 0.4.0)
 - **Used in the game:** the desktop app's Steam integration, such as lobbies and online play.
@@ -1123,7 +1342,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## 29. Rust crates compiled into the steamworks.js module
+## 35. Rust crates compiled into the steamworks.js module
 
 steamworks.js ships a compiled Node module (`steamworksjs.win32-x64-msvc.node`, built with
 Rust 1.80.0) that statically links the Rust crates below. Crates that offer a choice of
@@ -1279,11 +1498,53 @@ use or other dealings in these Data Files or Software without prior
 written authorization of the copyright holder.
 ```
 
+## 36. koffi
+
+- **Upstream:** https://github.com/Koromix/koffi (version 3.3.5, with its prebuilt module for the
+  platform: `@koromix/koffi-win32-x64` or `@koromix/koffi-linux-x64`)
+- **Used in the game:** the desktop app calls Steam's networking interface through it, so that
+  online play runs through Steam's relay servers only (`electron/steam-relay-transport.js`).
+- **Licence:** MIT
+
+```text
+MIT License
+
+Copyright (C) 2026  Niels Martignène <niels.martignene@protonmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the “Software”), to deal in
+the Software without restriction, including without limitation the rights to use,
+copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the
+Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+```
+
+## 37. Node-API headers compiled into the koffi module
+
+koffi's compiled module (`koffi.node`) is built against these header libraries, both under the
+MIT License (the full text is the same as in section 36, with these copyright lines):
+
+- node-addon-api (https://github.com/nodejs/node-addon-api): Copyright (c) 2017 Node.js API
+  collaborators
+- node-api-headers (https://github.com/nodejs/node-api-headers): Copyright (c) 2021 Node.js
+
 ---
 
 # Apache License, Version 2.0 (full text)
 
-Applies to sections 5 (MaterialX) and 9 (Basis Universal).
+Applies to sections 5 (MaterialX), 9 (Basis Universal) and 14 (Filament).
 
 ```text
                                  Apache License

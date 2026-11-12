@@ -55,7 +55,7 @@ const SCENES = [
         frame: '.single-player-stage { transform: translate(210px, -70px) scale(0.55) !important; }', cropTop: 0.176,
     },
     {
-        name: 'infinity', theme: 'galaxy', mode: 'infinity', stage: 'infinity', options: { seed: 5 }, settleMs: 10000,
+        name: 'infinity', theme: 'halcyon-apex', mode: 'infinity', stage: 'infinity', options: { seed: 5 }, settleMs: 10000,
         frame: '.single-player-stage { transform: translate(230px, -70px) scale(0.55) !important; }', cropTop: 0.117,
     },
     {
@@ -67,7 +67,7 @@ const SCENES = [
         frame: '#multiplayer-container { transform: translate(60px, -40px) scale(0.64) !important; }', cropTop: 0.082,
     },
     {
-        name: 'online-versus', theme: 'rainbow-terraces', mode: 'online-multiplayer', stage: 'online', settleMs: 7000,
+        name: 'online-versus', theme: 'fall', mode: 'online-multiplayer', stage: 'online', settleMs: 7000,
         frame: '#online-multiplayer-container { transform: translate(180px, -40px) scale(0.72) !important; }', cropTop: 0.07,
     },
     { name: 'serenity', theme: 'golden-forest', mode: 'serenity', settleMs: 15000, cropTop: 0.047 },

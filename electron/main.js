@@ -11,6 +11,7 @@
  *   - High-performance GPU preference (replaces the C launcher)
  *   - Lazy-loaded Steam integration (no startup delay)
  *   - Optional diagnostics via SERENITY_ENABLE_DIAGNOSTICS / SERENITY_ENABLE_LOGGING
+ *     (a store build ignores the debugging switches: electron/debug-flags.js)
  *
  * Original 4543-line main.js backed up as main-original.js.
  */
@@ -27,6 +28,7 @@ import {
     extractInlineScriptHashes,
 } from './content-security-policy.js';
 import { isPathInside } from './app-path.js';
+import { resolveDebugFlags } from './debug-flags.js';
 import { buildDebugToolsStatus } from './debug-tools.js';
 import { classifyGpuHealth } from './gpu-health.js';
 import {
@@ -44,10 +46,15 @@ import { guardIpcHandlers, isGameSender } from './ipc-sender-guard.js';
 import { isPermissionAllowed } from './permission-policy.js';
 import { decideRendererRecovery, isFatalLoadFailure } from './renderer-recovery.js';
 import { requestRendererQuitFlush } from './quit-flush.js';
+import { isStoreBuild } from './steam-app-id.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isPackaged = app.isPackaged;
 const isWindows = process.platform === 'win32';
+// DevTools, remote debugging, the inspector and the CSP bypass: development and packaged test
+// builds only. A store build ignores the variables that switch them on (electron/debug-flags.js).
+const storeBuild = isStoreBuild({ isPackaged });
+const debugFlags = resolveDebugFlags({ env: process.env, argv: process.argv, storeBuild });
 
 // Keep minidumps of main, renderer and GPU crashes on this machine only (audit ELEC-09).
 // Nothing is uploaded; they land in app.getPath('crashDumps'), which the diagnostics log
@@ -281,8 +288,10 @@ const DEVTOOLS_PENDING_REQUEST_TTL_MS = 10_000;
 
 function requestDevToolsOpen(source) {
     // DevTools is for dev and diagnostics builds; a release build refuses (audit R-07 step 7),
-    // and its Settings no longer shows the button (src/ui/developer-surfaces.js).
-    if (!mainWindow || mainWindow.isDestroyed() || !debugKeysEnabled({ isPackaged, diagnosticsEnabled })) {
+    // and its Settings no longer shows the button (src/ui/developer-surfaces.js). A store build
+    // has no diagnostics mode at all (electron/debug-flags.js).
+    if (!mainWindow || mainWindow.isDestroyed()
+        || !debugKeysEnabled({ isPackaged, diagnosticsEnabled, storeBuild })) {
         return { accepted: false, requestId: null, alreadyOpen: false };
     }
 
@@ -386,7 +395,8 @@ const steamStubChannels = [
     'steam:getLobbies', 'steam:getLobbyData', 'steam:setLobbyData',
     'steam:getLobbyMembers', 'steam:getLobbyOwner',
     'steam:sendP2PPacket', 'steam:readP2PPacket',
-    'steam:isP2PPacketAvailable', 'steam:closeP2PSession',
+    'steam:isP2PPacketAvailable', 'steam:closeP2PSession', 'steam:setP2PPeerPolicy',
+    'steam:getNetworkTransport',
 ];
 
 for (const channel of steamStubChannels) {
@@ -406,7 +416,7 @@ ipcMain.handle('steam:getDiagnostics', () => ({ pending: true, phase: 'stub' }))
 // ---------------------------------------------------------------------------
 // Phase 4: Optional diagnostics (behind env flags)
 // ---------------------------------------------------------------------------
-const diagnosticsEnabled = process.env.SERENITY_ENABLE_DIAGNOSTICS === '1';
+const { diagnosticsEnabled } = debugFlags;
 const loggingEnabled = process.env.SERENITY_ENABLE_LOGGING === '1';
 
 let remoteDebuggingPort = null;
@@ -480,10 +490,9 @@ if (diagnosticsEnabled) {
     console.log(`[Electron] Renderer remote debugging enabled at ${remoteDebuggingUrl}`);
 
     // Main-process (Node) inspector — separate opt-in, off even with
-    // diagnostics enabled unless a port is explicitly requested.
-    const inspectPortArg = process.argv.find((arg) => arg.startsWith('--serenity-main-inspect-port='));
-    const requestedInspectPort = Number(process.env.SERENITY_MAIN_INSPECT_PORT)
-        || (inspectPortArg ? Number(inspectPortArg.split('=')[1]) : 0);
+    // diagnostics enabled unless a port is explicitly requested
+    // (SERENITY_MAIN_INSPECT_PORT or --serenity-main-inspect-port=).
+    const requestedInspectPort = debugFlags.mainInspectPort;
     if (requestedInspectPort) {
         try {
             inspector.open(requestedInspectPort, '127.0.0.1', false);
@@ -550,7 +559,7 @@ if (loggingEnabled) {
 // back to the current behavior: blocked inline + working app.)
 //
 // Escape hatch: set SERENITY_DISABLE_CSP=1 to bypass while diagnosing a
-// CSP-related white-screen in a packaged build.
+// CSP-related white-screen in a packaged test build. A store build ignores it.
 function computeInlineScriptHashes() {
     try {
         const indexPath = join(app.getAppPath(), 'dist', 'index.html');
@@ -565,7 +574,7 @@ function computeInlineScriptHashes() {
 }
 
 function installContentSecurityPolicy() {
-    if (process.env.SERENITY_DISABLE_CSP === '1') {
+    if (debugFlags.cspDisabled) {
         console.warn('[Electron] CSP disabled via SERENITY_DISABLE_CSP=1');
         return;
     }
@@ -627,6 +636,9 @@ function createWindow() {
             nodeIntegration: false,
             sandbox: true,
             backgroundThrottling: false,
+            // No spell checker: Chromium downloads its dictionaries from a Google server,
+            // and the game's only text fields are chat and match names.
+            spellcheck: false,
             // Sync flags for the preload (sandboxed: no process.env there).
             additionalArguments: [
                 ...(diagnosticsEnabled ? ['--serenity-diagnostics-enabled'] : []),
@@ -675,7 +687,7 @@ function createWindow() {
     // window collapses duplicate keyDown/rawKeyDown deliveries of one press.
     // Dev and diagnostics builds only: in a release F12 (Steam's screenshot
     // key) opened DevTools and F5 reloaded out of an online match.
-    const debugKeys = debugKeysEnabled({ isPackaged, diagnosticsEnabled });
+    const debugKeys = debugKeysEnabled({ isPackaged, diagnosticsEnabled, storeBuild });
     const devToolsShortcutState = createDevToolsShortcutState();
     if (debugKeys) {
         mainWindow.webContents.on('before-input-event', (event, input) => {

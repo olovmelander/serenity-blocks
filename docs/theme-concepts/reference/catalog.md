@@ -637,18 +637,18 @@ Status split:
 ### 22. kaleidosonic — "Indra's net, the shape of a sound" (`docs/KALEIDOSONIC_VISUAL_OVERHAUL_2026-10.md`)
 
 - **Replaced** the legacy classic-WebGL `singing-bowl` (recursive cube trees, rainbow hue cycling) on 2026-10-13. `singing-bowl` is an alias in `RETIRED_THEME_IDS`, the track key `SingingBowl` resolves to `Kaleidosonic`, and Odyssey orb 56 is renamed "Indra's Net", both its descriptions rewritten.
-- **Icon:** a kaleidoscope mandala: six glowing jewels (gold and magenta, alternating) in a ring round a neon filigree flower, on near-black pearl stone.
-- **Setting:** inside a real-time ray-marched Apollonian sphere-inversion fractal (Indra's net): an endless hall of hourglass pearl pillars between fractal floors and vaults, nested spherical voids stacking into arches, seen diagonally across the pillar lattice. A faceted gem core with a twelve-lobed lotus corona hangs left of the card; its image repeats in every lattice cell as receding jewels.
+- **Icon:** a kaleidoscope mandala: a ring of glowing gold and rose jewels round a dark lace of pearls and threads (re-baked 2026-11-12 from the strung net).
+- **Setting:** inside a real-time ray-marched strung net (Indra's net taken at its word, 2026-11-12): great pearls on every knot of a lattice, threads along every line between them, and the whole net drawn again, smaller and bent, round every knot by sphere inversion; open halls between strings of pearls, seen diagonally across the lattice. A faceted gem core with a twelve-lobed lotus corona hangs left of the card; its image repeats in every lattice cell as receding jewels.
 - **Palette:** black-light poster: near-black pearl, fluorescent rims, three neon vein colours per mood. Six moods (`kaleidosonic-core.js`), hue-ordered by the core: rose mandala, violet hum, azure bell, teal chime, jade drone, amber gong, each with its own dark fog; one per 100 s of clock, resting 15 % at each end, a level-up adds one.
-- **Pieces** (`kaleidosonic-tetrominos.js`): I `#2EE6D0`, O `#FFD23F`, T `#E8329E`, S `#15A05A`, Z `#FF8A45`, J `#7B4DFF`, L `#5AB0FF`, GARBAGE `#2E2440`. Jewel tones; the palette gate scores 3/7; worst CVD pair ΔE 15.7.
+- **Pieces** (`kaleidosonic-tetrominos.js`): I `#FF8A45`, O `#7B4DFF`, T `#15A05A`, S `#E8329E`, Z `#2EE6D0`, J `#FFD23F`, L `#5AB0FF`, GARBAGE `#2E2440`. Jewel tones; the palette gate scores 0/7, exact and widened; worst CVD pair ΔE 15.7.
 - **Motion:** veins (nodal rings of each source's standing wave, twelve petals) flow outward with an integrated breath; jewels twinkle on their own phases; the eye drifts slowly; the core pulses.
 - **Gameplay FX:**
   - Lock: a struck note at the stone beside the card the column and row map to: a lotus of light blooms and closes, the stone floods with the piece colour, a wavefront crosses the stone, ripples ring on at the piece's own wavelength, passed jewels ring in its colour. Hard drop: stronger, faster, an eye kick.
-  - Clear: a harmonic: a shell of light leaves the core, nodal rings bloom (more lines, more shells), the temple resonates, the fractal refolds (its inversion springs to a new shape).
-  - Chain: the trance: finer fractal, brighter faster veins, and the lens folds into a kaleidoscope (mirror at 2, six sectors at 5, twelve at 8); the core's images become a crown of jewels.
+  - Clear: a harmonic: a shell of light leaves the core, nodal rings bloom (more lines, more shells), the temple resonates, the net refolds (its inversion springs to a new shape).
+  - Chain: the trance: the net drawn deeper, brighter faster veins, and the lens folds into a kaleidoscope (mirror at 2, six sectors at 5, twelve at 8); the core's images become a crown of jewels.
   - Four lines: a dive one diagonal lattice period down a free lane, landing seamlessly on the same view. T-spin: the eye rolls a full turn (the kaleidoscope turning). B2B: drone rings round the core. Perfect clear: every mirror aligns into a mandala. Level up: the mood wheel steps. Game over: the light sinks and the rings flow back into the core.
-- **Tech:** one full-screen MeshBasicNodeMaterial: a laid-out Apollonian field with a fractional fold count, a laid-out kaleidoscope fold, an Amanatides–Woo cell walk for the jewels, an analytic faceted gem, strikes and harmonics in TSL `Loop`s over compacted uniform rows; no textures, no bakes.
-- **Avoid reusing:** ray-marched sphere-inversion (Apollonian/Kleinian) fractals, Indra's net jewels in every cell, black-light neon veins as standing-wave rings, a kaleidoscope lens as the combo dial, a dive by one lattice period, Chladni figures on floors, a faceted gem core with a lotus corona.
+- **Tech:** one full-screen MeshBasicNodeMaterial: a laid-out strung-net field with a fractional inversion count (and its CPU twin), a laid-out kaleidoscope fold, an Amanatides–Woo cell walk for the jewels, an analytic faceted gem, strikes and harmonics in TSL `Loop`s over compacted uniform rows; no textures, no bakes.
+- **Avoid reusing:** ray-marched sphere-inversion fractals (strung nets of pearls and threads above all), Indra's net jewels in every cell, black-light neon veins as standing-wave rings, a kaleidoscope lens as the combo dial, a dive by one lattice period, nodal figures on pearls, a faceted gem core with a lotus corona.
 
 <a id="starlight"></a>
 
@@ -1522,7 +1522,7 @@ mountains, box city, neon grid) is Neon Dusk's.
 - **Palette.**
   - Sky: tangerine and gold horizon, coral and dusty rose, mauve, teal-indigo zenith; an orange sun with its green low.
   - Lights: warm bulb gold, flamingo pink and mint neon, lemon; pastel stucco (pink, mint, lemon, lilac).
-  - Pieces (`synthwave-sunset-tetrominos.js`): I `#FFD36E`, O `#FF9440`, T `#F24FAE`, S `#6CF5C9`, Z `#D92B4A`, J `#4FB4FF`, L `#8A55F5` (gate 3/7).
+  - Pieces (`synthwave-sunset-tetrominos.js`): I `#FFD36E`, O `#4FB4FF`, T `#FF9440`, S `#F24FAE`, Z `#6CF5C9`, J `#D92B4A`, L `#8A55F5` (gate 0/7, exact and widened).
 - **Gameplay FX** (`synthwave-sunset-world.js`).
 
   | Event | Response |
@@ -1687,7 +1687,7 @@ mountains, box city, neon grid) is Neon Dusk's.
 - **Palette.**
   - Violet, rose and magenta with amber and gold; cyan crystal and wing rims.
   - Six hours: rose dusk, ember hour, violet hour, blue hour, aurora night, first light. One every 2 minutes, plus the level.
-  - Pieces (`vesper-chrysalis-tetrominos.js:12-19`): I `#9fe8ff`, O `#ffb347`, T `#e0629a`, S `#8a5cff`, Z `#ff7a1a`, J `#c8f4ff`, L `#ffd88a`, GARBAGE `#2a2140`.
+  - Pieces (`vesper-chrysalis-tetrominos.js`): I `#ffd88a`, O `#e0629a`, T `#ffb347`, S `#8a5cff`, Z `#c8f4ff`, J `#ff7a1a`, L `#9fe8ff`, GARBAGE `#2a2140` (gate 0/7, exact and widened).
 - **Gameplay FX** (doc).
 
   | Event | Response |

@@ -4,8 +4,8 @@ import {
     describe, expect, it, vi,
 } from 'vitest';
 import {
-    applyPlayerColor, boardWallColor, deepenLightBlue, isLightBlue, parseCssColor, relativeLuminance, rgbToHsl,
-    toHex, WALL_HUE_SHARE, WALL_LIFT,
+    applyPlayerColor, boardWallColor, deepenLightBlue, isLightBlue, LIGHT_BLUE, parseCssColor, relativeLuminance,
+    rgbToHsl, toHex, WALL_HUE_SHARE, WALL_LIFT,
 } from '../../src/ui/board-walls.js';
 import { PLAYER_COLORS as ONLINE_COLORS } from '../../src/core/constants.js';
 import { PLAYER_COLORS as LOCAL_SCHEMES } from '../../src/core/multi-player-state.js';
@@ -36,21 +36,37 @@ describe('board walls: colour rule', () => {
     });
 
     it('calls the light blues light blue, and the game\'s other hues not', () => {
-        const lightBlue = ['#00bfff', '#87ceeb', '#add8e6', '#9ee8ed', plainMix('#9ee8ed'), plainMix('#00e5ff')];
+        // From cyan through sky to a clear mid blue: the lifted walls of the two blue players too.
+        const lightBlue = ['#00bfff', '#87ceeb', '#add8e6', '#9ee8ed', plainMix('#9ee8ed'), plainMix('#00e5ff'),
+            '#5090fb', plainMix('#3B82F6'), plainMix('#2979ff'), '#7b8cff'];
         const notLightBlue = ['#b8a4ff', '#f3d28d', '#ffac88', '#ff9cab', '#ff0000', '#00c853', '#f6d58a',
-            plainMix('#3B82F6'), plainMix('#2979ff'), '#090818', '#ffffff'];
+            '#8080ff', '#ab6adc', '#3c83fb', '#090818', '#ffffff'];
         for (const color of lightBlue) expect(isLightBlue(color), color).toBe(true);
         for (const color of notLightBlue) expect(isLightBlue(color), color).toBe(false);
         expect(isLightBlue('not a colour')).toBe(false);
     });
 
+    it('guards the hues from 170° to 235°', () => {
+        expect(LIGHT_BLUE).toMatchObject({ hueMin: 170, hueMax: 235 });
+        // Just inside each end, and just outside it (all bright and saturated enough).
+        const hue = (color) => rgbToHsl(parseCssColor(color)).h;
+        expect(hue('#6ef7e5')).toBeGreaterThan(170);
+        expect(isLightBlue('#6ef7e5')).toBe(true);
+        expect(hue('#6ef7dc')).toBeLessThan(170);
+        expect(isLightBlue('#6ef7dc')).toBe(false);
+        expect(hue('#7b8cff')).toBeLessThan(235);
+        expect(isLightBlue('#7b8cff')).toBe(true);
+        expect(hue('#8080ff')).toBeGreaterThan(235);
+        expect(isLightBlue('#8080ff')).toBe(false);
+    });
+
     it('paints the stylesheets\' mix, deepened only when it comes out light blue', () => {
         // Not light blue: exactly the mix the stylesheets draw.
-        for (const color of ['#b8a4ff', '#f3d28d', '#ffac88', '#ff9cab', '#3B82F6', '#2979ff']) {
+        for (const color of ['#b8a4ff', '#f3d28d', '#ffac88', '#ff9cab', '#e040fb', '#ff1744']) {
             expect(boardWallColor(color), color).toBe(plainMix(color));
         }
         // Light blue: same hue, same saturation, darker until it no longer is.
-        for (const color of ['#00bfff', '#87ceeb', '#add8e6', '#9ee8ed', '#00e5ff']) {
+        for (const color of ['#00bfff', '#87ceeb', '#add8e6', '#9ee8ed', '#00e5ff', '#3B82F6', '#2979ff']) {
             const mix = plainMix(color);
             const wall = boardWallColor(color);
             expect(isLightBlue(mix), color).toBe(true);
@@ -63,6 +79,7 @@ describe('board walls: colour rule', () => {
         expect(boardWallColor('cyan')).toBeNull();
         expect(deepenLightBlue('#f3d28d')).toBe('#f3d28d');
         expect(deepenLightBlue('#8cd3ed')).toBe('#1e92bd');
+        expect(deepenLightBlue('#5090fb')).toBe('#3c83fb');
     });
 
     it('never gives a player in either palette a light-blue wall; cyan keeps a deep cyan', () => {
@@ -81,6 +98,21 @@ describe('board walls: colour rule', () => {
         expect(h).toBeGreaterThan(180);
         expect(h).toBeLessThan(192);
         expect(relativeLuminance(parseCssColor(cyan))).toBeLessThan(0.25);
+    });
+
+    it('gives the blue players a deep blue wall, not the lifted one', () => {
+        expect(ONLINE_COLORS).toContain('#2979ff');
+        expect(LOCAL_SCHEMES.map((scheme) => scheme.primary)).toContain('#3B82F6');
+        expect(plainMix('#2979ff')).toBe('#5090fb');
+        expect(boardWallColor('#2979ff')).toBe('#3c83fb');
+        expect(boardWallColor('#3B82F6')).toBe('#4184f2');
+        for (const color of ['#2979ff', '#3B82F6']) {
+            const wall = parseCssColor(boardWallColor(color));
+            const { h } = rgbToHsl(wall);
+            expect(h, color).toBeGreaterThan(215);
+            expect(h, color).toBeLessThan(220);
+            expect(relativeLuminance(wall), color).toBeLessThan(0.25);
+        }
     });
 
     it('puts the colour and its wall on a card together', () => {
@@ -341,6 +373,37 @@ describe('board walls: the stylesheets', () => {
             }
         }
         expect(checked).toBeGreaterThanOrEqual(10);
+    });
+
+    it('gives Single Player a deep, warm violet of its own, not the lavender\'s mix', () => {
+        const solo = '.single-player-stage[data-board=\'well\']';
+        const hue = declared('--sp-hue').find(({ rule }) => rule.selector === solo);
+        expect(hue?.value).toBe('var(--sb-lavender)');
+        // The lavender lifted toward cream is what the walls no longer wear.
+        expect(plainMix(tokens.get('--sb-lavender'))).toBe('#c5b3fb');
+        const own = declared('--sp-wall').filter(({ rule, value }) => plainSelector(rule.selector) === solo
+            && !value.includes('--sp-hue'));
+        expect(own).toHaveLength(1);
+        const [{ rule, value }] = own;
+        expect(value).toBe('#ab6adc');
+        // Its own rule stands aside for the modes with a wall of their own.
+        expect(rule.selector).toContain(':not(:where(.infinity-mode-active, [data-odyssey-board], [data-stillfall]))');
+        expect(ownWalls).toContain(solo);
+
+        const wall = parseCssColor(value);
+        const { h, l } = rgbToHsl(wall);
+        // Violet, on the warm side of it: well clear of the blues (the guard ends at 235°).
+        expect(h).toBeGreaterThan(265);
+        expect(h).toBeLessThan(290);
+        expect(wall.r).toBeGreaterThan(wall.g + 40);
+        expect(isLightBlue(value)).toBe(false);
+        // Deeper than the lavender's mix, and as deep as Infinity's wall.
+        expect(l).toBeLessThan(rgbToHsl(parseCssColor('#c5b3fb')).l - 0.15);
+        expect(relativeLuminance(wall)).toBeCloseTo(relativeLuminance(parseCssColor('#249597')), 2);
+
+        // Still Air borrows the same violet.
+        const stillAir = declared('--sp-wall').find(({ rule: r }) => r.selector === `${solo}[data-still-air]`);
+        expect(stillAir?.value).toBe(value);
     });
 
     it('gives Infinity its aqua deepened: boardWallColor(--sb-aqua)', () => {

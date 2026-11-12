@@ -3,8 +3,8 @@
  * [data-board='well']`, set by SinglePlayerMode and InfinityMode).
  *
  * The board stands in an open-top well, as in local versus (keystone-versus.css): walls
- * in the mode's hue (lavender for single player, a deep aqua for Infinity) rise from the
- * floor and fade out toward the top, the glass is plain, the pieces meet both walls, and the
+ * in the mode's own colour (a deep violet for single player, a deep aqua for Infinity) rise from
+ * the floor and fade out toward the top, the glass is plain, the pieces meet both walls, and the
  * next queue stands on the well's mouth. Single player keeps its numbers in one ledger
  * beside the well; Infinity has its HUD on the left and the tower map on the right
  * (src/ui/infinity/InfinityHUD.js, InfinityMinimap.js).
@@ -85,6 +85,15 @@
     max-height: none;
     margin: 0;
     padding: var(--sp-top) 16px var(--sp-bottom);
+}
+
+/* Single player's walls: a deep, warm violet of their own, as deep as Infinity's below. The
+   lavender's mix with cream is pale enough to read as light blue round the dark field, so the
+   walls do not take it; the ledger keeps the lavender. Odyssey (gold, keystone-overlays.css) and
+   Stillfall (coral, stillfall.css) keep the hue's mix; :where() leaves Still Air and danger,
+   below, winning. */
+.single-player-stage[data-board='well']:not(:where(.infinity-mode-active, [data-odyssey-board], [data-stillfall])) {
+    --sp-wall: #ab6adc;
 }
 
 /* Infinity's walls: its aqua deepened, boardWallColor('#9ee8ed') (src/ui/board-walls.js), so
@@ -267,9 +276,10 @@
     transition: opacity var(--sb-dur-3) ease;
 }
 
-/* Still Air (an Odyssey charm): a calm lavender on the walls while the fall is slowed. Danger, below, wins. */
+/* Still Air (an Odyssey charm): single player's calm violet on the walls while the fall is slowed,
+   in a lavender glow. Danger, below, wins. */
 .single-player-stage[data-board='well'][data-still-air] {
-    --sp-wall: var(--sb-lavender);
+    --sp-wall: #ab6adc;
     --sp-wall-glow: rgba(var(--sb-lavender-rgb), 0.45);
 }
 

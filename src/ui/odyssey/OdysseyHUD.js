@@ -199,7 +199,8 @@ export class OdysseyHUD {
 
         this.objectiveDisplay = document.createElement('div');
         this.objectiveDisplay.className = 'objective-text';
-        this.objectiveDisplay.textContent = 'Clear 40 lines';
+        // Until the orb's own goal is written (_updateObjectiveDisplay): its fallback words, no figure.
+        this.objectiveDisplay.textContent = 'Clear the orb';
         section.appendChild(this.objectiveDisplay);
 
         this.levelRules = document.createElement('ul');
@@ -210,7 +211,7 @@ export class OdysseyHUD {
 
         this.progressValue = document.createElement('div');
         this.progressValue.className = 'progress-value';
-        this.progressValue.textContent = '0 / 40';
+        this.progressValue.textContent = '–';
         section.appendChild(this.progressValue);
 
         // The bar sits under its number, inside the goal.

@@ -91,7 +91,7 @@ Archive candidate groups:
 | `PHASE_*` completion, implementation, status, and summary notes | 42 root files plus 27 docs phase reports | Archive, keeping only current migration plans. |
 | `QUICK_TEST*`, `TEST_*`, testing-ready notes | 36 | Archive unless still used as current QA docs. |
 | `NEBULA_FLOW_*` family | 11 | Archive. |
-| `BREATHING_*` family | 10 | Archive, except keep `docs/BREATHING_INDICATOR_GUIDE.md` if still useful. |
+| `BREATHING_*` family | 10 | Archive. (The old indicator guide and four of the archived notes were deleted 2026-11-12: they described an indicator the game no longer has.) |
 | `GAMEPAD_*` and `SERENITY_GAMEPAD_*` family | 10 | Archive. |
 | Multiplayer/lobby/FFA development notes | 19 root files plus 13 docs files | Consolidate into one current multiplayer plan plus archive the rest. |
 | Performance/optimization development notes | 14 | Archive or consolidate into `optimization-reports/`. |

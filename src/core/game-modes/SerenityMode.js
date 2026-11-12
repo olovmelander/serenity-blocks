@@ -4,6 +4,8 @@ import { setGlobalRenderScale } from '../../themes/base-theme.js';
 import { DEFAULT_SETTINGS, GAME_MODES } from '../constants.js';
 import { SerenityHub } from '../../ui/serenity-hub/SerenityHub.js';
 import { SerenityModeUi } from '../../ui/serenity-mode/serenity-mode-ui.js';
+import { DEFAULT_BREATH_WORLD, getBreathWorld } from '../../ui/effects/breathing/breath-catalogue.js';
+import { canPractise } from '../../ui/effects/breathing/breath-safety.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 
 /** Keys whose auto-repeat is wanted (holding ↑ keeps turning the music up); the rest act once. */
@@ -827,8 +829,13 @@ export class SerenityMode extends BaseGameMode {
         if (indicator) {
             const settings = this.deps.settingsManager.get();
 
-            // Apply settings before starting: the world you chose, if you have found it.
-            const technique = indicator.allowedWorld?.(settings.breathingTechnique) || settings.breathingTechnique || 'coherence';
+            // Apply settings before starting: the world you chose, if it is open to you. A fast
+            // world whose safety note is unread begins as the gentle default, and says why.
+            const chosen = getBreathWorld(settings.breathingTechnique);
+            const noteWaits = !canPractise(chosen.pattern);
+            const allowed = indicator.allowedWorld?.(chosen.id) || chosen.id;
+            const technique = noteWaits && allowed === chosen.id ? DEFAULT_BREATH_WORLD : allowed;
+            if (noteWaits) this._showNotification(`${chosen.name} has a safety note: read it in the Breathing tab`);
             indicator.setTechnique(technique);
             indicator.setShowText(settings.breathingText !== false);
             indicator.setOverTheme?.(settings.breathingOverTheme === true);

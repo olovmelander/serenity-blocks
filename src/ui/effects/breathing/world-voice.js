@@ -12,10 +12,10 @@
  * The tone: the soft rising tone on the breath in and falling tone on the breath out that a
  * Sukha session has, on every breath in and out of every world, beside the voice.
  *
- * Silent while a Sukha session drives the guide (the session has its own voice and tones); the
- * voice also while its switch is off, and for any line not recorded yet: the guide's words are on
- * screen regardless. The audio code loads on first use, not at boot, and follows the game's mute
- * and effects volume.
+ * Silent while a Sukha session drives the guide (the session has its own voice and tones) and in
+ * the rest after a fast world's breaths; the voice also while its switch is off, and for any line
+ * not recorded yet: the guide's words are on screen regardless. The audio code loads on first use,
+ * not at boot, and follows the game's mute and effects volume.
  */
 import { isBreathWorld, worldCuePairs, worldPauseCues } from './breath-catalogue.js';
 import { MIN_CUE_SECONDS, createCueDraw, drawTake } from './cue-variety.js';
@@ -78,7 +78,9 @@ export function startWorldVoice({
     let stopped = false;
     const draw = createCueDraw(random);
 
-    const practising = () => !stopped && Boolean(guide?.isActive) && !guide.isExternallyControlled;
+    // The rest after a fast world's breaths is quiet: no cue words and no tones to pace it.
+    const practising = () => !stopped && Boolean(guide?.isActive) && !guide.isExternallyControlled
+        && !guide.isResting;
     const speaking = () => practising() && isOn();
     const ensureVoice = () => {
         if (voice) return Promise.resolve(voice);

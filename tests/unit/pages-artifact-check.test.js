@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { RVFC_FINGERPRINTS } from '../../scripts/vite-plugins/strip-phaser-rvfc-polyfill.mjs';
 
 const repoRoot = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
@@ -61,8 +62,8 @@ function createArtifact() {
         path.join(artifactRoot, 'PRIVACY_POLICY.md'),
     );
     copyFileSync(
-        path.join(repoRoot, 'README.md'),
-        path.join(artifactRoot, 'README.md'),
+        path.join(repoRoot, 'COPYRIGHT.md'),
+        path.join(artifactRoot, 'COPYRIGHT.md'),
     );
     writeFileSync(
         path.join(artifactRoot, 'THIRD_PARTY_LICENSES.md'),
@@ -100,15 +101,46 @@ describe('pages artifact checker', () => {
         expect(valid.stdout).toContain('pages-artifact-check: OK');
 
         writeFileSync(
-            path.join(artifactRoot, 'README.md'),
+            path.join(artifactRoot, 'COPYRIGHT.md'),
             'stale artifact notice\n',
         );
 
         const stale = runChecker(artifactRoot);
         expect(stale.status).toBe(1);
         expect(stale.stderr).toContain(
-            'README.md differs byte-for-byte from the repository-root README.md.',
+            'COPYRIGHT.md differs byte-for-byte from the repository-root COPYRIGHT.md.',
         );
+    });
+
+    it('requires the copyright statement and rejects the developer README', () => {
+        const artifactRoot = createArtifact();
+
+        copyFileSync(
+            path.join(repoRoot, 'README.md'),
+            path.join(artifactRoot, 'README.md'),
+        );
+        const withReadme = runChecker(artifactRoot);
+        expect(withReadme.status).toBe(1);
+        expect(withReadme.stderr).toContain('README.md exists; the developer README must not ship.');
+
+        rmSync(path.join(artifactRoot, 'README.md'));
+        rmSync(path.join(artifactRoot, 'COPYRIGHT.md'));
+        const withoutCopyright = runChecker(artifactRoot);
+        expect(withoutCopyright.status).toBe(1);
+        expect(withoutCopyright.stderr).toContain('COPYRIGHT.md is missing');
+        expect(withoutCopyright.stderr).not.toContain('README.md');
+    });
+
+    it.each(RVFC_FINGERPRINTS)('rejects a bundle that still holds the video-frame polyfill (%s)', (fingerprint) => {
+        const artifactRoot = createArtifact();
+        writeFileSync(
+            path.join(artifactRoot, 'assets', 'phaser.js'),
+            `video.${fingerprint};\n`,
+        );
+
+        const polluted = runChecker(artifactRoot);
+        expect(polluted.status).toBe(1);
+        expect(polluted.stderr).toContain(`rvfc polyfill from Phaser (found: ${fingerprint}).`);
     });
 
     it('rejects an artifact whose bundled-library licenses are missing or empty', () => {

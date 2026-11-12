@@ -1,6 +1,7 @@
 /**
  * Kaleidosonic — the temple: ONE full-screen material that marches every view ray through the
- * Apollonian field and shades what it meets.
+ * strung net (pearls on threads, and the net's bent image round every knot) and shades what it
+ * meets.
  *
  * The lens first folds the ray through the kaleidoscope's mirrors (a chain opens them), then the
  * march walks the field in the temple's own coordinates (the dive offsets them, so the stone
@@ -10,17 +11,23 @@
  *             lattice, so the halls recede through glowing jewels, each lighting its own hall and
  *             twinkling on its own phase; a short walk through the cells the ray crosses draws
  *             them (hidden behind stone)
- *   pearl     dark jewel-toned stone, two poles chosen by the orbit trap, lit by the nearest
- *             jewel and by the core (point lights with a wide wrap, shadowed by the light map and
- *             brighter where a beam lands), filled faintly by the air, occluded by the march's
- *             own step count and one tap along the normal
+ *   pearl     dark jewel-toned stone, two poles turning from each string's hole round the pearl
+ *             and from level to level of the net, lit by the nearest jewel and by the core (point
+ *             lights with a wide wrap, shadowed by the light map and brighter where a beam
+ *             lands), filled faintly by the air, occluded by the march's own step count and one
+ *             tap along the normal
  *   nacre     the pearl's gloss: a soft lustre toward each light, the core and the nearest
  *             jewels mirrored in it, all tinted by a thin film whose thickness changes pearl by
- *             pearl (an oil-slick of the mood's light)
+ *             pearl and round each pearl from its strings' holes (an oil-slick of the mood's
+ *             light)
  *   veins     the nodal shells of the nearest source's standing wave cut by the stone: rings
- *             round every jewel and round the core, flowing outward with the breath, broken
- *             into petals by a 3D quasicrystal field (six plane waves on the icosahedron's axes)
- *   mandala   on the floors, the core's own Faraday pattern: twelve-fold, centred under it
+ *             round every jewel and round the core on the pearls, dashes along the threads,
+ *             flowing outward with the breath, broken into twelve petals
+ *   strings   the resonant light the threads carry: beads of it running along every string from
+ *             its knot, in the string's own measure (so every arc of every image carries them)
+ *   mandala   on the knots' pearls, each pearl's own nodal figure: circles round each string's
+ *             hole crossed by twelve meridians (the smaller pearls strung between the knots keep
+ *             the source's rings)
  *   strikes   each lock's wavefront: a band of the piece's light where the shell crosses the
  *             stone, ripples at the note's wavelength behind it, a faint shell in the air
  *   harmonic  each clear's spherical standing wave about the core: nodal shells cut the stone in
@@ -29,7 +36,7 @@
  *             sound rings running out of it
  *   beams     the gem's twelve facets each throw a narrow beam, and the gem turns: the core and
  *             every jewel (its image) light the air in shafts, integrated along the ray in closed
- *             form and cut by the light map where pillars stand in them; a dim even glow round
+ *             form and cut by the light map where pearls stand in them; a dim even glow round
  *             each light; a strike's flash in the mist
  *   air       fog toward the mood's haze
  *
@@ -47,12 +54,12 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Break, Fn, If, Loop, abs, atan, clamp, cos, dot, exp, float, floor, fwidth, int, length, max, min, mix,
+    Break, Fn, If, Loop, abs, acos, atan, clamp, cos, dot, exp, float, floor, fwidth, int, length, max, min, mix,
     normalize, positionGeometry, select, sign, sin, smoothstep, sqrt, tan, texture, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
-    BEAM_AXES, HARMONIC_ROWS, MOOD_COLOURS, STRIKE_ROWS, TAU, TEMPLE, createTempleField, createTempleTrap, ksHash31,
-    ksLensFold, moodColour,
+    BEAM_AXES, HARMONIC_ROWS, MOOD_COLOURS, NET, STRIKE_ROWS, TAU, TEMPLE, createTempleField, createTempleTrap,
+    ksHash31, ksLensFold, moodColour,
 } from './kaleidosonic-tsl.js';
 import {
     createLightMap, ksBeamLobe, ksBeams, ksGemFrame, lightVis,
@@ -64,9 +71,34 @@ const RING_K = 26;
  * excites them, as under black light).
  */
 const VEIN_REST = 0.17;
-/** The floor mandala's wavenumber and its reach (1/e radius, units). */
-const MANDALA_K = 22;
-const MANDALA_REACH = 0.6;
+/**
+ * A knot pearl's nodal figure: its circles' wavenumber (radians per radian from a string's hole) and
+ * how far from its source a pearl still shows it (1/e, units).
+ */
+const FIGURE_K = 14;
+const FIGURE_REACH = 0.6;
+/** The beads of light on a string: radians per unit of its length (five beads from knot to mid-thread). */
+const STRING_K = TAU * 5;
+/**
+ * A bead's half width (to half its light): about 0.68 rad of the string's measure (its profile is
+ * ((1 + cos) / 2)^6), but never more than BEAD_HALF_PX pixels. A thread close to the eye is many
+ * pixels wide, and a bead its own length would fill it as one block of flat neon; held to a few
+ * pixels it is a thin ring of light running round the thread, as the far beads are dots.
+ */
+const BEAD_HALF_RAD = 0.68;
+const BEAD_HALF_PX = 2;
+/**
+ * The stone's occlusion, from the field a step off the stone along its normal: the step (units)
+ * and the share of light an open face keeps (the stone is lit as under black light: its faces stay
+ * dark and its gloss, veins and rims carry the light).
+ */
+const AO_TAP = 0.04;
+const AO_OPEN = 0.42;
+/**
+ * How fast a strike's flood of the stone round it falls off (per unit of distance, squared): a note
+ * is struck in the open air beside the card, about half a unit from the nearest pearls.
+ */
+const STRIKE_FLOOD = 4;
 /** The march's far limit: the fog has taken everything by then. */
 const FAR = 10;
 const P = TEMPLE.period;
@@ -354,23 +386,32 @@ export function createTemple(u, tier, { scout: useScout = true } = {}) {
                     .add(k.xxx.mul(at(p.add(k.xxx.mul(e))))),
             ).toVar();
             const occ = float(1).sub(used.div(steps)).toVar();
-            const tap = at(p.add(n.mul(0.04)));
-            const ao = clamp(tap.div(0.04), 0.0, 1.0).mul(occ).mul(occ).toVar();
-            // the orbit trap at the hit: (|x|, |z|, r²)
+            const tap = at(p.add(n.mul(AO_TAP)));
+            const ao = clamp(tap.div(AO_TAP), 0.0, 1.0).mul(occ).mul(occ).mul(AO_OPEN)
+                .toVar();
+            // what of the net the hit belongs to: (pearl 1 or thread 0, inversions down, the place
+            // along the string, the turn round it)
             const trap = trapField(p.add(u.dive), u.shape).toVar();
+            const part = trap.x;
+            const depth = trap.y;
+            const along = trap.z;
+            const turn = trap.w;
+            /** A triangle wave of period 1 (1 at whole numbers, 0 half-way): a band with no seam. */
+            const ridge = (x) => abs(x.sub(floor(x)).mul(2.0).sub(1.0));
 
-            // pearl: two poles by the trap's bands (wide ramps, never stripes)
-            const band = trap.z.mul(0.7).add(trap.x.mul(1.3));
-            const pole = smoothstep(0.2, 0.8, abs(band.sub(floor(band)).mul(2.0).sub(1.0)));
+            // pearl: two poles, turning from each string's hole round the pearl and along every
+            // thread, each level of the net its own way round (wide ramps, never stripes)
+            const pole = smoothstep(0.2, 0.8, ridge(depth.mul(0.5).add(part.mul(0.25)).add(along.mul(0.9))));
             const albedo = mix(stoneA, stoneB, pole).toVar();
-            // the stone's neon: one of the mood's three colours per region of the orbit trap, the
-            // next mood's colours arriving region by region (never a straight mix of complements)
-            const bandN = trap.z.mul(0.83).add(trap.y.mul(1.71)).add(trap.x.mul(0.37)).fract();
+            // the stone's neon: one of the mood's three colours per level of the net, a pearl's
+            // threads in the colour before its own; the next mood's colours arrive piece by piece
+            // (never a straight mix of complements)
+            const bandN = depth.add(part).div(3.0).add(1 / 6).fract();
             const m1 = smoothstep(0.28, 0.38, bandN);
             const m2 = smoothstep(0.61, 0.71, bandN);
             const neon1 = mix(mix(neonA1, neonB1, m1), neonC1, m2);
             const neon2 = mix(mix(neonA2, neonB2, m1), neonC2, m2);
-            const when = trap.z.mul(0.37).add(trap.x.mul(0.61)).fract().mul(0.7);
+            const when = ridge(depth.mul(0.37).add(part.mul(0.19)).add(along.mul(0.4))).mul(0.7);
             const neon = mix(neon1, neon2, smoothstep(when, when.add(0.3), mk)).toVar();
 
             // the core's light
@@ -430,9 +471,9 @@ export function createTemple(u, tier, { scout: useScout = true } = {}) {
             col.addAssign(neon.mul(rim.mul(0.3).mul(fall.add(fallJ).mul(0.8).add(0.3))).mul(ao.mul(0.6).add(0.4)));
 
             // ── nacre: the stone's gloss mirrors the core and the nearest jewels, tinted by a
-            // thin film whose thickness changes pearl by pearl (the orbit trap) and drifts with
-            // the breath: each pearl an oil-slick of the mood's light (Indra's net: every jewel
-            // seen in every pearl) ──
+            // thin film whose thickness changes level by level of the net and round each pearl
+            // from its strings' holes, and drifts with the breath: each pearl an oil-slick of the
+            // mood's light (Indra's net: every jewel seen in every pearl) ──
             const cosV = clamp(dot(n, rd.negate()), 0.0, 1.0).toVar();
             const grazing = float(1).sub(cosV);
             const grazing2 = grazing.mul(grazing);
@@ -441,7 +482,7 @@ export function createTemple(u, tier, { scout: useScout = true } = {}) {
             const refl = rd.sub(n.mul(dot(rd, n).mul(2.0))).toVar();
             // the film's path: thickness × the cosine inside it (index 1.3), in waves
             const cosT = sqrt(max(float(1).sub(float(1).sub(cosV.mul(cosV)).div(1.69)), 0.0));
-            const thick = trap.z.mul(2.3).add(trap.x.mul(1.7)).fract().mul(1.4)
+            const thick = ridge(depth.mul(0.31).add(part.mul(0.17)).add(along.mul(1.3))).mul(1.4)
                 .add(0.8);
             const filmPhase = thick.mul(cosT).mul(TAU * 1.5).add(breath.mul(0.3)).toVar();
             const film = cos(vec3(filmPhase, filmPhase.add(2.094), filmPhase.add(4.189))).mul(0.5).add(0.5);
@@ -497,7 +538,7 @@ export function createTemple(u, tier, { scout: useScout = true } = {}) {
             }
             // the film's colours at the turning edges, lit by the mood's glow (the old nacre sheen)
             gloss.addAssign(glowCol.mul(film).mul(GLOSS.edge));
-            // (occluded as the old glint was: the fractal's deep crevices stay dark)
+            // (occluded as the old glint was: the net's deep crevices stay dark)
             col.addAssign(gloss.mul(fres).add(lustre).mul(tint).mul(ao)
                 .mul(lightK));
 
@@ -522,21 +563,34 @@ export function createTemple(u, tier, { scout: useScout = true } = {}) {
                 .mul(float(1).sub(sink.mul(0.85)))
                 .toVar();
 
-            // ── on the floors and vaults: each source's Chladni figure ──
-            // A circular plate's mode under the nearest jewel (or the core): nodal circles crossed
-            // by twelve nodal diameters, turning slowly with the breath.
-            const fy = abs(p.y.sub(floor(p.y.mul(0.5).add(0.5)).mul(2.0)));
-            const onFloor = float(1).sub(smoothstep(0.004, 0.03, fy)).mul(smoothstep(0.86, 0.98, abs(n.y)));
-            const fc = p.xz.sub(src.xz).toVar();
-            const fr = length(fc).toVar();
-            const circles = cos(fr.mul(MANDALA_K).sub(breath.mul(1.5)));
-            const diameters = cos(atan(fc.y, fc.x.add(1e-7)).mul(6.0).add(breath.mul(0.15)));
-            const wm = circles.mul(diameters).toVar();
+            // ── on the threads: the resonant light, beads of it running along every string from
+            // its knot (in the string's own measure, so every arc of every image carries them,
+            // smaller as the arc is smaller; inward as the light sinks); where they crowd under a
+            // pixel they fade, and on a thread close to the eye each is a thin ring (BEAD_HALF_PX) ──
+            const run = along.mul(STRING_K).sub(breath.mul(2.0)).add(depth.mul(2.1)).toVar();
+            const fwRun = fwidth(run).toVar();
+            // the place on the nearest bead (-π..π), narrowed where the bead would be wider than
+            // BEAD_HALF_PX (far beads keep their own width: the squeeze is 1)
+            const off = run.sub(floor(run.div(TAU).add(0.5)).mul(TAU));
+            const squeeze = max(float(1), float(BEAD_HALF_RAD / BEAD_HALF_PX).div(max(fwRun, 1e-4)));
+            const swell = cos(clamp(off.mul(squeeze), -Math.PI, Math.PI)).mul(0.5).add(0.5).toVar();
+            const swell2 = swell.mul(swell);
+            const bead = swell2.mul(swell2).mul(swell2).mul(float(1).sub(smoothstep(0.5, 1.6, fwRun)));
+            vein.assign(mix(max(vein, bead.mul(0.8)), vein, part));
+
+            // ── on the knots' pearls: each pearl's own nodal figure ──
+            // A struck sphere's mode, read in the pearl's own cell: nodal circles round each
+            // string's hole crossed by twelve meridians, flowing with the breath, brightest near
+            // the pearl's source. The net's own pearls carry it (the great ones, one on every
+            // knot); the smaller pearls strung between them keep the source's rings.
+            const polar = acos(clamp(along.div(NET.pearl), 0.0, 1.0));
+            const wm = cos(polar.mul(FIGURE_K).sub(breath.mul(1.5))).mul(cos(turn.mul(12.0))).toVar();
             const aaM = max(fwidth(wm), 0.015);
-            const mandalaLine = exp(abs(wm).div(aaM).mul(-1.4)).mul(float(1).sub(smoothstep(0.35, 1.1, aaM)))
-                .mul(exp(fr.div(-MANDALA_REACH))).mul(float(1.1).add(mandala.mul(2.0)));
-            vein.assign(mix(vein, mandalaLine.add(vein.mul(0.25)), onFloor));
-            veinGain.assign(mix(veinGain, veinGain.add(0.1), onFloor));
+            const figure = exp(abs(wm).div(aaM).mul(-1.4)).mul(float(1).sub(smoothstep(0.35, 1.1, aaM)))
+                .mul(exp(dSrc.div(-FIGURE_REACH))).mul(float(1.1).add(mandala.mul(2.0)));
+            const bearer = part.mul(float(1).sub(clamp(depth, 0.0, 1.0))).toVar();
+            vein.assign(mix(vein, figure.add(vein.mul(0.25)), bearer));
+            veinGain.assign(mix(veinGain, veinGain.add(0.1), bearer));
             col.addAssign(neon.mul(vein).mul(veinGain).mul(ao.mul(0.55).add(0.45)).mul(veinTier));
 
             // ── strikes: each lock's wavefront crossing the stone (their light gathered, then
@@ -566,11 +620,12 @@ export function createTemple(u, tier, { scout: useScout = true } = {}) {
                 const light = front.mul(2.4).add(vein.mul(front).mul(3.0)).mul(fade).mul(near.mul(0.7).add(0.3))
                     .add(rings.mul(1.6));
                 evCol.addAssign(B.xyz.mul(light).mul(ao.mul(0.5).add(0.5)));
-                // the struck point floods the stone round it with the piece's light for an instant
+                // the struck point floods the pearls and threads round it with the piece's light for
+                // an instant (a note struck in the open air of a hall reaches the stone about it)
                 const toS = A.xyz.sub(p);
                 const ds2 = max(dot(toS, toS), 1e-6);
                 const Ls = toS.div(sqrt(ds2));
-                const fallS = float(1).div(ds2.mul(10.0).add(0.25));
+                const fallS = float(1).div(ds2.mul(STRIKE_FLOOD).add(0.25));
                 const flood = clamp(dot(n, Ls).mul(0.75).add(0.25), 0.0, 1.0).mul(fallS).mul(exp(age.mul(-3.0)))
                     .mul(B.w);
                 const takes = albedo.mul(8.0).add(rim.mul(0.5)).add(0.02);

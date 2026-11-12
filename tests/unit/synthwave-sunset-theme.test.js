@@ -453,14 +453,15 @@ describe('synthwave-sunset world', () => {
         expect(world.u.chase0.value.x).toBeCloseTo(8, 6);
         expect(world.u.chaseCol0.value.getHex()).toBe(PIECE_COLORS.S.getHex());
         world.onPieceLock({
-            type: 'J', x: 8, rotation: 0, color: '#4FB4FF',
+            type: 'J', x: 8, rotation: 0, color: '#D92B4A',
         });
         const right = world.u.chase1.value.y;
         // Both start near the bottom of the wheel (−π/2), the left column left of it.
         expect(left).toBeLessThan(-Math.PI / 2);
         expect(right).toBeGreaterThan(-Math.PI / 2);
         expect(Math.abs(left + Math.PI / 2)).toBeLessThan(0.8);
-        expect(world.u.chaseCol1.value.getHex()).toBe(new THREE.Color('#4FB4FF').getHex());
+        expect(world.u.chaseCol1.value.getHex()).toBe(new THREE.Color('#D92B4A').getHex());
+        expect(PIECE_COLORS.J.getHex()).toBe(new THREE.Color('#D92B4A').getHex());
         world.dispose();
     });
 

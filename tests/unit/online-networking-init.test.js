@@ -3,8 +3,13 @@ import {
 } from 'vitest';
 import { OnlineMultiplayerMode } from '../../src/core/game-modes/OnlineMultiplayerMode.js';
 
-const mocks = vi.hoisted(() => ({ createNetwork: vi.fn() }));
+const mocks = vi.hoisted(() => ({ createNetwork: vi.fn(), ensureNotice: vi.fn(), seenNotice: vi.fn() }));
 vi.mock('phaser', () => ({ default: {} }));
+vi.mock('../../src/ui/online-play-notice.js', async (importOriginal) => ({
+    ...await importOriginal(),
+    ensureOnlinePlayNotice: mocks.ensureNotice,
+    hasSeenOnlinePlayNotice: mocks.seenNotice,
+}));
 vi.mock('../../src/rendering/phaser/board-juice.js', () => ({ BoardJuice: class BoardJuice {} }));
 vi.mock('../../src/core/steam/steam-networking.js', () => ({
     SteamNetworking: class SteamNetworking {
@@ -17,6 +22,8 @@ let mode;
 beforeEach(() => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     mocks.createNetwork.mockReset();
+    mocks.ensureNotice.mockReset().mockResolvedValue(true);
+    mocks.seenNotice.mockReset().mockReturnValue(true);
     mode = Object.create(OnlineMultiplayerMode.prototype);
     mode.steamNetworking = null;
 });
@@ -120,6 +127,87 @@ describe('online networking initialization', () => {
         expect(document.querySelector).not.toHaveBeenCalled();
         expect(mocks.createNetwork).not.toHaveBeenCalled();
         expect(mode.initializeLobbyUI).not.toHaveBeenCalled();
+    });
+
+    function readyNetwork() {
+        const network = {
+            init: vi.fn().mockResolvedValue(true),
+            shutdown: vi.fn(),
+            stopP2PPolling: vi.fn(),
+            startP2PPolling: vi.fn(),
+        };
+        mocks.createNetwork.mockReturnValue(network);
+        return network;
+    }
+
+    it('shows the match list only once the online notice has been read', async () => {
+        prepareActivationHooks();
+        readyNetwork();
+        let read;
+        mocks.ensureNotice.mockReturnValue(new Promise((resolve) => { read = resolve; }));
+        mode.handleLobbyBrowserCancelled = vi.fn();
+
+        const activation = mode.onActivate();
+        await vi.waitFor(() => expect(mocks.ensureNotice).toHaveBeenCalledOnce());
+        expect(mode.initializeLobbyUI).toHaveBeenCalledOnce();
+        expect(mode.showLobbyBrowser).not.toHaveBeenCalled();
+
+        read(true);
+        await activation;
+        expect(mode.showLobbyBrowser).toHaveBeenCalledOnce();
+        expect(mode.handleLobbyBrowserCancelled).not.toHaveBeenCalled();
+    });
+
+    it('returns to the menu, with no match list, when the notice is backed out of', async () => {
+        prepareActivationHooks();
+        readyNetwork();
+        mocks.ensureNotice.mockResolvedValue(false);
+        mode.handleLobbyBrowserCancelled = vi.fn().mockResolvedValue();
+
+        await mode.onActivate();
+
+        expect(mode.handleLobbyBrowserCancelled).toHaveBeenCalledOnce();
+        expect(mode.showLobbyBrowser).not.toHaveBeenCalled();
+    });
+
+    it('does nothing with a notice answered after the mode was left', async () => {
+        prepareActivationHooks();
+        readyNetwork();
+        let read;
+        mocks.ensureNotice.mockReturnValue(new Promise((resolve) => { read = resolve; }));
+        mode.handleLobbyBrowserCancelled = vi.fn();
+
+        const activation = mode.onActivate();
+        await vi.waitFor(() => expect(mocks.ensureNotice).toHaveBeenCalledOnce());
+        await mode.onDeactivate();
+        read(false);
+        await activation;
+
+        expect(mode.showLobbyBrowser).not.toHaveBeenCalled();
+        expect(mode.handleLobbyBrowserCancelled).not.toHaveBeenCalled();
+    });
+
+    it('has no notice in a test lobby without Steam, which connects to no other computer', async () => {
+        prepareActivationHooks();
+        readyNetwork().mockMode = true;
+        mocks.seenNotice.mockReturnValue(false);
+
+        await mode.onActivate();
+
+        expect(mocks.ensureNotice).not.toHaveBeenCalled();
+        expect(mode.showLobbyBrowser).toHaveBeenCalledOnce();
+    });
+
+    it('joins nothing, an invite included, before the notice has been read', async () => {
+        mocks.seenNotice.mockReturnValue(false);
+        mode.steamNetworking = { joinLobby: vi.fn(), leaveLobby: vi.fn() };
+        mode.lobbyBrowser = { hide: vi.fn() };
+
+        await mode.joinLobbyFromInvite('109775240000000001');
+        await mode.handleJoinLobby('109775240000000001', { asSpectator: true });
+
+        expect(mode.steamNetworking.joinLobby).not.toHaveBeenCalled();
+        expect(mode.lobbyBrowser.hide).not.toHaveBeenCalled();
     });
 
     it('retires a cancelled failed initialization without showing a late error toast', async () => {

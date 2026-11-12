@@ -53,14 +53,16 @@ describe('electron/main.js desktop helper wiring', () => {
     });
 
     it('keeps the debug keys and menu out of release builds (audit T14)', () => {
-        expect(mainSource).toContain('const debugKeys = debugKeysEnabled({ isPackaged, diagnosticsEnabled });');
+        expect(mainSource).toContain(
+            'const debugKeys = debugKeysEnabled({ isPackaged, diagnosticsEnabled, storeBuild });',
+        );
         expect(mainSource).toMatch(/if \(debugKeys\) \{\s*mainWindow\.webContents\.on\('before-input-event'/);
         expect(mainSource).toMatch(/Menu\.setApplicationMenu\(debugKeys \? Menu\.buildFromTemplate\(/);
     });
 
     it('refuses DevTools requests from release builds (audit R-07 step 7)', () => {
         expect(mainSource).toMatch(
-            /function requestDevToolsOpen\(source\) \{[\s\S]{0,400}?if \(!mainWindow \|\| mainWindow\.isDestroyed\(\) \|\| !debugKeysEnabled\(\{ isPackaged, diagnosticsEnabled \}\)\) \{\s*return \{ accepted: false/,
+            /function requestDevToolsOpen\(source\) \{[\s\S]{0,500}?if \(!mainWindow \|\| mainWindow\.isDestroyed\(\)\s*\|\| !debugKeysEnabled\(\{ isPackaged, diagnosticsEnabled, storeBuild \}\)\) \{\s*return \{ accepted: false/,
         );
     });
 

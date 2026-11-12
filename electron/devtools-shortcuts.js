@@ -1,13 +1,18 @@
 export const DEVTOOLS_SHORTCUT_DEDUP_WINDOW_MS = 150;
 
 /**
- * Whether the debug keys (F12 / Ctrl+Shift+I for DevTools, F5 for reload) and the
- * View menu are live. Not in a release build: F12 is Steam's screenshot key, so a
- * player taking a screenshot opened DevTools, and F5 reloaded the game, which drops
- * an online match. Diagnostics mode (SERENITY_ENABLE_DIAGNOSTICS=1) brings them back;
- * Settings > Developer tools opens DevTools in any build.
+ * Whether the debug keys (F12 / Ctrl+Shift+I for DevTools, F5 for reload), the View menu
+ * and Settings > Developer tools are live. Not in a packaged build: F12 is Steam's
+ * screenshot key, so a player taking a screenshot opened DevTools, and F5 reloaded the
+ * game, which drops an online match. Diagnostics mode (SERENITY_ENABLE_DIAGNOSTICS=1)
+ * brings them back in a packaged test build. Never in a store build
+ * (electron/steam-app-id.js isStoreBuild), whatever the environment says:
+ * electron/debug-flags.js already reads diagnostics as off there, and this says so again.
  */
-export function debugKeysEnabled({ isPackaged = false, diagnosticsEnabled = false } = {}) {
+export function debugKeysEnabled({
+    isPackaged = false, diagnosticsEnabled = false, storeBuild = false,
+} = {}) {
+    if (storeBuild) return false;
     return !isPackaged || diagnosticsEnabled;
 }
 

@@ -68,7 +68,8 @@ export const COMBO_CASCADE_WEIGHTS = Object.freeze({
     verticalStepMatchScore: 12,
 });
 
-// Value/Reward split (Cold-Clear style): REWARD terms credit the realized outcome
+// Value/Reward split: the board a placement leaves is scored apart from what the
+// placement achieves. REWARD terms credit the realized outcome
 // of a placement, computed from the SHIPPED game formulas (garbage.js / scoring.js)
 // rather than hand-guessed cascade weights, so the bot optimizes the true objective —
 // total lines (depth) and outgoing garbage — instead of raw cascade count. The latent
@@ -445,7 +446,7 @@ export function measureBoard(boardGrid, options = {}) {
     // CAVITIES vs accessible OVERHANGS. A covered empty cell is an overhang when a
     // side neighbour is low enough to tuck a piece in (lateral access); otherwise it
     // is a fully-enclosed cavity. Cavities can't be filled without digging and are
-    // far more damaging (Cold Clear weights enclosed cavities ~5x an overhang), while
+    // far more damaging (they take the extra cavityCells penalty on top), while
     // overhangs are the accessible suspended cells the cascade machine relies on — so
     // they must be penalised much more gently than buried cavities.
     let cavityCells = 0;

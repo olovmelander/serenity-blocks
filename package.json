@@ -34,7 +34,7 @@
     "validate:windows:menu": "node scripts/run-electron.mjs scripts/windows-menu-visual-validation.mjs",
     "build:win": "node scripts/build-win.mjs",
     "build:win:wsl": "SERENITY_ALLOW_WSL_WIN_BUILD=1 node scripts/build-win.mjs",
-    "build:linux": "node scripts/release-gate-check.mjs && vite build && electron-builder --linux",
+    "build:linux": "node scripts/release-gate-check.mjs && vite build && node scripts/pages-artifact-check.mjs && electron-builder --linux",
     "capture:themes": "node scripts/validate-all-themes.mjs",
     "validate:mobile:webgl2": "node scripts/validate-mobile-webgl2.mjs",
     "capture:odyssey": "npx electron scripts/odyssey-aaa-board-capture.mjs",
@@ -84,6 +84,10 @@
       {
         "from": "PRIVACY_POLICY.md",
         "to": "PRIVACY_POLICY.md"
+      },
+      {
+        "from": "COPYRIGHT.md",
+        "to": "COPYRIGHT.md"
       }
     ],
     "win": {
@@ -99,6 +103,26 @@
             "!dist/osx/**",
             "!**/*.lib",
             "!**/*.d.ts"
+          ]
+        },
+        {
+          "from": "node_modules/koffi",
+          "to": "native_modules/koffi",
+          "filter": [
+            "package.json",
+            "LICENSE.txt",
+            "**/*.cjs",
+            "**/*.js",
+            "!doc/**",
+            "!vendor/**"
+          ]
+        },
+        {
+          "from": "node_modules/@koromix/koffi-win32-x64",
+          "to": "native_modules/@koromix/koffi-win32-x64",
+          "filter": [
+            "**/*",
+            "!**/*.lib"
           ]
         }
       ],
@@ -132,6 +156,26 @@
             "!**/*.lib",
             "!**/*.d.ts"
           ]
+        },
+        {
+          "from": "node_modules/koffi",
+          "to": "native_modules/koffi",
+          "filter": [
+            "package.json",
+            "LICENSE.txt",
+            "**/*.cjs",
+            "**/*.js",
+            "!doc/**",
+            "!vendor/**"
+          ]
+        },
+        {
+          "from": "node_modules/@koromix/koffi-linux-x64",
+          "to": "native_modules/@koromix/koffi-linux-x64",
+          "filter": [
+            "**/*",
+            "!**/*.lib"
+          ]
         }
       ]
     }
@@ -147,7 +191,8 @@
   "author": "Olov Melander",
   "license": "UNLICENSED",
   "dependencies": {
-    "phaser": "^4.2.1",
+    "koffi": "3.3.5",
+    "phaser": "4.2.1",
     "steamworks.js": "0.4.0",
     "three": "0.187.0"
   },

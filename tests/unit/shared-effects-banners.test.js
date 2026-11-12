@@ -159,6 +159,26 @@ describe('banner layout lanes', () => {
         expect(anchorFor((fx) => fx.showMegaCascadeEffect(14))).toBeCloseTo(H * 0.62, 0);
     });
 
+    /** The words a banner draws, in the order they are made. */
+    const wordsOf = (fn) => {
+        const scene = makeScene();
+        const fx = new SharedEffects(scene);
+        fx._reducedMotion = () => false;
+        fn(fx);
+        return scene.texts.map((t) => t.text);
+    };
+
+    it('says "Twist" with the lines it cleared as the quiet line beneath', () => {
+        expect(wordsOf((fx) => fx.playTwistEffect(0))).toEqual(['Twist']);
+        expect(wordsOf((fx) => fx.playTwistEffect(1))).toEqual(['Twist', '1 line']);
+        expect(wordsOf((fx) => fx.playTwistEffect(2))).toEqual(['Twist', '2 lines']);
+        expect(wordsOf((fx) => fx.playTwistEffect(3))).toEqual(['Twist', '3 lines']);
+    });
+
+    it('says "Clean canvas" alone for a single clear, with no kicker over it', () => {
+        expect(wordsOf((fx) => fx.playPerfectClear(4))).toEqual(['Clean canvas']);
+    });
+
     it('holds the perfect clear longest — it is the flagship moment', () => {
         const holdOf = (fn) => {
             const scene = makeScene();

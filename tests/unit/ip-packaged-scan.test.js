@@ -46,7 +46,7 @@ const CLEAN_APP = {
     'dist/index.html': '<title>Serenity Blocks</title>',
     'dist/assets/index-abc123.js': 'const quad = "Quad"; export default quad;',
     'dist/CREDITS.md': NOTICE,
-    'dist/README.md': NOTICE,
+    'dist/COPYRIGHT.md': 'All rights reserved.',
     'electron/main.js': 'module.exports = {};',
 };
 
@@ -83,6 +83,13 @@ describe('IP-string gate over the packaged desktop build (scripts/ip-packaged-sc
         ]));
     });
 
+    it('holds a README inside the package to the rules: only the credits carry the notice', async () => {
+        const { resourcesDir } = await packageBuild({ inside: { ...CLEAN_APP, 'dist/README.md': NOTICE } });
+        const { violations } = scanPackagedApp(resourcesDir);
+        expect(violations.length).toBeGreaterThan(0);
+        for (const violation of violations) expect(violation).toMatch(/^app\.asar\/dist\/README\.md:1: /);
+    });
+
     it('does not scan the third-party packages copied beside app.asar', async () => {
         const { resourcesDir } = await packageBuild({
             inside: CLEAN_APP,
@@ -100,10 +107,29 @@ describe('IP-string gate over the packaged desktop build (scripts/ip-packaged-sc
     });
 
     it('afterPack passes a clean package and fails one with a disallowed name, or with no app.asar', async () => {
-        const clean = await packageBuild({ inside: CLEAN_APP });
+        // What afterPack also asks of every package (scripts/packaged-app-check.mjs), so that the
+        // names are the only thing wrong with the second one.
+        const beside = {
+            '../LICENSE.electron.txt': 'MIT',
+            '../LICENSES.chromium.html': '<p>BSD</p>',
+            'CREDITS.md': NOTICE,
+            'THIRD_PARTY_NOTICES.md': 'Notices.',
+            'THIRD_PARTY_LICENSES.md': 'Licences.',
+            'PRIVACY_POLICY.md': 'No servers.',
+            'COPYRIGHT.md': 'All rights reserved.',
+            'native_modules/steamworks.js/LICENSE': 'MIT',
+            'native_modules/koffi/package.json': '{"name":"koffi"}',
+            'native_modules/koffi/index.cjs': 'module.exports = {};',
+            'native_modules/koffi/LICENSE.txt': 'MIT',
+            'native_modules/@koromix/koffi-linux-x64/linux_x64/koffi.node': 'binary',
+        };
+        const clean = await packageBuild({ inside: CLEAN_APP, beside });
         await expect(afterPack({ appOutDir: join(clean.root, 'release', 'linux-unpacked') })).resolves.toBeUndefined();
 
-        const dirty = await packageBuild({ inside: { ...CLEAN_APP, 'electron/main.js': '// a Tetris board' } });
+        const dirty = await packageBuild({
+            inside: { ...CLEAN_APP, 'electron/main.js': '// a Tetris board' },
+            beside,
+        });
         await expect(afterPack({ appOutDir: join(dirty.root, 'release', 'linux-unpacked') }))
             .rejects.toThrow(/1 disallowed name\(s\).*\n.*app\.asar\/electron\/main\.js:1: genre mark/);
 

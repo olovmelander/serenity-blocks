@@ -37,7 +37,8 @@ export const BREATH_WORLDS = Object.freeze([
         intent: 'Focus',
         pattern: [4, 4, 4, 4],
         summary: 'Four equal sides: in, hold, out, hold.',
-        description: 'Light travels one side of the square for each count of four. Even sides steady the attention.',
+        description: 'Light travels one side of the square for each count of four, and every side is the same '
+            + 'length.',
         cues: ['Up the first side', 'Down the third side'],
         moreCues: [
             ['Trace the light upward', 'Trace it down'],
@@ -52,7 +53,7 @@ export const BREATH_WORLDS = Object.freeze([
     {
         id: 'calm-sleep',
         name: 'Moonlit Waters',
-        intent: 'Sleep',
+        intent: 'Evening',
         pattern: [4, 7, 8, 0],
         summary: 'In for 4, hold for 7, out for 8.',
         description: 'The moon’s path opens across the water as you breathe in, rests while you hold, and narrows through a slow out-breath.',
@@ -69,9 +70,9 @@ export const BREATH_WORLDS = Object.freeze([
     {
         id: 'energizing',
         name: 'Solar Flare',
-        intent: 'Energize',
+        intent: 'Lively',
         pattern: [3, 1, 3, 1],
-        summary: 'A brisk, even rhythm to wake up.',
+        summary: 'A brisk, even rhythm with short pauses.',
         description: 'The corona streams out on the in-breath and draws back on the out-breath. Short pauses keep the pace lively.',
         cues: ['Let the corona reach', 'Draw it back'],
         moreCues: [
@@ -121,7 +122,9 @@ export const BREATH_WORLDS = Object.freeze([
         intent: 'Activate',
         pattern: [3, 0, 2, 0],
         summary: 'Quick, full breaths. The strongest rhythm here.',
-        description: 'The fire leaps on a fast in-breath and drops on a short release. Strong breathing can make you light-headed: sit down for it, and stop if you feel dizzy.',
+        description: 'The fire leaps on a fast in-breath and drops on a short release: thirty breaths, then a '
+            + 'rest. Strong breathing can make you light-headed: sit down for it, and slow down or stop if you '
+            + 'feel dizzy or tingling.',
         cues: ['Feed the fire', 'Release'],
         moreCues: [
             ['Stoke the flames', 'Let go'],
@@ -189,7 +192,8 @@ export const BREATH_WORLDS = Object.freeze([
         intent: 'Ground',
         pattern: [4, 2, 6, 2],
         summary: 'A steady in-breath and a longer release.',
-        description: 'Light pours through the canopy as you breathe in and softens as you breathe out. The longer out-breath settles you.',
+        description: 'Light pours through the canopy as you breathe in and softens as you breathe out, on a '
+            + 'longer, slower out-breath.',
         cues: ['Let the light pour in', 'Let it soften'],
         moreCues: [
             ['Let the sunlight fall through', 'Let it settle on the moss'],
@@ -204,9 +208,9 @@ export const BREATH_WORLDS = Object.freeze([
     {
         id: 'electric-storm',
         name: 'Electric Storm',
-        intent: 'Sharpen',
+        intent: 'Charged',
         pattern: [3, 2, 4, 1],
-        summary: 'A charged, uneven rhythm for alertness.',
+        summary: 'An uneven rhythm: in, a short hold, a longer out.',
         description: 'Filaments reach for the glass on the in-breath, hold their charge, and withdraw on a slightly longer out-breath.',
         cues: ['Let the charge reach', 'Draw it home'],
         moreCues: [

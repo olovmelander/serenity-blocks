@@ -12,7 +12,12 @@
  * paused for you while the Hub is over it, while you confirm ending it, and when the page is
  * hidden (timers there are throttled; a session must never run on without you).
  *
- * What you actually did is measured: breaths, rounds, and how long you held each breath.
+ * A hold after a round is always yours to end: it ends when you breathe in. Every hold has the
+ * same quiet reminder (HOLD_REMINDER_SECONDS) and the same limit (MAX_OPEN_HOLD_SECONDS), where
+ * the guide says to breathe in now; nothing on screen times a hold or sets a length to reach.
+ *
+ * What you actually did is measured: breaths, rounds, and how long each hold lasted (kept in the
+ * practice log as a note of the sitting, never shown as a score).
  */
 
 import { BreathworkAudioManager } from './breathwork-audio-manager.js';
@@ -27,10 +32,16 @@ export { SESSION_WORLDS } from './breathing/session-worlds.js';
 
 /** The picture for a stage breathed at your own pace: slow, and never counted. */
 export const NATURAL_PATTERN = Object.freeze([4, 1, 6, 1]);
-/** Longest an open hold may run before the voice brings you back: two minutes. */
-export const MAX_OPEN_HOLD_SECONDS = 120;
-/** An open hold cannot end in its first moment (a tap meant for the stage before). */
+/** A hold's reminder, the same in every round: a small bell and "breathe in whenever you're ready". */
+export const HOLD_REMINDER_SECONDS = 60;
+/** Longest a hold may run: here the guide says to breathe in now, and moves on. */
+export const MAX_OPEN_HOLD_SECONDS = 90;
+/** A hold cannot end in its first moment (a tap meant for the stage before). */
 const MIN_OPEN_HOLD_MS = 1500;
+/** What the guide shows, large, when a hold reaches its limit. */
+const HOLD_LIMIT_CARD = Object.freeze({
+    eyebrow: 'Time to breathe', title: 'Breathe in now', note: 'One full breath in',
+});
 /** The closing words appear this long before the session ends. */
 const CLOSING_SECONDS = 14;
 /** The last spoken line in the rest lands this long before the end, leaving the close quiet. */
@@ -42,8 +53,6 @@ const BELL_LEAD_MS = 1400;
 const DEFAULT_OPTIONS = Object.freeze({
     /** { id, label, clip } chosen on the preparation screen, or null. */
     intention: null,
-    /** Homecoming and Phoenix holds end when you breathe in; false gives them their suggested length. */
-    openHolds: true,
     sounds: true,
     vibration: true,
     onPhaseChange: null,
@@ -60,11 +69,11 @@ const GUIDED_RUN = 3;
 const CUE_PARTS = Object.freeze({
     inhale: ['in', 0], hold1: ['hold', 1], exhale: ['out', 2], hold2: ['rest', 3],
 });
-/** Spoken as an open hold reaches its suggestion. */
+/** Spoken with a hold's reminder bell. */
 export const HOLD_READY_LINE = 'transitions/breathe_when_ready';
 /**
  * How a session ends, fourteen seconds before its last moment: coming back, or (for the evening
- * sessions) drifting into sleep, with no bell to wake you.
+ * sessions) staying as you are, with no closing bell.
  */
 export const CLOSINGS = Object.freeze({
     wake: Object.freeze({
@@ -123,7 +132,7 @@ export class BreathworkSessionManager {
         this.options = { ...DEFAULT_OPTIONS };
         /** Breaths, rounds and holds as they really happened. */
         this.measure = null;
-        /** The open hold in progress: { suggested, cap, ready, endedBy }. */
+        /** The hold in progress: { ready, endedBy }. */
         this.holdState = null;
         /** Why the session is paused without you asking ('hub', 'confirm', 'hidden'). */
         this.suspensions = new Set();
@@ -134,10 +143,10 @@ export class BreathworkSessionManager {
 
         // Every stage: what it asks (prompt, subPrompt), how long, and what is said. The spoken
         // line of a stage says the same words as its subPrompt (scripts/tts-script.json holds the
-        // spoken form, with its pauses). A retention's `hold` is 'open' when you choose when to
-        // breathe again; a 'carry' stage keeps the round's rhythm on your own, uncounted. An
-        // arrival without a pattern is breathed at your own pace. The order is the path through
-        // them: the short sessions first, then the longer practices.
+        // spoken form, with its pauses). A 'retention' is a hold you end yourself by breathing in
+        // (its `duration` is when its reminder sounds); a 'carry' stage keeps the round's rhythm
+        // on your own, uncounted. An arrival without a pattern is breathed at your own pace. The
+        // order is the path through them: the short sessions first, then the longer practices.
         // Keys (BASE, ELIXIR, REST, FLOW, …) are saved in practice records and name the voice folders,
         // so they stay as they were; players see each session's `name` (Homecoming, Phoenix, Nightfall,
         // Mandala since 2026-11-03).
@@ -330,7 +339,8 @@ export class BreathworkSessionManager {
             UNWIND: {
                 id: 'sukha-unwind',
                 name: 'Sukha Unwind',
-                description: 'Out-breaths that grow longer until you breathe the aurora\'s rhythm, then a rest that leads to sleep.',
+                description: 'Out-breaths that grow longer until you breathe the aurora\'s rhythm, then a quiet '
+                    + 'rest to end the day.',
                 intensity: 'Gentle',
                 totalRounds: 2,
                 phases: [
@@ -385,7 +395,7 @@ export class BreathworkSessionManager {
                 id: 'sukha-sunrise',
                 name: 'Sukha Sunrise',
                 description: 'The Solar Flare\'s brisk rhythm, then quicker and lighter, then a steady close.',
-                intensity: 'Gentle',
+                intensity: 'Moderate',
                 totalRounds: 2,
                 phases: [
                     {
@@ -428,7 +438,7 @@ export class BreathworkSessionManager {
                         duration: 55,
                         round: 0,
                         prompt: 'Steady',
-                        subPrompt: 'Breathe however feels good, and notice the warmth, how awake you feel.',
+                        subPrompt: 'Breathe however feels good, and notice how your body feels now.',
                         audio: {
                             voice: 'sunrise/integration',
                             transition: 'transitions/integration_start',
@@ -441,7 +451,7 @@ export class BreathworkSessionManager {
                 id: 'sukha-rest',
                 name: 'Sukha Nightfall',
                 description: 'The four-seven-eight breath learned step by step, drifting among the stars between rounds, '
-                    + 'and a rest that leads into sleep.',
+                    + 'and a long, quiet rest to end the day.',
                 intensity: 'Gentle',
                 totalRounds: 3,
                 phases: [
@@ -515,7 +525,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'rest/integration',
                             transition: 'transitions/integration_start',
-                            fillers: ['fillers/nothing_to_do', 'fillers/you_are_safe', 'fillers/drift', 'fillers/let_go'],
+                            fillers: ['fillers/nothing_to_do', 'fillers/rest_easy', 'fillers/drift', 'fillers/let_go'],
                         },
                     },
                 ],
@@ -614,8 +624,8 @@ export class BreathworkSessionManager {
                 id: 'sukha-base',
                 name: 'Sukha Homecoming',
                 description: 'Three rounds of steady breathing through the nose that charge the storm, each ending in a '
-                    + 'stillness you hold for as long as it feels good.',
-                intensity: 'Moderate',
+                    + 'quiet hold that is over the moment you breathe in.',
+                intensity: 'Strong',
                 totalRounds: 3,
                 phases: [
                     {
@@ -645,11 +655,10 @@ export class BreathworkSessionManager {
                     },
                     {
                         type: 'retention',
-                        hold: 'open',
-                        duration: 60,
+                        duration: HOLD_REMINDER_SECONDS,
                         round: 1,
                         prompt: 'Hold • Empty Lungs',
-                        subPrompt: 'Stay here. Nothing to do. When you need to breathe, breathe in.',
+                        subPrompt: 'Stay here, with nothing to do. Breathe in whenever you want to.',
                         audio: { voice: 'base/r1_hold', transition: 'transitions/hold_start' },
                     },
                     {
@@ -676,11 +685,10 @@ export class BreathworkSessionManager {
                     },
                     {
                         type: 'retention',
-                        hold: 'open',
-                        duration: 90,
+                        duration: HOLD_REMINDER_SECONDS,
                         round: 2,
                         prompt: 'Hold • Stillness',
-                        subPrompt: 'Rest in the stillness, and simply watch.',
+                        subPrompt: 'Rest in the quiet. Breathe in as soon as you want to.',
                         audio: { voice: 'base/r2_hold', transition: 'transitions/hold_start' },
                     },
                     {
@@ -697,16 +705,16 @@ export class BreathworkSessionManager {
                         pattern: [3, 0, 3, 0],
                         round: 3,
                         prompt: 'Round 3 • Full Charge',
-                        subPrompt: 'Quicker still. Full breaths, never forced. Tingling is normal; ease off if you need to.',
+                        subPrompt: 'Quicker still. Full breaths, never forced. If you feel tingling or '
+                            + 'light-headed, slow down or pause.',
                         audio: { voice: 'base/r3_active', transition: 'transitions/last_round', cues: C.BASE.round },
                     },
                     {
                         type: 'retention',
-                        hold: 'open',
-                        duration: 120,
+                        duration: HOLD_REMINDER_SECONDS,
                         round: 3,
                         prompt: 'Hold • The Space Between',
-                        subPrompt: 'Silent, and still. Notice the space between your thoughts.',
+                        subPrompt: 'Quiet, and still. Breathe in the moment you want to.',
                         audio: { voice: 'base/r3_hold', transition: 'transitions/hold_start' },
                     },
                     {
@@ -727,7 +735,7 @@ export class BreathworkSessionManager {
                             voice: 'base/integration',
                             transition: 'transitions/integration_start',
                             fillers: [
-                                'fillers/floating_vibrating', 'fillers/observer_deep', 'fillers/stay_here',
+                                'fillers/tingling_passes', 'fillers/observer_deep', 'fillers/stay_here',
                                 'fillers/body_scan', 'fillers/complete_whole', 'encouragement/proud',
                             ],
                         },
@@ -738,8 +746,8 @@ export class BreathworkSessionManager {
                 id: 'sukha-elixir',
                 name: 'Sukha Phoenix',
                 description: 'Strong, connected breathing through the mouth that feeds the fire, each round ending in a '
-                    + 'deep hold you end yourself.',
-                intensity: 'High',
+                    + 'hold that is over the moment you breathe in.',
+                intensity: 'Strongest',
                 totalRounds: 3,
                 phases: [
                     {
@@ -772,11 +780,10 @@ export class BreathworkSessionManager {
                     },
                     {
                         type: 'retention',
-                        hold: 'open',
-                        duration: 60,
+                        duration: HOLD_REMINDER_SECONDS,
                         round: 1,
                         prompt: 'Hold • Empty',
-                        subPrompt: 'Rest here, in the silence. When you need to breathe, breathe in.',
+                        subPrompt: 'Rest here, in the quiet. Breathe in whenever you want to.',
                         audio: { voice: 'elixir/r1_hold', transition: 'transitions/hold_start' },
                     },
                     {
@@ -803,11 +810,10 @@ export class BreathworkSessionManager {
                     },
                     {
                         type: 'retention',
-                        hold: 'open',
-                        duration: 90,
+                        duration: HOLD_REMINDER_SECONDS,
                         round: 2,
-                        prompt: 'Hold • Deep Silence',
-                        subPrompt: 'Deep silence. Notice what you feel, without judging it.',
+                        prompt: 'Hold • Quiet',
+                        subPrompt: 'A quiet pause. Notice what you feel, and breathe in whenever you like.',
                         audio: { voice: 'elixir/r2_hold', transition: 'transitions/hold_start' },
                     },
                     {
@@ -824,18 +830,18 @@ export class BreathworkSessionManager {
                         pattern: [3, 0, 2, 0],
                         round: 3,
                         prompt: 'Round 3 • Full Fire',
-                        subPrompt: 'Full and free. Tingling is normal; if you feel dizzy, slow down.',
+                        subPrompt: 'Full and free, never forced. If you feel tingling, dizzy or light-headed, '
+                            + 'slow down or pause.',
                         audio: {
                             voice: 'elixir/r3_active', transition: 'transitions/last_round', cues: C.ELIXIR.round,
                         },
                     },
                     {
                         type: 'retention',
-                        hold: 'open',
-                        duration: 120,
+                        duration: HOLD_REMINDER_SECONDS,
                         round: 3,
-                        prompt: 'Hold • Surrender',
-                        subPrompt: 'Complete release. You are held. Breathe in whenever you need.',
+                        prompt: 'Hold • Rest',
+                        subPrompt: 'Let everything rest. Breathe in the moment you feel like it.',
                         audio: { voice: 'elixir/r3_hold', transition: 'transitions/hold_start' },
                     },
                     {
@@ -843,7 +849,7 @@ export class BreathworkSessionManager {
                         duration: 15,
                         round: 3,
                         prompt: 'Final Recovery',
-                        subPrompt: 'One deep breath in, and hold. Let the energy rise.',
+                        subPrompt: 'One full breath in, held gently for a moment.',
                         audio: { voice: 'elixir/r3_recovery', release: C.ELIXIR.release.out },
                     },
                     {
@@ -856,7 +862,7 @@ export class BreathworkSessionManager {
                             voice: 'elixir/integration',
                             transition: 'transitions/integration_start',
                             fillers: [
-                                'fillers/floating_vibrating', 'fillers/observer_deep', 'fillers/you_are_safe',
+                                'fillers/tingling_passes', 'fillers/observer_deep', 'fillers/rest_easy',
                                 'fillers/nothing_to_do', 'fillers/trust_process', 'fillers/inner_light',
                                 'encouragement/proud',
                             ],
@@ -867,7 +873,7 @@ export class BreathworkSessionManager {
         };
     }
 
-    /** Planned length of a session in seconds (open holds counted at their suggestion). */
+    /** Planned length of a session in seconds (a hold counted up to its reminder). */
     _calculateTotalDuration(sessionId) {
         const session = this.SESSIONS[sessionId];
         if (!session) return 0;
@@ -885,7 +891,7 @@ export class BreathworkSessionManager {
     _extraLines(session, sessionId = this.sessionId) {
         const worlds = new Set(session.phases.filter((phase) => phase.type === 'active')
             .map((phase) => this._worldFor(phase, sessionId)));
-        const holds = session.phases.some((phase) => this._isOpenHold(phase));
+        const holds = session.phases.some((phase) => phase.type === 'retention');
         return [
             this.options.intention?.clip,
             holds && HOLD_READY_LINE,
@@ -915,26 +921,10 @@ export class BreathworkSessionManager {
         return Array.isArray(choice) ? choice[Math.max(0, (phase.round || 1) - 1) % choice.length] : choice;
     }
 
-    /** A hold you end yourself: Homecoming and Phoenix, unless you asked for timed holds. */
-    _isOpenHold(phase) {
-        return phase?.type === 'retention' && phase.hold === 'open' && this.options.openHolds !== false;
-    }
-
-    /** An open hold's safety limit: twice its suggestion, at least 30 s over, at most two minutes. */
-    _holdCap(phase) {
-        return Math.min(MAX_OPEN_HOLD_SECONDS, Math.max(phase.duration + 30, phase.duration * 2));
-    }
-
     /** How the guide guides this stage. */
     _guidanceFor(phase) {
-        if (phase.type === 'retention') {
-            const open = this._isOpenHold(phase);
-            return {
-                mode: open ? 'open-hold' : 'timed-hold',
-                suggested: phase.duration,
-                cap: open ? this._holdCap(phase) : phase.duration,
-            };
-        }
+        // A hold is always yours to end: the guide waits for you to breathe in.
+        if (phase.type === 'retention') return { mode: 'open-hold' };
         if (phase.type === 'carry') {
             // The rhythm in its own words: a hold of three seconds or more is named, a soft
             // pause is part of the breath ("in, out" for the tide, "in, hold, out" for the moon).
@@ -1154,10 +1144,8 @@ export class BreathworkSessionManager {
 
         const phaseDuration = this._phaseSeconds(phase);
         this.currentPhaseDuration = phaseDuration;
-        const openHold = this._isOpenHold(phase);
-        this.holdState = openHold ? {
-            suggested: phase.duration, cap: this._holdCap(phase), ready: false, endedBy: null,
-        } : null;
+        const hold = phase.type === 'retention';
+        this.holdState = hold ? { ready: false, endedBy: null } : null;
 
         if (this.indicator) {
             this.indicator.setPrompt?.(phase.prompt, phase.subPrompt);
@@ -1183,11 +1171,11 @@ export class BreathworkSessionManager {
         this._startProgressUpdates(phase, phaseDuration);
         if (phaseToken !== this.phaseToken || !this.activeSession) return;
 
-        // An open hold ends when you breathe in, or at its safety limit; every other stage on
-        // the session clock. Breaths are counted from the same clock.
-        if (openHold) {
+        // A hold ends when you breathe in, or at its limit; every other stage on the session
+        // clock. Breaths are counted from the same clock.
+        if (hold) {
             this._schedulePhase(() => this._holdReady(), phase.duration * 1000);
-            this._schedulePhase(() => this._endHold('limit'), this.holdState.cap * 1000);
+            this._schedulePhase(() => this._endHold('limit'), MAX_OPEN_HOLD_SECONDS * 1000);
         } else {
             this._schedulePhase(() => this._nextPhase(), phaseDuration * 1000);
         }
@@ -1242,9 +1230,7 @@ export class BreathworkSessionManager {
         const total = this.activeSession.totalRounds;
         if (phase.type === 'active') return `Round ${phase.round} of ${total}. ${title}. ${phase.breaths} breaths.`;
         if (phase.type === 'retention') {
-            return this._isOpenHold(phase)
-                ? 'Hold on empty lungs. Breathe in whenever you need to: press Space or tap.'
-                : `Rest in the pause for ${phase.duration} seconds.`;
+            return 'Hold on empty lungs. Breathe in whenever you want to: press Space or tap.';
         }
         if (phase.type === 'carry') return `Keep the rhythm on your own for ${phase.duration} seconds.`;
         if (phase.type === 'recovery') return `${title}. Breathe in deeply and hold.`;
@@ -1252,7 +1238,7 @@ export class BreathworkSessionManager {
         return `${title}. ${phase.subPrompt || ''}`.trim();
     }
 
-    /** The open hold reached its suggestion: a small bell, and the choice is yours. */
+    /** The hold's reminder: a small bell, and the choice stays yours. */
     _holdReady() {
         if (!this.holdState || this.holdState.ready) return;
         this.holdState.ready = true;
@@ -1264,7 +1250,7 @@ export class BreathworkSessionManager {
     }
 
     /**
-     * You breathe in: end the open hold now and go to its recovery breath.
+     * You breathe in: end the hold now and go to its recovery breath.
      * @returns {boolean} whether a hold ended
      */
     breathe() {
@@ -1274,10 +1260,16 @@ export class BreathworkSessionManager {
         return true;
     }
 
+    /** The hold is over: you breathed in ('you'), or it reached its limit ('limit'). */
     _endHold(reason) {
         if (!this.activeSession || !this.holdState) return;
         this.holdState.endedBy = reason;
         this._nextPhase();
+        if (reason !== 'limit' || !this.activeSession) return;
+        // At the limit the guide says so plainly, beside the next stage's own in-breath and words.
+        this.chimes.pulse('ready');
+        this.indicator?.showChapter?.(HOLD_LIMIT_CARD);
+        this.indicator?.announce?.('Breathe in now. One full breath in.');
     }
 
     _encourage(phase) {
@@ -1291,14 +1283,14 @@ export class BreathworkSessionManager {
         audio.playVoice(clip);
     }
 
-    /** How this session ends: coming back, or, for the evening sessions, drifting into sleep. */
+    /** How this session ends: coming back, or, for the evening sessions, staying as you are. */
     _closingFor(phase = this.activeSession?.phases[this.currentPhaseIndex]) {
         const integration = phase?.type === 'integration'
             ? phase : this.activeSession?.phases.find((stage) => stage.type === 'integration');
         return CLOSINGS[integration?.closing] || CLOSINGS.wake;
     }
 
-    /** The last moments of the rest: the words turn to coming back, or to sleep. */
+    /** The last moments of the rest: the words turn to coming back, or to staying as you are. */
     _closing() {
         const closing = this._closingFor();
         this.indicator?.setPrompt?.(closing.title, closing.text);
@@ -1501,10 +1493,11 @@ export class BreathworkSessionManager {
 
             const elapsed = (Date.now() - this.phaseStartTime) / 1000;
             const remaining = Math.max(0, phaseDuration - elapsed);
-            const phaseProgress = Math.min(1, elapsed / phaseDuration);
+            // A hold is not counted toward anything: its mark on the journey is simply lit.
+            const phaseProgress = hold ? 1 : Math.min(1, elapsed / phaseDuration);
             this.currentBreathCount = breathCycle > 0
                 ? Math.min(phase.breaths, Math.floor(elapsed / breathCycle)) : 0;
-            // The journey is laid out by plan; a hold held past its suggestion waits at its end.
+            // The journey is laid out by plan; a hold that runs past its reminder waits at its end.
             const elapsedSessionTime = elapsedBeforePhase + Math.min(elapsed, phaseDuration);
             const sessionProgress = Math.min(1, elapsedSessionTime / this.totalSessionDuration);
 
@@ -1525,8 +1518,6 @@ export class BreathworkSessionManager {
                 prompt: phase.prompt,
                 sessionName: this.activeSession.name,
                 sessionId: this.sessionId,
-                holdElapsed: hold ? elapsed : null,
-                holdSuggested: hold ? hold.suggested : null,
                 holdReady: hold ? hold.ready : false,
             };
 
@@ -1546,8 +1537,6 @@ export class BreathworkSessionManager {
                 remainingTime: progressData.remainingTime,
                 sessionProgress,
                 sessionRemaining: progressData.sessionRemaining,
-                holdElapsed: progressData.holdElapsed,
-                holdSuggested: progressData.holdSuggested,
                 holdReady: progressData.holdReady,
             });
         };
@@ -1573,8 +1562,8 @@ export class BreathworkSessionManager {
                 round: phase.round || 0,
                 seconds: Math.round(elapsed),
                 suggested: phase.duration,
-                mode: this.holdState ? 'open' : 'timed',
-                endedBy: this.holdState?.endedBy || 'timer',
+                mode: 'open',
+                endedBy: this.holdState?.endedBy || 'limit',
             });
         }
         // A round is done when its last stage is. Its stages differ from session to session.
@@ -1611,7 +1600,6 @@ export class BreathworkSessionManager {
             totalRounds: this.activeSession.totalRounds,
             breaths: measure.breaths,
             holds,
-            longestHold: holds.reduce((best, hold) => Math.max(best, hold.seconds), 0),
             intention: this.options.intention?.label || null,
         };
     }
@@ -1635,7 +1623,7 @@ export class BreathworkSessionManager {
                     round: phase.round || 0,
                     seconds: Math.round(elapsed),
                     suggested: phase.duration,
-                    mode: this.holdState ? 'open' : 'timed',
+                    mode: 'open',
                     endedBy: 'ended',
                 });
             }

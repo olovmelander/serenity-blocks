@@ -422,6 +422,11 @@ export class LobbyBrowser {
         return statusMap[status] || 'Open';
     }
 
+    /** Whether a match is in the public list as last fetched: such a match is public. */
+    lists(lobbyId) {
+        return this.lobbies.some((lobby) => String(lobby.id) === String(lobbyId));
+    }
+
     /**
    * Join a lobby. When the join fails the browser stays open with the reason inline.
    */

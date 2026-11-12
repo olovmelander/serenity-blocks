@@ -13,6 +13,10 @@
  * Serenity Mode, **over the theme**: no world of its own, the theme keeps drawing beneath a
  * light veil that breathes, and the breath is published (src/core/breath-signal.js) so every
  * theme's camera breathes with you. A Sukha session always has its worlds.
+ *
+ * A practice of your own only runs in a world that is open to you (`canChoose`: found, and for a
+ * fast world its safety note read). A fast world breathes its thirty breaths, then rests in slow
+ * natural breathing and ends; it is begun again for another round (breath-safety.js).
  */
 import {
     BREATH_WORLDS, DEFAULT_BREATH_WORLD, formatPattern, getBreathWorld, resolveBreathWorldId,
@@ -20,7 +24,11 @@ import {
 import {
     BREATH_PHASES, breathLevel, cycleSeconds, isValidPattern, nextPhase,
 } from './breath-clock.js';
+import {
+    STRONG_REST_SECONDS, STRONG_WORLD_BREATHS, createStrongDose, isStrongPattern,
+} from './breath-safety.js';
 import { setBreathSignal } from '../../../core/breath-signal.js';
+import { holdFlashing } from '../../../utils/photosensitivity.js';
 
 const PHASE_WORDS = ['Breathe in', 'Hold', 'Breathe out', 'Rest'];
 /** The four parts of a breath the voice can give words to (setCueWords). */
@@ -36,8 +44,17 @@ const GUIDANCE_WORDS = {
     natural: { phase: 'Breathe naturally', hint: 'Let the breath find its own pace' },
     carry: { phase: 'Keep the rhythm', hint: 'On your own now: in, hold, out, hold' },
     closing: { phase: 'Come back gently', hint: 'Open your eyes when you are ready' },
-    'timed-hold': { phase: 'Pause', hint: 'Rest on empty, softly' },
 };
+/** The picture of the rest after a fast world's breaths: slow, and never counted. */
+const REST_PATTERN = Object.freeze([4, 1, 6, 1]);
+const REST_WORDS = Object.freeze({
+    eyebrow: 'Rest',
+    note: `That was ${STRONG_WORLD_BREATHS} breaths. Rest now for a minute or more, breathing slowly `
+        + 'and naturally.',
+    phase: 'Breathe naturally',
+    hint: 'This round is over: begin again after the rest, if you like',
+    announce: `${STRONG_WORLD_BREATHS} breaths done. Rest now, and breathe slowly and naturally.`,
+});
 const CHAPTER_MS = 3600;
 const SESSION_ACCENTS = {
     BASE: [125, 211, 252],
@@ -81,6 +98,14 @@ const formatClock = (seconds) => {
     return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, '0')}`;
 };
 
+/** A pad button's cap beside a key's; the body's input class shows the one in use. */
+const padcap = (name) => {
+    const cap = el('kbd', 'sb-kbd', name);
+    cap.dataset.pad = '';
+    cap.setAttribute('aria-hidden', 'true');
+    return cap;
+};
+
 export class BreathingGuide {
     constructor(container) {
         this.container = container;
@@ -89,11 +114,16 @@ export class BreathingGuide {
         this.showText = true;
         this.currentTechnique = DEFAULT_BREATH_WORLD;
         /**
-         * Whether you may choose a world yourself (one you have found: breath-collection.js). Set
-         * by the game; a Sukha session sets its worlds through setTechnique, past this.
+         * Whether you may practise a world on your own: one you have found (breath-collection.js)
+         * and, for a fast world, whose safety note is read (breath-safety.js). Set by the game; a
+         * Sukha session sets its worlds through setTechnique, past this.
          * @type {(id: string) => boolean}
          */
         this.canChoose = () => true;
+        /** A fast world's breaths, counted across stops and starts (breath-safety.js). */
+        this._dose = createStrongDose();
+        /** When the rest after a fast world's breaths ends (performance.now()), or null. */
+        this._restUntil = null;
         this.world = getBreathWorld(this.currentTechnique);
         /** The cue couplet the voice last spoke in this world (setCueWords), or null. */
         this.cueWords = null;
@@ -201,14 +231,8 @@ export class BreathingGuide {
         this.count.setAttribute('aria-hidden', 'true');
         this.hint = el('div', 'breath-guide__hint');
         this.hint.setAttribute('aria-hidden', 'true');
-        // A hold's dial: a ring that fills toward the suggested length, the time inside it.
-        this.holdDial = el('div', 'breath-guide__hold');
-        this.holdDial.setAttribute('aria-hidden', 'true');
-        this.holdTime = el('span', 'breath-guide__hold-time', '0:00');
-        this.holdLabel = el('span', 'breath-guide__hold-label');
-        this.holdDial.append(el('span', 'breath-guide__hold-ring'), this.holdTime, this.holdLabel);
         this.cue = el('div', 'breath-guide__cue');
-        this.cue.append(this.phaseWord, this.count, this.holdDial, this.hint);
+        this.cue.append(this.phaseWord, this.count, this.hint);
 
         // A round's title card, drawn large over the world as the round begins.
         this.chapter = el('div', 'breath-guide__chapter');
@@ -277,19 +301,20 @@ export class BreathingGuide {
         this.pauseButton = button('pause', 'Pause session', 'Pause');
         this.endButton = keycap(button('end', 'End breathing', 'End'), 'Esc');
         this.controls.append(this.previousButton, this.nextButton, this.placeButton, this.pauseButton, this.endButton);
-        // An open hold ends when you breathe in: this, Space, or a tap anywhere on the world.
+        // A hold ends when you breathe in: this, Space, a pad's A, or a tap anywhere on the world.
         this.breatheButton = keycap(button('breathe', 'Breathe in now', 'Breathe in'), 'Space');
+        this.breatheButton.append(padcap('A'));
         // Ending a long session by accident would be unkind: it asks once, and the session
         // waits while it asks.
         this.confirm = el('div', 'breath-guide__confirm');
         this.confirm.hidden = true;
         this.confirm.setAttribute('role', 'alertdialog');
         this.confirm.setAttribute('aria-label', 'End this session?');
-        // Asked from a pad: the face buttons as keycaps (A keeps going, B ends).
+        // Asked from a pad: the face buttons as keycaps (A continues, B ends).
         this.confirmHint = el('small', 'breath-guide__confirm-hint');
         this.confirmHint.append(
             el('kbd', 'sb-kbd', 'A'),
-            el('span', '', 'Keep going'),
+            el('span', '', 'Continue'),
             el('kbd', 'sb-kbd', 'B'),
             el('span', '', 'End session'),
         );
@@ -297,7 +322,7 @@ export class BreathingGuide {
         this.confirm.append(
             el('p', '', 'End this session?'),
             button('confirm-end', 'End session', 'End session'),
-            keycap(button('keep-going', 'Keep going', 'Keep going'), 'Esc'),
+            keycap(button('keep-going', 'Continue the session', 'Continue'), 'Esc'),
             this.confirmHint,
         );
         this.pausedBadge = el('div', 'breath-guide__paused');
@@ -398,9 +423,11 @@ export class BreathingGuide {
         const accent = (this.isExternallyControlled && SESSION_ACCENTS[this.sessionId]) || world.accent;
         this._style(this.root, '--breath-accent', accent.join(', '));
         if (!this.isExternallyControlled) {
-            this._text(this.eyebrow, `${world.intent} · ${formatPattern(world.pattern)}`);
+            const resting = this._restUntil !== null;
+            const rhythm = `${world.intent} · ${formatPattern(world.pattern)}`;
+            this._text(this.eyebrow, resting ? REST_WORDS.eyebrow : rhythm);
             this._text(this.title, world.name);
-            this._text(this.note, world.summary);
+            this._text(this.note, resting ? REST_WORDS.note : world.summary);
         }
         this._renderPattern();
     }
@@ -440,6 +467,10 @@ export class BreathingGuide {
 
     start() {
         if (this.isActive || this._destroyed) return;
+        // A practice of your own begins only in a world open to you: else in one that is.
+        if (!this.isExternallyControlled && !this.canChoose(this.currentTechnique)) {
+            this.setTechnique(this.allowedWorld(this.currentTechnique));
+        }
         this.isActive = true;
         this._isPaused = false;
         this._hiddenAt = null;
@@ -459,8 +490,75 @@ export class BreathingGuide {
         window.addEventListener('resize', this._onResize);
         this.phaseStartTime = performance.now();
         this.currentPhase = BREATH_PHASES[nextPhase(this.pattern, 0)];
+        this._enterWorld();
         this._animate();
         this._announce();
+    }
+
+    // ── A fast world: thirty breaths, then a rest ───────────────────────────
+
+    /** Whether this practice is a fast world breathed on your own. */
+    _isStrongPractice() {
+        return this.isActive && !this.isExternallyControlled && isStrongPattern(this.world.pattern);
+    }
+
+    /** True while a fast world rests after its breaths. */
+    get isResting() {
+        return this._restUntil !== null;
+    }
+
+    /**
+     * The practice is in a world (it began, or moved to one). A fast world opened before its rest
+     * is over is still resting, and flashing is held back while a fast world is breathed.
+     */
+    _enterWorld() {
+        const strong = this._isStrongPractice();
+        holdFlashing(strong);
+        const left = strong ? this._dose.restLeft(performance.now()) : 0;
+        if (left > 0) this._beginRest(left);
+        else this._endRest();
+    }
+
+    /** The breaths are done: slow natural breathing, uncounted, for `ms`; then the practice ends. */
+    _beginRest(ms = STRONG_REST_SECONDS * 1000) {
+        const now = performance.now();
+        this._restUntil = now + ms;
+        this.cueWords = null;
+        this.pattern = [...REST_PATTERN];
+        this.phaseStartTime = now;
+        this.currentPhase = BREATH_PHASES[nextPhase(this.pattern, 0)];
+        this.setGuidance({ mode: 'natural', phase: REST_WORDS.phase, hint: REST_WORDS.hint });
+        this._renderWorld();
+        this.announce(REST_WORDS.announce);
+    }
+
+    /** Leave the rest (the practice ended, or moved to another world). */
+    _endRest() {
+        if (this._restUntil === null) return;
+        this._restUntil = null;
+        if (!this.isExternallyControlled) {
+            this.setGuidance(null);
+            this.pattern = [...this.world.pattern];
+        }
+        this._renderWorld();
+    }
+
+    /**
+     * `wraps` more breaths of a practice of your own were completed. A fast world's thirtieth
+     * begins its rest; a rest that is over ends the practice (it is begun again for more).
+     */
+    _countStrongBreaths(wraps, now) {
+        if (this._restUntil !== null) {
+            if (now >= this._restUntil) this.stop();
+            return;
+        }
+        if (!this._isStrongPractice()) return;
+        for (let i = 0; i < wraps; i++) {
+            if (this._dose.breath(now)) {
+                this._beginRest();
+                return;
+            }
+        }
     }
 
     /** Whether breathing over the theme is possible now: only in Serenity Mode. */
@@ -572,6 +670,8 @@ export class BreathingGuide {
         this._isPaused = false;
         this._hiddenAt = null;
         this.cueWords = null;
+        holdFlashing(false);
+        this._endRest();
         this.stageToken += 1;
         this._cancelFrame();
         this._clearTimers();
@@ -723,7 +823,7 @@ export class BreathingGuide {
         }
     }
 
-    /** An open hold is waiting for you to breathe in (and nothing else is asking first). */
+    /** A hold is waiting for you to breathe in (and nothing else is asking first). */
     _canBreathe() {
         return this.isActive && this.isExternallyControlled && this.guidance?.mode === 'open-hold'
             && !this._isPaused && this.confirm.hidden;
@@ -751,7 +851,7 @@ export class BreathingGuide {
         this.stop();
     }
 
-    /** A gamepad's A: breathe in during an open hold, keep going when asked, else pause. */
+    /** A gamepad's A: breathe in during a hold, continue when asked about ending, else pause. */
     primaryAction() {
         if (!this.isActive || !this.isExternallyControlled) return false;
         if (!this.confirm.hidden) this._act('keep-going');
@@ -799,19 +899,26 @@ export class BreathingGuide {
 
     // ── Technique ───────────────────────────────────────────────────────────
 
-    /** @param {string} techniqueName a world id */
+    /**
+     * @param {string} techniqueName a world id. A running practice of your own never moves to a
+     *   world that is not open to you (canChoose); a session sets its worlds past this.
+     */
     setTechnique(techniqueName) {
         if (!this.techniques[techniqueName]) return;
         const changed = techniqueName !== this.currentTechnique;
+        const own = !this.isExternallyControlled;
+        if (changed && own && this.isActive && !this.canChoose(techniqueName)) return;
         this.currentTechnique = techniqueName;
         this.world = getBreathWorld(techniqueName);
         if (changed) this.cueWords = null;
         this.technique = this.techniques[techniqueName];
-        if (!this.isExternallyControlled) {
+        if (own) {
+            if (changed) this._endRest();
             this.pattern = [...this.world.pattern];
             if (this.isActive && changed) {
                 this.phaseStartTime = performance.now();
                 this.currentPhase = BREATH_PHASES[nextPhase(this.pattern, 0)];
+                this._enterWorld();
             }
         }
         this._renderWorld();
@@ -847,7 +954,7 @@ export class BreathingGuide {
         return () => this._phaseListeners.delete(listener);
     }
 
-    /** The world to start on: the one you chose, if it is open to you, else a starter. */
+    /** The world to start on: the one you chose, if it is open to you, else the gentle default. */
     allowedWorld(saved) {
         const id = resolveBreathWorldId(saved);
         if (this.techniques[id] && this.canChoose(id)) return id;
@@ -856,7 +963,8 @@ export class BreathingGuide {
 
     cycleTechnique(direction = 1) {
         if (this.isExternallyControlled) return;
-        // Only the worlds you have found; the current one stays in the ring to step away from.
+        // Only the worlds open to you (found, and a fast one's safety note read); the current
+        // one stays in the ring to step away from.
         const ids = BREATH_WORLDS.map((world) => world.id).filter((id) => id === this.currentTechnique || this.canChoose(id));
         const index = ids.indexOf(this.currentTechnique);
         const next = ids[(index + direction + ids.length) % ids.length];
@@ -873,7 +981,10 @@ export class BreathingGuide {
     // ── Session ownership ───────────────────────────────────────────────────
 
     setExternalControl(enabled) {
+        // A session taking the guide over ends a practice of your own, its rest included.
+        this._endRest();
         this.isExternallyControlled = Boolean(enabled);
+        if (this.isExternallyControlled) holdFlashing(false);
         this.root.classList.toggle('is-session', this.isExternallyControlled);
         this.journey.hidden = !(this.isExternallyControlled && this._progressVisible);
         // A session announces its stages; a standalone practice speaks each phase.
@@ -898,8 +1009,8 @@ export class BreathingGuide {
 
     /**
      * How the current stage is guided.
-     * @param {{mode: 'paced'|'open-hold'|'timed-hold'|'carry'|'natural'|'closing',
-     *   suggested?: number, cap?: number, phase?: string, hint?: string}|null} guidance
+     * @param {{mode: 'paced'|'open-hold'|'carry'|'natural'|'closing',
+     *   phase?: string, hint?: string}|null} guidance
      *   `phase` and `hint` replace the mode's own words (a carry's rhythm, a sleep closing)
      */
     setGuidance(guidance) {
@@ -908,12 +1019,6 @@ export class BreathingGuide {
         if ((this.root.dataset.guidance || '') !== mode) this.root.dataset.guidance = mode;
         this._holdReady = false;
         this.root.classList.remove('is-hold-ready');
-        if (mode === 'open-hold' || mode === 'timed-hold') {
-            const { suggested = 0 } = this.guidance;
-            this._style(this.root, '--hold', '0');
-            this._text(this.holdTime, mode === 'open-hold' ? '0:00' : formatClock(suggested));
-            this._text(this.holdLabel, mode === 'open-hold' ? `Suggested ${formatClock(suggested)}` : 'Rest in the pause');
-        }
     }
 
     /** The intention chosen for this session, shown as you arrive and as you rest. */
@@ -1040,14 +1145,13 @@ export class BreathingGuide {
         if (!this.isExternallyControlled) return;
         const round = data.round > 0 ? `Round ${data.round} of ${data.totalRounds}` : '';
         this._text(this.eyebrow, [data.sessionName, round].filter(Boolean).join(' · '));
-        // A timed pause (Sukha Nightfall) is a pause, not a hold.
-        const stage = this.guidance?.mode === 'timed-hold' ? 'Pause' : SESSION_STAGE_LABELS[data.phase];
-        this._text(this.journeyStage, stage || '');
+        this._text(this.journeyStage, SESSION_STAGE_LABELS[data.phase] || '');
         let detail = '';
         if (data.phase === 'active' && data.totalBreaths > 0) {
             detail = `Breath ${Math.min(data.totalBreaths, (data.breathCount || 0) + 1)} of ${data.totalBreaths}`;
-        } else if (data.phase === 'retention' && Number.isFinite(data.holdElapsed)) {
-            detail = `Held ${formatClock(Math.floor(data.holdElapsed))}`;
+        } else if (data.phase === 'retention') {
+            // A hold is yours to end: nothing on screen times it.
+            detail = 'At your own pace';
         } else if (Number.isFinite(data.remainingTime)) {
             detail = `${formatClock(data.remainingTime)} left`;
         }
@@ -1077,21 +1181,10 @@ export class BreathingGuide {
         if (fill) this._style(fill, 'transform', `scaleX(${Math.max(0, Math.min(1, data.phaseProgress ?? 0)).toFixed(4)})`);
     }
 
-    /** The hold dial: an open hold counts up toward its suggestion; a timed pause counts down. */
+    /** A hold's reminder has sounded: the Breathe in button glows. Nothing counts the hold. */
     _renderHold(data) {
-        const mode = this.guidance?.mode;
-        if (mode !== 'open-hold' && mode !== 'timed-hold') return;
-        const suggested = Math.max(1, this.guidance.suggested || data.phaseDuration || 1);
-        if (mode === 'timed-hold') {
-            const progress = Math.max(0, Math.min(1, data.phaseProgress ?? 0));
-            this._style(this.root, '--hold', progress.toFixed(4));
-            this._text(this.holdTime, formatClock(Number.isFinite(data.remainingTime) ? data.remainingTime : suggested));
-            return;
-        }
-        const elapsed = Number.isFinite(data.holdElapsed) ? Math.max(0, data.holdElapsed) : 0;
-        const ready = Boolean(data.holdReady) || elapsed >= suggested;
-        this._style(this.root, '--hold', Math.min(1, elapsed / suggested).toFixed(4));
-        this._text(this.holdTime, formatClock(Math.floor(elapsed)));
+        if (this.guidance?.mode !== 'open-hold') return;
+        const ready = Boolean(data.holdReady);
         if (ready !== this._holdReady) {
             this._holdReady = ready;
             this.root.classList.toggle('is-hold-ready', ready);
@@ -1106,7 +1199,8 @@ export class BreathingGuide {
         const out = this._wordsOut || (this._wordsOut = { phase: '', count: '', hint: '' });
         const mode = this.guidance?.mode;
         if (mode === 'open-hold') {
-            out.phase = this._holdReady ? 'Breathe in when ready' : 'Hold';
+            // The same words from the first moment of a hold to its last: it is yours to end.
+            out.phase = 'Breathe in when you are ready';
             out.count = '';
             out.hint = this._coarse ? 'Tap anywhere to breathe in' : 'Press Space or click to breathe in';
             return out;
@@ -1163,13 +1257,25 @@ export class BreathingGuide {
         // Keep the fractional overshoot and resolve every boundary this frame crossed before
         // telling audio, so a resumed tab never speaks an inhale during its current hold.
         let crossings = 0;
+        let wraps = 0;
         while (elapsed >= pattern[index] && crossings < 16) {
             elapsed -= pattern[index];
             this.phaseStartTime += pattern[index] * 1000;
-            index = nextPhase(pattern, index + 1);
+            const next = nextPhase(pattern, index + 1);
+            // Back at or before where it was: a whole breath is done.
+            if (next <= index) wraps += 1;
+            index = next;
             crossings += 1;
         }
         this.currentPhase = BREATH_PHASES[index];
+        if (!this.isExternallyControlled) {
+            this._countStrongBreaths(wraps, now);
+            // The breaths became a rest, or the rest ended the practice: this frame is over.
+            if (!this.isActive || this.pattern !== pattern) {
+                if (this.isActive) this.animationFrame = requestAnimationFrame(this._tick);
+                return;
+            }
+        }
         // A one-phase pattern wraps onto itself; that is still a boundary for whoever is counting.
         if (crossings > 0) {
             this.onPhaseChangeCallback?.(this.currentPhase, previousPhase);

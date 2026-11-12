@@ -95,6 +95,11 @@ async function build() {
     const viteDone = runCommandAsync('vite', ['build']);
     await viteDone;
 
+    // The web build's artifact check, on the same dist/ the package is made from: the credits,
+    // notices, licences, privacy page and copyright statement are there and current, and the
+    // bundle is free of what the build strips. A failure stops the build before packaging.
+    runCommand('node', ['scripts/pages-artifact-check.mjs']);
+
     const electronBuilderArgs = ['--win', '--x64'];
     delete process.env.SERENITY_SKIP_ELECTRON_NODE_MODULE_SCAN;
 

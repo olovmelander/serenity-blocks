@@ -212,9 +212,10 @@ Bloom and MSAA follow `POST_LOOK` as before (bloom from Medium, 4× MSAA from Hi
 
 ### The palette
 
-`#FFD36E` bulb gold (I), `#FF9440` tangerine (O), `#F24FAE` flamingo (T), `#6CF5C9` mint (S),
-`#D92B4A` deep coral (Z), `#4FB4FF` sky blue (J), `#8A55F5` dusk lilac (L); v2 solid tiles.
-`npm run check:palette`: 3/7 in their conventional bands. Under protanopia, deuteranopia and
+`#FFD36E` bulb gold (I), `#4FB4FF` sky blue (O), `#FF9440` tangerine (T), `#F24FAE` flamingo (S),
+`#6CF5C9` mint (Z), `#D92B4A` deep coral (J), `#8A55F5` dusk lilac (L); v2 solid tiles. The
+colours were dealt to the pieces anew on 2026-11-12 (the same seven, in the pier's own order).
+`npm run check:palette`: 0/7 in the usual bands, exact and widened. Under protanopia, deuteranopia and
 tritanopia simulation the closest pair is gold against tangerine (deuteranopia), ΔE 14.8 with 13
 points of lightness between them.
 

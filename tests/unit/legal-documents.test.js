@@ -46,6 +46,28 @@ describe('Credits & legal reader (src/ui/legal/legal-documents.js)', () => {
         expect(html).toContain('<span class="legal-doc__link">https://example.org</span>');
     });
 
+    it('offers five documents, the copyright statement last, each with its button in index.html', () => {
+        expect(LEGAL_DOCUMENTS.map(({ id, file }) => [id, file])).toEqual([
+            ['credits', 'CREDITS.md'],
+            ['notices', 'THIRD_PARTY_NOTICES.md'],
+            ['licences', 'THIRD_PARTY_LICENSES.md'],
+            ['privacy', 'PRIVACY_POLICY.md'],
+            ['copyright', 'COPYRIGHT.md'],
+        ]);
+        const page = readFileSync(new URL('index.html', root), 'utf8');
+        const buttons = [...page.matchAll(/data-legal-doc="([^"]+)"[^>]*>([^<]+)<\/button>/g)]
+            .map((match) => [match[1], match[2]]);
+        expect(buttons).toEqual(LEGAL_DOCUMENTS.map(({ id, label }) => [id, label]));
+    });
+
+    it('shows the copyright statement as text a player can read, with no link left half-rendered', () => {
+        const html = renderMarkdown(readFileSync(new URL('COPYRIGHT.md', root), 'utf8'));
+        expect(html).toContain('<h3>Copyright</h3>');
+        expect(html).toContain('All rights reserved.');
+        expect(html).toContain('<code>CREDITS.md</code>');
+        expect(html).not.toContain('legal-doc__link');
+    });
+
     it('renders every legal file in the repository', () => {
         for (const { file } of LEGAL_DOCUMENTS) {
             if (file === 'THIRD_PARTY_LICENSES.md') continue; // written by the build

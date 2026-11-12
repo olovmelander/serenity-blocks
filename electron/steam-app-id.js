@@ -9,8 +9,9 @@
  * Development runs (`npm run dev:electron`, unpackaged) resolve the id from STEAM_APP_ID, then the
  * repo's steam_appid.txt (480), then this constant, then 480.
  *
- * Imported by electron/steam-integration.js (runtime), scripts/release-gate-policy.mjs (a release
- * build refuses to package without it) and scripts/afterPack.cjs.
+ * Imported by electron/steam-integration.js (runtime), electron/main.js (a store build ignores
+ * the debugging switches), scripts/release-gate-policy.mjs (a release build refuses to package
+ * without it) and scripts/afterPack.cjs.
  */
 
 /** Set to the AppID Steamworks issues (a positive integer). */
@@ -24,6 +25,18 @@ const APP_ID_TEXT = /^\d+$/;
 /** True for an id a shipped build may start Steam with. */
 export function isReleaseSteamAppId(appId) {
     return Number.isSafeInteger(appId) && appId > 0 && appId !== DEV_TEST_STEAM_APP_ID;
+}
+
+/**
+ * A build that goes to players: packaged, with the game's own AppID set. A release build
+ * (SERENITY_RELEASE=1) cannot be packaged without that AppID, so this covers it. Packaged test
+ * builds without one, and every development run, are not store builds.
+ * @param {object} options
+ * @param {boolean} options.isPackaged      app.isPackaged
+ * @param {number | null} [options.releaseAppId]  defaults to RELEASE_STEAM_APP_ID
+ */
+export function isStoreBuild({ isPackaged, releaseAppId = RELEASE_STEAM_APP_ID } = {}) {
+    return Boolean(isPackaged) && isReleaseSteamAppId(releaseAppId);
 }
 
 /**

@@ -121,6 +121,8 @@ export const STEAM_IPC = {
     // P2P (existing)
     SEND_P2P_PACKET: 'steam:sendP2PPacket',
     READ_P2P_PACKET: 'steam:readP2PPacket',
+    // Through Steam's relays, or unavailable (electron/steam-network-transport.js)
+    GET_NETWORK_TRANSPORT: 'steam:getNetworkTransport',
 
     // Stats
     GET_STAT: 'steam:getStat',

@@ -11,12 +11,31 @@
  * https://github.com/ThaUnknown/rvfc-polyfill" comment to the statement's closing brace. If the
  * marker comment is gone but the polyfill's code is still there (a Phaser update that reworded
  * it), the build fails, so the code can never slip back into a release unnoticed.
+ *
+ * The polyfill is recognised by any of three names that nothing else in Phaser, three.js or the
+ * game uses (RVFC_FINGERPRINTS): its own map property, and the two browser APIs it counts frames
+ * with. One renamed property upstream therefore still leaves two to catch it.
+ * scripts/pages-artifact-check.mjs looks for the same names in the built bundle.
  */
 
 export const RVFC_MARKER = '//  From https://github.com/ThaUnknown/rvfc-polyfill';
 export const RVFC_FINGERPRINT = '_rvfcpolyfillmap';
+export const RVFC_FINGERPRINTS = Object.freeze([
+    RVFC_FINGERPRINT,
+    'getVideoPlaybackQuality',
+    'mozPresentedFrames',
+]);
 const PHASER_ESM = /node_modules[\\/]phaser[\\/]dist[\\/]phaser\.esm\.js$/;
 const REPLACEMENT = '// requestVideoFrameCallback polyfill removed at build time (GPL-3.0 upstream; see vite.config.js)';
+
+/**
+ * The polyfill's fingerprints found in a text, in RVFC_FINGERPRINTS order.
+ * @param {string} text
+ * @returns {string[]}
+ */
+export function findRvfcFingerprints(text) {
+    return RVFC_FINGERPRINTS.filter((fingerprint) => text.includes(fingerprint));
+}
 
 /**
  * Remove the polyfill block from Phaser's source text.
@@ -26,8 +45,12 @@ const REPLACEMENT = '// requestVideoFrameCallback polyfill removed at build time
 export function stripRvfcPolyfill(code) {
     const start = code.indexOf(RVFC_MARKER);
     if (start < 0) {
-        if (code.includes(RVFC_FINGERPRINT)) {
-            throw new Error('[strip-phaser-rvfc-polyfill] the GPL-3.0 rvfc polyfill is in Phaser but its marker comment moved; update the plugin.');
+        const present = findRvfcFingerprints(code);
+        if (present.length > 0) {
+            throw new Error(
+                '[strip-phaser-rvfc-polyfill] the GPL-3.0 rvfc polyfill is in Phaser '
+                + `(${present.join(', ')}) but its marker comment moved; update the plugin.`,
+            );
         }
         return { code, removed: '' };
     }
@@ -50,8 +73,12 @@ export function stripRvfcPolyfill(code) {
     if (end < 0) throw new Error('[strip-phaser-rvfc-polyfill] unbalanced braces in the polyfill block.');
     const removed = code.slice(start, end);
     const out = code.slice(0, start) + REPLACEMENT + code.slice(end);
-    if (out.includes(RVFC_FINGERPRINT) || !removed.includes(RVFC_FINGERPRINT)) {
-        throw new Error('[strip-phaser-rvfc-polyfill] the polyfill block was not removed cleanly.');
+    const left = findRvfcFingerprints(out);
+    if (left.length > 0 || findRvfcFingerprints(removed).length === 0) {
+        throw new Error(
+            '[strip-phaser-rvfc-polyfill] the polyfill block was not removed cleanly'
+            + `${left.length > 0 ? ` (still present: ${left.join(', ')})` : ''}.`,
+        );
     }
     return { code: out, removed };
 }

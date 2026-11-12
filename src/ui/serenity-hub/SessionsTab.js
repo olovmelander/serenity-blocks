@@ -13,7 +13,8 @@ import { SESSION_WORLDS } from '../effects/breathwork-session-manager.js';
 import { getBreathCollection } from '../effects/breathing/breath-collection-store.js';
 import { announceBreathOpenings, describeOpenings } from '../effects/breathing/breath-openings.js';
 import {
-    BREATH_CAUTION_TEXT, BREATH_WELLNESS_TEXT, isBreathSafetyRead, isStrongSession, setBreathSafetyRead,
+    BREATH_SAFETY_ACK, BREATH_WELLNESS_TEXT, breathCautionMarkup, isBreathSafetyRead, isStrongSession,
+    setBreathSafetyRead,
 } from '../effects/breathing/breath-safety.js';
 import { THEME_LOCK_ICON } from './ThemeCollectionView.js';
 import {
@@ -54,23 +55,26 @@ export const SUKHA_SESSIONS = Object.freeze({
         name: 'Sukha Unwind',
         promise: 'Let the day go',
         summary: 'Out-breaths that grow longer, for a quiet evening.',
-        about: 'Breathe in gently and let a longer breath out, then breathe the aurora\'s own rhythm, with a long out-breath of seven. No holds: just the breath getting slower, then a rest that leads into sleep.',
+        about: 'Breathe in gently and let a longer breath out, then breathe the aurora\'s own rhythm, with a long '
+            + 'out-breath of seven. No holds: just the breath getting slower, then a quiet rest to end the day.',
         intensity: 'Gentle',
         style: 'Nasal breathing',
     },
     SUNRISE: {
         name: 'Sukha Sunrise',
-        promise: 'Wake up gently',
-        summary: 'A light, lively rhythm to wake up, then a steady close.',
+        promise: 'A light start to the day',
+        summary: 'A light, lively rhythm for the morning, then a steady close.',
         about: 'The Solar Flare\'s brisk, even rhythm through the nose, then quicker and lighter for one minute before a steady close. Lively but never forced: if you feel light-headed, breathe normally.',
-        intensity: 'Gentle',
+        intensity: 'Moderate',
         style: 'Nasal breathing',
     },
     REST: {
         name: 'Sukha Nightfall',
         promise: 'Let the day soften',
-        summary: 'The four-seven-eight breath, step by step, then sleep.',
-        about: 'Learn Moonlit Waters\' four-seven-eight breath in three steps: a long breath out, then a soft hold, then the full rhythm. Between rounds you drift among the stars without counting, and the rest leads into sleep, with no bell to wake you.',
+        summary: 'The four-seven-eight breath, step by step, then a long, quiet rest.',
+        about: 'Learn Moonlit Waters\' four-seven-eight breath in three steps: a long breath out, then a soft hold, '
+            + 'then the full rhythm. Between rounds you drift among the stars without counting, and the session ends '
+            + 'in a long, quiet rest, with no closing bell.',
         intensity: 'Gentle',
         style: '4-7-8 breathing',
     },
@@ -86,16 +90,20 @@ export const SUKHA_SESSIONS = Object.freeze({
         name: 'Sukha Homecoming',
         promise: 'Come back to yourself',
         summary: 'Rhythmic nasal breathing, quiet holds, and a grounded finish.',
-        about: 'Three rounds of steady breathing through the nose as the storm gathers its charge. Each round is a little quicker than the last and ends in a stillness you hold for as long as feels good, then the session lets you rest.',
-        intensity: 'Moderate',
+        about: 'Three rounds of steady breathing through the nose as the storm gathers its charge. Each round is a '
+            + 'little quicker than the last and ends in a quiet hold on empty lungs that is over the moment you '
+            + 'breathe in. Then the session lets you rest.',
+        intensity: 'Strong',
         style: 'Nasal breathing',
     },
     ELIXIR: {
         name: 'Sukha Phoenix',
         promise: 'Meet your inner spark',
-        summary: 'Connected mouth breathing that builds, then drops into deep stillness.',
-        about: 'The most active session. Three rounds of strong, connected breathing through the mouth, from the volcano\'s fire to the sun and the storm, each followed by a hold on empty lungs that ends when you breathe in, and one deep recovery breath.',
-        intensity: 'High',
+        summary: 'Connected mouth breathing in three rounds, each followed by a quiet hold you end yourself.',
+        about: 'The most active session. Three rounds of strong, connected breathing through the mouth, from the '
+            + 'volcano\'s fire to the sun and the storm, each followed by a hold on empty lungs that ends when you '
+            + 'breathe in, and one full recovery breath.',
+        intensity: 'Strongest',
         style: 'Mouth breathing',
     },
 });
@@ -124,7 +132,7 @@ export const SUKHA_INTENTIONS = {
         { id: 'unwind', icon: 'leaf', label: 'Unwind' },
         { id: 'release', icon: 'cloud', label: 'Let the day go' },
         { id: 'soften', icon: 'flower', label: 'Soften' },
-        { id: 'sleep', icon: 'moon', label: 'Get ready for sleep' },
+        { id: 'night', icon: 'moon', label: 'Get ready for the night' },
     ],
     SUNRISE: [
         { id: 'wake', icon: 'sun', label: 'Wake up gently' },
@@ -134,15 +142,15 @@ export const SUKHA_INTENTIONS = {
     ],
     BASE: [
         { id: 'calm', icon: 'wave', label: 'Find calm' },
-        { id: 'focus', icon: 'target', label: 'Sharpen focus' },
+        { id: 'focus', icon: 'target', label: 'Find focus' },
         { id: 'ground', icon: 'tree', label: 'Ground myself' },
         { id: 'breathe', icon: 'breath', label: 'Just breathe' },
     ],
     ELIXIR: [
-        { id: 'energy', icon: 'bolt', label: 'Ignite energy' },
+        { id: 'fully', icon: 'breath', label: 'Breathe fully' },
         { id: 'release', icon: 'flame', label: 'Release and let go' },
-        { id: 'transform', icon: 'butterfly', label: 'Transform' },
-        { id: 'power', icon: 'shield', label: 'Build power' },
+        { id: 'curious', icon: 'star', label: 'Stay curious' },
+        { id: 'gently', icon: 'leaf', label: 'Go gently' },
     ],
     REST: [
         { id: 'sleep', icon: 'moon', label: 'Prepare for sleep' },
@@ -170,7 +178,7 @@ const PREFS_KEY = 'serenity.sukhaPrefs';
 /** Where the preferences lived before the sessions were renamed (2026-11-03). */
 const LEGACY_PREFS_KEY = 'serenity.halePrefs';
 const DEFAULT_PREFS = Object.freeze({
-    voice: true, sounds: true, vibration: true, openHolds: true, safetyAcknowledged: false,
+    voice: true, sounds: true, vibration: true, safetyAcknowledged: false,
 });
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 /** The live strip's End asks for a second press within this window. */
@@ -188,11 +196,6 @@ function formatClock(seconds) {
     return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, '0')}`;
 }
 
-function formatHold(seconds) {
-    if (!(seconds > 0)) return 'no holds';
-    return seconds >= 60 ? `${Number((seconds / 60).toFixed(1))} min` : `${seconds} sec`;
-}
-
 function storage() {
     try {
         return window.localStorage || null;
@@ -204,7 +207,10 @@ function storage() {
 function readPrefs() {
     try {
         const saved = JSON.parse(storage()?.getItem(PREFS_KEY) || storage()?.getItem(LEGACY_PREFS_KEY) || 'null');
-        return { ...DEFAULT_PREFS, ...(saved && typeof saved === 'object' ? saved : {}) };
+        const prefs = { ...DEFAULT_PREFS, ...(saved && typeof saved === 'object' ? saved : {}) };
+        // A hold always ends when you breathe in: the old choice of timed holds is dropped.
+        delete prefs.openHolds;
+        return prefs;
     } catch {
         return { ...DEFAULT_PREFS };
     }
@@ -260,31 +266,27 @@ export class SessionsTab {
         if (!info) return null;
         const phases = this.sessionManager?.SESSIONS?.[sessionId]?.phases || [];
         const total = phases.reduce((sum, phase) => sum + secondsOf(phase), 0);
-        const retentions = phases.filter((phase) => phase.type === 'retention');
-        const holds = retentions.map(secondsOf);
         const rounds = this.sessionManager?.SESSIONS?.[sessionId]?.totalRounds || 3;
         const worlds = SESSION_WORLDS[sessionId] || SESSION_WORLDS.BASE;
-        const openHolds = retentions.some((phase) => phase.hold === 'open');
+        // A hold after a round (always yours to end), as against a pause inside a rhythm.
+        const hasHolds = phases.some((phase) => phase.type === 'retention');
         const carry = phases.filter((phase) => phase.type === 'carry');
         const paced = phases.filter((phase) => phase.pattern && phase.type !== 'carry');
         // A pause of a second or two between breaths is part of the rhythm, not a hold.
         const longestPause = Math.max(0, ...paced.map(({ pattern }) => Math.max(pattern[1] || 0, pattern[3] || 0)));
-        let feature = `Holds to ${formatHold(Math.max(0, ...holds))}`;
-        if (openHolds) feature = 'Holds at your pace';
-        else if (retentions.length) feature = `Pauses to ${formatHold(Math.max(0, ...holds))}`;
-        else if (longestPause <= 2) feature = 'No breath holds';
+        let feature = 'No breath holds';
+        if (hasHolds) feature = 'Holds at your pace';
         // Holds inside the rhythm itself (a square's sides, the seven of four-seven-eight).
-        else feature = `Short holds, up to ${longestPause} sec`;
+        else if (longestPause > 2) feature = `Short holds, up to ${longestPause} sec`;
         return {
             ...info,
             id: sessionId,
-            // Open holds or fast breathing: the safety note is read before the first one.
+            // Holds or fast breathing: the safety note is read before the first one.
             strong: isStrongSession(phases),
             seconds: total,
             duration: `${Math.max(1, Math.ceil(total / 60))} min`,
             rounds,
-            maxHold: formatHold(Math.max(0, ...holds)),
-            openHolds,
+            hasHolds,
             feature,
             breaths: phases.filter((phase) => phase.type === 'active').reduce((sum, phase) => sum + (phase.breaths || 0), 0),
             carrySeconds: carry.reduce((sum, phase) => sum + secondsOf(phase), 0),
@@ -297,7 +299,6 @@ export class SessionsTab {
                 round: phase.round || 0,
                 seconds: secondsOf(phase),
                 breaths: phase.breaths || 0,
-                hold: phase.hold || null,
                 world: worldOf(sessionId, phase),
                 // An arrival without a rhythm of its own is breathed at your own pace.
                 paced: Boolean(phase.pattern),
@@ -352,7 +353,9 @@ export class SessionsTab {
                     <button type="button" class="sb-btn sb-btn--quiet sukha__end">End session</button>
                 </section>
                 <div class="sukha__grid">${cards}</div>
-                <p class="sukha__note">${csIcon('breath', 14)} Breath holds are strong practice. Sit or lie down, never practise in or near water or while driving, and stop if you feel dizzy.</p>
+                <p class="sukha__note">${csIcon('breath', 14)} Fast breathing and breath holds are strong practice.
+                    Sit or lie down, never practise in or near water or while driving, and slow down or stop if
+                    you feel dizzy or tingling.</p>
             </div>`;
         this.renderPractice();
     }
@@ -427,24 +430,21 @@ export class SessionsTab {
                     <div class="sukha-flow__options" role="group" aria-label="Guidance">
                         <label class="sukha-flow__switch">
                             <input type="checkbox" class="sb-toggle sukha-flow__voice" checked>
-                            <span>Voice guidance</span>
+                            <span>Voice guidance <small>The guide's voice is AI-generated.</small></span>
                         </label>
                         <label class="sukha-flow__switch">
                             <input type="checkbox" class="sb-toggle sukha-flow__sounds" checked>
                             <span>Bells</span>
-                        </label>
-                        <label class="sukha-flow__switch sukha-flow__switch--holds">
-                            <input type="checkbox" class="sb-toggle sukha-flow__holds" checked>
-                            <span>Breathe in when you are ready <small>Holds end when you choose</small></span>
                         </label>
                         <label class="sukha-flow__switch" ${canVibrate ? '' : 'hidden'}>
                             <input type="checkbox" class="sb-toggle sukha-flow__vibration" checked>
                             <span>Gentle vibration</span>
                         </label>
                     </div>
-                    <div class="sukha-flow__caution" hidden>
-                        <p>${csIcon('shield', 15)} ${BREATH_CAUTION_TEXT} ${BREATH_WELLNESS_TEXT}</p>
-                        <label class="sukha-flow__ack"><input type="checkbox" class="sukha-flow__ack-input"><span>I understand</span></label>
+                    <div class="sukha-flow__caution breath-note" hidden>
+                        ${breathCautionMarkup({ icon: csIcon('shield', 15), closing: BREATH_WELLNESS_TEXT })}
+                        <label class="sukha-flow__ack"><input type="checkbox"
+                            class="sukha-flow__ack-input"><span>${BREATH_SAFETY_ACK}</span></label>
                     </div>
                     <p class="sukha-flow__safety">Sit or lie down somewhere you can let go. Breathe comfortably, and return to your natural breath whenever you need to. ${BREATH_WELLNESS_TEXT}</p>
                     <button type="button" class="sb-btn sb-btn--primary sukha-flow__begin">
@@ -463,7 +463,6 @@ export class SessionsTab {
                 <span class="sb-eyebrow sukha__eyebrow">Session complete</span>
                 <h2 class="sukha-flow__done-name"></h2>
                 <dl class="sukha-flow__stats"></dl>
-                <figure class="sukha-flow__holds-chart" hidden></figure>
                 <p class="sukha-flow__streak-line" hidden></p>
                 <p class="sukha-flow__opened" hidden></p>
                 <p class="sukha-flow__closing"></p>
@@ -480,7 +479,7 @@ export class SessionsTab {
 
     get flowOpen() { return Boolean(this.flow && !this.flow.hidden); }
 
-    /** Your saved choices: voice, bells, open holds, vibration, and the safety note read once. */
+    /** Your saved choices: voice, bells, vibration, and the safety note read once. */
     get prefs() { return this.savedPrefs || DEFAULT_PREFS; }
 
     /** The current safety note has been read (here or in the Breathing tab: breath-safety.js). */
@@ -543,7 +542,6 @@ export class SessionsTab {
             this.sessionManager?.audioManager?.setEnabled(on);
         });
         toggle('.sukha-flow__sounds', 'sounds');
-        toggle('.sukha-flow__holds', 'openHolds', () => this.renderJourney(this.pendingSessionId));
         toggle('.sukha-flow__vibration', 'vibration');
         toggle('.sukha-flow__ack-input', 'safetyAcknowledged', (read) => {
             setBreathSafetyRead(read, storage());
@@ -639,13 +637,15 @@ export class SessionsTab {
         const info = this.getSessionDetails(sessionId);
         if (!info || !this.flow) return;
         const { flow } = this;
-        const openHolds = info.openHolds && this.prefs.openHolds !== false;
         const thumbs = (stages) => `<span class="sukha-flow__worlds" aria-hidden="true">${stages.map((stage) => (
             `<i style="background-image:url('${breathPosterUrl(stage.world)}')" title="${escapeHtml(getBreathWorld(stage.world).name)}"></i>`
         )).join('')}</span>`;
-        flow.querySelector('.sukha-flow__track').innerHTML = info.stages.map((stage) => (
-            `<i data-type="${stage.type}" style="flex-grow:${Math.max(stage.seconds, 1)}" title="${STAGE_NAMES[stage.type]} · ${formatClock(stage.seconds)}"></i>`
-        )).join('');
+        // A hold has no length to show: it is over when you breathe in.
+        const length = (stage) => (stage.type === 'retention' ? 'at your own pace' : formatClock(stage.seconds));
+        flow.querySelector('.sukha-flow__track').innerHTML = info.stages.map((stage) => {
+            const title = `${STAGE_NAMES[stage.type]} · ${length(stage)}`;
+            return `<i data-type="${stage.type}" style="flex-grow:${Math.max(stage.seconds, 1)}" title="${title}"></i>`;
+        }).join('');
         const arrive = info.stages.find((stage) => stage.type === 'grounding');
         const rest = info.stages.find((stage) => stage.type === 'integration');
         const rounds = [];
@@ -655,8 +655,7 @@ export class SessionsTab {
             const hold = stages.find((stage) => stage.type === 'retention');
             const carry = stages.find((stage) => stage.type === 'carry');
             let still = '';
-            if (hold && hold.hold === 'open' && openHolds) still = ` · hold at your pace, about ${formatClock(hold.seconds)}`;
-            else if (hold) still = ` · ${hold.hold === 'timed' ? 'pause' : 'hold'} ${formatClock(hold.seconds)}`;
+            if (hold) still = ' · hold at your own pace';
             else if (carry) still = ` · ${formatClock(carry.seconds)} on your own`;
             const shown = stages.filter((stage) => stage.type !== 'recovery');
             // Only a round that ends in a recovery breath says so (the beginner rounds do not).
@@ -712,9 +711,6 @@ export class SessionsTab {
         flow.querySelector('.sukha-flow__voice').checked = this.voiceGuidance;
         flow.querySelector('.sukha-flow__sounds').checked = this.prefs.sounds !== false;
         flow.querySelector('.sukha-flow__vibration').checked = this.prefs.vibration !== false;
-        const holds = flow.querySelector('.sukha-flow__holds');
-        holds.checked = this.prefs.openHolds !== false;
-        flow.querySelector('.sukha-flow__switch--holds').hidden = !info.openHolds;
         const caution = flow.querySelector('.sukha-flow__caution');
         caution.hidden = !info.strong;
         flow.querySelector('.sukha-flow__ack').hidden = this.safetyRead;
@@ -833,7 +829,6 @@ export class SessionsTab {
             },
             {
                 intention: intention ? { ...intention, clip: this.intentionClip(sessionId, intention.id) } : null,
-                openHolds: this.prefs.openHolds !== false,
                 sounds: this.prefs.sounds !== false,
                 vibration: this.prefs.vibration !== false,
             },
@@ -930,29 +925,6 @@ export class SessionsTab {
         if (name.textContent !== text) name.textContent = text;
     }
 
-    /**
-     * Your holds, one bar per round, each beside the length it was suggested. No bar is picked out
-     * and nothing is compared with other sittings: a longer hold is not a better one.
-     */
-    renderHoldsChart(holds) {
-        const chart = this.flow.querySelector('.sukha-flow__holds-chart');
-        const open = holds.filter((hold) => hold.mode === 'open');
-        chart.hidden = !open.length;
-        if (!open.length) {
-            chart.innerHTML = '';
-            return;
-        }
-        const top = Math.max(...open.map((hold) => Math.max(hold.seconds, hold.suggested)), 1);
-        chart.innerHTML = `<figcaption>Your holds <small>marks show the suggested length</small></figcaption>
-            <ol>${open.map((hold) => `
-                <li style="--h:${(hold.seconds / top).toFixed(3)};--s:${(hold.suggested / top).toFixed(3)}">
-                    <span class="sukha-flow__bar"><i></i></span>
-                    <b>${formatClock(hold.seconds)}</b>
-                    <small>Round ${hold.round}</small>
-                </li>`).join('')}
-            </ol>`;
-    }
-
     showCompletionMessage(stats) {
         if (this.destroyed || !this.flow) return;
         const info = this.getSessionDetails(stats.sessionId) || {};
@@ -971,11 +943,11 @@ export class SessionsTab {
         flow.dataset.session = stats.sessionId || '';
         if (info.poster) flow.querySelector('.sukha-flow__art').style.backgroundImage = `url('${info.poster}')`;
         flow.querySelector('.sukha-flow__done-name').textContent = stats.sessionName || info.name || 'Sukha session';
-        // Holds you end yourself are never scored: the result counts them, it never times the longest.
-        const openHeld = holds.filter((hold) => hold.mode === 'open' && hold.seconds > 0).length;
-        let last = [info.maxHold || '—', 'Holds'];
-        if (openHeld) last = [openHeld, 'Holds at your pace'];
-        else if (holds.length) last = [info.maxHold, 'Longest pause'];
+        // Holds are never scored: the result counts them and shows no times (the practice log
+        // keeps each one's seconds as a note of the sitting).
+        const held = holds.filter((hold) => hold.seconds > 0).length;
+        let last = ['None', 'Holds'];
+        if (held) last = [held, 'Holds at your pace'];
         else if (info.carrySeconds) last = [formatClock(info.carrySeconds), 'On your own'];
         else if (info.longestOutBreath) last = [`${info.longestOutBreath} sec`, 'Longest out-breath'];
         flow.querySelector('.sukha-flow__stats').innerHTML = [
@@ -984,7 +956,10 @@ export class SessionsTab {
             [stats.breaths ?? info.breaths ?? 0, 'Guided breaths'],
             last,
         ].map(([value, label]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('');
-        this.renderHoldsChart(holds);
+        // A strong session is sat once, then left: its result offers Done alone.
+        const again = flow.querySelector('.sukha-flow__again');
+        again.hidden = info.strong === true;
+        again.disabled = again.hidden;
         const summary = summarizePractice(record.log);
         const streak = flow.querySelector('.sukha-flow__streak-line');
         streak.hidden = !record.recorded;

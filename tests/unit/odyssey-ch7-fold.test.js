@@ -110,8 +110,10 @@ describe('a room of the fold for every orb inside the hole (step 3)', () => {
         const after = resolveFoldRoom(cp[7], anchors);
         expect(after.morph).toBe(0);
         expect(after.shapeA).toBe(CH7_FOLD_SHAPES[last.shape]);
-        // Serenity Warp's room is built of tetrominoes (one solid piece each, never four cells).
-        expect(CH7_FOLD_ROOMS.find((r) => r.orbs.includes(54)).shape).toBe('tetromino');
+        // Serenity Warp's room is built of glass polycubes (corners, jacks and gates of seven
+        // cubes, one solid each), never the game's pieces.
+        expect(CH7_FOLD_ROOMS.find((r) => r.orbs.includes(54)).shape).toBe('polycube');
+        expect(Object.keys(CH7_FOLD_SHAPES)).not.toContain('tetromino');
     });
 
     it('morphs from one room into the next between their orbs, without a step', () => {

@@ -2,7 +2,7 @@
    words over it. One variable, --breath (0 empty .. 1 full), drives every CSS motion here.
    Unbounded for the phase, counts and titles; Manrope for what you read; the world's own
    accent (--breath-accent) for its light; coral only for the one action a moment asks for
-   (Breathe in during an open hold, Keep going when asked to end). No backdrop blur: the
+   (Breathe in during a hold, Continue when asked about ending). No backdrop blur: the
    world underneath is live. */
 .breath-guide {
     --breath: 0;
@@ -557,62 +557,9 @@ body.start-modal-open .breath-guide {
 .breath-guide__header { transition: opacity 0.6s ease; }
 .breath-guide.is-chaptering .breath-guide__header { opacity: 0.12; }
 
-/* ---- The hold dial: a ring filling toward the suggested length, the time inside ------- */
-.breath-guide__hold {
-    position: relative;
-    display: none;
-    place-items: center;
-    width: clamp(112px, 15vh, 148px);
-    aspect-ratio: 1;
-    margin: 14px auto 10px;
-}
-
-.breath-guide__hold-ring {
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    background: conic-gradient(rgb(var(--breath-accent)) calc(var(--hold, 0) * 360deg), rgba(var(--breath-ink), 0.14) 0);
-    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
-    mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
-    filter: drop-shadow(0 0 10px rgba(var(--breath-accent), 0.45));
-    transition: filter 0.8s ease;
-}
-
-.breath-guide__hold-time {
-    position: relative;
-    margin-top: -6px;
-    font: 600 clamp(28px, 4vh, 38px) / 1 var(--sb-font-display);
-    font-variant-numeric: tabular-nums;
-    text-shadow: 0 2px 20px rgba(0, 0, 0, 0.8);
-}
-
-.breath-guide__hold-label {
-    position: absolute;
-    bottom: 25%;
-    left: 0;
-    right: 0;
-    color: rgba(var(--breath-ink), 0.66);
-    font: 600 0.5rem / 1 var(--sb-font-display);
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-}
-
-.breath-guide[data-guidance='open-hold'] .breath-guide__hold,
-.breath-guide[data-guidance='timed-hold'] .breath-guide__hold { display: grid; }
-
-.breath-guide.is-hold-ready .breath-guide__hold-ring {
-    filter: drop-shadow(0 0 16px rgba(var(--breath-accent), 0.85));
-    animation: breath-guide-ready 2.8s ease-in-out infinite;
-}
-
-@keyframes breath-guide-ready {
-    0%, 100% { opacity: 0.8; }
-    50% { opacity: 1; }
-}
-
-/* Stages that are not counted breaths: no count, no cycle bar, the world keeps breathing. */
+/* Stages that are not counted breaths: no count, no cycle bar, the world keeps breathing.
+   A hold shows no clock and no length to reach: only its words and the Breathe in button. */
 .breath-guide[data-guidance='open-hold'] .breath-guide__count,
-.breath-guide[data-guidance='timed-hold'] .breath-guide__count,
 .breath-guide[data-guidance='carry'] .breath-guide__count,
 .breath-guide[data-guidance='natural'] .breath-guide__count,
 .breath-guide[data-guidance='closing'] .breath-guide__count { display: none; }
@@ -620,7 +567,6 @@ body.start-modal-open .breath-guide {
 .breath-guide__cycle { transition: opacity 0.8s ease; }
 
 .breath-guide[data-guidance='open-hold'] .breath-guide__cycle,
-.breath-guide[data-guidance='timed-hold'] .breath-guide__cycle,
 .breath-guide[data-guidance='carry'] .breath-guide__cycle,
 .breath-guide[data-guidance='natural'] .breath-guide__cycle,
 .breath-guide[data-guidance='closing'] .breath-guide__cycle { opacity: 0; }
@@ -628,9 +574,9 @@ body.start-modal-open .breath-guide {
 .breath-guide[data-guidance='natural'] .breath-guide__phase,
 .breath-guide[data-guidance='closing'] .breath-guide__phase,
 .breath-guide[data-guidance='carry'] .breath-guide__phase,
-.breath-guide.is-hold-ready .breath-guide__phase { font-size: clamp(26px, 3.4vw, 40px); }
+.breath-guide[data-guidance='open-hold'] .breath-guide__phase { font-size: clamp(26px, 3.4vw, 40px); }
 
-/* An open hold ends when you breathe in: a wide primary button where the cycle bar was. */
+/* A hold ends when you breathe in: a wide primary button where the cycle bar was. */
 .breath-guide__button--breathe {
     position: absolute;
     z-index: 2;
@@ -689,9 +635,6 @@ body.start-modal-open .breath-guide {
     .breath-guide__journey { bottom: 8px; }
     .breath-guide__journey-status { margin-bottom: 5px; }
     .breath-guide__orb { top: 44%; width: 54vh; }
-    .breath-guide__hold { width: 84px; margin: 4px auto; }
-    .breath-guide__hold-time { font-size: 22px; }
-    .breath-guide__hold-label { display: none; }
     .breath-guide[data-guidance='open-hold'] .breath-guide__cue { bottom: 92px; }
     .breath-guide__button--breathe { bottom: 44px; min-height: 40px; }
     .breath-guide__chapter-title { font-size: 34px; }
@@ -706,7 +649,6 @@ body.start-modal-open .breath-guide {
     .breath-guide,
     .breath-guide * { transition: none !important; }
     .breath-guide__chapter.is-showing { animation-name: breath-guide-chapter-still; }
-    .breath-guide.is-hold-ready .breath-guide__hold-ring { animation: none; }
 }
 
 @keyframes breath-guide-chapter-still {

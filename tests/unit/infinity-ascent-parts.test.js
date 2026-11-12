@@ -125,7 +125,7 @@ describe('what the tower remembers', () => {
         }).label).toBe('Four lines at once');
         expect(describeMoment({
             chain: 2, lines: 2, waveLines: 1, perfect: true,
-        }).kind).toBe('perfect');
+        })).toMatchObject({ kind: 'perfect', label: 'Clean canvas' });
         expect(describeMoment({
             chain: 2, lines: 3, waveLines: 2, perfect: false,
         })).toBeNull();

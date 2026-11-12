@@ -1757,6 +1757,47 @@
     }
 }
 
+/* "View Steam profile" beside mute (Steam's own block and report tools are on the profile):
+ * the same quiet button, shown with it. */
+:is(#lobby-waiting-room, #match-results-modal, #online-multiplayer-container) .chat-profile-btn {
+    float: right;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    margin: -2px 0 0 4px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--sb-text-faint);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity var(--sb-dur-2) var(--sb-ease-lock), color var(--sb-dur-2) var(--sb-ease-lock), background var(--sb-dur-2) var(--sb-ease-lock), border-color var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+:is(#lobby-waiting-room, #match-results-modal, #online-multiplayer-container) .player-message:hover .chat-profile-btn,
+:is(#lobby-waiting-room, #match-results-modal, #online-multiplayer-container) .chat-profile-btn:focus-visible {
+    opacity: 1;
+}
+
+:is(#lobby-waiting-room, #match-results-modal, #online-multiplayer-container) .chat-profile-btn:hover {
+    border-color: var(--sb-line-strong);
+    background: rgba(var(--sb-cream-rgb), 0.06);
+    color: var(--sb-text);
+}
+
+:is(#lobby-waiting-room, #match-results-modal, #online-multiplayer-container) .chat-profile-btn:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
+    outline-offset: 1px;
+}
+
+@media (hover: none) {
+    :is(#lobby-waiting-room, #match-results-modal, #online-multiplayer-container) .chat-profile-btn {
+        opacity: 0.7;
+    }
+}
+
 #lobby-waiting-room .online-chat.is-chat-off .chat-input-row,
 #match-results-modal .online-chat.is-chat-off .chat-input-row,
 #online-multiplayer-container .online-chat.is-chat-off .chat-input-area {
@@ -2330,6 +2371,30 @@
     border-color: rgba(var(--sb-danger-rgb), 0.4);
     background: rgba(var(--sb-danger-rgb), 0.1);
     color: var(--sb-danger);
+}
+
+/* View this player's Steam profile (beside mute). */
+#lobby-waiting-room .player-profile-btn {
+    position: absolute;
+    top: 8px;
+    left: 42px;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border-radius: 9px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--sb-text-faint);
+    cursor: pointer;
+    transition: color var(--sb-dur-2) var(--sb-ease-lock), background var(--sb-dur-2) var(--sb-ease-lock), border-color var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#lobby-waiting-room .player-profile-btn:hover {
+    border-color: var(--sb-line-strong);
+    background: rgba(var(--sb-cream-rgb), 0.06);
+    color: var(--sb-text);
 }
 
 #lobby-waiting-room .lobby-player-card.empty-slot {

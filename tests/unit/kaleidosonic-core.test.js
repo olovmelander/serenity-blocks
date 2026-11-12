@@ -12,10 +12,11 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-    DEG, DIVE_LENGTH, EYE, FOLD_AT, FOLD_SNAP, MOODS, MOOD_COLOURS, MOOD_COUNT, MoodWheel, NOTES, PIECE_CODE,
-    PIECE_COLORS, PIECE_ORDER, REFOLDS, RIG, SHAPES, SHAPE_KEYS, TAU, TEMPLE, TIMING, approach, cellsFromMatrix, chroma,
-    clamp, clamp01, clampInt, foldLens, foldSplit, hexToLinear, hueOf, lerp, marchTemple, moodMix, moodPlace,
-    mulberry32, pieceCode, rigFor, smooth, smoother, springStep, templeDistance, tranceFor,
+    DEG, DIVE_LENGTH, EYE, FOLD_AT, FOLD_SNAP, MOODS, MOOD_COLOURS, MOOD_COUNT, MoodWheel, NET, NET_JOIN, NOTES,
+    PIECE_CODE, PIECE_COLORS, PIECE_ORDER, REFOLDS, RIG, SHAPES, SHAPE_KEYS, TAU, TEMPLE, TIMING, approach,
+    cellsFromMatrix, chroma, clamp, clamp01, clampInt, foldLens, foldSplit, hexToLinear, hueOf, lerp, marchTemple,
+    moodMix, moodPlace, mulberry32, pieceCode, rigFor, smooth, smoother, springStep, templeDistance, templeTrap,
+    tranceFor,
 } from '../../src/themes/kaleidosonic/kaleidosonic-core.js';
 import { KALEIDOSONIC_TETROMINOS } from '../../src/themes/kaleidosonic/kaleidosonic-tetrominos.js';
 
@@ -43,6 +44,37 @@ const scatter = (n = 300, seed = 11) => {
     const random = mulberry32(seed);
     return Array.from({ length: n }, () => [random() * 6 - 3, random() * 6 - 3, random() * 6 - 3]);
 };
+/** Every shape the world asks the temple for: the refolds and their bounds, at rest, growing and deep. */
+const SHAPES_OF_S = [...new Set([...REFOLDS, TEMPLE.s, TEMPLE.sMin, TEMPLE.sMax])];
+const FOLD_COUNTS = [TEMPLE.detailRest, TEMPLE.detailRest + 0.5, TEMPLE.detailDeep - 0.25, TEMPLE.detailDeep];
+/**
+ * Points whose walk through the net ends where we choose: a place in the cell is thrown back out
+ * through `levels` inversions (each time into the cell itself or a neighbour, whichever the
+ * inversion can reach), so the samples sit deep in the fine images where a uniform scatter of the
+ * hall almost never lands. Deterministic.
+ */
+function deepPoints(n, s, levels, seed) {
+    const random = mulberry32(seed);
+    const points = [];
+    while (points.length < n) {
+        let q = [random(), random(), random()];
+        let reached = true;
+        for (let level = 0; level < levels && reached; level++) {
+            // the point as the fold found it, in the cell or mirrored into a neighbour
+            let far = null;
+            for (let tries = 0; tries < 8 && !far; tries++) {
+                const c = q.map((v) => [v, 2 - v, 2 + v][Math.floor(random() * 3)]);
+                const r2 = c[0] * c[0] + c[1] * c[1] + c[2] * c[2];
+                // the inversion lands it back inside the cell only from beyond the knot's six balls
+                if (r2 >= s * Math.max(c[0], c[1], c[2]) && r2 > 1e-3) far = c.map((v) => (v * s) / r2);
+            }
+            if (far) q = far;
+            else reached = false;
+        }
+        if (reached) points.push(q);
+    }
+    return points;
+}
 
 describe('Kaleidosonic maths', () => {
     it('stays three-free and DOM-free: the director, the playground and the tests share it', () => {
@@ -260,31 +292,258 @@ describe('Kaleidosonic temple: the field and its march', () => {
         expect(foldSplit(7.5, out)).toBe(out);
     });
 
-    it('repeats the temple exactly every period, on every axis', () => {
+    it('repeats the temple exactly every period, on every axis, and mirrors it in every face of a cell', () => {
         const P = TEMPLE.period;
         for (const [x, y, z] of scatter()) {
             const d = templeDistance(x, y, z);
-            expect(d).toBeGreaterThanOrEqual(0);
-            for (const [dx, dy, dz] of [[P, 0, 0], [0, P, 0], [0, 0, P], [-P, 0, 0], [0, -2 * P, 0], [3 * P, P, -P]]) {
-                const shifted = templeDistance(x + dx, y + dy, z + dz);
-                expect(Math.abs(shifted - d), `(${x}, ${y}, ${z}) + (${dx}, ${dy}, ${dz})`)
-                    .toBeLessThan(1e-9 * Math.max(1, d));
+            expect(Number.isFinite(d)).toBe(true);
+            const same = [
+                [x + P, y, z], [x, y + P, z], [x, y, z + P], [x - P, y, z], [x, y - 2 * P, z],
+                [x + 3 * P, y + P, z - P],
+                // the cell's mirrors: through a knot, and through the middle of a thread
+                [-x, y, z], [x, -y, z], [x, y, -z], [P - x, y, z], [x, P - y, P - z],
+            ];
+            for (const [mx, my, mz] of same) {
+                expect(Math.abs(templeDistance(mx, my, mz) - d), `(${x}, ${y}, ${z}) and (${mx}, ${my}, ${mz})`)
+                    .toBeLessThan(1e-9 * Math.max(1, Math.abs(d)));
             }
         }
     });
 
-    it('lays its floors and vaults at whole periods, and stands the eye in the open air between them', () => {
+    it('strings a pearl on every knot and a thread along every line between them, the eye in the open hall', () => {
         const P = TEMPLE.period;
-        for (const y of [0, P, -P, 2 * P]) {
-            expect(templeDistance(EYE.x, y, EYE.z), `y = ${y}`).toBeLessThan(1e-9);
+        const inside = -NET.pearl / (1 + NET.ease * NET.pearl);
+        for (const s of SHAPES_OF_S) {
+            // A knot is the heart of its pearl (negative: inside the stone), whatever the shape.
+            for (const knot of [[0, 0, 0], [P, 0, 0], [P, P, -P], [-2 * P, P, 3 * P]]) {
+                expect(templeDistance(...knot, s), `knot ${knot} at s ${s}`).toBeCloseTo(inside, 12);
+            }
+            // The pearl is round: its surface lies NET.pearl from the knot (read off the lattice's
+            // planes and diagonals, where the smaller pearls of its images sit against it).
+            const k = [1, 0.45, 0.2].map((v) => (v * NET.pearl) / Math.hypot(1, 0.45, 0.2));
+            expect(Math.abs(templeDistance(...k, s)), `pearl at s ${s}`).toBeLessThan(1e-9);
+            expect(templeDistance(...k.map((v) => v * 1.1), s)).toBeGreaterThan(0.02);
+            expect(templeDistance(...k.map((v) => v * 0.9), s)).toBeLessThan(-0.03);
+            // A thread runs the whole way between two knots, along every axis.
+            for (let i = 0; i <= 40; i++) {
+                const t = (i / 40) * P;
+                for (const on of [[t, 0, 0], [P, t, 0], [0, P, t]]) {
+                    expect(templeDistance(...on, s), `thread at ${on}, s ${s}`).toBeLessThan(0);
+                }
+            }
+            // The middle of a hall is open on every side, and so is the eye's place in it.
+            expect(templeDistance(P / 2, P / 2, P / 2, s)).toBeGreaterThan(0.25);
+            expect(templeDistance(EYE.x, EYE.y, EYE.z, s)).toBeGreaterThan(0.2);
         }
-        expect(templeDistance(EYE.x, EYE.y, EYE.z)).toBeGreaterThan(0.05);
+        // Beside a thread, a thread's radius away from its line and clear of the pearls (the weakest
+        // shape keeps the strung pearls close to their knots): the thread's own surface.
+        expect(Math.abs(templeDistance(P / 2, NET.thread, 0, TEMPLE.sMin))).toBeLessThan(1e-9);
         expect(EYE.y).toBeGreaterThan(0);
         expect(EYE.y).toBeLessThan(P);
-        // The eye's line of sight is a unit diagonal across the halls, level with the floors.
+        // The eye's line of sight is a unit diagonal across the halls, level with the knots' rows.
         expect(Math.hypot(...EYE.dir)).toBeCloseTo(1, 12);
         expect(EYE.dir[1]).toBe(0);
         expect(EYE.x - EYE.z).toBeCloseTo(EYE.lane, 12);
+    });
+
+    it('draws the net again round every knot: the next knot\'s pearl, small, strung on the thread', () => {
+        // The pearl on the knot two units along a thread, seen through the inversion: still a
+        // sphere, its centre and radius by the inversion's own arithmetic.
+        for (const s of SHAPES_OF_S) {
+            const span = TEMPLE.period ** 2 - NET.pearl ** 2;
+            const centre = (TEMPLE.period * s) / span;
+            const radius = (NET.pearl * s) / span;
+            // (a point of it off the lattice's planes, where no smaller pearl is strung across it)
+            const on = [centre, radius * 0.8, radius * 0.6];
+            // On it, one inversion down, and it is a pearl.
+            expect(Math.abs(templeDistance(...on, s)), `s ${s}`).toBeLessThan(1e-9);
+            expect(templeTrap(...on, s).slice(0, 2), `s ${s}`).toEqual([1, 1]);
+            expect(templeDistance(centre, 0, 0, s)).toBeLessThan(0);
+            // A refold slides it along its thread: further from its knot, and larger, as s grows.
+            expect(centre).toBeGreaterThan(NET.pearl);
+            expect(centre + radius).toBeLessThan(TEMPLE.period / 2);
+        }
+        // More inversions only ever add stone: no point of the hall gets further from it.
+        for (const [x, y, z] of scatter(400, 23)) {
+            let previous = Infinity;
+            for (let folds = 0; folds <= TEMPLE.detailDeep; folds++) {
+                const d = templeDistance(x, y, z, TEMPLE.s, folds);
+                expect(d, `(${x}, ${y}, ${z}) at ${folds}`).toBeLessThanOrEqual(previous);
+                previous = d;
+            }
+        }
+    });
+
+    it('never oversteps: the field\'s slope is at most 1 for every shape and fold count the world uses', () => {
+        // A field that is negative in the stone and never changes faster than the distance walked
+        // is never more than the distance to the stone: the march cannot step through it.
+        const random = mulberry32(77);
+        let steepest = 0;
+        let pairs = 0;
+        for (const s of SHAPES_OF_S) {
+            for (const folds of FOLD_COUNTS) {
+                const points = [
+                    ...scatter(110, 31).map((q) => q.map((v) => v / 3)),
+                    ...deepPoints(60, s, 2, 41), ...deepPoints(60, s, Math.ceil(folds), 43),
+                ];
+                for (const [x, y, z] of points) {
+                    const here = templeDistance(x, y, z, s, folds);
+                    // a hair away (the slope itself), a step away, and well across the stone's edge
+                    for (const reach of [1e-6, 0.3 * Math.abs(here) + 1e-5, 1.5 * Math.abs(here) + 1e-3, 0.2]) {
+                        const a = random() * TAU;
+                        const c = random() * 2 - 1;
+                        const r = Math.sqrt(1 - c * c) * reach;
+                        const there = templeDistance(x + r * Math.cos(a), y + r * Math.sin(a), z + c * reach, s, folds);
+                        const slope = Math.abs(there - here) / reach;
+                        steepest = Math.max(steepest, slope);
+                        pairs += 1;
+                        if (slope > 1 + 1e-6) {
+                            throw new Error(`slope ${slope} at (${x}, ${y}, ${z}) over ${reach}: s ${s}, ${folds}`);
+                        }
+                    }
+                }
+            }
+        }
+        expect(pairs).toBeGreaterThan(30_000);
+        // (the search is not vacuous: it finds slopes close to the bound)
+        expect(steepest).toBeGreaterThan(0.9);
+    });
+
+    it('never oversteps: no stone lies nearer a point than the field says (brute force)', () => {
+        // For points in the open, search the ball the field promises is empty for any stone at
+        // all: along many rays, in even steps of 1/200 of the promise (a search that owes nothing
+        // to the field's own word).
+        const random = mulberry32(5);
+        const rays = Array.from({ length: 40 }, () => {
+            const a = random() * TAU;
+            const c = random() * 2 - 1;
+            const r = Math.sqrt(1 - c * c);
+            return [r * Math.cos(a), r * Math.sin(a), c];
+        });
+        let searched = 0;
+        for (const s of [TEMPLE.sMin, TEMPLE.s, Math.max(...REFOLDS), TEMPLE.sMax]) {
+            for (const folds of [TEMPLE.detailRest, TEMPLE.detailDeep - 0.5, TEMPLE.detailDeep]) {
+                const points = [
+                    ...scatter(56, 53).map((q) => q.map((v) => v / 3)), ...deepPoints(56, s, 2, 59),
+                    ...deepPoints(56, s, Math.ceil(folds), 61),
+                ];
+                for (const [x, y, z] of points) {
+                    const promised = templeDistance(x, y, z, s, folds);
+                    if (!(promised > 1e-7)) continue;
+                    searched += 1;
+                    for (const [dx, dy, dz] of rays) {
+                        for (let i = 1; i < 200; i++) {
+                            const t = (i / 200) * promised;
+                            if (!(templeDistance(x + dx * t, y + dy * t, z + dz * t, s, folds) > 0)) {
+                                throw new Error(`stone ${t} from (${x}, ${y}, ${z}), not ${promised}: ${s}, ${folds}`);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        expect(searched).toBeGreaterThan(600);
+    }, 60_000);
+
+    it('is exact where it matters: a pearl\'s true distance near its surface, eased in the open', () => {
+        const unit = 1 / Math.sqrt(3);
+        // toward the hall's middle from a knot, only that knot's pearl is near
+        for (const away of [0.001, 0.01, 0.05]) {
+            const r = NET.pearl + away;
+            const d = templeDistance(r * unit, r * unit, r * unit);
+            expect(d).toBeLessThanOrEqual(away);
+            expect(d).toBeCloseTo(away / (1 + NET.ease * away), 12);
+            expect(d / away).toBeGreaterThan(1 - NET.ease * away);
+        }
+        // in the open it is held back: never more than 1 / ease, however far the stone
+        for (const [x, y, z] of scatter(200, 3)) expect(templeDistance(x, y, z)).toBeLessThan(1 / NET.ease);
+        // the pearl turns no part of the hall inside out, at the weakest inversion the world uses
+        expect(NET.pearl).toBeLessThan(TEMPLE.sMin / Math.sqrt(3));
+        expect(NET.thread).toBeLessThan(NET.pearl);
+    });
+
+    it('grows the next level of the net out of the one before, without a pop', () => {
+        const points = [...scatter(150, 17).map((q) => q.map((v) => v / 3)), ...deepPoints(150, TEMPLE.s, 4, 19)];
+        for (const [x, y, z] of points) {
+            const at = (folds) => templeDistance(x, y, z, TEMPLE.s, folds);
+            const from = at(TEMPLE.detailRest);
+            const to = at(TEMPLE.detailRest + 1);
+            // a weight within the snap is the whole count itself
+            expect(at(TEMPLE.detailRest + FOLD_SNAP / 2)).toBe(from);
+            expect(at(TEMPLE.detailRest + 1 - FOLD_SNAP / 2)).toBe(to);
+            let previous = from;
+            for (let i = 1; i < 40; i++) {
+                const d = at(TEMPLE.detailRest + i / 40);
+                // between the two, never further from the stone than a moment ago, and in small steps
+                expect(d).toBeLessThanOrEqual(previous + 1e-15);
+                expect(d).toBeGreaterThanOrEqual(to - 1e-15);
+                expect(previous - d).toBeLessThanOrEqual((from - to) / 40 + 1e-12);
+                previous = d;
+            }
+        }
+    });
+
+    it('reads what of the net a point belongs to: pearl or thread, how deep, where along its string', () => {
+        const P = TEMPLE.period;
+        // The net itself (no inversion). On a knot's pearl, toward the hall's middle: a pearl, as
+        // far from each of its three nearest strings' holes as a point can be.
+        const k = NET.pearl / Math.sqrt(3);
+        const pearl = templeTrap(k, k, k, TEMPLE.s, 0);
+        expect(pearl[0]).toBe(1);
+        expect(pearl[1]).toBe(0);
+        expect(pearl[2]).toBeCloseTo(k, 12);
+        expect(pearl[3]).toBeCloseTo(Math.PI / 4, 6);
+        // On a thread, most of the way to its middle.
+        const thread = templeTrap(0.8, NET.thread, 0, TEMPLE.s, 0);
+        expect(thread[0]).toBe(0);
+        expect(thread[1]).toBe(0);
+        expect(thread[2]).toBeCloseTo(0.8, 12);
+        // Where the thread enters the pearl the two give way to each other over the join.
+        const meet = Math.sqrt(NET.pearl ** 2 - NET.thread ** 2);
+        expect(templeTrap(meet, NET.thread, 0, TEMPLE.s, 0)[0]).toBeCloseTo(0.5, 9);
+        expect(templeTrap(meet + 4 * NET_JOIN, NET.thread, 0, TEMPLE.s, 0)[0]).toBe(0);
+        expect(templeTrap(meet * 0.9, NET.pearl * 0.6, 0, TEMPLE.s, 0)[0]).toBe(1);
+        // Through the inversions: the same pearl is still the net's own, and the thread's middle
+        // (where the weakest shape strings no pearl) still its own thread.
+        expect(templeTrap(k, k, k, TEMPLE.s).slice(0, 2)).toEqual([1, 0]);
+        expect(templeTrap(TEMPLE.period / 2, NET.thread, 0, TEMPLE.sMin).slice(0, 3)).toEqual([0, 0, 1]);
+        // The place along a string is measured from its knot to the middle of its thread, the same
+        // from either end and on every axis; the turn round it is the same in every mirror.
+        for (const [x, y, z] of scatter(200, 29)) {
+            const here = templeTrap(x, y, z);
+            expect(here[0]).toBeGreaterThanOrEqual(0);
+            expect(here[0]).toBeLessThanOrEqual(1);
+            expect(Number.isInteger(here[1]) && here[1] >= 0 && here[1] <= TEMPLE.detailRest).toBe(true);
+            expect(here[2]).toBeGreaterThanOrEqual(0);
+            expect(here[2]).toBeLessThanOrEqual(1 + 1e-12);
+            expect(here[3]).toBeGreaterThanOrEqual(0);
+            expect(here[3]).toBeLessThanOrEqual(Math.PI / 2 + 1e-12);
+            for (const twin of [[-x, y, z], [x, P - y, z], [x + P, y - P, -z]]) {
+                templeTrap(...twin).forEach((v, i) => expect(v, `(${x}, ${y}, ${z}) [${i}]`).toBeCloseTo(here[i], 9));
+            }
+        }
+        // It fills the caller's array, and reads the level still growing in.
+        const out = [9, 9, 9, 9];
+        expect(templeTrap(k, k, k, TEMPLE.s, TEMPLE.detailRest, out)).toBe(out);
+        // (its stone is a sliver of the hall: scan for a point of it)
+        const random = mulberry32(37);
+        let found = null;
+        for (let i = 0; i < 400_000 && !found; i++) {
+            const at = [random(), random(), random()];
+            if (templeTrap(...at, TEMPLE.s, TEMPLE.detailRest + 1)[1] > TEMPLE.detailRest) found = at;
+        }
+        expect(found).not.toBeNull();
+        // That level takes the point over by its weight: the stone it swells out of changes colour
+        // as it swells (every number eases from the old piece's to the new one's), never at once.
+        const before = templeTrap(...found, TEMPLE.s, TEMPLE.detailRest);
+        const after = templeTrap(...found, TEMPLE.s, TEMPLE.detailRest + 1);
+        expect(before[1]).toBeLessThanOrEqual(TEMPLE.detailRest);
+        expect(after[1]).toBe(TEMPLE.detailRest + 1);
+        for (const weight of [0.01, 0.25, 0.5, 0.9, 0.99]) {
+            const during = templeTrap(...found, TEMPLE.s, TEMPLE.detailRest + weight);
+            const eased = before.map((v, i) => lerp(v, after[i], weight));
+            during.forEach((v, i) => expect(v, `[${i}] at ${weight}`).toBeCloseTo(eased[i], 12));
+        }
     });
 
     it('keeps the dive\'s lane clear of stone for every shape the temple refolds to, rest and deep', () => {
@@ -295,7 +554,7 @@ describe('Kaleidosonic temple: the field and its march', () => {
                 for (let i = 0; i <= 400; i++) {
                     const t = (i / 400) * DIVE_LENGTH;
                     const d = templeDistance(...lane(t), s, folds);
-                    if (!(d > 0.05)) misses.push(`s ${s}, ${folds} folds, t ${t.toFixed(3)}: ${d.toFixed(4)}`);
+                    if (!(d > 0.12)) misses.push(`s ${s}, ${folds} folds, t ${t.toFixed(3)}: ${d.toFixed(4)}`);
                 }
             }
         }
@@ -317,28 +576,31 @@ describe('Kaleidosonic temple: the field and its march', () => {
     });
 
     it('marches a ray to the stone it meets, and nowhere when there is none in reach', () => {
+        const P = TEMPLE.period;
         const eye = [EYE.x, EYE.y, EYE.z];
-        // Straight down onto the floor, straight up into the vault.
-        const down = marchTemple(eye, [0, -1, 0]);
-        expect(down).not.toBeNull();
-        expect(down.y).toBeGreaterThanOrEqual(-1e-6);
-        expect(down.y).toBeLessThan(0.02);
-        expect(down.t).toBeCloseTo(EYE.y - down.y, 9);
-        const up = marchTemple(eye, [0, 1, 0]);
-        expect(up.y).toBeGreaterThan(TEMPLE.period - 0.02);
-        expect(up.y).toBeLessThanOrEqual(TEMPLE.period + 1e-6);
+        // From the middle of a hall straight at a knot: onto its pearl, a pearl's radius short of it.
+        const middle = [P / 2, P / 2, P / 2];
+        const toKnot = [-1, -1, -1].map((v) => v / Math.sqrt(3));
+        const far = Math.sqrt(3) * (P / 2);
+        const hit = marchTemple(middle, toKnot, { far: 3 });
+        expect(hit).not.toBeNull();
+        expect(hit.t).toBeLessThanOrEqual(far - NET.pearl + 1e-9);
+        expect(hit.t).toBeGreaterThan(far - NET.pearl - 0.003);
+        expect(Math.hypot(hit.x, hit.y, hit.z)).toBeCloseTo(NET.pearl, 2);
         // What it reports is on the ray and on the stone.
-        expect(templeDistance(down.x, down.y, down.z)).toBeLessThan(0.002);
-        expect([down.x, down.z]).toEqual([EYE.x, EYE.z]);
+        expect(templeDistance(hit.x, hit.y, hit.z)).toBeLessThan(0.002);
+        [hit.x, hit.y, hit.z].forEach((v, i) => expect(v).toBeCloseTo(middle[i] + toKnot[i] * hit.t, 12));
+        // And at the opposite knot, the same pearl again.
+        expect(marchTemple(middle, toKnot.map((v) => -v), { far: 3 }).t).toBeCloseTo(hit.t, 9);
         // The lane is open the whole flight (and further): nothing to hit.
         expect(marchTemple(eye, EYE.dir, { far: DIVE_LENGTH })).toBeNull();
         // Out of reach is a miss; the caller's object is filled and handed back.
-        expect(marchTemple(eye, [0, -1, 0], { far: EYE.y * 0.5 })).toBeNull();
+        expect(marchTemple(middle, toKnot, { far: hit.t * 0.5 })).toBeNull();
         const out = {};
-        expect(marchTemple(eye, [0, -1, 0], { out })).toBe(out);
-        expect(out.t).toBeCloseTo(down.t, 9);
+        expect(marchTemple(middle, toKnot, { far: 3, out })).toBe(out);
+        expect(out.t).toBeCloseTo(hit.t, 9);
         // Never nearer than it is asked to start.
-        expect(marchTemple(eye, [0, -1, 0], { near: 0.3 }).t).toBeGreaterThanOrEqual(0.3);
+        expect(marchTemple(middle, toKnot, { near: 0.3, far: 3 }).t).toBeGreaterThanOrEqual(0.3);
     });
 });
 

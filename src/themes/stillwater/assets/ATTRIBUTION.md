@@ -17,12 +17,16 @@ uint8, WEIGHTS_0 uint8 summing to 255), no glTF skin and no animation. The skele
 
 ## The troll
 
-The troll is the theme's own, the author's character, drawn from numbers in Blender (the files
-below).
+The troll is the theme's own, the author's character. He was modelled in Blender after a concept
+picture that the author made with an AI image tool. The picture is not redistributed: it is not
+in the repository or in the game. An earlier troll was a mesh reconstructed from that picture by a
+3D generative model; the files below replaced it on 2026-10-18, and its file left the repository
+on 2026-11-04. The files below are drawn from the numbers in the scripts and contain no output of
+an image or 3D generative model (`CREDITS.md` says the same).
 
 `troll-lod0..3.glb` (drawn 2026-10-18, `scripts/blender/stillwater/troll_shape.py` and
 `troll.py`, from numbers alone): the reconstruction's pelt was a soup of thin sheets that read as
-torn, messy paper however it was rebuilt, so the troll is now drawn clean in the source's character
+torn, messy paper however it was rebuilt, so the troll is now drawn clean in the picture's character
 (a stocky old troll, his head carried low and forward, a long drooping nose, long ears, big hands
 and feet, a cloak of matted hair to his knees). He is one signed distance field: smooth masses
 blended into each other along the 21-bone skeleton's rest pose, eye sockets and nostrils taken out,

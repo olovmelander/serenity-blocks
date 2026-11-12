@@ -9,9 +9,11 @@
 import { enhanceSegmented } from './components/cosmic-select.js';
 import { getInputMode } from './keystone/input-mode.js';
 import { MATCH_START_LEVEL_MAX, MATCH_START_LEVEL_MIN } from '../core/multiplayer/match-level-rule.js';
+import { DEFAULT_LOBBY_TYPE } from '../core/multiplayer/lobby-type.js';
 import {
     closeLayer, focusSoon, mpIcon, openLayer,
 } from './components/mp-sheet.js';
+import { HOST_IP_NOTE } from './online-play-notice.js';
 
 const CONDITIONS = {
     frags: {
@@ -56,8 +58,9 @@ const CONDITIONS = {
     },
 };
 
-const LOBBY_TYPE_HELP = {
-    public: 'Anyone can find it in the list and join.',
+// What each choice does (core/multiplayer/lobby-type.js, electron/steam-lobby-type.js).
+export const LOBBY_TYPE_HELP = {
+    public: `Anyone can find it in the list and join. ${HOST_IP_NOTE}`,
     friends: 'Only your Steam friends can join.',
     private: 'Hidden from the list — players join by invite or lobby ID.',
 };
@@ -133,8 +136,8 @@ export class MatchConfigModal {
                 <div class="sb-mp-field">
                   <span class="sb-mp-field__label">Who can join</span>
                   <select id="lobby-type" name="lobbyType" aria-label="Who can join">
-                    <option value="public" selected>Anyone</option>
-                    <option value="friends">Friends</option>
+                    <option value="public">Anyone</option>
+                    <option value="friends" selected>Friends</option>
                     <option value="private">Invite only</option>
                   </select>
                   <p class="sb-mp-help" id="lobby-type-help"></p>
@@ -263,7 +266,7 @@ export class MatchConfigModal {
             const help = this.container.querySelector('#garbage-cancellation-help');
             if (help) {
                 help.textContent = e.target.value === 'disabled'
-                    ? 'Garbage always arrives in full, as in the classic game.'
+                    ? 'Garbage always arrives in full.'
                     : 'Lines you send cancel garbage on its way to you, one for one.';
             }
         });
@@ -343,7 +346,7 @@ export class MatchConfigModal {
 
     updateLobbyTypeUI(type) {
         const help = this.container.querySelector('#lobby-type-help');
-        if (help) help.textContent = LOBBY_TYPE_HELP[type] || LOBBY_TYPE_HELP.public;
+        if (help) help.textContent = LOBBY_TYPE_HELP[type] || LOBBY_TYPE_HELP[DEFAULT_LOBBY_TYPE];
     }
 
     showError(message, field = null) {
@@ -479,7 +482,7 @@ export class MatchConfigModal {
         // Reset to default end condition UI
         this.updateEndConditionUI('frags');
         this.updateAttackStyleUI('standard');
-        this.updateLobbyTypeUI('public');
+        this.updateLobbyTypeUI(DEFAULT_LOBBY_TYPE);
         this.clearError();
         this.setSubmitting(false);
     }

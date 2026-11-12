@@ -50,11 +50,12 @@ import { GameplaySurge, Swell } from '../../shared/gameplay-surge.js';
 
 /**
  * Every formation a gameplay moment may roll. 'free' is the release state and 'heart' is
- * kept for game over, so neither is in the pool.
+ * kept for game over, so neither is in the pool. The flock never draws the game's pieces:
+ * the board shows those, and the sky keeps to its own figures.
  */
 export const RANDOM_SHAPE_POOL = Object.freeze([
     'sphere', 'torus', 'helix', 'galaxy', 'cube', 'star', 'wave', 'butterfly',
-    'ring', 'tetromino', 'tetrominoSet', 'pyramid', 'octahedron', 'hexagon',
+    'ring', 'pyramid', 'octahedron', 'hexagon',
     'sunflower', 'infinity', 'trefoil', 'vortex', 'wavySphere', 'lightning',
     'snowflake', 'lotus', 'crescent', 'crystalShard', 'mobius', 'comet', 'nautilus',
 ]);

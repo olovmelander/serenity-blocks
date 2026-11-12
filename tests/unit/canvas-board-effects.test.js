@@ -202,11 +202,11 @@ describe('opponent tile: the move (its combo of chained waves)', () => {
         expect(fx.lights.some((l) => l.kind === 'rise' && l.color === TONE.GOLD)).toBe(true);
     });
 
-    it('a single clear\'s clean canvas is a perfect clear', () => {
+    it('a single clear\'s clean canvas says "Clean canvas" alone', () => {
         const fx = makeFx();
         fx.triggerLineClearFlash([22, 23], 2, '#fff', 1);
         fx.triggerPerfectClear(2);
-        expect(calloutText(callouts(fx)[0])).toEqual(['Perfect clear', 'Clean canvas']);
+        expect(calloutText(callouts(fx)[0])).toEqual(['Clean canvas']);
     });
 
     it('lands as the emptying wave\'s rows go, and only once per move', () => {

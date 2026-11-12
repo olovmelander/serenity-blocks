@@ -83,6 +83,7 @@ const DEFAULT_CONFIG = {
     backgroundTabBehavior: 'reduce', // 'pause' | 'reduce' | 'continue'
     pauseOnFocusLoss: true, // pause a local run on alt-tab, minimize or pad loss (src/ui/focus-pause.js)
     onlineChat: true, // show players' chat in online lobbies, matches and results (src/ui/chat-moderation.js)
+    publicMatchChat: false, // also in public matches, with players you don't know (the same module)
     keyBindings: {
         moveLeft: 'ArrowLeft',
         moveRight: 'ArrowRight',
@@ -1361,8 +1362,9 @@ function setupSettingsSheet(listen, signal) {
  * the game (src/ui/legal/legal-documents.js), loaded when the section is first opened.
  */
 /**
- * Settings › General › Online chat: chat on or off, and the players muted on this computer
- * (src/ui/chat-moderation.js), each with an Unmute button.
+ * Settings › General › Online chat: chat on or off, chat in public matches (off unless turned
+ * on), and the players muted on this computer (src/ui/chat-moderation.js), each with an Unmute
+ * button.
  */
 function setupOnlineChatSettings(listen, signal, settingsManager, settings) {
     const toggle = document.getElementById('online-chat-toggle');
@@ -1370,6 +1372,14 @@ function setupOnlineChatSettings(listen, signal, settingsManager, settings) {
         toggle.checked = settings.onlineChat !== false;
         listen(toggle, 'change', (e) => {
             settingsManager.update({ onlineChat: e.target.checked });
+            settingsManager.save();
+        });
+    }
+    const publicToggle = document.getElementById('public-chat-toggle');
+    if (publicToggle) {
+        publicToggle.checked = settings.publicMatchChat === true;
+        listen(publicToggle, 'change', (e) => {
+            settingsManager.update({ publicMatchChat: e.target.checked });
             settingsManager.save();
         });
     }

@@ -81,11 +81,17 @@ describe('Steam lobby best-effort IPC', () => {
         network.connectedPeers.set('P2', {});
         network.leaveLobby();
         await Promise.resolve();
-        expect(invoke.mock.calls).toEqual([
+        // The role this player has is told to the main process as it changes
+        // (steam:setP2PPeerPolicy); those calls are apart from the leave itself.
+        const isRole = ([channel]) => channel === 'steam:setP2PPeerPolicy';
+        expect(invoke.mock.calls.filter((call) => !isRole(call))).toEqual([
             ['steam:closeP2PSession', 'P1'],
             ['steam:closeP2PSession', 'P2'],
             ['steam:leaveLobby'],
         ]);
+        expect(invoke.mock.calls.filter(isRole).at(-1)[1]).toEqual({
+            isHost: false, hostSteamId: null, hostSuspected: false,
+        });
         expect(network.currentLobbyId).toBeNull();
         expect(network.connectedPeers.size).toBe(0);
         expect(network.isHost).toBe(false);

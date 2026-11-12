@@ -8,8 +8,8 @@
  *
  * The rules are dist/'s: the genre mark (class A), names from other franchises' worlds (class B)
  * and the blocked names (class C), in the text of every text file and in every file name. The one
- * allowance is the legal notice, which names the mark: CREDITS.md and README.md inside the
- * package (the dist/ copies the gate already allows), and CREDITS.md beside it. Third-party
+ * allowance is the legal notice, which names the mark: CREDITS.md inside the package (the dist/
+ * copy the gate already allows) and beside it. Third-party
  * packages copied beside the package (resources/native_modules/) are not this project's to rename
  * and are not scanned.
  */
@@ -19,7 +19,7 @@ import asar from '@electron/asar';
 import { BLOCKED_TOKENS, GENRE_TOKEN, WORLD_TOKEN, findToken } from './ip-tokens.mjs';
 
 const TEXT_EXT = /\.(js|mjs|cjs|css|html|svg|json|txt|md|xml|webmanifest)$/i;
-const ALLOWED_IN_ASAR = new Set(['dist/CREDITS.md', 'dist/README.md']);
+const ALLOWED_IN_ASAR = new Set(['dist/CREDITS.md']);
 const ALLOWED_BESIDE = new Set(['CREDITS.md']);
 
 /** @type {Array<{ id: string, re: RegExp }>} */

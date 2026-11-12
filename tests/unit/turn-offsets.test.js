@@ -1,14 +1,17 @@
 /**
- * SRS kick-table + twist pins (plan Phase 3b — "the strongest engineering in
- * the core gets its pin"; previously ZERO kick tests).
+ * Turning a piece: where it may step when it does not fit in place, and the twist.
+ *
+ * When a turn is blocked where the piece stands, the piece tries a short list of
+ * offsets in order and takes the first that fits (game.js: JLSTZ_KICKS, I_KICKS).
+ * These tests pin the lists, the order they are tried in, and the twist rule.
  *
  * Conventions under test (game.js):
- * - Kick tables are guideline SRS, stored with +y = UP; application SUBTRACTS
- *   dy (`originalY - dy`) because board y grows downward. Kick [0,-2] moves
+ * - The lists are stored with +y = UP; application SUBTRACTS dy
+ *   (`originalY - dy`) because board y grows downward. Offset [0,-2] moves
  *   the piece 2 rows DOWN.
  * - piece.rotation ∈ 0..3 = ['0','R','2','L']; keys are `${from}>${to}`.
- * - After all 5 SRS kicks fail, a LEGACY horizontal fallback
- *   ([±1,0],[±2,0]) runs before the rotation reverts.
+ * - After all 5 offsets of a turn fail, the plain sideways nudges
+ *   ([±1,0],[±2,0]) run before the rotation reverts.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -18,8 +21,8 @@ import {
 import { markBoardDirty } from '../../src/core/board.js';
 import { SHAPES } from '../../src/core/constants.js';
 
-// ── Golden guideline-SRS values ──
-const GUIDELINE_JLSTZ = {
+// ── The pinned lists ──
+const PINNED_JLSTZ = {
     '0>R': [[0, 0], [-1, 0], [-1, 1], [0, -2], [-1, -2]],
     'R>0': [[0, 0], [1, 0], [1, -1], [0, 2], [1, 2]],
     'R>2': [[0, 0], [1, 0], [1, -1], [0, 2], [1, 2]],
@@ -29,7 +32,7 @@ const GUIDELINE_JLSTZ = {
     'L>0': [[0, 0], [-1, 0], [-1, -1], [0, 2], [-1, 2]],
     '0>L': [[0, 0], [1, 0], [1, 1], [0, -2], [1, -2]],
 };
-const GUIDELINE_I = {
+const PINNED_I = {
     '0>R': [[0, 0], [-2, 0], [1, 0], [-2, -1], [1, 2]],
     'R>0': [[0, 0], [2, 0], [-1, 0], [2, 1], [-1, -2]],
     'R>2': [[0, 0], [-1, 0], [2, 0], [-1, 2], [2, -1]],
@@ -80,12 +83,12 @@ function blockEarlierKicks(gs, shapeKey, from, to, kicks, targetIndex, x0, y0) {
     markBoardDirty(gs);
 }
 
-describe('SRS kick tables are guideline-exact (golden pin)', () => {
-    it('JLSTZ table matches guideline SRS', () => {
-        expect(JLSTZ_KICKS).toEqual(GUIDELINE_JLSTZ);
+describe('the turn offset lists are pinned', () => {
+    it('the list for J, L, S, T and Z is as pinned', () => {
+        expect(JLSTZ_KICKS).toEqual(PINNED_JLSTZ);
     });
-    it('I table matches guideline SRS', () => {
-        expect(I_KICKS).toEqual(GUIDELINE_I);
+    it('the list for I is as pinned', () => {
+        expect(I_KICKS).toEqual(PINNED_I);
     });
     it('rotation-state names index the tables', () => {
         expect(ROTATION_NAMES).toEqual(['0', 'R', '2', 'L']);
@@ -144,13 +147,13 @@ describe('kick application — every table entry lands the piece at (x+dx, y-dy)
         expect(gs.lastMoveWasRotation).not.toBe(true);
     });
 
-    it('a fully-blocked rotation reverts and returns false (incl. legacy fallback)', () => {
+    it('a fully-blocked rotation reverts and returns false (the sideways nudges included)', () => {
         const x0 = 4;
         const y0 = 10;
         const gs = makeState('T', 0, x0, y0);
         const kicks = JLSTZ_KICKS['0>R'];
         const rotated = shapeAtRotation('T', 1);
-        // Block every SRS candidate AND the legacy horizontal probes ([±1,0],[±2,0]).
+        // Block every offset of the turn AND the plain sideways nudges ([±1,0],[±2,0]).
         const candidates = [...kicks, [1, 0], [-1, 0], [2, 0], [-2, 0]];
         for (const [dx, dy] of candidates) {
             for (const cell of footprint(rotated, x0 + dx, y0 - dy)) {

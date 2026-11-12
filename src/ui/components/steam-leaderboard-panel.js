@@ -2,6 +2,11 @@
  * @fileoverview Steam leaderboard panel (game over, Odyssey results). Board and view
  * switches are toggle buttons (aria-pressed); the game-over sheet draws it in the
  * Keystone language (public/styles/keystone-modals.css).
+ *
+ * The panel exists only where the Steam client offers leaderboards
+ * (`steamLeaderboardsAvailable()`): the results sheets build none otherwise, and a panel whose
+ * board turns out to be unsupported takes itself off the sheet instead of saying so. The
+ * Steam library the game ships with has no leaderboard API, so today no panel is shown.
  */
 import steamService from '../../core/steam/steam-service.js';
 import { LeaderboardCache } from '../leaderboards/leaderboard-cache.js';
@@ -17,6 +22,11 @@ const DEFAULT_CACHE_TTL = {
     friends: 60 * 1000,
     around_user: 30 * 1000,
 };
+
+/** Whether the Steam client this game runs with offers leaderboards at all. */
+export function steamLeaderboardsAvailable() {
+    return steamService.capabilities?.leaderboards === true;
+}
 
 const defaultCache = new LeaderboardCache();
 const pendingRequestsByCache = new WeakMap();
@@ -349,10 +359,13 @@ export class SteamLeaderboardPanel {
             if (!this._ownsRequest(request)) return;
 
             if (!response.supported) {
-                this._renderMessage('Leaderboards unavailable (Steam API missing).');
+                // No such board from this Steam client: the panel is simply not there.
+                this._renderMessage('');
+                this.container.hidden = true;
                 return;
             }
 
+            this.container.hidden = false;
             this._renderEntries(request.board, response.entries, true, response.notice);
             this._setUpdatedLabel(0);
             this._setStatus('');

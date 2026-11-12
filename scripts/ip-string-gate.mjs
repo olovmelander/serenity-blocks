@@ -12,7 +12,8 @@
  *      4. release/**                — each packaged desktop build's app.asar and the files beside
  *                                     it, when present (scripts/ip-packaged-scan.mjs, which
  *                                     scripts/afterPack.cjs also runs on every build it packages)
- *    The only allowance: the CREDITS.md / README.md copies in dist (the legal notice). Code
+ *    The only allowance: the CREDITS.md copy in dist (the legal notice; the developer README no
+ *    longer ships, scripts/pages-artifact-check.mjs fails a dist that holds one). Code
  *    names its own things (a four-line clear is a quad, its event 'quad', its Odyssey goal
  *    'quads'), so identifiers, keys and string literals get no exemption either.
  *
@@ -30,6 +31,14 @@
  *    names fail anywhere (tracked text, tracked file names, dist/); names whose renames are still
  *    pending are held at or under the counts in ip-token-ratchet.json, which only goes down.
  *
+ * D. House words (2026-11-12): scripts/ip-tokens.mjs, HOUSE_PHRASES. The game describes itself in
+ *    its own terms ("classic game", "familiar puzzle" and their kin point at an older game) and
+ *    names its own moments (an emptied well is a "Clean canvas", so "perfect clear" is not shown
+ *    to a player). Checked in the runtime text (tracked text under src/, electron/ and public/,
+ *    and index.html; test files aside), in README.md and game_description.md, and in dist/.
+ *    "Perfect clear" is checked where a player can read it: in a script, its string and template
+ *    literals; the code keeps PERFECT_CLEAR and its comments.
+ *
  * Under CI (the CI variable set) a missing dist/ fails instead of being skipped: the bundles are
  * where a token actually reaches players.
  *
@@ -41,7 +50,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-    BLOCKED_TOKENS, GENRE_TOKEN, RATCHET_TOKENS, WORLD_TOKEN, compareToBaseline, countTokens, findToken,
+    BLOCKED_TOKENS, GENRE_TOKEN, HOUSE_PHRASES, HOUSE_PHRASES_PENDING, RATCHET_TOKENS, WORLD_TOKEN, compareToBaseline,
+    countTokens, findToken, screenHouseWords,
 } from './ip-tokens.mjs';
 import { findPackagedResources, scanPackagedApp } from './ip-packaged-scan.mjs';
 
@@ -52,7 +62,7 @@ const UPDATE = process.argv.includes('--update');
 
 const TEXT_EXT = /\.(js|mjs|css|html|svg|json|txt|md|xml|webmanifest)$/i;
 const TREE_TEXT_EXT = /\.(js|mjs|cjs|ts|mts|css|html|svg|json|txt|md|xml|webmanifest|ya?ml|py|sh|cmd|bat|ps1|glsl|wgsl|csv|toml)$/i;
-const ALLOWED_FILES = new Set(['dist/CREDITS.md', 'dist/README.md']);
+const ALLOWED_FILES = new Set(['dist/CREDITS.md']);
 const TREE_SKIP = new Set([
     SELF, 'scripts/ip-tokens.mjs', 'tests/unit/ip-tokens.test.js', 'tests/unit/ip-packaged-scan.test.js',
     RATCHET_FILE, 'package-lock.json',
@@ -100,6 +110,9 @@ function trackedFiles() {
 const violations = [];
 const surfaces = [];
 const tracked = trackedFiles().filter((rel) => !TREE_SKIP.has(rel) && fs.existsSync(path.join(repoRoot, rel)));
+/** House phrases whose rewording is pending on another branch: reported, not failed. */
+const pendingPhrases = new Set([...HOUSE_PHRASES_PENDING.values()].flat());
+const notes = [];
 
 // A1. Verbatim-copied source surfaces (always scanned).
 const publicDir = path.join(repoRoot, 'public');
@@ -139,6 +152,14 @@ if (fs.existsSync(distDir)) {
         for (const token of BLOCKED_TOKENS) {
             for (const hit of findToken(token, rel)) violations.push(`${rel} (file name): ${token.id} …${hit.context}…`);
             for (const hit of findToken(token, text)) violations.push(`${rel}:${hit.line}: ${token.id} …${hit.context}…`);
+        }
+        // D. House words: a bundle carries only what the program can show, so its whole text counts.
+        for (const phrase of HOUSE_PHRASES) {
+            for (const hit of findToken(phrase, text)) {
+                const line = `${rel}:${hit.line}: "${phrase.id}" …${hit.context}…`;
+                if (pendingPhrases.has(phrase.id)) notes.push(`${line} (its source is pending: HOUSE_PHRASES_PENDING)`);
+                else violations.push(`${line} — house words`);
+            }
         }
     }
     surfaces.push('dist/');
@@ -203,13 +224,21 @@ if (UPDATE) {
 }
 surfaces.push(`tracked names and text (${BLOCKED_TOKENS.length} blocked, ${RATCHET_TOKENS.length} ratcheted tokens)`);
 
+// D. House words: the runtime text, README.md and game_description.md.
+const house = screenHouseWords(tracked, readTracked);
+violations.push(...house.violations);
+notes.push(...house.notes);
+surfaces.push(`house words (${house.fileCount} text files, ${HOUSE_PHRASES.length} phrases)`);
+
 console.log(`ip-string-gate: scanned ${surfaces.join(', ')}`);
+for (const note of notes) console.warn(`ip-string-gate: allowed for now — ${note}`);
 if (violations.length > 0) {
     console.error(`ip-string-gate: FAILED — ${violations.length} disallowed token(s):`);
     for (const v of violations) console.error(`  ${v}`);
     console.error(
         'Remove the token (evoke the setting, do not name it) or, for a counsel-approved legal notice, extend the documented allowlist.'
-            + ' A ratcheted name may only go down.'
+            + ' A ratcheted name may only go down. A house phrase: say it in the game\'s own words'
+            + ' (an emptied well is a "Clean canvas").'
     );
     process.exit(1);
 }

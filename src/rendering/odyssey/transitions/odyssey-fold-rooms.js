@@ -12,7 +12,7 @@ import { resolveOrbParkProgress } from '../odyssey-chapter-arrival.js';
 export const CH7_FOLD_SHAPES = Object.freeze({
     tesseract: 0,
     diamond: 1,
-    tetromino: 2,
+    polycube: 2,
     orbs: 3,
     swarm: 4,
 });
@@ -81,7 +81,7 @@ export const CH7_FOLD_ROOMS = Object.freeze([
     Object.freeze({
         orbs: [54],
         theme: 'Serenity Warp',
-        shape: 'tetromino',
+        shape: 'polycube',
         hue: 0.66,
         spread: 0.11,
         tint: [0.7, 0.6, 1.0],

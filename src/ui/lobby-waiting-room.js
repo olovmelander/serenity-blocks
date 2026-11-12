@@ -19,8 +19,8 @@ import {
 } from './components/mp-sheet.js';
 import { describeMatchLevelRule } from '../core/multiplayer/match-level-rule.js';
 import {
-    appendChatMessage, chatIcon, chatModerationNote, isChatOn, isMuted, onChatModerationChange,
-    renderChatLog, setPlayerMuted,
+    appendChatMessage, chatIcon, chatModerationNote, createSteamProfileButton, isChatOn, isMuted,
+    onChatModerationChange, renderChatLog, setPlayerMuted,
 } from './chat-moderation.js';
 
 const WELCOME = 'Welcome to the lobby.';
@@ -588,6 +588,16 @@ export class LobbyWaitingRoom {
                 });
                 cardEl.appendChild(muteBtn);
                 keepFocus(muteBtn);
+
+                // Beside it: their Steam profile, where Steam's own block and report tools are.
+                const profileBtn = createSteamProfileButton(player.steamId, displayName, {
+                    className: 'player-profile-btn', size: 16,
+                });
+                if (profileBtn) {
+                    profileBtn.dataset.focusKey = `profile:${player.steamId}`;
+                    cardEl.appendChild(profileBtn);
+                    keepFocus(profileBtn);
+                }
             }
 
             listEl.appendChild(cardEl);

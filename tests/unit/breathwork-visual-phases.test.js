@@ -71,7 +71,8 @@ describe('guided breathwork visual phase accuracy', () => {
         manager._runPhase();
         const retention = manager.SESSIONS[sessionId].phases[2];
         expect(indicator.overridePattern).toHaveBeenLastCalledWith([0, 0, 0, retention.duration]);
-        expect(indicator.setSessionPhase).toHaveBeenLastCalledWith('retention', 0);
+        // A hold is not counted toward anything: its mark on the journey is lit, never filling.
+        expect(indicator.setSessionPhase).toHaveBeenLastCalledWith('retention', 1);
         manager.currentPhaseIndex = 3;
         manager._runPhase();
         const recovery = manager.SESSIONS[sessionId].phases[3];
@@ -89,11 +90,11 @@ describe('guided breathwork visual phase accuracy', () => {
         manager.SESSIONS.TEST = {
             name: 'Test',
             totalRounds: 1,
-            phases: [{ type: 'retention', duration: 10, round: 1 }],
+            phases: [{ type: 'recovery', duration: 10, round: 1 }],
         };
         manager.startSession('TEST');
         await vi.advanceTimersByTimeAsync(2500);
-        expect(indicator.setSessionPhase).toHaveBeenLastCalledWith('retention', 0.25);
+        expect(indicator.setSessionPhase).toHaveBeenLastCalledWith('recovery', 0.25);
         manager.stopSession();
         expect(indicator.setSessionPhase).toHaveBeenLastCalledWith(null, 0);
         expect(indicator.setSessionTheme).toHaveBeenLastCalledWith(null);
