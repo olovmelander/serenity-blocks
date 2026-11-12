@@ -7,9 +7,10 @@
 import { describe, expect, it } from 'vitest';
 import {
     CAGE, CUE_GAP, CUE_SHOW, DEG, ECHO_MAX, ECHO_SEA_MAX, ECHO_SPEED, FAR_LAMP, FILM_STOCKS, NEGATIVE_FADE,
-    NEGATIVE_HOLD, PULSAR, SEA, SEA_FLOOR, SEA_TOP, STOCK_HOME, STOCK_REST, STOCK_STEP, TAU, TOWER,
+    NEGATIVE_HOLD, PULSAR, ROCK, ROLLERS, ROLLER_MEAN, ROLLER_RATE, ROLLER_SET_RATE, SEA, SEA_FLOOR, SEA_TOP,
+    SHORE_TURN, SPLASH, SPLASH_LEAST, STOCK_HOME, STOCK_REST, STOCK_STEP, SURGE_SET, TAU, TOWER,
     beamDirection, beamLight, cageTransmit, cueAt, echoRadius, echoSeaRadius, farLampAt, lampPose, negativeAt,
-    pulsarAnchor, spinBasis, stockAt, stockName, stockPhase, stockPlace,
+    pulsarAnchor, rollerProfile, rollerSet, spinBasis, splashStrength, stockAt, stockName, stockPhase, stockPlace,
 } from '../../src/themes/cosmic-noir/cosmic-noir-core.js';
 
 const luma = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
@@ -207,6 +208,60 @@ describe('cosmic noir core: the events\' timing', () => {
         const reach = (PULSAR.height - SEA.level) / Math.tan(down * DEG);
         expect(reach).toBeGreaterThan(TOWER.footRadius * 3);
         expect(reach).toBeLessThan(PULSAR.depth);
+    });
+
+    it('rolls in peaked crests that add no smoke to the sea, in sets that run at half their speed', () => {
+        expect(Math.hypot(...ROLLERS.heading)).toBeCloseTo(1, 2);
+        // They come from the open sea toward the lighthouse and the rock (away from the eye, at −z).
+        expect(ROLLERS.heading[1]).toBeLessThan(0);
+        let sum = 0;
+        let above = 0;
+        for (let i = 0; i < 1000; i++) {
+            const h = rollerProfile(i / 1000);
+            sum += h;
+            if (h > 0) above += 1;
+        }
+        expect(sum / 1000).toBeCloseTo(0, 3);
+        // A narrow crest, a long trough.
+        expect(above / 1000).toBeLessThan(0.4);
+        expect(rollerProfile(0)).toBeCloseTo(1 - ROLLER_MEAN, 9);
+        expect(rollerProfile(0.5)).toBeCloseTo(-ROLLER_MEAN, 9);
+        for (let t = 0; t < 2; t += 0.05) {
+            const set = rollerSet(ROCK.shore, t);
+            expect(set).toBeGreaterThanOrEqual(ROLLERS.least - 1e-9);
+            expect(set).toBeLessThanOrEqual(1 + 1e-9);
+        }
+        expect(ROLLER_SET_RATE * ROLLERS.set).toBeCloseTo(ROLLER_RATE / 2, 9);
+        // The shore stands within one wavelength of the rock's middle.
+        expect(SHORE_TURN).toBeGreaterThan(0);
+        expect(SHORE_TURN).toBeLessThan(1);
+        // A wave every few seconds: a slow breath, not a patter.
+        expect(1 / ROLLER_RATE).toBeGreaterThan(4);
+        expect(1 / ROLLER_RATE).toBeLessThan(10);
+    });
+
+    it('breaks a wave as hard as its set stood tall, and harder under a surge', () => {
+        let prev = 0;
+        for (let set = ROLLERS.least; set <= 1.0001; set += 0.05) {
+            const s = splashStrength(set, 0);
+            expect(s).toBeGreaterThan(prev);
+            prev = s;
+        }
+        // Every wave throws a burst worth watching: between sets about a third of the full plume,
+        // which a set's tallest throws; half the waves throw more than two thirds of it.
+        expect(splashStrength(ROLLERS.least, 0)).toBeCloseTo(SPLASH_LEAST, 9);
+        expect(SPLASH_LEAST).toBeGreaterThan(0.3);
+        expect(SPLASH_LEAST).toBeLessThan(0.45);
+        expect(splashStrength((ROLLERS.least + 1) / 2, 0)).toBeGreaterThan(0.66);
+        expect(splashStrength(1, 0)).toBeCloseTo(1, 6);
+        // A full surge lifts even a wave between sets to a great one, and a set's tallest further.
+        expect(splashStrength(ROLLERS.least, 1)).toBeGreaterThan(0.85 * SURGE_SET);
+        expect(splashStrength(1, 0.5)).toBeCloseTo(1 + SPLASH.surge * 0.5, 6);
+        expect(splashStrength(1, 1)).toBeGreaterThan(splashStrength(1, 0.5));
+        expect(splashStrength(1, 5)).toBeLessThanOrEqual(1.5);
+        // The plume climbs fast, hangs longer, and is gone before the wave after next.
+        expect(SPLASH.rise).toBeLessThan(SPLASH.hang);
+        expect(SPLASH.life).toBeLessThan(2 / ROLLER_RATE);
     });
 
     it('turns the camera so the lamp hangs exactly at its anchor, over a level horizon below it', () => {

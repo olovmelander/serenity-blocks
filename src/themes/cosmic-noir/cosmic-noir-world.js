@@ -43,6 +43,10 @@
  *   calm     as it always was: a dark room, a slow lighthouse, the blinds half shut.
  *   warm     the room takes notice: locks fill it with smoke, the blinds begin to open, the beams
  *            carry more light.
+ *   waves    by itself, the sea rolls: long rollers run in from the open sea, in sets, rear up as
+ *            they near the rock and break on it, throwing their smoke up its face (a wave between
+ *            sets throws a low burst, the tallest of a set reaches half-way up the tower). Four lines, a
+ *            crown, a back-to-back and a deep cascade make the sea surge: the next waves break hard.
  *   hot      the lighthouse runs: the sweep quickens, the blinds open, the beams cut solid blades
  *            through the thickened smoke while the lantern's all-round glow holds back, the sea
  *            heaves higher and runs faster, and the print goes to a harder paper grade (the haze
@@ -69,10 +73,17 @@ import {
     PULSAR,
     PUFF_LIFE,
     PUFF_SLOTS,
+    ROCK,
+    ROLLERS,
+    ROLLER_RATE,
+    ROLLER_SET_RATE,
     SEA,
     SEA_LAYERS,
     SEA_SEED,
     SEA_WIND,
+    SHORE_TURN,
+    SPLASH,
+    SPLASH_SLOTS,
     SMOKE,
     SMOKE_SEED,
     TAU,
@@ -97,11 +108,14 @@ import {
     stockAt,
     stockName,
     stockPhase,
+    rollerSet,
+    splashStrength,
     stockPlace,
     supportsFloatTargets,
 } from './cosmic-noir-tsl.js';
 import { tierFor } from './cosmic-noir-quality.js';
 import { createSmoke } from './cosmic-noir-volume.js';
+import { createSpray } from './cosmic-noir-spray.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './cosmic-noir-composition.js';
@@ -253,8 +267,14 @@ export class CosmicNoirWorld {
         this.answerSwell = new Swell({
             attack: 0.12, release: 1.1, ceiling: 1.6, knee: 1.1,
         });
+        /** The sea's surge: the great moments raise the rollers, so the next waves break hard. */
+        this.surgeSwell = new Swell({
+            attack: 1.3, release: 7, ceiling: 1.2, knee: 0.9,
+        });
         this.swells = [this.flareSwell, this.flashSwell, this.smokeSwell, this.crownSwell, this.tintSwell,
-            this.answerSwell];
+            this.answerSwell, this.surgeSwell];
+        /** The waves breaking on the rock: the latest first. */
+        this.splashSlots = Array.from({ length: SPLASH_SLOTS }, () => ({ age: 100, strength: 0, seed: 0 }));
         this.heat = {
             level: 0, fever: 0, punch: 0, stage: 0, warm: 0, hot: 0,
         };
@@ -289,7 +309,7 @@ export class CosmicNoirWorld {
         this.echoCursor = 0;
         this.puffCursor = 0;
         this.counts = {
-            locks: 0, clears: 0, quads: 0, levels: 0, crowns: 0, spins: 0, negatives: 0,
+            locks: 0, clears: 0, quads: 0, levels: 0, crowns: 0, spins: 0, negatives: 0, waves: 0,
         };
         // The clocks a rate drives: closed form until gameplay bends them.
         const motion = this.reducedMotion ? 0.4 : 1;
@@ -303,6 +323,23 @@ export class CosmicNoirWorld {
         /** How far the sea's layers have run through their tiles (swell u, v, billow u, v, wisp u, v). */
         this.seaRun = [...SEA_RATES.swell, ...SEA_RATES.billow, ...SEA_RATES.wisp].map((rate) => wrap1(rate * motion * time));
         this.seaHeave = 1;
+        // The rollers: the crests and the sets on their own clocks, and the waves breaking now.
+        // All of it follows from the clock, so a seek lands on the same sea, plumes and all.
+        const rollRate = ROLLER_RATE * motion;
+        this.rollTurn = rollRate * time;
+        this.setTurn = ROLLER_SET_RATE * motion * time;
+        this.seaSurge = 0;
+        const broken = Math.floor(this.rollTurn + SHORE_TURN);
+        this.splashSlots.forEach((slot, k) => {
+            const index = broken - k;
+            const met = (index - SHORE_TURN) / rollRate; // when that crest met the shore
+            const live = index >= 1 && time - met <= SPLASH.life;
+            slot.age = live ? time - met : 100;
+            slot.strength = live
+                ? splashStrength(rollerSet(ROCK.shore, ROLLER_SET_RATE * motion * met), 0) * (this.reducedMotion ? 0.6 : 1)
+                : 0;
+            slot.seed = live ? (index * 0.618034) % 1 : 0;
+        });
         this.echoSlots.forEach((slot) => {
             slot.birth = -1e6;
             slot.strength = 0;
@@ -341,12 +378,18 @@ export class CosmicNoirWorld {
             tower: tier.tower,
             air: tier.air,
             wisps: tier.wisps,
+            splash: tier.splash,
             detail: tier.detail,
             skyLayers: tier.skyLayers,
         });
         this.parts.sky = this.smoke;
         this.root.add(this.smoke.mesh);
         this.disposables.push(this.smoke);
+        // The spray a breaking wave flings off the rock: drawn over the backdrop, added to it.
+        this.spray = createSpray(u, tier.spray);
+        this.parts.spray = this.spray;
+        this.root.add(this.spray.mesh);
+        this.disposables.push(this.spray);
 
         this.resetState(this.time);
         this.applyStock(1);
@@ -357,12 +400,13 @@ export class CosmicNoirWorld {
 
     /**
      * Draw only the named parts (captures, bisecting a look): `sky` (always drawn), `smoke` (the
-     * light in the air), `sea`, `tower`.
+     * light in the air), `sea` (with what its waves throw up), `tower`.
      */
     showOnlyParts(names) {
         const keep = new Set(names);
         this.smokeOn = keep.has('smoke');
         this.smoke?.show({ sea: keep.has('sea'), tower: keep.has('tower') });
+        if (this.spray) this.spray.mesh.visible = keep.has('sea');
         if (!this.smokeOn && this.smoke) {
             // Paint the target clear once (no smoke, full transmittance).
             this._clearTarget = true;
@@ -760,13 +804,17 @@ export class CosmicNoirWorld {
                 this.crownSwell.hit(0.25, t);
             }
             this.cageSpin += 1.4;
-            // The far light answers, a breath later.
+            // The far light answers, a breath later, and the sea gathers itself: the next waves break hard.
             this.answerSwell.hit(1, t + 0.9);
+            this.surgeSwell.hit(1, t);
             this.counts.quads += 1;
         }
         if (twist) this.cageSpin += 3.2;
         // A deeper wave turns the cage a little more.
         if (deep > 0) this.cageSpin += 0.4 * Math.min(4, deep);
+        // A deep cascade and a back-to-back stir the sea too.
+        if (depth >= 3) this.surgeSwell.hit(0.3, t);
+        if (b2b) this.surgeSwell.hit(0.35, t);
         if (b2b) {
             // A back-to-back: a double ring, a turn of the cage, and the print warms; each one in
             // a row warms it further.
@@ -784,6 +832,7 @@ export class CosmicNoirWorld {
     /** The perfect clear's crown: on whatever is still ringing, never a second flashbulb. */
     crownLight(t) {
         this.answerSwell.hit(0.8, t + 0.7);
+        this.surgeSwell.hit(0.7, t);
         this.crownSwell.hit(1, t);
         this.flareSwell.hit(0.8, t);
         this.flashSwell.hit(0.1, t);
@@ -874,6 +923,22 @@ export class CosmicNoirWorld {
             });
         }
         stock.grain *= grain;
+    }
+
+    /**
+     * A roller has met the rock: it breaks, as hard as its set stood tall and the sea is surging.
+     * `index` = which crest (counted from the clock's start), `rate` = the crests' turns a second.
+     */
+    breakWave(index, rate) {
+        const slots = this.splashSlots;
+        for (let k = slots.length - 1; k > 0; k--) Object.assign(slots[k], slots[k - 1]);
+        const fresh = slots[0];
+        // It met the shore a part of this frame ago.
+        fresh.age = rate > 0 ? (this.rollTurn + SHORE_TURN - index) / rate : 0;
+        fresh.strength = splashStrength(rollerSet(ROCK.shore, this.setTurn), this.seaSurge)
+            * (0.85 + 0.15 * this.seaHeave) * (this.reducedMotion ? 0.6 : 1);
+        fresh.seed = (index * 0.618034) % 1;
+        this.counts.waves += 1;
     }
 
     /** Hand a rebuilt world (quality change, lost GPU) where this one stood. */
@@ -997,6 +1062,15 @@ export class CosmicNoirWorld {
         const heaveTarget = 1 + 0.1 * warm + 0.14 * hot;
         this.seaHeave += (heaveTarget - this.seaHeave) * approach(0.6, dt);
         if (dt === 0) this.seaHeave = heaveTarget;
+        // The rollers run in with it, taller under a surge; a crest that reaches the rock breaks.
+        this.seaSurge = Math.min(1.3, this.surgeSwell.valueAt(t) + 0.35 * hot + 0.4 * fever);
+        const rollRate = ROLLER_RATE * gale;
+        const brokenBefore = Math.floor(this.rollTurn + SHORE_TURN);
+        this.rollTurn += rollRate * dt;
+        this.setTurn += ROLLER_SET_RATE * gale * dt;
+        for (let k = 0; k < SPLASH_SLOTS; k++) this.splashSlots[k].age += dt;
+        const brokenNow = Math.floor(this.rollTurn + SHORE_TURN);
+        if (brokenNow > brokenBefore) this.breakWave(brokenNow, rollRate);
         this.applyStock(approach(1.1, dt));
         // The print leans into its heat tone as play burns hot, and blazes in it on a crown or a
         // back-to-back (the colours are toned on the stock: luminance kept).
@@ -1020,6 +1094,25 @@ export class CosmicNoirWorld {
         u.seaDrift.value.set(this.seaRun[0], this.seaRun[1], this.seaRun[2], this.seaRun[3]);
         u.seaFine.value.set(this.seaRun[4], this.seaRun[5]);
         u.seaHeave.value = this.seaHeave;
+        // The sea round the rock stays churned a few seconds after a wave has broken on it.
+        let churn = 0;
+        let tallest = 0;
+        for (let k = 0; k < SPLASH_SLOTS; k++) {
+            const slot = this.splashSlots[k];
+            const live = slot.age < SPLASH.life ? slot.strength : 0;
+            u.tables.splashes[k].set(slot.age, live, slot.seed, 0);
+            churn += live * smooth(0, 0.5, slot.age) * Math.exp(-slot.age / 3.2);
+            tallest = Math.max(tallest, live);
+        }
+        // (A plume's jets and billows reach up to 1.7 times its nominal height.)
+        u.splashTop.value = tallest * SPLASH.height * 1.7 + 1.2;
+        u.seaSurge.value = Math.min(1, this.seaSurge);
+        u.seaRoll.value.set(
+            wrap1(this.rollTurn),
+            wrap1(this.setTurn),
+            ROLLERS.height * this.seaHeave * (1 + 0.7 * this.seaSurge),
+            Math.min(1, churn),
+        );
         // How squarely a beam looks toward the camera (0 side-on .. 1 straight at it): smoke
         // scatters a beam forward, so one that looks our way lights all the near smoke at once.
         this.facing = 0;
@@ -1157,6 +1250,8 @@ export class CosmicNoirWorld {
             layoutLive: this.layoutLive,
             horizon: this.horizonY,
             seaHeave: this.seaHeave,
+            seaSurge: this.seaSurge,
+            waves: this.splashSlots.map((slot) => ({ age: slot.age, strength: slot.age < SPLASH.life ? slot.strength : 0 })),
             pulsarUv: this.u ? { x: this.u.pulsarUv.value.x, y: this.u.pulsarUv.value.y } : null,
         };
     }

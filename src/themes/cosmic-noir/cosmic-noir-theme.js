@@ -9,7 +9,10 @@
  * ring of shutter slats: one beam rakes the sea of smoke (every swell throws a long shadow), its
  * opposite searches the sky, and the lamp's own light leaves between the slats as a fan of shafts
  * (light through venetian blinds) whose shadows lie on the sea as spokes. Most of the frame is
- * dark. A beam that looks toward us blazes and the lens glares. A locking piece goes under the sea
+ * dark. A beam that looks toward us blazes and the lens glares. The sea rolls: long rollers run in
+ * from the open sea in sets and break on the rock every few seconds, each throwing a curtain of
+ * smoke up its face and a burst of bright spray off it; four lines, a crown or a back-to-back make
+ * the sea surge, and the next waves break hard. A locking piece goes under the sea
  * beside the card: an ember glows up through the smoke, a puff rises off it and ripples run out. A
  * clear makes the pulsar flare and sends a light echo per line out: a ring of light that runs over
  * the sea to the horizon and a ring in the air that flashes down the tower. Each step of a chain

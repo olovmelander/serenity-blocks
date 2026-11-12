@@ -14,7 +14,8 @@ import {
     COSMIC_NOIR_PARTS, CosmicNoirWorld, REST_RIG, SPIN_REST, fovForAspect,
 } from '../../src/themes/cosmic-noir/cosmic-noir-world.js';
 import {
-    CAGE, ECHO_LIFE, ECHO_SLOTS, NEGATIVE_GAP, PUFF_LIFE, PUFF_SLOTS, SEA, STOCK_STEP, TAU, farLampAt, stockPlace,
+    CAGE, ECHO_LIFE, ECHO_SLOTS, NEGATIVE_GAP, PUFF_LIFE, PUFF_SLOTS, ROLLER_RATE, SEA, SPLASH, STOCK_STEP, TAU,
+    farLampAt, stockPlace,
 } from '../../src/themes/cosmic-noir/cosmic-noir-core.js';
 import { fallbackLayout } from '../../src/themes/cosmic-noir/cosmic-noir-composition.js';
 import { BLACK_POINT, CosmicNoirPost } from '../../src/themes/cosmic-noir/cosmic-noir-post.js';
@@ -72,7 +73,15 @@ describe('cosmic noir world: built and torn down', () => {
         const { scene, world } = makeWorld();
         expect(scene.children).toContain(world.root);
         expect(world.parts.sky.mesh.parent).toBe(world.root);
+        // The spray is drawn after the backdrop, over it.
+        expect(world.parts.spray.mesh.parent).toBe(world.root);
+        expect(world.parts.spray.mesh.renderOrder).toBeGreaterThan(world.parts.sky.mesh.renderOrder);
         expect(COSMIC_NOIR_PARTS).toEqual(['sky', 'smoke', 'sea', 'tower']);
+        // The spray belongs to the sea: switched off with it.
+        world.showOnlyParts(['sky', 'tower']);
+        expect(world.parts.spray.mesh.visible).toBe(false);
+        world.showOnlyParts(COSMIC_NOIR_PARTS);
+        expect(world.parts.spray.mesh.visible).toBe(true);
         world.dispose();
         expect(scene.children).not.toContain(world.root);
         world.dispose(); // twice is harmless
@@ -87,6 +96,8 @@ describe('cosmic noir world: built and torn down', () => {
         ['spinPhase', 'cageFill', 'stockPlace', 'stock'].forEach((k) => expect(sb[k], k).toBe(sa[k]));
         expect(b.world.drift).toEqual(a.world.drift);
         expect(b.world.seaRun).toEqual(a.world.seaRun);
+        expect(b.world.rollTurn).toBe(a.world.rollTurn);
+        expect(sb.waves).toEqual(sa.waves);
         expect(b.world.cageTurn).toBe(a.world.cageTurn);
     });
 
@@ -322,6 +333,74 @@ describe('cosmic noir world: gameplay', () => {
         }
         expect(world.seaHeave).toBeGreaterThan(1.1);
         expect(SEA.level + (SEA.swell + SEA.billow + SEA.wisp) * world.seaHeave).toBeLessThan(-0.4);
+    });
+
+    it('breaks a roller on the rock at every crest: the latest wave first, each as hard as its set stood', () => {
+        const { world, camera } = makeWorld('Minimal', { at: 0 });
+        expect(world.counts.waves).toBe(0);
+        expect(world.getState().waves.every((wave) => wave.strength === 0)).toBe(true);
+        const period = 1 / ROLLER_RATE;
+        // (To a little after the third crest has met the shore: the second still hangs.)
+        run(world, camera, period * 2.93, 1200);
+        expect(world.counts.waves).toBe(3);
+        const { waves } = world.getState();
+        expect(waves[0].age).toBeGreaterThan(0);
+        expect(waves[0].age).toBeLessThan(period);
+        expect(waves[1].age).toBeCloseTo(waves[0].age + period, 1);
+        waves.forEach((wave) => {
+            expect(wave.strength).toBeGreaterThan(0.1);
+            expect(wave.strength).toBeLessThanOrEqual(1.5);
+        });
+        // The shaders read the same rows, and the sea round the rock is churned while a plume is young.
+        expect(world.u.tables.splashes[0].x).toBeCloseTo(waves[0].age, 6);
+        expect(world.u.tables.splashes[0].y).toBeCloseTo(waves[0].strength, 6);
+        settle(world, camera, period * 4 - (3.4 / 20) * period + 1.2);
+        expect(world.getState().waves[0].age).toBeCloseTo(1.2, 3);
+        expect(world.u.seaRoll.value.w).toBeGreaterThan(0.05);
+        // A plume is gone before the wave after next: its row reads empty then.
+        expect(SPLASH.life).toBeLessThan(period * 2);
+    });
+
+    it('lands on the same breaking sea from a seek as from running there', () => {
+        const ran = makeWorld('Minimal', { at: 0 });
+        run(ran.world, ran.camera, 21, 2520);
+        const sought = makeWorld('Minimal', { at: 21 });
+        const a = ran.world.getState().waves;
+        const b = sought.world.getState().waves;
+        expect(ran.world.rollTurn).toBeCloseTo(sought.world.rollTurn, 6);
+        expect(a[0].strength).toBeGreaterThan(0);
+        a.forEach((wave, k) => {
+            expect(wave.strength).toBeCloseTo(b[k].strength, 1);
+            // (A plume that is gone has no age worth comparing.)
+            if (wave.strength > 0) expect(wave.age).toBeCloseTo(b[k].age, 1);
+        });
+    });
+
+    it('makes the sea surge on four lines: the next wave breaks hard however low its set stood', () => {
+        // The wave that meets the rock near 24 s rides between sets: by itself it throws a low burst.
+        const quiet = makeWorld('Minimal', { at: 18.5 });
+        run(quiet.world, quiet.camera, 6, 720);
+        const lapping = quiet.world.getState().waves[0];
+        expect(lapping.age).toBeLessThan(1);
+        expect(lapping.strength).toBeLessThan(0.5);
+        const surged = makeWorld('Minimal', { at: 18.5 });
+        frame(surged.world, surged.camera, 1 / 60, () => surged.world.onClear({ lines: 4, rows: [16, 17, 18, 19] }));
+        run(surged.world, surged.camera, 6, 720);
+        const great = surged.world.getState().waves[0];
+        expect(great.strength).toBeGreaterThan(0.9);
+        expect(great.strength).toBeGreaterThan(lapping.strength * 2);
+        expect(surged.world.u.seaSurge.value).toBeGreaterThan(0.2);
+        // The surge passes: the sea settles.
+        run(surged.world, surged.camera, 45, 1800);
+        expect(surged.world.getState().seaSurge).toBeLessThan(0.02);
+    });
+
+    it('throws less, and less often, under reduced motion', () => {
+        const live = makeWorld('Minimal', { at: 6.4 });
+        const calm = makeWorld('Minimal', { at: 6.4 / 0.4, reduce: true });
+        // The same crest on both clocks (reduced motion runs the sea at 0.4 of its pace).
+        const hard = live.world.getState().waves[0].strength;
+        expect(calm.world.getState().waves[0].strength).toBeCloseTo(hard * 0.6, 6);
     });
 
     it('spins the cage on a twist, and lets it settle back to its own slow turn', () => {

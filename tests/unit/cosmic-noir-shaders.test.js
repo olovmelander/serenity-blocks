@@ -1,9 +1,11 @@
 /**
  * Cosmic Noir shader gate — no GPU needed.
  *
- * The picture is two fragment shaders: the backdrop (the sky, the sea of smoke, the lighthouse on
- * its rock, the lens) and the air's pass (the lamp's light in the smoke, painted into its own
- * target). Both are built through three's own node builders against a stub renderer: the WGSL one
+ * The picture is two fragment shaders, the backdrop (the sky, the sea of smoke and its rollers, the
+ * lighthouse on its rock, the smoke a breaking wave throws up, the lens) and the air's pass (the
+ * lamp's light in the smoke, painted into its own target), and one instanced quad (the spray a
+ * breaking wave flings off, flown in its vertex stage). All are built through three's own node
+ * builders against a stub renderer: the WGSL one
  * of the WebGPU backend and the GLSL one of the WebGL2 fallback, at High, Low and Minimal (each
  * tier leaves out different reads and walks). A graph one builder cannot turn into a shader throws
  * or warns here instead of leaving the theme black on someone's machine.
@@ -27,7 +29,10 @@ vi.setConfig({ testTimeout: 60_000 });
 
 const TIERS = ['High', 'Low', 'Minimal'];
 const BACKENDS = [['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilder]];
-/** Bytes a stage may take: about twice the largest (the backdrop's fragment at High) when written. */
+/**
+ * Bytes a stage may take: about half as much again as the largest (the backdrop's fragment at
+ * High, 77 KiB with the breaking waves).
+ */
 const STAGE_BUDGET = 112 * 1024;
 
 function stubRenderer() {
@@ -213,6 +218,7 @@ describe.each(TIERS)('cosmic noir shaders at %s', (quality) => {
         const targets = [
             ['backdrop', world.smoke.mesh, world.smoke.mesh.material],
             ['air', world.smoke.pass.quad, world.smoke.pass.material],
+            ['spray', world.spray.mesh, world.spray.material],
         ];
         targets.forEach(([name, object, material]) => {
             BACKENDS.forEach(([label, Builder]) => {
@@ -226,8 +232,8 @@ describe.each(TIERS)('cosmic noir shaders at %s', (quality) => {
 
     afterAll(() => world?.dispose());
 
-    it('builds the backdrop and the air on both backends without a warning, an undeclared binding or an unassigned read', () => {
-        expect(built).toHaveLength(4);
+    it('builds the backdrop, the air and the spray on both backends without a warning, an undeclared binding or an unassigned read', () => {
+        expect(built).toHaveLength(6);
         if (process.env.CN_SHADER_SIZES) {
             // eslint-disable-next-line no-console
             console.log(quality, built.map((b) => `${b.name} ${b.label} ${(Buffer.byteLength(b.out.fragment || '') / 1024).toFixed(1)} KiB`).join(', '));

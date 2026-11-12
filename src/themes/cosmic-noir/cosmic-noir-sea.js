@@ -40,7 +40,8 @@ import {
     vec3,
 } from 'three/tsl';
 import {
-    PULSAR, SEA, cnBeam, cnCage, cnLampAt, cnPhase, cnSeaHeight, cnSeaStreaks, cnSeaSurface,
+    PULSAR, ROCK, ROCK_XZ, ROLLER_MEAN, SEA, cnBeam, cnCage, cnLampAt, cnPhase, cnSeaHeight, cnSeaStreaks,
+    cnSeaSurface,
 } from './cosmic-noir-tsl.js';
 import { GALAXY_DIR } from './cosmic-noir-sky.js';
 
@@ -69,12 +70,24 @@ const FRINGE = 0.12;
 const FRINGE_HEAP = 0.42;
 const FRINGE_SMOKE = 1.5;
 const FRINGE_LIGHT = 0.55;
+/** How many times deeper the fringe stands round the rock where a full wave has just broken. */
+const FRINGE_CHURN = 3.5;
+/** And on a roller's crest (its spindrift). */
+const FRINGE_CREST = 3.6;
+/** A roller's crest in the sea's own light: the galaxy's share and the lamp's. */
+const CREST_GALAXY = 0.03;
+const CREST_FALL = 0.2;
+/** The loose smoke's share of what the lamp lets fall straight down, and of the galaxy's light. */
+const FRINGE_FALL = 0.26;
+const FRINGE_GALAXY = 0.035;
 
 /** The sea's swells sink into a level sea toward SEA.flat (1 near, 0 far). */
 const sinkAt = (t) => float(1.0).sub(smoothstep(SEA.flat * 0.3, SEA.flat, t));
 
 /** The sea's highest reach (its heave raises it). */
-export const cnSeaTop = (u) => float(SEA.swell + SEA.billow + SEA.wisp).mul(u.seaHeave).add(SEA.level);
+export const cnSeaTop = (u) => float(SEA.swell + SEA.billow + SEA.wisp).mul(u.seaHeave)
+    .add(u.seaRoll.z.mul(1 - ROLLER_MEAN))
+    .add(SEA.level);
 
 /**
  * Where a view ray meets the sea. Call inside a Fn.
@@ -92,11 +105,13 @@ export function cnSeaMarch(u, o, ray, { march = 52 } = {}) {
     const fringe = float(0.0).toVar();
     const fringeAt = float(0.0).toVar();
     const top = cnSeaTop(u).toVar();
-    If(ray.y.lessThan(-0.0015).and(o.y.greaterThan(top)), () => {
+    // (The eye may stand below the sea's highest reach under a surge: the walk then starts at the
+    // eye. It never stands below the sea itself.)
+    If(ray.y.lessThan(-0.0015), () => {
         const fall = ray.y.negate().toVar();
         const run = sqrt(max(float(1.0).sub(ray.y.mul(ray.y)), 1e-6)).toVar();
         const tLevel = o.y.sub(SEA.level).div(fall).toVar();
-        const t = o.y.sub(top).div(fall).toVar();
+        const t = max(o.y.sub(top).div(fall), 0.0).toVar();
         const tPrev = t.toVar();
         const cPrev = float(1.0).toVar();
         const cNow = float(1.0).toVar();
@@ -116,7 +131,13 @@ export function cnSeaMarch(u, o, ray, { march = 52 } = {}) {
             const steep = sink.mul(u.seaHeave).mul(MAX_SLOPE);
             const stride = max(c.div(fall.add(run.mul(steep))).mul(RELAX), t.mul(0.003)).toVar();
             // The fringe this step crosses (none far out, where the sea is level and under mist).
-            const deep = sea.y.mul(FRINGE_HEAP).add(FRINGE).mul(sink);
+            // Where a wave has just broken the sea round the rock is churned: its fringe stands deep.
+            const offShore = length(p.xz.sub(vec2(ROCK_XZ[0], ROCK_XZ[1]))).sub(ROCK.shore).div(3.2);
+            // And a roller's crest streams its own: spindrift, which is what shows it coming in.
+            const churned = u.seaRoll.w.mul(exp(offShore.mul(offShore).negate())).mul(FRINGE_CHURN)
+                .add(sea.z.mul(FRINGE_CREST))
+                .add(1.0);
+            const deep = sea.y.mul(FRINGE_HEAP).add(FRINGE).mul(churned).mul(sink);
             const inFringe = clamp(float(1.0).sub(c.div(max(deep, 1e-3))), 0.0, 1.0);
             const took = inFringe.mul(inFringe).mul(stride).mul(FRINGE_SMOKE).toVar();
             fringe.addAssign(took);
@@ -146,7 +167,11 @@ export function cnSeaFringe(u, o, ray, walk) {
     const hide = float(1.0).sub(exp(walk.fringe.negate()));
     const from = normalize(p.sub(u.pulsar));
     const lamp = cnLampAt(u, p, float(0.14)).mul(cnPhase(dot(from, ray.negate()), u.forward).mul(0.55).add(0.45));
-    return vec2(lamp.mul(FRINGE_LIGHT).add(u.ambient.mul(0.8)).mul(u.breath), hide);
+    // Round the rock it also takes what the lamp lets fall through the gallery, and the galaxy's
+    // light: the churned sea a breaking wave leaves, and the spindrift of the next one coming in.
+    const under = length(p.sub(u.pulsar)).div(PULSAR.coreReach * 1.5);
+    const fall = u.coreGain.mul(FRINGE_FALL).div(under.mul(under).add(1.0)).add(u.galaxy.mul(FRINGE_GALAXY));
+    return vec2(lamp.mul(FRINGE_LIGHT).add(fall).add(u.ambient.mul(0.8)).mul(u.breath), hide);
 }
 
 /**
@@ -248,7 +273,12 @@ export function cnSeaLight(u, o, ray, t, far, { shadow = 8, fine = true } = {}) 
 
     // The smoke's own streaks: thin sheets and thick, combed by the wind.
     const body = fine ? cnSeaStreaks(u, flat.xz, foot).mul(0.62).add(0.62) : float(0.95);
+    // A roller's crest is pale with its own spindrift: it shows the wave coming in, by the galaxy's
+    // light far out and by what the lamp lets fall as it nears the rock.
+    const under = r.div(PULSAR.coreReach * 1.5);
+    const comb = s.w.mul(s.w).mul(u.galaxy.mul(CREST_GALAXY).add(u.coreGain.mul(CREST_FALL).div(under.mul(under).add(1.0))));
     const light = direct.add(through).add(ringLight).add(ember.mul(crest.mul(0.5).add(0.5)))
+        .add(comb)
         .add(galaxy.mul(crest.mul(0.6).add(0.4)))
         .add(sky)
         .mul(body)

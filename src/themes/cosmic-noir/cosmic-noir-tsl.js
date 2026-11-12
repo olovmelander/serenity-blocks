@@ -22,6 +22,7 @@ import {
     acos,
     atan,
     clamp,
+    cos,
     dot,
     exp,
     float,
@@ -33,6 +34,7 @@ import {
     min,
     mix,
     pow,
+    sin,
     smoothstep,
     sqrt,
     texture,
@@ -45,7 +47,8 @@ import {
 } from 'three/tsl';
 
 import {
-    CAGE, DEG, ECHO_SLOTS, PULSAR, PUFF_SLOTS, SEA, SMOKE, TAU,
+    CAGE, DEG, ECHO_SLOTS, PULSAR, PUFF_SLOTS, ROCK, ROLLERS, ROLLER_MEAN, SEA, SMOKE, SPLASH_SLOTS, SURGE_SET,
+    TAU,
 } from './cosmic-noir-core.js';
 
 export * from './cosmic-noir-core.js';
@@ -225,6 +228,7 @@ export function createNoirUniforms(textures) {
     const tables = {
         echoes: rows(ECHO_SLOTS, [0, 1, 0, 0]),
         puffs: rows(PUFF_SLOTS * 2, [0, 0, -100, 0.01]),
+        splashes: rows(SPLASH_SLOTS, [100, 0, 0, 0]),
     };
     const u = {
         time: uniform(0),
@@ -260,6 +264,15 @@ export function createNoirUniforms(textures) {
         seaFine: uniform(new THREE.Vector2(0, 0)),
         /** The sea's heave: its layers' heights are these shares of SEA's (the heat of play raises it). */
         seaHeave: uniform(1),
+        /**
+         * The rollers: (how far the crests have run, in turns of a wavelength; the same for the
+         * sets; a crest's height now; how churned the sea round the rock is, 0..1).
+         */
+        seaRoll: uniform(new THREE.Vector4(0, 0, ROLLERS.height, 0)),
+        /** How high the tallest plume standing now may reach (scene units over the sea): its walk's ceiling. */
+        splashTop: uniform(1),
+        /** The sea's surge (0..1): the great moments lift every roller toward a set's tallest. */
+        seaSurge: uniform(0),
         /** The faint light everything shows by everywhere (starlight). */
         ambient: uniform(0.0075),
         /** The far lighthouse on the horizon: how bright it shows now. */
@@ -287,6 +300,8 @@ export function createNoirUniforms(textures) {
         /** Puffs, two rows each: (centre xyz, radius) and (smoke, ember, seed, age). */
         puffs: uniformArray(tables.puffs, 'vec4'),
         puffCount: uniform(0, 'int'),
+        /** Waves breaking on the rock: (seconds since it met the shore, how hard, a seed, _). */
+        splashes: uniformArray(tables.splashes, 'vec4'),
         smokeTex: textures.smoke,
         smokeFarTex: textures.smokeFar,
         seaTex: textures.sea,
@@ -400,14 +415,45 @@ const layerUv = (xz, L, drift) => vec2(
 /** The mip a layer is read at for a footprint (scene units across a pixel). */
 const layerLod = (u, L, footprint) => max(log2(footprint.mul(u.seaSize * L.iv)), 0.0);
 
+/** The rock's middle on the sea (world x and z) and the way the rollers come from (unit). */
+export const ROCK_XZ = Object.freeze([ROCK.centre[0], ROCK.centre[1] - PULSAR.depth]);
+export const UPSTREAM = Object.freeze([-ROLLERS.heading[0], -ROLLERS.heading[1]]);
+
 /**
- * The sea at a point, for a footprint: vec2(its height above its mean, how heaped it is there
- * 0..1). `sink` (0..1) lets the swells sink into a level sea far out; `fine` adds the wisps (near
- * the eye only: the caller says when).
+ * The rollers at a point of the sea: vec4(height, ∂height/∂x, ∂height/∂z, crest 0..). Long crests that run
+ * in toward the rock (peaked, with long troughs), in sets, rearing up as they near it and lying
+ * calmer in its lee. `bend` (−1..1, the swell there) bends each crest's line a little, so none is
+ * ruled straight across the sea. Arithmetic only: the same crest the world times its breaking by.
+ */
+export function cnRoller(u, xz, bend) {
+    const rel = xz.sub(vec2(ROCK_XZ[0], ROCK_XZ[1])).toVar();
+    const up = dot(rel, vec2(UPSTREAM[0], UPSTREAM[1])).toVar();
+    const aside = dot(rel, vec2(-UPSTREAM[1], UPSTREAM[0]));
+    const turn = up.div(ROLLERS.length).add(u.seaRoll.x).add(bend.mul(0.13)).mul(TAU)
+        .toVar();
+    const swing = max(cos(turn).mul(0.5).add(0.5), 0.0).toVar();
+    // (A surging sea lifts every wave toward a set's tallest.)
+    const set = max(
+        cos(up.div(ROLLERS.length * ROLLERS.set).add(u.seaRoll.y).mul(TAU)).mul(0.5).add(0.5),
+        u.seaSurge.mul(SURGE_SET),
+    ).mul(1 - ROLLERS.least).add(ROLLERS.least);
+    const near = exp(dot(rel, rel).div(-ROLLERS.shoal * ROLLERS.shoal)).mul(1 - ROLLERS.open).add(ROLLERS.open);
+    const lee = float(1.0).sub(exp(aside.mul(aside).div(-14.0)).mul(float(1.0).sub(smoothstep(-8.0, 0.5, up))).mul(0.6));
+    const tall = u.seaRoll.z.mul(set).mul(near).mul(lee).toVar();
+    const slope = pow(swing, ROLLERS.peak - 1).mul(sin(turn)).mul((-0.5 * ROLLERS.peak * TAU) / ROLLERS.length).mul(tall);
+    const crest = pow(swing, ROLLERS.peak).toVar();
+    // (height, its slope along x and z, how much of a crest stands here: 0 in a trough)
+    return vec4(crest.sub(ROLLER_MEAN).mul(tall), slope.mul(UPSTREAM[0]), slope.mul(UPSTREAM[1]), crest.mul(tall).div(ROLLERS.height));
+}
+
+/**
+ * The sea at a point, for a footprint: vec3(its height above its mean, how heaped it is there
+ * 0..1, how much of a roller's crest stands there). `sink` (0..1) lets the swells sink into a
+ * level sea far out; `fine` adds the wisps (near the eye only: the caller says when).
  */
 export function cnSeaHeight(u, xz, footprint, sink, { fine = false } = {}) {
     const { swell, billow, wisp } = SEA_LAYERS;
-    const a = u.sea(layerUv(xz, swell, u.seaDrift.xy), layerLod(u, swell, footprint));
+    const a = u.sea(layerUv(xz, swell, u.seaDrift.xy), layerLod(u, swell, footprint)).toVar();
     const b = u.sea(layerUv(xz, billow, u.seaDrift.zw), layerLod(u, billow, footprint));
     // The billows heap up where the slow field says, and lie calm elsewhere.
     const heap = a.a.mul(0.75).add(0.25);
@@ -416,11 +462,13 @@ export function cnSeaHeight(u, xz, footprint, sink, { fine = false } = {}) {
         const c = u.sea(layerUv(xz, wisp, u.seaFine), layerLod(u, wisp, footprint));
         h.addAssign(c.r.mul(SEA.wisp));
     }
-    return vec2(h.mul(sink).mul(u.seaHeave), a.a);
+    const roll = cnRoller(u, xz, a.r).toVar();
+    return vec3(h.mul(u.seaHeave).add(roll.x).mul(sink), a.a, roll.w.mul(sink));
 }
 
 /**
- * The sea at a point, for shading: vec4(height above the mean, ∂height/∂x, ∂height/∂z, calm).
+ * The sea at a point, for shading: vec4(height above the mean, ∂height/∂x, ∂height/∂z, how much
+ * of a roller's crest stands there).
  * The slopes come from the field's own (filtered) slope, never from differences of the height.
  */
 export function cnSeaSurface(u, xz, footprint, sink, { fine = false } = {}) {
@@ -439,8 +487,14 @@ export function cnSeaSurface(u, xz, footprint, sink, { fine = false } = {}) {
         h.addAssign(c.r.mul(SEA.wisp));
         g.addAssign(slope(c, wisp, float(SEA.wisp)));
     }
-    const k = sink.mul(u.seaHeave);
-    return vec4(h.mul(k), g.x.mul(k), g.y.mul(k), a.a);
+    const roll = cnRoller(u, xz, a.r).toVar();
+    const k = u.seaHeave;
+    return vec4(
+        h.mul(k).add(roll.x).mul(sink),
+        g.x.mul(k).add(roll.y).mul(sink),
+        g.y.mul(k).add(roll.z).mul(sink),
+        roll.w.mul(sink),
+    );
 }
 
 /**

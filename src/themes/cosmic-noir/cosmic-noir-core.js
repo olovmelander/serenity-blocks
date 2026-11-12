@@ -108,8 +108,11 @@ export const SEA = Object.freeze({
     billow: 0.52,
     wispTile: 6.1,
     wisp: 0.14,
-    /** The wind over the sea (scene units / s, along x and z): the swells drift, the billows run ahead. */
-    wind: Object.freeze([0.42, 0.2]),
+    /**
+     * The wind over the sea (scene units / s, along x and z): the swells drift before it, the
+     * billows run ahead. It blows the way the rollers run (ROLLERS.heading).
+     */
+    wind: Object.freeze([-0.29, -0.36]),
     /** Past this the swells have sunk into a level sea, and past `far` the sea is the horizon's mist. */
     flat: 150,
     far: 260,
@@ -117,9 +120,89 @@ export const SEA = Object.freeze({
     mistHeight: 0.8,
     mist: 0.22,
 });
-/** The highest and the lowest the sea's surface reaches (the march's slab). */
+/** The highest and the lowest the sea's swells reach at rest (the rollers ride on top of them). */
 export const SEA_TOP = SEA.level + SEA.swell + SEA.billow + SEA.wisp;
 export const SEA_FLOOR = SEA.level - (SEA.swell + SEA.billow + SEA.wisp);
+
+/** The rock the lighthouse stands on, as the sea meets it: its middle, from the tower's axis (x and z), and its shore's reach. */
+export const ROCK = Object.freeze({
+    centre: Object.freeze([0.5, 0.55]),
+    shore: 3.4,
+});
+
+/**
+ * Rollers: long waves that run in over the sea, rear up as they near the rock and break on it.
+ * They come from the open sea on the right, pass under the eye and meet the rock's near right
+ * side, where the breaking shows.
+ */
+export const ROLLERS = Object.freeze({
+    /** The way they run (unit, x and z). */
+    heading: Object.freeze([-0.636, -0.771]),
+    /** Crest to crest, and how fast a crest runs (scene units, units / s): one every 6 s or so. */
+    length: 20,
+    speed: 3.2,
+    /** A crest's height over the sea's mean where the set stands tallest, at the rock. */
+    height: 0.66,
+    /** How peaked a crest is (1 = a sine): narrow crests, long troughs. */
+    peak: 3.0,
+    /**
+     * They come in sets: a set is this many waves long and runs at half the crests' speed, so each
+     * wave rises as it enters the set and sinks as it leaves. `least` = the share of the full
+     * height a wave between sets still has.
+     */
+    set: 4.5,
+    least: 0.3,
+    /** They rear up within this of the rock (the open sea carries them at `open` of their height). */
+    shoal: 13,
+    open: 0.45,
+});
+/** Turns a second, at rest, of the crests past a fixed place and of the sets. */
+export const ROLLER_RATE = ROLLERS.speed / ROLLERS.length;
+export const ROLLER_SET_RATE = ROLLERS.speed / 2 / (ROLLERS.length * ROLLERS.set);
+/** The mean of a crest's profile over a wavelength (taken off, so a roller adds no smoke to the sea). */
+export const ROLLER_MEAN = (() => {
+    let sum = 0;
+    for (let i = 0; i < 512; i++) sum += (0.5 + 0.5 * Math.cos((i / 512) * Math.PI * 2)) ** ROLLERS.peak;
+    return sum / 512;
+})();
+/** A roller's height across one wavelength, as a share of its crest's height above the mean (turn 0 = the crest). */
+export const rollerProfile = (turn) => (0.5 + 0.5 * Math.cos(turn * Math.PI * 2)) ** ROLLERS.peak - ROLLER_MEAN;
+/** How tall the set stands (`least`..1) at a place `upstream` of the rock when the sets have run `setTurn` turns. */
+export const rollerSet = (upstream, setTurn) => ROLLERS.least + (1 - ROLLERS.least)
+    * (0.5 + 0.5 * Math.cos((upstream / (ROLLERS.length * ROLLERS.set) + setTurn) * Math.PI * 2));
+/** How many turns ahead of the rock's middle its shore stands: a crest breaks when (this + the crests' turns) is whole. */
+export const SHORE_TURN = ROCK.shore / ROLLERS.length;
+
+/**
+ * The breaking: a roller that meets the rock throws its smoke up the rock's face. Two live at
+ * once (the one breaking and the last one, still hanging).
+ */
+export const SPLASH_SLOTS = 2;
+export const SPLASH = Object.freeze({
+    /** How high a full wave throws its smoke (scene units over the sea). */
+    height: 6.6,
+    /** Seconds it climbs, hangs and tears before it is gone. */
+    rise: 1.15,
+    hang: 2.4,
+    life: 7.5,
+    /** A full wave under a surge (four lines, a fever) throws this many times as much. */
+    surge: 0.6,
+});
+/** Under a full surge every wave stands at least this share of a set's tallest. */
+export const SURGE_SET = 0.85;
+/**
+ * How hard a wave breaks (0..1 and a little over) for how tall its set stood (`least`..1) and
+ * the sea's surge (0..1). Every wave throws something worth watching: the least of them a burst
+ * a third as high as a set's tallest, and half of them more than two thirds of it.
+ */
+export const SPLASH_LEAST = 0.36;
+export function splashStrength(setHeight, surge = 0) {
+    const tall = Math.max(0, Math.min(1, (setHeight - ROLLERS.least) / (1 - ROLLERS.least)));
+    const rise = Math.max(0, surge);
+    // A surging sea lifts every wave toward a set's tallest: the wave after four lines is a great one.
+    const stood = Math.max(tall, Math.min(1, rise) * SURGE_SET);
+    return Math.min(1.5, (SPLASH_LEAST + (1 - SPLASH_LEAST) * stood ** 0.9) * (1 + SPLASH.surge * rise));
+}
 
 /**
  * The home galaxy, rising over the sea: where it stands (a bearing right of the lighthouse and an
@@ -143,8 +226,8 @@ export const SMOKE = Object.freeze({
     /** One tile of the baked noise in scene units, and how much wider than tall it is drawn. */
     tile: 11,
     stretch: 2.4,
-    /** The wind (scene units / s): the smoke drifts slowly sideways and away. */
-    wind: Object.freeze([0.22, 0.015, -0.05]),
+    /** The wind (scene units / s): the smoke drifts slowly the way the sea runs. */
+    wind: Object.freeze([-0.2, 0.015, -0.11]),
     /** A thin haze everywhere in the envelope, so a beam is a shaft even between the masses. */
     haze: 0.05,
     /** Where the march begins and ends along a view ray. */

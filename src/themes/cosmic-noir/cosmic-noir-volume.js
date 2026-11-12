@@ -81,6 +81,7 @@ import {
 import { cnSky } from './cosmic-noir-sky.js';
 import { cnSeaFringe, cnSeaLight, cnSeaMarch } from './cosmic-noir-sea.js';
 import { TOWER_BOUNDS, cnLighthouse } from './cosmic-noir-lighthouse.js';
+import { cnSplash } from './cosmic-noir-splash.js';
 
 /** How much a unit of full smoke over a unit of length puts out (thin smoke: noir is mostly dark). */
 const EXTINCTION = 0.36;
@@ -127,7 +128,7 @@ const PROXY = Object.freeze({
  * @param {object} options  the tier (cosmic-noir-quality.js)
  */
 export function createSmoke(u, {
-    march = 52, shadow = 8, fine = true, tower = 64, air = 14, wisps = 6, detail = true, skyLayers = 3,
+    march = 52, shadow = 8, fine = true, tower = 64, air = 14, wisps = 6, splash = 16, detail = true, skyLayers = 3,
 } = {}) {
     const texel = uniform(new THREE.Vector2(1 / 960, 1 / 540));
     const squash = vec3(1 / (SMOKE.tile * SMOKE.stretch), 1 / SMOKE.tile, 1 / (SMOKE.tile * 1.4));
@@ -431,6 +432,17 @@ export function createSmoke(u, {
         const lap = seaT.greaterThan(0.0).select(smoothstep(0.0, 0.5, seaT.sub(houseT)), 1.0);
         const shown = houseCover.mul(houseT.greaterThan(0.0).select(lap, 0.0)).toVar();
         scene.assign(mix(scene, house.light, shown));
+
+        // ── Waves breaking on the rock: the smoke they throw up, in front of whatever the ray ends on ──
+        const tStop = float(1e4).toVar();
+        If(shown.greaterThan(0.5), () => {
+            tStop.assign(houseT);
+        }).ElseIf(seaT.greaterThan(0.0), () => {
+            tStop.assign(seaT);
+        });
+        const spray = cnSplash(u, o, ray, tStop, { steps: splash });
+        // (No sea, no breaking: the `parts` switch takes the plume with it.)
+        scene.assign(scene.mul(mix(float(1.0), spray.through, showSea)).add(spray.light.mul(showSea)));
 
         // ── Inside the lantern, through the gaps: the smoke round the lens, glowing ──
         // The lens's light over the ray's chord of the room, exactly: ∫ R² / (R² + d² + (t − tc)²) dt.
