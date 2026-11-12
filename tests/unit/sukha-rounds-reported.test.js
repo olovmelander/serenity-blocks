@@ -38,7 +38,8 @@ const indicator = () => new Proxy({ pattern: [4, 0, 4, 0] }, {
 });
 
 const SESSIONS = ['FIRST', 'TIDE', 'ROOTS', 'UNWIND', 'SUNRISE', 'REST', 'FLOW', 'BASE', 'ELIXIR'];
-const START = [null, { sounds: false, vibration: false, openHolds: false }];
+// Nobody breathes in here: each hold runs to its limit, where the session moves on by itself.
+const START = [null, { sounds: false, vibration: false }];
 
 async function complete(sessionId) {
     const manager = new BreathworkSessionManager(indicator());

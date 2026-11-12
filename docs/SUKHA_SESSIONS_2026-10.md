@@ -15,15 +15,34 @@ sessions open along the Odyssey and with practice ([Finding worlds and sessions]
 and the voice moved to ElevenLabs Eleven v4 in the game's own voice ([The voice](#the-voice)). The
 creative direction they follow: [BREATH_EXPERIENCE_DIRECTION.md](BREATH_EXPERIENCE_DIRECTION.md).
 
+**2026-11-12: holds without targets, and one gate for strong breathing.** A hold after a round
+always ends when you breathe in: the *Breathe in when you are ready* switch and the timed holds it
+gave are gone (a saved choice of them is dropped). Every hold has the same reminder, a small bell
+after one minute, instead of 1:00, 1:30 and 2:00 round by round, and the same limit of 1:30, where
+a card over the world says *Breathe in now* and the recovery breath begins. The hold screen shows
+no ring, no "Suggested" length and no running clock: only *Breathe in when you are ready*, the
+**Breathe in** button with its key and pad button, and the world. The preparation screen says
+"hold at your own pace" with no times, and the result counts *Holds at your pace* with no chart
+(each hold's seconds are still kept in the practice log). A strong session's result offers *Done*
+alone. The safety note was rewritten as a lead line and a short list, its tick reads "I am 18 or
+over, I have read this, and none of it applies to me", and everyone reads it once more; until it
+is read on a device, no path starts the fast world Volcanic Fire or switches to it, and that world
+on its own breathes thirty breaths, rests for a minute and ends. Homecoming is labelled *Strong*,
+Phoenix *Strongest* and Sunrise *Moderate*; the lines that made light of tingling or asked for
+more were rewritten, and their recordings removed until they are recorded again (the words show
+on screen meanwhile). The voice switch says the guide's voice is AI-generated. Where the text
+below describes the ring, the suggested lengths, the switch or the chart, it describes how the
+sessions were before this date.
+
 ## What the player gets
 
 **Holds at your own pace (Base and Elixir).** After the breathing round you hold on empty lungs
-for as long as feels good. A ring fills toward the suggested length (1:00, 1:30, 2:00), the time
-counts up inside it, and at the suggestion a small bell rings and the ring glows. You end the hold
-with Space, a click or tap anywhere on the world, the **Breathe in** button, or a gamepad's A; the
-recovery breath follows at once. A hold cannot run past twice its suggestion (four minutes at most):
-the voice brings you back. *Breathe in when you are ready* can be switched off for the old timed
-holds.
+until you want to breathe. After one minute a small bell rings, the same in every round. You end
+the hold with Space, a click or tap anywhere on the world, the **Breathe in** button, or a
+gamepad's A; the recovery breath follows at once. A hold cannot run past 1:30: the guide says
+*Breathe in now* and moves on. (Until 2026-11-12 a ring filled toward a suggested length of 1:00,
+1:30 or 2:00 with the time counting inside it, a hold could run to twice its suggestion, and a
+switch gave timed holds instead.)
 
 **Every stage does what its voice says.**
 
@@ -31,7 +50,7 @@ holds.
 | --- | --- | --- | --- |
 | Sukha Homecoming | A hold you end yourself | Paced 5 · 2 · 5 · 2 | Natural breath, no counts |
 | Sukha Phoenix | A hold you end yourself | Paced 4 · 1 · 4 · 1 | Natural breath, no counts |
-| Sukha Nightfall | The rhythm goes on uncounted, on your own | At your own pace | Natural breath, then sleep (no closing bell) |
+| Sukha Nightfall | The rhythm goes on uncounted, on your own | At your own pace | Natural breath, a long quiet rest (no closing bell) |
 | Sukha Mandala | The shape goes on uncounted, on your own | At your own pace | Natural breath, no counts |
 
 (Rest and Flow as rewritten on 2026-10-10: [Every session breathes its worlds](#every-session-breathes-its-worlds-2026-10-10).)
@@ -60,39 +79,39 @@ breath), beside the voice, all the time: no switch turns it off, only the game's
 volume (2026-10-11; it used to mark only breaths of 2.5 s and longer the voice left quiet). A
 stage at your own pace and a hold have no breath to mark. With *Bells* (on by default) a
 singing-bowl bell opens the session and each round and closes the session, and a small bell
-marks a hold's suggested length. On phones that can vibrate, light pulses mark the same moments
-(*Gentle vibration*, offered on touch devices only).
+is a hold's reminder after one minute. On phones that can vibrate, light pulses mark the same
+moments (*Gentle vibration*, offered on touch devices only).
 
 **Title cards.** Each round opens with a large card over the world ("Round 2 of 3 · Go Deeper ·
 40 breaths"), as do the arrival and the rest; the header steps back while it shows.
 
-**The result measures what you did:** time for yourself, rounds and breaths completed, and your
-holds round by round as a chart beside their suggested lengths. Then your streak and totals. Before,
-three of the four figures were constants from the session's definition.
+**The result measures what you did:** time for yourself, rounds and breaths completed, and how
+many holds you held at your pace. Then your streak and totals. Before, three of the four figures
+were constants from the session's definition.
 
-**Holds are never scored (2026-11-08).** A longer hold is not a better one, and chasing one is how
-people black out. So nothing names a best or compares sittings: the personal best, its trophy, the
-"best hold" lines and the chart's "previous best" are gone, no bar is picked out, and the last
-figure counts your *holds at your pace* instead of timing the longest.
+**Holds are never scored (2026-11-08).** A longer hold is not a better one. So nothing names a
+best or compares sittings: the personal best, its trophy and the "best hold" lines are gone, and
+the last figure counts your *holds at your pace* instead of timing the longest. Since 2026-11-12
+the result has no holds chart either, and shows no hold's time.
 
 **Your practice in the catalogue:** days in a row, the last seven days, sessions completed and time
 practised, and on each card what you have done in it ("You · 3 completed"). A
 session you end after a minute or more still counts as practice (not as completed).
 
-**Preparation:** the journey shows the world each stage is set in; *Voice guidance*, *Bells*,
-*Breathe in when you are ready* and *Gentle vibration* are remembered between visits;
-before the first Base or Elixir session the safety note must be acknowledged once ("Holding your
-breath after fast breathing can make you light-headed. Sit or lie down. Never practise in or near
-water, while driving, or standing.").
+**Preparation:** the journey shows the world each stage is set in; *Voice guidance*, *Bells*
+and *Gentle vibration* are remembered between visits; before the first session with fast breathing
+or holds (Sunrise, Homecoming, Phoenix) the safety note is read and ticked once. The note and its
+tick are written in `src/ui/effects/breathing/breath-safety.js`, and shown the same in the
+Breathing tab for Volcanic Fire.
 
 **The session waits for you.** It pauses while the Hub is open over it and continues when the Hub
-closes; it pauses while it asks whether to end (and continues on *Keep going*); it pauses when the
+closes; it pauses while it asks whether to end (and continues on *Continue*); it pauses when the
 page is hidden and waits for you to resume (hidden pages throttle timers, and a session must not run
 on without you). The Hub's own *End session* asks for a second press. The screen is kept awake while
 a session runs (Screen Wake Lock, where the browser has it).
 
-**Controls:** Space ends an open hold, otherwise pauses; P pauses; Esc asks to end. Gamepad: A ends
-an open hold or pauses (and presses the focused button on the session screens), B asks to end and B
+**Controls:** Space ends a hold, otherwise pauses; P pauses; Esc asks to end. Gamepad: A ends
+a hold or pauses (and presses the focused button on the session screens), B asks to end and B
 again ends (and steps back on the session screens).
 
 ## Beginner sessions (2026-10-10)
@@ -108,8 +127,8 @@ named as such), and each arrival is breathed at your own pace.
 | Sukha First Breath | 4:21 | 45 s own pace · 6 × 5·0·5·0 *Heart Glow* · 4 × 4·2·4·2 *A Gentle Square* · 4 × 4·0·8·0 *The Long Breath Out* · 60 s | Heart Glow (then Sacred Geometry, Moonlit Waters) | A first taste of the starter worlds |
 | Sukha Tide | 4:57 | 45 s · 10 × 4·0·4·0 · 32 s on your own · 8 × 4·0·6·0 *The Long Ebb* · 60 s | Ocean Tide | Calm and steady |
 | Sukha Roots | 4:48 | 45 s · 7 × 4·1·6·0 · 22 s on your own · 6 × 4·2·6·2 *Take Root* · 60 s | Ancient Forest | Feeling grounded |
-| Sukha Unwind | 4:57 | 45 s · 8 × 4·1·6·1 · 6 × 5·2·7·2 *Under the Aurora* · 60 s, a sleep closing | Aurora Dreams | The evening, before sleep |
-| Sukha Sunrise | 4:00 | 45 s · 10 × 3·1·3·1 *Kindle* · 15 × 2·0·2·0 *Rising Light* · 55 s | Solar Flare | Waking up |
+| Sukha Unwind | 4:57 | 45 s · 8 × 4·1·6·1 · 6 × 5·2·7·2 *Under the Aurora* · 60 s, a quiet closing with no bell | Aurora Dreams | The evening |
+| Sukha Sunrise | 4:00 | 45 s · 10 × 3·1·3·1 *Kindle* · 15 × 2·0·2·0 *Rising Light* · 55 s | Solar Flare | The morning |
 
 The arrival is 45 s (it was 30 s) so the bell, the welcome, the arrival's line and your intention
 are all spoken before the first round's bell: a stage's voice stops whatever is still playing. The
@@ -138,7 +157,7 @@ and its own accent colour on the card and in the guide.
 - The journey on the preparation screen adds "· recover" or "· reset" to a round only when the
   session has a recovery breath.
 - The result's last figure is the time on your own (Tide, Roots), or else the longest out-breath
-  (First Breath, Unwind, Sunrise), where the longer sessions show their longest hold.
+  (First Breath, Unwind, Sunrise), where Homecoming and Phoenix count their holds.
 - A stretch on your own is worded by its rhythm. In Tide and Roots it reads "On your own now: the
   same easy rhythm", and Flow's box keeps "in, hold, out, hold".
 - A line that is not recorded yet is shown on screen instead of spoken.
@@ -154,8 +173,8 @@ rewritten around them:
 | --- | --- | --- | --- |
 | Sukha Nightfall | 15 min | 2 min arriving at your own pace · 10 × 4·0·8·0 *The Long Breath Out* · 36 s on your own · 9 × 4·4·8·0 *A Soft Hold* · 32 s · 8 × 4·7·8·0 *Four, Seven, Eight* · 5 min drifting off (no bell) | Cosmic Nebula, round 2 under Moonlit Waters |
 | Sukha Mandala | 15 min | 90 s at your own pace · 10 × 4·4·4·4 *The Square* · 32 s on your own · 12 × 4·0·4·4 *The Triangle* · 36 s · 9 × 5·5·5·5 *The Wide Square* · 40 s · 4 min rest | Crystal Prism, with Sacred Geometry |
-| Sukha Homecoming | 25 min | 150 s at 5·2·5·2 · 30 × 4·0·4·0 *Steady Charge* · 40 × 3.5·0·3.5·0 *Building* · 40 × 3·0·3·0 *Full Charge*, each followed by a hold you end (1:00, 1:30, 2:00 suggested) and a 15 s recovery · 5 min rest | Electric Storm |
-| Sukha Phoenix | 20 min | 150 s at 4·1·4·1 · 30 × 3·0·2·0 *Kindle the Fire* · 30 × 3·0·2·0 *Stoke the Fire* · 30 × 3·0·2·0 *Full Fire*, each with a hold you end and a recovery · 5 min rest | Volcanic Fire |
+| Sukha Homecoming | 24 min | 150 s at 5·2·5·2 · 30 × 4·0·4·0 *Steady Charge* · 40 × 3.5·0·3.5·0 *Building* · 40 × 3·0·3·0 *Full Charge*, each followed by a hold you end (planned at one minute) and a 15 s recovery · 5 min rest | Electric Storm |
+| Sukha Phoenix | 19 min | 150 s at 4·1·4·1 · 30 × 3·0·2·0 *Kindle the Fire* · 30 × 3·0·2·0 *Stoke the Fire* · 30 × 3·0·2·0 *Full Fire*, each with a hold you end and a recovery · 5 min rest | Volcanic Fire |
 
 What every session now does:
 
@@ -164,8 +183,8 @@ What every session now does:
 - **The world's own words** on a few breaths of a round ("Open the moon-path", "Let it narrow"),
   where a phase is long enough to say them, besides the soft cues and, on long holds, a hold cue.
 - **The intention** you chose is spoken a few seconds after the arrival's lines, into silence.
-- **Closings that fit the hour.** Waking sessions end "Move your fingers and toes, and open your
-  eyes when you're ready" with the bell; Rest and Unwind end "Let sleep come" with no bell.
+- **Closings that fit the hour.** Daytime sessions end "Move your fingers and toes, and open your
+  eyes when you're ready" with the bell; Rest and Unwind end "Stay just as you are" with no bell.
 - **Fix:** a stage whose own line was not recorded left the voice marked as pending, so every breath
   cue of that stage stayed silent.
 - The voice follows the game's mute and effects volume.
@@ -175,7 +194,7 @@ What every session now does:
 Built in `src/ui/effects/breathing/breath-collection.js` (pure model) and `breath-collection-store.js`
 (the game's instance and its evidence), shaped like the theme collection:
 
-- **From the start:** Heart Glow, Moonlit Waters, Sacred Geometry and Zen Garden (balance, sleep,
+- **From the start:** Heart Glow, Moonlit Waters, Sacred Geometry and Zen Garden (balance, evening,
   focus, stillness) and Sukha First Breath. The default world is Heart Glow.
 - **Finishing an Odyssey chapter** opens one world and the session that features it: Tide with
   Ocean Tide (chapter 1), Roots with Ancient Forest (2), Unwind with Aurora Dreams (3), Sunrise with
@@ -234,11 +253,12 @@ it begins, its cue words on the first three breaths and on one in ten after
 
 | File | Role |
 | --- | --- |
-| `src/ui/effects/breathwork-session-manager.js` | Session data and runner: the nine sessions and the world of each stage (`SESSION_WORLDS`). A retention stage's `hold` is `'open'` or `'timed'`; Flow's stillness is a `carry` stage with the round's box pattern. Measures breaths, rounds and holds; `breathe()`, `snapshot()`, `suspend()`/`unsuspend()`; wake lock; bells; the hold-ready and closing lines, spoken only into silence. |
-| `src/ui/effects/breathwork-practice-log.js` (new) | The practice log: entries, totals, streak, the week, best open hold per session, personal-best detection. Pure functions over a storage object. |
+| `src/ui/effects/breathwork-session-manager.js` | Session data and runner: the nine sessions and the world of each stage (`SESSION_WORLDS`). A `retention` stage is a hold you end by breathing in, with its reminder (`HOLD_REMINDER_SECONDS`) and limit (`MAX_OPEN_HOLD_SECONDS`); Flow's stillness is a `carry` stage with the round's box pattern. Measures breaths, rounds and holds; `breathe()`, `snapshot()`, `suspend()`/`unsuspend()`; wake lock; bells; the hold-ready and closing lines, spoken only into silence. |
+| `src/ui/effects/breathing/breath-safety.js` | The safety note and its tick, what counts as strong breathing, the one rule for starting it (`canPractise`), and a fast world's thirty breaths and rest. |
+| `src/ui/effects/breathwork-practice-log.js` (new) | The practice log: entries, totals, streak, the week. Each sitting's holds are kept as a note, never compared. Pure functions over a storage object. |
 | `src/ui/effects/breathwork-chimes.js` (new) | Bells, breath tones and vibration, synthesised on the game's AudioContext through its effects bus (so the game's mute and effects volume apply). No audio files. |
-| `src/ui/effects/breathing/breathing-guide.js` | Guidance modes (`paced`, `open-hold`, `timed-hold`, `carry`, `natural`, `closing`), the hold dial, the Breathe-in button, title cards, the intention line, a screen-reader announcer, the end confirmation that holds the session, gamepad actions. |
-| `src/ui/serenity-hub/SessionsTab.js` | Catalogue with your practice, preparation (journey with worlds, remembered switches, one-time safety note), countdown, result with the holds chart and streak; records ended sessions; holds the session under the Hub. |
+| `src/ui/effects/breathing/breathing-guide.js` | Guidance modes (`paced`, `open-hold`, `carry`, `natural`, `closing`), the Breathe-in button, title cards, the intention line, a screen-reader announcer, the end confirmation that holds the session, gamepad actions. |
+| `src/ui/serenity-hub/SessionsTab.js` | Catalogue with your practice, preparation (journey with worlds, remembered switches, one-time safety note), countdown, result with its counts and streak; records ended sessions; holds the session under the Hub. |
 | `src/ui/gamepad-controller.js`, `SerenityHub.js` | A and B reach a session when the Hub is closed. |
 | `public/styles/breathing-guide.css`, `breathwork-sessions.css` | The new pieces' styles, with phone and short-landscape layouts and reduced motion. |
 | `src/ui/effects/breathwork-audio-manager.js` | Plays the voice and cues. Skips any clip that is not recorded (`isRecorded`): nothing loaded, played or scheduled; a chain moves on. |
@@ -252,9 +272,9 @@ totals (`count` completed, `seconds`, `last`) are kept, so an existing record ca
 `entries` hold one line per sitting (`id`, `at`, `seconds`, `completed`, `rounds`, `breaths`, `holds`,
 `intention`), the newest 200. Preferences are `localStorage['serenity.sukhaPrefs']`.
 
-**Timing.** The journey and "minutes to go" are laid out by plan (open holds at their suggestion); a
-hold held past its suggestion waits at the end of its mark. What is reported at the end is measured
-on the session clock, pauses excluded.
+**Timing.** The journey and "minutes to go" are laid out by plan (a hold at its one-minute
+reminder); a hold that runs past it waits at the end of its mark. What is reported at the end is
+measured on the session clock, pauses excluded.
 
 **The world during each stage** (`calm` in the stage): a hold is stillest (1), the rest 0.8, Flow's
 carry 0.45, the recovery 0.35, the arrival 0.25, the breathing rounds 0.
@@ -323,5 +343,5 @@ a real Gemini request (no key here).
   [scripts/tts-audio-tracking.md](../scripts/tts-audio-tracking.md).
 - **Listen on a device:** the sessions and the stand-alone voice with the new recordings, the
   bells, vibration and the wake lock.
-- **History** beyond the week strip (a calendar, every hold over time) would use the entries the log
-  already keeps.
+- **History** beyond the week strip (a calendar of sittings) would use the entries the log already
+  keeps.

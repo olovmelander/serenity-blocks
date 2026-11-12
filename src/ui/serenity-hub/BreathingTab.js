@@ -6,16 +6,18 @@
  * yet (breath-collection.js) are shown, not hidden: dimmed, with where they are found, and can be
  * previewed but not begun. Catalogue data comes from breath-catalogue.js; the guide
  * (window.breathingIndicator) owns what is playing. A fast-breathing world shows the safety note
- * (breath-safety.js) and begins only once it has been read.
+ * (breath-safety.js): until it is read here the world can be looked at, not begun, and choosing
+ * its card never moves a running practice to it.
  */
 import { csIcon } from '../components/cosmic-icons.js';
 import {
-    BREATH_WORLDS, breathPosterUrl, formatPattern, getBreathWorld,
+    BREATH_WORLDS, breathPosterUrl, formatPattern, getBreathWorld, resolveBreathWorldId,
 } from '../effects/breathing/breath-catalogue.js';
 import { getBreathCollection } from '../effects/breathing/breath-collection-store.js';
 import { PRACTICE_MINUTES_PER_STEP } from '../effects/breathing/breath-collection.js';
 import {
-    BREATH_CAUTION_TEXT, BREATH_WELLNESS_TEXT, isBreathSafetyRead, isStrongPattern, setBreathSafetyRead,
+    BREATH_SAFETY_ACK, BREATH_WELLNESS_TEXT, STRONG_WORLD_BREATHS, breathCautionMarkup, canPractise,
+    isBreathSafetyRead, isStrongPattern, setBreathSafetyRead,
 } from '../effects/breathing/breath-safety.js';
 import { THEME_LOCK_ICON } from './ThemeCollectionView.js';
 
@@ -31,6 +33,8 @@ export class BreathingTab {
         this.techniques = BREATH_WORLDS;
         /** The world shown in the hero: the one you chose, or one you are only looking at. */
         this.selectedId = null;
+        /** The card you chose last was only shown here, not given to the guide (see selectTechnique). */
+        this.previewing = false;
         this.container = null;
         this.abortController = new AbortController();
         this.render();
@@ -77,12 +81,19 @@ export class BreathingTab {
         return this.serenityMode?.deps?.settingsManager?.get?.() || {};
     }
 
-    /** The world the hero shows: what is playing, else what you picked, else your saved choice. */
+    /**
+     * The world the hero shows: what is playing (unless you have since picked a card that is only
+     * shown here), else what you picked, else your saved choice.
+     */
     heroWorldId() {
         const guide = this.breathingIndicator;
-        if (guide?.isActive && !guide.isExternallyControlled) return guide.currentTechnique;
+        const playing = guide?.isActive && !guide.isExternallyControlled;
+        if (playing && !(this.previewing && this.selectedId)) return guide.currentTechnique;
         if (this.selectedId) return this.selectedId;
-        return guide?.allowedWorld?.(this.settings.breathingTechnique) || this.settings.breathingTechnique || guide?.currentTechnique;
+        const saved = resolveBreathWorldId(this.settings.breathingTechnique);
+        // A found world you chose shows here even while its safety note waits: here it is read.
+        if (saved && this.collection.isWorldOpen(saved)) return saved;
+        return guide?.allowedWorld?.(saved) || saved || guide?.currentTechnique;
     }
 
     renderCard(world) {
@@ -126,9 +137,10 @@ export class BreathingTab {
                                 id="breathing-guide-toggle"></button>
                             <span class="breath-lib__cycle"></span>
                         </div>
-                        <div class="breath-lib__caution" hidden>
-                            <p>${csIcon('shield', 15)} ${BREATH_CAUTION_TEXT}</p>
-                            <label class="breath-lib__ack"><input type="checkbox" class="breath-lib__ack-input"><span>I understand</span></label>
+                        <div class="breath-lib__caution breath-note" hidden>
+                            ${breathCautionMarkup({ icon: csIcon('shield', 15) })}
+                            <label class="breath-lib__ack"><input type="checkbox"
+                                class="breath-lib__ack-input"><span>${BREATH_SAFETY_ACK}</span></label>
                         </div>
                     </div>
                 </section>
@@ -145,7 +157,7 @@ export class BreathingTab {
                 </section>
                 <section class="breath-lib__sukha">
                     <div>
-                        <span class="breath-lib__eyebrow">Guided · 4 to 26 minutes</span>
+                        <span class="breath-lib__eyebrow">Guided · 4 to 24 minutes</span>
                         <h3>Sukha sessions</h3>
                         <p>Journeys with a voice through these worlds. Begin with Sukha First Breath: four minutes in three of the worlds above.</p>
                     </div>
@@ -156,7 +168,8 @@ export class BreathingTab {
                     <label class="breath-lib__switch">
                         <input type="checkbox" class="sb-toggle" id="breathing-voice-toggle"
                             ${this.settings.breathingVoice !== false ? 'checked' : ''}>
-                        <span><b>Voice</b><small>Each world introduced as it begins, and its words on a few breaths</small></span>
+                        <span><b>Voice</b><small>Each world introduced as it begins, and its words on a few
+                            breaths. The guide's voice is AI-generated.</small></span>
                     </label>
                     <label class="breath-lib__switch">
                         <input type="checkbox" class="sb-toggle" id="breathing-text-toggle"
@@ -217,9 +230,13 @@ export class BreathingTab {
         // The guide can change on its own (arrow keys, a gamepad, its End button): the hero follows.
         window.addEventListener('breathingTechniqueChange', (event) => {
             this.selectedId = event.detail?.id || null;
+            this.previewing = false;
             this.refresh();
         }, { signal });
-        window.addEventListener('breathingGuideChange', () => this.refresh(), { signal });
+        window.addEventListener('breathingGuideChange', () => {
+            this.previewing = false;
+            this.refresh();
+        }, { signal });
     }
 
     /** Start or stop a standalone practice. Starting closes the Hub: the world needs the screen. */
@@ -254,22 +271,28 @@ export class BreathingTab {
         else this.hub.releaseGameplay?.();
     }
 
-    /** Show a world in the hero. A found world also becomes your choice; a hidden one is a preview. */
+    /**
+     * Show a world in the hero. A found world also becomes your choice, and a running practice
+     * moves to it. A world not found yet, or a fast one whose safety note is unread, is only shown
+     * here (with its note and tick): the guide and any running practice stay as they are.
+     */
     selectTechnique(techniqueId) {
         if (this.breathingIndicator.isExternallyControlled) return;
         if (!this.techniques.some((world) => world.id === techniqueId)) return;
         this.selectedId = techniqueId;
-        if (this.collection.isWorldOpen(techniqueId)) {
-            this.collection.markSeen('worlds', techniqueId);
+        const found = this.collection.isWorldOpen(techniqueId);
+        if (found) this.collection.markSeen('worlds', techniqueId);
+        this.previewing = !found || this.needsSafetyNote(techniqueId);
+        if (!this.previewing) {
             this.breathingIndicator.setTechnique(techniqueId);
             this.serenityMode?.deps?.settingsManager?.update({ breathingTechnique: techniqueId });
         }
         this.refresh();
     }
 
-    /** A fast-breathing world whose safety note has not been read yet. */
+    /** A fast-breathing world whose safety note has not been read yet (breath-safety.js). */
     needsSafetyNote(worldId) {
-        return isStrongPattern(getBreathWorld(worldId)?.pattern) && !isBreathSafetyRead();
+        return !canPractise(getBreathWorld(worldId)?.pattern);
     }
 
     updateSetting(key, value) {
@@ -302,8 +325,12 @@ export class BreathingTab {
             rhythm.innerHTML = this.renderRhythm(world.pattern);
         }
         const cycle = world.pattern.reduce((total, seconds) => total + seconds, 0);
+        const strongWorld = isStrongPattern(world.pattern);
+        // A fast world runs for its breaths, then rests; the others go on as long as you like.
+        const pace = strongWorld ? `${STRONG_WORLD_BREATHS} breaths, then a rest`
+            : `about ${Number((60 / cycle).toFixed(1))} a minute`;
         hero.querySelector('.breath-lib__cycle').textContent = status.open
-            ? `${cycle} s per breath · about ${Number((60 / cycle).toFixed(1))} a minute` : `${status.requirement?.label || ''}.`;
+            ? `${cycle} s per breath · ${pace}` : `${status.requirement?.label || ''}.`;
         const begin = hero.querySelector('.breath-lib__begin');
         const active = Boolean(guide.isActive) && !controlled;
         let beginLabel = active ? 'Stop breathing' : `Begin ${world.name}`;
@@ -312,7 +339,7 @@ export class BreathingTab {
         begin.classList.toggle('is-active', active);
         begin.setAttribute('aria-pressed', String(active));
         // Fast breathing: the note shows with the world, and Begin waits until it is read.
-        const strong = status.open && isStrongPattern(world.pattern);
+        const strong = status.open && strongWorld;
         const read = isBreathSafetyRead();
         const caution = hero.querySelector('.breath-lib__caution');
         caution.hidden = !strong;

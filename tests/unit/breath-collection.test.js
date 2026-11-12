@@ -65,7 +65,7 @@ afterEach(() => vi.clearAllMocks());
 describe('The breath path', () => {
     it('opens four worlds and Sukha First Breath from the start, one for each need', () => {
         const intents = STARTER_WORLDS.map((id) => getBreathWorld(id).intent);
-        expect(intents).toEqual(['Balance', 'Sleep', 'Focus', 'Stillness']);
+        expect(intents).toEqual(['Balance', 'Evening', 'Focus', 'Stillness']);
         expect(STARTER_SESSIONS).toEqual(['FIRST']);
         const { collection } = makeService();
         expect(openIds(collection, 'worlds')).toEqual(expect.arrayContaining([...STARTER_WORLDS]));

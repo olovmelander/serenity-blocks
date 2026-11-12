@@ -33,12 +33,12 @@
         { "id": "first_intro", "text": "Welcome to Sukha First Breath. A few quiet minutes to meet the breathing worlds... There's nothing to get right... just follow the light, and my voice." },
         { "id": "tide_intro", "text": "Welcome to Sukha Tide. Five minutes of breathing with the sea... in through the nose as the wave comes in... and out as it slides away." },
         { "id": "roots_intro", "text": "Welcome to Sukha Roots. Five minutes under the old trees... a breath in, a moment of rest... and a long breath out, down into the ground." },
-        { "id": "unwind_intro", "text": "Welcome to Sukha Unwind. Five minutes to let the day go... the breath out grows longer, the lights grow slower... until you're ready for the night." },
-        { "id": "sunrise_intro", "text": "Welcome to Sukha Sunrise. Four minutes to wake up gently... lively breaths through the nose, light and never forced... then a steady close." },
+        { "id": "unwind_intro", "text": "Welcome to Sukha Unwind. Five minutes to let the day go... the breath out grows longer, the lights grow slower... as the evening settles." },
+        { "id": "sunrise_intro", "text": "Welcome to Sukha Sunrise. Four minutes for the start of the day... lively breaths through the nose, light and never forced... then a steady close." },
         { "id": "rest_intro", "text": "Welcome to Sukha Nightfall, a slow practice for the end of the day. Step by step, we'll learn the four-seven-eight breath... and drift among the stars between rounds. If a hold ever feels like too much... simply breathe." },
         { "id": "flow_intro", "text": "Welcome to Sukha Mandala, the geometry of breath. A square... a triangle... and a wider square. After each one the counting stops... and you keep the shape on your own." },
-        { "id": "base_intro", "text": "Welcome to Sukha Homecoming. Three rounds of steady breathing through the nose, each ending in a stillness you hold for as long as it feels good. Sit or lie down... and never practise this in water, or while driving." },
-        { "id": "elixir_intro", "text": "Welcome to Sukha Phoenix, the most active practice. Three rounds of strong breathing through the mouth, each ending in a hold you end yourself. Sit or lie down, never in water or while driving... and if you feel dizzy, slow down." }
+        { "id": "base_intro", "text": "Welcome to Sukha Homecoming. Three rounds of steady breathing through the nose, each ending in a quiet hold that is over the moment you breathe in. Sit or lie down... and never practise this in water, or while driving." },
+        { "id": "elixir_intro", "text": "Welcome to Sukha Phoenix, the most active practice. Three rounds of strong breathing through the mouth, each ending in a hold you end yourself. Sit or lie down, never in water or while driving... and if you feel dizzy or tingling, slow down or pause." }
       ]
     },
     {
@@ -79,7 +79,7 @@
     },
     {
       "id": "unwind",
-      "about": "Sukha Unwind: longer out-breaths, then Aurora Dreams' rhythm, then sleep. Same words as the stage text.",
+      "about": "Sukha Unwind: longer out-breaths, then Aurora Dreams' rhythm, then a quiet rest. Same words as the stage text.",
       "delivery": "guide",
       "lines": [
         { "id": "grounding_intro", "text": "Let your jaw soften... let your hands rest. Nothing needs doing now." },
@@ -96,12 +96,12 @@
         { "id": "grounding_intro", "text": "Sit tall... let your shoulders open... and let the light find you." },
         { "id": "r1_active", "text": "This is the Solar Flare rhythm... in for three... a short pause... out for three. Brisk... and even." },
         { "id": "r2_active", "text": "Quicker now... light breaths through the nose. If you feel light-headed... simply breathe normally." },
-        { "id": "integration", "text": "Breathe however feels good... and notice the warmth... how awake you feel." }
+        { "id": "integration", "text": "Breathe however feels good... and notice how your body feels now." }
       ]
     },
     {
       "id": "rest",
-      "about": "Sukha Nightfall: Moonlit Waters' four-seven-eight learned step by step, drifting in Cosmic Nebula, then sleep. Same words as the stage text.",
+      "about": "Sukha Nightfall: Moonlit Waters' four-seven-eight learned step by step, drifting in Cosmic Nebula, then a long rest. Same words as the stage text.",
       "delivery": "guide",
       "lines": [
         { "id": "grounding_intro", "delivery": "still", "text": "Let your body grow heavy... let the day soften. There's nothing left to do tonight." },
@@ -135,31 +135,31 @@
       "lines": [
         { "id": "grounding_intro", "text": "Close your eyes... scan your body from head to toe... and let each breath out soften what you find." },
         { "id": "r1_active", "text": "Breathe in through the nose... belly, then chest... and let it go. A steady rhythm... full, never forced." },
-        { "id": "r1_hold", "delivery": "still", "text": "Stay here... nothing to do. When you need to breathe... breathe in." },
+        { "id": "r1_hold", "delivery": "still", "text": "Stay here... with nothing to do. Breathe in... whenever you want to." },
         { "id": "r1_recovery", "text": "Breathe all the way in... and hold it... let the breath fill you." },
         { "id": "r2_active", "text": "A little quicker now... belly rises... chest opens... and let it go." },
-        { "id": "r2_hold", "delivery": "still", "text": "Rest in the stillness... and simply watch." },
+        { "id": "r2_hold", "delivery": "still", "text": "Rest in the quiet... breathe in... as soon as you want to." },
         { "id": "r2_recovery", "text": "Breathe in fully... and hold... let the breath reach every part of you." },
-        { "id": "r3_active", "text": "Quicker still... full breaths, never forced. Tingling is normal... ease off if you need to." },
-        { "id": "r3_hold", "delivery": "still", "text": "Silent... and still... notice the space between your thoughts." },
+        { "id": "r3_active", "text": "Quicker still... full breaths, never forced. If you feel tingling or light-headed... slow down, or pause." },
+        { "id": "r3_hold", "delivery": "still", "text": "Quiet... and still. Breathe in... the moment you want to." },
         { "id": "r3_recovery", "text": "One full breath in... and hold it gently at the top." },
         { "id": "integration", "delivery": "still", "text": "Return to your natural breath... there's nothing to do... simply be." }
       ]
     },
     {
       "id": "elixir",
-      "about": "Sukha Phoenix: Volcanic Fire's power breathing through the mouth, deep holds you end yourself. Same words as the stage text.",
+      "about": "Sukha Phoenix: Volcanic Fire's strong breathing through the mouth, holds you end yourself. Same words as the stage text.",
       "delivery": "guide",
       "lines": [
         { "id": "grounding_intro", "text": "Breathe through your nose for now... slow and easy... and let your body settle before we begin." },
         { "id": "r1_active", "text": "Through the mouth now... fully in... and let it go. In... and out... a steady loop." },
-        { "id": "r1_hold", "delivery": "still", "text": "Rest here, in the silence. When you need to breathe... breathe in." },
+        { "id": "r1_hold", "delivery": "still", "text": "Rest here, in the quiet. Breathe in... whenever you want to." },
         { "id": "r1_recovery", "text": "Breathe all the way in... and hold it at the top." },
         { "id": "r2_active", "text": "The same steady loop... in... and out... connected breaths, with no pause between them." },
-        { "id": "r2_hold", "delivery": "still", "text": "Deep silence... notice what you feel... without judging it." },
-        { "id": "r3_active", "text": "Full and free... tingling is normal... if you feel dizzy, slow down." },
-        { "id": "r3_hold", "delivery": "still", "text": "Complete release... you are held. Breathe in whenever you need." },
-        { "id": "r3_recovery", "text": "One deep breath in... and hold... let the energy rise." },
+        { "id": "r2_hold", "delivery": "still", "text": "A quiet pause... notice what you feel... and breathe in whenever you like." },
+        { "id": "r3_active", "text": "Full and free... never forced. If you feel tingling, dizzy or light-headed... slow down, or pause." },
+        { "id": "r3_hold", "delivery": "still", "text": "Let everything rest... breathe in... the moment you feel like it." },
+        { "id": "r3_recovery", "text": "One full breath in... held gently, for a moment." },
         { "id": "integration", "delivery": "still", "text": "Let the breath settle on its own... allow whatever arises... you are complete." }
       ]
     },
@@ -185,7 +185,7 @@
         { "id": "deep-relaxation_rest", "text": "Deep night..." },
         { "id": "deep-relaxation_rest_2", "text": "A quiet sky..." },
         { "id": "deep-relaxation_rest_3", "text": "Starlight..." },
-        { "id": "box-breathing_intro", "delivery": "welcome", "text": "Sacred Geometry. Four equal sides... in, hold, out, hold... four counts each. A breath for focus." },
+        { "id": "box-breathing_intro", "delivery": "welcome", "text": "Sacred Geometry. Four equal sides... in, hold, out, hold... four counts each. An even, steady breath." },
         { "id": "box-breathing_in", "text": "Up the first side..." },
         { "id": "box-breathing_out", "text": "Down the third side..." },
         { "id": "box-breathing_in_2", "text": "Trace the light upward..." },
@@ -202,7 +202,7 @@
         { "id": "box-breathing_rest", "text": "Along the base..." },
         { "id": "box-breathing_rest_2", "text": "Close the square..." },
         { "id": "box-breathing_rest_3", "text": "Steady... along the base..." },
-        { "id": "calm-sleep_intro", "delivery": "welcome", "text": "Moonlit Waters. In for four... hold for seven... out for eight. A breath for falling asleep." },
+        { "id": "calm-sleep_intro", "delivery": "welcome", "text": "Moonlit Waters. In for four... hold for seven... out for eight. A slow breath for the evening." },
         { "id": "calm-sleep_in", "text": "Open the moon-path..." },
         { "id": "calm-sleep_out", "text": "Let it narrow..." },
         { "id": "calm-sleep_in_2", "text": "Widen the silver path..." },
@@ -216,7 +216,7 @@
         { "id": "calm-sleep_hold", "text": "Let the light rest on the water..." },
         { "id": "calm-sleep_hold_2", "text": "Hold the moon still..." },
         { "id": "calm-sleep_hold_3", "text": "Float in the silver light..." },
-        { "id": "energizing_intro", "delivery": "welcome", "text": "Solar Flare. Brisk and even... in for three... out for three. A breath to wake you up." },
+        { "id": "energizing_intro", "delivery": "welcome", "text": "Solar Flare. Brisk and even... in for three... out for three. A lively breath for the morning." },
         { "id": "energizing_in", "text": "Let the corona reach..." },
         { "id": "energizing_out", "text": "Draw it back..." },
         { "id": "energizing_in_2", "text": "Let the flare rise..." },
@@ -238,7 +238,7 @@
         { "id": "coherence_out_4", "text": "Let it settle back..." },
         { "id": "coherence_in_5", "text": "Unfold... petal by petal..." },
         { "id": "coherence_out_5", "text": "Gather them gently..." },
-        { "id": "triangle_intro", "delivery": "welcome", "text": "Crystal Prism. Three sides... in... out... and rest. A breath for a clear mind." },
+        { "id": "triangle_intro", "delivery": "welcome", "text": "Crystal Prism. Three sides... in... out... and rest. A light, clear rhythm." },
         { "id": "triangle_in", "text": "Fan the light..." },
         { "id": "triangle_out", "text": "Gather it..." },
         { "id": "triangle_in_2", "text": "Spread the colours..." },
@@ -252,7 +252,7 @@
         { "id": "triangle_rest", "text": "Let the crystal rest..." },
         { "id": "triangle_rest_2", "text": "Clear... and still..." },
         { "id": "triangle_rest_3", "text": "Rest in the clear light..." },
-        { "id": "volcanic-fire_intro", "delivery": "welcome", "text": "Volcanic Fire. Quick, full breaths... the strongest rhythm of all. Sit down for it... and stop if you feel dizzy." },
+        { "id": "volcanic-fire_intro", "delivery": "welcome", "text": "Volcanic Fire. Thirty quick, full breaths... then a rest. Sit down for it... and slow down or stop if you feel dizzy or tingling." },
         { "id": "volcanic-fire_in", "text": "Feed the fire..." },
         { "id": "volcanic-fire_out", "text": "Release..." },
         { "id": "volcanic-fire_in_2", "text": "Stoke the flames..." },
@@ -308,7 +308,7 @@
         { "id": "cosmic-breath_rest", "text": "Drift in the quiet..." },
         { "id": "cosmic-breath_rest_2", "text": "Float in the dark..." },
         { "id": "cosmic-breath_rest_3", "text": "Deep space..." },
-        { "id": "forest-breath_intro", "delivery": "welcome", "text": "Ancient Forest. In for four... a short rest... and a longer breath out. A breath that brings you back to the ground." },
+        { "id": "forest-breath_intro", "delivery": "welcome", "text": "Ancient Forest. In for four... a short rest... and a longer breath out. A steady, unhurried breath." },
         { "id": "forest-breath_in", "text": "Let the light pour in..." },
         { "id": "forest-breath_out", "text": "Let it soften..." },
         { "id": "forest-breath_in_2", "text": "Let the sunlight fall through..." },
@@ -325,7 +325,7 @@
         { "id": "forest-breath_rest", "text": "Rest in the shade..." },
         { "id": "forest-breath_rest_2", "text": "A quiet forest..." },
         { "id": "forest-breath_rest_3", "text": "Deep shade..." },
-        { "id": "electric-storm_intro", "delivery": "welcome", "text": "Electric Storm. A charged rhythm... in for three... hold... and a longer breath out. A breath to sharpen you." },
+        { "id": "electric-storm_intro", "delivery": "welcome", "text": "Electric Storm. A charged rhythm... in for three... hold... and a longer breath out. Brisk, and a little uneven." },
         { "id": "electric-storm_in", "text": "Let the charge reach..." },
         { "id": "electric-storm_out", "text": "Draw it home..." },
         { "id": "electric-storm_in_2", "text": "Reach for the glass..." },
@@ -582,13 +582,13 @@
     },
     {
       "id": "transitions",
-      "about": "Between stages: the start of each round, the start of a hold, the rest, and the hold bell's invitation.",
+      "about": "Between stages: the start of each round, the start of a hold, the rest, and the hold bell's reminder.",
       "delivery": "guide",
       "lines": [
         { "id": "round1_start", "text": "Round one..." },
         { "id": "round2_start", "text": "Round two..." },
         { "id": "last_round", "text": "The last round..." },
-        { "id": "hold_start", "text": "Let the last breath go... and hold, with empty lungs." },
+        { "id": "hold_start", "text": "Let the last breath go... and pause, with empty lungs. Breathe in whenever you want to." },
         { "id": "integration_start", "delivery": "still", "text": "Let go of the rhythm now... and rest." },
         { "id": "breathe_when_ready", "delivery": "still", "text": "Breathe in... whenever you're ready." }
       ]
@@ -607,7 +607,7 @@
       "about": "A word partway through a round, and thanks in the rest.",
       "delivery": "guide",
       "lines": [
-        { "id": "doing_well", "text": "You're doing beautifully... keep going." },
+        { "id": "doing_well", "text": "You're doing well... there's no hurry." },
         { "id": "halfway", "text": "Halfway through... keep it easy." },
         { "id": "thank_yourself", "delivery": "still", "text": "Thank yourself for this practice... for showing up." },
         { "id": "proud", "delivery": "still", "text": "Be proud of yourself... you showed up today." }
@@ -618,10 +618,10 @@
       "about": "Spread through a session's rest, the last one well before the closing.",
       "delivery": "still",
       "lines": [
-        { "id": "floating_vibrating", "text": "You might feel a tingling... a lightness... just let it be there." },
+        { "id": "tingling_passes", "text": "If you feel any tingling or lightness... keep the breath slow and easy... and let it pass." },
         { "id": "observer_deep", "text": "Thoughts may come and go... like clouds... you don't have to follow them." },
         { "id": "stay_here", "text": "Stay here as long as you need." },
-        { "id": "you_are_safe", "text": "You are safe... you are held... you are home." },
+        { "id": "rest_easy", "text": "Rest here... let the breath come and go... just as it likes." },
         { "id": "nothing_to_do", "text": "There is nothing to do... nowhere to go... simply be." },
         { "id": "body_scan", "text": "Scan your body... notice what you feel... and let it be as it is." },
         { "id": "waves_ocean", "text": "Like waves in the ocean... rising... and falling... endlessly." },
@@ -652,7 +652,7 @@
         { "id": "unwind_unwind", "text": "Let yourself unwind." },
         { "id": "unwind_release", "text": "Let the day go." },
         { "id": "unwind_soften", "text": "Soften... from head to toe." },
-        { "id": "unwind_sleep", "text": "Get ready for a good night's sleep." },
+        { "id": "unwind_night", "text": "Get ready for the night." },
         { "id": "sunrise_wake", "text": "Wake up gently." },
         { "id": "sunrise_energy", "text": "Find your energy." },
         { "id": "sunrise_clear", "text": "Let your head clear." },
@@ -666,13 +666,13 @@
         { "id": "flow_presence", "text": "Be fully here." },
         { "id": "flow_rhythm", "text": "Find your rhythm." },
         { "id": "base_calm", "text": "Let yourself find calm." },
-        { "id": "base_focus", "text": "Sharpen your focus." },
+        { "id": "base_focus", "text": "Let your attention gather." },
         { "id": "base_ground", "text": "Ground yourself... in this moment." },
         { "id": "base_breathe", "text": "Just breathe." },
-        { "id": "elixir_energy", "text": "Ignite your energy." },
+        { "id": "elixir_fully", "text": "Breathe fully... and stay easy." },
         { "id": "elixir_release", "text": "Release... and let go." },
-        { "id": "elixir_transform", "text": "Allow yourself to change." },
-        { "id": "elixir_power", "text": "Feel your strength build." }
+        { "id": "elixir_curious", "text": "Stay curious... about whatever you notice." },
+        { "id": "elixir_gently", "text": "Go gently... there is nothing to prove." }
       ]
     }
   ]

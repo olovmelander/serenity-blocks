@@ -37,6 +37,18 @@ function liveSettings() {
     return w.settings ?? w.settingsManager?.get?.() ?? null;
 }
 
+/** Flashing held back for now, whatever the setting says (holdFlashing). */
+let held = false;
+
+/**
+ * Hold flashing back for a while, as if the setting were on, or let the setting decide again.
+ * The breathing guide holds it while a fast breathing world is practised (it may be over a theme).
+ * @param {boolean} on
+ */
+export function holdFlashing(on) {
+    held = on === true;
+}
+
 /**
  * Settings > Reduce flashing effects. Reads the live settings so a world can call it every frame;
  * pass `settings` where the object is already at hand (a scene's game state).
@@ -44,7 +56,7 @@ function liveSettings() {
  * @returns {boolean}
  */
 export function prefersReducedFlashing(settings = liveSettings()) {
-    return settings?.[REDUCE_FLASHING_SETTING] === true;
+    return held || settings?.[REDUCE_FLASHING_SETTING] === true;
 }
 
 /**

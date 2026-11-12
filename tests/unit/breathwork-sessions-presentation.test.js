@@ -4,6 +4,9 @@ import {
 import { SUKHA_SESSIONS, SessionsTab } from '../../src/ui/serenity-hub/SessionsTab.js';
 import { BreathCollectionService } from '../../src/ui/effects/breathing/breath-collection.js';
 import { BreathworkSessionManager } from '../../src/ui/effects/breathwork-session-manager.js';
+import {
+    BREATH_CAUTION, BREATH_SAFETY_ACK, BREATH_SAFETY_VERSION, isStrongSession,
+} from '../../src/ui/effects/breathing/breath-safety.js';
 import { looseNode, looseWindow, targetMatching } from './helpers/loose-dom.js';
 
 let container;
@@ -63,17 +66,20 @@ describe('Sukha session facts', () => {
     it('reads length, holds and breaths from the practice the manager actually runs', () => {
         const base = tab.getSessionDetails('BASE');
         expect(base).toMatchObject({
-            name: 'Sukha Homecoming', duration: '26 min', rounds: 3, maxHold: '2 min', breaths: 110,
+            name: 'Sukha Homecoming', duration: '24 min', rounds: 3, hasHolds: true, breaths: 110,
         });
-        expect(base.seconds).toBe(150 + 240 + 60 + 15 + 280 + 90 + 15 + 240 + 120 + 15 + 300);
+        // Every hold is planned at the same reminder: none is longer than the one before.
+        expect(base.seconds).toBe(150 + 240 + 60 + 15 + 280 + 60 + 15 + 240 + 60 + 15 + 300);
         expect(base.stages).toHaveLength(11);
         expect(base.stages[1]).toEqual({
-            type: 'active', round: 1, seconds: 240, breaths: 30, hold: null, world: 'electric-storm', paced: true,
+            type: 'active', round: 1, seconds: 240, breaths: 30, world: 'electric-storm', paced: true,
         });
         // Each session is pictured by the world it opens with on the path.
         expect(base.poster).toBe('./assets/breathing/electric-storm.webp');
-        expect(base.stages[2]).toMatchObject({ type: 'retention', hold: 'open', world: 'cosmic-breath' });
-        expect(tab.getSessionDetails('REST').maxHold).toBe('no holds');
+        expect(base.stages[2]).toMatchObject({ type: 'retention', world: 'cosmic-breath' });
+        // No fact names a hold's length: there is none to reach.
+        expect(base).not.toHaveProperty('maxHold');
+        expect(tab.getSessionDetails('REST').hasHolds).toBe(false);
         // What the third fact on each card says: how each session's stillness works.
         expect(base.feature).toBe('Holds at your pace');
         expect(tab.getSessionDetails('REST').feature).toBe('Short holds, up to 7 sec');
@@ -86,9 +92,11 @@ describe('Sukha session facts', () => {
 
     it('never shows NaN when a session definition is incomplete', () => {
         manager.SESSIONS.BASE = { totalRounds: 3, phases: [{ type: 'grounding' }, { type: 'retention', duration: 45 }] };
-        expect(tab.getSessionDetails('BASE')).toMatchObject({ duration: '1 min', maxHold: '45 sec', breaths: 0 });
+        expect(tab.getSessionDetails('BASE'))
+            .toMatchObject({ duration: '1 min', feature: 'Holds at your pace', breaths: 0 });
         manager.SESSIONS.BASE = undefined;
-        expect(tab.getSessionDetails('BASE')).toMatchObject({ duration: '1 min', maxHold: 'no holds', rounds: 3 });
+        expect(tab.getSessionDetails('BASE'))
+            .toMatchObject({ duration: '1 min', feature: 'No breath holds', rounds: 3 });
     });
 
     it('names every session, the short beginner ones first, and a way to begin each', () => {
@@ -110,7 +118,7 @@ describe('Sukha beginner sessions in the catalogue', () => {
             expect(info.seconds, id).toBeLessThanOrEqual(300);
             expect(info.rounds, id).toBe(id === 'FIRST' ? 3 : 2);
             expect(info.feature, id).toBe('No breath holds');
-            expect(info.openHolds, id).toBe(false);
+            expect(info.hasHolds, id).toBe(false);
             expect(container.innerHTML).toContain(`<p class="sukha-card__promise">${info.promise}</p>`);
         });
         expect(tab.getSessionDetails('FIRST')).toMatchObject({
@@ -130,7 +138,7 @@ describe('Sukha beginner sessions in the catalogue', () => {
         manager.startSession.mock.calls[0][2]({ sessionName: 'Sukha Unwind', totalDuration: 254, rounds: 2 });
         const stats = flow('.sukha-flow__stats').innerHTML;
         expect(stats).toContain('<dt>Longest out-breath</dt><dd>7 sec</dd>');
-        expect(stats).not.toContain('no holds');
+        expect(stats).not.toContain('<dt>Holds</dt>');
         tab.startSession('TIDE');
         manager.startSession.mock.calls[1][2]({ sessionName: 'Sukha Tide', totalDuration: 261, rounds: 2 });
         expect(flow('.sukha-flow__stats').innerHTML).toContain('<dt>On your own</dt><dd>0:32</dd>');
@@ -253,9 +261,28 @@ describe('Sukha session flow', () => {
     it('offers the same session again from its result', () => {
         tab.startSession('FLOW');
         manager.startSession.mock.calls[0][2]({ sessionName: 'Sukha Mandala', totalDuration: 900, rounds: 3 });
+        expect(flow('.sukha-flow__again').hidden).toBe(false);
+        expect(flow('.sukha-flow__again').disabled).toBe(false);
         clickFlow({ '.sukha-flow__again': true });
         expect(tab.step).toBe('prepare');
         expect(tab.pendingSessionId).toBe('FLOW');
+    });
+
+    it('offers Done alone after a strong session: no "Go again"', () => {
+        ['BASE', 'ELIXIR', 'SUNRISE'].forEach((id, index) => {
+            tab.startSession(id);
+            const finish = manager.startSession.mock.calls[index][2];
+            finish({ sessionName: SUKHA_SESSIONS[id].name, totalDuration: 900, rounds: 3 });
+            expect(flow('.sukha-flow__again').hidden, id).toBe(true);
+            // Out of the Tab order and the pad's reach too, not only out of sight.
+            expect(flow('.sukha-flow__again').disabled, id).toBe(true);
+            clickFlow({ '.sukha-flow__finish': true });
+        });
+        // A gentle session after it offers it again.
+        tab.startSession('TIDE');
+        manager.startSession.mock.calls[3][2]({ sessionName: 'Sukha Tide', totalDuration: 261, rounds: 2 });
+        expect(flow('.sukha-flow__again').hidden).toBe(false);
+        expect(flow('.sukha-flow__again').disabled).toBe(false);
     });
 
     it('ends without a result when the player stops, and ignores the old session\'s late callbacks', () => {
@@ -374,10 +401,38 @@ describe('Sukha preparation choices', () => {
         tab.showPrepScreen('BASE');
         expect(flow('.sukha-flow__ack').hidden).toBe(true);
         expect(flow('.sukha-flow__begin').disabled).toBe(false);
-        expect(flow('.sukha-flow__switch--holds').hidden).toBe(false);
         tab.showPrepScreen('REST');
         expect(flow('.sukha-flow__caution').hidden).toBe(true);
-        expect(flow('.sukha-flow__switch--holds').hidden).toBe(true);
+    });
+
+    it('draws the note as a lead line and a short list, with the tick that names what it asks', () => {
+        const html = tab.flow.innerHTML;
+        expect(html).toContain(`<span>${BREATH_CAUTION.lead}</span>`);
+        expect(html.match(/<ul class="breath-note__points">/g)).toHaveLength(1);
+        BREATH_CAUTION.points.forEach((point) => expect(html).toContain(`<li>${point}</li>`));
+        expect(html).toContain(`<span>${BREATH_SAFETY_ACK}</span>`);
+        expect(BREATH_SAFETY_ACK).toBe('I am 18 or over, I have read this, and none of it applies to me');
+        expect(html).not.toContain('I understand');
+    });
+
+    it('has no switch for timed holds, and says beside the voice switch that the voice is AI-generated', () => {
+        const html = tab.flow.innerHTML;
+        expect(html).not.toContain('sukha-flow__holds');
+        expect(html).not.toContain('Holds end when you choose');
+        const disclosure = '<span>Voice guidance <small>The guide\'s voice is AI-generated.</small></span>';
+        // It sits in the voice switch's own label, right after the switch.
+        expect(html.split('sukha-flow__voice" checked>')[1].trim().startsWith(disclosure)).toBe(true);
+    });
+
+    it('never calls a session gentle that asks for the safety note', () => {
+        Object.entries(manager.SESSIONS).forEach(([id, session]) => {
+            const strong = isStrongSession(session.phases);
+            expect(tab.getSessionDetails(id).strong, id).toBe(strong);
+            // The label on the card and the one the manager carries are the same.
+            expect(SUKHA_SESSIONS[id].intensity, id).toBe(session.intensity);
+            if (strong) expect(session.intensity, id).not.toBe('Gentle');
+        });
+        expect(SUKHA_SESSIONS.BASE.intensity).toBe('Strong');
     });
 
     it('asks for the note before fast breathing too, and again when only the old note was read', () => {
@@ -385,7 +440,8 @@ describe('Sukha preparation choices', () => {
         stored.set('serenity.sukhaPrefs', JSON.stringify({ safetyAcknowledged: true }));
         tab.destroy();
         tab = new SessionsTab(hub, manager);
-        expect(tab.getSessionDetails('SUNRISE')).toMatchObject({ openHolds: false, strong: true });
+        expect(tab.getSessionDetails('SUNRISE'))
+            .toMatchObject({ hasHolds: false, strong: true, intensity: 'Moderate' });
         tab.showPrepScreen('SUNRISE');
         expect(flow('.sukha-flow__caution').hidden).toBe(false);
         expect(flow('.sukha-flow__ack').hidden).toBe(false);
@@ -394,7 +450,7 @@ describe('Sukha preparation choices', () => {
         ack.checked = true;
         ack.fire('change', { target: { checked: true } });
         expect(flow('.sukha-flow__begin').disabled).toBe(false);
-        expect(stored.get('serenity.breathSafetyRead')).toBe('2026-11-08');
+        expect(stored.get('serenity.breathSafetyRead')).toBe(BREATH_SAFETY_VERSION);
         // Gentle sessions show the plain line, with the wellness words, and no note.
         for (const id of ['FIRST', 'TIDE', 'ROOTS', 'UNWIND', 'REST', 'FLOW']) {
             expect(tab.getSessionDetails(id).strong, id).toBe(false);
@@ -408,30 +464,49 @@ describe('Sukha preparation choices', () => {
         stored.set('serenity.halePrefs', JSON.stringify({ sounds: false, openHolds: false }));
         tab.destroy();
         tab = new SessionsTab(hub, manager);
-        expect(tab.prefs).toMatchObject({ sounds: false, openHolds: false, voice: true });
+        expect(tab.prefs).toMatchObject({ sounds: false, voice: true });
         tab.savePrefs({ vibration: false });
         expect(JSON.parse(stored.get('serenity.sukhaPrefs'))).toMatchObject({ sounds: false, vibration: false });
+    });
+
+    it('drops a saved choice of timed holds: a hold always ends when you breathe in', () => {
+        stored.set('serenity.sukhaPrefs', JSON.stringify({ sounds: true, openHolds: false }));
+        tab.destroy();
+        tab = new SessionsTab(hub, manager);
+        expect(tab.prefs).not.toHaveProperty('openHolds');
+        tab.showPrepScreen('BASE');
+        expect(flow('.sukha-flow__rounds').innerHTML)
+            .toContain('<b>Round 1</b> 30 breaths · hold at your own pace · recover');
+        tab.startSession('BASE');
+        expect(manager.startSession.mock.calls[0][3]).not.toHaveProperty('openHolds');
+        tab.savePrefs({ sounds: false });
+        expect(JSON.parse(stored.get('serenity.sukhaPrefs'))).not.toHaveProperty('openHolds');
     });
 
     it('hands the session your intention and choices, and keeps the choices for next time', () => {
         tab.showPrepScreen('BASE');
         flow('.sukha-flow__sounds').fire('change', { target: { checked: false } });
-        flow('.sukha-flow__holds').fire('change', { target: { checked: false } });
-        expect(flow('.sukha-flow__rounds').innerHTML).toContain('<b>Round 1</b> 30 breaths · hold 1:00 · recover');
+        // The journey says a hold is at your own pace, and names no length for it anywhere.
+        const rounds = flow('.sukha-flow__rounds').innerHTML;
+        [1, 2, 3].forEach((round) => {
+            const line = new RegExp(`<b>Round ${round}</b> \\d+ breaths · hold at your own pace · recover</li>`);
+            expect(rounds).toMatch(line);
+        });
+        expect(flow('.sukha-flow__track').innerHTML.match(/title="Hold · at your own pace"/g)).toHaveLength(3);
+        expect(flow('.sukha-flow__track').innerHTML).not.toMatch(/title="Hold · \d/);
         tab.selectIntention('calm', 'BASE');
         tab.startSession('BASE');
         expect(manager.startSession.mock.calls[0][3]).toEqual({
             intention: {
                 id: 'calm', icon: 'wave', label: 'Find calm', clip: 'intentions/base_calm',
             },
-            openHolds: false,
             sounds: false,
             vibration: true,
         });
-        expect(JSON.parse(stored.get('serenity.sukhaPrefs'))).toMatchObject({ sounds: false, openHolds: false });
+        expect(JSON.parse(stored.get('serenity.sukhaPrefs'))).toMatchObject({ sounds: false });
         tab.destroy();
         tab = new SessionsTab(hub, manager);
-        expect(tab.prefs).toMatchObject({ sounds: false, openHolds: false, voice: true });
+        expect(tab.prefs).toMatchObject({ sounds: false, voice: true });
     });
 
     it('never hands a session another session\'s intention', () => {
@@ -454,35 +529,36 @@ describe('Sukha preparation choices', () => {
 
 describe('Sukha results and your practice', () => {
     const holds = (...seconds) => seconds.map((value, index) => ({
-        round: index + 1, seconds: value, suggested: [60, 90, 120][index], mode: 'open',
+        round: index + 1, seconds: value, suggested: 60, mode: 'open',
     }));
 
-    it('shows your holds round by round, and never a best, a record or a hold time to beat', () => {
+    it('counts your holds and shows no hold time at all: no chart, no best, no time to beat', () => {
         tab.startSession('BASE');
         manager.startSession.mock.calls[0][2]({
-            sessionName: 'Sukha Homecoming', totalDuration: 1500, rounds: 3, breaths: 110, holds: holds(64, 95, 118),
+            sessionName: 'Sukha Homecoming', totalDuration: 1500, rounds: 3, breaths: 110, holds: holds(64, 85, 38),
         });
-        expect(flow('.sukha-flow__stats').innerHTML).toContain('<dt>Holds at your pace</dt><dd>3</dd>');
-        expect(flow('.sukha-flow__stats').innerHTML).not.toContain('Longest hold');
-        expect(flow('.sukha-flow__stats').innerHTML).not.toContain('1:58');
-        // The flow has no place for a record or a best at all.
-        expect(tab.flow.innerHTML).not.toMatch(/sukha-flow__(record|best)\b/);
-        const chart = flow('.sukha-flow__holds-chart');
-        expect(chart.hidden).toBe(false);
-        expect(chart.innerHTML.match(/<li /g)).toHaveLength(3);
-        expect(chart.innerHTML).toContain('<b>1:35</b>');
-        expect(chart.innerHTML).toContain('marks show the suggested length');
-        expect(chart.innerHTML).not.toContain('is-best');
+        const stats = flow('.sukha-flow__stats').innerHTML;
+        expect(stats).toContain('<dt>Holds at your pace</dt><dd>3</dd>');
+        expect(stats).not.toContain('Longest');
+        // No hold's seconds are on the result in any form.
+        ['1:04', '1:25', '0:38', '64', '85'].forEach((time) => expect(stats, time).not.toContain(time));
+        // The flow has no place for a chart, a record or a best at all.
+        expect(tab.flow.innerHTML).not.toMatch(/sukha-flow__(holds-chart|bar|record|best)\b/);
+        expect(tab.flow.innerHTML).not.toMatch(/suggested/i);
         expect(flow('.sukha-flow__streak-line').textContent).toBe('Practised today · 1 session · 25 min of practice');
+        // The practice log still keeps each hold's seconds, as a note of the sitting.
+        expect(JSON.parse(stored.get('serenity.sukhaSessions')).entries[0].holds).toEqual([
+            { round: 1, seconds: 64, suggested: 60, mode: 'open' },
+            { round: 2, seconds: 85, suggested: 60, mode: 'open' },
+            { round: 3, seconds: 38, suggested: 60, mode: 'open' },
+        ]);
         clickFlow({ '.sukha-flow__finish': true });
 
         tab.startSession('BASE');
         manager.startSession.mock.calls[1][2]({
-            sessionName: 'Sukha Homecoming', totalDuration: 1520, rounds: 3, breaths: 110, holds: holds(70, 101, 131),
+            sessionName: 'Sukha Homecoming', totalDuration: 1520, rounds: 3, breaths: 110, holds: holds(70, 90, 90),
         });
-        // Holding longer the next time is not a record either.
-        expect(flow('.sukha-flow__holds-chart').innerHTML).not.toMatch(/best/i);
-        expect(flow('.sukha-flow__holds-chart').innerHTML).toContain('<b>2:11</b>');
+        // Holding longer the next time changes nothing on the result.
         expect(flow('.sukha-flow__stats').innerHTML).toContain('<dt>Holds at your pace</dt><dd>3</dd>');
         clickFlow({ '.sukha-flow__finish': true });
         tab.setActive(true);
@@ -513,7 +589,6 @@ describe('Sukha results and your practice', () => {
             sessionName: 'Sukha Mandala', totalDuration: 1460, rounds: 3, breaths: 45, holds: [],
         });
         expect(flow('.sukha-flow__stats').innerHTML).toContain('<dt>On your own</dt><dd>1:48</dd>');
-        expect(flow('.sukha-flow__holds-chart').hidden).toBe(true);
         clickFlow({ '.sukha-flow__finish': true });
         tab.startSession('REST');
         manager.startSession.mock.calls[1][2]({

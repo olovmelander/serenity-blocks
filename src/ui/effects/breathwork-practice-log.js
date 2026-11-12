@@ -8,10 +8,10 @@
  *   entry = { id, at, seconds, completed, rounds, breaths, holds: [{ round, seconds, suggested, mode }],
  *             intention }
  *
- * A hold's `mode` is 'open' when you chose when to breathe (Homecoming and Phoenix), 'timed' when it
- * was part of a rhythm. Holds are kept as a note of the sitting, never as a score: nothing here
- * compares one hold with another or names a best. A longer hold is not a better one, and chasing
- * one is how people black out.
+ * A hold's `mode` is 'open' when you chose when to breathe (every hold since 2026-11-12: a hold
+ * always ends when you breathe in); an older sitting may hold 'timed'. Holds are kept as a note of
+ * the sitting, never as a score, and are not shown: nothing here compares one hold with another or
+ * names a best. A longer hold is not a better one.
  *
  * Pure functions take the storage they use, so tests and the game share one implementation.
  */

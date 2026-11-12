@@ -85,6 +85,8 @@ try {
     for (const world of WORLDS) {
         await page.evaluate((id) => {
             const guide = window.breathingIndicator;
+            // A capture shows every world: found or not, its safety note read or not.
+            guide.canChoose = () => true;
             guide.setTechnique(id);
             if (!guide.isActive) guide.start();
         }, world);

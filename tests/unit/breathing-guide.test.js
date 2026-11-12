@@ -234,7 +234,7 @@ describe('breathing guide cadence', () => {
         guide.setTechnique('calm-sleep');
         expect(guide.segments.map(({ segment }) => segment.style['flex-grow'])).toEqual(['4', '7', '8', '0.0001']);
         expect(guide.segments.map(({ seconds }) => text(seconds))).toEqual(['4', '7', '8', '']);
-        expect(text(guide.eyebrow)).toBe('Sleep · 4 · 7 · 8');
+        expect(text(guide.eyebrow)).toBe('Evening · 4 · 7 · 8');
         expect(text(guide.title)).toBe('Moonlit Waters');
     });
 });
@@ -581,8 +581,14 @@ describe('breathing guide controls', () => {
         expect(guide.currentTechnique).toBe('box-breathing');
         key('ArrowLeft');
         expect(guide.currentTechnique).toBe('zen-garden');
-        // A session may leave the guide in a world you have not found: you can step away from it.
+        // A practice of your own never moves to a world that is not open to you.
         guide.setTechnique('volcanic-fire');
+        expect(guide.currentTechnique).toBe('zen-garden');
+        // A session may leave the guide in such a world: you can step away from it.
+        guide.setExternalControl(true);
+        guide.setTechnique('volcanic-fire');
+        guide.setExternalControl(false);
+        expect(guide.currentTechnique).toBe('volcanic-fire');
         key('ArrowRight');
         expect(guide.currentTechnique).toBe('zen-garden');
         expect(guide.allowedWorld('calm-sleep')).toBe('calm-sleep');
@@ -697,9 +703,13 @@ describe('breathing guide under a session', () => {
         expect(marks.map((mark) => mark.dataset.state)).toEqual(['done', 'current', 'upcoming']);
         expect(marks[1].firstChild.style.transform).toBe('scaleX(0.5000)');
         expect(guide.journeyTrack.getAttribute('aria-valuenow')).toBe('40');
-        guide.updateProgress({ phase: 'retention', phaseIndex: 3, phaseProgress: 0.1, remainingTime: 54 });
-        expect(text(guide.journeyDetail)).toBe('0:54 left');
+        guide.updateProgress({ phase: 'recovery', phaseIndex: 3, phaseProgress: 0.1, remainingTime: 9 });
+        expect(text(guide.journeyDetail)).toBe('0:09 left');
         expect(marks.map((mark) => mark.dataset.state)).toEqual(['done', 'done', 'current']);
+        // A hold is yours to end: the strip never says how long it has lasted or has left.
+        guide.updateProgress({ phase: 'retention', phaseIndex: 3, phaseProgress: 1, remainingTime: 54 });
+        expect(text(guide.journeyStage)).toBe('Hold');
+        expect(text(guide.journeyDetail)).toBe('At your own pace');
     });
 
     it('lets an open hold end when you breathe in: Space, a tap on the world, or the button', () => {
@@ -710,13 +720,15 @@ describe('breathing guide under a session', () => {
         guide.showProgress(true);
         guide.overridePattern([0, 0, 0, 60]);
         guide.setSessionPhase('retention', 0);
-        guide.setGuidance({ mode: 'open-hold', suggested: 60, cap: 120 });
+        guide.setGuidance({ mode: 'open-hold' });
         expect(guide.root.dataset.guidance).toBe('open-hold');
-        expect(text(guide.holdLabel)).toBe('Suggested 1:00');
         frame(100);
-        expect(text(guide.phaseWord)).toBe('Hold');
+        expect(text(guide.phaseWord)).toBe('Breathe in when you are ready');
         expect(text(guide.count)).toBe('');
         expect(text(guide.hint)).toBe('Press Space or click to breathe in');
+        // The button names the key and, for a pad, its A.
+        expect(guide.breatheButton.children.map((cap) => [cap.textContent, Object.keys(cap.dataset)[0]]))
+            .toEqual([['Space', 'key'], ['A', 'pad']]);
         key(' ');
         expect(control).toHaveBeenLastCalledWith('breathe');
         guide.root.fire('click', { target: looseNode() });
@@ -733,36 +745,35 @@ describe('breathing guide under a session', () => {
         expect(control).toHaveBeenCalledTimes(5);
     });
 
-    it('draws the hold dial: counting up past the suggestion, or down through a timed pause', () => {
+    it('shows no clock, ring or length on a hold: the same words throughout, a glow when its reminder sounds', () => {
         guide.setExternalControl(true);
         guide.start();
         guide.showProgress(true);
         guide.overridePattern([0, 0, 0, 60]);
-        guide.setGuidance({ mode: 'open-hold', suggested: 60, cap: 120 });
+        guide.setGuidance({ mode: 'open-hold' });
+        // The guide has no dial to draw a hold on.
+        expect(guide.holdDial).toBeUndefined();
+        expect(guide.holdTime).toBeUndefined();
+        expect(guide.holdLabel).toBeUndefined();
+        const shown = () => [guide.eyebrow, guide.title, guide.note, guide.phaseWord, guide.count, guide.hint,
+            guide.journeyStage, guide.journeyDetail].map(text).join(' | ');
         guide.updateProgress({
-            phase: 'retention', phaseIndex: 1, phaseProgress: 0.5, holdElapsed: 30.6, holdSuggested: 60, holdReady: false,
+            phase: 'retention', phaseIndex: 1, phaseProgress: 1, holdReady: false, remainingTime: 30,
         });
-        expect(text(guide.holdTime)).toBe('0:30');
-        expect(guide.root.style['--hold']).toBe('0.5100');
-        expect(text(guide.journeyDetail)).toBe('Held 0:30');
+        frame(30000);
+        expect(text(guide.phaseWord)).toBe('Breathe in when you are ready');
+        expect(text(guide.journeyDetail)).toBe('At your own pace');
+        expect(guide.root.style['--hold']).toBeUndefined();
         expect(guide.root.classList.contains('is-hold-ready')).toBe(false);
-        guide.updateProgress({ holdElapsed: 72.4, holdReady: true, phaseProgress: 1 });
-        expect(text(guide.holdTime)).toBe('1:12');
-        expect(guide.root.style['--hold']).toBe('1.0000');
+        expect(shown()).not.toMatch(/\d:\d\d|Suggested|Held/);
+        guide.updateProgress({ holdReady: true, remainingTime: 0 });
         expect(guide.root.classList.contains('is-hold-ready')).toBe(true);
-        frame(100);
-        expect(text(guide.phaseWord)).toBe('Breathe in when ready');
-        guide.setGuidance({ mode: 'timed-hold', suggested: 25 });
+        frame(42000);
+        expect(text(guide.phaseWord)).toBe('Breathe in when you are ready');
+        expect(shown()).not.toMatch(/\d:\d\d|Suggested|Held/);
+        // The next stage is no longer a hold: the glow goes with it.
+        guide.setGuidance({ mode: 'paced' });
         expect(guide.root.classList.contains('is-hold-ready')).toBe(false);
-        guide.updateProgress({
-            phase: 'retention', holdElapsed: null, phaseProgress: 0.4, remainingTime: 15,
-        });
-        expect(text(guide.holdTime)).toBe('0:15');
-        expect(text(guide.holdLabel)).toBe('Rest in the pause');
-        expect(text(guide.journeyDetail)).toBe('0:15 left');
-        expect(text(guide.journeyStage)).toBe('Pause');
-        frame(100);
-        expect(text(guide.phaseWord)).toBe('Pause');
     });
 
     it('stops counting in the stages you breathe on your own', () => {
@@ -817,7 +828,7 @@ describe('breathing guide under a session', () => {
         guide.setExternalControl(true);
         guide.onControl = control;
         guide.start();
-        guide.setGuidance({ mode: 'open-hold', suggested: 60 });
+        guide.setGuidance({ mode: 'open-hold' });
         guide.primaryAction();
         expect(control).toHaveBeenLastCalledWith('breathe');
         guide.setGuidance({ mode: 'paced' });
@@ -849,5 +860,143 @@ describe('breathing guide under a session', () => {
         guide.start();
         expect(guide.isActive).toBe(false);
         guide = null;
+    });
+});
+
+describe('a fast world on its own: thirty breaths, then a rest', () => {
+    /** Breathe `count` breaths of Volcanic Fire (three seconds in, two out). */
+    const breathe = (count) => {
+        for (let i = 0; i < count; i++) {
+            frame(3000);
+            frame(2000);
+        }
+    };
+    const heard = [];
+
+    beforeEach(() => {
+        heard.length = 0;
+        win.addEventListener('breathingGuideChange', (event) => heard.push(event.detail.active));
+        guide.setTechnique('volcanic-fire');
+        guide.start();
+    });
+
+    it('ends its breaths after thirty and rests in slow natural breathing, with words that say so', async () => {
+        breathe(29);
+        expect(guide.isResting).toBe(false);
+        expect(guide.pattern).toEqual([3, 0, 2, 0]);
+        expect(text(guide.eyebrow)).toBe('Activate · 3 · 2');
+        breathe(1);
+        expect(guide.isResting).toBe(true);
+        expect(guide.isActive).toBe(true);
+        // Slow and uncounted: no seconds, no cycle bar to follow, and the world's fast cues are gone.
+        expect(guide.pattern).toEqual([4, 1, 6, 1]);
+        expect(guide.root.dataset.guidance).toBe('natural');
+        frame(500);
+        expect(text(guide.phaseWord)).toBe('Breathe naturally');
+        expect(text(guide.count)).toBe('');
+        expect(text(guide.hint)).toBe('This round is over: begin again after the rest, if you like');
+        expect(text(guide.eyebrow)).toBe('Rest');
+        expect(text(guide.title)).toBe('Volcanic Fire');
+        expect(text(guide.note))
+            .toBe('That was 30 breaths. Rest now for a minute or more, breathing slowly and naturally.');
+        await vi.advanceTimersByTimeAsync(100);
+        expect(text(guide.announcer)).toBe('30 breaths done. Rest now, and breathe slowly and naturally.');
+    });
+
+    it('rests for a minute, then ends by itself: it is begun again for another round', () => {
+        breathe(30);
+        frame(59000);
+        expect(guide.isActive).toBe(true);
+        expect(guide.isResting).toBe(true);
+        frame(1500);
+        expect(guide.isActive).toBe(false);
+        expect(guide.isResting).toBe(false);
+        expect(heard).toEqual([true, false]);
+        // A fresh Begin: the fast rhythm again, counted from the start.
+        guide.start();
+        expect(guide.isResting).toBe(false);
+        expect(guide.pattern).toEqual([3, 0, 2, 0]);
+        breathe(29);
+        expect(guide.isResting).toBe(false);
+        breathe(1);
+        expect(guide.isResting).toBe(true);
+    });
+
+    it('is still resting when it is ended and begun again before the minute is over', () => {
+        breathe(30);
+        frame(10000);
+        guide.stop();
+        now += 5000;
+        guide.start();
+        expect(guide.isResting).toBe(true);
+        expect(guide.pattern).toEqual([4, 1, 6, 1]);
+        frame(44000);
+        expect(guide.isActive).toBe(true);
+        frame(1500);
+        expect(guide.isActive).toBe(false);
+    });
+
+    it('counts its breaths across a stop and a start, and across a visit to another world', () => {
+        breathe(12);
+        guide.stop();
+        now += 2000;
+        guide.start();
+        breathe(8);
+        guide.cycleTechnique(1);
+        expect(guide.currentTechnique).toBe('ocean-breath');
+        frame(4000);
+        guide.cycleTechnique(-1);
+        expect(guide.currentTechnique).toBe('volcanic-fire');
+        breathe(9);
+        expect(guide.isResting).toBe(false);
+        breathe(1);
+        expect(guide.isResting).toBe(true);
+        // Stepping to a gentle world leaves the rest; stepping back finds the fast one still resting.
+        guide.cycleTechnique(1);
+        expect(guide.isResting).toBe(false);
+        expect(guide.pattern).toEqual([4, 0, 4, 0]);
+        expect(guide.root.dataset.guidance).toBe('');
+        guide.cycleTechnique(-1);
+        expect(guide.isResting).toBe(true);
+    });
+
+    it('starts the count over after a minute away from fast breathing', () => {
+        breathe(20);
+        guide.stop();
+        now += 61000;
+        guide.start();
+        breathe(29);
+        expect(guide.isResting).toBe(false);
+    });
+
+    it('never rests a gentle world, or a world a session breathes', () => {
+        guide.setTechnique('energizing');
+        for (let i = 0; i < 40; i++) [3000, 1000, 3000, 1000].forEach((ms) => frame(ms));
+        expect(guide.isResting).toBe(false);
+        expect(guide.isActive).toBe(true);
+        guide.stop();
+        guide.setExternalControl(true);
+        guide.setTechnique('volcanic-fire');
+        guide.start();
+        guide.overridePattern([3, 0, 2, 0]);
+        breathe(35);
+        expect(guide.isResting).toBe(false);
+        expect(guide.isActive).toBe(true);
+    });
+
+    it('holds flashing back while the fast world is breathed, and lets the setting decide again after', async () => {
+        const { prefersReducedFlashing } = await import('../../src/utils/photosensitivity.js');
+        const setting = { reduceFlashing: false };
+        expect(prefersReducedFlashing(setting)).toBe(true);
+        guide.cycleTechnique(1);
+        expect(prefersReducedFlashing(setting)).toBe(false);
+        guide.cycleTechnique(-1);
+        expect(prefersReducedFlashing(setting)).toBe(true);
+        guide.stop();
+        expect(prefersReducedFlashing(setting)).toBe(false);
+        // A session has its own worlds over the theme: nothing is held for it.
+        guide.setExternalControl(true);
+        guide.start();
+        expect(prefersReducedFlashing(setting)).toBe(false);
     });
 });

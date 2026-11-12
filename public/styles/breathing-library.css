@@ -192,13 +192,40 @@
     color: var(--sb-warning);
 }
 
+#serenity-hub-panel .breath-lib__caution .breath-note__lead {
+    color: var(--sb-text);
+    font-weight: 600;
+}
+
+/* The list sits under the lead's words, past its icon. */
+#serenity-hub-panel .breath-lib__caution .breath-note__points {
+    display: grid;
+    gap: 6px;
+    margin: 10px 0 0;
+    padding: 0 0 0 25px;
+    color: var(--sb-text-muted);
+    font: 500 var(--sb-fs-small) / 1.5 var(--sb-font-text);
+    list-style: disc outside;
+}
+
+#serenity-hub-panel .breath-lib__caution .breath-note__points li {
+    margin: 0;
+    padding-left: 2px;
+}
+
+#serenity-hub-panel .breath-lib__caution .breath-note__points li::marker {
+    color: rgba(var(--sb-warning-rgb), 0.85);
+}
+
 #serenity-hub-panel .breath-lib__ack {
     display: flex;
     align-items: center;
     gap: 12px;
-    margin-top: 10px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(var(--sb-warning-rgb), 0.22);
     color: var(--sb-text);
-    font: 600 var(--sb-fs-small) / 1.3 var(--sb-font-text);
+    font: 600 var(--sb-fs-small) / 1.35 var(--sb-font-text);
     cursor: pointer;
 }
 

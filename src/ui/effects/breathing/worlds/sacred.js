@@ -194,8 +194,8 @@ export const MOODS = Object.freeze([
     {
         // Another hour: dawn breaking low on one side, copper light on a pale marble floor, a
         // morning mist lying on the stone and dust rising slowly through the light.
-        id: 'alabaster-dawn',
-        name: 'Alabaster Dawn',
+        id: 'pale-dawn',
+        name: 'Pale Dawn',
         gold: [1.0, 0.5, 0.24],
         whiteGold: [1.0, 0.8, 0.6],
         white: [1.0, 0.95, 0.88],
