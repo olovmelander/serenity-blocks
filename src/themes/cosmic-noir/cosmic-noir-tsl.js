@@ -6,10 +6,13 @@
  *    real shader function; laid-out helpers are pure (no captured uniforms or textures), and their
  *    input names avoid WGSL's reserved words;
  *  - no `mx_noise_*` anywhere (a DXC compile pathology on this project's Windows machines): the
- *    smoke is ONE tileable 3D byte texture baked on the CPU when the world is built;
+ *    smoke in the air is ONE tileable 3D byte texture and the sea of smoke ONE tileable half-float
+ *    field (height and slope), both baked on the CPU when the world is built;
  *  - nothing is lit by scene lights: every part writes its own light, scene-linear and grey; the
  *    post stack owns the tone curve and the film stock's toning;
- *  - the smoke is painted into a reduced-resolution target once a frame (cosmic-noir-volume.js).
+ *  - the light in the air is painted into a reduced-resolution target once a frame
+ *    (cosmic-noir-volume.js); the sea, the lighthouse and the sky are drawn at the screen's own
+ *    resolution by one full-screen backdrop.
  */
 
 import * as THREE from 'three/webgpu';
@@ -22,29 +25,33 @@ import {
     dot,
     exp,
     float,
+    floor,
     fract,
+    length,
+    log2,
     max,
     min,
     mix,
     pow,
-    select,
     smoothstep,
     sqrt,
-    step,
     texture,
     texture3D,
     uniform,
     uniformArray,
+    vec2,
     vec3,
     vec4,
 } from 'three/tsl';
 
 import {
-    CAGE, DEG, ECHO_SLOTS, PULSAR, PUFF_SLOTS, SMOKE, TAU,
+    CAGE, DEG, ECHO_SLOTS, PULSAR, PUFF_SLOTS, SEA, SMOKE, TAU,
 } from './cosmic-noir-core.js';
 
 export * from './cosmic-noir-core.js';
-export { SMOKE_SEED, bakeSmokeNoise } from './cosmic-noir-bake.js';
+export {
+    SEA_SEED, SMOKE_SEED, bakeSeaField, bakeSmokeNoise,
+} from './cosmic-noir-bake.js';
 
 // ── Hashes (GPU) ────────────────────────────────────────────────────────────────
 
@@ -68,7 +75,7 @@ export const cnLuma = (c) => dot(c, vec3(0.2126, 0.7152, 0.0722));
 /** Max of three channels. */
 export const cnMax3 = (c) => max(c.x, max(c.y, c.z));
 
-// ── The lighthouse ──────────────────────────────────────────────────────────────
+// ── The lighthouse's light ──────────────────────────────────────────────────────
 
 /**
  * How much of a beam reaches direction `d` (unit, from the pulsar): a gaussian core and a soft
@@ -83,7 +90,7 @@ export const cnBeam = /* @__PURE__ */ Fn(([d, beam]) => {
     name: 'cn_beam', type: 'float', inputs: [{ name: 'd', type: 'vec3' }, { name: 'beam', type: 'vec3' }],
 });
 
-/** The beams' soft skirt alone (the smoke march's share; their cores are integrated in closed form). */
+/** The beams' soft skirt alone (the air's summed share; their cores are integrated in closed form). */
 export const cnBeamSkirt = /* @__PURE__ */ Fn(([d, beam]) => {
     const angle = acos(clamp(abs(dot(d, beam)), 0.0, 1.0));
     const a2 = angle.div(PULSAR.beamSkirt * DEG);
@@ -93,9 +100,10 @@ export const cnBeamSkirt = /* @__PURE__ */ Fn(([d, beam]) => {
 });
 
 /**
- * How much light leaving the pulsar along `d` passes the shutter cage (none through its lids),
- * with soft slat edges. `spin` = the cage's axis, `e1`/`e2` across it; `turn` = the cage's own
- * turn (radians), `fill` = the share of a pitch a slat covers. GPU twin of cageTransmit().
+ * How much light leaving the pulsar along `d` passes the lantern room (little past the roof and
+ * the gallery), with soft slat edges. `spin` = the lantern's axis, `e1`/`e2` across it; `turn` =
+ * the slats' own turn (radians), `fill` = the share of a pitch a slat covers. GPU twin of
+ * cageTransmit().
  */
 export const cnCage = /* @__PURE__ */ Fn(([d, spin, e1, e2, turn, fill, soft]) => {
     const h = dot(d, spin);
@@ -106,12 +114,12 @@ export const cnCage = /* @__PURE__ */ Fn(([d, spin, e1, e2, turn, fill, soft]) =
     const theta = atan(qy, qx).add(turn);
     const f = fract(theta.mul(CAGE.slats / TAU));
     // `soft` = the penumbra in shares of a pitch: a slat's edge, and how far the stripes have
-    // blended into their average (far from the cage the scattered light fills them in).
+    // blended into their average (far from the lantern the scattered light fills them in).
     const edge = max(soft, 0.03);
     const sharp = smoothstep(edge.negate(), edge, f).mul(float(1.0).sub(smoothstep(fill.sub(edge), fill.add(edge), f)));
     const inSlat = mix(sharp, fill.mul(0.85), smoothstep(0.12, 0.42, soft));
-    // Past the wall's height the light meets a lid: most of it is stopped (a soft-edged shadow, a
-    // little light leaking round the rims).
+    // Past the wall's height the light meets the roof or the gallery: most of it is stopped (a
+    // soft-edged shadow, a little light leaking round the rims).
     const wall = float(1.0).sub(smoothstep(CAGE.halfHeight - 0.5, CAGE.halfHeight + 1.2, axial).mul(1 - CAGE.lidLeak));
     const onWall = float(1.0).sub(smoothstep(CAGE.halfHeight - 0.05, CAGE.halfHeight + 0.05, axial));
     return float(1.0).sub(inSlat.mul(onWall)).mul(wall);
@@ -129,6 +137,28 @@ export const cnCage = /* @__PURE__ */ Fn(([d, spin, e1, e2, turn, fill, soft]) =
     ],
 });
 
+/**
+ * The slats' share of a span of the lantern's wall, exactly: the mean of the slat pattern (1 on a
+ * slat, 0 in a gap; a slat covers `fill` of each pitch) between two places `xa` and `xb`, counted
+ * in pitches, widened by `blur` pitches. Where a view ray sweeps past many slats in one step of
+ * the light's sum, this is their true average, so the shafts are drawn without noise.
+ */
+export const cnSlatShare = /* @__PURE__ */ Fn(([xa, xb, fill, blur]) => {
+    const lo = min(xa, xb).sub(blur.mul(0.5));
+    const hi = max(xa, xb).add(blur.mul(0.5));
+    const upTo = (x) => floor(x).mul(fill).add(min(fract(x), fill));
+    return upTo(hi).sub(upTo(lo)).div(max(hi.sub(lo), 1e-4));
+}).setLayout({
+    name: 'cn_slatShare',
+    type: 'float',
+    inputs: [
+        { name: 'xa', type: 'float' },
+        { name: 'xb', type: 'float' },
+        { name: 'fill', type: 'float' },
+        { name: 'blur', type: 'float' },
+    ],
+});
+
 /** Henyey–Greenstein phase (normalised to 1 at g = 0) for the cosine between light and eye. */
 export const cnPhase = /* @__PURE__ */ Fn(([cosA, g]) => {
     const g2 = g.mul(g);
@@ -138,7 +168,7 @@ export const cnPhase = /* @__PURE__ */ Fn(([cosA, g]) => {
     name: 'cn_phase', type: 'float', inputs: [{ name: 'cosA', type: 'float' }, { name: 'g', type: 'float' }],
 });
 
-// ── The noise texture ──────────────────────────────────────────────────────────
+// ── The baked textures ──────────────────────────────────────────────────────────
 
 /** The smoke as a tileable, linearly filtered 3D texture (RGBA8: filterable everywhere). */
 export function createSmokeTexture(data, size, name = 'cosmic-noir-smoke') {
@@ -158,6 +188,24 @@ export function createSmokeTexture(data, size, name = 'cosmic-noir-smoke') {
     return tex;
 }
 
+/**
+ * The sea's field as a tileable half-float texture with the mip chain the bake averaged (half-float
+ * mips made on the GPU are not portable to every WebGL2 device).
+ */
+export function createSeaTexture(levels, size, name = 'cosmic-noir-sea') {
+    const tex = new THREE.DataTexture(levels[0].data, size, size, THREE.RGBAFormat, THREE.HalfFloatType);
+    tex.mipmaps = levels;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.generateMipmaps = false;
+    tex.colorSpace = THREE.NoColorSpace;
+    tex.name = name;
+    tex.needsUpdate = true;
+    return tex;
+}
+
 // ── Shared uniforms ─────────────────────────────────────────────────────────────
 
 const rows = (count, fill = [0, 0, 0, 0]) => Array.from(
@@ -165,13 +213,13 @@ const rows = (count, fill = [0, 0, 0, 0]) => Array.from(
     () => new THREE.Vector4(fill[0], fill[1], fill[2], fill[3]),
 );
 
-/** The peak the smoke's light is coded against where its target is 8-bit (see `smokeAt`). */
+/** The peak the air's light is coded against where its target is 8-bit (see `smokeAt`). */
 export const SMOKE_CODE_PEAK = 6;
 
 /**
  * Every uniform the scene's materials share. The world owns the values; materials only read.
- * @param {{ smoke: THREE.Data3DTexture, smokeFar: THREE.Data3DTexture, target: THREE.Texture,
- *   floatTarget?: boolean }} textures
+ * @param {{ smoke: THREE.Data3DTexture, smokeFar: THREE.Data3DTexture, sea: THREE.DataTexture,
+ *   seaSize: number, target: THREE.Texture, floatTarget?: boolean }} textures
  */
 export function createNoirUniforms(textures) {
     const tables = {
@@ -183,14 +231,14 @@ export function createNoirUniforms(textures) {
         viewport: uniform(new THREE.Vector2(1920, 1080)),
         /** Radians of view per pixel. */
         pixelAngle: uniform(0.0006),
-        // The camera, for the smoke's target (which is drawn without one).
+        // The camera, for the full-screen passes (which are drawn without one).
         camPos: uniform(new THREE.Vector3(0, 0, 0)),
         camRight: uniform(new THREE.Vector3(1, 0, 0)),
         camUp: uniform(new THREE.Vector3(0, 1, 0)),
         camFwd: uniform(new THREE.Vector3(0, 0, -1)),
         tanHalf: uniform(new THREE.Vector2(0.9, 0.5)),
         // The lighthouse.
-        pulsar: uniform(new THREE.Vector3(0, 0, -PULSAR.depth)),
+        pulsar: uniform(new THREE.Vector3(0, PULSAR.height, -PULSAR.depth)),
         spin: uniform(new THREE.Vector3(0, 1, 0)),
         spinE1: uniform(new THREE.Vector3(1, 0, 0)),
         spinE2: uniform(new THREE.Vector3(0, 0, 1)),
@@ -200,46 +248,59 @@ export function createNoirUniforms(textures) {
         /** The smoke's forward scatter (Henyey–Greenstein g): PULSAR.forward at rest. */
         forward: uniform(PULSAR.forward),
         coreGain: uniform(PULSAR.coreGain),
-        /** The cage's turn (radians, integrated) and the share of a pitch a slat covers. */
+        /** The slats' turn (radians, integrated) and the share of a pitch a slat covers. */
         cageTurn: uniform(0),
         cageFill: uniform(CAGE.fillClosed),
-        /** How far the smoke has drifted (integrated: reduced motion slows the wind). */
+        /** How far the smoke in the air has drifted (integrated: reduced motion slows the wind). */
         drift: uniform(new THREE.Vector3(0, 0, 0)),
         /** The slow field's own drift (the smoke curls as it moves). */
         curl: uniform(new THREE.Vector3(0, 0, 0)),
-        /** The faint light the smoke shows by everywhere (starlight). */
-        ambient: uniform(0.005),
+        /** How far the sea's layers have run, in tiles: (swell u, v, billow u, v) and (wisp u, v). */
+        seaDrift: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        seaFine: uniform(new THREE.Vector2(0, 0)),
+        /** The sea's heave: its layers' heights are these shares of SEA's (the heat of play raises it). */
+        seaHeave: uniform(1),
+        /** The faint light everything shows by everywhere (starlight). */
+        ambient: uniform(0.0075),
+        /** The far lighthouse on the horizon: how bright it shows now. */
+        farLamp: uniform(0),
+        /** The galaxy's own light, on the sky and as the sea's and the tower's rim. */
+        galaxy: uniform(1),
         /**
-         * The thin haze everywhere in the envelope (SMOKE.haze at rest): locks fill the room with
-         * smoke and hot play thickens it, so the beams become solid blades.
+         * The thin haze in the air (SMOKE.haze at rest): locks fill the air with smoke and hot play
+         * thickens it, so the beams become solid blades.
          */
         haze: uniform(SMOKE.haze),
-        /** The pulsar's own point as seen: how much of it the cage lets through, and the glare when a beam looks at us. */
+        /** The lamp as seen: how much of it the slats let through, and the glare when a beam looks at us. */
         coreSeen: uniform(1),
         glare: uniform(0),
-        /** The pulsar on screen (UV, y down): the lens's halo and spikes are drawn round it. */
-        pulsarUv: uniform(new THREE.Vector2(0.2, 0.34)),
+        /** The lamp on screen (UV, y down): the lens's halo and spikes are drawn round it. */
+        pulsarUv: uniform(new THREE.Vector2(0.2, 0.27)),
         /** How bright the star-filter spikes are (a flare and a combo raise them). */
         spikes: uniform(1),
         /** Gain on every light: the flashbulb and the cue marks are the post's, this is the world's breath. */
         breath: uniform(1),
         tables,
-        /** Light echoes: (radius, width, strength, _). */
+        /** Light echoes: (radius in the air, width, strength, radius on the sea). */
         echoes: uniformArray(tables.echoes, 'vec4'),
         echoCount: uniform(0, 'int'),
-        /** Puffs, two rows each: (centre xyz, radius) and (smoke, ember, _, _). */
+        /** Puffs, two rows each: (centre xyz, radius) and (smoke, ember, seed, age). */
         puffs: uniformArray(tables.puffs, 'vec4'),
         puffCount: uniform(0, 'int'),
         smokeTex: textures.smoke,
         smokeFarTex: textures.smokeFar,
+        seaTex: textures.sea,
+        seaSize: textures.seaSize || 256,
         targetTex: texture(textures.target),
     };
     /** The smoke's four fields at a point of the volume (one unit = one tile). */
     u.smoke = (p3) => texture3D(u.smokeTex, p3).level(0);
-    /** The same fields without their finest octaves: what a long step of the march reads. */
+    /** The same fields without their finest octaves: what a long step reads. */
     u.smokeFar = (p3) => texture3D(u.smokeFarTex, p3).level(0);
+    /** The sea's field at a place of its tile and a mip: (height, ∂u, ∂v, calm). */
+    u.sea = (uv2, lod) => texture(u.seaTex, uv2).level(lod);
     /**
-     * The smoke's target at a screen UV: (light, how much of what is behind it shows through).
+     * The air's target at a screen UV: (light, how much of what is behind it shows through).
      * Where the target is 8-bit it holds the square root of the light over SMOKE_CODE_PEAK.
      */
     u.floatTarget = textures.floatTarget !== false;
@@ -259,62 +320,154 @@ export const cnViewRay = (u, st) => {
 };
 
 /**
- * Where a ray (origin `o`, unit direction `rd`) meets the cage's cylinder, in ray distances
- * (near, far), and whether it does: vec3(tNear, tFar, hit). The caps are open.
+ * Where a ray (origin `rel` from a point on the axis, unit direction `rd`) meets an upright
+ * cylinder of `radius` between heights `y0` and `y1`, caps and all: vec3(tNear, tFar, hit 0/1).
  */
-export const cnCylinder = (o, rd, u) => {
-    const rel = o.sub(u.pulsar);
-    const ra = dot(rd, u.spin);
-    const oa = dot(rel, u.spin);
-    const dPerp = rd.sub(u.spin.mul(ra));
-    const oPerp = rel.sub(u.spin.mul(oa));
-    const A = max(dot(dPerp, dPerp), 1e-6);
-    const B = dot(oPerp, dPerp).mul(2.0);
-    const C = dot(oPerp, oPerp).sub(CAGE.radius * CAGE.radius);
-    const disc = B.mul(B).sub(A.mul(C).mul(4.0));
+export const cnUpright = /* @__PURE__ */ Fn(([rel, rd, radius, y0, y1]) => {
+    // The side: |rel.xz + t rd.xz| = radius.
+    const A = max(rd.x.mul(rd.x).add(rd.z.mul(rd.z)), 1e-6);
+    const B = rel.x.mul(rd.x).add(rel.z.mul(rd.z));
+    const C = rel.x.mul(rel.x).add(rel.z.mul(rel.z)).sub(radius.mul(radius));
+    const disc = B.mul(B).sub(A.mul(C));
     const root = sqrt(max(disc, 0.0));
-    const t0 = B.negate().sub(root).div(A.mul(2.0));
-    const t1 = B.negate().add(root).div(A.mul(2.0));
-    return vec3(t0, t1, smoothstep(0.0, 1e-4, disc));
-};
+    const sideIn = B.negate().sub(root).div(A);
+    const sideOut = B.negate().add(root).div(A);
+    // The slab between the caps (a level ray is nudged off level).
+    const safe = rd.y.add(float(1e-5).mul(rd.y.greaterThanEqual(0.0).select(1.0, -1.0)));
+    const ta = y0.sub(rel.y).div(safe);
+    const tb = y1.sub(rel.y).div(safe);
+    const near = max(sideIn, min(ta, tb));
+    const far = min(sideOut, max(ta, tb));
+    const hit = disc.greaterThan(0.0).and(far.greaterThan(max(near, 0.0))).select(1.0, 0.0);
+    return vec3(near, far, hit);
+}).setLayout({
+    name: 'cn_upright',
+    type: 'vec3',
+    inputs: [
+        { name: 'rel', type: 'vec3' },
+        { name: 'rd', type: 'vec3' },
+        { name: 'radius', type: 'float' },
+        { name: 'y0', type: 'float' },
+        { name: 'y1', type: 'float' },
+    ],
+});
+
+/** Where a ray meets a sphere: vec3(tNear, tFar, hit 0/1). `rel` = origin − centre. */
+export const cnBall = /* @__PURE__ */ Fn(([rel, rd, radius]) => {
+    const b = dot(rel, rd);
+    const c = dot(rel, rel).sub(radius.mul(radius));
+    const disc = b.mul(b).sub(c);
+    const root = sqrt(max(disc, 0.0));
+    const far = b.negate().add(root);
+    return vec3(b.negate().sub(root), far, disc.greaterThan(0.0).and(far.greaterThan(0.0)).select(1.0, 0.0));
+}).setLayout({
+    name: 'cn_ball',
+    type: 'vec3',
+    inputs: [{ name: 'rel', type: 'vec3' }, { name: 'rd', type: 'vec3' }, { name: 'radius', type: 'float' }],
+});
+
+// ── The sea of smoke ────────────────────────────────────────────────────────────
+
+const windLen = Math.hypot(SEA.wind[0], SEA.wind[1]) || 1;
+/** The wind's heading over the sea (unit, x and z). */
+export const SEA_WIND = Object.freeze([SEA.wind[0] / windLen, SEA.wind[1] / windLen]);
 
 /**
- * Where a ray meets the cage's lids (the discs that close it at ±halfHeight): vec3(t of the
- * nearest hit ahead, its distance from the axis as a share of the radius, hit 0/1).
+ * One layer of the sea: the field read along an axis turned `turn` radians from the wind and
+ * drawn out `stretch` times along it (smoke combed by the wind), one tile `tile` units across.
  */
-export const cnLid = (o, rd, u) => {
-    const rel = o.sub(u.pulsar);
-    const ra = dot(rd, u.spin);
-    const oa = dot(rel, u.spin);
-    // Never divide by zero: a ray parallel to the lids is nudged off it.
-    const safe = ra.add(step(0.0, ra).mul(2.0).sub(1.0).mul(1e-5));
-    const tTop = float(CAGE.halfHeight).sub(oa).div(safe);
-    const tBottom = float(-CAGE.halfHeight).sub(oa).div(safe);
-    const radiusAt = (t) => {
-        const p = rel.add(rd.mul(t));
-        const perp = p.sub(u.spin.mul(dot(p, u.spin)));
-        return sqrt(dot(perp, perp)).div(CAGE.radius);
-    };
-    const rTop = radiusAt(tTop);
-    const rBottom = radiusAt(tBottom);
-    const okTop = step(0.0, tTop).mul(step(rTop, 1.0));
-    const okBottom = step(0.0, tBottom).mul(step(rBottom, 1.0));
-    const big = float(1e6);
-    const tA = select(okTop.greaterThan(0.5), tTop, big);
-    const tB = select(okBottom.greaterThan(0.5), tBottom, big);
-    const t = min(tA, tB);
-    const rr = select(tA.lessThan(tB), rTop, rBottom);
-    return vec3(t, rr, max(okTop, okBottom));
-};
+function seaLayer(tile, turn, stretch) {
+    const c = Math.cos(turn);
+    const s = Math.sin(turn);
+    const ax = SEA_WIND[0] * c - SEA_WIND[1] * s;
+    const az = SEA_WIND[0] * s + SEA_WIND[1] * c;
+    return Object.freeze({
+        ax, az, bx: -az, bz: ax, iu: 1 / (tile * stretch), iv: 1 / tile, tile, stretch,
+    });
+}
+export const SEA_LAYERS = Object.freeze({
+    swell: seaLayer(SEA.swellTile, 0, 1.5),
+    billow: seaLayer(SEA.billowTile, 0.42, 1.9),
+    wisp: seaLayer(SEA.wispTile, -0.55, 2.4),
+});
 
-/** The cage's surface at a ray distance: (slat coverage 0..1, axial share, theta share). */
-export const cnCageSurface = (o, rd, t, u) => {
-    const p = o.add(rd.mul(t)).sub(u.pulsar);
-    const h = dot(p, u.spin);
-    const theta = atan(dot(p, u.spinE2), dot(p, u.spinE1)).add(u.cageTurn);
-    const f = fract(theta.mul(CAGE.slats / TAU));
-    return vec3(f, h.div(CAGE.halfHeight), theta);
-};
+/** A layer's place in the field's tile for a point of the sea. */
+const layerUv = (xz, L, drift) => vec2(
+    dot(xz, vec2(L.ax, L.az)).mul(L.iu),
+    dot(xz, vec2(L.bx, L.bz)).mul(L.iv),
+).add(drift);
+
+/** The mip a layer is read at for a footprint (scene units across a pixel). */
+const layerLod = (u, L, footprint) => max(log2(footprint.mul(u.seaSize * L.iv)), 0.0);
+
+/**
+ * The sea at a point, for a footprint: vec2(its height above its mean, how heaped it is there
+ * 0..1). `sink` (0..1) lets the swells sink into a level sea far out; `fine` adds the wisps (near
+ * the eye only: the caller says when).
+ */
+export function cnSeaHeight(u, xz, footprint, sink, { fine = false } = {}) {
+    const { swell, billow, wisp } = SEA_LAYERS;
+    const a = u.sea(layerUv(xz, swell, u.seaDrift.xy), layerLod(u, swell, footprint));
+    const b = u.sea(layerUv(xz, billow, u.seaDrift.zw), layerLod(u, billow, footprint));
+    // The billows heap up where the slow field says, and lie calm elsewhere.
+    const heap = a.a.mul(0.75).add(0.25);
+    const h = a.r.mul(SEA.swell).add(b.r.mul(heap).mul(SEA.billow)).toVar();
+    if (fine) {
+        const c = u.sea(layerUv(xz, wisp, u.seaFine), layerLod(u, wisp, footprint));
+        h.addAssign(c.r.mul(SEA.wisp));
+    }
+    return vec2(h.mul(sink).mul(u.seaHeave), a.a);
+}
+
+/**
+ * The sea at a point, for shading: vec4(height above the mean, ∂height/∂x, ∂height/∂z, calm).
+ * The slopes come from the field's own (filtered) slope, never from differences of the height.
+ */
+export function cnSeaSurface(u, xz, footprint, sink, { fine = false } = {}) {
+    const { swell, billow, wisp } = SEA_LAYERS;
+    const a = u.sea(layerUv(xz, swell, u.seaDrift.xy), layerLod(u, swell, footprint)).toVar();
+    const b = u.sea(layerUv(xz, billow, u.seaDrift.zw), layerLod(u, billow, footprint)).toVar();
+    const heap = a.a.mul(0.75).add(0.25).toVar();
+    const slope = (t, L, amp) => vec2(
+        t.g.mul(L.ax * L.iu).add(t.b.mul(L.bx * L.iv)).mul(amp),
+        t.g.mul(L.az * L.iu).add(t.b.mul(L.bz * L.iv)).mul(amp),
+    );
+    const h = a.r.mul(SEA.swell).add(b.r.mul(heap).mul(SEA.billow)).toVar();
+    const g = slope(a, swell, float(SEA.swell)).add(slope(b, billow, heap.mul(SEA.billow))).toVar();
+    if (fine) {
+        const c = u.sea(layerUv(xz, wisp, u.seaFine), layerLod(u, wisp, footprint)).toVar();
+        h.addAssign(c.r.mul(SEA.wisp));
+        g.addAssign(slope(c, wisp, float(SEA.wisp)));
+    }
+    const k = sink.mul(u.seaHeave);
+    return vec4(h.mul(k), g.x.mul(k), g.y.mul(k), a.a);
+}
+
+/**
+ * The smoke's own streaks, combed long by the wind (0..1): thin sheets and thick, read from the
+ * same field drawn far out along the wind and running with the wisps.
+ */
+export function cnSeaStreaks(u, xz, footprint) {
+    const along = dot(xz, vec2(SEA_WIND[0], SEA_WIND[1]));
+    const across = dot(xz, vec2(-SEA_WIND[1], SEA_WIND[0]));
+    const wide = u.sea(vec2(along.div(74.0), across.div(11.0)).add(u.seaDrift.zw.mul(0.37)), max(log2(footprint.mul(u.seaSize / 11)), 0.0));
+    const thin = u.sea(vec2(along.div(31.0), across.div(3.7)).add(u.seaFine.mul(0.61)), max(log2(footprint.mul(u.seaSize / 3.7)), 0.0));
+    return clamp(wide.r.mul(0.62).add(thin.r.mul(0.38)).mul(0.9).add(0.5), 0.0, 1.0);
+}
+
+/**
+ * The lamp's light at a point outside the lantern: what the slats, the roof and the gallery let
+ * past (`soft` = the slats' penumbra there, in pitches) of its own light and the beams'.
+ */
+export function cnLampAt(u, p, soft) {
+    const dv = p.sub(u.pulsar);
+    const r = max(length(dv), 0.05);
+    const d = dv.div(r);
+    const rb = r.div(PULSAR.beamReach);
+    const rc = r.div(PULSAR.coreReach);
+    return cnCage(d, u.spin, u.spinE1, u.spinE2, u.cageTurn, u.cageFill, soft)
+        .mul(u.coreGain.div(rc.mul(rc).add(1.0)).add(cnBeam(d, u.beam).mul(u.beamGain).div(rb.mul(rb).add(1.0))));
+}
 
 // ── Materials and geometry ──────────────────────────────────────────────────────
 

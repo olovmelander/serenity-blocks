@@ -1,20 +1,23 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════════
- *  COSMIC NOIR — smoke in the searchlight
+ *  COSMIC NOIR — the last lighthouse
  * ═══════════════════════════════════════════════════════════════════════════════
  *
- * A black-and-white film of deep space. A pulsar turns inside the derelict shutter cage of a
- * lantern beside the board, and its two beams sweep like a lighthouse's through drifting smoke:
- * most of the frame is dark, the smoke shows where a beam crosses it, and where a beam crosses the
- * slats it is cut into a fan of shafts (light through venetian blinds). A beam that looks toward
- * us blazes and the lens glares. A locking piece puffs smoke out of the card's edge, lit from
- * inside by a dying ember. A clear makes the pulsar flare and sends a light echo per line out
- * through the smoke, drawing its shape in rings. Each step of a chain spins the lighthouse up and
- * opens the blinds. Four lines fire the flashbulb: the print turns to its own negative for a
- * moment. A twist spins the cage. A new level is a reel change: two cue marks flash at the
- * corner of the picture and the print turns to the next film stock (cyanotype, silver, selenium,
- * sepia, platinum); it also drifts along the same line by itself, one stock every STOCK_STEP
- * seconds: the two simply add.
+ * A black-and-white film of deep space. A lighthouse stands on a shard of rock in a sea of
+ * interstellar smoke, at the edge of the dark, with the home galaxy rising over the sea's horizon
+ * and another light flashing far out under it. A captive pulsar turns in the lantern room behind a
+ * ring of shutter slats: one beam rakes the sea of smoke (every swell throws a long shadow), its
+ * opposite searches the sky, and the lamp's own light leaves between the slats as a fan of shafts
+ * (light through venetian blinds) whose shadows lie on the sea as spokes. Most of the frame is
+ * dark. A beam that looks toward us blazes and the lens glares. A locking piece goes under the sea
+ * beside the card: an ember glows up through the smoke, a puff rises off it and ripples run out. A
+ * clear makes the pulsar flare and sends a light echo per line out: a ring of light that runs over
+ * the sea to the horizon and a ring in the air that flashes down the tower. Each step of a chain
+ * spins the lighthouse up and opens the blinds. Four lines fire the flashbulb: the print turns to
+ * its own negative for a moment, and the far light answers. A twist spins the slats. A new level is
+ * a reel change: two cue marks flash at the corner of the picture and the print turns to the next
+ * film stock (cyanotype, silver, selenium, sepia, platinum); it also drifts along the same line by
+ * itself, one stock every STOCK_STEP seconds: the two simply add.
  *
  * Content lives in CosmicNoirWorld (cosmic-noir-world.js), shared with the playground effect
  * src/playground/effects/cosmic-noir.effect.js, so what is iterated there ships. This class owns
@@ -25,11 +28,11 @@
  * motion, settings, GPU-loss recovery and deterministic capture flags:
  *   ?cosmicNoirTime=<s>      seek to t and freeze the simulation (captures)
  *   ?cosmicNoirFixedDt=<ms>  fixed frame step
- *   ?cosmicNoirParts=a,b     draw only these parts (sky, smoke)
+ *   ?cosmicNoirParts=a,b     draw only these parts (sky, smoke, sea, tower)
  *   ?cosmicNoirFalseColor=1  post debug view
  *
- * The world is handed the renderer: it paints the smoke into its own reduced-resolution target
- * inside update(), before the post stack draws the frame.
+ * The world is handed the renderer: it paints the light in the air into its own reduced-resolution
+ * target inside update(), before the post stack draws the frame.
  *
  * The clock: `this.time` drives the print's drift along the stocks, so it is kept when the scene
  * is rebuilt in place (a quality change, a lost GPU device) and cleared only by stop(); the steps
@@ -37,9 +40,9 @@
  * it had.
  *
  * Warm: none (the scene is one full-screen backdrop and one pass; the first frame compiles every
- * render pipeline; the scene pass has one output). Nothing is downloaded either: the smoke is baked
- * on the CPU when the world is built, so there is no load step and nothing arrives after the first
- * frame.
+ * render pipeline; the scene pass has one output). Nothing is downloaded either: the smoke and the
+ * sea's field are baked on the CPU (in a worker on a first visit), so there is no load step and
+ * nothing arrives after the first frame.
  */
 
 import * as THREE from 'three/webgpu';

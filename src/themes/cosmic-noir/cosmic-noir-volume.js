@@ -1,30 +1,34 @@
 /**
- * Cosmic Noir — the smoke, the lantern and the sky behind them.
+ * Cosmic Noir — the light in the air, and the picture it is laid over.
  *
- * The smoke is painted once per frame into a reduced-resolution target: it is soft, so it does not
- * need the screen's pixels. It is walked along the view ray, front to back, with steps that grow
- * with distance, and lit by:
- *   - the pulsar's two beams, sweeping like a lighthouse's. They leave through the shutter cage,
- *     so where a beam crosses the slats it is cut into a fan of shafts (light through blinds).
- *     Smoke scatters a beam forward: a beam that looks toward us is a blaze, one that looks away a
- *     pale shaft;
- *   - the core's own glow round the lantern, through the slats too: radial bars in the near smoke;
- *   - light echoes (clears): shells of light expanding from the pulsar, which light the smoke they
- *     pass through and so draw its shape in rings;
- *   - puffs (locks): smoke billowing out of the card's edge, lit from inside by a dying ember;
- *   - a faint ambient (starlight), so the darkest smoke is a shape, never a hole.
- * A ray that meets a slat of the cage stops there: the backdrop draws the cage at full resolution.
+ * Two passes a frame.
  *
- * The backdrop then lays the target over the deep sky at the screen's own resolution: the far stars,
- * the pulsar's core and the lens's halo and star-filter spikes round it, the cage (dark slats in
- * front, lit inner faces behind, a rim of light round each slat's edge), and the glare when a beam
- * looks straight at us. It reads the target through a small tent, which is what hides the march's
- * steps: each pixel of the target starts its walk at a different place, and neighbours average out.
+ * THE AIR is painted into a reduced-resolution target: light in thin smoke is soft, and nearly all
+ * of it is worked out in closed form, so it needs neither the screen's pixels nor a march's noise.
+ *   - The lamp's own light: seen from the lamp, the points of a view ray sweep one arc of
+ *     directions, and the light scattered per unit of that arc is the lamp's over the ray's nearest
+ *     distance. The arc is cut into a few spans; across each the slats' share of the lantern's wall
+ *     is taken exactly (cnSlatShare), so the fan of shafts between the slats is drawn without a
+ *     grain. The roof's and the gallery's shadows are the dark cones above and below.
+ *   - The beams' cores are thinner than any span: each is integrated where the ray passes nearest
+ *     the beam's line (a gaussian in angle integrates to its width times that crossing's length).
+ *   - A light echo is a thin shell round the lamp, lit over the length the ray runs inside it
+ *     (long at the limb: a ring).
+ *   - The mist that lies on the sea is an exponential layer: its depth along the ray is closed
+ *     form, lit by the lamp where the ray comes down.
+ *   - A lock's puff is a ball of smoke lit from inside by its ember (a gaussian along the ray),
+ *     ragged by one read of the baked smoke.
+ *   - Smoke drifting past the lens is walked in a few long steps (it is large and soft).
+ *
+ * THE BACKDROP is one full-screen triangle at the screen's own resolution: the sky
+ * (cosmic-noir-sky.js), the sea of smoke (cosmic-noir-sea.js), the lighthouse on its rock
+ * (cosmic-noir-lighthouse.js), the glow inside the lantern, then the air's target over them
+ * through a small tent, and the lens: the lamp's halo, the star filter's spikes, and the glare when
+ * a beam looks at us.
  */
 
 import * as THREE from 'three/webgpu';
 import {
-    Break,
     Fn,
     If,
     Loop,
@@ -35,23 +39,17 @@ import {
     exp,
     float,
     floor,
-    fract,
     int,
     length,
-    log,
     max,
     min,
     mix,
     normalize,
     positionGeometry,
-    pow,
-    screenCoordinate,
     screenUV,
-    select,
-    sin,
     smoothstep,
     sqrt,
-    step,
+    tan,
     uniform,
     uv,
     vec2,
@@ -63,282 +61,316 @@ import {
     DEG,
     ECHO_REACH,
     PULSAR,
+    SEA,
     SMOKE,
     SMOKE_CODE_PEAK,
+    TAU,
+    TOWER,
+    cnBall,
     cnBeam,
     cnBeamSkirt,
     cnCage,
-    cnCageSurface,
-    cnCylinder,
-    cnHash23,
-    cnLid,
     cnPart,
     cnPassMaterial,
     cnPhase,
+    cnSlatShare,
     cnTarget,
+    cnUpright,
     cnViewRay,
 } from './cosmic-noir-tsl.js';
+import { cnSky } from './cosmic-noir-sky.js';
+import { cnSeaFringe, cnSeaLight, cnSeaMarch } from './cosmic-noir-sea.js';
+import { TOWER_BOUNDS, cnLighthouse } from './cosmic-noir-lighthouse.js';
 
 /** How much a unit of full smoke over a unit of length puts out (thin smoke: noir is mostly dark). */
 const EXTINCTION = 0.36;
 /** The longest run of a beam's core a ray is lit over (where it looks along the beam). */
-const BEAM_RUN_MAX = 7.0;
-/** The clear corridor to the lantern: how fast it widens with distance, and the veil left in it. */
-const CORRIDOR_SPREAD = 0.13;
-const CORRIDOR_VEIL = 0.22;
-/** Without the shading tap, the light's average share past the smoke toward the pulsar. */
-const UNSHADED = 0.6;
-/** The smoke held inside the lantern (it glows round the core and shows the beams leaving). */
-const INNER_SMOKE = 0.24;
-/** The longest run of an echo's shell a ray is lit over (at its limb, where the ray grazes it). */
-const ECHO_RUN_MAX = 5.0;
-/** How far toward the pulsar the shading tap reads (scene units). */
-const SHADE_REACH = 1.6;
-/** How far (in tiles) the slow field bends the place the smoke is read at: the curls. */
-const WARP = 0.34;
-/** The share of a lattice cell a far star spans on a desktop frame. */
-const STAR_SPREAD = 0.22;
+const BEAM_RUN_MAX = 3.6;
+/** How bright an echo's ring is in the air. */
+const ECHO_AIR = 15;
+/** The share of a lock's ember that lights its puff (most of it glows under the sea). */
+const PUFF_EMBER = 0.14;
+/**
+ * The lamp's own glow in the air falls off within this (its light on the sea reaches further:
+ * PULSAR.coreReach). Compact, so the air away from the lantern stays black.
+ */
+const AIR_REACH = 2.6;
+/** The air right at the lens is clear: a beam that looks at us must not veil the whole frame. */
+const AIR_CLEAR = 0.6;
+/** The share of the beams' wide skirt the air shows (the rest would grey the whole room). */
+const SKIRT_AIR = 0.3;
+const AIR_FAR = 150;
+/** The smoke held inside the lantern (it glows round the lens). */
+const INNER_SMOKE = 0.2;
+/** The thin haze is densest over the sea and thins with height (its scale height). */
+const HAZE_HEIGHT = 12;
+/** How much of the sea's mist shows the lamp's light, and how much of the sea it hides. */
+const MIST_LIGHT = 0.55;
+/** The share of the lamp's light the roof and the gallery let past into the air. */
+const LID_AIR = 0.1;
+/** Smoke drifting past the lens: where its walk starts and ends, and how thick it is. */
+const WISP_NEAR = 1.6;
+const WISP_FAR = 16;
+const WISP_SMOKE = 0.3;
 
-const v3 = (a) => vec3(a[0], a[1], a[2]);
+/** The lighthouse and its rock, as the air sees them: an upright cylinder and a ball. */
+const PROXY = Object.freeze({
+    radius: CAGE.radius + 0.1,
+    y0: TOWER_BOUNDS.y0,
+    y1: CAGE.halfHeight + TOWER.domeRise,
+    rock: Object.freeze([0.3, SEA.level - PULSAR.height - 1.3, 0.6]),
+    rockRadius: 3.1,
+});
 
 /**
  * @param {object} u  shared uniforms
- * @param {object} options
- * @param {number} options.march      steps along a ray
- * @param {number} options.taps       reads of the smoke toward the pulsar per lit step (0..1)
- * @param {boolean} options.detail    the finer read that frays the filaments
- * @param {number} options.skyLayers  lattices of far stars
+ * @param {object} options  the tier (cosmic-noir-quality.js)
  */
 export function createSmoke(u, {
-    march = 30, taps = 1, detail = true, skyLayers = 3,
+    march = 52, shadow = 8, fine = true, tower = 64, air = 14, wisps = 6, detail = true, skyLayers = 3,
 } = {}) {
     const texel = uniform(new THREE.Vector2(1 / 960, 1 / 540));
-    const centre = v3(SMOKE.centre);
-    const extent = v3(SMOKE.extent);
-    const squash = vec3(1 / SMOKE.stretch, 1.0, 1 / 1.4);
+    const squash = vec3(1 / (SMOKE.tile * SMOKE.stretch), 1 / SMOKE.tile, 1 / (SMOKE.tile * 1.4));
 
-    /** The smoke at a point: (density, its billows) — before the puffs and the light. */
-    const densityAt = (p, ds) => {
-        const e = p.sub(centre).div(extent);
-        const env = float(1.0).sub(smoothstep(0.55, 1.0, length(e))).toVar();
-        // A clear corridor from the eye to the lantern (a veil remains): drifting smoke may pass
-        // in front of it, but never hides the picture's light for a minute.
-        const toLamp = u.pulsar.sub(u.camPos);
-        const lampDist = length(toLamp);
-        const axis = toLamp.div(lampDist);
-        const rel = p.sub(u.camPos);
-        const along = dot(rel, axis);
-        const across = length(rel.sub(axis.mul(along)));
-        const reach = along.mul(CORRIDOR_SPREAD).add(0.6);
-        const before = float(1.0).sub(smoothstep(lampDist.sub(CAGE.radius * 2.0), lampDist.sub(CAGE.radius * 0.5), along));
-        const open = float(1.0).sub(smoothstep(reach.mul(0.7), reach.mul(1.3), across)).mul(before).mul(step(0.0, along));
-        env.mulAssign(float(1.0).sub(open.mul(1.0 - CORRIDOR_VEIL)));
-        const n0 = p.add(u.drift).mul(squash).div(SMOKE.tile).toVar();
-        const slow = u.smokeFar(n0.mul(0.45).add(u.curl)).toVar();
-        const n = n0.add(slow.rgb.sub(0.5).mul(WARP)).toVar();
-        // A step longer than the finest threads reads the volume that has none.
-        const blur = smoothstep(0.6, 2.2, ds);
-        const base = mix(u.smoke(n), u.smokeFar(n), blur).toVar();
-        // Threads of smoke ride on the masses; the slow field opens dark gaps between them.
-        const need = float(0.5).sub(slow.a.sub(0.5).mul(1.0));
-        const field = base.g.mul(0.6).add(base.r.mul(0.4)).sub(need).toVar();
-        if (detail) {
-            // Fine curling threads fray the masses' edges.
-            const fine = u.smoke(n.mul(2.7).add(base.rgb.sub(0.5).mul(0.2)));
-            field.addAssign(fine.g.sub(0.45).mul(0.3).mul(float(1.0).sub(blur)));
-        }
-        // Smoke lies in layers, as in a still room.
-        const layers = smoothstep(-0.35, 0.75, sin(base.r.mul(2.6).add(p.y.mul(0.42))));
-        // The edge of a mass, softened by the width read (a long step or a thick beam averages
-        // across it): a softplus ramp, the hard ramp's average over ±sw.
-        const sw = blur.mul(0.09).add(0.012);
-        const x = field.div(sw);
-        const ramp = max(x, 0.0).add(log(float(1.0).add(exp(abs(x).negate())))).mul(sw);
-        const d = min(ramp.mul(4.2), 1.4).mul(layers.mul(0.6).add(0.4)).add(u.haze);
-        return vec2(d.mul(env), base.b);
+    /** The smoke in the air at a point: the thin haze, in drifts where the tier reads them. */
+    const airAt = (p) => {
+        const lift = max(p.y.sub(SEA.level), 0.0);
+        const base = u.haze.mul(exp(lift.div(-HAZE_HEIGHT)).mul(0.8).add(0.2));
+        if (!detail) return base;
+        const n = u.smokeFar(p.add(u.drift).mul(squash).add(u.curl));
+        return base.mul(n.r.mul(1.15).add(n.g.mul(0.55)).add(0.2));
+    };
+
+    /** The lamp's light at a point outside the lantern: (through the slats and past the roof) × (its own + the beams'). */
+    const lampAt = (p, softer) => {
+        const dv = p.sub(u.pulsar);
+        const r = max(length(dv), 0.05);
+        const d = dv.div(r);
+        const rb = r.div(PULSAR.beamReach);
+        const rc = r.div(PULSAR.coreReach);
+        return cnCage(d, u.spin, u.spinE1, u.spinE2, u.cageTurn, u.cageFill, r.mul(0.01).add(softer))
+            .mul(u.coreGain.div(rc.mul(rc).add(1.0)).add(cnBeam(d, u.beam).mul(u.beamGain).div(rb.mul(rb).add(1.0))));
     };
 
     const paint = Fn(() => {
         const st = uv();
         const ray = cnViewRay(u, st).toVar();
         const o = u.camPos;
-        // Interleaved gradient noise: a different start per pixel hides the steps.
-        const jitter = fract(fract(dot(screenCoordinate.xy, vec2(0.06711056, 0.00583715))).mul(52.9829189)).toVar();
+        const rel = o.sub(u.pulsar).toVar(); // the eye, from the lamp
+        const toEye = ray.negate().toVar();
 
-        // A ray that meets the cage's wall stops there, slat or gap: the backdrop draws the cage and
-        // everything inside it at the screen's own resolution (a slat-by-slat cut here would alias
-        // into dots in this smaller target).
-        const tEnd = float(SMOKE.far).toVar();
-        const cyl = cnCylinder(o, ray, u).toVar();
-        If(cyl.z.greaterThan(0.5).and(cyl.x.greaterThan(0.0)), () => {
-            const front = cnCageSurface(o, ray, cyl.x, u);
-            If(abs(front.y).lessThanEqual(1.0), () => {
-                tEnd.assign(cyl.x);
-            });
+        // ── Where the air ends: the sea, the lighthouse, its rock ──
+        const tEnd = float(AIR_FAR).toVar();
+        const tSea = float(-1.0).toVar();
+        If(ray.y.lessThan(-0.001), () => {
+            tSea.assign(o.y.sub(SEA.level).div(ray.y.negate()));
+            tEnd.assign(min(tEnd, tSea));
         });
-        // The lids close it.
-        const lid = cnLid(o, ray, u);
-        If(lid.z.greaterThan(0.5), () => {
-            tEnd.assign(min(tEnd, lid.x));
+        const body = cnUpright(rel, ray, float(PROXY.radius), float(PROXY.y0), float(PROXY.y1)).toVar();
+        If(body.z.greaterThan(0.5), () => {
+            tEnd.assign(min(tEnd, max(body.x, 0.0)));
         });
+        const lump = cnBall(rel.sub(vec3(PROXY.rock[0], PROXY.rock[1], PROXY.rock[2])), ray, float(PROXY.rockRadius)).toVar();
+        If(lump.z.greaterThan(0.5), () => {
+            tEnd.assign(min(tEnd, max(lump.x, 0.0)));
+        });
+        const reachesSea = tSea.greaterThan(0.0).and(tSea.lessThanEqual(tEnd.add(0.01)));
 
-        const t0 = float(SMOKE.near);
-        const ratio = pow(float(SMOKE.far / SMOKE.near), 1 / march);
-        const t = t0.mul(pow(ratio, jitter)).toVar();
-        const col = float(0.0).toVar();
+        const light = float(0.0).toVar();
+        // The mist on the sea is kept apart: the lighthouse and its rock stand in front of it.
+        const mist = float(0.0).toVar();
+        const mistVeil = float(0.0).toVar();
         const trans = float(1.0).toVar();
-        const toEye = ray.negate();
 
-        // The beams' cores are too thin for the march to find (a step lands in one or misses it):
-        // they are integrated in closed form where the ray passes nearest the beam line, below.
-        // Here: where that is, and the march keeps the smoke's transmittance up to it.
-        const w0 = o.sub(u.pulsar);
-        const along = dot(ray, u.beam);
-        const sin2 = max(float(1.0).sub(along.mul(along)), 1e-4);
-        const dvw = dot(ray, w0);
-        const dbw = dot(u.beam, w0);
-        const tStar = along.mul(dbw).sub(dvw).div(sin2).toVar();
-        const sStar = dbw.sub(along.mul(dvw)).div(sin2).toVar();
-        const transAt = select(tStar.lessThan(t), float(1.0), float(0.0)).toVar();
-        // The echoes' shells are spheres round the pulsar: where the ray passes nearest it.
-        const bE = dvw;
-        const dMin2 = max(dot(w0, w0).sub(bE.mul(bE)), 0.0).toVar();
-
-        Loop(march, () => {
-            If(t.greaterThan(tEnd), () => {
-                Break();
+        // ── The lamp's own light, summed over the arc the ray sweeps as seen from the lamp ──
+        const bE = dot(ray, rel).toVar();
+        const tc = bE.negate().toVar();
+        const d2 = max(dot(rel, rel).sub(bE.mul(bE)), 0.0).toVar();
+        const Dh = sqrt(d2.add(AIR_REACH * AIR_REACH)).toVar();
+        const b0 = atan(float(AIR_CLEAR).sub(tc).div(Dh)).toVar();
+        const b1 = atan(max(tEnd, AIR_CLEAR + 0.01).sub(tc).div(Dh)).toVar();
+        const dB = b1.sub(b0).div(air).toVar();
+        const sum = float(0.0).toVar();
+        // A ray in the upright plane through the lantern's axis looks along ONE slat's shadow for
+        // its whole length (every point of it lies on the same bearing from the lamp): a black or a
+        // white needle up the frame over the roof. There the slats are taken at their average.
+        const offAxis = abs(rel.x.mul(ray.z).sub(rel.z.mul(ray.x))).div(max(length(ray.xz), 1e-4));
+        const slatted = smoothstep(0.25, 1.5, offAxis).toVar();
+        const azPrev = float(0.0).toVar();
+        const gPrev = float(0.0).toVar();
+        const wallPrev = float(0.0).toVar();
+        Loop({
+            start: int(0), end: int(air + 1), type: 'int', condition: '<', name: 'k',
+        }, ({ k }) => {
+            const beta = b0.add(dB.mul(float(k))).toVar();
+            const p = o.add(ray.mul(tc.add(Dh.mul(tan(beta))))).toVar();
+            const dv = p.sub(u.pulsar).toVar();
+            const r = max(length(dv), 0.05).toVar();
+            const d = dv.div(r).toVar();
+            const h = dot(d, u.spin);
+            const qx = dot(d, u.spinE1);
+            const qy = dot(d, u.spinE2);
+            const q = max(sqrt(qx.mul(qx).add(qy.mul(qy))), 1e-5);
+            const axial = abs(h.mul(CAGE.radius).div(q)).toVar();
+            // Where on the lantern's wall this light left, in slat pitches.
+            const az = atan(qy, qx).add(u.cageTurn).mul(CAGE.slats / TAU).toVar();
+            // (Wider and softer than the sea sees it: in the air the roof's shadow is a dim cone, not a spike.)
+            const lids = float(1.0).sub(smoothstep(0.4, 0.92, abs(h)).mul(1 - LID_AIR));
+            const onWall = float(1.0).sub(smoothstep(CAGE.halfHeight - 0.05, CAGE.halfHeight + 0.05, axial)).toVar();
+            const rb = r.div(PULSAR.beamReach);
+            // Per unit of arc: the lamp's own light is constant, the skirts' follows the beams.
+            const source = u.coreGain.mul(AIR_REACH * AIR_REACH)
+                .add(cnBeamSkirt(d, u.beam).mul(u.beamGain).mul(SKIRT_AIR).mul(r.mul(r).add(AIR_REACH * AIR_REACH))
+                    .div(rb.mul(rb).add(1.0)));
+            const g = source.mul(lids).mul(airAt(p)).mul(cnPhase(dot(d, toEye), u.forward)).toVar();
+            If(k.greaterThan(int(0)), () => {
+                // The short way round from the last span's end.
+                const dx = az.sub(azPrev).toVar();
+                dx.subAssign(floor(dx.div(CAGE.slats).add(0.5)).mul(CAGE.slats));
+                const share = mix(u.cageFill, cnSlatShare(azPrev, azPrev.add(dx), u.cageFill, r.mul(0.02).add(0.06)), slatted);
+                const bars = float(1.0).sub(share.mul(onWall.add(wallPrev).mul(0.5)));
+                sum.addAssign(g.add(gPrev).mul(0.5).mul(bars));
             });
-            const ds = t.mul(ratio.sub(1.0)).toVar();
-            const p = o.add(ray.mul(t)).toVar();
-            If(tStar.greaterThanEqual(t).and(tStar.lessThan(t.add(ds))), () => {
-                transAt.assign(trans);
-            });
-            const smoke = densityAt(p, ds).toVar();
-            const dens = smoke.x.toVar();
-
-            // ── Puffs: smoke billowing from the card, with an ember inside ──
-            const puff = float(0.0).toVar();
-            const ember = float(0.0).toVar();
-            Loop({
-                start: int(0), end: u.puffCount, type: 'int', condition: '<', name: 'k',
-            }, (loop) => {
-                const a = u.puffs.element(loop.k.mul(2));
-                const b = u.puffs.element(loop.k.mul(2).add(1));
-                const off = p.sub(a.xyz);
-                const g = exp(dot(off, off).div(a.w.mul(a.w)).negate()).toVar();
-                If(g.greaterThan(0.01), () => {
-                    // Billowed, not a ball: a finer read of the smoke, its own for each puff,
-                    // decides where its ragged edge is.
-                    const nz = u.smoke(off.div(a.w).mul(0.3).add(vec3(b.z, b.z.mul(1.7), b.z.mul(2.3))));
-                    const edge = g.mul(0.9).add(nz.r.sub(0.5).mul(0.9)).add(nz.g.sub(0.5).mul(0.5));
-                    puff.addAssign(b.x.mul(smoothstep(0.2, 0.7, edge)).mul(1.8));
-                    ember.addAssign(b.y.mul(g));
-                });
-            });
-            dens.addAssign(puff);
-
-            // ── Light echoes: thin shells round the pulsar, met where this step crosses one ──
-            // Like the beams' cores, in closed form: the smoke where the ray crosses the shell, lit
-            // over the crossing's length w·√π·R/√(R² − d²) (long at the limb: a ring). Only the
-            // masses light, never the thin haze between them: the echo draws the smoke's shape.
-            Loop({
-                start: int(0), end: u.echoCount, type: 'int', condition: '<', name: 'e',
-            }, (loop) => {
-                const a = u.echoes.element(loop.e);
-                const R = a.x;
-                const sq = sqrt(max(R.mul(R).sub(dMin2), 0.0));
-                const miss = max(sqrt(dMin2).sub(R), 0.0).div(a.y);
-                const run = min(a.y.mul(R).mul(Math.sqrt(Math.PI)).div(max(sq, 1e-3)), ECHO_RUN_MAX);
-                const re = R.div(ECHO_REACH);
-                // The shell's face slices the dense smoke round the lantern into a lit disc: keep it
-                // dim and let the limb carry the light, so an echo reads as a ring going out.
-                const face = sq.div(max(R, 1e-3));
-                const limb = float(1.0).sub(smoothstep(0.25, 0.8, face)).mul(0.7).add(0.3);
-                const gain = a.z.mul(exp(miss.mul(miss).negate())).mul(run).mul(limb)
-                    .div(float(1.0).add(re.mul(re)));
-                const crossAt = (tc, weight) => {
-                    If(tc.greaterThanEqual(t).and(tc.lessThan(t.add(ds))).and(tc.lessThan(tEnd)), () => {
-                        const at = densityAt(o.add(ray.mul(tc)), ds).x;
-                        const mass = max(at.sub(u.haze), 0.0);
-                        col.addAssign(gain.mul(mass).mul(EXTINCTION).mul(trans).mul(weight)
-                            .mul(u.breath));
-                    });
-                };
-                crossAt(bE.negate().sub(sq), float(1.0));
-                crossAt(bE.negate().add(sq), step(1e-3, sq));
-            });
-
-            If(dens.greaterThan(0.003), () => {
-                const toP = u.pulsar.sub(p).toVar();
-                const r = max(length(toP), 0.05).toVar();
-                const d = toP.div(r).negate().toVar(); // from the pulsar to here
-                // A beam leaves through the slats: cut into bars (light through blinds), their
-                // shadows softening with distance (a source of some size) and, far out, blending
-                // into the average. The core's all-round glow takes the slats' average: striping it
-                // too would lay a bar across every plane through the lantern, one of them edge-on.
-                const soft = float(0.05).add(r.mul(0.014));
-                const bars = cnCage(d, u.spin, u.spinE1, u.spinE2, u.cageTurn, u.cageFill, soft);
-                const even = cnCage(d, u.spin, u.spinE1, u.spinE2, u.cageTurn, u.cageFill, float(1.0));
-                const rb = r.div(PULSAR.beamReach);
-                const beam = cnBeamSkirt(d, u.beam).mul(u.beamGain).div(float(1.0).add(rb.mul(rb)));
-                const rc = r.div(PULSAR.coreReach);
-                const core = u.coreGain.div(float(1.0).add(rc.mul(rc)));
-                const phase = cnPhase(dot(d, toEye), u.forward);
-                const direct = beam.mul(phase).mul(bars).add(core.mul(phase.mul(0.35).add(0.65)).mul(even)).toVar();
-                if (taps > 0) {
-                    // How much smoke stands between here and the pulsar, a step toward it.
-                    const tap = densityAt(p.add(toP.div(r).mul(SHADE_REACH)), float(2.0));
-                    direct.mulAssign(exp(tap.x.mul(-2.2)));
-                } else {
-                    direct.mulAssign(UNSHADED);
-                }
-                // An ember lights only its own puff, not the smoke round it.
-                const own = clamp(puff.div(max(dens, 1e-4)), 0.0, 1.0);
-                const light = direct.add(ember.mul(own)).add(u.ambient).mul(u.breath);
-                const alpha = float(1.0).sub(exp(dens.mul(ds).mul(EXTINCTION).negate()));
-                col.addAssign(light.mul(trans).mul(alpha));
-                trans.mulAssign(float(1.0).sub(alpha));
-            });
-            t.mulAssign(ratio);
-            If(trans.lessThan(0.012), () => {
-                Break();
-            });
+            azPrev.assign(az);
+            gPrev.assign(g);
+            wallPrev.assign(onWall);
         });
+        light.addAssign(sum.mul(dB).div(Dh).mul(EXTINCTION));
 
         // ── The beams' cores, in closed form ──
         // Near its nearest point the ray's angle off the beam grows as √(α₀² + (Δt·sinθ / s)²), so
         // the gaussian core integrates to exp(−(α₀/w)²)·√π·w·|s|/sinθ: the light of the smoke
         // there, times that length (capped where the ray runs along the beam: the glare's place).
+        const along = dot(ray, u.beam).toVar();
+        const sin2 = max(float(1.0).sub(along.mul(along)), 1e-4).toVar();
+        const dbw = dot(u.beam, rel).toVar();
+        const tStar = along.mul(dbw).sub(bE).div(sin2).toVar();
+        const sStar = dbw.sub(along.mul(bE)).div(sin2).toVar();
         const xs = o.add(ray.mul(tStar)).toVar();
-        const q = xs.sub(u.pulsar).toVar();
-        const rs = max(length(q), 0.05).toVar();
-        const off0 = length(q.sub(u.beam.mul(sStar)));
-        const alpha0 = atan(off0, abs(sStar)).div(PULSAR.beamWidth * DEG);
+        const qv = xs.sub(u.pulsar).toVar();
+        const rs = max(length(qv), 0.05).toVar();
+        const alpha0 = atan(length(qv.sub(u.beam.mul(sStar))), abs(sStar)).div(PULSAR.beamWidth * DEG).toVar();
         const crossing = min(abs(sStar).mul(Math.sqrt(Math.PI) * PULSAR.beamWidth * DEG).div(sqrt(sin2)), BEAM_RUN_MAX);
-        const inView = step(t0, tStar).mul(step(tStar, tEnd)).mul(exp(alpha0.mul(alpha0).negate()));
-        If(inView.mul(transAt).greaterThan(1e-4), () => {
-            // The beam averages the smoke across its own thickness: read it that softly.
-            const ds = max(tStar.mul(ratio.sub(1.0)), rs.mul(PULSAR.beamWidth * DEG * 1.5));
-            const dens = densityAt(xs, ds).x.toVar();
-            const ds0 = q.div(rs).toVar(); // from the pulsar to there
+        const inView = smoothstep(AIR_CLEAR, AIR_CLEAR + 7.0, tStar)
+            .mul(float(1.0).sub(smoothstep(tEnd.sub(1.0), tEnd, tStar)))
+            .mul(exp(alpha0.mul(alpha0).negate())).toVar();
+        If(inView.greaterThan(1e-4), () => {
+            const ds0 = qv.div(rs).toVar(); // from the lamp to there
             const rb = rs.div(PULSAR.beamReach);
-            const soft = float(0.05).add(rs.mul(0.014));
-            const bars = cnCage(ds0, u.spin, u.spinE1, u.spinE2, u.cageTurn, u.cageFill, soft);
-            const phase = cnPhase(dot(ds0, toEye), u.forward);
-            const core = u.beamGain.div(float(1.0).add(rb.mul(rb))).mul(phase).mul(bars).toVar();
-            if (taps > 0) {
-                const tap = densityAt(xs.sub(ds0.mul(SHADE_REACH)), float(2.0));
-                core.mulAssign(exp(tap.x.mul(-2.2)));
-            } else {
-                core.mulAssign(UNSHADED);
-            }
-            col.addAssign(core.mul(u.breath).mul(dens).mul(EXTINCTION).mul(crossing)
-                .mul(inView)
-                .mul(transAt));
+            const bars = cnCage(ds0, u.spin, u.spinE1, u.spinE2, u.cageTurn, u.cageFill, rs.mul(0.014).add(0.05));
+            const core = u.beamGain.div(rb.mul(rb).add(1.0)).mul(cnPhase(dot(ds0, toEye), u.forward)).mul(bars);
+            light.addAssign(core.mul(airAt(xs)).mul(EXTINCTION).mul(crossing).mul(inView));
         });
-        const light = vec3(col);
-        if (!u.floatTarget) return vec4(sqrt(clamp(light.div(SMOKE_CODE_PEAK), 0.0, 1.0)), trans);
-        return vec4(light, trans);
+
+        // ── Light echoes: thin shells round the lamp, seen as rings going out ──
+        // A shell of gaussian thickness w round radius R, along a ray that passes d from the lamp:
+        // inside the limb its run is √(2Rw / (R² − d² + 2Rw)), brightest just inside the edge, and
+        // past the limb it dies as a gaussian, so no line is ruled at either side. What a ray
+        // through the middle of the shell would add (its two faces) is taken off: a ring, not a
+        // bubble. The smoke where the ray passes nearest the lamp gives the ring its ragged light.
+        const dMin = sqrt(d2).toVar();
+        const rings = float(0.0).toVar();
+        Loop({
+            start: int(0), end: u.echoCount, type: 'int', condition: '<', name: 'e',
+        }, ({ e }) => {
+            const a = u.echoes.element(e);
+            const R = a.x;
+            const w = a.y.mul(0.3);
+            const span = R.mul(w).mul(2.0);
+            const inside = sqrt(span.div(max(R.mul(R).sub(d2), 0.0).add(span)));
+            const past = dMin.sub(R).div(w.mul(3.0));
+            const ring = dMin.lessThan(R).select(inside, exp(past.mul(past).negate()));
+            const floorOf = sqrt(span.div(R.mul(R).add(span)));
+            const re = R.div(ECHO_REACH);
+            rings.addAssign(a.z.mul(max(ring.sub(floorOf), 0.0)).div(re.mul(re).add(1.0)));
+        });
+        If(rings.greaterThan(1e-4).and(tc.greaterThan(AIR_CLEAR)).and(tc.lessThan(tEnd)), () => {
+            light.addAssign(rings.mul(airAt(o.add(ray.mul(tc)))).mul(EXTINCTION * ECHO_AIR));
+        });
+
+        // ── The mist on the sea: an exponential layer, lit by the lamp where the ray comes down ──
+        If(reachesSea, () => {
+            const fall = ray.y.negate();
+            const depth = float(SEA.mist * SEA.mistHeight).mul(u.haze.div(SMOKE.haze)).div(fall)
+                .mul(float(1.0).sub(exp(o.y.sub(SEA.level).div(-SEA.mistHeight))));
+            const veil = float(1.0).sub(exp(depth.negate())).toVar();
+            const at = o.add(ray.mul(tSea)).add(vec3(0.0, SEA.mistHeight * 0.6, 0.0)).toVar();
+            const dv = at.sub(u.pulsar);
+            const phase = cnPhase(dot(normalize(dv), toEye), u.forward);
+            // An echo's ring on the sea lights the mist over it as it passes.
+            const out = length(at.xz.sub(u.pulsar.xz)).toVar();
+            const ringed = float(0.0).toVar();
+            Loop({
+                start: int(0), end: u.echoCount, type: 'int', condition: '<', name: 'm',
+            }, ({ m }) => {
+                const a = u.echoes.element(m);
+                const x = out.sub(a.w).div(a.w.mul(0.03).add(a.y.mul(0.9)));
+                ringed.addAssign(a.z.mul(exp(x.mul(x).negate())));
+            });
+            const ringLight = ringed.mul(0.9).div(out.div(60.0).pow(2.0).add(1.0));
+            mist.assign(lampAt(at, float(0.08)).mul(phase).add(ringLight).mul(veil)
+                .mul(MIST_LIGHT));
+            mistVeil.assign(veil.mul(0.9));
+        });
+
+        // ── Smoke drifting past the lens: a few long steps ──
+        if (wisps > 0) {
+            const ratio = (WISP_FAR / WISP_NEAR) ** (1 / wisps);
+            // Fixed shells, no jitter: the smoke is soft and each shell is a sheet of it.
+            const tw = float(WISP_NEAR).toVar();
+            Loop(wisps, () => {
+                const ds = tw.mul(ratio - 1);
+                If(tw.lessThan(tEnd), () => {
+                    const p = o.add(ray.mul(tw)).toVar();
+                    const n0 = p.add(u.drift.mul(1.6)).mul(squash).toVar();
+                    const slow = u.smokeFar(n0.mul(0.45).add(u.curl)).toVar();
+                    const mass = u.smokeFar(n0.add(slow.rgb.sub(0.5).mul(0.34))).toVar();
+                    // Rare: most of the air by the lens is clear.
+                    const field = mass.g.mul(0.6).add(mass.r.mul(0.4)).sub(float(1.08).sub(slow.a.mul(0.75)));
+                    // (A shell thins out as it nears what the ray ends on, so none is cut off along a line.)
+                    const dens = smoothstep(0.0, 0.5, field).mul(WISP_SMOKE)
+                        .mul(smoothstep(WISP_NEAR, WISP_NEAR * 2.2, tw))
+                        .mul(clamp(tEnd.sub(tw).div(tw.mul(0.45)), 0.0, 1.0))
+                        .toVar();
+                    If(dens.greaterThan(0.004), () => {
+                        const alpha = float(1.0).sub(exp(dens.mul(ds).mul(EXTINCTION).negate()));
+                        const phase = cnPhase(dot(normalize(p.sub(u.pulsar)), toEye), u.forward);
+                        light.addAssign(lampAt(p, float(0.1)).mul(phase).add(u.ambient).mul(alpha)
+                            .mul(trans));
+                        trans.mulAssign(float(1.0).sub(alpha));
+                    });
+                });
+                tw.mulAssign(ratio);
+            });
+        }
+
+        // ── Puffs (locks): a ball of smoke rising off the sea, lit from inside by its ember ──
+        Loop({
+            start: int(0), end: u.puffCount, type: 'int', condition: '<', name: 'k',
+        }, ({ k }) => {
+            const a = u.puffs.element(k.mul(2));
+            const b = u.puffs.element(k.mul(2).add(1));
+            const tp = clamp(dot(a.xyz.sub(o), ray), 0.0, tEnd).toVar();
+            const off = o.add(ray.mul(tp)).sub(a.xyz).toVar();
+            const m2 = dot(off, off).div(a.w.mul(a.w)).toVar();
+            If(m2.lessThan(5.0), () => {
+                const g = exp(m2.negate()).toVar();
+                // Billowed, not a ball: a read of the smoke, its own for each puff, sets its ragged edge.
+                const nz = u.smoke(off.div(a.w).mul(0.3).add(vec3(b.z, b.z.mul(1.7), b.z.mul(2.3))));
+                const edge = g.mul(0.9).add(nz.r.sub(0.5).mul(0.9)).add(nz.g.sub(0.5).mul(0.5));
+                const puffBody = smoothstep(0.2, 0.7, edge).mul(b.x);
+                const alpha = float(1.0).sub(exp(puffBody.mul(a.w).mul(EXTINCTION * 1.5).negate())).toVar();
+                const phase = cnPhase(dot(normalize(a.xyz.sub(u.pulsar)), toEye), u.forward);
+                const lit = b.y.mul(g).mul(PUFF_EMBER).add(lampAt(a.xyz, float(0.1)).mul(phase)).add(u.ambient.mul(2.0));
+                light.addAssign(lit.mul(alpha).mul(trans));
+                trans.mulAssign(float(1.0).sub(alpha.mul(0.85)));
+            });
+        });
+
+        // (the air's light, the mist's light, how much of the sea the mist hides, what the air lets through)
+        const result = vec3(light.mul(u.breath), mist.mul(u.breath), mistVeil);
+        if (!u.floatTarget) return vec4(sqrt(clamp(result.div(SMOKE_CODE_PEAK), 0.0, 1.0)), trans);
+        return vec4(result, trans);
     });
 
     const material = cnPassMaterial('CosmicNoirSmokePass', paint());
@@ -347,24 +379,9 @@ export function createSmoke(u, {
     let target = cnTarget(4, 4, 'cosmic-noir-smoke-target', u.floatTarget);
     u.targetTex.value = target.texture;
 
-    // ── The backdrop: the sky, the pulsar, the cage, the smoke laid over them ──
+    // ── The backdrop: the sky, the sea, the lighthouse, the air laid over them ──
 
-    /** Far stars on one lattice of the sky: light summed over the cell a direction falls in. */
-    const starLayer = (dir, scale, seed, spread) => {
-        const p = dir.mul(scale).add(seed);
-        const cell = floor(p);
-        const f = fract(p).sub(0.5);
-        const h = cnHash23(cell.xy.add(cell.z.mul(vec2(37.0, 17.0))));
-        const g = cnHash23(cell.xy.add(cell.z.mul(vec2(-11.0, 53.0))).add(4.7));
-        const at = vec3(h.x, h.y, g.x).sub(0.5).mul(0.7);
-        const away = length(f.sub(at));
-        // A few bright ones, a great many faint ones.
-        const mag = pow(h.z, 10.0).mul(2.2).add(pow(g.y, 3.0).mul(0.12));
-        const core = float(1.0).sub(smoothstep(0.0, spread, away));
-        return core.mul(core).mul(mag);
-    };
-
-    /** The smoke's target through a small tent: neighbours start their walks at different places. */
+    /** The air's target through a small tent (it hides what little grain the one walk leaves). */
     const smokeSoft = (st) => {
         const o = texel.mul(0.6);
         return u.smokeAt(st.add(vec2(o.x, o.y)))
@@ -374,107 +391,72 @@ export function createSmoke(u, {
             .mul(0.25);
     };
 
+    const showSea = uniform(1);
+    const showTower = uniform(1);
+
     const backdropFn = Fn(() => {
         const st = screenUV;
         const ray = cnViewRay(u, st).toVar();
         const o = u.camPos;
+        const rel = o.sub(u.pulsar).toVar();
 
-        // ── The deep sky and its far stars ──
-        const sky = float(0.0012).add(smoothstep(-0.4, 0.6, ray.y).mul(0.0006)).toVar();
-        for (let i = 0; i < skyLayers; i++) {
-            const scale = [160, 104, 66][i];
-            const want = u.pixelAngle.mul(scale * 1.25);
-            const spread = min(want, 0.4);
-            const thin = min(float(STAR_SPREAD).div(want), 1.0);
-            sky.addAssign(starLayer(ray, scale, vec3(13.3 * (i + 1), 5.1 * (i + 2), 9.7 * (i + 3)), spread).mul(thin.mul(thin)));
-        }
+        // ── The lighthouse on its rock ──
+        const house = cnLighthouse(u, o, ray, { steps: tower, detail });
+        const houseT = house.t;
+        const houseCover = house.cover.mul(showTower).toVar();
 
-        // ── The pulsar's core (seen through the gaps of the cage) ──
+        // ── The sea of smoke ──
+        const seaT = float(-1.0).toVar();
+        const scene = float(0.0).toVar();
+        // A pixel the lighthouse covers whole needs no sea behind it.
+        If(houseCover.lessThan(0.999).or(houseT.lessThan(0.0)).and(showSea.greaterThan(0.5)), () => {
+            const walk = cnSeaMarch(u, o, ray, { march });
+            seaT.assign(walk.t);
+            If(seaT.greaterThan(0.0), () => {
+                const bearing = normalize(vec3(ray.x, 0.004, ray.z)).toVar();
+                const far = cnSky(u, bearing, { stars: false, detail: false }).toVar();
+                scene.assign(cnSeaLight(u, o, ray, seaT, far, { shadow, fine }));
+                // The loose smoke the ray passed through on its way.
+                If(walk.fringe.greaterThan(0.004), () => {
+                    const loose = cnSeaFringe(u, o, ray, walk).toVar();
+                    scene.assign(mix(scene, loose.x, loose.y));
+                });
+            });
+        });
+        If(seaT.lessThanEqual(0.0), () => {
+            scene.assign(cnSky(u, ray, { layers: skyLayers, detail }));
+        });
+
+        // The lighthouse over it, unless the sea stands in front (the smoke laps softly round the rock).
+        const lap = seaT.greaterThan(0.0).select(smoothstep(0.0, 0.5, seaT.sub(houseT)), 1.0);
+        const shown = houseCover.mul(houseT.greaterThan(0.0).select(lap, 0.0)).toVar();
+        scene.assign(mix(scene, house.light, shown));
+
+        // ── Inside the lantern, through the gaps: the smoke round the lens, glowing ──
+        // The lens's light over the ray's chord of the room, exactly: ∫ R² / (R² + d² + (t − tc)²) dt.
+        const room = cnUpright(rel, ray, float(CAGE.radius - 0.04), float(-CAGE.halfHeight), float(CAGE.halfHeight)).toVar();
+        If(room.z.greaterThan(0.5).and(showTower.greaterThan(0.5)), () => {
+            const ta = max(room.x, 0.0);
+            const tb = houseT.greaterThan(0.0).select(min(room.y, max(houseT, room.x)), room.y);
+            const bc = dot(ray, rel);
+            const dMin2 = max(dot(rel, rel).sub(bc.mul(bc)), 0.0);
+            const k = sqrt(dMin2.add(AIR_REACH * AIR_REACH * 0.25));
+            const chord = atan(tb.add(bc), k).sub(atan(ta.add(bc), k)).div(k).mul(AIR_REACH * AIR_REACH * 0.25);
+            scene.addAssign(u.coreGain.mul(max(chord, 0.0)).mul(INNER_SMOKE * EXTINCTION).mul(u.breath));
+        });
+
+        // ── The air over it all ──
+        const smoke = smokeSoft(st).toVar();
+        // The mist lies on the sea: what stands in front of the sea (the lighthouse, its rock) is clear of it.
+        const misted = float(1.0).sub(shown);
+        const out = scene.mul(float(1.0).sub(smoke.b.mul(misted))).mul(smoke.a).add(smoke.r).add(smoke.g.mul(misted))
+            .toVar();
+
+        // ── The lens: halo, star-filter spikes and the glare of a beam looking at us ──
+        // (attenuated by the air between us and the lamp, read at the lamp's place).
         const toP = normalize(u.pulsar.sub(o));
         const cosOff = clamp(dot(ray, toP), -1.0, 1.0);
         const off = sqrt(max(float(2.0).sub(cosOff.mul(2.0)), 0.0)).toVar(); // radians off it, about
-        const point = exp(off.mul(off).mul(-60000.0)).mul(60.0);
-        const behind = sky.add(point.mul(u.coreSeen)).toVar();
-
-        // ── The cage, sharp: dark slats in front, lit inner faces behind, rims of light ──
-        const cyl = cnCylinder(o, ray, u).toVar();
-        const cageCol = float(0.0).toVar();
-        const cover = float(0.0).toVar();
-        If(cyl.z.greaterThan(0.5).and(cyl.y.greaterThan(0.0)), () => {
-            const pitch = float((Math.PI * 2 * CAGE.radius) / CAGE.slats);
-            // A pixel's width in shares of a slat's pitch at each wall (the edges are anti-aliased by it).
-            const wFront = u.pixelAngle.mul(max(cyl.x, 0.1)).div(pitch).mul(1.4);
-            const wBack = u.pixelAngle.mul(cyl.y).div(pitch).mul(1.4);
-            const slatCover = (f, w) => smoothstep(w.negate(), w, f).mul(float(1.0).sub(smoothstep(u.cageFill.sub(w), u.cageFill.add(w), f)));
-            const ringCover = (h, w) => smoothstep(1.0 - CAGE.ring - 0.02, 1.0 - CAGE.ring + 0.02, abs(h))
-                .mul(float(1.0).sub(smoothstep(float(1.0).sub(w), float(1.0).add(w), abs(h))));
-            const front = cnCageSurface(o, ray, cyl.x, u).toVar();
-            const back = cnCageSurface(o, ray, cyl.y, u).toVar();
-            const hw = u.pixelAngle.mul(max(cyl.x, 0.1)).div(CAGE.halfHeight).mul(1.5).toVar();
-            const inFront = float(1.0).sub(smoothstep(float(1.0).sub(hw), float(1.0).add(hw), abs(front.y))).mul(step(0.0, cyl.x));
-            const inBack = float(1.0).sub(smoothstep(float(1.0), float(1.0).add(hw.mul(2.0)), abs(back.y)));
-            const fCover = max(slatCover(front.x, wFront), ringCover(front.y, hw)).mul(inFront).toVar();
-            const bCover = max(slatCover(back.x, wBack), ringCover(back.y, hw)).mul(inBack).toVar();
-            // The back wall's inner faces take the core's light, and a beam's where one strikes;
-            // each slat a little brighter at its middle (it is a curved vane).
-            const pb = o.add(ray.mul(cyl.y)).sub(u.pulsar);
-            const db = normalize(pb);
-            const lit = u.coreGain.mul(0.035).add(cnBeam(db, u.beam).mul(u.beamGain).mul(0.06));
-            const across = abs(back.x.div(max(u.cageFill, 1e-3)).sub(0.5)).mul(2.0);
-            const backCol = lit.mul(float(1.0).sub(across.mul(across).mul(0.5)));
-            // A slat in front stands black against the light, a thin rim where light spills round
-            // its edge.
-            const edgeDist = min(front.x, abs(front.x.sub(u.cageFill)));
-            const rimW = max(wFront.mul(0.9), 0.01);
-            const rimX = edgeDist.div(rimW);
-            const rim = exp(rimX.mul(rimX).negate()).mul(u.coreGain.mul(0.06)).mul(step(front.x, u.cageFill.add(wFront)));
-            const frontCol = float(0.0008).add(rim);
-            // ── Inside the lantern, through the gaps: smoke round the core, and the beams leaving ──
-            const ta = max(cyl.x, 0.0);
-            const tb = cyl.y;
-            const w0 = o.sub(u.pulsar);
-            const bc = dot(ray, w0);
-            const dMin2 = max(dot(w0, w0).sub(bc.mul(bc)), 0.0);
-            // The core's light over the chord, exactly: ∫ R² / (R² + d² + (t − tc)²) dt.
-            const k = sqrt(dMin2.add(PULSAR.coreReach * PULSAR.coreReach));
-            const chord = atan(tb.add(bc), k).sub(atan(ta.add(bc), k)).div(k).mul(PULSAR.coreReach * PULSAR.coreReach);
-            const inner = u.coreGain.mul(chord).toVar();
-            // The beams, in closed form where the ray passes nearest them inside the lantern.
-            const along = dot(ray, u.beam);
-            const sin2 = max(float(1.0).sub(along.mul(along)), 1e-4);
-            const dbw = dot(u.beam, w0);
-            const ts = along.mul(dbw).sub(bc).div(sin2);
-            const ss = dbw.sub(along.mul(bc)).div(sin2);
-            const qs = w0.add(ray.mul(ts));
-            const a0 = atan(length(qs.sub(u.beam.mul(ss))), abs(ss)).div(PULSAR.beamWidth * DEG);
-            const run = min(abs(ss).mul(Math.sqrt(Math.PI) * PULSAR.beamWidth * DEG).div(sqrt(sin2)), tb.sub(ta));
-            const rq = length(qs).div(PULSAR.beamReach);
-            inner.addAssign(u.beamGain.div(float(1.0).add(rq.mul(rq))).mul(exp(a0.mul(a0).negate())).mul(run)
-                .mul(step(ta, ts))
-                .mul(step(ts, tb)));
-            const innerLight = inner.mul(INNER_SMOKE * EXTINCTION).mul(u.breath).mul(inFront);
-            // Behind the inside: the lit inner face of a slat across, or the sky through a gap.
-            const farSide = mix(behind, backCol, bCover);
-            cageCol.assign(mix(farSide.add(innerLight), frontCol, fCover));
-            cover.assign(max(inFront, bCover));
-        });
-        // The lids: dark discs, a thin bright line round their rims.
-        const lid = cnLid(o, ray, u).toVar();
-        // A ray that reaches a lid before the side wall enters the cage through it: the lid is
-        // what it sees.
-        If(lid.z.greaterThan(0.5).and(lid.x.lessThan(cyl.x)), () => {
-            const rimLid = smoothstep(0.86, 0.97, lid.y).mul(float(1.0).sub(smoothstep(0.97, 1.0, lid.y)));
-            cageCol.assign(float(0.0008).add(rimLid.mul(u.coreGain.mul(0.05))));
-            cover.assign(float(1.0).sub(smoothstep(0.985, 1.0, lid.y)));
-        });
-        const scene = mix(behind, cageCol, cover);
-
-        // ── The smoke over it all ──
-        const smoke = smokeSoft(st).toVar();
-        const out = vec3(scene).mul(smoke.a).add(smoke.rgb).toVar();
-
-        // ── The lens: halo, star-filter spikes and the glare of a beam looking at us ──
-        // (attenuated by the smoke between us and the core, read at the core's place).
         const veil = u.smokeAt(u.pulsarUv).a;
         const seen = u.coreSeen.mul(veil);
         const halo = float(1.0).div(float(1.0).add(off.mul(off).mul(9000.0))).mul(0.35)
@@ -482,17 +464,17 @@ export function createSmoke(u, {
         const aspect = u.viewport.x.div(u.viewport.y);
         const dp = st.sub(u.pulsarUv).mul(vec2(aspect, 1.0));
         const spike = (cx, cy) => {
-            const along = dp.x.mul(cx).add(dp.y.mul(cy));
+            const lengthwise = dp.x.mul(cx).add(dp.y.mul(cy));
             const across = dp.x.mul(cy.negate()).add(dp.y.mul(cx));
             const w = u.pixelAngle.mul(1.1).div(0.0012).mul(0.0009);
-            return exp(across.mul(across).div(w.mul(w)).negate()).mul(exp(abs(along).mul(-16.0)));
+            return exp(across.mul(across).div(w.mul(w)).negate()).mul(exp(abs(lengthwise).mul(-16.0)));
         };
         const c45 = Math.SQRT1_2;
         const spikes = spike(float(c45), float(c45)).add(spike(float(c45), float(-c45)))
             .add(spike(float(1.0), float(0.0)).mul(0.35)).add(spike(float(0.0), float(1.0)).mul(0.35));
         const glare = float(1.0).div(float(1.0).add(off.mul(off).mul(22.0))).mul(u.glare);
-        out.addAssign(vec3(halo.add(spikes.mul(0.9).mul(u.spikes)).mul(seen).add(glare.mul(veil.mul(0.6).add(0.4)))));
-        return vec4(max(out, vec3(0.0)), 1.0);
+        out.addAssign(halo.add(spikes.mul(0.9).mul(u.spikes)).mul(seen).add(glare.mul(veil.mul(0.6).add(0.4))));
+        return vec4(vec3(max(out, 0.0)), 1.0);
     });
 
     const geometry = new THREE.BufferGeometry();
@@ -505,6 +487,11 @@ export function createSmoke(u, {
     const part = cnPart('CosmicNoirBackdrop', geometry, backdrop, -100);
 
     part.pass = { quad, material };
+    /** Draw the sea and the lighthouse, or leave them out (captures, bisecting a look). */
+    part.show = ({ sea = true, tower: house = true } = {}) => {
+        showSea.value = sea ? 1 : 0;
+        showTower.value = house ? 1 : 0;
+    };
     /** Size the target for a drawing buffer and a tier's scale. Returns true if it was rebuilt. */
     part.resize = (bufferWidth, bufferHeight, scale) => {
         const w = Math.max(2, Math.round(bufferWidth * scale));
@@ -516,7 +503,7 @@ export function createSmoke(u, {
         texel.value.set(1 / w, 1 / h);
         return true;
     };
-    /** Paint the smoke for this frame (the camera uniforms must be current). */
+    /** Paint the air for this frame (the camera uniforms must be current). */
     part.render = (renderer) => {
         if (!renderer || typeof renderer.setRenderTarget !== 'function') return false;
         const previous = typeof renderer.getRenderTarget === 'function' ? renderer.getRenderTarget() : null;

@@ -6,10 +6,10 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-    CAGE, CUE_GAP, CUE_SHOW, DEG, ECHO_MAX, ECHO_SPEED, FILM_STOCKS, NEGATIVE_FADE, NEGATIVE_HOLD, PULSAR,
-    STOCK_HOME, STOCK_REST, STOCK_STEP, TAU,
-    beamDirection, beamLight, cageTransmit, cueAt, echoRadius, negativeAt, pulsarAnchor, spinBasis, stockAt,
-    stockName, stockPhase, stockPlace,
+    CAGE, CUE_GAP, CUE_SHOW, DEG, ECHO_MAX, ECHO_SEA_MAX, ECHO_SPEED, FAR_LAMP, FILM_STOCKS, NEGATIVE_FADE,
+    NEGATIVE_HOLD, PULSAR, SEA, SEA_FLOOR, SEA_TOP, STOCK_HOME, STOCK_REST, STOCK_STEP, TAU, TOWER,
+    beamDirection, beamLight, cageTransmit, cueAt, echoRadius, echoSeaRadius, farLampAt, lampPose, negativeAt,
+    pulsarAnchor, spinBasis, stockAt, stockName, stockPhase, stockPlace,
 } from '../../src/themes/cosmic-noir/cosmic-noir-core.js';
 
 const luma = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
@@ -148,6 +148,36 @@ describe('cosmic noir core: the events\' timing', () => {
         expect(ECHO_MAX).toBeLessThan(PULSAR.depth - 2);
     });
 
+    it('runs the echo\'s ring over the sea faster and further: out past the eye, toward the horizon', () => {
+        expect(echoSeaRadius(0)).toBe(0);
+        let prev = 0;
+        for (let t = 0.1; t < 6; t += 0.1) {
+            const r = echoSeaRadius(t);
+            expect(r).toBeGreaterThan(prev);
+            expect(r).toBeGreaterThan(echoRadius(t));
+            prev = r;
+        }
+        expect(echoSeaRadius(1.5)).toBeGreaterThan(PULSAR.depth);
+        expect(echoSeaRadius(1e3)).toBeLessThanOrEqual(ECHO_SEA_MAX);
+    });
+
+    it('flashes the far light twice a period and leaves it dark between', () => {
+        let lit = 0;
+        let flashes = 0;
+        let on = false;
+        for (let t = 0; t < FAR_LAMP.period; t += 0.01) {
+            const v = farLampAt(t);
+            expect(v).toBeGreaterThanOrEqual(0);
+            expect(v).toBeLessThanOrEqual(1);
+            if (v > 0.5) lit += 0.01;
+            if (v > 0.5 && !on) flashes += 1;
+            on = v > 0.5;
+        }
+        expect(flashes).toBe(2);
+        expect(lit).toBeLessThan(FAR_LAMP.period * 0.15);
+        expect(farLampAt(3.3)).toBeCloseTo(farLampAt(3.3 + FAR_LAMP.period * 4), 9);
+    });
+
     it('holds the negative, then lets it go', () => {
         expect(negativeAt(-0.01)).toBe(0);
         expect(negativeAt(0)).toBe(1);
@@ -163,6 +193,39 @@ describe('cosmic noir core: the events\' timing', () => {
         expect(starts).toHaveLength(2);
         expect(starts[1] - starts[0]).toBeCloseTo(CUE_GAP, 1);
         expect(lit.length * 0.01).toBeCloseTo(CUE_SHOW * 2, 1);
+    });
+
+    it('stands the lighthouse in a sea that lies below the eye, its lamp clear of everything', () => {
+        // The eye stands at 0: the sea never reaches it, and the tower's foot stands out of the sea.
+        expect(SEA_TOP).toBeLessThan(-0.5);
+        expect(SEA_FLOOR).toBeLessThan(SEA.level);
+        expect(SEA.level + TOWER.footLift).toBeGreaterThan(SEA_TOP - 0.3);
+        // The lamp looks out over the gallery's rail, and the beam that looks down reaches the sea
+        // between the rock and the eye.
+        const down = 90 - PULSAR.inclination;
+        expect(down).toBeGreaterThan(20);
+        const reach = (PULSAR.height - SEA.level) / Math.tan(down * DEG);
+        expect(reach).toBeGreaterThan(TOWER.footRadius * 3);
+        expect(reach).toBeLessThan(PULSAR.depth);
+    });
+
+    it('turns the camera so the lamp hangs exactly at its anchor, over a level horizon below it', () => {
+        for (const aspect of [1.33, 16 / 9, 2.4, 9 / 19.5]) {
+            const a = pulsarAnchor(aspect);
+            const { yaw, pitch, horizon } = lampPose(a.x, a.y, a.vFov, aspect);
+            // The camera's frame for that turn and tilt (no roll).
+            const f = [Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)];
+            const r = [Math.cos(yaw), 0, Math.sin(yaw)];
+            const up = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
+            const lamp = [0, PULSAR.height, -PULSAR.depth];
+            const tanV = Math.tan((a.vFov * DEG) / 2);
+            const ahead = dot(lamp, f);
+            expect(ahead).toBeGreaterThan(0);
+            expect(0.5 + dot(lamp, r) / ahead / (tanV * aspect) / 2, `x at ${aspect}`).toBeCloseTo(a.x, 6);
+            expect(0.5 - dot(lamp, up) / ahead / tanV / 2, `y at ${aspect}`).toBeCloseTo(a.y, 6);
+            expect(horizon).toBeGreaterThan(a.y + 0.2);
+            expect(horizon).toBeLessThan(0.85);
+        }
     });
 
     it('hangs the lantern beside the board on a landscape screen, above it on an upright phone', () => {

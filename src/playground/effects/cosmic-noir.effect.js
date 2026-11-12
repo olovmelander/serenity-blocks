@@ -15,15 +15,17 @@
  *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>)
  *   demo=1                   live only: play a looping gameplay script
- *   parts=sky,smoke          draw only these parts (sky alone: the smoke switched off)
+ *   parts=sky,sea,tower      draw only these parts: sky (always drawn), smoke (the light in the
+ *                            air), sea, tower
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no halation/grade)
  *   bloom=0|1                override the tier's halation
  *   grain=0                  no grain or dust (judge the grade itself)
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   reduce=1                 reduced motion
- *   icon=1                   the theme-icon framing: the lens looks straight at the lantern
- *                            (iconFov=34; compose for a small circle: capture a square frame)
+ *   icon=1                   the theme-icon framing: the lens looks straight at the lighthouse, a
+ *                            little below its lamp (iconFov=34; compose for a small circle:
+ *                            capture a square frame)
  *
  * Probes: window.__cosmicNoir = { world, post, seekEvent(t, { name, age, lines, combo, level }) }
  * replays any event at any age and renders it in the same task (contact sheets).
@@ -37,13 +39,16 @@ import { PULSAR } from '../../themes/cosmic-noir/cosmic-noir-core.js';
 export const meta = {
     id: 'cosmic-noir',
     title: 'Cosmic Noir (full world)',
-    description: 'Smoke in the searchlight: a pulsar in a shutter cage sweeps its beams through drifting smoke, printed in black and white.',
+    description: 'The last lighthouse: a pulsar in a lighthouse on a rock sweeps its beams over a sea of smoke under a rising galaxy, printed in black and white.',
 };
 
 function num(params, key, fallback = 0) {
     const v = Number.parseFloat(params.get(key));
     return Number.isFinite(v) ? v : fallback;
 }
+
+/** The icon lens looks this far below the lamp (scene units): the lantern above the middle, the banded shaft below. */
+const ICON_DROP = 3.0;
 
 const BOARD_PX = 'min(clamp(220px, 22vw, 300px), (100vh - 250px) / 2)';
 
@@ -165,7 +170,7 @@ export function create({
         camera.fov = num(params, 'iconFov', 34);
         camera.updateProjectionMatrix();
         camera.up.set(0, 1, 0);
-        camera.lookAt(0, 0, -PULSAR.depth);
+        camera.lookAt(0, PULSAR.height - ICON_DROP, -PULSAR.depth);
         camera.updateMatrixWorld();
         world.u.pixelAngle.value = (2 * Math.tan((camera.fov * Math.PI) / 360)) / Math.max(1, size.y);
     };

@@ -1,20 +1,24 @@
 /**
  * Cosmic Noir — the world.
  *
- * Owns the shared uniforms, the smoke and its backdrop, the camera rig and the choreography.
- * Shared by the theme (cosmic-noir-theme.js) and the playground effect
- * (src/playground/effects/cosmic-noir.effect.js), so what is iterated there ships.
+ * Owns the shared uniforms, the picture (the sky, the sea of smoke, the lighthouse and the light in
+ * the air), the camera rig and the choreography. Shared by the theme (cosmic-noir-theme.js) and the
+ * playground effect (src/playground/effects/cosmic-noir.effect.js), so what is iterated there ships.
  *
- * "Smoke in the searchlight": a pulsar turns inside the derelict shutter cage of a lantern beside
- * the board, and its two beams sweep like a lighthouse's through drifting smoke. Where a beam
- * crosses the slats it is cut into a fan of shafts; a beam that looks toward us blazes and the
- * lens glares. The picture is a black-and-white print, toned by one film stock at a time.
+ * "The last lighthouse": a lighthouse on a shard of rock in a sea of interstellar smoke, the home
+ * galaxy rising over the sea's horizon. A captive pulsar turns in its lantern room behind a ring of
+ * shutter slats: one beam rakes the sea (every swell throws a long shadow), its opposite searches
+ * the sky, and the lamp's own light leaves between the slats as a fan of shafts, their shadows
+ * lying on the sea as spokes. A beam that looks toward us blazes and the lens glares. The picture
+ * is a black-and-white print, toned by one film stock at a time.
  *
- *   lock     smoke billows out of the card's edge at the piece's height, lit from inside by a
- *            dying ember, and drifts off (a hard drop puffs harder).
- *   clear    the pulsar flares and a light echo per line leaves it: shells of light that expand
- *            through the smoke and draw its shape in rings. Each wave of a cascade rings deeper,
- *            wider and quicker than the last.
+ *   lock     the piece goes under: an ember glows up through the sea of smoke beside the card (the
+ *            lower the piece locked, the nearer the eye), a puff rises off it and drifts away, and
+ *            rings of ripples run out over the sea (a hard drop lands harder).
+ *   clear    the pulsar flares and a light echo per line leaves it: a ring of light that runs out
+ *            over the sea from the rock, under the eye and on toward the horizon, and a shell in
+ *            the air that flashes down the tower. Each wave of a cascade rings deeper, wider and
+ *            quicker than the last.
  *   combo    each step of a chain spins the lighthouse up (the sweep quickens) and opens the
  *            blinds (the slats turn edge-on: wider shafts); a broken chain lets them close, and
  *            a long one lets one slow ring go (the lighthouse exhales).
@@ -40,8 +44,9 @@
  *   warm     the room takes notice: locks fill it with smoke, the blinds begin to open, the beams
  *            carry more light.
  *   hot      the lighthouse runs: the sweep quickens, the blinds open, the beams cut solid blades
- *            through the thickened smoke while the lantern's all-round glow holds back, and the
- *            print goes to a harder paper grade (the haze sinks into the black), its grain coarser.
+ *            through the thickened smoke while the lantern's all-round glow holds back, the sea
+ *            heaves higher and runs faster, and the print goes to a harder paper grade (the haze
+ *            sinks into the black), its grain coarser.
  *   fever    the showpiece: the blinds stand nearly edge-on, the beams blaze through a room full of
  *            smoke, the star filter's spikes stretch, the print leans into its heat tone (gold
  *            light, cold shadows), dust runs on the print and the iris and the vignette close in.
@@ -64,18 +69,27 @@ import {
     PULSAR,
     PUFF_LIFE,
     PUFF_SLOTS,
+    SEA,
+    SEA_LAYERS,
+    SEA_SEED,
+    SEA_WIND,
     SMOKE,
     SMOKE_SEED,
     TAU,
     approach,
+    bakeSeaField,
     bakeSmokeNoise,
     beamDirection,
     beamLight,
     cageTransmit,
     createNoirUniforms,
+    createSeaTexture,
     createSmokeTexture,
     cueAt,
     echoRadius,
+    echoSeaRadius,
+    farLampAt,
+    lampPose,
     negativeAt,
     pulsarAnchor,
     smooth,
@@ -120,8 +134,26 @@ export const CAGE_TURN = -TAU / CAGE.period;
 const CAGE_SPIN_FADE = 0.8;
 /** The slow field's own drift (tiles/s): the smoke curls as it moves. */
 const CURL_RATE = Object.freeze([0.011, 0.006, 0.009]);
-/** How far in front of the camera a lock's puff leaves the card (scene units). */
-const PUFF_DEPTH = 9;
+/** The furthest out on the sea a lock's ember is set (scene units from the eye). */
+const PUFF_REACH = 34;
+/**
+ * How fast each of the sea's layers runs before the wind, as a share of SEA.wind: the billows run
+ * ahead of the swells, the wisps ahead of both, so the sea's shape is never the same twice.
+ */
+const SEA_RUN = Object.freeze({ swell: 1, billow: 1.7, wisp: 2.6 });
+const WIND_SPEED = Math.hypot(SEA.wind[0], SEA.wind[1]);
+/** A layer's drift through its tile (tiles/s, along its own two axes) for a wind speed. */
+const layerRun = (layer, speed) => {
+    const vx = SEA_WIND[0] * speed;
+    const vz = SEA_WIND[1] * speed;
+    return [-(vx * layer.ax + vz * layer.az) * layer.iu, -(vx * layer.bx + vz * layer.bz) * layer.iv];
+};
+const SEA_RATES = Object.freeze({
+    swell: layerRun(SEA_LAYERS.swell, WIND_SPEED * SEA_RUN.swell),
+    billow: layerRun(SEA_LAYERS.billow, WIND_SPEED * SEA_RUN.billow),
+    wisp: layerRun(SEA_LAYERS.wisp, WIND_SPEED * SEA_RUN.wisp),
+});
+const wrap1 = (v) => v - Math.floor(v);
 /** The chain's share of the beams' light eases at the spin's rates (up, down): never a cut. */
 const CHAIN_GAIN_RISE = 1.4;
 const CHAIN_GAIN_FALL = 0.5;
@@ -135,7 +167,7 @@ const clamp01 = (v) => Math.max(0, Math.min(1, v));
 const warmOf = (level) => smooth(0.15, 0.5, level);
 const hotOf = (level) => smooth(0.45, 0.85, level);
 
-const PARTS = ['sky', 'smoke'];
+const PARTS = ['sky', 'smoke', 'sea', 'tower'];
 
 export class CosmicNoirWorld {
     /**
@@ -169,6 +201,8 @@ export class CosmicNoirWorld {
         this.layout = fallbackLayout(1600, 900);
         this.layoutLive = false;
         this.anchor = pulsarAnchor(this.aspect);
+        /** Where the sea's horizon lies on screen (fraction, y down): set with the camera. */
+        this.horizonY = 0.66;
         this.basis = spinBasis();
         this._camera = null;
         this._rest = new THREE.PerspectiveCamera(50, 16 / 9, REST_RIG.near, REST_RIG.far);
@@ -215,7 +249,12 @@ export class CosmicNoirWorld {
         this.tintSwell = new Swell({
             attack: 0.12, release: 2.2, ceiling: 1, knee: 0.7,
         });
-        this.swells = [this.flareSwell, this.flashSwell, this.smokeSwell, this.crownSwell, this.tintSwell];
+        /** The far lighthouse answers the great moments (four lines, a crown, a new reel). */
+        this.answerSwell = new Swell({
+            attack: 0.12, release: 1.1, ceiling: 1.6, knee: 1.1,
+        });
+        this.swells = [this.flareSwell, this.flashSwell, this.smokeSwell, this.crownSwell, this.tintSwell,
+            this.answerSwell];
         this.heat = {
             level: 0, fever: 0, punch: 0, stage: 0, warm: 0, hot: 0,
         };
@@ -261,6 +300,9 @@ export class CosmicNoirWorld {
         this.cageFill = CAGE.fillClosed;
         this.drift = SMOKE.wind.map((w) => w * motion * time);
         this.curl = CURL_RATE.map((c) => c * motion * time);
+        /** How far the sea's layers have run through their tiles (swell u, v, billow u, v, wisp u, v). */
+        this.seaRun = [...SEA_RATES.swell, ...SEA_RATES.billow, ...SEA_RATES.wisp].map((rate) => wrap1(rate * motion * time));
+        this.seaHeave = 1;
         this.echoSlots.forEach((slot) => {
             slot.birth = -1e6;
             slot.strength = 0;
@@ -277,21 +319,30 @@ export class CosmicNoirWorld {
         const baked = bakeSmokeNoise(SMOKE_SEED, tier.noise);
         const smoke = createSmokeTexture(baked.near, tier.noise);
         const smokeFar = createSmokeTexture(baked.far, baked.farSize, 'cosmic-noir-smoke-far');
+        const seaField = bakeSeaField(SEA_SEED, tier.sea);
+        const sea = createSeaTexture(seaField.levels, seaField.size);
         const placeholder = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
         placeholder.needsUpdate = true;
-        this.textures.push(smoke, smokeFar, placeholder);
+        this.textures.push(smoke, smokeFar, sea, placeholder);
         const u = createNoirUniforms({
-            smoke, smokeFar, target: placeholder, floatTarget: this.floatTarget,
+            smoke, smokeFar, sea, seaSize: seaField.size, target: placeholder, floatTarget: this.floatTarget,
         });
         this.u = u;
         const { a, e1, e2 } = this.basis;
         u.spin.value.set(a[0], a[1], a[2]);
         u.spinE1.value.set(e1[0], e1[1], e1[2]);
         u.spinE2.value.set(e2[0], e2[1], e2[2]);
-        u.pulsar.value.set(0, 0, -PULSAR.depth);
+        u.pulsar.value.set(0, PULSAR.height, -PULSAR.depth);
 
         this.smoke = createSmoke(u, {
-            march: tier.march, taps: tier.taps, detail: tier.detail, skyLayers: tier.skyLayers,
+            march: tier.march,
+            shadow: tier.shadow,
+            fine: tier.fine,
+            tower: tier.tower,
+            air: tier.air,
+            wisps: tier.wisps,
+            detail: tier.detail,
+            skyLayers: tier.skyLayers,
         });
         this.parts.sky = this.smoke;
         this.root.add(this.smoke.mesh);
@@ -304,10 +355,14 @@ export class CosmicNoirWorld {
         return this;
     }
 
-    /** Draw only the named parts (captures, bisecting a look): `sky` (always drawn), `smoke`. */
+    /**
+     * Draw only the named parts (captures, bisecting a look): `sky` (always drawn), `smoke` (the
+     * light in the air), `sea`, `tower`.
+     */
     showOnlyParts(names) {
         const keep = new Set(names);
         this.smokeOn = keep.has('smoke');
+        this.smoke?.show({ sea: keep.has('sea'), tower: keep.has('tower') });
         if (!this.smokeOn && this.smoke) {
             // Paint the target clear once (no smoke, full transmittance).
             this._clearTarget = true;
@@ -384,17 +439,15 @@ export class CosmicNoirWorld {
     // ── The lantern's place in the frame ────────────────────────────────────────
 
     /**
-     * Turn a camera at the origin so that the pulsar (on −Z) hangs at the anchor for this aspect:
-     * it looks aside by exactly what puts the pulsar there, with no roll.
+     * Turn a camera at the origin so that the lamp hangs at the anchor for this aspect: it looks
+     * aside and up by exactly what puts the lamp there, with no roll, so the sea's horizon is level.
      */
     aim(camera, fov, yawOff = 0, pitchOff = 0, roll = 0) {
         const a = this.anchor;
-        const tanV = Math.tan((fov * DEG) / 2);
-        const tanH = tanV * this.aspect;
-        const nx = a.x * 2 - 1;
-        const ny = 1 - a.y * 2;
-        const pitch = Math.atan(-ny * tanV) + pitchOff;
-        const yaw = Math.atan(-nx * tanH * Math.cos(pitch)) + yawOff;
+        const pose = lampPose(a.x, a.y, fov, this.aspect);
+        this.horizonY = pose.horizon;
+        const pitch = pose.pitch + pitchOff;
+        const yaw = pose.yaw + yawOff;
         const f = this._f.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
         const r = this._r.set(Math.cos(yaw), 0, Math.sin(yaw));
         const up = this._up.copy(r).cross(f).normalize();
@@ -486,6 +539,37 @@ export class CosmicNoirWorld {
         return out;
     }
 
+    /**
+     * The point of the sea of smoke under a screen point (fractions, y down), no further out than
+     * PUFF_REACH; a point above the horizon is taken at that reach on its bearing.
+     */
+    seaAt(sx, sy, out = this._from) {
+        const camera = this._camera;
+        let dx = 0;
+        let dy = -0.3;
+        let dz = -1;
+        let ox = 0;
+        let oy = 0;
+        let oz = 0;
+        if (camera) {
+            this._ray.set(sx * 2 - 1, 1 - sy * 2, 0.5).unproject(camera).sub(camera.position).normalize();
+            dx = this._ray.x;
+            dy = this._ray.y;
+            dz = this._ray.z;
+            ox = camera.position.x;
+            oy = camera.position.y;
+            oz = camera.position.z;
+        }
+        const drop = Math.max(0.2, oy - SEA.level);
+        const flat = Math.hypot(dx, dz) || 1;
+        // Along the ground: as far as the ray goes before it meets the sea, capped.
+        const reach = dy < -1e-3 ? Math.min(PUFF_REACH, (drop / -dy) * flat) : PUFF_REACH;
+        out[0] = ox + (dx / flat) * reach;
+        out[1] = SEA.level;
+        out[2] = oz + (dz / flat) * reach;
+        return out;
+    }
+
     // ── Gameplay ────────────────────────────────────────────────────────────────
 
     /** The card a board sits in (several boards: each has its own), else every card as one. */
@@ -554,34 +638,41 @@ export class CosmicNoirWorld {
     }
 
     /**
-     * A piece locked: smoke billows out of the card's edge at its height, lit from inside by a dying
-     * ember. `u` = its column as a fraction of the board width, `rows` = the visible rows it covers;
-     * `screen` (fractions) replaces the board point (the meditation mode's clicks).
+     * A piece locked: it goes under the sea of smoke beside the card. An ember glows up through the
+     * smoke, a puff rises off it and rings of ripples run out. `u` = its column as a fraction of
+     * the board width (the left half lands left of the card, the right half right of it), `rows` =
+     * the visible rows it covers (the lower it locked, the nearer the eye it lands); `screen`
+     * (fractions) replaces the board point (the meditation mode's clicks).
      */
     onLock({
         u = 0.5, rows = null, hardDrop = false, player = 0, screen = null,
     } = {}) {
         if (!this.u) return;
         let px = 0.5;
-        let py = 0.6;
+        let depth = 1;
         let side = -1;
+        // Each lands a little apart from the last (a fixed spread: a replay is the same sea).
+        const spread = ((this.puffCursor + 1) * 0.618034) % 1;
         if (screen && Number.isFinite(screen.x) && Number.isFinite(screen.y)) {
             px = screen.x;
-            py = screen.y;
+            depth = clamp01((screen.y - 0.2) / 0.7);
             side = px < 0.5 ? -1 : 1;
         } else {
             const board = boardFor(this.layout, player);
             const card = this.cardFor(board);
+            side = u < 0.5 ? -1 : 1;
             if (board) {
                 const row = Array.isArray(rows) && rows.length ? rows[Math.floor(rows.length / 2)] : 19;
                 boardPoint(board, u, row, this._point);
-                py = this._point.y;
-                // The puff leaves the card's nearer side edge.
-                side = u < 0.5 ? -1 : 1;
+                depth = clamp01((row + 1) / 20);
+                // It lands beside the card's nearer side edge, where the sea shows.
                 px = this._point.x;
-                if (card) px = side < 0 ? card.x0 : card.x1;
+                if (card) px = (side < 0 ? card.x0 : card.x1) + side * (0.02 + 0.07 * spread);
             }
         }
+        // The sea runs from the horizon to the bottom of the frame: a low lock lands near the eye.
+        const top = Math.min(0.9, this.horizonY + 0.05);
+        const py = top + (0.955 - top) * (0.25 + 0.75 * depth) * (0.9 + 0.1 * spread);
         const t = this.time;
         // The puff with the least smoke left makes room; what it still held thins into the room.
         let slot = this.puffSlots[0];
@@ -597,13 +688,14 @@ export class CosmicNoirWorld {
         this.puffCursor += 1;
         this.surge.lock({ hardDrop }, t);
         this.smokeSwell.hit(hardDrop ? 0.07 : 0.045, t);
-        const from = this.screenToWorld(px, py, PUFF_DEPTH, [0, 0, 0]);
-        const out = this.screenToWorld(px + side * 0.06, py - 0.015, PUFF_DEPTH, [0, 0, 0]);
+        const from = this.seaAt(px, py, [0, 0, 0]);
+        const out = this.seaAt(px + side * 0.05, py, [0, 0, 0]);
         const speed = (hardDrop ? 1.6 : 1.1) * (this.reducedMotion ? 0.4 : 1);
-        const len = Math.hypot(out[0] - from[0], out[1] - from[1], out[2] - from[2]) || 1;
+        const len = Math.hypot(out[0] - from[0], out[2] - from[2]) || 1;
         slot.birth = t;
         slot.from = from;
-        slot.vel = [((out[0] - from[0]) / len) * speed, ((out[1] - from[1]) / len) * speed + 0.12, ((out[2] - from[2]) / len) * speed];
+        // It rises off the sea and drifts away from the card.
+        slot.vel = [((out[0] - from[0]) / len) * speed * 0.8, speed * 0.75, ((out[2] - from[2]) / len) * speed * 0.8];
         slot.smoke = hardDrop ? 1.0 : 0.75;
         // Each puff its own billows (a fixed spread: a replay is the same puff).
         slot.seed = ((this.puffCursor * 0.618034) % 1) * 7.0;
@@ -668,6 +760,8 @@ export class CosmicNoirWorld {
                 this.crownSwell.hit(0.25, t);
             }
             this.cageSpin += 1.4;
+            // The far light answers, a breath later.
+            this.answerSwell.hit(1, t + 0.9);
             this.counts.quads += 1;
         }
         if (twist) this.cageSpin += 3.2;
@@ -689,6 +783,7 @@ export class CosmicNoirWorld {
 
     /** The perfect clear's crown: on whatever is still ringing, never a second flashbulb. */
     crownLight(t) {
+        this.answerSwell.hit(0.8, t + 0.7);
         this.crownSwell.hit(1, t);
         this.flareSwell.hit(0.8, t);
         this.flashSwell.hit(0.1, t);
@@ -810,7 +905,7 @@ export class CosmicNoirWorld {
             if (age < 0 || age > ECHO_LIFE || slot.strength <= 0) continue;
             const radius = echoRadius(age);
             const gain = slot.strength * smooth(0, 0.06, age) * (1 - smooth(ECHO_LIFE * 0.5, ECHO_LIFE, age));
-            echoes[live].set(radius, slot.width * (1 + radius * 0.035), gain, 0);
+            echoes[live].set(radius, slot.width * (1 + radius * 0.035), gain, echoSeaRadius(age));
             live += 1;
         }
         u.echoCount.value = live;
@@ -831,7 +926,7 @@ export class CosmicNoirWorld {
             const smoke = slot.smoke * (1 - Math.exp(-age / 0.12)) * Math.exp(-age / 1.9);
             const ember = slot.ember * Math.exp(-age / 0.32) * emberHeat;
             puffs[count * 2].set(x, y, z, radius);
-            puffs[count * 2 + 1].set(smoke, ember, slot.seed || 0, 0);
+            puffs[count * 2 + 1].set(smoke, ember, slot.seed || 0, age);
             count += 1;
         }
         u.puffCount.value = count;
@@ -895,6 +990,13 @@ export class CosmicNoirWorld {
             this.drift[k] += SMOKE.wind[k] * motion * dt;
             this.curl[k] += CURL_RATE[k] * motion * dt;
         }
+        // The sea runs before the wind, faster as play burns hot, and heaves higher.
+        const gale = motion * (1 + 0.5 * hot + 0.4 * fever);
+        const rates = [...SEA_RATES.swell, ...SEA_RATES.billow, ...SEA_RATES.wisp];
+        for (let k = 0; k < 6; k++) this.seaRun[k] = wrap1(this.seaRun[k] + rates[k] * gale * dt);
+        const heaveTarget = 1 + 0.1 * warm + 0.14 * hot;
+        this.seaHeave += (heaveTarget - this.seaHeave) * approach(0.6, dt);
+        if (dt === 0) this.seaHeave = heaveTarget;
         this.applyStock(approach(1.1, dt));
         // The print leans into its heat tone as play burns hot, and blazes in it on a crown or a
         // back-to-back (the colours are toned on the stock: luminance kept).
@@ -915,12 +1017,15 @@ export class CosmicNoirWorld {
         const wrapZ = SMOKE.tile * 1.4 * 64;
         u.drift.value.set(this.drift[0] % wrapX, this.drift[1] % wrapY, this.drift[2] % wrapZ);
         u.curl.value.set(this.curl[0] % 64, this.curl[1] % 64, this.curl[2] % 64);
+        u.seaDrift.value.set(this.seaRun[0], this.seaRun[1], this.seaRun[2], this.seaRun[3]);
+        u.seaFine.value.set(this.seaRun[4], this.seaRun[5]);
+        u.seaHeave.value = this.seaHeave;
         // How squarely a beam looks toward the camera (0 side-on .. 1 straight at it): smoke
         // scatters a beam forward, so one that looks our way lights all the near smoke at once.
         this.facing = 0;
         if (camera) {
             const cx = camera.position.x;
-            const cy = camera.position.y;
+            const cy = camera.position.y - PULSAR.height;
             const cz = camera.position.z + PULSAR.depth;
             const len = Math.hypot(cx, cy, cz) || 1;
             this.facing = Math.abs((beam[0] * cx + beam[1] * cy + beam[2] * cz) / len);
@@ -934,6 +1039,8 @@ export class CosmicNoirWorld {
         u.beamGain.value = PULSAR.beamGain * (1 + flare * 0.7 + this.chainGain + beamHeat);
         u.coreGain.value = PULSAR.coreGain * (1 + flare * 1.2 * (1 - 0.6 * warm)) * (1 - 0.25 * hot);
         u.spikes.value = 1 + flare * 2.2 + 0.5 * hot + 0.8 * fever + 1.5 * crown;
+        // The far light keeps its own character (held steady under reduced motion) and answers.
+        u.farLamp.value = (calm ? 0.45 : farLampAt(t)) + 1.4 * this.answerSwell.valueAt(t);
         // Smoke fills the room: the beams become solid blades through it, seen side-on (the
         // forward scatter gives way, so a beam looking our way no longer greys the whole frame).
         u.haze.value = SMOKE.haze * (1 + 1.0 * smokeLoad + 0.4 * hot + 0.6 * fever);
@@ -951,9 +1058,9 @@ export class CosmicNoirWorld {
             const tanV = Math.tan((camera.fov * DEG) / 2);
             const tanH = tanV * (camera.aspect || this.aspect);
             u.tanHalf.value.set(tanH, tanV);
-            const p = this._v.set(0, 0, -PULSAR.depth).project(camera);
+            const p = this._v.set(0, PULSAR.height, -PULSAR.depth).project(camera);
             u.pulsarUv.value.set(p.x * 0.5 + 0.5, 0.5 - p.y * 0.5);
-            const toCam = [camera.position.x, camera.position.y, camera.position.z + PULSAR.depth];
+            const toCam = [camera.position.x, camera.position.y - PULSAR.height, camera.position.z + PULSAR.depth];
             const len = Math.hypot(toCam[0], toCam[1], toCam[2]) || 1;
             const v = [toCam[0] / len, toCam[1] / len, toCam[2] / len];
             const through = cageTransmit(v, this.cageTurn, this.cageFill, this.basis);
@@ -973,7 +1080,9 @@ export class CosmicNoirWorld {
         // the paper's grade hardens and the vignette and the dust come in with it.
         // While a beam looks our way in hot play the iris closes further (a smooth pull, at the
         // sweep's own pace): the blaze still reads, the frame never washes to paper white.
-        const iris = (1 + 0.12 * hot + 0.18 * fever + 0.1 * Math.min(1, crown))
+        // A beam sweeping past the lens closes it too, at rest as well (the eye adapts: the galaxy
+        // dims for the moment the searchlight finds us).
+        const iris = (1 + 0.12 * hot + 0.18 * fever + 0.1 * Math.min(1, crown)) * (1 + 0.85 * face * face)
             * (1 + face * (0.15 * warm + 0.35 * hot + 0.25 * fever));
         post.exposure = 1 / ((1 + this.glare * 0.12) * iris);
         post.contrast = clamp01(0.25 * warm + 0.35 * hot + 0.4 * fever);
@@ -1046,6 +1155,8 @@ export class CosmicNoirWorld {
             march: this.tier.march,
             floatTarget: this.u ? this.u.floatTarget : null,
             layoutLive: this.layoutLive,
+            horizon: this.horizonY,
+            seaHeave: this.seaHeave,
             pulsarUv: this.u ? { x: this.u.pulsarUv.value.x, y: this.u.pulsarUv.value.y } : null,
         };
     }

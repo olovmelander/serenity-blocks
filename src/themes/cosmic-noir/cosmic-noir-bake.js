@@ -8,6 +8,7 @@
  */
 import { TAU, mulberry32 } from './cosmic-noir-core.js';
 import { bakeOnce } from '../shared/bake-cache.js';
+import { toHalfFloat } from '../shared/half-float.js';
 
 /** The seed the world builds with (the size is the tier's `noise`). */
 export const SMOKE_SEED = 1946; // the year of the noir
@@ -196,4 +197,133 @@ function computeSmokeNoise(seed, size) {
         return data;
     };
     return { near: code(nearFields), far: code(farFields), farSize };
+}
+
+// ── The sea of smoke ────────────────────────────────────────────────────────────
+
+/** The seed the sea is baked from (the size is the tier's `sea`). */
+export const SEA_SEED = 1941;
+
+/** The bake cache's key. */
+export const seaFieldKey = (seed, size) => `cosmic-noir:sea:${seed}:${size}`;
+
+/**
+ * How much of an octave's height the next (twice as fine) keeps. Under a half, so each finer octave
+ * is also less steep: a light that rakes the sea then draws its swells, not a crumple of creases.
+ */
+const SEA_PERSISTENCE = 0.4;
+/** Lattice cells to a tile, octave by octave. */
+const SEA_CELLS = Object.freeze([3, 6, 12, 24, 48]);
+
+/**
+ * The sea's surface as one tileable field, four values a texel:
+ *   R  height (−1 .. 1, mean about 0)
+ *   G  ∂height/∂u   (per tile: bilinear filtering of a slope is continuous, so the light on the
+ *   B  ∂height/∂v    sea shows no texel grid)
+ *   A  a second, slower field (0 .. 1): where the sea heaps up and where it lies calm
+ * with its mip chain averaged here (half floats; the mean of a slope is the slope of the mean
+ * height, so a far read is the filtered sea).
+ * @returns {{ levels: Array<{ data: Uint16Array, width: number, height: number }>, size: number }}
+ */
+export function bakeSeaField(seed = SEA_SEED, size = 256) {
+    return bakeOnce(seaFieldKey(seed, size), () => computeSeaField(seed, size));
+}
+
+function computeSeaField(seed, size) {
+    const rand = mulberry32(seed);
+    const fade = (v) => v * v * v * (v * (v * 6 - 15) + 10);
+    /** Periodic gradient noise on the size² grid, `cells` to a tile, in about [−1, 1]. */
+    const octave = (cells) => {
+        const g = new Float32Array(cells * cells * 2);
+        for (let i = 0; i < g.length; i += 2) {
+            const a = rand() * TAU;
+            g[i] = Math.cos(a);
+            g[i + 1] = Math.sin(a);
+        }
+        const out = new Float32Array(size * size);
+        const scale = cells / size;
+        const at = (ix, iy, dx, dy) => {
+            const k = ((iy % cells) * cells + (ix % cells)) * 2;
+            return g[k] * dx + g[k + 1] * dy;
+        };
+        for (let y = 0; y < size; y++) {
+            const fy = (y + 0.5) * scale;
+            const y0 = Math.floor(fy);
+            const ty = fy - y0;
+            const sy = fade(ty);
+            for (let x = 0; x < size; x++) {
+                const fx = (x + 0.5) * scale;
+                const x0 = Math.floor(fx);
+                const tx = fx - x0;
+                const sx = fade(tx);
+                const a = at(x0, y0, tx, ty);
+                const b = at(x0 + 1, y0, tx - 1, ty);
+                const c = at(x0, y0 + 1, tx, ty - 1);
+                const d = at(x0 + 1, y0 + 1, tx - 1, ty - 1);
+                const lo = a + (b - a) * sx;
+                const hi = c + (d - c) * sx;
+                out[y * size + x] = (lo + (hi - lo) * sy) * 1.6;
+            }
+        }
+        return out;
+    };
+    const count = size * size;
+    const height = new Float32Array(count);
+    let gain = 1;
+    SEA_CELLS.forEach((cells) => {
+        if (cells * 2 > size) return; // finer than the grid holds
+        const o = octave(cells);
+        for (let i = 0; i < count; i++) height[i] += o[i] * gain;
+        gain *= SEA_PERSISTENCE;
+    });
+    const calmA = octave(2);
+    const calmB = octave(5);
+    // Height to −1 .. 1 about its mean.
+    let mean = 0;
+    for (let i = 0; i < count; i++) mean += height[i];
+    mean /= count;
+    let peak = 1e-6;
+    for (let i = 0; i < count; i++) {
+        height[i] -= mean;
+        peak = Math.max(peak, Math.abs(height[i]));
+    }
+    const field = new Float32Array(count * 4);
+    for (let y = 0; y < size; y++) {
+        const up = ((y + 1) % size) * size;
+        const down = ((y + size - 1) % size) * size;
+        for (let x = 0; x < size; x++) {
+            const i = y * size + x;
+            const right = y * size + ((x + 1) % size);
+            const left = y * size + ((x + size - 1) % size);
+            const o = i * 4;
+            field[o] = height[i] / peak;
+            // Central differences on the periodic grid, per tile.
+            field[o + 1] = ((height[right] - height[left]) / peak) * size * 0.5;
+            field[o + 2] = ((height[up + x] - height[down + x]) / peak) * size * 0.5;
+            field[o + 3] = Math.max(0, Math.min(1, 0.5 + calmA[i] * 0.42 + calmB[i] * 0.2));
+        }
+    }
+    const levels = [];
+    let level = field;
+    let w = size;
+    for (;;) {
+        const half = new Uint16Array(level.length);
+        for (let i = 0; i < level.length; i++) half[i] = toHalfFloat(level[i]);
+        levels.push({ data: half, width: w, height: w });
+        if (w === 1) break;
+        const nw = w >> 1;
+        const next = new Float32Array(nw * nw * 4);
+        for (let y = 0; y < nw; y++) {
+            for (let x = 0; x < nw; x++) {
+                const a = (y * 2 * w + x * 2) * 4;
+                const o = (y * nw + x) * 4;
+                for (let c = 0; c < 4; c++) {
+                    next[o + c] = (level[a + c] + level[a + 4 + c] + level[a + w * 4 + c] + level[a + w * 4 + 4 + c]) * 0.25;
+                }
+            }
+        }
+        level = next;
+        w = nw;
+    }
+    return { levels, size };
 }

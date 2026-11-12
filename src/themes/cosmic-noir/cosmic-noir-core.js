@@ -2,60 +2,66 @@
  * Cosmic Noir — constants and CPU maths shared by the choreography and the shaders.
  * Three-free: the director, the layout and their tests import only this.
  *
- * "Smoke in the searchlight." A black-and-white film of deep space: a pulsar turns inside the
- * derelict shutter cage of a lantern (a ring of vertical slats round it), and its two beams sweep
- * like a lighthouse's through drifting interstellar smoke. Most of the frame is dark; the smoke
- * shows where a beam crosses it, cut into fans of shafts by the cage's slats (light through
- * venetian blinds). The picture is graded as a print on one film stock at a time — silver,
- * selenium, sepia, platinum, cyanotype — that drifts by itself and changes reel on a level-up.
+ * "The last lighthouse." A black-and-white film of deep space: a lighthouse stands on a shard of
+ * rock in a sea of interstellar smoke, at the edge of the dark, with the home galaxy rising over
+ * the sea's horizon. A captive pulsar turns in its lantern room behind a ring of shutter slats:
+ * two beams sweep round, one raking the sea of smoke (every swell throws a long shadow), one
+ * searching the sky, and the lamp's own light leaves between the slats as a fan of shafts whose
+ * shadows wheel over the sea like spokes. The picture is graded as a print on one film stock at a
+ * time — silver, selenium, sepia, platinum, cyanotype — that drifts by itself and changes reel on a
+ * level-up.
  *
- * Units: scene units. The camera stands near the origin and looks down −Z, turned so that the
- * pulsar (on the −Z axis, PULSAR.depth ahead) hangs in the free zone beside the board.
+ * Units: scene units, y up. The camera stands near the origin; the lighthouse's axis is the
+ * vertical through (0, ·, −PULSAR.depth), its lamp PULSAR.height above the eye, and the sea of
+ * smoke lies SEA.level below it. The camera is turned so the lamp hangs in the free zone beside
+ * the board (pulsarAnchor).
  */
 
 export const TAU = Math.PI * 2;
 export const DEG = Math.PI / 180;
 
-/** The pulsar: on the −Z axis this far ahead. Its spin axis (the cage's axis) leans a little. */
+/** The pulsar (the lamp): this far ahead of the eye and this far above it, on the lighthouse's axis. */
 export const PULSAR = Object.freeze({
     depth: 24,
-    /** Spin axis (unnormalised): nearly upright, leaning a little toward the camera (a three-quarter view). */
-    axis: Object.freeze([0.12, 1, 0.18]),
+    height: 8.4,
+    /** Spin axis (unnormalised): the lighthouse stands upright. */
+    axis: Object.freeze([0, 1, 0]),
     /**
-     * Angle between the spin axis and the beams (degrees). The camera stands ~79° off the axis:
-     * at 60° the upper beam's cone passes ~19° from the lens at its nearest (a blaze that skims
-     * past, never a white-out), and the lower beam's cone (120°) is far from it.
+     * Angle between the spin axis and the beams (degrees): one beam looks 36° down and rakes the
+     * sea of smoke about 15 units out from the rock, its opposite 36° up into the sky. The eye
+     * stands ~19° below the lamp, so the lower beam's cone passes ~17° from the lens at its nearest:
+     * a blaze that skims past (the world closes the iris for it), never a white-out.
      */
-    inclination: 60,
+    inclination: 54,
     /** The beams' core half-width and their soft skirt (degrees). */
-    beamWidth: 11,
-    beamSkirt: 26,
+    beamWidth: 7.5,
+    beamSkirt: 22,
     /** How bright the skirt is beside the core (dim: noir keeps the air between shafts dark). */
     skirtShare: 0.06,
     /** Seconds per turn at rest. */
     period: 14,
     /** How bright the beam is near the lantern (it falls as 1 / (1 + (r/beamReach)²)). */
     beamGain: 7,
-    beamReach: 16,
-    /** The core's own glow round the lantern (all directions, through the slats). */
+    beamReach: 22,
+    /** The lamp's own light (all directions the lantern room lets it leave, between the slats). */
     coreGain: 2.0,
-    coreReach: 2.2,
+    coreReach: 4.6,
     /**
      * Forward scatter of the beams in the smoke (Henyey–Greenstein g) at rest: a beam that looks
      * toward us is a blaze. Hot play lowers it (the world's `u.forward`): the blades seen side-on
      * gain, the blaze toward the lens gives way.
      */
-    forward: 0.4,
+    forward: 0.32,
 });
 
 /**
- * The derelict shutter cage round the pulsar: a cylinder of vertical slats on the spin axis, with
- * closed lids (light leaves only between the slats).
+ * The lantern room round the pulsar: a cylinder of vertical shutter slats on the spin axis, closed
+ * by the roof above and the gallery below (light leaves only between the slats).
  */
 export const CAGE = Object.freeze({
-    radius: 1.7,
-    halfHeight: 2.3,
-    slats: 22,
+    radius: 1.25,
+    halfHeight: 1.15,
+    slats: 20,
     /** Share of each pitch a slat covers: closed at rest, opened by a chain. */
     fillClosed: 0.45,
     fillOpen: 0.25,
@@ -64,14 +70,76 @@ export const CAGE = Object.freeze({
     /** The frame rings at the top and bottom (share of the half-height). */
     ring: 0.06,
     /** The share of the light the lids let past (round their rims): their shadow is soft, not a void. */
-    lidLeak: 0.3,
+    lidLeak: 0.22,
+});
+
+/**
+ * The lighthouse, as heights from the lamp (down is negative) and radii. Drawn by a distance field
+ * (cosmic-noir-lighthouse.js); the same numbers bound it for the light in the air.
+ */
+export const TOWER = Object.freeze({
+    /** The gallery: its floor below the lamp, its radius, the railing's height. */
+    galleryDrop: 1.95,
+    galleryRadius: 2.0,
+    railHeight: 0.8,
+    railPosts: 18,
+    /** The tower's neck (under the gallery's corbel) and its foot on the rock. */
+    neckDrop: 3.3,
+    neckRadius: 0.98,
+    footRadius: 1.72,
+    /** The foot's height above the sea of smoke. */
+    footLift: 1.5,
+    /** The roof: its eave's radius, the dome's rise above the slats, the ball and the rod. */
+    eaveRadius: 1.45,
+    domeRise: 1.2,
+    rodTop: 3.5,
+    /** Painted bands on the tower (dark and pale, top to bottom). */
+    bands: 5,
+});
+
+/** The sea of smoke: a field of slow swells and billows, flowing past the rock. */
+export const SEA = Object.freeze({
+    /** Its mean height (the eye stands at 0). */
+    level: -2.6,
+    /** The layers: one tile of the baked field in scene units, and its height. */
+    swellTile: 56,
+    swell: 1.0,
+    billowTile: 21,
+    billow: 0.52,
+    wispTile: 6.1,
+    wisp: 0.14,
+    /** The wind over the sea (scene units / s, along x and z): the swells drift, the billows run ahead. */
+    wind: Object.freeze([0.42, 0.2]),
+    /** Past this the swells have sunk into a level sea, and past `far` the sea is the horizon's mist. */
+    flat: 150,
+    far: 260,
+    /** The mist that lies on the sea: its scale height and how thick it is at the surface. */
+    mistHeight: 0.8,
+    mist: 0.22,
+});
+/** The highest and the lowest the sea's surface reaches (the march's slab). */
+export const SEA_TOP = SEA.level + SEA.swell + SEA.billow + SEA.wisp;
+export const SEA_FLOOR = SEA.level - (SEA.swell + SEA.billow + SEA.wisp);
+
+/**
+ * The home galaxy, rising over the sea: where it stands (a bearing right of the lighthouse and an
+ * altitude over the horizon, degrees), how long it is across (degrees), how far it is tipped toward
+ * edge-on and how its long axis leans.
+ */
+export const GALAXY = Object.freeze({
+    bearing: 59,
+    altitude: 12.6,
+    span: 44,
+    tilt: 66,
+    lean: 24,
+    gain: 0.3,
 });
 
 /** The smoke: an envelope of drifting, stratified haze round the pulsar and toward the camera. */
 export const SMOKE = Object.freeze({
     /** Centre and half-extents of the envelope (scene units). */
-    centre: Object.freeze([4, -1.5, -21]),
-    extent: Object.freeze([34, 12, 21]),
+    centre: Object.freeze([4, 2, -18]),
+    extent: Object.freeze([40, 14, 30]),
     /** One tile of the baked noise in scene units, and how much wider than tall it is drawn. */
     tile: 11,
     stretch: 2.4,
@@ -98,6 +166,12 @@ export const ECHO_LIFE = 2.2;
 export const ECHO_REACH = 9;
 /** An echo slows as it spreads and never reaches the camera (~24 away): inside it, it would be a wall. */
 export const ECHO_MAX = 19;
+/**
+ * On the sea an echo is a ring of light that runs out from the rock, under the eye and on toward
+ * the horizon: how fast it starts and how far it gets.
+ */
+export const ECHO_SEA_SPEED = 46;
+export const ECHO_SEA_MAX = 120;
 /**
  * Puffs (locks): smoke billowing out of the card's edge, lit from within by a dying ember. A new
  * puff takes the slot with the least smoke left; what that one still held thins into the room.
@@ -153,6 +227,26 @@ export const HEAT_TONE = Object.freeze({
     high: Object.freeze([1.24, 1.0, 0.56]),
     paper: Object.freeze([0.0005, 0.0013, 0.0034]),
 });
+/**
+ * The next light: another lighthouse far out on the horizon, under the galaxy. A bearing right of
+ * our own and a sliver of altitude (degrees), and its character: two short flashes every `period`
+ * seconds.
+ */
+export const FAR_LAMP = Object.freeze({
+    bearing: 64,
+    altitude: 0.5,
+    period: 11,
+    gap: 1.7,
+    flash: 0.28,
+});
+
+/** The far light's brightness (0..1) at a moment: flash, flash, dark. */
+export function farLampAt(time) {
+    const x = ((time % FAR_LAMP.period) + FAR_LAMP.period) % FAR_LAMP.period;
+    const pulse = (at) => Math.exp(-(((x - at) / FAR_LAMP.flash) ** 2));
+    return Math.min(1, pulse(1) + pulse(1 + FAR_LAMP.gap));
+}
+
 /** The stock level 1 starts on (silver). */
 export const STOCK_HOME = 1;
 /** Seconds the clock alone takes to carry the print one stock along. A level-up is one step. */
@@ -283,6 +377,9 @@ export function cageTransmit(d, cagePhase, fill, basis = spinBasis(), soft = 0) 
 /** A light echo's radius `age` seconds after it left the pulsar. */
 export const echoRadius = (age) => ECHO_MAX * (1 - Math.exp(-(ECHO_SPEED / ECHO_MAX) * Math.max(0, age)));
 
+/** The same echo's ring on the sea of smoke: its distance from the rock. */
+export const echoSeaRadius = (age) => ECHO_SEA_MAX * (1 - Math.exp(-(ECHO_SEA_SPEED / ECHO_SEA_MAX) * Math.max(0, age)));
+
 /** The flashbulb's negative (0..1) `age` seconds after it fired. */
 export function negativeAt(age) {
     if (age < 0) return 0;
@@ -296,14 +393,42 @@ export function cueAt(age) {
     return Math.max(mark(age - 0.35), mark(age - 0.35 - CUE_GAP));
 }
 
-/** Where the composition hangs the pulsar for an aspect (screen fractions, y down) and the lens. */
+/** Where the composition hangs the lamp for an aspect (screen fractions, y down) and the lens. */
 export function pulsarAnchor(aspect) {
     const a = Math.max(0.3, Number.isFinite(aspect) ? aspect : 16 / 9);
     if (a < 0.9) {
-        // An upright phone: the board fills the width; the lantern hangs in the sky above it.
+        // An upright phone: the board fills the width; the lantern stands in the sky above it.
         return { x: 0.5, y: 0.12, vFov: 64 };
     }
     // Landscape: the free zone left of the card. Wider frames lean a little further out.
-    const x = a >= 1.3 ? 0.205 + Math.min(0.03, (a - 1.78) * 0.03) : 0.17;
-    return { x: Math.max(0.15, x), y: a >= 1.3 ? 0.34 : 0.3, vFov: 50 };
+    const x = a >= 1.3 ? 0.2 + Math.min(0.03, (a - 1.78) * 0.03) : 0.17;
+    return { x: Math.max(0.15, x), y: a >= 1.3 ? 0.265 : 0.25, vFov: 50 };
+}
+
+/**
+ * The turn (yaw, radians, to the right) and the tilt (pitch, radians, upward) of a level camera at
+ * the origin that put the lamp at a screen point (fractions, y down) through a lens of vertical
+ * field `vFov` (degrees). Also where the sea's horizon then lies on screen.
+ */
+export function lampPose(anchorX, anchorY, vFov, aspect) {
+    const tanV = Math.tan((vFov * DEG) / 2);
+    const tanH = tanV * aspect;
+    // The lamp's direction in the camera's own frame (right, up, back).
+    let cx = (anchorX * 2 - 1) * tanH;
+    let cy = (1 - anchorY * 2) * tanV;
+    let cz = -1;
+    const cl = Math.hypot(cx, cy, cz);
+    cx /= cl;
+    cy /= cl;
+    cz /= cl;
+    // Its direction in the world: `height` up over `depth` ahead.
+    const rise = PULSAR.height / Math.hypot(PULSAR.height, PULSAR.depth);
+    // rise = cy cos(pitch) − cz sin(pitch).
+    const r = Math.hypot(cy, cz);
+    const pitch = Math.asin(Math.max(-1, Math.min(1, rise / r))) - Math.atan2(cy, -cz);
+    // Along the ground the lamp lies straight ahead (−Z): the camera turns the other way by what
+    // the lamp stands aside in its frame.
+    const ahead = -cy * Math.sin(pitch) - cz * Math.cos(pitch);
+    const yaw = -Math.atan2(cx, ahead);
+    return { yaw, pitch, horizon: 0.5 + Math.tan(pitch) / (2 * tanV) };
 }
