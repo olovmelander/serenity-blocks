@@ -8,6 +8,8 @@
  *           rebound: they arc and fall under gravity, sparkling where the sun catches them
  *   mist    soft breaths of sea mist that rise off the risen rock while the sea runs off it
  *   glint   brief sun-sparks on the wet rock after a lift
+ *   whirl   droplets a twist's whirl draws up off the water: they wind upward round its eye in a
+ *           widening spiral and fall away as fine spray
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -32,7 +34,9 @@ import {
 } from 'three/tsl';
 import { airClarity } from './high-coast-light.js';
 
-export const MOTE_KIND = Object.freeze({ spray: 0, mist: 1, glint: 2 });
+export const MOTE_KIND = Object.freeze({
+    spray: 0, mist: 1, glint: 2, whirl: 3,
+});
 /** How far past the cursor a spawn looks for a spent slot. */
 const SLOT_LOOKAHEAD = 48;
 
@@ -41,6 +45,9 @@ const SLOT_LOOKAHEAD = 48;
  *   aStart  (x, y, z, born)       aMove  (vx, vy, vz, life)
  *   aLook   (r, g, b, size m)     aKind  (kind, seed, drift, gravity)
  * Motion: p = start + v·age + ½·(0, gravity, 0)·age², mist also curls a little as it rises.
+ * A whirl's droplet reads its rows otherwise: aStart is the whirl's eye on the water, aMove is
+ * (radius m, climb m/s, turn rad/s, life) and aKind's last number how far the spiral opens as it
+ * climbs; it starts at the bearing its seed gives.
  */
 export class Motes {
     constructor(u, count = 2048) {
@@ -96,7 +103,12 @@ export class Motes {
             const age = max(ageOf(), 0.0);
             const fall = vec3(0.0, kind.w.mul(age).mul(age).mul(0.5), 0.0);
             const curl = vec3(sin(age.mul(0.9).add(kind.y.mul(40.0))), 0.0, cos(age.mul(0.7).add(kind.y.mul(31.0)))).mul(kind.z).mul(age.min(4.0));
-            return start.xyz.add(move.xyz.mul(age)).add(fall).add(curl);
+            const thrown = start.xyz.add(move.xyz.mul(age)).add(fall).add(curl);
+            // A whirl's droplet: round the eye, climbing, the spiral opening with its height.
+            const turn = kind.y.mul(6.2832).add(move.z.mul(age));
+            const out = move.x.mul(float(1.0).add(kind.w.mul(age)));
+            const wound = start.xyz.add(vec3(cos(turn).mul(out), move.y.mul(age), sin(turn).mul(out)));
+            return mix(thrown, wound, isKind(MOTE_KIND.whirl));
         };
         material.vertexNode = Fn(() => {
             const age = ageOf();
@@ -127,7 +139,8 @@ export class Motes {
             const view = normalize(c.sub(u.eye));
             const forward = clamp(dot(view, u.sunDir), 0.0, 1.0);
             const f2 = forward.mul(forward);
-            const sunlit = u.sun.mul(u.sunUp).mul(float(0.12).add(f2.mul(f2).mul(0.9))).add(u.fill.mul(0.8));
+            // (Lit from the eye's side they are white water, not sparks: a share of the sun stays.)
+            const sunlit = u.sun.mul(u.sunUp).mul(float(0.26).add(f2.mul(f2).mul(0.9))).add(u.fill.mul(0.9));
             const power = mix(mix(float(1.0), float(0.08), isKind(MOTE_KIND.mist)), float(2.6), isKind(MOTE_KIND.glint));
             const clarity = airClarity(u, c);
             const rgb = look.xyz.mul(sunlit).mul(power).mul(shape).mul(fadeIn)

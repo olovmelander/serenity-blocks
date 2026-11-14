@@ -22,6 +22,7 @@ import {
     mix,
     normalWorld,
     normalize,
+    positionGeometry,
     positionLocal,
     positionWorld,
     sin,
@@ -39,14 +40,22 @@ import { aerial, airClarity } from './high-coast-light.js';
 export function gullRounds(count = 18, seed = 0x6011) {
     const random = mulberry32(seed);
     const out = [];
-    const centres = [[-150, -700], [300, -700], [80, -1100], [600, -1300], [-300, -1300], [250, -500]];
+    // Three rounds ride the updraught off the summit's own face, a hundred-odd metres out and a
+    // little below the eye: those are the gulls the frame can see as birds, white against the bay
+    // on either side of the card (the ones over the far bay are a pixel or two). Listed first, so
+    // every tier has them.
+    const centres = [
+        [-45, -120, 112], [62, -150, 118], [-22, -195, 104],
+        [-150, -700, 18], [300, -700, 18], [80, -1100, 18], [600, -1300, 18], [-300, -1300, 18], [250, -500, 18],
+    ];
     for (let i = 0; i < count; i++) {
         const c = centres[i % centres.length];
+        const near = c[2] > 50;
         out.push({
-            x: c[0] + (random() - 0.5) * 160,
-            z: c[1] + (random() - 0.5) * 160,
-            r: 25 + random() * 70,
-            h: 18 + random() * 45,
+            x: c[0] + (random() - 0.5) * (near ? 30 : 160),
+            z: c[1] + (random() - 0.5) * (near ? 30 : 160),
+            r: near ? 16 + random() * 30 : 25 + random() * 70,
+            h: c[2] + random() * (near ? 24 : 45),
             w: (0.18 + random() * 0.16) * (random() < 0.5 ? -1 : 1),
             phase: random() * Math.PI * 2,
             seed: random(),
@@ -85,8 +94,11 @@ export function createLife(u, t, tier, lantern) {
     const fl = attribute('aFlap', 'vec4');
     gullMat.positionNode = Fn(() => {
         const p = positionLocal;
-        // Wing tips beat up and down (the pace a constant; the amount per bird, per moment).
-        const tip = p.x.abs().mul(1.6);
+        // Wing tips beat up and down (the pace a constant; the amount per bird, per moment). How far
+        // out along the wing a vertex lies is read from the bird itself: positionLocal already holds
+        // the instance matrix, so its x is metres across the bay (read as a wing, it threw every
+        // bird tens of metres apart: the gulls drew as nothing).
+        const tip = positionGeometry.x.abs().mul(1.6);
         const beat = sin(u.time.mul(7.0).add(fl.y.mul(40.0))).mul(fl.x).mul(tip).mul(0.35);
         return vec3(p.x, p.y.add(beat), p.z);
     })();

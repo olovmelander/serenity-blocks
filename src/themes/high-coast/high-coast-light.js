@@ -98,6 +98,11 @@ export function skyColour(u, dir, { withSun = true } = {}) {
         const disc = float(1.0).sub(smoothstep(cos.mul(0.82), cos, r));
         const limb = float(0.55).add(float(0.45).mul(float(1.0).sub(r.div(cos)).clamp(0.0, 1.0).sqrt()));
         base.addAssign(u.sun.mul(disc).mul(limb).mul(9.0).mul(u.sunUp));
+        // Its corona: the glare a low sun stands in, a degree or two wide (the dome only: on the
+        // water the sun's image is the road).
+        const c2 = clamp(mu, 0.0, 1.0).pow(600.0);
+        const c1 = clamp(mu, 0.0, 1.0).pow(4000.0);
+        base.addAssign(u.sun.mul(c2.mul(0.13).add(c1.mul(0.9))).mul(u.sunUp));
     }
     return base;
 }
@@ -126,8 +131,19 @@ export function aerial(u, P, colour) {
     // light, so distance reads as blue depth, not as a grey film.
     const tHaze = exp(tauHaze.negate().mul(HAZE_SPECTRUM));
     const tMist = exp(tauMist.negate());
-    const throughMist = mix(mistLight, colour, tMist);
+    const throughMist = mix(mistLight, waveLight(u, P, colour), tMist);
     return mix(hazeLight, throughMist, tHaze);
+}
+
+/**
+ * The great rebound's wave of light: a ring that runs out from the bay over land and water, and
+ * whatever it crosses stands for a moment in more of the light it already has (so it is the hour's
+ * own light, gold at the golden hour and pale in the light night, and a dark rock stays dark).
+ */
+export function waveLight(u, P, colour) {
+    const phi = length(P.xz.sub(u.wave.xy)).sub(u.wave.z).div(u.wave.z.mul(0.3).add(40.0));
+    const band = exp(phi.mul(phi).negate()).mul(u.wave.w);
+    return colour.mul(u.waveTint.mul(band).add(1.0));
 }
 
 /** Transmittance only (for things that must fade with the air: sparks, ribbons). */

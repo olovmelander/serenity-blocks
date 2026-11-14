@@ -204,18 +204,47 @@ export const fieldUV = (field, xz) => {
     return vec2(xz.x.sub(field.x0).mul(k).add(h), xz.y.sub(field.z0).mul(k).add(h));
 };
 
-/** How far inside a field a point lies, as the blend weight toward it (0 outside). */
-export const fieldWeight = (field, xz, blend = FIELD_BLEND[field.name] || 1) => {
-    const inset = xz.x.sub(field.x0).min(float(field.x0 + field.span).sub(xz.x))
-        .min(xz.y.sub(field.z0)).min(float(field.z0 + field.span).sub(xz.y));
+/**
+ * How far inside a square a point lies, as a blend weight (0 outside, 1 from `blend` metres in).
+ * Laid out: every reader of the land asks for two of these, so the body is written once a stage.
+ */
+const hcFieldWeight = /* @__PURE__ */ Fn(([xz, origin, span, blend]) => {
+    const inset = xz.x.sub(origin.x).min(origin.x.add(span).sub(xz.x))
+        .min(xz.y.sub(origin.y)).min(origin.y.add(span).sub(xz.y));
     return smoothstep(0.0, blend, inset);
-};
+}).setLayout({
+    name: 'hc_fieldWeight',
+    type: 'float',
+    inputs: [
+        { name: 'xz', type: 'vec2' }, { name: 'origin', type: 'vec2' }, { name: 'span', type: 'float' },
+        { name: 'blend', type: 'float' },
+    ],
+});
+
+/** How far inside a field a point lies, as the blend weight toward it (0 outside). */
+export const fieldWeight = (field, xz, blend = FIELD_BLEND[field.name] || 1) => hcFieldWeight(
+    xz,
+    vec2(field.x0, field.z0),
+    float(field.span),
+    float(blend),
+);
+
+/**
+ * The blend weights toward the mid and the near field at a world xz, pinned: a material that
+ * reads the land, its cover and its shadow at one point hands the same pair to each reader
+ * instead of having every one of them work the weights out again (inside a Fn only).
+ */
+export const fieldWeights = (xz) => ({
+    wm: fieldWeight(FIELDS.mid, xz).toVar(),
+    wn: fieldWeight(FIELDS.near, xz).toVar(),
+});
 
 /**
  * The land at a world xz as one surface: (height in metres, dh/dx, dh/dz, sky visibility) from
- * the finest field that holds the point, blended across each field's edge band.
+ * the finest field that holds the point, blended across each field's edge band. `w`: the point's
+ * fieldWeights, when another reader shares them.
  */
-export function landAt(tex, xz) {
+export function landAt(tex, xz, w = null) {
     const read = (name) => {
         const f = FIELDS[name];
         const t = texture(tex[name], fieldUV(f, xz)).level(0);
@@ -224,27 +253,27 @@ export function landAt(tex, xz) {
     const far = read('far');
     const mid = read('mid');
     const near = read('near');
-    const wm = fieldWeight(FIELDS.mid, xz);
-    const wn = fieldWeight(FIELDS.near, xz);
+    const wm = w ? w.wm : fieldWeight(FIELDS.mid, xz);
+    const wn = w ? w.wn : fieldWeight(FIELDS.near, xz);
     return mix(mix(far, mid, wm), near, wn);
 }
 
 /** Only the land's height (three taps, blended): what a shadow or a reflection march reads. */
-export function heightAt(tex, xz) {
+export function heightAt(tex, xz, w = null) {
     const read = (name) => {
         const f = FIELDS[name];
         return texture(tex[name], fieldUV(f, xz)).level(0).x.mul(f.hi - f.lo).add(f.lo);
     };
-    const wm = fieldWeight(FIELDS.mid, xz);
-    const wn = fieldWeight(FIELDS.near, xz);
+    const wm = w ? w.wm : fieldWeight(FIELDS.mid, xz);
+    const wn = w ? w.wn : fieldWeight(FIELDS.near, xz);
     return mix(mix(read('far'), read('mid'), wm), read('near'), wn);
 }
 
 /** A per-field scalar texture (forest cover, sun visibility) blended the same way. */
-export function fieldScalar(tex, xz, fallback = 1) {
+export function fieldScalar(tex, xz, fallback = 1, w = null) {
     const read = (name) => (tex[name] ? texture(tex[name], fieldUV(FIELDS[name], xz)).level(0).x : float(fallback));
-    const wm = fieldWeight(FIELDS.mid, xz);
-    const wn = fieldWeight(FIELDS.near, xz);
+    const wm = w ? w.wm : fieldWeight(FIELDS.mid, xz);
+    const wn = w ? w.wn : fieldWeight(FIELDS.near, xz);
     return mix(mix(read('far'), read('mid'), wm), read('near'), wn);
 }
 
@@ -252,6 +281,10 @@ export function fieldScalar(tex, xz, fallback = 1) {
 
 /** Gusts (cat's paws) crossing the water at once (locks and hard drops). */
 export const GUSTS = 8;
+/** Rings and whirls on the water at once (a lock's ring, a hard drop's pair, a twist's whirl). */
+export const RINGS = 8;
+/** What a row of the ring table draws. */
+export const RING_KIND = Object.freeze({ ring: 0, splash: 1, whirl: 2 });
 
 const rows = (count) => Array.from({ length: count }, () => new THREE.Vector4(0, 0, 0, 0));
 const colour = (r, g, b) => uniform(new THREE.Vector3(r, g, b));
@@ -261,10 +294,14 @@ export function createUniforms() {
         // per gust: (origin x, origin z, start time, power) + (heading x, heading z, speed m/s, width m)
         //         + (the piece colour, linear rgb; unused)
         gusts: rows(GUSTS * 3),
+        // per ring: (centre x, centre z, start time, power) + (speed m/s or spin rad/s, width m, kind, life s)
+        //         + (the light its crest carries, linear rgb; unused)
+        rings: rows(RINGS * 3),
     };
     return {
         tables,
         gusts: uniformArray(tables.gusts, 'vec4'),
+        rings: uniformArray(tables.rings, 'vec4'),
 
         time: uniform(0),
         /** The cloud deck's drift (metres, integrated on the CPU). */
@@ -316,10 +353,14 @@ export function createUniforms() {
         /** Perfect clear: the sea's calm (0 wind … 1 glass) and where the returning breeze stands. */
         calm: uniform(0),
         calmFront: uniform(0),
+        /** …and how far out from the middle of the bay the glass has spread (metres). */
+        calmReach: uniform(1e6),
         /** The wind on the water (1 at rest … ~2 in a long hot chain): ripple strength, the fleet's heel. */
         breeze: uniform(1),
         /** Back-to-back: the lighthouse (strength 0..1, beam). */
         beacon: uniform(new THREE.Vector2(0, 0)),
+        /** Where the lighthouse's lantern stands (metres). */
+        lantern: uniform(new THREE.Vector3(1880, 60, -5350)),
         /** The flare on the wet rock (a four-line clear ~1; stacked quads, waves and the crown up to ~1.6). */
         rebound: uniform(0),
         /**
@@ -327,5 +368,16 @@ export function createUniforms() {
          * glow, the gold the wet risen rock takes on).
          */
         heat: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /**
+         * The great rebound's wave: (centre x, centre z, radius m, strength). A swell front on the
+         * water and, on everything it crosses, a band of the hour's light (high-coast-light aerial).
+         */
+        wave: uniform(new THREE.Vector4(0, -700, 1, 0)),
+        /** The light the wave's band adds, as a share of what already lies on a surface (linear rgb). */
+        waveTint: colour(1.0, 0.82, 0.5),
+        /** The wind an event throws at the summit (0 … ~1.5): the old pine's sway. */
+        gale: uniform(0),
+        /** Noctilucent cloud in the light night's northern sky (0..1). */
+        nightShine: uniform(0),
     };
 }

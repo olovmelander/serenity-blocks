@@ -587,7 +587,12 @@ function sway(u, p) {
     const reach = clamp(p.y.sub(5.5).div(9.0), 0.0, 1.0).mul(clamp(out.div(5.0), 0.0, 1.0).mul(0.75).add(0.25));
     const a = sin(u.time.mul(0.55).add(p.x.mul(0.22))).mul(0.075)
         .add(sin(u.time.mul(1.45).add(p.z.mul(0.7)).add(p.y.mul(0.5))).mul(0.028));
-    return vec3(a, a.mul(0.25), a.mul(0.6)).mul(reach);
+    // A gust off the bay (a hard drop, the great rebound, a whirl): the crown leans away from
+    // the sea and shivers, more at the limbs' ends, and settles as the gust dies.
+    const lean = u.gale.mul(0.16);
+    const shiver = sin(u.time.mul(5.3).add(p.x.mul(1.3)).add(p.y.mul(0.9))).mul(u.gale).mul(0.045);
+    return vec3(a.add(shiver).sub(lean.mul(0.4)), a.mul(0.25).sub(lean.mul(0.1)), a.mul(0.6).add(shiver.mul(0.7)).add(lean))
+        .mul(reach);
 }
 
 /** Bark (0), limb and shoot wood (1) and dead wood (2). */

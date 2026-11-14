@@ -21,13 +21,17 @@ import {
     Fn,
     If,
     Loop,
+    atan,
     clamp,
     cos,
     dot,
     exp,
     float,
+    floor,
+    fract,
     int,
     length,
+    log,
     max,
     min,
     mix,
@@ -36,6 +40,7 @@ import {
     positionWorld,
     sin,
     smoothstep,
+    step,
     texture,
     vec2,
     vec3,
@@ -43,7 +48,7 @@ import {
 } from 'three/tsl';
 import { EARTH_DROP, EYE, TIMING } from './high-coast-core.js';
 import {
-    GUSTS, fieldScalar, hcHash21, hcLuma, heightAt, landAt,
+    GUSTS, RINGS, fieldScalar, fieldWeights, hcHash22, hcLuma, heightAt, landAt,
 } from './high-coast-tsl.js';
 import {
     CLOUD_BASE, aerial, cloudShadow, skyColour, sunGlow,
@@ -66,8 +71,10 @@ const RIPPLES = Object.freeze([
 ]);
 /** Slope variance a pixel too coarse for any ripple still carries (calm water's floor). */
 const GLINT_FLOOR = 0.0006;
+/** A glint's cell in pixels (the cells are laid out in the angles the resting eye sees). */
+const GLINT_PIXELS = 3.4;
 /** Absorption of the Baltic per metre (red, green, blue): brown-green, blue goes first. */
-const ABSORB = [0.36, 0.16, 0.42];
+const ABSORB = [0.3, 0.075, 0.13];
 
 /** The fan of rings round the eye's foot (positions, a normal that faces up, the indices). */
 export function buildSeaFan(rings, spokes) {
@@ -103,7 +110,7 @@ export function buildSeaFan(rings, spokes) {
 }
 
 /** The share of facets that mirror the light L toward the eye V (Sunset's road of light). */
-export function glintLobe(slope, variance, V, L) {
+export const glintLobe = /* @__PURE__ */ Fn(([slope, variance, V, L]) => {
     const H = normalize(L.add(V)).toVar();
     const want = H.xz.negate().div(max(H.y, 0.08));
     const miss = want.sub(slope);
@@ -116,7 +123,14 @@ export function glintLobe(slope, variance, V, L) {
     const m2 = m.mul(m);
     const fresnel = float(0.02).add(m2.mul(m2).mul(m).mul(0.98));
     return share.mul(geometry).mul(fresnel);
-}
+}).setLayout({
+    name: 'hc_glintLobe',
+    type: 'float',
+    inputs: [
+        { name: 'slope', type: 'vec2' }, { name: 'variance', type: 'float' }, { name: 'V', type: 'vec3' },
+        { name: 'L', type: 'vec3' },
+    ],
+});
 
 /** The cloud deck's cover where a ray from P along dir meets it (0 where it never does). */
 export function deckAlong(u, noise, P, dir) {
@@ -170,12 +184,22 @@ export function createSea(u, t, tier) {
 
         // ── Where the wind is: patches of breeze and calm drifting over the bay, sheltered water
         // in the lee of the shores, the gusts gameplay sends, the calm of a perfect clear ──
-        const ground = landAt(t.fields, xz).toVar();
+        const here = fieldWeights(xz);
+        const ground = landAt(t.fields, xz, here).toVar();
         const depth = u.sea.sub(ground.x).toVar();
         const drift = vec2(time.mul(1.1), time.mul(-0.7));
         const patchA = texture(t.noise, xz.add(drift.mul(12.0)).div(2600.0)).r;
         const patchB = texture(t.noise, xz.sub(drift.mul(7.0)).div(900.0).add(vec2(0.3, 0.6))).g;
         const breeze = smoothstep(0.32, 0.68, patchA.mul(0.6).add(patchB.mul(0.4))).mul(0.75).add(0.3).toVar();
+        // The wind lies on the bay in lanes: long streaks of ruffled water with slicks between
+        // them, drawn out along the wind (a read stretched eight to one), kilometres long far out
+        // and a few hundred metres across in the near bay. A slick mirrors the pale horizon; the
+        // breeze beside it is darker and bluer: the sea is never one flat colour.
+        const laneAlong = dot(xz, vec2(0.92, -0.39)).add(time.mul(6.0));
+        const laneAcross = dot(xz, vec2(0.39, 0.92));
+        const lanes = texture(t.noise, vec2(laneAlong.div(11000.0), laneAcross.div(1500.0))).r.mul(0.6)
+            .add(texture(t.noise, vec2(laneAlong.div(46000.0), laneAcross.div(6200.0)).add(vec2(0.43, 0.17))).g.mul(0.4));
+        breeze.mulAssign(smoothstep(0.34, 0.6, lanes).add(0.16));
         breeze.mulAssign(smoothstep(0.0, 9.0, depth).mul(0.55).add(0.45));
         breeze.mulAssign(u.breeze);
         const gust = float(0.0).toVar();
@@ -207,9 +231,108 @@ export function createSea(u, t, tier) {
                 gustTint.addAssign(mix(vec3(1.0, 0.92, 0.75), c.xyz.mul(2.2).add(0.15), young).mul(g1));
             });
         });
+        // ── Rings and whirls: a lock's ring, a hard drop's pair with white water on the lead crest,
+        // a twist's whirl of spiral arms. Each row gives the water a slope of its own (the mirror
+        // bends over the crests), a thread of light along its crests and a share of glints. ──
+        const ringSlope = vec2(0.0).toVar();
+        const crestLight = float(0.0).toVar();
+        const fxWeight = float(0.0).toVar();
+        const whiteWater = float(0.0).toVar();
+        Loop({
+            start: int(0), end: int(RINGS), type: 'int', condition: '<', name: 'ri',
+        }, ({ ri }) => {
+            const a = u.rings.element(ri.mul(3));
+            const b = u.rings.element(ri.mul(3).add(1));
+            const c = u.rings.element(ri.mul(3).add(2));
+            const age = time.sub(a.z).toVar();
+            If(a.w.greaterThan(0.001).and(age.greaterThan(0.0)).and(age.lessThan(b.w)), () => {
+                const off = xz.sub(a.xy).toVar();
+                const r = max(length(off), 0.5).toVar();
+                const outward = off.div(r).toVar();
+                const k = age.div(b.w).toVar();
+                const fresh = float(1.0).sub(k).toVar();
+                If(b.z.lessThan(1.5), () => {
+                    // A ring: a packet of three crests that slows and widens as it spreads. A
+                    // splash (kind 1) sends a second, smaller packet after it.
+                    const life = smoothstep(0.0, 0.06, k).mul(fresh).mul(fresh).mul(a.w)
+                        .toVar();
+                    const reach = b.x.mul(age).mul(float(1.0).sub(k.mul(0.38))).toVar();
+                    const wide = b.y.mul(k.mul(1.3).add(0.55)).toVar();
+                    const p1 = r.sub(reach).div(wide).toVar();
+                    const p2 = r.sub(reach.mul(0.52)).div(wide.mul(0.8)).toVar();
+                    const e1 = exp(p1.mul(p1).negate()).toVar();
+                    const e2 = exp(p2.mul(p2).negate()).mul(b.z).mul(0.7).toVar();
+                    ringSlope.addAssign(outward.mul(e1.mul(sin(p1.mul(3.0))).add(e2.mul(sin(p2.mul(3.0)))).mul(life).mul(0.2)));
+                    const crest = e1.mul(cos(p1.mul(3.0)).mul(0.5).add(0.5)).add(e2.mul(cos(p2.mul(3.0)).mul(0.5).add(0.5)))
+                        .mul(life).toVar();
+                    crestLight.addAssign(crest);
+                    fxWeight.addAssign(crest);
+                    gustTint.addAssign(c.xyz.mul(crest));
+                    whiteWater.addAssign(e1.mul(smoothstep(0.2, 0.9, cos(p1.mul(3.0)))).mul(life).mul(b.z).mul(0.7));
+                }).Else(() => {
+                    // A whirl: three arms of ruffled water winding in toward a still eye, turning.
+                    const life = smoothstep(0.0, 0.12, k).mul(float(1.0).sub(smoothstep(0.55, 1.0, k))).mul(a.w).toVar();
+                    const span = r.div(b.y.mul(smoothstep(0.0, 0.3, k).mul(0.45).add(0.55))).toVar();
+                    const body = exp(span.mul(span).negate()).mul(float(1.0).sub(exp(span.mul(span).mul(-40.0)))).toVar();
+                    const wind = atan(off.y, off.x).mul(3.0).add(log(r).mul(7.5)).sub(age.mul(b.x))
+                        .toVar();
+                    const arm = smoothstep(0.35, 0.95, cos(wind).mul(0.5).add(0.5)).mul(body).mul(life).toVar();
+                    ringSlope.addAssign(vec2(outward.y.negate(), outward.x).mul(sin(wind)).mul(body).mul(life)
+                        .mul(0.16));
+                    gust.addAssign(arm.mul(0.7));
+                    crestLight.addAssign(arm.mul(1.3));
+                    fxWeight.addAssign(arm);
+                    gustTint.addAssign(c.xyz.mul(arm));
+                });
+            });
+        });
+        // The great rebound's wave: a swell running out from the bay, a thin line of white water
+        // breaking on its lead crest, a second crest behind it, glints along both.
+        If(u.wave.w.greaterThan(0.001), () => {
+            const off = xz.sub(u.wave.xy).toVar();
+            const r = max(length(off), 1.0).toVar();
+            const p = r.sub(u.wave.z).div(u.wave.z.mul(0.13).add(18.0)).toVar();
+            const e = exp(p.mul(p).negate()).mul(u.wave.w).toVar();
+            ringSlope.addAssign(off.div(r).mul(e.mul(sin(p.mul(3.2))).mul(0.3)));
+            const crest = e.mul(cos(p.mul(3.2)).mul(0.5).add(0.5)).toVar();
+            const c2 = crest.mul(crest).toVar();
+            crestLight.addAssign(c2.mul(0.8));
+            fxWeight.addAssign(crest.mul(0.8));
+            gustTint.addAssign(u.waveTint.mul(1.4).add(0.25).mul(crest.mul(0.8)));
+            // The break: only the very top of the lead crest (p just ahead of the wave's centre).
+            const lead = exp(p.sub(0.15).mul(p.sub(0.15)).mul(-22.0)).mul(u.wave.w);
+            whiteWater.addAssign(lead.mul(0.95).add(c2.mul(c2).mul(0.25)));
+        });
         // A perfect clear: glass, with the breeze line returning from the horizon.
-        const glass = u.calm.mul(float(1.0).sub(smoothstep(u.calmFront.sub(400.0), u.calmFront, dist)));
+        // (It spreads out from the middle of the bay behind the wave that announces it.)
+        const fromBay = length(xz.sub(u.wave.xy));
+        const glass = u.calm.mul(float(1.0).sub(smoothstep(u.calmFront.sub(400.0), u.calmFront, dist)))
+            .mul(float(1.0).sub(smoothstep(u.calmReach.mul(0.8), u.calmReach, fromBay)))
+            .toVar();
         const amp = breeze.add(gust.mul(3.4)).mul(float(1.0).sub(glass.mul(0.97))).toVar();
+        // On the glass, fish rise: fine rings open here and there and are gone.
+        If(glass.greaterThan(0.02), () => {
+            const cellAt = xz.div(150.0);
+            const id = floor(cellAt).add(512.0).toVar();
+            const h = hcHash22(id).toVar();
+            const centre = floor(cellAt).add(h.mul(0.6).add(0.2)).mul(150.0);
+            const off = xz.sub(centre).toVar();
+            const r = max(length(off), 0.3).toVar();
+            // Each cell's fish rises once every 7 to 12 seconds; its ring lives four.
+            const beat = fract(time.div(h.x.mul(5.0).add(7.0)).add(h.y)).mul(h.x.mul(5.0).add(7.0)).toVar();
+            const p = r.sub(beat.mul(7.0)).div(beat.mul(0.9).add(1.6)).toVar();
+            const e = exp(p.mul(p).negate()).mul(float(1.0).sub(smoothstep(1.5, 4.0, beat))).mul(smoothstep(0.0, 0.15, beat))
+                .mul(glass)
+                .mul(float(1.0).sub(smoothstep(1.2, 5.0, foot)))
+                .toVar();
+            ringSlope.addAssign(off.div(r).mul(e.mul(sin(p.mul(3.0))).mul(0.06)));
+            // Glass still breathes: a long, low heave that bends every image a little and breaks
+            // the sun's pillar into slivers of light, as on a real calm sea.
+            const lull = texture(t.noise, xz.div(700.0)).r.mul(7.0);
+            const heaveA = cos(dot(xz, vec2(0.22, 0.975)).mul(0.14).sub(time.mul(0.55)).add(lull));
+            const heaveB = cos(dot(xz, vec2(-0.5, 0.866)).mul(0.33).sub(time.mul(0.9)).add(lull.mul(1.7)));
+            ringSlope.addAssign(vec2(0.22, 0.975).mul(heaveA.mul(0.011)).add(vec2(-0.5, 0.866).mul(heaveB.mul(0.007))).mul(glass));
+        });
 
         // ── The slope: ripple trains, then the noise; what a pixel cannot resolve is variance ──
         const slope = vec2(0.0).toVar();
@@ -240,20 +363,27 @@ export function createSea(u, t, tier) {
         If(u.swell.x.greaterThan(0.001), () => {
             const sw = dot(xz, vec2(-0.34, 0.94)).mul(0.11).sub(time.mul(1.25));
             const band = exp(dist.sub(u.swell.y).div(260.0).mul(dist.sub(u.swell.y).div(260.0)).negate());
-            slope.addAssign(vec2(-0.34, 0.94).mul(cos(sw).mul(0.08).mul(u.swell.x).mul(band.mul(0.7).add(0.3))));
+            slope.addAssign(vec2(-0.34, 0.94).mul(cos(sw).mul(0.17).mul(u.swell.x).mul(band.mul(0.7).add(0.3))));
         });
         slope.mulAssign(amp);
+        slope.addAssign(ringSlope);
         variance.assign(variance.mul(amp.mul(amp)).add(GLINT_FLOOR).add(gust.mul(0.0035)));
 
         const N = normalize(vec3(slope.x.negate(), 1.0, slope.y.negate())).toVar();
-        const cosV = clamp(dot(V, N), 0.0, 1.0);
+        // The ripples a pixel cannot resolve still tilt its facets: ruffled water turns more of them
+        // up toward the higher, deeper sky and mirrors less of it, so the breeze lies on the bay as
+        // darker, bluer water and the slicks between as pale lanes of the horizon's light.
+        const rough = variance.sqrt().toVar();
+        const cosV = clamp(dot(V, N).add(rough.mul(0.9)), 0.0, 1.0);
         const m = float(1.0).sub(cosV);
         const m2 = m.mul(m);
         const fresnel = float(0.02).add(m2.mul(m2).mul(m).mul(0.98)).toVar();
+        // A perfect clear's glass holds the sky: the mirror takes over from the water's own colour.
+        fresnel.assign(max(fresnel, glass.mul(0.72)));
 
         // ── What the sea mirrors: the sky and its deck, then the land the mirror ray meets ──
         const R0 = V.negate().reflect(N);
-        const R = normalize(vec3(R0.x, max(R0.y, 0.003), R0.z)).toVar();
+        const R = normalize(vec3(R0.x, max(R0.y, 0.003).add(rough.mul(1.6)), R0.z)).toVar();
         const sky = skyColour(u, R, { withSun: false }).toVar();
         const deck = deckAlong(u, t.noise, P, R);
         sky.assign(mix(sky, mix(u.cloudShade, u.cloudLit, 0.55).add(u.glow.mul(sunGlow(dot(R, u.sunDir)).mul(0.5))), deck.mul(0.8)));
@@ -281,8 +411,9 @@ export function createSea(u, t, tier) {
                 const marching = float(1.0).sub(found).toVar();
                 If(marching.lessThan(0.5).or(mi.lessThan(int(mirrorSteps))), () => {
                     const s = mix(lo.add(hi).mul(0.5), travel, marching).toVar();
-                    const q = P.add(R.mul(s));
-                    const a = q.y.sub(heightAt(t.fields, q.xz).add(fieldScalar(t.cover, q.xz, 0.0).mul(15.0))).toVar();
+                    const q = P.add(R.mul(s)).toVar();
+                    const there = fieldWeights(q.xz);
+                    const a = q.y.sub(heightAt(t.fields, q.xz, there).add(fieldScalar(t.cover, q.xz, 0.0, there).mul(15.0))).toVar();
                     If(marching.greaterThan(0.5), () => {
                         If(a.lessThan(0.0), () => {
                             found.assign(1.0);
@@ -307,13 +438,14 @@ export function createSea(u, t, tier) {
             const cover = found.max(float(1.0).sub(smoothstep(0.0, 0.01, gap))).toVar();
             If(cover.greaterThan(0.004), () => {
                 const at = found.greaterThan(0.5).select(hi, nearT).toVar();
-                const q = P.add(R.mul(at));
-                const land = landAt(t.fields, q.xz);
-                const forest = fieldScalar(t.cover, q.xz, 0.0);
+                const q = P.add(R.mul(at)).toVar();
+                const met = fieldWeights(q.xz);
+                const land = landAt(t.fields, q.xz, met);
+                const forest = fieldScalar(t.cover, q.xz, 0.0, met);
                 const n = normalize(vec3(land.y.negate(), 1.0, land.z.negate()));
                 const rock = mix(vec3(0.3, 0.17, 0.12), vec3(0.28, 0.27, 0.25), smoothstep(0.6, 1.4, length(land.yz)).oneMinus().mul(0.4));
                 const albedo = mix(rock, vec3(0.03, 0.055, 0.03), smoothstep(0.15, 0.55, forest));
-                const sunLit = u.sun.mul(clamp(dot(n, u.sunDir), 0.0, 1.0)).mul(shadowAt(t.shadow, q.xz)).mul(u.sunUp);
+                const sunLit = u.sun.mul(clamp(dot(n, u.sunDir), 0.0, 1.0)).mul(shadowAt(t.shadow, q.xz, met)).mul(u.sunUp);
                 const lit = albedo.mul(sunLit.add(u.fill.mul(land.w.mul(0.7).add(0.3))).add(u.bounce.mul(0.4)));
                 // Only the air between the water and the land: the water's own aerial adds the rest.
                 const tau = u.hazeDensity.mul(1.0 / 16000).add(u.mistDensity.mul(1.0 / 700)).mul(at);
@@ -326,52 +458,87 @@ export function createSea(u, t, tier) {
 
         // ── Down into the water: the rock of the shallows through brown-green Baltic water ──
         const clouds = cloudShadow(u, t.noise, P);
-        const shade = shadowAt(t.shadow, xz).mul(clouds);
+        const shade = shadowAt(t.shadow, xz, here).mul(clouds);
         const light = u.sun.mul(max(u.sunDir.y, 0.0).mul(0.6).add(0.15)).mul(shade).mul(u.sunUp).add(u.fill.mul(1.4));
         const path = max(depth, 0.0).mul(float(1.0).add(float(1.0).div(max(V.y, 0.08)).mul(0.5)));
         const trans = exp(vec3(ABSORB[0], ABSORB[1], ABSORB[2]).mul(path).negate()).toVar();
-        const bottom = mix(vec3(0.17, 0.11, 0.08), vec3(0.22, 0.2, 0.15), texture(t.noise, xz.div(7.0)).a).mul(light);
+        const bottom = mix(vec3(0.2, 0.15, 0.1), vec3(0.3, 0.27, 0.2), texture(t.noise, xz.div(7.0)).a).mul(light);
         // The deep: scattered light the colour of the hour's water, brighter toward the sun.
         const forward = clamp(dot(V.negate(), normalize(vec3(u.sunDir.x, 0.0, u.sunDir.z))), 0.0, 1.0);
         const deep = u.water.mul(float(1.0).add(forward.mul(forward).mul(1.6))).mul(u.day.mul(0.7).add(0.3)).add(u.fill.mul(0.04));
         const body = bottom.mul(trans).add(deep.mul(vec3(1.0).sub(trans))).toVar();
 
+        // On the glass a sheen of mother-of-pearl drifts through the mirrored sky.
+        If(glass.greaterThan(0.02), () => {
+            const sheen = texture(t.noise, xz.div(2400.0).add(vec2(time.mul(0.006), 0.0))).r.mul(2.2).add(dist.div(4200.0));
+            const pearl = cos(vec3(0.0, 2.1, 4.2).add(sheen.mul(6.2832))).mul(0.5).add(0.5);
+            mirrored.mulAssign(pearl.sub(0.5).mul(glass).mul(0.22).add(1.0));
+        });
         const water = body.mul(float(1.0).sub(fresnel)).add(mirrored.mul(fresnel)).toVar();
 
-        // ── The sun's road and the sparks near the eye ──
-        const road = glintLobe(slope, variance, V, u.sunDir).mul(u.sunUp).mul(clouds);
+        // ── The sun's road ──
+        const lobe = glintLobe(slope, variance, V, u.sunDir).mul(u.sunUp).mul(clouds);
+        // (Its core rolls off: a calm sea's image of the sun stays a shape, not a slab of white.)
+        const road = lobe.div(lobe.mul(0.05).add(1.0));
         water.addAssign(u.sun.mul(road).mul(0.55));
+        // ── The lighthouse's road: while its lantern burns, its light lies on the water toward
+        // the eye as the sun's does, a thin warm column under the tower ──
+        If(u.beacon.y.greaterThan(0.01), () => {
+            const toLamp = u.lantern.sub(P);
+            const lamp = glintLobe(slope, variance.add(0.0012), V, normalize(toLamp));
+            const lampRoad = lamp.div(lamp.mul(0.08).add(1.0));
+            // (Its strength falls with the water's distance from the tower, gently: it is a lens.)
+            const reach = float(1.0).div(float(1.0).add(length(toLamp).div(3500.0)));
+            water.addAssign(vec3(1.0, 0.8, 0.5).mul(lampRoad).mul(u.beacon.y).mul(reach)
+                .mul(0.5));
+        });
+        // ── Glints: single facets that catch a light and are gone. They are laid out in the angles
+        // the resting eye sees (bearing, depression), so a glint is a few pixels across at any
+        // range and stays on its water as the lens drifts; each is a round spot that swells and
+        // dies on its own beat. ──
+        const rel = xz.sub(vec2(EYE.x, EYE.z));
+        const grid = vec2(rel.x.div(max(rel.y.negate(), 1.0)), float(EYE.y).sub(P.y).div(max(length(rel), 1.0)))
+            .div(u.pixelAngle.mul(GLINT_PIXELS)).toVar();
+        const seed = hcHash22(floor(grid).add(4096.0)).toVar();
+        const spotAt = fract(grid).sub(0.5).sub(vec2(seed.y, fract(seed.x.mul(41.3))).sub(0.5).mul(0.45));
+        const beat = sin(time.mul(seed.y.mul(3.5).add(2.2)).add(seed.x.mul(40.0))).max(0.0);
+        const b2 = beat.mul(beat);
+        const glint = exp(dot(spotAt, spotAt).mul(-15.0)).mul(b2.mul(b2).mul(b2)).toVar();
         if (tier.sparkle) {
-            // Single facets near the eye: a few bright, short-lived sparks inside the road's light.
-            const cell = xz.div(0.55).add(vec2(time.mul(0.9), time.mul(-0.6)));
-            const spark = hcHash21(cell.floor().add(float(time.mul(7.0)).floor().mul(vec2(3.1, 7.7))));
-            const near = float(1.0).sub(smoothstep(150.0, 900.0, dist));
-            const lit = smoothstep(0.985, 1.0, spark).mul(near).mul(road.min(6.0)).mul(amp);
-            water.addAssign(u.sun.mul(lit).mul(0.9));
+            // The sun's glitter: a cell lights with the chance that a facet there is tilted to
+            // the halfway vector, a wider spread than the road itself (the stray flashes beside it).
+            const half = normalize(u.sunDir.add(V)).toVar();
+            const miss = half.xz.negate().div(max(half.y, 0.08)).sub(slope);
+            const odds = exp(dot(miss, miss).div(max(variance, GLINT_FLOOR).mul(-9.0)));
+            const lit = step(float(1.0).sub(odds.mul(0.8)), seed.x).mul(glint).mul(u.sunUp).mul(clouds);
+            water.addAssign(u.sun.mul(lit).mul(2.4));
         }
-        // ── A gust's patch: the ruffled water darkens, and glitters in its own light ──
-        If(gust.greaterThan(0.01), () => {
+        // ── A gust's patch, a ring's crests, a whirl's arms: the ruffled water darkens, a thread of
+        // light runs along each crest and the glints there flash in the event's own colour ──
+        If(fxWeight.add(gust).greaterThan(0.01), () => {
             water.mulAssign(float(1.0).sub(gust.clamp(0.0, 1.0).mul(0.18)));
-            const cellSize = max(foot.mul(1.6), 0.7);
-            const cell = xz.div(cellSize).floor();
-            const flick = hcHash21(cell.add(time.mul(11.0).floor().mul(vec2(1.7, 3.1))));
-            const sparks = smoothstep(0.8, 0.97, flick).mul(gust.clamp(0.0, 1.5));
-            const glitter = u.sun.mul(u.sunUp).mul(0.18).add(u.fill.mul(2.4)).add(0.6);
-            water.addAssign(gustTint.div(gust.max(0.05)).mul(sparks).mul(glitter).mul(2.6));
+            const tint = gustTint.div(fxWeight.add(gust).max(0.05));
+            const lamp = u.sun.mul(u.sunUp).mul(0.18).add(u.fill.mul(2.4)).add(0.6);
+            const chance = gust.mul(0.3).add(fxWeight.mul(0.9)).clamp(0.0, 0.92);
+            const flashes = step(float(1.0).sub(chance), seed.x).mul(glint).mul(4.2);
+            water.addAssign(tint.mul(lamp).mul(flashes.add(crestLight.mul(0.4))));
         });
 
         // ── The waterline: foam on every shore; the sea runs white after the land rises ──
         const lapping = sin(time.mul(1.3).add(hcLuma(texture(t.noise, xz.div(31.0)).rgb).mul(18.0))).mul(0.5).add(0.5);
         const fresh = u.drain.mul(1.4);
         const swellSurf = u.swell.x.mul(exp(dist.sub(u.swell.y).div(220.0).mul(dist.sub(u.swell.y).div(220.0)).negate()));
-        const reachFoam = float(0.35).add(lapping.mul(0.25)).add(fresh.mul(1.2)).add(swellSurf.mul(1.6))
+        const reachFoam = float(0.35).add(lapping.mul(0.25)).add(fresh.mul(1.2)).add(swellSurf.mul(2.4))
             .add(fresh.add(swellSurf).mul(foot).mul(0.35));
+        const churn = texture(t.noise, xz.div(2.3).add(vec2(time.mul(0.05), 0.0))).toVar();
         const foam = float(1.0).sub(smoothstep(0.0, reachFoam, depth)).mul(smoothstep(-0.2, 0.05, depth))
-            .mul(texture(t.noise, xz.div(2.3).add(vec2(time.mul(0.05), 0.0))).g.mul(0.7).add(0.45))
+            .mul(churn.g.mul(0.7).add(0.45))
             .mul(float(1.0).sub(smoothstep(900.0, 3000.0, dist)));
         const foamLight = u.sun.mul(max(u.sunDir.y, 0.05).mul(0.5)).mul(shade).mul(u.sunUp).add(u.fill.mul(1.6))
             .mul(0.62);
-        water.assign(mix(water, foamLight, clamp(foam, 0.0, 0.85)));
+        // White water on a splash's lead crest and on the rebound's wave: broken, never a ruled band.
+        const broken = churn.r.mul(1.3).add(0.15);
+        water.assign(mix(water, foamLight, clamp(foam.add(whiteWater.mul(broken)), 0.0, 0.85)));
 
         const col = aerial(u, P, water);
         return vec4(col, 1.0);

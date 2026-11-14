@@ -26,9 +26,11 @@
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   reduce=1                 reduced motion
  *   look=x,y,z,fov           inspection lens: from the eye, look at a world point with this fov
- *   event=lock|drop|clear|quad|twist|perfect|levelUp|release|over   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|spin|perfect|levelUp|release|over   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (u=<0..1> column, row=<0..19>,
- *                            lines=<1..4>, color=<hex>, peak=<n> for release)
+ *                            lines=<1..4>, color=<hex>, peak=<n> for release). `twist` locks a
+ *                            piece and clears two lines with it; `spin` is the twist that clears
+ *                            nothing (the smaller whirl)
  *   combo=<n>                hold a chain of n (each link lifts the land further)
  *   b2b=<0..4>               hold a back-to-back level (the lighthouse)
  *   lift=<m>                 before anything else, raise the land by this many metres
@@ -203,9 +205,14 @@ export function create({
         } else if (eventName === 'clear') world.onClear({ lines, rowCodes: codes(lines), combo: Math.max(1, holdCombo) });
         else if (eventName === 'quad') world.onClear({ lines: 4, rowCodes: codes(4), combo: Math.max(1, holdCombo) });
         else if (eventName === 'twist') {
+            // As in play: the T locks, then its clear arrives with the twist.
+            world.onLock({ rows: [row, row - 1], u, color: colorParam ? eventColor : PIECE_COLORS[1] });
             world.onClear({
                 lines: 2, rowCodes: codes(2), twist: true, u, color: PIECE_COLORS[1],
             });
+        } else if (eventName === 'spin') {
+            world.onLock({ rows: [row, row - 1], u, color: colorParam ? eventColor : PIECE_COLORS[1] });
+            world.onSpin();
         } else if (eventName === 'perfect') world.onClear({ lines: 4, perfect: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
         else if (eventName === 'release') {
