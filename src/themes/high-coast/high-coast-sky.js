@@ -23,6 +23,7 @@ import {
     mix,
     normalize,
     positionWorld,
+    sin,
     smoothstep,
     texture,
     vec2,
@@ -66,6 +67,33 @@ export function createSky(u, t, tier) {
             const height = smoothstep(0.05, 0.4, dir.y);
             sky.addAssign(vec3(0.9, 0.92, 1.0).mul(bright).mul(u.stars).mul(height)
                 .mul(0.9));
+        });
+
+        // ── Noctilucent cloud: the light night's own sky. Ice at the edge of space still stands
+        // in the sun that has set for the ground: fine electric-blue billows and bands low over
+        // the glow, rippling slowly. ──
+        If(u.nightShine.greaterThan(0.01).and(dir.y.greaterThan(0.015)), () => {
+            const q = dir.xz.div(dir.y.add(0.16)).mul(2.6).add(vec2(u.time.mul(0.0035), u.time.mul(-0.0012))).toVar();
+            // Sheets a few tens of degrees across, each combed into long fibres that lie along
+            // the horizon (a noise read stretched one way: no two alike, so no lattice), and in
+            // patches of them a train of fine billows running aslant, bent by a slow warp.
+            const broad = texture(t.noise, q.mul(0.04).add(vec2(0.21, 0.4))).r;
+            const flow = texture(t.noise, q.mul(0.03).add(vec2(0.6, 0.15))).g.toVar();
+            const bent = q.add(vec2(flow.sub(0.5).mul(1.6), flow.sub(0.5).mul(2.6))).toVar();
+            const fibre = texture(t.noise, vec2(bent.x.mul(0.04), bent.y.mul(0.25))).b;
+            const fine = texture(t.noise, vec2(bent.x.mul(0.09), bent.y.mul(0.5)).add(vec2(0.37, 0.11))).a;
+            const patch = smoothstep(0.45, 0.7, texture(t.noise, q.mul(0.11).add(vec2(0.8, 0.3))).g);
+            const billow = sin(bent.x.mul(17.0).add(bent.y.mul(21.0)).add(flow.mul(30.0))).mul(0.5).add(0.5);
+            const sheet = smoothstep(0.4, 0.74, broad)
+                .mul(smoothstep(0.2, 0.9, fibre.mul(0.65).add(fine.mul(0.35))))
+                .mul(mix(float(1.0), billow.mul(0.85).add(0.3), patch));
+            // Low over where the sun went down: a window in height and in bearing.
+            const window = smoothstep(0.012, 0.06, dir.y).mul(float(1.0).sub(smoothstep(0.2, 0.5, dir.y)))
+                .mul(smoothstep(-0.35, 0.75, dot(normalize(dir.xz), normalize(u.sunDir.xz.add(vec2(1e-4, 0.0))))));
+            // Silver-blue over the rose of the afterglow: it takes the sky's place, it is not a
+            // light added to it (added, it turned the pink to white).
+            const shine = sheet.mul(window).mul(u.nightShine).clamp(0.0, 1.0);
+            sky.assign(mix(sky, vec3(0.3, 0.52, 0.86).mul(u.fill.y.mul(4.0).add(0.45)), shine.mul(0.85)));
         });
 
         // ── The cumulus deck overhead ──

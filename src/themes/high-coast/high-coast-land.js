@@ -52,7 +52,7 @@ import {
 import { DEG, EYE } from './high-coast-core.js';
 import { groundHeight } from './high-coast-field.js';
 import {
-    fieldScalar, hcHash21, hcHash22, hcLuma, landAt,
+    fieldScalar, fieldWeights, hcHash21, hcHash22, hcLuma, landAt,
 } from './high-coast-tsl.js';
 import { shadowAt } from './high-coast-shadow.js';
 import { aerial, cloudShadow } from './high-coast-light.js';
@@ -421,13 +421,14 @@ export function createLandMaterial(u, t, tier) {
     material.colorNode = Fn(() => {
         const P = positionWorld;
         const { xz } = P;
-        const land = landAt(t.fields, xz).toVar();
+        const here = fieldWeights(xz);
+        const land = landAt(t.fields, xz, here).toVar();
         const V = P.sub(u.eye);
         const dist = length(V).toVar();
         const footprint = dist.mul(u.pixelAngle).toVar();
         const grad = land.yz.toVar();
         const slope = length(grad).toVar();
-        const forest = fieldScalar(t.cover, xz, 0.0).toVar();
+        const forest = fieldScalar(t.cover, xz, 0.0, here).toVar();
 
         // ── Detail near the eye: crystals, knobbles and cracks bend the normal ──
         const detailG = vec2(0.0).toVar();
@@ -487,7 +488,7 @@ export function createLandMaterial(u, t, tier) {
         // ── Light ──
         const L = u.sunDir;
         const ndl = clamp(dot(n, L).add(0.05).div(1.05), 0.0, 1.0);
-        const shadow = shadowAt(t.shadow, xz);
+        const shadow = shadowAt(t.shadow, xz, here);
         const clouds = cloudShadow(u, t.noise, P);
         // The floor under the near forest stands in its canopy's shade: between the real trees the
         // sun reaches it in flecks only and the sky through gaps (lit as an open field, it read as

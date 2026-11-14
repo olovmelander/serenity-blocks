@@ -375,3 +375,99 @@ tests pass, including the re-baked coast's checksums and the shader budget: the 
 fragment is 48.8 KB against the 48 KiB cap (46.3 KB before; the new detail reuses the noise reads
 the shader already made). GPU p50 at golden hour, 1898 × 998: High 2.56 → 2.75 ms, Ultra 3.15 →
 3.15 ms (the reference was main's High Coast on another session's server).
+
+## Events and light (2026-11-14)
+
+Branch `feature/high-coast-masterpiece`. The owner asked for an audit and for the theme to become
+the game's most stunning, "all event effects impressive, varied and stunning". The audit (every
+hour and every event captured from `main` first) found the picture strong and the events faint:
+a lock was a patch of blocky dashes round a boat, a hard drop a plume a few pixels high, a twist
+nothing the eye could find (the boats heel), a perfect clear a hard-edged slab of white where the
+sun's road had been, the lighthouse a speck. The sea by day was one flat blue.
+
+| Four lines before | Four lines after |
+| --- | --- |
+| ![before](high-coast-overhaul/events-quad-before.jpg) | ![after](high-coast-overhaul/events-quad.jpg) |
+
+### What each event draws now
+
+| Event | New |
+| --- | --- |
+| Lock | A **ring** of three crests opens where the gust sets out, its light the piece's colour (lifted, so a dark piece shows on dark water). |
+| Hard drop | A **splash**: a column of spray with a crown thrown wide, a breath of mist where it falls back, a pair of rings with white water on the lead crest; its gust reaches the summit and the old pine leans and shivers (`u.gale`). |
+| Clear | A **ripple of light** runs out from the middle of the bay, wider with every line and every link of the chain. |
+| Four lines | The **great wave**: a swell front with a thin line of breaking white water and glints, from the bay out over the horizon in about five seconds (its radius grows by e-folds, so it crosses the near bay and the far islands at one pace on the screen). Everything it crosses stands for a moment in more of the light it already has (`waveLight` in `aerial`: gold at the golden hour, pale in the light night, a dark rock stays dark), the summit as it passes the eye, and the clouds catch it last. |
+| Twist | A **whirl**: three spiral arms of ruffled water turning on the lock's side, and a ribbon of droplets wound up off its eye in three strands (a water devil), in the piece's colour. A twist that clears nothing: a smaller one. |
+| Perfect clear | A wave of light runs out and **the glass spreads behind it**. The glass mirrors far more than ruffled water (the sea holds the sky), carries a drifting sheen of mother-of-pearl, heaves a little (so the sun's pillar is slivers of light, not a slab) and shows rings where fish rise. |
+| Back-to-back | The **lighthouse's road**: its light lies on the water toward the eye as the sun's does. |
+| Level up | The day steps forward **in time-lapse**: the cloud deck races 5 km in the five seconds of the turn, its shadows sweeping the islands. |
+| Chain break | The swell that runs in is twice as steep, its surf wider. |
+
+| Hard drop | Twist |
+| --- | --- |
+| ![hard drop](high-coast-overhaul/events-drop.jpg) | ![twist](high-coast-overhaul/events-twist.jpg) |
+
+| Perfect clear, dawn | The light night, a back-to-back run |
+| --- | --- |
+| ![perfect](high-coast-overhaul/events-perfect.jpg) | ![night](high-coast-overhaul/events-night.jpg) |
+
+### The picture
+
+- **Glints.** The sun's glitter, a gust's ruffle and every crest are points of light laid out in
+  the angles the resting eye sees (bearing, depression), a few pixels across at any range, each a
+  round spot on its own beat (gotcha #203). The old cells were squares of water, which the
+  grazing view drew as horizontal dashes.
+- **Wind lanes and slicks.** The breeze lies on the bay in streaks drawn out along the wind, and
+  what a pixel cannot resolve of the ripples now tilts its mirror up toward the deeper sky and
+  lowers its reflectance: ruffled water is darker and bluer, the slicks between are pale lanes of
+  the horizon's light.
+- **Clear shallows.** Green water over pale rock (absorption 0.30 / 0.075 / 0.13 per metre), so
+  every shore has a teal halo and the skerries still under the sea show before they rise.
+- **The sun** stands in a corona (the dome only: on the water its image is the road).
+- **Noctilucent cloud** in the light night: silver-blue fibres along the horizon over the rose of
+  the afterglow, billows in patches of them.
+- **Gulls.** Three rounds ride the updraught a hundred-odd metres off the summit's face, where a
+  gull is a bird and not a pixel. Their wing-beat read `positionLocal.x`, which since r185 is
+  metres across the bay: a flapping gull was thrown tens of metres apart (gotcha #65).
+
+![day](high-coast-overhaul/events-day.jpg)
+
+### Decisions and traps
+
+- **Events happen in the open water of the mid-frame** (`sitePoint` y 0.42–0.62; lower down the
+  summit's rim hid half of every ring). On a tall screen the card covers the bay, so they happen
+  in the two margins beside its upper half.
+- **An event reads no land.** The wave's centre (the water behind the card) is found by
+  `update()` when the frame is laid out, not when a clear asks for it; a unit test holds a big
+  clear to zero marches.
+- **A small clear's ripple never cuts off a great wave** still crossing the bay; a second quad
+  inside 1.2 s feeds the one running.
+- **The time-lapse is a run, not an offset from the last level-up.** Read as
+  `LAPSE_RUN · smooth(t − levelUpAt)` it stood at its full 5 km before the first level-up and
+  jumped back to zero on each one: the whole sky teleported. It is now carried on from where it
+  stands (`lapseFrom`, `lapseAt`), and is off under reduced motion.
+- **Noctilucent cloud took three tries.** Sine-warped noise drew marbled paper; two crossing sine
+  trains drew a plaid; what reads is one noise read stretched eight to one (fibres), one train of
+  billows in patches, mixed toward silver-blue (added, it turned the rose to white).
+- **Shader budget.** The sea's GLSL fragment went 39.8 → 51.3 KiB with the new terms, over the
+  48 KiB gate. It is back to 47.5 by sharing work, not by cutting: every reader of the land asked
+  for the same two field weights again (`fieldWeights(xz)` pins one pair per point, and the weight
+  itself is one laid-out function), the lobe is one laid-out function for the sun and the
+  lighthouse, and the white water reads the noise the shore foam already read. The land's went
+  47.3 → 47.0 with the wave's light added.
+- **Effect pools by tier.** A splash or a whirl takes a share of the pool (√(pool / 2048)), so
+  Minimal's 256 motes keep the gesture.
+
+### Checks
+
+- Playground, private dev server, headless Chrome on the RTX 5080 Laptop at `maxFps=30`: every
+  hour, every event at several ages, High, Ultra, Low and Minimal, WebGL2 (`forceWebGL=1`),
+  portrait 390 × 844: consoles clean.
+- The real game (`/?skipIntro=1&unlockAll=1&themeValidation=1`, theme switched to High Coast, a
+  single-player run driven with real key presses): eight hard drops gave eight locks, eight rings
+  and a gale of 0.64 at the pine; a four-line clear and a twist through the world drew the wave
+  and the whirl; console clean on WebGPU.
+- GPU time at rest, 1920 × 1080, High, timestamp queries at 30 fps, interleaved with `main` on a
+  second server: golden hour 2.37–2.46 → 2.44–2.48 ms, morning 1.89–1.94 → 1.92–1.95 ms.
+- Tests: `tests/unit/high-coast-events.test.js` (13) holds the new choreography; the theme's 296
+  tests and the shader gate pass.

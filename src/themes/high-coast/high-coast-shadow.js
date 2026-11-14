@@ -37,13 +37,13 @@ const REACH = Object.freeze({ near: 6000, mid: 14000, far: 26000 });
 const SOFT = 0.03;
 
 /** The sun's visibility at a world xz read from the three targets, blended like the land. */
-export function shadowAt(targets, xz) {
+export function shadowAt(targets, xz, w = null) {
     const read = (name) => {
         const f = FIELDS[name];
         return texture(targets[name], vec2(xz.x.sub(f.x0).div(f.span), xz.y.sub(f.z0).div(f.span))).x;
     };
-    const wm = fieldWeight(FIELDS.mid, xz);
-    const wn = fieldWeight(FIELDS.near, xz);
+    const wm = w ? w.wm : fieldWeight(FIELDS.mid, xz);
+    const wn = w ? w.wn : fieldWeight(FIELDS.near, xz);
     return mix(mix(read('far'), read('mid'), wm), read('near'), wn);
 }
 

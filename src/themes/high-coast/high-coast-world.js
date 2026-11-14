@@ -5,24 +5,34 @@
  * the hour's light, the sea, the sky with its cumulus, the pine forests, the old pine and the
  * trail sign, the fishing hamlet, the sailing fleet, and everything gameplay does to them:
  *
- *   lock        a gust (a cat's paw) runs out across the water from beside the card, and a boat on
- *               that side sets a spinnaker in the piece's colour (a hard drop: a wider, faster gust
- *               and a splash); a sail already flying fills again and turns toward the new colour
+ *   lock        a ring opens on the water beside the card in the piece's colour, a gust (a cat's
+ *               paw) runs out from it across the bay, and a boat on that side sets a spinnaker in
+ *               that colour; a sail already flying fills again and turns toward the new colour
+ *   hard drop   a column of spray and its crown, a pair of rings with white water on the lead
+ *               crest, a wider and faster gust, and the old pine leans and shivers in it
  *   clear       the land rises: the sea draws back from every shore, wet rock and skerries come up
- *               out of it, seawater runs off the risen rock, and the bare band dries in the sun
+ *               out of it, seawater runs off the risen rock, and the bare band dries in the sun;
+ *               a ripple of light runs out from the middle of the bay, wider with every line
  *   cascade     each wave lifts further than the last, the wet rock gleams brighter, the sea bursts
  *               off more shores
  *   chain       the rise compounds (each link lifts more, up toward the coast's ceiling); when the
  *               chain breaks, a swell runs in from the open sea and the sea returns
  *   four lines  the great rebound: a big lift at once, the risen rock flaring gold, spray off every
- *               shore in the colours of the rows it cleared
- *   twist      the fleet comes about, every sail swinging through the light together (a twist that
- *               clears nothing too)
+ *               shore in the colours of the rows it cleared, and the great wave: a swell front with
+ *               a line of white water that runs from the bay out over the horizon, everything it
+ *               crosses standing for a moment in more of the hour's light, the sky catching it last
+ *   twist      a whirl: spiral arms of ruffled water turning on the lock's side, a ribbon of
+ *               droplets wound up off its eye (a water devil) in the piece's colour, and the fleet
+ *               comes about, every sail swinging through the light together (a twist that clears
+ *               nothing: a smaller whirl)
  *   b2b         the lighthouse lights and sweeps while the run lasts; each back-to-back clear its
  *               long flash, the rock flaring in it
- *   perfect     the crown: the wind dies, the sea lies glass-calm with the risen coast mirrored and
- *               the lighthouse burning, until the breeze line returns from the horizon
- *   level up    the day steps an hour forward (it also turns with the clock alone)
+ *   b2b         …and its light lies on the water toward the eye, a warm column under the tower
+ *   perfect     the crown: a wave of light runs out and behind it the wind dies; the sea lies as
+ *               glass and holds the sky (the risen coast mirrored, a sheen of mother-of-pearl, rings
+ *               where fish rise), the lighthouse burning, until the breeze line returns
+ *   level up    the day steps an hour forward in time-lapse, the cloud deck racing over (it also
+ *               turns with the clock alone)
  *   game over   dusk falls and the sea returns; morning comes back with the next run
  *
  * Every answer ACCUMULATES (shared/swell.js): a second event adds to what is still lit and never
@@ -50,8 +60,8 @@ import {
 import { tierFor } from './high-coast-quality.js';
 import { breathe, loadCoast, planCoast } from './high-coast-assets.js';
 import {
-    GUSTS, bakeLattice, bakeNoise, createCoverTexture, createFieldTexture, createLatticeTexture, createNoiseTexture,
-    createUniforms,
+    GUSTS, RINGS, RING_KIND, bakeLattice, bakeNoise, createCoverTexture, createFieldTexture, createLatticeTexture,
+    createNoiseTexture, createUniforms,
 } from './high-coast-tsl.js';
 import { fillFieldTextureRows } from './high-coast-field-data.js';
 import { groundHeight } from './high-coast-field.js';
@@ -85,9 +95,11 @@ const SNAPSHOT = Object.freeze([
     'time', 'level', 'combo', 'peak', 'b2b', 'liftAsk', 'liftShown', 'wetLine', 'releaseAt',
     'swellAt', 'perfectAt', 'calmFrontFrom', 'calmFrontAt', 'duskFrom', 'duskTarget', 'duskAt', 'beaconLevel',
     'beaconShown', 'lastLockAt', 'levelUpAt', 'gustCursor', 'breezeShown', 'windDrift',
+    'ringCursor', 'waveAt', 'waveX', 'waveZ', 'wavePower', 'lastLockU', 'lastLockRow', 'calmSpreadAt',
+    'lapseAt', 'lapseFrom',
 ]);
 /** Accumulating envelopes a rebuild in place carries over (each a Swell: exportState/importState). */
-const SWELLS = Object.freeze(['drainSwell', 'reboundSwell', 'flashSwell', 'seaSwell', 'signal']);
+const SWELLS = Object.freeze(['drainSwell', 'reboundSwell', 'flashSwell', 'seaSwell', 'signal', 'galeSwell']);
 
 /**
  * Event reactions under reduced motion: spray, gusts, the gulls' startle, the fleet's swing and
@@ -96,6 +108,21 @@ const SWELLS = Object.freeze(['drainSwell', 'reboundSwell', 'flashSwell', 'seaSw
 const CALM_MOTION = 0.4;
 /** The calm of a perfect clear rises over this long (seconds). */
 const CALM_RISE = 1.4;
+/**
+ * The great rebound's wave: it sets out `from` metres wide and its radius grows by `rate` a second
+ * (e-folds), so it crosses the near bay, the summit and the far islands at about the same pace on
+ * the screen and is over the horizon when its `life` ends.
+ */
+export const WAVE = Object.freeze({ from: 70, rate: 1.38, life: 5.2 });
+/** The wave's radius `age` seconds after it set out (metres). */
+export const waveRadius = (age) => WAVE.from * Math.exp(WAVE.rate * clamp(age, 0, WAVE.life));
+/** How strong the wave stands at `age`: up at once, fading as it runs out to sea. */
+export const waveStrength = (age) => (!(age >= 0) || age > WAVE.life ? 0
+    : smooth(0, 0.18, age) * (1 - smooth(3.4, WAVE.life, age)) * (1 - 0.5 * smooth(1.4, 4.2, age)));
+/** A level-up turns the day in time-lapse: the cloud deck races for this long (seconds)… */
+const LAPSE = 5;
+/** …this many metres further than the wind alone would carry it. */
+const LAPSE_RUN = 5200;
 /** The inverse of smooth(0, 1, x) on [0, 1]: where a smoothstep reads `v`. */
 const unsmooth = (v) => 0.5 - Math.sin(Math.asin(1 - 2 * clamp(v, 0, 1)) / 3);
 
@@ -250,6 +277,11 @@ export class HighCoastWorld {
         this.signal = new Swell({
             attack: 0.25, release: 0.5, ceiling: 1.3, knee: 1,
         });
+        /** The wind an event throws at the summit (the old pine leans and shivers in it). */
+        this.galeSwell = new Swell({
+            attack: 0.3, release: 1.5, ceiling: 1.5, knee: 1,
+        });
+        this._lockRgb = [1, 1, 1];
         /**
          * How hot play runs (shared/gameplay-surge.js): the air clears, the wind freshens, the risen
          * rock gleams gold, the fleet flies every colour and the gulls come in over the bay.
@@ -261,6 +293,8 @@ export class HighCoastWorld {
         };
         /** Site jobs that waited past SITE_STALE: their share rises with the next ones served. */
         this.siteCarry = { mist: 0, spray: 0 };
+        /** The middle of the bay as the frame shows it (the wave's centre), and whether to look again. */
+        this.bay = { x: 60, z: -650, stale: true };
         this.resetState(0);
     }
 
@@ -301,6 +335,18 @@ export class HighCoastWorld {
         this.levelUpAt = -1e6;
         this.gustCursor = 0;
         for (const row of this.u.tables.gusts) row.set(0, 0, -1e6, 0);
+        this.ringCursor = 0;
+        for (const row of this.u.tables.rings) row.set(0, 0, -1e6, 0);
+        this.calmSpreadAt = -1e6;
+        // The time-lapse's run so far: none (each level-up carries the deck LAPSE_RUN further).
+        this.lapseAt = -1e6;
+        this.lapseFrom = -LAPSE_RUN;
+        this.waveAt = -1e6;
+        this.waveX = 60;
+        this.waveZ = -650;
+        this.wavePower = 0;
+        this.lastLockU = 0.5;
+        this.lastLockRow = 14;
         this.siteQueue = [];
         this.marchWork = 0;
         // A seek replays from scratch: the same draws, the same spray, the gulls back on their rounds.
@@ -371,12 +417,16 @@ export class HighCoastWorld {
         this.addPart('props', props);
         yield 'props';
         this.addPart('hamlet', createHamlet(this.u, this.textures, tier, this.fields));
+        if (this.parts.hamlet.lantern) this.u.lantern.value.copy(this.parts.hamlet.lantern);
         yield 'hamlet';
         this.addPart('fleet', createFleet(this.u, this.textures, tier));
         yield 'fleet';
         this.addPart('life', createLife(this.u, this.textures, tier, this.parts.hamlet.lantern));
         yield 'life';
         this.motes = new Motes(this.u, tier.motes);
+        // A splash or a whirl takes a share of the pool, so the lean tiers keep the gesture
+        // without one event wiping out another's spray.
+        this.moteShare = clamp(Math.sqrt(tier.motes / 2048), 0.4, 1);
         this.addPart('motes', {
             mesh: this.motes.mesh,
             reset: () => this.motes.clear(),
@@ -414,12 +464,14 @@ export class HighCoastWorld {
         this.u.aspect.value = this.aspect;
         this.viewportHeight = Math.max(1, height);
         if (!this.layoutLive) this.layout = fallbackLayout(width, height);
+        this.bay.stale = true;
     }
 
     setLayout(rects, aspect) {
         if (aspect > 0) this.aspect = aspect;
         this.layoutLive = Boolean(rects);
         this.layout = rects || fallbackLayout(1920, 1920 / Math.max(0.2, this.aspect));
+        this.bay.stale = true;
     }
 
     /** The rest pose plus a slow breath of the lens and the pointer's parallax. */
@@ -520,8 +572,12 @@ export class HighCoastWorld {
         };
         const f = clamp(row, 0, 19) / 19;
         if (this.aspect < 0.75) {
-            const top = Math.min(0.94, card.y1 + 0.02);
-            return { x: 0.08 + clamp(u, 0, 1) * 0.84, y: top + (0.985 - top) * (0.3 + 0.7 * f) };
+            // A tall screen: the card covers the bay, and under it lies the summit's rock. The
+            // water shows in the two margins beside the card's upper half, so events happen there.
+            const left = u < 0.5;
+            const k = clamp(left ? u / 0.5 : (u - 0.5) / 0.5, 0, 1);
+            const x = left ? card.x0 * (0.25 + 0.5 * k) : card.x1 + (1 - card.x1) * (0.25 + 0.5 * k);
+            return { x, y: card.y0 + 0.1 + 0.14 * f };
         }
         const { hud } = this.layout;
         let lo;
@@ -540,7 +596,8 @@ export class HighCoastWorld {
             }
             k = (u - 0.5) / 0.5;
         }
-        return { x: lo + (hi - lo) * clamp(k, 0, 1), y: 0.5 + 0.3 * f };
+        // (The open water of the mid-frame: lower down the summit's rim hides half of a ring.)
+        return { x: lo + (hi - lo) * clamp(k, 0, 1), y: 0.42 + 0.2 * f };
     }
 
     /**
@@ -613,6 +670,132 @@ export class HighCoastWorld {
         this.u.tables.gusts[slot * 3 + 2].set(rgb[0], rgb[1], rgb[2], clamp(hold, 0, 1));
     }
 
+    /**
+     * A ring on the water round a point: a lock's ring of three crests, a hard drop's pair with
+     * white water on the lead crest (`kind` splash), or a twist's whirl of spiral arms (`kind`
+     * whirl: `speed` is its turn in rad/s). Sizes follow the point's distance, so a ring far out
+     * reads as wide on the screen as one in the near bay. `rgb` is the light its crests carry.
+     */
+    ring(p, {
+        kind = RING_KIND.ring, power = 1, speed = 55, width = 9, life = 2.4, rgb = [1, 1, 1],
+    } = {}) {
+        const slot = this.ringCursor % RINGS;
+        this.ringCursor = (this.ringCursor + 1) % (RINGS * 1000);
+        const scale = clamp(p.distance / 700, 0.6, 4);
+        const turning = kind === RING_KIND.whirl;
+        this.u.tables.rings[slot * 3].set(p.x, p.z, this.time, power);
+        this.u.tables.rings[slot * 3 + 1].set(turning ? speed : speed * scale, width * scale, kind, life);
+        // The crest's light: the piece's colour a little toward white (water catching a coloured
+        // light, not paint on it), lifted so a dark one still shows on dark water.
+        const pale = (rgb[0] + rgb[1] + rgb[2]) * (0.28 / 3);
+        this.u.tables.rings[slot * 3 + 2].set(
+            (rgb[0] * 0.72 + pale) * 2 + 0.15,
+            (rgb[1] * 0.72 + pale) * 2 + 0.15,
+            (rgb[2] * 0.72 + pale) * 2 + 0.15,
+            0,
+        );
+    }
+
+    /** The middle of the bay as the frame shows it: the water behind the card (the wave's centre). */
+    bayCentre() {
+        const card = cardUnion(this.layout);
+        const x = card ? (card.x0 + card.x1) / 2 : 0.5;
+        // (On a tall screen the bay lies behind the card's upper half.)
+        for (const y of (this.aspect < 0.75 ? [0.3, 0.26, 0.34, 0.22, 0.38] : [0.6, 0.52, 0.68, 0.46, 0.74])) {
+            const hit = this.surfaceAt(x, y);
+            if (hit?.water) return hit;
+        }
+        return null;
+    }
+
+    /**
+     * The great rebound's wave sets out from the middle of the bay: a swell front on the water
+     * and a band of light over everything it crosses. One still young takes the new one's power.
+     */
+    startWave(power = 1) {
+        const age = this.time - this.waveAt;
+        const standing = this.wavePower * waveStrength(age);
+        if (age >= 0 && age < 1.2) {
+            this.wavePower = Math.min(1.6, this.wavePower + power * 0.5);
+            return;
+        }
+        // A small clear's ripple never cuts off a great wave still crossing the bay.
+        if (standing > power) return;
+        // (Found by update() when the frame is laid out: an event reads no land.)
+        this.waveX = this.bay.x;
+        this.waveZ = this.bay.z;
+        this.waveAt = this.time;
+        this.wavePower = power;
+    }
+
+    /**
+     * A twist's whirl: spiral arms of ruffled water turning on the lock's side of the card, and a
+     * column of droplets wound up off its eye into the light (the piece's colour in both).
+     */
+    whirl(amount = 1) {
+        const p = this.waterSite(this.lastLockU, this.lastLockRow);
+        if (!p) return;
+        const rgb = this._lockRgb;
+        const { motion } = this;
+        const side = this.lastLockU < 0.5 ? -1 : 1;
+        this.ring(p, {
+            kind: RING_KIND.whirl, power: 0.9 * amount, speed: 3.4 * side * (0.5 + 0.5 * motion), width: 130, life: 4.6, rgb,
+        });
+        this.galeSwell.hit(0.45 * amount * motion, this.time);
+        if (!this.motes) return;
+        const r = this.random;
+        const scale = clamp(p.distance / 700, 0.6, 4);
+        // Three strands of droplets leave the eye one after another as it turns, each droplet
+        // climbing and winding at the strand's own pace: together they stand as a spiral ribbon
+        // of spray that turns and opens as it climbs (a water devil), and fine spray round it.
+        const share = this.moteShare ?? 1;
+        const per = Math.round(64 * amount * (0.5 + 0.5 * motion) * share);
+        const turn = side * 4.6 * (0.5 + 0.5 * motion);
+        const carry = side * 1.7;
+        for (let strand = 0; strand < 3; strand++) {
+            const climb = (26 + strand * 3) * scale * (0.6 + 0.4 * motion);
+            for (let i = 0; i < per; i++) {
+                const born = 0.2 + (i / per) * 2.7;
+                const tint = 0.45 + r() * 0.5;
+                this.motes.spawn({
+                    x: p.x,
+                    y: p.y + 0.4,
+                    z: p.z,
+                    // (radius, climb, turn)
+                    vx: (4.5 + r() * 1.2) * scale,
+                    vy: climb * (0.94 + r() * 0.12),
+                    vz: turn,
+                    born: this.time + born,
+                    life: 1.9 + r() * 0.5,
+                    size: (1.7 + r() * 1.7) * scale,
+                    rgb: [0.8 + rgb[0] * tint * 2.0, 0.84 + rgb[1] * tint * 2.0, 0.88 + rgb[2] * tint * 2.0],
+                    kind: MOTE_KIND.whirl,
+                    // Its bearing as it leaves: the strand's place round the eye, carried on as the eye turns.
+                    seed: (((strand / 3 + (carry * born) / TAU) % 1) + 1) % 1,
+                    gravity: 0.75,
+                });
+            }
+        }
+        const fine = Math.round(70 * amount * (0.5 + 0.5 * motion) * share);
+        for (let i = 0; i < fine; i++) {
+            this.motes.spawn({
+                x: p.x,
+                y: p.y + 0.4,
+                z: p.z,
+                vx: (7 + r() * 16) * scale,
+                vy: (7 + r() * 18) * scale * (0.6 + 0.4 * motion),
+                vz: turn * (0.5 + r() * 0.4),
+                born: this.time + 0.3 + r() * 2.8,
+                life: 1.2 + r() * 1.0,
+                size: (0.9 + r() * 1.1) * scale,
+                rgb: [0.9 + rgb[0] * 0.5, 0.92 + rgb[1] * 0.5, 0.95 + rgb[2] * 0.5],
+                kind: MOTE_KIND.whirl,
+                seed: r(),
+                gravity: 0.4 + r() * 0.5,
+            });
+        }
+    }
+
     // ── Gameplay ──────────────────────────────────────────────────────────────────
 
     /** Reactions that move (spray, gusts, the gulls, the fleet's swing) scale by this. */
@@ -633,6 +816,11 @@ export class HighCoastWorld {
         const u = context.u ?? 0.5;
         const p = this.waterSite(u, row);
         const rgb = this.pigment(context.color);
+        this.lastLockU = u;
+        this.lastLockRow = row;
+        this._lockRgb[0] = rgb[0];
+        this._lockRgb[1] = rgb[1];
+        this._lockRgb[2] = rgb[2];
         // A boat on that side sets a spinnaker in the piece's colour (or one already flying fills
         // again and turns toward it, never doused to be set again)…
         const { fleet } = this.parts;
@@ -654,9 +842,18 @@ export class HighCoastWorld {
             rgb,
             hold: clamp(level * 1.4 - 0.15, 0, 0.85),
         });
+        // Where it touches the water a ring opens in the piece's colour; a hard drop throws up a
+        // column of spray, and a pair of rings with white water on the lead crest runs out from it.
+        this.ring(p, hard ? {
+            kind: RING_KIND.splash, power: (1.15 + drop * 0.45) * (1 + 0.3 * level), speed: 78 * (0.6 + 0.4 * motion), width: 12, life: 3.3, rgb,
+        } : {
+            power: 0.95 * (1 + 0.4 * level), speed: 52 * (0.6 + 0.4 * motion), width: 8, life: 2.3, rgb,
+        });
         if (hard) {
-            const count = Math.round(70 * (1 + level) * (0.5 + 0.5 * motion));
+            const count = Math.round(130 * (1 + level) * (0.5 + 0.5 * motion) * (this.moteShare ?? 1));
             this.splash(p, rgb, (1 + drop) * (0.55 + 0.45 * motion), count);
+            // Its gust reaches the summit: the old pine leans and shivers.
+            this.galeSwell.hit((0.3 + 0.3 * drop) * motion, this.time);
         }
     }
 
@@ -685,6 +882,9 @@ export class HighCoastWorld {
         const palette = deeper > 0 || lines === 4 ? this.paletteOf(context.rowCodes) : null;
         if (deeper > 0) this.onWave(deeper, palette);
         if (lines === 4) this.onQuad(context.b2b === true, palette);
+        // Every clear's lift sends a ripple of light out from the bay, wider with each line and
+        // each link of the chain (four lines send the great wave instead).
+        else this.startWave(clamp(0.16 + 0.13 * lines + 0.03 * Math.min(chain - 1, 6) + 0.05 * Math.min(deeper, 4), 0, 0.7));
         if (context.b2b) this.onBackToBack();
         if (context.twist) this.onTwist(context);
         // A perfect clear that landed with its rows: the clear above, and its crown.
@@ -730,6 +930,10 @@ export class HighCoastWorld {
         // The frame-wide flash is for a quad out of the blue: in hot play the payoff's light is
         // the rock's flare, the spray and the burning sky, and the frame keeps its darks.
         this.flashSwell.hit(0.26 * Math.max(0, 1 - 1.1 * this.heat.level), this.time);
+        // The wave sets out from the middle of the bay: a swell front on the water, a band of the
+        // hour's light over every shore it crosses, the spray rising where it passes.
+        this.startWave(b2b ? 1.3 : 1);
+        this.galeSwell.hit(0.9 * this.motion, this.time + 0.9);
         this.reboundSpray(palette);
         this.parts.life?.startle?.(this.time, this.motion);
     }
@@ -746,6 +950,7 @@ export class HighCoastWorld {
     onTwist() {
         this.counts.twists++;
         this.parts.fleet?.tack?.(this.time, this.motion);
+        this.whirl(1);
     }
 
     /** A twist that cleared nothing: the fleet still comes about. */
@@ -754,6 +959,7 @@ export class HighCoastWorld {
         this.counts.spins++;
         this.surge.spin(this.time);
         this.parts.fleet?.tack?.(this.time, this.motion);
+        this.whirl(0.6);
     }
 
     /**
@@ -777,6 +983,9 @@ export class HighCoastWorld {
             this.perfectAt = t;
         }
         if (!onClear) this.surge.crown(t);
+        // A wave of light runs out from the middle of the bay, and behind it the water lies still.
+        if (!(calm > 0)) this.calmSpreadAt = t;
+        this.startWave(0.75);
         this.signal.hit(1, t);
         this.reboundSwell.hit(0.9, t);
         this.flashSwell.hit(0.12 * Math.max(0, 1 - 1.1 * this.heat.level), t);
@@ -832,7 +1041,19 @@ export class HighCoastWorld {
             // The lighthouse signals once (a long flash), day or night.
             this.signal.hit(1, time + 0.35);
             this.surge.levelUp(time);
+            // The day turns in time-lapse: the deck races on from where it stands (never back), and
+            // the old pine stirs as it goes over. Not under reduced motion.
+            if (!this.reducedMotion) {
+                this.lapseFrom = this.lapseRun(time);
+                this.lapseAt = time;
+                this.galeSwell.hit(0.35, time + 0.6);
+            }
         }
+    }
+
+    /** How far the level-ups' time-lapses have carried the cloud deck by `time` (metres). */
+    lapseRun(time) {
+        return this.lapseFrom + LAPSE_RUN * smooth(0, LAPSE, time - this.lapseAt);
     }
 
     onGameOver() {
@@ -873,22 +1094,43 @@ export class HighCoastWorld {
         const scale = clamp(p.distance / 500, 0.8, 4);
         for (let i = 0; i < count; i++) {
             const a = r() * TAU;
-            const s = (3 + r() * 7) * scale;
+            // Two in three go up in the column; the rest are the crown, thrown low and wide.
+            const crown = i % 3 === 2;
+            const s = (crown ? 11 + r() * 12 : 1.5 + r() * 6) * scale;
             const tint = r() * 0.5;
             this.motes.spawn({
                 x: p.x,
                 y: p.y + 0.3,
                 z: p.z,
                 vx: Math.cos(a) * s,
-                vy: (9 + r() * 14) * scale * power,
+                vy: (crown ? 7 + r() * 8 : 15 + r() * 22) * scale * power,
                 vz: Math.sin(a) * s,
-                born: this.time + r() * 0.08,
-                life: 1.4 + r() * 1.0,
-                size: (1.6 + r() * 2.2) * scale,
+                born: this.time + r() * (crown ? 0.2 : 0.1),
+                life: 1.6 + r() * 1.2,
+                size: (1.9 + r() * 2.6) * scale,
                 rgb: [0.9 + rgb[0] * tint, 0.92 + rgb[1] * tint, 0.95 + rgb[2] * tint],
                 kind: MOTE_KIND.spray,
                 seed: r(),
                 gravity: -9.8 * scale,
+            });
+        }
+        // The column falls back into a breath of mist that drifts off downwind.
+        for (let i = 0; i < 5; i++) {
+            this.motes.spawn({
+                x: p.x + (r() - 0.5) * 14 * scale,
+                y: p.y + 2 * scale,
+                z: p.z + (r() - 0.5) * 14 * scale,
+                vx: 1.6,
+                vy: (2.5 + r() * 2.5) * scale,
+                vz: -0.8,
+                born: this.time + 0.25 + r() * 0.5,
+                life: 3 + r() * 1.5,
+                size: (7 + r() * 6) * scale,
+                rgb: [0.95, 0.95, 0.97],
+                kind: MOTE_KIND.mist,
+                seed: r(),
+                drift: 0.6,
+                gravity: 0,
             });
         }
     }
@@ -1014,7 +1256,11 @@ export class HighCoastWorld {
         // cumulus burn rose and copper in the low sun (less so with the sun high), so the payoff's
         // colour is carried by the sky itself and mirrored in the sea, not poured over the frame.
         const lowSun = 1 - smooth(12, 35, L.el);
-        const fire = Math.min(1, level * 0.35 + fever * 0.75) * (0.45 + 0.55 * lowSun);
+        // The great rebound's wave reaches the sky as it runs out over the horizon: for a breath the
+        // banks and the deck stand in more of the hour's light.
+        const wOut = time - this.waveAt;
+        const skyCatch = this.wavePower * smooth(1.6, 3.0, wOut) * (1 - smooth(3.6, 6.4, wOut)) * flashScale();
+        const fire = Math.min(1, level * 0.35 + fever * 0.75 + skyCatch * 0.3) * (0.45 + 0.55 * lowSun);
         const deep = 1 - fire * 0.32;
         const Z = L.zenith;
         u.zenith.value.set(Z[0] * deep * (1 - fire * 0.12), Z[1] * deep * (1 - fire * 0.08), Z[2] * deep);
@@ -1024,7 +1270,8 @@ export class HighCoastWorld {
         u.mist.value.set(L.mist[0], L.mist[1], L.mist[2]);
         const C = L.cloudLit;
         const S = L.cloudShade;
-        u.cloudLit.value.set(C[0] * (1 + fire * 0.4), C[1] * (1 - fire * 0.1), C[2] * (1 - fire * 0.35));
+        const catchLight = 1 + skyCatch * 0.32;
+        u.cloudLit.value.set(C[0] * (1 + fire * 0.4) * catchLight, C[1] * (1 - fire * 0.1) * catchLight, C[2] * (1 - fire * 0.35) * catchLight);
         u.cloudShade.value.set(S[0] * (1 + fire * 0.6), S[1] * (1 - fire * 0.12), S[2] * (1 + fire * 0.05));
         u.water.value.set(L.water[0], L.water[1], L.water[2]);
         // The air clears as play heats: the haze and the sea fog thin until, in a fever, the
@@ -1040,7 +1287,10 @@ export class HighCoastWorld {
         // The deck drifts with a constant wind, faster while play runs hot (the extra drift is
         // integrated: a closed form of the clock alone at rest).
         this.windDrift += dt * 7.5 * motion * (level * 0.8 + fever * 0.9);
-        u.wind.value.set(time * 7.5 + this.windDrift, time * -2.6 - this.windDrift * 0.35);
+        // A level-up turns the day in time-lapse: for its few seconds the deck races over and its
+        // shadows sweep the islands (closed form in the clock: a seek lands on the same sky).
+        const lapse = this.lapseRun(time);
+        u.wind.value.set(time * 7.5 + this.windDrift + lapse, time * -2.6 - (this.windDrift + lapse) * 0.35);
         // …and the deck gathers to burn: more of it, so more of the fire, and its shadows sweep the
         // land and the water (darks moving under the gold).
         u.cloudCover.value = 0.2 + 0.16 * fire;
@@ -1055,6 +1305,12 @@ export class HighCoastWorld {
         else this.wetLine += (sea - this.wetLine) * approach(1 / TIMING.dry, dt);
         u.sea.value = sea;
         u.wetLine.value = this.wetLine;
+        if (this.bay.stale && camera && this.fields) {
+            const c = this.bayCentre();
+            this.bay.x = c ? c.x : 60;
+            this.bay.z = c ? c.z : -650;
+            this.bay.stale = false;
+        }
         if (this.motes) this.serveSites();
         u.drain.value = this.drainSwell.valueAt(time);
         // The rebound's gold on the wet rock (quads, cascade waves, back-to-back, the crown).
@@ -1066,6 +1322,8 @@ export class HighCoastWorld {
         const calm = this.calmAt(time);
         u.calm.value = calm;
         u.calmFront.value = this.calmFrontLine(time);
+        const spread = time - this.calmSpreadAt;
+        u.calmReach.value = spread >= 0 && spread < WAVE.life ? waveRadius(spread) : 1e6;
         // The chain freshens the wind (the fleet heels, the water sparkles), and so does the heat
         // of play; eased, so a broken chain lets the wind drop instead of cutting it.
         const breezeAsk = 1 + 0.08 * Math.min(this.combo, 6) + motion * (level * 0.3 + fever * 0.22);
@@ -1075,6 +1333,15 @@ export class HighCoastWorld {
         this.beaconShown += (Math.max(this.beaconLevel / 3, calm * 0.9) - this.beaconShown) * approach(1.2, dt);
         u.beacon.value.set(clamp(this.beaconShown, 0, 1), L.lamps);
         this.signalShown = this.signal.valueAt(time);
+        // The great rebound's wave, on the water and in the light.
+        const wAge = time - this.waveAt;
+        u.wave.value.set(this.waveX, this.waveZ, waveRadius(wAge), this.wavePower * waveStrength(wAge));
+        const G = L.glow;
+        const peak = Math.max(G[0], G[1], G[2], 1e-3);
+        u.waveTint.value.set(0.55 + 0.75 * (G[0] / peak), 0.55 + 0.45 * (G[1] / peak), 0.5 + 0.25 * (G[2] / peak));
+        u.gale.value = this.galeSwell.valueAt(time);
+        // Noctilucent cloud: only the light night's sky is dark enough to show it.
+        u.nightShine.value = clamp(L.stars / 0.4, 0, 1) ** 1.5 * (1 - this.dusk);
         // The heat the materials read: (level, fever, the sails' glow, the gold on the wet rock).
         u.heat.value.set(level, fever, level * 0.3 + fever * 0.85, level * 0.5 + fever * 1.1);
 
@@ -1179,6 +1446,7 @@ export class HighCoastWorld {
             wheel: this.wheel.exportState(),
             counts: { ...this.counts },
             gusts: this.u.tables.gusts.map((v) => v.toArray()),
+            rings: this.u.tables.rings.map((v) => v.toArray()),
             fleet: this.parts.fleet?.exportState?.() ?? null,
             life: this.parts.life?.exportState?.() ?? null,
         };
@@ -1192,6 +1460,7 @@ export class HighCoastWorld {
         this.wheel.importState(state.wheel);
         this.counts = { ...emptyCounts(), ...state.counts };
         if (Array.isArray(state.gusts)) state.gusts.forEach((row, k) => this.u.tables.gusts[k]?.fromArray(row));
+        if (Array.isArray(state.rings)) state.rings.forEach((row, k) => this.u.tables.rings[k]?.fromArray(row));
         if (state.fleet) this.parts.fleet?.importState?.(state.fleet);
         if (state.life) this.parts.life?.importState?.(state.life);
     }
