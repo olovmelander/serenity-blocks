@@ -5697,7 +5697,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'The clock’s.',
             '1',
         ],
-        ['parts', 'Draw only these parts.', 'Comma list of grain, land, lapporten, fort, trees, herd, geese, sky, beams, motes, lens.', 'All.', 'land,sky'],
+        ['parts', 'Draw only these parts.', 'Comma list of grain, land, lapporten, fort, trees, herd, geese, sky, rays, beams, devils, chaff, motes, lens.', 'All.', 'land,sky'],
         ['falseColor', 'Band the pre-tone-map brightness instead of the graded picture.', '1 enables.', 'Off.', '1'],
         [
             'noPost',
@@ -5749,7 +5749,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         [
             'event',
             'Replay one gameplay reaction before the frame.',
-            'lock, drop, clear, quad, twist, perfect, levelUp or over.',
+            'lock, drop, clear, quad, twist, spin, perfect, levelUp or over.',
             'Idle.',
             'quad',
         ],
