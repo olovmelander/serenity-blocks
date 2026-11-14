@@ -76,9 +76,11 @@ export function createSky(u, t, tier) {
             If(dir.y.greaterThan(0.02), () => {
                 const tHigh = float(9000.0).sub(u.eye.y).div(dir.y);
                 const p = u.eye.xz.add(dir.xz.mul(tHigh)).add(u.drift.mul(1.7));
-                const streak = texture(t.noise, vec2(p.x.div(120000.0), p.y.div(24000.0)).add(vec2(0.5, 0.2))).g;
-                const wisp = texture(t.noise, vec2(p.x.div(32000.0), p.y.div(6000.0))).b;
-                const c = smoothstep(0.55, 0.85, streak).mul(smoothstep(0.35, 0.75, wisp)).mul(0.45);
+                // Broad soft veils combed along the wind, their fibres wide enough to stay soft
+                // (at a fifth of this width they drew as scratches across the gaps).
+                const streak = texture(t.noise, vec2(p.x.div(150000.0), p.y.div(52000.0)).add(vec2(0.5, 0.2))).g;
+                const wisp = texture(t.noise, vec2(p.x.div(64000.0), p.y.div(21000.0))).b;
+                const c = smoothstep(0.5, 0.9, streak).mul(smoothstep(0.3, 0.85, wisp)).mul(0.42);
                 const col = mix(u.cloudShade.mul(2.5).add(u.fill), u.cloudLit, 0.7).add(u.glow.mul(sunGlow(mu)).mul(0.5));
                 sky.assign(mix(sky, col, c.mul(exp(tHigh.div(70000.0).negate()))));
             });

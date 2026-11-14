@@ -723,7 +723,13 @@ describe('Grainfields reactions: the uniforms', () => {
         });
         // The scalars, as returned and as written.
         expect(fx).toEqual({
-            breaking: reactions.breaking(t), tear: reactions.tear(t), flare: reactions.flare(t)[0], clearSky: 0, still: 0,
+            breaking: reactions.breaking(t),
+            tear: reactions.tear(t),
+            flare: reactions.flare(t)[0],
+            clearSky: 0,
+            still: 0,
+            rays: reactions.rays(t),
+            gust: reactions.gust(t)[0],
         });
         expect(fx.breaking).toBeGreaterThan(0);
         expect(fx.tear).toBeGreaterThan(0);
@@ -762,8 +768,9 @@ describe('Grainfields reactions: the uniforms', () => {
         expect([reactions.combo, reactions.b2b]).toEqual([0, 0]);
         const u = createUniforms();
         expect(reactions.writeUniforms(u, 12)).toEqual({
-            breaking: 0, tear: 0, flare: 0, clearSky: 0, still: 0,
+            breaking: 0, tear: 0, flare: 0, clearSky: 0, still: 0, rays: 0, gust: 0,
         });
+        expect(reactions.devils).toEqual([]);
         expect([u.gapCount.value, u.trailCount.value, u.pulseCount.value]).toEqual([0, 0, 0]);
     });
 });

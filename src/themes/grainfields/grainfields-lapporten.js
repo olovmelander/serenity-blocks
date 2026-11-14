@@ -20,7 +20,9 @@
  * snow lying in the cirques and gullies.
  *
  * Unlit, lit by the shared light: the deck's gaps throw shafts of sun onto the faces, the haze of
- * twelve kilometres of air lies over them, the high faces keep the afterglow after sunset.
+ * twelve kilometres of air lies over them, the high faces keep the afterglow after sunset, and
+ * with the sun near the horizon its first and last light lies on the faces turned to it (at dawn
+ * it comes down them from the summits while the plain is still in shade).
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -444,6 +446,25 @@ export function* createLapportenSteps(u, t, tier, clock = stepClock(GATE_SLICE_M
         const afterglow = u.day.oneMinus().mul(smoothstep(-0.25, 0.25, u.sunDir.y.add(0.12)))
             .mul(smoothstep(450.0, 1300.0, h));
         col.addAssign(u.glow.mul(albedo.add(0.07)).mul(afterglow).mul(1.05));
+        // First and last light: with the sun within a few degrees of the horizon its light lies on
+        // the fells' faces turned to it and nowhere else. At dawn the sun comes up behind the eye
+        // and reaches the summits while the plain still lies in the earth's shadow: the line of
+        // light comes down the faces as the sun climbs (about 2350 m with the sun five degrees
+        // under the horizon, the foot as it clears it). In the evening the same line climbs back
+        // up them as the sun sinks, the golden hour's low sun warm on the walls that face it.
+        // Once the sun stands eight degrees up the day's own light has taken over. Not under a
+        // heavy deck.
+        const climbing = smoothstep(-0.085, 0.02, u.sunDir.y);
+        const line = mix(float(2350.0), float(150.0), climbing);
+        const sunFlat = normalize(vec3(u.sunDir.x, 0.12, u.sunDir.z));
+        const first = smoothstep(line.sub(380.0), line.add(320.0), h)
+            .mul(clamp(N.dot(sunFlat).mul(1.4).add(0.15), 0.0, 1.0))
+            .mul(smoothstep(-0.09, -0.06, u.sunDir.y))
+            .mul(float(1.0).sub(smoothstep(0.03, 0.14, u.sunDir.y)))
+            .mul(float(1.0).sub(smoothstep(0.6, 0.85, u.cover)));
+        // (Rose-gold: the first light has come through the most air of the whole day.)
+        col.addAssign(u.glow.mul(vec3(1.2, 0.78, 0.66)).mul(albedo.mul(1.5).add(0.12)).mul(first).mul(open.mul(0.5).add(0.5))
+            .mul(3.4));
         return vec4(aerial(u, P, col), 1.0);
     })();
     const mesh = new THREE.Mesh(geometry, material);

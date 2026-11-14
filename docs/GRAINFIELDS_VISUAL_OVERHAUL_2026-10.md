@@ -95,6 +95,9 @@ amber in the afterglow.
 
 ## What gameplay does
 
+(Since 2026-11-14 every event also throws something into the air that reads at every hour, storm
+or not: [GRAINFIELDS_EVENTS_2026-11.md](GRAINFIELDS_EVENTS_2026-11.md).)
+
 | Event | What happens |
 |---|---|
 | Lock | A small gap tears in the deck; a sunbeam stands in the barley beside the card on the piece's side (its column across the free field, its row as distance) and walks slowly with the wind (0.5 m/s: riding the deck's ten metres a second swept it behind the card in two seconds); pigment motes of the piece's colour lift through it |

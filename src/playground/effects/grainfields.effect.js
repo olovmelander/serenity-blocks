@@ -27,9 +27,10 @@
  *   look=x,y,z,fov           inspection lens: from the eye, look at a world point with this fov
  *   cam=x,y,z,tx,ty,tz,fov   a free camera: from one world point, look at another (inside the stand,
  *                            a plant against the sky)
- *   event=lock|drop|clear|quad|twist|perfect|levelUp|over   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|spin|perfect|levelUp|over   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (u=<0..1> column, row=<0..19>,
- *                            lines=<1..4>, color=<hex>)
+ *                            lines=<1..4>, color=<hex>). `twist` locks a piece and clears two
+ *                            lines with it; `spin` is the twist that clears nothing
  *   combo=<n>                hold a chain of n (the storm breaks)
  *   locks=<n>                before the event, play n locks
  *   eventLevel=<n>           the level an event=levelUp steps to (default level + 1)
@@ -271,8 +272,14 @@ export function create({
             });
         } else if (eventName === 'clear') world.onClear({ lines, combo: Math.max(1, holdCombo) });
         else if (eventName === 'quad') world.onClear({ lines: 4, combo: Math.max(1, holdCombo) });
-        else if (eventName === 'twist') world.onClear({ lines: 2, twist: true, u });
-        else if (eventName === 'perfect') world.onClear({ lines: 4, perfect: true });
+        else if (eventName === 'twist') {
+            // As in play: the T locks, then its clear arrives with the twist.
+            world.onLock({ rows: [row, row - 1], u, color: params.get('color') ? eventColor : PIECE_COLORS[1] });
+            world.onClear({ lines: 2, twist: true, u });
+        } else if (eventName === 'spin') {
+            world.onLock({ rows: [row, row - 1], u, color: params.get('color') ? eventColor : PIECE_COLORS[1] });
+            world.onSpin({ u });
+        } else if (eventName === 'perfect') world.onClear({ lines: 4, perfect: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
         else if (eventName === 'over') world.onGameOver();
     };

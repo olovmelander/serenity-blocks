@@ -69,7 +69,7 @@ import {
 import { aerialParts } from './grainfields-light.js';
 import { deckShadow, gfHash21 } from './grainfields-tsl.js';
 import {
-    cropColour, gustAt, plotOf, pulsesAt, trailsAt,
+    cropColour, gustAt, gustFrontAt, plotOf, pulsesAt, trailsAt,
 } from './grainfields-land.js';
 import { EYE, PLACES } from './grainfields-core.js';
 import { grazingPullAt, trampleAt } from './grainfields-trample.js';
@@ -245,6 +245,8 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
         const gust = gustAt(u, t.noise, iA.xz, true);
         const trail = trailsAt(u, iA.xz);
         const pulse = pulsesAt(u, iA.xz);
+        // Four lines: the gust out of the gate, striking the stand as its front passes.
+        const gate = gustFrontAt(u, iA.xz);
         // Where the herd has gone through: parted, and laid over in its wake.
         const tramp = t.trample ? trampleAt(t, iA.xz) : { push: vec2(0.0), lay: float(0.0) };
         const flutter = sin(u.time.mul(3.1).add(h3.mul(40.0)).add(iA.x.mul(0.6))).mul(0.06);
@@ -255,6 +257,7 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
         // A grazing horse's lips gather the ears they are working at.
         const pushed = windD.mul(bendWind).add(pulse.push.mul(1.7)).add(trail.push.mul(1.3)).add(tramp.push.mul(1.5))
             .add(grazingPullAt(u, iA.xz).mul(1.3))
+            .add(gate.push.mul(1.9))
             .toVar();
         const bend = clamp(length(pushed), 0.0, 1.35).toVar();
         const D = pushed.div(max(length(pushed), 1e-4)).toVar();
@@ -327,7 +330,7 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
         tone.mulAssign(mix(float(0.72), float(1.12), h4));
         // Laid over by a gust, the stand shows its paler sides; between the gusts, with the wind up,
         // it stands upright in its own shade: the waves running over the field read as light and dark.
-        const laid = clamp(gust.add(trail.lay).add(pulse.lay).add(tramp.lay.mul(0.6)), 0.0, 1.2);
+        const laid = clamp(gust.add(trail.lay).add(pulse.lay).add(tramp.lay.mul(0.6)).add(gate.lay.mul(0.3)), 0.0, 1.2);
         const lull = u.windStrength.min(1.0).mul(float(1.0).sub(smoothstep(0.0, 0.5, laid))).mul(0.13);
         vTone.assign(vec4(tone, laid.mul(0.58).add(1.0).sub(lull)));
         const shade = mix(float(0.16), float(1.0), inStand);
@@ -338,7 +341,9 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
         vLit.assign(vec4(events, sunlit));
         // Four lines: the front of light from the gate passing the clump (0..1).
         const fd = length(iA.xz.sub(vec2(PLACES.gate.x, PLACES.gate.z))).sub(u.flareFront).div(700.0);
-        vFlare.assign(vec2(exp(fd.mul(fd).negate()).mul(u.flare).mul(0.7).mul(shade), neckHalf));
+        // ...and the crest of its gust as it crosses the stand to the eye.
+        vFlare.assign(vec2(exp(fd.mul(fd).negate()).mul(u.flare).mul(0.7).add(gate.blaze.mul(0.85))
+            .mul(shade), neckHalf));
         // The air between the eye and the plant (a plant is a metre tall: per vertex is exact enough).
         const air = aerialParts(u, P);
         vAir.assign(vec4(air.inscatter, air.transmit));

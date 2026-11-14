@@ -229,8 +229,10 @@ Grainfields (2026-10-18), a new theme in Misty Lake's place, adds the capture fl
 holds the light on the wheel of the day. The eight `mistyLake*` readers of the theme it replaces
 (`ForceWebGL`, `NoPost`, `NoReflection`, `Reflection`, `EnableReflection`, `NoMRT`,
 `NoCompute` and `Debug`) are retired with it. Use `effect=grainfields&t=10&hour=<place>` for a
-deterministic playground capture; the part names are `grain`, `land`, `lapporten`, `trees`, `sky`,
-`beams` and `motes`.
+deterministic playground capture; the part names are `grain`, `land`, `lapporten`, `fort`, `trees`,
+`herd`, `geese`, `sky`, `rays`, `beams`, `devils`, `chaff`, `motes` and `lens` (`rays`, `devils` and
+`chaff` since 2026-11-14: the light through the gate, the twists' dust devils and the events' dust
+and petals), and `event` also takes `spin` (a twist that clears nothing).
 
 Sunbraid (2026-10-20), a new theme in Rainy Window's place, adds the capture flags
 `sunbraidForceWebGL`, `sunbraidTime`, `sunbraidFixedDt`, `sunbraidParts` and `sunbraidFalseColor`;

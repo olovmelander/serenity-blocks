@@ -6,6 +6,15 @@
  * shelterbelts' trees, the sky with its deck, the locks' sunbeams and the motes in the air; and
  * everything gameplay does to them (grainfields-reactions.js holds the event language).
  *
+ * What an event throws into the air over the stand reads at every hour, storm or not
+ * (grainfields-chaff.js): a lock lifts a puff of chaff in the piece's colour through its beam; a
+ * hard drop bursts a cloud of dust and a fountain of husks out of the barley; a clear's lane of
+ * wind carries the rows' chaff out along it; a twist raises a dust devil that walks the field
+ * (grainfields-devil.js), its flakes wound up round it; four lines burst light through the gate
+ * (grainfields-gate-rays.js) and their gust comes in across the barley with a wall of chaff
+ * streaming past the eye; a perfect clear's still air fills with gold dust rising; a level-up
+ * turns the day in time-lapse, the deck racing over.
+ *
  * How hot play runs (src/themes/shared/gameplay-surge.js) builds the storm's break across a run:
  * calm, the world as it stands; warm, the wind rises in the barley and the beams stand wider;
  * hot, the gusts race over the field, the deck runs faster and tears open even without a chain,
@@ -42,6 +51,9 @@ import { disposeGrainfieldsAssets, loadGrainfieldsAssets } from './grainfields-a
 import { createGrainSteps } from './grainfields-grain.js';
 import { createBeams } from './grainfields-beams.js';
 import { createMotes } from './grainfields-motes.js';
+import { CHAFF_KIND, DEVIL_WALK, createChaff } from './grainfields-chaff.js';
+import { createDevils } from './grainfields-devil.js';
+import { createGateRays } from './grainfields-gate-rays.js';
 import { createLensEars } from './grainfields-lens.js';
 import { createFort } from './grainfields-fort.js';
 import { createGeese } from './grainfields-geese.js';
@@ -52,10 +64,12 @@ import { createHerd } from './grainfields-herd.js';
 import { createTrample } from './grainfields-trample.js';
 import { createHerdShadow } from './grainfields-herd-shadow.js';
 
-import { GrainfieldsReactions } from './grainfields-reactions.js';
+import { GUST, GrainfieldsReactions } from './grainfields-reactions.js';
 import { cardUnion, fallbackLayout } from './grainfields-composition.js';
 
-export const GRAINFIELDS_PARTS = Object.freeze(['grain', 'land', 'lapporten', 'fort', 'trees', 'herd', 'geese', 'sky', 'beams', 'motes', 'lens']);
+export const GRAINFIELDS_PARTS = Object.freeze([
+    'grain', 'land', 'lapporten', 'fort', 'trees', 'herd', 'geese', 'sky', 'rays', 'beams', 'devils', 'chaff', 'motes', 'lens',
+]);
 export const REST_RIG = Object.freeze({ near: RIG.near, far: RIG.far });
 export const fovForAspect = (aspect) => rigFor(aspect).fov;
 export const PIECE_LINEAR = PIECE_COLORS.map((c) => hexToLinear(c));
@@ -67,8 +81,19 @@ const COUNTERS = [
 const emptyCounts = () => Object.fromEntries(COUNTERS.map((k) => [k, 0]));
 /** Session scalars a rebuild in place carries over. */
 const SNAPSHOT = Object.freeze([
-    'time', 'level', 'combo', 'peak', 'b2b', 'duskFrom', 'duskTarget', 'duskAt', 'levelUpAt',
+    'time', 'level', 'combo', 'peak', 'b2b', 'duskFrom', 'duskTarget', 'duskAt', 'levelUpAt', 'lapseFrom', 'lapseTo',
+    'lapseAt',
 ]);
+
+/**
+ * A level-up turns the day in time-lapse: over `span` seconds the deck runs `run` seconds of its
+ * drift further than the clock alone carries it (clouds racing over, their shadows with them).
+ */
+export const LAPSE = Object.freeze({ span: 5, run: 170 });
+/** A hard drop's burst is whole again this long after the last one (seconds). */
+const BURST_CLEARS = 3.5;
+/** Chaff's gold (linear), for what no piece gives its colour. */
+const CHAFF_GOLD = Object.freeze([1, 0.82, 0.45]);
 
 /** Where a four-line tear aims: the sun's ray to this height over the gate (metres). */
 const GATE_TEAR_HEIGHT = 1800;
@@ -252,6 +277,9 @@ export class GrainfieldsWorld {
         this.blaze = 0;
 
         this.u = createUniforms();
+        // The way from the eye to the gate (the four-line gust comes out of it).
+        const toGate = Math.hypot(PLACES.gate.x - EYE.x, PLACES.gate.z - EYE.z) || 1;
+        this.u.gustFront.value.set((PLACES.gate.x - EYE.x) / toGate, (PLACES.gate.z - EYE.z) / toGate, GUST.from, 0);
         this.textures = null;
         this.wheel = new HourWheel();
         this._hourLight = createLight();
@@ -291,6 +319,30 @@ export class GrainfieldsWorld {
         this.gustLead = 0;
         /** Flights out launched this run (each stirs where the next goes up). */
         this.skeins = 0;
+        // The level-ups' time-lapse: how far it stood when the last one came, how far it is asked
+        // to run in all, and when that was asked (none yet).
+        this.lapseFrom = 0;
+        this.lapseTo = 0;
+        this.lapseAt = -1e6;
+        /** When the last hard drop burst (its dust is still in the air a few seconds on). */
+        this.burstAt = -1e6;
+        /** The last piece locked: its colour (linear) and the side of the board it fell on. */
+        this.lastLock = { rgb: [1, 0.82, 0.45], side: 1 };
+        this.chaffSeed = 0x2f6e2b1;
+    }
+
+    /** A deterministic draw in [0, 1) for the chaff (reseeded by a seek: captures repeat). */
+    draw() {
+        this.chaffSeed = (this.chaffSeed + 0x6d2b79f5) >>> 0;
+        let z = this.chaffSeed;
+        z = Math.imul(z ^ (z >>> 15), z | 1);
+        z ^= z + Math.imul(z ^ (z >>> 7), z | 61);
+        return ((z ^ (z >>> 14)) >>> 0) / 4294967296;
+    }
+
+    /** How far the level-ups' time-lapses have carried the deck by `time` (seconds of its drift). */
+    lapseRun(time) {
+        return this.lapseFrom + (this.lapseTo - this.lapseFrom) * smooth(0, LAPSE.span, time - this.lapseAt);
     }
 
     // ── Build ─────────────────────────────────────────────────────────────────────
@@ -344,7 +396,10 @@ export class GrainfieldsWorld {
             yield 'takeoffs';
         }
         this.addPart('sky', createSky(u, t, tier));
+        this.addPart('rays', createGateRays(u, t));
         this.addPart('beams', createBeams(u, t, this.reactions));
+        this.addPart('devils', createDevils(u, t, this.reactions));
+        this.addPart('chaff', createChaff(u, t, Math.round(tier.motes * 0.5)));
         this.addPart('motes', createMotes(u, t, tier.motes));
         // The ears by the lens: nearer than it can focus, soft in the bottom corners.
         this.addPart('lens', createLensEars(u, t, { count: tier.lens }));
@@ -517,7 +572,12 @@ export class GrainfieldsWorld {
             layout: this.layout, aim, deck: this.deckState(), heat: level,
         });
         this.surge.lock(c, this.time);
+        if (gap) {
+            this.lastLock.rgb = gap.rgb;
+            this.lastLock.side = (c?.u ?? 0.5) < 0.5 ? -1 : 1;
+        }
         if (c?.hardDrop && !this.reducedMotion) this.parts.herd?.startle(this.time);
+        if (gap && !this.reducedMotion) this.lockChaff(gap, level);
         if (gap && !this.reducedMotion) {
             // Pigment dust of the piece's colour lifts through the beam (more of it, hotter).
             this.parts.motes?.burst({
@@ -567,6 +627,10 @@ export class GrainfieldsWorld {
         // A twist wheels the herd round, and its whirl lifts a spinning column of chaff.
         if (c?.twist) this.parts.herd?.wheel(this.time);
         const whirl = this.reactions.pulses[this.reactions.pulses.length - 1];
+        if (c?.twist) this.devilChaff(this.reactions.devils[this.reactions.devils.length - 1]);
+        if (lines >= 4) this.gustChaff(this.reactions.rowColour({ ...c, palette: PIECE_LINEAR }));
+        if (c?.perfect) this.stillChaff();
+        this.reactions.trails.slice(before).forEach((tr) => this.laneChaff(tr, lines, depth));
         if (c?.twist && whirl?.kind === 1) {
             this.parts.motes?.burst({
                 x: whirl.x,
@@ -602,6 +666,287 @@ export class GrainfieldsWorld {
         });
     }
 
+    // ── What the events throw into the air (grainfields-chaff.js) ───────────────────
+
+    /**
+     * A flake's colour for a piece's (linear): a petal of that colour, a share of the field's own
+     * gold in it (husks and straw fly with the petals).
+     */
+    flakeColour(rgb, own = 0.75) {
+        return [
+            CHAFF_GOLD[0] + (rgb[0] * 1.5 + 0.1 - CHAFF_GOLD[0]) * own,
+            CHAFF_GOLD[1] + (rgb[1] * 1.5 + 0.1 - CHAFF_GOLD[1]) * own,
+            CHAFF_GOLD[2] + (rgb[2] * 1.5 + 0.1 - CHAFF_GOLD[2]) * own,
+        ];
+    }
+
+    /**
+     * A lock: a puff of chaff in the piece's colour lifts out of the stand where its beam lands.
+     * A hard drop bursts: a cloud of the field's dust, a fountain of husks through it and a crown
+     * of them thrown out low over the ears.
+     */
+    lockChaff(gap, heat = 0) {
+        const { chaff } = this.parts;
+        if (!chaff) return;
+        const r = () => this.draw();
+        const { share } = chaff;
+        const rgb = this.flakeColour(gap.rgb, 0.88);
+        const y = gap.footY + 0.9;
+        // A beam lands 26 to 140 m out: what it throws up is sized to its distance, so a far
+        // lock's puff stands about as tall beside the card as a near one's.
+        const far = clamp(Math.hypot(gap.footX - EYE.x, gap.footZ - EYE.z) / 26, 1, 3.4);
+        const lift = far ** 0.75;
+        // Fast play drops a piece a second: a whole burst for each would stand as one bank of dust
+        // over the gate. A burst is as big as the air has had time to clear since the last one
+        // (a quarter at least), so the first drop after a pause is the one that bursts.
+        const room = gap.hard ? clamp((this.time - this.burstAt) / BURST_CLEARS, 0.25, 1) : 1;
+        if (gap.hard) this.burstAt = this.time;
+        const flakes = Math.round((gap.hard ? 64 * (0.4 + 0.6 * room) : 42) * share * (1 + 0.4 * heat));
+        for (let i = 0; i < flakes; i++) {
+            const a = r() * TAU;
+            const d = Math.sqrt(r()) * gap.radius * 0.6;
+            // A hard drop's crown: one in three goes out low and fast.
+            const crown = gap.hard && i % 3 === 0;
+            const out = (crown ? 5 + r() * 5 : 0.5 + r() * 1.6) * lift;
+            chaff.fly({
+                x: gap.footX + Math.cos(a) * d,
+                y,
+                z: gap.footZ + Math.sin(a) * d,
+                vx: Math.cos(a) * out,
+                vy: (crown ? 1.4 + r() * 2 : (gap.hard ? 6 : 4.2) * (0.6 + r())) * lift,
+                vz: Math.sin(a) * out,
+                life: 3 + r() * 1.8,
+                size: (gap.hard ? 0.085 : 0.075) * (0.7 + r() * 0.8) * far,
+                rgb,
+                seed: r(),
+                time: this.time + r() * (gap.hard ? 0.18 : 0.5),
+            });
+        }
+        // The puff itself. A lock's: a few small clouds of the piece's pigment lifting off the
+        // ears. A hard drop's: a column of the field's dust thrown up through them, small clouds
+        // at many heights (one big one read as a ball), a breath of the pigment in it.
+        const puffs = Math.max(2, Math.round((gap.hard ? 14 * room : 3) * share));
+        for (let i = 0; i < puffs; i++) {
+            const a = r() * TAU;
+            const out = (gap.hard ? 0.8 + r() * 2.4 : 0.3 + r() * 0.7) * lift;
+            const up = (gap.hard ? 1.5 + r() * r() * 11 : 1 + r() * 1.6) * lift;
+            chaff.fly({
+                x: gap.footX + Math.cos(a) * 0.5,
+                y: y - 0.2,
+                z: gap.footZ + Math.sin(a) * 0.5,
+                vx: Math.cos(a) * out,
+                vy: up,
+                vz: Math.sin(a) * out,
+                life: (gap.hard ? 2.6 : 2.3) + r() * 1.2,
+                size: (gap.hard ? 0.45 + r() * 0.35 : 0.4 + r() * 0.25) * far,
+                grow: (gap.hard ? 1.3 + r() * 1.1 : 1 + r() * 0.6) * far,
+                kind: CHAFF_KIND.puff,
+                rgb: gap.rgb,
+                pigment: gap.hard ? 0.12 : 0.25,
+                seed: r(),
+                time: this.time + r() * (gap.hard ? 0.25 : 0.4),
+            });
+        }
+    }
+
+    /** A clear's lane of wind carries the rows' chaff out along it as its head runs out. */
+    laneChaff(tr, lines, depth) {
+        const { chaff } = this.parts;
+        if (!chaff) return;
+        const r = () => this.draw();
+        const rgb = this.flakeColour(tr.rgb, 0.7);
+        const n = Math.round((18 + 9 * lines + 5 * Math.min(depth, 5)) * chaff.share);
+        const sideX = -tr.hz;
+        const sideZ = tr.hx;
+        for (let i = 0; i < n; i++) {
+            const along = 5 + r() * r() * 55;
+            const across = (r() - 0.5) * tr.width * 1.4;
+            const x = tr.x + tr.hx * along + sideX * across;
+            const z = tr.z + tr.hz * along + sideZ * across;
+            const speed = 5 + r() * 7;
+            chaff.fly({
+                x,
+                y: groundHeight(x, z) + 0.95,
+                z,
+                vx: tr.hx * speed + sideX * (r() - 0.5) * 2,
+                vy: 1.8 + r() * 3.2,
+                vz: tr.hz * speed + sideZ * (r() - 0.5) * 2,
+                life: 2.6 + r() * 1.6,
+                size: 0.07 * (0.7 + r() * 0.8),
+                rgb,
+                seed: r(),
+                // Thrown as the lane's head passes: nearest first.
+                time: tr.at + along / 70 + r() * 0.3,
+            });
+        }
+        if (lines < 3) return;
+        const puffs = Math.max(2, Math.round((lines - 1) * 2 * chaff.share));
+        for (let i = 0; i < puffs; i++) {
+            const along = 8 + r() * 26;
+            const x = tr.x + tr.hx * along;
+            const z = tr.z + tr.hz * along;
+            chaff.fly({
+                x,
+                y: groundHeight(x, z) + 0.7,
+                z,
+                vx: tr.hx * (3 + r() * 3),
+                vy: 1.4 + r() * 1.6,
+                vz: tr.hz * (3 + r() * 3),
+                life: 2.8 + r() * 1.2,
+                size: 0.45 + r() * 0.3,
+                grow: 1.4 + r() * 0.9,
+                kind: CHAFF_KIND.puff,
+                rgb: tr.rgb,
+                pigment: 0.35,
+                seed: r(),
+                time: tr.at + along / 70 + r() * 0.2,
+            });
+        }
+    }
+
+    /**
+     * A dust devil's own: flakes wound up round it in the last piece's colour (they leave its foot
+     * one after another as it turns, so they stand as a spiral that climbs), and the dust it
+     * flings out round its foot.
+     */
+    devilChaff(devil) {
+        const { chaff } = this.parts;
+        if (!chaff || !devil) return;
+        const r = () => this.draw();
+        const rgb = this.flakeColour(this.lastLock.rgb, 0.8);
+        const n = Math.round(84 * chaff.share * devil.power);
+        const y = groundHeight(devil.x, devil.z) + 0.6;
+        for (let i = 0; i < n; i++) {
+            const born = 0.25 + (i / n) * 4.6;
+            const climb = (3.4 + r() * 2.2) * (devil.height / 12.5);
+            chaff.fly({
+                // Where the devil's foot stands when this flake leaves it.
+                x: devil.x + DEVIL_WALK[0] * born,
+                y,
+                z: devil.z + DEVIL_WALK[1] * born,
+                kind: CHAFF_KIND.wound,
+                radius: devil.radius * (0.55 + r() * 0.6),
+                climb,
+                turn: devil.spin * (0.75 + r() * 0.5),
+                open: 0.15 + r() * 0.06,
+                life: (devil.height / climb) * (0.85 + r() * 0.25),
+                size: 0.08 * (0.7 + r() * 0.8),
+                rgb,
+                seed: r(),
+                time: devil.at + born,
+            });
+        }
+        const puffs = Math.max(3, Math.round(7 * chaff.share * devil.power));
+        for (let i = 0; i < puffs; i++) {
+            const a = r() * TAU;
+            const born = 0.1 + r() * 3.2;
+            chaff.fly({
+                x: devil.x + DEVIL_WALK[0] * born + Math.cos(a) * devil.radius,
+                y: y + 0.2,
+                z: devil.z + DEVIL_WALK[1] * born + Math.sin(a) * devil.radius,
+                vx: Math.cos(a) * (1.5 + r() * 2.5),
+                vy: 0.8 + r() * 1.6,
+                vz: Math.sin(a) * (1.5 + r() * 2.5),
+                life: 2.6 + r() * 1.4,
+                size: 0.4 + r() * 0.3,
+                grow: 1.2 + r() * 0.8,
+                kind: CHAFF_KIND.puff,
+                pigment: 0,
+                seed: r(),
+                time: devil.at + born,
+            });
+        }
+    }
+
+    /**
+     * Four lines' gust: as its front comes in across the stand it tears chaff out of the ears and
+     * carries it past the eye, a wall of husks streaming out of the gate's light (each flake is
+     * thrown when the front reaches it), the field's dust rolling in under it.
+     */
+    gustChaff(rows = CHAFF_GOLD) {
+        const { chaff } = this.parts;
+        if (!chaff) return;
+        const r = () => this.draw();
+        const d = this.u.gustFront.value;
+        const start = this.reactions.gustAt;
+        const tinted = this.flakeColour(rows, 0.45);
+        const n = Math.round(170 * chaff.share);
+        for (let i = 0; i < n; i++) {
+            const ahead = 3 + r() * 92;
+            const across = (r() - 0.5) * (30 + ahead * 0.9);
+            const x = EYE.x + d.x * ahead - d.y * across;
+            const z = EYE.z + d.y * ahead + d.x * across;
+            const speed = 15 + r() * 13;
+            chaff.fly({
+                x,
+                y: groundHeight(x, z) + 0.9 + r() * 0.4,
+                z,
+                vx: -d.x * speed + (r() - 0.5) * 3,
+                vy: 1.2 + r() * 4.4,
+                vz: -d.y * speed + (r() - 0.5) * 3,
+                life: 1.7 + r() * 1.1,
+                size: 0.075 * (0.7 + r() * 0.8),
+                rgb: i % 3 ? CHAFF_GOLD : tinted,
+                seed: r(),
+                time: start + (GUST.from - ahead) / GUST.speed + r() * 0.3,
+            });
+        }
+        const puffs = Math.max(4, Math.round(12 * chaff.share));
+        for (let i = 0; i < puffs; i++) {
+            const ahead = 16 + r() * 80;
+            const across = (r() - 0.5) * (40 + ahead);
+            const x = EYE.x + d.x * ahead - d.y * across;
+            const z = EYE.z + d.y * ahead + d.x * across;
+            chaff.fly({
+                x,
+                y: groundHeight(x, z) + 0.8,
+                z,
+                vx: -d.x * (5 + r() * 4),
+                vy: 1 + r() * 1.5,
+                vz: -d.y * (5 + r() * 4),
+                life: 2.4 + r() * 1.2,
+                size: 0.7 + r() * 0.5,
+                grow: 2.2 + r() * 1.4,
+                kind: CHAFF_KIND.puff,
+                pigment: 0,
+                seed: r(),
+                time: start + (GUST.from - ahead) / GUST.speed + r() * 0.2,
+            });
+        }
+    }
+
+    /**
+     * A perfect clear: in the stilled air the field's gold dust rises, turning slowly, all over
+     * the near stand (the wound kind with a wide slow turn: a mote that climbs on its own).
+     */
+    stillChaff() {
+        const { chaff } = this.parts;
+        if (!chaff) return;
+        const r = () => this.draw();
+        const n = Math.round(150 * chaff.share);
+        for (let i = 0; i < n; i++) {
+            const bearing = (r() - 0.5) * 84 * DEG;
+            const distance = 11 + r() * 64;
+            const x = EYE.x + Math.sin(bearing) * distance;
+            const z = EYE.z - Math.cos(bearing) * distance;
+            chaff.fly({
+                x,
+                y: groundHeight(x, z) + 0.9,
+                z,
+                kind: CHAFF_KIND.wound,
+                radius: 0.25 + r() * 0.9,
+                climb: 0.4 + r() * 0.8,
+                turn: (r() < 0.5 ? -1 : 1) * (0.3 + r() * 0.6),
+                open: 0,
+                life: 6.5 + r() * 4,
+                size: 0.05 * (0.7 + r() * 0.8),
+                rgb: [1.3, 1.15, 0.72],
+                seed: r(),
+                time: this.time + 0.6 + r() * 3.4,
+            });
+        }
+    }
+
     onCombo(n) {
         const next = Math.max(0, Math.round(Number(n) || 0));
         if (next >= 2 && next > this.combo) this.counts.chainSteps += 1;
@@ -628,6 +973,7 @@ export class GrainfieldsWorld {
         this.reactions.perfect(this.time);
         this.surge.crown(this.time);
         this.launchSkein(this.time);
+        if (!this.reducedMotion) this.stillChaff();
     }
 
     /** A twist that cleared nothing: a small whirl of wind in the stand, and the horses look up. */
@@ -638,6 +984,7 @@ export class GrainfieldsWorld {
         const whirl = this.reactions.spin(c, this.time, { layout: this.layout, aim });
         if (!whirl || this.reducedMotion) return;
         this.parts.herd?.startle(this.time);
+        this.devilChaff(this.reactions.devils[this.reactions.devils.length - 1]);
         this.parts.motes?.burst({
             x: whirl.x,
             y: groundHeight(whirl.x, whirl.z) + 0.3,
@@ -680,6 +1027,12 @@ export class GrainfieldsWorld {
                 this.reactions.levelUp(time);
                 // A skein of geese lifts off the field and flies out through the gate.
                 this.launchSkein(time);
+                // The day turns in time-lapse: the deck races on from where it stands (never back),
+                // a whole run further than it was already asked to go (a second level-up while the
+                // first still runs adds its own, it does not replace what is left of the first).
+                this.lapseFrom = this.lapseRun(time);
+                this.lapseTo += LAPSE.run;
+                this.lapseAt = time;
             }
         }
         this.wheel.levelUp(n, time, silent || this.reducedMotion);
@@ -719,6 +1072,7 @@ export class GrainfieldsWorld {
         this.wheel.reset();
         this.reactions.reset();
         this.parts.motes?.reset();
+        this.parts.chaff?.reset();
         this.parts.herd?.reset(t);
         this.trample?.clear();
         this.herdShadow?.clear();
@@ -792,10 +1146,14 @@ export class GrainfieldsWorld {
         // closed form that only grows while play is hot; reduced motion lets a little of it through).
         const motion = this.reducedMotion ? 0.3 : 1;
         this.deckLead += dt * (0.5 * level + 0.9 * fever) * motion;
-        u.drift.value.set((time + this.deckLead) * DECK_WIND[0], (time + this.deckLead) * DECK_WIND[1]);
+        const ran = time + this.deckLead + this.lapseRun(time);
+        u.drift.value.set(ran * DECK_WIND[0], ran * DECK_WIND[1]);
         // The events: gaps, trails, pulses, the storm's break, the tear, the flare, a clear sky
         // (after the drift: the gaps are written against the deck as it stands this frame).
         const fx = this.reactions.writeUniforms(u, time);
+        // (The shafts through the gate are a burst of light over a part of the frame: Reduce
+        // flashing softens them.)
+        fx.rays *= 0.55 + 0.45 * flashScale();
         fx.breaking = open;
         u.breaking.value = open;
         this.fx = fx;

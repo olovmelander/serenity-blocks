@@ -250,6 +250,12 @@ export function createUniforms() {
         /** A four-line clear's flare on the field (0..1) and the front of its light (metres from the gate). */
         flare: uniform(0),
         flareFront: uniform(0),
+        /**
+         * Four lines: the gust that comes out of the gate and crosses the barley to the eye:
+         * (the way to the gate x, z as a unit vector; how far ahead of the eye its front stands,
+         * metres, negative once it has passed; its strength).
+         */
+        gustFront: uniform(new THREE.Vector4(0, -1, 400, 0)),
     };
 }
 

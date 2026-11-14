@@ -56,6 +56,7 @@ import {
     PLOT, beltAt, forestCover, groundHeight, knollHeight,
 } from './grainfields-plan.js';
 import { gfHash21, PATH_ROWS } from './grainfields-tsl.js';
+import { DEVIL_WALK } from './grainfields-chaff.js';
 import { aerial, lightSurface, sunGlow } from './grainfields-light.js';
 import { drainSteps, stepClock } from '../shared/build-steps.js';
 
@@ -263,8 +264,10 @@ export function trailsAt(u, xz) {
         // The trail's centre line: out along its heading, curling as it goes (a slow arc).
         const rel = xz.sub(a.xy).toVar();
         const along = dot(rel, b.xy).toVar();
-        // The head runs out fast, slowing; the lane behind it settles over a few seconds.
-        const head = float(1.0).sub(exp(age.mul(-0.55))).mul(2600.0).toVar();
+        // The head runs out at a pace the eye can follow (some fifty metres in its first second,
+        // slowing): the stand beside the card bows first, then the wave runs on to the crest; the
+        // lane behind it settles over a few seconds.
+        const head = float(1.0).sub(exp(age.mul(-0.16))).mul(380.0).toVar();
         // A trail lays nothing outside its life (live), behind its start (the lane's smoothstep
         // on `along`) or 40 m past its head (inLane): exactly 0 there, so its sums are skipped.
         If(age.greaterThan(0.0).and(age.lessThan(7.5)).and(along.greaterThan(0.0))
@@ -274,9 +277,11 @@ export function trailsAt(u, xz) {
             const wave = sin(along.mul(0.011).add(a.w.mul(3.0))).mul(along.mul(0.06));
             const across = across0.sub(curl).sub(wave);
             const behind = head.sub(along);
-            const inLane = smoothstep(-40.0, 0.0, behind).mul(exp(max(behind, 0.0).div(-420.0)));
+            // (Struck as the head passes, the stand rises again behind it: a gust going through, not
+            // a lane mown flat.)
+            const inLane = smoothstep(-12.0, 0.0, behind).mul(exp(max(behind, 0.0).div(-150.0)).mul(0.75).add(0.25));
             const widthM = b.w.mul(along.mul(0.0025).add(1.0));
-            const lane = exp(across.mul(across).div(widthM.mul(widthM)).negate()).mul(smoothstep(0.0, 30.0, along));
+            const lane = exp(across.mul(across).div(widthM.mul(widthM)).negate()).mul(smoothstep(0.0, 2.5, along));
             const live = smoothstep(0.0, 0.25, age).mul(float(1.0).sub(smoothstep(4.0, 7.5, age)));
             const k = lane.mul(inLane).mul(live).mul(a.w);
             lay.addAssign(k);
@@ -306,10 +311,12 @@ export function pulsesAt(u, xz) {
         // A ring is 0 outside 0-6 s of age and a whirl outside 0-7 s; each pulse is one or the
         // other for every pixel: only its own shape is worked out, and only while it lives.
         If(age.greaterThan(0.0).and(age.lessThan(7.0)), () => {
-            const rel = xz.sub(a.xy);
+            const isWhirl = b.x.greaterThan(0.5).and(b.x.lessThan(1.5));
+            // (A whirl walks over the field with the dust devil standing in it.)
+            const walked = vec2(DEVIL_WALK[0], DEVIL_WALK[1]).mul(age).mul(select(isWhirl, float(1.0), float(0.0)));
+            const rel = xz.sub(a.xy).sub(walked);
             const r = max(length(rel), 0.01).toVar();
             const dir = rel.div(r).toVar();
-            const isWhirl = b.x.greaterThan(0.5).and(b.x.lessThan(1.5));
             If(isWhirl, () => {
                 const angle = atan(dir.y, dir.x);
                 const arms = sin(angle.mul(3.0).sub(age.mul(4.5)).add(r.mul(0.22))).mul(0.4).add(0.6);
@@ -330,6 +337,23 @@ export function pulsesAt(u, xz) {
         });
     });
     return { push, lay: clamp(lay, 0.0, 1.2) };
+}
+
+/**
+ * Four lines' gust out of the gate at a ground point: how far the stand is laid over by it (0..1),
+ * which way it pushes the stalks (toward the eye: the wind comes from the gate) and how brightly
+ * its crest blazes there (0..1). The front is a line across the field that runs in toward the eye:
+ * a stalk is struck as it passes (a sharp edge), lies over, and stands up again over its tail.
+ */
+export function gustFrontAt(u, xz) {
+    const behind = dot(xz.sub(vec2(EYE.x, EYE.z)), u.gustFront.xy).sub(u.gustFront.z).toVar();
+    const struck = smoothstep(-2.5, 1.5, behind).mul(exp(max(behind, 0.0).div(-34.0))).mul(u.gustFront.w).toVar();
+    const crest = behind.sub(3.0).div(8.0);
+    return {
+        lay: struck,
+        push: u.gustFront.xy.negate().mul(struck),
+        blaze: exp(crest.mul(crest).negate()).mul(u.gustFront.w),
+    };
 }
 
 /**
@@ -416,7 +440,8 @@ export function createLandMaterial(u, t) {
         const gust = gustAt(u, t.noise, xz).toVar();
         const trails = trailsAt(u, xz);
         const pulses = pulsesAt(u, xz);
-        const laid = clamp(gust.add(trails.lay).add(pulses.lay), 0.0, 1.5).toVar();
+        const gate = gustFrontAt(u, xz);
+        const laid = clamp(gust.add(trails.lay).add(pulses.lay).add(gate.lay), 0.0, 1.5).toVar();
         // Grain laid over shows its paler sides.
         const isGrain = float(1.0).sub(track).mul(float(1.0).sub(belt)).mul(float(1.0).sub(forest))
             .toVar();
@@ -480,6 +505,8 @@ export function createLandMaterial(u, t) {
         const fd = fromGate.sub(u.flareFront).div(900.0);
         const front = exp(fd.mul(fd).negate()).mul(u.flare);
         col.addAssign(u.sun.mul(albedo).mul(front).mul(0.9));
+        // ...and its gust crosses the last of the field to the eye: its crest blazes in the grain.
+        col.addAssign(albedo.mul(u.sun.add(u.glow.mul(0.6))).mul(gate.blaze).mul(isGrain).mul(0.55));
         return vec4(aerial(u, P, col), 1.0);
     })();
     return material;

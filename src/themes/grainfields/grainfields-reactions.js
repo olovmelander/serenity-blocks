@@ -13,12 +13,16 @@
  *    the last. Every clear, wave and hard drop feeds the gale (a swell the wind rides on).
  *  - A chain breaks the storm open (the deck thins step by step, the light lifts, the wind
  *    rises); when the chain ends the deck closes again over TIMING.breakOut.
- *  - A twist sets the wind wheeling in the stand where the piece fell (a whirl in the barley); a
- *    twist that clears nothing turns a smaller one.
+ *  - A twist sets the wind wheeling in the stand where the piece fell (a whirl in the barley) and
+ *    raises a dust devil over it, a column of dust and chaff that walks over the field; a twist
+ *    that clears nothing turns a smaller whirl and raises a smaller devil.
  *  - Four lines tear the sky open over Lapporten and a front of light runs out of the gate over
- *    the fields toward the eye. Back-to-back is the gate's: every difficult clear of a run tears
- *    the sky over Lapporten (wider with each step of the run), and a second quad feeds the tear
- *    and the front of light still running instead of restarting them.
+ *    the fields toward the eye. Light bursts through the gate itself in a fan of shafts (the one
+ *    part of that the eye can see at every hour), and the front's gust crosses the barley to the
+ *    eye: its crest blazing, the stand laid over toward the eye as it passes. Back-to-back is
+ *    the gate's: every difficult clear of a run tears the sky over Lapporten (wider with each
+ *    step of the run) and lights the gate, and a second quad feeds the tear, the shafts and the
+ *    front of light still running instead of restarting them.
  *  - A perfect clear clears the whole sky and stills the wind a while; the deck returns later.
  *
  * Nothing here restarts what is on screen: a gap, lane or pulse that must give up its place fades
@@ -52,6 +56,9 @@ export const FADE = Object.freeze({ gaps: 1.2, trails: 1, pulses: 0.8 });
  */
 export const BEAM_DRIFT = Object.freeze([-0.47, -0.16]);
 
+/** Where a clear's lane of wind sets out: metres in front of the eye. */
+export const LANE_START = 3;
+
 /** Pulse kinds: a ring of wind outward, a whirl round a centre, a wave across the whole field. */
 export const PULSE = Object.freeze({ ring: 0, whirl: 1, wave: 2 });
 
@@ -70,6 +77,33 @@ export const TEAR = Object.freeze({
  */
 export const FRONT = Object.freeze({
     delay: 0.6, speed: 2100, hold: 5, fade: 4, pass: 5.5, gain: 1.6,
+});
+
+/**
+ * The gust the front brings to the eye: its front stands `from` metres ahead of the eye when it
+ * sets out (past the stand's far edge), runs in at `speed` and on `past` metres behind the eye;
+ * it rises over `rise` seconds. One still on its way in is fed (at most `gain` times as strong).
+ */
+export const GUST = Object.freeze({
+    from: 175, speed: 68, past: 70, rise: 0.35, gain: 1.5,
+});
+/** How long the gust runs (seconds), and when it reaches the eye. */
+export const GUST_LIFE = (GUST.from + GUST.past) / GUST.speed;
+export const GUST_ARRIVES = GUST.from / GUST.speed;
+
+/**
+ * The shafts through the gate: they burst out over `rise`, stand `hold` seconds and fade over
+ * `fade`; fed while they stand they are at most `gain` times as bright. A back-to-back clear
+ * lights them at `b2b` of a quad's.
+ */
+export const RAYS = Object.freeze({
+    rise: 0.35, hold: 3.4, fade: 3.6, gain: 1.6, b2b: 0.55,
+});
+
+/** Dust devils standing at once, and how one is built: metres tall, its foot's radius, its turn (rad/s). */
+export const MAX_DEVILS = 3;
+export const DEVIL_SHAPE = Object.freeze({
+    height: 12.5, radius: 1.0, spin: 5.4, distance: 34, life: 8.5,
 });
 
 /** A perfect clear stills the wind this long, then lets it back over STILL.back (the sky stays clear longer). */
@@ -204,6 +238,7 @@ function keep(list, time, alive) {
 const gapAlive = (g, time) => time - g.at < TIMING.gapLife && fadeLeft(g, time, FADE.gaps) > 0;
 const trailAlive = (tr, time) => time - tr.at < 8 && fadeLeft(tr, time, FADE.trails) > 0;
 const pulseAlive = (p, time) => time - p.at < 10 && fadeLeft(p, time, FADE.pulses) > 0;
+const devilAlive = (d, time) => time - d.at < DEVIL_SHAPE.life;
 
 export class GrainfieldsReactions {
     constructor() {
@@ -246,6 +281,15 @@ export class GrainfieldsReactions {
         this.stillFrom = 0;
         this.trailSide = 1;
         this.lastLockAt = -1e6;
+        /** Dust devils: { x, z (where it rose), at, power, height, radius, spin } */
+        this.devils = [];
+        this.gustAt = -1e6;
+        this.gustGain = 1;
+        this.raysAt = -1e6;
+        this.raysEnd = -1e6;
+        this.raysGain = 0;
+        this.raysTail = 0;
+        this.raysTailAt = -1e6;
         this.galeSwell.reset();
     }
 
@@ -317,7 +361,9 @@ export class GrainfieldsReactions {
             const side = this.trailSide;
             const card = cardUnion(layout) || { x0: 0.4, x1: 0.6 };
             const x = side < 0 ? Math.max(0.06, card.x0 - 0.06) : Math.min(0.94, card.x1 + 0.06);
-            const start = aim(x, 0.92, 6);
+            // (From the eye's own feet: the stand a few metres out fills the lower half of the frame,
+            // and a lane that began farther out was a strip a few pixels high under the horizon.)
+            const start = aim(x, 0.92, LANE_START);
             const far = aim(x + side * 0.08, 0.5, 600);
             if (!start || !far) continue;
             const hx = far[0] - start[0];
@@ -341,10 +387,13 @@ export class GrainfieldsReactions {
         // The gale: more lines, and each deeper wave, blow harder.
         this.galeSwell.hit(0.06 * lines + 0.07 * depth, time);
         if (c?.twist) {
-            const g = aim(freeColumn(layout, c?.player || 0, 0.5 + 0.35 * this.trailSide), 0.75, 42);
+            const g = aim(freeColumn(layout, c?.player || 0, 0.5 + 0.35 * this.trailSide), 0.75, DEVIL_SHAPE.distance);
             if (g) {
                 this.addPulse({
                     x: g[0], z: g[2], at: time, power: 1, kind: PULSE.whirl, speed: 9, width: 14,
+                });
+                this.addDevil({
+                    x: g[0], z: g[2], at: time, power: 1, side: this.trailSide,
                 });
             }
         }
@@ -358,11 +407,37 @@ export class GrainfieldsReactions {
      * (null when the aim cannot place it).
      */
     spin(c, time, { layout, aim }) {
-        const g = aim(freeColumn(layout, c?.player || 0, Number.isFinite(c?.u) ? c.u : 0.5), 0.75, 34);
+        const u = Number.isFinite(c?.u) ? c.u : 0.5;
+        const g = aim(freeColumn(layout, c?.player || 0, u), 0.75, DEVIL_SHAPE.distance);
         if (!g) return null;
+        this.addDevil({
+            x: g[0], z: g[2], at: time, power: 0.62, side: u < 0.5 ? -1 : 1,
+        });
         return this.addPulse({
             x: g[0], z: g[2], at: time, power: 0.55, kind: PULSE.whirl, speed: 9, width: 9,
         });
+    }
+
+    /**
+     * A dust devil rises where a whirl turns: `power` 1 a twist's, less a spin's (shorter and
+     * thinner). It turns the way of its side of the board. The oldest gives up its place.
+     */
+    addDevil({
+        x, z, at, power = 1, side = 1,
+    }) {
+        const k = 0.55 + 0.45 * clamp01(power);
+        const devil = {
+            x,
+            z,
+            at,
+            power: clamp(power, 0.2, 1.2),
+            height: DEVIL_SHAPE.height * k,
+            radius: DEVIL_SHAPE.radius * (0.7 + 0.3 * k),
+            spin: DEVIL_SHAPE.spin * (side < 0 ? -1 : 1),
+        };
+        while (this.devils.length >= MAX_DEVILS) this.devils.shift();
+        this.devils.push(devil);
+        return devil;
     }
 
     /**
@@ -372,6 +447,15 @@ export class GrainfieldsReactions {
      */
     quad(time) {
         this.feedTear(time, TEAR.grow);
+        this.burstRays(time, 1);
+        // The gust: one still on its way in to the eye is fed; once it has struck, a new one sets out.
+        const gAge = time - this.gustAt;
+        if (gAge >= -FRONT.delay && gAge < GUST_ARRIVES * 0.8) {
+            this.gustGain = Math.min(GUST.gain, this.gustGain + 0.3);
+        } else {
+            this.gustAt = time + FRONT.delay;
+            this.gustGain = 1;
+        }
         const age = time - this.flareAt;
         if (age >= -FRONT.delay && age < FRONT.pass) {
             this.flareGain = Math.min(FRONT.gain, this.flareGain + 0.3);
@@ -388,8 +472,26 @@ export class GrainfieldsReactions {
     /** Back-to-back: the sky over Lapporten tears (wider with every step of the run). */
     gate(time, level) {
         this.feedTear(time, 0);
+        this.burstRays(time, RAYS.b2b);
         const want = TEAR.radius + TEAR.b2b * clamp(level, 1, 4);
         this.tearRadius = Math.min(TEAR.widest, Math.max(this.tearRadius, want));
+    }
+
+    /**
+     * Light the shafts through the gate (`amount` 1 a quad's). Shafts still standing are fed
+     * (brighter, held longer); once they fade, new ones burst out over what is left of the old.
+     */
+    burstRays(time, amount) {
+        if (time < this.raysEnd && this.raysGain > 0) {
+            this.raysGain = Math.min(RAYS.gain, this.raysGain + 0.3 * amount);
+            this.raysEnd = Math.max(this.raysEnd, time + RAYS.hold);
+            return;
+        }
+        this.raysTail = this.rays(time);
+        this.raysTailAt = time;
+        this.raysAt = time;
+        this.raysGain = amount;
+        this.raysEnd = time + RAYS.hold;
     }
 
     /** Open the tear over the gate from where it stands now; one still open grows by `grow` metres. */
@@ -509,6 +611,26 @@ export class GrainfieldsReactions {
         return Math.max(this.flare(time)[0], tail);
     }
 
+    /** The shafts through the gate (0..RAYS.gain): the burst standing, or what is left of the last. */
+    rays(time) {
+        const age = time - this.raysAt;
+        const now = age < 0 ? 0
+            : smooth(0, RAYS.rise, age) * (1 - smooth(this.raysEnd, this.raysEnd + RAYS.fade, time)) * this.raysGain;
+        const tail = this.raysTail * (1 - smooth(this.raysTailAt, this.raysTailAt + 2, time));
+        return Math.max(now, tail);
+    }
+
+    /**
+     * The gust out of the gate: (strength 0..GUST.gain, how far ahead of the eye its front stands,
+     * metres; negative once it has passed).
+     */
+    gust(time) {
+        const age = time - this.gustAt;
+        if (age < 0 || age > GUST_LIFE) return [0, GUST.from];
+        const strength = smooth(0, GUST.rise, age) * (1 - smooth(GUST_LIFE - 0.8, GUST_LIFE, age)) * this.gustGain;
+        return [strength, GUST.from - GUST.speed * age];
+    }
+
     /** A perfect clear's clear sky (0..1) and the stillness of the wind (0..1). */
     clearSky(time) {
         const age = time - this.perfectAt;
@@ -565,8 +687,11 @@ export class GrainfieldsReactions {
         const [clearSky, still] = this.clearSky(time);
         u.clearSky.value = clearSky;
         u.still.value = still;
+        const [gust, ahead] = this.gust(time);
+        u.gustFront.value.z = ahead;
+        u.gustFront.value.w = gust;
         return {
-            breaking, tear, flare: this.flareGlow(time), clearSky, still,
+            breaking, tear, flare: this.flareGlow(time), clearSky, still, rays: this.rays(time), gust,
         };
     }
 
@@ -575,5 +700,6 @@ export class GrainfieldsReactions {
         keep(this.gaps, time, gapAlive);
         keep(this.trails, time, trailAlive);
         keep(this.pulses, time, pulseAlive);
+        keep(this.devils, time, devilAlive);
     }
 }
