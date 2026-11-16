@@ -14,9 +14,9 @@ import {
     AMBIENT_BEAT, FLICKER_GAP, KEEP_MAX, REST_RIG, SURGE_COOL, VOLTAGE_STORM_PARTS, VoltageStormWorld, fovForAspect,
 } from '../../src/themes/voltage-storm/voltage-storm-world.js';
 import {
-    BOLT_RANGES, BOLT_ROWS, DEG, FLASH_SLOTS, HELD_MAX, HELD_TAU, HUSH_HOLD, MAX_CHAIN_ARCS, PALETTE_DRIFT,
-    PALETTE_KEYS, PALETTE_REST, RIPPLE_SPEED, STORM, TOWER, TOWER_MAX, VOLTAGE_STORM_PALETTES, heldAt, paletteAt,
-    palettePhase, pieceColor, powerForCombo,
+    BOLT_RANGES, BOLT_ROWS, BOLT_STYLE, DEG, FLASH_SLOTS, HELD_MAX, HELD_TAU, HUSH_HOLD, MAX_CHAIN_ARCS, PALETTE_DRIFT,
+    PALETTE_KEYS, PALETTE_REST, RIPPLE_SPEED, SHEET_SPEED, STORM, TOWER, TOWER_MAX, VOLTAGE_STORM_PALETTES, heldAt,
+    paletteAt, palettePhase, pieceColor, powerForCombo,
 } from '../../src/themes/voltage-storm/voltage-storm-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/voltage-storm/voltage-storm-quality.js';
 import { REDUCED_FLASH_SCALE } from '../../src/utils/photosensitivity.js';
@@ -392,10 +392,22 @@ describe('voltage storm world: a lock', () => {
             run(world, camera, 0.5);
             expect(holders(world)).toContain(tower.index);
         }
-        // A piece on the floor of the board is below the horizon: its arc still starts over the water.
+        // A piece on the floor of the board is below the horizon: the ray through it would meet the
+        // water close to the lens, so its arc leaves from the water on the same bearing, far out,
+        // and stays far lightning instead of a line ruled across the foreground.
         world.onLock({ u: 0.2, rows: [19], color: PIECES[4] });
-        expect(fired('arc').at(-1).start[1]).toBeGreaterThan(0);
-        expect(onScreen(fired('arc').at(-1).start, camera).x).toBeCloseTo(card.x0, 6);
+        const low = fired('arc').at(-1);
+        const tower = world.towers[towerAt(world, low.end)];
+        expect(low.start[1]).toBeGreaterThan(0);
+        expect(low.start[1]).toBeLessThan(5);
+        expect(Math.hypot(low.start[0] - camera.position.x, low.start[2] - camera.position.z))
+            .toBeGreaterThanOrEqual(tower.dist * 0.5);
+        expect(Math.abs(onScreen(low.start, camera).x - card.x0)).toBeLessThan(0.01);
+        // Below the row on screen, but nearer the horizon than the row itself.
+        const rowY = boardPoint(board, 0.2, 19).y;
+        const horizon = onScreen([camera.position.x, camera.position.y, camera.position.z - 1e5], camera).y;
+        expect(onScreen(low.start, camera).y).toBeLessThanOrEqual(rowY + 1e-9);
+        expect(onScreen(low.start, camera).y).toBeGreaterThan(horizon);
     });
 
     it('throws from a screen point when it is given one, to that side', () => {
@@ -529,11 +541,20 @@ describe('voltage storm world: a clear', () => {
             });
             // Nothing held: the nearest towers take them.
             expect(struck).toEqual(bottom(n).map((_, i) => i));
-            // The rows' own arcs leave both edges of the card and charge nothing.
+            // The rows' own arcs leave both edges of the card and charge nothing. (These rows are
+            // under the horizon, so each arc leaves from the water on its row's bearing: its foot
+            // stands a hair off the card's edge on screen.)
             const card = cardUnion(world.layout);
-            const edges = fired('arc').map((arc) => onScreen(arc.start, camera).x);
-            for (const x of edges) expect(Math.min(Math.abs(x - card.x0), Math.abs(x - card.x1))).toBeLessThan(1e-6);
-            if (n > 1) expect(new Set(edges.map((x) => x.toFixed(4))).size).toBe(2);
+            // (The near towers' streamers, rising to meet their strikes, are arcs too: the rows'
+            // own discharges are the lashes.)
+            const discharges = fired('arc').filter((arc) => arc.style === BOLT_STYLE.lash);
+            expect(discharges).toHaveLength(n);
+            const edges = discharges.map((arc) => onScreen(arc.start, camera).x);
+            for (const x of edges) expect(Math.min(Math.abs(x - card.x0), Math.abs(x - card.x1))).toBeLessThan(0.01);
+            if (n > 1) {
+                expect(edges.some((x) => Math.abs(x - card.x0) < 0.01)).toBe(true);
+                expect(edges.some((x) => Math.abs(x - card.x1) < 0.01)).toBe(true);
+            }
             run(world, camera, 1.5);
             expect(world.totalHeld()).toBe(0);
             expect(world.getState().queued).toBe(0);
@@ -658,7 +679,7 @@ describe('voltage storm world: four lines', () => {
         expect(world.stormClock).toBeGreaterThan(stormClock);
     });
 
-    it('strikes the hero with a superbolt as the hush ends, then the nearest others in turn', () => {
+    it('strikes the hero with a superbolt as the hush ends, and the nearest others send lightning up', () => {
         const { world, camera } = makeWorld();
         const fired = watchBolts(world);
         // What the far towers hold does not bring the superbolt to them.
@@ -670,18 +691,25 @@ describe('voltage storm world: four lines', () => {
         const [superbolt, ...others] = fired('strike');
         expect(superbolt.time).toBeCloseTo(t0 + HUSH_HOLD, 12);
         expect(superbolt.end).toEqual(tip(world.towers[0]));
-        // The nearest four others, the one holding the most first, each after the one before.
-        const struck = others.map((bolt) => towerAt(world, bolt.end));
-        expect([...struck].sort()).toEqual([1, 2, 3, 4]);
-        expect(struck[0]).toBe(3);
+        expect(superbolt.style).toBe(BOLT_STYLE.giant);
+        // One trunk that burns on.
+        expect(superbolt.hold).toBeGreaterThan(0);
+        // The three nearest others send a tree up off their finials into the cloud, the one
+        // holding the most first, each after the one before.
+        const climbing = others.map((bolt) => towerAt(world, bolt.start));
+        expect([...climbing].sort()).toEqual([1, 2, 3]);
+        expect(climbing[0]).toBe(3);
         others.forEach((bolt, i) => {
-            expect(bolt.end).toEqual(tip(world.towers[struck[i]]));
+            expect(bolt.style).toBe(BOLT_STYLE.tree);
+            expect(bolt.start).toEqual(tip(world.towers[climbing[i]]));
+            expect(bolt.end[1]).toBeGreaterThan(bolt.start[1]);
             expect(bolt.time).toBeGreaterThan(i > 0 ? others[i - 1].time : superbolt.time);
             expect(bolt.power).toBeLessThan(superbolt.power);
             expect(bolt.strokes).toBeLessThanOrEqual(superbolt.strokes);
             expect(bolt.width).toBeLessThan(superbolt.width);
         });
-        expect(world.getState().counts.strikes).toBe(5);
+        expect(world.getState().counts.strikes).toBe(4);
+        expect(world.getState().counts.trees).toBe(3);
         // Nothing lets go before the hush is over; then every struck tower does.
         run(world, camera, HUSH_HOLD * 0.9);
         expect(holders(world)).toEqual([0, 3, 7]);
@@ -739,7 +767,9 @@ describe('voltage storm world: four lines', () => {
         const perfectBolts = watchBolts(perfect.world);
         four.world.onClear({ lines: 4 });
         perfect.world.onClear({ lines: 1, perfect: true });
-        expect(perfect.world.getState().counts).toMatchObject({ clears: 1, quads: 1, strikes: 5 });
+        expect(perfect.world.getState().counts).toMatchObject({
+            clears: 1, quads: 1, strikes: 4, trees: 3,
+        });
         const [superbolt] = perfectBolts('strike');
         expect(superbolt.time).toBeCloseTo(START + HUSH_HOLD, 12);
         expect(superbolt.end).toEqual(tip(perfect.world.towers[0]));
@@ -758,6 +788,7 @@ describe('voltage storm world: a twist', () => {
         run(plain.world, plain.camera, 1);
         expect(plain.world.twist).toBe(0);
         expect(plain.world.u.twist.value.z).toBe(0);
+        expect(plain.world.u.funnel.value.z).toBe(0);
 
         const { world, camera } = makeWorld();
         const fired = watchBolts(world);
@@ -765,23 +796,36 @@ describe('voltage storm world: a twist', () => {
         world.onClear({ lines: 2, twist: true });
         let peak = 0;
         let shown = 0;
+        let down = 0;
         for (let i = 0; i < 120; i++) {
             run(world, camera, 1 / 60, 1);
             peak = Math.max(peak, Math.abs(world.twist));
             shown = Math.max(shown, Math.abs(world.u.twist.value.z));
+            down = Math.max(down, world.u.funnel.value.z);
             expect(Math.sign(world.u.twist.value.z)).toBe(Math.sign(world.twist));
         }
         expect(peak).toBeGreaterThan(0);
         expect(shown).toBeGreaterThan(0);
+        // A funnel comes down out of the cloud toward the hero...
+        expect(down).toBeGreaterThan(0);
+        expect(down).toBeLessThanOrEqual(1);
         run(world, camera, 20);
         expect(Math.abs(world.twist)).toBeLessThan(peak * 0.01);
+        // ...and draws back up into it.
+        expect(world.u.funnel.value.z).toBeLessThan(down * 0.01);
         expect(world.getState().twist).toBe(world.twist);
-        // The arc: from the water at the tower's foot up to its electrode.
-        const climbing = fired('arc').filter((arc) => arc.start[0] === hero.x && arc.start[2] === hero.z);
+        // The arc: a helix wound round the mast from the water at the tower's foot up to its
+        // electrode. (The hero's streamer, rising off the finial to meet its strike, leaves from
+        // the same spot on the plain, from the top.)
+        const climbing = fired('arc').filter((arc) => arc.start[0] === hero.x && arc.start[2] === hero.z
+            && arc.style === BOLT_STYLE.helix);
         expect(climbing).toHaveLength(1);
         expect(climbing[0].end).toEqual([hero.x, hero.height * TOWER.toroid, hero.z]);
         expect(climbing[0].start[1]).toBeLessThan(hero.height * TOWER.ringLo);
         expect(climbing[0].start[1]).toBeGreaterThanOrEqual(0);
+        // Wound round the mast, wider than the mast, in turns.
+        expect(climbing[0].helix[0]).toBeGreaterThan(0);
+        expect(climbing[0].helix[1]).toBeGreaterThan(1);
         // And the clear is still answered.
         expect(world.getState().counts).toMatchObject({ clears: 1, strikes: 2 });
     });
@@ -930,17 +974,25 @@ describe('voltage storm world: levels', () => {
         expect(world.time / PALETTE_DRIFT).toBeLessThan(PALETTE_REST);
         expect(awayFrom(world, from)).toBeCloseTo(0, 12);
         const fired = watchBolts(world);
+        const t0 = world.time;
         world.levelUp(2);
         // Where it is heading is known at once; the colours have not moved yet.
         expect(world.getState().palette).toBe(to.name);
-        expect(world.getState().counts.flickers).toBeGreaterThan(0);
-        // The cloud answers in the light that is coming.
+        // A slow front of the light that is coming sets out across the vault from the horizon.
         const coming = paletteAt(palettePhase(2, world.time));
-        for (const bolt of fired('crawler')) expect(bolt.rgb).toEqual(coming.flash);
+        expect(world.u.sheet.value.z).toBe(t0);
+        expect(world.u.sheet.value.w).toBeGreaterThan(0);
+        expect(world.u.sheetLook.value.toArray().slice(0, 3)).toEqual(coming.flash);
+        expect(world.u.sheetLook.value.w).toBeLessThan(SHEET_SPEED);
+        // Running lights: the towers pulse one after another, out along both rows from the hero.
+        const pulsed = new Map();
         // On the way every colour lies between the old palette's and the new one's.
         let moved = false;
         for (let i = 0; i < 150; i++) {
             run(world, camera, 1 / 30, 1);
+            world.towers.forEach((tower, k) => {
+                if (tower.pulseTime > t0 && !pulsed.has(k)) pulsed.set(k, tower.pulseTime);
+            });
             PALETTE_KEYS.forEach((key) => {
                 if (key === 'horizon') return;
                 world.u[key].value.toArray().forEach((channel, c) => {
@@ -953,17 +1005,33 @@ describe('voltage storm world: levels', () => {
             if (awayFrom(world, from) > 0.01) moved = true;
         }
         expect(moved).toBe(true);
+        expect(pulsed.size).toBe(world.towers.length);
+        for (const [k, at] of pulsed) {
+            for (const [j, other] of pulsed) {
+                const [a, b] = [world.towers[k], world.towers[j]];
+                if (a.side === b.side && a.row < b.row) expect(at, `${k} before ${j}`).toBeLessThan(other);
+            }
+        }
+        // Each throws a streamer of the coming fire off its finial; spider lightning in the
+        // coming light crawls after them.
+        expect(fired('arc').filter((arc) => arc.style === BOLT_STYLE.streamer)).toHaveLength(world.towers.length);
+        const crawlers = fired('crawler');
+        expect(crawlers).toHaveLength(1);
+        expect(crawlers[0].style).toBe(BOLT_STYLE.spider);
+        expect(crawlers[0].rgb).toEqual(coming.flash);
+        expect(crawlers[0].time).toBeGreaterThan(Math.max(...pulsed.values()) - 1);
         // Nine seconds on it has arrived: where the level and the clock put it.
         run(world, camera, 4);
         expect(world.time / PALETTE_DRIFT).toBeLessThan(PALETTE_REST);
         expect(awayFrom(world, paletteAt(palettePhase(2, world.time)))).toBeLessThan(1e-3);
         expect(world.wheelPlace).toBeCloseTo(1, 2);
 
-        const { flickers } = world.getState().counts;
+        const { spiders, streamers } = world.getState().counts;
         world.levelUp(4, { silent: true });
         world.update({ time: world.time, delta: 0 }, camera);
         expect(awayFrom(world, paletteAt(palettePhase(4, world.time)))).toBeCloseTo(0, 12);
-        expect(world.getState().counts.flickers).toBe(flickers);
+        run(world, camera, 2);
+        expect(world.getState().counts).toMatchObject({ spiders, streamers });
     });
 
     it('goes the short way round the wheel when a run ends on a high level', () => {
@@ -1075,28 +1143,46 @@ describe('voltage storm world: the light drifts by itself', () => {
 describe('voltage storm world: the storm\'s own lightning', () => {
     const beats = (from, to) => Math.floor(to / AMBIENT_BEAT) - Math.floor(from / AMBIENT_BEAT);
 
+    /** The beats the storm's own clock struck (an answer half a beat on is called as an echo). */
+    const own = (ambient) => ambient.mock.calls.filter(([, echo]) => echo !== true).length;
+    const echoes = (ambient) => ambient.mock.calls.filter(([, echo]) => echo === true).length;
+
     it('fires on its own beat at rest, more often under a chain, and never while the clock is frozen', () => {
         const { world, camera } = makeWorld('High', { quiet: false });
         const ambient = vi.spyOn(world, 'ambient');
         const fired = watchBolts(world);
+        // At the break, where every beat fires.
+        world.pinWeather(1);
         // Start and stop well clear of a beat, so a frame's rounding cannot move the count.
         const from = AMBIENT_BEAT * 3 + AMBIENT_BEAT / 2;
         settle(world, camera, from);
         runTo(world, camera, from + AMBIENT_BEAT * 5);
-        expect(ambient).toHaveBeenCalledTimes(beats(from, world.time));
-        expect(ambient).toHaveBeenCalledTimes(5);
+        expect(own(ambient)).toBe(beats(from, world.time));
+        expect(own(ambient)).toBe(5);
         expect(fired().length).toBeGreaterThanOrEqual(5);
         for (const bolt of fired()) {
+            // A brush of fire off a finial is the only thing that touches a collector, and the
+            // webs a strike on the open water throws stay on the water...
+            if (bolt.kind === 'arc') {
+                expect([BOLT_STYLE.streamer, BOLT_STYLE.skitter]).toContain(bolt.style);
+                if (bolt.style === BOLT_STYLE.streamer) {
+                    expect(towerAt(world, bolt.start)).toBeGreaterThanOrEqual(0);
+                    expect(bolt.end[1]).toBeGreaterThan(bolt.start[1]);
+                } else expect(Math.max(bolt.start[1], bolt.end[1])).toBeLessThan(1);
+                continue;
+            }
+            // ...the rest is up in the cloud or strikes the open plain.
             expect(['strike', 'crawler']).toContain(bolt.kind);
-            // Up in the cloud or far off on the plain: never on a collector.
-            expect(towerAt(world, bolt.end)).toBe(-1);
+            if (bolt.kind === 'strike') expect(bolt.end[1]).toBe(0);
+            else expect(bolt.end[1]).toBeGreaterThan(100);
         }
-        expect(world.getState().counts).toMatchObject({ strikes: 0, arcs: 0 });
+        // ...and nothing charges a tower.
         expect(world.totalHeld()).toBe(0);
 
         world.onCombo(8);
+        const before = own(ambient);
         run(world, camera, AMBIENT_BEAT * 5, Math.round(AMBIENT_BEAT * 5 * 60));
-        expect(ambient.mock.calls.length - 5).toBeGreaterThan(5);
+        expect(own(ambient) - before).toBeGreaterThan(5);
 
         // It holds its fire while the clock is frozen: a capture drawn again and again across a beat.
         ambient.mockClear();
@@ -1108,6 +1194,28 @@ describe('voltage storm world: the storm\'s own lightning', () => {
         }
         expect(ambient).not.toHaveBeenCalled();
         expect(world.getState().bolts).toBe(0);
+    });
+
+    it('lets most beats pass in silence in a lull, fires each at the break and echoes many half a beat on', () => {
+        const listen = (heavy) => {
+            const { world, camera } = makeWorld('High', { quiet: false });
+            const ambient = vi.spyOn(world, 'ambient');
+            world.pinWeather(heavy);
+            const fired = watchBolts(world);
+            settle(world, camera, AMBIENT_BEAT * 2.5);
+            runTo(world, camera, AMBIENT_BEAT * 22.5, 1 / 20);
+            return { own: own(ambient), echoes: echoes(ambient), fired: fired().length };
+        };
+        const lull = listen(0);
+        const storm = listen(1);
+        // The clock strikes the same beats in either weather: the weather sets what they do.
+        expect(lull.own).toBe(20);
+        expect(storm.own).toBe(20);
+        expect(lull.echoes).toBe(0);
+        expect(storm.echoes).toBeGreaterThan(3);
+        expect(lull.fired).toBeGreaterThan(0);
+        expect(lull.fired * 2).toBeLessThan(storm.fired);
+        expect(storm.fired).toBeGreaterThanOrEqual(storm.own + storm.echoes);
     });
 });
 
@@ -1181,6 +1289,9 @@ describe('voltage storm world: determinism', () => {
         const a = makeWorld('High', { quiet: false });
         const b = makeWorld('High', { quiet: false });
         // The lead-in crosses a beat 0.3 s before it ends: that bolt is still alight at the end.
+        // (At the break, where every beat fires.)
+        a.world.pinWeather(1);
+        b.world.pinWeather(1);
         const beat = AMBIENT_BEAT * 3;
         settle(a.world, a.camera, beat - 2.03);
         settle(b.world, b.camera, beat - 2.03);
@@ -1455,9 +1566,20 @@ describe('voltage storm world: reduced motion', () => {
             run(world, camera, 1.5);
         }
         const { counts, ...state } = calm.world.getState();
-        // (The storm's own flickers are not the board's: they are counted apart.)
-        expect({ ...counts, flickers: 0 }).toEqual({ ...full.world.getState().counts, flickers: 0 });
+        const fullCounts = full.world.getState().counts;
+        // (The storm's own flickers are not the board's: they are counted apart. Reduced motion
+        // leaves out what only adds motion: the streamers off the finials and the webs of arcs
+        // skittering over the water; every arc the board itself throws is still thrown.)
+        const delivered = (c) => ({
+            ...c, flickers: 0, streamers: 0, arcs: 0,
+        });
+        expect(delivered(counts)).toEqual(delivered(fullCounts));
         expect(counts).toMatchObject({ locks: 2, clears: 2, quads: 1 });
+        expect(counts.streamers).toBe(0);
+        expect(fullCounts.streamers).toBeGreaterThan(0);
+        expect(counts.arcs).toBeLessThan(fullCounts.arcs);
+        // Two lock arcs, the hard drop's second, and one discharge per cleared row (2 + 4).
+        expect(counts.arcs).toBeGreaterThanOrEqual(3 + 6);
         expect(state.palette).toBe(full.world.getState().palette);
         // The superbolt and the strikes after it emptied the same towers.
         expect(holders(calm.world)).toEqual(holders(full.world));
@@ -1628,15 +1750,27 @@ describe('voltage storm world: the storm builds with play', () => {
 
     it('breathes back to calm once the hands rest', () => {
         const { world, camera } = makeWorld();
+        // The storm's own weather held in a lull, so what is left is what play raised. (At its
+        // break the storm carries a light in the cloud of its own, whoever is playing.)
+        world.pinWeather(0.2);
         const rest = weather(world);
+        expect(world.heavy).toBeCloseTo(0.2, 9);
         chain(world, camera, 10);
+        // A quick hand brought the storm down whatever its own weather.
+        expect(world.heavy).toBeGreaterThan(0.6);
         world.onCombo(0);
         run(world, camera, 20, 600);
         const after = weather(world);
+        expect(world.heavy).toBeCloseTo(0.2, 3);
         expect(after.drive).toBe(0);
         expect(after.stage).toBe(0);
         expect(after.glow).toBe(0);
-        expect(after.rain).toBeCloseTo(rest.rain, 2);
+        // The rain is the weather's again: what the same lull lets fall at this moment.
+        const twin = makeWorld();
+        twin.world.pinWeather(0.2);
+        settle(twin.world, twin.camera, world.time);
+        expect(after.rain).toBeCloseTo(weather(twin.world).rain, 2);
+        expect(rest.rain).toBeGreaterThan(0);
         // (The light has drifted on round the wheel by itself meanwhile: the strip is its own again.)
         expect(after.horizon).toBeCloseTo(paletteAt(palettePhase(1, world.time)).horizon[0], 3);
         expect(world.getState().chainArcs).toBe(0);
@@ -1906,7 +2040,9 @@ describe('voltage storm world: layout and aspect', () => {
             }
             const sent = fired('arc').length;
             world.onClear({ lines: 2, rows: [2, 3], player });
-            const rows = fired('arc').slice(sent).map((arc) => onScreen(arc.start, camera));
+            // The rows' own discharges (the near towers' streamers rise off their finials).
+            const rows = fired('arc').slice(sent).filter((arc) => arc.style === BOLT_STYLE.lash)
+                .map((arc) => onScreen(arc.start, camera));
             expect(rows).toHaveLength(2);
             rows.forEach((from, i) => {
                 expect(Math.min(Math.abs(from.x - own.x0), Math.abs(from.x - own.x1))).toBeLessThan(1e-6);

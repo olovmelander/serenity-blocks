@@ -22,6 +22,7 @@ import {
     exp,
     float,
     fract,
+    length,
     max,
     mix,
     normalize,
@@ -36,8 +37,13 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    STORM, TAU, mulberry32, vsFxMaterial, vsPart, vsQuadGeometry,
+    BOOM_SPEED, STORM, TAU, mulberry32, vsFlashLight, vsFxMaterial, vsPart, vsQuadGeometry,
 } from './voltage-storm-tsl.js';
+
+/** Thunder's shell in the rain: how thick it is (metres), how far it pushes a drop, how far it carries. */
+const BOOM_WIDTH = 11;
+const BOOM_PUSH = 2.6;
+const BOOM_REACH = 520;
 
 const viewProjection = (world) => cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(world, 1.0));
 
@@ -82,6 +88,14 @@ export function createRain(u, count) {
             float(by).sub(fallen),
             seed.z.mul(-bz).sub(4.0).add(u.rainLean.y.mul(fallen)),
         ).toVar();
+        // Thunder: a shell of pressure runs out from a strike at the speed of sound and shoulders
+        // the rain aside as it passes (and packs it: the shell is a brighter band of streaks).
+        const fromBoom = head.sub(u.boom.xyz).toVar();
+        const boomFar = max(length(fromBoom), 1.0).toVar();
+        const front = max(u.time.sub(u.boom.w), 0.0).mul(BOOM_SPEED).toVar();
+        const inShell = boomFar.sub(front).div(BOOM_WIDTH);
+        const shell = exp(inShell.mul(inShell).negate()).mul(u.boomGain).mul(exp(front.div(-BOOM_REACH))).toVar();
+        head.addAssign(fromBoom.div(boomFar).mul(shell.mul(BOOM_PUSH)));
         // The streak points back up the way it fell.
         const back = normalize(vec3(u.rainLean.x.negate(), 1.0, u.rainLean.y.negate()));
         const reach = seed.w.mul(0.5).add(0.75).mul(STORM.rainFall * STORM.rainStreak);
@@ -97,9 +111,18 @@ export function createRain(u, count) {
         // Gone before it reaches the lens, and thinning into the far air.
         const shown = smoothstep(2.5, 9.0, clip.w).mul(float(1.0).sub(smoothstep(90.0, bz, clip.w)));
         const widthPx = clamp(float(0.014).div(max(clip.w, 0.5).mul(u.pixelAngle)), 0.6, 1.5);
-        // Dim against the storm; a stroke anywhere near lights the whole air at once.
+        // Dim against the storm. A stroke lights the rain ROUND it, not the whole air at once: each
+        // drop takes the strokes' light where it falls, so a bolt stands in a halo of lit rain
+        // that thins away from it (and the frame never whitens with one).
         const own = u.haze.mul(0.8).add(u.horizon.mul(0.035));
-        vLight.assign(vec4(own.mul(u.breath.mul(0.6).add(0.4)).add(u.veil.mul(0.2)).mul(shown).mul(u.rainGain), 1.0));
+        const struck = vsFlashLight(u, head, 'rf');
+        vLight.assign(vec4(
+            own.mul(u.breath.mul(0.6).add(0.4)).add(struck.mul(0.15))
+                .mul(shown)
+                .mul(u.rainGain)
+                .mul(shell.mul(1.5).add(1.0)),
+            1.0,
+        ));
         return vec4(
             clip.xy.add(normal.mul(positionGeometry.x.mul(2.0).mul(widthPx)).div(half).mul(clip.w)),
             clip.z,

@@ -21,8 +21,9 @@ const EMPTY = addHeld(-1e9, 0, 0);
 /** Aspects the composition must hold for: an upright phone, a square, a desk, an ultrawide. */
 const ASPECTS = [0.46, 1, 16 / 9, 21 / 9];
 
+/** A stroke's light before it is born: nothing lit, and no stroke of the plan yet (-1). */
 const DARK = Object.freeze({
-    grow: 0, main: 0, branch: 0, after: 0,
+    grow: 0, main: 0, branch: 0, after: 0, stroke: -1,
 });
 
 /** `count` ages spread over [from, to]. */
@@ -501,7 +502,7 @@ describe('voltage storm quality tiers', () => {
 
     it('never asks less of a higher tier', () => {
         const counted = ['skyScale', 'march', 'towers', 'rain', 'sparks', 'boltDetail', 'noise3d'];
-        const switched = ['detail', 'flashSteps', 'mirror'];
+        const switched = ['detail', 'flashSteps', 'mirror', 'scud'];
         for (let i = 1; i < QUALITY_NAMES.length; i++) {
             const lower = QUALITY[QUALITY_NAMES[i - 1]];
             const higher = QUALITY[QUALITY_NAMES[i]];

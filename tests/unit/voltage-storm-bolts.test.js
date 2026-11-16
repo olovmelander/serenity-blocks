@@ -11,7 +11,7 @@ import {
     BOLT_DETAIL, BoltTable, boltGeometry, boltStrips,
 } from '../../src/themes/voltage-storm/voltage-storm-bolts.js';
 import {
-    BOLT_RANGES, BOLT_ROWS, BOLT_SLOTS, FLASH_SLOTS, hash2, strokeLife, strokeLight, strokePlan,
+    BOLT_RANGES, BOLT_ROWS, BOLT_SLOTS, BOLT_STYLE, FLASH_SLOTS, hash2, strokeGlow, strokeLife, strokeLight, strokePlan,
 } from '../../src/themes/voltage-storm/voltage-storm-core.js';
 
 const DETAILS = BOLT_DETAIL.map((_, detail) => detail);
@@ -60,7 +60,13 @@ function bolt(over = {}) {
 }
 
 const read = (row) => [row.x, row.y, row.z, row.w];
-/** Row `k` (0 = A … 4 = E) of a slot. */
+/**
+ * A moment a little after the default bolt's first return stroke (it lands at 0.125 s), held
+ * exactly by a float: what a bolt lights swells in from that stroke, so at the stroke's own
+ * instant it has thrown nothing yet.
+ */
+const LIT = 0.1875;
+/** Row `k` (0 = A … 6 = G) of a slot. */
 const rowOf = (rows, slot, k) => rows[slot * BOLT_ROWS + k];
 const lightRow = (rows, slot) => read(rowOf(rows, slot, 3));
 const everyRow = (rows) => rows.map(read);
@@ -312,7 +318,6 @@ describe('voltage storm bolts: firing into the table', () => {
     it('writes where a bolt runs, its seed, its colour and its width into its own rows', () => {
         const { table, rows } = makeTable();
         const pinned = {};
-        const veiled = {};
         for (const kind of KINDS) {
             const fired = bolt({
                 kind, seed: 123, start: [1, 2, 3], end: [4, 5, 6], rgb: [0.25, 0.5, 0.75], reach: 0.0625, width: 2.5,
@@ -322,14 +327,59 @@ describe('voltage storm bolts: firing into the table', () => {
             expect(read(rowOf(rows, slot, 1)), kind).toEqual([4, 5, 6, 0.0625]);
             expect(read(rowOf(rows, slot, 2)), kind).toEqual([0.25, 0.5, 0.75, 2.5]);
             expect(lightRow(rows, slot), kind).toEqual(ZERO);
-            expect(rowOf(rows, slot, 4).y, kind).toBe(fired.branches);
+            // The share of its limbs that show: its style's, scaled by what it was asked for.
+            expect(rowOf(rows, slot, 4).y, kind).toBe(BOLT_STYLE.fork.limbs * fired.branches);
+            // Not inside the cloud anywhere unless it is told where the cloud is.
+            expect(rowOf(rows, slot, 4).z, kind).toBe(0);
             pinned[kind] = rowOf(rows, slot, 4).x;
-            veiled[kind] = rowOf(rows, slot, 4).z;
         }
-        // An arc and a chain's arc are held at both ends; a strike's foot is free to wander, and
-        // only a strike comes down out of the cloud.
+        // An arc and a chain's arc are held at both ends; a strike's foot is free to wander.
         expect(pinned).toMatchObject({ strike: 0, arc: 1, chain: 1 });
-        expect(veiled).toMatchObject({ strike: 1, arc: 0, chain: 0 });
+        // A strike out of the cloud is a glow above the height it is told the cloud hangs at.
+        const veiled = table.fire(bolt({ kind: 'strike', veil: 240 }));
+        expect(rowOf(rows, veiled, 4).z).toBe(240);
+        expect(rowOf(rows, table.fire(bolt({ kind: 'strike', veil: -5 })), 4).z).toBe(0);
+    });
+
+    it('writes its style into its own rows: how rough, how bowed, its limbs, its core and its helix', () => {
+        const { table, rows } = makeTable();
+        for (const [name, style] of Object.entries(BOLT_STYLE)) {
+            const slot = table.fire(bolt({ kind: 'arc', style, branches: 1 }));
+            expect(rowOf(rows, slot, 4).y, name).toBe(Math.min(1, style.limbs));
+            expect(rowOf(rows, slot, 4).w, name).toBe(style.coreTint);
+            expect(read(rowOf(rows, slot, 5)), name).toEqual([style.rough, style.bow, 0, style.limbRank]);
+            expect(read(rowOf(rows, slot, 6)), name).toEqual([0, 0, style.limbTurn, style.limbLength]);
+        }
+        // Asked for more limbs than there are, it shows them all and no more; asked for none, none.
+        expect(rowOf(rows, table.fire(bolt({ style: BOLT_STYLE.spider, branches: 3 })), 4).y).toBe(1);
+        expect(rowOf(rows, table.fire(bolt({ style: BOLT_STYLE.spider, branches: 0 })), 4).y).toBe(0);
+        // A helix winds round its own axis: its radius and its turns.
+        const wound = table.fire(bolt({ kind: 'arc', style: BOLT_STYLE.helix, helix: [6, 3.5] }));
+        expect(read(rowOf(rows, wound, 6)).slice(0, 2)).toEqual([6, 3.5]);
+    });
+
+    it('stands each return stroke of ribbon lightning a little to the side of the last', () => {
+        const { table, rows } = makeTable();
+        const options = { leader: 0.125, strokes: 4, power: 1 };
+        const plan = strokePlan(17, options);
+        const slot = table.fire(bolt({ seed: 17, ribbon: 2.5, ...options }));
+        const shifts = [];
+        for (let k = 0; k <= 64; k++) {
+            const age = k / 64;
+            table.update(age);
+            const { stroke } = strokeLight(plan, age);
+            expect(rowOf(rows, slot, 5).z, `age ${age}`).toBe(Math.max(0, stroke) * 2.5);
+            shifts.push(rowOf(rows, slot, 5).z);
+        }
+        expect(new Set(shifts).size).toBe(options.strokes);
+        // Under reduced motion it holds still.
+        const calm = makeTable();
+        calm.table.calm = true;
+        const still = calm.table.fire(bolt({ ribbon: 2.5, ...options }));
+        for (let k = 0; k <= 64; k++) {
+            calm.table.update(k / 64);
+            expect(rowOf(calm.rows, still, 5).z).toBe(0);
+        }
     });
 
     it('never touches another slot\'s rows', () => {
@@ -370,9 +420,12 @@ describe('voltage storm bolts: firing into the table', () => {
         const slot = table.fire(bolt({
             kind: 'arc', seed: 9, strokes: 2, power: 1.5, start: [1, 2, 3],
         }));
-        const lights = table.update(0.125);
+        table.update(0.125);
         expect(read(rowOf(rows, slot, 0))).toEqual([1, 2, 3, 9]);
         expect(lightRow(rows, slot)).toEqual([1, plan.gains[0], plan.gains[0], 0]);
+        const lights = table.update(LIT);
+        const light = strokeLight(plan, LIT);
+        expect(lightRow(rows, slot)).toEqual([light.grow, light.main, light.branch, light.after]);
         expect(lights).toHaveLength(1);
         table.reset();
         for (const row of everyRow(rows)) expect(row).toEqual(ZERO);
@@ -477,8 +530,9 @@ describe('voltage storm bolts: a bolt\'s life in the table', () => {
 describe('voltage storm bolts: a chain\'s standing arc', () => {
     const options = { leader: 0.125, strokes: 3, power: 0.75 };
     const tail = strokeLife(strokePlan(31, options)) - strokePlan(31, options).last;
+    // Built as a chain builds its standing arcs: plasma, arched.
     const hold = (table, time = 2) => table.fire(bolt({
-        kind: 'chain', index: 1, held: true, time, seed: 31, ...options,
+        kind: 'chain', index: 1, held: true, time, seed: 31, style: BOLT_STYLE.plasma, ...options,
     }));
 
     it('rises from nothing and stands, lit, for as long as it is held', () => {
@@ -511,19 +565,27 @@ describe('voltage storm bolts: a chain\'s standing arc', () => {
         expect(seen.size).toBeGreaterThan(20);
     });
 
-    it('is redrawn as it stands: its seed keeps changing, its ends and its colour stay', () => {
+    it('climbs as it stands, and snaps to a new shape low again: its ends and its colour stay', () => {
         const { table, rows } = makeTable();
         const slot = hold(table);
         const ends = [read(rowOf(rows, slot, 0)).slice(0, 3), read(rowOf(rows, slot, 1)), read(rowOf(rows, slot, 2))];
         const seeds = [];
-        for (let time = 2; time < 4; time += 1 / 120) {
+        const bows = [];
+        for (let time = 2; time < 8; time += 1 / 120) {
             table.update(time);
             seeds.push(rowOf(rows, slot, 0).w);
+            bows.push(rowOf(rows, slot, 5).y);
             expect(Number.isFinite(rowOf(rows, slot, 0).w)).toBe(true);
         }
-        const changes = seeds.filter((seed, i) => i > 0 && seed !== seeds[i - 1]).length;
-        expect(changes).toBeGreaterThanOrEqual(2);
-        expect(new Set(seeds).size).toBeGreaterThan(2);
+        // Each snap is a new shape; between two snaps the shape holds and the arc writhes and rises.
+        const snaps = seeds.flatMap((seed, i) => (i > 0 && seed !== seeds[i - 1] ? [i] : []));
+        expect(snaps.length).toBeGreaterThanOrEqual(2);
+        expect(new Set(seeds).size).toBe(snaps.length + 1);
+        for (const i of snaps) {
+            // Low again as it snaps, after the climb before it had risen.
+            expect(bows[i]).toBeLessThan(bows[i - 1]);
+            expect(bows[i - 2]).toBeLessThan(bows[i - 1]);
+        }
         const now = [read(rowOf(rows, slot, 0)).slice(0, 3), read(rowOf(rows, slot, 1)), read(rowOf(rows, slot, 2))];
         expect(now).toEqual(ends);
     });
@@ -579,7 +641,7 @@ describe('voltage storm bolts: the frame\'s lights', () => {
         powers.forEach((power, i) => table.fire(bolt({
             kind: kinds[i], strokes: 1, power, start: [i, 0, 0], end: [i, 0, 0], glowGain: 1,
         })));
-        const lights = table.update(0.125);
+        const lights = table.update(LIT);
         expect(lights).toHaveLength(FLASH_SLOTS);
         for (let i = 1; i < lights.length; i++) expect(lights[i].level).toBeLessThanOrEqual(lights[i - 1].level);
         // Each light is where its bolt is: the ones listed are the ones with the most power.
@@ -593,9 +655,61 @@ describe('voltage storm bolts: the frame\'s lights', () => {
         table.fire(bolt({ kind: 'strike' }));
         table.fire(bolt({ kind: 'crawler' }));
         table.fire(bolt({ kind: 'arc', time: 40 }));
-        expect(table.update(0.125)).toHaveLength(2);
+        expect(table.update(LIT)).toHaveLength(2);
         expect(table.update(30)).toHaveLength(0);
-        expect(table.update(40.125)).toHaveLength(1);
+        expect(table.update(40 + LIT)).toHaveLength(1);
+    });
+
+    it('lights the storm in one slow swell while the channel flickers with every stroke', () => {
+        const { table, rows } = makeTable();
+        const options = { leader: 0.125, strokes: 5, power: 1 };
+        const plan = strokePlan(23, options);
+        table.fire(bolt({ seed: 23, glowGain: 1, ...options }));
+        const slot = BOLT_RANGES.strike[0];
+        // Between its first stroke and its last: how far each has fallen below the most it had been.
+        let channelPeak = 0;
+        let lightPeak = 0;
+        let channelDip = 1;
+        let lightDip = 1;
+        for (let k = 0; k <= 1200; k++) {
+            const age = (k + 0.5) / 1000;
+            const [lit] = table.update(age);
+            const level = lit ? lit.level : 0;
+            // What it throws on the storm is the plan's slow light, a hair more while the leader is
+            // on its way; too faint a light is not listed at all.
+            const { grow } = strokeLight(plan, age);
+            const expected = strokeGlow(plan, age) + (grow > 0 && grow < 1 ? 0.035 : 0);
+            if (lit) expect(level, `age ${age}`).toBeCloseTo(expected, 12);
+            else expect(expected, `age ${age}`).toBeLessThanOrEqual(0.004);
+            const main = rowOf(rows, slot, 3).y;
+            if (age > plan.times[0] && age < plan.last) {
+                channelPeak = Math.max(channelPeak, main);
+                lightPeak = Math.max(lightPeak, level);
+                channelDip = Math.min(channelDip, main / channelPeak);
+                lightDip = Math.min(lightDip, level / lightPeak);
+            }
+        }
+        // The channel all but goes out between its strokes; what it lights hardly dips.
+        expect(channelDip).toBeLessThan(0.3);
+        expect(lightDip).toBeGreaterThan(0.7);
+    });
+
+    it('throws its light from where it is asked to, and a second light at its foot when it has one', () => {
+        const { table } = makeTable();
+        const start = [0, 400, -600];
+        const end = [100, 0, -400];
+        table.fire(bolt({
+            start, end, glowAt: 0.25, glowLift: 30, footGlow: 220, footGain: 0.5,
+        }));
+        const lights = table.update(LIT);
+        expect(lights).toHaveLength(2);
+        const up = lights.find((light) => light.reach === 400);
+        const foot = lights.find((light) => light.reach === 220);
+        expect([up.x, up.y, up.z]).toEqual([25, 300 + 30, -550]);
+        expect([foot.x, foot.z]).toEqual([end[0], end[2]]);
+        expect(foot.y).toBeGreaterThan(end[1]);
+        expect(foot.gain).toBe(0.5);
+        expect(foot.level).toBe(up.level);
     });
 
     it('throws no light from a bolt with no glow, though the bolt itself is drawn', () => {
@@ -614,7 +728,7 @@ describe('voltage storm bolts: the frame\'s lights', () => {
         table.fire(bolt({
             kind: 'arc', rgb: [0.2, 0.5, 1.0], glow: 321, glowGain: 1.75,
         }));
-        const [light] = table.update(0.125);
+        const [light] = table.update(LIT);
         expect(light.reach).toBe(321);
         expect(light.gain).toBe(1.75);
         for (const channel of [light.r, light.g, light.b]) {
@@ -639,10 +753,10 @@ describe('voltage storm bolts: the frame\'s lights', () => {
             return { along, off };
         };
         table.fire(bolt({ kind: 'strike', start, end }));
-        const strike = place(table.update(0.125)[0]);
+        const strike = place(table.update(LIT)[0]);
         table.reset();
         table.fire(bolt({ kind: 'arc', start, end }));
-        const arc = place(table.update(0.125)[0]);
+        const arc = place(table.update(LIT)[0]);
         expect(strike.off).toBeCloseTo(0, 9);
         expect(arc.off).toBeCloseTo(0, 9);
         expect(strike.along).toBeGreaterThanOrEqual(0);

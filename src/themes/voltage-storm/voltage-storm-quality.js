@@ -13,6 +13,7 @@
  * sparks       spark pool
  * boltDetail   0..2: how finely a bolt is drawn (segments, branches, twigs)
  * noise3d      edge of the cloud's baked 3D noise (voxels)
+ * scud         the scud racing under the vault (every tier but the lowest)
  */
 export const QUALITY = Object.freeze({
     Minimal: Object.freeze({
@@ -26,6 +27,7 @@ export const QUALITY = Object.freeze({
         sparks: 96,
         boltDetail: 0,
         noise3d: 32,
+        scud: false,
     }),
     Low: Object.freeze({
         skyScale: 0.36,
@@ -38,6 +40,7 @@ export const QUALITY = Object.freeze({
         sparks: 160,
         boltDetail: 0,
         noise3d: 32,
+        scud: true,
     }),
     Medium: Object.freeze({
         skyScale: 0.42,
@@ -50,6 +53,7 @@ export const QUALITY = Object.freeze({
         sparks: 288,
         boltDetail: 1,
         noise3d: 48,
+        scud: true,
     }),
     High: Object.freeze({
         skyScale: 0.6,
@@ -62,6 +66,7 @@ export const QUALITY = Object.freeze({
         sparks: 448,
         boltDetail: 2,
         noise3d: 48,
+        scud: true,
     }),
     Ultra: Object.freeze({
         skyScale: 0.7,
@@ -74,6 +79,7 @@ export const QUALITY = Object.freeze({
         sparks: 640,
         boltDetail: 2,
         noise3d: 64,
+        scud: true,
     }),
     Extreme: Object.freeze({
         skyScale: 0.85,
@@ -86,6 +92,7 @@ export const QUALITY = Object.freeze({
         sparks: 900,
         boltDetail: 2,
         noise3d: 64,
+        scud: true,
     }),
 });
 
