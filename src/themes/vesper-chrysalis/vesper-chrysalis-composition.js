@@ -9,7 +9,9 @@
  * and the HUD. The wings measure here how much of each of them the card and the HUD hide.
  */
 
-import { wingPoint } from './vesper-chrysalis-core.js';
+import {
+    CHRYSALIS, DEG, EYE, fovForAspect, wingPoint,
+} from './vesper-chrysalis-core.js';
 
 /** The playfield every board canvas shows. */
 export const BOARD_GRID = Object.freeze({ columns: 10, rows: 20, hiddenRows: 4 });
@@ -152,6 +154,72 @@ export function cardUnion(layout) {
         u.y1 = Math.max(u.y1, cards[i].y1);
     }
     return u;
+}
+
+// ── Where the chrysalis hangs so the board does not hide it ─────────────────────
+
+/** The band of the screen the chrysalis hangs in at rest (fractions, y down). */
+export const PERCH_BAND = Object.freeze({ y0: 0.26, y1: 0.54 });
+/** The frame's edges are kept clear (the crystal stands there). */
+const PERCH_EDGE = 0.13;
+/** The narrowest open column worth moving to, and the room kept between the chrysalis and a card. */
+const PERCH_ROOM = 0.13;
+const PERCH_GAP = 0.085;
+
+/**
+ * Where on screen (x, a fraction) the chrysalis should hang so that it is seen: null when it can
+ * stay where it is (nothing covers the middle of the frame, or nowhere is better). The card
+ * stands in front of the middle of the picture, so in a solo game the chrysalis hangs in the
+ * open water beside it; between two boards it stays between them.
+ */
+export function perchScreenX(layout) {
+    const rects = [];
+    (layout?.cards ?? []).forEach((r) => { if (r) rects.push(r); });
+    if (layout?.hud) rects.push(layout.hud);
+    const blocks = rects
+        .filter((r) => r.y0 < PERCH_BAND.y1 && r.y1 > PERCH_BAND.y0 && r.x1 > r.x0)
+        .map((r) => [r.x0, r.x1])
+        .sort((a, b) => a[0] - b[0]);
+    if (!blocks.length) return null;
+    // The open columns between the covers, inside the frame's kept edges.
+    const open = [];
+    let at = PERCH_EDGE;
+    blocks.forEach(([x0, x1]) => {
+        if (x0 > at) open.push([at, Math.min(x0, 1 - PERCH_EDGE), true]);
+        at = Math.max(at, x1);
+    });
+    if (at < 1 - PERCH_EDGE) open.push([at, 1 - PERCH_EDGE, false]);
+    // The middle is open (two boards with the chrysalis between them): it stays.
+    const middle = open.find(([x0, x1]) => x0 <= 0.5 - PERCH_ROOM / 2 && x1 >= 0.5 + PERCH_ROOM / 2);
+    if (middle) return null;
+    let best = null;
+    open.forEach((column) => {
+        const width = column[1] - column[0];
+        if (width < PERCH_ROOM) return;
+        // The widest column; the left one when two are alike (the HUD stands to the right).
+        if (!best || width > best[1] - best[0] + 0.02) best = column;
+    });
+    if (!best) return null;
+    const [x0, x1, coverToRight] = best;
+    const inset = Math.min(PERCH_GAP, (x1 - x0) / 2);
+    // It hangs near the card, not out at the frame's edge.
+    return coverToRight ? x1 - inset : x0 + inset;
+}
+
+/**
+ * The same as an offset in metres from the chrysalis's place at rest, for a frame of `aspect`.
+ * @returns {{ x: number, y: number }}
+ */
+export function perchFor(layout, aspect, out = { x: 0, y: 0 }) {
+    const sx = layout ? perchScreenX(layout) : null;
+    out.x = 0;
+    out.y = 0;
+    if (sx === null) return out;
+    const a = Math.max(0.2, Number.isFinite(aspect) ? aspect : 16 / 9);
+    const halfWidth = Math.tan((fovForAspect(a) * DEG) / 2) * a;
+    const distance = Math.abs(CHRYSALIS.z - EYE.z);
+    out.x = (sx - 0.5) * 2 * halfWidth * distance - CHRYSALIS.x;
+    return out;
 }
 
 // ── What the card hides of the wings ────────────────────────────────────────────

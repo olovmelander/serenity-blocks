@@ -13,6 +13,8 @@
  * dust        wing-scale pool
  * fireflies   fireflies over the water
  * wingDetail  0 = veins and bands only, 1 = + the glitter of the scales, 2 = + fine cross-veins
+ * glints      facets of the chrysalis that can flash a star
+ * glintStride every n-th of the crystals' glint points is kept
  */
 import { normalizeQuality } from '../../utils/quality.js';
 
@@ -29,6 +31,8 @@ export const QUALITY = Object.freeze({
         dust: 160,
         fireflies: 0,
         wingDetail: 0,
+        glints: 24,
+        glintStride: 4,
     }),
     Low: Object.freeze({
         mirror: 0,
@@ -42,6 +46,8 @@ export const QUALITY = Object.freeze({
         dust: 256,
         fireflies: 60,
         wingDetail: 0,
+        glints: 36,
+        glintStride: 3,
     }),
     Medium: Object.freeze({
         mirror: 0.4,
@@ -55,6 +61,8 @@ export const QUALITY = Object.freeze({
         dust: 512,
         fireflies: 110,
         wingDetail: 1,
+        glints: 56,
+        glintStride: 2,
     }),
     High: Object.freeze({
         mirror: 0.5,
@@ -68,6 +76,8 @@ export const QUALITY = Object.freeze({
         dust: 768,
         fireflies: 160,
         wingDetail: 2,
+        glints: 80,
+        glintStride: 1,
     }),
     Ultra: Object.freeze({
         mirror: 0.6,
@@ -81,6 +91,8 @@ export const QUALITY = Object.freeze({
         dust: 1024,
         fireflies: 210,
         wingDetail: 2,
+        glints: 96,
+        glintStride: 1,
     }),
     Extreme: Object.freeze({
         mirror: 0.75,
@@ -94,6 +106,8 @@ export const QUALITY = Object.freeze({
         dust: 1400,
         fireflies: 260,
         wingDetail: 2,
+        glints: 110,
+        glintStride: 1,
     }),
 });
 

@@ -54,6 +54,7 @@ import {
     EYE,
     EYE_COMBO,
     HEART,
+    HEART_DROP,
     HUSH_HOLD,
     MOTH_DEPTH,
     MOTH_FLIGHT,
@@ -62,6 +63,7 @@ import {
     RING_FADE,
     RING_LIVE,
     RING_SLOTS,
+    STALK,
     SURGE_COOL,
     SWELL_LIVE,
     SWELL_SLOTS,
@@ -96,12 +98,13 @@ import { createLake } from './vesper-chrysalis-lake.js';
 import { createChrysalis, createThreads, planThreads } from './vesper-chrysalis-relic.js';
 import { createReeds, createSpires } from './vesper-chrysalis-shore.js';
 import { createWings } from './vesper-chrysalis-wings.js';
+import { createGlints } from './vesper-chrysalis-glints.js';
 import { createBlooms } from './vesper-chrysalis-blooms.js';
 import {
-    DUST_HOME, createBlades, createDust, createFireflies, createMoths,
+    createBlades, createDust, createFireflies, createMoths,
 } from './vesper-chrysalis-fx.js';
 import {
-    boardFor, boardPoint, cardUnion, fallbackLayout, fillWingCover, frontPast, wingCoverAt,
+    boardFor, boardPoint, cardUnion, fallbackLayout, fillWingCover, frontPast, perchFor, wingCoverAt,
 } from './vesper-chrysalis-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { drainSteps } from '../shared/build-steps.js';
@@ -123,7 +126,7 @@ export const HERO_LAYER = 1;
 
 const PARTS = [
     'sky', 'lake', 'spires', 'reeds', 'chrysalis', 'threads', 'wings', 'blooms', 'moths', 'dust',
-    'fireflies', 'blades',
+    'fireflies', 'blades', 'glints',
 ];
 
 /** The gold a back-to-back lays in the wings and the silk. */
@@ -139,6 +142,16 @@ const SHED_STEP = 0.035;
 const CATCH_HOLD = 0.45;
 /** Seconds a pulse on the silk is counted as running (its light is gone well before). */
 const PULSE_LIFE = 3;
+/** Seconds the chrysalis takes to move most of the way to a new place when the board comes or goes. */
+const PERCH_EASE = 1.6;
+/** A knock sets the chrysalis swinging: how fast (rad/s) and how soon it dies away (1/s). */
+const SWING_RATE = 1.35;
+const SWING_DAMP = 0.42;
+const SWING_LIVE = 14;
+/** Knocks it can be swinging from at once. */
+const SWING_SLOTS = 3;
+/** Seconds a twitch of what is inside lasts. */
+const TWITCH_LIVE = 1.8;
 /** The ring through the frame: seconds it crosses, and seconds its light takes to fall to 1/e. */
 const PRISM_LIVE = 2.2;
 const PRISM_FADE = 0.75;
@@ -199,6 +212,21 @@ export class VesperWorld {
         };
         /** The chrysalis on screen (fractions, y down): where the post's shafts come from. */
         this.heart = { x: 0.5, y: 0.42 };
+        /** The wings' root on screen: where the ring through the frame starts. */
+        this.origin = { x: 0.5, y: 0.42 };
+        /**
+         * Where the chrysalis hangs, as an offset (metres) from its place at rest: it stands clear
+         * of the board so it is seen while a game is on (perchFor, composition).
+         */
+        this.perch = { x: 0, y: 0 };
+        this.perchGoal = { x: 0, y: 0 };
+        this._perchSet = false;
+        /** Its pose this frame: where it hangs from, how it is turned, where its light is. */
+        this.relicAt = [STALK[0], STALK[1], STALK[2]];
+        this.relicHeart = [HEART[0], HEART[1], HEART[2]];
+        this._relicQuat = new THREE.Quaternion();
+        this._relicEuler = new THREE.Euler(0, 0, 0, 'ZXY');
+        this._relicMatrix = new THREE.Matrix4();
         this._camera = null;
         this._look = new THREE.Vector3();
         this._ray = new THREE.Vector3();
@@ -215,6 +243,7 @@ export class VesperWorld {
         this._target = paletteAt(0);
         this._post = {
             heart: this.heart,
+            origin: this.origin,
             flash: 0,
             kick: 0,
             shafts: 0.2,
@@ -274,6 +303,18 @@ export class VesperWorld {
         this.eyeFlash = 0;
         this.crack = 0;
         this.fed = 0;
+        /** Knocks the chrysalis is still swinging from: when, how hard, which way (x, z). */
+        this.swings = Array.from({ length: SWING_SLOTS }, () => ({
+            time: -100, amp: 0, x: 0, z: 0,
+        }));
+        this.swingCursor = 0;
+        /** A turn on its thread still running, and the turns it has already made. */
+        this.spin = { time: -100, turns: 0, seconds: 1 };
+        this.twistBase = 0;
+        /** What is inside last twitched then, that hard. */
+        this.twitch = { time: -100, strength: 0 };
+        /** The heartbeat's phase (0..1), integrated: its rate moves with the chain. */
+        this.beatPhase = 0;
         this.hushUntil = -1;
         /** The breath a four-line clear holds the evening at: deep when play is cold, shallow when hot. */
         this.hushFloor = 0.14;
@@ -348,7 +389,7 @@ export class VesperWorld {
 
         // ── What stands in the scene (mirrored by the lake's pass) ──
         this.spires = planSpires(tier.spires);
-        this.addPart('spires', createSpires(u, this.spires), true);
+        this.addPart('spires', createSpires(u, this.spires, { fire: !tier.lite }), true);
         if (tier.reeds > 0) this.addPart('reeds', createReeds(u, tier.reeds), true);
         this.addPart('chrysalis', createChrysalis(u), true);
         // The long threads are made fast to the two tallest crystals of each stand.
@@ -360,6 +401,12 @@ export class VesperWorld {
         this.threads = planThreads(tier.threads, anchors);
         this.addPart('threads', createThreads(u, this.threads), true);
         this.addPart('wings', createWings(u, { detail: tier.wingDetail }), true);
+        // The stars that flash on cut stone: the chrysalis's larger facets, the crystals' points.
+        const facets = [...(this.parts.chrysalis.facets || [])].sort((a, b) => b.area - a.area).slice(0, tier.glints);
+        this.addPart('glints', createGlints(u, {
+            relic: facets,
+            fixed: (this.parts.spires.glints || []).filter((_, i) => i % tier.glintStride === 0),
+        }), true);
         this.blooms = createBlooms(u, planBlooms(tier.blooms), { whorls: tier.whorls });
         this.addPart('blooms', this.blooms, true);
         if (tier.fireflies > 0) this.addPart('fireflies', createFireflies(u, tier.fireflies), true);
@@ -423,6 +470,14 @@ export class VesperWorld {
         this.layout = rects || fallbackLayout(this.aspect * 1000, 1000);
         // With no wings out there is no front to jump: the cover follows the board at once.
         if (!(this.wing > 0)) this.coverStrength = this.layoutLive ? 1 : 0;
+        // The chrysalis hangs where the board leaves it in view: it glides there, except the
+        // first time (a world that starts with a board on screen starts with it in its place).
+        perchFor(this.layoutLive ? this.layout : null, this.aspect, this.perchGoal);
+        if (!this._perchSet) {
+            this.perch.x = this.perchGoal.x;
+            this.perch.y = this.perchGoal.y;
+            this._perchSet = true;
+        }
     }
 
     setReducedMotion(reduced) {
@@ -443,6 +498,9 @@ export class VesperWorld {
     seek(time) {
         this.resetState(Math.max(0, time));
         this.applyPalette(1);
+        this.perch.x = this.perchGoal.x;
+        this.perch.y = this.perchGoal.y;
+        this.poseRelic(0);
     }
 
     /**
@@ -518,10 +576,124 @@ export class VesperWorld {
         applyCameraBreath(camera, t, { scale: this.reducedMotion ? 0 : 1 });
         camera.updateMatrixWorld();
         this._camera = camera;
-        // The chrysalis on screen: where the shafts come from.
-        this._ray.set(HEART[0], HEART[1], HEART[2]).project(camera);
+        // The chrysalis on screen: where the shafts come from. And the wings' root, behind the
+        // board: where the ring through the frame starts.
+        const h = this.relicHeart;
+        this._ray.set(h[0], h[1], h[2]).project(camera);
         this.heart.x = Math.max(-0.5, Math.min(1.5, this._ray.x * 0.5 + 0.5));
         this.heart.y = Math.max(-0.5, Math.min(1.5, 0.5 - this._ray.y * 0.5));
+        this._ray.set(HEART[0], HEART[1], HEART[2]).project(camera);
+        this.origin.x = Math.max(-0.5, Math.min(1.5, this._ray.x * 0.5 + 0.5));
+        this.origin.y = Math.max(-0.5, Math.min(1.5, 0.5 - this._ray.y * 0.5));
+    }
+
+    // ── The chrysalis's pose ────────────────────────────────────────────────────
+
+    /**
+     * Knock the chrysalis: it swings from its thread and dies away. `x`, `z` = which way
+     * (sideways, to and fro); the faintest knock still running makes way.
+     */
+    knock(time, amp, x = 1, z = 0.4) {
+        let slot = 0;
+        let least = Infinity;
+        for (let i = 0; i < SWING_SLOTS; i++) {
+            const k = this.swings[i];
+            const age = time - k.time;
+            const left = age < 0 ? k.amp : k.amp * Math.exp(-Math.max(0, age) * SWING_DAMP);
+            if (left < least) {
+                least = left;
+                slot = i;
+            }
+        }
+        const k = this.swings[slot];
+        k.time = time;
+        k.amp = amp;
+        k.x = x;
+        k.z = z;
+        this.swingCursor += 1;
+    }
+
+    /** Turn the chrysalis on its thread: `turns` whole turns over `seconds`, easing out. */
+    turn(time, turns, seconds = 3) {
+        // What the last turn had made by now stays made.
+        this.twistBase += this.spinAngle(time);
+        this.spin.time = time;
+        this.spin.turns = turns;
+        this.spin.seconds = Math.max(0.2, seconds);
+    }
+
+    /** The angle the turn still running has made by `time` (radians). */
+    spinAngle(time) {
+        const { spin } = this;
+        const age = time - spin.time;
+        if (!(age > 0) || !spin.turns) return 0;
+        const k = Math.min(1, age / spin.seconds);
+        return spin.turns * TAU * (1 - (1 - k) ** 3);
+    }
+
+    /** What is inside twitches: a quick wriggle, and its light swells. */
+    twitchNow(time, strength = 1) {
+        const age = time - this.twitch.time;
+        const left = age >= 0 && age < TWITCH_LIVE ? this.twitch.strength * Math.exp(-age * 3.2) : 0;
+        if (strength < left) return;
+        this.twitch.time = time;
+        this.twitch.strength = strength;
+    }
+
+    /** Hang, turn and place the chrysalis for this frame, and tell the shaders. */
+    poseRelic(dt) {
+        const { u } = this;
+        if (!u) return;
+        const t = this.time;
+        const calm = this.reducedMotion ? 0.25 : 1;
+        const k = dt > 0 ? approach(2.2 / PERCH_EASE, dt) : 0;
+        this.perch.x += (this.perchGoal.x - this.perch.x) * k;
+        this.perch.y += (this.perchGoal.y - this.perch.y) * k;
+        const d = this.drift;
+        // It hangs by silk: it is never quite still, and it turns slowly on its thread.
+        let ax = (Math.sin(d * 0.31) * 0.016 + Math.sin(d * 0.47 + 1.3) * 0.009) * calm;
+        let az = (Math.sin(d * 0.27 + 2.0) * 0.011 + Math.sin(d * 0.39 + 0.4) * 0.006) * calm;
+        let twist = (Math.sin(d * 0.071) * 0.85 + Math.sin(d * 0.127 + 1.0) * 0.4) * (this.reducedMotion ? 0.4 : 1);
+        for (let i = 0; i < SWING_SLOTS; i++) {
+            const knock = this.swings[i];
+            const age = t - knock.time;
+            if (age <= 0 || age > SWING_LIVE) continue;
+            const e = knock.amp * Math.exp(-age * SWING_DAMP) * Math.sin(age * SWING_RATE) * calm;
+            ax += e * knock.x;
+            az += e * knock.z;
+        }
+        twist += this.twistBase + this.spinAngle(t) * (this.reducedMotion ? 0 : 1);
+        const twAge = t - this.twitch.time;
+        let flare = 0;
+        if (twAge >= 0 && twAge < TWITCH_LIVE) {
+            const w = this.twitch.strength * Math.exp(-twAge * 3.2);
+            ax += w * 0.034 * Math.sin(twAge * 15) * calm;
+            twist += w * 0.17 * Math.sin(twAge * 10.5) * calm;
+            flare = this.twitch.strength * Math.exp(-twAge * 1.5) * Math.min(1, twAge * 8);
+        }
+        this._relicEuler.set(az, twist, ax, 'ZXY');
+        this._relicQuat.setFromEuler(this._relicEuler);
+        const m = this._relicMatrix.makeRotationFromQuaternion(this._relicQuat).elements;
+        const at = this.relicAt;
+        at[0] = STALK[0] + this.perch.x;
+        at[1] = STALK[1] + this.perch.y;
+        at[2] = STALK[2];
+        const heart = this.relicHeart;
+        heart[0] = at[0] - m[4] * HEART_DROP;
+        heart[1] = at[1] - m[5] * HEART_DROP;
+        heart[2] = at[2] - m[6] * HEART_DROP;
+        this.parts.chrysalis?.setPose?.(at, this._relicQuat, heart);
+        u.relicAt.value.set(at[0], at[1], at[2]);
+        u.relicX.value.set(m[0], m[1], m[2]);
+        u.relicY.value.set(m[4], m[5], m[6]);
+        u.relicZ.value.set(m[8], m[9], m[10]);
+        u.relicHeart.value.set(heart[0], heart[1], heart[2]);
+        u.perch.value.set(this.perch.x, this.perch.y, 0);
+        // Its heart: slow at rest, quicker with the chain and the pace of play.
+        const rate = 0.4 + this.power * 0.7 + this.heat.fever * 0.5 + this.surge * 0.3;
+        this.beatPhase = (this.beatPhase + dt * rate) % 1;
+        const stir = clamp01(0.25 + this.power * 0.5 + flare * 0.8 + this.heat.level * 0.3);
+        u.beat.value.set(this.beatPhase, stir, flare, 0);
     }
 
     /** The world point `depth` metres along the ray through a screen point (fractions, y down). */
@@ -906,7 +1078,7 @@ export class VesperWorld {
                     size: 0.22,
                     scatter: 0.5,
                     stagger: 0.3,
-                    home: DUST_HOME,
+                    home: [this.relicHeart[0], this.relicHeart[1], this.relicHeart[2] + 1.5],
                 });
                 released += given;
                 latest = Math.max(latest, pass);
@@ -1226,6 +1398,24 @@ export class VesperWorld {
         const flap = fever * FEVER_SWING * (0.5 - 0.5 * Math.cos(t * TAU * FEVER_STROKE));
         this.beat = -((0.16 + slow) + stroke + flap) * motion;
 
+        this.poseRelic(dt);
+        // The light the lanterns throw up from the lake: the chrysalis's lower facets hold it.
+        if (this.blooms && this.blooms.count) {
+            let lr = 0;
+            let lg = 0;
+            let lb = 0;
+            for (let i = 0; i < this.blooms.count; i++) {
+                const held = this.blooms.levelAt(i, t);
+                if (held <= 0.01) continue;
+                const { rgb } = this.blooms.state[i];
+                lr += rgb[0] * held;
+                lg += rgb[1] * held;
+                lb += rgb[2] * held;
+            }
+            const share = 0.5 / this.blooms.count;
+            u.lakeLight.value.set(lr * share, lg * share, lb * share);
+        }
+
         // ── Uniforms ──
         let ringsLive = 0;
         for (let i = 0; i < RING_SLOTS; i++) {
@@ -1254,8 +1444,9 @@ export class VesperWorld {
         u.combo.value = this.combo;
         u.crack.value = this.crack;
         // A quick hand wakes the chrysalis into a lantern; a fever burns it.
-        u.wake.value = clamp01(0.15 + this.power * 0.6 + this.fed * 0.3 + this.surge * 0.3 + this.storm * 0.12
-            + warm * 0.18 + fever * 0.22);
+        // (At rest it is already alight: a jewel with something alive in it, breathing.)
+        u.wake.value = clamp01(0.3 + Math.sin(this.drift * 0.37) * 0.05 + this.power * 0.5 + this.fed * 0.3
+            + this.surge * 0.3 + this.storm * 0.1 + warm * 0.15 + fever * 0.2);
         // The evening deepens with the pace: more stars, then the aurora.
         u.night.value = Math.min(1, this._night + warm * 0.22 + fever * 0.28);
         const restAurora = Math.max(0, this._night - 0.7) * 1.4;

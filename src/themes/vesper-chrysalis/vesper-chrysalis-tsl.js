@@ -47,6 +47,8 @@ import {
     PLANET,
     RING_SLOTS,
     SUN,
+    HEART,
+    STALK,
     SWELL_SLOTS,
     TAU,
     THREAD_PULSES,
@@ -326,6 +328,23 @@ export function createVesperUniforms(textures) {
         /** Thread pulse slots: (birth time, side −1 | 0 | +1, strength, _) + colour. */
         pulseA: [],
         pulseC: [],
+        // ── The chrysalis's pose ──
+        /** Where it hangs from (the top of its stalk), and its own axes in the world. */
+        relicAt: uniform(new THREE.Vector3(STALK[0], STALK[1], STALK[2])),
+        relicX: uniform(new THREE.Vector3(1, 0, 0)),
+        relicY: uniform(new THREE.Vector3(0, 1, 0)),
+        relicZ: uniform(new THREE.Vector3(0, 0, 1)),
+        /** The centre of its light in the world (it swings with the chrysalis). */
+        relicHeart: uniform(new THREE.Vector3(HEART[0], HEART[1], HEART[2])),
+        /** How far the chrysalis hangs from its place at rest (it stands clear of the board). */
+        perch: uniform(new THREE.Vector3(0, 0, 0)),
+        /** (heartbeat phase 0..1, how hard what is inside stirs 0..1, a twitch's flare 0..1, _). */
+        beat: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** The light the lanterns on the lake throw up from below (rgb). */
+        lakeLight: uniform(new THREE.Vector3(0, 0, 0)),
+        /** A chime through the crystal: (when it rang, how hard, _, _) and its colour. */
+        chime: uniform(new THREE.Vector4(-100, 0, 0, 0)),
+        chimeTint: uniform(new THREE.Vector3(1, 1, 1)),
         noiseTex: textures.noise,
     };
     for (let i = 0; i < RING_SLOTS; i++) {
@@ -380,7 +399,7 @@ const SUN_FLAT = (() => {
     return [SUN_DIR[0] / l, SUN_DIR[2] / l];
 })();
 
-const PLANET_DIR = skyDirection(PLANET.azimuth, PLANET.elevation);
+export const PLANET_DIR = Object.freeze(skyDirection(PLANET.azimuth, PLANET.elevation));
 const [PLANET_X, PLANET_Y] = frameOf(PLANET_DIR);
 const PLANET_TAN = Math.tan(PLANET.radius);
 /** The sun as the planet sees it, in (right, up, toward the viewer). */
@@ -405,6 +424,14 @@ const RING_SUN = [
 
 export const VESPER_DIR = Object.freeze(skyDirection(VESPER.azimuth, VESPER.elevation));
 const [VESPER_X, VESPER_Y] = frameOf(VESPER_DIR);
+
+/** Where the last light lies: on the horizon over the place the sun went down. */
+export const GLOW_DIR = Object.freeze((() => {
+    const flat = Math.hypot(SUN_DIR[0], SUN_DIR[2]);
+    const lift = 0.05;
+    const l = Math.hypot(1, lift);
+    return [SUN_DIR[0] / flat / l, lift / l, SUN_DIR[2] / flat / l];
+})());
 
 /** The three mountain ranges, far to near: azimuth frequency, noise row, base, height, depth. */
 const RANGES = [
@@ -470,6 +497,38 @@ export const vcHaze = (u, dir) => {
     const t4 = toward.mul(toward).mul(toward).mul(toward);
     return mix(u.haze, u.glow.mul(0.9).add(u.haze.mul(0.4)), t4.mul(t4).mul(0.6)).mul(t4.mul(0.5).add(0.5))
         .mul(u.breath.mul(0.4).add(0.6));
+};
+
+/**
+ * The evening along a direction as cut stone mirrors it: the sky above, and below the horizon the
+ * lake's own mirror of it, a shade darker, with the lanterns' light coming up from the water.
+ */
+export const vcEvening = (u, d) => {
+    const down = smoothstep(0.0, -0.3, d.y);
+    return vcSkyBase(u, normalize(vec3(d.x, abs(d.y).add(0.02), d.z))).mul(float(1.0).sub(down.mul(0.4)))
+        .add(u.lakeLight.mul(down).mul(0.55));
+};
+
+/** x raised to 2^n by squaring (a `pow` whose base strays below zero is a NaN). */
+export const vcPow2n = (x, n) => {
+    let v = x;
+    for (let i = 0; i < n; i++) v = v.mul(v);
+    return v;
+};
+
+/**
+ * The evening's own lamps as cut crystal finds them along a direction: the last light on the
+ * horizon (a broad lobe), the ringed world (a soft one) and the evening star (a pin). A facet
+ * that turns one of them to the eye flashes; everything else of the sky is vcSkyBase.
+ */
+export const vcGemLights = (u, d) => {
+    const g = clamp(dot(d, lit(GLOW_DIR)), 0.0, 1.0);
+    const s = clamp(dot(d, lit(VESPER_DIR)), 0.0, 1.0);
+    const p = clamp(dot(d, lit(PLANET_DIR)), 0.0, 1.0);
+    const glow = u.glow.mul(vcPow2n(g, 4).mul(vcPow2n(g, 3)).mul(2.6));
+    const star = vec3(1.0, 0.93, 0.82).mul(vcPow2n(s, 9).mul(u.heat.w.mul(0.6).add(1.0)).mul(30.0));
+    const world = u.glow.mul(0.5).add(vec3(0.75, 0.66, 0.58)).mul(vcPow2n(p, 6).mul(1.5));
+    return glow.add(star).add(world).mul(u.breath);
 };
 
 /**

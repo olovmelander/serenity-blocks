@@ -25,6 +25,8 @@
  *   msaa=<n>                 override the scene pass's samples
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   reduce=1                 reduced motion
+ *   cam=ex,ey,ez,tx,ty,tz,fov   a free camera for close looks: the eye, what it looks at, and the
+ *                            vertical field of view in degrees (the mirror follows it)
  *   icon=1                   the theme-icon framing: a longer lens on the chrysalis (compose for
  *                            a small circle: capture a square frame); iconFov, iconX, iconY,
  *                            iconZ, iconYaw, iconPitch adjust it
@@ -143,6 +145,9 @@ export function create({
 
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
     const iconPose = params.get('icon') === '1';
+    const freeCam = (params.get('cam') || '').split(',').map(Number);
+    const hasFreeCam = freeCam.length >= 6 && freeCam.every((v) => Number.isFinite(v));
+    const camTarget = new THREE.Vector3();
     const size = new THREE.Vector2(1, 1);
     const syncViewport = () => {
         const aspect = window.innerWidth / Math.max(1, window.innerHeight);
@@ -166,6 +171,14 @@ export function create({
     const frame = (time, delta) => {
         world.updateCamera(camera, sim(time, delta));
         world.update(sim(time, delta), camera);
+        if (hasFreeCam) {
+            camera.position.set(freeCam[0], freeCam[1], freeCam[2]);
+            camera.up.set(0, 1, 0);
+            camera.lookAt(camTarget.set(freeCam[3], freeCam[4], freeCam[5]));
+            if (Number.isFinite(freeCam[6])) camera.fov = freeCam[6];
+            camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+        }
         if (iconPose) {
             camera.fov = num(params, 'iconFov', 30);
             camera.position.x += num(params, 'iconX', 0);

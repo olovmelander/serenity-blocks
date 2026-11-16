@@ -51,7 +51,7 @@ import {
     EYE,
     TAU,
     VESPER_DIR,
-    SUN_DIR,
+    GLOW_DIR,
     vcBackdrop,
     vcBell,
     vcFresnel,
@@ -65,14 +65,6 @@ import {
  * before the lake's overall scale, and whether it lives only near the eye). The long ones keep
  * the far mirror whole; the short ones break the near reflections into wavelets.
  */
-/** Where the last light lies: on the horizon over the place the sun went down. */
-const GLOW_DIR = (() => {
-    const flat = Math.hypot(SUN_DIR[0], SUN_DIR[2]);
-    const lift = 0.05;
-    const l = Math.hypot(1, lift);
-    return [SUN_DIR[0] / flat / l, lift / l, SUN_DIR[2] / flat / l];
-})();
-
 /** Pixels between the sparks of the glitter lattice. */
 const GLINT_PIXELS = 5;
 
