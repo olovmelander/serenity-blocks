@@ -9,8 +9,12 @@
  * is one weather on (verdant-hills-moods.js).
  */
 import * as THREE from 'three/webgpu';
-import { verdantHillsEye, verdantHillsTarget, verdantHillsViewFor } from './verdant-hills-composition.js';
+import {
+    VERDANT_HILLS_VIEWS, verdantHillsEye, verdantHillsTarget, verdantHillsViewFor,
+} from './verdant-hills-composition.js';
 import { VerdantHillsBackdrop } from './verdant-hills-backdrop.js';
+import { VerdantHillsBalloons } from './verdant-hills-balloons.js';
+import { VerdantHillsFireflies } from './verdant-hills-fireflies.js';
 import { VerdantHillsFlock } from './verdant-hills-flock.js';
 import { VerdantHillsFxDirector } from './verdant-hills-fx-director.js';
 import { VerdantHillsHomestead } from './verdant-hills-homestead.js';
@@ -20,11 +24,13 @@ import { VERDANT_HILLS_WIND_DIRECTION, VerdantHillsLight } from './verdant-hills
 import { VerdantHillsMeadow } from './verdant-hills-meadow.js';
 import { VERDANT_HILLS_MOODS, verdantHillsMoodDrift, verdantHillsMoodName } from './verdant-hills-moods.js';
 import { verdantHillsTier } from './verdant-hills-quality.js';
+import { VerdantHillsRainbow } from './verdant-hills-rainbow.js';
 import { VerdantHillsRibbons } from './verdant-hills-ribbons.js';
 import { VerdantHillsSeeds } from './verdant-hills-seeds.js';
 import { VerdantHillsSheep } from './verdant-hills-sheep.js';
 import { VerdantHillsSky } from './verdant-hills-sky.js';
 import { VerdantHillsStage } from './verdant-hills-stage.js';
+import { VerdantHillsSunbeams } from './verdant-hills-sunbeams.js';
 import { createVerdantHillsWorn, wearVerdantHillsFrame } from './verdant-hills-surge.js';
 import {
     VERDANT_HILLS_PLACES, VerdantHillsTerrain, prepareGroundSteps, verdantHillsGroundHeight,
@@ -34,12 +40,15 @@ import {
 } from './verdant-hills-layout.js';
 import { VerdantHillsTrees } from './verdant-hills-trees.js';
 import { drainSteps } from '../shared/build-steps.js';
+import { seededRandom } from '../../utils/helpers.js';
 import { easeStep, nearestStep } from '../shared/mood-clock.js';
 
 /** The flock's own seed: every session's flock starts its day the same way, as the layout does. */
 export const VERDANT_HILLS_FLOCK_SEED = 0x5ee9;
 /** How quickly the day takes a level's step, per second: most of the way in four seconds. */
 const MOOD_FOLLOW = 0.6;
+/** The fireflies' own seed: their places never shift what the rest of the hill draws from. */
+const FIREFLY_SEED = 0xf17e;
 
 export class VerdantHillsWorld {
     constructor({
@@ -82,6 +91,11 @@ export class VerdantHillsWorld {
         this.flockEnv = {
             fronts: [null, null, null], pool: null, festival: 0, settled: false, motion: 1, level: 0, fever: 0, mood: 0,
         };
+        /** Balloons already let go for the reactions' levels, and the run of reactions they count from. */
+        this.balloonsSeen = 0;
+        this.balloonEpoch = null;
+        /** How far the clouds have ridden down the wind (metres), for the shafts that ride with them. */
+        this.cloudTravel = { x: 0, z: 0 };
     }
 
     build() {
@@ -174,6 +188,22 @@ export class VerdantHillsWorld {
         this.life = new VerdantHillsLife({ light, tier, rng });
         this.group.add(this.life.group);
         this.life.build();
+        // What the weathers and the great moments add to the day: the rainbow, the sun's shafts,
+        // the balloons and the fireflies. All of it is in the scene from the first frame (folded
+        // away to nothing until it is wanted), so no pipeline is made in front of the player.
+        this.rainbow = new VerdantHillsRainbow({ light, eye: verdantHillsEye(VERDANT_HILLS_VIEWS.landscape) });
+        this.group.add(this.rainbow.group);
+        this.rainbow.build();
+        this.sunbeams = new VerdantHillsSunbeams({ light, groundHeight: verdantHillsGroundHeight });
+        this.group.add(this.sunbeams.group);
+        this.sunbeams.build();
+        this.balloons = new VerdantHillsBalloons({ light, groundHeight: verdantHillsGroundHeight });
+        this.group.add(this.balloons.group);
+        this.balloons.build();
+        this.fireflies = new VerdantHillsFireflies({ light, tier, rng: seededRandom(FIREFLY_SEED) });
+        this.group.add(this.fireflies.group);
+        this.fireflies.build();
+        yield 'weathers';
         this.kites = new VerdantHillsKites({ light });
         this.group.add(this.kites.group);
         this.kites.build();
@@ -198,6 +228,7 @@ export class VerdantHillsWorld {
             oak: {
                 x: oak.x + 1.5, y: verdantHillsGroundHeight(oak.x, oak.z) + 9.5, z: oak.z, radius: 8,
             },
+            bloom: (x, z, strength, colour) => light.startBloom(x, z, strength, colour),
         });
     }
 
@@ -224,6 +255,7 @@ export class VerdantHillsWorld {
         this.director?.reset();
         this.seeds?.reset();
         this.ribbons?.reset();
+        this.sunbeams?.reset();
         this.light?.reset();
     }
 
@@ -258,6 +290,9 @@ export class VerdantHillsWorld {
     /** Put the wind and the clouds back where a session starts (a replay begins from one place). */
     rewind() {
         this.resetEffects();
+        this.balloons?.reset();
+        this.balloonsSeen = 0;
+        this.balloonEpoch = null;
         this.light?.rewind();
         this.flock?.reset();
         this.sheep?.update();
@@ -311,6 +346,17 @@ export class VerdantHillsWorld {
         this.homestead?.update(time, dt, worn);
         this.kites.update(time, dt, worn);
         this.seeds.update(dt, env);
+        // The weather's bow and a perfect clear's; the shafts under the game's own gap in the
+        // clouds and under the weather's; a balloon for every new level, and their burners.
+        this.rainbow.update(light.mood.bow, worn.bow);
+        this.sunbeams.update(env.pool, this.stage, light.uBeams.value, light.cloudTravel(this.cloudTravel));
+        if (worn.epoch !== this.balloonEpoch) {
+            // The reactions began again: their count of levels did too.
+            this.balloonEpoch = worn.epoch;
+            this.balloonsSeen = Math.min(this.balloonsSeen, worn.balloons);
+        }
+        for (; this.balloonsSeen < worn.balloons; this.balloonsSeen += 1) this.balloons.launch(time);
+        this.balloons.update(time, { burn: worn.burn, night: light.uNight.value });
         if (this.flock) {
             // The flock: the fronts that cross the valley, the pool of sunlight, the festival, the end
             // of a run, how hot play runs, Reduce motion and the day's weather.
@@ -348,6 +394,10 @@ export class VerdantHillsWorld {
             ribbons: this.ribbons?.active() || 0,
             seeds: this.seeds?.sim?.counts() || null,
             waves: this.light?.waves.active() || 0,
+            balloons: this.balloons?.aloft || 0,
+            bow: this.rainbow?.strength || 0,
+            sunbeams: this.sunbeams?.live || 0,
+            fireflies: this.fireflies?.count || 0,
             level: this.level,
             // The weather the day is turning to, and how far round it is.
             mood: verdantHillsMoodName(nearestStep(this.moodStep, this.level - 1, VERDANT_HILLS_MOODS.length)
@@ -362,6 +412,10 @@ export class VerdantHillsWorld {
         this.seeds?.dispose();
         this.ribbons?.dispose();
         this.kites?.dispose();
+        this.fireflies?.dispose();
+        this.balloons?.dispose();
+        this.sunbeams?.dispose();
+        this.rainbow?.dispose();
         this.life?.dispose();
         this.meadow?.dispose();
         this.sheep?.dispose();
@@ -374,6 +428,10 @@ export class VerdantHillsWorld {
         this.seeds = null;
         this.ribbons = null;
         this.kites = null;
+        this.fireflies = null;
+        this.balloons = null;
+        this.sunbeams = null;
+        this.rainbow = null;
         this.director = null;
         this.life = null;
         this.meadow = null;

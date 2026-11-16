@@ -34,6 +34,9 @@ const TAU = Math.PI * 2;
 /** How fast a gust ring crosses the grass, metres a second. */
 export const VERDANT_HILLS_WAVE_SPEED = 10;
 const WAVE_LIFE = 4.4;
+/** How fast the meadow's bloom runs out through the flowers (metres a second), and how long it lives. */
+export const VERDANT_HILLS_BLOOM_SPEED = 10;
+const BLOOM_LIFE = 12;
 /** The cumulus deck: flat bases at one height, tops wherever the field is thickest. */
 export const VERDANT_HILLS_CLOUD_BASE = 1150;
 export const VERDANT_HILLS_CLOUD_TOP = 2350;
@@ -53,6 +56,15 @@ const CLOUD_FINE = 3;
 const CLOUD_DRIFT = 11;
 /** How much of the haze the strongest wind of a fever clears from the valley. */
 const CLEARED_HAZE = 0.4;
+/**
+ * The morning's mist: a layer lying in the valley, densest at the water and thinning by a factor
+ * of e every MIST_DEPTH metres above MIST_LEVEL (its density per metre there, at full mist). The
+ * lens stands some forty-seven metres over it, so the home hill, the mill's hill and the far
+ * ridges stand out of the mist and only the valley floor is under it.
+ */
+const MIST_LEVEL = 16;
+const MIST_DEPTH = 9;
+const MIST_DENSITY = 0.0075;
 /** The weather a session opens in (the kite day), whose colours the rig is built with. */
 const FIRST_MOOD = VERDANT_HILLS_MOODS[0];
 /** The share of the sky under cloud on a fair day. */
@@ -293,6 +305,11 @@ export class VerdantHillsLight {
         this.uCirrus = colour('cirrus');
         this.uHazeSun = uniform(tier.shafts > 0 ? 0.3 : 1);
         this.uHaze = uniform(FIRST_MOOD.haze);
+        // What only some weathers have: mist in the valley, the night coming on (the stars and the
+        // fireflies read it), and the sun's shafts standing in the air between the clouds.
+        this.uMist = uniform(FIRST_MOOD.mist);
+        this.uNight = uniform(FIRST_MOOD.night);
+        this.uBeams = uniform(FIRST_MOOD.beams);
         this.uGroundLevel = uniform(20);
         // Wind: a steady breeze up the valley, gusts that roll through the grass in bands,
         // and a travelling front. `uWindClock` runs faster the harder it blows.
@@ -324,6 +341,10 @@ export class VerdantHillsLight {
         this.uCloudSpan = uniform(0.5);
         this.uCloudOffset = uniform(new THREE.Vector2(CLOUD_START[0], CLOUD_START[1]));
         this.uSunPool = uniform(new THREE.Vector4(0, 0, 400, 0));
+        // The meadow's bloom: a wave that runs out through its flowers from a place on the hill
+        // (x, z, its age in seconds, its strength), and the colour it flushes them.
+        this.uBloomWave = uniform(new THREE.Vector4(0, 0, 0, 0));
+        this.uBloomTone = uniform(new THREE.Color(1, 0.82, 0.3));
         this.cloudSpeed = 1;
         // How far hot play has thinned the cumulus (a share of the sky, eased; see update()), and
         // how much of the haze the rising wind has cleared (0..1, eased), from the haze it found.
@@ -429,7 +450,7 @@ export class VerdantHillsLight {
         // Where the game has opened the clouds the sun comes down harder than anywhere else.
         const gap = this.sunGap(world);
         // While its pool of light crosses the valley, the rest of the land stands a little in shade.
-        const dimmed = under.mul(0.86).oneMinus().mul(this.uSunPool.w.mul(0.4).oneMinus());
+        const dimmed = under.mul(0.86).oneMinus().mul(this.uSunPool.w.mul(0.5).oneMinus());
         return mix(dimmed, float(2.3), saturate(gap));
     }
 
@@ -550,7 +571,19 @@ export class VerdantHillsLight {
         const sunward = saturate(dot(direction, this.uSunDir));
         const air = this.uHazeCool.add(this.uHazeWarm.mul(pow(sunward, 3).mul(this.uHazeSun)
             .add(this.uWarmth.mul(0.04))));
-        return mix(colour, air, saturate(amount.mul(strength)));
+        const hazed = mix(colour, air, saturate(amount.mul(strength)));
+        // Mist in the valley: an exponential layer, integrated along the line of sight in closed
+        // form (the mean of e^-h between the lens's height and the point's, times the range).
+        // Bounded: the exponent of a point far below the lens would run away on a tall screen.
+        const climb = world.y.sub(cameraPosition.y).div(MIST_DEPTH).clamp(-8, 30);
+        const steep = climb.abs().max(0.02).mul(climb.sign().add(0.5).sign());
+        const mean = exp(steep.negate()).oneMinus().div(steep);
+        const over = exp(cameraPosition.y.sub(MIST_LEVEL).div(MIST_DEPTH).clamp(-2, 30).negate());
+        const depth = range.mul(this.uMist).mul(MIST_DENSITY).mul(over).mul(mean);
+        const mist = exp(depth.min(12).negate()).oneMinus().mul(0.94);
+        // Sunlit mist is the warm white of the morning, a little brighter toward the sun.
+        const milk = mix(this.uHazeCool, this.uHazeWarm, pow(sunward, 2).mul(0.25).add(0.55)).mul(1.06);
+        return mix(hazed, milk, mist.mul(saturate(strength)));
     }
 
     /** Hemisphere ambient: blue sky from above, the green of the grass from below. */
@@ -638,6 +671,25 @@ export class VerdantHillsLight {
     }
 
     /**
+     * How strongly the meadow's bloom holds a root (0..1): nothing until the wave reaches it,
+     * full as it passes, and fading over the next couple of seconds.
+     */
+    meadowBloom(root) {
+        const wave = this.uBloomWave;
+        const away = length(root.xz.sub(wave.xy));
+        const passed = wave.z.mul(VERDANT_HILLS_BLOOM_SPEED).sub(away);
+        const since = passed.max(0).div(VERDANT_HILLS_BLOOM_SPEED);
+        return smoothstep(0, 2.4, passed).mul(exp(since.mul(-0.38))).mul(wave.w).mul(smoothstep(90, 45, away));
+    }
+
+    /** Send a wave of bloom out through the meadow from (x, z), in a colour (a THREE.Color). */
+    startBloom(x, z, strength = 1, colour = null) {
+        if (!Number.isFinite(x) || !Number.isFinite(z) || !(strength > 0)) return;
+        this.uBloomWave.value.set(x, z, 0, Math.min(1, strength));
+        if (colour) this.uBloomTone.value.copy(colour);
+    }
+
+    /**
      * Turn the day to `phase` weathers in (see verdant-hills-moods.js): every colour of the rig
      * takes the weather's, melted between the two it lies between, and the haze, the cloud cover
      * and the exposure follow. Uniform values only; nothing is rebuilt. Call it before update(),
@@ -667,6 +719,9 @@ export class VerdantHillsLight {
         else this.uHaze.value = haze;
         this.uCloudCover.value = Number.isFinite(pinned.cover) ? pinned.cover : mood.cover;
         this.exposureScale = mood.exposure;
+        this.uMist.value = mood.mist;
+        this.uNight.value = mood.night;
+        this.uBeams.value = mood.beams;
     }
 
     update(time, frame = {}) {
@@ -756,6 +811,11 @@ export class VerdantHillsLight {
     step(dt) {
         if (!(dt > 0)) return;
         this.waves.update(dt);
+        const bloom = this.uBloomWave.value;
+        if (bloom.w > 0) {
+            bloom.z += dt;
+            if (bloom.z >= BLOOM_LIFE) bloom.w = 0;
+        }
         this.uWindClock.value += dt * (0.75 + this.uWind.value * 1.1 + this.uGust.value * 0.5);
         const travel = (dt * CLOUD_DRIFT * this.cloudSpeed) / VERDANT_HILLS_CLOUD_TILE;
         const offset = this.uCloudOffset.value;
@@ -764,6 +824,15 @@ export class VerdantHillsLight {
         // hours moves it by tens of tiles, far inside what a float holds.
         offset.x -= this.uWindDir.value.x * travel;
         offset.y -= this.uWindDir.value.z * travel;
+    }
+
+    /** How far the clouds have ridden down the wind since the session began, metres (x, z into `out`). */
+    cloudTravel(out = { x: 0, z: 0 }) {
+        const offset = this.uCloudOffset.value;
+        const target = out;
+        target.x = (CLOUD_START[0] - offset.x) * VERDANT_HILLS_CLOUD_TILE;
+        target.z = (CLOUD_START[1] - offset.y) * VERDANT_HILLS_CLOUD_TILE;
+        return target;
     }
 
     /** Put the clouds and the wind back where a session starts (a replay must begin from one place). */
@@ -783,6 +852,7 @@ export class VerdantHillsLight {
 
     reset() {
         this.waves.reset();
+        this.uBloomWave.value.set(0, 0, 0, 0);
         this.uSunPool.value.w = 0;
         this.uFront.value.y = 0;
         this.uFront2.value.y = 0;

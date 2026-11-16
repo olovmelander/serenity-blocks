@@ -46,6 +46,10 @@ export function createVerdantHillsWorn() {
         emitters: null,
         waves: null,
         streaks: null,
+        blooms: null,
+        bow: null,
+        balloons: 0,
+        burn: 0,
         front: null,
         fronts: null,
         sunbreak: null,
@@ -101,6 +105,9 @@ export function wearVerdantHillsFrame(frame = {}, worn = createVerdantHillsWorn(
     out.emitters = source.emitters;
     out.waves = source.waves;
     out.streaks = source.streaks;
+    out.blooms = source.blooms ?? null;
+    out.bow = source.bow ?? null;
+    out.balloons = Number.isFinite(source.balloons) ? source.balloons : 0;
     out.front = source.front ?? null;
     out.fronts = source.fronts ?? null;
     out.sunbreak = source.sunbreak ?? null;
@@ -121,6 +128,8 @@ export function wearVerdantHillsFrame(frame = {}, worn = createVerdantHillsWorn(
     out.glow = Math.max(unit(source.glow), 0.2 * hot + 0.3 * fever);
     out.shimmer = Math.max(unit(source.shimmer), 0.25 * warm + 0.2 * hot + 0.3 * fever);
     out.shafts = Math.max(unit(source.shafts), 0.12 * hot + 0.2 * fever);
+    // The balloons' burners: every clear fires them, and a fever keeps them roaring.
+    out.burn = Math.max(unit(source.burn), 0.3 * fever);
     out.iris = 0.02 * warm + 0.03 * hot + 0.04 * fever;
     out.saturation = 0.05 * hot + 0.07 * fever;
     // The cumulus thins in a fever (a share of the sky), so the valley lies in broken sun, and the

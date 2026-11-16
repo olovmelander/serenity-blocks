@@ -332,12 +332,12 @@ describe('Verdant Hills flock: what the game does to them', () => {
         expect(flock.sheep.filter((s) => s.mode === 'lie').length).toBeLessThan(2);
     });
 
-    it('rests half the groups in the honey afternoon and turns their backs to the wind before the showers', () => {
+    it('rests half the groups in the honey afternoon and turns their backs to the wind in the storm light', () => {
         const flock = make([herd(0, -20, 10, 5, 0), herd(1, 20, -25, 5, 0)], 8);
         run(flock, 60, () => ({ ...CALM, mood: 1 }));
         expect(flock.sheep.filter((s) => s.mode === 'lie').length).toBeGreaterThan(2);
         const showers = make([herd(0, -20, 10, 5, 0)], 8);
-        run(showers, 60, () => ({ ...CALM, mood: 3 }));
+        run(showers, 60, () => ({ ...CALM, mood: 2 }));
         const downwind = Math.atan2(WIND.x, WIND.z);
         const grazing = showers.sheep.filter((s) => s.mode === 'graze' && s.speed < 0.05);
         expect(grazing.length).toBeGreaterThan(0);
