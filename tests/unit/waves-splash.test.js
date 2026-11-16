@@ -5,6 +5,7 @@
  * birth, the trail's seconds ahead. These tests read the pools back as the materials read them and
  * hold where and when the water leaves, not how it is tuned.
  */
+import { readFileSync } from 'node:fs';
 import {
     afterEach, describe, expect, it, vi,
 } from 'vitest';
@@ -15,13 +16,14 @@ import { HOURS, HOUR_COLOURS } from '../../src/themes/waves/waves-hours.js';
 import { QUALITY, QUALITY_NAMES, tierFor } from '../../src/themes/waves/waves-quality.js';
 import { createLight, createWaterNoise, sunDirection } from '../../src/themes/waves/waves-tsl.js';
 import {
-    FLUKE_REACH, NOSE_REACH, WavesPod, dolphinPose, leapersFor, surfaceTimes,
+    FLUKE_REACH, NOSE_REACH, WavesLife, dolphinPose, leapersFor, surfaceTimes,
 } from '../../src/themes/waves/waves-life.js';
 import { GRAVITY, SprayPool } from '../../src/themes/waves/waves-spray.js';
 import {
     FoamPool, dolphinBreach, dolphinEntry, splashDensity, splashReach,
 } from '../../src/themes/waves/waves-splash.js';
 import { WavesWorld, fovForAspect } from '../../src/themes/waves/waves-world.js';
+import { parseSeaLife } from '../../src/themes/waves/waves-cast.js';
 
 vi.setConfig({ testTimeout: 30_000 });
 
@@ -29,6 +31,7 @@ const DT = 1 / 60;
 const EYE = REST_RIG.eye;
 const SUN = sunDirection();
 const made = [];
+const PACK = parseSeaLife(readFileSync(new URL('../../src/themes/waves/assets/sea-life.glb', import.meta.url)));
 
 function uniforms() {
     return {
@@ -38,6 +41,8 @@ function uniforms() {
         open: uniform(0),
         bulge: uniform(new THREE.Vector4(-60, 0, 5, 0)),
         tear: uniform(0),
+        glowing: uniform(0),
+        sea: uniform(new THREE.Vector4(0.3, 0, 0, 0.15)),
         light: createLight(uniformArray(HOUR_COLOURS.map((key) => new THREE.Vector4(...HOURS[0][key], 0)), 'vec4')),
     };
 }
@@ -46,8 +51,9 @@ function makeKit(quality = 'High', seed = 187) {
     const tier = tierFor(quality);
     const U = uniforms();
     const noise = createWaterNoise(tier.noise);
-    const pod = new WavesPod({
-        tier, U, sun: SUN, eye: EYE, seed,
+    // Only what the board calls: the sea's own visits would add splashes of their own.
+    const pod = new WavesLife({
+        tier, U, sun: SUN, eye: EYE, seed, ambient: false,
     });
     const spray = new SprayPool({ tier, U, seed });
     const foam = new FoamPool({ tier, U, noise });
@@ -149,33 +155,35 @@ describe('waves splash: when the dolphin meets the water', () => {
 
     it('splashes as the nose touches the water, and keeps the dolphin drawn until its flukes are under', () => {
         const { pod } = makeKit('Extreme');
+        pod.attach(PACK);
         // The longest, slowest dolphin a pod sends: it takes longest to go under.
         let slowest = null;
         for (let i = 0; i < 40; i++) {
             const arc = pod.leap(0, 0);
-            if (!slowest || arc.tailAt - arc.flight > slowest.tailAt - slowest.flight) slowest = { ...arc };
-            arc.active = false;
+            if (!slowest || arc.tailAt - arc.flight > slowest.tailAt - slowest.flight) slowest = arc;
         }
-        const arc = pod.leap(0, 0, { slot: 0 });
-        Object.assign(arc, slowest, { active: true });
+        pod.reset();
+        const arc = pod.add(slowest);
         const calls = [];
         let drawnAtTail = 0;
-        for (let n = 0; n * DT <= arc.flight + 4; n++) {
+        // (From a second before it: no moment is handed over on the first frame a clock is seen.)
+        for (let n = -60; n * DT <= arc.flight + 4; n++) {
             const time = n * DT;
-            pod.update(time, (x, y, z, strength, which) => {
-                calls.push({ time, entered: which.entered, landed: which.landed });
+            pod.update(time, 0, (which, event) => {
+                calls.push({ time, type: event.type, landed: which.landed });
             });
-            if (time >= arc.tailAt - DT && time < arc.tailAt) drawnAtTail = pod.geometry.getAttribute('aPlace').getW(0);
+            if (time >= arc.tailAt - DT && time < arc.tailAt) {
+                drawnAtTail = pod.fauna.kinds[arc.kind].geometry.getAttribute('aRow0').getW(0);
+            }
         }
-        expect(calls).toHaveLength(2);
-        expect(calls[0].entered).toBe(false);
-        expect(calls[1].entered).toBe(true);
+        expect(calls.map((call) => call.type)).toEqual(['breach', 'entry']);
         // The second splash is the nose going in: before the middle of the body is under.
         expect(calls[1].time).toBeGreaterThanOrEqual(arc.noseAt - 1e-9);
         expect(calls[1].time).toBeLessThan(arc.noseAt + DT + 1e-9);
         expect(calls[1].landed).toBe(false);
+        // Still drawn as its flukes go under, gone once its life is over.
         expect(drawnAtTail).toBeGreaterThan(0);
-        expect(arc.active).toBe(false);
+        expect(pod.acts).not.toContain(arc);
     });
 });
 
@@ -369,8 +377,9 @@ describe('waves splash: in the world', () => {
     function makeWorld(quality = 'High', seed = 187) {
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(fovForAspect(16 / 9), 16 / 9, REST_RIG.near, REST_RIG.far);
+        // Only the board's own dolphins: the sea's visits would throw water of their own.
         const world = new WavesWorld({
-            scene, quality, capture: true, seed,
+            scene, quality, capture: true, seed, seaLife: PACK, ambient: false,
         }).build();
         world.setViewport(1600, 900, 16 / 9);
         world.setLayout(fallbackLayout(1600, 900), 16 / 9);
@@ -394,9 +403,9 @@ describe('waves splash: in the world', () => {
     it('hands each leap to its splash: white water at the hole, the trail written ahead', () => {
         const { camera, world } = makeWorld();
         world.onCombo(chainFor(1));
-        const [arc] = world.pod.arcs.filter((a) => a.active);
+        const [arc] = world.pod.acts.filter((act) => act.type === 'leap');
+        expect(puffs(world.foam)).toHaveLength(0);
         step(world, camera, arc.t0 - world.clock + 0.05);
-        expect(arc.started).toBe(true);
         expect(puffs(world.foam).length).toBeGreaterThanOrEqual(4);
         expect(drops(world.spray).filter((drop) => drop.birth > world.clock + 0.5).length).toBeGreaterThan(20);
         // And as it goes back in: foam lies on the water where it went.

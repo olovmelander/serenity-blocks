@@ -21,9 +21,10 @@ import {
 import {
     FLOW, TAU, WAVE, mulberry32, wavePoint,
 } from './waves-core.js';
+import { GRAVITY } from './waves-acts.js';
 
-/** Gravity in the wave's slow motion (metres a second squared). */
-export const GRAVITY = 0.46;
+/** Gravity in the wave's slow motion (metres a second squared): waves-acts.js has the number. */
+export { GRAVITY };
 
 export const additive = (name) => {
     const material = new THREE.MeshBasicNodeMaterial({
@@ -322,6 +323,39 @@ export class SprayPool {
     }
 
     /**
+     * A column: `n` drops thrown almost straight up from a point on the water, the fastest first,
+     * so it stands for a moment as a spout before it falls back as rain.
+     * @param {number[]} up  upward speed range (m/s); `lean` = (x, z) it leans toward as it rises
+     */
+    column(time, x, y, z, {
+        n = 50, up = [0.9, 2.2], out = 0.16, size = 0.034, rgb = [1, 1, 1], life = [2.4, 3.8], radius = 0.1,
+        lean = [0, 0], beads = 0.03,
+    } = {}) {
+        const { rand } = this;
+        this.now = time;
+        for (let k = 0; k < n; k += 1) {
+            const a = rand() * TAU;
+            const share = rand();
+            const speed = up[0] + (up[1] - up[0]) * share;
+            const r = Math.sqrt(rand()) * radius;
+            const drift = out * (0.4 + rand());
+            this.put(
+                // The fast drops of its head leave first; the slow ones of its foot follow.
+                time + (1 - share) * 0.3 + rand() * 0.05,
+                x + Math.cos(a) * r,
+                y + 0.02,
+                z + Math.sin(a) * r,
+                Math.cos(a) * drift + lean[0] * share + FLOW.u * 0.2,
+                speed,
+                Math.sin(a) * drift + lean[1] * share + FLOW.z * 0.4,
+                size * (0.5 + rand()) + beads * rand() ** 4,
+                rgb,
+                life[0] + (life[1] - life[0]) * rand(),
+            );
+        }
+    }
+
+    /**
      * The lip throws: `n` drops leave its edge between two distances ahead, along the way the
      * water was going, harder than the standing rain. `flown` = seconds of flight the earliest
      * of them are given at once; `beads` = metres the largest drops add to their size; `prism`
@@ -452,7 +486,12 @@ export function createMist({
     const centre = mix(boil, blown, plume);
     const size = mix(s.y.mul(0.7).add(0.9).add(age.mul(0.2)), s.y.mul(2.2).add(2.2).add(age.mul(0.85)), plume);
     const fade = smoothstep(0.0, 0.18, phase).mul(float(1.0).sub(smoothstep(0.45, 1.0, phase)));
-    const strength = mix(float(0.026).add(U.tear.mul(0.05)), float(0.05), plume);
+    // (The offshore wind streams the plume back harder: the sea's own state.)
+    const strength = mix(
+        float(0.026).add(U.tear.mul(0.05)).add(U.sea.z.mul(0.035)),
+        U.sea.y.mul(0.07).add(0.035),
+        plume,
+    );
     // Lit like everything in the air here: mostly by the sun standing behind it.
     const toMist = normalize(centre.sub(cameraPosition));
     const forward = clamp(dot(toMist, U.sun), 0.0, 1.0);

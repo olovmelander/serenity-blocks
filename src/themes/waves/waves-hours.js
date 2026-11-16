@@ -317,3 +317,53 @@ export function tideSetAge(clock) {
     const since = (beat - Math.floor(beat)) * HOUR_SECONDS;
     return since < SET_SECONDS ? since : -1;
 }
+
+// ── The sea's states ────────────────────────────────────────────────────────────────────────
+
+/**
+ * The hour is the light; the sea has moods of its own, on a slower clock that is no multiple of
+ * the hours' (so the same light never meets the same sea twice in a row). Each is how far four
+ * things have come in (0..1):
+ *   foam    the lace of old white water drawn up the face
+ *   wind    the offshore wind: the lip tears longer, its rain leaves harder, spindrift streams back
+ *   heavy   a thicker, wider wave: the barrel stands further open and its landing boils
+ *   chop    a lively surface: sharper glitter, a brighter net of light in the wall
+ */
+export const SEA_STATES = Object.freeze([
+    Object.freeze({
+        name: 'glass', foam: 0.3, wind: 0, heavy: 0, chop: 0.15,
+    }),
+    Object.freeze({
+        name: 'offshore', foam: 0.55, wind: 1, heavy: 0.2, chop: 0.3,
+    }),
+    Object.freeze({
+        name: 'heavy', foam: 1, wind: 0.4, heavy: 1, chop: 0.45,
+    }),
+    Object.freeze({
+        name: 'sparkling', foam: 0.45, wind: 0.1, heavy: 0.1, chop: 1,
+    }),
+]);
+export const SEA_KEYS = Object.freeze(['foam', 'wind', 'heavy', 'chop']);
+/** Seconds of the world's clock one state lasts, and the share of it the sea rests on that state. */
+export const SEA_SECONDS = 73;
+export const SEA_REST = 0.3;
+
+/**
+ * The sea at a place on its own wheel (`place` = clock / SEA_SECONDS): each of SEA_KEYS mixed
+ * from two neighbouring states, and `name` (the nearer one).
+ */
+export function seaAt(place, out = {}) {
+    const n = SEA_STATES.length;
+    const p = (((Number.isFinite(place) ? place : 0) % n) + n) % n;
+    const from = Math.floor(p) % n;
+    const a = SEA_STATES[from];
+    const b = SEA_STATES[(from + 1) % n];
+    const mix = smooth(SEA_REST, 1, p - from);
+    for (let i = 0; i < SEA_KEYS.length; i += 1) {
+        const key = SEA_KEYS[i];
+        out[key] = lerp(a[key], b[key], mix);
+    }
+    out.name = mix < 0.5 ? a.name : b.name;
+    out.mix = mix;
+    return out;
+}

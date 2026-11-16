@@ -187,7 +187,11 @@ export class WavesPost {
             }
             calm.mulAssign(this.uCalmStrength);
 
-            const S = vec3(sceneColor.sample(st).rgb).toVar();
+            const seen = sceneColor.sample(st);
+            const S = vec3(seen.rgb).toVar();
+            // An animal in the air marks itself in the scene's alpha (waves-fauna.js LIFE_MASK): the
+            // glare is kept off it, so it stays a dark shape against the sun.
+            const lifeless = smoothstep(0.4, 0.9, seen.a);
             // What shows through the card is soft-clipped (hue-preserving).
             const m = max(max3(S), 1e-5);
             const clipped = S.mul(min(m, float(0.22).add(m.mul(0.2))).div(m));
@@ -205,6 +209,7 @@ export class WavesPost {
                 glare.addAssign(rays.mul(this.uShafts).mul(this.uShaftTint).mul(0.85));
             }
             glare.mulAssign(float(1.0).sub(calm.mul(0.86)));
+            glare.mulAssign(lifeless.mul(0.75).add(0.25));
             const H = S.add(glare);
 
             // ── Tone map + grade ──

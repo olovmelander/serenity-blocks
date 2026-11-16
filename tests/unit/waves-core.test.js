@@ -9,9 +9,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-    DEG, FLOW, FLOW_SPEED, TAU, WAVE, approach, axisOffset, bakeWaterNoise, castRay, clamp, clamp01, crestDistance,
-    floorRow, floorX, landingDistance, lerp, lipAngle, mulberry32, pieceLight, rowAtU, sectionScale, shoulderWeight,
-    smooth, surfaceAt, surfaceU, wavePoint,
+    DEG, FLOW, FLOW_SPEED, TAU, WAVE, approach, axisOffset, bakeFoamLace, bakeWaterNoise, castRay, clamp, clamp01,
+    crestDistance, floorRow, floorX, landingDistance, lerp, lipAngle, mulberry32, pieceLight, rowAtU, sectionScale,
+    shoulderWeight, smooth, surfaceAt, surfaceU, wavePoint,
 } from '../../src/themes/waves/waves-core.js';
 import { REST_RIG, fovForAspect, viewFor } from '../../src/themes/waves/waves-composition.js';
 import { QUALITY, QUALITY_NAMES, tierFor } from '../../src/themes/waves/waves-quality.js';
@@ -839,6 +839,131 @@ describe('waves water noise', () => {
     });
 });
 
+describe('waves foam lace', () => {
+    const size = 128;
+    const data = bakeFoamLace(size);
+    const [WALL, FINE, CELL, BUBBLE] = [0, 1, 2, 3];
+    const channel = (bytes, c) => {
+        const out = [];
+        for (let i = c; i < bytes.length; i += 4) out.push(bytes[i]);
+        return out;
+    };
+    const share = (values, test) => values.filter(test).length / values.length;
+    /** A texel of the baked tile, wrapping at its edges as the sampler does. */
+    const at = (i, j, c) => data[(((j + size) % size) * size + ((i + size) % size)) * 4 + c];
+    /** How much a channel changes from each column (and row) to the one before it; [0] is the seam. */
+    const steps = (c) => {
+        const out = [];
+        for (let x = 0; x < size; x++) {
+            let sum = 0;
+            let most = 0;
+            let changes = 0;
+            for (let k = 0; k < size; k++) {
+                for (const step of [Math.abs(at(x, k, c) - at(x - 1, k, c)), Math.abs(at(k, x, c) - at(k, x - 1, c))]) {
+                    sum += step;
+                    most = Math.max(most, step);
+                    if (step > 0) changes += 1;
+                }
+            }
+            out.push({ sum, most, changes });
+        }
+        return out;
+    };
+    const median = (values) => [...values].sort((p, q) => p - q)[values.length >> 1];
+
+    it('bakes a square of four bytes a texel, the same for the same seed', () => {
+        expect(data).toBeInstanceOf(Uint8Array);
+        expect(data).toHaveLength(size * size * 4);
+        expect(Array.from(bakeFoamLace(size))).toEqual(Array.from(data));
+        expect(Array.from(bakeFoamLace(size, 7))).not.toEqual(Array.from(data));
+        expect(bakeFoamLace(32)).toHaveLength(32 * 32 * 4);
+        // Every size a tier asks for is a power of two, and never larger than its noise field.
+        for (const [name, tier] of Object.entries(QUALITY)) {
+            expect(Number.isInteger(Math.log2(tier.lace)), `${name}: lace ${tier.lace}`).toBe(true);
+            expect(tier.lace, name).toBeLessThanOrEqual(tier.noise);
+        }
+        // It is not the water's noise under another name.
+        expect(Array.from(bakeWaterNoise(32))).not.toEqual(Array.from(bakeFoamLace(32)));
+    });
+
+    it('draws its cells as the distance from their walls: thin walls, open middles, in two sizes of cell', () => {
+        for (const c of [WALL, FINE]) {
+            const values = channel(data, c);
+            // On a wall the distance is nothing; the middle of a big cell is as far from one as it gets.
+            expect(Math.min(...values)).toBe(0);
+            expect(Math.max(...values)).toBe(255);
+            // Walls are threads, not sheets: most of the field is open water between them.
+            expect(share(values, (v) => v < 26)).toBeLessThan(0.3);
+            expect(share(values, (v) => v < 26)).toBeGreaterThan(0.05);
+            expect(share(values, (v) => v > 64)).toBeGreaterThan(0.4);
+        }
+        // The finer cells are less than half the size: along any line across the tile the distance
+        // to their walls rises and falls about twice as fast.
+        const pace = (c) => median(steps(c).map((step) => step.sum));
+        expect(pace(FINE)).toBeGreaterThan(pace(WALL) * 1.7);
+        expect(pace(FINE)).toBeLessThan(pace(WALL) * 3);
+    });
+
+    it('gives every large cell a number of its own, the same all over the cell', () => {
+        const ids = channel(data, CELL);
+        const distinct = new Set(ids);
+        // Dozens of cells, not thousands of values: the number is per cell, not per texel.
+        expect(distinct.size).toBeGreaterThan(30);
+        expect(distinct.size).toBeLessThan(120);
+        expect(Math.max(...ids) - Math.min(...ids)).toBeGreaterThan(200);
+        // It changes only where a wall is crossed: along a line, far less often than it stays.
+        const changing = steps(CELL).reduce((sum, step) => sum + step.changes, 0) / (size * size * 2);
+        expect(changing).toBeLessThan(0.15);
+        expect(changing).toBeGreaterThan(0.02);
+        // And where it changes, the large cells' wall is there (the two channels are one field).
+        let onWall = 0;
+        let crossed = 0;
+        for (let j = 0; j < size; j++) {
+            for (let i = 0; i < size; i++) {
+                if (at(i, j, CELL) === at(i - 1, j, CELL)) continue;
+                crossed += 1;
+                if (Math.min(at(i, j, WALL), at(i - 1, j, WALL)) < 40) onWall += 1;
+            }
+        }
+        expect(onWall / crossed).toBeGreaterThan(0.95);
+    });
+
+    it('scatters its bubbles as bright dots on an empty field', () => {
+        const dots = channel(data, BUBBLE);
+        expect(share(dots, (v) => v === 0)).toBeGreaterThan(0.5);
+        expect(share(dots, (v) => v === 0)).toBeLessThan(0.9);
+        expect(Math.max(...dots)).toBeGreaterThan(230);
+        // Many small dots: no texel of the tile is far from one.
+        let lit = 0;
+        const block = size / 8;
+        for (let by = 0; by < 8; by++) {
+            for (let bx = 0; bx < 8; bx++) {
+                let most = 0;
+                for (let j = 0; j < block; j++) for (let i = 0; i < block; i++) most = Math.max(most, at(bx * block + i, by * block + j, BUBBLE));
+                if (most > 128) lit += 1;
+            }
+        }
+        expect(lit).toBe(64);
+    });
+
+    it('tiles: no channel crosses the seam harder than it crosses the columns and rows inside', () => {
+        for (const c of [WALL, FINE, BUBBLE]) {
+            const [seam, ...inside] = steps(c);
+            const where = `channel ${c}`;
+            expect(seam.sum, where).toBeGreaterThan(0);
+            // An edge that did not wrap would be a line of jumps: several times a column's worth.
+            expect(seam.sum, where).toBeLessThan(median(inside.map((step) => step.sum)) * 2);
+            // And no single texel jumps across it by more than the steepest step anywhere inside.
+            expect(seam.most, where).toBeLessThanOrEqual(Math.max(...inside.map((step) => step.most)));
+        }
+        // The cells themselves wrap: their numbers change across the seam no more often than
+        // across the busiest line inside.
+        const [seam, ...inside] = steps(CELL);
+        expect(seam.changes).toBeLessThanOrEqual(Math.max(...inside.map((step) => step.changes)));
+        expect(seam.changes).toBeLessThan(size);
+    });
+});
+
 describe('waves tiers', () => {
     it('names the six canonical tiers, cheapest first, and falls back to High', () => {
         expect(QUALITY_NAMES).toEqual(['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme']);
@@ -857,11 +982,16 @@ describe('waves tiers', () => {
             const tier = QUALITY[name];
             expect(Object.keys(tier).sort(), name).toEqual(keys);
             // Enough mesh to fold a tube, and something of everything an event needs.
-            for (const key of ['arcRows', 'floorRows', 'noise', 'rings', 'ribbons', 'droplets', 'spray', 'mist', 'foam']) {
+            for (const key of [
+                'arcRows', 'floorRows', 'noise', 'lace', 'rings', 'ribbons', 'droplets', 'spray', 'mist', 'foam',
+            ]) {
                 expect(Number.isInteger(tier[key]), `${name}.${key}`).toBe(true);
                 expect(tier[key], `${name}.${key}`).toBeGreaterThan(0);
             }
             expect(tier.dolphins, name).toBeGreaterThanOrEqual(1);
+            // The sea is never empty: every tier gets a share of each pod, school and flock.
+            expect(tier.life, name).toBeGreaterThan(0);
+            expect(tier.life, name).toBeLessThanOrEqual(1);
             expect(tier.clouds, name).toBeGreaterThanOrEqual(1);
             expect(tier.nearStep, name).toBeGreaterThan(0);
             expect([0, 1], name).toContain(tier.trace);
@@ -871,8 +1001,8 @@ describe('waves tiers', () => {
 
     it('never asks a dearer tier for less', () => {
         const rising = [
-            'arcRows', 'floorRows', 'noise', 'trace', 'clouds', 'rings', 'ribbons', 'droplets', 'spray', 'mist',
-            'foam', 'dolphins',
+            'arcRows', 'floorRows', 'noise', 'lace', 'trace', 'clouds', 'rings', 'ribbons', 'droplets', 'spray', 'mist',
+            'foam', 'dolphins', 'life',
         ];
         for (let i = 1; i < QUALITY_NAMES.length; i++) {
             const cheaper = QUALITY[QUALITY_NAMES[i - 1]];

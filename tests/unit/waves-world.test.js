@@ -9,6 +9,7 @@
  * follows what (a hard drop is stronger, a longer chain opens the barrel further, the clock runs
  * slower inside a hold) and read every constant they need from the modules.
  */
+import { readFileSync } from 'node:fs';
 import {
     afterEach, describe, expect, it, vi,
 } from 'vitest';
@@ -23,6 +24,8 @@ import { QUALITY, QUALITY_NAMES } from '../../src/themes/waves/waves-quality.js'
 import { boardPoint, fallbackLayout, viewFor } from '../../src/themes/waves/waves-composition.js';
 import { BAND_SLOTS } from '../../src/themes/waves/waves-water.js';
 import { leapersFor } from '../../src/themes/waves/waves-life.js';
+import { KINDS } from '../../src/themes/waves/waves-acts.js';
+import { parseSeaLife } from '../../src/themes/waves/waves-cast.js';
 import { GRAVITY } from '../../src/themes/waves/waves-spray.js';
 import { POST_LOOK } from '../../src/themes/waves/waves-post.js';
 
@@ -30,7 +33,9 @@ vi.setConfig({ testTimeout: 30_000 }); // every test builds a wave or two, on a 
 
 const DT = 1 / 60;
 const EYE = REST_RIG.eye;
-const PARTS = ['dolphins', 'foam', 'mist', 'rain', 'sky', 'spray', 'water'];
+const PARTS = ['foam', 'life', 'mist', 'rain', 'sky', 'spray', 'water'];
+/** The sea life's bodies, read from disk the way the theme reads them. */
+const PACK = parseSeaLife(readFileSync(new URL('../../src/themes/waves/assets/sea-life.glb', import.meta.url)));
 const HIT_KINDS = ['floor', 'lip', 'wall'];
 const worlds = [];
 
@@ -44,14 +49,19 @@ function frame(world, camera, delta = 0, extra = null) {
     world.update(sim, camera);
 }
 
+/**
+ * A world as the theme builds it, with its bodies handed in. Unless asked, it is the board's world
+ * only: the sea sends no visits of its own (they lay rings and throw water of their own) and its
+ * state is held at glass (the sea's own wheel moves the barrel's opening, the tear and the ripple).
+ */
 function makeWorld(quality = 'Minimal', {
-    width = 1600, height = 900, live = true, seed = undefined, layout = null, at = 10,
+    width = 1600, height = 900, live = true, seed = undefined, layout = null, at = 10, ambient = false, sea = 0,
 } = {}) {
     const scene = new THREE.Scene();
     const aspect = width / height;
     const camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
     const world = new WavesWorld({
-        scene, quality, capture: true, seed,
+        scene, quality, capture: true, seed, seaLife: PACK, ambient, sea,
     }).build();
     world.setViewport(width, height, aspect);
     // As the theme does on its first frame: the live rects, or null when no board is on screen.
@@ -112,7 +122,9 @@ function picture(world) {
         },
         spray: Array.from(world.spray.data),
         foam: Array.from(world.foam.data),
-        pod: Array.from(world.pod.data),
+        // Every animal's rows as the renderer reads them, and the board's own acts.
+        life: KINDS.map((kind) => Array.from(world.pod.fauna.kinds[kind].data)),
+        acts: world.pod.acts.map((act) => ({ ...act, events: undefined })),
     };
 }
 
@@ -136,6 +148,10 @@ function play(world, camera) {
     });
     return picture(world);
 }
+
+/** The dolphins the board has sent over the water (its chain's pod, its twists), oldest first. */
+const leapsOf = (world) => world.pod.acts
+    .filter((act) => act.type === 'leap' && (act.kind === 'bottlenose' || act.kind === 'spinner'));
 
 /** The smallest chain that calls `n` dolphins or more. */
 function chainFor(n) {
@@ -161,11 +177,18 @@ describe('waves world: build', () => {
             const { mesh } = world.parts[name];
             expect(mesh.parent, name).toBe(world.group);
             expect(mesh.visible, name).toBe(true);
-            expect(mesh.material.isNodeMaterial, name).toBe(true);
-            expect(mesh.material.isShaderMaterial, name).not.toBe(true);
-            materials.add(mesh.material);
+            // (The sea life is a group: one instanced mesh per kind, two materials for them all.)
+            const drawn = [];
+            mesh.traverse((object) => { if (object.isMesh) drawn.push(object); });
+            expect(drawn.length, name).toBeGreaterThan(0);
+            for (const object of drawn) {
+                expect(object.material.isNodeMaterial, name).toBe(true);
+                expect(object.material.isShaderMaterial, name).not.toBe(true);
+                materials.add(object.material);
+            }
         }
-        expect(materials.size).toBe(PARTS.length);
+        expect(materials.size).toBe(PARTS.length + 1);
+        expect(Object.keys(world.pod.fauna.kinds).sort()).toEqual([...KINDS].sort());
         // What the tier pays for.
         expect(world.pod.count).toBe(tier.dolphins);
         expect(world.spray.count).toBe(tier.spray);
@@ -257,7 +280,11 @@ describe('waves world: build', () => {
             if (object.material) made.set(object.material, `material ${object.material.name || object.type}`);
         });
         made.set(world.noise, 'the noise texture');
-        expect(made.size).toBe(PARTS.length * 2 + 1);
+        made.set(world.lace, 'the foam-cell texture');
+        // Each part a geometry and a material; the sea life one geometry a kind and two materials.
+        expect(made.size).toBe((PARTS.length - 1) * 2 + KINDS.length + 2 + 2);
+        // The pack's own bodies are every world's: none of them is let go.
+        const shared = KINDS.map((kind) => vi.spyOn(PACK.kinds[kind].geometry, 'dispose'));
         const spies = [...made.entries()].map(([resource, label]) => [vi.spyOn(resource, 'dispose'), label]);
         const { group } = world;
         world.dispose();
@@ -265,8 +292,9 @@ describe('waves world: build', () => {
         expect(group.parent).toBeNull();
         expect(group.children).toHaveLength(0);
         expect(spies.filter(([spy]) => spy.mock.calls.length === 0).map(([, label]) => label)).toEqual([]);
+        for (const spy of shared) expect(spy).not.toHaveBeenCalled();
         expect(world.parts).toEqual({});
-        for (const key of ['pod', 'spray', 'noise', 'camera']) expect(world[key], key).toBeNull();
+        for (const key of ['pod', 'spray', 'noise', 'lace', 'camera']) expect(world[key], key).toBeNull();
         expect(() => world.dispose()).not.toThrow();
         // What a retired world is still asked by its owner on the way out is harmless.
         expect(() => {
@@ -947,8 +975,8 @@ describe('waves world: four lines hold the wave', () => {
         expect(gold).toBeGreaterThan(plain.world.U.warm.value);
         expect(gold).toBeLessThanOrEqual(1);
         // The pod goes over the water one after another, the first across the sun.
-        const starts = perfect.world.pod.arcs.map((arc) => arc.t0);
-        expect(perfect.world.pod.arcs.every((arc) => arc.active)).toBe(true);
+        const starts = leapsOf(perfect.world).map((arc) => arc.t0);
+        expect(starts).toHaveLength(perfect.world.pod.count);
         expect(starts.every((t, i) => t > perfect.world.clock - DT && (i === 0 || t > starts[i - 1]))).toBe(true);
         let most = 0;
         run(perfect.world, perfect.camera, 8, () => { most = Math.max(most, perfect.world.getState().airborne); });
@@ -1074,14 +1102,13 @@ describe('waves world: chains', () => {
         }
         world.onCombo(one);
         expect(leaps()).toBe(1);
-        const [first] = world.pod.arcs;
-        expect(first.active).toBe(true);
+        const [first] = leapsOf(world);
         expect(first.t0).toBeGreaterThan(world.clock); // it breaks the surface in a moment, not this frame
         // The chain grows at once: the pod grows with it (the call is not dropped), the new dolphin
         // breaking the surface after the first, not on top of it.
         world.onCombo(two);
         expect(world.getState()).toMatchObject({ leaps: leapersFor(two), combo: two });
-        const second = world.pod.arcs.find((arc) => arc.active && arc !== first);
+        const second = leapsOf(world).find((arc) => arc !== first);
         expect(second.t0).toBeGreaterThan(first.t0 + 0.3);
         // Holding the chain, or letting it slip and climb back, calls nobody: the pod is already
         // the size the chain is worth.
@@ -1116,8 +1143,8 @@ describe('waves world: chains', () => {
         const original = world.pod.leap.bind(world.pod);
         const fromTheAir = [];
         const leap = vi.spyOn(world.pod, 'leap').mockImplementation((time, open, options) => {
-            const arc = world.pod.arcs[options.slot];
-            if (arc.active && !arc.landed) fromTheAir.push(options.slot);
+            // Sent while the whole pod was still up: one more than it has in the air at once.
+            if (world.pod.live() >= world.pod.count) fromTheAir.push(time);
             return original(time, open, options);
         });
         world.onClear({ rows: [19, 18, 17, 16], lines: 4, perfect: true });
@@ -1152,12 +1179,20 @@ describe('waves world: chains', () => {
 
     it('sends each dolphin over the water and back into it: a crown and a ring where it breaks the surface', () => {
         const { camera, world } = makeWorld('High');
-        const splash = vi.spyOn(world, 'onSplash');
+        // (The pose a moment is handed with is one object the sea life reuses: keep what it said then.)
+        const heard = [];
+        const original = world.onLifeEvent.bind(world);
+        const splash = vi.spyOn(world, 'onLifeEvent').mockImplementation((act, event, pose) => {
+            heard.push({
+                act, type: event.type, x: pose.x, y: pose.y,
+            });
+            return original(act, event, pose);
+        });
         const ring = vi.spyOn(world, 'addRing');
         world.onCombo(chainFor(2));
         const sent = world.getState().leaps;
         expect(sent).toBe(2);
-        const flights = world.pod.arcs.filter((arc) => arc.active).map((arc) => ({ ...arc }));
+        const flights = leapsOf(world);
         expect(flights).toHaveLength(2);
         let most = 0;
         const sprayBefore = thrown(world);
@@ -1166,20 +1201,19 @@ describe('waves world: chains', () => {
         });
         expect(most).toBe(2);
         expect(world.getState().airborne).toBe(0);
-        // Twice each: leaving the face, and going back in.
+        // Twice each: leaving the water, and going back in.
         expect(splash).toHaveBeenCalledTimes(4);
         expect(ring).toHaveBeenCalledTimes(4);
         expect(thrown(world)).toBeGreaterThan(sprayBefore);
         for (const arc of flights) {
-            const leaves = arc.z;
-            const lands = arc.z + arc.vz * arc.flight;
-            const here = (z) => Math.abs(z - leaves) < 1e-9 || Math.abs(z - lands) < 1e-9;
-            const calls = splash.mock.calls.filter(([, , z]) => here(z));
-            expect(calls).toHaveLength(2);
-            const [[x0, y0], [x1, y1]] = calls;
-            expect([x0, y0]).toEqual([arc.x, arc.y]);
-            expect(y1).toBe(0);
-            expect(x1).toBeLessThan(x0); // out of the wave, into the sea in front of it
+            const calls = heard.filter(({ act }) => act === arc);
+            expect(calls.map(({ type }) => type)).toEqual(['breach', 'entry']);
+            const [out, back] = calls;
+            expect(out.x).toBeCloseTo(arc.x, 9);
+            expect(out.y).toBeCloseTo(arc.y, 9);
+            // Its nose at the water as it goes in, its middle not yet under.
+            expect(back.y).toBeGreaterThanOrEqual(0);
+            expect(back.x).toBeLessThan(out.x); // out of the wave, into the sea in front of it
         }
         // Each ring is laid on the water at the splash's own distance, on the world's clock.
         for (const [u, z, strength] of ring.mock.calls) {
@@ -1192,7 +1226,7 @@ describe('waves world: chains', () => {
     it('throws the first dolphin of a long chain across the sun', () => {
         const { world } = makeWorld('High');
         world.onCombo(chainFor(leapersFor(1000)));
-        const [hero, second] = world.pod.arcs;
+        const [hero, second] = leapsOf(world);
         const sun = world.sunDir;
         const offLine = (arc) => {
             const t = arc.vy / GRAVITY; // the top of the arc
@@ -1203,11 +1237,12 @@ describe('waves world: chains', () => {
         };
         // The top of its arc is on the line from the rider's eye to the sun.
         expect(offLine(hero)).toBeLessThan(0.3);
-        expect(second.active).toBe(true);
         expect(second.t0).toBeGreaterThan(hero.t0);
-        // It leaves the water ahead of the eye and beyond where the lip comes down.
+        // It leaves the water ahead of the eye and beyond where the lip comes down: the trough at
+        // the foot of the face.
         expect(-hero.z).toBeGreaterThan(landingDistance(world.U.open.value));
-        expect(hero.x).toBeGreaterThan(axisOffset(-hero.z));
+        expect(hero.y).toBe(0);
+        expect(hero.x).toBeLessThan(axisOffset(-hero.z));
     });
 });
 
@@ -1610,7 +1645,7 @@ describe('waves world: time', () => {
         expect(busy.open).toBeGreaterThan(0);
         expect(thrown(world)).toBeGreaterThan(0);
         expect(liveBands(world).length).toBeGreaterThan(0);
-        expect(world.pod.arcs.some((arc) => arc.active)).toBe(true);
+        expect(leapsOf(world).length).toBeGreaterThan(0);
         const { time, clock } = world;
         expect(clock).toBeLessThan(time); // the hold has already cost it
 
@@ -1621,7 +1656,7 @@ describe('waves world: time', () => {
         });
         expect(liveBands(world)).toHaveLength(0);
         expect(thrown(world)).toBe(0);
-        expect(world.pod.arcs.some((arc) => arc.active)).toBe(false);
+        expect(world.pod.acts).toEqual([]);
         expect(world.getPostState()).toMatchObject({ flash: 0, bloomBoost: 0 });
         // ...and the frame after, the water has been told: the barrel at rest, no light, no set wave.
         frame(world, camera, 0);
@@ -1633,7 +1668,7 @@ describe('waves world: time', () => {
         expect(world.U.counts.value.toArray().slice(0, 2)).toEqual([0, 0]);
         expect(world.getPostState()).toMatchObject({ flash: 0, bloomBoost: 0, warm: 0 });
         // Nothing that was in flight comes back.
-        const leaps = vi.spyOn(world, 'onSplash');
+        const leaps = vi.spyOn(world, 'onLifeEvent');
         const rain = vi.spyOn(world.spray, 'throwLip');
         run(world, camera, 20);
         expect(leaps).not.toHaveBeenCalled();
@@ -1646,7 +1681,7 @@ describe('waves world: time', () => {
         expect(world.clock - clock).toBeCloseTo(20, 9);
         // The next run's first chain calls the dolphins at once: the old run's cooldown is forgotten.
         world.onCombo(chainFor(1));
-        expect(world.pod.arcs.some((arc) => arc.active)).toBe(true);
+        expect(leapsOf(world).length).toBeGreaterThan(0);
     });
 
     it('puts the world at a time with nothing in flight when it seeks', () => {
@@ -1693,14 +1728,15 @@ describe('waves world: time', () => {
         expect(first.rings.length).toBeGreaterThan(0);
         expect(first.ribbons).toHaveLength(2);
         expect(first.spray.every(Number.isFinite)).toBe(true);
-        expect(first.pod.every(Number.isFinite)).toBe(true);
+        expect(first.life.flat().every(Number.isFinite)).toBe(true);
+        expect(first.acts.length).toBeGreaterThan(0);
         const b = makeWorld('Medium');
         expect(play(b.world, b.camera)).toEqual(first);
         // Another seed throws other drops and sends other leaps; the board's part is the same.
         const c = makeWorld('Medium', { seed: 99 });
         const other = play(c.world, c.camera);
         expect(other.spray).not.toEqual(first.spray);
-        expect(other.pod).not.toEqual(first.pod);
+        expect(other.acts).not.toEqual(first.acts);
         expect(other.ribbons).toEqual(first.ribbons);
         expect(other.state.clock).toBe(first.state.clock);
     });
