@@ -1109,8 +1109,9 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'void-ember, voltage-storm, waves, winter, wolfhour, wolfhour-lunar-sigil',
         description: 'Replay a gameplay reaction in the selected preview.',
         values: 'Effect-specific cue, commonly lock, clear, combo, quad, twist, perfect or levelUp (Koi '
-            + 'Pond, Star Cradle, Serenity Warp, Stellar Drift, Stellar Velocity and Void Ember: lock, '
-            + 'drop, clear, quad, twist, perfect, levelUp; Vesper Chrysalis: lock, drop, clear, quad, '
+            + 'Pond, Star Cradle, Serenity Warp, Stellar Drift and Stellar Velocity: lock, '
+            + 'drop, clear, quad, twist, perfect, levelUp; Void Ember: lock, drop, clear, quad, twist, '
+            + 'spin, perfect, crown, levelUp, over; Vesper Chrysalis: lock, drop, clear, quad, '
             + 'twist, perfect, levelUp, break; Stillwater and Moonlit Greenhouse: lock, drop, clear, '
             + 'quad, twist, perfect, levelUp, break); cue names are case-sensitive in most effects. '
             + 'Summer: lock, drop, clear, double, triple, quad, combo, streak, spin, perfect, level, '

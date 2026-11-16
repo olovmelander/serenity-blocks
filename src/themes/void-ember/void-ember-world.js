@@ -5,31 +5,52 @@
  * theme (void-ember-theme.js) and the playground effect
  * (src/playground/effects/void-ember.effect.js), so what is iterated there ships.
  *
- * A dying star hangs in an empty sky, left of the board: a banked coal, most of its face a dark
+ * A dying star hangs in a deep sky, left of the board: a banked coal, most of its face a dark
  * crust with fire in the cracks. A belt of cinders circles it, almost edge-on, and one dead
- * world stands far off, backlit. Nothing else gives light here. The board blows on the ember:
+ * world stands far off, backlit, a small moon going round it. Behind them a band of far suns
+ * crosses the void, and round the star hang the thin shells of dust it threw off long ago.
+ * Nothing else gives light here. The board blows on the ember, and every event has a shape that
+ * is its own:
  *
  *   lock     the piece is fuel. It leaves the card as a comet in its own colour and falls into
  *            the star at its own height: a flash, a ripple that runs out over the photosphere,
  *            sparks, and a loop of plasma that rises where it struck and burns in that colour —
  *            every element its own flame. The star holds the loop for half a minute while the
  *            colour burns off into its own fire. Every lock stokes it a little. A hard drop
- *            throws three and hits harder.
+ *            throws three and strikes like a stone into a pool: a crown of fire leaps from the
+ *            place and falls back onto the star.
  *   clear    the star lets go. The cleared rows leave the card as blades of light, a shell of
  *            plasma leaves the star toward the board (one front per line) in the colours it was
- *            holding, and every held loop is torn off and flies out as an expanding arc. The
- *            wave crosses the dust, shoves the belt's stones and leaves fire in their cracks.
- *            The more the player has fed the star, the more a clear sets off.
+ *            holding (each front a hairline with fingers of shocked plasma behind it), and every
+ *            held loop is torn off and flies out as an expanding arc. The wave crosses the dust,
+ *            lights each old shell as it passes, shoves the belt's stones and leaves them
+ *            glowing. The more the player has fed the star, the more a clear sets off.
  *   combo    the ember is blown on: each step of a chain heats it — the crust breaks up, the
  *            cells under it go from red through gold to white, the corona reaches further, the
  *            wind streams faster, and everything it lights brightens with it.
  *   four     the star holds its breath — every light sinks for a quarter of a second — then
- *            flares: a full shell crosses the frame, every loop is torn off at once, space
- *            ripples, and the ember stands white-gold for a few seconds.
- *   twist   the star spins up: the corona and the wind wind into a pinwheel and spring back.
- *   level    the void moves one palette along its line of five, and a cold ring crosses it.
- *   time     by itself, with no level change, the void drifts along the same line: one palette
- *            every PALETTE_STEP seconds, there and back. The two simply add.
+ *            flares: two jets leave its poles and cross the frame, a full shell runs out through
+ *            everything, every loop is torn off at once, space ripples, the ember stands deep
+ *            gold for a few seconds, and a new shell of dust widens round it and comes to rest
+ *            among the old ones, cooling for a quarter of a minute.
+ *   perfect  the crown: the corona opens into long thin rays, each in one of the pieces' own
+ *            flames, a ring of prominences in those flames stands round the limb, and the shell
+ *            it leaves is violet.
+ *   twist    the star spins up: arms of its fire sweep out in an open spiral that turns as it
+ *            grows (the other way each time), and the corona and the wind wind up and spring
+ *            back.
+ *   level    the void answers: it moves one palette along its line of five, a cold ring crosses
+ *            it, and a shower of falling stars fans out of one radiant in the new colour.
+ *   over     the ember gutters: it lets go of all it holds, a last deep-red ring leaves it, and
+ *            its fire sinks into its cracks until a new run blows on it again.
+ *   time     with no one playing nothing stands still either. The void drifts along its line of
+ *            palettes (one every PALETTE_STEP seconds, there and back; a level adds to it); the
+ *            sky goes round the pole of its band of far suns; the old shells creep outward; the
+ *            star's crust swells open and ebbs shut, thinnest on a side that wanders, and it
+ *            raises prominences of four kinds; the belt's plane rocks; the cinder world turns
+ *            its wound into view and its moon crosses it; a falling star crosses every quarter
+ *            of a minute, a comet every few minutes on a path of its own, and now and then a
+ *            stone leaves the belt and falls into the star.
  *
  * Fast play BUILDS (src/themes/shared/gameplay-surge.js): every momentary light is a Swell that a
  * new event adds to instead of restarting, and the heat of play is spent on the world's own parts.
@@ -61,6 +82,9 @@ import {
     PALETTE_HOME,
     PALETTE_KEYS,
     REST_HEAT,
+    SHELL_CREEP,
+    SKY_BAND_TILT,
+    SKY_TURN,
     TAU,
     VOID_PALETTES,
     WAVE_AFTERGLOW,
@@ -83,15 +107,20 @@ import {
     palettePhase,
     palettePlace,
     pieceColor,
+    skyBandShift,
     smooth,
 } from './void-ember-tsl.js';
 import { tierFor } from './void-ember-quality.js';
 import { createCorona, createPhotosphere } from './void-ember-star.js';
 import { createLoops, loopSparkShare } from './void-ember-loops.js';
 import {
-    ROCK_CLASSES, createCinderWorld, createDustRing, createRocks,
+    ROCK_CLASSES, createCinderMoon, createCinderWorld, createDustRing, createRocks,
 } from './void-ember-belt.js';
 import { createSky } from './void-ember-sky.js';
+import { createAura } from './void-ember-aura.js';
+import {
+    WANDERER_CROSSING, WANDERER_PERIOD, createMeteors, createWanderer,
+} from './void-ember-visitors.js';
 import {
     SHELL_LIFE, createComets, createEmberWind, createRowBeams, createShells, createSparks,
 } from './void-ember-fx.js';
@@ -166,6 +195,12 @@ const CROWN_FLAMES = ['S', 'T', 'J', 'Z', 'O', 'L'].map((key) => pieceColor(VOID
 const CROWN_LOOPS = 9;
 /** The perfect clear's own ring: the nova's gold, a shade deeper. */
 const CROWNFIRE = Object.freeze([1.0, 0.62, 0.18]);
+/** The shell a perfect clear leaves round the star: potassium's violet. */
+const CROWN_SHELL = Object.freeze([0.62, 0.36, 1.0]);
+/** How hard a hard drop's splash is pulled back onto the star (world units per second squared). */
+const SPLASH_PULL = 17;
+/** The heat a run's end banks the ember down to: a coal with fire only in its cracks. */
+export const GUTTER_HEAT = 0.07;
 /** The pinwheel's spring: how hard it pulls back and how fast it settles. */
 const TWIST_STIFFNESS = 26;
 const TWIST_DAMPING = 4.6;
@@ -175,15 +210,34 @@ const RIPPLE_SPEED = 0.8;
 const COMET_DEPTH = 0.62;
 /** The cinder world stands this fraction of the star's distance from the camera. */
 const WORLD_DEPTH = 0.45;
+/** Its turn (radians a second: once in four minutes), and its moon's path, size and period. */
+const WORLD_SPIN = TAU / 240;
+const MOON_ORBIT = 2.5;
+const MOON_SIZE = 0.15;
+const MOON_PERIOD = 96;
 /** The star's own prominences: seconds between two of one slot's, and its first loop's delay. */
 const AMBIENT_PERIOD = 31;
 /** Seconds before its slot is raised again that one of them lifts off the star. */
 const AMBIENT_LEAVE = 2.4;
 const AMBIENT_COLOR = Object.freeze([1.0, 0.27, 0.035]);
+/** A falling star crosses the void about this often (seconds), somewhere new each time. */
+const METEOR_PERIOD = 13;
+/** Meteors in a level-up's shower, and the seconds they leave over. */
+const SHOWER_METEORS = 30;
+const SHOWER_SPAN = 1.9;
+/** A stone leaves the belt and falls into the star about this often (seconds), at an easy pace. */
+const GRAZER_PERIOD = 41;
+const GRAZER_COLOR = Object.freeze([1.0, 0.42, 0.1]);
+/** A run that ends: seconds the ember takes to gutter, and to come back once it is let. */
+const GUTTER_FALL = 1.8;
+const GUTTER_HOLD = 14;
+const GUTTER_BACK = 5;
+/** The belt's plane rocks slowly: degrees each way, on two clocks. */
+const BELT_ROCK = Object.freeze([3.4, 1.6, 2.4]);
 
 const PARTS = [
-    'star', 'world', 'boulders', 'stones', 'gravel', 'sky', 'ring', 'corona', 'loops', 'wind', 'sparks', 'comets',
-    'shells', 'beams',
+    'star', 'world', 'moon', 'boulders', 'stones', 'gravel', 'sky', 'meteors', 'wanderer', 'ring', 'corona', 'aura',
+    'loops', 'wind', 'sparks', 'comets', 'shells', 'beams',
 ];
 
 export class VoidEmberWorld {
@@ -212,6 +266,9 @@ export class VoidEmberWorld {
         this.u = null;
         this.star = null;
         this.corona = null;
+        this.aura = null;
+        this.meteors = null;
+        this.wanderer = null;
         this.loops = null;
         this.wind = null;
         this.sparks = null;
@@ -246,6 +303,9 @@ export class VoidEmberWorld {
         this._m3 = new THREE.Matrix3();
         this._point = { x: 0.5, y: 0.5 };
         this._from = [0, 0, 0];
+        this._mStart = [0, 0, -1];
+        this._mEnd = [0, 0, -1];
+        this._mTravel = [1, 0, 0];
         this._site = [0, 0, 1];
         this._colour = [1, 0.3, 0.05];
         this._light = [1, 0.3, 0.05];
@@ -372,7 +432,17 @@ export class VoidEmberWorld {
         this.queue = [];
         this.spaceRipple = { birth: -100, strength: 0 };
         this.counts = {
-            locks: 0, clears: 0, quads: 0, comets: 0, eruptions: 0, crowns: 0, spins: 0,
+            locks: 0,
+            clears: 0,
+            quads: 0,
+            comets: 0,
+            eruptions: 0,
+            crowns: 0,
+            spins: 0,
+            splashes: 0,
+            showers: 0,
+            grazers: 0,
+            gameOvers: 0,
         };
         // The slow clocks are functions of the world clock until gameplay bends them.
         const motion = this.reducedMotion ? 0.3 : 1;
@@ -380,7 +450,21 @@ export class VoidEmberWorld {
         this.boil = time * (0.6 + REST_HEAT * 2.2) * motion;
         this.flow = time * (0.5 + REST_HEAT * 1.6) * motion;
         this.ambientCycle?.fill(-1e6);
+        /** Pinwheels wound so far: each winds the other way. */
+        this.pinwheels = 0;
+        this.shellsThrown = 0;
+        this.u?.novaShell.value.set(-100, 0, 0, 0);
+        /** The visitors' clocks: which falling star, wanderer and grazer were sent last. */
+        this.meteorCycle = -1e6;
+        this.wandererCycle = -1e6;
+        this.grazerCycle = -1e6;
+        /** When the last run ended (the ember gutters), and when it was let come back. */
+        this.gutterAt = -1e6;
+        this.gutterEnd = -1e6;
+        this.meteors?.reset();
+        this.wanderer?.reset();
         this.loops?.reset();
+        this.aura?.reset();
         this.sparks?.reset();
         this.comets?.reset();
         this.beams?.reset();
@@ -421,15 +505,23 @@ export class VoidEmberWorld {
 
         this.star = createPhotosphere(u, { detail: tier.starDetail, segments: tier.segments });
         this.addPart('star', this.star);
-        this.addPart('world', createCinderWorld(u));
+        this.addPart('world', createCinderWorld(u, { cracks: tier.cracks }));
+        this.addPart('moon', createCinderMoon(u));
         ROCK_CLASSES.forEach((cls, i) => {
             this.addPart(cls.name, createRocks(u, cls, tier.rocks[i], this.seed + 101 * (i + 1), { cracks: tier.cracks }));
         });
-        this.addPart('sky', createSky(u, { layers: tier.skyLayers, dust: tier.dust }));
+        this.addPart('sky', createSky(u, { layers: tier.skyLayers, dust: tier.dust, deep: tier.skyDeep }));
+        this.meteors = createMeteors(u);
+        this.addPart('meteors', this.meteors);
+        this.wanderer = createWanderer(u, { streaks: tier.skyDeep >= 1 });
+        this.addPart('wanderer', this.wanderer);
         this.addPart('ring', createDustRing(u, { detail: tier.ringDetail }));
         yield 'star, belt and sky';
         this.corona = createCorona(u, { detail: tier.coronaDetail });
         this.addPart('corona', this.corona);
+        this.aura = createAura(u, { detail: tier.coronaDetail });
+        this.aura.setFlames(CROWN_FLAMES);
+        this.addPart('aura', this.aura);
         this.loops = createLoops(u);
         this.addPart('loops', this.loops);
         this.wind = createEmberWind(u, tier.wind);
@@ -509,10 +601,10 @@ export class VoidEmberWorld {
             time, spin, boil, flow,
         } = this;
         // The void eases back to the first level's place; it does not jump.
-        const { levelPlace } = this;
+        const { levelPlace, gutterAt, gutterEnd } = this;
         this.resetState(time);
         Object.assign(this, {
-            spin, boil, flow, levelPlace,
+            spin, boil, flow, levelPlace, gutterAt, gutterEnd,
         });
     }
 
@@ -599,26 +691,71 @@ export class VoidEmberWorld {
             const ay = axis.dot(up);
             const al = Math.hypot(ax, ay) || 1;
             this.corona.uniforms.axis.value.set(ax / al, ay / al);
+            u.axis2.value.set(ax / al, ay / al);
         }
 
         // ── The belt ──
-        const lean = a.beltLean;
+        // (Its plane rocks slowly on two clocks, so the near arc crosses the star now low, now
+        // high, and the ring opens and closes: a function of the clock.)
+        const rock = this.reducedMotion ? 0.3 : 1;
+        const beltTilt = a.beltTilt + (BELT_ROCK[0] * Math.sin(this.time / 71) + BELT_ROCK[1] * Math.sin(this.time / 173 + 2)) * DEG * rock;
+        const lean = a.beltLean + BELT_ROCK[2] * Math.sin(this.time / 113 + 1) * DEG * rock;
         const bx = this._x.copy(right).multiplyScalar(Math.cos(lean)).addScaledVector(up, Math.sin(lean)).normalize();
         const tipped = this._z.copy(up).multiplyScalar(Math.cos(lean)).addScaledVector(right, -Math.sin(lean));
-        const normal = this._vec.copy(tipped).multiplyScalar(Math.cos(a.beltTilt))
-            .addScaledVector(f, Math.sin(a.beltTilt))
+        const normal = this._vec.copy(tipped).multiplyScalar(Math.cos(beltTilt))
+            .addScaledVector(f, Math.sin(beltTilt))
             .normalize();
         const bz = this._z.copy(bx).cross(normal).normalize();
         this._basis.makeBasis(bx, normal, bz);
         u.beltRot.value.setFromMatrix4(this._basis);
 
+        // ── The sky ──
+        // Its band of far suns keeps its line in the frame; the sky itself goes round the band's
+        // pole, a function of the clock (a seek finds it where it would have been).
+        const motion = this.reducedMotion ? 0.3 : 1;
+        const tilt = SKY_BAND_TILT;
+        const pole = this._vec.set(-Math.sin(tilt), Math.cos(tilt), skyBandShift(this.aspect)).normalize();
+        const along = this._x.set(Math.cos(tilt), Math.sin(tilt), 0);
+        along.addScaledVector(pole, -along.dot(pole)).normalize();
+        const third = this._z.copy(along).cross(pole).normalize();
+        const turned = (this.time * TAU * motion) / SKY_TURN;
+        const ct = Math.cos(turned);
+        const st = Math.sin(turned);
+        const sx = ct * along.x + st * third.x;
+        const sy = ct * along.y + st * third.y;
+        const sz = ct * along.z + st * third.z;
+        const tx = -st * along.x + ct * third.x;
+        const ty = -st * along.y + ct * third.y;
+        const tz = -st * along.z + ct * third.z;
+        u.skyRot.value.set(sx, sy, sz, pole.x, pole.y, pole.z, tx, ty, tz);
+        u.skyRight.value.set(sx, pole.x, tx);
+        u.skyUp.value.set(sy, pole.y, ty);
+        u.shellPhase.value = (this.time * motion) / SHELL_CREEP;
+
         // ── The cinder world ──
         const world = this.parts.world?.mesh;
         if (world) {
-            this._basis.makeRotationY(this.time * 0.011).scale(this._scale.setScalar(u.worldRadius.value))
+            this._basis.makeRotationY(this.time * WORLD_SPIN * motion).scale(this._scale.setScalar(u.worldRadius.value))
                 .setPosition(u.worldCentre.value);
             world.matrix.copy(this._basis);
             world.matrixWorld.copy(this._basis);
+        }
+        // Its moon goes round it on a tilted path: across its face, out to one side, behind it.
+        const moon = this.parts.moon?.mesh;
+        if (moon) {
+            const turn = (this.time * TAU * motion) / MOON_PERIOD + 1.1;
+            const reach = u.worldRadius.value * MOON_ORBIT;
+            const cm = Math.cos(turn) * reach;
+            const sm = Math.sin(turn) * reach;
+            // (f points from the star back to the eye: near enough the world's own line of sight.)
+            u.moonCentre.value.copy(u.worldCentre.value)
+                .addScaledVector(right, cm)
+                .addScaledVector(f, sm * 0.9)
+                .addScaledVector(up, sm * 0.42 + cm * 0.12);
+            this._basis.makeRotationY(this.time * 0.05).scale(this._scale.setScalar(u.worldRadius.value * MOON_SIZE))
+                .setPosition(u.moonCentre.value);
+            moon.matrix.copy(this._basis);
+            moon.matrixWorld.copy(this._basis);
         }
     }
 
@@ -855,7 +992,12 @@ export class VoidEmberWorld {
             } else if (kind === 'surge') {
                 // At its own moment, whatever frame noticed it (a swell reads it as that old).
                 this.swells.surge.hit(data, time);
-            }
+            } else if (kind === 'jets') {
+                // The flare after the hush: beams out of both poles, and the tangle they leave.
+                this.aura?.fireJets(time, data, this.counts.quads);
+                this.throwShell(time + 0.3, Math.min(1.2, data), NOVAFIRE);
+            } else if (kind === 'crown') this.onCrown(time);
+            else if (kind === 'graze') this.graze(time, data);
         }
     }
 
@@ -922,8 +1064,53 @@ export class VoidEmberWorld {
             life: [0.5, 1.2],
             size: 0.1,
         });
+        if (amount > 1) {
+            // A hard drop strikes like a stone into a pool: a crown of fire leaps from the place
+            // and falls back onto the star.
+            const nx = (to.x - this._centre.x) / EMBER.radius;
+            const ny = (to.y - this._centre.y) / EMBER.radius;
+            const nz = (to.z - this._centre.z) / EMBER.radius;
+            this.sparks.emit({
+                x: to.x,
+                y: to.y,
+                z: to.z,
+                n: (46 * this.sparks.count) / 700,
+                rgb: [rgb[0] * 0.6 + 0.4, rgb[1] * 0.6 + 0.36, rgb[2] * 0.6 + 0.3],
+                time,
+                dir: [nx, ny, nz],
+                spread: 1.05,
+                out: [9, 23],
+                life: [1.0, 1.9],
+                size: 0.11,
+                gravity: [nx * -SPLASH_PULL, ny * -SPLASH_PULL, nz * -SPLASH_PULL],
+            });
+            this.counts.splashes += 1;
+        }
         this.swells.kick.hit(amount > 1 ? 0.5 : 0.09 * amount, time);
         this.swells.flash.hit(amount > 1 ? 0.12 : 0.03, time);
+    }
+
+    /** A stone that fell out of the belt reaches the star: a small mark and a few sparks. */
+    graze(time, { site, rgb }) {
+        this.strike(site, rgb, time, 0.42);
+        const to = this.siteWorld(site);
+        this.sparks.emit({
+            x: to.x,
+            y: to.y,
+            z: to.z,
+            n: (7 * this.sparks.count) / 700,
+            rgb,
+            time,
+            dir: [
+                (to.x - this._centre.x) / EMBER.radius,
+                (to.y - this._centre.y) / EMBER.radius,
+                (to.z - this._centre.z) / EMBER.radius,
+            ],
+            spread: 0.8,
+            out: [3, 9],
+            life: [0.5, 1.1],
+            size: 0.09,
+        });
     }
 
     /** A torn-off loop sheds its plasma as sparks, from where the star has carried it. */
@@ -1136,6 +1323,9 @@ export class VoidEmberWorld {
             // The four burns what the chain had built: once its flare cools, the coal is cooler.
             this.chainHeat = Math.max(heatForCombo(Math.min(1, chain)), this.chainHeat - QUAD_SPEND);
             this.schedule(birth, 'surge', perfect ? 1.3 : 1);
+            this.schedule(birth, 'jets', perfect ? 1.15 : 1);
+            // A perfect clear that came with its four is crowned as the flare goes off.
+            if (perfect) this.schedule(birth + 0.35, 'crown');
             this.ripple(birth, this.reducedMotion ? 0.25 : 1);
             this.twistVelocity += 1.2;
             this.schedule(birth, 'shed', {
@@ -1149,6 +1339,9 @@ export class VoidEmberWorld {
             // The star spins up and the corona winds into a pinwheel.
             this.twistVelocity += 3.4;
             this.swells.spinKick.hit(1, this.time);
+            // ...and arms of its fire wind out across the frame, the other way each time.
+            this.aura?.firePinwheel(birth, Math.min(1.3, 0.85 + 0.15 * n) * (this.reducedMotion ? 0.55 : 1), rgb, this.pinwheels % 2 ? -1 : 1, 3 + Math.min(2, n));
+            this.pinwheels += 1;
             this.ripple(this.time, this.reducedMotion ? 0.1 : 0.4);
         }
         if (b2b) {
@@ -1168,10 +1361,14 @@ export class VoidEmberWorld {
      * catch fire, a ring of four fronts runs round the whole star, and a crown of sparks leaves it
      * in the pieces' own flames.
      */
-    onCrown() {
+    onCrown(when = this.time) {
         const { u } = this;
         if (!u || !this.loops) return;
-        const t = this.time;
+        const t = when;
+        // The corona opens into long rays in the pieces' own flames, and what it throws off
+        // stays round the star in those colours.
+        this.aura?.fireStreamers(t, 1, this.counts.crowns);
+        this.throwShell(t + 0.25, 1.1, CROWN_SHELL);
         this.play.crown(t);
         this.swells.crown.hit(1, t);
         this.swells.surge.hit(0.3, t);
@@ -1226,12 +1423,29 @@ export class VoidEmberWorld {
         this.counts.crowns += 1;
     }
 
+    /**
+     * The shell of dust four lines throw off: it widens round the star and comes to rest among
+     * the old ones (the sky draws it), cooling for a quarter of a minute. One at a time: a new
+     * one takes the old one's place.
+     */
+    throwShell(time, strength, rgb) {
+        const { u } = this;
+        if (!u) return;
+        this.shellsThrown += 1;
+        u.novaShell.value.set(time, strength, (this.shellsThrown * 2.7) % 9, 0);
+        u.novaColor.value.set(rgb[0], rgb[1], rgb[2]);
+    }
+
     /** A twist that cleared nothing: the star still turns a little and the corona winds up. */
     onSpin() {
         if (!this.u) return;
         this.play.spin(this.time);
         this.twistVelocity += 1.6;
         this.swells.spinKick.hit(0.45, this.time);
+        // A short curl of the star's own fire.
+        const fire = emberColor(Math.min(0.7, this.heat + 0.25), this._colour);
+        this.aura?.firePinwheel(this.time, this.reducedMotion ? 0.3 : 0.5, fire, this.pinwheels % 2 ? -1 : 1, 3);
+        this.pinwheels += 1;
         this.swells.gust.hit(0.3, this.time);
         this.ripple(this.time, this.reducedMotion ? 0.04 : 0.15);
         this.counts.spins += 1;
@@ -1352,7 +1566,225 @@ export class VoidEmberWorld {
             this.swells.flash.hit(0.12, this.time);
             this.swells.gust.hit(0.6, this.time);
             this.play.levelUp(this.time);
+            // ...and the void answers: a shower of falling stars out of one radiant, in that colour.
+            this.shower(this.time, cold);
         }
+    }
+
+    // ── Visitors ────────────────────────────────────────────────────────────────
+
+    /** The direction from the eye through a point of the frame at rest (fractions, y down). */
+    skyDirection(sx, sy, out = [0, 0, 0]) {
+        this._ray.set(sx * 2 - 1, 1 - sy * 2, 0.5).unproject(this.restCamera()).normalize();
+        out[0] = this._ray.x;
+        out[1] = this._ray.y;
+        out[2] = this._ray.z;
+        return out;
+    }
+
+    /**
+     * One falling star: from the frame point (sx, sy) toward `heading` (radians; 0 = to the
+     * right, a quarter turn = straight down the frame) over `arc` radians of sky.
+     */
+    meteor(time, sx, sy, heading, arc, life, rgb, gain = 1) {
+        if (!this.meteors) return;
+        const start = this.skyDirection(sx, sy, this._mStart);
+        // The heading in the frame's own right and down, made square to the line of sight.
+        let tx = Math.cos(heading);
+        let ty = -Math.sin(heading);
+        let tz = 0;
+        const along = tx * start[0] + ty * start[1] + tz * start[2];
+        tx -= start[0] * along;
+        ty -= start[1] * along;
+        tz -= start[2] * along;
+        const tl = Math.hypot(tx, ty, tz) || 1;
+        this._mTravel[0] = tx / tl;
+        this._mTravel[1] = ty / tl;
+        this._mTravel[2] = tz / tl;
+        this.meteors.fire({
+            start, travel: this._mTravel, arc, time, life, rgb, gain,
+        });
+    }
+
+    /** A level-up's shower: falling stars fanning down out of one radiant above the frame. */
+    shower(time, rgb) {
+        if (!this.meteors) return;
+        const rand = mulberry32(0x5ca1 + this.counts.showers * 7919);
+        this.counts.showers += 1;
+        const count = this.reducedMotion ? 8 : SHOWER_METEORS;
+        // Upright, the sky shows above and below the card; lying down, beside it.
+        const upright = this.aspect < 0.8;
+        const rx = upright ? 0.5 : 0.64;
+        const ry = upright ? -0.12 : -0.3;
+        const tint = [rgb[0] * 0.75 + 0.25, rgb[1] * 0.75 + 0.25, rgb[2] * 0.75 + 0.25];
+        for (let i = 0; i < count; i++) {
+            const heading = Math.PI / 2 + (rand() - 0.5) * 2.1;
+            // Each starts some way out from the radiant, along its own heading.
+            const out = 0.28 + rand() * 0.5;
+            const sx = rx + (Math.cos(heading) * out) / Math.max(0.5, this.aspect);
+            const sy = ry + Math.sin(heading) * out;
+            this.meteor(time + rand() * SHOWER_SPAN, sx, sy, heading, 0.18 + rand() * 0.26, 0.55 + rand() * 0.5, tint, 1.7 + rand() * 1.2);
+        }
+    }
+
+    /**
+     * What crosses the void on its own, each on a clock of its own (functions of the world
+     * clock, so a seek finds them where they would have been):
+     *   a falling star every METEOR_PERIOD seconds or so, somewhere new;
+     *   the wanderer, a comet, every WANDERER_PERIOD seconds on a path of its own;
+     *   a stone that leaves the belt and falls into the star, while play is easy.
+     */
+    raiseVisitors() {
+        const t = this.time;
+        if (this.meteors) {
+            const cycle = Math.floor(t / METEOR_PERIOD);
+            if (cycle !== this.meteorCycle) {
+                this.meteorCycle = cycle;
+                const rand = mulberry32(0x6d7 + cycle * 7919);
+                const many = rand() < 0.16 ? 2 : 1;
+                const p = this._palette.star;
+                for (let i = 0; i < many; i++) {
+                    const birth = cycle * METEOR_PERIOD + rand() * (METEOR_PERIOD - 2);
+                    const sx = 0.04 + rand() * 0.92;
+                    const sy = 0.03 + rand() * 0.7;
+                    const heading = rand() * TAU;
+                    const tint = [p[0] * 0.5 + 0.5, p[1] * 0.5 + 0.5, p[2] * 0.5 + 0.5];
+                    this.meteor(birth, sx, sy, heading, 0.1 + rand() * 0.2, 0.55 + rand() * 0.5, tint, 1.2 + rand() * 1.0);
+                }
+            }
+        }
+        if (this.wanderer) {
+            const lead = 90;
+            const cycle = Math.floor((t + lead) / WANDERER_PERIOD);
+            if (cycle !== this.wandererCycle) {
+                this.wandererCycle = cycle;
+                const rand = mulberry32(0x77a3 + cycle * 104729);
+                const birth = cycle * WANDERER_PERIOD - lead + 60 + rand() * 26;
+                // It crosses the open sky above or below the board, or down one side, each way.
+                const ways = [
+                    [1.12, 0.22, -0.14, 0.04], [-0.14, 0.12, 1.14, 0.3], [1.14, 0.68, -0.12, 0.94],
+                    [-0.12, 0.84, 1.14, 0.6], [0.92, -0.14, 0.7, 1.14], [0.74, 1.14, 0.96, -0.12],
+                ];
+                const way = ways[Math.floor(rand() * ways.length) % ways.length];
+                const jx = (rand() - 0.5) * 0.08;
+                const jy = (rand() - 0.5) * 0.1;
+                const a = this.skyDirection(way[0] + jx, way[1] + jy, this._mStart);
+                const b = this.skyDirection(way[2] - jx, way[3] - jy, this._mEnd);
+                const cosine = Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]));
+                let tx = b[0] - a[0] * cosine;
+                let ty = b[1] - a[1] * cosine;
+                let tz = b[2] - a[2] * cosine;
+                const tl = Math.hypot(tx, ty, tz) || 1;
+                tx /= tl;
+                ty /= tl;
+                tz /= tl;
+                this.wanderer.send({
+                    start: a,
+                    travel: [tx, ty, tz],
+                    // (The path is a straight line in the picture: its length is the tangent of the angle.)
+                    arc: Math.tan(Math.min(1.4, Math.acos(cosine))),
+                    time: birth,
+                    crossing: WANDERER_CROSSING * (0.85 + rand() * 0.3),
+                    size: 0.75 + rand() * 0.5,
+                    bow: (rand() < 0.5 ? -1 : 1) * (0.35 + rand() * 0.5),
+                    seed: cycle % 13,
+                });
+            }
+        }
+        if (this.comets && this.u) {
+            const lead = 17;
+            const cycle = Math.floor((t + lead) / GRAZER_PERIOD);
+            if (cycle !== this.grazerCycle) {
+                this.grazerCycle = cycle;
+                const rand = mulberry32(0x3e7 + cycle * 15485863);
+                const birth = cycle * GRAZER_PERIOD - lead + rand() * 22;
+                // Only while play is easy (its comets are the board's), and never one a seek
+                // would find half-way.
+                if (this.playNow.level < 0.3 && birth >= t - 0.05) this.sendGrazer(birth, rand);
+            }
+        }
+    }
+
+    /** A stone leaves the near side of the belt and falls into the star along a long bow. */
+    sendGrazer(birth, rand) {
+        const { u } = this;
+        const r = 2.2 + rand() * 0.5;
+        let a = rand() * TAU;
+        const e = u.beltRot.value.elements;
+        // The belt's own x and z in the world (columns 0 and 2 of its rotation).
+        let fx = (e[0] * Math.cos(a) + e[6] * Math.sin(a)) * r;
+        let fy = (e[1] * Math.cos(a) + e[7] * Math.sin(a)) * r;
+        let fz = (e[2] * Math.cos(a) + e[8] * Math.sin(a)) * r;
+        // The near side: the half of the belt between the star and the eye.
+        if (fx * this._f.x + fy * this._f.y + fz * this._f.z < 0.15 * r) {
+            a += Math.PI;
+            fx = -fx;
+            fy = -fy;
+            fz = -fz;
+        }
+        const from = [
+            this._centre.x + fx * EMBER.radius, this._centre.y + fy * EMBER.radius, this._centre.z + fz * EMBER.radius,
+        ];
+        // It lands on the face, on the side it came from.
+        this._vec.set(fx / r, fy / r, fz / r).multiplyScalar(0.62).addScaledVector(this._f, 0.78).normalize()
+            .applyMatrix3(u.starInv.value);
+        const site = [this._vec.x, this._vec.y, this._vec.z];
+        const flight = 2.2 + rand() * 1.2;
+        // Bowed the way the belt turns: it spirals in.
+        const bow = r * EMBER.radius * 0.34;
+        const bx = (-e[0] * Math.sin(a) + e[6] * Math.cos(a)) * bow;
+        const by = (-e[1] * Math.sin(a) + e[7] * Math.cos(a)) * bow;
+        const bz = (-e[2] * Math.sin(a) + e[8] * Math.cos(a)) * bow;
+        this.comets.launch({
+            from, site, rgb: GRAZER_COLOR, time: birth, flight, bow: [bx, by, bz], size: 0.5 + rand() * 0.2,
+        });
+        this.schedule(birth + flight, 'graze', { site, rgb: [...GRAZER_COLOR] });
+        this.counts.grazers += 1;
+    }
+
+    // ── A run's end and a new one ───────────────────────────────────────────────
+
+    /**
+     * The run is over: the ember gutters. It lets go of everything it holds, one loop after
+     * another, a last slow ring leaves it, deep red, and its fire sinks into its cracks until a
+     * new run blows on it again (or, left alone, until it finds its own breath back).
+     */
+    onGameOver() {
+        const { u } = this;
+        if (!u || !this.loops) return;
+        const t = this.time;
+        this.gutterAt = t;
+        this.gutterEnd = t + GUTTER_HOLD;
+        // The run's own heat is over: its level, its streak and the pace it was played at.
+        this.level = 1;
+        this.b2bStreak = 0;
+        this.combo = 0;
+        this.play.reset();
+        this.letGo();
+        const slot = this.takeWaveSlot();
+        u.waves.array[slot * 3].set(t + 0.25, 0.7, 1, 2.2);
+        u.waves.array[slot * 3 + 1].set(0.95, 0.16, 0.06, 1);
+        u.waves.array[slot * 3 + 2].set(1, 0, 0, 0);
+        this.swells.dip.hit(0.3, t);
+        this.counts.gameOvers += 1;
+    }
+
+    /** A new run: whatever is left of the gutter is blown away, and the coal catches. */
+    onSessionStart() {
+        if (!this.u) return;
+        const t = this.time;
+        if (this.gutterAt > -1e5 && t < this.gutterEnd + GUTTER_BACK) {
+            this.gutterEnd = Math.min(this.gutterEnd, t);
+            this.swells.gust.hit(0.7, t);
+            this.swells.flash.hit(0.07, t);
+            this.swells.surge.hit(0.18, t);
+        }
+    }
+
+    /** How far the ember has guttered (0 = burning, 1 = banked to its cracks). */
+    gutter(t = this.time) {
+        if (this.gutterAt < -1e5) return 0;
+        return smooth(0, GUTTER_FALL, t - this.gutterAt) * (1 - smooth(0, GUTTER_BACK, t - this.gutterEnd));
     }
 
     /**
@@ -1386,14 +1818,37 @@ export class VoidEmberWorld {
             const z = rand() * 2 - 1;
             const a = rand() * TAU;
             const r = Math.sqrt(1 - z * z);
+            // Four kinds, so no two stand alike: an arcade (most), a tall thin spire, a wide low
+            // arch, and now and then a great prominence that stands a third of a radius high.
+            const azimuth = rand() * TAU;
+            const kind = rand();
+            const ra = rand();
+            const rb = rand();
+            let span = 0.1 + ra * 0.13;
+            let height = 0.16 + rb ** 2 * 0.42;
+            let strength = 0.36 + rand() * 0.26;
+            if (kind > 0.9) {
+                span = 0.19 + ra * 0.07;
+                height = 0.5 + rb * 0.26;
+                strength = 0.5 + rb * 0.14;
+            } else if (kind > 0.74) {
+                span = 0.24 + ra * 0.08;
+                height = 0.1 + rb * 0.08;
+            } else if (kind > 0.55) {
+                span = 0.045 + ra * 0.035;
+                height = 0.42 + rb * 0.3;
+                strength = 0.42 + rb * 0.16;
+            }
+            // Its fire: the star's own, a shade toward gold or toward crimson.
+            const hue = rand();
             this.loops.raise(LOCK_LOOPS + k, {
                 site: [r * Math.cos(a), z, r * Math.sin(a)],
-                azimuth: rand() * TAU,
-                span: 0.1 + rand() * 0.13,
-                height: 0.16 + rand() ** 2 * 0.42,
-                rgb: AMBIENT_COLOR,
+                azimuth,
+                span,
+                height,
+                rgb: [AMBIENT_COLOR[0], AMBIENT_COLOR[1] * (0.6 + hue * 0.9), AMBIENT_COLOR[2] * (0.5 + hue * 1.6)],
                 time: birth,
-                strength: 0.36 + rand() * 0.26,
+                strength,
                 seed: k * 13 + cycle,
             });
             // It lifts off on its own before its slot is used again.
@@ -1438,10 +1893,13 @@ export class VoidEmberWorld {
         // it most of the way from there to HEAT_FLARE and lets it back as the overdrive cools.
         const pace = REST_HEAT + PACE_HEAT * (0.7 * level + 0.3 * fever);
         const base = Math.min(HEAT_FLARE, emberBase(Math.max(this.chainHeat, pace) + this.stoke));
-        const target = base + (HEAT_FLARE - base) * Math.min(1, surge * FLARE_SHARE);
+        // A run that has ended banks the coal to its cracks.
+        const gutter = this.gutter(t);
+        const lit = base + (HEAT_FLARE - base) * Math.min(1, surge * FLARE_SHARE);
+        const target = lit + (GUTTER_HEAT - lit) * gutter;
         this.heat += (target - this.heat) * approach(target > this.heat ? 2.6 : 0.55, dt);
         const hush = t < this.hushUntil ? this.hushDepth : 0;
-        const breathTarget = hush > 0 ? 1 - 0.9 * hush : 1 - this.dip;
+        const breathTarget = hush > 0 ? 1 - 0.9 * hush : (1 - this.dip) * (1 - 0.3 * gutter);
         this.breath += (breathTarget - this.breath) * approach(hush > 0 ? 40 : 14, dt);
         if (dt === 0) this.breath = breathTarget;
         this.applyPalette(approach(1.1, dt));
@@ -1464,7 +1922,9 @@ export class VoidEmberWorld {
         this.flow += dt * motion * (0.5 + heat * 1.6 + (surge * 4 + gust * 2 + level * 0.8 + fever * 1.6) * hurry);
 
         this.raiseAmbient();
+        this.raiseVisitors();
         this.pose();
+        this.aura?.update(t);
 
         // ── Uniforms ──
         let impactsLive = 0;
@@ -1480,6 +1940,14 @@ export class VoidEmberWorld {
         u.heat.value = heat;
         u.breath.value = this.breath;
         u.twist.value = this.twist * (this.reducedMotion ? 0.25 : 1);
+        // The ember's own moods (functions of the clock): its crust swells open and ebbs shut on
+        // two periods, and the side where it is thinnest wanders round the star. Play that runs
+        // hot takes over: the mood sinks under it.
+        const calm = 1 - smooth(0.2, 0.7, level);
+        u.mood.value = (0.62 * Math.sin(t / 37) + 0.38 * Math.sin(t / 89 + 1.3)) * calm - 0.9 * gutter;
+        const wander = t / 67;
+        const tip = 0.5 * Math.sin(t / 151 + 0.7);
+        u.moodDir.value.set(Math.cos(wander) * Math.cos(tip), Math.sin(tip), Math.sin(wander) * Math.cos(tip));
         // The acts of play, spent on the world's own parts (never on the sky as a whole).
         const warmAct = smooth(0.15, 0.55, level);
         const hotAct = smooth(0.4, 0.85, level);
@@ -1507,13 +1975,14 @@ export class VoidEmberWorld {
             const cu = this.corona.uniforms;
             cu.reach.value = Math.min(0.76 + 0.24 * Math.min(1, crown + surge), 0.14 + (heat - REST_HEAT) * 0.62
                 + surge * 0.4 + gust * 0.08 + 0.04 * warmAct + 0.06 * hotAct + 0.14 * fever + 0.3 * crown);
-            cu.gain.value = 0.17 + heat * 0.62 + surge * 0.6 + flash * 0.6 + 0.1 * hotAct + 0.25 * fever + 0.35 * crown;
+            cu.gain.value = (0.17 + heat * 0.62 + surge * 0.6 + flash * 0.6 + 0.1 * hotAct + 0.25 * fever + 0.35 * crown
+                + 0.05 * u.mood.value) * (1 - 0.55 * gutter);
             cu.fringe.value = 1 + 2.2 * b2b + 1.5 * crown + 0.5 * fever;
         }
         if (this.wind) {
             const wu = this.wind.uniforms;
             wu.emit.value = clamp01(0.14 + (heat - REST_HEAT) * 0.75 + gust * 0.22 + surge * 0.8
-                + 0.08 * warmAct + 0.12 * hotAct + 0.25 * fever + 0.3 * crown);
+                + 0.08 * warmAct + 0.12 * hotAct + 0.25 * fever + 0.3 * crown + 0.04 * u.mood.value) * (1 - 0.85 * gutter);
             wu.reach.value = 1.15 + heat * 2.1 + surge * 2.4 + gust * 0.5 + 0.4 * level + 0.9 * fever + 0.8 * crown;
         }
 
@@ -1646,6 +2115,9 @@ export class VoidEmberWorld {
         this.parts = {};
         this.star = null;
         this.corona = null;
+        this.aura = null;
+        this.meteors = null;
+        this.wanderer = null;
         this.loops = null;
         this.wind = null;
         this.sparks = null;

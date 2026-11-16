@@ -15,8 +15,10 @@
  * cooling, its hollows hold the heat and a fracture or two burns for a few seconds.
  *
  * The cinder world is one dead planet far out on the other side of the board, backlit: a thin
- * crescent, a breath of atmosphere past the terminator, and old lava still glowing in its night
- * side when the star is hot.
+ * crescent, a breath of atmosphere past the terminator, old lava still glowing in the fractures of
+ * its night side when the star is hot, and one great wound, a basin whose floor never quite
+ * cooled, that its turning brings round every few minutes. A small moon circles it, now a black
+ * dot on its face, now a sliver beside it, now gone behind.
  *
  * Orbit, tumble and the wave's shove are closed forms of the clock: no per-frame CPU work, and a
  * seek reproduces any frame.
@@ -474,8 +476,16 @@ export function createRocks(u, cls, count, seed, { cracks = true } = {}) {
 
 // ── The cinder world ────────────────────────────────────────────────────────────
 
-/** @param {object} u shared uniforms */
-export function createCinderWorld(u, { segments = 48 } = {}) {
+/** Where the cinder world's wound is, in its own frame, and how wide (a chord of the unit ball). */
+export const WORLD_WOUND = Object.freeze({ at: [0.58, 0.3, 0.756], rim: 0.46 });
+
+/**
+ * @param {object} u shared uniforms
+ * @param {object} opts
+ * @param {boolean} [opts.cracks=true]  fractures from the baked plates (one fetch); off, the old
+ *                                      rifts of the noise it already reads
+ */
+export function createCinderWorld(u, { segments = 48, cracks = true } = {}) {
     const geometry = new THREE.SphereGeometry(1, segments, Math.round(segments * 0.6));
     const material = veSolidMaterial('VoidEmberCinderWorld');
     material.colorNode = Fn(() => {
@@ -492,7 +502,13 @@ export function createCinderWorld(u, { segments = 48 } = {}) {
         // Highlands and basins, and a net of old rifts.
         const land = u.noise3(p.mul(3.1).add(vec3(5.0, 1.0, 9.0))).toVar();
         const fine = u.noise3(p.mul(9.5).add(vec3(2.0, 7.0, 4.0))).toVar();
-        const albedo = u.rock.mul(land.x.mul(0.9).add(fine.x.mul(0.5)).add(0.35));
+        // The wound: one great basin with a raised rim, its floor darker than the highlands.
+        const dWound = length(p.sub(vec3(WORLD_WOUND.at[0], WORLD_WOUND.at[1], WORLD_WOUND.at[2]))).toVar();
+        const basin = float(1.0).sub(smoothstep(WORLD_WOUND.rim * 0.72, WORLD_WOUND.rim, dWound.add(fine.x.sub(0.5).mul(0.07)))).toVar();
+        const lip = dWound.sub(WORLD_WOUND.rim * 1.04).div(0.06);
+        const rimRise = exp(lip.mul(lip).negate());
+        const albedo = u.rock.mul(land.x.mul(0.9).add(fine.x.mul(0.5)).add(0.35))
+            .mul(float(1.0).sub(basin.mul(0.55)).add(rimRise.mul(0.5)));
         const wave = veWaveLight(u, radii);
         const col = albedo.mul(u.starLight.mul(fall.mul(4.0)).add(wave.rgb.mul(5.0))).mul(day).toVar();
         // The atmosphere catches the light past the terminator: a thin bright arc.
@@ -501,15 +517,58 @@ export function createCinderWorld(u, { segments = 48 } = {}) {
             .mul(smoothstep(-0.3, 0.3, ndl));
         col.addAssign(u.starLight.mul(fall).add(wave.rgb.mul(2.0)).mul(air.mul(0.7)));
         // Old lava in the night side, waking as the star does.
-        const seam = float(1.0).sub(abs(fine.y.mul(2.0).sub(1.0)));
-        const rift = seam.mul(seam).mul(seam).mul(seam).mul(seam)
-            .mul(smoothstep(0.35, 0.75, land.y));
-        const wake = u.heat.mul(u.heat).mul(0.8).add(0.012).add(wave.w.mul(0.5));
-        col.addAssign(veBlackbody(wake.mul(0.35).add(0.18)).mul(rift.mul(wake).mul(1.3)).mul(float(1.0).sub(day)));
+        const wake = u.heat.mul(u.heat).mul(0.8).add(0.012).add(wave.w.mul(0.5))
+            .toVar();
+        let rift;
+        if (cracks) {
+            // Fractures between the plates of its dead crust (the star's own baked plates, torn by
+            // the land's noise so no two bodies wear the same net), and only some of them alight.
+            const net = u.plates(p.add(vec3(land.x.sub(0.5), fine.y.sub(0.5), land.y.sub(0.5)).mul(0.16)));
+            // (Wide: the world is sixty pixels across, and a hairline there is a row of dots.)
+            rift = float(1.0).sub(smoothstep(0.012, 0.085, net.x))
+                .mul(smoothstep(0.34, 0.7, net.y.mul(0.55).add(land.y.mul(0.45))));
+        } else {
+            const seam = float(1.0).sub(abs(fine.y.mul(2.0).sub(1.0)));
+            rift = seam.mul(seam).mul(seam).mul(seam).mul(seam)
+                .mul(smoothstep(0.35, 0.75, land.y));
+        }
+        col.addAssign(veBlackbody(wake.mul(0.35).add(0.18)).mul(rift.mul(wake).mul(1.5)).mul(float(1.0).sub(day)));
+        // The wound's floor never quite cooled: a lake of old fire under a broken skin, brighter
+        // where the skin is thin, and the star's waking stirs it.
+        const skin = smoothstep(0.34, 0.72, fine.x.mul(0.55).add(land.y.mul(0.45)));
+        const lake = basin.mul(basin).mul(skin.mul(0.85).add(0.15)).mul(wake.mul(1.3).add(0.11));
+        col.addAssign(veBlackbody(wake.mul(0.4).add(0.3)).mul(lake.mul(1.6)).mul(float(1.0).sub(day.mul(0.75))));
         col.addAssign(u.fill.mul(0.5));
         return vec4(col.mul(u.breath.mul(0.75).add(0.25)), 1.0);
     })();
     return vePart('VoidEmberCinderWorld', geometry, material, 1);
+}
+
+/** The cinder world's moon: a small grey ball lit by the star alone. */
+export function createCinderMoon(u, { segments = 20 } = {}) {
+    const geometry = new THREE.SphereGeometry(1, segments, Math.round(segments * 0.6));
+    const material = veSolidMaterial('VoidEmberCinderMoon');
+    material.colorNode = Fn(() => {
+        const p = normalize(positionLocal).toVar();
+        const N = normalize(positionWorld.sub(u.moonCentre)).toVar();
+        const V = normalize(cameraPosition.sub(positionWorld));
+        const toStar = u.centre.sub(u.moonCentre);
+        const radii = length(toStar).div(u.radius);
+        const ndl = dot(N, normalize(toStar)).toVar();
+        const day = smoothstep(-0.06, 0.25, ndl).mul(max(ndl, 0.0).mul(0.8).add(0.2));
+        const fall = min(float(9.0).div(radii.mul(radii)), 3.0);
+        const land = u.noise3(p.mul(4.2).add(vec3(1.0, 8.0, 3.0)));
+        const albedo = u.rock.mul(land.x.mul(1.1).add(0.55));
+        const wave = veWaveLight(u, radii);
+        const col = albedo.mul(u.starLight.mul(fall.mul(4.5)).add(wave.rgb.mul(5.0))).mul(day).toVar();
+        // A hair of light on its limb where the star stands behind it.
+        const rim = float(1.0).sub(clamp(dot(N, V), 0.0, 1.0));
+        col.addAssign(u.starLight.mul(fall).mul(rim.mul(rim).mul(rim).mul(rim).mul(smoothstep(-0.3, 0.3, ndl))
+            .mul(0.25)));
+        col.addAssign(u.fill.mul(0.6));
+        return vec4(col.mul(u.breath.mul(0.75).add(0.25)), 1.0);
+    })();
+    return vePart('VoidEmberCinderMoon', geometry, material, 1);
 }
 
 // ── The belt's dust ─────────────────────────────────────────────────────────────

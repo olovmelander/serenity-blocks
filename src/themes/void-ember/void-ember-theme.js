@@ -3,7 +3,7 @@
  *  VOID EMBER
  * ═══════════════════════════════════════════════════════════════════════════════
  *
- * A dying star hangs in an empty sky, left of the board: a banked coal, most of its face a
+ * A dying star hangs in a deep sky, left of the board: a banked coal, most of its face a
  * dark crust with fire in the cracks. A belt of cinders and dust circles it almost edge-on, its
  * near arc crossing the star's lower face, and one dead world stands far off on the other side
  * of the card, backlit (on an upright phone the star rises into the sky above the card). Nothing
@@ -19,11 +19,15 @@
  * the player has fed the star, the more a clear sets off. A chain of clears blows the ember up:
  * the crust breaks and sinks, the cells under it go from red through gold, the corona reaches
  * further, the wind streams faster and everything the star lights brightens with it. Four lines
- * make it hold its breath, then flare: a full shell crosses the frame, every loop is torn off at
- * once, space ripples and the star stands white-gold for a few seconds. A twist spins it up and
- * winds the corona and the wind into a pinwheel that springs back. The void behind it all
- * turns slowly through five palettes on its own clock, one every eighty seconds, and a new
- * level moves it one further.
+ * make it hold its breath, then flare: jets leave its poles, a full shell crosses the frame, every
+ * loop is torn off at once, space ripples, the star stands deep gold for a few seconds and a new
+ * shell of dust comes to rest round it. A perfect clear opens the corona into rays in the pieces'
+ * own flames. A twist sweeps arms of fire out of it in a spiral. A new level sends a shower of
+ * falling stars across the void, and a run's end lets the ember gutter until the next one blows
+ * on it. The void behind it all turns slowly through five palettes on its own clock, one every
+ * eighty seconds, and a new level moves it one further; the sky itself goes round, a comet crosses
+ * every few minutes, and the star, its belt and its far world never hold one pose for long (the
+ * list is at the top of void-ember-world.js).
  *
  * Content lives in VoidEmberWorld (void-ember-world.js), shared with the playground effect
  * src/playground/effects/void-ember.effect.js, so what is iterated there ships. This class owns
@@ -39,9 +43,9 @@
  *
  * Warm: none (every pool is always drawn with zero-size dormant slots, so the first frame
  * compiles every render pipeline; the scene pass has one output). Nothing is downloaded either:
- * the scene uses no texture or model files (its two noise textures and the stones' meshes are
- * made on the CPU when the world is built), so there is no load step and nothing arrives after
- * the first frame.
+ * the scene uses no texture or model files (its noise textures are made on the CPU when the world
+ * is built, and the stones' models, sculpted in Blender, are numbers in a module of the bundle:
+ * void-ember-stone-models.js), so there is no load step and nothing arrives after the first frame.
  */
 
 import * as THREE from 'three/webgpu';
@@ -258,7 +262,8 @@ export default class VoidEmberTheme extends BaseTheme {
             sink: {
                 lock: (c) => this.world?.onLock(c),
                 clear: (c) => this.world?.onClear(c),
-                crown: (player) => this.world?.onCrown?.(player),
+                // (The crown is the one star's whichever board earned it: the world takes a moment, not a player.)
+                crown: () => this.world?.onCrown?.(),
                 spin: (player) => this.world?.onSpin?.(player),
                 combo: (n, player) => this.reportCombo(n, player),
                 levelUp: (level) => {
@@ -379,7 +384,7 @@ export default class VoidEmberTheme extends BaseTheme {
             }),
         );
         this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
-        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+        this.registerEventListener(window, 'gameOver', () => this.endRun());
 
         const resetPointer = () => {
             this.pointer.x = 0;
@@ -420,12 +425,23 @@ export default class VoidEmberTheme extends BaseTheme {
         this.world?.onCombo(best);
     }
 
+    /**
+     * A run is over: whatever is staged still lands, the chain is let go, and the ember gutters
+     * from where it stands (the world is not wiped: its last loops still fly).
+     */
+    endRun() {
+        this.director?.flush();
+        this.resetSession({ world: false });
+        this.world?.onGameOver?.();
+    }
+
     /** A new run: the ember back at rest, no chain in flight. */
-    resetSession() {
+    resetSession({ world = true } = {}) {
         this.director?.reset();
         this.combos.clear();
         this.level = 1;
-        this.world?.resetSession();
+        // (A run that ended keeps what the star was doing: it gutters from there.)
+        if (world) this.world?.resetSession();
         this.scheduleLayoutReads();
     }
 
@@ -523,7 +539,11 @@ export default class VoidEmberTheme extends BaseTheme {
         this.modeManager = manager;
         const relayout = () => this.scheduleLayoutReads();
         this.eventUnsubscribers.push(
-            manager.on('modeStarted', relayout),
+            manager.on('modeStarted', () => {
+                relayout();
+                // A new run blows on the coal a run's end left banked.
+                this.world?.onSessionStart?.();
+            }),
             manager.on('modeActivated', relayout),
             manager.on('modeStopped', () => this.resetSession()),
         );
