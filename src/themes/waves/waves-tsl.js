@@ -28,7 +28,7 @@ import {
     DEG, FLOW, FLOW_SPEED, TAU, WAVE,
 } from './waves-core.js';
 import { HOURS, HOUR_COLOURS } from './waves-hours.js';
-import { sessionWaterNoise } from './waves-bakes.js';
+import { sessionFoamLace, sessionWaterNoise } from './waves-bakes.js';
 
 /**
  * The sun: degrees to the left of the line the eye looks down, and above the horizon at golden
@@ -59,6 +59,21 @@ export function createWaterNoise(size) {
     map.colorSpace = THREE.NoColorSpace;
     map.needsUpdate = true;
     map.name = 'waves-water-noise';
+    return map;
+}
+
+/** The field of foam cells as a texture (see bakeFoamLace): lace on the sea, light in the wave. */
+export function createFoamLace(size) {
+    const map = new THREE.DataTexture(sessionFoamLace(size), size, size, THREE.RGBAFormat);
+    map.wrapS = THREE.RepeatWrapping;
+    map.wrapT = THREE.RepeatWrapping;
+    map.magFilter = THREE.LinearFilter;
+    map.minFilter = THREE.LinearMipmapLinearFilter;
+    map.generateMipmaps = true;
+    map.anisotropy = 8;
+    map.colorSpace = THREE.NoColorSpace;
+    map.needsUpdate = true;
+    map.name = 'waves-foam-lace';
     return map;
 }
 

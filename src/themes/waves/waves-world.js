@@ -7,7 +7,7 @@
  * built here and shared with the playground effect (src/playground/effects/waves.effect.js), so
  * what is iterated there ships.
  *
- * Parts (showOnlyParts names): sky, water, dolphins, mist, rain, spray, foam.
+ * Parts (showOnlyParts names): sky, water, life, mist, rain, spray, foam.
  *
  * The world is a function of its clock plus a little eased state (how far the barrel has
  * opened, how warm the light is, where the lens points) and the event tables the water reads:
@@ -63,27 +63,31 @@ import { uniform, uniformArray } from 'three/tsl';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import {
-    DEG, FLOW, WAVE, approach, castRay, clamp01, crestDistance, landingDistance, lerp, lipAngle, pieceLight, smooth,
-    surfaceAt,
+    DEG, FLOW, WAVE, approach, castRay, clamp01, crestDistance, landingDistance, lerp, lipAngle, mulberry32, pieceLight,
+    smooth, surfaceAt,
 } from './waves-core.js';
 import { tierFor } from './waves-quality.js';
 import {
     REST_RIG, boardFor, boardPoint, cardFor, fallbackLayout, fovForAspect, viewFor,
 } from './waves-composition.js';
 import {
-    HOURS, HOUR_COLOURS, HOUR_SECONDS, SET_SECONDS, hourAt, levelPlace, restPlace, tideSetAge,
+    HOURS, HOUR_COLOURS, HOUR_SECONDS, SEA_SECONDS, SEA_STATES, SET_SECONDS, hourAt, levelPlace, restPlace, seaAt,
+    tideSetAge,
 } from './waves-hours.js';
 import {
-    SUN, createLight, createWaterNoise, createWaveShape, sunDirection,
+    SUN, createFoamLace, createLight, createWaterNoise, createWaveShape, sunDirection,
 } from './waves-tsl.js';
 import { createSky } from './waves-sky.js';
 import {
     BAND_SLOTS, BAND_SPEED, BAND_START, RIBBON_VELOCITY, createWater,
 } from './waves-water.js';
 import { SprayPool, createLipRain, createMist } from './waves-spray.js';
-import { WavesPod, leapersFor } from './waves-life.js';
+import { WavesLife, leapersFor } from './waves-life.js';
+import { stageVisit } from './waves-ambient.js';
+import { makeRide, makeSkitter, makeWhale } from './waves-acts.js';
+import { loadSeaLife, seaLifeLoaded } from './waves-cast.js';
 import {
-    FoamPool, dolphinBreach, dolphinEntry, splashDensity,
+    FoamPool, dolphinBreach, dolphinEntry, fishSplash, rollSplash, splashDensity, whaleSplash,
 } from './waves-splash.js';
 
 export { REST_RIG, fovForAspect };
@@ -112,6 +116,9 @@ const LEVEL_SET_HEIGHT = 0.085;
 const B2B_SET_HEIGHT = 0.075;
 const TIDE_SET_HEIGHT = 0.06;
 const SET_HEIGHT_MAX = 0.13;
+
+/** Seconds after a hard drop before the next one's spout stands as tall again. */
+export const HARD_DROP_REST = 1.6;
 
 /** Two bands born together are one, this bright at most. */
 const BAND_STRONGEST = 2;
@@ -186,7 +193,6 @@ const tmpRay = new THREE.Vector3();
 const tmpSun = new THREE.Vector3();
 const tmpLight = [1, 1, 1];
 const tmpTint = [1, 1, 1];
-const WHITE = [1, 0.95, 0.86];
 
 export class WavesWorld {
     /**
@@ -199,15 +205,26 @@ export class WavesWorld {
      *                                                           no longer move it)
      * @param {number} [p.hour]   hold the light at this place on the wheel of hours (0 golden
      *                            hour, 1 sunset, ... 3.5 half-way from moonrise to first light)
+     * @param {object} [p.seaLife]   the animals' bodies (waves-cast.js); without them the world
+     *                               reads the pack itself and takes them on when they arrive
+     * @param {boolean} [p.ambient=true]   the sea sends its own visits (waves-ambient.js)
+     * @param {number} [p.sea]    hold the sea at this place on the wheel of its states (0 glass,
+     *                            1 offshore wind, 2 heavy, 3 sparkling)
      */
     constructor({
-        scene, quality = 'High', capture = false, seed = 187, sun = null, hour = null,
+        scene, quality = 'High', capture = false, seed = 187, sun = null, hour = null, seaLife = null, ambient = true,
+        sea = null,
     }) {
         this.scene = scene;
         this.quality = quality;
         this.tier = tierFor(quality);
         this.capture = capture === true;
         this.seed = seed;
+        this.seaLife = seaLife;
+        this.ambient = ambient !== false;
+        /** Resolves when the animals' bodies are in the world (or cannot be). */
+        this.lifeReady = Promise.resolve(null);
+        this.disposed = false;
         this.group = new THREE.Group();
         this.group.name = 'waves-world';
         this.parts = {};
@@ -232,6 +249,11 @@ export class WavesWorld {
             from: 0, to: 0, at: -100, pin: Number.isFinite(hour) ? hour : null,
         };
         this.light = hourAt(0);
+        /** The sea's own state (waves-hours.js seaAt), and a place it is held at, or null. */
+        this.seaPin = Number.isFinite(sea) ? sea : null;
+        this.sea = seaAt(this.seaPin ?? 0);
+        /** The numbers the board's own acts are drawn from (a new run starts them again). */
+        this.fxRand = mulberry32(seed * 911 + 5);
         this.lightRows = HOUR_COLOURS.map(() => new THREE.Vector4(0, 0, 0, 0));
         /**
          * How hot play runs (shared/gameplay-surge.js), sampled once a frame on the frame's time
@@ -271,6 +293,10 @@ export class WavesWorld {
             glow: uniform(0),
             /** 0..1: how hot play runs (0 at rest): the bands of light burn brighter. */
             heat: uniform(0),
+            /** 0..1: the sea's own cold light, out when the hour is dark. */
+            glowing: uniform(0),
+            /** The sea's state: (foam, wind, heavy, chop), each 0..1 (waves-hours.js SEA_STATES). */
+            sea: uniform(new THREE.Vector4(0.3, 0, 0, 0.15)),
         };
 
         this.ringRows = Array.from({ length: this.tier.rings }, () => new THREE.Vector4(0, 0, -100, 0));
@@ -319,6 +345,10 @@ export class WavesWorld {
             heroInChain: false,
             /** Hot play keeps the lip throwing: how far toward its next sheet. */
             throwDebt: 0,
+            /** When the chain last called dolphins into the wall beside the rider. */
+            escortAt: -100,
+            /** When the last hard drop struck (its spout is smaller straight after another). */
+            hardAt: -100,
             yaw: null,
             pitch: null,
             locks: 0,
@@ -332,21 +362,32 @@ export class WavesWorld {
         this._point = { x: 0.5, y: 0.5 };
         this._stain = { x: 0.5, y: 0.5 };
         this._plunge = { x: 0.5, y: 0.5 };
-        this.splash = (x, y, z, strength, arc) => this.onSplash(x, y, z, strength, arc);
+        this.lifeEvent = (act, event, pose) => this.onLifeEvent(act, event, pose);
         this.applyHour();
     }
 
     build() {
         const { tier, U } = this;
         this.noise = createWaterNoise(tier.noise);
+        this.lace = createFoamLace(tier.lace);
         this.shape = createWaveShape(U);
         this.parts.water = createWater({
-            tier, noise: this.noise, U, shape: this.shape, rows: this.rows,
+            tier, noise: this.noise, lace: this.lace, U, shape: this.shape, rows: this.rows,
         });
-        this.pod = new WavesPod({
-            tier, U, sun: this.sunDir, eye: REST_RIG.eye, seed: this.seed,
+        this.pod = new WavesLife({
+            tier, U, sun: this.sunDir, eye: REST_RIG.eye, seed: this.seed, ambient: this.ambient,
         });
-        this.parts.dolphins = this.pod;
+        this.parts.life = this.pod;
+        // The animals' bodies: handed in, already read this session, or on their way.
+        const pack = this.seaLife || seaLifeLoaded();
+        if (pack) {
+            this.pod.attach(pack);
+        } else {
+            this.lifeReady = loadSeaLife().then((loaded) => {
+                if (loaded && !this.disposed && this.pod) this.pod.attach(loaded);
+                return loaded;
+            });
+        }
         this.parts.sky = createSky({ tier, noise: this.noise, U });
         this.parts.mist = createMist({
             tier, U, shape: this.shape, noise: this.noise, seed: this.seed,
@@ -449,6 +490,9 @@ export class WavesWorld {
         s.nextLeap = -100;
         s.heroInChain = false;
         s.throwDebt = 0;
+        s.escortAt = -100;
+        s.hardAt = -100;
+        this.fxRand = mulberry32(this.seed * 911 + 5);
         s.level = 1;
         s.locks = 0;
         s.clears = 0;
@@ -598,28 +642,57 @@ export class WavesWorld {
     }
 
     /**
-     * Something broke the surface at a point in the world: a splash and a ring. A dolphin's leap
-     * (`arc`, WavesPod) is choreographed from the whole of it (waves-splash.js): bursting out of
-     * the face, or going back in as its nose touches the water (`arc.entered`).
+     * An animal broke the surface (waves-life.js hands each such moment over once): the water it
+     * throws (waves-splash.js) and, near the eye, a ring on the sea.
+     * @param {object} act     the act (waves-acts.js); a leap is the whole of its arc
+     * @param {{t: number, type: string}} event
+     * @param {object} pose    where the animal is at that moment
      */
-    onSplash(x, y, z, strength = 1, arc = null) {
-        if (arc) {
-            const splash = {
-                spray: this.spray,
-                foam: this.foam,
-                arc,
-                now: this.clock,
-                density: splashDensity(this.spray.count),
-                eye: REST_RIG.eye,
-            };
-            if (arc.entered) dolphinEntry(splash);
-            else dolphinBreach(splash);
-        } else {
-            this.spray.crown(this.clock, x, Math.max(0, y), z, {
-                n: Math.round(26 * strength), out: [0.2, 0.75], up: [0.4, 1.15], size: 0.04, rgb: WHITE, radius: 0.35,
-            });
+    onLifeEvent(act, event, pose) {
+        if (!this.spray) return;
+        const splash = {
+            spray: this.spray,
+            foam: this.foam,
+            arc: act,
+            pose,
+            now: this.clock,
+            density: splashDensity(this.spray.count),
+            eye: REST_RIG.eye,
+        };
+        const near = Math.hypot(pose.x - REST_RIG.eye.x, pose.z - REST_RIG.eye.z) < 26;
+        switch (event.type) {
+        case 'breach':
+            dolphinBreach(splash);
+            this.addRing(surfaceAt(act.x, act.y, act.z), act.z, 0.9);
+            break;
+        case 'entry': {
+            dolphinEntry(splash);
+            const x = act.x + act.vx * act.flight;
+            const z = act.z + act.vz * act.flight;
+            this.addRing(surfaceAt(x, 0, z), z, 1.1);
+            break;
         }
-        this.addRing(surfaceAt(x, y, z), z, 1.1 * strength);
+        case 'surface':
+        case 'dip':
+            splash.rising = event.type === 'surface';
+            rollSplash(splash);
+            if (near) this.addRing(surfaceAt(pose.x, 0, pose.z), pose.z, 0.5);
+            break;
+        case 'whale-rise':
+        case 'whale-fall':
+        case 'whale-blow':
+        case 'whale-slip':
+            splash.stage = event.type.slice(6);
+            whaleSplash(splash);
+            break;
+        case 'fish-out':
+        case 'fish-touch':
+        case 'fish-in':
+            fishSplash(splash);
+            break;
+        default:
+            break;
+        }
     }
 
     // ── events ──────────────────────────────────────────────────────────────────
@@ -705,6 +778,29 @@ export class WavesWorld {
             this.glowSwell.hit(0.16, this.time);
             s.flash = Math.max(s.flash, 0.12);
             s.tear = Math.max(s.tear, 0.25);
+            // Struck that hard the water stands up: a spout in the piece's colour where it went
+            // in, and white water boiling round its foot. A hand that drops a piece a second
+            // would stand a forest of them beside the board: one struck straight after another
+            // is a small one (`rested`: 0 at once, 1 after a breath).
+            const rested = clamp01((this.clock - s.hardAt) / HARD_DROP_REST);
+            s.hardAt = this.clock;
+            this.spray.column(this.clock, foot.x, foot.y, foot.z, {
+                n: Math.round((this.spray.count / 80) * (0.3 + 0.7 * rested)),
+                up: [0.7, 1.4 + 0.3 * rested],
+                size: 0.032,
+                rgb: tmpTint,
+                lean: [0.04, 0.1],
+                life: [1.5, 2.5],
+            });
+            for (let k = 0; k < 3; k += 1) {
+                this.foam.puff(this.clock, this.clock + k * 0.08, foot.x, foot.y + 0.15, foot.z + 0.2, {
+                    v: [(k - 1) * 0.5, 0.9 + k * 0.5, 0.5],
+                    size: 0.28,
+                    spread: 0.5,
+                    life: 2,
+                    strength: 0.1 + 0.12 * rested,
+                });
+            }
         }
         this.surge.lock(c, this.time);
     }
@@ -747,9 +843,15 @@ export class WavesWorld {
             speed: [0.7 + lines * 0.12 + depth * 0.1, 1.5 + lines * 0.4 + depth * 0.25],
             size: 0.028 + lines * 0.003,
         });
+        // Every line startles fish out of the trough: a few for one, a school for four.
+        this.sendFish(2 + lines * 3 + depth, lines);
         if (c.twist) {
             this.spray.swirl(this.clock, open, { d: landingDistance(open) + 2.5, n: Math.round(this.spray.count / 5) });
             s.tear = 1;
+            // And a spinner answers the twist with its own: thrown clear, turning on its length.
+            this.pod.leap(this.clock + 0.5, open, {
+                kind: 'spinner', style: 'spin', turns: 2 + lines, height: 1.7 + lines * 0.2, d: 8.5 + this.fxRand() * 4,
+            });
         }
         if (c.b2b === true) this.backToBack(open);
         if (big) {
@@ -770,10 +872,12 @@ export class WavesWorld {
                 prism: 0.42,
                 life: [3.4, 5.2],
             });
+            this.spit();
         }
         if (c.perfect) {
             this.crownSwell.hit(0.8, at);
             this.sendPod(this.pod.count, true);
+            this.sendWhale();
         }
         this.surge.clear(c, at);
     }
@@ -803,6 +907,7 @@ export class WavesWorld {
             life: [3.2, 4.6],
         });
         this.sendPod(this.pod.count, true);
+        this.sendWhale();
         this.surge.crown(this.time);
     }
 
@@ -837,6 +942,115 @@ export class WavesWorld {
         });
         s.tear = Math.max(s.tear, 0.45);
         this.surge.spin(this.time);
+    }
+
+    /**
+     * The tube spits: the air a collapsing barrel squeezes out of itself, a blast of mist from
+     * behind the rider that fills the tube and is blown out through its eye. Four lines hold the
+     * wave's clock, so it hangs in the light before it goes.
+     */
+    spit() {
+        if (!this.foam) return;
+        const rand = this.fxRand;
+        const n = Math.max(6, Math.round(this.foam.count / 6));
+        for (let k = 0; k < n; k += 1) {
+            const a = rand() * Math.PI * 2;
+            const r = Math.sqrt(rand());
+            const x = r * Math.cos(a) * 2.4;
+            const y = 2.6 + r * Math.sin(a) * 2;
+            this.foam.puff(this.clock, this.clock + rand() * 0.35, x, y, 2.5, {
+                v: [-0.6 - rand() * 1.6, (rand() - 0.5) * 2, -(11 + rand() * 16)],
+                size: 0.8 + rand() * 0.9,
+                spread: 1.2 + rand() * 0.9,
+                life: 2.6 + rand() * 1.4,
+                strength: 0.14 + rand() * 0.1,
+            });
+        }
+        this.state.tear = 1;
+    }
+
+    /**
+     * Fish startled out of the trough beside the card's foot: `n` of them (as many as the tier
+     * may draw), fanning away from the wave.
+     */
+    sendFish(n, lines = 1) {
+        if (!this.pod) return;
+        const rand = this.fxRand;
+        const count = Math.min(Math.round(n * (this.tier.life ?? 1)), this.pod.capacity.flyingFish);
+        const x = -1.4 - rand() * 1.6;
+        const z = -5 - rand() * 2.5;
+        const bearing = -2.25 + (rand() - 0.5) * 0.4;
+        for (let i = 0; i < count; i += 1) {
+            const a = bearing + (rand() - 0.5) * 0.8;
+            this.pod.add(makeSkitter({
+                at: this.clock + 0.15 + i * (0.05 + rand() * 0.12),
+                x: x + (rand() - 0.5) * 2,
+                z: z + (rand() - 0.5) * 2.4,
+                hx: Math.cos(a),
+                hz: Math.sin(a),
+                speed: 1.9 + rand() * 0.8 + lines * 0.1,
+                vy: 0.32 + rand() * 0.16 + lines * 0.02,
+                hops: rand() < 0.3 ? 2 : 1,
+                seed: rand() * 6.28,
+                variant: rand(),
+            }));
+        }
+    }
+
+    /**
+     * A perfect clear's humpback: thrown out of the sea in the eye of the barrel, close enough to
+     * fill it, beside the sun's road. One at a time.
+     */
+    sendWhale() {
+        if (!this.pod) return;
+        const busy = this.pod.acts.some((act) => act.type === 'whale');
+        if (busy) return;
+        const rand = this.fxRand;
+        const z = -52 - rand() * 14;
+        // (Left of the sun's road, where the eye of the barrel is widest.)
+        const x = z * (0.3 + rand() * 0.1);
+        const turn = rand() < 0.5 ? -1 : 1;
+        this.pod.add(makeWhale({
+            at: this.clock + 0.9,
+            mode: 'breach',
+            x,
+            z,
+            hx: 0.92 * turn,
+            hz: -0.39,
+            seed: rand() * 6.28,
+            variant: rand(),
+            twist: turn,
+        }));
+    }
+
+    /**
+     * A chain's escort: dolphins in the wall beside the rider, called as the chain grows (not
+     * again while the last are still there).
+     */
+    sendEscort(n) {
+        const s = this.state;
+        if (!this.pod || this.clock - s.escortAt < 11) return;
+        s.escortAt = this.clock;
+        const rand = this.fxRand;
+        const row = 0.17 + rand() * 0.1;
+        for (let i = 0; i < n; i += 1) {
+            const lag = i * (1.2 + rand() * 0.8);
+            this.pod.add(makeRide({
+                kind: rand() < 0.7 ? 'bottlenose' : 'spinner',
+                at: this.clock + i * 0.4,
+                life: 13 + rand() * 3,
+                row: row + (i % 2 ? 0.07 : -0.02) * i,
+                rowAmp: 0.012 + rand() * 0.02,
+                rowRate: 0.25 + rand() * 0.2,
+                d0: -2.2 - lag,
+                d1: 5.4 - lag,
+                depth: 0.5 + rand() * 0.4,
+                depthAmp: 0.1 + rand() * 0.1,
+                fade: false,
+                seed: rand() * 6.28,
+                variant: rand(),
+            }));
+        }
     }
 
     /**
@@ -892,6 +1106,8 @@ export class WavesWorld {
                 this.sendPod(add, hero);
             }
         }
+        // From four clears on the pod also rides the wall beside the rider.
+        if (next > s.combo && next >= 4) this.sendEscort(Math.min(3, Math.floor(next / 2) - 1));
         if (next === 0) s.heroInChain = false;
         s.combo = next;
     }
@@ -914,16 +1130,25 @@ export class WavesWorld {
     launchOwed() {
         const s = this.state;
         while (s.owed > 0) {
-            const slot = this.pod.freeSlot(this.clock);
-            if (slot < 0) return;
+            if (!this.pod.canLeap()) return;
             const at = Math.max(this.clock + LEAP_LEAD, s.nextLeap + LEAP_SPACING);
             const hero = s.heroOwed;
-            this.pod.leap(at, this.U.open.value, { hero, d: hero ? 12.5 : null, slot });
+            this.pod.leap(at, this.U.open.value, { hero, d: hero ? 12.5 : null });
             s.heroOwed = false;
             s.nextLeap = at;
             s.owed -= 1;
             s.leaps += 1;
         }
+    }
+
+    /**
+     * Send one of the sea's own visits now (waves-ambient.js VISITS: 'ridePod', 'skitter',
+     * 'whaleBreach', ...). The sea sends them by the clock; this is for captures and the playground.
+     */
+    sendVisit(name, seed = 1) {
+        if (!this.pod) return;
+        const rand = mulberry32((seed | 0) * 7919 + 13);
+        stageVisit(name, rand, this.clock, this.tier.life ?? 1).forEach((act) => this.pod.add(act));
     }
 
     /** A new level: a set wave, and the hour turns with it (`silent`: it simply is that level). */
@@ -940,6 +1165,8 @@ export class WavesWorld {
         }
         this.startSet(LEVEL_SET_HEIGHT);
         s.tear = Math.max(s.tear, 0.5);
+        // The new hour comes in on the wing: shearwaters cross the eye of the barrel as it turns.
+        this.sendVisit('birds', s.level);
         this.surge.levelUp(this.time);
     }
 
@@ -971,6 +1198,7 @@ export class WavesWorld {
             this.lightRows[i].set(colour[0] * k, colour[1] * k, colour[2] * k, 0);
         }
         this.U.stars.value = light.stars;
+        this.U.glowing.value = smooth(0.45, 1, light.stars);
         if (!this.sunPin) {
             sunDirection(SUN.azimuth, light.elevation, this.sunDir);
             this.U.sun.value.copy(this.sunDir);
@@ -1064,7 +1292,11 @@ export class WavesWorld {
         const held = openForCombo(s.combo);
         s.openHeld += (held - s.openHeld) * approach(held > s.openHeld ? 1.5 : 0.4, dt);
         s.openKick *= Math.exp(-0.7 * dt);
-        U.open.value = clamp01(s.openHeld + s.openKick + warmth * 0.08 + fever * 0.06);
+        // The sea's own state, on its own clock: how much foam it carries, how hard the wind
+        // tears at the lip, how heavy the wave stands, how lively its surface is.
+        const sea = seaAt(this.seaPin ?? this.clock / SEA_SECONDS, this.sea);
+        U.sea.value.set(sea.foam, sea.wind, sea.heavy, sea.chop);
+        U.open.value = clamp01(s.openHeld + s.openKick + warmth * 0.08 + fever * 0.06 + sea.heavy * 0.16);
         s.radiance += (held - s.radiance) * approach(held > s.radiance ? 1.2 : 0.5, dt);
         // The evening leans toward gold with the chain, the heat and a perfect clear's crown.
         const warm = Math.min(1, s.combo / 9) * 0.55;
@@ -1078,7 +1310,8 @@ export class WavesWorld {
         U.glow.value = Math.min(1.6, s.glow + s.radiance * 0.9 + warmth * 0.2 + fever * 0.2 + crown * 0.2);
         // The glass glitters sharper as play heats and the bands of light burn a little brighter;
         // each event sends a shiver over it.
-        U.ripple.value = Math.min(1.4, 1 + warmth * 0.1 + fever * 0.08 + punch * 0.15);
+        U.ripple.value = Math.min(1.5, 1 + (sea.chop - SEA_STATES[0].chop) * 0.3 + warmth * 0.1 + fever * 0.08
+            + punch * 0.15);
         U.heat.value = Math.min(1, warmth * 0.45 + fever * 0.55 + crown * 0.2);
         // A set wave runs the length of the tube, from ahead to behind the eye: a new level's or a
         // back-to-back's, or else the one the clock sends half-way through every hour.
@@ -1109,7 +1342,8 @@ export class WavesWorld {
         }
         // The tube swells with the barrel's opening, and with hot play it swells and heaves.
         const swell = warmth * 0.012 + fever * 0.022;
-        bulge.w = U.open.value * 0.03 + swell * (1 + 0.35 * still * Math.sin(this.clock * 0.9));
+        bulge.w = U.open.value * 0.03 + sea.heavy * 0.012
+            + swell * (1 + 0.35 * still * Math.sin(this.clock * 0.9));
         // A chain keeps the lip throwing, and so does a set wave as it comes through, and hot play:
         // the lip tears longer and its standing rain leaves harder.
         U.tear.value = Math.max(
@@ -1117,9 +1351,10 @@ export class WavesWorld {
             s.radiance * 0.45,
             tide >= 0 ? 0.4 * Math.exp(-1.3 * tide) : 0,
             warmth * 0.4 + fever * 0.5,
+            sea.wind * 0.42,
         );
 
-        this.pod.update(this.clock, this.splash);
+        this.pod.update(this.clock, U.open.value, this.lifeEvent);
         this.launchOwed();
         this.keepThrowing(dt * scale, warmth, fever);
 
@@ -1199,6 +1434,9 @@ export class WavesWorld {
             hourNext: this.light.next,
             hourMix: this.light.mix,
             hourPlace: this.hourPlace(),
+            /** The sea's own state: the one it stands nearest to, and its four numbers. */
+            sea: this.sea.name,
+            seaState: [this.sea.foam, this.sea.wind, this.sea.heavy, this.sea.chop],
             hours: HOURS.length,
             sunElevation: this.sunPin?.elevation ?? this.light.elevation,
             setWave: this.U.bulge.value.y > 0,
@@ -1209,6 +1447,9 @@ export class WavesWorld {
             rings: this.ringCount,
             ribbons: this.ribbonCount,
             airborne: this.pod?.airborne ?? 0,
+            /** How many of each animal are drawn, and what the sea is sending by itself. */
+            life: this.pod ? { ...this.pod.drawn } : {},
+            visit: this.pod?.ambient?.nameAt(this.clock) ?? null,
             holding: s.holdAge >= 0,
             /** How hot play runs: the level, the fever and the act (calm, warm, hot, fever). */
             heat: this.heat.level,
@@ -1231,6 +1472,7 @@ export class WavesWorld {
     }
 
     dispose() {
+        this.disposed = true;
         Object.values(this.parts).forEach((part) => part.dispose());
         this.parts = {};
         this.pod = null;
@@ -1239,6 +1481,8 @@ export class WavesWorld {
         this.group.removeFromParent();
         this.noise?.dispose();
         this.noise = null;
+        this.lace?.dispose();
+        this.lace = null;
         this.camera = null;
     }
 }

@@ -1,7 +1,8 @@
 /**
- * Waves — the hours: the wheel of light a new level steps and the clock turns by itself.
+ * Waves — the hours: the wheel of light a new level steps and the clock turns by itself, and the
+ * sea's own states on a wheel beside it.
  *
- * The table and the wheel's arithmetic are plain numbers (waves-hours.js). The world is built
+ * The tables and the wheels' arithmetic are plain numbers (waves-hours.js). The world is built
  * for real, without a renderer: where the light stands is a function of its clock and its level,
  * and what it hands the shaders are the rows of one uniform array the tests read back.
  *
@@ -9,17 +10,22 @@
  * things (a level is one hour, the clock adds to it, a held hour stays held) and read every
  * number they need from the modules.
  */
+import { readFileSync } from 'node:fs';
 import {
-    afterEach, describe, expect, it, vi,
+    afterEach, beforeAll, describe, expect, it, vi,
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    HOURS, HOUR_COLOURS, HOUR_REST, HOUR_SCALARS, HOUR_SECONDS, SET_SECONDS, hourAt, hourMix, levelPlace, restPlace,
-    tideSetAge,
+    HOURS, HOUR_COLOURS, HOUR_REST, HOUR_SCALARS, HOUR_SECONDS, SEA_KEYS, SEA_REST, SEA_SECONDS, SEA_STATES, SET_SECONDS,
+    hourAt, hourMix, levelPlace, restPlace, seaAt, tideSetAge,
 } from '../../src/themes/waves/waves-hours.js';
-import { REST_RIG, WavesWorld, fovForAspect } from '../../src/themes/waves/waves-world.js';
+import {
+    REST_RIG, WavesWorld, fovForAspect, openForCombo,
+} from '../../src/themes/waves/waves-world.js';
+import { landingDistance } from '../../src/themes/waves/waves-core.js';
 import { fallbackLayout } from '../../src/themes/waves/waves-composition.js';
 import { SUN, sunDirection } from '../../src/themes/waves/waves-tsl.js';
+import { parseSeaLife, useSeaLife } from '../../src/themes/waves/waves-cast.js';
 
 vi.setConfig({ testTimeout: 30_000 }); // the world tests build a wave each, on a machine that may be busy
 
@@ -34,12 +40,22 @@ function frame(world, camera, delta = 0) {
     world.update(sim, camera);
 }
 
+// The animals' bodies, read from disk as the theme reads them: no world here waits for a file.
+beforeAll(() => {
+    useSeaLife(parseSeaLife(readFileSync(new URL('../../src/themes/waves/assets/sea-life.glb', import.meta.url))));
+});
+
+/**
+ * A world for the light: its sea is held on glass and sends no visits of its own unless a test
+ * says otherwise (the sea's state opens the barrel a little and tears at the lip, and its visits
+ * lay rings on the water: both have tests of their own, below and in waves-world-life.test.js).
+ */
 function makeWorld({ at = 0, ...options } = {}) {
     const scene = new THREE.Scene();
     const aspect = 16 / 9;
     const camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
     const world = new WavesWorld({
-        scene, quality: 'Minimal', capture: true, ...options,
+        scene, quality: 'Minimal', capture: true, ambient: false, sea: 0, ...options,
     }).build();
     world.setViewport(1600, 900, aspect);
     world.setLayout(fallbackLayout(1600, 900), aspect);
@@ -529,5 +545,222 @@ describe('waves hours: the world', () => {
         expect(tide.world.U.bulge.value.x).toBeLessThan(clockPlace);
         run(tide.world, tide.camera, SET_SECONDS / 2 - DT);
         expect(tide.world.U.bulge.value.y).toBeGreaterThan(clockHeight);
+    });
+});
+
+describe('waves hours: the sea\'s own states', () => {
+    const numbers = (sea) => SEA_KEYS.map((key) => sea[key]);
+
+    it('has a handful of states, each with a name and how far four things have come in', () => {
+        expect(SEA_STATES.map((state) => state.name)).toEqual(['glass', 'offshore', 'heavy', 'sparkling']);
+        // The order the water's uniform takes them in (waves-world.js U.sea).
+        expect(SEA_KEYS).toEqual(['foam', 'wind', 'heavy', 'chop']);
+        expect(Object.isFrozen(SEA_STATES) && Object.isFrozen(SEA_KEYS)).toBe(true);
+        for (const state of SEA_STATES) {
+            expect(Object.isFrozen(state), state.name).toBe(true);
+            expect(Object.keys(state).sort(), state.name).toEqual([...SEA_KEYS, 'name'].sort());
+            for (const key of SEA_KEYS) {
+                expect(state[key], `${state.name}.${key}`).toBeGreaterThanOrEqual(0);
+                expect(state[key], `${state.name}.${key}`).toBeLessThanOrEqual(1);
+            }
+        }
+        const named = Object.fromEntries(SEA_STATES.map((state) => [state.name, state]));
+        const most = (key) => SEA_STATES.reduce((best, state) => (state[key] > best[key] ? state : best)).name;
+        // Each state is the one its name says: the wind's, the heavy swell's, the chop's.
+        expect(most('wind')).toBe('offshore');
+        expect(most('heavy')).toBe('heavy');
+        expect(most('chop')).toBe('sparkling');
+        expect(most('foam')).toBe('heavy');
+        // And glass is the sea at rest: the least of everything, no wind, the wave no heavier than it is.
+        for (const key of SEA_KEYS) expect(named.glass[key], key).toBe(Math.min(...SEA_STATES.map((state) => state[key])));
+        expect(named.glass).toMatchObject({ wind: 0, heavy: 0 });
+        // A state lasts a while and rests for part of it; its clock is not the hours' clock, so
+        // the same light does not meet the same sea each time round.
+        expect(SEA_SECONDS).toBeGreaterThan(20);
+        expect(SEA_REST).toBeGreaterThan(0);
+        expect(SEA_REST).toBeLessThan(1);
+        expect(HOUR_SECONDS % SEA_SECONDS).not.toBe(0);
+        expect((N * HOUR_SECONDS) % (SEA_STATES.length * SEA_SECONDS)).not.toBe(0);
+    });
+
+    it('rests on each state at the start of its turn, then crosses to the next', () => {
+        const count = SEA_STATES.length;
+        for (let k = 0; k < count; k++) {
+            const here = SEA_STATES[k];
+            const next = SEA_STATES[(k + 1) % count];
+            // On the state, and still on it all through its rest.
+            for (const p of [k, k + SEA_REST / 2, k + SEA_REST]) {
+                const sea = seaAt(p);
+                expect(sea, `place ${p}`).toMatchObject({ name: here.name, mix: 0 });
+                expect(numbers(sea), `place ${p}`).toEqual(numbers(here));
+            }
+            // Then on its way: further toward the next the further round, and there at the end.
+            const mixes = [0.4, 0.55, 0.7, 0.85, 0.999].map((f) => seaAt(k + SEA_REST + (1 - SEA_REST) * f).mix);
+            expect(mixes.every((mix, i) => mix > (mixes[i - 1] ?? 0) && mix < 1)).toBe(true);
+            expect(seaAt(k + 0.9999).mix).toBeGreaterThan(0.999);
+            // It is called by the state it stands nearer to.
+            expect(seaAt(k + SEA_REST + (1 - SEA_REST) * 0.4).name).toBe(here.name);
+            expect(seaAt(k + SEA_REST + (1 - SEA_REST) * 0.6).name).toBe(next.name);
+        }
+    });
+
+    it('mixes two neighbours number by number, never past either of them', () => {
+        const count = SEA_STATES.length;
+        for (let p = 0; p < count; p += 0.013) {
+            const sea = seaAt(p);
+            const from = SEA_STATES[Math.floor(p)];
+            const to = SEA_STATES[(Math.floor(p) + 1) % count];
+            for (const key of SEA_KEYS) {
+                expect(sea[key], `${key} at ${p}`).toBeCloseTo(from[key] + (to[key] - from[key]) * sea.mix, 12);
+                expect(sea[key]).toBeGreaterThanOrEqual(Math.min(from[key], to[key]) - 1e-12);
+                expect(sea[key]).toBeLessThanOrEqual(Math.max(from[key], to[key]) + 1e-12);
+            }
+            expect(Object.keys(sea).sort()).toEqual([...SEA_KEYS, 'mix', 'name'].sort());
+        }
+    });
+
+    it('is a wheel: it comes round, both ways, without a jump anywhere, and takes anything for a place', () => {
+        const count = SEA_STATES.length;
+        for (const p of [0, 0.37, 1.5, 2.99, 3.6]) {
+            for (const turns of [1, 7, -1, -12]) {
+                const here = seaAt(p);
+                const round = seaAt(p + turns * count);
+                expect(round.name, `${p} + ${turns} turns`).toBe(here.name);
+                numbers(round).forEach((value, i) => expect(value).toBeCloseTo(numbers(here)[i], 9));
+            }
+        }
+        // The seam from the last state back to the first is a crossing like any other.
+        let last = seaAt(-0.5);
+        for (let p = -0.5; p <= count + 0.5; p += 0.002) {
+            const sea = seaAt(p);
+            for (const key of SEA_KEYS) expect(Math.abs(sea[key] - last[key]), `${key} at ${p}`).toBeLessThan(0.01);
+            last = sea;
+        }
+        for (const junk of [NaN, undefined, null, Infinity, 'x']) expect(seaAt(junk)).toEqual(seaAt(0));
+        // It writes into what it is given.
+        const out = { stale: 1 };
+        expect(seaAt(1.2, out)).toBe(out);
+        expect(out).toMatchObject(seaAt(1.2));
+    });
+});
+
+describe('waves hours: the sea in the world', () => {
+    const uniform = (world) => world.U.sea.value.toArray();
+
+    it('turns the sea by the clock alone, through every state and round again', () => {
+        const { camera, world } = makeWorld({ sea: null });
+        const count = SEA_STATES.length;
+        for (let k = 0; k <= count + 1; k++) {
+            const state = SEA_STATES[k % count];
+            world.seek(k * SEA_SECONDS);
+            frame(world, camera);
+            // The water is handed its four numbers, in their order; the world says which state it is.
+            expect(uniform(world), `after ${k} states`).toEqual(SEA_KEYS.map((key) => state[key]));
+            expect(world.getState()).toMatchObject({ sea: state.name, seaState: SEA_KEYS.map((key) => state[key]) });
+            // Late in its turn it is on its way to the next.
+            world.seek((k + 0.9) * SEA_SECONDS);
+            frame(world, camera);
+            expect(world.getState().sea).toBe(SEA_STATES[(k + 1) % count].name);
+            expect(uniform(world)).not.toEqual(SEA_KEYS.map((key) => state[key]));
+        }
+        // Frame by frame it is the clock's: the same sea at the same second, however it got there.
+        world.seek(SEA_SECONDS * 1.5);
+        frame(world, camera);
+        run(world, camera, 6);
+        const walked = uniform(world);
+        world.seek(SEA_SECONDS * 1.5 + 6);
+        frame(world, camera);
+        uniform(world).forEach((value, i) => expect(value).toBeCloseTo(walked[i], 6));
+        // A level, a new run and the hour leave it alone.
+        world.levelUp(4);
+        world.resetSession();
+        frame(world, camera);
+        uniform(world).forEach((value, i) => expect(value).toBeCloseTo(walked[i], 6));
+    });
+
+    it('holds the sea at a place it is given, whatever the clock says', () => {
+        const heavy = SEA_STATES.findIndex((state) => state.name === 'heavy');
+        const { camera, world } = makeWorld({ sea: heavy, at: 10 });
+        expect(world.getState().sea).toBe('heavy');
+        const held = uniform(world);
+        expect(held).toEqual(SEA_KEYS.map((key) => SEA_STATES[heavy][key]));
+        run(world, camera, 3);
+        world.seek(SEA_SECONDS * 3.2);
+        frame(world, camera);
+        expect(uniform(world)).toEqual(held);
+        // Between two states is a place too.
+        const between = makeWorld({ sea: 0.8, at: 500 }).world;
+        expect(uniform(between)).toEqual(SEA_KEYS.map((key) => seaAt(0.8)[key]));
+        // A held glass is place 0, not "no hold"; anything that is not a number holds nothing.
+        expect(makeWorld({ sea: 0, at: SEA_SECONDS * 2 }).world.getState().sea).toBe('glass');
+        expect(makeWorld({ sea: NaN, at: SEA_SECONDS * 2 }).world.getState().sea).toBe('heavy');
+        expect(makeWorld({ sea: null, at: SEA_SECONDS }).world.getState().sea).toBe('offshore');
+    });
+
+    it('stands the barrel a little open in a heavy sea, tears the lip in the wind and sharpens the glitter in a chop', () => {
+        const at = Object.fromEntries(SEA_STATES.map((state, place) => [state.name, makeWorld({ sea: place, at: 10 })]));
+        const read = ({ world }) => ({
+            open: world.U.open.value,
+            landing: world.getState().landing,
+            swell: world.U.bulge.value.w,
+            tear: world.U.tear.value,
+            ripple: world.U.ripple.value,
+        });
+        const glass = read(at.glass);
+        const heavy = read(at.heavy);
+        // Glass is the wave as it is built: shut, untorn, unswollen.
+        expect(glass).toMatchObject({
+            open: 0, landing: landingDistance(0), swell: 0, tear: 0,
+        });
+        // A heavy sea: a thicker, wider wave. A little, not a chain's worth.
+        expect(heavy.open).toBeGreaterThan(0.05);
+        expect(heavy.open).toBeLessThan(openForCombo(3));
+        expect(heavy.landing).toBeLessThan(glass.landing);
+        expect(heavy.swell).toBeGreaterThan(0);
+        // An offshore wind tears at the lip with nothing happening on the board.
+        expect(read(at.offshore).tear).toBeGreaterThan(heavy.tear);
+        expect(heavy.tear).toBeGreaterThan(0);
+        expect(read(at.offshore).tear).toBeLessThan(0.6);
+        // A chop is a livelier surface.
+        expect(read(at.sparkling).ripple).toBeGreaterThan(read(at.heavy).ripple);
+        expect(read(at.heavy).ripple).toBeGreaterThan(glass.ripple);
+        expect(glass.ripple).toBeGreaterThan(0.8);
+        expect(read(at.sparkling).ripple).toBeLessThanOrEqual(1.5);
+        // It stays so, frame after frame, and adds to what the board holds open: never past wide open.
+        const { camera, world } = at.heavy;
+        run(world, camera, 2);
+        expect(world.U.open.value).toBeCloseTo(heavy.open, 9);
+        world.onCombo(14);
+        world.onClear({ lines: 4 });
+        let widest = 0;
+        run(world, camera, 12, DT, () => { widest = Math.max(widest, world.U.open.value); });
+        expect(widest).toBeGreaterThan(openForCombo(14));
+        expect(widest).toBeLessThanOrEqual(1);
+        expect(world.U.tear.value).toBeLessThanOrEqual(1);
+    });
+
+    it('lights the sea\'s own cold light only when the hour is dark', () => {
+        const { camera, world } = makeWorld();
+        const glowing = (place) => {
+            world.seek(place * HOUR_SECONDS);
+            frame(world, camera);
+            return world.U.glowing.value;
+        };
+        const moon = NAMES.indexOf('moon');
+        expect(glowing(NAMES.indexOf('golden'))).toBe(0);
+        expect(glowing(NAMES.indexOf('sunset'))).toBe(0);
+        expect(glowing(NAMES.indexOf('day'))).toBe(0);
+        expect(glowing(moon)).toBe(1);
+        // It comes on as the last light goes, after the stars are out, never ahead of them...
+        const dusk = [];
+        for (let place = moon - 1; place <= moon; place += 0.01) {
+            dusk.push({ glow: glowing(place), stars: world.U.stars.value });
+        }
+        expect(dusk.every(({ glow }, i) => i === 0 || glow >= dusk[i - 1].glow)).toBe(true);
+        expect(dusk.every(({ glow, stars }) => glow === 0 || stars > 0.4)).toBe(true);
+        expect(dusk.some(({ glow }) => glow > 0 && glow < 1)).toBe(true);
+        expect(dusk.filter(({ stars }) => stars > 0).length).toBeGreaterThan(dusk.filter(({ glow }) => glow > 0).length);
+        // ...and is gone again by first light.
+        expect(glowing(moon + 1)).toBe(0);
     });
 });

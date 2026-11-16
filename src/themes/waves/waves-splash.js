@@ -25,7 +25,7 @@ import {
     smoothstep, texture, uv, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import { FLOW, TAU, wavePoint } from './waves-core.js';
-import { FLUKE_REACH, NOSE_REACH, dolphinPose } from './waves-life.js';
+import { FLUKE_REACH, NOSE_REACH, dolphinPose } from './waves-acts.js';
 import {
     additive, cameraRight, cameraUp, quads,
 } from './waves-spray.js';
@@ -347,8 +347,10 @@ export function dolphinBreach({
             range(1.8, 2.8),
         );
     }
-    // The sheet: water dragged up through the hole after the body, until the flukes are out.
+    // The sheet: water dragged up through the hole after the body, until the flukes are out. (A
+    // hole in the flat sea has no water below its rim: what would start under it starts on it.)
     const clear = Math.max(0.1, arc.clearAt);
+    const rim = arc.row > 0 ? -Infinity : 0.02;
     for (let k = count(40, density); k > 0; k -= 1) {
         const tau = clear * rand() ** 0.8;
         const a = rand() * TAU;
@@ -364,7 +366,7 @@ export function dolphinBreach({
             now,
             t0 + tau + 0.03,
             arc.x + rx * r,
-            arc.y + ry * r,
+            Math.max(arc.y + ry * r, rim),
             arc.z + rz * r,
             fx * drag + rx * out,
             fy * drag + ry * out,
@@ -592,4 +594,197 @@ export function dolphinEntry({
             flat: 1,
         });
     });
+}
+
+// ── The rest of the sea life ────────────────────────────────────────────────────────────────
+
+/**
+ * How much bigger than life a splash is drawn far out at sea, so it still reads: 1 within a few
+ * metres of the eye, growing with the distance (a whale's white water is seen at two hundred).
+ */
+export function farReach(x, y, z, eye, most = 16) {
+    if (!eye) return 1;
+    return Math.max(1, Math.min(most, Math.hypot(x - eye.x, y - eye.y, z - eye.z) / 9));
+}
+
+/**
+ * A dolphin rolling through the surface as it travels (`pose`: where its middle is as it breaks
+ * it, waves-acts.js): going up, a low bow wave it pushes ahead and the puff of its breath; going
+ * down, the water closing over its back and a patch of foam left lying.
+ */
+export function rollSplash({
+    spray, foam, pose: at, now, density = 1, eye = null, rising = true, rgb = SEA_WHITE,
+}) {
+    const { rand } = spray;
+    const range = (a, b) => a + (b - a) * rand();
+    const grow = farReach(at.x, 0, at.z, eye);
+    const big = Math.sqrt(grow);
+    const scale = at.metres / 2.6;
+    const flat = Math.hypot(at.fx, at.fz) || 1;
+    const hx = at.fx / flat;
+    const hz = at.fz / flat;
+    // Ahead of it going up, behind its flukes going down.
+    const lead = (rising ? 0.45 : -0.35) * at.metres;
+    const x = at.x + hx * lead;
+    const z = at.z + hz * lead;
+    for (let k = count(rising ? 16 : 12, density); k > 0; k -= 1) {
+        const a = rand() * TAU;
+        const out = range(0.15, 0.55) * big;
+        spray.drop(
+            now,
+            now + range(0, 0.12),
+            x + Math.cos(a) * 0.15 * scale,
+            0.03,
+            z + Math.sin(a) * 0.15 * scale,
+            Math.cos(a) * out + hx * (rising ? 0.5 : -0.2) * big,
+            range(0.25, rising ? 0.8 : 0.55) * big,
+            Math.sin(a) * out + hz * (rising ? 0.5 : -0.2) * big,
+            (range(0.025, 0.05) + 0.03 * rand() ** 4) * grow * scale,
+            rgb,
+            range(1.4, 2.4),
+        );
+    }
+    if (!foam) return;
+    foam.puff(now, now, x, 0.1, z, {
+        v: [hx * 0.3, range(0.25, 0.45), hz * 0.3],
+        size: range(0.22, 0.32) * scale * big,
+        spread: range(0.3, 0.5) * big,
+        life: range(1.5, 2.2),
+        strength: range(0.2, 0.28),
+    });
+    if (rising) {
+        // Its breath: a quick low puff over the blowhole.
+        foam.puff(now, now + 0.25, at.x + hx * 0.2 * at.metres, 0.35 * scale, at.z + hz * 0.2 * at.metres, {
+            v: [hx * 0.2, range(0.9, 1.3) * big, hz * 0.2],
+            size: 0.12 * scale * big,
+            spread: 0.3 * big,
+            life: 1.3,
+            strength: 0.16,
+        });
+    } else {
+        foam.puff(now, now + 0.1, x, 0.03, z, {
+            size: range(0.4, 0.55) * scale * big,
+            spread: range(0.2, 0.32),
+            life: range(3, 4),
+            strength: range(0.16, 0.22),
+            flat: 1,
+        });
+    }
+}
+
+/**
+ * The humpback at the surface (`stage`: 'rise' as it bursts out, 'fall' as it comes down on its
+ * back, 'blow' its spout, 'slip' its flukes sliding under). It is far out at sea: its white water
+ * is written in metres, not in drops.
+ */
+export function whaleSplash({
+    spray, foam, pose: at, now, density = 1, stage = 'blow', rgb = SEA_WHITE,
+}) {
+    const { rand } = spray;
+    const range = (a, b) => a + (b - a) * rand();
+    const L = at.metres;
+    const flat = Math.hypot(at.fx, at.fz) || 1;
+    const hx = at.fx / flat;
+    const hz = at.fz / flat;
+    const { x, z } = at;
+    const puff = (px, py, pz, o) => foam?.puff(now, now + (o.wait || 0), px, py, pz, o);
+    if (stage === 'blow') {
+        // The spout: a bushy column twice the height of a man, leaning with the wind.
+        const bx = x + hx * L * 0.28;
+        const bz = z + hz * L * 0.28;
+        for (let k = 0; k < 5; k += 1) {
+            puff(bx, 0.6 + k * 0.3, bz, {
+                v: [range(-0.5, 0.5), range(5.5, 8.5) - k * 0.6, range(-0.5, 0.5)],
+                size: range(0.5, 0.8),
+                spread: range(0.7, 1.1),
+                life: range(2.6, 3.6),
+                strength: range(0.3, 0.4),
+                wait: k * 0.07,
+            });
+        }
+        return;
+    }
+    if (stage === 'slip') {
+        for (let k = 0; k < 4; k += 1) {
+            puff(x + range(-2, 2), 0.1, z + range(-2, 2), {
+                size: range(1.6, 2.4),
+                spread: range(0.5, 0.8),
+                life: range(4, 5.5),
+                strength: range(0.2, 0.26),
+                flat: 1,
+            });
+        }
+        return;
+    }
+    const falling = stage === 'fall';
+    // The white water it tears up: round the hole as it bursts out, along its whole length as it
+    // comes down.
+    const puffs = falling ? 18 : 9;
+    for (let k = 0; k < puffs; k += 1) {
+        const a = rand() * TAU;
+        const along = falling ? range(-0.45, 0.45) * L : 0;
+        const r = range(1, falling ? 3.5 : 2.6);
+        puff(x + hx * along + Math.cos(a) * r, range(0.3, 1.4), z + hz * along + Math.sin(a) * r, {
+            v: [
+                Math.cos(a) * range(1.5, falling ? 5 : 3),
+                range(3, falling ? 9 : 6),
+                Math.sin(a) * range(1.5, falling ? 5 : 3),
+            ],
+            size: range(1.6, falling ? 3.4 : 2.6),
+            spread: range(1.2, 2.2),
+            life: range(3.2, 5),
+            strength: range(0.3, 0.42),
+            wait: range(0, falling ? 0.35 : 0.2),
+        });
+    }
+    for (let k = 0; k < (falling ? 5 : 2); k += 1) {
+        puff(x + range(-3, 3), 0.1, z + range(-3, 3), {
+            size: range(3, 5), spread: range(0.6, 1), life: range(5, 7), strength: range(0.2, 0.28), flat: 1, wait: 0.5,
+        });
+    }
+    // And the heavy water thrown clear of it, in gouts too big to span with a hand.
+    for (let k = count(falling ? 110 : 50, density); k > 0; k -= 1) {
+        const a = rand() * TAU;
+        const along = falling ? range(-0.45, 0.45) * L : 0;
+        const out = range(0.4, falling ? 3.2 : 2);
+        spray.drop(
+            now,
+            now + range(0, 0.3),
+            x + hx * along + Math.cos(a) * range(0.5, 2.5),
+            0.3,
+            z + hz * along + Math.sin(a) * range(0.5, 2.5),
+            Math.cos(a) * out,
+            range(1.2, falling ? 3.2 : 2.6),
+            Math.sin(a) * out,
+            range(0.35, 0.8) + 0.5 * rand() ** 4,
+            rgb,
+            range(3.5, 5.5),
+        );
+    }
+}
+
+/** A flying fish leaving the water, touching it with its tail, or dropping back in: a few drops. */
+export function fishSplash({
+    spray, pose: at, now, density = 1, eye = null, rgb = SEA_WHITE,
+}) {
+    const { rand } = spray;
+    const range = (a, b) => a + (b - a) * rand();
+    const grow = farReach(at.x, 0, at.z, eye, 3);
+    for (let k = Math.max(2, Math.round(5 * density)); k > 0; k -= 1) {
+        const a = rand() * TAU;
+        const out = range(0.08, 0.3);
+        spray.drop(
+            now,
+            now + range(0, 0.05),
+            at.x,
+            0.02,
+            at.z,
+            Math.cos(a) * out + at.fx * 0.4,
+            range(0.15, 0.45),
+            Math.sin(a) * out + at.fz * 0.4,
+            range(0.018, 0.035) * grow,
+            rgb,
+            range(1, 1.7),
+        );
+    }
 }

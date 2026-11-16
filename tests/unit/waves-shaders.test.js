@@ -14,8 +14,14 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import { context } from 'three/tsl';
+import { readFileSync } from 'node:fs';
 import { WavesWorld } from '../../src/themes/waves/waves-world.js';
 import { hasMaterialXNoise } from './helpers/materialx-noise.js';
+import { parseSeaLife } from '../../src/themes/waves/waves-cast.js';
+import { LIFE_MASK } from '../../src/themes/waves/waves-fauna.js';
+
+/** The sea life's bodies: with them the world builds its two sea-life materials too. */
+const PACK = parseSeaLife(readFileSync(new URL('../../src/themes/waves/assets/sea-life.glb', import.meta.url)));
 
 vi.setConfig({ testTimeout: 120_000 });
 
@@ -182,7 +188,9 @@ describe.each(TIERS)('waves shaders at %s', (quality) => {
     beforeAll(() => {
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 900);
-        world = new WavesWorld({ scene, quality, capture: true }).build();
+        world = new WavesWorld({
+            scene, quality, capture: true, seaLife: PACK,
+        }).build();
         world.setViewport(1920, 1080, 16 / 9);
         world.bindCamera(camera);
         const seen = new Set();
@@ -207,6 +215,21 @@ describe.each(TIERS)('waves shaders at %s', (quality) => {
     it('builds every material in the wave on both backends without a word', () => {
         expect(built.length).toBeGreaterThan(6);
         expect(built.flatMap(problemsOf)).toEqual([]);
+    });
+
+    it('builds the sea life\'s two materials: in the air (its own alpha for the lens), and behind the water', () => {
+        for (const name of [/^waves-life$/, /^waves-life-under$/]) {
+            for (const label of ['WGSL', 'GLSL']) expect(find(name, label), `${name} ${label}`).toBeTruthy();
+        }
+        const { air, under } = world.pod.fauna.materials;
+        // The whole fragment: an opaque material's own alpha reaches the target only this way.
+        expect(air.fragmentNode).toBeTruthy();
+        expect(air.transparent).toBe(false);
+        expect(find(/^waves-life$/).out.fragment).toContain(String(LIFE_MASK));
+        // Drawn only where something nearer has been drawn already: behind the water.
+        expect(under.depthFunc).toBe(THREE.GreaterDepth);
+        expect(under.depthWrite).toBe(false);
+        expect(under.transparent).toBe(true);
     });
 
     it('cuts the lip\'s torn edge by coverage, from an alpha the water writes (no screen-space dither)', () => {
