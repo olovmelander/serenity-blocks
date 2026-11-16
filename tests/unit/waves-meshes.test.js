@@ -1,20 +1,25 @@
 /**
- * Waves — the generated meshes face the right way.
+ * Waves — the meshes face the right way.
  *
  * The water is one sheet, folded into the wave by the vertex stage and drawn front side only: the
  * rider is inside the tube, so a quad wound the wrong way is a hole in the wall, and one flipped
- * column is a slit the sky shows through. The dolphin is lofted in code and lit by normals computed
- * from its triangles, so a ring wound the wrong way is a fish lit from inside. Neither mistake
- * throws; these tests fold the grid on the CPU, with the same shape the shader mirrors
- * (waves-core.js `wavePoint`), and pin the facing of both.
+ * column is a slit the sky shows through. The sea life is built in Blender and read from one small
+ * pack (src/themes/waves/assets/sea-life.glb, waves-cast.js): each animal is drawn front side only
+ * and lit by its own normals, so a triangle wound against them is an animal lit from inside, and a
+ * vertex that does not say what it is (which animal, which fin, how far along the body) is swum by
+ * the wrong body plan. None of these mistakes throws; these tests fold the grid on the CPU, with
+ * the same shape the shader mirrors (waves-core.js `wavePoint`), read the pack from disk the way
+ * the theme reads it, and pin the facing of both.
  */
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
     WAVE, axisOffset, sectionScale, shoulderWeight, wavePoint,
 } from '../../src/themes/waves/waves-core.js';
 import { QUALITY, QUALITY_NAMES, tierFor } from '../../src/themes/waves/waves-quality.js';
 import { buildWaveGrid } from '../../src/themes/waves/waves-water.js';
-import { DOLPHIN_LENGTH, buildDolphin } from '../../src/themes/waves/waves-life.js';
+import { KINDS } from '../../src/themes/waves/waves-acts.js';
+import { parseSeaLife } from '../../src/themes/waves/waves-cast.js';
 
 /** The grid's vertices where the still wave puts them (x, y, z per vertex). */
 function fold(grid, open = 0) {
@@ -197,136 +202,218 @@ describe('waves: the folded grid', () => {
     });
 });
 
-describe('waves: the dolphin', () => {
-    const model = buildDolphin();
-    const vertices = model.positions.length / 3;
+describe('waves: the sea life pack', () => {
+    const bytes = readFileSync(new URL('../../src/themes/waves/assets/sea-life.glb', import.meta.url));
+    const pack = parseSeaLife(bytes);
+    /** What the pack says of itself: the JSON chunk of the file (its first), as written by the build. */
+    const said = JSON.parse(bytes.subarray(20, 20 + bytes.readUInt32LE(12)).toString('utf8'));
+    const node = (name) => said.nodes.find((entry) => entry.name === name);
+    const body = (name) => pack.kinds[name].geometry;
 
-    it('lofts a body whose skin faces away from its spine', () => {
-        // The body's rings stand at one x each: the middle of a ring is on the spine.
-        const rings = new Map();
-        for (let v = 0; v < model.body; v++) {
-            const x = model.positions[v * 3];
-            if (!rings.has(x)) rings.set(x, []);
-            rings.get(x).push(v);
+    /** How wide, tall and long a body is, and where its ends are. */
+    function boxOf(name) {
+        const position = body(name).getAttribute('position');
+        const min = [Infinity, Infinity, Infinity];
+        const max = [-Infinity, -Infinity, -Infinity];
+        for (let v = 0; v < position.count; v++) {
+            [position.getX(v), position.getY(v), position.getZ(v)].forEach((value, axis) => {
+                min[axis] = Math.min(min[axis], value);
+                max[axis] = Math.max(max[axis], value);
+            });
         }
-        expect(rings.size).toBeGreaterThan(8);
-        let checked = 0;
-        const wrong = [];
-        for (const [x, ring] of rings) {
-            expect(ring.length, `ring at x ${x}`).toBeGreaterThanOrEqual(3);
-            if (Math.abs(x) > 0.9) continue; // the tips of the nose and the tail stock close to a point
-            let cy = 0;
-            let cz = 0;
-            for (const v of ring) {
-                cy += model.positions[v * 3 + 1] / ring.length;
-                cz += model.positions[v * 3 + 2] / ring.length;
+        return { min, max, size: max.map((value, axis) => value - min[axis]) };
+    }
+
+    /** Which part of the animal a vertex belongs to (the pack's own code: waves-fauna.js reads it so). */
+    const partOf = (shape, v) => Math.floor(Math.round(shape.getY(v) * 255) / 3 + 0.01);
+    const [BODY, FLIPPER, TAIL, , , REAR] = [0, 1, 2, 3, 4, 5];
+    /** The parts each body plan is swum by: without them the animal is a statue. */
+    const SWUM_BY = {
+        bottlenose: [FLIPPER, TAIL],
+        spinner: [FLIPPER, TAIL],
+        humpback: [FLIPPER, TAIL],
+        manta: [TAIL],
+        turtle: [FLIPPER, REAR],
+        flyingFish: [FLIPPER, REAR, TAIL],
+        seabird: [FLIPPER],
+    };
+
+    it('holds the seven animals, each one body with what the shaders read of every vertex', () => {
+        expect(Object.keys(pack.kinds)).toEqual(KINDS);
+        expect(said.scenes[0].extras.kinds).toEqual(KINDS);
+        expect(pack.bytes).toBe(bytes.length);
+        expect(pack.triangles).toBe(KINDS.reduce((sum, name) => sum + pack.kinds[name].triangles, 0));
+        // One small file for the whole cast: far lighter than one frame's worth of the wave's mesh.
+        expect(pack.bytes).toBeLessThan(1024 * 1024);
+        KINDS.forEach((name, number) => {
+            const geometry = body(name);
+            expect(Object.keys(geometry.attributes).sort(), name).toEqual(['aPivot', 'aShape', 'aSkin', 'normal', 'position']);
+            const { count } = geometry.getAttribute('position');
+            expect(count, name).toBeGreaterThan(100);
+            for (const [attribute, width] of [['position', 3], ['normal', 3], ['aShape', 4], ['aSkin', 4], ['aPivot', 4]]) {
+                expect(geometry.getAttribute(attribute).count, `${name}.${attribute}`).toBe(count);
+                expect(geometry.getAttribute(attribute).itemSize, `${name}.${attribute}`).toBe(width);
             }
-            for (const v of ring) {
-                const ry = model.positions[v * 3 + 1] - cy;
-                const rz = model.positions[v * 3 + 2] - cz;
-                const outward = (model.normals[v * 3 + 1] * ry + model.normals[v * 3 + 2] * rz) / Math.hypot(ry, rz);
-                if (!(outward > 0)) wrong.push(`vertex ${v} at x ${x}: its normal points at the spine (${outward})`);
-                checked += 1;
+            // The packed ones are whole numbers the GPU turns back into shares of one.
+            for (const attribute of ['aShape', 'aSkin', 'aPivot']) {
+                expect(geometry.getAttribute(attribute).normalized, `${name}.${attribute}`).toBe(true);
             }
-        }
-        expect(wrong).toEqual([]);
-        expect(checked).toBeGreaterThan(100);
+            expect(geometry.getIndex(), name).toBeTruthy();
+            expect(geometry.boundingSphere.radius, name).toBeGreaterThan(0.4);
+            // Its place in the cast, which every vertex carries: the vertex stage picks the body
+            // plan, and the fragment stage the skin, by it.
+            expect(pack.kinds[name].kind, name).toBe(number);
+            const shape = geometry.getAttribute('aShape');
+            const numbers = new Set();
+            for (let v = 0; v < count; v++) numbers.add(Math.round(shape.getW(v) * 255));
+            expect([...numbers], name).toEqual([number]);
+        });
     });
 
-    it('turns its back up and its belly down', () => {
-        let back = 0;
-        let belly = 0;
-        const wrong = [];
-        for (let v = 0; v < model.body; v++) {
-            const x = model.positions[v * 3];
-            const z = model.positions[v * 3 + 2];
-            if (Math.abs(x) > 0.9 || Math.abs(z) > 1e-6) continue; // the ridge of the back and the keel
-            const y = model.positions[v * 3 + 1];
-            const ny = model.normals[v * 3 + 1];
-            if (y > 0) {
-                back += 1;
-                if (!(ny > 0.5)) wrong.push(`back vertex ${v}: normal.y ${ny}`);
-            } else {
-                belly += 1;
-                if (!(ny < -0.5)) wrong.push(`belly vertex ${v}: normal.y ${ny}`);
-            }
+    it.each(KINDS)('%s: one unit long from tail to nose, nose along +z, the same on both sides', (name) => {
+        const { nose, tail } = pack.kinds[name];
+        const { min, max, size } = boxOf(name);
+        expect(min.concat(max).every(Number.isFinite)).toBe(true);
+        // Its nose and its tail are where the pack says they are, about a unit apart.
+        expect(max[2]).toBeGreaterThan(0);
+        expect(min[2]).toBeLessThan(0);
+        expect(Math.abs(max[2] - nose)).toBeLessThan(0.03);
+        expect(Math.abs(min[2] - tail)).toBeLessThan(0.03);
+        // (An act gives an animal its length in metres: the body is the unit it scales. The manta
+        // is as short as it is because its unit is the span of its wings.)
+        if (name === 'manta') {
+            expect(size[0]).toBeGreaterThan(0.97);
+            expect(size[0]).toBeLessThan(1.03);
+            expect(size[2]).toBeGreaterThan(0.75);
+        } else {
+            expect(size[2]).toBeGreaterThan(0.95);
+            expect(size[2]).toBeLessThan(1.1);
         }
-        expect(wrong).toEqual([]);
-        expect(back).toBeGreaterThan(8);
-        expect(belly).toBeGreaterThan(8);
+        // The bird's wings are about twice its length across; nothing else is as wide.
+        if (name === 'seabird') {
+            expect(size[0]).toBeGreaterThan(2);
+            expect(size[0]).toBeLessThan(2.25);
+        } else {
+            expect(size[0]).toBeLessThan(1.35);
+        }
+        // Flatter than it is long, and mirrored about its spine.
+        expect(size[1]).toBeLessThan(0.4);
+        expect(Math.abs(min[0] + max[0])).toBeLessThan(0.01);
+        // What the build wrote down of its size is what is read back.
+        const { extent } = node(name).extras;
+        extent[0].forEach((value, axis) => expect(min[axis]).toBeCloseTo(value, 2));
+        extent[1].forEach((value, axis) => expect(max[axis]).toBeCloseTo(value, 2));
     });
 
-    it('spans from its nose at +1 to its flukes a little past -1, the same on both sides', () => {
-        let minX = Infinity;
-        let maxX = -Infinity;
-        let bodyMin = Infinity;
-        let bodyMax = -Infinity;
-        let lean = 0;
-        for (let v = 0; v < vertices; v++) {
-            const x = model.positions[v * 3];
-            minX = Math.min(minX, x);
-            maxX = Math.max(maxX, x);
-            if (v < model.body) {
-                bodyMin = Math.min(bodyMin, x);
-                bodyMax = Math.max(bodyMax, x);
-            }
-            lean += model.positions[v * 3 + 2];
+    it.each(KINDS)('%s: as many triangles as the pack says, indexing only its own vertices, each of them once', (name) => {
+        const geometry = body(name);
+        const index = geometry.getIndex();
+        const { count } = geometry.getAttribute('position');
+        expect(index.count % 3).toBe(0);
+        expect(index.count / 3).toBe(node(name).extras.triangles);
+        expect(pack.kinds[name].triangles).toBe(index.count / 3);
+        // Small enough to draw a pod of: no animal costs more than a few thousand triangles.
+        expect(index.count / 3).toBeLessThanOrEqual(6000);
+        const used = new Uint8Array(count);
+        let outOfRange = 0;
+        for (let k = 0; k < index.count; k++) {
+            const v = index.getX(k);
+            if (v >= count) outOfRange += 1;
+            else used[v] = 1;
         }
-        // The lofted body is the two units DOLPHIN_LENGTH is the size of; the flukes trail behind it.
-        expect(bodyMax).toBe(1);
-        expect(bodyMin).toBe(-1);
-        expect(maxX).toBe(1);
-        expect(minX).toBeLessThan(-1.05);
-        expect(minX).toBeGreaterThan(-1.4);
-        expect(Math.abs(lean)).toBeLessThan(1e-4); // left and right mirror each other
-        expect(DOLPHIN_LENGTH).toBeGreaterThan(0);
-        // Slim: nowhere is it as thick as it is long.
-        for (let v = 0; v < model.body; v++) {
-            expect(Math.hypot(model.positions[v * 3 + 1], model.positions[v * 3 + 2])).toBeLessThan(0.5);
-        }
-    });
-
-    it('indexes only its own vertices and gives every one of them a finite unit normal', () => {
-        expect(model.normals).toHaveLength(model.positions.length);
-        expect(model.indices.length % 3).toBe(0);
-        expect(model.indices.length).toBeGreaterThan(0);
-        const used = new Uint8Array(vertices);
-        for (const v of model.indices) {
-            expect(v).toBeLessThan(vertices);
-            used[v] = 1;
-        }
+        expect(outOfRange).toBe(0);
         expect(used.every((flag) => flag === 1)).toBe(true);
+    });
+
+    it.each(KINDS)('%s: every triangle faces the way its normals do, and every normal is a direction', (name) => {
+        const geometry = body(name);
+        const position = geometry.getAttribute('position');
+        const normal = geometry.getAttribute('normal');
+        const index = geometry.getIndex();
+        let agree = 0;
+        let against = 0;
+        let folded = 0;
+        for (let k = 0; k < index.count; k += 3) {
+            const [a, b, c] = [index.getX(k), index.getX(k + 1), index.getX(k + 2)];
+            const ux = position.getX(b) - position.getX(a);
+            const uy = position.getY(b) - position.getY(a);
+            const uz = position.getZ(b) - position.getZ(a);
+            const vx = position.getX(c) - position.getX(a);
+            const vy = position.getY(c) - position.getY(a);
+            const vz = position.getZ(c) - position.getZ(a);
+            // The face's own normal (counter-clockwise is the front) against its corners' normals.
+            const nx = uy * vz - uz * vy;
+            const ny = uz * vx - ux * vz;
+            const nz = ux * vy - uy * vx;
+            const agreement = nx * (normal.getX(a) + normal.getX(b) + normal.getX(c))
+                + ny * (normal.getY(a) + normal.getY(b) + normal.getY(c))
+                + nz * (normal.getZ(a) + normal.getZ(b) + normal.getZ(c));
+            if (Math.hypot(nx, ny, nz) < 1e-12) folded += 1;
+            else if (agreement > 0) agree += 1;
+            else against += 1;
+        }
+        // Essentially all of them: a fin's knife edge may hold a sliver that faces neither way.
+        expect(agree / (index.count / 3)).toBeGreaterThan(0.995);
+        expect(against).toBeLessThanOrEqual(index.count / 3 / 400);
+        expect(folded).toBe(0);
         const bad = [];
-        for (let v = 0; v < vertices; v++) {
-            const length = Math.hypot(model.normals[v * 3], model.normals[v * 3 + 1], model.normals[v * 3 + 2]);
-            if (!(Math.abs(length - 1) < 1e-4)) bad.push(`vertex ${v}: |normal| ${length}`);
+        for (let v = 0; v < normal.count; v++) {
+            const length = Math.hypot(normal.getX(v), normal.getY(v), normal.getZ(v));
+            // (Stored as bytes: a direction to within a hundredth.)
+            if (!(Math.abs(length - 1) < 0.02)) bad.push(`vertex ${v}: |normal| ${length}`);
         }
         expect(bad).toEqual([]);
-        // The fins come after the body, and every triangle of a fin is a fin's.
-        expect(model.body).toBeGreaterThan(0);
-        expect(model.body).toBeLessThan(vertices);
-        let mixed = 0;
-        for (let k = 0; k < model.indices.length; k += 3) {
-            const inBody = [0, 1, 2].filter((i) => model.indices[k + i] < model.body).length;
-            if (inBody !== 0 && inBody !== 3) mixed += 1;
-        }
-        expect(mixed).toBe(0);
-        // What is drawn is what is returned.
-        expect(Array.from(model.geometry.getAttribute('position').array)).toEqual(Array.from(model.positions));
-        expect(Array.from(model.geometry.getAttribute('normal').array)).toEqual(Array.from(model.normals));
-        expect(Array.from(model.geometry.getIndex().array)).toEqual(Array.from(model.indices));
     });
 
-    it('lofts as many rings and sides as it is asked for', () => {
-        const coarse = buildDolphin(8, 6);
-        expect(coarse.body).toBe(9 * 6);
-        expect(coarse.positions.length / 3).toBeGreaterThan(coarse.body);
-        expect(coarse.indices.length % 3).toBe(0);
-        expect(Math.max(...coarse.indices)).toBe(coarse.positions.length / 3 - 1);
-        const fine = buildDolphin(40, 16);
-        expect(fine.body).toBe(41 * 16);
-        // The fins are the same fins whatever the body is lofted from.
-        expect(fine.positions.length / 3 - fine.body).toBe(coarse.positions.length / 3 - coarse.body);
-        expect(vertices - model.body).toBe(coarse.positions.length / 3 - coarse.body);
+    it.each(KINDS)('%s: tells each vertex where along the body it is, which part it is and where that part turns from', (name) => {
+        const geometry = body(name);
+        const position = geometry.getAttribute('position');
+        const shape = geometry.getAttribute('aShape');
+        const skin = geometry.getAttribute('aSkin');
+        const pivot = geometry.getAttribute('aPivot');
+        const { min, max } = boxOf(name);
+        const parts = new Map();
+        const wrong = [];
+        for (let v = 0; v < position.count; v++) {
+            const part = partOf(shape, v);
+            if (!parts.has(part)) parts.set(part, []);
+            parts.get(part).push(v);
+            const packed = [shape, skin].flatMap((attribute) => [attribute.getX(v), attribute.getY(v), attribute.getZ(v), attribute.getW(v)]);
+            if (!packed.every((value) => value >= 0 && value <= 1)) wrong.push(`vertex ${v}: ${packed}`);
+            // A part turns from somewhere inside the animal, never from a point off in the sea.
+            const turnsFrom = [pivot.getX(v), pivot.getY(v), pivot.getZ(v)];
+            if (!turnsFrom.every((value, axis) => value >= min[axis] - 0.05 && value <= max[axis] + 0.05)) {
+                wrong.push(`vertex ${v}: turns from ${turnsFrom}`);
+            }
+        }
+        expect(wrong.slice(0, 5)).toEqual([]);
+        // Along the body: 0 at the nose, 1 at the tail, falling in step with z all the way.
+        const trunk = parts.get(BODY);
+        expect(trunk.length).toBeGreaterThan(position.count / 3);
+        const along = Array.from({ length: position.count }, (_, v) => shape.getX(v));
+        expect(Math.min(...along)).toBeLessThan(0.1);
+        expect(Math.max(...along)).toBeGreaterThan(0.9);
+        const front = trunk.filter((v) => shape.getX(v) < 0.25).map((v) => position.getZ(v));
+        const rear = trunk.filter((v) => shape.getX(v) > 0.75).map((v) => position.getZ(v));
+        expect(Math.min(...front)).toBeGreaterThan(Math.max(...rear));
+        // The parts its body plan is swum by are there, on both sides where it has two of them,
+        // each side turning from its own side of the spine.
+        for (const part of SWUM_BY[name]) {
+            const vertices = parts.get(part) || [];
+            expect(vertices.length, `part ${part}`).toBeGreaterThan(20);
+            if (part === TAIL) continue;
+            const left = vertices.filter((v) => position.getX(v) < -0.02);
+            const right = vertices.filter((v) => position.getX(v) > 0.02);
+            expect(left.length, `part ${part}`).toBeGreaterThan(10);
+            expect(right.length, `part ${part}`).toBeGreaterThan(10);
+            expect(left.filter((v) => pivot.getX(v) < 0).length / left.length, `part ${part}`).toBeGreaterThan(0.95);
+            expect(right.filter((v) => pivot.getX(v) >= 0).length / right.length, `part ${part}`).toBeGreaterThan(0.95);
+            // How far out along the fin a vertex is: from its root to its tip.
+            const out = vertices.map((v) => shape.getZ(v));
+            expect(Math.max(...out), `part ${part}`).toBeGreaterThan(0.9);
+            expect(Math.min(...out), `part ${part}`).toBeLessThan(0.3);
+        }
+        // The manta's wings are its body: the plan flies them by how far out from the spine they are.
+        if (name === 'manta') expect(Math.max(...trunk.map((v) => Math.abs(position.getX(v))))).toBeGreaterThan(0.45);
     });
 });

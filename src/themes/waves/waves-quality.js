@@ -5,13 +5,15 @@
  * floorRows    mesh rows across the trough and the sea in front of the wave
  * nearStep     metres between mesh columns near the eye (they widen with distance)
  * noise        the water's noise field (pixels across)
+ * lace         its field of foam cells (pixels across)
  * trace        1: reflections are traced inside the tube; 0: one environment lookup
  * caustics     the bars of light the moving roof lets through onto the face and the trough
  * clouds       octaves in the sky's cloud deck
  * rings        refracting rings alive at once       ribbons   colour comets alive at once
  * droplets     the lip's standing rain              spray     pool for throws and splashes
  * mist         sheets of spindrift and spray        dolphins  the largest pod a chain can call
- * foam         puffs of white water a dolphin tears up where it breaks the surface
+ * foam         puffs of white water an animal tears up where it breaks the surface
+ * life         how full the sea is: the share of each pod, school and flock that comes
  */
 const tier = (values) => Object.freeze(values);
 
@@ -21,6 +23,7 @@ export const QUALITY = Object.freeze({
         floorRows: 14,
         nearStep: 0.42,
         noise: 128,
+        lace: 128,
         trace: 0,
         caustics: false,
         clouds: 1,
@@ -29,14 +32,16 @@ export const QUALITY = Object.freeze({
         droplets: 420,
         spray: 420,
         mist: 10,
-        foam: 16,
+        foam: 24,
         dolphins: 3,
+        life: 0.5,
     }),
     Low: tier({
         arcRows: 72,
         floorRows: 16,
         nearStep: 0.34,
         noise: 256,
+        lace: 128,
         trace: 0,
         caustics: false,
         clouds: 2,
@@ -45,14 +50,16 @@ export const QUALITY = Object.freeze({
         droplets: 700,
         spray: 700,
         mist: 14,
-        foam: 24,
+        foam: 32,
         dolphins: 4,
+        life: 0.65,
     }),
     Medium: tier({
         arcRows: 96,
         floorRows: 20,
         nearStep: 0.26,
         noise: 256,
+        lace: 256,
         trace: 1,
         caustics: true,
         clouds: 2,
@@ -61,14 +68,16 @@ export const QUALITY = Object.freeze({
         droplets: 1300,
         spray: 1300,
         mist: 20,
-        foam: 32,
+        foam: 48,
         dolphins: 5,
+        life: 0.85,
     }),
     High: tier({
         arcRows: 128,
         floorRows: 24,
         nearStep: 0.2,
         noise: 512,
+        lace: 256,
         trace: 1,
         caustics: true,
         clouds: 3,
@@ -77,14 +86,16 @@ export const QUALITY = Object.freeze({
         droplets: 2200,
         spray: 2400,
         mist: 28,
-        foam: 48,
+        foam: 72,
         dolphins: 6,
+        life: 1,
     }),
     Ultra: tier({
         arcRows: 160,
         floorRows: 28,
         nearStep: 0.16,
         noise: 512,
+        lace: 256,
         trace: 1,
         caustics: true,
         clouds: 3,
@@ -93,14 +104,16 @@ export const QUALITY = Object.freeze({
         droplets: 3200,
         spray: 3000,
         mist: 34,
-        foam: 56,
+        foam: 84,
         dolphins: 7,
+        life: 1,
     }),
     Extreme: tier({
         arcRows: 192,
         floorRows: 32,
         nearStep: 0.13,
         noise: 512,
+        lace: 256,
         trace: 1,
         caustics: true,
         clouds: 3,
@@ -109,8 +122,9 @@ export const QUALITY = Object.freeze({
         droplets: 4200,
         spray: 3600,
         mist: 40,
-        foam: 64,
+        foam: 96,
         dolphins: 7,
+        life: 1,
     }),
 });
 

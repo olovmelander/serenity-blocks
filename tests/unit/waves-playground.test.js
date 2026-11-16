@@ -5,8 +5,9 @@
  * parameters, so a capture is a seek to a time with the gameplay that led up to it replayed. These
  * tests mount it on a renderer double (nothing is drawn) and read the world it built.
  */
+import { readFileSync } from 'node:fs';
 import {
-    afterEach, describe, expect, it, vi,
+    afterAll, afterEach, beforeAll, describe, expect, it, vi,
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import { create, meta } from '../../src/playground/effects/waves.effect.js';
@@ -18,6 +19,19 @@ import { QUALITY } from '../../src/themes/waves/waves-quality.js';
 import { WavesPost } from '../../src/themes/waves/waves-post.js';
 import { sunDirection } from '../../src/themes/waves/waves-tsl.js';
 import { GRAVITY } from '../../src/themes/waves/waves-spray.js';
+import { KINDS } from '../../src/themes/waves/waves-acts.js';
+import { parseSeaLife, useSeaLife } from '../../src/themes/waves/waves-cast.js';
+
+// The sea life's bodies, as a page that has read them: every world takes them at once, nothing is fetched.
+// (By its path from the repository's root: this file imports a `meta`, and the test transform
+// rewrites the one in `import.meta` as well.)
+const PACK_FILE = 'src/themes/waves/assets/sea-life.glb';
+beforeAll(() => {
+    useSeaLife(parseSeaLife(readFileSync(PACK_FILE)));
+});
+afterAll(() => {
+    useSeaLife(null);
+});
 
 vi.setConfig({ testTimeout: 30_000 }); // every mount builds a wave, on a machine that may be busy
 
@@ -40,7 +54,10 @@ const WIDTH = 1440;
 const HEIGHT = 900;
 const mounted = [];
 
-/** Mount the effect as the playground does, on a renderer that draws nothing. */
+/**
+ * Mount the effect as the playground does, on a renderer that draws nothing. Unless the query says
+ * otherwise (`life=`), the sea sends no visits of its own: what is asked for is all that happens.
+ */
 function mount(query = '', { quality = 'Low', renderer = {} } = {}) {
     if (!globalThis.window?.innerWidth) vi.stubGlobal('window', { innerWidth: WIDTH, innerHeight: HEIGHT });
     const scene = new THREE.Scene();
@@ -52,7 +69,8 @@ function mount(query = '', { quality = 'Low', renderer = {} } = {}) {
         ...renderer,
     };
     const build = vi.spyOn(WavesWorld.prototype, 'build');
-    const search = [quality ? `quality=${quality}` : '', query].filter(Boolean).join('&');
+    const search = [quality ? `quality=${quality}` : '', query.includes('life=') ? '' : 'life=0', query]
+        .filter(Boolean).join('&');
     const effect = create({
         scene, camera, renderer: stage, params: new URLSearchParams(search),
     });
@@ -101,7 +119,8 @@ function picture(world) {
         bands: sorted(liveBands(world)),
         uniforms: [U.time.value, U.open.value, U.warm.value, U.glow.value, U.tear.value, ...U.bulge.value.toArray()],
         spray: Array.from(world.spray.data),
-        pod: Array.from(world.pod.data),
+        life: KINDS.map((kind) => Array.from(world.pod.fauna.kinds[kind].data)),
+        acts: world.pod.acts.map((act) => ({ ...act, events: undefined })),
     };
 }
 
@@ -496,7 +515,7 @@ describe('waves playground effect: captures', () => {
         expect(world.getState()).toMatchObject({
             leaps: 2, airborne: 2, locks: 0, clears: 0,
         });
-        const [first, second] = world.pod.arcs;
+        const [first, second] = world.pod.acts;
         // Sent two seconds before the frame, one after the other.
         expect(first.t0).toBeGreaterThan(8);
         expect(first.t0).toBeLessThan(10);
@@ -508,7 +527,7 @@ describe('waves playground effect: captures', () => {
         // hero=1 throws the first so that the top of its arc crosses the sun.
         const hero = mount('leap=1&hero=1');
         hero.effect.seek(10);
-        const [arc] = hero.world.pod.arcs;
+        const [arc] = hero.world.pod.acts;
         const t = arc.vy / GRAVITY;
         const rise = arc.vy * t - 0.5 * GRAVITY * t * t;
         const top = new THREE.Vector3(arc.x + arc.vx * t, arc.y + rise, arc.z + arc.vz * t);
