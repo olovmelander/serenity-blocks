@@ -141,7 +141,7 @@ export class VerdantHillsMeadow {
     }
 
     /** Stand a plant on its root, turned and scaled, and bend it in the wind. */
-    stand(flex) {
+    stand(flex, blooming = false) {
         const { light } = this;
         const root = attribute('aRoot', 'vec4'); // x, y, z, phase
         const turn = attribute('aTurn', 'vec4'); // cos, sin, scale, hue
@@ -149,7 +149,11 @@ export class VerdantHillsMeadow {
         const air = light.meadowWind(root.xyz, root.w);
         // Only one clump in eleven has gone to seed: the others keep their head folded away.
         const seeded = paint.w.mul(step(0.09, turn.w)).oneMinus();
-        const sized = positionGeometry.mul(turn.z).mul(seeded);
+        // The meadow's bloom lifts a flower on its stem as the wave passes (verdant-hills-light.js).
+        const flush = blooming ? light.meadowBloom(root.xyz) : null;
+        const sized = flush
+            ? positionGeometry.mul(turn.z).mul(seeded).mul(flush.mul(0.32).add(1))
+            : positionGeometry.mul(turn.z).mul(seeded);
         const stood = vec3(
             sized.x.mul(turn.x).sub(sized.z.mul(turn.y)),
             sized.y,
@@ -168,7 +172,13 @@ export class VerdantHillsMeadow {
             normalGeometry.x.mul(turn.y).add(normalGeometry.z.mul(turn.x)),
         );
         return {
-            root, turn, paint, air, normal, position: stood.add(root.xyz).add(vec3(bend.x, droop.negate(), bend.y)),
+            root,
+            turn,
+            paint,
+            air,
+            normal,
+            flush,
+            position: stood.add(root.xyz).add(vec3(bend.x, droop.negate(), bend.y)),
         };
     }
 
@@ -295,15 +305,21 @@ export class VerdantHillsMeadow {
         const material = this.own(new THREE.MeshBasicNodeMaterial({ fog: false, side: THREE.DoubleSide }));
         material.name = 'VerdantHillsFlowers';
         const albedo = attribute('color', 'vec3');
-        const plant = this.stand(0.5);
+        const plant = this.stand(0.5, true);
         material.positionNode = plant.position;
         const { paint, turn } = plant;
         const air = varying(vec3(plant.air.band, plant.air.bloom, plant.air.front), 'verdantFlowerAir');
+        const flush = varying(plant.flush, 'verdantFlowerFlush');
         const world = positionWorld;
         const view = normalize(cameraPosition.sub(world));
         const normal = normalize(plant.normal);
         const petal = smoothstep(0.55, 0.9, paint.y);
-        const tone = albedo.mul(turn.w.mul(0.24).add(0.88));
+        // The bloom flushes the petals with its colour as it passes, and they glow with it. Each
+        // flower is dyed or it is not: as the wave fades they go back to their own colour one by
+        // one. (Faded through a mix, a violet wave on yellow buttercups spent seconds as beige.)
+        const took = turn.w.mul(0.72).add(0.04);
+        const dyed = smoothstep(took, took.add(0.16), flush).mul(petal);
+        const tone = mix(albedo.mul(turn.w.mul(0.24).add(0.88)), light.uBloomTone, dyed.mul(0.92));
         const sun = light.sunlight();
         // As the grass: the face the eye sees is sunlit only where it is turned to the sun.
         const seen = normal.mul(step(0, dot(normal, view)).mul(2).sub(1));
@@ -321,7 +337,8 @@ export class VerdantHillsMeadow {
             .mul(0.25)
             .add(tone.mul(light.ambient(mix(normal, vec3(0, 1, 0), 0.6))).mul(0.9))
             .mul(shade)
-            .add(tone.mul(mix(vec3(0.2, 0.2, 0.12), vec3(0.5, 0.48, 0.4), petal)).mul(air.y));
+            .add(tone.mul(mix(vec3(0.2, 0.2, 0.12), vec3(0.5, 0.48, 0.4), petal)).mul(air.y))
+            .add(tone.mul(dyed).mul(0.5));
         material.colorNode = light.haze(lit, { world });
         return material;
     }
