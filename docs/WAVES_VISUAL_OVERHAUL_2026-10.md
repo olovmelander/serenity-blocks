@@ -669,7 +669,7 @@ lower two keep their sky-lookup mirror and no caustic net.
 - **Staging by numbers before pictures**: every visit's animals were projected through the
   theme's own lens in node and printed second by second (screen place and size). That found a pod
   that left the frame after four of its fifteen seconds, a far pod that never entered it and
-  leaps that started behind the card, before a single capture was spent on them (#1710).
+  leaps that started behind the card, before a single capture was spent on them (#1711).
 - **In the real game** (a private dev server, headless Chrome on real WebGPU, 30 fps): the theme
   pinned, a single-player run started, real key presses for a dozen hard drops, then chains, a
   twist, four lines, a perfect clear, a level and a game over through the game's own event bus.
