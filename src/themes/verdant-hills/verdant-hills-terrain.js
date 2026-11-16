@@ -611,7 +611,12 @@ export class VerdantHillsTerrain {
         const normal = normalize(smooth.add(vec3(fine.r.sub(0.5), 0, fine.g.sub(0.5))
             .mul(smoothstep(260, 20, range).mul(0.4).add(0.08))));
         const view = normalize(cameraPosition.sub(world));
-        const sun = light.sunlight().mul(shade.mul(0.78).oneMinus());
+        // One reading of the clouds' shadow serves the sun and the sky: under a cumulus the land
+        // loses the sun and a share of the sky's light too, so a cloud's shadow is a dark, cool
+        // shape on the valley and the sunlit fields beside it stand bright.
+        const cloud = light.cloudShadow(world);
+        const overcast = cloud.min(1).mul(0.34).add(0.66);
+        const sun = float(light.shadowNode).mul(cloud).mul(shade.mul(0.78).oneMinus());
         // Grass is a deep pile, not a floor: it catches a raking sun far better than a flat
         // plane would, and glows when the sun is behind it.
         const facing = saturate(dot(normal, light.uSunDir)).mul(0.86).add(0.16);
@@ -630,13 +635,13 @@ export class VerdantHillsTerrain {
         const grass = albedo.mul(light.uSunColor).mul(facing).mul(sun).mul(0.3)
             .add(albedo.mul(vec3(1.25, 1.2, 0.4)).mul(light.uSunColor).mul(through.mul(0.1)).mul(sun))
             .add(sheen.mul(sun.mul(0.75).add(0.25)).mul(hedge.oneMinus()))
-            .add(albedo.mul(light.ambient(normal)).mul(0.95));
+            .add(albedo.mul(light.ambient(normal)).mul(overcast).mul(0.95));
         // Still water: the sky's own colour laid on the valley floor, and the sun's sparkle.
         const ripple = light.noise(world.xz.mul(0.045).add(vec2(light.uTime.mul(0.012), light.uTime.mul(0.007))));
         const waterNormal = normalize(vec3(ripple.r.sub(0.5).mul(0.16), 1, ripple.g.sub(0.5).mul(0.16)));
         const bounce = reflect(view.negate(), waterNormal);
         const mirror = light.sky(normalize(vec3(bounce.x, bounce.y.abs().add(0.02), bounce.z)));
-        const sparkle = pow(saturate(dot(bounce, light.uSunDir)), 90).mul(light.cloudShadow(world));
+        const sparkle = pow(saturate(dot(bounce, light.uSunDir)), 90).mul(cloud);
         // The far bank is mirrored too. Looked down on from the hill the water reflects a ray that
         // rises as steeply as the eye's falls, so a bank or a tree standing within h / tan(fall)
         // beyond a point, straight on along the line of sight, shows in the water there instead

@@ -771,7 +771,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — verdant-hills',
         description: 'Set the share of the Verdant Hills sky that lies under cloud.',
         values: 'Number from 0 to 1; the light rig keeps it within 0.02–0.9.',
-        defaultValue: '0.25.',
+        defaultValue: 'The weather\'s own: 0.22 on the kite day.',
         example: 'cover=0.4',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
@@ -3062,6 +3062,22 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'paint',
+        category: 'Playground',
+        scope: 'playground.html — verdant-hills',
+        description: 'Hold colours of the Verdant Hills light rig over every weather, to try a palette before '
+            + 'it goes into the weather table.',
+        values: 'Semicolon-separated name:r,g,b entries, the name a colour uniform of the light rig '
+            + '(uSunColor, uSkyLight, uBounce, uZenith, uSkyMid, uHorizon, uHorizonSun, uHazeCool, uHazeWarm, '
+            + 'uCloudBase, uCloudTop, uCirrus) and r,g,b linear numbers. Unknown names are ignored.',
+        defaultValue: 'The colours of the weather the day stands in.',
+        example: 'paint=uZenith:0.02,0.1,0.46;uSkyMid:0.06,0.26,0.72',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
+        sources: [
+            'src/playground/effects/verdant-hills.effect.js',
+        ],
+    },
+    {
         name: 'parhelionBloom',
         category: 'Playground',
         scope: 'playground.html — parhelion; game themes: Parhelion',
@@ -4434,10 +4450,12 @@ export const PLAYGROUND_URL_PARAMETERS = [
         category: 'Playground',
         scope: 'playground.html — verdant-hills',
         description: 'Tune the Verdant Hills cumulus.',
-        values: 'Up to five comma-separated numbers, sigma,veil,shade,soft,carve: view-ray extinction per '
-            + 'metre, how fast distance dissolves a cloud, how dark its own shade is, how soft its skin is '
-            + 'and how deep the billows carve. Blank entries keep their values.',
-        defaultValue: '0.008,0.00006,0.68,0.18,1.',
+        values: 'Up to eight comma-separated numbers, sigma,veil,shade,soft,carve,fine,reach,lobe: view-ray '
+            + 'extinction per metre, how fast distance dissolves a cloud, how dark its own shade is, and in '
+            + 'metres how soft its skin is, how far its lobes and its finest billows carve it, how far in '
+            + 'from a heap\'s margin the field counts and how wide one tile of the lobes is. Blank entries '
+            + 'keep their values.',
+        defaultValue: '0.008,0.00004,1,50,900,200,2200,2400.',
         example: 'sky=0.012,,0.6',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
@@ -6299,11 +6317,51 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'visitor',
         category: 'Playground',
         scope: 'playground.html — halcyon-apex',
-        description: 'Fly one of the visitors (the UFOs) over the sanctuary.',
-        values: 'saucer, halcyon, triangle, mothership, orbs or capsule.',
-        defaultValue: 'Off: the schedule alone (one about once a minute, the first some fifteen seconds in).',
-        example: 'visitor=triangle',
-        notes: 'Use on playground.html with effect=halcyon-apex.',
+        description: 'Fly one sortie of the skyfarers (the craft the sanctuary draws) over it.',
+        values: 'Far: lane, convoy, ark. Mid: flyby, orbit, chase, glide, haul, string. Hero: skim, loop, spire, ray, hang, '
+            + 'rite, trio, dock, saucer, halcyon, orbs, capsule. Called by the board: salute, crown.',
+        defaultValue: 'Off: the three streams of traffic alone (the first hero some fifteen seconds in).',
+        example: 'visitor=skim',
+        notes: 'Use on playground.html with effect=halcyon-apex. Live (no t=) it flies again and again.',
+        sources: [
+            'src/playground/effects/halcyon-apex.effect.js',
+        ],
+    },
+    {
+        name: 'visitorSeed',
+        category: 'Playground',
+        scope: 'playground.html — halcyon-apex',
+        description: 'The seed a sortie called with visitor= draws its numbers from (side, height, how many, formation).',
+        values: 'A whole number from 1.',
+        defaultValue: '1',
+        example: 'visitorSeed=4',
+        notes: 'Use on playground.html with effect=halcyon-apex and visitor=.',
+        sources: [
+            'src/playground/effects/halcyon-apex.effect.js',
+        ],
+    },
+    {
+        name: 'traffic',
+        category: 'Playground',
+        scope: 'playground.html — halcyon-apex',
+        description: 'Scheduled traffic in the sky.',
+        values: '0 empties the sky of everything but what visitor= and the board call.',
+        defaultValue: 'On.',
+        example: 'traffic=0',
+        notes: 'Use on playground.html with effect=halcyon-apex: a capture of one event or one sortie.',
+        sources: [
+            'src/playground/effects/halcyon-apex.effect.js',
+        ],
+    },
+    {
+        name: 'zoom',
+        category: 'Playground',
+        scope: 'playground.html — halcyon-apex',
+        description: 'Turn the capture camera for a close look at a hull.',
+        values: '<az>,<el>,<fov>: degrees right and up of the rest aim and the lens; or ship,<fov> to follow the called sortie\'s leader.',
+        defaultValue: 'Off: the theme\'s own rig.',
+        example: 'zoom=ship,12',
+        notes: 'Use on playground.html with effect=halcyon-apex. The world still composes for the rest camera.',
         sources: [
             'src/playground/effects/halcyon-apex.effect.js',
         ],
@@ -6312,7 +6370,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'visitorAge',
         category: 'Playground',
         scope: 'playground.html — halcyon-apex',
-        description: 'With t=, how many seconds into its route the visitor is shown.',
+        description: 'With t=, how many seconds into its flight the sortie is shown.',
         values: 'Seconds (number).',
         defaultValue: '4',
         example: 'visitorAge=10',

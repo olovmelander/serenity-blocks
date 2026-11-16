@@ -222,8 +222,11 @@ export class VerdantHillsHomestead {
         // Window glass is dark, and shows the sky it faces and a glint of the sun.
         const glint = pow(saturate(dot(bounce, light.uSunDir)), 60).mul(sun);
         lit = mix(lit, light.sky(bounce).mul(tone.mul(0.3).add(0.4)).add(light.uSunColor.mul(glint.mul(0.5))), glass);
+        // In the afterglow a lamp is lit behind the mill's windows. It is the lamp's own light, so
+        // the valley's air dims it only a little: added after the haze.
+        const lamp = vec3(1.0, 0.58, 0.2).mul(light.uNight).mul(glass).mul(2.4);
         // fragmentNode, not colorNode: the props of the home hill cast into the shadow map.
-        material.fragmentNode = vec4(light.haze(lit, { world }), 1);
+        material.fragmentNode = vec4(light.haze(lit, { world }).add(lamp), 1);
         return material;
     }
 

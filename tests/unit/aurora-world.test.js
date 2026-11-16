@@ -9,7 +9,8 @@ import { bakeAuroraNoise, createRandom } from '../../src/themes/aurora/aurora-no
 import {
     QUALITY_PRESETS, normalizeAuroraQuality, resolveAuroraQuality,
 } from '../../src/themes/aurora/aurora-quality.js';
-import { buildStarCatalogue } from '../../src/themes/aurora/aurora-sky.js';
+import { SKY_POLE } from '../../src/themes/aurora/aurora-hours.js';
+import { STAR_RING, buildStarCatalogue } from '../../src/themes/aurora/aurora-sky.js';
 import { AURORA_SEED, AuroraWorld } from '../../src/themes/aurora/aurora-world.js';
 
 const TIERS = ['Extreme', 'Ultra', 'High', 'Medium', 'Low', 'Minimal'];
@@ -127,12 +128,21 @@ describe('Aurora landscape bakes', () => {
         const again = buildStarCatalogue(600, createRandom(3));
         expect(stars.count).toBe(600);
         expect(Array.from(stars.directions)).toEqual(Array.from(again.directions));
+        // The catalogue lies all round the pole: the ring of sky the turning night brings into
+        // view, never the cap right at the pole nor the sky that never rises.
+        let ahead = 0;
+        let behind = 0;
         for (let i = 0; i < stars.count; i += 1) {
             const [x, y, z] = stars.directions.subarray(i * 3, i * 3 + 3);
             expect(Math.hypot(x, y, z)).toBeCloseTo(1, 5);
-            expect(y).toBeGreaterThan(-0.06);
-            expect(z).toBeLessThan(0.2);
+            const fromPole = Math.acos(x * SKY_POLE[0] + y * SKY_POLE[1] + z * SKY_POLE[2]) * (180 / Math.PI);
+            expect(fromPole).toBeGreaterThan(13.9);
+            expect(fromPole).toBeLessThan(108.1);
+            if (z < 0) ahead += 1;
+            else behind += 1;
         }
+        expect(ahead).toBeGreaterThan(stars.count * 0.3);
+        expect(behind).toBeGreaterThan(stars.count * 0.15);
     });
 });
 
@@ -146,7 +156,8 @@ describe('Aurora world', () => {
         expect(report.curtains.arcs.at(-1)).toBe('corona');
         expect(report.curtains.marchSteps).toBe(preset.marchSteps);
         expect(report.curtains.hdr).toBe(preset.hdrCurtains);
-        expect(report.sky.stars).toBe(preset.starCount);
+        // A tier's count is the stars of the frame's own patch of sky; the ring holds them all round.
+        expect(report.sky.stars).toBe(Math.round(preset.starCount * STAR_RING));
         expect(report.landscape.mirror).toBe(preset.mirrorScale > 0 ? preset.mirrorScale : 'analytic');
         expect(report.landscape.terrain).toEqual([preset.terrainColumns, preset.terrainRows]);
         const names = [];
