@@ -428,8 +428,10 @@ export function createBlades(u) {
         const side = vec2(along.y.negate(), along.x);
         const live = step(0.0, age).mul(step(age, flight.mul(BLADE_LIFE / BLADE_FLIGHT))).mul(step(0.001, C.w));
         // Wider toward its head, a hairline at its tail.
-        const px = k.mul(k).mul(6.5).add(1.6).mul(u.viewport.y.div(1080.0)).mul(C.w.mul(0.3).add(0.7));
-        const off = side.mul(positionGeometry.y).mul(px).div(u.viewport).mul(c0.w).mul(live);
+        const px = k.mul(k).mul(6.5).add(1.6).mul(u.viewport.y.div(1080.0))
+            .mul(C.w.mul(0.3).add(0.7));
+        const off = side.mul(positionGeometry.y).mul(px).div(u.viewport).mul(c0.w)
+            .mul(live);
         // Brightest as it leaves, and it flares as the chrysalis takes it.
         const taken = smoothstep(0.75, 1.0, x).mul(float(1.0).sub(smoothstep(1.0, 1.4, x)));
         vGain.assign(live.mul(C.w).mul(exp(age.mul(-1.1)).mul(0.9).add(taken.mul(0.9)).add(0.35)));
@@ -637,4 +639,3 @@ export function createFireflies(u, count) {
     part.count = mesh.count;
     return part;
 }
-

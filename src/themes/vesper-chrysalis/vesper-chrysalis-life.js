@@ -18,7 +18,6 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
-    abs,
     attribute,
     cameraProjectionMatrix,
     cameraViewMatrix,

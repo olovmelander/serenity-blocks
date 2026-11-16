@@ -274,9 +274,12 @@ export function createSpires(u, spires, opts = {}) {
             .toVar();
         const veils = smoothstep(0.52, 0.85, grain.r).mul(0.7).add(grain.g.mul(0.3)).toVar();
         const flaw = smoothstep(0.66, 0.74, u.noise(vec2(vLocal.x.mul(1.1).add(seed.mul(11.0)), vLocal.y.mul(0.06).add(seed))).b);
-        const phase = dot(V, cross(A, N)).mul(26.0).add(grain.a.mul(9.0)).add(seed.mul(40.0)).add(u.drift.mul(0.21));
+        const phase = dot(V, cross(A, N)).mul(26.0).add(grain.a.mul(9.0)).add(seed.mul(40.0))
+            .add(u.drift.mul(0.21));
         const caught = smoothstep(0.55, 0.98, sin(phase.mul(0.5)).mul(0.5).add(0.5));
-        const rainbow = cos(vec3(0.0, 2.1, 4.2).add(phase)).mul(0.5).add(0.5).mul(flaw).mul(caught).mul(0.55);
+        const rainbow = cos(vec3(0.0, 2.1, 4.2).add(phase)).mul(0.5).add(0.5).mul(flaw)
+            .mul(caught)
+            .mul(0.55);
 
         // ── A facet's edges: a hairline of light where two faces meet ──
         const toEdge = max(min(vEdge.x, min(vEdge.y, vEdge.z)), 0.0).toVar();

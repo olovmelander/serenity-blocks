@@ -206,19 +206,49 @@ export function perchScreenX(layout) {
     return coverToRight ? x1 - inset : x0 + inset;
 }
 
+/** The least strip above the cards (a share of the screen's height) the chrysalis is hung in. */
+const PERCH_STRIP = 0.11;
+
 /**
- * The same as an offset in metres from the chrysalis's place at rest, for a frame of `aspect`.
+ * Where on screen (y, a fraction, of its middle) the chrysalis should hang when no open water
+ * beside the board will take it (an upright phone: the card fills the width): in the strip of sky
+ * above the card, when there is one. null when there is none.
+ */
+export function perchScreenY(layout) {
+    const cards = (layout?.cards ?? []).filter(Boolean);
+    if (!cards.length) return null;
+    // Only when something does stand in front of the middle of the picture.
+    const covered = cards.some((r) => r.x0 < 0.5 && r.x1 > 0.5 && r.y0 < PERCH_BAND.y1 && r.y1 > PERCH_BAND.y0);
+    if (!covered) return null;
+    let top = 1;
+    cards.forEach((r) => { top = Math.min(top, r.y0); });
+    if (layout.hud && layout.hud.x0 < 0.6 && layout.hud.x1 > 0.4) top = Math.min(top, layout.hud.y0);
+    return top >= PERCH_STRIP ? top * 0.5 + 0.004 : null;
+}
+
+/**
+ * The same as an offset in metres from the chrysalis's place at rest, for a frame of `aspect`:
+ * to the side of the board when there is open water there, else up into the sky above it.
  * @returns {{ x: number, y: number }}
  */
 export function perchFor(layout, aspect, out = { x: 0, y: 0 }) {
-    const sx = layout ? perchScreenX(layout) : null;
     out.x = 0;
     out.y = 0;
-    if (sx === null) return out;
+    if (!layout) return out;
     const a = Math.max(0.2, Number.isFinite(aspect) ? aspect : 16 / 9);
-    const halfWidth = Math.tan((fovForAspect(a) * DEG) / 2) * a;
+    const halfHeight = Math.tan((fovForAspect(a) * DEG) / 2);
     const distance = Math.abs(CHRYSALIS.z - EYE.z);
-    out.x = (sx - 0.5) * 2 * halfWidth * distance - CHRYSALIS.x;
+    const sx = perchScreenX(layout);
+    if (sx !== null) {
+        out.x = (sx - 0.5) * 2 * halfHeight * a * distance - CHRYSALIS.x;
+        return out;
+    }
+    const sy = perchScreenY(layout);
+    if (sy === null) return out;
+    // The height at which its middle stands at that place on the screen.
+    const elevation = EYE.pitch + Math.atan((0.5 - sy) * 2 * halfHeight);
+    const middle = EYE.y + distance * Math.tan(elevation);
+    out.y = Math.max(0, middle - (CHRYSALIS.foot + CHRYSALIS.length * 0.5));
     return out;
 }
 

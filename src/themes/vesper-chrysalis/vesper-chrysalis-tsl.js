@@ -253,6 +253,95 @@ export function createNoiseTexture(field, size = NOISE_SIZE) {
     return tex;
 }
 
+// ── The sky's fixed geometry (constants baked into the shaders) ─────────────────
+
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const unit = (a) => {
+    const l = Math.hypot(a[0], a[1], a[2]) || 1;
+    return [a[0] / l, a[1] / l, a[2] / l];
+};
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+/** A tangent frame about a direction: [right, up] as seen by a viewer looking along it. */
+const frameOf = (f) => {
+    const right = unit(cross(f, [0, 1, 0]));
+    return [right, cross(right, f)];
+};
+const lit = (a) => vec3(a[0], a[1], a[2]);
+
+export const SUN_DIR = Object.freeze(skyDirection(SUN.azimuth, SUN.elevation));
+const SUN_FLAT = (() => {
+    const l = Math.hypot(SUN_DIR[0], SUN_DIR[2]);
+    return [SUN_DIR[0] / l, SUN_DIR[2] / l];
+})();
+
+export const PLANET_DIR = Object.freeze(skyDirection(PLANET.azimuth, PLANET.elevation));
+const [PLANET_X, PLANET_Y] = frameOf(PLANET_DIR);
+const PLANET_TAN = Math.tan(PLANET.radius);
+const RING_COS = Math.cos(PLANET.ringLean);
+const RING_SIN = Math.sin(PLANET.ringLean);
+const RING_K = PLANET.ringOpen;
+const RING_S = Math.sqrt(1 - RING_K * RING_K);
+const PLANET_SUN_FLAT = unit([dot3(SUN_DIR, PLANET_X), dot3(SUN_DIR, PLANET_Y), 0]);
+
+/**
+ * The sun as the ringed world sees it, `behind` (0..1) of the way round behind it: its light
+ * comes from where the sun set, but from further behind than the true angle (a thin crescent
+ * reads as a world at dusk, a fat one as a ball). Written in (right, up, toward the viewer) into
+ * `planet`, and in the rings' own frame (major axis, minor axis, toward the viewer) into `ring`.
+ */
+export function planetSunAt(behind, planet = [0, 0, 0], ring = [0, 0, 0]) {
+    const b = Math.max(0, Math.min(0.98, behind));
+    const side = Math.sqrt(1 - b * b);
+    planet[0] = PLANET_SUN_FLAT[0] * side;
+    planet[1] = PLANET_SUN_FLAT[1] * side;
+    planet[2] = -b;
+    ring[0] = planet[0] * RING_COS + planet[1] * RING_SIN;
+    ring[1] = -planet[0] * RING_SIN + planet[1] * RING_COS;
+    ring[2] = planet[2];
+    return planet;
+}
+const RING_SUN_REST = [0, 0, 0];
+const PLANET_SUN_REST = planetSunAt(0.8, [0, 0, 0], RING_SUN_REST);
+
+/** The two moons: how far out they ride (planet radii), their size, their pace and where they start. */
+const MOONS = [
+    {
+        far: 3.05, size: 0.085, pace: 7, start: 0.62, tint: [0.92, 0.84, 0.78],
+    },
+    {
+        far: 3.95, size: 0.058, pace: -4, start: 0.17, tint: [0.78, 0.84, 0.95],
+    },
+];
+
+const [SUN_X, SUN_Y] = frameOf(SUN_DIR);
+/** The pole the stars wheel about, and the plane the river of stars lies in. */
+const POLE = unit([-0.28, 0.62, -0.73]);
+const RIVER = unit([0.52, 0.42, 0.74]);
+
+export const VESPER_DIR = Object.freeze(skyDirection(VESPER.azimuth, VESPER.elevation));
+const [VESPER_X, VESPER_Y] = frameOf(VESPER_DIR);
+
+/** Where the last light lies: on the horizon over the place the sun went down. */
+export const GLOW_DIR = Object.freeze((() => {
+    const flat = Math.hypot(SUN_DIR[0], SUN_DIR[2]);
+    const lift = 0.05;
+    const l = Math.hypot(1, lift);
+    return [SUN_DIR[0] / flat / l, lift / l, SUN_DIR[2] / flat / l];
+})());
+
+/** The three mountain ranges, far to near: azimuth frequency, noise row, base, height, depth. */
+const RANGES = [
+    {
+        k: 1.1, row: 0.13, base: 0.014, amp: 0.07, depth: 0,
+    },
+    {
+        k: 0.74, row: 0.47, base: 0.006, amp: 0.1, depth: 0.5,
+    },
+    {
+        k: 0.46, row: 0.81, base: -0.012, amp: 0.2, depth: 1,
+    },
+];
+
 // ── Shared uniforms ─────────────────────────────────────────────────────────────
 
 const v3 = (a) => uniform(new THREE.Vector3(a[0], a[1], a[2]));
@@ -412,95 +501,6 @@ export function vcPart(name, geometry, material, renderOrder = 0, extra = {}) {
         mesh, geometry, material, ...extra,
     };
 }
-
-// ── The sky's fixed geometry (constants baked into the shaders) ─────────────────
-
-const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-const unit = (a) => {
-    const l = Math.hypot(a[0], a[1], a[2]) || 1;
-    return [a[0] / l, a[1] / l, a[2] / l];
-};
-const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-/** A tangent frame about a direction: [right, up] as seen by a viewer looking along it. */
-const frameOf = (f) => {
-    const right = unit(cross(f, [0, 1, 0]));
-    return [right, cross(right, f)];
-};
-const lit = (a) => vec3(a[0], a[1], a[2]);
-
-export const SUN_DIR = Object.freeze(skyDirection(SUN.azimuth, SUN.elevation));
-const SUN_FLAT = (() => {
-    const l = Math.hypot(SUN_DIR[0], SUN_DIR[2]);
-    return [SUN_DIR[0] / l, SUN_DIR[2] / l];
-})();
-
-export const PLANET_DIR = Object.freeze(skyDirection(PLANET.azimuth, PLANET.elevation));
-const [PLANET_X, PLANET_Y] = frameOf(PLANET_DIR);
-const PLANET_TAN = Math.tan(PLANET.radius);
-const RING_COS = Math.cos(PLANET.ringLean);
-const RING_SIN = Math.sin(PLANET.ringLean);
-const RING_K = PLANET.ringOpen;
-const RING_S = Math.sqrt(1 - RING_K * RING_K);
-const PLANET_SUN_FLAT = unit([dot3(SUN_DIR, PLANET_X), dot3(SUN_DIR, PLANET_Y), 0]);
-
-/**
- * The sun as the ringed world sees it, `behind` (0..1) of the way round behind it: its light
- * comes from where the sun set, but from further behind than the true angle (a thin crescent
- * reads as a world at dusk, a fat one as a ball). Written in (right, up, toward the viewer) into
- * `planet`, and in the rings' own frame (major axis, minor axis, toward the viewer) into `ring`.
- */
-export function planetSunAt(behind, planet = [0, 0, 0], ring = [0, 0, 0]) {
-    const b = Math.max(0, Math.min(0.98, behind));
-    const side = Math.sqrt(1 - b * b);
-    planet[0] = PLANET_SUN_FLAT[0] * side;
-    planet[1] = PLANET_SUN_FLAT[1] * side;
-    planet[2] = -b;
-    ring[0] = planet[0] * RING_COS + planet[1] * RING_SIN;
-    ring[1] = -planet[0] * RING_SIN + planet[1] * RING_COS;
-    ring[2] = planet[2];
-    return planet;
-}
-const RING_SUN_REST = [0, 0, 0];
-const PLANET_SUN_REST = planetSunAt(0.8, [0, 0, 0], RING_SUN_REST);
-
-/** The two moons: how far out they ride (planet radii), their size, their pace and where they start. */
-const MOONS = [
-    {
-        far: 3.05, size: 0.085, pace: 7, start: 0.62, tint: [0.92, 0.84, 0.78],
-    },
-    {
-        far: 3.95, size: 0.058, pace: -4, start: 0.17, tint: [0.78, 0.84, 0.95],
-    },
-];
-
-const [SUN_X, SUN_Y] = frameOf(SUN_DIR);
-/** The pole the stars wheel about, and the plane the river of stars lies in. */
-const POLE = unit([-0.28, 0.62, -0.73]);
-const RIVER = unit([0.52, 0.42, 0.74]);
-
-export const VESPER_DIR = Object.freeze(skyDirection(VESPER.azimuth, VESPER.elevation));
-const [VESPER_X, VESPER_Y] = frameOf(VESPER_DIR);
-
-/** Where the last light lies: on the horizon over the place the sun went down. */
-export const GLOW_DIR = Object.freeze((() => {
-    const flat = Math.hypot(SUN_DIR[0], SUN_DIR[2]);
-    const lift = 0.05;
-    const l = Math.hypot(1, lift);
-    return [SUN_DIR[0] / flat / l, lift / l, SUN_DIR[2] / flat / l];
-})());
-
-/** The three mountain ranges, far to near: azimuth frequency, noise row, base, height, depth. */
-const RANGES = [
-    {
-        k: 1.1, row: 0.13, base: 0.014, amp: 0.07, depth: 0,
-    },
-    {
-        k: 0.74, row: 0.47, base: 0.006, amp: 0.1, depth: 0.5,
-    },
-    {
-        k: 0.46, row: 0.81, base: -0.012, amp: 0.2, depth: 1,
-    },
-];
 
 // ── The evening's light ─────────────────────────────────────────────────────────
 

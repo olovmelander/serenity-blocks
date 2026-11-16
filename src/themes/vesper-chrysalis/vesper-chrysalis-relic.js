@@ -144,8 +144,6 @@ export function buildChrysalisGeometry(seed = 5519) {
     const edge = [];
     const facets = [];
     const a = [0, 0, 0];
-    const b = [0, 0, 0];
-    const c = [0, 0, 0];
     /** One facet. `axisY` = the height its outward side is measured from. */
     const facet = (p0, p1, p2, uv0, uv1, uv2, part, index, centreOf = null) => {
         const cx = (p0[0] + p1[0] + p2[0]) / 3;
@@ -245,8 +243,6 @@ export function buildChrysalisGeometry(seed = 5519) {
         bead((i + 0.5) / CHRYSALIS.diadem, CHRYSALIS.shoulder, R * 0.085, i);
     }
     SPOTS.forEach(([turn, t], i) => bead(turn, t, R * 0.06, CHRYSALIS.diadem + i));
-    void b;
-    void c;
 
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -334,7 +330,10 @@ export function createChrysalis(u) {
         const thick = clamp(across.div(R * 2), 0.0, 1.4).toVar();
         const stone = u.shell.div(max(vcMax3(u.shell), 1e-3)).toVar();
         const dye = mix(vec3(1.0), stone, clamp(thick.mul(0.8).add(0.12), 0.0, 1.0));
-        const brilliance = evening(D2w).mul(0.9).add(evening(D3w).mul(0.35)).add(fire).mul(dye).mul(blaze).toVar();
+        const brilliance = evening(D2w).mul(0.9).add(evening(D3w).mul(0.35)).add(fire)
+            .mul(dye)
+            .mul(blaze)
+            .toVar();
 
         // ── What is inside: seen where this facet's ray passes nearest the heart ──
         const heartAt = vec3(0.0, -HEART_DROP, 0.0);
@@ -384,7 +383,8 @@ export function createChrysalis(u) {
         const toEdge = max(min(vEdge.x, min(vEdge.y, vEdge.z)), 0.0).toVar();
         const px = fwidth(toEdge).max(1e-5);
         const hairline = float(1.0).sub(smoothstep(px.mul(0.5), px.mul(1.7), toEdge)).toVar();
-        const edges = mirrored.mul(0.8).add(u.glow.mul(0.22)).add(lamps.mul(0.6)).mul(hairline).mul(0.5);
+        const edges = mirrored.mul(0.8).add(u.glow.mul(0.22)).add(lamps.mul(0.6)).mul(hairline)
+            .mul(0.5);
         // The cracks open at the shoulder and run down (and up) as the chain grows, facet by facet.
         const order = abs(tAt.sub(CHRYSALIS.shoulder)).mul(1.15).add(id.mul(0.22));
         const cracked = float(1.0).sub(smoothstep(u.crack.mul(0.95), u.crack.mul(0.95).add(0.1), order))

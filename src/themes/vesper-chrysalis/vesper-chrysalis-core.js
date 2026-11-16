@@ -117,7 +117,7 @@ export const SUN = Object.freeze({ azimuth: 27 * DEG, elevation: -4.5 * DEG });
 /** The ringed world: where it hangs and how large it looks (radians). */
 export const PLANET = Object.freeze({
     azimuth: -24.5 * DEG,
-    elevation: 18.4 * DEG,
+    elevation: 17.9 * DEG,
     radius: 5.5 * DEG,
     /** The rings: inner and outer edge in planet radii, how open they look, how they lean. */
     ringIn: 1.34,
@@ -318,6 +318,14 @@ export function wingPoint(kind, side, an, v, w = 1, beat = 0, out = [0, 0, 0]) {
 // ── The lantern lilies ──────────────────────────────────────────────────────────
 
 /**
+ * The lilies' kinds: 0 the lantern lotus (broad cupped petals, opens to a bowl), 1 the star lily
+ * (many narrow petals, opens flat), 2 the moon chalice (tall, opens only at its lip). Each keeps
+ * its own hours.
+ */
+export const BLOOM_KINDS = 3;
+const BLOOM_DEAL = Object.freeze([0, 1, 2, 1, 0, 2, 2, 0, 1, 0, 2, 1]);
+
+/**
  * Where the lilies float: left and right of the board, in rows that recede toward the far
  * shore. Listed by importance: a tier floats the first N, and those alternate sides.
  * Each: { x, z, size, side, seed }.
@@ -364,14 +372,6 @@ export function planBlooms(count = BLOOM_MAX, seed = 7411) {
 }
 
 /**
- * The lilies' kinds: 0 the lantern lotus (broad cupped petals, opens to a bowl), 1 the star lily
- * (many narrow petals, opens flat), 2 the moon chalice (tall, opens only at its lip). Each keeps
- * its own hours.
- */
-export const BLOOM_KINDS = 3;
-const BLOOM_DEAL = Object.freeze([0, 1, 2, 1, 0, 2, 2, 0, 1, 0, 2, 1]);
-
-/**
  * How far each kind stands open by itself at each hour of the evening (the order of
  * VESPER_PALETTES): the lotus by day's end and at first light, the star lily through the blue
  * hour, the moon chalice in the dead of night.
@@ -384,7 +384,7 @@ export const BLOOM_TIDES = Object.freeze([
 
 /** How far the lilies of each kind stand open by themselves at an hour (hourAt): [k0, k1, k2]. */
 export function bloomTides(hour, out = [0, 0, 0]) {
-    const n = VESPER_PALETTES.length;
+    const n = BLOOM_TIDES[0].length;
     const h = Number.isFinite(hour) ? ((hour % n) + n) % n : 0;
     const from = Math.floor(h) % n;
     const f = h - Math.floor(h);

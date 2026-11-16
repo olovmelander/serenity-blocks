@@ -96,7 +96,8 @@ export function createMeteors(u) {
         const side = vec2(dir.y.negate(), dir.x);
         const live = step(0.0, age).mul(step(age, life)).mul(step(0.001, uTint.element(slot).w));
         const px = along.mul(2.6).add(0.5).mul(u.viewport.y.div(1080.0));
-        const off = side.mul(positionGeometry.y.mul(2.0)).mul(px).div(u.viewport).mul(c0.w).mul(live);
+        const off = side.mul(positionGeometry.y.mul(2.0)).mul(px).div(u.viewport).mul(c0.w)
+            .mul(live);
         vGain.assign(live.mul(sin(x.mul(Math.PI)).pow(0.6)).mul(uTint.element(slot).w));
         return vec4(c0.xy.add(off), c0.z, c0.w);
     })();
@@ -107,7 +108,8 @@ export function createMeteors(u) {
         const head = exp(float(1.0).sub(along).mul(-26.0)).mul(3.0);
         const trail = smoothstep(0.0, 1.0, along).pow(1.6);
         const light = core.mul(trail.add(head)).add(exp(abs(across).mul(-2.0)).mul(trail).mul(0.12));
-        return vec4(mix(vTint, vec3(1.0, 0.98, 0.94), head.mul(0.3)).mul(light).mul(vGain).mul(2.6).mul(u.breath), 0.0);
+        return vec4(mix(vTint, vec3(1.0, 0.98, 0.94), head.mul(0.3)).mul(light).mul(vGain).mul(2.6)
+            .mul(u.breath), 0.0);
     })();
     mesh.material = material;
     const part = vcPart('VesperChrysalisMeteors', geometry, material, 61, { mesh });

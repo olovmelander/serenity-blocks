@@ -332,7 +332,8 @@ export function createLake(u, opts = {}) {
         col.addAssign(glints);
 
         // ── Gameplay light riding the water itself ──
-        col.addAssign(ringLight.mul(1.1).add(swellLight.mul(0.9)).add(whirlLight.mul(0.8)).add(lotusLight).mul(u.breath));
+        col.addAssign(ringLight.mul(1.1).add(swellLight.mul(0.9)).add(whirlLight.mul(0.8)).add(lotusLight)
+            .mul(u.breath));
 
         // Far water goes into the mist.
         const far = float(1.0).sub(exp(dist.mul(-1 / 900)));

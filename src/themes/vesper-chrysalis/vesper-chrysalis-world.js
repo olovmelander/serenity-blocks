@@ -154,10 +154,10 @@ const PULSE_LIFE = 3;
  */
 export const LIFE_HOURS = Object.freeze([
     {
-        flutter: 0.35, swarm: 0, sync: 0, rise: 0, rays: 0.75, cloud: 0, behind: 0.8,
+        flutter: 0.35, swarm: 0, sync: 0, rise: 0, rays: 0.55, cloud: 0, behind: 0.8,
     },
     {
-        flutter: 0.25, swarm: 0, sync: 0, rise: 0.8, rays: 1.0, cloud: 0.05, behind: 0.7,
+        flutter: 0.25, swarm: 0, sync: 0, rise: 0.8, rays: 0.8, cloud: 0.05, behind: 0.7,
     },
     {
         flutter: 0.65, swarm: 0.9, sync: 0, rise: 0, rays: 0.45, cloud: -0.03, behind: 0.86,
@@ -300,6 +300,8 @@ export class VesperWorld {
         this._night = VESPER_PALETTES[0].night;
         /** The evening moves on by itself (captures of one hour hold it still). */
         this.hourDrift = true;
+        /** The evening has happenings of its own (a capture of one event can hold them off). */
+        this.happenings = true;
         this._target = paletteAt(0);
         this._post = {
             heart: this.heart,
@@ -448,6 +450,8 @@ export class VesperWorld {
             this.u.bloomWave.value.set(1, 0, -100, 0);
             this.u.burst.value.set(-100, 0, 0, 0);
             this.u.flyScatter.value.set(HEART[0], HEART[2] + 6, 0, 0);
+            this.u.chimeTint.value.set(1, 1, 1);
+            this.u.whirlTint.value.set(1, 1, 1);
         }
     }
 
@@ -592,6 +596,11 @@ export class VesperWorld {
         this.hourDrift = drifting !== false;
     }
 
+    /** Let the evening have its own happenings (the default), or hold them off. */
+    setHappenings(on) {
+        this.happenings = on !== false;
+    }
+
     /** The hour of the evening now: the level's, plus how far time has moved it on. */
     hourNow() {
         return hourAt(this.level, this.time, this.hourDrift);
@@ -702,6 +711,11 @@ export class VesperWorld {
     /** Play the happenings that have come due (see HAPPEN_SLOT). */
     runHappenings(t) {
         const slot = Math.floor(t / HAPPEN_SLOT);
+        if (!this.happenings) {
+            // Held off: nothing is owed when they come back.
+            this.happenDone = slot;
+            return;
+        }
         for (let s = Math.max(this.happenDone + 1, slot - 1); s <= slot; s++) {
             const rand = mulberry32(0x9e37 + s * 7919);
             const at = s * HAPPEN_SLOT + 0.4 + rand() * (HAPPEN_SLOT - 1.5);
@@ -1348,7 +1362,7 @@ export class VesperWorld {
             const blade = Math.min(1.8, (0.7 + 0.18 * n) * (1 + 0.2 * deeper));
             const sent = [];
             for (let i = 0; i < list.length && i < 4; i++) {
-                const y = boardPoint(board, 0.5, list[i], this._point).y;
+                const { y } = boardPoint(board, 0.5, list[i], this._point);
                 [-1, 1].forEach((side) => {
                     const at = this.screenToWorld(side < 0 ? card.x0 : card.x1, y, 24, [0, 0, 0]);
                     // It bows out over the water on its own side before it turns for home.

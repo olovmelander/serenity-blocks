@@ -119,7 +119,8 @@ export function createGlints(u, { relic = [], fixed = [] } = {}) {
         const chimeAge = u.time.sub(u.chime.x).sub(pW.y.mul(CHIME_CLIMB / 100).mul(float(1.0).sub(onRelic)));
         const chime = exp(max(chimeAge, 0.0).mul(-3.2)).mul(step(0.0, chimeAge)).mul(u.chime.y)
             .mul(sin(seed.mul(91.0)).mul(0.35).add(0.65));
-        const open = glow.add(star.mul(1.7)).add(world.mul(0.55)).add(wander).mul(facing).add(chime.mul(facing.mul(0.6).add(0.4)))
+        const open = glow.add(star.mul(1.7)).add(world.mul(0.55)).add(wander).mul(facing)
+            .add(chime.mul(facing.mul(0.6).add(0.4)))
             .mul(u.breath)
             .toVar();
         vOpen.assign(min(open, 2.4));
@@ -130,7 +131,8 @@ export function createGlints(u, { relic = [], fixed = [] } = {}) {
         // A star some pixels across, whatever its distance; nothing at all when the facet is dark.
         const lift = pW.add(V.mul(0.45));
         const clip = cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(lift, 1.0)).toVar();
-        const px = sqrt(min(open, 2.4)).mul(26.0).add(5.0).mul(u.viewport.y.div(1080.0)).mul(step(0.02, open));
+        const px = sqrt(min(open, 2.4)).mul(26.0).add(5.0).mul(u.viewport.y.div(1080.0))
+            .mul(step(0.02, open));
         const off = positionGeometry.xy.mul(px).mul(2.0).div(u.viewport).mul(clip.w);
         return vec4(clip.xy.add(off), clip.z, clip.w);
     })();

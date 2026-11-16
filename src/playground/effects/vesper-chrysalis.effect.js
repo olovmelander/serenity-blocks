@@ -27,6 +27,8 @@
  *   msaa=<n>                 override the scene pass's samples
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   reduce=1                 reduced motion
+ *   happen=0                 hold off the evening's own happenings (a fish rising, a gust, a
+ *                            falling star…): only what the URL asks for plays
  *   cam=ex,ey,ez,tx,ty,tz,fov   a free camera for close looks: the eye, what it looks at, and the
  *                            vertical field of view in degrees (the mirror follows it)
  *   icon=1                   the theme-icon framing: a longer lens on the chrysalis (compose for
@@ -135,6 +137,7 @@ export function create({
     world.setReducedMotion(params.get('reduce') === '1');
     // A capture that names its level wants that hour, not that hour plus however long `t` is.
     if (params.has('level')) world.setHourDrift(false);
+    if (params.get('happen') === '0') world.setHappenings(false);
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
     const noPost = params.get('noPost') === '1';

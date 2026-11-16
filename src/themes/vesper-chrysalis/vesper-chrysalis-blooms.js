@@ -297,7 +297,8 @@ export function createBlooms(u, plan, opts = {}) {
             .add(mix(vTint, vec3(1.0, 0.96, 0.9), 0.6).mul(vFlash).mul(3.0));
         // Open by itself, a lily glows a little in its own kind's light; shut, it holds an ember.
         const own = mix(mix(mix(u.wingRoot, u.glow, 0.5), u.crystal, step(0.5, kind)), u.wingMid, step(1.5, kind));
-        const glow = own.mul(vAmbient.mul(float(1.0).sub(t).mul(0.7).add(vein.mul(0.25)).add(0.12)).mul(0.55));
+        const glow = own.mul(vAmbient.mul(float(1.0).sub(t).mul(0.7).add(vein.mul(0.25))
+            .add(0.12)).mul(0.55));
         const ember = mix(u.core, own, 0.6).mul(float(1.0).sub(t).mul(0.13).add(vcBell(t.sub(0.86).div(0.3)).mul(0.08)));
         // A petal is thin: seen against the afterglow the evening's light comes through it, most
         // where it is thinnest (toward its edges and its tip), and its rim catches the glow.
@@ -370,7 +371,8 @@ export function createBlooms(u, plan, opts = {}) {
     padMat.outputNode = Fn(() => {
         const reach = vPadSeed.y;
         const seed = vPadSeed.x;
-        const q = uv().sub(0.5).mul(2.0).mul(reach).toVar(); // in lily sizes
+        const q = uv().sub(0.5).mul(2.0).mul(reach)
+            .toVar(); // in lily sizes
         const d = length(q).toVar();
         // The pad: a round leaf with a notch, its waxy face holding the sky like the water does,
         // only rougher; veins run out from the stem, and the rim turns up and catches the glow.
@@ -407,10 +409,12 @@ export function createBlooms(u, plan, opts = {}) {
         const drop = fract(cellAt).sub(vec2(0.3, 0.3).add(vec2(pick, fract(pick.mul(7.3))).mul(0.4)));
         const bead = exp(dot(drop, drop).mul(-90.0)).mul(step(0.8, pick)).mul(float(1.0).sub(lip));
         const wink = sin(u.time.mul(pick.mul(2.0).add(0.8)).add(pick.mul(90.0))).mul(0.4).add(0.6);
-        const dew = u.glow.mul(0.6).add(vec3(0.5, 0.5, 0.55)).mul(bead.mul(wink)).mul(1.5).mul(u.breath.mul(0.5).add(0.5));
+        const dew = u.glow.mul(0.6).add(vec3(0.5, 0.5, 0.55)).mul(bead.mul(wink)).mul(1.5)
+            .mul(u.breath.mul(0.5).add(0.5));
         const own = mix(mix(mix(u.wingRoot, u.glow, 0.5), u.crystal, step(0.5, aPadKindOf(vPadSeed))), u.wingMid, step(1.5, aPadKindOf(vPadSeed)));
         const leafCol = green.add(mirrored).add(dew)
-            .add(vPadTint.mul(vPadLevel).add(own.mul(vPadSeed.z.mul(0.3))).mul(exp(d.mul(-1.4))).mul(0.5).mul(u.breath));
+            .add(vPadTint.mul(vPadLevel).add(own.mul(vPadSeed.z.mul(0.3))).mul(exp(d.mul(-1.4))).mul(0.5)
+                .mul(u.breath));
         // The pool: the lantern's light lying on the water.
         const poolEdge = float(1.0).sub(smoothstep(reach.mul(0.7), reach, d));
         const pool = exp(d.mul(-0.62)).mul(0.5).add(exp(d.mul(-1.9)).mul(0.9)).mul(poolEdge);
