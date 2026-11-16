@@ -10,6 +10,9 @@
  * wheat       stalks drawn round the lens
  * debris      boards and shingles in the air round the foot
  * motes       sparks per locked piece
+ * chaff       flecks of straw on the inflow, in the box of air round the lens
+ * burst       flecks and puffs one landing piece kicks up
+ * rain        streaks of a squall, in the box of air round the lens
  * ribbons     ribbons the funnel can hold at once (at most RIBBONS, tornado-tsl.js): a long chain
  *             winds this many on before the oldest climbs off into the cloud to make room
  */
@@ -24,6 +27,9 @@ export const QUALITY = Object.freeze({
         debris: 180,
         motes: 16,
         ribbons: 6,
+        chaff: 160,
+        burst: 24,
+        rain: 500,
     }),
     Low: Object.freeze({
         shear: false,
@@ -35,6 +41,9 @@ export const QUALITY = Object.freeze({
         debris: 320,
         motes: 24,
         ribbons: 6,
+        chaff: 260,
+        burst: 36,
+        rain: 800,
     }),
     Medium: Object.freeze({
         shear: true,
@@ -46,6 +55,9 @@ export const QUALITY = Object.freeze({
         debris: 640,
         motes: 40,
         ribbons: 8,
+        chaff: 420,
+        burst: 60,
+        rain: 1400,
     }),
     High: Object.freeze({
         shear: true,
@@ -57,6 +69,9 @@ export const QUALITY = Object.freeze({
         debris: 1100,
         motes: 60,
         ribbons: 10,
+        chaff: 640,
+        burst: 90,
+        rain: 2200,
     }),
     Ultra: Object.freeze({
         shear: true,
@@ -68,6 +83,9 @@ export const QUALITY = Object.freeze({
         debris: 1500,
         motes: 72,
         ribbons: 10,
+        chaff: 800,
+        burst: 110,
+        rain: 2800,
     }),
     Extreme: Object.freeze({
         shear: true,
@@ -79,6 +97,9 @@ export const QUALITY = Object.freeze({
         debris: 2000,
         motes: 84,
         ribbons: 10,
+        chaff: 1000,
+        burst: 130,
+        rain: 3600,
     }),
 });
 

@@ -6580,4 +6580,55 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=fall; t=<s> seeks the squirrel’s day deterministically.',
         sources: ['src/playground/effects/fall.effect.js'],
     })),
+    // Tornado: the storm's own clocks, each held still for a capture.
+    ...[
+        [
+            'kind',
+            'Hold the funnel on one of its kinds: 0 cone, 1 stovepipe, 2 wedge, 3 elephant trunk, 4 rope, '
+                + '5 aloft (off the ground, under the wall cloud).',
+            'Number on the circle of six kinds; a fraction is on the way to the next.',
+            'Not held: the clock turns the kinds, one every 47 seconds.',
+            '2',
+        ],
+        [
+            'weather',
+            'Hold the weather round the storm (where the rain core hangs, how wide the bright gap is, the '
+                + 'mammatus under the anvil) at one second of its clocks.',
+            'Seconds ≥ 0.',
+            'Not held: the weather follows t.',
+            '120',
+        ],
+        [
+            'squall',
+            'Hold the rain over the lens.',
+            '0 (none) to 1 (a squall at its heaviest).',
+            'Not held: a squall crosses every 167 seconds.',
+            '1',
+        ],
+        [
+            'roam',
+            'Hold the funnel’s travel across the field (nearer and further, side to side) at one second.',
+            'Seconds ≥ 0.',
+            'Not held: the funnel roams with t (not at all before 16 s).',
+            '200',
+        ],
+        [
+            'meshes',
+            'Draw only the named meshes (finer than parts=): sky, ground, wheat, poles, body, wall, veil, skirt, '
+                + 'child, twin, ground-dust, dust-front, debris, chaff, bursts, rain, motes, launch, bolts.',
+            'Comma-separated mesh names, with or without the tornado- prefix.',
+            'All meshes.',
+            'wall,sky,ground',
+        ],
+    ].map(([name, description, values, defaultValue, value]) => ({
+        name,
+        category: 'Playground',
+        scope: 'playground.html — tornado',
+        description,
+        values,
+        defaultValue,
+        example: `${name}=${value}`,
+        notes: 'Use on playground.html with effect=tornado.',
+        sources: ['src/playground/effects/tornado.effect.js'],
+    })),
 ];
