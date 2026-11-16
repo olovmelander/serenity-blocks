@@ -71,6 +71,10 @@ import { createWolfhourPack } from './wolfhour-wolves.js';
 import { createWolfhourHut } from './wolfhour-hut.js';
 import { createWolfhourSpindrift } from './wolfhour-spindrift.js';
 import { createWolfhourForest } from './wolfhour-forest.js';
+import { createWolfhourAurora } from './wolfhour-aurora.js';
+import { createWolfhourVoices } from './wolfhour-voices.js';
+import { createWolfhourSnow } from './wolfhour-snow.js';
+import { WolfhourNightDirector } from './wolfhour-night-director.js';
 import { standWolfhourProps } from './wolfhour-props.js';
 import { sceneSamples } from '../shared/scene-antialias.js';
 import { LANDSCAPE_SEED } from './wolfhour-landscape-bake.js';
@@ -504,6 +508,13 @@ export default class WolfhourTheme extends BaseTheme {
         this.spindrift = null;
         this.spruce = null;
         this.wolfhourProps = null;
+        // The night's answers to play: the northern lights, the howl's arcs, the snow in the air,
+        // and the director that says what each wears (wolfhour-night-director.js).
+        this.aurora = null;
+        this.howlVoices = null;
+        this.snow = null;
+        this.director = new WolfhourNightDirector();
+        this.voiceList = [];
         this.cameraMotion = 1;
         this.mountainBaseFill = null;
         this.starfield = null;
@@ -1832,6 +1843,16 @@ export default class WolfhourTheme extends BaseTheme {
             spindrift: this.spindrift,
             forest: this.spruce,
         });
+        this.aurora = createWolfhourAurora({
+            quality: this.activeQualityLevel,
+            noiseMap: this.celestialSky.noiseMap,
+            nightLight,
+        });
+        if (this.aurora) this.scene.add(this.aurora.mesh);
+        this.howlVoices = createWolfhourVoices({ quality: this.activeQualityLevel, nightLight });
+        this.scene.add(this.howlVoices.mesh);
+        this.snow = createWolfhourSnow({ quality: this.activeQualityLevel, nightLight });
+        if (this.snow) this.scene.add(this.snow.group);
         // The existing bounded lunar reaction director owns the pulse state;
         // the sky controller owns geometry, materials and texture disposal.
         this.moon = this.celestialSky.moon;
@@ -2696,7 +2717,11 @@ export default class WolfhourTheme extends BaseTheme {
         // A level-up also turns the night an hour on, behind no setting (its reaction keeps the gate
         // above); the run over, the next begins at the first level's hour.
         reactionUnsubs.push(eventBus.on(EVENTS.LEVEL_UP, (data) => this.setLevel(data)));
-        const onGameOver = () => this.setLevel(1);
+        const onGameOver = () => {
+            this.setLevel(1);
+            // The night settles: snow begins to fall, until the next run's first piece.
+            this.director.over(this.time);
+        };
         window.addEventListener('gameOver', onGameOver);
         reactionUnsubs.push(() => window.removeEventListener('gameOver', onGameOver));
 
@@ -3016,10 +3041,28 @@ export default class WolfhourTheme extends BaseTheme {
         // Play drives the night wind (calmer under Reduce motion: the snow still streams).
         this.spindrift?.update(this.time, this.night.wind * (0.4 + 0.6 * motion));
         const howl = this.wolfPack?.howlLevel(this.time) ?? 0;
+        // The night's weather and its answers to play, worn by the sky, the ranges and the air.
+        const wears = this.director.sample(this.time, this.nightClock.phase, motion);
         this.valleyMist?.update(
             this.time,
-            (this.effectState.mountainPulse || 0) * 0.4 + howl * 0.5 + this.night.glow,
+            (this.effectState.mountainPulse || 0) * 0.4 + howl * 0.5 + this.night.glow + wears.glow * 0.4,
         );
+        this.aurora?.update(this.time, wears.aurora, wears.reach);
+        this.snow?.update(this.time, wears);
+        const land = this.alpineLandscape;
+        if (land?.setSweep) {
+            const [first, second] = wears.sweeps;
+            land.setSweep(0, first[0], first[1], first[2]);
+            land.setSweep(1, second[0], second[1], second[2]);
+            land.setRipple(wears.ripple[0], wears.ripple[1], wears.ripple[2], wears.ripple[3]);
+        }
+        this.celestialSky?.setWheel?.(wears.spin, wears.streak, wears.rush);
+        if (this.howlVoices && this.wolfPack) {
+            if (this.moon) this.howlVoices.setMoon(this.moon.position.x, this.moon.position.y);
+            // (A narrow screen squeezes the valley: the arcs keep their share of it.)
+            this.howlVoices.setReach(Math.min(1, 0.45 + 0.55 * (this.alpineLandscape?.group.scale.x ?? 1)));
+            this.howlVoices.update(this.time, this.wolfPack.voices(this.voiceList), motion);
+        }
     }
 
     /**
@@ -3105,10 +3148,14 @@ export default class WolfhourTheme extends BaseTheme {
 
         this.celestialSky?.setSurge?.(n);
         this.alpineLandscape?.setSparkle?.(n.sparkle);
+        // (The fever holds the northern lights and the glitter up while it lasts.)
+        this.director.setHeat(heat);
 
-        // A fever: the pack howls in chorus, the note held on and taken up again while it lasts.
+        // A fever: the pack howls in chorus, the note held on and taken up again while it lasts,
+        // and the white wolf comes up onto the summit for it.
         if (heat.stage >= 3 && now >= this.nextChorusAt && this.wolfPack) {
             this.wolfPack.howl(now);
+            this.wolfPack.summon?.(now);
             this.nextChorusAt = now + 2.2;
         }
 
@@ -3374,9 +3421,13 @@ export default class WolfhourTheme extends BaseTheme {
         // The cascade depth is one lock's.
         this.comboProgressByPlayer.set(playerKey, 0);
         const hardDrop = this.hardDropPending.delete(playerKey);
+        // (A piece locking means a run is on: the snow of the last one's end stops.)
+        this.director.begin(this.time);
         // Settings > piece-lock ripple off: the lock itself shows nothing (its clears still do).
         if (globalThis.window?.settings?.pieceLockRipple === false) return;
         this.enqueueReactiveToken('starBurst', { origin });
+        // A ring of sparkle runs out over the snow from where the piece came down.
+        if (origin) this.director.lock(this.time, { x: origin.x, y: origin.y, hardDrop });
 
         // A lock is the smallest thing the night answers: less than any clear (a hard drop a
         // little more). The heat of a quick hand builds in the surge, not in each lock's kick.
@@ -3418,9 +3469,14 @@ export default class WolfhourTheme extends BaseTheme {
         // The pack answers: a four-line clear makes it howl at the moon (held on if it is
         // already howling); a smaller clear makes it look at you, and a run of clears keeps it
         // looking and gets the young wolf excited.
-        if (lineCount >= 4) this.wolfPack?.howl(this.time);
-        else this.wolfPack?.glance(this.time);
+        if (lineCount >= 4) {
+            this.wolfPack?.howl(this.time);
+            // The white wolf comes up onto the summit to howl with them.
+            this.wolfPack?.summon?.(this.time);
+        } else this.wolfPack?.glance(this.time);
         if (combo >= 2) this.wolfPack?.excite(this.time);
+        // The night's own answer: bands of moonlight, and from three lines the northern lights.
+        this.director.clear(this.time, { lines: lineCount, combo, cascade });
 
         // Shafts of moonlight: one more once the chain runs on, one more as a cascade deepens.
         const beams = Math.min(lineCount, 2) + (combo >= 4 ? 1 : 0) + (depth >= 2 ? 1 : 0);
@@ -3500,6 +3556,11 @@ export default class WolfhourTheme extends BaseTheme {
         const playerKey = this.getReactivePlayerKey(data);
         const origin = this.reactiveOriginsByPlayer.get(playerKey) || this.lastReactiveOrigin;
         this.gust.hit(lines > 0 ? 0.75 : 0.4, this.time);
+        // The snow devil: the loose snow beside the board whirls up into a column.
+        this.director.twist(this.time, lines);
+        const side = (origin?.x ?? 0) < 0 ? -1 : 1;
+        const reach = Math.min(Math.abs(this.camera?.right ?? 500) * 0.55, 420);
+        this.snow?.whirl(this.time, side * Math.max(150, reach), -345, lines > 0 ? 1 : 0.6);
         this.triggerLunarReaction({ strength: lines > 0 ? 0.85 : 0.42, combo: 1, duration: 1.6 });
         if (lines > 0) this.enqueueReactiveBurst('rift', 2, { origin, reactive: true });
         else this.enqueueReactiveToken('starBurst', { origin });
@@ -3521,6 +3582,8 @@ export default class WolfhourTheme extends BaseTheme {
         const playerKey = this.getReactivePlayerKey(data);
         const origin = this.reactiveOriginsByPlayer.get(playerKey) || this.lastReactiveOrigin;
         this.wolfPack?.answer(this.time);
+        // The answer comes back across the valley: a band of moonlight from the right.
+        this.director.backToBack(this.time);
         this.triggerLunarReaction({ strength: 0.95, combo: 0.85, duration: 1.7 });
         this.triggerLunarReaction({
             strength: 0.8, combo: 1, duration: 1.7, delay: 0.32,
@@ -3538,6 +3601,11 @@ export default class WolfhourTheme extends BaseTheme {
     onPerfectClear() {
         this.crown.hit(1, this.time);
         this.wolfPack?.howl(this.time);
+        // The whole night answers: the lights over all the sky, the air full of diamond dust, the
+        // white wolf on the summit, a hunt loping across the foreground ridge.
+        this.director.perfect(this.time);
+        this.wolfPack?.summon?.(this.time);
+        if (!prefersReducedMotion()) this.wolfPack?.dash?.(this.time);
         this.triggerLunarReaction({ strength: 1.35, combo: 1, duration: 2.6 });
         this.enqueueReactiveBurst('meteor', prefersReducedMotion() ? 1 : 4, { shower: true, reactive: true });
         this.addEffectState({ bloomBoost: 0.2, mountainPulse: 0.5, nebulaDefinition: 0.6 });
@@ -3556,6 +3624,10 @@ export default class WolfhourTheme extends BaseTheme {
         this.triggerLunarReaction({ strength: 0.7, combo: 0.45, duration: 1.55 });
         // Trigger multiple beams
         this.enqueueReactiveBurst('beam', 3);
+        // An hour passes in a breath: the stars wheel and streak, the cloud is swept on, and a hunt
+        // lopes across the foreground ridge.
+        this.director.levelUp(this.time);
+        if (!prefersReducedMotion()) this.wolfPack?.dash?.(this.time);
         this.surge.levelUp(this.time);
     }
 
@@ -3577,6 +3649,12 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     getReactivePoolCapacity(type) {
+        // The valley's own answers (wolfhour-night-director.js: the sparkle ripple, the bands of
+        // moonlight, the northern lights) stand in for the old bursts, beams, rifts and waves
+        // wherever the valley is built; only the meteors still fall from the pools.
+        if (this.usesNodeMaterials && (type === 'starBurst' || type === 'beam' || type === 'rift' || type === 'wave')) {
+            return 0;
+        }
         if (type === 'starBurst') return this.qualityPreset.maxStarBursts;
         if (type === 'beam') return this.qualityPreset.maxCelestialBeams;
         if (type === 'rift') return this.qualityPreset.maxCosmicRifts;
@@ -3731,6 +3809,10 @@ export default class WolfhourTheme extends BaseTheme {
             pools.wave?.[0],
             pools.meteor?.[0],
             pools.crash?.[0],
+            // The night's own answers wait unseen too: the lights, the arcs, the snow.
+            this.aurora?.mesh,
+            this.howlVoices?.mesh,
+            this.snow?.group,
         ].filter(Boolean);
     }
 
@@ -5325,6 +5407,8 @@ export default class WolfhourTheme extends BaseTheme {
             this.celestialSky.applyParallax(this.camera);
             this.alpineLandscape?.applyParallax(this.camera);
             this.valleyMist?.applyParallax(this.camera);
+            this.aurora?.applyParallax(this.camera);
+            this.snow?.applyParallax(this.camera);
             return;
         }
         // More pronounced camera movements for immersive, breathing feel
@@ -5710,6 +5794,13 @@ export default class WolfhourTheme extends BaseTheme {
         }
         this.wolfPack?.dispose();
         this.wolfPack = null;
+        this.aurora?.dispose();
+        this.aurora = null;
+        this.howlVoices?.dispose();
+        this.howlVoices = null;
+        this.snow?.dispose();
+        this.snow = null;
+        this.voiceList.length = 0;
         this.valleyHut?.dispose();
         this.valleyHut = null;
         this.spindrift?.dispose();
@@ -5779,6 +5870,7 @@ export default class WolfhourTheme extends BaseTheme {
         this.surge.reset();
         this.crown.reset();
         this.gust.reset();
+        this.director.reset();
         Object.keys(this.night).forEach((key) => { this.night[key] = key === 'iris' ? 1 : 0; });
         this.nextChorusAt = Number.NEGATIVE_INFINITY;
         this.nextShowerAt = Number.NEGATIVE_INFINITY;

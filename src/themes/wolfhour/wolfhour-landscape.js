@@ -10,7 +10,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, attribute, dot, exp, float, floor, fract, fwidth, hash, max, mix, normalize, positionGeometry, sin,
+    Fn, attribute, dot, exp, float, floor, fract, fwidth, hash, length, max, mix, normalize, positionGeometry, sin,
     smoothstep, step, texture, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
@@ -85,6 +85,13 @@ export function createWolfhourLandscape({
     const uTime = uniform(0);
     // How hard play runs (0 at rest): under a waking moon more of the snow glitters, brighter.
     const uSparkle = uniform(0);
+    // Moonlight sweeps: a band of brighter moonlight crossing the ranges, as when a gap in the
+    // cloud passes (x of its centre in the ranges' own units, its strength, its width); two at once.
+    const uSweepA = uniform(new THREE.Vector3(0, 0, 300));
+    const uSweepB = uniform(new THREE.Vector3(0, 0, 300));
+    // The sparkle ripple: a ring that runs out over the snow from a point (x, y, its radius, its
+    // strength), lighting the crystals it passes.
+    const uRipple = uniform(new THREE.Vector4(0, 0, 0, 0));
     // Snow glints cost a few hashes on every terrain pixel: Medium and up.
     const glints = !['Minimal', 'Low'].includes(quality);
     const graniteTexture = makeGraniteTexture(seed);
@@ -120,14 +127,24 @@ export function createWolfhourLandscape({
         const snowGrain = granite.r.mul(0.12).add(0.88).add(broad.mul(0.16));
         // Moonlight per pixel from the smoothed normal: a contrast curve applied per vertex
         // and then interpolated would show the triangles.
-        const facing = max(dot(normalize(attribute('normal', 'vec3')), MOON), 0);
-        const lit = smoothstep(LIT_RAMP[0], LIT_RAMP[1], facing);
+        // (The stretched read also ribs the light finely down the fall line: flutes too small to bake.)
+        const facing = max(dot(normalize(attribute('normal', 'vec3')), MOON).add(broad.sub(0.5).mul(0.2)), 0);
+        const lit = smoothstep(LIT_RAMP[0], LIT_RAMP[1], facing).toVar();
         const light = attribute('aLight', 'vec2');
+        // The sweeps lean with the moon's light (it falls from the upper left), soft-edged.
+        const across = positionGeometry.x.add(positionGeometry.y.mul(0.42)).toVar();
+        const sweep = exp(across.sub(uSweepA.x).div(uSweepA.z).pow2().negate()).mul(uSweepA.y)
+            .add(exp(across.sub(uSweepB.x).div(uSweepB.z).pow2().negate()).mul(uSweepB.y)).toVar();
+        const fromRipple = length(positionGeometry.xy.sub(uRipple.xy)).sub(uRipple.z);
+        const ripple = exp(fromRipple.div(uRipple.z.mul(0.07).add(16)).pow2().negate()).mul(uRipple.w).toVar();
         // The hour of the night tints the moonlit side and the shade (the sky's fill) apart.
         const rock = mix(PALETTE.rockShade.mul(nightLight.uShade), PALETTE.rockLit.mul(nightLight.uMoon), lit)
             .mul(light.y).mul(rockGrain);
         const frost = mix(PALETTE.snowShade.mul(nightLight.uShade), PALETTE.snowLit.mul(nightLight.uMoon), lit)
-            .mul(light.x).mul(snowGrain).toVar();
+            .mul(light.x).mul(snowGrain)
+            // (A sweep lifts the moonlit snow and a little of the shade; the ripple's ring a breath.)
+            .mul(sweep.mul(lit.mul(0.95).add(0.3)).add(ripple.mul(0.16)).add(1))
+            .toVar();
         if (glints) {
             // Glints: in about one cell in twenty of moonlit snow a crystal catches the moon and
             // twinkles.
@@ -140,12 +157,12 @@ export function createWolfhourLandscape({
             const offset = fract(gp).sub(spot).mul(GLINT_CELL);
             const radius = max(fwidth(positionGeometry.x).mul(0.75), 0.32);
             const twinkle = sin(uTime.mul(1.7).add(hash(cellId.mul(3).add(3)).mul(6.283))).max(0).pow(6);
-            const glint = step(uSparkle.mul(-0.016).add(0.955), chance)
+            const glint = step(uSparkle.mul(-0.016).add(0.955).sub(sweep.mul(0.03)).sub(ripple.mul(0.16)), chance)
                 .mul(exp(dot(offset, offset).div(radius.mul(radius)).negate()))
                 .mul(twinkle).mul(snow)
                 .mul(lit)
                 .mul(light.x)
-                .mul(uSparkle.mul(0.8).add(1));
+                .mul(uSparkle.mul(0.8).add(1).add(ripple.mul(1.4)));
             frost.addAssign(GLINT_COLOUR.mul(nightLight.uMoon).mul(glint));
         }
         const ground = mix(rock, frost, snow).add(
@@ -257,6 +274,31 @@ export function createWolfhourLandscape({
         },
         triangles,
         vertices,
+        /**
+         * A band of brighter moonlight (`slot` 0 or 1) centred on `x` of the ranges' own units,
+         * `strength` 0..1.5, `width` in the same units. Strength 0: none.
+         */
+        setSweep(slot, x, strength, width = 300) {
+            const sweep = slot === 1 ? uSweepB : uSweepA;
+            sweep.value.set(
+                Number.isFinite(x) ? x : 0,
+                Math.max(0, Math.min(1.5, Number.isFinite(strength) ? strength : 0)),
+                Math.max(40, Number.isFinite(width) ? width : 300),
+            );
+        },
+        /**
+         * The sparkle ripple: a ring of `radius` round world (`x`, `y`), `strength` 0..1 (0: none).
+         * The ranges stretch with the aspect: the point is taken into their own units.
+         */
+        setRipple(x, y, radius, strength) {
+            const stretch = group.scale.x || 1;
+            uRipple.value.set(
+                Number.isFinite(x) ? x / stretch : 0,
+                Number.isFinite(y) ? y : 0,
+                Math.max(0, Number.isFinite(radius) ? radius : 0),
+                Math.max(0, Math.min(1, Number.isFinite(strength) ? strength : 0)),
+            );
+        },
         /** How hard play runs (0..1.5, 0 at rest): more of the moonlit snow glitters. */
         setSparkle(value) {
             uSparkle.value = Math.max(0, Math.min(1.5, Number.isFinite(value) ? value : 0));
