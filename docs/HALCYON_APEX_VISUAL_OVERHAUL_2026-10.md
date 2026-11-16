@@ -9,6 +9,12 @@ of a stone causeway lined with crystal shards, the obelisks, the diamond that si
 the ley light that runs between them — and everything else is new. This document records the
 shipped design and what was verified. It is a reference, not a backlog.
 
+Later passes are recorded below in the order they landed: [depths](#depths-pass-2026-10-21),
+[visitors](#visitors-2026-10-26) and
+[skyfarers and the board's great moments](#skyfarers-and-the-boards-great-moments-2026-11-16),
+which replaced the visitors' hulls and routes and gave every event an answer of its own. The
+tables in the first half describe the theme as it ships now.
+
 ## The picture
 
 Dawn, seen from the lagoon. The viewer stands in clear water beside a causeway that runs out,
@@ -46,12 +52,13 @@ chain of clears gives them, the more of the sanctuary leaves the ground.
 | Event | Response |
 | --- | --- |
 | Piece lock | The piece's light drops into the lagoon under the foot of the board, at its own column: a ring runs out over the water (a real ripple: it bends the mirror and the bed) and carries the piece's colour through the net of light on the sand. A wisp in the same colour leaves the edge of the card at the piece's height and flies to the head of a ley line: the causeway for the left half of the board, the stones for the right. From there the light runs the line as a pulse, shard to shard along the deck (each rune across the deck lights as it passes), up the stair through the heart gate and into the Apex — or round the ring of stones and up the rising water into the Halcyon. The great crystal keeps it: it glows in the colours of the pieces it has taken, for about half a minute. |
-| Hard drop | The same, harder: a crown of spray where it struck, a wider ring, a second pulse on the heels of the first, a camera dip. |
-| Line clear | The cleared rows leave the card as blades of light at their own heights. A wave runs out through the sanctuary from the foot of the board, one front per line: the masonry flashes as it passes, the bed floods, every crystal on the lines rings and throws sparks, and the two great crystals let go of everything they were holding. One line answers in the ley's light, two in the crystal's, three in both at once. |
+| Hard drop | The same, harder: a crown of spray where it struck and a fan of spray thrown out from under each side of the card, a wider ring and a second on its heels, a second pulse on the heels of the first, a camera dip. |
+| Line clear | The cleared rows leave the card as blades of light at their own heights. A wave runs out through the sanctuary from the foot of the board, one front per line: the masonry flashes as it passes, the bed floods, every crystal on the lines rings and throws sparks, and the two great crystals let go of everything they were holding. One line answers in the ley's light, two in the crystal's, three in both at once. Two lines and three also send the board's light to the great crystals themselves: a wisp to the Apex and one to the Halcyon for every line past the first. |
 | Combo | The sanctuary lifts. Pair by pair, nearest first, the ley shards rise off their plinths and turn; the stones' crystals follow; drops of the lagoon bead up into the air all over the water and rise, more of them with every step; the splinters round the great crystals swing wider and faster; the ley lines brighten and the clouds thin. When the chain breaks the sanctuary lets its breath go and everything settles. |
-| Four lines / perfect clear | The sanctuary holds its breath: every light sinks for a fifth of a second. Then a beacon stands on the Apex and on the Halcyon, a ring of light opens over the sky from the Apex, the wave goes out in sunfire gold, the beads are thrown up, and the flock is put to flight. A perfect clear burns hotter and longer. |
-| T-spin | Everything that floats turns on its axis, and two more rings leave the foot of the board. |
-| Level up | The hour changes: five palettes, cycled (golden dawn, rose hour, clear morning, amber haze, blue hour). |
+| Four lines | The sanctuary holds its breath: every light sinks for a fifth of a second. Then a beacon stands on the Apex and on the Halcyon, a ring of light opens over the sky from the Apex, the wave goes out in sunfire gold, the beads are thrown up, and the flock is put to flight. As the wave reaches each great crystal it breaks what it lets go of into its colours (a prism burst: a fan of rays, each a spectrum), and five swifts come in over the viewer's head, fanned across the whole sky, and run out to the horizon on trails of sunfire (the salute). |
+| Perfect clear | Four lines, hotter and longer, with seven swifts and a crown: rings of the spectrum open over the sky from the Apex with a glory of rays round it, and eight orbs rise round the crystal in a turning ring and burst outward. |
+| T-spin | Everything that floats turns on its axis, two more rings leave the foot of the board, and a helix of glitter winds up round each great crystal. |
+| Level up | The hour changes: five palettes, cycled (golden dawn, rose hour, clear morning, amber haze, blue hour). The clouds race for a breath as in a time-lapse, both ley lines run a pulse of the new hour's light, and a flight of swifts comes over. |
 
 Combo here is the true consecutive-clear combo (one `ComboTracker` per player in
 `HalcyonApexDirector`); the bus's `COMBO` event is cascade depth (ADR-0011). With several boards
@@ -67,15 +74,17 @@ board is holding.
 | `halcyon-apex-core.js` | Three-free constants and maths shared by the plan, the choreography and the shaders: the site (where the pyramid, the causeway, the Apex, the Halcyon and the stones stand), the stair, the two ley lines' arc lengths, ring, wave and pulse timings, the five palettes, where the picture's anchors sit for an aspect. |
 | `halcyon-apex-plan.js` | The sanctuary as numbers, seeded and deterministic: every block of masonry as flat triangles with its own baked occlusion, every ley strip with its arc length, every crystal. |
 | `halcyon-apex-tsl.js` | Hashes, the baked noise texture, the shared uniforms, the sanctuary's light (the sky function every surface gathers, mirrors and fades into; lock rings, clear waves, ley pulses). |
-| `halcyon-apex-sky.js` | The dome: gradient and scatter, the sun, two decks of cloud in true perspective, the four-line ring. |
+| `halcyon-apex-sky.js` | The dome: gradient and scatter, the sun, the ringed giant, two decks of cloud in true perspective, the four-line ring, a perfect clear's crown. |
 | `halcyon-apex-stone.js` | The masonry's material (courses and joints from each face's own metres, sun through the shadow map, sky, the lagoon's bounce, the crystals' own light) and the ley lines'. |
 | `halcyon-apex-crystals.js` | Every crystal as one instanced cut, its shading, its halo, and where each one floats this frame. |
 | `halcyon-apex-water.js` | The lagoon: the planar mirror, the bed with its net of light, depth and shore, the sun's road, lock rings, the clear's swell. |
 | `halcyon-apex-terrain.js` | The far ranges, the islets, their trees and boulders. |
 | `halcyon-apex-atmosphere.js` | The upfall under the Halcyon, the beads a chain lifts, motes, the flock. |
-| `halcyon-apex-fx.js` | Wisps, sparks and spray, row beams, beacons. |
-| `halcyon-apex-visitor-plan.js` | Three-free: the visitors' hulls as triangle lists, their lamps, their routes, the schedule and their poses (see [Visitors](#visitors-2026-10-26)). |
-| `halcyon-apex-visitors.js` | The visitors' one hull mesh and material, and the sprite pool for their lamps and the beam. |
+| `halcyon-apex-fx.js` | Wisps, sparks and spray, row beams, beacons, prism bursts. |
+| `halcyon-apex-fleet-model.js` | Generated by `scripts/blender/halcyon_apex_fleet.py`: the eight hulls of the skyfarers, their lamps and engines (see [Skyfarers](#skyfarers-and-the-boards-great-moments-2026-11-16)). |
+| `halcyon-apex-visitor-plan.js` | Three-free: unpacks the hulls into one buffer, names their surfaces, lamps and engines. |
+| `halcyon-apex-flight.js` | Three-free: how the skyfarers fly. Paths, formations, bearing from the path itself, the sorties, the three streams of traffic. |
+| `halcyon-apex-visitors.js` | The fleet as one instanced hull draw, the sprite pool for their lamps, the ribbons for their trails and beams. |
 | `halcyon-apex-world.js` | Owns the uniforms, the parts, the camera rig, the sun and its shadow rig, and the choreography. Shared with the playground effect, so what is iterated there ships. |
 | `halcyon-apex-director.js` | Renderer-free: stages bus events per player and resolves one lock and one clear per frame. |
 | `halcyon-apex-composition.js` | Three-free: reads the live card, board and HUD rects and maps board columns and rows onto the screen. |
@@ -159,7 +168,8 @@ measurements of frame rate.
 
 ## Assets
 
-None. The sanctuary is generated: about 14,000 triangles of masonry planned and baked at start
+No binaries, and nothing loaded at run time. The skyfarers' hulls are modelled in Blender and
+shipped as a generated JavaScript module (2026-11-16, below). The sanctuary itself is generated: about 14,000 triangles of masonry planned and baked at start
 (some 60 to 150 ms), the far ranges, islets, trees and boulders cut from seeded noise, seventy
 crystals instanced from one cut, one 256 × 256 noise texture baked on the CPU, and shaders.
 Blender was not needed and was not used: the pyramid, the stair, the gate, the obelisks, the
@@ -286,6 +296,11 @@ the GPU queue: main 1.9–2.2 ms, this pass 1.6–2.6 ms, within the session's n
 
 ## Visitors (2026-10-26)
 
+(Superseded on 2026-11-16 by [the skyfarers](#skyfarers-and-the-boards-great-moments-2026-11-16):
+the hulls here were replaced by modelled ones, the triangle by the manta and the mothership by
+the ark; the saucer's, the beam's, the orbs' and the capsule's routes fly on as heroes. The rules
+learned here still hold. Kept as the record of that pass.)
+
 Asked for: "different kind of UFO spaceships flying by occasionally". Now and then something not
 of this world passes over the sanctuary, drawn by its light. One at a time, about once a minute
 (the first some fifteen seconds into a session):
@@ -344,6 +359,192 @@ flew when called, no console errors.
 Reproduce: `/playground.html?effect=halcyon-apex&t=40&board=1&visitor=<route>&visitorAge=<s>`
 (`saucer`, `halcyon`, `triangle`, `mothership`, `orbs`, `capsule`); without `t`, `visitor=` flies
 it again and again.
+
+## Skyfarers and the board's great moments (2026-11-16)
+
+Asked for: an audit of the whole theme and whatever would make it one of the game's most
+stunning, with better ships, far more variety in how they fly, and a distinct effect for every
+event, the biggest moments the most spectacular. Built on `feature/halcyon-apex-skyfarers`.
+
+### What the audit found
+
+| Part | Finding |
+| --- | --- |
+| The picture at rest | Strong: the back-lit dawn, the mirror, the crystals. Kept as it was. |
+| The visitors | The weakest part. Six scripted routes, one craft at a time, about once a minute, the same every time. Hulls were primitives (a lens, a flat delta, a pill, a banded tube) 60 to 100 px across. |
+| Lock, hard drop | A hard drop was a lock with a wider ring: its crown of spray rose behind the card, where nobody sees it. |
+| One, two, three lines | The same wave three times. Its front is past the card in a third of a second and a thin line near the horizon after that, so two lines and three could not be told apart. |
+| Four lines, perfect clear | The pillars are a hand's width of light and the ring over the sky is faint: the largest moments did not look much larger than three lines. A perfect clear was a warmer four lines. |
+| Twist | Two rings, like a lock. The crystals' turn is real but slow to read. |
+| Level up | The palette changes, with a faint ring. Nothing marks the moment. |
+| Pieces | Four of the seven were teal (`#8ff5ee`, `#3fd6cf`, `#2a8fa0`, `#bfd8d6`) and two sand: hard to tell apart on the board, and the world, which takes a piece's colour for its light, played in one hue. |
+| Sky | Empty above the clouds outside the blue hour. |
+
+### The fleet
+
+Eight hulls, modelled in Blender (`scripts/blender/halcyon_apex_fleet.py`, run headless) and
+shipped as a generated module (`halcyon-apex-fleet-model.js`, about 200 KB of source; nothing is
+loaded at run time). Each is built for how the sanctuary sees it, from the lagoon looking up, so
+for its silhouette and its belly first.
+
+| Hull | What it is |
+| --- | --- |
+| `swift` | A courier dart, 21 m: a needle body of pearl with a dark belly, crescent wings swept back to points like a swallow's, two tail streamers, a canopy, a seam of light along its keel, twin engines. |
+| `manta` | A dark flying wing, 44 m across: a thick heart thinning to down-curved tips, two horns at its brow, a long tail spine, veins of light over its back, white lamps and an amber heart under it. It beats its wings, slowly. |
+| `barge` | A hauler, 34 m: a glazed cab on a spine between two chrome pontoons, six crystals of cargo that glow in the hour's colours, an engine block of four. |
+| `saucer` | The disc the sanctuary has always had, redrawn: a chrome lens, a dark belt of chasing lamps, a glass dome, an emitter and six blisters under its belly. |
+| `ark` | A ship of the sky, 233 m: a pearl hull keel-deep amidships with its bow and stern swept up, through two habitat rings, under three tall sails; a row of lit windows, three engines. |
+| `hoop` | A ring that carries a crystal, 20 m: an upright hoop of pearl with a cut stone floating at its centre and three pods on its rim. |
+| `capsule`, `orb` | The plain white capsule and the ball of light, as before. |
+
+![The fleet, close up](halcyon-apex-overhaul/skyfarers-fleet.jpg)
+
+Every part is a closed shell lofted from sections (a superellipse ring along a body, an airfoil
+ring along a wing), turned outward by its signed volume and tagged with what it is made of.
+Normals are smoothed across edges flatter than 38 degrees; ambient occlusion is cast against the
+whole hull and baked per vertex, so wing roots and the space between a ring and its hull darken.
+Ten surfaces: the six there were (chrome, satin, matte, glass, lamp, orb) and pearl (a pale
+lacquer that takes a breath of the hour's crystal colour where it turns away), engine, trim
+(seams of light) and crystal. Painted surfaces carry plate seams, drawn from the hull's own
+metres and gone before they would shimmer. A pale hull under a blue zenith read as blue paint, so
+the sky's share of a hull's light is taken half way to grey.
+
+### How they fly
+
+`halcyon-apex-flight.js` (three-free). A sortie is a leader's path and the ships that fly it.
+The path is a cubic through keys: as seen from the rest camera, as metres in its frame, or round
+an anchor (the Apex, the Halcyon). Every ship of a formation flies the leader's path a moment
+behind it, set off to the side, above and astern in the leader's own frame, so a formation banks
+and climbs as one; a break sends each ship its own way; a `bearing` turns a ship's whole path
+about the viewer (the salute's fan). What a ship points along and how far it leans comes from
+the path itself: its nose lies on its velocity, and its up lies along the lift that would bend
+the path (what is left of its acceleration square to its flight, plus what holds it up). So a
+hard turn is flown on a wing tip and a loop upside down over the top, with nothing scripted, and
+it rights itself as the path straightens.
+
+Three streams of traffic run at once, each a function of the world clock:
+
+| Stream | Slot | Sorties |
+| --- | --- | --- |
+| far | 24 s | `lane` (one to four couriers high and a kilometre or two out, drawing pale trails), `convoy` (two or three barges nose to tail), `ark` (the ark, with an escort of swifts about it, about once in five minutes) |
+| mid | 31 s | `flyby` (two to five swifts in one of six formations, sometimes a roll that runs back through them, sometimes a break), `orbit` (a flight once round the Apex), `chase` (two swifts through a weave), `glide` (mantas), `haul` (a barge on its own), `string` (orbs out of the heart gate's mouth and down the causeway) |
+| hero | 47 s | `skim` (swifts down the pyramid's face in a dive, flat over the lagoon in a plume of spray, past the viewer's shoulder), `loop` (a loop and a half before the stair and away), `spire` (swifts climbing the open sky beside the card in a helix, their trails wound together), `ray` (a manta's long low pass), `hang` (the manta that stops and turns), `rite` (the hoop come to the Halcyon, its beam on the diamond), `trio` (three saucers down as falling leaves, turning round each other, gone one by one), `dock` (a barge unloading over the causeway), and the four there always were: `saucer`, `halcyon`, `orbs`, `capsule` |
+
+Every sortie's numbers (side, height, distance, speed, how many, which formation, which
+flourish) are drawn from its slot's seed, so the same kind of pass never looks the same twice.
+A stream turns through its names in a shuffled order, never the same twice running. On average
+between one and two sorties are in the sky (some four hulls, mostly the far ones, small) and it
+is empty one second in sixteen; never two heroes at once; never more hulls than the sky can draw
+with a salute of seven on top. Under reduced motion only the slow sorties
+fly, and no salute.
+
+![Flights: the skim, a loop, the helix, round the Apex, the manta, three saucers](halcyon-apex-overhaul/skyfarers-flights.jpg)
+
+The craft touch the sanctuary. A hull skimming the lagoon throws spray; one hanging low presses
+rings into it; a barge at the causeway pours its six crystals of cargo down as sparks, and each
+runs the ley line into the Apex, which keeps it; the hoop's beam (and the saucer's) fills the
+Halcyon while it burns.
+
+### How they are drawn
+
+- **One instanced draw for the whole fleet.** All eight hulls are one buffer (7,765 vertices),
+  each vertex told which hull it belongs to. An instance reads where it is, its bearing (a
+  quaternion) and its kind from a table of uniform rows, and a vertex of another kind leaves the
+  clip volume. One pipeline, any mix of hulls, 24 at once; an empty sky draws nothing.
+- **Lamps** are the sprite pool there was, now 192 and filled each frame; a far hull lights only
+  its brightest.
+- **Trails and beams are ribbons** turned to the eye on the CPU: 24 cross-sections each, a run of
+  the craft's own path a few seconds back. The path is a function of the clock, so a trail needs
+  no memory and a seek draws the same one. A trail is the engine's light, gone in a breath, in a
+  longer wake of vapour that takes the dawn.
+- All three parts stand in the lagoon's mirror.
+
+### The events
+
+| Event | What was added |
+| --- | --- |
+| Hard drop | Two fans of spray thrown out from under each side of the card, where the lagoon shows, and a second ring on the heels of the first. |
+| Two lines, three lines | The board's light flies to the great crystals themselves: a wisp to the Apex and one to the Halcyon for every line past the first (two for two lines, four for three), arcing across the sky to both sides of the card. One line stays the wave alone. |
+| Four lines | A **prism burst**: as its wave reaches each great crystal, the crystal breaks what it lets go of into its colours, a fan of sixteen rays, each a spectrum along its own length. And the **salute**: five swifts in over the viewer's head, fanned across the whole sky on bearings the card and the HUD leave open, running out to the horizon on trails of sunfire, pulling straight up and bursting apart. One salute at a time. |
+| Perfect clear | Seven swifts, and the **crown**: three rings of the spectrum open over the sky from the Apex with a glory of rays round the crystal, and eight orbs rise round it in a turning ring and burst outward. |
+| Twist | A helix of glitter winds up round each great crystal, twice round. |
+| Level up | The hour turns in a breath: the clouds race as in a time-lapse and ease off, both ley lines run a pulse of the new hour's light their whole length, and a flight comes over to see. |
+
+![Hard drop, three lines, a twist; four lines at two moments; a perfect clear](halcyon-apex-overhaul/skyfarers-events.jpg)
+
+![The salute: in overhead, out to the horizon, up and apart](halcyon-apex-overhaul/skyfarers-salute.jpg)
+
+### The giant, and the pieces
+
+A pale ringed giant hangs low in the dawn over the left ranges (beside the Apex on an upright
+screen), a limb of it lit toward the sun. By day it is little more than a paler disc of sky
+behind the clouds; as the hour darkens it stands out with the stars, which go out behind it.
+
+![The giant by day and in the blue hour](halcyon-apex-overhaul/skyfarers-giant.jpg)
+
+The pieces are seven hues of the sanctuary, one each: I the sun's gold `#f4c95d`, O the lagoon's
+turquoise `#2fd9be`, T the rose hour `#f08aa0`, S the blue hour's violet `#a98cf2`, Z the islets'
+green `#8fcf5b`, J the sandstone at first light `#e0723f`, L the clear morning's blue `#4a8fe6`.
+No two sit within 18 degrees of hue, and none is the hue its shape usually wears (the palette
+screen reads 0/7 where it read 3/7). Since the world takes a piece's colour for the light it
+sends up the ley lines, the sanctuary now plays in seven colours.
+
+![In the game: a hard drop in rose, the seven hues, swifts down the pyramid's face, three lines, four lines](halcyon-apex-overhaul/skyfarers-in-game.jpg)
+
+### Cost
+
+One more pipeline (the bursts, 32 strips) and one more for the trails; the hulls and the lamps
+replace the two there were. In flight: one instanced draw of at most 24 hulls (every hull's
+vertices go through the vertex stage for each instance, some 7,600 triangles an instance, nearly
+all thrown out before a pixel), one of lamp sprites, one of ribbons, each twice with the mirror.
+The sky's two new terms sit in branches: the giant's is taken per pixel inside its rings' reach
+and holds no derivative and no texture (WGSL allows neither there); the crown's is skipped
+outright at rest. On the CPU a frame evaluates each flying ship's path a few dozen times (its
+pose and its trail's 24 points). No GPU timings were taken (the owner's standing rule: capped
+30 fps captures unless asked).
+
+### Verified
+
+- Unit tests: `tests/unit/halcyon-apex-visitors.test.js` rewritten (49 tests: the hulls' ranges,
+  winding, sizes, surfaces and lamps; the traffic's rate, determinism, variety and reduced
+  motion; every sortie over six seeds held over the water and out of the pyramid's masonry;
+  smooth flight; a swift along its velocity, banked into a turn, upside down over the top of a
+  loop; formations through a turn; the salute's fan; each scheduled sortie's seconds in view
+  clear of the card and the HUD; near hulls out of the sun's glare; the world's handling; the
+  three materials through the WGSL and GLSL builders) and `tests/unit/halcyon-apex-events.test.js`
+  (new, 15 tests: each event's own answer, the giant, the palette, the bursts and the sky through
+  both builders). The theme's other suites pass unchanged
+  apart from the parts list.
+- Playground captures with clean consoles, WebGPU at High: every sortie as a strip of six
+  moments; every event; the five hours with traffic. Also Low on the WebGL2 backend, Minimal,
+  and an upright 430 × 852 frame at Medium.
+- In the real game (headless Chrome, single player, 30 fps cap): real hard drops from the
+  keyboard (nine locks, eighteen pulses, both great crystals holding light, the first scheduled
+  hero flying on its own), then three lines, four lines, a perfect clear, a twist and a level
+  called on the live world. The theme's console output was clean.
+
+Faults found on the way, fixed and covered by the tests above: eight routes ran through the
+pyramid's volume (a loop inside it, a dive through its flank, an approach through its corner),
+which no capture shows because the depth test hides the hull; a far crossing given as two wide
+bearings bulged out of the top of the frame and was never in view; the manta's low pass crossed
+the sun's glare; a loop's exit did the same.
+
+Not verified, and open calls for the owner: frame cost on the integrated GPU; local multiplayer
+and Infinity layouts in a capture; a physical phone (upright, the salute's fan closes to what the
+frame shows, and several heroes fly behind the card). The piece palette is a visible change and
+is the owner's to keep or revert. The salute's swifts pass low and back-lit, so they read as dark
+silhouettes on golden trails. A hero pass now and then is large (the skim ends some 70 m from
+the eye). The barge's unloading floods the causeway's crystals for a few seconds. The theme icon
+and `docs/theme-screenshots/halcyon-apex.png` still show the sanctuary without its fleet.
+
+### Reproduce
+
+`/playground.html?effect=halcyon-apex&t=40&board=1&traffic=0&visitor=<sortie>&visitorAge=<s>`
+with `visitorSeed=<n>` for another draw of its numbers and `zoom=ship,<fov>` to follow its leader
+(a close look at a hull). `traffic=0` empties the sky of everything scheduled. Events as before
+(`event=drop|clear|quad|perfect|twist|levelUp`, `eventAge=<s>`, `lines=<n>`). To rebuild the
+fleet: `blender --background --factory-startup --python scripts/blender/halcyon_apex_fleet.py --
+--out src/themes/halcyon-apex/halcyon-apex-fleet-model.js --preview <dir>`.
 
 ## Captured previews
 

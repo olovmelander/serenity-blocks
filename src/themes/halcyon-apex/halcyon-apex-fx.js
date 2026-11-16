@@ -14,6 +14,9 @@
  *    (a four-line clear, a perfect clear, the end of a chain) the thread becomes a pillar that
  *    stands into the sky, as tall as what it held.
  *
+ *  - Prism bursts: a great crystal that lets go of everything it holds (four lines, a crown)
+ *    breaks the light into its colours: a fan of rays, each a spectrum along its own length.
+ *
  * Nothing is created at event time and every pool is always drawn (dormant slots collapse to
  * zero size), so the first frame compiles every pipeline.
  */
@@ -231,7 +234,7 @@ export function createSparks(u, count) {
      * (min, max) speed outward, `up` = (min, max) speed upward.
      */
     part.emit = ({
-        x, y, z, n, rgb, time, out = [0.8, 4.5], up = [0.5, 4], life = [0.8, 1.9], size = 0.035, stagger = 0,
+        x, y, z, n, rgb, time, out = [0.8, 4.5], up = [0.5, 4], life = [0.8, 1.9], size = 0.035, stagger = 0, lean = null,
     }) => {
         const rand = mulberry32(0x51a7 + bursts * 7919);
         bursts += 1;
@@ -242,7 +245,10 @@ export function createSparks(u, count) {
             const a = rand() * TAU;
             const speed = out[0] + (out[1] - out[0]) * rand() ** 1.7;
             aBirth.set([x, y, z, time + rand() * stagger], i * 4);
-            aVel.set([Math.sin(a) * speed, up[0] + (up[1] - up[0]) * rand(), Math.cos(a) * speed, life[0] + (life[1] - life[0]) * rand()], i * 4);
+            // `lean` throws the whole burst one way (metres a second along x and z): a fan, not a crown.
+            const lx = lean ? lean[0] * (0.6 + 0.8 * rand()) : 0;
+            const lz = lean ? lean[1] * (0.6 + 0.8 * rand()) : 0;
+            aVel.set([Math.sin(a) * speed + lx, up[0] + (up[1] - up[0]) * rand(), Math.cos(a) * speed + lz, life[0] + (life[1] - life[0]) * rand()], i * 4);
             const g = 0.7 + rand() * 0.6;
             aTint.set([rgb[0] * g, rgb[1] * g, rgb[2] * g, size * (0.55 + rand() * 0.9)], i * 4);
         }
@@ -406,5 +412,94 @@ export function createBeacons(u) {
     })();
     const part = haPart('HalcyonApexBeacons', geometry, material, 22);
     part.reset = () => {};
+    return part;
+}
+
+// ── Prism bursts ────────────────────────────────────────────────────────────────
+
+/** Rays each great crystal throws, and how long a burst lasts (seconds). */
+export const BURST_RAYS = 16;
+export const BURST_LIFE = 3.6;
+
+/** How far a burst has opened `age` seconds in (0..1), and how much of its light is left. CPU twins of the shader. */
+export function burstOpen(age) {
+    return age <= 0 ? 0 : 1 - Math.exp(-age * 4.5);
+}
+export function burstLight(age) {
+    if (age <= 0 || age >= BURST_LIFE) return 0;
+    return Math.exp(-age * 1.15) * (1 - (age / BURST_LIFE) ** 4);
+}
+
+/**
+ * When a great crystal lets go of everything it holds (four lines, a perfect clear's crown) it
+ * breaks the light into its colours: a fan of rays stands out of it, each a spectrum along its own
+ * length, turning slowly, and is gone in a few seconds. Sixteen strips a crystal, laid in the
+ * screen's plane round the crystal's centre; `u.burst` holds (birth, strength) for the Apex and
+ * the Halcyon, so a second burst restarts the fan at full light.
+ */
+export function createBursts(u) {
+    const count = BURST_RAYS * 2;
+    const aRay = new Float32Array(count * 4);
+    const rand = mulberry32(0xb0057);
+    for (let i = 0; i < count; i++) {
+        const k = i % BURST_RAYS;
+        // (whose, angle, length, hue): long rays and short ones by turns, none quite on the clock.
+        aRay.set([
+            i < BURST_RAYS ? 0 : 1,
+            ((k + 0.5) / BURST_RAYS) * TAU + (rand() - 0.5) * 0.22,
+            (k % 2 ? 0.5 : 1.0) * (0.75 + rand() * 0.5),
+            rand(),
+        ], i * 4);
+    }
+    const geometry = haQuadGeometry(count, { aRay: [aRay, 4] });
+    const ray = attribute('aRay', 'vec4');
+    const material = haFxMaterial('HalcyonApexBursts', { depthTest: false });
+    const centre = mix(u.apexPos, u.halcyonPos, ray.x);
+    const own = mix(u.burst.xy, u.burst.zw, ray.x);
+    const age = u.time.sub(own.x);
+    const live = step(0.0, age).mul(step(age, BURST_LIFE)).mul(step(0.001, own.y));
+    const open = float(1.0).sub(exp(max(age, 0.0).mul(-4.5)));
+    // The Halcyon hangs before the sun: its fan is shorter, so it never whitens the glare.
+    const reach = mix(float(118.0), float(64.0), ray.x).mul(ray.z).mul(open).mul(own.y.sqrt());
+    const foot = mix(float(SITE.apex.girth * 0.9), float(SITE.halcyon.girth * 0.9), ray.x);
+    const girth = mix(float(3.4), float(2.6), ray.x).mul(ray.z.mul(0.5).add(0.6));
+    const angle = ray.y.add(age.mul(mix(float(0.16), float(-0.13), ray.x)));
+    const dir = vec2(angle.cos(), angle.sin());
+    const along = positionGeometry.y.add(0.5);
+    const clip = viewProjection(centre);
+    const pxPerMetre = u.viewport.y.mul(1.05).div(max(clip.w, 0.3));
+    // Laid in the screen's plane: out along the ray, and across it (wider toward its end).
+    const out = dir.mul(foot.add(reach.mul(along)));
+    const across = vec2(dir.y.negate(), dir.x).mul(positionGeometry.x.mul(girth).mul(along.mul(1.6).add(0.5)));
+    const px = out.add(across).mul(pxPerMetre).mul(live);
+    material.vertexNode = vec4(clip.xy.add(px.mul(2.0).div(u.viewport).mul(clip.w)), clip.z, clip.w);
+    const vRay = varying(vec4(positionGeometry.x.mul(2.0), along, ray.w, ray.x), 'haBurstRay');
+    // (The fourth power by products, of a clamped base: a `pow` of a negative age is a NaN that a zero does not clear.)
+    const spent = clamp(age.div(BURST_LIFE), 0.0, 1.0);
+    const spent2 = spent.mul(spent);
+    const vLight = varying(exp(max(age, 0.0).mul(-1.15)).mul(float(1.0).sub(spent2.mul(spent2))).mul(own.y).mul(live), 'haBurstLight');
+    material.colorNode = Fn(() => {
+        const x = clamp(vRay.x, -1.0, 1.0);
+        const y = clamp(vRay.y, 0.0, 1.0).toVar();
+        const profile = exp(x.mul(x).mul(-6.0)).mul(float(1.0).sub(smoothstep(0.75, 1.0, abs(x))));
+        const taper = float(1.0).sub(y).mul(float(1.0).sub(y)).mul(smoothstep(0.0, 0.05, y));
+        // Each ray is the spectrum laid along its own length: gold at the crystal, through rose and
+        // violet to the crystal's own blue at its tip, every ray starting a little off the last.
+        const hue = y.mul(0.72).add(vRay.z.mul(0.22)).add(0.02);
+        const spectrum = clamp(vec3(
+            hue.mul(TAU).cos().mul(0.5).add(0.5),
+            hue.sub(0.33).mul(TAU).cos().mul(0.5)
+                .add(0.5),
+            hue.sub(0.67).mul(TAU).cos().mul(0.5)
+                .add(0.5),
+        ), 0.0, 1.0);
+        const tint = mix(spectrum.mul(spectrum).mul(1.25), vec3(1.0, 0.92, 0.78), exp(y.mul(-7.0)).mul(0.7));
+        const gain = mix(float(2.6), float(1.3), vRay.w);
+        return vec4(tint.mul(profile).mul(taper).mul(vLight).mul(gain)
+            .mul(u.breath.mul(0.8).add(0.2)), 0.0);
+    })();
+    const part = haPart('HalcyonApexBursts', geometry, material, 21);
+    part.reset = () => {};
+    part.count = count;
     return part;
 }
