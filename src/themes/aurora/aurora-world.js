@@ -15,7 +15,8 @@ import { AuroraAtmosphere } from './aurora-atmosphere.js';
 import { AuroraCurtains } from './aurora-curtains.js';
 import { AuroraDirector } from './aurora-director.js';
 import { ExcitationMap } from './aurora-field.js';
-import { AURORA_HOURS } from './aurora-hours.js';
+import { AuroraSpindrift } from './aurora-spindrift.js';
+import { AURORA_HOURS, MOON_DIRECTION } from './aurora-hours.js';
 import { AuroraLandscape } from './aurora-landscape.js';
 import { createRandom } from './aurora-noise.js';
 import {
@@ -33,6 +34,13 @@ const FOCUS_DISTANCE = 60;
 /** Rings land on the lake between these distances from the eye. */
 const RIPPLE_NEAR = 44;
 const RIPPLE_FAR = 200;
+/**
+ * How far up the frame (0 centre … 1 top edge) the crown's rays meet: behind the upper half of
+ * the board, so the board itself wears the crown and only the rays show round it.
+ */
+const CROWN_HEIGHT = 0.5;
+/** A fireball's look in the meteor pool: a long train, a wide head. */
+const FIREBALL = Object.freeze({ tail: 0.7, width: 0.014 });
 /** Meteors waiting their turn for a free slot: a fever's volleys become a shower. */
 const METEOR_QUEUE = 16;
 /** Seconds between the meteors of one volley, so they never start on the same frame. */
@@ -80,6 +88,11 @@ export class AuroraWorld {
             starGain: uniform(night.stars),
             galaxyGain: uniform(night.galaxy),
             moonGlow: uniform(night.moon),
+            // Where the moon is on its arc; the cosine and sine of the stars' turn round the pole.
+            moonDirection: uniform(new THREE.Vector3(...MOON_DIRECTION)),
+            skyTurn: uniform(new THREE.Vector2(1, 0)),
+            mistGain: uniform(night.mist),
+            dustGain: uniform(night.dust),
         };
 
         this.noiseTexture = new THREE.DataTexture(
@@ -163,9 +176,16 @@ export class AuroraWorld {
             pointerScale: 0.2,
             idlePhase: 1.3,
         });
+        this.spindrift = new AuroraSpindrift({
+            parent: this.group,
+            preset: this.preset,
+            uniforms: this.uniforms,
+            atmosphere: this.atmosphere,
+        });
         this.meteorQueue = Array.from({ length: METEOR_QUEUE }, () => ({
-            at: Infinity, from: [0, 1, 0], to: [0, 1, 0], duration: 1, brightness: 1, warmth: 0,
+            at: Infinity, from: [0, 1, 0], to: [0, 1, 0], duration: 1, brightness: 1, warmth: 0, kind: 0,
         }));
+
         this.lastMeteorAt = -Infinity;
         this.tangentX = 1;
         this.prepareCamera(camera.aspect || 16 / 9);
@@ -188,6 +208,9 @@ export class AuroraWorld {
         const halfFov = THREE.MathUtils.degToRad(camera.fov / 2);
         this.pitch = Math.atan((1 - 2 * horizon) * Math.tan(halfFov));
         this.tangentX = Math.tan(halfFov) * aspect;
+        // The crown's rays meet just over the board's top edge; curls and falling stars keep
+        // under the top of the view.
+        this.director.setSkyFrame(this.pitch + halfFov, this.pitch + Math.atan(Math.tan(halfFov) * CROWN_HEIGHT));
         this.focus.set(0, EYE_HEIGHT + Math.sin(this.pitch) * FOCUS_DISTANCE, -Math.cos(this.pitch) * FOCUS_DISTANCE);
         this.rig.setFocus(this.focus.x, this.focus.y, this.focus.z);
         this.uniforms.aspect.value = aspect;
@@ -251,6 +274,10 @@ export class AuroraWorld {
                 0,
             );
         }
+        const { forms } = director;
+        for (let i = 0; i < curtain.forms.array.length; i += 1) {
+            curtain.forms.array[i].set(forms[i * 4], forms[i * 4 + 1], forms[i * 4 + 2], forms[i * 4 + 3]);
+        }
         const { cells, folds } = director.weather;
         for (let i = 0; i < folds.length; i += 1) curtain.arcFold.array[i] = folds[i];
         for (let i = 0; i < curtain.cells.array.length; i += 1) {
@@ -266,6 +293,12 @@ export class AuroraWorld {
         this.uniforms.starGain.value = hours.stars;
         this.uniforms.galaxyGain.value = hours.galaxy;
         this.uniforms.moonGlow.value = hours.moon;
+        const [moonX, moonY, moonZ] = hours.moonDirection;
+        this.uniforms.moonDirection.value.set(moonX, moonY, moonZ);
+        this.uniforms.skyTurn.value.set(Math.cos(hours.skyTurn), Math.sin(hours.skyTurn));
+        // The mist breathes on a slow beat of its own under the hour's.
+        this.uniforms.mistGain.value = hours.mist * (1 + 0.22 * Math.sin(this.time * 0.071 + 1.3));
+        this.uniforms.dustGain.value = hours.dust;
     }
 
     /** Hand the director's queued one-shots to the layers that draw them. */
@@ -281,6 +314,18 @@ export class AuroraWorld {
                 ripple.strength,
                 ripple.color,
                 ripple.speed,
+            );
+        }
+        for (let i = 0; i < director.burstCount; i += 1) {
+            const burst = director.bursts[i];
+            const reach = RIPPLE_NEAR + (RIPPLE_FAR - RIPPLE_NEAR) * burst.range;
+            this.spindrift.burst(
+                time,
+                Math.sin(burst.azimuth) * reach,
+                -Math.cos(burst.azimuth) * reach,
+                burst.strength,
+                burst.color,
+                burst.speed,
             );
         }
         for (let i = 0; i < director.meteorCount; i += 1) this.queueMeteor(director.meteors[i], time);
@@ -318,6 +363,7 @@ export class AuroraWorld {
         entry.duration = meteor.duration;
         entry.brightness = meteor.brightness;
         entry.warmth = meteor.warmth;
+        entry.kind = meteor.kind ?? 0;
     }
 
     earliestMeteor() {
@@ -328,7 +374,10 @@ export class AuroraWorld {
 
     launchQueued(entry, time) {
         this.sky.launchMeteor(time, entry.from, entry.to, {
-            duration: entry.duration, brightness: entry.brightness, warmth: entry.warmth,
+            duration: entry.duration,
+            brightness: entry.brightness,
+            warmth: entry.warmth,
+            ...(entry.kind === 1 ? FIREBALL : null),
         });
         entry.at = Infinity;
     }
@@ -376,6 +425,7 @@ export class AuroraWorld {
         this.lastMeteorAt = -Infinity;
         this.sky.resetMeteors();
         this.landscape.resetRipples();
+        this.spindrift.reset();
         this.rig.reset();
         this.curtains.lastRefresh = -Infinity;
         this.applyDirector();
@@ -389,6 +439,7 @@ export class AuroraWorld {
             sky: this.sky.getDiagnostics(),
             landscape: this.landscape.getDiagnostics(),
             air: this.air.getDiagnostics(),
+            spindrift: this.spindrift.getDiagnostics(),
         };
     }
 
@@ -396,6 +447,7 @@ export class AuroraWorld {
         if (this.disposed) return;
         this.disposed = true;
         // A world stopped part-way through its steps has only some of its parts.
+        this.spindrift?.dispose();
         this.air?.dispose();
         this.landscape?.dispose();
         this.sky?.dispose();

@@ -93,9 +93,9 @@ describe('Verdant Hills weathers: the table', () => {
         expect(first.name).toBe('kite day');
     });
 
-    it('has four to six weathers, each whole, finite and distinct from its neighbours', () => {
-        expect(N).toBeGreaterThanOrEqual(4);
-        expect(N).toBeLessThanOrEqual(6);
+    it('has five to eight weathers, each whole, finite and distinct from its neighbours', () => {
+        expect(N).toBeGreaterThanOrEqual(5);
+        expect(N).toBeLessThanOrEqual(8);
         const names = new Set();
         VERDANT_HILLS_MOODS.forEach((mood, k) => {
             names.add(mood.name);

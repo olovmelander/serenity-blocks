@@ -32,8 +32,12 @@ const BLOOM_STRENGTH = 0.18;
 const SATURATION = 1.12;
 /** How far the light between the clouds is followed, metres. */
 const SHAFT_RANGE = 9000;
-/** How brightly the shaft of the game's own gap in the clouds stands in the air. */
-const BEAM_GAIN = 7;
+/**
+ * Beyond the last of the land the line of sight ends on the sky's dome, which carries its own
+ * air: the lit haze marched in front of it is faded out between these distances (metres), or it
+ * lies over the whole sky as a pale veil that the tiers without this pass do not have.
+ */
+const DOME_FADE = Object.freeze([9000, 18000]);
 
 export class VerdantHillsPost {
     constructor({
@@ -123,25 +127,25 @@ export class VerdantHillsPost {
             const ray = this.uForward.add(this.uRight.mul(st.x.mul(2).sub(1)))
                 .add(this.uUp.mul(float(1).sub(st.y.mul(2)))).toVar();
             const direction = normalize(ray).toVar();
-            const reach = min(length(ray).mul(viewZ.negate()), SHAFT_RANGE).toVar();
+            const far = length(ray).mul(viewZ.negate()).toVar();
+            const reach = min(far, SHAFT_RANGE).toVar();
             const stride = reach.div(steps).toVar();
             const travelled = stride.mul(interleavedGradientNoise(screenCoordinate.xy)).toVar();
             const glow = float(0).toVar();
-            const beam = float(0).toVar();
             Loop(steps, () => {
                 const point = this.uEye.add(direction.mul(travelled));
                 const air = exp(max(point.y.sub(light.uGroundLevel), 0).mul(-0.0022));
                 const seen = exp(travelled.mul(light.uHaze).mul(-0.7));
+                // (The shaft of the game's own gap in the clouds is drawn as a shaft, on every
+                // tier: verdant-hills-sunbeams.js. Marched here it slipped between the steps.)
                 glow.addAssign(light.cloudShadow(point).mul(air).mul(seen));
-                // The gap the game opens in the clouds: its shaft stands in the air whichever way one looks.
-                beam.addAssign(light.sunGap(point).mul(air).mul(seen));
                 travelled.addAssign(stride);
             });
             const sunward = saturate(dot(direction, light.uSunDir));
             const phase = pow(sunward, 3).mul(1.1).add(0.22);
-            const amount = glow.mul(stride).mul(light.uHaze).mul(1.5);
-            const shaft = beam.mul(stride).mul(light.uHaze).mul(BEAM_GAIN);
-            return vec4(light.uHazeWarm.mul(amount).mul(phase).add(vec3(1.0, 0.86, 0.56).mul(shaft)), 1);
+            const dome = smoothstep(DOME_FADE[0], DOME_FADE[1], far).mul(0.7).oneMinus();
+            const amount = glow.mul(stride).mul(light.uHaze).mul(1.5).mul(dome);
+            return vec4(light.uHazeWarm.mul(amount).mul(phase), 1);
         })();
     }
 

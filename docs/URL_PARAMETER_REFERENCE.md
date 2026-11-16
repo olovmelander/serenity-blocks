@@ -50,7 +50,7 @@ own `fox`, `plan` and `power`, plus `winterForceWebGL`, `winterTime`, `winterFix
 `winterFalseColor`. The Verdant Hills rebuild added `verdantHillsForceWebGL` and
 `verdantHillsSeed`, its theme joined the ones that answer `themeValidation`, and its
 `verdant-hills` playground effect added `clouds`, `cover` and `kites` plus entries of its own
-for `bare` and `sky`. The Void Ember rebuild retired `voidEmber` (the switch of the debug
+for `bare` and `sky`; its living-day pass added `paint`. The Void Ember rebuild retired `voidEmber` (the switch of the debug
 overlay that went with the old theme), that theme's `serenity.forceWebGL` localStorage fallback
 and the `burst` control of the removed `void-ember-mobile` playground effect, and added the
 capture flags `voidEmberForceWebGL`, `voidEmberTime`, `voidEmberFixedDt`, `voidEmberParts` and
