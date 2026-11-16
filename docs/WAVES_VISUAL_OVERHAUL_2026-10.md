@@ -1,7 +1,9 @@
 # Waves — the green room (visual overhaul, 2026-10-09)
 
 **Status: implemented on branch `feature/waves-masterpiece` (worktree `serenity-blocks-waves`).
-A record of what was built and how it was checked — not a backlog.** Replaces the "sculpted
+A record of what was built and how it was checked — not a backlog.** The newest pass
+(2026-11-16: light in the roof, the sea life, an effect for every event) is "Third pass" near the
+end; its tables of what the board does and of the modules are the current ones. Replaces the "sculpted
 surf barrel" (a noise-textured cylinder with a painted sunset behind its far end) with the
 inside of a breaking wave that is shaped and shaded as one: a lip that is thrown and falls, water
 that is glass, and a board whose every move goes into it. Everything is on three 0.186.1 and
@@ -489,6 +491,233 @@ old 26-drop crown because a callback dropped the leap; this test fails on that) 
 same way. **Not done:**
 the real game, an integrated GPU, and anyone watching a pod leap in motion.
 
+## Third pass: light in the water, a living sea, an effect for every event (2026-11-16)
+
+Olov asked for an audit of everything that makes up the theme and for the theme to be taken to
+"one of the most visually stunning themes in my game": a wave tunnel with convincing water, light
+through it, spray and foam; variety over time; much more, and much more varied, sea life (Blender
+allowed); and an effect of its own for every event, the biggest moments the most spectacular,
+with play still smooth and easy to read.
+
+| Before (2026-10-26) | After |
+| --- | --- |
+| ![before](waves-overhaul/mp-before.jpg) | ![after](waves-overhaul/mp-idle.jpg) |
+| ![before, with the board](waves-overhaul/mp-before-board.jpg) | ![after, with the board](waves-overhaul/mp-idle-board.jpg) |
+
+### What the audit found
+
+Read from 1:1 crops and one capture per event, at the theme's own lens with the board on screen:
+
+- **The face was the weakest half of the frame.** With the card in the middle, the right 40 % of
+  the screen is the wall of the wave two to four metres from the eye. There it was a dark teal
+  smear: its only pattern was noise drawn out along the flow, its weak mirror of the evening lay
+  on it as brown blotches, and its foam was long white hairlines that read as scratches on glass.
+- **The roof passed light but did not hold any.** Thin water was shaded as clear glass: it showed
+  the sky behind it, dimmed. Over the eye of the barrel that sky is the grey-violet of the zenith,
+  so the roof read as milk. A backlit lip glows in the water's own colour; ours did not.
+- **Hard dark dashes on the sea at the foot of the wave**: stair-stepped, a pixel tall, crawling.
+- **Nothing lived in it.** One animal (a lofted dolphin with flat fins, no eye), one move (a
+  ballistic arc), only when a chain reached three clears, and leaving from behind the card: the
+  first third of every leap was hidden. Between chains the sea was empty for ever.
+- **Every event was the same two things at different sizes**: drops off the lip and a band of
+  light on the wall. A twist was a thin arc of drops; two lines were close to invisible a second
+  later; four lines (the biggest thing the board does) was a sparse halo of beads.
+- **The wave never changed.** The hours turned its light (kept: that works), but its foam, its
+  wind and its weight were the same at minute one and minute forty.
+
+### The wave
+
+- **Light in the roof.** A thin sheet now scatters what crosses it: the roof and the lip glow in
+  the hour's water colour, brightest toward the sun (`sheet` in `waves-water.js`: what the sheet
+  keeps of the light, by its thickness, times the hour's scatter). Golden hour is emerald glass
+  with the sun in it; the day is turquoise; moonrise is sapphire. This one term changed the
+  picture more than anything else in the pass.
+- **The face is water, not a smear.** Three things replaced the hairlines and the blotches:
+  *foam lace* low on the face and on the trough at its foot (thin threads between cells, in
+  rafts, drawn up and stretched by the flow); *a net of caustic light* higher up the wall, under
+  the roof that folds it (two nets of cell walls sliding through each other, bright where they
+  meet); and a wall that is deep and blue at its foot and luminous toward the roof. Both nets are
+  read from one new baked texture of foam cells (`bakeFoamLace`: the distance to the nearest wall
+  between jittered cells, so the shader draws a thread as thin as it likes). The first attempt
+  drew them as contour lines of the water's noise and came out as marbled paint (skill note #1302).
+- **The dashes are gone.** A ripple on the flat sea could tip the mirror's ray under the horizon,
+  where it met "dark water" by a hard per-pixel choice. A level surface's mirror now always looks
+  up (#1303).
+- **The sea has states of its own.** Beside the six hours there is a second, slower wheel
+  (`SEA_STATES` in `waves-hours.js`, 73 s a state, no multiple of the hours' 100 s): *glass*,
+  *offshore wind* (the lip tears longer, its rain leaves harder, the plume off the shoulder
+  streams back), *heavy* (the barrel stands wider, the landing boils, more lace) and *sparkling*
+  (a livelier surface, a brighter net). Six hours by four seas, each crossing the other.
+- **Under the moon the sea carries its own light**: what is stirred burns cold for a moment (the
+  lace, the boil under the lip, the rings a piece lays, the edge of anything swimming in it).
+
+| Sunset | Afterglow | Moonrise |
+| --- | --- | --- |
+| ![sunset](waves-overhaul/mp-hour-1.jpg) | ![afterglow](waves-overhaul/mp-hour-2.jpg) | ![moonrise](waves-overhaul/mp-hour-3.jpg) |
+
+| First light | The day | A heavy sea at golden hour |
+| --- | --- | --- |
+| ![first light](waves-overhaul/mp-hour-4.jpg) | ![day](waves-overhaul/mp-hour-5.jpg) | ![heavy](waves-overhaul/mp-sea-heavy.jpg) |
+
+### The sea life
+
+Seven animals, modelled in Blender from numbers (`scripts/blender/waves_sea_life_assets.py`, on the
+Ocean theme's builder: smooth masses and airfoil fins as one signed distance field, meshed,
+decimated, every vertex told what it is). Four are new for Waves: a **bottlenose dolphin** (a deep
+chest, a short stout beak under a round melon, a tall hooked fin, a mouth line, an eye, a
+blowhole), a slender **spinner dolphin** (a long thin beak, an upright fin, three tones in
+bands), a **flying fish** and a **shearwater**. The **humpback**, the **manta** and the **green
+turtle** are the Ocean's own designs at Waves' triangle counts. One file, 427 kB
+(`src/themes/waves/assets/sea-life.glb`), read by `waves-cast.js`; the wave runs without it until
+it arrives.
+
+![A leap, close](waves-overhaul/mp-leap.jpg)
+
+**What they do** (`waves-acts.js`: each is written once and is then a closed form of the world's
+clock, like the spray, so it holds with the four-line hold and replays exactly):
+
+| Act | Who | What is seen |
+| --- | --- | --- |
+| ride | dolphins, the turtle | Inside the wall of the wave beside the rider, their backs to the tube, weaving up and down the face as they go down the line: dark shapes in lit glass. |
+| roll | dolphins, the manta | Through the trough: backs and fins through the surface and under again, pods abreast, sometimes a calf; with a tall rise, low clean leaps. The manta stays under. |
+| leap | dolphins | Out of the trough at the foot of the wave (clear of the card), four ways: a plain arc, a spinner's spin about its own length (two to five turns), a somersault, a breach onto its side. |
+| breach, fluke, blow | the humpback | Far out: thrown clear of the sea and over onto its back; its flukes lifted as it sounds; a spout and a rolling back. |
+| skitter | flying fish | A burst out of the water, wings spread, a low glide, sometimes a touch of the tail and a second glide. |
+| soar | shearwaters | Across the opening in long banked swoops, a few beats as they climb. |
+
+**Seen through the water.** An animal is drawn twice from one buffer: by an ordinary material
+where it is in the air, and by a second one whose depth test passes only *behind* what is already
+drawn, so the part of it behind the surface shows through the glass, turned to the water's colour
+by the metres over it and soft at its edge (#600). A dolphin leaving the face is one body in two
+lights with no seam to manage. And an animal in the air marks itself in the scene's alpha so the
+lens keeps its glare off it: a leap across the sun is a dark wet shape with a burning edge, not
+the pale ghost the bloom and the shafts made of it (#900).
+
+| Riding the wall (a chain of six) | The same under the moon | Rolling through the trough |
+| --- | --- | --- |
+| ![ride](waves-overhaul/mp-ride.jpg) | ![ride, moon](waves-overhaul/mp-ride-moon.jpg) | ![trough](waves-overhaul/mp-trough.jpg) |
+
+**The sea's own visits** (`waves-ambient.js`). Whatever the board does, every eight seconds the
+sea may send something: a pod in the wall (one to four, bottlenose or spinner, perhaps a calf), a
+pod through the trough (away, toward the rider, or across), a far pod over the sun's road, one
+dolphin thrown clear in one of the four ways, a school of flying fish, a turtle, a manta, a whale
+(a blow, its flukes, or, one visit in fifty, the whole animal), shearwaters. Which, and every
+number of it, is drawn from the visit's place in time and the world's seed alone: the same second
+always holds the same sea (a seek, a replay, a rebuild), the same kind never comes twice in a
+row, and nothing repeats for many minutes. About one visit in sixteen is a rest.
+
+| A humpback out at sea | Flying fish |
+| --- | --- |
+| ![breach](waves-overhaul/mp-breach.jpg) | ![skitter](waves-overhaul/mp-skitter.jpg) |
+
+### What the board does now
+
+| The board | The wave (new in this pass in **bold**) |
+| --- | --- |
+| A piece locks | Its colour arcs over the roof and falls from the lip as rain; a crown and rings where it went in. |
+| Hard drop | The same, struck harder, **and the water stands up: a spout in the piece's colour beside the card's foot, white water at its base.** One struck straight after another is a small one (a drop a second otherwise stood a forest of them beside the board). |
+| Lines clear | A sheet of spray off the lip, a ring of light down the tube for every line, **and fish startled out of the trough: five for one line, fourteen for four.** |
+| Twist | The rings come down as a screw, a wheel of spray, **and a spinner dolphin answers with its own: thrown clear, turning on its length, a turn more for every line.** |
+| Four lines | The wave holds with the biggest throw hanging in the air, **and the tube spits: the mist a collapsing barrel squeezes out of itself, blown from behind the rider out through the eye, hanging in the light while the clock is held.** |
+| A chain of clears | Dolphins over the water, one more at three, five, seven and nine clears, the first past seven across the sun, **each flown its own way; from four clears on the pod is also in the wall beside the rider.** |
+| Perfect clear | The whole pod, the sky to gold, **and a humpback thrown out of the sea in the eye of the barrel, fifty to sixty-five metres off, beside the sun's road.** |
+| Level up | A set wave and the next hour, **which comes in on the wing: shearwaters cross the opening as the light turns.** |
+| Game over, a new run | Everything the board called is gone; the sea's own visits go on. |
+
+| A hard drop | Three lines | A twist |
+| --- | --- | --- |
+| ![hard drop](waves-overhaul/mp-drop.jpg) | ![three lines](waves-overhaul/mp-clear3.jpg) | ![twist](waves-overhaul/mp-twist.jpg) |
+
+| Four lines, held | A perfect clear | ...and two seconds later |
+| --- | --- | --- |
+| ![four lines](waves-overhaul/mp-quad.jpg) | ![perfect](waves-overhaul/mp-perfect.jpg) | ![perfect, later](waves-overhaul/mp-perfect-later.jpg) |
+
+### Modules
+
+| Module | Owns |
+| --- | --- |
+| `waves-acts.js` | New. Each animal's acts as closed forms of the clock; the moments they break the surface. Three-free. |
+| `waves-ambient.js` | New. The sea's own visits: which, when, every number of them. Three-free. |
+| `waves-cast.js` | New. Reads the sea-life pack. |
+| `waves-fauna.js` | New. Two materials for the whole cast (in the air, behind the water), one instanced mesh per kind. |
+| `waves-life.js` | Rewritten. Who is in the water now: the sea's visits plus what the board called; writes the renderer's rows, hands the splashes over. |
+| `waves-splash.js` | + a rolling dolphin's bow wave and breath, the whale's white water (written in metres: it is seen at a hundred), a fish's few drops. |
+| `waves-hours.js` | + the sea's states. |
+| `waves-core.js`, `waves-bakes.js` | + the foam-cell bake, kept for the session and baked in the worker with the noise. |
+
+### Cost
+
+On the CPU, measured: the whole world's update (the sea's visits, every act's pose, the rows
+written for the renderer, the splashes) takes 0.010 ms a frame at High with the sea's own visits
+and 0.017 ms with a lock every 0.75 s and a clear every 2 s on top (p99 0.1 ms; node, 3,600 frames,
+against 0.006 ms with no sea life). On the GPU, by construction, not by a timed run (see "Not
+done"). The cast is two shader programs and at most
+twelve small instanced draws, each drawn only while one of its kind is there; an animal is 900 to
+5,200 triangles and at most ten of a kind are drawn. The water's fragment stage reads the same
+twelve textures a pixel as before (three hairline reads went, the lace and the two caustic layers
+came). The foam-cell bake is 50 ms once a session at 256 px (12 ms at 128), in the worker on a
+first visit. Tiers scale the sea with `life` (Minimal draws half of each pod and school) and the
+lower two keep their sky-lookup mirror and no caustic net.
+
+### Verified
+
+- **Playground, WebGPU on the RTX at 30 fps**, every console clean: the six hours, the four seas,
+  each visit, each event at two or three moments, a leap in close-up at three hours, with and
+  without the board; and the **WebGL2 backend**, **Minimal**, **Low** and a **430 x 850 portrait**
+  (frames below). New parameters: `visit=<name>&visitAge=<s>`, `sea=<place>`, `life=0`,
+  `look=x,y,z,fov`, `eye=x,y,z`, `event=spin`.
+- **Staging by numbers before pictures**: every visit's animals were projected through the
+  theme's own lens in node and printed second by second (screen place and size). That found a pod
+  that left the frame after four of its fifteen seconds, a far pod that never entered it and
+  leaps that started behind the card, before a single capture was spent on them (#1707).
+- **In the real game** (a private dev server, headless Chrome on real WebGPU, 30 fps): the theme
+  pinned, a single-player run started, real key presses for a dozen hard drops, then chains, a
+  twist, four lines, a perfect clear, a level and a game over through the game's own event bus.
+  Two runs, no warning or error from the theme or the renderer in either. The first run found
+  the forest of spouts a hard drop a second raised; the second is with the fix.
+- **A second mount in the same renderer** (the playground's `setEffect`, twice): clean console,
+  the animals drawn again (the pack's bodies are shared by every world; only each world's own
+  instanced copies are let go).
+- **Tests**: 455 in 20 suites (every `waves-*` suite, the URL catalogue, the skill's contract).
+  New: `waves-acts` (every act's pose, heading and back, its surface moments), `waves-ambient`
+  (the visits: never the same twice in a row, their shares, the same sea after a seek),
+  `waves-cast` (the pack), `waves-events` (each event's own form, the water every kind of
+  surfacing throws, the sea's states, the night glow). The suites that pinned the one generated
+  dolphin were rewritten for the sea life, and the shader gate now builds the two sea-life
+  materials on WGSL and GLSL at High and Minimal. They found six faults, all fixed: a
+  somersaulting dolphin's back flipped half a turn as its nose passed the vertical; a leap thrown
+  straight up had no back at all (the renderer would have normalised it into NaN); after a seek
+  back the visit cache threw away the visit it had just made, every frame; an animal no longer
+  drawn kept its last row in the buffer; a hero leap starting far out in the trough could be
+  thrown back toward the wave; and a breach from the flat sea started half its sheet under the
+  water. The static gates (types and their ratchet, lint ratchet, architecture fitness,
+  boundaries, theme lifecycle, release gates, performance budgets, the shipped-strings gate) and
+  the build pass.
+
+| In the game: hard drops | A chain of seven | A perfect clear |
+| --- | --- | --- |
+| ![in game](waves-overhaul/mp-in-game-drops.jpg) | ![in game, chain](waves-overhaul/mp-in-game-chain.jpg) | ![in game, perfect](waves-overhaul/mp-in-game-perfect.jpg) |
+
+| WebGL2 backend | Minimal | Portrait |
+| --- | --- | --- |
+| ![webgl2](waves-overhaul/mp-webgl2.jpg) | ![minimal](waves-overhaul/mp-minimal.jpg) | ![portrait](waves-overhaul/mp-portrait.jpg) |
+
+### Not done, and calls that are the owner's
+
+- **Nobody has watched it move.** Every judgement above is from stills at chosen moments: the
+  pace of a ride, a spinner's spin, the whale's fall, how often the sea sends something.
+- **No frame-time measurement.** Captures were kept at 30 fps at the owner's standing request;
+  the cost above is by construction. No integrated GPU, no phone.
+- **Portrait** shows the trough and the sun: the wall where the pods ride is out of frame, and
+  leaps top out behind the card there. The acts are staged for the wide lens.
+- **The theme icon** is the old picture; the roof's glow changed the look enough that it could be
+  retaken.
+- My own doubts, to raise if asked: a pod in the wall passes two to four metres from the eye and
+  is *large* (a third of the screen wide, as a soft dark shape); the perfect clear's whale is
+  closer than a whale would come to a breaking wave; the caustic net high on the wall is drawn,
+  not traced; the sea's cold light under the moon is strong on a riding pod; the flying fish are
+  half a metre long so a school reads from the board, about twice life size.
+
 ## Known limits
 
 - Nobody has watched it move. Every check above is a still, a console or a number; the flow,
@@ -509,7 +738,7 @@ the real game, an integrated GPU, and anyone watching a pod leap in motion.
   behind the board. The stars are a hashed lattice of points, enough for the small piece of
   sky the barrel shows.
 - Reflections are one bounce against an ideal pipe. The far shoulder, which is not a pipe, is
-  mirrored as if it were; a dolphin, a drop or a stroke of colour is never mirrored.
+  mirrored as if it were; an animal, a drop or a stroke of colour is never mirrored.
 - On screens whose card reaches from top to bottom (most laptops) a locked piece's stroke
   starts beside the card's upper left corner whatever its column; the column only shifts the
   start by a few per cent of the width. The crown falls beside the card's foot, on the side
@@ -521,8 +750,11 @@ the real game, an integrated GPU, and anyone watching a pod leap in motion.
   unit-tested only.
 - Low and Minimal mirror the sky by direction instead of tracing the tube, and have no bloom,
   no shafts and no bars of light on the face.
-- The dolphin is a lofted body with five fins, built for the distance it is seen from: no
-  eye, no mouth line, no blowhole.
+- The animals are painted by vertex masks, not textures: a dolphin's cape and belly, a turtle's
+  shell as one colour. Enough for the distance and the light they are seen in (mostly against the
+  sun, or through water); up close in full light they are plain.
+- An animal seen through the water is its own shape dimmed, not refracted: it does not bend with
+  the ripples over it.
 - A dolphin's splash far from the eye is drawn as clumps of spray bigger than real drops, so it
   reads at the distance the pod leaps; its water does not wet the face or ripple the sea beyond
   the one ring each break of the surface has always laid.

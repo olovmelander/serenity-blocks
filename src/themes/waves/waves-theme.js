@@ -13,8 +13,15 @@
  * over the roof; a clear makes the lip throw a sheet of spray and sends a band of light down the
  * tube for every line; a chain of clears holds the barrel open and its water lit, leans the
  * evening toward gold and calls the dolphins over the water (the first of a long chain crosses
- * the sun); and four lines make the wave hold: its clock slows almost to a stop with the biggest
- * throw of all hanging in the air, then everything runs on.
+ * the sun) and into the wall beside the rider; every line startles flying fish out of the trough;
+ * a twist is answered by a spinner dolphin; four lines make the wave hold (its clock slows almost
+ * to a stop with the biggest throw of all hanging in the air, and the tube spits its mist) before
+ * everything runs on; and a perfect clear throws a humpback out of the sea in the eye of the barrel.
+ *
+ * And the sea is never empty or the same for long, whatever the board does: pods ride the wall
+ * and roll through the trough, a turtle or a manta passes under the glass, a whale blows far out,
+ * shearwaters cross the opening (waves-ambient.js), and the sea itself goes from glass to an
+ * offshore wind to a heavy swell to a sparkling chop on a clock of its own (waves-hours.js).
  *
  * And the day turns. The end of the day is only where it starts: a new level sends a set wave
  * down the tube and brings the next hour with it (sunset, afterglow, moonrise, first light, the
@@ -31,7 +38,7 @@
  *   ?wavesTime=<s>      play the wave up to t (from at most 6 s before it, in fixed 1/60 s
  *                     steps), then freeze it (captures)
  *   ?wavesFixedDt=<ms>  fixed frame step
- *   ?wavesParts=sky,water,dolphins,...   draw only these parts
+ *   ?wavesParts=sky,water,life,...   draw only these parts
  *   ?wavesFalseColor=1  post debug view
  *
  * The wave is a function of its clock plus a little eased state (how far the barrel is open,
@@ -39,7 +46,9 @@
  * seek reproduces the same frame.
  *
  * Warm: none (nothing is parked for the manager to compile; the scene pass has one output).
- * Nothing is loaded: the wave, its sky and its dolphins are generated.
+ * Loaded: the sea life's bodies only (assets/sea-life.glb, built in Blender from numbers:
+ * waves-cast.js); the wave, its sky and everything in the air are generated, and the wave runs
+ * without the animals until they arrive, or for good if they never do.
  */
 
 import * as THREE from 'three/webgpu';
@@ -234,10 +243,15 @@ export default class WavesTheme extends BaseTheme {
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
 
         try {
+            const capture = this.flags.time !== null || this.flags.fixedDt !== null;
+            // Another sea every time the theme is started (which visits come, in what order, where
+            // each leap leaves the water); the same one through a rebuild, and a capture's own.
+            if (!capture && !Number.isFinite(this.seaSeed)) this.seaSeed = 1 + Math.floor(Math.random() * 65535);
             this.world = new WavesWorld({
                 scene: this.scene,
                 quality: this.quality,
-                capture: this.flags.time !== null || this.flags.fixedDt !== null,
+                capture,
+                ...(capture ? {} : { seed: this.seaSeed }),
             }).build();
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
