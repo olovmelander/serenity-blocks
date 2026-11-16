@@ -1,12 +1,18 @@
 /**
  * Void Ember — the cinder belt and the cinder world: what the ember still lights.
  *
- * The belt is the wreck of whatever once circled this star: a few thousand chiselled stones on
- * their own orbits, seen almost edge-on, the near arc crossing the star's lower face as black
- * shapes and the far arc going behind it. Nothing lights them but the star, so each is a sliver
- * of ember light with the dark behind it, and they brighten as play blows the star up. When a
- * clear's wave reaches a stone it flashes in the wave's colour, is shoved outward, and the fire
- * that got into its cracks takes a few seconds to die.
+ * The belt is the wreck of whatever once circled this star: a few thousand stones on their own
+ * orbits, seen almost edge-on, the near arc crossing the star's lower face as black shapes and the
+ * far arc going behind it. They are six asteroids sculpted in Blender (void-ember-stone-models.js,
+ * written by scripts/blender/void_ember_stones.py): a bent potato with a saddle crater, a contact
+ * binary, a splinter, a spinning-top rubble pile, a slab of layered crust and half a shell with a
+ * bowl bitten out of it, each stretched its own way, with its craters' shadows and the dust on its
+ * crests baked into its vertices. Most ride the field on Kepler orbits; a fifth of them ride in
+ * three families, a parent boulder and its debris, that come round the near arc every few minutes.
+ * Nothing lights them but the star, so each is a sliver of ember light with the dark behind it,
+ * and they brighten as play blows the star up. When a clear's wave reaches a stone it flashes in
+ * the wave's colour and is shoved outward; then the face it turns to the star glows like iron
+ * cooling, its hollows hold the heat and a fracture or two burns for a few seconds.
  *
  * The cinder world is one dead planet far out on the other side of the board, backlit: a thin
  * crescent, a breath of atmosphere past the terminator, and old lava still glowing in its night
@@ -28,10 +34,11 @@ import {
     clamp,
     cos,
     cross,
+    dFdx,
+    dFdy,
     dot,
     exp,
     float,
-    fract,
     length,
     max,
     min,
@@ -41,92 +48,242 @@ import {
     positionGeometry,
     positionLocal,
     positionWorld,
+    sign,
     sin,
     smoothstep,
     step,
     varying,
+    vec2,
     vec3,
     vec4,
 } from 'three/tsl';
 import {
     EMBER, TAU, mulberry32, veBlackbody, veFxMaterial, vePart, veSolidMaterial, veWaveLight,
 } from './void-ember-tsl.js';
+import { VOID_EMBER_STONE_MODELS } from './void-ember-stone-models.js';
 
-/** Stone sizes (world units; the star's radius is 10) and tessellation per class. */
+/**
+ * The three classes of stone: their size range (world units; the star's radius is 10), the level
+ * of the Blender-made models they wear (void-ember-stone-models.js) and how far out they ride.
+ * `detail` ranks the levels (2 = the finest).
+ */
 export const ROCK_CLASSES = Object.freeze([
     {
-        name: 'boulders', detail: 2, size: [0.5, 1.35], maxOrbit: 3.4,
+        name: 'boulders', level: 'boulder', detail: 2, size: [0.5, 1.35], maxOrbit: 3.4,
     },
     {
-        name: 'stones', detail: 1, size: [0.2, 0.62], maxOrbit: 3.9,
+        name: 'stones', level: 'stone', detail: 1, size: [0.2, 0.62], maxOrbit: 3.9,
     },
     {
-        name: 'gravel', detail: 0, size: [0.07, 0.24], maxOrbit: 3.9,
+        name: 'gravel', level: 'gravel', detail: 0, size: [0.07, 0.24], maxOrbit: 3.9,
     },
 ]);
 
 /**
- * A chiselled stone: a ball cut by random planes, stretched, with flat faces.
- * @returns {THREE.BufferGeometry} non-indexed, with per-face normals
+ * A model's bounding radius is one; a stone's `size` was the radius of the cut ball the belt was
+ * built from before, which stood about this much smaller than its bound.
  */
-export function createRockGeometry(seed, detail) {
-    const rand = mulberry32(seed);
-    const geometry = new THREE.IcosahedronGeometry(1, detail);
-    const pos = geometry.getAttribute('position');
-    const cuts = [];
-    const cutCount = 7 + Math.floor(rand() * 5);
-    for (let i = 0; i < cutCount; i++) {
-        const z = rand() * 2 - 1;
-        const a = rand() * TAU;
-        const r = Math.sqrt(1 - z * z);
-        cuts.push([r * Math.cos(a), z, r * Math.sin(a), 0.52 + rand() * 0.36]);
-    }
-    const stretch = [0.72 + rand() * 0.5, 0.6 + rand() * 0.42, 0.75 + rand() * 0.5];
-    for (let i = 0; i < pos.count; i++) {
-        let x = pos.getX(i);
-        let y = pos.getY(i);
-        let z = pos.getZ(i);
-        for (let c = 0; c < cuts.length; c++) {
-            const [nx, ny, nz, d] = cuts[c];
-            const over = x * nx + y * ny + z * nz - d;
-            if (over > 0) {
-                x -= nx * over;
-                y -= ny * over;
-                z -= nz * over;
-            }
+export const STONE_SCALE = 1.0;
+
+/** How far a boulder's or a stone's shading leans from the smooth normal to its facets' own. */
+const FACET = 0.5;
+
+/** A stone's own proportions: each axis of its model is stretched by a number in this range. */
+const STRETCH = Object.freeze([0.84, 1.18]);
+
+/** A stone's angular speed on a circular orbit of `radius` (star radii), radians per second. */
+export const keplerSpeed = (radius) => 0.0345 * (EMBER.beltPeak / radius) ** 1.5;
+
+/**
+ * Families: a parent boulder and the debris it has shed, strung out behind it along its orbit.
+ * Every member turns at the parent's own angular speed, so a family never shears apart; each comes
+ * round the near arc at its own interval (145 s, 184 s, 214 s), so which of them is in front of the
+ * lens, and whether two pass together, is different every few minutes. `arc` (radians) and `width`
+ * (star radii) are the spread of its core.
+ */
+export const SWARMS = Object.freeze([
+    Object.freeze({
+        radius: 2.58, angle: 0.7, arc: 0.1, width: 0.09,
+    }),
+    Object.freeze({
+        radius: 3.02, angle: 2.9, arc: 0.13, width: 0.12,
+    }),
+    Object.freeze({
+        radius: 3.34, angle: 5.0, arc: 0.11, width: 0.1,
+    }),
+]);
+/** How near a family's parent (star radii, in the belt's plane) its debris may stand. */
+const PARENT_CLEAR = 0.19;
+/** The share of a class that rides in the families (the boulders give each one a parent). */
+const SWARM_SHARE = Object.freeze({ boulders: 0.2, stones: 0.14, gravel: 0.16 });
+
+function decode(text, Type) {
+    const binary = atob(text);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return new Type(bytes.buffer);
+}
+
+/** A level's models merged, decoded once a page: every world (a rebuild, a quality change) shares it. */
+const merged = new Map();
+
+/**
+ * One level's models as plain arrays (three-free: the tests read it): every model's vertices one
+ * after another, each tagged with the model it belongs to.
+ * @param {'boulder'|'stone'|'gravel'} level
+ * @returns {{ position: Float32Array, normal: Float32Array, shade: Float32Array, index: Uint16Array,
+ *     variants: number, vertexCount: number, triangleCount: number,
+ *     ranges: { design: string, vertex: number, vertices: number, index: number, indices: number }[] }}
+ *     `shade` holds (ambient occlusion, crest, variant) per vertex
+ */
+export function stoneMesh(level) {
+    const known = merged.get(level);
+    if (known) return known;
+    const models = VOID_EMBER_STONE_MODELS[level];
+    if (!models?.length) throw new Error(`Void Ember has no stone models for level "${level}".`);
+    let vertexCount = 0;
+    let indexCount = 0;
+    models.forEach((model) => {
+        vertexCount += model.vertexCount;
+        indexCount += model.triangleCount * 3;
+    });
+    const position = new Float32Array(vertexCount * 3);
+    const normal = new Float32Array(vertexCount * 3);
+    const shade = new Float32Array(vertexCount * 3);
+    const index = new Uint16Array(indexCount);
+    const ranges = [];
+    let v = 0;
+    let t = 0;
+    models.forEach((model, variant) => {
+        const p = decode(model.positions, Int16Array);
+        const n = decode(model.normals, Int8Array);
+        const s = decode(model.shade, Uint8Array);
+        const tri = decode(model.index, Uint16Array);
+        for (let i = 0; i < model.vertexCount; i++) {
+            const o = (v + i) * 3;
+            let nx = n[i * 3];
+            let ny = n[i * 3 + 1];
+            let nz = n[i * 3 + 2];
+            // Eight bits a component: unit again, and never a zero normal (a NaN in the shader).
+            const nl = Math.hypot(nx, ny, nz) || 1;
+            nx /= nl;
+            ny /= nl;
+            nz /= nl;
+            if (nx === 0 && ny === 0 && nz === 0) ny = 1;
+            position[o] = p[i * 3] * VOID_EMBER_STONE_MODELS.quant;
+            position[o + 1] = p[i * 3 + 1] * VOID_EMBER_STONE_MODELS.quant;
+            position[o + 2] = p[i * 3 + 2] * VOID_EMBER_STONE_MODELS.quant;
+            normal[o] = nx;
+            normal[o + 1] = ny;
+            normal[o + 2] = nz;
+            shade[o] = s[i * 2] / 255;
+            shade[o + 1] = s[i * 2 + 1] / 255;
+            shade[o + 2] = variant;
         }
-        pos.setXYZ(i, x * stretch[0], y * stretch[1], z * stretch[2]);
-    }
-    geometry.computeVertexNormals(); // non-indexed: one normal per face
-    geometry.computeBoundingSphere();
+        for (let i = 0; i < tri.length; i++) index[t + i] = tri[i] + v;
+        ranges.push({
+            design: model.design, vertex: v, vertices: model.vertexCount, index: t, indices: tri.length,
+        });
+        v += model.vertexCount;
+        t += tri.length;
+    });
+    const mesh = {
+        position, normal, shade, index, ranges, variants: models.length, vertexCount, triangleCount: indexCount / 3,
+    };
+    merged.set(level, mesh);
+    return mesh;
+}
+
+/**
+ * One class's stones as ONE geometry: all its models, so the class stays one mesh and one
+ * pipeline. An instance wears one of them; the vertex stage folds the others' vertices onto the
+ * stone's middle (triangles of no area, which the rasteriser drops).
+ * @returns {THREE.BufferGeometry} indexed, with `position`, `normal` and `aShade`
+ */
+export function createStoneGeometry(level) {
+    const mesh = stoneMesh(level);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(mesh.position, 3));
+    geometry.setAttribute('normal', new THREE.BufferAttribute(mesh.normal, 3));
+    geometry.setAttribute('aShade', new THREE.BufferAttribute(mesh.shade, 3));
+    geometry.setIndex(new THREE.BufferAttribute(mesh.index, 1));
+    geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1);
     return geometry;
 }
 
 /**
  * The stones of one class, as plain numbers (three-free: tests read it).
- * @returns {{ orbit: Float32Array, body: Float32Array, seed: Float32Array, count: number }}
+ *   orbit  (radius in star radii, angle at t = 0, height off the plane, radians per second)
+ *   body   (size, the tumble axis as two angles, radians of tumble per second)
+ *   seed   (the tumble's phase, a shade, 0..40, 0..1)
+ *   look   (which model it wears, its stretch along x, y, z)
+ *   family which swarm it rides in (−1 = the field)
+ * @returns {{ orbit: Float32Array, body: Float32Array, seed: Float32Array, look: Float32Array,
+ *     family: Int8Array, count: number }}
  */
 export function planRocks(seed, count, cls) {
     const rand = mulberry32(seed);
     const orbit = new Float32Array(count * 4);
     const body = new Float32Array(count * 4);
     const seeds = new Float32Array(count * 4);
-    const span = Math.min(EMBER.beltOuter, cls.maxOrbit) - EMBER.beltInner;
+    const look = new Float32Array(count * 4);
+    const family = new Int8Array(count).fill(-1);
+    const variants = VOID_EMBER_STONE_MODELS[cls.level]?.length || 1;
+    const inner = EMBER.beltInner;
+    const outer = Math.min(EMBER.beltOuter, cls.maxOrbit);
+    const span = outer - inner;
+    const gauss = () => (rand() + rand() + rand() + rand() - 2) * 0.5;
+    // The families take their members first: a parent each (the boulders), then the debris.
+    const riders = Math.min(count, Math.floor(count * (SWARM_SHARE[cls.name] ?? 0.18)));
+    const offset = Math.floor(rand() * variants);
     for (let i = 0; i < count; i++) {
-        // Thickest near the belt's own radius, thinning to both edges.
-        const t = (rand() + rand() + rand()) / 3;
-        const radius = EMBER.beltInner + span * Math.min(1, Math.max(0, 0.5 + (t - 0.5) * 2.1));
-        const gauss = (rand() + rand() + rand() + rand() - 2) * 0.5;
-        const height = gauss * EMBER.beltThickness * (radius / EMBER.beltPeak);
-        // Kepler: the inner stones overtake the outer ones.
-        const speed = 0.0345 * (EMBER.beltPeak / radius) ** 1.5 * (0.94 + rand() * 0.12);
-        orbit.set([radius, rand() * TAU, height, speed], i * 4);
-        const size = cls.size[0] + (cls.size[1] - cls.size[0]) * rand() ** 1.9;
-        body.set([size, Math.acos(rand() * 2 - 1), rand() * TAU, (0.05 + rand() * 0.3) * (rand() < 0.5 ? -1 : 1)], i * 4);
+        let radius;
+        let angle;
+        let height;
+        let speed;
+        let size = cls.size[0] + (cls.size[1] - cls.size[0]) * rand() ** 1.9;
+        if (i < riders) {
+            const which = i % SWARMS.length;
+            const swarm = SWARMS[which];
+            const parent = cls.detail === 2 && i < SWARMS.length;
+            family[i] = which;
+            // The debris trails its parent: a core round it and a tail strung out behind.
+            let along = parent ? 0 : gauss() * swarm.arc * 0.7 - Math.abs(gauss()) * swarm.arc * 3.2;
+            radius = Math.max(inner, Math.min(outer, swarm.radius + (parent ? 0 : gauss() * swarm.width)));
+            // Never inside the parent itself: what would stand in it stands off behind it.
+            const aside = radius - swarm.radius;
+            if (!parent && Math.hypot(aside, along * swarm.radius) < PARENT_CLEAR) {
+                const off = Math.sqrt(Math.max(0, (PARENT_CLEAR * 1.1) ** 2 - aside * aside));
+                along = -(off + Math.abs(along) * swarm.radius) / swarm.radius;
+            }
+            angle = (((swarm.angle + along) % TAU) + TAU) % TAU;
+            height = (parent ? 0 : gauss() * EMBER.beltThickness * 0.55) * (radius / EMBER.beltPeak);
+            // One angular speed for the whole family: it never shears apart.
+            speed = keplerSpeed(swarm.radius);
+            if (parent) size = cls.size[1] * (0.82 + 0.18 * rand());
+        } else {
+            // Thickest near the belt's own radius, thinning to both edges.
+            const t = (rand() + rand() + rand()) / 3;
+            radius = inner + span * Math.min(1, Math.max(0, 0.5 + (t - 0.5) * 2.1));
+            height = gauss() * EMBER.beltThickness * (radius / EMBER.beltPeak);
+            // Kepler: the inner stones overtake the outer ones.
+            speed = keplerSpeed(radius) * (0.94 + rand() * 0.12);
+            angle = rand() * TAU;
+        }
+        orbit.set([radius, angle, height, speed], i * 4);
+        const tumble = (0.05 + rand() * 0.3) * (rand() < 0.5 ? -1 : 1);
+        body.set([size, Math.acos(rand() * 2 - 1), rand() * TAU, tumble], i * 4);
         seeds.set([rand() * TAU, rand(), rand() * 40, rand()], i * 4);
+        // Every model in turn, so a class of thirty wears all six.
+        look.set([
+            (i + offset) % variants,
+            STRETCH[0] + (STRETCH[1] - STRETCH[0]) * rand(),
+            STRETCH[0] + (STRETCH[1] - STRETCH[0]) * rand(),
+            STRETCH[0] + (STRETCH[1] - STRETCH[0]) * rand(),
+        ], i * 4);
     }
     return {
-        orbit, body, seed: seeds, count,
+        orbit, body, seed: seeds, look, family, count,
     };
 }
 
@@ -147,22 +304,31 @@ export function rockPosition(plan, index, time, out = [0, 0, 0]) {
  * @param {number} count
  * @param {number} seed
  * @param {object} opts
- * @param {boolean} [opts.cracks=true]  the fire in the cracks (one noise read per pixel)
+ * @param {boolean} [opts.cracks=true]  the stone's grain and its fractures (one noise read per
+ *                                      pixel of a boulder or a stone; gravel never reads)
  */
 export function createRocks(u, cls, count, seed, { cracks = true } = {}) {
     const plan = planRocks(seed, count, cls);
-    const rock = createRockGeometry(seed * 31 + 7, cls.detail);
+    const rock = createStoneGeometry(cls.level);
     const geometry = new THREE.InstancedBufferGeometry();
+    geometry.setIndex(rock.getIndex());
     geometry.setAttribute('position', rock.getAttribute('position'));
     geometry.setAttribute('normal', rock.getAttribute('normal'));
+    geometry.setAttribute('aShade', rock.getAttribute('aShade'));
     geometry.setAttribute('aOrbit', new THREE.InstancedBufferAttribute(plan.orbit, 4));
     geometry.setAttribute('aBody', new THREE.InstancedBufferAttribute(plan.body, 4));
     geometry.setAttribute('aSeed', new THREE.InstancedBufferAttribute(plan.seed, 4));
+    geometry.setAttribute('aLook', new THREE.InstancedBufferAttribute(plan.look, 4));
     geometry.instanceCount = count;
+    // (Seven vertex buffers: WebGPU binds eight to a pipeline.)
 
     const orbit = attribute('aOrbit', 'vec4');
     const body = attribute('aBody', 'vec4');
     const seeds = attribute('aSeed', 'vec4');
+    const look = attribute('aLook', 'vec4');
+    const shade = attribute('aShade', 'vec3');
+    /** Gravel is a few pixels across: no grain, no fractures, no texture read at all. */
+    const grained = cracks && cls.detail > 0;
 
     const material = veSolidMaterial(`VoidEmberRocks_${cls.name}`);
 
@@ -180,69 +346,122 @@ export function createRocks(u, cls, count, seed, { cracks = true } = {}) {
     const ct = cos(turn);
     const st = sin(turn);
     const spinV = (v) => v.mul(ct).add(cross(axis, v).mul(st)).add(axis.mul(dot(axis, v)).mul(float(1.0).sub(ct)));
-    const world = centre.add(spinV(positionGeometry).mul(body.x));
-    material.vertexNode = cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(world, 1.0));
+    // Only the model this stone wears keeps its shape; the others' vertices fold onto its middle.
+    const wears = step(abs(shade.z.sub(look.x)), 0.5);
+    const size = body.x.mul(STONE_SCALE);
+    const world = centre.add(spinV(positionGeometry.mul(look.yzw)).mul(size.mul(wears)));
+    const clip = cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(world, 1.0));
+    material.vertexNode = clip;
 
     const vWorld = varying(world, 'veRockWorld');
-    const vNormal = varying(spinV(normalGeometry), 'veRockNormal');
-    // The way out from the stone's middle: a rounded normal, smooth across the facets (the rim).
-    const vRound = varying(spinV(positionGeometry), 'veRockRound');
+    // (A stretched model's normals turn the other way: divided by the stretch, not multiplied.)
+    const vNormal = varying(spinV(normalize(normalGeometry.div(look.yzw))), 'veRockNormal');
     const vLocal = varying(positionGeometry, 'veRockLocal');
     const vWave = varying(wave, 'veRockWave');
-    const vSeed = varying(vec3(seeds.y, seeds.z, orbit.x), 'veRockSeed');
+    // (ambient occlusion, crest, the stone's own shade, its radius on screen in pixels)
+    const vShade = varying(vec4(
+        shade.x,
+        shade.y,
+        seeds.y,
+        size.div(max(clip.w, 1.0).mul(u.pixelAngle)),
+    ), 'veRockShade');
+    const vOrbit = varying(orbit.x, 'veRockOrbit');
+    // Two fractures through the stone, each a plane of its own (the second branches off the first).
+    const plane = (a, b, offset) => vec4(cos(a), sin(a).mul(cos(b)), sin(a).mul(sin(b)), offset);
+    const vFractureA = grained
+        ? varying(plane(seeds.x, seeds.z, seeds.y.sub(0.5).mul(0.5)), 'veRockFractureA') : null;
+    const vFractureB = grained
+        ? varying(plane(seeds.z.mul(1.7), seeds.x.mul(2.3), seeds.w.sub(0.5).mul(0.6)), 'veRockFractureB') : null;
 
     material.colorNode = Fn(() => {
-        const N = normalize(vNormal).toVar();
+        // The model's own normal is the fine surface's, smoothed: it carries the craters and the
+        // neck. A boulder or a stone is also cut in facets (the face's own normal, read from the
+        // slope of the surface on screen: no vertex is split for it), or it reads as clay.
+        const round = normalize(vNormal).toVar();
+        const N = round.toVar();
+        if (cls.detail > 0) {
+            const face = cross(dFdx(vWorld), dFdy(vWorld)).toVar();
+            const facet = face.div(max(length(face), 1e-20)).mul(sign(dot(face, round)));
+            N.assign(normalize(mix(round, facet, FACET)));
+        }
         const toStar = u.centre.sub(vWorld).toVar();
-        const radii = max(length(toStar).div(u.radius), 1.0).toVar();
-        const L = toStar.div(length(toStar));
-        const V = normalize(cameraPosition.sub(vWorld));
+        const range = max(length(toStar), 1e-3).toVar();
+        const radii = max(range.div(u.radius), 1.0).toVar();
+        const L = toStar.div(range).toVar();
+        const V = normalize(cameraPosition.sub(vWorld)).toVar();
         const ndl = dot(N, L).toVar();
-        const day = smoothstep(-0.04, 0.3, ndl).mul(max(ndl, 0.0).mul(0.75).add(0.25)).toVar();
-        // The star's light thins with the square of the distance.
-        const fall = min(float(9.0).div(radii.mul(radii)), 3.0);
-        const albedo = u.rock.mul(vSeed.x.mul(0.9).add(1.0));
-        const col = albedo.mul(u.starLight).mul(day.mul(fall)).toVar();
+        // (Clamped: with MSAA a varying is extrapolated past its corners' values on a thin stone.)
+        const ao = clamp(vShade.x, 0.0, 1.0).toVar();
+        const crest = clamp(vShade.y, 0.0, 1.0).toVar();
+        const shadeOwn = clamp(vShade.z, 0.0, 1.0).toVar();
+        // The stone's grain: blotches of lighter and darker rock, and what bends its fractures.
+        const grainAt = vLocal.mul(3.3).add(vec3(shadeOwn.mul(31.0).add(8.0), 12.0, shadeOwn.mul(17.0).add(8.0)));
+        const grain = (grained ? u.noise3(grainAt) : vec2(0.5, 0.5)).toVar();
+        const mottle = grain.x.mul(0.8).add(0.6).toVar();
+
+        // ── Rock and dust ──
+        // Dark rock in the crevices, pale dust on the crests, every stone a shade of its own.
+        const albedo = u.rock.mul(shadeOwn.mul(0.9).add(0.72)).mul(mix(float(0.42), float(1.5), crest)).mul(mottle)
+            .toVar();
+        // Lit by the star alone, its light thinning with the square of the distance; a crater
+        // or a neck holds a shadow of its own (the bake's occlusion, squared: the bodies are open
+        // and its values are gentle).
+        const day = smoothstep(-0.06, 0.26, ndl).mul(max(ndl, 0.0).mul(0.75).add(0.25)).toVar();
+        const fall = min(float(9.0).div(radii.mul(radii)), 3.0).toVar();
+        const open = ao.mul(ao).mul(0.88).add(0.12);
+        const col = albedo.mul(u.starLight).mul(day.mul(fall).mul(open)).toVar();
         // A dusty sheen where the light grazes.
-        const graze = float(1.0).sub(clamp(dot(N, V), 0.0, 1.0));
-        col.addAssign(u.starLight.mul(graze.mul(graze).mul(graze).mul(day).mul(fall)
-            .mul(0.05)));
+        const edge = float(1.0).sub(clamp(dot(round, V), 0.0, 1.0)).toVar();
+        const sheen = edge.mul(edge).mul(edge).mul(day).mul(fall);
+        col.addAssign(u.starLight.mul(sheen.mul(ao).mul(0.05)));
         // What little the void gives the night side.
-        col.addAssign(u.fill.mul(N.y.mul(0.35).add(0.65)).mul(albedo.x.mul(8.0)).mul(u.iris.pow(0.45)));
+        const night = N.y.mul(0.35).add(0.65).mul(albedo.x.mul(8.0)).mul(ao);
+        col.addAssign(u.fill.mul(night.mul(u.iris.pow(0.45))));
         // Backlit: a stone between the eye and the star wears a thin rim of its light, where the
-        // dust on its edges scatters it on toward the eye (without it, a flat cut-out).
-        // (The star is large seen from the belt: "behind" is a wide cone. The edge is read from the
-        // rounded normal: from the facets' own, whole faces at the silhouette lit up like glass.)
+        // dust on its edges scatters it on toward the eye (without it, a flat cut-out). The star
+        // is large seen from the belt: "behind" is a wide cone.
         const behind = smoothstep(0.35, 0.92, dot(V.negate(), L));
-        const edge = float(1.0).sub(clamp(dot(normalize(vRound), V), 0.0, 1.0));
         const edge2 = edge.mul(edge);
-        const rimLine = edge2.mul(edge2).mul(edge2);
-        col.addAssign(u.starLight.mul(rimLine.mul(behind).mul(fall).mul(0.5)));
+        const rimLine = edge2.mul(edge2).mul(edge);
+        col.addAssign(u.starLight.mul(rimLine.mul(behind).mul(fall).mul(0.55)));
         // The wave's front lights the side that faces the star.
         col.addAssign(albedo.mul(vWave.rgb).mul(day.mul(0.6).add(0.4)).mul(6.0));
-        if (cracks) {
-            // Fire in the fractures: what the wave leaves behind, and the star's own heat close in.
-            // Hairlines between the stone's own plates (the star's baked plates, read along the
-            // stone's own directions and mirrored per stone), not blotches of value noise.
-            const near = float(1.0).sub(smoothstep(2.1, 3.6, vSeed.z)).mul(max(u.heat.sub(0.4), 0.0)).mul(1.5);
-            // In hot play the whole belt wakes: every stone's fractures glow, each its own amount.
-            const fire = vWave.w.mul(0.8).add(near).add(u.blaze.mul(vSeed.x.mul(0.7).add(0.3)))
-                .toVar();
-            If(fire.greaterThan(0.004), () => {
-                const flip = vec3(
-                    step(0.5, fract(vSeed.y.mul(1.7))),
-                    step(0.5, fract(vSeed.y.mul(3.1))),
-                    step(0.5, fract(vSeed.y.mul(5.3))),
-                ).mul(2.0).sub(1.0);
-                const shards = u.plates(vLocal.mul(flip).add(vec3(0.0, 0.0, 0.001)));
-                // Only some plates' borders carry fire: a few fractures, not a crazed glaze.
-                const crack = float(1.0).sub(smoothstep(0.0, 0.06, shards.x))
-                    .mul(smoothstep(0.5, 0.8, shards.y.add(vSeed.x.mul(0.25))));
-                // (Gold at the hottest, never white: a burning belt keeps its colour.)
-                const f = min(fire, 2.0);
-                col.addAssign(veBlackbody(min(f.mul(0.45).add(0.3), 0.88)).mul(crack.mul(f).mul(3.2)));
-            });
+
+        // ── Fractures: a few, and only where the stone is large enough on screen to show a line ──
+        const seam = float(0.0).toVar();
+        if (grained) {
+            const px = max(vShade.w, 1.0);
+            const width = max(float(0.034), float(1.25).div(px)).toVar();
+            const bend = grain.y.sub(0.5).mul(0.5).toVar();
+            const sA = dot(vLocal, vFractureA.xyz).sub(vFractureA.w).add(bend).toVar();
+            const sB = dot(vLocal, vFractureB.xyz).sub(vFractureB.w).sub(bend).toVar();
+            const lineA = float(1.0).sub(smoothstep(width.mul(0.35), width, abs(sA)));
+            // The second runs off the first, on one side of it only.
+            const lineB = float(1.0).sub(smoothstep(width.mul(0.3), width.mul(0.85), abs(sB)))
+                .mul(smoothstep(0.0, width, sA));
+            seam.assign(max(lineA, lineB.mul(0.85)).mul(smoothstep(4.0, 11.0, px)));
+            // Cold, a fracture is a dark line in the rock.
+            col.mulAssign(float(1.0).sub(seam.mul(0.42)));
         }
+
+        // ── Heat: what a wave leaves behind, the star's own close in, and the blaze of hot play ──
+        const near = float(1.0).sub(smoothstep(2.1, 3.6, vOrbit)).mul(max(u.heat.sub(0.4), 0.0)).mul(1.5);
+        const fire = min(vWave.w.mul(0.8).add(near).add(u.blaze.mul(shadeOwn.mul(0.7).add(0.3))), 2.0).toVar();
+        If(fire.greaterThan(0.004), () => {
+            // The face turned to the star glows like iron cooling: dull red, through orange, to
+            // gold at the hottest and never white (a burning belt keeps its colour).
+            const facing = smoothstep(-0.3, 0.55, ndl).toVar();
+            const warm = fire.mul(facing).mul(mix(float(1.15), float(0.82), crest)).mul(mottle).toVar();
+            col.addAssign(veBlackbody(min(warm.mul(0.3).add(0.12), 0.8)).mul(min(warm.mul(warm), 1.6).mul(0.95)));
+            // The hollows hold their heat longest, on every side.
+            const hollow = float(1.0).sub(smoothstep(0.2, 0.5, crest)).mul(fire).mul(facing.mul(0.7).add(0.3));
+            col.addAssign(veBlackbody(min(fire.mul(0.25).add(0.3), 0.82)).mul(hollow.mul(0.85)));
+            if (grained) {
+                // ...and its fractures burn: a few lines, not a crazed glaze.
+                col.addAssign(veBlackbody(min(fire.mul(0.26).add(0.4), 0.8))
+                    .mul(seam.mul(fire).mul(facing.mul(0.6).add(0.4)).mul(1.7)));
+            }
+        });
         return vec4(col.mul(u.breath.mul(0.75).add(0.25)), 1.0);
     })();
 
