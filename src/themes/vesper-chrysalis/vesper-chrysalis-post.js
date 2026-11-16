@@ -148,8 +148,10 @@ export class VesperPost {
         this.uAspect = uniform(16 / 9);
         this.uSrcTexel = uniform(new THREE.Vector2(1 / 1920, 1 / 1080));
         this.uViewport = uniform(new THREE.Vector2(1920, 1080));
-        /** The heart on screen, UV (y down): where the shafts and the prism ring come from. */
+        /** The chrysalis on screen, UV (y down): where the shafts come from. */
         this.uHeart = uniform(new THREE.Vector2(0.5, 0.5));
+        /** The wings' root on screen (behind the board): where the prism ring starts. */
+        this.uOrigin = uniform(new THREE.Vector2(0.5, 0.5));
         this.uTime = uniform(0);
         this.uExposure = uniform(EXPOSURE);
         this.uFlash = uniform(0); // event flash (a lift), 0..1
@@ -213,7 +215,7 @@ export class VesperPost {
 
             // ── Prism ring and lens fringe: both split the picture along a radius ──
             const S = vec3(sceneColor.sample(st).rgb).toVar();
-            const fromHeart = st.sub(this.uHeart).mul(vec2(this.uAspect, 1.0)).toVar();
+            const fromHeart = st.sub(this.uOrigin).mul(vec2(this.uAspect, 1.0)).toVar();
             const reach = length(fromHeart).toVar();
             const ring = vcBell(reach.sub(this.uPrism.x).div(0.085)).mul(this.uPrism.y).toVar();
             if (look.fringe) {
@@ -257,7 +259,7 @@ export class VesperPost {
                         const f = jitter.add(i).div(shaftTaps).mul(0.72);
                         shafts.addAssign(bt.sample(st.add(toHeart.mul(f))).rgb.mul(w));
                     }
-                    const near = float(1.0).sub(smoothstep(0.0, 1.15, reach));
+                    const near = float(1.0).sub(smoothstep(0.0, 1.15, length(toHeart.mul(vec2(this.uAspect, 1.0)))));
                     glare.addAssign(shafts.mul(1 / total).mul(this.uShafts).mul(near.mul(0.8).add(0.2)));
                 }
                 glare.mulAssign(float(1.0).sub(calm.mul(0.86)));
@@ -310,9 +312,10 @@ export class VesperPost {
 
     /** Per-frame values (all optional). */
     update({
-        heart, flash, kick, bloomBoost, exposure, shafts, time, prism,
+        heart, origin, flash, kick, bloomBoost, exposure, shafts, time, prism,
     } = {}) {
         if (heart) this.uHeart.value.set(heart.x, heart.y);
+        if (origin || heart) this.uOrigin.value.set((origin || heart).x, (origin || heart).y);
         if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (kick !== undefined) this.uKick.value = kick;
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;

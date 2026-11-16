@@ -356,6 +356,66 @@ export function planBlooms(count = BLOOM_MAX, seed = 7411) {
             x, z, size: 1.25 + rand() * 0.55, side, seed: rand(),
         });
     }
+    // Three kinds float mixed over the lake (dealt after the places, so the places stay put).
+    out.forEach((b, i) => {
+        b.kind = BLOOM_DEAL[i % BLOOM_DEAL.length];
+    });
+    return out;
+}
+
+/**
+ * The lilies' kinds: 0 the lantern lotus (broad cupped petals, opens to a bowl), 1 the star lily
+ * (many narrow petals, opens flat), 2 the moon chalice (tall, opens only at its lip). Each keeps
+ * its own hours.
+ */
+export const BLOOM_KINDS = 3;
+const BLOOM_DEAL = Object.freeze([0, 1, 2, 1, 0, 2, 2, 0, 1, 0, 2, 1]);
+
+/**
+ * How far each kind stands open by itself at each hour of the evening (the order of
+ * VESPER_PALETTES): the lotus by day's end and at first light, the star lily through the blue
+ * hour, the moon chalice in the dead of night.
+ */
+export const BLOOM_TIDES = Object.freeze([
+    Object.freeze([0.55, 0.36, 0.14, 0.05, 0.1, 0.72]),
+    Object.freeze([0.1, 0.24, 0.6, 0.86, 0.68, 0.2]),
+    Object.freeze([0.02, 0.1, 0.3, 0.62, 0.95, 0.34]),
+]);
+
+/** How far the lilies of each kind stand open by themselves at an hour (hourAt): [k0, k1, k2]. */
+export function bloomTides(hour, out = [0, 0, 0]) {
+    const n = VESPER_PALETTES.length;
+    const h = Number.isFinite(hour) ? ((hour % n) + n) % n : 0;
+    const from = Math.floor(h) % n;
+    const f = h - Math.floor(h);
+    const w = f * f * (3 - 2 * f);
+    for (let k = 0; k < BLOOM_KINDS; k++) {
+        const a = BLOOM_TIDES[k][from];
+        out[k] = a + (BLOOM_TIDES[k][(from + 1) % n] - a) * w;
+    }
+    return out;
+}
+
+/**
+ * Loose pads round the lilies: leaves with no flower, a few to each lily.
+ * Each: { x, z, size, seed }.
+ */
+export function planPads(blooms, perLily = 2, seed = 9133) {
+    const rand = mulberry32(seed);
+    const out = [];
+    blooms.forEach((b) => {
+        const n = Math.max(0, Math.round(perLily + (rand() - 0.5) * 1.6));
+        for (let i = 0; i < n; i++) {
+            const ang = rand() * TAU;
+            const far = b.size * (1.7 + rand() * 2.4);
+            out.push({
+                x: b.x + Math.cos(ang) * far,
+                z: b.z + Math.sin(ang) * far * 0.8,
+                size: b.size * (0.34 + rand() * 0.42),
+                seed: rand(),
+            });
+        }
+    });
     return out;
 }
 

@@ -10,6 +10,8 @@
  *   board=1                  overlay a mock gameplay board + HUD (the solo layout rules); events
  *                            aim at its rects and the post's calm zones read them
  *   statsHud=0               with board=1: board only, no HUD mock
+ *   ghost=1                  with board=1: the mock board is all but invisible (the layout still
+ *                            counts: the chrysalis hangs clear of it and events aim at it)
  *   combo=<n>                hold a combo of n (how far the wings have unfurled)
  *   level=<n>                rest on level n's hour of the evening and hold it there (without it
  *                            the evening also moves on by itself: an hour every 120 s of `t`)
@@ -142,6 +144,11 @@ export function create({
     });
     if (noPost) renderer.toneMapping = THREE.AgXToneMapping;
     const overlay = params.get('board') === '1' ? mountBoardOverlay(params.get('statsHud') !== '0') : null;
+    if (overlay && params.get('ghost') === '1') {
+        overlay.querySelectorAll('.player-card, .single-player-stats-bar').forEach((el) => {
+            el.style.opacity = '0.06';
+        });
+    }
 
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
     const iconPose = params.get('icon') === '1';

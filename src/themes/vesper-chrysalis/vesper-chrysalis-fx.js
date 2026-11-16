@@ -29,8 +29,8 @@ import {
     int,
     length,
     max,
-    min,
     mix,
+    normalize,
     positionGeometry,
     sin,
     smoothstep,
@@ -44,7 +44,6 @@ import {
 } from 'three/tsl';
 import {
     BLADE_SLOTS,
-    HEART,
     MOTH_SLOTS,
     MOTH_TAIL,
     mulberry32,
@@ -52,6 +51,13 @@ import {
     vcHash11,
     vcPart,
 } from './vesper-chrysalis-tsl.js';
+import { flatVarying } from '../shared/flat-varying.js';
+
+/** x⁴ by products. */
+const vcPow4 = (x) => {
+    const x2 = x.mul(x);
+    return x2.mul(x2);
+};
 
 const additive = (name) => {
     const material = new THREE.MeshBasicNodeMaterial();
@@ -346,89 +352,133 @@ export function createDust(u, count) {
 
 // ── Blades ──────────────────────────────────────────────────────────────────────
 
-/** Seconds a blade lives. */
-export const BLADE_LIFE = 0.9;
+/** Seconds a blade takes from the card to the chrysalis, and to be drawn in once it is there. */
+export const BLADE_FLIGHT = 1.15;
+export const BLADE_LIFE = BLADE_FLIGHT * 1.45;
+/** Segments along a blade. */
+const BLADE_SEGMENTS = 22;
+/** How much of its way a blade's light covers at once. */
+const BLADE_TRAIL = 0.42;
 
 /**
  * The cleared rows leave the card: from each row a blade of light shoots out of both edges of
- * the card. Drawn in screen space (never mirrored).
+ * the card at that row's height, bows out over the water and flies home to the chrysalis, which
+ * takes it in. A blade is a streamer some pixels wide, brightest at its head, on a curve from
+ * where it left (a world point), by way of a point out over the lake, to the chrysalis's heart
+ * wherever that is this frame. BLADE_SLOTS rows, two blades to a row.
  * @param {object} u
  */
 export function createBlades(u) {
-    const quads = BLADE_SLOTS * 2;
-    const geometry = new THREE.PlaneGeometry(1, 1);
-    const data = new Float32Array(quads * 2); // (slot, side −1 | +1)
-    for (let i = 0; i < quads; i++) data.set([Math.floor(i / 2), i % 2 === 0 ? -1 : 1], i * 2);
-    geometry.setAttribute('aBlade', new THREE.InstancedBufferAttribute(data, 2));
-    const mesh = new THREE.InstancedMesh(geometry, null, quads);
+    const count = BLADE_SLOTS * 2;
+    const pos = [];
+    const index = [];
+    for (let i = 0; i <= BLADE_SEGMENTS; i++) {
+        pos.push(i / BLADE_SEGMENTS, -1, 0, i / BLADE_SEGMENTS, 1, 0);
+        if (i < BLADE_SEGMENTS) {
+            const p = i * 2;
+            index.push(p, p + 1, p + 2, p + 1, p + 3, p + 2);
+        }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geometry.setIndex(index);
+    const data = new Float32Array(count);
+    for (let i = 0; i < count; i++) data[i] = i;
+    geometry.setAttribute('aBlade', new THREE.InstancedBufferAttribute(data, 1));
+    const mesh = new THREE.InstancedMesh(geometry, null, count);
     mesh.frustumCulled = false;
 
-    /** (y, x0, x1, birth) in screen fractions (y down), and (rgb, strength). */
-    const rows = Array.from({ length: BLADE_SLOTS }, () => new THREE.Vector4(0.5, 0.4, 0.6, -100));
-    const tints = Array.from({ length: BLADE_SLOTS }, () => new THREE.Vector4(1, 1, 1, 0));
-    const uRows = uniformArray(rows, 'vec4');
+    /** (where it leaves xyz, birth), (the point it bows through xyz, strength), (rgb, flight seconds). */
+    const from = Array.from({ length: count }, () => new THREE.Vector4(0, 0, 0, -100));
+    const via = Array.from({ length: count }, () => new THREE.Vector4(0, 0, 0, 0));
+    const tints = Array.from({ length: count }, () => new THREE.Vector4(1, 1, 1, BLADE_FLIGHT));
+    const uFrom = uniformArray(from, 'vec4');
+    const uVia = uniformArray(via, 'vec4');
     const uTints = uniformArray(tints, 'vec4');
 
     const material = additive('VesperChrysalisBlades');
-    material.depthTest = false;
-    const aBlade = attribute('aBlade', 'vec2');
-    const slot = int(aBlade.x.add(0.5));
-    const vTint = varying(uTints.element(slot), 'vBladeTint');
-    const vAge = varying(u.time.sub(uRows.element(slot).w), 'vBladeAge');
-    const REACH = 0.34; // of the screen's width
-    const THICK = 0.024; // of the screen's height
+    const slot = int(attribute('aBlade', 'float').add(0.5));
+    const vTint = varying(uTints.element(slot).rgb, 'vBladeTint');
+    const vAt = varying(vec2(positionGeometry.x, positionGeometry.y), 'vBladeAt');
+    const vGain = varying(float(0.0), 'vBladeGain');
     material.vertexNode = Fn(() => {
-        const R = uRows.element(slot);
-        const age = u.time.sub(R.w);
-        const live = step(0.0, age).mul(step(age, BLADE_LIFE));
-        const grow = float(1.0).sub(exp(age.mul(-7.0)));
-        const edge = mix(R.y, R.z, aBlade.y.mul(0.5).add(0.5));
-        // The quad runs from the card's edge outward.
-        const along = positionGeometry.x.add(0.5);
-        const sx = edge.add(aBlade.y.mul(along).mul(REACH).mul(grow));
-        const sy = R.x.add(positionGeometry.y.mul(THICK).mul(2.0));
-        return vec4(sx.mul(2.0).sub(1.0), float(1.0).sub(sy.mul(2.0)), 0.0, 1.0).mul(vec4(live, live, 1.0, 1.0));
+        const A = uFrom.element(slot);
+        const C = uVia.element(slot);
+        const flight = max(uTints.element(slot).w, 0.05);
+        const age = u.time.sub(A.w).toVar();
+        const x = age.div(flight).toVar();
+        // It leaves the card at once and is drawn in faster the nearer it comes.
+        const lead = clamp(x, 0.0, 1.0);
+        const head = lead.mul(lead.mul(0.4).add(0.6)).toVar();
+        const tail = clamp(x.sub(BLADE_TRAIL), 0.0, 1.0).toVar();
+        const k = positionGeometry.x;
+        const sAt = mix(tail.mul(tail.mul(0.4).add(0.6)), head, k).toVar();
+        const curve = (t) => {
+            const inv = float(1.0).sub(t);
+            return A.xyz.mul(inv.mul(inv)).add(C.xyz.mul(inv.mul(t).mul(2.0))).add(u.relicHeart.mul(t.mul(t)));
+        };
+        const p0 = curve(sAt);
+        const p1 = curve(sAt.add(0.02));
+        const viewProj = cameraProjectionMatrix.mul(cameraViewMatrix);
+        const c0 = viewProj.mul(vec4(p0, 1.0)).toVar();
+        const c1 = viewProj.mul(vec4(p1, 1.0));
+        const s0 = c0.xy.div(max(c0.w, 1e-4));
+        const s1 = c1.xy.div(max(c1.w, 1e-4));
+        const along = normalize(s1.sub(s0).mul(u.viewport).add(vec2(1e-5, 0.0)));
+        const side = vec2(along.y.negate(), along.x);
+        const live = step(0.0, age).mul(step(age, flight.mul(BLADE_LIFE / BLADE_FLIGHT))).mul(step(0.001, C.w));
+        // Wider toward its head, a hairline at its tail.
+        const px = k.mul(k).mul(6.5).add(1.6).mul(u.viewport.y.div(1080.0)).mul(C.w.mul(0.3).add(0.7));
+        const off = side.mul(positionGeometry.y).mul(px).div(u.viewport).mul(c0.w).mul(live);
+        // Brightest as it leaves, and it flares as the chrysalis takes it.
+        const taken = smoothstep(0.75, 1.0, x).mul(float(1.0).sub(smoothstep(1.0, 1.4, x)));
+        vGain.assign(live.mul(C.w).mul(exp(age.mul(-1.1)).mul(0.9).add(taken.mul(0.9)).add(0.35)));
+        return vec4(c0.xy.add(off), c0.z, c0.w);
     })();
     material.outputNode = Fn(() => {
-        const q = uv();
-        const along = q.x;
-        const across = q.y.sub(0.5).mul(2.0);
-        const fade = exp(vAge.mul(-4.2));
-        // A hot core and a soft sheath, brightest at the head, with a spark running out along it.
-        const core = exp(across.mul(across).mul(-110.0));
-        const sheath = exp(abs(across).mul(-5.0)).mul(0.26);
-        // Where it leaves the card it flares.
-        const flare = vcBell(along.div(0.09)).mul(exp(across.mul(across).mul(-9.0))).mul(1.3);
-        const taper = clamp(float(1.0).sub(along), 0.0, 1.0).pow(0.6).mul(smoothstep(0.0, 0.04, along));
-        const head = vcBell(along.sub(min(vAge.mul(3.4), 0.96)).div(0.1)).mul(1.6);
-        const light = core.add(sheath).mul(taper.add(head)).add(flare).mul(fade);
-        return vec4(vTint.rgb.mul(light).mul(vTint.w).mul(5.0).mul(u.breath), 0.0);
+        const k = vAt.x;
+        const across = vAt.y;
+        // A hot core in a soft sheath; light runs along it, and its head is a spark.
+        const core = exp(across.mul(across).mul(-9.0));
+        const sheath = exp(abs(across).mul(-2.6)).mul(0.3);
+        const run = sin(k.mul(34.0).sub(u.time.mul(22.0))).mul(0.2).add(0.8);
+        const spark = vcBell(k.sub(0.97).div(0.06)).mul(2.2);
+        const body = smoothstep(0.0, 0.25, k).mul(k.mul(0.6).add(0.4));
+        const light = core.add(sheath).mul(body.mul(run).add(spark));
+        const hue = mix(vTint, vec3(1.0, 0.97, 0.9), spark.mul(0.25).add(core.mul(0.2)));
+        return vec4(hue.mul(light).mul(vGain).mul(3.4).mul(u.breath), 0.0);
     })();
     mesh.material = material;
 
     const part = vcPart('VesperChrysalisBlades', geometry, material, 80, { mesh });
+    part.count = count;
     /** What blade `i` still has to give at `time`: a blade not yet out counts in full. */
     const left = (i, time) => {
-        const age = time - rows[i].w;
-        if (age < 0) return tints[i].w;
-        return age < BLADE_LIFE ? tints[i].w * Math.exp(-age * 4.2) : 0;
+        const age = time - from[i].w;
+        if (age < 0) return via[i].w;
+        const life = tints[i].w * (BLADE_LIFE / BLADE_FLIGHT);
+        return age < life ? via[i].w * (1 - age / life) : 0;
     };
     /** The slots the last fire took (a scratch list: read it before the next fire). */
     const taken = [];
     part.taken = taken;
     /**
-     * Each row takes the slot whose blade has least left to give, so a clear (or a cascade's next
-     * wave) never cuts the blades still flying from the one before.
-     * @param {number[]} ys     screen y of each cleared row (fractions, y down)
-     * @param {number} x0       the card's left edge
-     * @param {number} x1       the card's right edge
+     * Send blades home. Each takes the slot whose blade has least left to give, so a clear (or a
+     * cascade's next wave) never cuts the blades still flying from the one before.
+     * @param {{ at: number[], via: number[] }[]} list  where each leaves, and the point it bows through
+     * @param {number[]} rgb
+     * @param {number} time
+     * @param {number} [strength=1]
+     * @param {number} [flight=BLADE_FLIGHT]
+     * @returns {number} when the last of them reaches the chrysalis
      */
-    part.fire = (ys, x0, x1, rgb, time, strength = 1) => {
+    part.fire = (list, rgb, time, strength = 1, flight = BLADE_FLIGHT) => {
         taken.length = 0;
-        for (let k = 0; k < ys.length && k < BLADE_SLOTS; k++) {
+        let last = time;
+        for (let k = 0; k < list.length && k < count; k++) {
             let pick = -1;
             let least = Infinity;
-            for (let i = 0; i < BLADE_SLOTS; i++) {
+            for (let i = 0; i < count; i++) {
                 if (taken.includes(i)) continue;
                 const energy = left(i, time);
                 if (energy < least) {
@@ -437,19 +487,42 @@ export function createBlades(u) {
                 }
             }
             taken.push(pick);
-            rows[pick].set(ys[k], x0, x1, time + k * 0.035);
-            tints[pick].set(rgb[0], rgb[1], rgb[2], strength);
+            const birth = time + Math.floor(k / 2) * 0.05;
+            from[pick].set(list[k].at[0], list[k].at[1], list[k].at[2], birth);
+            via[pick].set(list[k].via[0], list[k].via[1], list[k].via[2], strength);
+            tints[pick].set(rgb[0], rgb[1], rgb[2], flight);
+            last = Math.max(last, birth + flight);
         }
+        return last;
     };
     part.reset = () => {
-        for (let i = 0; i < BLADE_SLOTS; i++) rows[i].w = -100;
+        for (let i = 0; i < count; i++) {
+            from[i].w = -100;
+            via[i].w = 0;
+        }
     };
     return part;
 }
 
 // ── Fireflies ───────────────────────────────────────────────────────────────────
 
+/** Where the swarms gather (x, height, z) and how far each roams. */
+const SWARMS = Object.freeze([
+    [-24, 3.4, -36, 7], [26, 3.0, -42, 8], [-40, 4.4, -62, 9], [15, 2.6, -24, 5],
+]);
+
 /**
+ * Fireflies over the water. Each has a home and wanders about it, showing its light in slow
+ * pulses to its own count. The evening changes their manners (u.flies), and they melt from one
+ * to the next:
+ *
+ *   swarms   most of them leave home for one of a few places over the lake and circle there
+ *   in step  they flash together, in waves that cross the lake
+ *   rising   they climb in slow columns and come back in at the water
+ *   a whirl  they are drawn into a ring round the chrysalis and spin with it
+ *
+ * and whatever strikes the lake scatters them (u.flyScatter): they are thrown out from the
+ * place and drift back.
  * @param {object} u
  * @param {number} count
  */
@@ -473,32 +546,91 @@ export function createFireflies(u, count) {
     const material = additive('VesperChrysalisFireflies');
     const aFly = attribute('aFly', 'vec4');
     const vGlow = varying(float(0.0), 'vFlyGlow');
-    const vSeed = varying(aFly.w, 'vFlySeed');
+    const vSeed = flatVarying(aFly.w, 'vFlySeed');
+    const vStreak = varying(vec2(0.0), 'vFlyStreak');
     material.vertexNode = Fn(() => {
-        const s = aFly.w;
+        const s = aFly.w.toVar();
         const t = u.drift;
         const wander = vec3(
             sin(t.mul(s.mul(0.3).add(0.21)).add(s.mul(50.0))).mul(1.7).add(sin(t.mul(0.53).add(s.mul(13.0))).mul(0.6)),
             sin(t.mul(s.mul(0.25).add(0.33)).add(s.mul(31.0))).mul(0.7),
             cos(t.mul(s.mul(0.2).add(0.17)).add(s.mul(77.0))).mul(1.9),
         );
-        const view = cameraViewMatrix.mul(vec4(aFly.xyz.add(wander), 1.0));
+        const p = aFly.xyz.add(wander).toVar();
+
+        // ── Swarms: most of them gather at one of a few places and circle there ──
+        const which = fract(s.mul(5.3)).mul(SWARMS.length).floor();
+        const swarmAt = vec3(0.0).toVar();
+        const swarmFar = float(1.0).toVar();
+        SWARMS.forEach(([sx, sy, sz, far], i) => {
+            const mine = float(1.0).sub(step(0.5, which.sub(i).abs()));
+            // The place itself drifts.
+            const place = vec3(
+                float(sx).add(sin(t.mul(0.09).add(i * 2.1)).mul(far * 0.7)),
+                float(sy).add(sin(t.mul(0.13).add(i * 1.3)).mul(1.2)),
+                float(sz).add(cos(t.mul(0.07).add(i * 3.3)).mul(far)),
+            );
+            swarmAt.addAssign(place.mul(mine));
+            swarmFar.addAssign(mine.mul(far * 0.22));
+        });
+        const circle = t.mul(s.mul(0.5).add(0.5)).add(s.mul(60.0));
+        const round = vec3(cos(circle), sin(circle.mul(1.3).add(s.mul(9.0))).mul(0.55), sin(circle)).mul(fract(s.mul(13.0)).mul(2.6).add(0.8))
+            .mul(swarmFar);
+        const joins = step(fract(s.mul(3.1)), 0.72).mul(u.flies.x);
+        p.assign(mix(p, swarmAt.add(round), joins));
+
+        // ── Rising: slow columns that come back in at the water ──
+        const climb = fract(t.mul(0.045).add(s.mul(7.0)));
+        const risen = climb.mul(11.0).mul(u.flies.z).mul(step(fract(s.mul(2.3)), 0.7));
+        p.y.addAssign(risen);
+        const column = float(1.0).sub(smoothstep(0.8, 1.0, climb).mul(u.flies.z)).mul(mix(float(1.0), smoothstep(0.0, 0.08, climb), u.flies.z));
+
+        // ── A whirl round the chrysalis ──
+        const ringFar = fract(s.mul(3.7)).mul(10.0).add(5.5);
+        const ringTurn = s.mul(6.283).add(u.time.mul(float(14.0).div(ringFar)));
+        const ring = u.relicHeart.add(vec3(
+            cos(ringTurn).mul(ringFar),
+            fract(s.mul(7.7)).sub(0.5).mul(15.0).add(sin(u.time.mul(0.8).add(s.mul(30.0))).mul(0.8)),
+            sin(ringTurn).mul(ringFar).mul(0.75),
+        ));
+        const drawn = u.flies.w.mul(step(fract(s.mul(8.9)), 0.8));
+        p.assign(mix(p, ring, drawn));
+
+        // ── Whatever strikes the lake throws them outward; they drift back ──
+        const from = p.xz.sub(u.flyScatter.xy);
+        const gap = max(length(from), 0.5);
+        const push = u.flyScatter.w.mul(float(22.0).div(gap.mul(0.06).add(1.0)));
+        p.x.addAssign(from.x.div(gap).mul(push));
+        p.z.addAssign(from.y.div(gap).mul(push));
+        p.y.addAssign(push.mul(0.22));
+
+        const view = cameraViewMatrix.mul(vec4(p, 1.0));
         const dist = max(view.z.negate(), 1.0);
-        // It shows its light in slow pulses, each firefly to its own count; they burn brighter
-        // with the chain, and as play heats (u.heat.x: nothing under casual play) and in a fever.
-        const pulse = sin(t.mul(s.mul(0.9).add(0.7)).add(s.mul(90.0))).mul(0.5).add(0.5);
-        vGlow.assign(pulse.mul(pulse).mul(pulse).mul(u.power.mul(0.8).add(u.heat.x.mul(0.7)).add(u.heat.y.mul(0.9))
+        // It shows its light in slow pulses, each firefly to its own count; in step, the count is
+        // the place: waves of light cross the lake. They burn brighter with the chain, and as play
+        // heats (u.heat.x: nothing under casual play) and in a fever.
+        const own = t.mul(s.mul(0.9).add(0.7)).add(s.mul(90.0));
+        const together = p.x.mul(0.05).add(p.z.mul(0.035)).sub(u.time.mul(1.25));
+        const pulse = sin(mix(own, together, u.flies.y)).mul(0.5).add(0.5);
+        const sharp = mix(pulse.mul(pulse).mul(pulse), vcPow4(pulse).mul(pulse).mul(1.5), u.flies.y);
+        vGlow.assign(sharp.mul(column).mul(u.power.mul(0.8).add(u.heat.x.mul(0.7)).add(u.heat.y.mul(0.9))
+            .add(drawn.mul(1.2))
+            .add(push.mul(0.25))
             .add(1.0)));
+        // In the whirl and in a scatter it is a streak: the quad is drawn out along its way.
+        const fast = clamp(drawn.add(push.mul(0.1)), 0.0, 1.0);
+        vStreak.assign(vec2(fast, 0.0));
         const size = float(0.27).mul(dist.div(20.0).pow(0.5));
-        const q = positionGeometry.xy.mul(size);
+        const q = positionGeometry.xy.mul(size).mul(vec2(fast.mul(2.2).add(1.0), 1.0));
         return cameraProjectionMatrix.mul(vec4(view.x.add(q.x), view.y.add(q.y), view.z, 1.0));
     })();
     material.outputNode = Fn(() => {
-        const d = length(uv().sub(0.5).mul(2.0));
+        const q = uv().sub(0.5).mul(2.0);
+        const d = length(q);
         const edge = float(1.0).sub(smoothstep(0.75, 1.0, d));
         const shape = exp(d.mul(d).mul(-14.0)).mul(2.6).add(exp(d.mul(-5.0)).mul(0.3)).mul(edge);
         const hue = mix(u.core, u.crystal, fract(vSeed.mul(7.0)).mul(0.5)).add(vec3(0.12, 0.14, 0.02));
-        return vec4(hue.mul(shape).mul(vGlow).mul(u.breath), 0.0);
+        return vec4(hue.mul(shape).mul(vGlow).mul(u.breath).mul(float(1.0).sub(vStreak.x.mul(0.35))), 0.0);
     })();
     mesh.material = material;
     const part = vcPart('VesperChrysalisFireflies', geometry, material, 67, { mesh });
@@ -506,4 +638,3 @@ export function createFireflies(u, count) {
     return part;
 }
 
-export const DUST_HOME = Object.freeze([HEART[0], HEART[1], HEART[2] + 1.5]);

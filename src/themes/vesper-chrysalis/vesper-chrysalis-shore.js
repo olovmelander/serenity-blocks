@@ -327,18 +327,20 @@ export function createSpires(u, spires, opts = {}) {
 }
 
 /**
- * Reeds in the shallows at the bottom corners of the view.
+ * Reeds in the shallows at the bottom corners of the view: long leaves that bow over, and
+ * reed-mace standing among them, each stem with its dark head. They are dark against the lake;
+ * the side of the set sun lines them with its last light, and they stir in a breath of wind (a
+ * gust that crosses the lake bends them as it passes).
  * @param {object} u
  * @param {number} count
  */
 export function createReeds(u, count) {
-    const seg = 4;
+    const seg = 7;
     const pos = [];
     const index = [];
     for (let i = 0; i <= seg; i++) {
         const t = i / seg;
-        const w = (1 - t) ** 0.7;
-        pos.push(-0.5 * w, t, 0, 0.5 * w, t, 0);
+        pos.push(-0.5, t, 0, 0.5, t, 0);
         if (i < seg) {
             const b = i * 2;
             index.push(b, b + 1, b + 2, b + 1, b + 3, b + 2);
@@ -350,15 +352,19 @@ export function createReeds(u, count) {
     const n = Math.max(1, count);
     const rand = mulberry32(977);
     const base = new Float32Array(n * 4); // (x, z, height, seed)
+    const kind = new Float32Array(n * 2); // (0 leaf | 1 reed-mace, how far it bows)
     for (let i = 0; i < n; i++) {
         const side = i % 2 === 0 ? -1 : 1;
         // Clumps hard against the bottom corners.
         const clump = Math.floor(rand() * 3);
-        const cx = side * (5.2 + clump * 2.3 + rand() * 1.8);
-        const cz = -(6.2 + clump * 2.4 + rand() * 2.6);
-        base.set([cx + (rand() - 0.5) * 1.5, cz + (rand() - 0.5) * 1.5, 1.5 + rand() * 2.1, rand()], i * 4);
+        const cx = side * (4.6 + clump * 2.2 + rand() * 1.8);
+        const cz = -(6.0 + clump * 2.4 + rand() * 2.6);
+        const mace = rand() < 0.22;
+        base.set([cx + (rand() - 0.5) * 1.6, cz + (rand() - 0.5) * 1.6, mace ? 2.3 + rand() * 1.1 : 1.2 + rand() * 1.9, rand()], i * 4);
+        kind.set([mace ? 1 : 0, mace ? 0.12 : 0.35 + rand() * 0.75], i * 2);
     }
     geometry.setAttribute('aReed', new THREE.InstancedBufferAttribute(base, 4));
+    geometry.setAttribute('aReedKind', new THREE.InstancedBufferAttribute(kind, 2));
     const mesh = new THREE.InstancedMesh(geometry, null, n);
     mesh.count = count > 0 ? n : 0;
 
@@ -368,24 +374,48 @@ export function createReeds(u, count) {
     material.toneMapped = false;
     material.side = THREE.DoubleSide;
     const aReed = attribute('aReed', 'vec4');
-    const vT = varying(positionGeometry.y, 'vReedT');
+    const aKind = attribute('aReedKind', 'vec2');
+    const vAt = varying(vec2(positionGeometry.x, positionGeometry.y), 'vReedAt');
+    const vKind = flatVarying(vec2(aKind.x, aReed.w), 'vReedKind');
     material.positionNode = Fn(() => {
         const t = positionGeometry.y;
+        // A breath of wind; a gust bends them over as it passes.
+        const gustBehind = u.time.sub(u.gust.z).mul(24.0).sub(aReed.x.mul(u.gust.x).add(aReed.y.mul(u.gust.y)).add(230.0));
+        const gust = smoothstep(0.0, 10.0, gustBehind).mul(exp(max(gustBehind, 0.0).mul(-0.026))).mul(u.gust.w);
         const sway = sin(u.drift.mul(0.9).add(aReed.w.mul(30.0)).add(aReed.x.mul(0.6))).mul(0.16)
-            .add(sin(u.drift.mul(2.1).add(aReed.w.mul(70.0))).mul(0.04));
+            .add(sin(u.drift.mul(2.1).add(aReed.w.mul(70.0))).mul(0.04))
+            .add(gust.mul(u.gust.x).mul(0.5));
         const bend = t.mul(t).mul(aReed.z);
-        const lean = aReed.w.sub(0.5).mul(0.5);
-        return positionLocal.mul(vec3(0.085, 0.0, 1.0)).add(vec3(
-            aReed.x.add(bend.mul(sway.add(lean))),
-            t.mul(aReed.z),
+        const lean = aReed.w.sub(0.5).mul(aKind.y).mul(2.0);
+        // A leaf tapers to a point and bows over; a reed-mace is a thin stem with a thick head near its top.
+        const leaf = float(1.0).sub(t).pow(0.7).mul(0.085);
+        const head = smoothstep(0.66, 0.7, t).mul(float(1.0).sub(smoothstep(0.9, 0.93, t))).mul(0.085).add(0.02)
+            .mul(float(1.0).sub(smoothstep(0.93, 1.0, t).mul(0.7)));
+        const wide = mix(leaf, head, aKind.x);
+        // A bowed leaf's tip hangs: the bend takes height off it.
+        const droop = bend.mul(lean.abs()).mul(t).mul(0.5);
+        return positionLocal.mul(vec3(0.0, 0.0, 1.0)).add(vec3(
+            aReed.x.add(positionGeometry.x.mul(wide)).add(bend.mul(sway.add(lean))),
+            t.mul(aReed.z).sub(droop),
             aReed.y.add(bend.mul(sway).mul(0.4)),
         ));
     })();
     material.fragmentNode = Fn(() => {
-        const t = clamp(vT, 0.0, 1.0);
-        // Dark blades; their upper halves catch a little of the sky.
+        const t = clamp(vAt.y, 0.0, 1.0);
+        const across = vAt.x.mul(2.0);
+        const mace = vKind.x;
+        // Dark blades; their upper halves catch a little of the sky, and the edge that faces the
+        // set sun is lined with what is left of it.
         const sky = vcSkyBase(u, normalize(vec3(0.3, 0.5, -0.8)));
-        return vec4(mix(u.range.mul(0.5), u.range.add(sky.mul(0.1)), smoothstep(0.2, 1.0, t)), 1.0);
+        const blade = mix(u.range.mul(0.5), u.range.add(sky.mul(0.1)), smoothstep(0.2, 1.0, t));
+        const lined = smoothstep(0.35, 1.0, across).mul(smoothstep(0.1, 0.6, t)).mul(0.3);
+        const rib = vcBell(across.div(0.25)).mul(0.04);
+        const leafCol = blade.add(u.glow.mul(lined)).add(sky.mul(rib));
+        // The head: a dark velvet that holds a warm edge.
+        const onHead = smoothstep(0.66, 0.7, t).mul(float(1.0).sub(smoothstep(0.9, 0.93, t)));
+        const velvet = vec3(0.06, 0.035, 0.03).mul(sky.mul(1.5).add(0.3)).add(u.glow.mul(smoothstep(0.2, 1.0, across)).mul(0.22));
+        const maceCol = mix(leafCol, velvet, onHead);
+        return vec4(mix(leafCol, maceCol, mace), 1.0);
     })();
     mesh.material = material;
     mesh.frustumCulled = false;
