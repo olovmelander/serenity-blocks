@@ -70,6 +70,7 @@ const DECAY_RATES = Object.freeze({
     shimmer: 0.8,
     flock: 0.32,
     flutter: 0.5,
+    burn: 1.15,
 });
 const ENVELOPE_KEYS = Object.keys(DECAY_RATES);
 const WIND_HOLD_SECONDS = 1.6;
@@ -123,6 +124,13 @@ const WAVE_QUEUE = 8;
 // third for four lines, and one each from the spin, the back-to-back, the perfect clear, the
 // level-up and a chain that ends: the queue holds them all twice over.
 const STREAK_QUEUE = 20;
+/** Waves of bloom the meadow can be asked for in one frame. */
+const BLOOM_QUEUE = 4;
+/**
+ * A perfect clear's rainbow: seconds it takes to draw itself across the sky, to stand at its
+ * fullest, and to fade. One asked for while another stands keeps that one standing.
+ */
+export const VERDANT_HILLS_BOW_SECONDS = Object.freeze({ draw: 1.7, stand: 9, fade: 5 });
 const BOARD_COLUMNS = 10;
 const BOARD_VISIBLE_ROWS = 20;
 const BOARD_HIDDEN_ROWS = 4;
@@ -222,6 +230,12 @@ export class VerdantHillsReactions {
         this.emitters = Array.from({ length: this.maxEmitters }, (_, id) => ({ id }));
         this.waves = Array.from({ length: WAVE_QUEUE }, () => ({ serial: -1, column: 0.5, strength: 0 }));
         this.streaks = Array.from({ length: STREAK_QUEUE }, () => ({ serial: -1 }));
+        this.blooms = Array.from({ length: BLOOM_QUEUE }, () => ({
+            serial: -1, column: 0.5, strength: 0, kite: VERDANT_HILLS_MIXED,
+        }));
+        /** The perfect clear's rainbow: how long it has stood (see VERDANT_HILLS_BOW_SECONDS). */
+        this.bow = { active: false, age: 0 };
+        this.bowFrame = { strength: 0, drawn: 0 };
         this.envelopes = Object.fromEntries(ENVELOPE_KEYS.map((key) => [key, 0]));
         /** Seconds of line each of the seven kites has left. */
         this.line = new Float32Array(VERDANT_HILLS_KITES);
@@ -297,6 +311,13 @@ export class VerdantHillsReactions {
         this.waveCursor = 0;
         this.streakSerial = 0;
         this.streakCursor = 0;
+        this.bloomSerial = 0;
+        this.bloomCursor = 0;
+        // Balloons let go for new levels (the world launches one for each it has not yet seen).
+        this.balloons = 0;
+        // The last piece locked: its kite and where it came down colour the clear it makes.
+        this.lastKite = VERDANT_HILLS_MIXED;
+        this.lastColumn = 0.5;
         // Consecutive clearing locks. (`streak` itself is the ribbon method below.)
         this.clearStreak = 0;
         this.clearedSinceLock = false;
@@ -343,6 +364,12 @@ export class VerdantHillsReactions {
             level: 0, fever: 0, stage: 0, punch: 0,
         });
         for (const wave of this.waves) Object.assign(wave, { serial: -1, column: 0.5, strength: 0 });
+        for (const bloom of this.blooms) {
+            Object.assign(bloom, {
+                serial: -1, column: 0.5, strength: 0, kite: VERDANT_HILLS_MIXED,
+            });
+        }
+        Object.assign(this.bow, { active: false, age: 0 });
         for (const ribbon of this.streaks) {
             Object.assign(ribbon, {
                 serial: -1,
@@ -575,6 +602,33 @@ export class VerdantHillsReactions {
     }
 
     /**
+     * Ask the meadow to bloom: a wave of colour and lift runs out through its flowers from the
+     * foot of the board, in the colour of a kite (or the flowers' own gold).
+     */
+    bloom(column, strength, kite = VERDANT_HILLS_MIXED) {
+        const wave = this.blooms[this.bloomCursor];
+        wave.serial = this.bloomSerial;
+        wave.column = clamp(column, 0, 1);
+        wave.strength = clamp(strength, 0, 1);
+        wave.kite = kite;
+        this.bloomSerial += 1;
+        this.bloomCursor = (this.bloomCursor + 1) % BLOOM_QUEUE;
+        return wave;
+    }
+
+    /** Draw the rainbow across the sky; one already standing is kept standing instead. */
+    rainbow() {
+        const { bow } = this;
+        if (bow.active) {
+            // Back to where it had just finished drawing: it stands its time again.
+            bow.age = Math.min(bow.age, VERDANT_HILLS_BOW_SECONDS.draw);
+            return bow;
+        }
+        Object.assign(bow, { active: true, age: 0 });
+        return bow;
+    }
+
+    /**
      * Ask for a ribbon of wind from a place on the board. `side` is -1 or +1 for the edge it
      * leaves from, 0 for a ribbon that belongs to neither (or to both).
      */
@@ -603,7 +657,7 @@ export class VerdantHillsReactions {
         // One festival for one sky full of kites: the next needs some of them to come down first.
         this.festivalArmed = false;
         this.excite({
-            gust: 0.6, warmth: 0.7, shafts: 0.7, glow: 0.9, shimmer: 0.7, flock: 1, flutter: 1,
+            gust: 0.6, warmth: 0.7, shafts: 0.7, glow: 0.9, shimmer: 0.7, flock: 1, flutter: 1, burn: 1,
         });
         this.blow(0.5);
         this.raise(1);
@@ -674,6 +728,8 @@ export class VerdantHillsReactions {
         this.countLock(drop);
         const column = place?.column ?? 0.5;
         const row = place?.row ?? 0.12;
+        this.lastKite = kite;
+        this.lastColumn = column;
         this.excite({
             gust: 0.08 + drop * 0.14,
             warmth: 0.02 + drop * 0.04,
@@ -727,6 +783,7 @@ export class VerdantHillsReactions {
             shimmer: 0.4 + lines * 0.15,
             flock: four ? 1 : 0,
             flutter: 0.2 + lines * 0.2,
+            burn: 0.3 + lines * 0.17,
         });
         this.blow(0.08 + lines * 0.07);
         // Every flying kite stands higher, and higher still while the clears keep coming.
@@ -747,6 +804,8 @@ export class VerdantHillsReactions {
         });
         this.gust(0.5, 0.9 + lines * 0.4);
         if (lines >= 2 || wave >= 2) this.sweep(0.3 + lines * 0.17 + (wave - 1) * 0.1);
+        // Three lines and the meadow blooms: a wave of the piece's colour through its flowers.
+        if (lines >= 3) this.bloom(this.lastColumn, four ? 1 : 0.85, this.lastKite);
         if (four) {
             this.emit('rise', {
                 row: 0, strength: 1, lines, duration: 2.8,
@@ -845,10 +904,13 @@ export class VerdantHillsReactions {
         this.settled = false;
         this.surge.crown(this.time);
         this.excite({
-            gust: 0.9, warmth: 1, shafts: 1, glow: 1, shimmer: 1, flock: 1, flutter: 1,
+            gust: 0.9, warmth: 1, shafts: 1, glow: 1, shimmer: 1, flock: 1, flutter: 1, burn: 1,
         });
         this.blow(0.6);
         this.raise(1);
+        // The rarest thing a board can do, and the day's: a rainbow drawn across the whole sky.
+        this.rainbow();
+        this.bloom(0.5, 1, VERDANT_HILLS_MIXED);
         this.emit('rise', {
             row: 0, strength: 1, lines: 4, duration: 3.4,
         });
@@ -869,8 +931,10 @@ export class VerdantHillsReactions {
         if (this.disposed) return false;
         this.surge.levelUp(this.time);
         this.excite({
-            gust: 0.6, warmth: 0.55, shafts: 0.6, glow: 0.8, shimmer: 0.8, flock: 0.7, flutter: 0.8,
+            gust: 0.6, warmth: 0.55, shafts: 0.6, glow: 0.8, shimmer: 0.8, flock: 0.7, flutter: 0.8, burn: 0.9,
         });
+        // A new level lets a balloon go from the valley.
+        this.balloons += 1;
         this.blow(0.3);
         this.raise(0.7);
         this.gust(0.5, 1.8);
@@ -899,6 +963,10 @@ export class VerdantHillsReactions {
         this.clearStreak = 0;
         for (const front of this.fronts) front.target = 0;
         this.sunpool.hold = 0;
+        // A bow in the sky is let go: it fades from where it stands.
+        if (this.bow.active) {
+            this.bow.age = Math.max(this.bow.age, VERDANT_HILLS_BOW_SECONDS.draw + VERDANT_HILLS_BOW_SECONDS.stand);
+        }
         this.line.fill(0);
         // An empty sky can fill for a festival again.
         this.festivalArmed = true;
@@ -977,6 +1045,12 @@ export class VerdantHillsReactions {
             }
         }
         this.updateSunpool(dt, surge.fever);
+        const { bow } = this;
+        if (bow.active) {
+            bow.age += dt;
+            const { draw, stand, fade } = VERDANT_HILLS_BOW_SECONDS;
+            if (bow.age >= draw + stand + fade) bow.active = false;
+        }
         for (const emitter of this.emitters) {
             if (!emitter.active) continue;
             emitter.age = Math.min(emitter.duration, emitter.age + dt);
@@ -997,6 +1071,19 @@ export class VerdantHillsReactions {
             direction: 1,
             strength: front.strength * Math.sin(Math.PI * Math.min(1, travel * 1.15)),
         };
+    }
+
+    /** The rainbow as the world sees it: how bright it stands and how far across the sky it is drawn. */
+    showBow() {
+        const { bow, bowFrame } = this;
+        if (!bow.active) return null;
+        const { draw, stand, fade } = VERDANT_HILLS_BOW_SECONDS;
+        const drawn = clamp(bow.age / draw, 0, 1);
+        const left = clamp((draw + stand + fade - bow.age) / fade, 0, 1);
+        // It comes up as it is drawn and goes as softly as it came.
+        bowFrame.strength = Math.min(1, bow.age / 0.5) * left * left * (3 - 2 * left);
+        bowFrame.drawn = drawn * drawn * (3 - 2 * drawn);
+        return bowFrame;
     }
 
     getFrame() {
@@ -1037,6 +1124,9 @@ export class VerdantHillsReactions {
             still: this.still,
             waves: this.waves,
             streaks: this.streaks,
+            blooms: this.blooms,
+            bow: this.showBow(),
+            balloons: this.balloons,
             emitters: this.emitters.filter((emitter) => emitter.active).map((emitter) => ({
                 ...emitter,
                 progress: clamp(emitter.age / emitter.duration, 0, 1),

@@ -771,7 +771,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — verdant-hills',
         description: 'Set the share of the Verdant Hills sky that lies under cloud.',
         values: 'Number from 0 to 1; the light rig keeps it within 0.02–0.9.',
-        defaultValue: '0.25.',
+        defaultValue: 'The weather\'s own: 0.22 on the kite day.',
         example: 'cover=0.4',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
@@ -3061,6 +3061,22 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'paint',
+        category: 'Playground',
+        scope: 'playground.html — verdant-hills',
+        description: 'Hold colours of the Verdant Hills light rig over every weather, to try a palette before '
+            + 'it goes into the weather table.',
+        values: 'Semicolon-separated name:r,g,b entries, the name a colour uniform of the light rig '
+            + '(uSunColor, uSkyLight, uBounce, uZenith, uSkyMid, uHorizon, uHorizonSun, uHazeCool, uHazeWarm, '
+            + 'uCloudBase, uCloudTop, uCirrus) and r,g,b linear numbers. Unknown names are ignored.',
+        defaultValue: 'The colours of the weather the day stands in.',
+        example: 'paint=uZenith:0.02,0.1,0.46;uSkyMid:0.06,0.26,0.72',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
+        sources: [
+            'src/playground/effects/verdant-hills.effect.js',
+        ],
+    },
+    {
         name: 'parhelionBloom',
         category: 'Playground',
         scope: 'playground.html — parhelion; game themes: Parhelion',
@@ -4433,10 +4449,12 @@ export const PLAYGROUND_URL_PARAMETERS = [
         category: 'Playground',
         scope: 'playground.html — verdant-hills',
         description: 'Tune the Verdant Hills cumulus.',
-        values: 'Up to five comma-separated numbers, sigma,veil,shade,soft,carve: view-ray extinction per '
-            + 'metre, how fast distance dissolves a cloud, how dark its own shade is, how soft its skin is '
-            + 'and how deep the billows carve. Blank entries keep their values.',
-        defaultValue: '0.008,0.00006,0.68,0.18,1.',
+        values: 'Up to eight comma-separated numbers, sigma,veil,shade,soft,carve,fine,reach,lobe: view-ray '
+            + 'extinction per metre, how fast distance dissolves a cloud, how dark its own shade is, and in '
+            + 'metres how soft its skin is, how far its lobes and its finest billows carve it, how far in '
+            + 'from a heap\'s margin the field counts and how wide one tile of the lobes is. Blank entries '
+            + 'keep their values.',
+        defaultValue: '0.008,0.00004,1,50,900,200,2200,2400.',
         example: 'sky=0.012,,0.6',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [

@@ -599,11 +599,15 @@ Status split:
 - **Gameplay FX**: lock = coloured wind ribbon curls from card edge + seed puff + grass gust + that piece's kite goes
   up for 20 s; clear = white ribbons from both sides at cleared rows, wind freshens, kites climb; quad = clouds open, a
   pool of sunlight and its shaft crosses the valley; combo = whirl of ribbons winding round the board; 7 kites =
-  "festival"; game over = wind dies.
+  "festival"; game over = wind dies. Since 2026-11-16: 3 lines = the meadow blooms in the piece's kite colour; quad =
+  a shaft of sun with fingers sweeping the near valley; perfect clear = a double rainbow drawn across the sky; level up =
+  a hot-air balloon lifts off. Seven weathers by the clock (storm light with shafts, a rainbow after the rain, an
+  afterglow with stars, fireflies and lantern balloons, morning mist in the valley).
 - **Tech**: Blender-headless assets (oaks with foliage-site point clouds, windmill, wall), baked land/cloud maps, one
   cloud field used for sky raymarch + ground shadows + air shafts, grass only where visible.
 - **Avoid reusing**: pastoral green daylight, cumulus, kites/ribbons, wind-blown seeds/petals, oak/meadow flowers,
-  whirl of ribbons round the board, "clouds part, sunlight pool" as the quad.
+  whirl of ribbons round the board, "clouds part, sunlight pool" as the quad, a rainbow for a perfect clear, hot-air
+  balloons, a meadow that blooms in the piece's colour, valley mist.
 
 <a id="serenity-warp"></a>
 

@@ -122,6 +122,16 @@ export function create({
         });
         if (post && knob('exposure') !== null) post.exposure = knob('exposure');
     };
+    // ?paint=uZenith:0.03,0.13,0.5;uSkyMid:0.07,0.28,0.72 holds colours of the light rig (its uniform
+    // names) over every weather, for trying a palette before it goes into verdant-hills-moods.js.
+    const paints = (params.get('paint') || '').split(';').map((entry) => {
+        const [name, values = ''] = entry.split(':');
+        const rgb = values.split(',').map(Number);
+        return rgb.length === 3 && rgb.every(Number.isFinite) ? { name, rgb } : null;
+    }).filter(Boolean);
+    const repaint = () => {
+        for (const { name, rgb } of paints) world?.light?.[name]?.value?.setRGB?.(...rgb);
+    };
     // ?bare=1 skips the asset pack: the land, the sky and the grass alone.
     const load = params.get('bare') === '1' ? Promise.resolve(null) : loadVerdantHillsAssets();
     // Milliseconds each stage of the start took, for the capture's diagnostics.
@@ -198,6 +208,7 @@ export function create({
         reactions.update(dt);
         const frame = reactions.getFrame();
         world?.update(time, dt, frame);
+        repaint();
         post?.update(frame);
         followFlock();
     };

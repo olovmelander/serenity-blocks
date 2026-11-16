@@ -9,14 +9,14 @@ import {
 
 const TIERS = ['Extreme', 'Ultra', 'High', 'Medium', 'Low', 'Minimal'];
 const LETTERS = Object.keys(VERDANT_HILLS_PIECE_KITES);
-const ENVELOPES = ['gust', 'warmth', 'shafts', 'glow', 'shimmer', 'flock', 'flutter'];
+const ENVELOPES = ['gust', 'warmth', 'shafts', 'glow', 'shimmer', 'flock', 'flutter', 'burn'];
 // What every frame must carry for the world, the post chain and the playground to read.
 const FRAME_KEYS = ['epoch', 'wind', 'whirl', 'heat', 'streamers', 'streak', 'settled', 'kites', 'kiteTug', 'height',
     'aloft', 'festival', 'festivals', 'front', 'fronts', 'sunbreak', 'surge', 'still', 'waves', 'streaks', 'emitters',
-    ...ENVELOPES];
+    'blooms', 'bow', 'balloons', ...ENVELOPES];
 const SURGE_KEYS = ['fever', 'level', 'punch', 'stage'];
 // Whole numbers; every other number at the top of a frame is a level in 0..1.
-const COUNTERS = ['epoch', 'streak', 'aloft', 'festivals'];
+const COUNTERS = ['epoch', 'streak', 'aloft', 'festivals', 'balloons'];
 const RIBBON_KINDS = ['lock', 'clear', 'great', 'spin', 'festival', 'gold'];
 const BOARD_ROWS = 20;
 const MALFORMED_COUNTS = [NaN, Infinity, -Infinity, -5, 0, 0.8, '', ' ', 'garbage', null, false, true, [], [4], {},
@@ -121,7 +121,20 @@ function frameProblems(frame, reactions) {
         check(unit(frame.surge?.[key]), `surge.${key} = ${frame.surge?.[key]}`);
     }
     check([0, 1, 2, 3].includes(frame.surge?.stage), `surge.stage = ${frame.surge?.stage}`);
-    const queues = [['gust', frame.waves, ['column']], ['ribbon', frame.streaks, ['column', 'row']]];
+    check(Number.isInteger(frame.balloons) && frame.balloons >= 0, `balloons = ${String(frame.balloons)}`);
+    if (frame.bow !== null) {
+        check(unit(frame.bow.strength), `bow.strength = ${frame.bow.strength}`);
+        check(unit(frame.bow.drawn), `bow.drawn = ${frame.bow.drawn}`);
+    }
+    for (const bloom of frame.blooms) {
+        check(
+            Number.isInteger(bloom.kite) && bloom.kite >= VERDANT_HILLS_MIXED && bloom.kite < VERDANT_HILLS_KITES,
+            `bloom ${bloom.serial} kite ${bloom.kite}`,
+        );
+        check(bloom.strength <= 1, `bloom ${bloom.serial} strength ${bloom.strength}`);
+    }
+    const queues = [['gust', frame.waves, ['column']], ['ribbon', frame.streaks, ['column', 'row']],
+        ['bloom', frame.blooms, ['column']]];
     for (const [name, queue, places] of queues) {
         const serials = queue.filter((entry) => entry.serial >= 0).map((entry) => entry.serial);
         check(new Set(serials).size === serials.length, `duplicate ${name} serials`);
@@ -196,6 +209,8 @@ function expectAtRest(frame) {
     expect(frame.emitters).toEqual([]);
     expect(live(frame.waves)).toEqual([]);
     expect(live(frame.streaks)).toEqual([]);
+    expect(live(frame.blooms)).toEqual([]);
+    expect(frame.bow).toBeNull();
     expect(Array.from(frame.kites).every((level) => level === 0)).toBe(true);
     expect(Array.from(frame.kiteTug).every((level) => level === 0)).toBe(true);
     expectBounded(frame);

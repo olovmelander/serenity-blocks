@@ -118,8 +118,10 @@ export class VerdantHillsRibbons {
         const tint = varying(tone.rgb, 'verdantRibbonTint');
         const core = saturate(float(1).sub(edge.abs()));
         // A white heart in a sleeve of the kite's colour, lit like everything else out there.
+        // (Never darker than a share of its own colour: the wind is drawn, and in the afterglow
+        // the day's light alone would leave a ribbon too dim to read.)
         const colour = mix(tint, vec3(1), core.pow(2.4).mul(0.62))
-            .mul(light.uSunColor.mul(0.3).add(light.uSkyLight.mul(0.5)));
+            .mul(light.uSunColor.mul(0.3).add(light.uSkyLight.mul(0.5)).max(vec3(0.58)));
         material.colorNode = vec4(colour, 1);
         material.opacityNode = core.pow(1.3).mul(fade).mul(0.86);
         return material;
