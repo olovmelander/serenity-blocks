@@ -28,25 +28,37 @@
  * stride equal to the distance the body travels per gait cycle, a planted paw stays planted.
  */
 
-/** Floats per capsule: ax, ay, bx, by, ra, rb, smoothness, spare. */
-export const CAPSULE_STRIDE = 8;
-/** Capsules in every pose. */
-export const CAPSULE_COUNT = 25;
+/**
+ * Floats per capsule: ax, ay, bx, by, ra, rb, smoothness, coat tone (0 the dark of the saddle and the
+ * tail's tip .. 1 the pale of the belly, legs and cheeks), then the depth of each end toward the
+ * viewer (az, bz), how long the fur stands there, and a spare.
+ */
+export const CAPSULE_STRIDE = 12;
+/** Capsules in every pose (the first 25 keep their order; the brisket, the cheek ruff and the tail's tip follow). */
+export const CAPSULE_COUNT = 28;
+/**
+ * A wolf's own build (every one 1 at rest): `bulk` the body's girth, `ruff` the neck's and the
+ * cheeks' fur, `tail` its brush, `ear` its ears' length, `limb` its legs' thickness, `head` its
+ * skull and muzzle (a yearling's is big for it), `muzzle` the muzzle's length.
+ */
+export const WOLF_SHAPE = Object.freeze({
+    bulk: 1, ruff: 1, tail: 1, ear: 1, limb: 1, head: 1, muzzle: 1,
+});
 
 /** The three builds and their joints at rest. */
 const BUILDS = Object.freeze({
     standing: Object.freeze({
         hip: [-12, 19.6],
         shoulder: [8, 19.8],
-        neckBase: [10, 22.4],
-        neckAngle: 46,
-        neckLength: 7.4,
+        neckBase: [10, 22.2],
+        neckAngle: 37,
+        neckLength: 8.2,
         hipJoint: [-11.6, 17.6],
-        shoulderJoint: [8.4, 16.2],
+        shoulderJoint: [8.6, 17.3],
         tailBase: [-16.4, 21.2],
-        torso: [4.4, 5.6],
-        chest: [3.5, 4.2],
-        rump: [4.4, 4],
+        torso: [3.8, 5.6],
+        chest: [3.8, 4.7],
+        rump: [4.5, 4],
     }),
     sitting: Object.freeze({
         hip: [-6, 8],
@@ -97,7 +109,7 @@ const FRONT = Object.freeze({
         upper: 7.5,
         lower: 7.3,
         foot: [-0.4, 2.5],
-        radii: [2.5, 1.7, 1.45, 1.2, 1.1],
+        radii: [2.6, 1.5, 1.28, 0.9, 1.16],
         k: [1.4, 0.8, 0.6],
         flat: 0,
         toe: [1.5, 0.2],
@@ -108,7 +120,7 @@ const FRONT = Object.freeze({
         upper: 4.57,
         lower: 4.63,
         foot: [-2.6, 0.5],
-        radii: [2.4, 1.7, 1.6, 1.25, 1.05],
+        radii: [2.4, 1.6, 1.45, 1.05, 1.1],
         k: [1.4, 0.8, 0.6],
         flat: 1,
         toe: [1.4, 0.2],
@@ -120,7 +132,7 @@ const HIND = Object.freeze({
         upper: 7.6,
         lower: 6.9,
         foot: [-1.8, 4.3],
-        radii: [3.5, 2.0, 1.55, 1.2, 1.1],
+        radii: [3.7, 1.85, 1.42, 0.88, 1.16],
         k: [1.4, 0.8, 0.6],
         flat: 0,
         toe: [1.5, 0.2],
@@ -130,7 +142,7 @@ const HIND = Object.freeze({
         upper: 5.8,
         lower: 7.4,
         foot: [-5.8, 0.8],
-        radii: [4.4, 2.6, 2.5, 1.6, 1.15],
+        radii: [4.4, 2.6, 2.5, 1.4, 1.15],
         k: [1.6, 1.6, 1.2],
         flat: 1,
         toe: [1.2, 0],
@@ -153,7 +165,13 @@ const LEG_SIDE = Object.freeze([3, -3, 3.2, -3.2]);
 
 /**
  * Gaits: each leg's offset in the cycle ([front near, front far, hind near, hind far]), the share
- * of the cycle a paw is down, how high a swinging paw lifts, and how much the body bobs.
+ * of the cycle a paw is down, how high a swinging paw lifts, and how much the body bobs. A prowl
+ * is a walk kept low: long on the ground, the paws barely lifted. A lope and a run are gallops:
+ * the hind paws strike one after the other, then the fore paws, then the wolf is in the air with
+ * its legs gathered under it; the body bounds once a cycle (`bound`, a share of the stride) and
+ * rocks (`rock`, radians: forehand up as the hind legs drive, down as the fore paws land).
+ * `full` is the stride at which the bound and the rock are whole (a wolf getting up to speed
+ * eases into them).
  */
 export const GAITS = Object.freeze({
     walk: Object.freeze({
@@ -161,6 +179,27 @@ export const GAITS = Object.freeze({
     }),
     trot: Object.freeze({
         offsets: Object.freeze([0, 0.5, 0.5, 0]), stance: 0.42, step: 0.2, bob: 0.07,
+    }),
+    prowl: Object.freeze({
+        offsets: Object.freeze([0.25, 0.75, 0, 0.5]), stance: 0.72, step: 0.11, bob: 0.012,
+    }),
+    lope: Object.freeze({
+        offsets: Object.freeze([0.52, 0.4, 0.12, 0]),
+        stance: 0.34,
+        step: 0.12,
+        bob: 0,
+        bound: 0.07,
+        rock: 0.1,
+        full: 38,
+    }),
+    run: Object.freeze({
+        offsets: Object.freeze([0.5, 0.4, 0.1, 0]),
+        stance: 0.28,
+        step: 0.11,
+        bob: 0,
+        bound: 0.085,
+        rock: 0.15,
+        full: 46,
     }),
 });
 /** How far the body tilts with the ground (radians at most, and the share of the slope taken). */
@@ -263,7 +302,8 @@ const num = (value, fallback = 0) => (Number.isFinite(value) ? value : fallback)
  * @param {number[]} [pose.foreLift]  each forepaw's lift while it steps
  * @param {number} [pose.gait]  gait cycle position (any real; whole numbers are full cycles)
  * @param {number} [pose.stride]  0 stands still; else the distance the body travels per cycle
- * @param {'walk'|'trot'} [pose.gaitKind]
+ * @param {'walk'|'trot'|'prowl'|'lope'|'run'} [pose.gaitKind]
+ * @param {Partial<typeof WOLF_SHAPE>} [pose.shape]  the wolf's own build
  * @param {number} [pose.step]  stepping in place: cycle position (legs lift in the walk's order)
  * @param {number} [pose.stepHeight]  how high a paw lifts stepping in place (0: no stepping)
  * @param {number} [pose.yaw]  radians the whole wolf turns about its middle (toward the viewer +)
@@ -332,6 +372,7 @@ export function poseWolf(pose, out = new Float32Array(CAPSULE_COUNT * CAPSULE_ST
     const scratch = clamp01(num(pose.scratch));
     const dig = clamp01(num(pose.dig));
     const digPhase = num(pose.digPhase);
+    const shape = pose.shape ? { ...WOLF_SHAPE, ...pose.shape } : WOLF_SHAPE;
 
     // The body's fore and hind ends (where it rests on the ground) follow the posture, not a step.
     const foreX = blendValue(
@@ -347,6 +388,8 @@ export function poseWolf(pose, out = new Float32Array(CAPSULE_COUNT * CAPSULE_ST
     const cy = Math.cos(yaw);
     const sy = Math.sin(yaw);
     const px = (x, z = 0) => pivotX + (x - pivotX) * cy - z * sy;
+    // ...and how far a point then stands toward the viewer (the shader shades the union by it).
+    const pz = (x, z = 0) => (x - pivotX) * sy + z * cy;
     const groundFn = typeof pose.ground === 'function' ? pose.ground : null;
     // The ground under a point of the frame (x along the wolf, z across it), wherever it is turned.
     const groundAt = (x, z = 0) => {
@@ -360,23 +403,65 @@ export function poseWolf(pose, out = new Float32Array(CAPSULE_COUNT * CAPSULE_ST
     const gHind = wide(hindX);
     const slope = Math.atan2(gFore - gHind, foreX - hindX);
     const share = TILT_SHARE * (1 - 0.4 * sit);
-    const tilt = Math.max(-MAX_TILT, Math.min(MAX_TILT, slope)) * share + num(pose.pitch);
+    // A gallop rocks the body once a cycle and throws it into the air after the fore paws leave.
+    const gallop = gaitDef.full && stride > 0 ? Math.min(1, stride / gaitDef.full) : 0;
+    const rock = gallop > 0 ? gallop * gaitDef.rock * Math.sin((gait + 0.04) * Math.PI * 2) : 0;
+    const tilt = Math.max(-MAX_TILT, Math.min(MAX_TILT, slope)) * share + num(pose.pitch) + rock;
     const settle = mix((gFore + gHind) / 2, gHind, sit) - crouch + leap;
     // A moving body bobs twice per cycle, lowest as each fore paw takes the weight; the head rides
     // it out (a wolf carries its head level as it goes).
-    const bob = stride > 0 ? Math.cos(gait * Math.PI * 4) * stride * gaitDef.bob : 0;
+    const bob = (stride > 0 ? Math.cos(gait * Math.PI * 4) * stride * gaitDef.bob : 0)
+        + (gallop > 0 ? gallop * gaitDef.bound * stride * (0.5 + 0.5 * Math.cos((gait - 0.9) * Math.PI * 2)) : 0);
+    // (`sink`: how far the body has sunk onto its legs, below.)
+    let sink = 0;
     const lift = (p) => {
         const r = rotate([p[0] - pivotX, p[1] - TILT_HEIGHT], tilt);
-        return [r[0] + pivotX, r[1] + TILT_HEIGHT + settle + bob];
+        return [r[0] + pivotX, r[1] + TILT_HEIGHT + settle + bob - sink];
     };
+    // Legs: three bones each, placed by IK from the paw.
+    const legs = [
+        [b.shoulderJoint, fronts[0]], [[b.shoulderJoint[0] - 1.6, b.shoulderJoint[1]], fronts[1]],
+        [b.hipJoint, hind], [[b.hipJoint[0] - 1.6, b.hipJoint[1]], hind],
+    ];
+    // A standing body cannot stand higher than its planted legs reach: where a paw is further off
+    // than its leg is long (a long stride, a bound, a paw down a slope) the body sinks onto its
+    // legs rather than the leg being drawn out. (Sitting down and lying down fold the legs their
+    // own way: the forepaws walk out ahead of the body.)
+    let need = 0;
+    legs.forEach(([joint, bone], i) => {
+        const isFront = i < 2;
+        const near = i % 2 === 0;
+        const z = LEG_SIDE[i];
+        let raised = tuck;
+        if (isFront && near) raised = Math.max(raised, pawUp);
+        if (!isFront && near) raised = Math.max(raised, scratch);
+        if (raised >= 1) return;
+        const [dx, rise, flex] = pawCycle(gait + gaitDef.offsets[i], stride, gaitDef);
+        const [stepRise, stepFlex] = stepInPlace(stepAt + GAITS.walk.offsets[i], stepHeight);
+        const pawX = rest[i][0] + dx + (isFront ? reachFore : -reachHind);
+        const pawY = groundAt(pawX, z) + rest[i][1] + rise + stepRise
+            + (isFront ? Math.max(0, num(pose.foreLift?.[i])) : 0);
+        const footVec = rotate(bone.foot, (flex + stepFlex) * (isFront ? 0.9 : -0.5));
+        const root = lift(joint);
+        const across = pawX + footVec[0] - root[0];
+        const below = root[1] - (pawY + footVec[1]);
+        const reach = bone.upper + bone.lower - 0.04;
+        if (below > 0 && across * across + below * below > reach * reach) {
+            const fits = Math.sqrt(Math.max(reach * reach - across * across, 0));
+            need = Math.max(need, (below - fits) * (1 - raised));
+        }
+    });
+    sink = Math.min(need, 7) * (1 - smooth(Math.max(sit, down) / 0.25));
 
     let n = 0;
     // Each capsule's ends are points of the frame [x, y, z]; they are drawn turned by the yaw.
-    const put = (a, c, ra, rb, k) => {
+    const put = (a, c, ra, rb, k, tone = 0.5, fur = 1) => {
         const o = n * CAPSULE_STRIDE;
         out[o] = px(a[0], a[2] ?? 0); out[o + 1] = a[1];
         out[o + 2] = px(c[0], c[2] ?? 0); out[o + 3] = c[1];
-        out[o + 4] = ra; out[o + 5] = rb; out[o + 6] = k; out[o + 7] = 0;
+        out[o + 4] = ra; out[o + 5] = rb; out[o + 6] = k; out[o + 7] = tone;
+        out[o + 8] = pz(a[0], a[2] ?? 0); out[o + 9] = pz(c[0], c[2] ?? 0);
+        out[o + 10] = fur; out[o + 11] = 0;
         n += 1;
     };
 
@@ -385,14 +470,24 @@ export function poseWolf(pose, out = new Float32Array(CAPSULE_COUNT * CAPSULE_ST
     const swell = breath * 0.25;
     // Seen from the front or behind, the coat and the ruff fill the body out.
     const girth = Math.abs(sy) * 1.2;
-    // Body: a lean barrel, the shoulder hump, the deep narrow chest, the rump over the thighs.
-    put(hip, shoulder, b.torso[0] + girth, b.torso[1] + swell + girth, 3);
+    const { bulk } = shape;
+    // Body: a lean barrel tucked up at the loin, the dark saddle over the withers, the deep narrow
+    // chest, the rump over the thighs.
+    put(hip, shoulder, b.torso[0] * bulk + girth, b.torso[1] * bulk + swell + girth, 3, 0.42, 1);
     // Offsets from the rest shoulder and hip, carried through the body's settle and tilt.
     const fromShoulder = (dx, dy) => lift([b.shoulder[0] + dx, b.shoulder[1] + dy]);
     const fromHip = (dx, dy) => lift([b.hip[0] + dx, b.hip[1] + dy]);
-    put(fromShoulder(-4.4, 3.6), fromShoulder(1.6, 2.8), 2.7 + girth, 3 + girth, 2.6);
-    put(fromShoulder(-2.2, -3.2), fromShoulder(2.4, -2.4), b.chest[0] + girth, b.chest[1] + swell + girth, 2.6);
-    put(fromHip(-1, 0.4), fromHip(1.6, -2.2), b.rump[0] + girth, b.rump[1] + girth, 2.6);
+    put(fromShoulder(-4.4, 3.6), fromShoulder(1.6, 2.8), 2.7 * bulk + girth, 3 * bulk + girth, 2.6, 0.1, 1.25);
+    put(
+        fromShoulder(-2.6, -3.3),
+        fromShoulder(2.2, -2.7),
+        b.chest[0] * bulk + girth,
+        b.chest[1] * bulk + swell + girth,
+        2.6,
+        0.72,
+        1.1,
+    );
+    put(fromHip(-1, 0.4), fromHip(1.6, -2.2), b.rump[0] * bulk + girth, b.rump[1] * bulk + girth, 2.6, 0.32, 1);
     // A sitting wolf's belly fills the fold between its haunch and its chest; standing or lying,
     // it shrinks back inside the body.
     const belly = sit * (1 - down);
@@ -402,6 +497,8 @@ export function poseWolf(pose, out = new Float32Array(CAPSULE_COUNT * CAPSULE_ST
         mix(0.05, 3.2, belly),
         mix(0.05, 2.2, belly),
         mix(0.1, 1.2, belly),
+        0.88,
+        1.2,
     );
 
     // Neck and head, in three dimensions: the neck shares part of the head's turn, the head turns,
@@ -415,7 +512,8 @@ export function poseWolf(pose, out = new Float32Array(CAPSULE_COUNT * CAPSULE_ST
         neckBase[1] + Math.sin(neckAngle) * b.neckLength + counter,
         neckFlat * Math.sin(neckYaw),
     ];
-    put(neckBase, neckTop, 5.2 + girth * 0.8, 3.9 + girth * 0.6, 3);
+    const { ruff, head: skull } = shape;
+    put(neckBase, neckTop, 5.2 * ruff + girth * 0.8, 3.9 * ruff + girth * 0.6, 3, 0.46, 1.5);
     const headAngle = (-12 + head) * DEG + tilt;
     const ch = Math.cos(headAngle);
     const shh = Math.sin(headAngle);
@@ -434,28 +532,37 @@ export function poseWolf(pose, out = new Float32Array(CAPSULE_COUNT * CAPSULE_ST
     // Seen from the front a wolf's skull and muzzle are broad.
     const facing = headYaw + yaw;
     const broad = Math.abs(Math.sin(facing));
-    put(at([-1.4, 0.7]), at([2.3, 0.3]), 3.5 + broad * 0.5, 3.1 + broad * 0.6, 1.4);
-    put(at([2.2, -0.3]), at([9.2, -1.9]), 2.05 + broad * 0.2, 1.05 + broad * 0.5, 1.1);
+    // The muzzle is long and fine, the skull broad behind it with a stop between.
+    const snout = shape.muzzle;
+    put(at([-1.4, 0.7]), at([2, 0.35]), (3.4 + broad * 0.5) * skull, (2.95 + broad * 0.6) * skull, 1.3, 0.4, 0.55);
+    put(
+        at([2, -0.4]),
+        at([2 + 5.9 * snout, -1.7]),
+        (2.3 + broad * 0.2) * skull,
+        (1.22 + broad * 0.5) * skull,
+        1.1,
+        0.5,
+        0.14,
+    );
     const jawPivot = [1.8, -1.5];
     const jawAt = (local) => {
         const r = rotate([local[0] - jawPivot[0], local[1] - jawPivot[1]], -jaw * DEG);
         return at([r[0] + jawPivot[0], r[1] + jawPivot[1]]);
     };
-    put(jawAt([1.8, -2.1]), jawAt([8.2, -3]), 1.35, 0.75 + broad * 0.2, 0.8);
+    const chin = jawAt([1.8 + 5.1 * snout, -2.85]);
+    put(jawAt([1.8, -2.1]), chin, 1.4 * skull, (0.82 + broad * 0.2) * skull, 0.8, 0.96, 0.14);
     const ear = (base, tip, back) => {
         const r = rotate([tip[0] - base[0], tip[1] - base[1]], back * DEG);
         return [base[0] + r[0], base[1] + r[1], tip[2]];
     };
-    const baseA = [-1.3, 2.6, 1.5];
-    const baseB = [0.5, 2.8, -1.5];
-    put(at(baseA), at(ear(baseA, [-2.3, 6.8, 1.9], ears + num(pose.earA))), 1.55, 0.12, 0.5);
-    put(at(baseB), at(ear(baseB, [0.1, 6.8, -1.9], ears + num(pose.earB))), 1.3 + broad * 0.25, 0.12, 0.5);
+    // The ears stand tall and pointed, dark behind.
+    const baseA = [-1.5, 2.8, 1.5];
+    const baseB = [0.4, 3, -1.5];
+    const earTip = (base, dx, side) => [base[0] + dx, base[1] + 4.7 * shape.ear, side * 2.1];
+    put(at(baseA), at(ear(baseA, earTip(baseA, -0.7, 1), ears + num(pose.earA))), 2.15, 0.1, 0.4, 0.16, 0.1);
+    const farEar = at(ear(baseB, earTip(baseB, -0.2, -1), ears + num(pose.earB)));
+    put(at(baseB), farEar, 1.8 + broad * 0.25, 0.1, 0.4, 0.1, 0.1);
 
-    // Legs: three bones each, placed by IK from the paw.
-    const legs = [
-        [b.shoulderJoint, fronts[0]], [[b.shoulderJoint[0] - 1.6, b.shoulderJoint[1]], fronts[1]],
-        [b.hipJoint, hind], [[b.hipJoint[0] - 1.6, b.hipJoint[1]], hind],
-    ];
     const paws = [];
     legs.forEach(([joint, bone], i) => {
         const isFront = i < 2;
@@ -516,8 +623,16 @@ export function poseWolf(pose, out = new Float32Array(CAPSULE_COUNT * CAPSULE_ST
         const knee = ik(root, wrist, bone.upper, bone.lower, isFront ? FRONT.bend : HIND.bend);
         const [r0, r1, r2, r3, r4] = bone.radii;
         const [k0, k1, k2] = bone.k;
-        put([root[0], root[1], z], [knee[0], knee[1], z], r0, r1, k0);
-        put([knee[0], knee[1], z], [wrist[0], wrist[1], z], r2, r3, k1);
+        // The legs pale toward the paws; the thighs carry the longer fur of the britches.
+        const { limb } = shape;
+        // (A leg's root lies inside the body: the shoulder and the thigh stand only a little
+        // proud of the flank; its paw stands a full stance out to the side.)
+        const zRoot = z * 0.45;
+        const zKnee = z * 0.8;
+        const upperTone = isFront ? 0.58 : 0.5;
+        const upperFur = isFront ? 0.7 : 0.95;
+        put([root[0], root[1], zRoot], [knee[0], knee[1], zKnee], r0 * limb, r1 * limb, k0, upperTone, upperFur);
+        put([knee[0], knee[1], zKnee], [wrist[0], wrist[1], z], r2 * limb, r3 * limb, k1, 0.66, 0.34);
         // The toes rest on the ground under them, which on rough ground is not the paw's.
         const toeX = paw[0] + bone.toe[0];
         const toeGround = groundAt(toeX, z) + rest[i][1] + rise + bone.toe[1];
@@ -525,9 +640,11 @@ export function poseWolf(pose, out = new Float32Array(CAPSULE_COUNT * CAPSULE_ST
         put(
             [wrist[0], wrist[1], z],
             [mix(toeX, toeAir[0], raised), mix(toeGround, toeAir[1], raised), z],
-            r3,
+            r3 * limb,
             r4,
             k2,
+            0.74,
+            0.1,
         );
     });
 
@@ -557,14 +674,32 @@ export function poseWolf(pose, out = new Float32Array(CAPSULE_COUNT * CAPSULE_ST
     const lay = sit * (1 - smooth((tailUp - 0.3) / 0.4));
     const tailMid = [mix(airMid[0], groundMid[0], lay), mix(airMid[1], groundMid[1], lay)];
     const tailTip = [mix(airTip[0], groundTip[0], lay), mix(airTip[1], groundTip[1], lay)];
-    put(tailBase, tailMid, 2.3, mix(3.3, 2.9, lay), mix(2.2, 2, lay));
-    put(tailMid, tailTip, mix(3.3, 2.9, lay), mix(1.4, 1.2, lay), mix(2, 1.8, lay));
+    // A full brush: slim at the root, bushiest a third of the way down, a dark tip.
+    const brush = shape.tail;
+    const full = mix(3.25, 2.9, lay) * brush;
+    const tailLate = [mix(tailMid[0], tailTip[0], 0.56), mix(tailMid[1], tailTip[1], 0.56)];
+    put(tailBase, tailMid, 2.1, full, mix(2.2, 2, lay), 0.4, 1.3);
+    put(tailMid, tailLate, full, 2.5 * brush, mix(2, 1.8, lay), 0.3, 1.6);
+
+    // The brisket: the ruff runs down the front of the chest between the forelegs.
+    put(
+        [neckBase[0] + 1.4, neckBase[1] - 3.6, 0],
+        fromShoulder(3.6, -5.4),
+        3.5 * ruff + girth * 0.5,
+        2.7 * ruff + girth * 0.5,
+        2.2,
+        0.8,
+        1.5,
+    );
+    // The cheek ruff: the fur that stands out below the ears and behind the jaw.
+    put(at([-0.9, -1.9]), at([1.3, -2.5]), 2.5 * ruff * skull, 1.7 * ruff * skull, 1.5, 0.92, 1.2);
+    put(tailLate, tailTip, 2.5 * brush, mix(0.95, 0.9, lay), mix(1.8, 1.6, lay), 0.04, 1.3);
 
     // The eyes: each glints while it faces the viewer.
-    const eyeA = at([3.5, 0.9, 1.3]);
-    const eyeB = at([3.5, 0.9, -1.3]);
+    const eyeA = at([2.9, 1, 1.3]);
+    const eyeB = at([2.9, 1, -1.3]);
     const seen = (side) => smooth((Math.sin(facing + side * EYE_SPREAD) - 0.05) / 0.35);
-    const muzzle = at([9.6, -2.2]);
+    const muzzle = at([2 + 6.4 * snout, -2]);
     return {
         capsules: out,
         eye: [px(eyeA[0], eyeA[2]), eyeA[1], seen(1)],
