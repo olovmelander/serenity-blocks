@@ -5,7 +5,9 @@ from-scratch rebuild: it replaces the earlier theme in full (a 400-line class th
 shared WebGL fluid simulator with white splats on a blue-black ground). Voltage Storm keeps its
 identity — thunderheads and white lightning over deep blue, as its icon always showed — and
 everything else is new. This document records the shipped design and what was verified. It is a
-reference, not a backlog.
+reference, not a backlog. The living storm pass (2026-11-16, the last section) gave the storm its
+own weather, a tiered vault and thirteen kinds of lightning, and rewrote the event language;
+where it and the sections before it disagree, it is current.
 
 ## The picture
 
@@ -335,3 +337,173 @@ Verification:
 
 The theme icon still shows the earlier cloud (it is a close-up of a strike, which this pass did
 not change).
+
+## The living storm (2026-11-16)
+
+An audit of the theme against its brief (a storm that is the centrepiece, varied over time, with
+lightning of many kinds and an event language whose biggest moments are the most spectacular)
+found four things weak:
+
+- **The storm stood still.** Apart from the palette's drift and the charge of play, the cloud
+  was the same ceiling at minute one and minute ten: one slab smeared toward the horizon, the
+  same rain, the same flicker on the same 4.6 s beat.
+- **Lightning was one thing.** Every bolt, from a lock's arc to a superbolt, was the same jagged
+  white-cored channel with the same forks; only its length, width and colour changed.
+- **The storm's light strobed with its channels.** The light a bolt threw on the cloud, the rain
+  and the lens was its channel's brightness, so every return stroke pulsed the whole frame.
+- **The far shore was empty** and the strip of clear sky behind it was the same band all the time.
+
+Where this section and the ones above disagree, this one is current.
+
+### The storm
+
+![The storm's weather through one turn: lull, gathering, break, easing](voltage-storm-captures/living-weather.jpg)
+
+- **A vault, not a ceiling.** The cell's underside steps down in three tiers from a high vault
+  over a point behind the lens out to the cell's edge (`vaultBase` in the core, the CPU twin of
+  the sky's shader). Seen from the water the storm stands as terraces one behind another, each
+  tier's lower lip a fringe of the strip's light. The whole vault turns slowly about its centre,
+  a mesocyclone. Every bolt leaves the cloud where the vault actually hangs over its start.
+- **Its own weather.** The storm turns once in 176 s through four acts (`stormWeather`): a
+  **lull** (the vault lifts, the tiers flatten, the strip opens wide, drizzle, far lightning
+  only), a **gathering** (the tiers come down, scud races in under them, the rain thickens), a
+  **break** (the tiers at their lowest and fullest, squalls of rain a quarter of a minute apart,
+  the cloud alight from inside, lightning on every beat and often half a beat after) and an
+  **easing** (the rain thins, spider lightning crawls long across the vault). Each turn has its
+  own depth of lull and height of break. Play pushes the weather on top: a quick hand brings the
+  break whatever act the clock is in, and when a run ends that weather settles over a few
+  seconds. All of it is a pure function of the clock (seeks and frame cuts give the same storm).
+- **Scud.** Ragged, soft-edged fragments race under the lowest tier and across it, faster than
+  the vault turns; they come in as the storm gathers and are gone in its lull (not on Minimal).
+- **Far thunderheads.** Two ranks of towering cumulus stand on the horizon beyond the cell's edge:
+  heaps of round domes, lit on the side toward the evening's glow, and now and then one is alight
+  from inside, silent at that distance.
+- **Rain curtains** walk along the horizon with the wind, take a little of what stands behind
+  them into the haze and glow when a bolt is behind them; a heavy storm hangs them thick.
+- **Lightning lights the cloud from inside.** A stroke's light in the cloud falls off faster than
+  in clear air, deepens in colour the more cloud it crosses (white only at its heart), and is
+  dim where the cloud is thick and burns where it is thin, so a strike draws the cloud's build in
+  light instead of washing it white.
+
+### Lightning
+
+A bolt is still one instance of the same ribbon built in the vertex stage, but it is now built by
+a **style** (`BOLT_STYLE` in the core): how rough its channel is, whether it arches, how much
+current its limbs carry, how far they turn, how long they are, how many show, how far its core
+keeps its colour. Each bolt also draws its own lot of limbs (which show, where they leave the
+channel, how long), so no two forks are alike. The kinds:
+
+| Kind | Where it is seen |
+| --- | --- |
+| **Fork** | The classic forked strike: a clear's answer, strikes on the open water at the break. |
+| **Ribbon** | A strike whose return strokes each stand a little to the side of the last. |
+| **Giant** | One thick trunk, hardly a fork, that burns on (a continuing current) instead of flickering out. The superbolt is one. |
+| **Hairline** | Far strikes in the clear strip: thin, restless, forked low, reddened by rain and distance. |
+| **Spider** | A wide tree that crawls along the vault's underside in plain sight, limb after limb, then lights whole. |
+| **Tree** | Upward lightning: a trunk off a tower's finial that forks into the cloud. |
+| **Filament** | A lock's charge: a smooth thread of plasma in the piece's colour, arching as it leaps. |
+| **Lash** | A hard drop's charge and a clear's row discharge: the thread driven hard, kinked and forked. |
+| **Plasma** | A chain's standing arcs: slow, writhing, rising like a Jacob's ladder until they snap and strike again low. |
+| **Skitter** | Webs of frantic, flat arcs that run over the water from a struck foot. |
+| **Helix** | A twist's arc, wound round the hero's mast. |
+| **Streamer** | The brush of fire a finial sends up to meet a leader coming down, and that charged air raises at the break. |
+| **In-cloud** | Lightning inside the lobes: no channel, a swell of light that shows the lobes in front of it dark. |
+
+Bolt colours vary too: each strike draws its own place between the palette's bolt and chain
+colours and its own heat. The storm's own lightning picks from the kinds by the weather's act
+and a roll, so it never does the same thing twice running.
+
+**What a bolt lights rises and falls slowly** (`strokeGlow`): one swell from its first return
+stroke, rising over about 70 ms and falling over about 0.3 s, with later strokes adding a little
+on top. The channel itself still flickers with every stroke; the cloud, the rain, the towers, the
+water and the lens do not. The iris dips less on a stroke than before (the frame-wide exposure
+is a flash of its own). The rain takes a stroke's light where each drop is, so a bolt stands in
+a halo of lit rain instead of the whole air whitening. A superbolt's thunder is a shell of
+pressure that runs out at the speed of sound and shoulders the rain aside as it passes the lens,
+and the lens kicks when it arrives, a moment after the light.
+
+### Event language
+
+![Lock, hard drop, two and three lines, four lines at the superbolt and as the field answers, a twist, a chain of five, a perfect clear, a level up](voltage-storm-captures/living-events.jpg)
+
+| Event | Response |
+| --- | --- |
+| Piece lock | A filament in the piece's colour leaps from the card's edge to a tower, which keeps the charge in its rings; now and then the cloud above answers in that colour. An arc from a low row leaves from the water on the row's bearing instead of crossing the foreground. |
+| Hard drop | A lash, a second arc to the next tower, and the charge goes to ground: a ring and a web of skittering arcs in the piece's colour run over the water from the tower's foot. |
+| Line clear | Each row discharges as a lash; then one strike per line, no two alike (a fork, a ribbon, a giant), each met by a streamer off a near finial; a tower that lets go of a real charge throws it over the water as skittering arcs. Three lines: spider lightning crawls out across the vault afterwards. |
+| Four lines | The hush; a giant superbolt onto the hero that burns on; the three nearest towers answer with lightning that climbs, trees forking up into the cloud one after another; sheet lightning, the ripple, thunder through the rain; spider lightning crawls across the vault. |
+| Perfect clear | All of four lines, and the storm opens: an eye widens in the vault beside the card and the evening above pours down its walls, the first stars out, while the field sends its charge up into it; then the eye closes. |
+| Combo | Standing arcs of plasma between tower tops climb and strike again like Jacob's ladders; corona, rain and wind rise with the chain. |
+| T-spin | A funnel winds down out of the cloud toward the hero and a helix of fire climbs the hero's mast to meet it. |
+| Level up | Running lights: every tower pulses in turn out along both rows in the coming light, throwing sparks and a streamer; a slow front of that light crosses the whole vault; spider lightning in it crawls after. |
+| Time, no event | The weather's turn and the palette's drift, on two clocks that never line up. |
+
+![In the real game: a hard drop's arc and its web on the water, the towers holding a run's colours, four lines, a level up](voltage-storm-captures/living-ingame.jpg)
+
+### Tiers, backends and phones
+
+![Minimal, Low on WebGL2, High on WebGL2, Extreme, reduced motion](voltage-storm-captures/living-tiers.jpg)
+
+![An upright phone: the break at rest, and four lines](voltage-storm-captures/living-portrait.jpg)
+
+Every tier keeps the vault, the weather, the far thunderheads, the curtains and every kind of
+lightning. Minimal leaves out the scud. The tiers that light the cloud once per pixel give a
+stroke one even glow, dimmer where the cloud is thick (following the depth there showed the
+march's grain); a coarser ribbon carries less of a bolt's finest kinks. Reduced motion and
+Reduce flashing keep their rules: one stroke per bolt, no streamers or skittering webs under
+reduced motion, standing arcs held still at a steady light, a trace of the sheet's light.
+
+### Faults found and fixed on the way
+
+- Concentric rings over the vault's lit walls: the march's start jitter was interleaved gradient
+  noise, a lattice that beats against the step length when nothing averages it over frames. It
+  is a per-pixel hash now (skill gotcha #1506). Found by switching the sky's own layers off one
+  at a time (`skyLayers=` in the playground).
+- Contour lines where neighbouring rays take a different number of steps: the step length is now
+  worked from the unrounded count (#1507).
+- Scales in lit and edge-on cloud: the coarse 3D noise was creased along its voxel faces; the
+  coordinate is eased inside its voxel before the read (`cloudNoiseSmooth`, #1508).
+- The storm's light strobing with its channels (#1717), and arcs from low rows ruled across the
+  foreground (#1718).
+
+### Not done
+
+Blender was offered and not used: every new thing here is light, cloud or a closed-form shape, and
+the towers' silhouette did not need a change. The theme icon still shows the earlier strike. The
+music is unchanged.
+
+### Verification
+
+- Playground captures on WebGPU (RTX, 1600 × 900, `maxFps=30`): the weather at six moments of its
+  turn and pinned at its lull and break; every event at the moments shown above and more (the
+  hush, the superbolt, the trees, the aftermath, the eye opening and closing, a twist's funnel
+  rising and falling); Minimal, Low, Medium, High, Extreme; Low and High on the forced WebGL2
+  backend; reduced motion; an upright 430 × 852 frame at rest and in four lines. No console
+  errors or warnings in any of them.
+- In the real game (dev server, headless Chrome on WebGPU, single player, 30 fps): sixteen real
+  hard drops from the keyboard threw their arcs and filled the towers, then two lines, a twist,
+  four lines, a perfect clear and a level up called on the live world; no console errors (the
+  one message was the headless browser refusing to start music without a user gesture).
+- Flashing: the frame's mean relative luminance, sampled every frame through the playground's
+  36 s scripted play loop (locks, hard drops, a chain of five, four lines, a twist), before and
+  after, the new one with the weather pinned to its break. Largest rise within 100 ms: 0.134
+  before, 0.140 after (whole frame); 0.238 before, 0.192 after (the upper half, where the sky
+  is); largest fall within 100 ms 0.086 before, 0.056 after; brightest frame 0.29 before, 0.25
+  after. Opposing changes of 0.10 or more within any one second: at most one pair, before and
+  after (WCAG 2.3.1 counts three).
+- Cost: GPU time per frame from timestamp queries, at the 30 fps cap, interleaved before and
+  after: both at or under about 3.5 ms at the 95th percentile at High, 1600 × 900, but the
+  medians swung up to six times between identical runs (the GPU changes clocks at a cap), so the
+  two cannot be told apart this way; CPU time per frame is the same (about 1.6 ms median). The sky
+  pass does more work than before (taller march, taps per tier, the far thunderheads, curtains,
+  scud), so the integrated GPU and the theme perf lane are the checks still owed.
+- Tests: the theme's nine test files. A new one, `voltage-storm-weather.test.js`, holds the vault
+  (between its tiers everywhere, terraces and never a cliff), the storm's turn (a pure function
+  of the clock, its four acts in order, no jumps, a lull and a break of its own every turn, the
+  squalls), a bolt's slow light (nothing on its first stroke's instant, never falling a fifth as
+  fast as its channel), and the world's weather (at rest as the clock says, pinned, the vault's
+  turn, the eye of a perfect clear opening, standing and closing). The others now hold the bolt
+  styles and the seven-row table, ribbon lightning's shifted strokes, the light thrown from where
+  a bolt asks, four lines' trees, the twist's funnel and helix, a level's running lights, the
+  weather's silent and echoed beats and what reduced motion leaves out. The shader gate builds
+  every material and the sky pass on both backends at High, Low and Minimal.
