@@ -26,8 +26,11 @@ const ICON_LENS = {
 /**
  * URL parameters (all optional):
  *   quality=High            tier
- *   event=lock|clear|quad|twist|perfect|level|combo|storm|rush   gameplay cue to replay under ?t=
- *                           (storm: a hot run of twelve clearing locks into a fever;
+ *   event=lock|clear|quad|twist|spin|b2b|cascade|perfect|level|over|combo|storm|rush
+ *                           gameplay cue to replay under ?t= (twist: a twist that clears two
+ *                           lines; spin: one that clears none; b2b: a second quad back-to-back;
+ *                           cascade: one lock whose stack settles into &depth= waves; over: the
+ *                           run ends; storm: a hot run of twelve clearing locks into a fever;
  *                           rush: twelve quick locks that clear nothing)
  *   eventAge=0.45           seconds between the cue (a streak's or storm's last) and the frame
  *   lines=1  combo=5  column=4.5  drop=0  color=%236cf5ff
@@ -101,12 +104,25 @@ export function create({
             director.onLevelUp({ level: 2 });
             return;
         }
+        if (kind === 'over') {
+            director.onGameOver();
+            return;
+        }
         const drop = number('drop', 0);
         if (drop > 0) director.onHardDrop({ distance: drop });
         director.onPieceLock({ piece: piece(color) });
         if (kind === 'lock') return;
-        const count = kind === 'quad' ? 4 : Math.max(1, Math.min(4, kind === 'twist' ? 2 : lines));
-        director.onLineClear({ lineCount: count, clearedRows: Array.from({ length: count }, (_, i) => 23 - i) });
+        if (kind === 'spin') {
+            director.onTwist({ lineCount: 0 });
+            return;
+        }
+        const count = kind === 'quad' || kind === 'b2b' ? 4 : Math.max(1, Math.min(4, kind === 'twist' ? 2 : lines));
+        const depth = kind === 'cascade' ? Math.max(2, Math.floor(number('depth', 4))) : 1;
+        director.onLineClear({
+            lineCount: count, clearedRows: Array.from({ length: count }, (_, i) => 23 - i), cascadeCount: depth,
+        });
+        if (depth > 1) director.onCascade({ comboCount: depth });
+        if (kind === 'b2b') director.onBackToBack({});
         if (kind === 'twist') director.onTwist({ lineCount: count });
         if (kind === 'perfect') director.onPerfectClear({ depth: 1 });
     };

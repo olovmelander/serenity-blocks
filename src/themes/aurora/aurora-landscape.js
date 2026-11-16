@@ -20,13 +20,12 @@ import {
     texture, uniformArray, vec2, vec3,
     pow3,
 } from 'three/tsl';
-import { MOON_DIRECTION } from './aurora-hours.js';
 import { fbm2 } from './aurora-noise.js';
 import {
     SHORE_ICE, SHORE_Z, bakeShoreIce, bankHeight, forestCover, rangeHeight, smooth,
 } from './aurora-terrain.js';
 import { AURORA_COLORS } from './aurora-palette.js';
-import { moonRadiance } from './aurora-sky.js';
+import { moonPath, moonRadiance } from './aurora-sky.js';
 import { sessionRangeGrid, sessionShoreIce } from './aurora-bakes.js';
 import { prepareSessionGeometry, sessionGeometry } from '../shared/session-geometry.js';
 import { drainSteps, stepClock } from '../shared/build-steps.js';
@@ -41,6 +40,20 @@ const PROFILE_MAX_ELEVATION = 0.4;
 const DEG = Math.PI / 180;
 /** How fast a lake ring fades (1/s): the shader and the slot choice read the same. */
 const RIPPLE_FADE = 0.55;
+/**
+ * The lake's columns of light: how far above the mirrored ray each tap looks (degrees: twice a
+ * wavelet facet's tilt), the share of that sky it throws to the eye (steeper facets are rarer
+ * and reflect less), and how much of it a glassy lane keeps. A tier takes the first
+ * `lakeStreaks` of them.
+ */
+const LAKE_STREAKS = Object.freeze([
+    [11, 0.2, 0.3],
+    [22, 0.13, 0.1],
+    [5, 0.22, 0.6],
+    [33, 0.07, 0.03],
+]);
+/** Moon-glitter cells per tangent of view, measured from the resting eye. */
+const MOON_GLITTER = 190;
 /** How long one slice of the range's cover runs before it yields to the page (ms). */
 const RANGE_SLICE_MS = 8;
 const triple = (rgb) => vec3(rgb[0], rgb[1], rgb[2]);
@@ -476,7 +489,7 @@ export class AuroraLandscape {
         const facing = abs(dot(normal, normalize(cameraPosition.sub(positionWorld))));
         const rim = pow3(float(1).sub(facing)).mul(max(normal.y, 0))
             .toVar();
-        const moon = max(dot(normal, vec3(MOON_DIRECTION[0], MOON_DIRECTION[1], MOON_DIRECTION[2])), 0);
+        const moon = max(dot(normal, u.moonDirection), 0);
         const light = u.skylight.mul(normal.y.mul(0.55).add(0.45))
             .add(bleached.mul(overhead.mul(1.15).add(fill.mul(0.16)).add(rim.mul(0.5)).add(0.03)))
             .add(u.moonLight.mul(moon))
@@ -807,12 +820,48 @@ export class AuroraLandscape {
             }
             mirror = mirror.toVar();
 
+            // Ruffled water mirrors higher sky. A flat lake seen from the shore shows only the
+            // lowest few degrees over the far range, so the curtains standing high over it never
+            // reached the water. Every wavelet facet tilted toward the eye throws a higher piece
+            // of sky down instead: the display lies on the lake as long columns of its own
+            // colour, wide where the wind ruffles it and thin in the glassy lanes, and flecked by
+            // the wavelets. The taps climb the sky along the mirrored ray's own bearing.
+            const heading = normalize(vec2(view.x.negate(), view.z.negate()).add(vec2(1e-5, 0))).toVar();
+            const mirrorSlope = grazing.div(max(length(view.xz), 0.05)).toVar();
+            const flecks = mix(0.55, 1.6, smoothstep(0.3, 0.74, fine.b.mul(0.6).add(chop.b.mul(0.4)))).toVar();
+            const columns = vec3(0).toVar();
+            LAKE_STREAKS.slice(0, this.preset.lakeStreaks ?? 2).forEach(([lift, weight, glassy], k) => {
+                // The wavelets under each pixel are tilted a little differently: the lift wanders.
+                const tilt = float(Math.tan(lift * DEG)).mul(mix(0.72, 1.3, k % 2 === 0 ? fine.a : chop.a));
+                const raised = mirrorSlope.add(tilt).div(max(mirrorSlope.mul(tilt).oneMinus(), 0.2));
+                const skyward = normalize(vec3(heading.x, raised, heading.y));
+                columns.addAssign(curtains.sample(skyward).mul(mix(glassy, 1, ruffle).mul(weight)));
+            });
+            columns.mulAssign(flecks.mul(open));
+            // The same facets throw the moon down the water: its path toward the eye, as glitter.
+            // A point of the lake glints by the CHANCE that a facet there is turned to the moon,
+            // in cells laid out in the angles the resting eye sees (a glint is a few pixels at any
+            // range, round, and stays put while the camera breathes), each on its own beat.
+            const odds = moonPath(u, heading, mirrorSlope, ruffle).toVar();
+            const range = max(length(point), 0.5);
+            const grid = vec2(point.x.div(max(point.y.negate(), 0.5)), float(this.eyeHeight).div(range))
+                .mul(MOON_GLITTER).toVar();
+            const dice = hash23(floor(grid)).toVar();
+            const offCentre = length(fract(grid).sub(0.5).sub(dice.xy.sub(0.5).mul(0.5)));
+            const spot = float(1).sub(smoothstep(0.08, 0.4, offCentre));
+            const beat = max(sin(u.time.mul(dice.x.mul(2.4).add(1.3)).add(dice.z.mul(40))), 0);
+            const lit = step(odds.mul(0.6).oneMinus(), dice.y);
+            columns.addAssign(vec3(1.0, 0.96, 0.88)
+                .mul(spot.mul(beat.mul(beat)).mul(lit).mul(1.5).add(odds.mul(0.035))
+                    .mul(open)));
+
             const fresnel = float(1).sub(grazing).pow(5).mul(0.96)
                 .add(0.04)
                 .toVar();
             const aurora = atmosphere.auroraAbove(positionWorld).toVar();
             const body = triple(AURORA_COLORS.water).add(u.auroraLight.mul(0.012));
-            const water = mix(body, mirror, fresnel).add(glint.mul(0.5).mul(fresnel).mul(open)).toVar();
+            const water = mix(body, mirror, fresnel).add(columns)
+                .add(glint.mul(0.5).mul(fresnel).mul(open)).toVar();
 
             // The ice: frosted, cracked, a dim and blurred mirror, with snow blown over it.
             const crackRead = texture(noiseTexture, point.div(23).add(vec2(0.13, 0.61))).toVar();

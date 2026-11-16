@@ -259,7 +259,11 @@ export default class AuroraTheme extends BaseTheme {
             eventBus.on(EVENTS.SETTINGS_CHANGED, (payload) => this.handleSettingsChanged(payload)),
         );
         this.registerEventListener(window, 'settingsChanged', (payload) => this.handleSettingsChanged(payload));
-        this.registerEventListener(window, 'gameOver', () => this.world?.director.calm());
+        this.registerEventListener(window, 'gameOver', () => {
+            // The run is over: the sky settles, and (where reactions are on) holds its hush.
+            if (this.effectsAllowed()) this.world.director.onGameOver();
+            else this.world?.director.calm();
+        });
         this.registerEventListener(window, 'pointermove', (event) => {
             if (!this.isActive || this.isPaused || event.pointerType === 'touch') return;
             this.pointer.x = THREE.MathUtils.clamp((event.clientX / window.innerWidth) * 2 - 1, -1, 1);

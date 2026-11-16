@@ -17,9 +17,10 @@ function run(weather, seconds, hz = 60, vigour = 0) {
     }
 }
 
-function createDirector(seed = 11) {
+/** `ambient: false` leaves out the sky's own life, for a test that watches play's light alone. */
+function createDirector(seed = 11, options = {}) {
     const excitation = new ExcitationMap();
-    return new AuroraDirector({ excitation, seed });
+    return new AuroraDirector({ excitation, seed, ...options });
 }
 
 function advance(director, seconds, hz = 60) {
@@ -256,7 +257,7 @@ describe('Aurora director — play wakes the sky', () => {
     });
 
     it('stirs the weather and brings up the pulsating patches as a storm recovers, then rests exactly', () => {
-        const director = createDirector();
+        const director = createDirector(11, { ambient: false });
         expect(director.pulsating).toBeGreaterThan(0);
         const resting = director.pulsating;
         [1, 1, 2, 1, 2, 2, 3, 2, 2, 3, 3, 4].forEach((lines) => {
