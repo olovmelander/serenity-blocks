@@ -13,13 +13,24 @@ import { createWolfhourMeteor, setWolfhourRibbon } from '../../themes/wolfhour/w
 import { updateWolfhourCamera } from '../../themes/wolfhour/wolfhour-composition.js';
 import { sceneSamples } from '../../themes/shared/scene-antialias.js';
 import { WolfhourNightClock, wolfhourHourAt } from '../../themes/wolfhour/wolfhour-hours.js';
+import { createWolfhourAurora } from '../../themes/wolfhour/wolfhour-aurora.js';
+import { createWolfhourVoices } from '../../themes/wolfhour/wolfhour-voices.js';
+import { createWolfhourSnow } from '../../themes/wolfhour/wolfhour-snow.js';
+import { WolfhourNightDirector } from '../../themes/wolfhour/wolfhour-night-director.js';
 
 /*
  * URL params: quality, noPost=1, msaa=<n>, board=1, pointerX/pointerY (pin the parallax),
- * event=lock|combo|crash|clear|howl|level with eventAge=<s> (clear: the lead wolf glances; howl: the
- * pack howls, as on a four-line clear; level: the night steps an hour on), meteor=1, impactIndex, seed,
+ * event=<name> with eventAge=<s>: what the theme does for each gameplay event (the night's director,
+ *         wolfhour-night-director.js, and the wolves): lock, drop (a hard drop), clear (one line: the
+ *         pack glances), double, triple, howl (four lines: the pack howls, the lights hang), combo,
+ *         crash, twist (the snow devil), b2b (the answer), perfect, level (an hour on: the stars
+ *         wheel), over (the run's end: snow), dash (a hunt lopes across the foreground ridge), summon
+ *         (the white wolf comes up onto the summit); meteor=1, impactIndex, seed,
  * level=<n>  the night <n - 1> hours on from the clock's (every level is an hour on; the hours
  *         turn by the clock, wolfhour-hours.js),
+ * aurora=<0..1.6>&reach=<0..1>  the northern lights held at a level (a howl lights them by itself),
+ * snow=<0..1>  snow falling, dust=<0..1.5>  diamond dust in the air, wind=<0..1.2>;
+ *         event=twist: the snow devil rises beside the board,
  * zoom=<k>&zoomX=<x>&zoomY=<y>  an inspection lens: k times closer, centred on world (x, y)
  *         (to check how the wolves stand on their ridges),
  * icon=1  the theme-icon lens: the pack howls on the left massif's summit ridge against the moon
@@ -50,6 +61,23 @@ export function create({ scene, renderer, params }) {
         scene, quality, noiseMap, nightLight,
     });
     const pack = createWolfhourPack({ quality, noiseMap, nightLight });
+    const aurora = createWolfhourAurora({ quality, noiseMap, nightLight });
+    if (aurora) scene.add(aurora.mesh);
+    const voices = createWolfhourVoices({ quality, nightLight });
+    scene.add(voices.mesh);
+    const voiceList = [];
+    const snow = createWolfhourSnow({ quality, nightLight });
+    if (snow) scene.add(snow.group);
+    const heldSnow = {
+        fall: Number(params.get('snow') || 0),
+        dust: Number(params.get('dust') || 0),
+        wind: Number(params.get('wind') || 0),
+    };
+    const heldAurora = Number(params.get('aurora') || 0);
+    const heldReach = Number(params.get('reach') || 0);
+    const director = new WolfhourNightDirector();
+    // Where the play is: beside the board, as the theme reads it from the lock's own place.
+    const playAt = { x: 250, y: -80 };
     const hut = createWolfhourHut({ quality, noiseMap, nightLight });
     const spindrift = createWolfhourSpindrift({ quality, noiseMap, nightLight });
     const iconLens = params.get('icon') === '1';
@@ -181,11 +209,54 @@ export function create({ scene, renderer, params }) {
         sky.applyParallax?.(camera);
         landscape.applyParallax?.(camera);
         mist.applyParallax(camera);
-        const energy = event && event !== 'howl' && event !== 'clear' ? Math.exp(-eventAge * 2.2) : 0;
-        if (event === 'howl' && !howled) howled = pack.howl(time - eventAge);
-        if (event === 'clear' && !howled) { pack.glance(time - eventAge); howled = true; }
-        if (event === 'combo' && !howled) { pack.excite(time - eventAge); howled = true; }
+        aurora?.applyParallax(camera);
+        snow?.applyParallax(camera);
+        const quiet = ['howl', 'clear', 'double', 'triple', 'perfect', 'b2b', 'twist', 'over', 'dash', 'summon'];
+        const energy = event && !quiet.includes(event) ? Math.exp(-eventAge * 2.2) : 0;
+        if (event && !howled) {
+            howled = true;
+            const at = time - eventAge;
+            const howls = event === 'howl' || event === 'perfect';
+            if (event === 'lock' || event === 'drop') director.lock(at, { ...playAt, hardDrop: event === 'drop' });
+            if (event === 'clear') { director.clear(at, { lines: 1 }); pack.glance(at); }
+            if (event === 'double') { director.clear(at, { lines: 2 }); pack.glance(at); }
+            if (event === 'triple') { director.clear(at, { lines: 3 }); pack.glance(at); }
+            if (event === 'combo') { director.clear(at, { lines: 1, combo: 5 }); pack.excite(at); }
+            if (howls) {
+                director.clear(at, { lines: 4 });
+                pack.howl(at);
+                pack.summon(at);
+            }
+            if (event === 'perfect') { director.perfect(at + 0.36); pack.dash(at + 0.36); }
+            if (event === 'b2b') { director.clear(at, { lines: 4 }); director.backToBack(at); pack.answer(at); }
+            if (event === 'twist') { director.twist(at, 2); snow?.whirl(at, playAt.x + 80, -330, 1); }
+            if (event === 'level') { director.levelUp(at); pack.dash(at); }
+            if (event === 'over') director.over(at);
+            if (event === 'dash') pack.dash(at);
+            if (event === 'summon') pack.summon(at);
+            // The howl's arcs are born as it sounds, and the stars streak as they turn: play the
+            // seconds since the event began.
+            for (let ago = Math.min(eventAge, 4); ago > 0.02; ago -= 1 / 30) {
+                pack.update(time - ago);
+                voices.setMoon(sky.moon.position.x, sky.moon.position.y);
+                voices.update(time - ago, pack.voices(voiceList));
+                director.sample(time - ago, night.phase);
+            }
+        }
         pack.update(time);
+        voices.setMoon(sky.moon.position.x, sky.moon.position.y);
+        voices.update(time, pack.voices(voiceList));
+        const wears = director.sample(time, night.phase);
+        aurora?.update(time, Math.max(heldAurora, wears.aurora), Math.max(heldReach, wears.reach));
+        landscape.setSweep(0, wears.sweeps[0][0], wears.sweeps[0][1], wears.sweeps[0][2]);
+        landscape.setSweep(1, wears.sweeps[1][0], wears.sweeps[1][1], wears.sweeps[1][2]);
+        landscape.setRipple(wears.ripple[0], wears.ripple[1], wears.ripple[2], wears.ripple[3]);
+        sky.setWheel(wears.spin, wears.streak, wears.rush);
+        snow?.update(time, {
+            fall: Math.max(heldSnow.fall, wears.fall),
+            dust: Math.max(heldSnow.dust, wears.dust),
+            wind: Math.max(heldSnow.wind, wears.wind),
+        });
         hut.update(time);
         spindrift.update(time);
         state.mountainPulse = energy;
@@ -193,7 +264,7 @@ export function create({ scene, renderer, params }) {
         state.nebulaDefinition = energy;
         sky.update(time, state);
         landscape.update(time, state);
-        mist.update(time, energy * 0.6 + pack.howlLevel(time) * 0.5);
+        mist.update(time, energy * 0.6 + pack.howlLevel(time) * 0.5 + director.night.glow * 0.4);
         if (event) {
             sky.moonHaloNodeData.pulseValues[0].set(time - eventAge, 1 / 1.9, 0.8, event === 'combo' ? 0.75 : 0.12);
             sky.moonNodeData.uniforms.uPulse.value = energy * 0.5;
@@ -247,7 +318,8 @@ export function create({ scene, renderer, params }) {
         dispose() {
             window.removeEventListener('pointermove', pointerMove);
             window.removeEventListener('blur', resetPointer);
-            board?.remove(); post?.dispose(); pack.dispose(); hut.dispose(); spindrift.dispose(); forest.dispose();
+            board?.remove(); post?.dispose(); pack.dispose(); aurora?.dispose(); voices.dispose(); snow?.dispose();
+            hut.dispose(); spindrift.dispose(); forest.dispose();
             mist.dispose(); sky.dispose(); landscape.dispose();
             meteor?.removeFromParent();
             meteor?.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
