@@ -18,9 +18,15 @@
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
  *   demo=1                   live only: play a looping gameplay script
- *   visitor=<route>          fly a visitor (saucer, halcyon, triangle, mothership, orbs, capsule):
- *                            with t=, show it visitorAge=<s> into its route; live, fly it again
- *                            and again
+ *   visitor=<sortie>         fly a sortie of the skyfarers (far: lane, convoy, ark; mid: flyby,
+ *                            orbit, chase, glide, haul, string; hero: skim, loop, ray, hang, rite,
+ *                            trio, dock, saucer, halcyon, orbs, capsule; the board's: salute, crown):
+ *                            with t=, show it visitorAge=<s> into its flight; live, fly it again and
+ *                            again. visitorSeed=<n> draws its numbers (side, height, formation...)
+ *   traffic=0                no scheduled traffic (only what visitor= and the board call)
+ *   zoom=<az>,<el>,<fov>     turn the capture camera <az> degrees right and <el> up of its rest
+ *                            aim, with a lens of <fov> degrees (a close look at a hull);
+ *                            zoom=ship,<fov> follows the called sortie's leader
  *   parts=sky,crystals,...   draw only these parts
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
@@ -35,7 +41,7 @@ import * as THREE from 'three/webgpu';
 import { HalcyonApexWorld } from '../../themes/halcyon-apex/halcyon-apex-world.js';
 import { HalcyonApexPost, POST_LOOK } from '../../themes/halcyon-apex/halcyon-apex-post.js';
 import { readLayoutRects } from '../../themes/halcyon-apex/halcyon-apex-composition.js';
-import { VISITOR_ROUTE } from '../../themes/halcyon-apex/halcyon-apex-visitor-plan.js';
+import { makeSortie } from '../../themes/halcyon-apex/halcyon-apex-flight.js';
 
 export const meta = {
     id: 'halcyon-apex',
@@ -88,7 +94,7 @@ function mountBoardOverlay(withHud) {
 }
 
 /** The game's piece colours (halcyon-apex-tetrominos.js). */
-const PIECE_COLORS = ['#8ff5ee', '#c9bfa2', '#3fd6cf', '#8fa84e', '#2a8fa0', '#bfd8d6', '#d8cba8'];
+const PIECE_COLORS = ['#f4c95d', '#2fd9be', '#f08aa0', '#a98cf2', '#8fcf5b', '#e0723f', '#4a8fe6'];
 
 /** A looping script of locks and clears for the live demo (seconds into the loop). */
 const DEMO_LOOP = 34;
@@ -140,8 +146,12 @@ export function create({
     if (noPost) renderer.toneMapping = THREE.AgXToneMapping;
     const overlay = params.get('board') === '1' ? mountBoardOverlay(params.get('statsHud') !== '0') : null;
 
+    if (params.get('traffic') === '0') world.setTraffic(false);
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
     const iconPose = params.get('icon') === '1';
+    const zoomParam = params.get('zoom') || '';
+    const zoomShip = zoomParam.startsWith('ship');
+    const zoom = zoomParam ? zoomParam.split(',').map((s) => Number.parseFloat(s)) : null;
     const size = new THREE.Vector2(1, 1);
     const syncViewport = () => {
         const aspect = window.innerWidth / Math.max(1, window.innerHeight);
@@ -171,6 +181,20 @@ export function create({
             camera.position.z += num(params, 'iconZ', 0);
             camera.rotateY(num(params, 'iconYaw', 0.11));
             camera.rotateX(num(params, 'iconPitch', 0.36));
+            camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+        }
+        if (zoomShip) {
+            // zoom=ship,<fov>: follow the called sortie's leader.
+            const at = world.getState().visitor?.at;
+            camera.fov = Number.isFinite(zoom[1]) ? zoom[1] : 12;
+            if (at) camera.lookAt(at[0], at[1], at[2]);
+            camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+        } else if (zoom) {
+            camera.fov = Number.isFinite(zoom[2]) ? zoom[2] : 20;
+            camera.rotateY(-(zoom[0] || 0) * (Math.PI / 180));
+            camera.rotateX(((zoom[1] || 0) - 5) * (Math.PI / 180));
             camera.updateProjectionMatrix();
             camera.updateMatrixWorld();
         }
@@ -206,7 +230,8 @@ export function create({
     };
 
     const visitorName = params.get('visitor');
-    const visitorRoute = visitorName ? VISITOR_ROUTE[visitorName] : null;
+    const visitorSeed = Math.max(1, Math.round(num(params, 'visitorSeed', 1)));
+    const visitorRoute = visitorName ? makeSortie(visitorName, visitorSeed) : null;
     const visitorAge = num(params, 'visitorAge', 4);
     let visitorNext = 1;
 
@@ -214,7 +239,7 @@ export function create({
         const lead = (eventName ? eventAge : 0) + 9 + warmLocks * 0.5;
         const start = Math.max(0, time - lead);
         world.seek(start);
-        if (visitorRoute) world.callVisitor(visitorName, time - visitorAge);
+        if (visitorRoute) world.callVisitor(visitorName, time - visitorAge, visitorSeed);
         if (level > 1) world.levelUp(level, { silent: true });
         if (holdCombo > 0) world.onCombo(holdCombo);
         frame(start, 0);
@@ -278,7 +303,7 @@ export function create({
         update(time, dt) {
             if (demo) runDemo(time);
             if (visitorRoute && time >= visitorNext) {
-                world.callVisitor(visitorName, time);
+                world.callVisitor(visitorName, time, visitorSeed);
                 visitorNext = time + visitorRoute.duration + 2.5;
             }
             frame(time, dt);

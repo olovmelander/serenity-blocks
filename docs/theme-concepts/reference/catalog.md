@@ -160,7 +160,7 @@ Registry groups: every theme here is `group: 'biomes'` except `tornado` (`'atmos
 - **Icon:** a stepped sandstone pyramid with a glowing cyan doorway, a floating cyan crystal on top, and cyan crystal shards lining a causeway into turquoise water. Peach and lavender dawn clouds.
 - **Setting:** a windless golden dawn seen from a lagoon. An 8-terrace pyramid with a stair through the "heart gate". The Apex crystal floats above it. The Halcyon, a 40 m diamond, hangs before the rising sun over a ring of 9 standing stones, with an upward water-funnel under it. Obelisks, islets with flat-topped acacia-like trees. Everything mirrors in the lagoon.
 - **Palette:** sun gold, sky blue to peach, turquoise shallows, deep teal, cyan crystals and ley light, sandstone. Five palettes (`halcyon-apex-core.js:300+`): golden-dawn, rose-hour, clear-morning, amber-haze, blue-hour.
-- **Pieces** (`:12-19`): I `#8ff5ee`, O `#c9bfa2`, T `#3fd6cf`, S `#8fa84e`, Z `#2a8fa0`, J `#bfd8d6`, L `#d8cba8`, GARBAGE `#5a5e68`. Sandstone, turquoise and moss.
+- **Pieces** (`:12-19`): I `#f4c95d`, O `#2fd9be`, T `#f08aa0`, S `#a98cf2`, Z `#8fcf5b`, J `#e0723f`, L `#4a8fe6`, GARBAGE `#5a5e68`. Sandstone, turquoise and moss.
 - **Motifs:** ley lines (strips of light with an arc-length coordinate), instanced six-sided bipyramid crystals that refract the sun per channel, procedural masonry with baked occlusion, two-plane perspective clouds, beads of water.
 - **Gameplay FX:**
   - Lock: a ring in the lagoon, then a wisp flies to a ley line and a pulse runs the line into a great crystal, which holds the colour about 30 s.
