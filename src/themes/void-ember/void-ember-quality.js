@@ -10,8 +10,12 @@
  * sparks       the pool an impact or a torn-off loop throws from
  * rocks        the cinder belt: boulders, stones, gravel
  * ringDetail   noise reads per pixel of the belt's dust ring (1..3)
- * cracks       fire in the stones' cracks (one noise read per stone pixel)
+ * cracks       the grain and the burning fractures of the boulders and stones (one noise read
+ *              per pixel of them) and the cinder world's fractures (one fetch of the baked plates)
  * skyLayers    lattices of far stars on the dome
+ * skyDeep      the deep sky: 0 = the band of far suns and the ember's old shells from the dust's
+ *              own reads; 1 = + the bright stars; 2 = + the dust's fine grain and the shells' own
+ *              tatters, layers and creep (three more fetches)
  * dust         the void's cold dust (two fetches per sky pixel)
  */
 export const QUALITY = Object.freeze({
@@ -25,6 +29,7 @@ export const QUALITY = Object.freeze({
         ringDetail: 1,
         cracks: false,
         skyLayers: 1,
+        skyDeep: 0,
         dust: true,
     }),
     Low: Object.freeze({
@@ -37,6 +42,7 @@ export const QUALITY = Object.freeze({
         ringDetail: 1,
         cracks: false,
         skyLayers: 2,
+        skyDeep: 0,
         dust: true,
     }),
     Medium: Object.freeze({
@@ -49,6 +55,7 @@ export const QUALITY = Object.freeze({
         ringDetail: 2,
         cracks: true,
         skyLayers: 2,
+        skyDeep: 1,
         dust: true,
     }),
     High: Object.freeze({
@@ -61,6 +68,7 @@ export const QUALITY = Object.freeze({
         ringDetail: 3,
         cracks: true,
         skyLayers: 3,
+        skyDeep: 2,
         dust: true,
     }),
     Ultra: Object.freeze({
@@ -73,6 +81,7 @@ export const QUALITY = Object.freeze({
         ringDetail: 3,
         cracks: true,
         skyLayers: 3,
+        skyDeep: 2,
         dust: true,
     }),
     Extreme: Object.freeze({
@@ -85,6 +94,7 @@ export const QUALITY = Object.freeze({
         ringDetail: 3,
         cracks: true,
         skyLayers: 3,
+        skyDeep: 2,
         dust: true,
     }),
 });

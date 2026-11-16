@@ -8,6 +8,12 @@ dying star alone in a dark sky, its fire running from deep red through gold as p
 embers streaming off it — and everything else is new. This document records the shipped design
 and what was verified. It is a reference, not a backlog.
 
+> **2026-11-16:** the living pass ([VOID_EMBER_LIVING_2026-11.md](VOID_EMBER_LIVING_2026-11.md))
+> built on this: a deep sky that turns, an effect of its own for every event, visitors that cross
+> the void, the ember's own moods, and stones sculpted in Blender. Where the two differ (the
+> event table, "Assets: none", the stones as plane cuts, the parts list), that document is the
+> current one.
+
 ## The picture
 
 A dying star hangs in an empty sky. At rest it is a banked coal: more than half its face is a

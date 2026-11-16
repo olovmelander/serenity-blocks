@@ -210,7 +210,8 @@ const captureThemes = [
     ['void-ember',
         'voidEmber',
         'Void Ember',
-        'star, world, boulders, stones, gravel, sky, ring, corona, loops, wind, sparks, comets, shells, beams',
+        'star, world, moon, boulders, stones, gravel, sky, meteors, wanderer, ring, corona, aura, loops, wind, '
+            + 'sparks, comets, shells, beams',
         'rocks also names all three classes of stone (boulders, stones, gravel).'],
 
     ['voltage-storm',

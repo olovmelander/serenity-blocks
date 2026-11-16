@@ -166,6 +166,19 @@ vi.mock('../../src/themes/void-ember/void-ember-world.js', () => {
             this.counts = { locks: 0, clears: 0 };
         }
 
+        onCrown(...args) {
+            this.crowns = (this.crowns || []).concat([args]);
+        }
+
+        onGameOver() {
+            mocks.log.push('onGameOver');
+            this.gameOvers = (this.gameOvers || 0) + 1;
+        }
+
+        onSessionStart() {
+            this.starts = (this.starts || 0) + 1;
+        }
+
         restCamera() {
             return this.camera;
         }
@@ -844,7 +857,19 @@ describe('Void Ember theme: one node renderer on both backends', () => {
         expect(system.theme.world.sims[0].reduced).toBe(true);
     });
 
-    it('puts the ember back at rest when a run ends', async () => {
+    it('a perfect clear that settles after its clear crowns the star, stamped by the world itself', async () => {
+        const { theme } = await startTheme({ quality: 'High' });
+        eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
+        eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1, clearedRows: [23], cascadeCount: 1 });
+        theme.stepFrame(16);
+        eventBus.emit(EVENTS.PERFECT_CLEAR, {});
+        theme.stepFrame(32);
+        // No player number reaches the world: it would take it for a moment on its own clock (the
+        // crown was then born at second 0, long over, and nothing of it was drawn).
+        expect(theme.world.crowns).toEqual([[]]);
+    });
+
+    it('lets the ember gutter when a run ends: the last lock lands, the chain is let go, nothing is wiped', async () => {
         const { theme, listeners } = await startTheme({ quality: 'High' });
         for (let i = 0; i < 3; i++) {
             eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
@@ -856,14 +881,17 @@ describe('Void Ember theme: one node renderer on both backends', () => {
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
         mocks.log.length = 0;
         listeners.get('gameOver')();
-        // The chain is let go first (the world hears the break), then the session is reset.
-        expect(mocks.log).toEqual(['onCombo']);
-        expect(theme.world.sessions).toBe(1);
+        // The run's last lock still lands (in this run, never the next), the chain is let go (the
+        // world hears the break), and then the ember gutters. The world itself is not reset: what
+        // it was doing plays out as it sinks.
+        expect(mocks.log).toEqual(['onLock', 'onCombo', 'onGameOver']);
+        expect(theme.world.sessions).toBe(0);
+        expect(theme.world.gameOvers).toBe(1);
         expect(theme.world.combo).toBe(0);
         expect(theme.combos.size).toBe(0);
         expect(theme.director.slots.every((slot) => !slot.assigned && !slot.pending)).toBe(true);
         theme.stepFrame(64);
-        expect(theme.world.counts).toEqual({ locks: 0, clears: 0 });
+        expect(theme.world.counts).toEqual({ locks: 4, clears: 3 });
         // The next run's first clear is a chain of one again.
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1, clearedRows: [23], cascadeCount: 1 });
@@ -1089,6 +1117,8 @@ describe('Void Ember theme: one node renderer on both backends', () => {
         page.cards = [];
         page.canvas = null;
         page.hud = null;
+        // (A run that starts blows on whatever the last one left banked.)
+        expect(theme.world.starts).toBe(1);
         manager.handlers.get('modeStopped')();
         expect(theme.world.sessions).toBe(1);
         stepFrames(theme, 1);

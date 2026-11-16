@@ -392,11 +392,27 @@ export function createVoidEmberUniforms(textures) {
         /** The star's own frame → world (a rotation), and back. */
         starRot: uniform(new THREE.Matrix3()),
         starInv: uniform(new THREE.Matrix3()),
-        /** The star's axis in the world. */
+        /** The star's axis in the world, and as the camera sees it (a unit vector in the picture). */
         axis: uniform(new THREE.Vector3(0, 1, 0)),
+        axis2: uniform(new THREE.Vector2(0, 1)),
         /** The way to the star from the camera, and the sine of its angular radius. */
         starDir: uniform(new THREE.Vector3(-0.4, 0, -0.9).normalize()),
         starSize: uniform(0.17),
+        /**
+         * World → the sky's own frame (a rotation): y is the pole of its band of far suns, and
+         * the frame turns about it. The frame's own right and up, in that frame (a lens's rays).
+         */
+        skyRot: uniform(new THREE.Matrix3()),
+        skyRight: uniform(new THREE.Vector3(1, 0, 0)),
+        skyUp: uniform(new THREE.Vector3(0, 1, 0)),
+        /** How far the ember's old shells have crept out, in places (the clock over SHELL_CREEP). */
+        shellPhase: uniform(0),
+        /**
+         * The newest shell, the one four lines throw off: (birth, strength, seed, _) and the fire
+         * it leaves in (it cools to crimson as it thins).
+         */
+        novaShell: uniform(new THREE.Vector4(-100, 0, 0, 0)),
+        novaColor: uniform(new THREE.Vector3(1, 0.58, 0.16)),
         /** The belt's frame → world (a rotation; the belt is centred on the star). */
         beltRot: uniform(new THREE.Matrix3()),
         /** REST_HEAT at rest → HEAT_CHAIN (gold) in a long chain → white-gold after a four-line clear. */
@@ -409,6 +425,13 @@ export function createVoidEmberUniforms(textures) {
          * over a banked one.
          */
         iris: uniform(1),
+        /**
+         * The ember's own slow moods, with no one playing: how far its crust has opened of
+         * itself (−1..1, a swell and an ebb of a minute or so) and the side of the star (a unit
+         * vector in its own frame) where the crust is thinnest now; that side wanders.
+         */
+        mood: uniform(0),
+        moodDir: uniform(new THREE.Vector3(0, 0, 1)),
         /** The corona and the ember wind wind up (a twist) and spring back: radians per radius. */
         twist: uniform(0),
         /**
@@ -428,9 +451,10 @@ export function createVoidEmberUniforms(textures) {
         rock: v3(p.rock),
         fill: v3(p.fill),
         starTint: v3(p.star),
-        /** The cinder world: its centre and radius. */
+        /** The cinder world: its centre and radius; and its moon's. */
         worldCentre: uniform(new THREE.Vector3(60, 20, -180)),
         worldRadius: uniform(6),
+        moonCentre: uniform(new THREE.Vector3(70, 20, -180)),
         /**
          * Impacts on the photosphere, three rows each: (site in the star's frame, birth time),
          * (colour, strength) and (how long its scar lasts, _, _, _). `impactCount` rows are live.
