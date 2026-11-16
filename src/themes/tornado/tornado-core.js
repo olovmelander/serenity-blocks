@@ -61,15 +61,93 @@ export function hexToLinear(hex, out) {
 
 /**
  * The funnel's radius at height fraction h (0 = ground, 1 = cloud base), in metres.
- * `girth` scales the stem (the live control times the chain's swell), `flare` the wall cloud.
- * The shader evaluates the same expression (tornado-funnel.js).
+ * `girth` scales the stem (the live control times the chain's swell), `flare` the wall cloud,
+ * `taper` how much wider the funnel is aloft than at the ground (a stovepipe has little, a cone
+ * its authored share, a wedge more). The shader evaluates the same expression (tornado-tsl.js).
  */
-export function funnelRadius(h, girth = 1, flare = 1) {
+export function funnelRadius(h, girth = 1, flare = 1, taper = 1) {
     const k = clamp01(h);
     return WORLD.radiusGround * girth
-        + (WORLD.radiusTop - WORLD.radiusGround) * k ** 1.7
+        + (WORLD.radiusTop - WORLD.radiusGround) * taper * k ** 1.7
         + WORLD.flare * flare * Math.exp(-(1 - k) * 8)
         + WORLD.foot * Math.exp(-k * 16);
+}
+
+// ── The storm's own life ─────────────────────────────────────────────────────────
+
+/**
+ * The kinds of funnel the storm goes through by itself, whatever the play: a cone, a stovepipe, a
+ * wedge, a cone again, a rope, and a funnel that has let go of the ground and hangs under the wall
+ * cloud until it comes down again as the next cone. Each is a shape for the stem (`girth`,
+ * `taper`, `flare`), how far it sways (`rope`) and how far down it reaches (`touch`: 1 on the
+ * ground). The first is the scene as authored.
+ */
+export const STAGE_KEYS = Object.freeze(['girth', 'taper', 'flare', 'rope', 'touch']);
+export const STAGES = Object.freeze([
+    Object.freeze({
+        name: 'cone', girth: 1, taper: 1, flare: 1, rope: 1, touch: 1,
+    }),
+    Object.freeze({
+        name: 'stovepipe', girth: 1.32, taper: 0.38, flare: 1.12, rope: 0.5, touch: 1,
+    }),
+    Object.freeze({
+        name: 'wedge', girth: 1.8, taper: 1.5, flare: 1.35, rope: 0.22, touch: 1,
+    }),
+    Object.freeze({
+        name: 'elephant trunk', girth: 0.82, taper: 1.3, flare: 0.95, rope: 1.9, touch: 1,
+    }),
+    Object.freeze({
+        name: 'rope', girth: 0.4, taper: 0.42, flare: 0.62, rope: 2.9, touch: 1,
+    }),
+    Object.freeze({
+        name: 'aloft', girth: 0.5, taper: 0.8, flare: 0.85, rope: 1.3, touch: 0.42,
+    }),
+]);
+/** Seconds of storm time one kind lasts, and the share of it the funnel rests on that kind. */
+export const STAGE_SECONDS = 47;
+export const STAGE_REST = 0.42;
+
+/**
+ * The funnel's kind at `clock` seconds: rests on a kind, then turns into the next over the rest
+ * of the step. Writes the shape into `out` and returns it (`index`, `turn` and `name` with it).
+ */
+export function stageAt(clock, out = {}) {
+    const n = STAGES.length;
+    const w = (((clock / STAGE_SECONDS) % n) + n) % n;
+    const i = Math.floor(w);
+    const k = smooth01((w - i - STAGE_REST) / (1 - STAGE_REST));
+    const a = STAGES[i];
+    const b = STAGES[(i + 1) % n];
+    for (let c = 0; c < STAGE_KEYS.length; c += 1) {
+        const key = STAGE_KEYS[c];
+        out[key] = lerp(a[key], b[key], k);
+    }
+    out.index = i;
+    out.turn = k;
+    out.name = k < 0.5 ? a.name : b.name;
+    return out;
+}
+
+/**
+ * The weather round the storm, on clocks of its own that share no period with the hours or the
+ * funnel's kinds, so the three never line up the same way twice in a session:
+ *   rainAt     where the rain core hangs, radians left (−) or right of where it was authored
+ *   rain       how heavy the curtains under the deck are, 0.55 … 1.3
+ *   edge       the storm's edge, as a share of its radius: the bright gap opens and narrows
+ *   mammatus   the pouches under the anvil, 0 … 1 (fields of them come and go)
+ *   squall     rain over the lens, 0 … 1: a band of it crosses every few minutes
+ *   pools      how far the pools of sun on the field have drifted (their own slow clock)
+ */
+export function weatherAt(clock, out = {}) {
+    const t = Math.max(0, clock);
+    out.rainAt = 0.34 * Math.sin(t * 0.0113 + 0.4) + 0.12 * Math.sin(t * 0.0291 + 2.1);
+    out.rain = 0.92 + 0.26 * Math.sin(t * 0.0171 + 1.2) + 0.12 * Math.sin(t * 0.043);
+    out.edge = 1 + 0.085 * Math.sin(t * 0.0087 + 0.9) + 0.03 * Math.sin(t * 0.0233 + 4);
+    out.mammatus = smooth01(0.5 + 0.9 * Math.sin(t * 0.0131 + 2.6) + 0.25 * Math.sin(t * 0.0397));
+    // A squall: a 34 s band of rain every 167 s, the first one a good minute into the storm.
+    const phase = ((t + 62) % 167) / 34;
+    out.squall = phase < 1 ? Math.sin(phase * Math.PI) ** 1.5 : 0;
+    return out;
 }
 
 // ── The power line ───────────────────────────────────────────────────────────────
@@ -239,6 +317,52 @@ export const PALETTES = Object.freeze([
         sunElev: 0.012,
         flicker: 0.24,
     }),
+    // The storm at night: the last ember of afterglow in the gap, the deck and the field lit by
+    // the storm's own lightning (it flickers most now) and by what the funnel holds.
+    Object.freeze({
+        name: 'storm night',
+        sun: [0.3, 0.085, 0.075],
+        gapLow: [0.075, 0.026, 0.045],
+        gapHigh: [0.012, 0.02, 0.07],
+        skyTop: [0.004, 0.008, 0.032],
+        cloudDark: [0.003, 0.005, 0.014],
+        cloudMid: [0.009, 0.014, 0.036],
+        cloudLit: [0.045, 0.026, 0.07],
+        cloudRim: [0.07, 0.1, 0.26],
+        wheatLit: [0.03, 0.037, 0.076],
+        wheatShade: [0.006, 0.008, 0.021],
+        haze: [0.026, 0.032, 0.084],
+        funnelLit: [0.13, 0.155, 0.3],
+        funnelShade: [0.008, 0.011, 0.028],
+        dust: [0.02, 0.023, 0.044],
+        bolt: [0.74, 0.8, 1.0],
+        sunPower: 0.5,
+        sunElev: 0.004,
+        flicker: 0.42,
+    }),
+    // First light: the gap pale lemon over teal, the deck slate with peach under its lobes, the
+    // wheat the colour of straw. The cold, clean hour before the gold comes back.
+    Object.freeze({
+        name: 'first light',
+        sun: [1.0, 0.8, 0.52],
+        gapLow: [0.92, 0.74, 0.47],
+        gapHigh: [0.36, 0.56, 0.62],
+        skyTop: [0.085, 0.19, 0.31],
+        cloudDark: [0.017, 0.026, 0.04],
+        cloudMid: [0.058, 0.08, 0.11],
+        cloudLit: [0.8, 0.47, 0.33],
+        cloudRim: [0.84, 0.8, 0.72],
+        wheatLit: [0.55, 0.44, 0.19],
+        wheatShade: [0.068, 0.07, 0.046],
+        haze: [0.47, 0.48, 0.44],
+        funnelLit: [0.9, 0.76, 0.6],
+        funnelShade: [0.058, 0.08, 0.11],
+        dust: [0.3, 0.24, 0.15],
+        bolt: [0.84, 0.9, 1.0],
+        sunPower: 4.5,
+        sunElev: 0.022,
+        flicker: 0.06,
+    }),
 ]);
 
 /**
@@ -283,6 +407,30 @@ export function paletteAt(wheel, out = {}) {
 export function furyFor(combo) {
     const n = Math.max(0, combo - 1);
     return 1 - Math.exp(-n / 3.2);
+}
+
+/**
+ * A crawler: lightning that runs along under the cloud base instead of coming down. `count`
+ * points from `from` (x, y, z), heading `turn` radians, `length` metres long: it wanders
+ * sideways as it goes (it does not have to land anywhere) and sags a little under the deck.
+ */
+export function crawlerPath(rand, from, turn, length, jag, count, out) {
+    let heading = turn;
+    let x = from[0];
+    let z = from[2];
+    const stride = length / (count - 1);
+    for (let i = 0; i < count; i += 1) {
+        const t = i / (count - 1);
+        if (i > 0) {
+            heading += (rand() - 0.5) * jag;
+            x += Math.cos(heading) * stride;
+            z += Math.sin(heading) * stride;
+        }
+        out[i * 3] = x;
+        out[i * 3 + 1] = from[1] - Math.sin(t * Math.PI) * length * 0.012 - (rand() - 0.5) * 2;
+        out[i * 3 + 2] = z;
+    }
+    return out;
 }
 
 /**

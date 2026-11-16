@@ -11,7 +11,9 @@ import * as THREE from 'three/webgpu';
 import {
     REST_RIG, TORNADO_PARTS, TornadoWorld, fovForAspect,
 } from '../../src/themes/tornado/tornado-world.js';
-import { HOUR_SECONDS, PALETTES, WORLD } from '../../src/themes/tornado/tornado-core.js';
+import {
+    HOUR_SECONDS, PALETTES, WORLD, stageAt,
+} from '../../src/themes/tornado/tornado-core.js';
 import {
     BOLTS, FLIGHTS, RIBBONS, RINGS,
 } from '../../src/themes/tornado/tornado-tsl.js';
@@ -360,14 +362,15 @@ describe('TornadoWorld build-up', () => {
         const { world, camera } = makeWorld();
         step(world, camera, world.time, world.time + 1);
         const rest = {
-            girth: world.u.girth.value, rays: world.u.rays.value, exposure: world.getPostState().exposure,
+            rays: world.u.rays.value, exposure: world.getPostState().exposure,
         };
         playChain(world, camera, 10);
         world.onLock({ rows: [19], u: 0.5, color: '#ffffff' });
         world.onCombo(0);
         step(world, camera, world.time, world.time + 15, 1 / 20);
         expect(world.getState().stage).toBe(0);
-        expect(world.u.girth.value).toBeLessThan(rest.girth * 1.05);
+        // Back to the girth of the kind the storm's own clock has turned the funnel to by now.
+        expect(world.u.girth.value).toBeLessThan(stageAt(world.time).girth * 1.05);
         expect(world.u.rays.value).toBeLessThan(rest.rays + 0.03);
         expect(world.getPostState().exposure).toBeGreaterThan(rest.exposure - 0.01);
         expect(world.funnel.children.every((c) => !c.visible)).toBe(true);
