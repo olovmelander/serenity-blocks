@@ -405,6 +405,23 @@ export const FOX_COMMON_ACTS = Object.freeze({
 
 // ── A rig: one skeleton, and everything it can be asked ─────────────────────────
 
+/**
+ * A pace: how a fox's gait differs, at the speed it goes, from the trot that opens into a gallop.
+ * A mind that has other paces hands one on with its pose (`pace`); with none, or all of it zero
+ * and `stretch` 1, the gait is as it was.
+ *
+ *  walk     0..1  a walk of four beats: each forepaw lands a quarter of a cycle before the hind
+ *                 paw it trots with, and every paw is down for most of the cycle
+ *  lope     0..1  an easy canter of three beats: one hind paw, a diagonal pair, the leading
+ *                 forepaw, and a moment off the ground; the body rocks once a cycle
+ *  bound    0..1  bounding through deep snow: both hind paws push off together, it arcs through
+ *                 the air nose first, both forepaws come down together, and the hind paws follow
+ *  stretch        how much further than its trot's each cycle carries it (1: as its trot)
+ */
+export const createFoxPace = () => ({
+    walk: 0, lope: 0, bound: 0, stretch: 1,
+});
+
 /** How a tail of so many bones shares out its swing, its curl and its lift. */
 const TAILS = Object.freeze({
     3: Object.freeze({ swing: [0.5, 0.36, 0.3], curl: [0.3, 0.38, 0.32], lift: [0.58, 0.28, 0.14] }),
@@ -422,13 +439,15 @@ const TAILS = Object.freeze({
  * @param {number} [o.foreAt]   the z (at rest) of the place `fore` lowers; the chest joint's when not given
  * @param {object} [o.acts]     acts of its own, over or beside the common ones: name → (spec, t, size)
  * @param {object} [o.lengths]  seconds its own acts take
+ * @param {string[]} [o.mirrored]  acts written for its left side that are done to its right, left
+ *                              for right, when its mind says so (`side` −1 in the pose)
  * @param {object} [o.gait]     its paces: strideBase (model m), strideRate (s), stanceMost
  *                              (model m), dutyMost, dutyLeast, gallopFrom, gallopTo (model m/s),
  *                              crouch { rest, chain, margin } (model m)
  * @param {number} [o.headSteady=0.75]  how much of the trunk's pitch and roll its head does not take
  */
 export function createFoxRig({
-    bones, marks, scale = 1, size = 1, foreAt, acts = {}, lengths = {}, gait = {}, headSteady = 0.75,
+    bones, marks, scale = 1, size = 1, foreAt, acts = {}, lengths = {}, mirrored = [], gait = {}, headSteady = 0.75,
 }) {
     const index = Object.freeze(Object.fromEntries(bones.map((bone, i) => [bone[0], i])));
     const B = index;
@@ -493,23 +512,41 @@ export function createFoxRig({
     /** A speed as the arctic fox would feel it: a larger animal is slower for its size. */
     const felt = (speed) => speed / scale / Math.sqrt(k);
 
-    /** Metres one cycle of its gait carries it at a speed (m/s, world). */
-    const stride = (speed) => pace.strideBase * scale + pace.strideRate * Math.max(0, speed);
+    /** Metres one cycle of its gait carries it at a speed (m/s, world), at a pace (its trot's when not given). */
+    const stride = (speed, how) => {
+        const metres = pace.strideBase * scale + pace.strideRate * Math.max(0, speed);
+        return how ? metres * (how.stretch ?? 1) : metres;
+    };
     /** How much of a gallop its gait is at a speed (0 a trot .. 1 a gallop). */
     const gallopAt = (speed) => smooth(pace.gallopFrom, pace.gallopTo, speed / scale);
-    /** The share of a cycle each paw is on the ground at a speed. */
-    const duty = (speed) => Math.max(pace.dutyLeast, Math.min(pace.dutyMost, pace.stanceMost / (stride(speed) / scale)));
+    /** The share of a cycle each paw is on the ground at a speed (at a walk, more of it). */
+    const duty = (speed, how) => {
+        if (!how) return Math.max(pace.dutyLeast, Math.min(pace.dutyMost, pace.stanceMost / (stride(speed) / scale)));
+        const most = pace.dutyMost + 0.14 * clamp01(how.walk ?? 0);
+        return Math.max(pace.dutyLeast, Math.min(most, pace.stanceMost / (stride(speed, how) / scale)));
+    };
     /**
      * When in a cycle each paw lands (FOX_LEGS order): diagonal pairs at a trot; in the gallop
      * the hind pair, then the fore pair, each a beat apart. `gallop` is how much of a gallop the
-     * gait is (a mind eases it, so the legs fall into the new step over a stride or two).
+     * gait is (a mind eases it, so the legs fall into the new step over a stride or two). A pace
+     * (`how`) moves them on from there: see createFoxPace.
      */
-    const footfalls = (speed, out = [0, 0, 0, 0], gallop = gallopAt(speed)) => {
+    const footfalls = (speed, out = [0, 0, 0, 0], gallop = gallopAt(speed), how = null) => {
         const g = clamp01(gallop);
         out[0] = 0.45 * g;
         out[1] = 0.5 + 0.03 * g;
         out[2] = 0.5 + 0.5 * g;
         out[3] = 0.08 * g;
+        if (how) {
+            // (What is left of its trot is what a pace changes: at a full gallop, nothing.)
+            const left = 1 - g;
+            const w = clamp01(how.walk ?? 0) * left;
+            const l = clamp01(how.lope ?? 0) * left;
+            const b = clamp01(how.bound ?? 0) * left;
+            out[0] += -0.25 * w + 0.55 * l + 0.6 * b;
+            out[1] += -0.25 * w - 0.22 * l + 0.1 * b;
+            out[2] += -0.22 * l + 0.5 * b;
+        }
         return out;
     };
     const FALLS = [0, 0, 0, 0];
@@ -522,17 +559,31 @@ export function createFoxRig({
      * @param {number} amount  how much of its stride it takes (0 standing .. 1)
      * @param {number} [step]  how much it lifts its feet even so (0..1: stepping on the spot as it turns)
      * @param {number} [gallop]  how much of a gallop its gait is (0..1; from the speed when not given)
+     * @param {object} [how]   its pace, when it is not its trot (createFoxPace)
      */
-    const layGait = (spec, phase, speed, amount, step = 0, gallop = gallopAt(speed)) => {
+    const layGait = (spec, phase, speed, amount, step = 0, gallop = gallopAt(speed), how = null) => {
         const lifts = Math.max(amount, step);
         if (lifts <= 0) return spec;
-        const cycle = stride(speed) / scale;
-        const share = duty(speed);
+        const cycle = stride(speed, how) / scale;
+        const share = duty(speed, how);
         const stance = share * cycle * amount;
         const g = clamp01(gallop) * amount;
         const fast = smooth(0.4, 3.2, felt(speed));
         const height = (0.022 + 0.04 * fast) * k * lifts;
-        footfalls(speed, FALLS, gallop);
+        // How much of a lope and of a bound the gait is, and how far off the ground a bound has it.
+        const left = how ? 1 - clamp01(gallop) : 0;
+        const lope = how ? clamp01(how.lope ?? 0) * left * amount : 0;
+        const bound = how ? clamp01(how.bound ?? 0) * left * amount : 0;
+        const at0 = ((phase % 1) + 1) % 1;
+        footfalls(speed, FALLS, gallop, how);
+        // (It is only as far off the ground as every paw is into its swing: with one of them
+        // still down it has not left it, whatever its footfalls are while its pace changes.)
+        let arc = bound > 0 || lope > 0 ? 1 : 0;
+        for (let i = 0; i < 4 && arc > 0; i++) {
+            const at = (((phase + 1 - FALLS[i]) % 1) + 1) % 1;
+            arc *= at < share ? 0 : Math.sqrt(Math.sin((Math.PI * (at - share)) / (1 - share)));
+        }
+        const risen = (0.2 * bound + 0.07 * lope) * k * arc;
         for (let i = 0; i < 4; i++) {
             const f = SPEC.feet + i * STEP;
             const at = (((phase + 1 - FALLS[i]) % 1) + 1) % 1;
@@ -547,10 +598,23 @@ export function createFoxRig({
             } else {
                 const along = (at - share) / (1 - share);
                 const ease = along * along * (3 - 2 * along);
+                const swing = Math.sin(Math.PI * along);
                 spec[f + DZ] += stance * (ease - 0.5) + lead;
-                spec[f + DY] += height * Math.sin(Math.PI * along) ** 0.8;
+                spec[f + DY] += height * swing ** 0.8;
                 // Toes trail as it lifts, and are brought level to land.
-                spec[f + TOE] += (0.55 * (1 - smooth(0, 0.45, along)) + 0.5 * Math.sin(Math.PI * along) * fast) * lifts;
+                spec[f + TOE] += (0.55 * (1 - smooth(0, 0.45, along)) + 0.5 * swing * fast) * lifts;
+                if (bound > 0 || lope > 0) {
+                    // Off the ground its paws go up with its body: the hind paws trail out behind
+                    // it and are gathered in under it, the forepaws are tucked and then reach down.
+                    spec[f + DY] += risen * swing ** 0.6 + (0.02 * bound + 0.012 * lope) * k * swing;
+                    if (i < 2) {
+                        spec[f + DZ] += (0.035 * bound + 0.015 * lope) * k * Math.sin(Math.PI * along * along);
+                    } else {
+                        const trail = Math.sin(Math.PI * Math.sqrt(along)) * (1 - along);
+                        spec[f + DZ] -= (0.06 * bound + 0.02 * lope) * k * trail;
+                        spec[f + TOE] += 0.5 * bound * swing * (1 - along);
+                    }
+                }
             }
         }
         // The body: it rides lower the longer its steps…
@@ -559,7 +623,42 @@ export function createFoxRig({
         spec[SPEC.rear] += low;
         spec[SPEC.fore] += low;
         // …at a trot it dips on every pair of paws and sways a little over them…
-        const trot = amount * (1 - clamp01(gallop));
+        let trot = amount * (1 - clamp01(gallop));
+        if (how) {
+            trot *= (1 - clamp01(how.lope ?? 0)) * (1 - clamp01(how.bound ?? 0));
+            const walk = clamp01(how.walk ?? 0) * left * amount;
+            // …at a walk its weight goes over to the side that carries it, shoulders against hips…
+            spec[SPEC.sway] += 0.007 * k * walk * Math.sin(TAU * (phase - 0.2));
+            spec[SPEC.twist] += 0.05 * walk * Math.sin(TAU * (phase - 0.05));
+            // …in a lope it rocks: up on its hind paw, down onto the leading forepaw, and a
+            // moment gathered in the air…
+            spec[SPEC.pitch] += 0.13 * lope * lope * Math.sin(TAU * (phase - 0.3));
+            spec[SPEC.arch] += 0.16 * lope * Math.cos(TAU * (phase - 0.87));
+            const up = 0.01 * k * lope * Math.cos(TAU * (phase - 0.87));
+            spec[SPEC.rear] -= up;
+            spec[SPEC.fore] -= up;
+            spec[SPEC.tailLift] += lope * (0.12 - 0.14 * Math.sin(TAU * (phase - 0.3)));
+            spec[SPEC.headPitch] += 0.05 * lope * Math.sin(TAU * (phase - 0.25));
+            // …and bounding it is off the ground between its hind paws and its forepaws: nose up as
+            // it springs, stretched out at the top, nose down onto its forepaws, gathered as the
+            // hind paws come in under it.
+            spec[SPEC.rear] -= risen;
+            spec[SPEC.fore] -= risen;
+            // (Between two paces it gathers itself: a paw still down from the old step is the
+            // further from where the new one wants it, and a lower body reaches it.)
+            const between = (lope * (1 - lope) + bound * (1 - bound)) * 0.09 * k;
+            spec[SPEC.rear] += between;
+            spec[SPEC.fore] += between;
+            // (Its trunk tips only as far as its pace is a bound: with forepaws still landing
+            // to its trot's beat, a nose in the air would lift its shoulders off them.)
+            spec[SPEC.pitch] -= 0.3 * bound * bound * Math.cos(TAU * (phase - 0.17));
+            spec[SPEC.arch] += 0.3 * bound * bound * Math.cos(TAU * (phase - 0.92));
+            spec[SPEC.rear] += 0.02 * k * bound * smooth(0.25, 0, at0) + 0.016 * k * bound * smooth(0.8, 1, at0);
+            spec[SPEC.fore] += 0.026 * k * bound * hold(at0, 0.5, 0.68, 0.74, 0.92);
+            spec[SPEC.tailLift] += bound * (0.45 + 0.35 * Math.cos(TAU * (phase - 0.12)));
+            spec[SPEC.headPitch] += 0.12 * bound * Math.cos(TAU * (phase - 0.2));
+            spec[SPEC.reach] += 0.12 * bound * arc;
+        }
         const dip = Math.cos(2 * TAU * (phase - share / 2));
         const bob = (0.004 + 0.007 * fast) * k * trot * dip;
         spec[SPEC.rear] += bob;
@@ -581,6 +680,7 @@ export function createFoxRig({
     // ── What it does ──
     const ACT = { ...FOX_COMMON_ACTS, ...acts };
     const ACT_LENGTHS = Object.freeze({ ...FOX_ACTS, ...lengths });
+    const MIRRORED = new Set(mirrored);
 
     /** Fill a spec with what an act looks like `t` seconds in (`Run` and unknown names: it stands). */
     const act = (spec, name, t) => {
@@ -594,9 +694,32 @@ export function createFoxRig({
     const SPEC_B = createFoxSpec();
     const SPEC_C = createFoxSpec();
 
+    /** A spec as its mirror image: left for right. */
+    const mirror = (spec) => {
+        spec[SPEC.sway] = -spec[SPEC.sway];
+        spec[SPEC.roll] = -spec[SPEC.roll];
+        spec[SPEC.yaw] = -spec[SPEC.yaw];
+        spec[SPEC.bend] = -spec[SPEC.bend];
+        spec[SPEC.twist] = -spec[SPEC.twist];
+        spec[SPEC.headYaw] = -spec[SPEC.headYaw];
+        spec[SPEC.headRoll] = -spec[SPEC.headRoll];
+        spec[SPEC.tailYaw] = -spec[SPEC.tailYaw];
+        spec[SPEC.tailCurl] = -spec[SPEC.tailCurl];
+        for (let f = FL; f <= BL; f += 2 * STEP) {
+            for (let c = 0; c < STEP; c++) {
+                const left = spec[f + c];
+                const right = spec[f + STEP + c];
+                spec[f + c] = c === DX ? -right : right;
+                spec[f + STEP + c] = c === DX ? -left : left;
+            }
+        }
+        return spec;
+    };
+
     /** An act as the side the mind chose has it: what curls to a side curls to that one. */
     const sided = (spec, name, t, side) => {
         act(spec, name, t);
+        if (side < 0 && MIRRORED.has(name)) return mirror(spec);
         if (side < 0) {
             spec[SPEC.bend] = -spec[SPEC.bend];
             spec[SPEC.tailCurl] = -spec[SPEC.tailCurl];
@@ -632,8 +755,8 @@ export function createFoxRig({
         const running = gaitShare(p);
         const speed = p.speed ?? 0;
         const lifts = Math.max(running * (p.amp ?? 1), p.step ?? 0);
-        const share = duty(speed);
-        footfalls(speed, FALLS, p.gallop ?? undefined);
+        const share = duty(speed, p.pace);
+        footfalls(speed, FALLS, p.gallop ?? undefined, p.pace);
         for (let i = 0; i < 4; i++) {
             const at = ((((p.phase ?? 0) + 1 - FALLS[i]) % 1) + 1) % 1;
             if (lifts <= 0 || at < share) {
@@ -660,7 +783,8 @@ export function createFoxRig({
      * the pose it was in at that instant is the pose the new change starts from.
      * @param {object} p  { clip, clipTime, from, fromTime, blend, was, wasTime, hold, side, phase,
      *                      speed, amp, step, gallop, lean, nod, lookYaw, lookPitch, tailYaw,
-     *                      tailLift, breath, plant }
+     *                      tailLift, breath, plant, pace (createFoxPace), over (a spec added to
+     *                      the whole) }
      * @param {Float64Array} [spec]
      */
     const specOf = (p, spec = createFoxSpec()) => {
@@ -681,7 +805,7 @@ export function createFoxRig({
         } else {
             spec.set(SPEC_A);
         }
-        layGait(spec, p.phase ?? 0, p.speed ?? 0, running * (p.amp ?? 1), p.step ?? 0, p.gallop ?? undefined);
+        layGait(spec, p.phase ?? 0, p.speed ?? 0, running * (p.amp ?? 1), p.step ?? 0, p.gallop ?? undefined, p.pace);
         const { plant } = p;
         if (plant) {
             for (let i = 0; i < 4; i++) {
@@ -704,6 +828,9 @@ export function createFoxRig({
         spec[SPEC.arch] += 0.012 * breath;
         spec[SPEC.fore] -= 0.0025 * k * breath;
         spec[SPEC.rear] -= 0.0015 * k * breath;
+        // What a mind of its own lays over all of it (how it carries itself at a pace, say).
+        const { over } = p;
+        if (over) for (let i = 0; i < SPEC_SIZE; i++) spec[i] += over[i];
         return spec;
     };
 

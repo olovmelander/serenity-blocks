@@ -22,8 +22,8 @@ import {
 } from 'vitest';
 import {
     FOOT as FEET, FOX_ACTS, FOX_BONES, FOX_BONE_INDEX, FOX_LEGS, FOX_MARKS, FOX_RIG, POUNCE_AIR, SLEEP_HOLD, SPEC,
-    SPEC_SIZE, createFoxPosture, createFoxSpec, foxAct, foxDuty, foxFootfalls, foxGait, foxGallop, foxPoint, foxSpec,
-    foxStride, qBetween, qMul, qRotate, qSlerp, qTurn, solveFox,
+    SPEC_SIZE, WINTER_ACT_NAMES, WINTER_MIRRORED, createFoxPosture, createFoxSpec, foxAct, foxDuty, foxFootfalls,
+    foxGait, foxGallop, foxPoint, foxSpec, foxStride, qBetween, qMul, qRotate, qSlerp, qTurn, solveFox,
 } from '../../src/themes/winter/winter-fox-rig.js';
 import * as shared from '../../src/themes/shared/fox-rig.js';
 import { FOX_SCALE, mulberry32 } from '../../src/themes/winter/winter-core.js';
@@ -108,16 +108,25 @@ function eachMoment(visit) {
     });
 }
 
-/** The largest change of each number of a spec between samples `step` apart, over `span`. */
+/**
+ * The largest change of each number of a spec between samples `step` apart, over `span`. (Its
+ * trunk's turn is an angle: a whole turn on — it goes round after its tail, it turns in the air —
+ * is no change.)
+ */
 function largestSteps(fill, span, step) {
     const a = createFoxSpec();
     const b = createFoxSpec();
     const most = new Float64Array(SPEC_SIZE);
     const samples = Math.ceil(span / step);
+    const turn = Math.PI * 2;
     for (let i = 0; i < samples; i++) {
         fill(a, i * step);
         fill(b, (i + 1) * step);
-        for (let k = 0; k < SPEC_SIZE; k++) most[k] = Math.max(most[k], Math.abs(b[k] - a[k]));
+        for (let k = 0; k < SPEC_SIZE; k++) {
+            let change = b[k] - a[k];
+            if (k === SPEC.yaw) change -= turn * Math.round(change / turn);
+            most[k] = Math.max(most[k], Math.abs(change));
+        }
     }
     return most;
 }
@@ -178,7 +187,11 @@ describe('winter fox rig: the module', () => {
         expect(FOX_RIG.size).toBe(1);
         expect(FOX_BONE_INDEX).toBe(FOX_RIG.index);
         expect(FOX_ACTS).toBe(FOX_RIG.lengths);
-        expect(FOX_ACTS).toEqual(shared.FOX_ACTS);
+        // Every fox's acts, as long as every fox's, and the arctic fox's own beside them.
+        expect(FOX_ACTS).toMatchObject(shared.FOX_ACTS);
+        expect(Object.keys(FOX_ACTS).sort()).toEqual([...Object.keys(shared.FOX_ACTS), ...WINTER_ACT_NAMES].sort());
+        expect(WINTER_ACT_NAMES.length).toBeGreaterThanOrEqual(8);
+        WINTER_MIRRORED.forEach((name) => expect(WINTER_ACT_NAMES, name).toContain(name));
         const bound = {
             act: foxAct,
             stride: foxStride,
@@ -1360,9 +1373,13 @@ describe('winter fox rig: its gait', () => {
 describe('winter fox rig: from the mind\'s pose to a spec', () => {
     const same = (a, b, label = '') => a.forEach((v, k) => expect(v, `${label} ${FIELDS[k]}`).toBeCloseTo(b[k], 12));
 
-    /** An act as one side has it: what curls to a side curls to that one, and the sleeper's head with it. */
+    /**
+     * An act as one side has it: what curls to a side curls to that one, and the sleeper's head
+     * with it; the arctic fox's own acts that go to a side are done left for right.
+     */
     const sided = (name, t, side) => {
         const spec = act(name, t);
+        if (side < 0 && WINTER_MIRRORED.includes(name)) return mirrored(spec);
         if (side < 0) {
             const turned = ['bend', 'tailCurl', ...(name === 'CurlSleep' ? ['headYaw', 'headRoll', 'roll'] : [])];
             turned.forEach((number) => {
@@ -1641,6 +1658,8 @@ describe('winter fox rig: from the mind\'s pose to a spec', () => {
             tailYaw: 0,
             tailLift: 0,
             breath: 0,
+            // (No pace of its own: its trot, opening into a gallop.)
+            pace: null,
         };
         // A pose that says everything, none of it the default.
         const full = {
@@ -1665,6 +1684,9 @@ describe('winter fox rig: from the mind\'s pose to a spec', () => {
             tailYaw: 0.2,
             tailLift: 0.4,
             breath: 0.5,
+            pace: {
+                walk: 0.3, lope: 0.2, bound: 0.1, stretch: 1.2,
+            },
         };
         expect(Object.keys(full).sort()).toEqual(read);
         read.filter((name) => name !== 'clip' && name !== 'from').forEach((name) => {

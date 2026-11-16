@@ -1,14 +1,19 @@
-"""Winter's polar bear: modelled procedurally in Blender, round the joints of the theme's rig.
+"""Winter's polar bears: modelled procedurally in Blender, round the joints of the theme's rig.
 
 Run by scripts/winter/model-bear.mjs, which hands it the skeleton (src/themes/winter/winter-bear-rig.js)
 as JSON, then skins what it writes to that skeleton and writes the asset:
 
-    node scripts/winter/model-bear.mjs [--preview=<dir>]
+    node scripts/winter/model-bear.mjs [--kind=adult|cub] [--preview=<dir>]
 
 or by hand (headless; nothing in an open Blender session is touched):
 
     blender --background --factory-startup --python scripts/blender/winter_polar_bear.py -- \
-        --skeleton <bones.json> --out <polar-bear-mesh.glb> [--preview <dir>]
+        --skeleton <bones.json> --out <polar-bear-mesh.glb> [--kind cub] [--preview <dir>]
+
+Two bodies come of it, on the one skeleton: the grown bear and, with `--kind cub`, a cub of the
+year. The cub is the same animal with a cub's proportions (KINDS below): a head and ears big for
+its body, a short muzzle, thick legs and big paws, a rounder trunk, a deeper and fluffier coat and
+no long fringe yet. The theme draws it small; here it is modelled at the skeleton's own size.
 
 Drawn from photographs of polar bears walking on the ice. What makes one read as itself, near or
 far: a long, deep body whose rump stands a little higher than its shoulders; a long, thick neck,
@@ -32,8 +37,9 @@ How it is made (the meshing is the Grainfields horse's, scripts/blender/grainfie
 - **Coat.** Over the whole, a field of clumps: value noise stretched along the way the hair lies
   (back over the body, down the legs), deeper in the long hair and shallow on the face and paws.
 - **Mesh.** The field's left half is sampled on a 7 mm grid, polygonised with surface nets,
-  projected onto the zero set, decimated in Blender with a quadric edge collapse, cleaned of folds
-  and mirrored, so the bear is exactly symmetric.
+  projected onto the zero set, decimated in Blender with a quadric edge collapse (the face and the
+  paws are kept finer than the rest, so the eyes, the nose, the mouth and the claws keep their
+  edges), cleaned of folds and mirrored, so the bear is exactly symmetric.
 - **Parts.** Which part each vertex belongs to (body, head and neck, each leg, tail), by the
   nearest primitive, cleaned into one piece each: the skinning step weights by it.
 - **Paint.** COLOR_0 = (pad, fur length, dark, sky seen): the black pads of the soles; how long
@@ -66,6 +72,21 @@ TAG = "[winter-bear]"
 GENERATOR = "Serenity Blocks - Winter polar bear (scripts/blender/winter_polar_bear.py)"
 VOXEL = 0.007
 TARGET_TRIANGLES = 18000
+# The two bodies. `head`, `ear`, `leg`, `paw`, `girth` and `neck` scale those parts' girths (the
+# head about where the neck meets it); `muzzle` shortens the muzzle; `locks` and `fringe` scale the
+# long hair behind the legs and under the belly; `coat` deepens the coat's clumps; `fluff` lengthens
+# the hair the shader grows; `voxel` and `triangles` are the mesh's grain and budget; `keep` is how
+# strongly the decimation holds back in the face and the paws (the modifier's own measure: a
+# coarser mesh needs more of it for the same share).
+KINDS = {
+    "adult": dict(head=1.0, muzzle=1.0, ear=1.0, leg=1.0, paw=1.0, girth=1.0, neck=1.0, locks=1.0, fringe=1.0,
+                  coat=1.0, fluff=0.0, voxel=VOXEL, triangles=TARGET_TRIANGLES, keep=0.04),
+    "cub": dict(head=1.3, muzzle=0.6, ear=1.5, leg=1.24, paw=1.16, girth=1.07, neck=1.14, locks=0.55, fringe=0.4,
+                coat=1.45, fluff=0.3, voxel=0.008, triangles=7200, keep=0.5),
+}
+# Where the head is scaled about (the back of the skull), and where the muzzle begins.
+HEAD_PIVOT = (0.0, 1.06, 1.08)
+MUZZLE_FROM = 1.25
 PARTS = {"body": 0, "head": 1, "frontLeft": 2, "frontRight": 3, "hindLeft": 4, "hindRight": 5, "tail": 6}
 # The deepest the coat's clumps go (metres): the field's bounds are padded by it.
 COAT = 0.024
@@ -211,48 +232,81 @@ def _flag(shape, **flags):
 
 
 # -- the bear ------------------------------------------------------------------------------
-def design(J, M):
-    """The bear as a distance field round the rig's joints `J` and marks `M`, and its landmarks."""
+def design(J, M, Z):
+    """The bear as a distance field round the rig's joints `J` and marks `M`, and its landmarks.
+    `Z` is the kind's proportions (KINDS)."""
+    grown = Z["head"] == 1.0 and Z["muzzle"] == 1.0
+
+    def H(point):
+        """A point of the head as this kind has it: the muzzle shortened, the whole scaled."""
+        q = np.array(point, dtype=np.float64)
+        if grown:
+            return q
+        if q[2] > MUZZLE_FROM:
+            q[2] = MUZZLE_FROM + (q[2] - MUZZLE_FROM) * Z["muzzle"]
+        pivot = np.array(HEAD_PIVOT)
+        return pivot + (q - pivot) * Z["head"]
+
+    def HR(radii, muzzle=False):
+        """Radii of a part of the head (a part of the muzzle is shortened along it too)."""
+        r = np.array(radii, dtype=np.float64) * Z["head"]
+        if muzzle and r.ndim:
+            r[2] *= Z["muzzle"] ** 0.5
+        return tuple(r) if r.ndim else float(r)
+
+    girth = np.array([Z["girth"], Z["girth"], 1.0])
     # The trunk: a deep chest under the withers, the shoulder blades' masses over the ribs and the
     # triceps behind the upper arms, the barrel, the loins, haunches and a rump a little higher
     # than the shoulders, the thighs. Over the belly, the fur hangs.
+    def G(radii):
+        """Radii of a part of the trunk (a cub's is rounder)."""
+        return tuple(np.array(radii) * girth) if not grown else radii
+
     trunk = Union([
-        Ellipsoid(P(0, 0.94, 0.38), (0.30, 0.37, 0.40)),
-        (Ellipsoid(P(0, 1.12, 0.32), (0.25, 0.2, 0.32)), 0.14),
+        Ellipsoid(P(0, 0.94, 0.38), G((0.30, 0.37, 0.40))),
+        (Ellipsoid(P(0, 1.12, 0.32), G((0.25, 0.2, 0.32))), 0.14),
         *[(Ellipsoid(P(0.19 * s, 1.04, 0.42), (0.13, 0.27, 0.19), along=(0.0, 1.0, 0.3)), 0.1) for s in (1, -1)],
         *[(Ellipsoid(P(0.23 * s, 0.8, 0.33), (0.12, 0.2, 0.15), along=(0.0, 1.0, -0.2)), 0.08) for s in (1, -1)],
-        Ellipsoid(P(0, 0.93, -0.08), (0.37, 0.38, 0.55)),
-        (Ellipsoid(P(0, 0.73, -0.06), (0.30, 0.17, 0.48)), 0.1),
-        (Ellipsoid(P(0, 1.16, -0.25), (0.25, 0.15, 0.36)), 0.12),
-        Ellipsoid(P(0, 0.99, -0.58), (0.35, 0.38, 0.37)),
-        (Ellipsoid(P(0, 1.16, -0.55), (0.27, 0.2, 0.32)), 0.12),
+        Ellipsoid(P(0, 0.93, -0.08), G((0.37, 0.38, 0.55))),
+        (Ellipsoid(P(0, 0.73, -0.06), G((0.30, 0.17, 0.48))), 0.1),
+        (Ellipsoid(P(0, 1.16, -0.25), G((0.25, 0.15, 0.36))), 0.12),
+        Ellipsoid(P(0, 0.99, -0.58), G((0.35, 0.38, 0.37))),
+        (Ellipsoid(P(0, 1.16, -0.55), G((0.27, 0.2, 0.32))), 0.12),
         *[(Ellipsoid(P(0.22 * s, 0.83, -0.6), (0.16, 0.33, 0.27), along=(0.0, 1.0, 0.25)), 0.1) for s in (1, -1)],
     ], k=0.16).tag(PARTS["body"])
 
     # The neck: long and thick, out of the chest and down a little to the back of the skull.
+    thick = Z["neck"]
     neck = Tube([P(0, 1.04, 0.54), P(0, 1.07, 0.76), P(0, 1.06, 0.95), P(0, 1.05, 1.08)],
-                [0.32, 0.27, 0.215, 0.18], squash_axis=X_AXIS, squash=[0.93, 0.92, 0.92, 0.95], k=0.04)
+                [0.32 * thick, 0.27 * thick, 0.215 * thick, 0.18 * thick],
+                squash_axis=X_AXIS, squash=[0.93, 0.92, 0.92, 0.95], k=0.04)
     # The head: broad and rounded with furred cheeks, a brow over the eyes, a Roman nose falling to
-    # the big black pad, the lower jaw under it.
-    nose = np.asarray(M["nose"], dtype=np.float64)
+    # the big black pad, the lower jaw under it; the eyes set in under the brow.
+    nose = H(M["nose"])
+    eyes = [H(np.asarray(M["eye"], dtype=np.float64) * np.array([s, 1.0, 1.0])) for s in (1, -1)]
     head = Union([
-        Ellipsoid(P(0, 1.085, 1.14), (0.15, 0.125, 0.155)),
-        Ellipsoid(P(0, 1.0, 1.17), (0.165, 0.115, 0.13)),
-        (Ellipsoid(P(0, 1.115, 1.25), (0.11, 0.06, 0.09)), 0.04),
-        RoundCone(P(0, 1.03, 1.29), nose + P(0, 0.005, -0.055), 0.105, 0.068, (X_AXIS, 0.95)),
-        (Ellipsoid(P(0, 1.035, 1.36), (0.07, 0.05, 0.11), along=(0.0, -0.25, 1.0)), 0.04),
-        (Ellipsoid(nose + P(0, 0.003, -0.03), (0.056, 0.042, 0.036)), 0.02),
-        RoundCone(P(0, 0.95, 1.2), P(0, 0.925, 1.4), 0.085, 0.048),
+        Ellipsoid(H((0, 1.085, 1.14)), HR((0.15, 0.125, 0.155))),
+        Ellipsoid(H((0, 1.0, 1.17)), HR((0.165, 0.115, 0.13))),
+        (Ellipsoid(H((0, 1.115, 1.25)), HR((0.11, 0.06, 0.09))), 0.04),
+        RoundCone(H((0, 1.03, 1.29)), nose + P(0, 0.005, -0.055) * Z["head"], HR(0.105), HR(0.068), (X_AXIS, 0.95)),
+        (Ellipsoid(H((0, 1.035, 1.36)), HR((0.07, 0.05, 0.11), True), along=(0.0, -0.25, 1.0)), 0.04),
+        (Ellipsoid(nose + P(0, 0.003, -0.03) * Z["head"], HR((0.06, 0.046, 0.04))), 0.02),
+        RoundCone(H((0, 0.95, 1.2)), H((0, 0.925, 1.4)), HR(0.085), HR(0.048)),
+        *[(Ellipsoid(eye + P(-0.006 * s, 0.0, -0.004) * Z["head"], HR((0.02, 0.02, 0.022))), 0.012)
+          for eye, s in zip(eyes, (1, -1))],
     ], k=0.05)
     # Ears: small and round on the sides of the skull, cupped forward and out.
     ears = []
+    wide = Z["ear"]
     for s in (1, -1):
-        base = np.asarray(J["earL"], dtype=np.float64) * np.array([s, 1.0, 1.0]) + P(0.012 * s, 0.025, 0.0)
+        base = H(np.asarray(J["earL"], dtype=np.float64) * np.array([s, 1.0, 1.0]) + P(0.012 * s, 0.025, 0.0))
         facing = _unit((0.45 * s, 0.15, 1.0))
-        ear = Ellipsoid(base, (0.056, 0.058, 0.034), along=facing)
-        cup = Ellipsoid(base + facing * 0.022 + P(0, 0.006, 0), (0.036, 0.04, 0.026), along=facing)
+        ear = Ellipsoid(base, (0.056 * wide, 0.058 * wide, 0.034 * wide), along=facing)
+        cup = Ellipsoid(base + facing * 0.022 * wide + P(0, 0.006, 0) * wide,
+                        (0.036 * wide, 0.04 * wide, 0.026 * wide), along=facing)
         ears.append(_flag(Carve(ear, cup, 0.008), ear=True))
     head_part = Union([(neck, 0.0), (head, 0.06), *[(ear, 0.03) for ear in ears]]).tag(PARTS["head"])
+    ear_marks = [H(np.asarray(J["earL"], dtype=np.float64) * np.array([s, 1.0, 1.0])) for s in (1, -1)]
 
     def paw(ball, tip, side, front):
         """A broad paw turned a little in: the pad, five toes along its front, a claw from each."""
@@ -260,17 +314,19 @@ def design(J, M):
         turn = -0.14 * s if front else -0.07 * s
         ahead = _unit((turn, 0.0, 1.0))
         across = np.array([ahead[2], 0.0, -ahead[0]])
+        broad = Z["paw"]
         length = 0.17 if front else 0.21
         centre = ball + P(0, 0.062, 0) - ahead * (0.05 if front else 0.09)
-        parts = [Ellipsoid(centre, (0.135 if front else 0.12, 0.07, length), along=ahead)]
+        parts = [Ellipsoid(centre, ((0.135 if front else 0.12) * broad, 0.07 * broad, length), along=ahead)]
         claws = []
         reach_ = np.asarray(tip, dtype=np.float64)
         for k in range(5):
             a = (k - 2) / 2.0
-            toe = reach_ + across * (0.085 * a) - ahead * (0.03 * a * a + 0.035) + P(0, 0.008, 0)
-            parts.append((Ellipsoid(toe, (0.034, 0.033, 0.038), along=ahead), 0.025))
+            toe = reach_ + across * (0.085 * broad * a) - ahead * (0.03 * a * a + 0.035) + P(0, 0.008, 0)
+            parts.append((Ellipsoid(toe, (0.034 * broad, 0.033, 0.038), along=ahead), 0.025))
+            # A claw from each toe: dark, curved down to the ice, long enough to show.
             root = toe + ahead * 0.028 + P(0, 0.004, 0)
-            claw = RoundCone(root, root + ahead * 0.03 + P(0, -0.018, 0), 0.011, 0.003)
+            claw = RoundCone(root, root + ahead * 0.036 + P(0, -0.02, 0), 0.0125, 0.0035)
             claws.append(_flag(claw, claw=True))
         return Union(parts, k=0.04), claws
 
@@ -281,11 +337,12 @@ def design(J, M):
         tip = np.asarray(M["tip" + ("FL" if side == "L" else "FR")], dtype=np.float64)
         pad, claws = paw(ball, tip, side, True)
         mid = (elbow + wrist) * 0.5 + P(0, 0, 0.012)
+        w = Z["leg"]
         leg = Union([
-            Tube([shoulder + P(0, 0.06, 0.0), elbow], [0.18, 0.15]),
-            (Ellipsoid(elbow + P(0, 0.02, -0.075), (0.11, 0.12, 0.1)), 0.06),
-            Tube([elbow, mid, wrist], [0.15, 0.13, 0.11], squash_axis=Z_AXIS, squash=[1.0, 1.12, 1.05]),
-            (Ellipsoid(wrist + P(0, -0.01, 0.0), (0.105, 0.09, 0.11)), 0.05),
+            Tube([shoulder + P(0, 0.06, 0.0), elbow], [0.18 * w, 0.15 * w]),
+            (Ellipsoid(elbow + P(0, 0.02, -0.075), (0.11 * w, 0.12, 0.1 * w)), 0.06),
+            Tube([elbow, mid, wrist], [0.15 * w, 0.13 * w, 0.11 * w], squash_axis=Z_AXIS, squash=[1.0, 1.12, 1.05]),
+            (Ellipsoid(wrist + P(0, -0.01, 0.0), (0.105 * w, 0.09, 0.11 * w)), 0.05),
             (pad, 0.08),
         ], k=0.07)
         # The long hair down the back of the forearm.
@@ -293,8 +350,8 @@ def design(J, M):
         for k in range(8):
             f = k / 7.0
             across = 0.1 * s * (_hash01(k, 1.0) - 0.5)
-            start = elbow * (1 - f * 0.75) + wrist * (f * 0.75) + P(across, 0.02, -0.11)
-            length = 0.13 + 0.08 * _hash01(k, 3.0)
+            start = elbow * (1 - f * 0.75) + wrist * (f * 0.75) + P(across, 0.02, -0.11 * w)
+            length = (0.13 + 0.08 * _hash01(k, 3.0)) * Z["locks"]
             locks.append(_lock(leg, start, (0.0, -1.0, -0.3), length, 0.04, 0.012, sink=0.75))
         tag = PARTS["frontLeft" if side == "L" else "frontRight"]
         # (Tagged first: tagging a part clears the flags on its primitives.)
@@ -311,10 +368,11 @@ def design(J, M):
         tip = np.asarray(M["tip" + ("BL" if side == "L" else "BR")], dtype=np.float64)
         pad, claws = paw(ball, tip, side, False)
         mid = (knee + heel) * 0.5 + P(0, 0, -0.015)
+        w = Z["leg"]
         leg = Union([
-            Tube([hip + P(-0.01 * s, -0.02, 0.0), knee], [0.21, 0.155]),
-            Tube([knee, mid, heel], [0.155, 0.125, 0.1], squash_axis=Z_AXIS, squash=[1.0, 1.1, 1.05]),
-            (Ellipsoid(heel + P(0, -0.035, -0.035), (0.08, 0.075, 0.07)), 0.03),
+            Tube([hip + P(-0.01 * s, -0.02, 0.0), knee], [0.21 * w, 0.155 * w]),
+            Tube([knee, mid, heel], [0.155 * w, 0.125 * w, 0.1 * w], squash_axis=Z_AXIS, squash=[1.0, 1.1, 1.05]),
+            (Ellipsoid(heel + P(0, -0.035, -0.035), (0.08 * w, 0.075, 0.07 * w)), 0.03),
             (pad, 0.06),
         ], k=0.07)
         # The "trousers": long hair down the back of the thigh and the shank.
@@ -322,8 +380,8 @@ def design(J, M):
         for k in range(8):
             f = k / 7.0
             across = 0.1 * s * (_hash01(k, 6.0) - 0.5)
-            start = hip * (1 - f * 0.9) + heel * (f * 0.9) + P(across, 0.05, -0.14 + 0.04 * f)
-            length = 0.12 + 0.07 * _hash01(k, 8.0)
+            start = hip * (1 - f * 0.9) + heel * (f * 0.9) + P(across, 0.05, (-0.14 + 0.04 * f) * w)
+            length = (0.12 + 0.07 * _hash01(k, 8.0)) * Z["locks"]
             locks.append(_lock(leg, start, (0.0, -1.0, -0.25), length, 0.045, 0.014, sink=0.75))
         tag = PARTS["hindLeft" if side == "L" else "hindRight"]
         leg.tag(tag)
@@ -346,18 +404,24 @@ def design(J, M):
                 z = 0.34 - 0.9 * f + 0.03 * row
                 jitter = P(0.025 * s * (_hash01(k, row) - 0.5), 0.0, 0.03 * (_hash01(k, row + 3) - 0.5))
                 start = P(x * s, 0.67 - 0.02 * row, z) + jitter
-                length = (0.05 + 0.08 * math.sin(math.pi * f) ** 0.6) * (0.75 + 0.5 * _hash01(k, row + 9))
-                fringe.append(_lock(trunk, start, (0.08 * s, -1.0, -0.22), length, 0.036, 0.011, sink=0.75))
-    fringe = _flag(Union([(lock, 0.03) for lock in fringe]).tag(PARTS["body"]), hair=True)
+                length = (0.05 + 0.08 * math.sin(math.pi * f) ** 0.6) * (0.75 + 0.5 * _hash01(k, row + 9)) * Z["fringe"]
+                # (A cub's fringe is only its longest strands yet.)
+                if length >= 0.045:
+                    fringe.append(_lock(trunk, start, (0.08 * s, -1.0, -0.22), length, 0.036, 0.011, sink=0.75))
+    fringe = _flag(Union([(lock, 0.03) for lock in fringe]).tag(PARTS["body"]), hair=True) if fringe else None
 
     tail = Ellipsoid(P(0, 1.04, -1.0), (0.065, 0.075, 0.09), along=(0.0, -0.45, -1.0)).tag(PARTS["tail"])
 
-    whole = Union([(trunk, 0.0), (fringe, 0.04), (head_part, 0.12), *[(leg, 0.1) for leg in legs], (tail, 0.06)])
-    coat = FurCoat(whole, COAT, _coat)
+    whole = Union([(trunk, 0.0), *([(fringe, 0.04)] if fringe else []), (head_part, 0.12),
+                   *[(leg, 0.1) for leg in legs], (tail, 0.06)])
+    coat = FurCoat(whole, COAT * Z["coat"], _coat)
     root = HalfSpace(coat, axis=1)
     landmarks = dict(
         nose=nose,
-        eyes=[np.asarray(M["eye"], dtype=np.float64) * np.array([s, 1.0, 1.0]) for s in (1, -1)],
+        eyes=eyes,
+        face=Z["head"],
+        fluff=Z["fluff"],
+        ears=ear_marks,
         # Between the neck and the body the boundary is a plane from the withers down to the
         # front of the chest: (y, z) pairs.
         neckBase=((1.33, 0.56), (0.8, 0.8)),
@@ -483,16 +547,23 @@ def paint(shape, whole, landmarks, positions, normals, parts, distances):
     pad = legs * _smoothstep(0.03, 0.006, y) * _smoothstep(-0.2, -0.75, normals[:, 1])
     claws = on(claw_leaf) * legs
     # The nose, the eyes and their rims, a line of black lip; inside the ears, a shade.
+    # (Each a little larger than life: the bear is seen from fifty metres and more, and its face is
+    # these few dark marks.)
     nose = landmarks["nose"]
-    to_nose = np.linalg.norm((positions - nose) * np.array([1.0, 1.2, 0.85]), axis=1)
-    eyes = np.min([np.linalg.norm((positions - eye) * np.array([1.0, 1.3, 0.75]), axis=1)
-                   for eye in landmarks["eyes"]], axis=0)
-    lip = (parts == PARTS["head"]) * _smoothstep(0.012, 0.004, np.abs(y - (0.945 - 0.05 * (z - 1.3)))) \
-        * _smoothstep(1.3, 1.37, z) * _smoothstep(0.025, 0.01, np.abs(np.abs(x) - 0.055))
+    big = landmarks["face"]
+    to_nose = np.linalg.norm((positions - nose) * np.array([1.0, 1.15, 0.8]), axis=1) / big
+    eyes = np.min([np.linalg.norm((positions - eye) * np.array([1.0, 1.25, 0.72]), axis=1)
+                   for eye in landmarks["eyes"]], axis=0) / big
+    # The line of the mouth: from under the nose back along each side of the muzzle, in the lee of
+    # the upper lip (where the head's field turns under).
+    mouth_y = nose[1] - (0.05 - 0.05 * np.clip(nose[2] - z, 0.0, 0.3)) * big
+    lip = (parts == PARTS["head"]) * _smoothstep(0.014 * big, 0.004 * big, np.abs(y - mouth_y)) \
+        * _smoothstep(nose[2] - 0.2 * big, nose[2] - 0.15 * big, z) * _smoothstep(nose[2] - 0.01, nose[2] - 0.04, z) \
+        * _smoothstep(0.02, -0.2, normals[:, 1])
     facing = np.max([normals @ _unit((0.45 * s, 0.15, 1.0)) for s in (1.0, -1.0)], axis=0)
-    inner = on(ear_leaf) * _smoothstep(0.2, 0.7, facing) * 0.55
-    dark = np.maximum.reduce([_smoothstep(0.058, 0.036, to_nose), _smoothstep(0.024, 0.013, eyes), lip * 0.75,
-                              claws * 0.92, inner])
+    inner = on(ear_leaf) * _smoothstep(0.15, 0.6, facing) * 0.8
+    dark = np.maximum.reduce([_smoothstep(0.068, 0.046, to_nose), _smoothstep(0.034, 0.02, eyes), lip * 0.85,
+                              claws * 0.95, inner])
     # Hair: short on the face and the paws, longer on the body, longest in the locks, the ruff and
     # under the belly.
     face = (parts == PARTS["head"]) * _smoothstep(1.14, 1.3, z)
@@ -500,7 +571,9 @@ def paint(shape, whole, landmarks, positions, normals, parts, distances):
     belly = (parts == PARTS["body"]) * _smoothstep(0.8, 0.6, y)
     ruff = (parts == PARTS["head"]) * _smoothstep(1.05, 0.9, y) * _smoothstep(1.0, 0.8, z)
     fur = 0.5 + 0.5 * np.maximum.reduce([locks, belly * 0.8, ruff * 0.7])
-    fur = fur * (1.0 - 0.6 * face) * (1.0 - 0.55 * legs * _smoothstep(0.2, 0.05, y)) * (1.0 - dark)
+    fur = fur * (1.0 - 0.6 * face) * (1.0 - 0.55 * legs * _smoothstep(0.2, 0.05, y))
+    # (A cub is all fluff: its hair is long for its size everywhere but its face and paws.)
+    fur = np.clip(fur + landmarks["fluff"] * (1.0 - face) * _smoothstep(0.08, 0.25, y), 0.0, 1.0) * (1.0 - dark)
     sky = occlusion(whole, positions, normals)
     print("%s paint: dark %d verts, claws %d, pads %d, locks %d, sky seen %.2f..%.2f (mean %.2f)" % (
         TAG, int((dark > 0.5).sum()), int((claws > 0.5).sum()), int((pad > 0.5).sum()), int((locks > 0.5).sum()),
@@ -523,12 +596,67 @@ class Bear:
                     height=float(self.positions[:, 1].max()))
 
 
-def build(studio, skeleton, voxel=VOXEL, target=TARGET_TRIANGLES):
+def decimate_keeping(studio, positions, triangles, target, keep, strength=1.0):
+    """Quadric edge collapse in Blender (as horse_sdf.decimate), holding back where `keep` is high
+    (0..1 a vertex): there the mesh stays finer. Returns glTF-frame arrays."""
+    import bpy
+    obj = studio.mesh_object("bear_dense", positions, triangles)
+    # (The modifier decimates most where its group weighs most: the group is what may go. An edge
+    # between two vertices of no weight at all is never collapsed, so none is left at nothing.)
+    group = obj.vertex_groups.new(name="spare")
+    levels = np.round(np.clip(1.0 - 0.95 * keep, 0.05, 1.0) * 20.0).astype(int)
+    for level in np.unique(levels):
+        group.add([int(i) for i in np.nonzero(levels == level)[0]], float(level) / 20.0, "REPLACE")
+    modifier = obj.modifiers.new("decimate", "DECIMATE")
+    modifier.decimate_type = "COLLAPSE"
+    modifier.ratio = min(1.0, target / float(len(triangles)))
+    modifier.use_collapse_triangulate = True
+    modifier.vertex_group = group.name
+    modifier.vertex_group_factor = strength
+    depsgraph = studio.layer.depsgraph
+    depsgraph.update()
+    evaluated = obj.evaluated_get(depsgraph)
+    mesh = bpy.data.meshes.new_from_object(evaluated, depsgraph=depsgraph)
+    mesh.calc_loop_triangles()
+    count = len(mesh.vertices)
+    co = np.zeros(count * 3, dtype=np.float64)
+    mesh.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    loops = np.zeros(len(mesh.loop_triangles) * 3, dtype=np.int64)
+    mesh.loop_triangles.foreach_get("vertices", loops)
+    data = obj.data
+    bpy.data.objects.remove(obj, do_unlink=True)
+    bpy.data.meshes.remove(data)
+    bpy.data.meshes.remove(mesh)
+    # Blender (x, y forward, z up) -> glTF (x, y up, z toward the viewer).
+    return np.stack([co[:, 0], co[:, 2], -co[:, 1]], axis=1), loops.reshape(-1, 3)
+
+
+def finer(landmarks, positions):
+    """Where the mesh is kept finer (0..1 a vertex): round the eyes, the nose and the mouth, the
+    ears, and the toes and claws of each paw."""
+    big = landmarks["face"]
+    nose = landmarks["nose"]
+    to_nose = np.linalg.norm(positions - nose, axis=1) / big
+    eyes = np.min([np.linalg.norm(positions - eye, axis=1) for eye in landmarks["eyes"]], axis=0) / big
+    face = np.maximum(_smoothstep(0.2, 0.09, to_nose), _smoothstep(0.1, 0.045, eyes))
+    ears = _smoothstep(0.14 * big, 0.07 * big, np.min(
+        [np.linalg.norm(positions - ear, axis=1) for ear in landmarks["ears"]], axis=0))
+    toes = _smoothstep(0.09, 0.05, positions[:, 1]) * np.max(
+        [_smoothstep(0.16, 0.08, np.linalg.norm(positions - tip, axis=1)) for tip in landmarks["tips"]], axis=0)
+    return np.maximum.reduce([face, ears * 0.7, toes * 0.8])
+
+
+def build(studio, skeleton, kind="adult", voxel=None, target=None, keep=None):
     """Polygonise and decimate the left half, mirror it, then sort it into parts and paint it."""
     started = time.time()
+    Z = KINDS[kind]
+    voxel = float(voxel or Z["voxel"])
+    target = int(target or Z["triangles"])
     J = {bone[0]: np.array(bone[2:5], dtype=np.float64) for bone in skeleton["bones"]}
     M = skeleton["marks"]
-    shape, whole, landmarks = design(J, M)
+    shape, whole, landmarks = design(J, M, Z)
+    landmarks["tips"] = [np.asarray(M[name], dtype=np.float64) for name in ("tipFL", "tipFR", "tipBL", "tipBR")]
     designed = time.time()
     half = HalfSpace(shape, axis=0)
     xs, ys, zs = _grid(half, voxel)
@@ -539,7 +667,8 @@ def build(studio, skeleton, voxel=VOXEL, target=TARGET_TRIANGLES):
     dense = project(half, dense, iterations=2, limit=voxel)
     dense, dense_triangles = open_half(shape, dense, dense_triangles)
     netted = time.time()
-    positions, triangles = decimate(studio, dense, dense_triangles, target // 2)
+    positions, triangles = decimate_keeping(studio, dense, dense_triangles, target // 2, finer(landmarks, dense),
+                                            strength=float(keep or Z["keep"]))
     seam = rim(len(positions), triangles)
     positions[~seam] = project(shape, positions[~seam], iterations=3, limit=voxel)
     positions[seam] = on_seam(shape, positions[seam])
@@ -563,6 +692,8 @@ def build(studio, skeleton, voxel=VOXEL, target=TARGET_TRIANGLES):
                  design_s=designed - started, field_s=sampled - designed, nets_s=netted - sampled,
                  total_s=time.time() - started)
     bear = Bear(positions, normals, colors, triangles, parts, stats)
+    bear.landmarks = landmarks
+    bear.kind = kind
     low, high = positions.min(axis=0), positions.max(axis=0)
     print("%s grid %s dense %d tris -> mirrored %d tris %d verts (%d folds, %d mesh normals); "
           "x %.3f..%.3f y %.3f..%.3f z %.3f..%.3f; %s; parts %s; design %.1fs field %.1fs nets %.1fs total %.1fs" % (
@@ -574,7 +705,7 @@ def build(studio, skeleton, voxel=VOXEL, target=TARGET_TRIANGLES):
     return bear
 
 
-def write(path, bear):
+def write(path, bear, kind="adult", landmarks=None):
     from fall_grove import glb
     writer = glb.GlbWriter(generator=GENERATOR)
     writer.add_mesh("polar-bear", {
@@ -584,7 +715,10 @@ def write(path, bear):
         "_PART": (bear.parts.astype(np.uint8), False),
     }, indices=bear.triangles, position_bits=32)
     writer.set_extras(dict(
-        name="polar-bear", parts=PARTS, **{key: round(value, 4) for key, value in bear.measures().items()},
+        name="polar-bear" if kind == "adult" else "polar-bear-%s" % kind, kind=kind, parts=PARTS,
+        nose=[round(float(v), 4) for v in (landmarks or {}).get("nose", (0.0, 0.0, 0.0))],
+        ear=[round(float(v), 4) for v in (landmarks or {}).get("ears", [(0.0, 0.0, 0.0)])[0]],
+        **{key: round(value, 4) for key, value in bear.measures().items()},
         triangles=int(len(bear.triangles)), vertices=int(len(bear.positions)),
         color={"r": "pad (the black soles)", "g": "fur length", "b": "dark (nose, eyes, lips, claws, ears)",
                "a": "sky seen"},
@@ -702,20 +836,23 @@ def main():
             key = None
     if "skeleton" not in options or "out" not in options:
         raise SystemExit("usage: blender --background --factory-startup --python winter_polar_bear.py -- "
-                         "--skeleton <bones.json> --out <mesh.glb> [--preview <dir>]")
+                         "--skeleton <bones.json> --out <mesh.glb> [--kind adult|cub] [--preview <dir>]")
+    kind = options.get("kind", "adult")
+    if kind not in KINDS:
+        raise SystemExit("unknown kind %r (one of: %s)" % (kind, ", ".join(KINDS)))
     skeleton = json.loads(Path(options["skeleton"]).read_text(encoding="utf-8"))
     from fall_grove import studio as studio_module
     studio_module.SCENE_NAME = "Serenity Winter - Bear Atelier"
     studio_module.PREFIX = "SWBEAR_"
     studio = studio_module.Studio()
     try:
-        bear = build(studio, skeleton, voxel=float(options.get("voxel", VOXEL)),
-                     target=int(options.get("triangles", TARGET_TRIANGLES)))
+        bear = build(studio, skeleton, kind=kind, voxel=options.get("voxel"), target=options.get("triangles"),
+                     keep=options.get("keep"))
     finally:
         studio.dispose()
     out = Path(options["out"]).expanduser().resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
-    size = write(out, bear)
+    size = write(out, bear, kind, bear.landmarks)
     print("%s wrote %s (%d bytes)" % (TAG, out, size), flush=True)
     if options.get("preview") and options["preview"] is not True:
         previews(bear, Path(options["preview"]).expanduser().resolve())

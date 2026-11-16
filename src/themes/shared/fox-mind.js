@@ -460,6 +460,25 @@ export class FoxMind {
         return 1.8;
     }
 
+    /** An act of its own is under way (`was`: how far into it the last step left it): what else it does then. */
+    acting() {}
+
+    /** It has done what it stopped for and is on its way again. */
+    onward() {}
+
+    /** Whether it finishes what it is doing though the fires burn (most things it leaves at once). */
+    keeps() {
+        return false;
+    }
+
+    /** How much of a turn of the head an act leaves room for (0 none .. 1 all of it). */
+    headFree(clip) {
+        return HEAD_FREE[clip] ?? 0;
+    }
+
+    /** A paw has just been put down on the ground (FOX_LEGS order; world x, z). */
+    pawDown() {}
+
     /** Metres along its course to its next stopping place. */
     toStation() {
         const { length, stations } = this.course;
@@ -565,6 +584,7 @@ export class FoxMind {
                     && Math.floor(this.clipTime * DIG_SCRAPES) !== Math.floor(was * DIG_SCRAPES)) {
                     this.emit({ type: 'dig' });
                 }
+                this.acting(dt, time, was);
                 const length = lengths[this.clip] || 1;
                 if (this.clipTime >= length - 1e-6) {
                     this.actIndex += 1;
@@ -575,10 +595,11 @@ export class FoxMind {
                     } else {
                         this.leaveIdle();
                         this.nextStop = time + this.restFor(time);
+                        this.onward(time);
                     }
                 }
             }
-            if (power > 0.1) this.leaveIdle();
+            if (power > 0.1 && !this.keeps(time)) this.leaveIdle();
         } else if (this.mode === 'pounce') {
             const t = time - this.modeAt;
             this.clipTime = Math.min(t, lengths.Pounce - 1e-3);
@@ -612,7 +633,7 @@ export class FoxMind {
         this.lift = Math.max(this.leap(time), this.lift - paces.fall * Math.max(0, dt));
         this.animate(dt, time);
         this.resolve(time);
-        this.plantFeet(dt);
+        this.plantFeet(dt, time);
         this._stepping = false;
     }
 
@@ -622,7 +643,7 @@ export class FoxMind {
      * was put down until it lifts, and its swing eases back to where its gait sets it down next.
      * (Through a cross-fade to an act its paws go where the act has them.)
      */
-    plantFeet(dt) {
+    plantFeet(dt, time) {
         const p = this.pose;
         const { rig } = this;
         const drawn = p.plant;
@@ -660,6 +681,7 @@ export class FoxMind {
                     this._anchor[2 * i] = p.x + k * (mx * c + mz * s);
                     this._anchor[2 * i + 1] = p.z + k * (mz * c - mx * s);
                     this._planted[i] = 1;
+                    this.pawDown(i, this._anchor[2 * i], this._anchor[2 * i + 1], time);
                 }
                 const dx = this._anchor[2 * i] - p.x;
                 const dz = this._anchor[2 * i + 1] - p.z;
@@ -692,7 +714,8 @@ export class FoxMind {
         if (distance <= 0) return;
         const { printStep, printSide } = this.paces;
         this.s += distance;
-        this.phase += distance / this.rig.stride(this.speed);
+        // (A theme's fox may have paces of its own: its pose says which it is in.)
+        this.phase += distance / this.rig.stride(this.speed, this.pose.pace);
         if (!(printStep > 0)) return;
         this.printRun += distance;
         while (this.printRun >= printStep) {
@@ -775,7 +798,7 @@ export class FoxMind {
             yaw = clamp(this.turn * 0.42, -0.55, 0.55);
         }
         const blend = clamp01((time - this.blendAt) / this.blendTime);
-        const free = (HEAD_FREE[this.clip] ?? 0) * blend + (HEAD_FREE[this.from] ?? 0) * (1 - blend);
+        const free = this.headFree(this.clip) * blend + this.headFree(this.from) * (1 - blend);
         this.lookYaw += (yaw * free - this.lookYaw) * approach(6.5, dt);
         this.lookPitch += (pitch * free - this.lookPitch) * approach(6.5, dt);
 

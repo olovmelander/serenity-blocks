@@ -156,6 +156,8 @@ describe.each(TIERS)('winter shaders at %s', (quality) => {
     beforeAll(async () => {
         const gltf = await readFox();
         const bearGltf = await readModel('polar-bear.glb');
+        // (Its cub's model rides along, as loadBear() hands it over.)
+        bearGltf.cub = await readModel('polar-bear-cub.glb');
         world = new WinterWorld({
             scene: new THREE.Scene(), quality, capture: true, ghosts: planGhosts(), fox: false, bear: false,
         }).build();
@@ -275,6 +277,33 @@ describe.each(TIERS)('winter shaders at %s', (quality) => {
             });
             expect(bearFur.skeleton).toBe(bear.skeleton);
         }
+        // Its cub, where the tier draws a coat of shells at all: a body of its own in the very
+        // materials its mother wears (no pipeline more), a few shells fewer, well under half her triangles.
+        const cub = world.parts.bear.mesh.getObjectByName('WinterBearCub');
+        expect(Boolean(cub)).toBe(bearShells(tier) > 0);
+        if (cub) {
+            let skin = null;
+            cub.traverse((object) => {
+                if (!skin && object.isSkinnedMesh) skin = object;
+            });
+            const cubFur = furOf(world.parts.bear, 'WinterBearCubFur');
+            const cubImage = furOf(world.parts.bear, 'WinterBearCubMirror');
+            expect(skin.material).toBe(bear.material);
+            expect(cubFur.material).toBe(bearFur.material);
+            expect(cubImage.material).toBe(image.material);
+            expect(cubFur.geometry.instanceCount).toBe(Math.ceil(bearShells(tier) * 0.6));
+            expect(cubFur.geometry.instanceCount).toBeLessThanOrEqual(bearFur.geometry.instanceCount);
+            expect(cubFur.skeleton).toBe(skin.skeleton);
+            expect(cubImage.geometry).toBe(skin.geometry);
+            expect(world.parts.bear.cubShells).toBe(cubFur.geometry.instanceCount);
+            expect(world.parts.bear.cubTriangles).toBeGreaterThan(0);
+            expect(world.parts.bear.cubTriangles).toBeLessThan(world.parts.bear.triangles * 0.5);
+            // (What differs between the two bodies reaches those materials per object.)
+            expect(skin.userData.bear).not.toBe(bear.userData.bear);
+            expect(cubFur.userData.bear).toBe(skin.userData.bear);
+            expect(cubFur.userData.bear.layers).toBe(cubFur.geometry.instanceCount);
+            expect(bearFur.userData.bear.layers).toBe(bearFur.geometry.instanceCount);
+        } else expect(world.parts.bear.cubTriangles).toBe(0);
     });
 
     it.each([...WINTER_PARTS, FUR, MIRROR, BEAR_FUR])('builds the %s for WebGPU and for the WebGL2 fallback without a word', (name) => {

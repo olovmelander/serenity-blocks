@@ -114,10 +114,21 @@ export function createGround(u, {
             0.0,
             drift.b.mul(1.5 * LOOK.snowRipple).add(grain.b.mul(0.2)).add(swell.b.mul(LOOK.snowSwell)),
         ).mul(near);
-        const N = normalize(N0.sub(bump)).toVar();
+        // Far off the fells have relief of their own: shoulders and gullies a kilometre across,
+        // and the breaks in them. The moon rakes across it; without it a fell is a smooth dune.
+        const far = smoothstep(150.0, 500.0, dist).toVar();
+        const relief = u.noise(P.xz.mul(0.0031));
+        const stands = u.noise(P.xz.mul(0.021));
+        const farBump = vec3(
+            relief.g.mul(1.1).add(stands.g.mul(0.14)),
+            0.0,
+            relief.b.mul(1.1).add(stands.b.mul(0.14)),
+        ).mul(far.mul(LOOK.fellRelief));
+        const N = normalize(N0.sub(bump).sub(farBump)).toVar();
 
         // ── Light ──
-        const shadow = wMoonShadow(u, P.xz).toVar();
+        // (Under cloud the moon's light is spread: the trees' shadows soften toward nothing.)
+        const shadow = mix(wMoonShadow(u, P.xz), 1.0, u.weather.y.mul(0.5)).toVar();
         const ndl = dot(N, u.moonDir);
         const moonLit = u.moonCol.mul(max(ndl, 0.0).mul(1.25).add(0.04)).mul(shadow).mul(0.95);
         const skyFill = u.shade.mul(N.y.mul(0.25).add(0.6)).add(u.zenith.mul(max(N.y, 0.0)).mul(0.45)).add(u.band.mul(0.1));
@@ -138,10 +149,8 @@ export function createGround(u, {
         // ── Rock and wood on the fells ──
         const steep = float(1.0).sub(smoothstep(0.72, 0.9, N0.y));
         const rock = vec3(0.04, 0.05, 0.075).add(u.shade.mul(0.1)).add(u.moonCol.mul(max(ndl, 0.0)).mul(0.04));
-        const far = smoothstep(150.0, 500.0, dist);
-        const outcrop = steep.mul(smoothstep(0.42, 0.62, u.noise(P.xz.mul(0.0031)).r)).mul(far);
-        const trees = u.noise(P.xz.mul(0.021));
-        const stand = smoothstep(0.44, 0.62, trees.a.mul(wood.mul(0.9).add(0.25))).mul(wood).mul(far);
+        const outcrop = steep.mul(smoothstep(0.42, 0.62, relief.r)).mul(far);
+        const stand = smoothstep(0.44, 0.62, stands.a.mul(wood.mul(0.9).add(0.25))).mul(wood).mul(far);
         const woodCol = vec3(0.03, 0.05, 0.06).add(u.shade.mul(0.2)).add(snow.mul(0.3));
         snow.assign(mix(mix(snow, rock, outcrop.mul(0.75)), woodCol, stand.mul(0.72)));
 
