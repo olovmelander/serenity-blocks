@@ -11,13 +11,17 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    VERDANT_HILLS_BALLOONS, VERDANT_HILLS_BALLOON_EVERY, VERDANT_HILLS_BALLOON_LANES, VERDANT_HILLS_BALLOON_LIFE,
-    VerdantHillsBalloons, verdantHillsBalloonPlace,
+    VERDANT_HILLS_BALLOONS, VERDANT_HILLS_BALLOON_CUTS, VERDANT_HILLS_BALLOON_EVERY, VERDANT_HILLS_BALLOON_FIELDS,
+    VERDANT_HILLS_BALLOON_FILL, VERDANT_HILLS_BALLOON_KINDS, VERDANT_HILLS_BALLOON_LIFE, VERDANT_HILLS_BALLOON_ROWS,
+    VerdantHillsBalloons, createVerdantHillsBalloonPose, verdantHillsBalloonFlight, verdantHillsBalloonPlace,
+    verdantHillsBalloonPose, verdantHillsClockFlights,
 } from '../../src/themes/verdant-hills/verdant-hills-balloons.js';
 import {
     VERDANT_HILLS_BOW_RANGE, VERDANT_HILLS_BOW_WIDTH, bakeVerdantHillsBow, verdantHillsBowAngle,
 } from '../../src/themes/verdant-hills/verdant-hills-bow.js';
-import { VERDANT_HILLS_VIEWS, verdantHillsEye } from '../../src/themes/verdant-hills/verdant-hills-composition.js';
+import {
+    VERDANT_HILLS_VIEWS, createVerdantHillsVisibilityTest, verdantHillsEye,
+} from '../../src/themes/verdant-hills/verdant-hills-composition.js';
 import { VerdantHillsLight } from '../../src/themes/verdant-hills/verdant-hills-light.js';
 import { VERDANT_HILLS_MOODS } from '../../src/themes/verdant-hills/verdant-hills-moods.js';
 import { VERDANT_HILLS_TIERS } from '../../src/themes/verdant-hills/verdant-hills-quality.js';
@@ -231,99 +235,213 @@ describe('Verdant Hills balloons', () => {
     const ground = verdantHillsGroundHeight;
     const eye = verdantHillsEye(VERDANT_HILLS_VIEWS.landscape);
 
-    it('fills on its field, lifts, drifts away and is gone at the end of its life', () => {
-        const at = new THREE.Vector3();
-        for (let flight = 0; flight < 12; flight += 1) {
-            const [fx, fz] = VERDANT_HILLS_BALLOON_LANES[flight % 2].field;
-            expect(verdantHillsBalloonPlace(flight, -1, ground, at)).toBe(0);
-            expect(verdantHillsBalloonPlace(flight, 0, ground, at)).toBe(0);
-            // Still on the grass of its field while it fills.
-            const small = verdantHillsBalloonPlace(flight, 2, ground, at);
-            expect(small).toBeGreaterThan(0);
-            expect(small).toBeLessThan(0.5);
-            expect(Math.hypot(at.x - fx, at.z - fz)).toBeLessThan(60);
-            expect(at.y - ground(at.x, at.z)).toBeLessThan(8);
-            // A minute on it is whole, high over the valley and on its way.
-            expect(verdantHillsBalloonPlace(flight, 60, ground, at)).toBe(1);
-            const early = at.clone();
-            expect(early.y - ground(early.x, early.z)).toBeGreaterThan(60);
-            verdantHillsBalloonPlace(flight, 300, ground, at);
-            expect(Math.hypot(at.x - fx, at.z - fz)).toBeGreaterThan(Math.hypot(early.x - fx, early.z - fz) + 150);
-            // Never down among the hills.
-            for (let age = 30; age < VERDANT_HILLS_BALLOON_LIFE; age += 10) {
-                verdantHillsBalloonPlace(flight, age, ground, at);
-                expect(at.y - ground(at.x, at.z), `flight ${flight} age ${age}`).toBeGreaterThan(40);
+    // Every flight of the clock's first launches (pairs too) and of the first levels.
+    const FLIGHTS = [];
+    for (let k = -4; k < 40; k += 1) {
+        const { first, second } = verdantHillsClockFlights(k);
+        FLIGHTS.push(first);
+        if (second !== null) FLIGHTS.push(second);
+    }
+    const levels = new VerdantHillsBalloons({ light: null, groundHeight: ground });
+    for (let n = 0; n < 8; n += 1) levels.launch(n);
+    FLIGHTS.push(...levels.launches.map((launch) => launch.flight), 2000000 + 4 * 6, 2000000 + 4 * 7 + 1);
+    const flown = new Map(FLIGHTS.map((flight) => [flight, verdantHillsBalloonFlight(flight, ground)]));
+    const inSight = createVerdantHillsVisibilityTest();
+    const bearingOf = (at) => Math.atan2(at.x - eye[0], -(at.z - eye[2])) / DEG;
+    // The way from the lens to the middle of the envelope.
+    const sight = (at) => new THREE.Vector3(at.x - eye[0], at.y + 10 - eye[1], at.z - eye[2]).normalize();
+
+    it('stands up on its field as it fills, and ends by landing in the valley or by leaving the frame', () => {
+        const pose = createVerdantHillsBalloonPose();
+        let landed = 0;
+        let left = 0;
+        for (const [flight, { plan, touch, gone }] of flown) {
+            const label = `flight ${flight}`;
+            expect(verdantHillsBalloonPose(flight, -1, ground, pose).size, label).toBe(0);
+            expect(verdantHillsBalloonPose(flight, 0, ground, pose).size, label).toBe(0);
+            // Laid out on the grass of its field, half full and lying over.
+            verdantHillsBalloonPose(flight, 2, ground, pose);
+            expect(pose.size, label).toBeGreaterThan(0);
+            expect(Math.hypot(pose.place.x - plan.x, pose.place.z - plan.z), label).toBeLessThan(1);
+            expect(pose.place.y - ground(plan.x, plan.z), label).toBeLessThan(4);
+            expect(pose.lie, label).toBeGreaterThan(1.2);
+            expect(pose.radial, label).toBeLessThan(0.6);
+            // Full and upright as it lifts off.
+            verdantHillsBalloonPose(flight, 14, ground, pose);
+            expect(pose.lie, label).toBeLessThan(0.01);
+            expect(pose.radial, label).toBeGreaterThan(0.99);
+            expect(gone, label).toBeLessThanOrEqual(VERDANT_HILLS_BALLOON_LIFE);
+            if (Number.isFinite(touch)) {
+                landed += 1;
+                // Down on the land, then lying over, flat, and packed away.
+                verdantHillsBalloonPose(flight, touch + 1, ground, pose);
+                expect(pose.place.y - ground(pose.place.x, pose.place.z), label).toBeLessThan(3.5);
+                verdantHillsBalloonPose(flight, gone - 3.5, ground, pose);
+                expect(pose.lie, label).toBeGreaterThan(1.2);
+                expect(pose.radial, label).toBeLessThan(0.3);
+            } else {
+                left += 1;
+                // Gone only where no framing can see it.
+                verdantHillsBalloonPose(flight, gone - 1, ground, pose);
+                expect(inSight(pose.place.x, pose.place.y + 10, pose.place.z, 16), label).toBe(false);
             }
-            expect(verdantHillsBalloonPlace(flight, VERDANT_HILLS_BALLOON_LIFE, ground, at)).toBe(0);
-            expect(verdantHillsBalloonPlace(flight, VERDANT_HILLS_BALLOON_LIFE - 3, ground, at)).toBeLessThan(0.1);
+            expect(verdantHillsBalloonPose(flight, gone, ground, pose).size, label).toBe(0);
+        }
+        expect(landed).toBeGreaterThan(FLIGHTS.length / 4);
+        expect(left).toBeGreaterThan(FLIGHTS.length / 4);
+    });
+
+    it('never comes down among the hills before its landing, and never behind the board', () => {
+        const at = new THREE.Vector3();
+        for (const [flight, { plan, gone }] of flown) {
+            // A skim flies low over a field on purpose; every other leg keeps its height.
+            const lowest = plan.kind === 'skim' ? 0 : 15;
+            // Until the plan's last leg is flown; then it comes down to land.
+            const planned = VERDANT_HILLS_BALLOON_FILL + plan.legs.reduce((sum, [seconds]) => sum + seconds, 0);
+            for (let age = 1; age < gone; age += 3) {
+                const label = `flight ${flight} age ${age}`;
+                verdantHillsBalloonPlace(flight, age, ground, at);
+                expect(at.y - ground(at.x, at.z), label).toBeGreaterThan(3);
+                if (age > 45 && age < planned) expect(at.y - 3.2 - ground(at.x, at.z), label).toBeGreaterThan(lowest);
+                // Clear of the card's edge (about eleven degrees) on its own side, whatever it does.
+                expect(bearingOf(at) * plan.side, label).toBeGreaterThan(12);
+            }
         }
     });
 
-    it('never drifts behind the board: each lane keeps to its own side of the frame', () => {
+    it('flies a different flight every time, and is never still for long', () => {
         const at = new THREE.Vector3();
-        for (let flight = 0; flight < 14; flight += 1) {
-            const side = flight % 2 === 0 ? -1 : 1;
-            for (let age = 0; age < VERDANT_HILLS_BALLOON_LIFE; age += 5) {
+        const plans = [...flown.values()].map(({ plan }) => plan);
+        expect(new Set(plans.map((plan) => plan.kind))).toEqual(new Set(VERDANT_HILLS_BALLOON_KINDS));
+        expect(new Set(plans.map((plan) => `${plan.side} ${plan.far}`)).size).toBe(VERDANT_HILLS_BALLOON_FIELDS.length);
+        expect(new Set(plans.map((plan) => plan.cut)).size).toBe(VERDANT_HILLS_BALLOON_CUTS);
+        expect(new Set(plans.map((plan) => plan.colours.join())).size).toBeGreaterThan(12);
+        const scales = plans.map((plan) => plan.scale);
+        expect(Math.max(...scales) / Math.min(...scales)).toBeGreaterThan(1.5);
+        for (const plan of plans) expect(plan.colours[0]).not.toBe(plan.colours[1]);
+        // The level's balloons go up from the near fields, in sight at once.
+        expect(plans.filter((plan) => plan.level).every((plan) => !plan.far)).toBe(true);
+        for (const [flight, { touch, gone }] of flown) {
+            // In the air it climbs and sinks through a good part of the sky, and every minute the eye
+            // sees it move across the view.
+            const end = Math.min(gone, touch - 90);
+            for (let age = 20; age + 60 < end; age += 10) {
                 verdantHillsBalloonPlace(flight, age, ground, at);
-                const bearing = Math.atan2(at.x - eye[0], -(at.z - eye[2])) / DEG;
-                // Clear of the card's edge (about ten degrees) and inside a 16:9 frame (thirty-seven).
-                expect(bearing * side, `flight ${flight} age ${age}`).toBeGreaterThan(11);
-                expect(bearing * side, `flight ${flight} age ${age}`).toBeLessThan(36);
+                const from = sight(at);
+                verdantHillsBalloonPlace(flight, age + 60, ground, at);
+                const turned = Math.acos(Math.min(1, from.dot(sight(at)))) / DEG;
+                expect(turned, `flight ${flight} age ${age}`).toBeGreaterThan(1);
             }
+            let low = Infinity;
+            let high = -Infinity;
+            for (let age = VERDANT_HILLS_BALLOON_FILL; age < Math.min(gone, touch); age += 5) {
+                verdantHillsBalloonPlace(flight, age, ground, at);
+                const over = at.y - ground(at.x, at.z);
+                low = Math.min(low, over);
+                high = Math.max(high, over);
+            }
+            expect(high - low, `flight ${flight}`).toBeGreaterThan(50);
         }
     });
 
-    it('keeps the sky supplied by the clock, and lets every new level add one of its own', () => {
+    it('leans into the air, turns as it goes, and roars the burner when it climbs', () => {
+        const pose = createVerdantHillsBalloonPose();
+        let climbing = 0;
+        let climbs = 0;
+        let sinking = 0;
+        let sinks = 0;
+        for (const [flight, { track, touch, gone }] of flown) {
+            let leant = 0;
+            const turns = new Set();
+            const end = Math.min(gone, touch) - 1;
+            for (let age = 12; age < end; age += 1) {
+                verdantHillsBalloonPose(flight, age, ground, pose);
+                expect(pose.lean).toBeLessThanOrEqual(0.15);
+                leant = Math.max(leant, pose.lean);
+                if (age % 20 === 0) turns.add(pose.turn.y.toFixed(2));
+                const rise = track[(age + 1) * 6 + 1] - track[age * 6 + 1];
+                if (rise > 1.2) {
+                    climbing += track[age * 6 + 5];
+                    climbs += 1;
+                } else if (rise < -1) {
+                    sinking += track[age * 6 + 5];
+                    sinks += 1;
+                }
+            }
+            expect(leant, `flight ${flight}`).toBeGreaterThan(0.02);
+            expect(turns.size, `flight ${flight}`).toBeGreaterThan(3);
+        }
+        expect(climbing / climbs).toBeGreaterThan(0.6);
+        expect(sinking / sinks).toBeLessThan(0.3);
+    });
+
+    it('keeps the sky supplied by the clock, now and then two at once, and lets every new level add one', () => {
         const balloons = new VerdantHillsBalloons({ light: createLight(), groundHeight: ground }).build();
         owned.push(balloons);
-        // With no game at all there is always a balloon or two in the air.
-        for (let time = 0; time < 1500; time += 37) {
+        // With no game at all there is always a balloon in the air, some minutes several.
+        let most = 0;
+        for (let time = 0; time < 3000; time += 7) {
             balloons.update(time);
-            expect(balloons.aloft, `at ${time}`).toBeGreaterThanOrEqual(2);
-            expect(balloons.aloft).toBeLessThanOrEqual(3);
+            expect(balloons.aloft, `at ${time}`).toBeGreaterThanOrEqual(1);
+            most = Math.max(most, balloons.aloft);
         }
-        expect(VERDANT_HILLS_BALLOON_LIFE).toBeGreaterThan(VERDANT_HILLS_BALLOON_EVERY * 2);
+        expect(most).toBeGreaterThanOrEqual(4);
+        // A launch's slots are taken over by the launch six after it only once its flights are over.
+        for (let k = -10; k < 100; k += 1) {
+            const launch = verdantHillsClockFlights(k);
+            const next = verdantHillsClockFlights(k + 6);
+            expect(next.at - launch.at - launch.gap).toBeGreaterThan(VERDANT_HILLS_BALLOON_LIFE);
+            expect(next.at - launch.at).toBeGreaterThan(VERDANT_HILLS_BALLOON_EVERY * 4);
+        }
+        const pairs = Array.from({ length: 40 }, (_, k) => verdantHillsClockFlights(k).second !== null);
+        expect(pairs.some(Boolean)).toBe(true);
+        expect(pairs.every(Boolean)).toBe(false);
         balloons.update(100);
         const before = balloons.aloft;
         balloons.launch(100);
         balloons.launch(101);
-        balloons.update(110);
+        balloons.update(103);
         expect(balloons.aloft).toBe(before + 2);
         // More levels than there are slots: the oldest of them makes room.
         for (let n = 0; n < 9; n += 1) balloons.launch(112 + n);
         balloons.update(140);
         expect(balloons.aloft).toBeLessThanOrEqual(VERDANT_HILLS_BALLOONS);
         expect(balloons.launches.length).toBeLessThanOrEqual(VERDANT_HILLS_BALLOONS);
-        // A level's balloons take both lanes in turn.
-        const lanes = new Set(balloons.launches.map((launch) => launch.flight % 2));
-        expect(lanes.size).toBe(2);
+        // A level's balloons take both sides in turn.
+        const sides = new Set(balloons.launches.map((launch) => launch.flight % 2));
+        expect(sides.size).toBe(2);
         balloons.reset();
         balloons.update(140);
         expect(balloons.launches).toHaveLength(0);
-        expect(balloons.aloft).toBeLessThanOrEqual(3);
     });
 
-    it('fires the burners with play, and by itself only as dusk comes', () => {
+    it('fires every burner with play, and at dusk burns more by itself', () => {
         const balloons = new VerdantHillsBalloons({ light: createLight(), groundHeight: ground }).build();
         owned.push(balloons);
-        const burners = () => [0, 1, 2, 3, 4, 5, 6].map((slot) => balloons.rows[slot * 3 + 1].w)
-            .filter((_, slot) => balloons.rows[slot * 3].w > 0);
-        // By day, long after lift-off, the flame is small; play fires every burner at once.
+        const slots = Array.from({ length: VERDANT_HILLS_BALLOONS }, (_, slot) => slot * VERDANT_HILLS_BALLOON_ROWS);
+        const burners = () => slots.filter((row) => balloons.rows[row].w > 0).map((row) => balloons.rows[row + 1].w);
+        const mean = (list) => list.reduce((sum, level) => sum + level, 0) / Math.max(1, list.length);
         let day = 0;
         let dusk = 0;
-        for (let time = 200; time < 260; time += 0.5) {
+        for (let time = 200; time < 500; time += 0.5) {
             balloons.update(time, { burn: 0, night: 0 });
-            day = Math.max(day, ...burners());
+            day += mean(burners());
             balloons.update(time, { burn: 0, night: 1 });
-            dusk = Math.max(dusk, ...burners());
+            dusk += mean(burners());
         }
-        expect(day).toBeLessThan(0.3);
-        expect(dusk).toBeGreaterThan(0.8);
+        expect(dusk).toBeGreaterThan(day * 1.2);
         balloons.update(230, { burn: 1, night: 0 });
         expect(burners().length).toBeGreaterThan(0);
         expect(burners().every((level) => level === 1)).toBe(true);
         balloons.update(230, { burn: NaN, night: NaN });
         expect(burners().every(Number.isFinite)).toBe(true);
+        // Every row a balloon in the air writes is a finite number, its turn a unit quaternion.
+        for (const row of slots) {
+            for (let k = 0; k < VERDANT_HILLS_BALLOON_ROWS; k += 1) {
+                expect(balloons.rows[row + k].toArray().every(Number.isFinite)).toBe(true);
+            }
+            expect(balloons.rows[row + 3].length()).toBeCloseTo(1, 5);
+        }
     });
 });
 
@@ -611,13 +729,15 @@ describe('Verdant Hills: the living day in the world', () => {
     it('launches a balloon for each new level, once, and starts again with a new run of the reactions', () => {
         const { world, reactions, run } = createWorld();
         run(0.1);
-        const clock = world.balloons.aloft;
-        expect(clock).toBeGreaterThanOrEqual(2);
+        expect(world.balloons.aloft).toBeGreaterThanOrEqual(1);
+        // The levels' balloons fly in the last slots, after the clock's.
+        const levelSlot = (VERDANT_HILLS_BALLOONS - world.balloons.launches.length - 4) * VERDANT_HILLS_BALLOON_ROWS;
+        expect(world.balloons.rows[levelSlot].w).toBe(0);
         reactions.onLevelUp();
         run(10);
         expect(world.balloons.launches).toHaveLength(1);
-        expect(world.balloons.aloft).toBe(clock + 1);
-        expect(world.getDiagnostics().balloons).toBe(clock + 1);
+        expect(world.balloons.rows[levelSlot].w).toBeGreaterThan(0);
+        expect(world.getDiagnostics().balloons).toBe(world.balloons.aloft);
         run(5);
         expect(world.balloons.launches).toHaveLength(1);
         reactions.onLevelUp();

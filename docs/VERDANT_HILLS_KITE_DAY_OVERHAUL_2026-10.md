@@ -379,13 +379,35 @@ dew off in the mist).
 | New level | **A balloon lifts off** from the valley and joins the others; the day turns one weather on | a front, a ribbon |
 | Game over | The wind dies: the kites come down, the grass stands, the bow fades | |
 
-**What lasts.** Hot-air balloons (`verdant-hills-balloons.js`) go up from two fields, one left
-of the board and one behind the mill's hill, and drift away down the valley for seven minutes in
-the kites' colours, in four cuts of cloth. The clock sends one up every two and a half minutes
-whatever is played (Infinity, a match and the menus never level up), and two are already on their
-way when a session starts; every new level adds one of its own, up to seven in the air. Their
-lanes are laid so that neither crosses behind the board. Line clears fire every burner; in the
-afterglow each burns by itself every eight seconds or so.
+**What lasts.** Hot-air balloons (`verdant-hills-balloons.js`) go up from four fields, near and
+far either side of the board, and fly as balloons do (reworked the same day, after the owner asked
+whether they moved at all: the first version crept at under one pixel a second once it had
+climbed). The valley's air turns with height, away up the valley low down, out across it higher,
+back towards the hill high up, so a pilot steers by climbing and sinking and every change of
+height bends the track. Five plans: one hunts up and down for its wind, one boxes out low and comes
+back high over the hill, one skims a field and climbs away, one climbs in steps until it leaves the
+top of the frame, one hops low and lands in sight. An envelope is laid out on the grass, fills and
+stands up, turns slowly as it flies, leans into each change of the air, swells as the burner roars
+(and the burner roars when the pilot climbs), and at the end comes down, lies over and is packed
+away, or flies out of the frame. Each has its own size (one in eight a giant), shape, two kite
+colours and one of six cuts of cloth (gores, hoops, a spiral, chevrons, harlequin, a gore of every
+kite colour). The clock sends one up about every two minutes whatever is played (Infinity, a match
+and the menus never level up), now and then two together from one field, and a session opens with
+balloons in the air; every new level adds one of its own from the near field. Usually one to three
+are in a 16:9 frame, now and then four or five, and on screen they move two to five pixels a second.
+The air only ever carries a balloon outward from the line of sight, so none crosses behind the
+board. Line clears fire every burner; in the afterglow each burns by itself every eight seconds or
+so.
+
+A flight is flown once, a second at a time, into a table when it is first needed (about a
+millisecond), then read and posed every frame: the same flight on both backends, in the
+playground's seek and in the tests. Probing the tracks through the game's lens in node before any
+capture is what showed the first version's creep, and that no flight landed inside a 16:9 frame
+(hence the hop).
+
+![balloons over fifty-second steps: every one has moved](verdant-hills-living-day/balloons-motion.webp)
+
+![one flight close up through a long lens, from the grass to the grass](verdant-hills-living-day/balloons-life.webp)
 
 **How each part is drawn.**
 
@@ -420,8 +442,8 @@ mill's hill right of it), where the lens looks down at five degrees or more.
 ![in the real game](verdant-hills-living-day/in-game.webp)
 
 **Cost, by construction** (no GPU timings: the machine was shared with other sessions, and the
-captures ran capped at 30 frames a second). Added: four draws (a band, thirteen strips, seven
-balloons of some 780 triangles each, 84 to 260 fireflies), three exponentials in `haze()`, and
+captures ran capped at 30 frames a second). Added: four draws (a band, thirteen strips, sixteen
+balloon slots of some 780 triangles each, 84 to 260 fireflies), three exponentials in `haze()`, and
 the stars behind a branch. Removed: the post march's beam term (one sum less a step), and the
 ground's two readings of the cloud shadow are one. Nothing was taken from any tier: Minimal draws the
 bow, the shafts, the balloons, the stars, the fireflies, the mist and the bloom as High does.
@@ -437,13 +459,14 @@ with a perfect clear; clean consoles throughout. In the real game (Single Player
 fired on the theme's own director): the bloom in the piece's colour, the shaft, the rainbow, the
 balloons, the afterglow and the mist with the board and the score card over them; the console held
 only the application's own lines. Tests: `tests/unit/verdant-hills-day.test.js` (the bow's
-colours and angles, where it stands, the balloons' flights and lanes, the shafts, what the
+colours and angles, where it stands, the balloons' flights, plans, poses and clock, the shafts, what the
 director asks for, the parts in the world, and every new material built for WGSL and GLSL), and
 the reactions, weather, flock and director tests re-pinned for seven weathers and the nearer pool.
 
 Playground: `level=1..7` rests the day on a weather; `event=triple|quad|perfect|level` with
 `eventAge=` and `piece=` show the new answers; `paint=uZenith:r,g,b;…` holds colours of the light
-rig over every weather, for trying a palette.
+rig over every weather, for trying a palette; `balloonLens=<slot>,<fov>` follows one balloon from
+the game's eye through a long lens (slots 0-11 the clock's, 12-15 the levels').
 
 **Open calls** (mine to raise, not decisions the owner has made): the rainbow's place is a
 picture's, not the sun's; the storm light is the greyest of the seven skies, though its heaps are
@@ -503,7 +526,7 @@ cloud generator.**
 | `verdant-hills-life.js` | Butterflies and swallows. |
 | `verdant-hills-bow.js`, `verdant-hills-rainbow.js` | The rainbow's colours (a spectral table, three-free) and the band of the sky it is drawn on. |
 | `verdant-hills-sunbeams.js` | The sun's shafts: the game's own gap in the clouds and the weather's. |
-| `verdant-hills-balloons.js` | The hot-air balloons: the clock's and the levels'. |
+| `verdant-hills-balloons.js` | The hot-air balloons: the clock's and the levels', each flight flown once into a table through the valley's turning air, then posed (fill, spin, lean, lie) every frame. |
 | `verdant-hills-fireflies.js` | The afterglow's fireflies. |
 | `verdant-hills-kites.js` | The seven kites, their tails and lines. |
 | `verdant-hills-ribbons.js` | The ribbons of wind. |

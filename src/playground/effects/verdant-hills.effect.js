@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { sceneSamples } from '../../themes/shared/scene-antialias.js';
 import { disposeVerdantHillsAssets, loadVerdantHillsAssets } from '../../themes/verdant-hills/verdant-hills-assets.js';
+import { VERDANT_HILLS_BALLOON_ROWS } from '../../themes/verdant-hills/verdant-hills-balloons.js';
 import { VerdantHillsWorld } from '../../themes/verdant-hills/verdant-hills-world.js';
 import { VerdantHillsReactions } from '../../themes/verdant-hills/verdant-hills-reactions.js';
 import { VerdantHillsPost } from '../../themes/verdant-hills/verdant-hills-post.js';
@@ -168,6 +169,18 @@ export function create({
     const listOf = (key) => (params.has(key) ? params.get(key).split(',').map(Number) : []);
     const sheepCam = listOf('sheepCam');
     const sheepLens = listOf('sheepLens');
+    // ?balloonLens=<slot>,<fov> looks at a balloon (its slot: 0-11 the clock's, 12-15 the levels')
+    // from the game's own eye through a long lens.
+    const balloonLens = listOf('balloonLens');
+    const followBalloon = () => {
+        const balloons = world?.balloons;
+        if (!balloons || balloonLens.length < 1 || !Number.isFinite(balloonLens[0])) return;
+        const row = balloons.rows[balloonLens[0] * VERDANT_HILLS_BALLOON_ROWS];
+        if (!row || !(row.w > 0)) return;
+        camera.lookAt(row.x, row.y + 9 * row.w, row.z);
+        camera.fov = balloonLens[1] > 0.5 ? balloonLens[1] : 4;
+        camera.updateProjectionMatrix();
+    };
     const middle = (g) => {
         const { members } = g;
         const x = members.reduce((sum, s) => sum + s.x, 0) / members.length;
@@ -211,6 +224,7 @@ export function create({
         repaint();
         post?.update(frame);
         followFlock();
+        followBalloon();
     };
     // ?event=lock|drop|clear|double|triple|quad|combo|streak|spin|perfect|level|over|festival,
     // placed with ?col=0..9 and ?row=0..19 (0 is the top visible row); ?piece=I|O|T|S|Z|J|L.
