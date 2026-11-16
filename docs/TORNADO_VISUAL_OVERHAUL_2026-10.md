@@ -273,7 +273,7 @@ funnel together.
 **Readability and cost.** Nothing new is drawn over the card except what passes behind its calm
 zone; the straw is thrown from its feet outward. A burst limiter (`burstPower`, `PUFF_POWER`)
 keeps a quick hand's drops from piling dust into a bank at the card's foot (found in a real run).
-Streaks have a pixel ceiling as well as a floor (#1711). Every flash-like addition (crawlers, the
+Streaks have a pixel ceiling as well as a floor (#1712). Every flash-like addition (crawlers, the
 ring through the deck, the surge) is scaled or thinned under Reduce flashing, and the travel,
 lapse and gusts are held back under reduced motion. Tiers: every tier keeps every part and event;
 chaff, straw and rain counts rise with the tier (`tornado-quality.js`); the mammatus needs the
