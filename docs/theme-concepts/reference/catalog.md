@@ -234,7 +234,7 @@ Registry groups: every theme here is `group: 'biomes'` except `tornado` (`'atmos
 
 - **Icon:** monochrome. A charcoal low-poly faceted mountain mass under a dense star field with the Milky Way band, a dark metallic ring frame. Two bright four-point star glints.
 - **Scene** (`docs/theme-screenshots/wolfhour.png`): a giant photographic moon (`2k_moon.jpg`) half set behind black faceted fBm mountains; dense white stars; faint grey nebula. **Strict black-and-silver**: `WolfhourGrade` is the "black-and-silver night grade" (`wolfhour-grade.js:1-4`). The sky base is nearly black, `vec3(0.0024,0.0027,0.0034)` (`wolfhour-sky.js:113`).
-- **Pieces** (`:12-19`): all silver-greys. I `#ddeeff`, O `#f5f8fa`, T `#b0c4d8`, S `#a0b8cc`, Z `#98a8bc`, J `#708090`, L `#c8d8e8`, GARBAGE `#1a1a1a`. Glow radius 18.
+- **Pieces** (since 2026-11-16, `docs/WOLFHOUR_MASTERPIECE_2026-11.md`): the valley's colours. I `#F1F5FC` moon silver, O `#2DA084` northern lights, T `#DF8D38` ember, S `#8A70EA` dusk violet, Z `#84C8F9` ice, J `#F3A9C1` alpenglow, L `#46608F` granite, GARBAGE `#222a38`. (Before: seven silver-greys from `#ddeeff` to `#708090`.)
 - **Motion:** star twinkle, spirits, ambient particles, ground fog, ambient meteors with trails.
 - **Gameplay FX** (`wolfhour-theme.js:3038-3160`):
   - Lock: a star burst, a mountain pulse and shockwave, and a lunar reaction.

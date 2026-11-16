@@ -92,7 +92,7 @@ describe('Wolfhour wolves', () => {
         all(a).forEach((wolf, i) => {
             const other = all(b)[i];
             expect(wolf.mesh.position.toArray()).toEqual(other.mesh.position.toArray());
-            expect(wolf.rows.map((r) => r.toArray())).toEqual(other.rows.map((r) => r.toArray()));
+            expect(Array.from(wolf.capsules)).toEqual(Array.from(other.capsules));
         });
     });
 
@@ -177,7 +177,7 @@ describe('Wolfhour wolves', () => {
             pack.update(t);
             if (t > 5.6 && t < 9.5) {
                 frames += 1;
-                if (lead.uniforms.uEye2.value.z > 0.05) facing += 1;
+                if (lead.eye2[2] > 0.05) facing += 1;
             }
             if (previous !== null) expect(Math.abs(lead.muzzle[1] - previous)).toBeLessThan(1);
             previous = lead.muzzle[1];
@@ -342,17 +342,17 @@ describe('Wolfhour wolves', () => {
         const pack = own(createWolfhourPack());
         pack.update(6);
         const lead = pack.wolves.find((w) => w.spec.name === 'lead');
-        expect(lead.uniforms.uEye2.value.z).toBe(0);
+        expect(lead.eye2[2]).toBe(0);
         pack.glance(6);
         pack.update(7);
         // Both eyes catch the moon when it faces you.
-        expect(lead.uniforms.uEye2.value.z).toBeGreaterThan(0.1);
+        expect(lead.eye2[2]).toBeGreaterThan(0.1);
         const young = pack.wolves.find((w) => w.spec.name === 'young');
         pack.update(6.2);
-        const before = young.rows.map((r) => r.toArray());
+        const before = Array.from(young.capsules);
         pack.excite(6.2);
         pack.update(7.4);
-        expect(young.rows.map((r) => r.toArray())).not.toEqual(before);
+        expect(Array.from(young.capsules)).not.toEqual(before);
     });
 
     it('runs the young wolf on real time until the first howl', () => {
@@ -374,7 +374,7 @@ describe('Wolfhour wolves', () => {
             pack.update(t, 0);
             for (const entry of [...pack.wolves, pack.answerer.wolf]) {
                 expect(['pace', 'pounce', 'play', 'shake', 'stretch', 'rise']).not.toContain(entry.act?.action);
-                expect(entry.uniforms.uShake.value.z).toBe(0);
+                expect(entry.shake[2]).toBe(0);
             }
             expect(young.mesh.position.x).toBeCloseTo(PACK.find((w) => w.name === 'young').x, 6);
         }
@@ -398,7 +398,7 @@ describe('Wolfhour wolves', () => {
     it('releases every material, the shared quad and the vapour', () => {
         const pack = createWolfhourPack();
         const resources = new Set();
-        for (const group of [pack.group, pack.answerer.group, pack.scout.group]) {
+        for (const group of [pack.group, pack.answerer.group, pack.scout.group, pack.far.group, pack.summit.group]) {
             group.traverse((object) => {
                 if (object.geometry) resources.add(object.geometry);
                 if (object.material) resources.add(object.material);
@@ -593,8 +593,11 @@ describe('Wolfhour wolves come alive', () => {
         if (!wolf.mesh.visible) return null;
         const { x: sx, y: sy } = wolf.mesh.scale;
         const { x: px, y: py } = wolf.mesh.position;
-        return wolf.rows.filter((_, i) => i % 2 === 0)
-            .map((r) => [r.x * sx + px, r.y * sy + py, r.z * sx + px, r.w * sy + py]);
+        const c = wolf.capsules;
+        return Array.from({ length: CAPSULE_COUNT }, (_, i) => {
+            const o = i * CAPSULE_STRIDE;
+            return [c[o] * sx + px, c[o + 1] * sy + py, c[o + 2] * sx + px, c[o + 3] * sy + py];
+        });
     };
     /** The largest move of any capsule end between two frames (wolves out of sight skipped). */
     const stepBetween = (before, now) => {
@@ -652,7 +655,7 @@ describe('Wolfhour wolves come alive', () => {
         let facing = null;
         for (let u = 0; u < 2; u += 1 / 60) {
             pack.update(k * slot + u);
-            if (young.uniforms.uEye.value.z > 0.05 && young.uniforms.uEye2.value.z > 0.05) both += 1;
+            if (young.eye[2] > 0.05 && young.eye2[2] > 0.05) both += 1;
             const now = Math.sign(young.mesh.scale.x);
             if (facing !== null && now !== facing) flips += 1;
             facing = now;
@@ -700,7 +703,10 @@ describe('Wolfhour wolves come alive', () => {
             const rig = poseWolf({ sit: w, down: 0 });
             expect(Array.from(rig.capsules).every(Number.isFinite)).toBe(true);
             const c = rig.capsules;
-            const bone = (i) => Math.hypot(c[i * 8 + 2] - c[i * 8], c[i * 8 + 3] - c[i * 8 + 1]);
+            const bone = (i) => {
+                const o = i * CAPSULE_STRIDE;
+                return Math.hypot(c[o + 2] - c[o], c[o + 3] - c[o + 1]);
+            };
             expect(bone(11)).toBeCloseTo(7.5, 3);
         }
     });

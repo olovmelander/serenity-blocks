@@ -550,15 +550,16 @@ describe('Wolfhour ambient integration', () => {
         expect([...counts.values()]).toEqual(resources.map(() => 1));
         expect(scene.children).toEqual([]);
         for (const property of ['moon', 'moonHalo', 'moonNodeData', 'moonHaloNodeData', 'celestialSky', 'alpineLandscape',
-            'valleyMist', 'wolfPack', 'valleyHut', 'wolfhourProps']) {
+            'valleyMist', 'wolfPack', 'valleyHut', 'wolfhourProps', 'aurora', 'howlVoices', 'snow']) {
             expect(theme[property]).toBeNull();
         }
         theme.scene = new THREE.Scene();
         theme.renderer = { isWebGPURenderer: true, getPixelRatio: () => 1 };
         theme.createAmbientScene();
         expect(theme.moon).not.toBe(oldMoon);
-        // The sky, the landscape (carrying the pack and the hut) and the valley mist.
-        expect(theme.scene.children).toHaveLength(3);
+        // The sky, the landscape (carrying the pack and the hut), the valley mist, and the night's
+        // answers to play: the northern lights, the howl's arcs and the snow.
+        expect(theme.scene.children).toHaveLength(6);
     });
 });
 

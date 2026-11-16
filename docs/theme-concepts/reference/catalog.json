@@ -64,7 +64,7 @@
   "name": "Wolfhour — 'A Three.js Mystical Mountain Theme'",
   "setting": "Giant photographic moon (2k_moon.jpg) half set behind black faceted fBm mountains, dense star field, Milky Way band, faint grey nebula. Icon: monochrome charcoal low-poly mountain under stars in a metallic ring frame. Screenshot: docs/theme-screenshots/wolfhour.png",
   "timeOfDay": "Deep night",
-  "dominantPalette": "Strict black-and-silver ('black-and-silver night grade', wolfhour-grade.js:1-4); near-black sky vec3(0.0024,0.0027,0.0034) (wolfhour-sky.js:113). Pieces all silver-grey (:12-19): I #ddeeff, O #f5f8fa, T #b0c4d8, S #a0b8cc, Z #98a8bc, J #708090, L #c8d8e8, GARBAGE #1a1a1a, glowRadius 18",
+  "dominantPalette": "Strict black-and-silver ('black-and-silver night grade', wolfhour-grade.js:1-4); near-black sky vec3(0.0024,0.0027,0.0034) (wolfhour-sky.js:113). Pieces since 2026-11-16 the valley's colours (docs/WOLFHOUR_MASTERPIECE_2026-11.md): I #F1F5FC, O #2DA084, T #DF8D38, S #8A70EA, Z #84C8F9, J #F3A9C1, L #46608F, GARBAGE #222a38 (before: seven silver-greys)",
   "keyMotifs": "Giant moon, faceted dark mountains, star field, meteors, nebula, spirits",
   "motion": "Star twinkle, spirits, ambient particles, ground fog, ambient meteors with trails",
   "gameplayFx": "(wolfhour-theme.js:3038-3160) Lock: a star burst, a mountain pulse and shockwave, a lunar reaction. Clear: celestial beams, a horizontal cosmic wave, a nebula colour shift. Combo 3+: cosmic rifts and a meteor shower; at 5 and 10 a meteor crash with debris, shockwave, dust cloud and camera shake. Level up: 3 beams.",
