@@ -24,6 +24,8 @@ import {
     abs,
     atan,
     clamp,
+    cos,
+    cross as crossOf,
     dot,
     exp,
     float,
@@ -47,6 +49,8 @@ import {
     PLANET,
     RING_SLOTS,
     SUN,
+    HEART,
+    STALK,
     SWELL_SLOTS,
     TAU,
     THREAD_PULSES,
@@ -249,6 +253,95 @@ export function createNoiseTexture(field, size = NOISE_SIZE) {
     return tex;
 }
 
+// ── The sky's fixed geometry (constants baked into the shaders) ─────────────────
+
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const unit = (a) => {
+    const l = Math.hypot(a[0], a[1], a[2]) || 1;
+    return [a[0] / l, a[1] / l, a[2] / l];
+};
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+/** A tangent frame about a direction: [right, up] as seen by a viewer looking along it. */
+const frameOf = (f) => {
+    const right = unit(cross(f, [0, 1, 0]));
+    return [right, cross(right, f)];
+};
+const lit = (a) => vec3(a[0], a[1], a[2]);
+
+export const SUN_DIR = Object.freeze(skyDirection(SUN.azimuth, SUN.elevation));
+const SUN_FLAT = (() => {
+    const l = Math.hypot(SUN_DIR[0], SUN_DIR[2]);
+    return [SUN_DIR[0] / l, SUN_DIR[2] / l];
+})();
+
+export const PLANET_DIR = Object.freeze(skyDirection(PLANET.azimuth, PLANET.elevation));
+const [PLANET_X, PLANET_Y] = frameOf(PLANET_DIR);
+const PLANET_TAN = Math.tan(PLANET.radius);
+const RING_COS = Math.cos(PLANET.ringLean);
+const RING_SIN = Math.sin(PLANET.ringLean);
+const RING_K = PLANET.ringOpen;
+const RING_S = Math.sqrt(1 - RING_K * RING_K);
+const PLANET_SUN_FLAT = unit([dot3(SUN_DIR, PLANET_X), dot3(SUN_DIR, PLANET_Y), 0]);
+
+/**
+ * The sun as the ringed world sees it, `behind` (0..1) of the way round behind it: its light
+ * comes from where the sun set, but from further behind than the true angle (a thin crescent
+ * reads as a world at dusk, a fat one as a ball). Written in (right, up, toward the viewer) into
+ * `planet`, and in the rings' own frame (major axis, minor axis, toward the viewer) into `ring`.
+ */
+export function planetSunAt(behind, planet = [0, 0, 0], ring = [0, 0, 0]) {
+    const b = Math.max(0, Math.min(0.98, behind));
+    const side = Math.sqrt(1 - b * b);
+    planet[0] = PLANET_SUN_FLAT[0] * side;
+    planet[1] = PLANET_SUN_FLAT[1] * side;
+    planet[2] = -b;
+    ring[0] = planet[0] * RING_COS + planet[1] * RING_SIN;
+    ring[1] = -planet[0] * RING_SIN + planet[1] * RING_COS;
+    ring[2] = planet[2];
+    return planet;
+}
+const RING_SUN_REST = [0, 0, 0];
+const PLANET_SUN_REST = planetSunAt(0.8, [0, 0, 0], RING_SUN_REST);
+
+/** The two moons: how far out they ride (planet radii), their size, their pace and where they start. */
+const MOONS = [
+    {
+        far: 3.05, size: 0.085, pace: 7, start: 0.62, tint: [0.92, 0.84, 0.78],
+    },
+    {
+        far: 3.95, size: 0.058, pace: -4, start: 0.17, tint: [0.78, 0.84, 0.95],
+    },
+];
+
+const [SUN_X, SUN_Y] = frameOf(SUN_DIR);
+/** The pole the stars wheel about, and the plane the river of stars lies in. */
+const POLE = unit([-0.28, 0.62, -0.73]);
+const RIVER = unit([0.52, 0.42, 0.74]);
+
+export const VESPER_DIR = Object.freeze(skyDirection(VESPER.azimuth, VESPER.elevation));
+const [VESPER_X, VESPER_Y] = frameOf(VESPER_DIR);
+
+/** Where the last light lies: on the horizon over the place the sun went down. */
+export const GLOW_DIR = Object.freeze((() => {
+    const flat = Math.hypot(SUN_DIR[0], SUN_DIR[2]);
+    const lift = 0.05;
+    const l = Math.hypot(1, lift);
+    return [SUN_DIR[0] / flat / l, lift / l, SUN_DIR[2] / flat / l];
+})());
+
+/** The three mountain ranges, far to near: azimuth frequency, noise row, base, height, depth. */
+const RANGES = [
+    {
+        k: 1.1, row: 0.13, base: 0.014, amp: 0.07, depth: 0,
+    },
+    {
+        k: 0.74, row: 0.47, base: 0.006, amp: 0.1, depth: 0.5,
+    },
+    {
+        k: 0.46, row: 0.81, base: -0.012, amp: 0.2, depth: 1,
+    },
+];
+
 // ── Shared uniforms ─────────────────────────────────────────────────────────────
 
 const v3 = (a) => uniform(new THREE.Vector3(a[0], a[1], a[2]));
@@ -326,6 +419,56 @@ export function createVesperUniforms(textures) {
         /** Thread pulse slots: (birth time, side −1 | 0 | +1, strength, _) + colour. */
         pulseA: [],
         pulseC: [],
+        // ── The chrysalis's pose ──
+        /** Where it hangs from (the top of its stalk), and its own axes in the world. */
+        relicAt: uniform(new THREE.Vector3(STALK[0], STALK[1], STALK[2])),
+        relicX: uniform(new THREE.Vector3(1, 0, 0)),
+        relicY: uniform(new THREE.Vector3(0, 1, 0)),
+        relicZ: uniform(new THREE.Vector3(0, 0, 1)),
+        /** The centre of its light in the world (it swings with the chrysalis). */
+        relicHeart: uniform(new THREE.Vector3(HEART[0], HEART[1], HEART[2])),
+        /** How far the chrysalis hangs from its place at rest (it stands clear of the board). */
+        perch: uniform(new THREE.Vector3(0, 0, 0)),
+        /** (heartbeat phase 0..1, how hard what is inside stirs 0..1, a twitch's flare 0..1, _). */
+        beat: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** The light the lanterns on the lake throw up from below (rgb). */
+        lakeLight: uniform(new THREE.Vector3(0, 0, 0)),
+        // ── The sky's own clockwork ──
+        /** The stars wheel about the pole: (cos, sin) of how far they have turned. */
+        skyTurn: uniform(new THREE.Vector2(1, 0)),
+        /** The shafts the set sun still throws up the sky (0..1.5). */
+        rays: uniform(0.5),
+        /** Where the sun stands for the ringed world, in its own frame and in its rings' frame. */
+        planetSun: uniform(new THREE.Vector3(PLANET_SUN_REST[0], PLANET_SUN_REST[1], PLANET_SUN_REST[2])),
+        ringSun: uniform(new THREE.Vector3(RING_SUN_REST[0], RING_SUN_REST[1], RING_SUN_REST[2])),
+        /** How far the ringed world has turned (turns), and its moons with it. */
+        planetSpin: uniform(0),
+        /** How much of the sky the clouds take (−0.08 thin .. 0.12 heavy). */
+        cloudCover: uniform(0),
+        // ── What crosses the lake ──
+        /** A gust: (heading x, heading z, when it set out, how hard it ruffles). */
+        gust: uniform(new THREE.Vector4(1, 0, -100, 0)),
+        /** A whirl stirred into the water: (x, z, when, how strong) and its colour. */
+        whirl: uniform(new THREE.Vector4(0, -70, -100, 0)),
+        whirlTint: uniform(new THREE.Vector3(1, 1, 1)),
+        /** A lotus of light that opens on the lake: (x, z, when, how strong). */
+        lotus: uniform(new THREE.Vector4(0, -64, -100, 0)),
+        // ── What lives over the water ──
+        /** The moths round the chrysalis: (the share of them about 0..1, how close a chain draws them 0..1, _, _). */
+        flutter: uniform(new THREE.Vector4(0.4, 0, 0, 0)),
+        /** A burst of them out of the chrysalis: (when, how strong 0..1, _, _). */
+        burst: uniform(new THREE.Vector4(-100, 0, 0, 0)),
+        /** The fireflies' manners: (gathered into swarms, flashing in step, rising, drawn into a whirl) each 0..1. */
+        flies: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** What scatters the fireflies: (x, z of where it struck, _, how far they are thrown now). */
+        flyScatter: uniform(new THREE.Vector4(0, -64, 0, 0)),
+        /** How far each kind of lily stands open by itself now (kind 0, 1, 2, _). */
+        tide: uniform(new THREE.Vector4(0.5, 0.1, 0, 0)),
+        /** A wave of opening that crosses the lake: (heading x, heading z, when it set out, how far it opens them). */
+        bloomWave: uniform(new THREE.Vector4(1, 0, -100, 0)),
+        /** A chime through the crystal: (when it rang, how hard, _, _) and its colour. */
+        chime: uniform(new THREE.Vector4(-100, 0, 0, 0)),
+        chimeTint: uniform(new THREE.Vector3(1, 1, 1)),
         noiseTex: textures.noise,
     };
     for (let i = 0; i < RING_SLOTS; i++) {
@@ -358,66 +501,6 @@ export function vcPart(name, geometry, material, renderOrder = 0, extra = {}) {
         mesh, geometry, material, ...extra,
     };
 }
-
-// ── The sky's fixed geometry (constants baked into the shaders) ─────────────────
-
-const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-const unit = (a) => {
-    const l = Math.hypot(a[0], a[1], a[2]) || 1;
-    return [a[0] / l, a[1] / l, a[2] / l];
-};
-const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-/** A tangent frame about a direction: [right, up] as seen by a viewer looking along it. */
-const frameOf = (f) => {
-    const right = unit(cross(f, [0, 1, 0]));
-    return [right, cross(right, f)];
-};
-const lit = (a) => vec3(a[0], a[1], a[2]);
-
-export const SUN_DIR = Object.freeze(skyDirection(SUN.azimuth, SUN.elevation));
-const SUN_FLAT = (() => {
-    const l = Math.hypot(SUN_DIR[0], SUN_DIR[2]);
-    return [SUN_DIR[0] / l, SUN_DIR[2] / l];
-})();
-
-const PLANET_DIR = skyDirection(PLANET.azimuth, PLANET.elevation);
-const [PLANET_X, PLANET_Y] = frameOf(PLANET_DIR);
-const PLANET_TAN = Math.tan(PLANET.radius);
-/** The sun as the planet sees it, in (right, up, toward the viewer). */
-const PLANET_SUN = (() => {
-    // Its light comes from where the sun set, but from further behind it than the true angle:
-    // a thin crescent reads as a world at dusk, a fat one as a ball.
-    const flat = unit([dot3(SUN_DIR, PLANET_X), dot3(SUN_DIR, PLANET_Y), 0]);
-    const behind = 0.8;
-    const side = Math.sqrt(1 - behind * behind);
-    return [flat[0] * side, flat[1] * side, -behind];
-})();
-const RING_COS = Math.cos(PLANET.ringLean);
-const RING_SIN = Math.sin(PLANET.ringLean);
-const RING_K = PLANET.ringOpen;
-const RING_S = Math.sqrt(1 - RING_K * RING_K);
-/** The same sun in the rings' own frame (major axis, minor axis, toward the viewer). */
-const RING_SUN = [
-    PLANET_SUN[0] * RING_COS + PLANET_SUN[1] * RING_SIN,
-    -PLANET_SUN[0] * RING_SIN + PLANET_SUN[1] * RING_COS,
-    PLANET_SUN[2],
-];
-
-export const VESPER_DIR = Object.freeze(skyDirection(VESPER.azimuth, VESPER.elevation));
-const [VESPER_X, VESPER_Y] = frameOf(VESPER_DIR);
-
-/** The three mountain ranges, far to near: azimuth frequency, noise row, base, height, depth. */
-const RANGES = [
-    {
-        k: 1.1, row: 0.13, base: 0.014, amp: 0.07, depth: 0,
-    },
-    {
-        k: 0.74, row: 0.47, base: 0.006, amp: 0.1, depth: 0.5,
-    },
-    {
-        k: 0.46, row: 0.81, base: -0.012, amp: 0.2, depth: 1,
-    },
-];
 
 // ── The evening's light ─────────────────────────────────────────────────────────
 
@@ -473,6 +556,38 @@ export const vcHaze = (u, dir) => {
 };
 
 /**
+ * The evening along a direction as cut stone mirrors it: the sky above, and below the horizon the
+ * lake's own mirror of it, a shade darker, with the lanterns' light coming up from the water.
+ */
+export const vcEvening = (u, d) => {
+    const down = smoothstep(0.0, -0.3, d.y);
+    return vcSkyBase(u, normalize(vec3(d.x, abs(d.y).add(0.02), d.z))).mul(float(1.0).sub(down.mul(0.4)))
+        .add(u.lakeLight.mul(down).mul(0.55));
+};
+
+/** x raised to 2^n by squaring (a `pow` whose base strays below zero is a NaN). */
+export const vcPow2n = (x, n) => {
+    let v = x;
+    for (let i = 0; i < n; i++) v = v.mul(v);
+    return v;
+};
+
+/**
+ * The evening's own lamps as cut crystal finds them along a direction: the last light on the
+ * horizon (a broad lobe), the ringed world (a soft one) and the evening star (a pin). A facet
+ * that turns one of them to the eye flashes; everything else of the sky is vcSkyBase.
+ */
+export const vcGemLights = (u, d) => {
+    const g = clamp(dot(d, lit(GLOW_DIR)), 0.0, 1.0);
+    const s = clamp(dot(d, lit(VESPER_DIR)), 0.0, 1.0);
+    const p = clamp(dot(d, lit(PLANET_DIR)), 0.0, 1.0);
+    const glow = u.glow.mul(vcPow2n(g, 4).mul(vcPow2n(g, 3)).mul(2.6));
+    const star = vec3(1.0, 0.93, 0.82).mul(vcPow2n(s, 9).mul(u.heat.w.mul(0.6).add(1.0)).mul(30.0));
+    const world = u.glow.mul(0.5).add(vec3(0.75, 0.66, 0.58)).mul(vcPow2n(p, 6).mul(1.5));
+    return glow.add(star).add(world).mul(u.breath);
+};
+
+/**
  * Everything at a distance, along a direction. Call inside a `Fn` (it declares variables).
  * @param {object} u
  * @param {*} dirIn  unit direction; anything below the horizon reads the horizon
@@ -499,72 +614,134 @@ export const vcBackdrop = (u, dirIn, opts = {}) => {
 
     // ── The ringed world ──
     const cp = dot(dir, lit(PLANET_DIR)).toVar();
-    If(cp.greaterThan(Math.cos(PLANET.radius * (PLANET.ringOut + 0.4))), () => {
+    If(cp.greaterThan(Math.cos(PLANET.radius * (MOONS[1].far + 0.4))), () => {
         const q = vec2(dot(dir, lit(PLANET_X)), dot(dir, lit(PLANET_Y))).div(cp.mul(PLANET_TAN)).toVar();
         const r2 = dot(q, q).toVar();
-        const edge = aa.div(PLANET_TAN).mul(1.2);
-        const disc = float(1.0).sub(smoothstep(float(1.0).sub(edge), float(1.0).add(edge), sqrt(r2))).toVar();
-        const nz = sqrt(max(float(1.0).sub(r2), 0.0)).toVar();
-        // In the rings' frame: major axis, minor axis, toward the viewer.
-        const qr = vec2(
-            q.x.mul(RING_COS).add(q.y.mul(RING_SIN)),
-            q.y.mul(RING_COS).sub(q.x.mul(RING_SIN)),
-        ).toVar();
-        const sun = lit(RING_SUN);
-        const nr = vec3(qr.x, qr.y, nz);
-        const day = dot(nr, sun).toVar();
-        // Bands of cloud run round the axis the rings turn about.
-        const lat = qr.y.mul(RING_S).add(nz.mul(RING_K));
-        const bands = u.noise(vec2(lat.mul(0.42).add(0.2), 0.63)).toVar();
-        const belt = smoothstep(0.3, 0.7, bands.r).mul(0.7).add(bands.g.mul(0.3));
-        const albedo = mix(
-            u.mid.mul(1.2).add(u.horizon.mul(0.4)).add(0.1),
-            u.cloudLit.mul(0.6).add(vec3(0.42, 0.36, 0.32)),
-            belt,
-        );
-        const shade = smoothstep(-0.06, 0.42, day);
-        const sunCol = u.glow.mul(0.55).add(vec3(0.75, 0.66, 0.58));
-        // The night side is the sky's own colour, a little darker: the air is in front of it.
-        const night = col.mul(0.46).add(albedo.mul(0.01));
-        const limb = float(1.0).sub(nz);
-        const air = sunCol.mul(limb.mul(limb).mul(limb)).mul(smoothstep(-0.3, 0.25, day)).mul(1.5);
-        const body = mix(night, albedo.mul(sunCol).mul(1.5), shade).add(air);
-        col.assign(mix(col, body, disc));
-        open.assign(float(1.0).sub(disc));
+        const edge = aa.div(PLANET_TAN).mul(1.2).toVar();
+        const sunCol = u.glow.mul(0.55).add(vec3(0.75, 0.66, 0.58)).toVar();
+        If(r2.lessThan((PLANET.ringOut + 0.4) ** 2), () => {
+            const disc = float(1.0).sub(smoothstep(float(1.0).sub(edge), float(1.0).add(edge), sqrt(r2))).toVar();
+            const nz = sqrt(max(float(1.0).sub(r2), 0.0)).toVar();
+            // In the rings' frame: major axis, minor axis, toward the viewer.
+            const qr = vec2(
+                q.x.mul(RING_COS).add(q.y.mul(RING_SIN)),
+                q.y.mul(RING_COS).sub(q.x.mul(RING_SIN)),
+            ).toVar();
+            const sun = u.ringSun;
+            const nr = vec3(qr.x, qr.y, nz);
+            const day = dot(nr, sun).toVar();
+            // Bands of cloud run round the axis the rings turn about; the world turns under them,
+            // and the bands are not ruled lines: they wander, and one storm rides in them.
+            const lat = qr.y.mul(RING_S).add(nz.mul(RING_K)).toVar();
+            const lon = atan(qr.x, qr.y.mul(RING_K).sub(nz.mul(RING_S))).div(TAU).add(u.planetSpin).toVar();
+            const swirl = lite ? vec3(0.5) : u.noise(vec2(lon.mul(2.0), lat.mul(0.6).add(0.41))).rgb.toVar();
+            const bands = u.noise(vec2(lat.mul(0.42).add(0.2).add(swirl.g.sub(0.5).mul(0.03)), 0.63)).toVar();
+            const belt = smoothstep(0.3, 0.7, bands.r).mul(0.7).add(bands.g.mul(0.3)).add(swirl.r.sub(0.5).mul(0.22));
+            const stormAt = vec2(fract(lon.add(0.31)).sub(0.5).div(0.07), lat.add(0.24).div(0.085));
+            const storm = exp(dot(stormAt, stormAt).negate());
+            const albedo = mix(
+                u.mid.mul(1.2).add(u.horizon.mul(0.4)).add(0.1),
+                u.cloudLit.mul(0.6).add(vec3(0.42, 0.36, 0.32)),
+                clamp(belt, 0.0, 1.0),
+            ).add(u.cloudLit.mul(storm).mul(0.5));
+            const shade = smoothstep(-0.06, 0.42, day);
+            // The night side is the sky's own colour, a little darker: the air is in front of it.
+            const night = col.mul(0.46).add(albedo.mul(0.01));
+            const limb = float(1.0).sub(nz);
+            const air = sunCol.mul(limb.mul(limb).mul(limb)).mul(smoothstep(-0.3, 0.25, day)).mul(1.5);
+            const body = mix(night, albedo.mul(sunCol).mul(1.5), shade).add(air);
+            col.assign(mix(col, body, disc));
+            open.assign(float(1.0).sub(disc));
 
-        // The rings: a flat annulus about the planet, seen nearly edge on.
-        const rr = sqrt(qr.x.mul(qr.x).add(qr.y.mul(qr.y).div(RING_K * RING_K))).toVar();
-        const ringEdge = edge.mul(2.0).add(0.02);
-        const span = smoothstep(PLANET.ringIn, float(PLANET.ringIn).add(ringEdge), rr)
-            .mul(float(1.0).sub(smoothstep(float(PLANET.ringOut).sub(ringEdge), PLANET.ringOut, rr)));
-        const grooves = u.noise(vec2(rr.mul(1.9), 0.27)).toVar();
-        const gap = float(1.0).sub(vcBell(rr.sub(1.92).div(0.045)).mul(0.9));
-        const dens = span.mul(gap).mul(smoothstep(0.2, 0.62, grooves.b).mul(0.75).add(0.25)).toVar();
-        // Depth of the ring toward the viewer: its lower half passes in front of the planet.
-        const depth = qr.y.mul(-RING_S / RING_K);
-        const front = max(float(1.0).sub(disc), step(nz, depth));
-        const x3 = vec3(qr.x, qr.y, depth);
-        const along = dot(x3, sun);
-        const off2 = dot(x3, x3).sub(along.mul(along));
-        const shadow = float(1.0).sub(smoothstep(0.86, 1.02, sqrt(max(off2, 0.0)))).mul(step(along, 0.0));
-        const ringCol = mix(u.cloudLit, vec3(1.0, 0.9, 0.8), grooves.g.mul(0.3).add(0.5))
-            .mul(sunCol).mul(float(1.0).sub(shadow.mul(0.93))).mul(0.44);
-        const ringA = dens.mul(front).mul(0.72);
-        col.assign(mix(col, ringCol.add(col.mul(0.35)), ringA));
-        open.mulAssign(float(1.0).sub(ringA.mul(0.8)));
+            // The rings: a flat annulus about the planet, seen nearly edge on.
+            const rr = sqrt(qr.x.mul(qr.x).add(qr.y.mul(qr.y).div(RING_K * RING_K))).toVar();
+            const ringEdge = edge.mul(2.0).add(0.02);
+            const span = smoothstep(PLANET.ringIn, float(PLANET.ringIn).add(ringEdge), rr)
+                .mul(float(1.0).sub(smoothstep(float(PLANET.ringOut).sub(ringEdge), PLANET.ringOut, rr)));
+            const grooves = u.noise(vec2(rr.mul(1.9), 0.27)).toVar();
+            const gap = float(1.0).sub(vcBell(rr.sub(1.92).div(0.045)).mul(0.9));
+            const dens = span.mul(gap).mul(smoothstep(0.2, 0.62, grooves.b).mul(0.75).add(0.25)).toVar();
+            // Depth of the ring toward the viewer: its lower half passes in front of the planet.
+            const depth = qr.y.mul(-RING_S / RING_K);
+            const front = max(float(1.0).sub(disc), step(nz, depth));
+            const x3 = vec3(qr.x, qr.y, depth);
+            const along = dot(x3, sun);
+            const off2 = dot(x3, x3).sub(along.mul(along));
+            const shadow = float(1.0).sub(smoothstep(0.86, 1.02, sqrt(max(off2, 0.0)))).mul(step(along, 0.0));
+            // Ice in the rings: a grain of it turns the sun to the eye and is gone.
+            const grainAt = vec2(rr.mul(46.0), atan(qr.y.div(RING_K), qr.x).mul(30.0)).toVar();
+            const grainId = vcHash21(floor(grainAt).add(vec2(40.0, 60.0)));
+            const ice = lite
+                ? float(0.0)
+                : step(0.94, grainId).mul(vcBell(length(fract(grainAt).sub(0.5)).div(0.45)))
+                    .mul(sin(u.time.mul(grainId.mul(3.0).add(1.0)).add(grainId.mul(80.0))).mul(0.5).add(0.5));
+            const ringCol = mix(u.cloudLit, vec3(1.0, 0.9, 0.8), grooves.g.mul(0.3).add(0.5))
+                .mul(sunCol).mul(float(1.0).sub(shadow.mul(0.93))).mul(ice.mul(1.6).add(0.44));
+            const ringA = dens.mul(front).mul(0.72);
+            col.assign(mix(col, ringCol.add(col.mul(0.35)), ringA));
+            open.mulAssign(float(1.0).sub(ringA.mul(0.8)));
+        });
+
+        // Its moons ride out past the rings, in the rings' own plane, each at its own pace.
+        MOONS.forEach((moon) => {
+            const turn = u.planetSpin.mul(moon.pace).add(moon.start).mul(TAU);
+            const mx = cos(turn).mul(moon.far);
+            const my = sin(turn).mul(moon.far * RING_K);
+            const towards = sin(turn).mul(-moon.far * RING_S);
+            const at = vec2(mx.mul(RING_COS).sub(my.mul(RING_SIN)), mx.mul(RING_SIN).add(my.mul(RING_COS)));
+            const dq = q.sub(at).div(moon.size).toVar();
+            const m2 = dot(dq, dq).toVar();
+            // Behind the world it is hidden.
+            const hidden = step(towards, 0.0).mul(step(dot(at, at), 1.0));
+            const mEdge = edge.div(moon.size);
+            const on = float(1.0).sub(smoothstep(float(1.0).sub(mEdge), float(1.0).add(mEdge), sqrt(m2)))
+                .mul(float(1.0).sub(hidden));
+            const mn = vec3(dq.x, dq.y, sqrt(max(float(1.0).sub(m2), 0.0)));
+            const mDay = smoothstep(-0.05, 0.4, dot(mn, u.planetSun));
+            const moonCol = mix(col.mul(0.5), lit(moon.tint).mul(sunCol).mul(1.25), mDay);
+            col.assign(mix(col, moonCol, on));
+            open.mulAssign(float(1.0).sub(on));
+        });
     });
+
+    // ── The shafts the set sun still throws up the sky ──
+    if (!lite) {
+        const cs = dot(dir, lit(SUN_DIR)).toVar();
+        If(cs.greaterThan(0.45).and(u.rays.greaterThan(0.01)), () => {
+            const s = vec2(dot(dir, lit(SUN_X)), dot(dir, lit(SUN_Y))).div(cs).toVar();
+            const far = length(s).toVar();
+            const ang = atan(s.y, s.x);
+            const n1 = u.noise(vec2(ang.mul(0.55).add(u.drift.mul(0.0016)), u.drift.mul(0.0007).add(0.37))).r;
+            const n2 = u.noise(vec2(ang.mul(1.7).sub(u.drift.mul(0.0011)), 0.71)).g;
+            const streak = smoothstep(0.42, 0.74, n1.mul(0.65).add(n2.mul(0.35)));
+            const fall = exp(far.mul(-2.3)).mul(smoothstep(0.03, 0.22, far));
+            col.addAssign(u.glow.mul(streak.mul(fall).mul(smoothstep(0.0, 0.07, up)).mul(u.rays).mul(0.34))
+                .mul(u.breath.mul(0.4).add(0.6)));
+        });
+    }
 
     // ── Stars: two sizes of them on a grid over the sphere ──
     if (!lite) {
-        const starLight = vec3(0.0).toVar();
+        // The stars wheel slowly about the pole (a new level turns them in a rush).
+        const pole = lit(POLE);
+        const sdir = dir.mul(u.skyTurn.x)
+            .add(crossOf(pole, dir).mul(u.skyTurn.y))
+            .add(pole.mul(dot(pole, dir).mul(float(1.0).sub(u.skyTurn.x))))
+            .toVar();
+        // A river of them lies across the sky: more stars in it, and a faint milk of the ones
+        // too small to tell apart.
+        const offRiver = dot(sdir, lit(RIVER)).div(0.17);
+        const river = exp(offRiver.mul(offRiver).negate()).toVar();
+        const milk = u.noise(vec2(sdir.x.mul(0.65).add(sdir.y.mul(0.2)), sdir.z.mul(0.65).sub(sdir.y.mul(0.1)))).toVar();
+        const starLight = mix(u.mid, vec3(0.62, 0.66, 0.9), 0.6).mul(river.mul(milk.r.mul(milk.g).mul(1.6).add(0.08)).mul(0.5)).toVar();
         [[78, 0.986, 1.7], [190, 0.972, 0.6]].forEach(([scale, rarity, gain], layer) => {
-            const p = dir.mul(scale);
+            const p = sdir.mul(scale);
             const cell = floor(p);
             const h = vcHash33(cell.add(layer * 17.0)).toVar();
             const at = cell.add(0.5).add(h.sub(0.5).mul(0.7));
             const d = length(p.sub(at));
             const size = aa.mul(scale).mul(1.15).add(0.012);
-            const spark = vcBell(d.div(size.mul(2.0))).mul(step(rarity, h.z));
+            const spark = vcBell(d.div(size.mul(2.0))).mul(step(float(rarity).sub(river.mul(0.016)), h.z));
             const mag = fract(h.x.mul(57.0)).mul(fract(h.x.mul(57.0))).mul(0.85).add(0.15);
             const twinkle = sin(u.time.mul(h.y.mul(2.6).add(1.3)).add(h.x.mul(40.0))).mul(0.3).add(0.7);
             const tint = mix(vec3(0.74, 0.84, 1.0), vec3(1.0, 0.86, 0.7), h.y);
@@ -616,15 +793,21 @@ export const vcBackdrop = (u, dirIn, opts = {}) => {
     const across = deck.y.mul(SUN_FLAT[0]).sub(deck.x.mul(SUN_FLAT[1]));
     const c1 = u.noise(vec2(alongSun.mul(0.021).add(u.cloudDrift), across.mul(0.085).add(0.31))).toVar();
     const fineUv = vec2(alongSun.mul(0.09).add(u.cloudDrift.mul(1.7)), across.mul(0.27));
-    const body = lite ? c1.r : c1.r.mul(0.66).add(u.noise(fineUv).g.mul(0.34));
+    const body = (lite ? c1.r : c1.r.mul(0.66).add(u.noise(fineUv).g.mul(0.34))).add(u.cloudCover).toVar();
     const band = smoothstep(0.015, 0.1, up).mul(float(1.0).sub(smoothstep(0.26, 0.52, up)));
     const cover = smoothstep(0.53, 0.72, body).mul(band).toVar();
+    // The same deck a little nearer the sun: where it thins toward the light, the edge is lined.
+    const lining = lite
+        ? float(0.0)
+        : clamp(body.sub(u.noise(vec2(alongSun.add(5.0).mul(0.021).add(u.cloudDrift), across.mul(0.085).add(0.31))).r.mul(0.66)
+            .add(c1.g.mul(0.34)).add(u.cloudCover)).mul(5.0), 0.0, 1.0);
     // A cloud's thin edge glows; its body is its own shadow. The light comes from where the sun set.
     const thin = float(1.0).sub(smoothstep(0.55, 0.7, body));
     const under = t4.mul(t4).mul(0.9).add(0.1).mul(exp(up.mul(-4.2)));
     const shade = u.cloudShade.mul(vcLuma(col).mul(1.2).add(0.34));
     const cloud = mix(shade, u.cloudLit.mul(thin.mul(1.5).add(0.12)), under.mul(thin.mul(0.75).add(0.25)))
-        .add(u.glow.mul(t4.mul(t4)).mul(thin).mul(under).mul(0.9));
+        .add(u.glow.mul(t4.mul(t4)).mul(thin).mul(under).mul(0.9))
+        .add(u.cloudLit.add(u.glow).mul(lining.mul(t4.mul(0.8).add(0.2)).mul(exp(up.mul(-3.0))).mul(0.42)));
     col.assign(mix(col, cloud.mul(u.breath.mul(0.4).add(0.6)), cover.mul(0.7)));
 
     // ── The ranges, far to near, and the mist at their feet ──
@@ -644,8 +827,14 @@ export const vcBackdrop = (u, dirIn, opts = {}) => {
         const below = float(1.0).sub(smoothstep(ridge.sub(aa), ridge.add(aa), el)).toVar();
         // How deep under the crest this point is, 0 at the crest → 1 at the water.
         const under2 = clamp(ridge.sub(el).div(max(ridge, 1e-3)), 0.0, 1.0);
-        const rock = mix(haze.mul(0.7), u.range.add(u.mid.mul(0.04)), range.depth * 0.8 + 0.16);
-        const mist = mix(rock, haze.mul(0.92), under2.mul(under2).mul(0.82 - range.depth * 0.3));
+        // Faces that look at the set sun hold a little of it; the gullies between stay dark.
+        const faces = smoothstep(0.38, 0.72, crag.g).mul(t4).mul(float(1.0).sub(under2));
+        const stone = u.range.add(u.mid.mul(0.04)).add(u.glow.mul(faces).mul(0.1 + range.depth * 0.06));
+        const rock = mix(haze.mul(0.7), stone, range.depth * 0.8 + 0.16);
+        // Snow lies on the high crests: it holds the sky, and the last light on the sun's side.
+        const snow = smoothstep(0.5, 0.86, rise).mul(float(1.0).sub(smoothstep(0.0, 0.3, under2))).mul(smoothstep(0.3, 0.6, crag.r));
+        const snowy = mix(rock, haze.mul(1.15).add(u.glow.mul(t4).mul(0.55)), snow.mul(0.6));
+        const mist = mix(snowy, haze.mul(0.92), under2.mul(under2).mul(0.82 - range.depth * 0.3));
         // The crest catches the last light on the side of the set sun.
         const crest = vcBell(ridge.sub(el).div(aa.mul(3.0).add(0.0035))).mul(t4).mul(0.55 - range.depth * 0.2);
         col.assign(mix(col, mist.add(u.glow.mul(crest)), below));

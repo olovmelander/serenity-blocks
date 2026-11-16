@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-    BOARD_GRID, BOARD_SELECTOR, COVER_GAP, HUD_SELECTOR, PLAYER_SLOTS, SOLO_CANVAS_SELECTORS, WING_COVER_SAMPLES,
-    boardFor, boardPoint, cardUnion, fallbackLayout, fillWingCover, frontPast, layoutsDiffer, playerCanvasSelector,
-    readLayoutRects, wingCoverAlong, wingCoverAt,
+    BOARD_GRID, BOARD_SELECTOR, COVER_GAP, HUD_SELECTOR, PERCH_BAND, PLAYER_SLOTS, SOLO_CANVAS_SELECTORS,
+    WING_COVER_SAMPLES, boardFor, boardPoint, cardUnion, fallbackLayout, fillWingCover, frontPast, layoutsDiffer,
+    perchFor, perchScreenX, perchScreenY, playerCanvasSelector, readLayoutRects, wingCoverAlong, wingCoverAt,
 } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-composition.js';
-import { WINGS, wingPoint } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-core.js';
+import {
+    CHRYSALIS, DEG, EYE, WINGS, fovForAspect, wingPoint,
+} from '../../src/themes/vesper-chrysalis/vesper-chrysalis-core.js';
 
 const rect = (left, top, width, height) => ({
     left, top, right: left + width, bottom: top + height, width, height,
@@ -364,5 +366,161 @@ describe('vesper chrysalis composition: what the card hides of the wings', () =>
         expect(frontPast(0.3, 1)).toBe(1);
         expect(frontPast(0, 0.42)).toBe(0.42);
         expect(frontPast(0.5, 0.5)).toBe(0.75);
+    });
+});
+
+describe('vesper chrysalis composition: where the chrysalis hangs so the board does not hide it', () => {
+    /** The chrysalis's middle at rest (the perch is an offset from it). */
+    const MIDDLE = [CHRYSALIS.x, CHRYSALIS.foot + CHRYSALIS.length * 0.5, CHRYSALIS.z];
+    /** Where a world point shows through the rest camera (EYE, fovForAspect): screen fractions, y down. */
+    const project = (p, aspect) => {
+        const dx = p[0] - EYE.x;
+        const dy = p[1] - EYE.y;
+        const dz = p[2] - EYE.z;
+        const c = Math.cos(EYE.pitch);
+        const s = Math.sin(EYE.pitch);
+        const depth = dy * s - dz * c;
+        const rise = dy * c + dz * s;
+        const t = Math.tan((fovForAspect(aspect) * DEG) / 2);
+        return { x: 0.5 + (dx / (depth * t * aspect)) * 0.5, y: 0.5 - (rise / (depth * t)) * 0.5 };
+    };
+    /** The chrysalis hung at a perch, as a box on screen (its width at the shoulder, its length). */
+    const onScreen = (perch, aspect) => {
+        const at = [MIDDLE[0] + perch.x, MIDDLE[1] + perch.y, MIDDLE[2]];
+        const middle = project(at, aspect);
+        const left = project([at[0] - CHRYSALIS.radius, at[1], at[2]], aspect);
+        const right = project([at[0] + CHRYSALIS.radius, at[1], at[2]], aspect);
+        const top = project([at[0], at[1] + CHRYSALIS.length / 2, at[2]], aspect);
+        const foot = project([at[0], at[1] - CHRYSALIS.length / 2, at[2]], aspect);
+        return {
+            middle, x0: left.x, x1: right.x, y0: top.y, y1: foot.y,
+        };
+    };
+    const overlaps = (a, r) => a.x0 < r.x1 && a.x1 > r.x0 && a.y0 < r.y1 && a.y1 > r.y0;
+
+    it('stays where it is with no board on screen', () => {
+        for (const layout of [null, undefined, {
+            cardCount: 0, cards: [], hud: null, boards: [],
+        }]) {
+            expect(perchScreenX(layout)).toBeNull();
+            expect(perchScreenY(layout)).toBeNull();
+            expect(perchFor(layout, 16 / 9)).toEqual({ x: 0, y: 0 });
+        }
+        // The band it hangs in at rest is a band of the screen, and its middle at rest is in it.
+        expect(PERCH_BAND.y0).toBeGreaterThan(0);
+        expect(PERCH_BAND.y1).toBeGreaterThan(PERCH_BAND.y0);
+        expect(PERCH_BAND.y1).toBeLessThan(1);
+        for (const aspect of [16 / 9, 2.39, 390 / 844]) {
+            const rest = project(MIDDLE, aspect);
+            expect(rest.x).toBeCloseTo(0.5, 9);
+            expect(rest.y).toBeGreaterThan(PERCH_BAND.y0);
+            expect(rest.y).toBeLessThan(PERCH_BAND.y1);
+        }
+    });
+
+    it('hangs in the open water left of a solo card on a wide frame, seen whole', () => {
+        for (const [width, height] of [[1600, 900], [1920, 1080], [1280, 720], [2560, 1440], [3440, 1440]]) {
+            const label = `${width}x${height}`;
+            const aspect = width / height;
+            const layout = fallbackLayout(width, height);
+            const card = layout.cards[0];
+            const sx = perchScreenX(layout);
+            // Left of the card (the HUD stands to the right), near it, inside the frame's edges.
+            expect(sx, label).not.toBeNull();
+            expect(sx, label).toBeLessThan(card.x0);
+            expect(sx, label).toBeGreaterThan(0.1);
+            expect(card.x0 - sx, label).toBeLessThan(0.15);
+            // The same as metres: moved to the left, not up.
+            const perch = perchFor(layout, aspect);
+            expect(perch.x, label).toBeLessThan(0);
+            expect(perch.y, label).toBe(0);
+            // Hung there and seen through the rest camera, it shows where the composition put it...
+            const seen = onScreen(perch, aspect);
+            expect(Math.abs(seen.middle.x - sx), label).toBeLessThan(0.01);
+            // ...whole: clear of the card and of the HUD, inside the frame, and still in its band.
+            expect(overlaps(seen, card), label).toBe(false);
+            expect(overlaps(seen, layout.hud), label).toBe(false);
+            expect(seen.x0, label).toBeGreaterThan(0);
+            expect(seen.middle.y, label).toBeGreaterThan(PERCH_BAND.y0);
+            expect(seen.middle.y, label).toBeLessThan(PERCH_BAND.y1);
+        }
+    });
+
+    it('stays between two boards that leave the middle open', () => {
+        const layout = {
+            cardCount: 2,
+            cards: [
+                {
+                    x0: 0.06, y0: 0.08, x1: 0.4, y1: 0.92,
+                },
+                {
+                    x0: 0.6, y0: 0.08, x1: 0.94, y1: 0.92,
+                },
+            ],
+            hud: null,
+            boards: new Array(PLAYER_SLOTS).fill(null),
+        };
+        expect(perchScreenX(layout)).toBeNull();
+        expect(perchScreenY(layout)).toBeNull();
+        expect(perchFor(layout, 16 / 9)).toEqual({ x: 0, y: 0 });
+        // Seen there, between them.
+        const seen = onScreen({ x: 0, y: 0 }, 16 / 9);
+        layout.cards.forEach((card) => expect(overlaps(seen, card)).toBe(false));
+    });
+
+    it('lifts it into the sky above the card on an upright phone, where no side is open', () => {
+        for (const [width, height] of [[390, 844], [430, 932]]) {
+            const label = `${width}x${height}`;
+            const aspect = width / height;
+            const layout = fallbackLayout(width, height);
+            const card = layout.cards[0];
+            // No open column beside the card...
+            expect(perchScreenX(layout), label).toBeNull();
+            // ...so it hangs in the strip above it.
+            const sy = perchScreenY(layout);
+            expect(sy, label).not.toBeNull();
+            expect(sy, label).toBeGreaterThan(0);
+            expect(sy, label).toBeLessThan(card.y0);
+            const perch = perchFor(layout, aspect);
+            expect(perch.x, label).toBe(0);
+            expect(perch.y, label).toBeGreaterThan(0);
+            // Hung there, its middle shows at that height, in the strip above the card.
+            const seen = onScreen(perch, aspect);
+            expect(seen.middle.y, label).toBeCloseTo(sy, 6);
+            expect(seen.middle.y, label).toBeGreaterThan(0);
+            expect(seen.middle.y, label).toBeLessThan(card.y0);
+            expect(seen.middle.x, label).toBeCloseTo(0.5, 9);
+        }
+    });
+
+    it('stays where it is when the card reaches the top of the frame and leaves no room beside it', () => {
+        const layout = {
+            cardCount: 1,
+            cards: [{
+                x0: 0.04, y0: 0.02, x1: 0.96, y1: 0.98,
+            }],
+            hud: null,
+            boards: new Array(PLAYER_SLOTS).fill(null),
+        };
+        expect(perchScreenX(layout)).toBeNull();
+        expect(perchScreenY(layout)).toBeNull();
+        expect(perchFor(layout, 390 / 844)).toEqual({ x: 0, y: 0 });
+    });
+
+    it('writes into the object it is given, and reads a nonsense aspect as a wide desktop', () => {
+        const layout = fallbackLayout(1600, 900);
+        const out = { x: 9, y: 9 };
+        expect(perchFor(layout, 16 / 9, out)).toBe(out);
+        expect(out.x).toBeLessThan(0);
+        expect(out.y).toBe(0);
+        // Nothing on screen: back to rest, in the same object.
+        expect(perchFor(null, 16 / 9, out)).toBe(out);
+        expect(out).toEqual({ x: 0, y: 0 });
+        for (const nonsense of [NaN, undefined, Infinity, -2]) {
+            const at = perchFor(layout, nonsense);
+            expect(Number.isFinite(at.x), String(nonsense)).toBe(true);
+            expect(Number.isFinite(at.y), String(nonsense)).toBe(true);
+        }
+        expect(perchFor(layout, NaN)).toEqual(perchFor(layout, 16 / 9));
     });
 });

@@ -1,5 +1,7 @@
 # Vesper Chrysalis — the hatching at dusk
 
+> **2026-11-16:** the chrysalis, the crystal stands, the lilies, the life on the lake, the sky and every event were lifted in a second pass; what changed is in [VESPER_CHRYSALIS_MASTERPIECE_2026-11.md](VESPER_CHRYSALIS_MASTERPIECE_2026-11.md). Everything below still holds unless that page says otherwise.
+
 Implemented 2026-10-09 on `feature/vesper-chrysalis-masterpiece`, with Three.js 0.186.1. A
 from-scratch rebuild: it replaces the earlier theme in full (a thin wrapper round a 1,900-line
 playground effect, its escalation scalar `S`, its low-poly peaks and islands, the texture-mapped
@@ -245,7 +247,7 @@ Playground (private dev server in the worktree:
   + falseColor=1   noPost=1
 ```
 
-The icon: `/playground.html?effect=vesper-chrysalis&t=20&hud=0&quality=High&icon=1&iconFov=34&iconPitch=0.03&combo=6&locks=8`
+**Superseded 2026-11-16** (the icon was re-baked for the jewel chrysalis: [VESPER_CHRYSALIS_MASTERPIECE_2026-11.md](VESPER_CHRYSALIS_MASTERPIECE_2026-11.md)). The 2026-10 icon: `/playground.html?effect=vesper-chrysalis&t=20&hud=0&quality=High&icon=1&iconFov=34&iconPitch=0.03&combo=6&locks=8`
 captured square at 840 px, cropped to 94 % about a point a little above the centre, graded
 (saturation 1.16, contrast 1.1, brightness 1.04) and masked to a circle at 512 px.
 

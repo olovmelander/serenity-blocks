@@ -205,7 +205,7 @@ const captureThemes = [
     ['vesper-chrysalis',
         'vesperChrysalis',
         'Vesper Chrysalis',
-        'sky, lake, spires, reeds, chrysalis, threads, wings, blooms, moths, dust, fireflies, blades'],
+        'sky, lake, spires, reeds, chrysalis, threads, wings, blooms, moths, dust, fireflies, blades, glints, flutter, meteors'],
 
     ['void-ember',
         'voidEmber',

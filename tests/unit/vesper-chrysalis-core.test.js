@@ -8,11 +8,12 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-    BLOOM_FULL, BLOOM_HOLD, BLOOM_KEEP, BLOOM_MAX, BLOOM_RISE, CHRYSALIS, DEG, EYE, EYE_COMBO, HEART, HOUR_SECONDS,
-    PALETTE_KEYS, PLANET, RING_REACH, SUN, SWELL_ORIGIN, SWELL_SPEED, TAU, VESPER, VESPERFIRE, VESPER_PALETTES, WINGS,
-    WING_STEPS, approach, bell, bloomLevel, chrysalisProfile, clamp01, fovForAspect, hourAt, lerp, linRGB, mulberry32,
-    paletteAt, pieceColor, planBlooms, planSpires, powerForCombo, ringRadius, scallopReach, skyDirection, smooth,
-    spireTip, swellPassTime, wingBase, wingForCombo, wingOutline, wingPoint, wingScallop, wingShape,
+    BLOOM_FULL, BLOOM_HOLD, BLOOM_KEEP, BLOOM_KINDS, BLOOM_MAX, BLOOM_RISE, BLOOM_TIDES, CHRYSALIS, DEG, EYE,
+    EYE_COMBO, HEART, HEART_DROP, HOUR_SECONDS, PALETTE_KEYS, PLANET, RING_REACH, STALK, SUN, SWELL_ORIGIN,
+    SWELL_SPEED, TAU, VESPER, VESPERFIRE, VESPER_PALETTES, WINGS, WING_STEPS, approach, bell, bloomLevel, bloomTides,
+    chrysalisProfile, clamp01, fovForAspect, hourAt, lerp, linRGB, mulberry32, paletteAt, pieceColor, planBlooms,
+    planPads, planSpires, powerForCombo, ringRadius, scallopReach, skyDirection, smooth, spireTip, swellPassTime,
+    wingBase, wingForCombo, wingOutline, wingPoint, wingScallop, wingShape,
 } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-quality.js';
 import { cardUnion, fallbackLayout } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-composition.js';
@@ -182,6 +183,52 @@ describe('vesper chrysalis core: the chrysalis', () => {
         // Beyond its ends it is its ends.
         expect(chrysalisProfile(-0.5)).toBe(chrysalisProfile(0));
         expect(chrysalisProfile(1.7)).toBe(chrysalisProfile(1));
+    });
+
+    it('cuts the teardrop as a jewel is hung: a long swell, a dome over the shoulder, a thin stalk', () => {
+        const { shoulder, neck } = CHRYSALIS;
+        // The shoulder ridge is below the neck, and the stalk is the short last part of it.
+        expect(shoulder).toBeLessThan(neck);
+        expect(neck).toBeLessThan(1);
+        expect(1 - neck).toBeLessThan(0.15);
+        const widest = chrysalisProfile(shoulder);
+        expect(widest).toBeCloseTo(CHRYSALIS.radius, 9);
+        // It swells all the way up from the foot to the shoulder, and draws in all the way from
+        // there to the top of the stalk: one teardrop, no waist and no second bulge.
+        let previous = -1;
+        for (let i = 0; i <= 200; i++) {
+            const t = (shoulder * i) / 200;
+            expect(chrysalisProfile(t), `t=${t}`).toBeGreaterThan(previous);
+            previous = chrysalisProfile(t);
+        }
+        for (let i = 1; i <= 200; i++) {
+            const t = shoulder + ((1 - shoulder) * i) / 200;
+            expect(chrysalisProfile(t), `t=${t}`).toBeLessThanOrEqual(previous + 1e-12);
+            previous = chrysalisProfile(t);
+        }
+        // The foot is round, not a point: a twentieth of the way up it is already a third of its width.
+        expect(chrysalisProfile(0.05)).toBeGreaterThan(widest / 3);
+        // The cap closes onto the stalk without a step, and the whole stalk is thin.
+        expect(chrysalisProfile(neck - 1e-9)).toBeCloseTo(chrysalisProfile(neck), 6);
+        expect(chrysalisProfile(shoulder + 1e-9)).toBeCloseTo(widest, 6);
+        for (let t = neck; t <= 1; t += 0.005) expect(chrysalisProfile(t), `t=${t}`).toBeLessThan(widest * 0.2);
+    });
+
+    it('hangs from the top of its stalk, its heart a fixed drop below it', () => {
+        // The silk is made fast at the top of the stalk: the stone's own origin.
+        expect(STALK).toEqual([CHRYSALIS.x, CHRYSALIS.foot + CHRYSALIS.length, CHRYSALIS.z]);
+        expect(Object.isFrozen(STALK)).toBe(true);
+        // The heart at rest is HEART_DROP below it, on the same vertical: the world finds the heart
+        // of the swinging stone from its pose by that drop.
+        expect(HEART_DROP).toBeGreaterThan(0);
+        expect(HEART_DROP).toBeLessThan(CHRYSALIS.length);
+        expect(STALK[1] - HEART_DROP).toBeCloseTo(HEART[1], 12);
+        expect([HEART[0], HEART[2]]).toEqual([STALK[0], STALK[2]]);
+        // Inside the body, below the shoulder ridge (the wings are folded under it).
+        const at = (HEART[1] - CHRYSALIS.foot) / CHRYSALIS.length;
+        expect(at).toBeGreaterThan(0.25);
+        expect(at).toBeLessThan(CHRYSALIS.shoulder);
+        expect(chrysalisProfile(at)).toBeGreaterThan(CHRYSALIS.radius * 0.6);
     });
 
     it('hangs clear of the water, its heart inside it', () => {
@@ -632,6 +679,141 @@ describe('vesper chrysalis core: the lantern lilies', () => {
         // It opens in less time than its moth is in the air, and holds its light far longer.
         expect(BLOOM_HOLD).toBeGreaterThan(BLOOM_RISE * 10);
     });
+
+    it('floats lilies of three kinds, mixed on both sides at every tier, dealt after their places', () => {
+        expect(BLOOM_KINDS).toBe(3);
+        const all = planBlooms();
+        all.forEach((b, i) => {
+            expect(Number.isInteger(b.kind), `lily ${i}`).toBe(true);
+            expect(b.kind, `lily ${i}`).toBeGreaterThanOrEqual(0);
+            expect(b.kind, `lily ${i}`).toBeLessThan(BLOOM_KINDS);
+        });
+        // The first six (the nearest rows) already hold all three.
+        expect(new Set(all.slice(0, 6).map((b) => b.kind)).size).toBe(BLOOM_KINDS);
+        // Every tier floats every kind on either side of the board.
+        for (const [name, count] of tiers) {
+            for (const side of [-1, 1]) {
+                const kinds = new Set(planBlooms(count).filter((b) => b.side === side).map((b) => b.kind));
+                expect(kinds.size, `${name}, side ${side}`).toBe(BLOOM_KINDS);
+            }
+        }
+        // The kinds are dealt by a lily's place in the list once the places are drawn, not drawn
+        // from the seed (so the places are the ones the lake had before it had kinds): a lake
+        // floated from another seed is dealt the same kinds in the same order.
+        const other = planBlooms(BLOOM_MAX, 99);
+        expect(other.map((b) => b.kind)).toEqual(all.map((b) => b.kind));
+        expect(other.map((b) => b.x)).not.toEqual(all.map((b) => b.x));
+        expect(Object.keys(all[3]).sort()).toEqual(['kind', 'seed', 'side', 'size', 'x', 'z']);
+    });
+
+    it('opens each kind by itself at its own hours, the hours blending into each other', () => {
+        const hours = BLOOM_TIDES[0].length;
+        expect(BLOOM_TIDES).toHaveLength(BLOOM_KINDS);
+        // One column for every hour of the evening.
+        expect(hours).toBe(VESPER_PALETTES.length);
+        BLOOM_TIDES.forEach((row) => {
+            expect(row).toHaveLength(hours);
+            row.forEach((v) => {
+                expect(v).toBeGreaterThanOrEqual(0);
+                expect(v).toBeLessThanOrEqual(1);
+            });
+        });
+        // A whole hour is its column exactly, and the hours come round in both directions.
+        for (let h = 0; h < hours; h++) {
+            const at = bloomTides(h);
+            for (let k = 0; k < BLOOM_KINDS; k++) {
+                expect(at[k], `hour ${h}, kind ${k}`).toBeCloseTo(BLOOM_TIDES[k][h], 12);
+                expect(bloomTides(h + hours * 2)[k]).toBeCloseTo(at[k], 9);
+                expect(bloomTides(h - hours)[k]).toBeCloseTo(at[k], 9);
+            }
+        }
+        // Each kind has its own hour: the hour it stands most open is no other kind's.
+        const peaks = BLOOM_TIDES.map((row) => row.indexOf(Math.max(...row)));
+        expect(new Set(peaks).size).toBe(BLOOM_KINDS);
+        // In between it blends without a jump, never leaves 0..1, and the lake is never all alike:
+        // at every moment one kind stands open well past another.
+        let largest = 0;
+        let alike = Infinity;
+        for (let h = 0; h < hours; h += 0.01) {
+            const here = bloomTides(h);
+            const next = bloomTides(h + 0.01);
+            for (let k = 0; k < BLOOM_KINDS; k++) {
+                expect(here[k]).toBeGreaterThanOrEqual(0);
+                expect(here[k]).toBeLessThanOrEqual(1);
+                largest = Math.max(largest, Math.abs(next[k] - here[k]));
+            }
+            alike = Math.min(alike, Math.max(...here) - Math.min(...here));
+        }
+        expect(largest).toBeLessThan(0.02);
+        expect(alike).toBeGreaterThan(0.1);
+        // Half way between two hours it is half way between their columns.
+        const half = bloomTides(2.5);
+        for (let k = 0; k < BLOOM_KINDS; k++) {
+            expect(half[k]).toBeCloseTo((BLOOM_TIDES[k][2] + BLOOM_TIDES[k][3]) / 2, 12);
+        }
+        // It writes into what it is given (the world reuses one), and reads nonsense as the first hour.
+        const out = [9, 9, 9];
+        expect(bloomTides(1.3, out)).toBe(out);
+        expect(bloomTides(NaN)).toEqual(bloomTides(0));
+        expect(bloomTides(Infinity)).toEqual(bloomTides(0));
+    });
+
+    // The lake is never all shut and never all open: at every hour some kind stands about a third
+    // open or more (the ember hour is the lake's lull, between the lotus closing and the star lily
+    // opening: its widest kind is a third open) and some kind is under half open.
+    it('keeps some kind about a third open and some kind under half at every hour', () => {
+        const shut = [];
+        const open = [];
+        for (let h = 0; h < BLOOM_TIDES[0].length; h += 0.05) {
+            const at = bloomTides(h);
+            if (!(Math.max(...at) >= 0.3)) shut.push(`hour ${h.toFixed(2)}: ${at.map((v) => v.toFixed(2)).join(', ')}`);
+            if (!(Math.min(...at) < 0.5)) open.push(`hour ${h.toFixed(2)}: ${at.map((v) => v.toFixed(2)).join(', ')}`);
+        }
+        expect(open).toEqual([]);
+        expect(shut).toEqual([]);
+    });
+
+    it('floats loose pads round the lilies: near their own, smaller, the same from the same seed', () => {
+        const all = planBlooms();
+        const pads = planPads(all, 2);
+        expect(pads.length).toBeGreaterThan(all.length);
+        expect(planPads(all, 2)).toEqual(pads);
+        expect(planPads(all, 2, 77)).not.toEqual(pads);
+        // More of them for a larger share, as the tiers ask.
+        expect(planPads(all, 1).length).toBeLessThan(pads.length);
+        expect(planPads(all, 3).length).toBeGreaterThan(pads.length);
+        for (const p of pads) {
+            expect([p.x, p.z, p.size, p.seed].every(Number.isFinite)).toBe(true);
+            expect(p.seed).toBeGreaterThanOrEqual(0);
+            expect(p.seed).toBeLessThan(1);
+            // On the water near some lily (a pad's place is measured in its lily's sizes).
+            const near = all.some((b) => Math.hypot(p.x - b.x, p.z - b.z) < b.size * 4.2);
+            expect(near).toBe(true);
+            expect(p.z).toBeLessThan(0);
+        }
+        // Round one lily alone: every one of its pads is beside it (not under it) and smaller than it.
+        for (const b of all) {
+            for (const p of planPads([b], 3)) {
+                const apart = Math.hypot(p.x - b.x, p.z - b.z);
+                expect(apart).toBeGreaterThan(b.size);
+                expect(apart).toBeLessThan(b.size * 4.2);
+                expect(p.size).toBeGreaterThan(0);
+                expect(p.size).toBeLessThan(b.size);
+            }
+        }
+        // No lily, no pad; and the leanest tier, which asks for none, floats none.
+        expect(planPads([], 3)).toEqual([]);
+        expect(planPads(planBlooms(QUALITY.Minimal.blooms), QUALITY.Minimal.pads)).toEqual([]);
+    });
+
+    // A tier that asks for no loose pads (pads: 0) floats none round any lily: not none by the
+    // luck of its lilies' draws (round(perLily + (rand − 0.5) · 1.6) is 1 for perLily 0 whenever
+    // rand ≥ 0.8125), none because none was asked for.
+    it('floats no loose pad when asked for none', () => {
+        expect(planPads(planBlooms(), 0)).toEqual([]);
+        expect(planPads(planBlooms(), -1)).toEqual([]);
+        expect(planPads(planBlooms(), NaN)).toEqual([]);
+    });
 });
 
 describe('vesper chrysalis core: rings and swells', () => {
@@ -667,11 +849,15 @@ describe('vesper chrysalis core: rings and swells', () => {
 });
 
 describe('vesper chrysalis core: the crystal stands', () => {
+    const SIZES = [...new Set(QUALITY_NAMES.map((name) => QUALITY[name].spires))];
+
     it('raises two stands at the edges of the view, each about its one tall crystal', () => {
-        for (const perSide of [...new Set(QUALITY_NAMES.map((name) => QUALITY[name].spires))]) {
-            const spires = planSpires(perSide);
-            expect(spires).toHaveLength(perSide * 2);
-            expect(planSpires(perSide)).toEqual(spires);
+        for (const perSide of SIZES) {
+            const all = planSpires(perSide);
+            expect(planSpires(perSide)).toEqual(all);
+            // The stands come first, perSide crystals a side; the small ones at the waterline after.
+            const spires = all.slice(0, perSide * 2);
+            expect(spires.every((c) => c.shard === false)).toBe(true);
             for (const side of [-1, 1]) {
                 const stand = spires.filter((c) => c.side === side);
                 expect(stand).toHaveLength(perSide);
@@ -709,12 +895,73 @@ describe('vesper chrysalis core: the crystal stands', () => {
                     }
                 }
             }
-            // A tier with fewer crystals keeps the same first ones on each side.
             const out = [0, 0, 0];
             expect(spireTip(spires[0], out)).toBe(out);
         }
         // Another seed grows other stands.
         expect(planSpires(6, 5)).not.toEqual(planSpires(6));
+    });
+
+    it('litters the waterline round each stand with small crystals, after the stands', () => {
+        for (const perSide of SIZES) {
+            const all = planSpires(perSide);
+            const stands = all.slice(0, perSide * 2);
+            const shards = all.slice(perSide * 2);
+            // Every crystal says which it is; the small ones are all after the stands.
+            expect(all.every((c) => typeof c.shard === 'boolean')).toBe(true);
+            expect(shards.length).toBeGreaterThan(0);
+            expect(shards.length).toBeLessThanOrEqual(stands.length);
+            expect(shards.every((c) => c.shard && !c.main)).toBe(true);
+            for (const side of [-1, 1]) {
+                const stand = stands.filter((c) => c.side === side);
+                const own = shards.filter((c) => c.side === side);
+                const main = stand.find((c) => c.main);
+                const other = stands.find((c) => c.main && c.side !== side);
+                expect(own.length * 2).toBe(shards.length); // as many on either side
+                // The two tallest of a side, which the long silk threads are made fast to, are
+                // crystals of the stand: every small one is lower than every crystal of the stand.
+                const lowest = Math.min(...stand.map((c) => c.height));
+                for (const c of own) {
+                    const label = `${perSide} a side, shard at ${c.x.toFixed(1)}, ${c.z.toFixed(1)}`;
+                    expect([c.x, c.z, c.height, c.radius, c.seed, ...c.lean].every(Number.isFinite), label).toBe(true);
+                    expect(c.height, label).toBeLessThan(lowest);
+                    expect(c.radius, label).toBeLessThan(main.radius);
+                    // Still crystals: taller than wide, their point on their own axis.
+                    expect(c.height, label).toBeGreaterThan(c.radius * 2);
+                    const tip = spireTip(c);
+                    expect(Math.hypot(tip[0] - c.x, tip[1], tip[2] - c.z), label).toBeCloseTo(c.height, 9);
+                    // Round the foot of their own stand, not on top of its tall crystal: a small
+                    // part of the way across to the other stand.
+                    const fromMain = Math.hypot(c.x - main.x, c.z - main.z);
+                    expect(Math.sign(c.x), label).toBe(side);
+                    expect(fromMain, label).toBeGreaterThan(main.radius);
+                    expect(fromMain, label).toBeLessThan(Math.hypot(other.x - main.x, other.z - main.z) * 0.15);
+                    // They lean out, away from it, the way the stand's own crystals do; never past 45°.
+                    expect(c.lean[0] * (c.x - main.x) + c.lean[1] * (c.z - main.z), label).toBeGreaterThan(0);
+                    expect(Math.hypot(c.lean[0], c.lean[1]), label).toBeLessThan(1);
+                }
+            }
+        }
+    });
+
+    it('keeps each tier\'s tall crystals where the others have them, whatever is strewn round them', () => {
+        // The long threads are made fast to the stands' points: a tier with more (or fewer) small
+        // crystals at the waterline still stands the same tall crystal at each edge of the view.
+        const mains = SIZES.map((perSide) => planSpires(perSide).filter((c) => c.main));
+        for (const found of mains) {
+            expect(found.map((c) => c.side)).toEqual([-1, 1]);
+            found.forEach((c, k) => {
+                const first = mains[0][k];
+                expect([c.x, c.z, c.height, c.radius]).toEqual([first.x, first.z, first.height, first.radius]);
+            });
+        }
+        // The stands' crystals are drawn before any small one: the small ones never move a stand.
+        for (const perSide of SIZES) {
+            const all = planSpires(perSide);
+            const firstShard = all.findIndex((c) => c.shard);
+            expect(firstShard).toBe(perSide * 2);
+            expect(all.slice(firstShard).every((c) => c.shard)).toBe(true);
+        }
     });
 });
 

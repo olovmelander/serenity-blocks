@@ -10,6 +10,8 @@
  *   board=1                  overlay a mock gameplay board + HUD (the solo layout rules); events
  *                            aim at its rects and the post's calm zones read them
  *   statsHud=0               with board=1: board only, no HUD mock
+ *   ghost=1                  with board=1: the mock board is all but invisible (the layout still
+ *                            counts: the chrysalis hangs clear of it and events aim at it)
  *   combo=<n>                hold a combo of n (how far the wings have unfurled)
  *   level=<n>                rest on level n's hour of the evening and hold it there (without it
  *                            the evening also moves on by itself: an hour every 120 s of `t`)
@@ -25,6 +27,11 @@
  *   msaa=<n>                 override the scene pass's samples
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   reduce=1                 reduced motion
+ *   happen=0                 hold off the evening's own happenings (a fish rising, a gust, a
+ *                            falling star…): only what the URL asks for plays
+ *   cam=ex,ey,ez,tx,ty,tz[,fov]   a free camera for close looks: the eye, what it looks at, and
+ *                            (optional) the vertical field of view in degrees; the mirror, the
+ *                            shafts and the prism ring follow it
  *   icon=1                   the theme-icon framing: a longer lens on the chrysalis (compose for
  *                            a small circle: capture a square frame); iconFov, iconX, iconY,
  *                            iconZ, iconYaw, iconPitch adjust it
@@ -131,6 +138,7 @@ export function create({
     world.setReducedMotion(params.get('reduce') === '1');
     // A capture that names its level wants that hour, not that hour plus however long `t` is.
     if (params.has('level')) world.setHourDrift(false);
+    if (params.get('happen') === '0') world.setHappenings(false);
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
     const noPost = params.get('noPost') === '1';
@@ -140,9 +148,17 @@ export function create({
     });
     if (noPost) renderer.toneMapping = THREE.AgXToneMapping;
     const overlay = params.get('board') === '1' ? mountBoardOverlay(params.get('statsHud') !== '0') : null;
+    if (overlay && params.get('ghost') === '1') {
+        overlay.querySelectorAll('.player-card, .single-player-stats-bar').forEach((el) => {
+            el.style.opacity = '0.06';
+        });
+    }
 
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
     const iconPose = params.get('icon') === '1';
+    const freeCam = (params.get('cam') || '').split(',').map(Number);
+    const hasFreeCam = freeCam.length >= 6 && freeCam.every((v) => Number.isFinite(v));
+    const camTarget = new THREE.Vector3();
     const size = new THREE.Vector2(1, 1);
     const syncViewport = () => {
         const aspect = window.innerWidth / Math.max(1, window.innerHeight);
@@ -166,6 +182,14 @@ export function create({
     const frame = (time, delta) => {
         world.updateCamera(camera, sim(time, delta));
         world.update(sim(time, delta), camera);
+        if (hasFreeCam) {
+            camera.position.set(freeCam[0], freeCam[1], freeCam[2]);
+            camera.up.set(0, 1, 0);
+            camera.lookAt(camTarget.set(freeCam[3], freeCam[4], freeCam[5]));
+            if (freeCam[6] > 0 && freeCam[6] < 180) camera.fov = freeCam[6];
+            camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+        }
         if (iconPose) {
             camera.fov = num(params, 'iconFov', 30);
             camera.position.x += num(params, 'iconX', 0);
@@ -176,6 +200,8 @@ export function create({
             camera.updateProjectionMatrix();
             camera.updateMatrixWorld();
         }
+        // The post's shafts and prism ring start where this camera sees the chrysalis.
+        if (hasFreeCam || iconPose) world.projectMarks(camera);
     };
     const stepTo = (from, to, dt) => {
         const steps = Math.max(1, Math.round((to - from) / dt));

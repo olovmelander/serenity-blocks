@@ -11,11 +11,12 @@
  *
  *   lock     a moth of the piece's colour leaves the card and flutters out over the lake to a
  *            lily, which opens and keeps that light; a ring runs out over the water from it.
- *            A hard drop sends three moths, strikes the lake under the chrysalis and sends
- *            light down the silk.
- *   clear    the cleared rows leave the card as blades of light and a swell crosses the lake
- *            from under the chrysalis, one front per line; every lily it passes lets its light
- *            go, and the light streams back to the chrysalis.
+ *            A hard drop sends three moths, strikes the lake under the board, throws the
+ *            fireflies out, rings the crystal, swings the chrysalis and sends light down the silk.
+ *   clear    the cleared rows leave both edges of the card as blades of light that fly home
+ *            to the chrysalis, and a swell crosses the lake from under the board, one front per
+ *            line; every lily it passes lets its light go, and the light streams back to the
+ *            chrysalis where it hangs.
  *   combo    the chrysalis HATCHES: for every step of the chain its wings of light unfurl
  *            further to either side of the board — veins first, then the bands, then the eyes
  *            open — and the aurora rises. When the chain breaks the wings MOULT: they fold
@@ -25,7 +26,7 @@
  *            then the wings beat once: a ring crosses the sky and the water, the aurora
  *            blazes, every lily flares.
  *   cascade  every wave of one lock is a deeper swell than the last: more fronts, hotter,
- *            nearer vesperfire, with a ring under the chrysalis that reaches further each wave.
+ *            nearer vesperfire, with a ring under the board that reaches further each wave.
  *   b2b      the second difficult clear gilds the wings' veins and rings the silk in gold.
  *   perfect  a perfect clear that comes after its clear is a crown on it, not a second clear:
  *            every lily relit in vesperfire from the chrysalis outward, the wings gilded and
@@ -54,6 +55,7 @@ import {
     EYE,
     EYE_COMBO,
     HEART,
+    HEART_DROP,
     HUSH_HOLD,
     MOTH_DEPTH,
     MOTH_FLIGHT,
@@ -62,6 +64,7 @@ import {
     RING_FADE,
     RING_LIVE,
     RING_SLOTS,
+    STALK,
     SURGE_COOL,
     SWELL_LIVE,
     SWELL_SLOTS,
@@ -81,7 +84,10 @@ import {
     mulberry32,
     paletteAt,
     pieceColor,
+    planetSunAt,
+    bloomTides,
     planBlooms,
+    planPads,
     planSpires,
     powerForCombo,
     smooth,
@@ -91,17 +97,19 @@ import {
     wingPoint,
 } from './vesper-chrysalis-tsl.js';
 import { tierFor } from './vesper-chrysalis-quality.js';
-import { createSky } from './vesper-chrysalis-sky.js';
+import { createMeteors, createSky } from './vesper-chrysalis-sky.js';
 import { createLake } from './vesper-chrysalis-lake.js';
 import { createChrysalis, createThreads, planThreads } from './vesper-chrysalis-relic.js';
 import { createReeds, createSpires } from './vesper-chrysalis-shore.js';
 import { createWings } from './vesper-chrysalis-wings.js';
+import { createGlints } from './vesper-chrysalis-glints.js';
+import { createFlutter } from './vesper-chrysalis-life.js';
 import { createBlooms } from './vesper-chrysalis-blooms.js';
 import {
-    DUST_HOME, createBlades, createDust, createFireflies, createMoths,
+    BLADE_FLIGHT, createBlades, createDust, createFireflies, createMoths,
 } from './vesper-chrysalis-fx.js';
 import {
-    boardFor, boardPoint, cardUnion, fallbackLayout, fillWingCover, frontPast, wingCoverAt,
+    boardFor, boardPoint, cardUnion, fallbackLayout, fillWingCover, frontPast, perchFor, wingCoverAt,
 } from './vesper-chrysalis-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { drainSteps } from '../shared/build-steps.js';
@@ -123,7 +131,7 @@ export const HERO_LAYER = 1;
 
 const PARTS = [
     'sky', 'lake', 'spires', 'reeds', 'chrysalis', 'threads', 'wings', 'blooms', 'moths', 'dust',
-    'fireflies', 'blades',
+    'fireflies', 'blades', 'glints', 'flutter', 'meteors',
 ];
 
 /** The gold a back-to-back lays in the wings and the silk. */
@@ -139,6 +147,71 @@ const SHED_STEP = 0.035;
 const CATCH_HOLD = 0.45;
 /** Seconds a pulse on the silk is counted as running (its light is gone well before). */
 const PULSE_LIFE = 3;
+/**
+ * What the evening's life does at each hour (the order of VESPER_PALETTES): the share of the moths
+ * about; how far the fireflies gather into swarms, flash in step and rise; how strong the set
+ * sun's shafts stand; how much cloud; and how far round behind the ringed world the sun is (the
+ * width of its crescent).
+ */
+export const LIFE_HOURS = Object.freeze([
+    {
+        flutter: 0.35, swarm: 0, sync: 0, rise: 0, rays: 0.55, cloud: 0, behind: 0.8,
+    },
+    {
+        flutter: 0.25, swarm: 0, sync: 0, rise: 0.8, rays: 0.8, cloud: 0.05, behind: 0.7,
+    },
+    {
+        flutter: 0.65, swarm: 0.9, sync: 0, rise: 0, rays: 0.45, cloud: -0.03, behind: 0.86,
+    },
+    {
+        flutter: 0.5, swarm: 0.3, sync: 1, rise: 0, rays: 0.2, cloud: -0.07, behind: 0.6,
+    },
+    {
+        flutter: 0.9, swarm: 0.6, sync: 0.4, rise: 0.3, rays: 0.1, cloud: -0.05, behind: 0.42,
+    },
+    {
+        flutter: 0.2, swarm: 0, sync: 0, rise: 0.5, rays: 0.9, cloud: 0.08, behind: 0.9,
+    },
+]);
+const LIFE_KEYS = Object.freeze(['flutter', 'swarm', 'sync', 'rise', 'rays', 'cloud', 'behind']);
+
+/** What the evening's life does at an hour (hourAt): the hours blended as the palette is. */
+export function lifeAt(hour, out = {}) {
+    const n = LIFE_HOURS.length;
+    const h = Number.isFinite(hour) ? ((hour % n) + n) % n : 0;
+    const from = Math.floor(h) % n;
+    const f = h - Math.floor(h);
+    const k = f * f * (3 - 2 * f);
+    const a = LIFE_HOURS[from];
+    const b = LIFE_HOURS[(from + 1) % n];
+    const target = out;
+    for (let i = 0; i < LIFE_KEYS.length; i++) target[LIFE_KEYS[i]] = a[LIFE_KEYS[i]] + (b[LIFE_KEYS[i]] - a[LIFE_KEYS[i]]) * k;
+    return target;
+}
+
+/**
+ * The evening has happenings of its own, whatever the play: about one in every HAPPEN_SLOT
+ * seconds (a fish rises, a gust crosses the lake, a wave of opening runs through the lilies,
+ * what is in the chrysalis twitches, a star falls, the crystal chimes…). Which one, where and
+ * exactly when are drawn from the slot's number, so a seek lands on the same evening.
+ */
+export const HAPPEN_SLOT = 8;
+/** How fast the stars wheel by themselves (rad/s), and how far a new level turns them at once. */
+const WHEEL_RATE = 0.0016;
+const WHEEL_KICK = 0.6;
+const WHEEL_SECONDS = 3.2;
+/** Turns a second of the ringed world (its moons ride on it). */
+const PLANET_RATE = 0.0011;
+/** Seconds the chrysalis takes to move most of the way to a new place when the board comes or goes. */
+const PERCH_EASE = 1.6;
+/** A knock sets the chrysalis swinging: how fast (rad/s) and how soon it dies away (1/s). */
+const SWING_RATE = 1.35;
+const SWING_DAMP = 0.42;
+const SWING_LIVE = 14;
+/** Knocks it can be swinging from at once. */
+const SWING_SLOTS = 3;
+/** Seconds a twitch of what is inside lasts. */
+const TWITCH_LIVE = 1.8;
 /** The ring through the frame: seconds it crosses, and seconds its light takes to fall to 1/e. */
 const PRISM_LIVE = 2.2;
 const PRISM_FADE = 0.75;
@@ -199,6 +272,22 @@ export class VesperWorld {
         };
         /** The chrysalis on screen (fractions, y down): where the post's shafts come from. */
         this.heart = { x: 0.5, y: 0.42 };
+        /** The wings' root on screen: where the ring through the frame starts. */
+        this.origin = { x: 0.5, y: 0.42 };
+        /**
+         * Where the chrysalis hangs, as an offset (metres) from its place at rest: it stands clear
+         * of the board so it is seen while a game is on (perchFor, composition).
+         */
+        this.perch = { x: 0, y: 0 };
+        this.perchGoal = { x: 0, y: 0 };
+        this._perchSet = false;
+        /** Its pose this frame: where it hangs from, how it is turned, where its light is. */
+        this.relicAt = [STALK[0], STALK[1], STALK[2]];
+        this.relicHeart = [HEART[0], HEART[1], HEART[2]];
+        this._relicQuat = new THREE.Quaternion();
+        this._relicEuler = new THREE.Euler(0, 0, 0, 'ZXY');
+        this._relicMatrix = new THREE.Matrix4();
+        this._tides = [0, 0, 0];
         this._camera = null;
         this._look = new THREE.Vector3();
         this._ray = new THREE.Vector3();
@@ -212,9 +301,12 @@ export class VesperWorld {
         this._night = VESPER_PALETTES[0].night;
         /** The evening moves on by itself (captures of one hour hold it still). */
         this.hourDrift = true;
+        /** The evening has happenings of its own (a capture of one event can hold them off). */
+        this.happenings = true;
         this._target = paletteAt(0);
         this._post = {
             heart: this.heart,
+            origin: this.origin,
             flash: 0,
             kick: 0,
             shafts: 0.2,
@@ -238,6 +330,25 @@ export class VesperWorld {
         this.starFlare = new Swell({
             attack: 0.12, release: 1.8, ceiling: 2, knee: 1.4,
         });
+        /** The fireflies thrown out by whatever strikes the lake. */
+        this.scatter = new Swell({
+            attack: 0.14, release: 1.5, ceiling: 1.3, knee: 0.9,
+        });
+        /** The fireflies drawn into a whirl round the chrysalis. */
+        this.vortex = new Swell({
+            attack: 0.5, release: 3.2, ceiling: 1, knee: 0.75,
+        });
+        /** The moths drawn in close. */
+        this.gather = new Swell({
+            attack: 0.3, release: 3, ceiling: 1, knee: 0.7,
+        });
+        /** The fireflies made to rise. */
+        this.lift = new Swell({
+            attack: 0.8, release: 5, ceiling: 1, knee: 0.8,
+        });
+        this._life = {};
+        this._planetSun = [0, 0, 0];
+        this._ringSun = [0, 0, 0];
         this.resetState(0);
     }
 
@@ -274,6 +385,31 @@ export class VesperWorld {
         this.eyeFlash = 0;
         this.crack = 0;
         this.fed = 0;
+        /** Knocks the chrysalis is still swinging from: when, how hard, which way (x, z). */
+        this.swings = Array.from({ length: SWING_SLOTS }, () => ({
+            time: -100, amp: 0, x: 0, z: 0,
+        }));
+        this.swingCursor = 0;
+        /** A turn on its thread still running, and the turns it has already made. */
+        this.spin = { time: -100, turns: 0, seconds: 1 };
+        this.twistBase = 0;
+        /** What is inside last twitched then, that hard. */
+        this.twitch = { time: -100, strength: 0 };
+        /** The heartbeat's phase (0..1), integrated: its rate moves with the chain. */
+        this.beatPhase = 0;
+        /** The last slot whose happening has been played. */
+        this.happenDone = -Infinity;
+        /** The stars' wheel: what a new level's turn has added, and the turn still running. */
+        this.wheelBase = 0;
+        this.wheelAt = -100;
+        /** The run is over: the evening sleeps (eased in `sleep`). */
+        this.asleep = false;
+        this.sleep = 0;
+        this.scatter?.reset();
+        this.vortex?.reset();
+        this.gather?.reset();
+        this.lift?.reset();
+        this.meteors?.reset();
         this.hushUntil = -1;
         /** The breath a four-line clear holds the evening at: deep when play is cold, shallow when hot. */
         this.hushFloor = 0.14;
@@ -308,6 +444,15 @@ export class VesperWorld {
             for (let i = 0; i < THREAD_PULSES; i++) this.u.pulseA[i].value.set(-100, 0, 0, 0);
             this.u.fed.value.set(1, 0.7, 0.4, 0);
             this.u.heat.value.set(0, 0, 0, 0);
+            this.u.chime.value.set(-100, 0, 0, 0);
+            this.u.gust.value.set(1, 0, -100, 0);
+            this.u.whirl.value.set(0, -70, -100, 0);
+            this.u.lotus.value.set(HEART[0], HEART[2] + 6, -100, 0);
+            this.u.bloomWave.value.set(1, 0, -100, 0);
+            this.u.burst.value.set(-100, 0, 0, 0);
+            this.u.flyScatter.value.set(HEART[0], HEART[2] + 6, 0, 0);
+            this.u.chimeTint.value.set(1, 1, 1);
+            this.u.whirlTint.value.set(1, 1, 1);
         }
     }
 
@@ -348,7 +493,7 @@ export class VesperWorld {
 
         // ── What stands in the scene (mirrored by the lake's pass) ──
         this.spires = planSpires(tier.spires);
-        this.addPart('spires', createSpires(u, this.spires), true);
+        this.addPart('spires', createSpires(u, this.spires, { fire: !tier.lite }), true);
         if (tier.reeds > 0) this.addPart('reeds', createReeds(u, tier.reeds), true);
         this.addPart('chrysalis', createChrysalis(u), true);
         // The long threads are made fast to the two tallest crystals of each stand.
@@ -360,9 +505,17 @@ export class VesperWorld {
         this.threads = planThreads(tier.threads, anchors);
         this.addPart('threads', createThreads(u, this.threads), true);
         this.addPart('wings', createWings(u, { detail: tier.wingDetail }), true);
-        this.blooms = createBlooms(u, planBlooms(tier.blooms), { whorls: tier.whorls });
+        // The stars that flash on cut stone: the chrysalis's larger facets, the crystals' points.
+        const facets = [...(this.parts.chrysalis.facets || [])].sort((a, b) => b.area - a.area).slice(0, tier.glints);
+        this.addPart('glints', createGlints(u, {
+            relic: facets,
+            fixed: (this.parts.spires.glints || []).filter((_, i) => i % tier.glintStride === 0),
+        }), true);
+        const bloomPlan = planBlooms(tier.blooms);
+        this.blooms = createBlooms(u, bloomPlan, { whorls: tier.whorls, pads: planPads(bloomPlan, tier.pads) });
         this.addPart('blooms', this.blooms, true);
         if (tier.fireflies > 0) this.addPart('fireflies', createFireflies(u, tier.fireflies), true);
+        this.addPart('flutter', createFlutter(u, { ambient: tier.flutter, burst: tier.flutterBurst }), true);
         yield 'shore, relic, wings and blooms';
 
         // ── Gameplay effects (pools, always drawn) ──
@@ -372,6 +525,8 @@ export class VesperWorld {
         this.addPart('dust', this.dust, true);
         this.blades = createBlades(u);
         this.addPart('blades', this.blades);
+        this.meteors = createMeteors(u);
+        this.addPart('meteors', this.meteors, true);
 
         this.applyPalette(1);
         this.scene.add(this.root);
@@ -423,6 +578,14 @@ export class VesperWorld {
         this.layout = rects || fallbackLayout(this.aspect * 1000, 1000);
         // With no wings out there is no front to jump: the cover follows the board at once.
         if (!(this.wing > 0)) this.coverStrength = this.layoutLive ? 1 : 0;
+        // The chrysalis hangs where the board leaves it in view: it glides there, except the
+        // first time (a world that starts with a board on screen starts with it in its place).
+        perchFor(this.layoutLive ? this.layout : null, this.aspect, this.perchGoal);
+        if (!this._perchSet) {
+            this.perch.x = this.perchGoal.x;
+            this.perch.y = this.perchGoal.y;
+            this._perchSet = true;
+        }
     }
 
     setReducedMotion(reduced) {
@@ -434,6 +597,11 @@ export class VesperWorld {
         this.hourDrift = drifting !== false;
     }
 
+    /** Let the evening have its own happenings (the default), or hold them off. */
+    setHappenings(on) {
+        this.happenings = on !== false;
+    }
+
     /** The hour of the evening now: the level's, plus how far time has moved it on. */
     hourNow() {
         return hourAt(this.level, this.time, this.hourDrift);
@@ -443,15 +611,21 @@ export class VesperWorld {
     seek(time) {
         this.resetState(Math.max(0, time));
         this.applyPalette(1);
+        this.perch.x = this.perchGoal.x;
+        this.perch.y = this.perchGoal.y;
+        // The wings' cover too: a board that had only just come back is simply there.
+        this.coverStrength = this.layoutLive ? 1 : 0;
+        this.poseRelic(0);
     }
 
     /**
      * A new run. The evening goes back to rest the way it would by itself: a chain still
      * standing breaks (the wings fall), every lily lets its light go, and nothing still on its
      * way lands. What is already in the air — scales, moths, rings on the water — runs out;
-     * the hour of the evening stays.
+     * the hour of the evening stays. `wake: false` (the run has just ended) leaves the evening
+     * asleep until play comes back (`wake`, or the next run's first lock).
      */
-    resetSession() {
+    resetSession({ wake = true } = {}) {
         if (this.combo > 0) this.onCombo(0);
         this.combo = 0;
         this.hushUntil = -1;
@@ -461,11 +635,162 @@ export class VesperWorld {
         this.counts = {
             locks: 0, clears: 0, quads: 0, moths: 0, falls: 0,
         };
+        if (wake) this.wake();
     }
 
-    /** The run ended: the wings fall, the chrysalis sleeps. */
+    /** What was asleep wakes: a stir in the chrysalis, and the moths come back. */
+    wake() {
+        if (this.asleep) this.twitchNow(this.time + 0.3, 0.8);
+        this.asleep = false;
+    }
+
+    /** The run ended: the wings fall, the chrysalis sleeps, and the moths leave it. */
     onGameOver() {
         if (this.combo > 0) this.onCombo(0);
+        this.asleep = true;
+    }
+
+    // ── What the evening can do ─────────────────────────────────────────────────
+
+    /**
+     * Ring the crystal: a flare climbs every stand from the waterline, and the chrysalis's facets
+     * flash. A fainter chime than the one still climbing leaves it be.
+     */
+    chimeNow(time, strength, rgb) {
+        if (!this.u) return;
+        const C = this.u.chime.value;
+        const age = time - C.x;
+        // One still to come counts in full: a four-line clear's chime waits out the hush, and a
+        // fainter clear on another board in the same frame must not take its place.
+        let left = 0;
+        if (age < 0) left = C.y;
+        else if (age < 3) left = C.y * Math.exp(-age * 1.4);
+        if (strength < left) return;
+        C.set(time, strength, 0, 0);
+        this.u.chimeTint.value.set(rgb[0], rgb[1], rgb[2]);
+    }
+
+    /** A wave of opening sets out across the lake: every lily it passes opens, then shuts again. */
+    bloomWaveNow(time, strength, heading = null) {
+        if (!this.u) return;
+        const B = this.u.bloomWave.value;
+        const age = time - B.z;
+        // A stronger wave still running, or still to come, is not cut short (see chimeNow).
+        if (age < 9 && strength < B.w) return;
+        const ang = heading ?? (time * 0.37) % TAU;
+        B.set(Math.cos(ang), Math.sin(ang), time, strength);
+    }
+
+    /** A cloud of moths leaves the chrysalis at once. */
+    burstNow(time, strength) {
+        if (!this.u) return;
+        const B = this.u.burst.value;
+        const age = time - B.x;
+        // A burst still in the air, or still to come, is not cut short by a fainter one.
+        if (age < 5 && strength <= B.y) return;
+        B.set(time, strength, 0, 0);
+    }
+
+    /** The chrysalis turning stirs a whirl into the water under it. */
+    whirlNow(time, strength, rgb) {
+        if (!this.u) return;
+        const W = this.u.whirl.value;
+        const age = time - W.z;
+        if (age < 4 && strength < W.w * Math.exp(-Math.max(0, age) * 0.5)) return;
+        W.set(this.relicHeart[0], this.relicHeart[2] + 2, time, strength);
+        this.u.whirlTint.value.set(rgb[0], rgb[1], rgb[2]);
+    }
+
+    /** A lotus of light opens on the lake. */
+    lotusNow(time, strength) {
+        if (!this.u) return;
+        this.u.lotus.value.set(HEART[0], HEART[2] + 6, time, strength);
+    }
+
+    /** `count` stars fall, one after another, over the open sky. */
+    meteorShower(time, count, seed = 1) {
+        if (!this.meteors) return;
+        const rand = mulberry32(0x3c6e + Math.round(seed) * 9973);
+        for (let i = 0; i < count; i++) {
+            const left = rand() < 0.5;
+            this.meteors.fire({
+                azimuth: (left ? -1 : 1) * (0.1 + rand() * 0.5),
+                elevation: 0.3 + rand() * 0.22,
+                heading: (left ? Math.PI + 0.75 : -0.75) + (rand() - 0.5) * 0.5,
+                sweep: 0.16 + rand() * 0.16,
+                time: time + i * (0.16 + rand() * 0.22),
+                life: 0.7 + rand() * 0.5,
+                rgb: this._palette.glow.map((c) => c * 0.4 + 0.6),
+                strength: 0.8 + rand() * 0.5,
+            });
+        }
+    }
+
+    /** Play the happenings that have come due (see HAPPEN_SLOT). */
+    runHappenings(t) {
+        const slot = Math.floor(t / HAPPEN_SLOT);
+        if (!this.happenings) {
+            // Held off: nothing is owed when they come back.
+            this.happenDone = slot;
+            return;
+        }
+        for (let s = Math.max(this.happenDone + 1, slot - 1); s <= slot; s++) {
+            const rand = mulberry32(0x9e37 + s * 7919);
+            const at = s * HAPPEN_SLOT + 0.4 + rand() * (HAPPEN_SLOT - 1.5);
+            if (t < at) break;
+            this.happenDone = s;
+            if (s >= 0) this.happen(at, rand);
+        }
+    }
+
+    /** One happening of the evening's own, at `at`, drawn from `rand`. */
+    happen(at, rand) {
+        const pick = rand();
+        const pal = this._palette;
+        const calm = this.reducedMotion ? 0.5 : 1;
+        const { blooms } = this;
+        /** A place on the open water beside the board: near one of the lilies. */
+        const spot = () => {
+            const b = blooms && blooms.count ? blooms.plan[Math.floor(rand() * blooms.count)] : { x: 14, z: -34 };
+            return [b.x + (rand() - 0.5) * 16, b.z + (rand() - 0.5) * 12];
+        };
+        const soft = [0, 1, 2].map((c) => pal.haze[c] * 0.5 + pal.glow[c] * 0.3 + 0.2);
+        if (pick < 0.2) {
+            // A fish rises: a ring, and a smaller one after it.
+            const [x, z] = spot();
+            this.ring(x, z, at, 0.3 * calm, soft, 0.24);
+            this.ring(x + 0.4, z, at + 0.55, 0.18 * calm, soft, 0.16);
+        } else if (pick < 0.32) {
+            // Something skims the water: a row of small rings, one after another.
+            const [x, z] = spot();
+            const ang = rand() * TAU;
+            for (let i = 0; i < 5; i++) {
+                this.ring(x + Math.cos(ang) * i * 2.6, z + Math.sin(ang) * i * 1.4, at + i * 0.26, 0.2 * calm, soft, 0.1);
+            }
+        } else if (pick < 0.47) {
+            // A gust crosses the lake.
+            const ang = rand() < 0.5 ? rand() * 0.6 - 0.3 : Math.PI + rand() * 0.6 - 0.3;
+            this.u.gust.value.set(Math.cos(ang), Math.sin(ang), at, (0.7 + rand() * 0.5) * calm);
+        } else if (pick < 0.6) {
+            // A wave of opening runs through the lilies.
+            this.bloomWaveNow(at, 0.6, rand() * TAU);
+        } else if (pick < 0.74) {
+            // What is inside the chrysalis stirs.
+            this.twitchNow(at, 0.55 + rand() * 0.45);
+        } else if (pick < 0.86) {
+            // A star falls (by night; at dusk a fish rises instead).
+            if (this._night > 0.3) this.meteorShower(at, 1, Math.round(at * 10));
+            else {
+                const [x, z] = spot();
+                this.ring(x, z, at, 0.28 * calm, soft, 0.22);
+            }
+        } else if (pick < 0.93) {
+            // The crystal chimes, softly.
+            this.chimeNow(at, 0.3, pal.crystal.map((c) => c * 0.6 + 0.4));
+        } else {
+            // The fireflies lift off the water for a while.
+            this.lift.hit(0.7, at);
+        }
     }
 
     /** The camera that will render the world: it sees the scene's layer, the mirror only that. */
@@ -518,10 +843,136 @@ export class VesperWorld {
         applyCameraBreath(camera, t, { scale: this.reducedMotion ? 0 : 1 });
         camera.updateMatrixWorld();
         this._camera = camera;
-        // The chrysalis on screen: where the shafts come from.
-        this._ray.set(HEART[0], HEART[1], HEART[2]).project(camera);
+        this.projectMarks(camera);
+    }
+
+    /**
+     * The chrysalis on screen: where the shafts come from. And the wings' root, behind the board:
+     * where the ring through the frame starts. (The playground calls it again after it moves the
+     * camera itself.)
+     */
+    projectMarks(camera) {
+        const h = this.relicHeart;
+        this._ray.set(h[0], h[1], h[2]).project(camera);
         this.heart.x = Math.max(-0.5, Math.min(1.5, this._ray.x * 0.5 + 0.5));
         this.heart.y = Math.max(-0.5, Math.min(1.5, 0.5 - this._ray.y * 0.5));
+        this._ray.set(HEART[0], HEART[1], HEART[2]).project(camera);
+        this.origin.x = Math.max(-0.5, Math.min(1.5, this._ray.x * 0.5 + 0.5));
+        this.origin.y = Math.max(-0.5, Math.min(1.5, 0.5 - this._ray.y * 0.5));
+    }
+
+    // ── The chrysalis's pose ────────────────────────────────────────────────────
+
+    /**
+     * Knock the chrysalis: it swings from its thread and dies away. `x`, `z` = which way
+     * (sideways, to and fro); the faintest knock still running makes way.
+     */
+    knock(time, amp, x = 1, z = 0.4) {
+        let slot = 0;
+        let least = Infinity;
+        for (let i = 0; i < SWING_SLOTS; i++) {
+            const k = this.swings[i];
+            const age = time - k.time;
+            const left = age < 0 ? k.amp : k.amp * Math.exp(-Math.max(0, age) * SWING_DAMP);
+            if (left < least) {
+                least = left;
+                slot = i;
+            }
+        }
+        const k = this.swings[slot];
+        k.time = time;
+        k.amp = amp;
+        k.x = x;
+        k.z = z;
+        this.swingCursor += 1;
+    }
+
+    /** Turn the chrysalis on its thread: `turns` whole turns over `seconds`, easing out. */
+    turn(time, turns, seconds = 3) {
+        // What the last turn had made by now stays made. Under reduced motion it was never
+        // shown (poseRelic stills the turn), so there is nothing to keep: keeping it would
+        // swing the chrysalis round in one frame when the next turn starts.
+        if (!this.reducedMotion) this.twistBase += this.spinAngle(time);
+        this.spin.time = time;
+        this.spin.turns = turns;
+        this.spin.seconds = Math.max(0.2, seconds);
+    }
+
+    /** The angle the turn still running has made by `time` (radians). */
+    spinAngle(time) {
+        const { spin } = this;
+        const age = time - spin.time;
+        if (!(age > 0) || !spin.turns) return 0;
+        const k = Math.min(1, age / spin.seconds);
+        return spin.turns * TAU * (1 - (1 - k) ** 3);
+    }
+
+    /** What is inside twitches: a quick wriggle, and its light swells. */
+    twitchNow(time, strength = 1) {
+        const age = time - this.twitch.time;
+        // One still to come (the blades are on their way) counts in full.
+        let left = 0;
+        if (age < 0) left = this.twitch.strength;
+        else if (age < TWITCH_LIVE) left = this.twitch.strength * Math.exp(-age * 3.2);
+        if (strength < left) return;
+        this.twitch.time = time;
+        this.twitch.strength = strength;
+    }
+
+    /** Hang, turn and place the chrysalis for this frame, and tell the shaders. */
+    poseRelic(dt) {
+        const { u } = this;
+        if (!u) return;
+        const t = this.time;
+        const calm = this.reducedMotion ? 0.25 : 1;
+        const k = dt > 0 ? approach(2.2 / PERCH_EASE, dt) : 0;
+        this.perch.x += (this.perchGoal.x - this.perch.x) * k;
+        this.perch.y += (this.perchGoal.y - this.perch.y) * k;
+        const d = this.drift;
+        // It hangs by silk: it is never quite still, and it turns slowly on its thread.
+        let ax = (Math.sin(d * 0.31) * 0.016 + Math.sin(d * 0.47 + 1.3) * 0.009) * calm;
+        let az = (Math.sin(d * 0.27 + 2.0) * 0.011 + Math.sin(d * 0.39 + 0.4) * 0.006) * calm;
+        let twist = (Math.sin(d * 0.071) * 0.85 + Math.sin(d * 0.127 + 1.0) * 0.4) * (this.reducedMotion ? 0.4 : 1);
+        for (let i = 0; i < SWING_SLOTS; i++) {
+            const knock = this.swings[i];
+            const age = t - knock.time;
+            if (age <= 0 || age > SWING_LIVE) continue;
+            const e = knock.amp * Math.exp(-age * SWING_DAMP) * Math.sin(age * SWING_RATE) * calm;
+            ax += e * knock.x;
+            az += e * knock.z;
+        }
+        twist += this.twistBase + this.spinAngle(t) * (this.reducedMotion ? 0 : 1);
+        const twAge = t - this.twitch.time;
+        let flare = 0;
+        if (twAge >= 0 && twAge < TWITCH_LIVE) {
+            const w = this.twitch.strength * Math.exp(-twAge * 3.2);
+            ax += w * 0.034 * Math.sin(twAge * 15) * calm;
+            twist += w * 0.17 * Math.sin(twAge * 10.5) * calm;
+            flare = this.twitch.strength * Math.exp(-twAge * 1.5) * Math.min(1, twAge * 8);
+        }
+        this._relicEuler.set(az, twist, ax, 'ZXY');
+        this._relicQuat.setFromEuler(this._relicEuler);
+        const m = this._relicMatrix.makeRotationFromQuaternion(this._relicQuat).elements;
+        const at = this.relicAt;
+        at[0] = STALK[0] + this.perch.x;
+        at[1] = STALK[1] + this.perch.y;
+        at[2] = STALK[2];
+        const heart = this.relicHeart;
+        heart[0] = at[0] - m[4] * HEART_DROP;
+        heart[1] = at[1] - m[5] * HEART_DROP;
+        heart[2] = at[2] - m[6] * HEART_DROP;
+        this.parts.chrysalis?.setPose?.(at, this._relicQuat, heart);
+        u.relicAt.value.set(at[0], at[1], at[2]);
+        u.relicX.value.set(m[0], m[1], m[2]);
+        u.relicY.value.set(m[4], m[5], m[6]);
+        u.relicZ.value.set(m[8], m[9], m[10]);
+        u.relicHeart.value.set(heart[0], heart[1], heart[2]);
+        u.perch.value.set(this.perch.x, this.perch.y, 0);
+        // Its heart: slow at rest, quicker with the chain and the pace of play.
+        const rate = 0.4 + this.power * 0.7 + this.heat.fever * 0.5 + this.surge * 0.3;
+        this.beatPhase = (this.beatPhase + dt * rate) % 1;
+        const stir = clamp01(0.25 + this.power * 0.5 + flare * 0.8 + this.heat.level * 0.3);
+        u.beat.value.set(this.beatPhase, stir, flare, 0);
     }
 
     /** The world point `depth` metres along the ray through a screen point (fractions, y down). */
@@ -668,6 +1119,8 @@ export class VesperWorld {
         u = 0.5, rows = null, hardDrop = false, color = null, player = 0, screen = null,
     } = {}) {
         if (!this.u) return;
+        // Play is back: an evening asleep since the last run ended wakes.
+        if (this.asleep) this.wake();
         const rgb = pieceColor(color);
         let wx = 0.5;
         let wy = 0.6;
@@ -776,9 +1229,13 @@ export class VesperWorld {
             if (second >= 0) this.sendMoth(second, [...from], rgb, 0.6, false);
             const third = this.pickBloom(-side, [first, second]);
             if (third >= 0) this.sendMoth(third, [...from], rgb, 0.6, false);
-            // …the board strikes the lake under the chrysalis, and the silk rings with it.
+            // …the board strikes the lake under it, and the silk rings with it.
             this.ring(HEART[0], HEART[2] + 6, this.time, 1.0, rgb, 2.4);
             this.threadPulse(this.time, 0, 1, rgb);
+            // The blow throws the fireflies outward, rings the crystal and sets the chrysalis swinging.
+            this.scatter.hit(0.8, this.time);
+            this.chimeNow(this.time, 0.42, rgb.map((c) => c * 0.7 + 0.3));
+            this.knock(this.time + 0.1, 0.03, side, 0.5);
         } else {
             this.threadPulse(this.time, side, 0.55, rgb);
         }
@@ -906,7 +1363,7 @@ export class VesperWorld {
                     size: 0.22,
                     scatter: 0.5,
                     stagger: 0.3,
-                    home: DUST_HOME,
+                    home: [this.relicHeart[0], this.relicHeart[1], this.relicHeart[2] + 1.5],
                 });
                 released += given;
                 latest = Math.max(latest, pass);
@@ -929,35 +1386,58 @@ export class VesperWorld {
             }
         }
 
-        // ── The cleared rows leave the card as blades of light ──
+        // ── The cleared rows leave the card as blades of light and fly home to the chrysalis ──
         const board = boardFor(this.layout, player);
         const card = cardUnion(this.layout);
         if (this.blades && board && card && this.layoutLive && !screen) {
             const list = Array.isArray(rows) && rows.length ? rows : Array.from({ length: n }, (_, i) => 19 - i);
-            const ys = [];
-            for (let i = 0; i < list.length && i < 4; i++) ys.push(boardPoint(board, 0.5, list[i], this._point).y);
             const blade = Math.min(1.8, (0.7 + 0.18 * n) * (1 + 0.2 * deeper));
-            this.blades.fire(ys, card.x0, card.x1, rgb, this.time, blade);
-            // Where a blade ends it comes apart into scales.
-            const at = [0, 0, 0];
-            ys.forEach((y, i) => {
+            const sent = [];
+            for (let i = 0; i < list.length && i < 4; i++) {
+                const { y } = boardPoint(board, 0.5, list[i], this._point);
                 [-1, 1].forEach((side) => {
-                    const sx = (side < 0 ? card.x0 : card.x1) + side * 0.2;
-                    this.screenToWorld(sx, y, 40, at);
+                    const at = this.screenToWorld(side < 0 ? card.x0 : card.x1, y, 24, [0, 0, 0]);
+                    // It bows out over the water on its own side before it turns for home.
+                    const via = [at[0] + side * (13 + i * 2.5), at[1] + 5 + i * 1.6, at[2] - 14];
+                    sent.push({ at, via });
                     dust?.emit({
                         at,
-                        n: Math.round(7 * this.dustShare()),
+                        n: Math.round(5 * this.dustShare()),
                         rgb,
-                        time: this.time + 0.16 + i * 0.035,
-                        vel: [side * 5, 0.5, 0],
-                        spread: 1.6,
-                        scatter: 2.4,
-                        life: [1.1, 2.2],
-                        size: 0.24,
-                        stagger: 0.2,
+                        time: this.time + i * 0.05,
+                        vel: [side * 4, 1.2, 0],
+                        spread: 1.8,
+                        scatter: 0.6,
+                        life: [0.7, 1.5],
+                        size: 0.2,
+                        stagger: 0.25,
                     });
                 });
-            });
+            }
+            const flight = this.reducedMotion ? BLADE_FLIGHT * 0.6 : BLADE_FLIGHT;
+            const home = this.blades.fire(sent, rgb, this.time, blade, flight);
+            // The chrysalis takes the rows in: it glows in their colour and stirs.
+            this.queueFed(home, Math.min(1, 0.22 + 0.1 * n + 0.05 * deeper), [...rgb]);
+            this.twitchNow(home, Math.min(1, 0.35 + 0.15 * n));
+        }
+
+        // ── What each clear adds ──
+        if (n >= 2 && !quad) {
+            // Two lines ring the crystal and draw the moths in.
+            this.chimeNow(birth, 0.28 + 0.12 * n, rgb.map((c) => c * 0.6 + 0.4));
+            this.gather.hit(0.5, birth);
+        }
+        if (n === 3 && !quad) {
+            // Three send a wave of opening through the lilies and a few moths out of the chrysalis.
+            this.bloomWaveNow(birth, 0.8);
+            this.burstNow(birth, 0.45);
+        }
+        if (perfect) {
+            // A perfect clear is the lake's own: a lotus of light opens on it, the fireflies
+            // rise off the water, and stars fall.
+            this.lotusNow(birth, 1);
+            this.lift.hit(1, birth);
+            this.meteorShower(birth + 0.4, 6, this.counts.clears + 3);
         }
 
         if (quad) {
@@ -971,6 +1451,13 @@ export class VesperWorld {
             this.ring(HEART[0], HEART[2] + 6, birth, 1.3, rgb, 3.2);
             this.eyeFlash = 1;
             this.beatKick = Math.max(this.beatKick, 1);
+            // Four lines hatch a cloud of moths out of the chrysalis; the blow sets it swinging,
+            // rings every crystal and throws the fireflies wide.
+            this.burstNow(birth, 1);
+            this.knock(birth, 0.045, this.counts.quads % 2 ? -1 : 1, 0.6);
+            this.chimeNow(birth, 1, VESPERFIRE);
+            this.scatter.hit(1.1, birth);
+            this.bloomWaveNow(birth, 1);
             // The beat shakes scales out of whatever wings there are.
             if (this.wing > 0.1) {
                 this.emitWingDust(0.1, this.wing, 90 * this.dustShare(), {
@@ -980,7 +1467,7 @@ export class VesperWorld {
             this.counts.quads += 1;
         }
         if (deeper > 0) {
-            // Each wave strikes the water under the chrysalis further out, and the silk rings.
+            // Each wave strikes the water under the board further out, and the silk rings.
             this.ring(HEART[0], HEART[2] + 6, birth, 0.6 + 0.15 * deeper, rgb, 1.3 + 0.45 * deeper);
             this.threadPulse(birth, 0, 0.6 + 0.12 * deeper, rgb);
             this.beatKick = Math.max(this.beatKick, 0.3 + 0.15 * deeper);
@@ -989,6 +1476,11 @@ export class VesperWorld {
             this.storm = Math.max(this.storm, 0.85);
             this.beatKick = Math.max(this.beatKick, 0.6);
             if (!quad) this.strikeRing(this.time, 0.4);
+            // A twist turns the chrysalis on its thread: twice round, stirring a whirl into the
+            // water under it and drawing the fireflies into a ring about it.
+            this.turn(this.time, 2, 3.4);
+            this.whirlNow(this.time, 1, rgb);
+            this.vortex.hit(1, this.time);
         }
         if (b2b) this.backToBack(birth);
         if (perfect) {
@@ -1007,6 +1499,7 @@ export class VesperWorld {
         this.starFlare.hit(0.7, at);
         this.threadPulse(at, 0, 1.2, GILT);
         this.beatKick = Math.max(this.beatKick, 0.5);
+        this.chimeNow(at, 0.8, GILT);
     }
 
     /**
@@ -1036,6 +1529,10 @@ export class VesperWorld {
         this.ring(HEART[0], HEART[2] + 6, t, 1.2, VESPERFIRE, 3.6);
         this.threadPulse(t, 0, 1.3, VESPERFIRE);
         this.strikeRing(t, this.reducedMotion ? 0.3 : 0.6);
+        this.lotusNow(t, 1);
+        this.lift.hit(1, t);
+        this.meteorShower(t + 0.4, 6, this.counts.clears + 5);
+        this.burstNow(t, 0.8);
     }
 
     /** A twist that cleared nothing: the wings stroke once and the silk rings, softly. */
@@ -1048,6 +1545,10 @@ export class VesperWorld {
         this.wingFlash = Math.max(this.wingFlash, 0.35);
         this.threadPulse(t, 0, 0.7, this._palette.wingRoot);
         this.ring(HEART[0], HEART[2] + 6, t, 0.6, this._palette.wingMid, 1.3);
+        // The chrysalis turns once on its thread, and the water under it with it.
+        this.turn(t, 1, 2.4);
+        this.whirlNow(t, 0.5, this._palette.wingMid);
+        this.vortex.hit(0.45, t);
     }
 
     /**
@@ -1082,6 +1583,7 @@ export class VesperWorld {
             this.beatKick = Math.max(this.beatKick, 0.35);
             // A link catches folding wings: they hold where they stand a moment.
             if (this.moulting) this.caughtUntil = this.time + CATCH_HOLD;
+            this.gather.hit(0.3, this.time);
             // Scales fly where the new band of wing is being written.
             const was = Math.max(0, this.wing);
             const next = wingForCombo(n);
@@ -1103,7 +1605,22 @@ export class VesperWorld {
             this.flash = Math.max(this.flash, 0.12);
             this.strikeRing(this.time, 0.5);
             this.gameplay.levelUp(this.time);
+            // The evening turns in a rush: the stars wheel, a few of them fall, and a wave of
+            // opening runs through the lilies as the new hour comes over the lake.
+            this.wheelBase += this.wheelTurn(this.time);
+            this.wheelAt = this.time;
+            this.meteorShower(this.time + 0.3, 4, this.level);
+            this.bloomWaveNow(this.time, 0.9);
+            this.chimeNow(this.time, 0.5, this._palette.crystal.map((c) => c * 0.6 + 0.4));
         }
+    }
+
+    /** How far the level's turn of the stars has run by `time` (radians). */
+    wheelTurn(time) {
+        const age = time - this.wheelAt;
+        if (!(age > 0)) return 0;
+        const k = Math.min(1, age / WHEEL_SECONDS);
+        return WHEEL_KICK * k * k * (3 - 2 * k);
     }
 
     /** Ease the live palette toward the hour's (k = 1 snaps). */
@@ -1226,6 +1743,55 @@ export class VesperWorld {
         const flap = fever * FEVER_SWING * (0.5 - 0.5 * Math.cos(t * TAU * FEVER_STROKE));
         this.beat = -((0.16 + slow) + stroke + flap) * motion;
 
+        this.poseRelic(dt);
+        this.runHappenings(t);
+        // ── The evening's own life: what the hour asks of it, never quite still within the hour ──
+        const life = lifeAt(this.hourNow(), this._life);
+        const ebb = 0.5 + 0.5 * Math.sin(t * 0.043);
+        const flow = 0.5 + 0.5 * Math.sin(t * 0.061 + 1.7);
+        this.sleep += ((this.asleep ? 1 : 0) - this.sleep) * approach(0.6, dt);
+        u.flutter.value.set(
+            clamp01((life.flutter * (0.7 + 0.3 * ebb) + Math.min(0.5, this.combo * 0.06) + warm * 0.2 + fever * 0.3)
+                * (1 - 0.85 * this.sleep)),
+            clamp01(this.power * 0.8 + this.gather.valueAt(t)),
+            0,
+            0,
+        );
+        u.flies.value.set(
+            clamp01(life.swarm * (0.55 + 0.45 * flow)),
+            clamp01(life.sync * (0.6 + 0.4 * ebb)),
+            clamp01(life.rise * (0.6 + 0.4 * flow) + this.lift.valueAt(t)),
+            clamp01(this.vortex.valueAt(t)) * (this.reducedMotion ? 0.4 : 1),
+        );
+        u.flyScatter.value.w = this.scatter.valueAt(t) * (this.reducedMotion ? 0.3 : 1);
+        u.rays.value = life.rays * (0.8 + 0.2 * ebb) + this.surge * 0.4;
+        u.cloudCover.value = life.cloud + 0.03 * Math.sin(t * 0.017) + this.sleep * 0.04;
+        planetSunAt(life.behind, this._planetSun, this._ringSun);
+        u.planetSun.value.set(this._planetSun[0], this._planetSun[1], this._planetSun[2]);
+        u.ringSun.value.set(this._ringSun[0], this._ringSun[1], this._ringSun[2]);
+        u.planetSpin.value = (t * PLANET_RATE) % 1;
+        const wheel = t * WHEEL_RATE * motion + this.wheelBase + this.wheelTurn(t);
+        u.skyTurn.value.set(Math.cos(wheel), Math.sin(wheel));
+        // The lilies' own hours: each kind stands open by so much now.
+        const tides = bloomTides(this.hourNow(), this._tides);
+        u.tide.value.set(tides[0], tides[1], tides[2], 0);
+        // The light the lanterns throw up from the lake: the chrysalis's lower facets hold it.
+        if (this.blooms && this.blooms.count) {
+            let lr = 0;
+            let lg = 0;
+            let lb = 0;
+            for (let i = 0; i < this.blooms.count; i++) {
+                const held = this.blooms.levelAt(i, t);
+                if (held <= 0.01) continue;
+                const { rgb } = this.blooms.state[i];
+                lr += rgb[0] * held;
+                lg += rgb[1] * held;
+                lb += rgb[2] * held;
+            }
+            const share = 0.5 / this.blooms.count;
+            u.lakeLight.value.set(lr * share, lg * share, lb * share);
+        }
+
         // ── Uniforms ──
         let ringsLive = 0;
         for (let i = 0; i < RING_SLOTS; i++) {
@@ -1254,8 +1820,9 @@ export class VesperWorld {
         u.combo.value = this.combo;
         u.crack.value = this.crack;
         // A quick hand wakes the chrysalis into a lantern; a fever burns it.
-        u.wake.value = clamp01(0.15 + this.power * 0.6 + this.fed * 0.3 + this.surge * 0.3 + this.storm * 0.12
-            + warm * 0.18 + fever * 0.22);
+        // (At rest it is already alight: a jewel with something alive in it, breathing.)
+        u.wake.value = clamp01((0.3 + Math.sin(this.drift * 0.37) * 0.05) * (1 - 0.55 * this.sleep) + this.power * 0.5
+            + this.fed * 0.3 + this.surge * 0.3 + this.storm * 0.1 + warm * 0.15 + fever * 0.2);
         // The evening deepens with the pace: more stars, then the aurora.
         u.night.value = Math.min(1, this._night + warm * 0.22 + fever * 0.28);
         const restAurora = Math.max(0, this._night - 0.7) * 1.4;
@@ -1387,6 +1954,7 @@ export class VesperWorld {
         this.moths = null;
         this.dust = null;
         this.blades = null;
+        this.meteors = null;
         this.u = null;
         this._camera = null;
     }

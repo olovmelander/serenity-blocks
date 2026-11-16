@@ -1,10 +1,23 @@
 /**
  * Vesper Chrysalis — the chrysalis, its halo and the silk it hangs by.
  *
- * The chrysalis is cut crystal: every facet mirrors the evening sky, the last light comes
- * through its right-hand edge, and whatever is inside shows as a slow pulse through the middle
- * of it. A chain of clears cracks it open from the shoulder down — the cracks run with the
- * light inside — and lights the points of gold on its shoulder one by one.
+ * The chrysalis is a jewel: a teardrop cut in triangular facets, hung by its wide end from a short
+ * horn, with a diadem of gold beads round its shoulder. Each facet does what a facet of cut stone
+ * does. It mirrors the evening (the sky, the lake's lanterns from below, and a flash when it
+ * turns one of the evening's lamps to the eye). It lets the eye in: the ray is bent at the facet,
+ * crosses the stone, and is thrown back by the cut of the far side, so every facet holds its own
+ * piece of the sky, split a little into its colours. And it shows what is inside: a light that
+ * beats like a heart and the folded wings of what the chain will hatch, seen through each facet
+ * from that facet's own angle, so the thing inside is broken into panes that slide against each
+ * other as the stone turns.
+ *
+ * It is never still: it hangs by silk, so it swings a little and turns slowly on its thread; what
+ * is inside stirs, and now and then twitches. A chain of clears cracks it along its facets from
+ * the shoulder down and lights the beads of the diadem one by one.
+ *
+ * The geometry is built about the point it hangs from (the top of the stalk, the origin): the
+ * world turns and places it each frame (setPose), and the shader reads the same pose to look
+ * into the stone in the stone's own frame.
  *
  * It hangs from threads of silk: a fan of them rising out of the frame and four long ones made
  * fast to the crystal stands at the edges of the view. They are hairlines (their width is set
@@ -23,20 +36,26 @@ import {
     cameraViewMatrix,
     clamp,
     cos,
+    cross,
     dot,
     exp,
     float,
     floor,
     fract,
+    fwidth,
     length,
     max,
+    min,
     mix,
     normalWorld,
     normalize,
+    positionGeometry,
     positionWorld,
     reflect,
+    refract,
     sin,
     smoothstep,
+    sqrt,
     step,
     uv,
     varying,
@@ -47,22 +66,25 @@ import {
 import {
     CHRYSALIS,
     HEART,
+    HEART_DROP,
+    STALK,
     SUN_DIR,
     THREAD_PULSES,
     TAU,
     chrysalisProfile,
     mulberry32,
     vcBell,
+    vcEvening,
     vcFresnel,
+    vcGemLights,
     vcHash11,
+    vcMax3,
     vcPart,
-    vcSkyBase,
     vcSkyLight,
 } from './vesper-chrysalis-tsl.js';
 import { flatVarying } from '../shared/flat-varying.js';
 
-/** Where the silk is made fast to the chrysalis: the top of its stalk. */
-export const STALK = Object.freeze([CHRYSALIS.x, CHRYSALIS.foot + CHRYSALIS.length, CHRYSALIS.z]);
+export { STALK };
 
 /** Seconds a bead of light takes to run the length of a thread. */
 export const PULSE_TRAVEL = 0.75;
@@ -72,63 +94,164 @@ const SUN_FLAT = (() => {
     return [SUN_DIR[0] / l, 0, SUN_DIR[2] / l];
 })();
 
+const L = CHRYSALIS.length;
+const R = CHRYSALIS.radius;
+/** Facets round the stone, and the heights of its girdles (0 = foot, 1 = the top of the stalk). */
+const AROUND = 8;
+const GIRDLES = Object.freeze([
+    // [height, how far the girdle stands out of the profile]
+    [0.07, 1], [0.17, 1], [0.29, 1], [0.42, 1], [0.545, 1], [0.64, 1],
+    // The shoulder ridge, then the cap's segments: each a step in from the last.
+    [CHRYSALIS.shoulder, 1.05], [0.75, 0.985], [0.8, 1.035], [0.85, 0.975], [0.893, 1.02],
+    [CHRYSALIS.neck, 1],
+    // The stalk.
+    [0.957, 1], [1, 1],
+]);
+/** How much the stone is flattened front to back. */
+const FLAT = 0.86;
+/** The gold spots low on the front of it (a turn round the stone, a height). */
+const SPOTS = Object.freeze([[0.19, 0.3], [0.31, 0.3], [0.25, 0.21], [0.13, 0.36], [0.37, 0.36]]);
+/** The stone as the shader sees it from inside: an ellipsoid about its middle. */
+const HULL_AT = Object.freeze([0, -L * 0.55, 0]);
+const HULL = Object.freeze([R * 0.97, L * 0.47, R * 0.97 * FLAT]);
+
+/** A point of the stone's skin in its own frame: `turn` round it (0..1), `t` up it (0..1). */
+export function chrysalisPoint(turn, t, out = [0, 0, 0], lift = 1) {
+    const ang = turn * TAU;
+    // The wing cases: two long swellings down the front that meet at the foot.
+    const front = Math.cos(ang - Math.PI / 2);
+    const cases = Math.max(0, front) ** 2 * Math.abs(Math.sin(ang - Math.PI / 2)) ** 0.6
+        * Math.max(0, 1 - Math.abs(t - 0.36) / 0.34) * 0.2;
+    const r = chrysalisProfile(t) * (1 + cases) * lift;
+    out[0] = Math.cos(ang) * r;
+    out[1] = (t - 1) * L;
+    out[2] = Math.sin(ang) * r * FLAT;
+    return out;
+}
+
 /**
- * The chrysalis as a faceted solid: rings of a lathe, every other ring turned half a facet so
- * the faces are kites, each vertex nudged so no two facets catch the light alike.
- * `uv` = (angle round it 0..1, height 0..1).
+ * The chrysalis as cut stone, about the point it hangs from. Every triangle is a facet (flat
+ * normals), wound outward. Attributes: `uv` = (turn round it, height), `aGem` = (the facet's own
+ * number 0..1, part 0 stone | 1 gold bead | 2 stalk, the bead's index, the facet's height),
+ * `aEdge` = barycentric distance to the facet's edges. Returns the geometry and the facets
+ * (centre and normal, in the stone's frame) for whatever wants to glint on them.
  */
 export function buildChrysalisGeometry(seed = 5519) {
     const rand = mulberry32(seed);
-    const around = 9;
-    const rings = 13;
     const pos = [];
     const uvs = [];
-    const at = [];
-    for (let j = 0; j <= rings; j++) {
-        const t = j / rings;
-        const row = [];
-        const r0 = chrysalisProfile(t);
-        for (let i = 0; i < around; i++) {
-            const turn = (i + (j % 2) * 0.5) / around;
-            const ang = turn * TAU;
-            // The wing cases: two long swellings down the front that meet at the foot.
-            const front = Math.cos(ang - Math.PI / 2);
-            const cases = Math.max(0, front) ** 2 * Math.abs(Math.sin(ang - Math.PI / 2)) ** 0.6
-                * Math.max(0, 1 - Math.abs(t - 0.36) / 0.4) * 0.34;
-            const nudge = j === 0 || j === rings ? 0 : (rand() - 0.5) * 0.07;
-            const r = r0 * (1 + cases + nudge);
-            row.push(pos.length / 3);
-            // A little flattened front to back.
-            pos.push(
-                CHRYSALIS.x + Math.cos(ang) * r,
-                CHRYSALIS.foot + t * CHRYSALIS.length,
-                CHRYSALIS.z + Math.sin(ang) * r * 0.86,
-            );
-            uvs.push(turn, t);
+    const gem = [];
+    const edge = [];
+    const facets = [];
+    const a = [0, 0, 0];
+    /** One facet. `axisY` = the height its outward side is measured from. */
+    const facet = (p0, p1, p2, uv0, uv1, uv2, part, index, centreOf = null) => {
+        const cx = (p0[0] + p1[0] + p2[0]) / 3;
+        const cy = (p0[1] + p1[1] + p2[1]) / 3;
+        const cz = (p0[2] + p1[2] + p2[2]) / 3;
+        const ux = p1[0] - p0[0];
+        const uy = p1[1] - p0[1];
+        const uz = p1[2] - p0[2];
+        const vx = p2[0] - p0[0];
+        const vy = p2[1] - p0[1];
+        const vz = p2[2] - p0[2];
+        let nx = uy * vz - uz * vy;
+        let ny = uz * vx - ux * vz;
+        let nz = ux * vy - uy * vx;
+        const len = Math.hypot(nx, ny, nz);
+        if (!(len > 1e-9)) return;
+        nx /= len;
+        ny /= len;
+        nz /= len;
+        // Outward: away from the stone's axis (or from the bead's own centre).
+        const ox = centreOf ? cx - centreOf[0] : cx;
+        const oy = centreOf ? cy - centreOf[1] : (cy - HULL_AT[1]) * 0.12;
+        const oz = centreOf ? cz - centreOf[2] : cz;
+        const outward = nx * ox + ny * oy + nz * oz >= 0;
+        const tri = outward ? [p0, p1, p2] : [p0, p2, p1];
+        const tuv = outward ? [uv0, uv1, uv2] : [uv0, uv2, uv1];
+        const id = rand();
+        const height = cy / L + 1;
+        for (let k = 0; k < 3; k++) {
+            pos.push(tri[k][0], tri[k][1], tri[k][2]);
+            uvs.push(tuv[k][0], tuv[k][1]);
+            gem.push(id, part, index, height);
+            edge.push(k === 0 ? 1 : 0, k === 1 ? 1 : 0, k === 2 ? 1 : 0);
         }
-        at.push(row);
+        if (part === 0) {
+            facets.push({
+                at: [cx, cy, cz],
+                normal: outward ? [nx, ny, nz] : [-nx, -ny, -nz],
+                area: len / 2,
+                seed: id,
+            });
+        }
+    };
+
+    // ── The stone and its stalk: girdles of points, every other one turned half a facet ──
+    const rings = GIRDLES.map(([t, lift], j) => Array.from({ length: AROUND }, (_, i) => {
+        const turn = (i + (j % 2) * 0.5) / AROUND;
+        return { p: chrysalisPoint(turn, t, [0, 0, 0], lift), uv: [turn, t] };
+    }));
+    const foot = { p: [0, -L, 0], uv: [0, 0] };
+    const top = { p: [0, 0, 0], uv: [0, 1] };
+    for (let i = 0; i < AROUND; i++) {
+        const i1 = (i + 1) % AROUND;
+        facet(foot.p, rings[0][i].p, rings[0][i1].p, foot.uv, rings[0][i].uv, rings[0][i1].uv, 0, 0);
+        const last = rings[rings.length - 1];
+        facet(top.p, last[i].p, last[i1].p, top.uv, last[i].uv, last[i1].uv, 2, 0);
     }
-    const index = [];
-    for (let j = 0; j < rings; j++) {
-        for (let i = 0; i < around; i++) {
-            const i1 = (i + 1) % around;
-            const a = at[j][i];
-            const b = at[j][i1];
-            const c = at[j + 1][i];
-            const d = at[j + 1][i1];
-            // Outward winding (counter-clockwise seen from outside); the half-turn decides the diagonal.
-            if (j % 2 === 0) index.push(a, c, b, b, c, d);
-            else index.push(a, d, b, a, c, d);
+    for (let j = 0; j < rings.length - 1; j++) {
+        const lower = rings[j];
+        const upper = rings[j + 1];
+        const part = GIRDLES[j][0] >= CHRYSALIS.neck ? 2 : 0;
+        for (let i = 0; i < AROUND; i++) {
+            const i1 = (i + 1) % AROUND;
+            if (j % 2 === 0) {
+                // Lower points at i, upper at i + ½: one facet stands on the lower girdle…
+                facet(lower[i].p, lower[i1].p, upper[i].p, lower[i].uv, lower[i1].uv, upper[i].uv, part, 0);
+                // …and one hangs from the upper.
+                facet(upper[i].p, lower[i1].p, upper[i1].p, upper[i].uv, lower[i1].uv, upper[i1].uv, part, 0);
+            } else {
+                facet(upper[i].p, lower[i].p, upper[i1].p, upper[i].uv, lower[i].uv, upper[i1].uv, part, 0);
+                facet(lower[i].p, lower[i1].p, upper[i1].p, lower[i].uv, lower[i1].uv, upper[i1].uv, part, 0);
+            }
         }
     }
-    const indexed = new THREE.BufferGeometry();
-    indexed.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    indexed.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-    indexed.setIndex(index);
-    const geometry = indexed.toNonIndexed();
-    indexed.dispose();
+
+    // ── The gold: the diadem's beads on the shoulder ridge, and the spots low on the front ──
+    const bead = (turn, t, size, index) => {
+        chrysalisPoint(turn, t, a, 1.03);
+        const ang = turn * TAU;
+        const out = [Math.cos(ang), 0, Math.sin(ang)];
+        const along = [-Math.sin(ang), 0, Math.cos(ang)];
+        const tips = [
+            [a[0] + out[0] * size, a[1], a[2] + out[2] * size],
+            [a[0] - out[0] * size * 0.4, a[1], a[2] - out[2] * size * 0.4],
+            [a[0] + along[0] * size * 0.8, a[1], a[2] + along[2] * size * 0.8],
+            [a[0] - along[0] * size * 0.8, a[1], a[2] - along[2] * size * 0.8],
+            [a[0], a[1] + size * 1.1, a[2]],
+            [a[0], a[1] - size * 1.1, a[2]],
+        ];
+        const centre = [a[0], a[1], a[2]];
+        const st = [turn, t];
+        [[0, 2, 4], [2, 1, 4], [1, 3, 4], [3, 0, 4], [2, 0, 5], [1, 2, 5], [3, 1, 5], [0, 3, 5]].forEach((f) => {
+            facet(tips[f[0]], tips[f[1]], tips[f[2]], st, st, st, 1, index, centre);
+        });
+    };
+    for (let i = 0; i < CHRYSALIS.diadem; i++) {
+        bead((i + 0.5) / CHRYSALIS.diadem, CHRYSALIS.shoulder, R * 0.085, i);
+    }
+    SPOTS.forEach(([turn, t], i) => bead(turn, t, R * 0.06, CHRYSALIS.diadem + i));
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geometry.setAttribute('aGem', new THREE.Float32BufferAttribute(gem, 4));
+    geometry.setAttribute('aEdge', new THREE.Float32BufferAttribute(edge, 3));
     geometry.computeVertexNormals();
-    geometry.computeBoundingSphere();
+    geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, -L / 2, 0), L);
+    geometry.userData.facets = facets;
     return geometry;
 }
 
@@ -141,96 +264,169 @@ export function createChrysalis(u) {
     material.name = 'VesperChrysalisShell';
     material.fog = false;
     material.toneMapped = false;
+
+    const aGem = attribute('aGem', 'vec4');
+    const vGem = flatVarying(aGem, 'vGem');
+    const vLocal = varying(positionGeometry, 'vGemLocal');
+    const vEdge = varying(attribute('aEdge', 'vec3'), 'vGemEdge');
+
+    /** A world direction in the stone's frame, and back. */
+    const toLocal = (d) => vec3(dot(d, u.relicX), dot(d, u.relicY), dot(d, u.relicZ));
+    const toWorld = (d) => u.relicX.mul(d.x).add(u.relicY.mul(d.y)).add(u.relicZ.mul(d.z));
+    const evening = (d) => vcEvening(u, d);
+
     material.fragmentNode = Fn(() => {
-        const N = normalize(normalWorld).toVar();
-        const V = normalize(cameraPosition.sub(positionWorld)).toVar();
-        const ndv = clamp(dot(N, V), 0.0, 1.0).toVar();
-        const st = uv().toVar();
-        const t = st.y;
+        const Nw = normalize(normalWorld).toVar();
+        const Vw = normalize(cameraPosition.sub(positionWorld)).toVar();
+        const ndv = clamp(dot(Nw, Vw), 0.0, 1.0).toVar();
+        const P = vec3(vLocal).toVar();
+        const part = vGem.y;
+        const id = vGem.x;
+        const isStone = float(1.0).sub(step(0.5, part)).toVar();
+        const isStalk = step(1.5, part).toVar();
+        const tAt = clamp(vGem.w, 0.0, 1.0).toVar();
 
-        // ── Cut crystal: each facet mirrors the sky (the lake mirrors it back from below) ──
-        const R = reflect(V.negate(), N);
-        const env = vcSkyBase(u, normalize(vec3(R.x, abs(R.y).add(0.02), R.z)));
-        const fres = vcFresnel(ndv, 0.16).mul(1.5);
-        const body = u.shell.mul(vcSkyLight(u, N).mul(0.9).add(0.02));
-        // The last light comes through the edge that faces where the sun set.
-        const edge = float(1.0).sub(ndv);
-        const facing = clamp(dot(N, vec3(SUN_FLAT[0], 0.0, SUN_FLAT[2])), 0.0, 1.0);
-        const through = u.glow.mul(facing).mul(edge.mul(edge)).mul(0.5)
-            .add(u.shell.mul(edge.mul(edge).mul(edge)).mul(0.5));
+        // ── The facet's face: it mirrors the evening and flashes on its lamps ──
+        const Rw = reflect(Vw.negate(), Nw).toVar();
+        const mirrored = evening(Rw).toVar();
+        const lamps = vcGemLights(u, Rw).toVar();
+        const fres = clamp(vcFresnel(ndv, 0.1).mul(1.25), 0.0, 1.0).toVar();
+        // A thin film on the stone: the mirrored sky shifts hue from facet to facet.
+        const film = cos(vec3(0.0, 2.1, 4.2).add(ndv.mul(7.0)).add(id.mul(TAU))).mul(0.5).add(0.5);
+        const face = mirrored.mul(mix(vec3(1.0), film.mul(1.5), 0.32)).add(lamps).mul(fres).toVar();
 
-        // ── What is inside: a slow pulse seen through the middle of it ──
-        const beat = sin(u.time.mul(u.power.mul(1.6).add(1.15))).mul(0.5).add(0.5);
-        const pulse = beat.mul(beat).mul(0.45).add(0.55);
-        const grain = u.noise(vec2(st.x.mul(2.0).add(V.x.mul(0.2)), t.mul(1.3).sub(u.drift.mul(0.012)))).toVar();
-        const depth = ndv.mul(ndv);
-        const heartAt = vcBell(t.sub(0.56).div(0.62));
-        const fedTint = mix(u.core, u.fed.rgb, u.fed.w.mul(0.75));
-        const inner = fedTint.mul(u.wake).mul(depth.mul(1.1).add(0.08)).mul(grain.r.mul(0.9).add(0.35))
-            .mul(heartAt.mul(0.9).add(0.1))
-            .mul(pulse)
-            .mul(3.2);
-
-        // ── The cracks: they open at the shoulder and run down as the chain grows ──
-        const net = u.noise(vec2(st.x.mul(3.0), t.mul(2.2).add(0.37))).toVar();
-        const lineA = vcBell(net.g.sub(0.5).div(0.035));
-        const lineB = vcBell(net.b.sub(0.47).div(0.028));
-        const fromShoulder = abs(t.sub(CHRYSALIS.shoulder)).add(net.a.mul(0.12));
-        const reach = float(1.0).sub(smoothstep(u.crack.mul(0.95), u.crack.mul(0.95).add(0.12), fromShoulder));
-        const cracks = max(lineA, lineB.mul(0.8)).mul(reach).mul(step(0.01, u.crack));
-        const molten = mix(u.core, vec3(1.0, 0.92, 0.75), 0.35).mul(cracks).mul(pulse.mul(0.6).add(0.7))
-            .mul(u.power.mul(4.0).add(3.0));
-
-        // ── The diadem: points of gold round the shoulder, one lit for every step of the chain ──
-        const cell = st.x.mul(CHRYSALIS.diadem);
-        const which = floor(cell);
-        const dq = vec2(fract(cell).sub(0.5).mul(1.35), t.sub(CHRYSALIS.shoulder).div(0.022));
-        const dotShape = float(1.0).sub(smoothstep(0.32, 0.5, length(dq)));
-        const litDot = step(which.add(0.5), u.combo).mul(0.94).add(0.06);
-        const twinkle = sin(u.time.mul(2.3).add(which.mul(1.7))).mul(0.2).add(0.8);
-        const gold = vec3(1.0, 0.78, 0.36).mul(dotShape).mul(litDot).mul(twinkle)
-            .mul(5.5);
-
-        // ── The wings folded inside, seen through the crystal ──
-        // Behind the front facets, a little deeper than the surface (they slide against it as the
-        // view drifts): two long folded wings with their veins and their eyes, the thing the
-        // chain will hatch. Dim at rest; they wake with the chain.
-        const p = positionWorld.sub(V.mul(CHRYSALIS.radius * 0.55));
-        const fx = p.x.sub(CHRYSALIS.x).div(CHRYSALIS.radius).toVar();
-        const fy = p.y.sub(CHRYSALIS.foot).div(CHRYSALIS.length).toVar();
-        const side = fx.abs().toVar();
-        // Each wing: a long teardrop from the shoulder down, wider below, its edge scalloped.
-        const span = smoothstep(0.78, 0.66, fy).mul(smoothstep(0.08, 0.24, fy));
-        const width = fy.sub(0.78).negate().mul(0.9).min(0.62)
-            .max(0.0)
-            .add(0.06);
-        const scallop = sin(fy.mul(46.0)).mul(0.035);
-        const inWing = float(1.0).sub(smoothstep(width.sub(0.04), width.add(0.04), side.add(scallop))).mul(span)
-            .mul(smoothstep(0.0, 0.06, side))
+        // ── Into the stone: the ray bends at the facet, crosses, and the far cut throws it back ──
+        const Nl = toLocal(Nw).toVar();
+        const Vl = toLocal(Vw).toVar();
+        const Tl = refract(Vl.negate(), Nl, 1 / 1.5).toVar();
+        const hullAt = vec3(HULL_AT[0], HULL_AT[1], HULL_AT[2]);
+        const hull = vec3(HULL[0], HULL[1], HULL[2]);
+        const pp = P.sub(hullAt).div(hull).toVar();
+        const dd = Tl.div(hull).toVar();
+        const qa = max(dot(dd, dd), 1e-5).toVar();
+        const qb = dot(pp, dd).toVar();
+        const qc = dot(pp, pp).sub(1.0);
+        const across = max(sqrt(max(qb.mul(qb).sub(qa.mul(qc)), 0.0)).sub(qb).div(qa), 0.0).toVar();
+        const Q = P.add(Tl.mul(across)).toVar();
+        const far = normalize(Q.sub(hullAt).div(hull.mul(hull))).toVar();
+        // The far side is cut too: its normal comes in steps, each step a facet.
+        const cell = floor(far.mul(2.6).add(vec3(0.63, 0.81, 0.57))).toVar();
+        const cut = normalize(cell).toVar();
+        // No two cuts send back the same share: some stand dark, some blaze (a stone's contrast).
+        const share = fract(dot(cell, vec3(0.37, 0.61, 0.83)).add(id.mul(0.31))).toVar();
+        const blaze = mix(float(0.3), float(1.75), share.mul(share));
+        const D2 = reflect(Tl, cut).toVar();
+        const D2w = toWorld(D2).toVar();
+        const cut2 = normalize(floor(D2.mul(3.3).add(vec3(0.91, 0.67, 0.79)))).toVar();
+        const D3w = toWorld(reflect(D2, cut2)).toVar();
+        // The lamps come back split into their colours: red bends least, blue most.
+        const spread = normalize(cross(D2w, vec3(0.31, 0.9, 0.3)).add(vec3(1e-4, 0.0, 0.0))).mul(0.085).toVar();
+        const fire = vec3(
+            vcGemLights(u, normalize(D2w.sub(spread))).r,
+            vcGemLights(u, D2w).g,
+            vcGemLights(u, normalize(D2w.add(spread))).b,
+        ).add(vcGemLights(u, D3w).mul(0.5));
+        // The stone's own colour deepens with the way through it.
+        const thick = clamp(across.div(R * 2), 0.0, 1.4).toVar();
+        const stone = u.shell.div(max(vcMax3(u.shell), 1e-3)).toVar();
+        const dye = mix(vec3(1.0), stone, clamp(thick.mul(0.8).add(0.12), 0.0, 1.0));
+        const brilliance = evening(D2w).mul(0.9).add(evening(D3w).mul(0.35)).add(fire)
+            .mul(dye)
+            .mul(blaze)
             .toVar();
-        // Veins radiate from the root under the shoulder; the eye sits low on each.
-        const veinAngle = atan(side, float(0.78).sub(fy)).toVar();
-        const veins = vcBell(fract(veinAngle.mul(6.5)).sub(0.5).div(0.08)).mul(0.9);
-        const eyeD = length(vec2(side.sub(0.4), fy.sub(0.27)).mul(vec2(1.0, 1.4)));
-        const eye = vcBell(eyeD.sub(0.06).div(0.02)).mul(0.6).add(vcBell(eyeD.div(0.025)).mul(0.3));
-        const folded = mix(u.wingMid.mul(0.35), u.wingEdge, veins.mul(0.7).add(eye.mul(0.35)))
-            .mul(inWing)
-            .mul(depth.mul(0.85).add(0.15))
-            .mul(u.wake.mul(1.6).add(u.power.mul(1.8)).add(0.08))
-            .mul(pulse);
 
-        // ── A thin film on the facets: the mirrored sky shifts hue as the facet turns ──
-        const film = cos(vec3(0.0, 2.1, 4.2).add(ndv.mul(7.0)).add(grain.b.mul(3.0))).mul(0.5).add(0.5);
-        const sheen = env.mul(fres).mul(mix(vec3(1.0), film.mul(1.5), 0.45));
+        // ── What is inside: seen where this facet's ray passes nearest the heart ──
+        const heartAt = vec3(0.0, -HEART_DROP, 0.0);
+        const nearest = clamp(dot(heartAt.sub(P), Tl), 0.0, across);
+        const M = P.add(Tl.mul(nearest)).toVar();
+        const rel = M.sub(heartAt).toVar();
+        const dH = length(rel.mul(vec3(1.0, 0.55, 1.0))).div(R * 0.62);
+        const heart = exp(dH.mul(dH).mul(-1.7)).toVar();
+        // A heartbeat: two beats and a rest.
+        const lub = exp(u.beat.x.mul(-7.0));
+        const dub = exp(fract(u.beat.x.add(0.78)).mul(-9.0)).mul(0.6);
+        const pulse = clamp(lub.add(dub), 0.0, 1.0).mul(0.5).add(0.5).toVar();
+        // The folded wings, on the plane through the axis that faces this ray.
+        const sideways = normalize(vec3(Tl.z, 0.0, Tl.x.negate()).add(vec3(1e-4, 0.0, 0.0)));
+        const stir = u.beat.y;
+        const fy = M.y.div(L).add(1.0).toVar();
+        const fx = dot(rel, sideways).div(R)
+            .add(sin(u.time.mul(0.9).add(fy.mul(7.0))).mul(stir.mul(0.035).add(0.012)))
+            .toVar();
+        const side = fx.abs().toVar();
+        const span = smoothstep(0.72, 0.6, fy).mul(smoothstep(0.05, 0.2, fy));
+        const breathe = sin(u.time.mul(0.55)).mul(stir.mul(0.07).add(0.03)).add(1.0);
+        const width = clamp(float(0.72).sub(fy).mul(0.95), 0.0, 0.6).add(0.05).mul(breathe);
+        const scallop = sin(fy.mul(46.0)).mul(0.03);
+        const inWing = float(1.0).sub(smoothstep(width.sub(0.05), width.add(0.05), side.add(scallop))).mul(span)
+            .mul(smoothstep(0.0, 0.05, side))
+            .toVar();
+        // Veins radiate from the root under the shoulder, light running out along them; an eye low on each.
+        const veinAngle = atan(side, float(0.72).sub(fy)).toVar();
+        const veins = vcBell(fract(veinAngle.mul(6.5)).sub(0.5).div(0.1));
+        const flow = sin(fy.mul(11.0).add(u.time.mul(1.3)).add(floor(veinAngle.mul(6.5)).mul(1.9))).mul(0.4).add(0.6);
+        const eyeD = length(vec2(side.sub(0.34), fy.sub(0.3)).mul(vec2(1.0, 1.4)));
+        const eye = vcBell(eyeD.sub(0.075).div(0.028)).mul(0.7).add(vcBell(eyeD.div(0.035)).mul(0.5));
+        const folded = mix(u.wingMid.mul(0.45), u.wingEdge, clamp(veins.mul(flow).mul(0.75).add(eye.mul(0.6)), 0.0, 1.0))
+            .mul(inWing);
+        // Its body: a spindle on the axis, segmented.
+        const spindle = vcBell(side.div(0.085)).mul(smoothstep(0.1, 0.24, fy)).mul(smoothstep(0.78, 0.6, fy))
+            .mul(sin(fy.mul(64.0)).mul(0.2).add(0.8));
+        const fedTint = mix(u.core, u.fed.rgb, u.fed.w.mul(0.75)).toVar();
+        const awake = u.wake.add(u.beat.z.mul(0.5)).toVar();
+        const inner = fedTint.mul(heart).mul(awake.mul(2.3).add(0.25)).mul(pulse)
+            .add(folded.mul(awake.mul(1.7).add(u.power.mul(0.9)).add(0.2)).mul(pulse.mul(0.5).add(0.5)))
+            .add(mix(fedTint, vec3(1.0, 0.95, 0.85), 0.4).mul(spindle).mul(awake.mul(1.5).add(0.15)).mul(pulse))
+            .toVar();
 
-        const light = inner.add(molten).add(gold).add(folded).mul(u.breath);
-        return vec4(body.add(sheen).add(through).add(light), 1.0);
+        // ── The facet's edges: hairlines of light, and the cracks a chain opens along them ──
+        const toEdge = max(min(vEdge.x, min(vEdge.y, vEdge.z)), 0.0).toVar();
+        const px = fwidth(toEdge).max(1e-5);
+        const hairline = float(1.0).sub(smoothstep(px.mul(0.5), px.mul(1.7), toEdge)).toVar();
+        const edges = mirrored.mul(0.8).add(u.glow.mul(0.22)).add(lamps.mul(0.6)).mul(hairline)
+            .mul(0.5);
+        // The cracks open at the shoulder and run down (and up) as the chain grows, facet by facet.
+        const order = abs(tAt.sub(CHRYSALIS.shoulder)).mul(1.15).add(id.mul(0.22));
+        const cracked = float(1.0).sub(smoothstep(u.crack.mul(0.95), u.crack.mul(0.95).add(0.1), order))
+            .mul(step(0.01, u.crack)).toVar();
+        const molten = mix(u.core, vec3(1.0, 0.92, 0.75), 0.4)
+            .mul(exp(toEdge.mul(-20.0)).mul(cracked))
+            .mul(pulse.mul(0.6).add(0.7))
+            .mul(u.power.mul(1.5).add(1.3));
+
+        // The last light comes through the edge that faces where the sun set.
+        const rim = float(1.0).sub(ndv);
+        const facing = clamp(dot(Nw, vec3(SUN_FLAT[0], 0.0, SUN_FLAT[2])), 0.0, 1.0);
+        const through = u.glow.mul(facing).mul(rim.mul(rim)).mul(0.45);
+        const body = u.shell.mul(vcSkyLight(u, Nw).mul(0.5).add(0.012));
+
+        // However hard it burns it keeps its colour: the light rolls off, it never clips to white.
+        const raw = inner.mul(cracked.mul(0.6).add(1.0)).add(molten).toVar();
+        const light = raw.div(vcMax3(raw).mul(0.3).add(1.0)).mul(u.breath);
+        const gemCol = face.add(brilliance.add(light).mul(float(1.0).sub(fres))).add(body).add(through).add(edges);
+
+        // ── The gold: the diadem's beads light one for every step of the chain ──
+        const bead = vGem.z;
+        const onDiadem = step(bead, CHRYSALIS.diadem - 0.5);
+        const litBead = mix(u.fed.w.mul(0.6).add(awake.mul(0.5)).add(0.2), step(bead.add(0.5), u.combo).mul(0.94).add(0.06), onDiadem);
+        const twinkle = sin(u.time.mul(2.3).add(bead.mul(1.7))).mul(0.2).add(0.8);
+        const goldCol = vec3(0.95, 0.63, 0.2).mul(vcSkyLight(u, Nw).mul(2.2).add(mirrored.mul(fres).mul(2.0)).add(0.06))
+            .add(lamps.mul(vec3(1.0, 0.8, 0.45)))
+            .add(vec3(1.0, 0.78, 0.36).mul(litBead.mul(twinkle).mul(4.6).add(0.1)).mul(u.breath));
+        // ── The stalk: dark horn, with a rim of the sky ──
+        const hornCol = vec3(0.018, 0.012, 0.02).add(mirrored.mul(fres).mul(0.5)).add(edges.mul(0.3));
+
+        const isBead = float(1.0).sub(isStone).sub(isStalk);
+        return vec4(gemCol.mul(isStone).add(goldCol.mul(isBead)).add(hornCol.mul(isStalk)), 1.0);
     })();
 
     const shell = new THREE.Mesh(geometry, material);
     shell.name = 'VesperChrysalisShellMesh';
     shell.frustumCulled = false;
     shell.renderOrder = 10;
+    shell.matrixAutoUpdate = false;
+    shell.position.set(STALK[0], STALK[1], STALK[2]);
+    shell.updateMatrix();
 
     // ── The halo: the light it stands in ──
     const haloGeo = new THREE.PlaneGeometry(1, 1);
@@ -253,9 +449,12 @@ export function createChrysalis(u) {
         const rays = exp(d.mul(-2.4)).mul(smoothstep(0.42, 0.8, spokes)).mul(u.power.mul(0.9).add(u.surge).add(0.12));
         const fade = float(1.0).sub(smoothstep(0.7, 1.0, d));
         const tint = mix(u.core, u.fed.rgb, u.fed.w.mul(0.7));
-        const beat = sin(u.time.mul(u.power.mul(1.6).add(1.15))).mul(0.5).add(0.5);
-        return tint.mul(soft.add(rays.mul(0.6))).mul(fade).mul(u.wake.mul(1.5).add(u.fed.w.mul(0.5)).add(0.03))
-            .mul(beat.mul(0.2).add(0.9))
+        const lub = exp(u.beat.x.mul(-7.0));
+        const dub = exp(fract(u.beat.x.add(0.78)).mul(-9.0)).mul(0.6);
+        const beat = clamp(lub.add(dub), 0.0, 1.0);
+        return tint.mul(soft.add(rays.mul(0.6))).mul(fade)
+            .mul(u.wake.mul(1.5).add(u.fed.w.mul(0.5)).add(u.beat.z.mul(0.4)).add(0.03))
+            .mul(beat.mul(0.3).add(0.85))
             .mul(u.breath);
     });
     haloMat.colorNode = vec4(0.0, 0.0, 0.0, 1.0);
@@ -270,6 +469,23 @@ export function createChrysalis(u) {
     const group = new THREE.Group();
     group.add(shell, halo);
     const part = vcPart('VesperChrysalisRelic', geometry, material, 10, { mesh: group });
+    part.shell = shell;
+    part.halo = halo;
+    part.facets = geometry.userData.facets;
+    const one = new THREE.Vector3(1, 1, 1);
+    const hang = new THREE.Vector3();
+    /**
+     * Hang the chrysalis from `at` (a world point), turned by `quaternion`; its light is at `heart`.
+     * @param {number[]} at
+     * @param {THREE.Quaternion} quaternion
+     * @param {number[]} heart
+     */
+    part.setPose = (at, quaternion, heart) => {
+        hang.set(at[0], at[1], at[2]);
+        shell.matrix.compose(hang, quaternion, one);
+        shell.matrixWorldNeedsUpdate = true;
+        halo.position.set(heart[0], heart[1], heart[2] - 2.5);
+    };
     part.dispose = () => {
         haloGeo.dispose();
         haloMat.dispose();
@@ -361,7 +577,7 @@ export function createThreads(u, threads) {
     geometry.setAttribute('aTangent', new THREE.BufferAttribute(tangent, 3));
     geometry.setAttribute('aInfo', new THREE.BufferAttribute(info, 4));
     geometry.setIndex(index);
-    geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 40, -70), 400);
+    geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 40, -70), 500);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.name = 'VesperChrysalisThreads';
@@ -385,10 +601,15 @@ export function createThreads(u, threads) {
         // The silk stirs: most in the middle of a span, not at all where it is made fast.
         const slack = s.mul(float(1.0).sub(s)).mul(4.0);
         const stir = sin(u.drift.mul(0.7).add(aInfo.w.mul(40.0)).add(s.mul(5.0))).mul(slack).mul(0.35);
-        const base = attribute('position', 'vec3').add(vec3(stir, stir.mul(0.3), 0.0));
+        // The silk goes where the chrysalis hangs: the fan with it, a long thread at that end only
+        // (its other end is made fast to the crystal).
+        const isLong = step(1.5, aInfo.w);
+        const follow = mix(float(1.0), float(1.0).sub(s), isLong);
+        const base = attribute('position', 'vec3').add(vec3(stir, stir.mul(0.3), 0.0)).add(u.perch.mul(follow));
+        const along3 = attribute('aTangent', 'vec3').sub(u.perch.mul(isLong).mul(1 / seg));
         const viewProj = cameraProjectionMatrix.mul(cameraViewMatrix);
         const c0 = viewProj.mul(vec4(base, 1.0)).toVar();
-        const c1 = viewProj.mul(vec4(base.add(attribute('aTangent', 'vec3')), 1.0));
+        const c1 = viewProj.mul(vec4(base.add(along3), 1.0));
         const s0 = c0.xy.div(max(c0.w, 1e-4));
         const s1 = c1.xy.div(max(c1.w, 1e-4));
         const along = normalize(s1.sub(s0).mul(u.viewport).add(vec2(1e-5, 0.0)));

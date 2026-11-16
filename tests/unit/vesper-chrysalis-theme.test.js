@@ -57,8 +57,8 @@ const mocks = vi.hoisted(() => {
             'update', 'seek', 'onLock', 'onClear', 'onCrown', 'onSpin', 'onCombo', 'levelUp', 'resetSession',
             'getPostState', 'getState', 'dispose',
         ],
-        /** The one call the world may leave out. */
-        WORLD_OPTIONAL: ['onGameOver'],
+        /** The calls the world may leave out, in the order the theme's source makes them. */
+        WORLD_OPTIONAL: ['onGameOver', 'wake'],
         POST_CONTRACT: ['setSize', 'setCalmRects', 'update', 'render', 'dispose'],
         PASS_THROUGH_CONTRACT: ['render', 'dispose'],
     };
@@ -863,6 +863,9 @@ describe('Vesper Chrysalis theme: one node renderer on both backends', () => {
         // Then the chain is let go and the world is put back at rest, in that order.
         expect(world.onCombo).toHaveBeenLastCalledWith(0);
         expect(world.resetSession).toHaveBeenCalledOnce();
+        // ...asleep: the evening stays asleep through the end of the run, until play comes back.
+        expect(world.resetSession).toHaveBeenCalledWith({ wake: false });
+        expect(world.wake).not.toHaveBeenCalled();
         expect(callOrder(world.onGameOver)).toBeLessThan(callOrder(world.onCombo));
         expect(callOrder(world.onCombo)).toBeLessThan(callOrder(world.resetSession));
         expect(theme.combos.size).toBe(0);
@@ -1146,6 +1149,8 @@ describe('Vesper Chrysalis theme: one node renderer on both backends', () => {
         stepFrames(theme, 5);
         expect(world.setLayout).toHaveBeenCalledOnce(); // no polling: the next read is on a schedule
         manager.handlers.get('modeStarted')();
+        // A run starting wakes an evening still asleep from the last one.
+        expect(world.wake).toHaveBeenCalledOnce();
         stepFrames(theme, 1);
         expect(world.setLayout).toHaveBeenCalledTimes(2);
         const [rects, aspect] = lastCall(world.setLayout);

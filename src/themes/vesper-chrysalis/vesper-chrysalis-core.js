@@ -71,14 +71,16 @@ export function fovForAspect(aspect) {
 export const CHRYSALIS = Object.freeze({
     x: 0,
     z: -70,
-    /** Its lowest point and its length. */
-    foot: 10.6,
-    length: 12.8,
+    /** Its lowest point and its length (the last of it is the stalk it hangs by). */
+    foot: 9.2,
+    length: 14.6,
     /** Greatest half-width (at the shoulder ridge). */
-    radius: 2.9,
-    /** The shoulder ridge (the diadem of gold points) as a fraction of the length from the foot. */
-    shoulder: 0.74,
-    /** Points of gold on the diadem: one lights for every step of the chain. */
+    radius: 3.3,
+    /** The shoulder ridge (the diadem of gold beads) as a fraction of the length from the foot. */
+    shoulder: 0.7,
+    /** Where the body ends and the stalk begins. */
+    neck: 0.93,
+    /** Beads of gold on the diadem: one lights for every step of the chain. */
     diadem: 12,
 });
 
@@ -88,16 +90,26 @@ export const HEART = Object.freeze([CHRYSALIS.x, CHRYSALIS.foot + CHRYSALIS.leng
 /** Radius of the chrysalis at fraction `t` of its length (0 = foot, 1 = the stalk it hangs by). */
 export function chrysalisProfile(t) {
     const x = clamp01(t);
-    // A rounded foot, a long swell to the shoulder, a quick taper to the stalk.
-    const foot = Math.sqrt(Math.max(0, 1 - (1 - x / 0.2) ** 2));
-    const belly = 0.5 + 0.5 * smooth(0, CHRYSALIS.shoulder, x) ** 0.85;
-    const body = x < 0.2 ? foot * (0.5 + 0.5 * smooth(0, CHRYSALIS.shoulder, 0.2) ** 0.85) : belly;
-    const cap = 1 - smooth(CHRYSALIS.shoulder, 0.99, x) ** 0.7 * 0.93;
-    // The abdomen's segments above the shoulder, and the shoulder's own ridge.
-    const ridge = 1 + 0.07 * bell((x - CHRYSALIS.shoulder) / 0.035);
-    const rings = x > CHRYSALIS.shoulder ? 1 + 0.035 * Math.cos((x - CHRYSALIS.shoulder) * 96) : 1;
-    return CHRYSALIS.radius * Math.min(body, 1) * cap * ridge * rings;
+    const { shoulder, neck } = CHRYSALIS;
+    if (x >= neck) {
+        // The stalk: a short horn that thins at once.
+        return CHRYSALIS.radius * (0.055 + 0.115 * (1 - smooth(neck, neck + 0.03, x)));
+    }
+    if (x > shoulder) {
+        // The cap above the ridge: a dome that closes on the stalk.
+        const k = (x - shoulder) / (neck - shoulder);
+        return CHRYSALIS.radius * (1 - 0.83 * k ** 1.6);
+    }
+    // A blunt, rounded foot and a long swell up to the shoulder ridge: a teardrop hung by its wide end.
+    const q = x / shoulder;
+    return CHRYSALIS.radius * Math.sin(q ** 0.6 * Math.PI * 0.5) ** 0.85;
 }
+
+/** Where the silk is made fast to the chrysalis at rest: the top of its stalk. */
+export const STALK = Object.freeze([CHRYSALIS.x, CHRYSALIS.foot + CHRYSALIS.length, CHRYSALIS.z]);
+
+/** How far below the top of the stalk the centre of its light lies. */
+export const HEART_DROP = CHRYSALIS.length * 0.44;
 
 /** The set sun: the direction TOWARD it (it is below the horizon, to the right). */
 export const SUN = Object.freeze({ azimuth: 27 * DEG, elevation: -4.5 * DEG });
@@ -105,7 +117,7 @@ export const SUN = Object.freeze({ azimuth: 27 * DEG, elevation: -4.5 * DEG });
 /** The ringed world: where it hangs and how large it looks (radians). */
 export const PLANET = Object.freeze({
     azimuth: -24.5 * DEG,
-    elevation: 15.8 * DEG,
+    elevation: 17.9 * DEG,
     radius: 5.5 * DEG,
     /** The rings: inner and outer edge in planet radii, how open they look, how they lean. */
     ringIn: 1.34,
@@ -306,6 +318,14 @@ export function wingPoint(kind, side, an, v, w = 1, beat = 0, out = [0, 0, 0]) {
 // ── The lantern lilies ──────────────────────────────────────────────────────────
 
 /**
+ * The lilies' kinds: 0 the lantern lotus (broad cupped petals, opens to a bowl), 1 the star lily
+ * (many narrow petals, opens flat), 2 the moon chalice (tall, opens only at its lip). Each keeps
+ * its own hours.
+ */
+export const BLOOM_KINDS = 3;
+const BLOOM_DEAL = Object.freeze([0, 1, 2, 1, 0, 2, 2, 0, 1, 0, 2, 1]);
+
+/**
  * Where the lilies float: left and right of the board, in rows that recede toward the far
  * shore. Listed by importance: a tier floats the first N, and those alternate sides.
  * Each: { x, z, size, side, seed }.
@@ -344,6 +364,60 @@ export function planBlooms(count = BLOOM_MAX, seed = 7411) {
             x, z, size: 1.25 + rand() * 0.55, side, seed: rand(),
         });
     }
+    // Three kinds float mixed over the lake (dealt after the places, so the places stay put).
+    out.forEach((b, i) => {
+        b.kind = BLOOM_DEAL[i % BLOOM_DEAL.length];
+    });
+    return out;
+}
+
+/**
+ * How far each kind stands open by itself at each hour of the evening (the order of
+ * VESPER_PALETTES): the lotus by day's end and at first light, the star lily through the blue
+ * hour, the moon chalice in the dead of night.
+ */
+export const BLOOM_TIDES = Object.freeze([
+    Object.freeze([0.55, 0.36, 0.14, 0.05, 0.1, 0.72]),
+    Object.freeze([0.1, 0.24, 0.6, 0.86, 0.68, 0.2]),
+    Object.freeze([0.02, 0.1, 0.3, 0.62, 0.95, 0.34]),
+]);
+
+/** How far the lilies of each kind stand open by themselves at an hour (hourAt): [k0, k1, k2]. */
+export function bloomTides(hour, out = [0, 0, 0]) {
+    const n = BLOOM_TIDES[0].length;
+    const h = Number.isFinite(hour) ? ((hour % n) + n) % n : 0;
+    const from = Math.floor(h) % n;
+    const f = h - Math.floor(h);
+    const w = f * f * (3 - 2 * f);
+    for (let k = 0; k < BLOOM_KINDS; k++) {
+        const a = BLOOM_TIDES[k][from];
+        out[k] = a + (BLOOM_TIDES[k][(from + 1) % n] - a) * w;
+    }
+    return out;
+}
+
+/**
+ * Loose pads round the lilies: leaves with no flower, a few to each lily.
+ * Each: { x, z, size, seed }.
+ */
+export function planPads(blooms, perLily = 2, seed = 9133) {
+    const out = [];
+    // None asked for is none (a tier without loose pads), not a few by chance.
+    if (!(perLily > 0)) return out;
+    const rand = mulberry32(seed);
+    blooms.forEach((b) => {
+        const n = Math.max(0, Math.round(perLily + (rand() - 0.5) * 1.6));
+        for (let i = 0; i < n; i++) {
+            const ang = rand() * TAU;
+            const far = b.size * (1.7 + rand() * 2.4);
+            out.push({
+                x: b.x + Math.cos(ang) * far,
+                z: b.z + Math.sin(ang) * far * 0.8,
+                size: b.size * (0.34 + rand() * 0.42),
+                seed: rand(),
+            });
+        }
+    });
     return out;
 }
 
@@ -358,8 +432,10 @@ export function bloomLevel(from, to, age) {
 
 /**
  * Two stands of crystal rise from the lake at the edges of the view; the long threads the
- * chrysalis hangs by are made fast to their tallest points.
- * Each crystal: { x, z, height, radius, lean: [x, z], side, seed, main }.
+ * chrysalis hangs by are made fast to their tallest points. A stand is a cluster as quartz
+ * grows: one tall crystal, others leaning out from its foot, the further out the more they lean,
+ * and a litter of small ones at the waterline.
+ * Each crystal: { x, z, height, radius, lean: [x, z], side, seed, main, shard }.
  */
 export function planSpires(perSide = 9, seed = 2203) {
     const rand = mulberry32(seed);
@@ -377,10 +453,37 @@ export function planSpires(perSide = 9, seed = 2203) {
                 z: cz + Math.sin(ang) * ring * 13,
                 height,
                 radius: (main ? 2.3 : 0.9 + rand() * 1.0) * (0.75 + height / 60),
-                lean: [side * (0.05 + ring * 0.22) + (rand() - 0.5) * 0.12, (rand() - 0.5) * 0.24],
+                // They lean out from the foot of the stand, and a little toward the frame's edge.
+                lean: [
+                    side * (0.04 + ring * 0.1) + Math.cos(ang) * ring * 0.24 + (rand() - 0.5) * 0.08,
+                    Math.sin(ang) * ring * 0.24 + (rand() - 0.5) * 0.1,
+                ],
                 side,
                 seed: rand(),
                 main,
+                shard: false,
+            });
+        }
+    });
+    // The small ones at the waterline, after the stands (a tier keeps the same tall crystals).
+    [-1, 1].forEach((side) => {
+        const cx = side * 63;
+        const cz = -96;
+        const shards = Math.round(perSide * 0.9);
+        for (let i = 0; i < shards; i++) {
+            const ring = 0.25 + rand() * 0.95;
+            const ang = rand() * TAU;
+            const height = 2.2 + rand() * 4.2;
+            out.push({
+                x: cx + Math.cos(ang) * ring * 11 + side * ring * 3,
+                z: cz + Math.sin(ang) * ring * 14,
+                height,
+                radius: 0.45 + rand() * 0.5,
+                lean: [Math.cos(ang) * (0.25 + ring * 0.4) + side * 0.05, Math.sin(ang) * (0.25 + ring * 0.4)],
+                side,
+                seed: rand(),
+                main: false,
+                shard: true,
             });
         }
     });

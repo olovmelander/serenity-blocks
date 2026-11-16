@@ -16,6 +16,7 @@ import * as THREE from 'three/webgpu';
 import {
     Fn,
     If,
+    atan,
     cameraPosition,
     clamp,
     dot,
@@ -51,7 +52,7 @@ import {
     EYE,
     TAU,
     VESPER_DIR,
-    SUN_DIR,
+    GLOW_DIR,
     vcBackdrop,
     vcBell,
     vcFresnel,
@@ -65,14 +66,6 @@ import {
  * before the lake's overall scale, and whether it lives only near the eye). The long ones keep
  * the far mirror whole; the short ones break the near reflections into wavelets.
  */
-/** Where the last light lies: on the horizon over the place the sun went down. */
-const GLOW_DIR = (() => {
-    const flat = Math.hypot(SUN_DIR[0], SUN_DIR[2]);
-    const lift = 0.05;
-    const l = Math.hypot(1, lift);
-    return [SUN_DIR[0] / flat / l, lift / l, SUN_DIR[2] / flat / l];
-})();
-
 /** Pixels between the sparks of the glitter lattice. */
 const GLINT_PIXELS = 5;
 
@@ -133,7 +126,14 @@ export function createLake(u, opts = {}) {
         // longer waves are sums of sines for that reason: a slope read from a texture magnified
         // to tens of centimetres a texel draws every straight edge in the mirror as a sawtooth.)
         const w2 = u.noise(st.mul(0.15).sub(vec2(u.drift.mul(0.0105), u.drift.mul(-0.0062)))).toVar();
-        const ruffle = smoothstep(0.42, 0.72, u.noise(st.mul(0.009).add(0.37)).b).toVar();
+        const patch = u.noise(st.mul(0.009).add(vec2(u.drift.mul(0.0006), 0.37))).toVar();
+        // A gust: a band of ruffled water that sets out from one shore and crosses the lake, sharp
+        // at its leading edge, trailing away behind.
+        const gustBehind = u.time.sub(u.gust.z).mul(24.0).sub(st.x.mul(u.gust.x).add(st.y.mul(u.gust.y)).add(230.0));
+        const gust = smoothstep(0.0, 10.0, gustBehind).mul(exp(max(gustBehind, 0.0).mul(-0.026))).mul(u.gust.w)
+            .mul(patch.g.mul(0.7).add(0.5))
+            .toVar();
+        const ruffle = clamp(smoothstep(0.42, 0.72, patch.b).add(gust.mul(1.5)), 0.0, 1.6).toVar();
         // A long, slow swell under everything.
         const swellA = sin(st.x.mul(0.05).add(st.y.mul(0.085)).add(u.drift.mul(0.21)));
         const swellB = sin(st.x.mul(-0.071).add(st.y.mul(0.043)).sub(u.drift.mul(0.17)));
@@ -211,6 +211,60 @@ export function createLake(u, opts = {}) {
             }
         });
 
+        // ── A whirl: the chrysalis turning on its thread stirs the water under it ──
+        const whirlLight = vec3(0.0).toVar();
+        const whirlAge = u.time.sub(u.whirl.z).toVar();
+        If(u.whirl.w.greaterThan(0.01).and(whirlAge.greaterThan(0.0)).and(whirlAge.lessThan(8.0)), () => {
+            const o = st.sub(u.whirl.xy).toVar();
+            const d = max(length(o), 1e-3).toVar();
+            const ang = atan(o.y, o.x);
+            // Three arms wound round the centre, turning as they run out.
+            const phase = ang.mul(3.0).add(d.mul(0.5)).sub(whirlAge.mul(5.2));
+            const wide = whirlAge.mul(7.0).add(7.0);
+            const env = u.whirl.w.mul(smoothstep(0.0, 0.5, whirlAge)).mul(exp(whirlAge.mul(-0.5)))
+                .mul(exp(d.div(wide).negate()))
+                .mul(smoothstep(0.6, 3.0, d));
+            const wave = sin(phase).mul(env);
+            const out = o.div(d);
+            // The water turns: the slope leans along the stream as well as across it.
+            slope.addAssign(out.mul(wave.mul(0.34)).add(vec2(out.y.negate(), out.x).mul(wave.mul(0.2))));
+            const crest = vcBell(phase.div(TAU).fract().sub(0.25).div(0.22)).mul(env);
+            whirlLight.assign(u.whirlTint.mul(crest));
+        });
+
+        // ── A lotus of light: three whorls of petals open on the water, one after another ──
+        const lotusLight = vec3(0.0).toVar();
+        const lotusAge = u.time.sub(u.lotus.z).toVar();
+        If(u.lotus.w.greaterThan(0.01).and(lotusAge.greaterThan(0.0)).and(lotusAge.lessThan(11.0)), () => {
+            const o = st.sub(u.lotus.xy).toVar();
+            const d = length(o).toVar();
+            const ang = atan(o.y, o.x).toVar();
+            const fade = u.lotus.w.mul(smoothstep(0.0, 0.4, lotusAge)).mul(float(1.0).sub(smoothstep(6.0, 11.0, lotusAge)));
+            const sum = float(0.0).toVar();
+            const line = float(0.0).toVar();
+            [[9, 62, 0.0, 0.0], [9, 44, 0.5, 0.55], [6, 26, 0.0, 1.1]].forEach(([count, reach, turn, delay]) => {
+                // How far this whorl has opened (it eases out), and where in it this point lies.
+                const grown = float(1.0).sub(exp(max(lotusAge.sub(delay), 0.0).mul(-1.1))).mul(reach);
+                const r = d.div(max(grown, 0.5));
+                const cellAt = ang.div(TAU).mul(count).add(turn);
+                const offAxis = fract(cellAt).sub(0.5).abs().mul(2.0);
+                // A petal: widest two fifths of the way out, pointed at its tip.
+                const half = sin(clamp(r, 0.0, 1.0).pow(0.75).mul(Math.PI)).mul(0.92).add(0.02);
+                const inside = float(1.0).sub(smoothstep(half.sub(0.12), half, offAxis)).mul(step(r, 1.0));
+                const rim = vcBell(offAxis.sub(half).add(0.06).div(0.1)).mul(step(r, 1.02));
+                const vein = vcBell(offAxis.div(0.07)).mul(smoothstep(0.1, 0.5, r)).mul(inside);
+                sum.addAssign(inside.mul(r.mul(0.5).add(0.14)).add(vein.mul(0.3)));
+                line.addAssign(rim);
+            });
+            // A shimmer runs out along it.
+            const shimmer = sin(d.mul(0.5).sub(lotusAge.mul(4.0))).mul(0.25).add(0.75);
+            lotusLight.assign(mix(vec3(1.0, 0.56, 0.62), vec3(1.0, 0.9, 0.66), clamp(sum, 0.0, 1.0))
+                .mul(sum.mul(0.7).mul(shimmer).add(line.mul(0.95)))
+                .mul(fade));
+            // The petals' edges stand a hair proud of the water.
+            slope.addAssign(o.div(max(d, 1e-3)).mul(line.mul(fade).mul(0.12)));
+        });
+
         // ── The mirror ──
         // What bends the mirror: the broad waves and the rings whole, a little of the fine ripple.
         const bend = slope.sub(fine.mul(1 - FINE_IN_MIRROR)).toVar();
@@ -243,6 +297,10 @@ export function createLake(u, opts = {}) {
         const Rf = reflect(V, normalize(vec3(slope.x.negate(), 0.55, slope.y.negate()))).toVar();
         const toGlow = clamp(dot(Rf, vec3(GLOW_DIR[0], GLOW_DIR[1], GLOW_DIR[2])), 0.0, 1.0);
         const toStar = clamp(dot(Rf, vec3(VESPER_DIR[0], VESPER_DIR[1], VESPER_DIR[2])), 0.0, 1.0);
+        const toHeart = clamp(dot(Rf, normalize(u.relicHeart.sub(p))), 0.0, 1.0);
+        const h4 = toHeart.mul(toHeart).mul(toHeart).mul(toHeart);
+        const h16 = h4.mul(h4).mul(h4).mul(h4);
+        const heartPath = h16.mul(h16).mul(h16).mul(h4).toVar();
         const g2 = toGlow.mul(toGlow);
         // (The paths are read along the broad waves' mirror, so they bend with the swell.)
         const g8 = g2.mul(g2).mul(g2).mul(g2);
@@ -265,11 +323,17 @@ export function createLake(u, opts = {}) {
         const sparks = point.mul(twinkle.mul(twinkle)).toVar();
         const glints = u.glow.mul(sparks.mul(step(h.z, glowPath.mul(glowPath).mul(0.6))).mul(2.6).add(glowPath.mul(0.03)))
             .add(vec3(1.0, 0.93, 0.82).mul(sparks.mul(step(h.z, starPath.mul(0.9))).mul(3.0).add(starPath.mul(0.04))))
+            // …and the chrysalis its own, in whatever colour it burns.
+            .add(mix(u.core, u.fed.rgb, u.fed.w.mul(0.7)).mul(sparks.mul(step(h.z, heartPath.mul(0.55))).mul(2.2).add(heartPath.mul(0.05)))
+                .mul(u.wake.mul(1.6).add(0.2)).mul(open))
+            // A gust's ruffled water glitters with the sky it breaks up.
+            .add(mirror.mul(sparks).mul(step(h.z, gust.mul(0.5))).mul(1.4))
             .mul(u.breath);
         col.addAssign(glints);
 
         // ── Gameplay light riding the water itself ──
-        col.addAssign(ringLight.mul(1.1).add(swellLight.mul(0.9)).mul(u.breath));
+        col.addAssign(ringLight.mul(1.1).add(swellLight.mul(0.9)).add(whirlLight.mul(0.8)).add(lotusLight)
+            .mul(u.breath));
 
         // Far water goes into the mist.
         const far = float(1.0).sub(exp(dist.mul(-1 / 900)));
