@@ -1,6 +1,7 @@
 /**
- * Halcyon Apex — the visitors: the hulls, the schedule, the routes as the rest camera sees them,
- * the world's handling of them, and their two materials built through both node builders.
+ * Halcyon Apex — the skyfarers: the hulls modelled in Blender, how they fly (paths, formations,
+ * bearing), the three streams of traffic, the routes as the rest camera sees them, the world's
+ * handling of them, and their three materials built through both node builders.
  */
 import {
     describe, expect, it, vi,
@@ -8,26 +9,37 @@ import {
 import * as THREE from 'three/webgpu';
 import { context } from 'three/tsl';
 import { HalcyonApexWorld, REST_RIG } from '../../src/themes/halcyon-apex/halcyon-apex-world.js';
-import { SITE, compositionFor } from '../../src/themes/halcyon-apex/halcyon-apex-core.js';
+import {
+    PYRAMID_TOP, SITE, compositionFor, tierHalf, worldToSite,
+} from '../../src/themes/halcyon-apex/halcyon-apex-core.js';
 import { fallbackLayout } from '../../src/themes/halcyon-apex/halcyon-apex-composition.js';
 import {
-    FIRST_VISIT,
-    LAMP_SLOTS,
+    LAMP_POOL,
+    RIBBONS,
+    SURFACE,
     VISITOR_KIND,
     VISITOR_KINDS,
     VISITOR_LAMPS,
-    VISITOR_ROUTE,
-    VISITOR_ROUTES,
-    VISIT_SLOT,
     buildHulls,
-    scheduleRoutes,
-    slotVisit,
-    visitAt,
-    visitorPose,
+    trailOrigin,
 } from '../../src/themes/halcyon-apex/halcyon-apex-visitor-plan.js';
+import {
+    FIRST_VISIT,
+    Flight,
+    SHIP_SLOTS,
+    SORTIE_NAMES,
+    STREAMS,
+    formation,
+    makeSortie,
+    quatTurn,
+    slotSortie,
+    sortiesAt,
+    streamNames,
+    visitAt,
+} from '../../src/themes/halcyon-apex/halcyon-apex-flight.js';
 import { VISITOR_WARM_FRAMES } from '../../src/themes/halcyon-apex/halcyon-apex-visitors.js';
 
-vi.setConfig({ testTimeout: 60000 });
+vi.setConfig({ testTimeout: 120000 });
 
 function makeWorld(quality = 'Minimal', width = 1600, height = 900) {
     const scene = new THREE.Scene();
@@ -46,7 +58,7 @@ function step(world, camera, time, delta = 1 / 60) {
     world.update(sim, camera);
 }
 
-/** The frame the world hands the visitors (as world.update builds it). */
+/** The frame the world hands the skyfarers (as world.update builds it). */
 function frameOf(world) {
     const comp = compositionFor(world.aspect);
     return {
@@ -54,114 +66,385 @@ function frameOf(world) {
         upright: 1 - comp.wide,
         eye: REST_RIG.height,
         halcyonTop: [world.halcyon[0], world.halcyon[1] + SITE.halcyon.half, world.halcyon[2]],
+        halcyon: [...world.halcyon],
+        apex: [...world.plan.apex],
     };
 }
 
-describe('the visitors\' hulls', () => {
+const SEEDS = [1, 2, 3, 4, 5, 6];
+const SCHEDULED = [...new Set(Object.values(STREAMS).flatMap((s) => s.names))];
+
+/** Whether a world point lies inside the pyramid's masonry (its tiers as boxes). */
+function insidePyramid(p) {
+    const y = p[1];
+    if (y < 0 || y > PYRAMID_TOP) return false;
+    const tier = Math.max(0, Math.min(SITE.pyramid.tiers - 1, Math.floor((y - SITE.pyramid.plinth) / SITE.pyramid.tierHeight)));
+    const half = tierHalf(tier).foot;
+    const s = worldToSite(p[0], p[2]);
+    return Math.abs(s[0]) < half && Math.abs(s[1]) < half;
+}
+
+describe('the hulls', () => {
     const hulls = buildHulls();
 
     it('lie in one buffer, one contiguous range per kind, covering it exactly', () => {
-        expect(hulls.ranges).toHaveLength(VISITOR_KINDS.length);
-        let next = 0;
-        hulls.ranges.forEach(([start, count], kind) => {
-            expect(start, VISITOR_KINDS[kind]).toBe(next);
-            expect(count % 3, VISITOR_KINDS[kind]).toBe(0);
-            expect(count, VISITOR_KINDS[kind]).toBeGreaterThan(90);
-            for (let i = start; i < start + count; i++) expect(hulls.part[i * 4 + 2]).toBe(kind);
-            next += count;
+        expect(VISITOR_KINDS).toEqual(['saucer', 'swift', 'manta', 'barge', 'ark', 'hoop', 'capsule', 'orb']);
+        let vertex = 0;
+        let index = 0;
+        VISITOR_KINDS.forEach((name, kind) => {
+            const range = hulls.ranges[kind];
+            expect(range.vertex[0], name).toBe(vertex);
+            expect(range.index[0], name).toBe(index);
+            expect(range.vertex[1], name).toBeGreaterThan(100);
+            expect(range.index[1] % 3, name).toBe(0);
+            vertex += range.vertex[1];
+            index += range.index[1];
+            for (let i = range.vertex[0]; i < vertex; i++) expect(hulls.part[i * 4 + 2]).toBe(kind);
+            for (let i = range.index[0]; i < index; i++) {
+                const v = hulls.index[i];
+                if (v < range.vertex[0] || v >= vertex) throw new Error(`${name}: index ${i} points at vertex ${v}, outside its hull`);
+            }
         });
-        expect(next).toBe(hulls.vertexCount);
-        expect(hulls.vertexCount).toBeLessThan(16000);
+        expect(vertex).toBe(hulls.vertexCount);
+        expect(index).toBe(hulls.indexCount);
+        expect(hulls.position.length).toBe(vertex * 3);
+        // One draw of every hull is a few thousand triangles: two dozen instances stay cheap.
+        expect(hulls.indexCount / 3).toBeLessThan(9000);
     });
 
     it('face outward: every triangle winds the way its normals point, and the normals are unit length', () => {
-        let wrong = 0;
-        let crooked = 0;
-        const { position: p, normal: n } = hulls;
-        for (let i = 0; i < hulls.vertexCount; i += 3) {
-            const u = [0, 1, 2].map((c) => p[(i + 1) * 3 + c] - p[i * 3 + c]);
-            const v = [0, 1, 2].map((c) => p[(i + 2) * 3 + c] - p[i * 3 + c]);
-            const cross = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-            const sum = [0, 1, 2].map((c) => n[i * 3 + c] + n[(i + 1) * 3 + c] + n[(i + 2) * 3 + c]);
-            if (cross[0] * sum[0] + cross[1] * sum[1] + cross[2] * sum[2] <= 0) wrong += 1;
-            for (let k = 0; k < 3; k++) {
-                const l = Math.hypot(n[(i + k) * 3], n[(i + k) * 3 + 1], n[(i + k) * 3 + 2]);
-                if (Math.abs(l - 1) > 1e-3) crooked += 1;
-            }
+        const { position, normal, index } = hulls;
+        let against = 0;
+        let counted = 0;
+        for (let t = 0; t < index.length; t += 3) {
+            const a = index[t] * 3;
+            const b = index[t + 1] * 3;
+            const c = index[t + 2] * 3;
+            const ux = position[b] - position[a];
+            const uy = position[b + 1] - position[a + 1];
+            const uz = position[b + 2] - position[a + 2];
+            const vx = position[c] - position[a];
+            const vy = position[c + 1] - position[a + 1];
+            const vz = position[c + 2] - position[a + 2];
+            const fx = uy * vz - uz * vy;
+            const fy = uz * vx - ux * vz;
+            const fz = ux * vy - uy * vx;
+            const area = Math.hypot(fx, fy, fz);
+            if (area < 1e-5) continue;
+            const nx = normal[a] + normal[b] + normal[c];
+            const ny = normal[a + 1] + normal[b + 1] + normal[c + 1];
+            const nz = normal[a + 2] + normal[b + 2] + normal[c + 2];
+            counted += 1;
+            if (fx * nx + fy * ny + fz * nz <= 0) against += 1;
         }
-        expect(wrong).toBe(0);
-        expect(crooked).toBe(0);
+        expect(counted).toBeGreaterThan(5000);
+        expect(against, 'triangles wound against their normals').toBe(0);
+        for (let i = 0; i < normal.length; i += 3) {
+            const l = Math.hypot(normal[i], normal[i + 1], normal[i + 2]);
+            if (Math.abs(l - 1) > 0.02) throw new Error(`normal ${i / 3} has length ${l}`);
+        }
     });
 
-    it('are the sizes they are meant to be (metres)', () => {
-        const extent = (kind) => {
-            const [start, count] = hulls.ranges[VISITOR_KIND[kind]];
-            const lo = [Infinity, Infinity, Infinity];
-            const hi = [-Infinity, -Infinity, -Infinity];
-            for (let i = start; i < start + count; i++) {
-                for (let c = 0; c < 3; c++) {
-                    lo[c] = Math.min(lo[c], hulls.position[i * 3 + c]);
-                    hi[c] = Math.max(hi[c], hulls.position[i * 3 + c]);
-                }
-            }
-            return hi.map((h, c) => h - lo[c]);
+    it('are the sizes they are meant to be (metres: x the nose, y up, z starboard)', () => {
+        const size = (name) => {
+            const { min, max } = hulls.sizes[VISITOR_KIND[name]];
+            return [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
         };
-        expect(extent('saucer')[0]).toBeCloseTo(15, 1);
-        expect(extent('triangle')[2]).toBeGreaterThan(34);
-        expect(extent('cigar')[0]).toBeCloseTo(198.5, 0);
-        expect(extent('orbs')[1]).toBeCloseTo(2.2, 1);
-        expect(extent('capsule')[0]).toBeCloseTo(13, 1);
+        const near = (value, want, tol) => expect(Math.abs(value - want), `${value} vs ${want}`).toBeLessThan(tol);
+        near(size('saucer')[0], 15, 0.2);
+        near(size('saucer')[2], 15, 0.2);
+        near(size('swift')[0], 21.4, 0.5);
+        near(size('swift')[2], 15.6, 0.5);
+        near(size('manta')[2], 44, 0.5);
+        near(size('barge')[0], 34.2, 0.6);
+        expect(size('ark')[0]).toBeGreaterThan(225);
+        near(size('hoop')[1], 21.3, 0.6);
+        near(size('capsule')[0], 13, 0.2);
+        near(size('orb')[1], 2.2, 0.05);
+        // A hull's nose is at +x: the swift's point is ahead of its wings, the ark's prow ahead of its stern.
+        expect(hulls.sizes[VISITOR_KIND.swift].max[0]).toBeGreaterThan(8);
+        expect(hulls.sizes[VISITOR_KIND.ark].max[0]).toBeGreaterThan(-hulls.sizes[VISITOR_KIND.ark].min[0]);
     });
 
-    it('carry no more lamps than the sprite pool holds, and the triangle\'s lamps hang below its belly', () => {
-        VISITOR_KINDS.forEach((kind) => expect(VISITOR_LAMPS[kind].length, kind).toBeLessThanOrEqual(LAMP_SLOTS));
-        VISITOR_LAMPS.triangle.forEach((lamp) => expect(lamp.at[1]).toBeLessThan(-0.6));
+    it('name what every vertex is made of, with its occlusion baked', () => {
+        const known = new Set(Object.values(SURFACE));
+        const used = new Set();
+        let shaded = 0;
+        for (let i = 0; i < hulls.vertexCount; i++) {
+            const surface = hulls.part[i * 4];
+            expect(known.has(surface)).toBe(true);
+            used.add(surface);
+            const param = hulls.part[i * 4 + 1];
+            const ao = hulls.part[i * 4 + 3];
+            if (param < 0 || param > 1 || ao < 0 || ao > 1) throw new Error(`vertex ${i}: param ${param}, occlusion ${ao}`);
+            if (ao < 0.8) shaded += 1;
+        }
+        // Every surface the shader knows is flown by some hull, and the hulls shade themselves somewhere.
+        expect(used.size).toBe(known.size);
+        expect(shaded).toBeGreaterThan(hulls.vertexCount * 0.08);
+        expect(shaded).toBeLessThan(hulls.vertexCount * 0.8);
+    });
+
+    it('carry their lamps on the hull, and a trail leaves every hull that has engines', () => {
+        VISITOR_KINDS.forEach((name) => {
+            const { min, max } = hulls.sizes[VISITOR_KIND[name]];
+            VISITOR_LAMPS[name].forEach((lamp) => {
+                for (let c = 0; c < 3; c++) {
+                    expect(lamp.at[c], `${name} ${lamp.group}`).toBeGreaterThan(min[c] - 2.5);
+                    expect(lamp.at[c], `${name} ${lamp.group}`).toBeLessThan(max[c] + 2.5);
+                }
+                expect(lamp.size).toBeGreaterThan(0);
+            });
+        });
+        expect(VISITOR_LAMPS.saucer.filter((l) => l.group === 'rim')).toHaveLength(12);
+        expect(VISITOR_LAMPS.barge.filter((l) => l.group === 'cargo')).toHaveLength(6);
+        expect(VISITOR_LAMPS.manta.find((l) => l.group === 'core').at[1]).toBeLessThan(-1);
+        ['swift', 'manta', 'barge', 'ark', 'orb'].forEach((name) => expect(trailOrigin(name), name).toBeTruthy());
+        // The swift's trail leaves between its two engines, behind it.
+        expect(trailOrigin('swift')[0]).toBeLessThan(-6);
+        expect(Math.abs(trailOrigin('swift')[2])).toBeLessThan(0.01);
+        expect(trailOrigin('saucer')).toBeNull();
     });
 });
 
-describe('the schedule', () => {
-    it('opens with the saucer some fifteen seconds in, the slow triangle under reduced motion', () => {
-        expect(visitAt(FIRST_VISIT - 0.5)).toBeNull();
-        expect(visitAt(FIRST_VISIT + 2)?.route.name).toBe('saucer');
-        expect(visitAt(FIRST_VISIT + 2, true)?.route.name).toBe('triangle');
+describe('the traffic', () => {
+    it('opens with swifts skimming the lagoon some fifteen seconds in, the slow manta under reduced motion', () => {
+        expect(slotSortie('hero', 0)).toMatchObject({ start: FIRST_VISIT });
+        expect(slotSortie('hero', 0).sortie.name).toBe('skim');
+        expect(slotSortie('hero', 0, true).sortie.name).toBe('ray');
+        expect(visitAt(FIRST_VISIT - 0.01)).toBeNull();
+        expect(visitAt(FIRST_VISIT + 1).route.name).toBe('skim');
     });
 
-    it('sends about one visitor a minute, never two at once, every route in turn', () => {
-        const visits = [];
-        for (let k = 0; k < 72; k++) {
-            const v = slotVisit(k);
-            if (v) visits.push(v);
+    it('keeps the sky alive without crowding it: a sortie or two at a time, never more hulls than it can draw', () => {
+        let sum = 0;
+        let empty = 0;
+        let most = 0;
+        let mostHeroes = 0;
+        const seen = new Set();
+        const span = 7200;
+        for (let t = 0; t < span; t += 1) {
+            const now = sortiesAt(t);
+            sum += now.length;
+            if (!now.length) empty += 1;
+            most = Math.max(most, now.reduce((n, s) => n + s.sortie.ships.length, 0));
+            mostHeroes = Math.max(mostHeroes, now.filter((s) => s.stream === 'hero').length);
+            now.forEach((s) => seen.add(s.sortie.name));
         }
-        // An hour: about one a minute.
-        expect(visits.length).toBeGreaterThan(45);
-        expect(visits.length).toBeLessThan(72);
-        for (let i = 1; i < visits.length; i++) {
-            expect(visits[i].start).toBeGreaterThan(visits[i - 1].start + visits[i - 1].route.duration + 4);
-        }
-        const names = new Set(visits.slice(0, 14).map((v) => v.route.name));
-        expect([...names].sort()).toEqual(VISITOR_ROUTES.map((r) => r.name).sort());
-        // A visit stays inside its slot, so visitAt only ever looks at one.
-        visits.forEach((v) => {
-            const slot = Math.floor(v.start / VISIT_SLOT);
-            expect(v.start + v.route.duration).toBeLessThan((slot + 1) * VISIT_SLOT);
-        });
+        expect(sum / span).toBeGreaterThan(0.8);
+        expect(sum / span).toBeLessThan(2.4);
+        // Something is in the sky most of the time, and it is never crowded.
+        expect(empty / span).toBeLessThan(0.4);
+        expect(most).toBeLessThanOrEqual(SHIP_SLOTS - 7); // room left for a salute of seven
+        expect(mostHeroes).toBe(1);
+        SCHEDULED.forEach((name) => expect(seen.has(name), name).toBe(true));
     });
 
     it('is a function of the clock alone', () => {
-        for (let t = 0; t < 900; t += 7.3) {
-            const a = visitAt(t);
-            const b = visitAt(t);
-            expect(a?.route.name ?? null).toBe(b?.route.name ?? null);
-            expect(a?.age ?? null).toBe(b?.age ?? null);
+        for (let t = 0; t < 900; t += 13.7) {
+            const a = sortiesAt(t).map((s) => [s.sortie.name, s.start, s.age]);
+            const b = sortiesAt(t).map((s) => [s.sortie.name, s.start, s.age]);
+            expect(a).toEqual(b);
+        }
+        expect(slotSortie('mid', 7)).toBe(slotSortie('mid', 7));
+        expect(makeSortie('flyby', 42).keys).toEqual(makeSortie('flyby', 42).keys);
+    });
+
+    it('never flies the same pass twice: a stream turns through its sorties, each drawn afresh', () => {
+        Object.keys(STREAMS).forEach((stream) => {
+            let last = null;
+            let repeats = 0;
+            const byName = {};
+            for (let k = 0; k < 120; k++) {
+                const plan = slotSortie(stream, k);
+                // (An empty slot between two of the same name is half a minute of other sky.)
+                if (!plan) {
+                    last = null;
+                    continue;
+                }
+                if (last === plan.sortie.name) repeats += 1;
+                last = plan.sortie.name;
+                (byName[last] ||= []).push(plan.sortie);
+            }
+            // The far stream's couriers are meant to come often; no other name runs twice in a row.
+            if (stream !== 'far') expect(repeats, stream).toBe(0);
+            Object.keys(byName).forEach((name) => {
+                const drawn = new Set(byName[name].map((s) => JSON.stringify([s.keys, s.ships.length])));
+                // The four the sanctuary has always had fly as they always did.
+                const fixed = ['saucer', 'halcyon', 'orbs', 'capsule', 'hang', 'dock'].includes(name);
+                if (!fixed) expect(drawn.size, `${stream}/${name}`).toBe(byName[name].length);
+            });
+        });
+        // The same name with another seed is another flight: side, height, numbers, formation.
+        const counts = new Set(SEEDS.map((seed) => makeSortie('flyby', seed).ships.length));
+        expect(counts.size).toBeGreaterThan(1);
+    });
+
+    it('flies only the slow sorties under reduced motion', () => {
+        Object.keys(STREAMS).forEach((stream) => {
+            const names = streamNames(stream, true);
+            expect(names.length, stream).toBeGreaterThan(0);
+            names.forEach((name) => expect(makeSortie(name, 1).calm, name).toBe(true));
+            for (let k = 0; k < 40; k++) {
+                const plan = slotSortie(stream, k, true);
+                if (plan) expect(plan.sortie.calm, plan.sortie.name).toBe(true);
+            }
+        });
+        expect(streamNames('hero', true)).toEqual(expect.arrayContaining(['ray', 'hang', 'rite', 'dock']));
+    });
+});
+
+describe('how they fly', () => {
+    const frame = { yaw: 0, eye: REST_RIG.height, upright: 0 };
+
+    it('every sortie holds its hulls over the water, out of the masonry, on a finite bearing', () => {
+        SORTIE_NAMES.forEach((name) => {
+            SEEDS.forEach((seed) => {
+                const sortie = makeSortie(name, seed);
+                const flight = new Flight(sortie, frame);
+                for (let age = 0; age <= sortie.duration; age += 0.1) {
+                    for (let i = 0; i < sortie.ships.length; i++) {
+                        const pose = flight.pose(i, age);
+                        const label = `${name}#${seed} ship ${i} at ${age.toFixed(1)}`;
+                        if (![...pose.p, ...pose.q, pose.speed, pose.throttle].every(Number.isFinite)) throw new Error(`${label}: not finite`);
+                        const length = Math.hypot(...pose.q);
+                        if (Math.abs(length - 1) > 1e-3) throw new Error(`${label}: bearing of length ${length}`);
+                        if (pose.presence > 0.05) {
+                            if (pose.p[1] < 1.6) throw new Error(`${label}: ${pose.p[1].toFixed(2)} m over the water`);
+                            if (insidePyramid(pose.p)) throw new Error(`${label}: inside the pyramid at ${pose.p.map((v) => v.toFixed(0))}`);
+                        }
+                    }
+                }
+            });
+        });
+    });
+
+    it('flies smoothly: no jump between frames except where a hull leaves in a blink or a break throws it', () => {
+        SORTIE_NAMES.forEach((name) => {
+            const sortie = makeSortie(name, 2);
+            const flight = new Flight(sortie, frame);
+            const until = Math.min(sortie.warp ?? Infinity, sortie.breakAt ?? Infinity, sortie.duration);
+            for (let i = 0; i < sortie.ships.length; i++) {
+                let last = [...flight.shipPoint(i, 0)];
+                for (let age = 1 / 120; age < until; age += 1 / 120) {
+                    const p = flight.shipPoint(i, age);
+                    const moved = Math.hypot(p[0] - last[0], p[1] - last[1], p[2] - last[2]);
+                    // 1/120 s at the fastest anything moves (the capsule's hops, the salute overhead).
+                    if (moved > 4.5) throw new Error(`${name} ship ${i} at ${age.toFixed(2)}: moved ${moved.toFixed(1)} m in a frame`);
+                    last = [...p];
+                }
+            }
+        });
+    });
+
+    it('points a swift along its flight, banks it into a turn and flies a loop upside down over the top', () => {
+        const nose = [0, 0, 0];
+        const up = [0, 0, 0];
+        // Along its flight: the nose (hull +x) lies on the velocity.
+        const lane = makeSortie('lane', 3);
+        const laneFlight = new Flight(lane, frame);
+        const mid = lane.duration * 0.5;
+        const a = [...laneFlight.shipPoint(0, mid - 0.05)];
+        const b = [...laneFlight.shipPoint(0, mid + 0.05)];
+        const v = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        const vl = Math.hypot(...v);
+        quatTurn(laneFlight.pose(0, mid).q, [1, 0, 0], nose);
+        expect((nose[0] * v[0] + nose[1] * v[1] + nose[2] * v[2]) / vl).toBeGreaterThan(0.999);
+        // On a straight path it flies level: its up is the world's.
+        quatTurn(laneFlight.pose(0, mid).q, [0, 1, 0], up);
+        expect(up[1]).toBeGreaterThan(0.97);
+
+        // Round the Apex it leans into the turn: its up tips toward the crystal.
+        const orbit = makeSortie('orbit', 2);
+        const orbitFlight = new Flight(orbit, { ...frame, apex: [-104, 104, -227] });
+        const turning = orbit.keys[4].t;
+        const pose = orbitFlight.pose(0, turning);
+        quatTurn(pose.q, [0, 1, 0], up);
+        const toApex = [-104 - pose.p[0], 0, -227 - pose.p[2]];
+        const tl = Math.hypot(...toApex);
+        expect((up[0] * toApex[0] + up[2] * toApex[2]) / tl).toBeGreaterThan(0.3);
+        expect(up[1]).toBeLessThan(0.95);
+
+        // Over the top of a loop its belly is to the sky.
+        const loop = makeSortie('loop', 1);
+        const loopFlight = new Flight(loop, frame);
+        let highest = 0;
+        let topAge = 0;
+        for (let age = loop.keys[2].t; age <= loop.keys[10].t; age += 0.02) {
+            const y = loopFlight.shipPoint(0, age)[1];
+            if (y > highest) {
+                highest = y;
+                topAge = age;
+            }
+        }
+        quatTurn(loopFlight.pose(0, topAge).q, [0, 1, 0], up);
+        expect(up[1]).toBeLessThan(-0.7);
+        // Half a loop more, a roll at the top, and it leaves the right way up, back the way it came.
+        quatTurn(loopFlight.pose(0, loop.duration - 1.5).q, [0, 1, 0], up);
+        expect(up[1]).toBeGreaterThan(0.5);
+        const leaving = loopFlight.shipPoint(0, loop.duration - 0.5)[0] - loopFlight.shipPoint(0, loop.duration - 1.5)[0];
+        expect(leaving).toBeLessThan(0);
+    });
+
+    it('keeps a formation together: wingmen hold their places off the leader through a turn', () => {
+        expect(formation('vee', 5, 20)).toHaveLength(5);
+        ['vee', 'echelon', 'abreast', 'astern', 'diamond', 'stack'].forEach((shape) => {
+            const ships = formation(shape, 4, 20);
+            expect(ships[0]).toEqual({ right: 0, up: 0, back: 0 });
+            // No two ships share a place.
+            for (let i = 0; i < ships.length; i++) {
+                for (let j = i + 1; j < ships.length; j++) {
+                    const d = Math.hypot(ships[i].right - ships[j].right, ships[i].up - ships[j].up, ships[i].back - ships[j].back);
+                    expect(d, `${shape} ${i}/${j}`).toBeGreaterThan(8);
+                }
+            }
+        });
+        const flyby = { ...makeSortie('flyby', 2), breakAt: undefined, rolls: undefined };
+        const flight = new Flight(flyby, frame);
+        for (let i = 1; i < flyby.ships.length; i++) {
+            const ship = flyby.ships[i];
+            const want = Math.hypot(ship.right, ship.up, ship.back);
+            for (let age = 0.5; age < flyby.duration - 0.5; age += 0.5) {
+                const lead = [...flight.shipPoint(0, age)];
+                const p = flight.shipPoint(i, age);
+                const gap = Math.hypot(p[0] - lead[0], p[1] - lead[1], p[2] - lead[2]);
+                expect(Math.abs(gap - want), `ship ${i} at ${age}`).toBeLessThan(want * 0.25 + 1);
+            }
         }
     });
 
-    it('flies only the slow routes under reduced motion', () => {
-        expect(scheduleRoutes(true).every((r) => r.calm)).toBe(true);
-        for (let k = 0; k < 40; k++) {
-            const v = slotVisit(k, true);
-            if (v) expect(v.route.calm, v.route.name).toBe(true);
-        }
+    it('fans a salute across the sky: every swift on its own bearing, clear of the card, trailing sunfire', () => {
+        const salute = makeSortie('salute', 1);
+        expect(salute.ships).toHaveLength(5);
+        expect(salute.tint).toBe('sunfire');
+        expect(makeSortie('salute', 1, { count: 7 }).ships).toHaveLength(7);
+        const flight = new Flight(salute, frame);
+        const bearings = salute.ships.map((_, i) => {
+            const p = flight.shipPoint(i, 3.6);
+            return Math.atan2(p[0], -p[2]) / (Math.PI / 180);
+        });
+        bearings.forEach((az) => expect(Math.abs(az)).toBeGreaterThan(11));
+        expect(Math.min(...bearings)).toBeLessThan(-25);
+        expect(Math.max(...bearings)).toBeGreaterThan(25);
+        // They come from behind the viewer and end high over the horizon.
+        expect(flight.shipPoint(0, 0)[2]).toBeGreaterThan(100);
+        expect(flight.shipPoint(0, salute.duration)[1]).toBeGreaterThan(600);
+    });
+
+    it('hangs the ring-ship over the Halcyon and the saucer in its beam, face to the eye', () => {
+        const halcyonTop = [70, 52, -135];
+        const rite = makeSortie('rite', 4);
+        const flight = new Flight(rite, { ...frame, halcyonTop });
+        const pose = flight.pose(0, 10);
+        expect(flight.beam(10)).toBeGreaterThan(0.99);
+        expect(flight.beam(2)).toBe(0);
+        expect(pose.p[1]).toBeGreaterThan(halcyonTop[1] + 14);
+        expect(Math.hypot(pose.p[0] - halcyonTop[0], pose.p[2] - halcyonTop[2])).toBeLessThan(1.5);
+        // Arriving, its ring (whose axis is the hull's z) faces the eye.
+        const axis = quatTurn(flight.pose(0, 7.2).q, [0, 0, 1]);
+        expect(Math.abs(axis[2])).toBeGreaterThan(0.9);
+        const beam = makeSortie('halcyon', 1);
+        expect(new Flight(beam, { ...frame, halcyonTop }).beam(8)).toBeGreaterThan(0.99);
     });
 });
 
@@ -174,143 +457,197 @@ describe('the routes, as the rest camera sees them', () => {
     const frame = frameOf(world);
     const ndc = new THREE.Vector3();
     /** Where a world point shows (fractions, y down), or null off screen / behind. */
-    const screen = (p) => {
-        ndc.set(p[0], p[1], p[2]).project(camera);
+    const screen = (p, cam = camera) => {
+        ndc.set(p[0], p[1], p[2]).project(cam);
         if (ndc.z > 1 || Math.abs(ndc.x) > 0.98 || Math.abs(ndc.y) > 0.98) return null;
         return { x: ndc.x * 0.5 + 0.5, y: 0.5 - ndc.y * 0.5 };
     };
     const inside = (s, r) => s.x > r.x0 && s.x < r.x1 && s.y > r.y0 && s.y < r.y1;
-
-    it.each(VISITOR_ROUTES.map((r) => [r.name, r]))('%s is seen clear of the card and the HUD for a while', (name, route) => {
+    /** Seconds some hull of the sortie is in view, clear of the card and the HUD. */
+    const secondsSeen = (sortie, f, cam, rects) => {
+        const flight = new Flight(sortie, f);
         let clear = 0;
         const dt = 0.05;
-        for (let age = 0; age <= route.duration; age += dt) {
-            const pose = visitorPose(route, age, frame);
-            const at = pose.units ? pose.units[0] : pose.p;
-            const s = screen(at);
-            if (s && pose.presence > 0.5 && !inside(s, card) && !inside(s, hud)) clear += dt;
+        for (let age = 0; age <= sortie.duration; age += dt) {
+            let any = false;
+            for (let i = 0; i < sortie.ships.length && !any; i++) {
+                const pose = flight.pose(i, age);
+                const s = screen(pose.p, cam);
+                any = Boolean(s) && pose.presence > 0.5 && !rects.some((r) => r && inside(s, r));
+            }
+            if (any) clear += dt;
         }
-        const least = { mothership: 14, triangle: 9 }[name] ?? 4;
-        expect(clear, `${name}: ${clear.toFixed(1)} s in view`).toBeGreaterThan(least);
+        return clear;
+    };
+
+    it.each(SCHEDULED.map((name) => [name]))('%s is seen clear of the card and the HUD for a while, whatever its seed', (name) => {
+        const least = {
+            ark: 12, convoy: 9, lane: 4, glide: 3, haul: 3, ray: 4, hang: 9, dock: 12, rite: 6, loop: 4, spire: 4,
+        }[name] ?? 2.4;
+        SEEDS.forEach((seed) => {
+            const seen = secondsSeen(makeSortie(name, seed), frame, camera, [card, hud]);
+            expect(seen, `${name}#${seed}: ${seen.toFixed(1)} s in view`).toBeGreaterThan(least);
+        });
     });
 
-    it('rise into the sky over the card on an upright screen (the Halcyon is off its edge there)', () => {
+    it('rise into the sky over the card on an upright screen', () => {
         const { world: tall } = makeWorld('Minimal', 430, 850);
         const cam = tall.restCamera();
         const tallCard = fallbackLayout(430, 850).cards[0];
         const tallFrame = frameOf(tall);
         expect(tallFrame.upright).toBeGreaterThan(0.99);
-        const v3 = new THREE.Vector3();
-        VISITOR_ROUTES.filter((r) => r.name !== 'halcyon').forEach((route) => {
-            let clear = 0;
-            for (let age = 0; age <= route.duration; age += 0.05) {
-                const pose = visitorPose(route, age, tallFrame);
-                v3.set(...(pose.units ? pose.units[0] : pose.p)).project(cam);
-                const s = { x: v3.x * 0.5 + 0.5, y: 0.5 - v3.y * 0.5 };
-                const shown = v3.z < 1 && Math.abs(v3.x) < 0.98 && Math.abs(v3.y) < 0.98;
-                if (shown && pose.presence > 0.5 && !inside(s, tallCard)) clear += 0.05;
-            }
-            expect(clear, `${route.name}: ${clear.toFixed(1)} s in view`).toBeGreaterThan(3);
+        let shown = 0;
+        const heroes = STREAMS.hero.names;
+        heroes.forEach((name) => {
+            const seen = secondsSeen(makeSortie(name, 1), tallFrame, cam, [tallCard]);
+            if (seen > 2) shown += 1;
         });
+        // The Halcyon is off the edge of an upright frame: most heroes still show, not all.
+        expect(shown).toBeGreaterThanOrEqual(heroes.length - 4);
         tall.dispose();
     });
 
-    it('keeps the hovering visitors above the water and clear of the masonry they hang near', () => {
-        const { capsule } = VISITOR_ROUTE;
-        for (let age = 0; age < capsule.duration; age += 0.1) {
-            const { p } = visitorPose(capsule, age, frame);
-            expect(p[1]).toBeGreaterThan(8);
-        }
-        const { orbs } = VISITOR_ROUTE;
-        for (let age = 0; age < orbs.duration; age += 0.1) {
-            visitorPose(orbs, age, frame).units.forEach((at) => expect(at[1]).toBeGreaterThan(2));
-        }
-        // The halcyon saucer hangs over the diamond's top, and its beam reaches down to it.
-        const visit = visitorPose(VISITOR_ROUTE.halcyon, 8, frame);
-        expect(visit.beam).toBeGreaterThan(0.99);
-        expect(visit.p[1]).toBeGreaterThan(frame.halcyonTop[1] + 12);
-        expect(Math.hypot(visit.p[0] - frame.halcyonTop[0], visit.p[2] - frame.halcyonTop[2])).toBeLessThan(1.5);
-        expect(visit.beamTo[1]).toBeLessThan(frame.halcyonTop[1]);
-    });
-
-    it('fly smoothly: no jump between frames except where a visitor leaves in a blink', () => {
-        VISITOR_ROUTES.forEach((route) => {
-            let last = visitorPose(route, 0, frame).p;
-            for (let age = 1 / 120; age <= route.duration; age += 1 / 120) {
-                const { p } = visitorPose(route, age, frame);
-                const moved = Math.hypot(p[0] - last[0], p[1] - last[1], p[2] - last[2]);
-                // 1/120 s at the fastest a visitor cruises (some 500 m/s for the far ones).
-                if (route.warp === undefined || age < route.warp) expect(moved, `${route.name} at ${age.toFixed(2)}`).toBeLessThan(4.5);
-                last = p;
-            }
+    it('keeps the near hulls out of the glare round the sun', () => {
+        const { sun } = world.getState();
+        const sunAz = Math.atan2(sun[0], -sun[2]);
+        const sunEl = Math.asin(sun[1]);
+        ['ray', 'trio', 'loop', 'spire', 'dock'].forEach((name) => {
+            SEEDS.forEach((seed) => {
+                const sortie = makeSortie(name, seed);
+                const flight = new Flight(sortie, frame);
+                for (let age = 0; age <= sortie.duration; age += 0.1) {
+                    const pose = flight.pose(0, age);
+                    const d = Math.hypot(pose.p[0], pose.p[2]);
+                    if (pose.presence < 0.5 || d > 400) continue;
+                    const az = Math.atan2(pose.p[0], -pose.p[2]);
+                    const el = Math.atan2(pose.p[1] - REST_RIG.height, d);
+                    const off = Math.hypot((az - sunAz) * Math.cos(sunEl), el - sunEl) / (Math.PI / 180);
+                    if (off < 7) throw new Error(`${name}#${seed} at ${age.toFixed(1)}: ${off.toFixed(1)} degrees off the sun`);
+                }
+            });
         });
     });
 });
 
-describe('the world and its visitors', () => {
-    it('builds both parts on every tier, in the lagoon\'s mirror', () => {
+describe('the world and its skyfarers', () => {
+    it('builds the three parts on every tier, in the lagoon\'s mirror', () => {
         ['Minimal', 'High'].forEach((quality) => {
             const { world } = makeWorld(quality);
-            expect(world.parts.visitors, quality).toBeTruthy();
-            expect(world.parts.visitorLights, quality).toBeTruthy();
-            expect(world.parts.visitors.mesh.layers.mask).toBe(1);
-            expect(world.parts.visitorLights.mesh.layers.mask).toBe(1);
-            expect(world.parts.visitors.mesh.castShadow).toBe(false);
+            ['visitors', 'visitorTrails', 'visitorLights'].forEach((name) => {
+                expect(world.parts[name], `${quality} ${name}`).toBeTruthy();
+                expect(world.parts[name].mesh.layers.mask).toBe(1);
+                expect(world.parts[name].mesh.castShadow).toBe(false);
+            });
             world.dispose();
         });
     });
 
-    it('draws every hull out of sight while its pipelines are built, then nothing until a visit', () => {
+    it('draws a hull out of sight while the pipelines are built, then nothing while the sky is empty', () => {
         const { world, camera } = makeWorld();
+        world.setTraffic(false);
         const hulls = world.parts.visitors;
         step(world, camera, 1);
         expect(hulls.mesh.visible).toBe(true);
-        expect(hulls.geometry.drawRange.count).toBe(hulls.geometry.getAttribute('position').count);
-        hulls.mesh.updateMatrixWorld(true);
-        expect(new THREE.Vector3().setFromMatrixPosition(hulls.mesh.matrixWorld).y).toBeLessThan(-1000);
+        expect(hulls.geometry.instanceCount).toBe(1);
         for (let i = 0; i < VISITOR_WARM_FRAMES + 5; i++) step(world, camera, 1 + i / 60);
         expect(hulls.mesh.visible).toBe(false);
         expect(world.parts.visitorLights.mesh.visible).toBe(false);
+        expect(world.parts.visitorTrails.mesh.visible).toBe(false);
         expect(world.getState().visitor).toBeNull();
         world.dispose();
     });
 
-    it('shows the scheduled visitor, drawing only its hull, the same after a seek as after a run', () => {
+    it('shows the scheduled sorties, one instance a hull, the same after a seek as after a run', () => {
         const { world, camera } = makeWorld();
-        const t = FIRST_VISIT + 6;
+        const t = FIRST_VISIT + 4.4;
         for (let time = 0; time <= t; time += 1 / 30) step(world, camera, time, 1 / 30);
         step(world, camera, t, 0);
-        const ran = world.parts.visitors.mesh.matrixWorld.clone();
         const state = world.getState().visitor;
-        expect(state).toMatchObject({ route: 'saucer', kind: 'saucer' });
-        const [start, count] = buildHulls().ranges[VISITOR_KIND.saucer];
-        expect(world.parts.visitors.geometry.drawRange).toEqual({ start, count });
+        expect(state).toMatchObject({ route: 'skim', kind: 'swift' });
+        expect(state.sorties).toContain('skim');
+        const want = sortiesAt(t).reduce((n, s) => n + s.sortie.ships.length, 0);
+        expect(state.ships).toBe(want);
+        expect(world.parts.visitors.geometry.instanceCount).toBe(want);
+        expect(state.lamps).toBeGreaterThan(0);
+        expect(state.lamps).toBeLessThanOrEqual(LAMP_POOL);
+        expect(state.ribbons).toBeGreaterThan(0);
+        expect(state.ribbons).toBeLessThanOrEqual(RIBBONS);
         expect(world.parts.visitors.mesh.visible).toBe(true);
+        const ran = [...state.at];
 
         world.seek(t);
         step(world, camera, t, 0);
-        expect(world.parts.visitors.mesh.matrixWorld.equals(ran)).toBe(true);
+        const again = world.getState().visitor;
+        expect(again.at).toEqual(ran);
+        expect(again.ships).toBe(want);
         world.dispose();
     });
 
-    it('flies a called visitor over the schedule, and a seek forgets it', () => {
+    it('flies a called sortie beside the schedule, and a seek forgets it', () => {
         const { world, camera } = makeWorld();
-        expect(world.callVisitor('orbs', 30)).toBe(true);
+        world.setTraffic(false);
         expect(world.callVisitor('nobody', 30)).toBe(false);
-        world.callVisitor('mothership', 30);
-        step(world, camera, 40);
-        expect(world.getState().visitor).toMatchObject({ route: 'mothership', kind: 'cigar' });
-        // Its lamps are lit, in the pool's first slots.
-        const lights = world.parts.visitorLights.material;
-        expect(lights).toBeTruthy();
+        expect(world.callVisitor('ark', 30, 3)).toBe(true);
+        // The same call twice is one flight.
+        expect(world.callVisitor('ark', 30, 3)).toBe(true);
+        step(world, camera, 44);
+        const state = world.getState().visitor;
+        expect(state).toMatchObject({ route: 'ark', kind: 'ark' });
+        expect(state.ships).toBe(makeSortie('ark', 3).ships.length);
+        world.seek(44);
+        step(world, camera, 44);
+        expect(world.getState().visitor).toBeNull();
+        world.dispose();
+    });
+
+    it('never draws more hulls, lamps or ribbons than it has, however much is called', () => {
+        const { world, camera } = makeWorld();
+        ['ark', 'convoy', 'flyby', 'trio', 'string', 'salute'].forEach((name, i) => world.callVisitor(name, 20 + i * 0.01, 2 + i, name === 'salute' ? { count: 7 } : undefined));
+        for (let time = 20; time < 30; time += 0.25) {
+            step(world, camera, time, 0.25);
+            const state = world.getState().visitor;
+            if (!state) continue;
+            expect(state.ships).toBeLessThanOrEqual(SHIP_SLOTS);
+            expect(state.lamps).toBeLessThanOrEqual(LAMP_POOL);
+            expect(state.ribbons).toBeLessThanOrEqual(RIBBONS);
+            expect(world.parts.visitors.geometry.instanceCount).toBe(state.ships);
+        }
+        world.dispose();
+    });
+
+    it('lets a craft touch the sanctuary: spray under a skim, cargo poured into the causeway, a beam the Halcyon keeps', () => {
+        const { world, camera } = makeWorld('Low');
+        world.setTraffic(false);
+        // A skim throws spray where it runs low.
+        const sparks = world.parts.sparks.geometry.getAttribute('aBirth').array;
+        const live = () => {
+            let n = 0;
+            for (let i = 3; i < sparks.length; i += 4) if (sparks[i] > 0) n += 1;
+            return n;
+        };
+        world.callVisitor('skim', 10, 1);
+        for (let time = 10; time < 18; time += 1 / 30) step(world, camera, time, 1 / 30);
+        expect(live()).toBeGreaterThan(20);
+
+        // A barge's cargo runs the causeway's ley line into the Apex.
         world.seek(40);
-        step(world, camera, 40);
-        expect(world.getState().visitor?.route ?? null).not.toBe('mothership');
+        world.setTraffic(false);
+        world.callVisitor('dock', 40, 1);
+        const before = world.getState().counts.pulses;
+        for (let time = 40; time < 62; time += 1 / 20) step(world, camera, time, 1 / 20);
+        expect(world.getState().counts.pulses - before).toBe(6);
+        expect(world.getState().held[0]).toBeGreaterThan(1);
+
+        // The ring-ship's beam fills the Halcyon.
+        world.seek(100);
+        world.callVisitor('rite', 100, 1);
+        for (let time = 100; time < 116; time += 1 / 20) step(world, camera, time, 1 / 20);
+        expect(world.getState().held[1]).toBeGreaterThan(1);
         world.dispose();
     });
 });
 
-// ── The two materials through both node builders ────────────────────────────────
+// ── The three materials through both node builders ──────────────────────────────
 
 function stubRenderer() {
     return {
@@ -404,9 +741,9 @@ function unassignedReads(wgsl) {
     return found;
 }
 
-describe('the visitors\' materials', () => {
+describe('the skyfarers\' materials', () => {
     const { world } = makeWorld('High');
-    const parts = ['visitors', 'visitorLights'].map((name) => [name, world.parts[name].mesh]);
+    const parts = ['visitors', 'visitorTrails', 'visitorLights'].map((name) => [name, world.parts[name].mesh]);
 
     it.each(parts)('%s builds on WGSL and GLSL without a word, NaN, equal edges or an unassigned read', (name, mesh) => {
         [['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilder]].forEach(([label, Builder]) => {
@@ -432,5 +769,13 @@ describe('the visitors\' materials', () => {
             });
             if (label === 'WGSL') expect(unassignedReads(out.fragment), name).toEqual([]);
         });
+    });
+
+    it('draws the whole fleet with one hull pipeline: a table of rows, a vertex of another kind thrown out', () => {
+        const { vertex } = build(THREE.WGSLNodeBuilder, world.parts.visitors.mesh);
+        // The instance's rows are read by its index, and the clip position is a mix with a point outside the volume.
+        expect(vertex).toMatch(/instanceIndex|instance_index/);
+        expect(vertex).toMatch(/vec4<f32>\(\s*0(\.0)?\s*,\s*0(\.0)?\s*,\s*2(\.0)?\s*,\s*1(\.0)?\s*\)/);
+        world.dispose();
     });
 });

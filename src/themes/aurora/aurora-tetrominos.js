@@ -1,8 +1,8 @@
 /**
  * Aurora Theme - Tetromino Visual Configuration
  *
- * Vapor-bright ribbons of emerald, teal, cyan, and lilac mirroring the aurora
- * curtains and combo-driven color shifts.
+ * Vapor-bright ribbons of emerald, cyan, cobalt, lilac, magenta and the crown's rose, mirroring
+ * the aurora curtains: seven hues a glance can tell apart on the dark field.
  */
 
 export const AURORA_TETROMINOS = {
@@ -15,7 +15,7 @@ export const AURORA_TETROMINOS = {
         S: '#5a7cff', // Midnight cobalt
         Z: '#ff88ee', // Combo magenta flare
         J: '#62ffbf', // Emerald ribbon
-        L: '#8dfdff', // Aqua cascade
+        L: '#ff6f86', // Crown rose: the red of the tall rays (it was an aqua a hair from T's cyan)
         GARBAGE: '#030713', // Night sky shadow
     },
 

@@ -181,6 +181,50 @@ export const WEATHER = Object.freeze({
     ambient: 2,
 });
 
+/**
+ * Curls (aurora-forms.js): a curtain wound into a spiral, which a twist winds up beside the
+ * board. The sky holds `slots` at once; each lives `seconds`.
+ */
+export const CURL = Object.freeze({
+    slots: 2,
+    seconds: 2.8,
+    /** Rays standing along a curl's arm. */
+    rays: 36,
+    /** How much flatter than wide the spiral lies: a footprint 100 km up, seen from the shore. */
+    squash: 2.6,
+});
+
+/** Pillars of light along the far shore (aurora-forms.js): a level raises the row. */
+export const PILLARS = Object.freeze({ slots: 9 });
+
+/**
+ * The forms' table (aurora-forms.js): one array of vec4 rows the director writes and the march
+ * reads, addressed by these offsets.
+ *
+ *   crown      [gain, reach, gold, streaming phase]
+ *   crown + 1  [the direction its rays meet at, how strongly the row of pillars stands]
+ *   crown + 2  [the frame across the sky there: right], crown + 3 [up], crown + 4 [body colour]
+ *   curls      per curl, curlRows rows: [its centre's direction, gain], [1 / ray width, reach],
+ *              then CURL.rays rays as [foot x, foot y, gain, 1 / height] in tangents of view
+ *   pillars    per pillar, two rows: [azimuth, 1 / half-width, height, gain], [colour]
+ */
+export const FORMS = (() => {
+    const curlRows = 2 + CURL.rays;
+    const curls = 5;
+    const pillars = curls + CURL.slots * curlRows;
+    return Object.freeze({
+        crown: 0, curls, curlRows, pillars, rows: pillars + PILLARS.slots * 2,
+    });
+})();
+
+/** A unit vector toward a view azimuth and elevation (x right, y up, −z ahead), into `out` at `o`. */
+export function skyDirection(azimuth, elevation, out = [0, 0, 0], o = 0) {
+    out[o] = Math.cos(elevation) * Math.sin(azimuth);
+    out[o + 1] = Math.sin(elevation);
+    out[o + 2] = -Math.cos(elevation) * Math.cos(azimuth);
+    return out;
+}
+
 /** Bearing along an arc, radians of view, of an arc coordinate (km). */
 export function arcBearing(arc, along) {
     return Math.atan(along / arc.distance);
