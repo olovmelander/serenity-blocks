@@ -4444,6 +4444,20 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'skyLayers',
+        category: 'Playground',
+        scope: 'playground.html — voltage-storm',
+        description: "Paint only the named layers of the sky's own pass over the cloud's vault (bisecting a look).",
+        values: 'Comma-separated: scud, far (the far thunderheads), curtains (the rain curtains). Empty: the '
+            + 'vault alone.',
+        defaultValue: 'All of them.',
+        example: 'skyLayers=scud,far',
+        notes: 'Use on playground.html with effect=voltage-storm.',
+        sources: [
+            'src/playground/effects/voltage-storm.effect.js',
+        ],
+    },
+    {
         name: 'spaceT',
         category: 'Playground',
         scope: 'playground.html — ch6-cosmic-expanse',
@@ -4613,6 +4627,20 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/seam-12-dive.effect.js',
+        ],
+    },
+    {
+        name: 'storm',
+        category: 'Playground',
+        scope: 'playground.html — voltage-storm',
+        description: "Hold the storm's weather at one weight instead of letting the clock turn it.",
+        values: '0 (its lull: the vault lifted, the strip wide, drizzle) to 1 (its break: the tiers low, scud, '
+            + 'squalls, lightning on every beat).',
+        defaultValue: 'Not pinned: the storm gathers, breaks, eases and lulls once in 176 s of t.',
+        example: 'storm=1',
+        notes: 'Use on playground.html with effect=voltage-storm.',
+        sources: [
+            'src/playground/effects/voltage-storm.effect.js',
         ],
     },
     {

@@ -64,19 +64,109 @@ export const STORM = Object.freeze({
     rainBox: [150, 64, 170],
     rainFall: 17,
     rainStreak: 0.085,
+    /**
+     * The vault. The cell's underside is not one ceiling: it steps down in tiers from a high vault
+     * over a point behind the lens out to the cell's edge, each tier a ring `tierRadius` wide whose
+     * inner wall hangs `tierHeight` lower than the last, so from under it the storm stands as
+     * terraces one behind another, each with its own lit fringe. `cloudBase − cloudSag` is the
+     * LOWEST tier's base. The whole vault turns slowly about its centre (a mesocyclone).
+     */
+    vaultCentre: [260, 420],
+    tiers: 3,
+    tierRadius: 640,
+    /** The share of a tier's width its inner wall takes to come down (the rest is flat). */
+    tierRiser: 0.84,
+    /** A tier's height when the storm is at its heaviest, and at its lightest (metres). */
+    tierHeight: 80,
+    tierHeightCalm: 42,
+    /** How far the tiers' walls wander from their circles (metres). */
+    tierWobble: 120,
+    /** The whole underside lifts this far (metres) as the storm eases to its lull. */
+    liftCalm: 95,
+    /** Radians a second the vault turns at rest. */
+    spin: 0.0046,
+    /** The scud: ragged fragments racing under the lowest tier (metres under it, m/s). */
+    scudUnder: 62,
+    scudDrift: [31, 0, 9],
 });
+
+/**
+ * The height (metres) of the cloud's underside over a point of the plain: the vault's tiers. CPU
+ * twin of the sky's shader (a bolt leaves the cloud where the cloud is). `tierHeight` and `lift`
+ * are the weather's (see `stormWeather`).
+ */
+export function vaultBase(x, z, tierHeight = STORM.tierHeight, lift = 0) {
+    const wobble = STORM.tierWobble * (
+        Math.sin(x / 260 + 1.3) * Math.sin(z / 310 + 0.4) + 0.5 * Math.sin(x / 97 + z / 131)
+    );
+    const r = Math.hypot(x - STORM.vaultCentre[0], z - STORM.vaultCentre[1]) + wobble;
+    const s = Math.max(0, Math.min(STORM.tiers, r / STORM.tierRadius));
+    const whole = Math.floor(s);
+    const stair = Math.min(STORM.tiers, whole + smooth(STORM.tierRiser, 1, s - whole));
+    return STORM.cloudBase - STORM.cloudSag + lift + tierHeight * (STORM.tiers - stair);
+}
+
+// ── The storm's own weather ─────────────────────────────────────────────────────
+
+/** Seconds one turn of the storm takes: it gathers, breaks, eases and lulls. */
+export const STORM_CYCLE = 176;
+/** Where in its turn the storm stands when the clock starts (gathering: the first minute builds). */
+export const STORM_CYCLE_START = 0.2;
+
+/** Smooth value noise on a line, 0..1 (the squalls). */
+export function squall(x) {
+    const i = Math.floor(x);
+    const f = x - i;
+    const a = hash2(i, 811);
+    const b = hash2(i + 1, 811);
+    return a + (b - a) * f * f * (3 - 2 * f);
+}
+
+/**
+ * The storm's weather at `time`, by its own clock alone (play pushes it harder on top, see the
+ * world). A turn has four acts:
+ *   lull     the vault lifts and thins, the strip of clear sky stands wide, drizzle;
+ *   gather   the tiers come down, scud races in under them, the rain thickens;
+ *   break    the storm at its heaviest: squalls of rain, the cloud alight from inside;
+ *   ease     the rain thins, lightning crawls long across the underside, the strip reopens.
+ * No two turns are alike: each has its own depth of lull and height of break.
+ * @returns {{ phase:number, turn:number, heavy:number, act:string, squall:number }}
+ */
+export function stormWeather(time, out = {}) {
+    const o = out;
+    const t = Number.isFinite(time) ? Math.max(0, time) : 0;
+    const at = t / STORM_CYCLE + STORM_CYCLE_START;
+    const turn = Math.floor(at);
+    const phase = at - turn;
+    // Each turn's own lull and break (and the one before it, to join them without a step).
+    const lullOf = (n) => 0.05 + 0.2 * hash2(n, 401);
+    const peakOf = (n) => 0.8 + 0.2 * hash2(n, 409);
+    const lull = lullOf(turn);
+    const peak = peakOf(turn);
+    let heavy;
+    if (phase < 0.16) heavy = lull;
+    else if (phase < 0.46) heavy = lerp(lull, peak, smooth(0.16, 0.46, phase));
+    else if (phase < 0.66) heavy = peak;
+    else heavy = lerp(peak, lullOf(turn + 1), smooth(0.66, 1, phase));
+    o.phase = phase;
+    o.turn = turn;
+    o.heavy = clamp01(heavy);
+    let act = 'ease';
+    if (phase < 0.16) act = 'lull';
+    else if (phase < 0.46) act = 'gather';
+    else if (phase < 0.66) act = 'break';
+    o.act = act;
+    // Squalls: the rain comes in bursts a quarter of a minute apart, hardest when the storm is.
+    o.squall = squall(t / 13.7) * 0.65 + squall(t / 4.9 + 31) * 0.35;
+    return o;
+}
 
 /** The most an 8-bit sky target can hold (scene-linear); it stores the square root of light / peak. */
 export const SKY_CODE_PEAK = 4;
 
 // ── Slots ───────────────────────────────────────────────────────────────────────
 
-/**
- * Lightning slots, by kind. A slot is five rows of the bolt table:
- *   A = (start xyz, shape seed)      B = (end xyz, sideways reach as a fraction of the length)
- *   C = (rgb, core width in px)      D = (leader progress, channel light, branch light, afterglow)
- *   E = (pinned at both ends 0/1, how much of the branches shows 0..1, veiled by the cloud 0/1, _)
- */
+/** Lightning slots, by kind (the rows of a slot: see BOLT_ROWS). */
 export const BOLT_KIND = Object.freeze({
     /** Cloud to ground: a leader steps down, then return strokes run up the channel. */
     strike: 0,
@@ -88,17 +178,88 @@ export const BOLT_KIND = Object.freeze({
     crawler: 3,
 });
 export const BOLT_RANGES = Object.freeze({
+    // Strikes from the cloud, and the upward lightning the towers send back into it.
     strike: [0, 12],
-    arc: [12, 24],
-    chain: [24, 29],
-    // The widest pool: two four-line clears in a row and a long chain raise crawlers fastest.
-    crawler: [29, 40],
+    // The widest pool: a hard drop throws a heavy arc, a second, and a web of arcs over the water.
+    arc: [12, 28],
+    chain: [28, 34],
+    // Two four-line clears in a row and a long chain raise crawlers fastest.
+    crawler: [34, 48],
 });
-export const BOLT_SLOTS = 40;
-export const BOLT_ROWS = 5;
+export const BOLT_SLOTS = 48;
+/**
+ * A slot is seven rows of the bolt table:
+ *   A = (start xyz, shape seed)      B = (end xyz, sideways reach as a fraction of the length)
+ *   C = (rgb, core width in px)      D = (leader progress, channel light, branch light, afterglow)
+ *   E = (pinned at both ends 0/1, the share of its limbs that show 0..1, the height in metres above
+ *        which it is inside the cloud and only a glow (0: never), how far its core keeps its colour)
+ *   F = (roughness: how much of the fine kinks it carries, bow as a share of its length (+ = up),
+ *        a pinned arc's slide along its own wander or an unpinned bolt's sideways shift in px,
+ *        the share of the channel's light a branch carries)
+ *   G = (helix radius in metres, helix turns, a limb's turn from the channel in radians, a gain on
+ *        the limbs' length)
+ */
+export const BOLT_ROWS = 7;
+
+/**
+ * How a bolt is built: the look of each kind of electricity. Lightning is not one thing here.
+ *   rough       0 a smooth thread of plasma … 1 the jagged channel of a strike (more: frantic)
+ *   bow         it arches by this share of its length (hot plasma rises)
+ *   limbRank    the share of the channel's light a branch carries (a twig, less than half of that)
+ *   limbTurn    how far a limb turns from the channel (radians; the spread is added to it)
+ *   limbLength  gain on the limbs' length
+ *   limbs       the share of its limbs that show (each bolt draws its own lot)
+ *   coreTint    0: a white-hot core in a halo of its colour … 1: its colour through and through
+ */
+export const BOLT_STYLE = Object.freeze({
+    /** A forked strike: the classic. */
+    fork: Object.freeze({
+        rough: 1, bow: 0, limbRank: 0.16, limbTurn: 0.55, limbLength: 1, limbs: 0.75, coreTint: 0,
+    }),
+    /** A giant: one thick trunk, hardly a fork on it. */
+    giant: Object.freeze({
+        rough: 0.72, bow: 0, limbRank: 0.1, limbTurn: 0.42, limbLength: 0.7, limbs: 0.3, coreTint: 0,
+    }),
+    /** A far strike in the strip: a hairline, restless, forked low. */
+    hair: Object.freeze({
+        rough: 1.25, bow: 0, limbRank: 0.3, limbTurn: 0.5, limbLength: 1.2, limbs: 0.6, coreTint: 0.15,
+    }),
+    /** Spider lightning: a wide tree crawling along the cloud's underside, every limb alight. */
+    spider: Object.freeze({
+        rough: 0.9, bow: 0, limbRank: 0.6, limbTurn: 0.8, limbLength: 1.7, limbs: 1, coreTint: 0.1,
+    }),
+    /** Upward lightning: a trunk off a tower's finial that forks like a tree into the cloud. */
+    tree: Object.freeze({
+        rough: 1.1, bow: 0, limbRank: 0.55, limbTurn: 0.5, limbLength: 1.25, limbs: 0.9, coreTint: 0.1,
+    }),
+    /** A lock's charge: a smooth thread of plasma in the piece's colour, arching as it leaps. */
+    filament: Object.freeze({
+        rough: 0.22, bow: 0.1, limbRank: 0.22, limbTurn: 0.7, limbLength: 0.5, limbs: 0.35, coreTint: 0.6,
+    }),
+    /** A hard drop's charge: the same thread driven hard, kinked and forked. */
+    lash: Object.freeze({
+        rough: 0.7, bow: 0.06, limbRank: 0.3, limbTurn: 0.6, limbLength: 1.1, limbs: 0.8, coreTint: 0.3,
+    }),
+    /** A standing arc between tower tops: slow, writhing, rising like a Jacob's ladder. */
+    plasma: Object.freeze({
+        rough: 0.36, bow: 0.085, limbRank: 0.3, limbTurn: 0.9, limbLength: 0.45, limbs: 0.4, coreTint: 0.72,
+    }),
+    /** Arcs skittering over the water from a struck foot: frantic, flat, forked wide. */
+    skitter: Object.freeze({
+        rough: 1.2, bow: 0.12, limbRank: 0.5, limbTurn: 0.95, limbLength: 1.3, limbs: 0.9, coreTint: 0.35,
+    }),
+    /** A twist's arc: a helix wound round a mast. */
+    helix: Object.freeze({
+        rough: 0.3, bow: 0, limbRank: 0.3, limbTurn: 1.1, limbLength: 0.5, limbs: 0.5, coreTint: 0.45,
+    }),
+    /** A streamer: the brush of fire a finial sends up to meet a leader coming down. */
+    streamer: Object.freeze({
+        rough: 0.6, bow: 0, limbRank: 0.7, limbTurn: 0.6, limbLength: 2.2, limbs: 1, coreTint: 0.85,
+    }),
+});
 
 /** Lights the cloud, the water, the towers and the rain read (the brightest strokes of the frame). */
-export const FLASH_SLOTS = 8;
+export const FLASH_SLOTS = 10;
 /** Rings across the water (every lock, a strike's shock). */
 export const SHOCK_SLOTS = 10;
 /** A ring's strength falls by this rate (per second): the water's shader and the slot choice agree. */
@@ -123,6 +284,8 @@ export const ANSWER_GAP = 0.085;
 /** Speed of a shock ring across the water (m/s) and of the sheet lightning through the cloud. */
 export const SHOCK_SPEED = 150;
 export const SHEET_SPEED = 1500;
+/** Thunder: metres a second its shell of pressure runs out through the rain. */
+export const BOOM_SPEED = 340;
 /** Seconds the screen ripple of a superbolt lasts. */
 export const RIPPLE_SPEED = 0.9;
 
@@ -156,6 +319,14 @@ export function addHeld(epoch, time, amount) {
 export const STROKE_DECAY = 0.055;
 export const BRANCH_DECAY = 0.04;
 export const AFTERGLOW = 0.32;
+/**
+ * The light a bolt throws on the storm (the cloud, the rain, the water, the lens) rises and falls
+ * slowly beside the channel that makes it: seconds to rise to 1/e of its way, and to fall.
+ */
+export const GLOW_RISE = 0.07;
+export const GLOW_FALL = 0.3;
+/** The share of that light a later return stroke adds on top of the first one's swell. */
+export const GLOW_RESTRIKE = 0.3;
 
 /**
  * The plan of one bolt: when its leader connects and when each return stroke fires. Seeded, so a
@@ -165,23 +336,31 @@ export const AFTERGLOW = 0.32;
  * @param {number} [options.leader=0.11]   seconds the leader takes to reach the ground
  * @param {number} [options.strokes=3]     return strokes (the first is the brightest)
  * @param {number} [options.power=1]       gain on every stroke
+ * @param {number} [options.gap=0.045]     the least time between two strokes (seconds)
+ * @param {number} [options.spread=0.075]  how much longer than that a gap may be
+ * @param {number} [options.hold=0]        seconds of continuing current after the first stroke: the
+ *                                         channel stays alight instead of flickering out
  */
-export function strokePlan(seed, { leader = 0.11, strokes = 3, power = 1 } = {}) {
+export function strokePlan(seed, {
+    leader = 0.11, strokes = 3, power = 1, gap = 0.045, spread = 0.075, hold = 0,
+} = {}) {
     const rand = mulberry32(0x9e37 + Math.floor(seed * 7919));
     const times = [leader];
     const gains = [power];
     for (let i = 1; i < strokes; i++) {
-        times.push(times[i - 1] + 0.045 + rand() * 0.075);
+        times.push(times[i - 1] + gap + rand() * spread);
         gains.push(power * (0.38 + rand() * 0.42) * (1 - 0.1 * i));
     }
+    const held = Math.max(0, hold);
     return {
-        leader, times, gains, last: times[times.length - 1],
+        leader, times, gains, hold: held, last: Math.max(times[times.length - 1], leader + held),
     };
 }
 
 /**
  * The bolt's light `age` seconds after it began: how far the leader has come (0..1), the light of
- * the main channel, of the branches (they only flash on the first stroke) and the afterglow.
+ * the main channel, of the branches (they only flash on the first stroke), the afterglow, and the
+ * number of the stroke that is alight (−1 before the first).
  */
 export function strokeLight(plan, age, out = {}) {
     const o = out;
@@ -189,6 +368,7 @@ export function strokeLight(plan, age, out = {}) {
     o.main = 0;
     o.branch = 0;
     o.after = 0;
+    o.stroke = -1;
     if (!(age >= 0)) return o;
     // The leader steps down in jumps: fast, held, fast.
     const g = clamp01(age / plan.leader);
@@ -196,14 +376,42 @@ export function strokeLight(plan, age, out = {}) {
     let main = 0;
     for (let i = 0; i < plan.times.length; i++) {
         const since = age - plan.times[i];
-        if (since >= 0) main += plan.gains[i] * Math.exp(-since / STROKE_DECAY);
+        if (since >= 0) {
+            main += plan.gains[i] * Math.exp(-since / STROKE_DECAY);
+            o.stroke = i;
+        }
+    }
+    const first = age - plan.times[0];
+    // A continuing current: the channel burns on at a steady, lower light, then lets go.
+    if (plan.hold > 0 && first >= 0) {
+        const left = first < plan.hold ? 1 : Math.exp(-(first - plan.hold) / 0.09);
+        main = Math.max(main, plan.gains[0] * 0.34 * left);
     }
     o.main = main;
-    const first = age - plan.times[0];
     o.branch = first >= 0 ? plan.gains[0] * Math.exp(-first / BRANCH_DECAY) : 0;
     const cooled = age - plan.last;
     o.after = cooled >= 0 ? Math.exp(-cooled / AFTERGLOW) * plan.gains[0] : 0;
     return o;
+}
+
+/** One swell of light: 0 at its start, 1 at its height, falling away slowly. */
+function swell(since) {
+    if (!(since > 0)) return 0;
+    return (1 - Math.exp(-since / GLOW_RISE)) * Math.exp(-since / GLOW_FALL) * 1.64;
+}
+
+/**
+ * The light a bolt throws on the storm round it `age` seconds after it began: ONE slow swell from
+ * its first return stroke, each later stroke adding a little on top. The channel itself flickers
+ * with every stroke (it is a thread across the picture); what it lights across the whole frame
+ * rises and falls instead, so a storm of strokes never strobes the cloud, the rain or the lens.
+ */
+export function strokeGlow(plan, age) {
+    if (!(age >= 0)) return 0;
+    let glow = plan.gains[0] * swell(age - plan.times[0]);
+    for (let i = 1; i < plan.times.length; i++) glow += GLOW_RESTRIKE * plan.gains[i] * swell(age - plan.times[i]);
+    if (plan.hold > 0) glow += 0.35 * plan.gains[0] * smooth(0, plan.hold * 0.5, age - plan.times[0]) * (age - plan.times[0] < plan.hold ? 1 : Math.exp(-(age - plan.times[0] - plan.hold) / GLOW_FALL));
+    return glow;
 }
 
 /** Seconds after which a bolt with this plan has nothing left to show. */

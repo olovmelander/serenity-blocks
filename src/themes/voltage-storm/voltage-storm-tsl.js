@@ -20,6 +20,7 @@ import {
     dot,
     exp,
     float,
+    floor,
     fract,
     int,
     length,
@@ -35,6 +36,7 @@ import {
     BOLT_ROWS,
     BOLT_SLOTS,
     FLASH_SLOTS,
+    SHEET_SPEED,
     SHOCK_FADE,
     SHOCK_SLOTS,
     SKY_CODE_PEAK,
@@ -216,6 +218,24 @@ export function createStormUniforms(textures) {
         twist: uniform(new THREE.Vector4(0, -200, 0, 900)),
         /** Sheet lightning running out through the cloud: (x, z, birth time, strength). */
         sheet: uniform(new THREE.Vector4(0, 0, -100, 0)),
+        /** That sheet's light and how fast its front runs: (rgb, m/s). */
+        sheetLook: uniform(new THREE.Vector4(p.flash[0], p.flash[1], p.flash[2], SHEET_SPEED)),
+        /**
+         * The storm's weather: (how heavy 0..1, how far the underside has lifted in metres, a
+         * tier's height in metres, how much scud races under it 0..1).
+         */
+        storm: uniform(new THREE.Vector4(0.6, 0, STORM.tierHeight, 0.5)),
+        /** The vault's turn about its centre (its cosine and sine) and how far the scud has run (x, z in metres). */
+        vault: uniform(new THREE.Vector4(1, 0, 0, 0)),
+        /** The sky target's size in texels (the backdrop filters across them). */
+        skyTexel: uniform(new THREE.Vector2(960, 540)),
+        /** The eye a perfect clear opens in the cloud: (x, z, radius in metres, how far open 0..1). */
+        eye: uniform(new THREE.Vector4(0, -900, 400, 0)),
+        /** A twist's funnel under the cloud: (x, z, how far down it has come 0..1, its turn in radians). */
+        funnel: uniform(new THREE.Vector4(0, -300, 0, 0)),
+        /** Thunder's shell of pressure through the rain: (x, y, z of the strike, its birth) and its strength. */
+        boom: uniform(new THREE.Vector4(0, 0, 0, -100)),
+        boomGain: uniform(0),
         /** The strokes' light where the camera stands (rain, haze, the post's flash). */
         veil: uniform(new THREE.Vector3(0, 0, 0)),
         // The palette (scene-linear), eased by the world between levels.
@@ -253,6 +273,19 @@ export function createStormUniforms(textures) {
     /** A fixed mip: for fetches in a vertex stage or whose coordinates jump. */
     u.noiseLod = (st, lod = 0) => texture(u.noiseTex, st).level(lod);
     u.cloudNoise = (p3) => texture3D(u.cloudTex, p3).level(0);
+    /**
+     * The same read with the texel's own ease on the coordinate: a plain trilinear read of so
+     * coarse a field is creased along every voxel face, and where the light turns on the field's
+     * value those creases draw scales across the cloud. Eased, the field is smooth everywhere.
+     */
+    const voxels = textures.cloud?.image?.width || 48;
+    u.cloudNoiseSmooth = (p3) => {
+        const grid = p3.mul(voxels).sub(0.5);
+        const cell = floor(grid);
+        const part = grid.sub(cell);
+        const eased = part.mul(part).mul(part.mul(-2.0).add(3.0));
+        return texture3D(u.cloudTex, cell.add(eased).add(0.5).div(voxels)).level(0);
+    };
     /**
      * The sky target's light at a screen UV. Where the target is 8-bit (`floatSky` false) it holds
      * the square root of the light over SKY_CODE_PEAK, so the dark cloud keeps its steps.

@@ -11,6 +11,8 @@
  *                            aim at its rects and the post's calm zones read them
  *   statsHud=0               with board=1: board only, no HUD mock
  *   combo=<n>                hold a combo of n (the storm's charge, the standing arcs)
+ *   storm=<0..1>             hold the storm's weather at one weight (0 its lull, 1 its break);
+ *                            without it the storm turns by the clock, once in 176 s of `t`
  *   level=<n>                rest on level n's palette (the light also drifts with the clock: one
  *                            palette every 80 s of `t`, so t=20 is still on the level's own)
  *   locks=<n>                before anything else, play n locks (the towers holding their charge)
@@ -19,6 +21,7 @@
  *                            color=<hex>)
  *   demo=1                   live only: play a looping gameplay script
  *   parts=sky,water,towers,... draw only these parts
+ *   skyLayers=scud,far,curtains  paint only these of the sky's own layers (empty: the vault alone)
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
  *   bloom=0|1                override the tier's bloom
@@ -118,10 +121,15 @@ export function create({
         fov: camera.fov, near: camera.near, far: camera.far, toneMapping: renderer.toneMapping,
     };
     const world = new VoltageStormWorld({
-        scene, quality, capture: true, renderer,
+        scene,
+        quality,
+        capture: true,
+        renderer,
+        skyLayers: params.has('skyLayers') ? params.get('skyLayers').split(',').map((p) => p.trim()) : null,
     }).build();
     world.bindCamera(camera);
     world.setReducedMotion(params.get('reduce') === '1');
+    if (params.has('storm')) world.pinWeather(num(params, 'storm', 0.6));
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
 
