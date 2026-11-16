@@ -132,7 +132,7 @@ band and the shells from the dust's own two reads (no more fetches than before);
 bright stars; High and up add the dust's fine grain and the shells' own tatters, layers and
 creep (three fetches). The aura's noise follows `coronaDetail`.
 
-## Traps worth knowing (also in the skill: gotchas #701, #900, #1403, #1404, #1710–#1712)
+## Traps worth knowing (also in the skill: gotchas #701, #900, #1404, #1405, #1711–#1713)
 
 - **Shapes, not sizes, tell events apart.** Four first tries failed and each taught something: a
   remnant of ridged fBm round the star was marbled paper over the whole frame (a remnant is one
