@@ -16,13 +16,21 @@
  *                            and the clock say: 0 golden hour, 1 sunset, 2 afterglow, 3 moonrise,
  *                            4 first light, 5 the day; 2.5 is half-way from afterglow to moonrise
  *   locks=<n>                before anything else, play n locks
- *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|spin|perfect|levelUp   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
  *   leap=<n>&leapAge=<s>     send n dolphins over the water and show them <s> seconds later
  *                            (hero=1: the first is thrown across the sun)
+ *   sea=<place>              hold the sea at a place on the wheel of its states: 0 glass,
+ *                            1 offshore wind, 2 heavy, 3 sparkling (1.5: half-way between two)
+ *   life=0                   the sea sends no visits of its own (only what the board calls)
+ *   visit=<name>&visitAge=<s>   send one of the sea's visits and show it <s> seconds later:
+ *                            ridePod, troughPod, farPod, loneLeap, skitter, turtle, manta,
+ *                            whaleBlow, whaleFluke, whaleBreach, birds (visitSeed=<n>: another one)
+ *   look=x,y,z[,fov]         point the lens at a place in the world (metres), with a field of view
+ *   eye=x,y,z                and stand it somewhere else
  *   demo=1                   live only: play a looping gameplay script
- *   parts=sky,water,...      draw only these parts (sky, water, dolphins, mist, rain, spray, foam)
+ *   parts=sky,water,...      draw only these parts (sky, water, life, mist, rain, spray, foam)
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
  *   bloom=0|1                override the tier's bloom
@@ -135,6 +143,8 @@ export function create({
         seed: Math.round(num(params, 'seed', 187)),
         sun,
         hour: params.has('hour') ? num(params, 'hour', 0) : null,
+        ambient: params.get('life') !== '0',
+        sea: params.has('sea') ? num(params, 'sea', 0) : null,
     }).build();
     world.bindCamera(camera);
     world.setReducedMotion(params.get('reduce') === '1');
@@ -154,6 +164,9 @@ export function create({
 
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
     const iconPose = params.get('icon') === '1';
+    const triple = (key) => (params.has(key) ? params.get(key).split(',').map(Number) : null);
+    const lookAt = triple('look');
+    const eyeAt = triple('eye');
     const size = new THREE.Vector2(1, 1);
     const syncViewport = () => {
         const aspect = window.innerWidth / Math.max(1, window.innerHeight);
@@ -184,6 +197,15 @@ export function create({
             camera.updateProjectionMatrix();
             camera.updateMatrixWorld();
         }
+        if (lookAt) {
+            if (eyeAt) camera.position.set(eyeAt[0], eyeAt[1], eyeAt[2]);
+            camera.up.set(0, 1, 0);
+            camera.lookAt(lookAt[0], lookAt[1], lookAt[2]);
+            if (Number.isFinite(lookAt[3])) camera.fov = lookAt[3];
+            camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+            camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+        }
     };
     const frame = (time, delta) => {
         aim(time, delta);
@@ -202,6 +224,8 @@ export function create({
     const warmLocks = Math.max(0, Math.round(num(params, 'locks', 0)));
     const leapers = Math.max(0, Math.round(num(params, 'leap', 0)));
     const leapAge = num(params, 'leapAge', 2.6);
+    const visitName = params.get('visit');
+    const visitAge = num(params, 'visitAge', 4);
     const colorParam = params.get('color');
     const eventColor = colorParam ? `#${colorParam.replace('#', '')}` : PIECE_COLORS[4];
     const fireEvent = () => {
@@ -217,6 +241,7 @@ export function create({
         } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
         else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
+        else if (eventName === 'spin') world.onSpin();
         else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
     };
@@ -228,7 +253,8 @@ export function create({
         // The playground seeks every frame while ?t= is pinned: replay once, then hold.
         if (sought === time) return;
         sought = time;
-        const lead = Math.max(eventName ? eventAge : 0, leapers > 0 ? leapAge : 0) + LEAD + warmLocks * 0.5
+        const lead = Math.max(eventName ? eventAge : 0, leapers > 0 ? leapAge : 0, visitName ? visitAge : 0) + LEAD
+            + warmLocks * 0.5
             + (holdCombo ? 6 : 0);
         const start = Math.max(0, time - lead);
         world.seek(start);
@@ -255,6 +281,9 @@ export function create({
         }
         if (eventName) actions.push([time - eventAge, fireEvent]);
         if (leapers > 0) actions.push([time - leapAge, () => world.sendPod(leapers, params.get('hero') === '1')]);
+        if (visitName) {
+            actions.push([time - visitAge, () => world.sendVisit(visitName, Math.round(num(params, 'visitSeed', 1)))]);
+        }
         actions.sort((a, b) => a[0] - b[0]);
         actions.forEach(([at, act]) => {
             if (at > cursor) {
@@ -314,6 +343,20 @@ export function create({
         render() {
             if (post) post.render();
             else renderer.render(scene, camera);
+        },
+        async renderAsync() {
+            // A capture shows the sea life: wait for the animals' bodies (but not for long), then
+            // play the frame again with them in the water.
+            await Promise.race([world.lifeReady, new Promise((resolve) => { setTimeout(resolve, 6000); })]);
+            if (sought !== null) {
+                const time = sought;
+                sought = null;
+                seekTo(time);
+            }
+            for (let i = 0; i < 3; i += 1) {
+                if (post) post.render();
+                else renderer.render(scene, camera);
+            }
         },
         resize() {
             syncViewport();

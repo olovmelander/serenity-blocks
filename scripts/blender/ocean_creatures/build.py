@@ -73,9 +73,12 @@ def _tidy(me, triangulate=False, outer_only=False, log=print, name=''):
     me.update()
 
 
-def mesh_kind(name, log=print):
-    """One animal as a decimated mesh object, with everything its vertices carry."""
-    prims, meta = CAST[name]()
+def mesh_kind(name, log=print, cast=None):
+    """One animal as a decimated mesh object, with everything its vertices carry.
+
+    `cast` is the table its design is looked up in (the Ocean's own by default; Waves hands in its
+    sea life, scripts/blender/waves_sea_life)."""
+    prims, meta = (cast or CAST)[name]()
     verts, faces = sdf.surface(prims, meta['voxel'], log=log, name=name, adaptivity=meta.get('adapt', 0.0))
     me = bpy.data.meshes.new(name)
     me.from_pydata(verts.tolist(), [], faces)
