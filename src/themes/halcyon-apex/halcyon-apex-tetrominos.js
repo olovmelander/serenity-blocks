@@ -1,21 +1,24 @@
 /**
  * Halcyon Apex Theme - Tetromino Visual Configuration
  *
- * Warm sandstone, turquoise water, moss, and cyan crystals from the dawn
- * pyramid scene.
+ * Seven lights of the sanctuary, one hue each so no two pieces are mistaken for each other on
+ * the board: the sun's gold, the lagoon's turquoise, the rose hour, the blue hour's violet, the
+ * islets' green, the sandstone at first light and the clear morning's blue. (The world takes a
+ * piece's colour for the light it sends up the ley lines, so a board of seven hues plays the
+ * sanctuary in seven.)
  */
 
 export const HALCYON_APEX_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#8ff5ee',
-        O: '#c9bfa2',
-        T: '#3fd6cf',
-        S: '#8fa84e',
-        Z: '#2a8fa0',
-        J: '#bfd8d6',
-        L: '#d8cba8',
+        I: '#f4c95d',
+        O: '#2fd9be',
+        T: '#f08aa0',
+        S: '#a98cf2',
+        Z: '#8fcf5b',
+        J: '#e0723f',
+        L: '#4a8fe6',
         GARBAGE: '#5a5e68',
         CLEAN_GARBAGE: '#b3a98c',
     },

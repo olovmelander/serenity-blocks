@@ -35,8 +35,14 @@ const FRONT_REACH = 1500;
  * lens's gaze) it enters and leaves at, the half-width of the stretch the board hides, and
  * how far out it runs (metres, start and end).
  */
-const POOL_BEARINGS = Object.freeze([-0.66, 0.66, 0.19]);
-const POOL_RANGE = Object.freeze([820, 1250]);
+const POOL_BEARINGS = Object.freeze([-0.62, 0.62, 0.19]);
+/**
+ * It runs over the valley floor left of the board and up onto the mill's hill right of it, where
+ * the lens looks down on the land steeply enough for a pool of light to read as one. (Out at a
+ * kilometre it was a hair's breadth of brighter haze; nearer than the mill's hill on the right,
+ * that hill hides the ground.)
+ */
+const POOL_RANGE = Object.freeze([530, 265]);
 const { chaff: CHAFF, seed: SEED, pollen: POLLEN } = VERDANT_HILLS_PARTICLES;
 const PETALS = [VERDANT_HILLS_CHAFF.buttercup, VERDANT_HILLS_CHAFF.daisy, VERDANT_HILLS_CHAFF.daisy,
     VERDANT_HILLS_CHAFF.buttercup, VERDANT_HILLS_CHAFF.clover];
@@ -44,6 +50,8 @@ const GRASSES = [VERDANT_HILLS_CHAFF.straw, VERDANT_HILLS_CHAFF.blade];
 const LEAVES = [VERDANT_HILLS_CHAFF.oakLeaf, VERDANT_HILLS_CHAFF.oakLeafPale];
 const WHITE = new THREE.Color(1, 0.99, 0.94);
 const GOLD = new THREE.Color(1, 0.93, 0.7);
+/** The colour a bloom that belongs to no one piece flushes the meadow. */
+const BLOOM_GOLD = new THREE.Color(1, 0.8, 0.22);
 const KITE_TONES = VERDANT_HILLS_KITE_COLOURS.map((hex) => new THREE.Color(hex));
 /** The sunflower kite's colour (the T's) joins the gold of a back-to-back's ribbons. */
 const VERDANT_HILLS_GOLD_KITE = VERDANT_HILLS_PIECE_KITES.T;
@@ -51,12 +59,15 @@ const UP = new THREE.Vector3(0, 1, 0);
 
 export class VerdantHillsFxDirector {
     constructor({
-        stage, sim, ribbons, waves, tier, rng = Math.random, groundHeight = () => -1e6, oak = null,
+        stage, sim, ribbons, waves, tier, rng = Math.random, groundHeight = () => -1e6, oak = null, bloom = null,
     }) {
         this.stage = stage;
         this.sim = sim;
         this.ribbons = ribbons;
         this.waves = waves;
+        /** Sends a wave of bloom out through the meadow: (x, z, strength, colour). */
+        this.bloom = bloom;
+        this.bloomSerial = -1;
         this.rng = rng;
         this.groundHeight = groundHeight;
         /** Where leaves are torn from when the great gust comes: the oak's crown ({ x, y, z, radius }). */
@@ -122,6 +133,7 @@ export class VerdantHillsFxDirector {
         this.emitted.clear();
         this.waveSerial = -1;
         this.streakSerial = -1;
+        this.bloomSerial = -1;
     }
 
     random() {
@@ -705,6 +717,13 @@ export class VerdantHillsFxDirector {
             else if (streak.kind === 'festival') this.festivalRibbons();
             else if (streak.kind === 'gold') this.goldRibbons(streak);
         });
+        this.bloomSerial = play(frame.blooms, this.bloomSerial, (wave) => {
+            // From the grass at the foot of the board, under the piece that made the clear. Under
+            // Reduce motion it still colours the flowers; they lift less.
+            const spot = this.meadowAt(wave.column, this.foot);
+            const tone = wave.kite >= 0 ? KITE_TONES[wave.kite % KITE_TONES.length] : BLOOM_GOLD;
+            this.bloom?.(spot.x, spot.z, wave.strength * (0.6 + 0.4 * this.motion), tone);
+        });
         const whirl = Number.isFinite(frame.whirl) ? Math.max(0, Math.min(1, frame.whirl)) : 0;
         if (whirl > 0.03) {
             const centre = stage.centre(VERDANT_HILLS_STAGE_DEPTH, this.point);
@@ -776,7 +795,7 @@ export class VerdantHillsFxDirector {
             // A break that has been fed (or that a fever holds open) stands wider.
             const { breadth: opened } = frame.sunbreak;
             const breadth = Number.isFinite(opened) ? Math.max(0, Math.min(1, opened)) : 0;
-            this.pool.radius = 190 + 80 * travel + 150 * breadth;
+            this.pool.radius = 120 + 20 * travel + 100 * breadth;
             this.pool.strength = frame.sunbreak.strength;
             env.pool = this.pool;
         } else env.pool = null;

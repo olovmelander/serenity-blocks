@@ -306,6 +306,151 @@ the sheep make no sound (no SFX generation on this machine); lambs do not climb 
 mothers; there is no sheepdog (a gather on a big event would be a lovely next step); portrait
 frames do not show the near flocks (the windmill is out of frame there too).
 
+### The living day (2026-11-16)
+
+Olov asked for an audit of the whole theme and for it to be made one of the most stunning in
+the game: varied over time, every event with an effect of its own, the biggest moments the most
+spectacular, smooth and easy to read throughout.
+
+![before and after: the kite day on High](verdant-hills-living-day/before-after.webp)
+
+**What the audit found.** The world itself was sound (the composition, the oak, the meadow, the
+flock, the kites, the cumulus's shapes). What was weak:
+
+- **The sky's colour.** On the tiers with the post chain the sky was a pale grey milk and the
+  cumulus flat grey; the lowest tier, which has neither the march nor the post, had the bluer sky.
+  The light marched between the clouds was added over the sky's dome as well as the land, the
+  haze was thick, and the clouds' own shade was dark and neutral.
+- **The weathers.** Five of them turned by the clock, but only the sky's tint changed: the land
+  looked the same in all five, and "showers coming" was a grey lid.
+- **The events.** Nearly every one was the same picture at a different count: thin white
+  ribbons and petals. The four-line clear's "clouds open" could not be seen (its pool of light
+  lay a kilometre out, a line at three degrees, and its shaft slipped between the steps of the
+  march that drew it). A perfect clear and a new level had nothing of their own.
+- **Nothing lasted.** Twenty seconds after an event the day was exactly as before; nothing that
+  play did, and nothing the clock did, added to the picture.
+
+**The sky and the light.** A deep blue sky with white heaps: bluer zenith and middle sky, the
+cumulus's own shade brighter and bluer (`cloudBase`, `cloudTop`; the sky's shade dial is now 1 and
+the weathers carry the colour), less haze, and distance dissolving a cloud more slowly. The lit
+haze the post chain marches is faded out where a line of sight ends on the dome
+(`DOME_FADE` in `verdant-hills-post.js`), so the tiers with that pass no longer lay a veil over
+the sky. Under a cumulus the land now loses a third of the sky's light as well as the sun, so a
+cloud's shadow is a dark, cool shape and the sunlit fields beside it stand bright (one reading of
+the cloud field serves both; the water's sparkle reads the same one).
+
+**Seven weathers, and the hour they read as** (`verdant-hills-moods.js`; one every 105 s, a level
+one on):
+
+![the seven weathers](verdant-hills-living-day/weathers.webp)
+
+| Weather | What it is | What only it has |
+| --- | --- | --- |
+| kite day | white cumulus on deep blue (where a session starts) | |
+| honey afternoon | butter light, the cumulus building, a creamy horizon | |
+| storm light | indigo heaps with white crowns (was the grey "showers coming") | the sun's shafts standing in the valley's air |
+| after the rain | rinsed air, a deep blue sky, the far ridges sharp | a double rainbow over the valley |
+| long gold | gold light and honey haze, the clouds gilded | a few faint shafts |
+| afterglow | the sun down behind the mill: an orange rim under a violet sky | the first stars, fireflies over the grass, a lamp in the mill's window, the balloons burning like lanterns |
+| morning mist | a pale gold morning | the valley under mist, the hills and the trees' crowns standing out of it |
+
+The sun still never moves (the oak's shadow map and the baked far shade are drawn for it): the
+afterglow is a weather's light, in which the sun's share is so small that its shadows are gone.
+The flock keeps its own row for each weather (down for the night in the afterglow, shaking the
+dew off in the mist).
+
+**Every event, and what is its own:**
+
+![the events](verdant-hills-living-day/events.webp)
+
+| Event | Its own answer | With it |
+| --- | --- | --- |
+| Lock | The piece's kite goes up; a ribbon in its colour curls from the card's edge | seed and chaff, a gust ring in the grass |
+| Hard drop | The dandelion clocks are shaken: seed lifts where the piece came down | a harder ribbon and ring |
+| One line | White ribbons stream from both sides of the card at the cleared row | petals, the wind freshens, the kites climb, the balloons' burners fire |
+| Two lines | A front of wind crosses the hill and runs away down the valley | the flock's heads come up as it passes |
+| Three lines | **The meadow blooms**: a wave runs out through the flowers from the foot of the board, lifting each and dyeing its petals the colour of the piece's kite; they go back to their own colours one by one | everything above |
+| Four lines | **The clouds open**: the valley falls into shade and a great shaft of sun with its fingers sweeps it from the tarn to the mill's hill, its pool blazing on the fields | the bloom, leaves torn from the oak, the swallows up, the flock bolting |
+| Combo / streak | The wind winds round the board, a whirl that climbs and takes the kites' colours | |
+| Twist | Twin spirals of wind beside the board | |
+| Back-to-back | Golden ribbons cross behind the board; every kite bows on its line | |
+| Seven kites | The festival: a ribbon in each kite's colour fans up, every kite at the top of its line | the clouds open |
+| Perfect clear | **A rainbow is drawn across the whole sky**, from its left foot over its crown to its right in under two seconds, stands nine and fades | all seven kites, the bloom in gold, the clouds open |
+| New level | **A balloon lifts off** from the valley and joins the others; the day turns one weather on | a front, a ribbon |
+| Game over | The wind dies: the kites come down, the grass stands, the bow fades | |
+
+**What lasts.** Hot-air balloons (`verdant-hills-balloons.js`) go up from two fields, one left
+of the board and one behind the mill's hill, and drift away down the valley for seven minutes in
+the kites' colours, in four cuts of cloth. The clock sends one up every two and a half minutes
+whatever is played (Infinity, a match and the menus never level up), and two are already on their
+way when a session starts; every new level adds one of its own, up to seven in the air. Their
+lanes are laid so that neither crosses behind the board. Line clears fire every burner; in the
+afterglow each burns by itself every eight seconds or so.
+
+**How each part is drawn.**
+
+- **The rainbow** (`verdant-hills-bow.js`, `verdant-hills-rainbow.js`): a band of a sphere round
+  the lens 2.4 km out, depth-tested, so the far ridges show through it and the home hill, the oak
+  and the mill stand in front. Its colours are a table baked over sixteen wavelengths (red and
+  green overlap into the bow's yellow), the secondary outside it the other way round, the sky a
+  little brighter inside the primary and a little darker between the two (the table's alpha, in
+  the same draw). The rain is never drawn: no veil, no grey. **It is a picture's bow**: it is
+  centred straight ahead and as far under the horizon as the day's sun is high, which makes it the
+  low wide bow of a high sun with a foot in each side third of the frame; but the sun that lights
+  the hills stands ahead and to the right, and a real bow needs it at the lens's back.
+- **The sun's shafts** (`verdant-hills-sunbeams.js`): thirteen strips along the sun's ray that
+  turn to face the lens about it: five for the game's own gap in the clouds (the great shaft and
+  four fingers on its pool), eight for the weather's, each of which stands only under a real gap
+  of the cloud field and rides down the wind with it. They replace the beam the post chain
+  marched (a term less in that loop) and are drawn on every tier.
+- **The meadow's bloom**: one wave (`uBloomWave`, `meadowBloom` in the light rig) read in the
+  flowers' vertex stage. Each flower is dyed or it is not, by its own threshold: mixed by the
+  wave's strength, a violet dye on yellow buttercups spent seconds as beige.
+- **The mist**: an exponential layer in the shared `haze()`, integrated along the line of sight
+  in closed form, so every material on every tier has it for two exponentials.
+- **The stars** are in the sky dome behind a branch on the night (by day the sky pays nothing),
+  behind the cumulus and the cirrus; **the fireflies** (`verdant-hills-fireflies.js`) are an
+  instanced draw of closed-form lamps, folded away by day.
+- Everything new is in the scene from the first frame, folded to a point until it is wanted, so
+  no pipeline is made in front of the player.
+
+The pool of sunlight now crosses within 530 m of the lens (the valley floor left of the board, the
+mill's hill right of it), where the lens looks down at five degrees or more.
+
+![in the real game](verdant-hills-living-day/in-game.webp)
+
+**Cost, by construction** (no GPU timings: the machine was shared with other sessions, and the
+captures ran capped at 30 frames a second). Added: four draws (a band, thirteen strips, seven
+balloons of some 780 triangles each, 84 to 260 fireflies), three exponentials in `haze()`, and
+the stars behind a branch. Removed: the post march's beam term (one sum less a step), and the
+ground's two readings of the cloud shadow are one. Nothing was taken from any tier: Minimal draws the
+bow, the shafts, the balloons, the stars, the fireflies, the mist and the bloom as High does.
+
+![the lowest tiers and the WebGL2 backend](verdant-hills-living-day/tiers.webp)
+
+![portrait](verdant-hills-living-day/portrait.webp)
+
+**Checked** in the playground on WebGPU at High, Medium, Low and Minimal and on the forced WebGL2
+backend, 1280 × 720 and 390 × 844: the seven weathers, every event in the table, the lowest tier
+with a perfect clear; clean consoles throughout. In the real game (Single Player, High,
+1600 × 900, WebGPU, real hard drops by key press; the clears, the level and the perfect clear
+fired on the theme's own director): the bloom in the piece's colour, the shaft, the rainbow, the
+balloons, the afterglow and the mist with the board and the score card over them; the console held
+only the application's own lines. Tests: `tests/unit/verdant-hills-day.test.js` (the bow's
+colours and angles, where it stands, the balloons' flights and lanes, the shafts, what the
+director asks for, the parts in the world, and every new material built for WGSL and GLSL), and
+the reactions, weather, flock and director tests re-pinned for seven weathers and the nearer pool.
+
+Playground: `level=1..7` rests the day on a weather; `event=triple|quad|perfect|level` with
+`eventAge=` and `piece=` show the new answers; `paint=uZenith:r,g,b;…` holds colours of the light
+rig over every weather, for trying a palette.
+
+**Open calls** (mine to raise, not decisions the owner has made): the rainbow's place is a
+picture's, not the sun's; the storm light is the greyest of the seven skies, though its heaps are
+now white and indigo; a bloom dyes real flowers for a few seconds, which is play, not nature;
+portrait frames show the shaft's foot as a bright haze low in the valley, and neither the mill nor
+the right-hand balloon lane.
+
 ## How it is built
 
 ### Trees and built things authored in Blender
@@ -356,9 +501,14 @@ cloud generator.**
 | `verdant-hills-sheep-rig.js`, `verdant-hills-flock.js` | The ewe's and the lamb's bodies on the shared quadruped solver (gaits, acts), and the flock's mind (three-free). |
 | `verdant-hills-sheep.js` | The flock drawn: two instanced skinned draws from a float texture of bones, and their shadows. |
 | `verdant-hills-life.js` | Butterflies and swallows. |
+| `verdant-hills-bow.js`, `verdant-hills-rainbow.js` | The rainbow's colours (a spectral table, three-free) and the band of the sky it is drawn on. |
+| `verdant-hills-sunbeams.js` | The sun's shafts: the game's own gap in the clouds and the weather's. |
+| `verdant-hills-balloons.js` | The hot-air balloons: the clock's and the levels'. |
+| `verdant-hills-fireflies.js` | The afterglow's fireflies. |
 | `verdant-hills-kites.js` | The seven kites, their tails and lines. |
 | `verdant-hills-ribbons.js` | The ribbons of wind. |
 | `verdant-hills-seed-sim.js`, `verdant-hills-seeds.js` | Seed, chaff, petals and leaves: simulation, and drawing. |
+| `verdant-hills-moods.js` | The seven weathers: their colours and what only some of them have (mist, night, the bow, the shafts). |
 | `verdant-hills-reactions.js` | The event director (pure). |
 | `verdant-hills-stage.js`, `verdant-hills-fx-director.js`, `verdant-hills-rings.js` | Board card → world, and cues → ribbons, seed, force fields, gusts, the front and the pool of light. |
 | `verdant-hills-post.js` | The light between the clouds, bloom, grade, FXAA; and the call that has the sky march its clouds before each frame. |

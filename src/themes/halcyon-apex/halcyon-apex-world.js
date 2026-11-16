@@ -76,6 +76,7 @@ import {
     PULSE_SPEED,
     SITE,
     SUNFIRE,
+    TAU,
     WISP_FLIGHT,
     approach,
     clamp01,
@@ -94,7 +95,7 @@ import {
 } from './halcyon-apex-tsl.js';
 import { GEM } from './halcyon-apex-plan.js';
 import { tierFor } from './halcyon-apex-quality.js';
-import { createSky } from './halcyon-apex-sky.js';
+import { PLANET_RADIUS, PLANET_RING, createSky } from './halcyon-apex-sky.js';
 import { createStone } from './halcyon-apex-stone.js';
 import { createCrystals } from './halcyon-apex-crystals.js';
 import { createWater } from './halcyon-apex-water.js';
@@ -103,7 +104,7 @@ import {
     createBeads, createBirds, createMotes, createUpfall,
 } from './halcyon-apex-atmosphere.js';
 import {
-    createBeacons, createRowBeams, createSparks, createWisps,
+    createBeacons, createBursts, createRowBeams, createSparks, createWisps,
 } from './halcyon-apex-fx.js';
 import { createVisitors } from './halcyon-apex-visitors.js';
 import {
@@ -169,7 +170,8 @@ const OVERDRIVE_CEILING = 2.0;
 
 const PARTS = [
     'sky', 'ranges', 'islets', 'flora', 'water', 'site', 'siteLey', 'dial', 'dialLey', 'crystals', 'halos',
-    'upfall', 'beads', 'motes', 'birds', 'visitors', 'visitorLights', 'sparks', 'beacons', 'wisps', 'beams',
+    'upfall', 'beads', 'motes', 'birds', 'visitors', 'visitorTrails', 'visitorLights', 'sparks', 'beacons', 'bursts', 'wisps',
+    'beams',
 ];
 
 export class HalcyonApexWorld {
@@ -216,10 +218,17 @@ export class HalcyonApexWorld {
         this.beams = null;
         this.beacons = null;
         this.birds = null;
-        /** The visitors: now and then a craft not of this world passes over (halcyon-apex-visitors.js). */
+        /** The skyfarers: the craft the sanctuary's light draws (halcyon-apex-visitors.js). */
         this.visitors = null;
         this._visitorFrame = {
-            yaw: 0, upright: 0, eye: REST_RIG.height, halcyonTop: [0, 0, 0], palette: null, reduced: false,
+            yaw: 0, upright: 0, eye: REST_RIG.height, halcyonTop: [0, 0, 0], halcyon: [0, 0, 0], apex: [0, 0, 0], palette: null, reduced: false,
+        };
+        this._eye = [0, REST_RIG.height, 0];
+        /** What a craft does to the sanctuary: spray where it skims, rings where it hangs, light it brings. */
+        this._visitorHooks = {
+            spray: (x, z, strength, rgb) => this.visitorSpray(x, z, strength, rgb),
+            wash: (x, z, rgb, strength) => this.visitorWash(x, z, rgb, strength),
+            gift: (line, rgb, amount, x, y, z) => this.visitorGift(line, rgb, amount, x, y, z),
         };
         this.disposed = false;
         this.reducedMotion = false;
@@ -240,6 +249,7 @@ export class HalcyonApexWorld {
         this._rest = new THREE.PerspectiveCamera(50, 16 / 9, REST_RIG.near, REST_RIG.far);
         this._point = { x: 0.5, y: 0.5 };
         this._strike = { x: 0, z: -12 };
+        this._fan = { x: 0, z: -12 };
         this._from = [0, 0, 0];
         this._frame = {
             time: 0, lift: 0, spin: 0, halcyon: this.halcyon, dialYaw: 0, calm: 1,
@@ -291,6 +301,8 @@ export class HalcyonApexWorld {
         this.hushUntil = -1;
         /** How deep the last four-line clear's hush goes (1 from cold; mid-fever it only inhales). */
         this.hushDepth = 1;
+        /** When the last salute was called (one at a time). */
+        this.saluteAt = -100;
         this.lockCursor = 0;
         /**
          * What the Apex [0] and the Halcyon [1] hold (what they show, including what is still
@@ -301,8 +313,10 @@ export class HalcyonApexWorld {
         this.heldColor = [[1, 1, 1], [1, 1, 1]];
         this.arrivals.length = 0;
         this.counts = {
-            locks: 0, clears: 0, quads: 0, crowns: 0, spins: 0, wisps: 0, pulses: 0,
+            locks: 0, clears: 0, quads: 0, crowns: 0, spins: 0, wisps: 0, pulses: 0, salutes: 0,
         };
+        /** The time-lapse a new level runs the sky through: how much faster the clouds go, easing off. */
+        this.rush = 0;
         this.overdrive.reset();
         this.kicks.reset();
         this.flashes.reset();
@@ -331,6 +345,8 @@ export class HalcyonApexWorld {
             for (let i = 0; i < PULSE_SLOTS; i++) this.u.pulseA[i].value.set(-100, 0, 0, 0);
             this.u.shock.value.set(-100, 0, -100, 0);
             this.u.beacon.value.set(0, 0, 0, 0);
+            this.u.burst.value.set(-100, 0, -100, 0);
+            this.u.iris.value.set(-100, 0);
         }
     }
 
@@ -376,7 +392,7 @@ export class HalcyonApexWorld {
             }
         }
 
-        this.addPart('sky', createSky(u, { decks: tier.decks, lit: tier.litClouds }));
+        this.addPart('sky', createSky(u, { decks: tier.decks, lit: tier.litClouds, planet: true }));
         yield 'sun and sky';
         const terrain = yield* createTerrainSteps(u, plan, { segments: tier.ranges, seed: plan.seed });
         this.addPart('ranges', terrain.ranges);
@@ -409,9 +425,10 @@ export class HalcyonApexWorld {
             this.addPart('birds', this.birds);
         }
         yield 'air';
-        // Every tier: one small hull at a time, drawn only while it flies.
+        // Every tier: a few small hulls, drawn only while they fly.
         this.visitors = createVisitors(u);
         this.addPart('visitors', this.visitors.hulls);
+        this.addPart('visitorTrails', this.visitors.trails);
         this.addPart('visitorLights', this.visitors.lights);
         yield 'visitors';
 
@@ -420,6 +437,7 @@ export class HalcyonApexWorld {
         this.addPart('sparks', this.sparks);
         this.beacons = createBeacons(u);
         this.addPart('beacons', this.beacons);
+        this.addPart('bursts', createBursts(u));
         this.wisps = createWisps(u);
         this.addPart('wisps', this.wisps, { reflected: false });
         this.beams = createRowBeams(u);
@@ -478,6 +496,11 @@ export class HalcyonApexWorld {
         this.reducedMotion = reduced === true;
     }
 
+    /** Scheduled traffic on or off (captures of one event or one sortie want an empty sky). */
+    setTraffic(on) {
+        this._visitorFrame.schedule = on !== false;
+    }
+
     /** Jump the clock (captures): drops every event in flight. */
     seek(time) {
         this.resetState(Math.max(0, time));
@@ -486,11 +509,54 @@ export class HalcyonApexWorld {
     }
 
     /**
-     * Fly a visitor's route (halcyon-apex-visitor-plan.js: saucer, halcyon, triangle, mothership,
-     * orbs, capsule) from world time `start`, over whatever the schedule had planned. Captures use it.
+     * Fly a sortie (halcyon-apex-flight.js: `SORTIE_NAMES`) from world time `start`, beside whatever
+     * the schedule has in the sky. `seed` draws its numbers. The board's salutes and captures use it.
      */
-    callVisitor(name, start = this.time) {
-        return this.visitors ? this.visitors.call(name, start) : false;
+    callVisitor(name, start = this.time, seed = 1, opts = undefined) {
+        return this.visitors ? this.visitors.call(name, start, seed, opts) : false;
+    }
+
+    /** Spray where a hull skims the lagoon. */
+    visitorSpray(x, z, strength, rgb) {
+        if (!this.sparks) return;
+        const share = this.sparks.count / 512;
+        this.sparks.emit({
+            x,
+            y: 0.1,
+            z,
+            n: Math.max(1, Math.round(7 * share * (0.4 + strength))),
+            rgb: [rgb[0] * 0.35 + 0.65, rgb[1] * 0.35 + 0.65, rgb[2] * 0.35 + 0.65],
+            time: this.time,
+            out: [0.6, 4.2],
+            up: [1.2, 4.6 + 3 * strength],
+            life: [0.5, 1.2],
+            size: 0.11,
+        });
+    }
+
+    /** A hull hanging low over the lagoon presses a ring into it. */
+    visitorWash(x, z, rgb, strength) {
+        if (!this.u) return;
+        this.ring(x, z, this.time, 0.22 + 0.3 * Math.max(0, strength), rgb, 0.42);
+    }
+
+    /**
+     * Light a craft brings: a beam laid on a great crystal, or a barge's cargo poured out on the
+     * causeway (from `x, y, z`). It runs the ley line and the crystal keeps it.
+     */
+    visitorGift(line, tint, amount, x, y, z) {
+        if (!this.u || !this.crystals || !(amount > 0.01)) return;
+        // (The caller's colour is a scratch array it writes again next frame; the pulse's arrival keeps this one.)
+        const rgb = [tint[0], tint[1], tint[2]];
+        const length = line === 0 ? LEY_A.length : LEY_B.length;
+        if (Number.isFinite(x)) {
+            // Poured out over the deck: it falls as sparks and runs the whole causeway.
+            const share = this.sparks ? this.sparks.count / 512 : 0;
+            this.sparks?.emit({
+                x, y, z, n: Math.round(26 * share), rgb, time: this.time, out: [0.2, 2.2], up: [-5, -1], life: [0.9, 1.5], size: 0.16,
+            });
+            this.sendPulse(line, length * 0.2, this.time + 0.5, rgb, amount);
+        } else this.sendPulse(line, length - 4, this.time, rgb, amount);
     }
 
     /** A new run: the sanctuary back at rest (the sky keeps turning). */
@@ -566,6 +632,17 @@ export class HalcyonApexWorld {
         u.halcyonPos.value.set(this.halcyon[0], this.halcyon[1], this.halcyon[2]);
         this.dialYaw = Math.atan2(-this.halcyon[0], -this.halcyon[2]);
         this.stone?.placeDial(this.halcyon[0], this.halcyon[2], this.dialYaw);
+        // The giant hangs where the composition leaves it sky: the screen's right and up there,
+        // and the sun's direction in that frame (z toward the eye), which lights its limb.
+        const pd = this.restDirection(comp.planet.x, comp.planet.y, this._vec);
+        const right = this._look.set(0, 1, 0).cross(pd).negate().normalize();
+        const up = this._ray.copy(right).cross(pd).normalize();
+        u.planetDir.value.copy(pd);
+        u.planetRight.value.copy(right);
+        u.planetUp.value.copy(up);
+        u.planetSun.value.set(dir.dot(right), dir.dot(up), -dir.dot(pd)).normalize();
+        u.planet.value.x = PLANET_RADIUS;
+        u.planet.value.y = Math.cos(PLANET_RADIUS * (PLANET_RING + 0.15));
         this.frameShadows();
     }
 
@@ -928,18 +1005,43 @@ export class HalcyonApexWorld {
         const share = this.sparks.count / 512;
         if (hardDrop) {
             // A crown of spray where it struck.
+            const spray = [rgb[0] * 0.6 + 0.4, rgb[1] * 0.6 + 0.4, rgb[2] * 0.6 + 0.4];
             this.sparks.emit({
                 x: strike.x,
                 y: 0.08,
                 z: strike.z,
                 n: Math.round(70 * share),
-                rgb: [rgb[0] * 0.6 + 0.4, rgb[1] * 0.6 + 0.4, rgb[2] * 0.6 + 0.4],
+                rgb: spray,
                 time: this.time,
                 out: [1.4, 3.6],
                 up: [2.6, 6.6],
                 life: [0.7, 1.4],
                 size: 0.075,
             });
+            // The blow throws a sheet of water out from under each side of the card: two fans of
+            // spray standing where the lagoon shows beside it, and a second ring on the heels of
+            // the first.
+            const edges = cardUnion(this.layout);
+            if (edges && !screen) {
+                [[edges.x0 - 0.035, -1], [edges.x1 + 0.035, 1]].forEach(([sx, dir]) => {
+                    const foot = this.screenToLagoon(sx, Math.max(fy, 0.8), this._fan, 11);
+                    this.sparks.emit({
+                        x: foot.x,
+                        y: 0.08,
+                        z: foot.z,
+                        n: Math.round(46 * share),
+                        rgb: spray,
+                        time: this.time + 0.05,
+                        out: [0.8, 3.4],
+                        up: [3.4, 8.2],
+                        life: [0.8, 1.6],
+                        size: 0.07,
+                        lean: [dir * 2.6, 0],
+                        stagger: 0.12,
+                    });
+                });
+            }
+            this.ring(strike.x, strike.z, this.time + 0.13, 0.75, spray, 0.7);
         }
 
         // ── The wisp carries it to the head of a ley line, and the line takes it from there ──
@@ -1143,6 +1245,33 @@ export class HalcyonApexWorld {
             this.beams.fire(ys, card.x0, card.x1, rgb, this.time, Math.min(1.5, 0.7 + 0.18 * n + 0.08 * deeper));
         }
 
+        // ── Two lines and three: the board's light flies to the great crystals themselves, a wisp
+        //    to each for every line past the first ──
+        if (!quad && n >= 2 && board && card && !screen) {
+            const all = this.crystals.gems;
+            const great = [all.findIndex((g) => g.kind === GEM.apex), all.findIndex((g) => g.kind === GEM.halcyon)];
+            const mid = (board.y0 + board.y1) * 0.5;
+            great.forEach((index, line) => {
+                if (index < 0) return;
+                for (let k = 0; k < n - 1; k++) {
+                    const from = this.screenToWorld(line === 0 ? card.x0 : card.x1, mid + (k - (n - 2) * 0.5) * 0.09, 7, [0, 0, 0]);
+                    const to = this.crystals.positionOf(index);
+                    const dist = Math.hypot(to[0] - from[0], to[1] - from[1], to[2] - from[2]);
+                    this.wisps.launch({
+                        from,
+                        to,
+                        rgb,
+                        time: this.time + 0.05 + k * 0.11,
+                        flight: this.reducedMotion ? 0.2 : 0.62 + k * 0.05,
+                        lift: 10 + dist * 0.05 + k * 9,
+                        size: 1.1 + 0.3 * n,
+                        bow: (line === 0 ? -1 : 1) * (8 + k * 10),
+                    });
+                    this.counts.wisps += 1;
+                }
+            });
+        }
+
         if (quad) {
             // The sanctuary holds its breath (as deep as play is cold: in a fever it only
             // inhales), then everything fires.
@@ -1152,6 +1281,16 @@ export class HalcyonApexWorld {
             this.shockRing(birth, this.reducedMotion ? 0.5 : 1);
             this.birds?.scatter(birth);
             this.counts.quads += 1;
+            // The sky answers: swifts in over the viewer's head, fanned across it, drawing trails of
+            // sunfire out to the horizon (seven for a perfect clear, and the ring of orbs round the
+            // Apex with them). One salute at a time: a second four-line clear while they are still
+            // overhead adds its light to the sanctuary, not more hulls to the sky.
+            if (!this.reducedMotion && this.time - this.saluteAt > 6.5) {
+                this.saluteAt = this.time;
+                this.counts.salutes += 1;
+                this.callVisitor('salute', birth - 0.9, this.counts.salutes, { count: perfect ? 7 : 5 });
+            }
+            if (perfect) this.crownSky(birth);
         }
         if (back) {
             // The second difficult clear: the two great crystals answer each other (a pillar on
@@ -1165,6 +1304,7 @@ export class HalcyonApexWorld {
             this.stir = Math.max(this.stir, 0.9);
             this.ring(heart.x, heart.z, this.time, 0.9, rgb, 0.7);
             this.ring(heart.x, heart.z, this.time + 0.16, 0.7, rgb, 0.45);
+            this.whirl(birth, rgb, 1);
         }
         this.counts.clears += 1;
     }
@@ -1179,6 +1319,7 @@ export class HalcyonApexWorld {
         const at = this.time;
         this.addOverdrive(0.5, at);
         this.shockRing(at, this.reducedMotion ? 0.4 : 0.8);
+        this.crownSky(at);
         this.birds?.scatter(at, 0.6);
         this.stir = Math.max(this.stir, 1.2);
         this.strike(0.3, 0.12, at);
@@ -1202,6 +1343,49 @@ export class HalcyonApexWorld {
         this.counts.crowns += 1;
     }
 
+    /**
+     * The crown of a perfect clear, in the sky: three rings of the spectrum open from the Apex with
+     * a glory of rays round it, and a ring of orbs rises round the crystal and bursts outward.
+     */
+    crownSky(at) {
+        if (!this.u) return;
+        this.u.iris.value.set(at, this.reducedMotion ? 0.5 : 1);
+        if (!this.reducedMotion) this.callVisitor('crown', at - 0.4, this.counts.crowns + this.counts.quads);
+    }
+
+    /**
+     * A twist winds the light the great crystals hold up round them: a helix of glitter climbs each,
+     * twice round, as everything that floats turns on its axis.
+     */
+    whirl(at, rgb, strength = 1) {
+        if (!this.sparks) return;
+        const share = this.sparks.count / 512;
+        const steps = Math.max(8, Math.round(34 * Math.min(1, share * 1.4)));
+        const { apex } = this.plan;
+        const each = Math.max(1, Math.round(3 * share * strength));
+        [[apex[0], apex[1], apex[2], SITE.apex.half, SITE.apex.girth, 1], [this.halcyon[0], this.halcyon[1], this.halcyon[2], SITE.halcyon.half, SITE.halcyon.girth, -1]]
+            .forEach(([cx, cy, cz, half, girth, sense]) => {
+                for (let k = 0; k < steps; k++) {
+                    const s = k / (steps - 1);
+                    const a = s * TAU * 2.25 * sense;
+                    // Wide at the crystal's waist, drawn in toward its points.
+                    const r = girth * (1.25 + 1.5 * Math.sin(s * Math.PI));
+                    this.sparks.emit({
+                        x: cx + Math.cos(a) * r,
+                        y: cy + (s - 0.5) * half * 2.3,
+                        z: cz + Math.sin(a) * r,
+                        n: each,
+                        rgb,
+                        time: at + s * 0.62,
+                        out: [0.1, 1.1],
+                        up: [0.6, 2.2],
+                        life: [0.9, 1.9],
+                        size: 0.2 + girth * 0.035,
+                    });
+                }
+            });
+    }
+
     /** A twist that cleared nothing: the floating things turn a little, a ring leaves the board's foot. */
     onSpin({ player = 0, screen = null } = {}) {
         if (!this.u || !this.crystals) return;
@@ -1212,6 +1396,7 @@ export class HalcyonApexWorld {
         this.twist = Math.max(this.twist, 0.55);
         this.stir = Math.max(this.stir, 0.45);
         this.ring(heart.x, heart.z, this.time, 0.7, this._palette.ley, 0.55);
+        this.whirl(this.time, this._palette.ley, 0.6);
         this.strike(0.12, 0.03, this.time);
         this.gameplay.spin(this.time);
         this.counts.spins += 1;
@@ -1254,6 +1439,18 @@ export class HalcyonApexWorld {
             this.strike(0, 0.14, this.time);
             if (this.u) this.shockRing(this.time, 0.4);
             this.gameplay.levelUp(this.time);
+            // The hour turns in a breath: the clouds race as in a time-lapse, both ley lines run
+            // a pulse of the new hour's light their whole length, and a flight comes over to see.
+            if (!this.reducedMotion) this.rush = 1;
+            if (this.u && this.crystals) {
+                const next = hourNear(this.level - 1 + hourDrift(this.time));
+                [0, 1].forEach((line) => {
+                    [0, 0.24].forEach((lag, k) => this.sendPulse(line, 0, this.time + 0.15 + lag, next.ley, 0.5 - k * 0.2));
+                });
+                if (!this.reducedMotion && !this.visitors?.state.sorties.includes('flyby')) {
+                    this.callVisitor('flyby', this.time + 0.6, 0x1e7e1 + this.level);
+                }
+            }
         }
     }
 
@@ -1333,6 +1530,18 @@ export class HalcyonApexWorld {
                     this.blaze[a.line].hit(pillar, a.time);
                     this.flare[a.line].hit(Math.min(1.2, pillar), a.time);
                 }
+                // Four lines (or a crown): the crystal breaks what it lets go of into its colours.
+                if (a.quad && this.u) {
+                    const burst = this.u.burst.value;
+                    const strength = Math.min(1.5, 0.7 + (a.pillar ?? 0) * 0.3 + Math.min(spent, 8) * 0.05) * (this.reducedMotion ? 0.5 : 1);
+                    if (a.line === 0) {
+                        burst.x = a.time;
+                        burst.y = strength;
+                    } else {
+                        burst.z = a.time;
+                        burst.w = strength;
+                    }
+                }
             }
         }
     }
@@ -1399,7 +1608,8 @@ export class HalcyonApexWorld {
         // play hurries the sky, swings the splinters and streams the beads up; a fever more so.
         const still = this.reducedMotion ? 0 : 1;
         const { power, stir, surge } = this;
-        this.cloudDrift += dt * motion * (1 + (power * 2.5 + stir * 3 + surge * 5 + awake * 1.2 + fever * 2.5) * still);
+        this.rush *= Math.exp(-dt / 0.9);
+        this.cloudDrift += dt * motion * (1 + (power * 2.5 + stir * 3 + surge * 5 + awake * 1.2 + fever * 2.5 + this.rush * 70) * still);
         this.spin += dt * motion
             * (0.22 + (power * 1.5 + stir * 0.8 + surge * 3 + this.twist * 7 + awake * 0.5 + fever * 1.1) * still);
         this.beadLift += dt * motion * (0.6 + power * 2.6 + surge * 4 + stir * 0.8 + awake * 1.2 + fever * 2.2);
@@ -1416,9 +1626,20 @@ export class HalcyonApexWorld {
             vf.halcyonTop[0] = this.halcyon[0];
             vf.halcyonTop[1] = this.halcyon[1] + SITE.halcyon.half;
             vf.halcyonTop[2] = this.halcyon[2];
+            vf.halcyon[0] = this.halcyon[0];
+            vf.halcyon[1] = this.halcyon[1];
+            vf.halcyon[2] = this.halcyon[2];
+            vf.apex[0] = this.plan.apex[0];
+            vf.apex[1] = this.plan.apex[1];
+            vf.apex[2] = this.plan.apex[2];
             vf.palette = this._palette;
             vf.reduced = this.reducedMotion;
-            this.visitors.update(t, vf);
+            if (camera) {
+                this._eye[0] = camera.position.x;
+                this._eye[1] = camera.position.y;
+                this._eye[2] = camera.position.z;
+            }
+            this.visitors.update(t, vf, this._eye, this._visitorHooks);
         }
 
         // ── Uniforms ──
@@ -1495,6 +1716,10 @@ export class HalcyonApexWorld {
         plain('shallow', u.shallow);
         plain('deep', u.deep, 1 - 0.3 * fever);
         plain('stone', u.stone);
+        // The giant is a paler disc of sky by day and stands out as the hour darkens.
+        const zen = p.zenith;
+        const dusk = 1 - smooth(0.035, 0.11, zen[0] * 0.2126 + zen[1] * 0.7152 + zen[2] * 0.0722);
+        u.planet.value.z = 0.5 + 0.45 * dusk;
         warm('crystal', u.crystal);
         warm('ley', u.ley);
 
@@ -1567,9 +1792,13 @@ export class HalcyonApexWorld {
             heart: { ...this.heart },
             sun: [this._sunDir.x, this._sunDir.y, this._sunDir.z],
             halcyon: [...this.halcyon],
-            /** Who is in the sky (route and hull kind), how far into its route, and how much of it is here. */
+            /**
+             * Who is in the sky: the hero's sortie (or the first there is) and its hull kind, how far
+             * into its flight and where its leader is (`at`, the live array), and every sortie flying
+             * (names, space between) with how many hulls, lamps and ribbons are drawn.
+             */
             visitor: this.visitors && this.visitors.state.route
-                ? { ...this.visitors.state }
+                ? { ...this.visitors.state, sorties: this.visitors.state.sorties.join(' ') }
                 : null,
         };
     }

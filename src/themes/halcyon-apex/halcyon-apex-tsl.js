@@ -186,6 +186,23 @@ export function createSanctuaryUniforms(textures) {
          * level): (birth, strength) × 2.
          */
         shock: uniform(new THREE.Vector4(-100, 0, -100, 0)),
+        /**
+         * The prism bursts (a great crystal breaks what it lets go of into its colours):
+         * (Apex birth, Apex strength, Halcyon birth, Halcyon strength).
+         */
+        burst: uniform(new THREE.Vector4(-100, 0, -100, 0)),
+        /** A perfect clear's crown over the sky (rings of the spectrum from the Apex): (birth, strength). */
+        iris: uniform(new THREE.Vector2(-100, 0)),
+        /**
+         * The giant in the dawn sky: where it hangs, the screen's right and up there, the sun's
+         * direction in that frame (z toward the eye), and (radius, cosine of its rings' reach,
+         * how plainly it shows, its rings' tilt).
+         */
+        planetDir: uniform(new THREE.Vector3(-0.6, 0.35, -0.72).normalize()),
+        planetRight: uniform(new THREE.Vector3(1, 0, 0)),
+        planetUp: uniform(new THREE.Vector3(0, 1, 0)),
+        planetSun: uniform(new THREE.Vector3(0.9, 0.1, -0.3).normalize()),
+        planet: uniform(new THREE.Vector4(0.074, 0.985, 0.5, -0.36)),
         /** 1 while any ring / clear wave / ley pulse is still running (the loops are skipped at rest). */
         ringsLive: uniform(0),
         clearLive: uniform(0),
