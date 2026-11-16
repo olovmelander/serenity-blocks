@@ -27,6 +27,15 @@ export const PULSE_CYCLE = Object.freeze([
     Object.freeze([0.75, 1.0, 0.45]),
 ]);
 
+/** The pillars a level raises along the far shore: gold, rose, mint, ice and lilac. */
+export const PILLAR_TINTS = Object.freeze([
+    Object.freeze([1.0, 0.74, 0.36]),
+    Object.freeze([1.0, 0.42, 0.6]),
+    Object.freeze([0.42, 1.0, 0.7]),
+    Object.freeze([0.45, 0.78, 1.0]),
+    Object.freeze([0.78, 0.56, 1.0]),
+]);
+
 /** Storm tints the green body leans toward as a clear streak grows. */
 export const STORM_TINTS = Object.freeze([
     Object.freeze([0.05, 0.95, 0.85]),

@@ -83,6 +83,23 @@ export const HUSH_HOLD = 0.24;
 export const NOVA_TRAVEL = 1.9;
 export const NOVA_REMNANT = 9;
 
+/** Seconds for one turn of the sky about the pole of its band of far suns. */
+export const SKY_TURN = 5400;
+/** The band's line in the frame: its tilt from level (it falls to the right). */
+export const SKY_BAND_TILT = -22 * (Math.PI / 180);
+/** Seconds one of the ember's old shells takes to creep out to the next one's place. */
+export const SHELL_CREEP = 240;
+
+/**
+ * How far off the middle of the frame the band of far suns passes (tangent units, up): through
+ * the middle in landscape, where the card leaves both its ends to see; under the card on an
+ * upright phone, where the sky shows.
+ */
+export function skyBandShift(aspect) {
+    const a = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9;
+    return -0.36 * (1 - smooth(0.62, 0.95, a));
+}
+
 /** mulberry32: a tiny seeded [0, 1) generator. */
 export function mulberry32(seed) {
     let a = (seed >>> 0) || 1;
@@ -124,12 +141,12 @@ export function heatForCombo(combo) {
 export const HEAT_RAMP = Object.freeze([
     [0.0, 0.6, 0.03, 0.004],
     [0.2, 1.0, 0.085, 0.01],
-    [0.4, 1.0, 0.2, 0.018],
-    [0.6, 1.0, 0.36, 0.045],
-    [0.8, 1.0, 0.56, 0.13],
-    [1.0, 1.0, 0.74, 0.34],
-    [1.15, 1.0, 0.89, 0.66],
-    [1.3, 1.0, 0.96, 0.9],
+    [0.4, 1.0, 0.19, 0.016],
+    [0.6, 1.0, 0.31, 0.03],
+    [0.8, 1.0, 0.46, 0.075],
+    [1.0, 1.0, 0.64, 0.2],
+    [1.15, 1.0, 0.84, 0.52],
+    [1.3, 1.0, 0.95, 0.86],
 ]);
 
 /** The colour of something at `heat` (0 = a dying coal, 0.8 = gold, 1.3 = white). */

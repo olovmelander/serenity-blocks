@@ -1496,7 +1496,7 @@ describe('Verdant Hills effects director', () => {
             expect(director.apply(quiet({ front: undefined }), STEP, WIND).front).toBeNull();
         });
 
-        it('steers the pool of sunlight across the valley with the wind, and lets it widen', () => {
+        it('steers the pool of sunlight across the valley from left to right, and lets it widen', () => {
             const { director } = rig();
             const at = (progress, strength = 0.9) => {
                 const env = director.apply(quiet({ sunbreak: { progress, strength } }), STEP, WIND);
@@ -1507,24 +1507,26 @@ describe('Verdant Hills effects director', () => {
                 const pool = at(progress);
                 expect(pool.strength).toBe(0.9);
                 expect(pool.radius).toBeGreaterThan(50);
+                // Near enough for the lens to look down into it: a pool, not a line on the far hills.
+                expect(Math.hypot(pool.x, pool.z)).toBeLessThan(700);
                 // Over the valley the lens looks into.
                 expect(pool.x).toBeGreaterThan(VERDANT_HILLS_MAP_BOUNDS.minX);
                 expect(pool.x).toBeLessThan(VERDANT_HILLS_MAP_BOUNDS.maxX);
                 expect(pool.z).toBeGreaterThan(VERDANT_HILLS_MAP_BOUNDS.minZ);
                 expect(pool.z).toBeLessThan(-100);
                 if (previous) {
-                    // Always further down the wind, never back.
-                    const moved = (pool.x - previous.x) * WINDWARD.x + (pool.z - previous.z) * WINDWARD.z;
-                    expect(moved).toBeGreaterThanOrEqual(0);
+                    // Always further to the right across the view, never back.
+                    expect(pool.x).toBeGreaterThanOrEqual(previous.x);
                     expect(pool.radius).toBeGreaterThanOrEqual(previous.radius);
                 }
                 previous = pool;
             }
             const [start, end] = [at(0), at(1)];
-            const travelled = (end.x - start.x) * WINDWARD.x + (end.z - start.z) * WINDWARD.z;
-            // Hundreds of metres: from one side of the picture to the other.
-            expect(travelled).toBeGreaterThan(500);
-            expect(end.x).toBeGreaterThan(start.x);
+            // Hundreds of metres: from one side of the picture to the other, the valley floor on
+            // the left and the mill's hill on the right.
+            expect(end.x - start.x).toBeGreaterThan(400);
+            expect(start.x).toBeLessThan(-200);
+            expect(end.x).toBeGreaterThan(100);
             expect(at(-3)).toEqual(start);
             expect(at(3)).toEqual(end);
             for (const strength of [0, 0.001, -1, NaN]) expect(at(0.5, strength)).toBeNull();

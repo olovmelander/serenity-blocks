@@ -274,20 +274,26 @@ export function createSparks(u, count) {
     const aBirth = new Float32Array(count * 4);
     const aVel = new Float32Array(count * 4);
     const aTint = new Float32Array(count * 4);
+    /** What pulls a spark back (world units per second squared, halved): none for most. */
+    const aPull = new Float32Array(count * 4);
     // Dormant sparks wait far ahead of the camera, never on it.
     for (let i = 0; i < count; i++) aBirth.set([0, 0, -500, -100], i * 4);
-    const geometry = veQuadGeometry(count, { aBirth: [aBirth, 4], aVel: [aVel, 4], aTint: [aTint, 4] });
-    const names = ['aBirth', 'aVel', 'aTint'];
+    const geometry = veQuadGeometry(count, {
+        aBirth: [aBirth, 4], aVel: [aVel, 4], aTint: [aTint, 4], aPull: [aPull, 4],
+    });
+    const names = ['aBirth', 'aVel', 'aTint', 'aPull'];
     names.forEach((name) => geometry.getAttribute(name).setUsage(THREE.DynamicDrawUsage));
     const birth = attribute('aBirth', 'vec4');
     const vel = attribute('aVel', 'vec4');
     const tint = attribute('aTint', 'vec4');
+    const pull = attribute('aPull', 'vec4');
 
     const material = veFxMaterial('VoidEmberSparks');
     const tau = u.time.sub(birth.w);
     const span = vel.w;
     const alive = step(0.0, tau).mul(step(tau, span));
-    const at = (t) => birth.xyz.add(vel.xyz.mul(float(1.0).sub(exp(t.mul(-SPARK_DRAG))).div(SPARK_DRAG)));
+    const at = (t) => birth.xyz.add(vel.xyz.mul(float(1.0).sub(exp(t.mul(-SPARK_DRAG))).div(SPARK_DRAG)))
+        .add(pull.xyz.mul(t.mul(t)));
     // A streak from where the spark was a moment ago to where it is.
     const t = max(tau, 0.0);
     const c0 = viewProjection(at(max(t.sub(0.06), 0.0)));
@@ -330,7 +336,7 @@ export function createSparks(u, count) {
      */
     part.emit = ({
         x, y, z, n, rgb, time, dir: d = [0, 1, 0], spread = 1, out = [6, 26], life = [0.7, 1.6], size = 0.2,
-        stagger = 0, scatter = 0,
+        stagger = 0, scatter = 0, gravity = null,
     }) => {
         const rand = mulberry32(0x51a7 + bursts * 7919);
         bursts += 1;
@@ -357,6 +363,9 @@ export function createSparks(u, count) {
             aVel.set([vx, vy, vz, life[0] + (life[1] - life[0]) * rand()], i * 4);
             const g = 0.7 + rand() * 0.6;
             aTint.set([rgb[0] * g, rgb[1] * g, rgb[2] * g, size * (0.55 + rand() * 0.9)], i * 4);
+            // A spark that falls back (a splash) carries half its pull; the rest fly free.
+            if (gravity) aPull.set([gravity[0] * 0.5, gravity[1] * 0.5, gravity[2] * 0.5, 0], i * 4);
+            else aPull.set([0, 0, 0, 0], i * 4);
         }
         names.forEach((name) => {
             geometry.getAttribute(name).needsUpdate = true;
@@ -407,28 +416,43 @@ export function createShells(u) {
         const since = u.time.sub(vA.x).toVar();
         // Torn, not ruled: the front runs ahead here and lags there, the same way all the way out.
         const grain = u.noise3(vec3(dir.mul(4.2), vA.x.mul(0.37))).toVar();
-        const hair = u.noise3(vec3(dir.mul(15.0), b.mul(0.5).add(vA.x))).toVar();
-        const ragged = grain.y.sub(0.5).mul(0.07).add(hair.y.sub(0.5).mul(0.025)).add(1.0);
+        // (Read by direction alone: what it tears runs straight out from the star, as ejecta does.)
+        const hair = u.noise3(vec3(dir.mul(21.0), vA.x.mul(1.3))).toVar();
+        const ragged = grain.y.sub(0.5).mul(0.08).add(1.0);
+        // Fingers: where this is high the shocked plasma trails behind the front. Each is torn
+        // along its length too (a read that runs out with the wave), and none is long enough to
+        // reach the front behind it: several fronts with long straight fingers drew a net.
+        const finger = smoothstep(0.3, 0.8, hair.x).toVar();
+        const torn = u.noise3(vec3(dir.mul(8.0), b.mul(1.7).sub(since.mul(1.1)).add(vA.x))).x.mul(1.2).add(0.25).toVar();
         const light = float(0.0).toVar();
+        /** How much of the light here is a front's own hard edge (it burns whiter). */
+        const edge = float(0.0).toVar();
         for (let k = 0; k < 4; k++) {
             const t = max(since.sub(k * WAVE_FRONT_GAP), 0.0);
             const radius = float(1.0).add(float(WAVE_REACH).mul(pow(min(t.div(WAVE_TRAVEL), 1.6), WAVE_SHAPE))).mul(ragged);
             const thick = vA.w.mul(radius.mul(0.009).add(0.035));
             const x = b.sub(radius).div(thick);
-            // A thin bright rim with the shell's own glow trailing inside it.
-            // A hard leading edge, and the shocked plasma trailing behind it.
-            const rim = exp(x.mul(x).negate()).mul(step(0.0, x))
-                .add(exp(min(x, 0.0).mul(0.8)).mul(step(x, 0.0)));
-            light.addAssign(rim.div(radius.mul(0.32).add(0.68)).mul(step(k + 0.5, vA.z)).mul(step(k * WAVE_FRONT_GAP, since)));
+            // A hairline of a front (a third of the old one's width, and as much brighter), and
+            // behind it the shocked plasma in fingers: long where the ejecta is thick, cut short
+            // between, so the shell is a comb of streamers and never an even band.
+            const front = exp(x.mul(x).mul(-9.0)).mul(1.7);
+            const lee = min(x, 0.0);
+            const wake = exp(lee.mul(mix(float(1.6), float(0.3), finger))).mul(step(x, 0.0))
+                .mul(finger.mul(finger).mul(1.0).add(0.06)).mul(torn);
+            const on = step(k + 0.5, vA.z).mul(step(k * WAVE_FRONT_GAP, since)).div(radius.mul(0.32).add(0.68));
+            light.addAssign(front.add(wake).mul(on));
+            edge.addAssign(front.mul(on));
         }
-        const filaments = grain.x.mul(grain.x).mul(1.5).add(hair.x.mul(0.5)).add(0.2);
+        const filaments = grain.x.mul(grain.x).mul(1.3).add(0.45);
         // An arc toward the board for a small clear; the whole circle for a great one.
         const window = smoothstep(-0.3, 0.3, dot(dir, vC.xy).sub(cos(vB.w.mul(Math.PI)))).toVar();
         window.assign(mix(window, float(1.0), step(0.985, vB.w)));
         const fade = exp(since.div(-1.25)).mul(float(1.0).sub(smoothstep(SHELL_LIFE * 0.6, SHELL_LIFE, since)));
         // White-hot as it leaves, its own fire as it crosses the frame, an ember's red as it thins.
         const fire = mix(vec3(1.0, 0.93, 0.8), vB.rgb, smoothstep(0.0, 0.3, since));
-        const hot = mix(fire, vB.rgb.mul(vec3(1.0, 0.5, 0.26)), smoothstep(0.5, 2.4, since));
+        const cooled = mix(fire, vB.rgb.mul(vec3(1.0, 0.5, 0.26)), smoothstep(0.5, 2.4, since));
+        // The front's own edge stays near white-hot; the fingers behind it are the wave's fire.
+        const hot = mix(cooled, cooled.mul(0.5).add(vec3(0.5, 0.46, 0.4)), min(edge, 1.0).mul(0.55));
         return vec4(hot.mul(light.mul(filaments).mul(window).mul(fade).mul(vA.y)
             .mul(1.25)
             .mul(u.shellGain)

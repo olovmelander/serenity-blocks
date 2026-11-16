@@ -258,6 +258,135 @@ beyond the environment's SteamCloud notices. `validate-all-themes --theme aurora
 lifecycle failures, 0 console errors. The fleet screenshot `docs/theme-screenshots/aurora.png`
 now shows the rebuilt scene.
 
+## Every event its own, and a night that moves (2026-11-16)
+
+Olov: "audit it thoroughly and then improve it until it is the most visually stunning theme in
+the game … every event should have its own distinct effect … the biggest moments the most
+spectacular", and, while it was under way: "I want this theme to feel varied over time as well
+… it never looks the same for long and there is always something new to notice".
+
+**What the audit found.** The scene was strong and the sky's weather varied, but:
+
+- Nearly every event was the same gesture on the same thing: the curtain took a colour and
+  stood taller. On a [contact sheet of sixteen cues](aurora-overhaul/masterpiece-events-before.jpg)
+  a lock, a hard drop, a single line, a twist, a level-up and a run of quick locks could not be
+  told from the idle sky, and a hard drop looked like any lock.
+- The lake, "the second hero", was nearly black at rest. A flat lake seen from the shore
+  mirrors only the lowest 14° of sky, which is the dark range; the curtains stand at 20–40°.
+- Four of the five hours were hard to tell apart, the moon stood still, and nothing happened
+  by itself except the wandering activity cells.
+- The T and L pieces were a cyan and an aqua three degrees of hue apart.
+
+**The lake takes the display's light.** Ruffled water mirrors higher sky: every wavelet facet
+tilted toward the eye throws a higher piece of sky down. The lake now adds up to four reads of
+the curtain buffer (`LAKE_STREAKS`, a tier's `lakeStreaks`) along the mirrored ray's own
+bearing, lifted 5–33°, weighted by how rare so steep a facet is and by the wind patches, the
+lift wandering with the wavelets under each pixel. The display lies on the water as long columns
+of its own colour, wide where the wind is and thin in the glassy lanes, so every event in the
+sky is also an event on the lake.
+
+**Events: one form each.** [After](aurora-overhaul/masterpiece-events.jpg), the same sixteen cues.
+
+| Trigger | What is its own |
+| --- | --- |
+| Lock | The pluck beside the board in the piece's colour and a ring on the lake (as before). |
+| Hard drop | The piece lands on the lake: a stronger ring, and **a ring of ice dust** kicked up that rides it out across the water, glinting in the piece's colour (`aurora-spindrift.js`; [in the game](aurora-overhaul/masterpiece-hard-drop-in-game.jpg)). A soft lock raises none. |
+| 1–4 lines | The strum (as before), and **the land takes the colour**: a line a glimmer on the snow, four the whole range lit, bounded so it never bleaches. |
+| Four lines | The breakup (as before), and **the crown** opens: rays streaming out from behind the board, lavender over the storm's hue. |
+| Twist | **A curl**: the curtain beside the board winds up into a spiral, on the side the piece went in; a twist that clears winds a second, smaller one across the board. |
+| Perfect clear | **The crown in gold**: twice as bright and wider, held 2.8 s, amber on every arc, six meteors, two rings, the land gilded ([frame](aurora-overhaul/masterpiece-perfect-clear.jpg)). The biggest moment in the theme. |
+| Level up | **A row of pillars of light** rises along the far shore either side of the board, the nearest first, in gold, rose, mint, ice and lilac; **a fireball** crosses the whole sky over the board; and the night moves an hour on, which now also **wheels the stars** (below). |
+| Fever | The substorm (as before) with the crown held open in the storm's hue. |
+| Run over | **The hush**: the display dims to 40 % under one last slow falling star, then returns over a few seconds. |
+| Streak, cascade, back-to-back | As before. |
+
+The three new sky forms are closed forms of the view direction, added to the curtain buffer
+after the march (`aurora-forms.js`), so the dome and the lake's mirror read them like the rest
+of the display, each behind a branch on its own gain:
+
+- **The crown** is a noise tile read round one point (one tile a turn for broad bundles, four
+  for the rays in them, so the pattern closes on itself), each bundle its own length, over a soft
+  glow. Its hub stands behind the upper half of the board and is kept dim: the board's field lets
+  a little sky through, and a first version washed it. Reduce flashing halves it (ADR-0021).
+- **The curl** is 36 rays standing on a spiral footprint: feet evenly spaced along one
+  logarithmic arm, the footprint flattened as a horizontal spiral is from below, each ray a
+  narrow column with a sharp hem and a long fade upward (mint, violet, blue). The director writes
+  the feet each frame while it lives: it turns, and winds tighter. A first version (a two-arm
+  spiral read a few steps lower for height) was a pinwheel galaxy with ghost arms.
+- **The pillars** are nine columns over fixed bearings with a faint halo, brightest at the foot.
+
+All three read one table of vec4 rows the director writes as plain numbers (`FORMS` in
+`aurora-field.js`, 99 rows): a stage may bind twelve uniform buffers and the march held six.
+
+**A night that moves.** [The six hours](aurora-overhaul/masterpiece-hours.jpg) (`aurora-hours.js`;
+an hour is now 100 s, a night ten minutes):
+
+- **Six hours, each plainly its own night.** Quiet (as it has always opened), Crowned, the new
+  **Rose night** (the rare red aurora: the whole display rose and crimson over a thin green hem,
+  a plum sky, the snow blushing), Deep midnight (the display low, the Milky Way at 2.3×), Moonlit
+  and the Blue hour (the display turned teal under blue-violet tops, ice fog on the water). An
+  hour may now turn the curtains' own body a hue (`body`, `bodyMix`); the storm turns it on
+  from there. Hours also set the mist (0.7–1.9×, breathing ±22 % on a slow beat) and how
+  brightly the diamond dust glints.
+- **The moon rises.** It comes up from behind the range through the hour before its own, stands
+  at 13° at its hour's rest (low enough that the lake mirrors it) and climbs to 32° as its hour
+  melts away, drifting toward the board ([four moments](aurora-overhaul/masterpiece-moon.jpg)).
+  Its light on the snow follows it, and it lays a path of glitter on the water: a point of the
+  lake glints by the chance that a facet there is turned to the moon, long toward the eye and
+  narrow across, in cells laid out in the resting eye's angles.
+- **The sky turns.** The stars and the Milky Way wheel round the pole 10° an hour (`SKY_TURN`),
+  so the Milky Way stands left of the board at the first night's midnight and has moved on by the
+  next night. The catalogue now covers the whole ring of sky that can come into view (2.75× the
+  stars, the same density). A level-up, which moves the night an hour on, is therefore seen as a
+  short time-lapse.
+- **A life of its own** (`ambientLife` in the director, read off the world's clock, so a night
+  replays exactly): a lone falling star about every half minute, one in six a bright one; and
+  every two and a half minutes **the display's own small substorm**, thirty seconds of a surge of
+  light travelling the arcs, a wave of colour, flames up the rays and the pulsating patches of
+  its recovery, each with its own way across the sky, colour and tops. It lifts the display a
+  third as far as a streak does and waits while the hands are busy.
+
+**The pieces.** L is now the crown's rose (`#ff6f86`) instead of an aqua a hair from T's cyan:
+seven hues at least 20° apart. The palette gate still reads 0/7 exact, 1/7 widened.
+
+**Budgets added.**
+
+| Tier | Lake reads | Dust a ring | Stars (the ring) |
+| --- | ---: | ---: | ---: |
+| Extreme | 4 | 520 | 24 750 |
+| Ultra | 4 | 440 | 19 250 |
+| High | 4 | 360 | 14 300 |
+| Medium | 3 | 260 | 9 350 |
+| Low | 2 | 160 | 5 500 |
+| Minimal | 2 | 96 | 3 300 |
+
+**Cost, by construction.** Per lake pixel, 2–4 more reads of the small curtain buffer and one
+hash. Per curtain-buffer pixel on a quiet sky, three compares; while a form shows, two noise
+reads (crown), 36 short loop turns inside the curl's reach, or nine (pillars). One more draw
+call (the dust; 384–2 080 instanced points, off the clip volume when no ring is live), and stars
+below the horizon are culled in the vertex stage. Nothing is allocated or compiled at event
+time. Measured only as far as a cool, capped run allows (the playground at 30 fps, High,
+1280 × 720, main against this branch on the RTX): the frame's CPU time 1.0–1.4 ms before and
+1.3–1.5 ms after, and the one render pass the playground's GPU timestamp reads 0.26–0.27 ms
+before and 0.28–0.29 ms after (six samples each: indicative, not a benchmark). No uncapped
+frame-rate run, and nothing on the integrated GPU or a phone.
+
+**Checks.** `tests/unit/aurora-life.test.js` (16 tests): the forms' table and each form's
+behaviour (the crown stands behind the board that opened it on a square frame, turns gold and
+lets go; a curl's feet close on its eye, turn, and end; pillars rise nearest first, clear of the
+board, and settle to exactly nothing); a hard drop's dust rides its own ring and a soft lock
+raises none; the dust clears the board within a third of a second and lands again; the land's
+wash grows with the lines and stays bounded; the hush dims and returns; seven piece hues 20°
+apart; lone stars and substorms come with no hand in it, replay exactly, stay a murmur and wait
+for busy hands; the moon's arc and the sky's turn; an hour's hue under the storm's. The two
+"settles to an exactly calm sky" tests now build their director with `ambient: false`, which
+leaves the sky's own life out. All 134 Aurora tests pass, the shader gate included (every
+material and the march on WGSL and GLSL at High and Low, each stage under 96 KB). Captured in the
+playground on WebGPU at High and Medium, on WebGL2 at Low and Minimal, reduced motion, and
+portrait 390 × 844, console clean throughout; and in the real game at High on WebGPU: real hard
+drops, then a twist, a level, a quad, a perfect clear and a game over sent through the real event
+bus, no console message and no frame gap over 9 ms while the perfect clear played.
+
 ## Reproducible preview
 
 Run `npm run dev:playground` and open:
@@ -266,9 +395,18 @@ Run `npm run dev:playground` and open:
 - `/playground.html?effect=aurora&quality=High&t=20&board=1&event=lock&eventAge=0.3&color=%23ff88ee&column=7&drop=12`
 - `/playground.html?effect=aurora&quality=High&t=20&board=1&event=quad&eventAge=0.8`
 - `/playground.html?effect=aurora&quality=High&t=20&board=1&event=combo&combo=6&eventAge=0.8`
-- `/playground.html?effect=aurora&quality=High&t=310` (a quiet night under pulsating patches;
-  since the mood clocks (THEME_MOOD_CLOCKS_2026-10.md) `t` also turns the hours of the night, so
-  t=310 now melts toward the moonlit hour; t below 38 is today's quiet night)
+- `/playground.html?effect=aurora&quality=High&t=20&level=3` (`level` steps the hours: 2 the
+  crowned night, 3 the rose night, 4 deep midnight, 5 the moonlit night, 6 the blue hour; `t`
+  turns them too, 100 s an hour, and t below 35 is the quiet night it opens on)
+- `/playground.html?effect=aurora&quality=High&t=415` (the moon at its hour's rest, mirrored)
+- `/playground.html?effect=aurora&quality=High&t=109` (the display's own substorm, with no event)
+- `/playground.html?effect=aurora&quality=High&t=20&board=1&event=lock&eventAge=0.9&drop=16&column=3`
+  (a hard drop's ring of ice dust)
+- `/playground.html?effect=aurora&quality=High&t=20&board=1&event=twist&eventAge=1.0` (the curls;
+  `event=spin` is a twist that clears nothing)
+- `/playground.html?effect=aurora&quality=High&t=20&board=1&event=perfect&eventAge=1.0`
+- `/playground.html?effect=aurora&quality=High&t=20&board=1&event=level&eventAge=1.1`
+- `/playground.html?effect=aurora&quality=High&t=20&board=1&event=over&eventAge=1.6`
 - `/playground.html?effect=aurora&quality=High&t=20&board=1&event=rush&eventAge=0.3&column=3`
 - `/playground.html?effect=aurora&quality=High&t=40&board=1&event=storm&eventAge=8`
 - `/playground.html?effect=aurora&quality=Low&t=20&forceWebGL=1`
@@ -276,7 +414,8 @@ Run `npm run dev:playground` and open:
 `t` fixes the animation phase (and the sky's weather); `eventAge` fixes the time since the
 cue. A streak is replayed as real consecutive clearing locks, a storm as twelve of them 0.64 s
 apart into a fever, a rush as twelve quick locks that clear nothing. Other parameters:
-`event=clear|twist|perfect|level`, `lines`, `reduce=1`.
+`event=clear|twist|spin|b2b|cascade|perfect|level|over`, `lines`, `depth`, `drop`, `reduce=1`,
+`hud=0` (no playground panel: the moon stands under it).
 
 ### Theme icon
 
@@ -350,6 +489,13 @@ repeated. Local `node_modules` still held phaser 4.1.0; CI installs 4.2.1 from t
 - Minimal's 8-sample march shows slight stepping on the tightest fold. Portrait is framed
   by camera only; the arcs are authored for landscape.
 - Online multiplayer and Odyssey levels that use this theme were not played through.
+- 2026-11-16 pass: the theme icon and `docs/theme-screenshots/aurora.png` still show the scene
+  before it. Portrait was captured with the playground's narrow stand-in board, not a real
+  portrait layout. Local versus (several boards) and an Odyssey level on this theme were not
+  played: a crown stands behind the board that opened it, a fever's behind the last board played.
+  The crown and the pillars are judgement calls (a crown is a stylised corona brought down into
+  the frame; pillars need lights no one has put on the far shore). No animals: every other
+  winter world has some, and the far shore is empty.
 - 2026-10-25 pass: the far arc's red crown rarely shows, since the range hides most of that
   arc; the pulsating patches are a judgement call (at rest they can read as faint lit cloud
   over the Milky Way: `RESTING_PULSATION` in `aurora-director.js` sets how strongly); the

@@ -1,9 +1,9 @@
 /**
- * Winter — what the fox does. Three-free and renderer-free: its body (winter-fox-rig.js) solves
- * the pose this resolves and the model (winter-fox.js) draws it, so the fox behaves the same
+ * Winter — what the foxes do. Three-free and renderer-free: a fox's body (winter-fox-rig.js)
+ * solves the pose this resolves and the model (winter-fox.js) draws it, so a fox behaves the same
  * with or without either.
  *
- * At rest it trots its round over the snowfield and stops now and then: it brakes to a halt,
+ * At rest the fox goes its round over the snowfield and stops now and then: it brakes to a halt,
  * steps round to face the viewer, and then looks about, sits down to watch the sky, stretches,
  * bows — or hears something under the snow, listens with a paw raised, leaps on it nose first,
  * digs it out and shakes itself off. When the chain grows it runs, faster the longer the chain,
@@ -15,71 +15,48 @@
  * it turns to face, and its paces.
  *
  * And, in the game, how it wanders (`wander`; ../shared/fox-wander.js): it strays a little either
- * side of its round, its trot drifts, it stops where it likes on either open side of the board,
- * not only at its two places, does a different thing each time, and now and then turns right
- * round and goes back the way it came. What is its own here is where on the snowfield it may
- * stray and stop: clear of the framing trees, inside the frame, on the open snow.
+ * side of its round, it stops where it likes on either open side of the board, not only at its
+ * two places, and now and then turns right round and goes back the way it came. What is its own
+ * here is where on the snowfield it may stray and stop — clear of the framing trees, inside the
+ * frame, on the open snow — and how it lives there:
+ *
+ *  - its paces. It does not only trot: it walks slowly with its nose to the snow, lopes, and
+ *    bounds through the snow in arcs, a spell of each, more of the quick ones when it is restless;
+ *  - what it does when it stops. Beside every fox's acts it has its own (winter-fox-rig.js): it
+ *    scratches behind an ear, rolls in the snow, lies like a sphinx, stands up on its hind legs,
+ *    goes round after its tail, leaps high for a mouse and misses, bows and tears round in a
+ *    circle. What it chooses leans on the night: under a strong aurora it sits and watches more,
+ *    after a chain it lies down;
+ *  - what it answers the board with, beside its dash and its pounce: a leap with a turn in it
+ *    (`twirl`), a long look at the sky (`gaze`), three bounces on stiff legs (`rejoice`);
+ *  - its prints, pressed where its paws are put down.
+ *
+ * A second fox, the visitor (VisitorMind), is the same animal on another way: a lane across the
+ * back of the snowfield that leaves the frame at both ends and comes round behind the viewer.
  */
 
 import {
-    FRAME_TREES, bearingFor, clamp01, foxAt, foxRoundPull, groundHeight,
+    bearingFor, foxAt, foxRoundPull, groundHeight,
 } from './winter-core.js';
 import {
     FOX_ACTS, FOX_RIG, POUNCE_AIR, SLEEP_HOLD, foxStride,
 } from './winter-fox-rig.js';
+import {
+    AFTER_ZOOM, ArcticFoxMind, FOX_PACES, FOX_TROT, FOX_WANDER, FOX_WANDER_STOPS, MOUSE_HIT, MOUSE_MISS, ZOOM,
+    arcticPaces, foxRunSpeed, treesFor, withLoops,
+} from './winter-fox-life.js';
 import { FOX_BLEND, MOUSING, foxGaitAmp } from '../shared/fox-mind.js';
-import { WanderingFoxMind, foxWalk, wanderingCourse } from '../shared/fox-wander.js';
+import { foxWalk, wanderingCourse } from '../shared/fox-wander.js';
 
 /** Seconds each thing it does takes (the rig's acts; `Run` is its gait). */
 export const FOX_CLIPS = FOX_ACTS;
 export {
-    FOX_BLEND, MOUSING, POUNCE_AIR, SLEEP_HOLD, foxGaitAmp, foxStride,
+    AFTER_ZOOM, FOX_BLEND, FOX_PACES, FOX_TROT, FOX_WANDER, FOX_WANDER_STOPS, MOUSE_HIT, MOUSE_MISS, MOUSING,
+    POUNCE_AIR, SLEEP_HOLD, ZOOM, foxGaitAmp, foxRunSpeed, foxStride,
 };
-
-/** Its paces (m/s). */
-export const FOX_TROT = 1.5;
-export const foxRunSpeed = (power, surge = 0) => 2.7 + 4.1 * clamp01(power) + 1.4 * Math.min(1.4, Math.max(0, surge));
-
-/** How it wanders when it is let. */
-export const FOX_WANDER = Object.freeze({
-    /** Metres it strays either side of its round (where its round is drawn as planned: less nearer the eye). */
-    stray: 0.9,
-    /** Metres it keeps from a framing tree where its round lets it (it never strays nearer than its round goes). */
-    treeRoom: 2.4,
-    /** Its trot, as a share of FOX_TROT, slowest and quickest. */
-    pace: Object.freeze([0.8, 1.22]),
-    /** Seconds before it next stops (drawn skewed toward short). */
-    rest: Object.freeze([4, 26]),
-    /** Odds it stops where it is (on an open side) rather than going on to one of its places. */
-    anywhere: 0.55,
-    /** Odds it turns back the way it came as it pulls up (never twice within this many seconds). */
-    turnBack: 0.3,
-    turnGap: 20,
-    /** Where it may stop: fractions of the half width either side of the board, the open snow. */
-    open: Object.freeze([0.4, 0.86]),
-    /** Metres ahead it looks for a place to stop. */
-    reach: 26,
-    /** How slowly its restlessness drifts (seconds), and how far. */
-    restlessTime: 70,
-    restlessSpread: 0.32,
-});
-
-/** What it may do when it stops, as it wanders: [acts, how likely]. */
-export const FOX_WANDER_STOPS = Object.freeze([
-    [['LookAround'], 1],
-    [MOUSING, 1.2],
-    [['Sit'], 0.7],
-    [['Listen', 'LookAround'], 0.8],
-    [['Stretch', 'LookAround'], 0.6],
-    [['Dig', 'Shake'], 0.5],
-    [['Greet'], 0.5],
-    [['Sit', 'LookAround'], 0.6],
-    [['LookAround', 'Sit'], 0.5],
-    [['Listen'], 0.5],
-    [['Stretch'], 0.4],
-    [['Greet', 'LookAround'], 0.35],
-    [['LookAround', 'Listen', 'LookAround'], 0.3],
-].map(([acts, odds]) => Object.freeze([Object.freeze([...acts]), odds])));
+export {
+    VISITOR_AWAY, VISITOR_MEET, VISITOR_STOPS, VISITOR_WANDER, VISITOR_WAY, VisitorMind, visitorWay,
+} from './winter-fox-visitor.js';
 
 /** Its round as its walk lays it out. */
 const baseOf = (round) => ({
@@ -94,17 +71,26 @@ const baseOf = (round) => ({
  * Where it may stray and stop on the snowfield at an aspect: never nearer a framing tree than its
  * round goes (or than FOX_WANDER.treeRoom), never further out across the frame than its round goes
  * or the open snow reaches, less on an upright screen (where its round is drawn near the eye); it
- * stops on the open snow either side of the board.
+ * stops on the open snow either side of the board. `roam` says where it may tear round in a
+ * circle: clear of the trees, in the frame, no nearer the eye and no further out than its round.
  */
-function snowPlan(aspect) {
-    const trees = FRAME_TREES.filter(([, dist]) => dist < 24).map(([fraction, dist]) => {
-        const az = bearingFor(fraction, aspect);
-        return [Math.sin(az) * dist, -Math.cos(az) * dist];
-    });
+function snowPlan(aspect, round) {
+    const trees = treesFor(aspect).filter(([x, z]) => Math.hypot(x, z) < 24);
     const across = Math.tan(bearingFor(1, aspect));
     const clearance = (x, z) => trees.reduce((m, [tx, tz]) => Math.min(m, Math.hypot(tx - x, tz - z)), Infinity);
     const fractionOf = (x, z) => (z < 0 ? Math.abs(x / -z) / across : Infinity);
     const [near, far] = FOX_WANDER.open;
+    let nearest = Infinity;
+    let furthest = 0;
+    let cx = 0;
+    let cz = 0;
+    for (let i = 0; i < round.count; i++) {
+        const range = Math.hypot(round.points[i * 3], round.points[i * 3 + 1]);
+        nearest = Math.min(nearest, range);
+        furthest = Math.max(furthest, range);
+        cx += round.points[i * 3] / round.count;
+        cz += round.points[i * 3 + 1] / round.count;
+    }
     return {
         reach: FOX_WANDER.stray * foxRoundPull(aspect),
         allowed: (i, x, z, sx, sz) => clearance(sx, sz) >= Math.min(FOX_WANDER.treeRoom, clearance(x, z))
@@ -113,6 +99,11 @@ function snowPlan(aspect) {
             const fraction = fractionOf(x, z);
             return fraction >= near && fraction <= far;
         },
+        roam: (x, z) => {
+            const range = Math.hypot(x, z);
+            return clearance(x, z) >= 2 && fractionOf(x, z) <= 0.92 && range >= nearest - 0.2 && range <= furthest + 1;
+        },
+        centre: [cx, cz],
     };
 }
 
@@ -121,7 +112,7 @@ const courseOf = (round, walk) => wanderingCourse(baseOf(round), walk, { height:
 /** It starts on its way to its stopping place under the moon, already under way. */
 const startOf = (round) => round.stations[1] - 11;
 
-export class FoxMind extends WanderingFoxMind {
+export class FoxMind extends ArcticFoxMind {
     /**
      * @param {object} round  foxRound(aspect)
      * @param {number} [seed]
@@ -130,14 +121,14 @@ export class FoxMind extends WanderingFoxMind {
      * @param {number} [o.aspect]   the frame's (where the snow beside the board is open)
      */
     constructor(round, seed = 0xf0c5, { wander = false, aspect = 16 / 9 } = {}) {
-        const walk = wander ? foxWalk(baseOf(round), snowPlan(aspect)) : null;
+        const plan = wander ? snowPlan(aspect, round) : null;
+        const walk = wander ? withLoops(foxWalk(baseOf(round), plan)) : null;
         super({
-            rig: FOX_RIG,
             course: courseOf(round, walk),
             seed,
             start: startOf(round),
-            paces: { trot: FOX_TROT, run: foxRunSpeed },
-        }, walk ? { ...FOX_WANDER, walk, stops: FOX_WANDER_STOPS } : null);
+            paces: arcticPaces(FOX_RIG),
+        }, walk ? { ...FOX_WANDER, walk, stops: FOX_WANDER_STOPS } : null, plan);
         this.round = round;
         this.aspect = aspect;
     }
@@ -147,6 +138,6 @@ export class FoxMind extends WanderingFoxMind {
         this.round = round;
         this.aspect = aspect;
         this.start = startOf(round);
-        this.setBase(baseOf(round), snowPlan(aspect), courseOf(round, this.walk));
+        this.setBase(baseOf(round), snowPlan(aspect, round), courseOf(round, this.walk));
     }
 }

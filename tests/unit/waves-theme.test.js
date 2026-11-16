@@ -16,6 +16,7 @@ import { QUALITY_NAMES } from '../../src/themes/waves/waves-quality.js';
 import { THEME_REGISTRY } from '../../src/themes/theme-registry.js';
 import { THEME_URL_PARAMETERS } from '../../src/ui/url-parameters/theme-parameters.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
+import { parseSeaLife, useSeaLife } from '../../src/themes/waves/waves-cast.js';
 
 vi.setConfig({ testTimeout: 30_000 }); // every start builds a whole wave, on a machine that may be busy
 
@@ -27,6 +28,8 @@ const themeDir = path.resolve(
     'themes',
     'waves',
 );
+/** The sea life's bodies, as a page that has already read them (no test fetches them unasked). */
+const PACK = parseSeaLife(readFileSync(path.join(themeDir, 'assets', 'sea-life.glb')));
 
 const mocks = vi.hoisted(() => ({
     initialize: null, instances: [], failPipelines: 0, surfaces: [],
@@ -200,6 +203,7 @@ const FLAGS = ['wavesForceWebGL', 'wavesTime', 'wavesFixedDt', 'wavesParts', 'wa
 
 describe('Waves theme: one node renderer on both backends', () => {
     beforeEach(() => {
+        useSeaLife(PACK);
         mocks.initialize = null;
         mocks.instances.length = 0;
         mocks.surfaces.length = 0;
@@ -233,7 +237,7 @@ describe('Waves theme: one node renderer on both backends', () => {
         expect(new WavesTheme().name).toBe('waves');
     });
 
-    it('ships no classic shader material, no legacy WebGL renderer, no MaterialX noise and no asset file', () => {
+    it('ships no classic shader material, no legacy WebGL renderer, no MaterialX noise and one asset file', () => {
         const names = readdirSync(themeDir).filter((name) => name.endsWith('.js'));
         const sources = names.map((name) => readFileSync(path.join(themeDir, name), 'utf8'));
         expect(sources.length).toBeGreaterThan(8);
@@ -244,15 +248,23 @@ describe('Waves theme: one node renderer on both backends', () => {
             expect(source).not.toMatch(/from 'three'/);
             // Absolute asset paths resolve to the filesystem root under file:// (packaged Electron).
             expect(source).not.toMatch(/['"`]\/(textures|assets|hdri)\//);
-            // The wave is generated: nothing is fetched, decoded or imported as a URL.
-            expect(source).not.toMatch(/\?url['"]|GLTFLoader|DRACOLoader|TextureLoader|\bfetch\s*\(/);
+            // The wave is generated: no loader, no texture file, nothing imported as a URL.
+            expect(source).not.toMatch(/\?url['"]|GLTFLoader|DRACOLoader|TextureLoader/);
         }
+        // The one thing read is the sea life's bodies, by the one module that reads them, by a
+        // URL relative to itself (it resolves under file:// in the packaged app too).
+        const reading = names.filter((name, i) => /\bfetch\s*\(|globalThis\.fetch|new URL\(/.test(sources[i]));
+        expect(reading).toEqual(['waves-bakes.js', 'waves-cast.js']);
+        const cast = sources[names.indexOf('waves-cast.js')];
+        expect(cast).toContain("new URL('./assets/sea-life.glb', import.meta.url)");
+        expect(sources[names.indexOf('waves-bakes.js')]).not.toMatch(/\bfetch\s*\(|globalThis\.fetch/);
         // The theme it replaces is gone: its ocean and its reactions.
         expect(names).not.toContain('waves-ocean.js');
         expect(names).not.toContain('waves-reactions.js');
-        // Nothing but code and the icon lives in the folder.
+        // Nothing but code, the icon and the sea life's pack (with where it comes from) lives in the folder.
         const others = readdirSync(themeDir).filter((name) => !name.endsWith('.js'));
-        expect(others).toEqual(['waves-theme-icon.png']);
+        expect(others.sort()).toEqual(['assets', 'waves-theme-icon.png']);
+        expect(readdirSync(path.join(themeDir, 'assets')).sort()).toEqual(['ATTRIBUTION.md', 'sea-life.glb']);
     });
 
     it('lists every part the world can draw in the URL parameter reference, and nothing else', () => {
@@ -466,15 +478,53 @@ describe('Waves theme: one node renderer on both backends', () => {
         expect(mocks.instances).toHaveLength(QUALITY_NAMES.length);
     });
 
-    it('starts without loading anything', async () => {
+    it('starts without waiting for anything, and reads nothing but the sea life\'s bodies, once', async () => {
         const load = vi.spyOn(THREE.TextureLoader.prototype, 'load');
-        const fetched = vi.fn();
+        // A page that cannot read them: the wave runs on without its animals, and says so once.
+        const fetched = vi.fn(async () => ({ ok: false, status: 404 }));
         vi.stubGlobal('fetch', fetched);
+        useSeaLife(null);
         const { theme } = await startTheme({ quality: 'Low' });
         stepFrames(theme, 2);
         expect(load).not.toHaveBeenCalled();
-        expect(fetched).not.toHaveBeenCalled();
-        expect(console.warn).not.toHaveBeenCalled();
+        expect(fetched).toHaveBeenCalledOnce();
+        expect(String(fetched.mock.calls[0][0])).toMatch(/sea-life[^/]*\.glb$/);
+        await theme.world.lifeReady;
+        expect(theme.world.pod.fauna).toBeNull();
+        expect(() => stepFrames(theme, 2)).not.toThrow();
+        expect(console.warn).toHaveBeenCalledOnce();
+        expect(String(console.warn.mock.calls[0][0])).toMatch(/\[Waves\] the sea life did not arrive/);
+        // Read once a page: a world built after it has them at once, with nothing fetched again.
+        useSeaLife(PACK);
+        const again = await startTheme({ quality: 'Low' });
+        expect(again.theme.world.pod.fauna).not.toBeNull();
+        expect(fetched).toHaveBeenCalledOnce();
+    });
+
+    it('starts another sea every time it is started, and keeps it through a rebuild; a capture keeps its own', async () => {
+        const built = vi.spyOn(WavesWorld.prototype, 'build');
+        const seeds = [];
+        for (let i = 0; i < 6; i++) {
+            // (One after another: each start stubs the page the next one replaces.)
+            // eslint-disable-next-line no-await-in-loop
+            const { theme } = await startTheme({ quality: 'Low' });
+            const { seed } = theme.world;
+            expect(Number.isInteger(seed)).toBe(true);
+            expect(seed).toBeGreaterThanOrEqual(1);
+            expect(seed).toBeLessThanOrEqual(65535);
+            seeds.push(seed);
+            // A rebuild of the same theme (a quality change, a lost device) is the same sea.
+            theme.disposeRuntime();
+            // eslint-disable-next-line no-await-in-loop
+            await theme.createScene(theme.lifecycleGeneration);
+            expect(theme.world.seed).toBe(seed);
+        }
+        expect(new Set(seeds).size).toBeGreaterThan(1);
+        expect(built).toHaveBeenCalled();
+        // A capture is the same frame every time: the world's own seed.
+        const capture = await startTheme({ quality: 'Low', search: '?wavesTime=12' });
+        const plain = new WavesWorld({ scene: new THREE.Scene(), quality: 'Low' });
+        expect(capture.theme.world.seed).toBe(plain.seed);
     });
 
     it('falls back to a pass-through pipeline when the post stack cannot be built', async () => {
@@ -895,7 +945,7 @@ describe('Waves theme: one node renderer on both backends', () => {
         expect(world.time).toBe(42);
         expect(world.clock).toBeCloseTo(42, 6);
         expect(world.capture).toBe(true);
-        expect(world.parts.dolphins.mesh.visible).toBe(false);
+        expect(world.parts.life.mesh.visible).toBe(false);
         expect(world.parts.spray.mesh.visible).toBe(false);
         expect(world.parts.water.mesh.visible).toBe(true);
         expect(world.parts.sky.mesh.visible).toBe(true);
@@ -912,11 +962,15 @@ describe('Waves theme: one node renderer on both backends', () => {
         expect(world.time).toBe(42);
         expect(picture(world)).toEqual(frozen);
         expect(theme.post.uTime.value).toBe(42);
-        // Gameplay still lands on a frozen frame (the layout watch runs on wall time).
+        // Gameplay still lands on a frozen frame (the layout watch runs on wall time). (The sea's own
+        // visitors may have laid rings of their own on the way to it.)
+        const before = world.getState().rings;
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
         theme.stepFrame(1032);
-        expect(world.getState()).toMatchObject({ locks: 1, rings: 1, time: 42 });
-        expect(world.ringRows[0].z).toBe(world.clock);
+        const after = world.getState();
+        expect(after).toMatchObject({ locks: 1, time: 42 });
+        expect(after.rings).toBe(Math.min(before + 1, world.ringRows.length));
+        expect(world.ringRows[after.rings - 1].z).toBe(world.clock);
     });
 
     it('reproduces a captured frame: the same time gives the same wave, whatever the screen did before', async () => {

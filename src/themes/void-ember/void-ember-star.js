@@ -111,11 +111,19 @@ export function createPhotosphere(u, { detail = 3, segments = 96 } = {}) {
 
         // Heat decides how much of the star the crust still covers. Whole plates sink first:
         // each plate's own number moves its coast, so the crust's shore steps along the cracks.
-        const edge = mix(float(0.56), float(0.26), smoothstep(0.15, 1.1, heat)).toVar();
+        // (Of itself the crust opens and closes a little, and is thinnest on one side, which
+        // wanders: the coal is never the same coal for long.)
+        const edge = mix(float(0.56), float(0.26), smoothstep(0.15, 1.1, heat))
+            .sub(u.mood.mul(0.045)).sub(dot(p, u.moodDir).mul(0.075)).toVar();
+        // (Blown up, what is left is rafts with a soft edge, finer than the coal's plates: the
+        // small octaves carry more of the field, so the last crust breaks into many, not a few.)
+        const blownEdge = smoothstep(0.45, 0.8, heat).toVar();
+        const rafts = mix(field, o2.x.mul(0.58).add(o3.x.mul(0.42)), blownEdge);
+        const soft = mix(float(0.03), float(0.075), blownEdge);
         const crust = float(1.0).sub(smoothstep(
-            edge.sub(0.03),
-            edge.add(0.03),
-            field.add(plates.y.sub(0.5).mul(0.16)),
+            edge.sub(soft),
+            edge.add(soft),
+            rafts.add(plates.y.sub(0.5).mul(0.16)),
         )).toVar();
 
         // Convection cells: bright tops parted by a net of thin dark lanes.
@@ -142,12 +150,15 @@ export function createPhotosphere(u, { detail = 3, segments = 96 } = {}) {
         const glowing = float(1.0).sub(smoothstep(0.2, 0.6, heat)).mul(0.1);
         const hot = heat.add(glowing).add(cells.sub(0.66).mul(grain))
             .add(o1.y.sub(0.5).mul(mix(float(0.26), float(0.1), blown)))
-            .add(shore.mul(0.12));
+            .add(shore.mul(0.12).mul(float(1.0).sub(blownEdge)));
         // The crust: black slag, a shade warmer on the thin plates and toward their cracked
         // edges; the cracks red at their margins and orange-gold down their middle.
         const slag = heat.mul(0.5).sub(0.09).add(plates.y.sub(0.5).mul(0.07))
             .add(bleed.mul(heat.mul(0.25).add(0.11)));
-        const cold = slag.add(cracks.mul(heat.mul(0.6).add(0.4))).add(core.mul(0.1)).add(o3.x.sub(0.5).mul(0.04));
+        // (On a blown-up star the rafts are dull: no white seams in them, which read as eyes.)
+        const seams = float(1.0).sub(blownEdge.mul(0.85));
+        const cold = slag.add(cracks.mul(heat.mul(0.6).add(0.4)).mul(seams)).add(core.mul(0.1).mul(seams))
+            .add(o3.x.sub(0.5).mul(0.04));
         const T = mix(hot, cold, crust).toVar();
 
         // ── What the board has done to it ──
@@ -185,7 +196,9 @@ export function createPhotosphere(u, { detail = 3, segments = 96 } = {}) {
         T.subAssign(rim.mul(rim).mul(mix(float(0.34), float(0.72), blown)));
         T.addAssign(mu.mul(mu).mul(0.15).mul(blown).mul(float(1.0).sub(crust)));
         const light = veGlow(T).mul(mu.pow(0.7).mul(0.74).add(0.26));
-        const col = veBlackbody(T).mul(light).add(struck.mul(mu.mul(0.6).add(0.4))).toVar();
+        // (Its colour stops at a deep gold however bright it burns: a cream face takes every
+        // other colour in the frame with it.)
+        const col = veBlackbody(min(T, 0.93)).mul(light).add(struck.mul(mu.mul(0.6).add(0.4))).toVar();
         // The star is the one light the iris must not dim with everything else: a hot star
         // shines as a hot star, while what it lights keeps its darks (1 at rest).
         return vec4(col.mul(u.breath).mul(u.iris.pow(0.25)), 1.0);

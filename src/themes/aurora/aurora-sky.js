@@ -3,23 +3,52 @@
  * buffer read by view direction), a catalogue of star sprites, and a pool of meteors.
  * Everything is placed by direction from the rendering camera, so the lake's mirror pass
  * reflects stars and meteors without any special handling.
+ *
+ * The stars and the Milky Way turn round the pole with the hours of the night
+ * (aurora-hours.js: `skyTurn`, the cosine and sine of the turn): the catalogue covers the
+ * whole ring of sky that can ever come round into view, and a level-up, which moves the
+ * night an hour on, is seen as the sky wheeling.
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, atan, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, dot, exp, float,
+    Fn, abs, atan, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, cross, dot, exp, float,
     instanceIndex, instancedBufferAttribute, length, max, mix, normalize, positionGeometry,
-    positionWorld, select, sin, smoothstep, sqrt, texture, uniformArray, uv, vec2, vec3, vec4,
+    positionWorld, select, sin, smoothstep, sqrt, texture, uniformArray, uv, varying, vec2, vec3, vec4,
 } from 'three/tsl';
-import { MOON_DIRECTION, MOON_RADIUS } from './aurora-hours.js';
+import { MOON_RADIUS, SKY_POLE } from './aurora-hours.js';
 
 const DOME_RADIUS = 9000;
 const STAR_RADIUS = 8200;
 /** Stars smaller than this many device pixels shimmer as the camera breathes. */
 const MIN_STAR_PIXELS = 1.7;
 const DEG = Math.PI / 180;
-const STAR_AZIMUTH = 80 * DEG;
-const STAR_LOW = Math.sin(-3 * DEG);
-const STAR_HIGH = Math.sin(84 * DEG);
+/**
+ * The catalogue's ring of sky, as angles from the pole: everything the turning sky can bring
+ * into view (the frame never looks within STAR_NEAR of the pole, and nothing further from it
+ * than STAR_FAR ever rises over the range).
+ */
+const STAR_NEAR = 14 * DEG;
+const STAR_FAR = 108 * DEG;
+/**
+ * The ring is this many times the patch of sky the frame used to hold alone: a tier's
+ * `starCount` is the stars of that patch, so the sky keeps its density all the way round.
+ */
+export const STAR_RING = 2.75;
+/** Two directions square to the pole: the frame the catalogue is laid out in. */
+const POLE_X = Object.freeze([1, 0, 0]);
+const POLE_Y = Object.freeze([0, SKY_POLE[2], -SKY_POLE[1]]);
+
+/**
+ * Turn a direction round the pole by the sky's turn (`cs`: its cosine and sine). `way` +1
+ * takes a catalogue direction to where it stands tonight (the stars wheel anticlockwise
+ * round the pole, as they do looking north); −1 takes a view direction back to the catalogue.
+ */
+function turnSky(v, cs, way) {
+    const pole = vec3(SKY_POLE[0], SKY_POLE[1], SKY_POLE[2]);
+    return v.mul(cs.x)
+        .add(cross(pole, v).mul(cs.y.mul(-way)))
+        .add(pole.mul(dot(pole, v).mul(cs.x.oneMinus())));
+}
 
 const direction = (azimuth, elevation) => new THREE.Vector3(
     Math.cos(elevation) * Math.sin(azimuth),
@@ -34,26 +63,25 @@ export const GALAXY_NORMAL = new THREE.Vector3().crossVectors(GALAXY_A, GALAXY_B
 const GALAXY_U = GALAXY_A.clone();
 const GALAXY_V = new THREE.Vector3().crossVectors(GALAXY_NORMAL, GALAXY_U).normalize();
 
-/** The moon, and a frame across its face for the maria. */
-const MOON = new THREE.Vector3(...MOON_DIRECTION);
-const MOON_U = new THREE.Vector3().crossVectors(MOON, new THREE.Vector3(0, 1, 0)).normalize();
-const MOON_V = new THREE.Vector3().crossVectors(MOON_U, MOON);
 /** Radiance of the full moon's face: bright against the night, never a blinding disc. */
 const MOON_BRIGHTNESS = 0.85;
-const vector = (v) => vec3(v.x, v.y, v.z);
 
 /**
  * The moon along `rd` in the moonlit hour (aurora-hours.js; `u.moonGlow` is how much of it
- * stands): a small pale disc with a softly darkened limb and grey maria, and the glow it lifts
- * in the sky round it. The dome draws it and the cheapest tiers' analytic lake mirrors it.
- * @param {object} u shared world uniforms (moonGlow)
+ * stands, `u.moonDirection` where it is on its arc): a small pale disc with a softly darkened
+ * limb and grey maria, and the glow it lifts in the sky round it. The dome draws it and the
+ * cheapest tiers' analytic lake mirrors it.
+ * @param {object} u shared world uniforms (moonGlow, moonDirection)
  * @param {import('three/tsl').ShaderNodeObject<any>} rd unit view direction
  * @param {THREE.Texture} noiseTexture shared noise tile
  */
 export function moonRadiance(u, rd, noiseTexture) {
-    const offset = rd.sub(vector(MOON)).toVar();
+    const moon = u.moonDirection;
+    const offset = rd.sub(moon).toVar();
     const chord = length(offset);
-    const face = vec2(dot(offset, vector(MOON_U)), dot(offset, vector(MOON_V))).div(MOON_RADIUS).toVar();
+    // A frame across its face, for the maria.
+    const across = normalize(cross(moon, vec3(0, 1, 0))).toVar();
+    const face = vec2(dot(offset, across), dot(offset, cross(across, moon))).div(MOON_RADIUS).toVar();
     const r2 = dot(face, face);
     const disc = float(1).sub(smoothstep(0.84, 1.0, sqrt(r2)));
     const limb = sqrt(max(float(1).sub(r2), 0)).mul(0.35).add(0.65);
@@ -72,9 +100,33 @@ const STAR_TINTS = [
 ];
 
 /**
- * Deterministic star catalogue: directions inside the cone the camera can ever show,
- * denser along the galactic plane, with the steep brightness distribution of a real sky
- * (a handful of bright stars, thousands of faint ones).
+ * The moon's path on ruffled water: how much of the moon the wavelet facets at a point of the
+ * lake throw to the eye. `heading` is the mirrored ray's bearing (a unit vec2 in xz),
+ * `slope` the tangent of its elevation and `rough` (0 glassy … 1 ruffled) how widely the
+ * facets are tilted. A facet tilted toward or away from the eye lifts or drops the ray a long
+ * way, one tilted sideways turns it hardly at all at this grazing angle: that is why the path
+ * is long toward the eye and narrow across, wide only where the wind is on the water.
+ */
+export function moonPath(u, heading, slope, rough) {
+    const moon = u.moonDirection;
+    const flat = max(length(moon.xz), 1e-3);
+    const bearing = moon.xz.div(flat);
+    const lift = moon.y.div(flat).sub(slope);
+    const tall = rough.mul(0.13).add(0.07);
+    const wide = rough.mul(0.04).add(0.012).mul(slope.mul(5).add(1));
+    const aside = heading.x.mul(bearing.y).sub(heading.y.mul(bearing.x));
+    const ahead = smoothstep(0.2, 0.7, dot(heading, bearing));
+    return exp(lift.mul(lift).div(tall.mul(tall).mul(-2)))
+        .mul(exp(aside.mul(aside).div(wide.mul(wide).mul(-2))))
+        .mul(ahead)
+        .mul(u.moonGlow);
+}
+
+/**
+ * Deterministic star catalogue: directions all round the ring of sky the turning night can
+ * bring into view (laid out as the sky stands at the first hour), denser along the galactic
+ * plane, with the steep brightness distribution of a real sky (a handful of bright stars,
+ * thousands of faint ones).
  */
 export function buildStarCatalogue(count, random) {
     const directions = new Float32Array(count * 3);
@@ -84,17 +136,20 @@ export function buildStarCatalogue(count, random) {
     let guard = 0;
     while (placed < count && guard < count * 40) {
         guard += 1;
-        const azimuth = (random() * 2 - 1) * STAR_AZIMUTH;
-        const sinElevation = STAR_LOW + random() * (STAR_HIGH - STAR_LOW);
-        const cosElevation = Math.sqrt(1 - sinElevation * sinElevation);
-        const x = cosElevation * Math.sin(azimuth);
-        const y = sinElevation;
-        const z = -cosElevation * Math.cos(azimuth);
+        // Even over the ring: the cosine of the angle from the pole, and the angle round it.
+        const round = random() * Math.PI * 2;
+        const cosPole = Math.cos(STAR_FAR) + random() * (Math.cos(STAR_NEAR) - Math.cos(STAR_FAR));
+        const sinPole = Math.sqrt(1 - cosPole * cosPole);
+        const ax = Math.cos(round) * sinPole;
+        const ay = Math.sin(round) * sinPole;
+        const x = SKY_POLE[0] * cosPole + POLE_X[0] * ax + POLE_Y[0] * ay;
+        const y = SKY_POLE[1] * cosPole + POLE_X[1] * ax + POLE_Y[1] * ay;
+        const z = SKY_POLE[2] * cosPole + POLE_X[2] * ax + POLE_Y[2] * ay;
         const plane = (x * GALAXY_NORMAL.x + y * GALAXY_NORMAL.y + z * GALAXY_NORMAL.z) / 0.2;
         if (random() > (0.34 + Math.exp(-plane * plane)) / 1.34) continue;
         const rank = random() ** 6;
         // The first few are the named stars: larger, with diffraction spikes.
-        const hero = placed < Math.min(14, Math.ceil(count / 260));
+        const hero = placed < Math.min(38, Math.ceil(count / 260));
         const brightness = hero ? 0.72 + random() * 0.28 : 0.04 + rank * 0.8;
         directions.set([x, y, z], placed * 3);
         data.set([
@@ -161,10 +216,13 @@ export class AuroraSky {
 
             // Milky Way: a soft band along the galactic plane, broken by cloud structure
             // and a dark dust lane, fading into the horizon haze.
-            const plane = dot(rd, vec3(GALAXY_NORMAL.x, GALAXY_NORMAL.y, GALAXY_NORMAL.z));
+            // It turns round the pole with the stars: read it where this direction stood at the
+            // first hour.
+            const fixed = turnSky(rd, u.skyTurn, -1).toVar();
+            const plane = dot(fixed, vec3(GALAXY_NORMAL.x, GALAXY_NORMAL.y, GALAXY_NORMAL.z));
             const along = atan(
-                dot(rd, vec3(GALAXY_V.x, GALAXY_V.y, GALAXY_V.z)),
-                dot(rd, vec3(GALAXY_U.x, GALAXY_U.y, GALAXY_U.z)),
+                dot(fixed, vec3(GALAXY_V.x, GALAXY_V.y, GALAXY_V.z)),
+                dot(fixed, vec3(GALAXY_U.x, GALAXY_U.y, GALAXY_U.z)),
             );
             const galaxyUV = vec2(along.mul(0.62), plane.mul(1.5).add(0.5));
             const broad = texture(noiseTexture, galaxyUV);
@@ -210,14 +268,16 @@ export class AuroraSky {
 
     createStars(random) {
         const u = this.uniforms;
-        const catalogue = buildStarCatalogue(this.preset.starCount, random);
+        const catalogue = buildStarCatalogue(Math.round(this.preset.starCount * STAR_RING), random);
         this.starCount = catalogue.count;
         const geometry = new THREE.PlaneGeometry(1, 1);
         const material = new THREE.MeshBasicNodeMaterial({
             transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
         });
         material.name = 'Aurora — stars';
-        const dir = instancedBufferAttribute(new THREE.InstancedBufferAttribute(catalogue.directions, 3));
+        const placed = instancedBufferAttribute(new THREE.InstancedBufferAttribute(catalogue.directions, 3));
+        // Where the star stands tonight: turned once a vertex, and carried to the pixel.
+        const dir = varying(turnSky(placed, u.skyTurn, 1), 'auroraStarDirection');
         const data = instancedBufferAttribute(new THREE.InstancedBufferAttribute(catalogue.data, 4));
         const tint = instancedBufferAttribute(new THREE.InstancedBufferAttribute(catalogue.tints, 3));
         const pixels = data.x.mul(u.viewHeight);
@@ -227,7 +287,12 @@ export class AuroraSky {
                 .mul(vec4(cameraPosition.add(dir.mul(STAR_RADIUS)), 1)).toVar();
             const size = drawn.div(u.viewHeight).mul(2);
             const offset = positionGeometry.xy.mul(vec2(size.div(u.aspect), size));
-            return vec4(clip.xy.add(offset.mul(clip.w)), clip.z, clip.w);
+            // A star the night has turned under the horizon is not drawn at all.
+            return select(
+                dir.y.lessThan(-0.03),
+                vec4(0, 0, 2, 1),
+                vec4(clip.xy.add(offset.mul(clip.w)), clip.z, clip.w),
+            );
         })();
         const p = uv().sub(0.5).mul(2);
         const r2 = dot(p, p);

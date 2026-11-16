@@ -160,7 +160,7 @@ Registry groups: every theme here is `group: 'biomes'` except `tornado` (`'atmos
 - **Icon:** a stepped sandstone pyramid with a glowing cyan doorway, a floating cyan crystal on top, and cyan crystal shards lining a causeway into turquoise water. Peach and lavender dawn clouds.
 - **Setting:** a windless golden dawn seen from a lagoon. An 8-terrace pyramid with a stair through the "heart gate". The Apex crystal floats above it. The Halcyon, a 40 m diamond, hangs before the rising sun over a ring of 9 standing stones, with an upward water-funnel under it. Obelisks, islets with flat-topped acacia-like trees. Everything mirrors in the lagoon.
 - **Palette:** sun gold, sky blue to peach, turquoise shallows, deep teal, cyan crystals and ley light, sandstone. Five palettes (`halcyon-apex-core.js:300+`): golden-dawn, rose-hour, clear-morning, amber-haze, blue-hour.
-- **Pieces** (`:12-19`): I `#8ff5ee`, O `#c9bfa2`, T `#3fd6cf`, S `#8fa84e`, Z `#2a8fa0`, J `#bfd8d6`, L `#d8cba8`, GARBAGE `#5a5e68`. Sandstone, turquoise and moss.
+- **Pieces** (`:12-19`): I `#f4c95d`, O `#2fd9be`, T `#f08aa0`, S `#a98cf2`, Z `#8fcf5b`, J `#e0723f`, L `#4a8fe6`, GARBAGE `#5a5e68`. Sandstone, turquoise and moss.
 - **Motifs:** ley lines (strips of light with an arc-length coordinate), instanced six-sided bipyramid crystals that refract the sun per channel, procedural masonry with baked occlusion, two-plane perspective clouds, beads of water.
 - **Gameplay FX:**
   - Lock: a ring in the lagoon, then a wisp flies to a ley line and a pulse runs the line into a great crystal, which holds the colour about 30 s.
@@ -234,7 +234,7 @@ Registry groups: every theme here is `group: 'biomes'` except `tornado` (`'atmos
 
 - **Icon:** monochrome. A charcoal low-poly faceted mountain mass under a dense star field with the Milky Way band, a dark metallic ring frame. Two bright four-point star glints.
 - **Scene** (`docs/theme-screenshots/wolfhour.png`): a giant photographic moon (`2k_moon.jpg`) half set behind black faceted fBm mountains; dense white stars; faint grey nebula. **Strict black-and-silver**: `WolfhourGrade` is the "black-and-silver night grade" (`wolfhour-grade.js:1-4`). The sky base is nearly black, `vec3(0.0024,0.0027,0.0034)` (`wolfhour-sky.js:113`).
-- **Pieces** (`:12-19`): all silver-greys. I `#ddeeff`, O `#f5f8fa`, T `#b0c4d8`, S `#a0b8cc`, Z `#98a8bc`, J `#708090`, L `#c8d8e8`, GARBAGE `#1a1a1a`. Glow radius 18.
+- **Pieces** (since 2026-11-16, `docs/WOLFHOUR_MASTERPIECE_2026-11.md`): the valley's colours. I `#F1F5FC` moon silver, O `#2DA084` northern lights, T `#DF8D38` ember, S `#8A70EA` dusk violet, Z `#84C8F9` ice, J `#F3A9C1` alpenglow, L `#46608F` granite, GARBAGE `#222a38`. (Before: seven silver-greys from `#ddeeff` to `#708090`.)
 - **Motion:** star twinkle, spirits, ambient particles, ground fog, ambient meteors with trails.
 - **Gameplay FX** (`wolfhour-theme.js:3038-3160`):
   - Lock: a star burst, a mountain pulse and shockwave, and a lunar reaction.
@@ -599,11 +599,15 @@ Status split:
 - **Gameplay FX**: lock = coloured wind ribbon curls from card edge + seed puff + grass gust + that piece's kite goes
   up for 20 s; clear = white ribbons from both sides at cleared rows, wind freshens, kites climb; quad = clouds open, a
   pool of sunlight and its shaft crosses the valley; combo = whirl of ribbons winding round the board; 7 kites =
-  "festival"; game over = wind dies.
+  "festival"; game over = wind dies. Since 2026-11-16: 3 lines = the meadow blooms in the piece's kite colour; quad =
+  a shaft of sun with fingers sweeping the near valley; perfect clear = a double rainbow drawn across the sky; level up =
+  a hot-air balloon lifts off. Seven weathers by the clock (storm light with shafts, a rainbow after the rain, an
+  afterglow with stars, fireflies and lantern balloons, morning mist in the valley).
 - **Tech**: Blender-headless assets (oaks with foliage-site point clouds, windmill, wall), baked land/cloud maps, one
   cloud field used for sky raymarch + ground shadows + air shafts, grass only where visible.
 - **Avoid reusing**: pastoral green daylight, cumulus, kites/ribbons, wind-blown seeds/petals, oak/meadow flowers,
-  whirl of ribbons round the board, "clouds part, sunlight pool" as the quad.
+  whirl of ribbons round the board, "clouds part, sunlight pool" as the quad, a rainbow for a perfect clear, hot-air
+  balloons, a meadow that blooms in the piece's colour, valley mist.
 
 <a id="serenity-warp"></a>
 

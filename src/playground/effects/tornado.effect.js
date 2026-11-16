@@ -14,11 +14,19 @@
  *   level=<n>                level n's hour (the light also turns with the clock alone: one hour
  *                            every 100 s of `t`, resting 15 s, so t=14 is still on the level's own)
  *   locks=<n>                before anything else, play n locks (the funnel holding their ribbons)
- *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
+ *   kind=<place>             hold the funnel's kind (0 cone, 1 stovepipe, 2 wedge, 3 elephant trunk,
+ *                            4 rope, 5 aloft; fractions are on the way). Unset, the clock turns it
+ *   weather=<s>              hold the weather's clocks at this second (the rain's place, the gap,
+ *                            the mammatus); squall=<0..1> holds the rain over the lens
+ *   roam=<s>                 hold the funnel's travel at this second
+ *   event=lock|drop|clear|quad|twist|spin|b2b|perfect|levelUp|over|begin   fire a gameplay event
+ *                            (spin: a twist that cleared nothing; b2b: a second four lines in a
+ *                            row; over: the run ends; begin: a run begins after one ended)...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
  *   demo=1                   live only: play a looping gameplay script
  *   parts=sky,ground,funnel,... draw only these parts (TORNADO_PARTS)
+ *   meshes=body,wall,sky,... draw only these meshes (their names without the tornado- prefix)
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
  *   bloom=0|1                override the tier's bloom
@@ -120,8 +128,20 @@ export function create({
     const world = new TornadoWorld({ scene, quality, capture: true }).build();
     world.bindCamera(camera);
     world.setReducedMotion(params.get('reduce') === '1');
+    if (params.has('kind')) world.holds.kind = num(params, 'kind', 0);
+    if (params.has('weather')) world.holds.weather = num(params, 'weather', 0);
+    if (params.has('squall')) world.holds.squall = num(params, 'squall', 0);
+    if (params.has('roam')) world.holds.roam = num(params, 'roam', 0);
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
+    // meshes=body,wall,... draws only those meshes (by name, with or without the "tornado-" prefix).
+    const onlyParam = params.get('meshes');
+    if (onlyParam) {
+        const keep = new Set(onlyParam.split(',').map((p) => p.trim().replace(/^tornado-/, '')));
+        scene.traverse((object) => {
+            if (object.isMesh) object.visible = keep.has(object.name.replace(/^tornado-/, ''));
+        });
+    }
 
     const look = { ...(POST_LOOK[quality] || POST_LOOK.High) };
     if (params.has('bloom')) look.bloom = params.get('bloom') === '1';
@@ -199,13 +219,20 @@ export function create({
         } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
         else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
-        else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
+        else if (eventName === 'perfect') {
+            // lines=4 (the default here) is a quad crowned; fewer is the calm alone.
+            const n = params.has('lines') ? lines : 4;
+            world.onClear({ rows: bottom(n), lines: n, perfect: true });
+        } else if (eventName === 'spin') world.onTwist();
+        else if (eventName === 'b2b') world.onClear({ rows: bottom(4), lines: 4, b2b: true });
+        else if (eventName === 'over') world.endRun();
+        else if (eventName === 'begin') world.beginRun();
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
     };
 
     let lastSeek = null;
     const seekTo = (asked) => {
-        const lead = (eventName ? eventAge : 0) + 9 + warmLocks * 0.5;
+        const lead = (eventName ? eventAge : 0) + 9 + warmLocks * 0.5 + (eventName === 'begin' ? 8 : 0);
         // A frame earlier than its own lead-in is shown at the lead-in's end instead (the events
         // would otherwise fire after the frame they were asked for).
         const time = Math.max(asked, lead);
@@ -229,6 +256,12 @@ export function create({
             });
         }
         const eventTime = eventName ? time - eventAge : time;
+        // A run that begins needs one that ended: it ended eight seconds before.
+        if (eventName === 'begin' && eventTime - 8 > cursor) {
+            stepTo(cursor, eventTime - 8, 0.1);
+            cursor = eventTime - 8;
+            world.endRun();
+        }
         if (eventTime > cursor) stepTo(cursor, eventTime, 0.1);
         if (eventName) {
             fireEvent();

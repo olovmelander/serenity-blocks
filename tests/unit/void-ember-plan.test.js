@@ -19,8 +19,9 @@ import {
 import { fallbackLayout } from '../../src/themes/void-ember/void-ember-composition.js';
 import { VOID_EMBER_TETROMINOS } from '../../src/themes/void-ember/void-ember-tetrominos.js';
 import {
-    ROCK_CLASSES, createRockGeometry, planRocks, rockPosition,
+    ROCK_CLASSES, SWARMS, createStoneGeometry, keplerSpeed, planRocks, rockPosition, stoneMesh,
 } from '../../src/themes/void-ember/void-ember-belt.js';
+import { VOID_EMBER_STONE_MODELS } from '../../src/themes/void-ember/void-ember-stone-models.js';
 import {
     LOOP_STRANDS, createLoops, eruptLift, loopSparkShare,
 } from '../../src/themes/void-ember/void-ember-loops.js';
@@ -30,7 +31,7 @@ import {
 } from '../../src/themes/void-ember/void-ember-tsl.js';
 import { QUALITY, QUALITY_NAMES, tierFor } from '../../src/themes/void-ember/void-ember-quality.js';
 import { POST_LOOK } from '../../src/themes/void-ember/void-ember-post.js';
-import { VOID_EMBER_PARTS, VoidEmberWorld } from '../../src/themes/void-ember/void-ember-world.js';
+import { VOID_EMBER_PARTS } from '../../src/themes/void-ember/void-ember-world.js';
 import { URL_PARAMETER_CATALOG } from '../../src/ui/url-parameters/catalog.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -423,53 +424,140 @@ describe('void ember belt', () => {
         }
     });
 
-    /** Per face: its normal · its centroid, and the normal's length. */
-    function faces(geometry) {
-        const p = geometry.getAttribute('position');
-        const n = geometry.getAttribute('normal');
-        const out = [];
-        for (let f = 0; f < p.count; f += 3) {
-            const at = (vertex, k) => p.array[(f + vertex) * 3 + k];
-            const centroid = [0, 1, 2].map((k) => (at(0, k) + at(1, k) + at(2, k)) / 3);
-            const normal = [n.getX(f), n.getY(f), n.getZ(f)];
-            out.push({
-                facing: centroid[0] * normal[0] + centroid[1] * normal[1] + centroid[2] * normal[2],
-                length: Math.hypot(...normal),
-                flat: [1, 2].every((v) => n.getX(f + v) === normal[0] && n.getY(f + v) === normal[1]
-                    && n.getZ(f + v) === normal[2]),
+    it.each(CLASSES)('rides a share of the %s in three families that never shear apart', (_name, cls) => {
+        const count = 600;
+        const plan = planRocks(0x5eed + 101, count, cls);
+        expect(plan.family).toHaveLength(count);
+        const riders = Array.from(plan.family).map((which, i) => [which, i]).filter(([which]) => which >= 0);
+        // A share of the class, never most of it: the field is still the belt.
+        expect(riders.length).toBeGreaterThan(count * 0.08);
+        expect(riders.length).toBeLessThan(count * 0.3);
+        SWARMS.forEach((swarm, which) => {
+            const members = riders.filter(([w]) => w === which).map(([, i]) => i);
+            expect(members.length).toBeGreaterThan(count * 0.02);
+            // One angular speed for the whole family, its parent's own.
+            members.forEach((i) => expect(plan.orbit[i * 4 + 3]).toBe(f32(keplerSpeed(swarm.radius))));
+            // ...so it holds its shape for good: every member keeps its place beside the first.
+            const lead = members[0];
+            const offsetAt = (i, time) => {
+                const a = rockPosition(plan, i, time);
+                const b = rockPosition(plan, lead, time);
+                // The member seen from the lead, in the lead's own turning frame.
+                const turn = -Math.atan2(b[2], b[0]);
+                const x = a[0] * Math.cos(turn) - a[2] * Math.sin(turn);
+                const z = a[0] * Math.sin(turn) + a[2] * Math.cos(turn);
+                return [x - Math.hypot(b[0], b[2]), a[1] - b[1], z];
+            };
+            members.forEach((i) => {
+                const now = offsetAt(i, 0);
+                const later = offsetAt(i, 5000);
+                for (let k = 0; k < 3; k++) expect(later[k]).toBeCloseTo(now[k], 3);
             });
-        }
-        return out;
-    }
+            // A family is a place in the belt, not a ring of it: within a radian of arc.
+            const spread = members.map((i) => {
+                const d = plan.orbit[i * 4 + 1] - swarm.angle;
+                return Math.atan2(Math.sin(d), Math.cos(d));
+            });
+            expect(Math.max(...spread) - Math.min(...spread)).toBeLessThan(1.4);
+            // The debris trails: more of it behind the family's place than ahead.
+            if (members.length > 12) expect(mean(spread)).toBeLessThan(0);
+        });
+        // The field's stones each keep a speed of their own.
+        const field = Array.from(plan.family).map((which, i) => [which, i]).filter(([which]) => which < 0);
+        expect(new Set(field.map(([, i]) => plan.orbit[i * 4 + 3])).size).toBeGreaterThan(field.length * 0.9);
+    });
 
-    it.each(CLASSES)('chisels the %s as flat-faced stones whose normals point outward', (_name, cls, index) => {
-        // The seed the world gives this class, and a handful of others.
-        const shipped = (new VoidEmberWorld({ scene: new THREE.Scene() }).seed + 101 * (index + 1)) * 31 + 7;
-        for (const seed of [shipped, 1, 2, 3, 1234567, 0xbeef]) {
-            const geometry = createRockGeometry(seed, cls.detail);
-            const position = geometry.getAttribute('position');
-            expect(geometry.getIndex()).toBeNull(); // one normal per face needs unshared vertices
-            expect(position.count % 3).toBe(0);
-            expect(Array.from(position.array).every(Number.isFinite)).toBe(true);
-            expect(Array.from(geometry.getAttribute('normal').array).every(Number.isFinite)).toBe(true);
-            const list = faces(geometry);
-            // A mesh wound inside out still draws, lit from behind: check the facing in numbers.
-            expect(mean(list.map((face) => face.facing)), `seed ${seed}`).toBeGreaterThan(0.2);
-            expect(list.filter((face) => face.facing <= 0), `seed ${seed}`).toEqual([]);
-            // No collapsed face: a zero normal is a NaN in the shader, and bloom spreads a NaN.
-            expect(list.every((face) => Math.abs(face.length - 1) < 1e-4), `seed ${seed}`).toBe(true);
-            expect(list.every((face) => face.flat), `seed ${seed}`).toBe(true);
-            // About a unit across, never a needle or a speck.
-            geometry.computeBoundingBox();
-            const size = geometry.boundingBox.getSize(new THREE.Vector3());
-            expect(Math.max(size.x, size.y, size.z)).toBeLessThan(3.2);
-            expect(Math.min(size.x, size.y, size.z)).toBeGreaterThan(0.3);
-            expect(geometry.boundingSphere.radius).toBeGreaterThan(0.4);
+    it('gives each family a parent boulder, at its place, with room round it', () => {
+        const boulders = planRocks(0x5eed + 101, 30, ROCK_CLASSES[0]);
+        SWARMS.forEach((swarm, which) => {
+            expect(boulders.family[which]).toBe(which);
+            expect(boulders.orbit[which * 4]).toBe(f32(swarm.radius));
+            expect(boulders.orbit[which * 4 + 1]).toBe(f32(swarm.angle));
+            expect(boulders.orbit[which * 4 + 2]).toBe(0);
+            // The largest of its class.
+            expect(boulders.body[which * 4]).toBeGreaterThan(ROCK_CLASSES[0].size[1] * 0.8);
+        });
+        // No debris stands inside a parent.
+        ROCK_CLASSES.forEach((cls, index) => {
+            const plan = planRocks(0x5eed + 101 * (index + 1), 800, cls);
+            for (let i = 0; i < plan.count; i++) {
+                const which = plan.family[i];
+                if (which < 0 || (index === 0 && i < SWARMS.length)) continue;
+                const swarm = SWARMS[which];
+                const d = plan.orbit[i * 4 + 1] - swarm.angle;
+                const along = Math.atan2(Math.sin(d), Math.cos(d)) * swarm.radius;
+                const aside = plan.orbit[i * 4] - swarm.radius;
+                expect(Math.hypot(aside, along), `${cls.name} ${i}`).toBeGreaterThan(0.18);
+            }
+        });
+    });
+
+    it.each(CLASSES)('dresses the %s in every model of their level, each stretched its own way', (_name, cls) => {
+        const models = VOID_EMBER_STONE_MODELS[cls.level];
+        const plan = planRocks(77, 240, cls);
+        expect(plan.look).toHaveLength(plan.count * 4);
+        const worn = new Set();
+        for (let i = 0; i < plan.count; i++) {
+            const [variant, sx, sy, sz] = plan.look.subarray(i * 4, i * 4 + 4);
+            expect(Number.isInteger(variant)).toBe(true);
+            expect(variant).toBeGreaterThanOrEqual(0);
+            expect(variant).toBeLessThan(models.length);
+            worn.add(variant);
+            // A stretch, never a mirror (a mirrored stone would be drawn inside out) or a needle.
+            for (const stretch of [sx, sy, sz]) {
+                expect(stretch).toBeGreaterThan(0.7);
+                expect(stretch).toBeLessThan(1.3);
+            }
         }
-        // Not a ball: the cuts leave flats, so the same seed is the same stone and another is not.
-        const a = createRockGeometry(9, cls.detail).getAttribute('position').array;
-        expect(createRockGeometry(9, cls.detail).getAttribute('position').array).toEqual(a);
-        expect(createRockGeometry(10, cls.detail).getAttribute('position').array).not.toEqual(a);
+        expect(worn.size).toBe(models.length);
+        // Even a tier's handful of boulders wears them all.
+        const few = planRocks(3, 10, cls);
+        expect(new Set(Array.from({ length: few.count }, (_, i) => few.look[i * 4])).size)
+            .toBe(Math.min(10, models.length));
+    });
+
+    it.each(CLASSES)('builds the %s as one mesh of every model, each vertex tagged with its own', (_name, cls) => {
+        const models = VOID_EMBER_STONE_MODELS[cls.level];
+        const mesh = stoneMesh(cls.level);
+        expect(stoneMesh(cls.level)).toBe(mesh); // decoded once a page
+        expect(mesh.variants).toBe(models.length);
+        expect(mesh.vertexCount).toBe(models.reduce((sum, m) => sum + m.vertexCount, 0));
+        expect(mesh.triangleCount).toBe(models.reduce((sum, m) => sum + m.triangleCount, 0));
+        const geometry = createStoneGeometry(cls.level);
+        const position = geometry.getAttribute('position');
+        const normal = geometry.getAttribute('normal');
+        const shade = geometry.getAttribute('aShade');
+        const index = geometry.getIndex();
+        expect(position.count).toBe(mesh.vertexCount);
+        expect(index.count).toBe(mesh.triangleCount * 3);
+        for (const attribute of [position, normal, shade]) {
+            expect(Array.from(attribute.array).every(Number.isFinite)).toBe(true);
+        }
+        mesh.ranges.forEach((range, variant) => {
+            // Its vertices carry its number, and its triangles reach no other model's vertices.
+            for (let v = range.vertex; v < range.vertex + range.vertices; v++) {
+                expect(shade.getZ(v)).toBe(variant);
+                // A unit normal: a zero one is a NaN in the shader, and bloom spreads a NaN.
+                expect(Math.hypot(normal.getX(v), normal.getY(v), normal.getZ(v))).toBeCloseTo(1, 5);
+                expect(shade.getX(v)).toBeGreaterThanOrEqual(0);
+                expect(shade.getX(v)).toBeLessThanOrEqual(1);
+                expect(shade.getY(v)).toBeGreaterThanOrEqual(0);
+                expect(shade.getY(v)).toBeLessThanOrEqual(1);
+            }
+            for (let k = range.index; k < range.index + range.indices; k++) {
+                expect(index.array[k]).toBeGreaterThanOrEqual(range.vertex);
+                expect(index.array[k]).toBeLessThan(range.vertex + range.vertices);
+            }
+        });
+        // Bounded by the unit sphere, as the vertex stage's sizes assume.
+        let far = 0;
+        for (let v = 0; v < position.count; v++) {
+            far = Math.max(far, Math.hypot(position.getX(v), position.getY(v), position.getZ(v)));
+        }
+        expect(far).toBeLessThanOrEqual(1 + 1e-4);
+        expect(far).toBeGreaterThan(0.99);
+        // The vertex stage runs for every model's vertices in every stone: a budget per class.
+        expect(mesh.vertexCount).toBeLessThanOrEqual([2600, 420, 48][2 - cls.detail]);
     });
 
     it('the bigger the class, the fewer and the finer-cut its stones', () => {

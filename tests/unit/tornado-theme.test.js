@@ -380,7 +380,7 @@ describe('Tornado theme: one node renderer on both backends', () => {
         const parts = mine.find((entry) => entry.name === 'tornadoParts');
         expect(parts.sources).toContain('src/themes/tornado/tornado-world.js');
         const listed = parts.values.replace(/^[^:]*:/, '').split(',').map((name) => name.trim());
-        expect(listed.sort()).toEqual(['bolts', 'debris', 'funnel', 'ground', 'motes', 'props', 'sky', 'wheat']);
+        expect(listed.sort()).toEqual(['air', 'bolts', 'debris', 'funnel', 'ground', 'motes', 'props', 'sky', 'wheat']);
     });
 
     it('uses the WebGL2 backend of the node renderer when there is no GPU', async () => {

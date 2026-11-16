@@ -771,7 +771,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — verdant-hills',
         description: 'Set the share of the Verdant Hills sky that lies under cloud.',
         values: 'Number from 0 to 1; the light rig keeps it within 0.02–0.9.',
-        defaultValue: '0.25.',
+        defaultValue: 'The weather\'s own: 0.22 on the kite day.',
         example: 'cover=0.4',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
@@ -1109,8 +1109,9 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'void-ember, voltage-storm, waves, winter, wolfhour, wolfhour-lunar-sigil',
         description: 'Replay a gameplay reaction in the selected preview.',
         values: 'Effect-specific cue, commonly lock, clear, combo, quad, twist, perfect or levelUp (Koi '
-            + 'Pond, Star Cradle, Serenity Warp, Stellar Drift, Stellar Velocity and Void Ember: lock, '
-            + 'drop, clear, quad, twist, perfect, levelUp; Vesper Chrysalis: lock, drop, clear, quad, '
+            + 'Pond, Star Cradle, Serenity Warp, Stellar Drift and Stellar Velocity: lock, '
+            + 'drop, clear, quad, twist, perfect, levelUp; Void Ember: lock, drop, clear, quad, twist, '
+            + 'spin, perfect, crown, levelUp, over; Vesper Chrysalis: lock, drop, clear, quad, '
             + 'twist, perfect, levelUp, break; Stillwater and Moonlit Greenhouse: lock, drop, clear, '
             + 'quad, twist, perfect, levelUp, break); cue names are case-sensitive in most effects. '
             + 'Summer: lock, drop, clear, double, triple, quad, combo, streak, spin, perfect, level, '
@@ -2838,6 +2839,71 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'aurora',
+        category: 'Playground',
+        scope: 'playground.html — wolfhour',
+        description: 'Hold the northern lights of Wolfhour at a brightness (a howl lights them by itself).',
+        values: 'Number from 0 to 1.6.',
+        defaultValue: '0: only what the hour and the previewed event light.',
+        example: 'aurora=1',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
+        sources: [
+            'src/playground/effects/wolfhour.effect.js',
+        ],
+    },
+    {
+        name: 'reach',
+        category: 'Playground',
+        scope: 'playground.html — wolfhour',
+        description: 'Set how high the northern lights of Wolfhour stand and how many curtains hang.',
+        values: 'Number from 0 (one low ribbon) to 1 (the whole sky).',
+        defaultValue: '0.',
+        example: 'reach=0.6',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
+        sources: [
+            'src/playground/effects/wolfhour.effect.js',
+        ],
+    },
+    {
+        name: 'snow',
+        category: 'Playground',
+        scope: 'playground.html — wolfhour',
+        description: 'Hold the snowfall of Wolfhour at an amount.',
+        values: 'Number from 0 to 1.',
+        defaultValue: '0: only what the hour lets fall.',
+        example: 'snow=0.8',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
+        sources: [
+            'src/playground/effects/wolfhour.effect.js',
+        ],
+    },
+    {
+        name: 'dust',
+        category: 'Playground',
+        scope: 'playground.html — wolfhour',
+        description: 'Hold the diamond dust of Wolfhour (ice crystals glittering in the air) at an amount.',
+        values: 'Number from 0 to 1.5.',
+        defaultValue: '0: only what the hour and the previewed event light.',
+        example: 'dust=1',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
+        sources: [
+            'src/playground/effects/wolfhour.effect.js',
+        ],
+    },
+    {
+        name: 'wind',
+        category: 'Playground',
+        scope: 'playground.html — wolfhour',
+        description: 'Set how hard the wind slants the falling snow of Wolfhour.',
+        values: 'Number from 0 to 1.2.',
+        defaultValue: '0: the wind the hour brings.',
+        example: 'wind=0.5',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
+        sources: [
+            'src/playground/effects/wolfhour.effect.js',
+        ],
+    },
+    {
         name: 'meteor',
         category: 'Playground',
         scope: 'playground.html — wolfhour',
@@ -3058,6 +3124,22 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/ch8-neon.effect.js',
             'src/playground/effects/odyssey-path-beacons.effect.js',
             'src/playground/effects/seam-12-dive.effect.js',
+        ],
+    },
+    {
+        name: 'paint',
+        category: 'Playground',
+        scope: 'playground.html — verdant-hills',
+        description: 'Hold colours of the Verdant Hills light rig over every weather, to try a palette before '
+            + 'it goes into the weather table.',
+        values: 'Semicolon-separated name:r,g,b entries, the name a colour uniform of the light rig '
+            + '(uSunColor, uSkyLight, uBounce, uZenith, uSkyMid, uHorizon, uHorizonSun, uHazeCool, uHazeWarm, '
+            + 'uCloudBase, uCloudTop, uCirrus) and r,g,b linear numbers. Unknown names are ignored.',
+        defaultValue: 'The colours of the weather the day stands in.',
+        example: 'paint=uZenith:0.02,0.1,0.46;uSkyMid:0.06,0.26,0.72',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
+        sources: [
+            'src/playground/effects/verdant-hills.effect.js',
         ],
     },
     {
@@ -4433,10 +4515,12 @@ export const PLAYGROUND_URL_PARAMETERS = [
         category: 'Playground',
         scope: 'playground.html — verdant-hills',
         description: 'Tune the Verdant Hills cumulus.',
-        values: 'Up to five comma-separated numbers, sigma,veil,shade,soft,carve: view-ray extinction per '
-            + 'metre, how fast distance dissolves a cloud, how dark its own shade is, how soft its skin is '
-            + 'and how deep the billows carve. Blank entries keep their values.',
-        defaultValue: '0.008,0.00006,0.68,0.18,1.',
+        values: 'Up to eight comma-separated numbers, sigma,veil,shade,soft,carve,fine,reach,lobe: view-ray '
+            + 'extinction per metre, how fast distance dissolves a cloud, how dark its own shade is, and in '
+            + 'metres how soft its skin is, how far its lobes and its finest billows carve it, how far in '
+            + 'from a heap\'s margin the field counts and how wide one tile of the lobes is. Blank entries '
+            + 'keep their values.',
+        defaultValue: '0.008,0.00004,1,50,900,200,2200,2400.',
         example: 'sky=0.012,,0.6',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
@@ -5180,6 +5264,97 @@ export const PLAYGROUND_URL_PARAMETERS = [
         defaultValue: 'The height of the hour (8.5 at golden hour); 8.5 when only sunAz is given.',
         example: 'sunEl=6',
         notes: 'Use on playground.html with effect=waves.',
+        sources: [
+            'src/playground/effects/waves.effect.js',
+        ],
+    },
+    {
+        name: 'visit',
+        category: 'Playground',
+        scope: 'playground.html — waves',
+        description: 'Send one of the visits the Waves sea makes by itself, now (they also come by the clock).',
+        values: 'ridePod, troughPod, farPod, loneLeap, skitter, turtle, manta, whaleBlow, whaleFluke, whaleBreach, birds.',
+        defaultValue: 'None: only the sea’s own schedule.',
+        example: 'visit=ridePod&visitAge=8',
+        notes: 'Use with effect=waves; visitAge picks the moment, visitSeed another draft.',
+        sources: [
+            'src/playground/effects/waves.effect.js',
+        ],
+    },
+    {
+        name: 'visitAge',
+        category: 'Playground',
+        scope: 'playground.html — waves',
+        description: 'Show the visit named by visit this many seconds after it was sent.',
+        values: 'Seconds, 0 or greater.',
+        defaultValue: '4.',
+        example: 'visitAge=6',
+        notes: 'Use with effect=waves&visit=<name>.',
+        sources: [
+            'src/playground/effects/waves.effect.js',
+        ],
+    },
+    {
+        name: 'visitSeed',
+        category: 'Playground',
+        scope: 'playground.html — waves',
+        description: 'Which draft of the visit named by visit the Waves sea sends (how many, where, which way).',
+        values: 'A whole number.',
+        defaultValue: '1.',
+        example: 'visitSeed=3',
+        notes: 'Use with effect=waves&visit=<name>.',
+        sources: [
+            'src/playground/effects/waves.effect.js',
+        ],
+    },
+    {
+        name: 'sea',
+        category: 'Playground',
+        scope: 'playground.html — waves',
+        description: 'Hold the Waves sea at a place on the wheel of its own states, whatever the clock says.',
+        values: 'Number: 0 glass, 1 offshore wind, 2 heavy, 3 sparkling; between, the two blended (1.5).',
+        defaultValue: 'The wheel turns with the clock (a state every 73 s).',
+        example: 'sea=2',
+        notes: 'Use on playground.html with effect=waves.',
+        sources: [
+            'src/playground/effects/waves.effect.js',
+        ],
+    },
+    {
+        name: 'life',
+        category: 'Playground',
+        scope: 'playground.html — waves',
+        description: 'Switch off the visits the Waves sea makes by itself (what the board or visit= sends still comes).',
+        values: '0 switches them off.',
+        defaultValue: 'On.',
+        example: 'life=0',
+        notes: 'Use on playground.html with effect=waves.',
+        sources: [
+            'src/playground/effects/waves.effect.js',
+        ],
+    },
+    {
+        name: 'look',
+        category: 'Playground',
+        scope: 'playground.html — waves',
+        description: 'Point the Waves lens at a place in the world, with a field of view (for close-ups).',
+        values: 'Three comma-separated metres x,y,z, and an optional vertical field of view in degrees.',
+        defaultValue: 'The theme’s own rig.',
+        example: 'look=-2.5,1.8,-12,24',
+        notes: 'Use with effect=waves; eye=x,y,z also moves the lens.',
+        sources: [
+            'src/playground/effects/waves.effect.js',
+        ],
+    },
+    {
+        name: 'eye',
+        category: 'Playground',
+        scope: 'playground.html — waves',
+        description: 'With look: stand the Waves lens somewhere else.',
+        values: 'Three comma-separated metres x,y,z.',
+        defaultValue: 'The rider’s eye in the tube.',
+        example: 'eye=0,2,4&look=0,1,-10',
+        notes: 'Use with effect=waves&look=<x,y,z>.',
         sources: [
             'src/playground/effects/waves.effect.js',
         ],
@@ -6326,11 +6501,51 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'visitor',
         category: 'Playground',
         scope: 'playground.html — halcyon-apex',
-        description: 'Fly one of the visitors (the UFOs) over the sanctuary.',
-        values: 'saucer, halcyon, triangle, mothership, orbs or capsule.',
-        defaultValue: 'Off: the schedule alone (one about once a minute, the first some fifteen seconds in).',
-        example: 'visitor=triangle',
-        notes: 'Use on playground.html with effect=halcyon-apex.',
+        description: 'Fly one sortie of the skyfarers (the craft the sanctuary draws) over it.',
+        values: 'Far: lane, convoy, ark. Mid: flyby, orbit, chase, glide, haul, string. Hero: skim, loop, spire, ray, hang, '
+            + 'rite, trio, dock, saucer, halcyon, orbs, capsule. Called by the board: salute, crown.',
+        defaultValue: 'Off: the three streams of traffic alone (the first hero some fifteen seconds in).',
+        example: 'visitor=skim',
+        notes: 'Use on playground.html with effect=halcyon-apex. Live (no t=) it flies again and again.',
+        sources: [
+            'src/playground/effects/halcyon-apex.effect.js',
+        ],
+    },
+    {
+        name: 'visitorSeed',
+        category: 'Playground',
+        scope: 'playground.html — halcyon-apex',
+        description: 'The seed a sortie called with visitor= draws its numbers from (side, height, how many, formation).',
+        values: 'A whole number from 1.',
+        defaultValue: '1',
+        example: 'visitorSeed=4',
+        notes: 'Use on playground.html with effect=halcyon-apex and visitor=.',
+        sources: [
+            'src/playground/effects/halcyon-apex.effect.js',
+        ],
+    },
+    {
+        name: 'traffic',
+        category: 'Playground',
+        scope: 'playground.html — halcyon-apex',
+        description: 'Scheduled traffic in the sky.',
+        values: '0 empties the sky of everything but what visitor= and the board call.',
+        defaultValue: 'On.',
+        example: 'traffic=0',
+        notes: 'Use on playground.html with effect=halcyon-apex: a capture of one event or one sortie.',
+        sources: [
+            'src/playground/effects/halcyon-apex.effect.js',
+        ],
+    },
+    {
+        name: 'zoom',
+        category: 'Playground',
+        scope: 'playground.html — halcyon-apex',
+        description: 'Turn the capture camera for a close look at a hull.',
+        values: '<az>,<el>,<fov>: degrees right and up of the rest aim and the lens; or ship,<fov> to follow the called sortie\'s leader.',
+        defaultValue: 'Off: the theme\'s own rig.',
+        example: 'zoom=ship,12',
+        notes: 'Use on playground.html with effect=halcyon-apex. The world still composes for the rest camera.',
         sources: [
             'src/playground/effects/halcyon-apex.effect.js',
         ],
@@ -6339,7 +6554,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'visitorAge',
         category: 'Playground',
         scope: 'playground.html — halcyon-apex',
-        description: 'With t=, how many seconds into its route the visitor is shown.',
+        description: 'With t=, how many seconds into its flight the sortie is shown.',
         values: 'Seconds (number).',
         defaultValue: '4',
         example: 'visitorAge=10',
@@ -6393,5 +6608,56 @@ export const PLAYGROUND_URL_PARAMETERS = [
         example: `${name}=${value}`,
         notes: 'Use on playground.html with effect=fall; t=<s> seeks the squirrel’s day deterministically.',
         sources: ['src/playground/effects/fall.effect.js'],
+    })),
+    // Tornado: the storm's own clocks, each held still for a capture.
+    ...[
+        [
+            'kind',
+            'Hold the funnel on one of its kinds: 0 cone, 1 stovepipe, 2 wedge, 3 elephant trunk, 4 rope, '
+                + '5 aloft (off the ground, under the wall cloud).',
+            'Number on the circle of six kinds; a fraction is on the way to the next.',
+            'Not held: the clock turns the kinds, one every 47 seconds.',
+            '2',
+        ],
+        [
+            'weather',
+            'Hold the weather round the storm (where the rain core hangs, how wide the bright gap is, the '
+                + 'mammatus under the anvil) at one second of its clocks.',
+            'Seconds ≥ 0.',
+            'Not held: the weather follows t.',
+            '120',
+        ],
+        [
+            'squall',
+            'Hold the rain over the lens.',
+            '0 (none) to 1 (a squall at its heaviest).',
+            'Not held: a squall crosses every 167 seconds.',
+            '1',
+        ],
+        [
+            'roam',
+            'Hold the funnel’s travel across the field (nearer and further, side to side) at one second.',
+            'Seconds ≥ 0.',
+            'Not held: the funnel roams with t (not at all before 16 s).',
+            '200',
+        ],
+        [
+            'meshes',
+            'Draw only the named meshes (finer than parts=): sky, ground, wheat, poles, body, wall, veil, skirt, '
+                + 'child, twin, ground-dust, dust-front, debris, chaff, bursts, rain, motes, launch, bolts.',
+            'Comma-separated mesh names, with or without the tornado- prefix.',
+            'All meshes.',
+            'wall,sky,ground',
+        ],
+    ].map(([name, description, values, defaultValue, value]) => ({
+        name,
+        category: 'Playground',
+        scope: 'playground.html — tornado',
+        description,
+        values,
+        defaultValue,
+        example: `${name}=${value}`,
+        notes: 'Use on playground.html with effect=tornado.',
+        sources: ['src/playground/effects/tornado.effect.js'],
     })),
 ];

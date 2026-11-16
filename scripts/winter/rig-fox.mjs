@@ -15,8 +15,8 @@
  *               partly to its thigh, the ruff partly to the head
  *     coat      four numbers a vertex, stored as its colour: how far along the tail it is, how
  *               long its fur is there, how dark it is painted (nose, eyes, the hollows of the
- *               ears), and how much of the sky it sees (an occlusion bake: the belly, the insides
- *               of the legs, the throat)
+ *               ears, the pads of its paws), and how much of the sky it sees (an occlusion bake:
+ *               the belly, the insides of the legs, the throat)
  *
  * No clips are written: the theme animates the skeleton itself (winter-fox-rig.js).
  *
@@ -52,7 +52,7 @@ const ASSET = join(ROOT, 'src', 'themes', 'winter', 'assets', 'arctic-fox.glb');
 const MODEL_SCRIPT = join(ROOT, 'scripts', 'blender', 'winter_arctic_fox.py');
 const BLENDER = 'C:\\Program Files\\Blender Foundation\\Blender 5.2\\blender.exe';
 /** Stamped into the asset. */
-const RIG_VERSION = 3;
+const RIG_VERSION = 4;
 
 const smooth = (a, b, x) => {
     const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
@@ -247,20 +247,24 @@ function coat(pos, nor, sees) {
         const toEye = Math.hypot(ax - EYE[0], y - EYE[1], (z - EYE[2]) * 0.9);
         const forward = nor[i * 3 + 2];
         const hollow = smooth(0.565, 0.6, y) * smooth(0.25, 0.7, forward) * 0.45;
+        // (The pads under its paws: seen when a paw is lifted or it rolls on its back.)
+        const pad = (1 - smooth(0.004, 0.012, y)) * smooth(0.5, 0.9, -nor[i * 3 + 1]) * 0.9;
         const dark = Math.max(
             1 - smooth(NOSE_SIZE * 0.55, NOSE_SIZE, toNose),
             1 - smooth(EYE_SIZE * 0.5, EYE_SIZE, toEye),
             hollow * onHead,
+            pad,
         );
 
-        // Fur: short on the paws and up the legs, shorter still on the muzzle and the ears, a
-        // ruff on the neck and chest, long under the belly and longest on the tail.
-        const leg = smooth(0.03, 0.2, y);
+        // Fur: short on the paws and close up the legs (a leg under long fur is a post), shorter
+        // still on the muzzle and the ears, a ruff on the neck and chest, long under the belly
+        // and longest on the tail.
+        const leg = smooth(0.05, 0.25, y);
         const muzzle = smooth(1.25, 1.6, neck.u) * onHead;
         const face = smooth(0.95, 1.3, neck.u) * onHead;
         const ear = smooth(0.57, 0.61, y) * onHead;
         const ruff = smooth(-0.35, 0.3, neck.u) * (1 - smooth(0.8, 1.15, neck.u)) * smooth(0.24, 0.34, y);
-        let length = 0.3 + 0.7 * leg;
+        let length = 0.17 + 0.83 * leg;
         length *= 1 + 0.4 * ruff;
         length *= 1 - 0.45 * face;
         length *= 1 - 0.6 * muzzle;
