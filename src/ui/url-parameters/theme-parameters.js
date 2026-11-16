@@ -101,7 +101,7 @@ const captureThemes = [
         'halcyonApex',
         'Halcyon Apex',
         'sky, ranges, islets, flora, water, site, siteLey, dial, dialLey, crystals, halos, '
-        + 'upfall, beads, motes, birds, visitors, visitorLights, sparks, beacons, wisps, beams'],
+        + 'upfall, beads, motes, birds, visitors, visitorTrails, visitorLights, sparks, beacons, bursts, wisps, beams'],
 
     ['high-coast',
         'highCoast',
@@ -200,7 +200,7 @@ const captureThemes = [
     ['tornado',
         'tornado',
         'Tornado',
-        'sky, ground, wheat, props, funnel, debris, motes, bolts'],
+        'sky, ground, wheat, props, funnel, debris, air, motes, bolts'],
 
     ['vesper-chrysalis',
         'vesperChrysalis',
@@ -210,7 +210,8 @@ const captureThemes = [
     ['void-ember',
         'voidEmber',
         'Void Ember',
-        'star, world, boulders, stones, gravel, sky, ring, corona, loops, wind, sparks, comets, shells, beams',
+        'star, world, moon, boulders, stones, gravel, sky, meteors, wanderer, ring, corona, aura, loops, wind, '
+            + 'sparks, comets, shells, beams',
         'rocks also names all three classes of stone (boulders, stones, gravel).'],
 
     ['voltage-storm',
@@ -218,9 +219,9 @@ const captureThemes = [
         'Voltage Storm',
         'sky, water, towers, towerMirror, boltMirror, glows, bolts, sparks, rain'],
 
-    ['waves', 'waves', 'Waves', 'sky, water, dolphins, mist, rain, spray, foam'],
+    ['waves', 'waves', 'Waves', 'sky, water, life, mist, rain, spray, foam'],
 
-    ['winter', 'winter', 'Winter', 'sky, ground, trees, prints, snow, dust, sparks, beams, fox, spirit, bear'],
+    ['winter', 'winter', 'Winter', 'sky, ground, trees, prints, meteors, mist, snow, dust, devil, sparks, beams, fox, spirit, bear'],
 ];
 // A row may end with a note on its parts (an alias the world accepts beside the listed names).
 const captureEntries = captureThemes.flatMap(([id, prefix, label, parts, partsNote = '']) => [

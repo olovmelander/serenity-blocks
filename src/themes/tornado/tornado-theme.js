@@ -23,8 +23,10 @@
  * funnel lets everything go); a back-to-back brings channels down either side of the funnel;
  * the heat of play (shared/gameplay-surge.js) winds the whole storm up to a fever; a twist
  * spins it up;
- * a new level turns the hour (golden hour, ember dusk, green sky, blue hour), which also turns
- * by itself, slowly, with the clock.
+ * a new level turns the hour (golden hour, ember dusk, green sky, blue hour, storm night, first
+ * light), which also turns by itself, slowly, with the clock; and the storm lives by itself
+ * besides (the funnel's kinds, its travel, the weather: tornado-world.js). The end of a run draws
+ * the funnel up off the field; the next run brings it down.
  *
  * Content lives in TornadoWorld (tornado-world.js), shared with the playground effect
  * src/playground/effects/tornado.effect.js, so what is iterated there ships. This class
@@ -44,8 +46,8 @@
  * stack renders. update() still runs every frame, before the post stack renders (the picture is
  * drawn from what it wrote), and once when the scene is built.
  *
- * Warm: the funnel parks its satellite vortices and dust front until a long chain or a big
- * clear. createScene() draws them once through the post stack (warmParkedDrawables) so that
+ * Warm: the funnel parks its satellite vortices, its dust front and a twist's twin until they
+ * are called for, and the air its rain until a squall. createScene() draws them once through the post stack (warmParkedDrawables) so that
  * moment builds no pipelines; the scene pass has one output.
  */
 
@@ -402,7 +404,11 @@ export default class TornadoTheme extends BaseTheme {
             }),
         );
         this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
-        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+        this.registerEventListener(window, 'gameOver', () => {
+            this.resetSession();
+            // The run is over: the funnel is drawn up and the storm waits for the next one.
+            this.world?.endRun?.();
+        });
 
         const resetPointer = () => {
             this.pointer.x = 0;
@@ -557,7 +563,11 @@ export default class TornadoTheme extends BaseTheme {
         this.modeManager = manager;
         const relayout = () => this.scheduleLayoutReads();
         this.eventUnsubscribers.push(
-            manager.on('modeStarted', relayout),
+            manager.on('modeStarted', () => {
+                relayout();
+                // A new run: the funnel comes down onto the field.
+                this.world?.beginRun?.();
+            }),
             manager.on('modeActivated', relayout),
             manager.on('modeStopped', () => this.resetSession()),
         );
@@ -677,10 +687,14 @@ export default class TornadoTheme extends BaseTheme {
         return !!(this.world && this.renderer && this.scene && this.camera);
     }
 
-    /** The satellite vortices of a long chain and the dust front of a big clear: parked until then. */
+    /**
+     * The satellite vortices of a long chain, the dust front of a big clear, the twin of a twist
+     * and the rain of a squall: parked until then.
+     */
     getWarmupRoots() {
         const funnel = this.world?.funnel;
-        return funnel ? [...(funnel.children || []), funnel.front].filter(Boolean) : [];
+        if (!funnel) return [];
+        return [...(funnel.children || []), funnel.front, funnel.twin, this.world?.air?.rain].filter(Boolean);
     }
 
     /** Single-output scene pass: the manager's bare prewarm compileAsync has nothing to poison. */

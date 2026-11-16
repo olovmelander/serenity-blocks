@@ -120,11 +120,7 @@ const WEATHER = Object.freeze([
     Object.freeze({
         rest: 0.4, play: 0.7, shake: 0.3, shelter: 0, look: 0.8,
     }),
-    // long gold: the evening lamb races; the ewes graze hard
-    Object.freeze({
-        rest: 0.12, play: 2.2, shake: 0.4, shelter: 0, look: 0.9,
-    }),
-    // showers coming: bunched, backs to the wind, no play
+    // storm light: bunched, backs to the wind, no play
     Object.freeze({
         rest: 0, play: 0.25, shake: 0.6, shelter: 1, look: 1.5,
     }),
@@ -132,7 +128,22 @@ const WEATHER = Object.freeze([
     Object.freeze({
         rest: 0.02, play: 1.3, shake: 3.5, shelter: 0, look: 1,
     }),
+    // long gold: the evening lamb races; the ewes graze hard
+    Object.freeze({
+        rest: 0.12, play: 2.2, shake: 0.4, shelter: 0, look: 0.9,
+    }),
+    // afterglow: most of the flock down for the night, the rest grazing quietly
+    Object.freeze({
+        rest: 0.6, play: 0.2, shake: 0.2, shelter: 0, look: 0.7,
+    }),
+    // morning mist: up and grazing, the dew shaken off, the lambs waking
+    Object.freeze({
+        rest: 0.1, play: 0.9, shake: 1.6, shelter: 0, look: 1.1,
+    }),
 ]);
+
+/** Where 'after the rain' stands among the weathers: the flock shakes its fleeces dry when it comes. */
+const AFTER_THE_RAIN = 3;
 
 /** The day's weather `phase` as a blend of WEATHER rows (filled into `out`). */
 function weatherAt(phase, out) {
@@ -871,7 +882,7 @@ export class VerdantHillsFlock {
         this.settledWas = settled;
         // After the rain they shake the wet out of their fleeces.
         if (this.weather.index !== this.weatherWas) {
-            if (this.weather.index === 4 && this.weatherWas >= 0) {
+            if (this.weather.index === AFTER_THE_RAIN && this.weatherWas >= 0) {
                 this.sheep.forEach((s) => {
                     // eslint-disable-next-line no-param-reassign
                     s.shakeAt = this.time + 2 + this.rand() * 40;

@@ -23,7 +23,15 @@
  *            the cloud flickers more often. When the chain ends the funnel UNWINDS: every
  *            ribbon it holds climbs off into the cloud, oldest first, and the storm breathes out.
  *   levelUp  the hour turns one step (the light also turns by itself, one hour every
- *            HOUR_SECONDS: golden hour → ember dusk → green sky → blue hour → round again).
+ *            HOUR_SECONDS: golden hour → ember dusk → green sky → blue hour → storm night →
+ *            first light → round again); the deck races, a band of sun runs in to the lens.
+ *   twist    a twin funnel comes down in open sky, touches the field and is drawn up again.
+ *   endRun   the funnel lets go of the ground and waits under the wall cloud; the first piece
+ *            of the next run brings it down (beginRun).
+ *
+ * The storm lives by itself too (tornado-core.js stageAt, weatherAt): the funnel goes through
+ * its kinds (cone, stovepipe, wedge, elephant trunk, rope, aloft), travels nearer and further,
+ * the rain core drifts, the gap breathes, mammatus comes and goes, a squall crosses the lens.
  *
  * Every answer accumulates (shared/swell.js: two quads are more than one, a weak answer never
  * cuts a strong one's light), and the heat of play (shared/gameplay-surge.js) winds the whole
@@ -42,6 +50,7 @@ import { flashScale } from '../../utils/photosensitivity.js';
 import {
     HOUR_SECONDS,
     PALETTES,
+    STAGE_SECONDS,
     TAU,
     WORLD,
     approach,
@@ -49,14 +58,19 @@ import {
     clamp01,
     furyFor,
     hexToLinear,
+    lerp,
     mulberry32,
     paletteAt,
     smooth01,
+    stageAt,
+    weatherAt,
 } from './tornado-core.js';
 import { tierFor } from './tornado-quality.js';
 import {
-    BOLTS, FLASHES, FLIGHTS, RIBBONS, RINGS, createNoiseTextureSteps, createUniforms,
+    AIR_BOX, BOLTS, BURSTS, DRIFT_WRAP, FLASHES, FLIGHTS, RAIN_BOX, RIBBONS, RINGS, createNoiseTextureSteps,
+    createUniforms,
 } from './tornado-tsl.js';
+import { createAir } from './tornado-air.js';
 import { createSky } from './tornado-sky.js';
 import { createFunnel } from './tornado-funnel.js';
 import { createFieldSteps } from './tornado-field.js';
@@ -80,7 +94,7 @@ export function fovForAspect(aspect) {
     return Math.min(74, (Math.atan(Math.max(wide, need)) * 360) / Math.PI);
 }
 
-const PARTS = ['sky', 'ground', 'wheat', 'props', 'funnel', 'debris', 'motes', 'bolts'];
+const PARTS = ['sky', 'ground', 'wheat', 'props', 'funnel', 'debris', 'air', 'motes', 'bolts'];
 
 /** The settings' own values at which the live controls leave the scene as authored. */
 export const LIVE_REFERENCE = Object.freeze({
@@ -115,6 +129,18 @@ const DEFAULT_SPARK = Object.freeze([1.0, 0.72, 0.32]);
 const STRIKE_SLOTS = Object.freeze([0.05, 0.12, 0.19, 0.27, 0.34, 0.66, 0.73, 0.8, 0.9, 0.95]);
 /** Seconds the storm holds its own lightning after a perfect clear: the release is the moment. */
 const CROWN_QUIET = 3.5;
+/** A perfect clear: seconds the funnel hangs off the ground and the deck stays parted. */
+const CROWN_LIFT = 4.2;
+const CROWN_OPEN = 4.8;
+/** The end of a run: the funnel stays up this long at most (a new run brings it down at once). */
+const OVER_LIFT = 90;
+/** The quad's ring of light through the deck, the level's band of sun, the surge up the funnel. */
+const PULSE_SECONDS = 3.4;
+const SWEEP_SECONDS = 4.6;
+const SURGE_SECONDS = 1.7;
+/** Metres a second the air at the lens moves at rest, and how fast the rain falls. */
+const AIR_SPEED = 8;
+const RAIN_SPEED = 12;
 
 /**
  * A stroke's light: the first stroke and two return strokes; under Reduce flashing one stroke
@@ -149,6 +175,7 @@ export class TornadoWorld {
         this.funnel = null;
         this.field = null;
         this.fx = null;
+        this.air = null;
         this.reduced = false;
         this.aspect = 16 / 9;
         this.bufferHeight = 1080;
@@ -208,6 +235,14 @@ export class TornadoWorld {
         this.exhale = new Swell({
             attack: 0.4, release: 3, ceiling: 1, knee: 0.8,
         });
+        /** A new level: the deck races for a moment, as if the hour were wound on by hand. */
+        this.lapse = new Swell({
+            attack: 0.45, release: 1.3, ceiling: 1.2, knee: 0.9,
+        });
+        /** A hard drop: a gust at the lens (more chaff in the air, faster). */
+        this.gale = new Swell({
+            attack: 0.12, release: 1.1, ceiling: 1.4, knee: 1,
+        });
         /**
          * How hot play runs (src/themes/shared/gameplay-surge.js), on the storm's clock. Calm: the
          * storm as it was. Warm: the inflow quickens, the field leans in, the cloud flickers more.
@@ -228,6 +263,21 @@ export class TornadoWorld {
         this.storm = 0;
         /** How far a perfect clear has opened the gap (the hour's light lifts with it). */
         this.gapLight = 0;
+        /** The storm's own life: the funnel's kind by the clock, and the weather round it. */
+        this.stage = {};
+        this.weather = {};
+        /** How far down the funnel reaches now (1 = on the ground). */
+        this.touch = 1;
+        /** Where the funnel stands on screen before it roams (compose), and how far it has roamed. */
+        this.funnelHomeX = 0.2;
+        /**
+         * Captures: hold one of the storm's own clocks still (null = it runs). `kind` is a place
+         * on the wheel of funnel kinds (0 cone … 5 aloft, fractions on the way), `weather` a time
+         * for the weather's clocks, `squall` rain over the lens 0..1, `roam` a time for the travel.
+         */
+        this.holds = {
+            kind: null, weather: null, squall: null, roam: null,
+        };
         this.resetState(0);
     }
 
@@ -241,7 +291,7 @@ export class TornadoWorld {
         this.level = 1;
         this.hourShift = 0;
         [this.swell, this.spinKick, this.raysBoost, this.shake, this.kick, this.lensFlash, this.glint,
-            this.gapOpen, this.exhale, this.surge].forEach((envelope) => envelope.reset());
+            this.gapOpen, this.exhale, this.lapse, this.gale, this.surge].forEach((envelope) => envelope.reset());
         this.heat.punch = 0;
         this.heat.level = 0;
         this.heat.fever = 0;
@@ -251,6 +301,37 @@ export class TornadoWorld {
         this.chargeHeld = 0;
         this.storm = 0;
         this.gapLight = 0;
+        /**
+         * The funnel lets go of the ground (a perfect clear, the end of a run) and comes down
+         * again: when it let go, and how long it stays up.
+         */
+        this.liftAt = -100;
+        this.liftHold = 0;
+        this.touch = stageAt(this.holds?.kind == null ? time : (this.holds.kind + 0.001) * STAGE_SECONDS, this.stage).touch;
+        /** A perfect clear parts the deck: when, and for how long. */
+        this.openAt = -100;
+        this.openHold = 0;
+        /** The quad's ring through the deck, the level's band of sun, the surge up the funnel. */
+        this.pulseAt = -100;
+        this.pulsePower = 0;
+        this.sweepAt = -100;
+        this.surgeAt = -100;
+        this.surgePower = 0;
+        /** The twin of a twist: where it hangs, when it came down, how long it stays, its girth. */
+        this.twin = {
+            at: -100, hold: 0, x: 400, z: -700, girth: 1, down: false,
+        };
+        /** The run is over: the funnel stays up and the storm dims until the next one starts. */
+        this.over = false;
+        this.dim = 0;
+        /** The air at the lens: how far the inflow has carried it and the rain has fallen. */
+        this.airDrift = [
+            (((-0.42 * time * AIR_SPEED) % (DRIFT_WRAP * AIR_BOX.wide)) + DRIFT_WRAP * AIR_BOX.wide) % (DRIFT_WRAP * AIR_BOX.wide),
+            (time * 0.5) % (DRIFT_WRAP * AIR_BOX.tall),
+            (((-0.91 * time * AIR_SPEED) % (DRIFT_WRAP * AIR_BOX.deep)) + DRIFT_WRAP * AIR_BOX.deep) % (DRIFT_WRAP * AIR_BOX.deep),
+        ];
+        this.rainFall = (time * RAIN_SPEED) % (DRIFT_WRAP * RAIN_BOX.tall);
+        this.bursts = Array.from({ length: BURSTS }, () => ({ on: false, t0: -100 }));
         /** The dust front: when it left the foot, and how much dust it carries (fed by more quads). */
         this.shockAt = -100;
         this.shockPower = 1;
@@ -286,7 +367,7 @@ export class TornadoWorld {
         }));
         this.bolts = Array.from({ length: BOLTS }, () => ({ on: false, t0: 0, power: 1 }));
         this.cursor = {
-            ribbon: 0, ring: 0, flash: 0, flight: 0, bolt: 0,
+            ribbon: 0, ring: 0, flash: 0, flight: 0, bolt: 0, burst: 0, crawl: 0,
         };
         const { u } = this;
         u.tables.flights.forEach((row) => row.set(0, 0, 0, -100));
@@ -294,6 +375,7 @@ export class TornadoWorld {
         u.tables.rings.forEach((row) => row.set(0, 0, 0, 0));
         u.tables.flashes.forEach((row) => row.set(0, 0, 0, 1));
         u.tables.bolts.forEach((row) => row.set(0, 0, 0, 0));
+        u.tables.bursts.forEach((row) => row.set(0, 0, 0, -100));
         // The clocks, as if the storm had blown at rest since zero.
         u.spin.value = time * 0.11;
         u.flow.value = time * 0.16;
@@ -324,12 +406,14 @@ export class TornadoWorld {
         yield 'field';
         this.funnel = createFunnel({ u, noise: this.noise, tier });
         this.fx = createFx({ u, tier });
+        this.air = createAir({ u, noise: this.noise, tier });
         this.addPart('sky', this.sky.object);
         this.addPart('ground', this.field.ground);
         this.addPart('wheat', this.field.wheat);
         this.addPart('props', this.field.poles);
         this.addPart('funnel', this.funnel.object);
         this.addPart('debris', this.funnel.debris);
+        this.addPart('air', this.air.object);
         this.addPart('motes', this.fx.motes);
         this.addPart('bolts', this.fx.bolts);
         this.scene.add(this.root);
@@ -417,6 +501,25 @@ export class TornadoWorld {
         });
     }
 
+    /**
+     * The run is over: the funnel lets go of the ground and is drawn up under the wall cloud,
+     * and the storm dims and waits. It comes down again when the next run begins.
+     */
+    endRun() {
+        this.resetSession();
+        this.over = true;
+        this.lift(OVER_LIFT);
+        this.exhale.hit(1, this.time);
+    }
+
+    /** A new run begins: the funnel comes down onto the field. */
+    beginRun() {
+        if (!this.over) return;
+        this.over = false;
+        // Whatever is left of the lift is let go now: it descends from where it hangs.
+        if (this.liftNow() > 0) this.liftHold = Math.max(0, this.time - this.liftAt);
+    }
+
     bindCamera(camera) {
         this._camera = camera;
         this.updatePixelAngle();
@@ -454,14 +557,67 @@ export class TornadoWorld {
         const card = cardUnion(this.layoutNow());
         const free = card ? card.x0 : 0.3;
         this.funnelBeside = free > 0.15;
-        this.funnelScreenX = this.funnelBeside ? clamp(free * 0.52, 0.1, 0.3) : 0.5;
-        const az = this.azimuthOf(this.funnelScreenX);
-        this.axisTarget.set(Math.sin(az) * WORLD.distance, -Math.cos(az) * WORLD.distance);
+        this.funnelHomeX = this.funnelBeside ? clamp(free * 0.52, 0.1, 0.3) : 0.5;
+        // The tramlines run toward where the funnel stands.
+        const home = this.azimuthOf(this.funnelHomeX);
+        this.u.tram.value.set(Math.sin(home), -Math.cos(home));
+        this.roam();
         this.sunAzimuth = this.azimuthOf(this.funnelBeside ? WORLD.sunScreenX : 0.84);
         if (!this.composed || this.capture) {
             this.u.axis.value.set(this.axisTarget.x, 0, this.axisTarget.y);
             this.composed = true;
         }
+    }
+
+    /**
+     * The tornado travels: by the clock it wanders across the free space it stands in and comes
+     * nearer and goes further off (never over the card; nothing before the first quarter minute,
+     * where the scene is as composed). Sets where it stands on screen and where its anchor goes.
+     */
+    roam() {
+        const t = this.holds.roam === null ? this.time : this.holds.roam;
+        // Eased in after the first quarter minute: a session opens on the scene as composed.
+        const k = (this.reduced ? 0.3 : 1) * smooth01((t - 16) / 40);
+        const across = this.funnelBeside
+            ? k * (0.03 * Math.sin(t * 0.0173 - 0.2) + 0.012 * Math.sin(t * 0.0411 - 0.49))
+            : 0;
+        const room = Math.max(0, Math.min(this.funnelHomeX - 0.07, 0.36 - this.funnelHomeX, 0.045));
+        this.funnelScreenX = this.funnelHomeX + clamp(across, -room, room);
+        const out = WORLD.distance * (1 + k * (0.19 * Math.sin(t * 0.0127 - 0.15) + 0.06 * Math.sin(t * 0.0319 - 0.38)));
+        const az = this.azimuthOf(this.funnelScreenX);
+        this.axisTarget.set(Math.sin(az) * out, -Math.cos(az) * out);
+    }
+
+    /** How far the funnel is drawn up off the ground by a lift now, 0..1. */
+    liftNow() {
+        const age = this.time - this.liftAt;
+        if (age < 0 || age > this.liftHold + 6) return 0;
+        return smooth01(age / 1.6) * (1 - smooth01((age - this.liftHold) / 2.6));
+    }
+
+    /** The funnel lets go of the ground for `hold` seconds, then comes down again. */
+    lift(hold) {
+        // One already up is held up longer, never dropped and raised again.
+        if (this.liftNow() > 0.5) {
+            this.liftHold = Math.max(this.liftHold, this.time - this.liftAt + hold);
+            return;
+        }
+        this.liftAt = this.time;
+        this.liftHold = hold;
+    }
+
+    /**
+     * Touchdown: the funnel has come down onto the field. A ring of dust and laid wheat runs out
+     * from its foot, the skirt is thrown up, and the ground shakes a little.
+     */
+    touchdown() {
+        const { axis } = this.u;
+        this.ring(axis.value.x, axis.value.z, this._palette.dust || [0.4, 0.3, 0.2], {
+            speed: 70, life: 2.4, strength: 0.9, width: 14,
+        });
+        this.swell.hit(0.3, this.time);
+        this.spinKick.hit(0.5, this.time);
+        if (!this.reduced) this.shake.hit(0.004, this.time);
     }
 
     // ── camera ──────────────────────────────────────────────────────────────────
@@ -664,14 +820,7 @@ export class TornadoWorld {
         const out = range ?? 520 + this.rand() * 900;
         const x = Math.sin(az) * out;
         const z = -Math.cos(az) * out;
-        let index = 0;
-        for (let i = 1; i < BOLTS; i += 1) {
-            const b = this.bolts[i];
-            const best = this.bolts[index];
-            const spent = !b.on || this.time - b.t0 > 0.6;
-            const bestSpent = !best.on || this.time - best.t0 > 0.6;
-            if ((spent && !bestSpent) || (spent === bestSpent && b.t0 < best.t0)) index = i;
-        }
+        const index = this.freeChannel();
         this.cursor.bolt += 1;
         this.fx?.strike(index, x, z, this.rand);
         const bolt = this.bolts[index];
@@ -683,6 +832,121 @@ export class TornadoWorld {
             speed: 95, life: 1.3, strength: 0.75 * power, width: 9,
         });
         this.lensFlash.hit(lens * power, this.time);
+    }
+
+    /** The channel whose stroke is over, else the oldest: a channel never jumps mid-stroke. */
+    freeChannel() {
+        let index = 0;
+        for (let i = 1; i < BOLTS; i += 1) {
+            const b = this.bolts[i];
+            const best = this.bolts[index];
+            const spent = !b.on || this.time - b.t0 > 0.6;
+            const bestSpent = !best.on || this.time - best.t0 > 0.6;
+            if ((spent && !bestSpent) || (spent === bestSpent && b.t0 < best.t0)) index = i;
+        }
+        return index;
+    }
+
+    /**
+     * A crawler: lightning that runs along under the cloud base, out over the lens, and lights
+     * the deck as it goes. From over (x, z) (default: the storm's heart), heading `turn`.
+     */
+    crawl(power = 1, {
+        x = null, z = null, turn = null, reach = null,
+    } = {}) {
+        const { axis } = this.u;
+        const fromX = x ?? axis.value.x + (this.rand() - 0.5) * 260;
+        const fromZ = z ?? axis.value.z + (this.rand() - 0.2) * 260;
+        // Toward the lens and across the frame: where the deck is overhead and seen from below.
+        const heading = turn ?? (this.rand() * 2.1 - 0.3);
+        const long = reach ?? 620 + this.rand() * 520;
+        const index = this.freeChannel();
+        this.cursor.crawl += 1;
+        this.fx?.crawl(index, fromX, fromZ, heading, long, this.rand);
+        const bolt = this.bolts[index];
+        bolt.on = true;
+        bolt.t0 = this.time;
+        bolt.power = power * 0.85;
+        this.flash(fromX + Math.cos(heading) * long * 0.45, fromZ + Math.sin(heading) * long * 0.45, 0.8 * power, 520, 0.6);
+    }
+
+    /**
+     * How hard a landing piece throws its straw, given what is already in the air: the first
+     * hard drop after a pause slams the field (straw and dust), and a quick hand's drops throw
+     * less and less (straw alone). One every second piled the dust into a bank at the card's foot.
+     */
+    burstPower(base) {
+        let crowd = 0;
+        for (let i = 0; i < BURSTS; i += 1) if (this.time - this.bursts[i].t0 < 1.8) crowd += 1;
+        return Math.max(0.3, base / (1 + 0.45 * crowd));
+    }
+
+    /**
+     * Straw thrown up out of the wheat at (x, z), in the piece's colour, to one `side` (−1 left,
+     * 1 right): `power` 0.5 a lock, 1.6 a hard drop.
+     */
+    burst(x, z, rgb, power, side = 1) {
+        // The slot whose straw has been longest in the air.
+        let slot = 0;
+        for (let i = 1; i < BURSTS; i += 1) if (this.bursts[i].t0 < this.bursts[slot].t0) slot = i;
+        this.cursor.burst += 1;
+        this.bursts[slot].on = true;
+        this.bursts[slot].t0 = this.time;
+        const { tables } = this.u;
+        tables.bursts[slot * 2].set(x, 0.85, z, this.time);
+        tables.bursts[slot * 2 + 1].set(rgb[0], rgb[1], rgb[2], side < 0 ? -power : power);
+    }
+
+    /**
+     * A twist calls down a twin: a rope of its own out in open sky, on the far side of the card
+     * from the funnel where there is room. It writhes down, touches the field (a ring of dust
+     * and laid wheat) and is drawn back up. `lines` cleared with the twist keep it down longer.
+     */
+    callTwin(lines = 0) {
+        const { twin } = this;
+        const t = this.time;
+        // One still down is held, and fattened: never a second rope beside it.
+        const age = t - twin.at;
+        if (age >= 0 && age < twin.hold + 0.6) {
+            twin.hold = Math.max(twin.hold, age + 1.6 + 0.7 * lines);
+            twin.girth = Math.min(1.9, twin.girth + 0.25);
+            return;
+        }
+        const layout = this.layoutNow();
+        const card = cardUnion(layout);
+        const { hud } = layout;
+        // Columns of open sky, the far side of the card first; never on the sun.
+        const sun = this.funnelBeside ? WORLD.sunScreenX : 0.84;
+        const tries = [0.79, 0.93, 0.72, 0.64, 0.36, 0.31, 0.06];
+        let sx = null;
+        for (let i = 0; i < tries.length && sx === null; i += 1) {
+            if (this.openSky(tries[i], card, hud) && Math.abs(tries[i] - sun) > 0.055) sx = tries[i];
+        }
+        if (sx === null) sx = this.funnelScreenX > 0.5 ? 0.12 : 0.9;
+        const az = this.azimuthOf(sx);
+        const out = 560 + this.rand() * 160;
+        twin.x = Math.sin(az) * out;
+        twin.z = -Math.cos(az) * out;
+        twin.at = t;
+        twin.hold = 2.2 + 0.8 * lines;
+        twin.girth = 1 + 0.22 * lines;
+        twin.down = false;
+        this.flash(twin.x, twin.z, 0.7, 320, 0.7);
+    }
+
+    /** How far down the twin reaches now, 0..1. */
+    twinNow() {
+        const { twin } = this;
+        const age = this.time - twin.at;
+        if (age < 0 || age > twin.hold + 2) return 0;
+        return smooth01(age / 0.85) * (1 - smooth01((age - twin.hold) / 1.4));
+    }
+
+    /** How far a perfect clear has parted the deck now, 0..1. */
+    openNow() {
+        const age = this.time - this.openAt;
+        if (age < 0 || age > this.openHold + 4) return 0;
+        return smooth01(age / 1.2) * (1 - smooth01((age - this.openHold) / 3.4));
     }
 
     onLock(c = {}) {
@@ -734,11 +998,28 @@ export class TornadoWorld {
             : {
                 speed: 26, life: 1.7, strength: 0.9, width: 1.3,
             });
+        // Straw out of the wheat at the card's feet (what goes up behind the card is never seen):
+        // a little for a lock, on the piece's own side; for a hard drop the field is slammed and
+        // both feet throw (a gust at the lens with it).
+        const low = Math.min(0.985, card.y1 + 0.015);
+        const left = (c.u ?? 0.5) < 0.5;
+        const thrown = this.burstPower(hard ? 1.6 : 0.55);
+        if (hard || left) {
+            const at0 = this.screenToGround(card.x0 - 0.012, low, 40);
+            this.burst(at0.x, at0.z, rgb, thrown, -1);
+        }
+        if (hard || !left) {
+            const at1 = this.screenToGround(card.x1 + 0.012, low, 40);
+            this.burst(at1.x, at1.z, rgb, thrown, 1);
+        }
         if (hard) {
             this.shake.hit(0.004, this.time);
             this.kick.hit(0.5, this.time);
+            this.gale.hit(0.7, this.time);
             this.flash(this.u.axis.value.x, this.u.axis.value.z, 0.5, 380, 0.4);
         }
+        // A piece played is a run under way: the funnel comes down for it.
+        this.beginRun();
         this.surge.lock(c, this.time);
     }
 
@@ -870,7 +1151,8 @@ export class TornadoWorld {
             this.crown();
             return;
         }
-        const big = lines >= 4 || c.perfect === true;
+        const quad = lines >= 4;
+        const big = quad || c.perfect === true;
         const difficult = lines >= 4 || c.twist === true;
         if (c.b2b === true) this.b2bStreak += 1;
         else if (!difficult && depth === 1) this.b2bStreak = 0;
@@ -904,15 +1186,37 @@ export class TornadoWorld {
         for (let i = 0; i < strikes; i += 1) {
             this.schedule(t + 0.1 + i * gap, () => this.strike(power));
         }
-        if (c.twist) this.spinKick.hit(1, t);
+        if (c.twist) {
+            this.spinKick.hit(1, t);
+            this.callTwin(lines);
+        }
         this.kick.hit(0.3 + lines * 0.15 + 0.08 * wave, t);
+        // Three lines: lightning runs through the deck overhead as well as down to the field.
+        if (lines === 3) this.schedule(t + 0.16, () => this.crawl(1));
         if (big) {
-            this.swell.hit(1, t);
-            this.dustFront(1);
-            this.shake.hit(0.009, t);
+            this.swell.hit(quad ? 1 : 0.5, t);
             this.raysBoost.hit(0.9, t);
         } else {
             this.swell.hit(0.16 * lines * (1 + 0.35 * wave), t);
+        }
+        if (quad) {
+            this.dustFront(1);
+            this.shake.hit(0.009, t);
+            this.gale.hit(1, t);
+            // Four lines: the storm's heart beats. A ring of light runs out through the base in
+            // the colours the funnel holds, and crawlers fan out from over the funnel across
+            // the whole sky, one after another.
+            if (t - this.pulseAt > 0.5) {
+                this.pulseAt = t + 0.08;
+                this.pulsePower = 1;
+            } else {
+                this.pulsePower = Math.min(1.6, this.pulsePower + 0.4);
+            }
+            const fan = this.flashK < 1 ? 2 : 4;
+            for (let i = 0; i < fan; i += 1) {
+                const turn = -0.35 + (i / Math.max(1, fan - 1)) * 2.1 + (this.rand() - 0.5) * 0.25;
+                this.schedule(t + 0.22 + i * 0.13, () => this.crawl(1.15, { turn, reach: 800 + this.rand() * 420 }));
+            }
         }
         if (c.b2b === true) this.backToBack();
         // A perfect clear in the same frame as its rows: the crown on top of the clear.
@@ -945,6 +1249,9 @@ export class TornadoWorld {
         this.spinKick.hit(0.8 + 0.2 * streak, t);
         this.glint.hit(0.6 + 0.15 * streak, t);
         this.raysBoost.hit(0.5, t);
+        // The funnel takes the strike: light runs up it from the foot, through all it holds.
+        this.surgeAt = t + 0.1;
+        this.surgePower = 1 + 0.2 * streak;
     }
 
     /**
@@ -967,7 +1274,15 @@ export class TornadoWorld {
         this.spinKick.hit(1.2, t);
         this.swell.hit(0.4, t);
         this.flash(axis.value.x, axis.value.z, 1.2, 950, 1.5);
-        this.dustFront(0.8);
+        // The storm is spent. The funnel lets go of the ground and is drawn up, the deck parts
+        // from the sun's side and light floods the field, the wind drops; then the wall cloud
+        // lowers a new funnel onto the field (touchdown). No dust front: this is the calm.
+        this.lift(CROWN_LIFT);
+        if (this.openNow() > 0.5) this.openHold = Math.max(this.openHold, t - this.openAt + CROWN_OPEN);
+        else {
+            this.openAt = t;
+            this.openHold = CROWN_OPEN;
+        }
         this.chainSpent = true;
         this.furyTarget = 0;
         this.quietUntil = t + CROWN_QUIET;
@@ -981,6 +1296,7 @@ export class TornadoWorld {
         this.glint.hit(0.35, t);
         this.kick.hit(0.2, t);
         this.flash(axis.value.x, axis.value.z, 0.5, 380, 0.5);
+        this.callTwin(0);
     }
 
     /**
@@ -1006,6 +1322,11 @@ export class TornadoWorld {
         this.schedule(this.time + 0.05, () => this.strike(1.2));
         this.raysBoost.hit(1.2, this.time);
         this.swell.hit(0.35, this.time);
+        // The hour is wound on: the deck races for a moment, a band of sun runs in across the
+        // field from the horizon to the lens, and lightning crawls the base.
+        this.lapse.hit(1, this.time);
+        this.sweepAt = this.time + 0.15;
+        this.schedule(this.time + 0.4, () => this.crawl(0.9));
         this.surge.levelUp(this.time);
     }
 
@@ -1219,46 +1540,146 @@ export class TornadoWorld {
         this.storm = storm;
         const { speed } = live;
 
-        // The clocks.
+        // The clocks. A new level winds the deck on for a moment (the clocks only run faster:
+        // nothing jumps); while a perfect clear holds the deck parted the wind drops.
+        const lapse = this.reduced ? 0 : this.lapse.valueAt(time);
+        const open = this.openNow();
+        const still = 1 - 0.6 * open;
+        const gale = this.gale.valueAt(time);
         u.time.value = time;
         u.spin.value += dt * speed * 0.11 * (1 + storm * 1.5 + swell * 0.8 + spin * 3 + fever * 0.8 * calm);
         u.flow.value += dt * speed * 0.16 * (1 + storm * 1.2 + swell + fever * 0.6 * calm);
-        u.wind.value += dt * speed * (1 + storm * 0.6 + fever * 0.3 * calm);
-        u.deck.value += (dt * speed * (1 + storm * 1.3 + fever * 0.6 * calm)) / 46;
-        u.deckTurn.value += dt * speed * 0.006 * (1 + storm + fever * 0.5 * calm);
-        this.gustTravel += dt * speed * 14 * (1 + storm * 1.2 + fever * 0.6 * calm);
+        u.wind.value += dt * speed * (1 + storm * 0.6 + fever * 0.3 * calm) * still;
+        u.deck.value += (dt * speed * (1 + storm * 1.3 + fever * 0.6 * calm + lapse * 9)) / 46;
+        u.deckTurn.value += dt * speed * 0.006 * (1 + storm + fever * 0.5 * calm + lapse * 14);
+        this.gustTravel += dt * speed * 14 * (1 + storm * 1.2 + fever * 0.6 * calm + gale) * still;
         // The gust field travels toward the funnel: the inflow.
         const ax = u.axis.value.x;
         const az = u.axis.value.z;
         const reach = Math.hypot(ax, az) || 1;
         const travelled = this.gustTravel / 95;
         u.gust.value.set((-ax / reach) * travelled, (-az / reach) * travelled);
+        // The air at the lens rides the same inflow (wrapped: tornado-air.js), and the rain falls.
+        const inX = ax / reach;
+        const inZ = az / reach;
+        u.inflow.value.set(inX, inZ);
+        const airSpeed = AIR_SPEED * speed * (1 + storm * 1.6 + gale * 1.3 + fever * 0.6 * calm) * still;
+        const drift = this.airDrift;
+        const wrapX = DRIFT_WRAP * AIR_BOX.wide;
+        const wrapY = DRIFT_WRAP * AIR_BOX.tall;
+        const wrapZ = DRIFT_WRAP * AIR_BOX.deep;
+        drift[0] = (((drift[0] + inX * airSpeed * dt) % wrapX) + wrapX) % wrapX;
+        drift[1] = (drift[1] + (0.5 + storm) * dt) % wrapY;
+        drift[2] = (((drift[2] + inZ * airSpeed * dt) % wrapZ) + wrapZ) % wrapZ;
+        u.airDrift.value.set(drift[0], drift[1], drift[2]);
+        this.rainFall = (this.rainFall + RAIN_SPEED * (1 + 0.3 * storm) * dt) % (DRIFT_WRAP * RAIN_BOX.tall);
+        u.rainFall.value = this.rainFall;
+        u.air.value.set(clamp01(0.2 + 0.5 * storm + 0.4 * gale), 0.3 + 0.55 * storm + 0.4 * gale, 3 + 5 * storm + 2 * gale, 0);
 
-        // The funnel's shape: thicker with the chain and every clear, a wedge in a fever.
+        // The funnel's kind, by the storm's own clock (a cone, a stovepipe, a wedge, a rope, aloft),
+        // and on top of it the play: thicker with the chain and every clear, a wedge in a fever.
+        const { holds } = this;
+        const stage = stageAt(holds.kind === null ? time : (holds.kind + 0.001) * STAGE_SECONDS, this.stage);
+        const weather = weatherAt(holds.weather === null ? time : holds.weather, this.weather);
+        if (holds.squall !== null) weather.squall = holds.squall;
         u.fury.value = storm;
+        // How far down it reaches: the kind's own share, planted by a storm that is wound up
+        // (a chain never plays to a funnel that hangs in the air), drawn up by a lift.
+        const lift = this.liftNow();
+        const planted = lerp(stage.touch, 1, smooth01(storm * 2.5));
+        const touch = clamp(planted * (1 - 0.94 * lift), 0.05, 1);
+        if (touch >= 0.97 && this.touch < 0.97 && dt > 0) this.touchdown();
+        this.touch = touch;
+        u.touch.value = touch;
+        const contact = smooth01((touch - 0.8) / 0.2);
+        u.contact.value = contact;
         if (this.funnel) {
-            const circling = storm > 0.28;
+            const circling = storm > 0.28 && contact > 0.05;
             for (let i = 0; i < this.funnel.children.length; i += 1) this.funnel.children[i].visible = circling;
         }
-        u.girth.value = live.girth * (1 + storm + swell * 0.7 + fever * 0.3);
-        u.flare.value = live.flare * (1 + storm * 0.25 + swell * 0.3 + fever * 0.15);
-        u.rope.value = 20 * live.rope * (1 - storm * 0.4) * (this.reduced ? 0.4 : 1);
+        u.girth.value = Math.min(3.4, live.girth * stage.girth * (1 + storm + swell * 0.7 + fever * 0.3))
+            * (1 - 0.45 * lift);
+        u.taper.value = stage.taper * (1 + storm * 0.2 + swell * 0.3);
+        u.flare.value = live.flare * stage.flare * (1 + storm * 0.25 + swell * 0.3 + fever * 0.15);
+        u.rope.value = 20 * live.rope * stage.rope * (1 - storm * 0.4) * (1 + 0.8 * lift) * (this.reduced ? 0.4 : 1);
         const wander = this.reduced ? 0.3 : 1;
         u.lean.value.set(
             Math.sin(u.wind.value * 0.07) * 46 * wander + live.lean * 120,
             Math.cos(u.wind.value * 0.05) * 28 * wander,
         );
+        this.roam();
         const k = this.capture ? 1 : approach(1.2, dt);
         u.axis.value.x += (this.axisTarget.x - u.axis.value.x) * k;
         u.axis.value.z += (this.axisTarget.y - u.axis.value.z) * k;
+        // The weather round the storm.
+        u.weather.value.set(weather.rainAt, weather.rain * (1 + 0.3 * storm), weather.edge, weather.mammatus);
+        u.squall.value = Math.min(1, weather.squall * (1 - 0.7 * this.gapLight) + 0.35 * fever) * (1 - open);
+        if (this.air) this.air.rain.visible = u.squall.value > 0.01;
+        u.pools.value.set(time * 0.0031, time * 0.0017);
 
         // The light of the hour; a perfect clear opens the gap to full light.
         this.gapLight = this.gapOpen.valueAt(time);
         const palette = this.applyPalette();
+        // The run is over: the storm dims and waits (eased; a new run lights it again).
+        this.dim += ((this.over ? 1 : 0) - this.dim) * (this.capture ? 1 : approach(0.5, dt));
         // The shafts through the gap blaze as the storm builds.
-        u.rays.value = 0.32 + this.raysBoost.valueAt(time) + 0.2 * level + 0.35 * fever;
+        u.rays.value = (0.32 + this.raysBoost.valueAt(time) + 0.2 * level + 0.35 * fever + 0.25 * open) * (1 - 0.5 * this.dim);
         const glint = this.glint.valueAt(time);
         u.release.value = glint;
+
+        // A perfect clear has parted the deck.
+        u.open.value = open;
+        // Four lines: the ring of light through the base, in the colours the funnel holds (else
+        // the hour's own rim light).
+        const pulseAge = time - this.pulseAt;
+        if (pulseAge >= 0 && pulseAge < PULSE_SECONDS) {
+            const left = 1 - pulseAge / PULSE_SECONDS;
+            u.pulse.value.set(
+                90 + 560 * pulseAge,
+                this.pulsePower * left * left * 0.6 * (0.4 + 0.6 * this.flashK),
+                80 + 60 * pulseAge,
+                0,
+            );
+            const held = clamp01(this.chargeHeld / 2);
+            const rim = palette.cloudRim;
+            const own = this.chargeRgb;
+            u.pulseRgb.value.set(
+                lerp(rim[0], own[0] * 1.3, held),
+                lerp(rim[1], own[1] * 1.3, held),
+                lerp(rim[2], own[2] * 1.3, held),
+            );
+        } else {
+            u.pulse.value.set(0, 0, 80, 0);
+        }
+        // A new level: the band of sun, in from the horizon at one pace on the screen (its range
+        // falls by e-folds) and through the stand at the lens.
+        const sweepAge = time - this.sweepAt;
+        if (sweepAge >= 0 && sweepAge < SWEEP_SECONDS) {
+            const out = 2600 * Math.exp(-1.5 * sweepAge);
+            const light = smooth01(sweepAge / 0.35) * (1 - smooth01((sweepAge - SWEEP_SECONDS + 1.2) / 1.2));
+            u.sweep.value.set(out, light, out * 0.2 + 2.5, 0);
+        } else {
+            u.sweep.value.set(0, 0, 60, 0);
+        }
+        // A back-to-back: light climbs the funnel from its foot.
+        const surgeAge = time - this.surgeAt;
+        if (surgeAge >= 0 && surgeAge < SURGE_SECONDS) {
+            u.surge.value.set(surgeAge * 0.85 - 0.05, this.surgePower * Math.exp(-surgeAge * 1.2) * (0.5 + 0.5 * this.flashK));
+        } else {
+            u.surge.value.set(0, 0);
+        }
+        // A twist's twin: down out of the base, onto the field, and up again.
+        const { twin } = this;
+        const twinTouch = this.twinNow();
+        u.twin.value.set(twin.x, twin.z, twinTouch, twin.girth);
+        if (this.funnel) this.funnel.twin.visible = twinTouch > 0.004;
+        if (twinTouch >= 0.96 && !twin.down) {
+            twin.down = true;
+            this.ring(twin.x, twin.z, palette.dust, {
+                speed: 46, life: 1.8, strength: 0.8, width: 7,
+            });
+            if (!this.reduced) this.shake.hit(0.002, time);
+        }
 
         // The dust front of a big clear (more dust if more big clears fed it).
         const sinceShock = time - this.shockAt;
@@ -1293,7 +1714,12 @@ export class TornadoWorld {
             const spread = 380 + this.rand() * 320;
             const life = 0.35 + this.rand() * 0.45;
             this.flash(ax + Math.cos(turn) * out, az + Math.sin(turn) * out * 0.6, power, spread, life, true);
-            const rate = palette.flicker * (1 + storm * 5 + fever * 10 * this.flashK);
+            // In the dark hours the lightning also crawls the base (a crawler is a flash: not
+            // under Reduce flashing, and not while a perfect clear holds the storm quiet).
+            if (this.flashK >= 1 && time >= this.quietUntil && this.rand() < Math.min(0.5, palette.flicker * 1.1)) {
+                this.crawl(0.6 + 0.3 * this.rand());
+            }
+            const rate = palette.flicker * (1 + storm * 5 + fever * 10 * this.flashK) * (1 - 0.7 * this.dim);
             this.nextFlicker = time + Math.max(0.25, -Math.log(1 - this.rand() * 0.999) / Math.max(0.01, rate));
         }
         // A fever: the storm brings its own lightning down, as often as every second or so.
@@ -1324,7 +1750,8 @@ export class TornadoWorld {
             + 0.12 * this.gapLight;
         // The iris closes on a stroke (as far as a flash may: Reduce flashing) and a little as the
         // storm heats, so its colours stay deep and its darks dark.
-        post.exposure = 1 - 0.22 * clamp01(lens) * this.flashK - 0.06 * Math.max(0, level - 0.2) - 0.05 * fever;
+        post.exposure = 1 - 0.22 * clamp01(lens) * this.flashK - 0.06 * Math.max(0, level - 0.2) - 0.05 * fever
+            - 0.1 * this.dim - 0.1 * open;
     }
 
     getPostState() {
@@ -1345,6 +1772,13 @@ export class TornadoWorld {
             level: this.level,
             hour,
             hourTurn: this._palette.turn ?? 0,
+            // The funnel's kind by the storm's own clock, and how far down it reaches.
+            kind: this.stage.name ?? null,
+            touch: this.touch,
+            // A perfect clear's parted deck, a twist's twin, and whether the run is over.
+            open: this.u.open.value,
+            twin: this.u.twin.value.z,
+            over: this.over,
             ribbons: held,
             funnelScreenX: this.funnelScreenX,
             funnelBeside: this.funnelBeside,
@@ -1362,6 +1796,7 @@ export class TornadoWorld {
         this.field?.dispose();
         this.funnel?.dispose();
         this.fx?.dispose();
+        this.air?.dispose();
         this.noise?.dispose();
         this.root.clear();
         this.parts.clear();
@@ -1369,6 +1804,7 @@ export class TornadoWorld {
         this.field = null;
         this.funnel = null;
         this.fx = null;
+        this.air = null;
         this.noise = null;
     }
 }

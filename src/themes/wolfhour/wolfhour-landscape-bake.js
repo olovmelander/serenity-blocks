@@ -29,7 +29,7 @@ export const WOLFHOUR_PALETTE = Object.freeze({
     rockShade: Object.freeze([0.0075, 0.01, 0.018]),
 });
 /** Moonlight's contrast: a face's lit share is smoothstep(LIT_RAMP[0], LIT_RAMP[1], N·L). */
-export const LIT_RAMP = Object.freeze([0.28, 0.98]);
+export const LIT_RAMP = Object.freeze([0.4, 0.86]);
 export const GRANITE_SIZE = 512;
 /** The seed the theme's landscape is built with. */
 export const LANDSCAPE_SEED = 73013;
@@ -238,19 +238,29 @@ function crestHeight(points, x) {
     return a[1] + (b[1] - a[1]) * shaped;
 }
 
-/** Broad distorted granite masses break radial symmetry into uneven fractured walls. */
-function graniteRelief(x, y, seed) {
-    const warpX = x + (noise(x * 0.005, y * 0.004, seed + 37) - 0.5) * 95;
-    const warpY = y + (noise(x * 0.004, y * 0.006, seed + 193) - 0.5) * 82;
-    const broad = ridges(warpX * 0.011 + warpY * 0.009, warpY * 0.015 - warpX * 0.006, seed);
-    const fractured = ridges(warpX * 0.021 - warpY * 0.018, warpY * 0.031 + warpX * 0.014, seed + 449);
-    // Distorted diagonal planes create long broken ledges, not vertical repeated fans.
-    const ledges = Math.abs(noise(
-        warpX * 0.014 + warpY * 0.009,
-        warpY * 0.024 - warpX * 0.005,
-        seed + 683,
-    ) * 2 - 1);
-    return broad * 0.88 + fractured * 0.43 + (1 - ledges) * 0.24;
+/** A field's crest lines: 1 along the line where the noise crosses its middle, falling away to either side. */
+function crestLine(a, b, seed) {
+    return 1 - Math.abs(noise(a, b, seed) * 2 - 1);
+}
+
+/**
+ * A wall's relief `below` its crest (0..1, about 0.6 on average): ribs that run down the fall
+ * line, as a mountain face is cut. A few great buttresses to a massif, each a sharp crest with broad
+ * flanks, so a face breaks into planes the moon lights on one side and leaves in shade on the
+ * other; flutes between them, finer and shorter; a last fine ribbing. The ribs wander a little and
+ * now and then join or part (the crest lines of a field stretched down the wall).
+ */
+function fallLineRelief(x, below, seed) {
+    const wander = (noise(x * 0.0031, below * 0.0042, seed + 37) - 0.5) * 130
+        + (noise(x * 0.011, below * 0.009, seed + 61) - 0.5) * 36;
+    const u = x + wander;
+    const buttress = crestLine(u / 300 + 0.37, below / 2400, seed + 193) ** 1.25;
+    const flute = crestLine(u / 92, below / 820 + 3.1, seed + 449) ** 1.15;
+    const fine = crestLine(u / 36 + 1.7, below / 360, seed + 683);
+    // Ledges: now and then a band of cliff crosses the ribs, stepping the wall out.
+    const step = below / 210 + (noise(u * 0.004, 7.7, seed + 911) - 0.5) * 1.6;
+    const ledge = smoothstep(0.55, 0.9, crestLine(u / 1300 + 5.3, step, seed + 977));
+    return buttress * 0.56 + flute * 0.27 + fine * 0.11 + ledge * 0.12;
 }
 
 /**
@@ -341,7 +351,7 @@ export function computeRange(rangeIndex, qualityScale, seed) {
             const flowX = x + drift * down;
             const crest = crestHeight(config.crest, flowX);
             const baseY = crest - config.drop * down;
-            const ridge = graniteRelief(flowX, baseY, terrainSeed);
+            const ridge = fallLineRelief(flowX, config.drop * down, terrainSeed);
             const branch = ridges(flowX * 0.042, baseY * 0.049, terrainSeed + 113);
             const serration = (noise(x * 0.082, 2.3, terrainSeed) - 0.5) * 15 * (1 - t);
             const erosion = (branch - 0.36) * config.relief * 0.08 * reliefMask;
@@ -356,8 +366,8 @@ export function computeRange(rangeIndex, qualityScale, seed) {
             // Extruding each silhouette downhill reproduced its tiny notches as long
             // vertical folds even after all the radial noise had been turned down.
             positions[index * 3 + 2] = config.z + ((crestCeiling - baseY) / config.drop) * config.depth
-                + (ridge - 0.42) * config.relief * reliefMask
-                + (branch - 0.32) * config.relief * 0.10 * reliefMask;
+                + (ridge - 0.6) * config.relief * 1.35 * reliefMask
+                + (branch - 0.32) * config.relief * 0.06 * reliefMask;
             drainage[index] = ridge;
             crestAt[index] = crest;
         }
@@ -422,25 +432,42 @@ export function computeRange(rangeIndex, qualityScale, seed) {
         const normalZ = normals[index * 3 + 2];
         const facing = Math.max(0, normalX * MOON_LIGHT.x + normalY * MOON_LIGHT.y + normalZ * MOON_LIGHT.z);
         const strata = ridges(x * 0.071 + y * 0.038, y * 0.083, terrainSeed + 337);
+        // The snow line is no line: snow runs far down the gullies in tongues and gives out
+        // early on the ribs between them.
+        const reliefHere = drainage[index];
+        const reach = config.hero ? 1 : 0.3;
+        const tongue = ((1 - smoothstep(0.1, 0.5, reliefHere)) * 240 - smoothstep(0.6, 0.95, reliefHere) * 90) * reach;
+        // (And it stands higher on one reach of a wall than the next.)
+        const lie = (noise(x * 0.0021 + 9.3, 1.7, terrainSeed + 1409) - 0.5) * 260 * reach;
         const altitude = smoothstep(
-            config.snowLine - 110,
-            config.snowLine + 150,
-            y + (strata - 0.4) * 130,
+            config.snowLine - 110 - 150 * reach,
+            config.snowLine + 150 + 60 * reach,
+            y + (strata - 0.4) * 130 + tongue + lie,
         );
         // High on the walls snow is the ground and the rock shows as thin ribs running down
         // the fall line (the crests of a ridged field stretched vertically). Lower down rock is
         // the ground and the snow lies in couloirs (a second such field). Faces that turn up
         // toward the sky hold a little more.
+        // Snow lies where the wall lets it: in the gullies between the ribs and on the faces that
+        // lean back; the steep flanks of the ribs and their wind-scoured crests show the rock, more
+        // of it lower down. High on the walls nearly everything is white.
         const below = Math.max(0, crestAt[index] - y);
-        const hold = smoothstep(0.18, 0.62, normalY);
-        const high = 1 - smoothstep(110, 520, below);
-        const warp = (noise(x * 0.004, y * 0.003, terrainSeed + 1601) - 0.5) * 2.2;
-        const fall = ridges(x * 0.017 + warp, y * 0.0036 + x * 0.0012, terrainSeed + 1777);
-        const chute = ridges(x * 0.021 - warp * 0.6, y * 0.0042 - x * 0.0015, terrainSeed + 1907);
-        const ribRock = smoothstep(0.52, 0.72, fall);
-        const couloir = smoothstep(0.5, 0.7, chute);
-        const potential = altitude * (0.3 + high * 0.48 + (hold - 0.5) * 0.24
-            - ribRock * 0.42 * (0.6 + high * 0.4) + couloir * 0.38 * (1 - high));
+        const high = 1 - smoothstep(110, 560, below);
+        const relief = drainage[index];
+        const steep = smoothstep(0.2, 0.52, Math.abs(normalX)) * (1 - smoothstep(0.35, 0.75, normalY));
+        const scoured = smoothstep(0.8, 0.96, relief);
+        const gully = 1 - smoothstep(0.12, 0.46, relief);
+        const leanBack = smoothstep(0.2, 0.6, normalY);
+        // Bands of cliff too steep to hold it step across the wall, broken and uneven.
+        const shelf = y / 190 + (noise(x * 0.005, 3.3, terrainSeed + 811) - 0.5) * 1.8;
+        const band = smoothstep(0.62, 0.86, crestLine(x / 1500 + 2.1, shelf, terrainSeed + 853))
+            * smoothstep(0.3, 0.6, noise(x * 0.012, y * 0.004, terrainSeed + 877));
+        // Whole reaches of a wall are plastered white by the wind; others it has stripped.
+        const stripped = smoothstep(0.38, 0.7, noise(x * 0.0037 + 4.1, y * 0.0031, terrainSeed + 1213));
+        const bare = 0.3 + 0.7 * stripped;
+        const potential = altitude * (0.5 + high * 0.26 + gully * 0.26 + (leanBack - 0.5) * 0.18
+            - steep * (0.7 - high * 0.3) * bare - scoured * (0.4 - high * 0.3) * bare
+            - band * (0.5 - high * 0.2) * bare);
         // The fragment shader cuts the snow line at 0.5 with fine noise; keep the baked
         // potential spread around it so edges stay crisp but follow the sculpted relief.
         surface[index * 2] = clamp01(potential * 1.08 + 0.02);
@@ -449,9 +476,10 @@ export function computeRange(rangeIndex, qualityScale, seed) {
         // lit and shaded colours per pixel, from the normal). Cover composition: the left massif
         // faces the moon; the right massif's inner wall falls into the shadow of the left one
         // and only its outer shoulder catches the light. Crevices darken the granite.
-        const crevice = 0.62 + smoothstep(0.12, 0.5, drainage[index]) * 0.38;
+        const crevice = 0.62 + smoothstep(0.12, 0.5, relief) * 0.38;
         const shade = config.hero && x > 0 ? 0.24 + smoothstep(520, 820, x) * 0.76 : 1;
-        light[index * 2] = config.light * shade;
+        // (The gullies keep a little less of the light than the ribs between them.)
+        light[index * 2] = config.light * shade * (0.84 + smoothstep(0.08, 0.5, relief) * 0.16);
         light[index * 2 + 1] = config.light * shade * crevice;
 
         // Air: a distance haze floor for the far ranges, then valley mist pooling below every

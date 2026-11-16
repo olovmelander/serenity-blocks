@@ -318,11 +318,13 @@ describe.each(TIERS)('void ember shaders at %s', (quality) => {
         expect(star).toHaveLength(2);
         // The lattice reads by tier, the impacts' loop, and the one plates fetch: a handful.
         star.forEach(({ label, out }) => expect(fetches(out.fragment), label).toBeLessThanOrEqual(8));
-        // The fire in the stones' fractures reads the same atlas, on the tiers that have cracks.
+        // A boulder's or a stone's grain and fractures are ONE read of the lattice, on the tiers
+        // that have cracks; gravel (a few pixels a piece, thousands of them) never reads.
         const stones = built.filter((b) => /^VoidEmberRocks_/.test(b.name));
-        expect(stones.length).toBeGreaterThan(0);
+        expect(stones).toHaveLength(6);
         stones.forEach(({ name, label, out }) => {
-            expect(fetches(out.fragment), `${name} ${label}`).toBe(QUALITY[quality].cracks ? 1 : 0);
+            const reads = QUALITY[quality].cracks && name !== 'VoidEmberRocks_gravel' ? 1 : 0;
+            expect(fetches(out.fragment), `${name} ${label}`).toBe(reads);
         });
     });
 

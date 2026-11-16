@@ -8,7 +8,8 @@
  *
  * LIGHTNING. A clear calls channels down from the cloud base. A channel is a strip of quads that
  * faces the eye, its points a random walk written when it strikes; its light is one number the
- * world plays (a first stroke and return strokes).
+ * world plays (a first stroke and return strokes). A CRAWLER is the same strip laid out along
+ * under the cloud base instead of down to the ground: lightning that runs through the deck.
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -32,7 +33,9 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
-import { TAU, WORLD, boltPath } from './tornado-core.js';
+import {
+    TAU, WORLD, boltPath, crawlerPath,
+} from './tornado-core.js';
 import {
     BOLTS, FLIGHTS, funnelCentreNode, funnelRadiusNode,
 } from './tornado-tsl.js';
@@ -292,6 +295,21 @@ function createBolts({ u }) {
             positionAttr.needsUpdate = true;
             dirAttr.needsUpdate = true;
         },
+        /** Write channel `slot` as a crawler: from over (x, z), heading `turn`, `reach` metres long. */
+        crawl(slot, x, z, turn, reach, rand) {
+            const first = slot * POINTS;
+            crawlerPath(rand, [x, WORLD.cloudBase * 0.985, z], turn, reach, 0.55, TRUNK, scratch);
+            writeStrip(first, scratch, TRUNK);
+            for (let k = 0; k < 2; k += 1) {
+                const at = Math.floor(TRUNK * (0.18 + rand() * 0.45));
+                const from = [scratch[at * 3], scratch[at * 3 + 1], scratch[at * 3 + 2]];
+                const fork = turn + (k === 0 ? 1 : -1) * (0.45 + rand() * 0.7);
+                crawlerPath(rand, from, fork, reach * (0.28 + rand() * 0.26), 0.75, BRANCH, branch);
+                writeStrip(first + TRUNK + k * BRANCH, branch, BRANCH);
+            }
+            positionAttr.needsUpdate = true;
+            dirAttr.needsUpdate = true;
+        },
         dispose() {
             geometry.dispose();
             material.dispose();
@@ -311,6 +329,7 @@ export function createFx({ u, tier }) {
         motes: sparks,
         bolts: bolts.mesh,
         strike: bolts.strike,
+        crawl: bolts.crawl,
         dispose() {
             [motes, launch].forEach((part) => {
                 part.mesh.geometry.dispose();

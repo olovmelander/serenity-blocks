@@ -30,6 +30,7 @@ import {
     smoothstep,
     uv,
     varying,
+    vec2,
     vec3,
     vec4,
 } from 'three/tsl';
@@ -70,12 +71,25 @@ export function createSnowfall(u, count) {
     const gust = wGust(u, rest);
     const world = rest.add(vec3(gust.x, gust.z.mul(0.25), gust.y).mul(2.6));
     const clip = wClip(world);
-    const metres = heavy.mul(0.036).add(0.019);
+    // (How large the flakes are is the weather's.)
+    const metres = heavy.mul(0.036).add(0.019).mul(u.weather2.x);
     const rawPx = u.pxScale.mul(metres).div(max(clip.w, 0.3));
     // Never smaller than a pixel (they dim instead), never a blob that fills the lens.
     const px = clamp(rawPx, 1.3, u.viewport.y.mul(0.03));
     const half = u.viewport.mul(0.5);
-    material.vertexNode = vec4(clip.xy.add(positionGeometry.xy.mul(px.mul(2.0)).div(half).mul(clip.w)), clip.z, clip.w);
+    // On the wind a flake is a streak along the way it goes (as the eye and a shutter see driven
+    // snow); in still air it is itself.
+    const going = vec3(u.gale.mul(4.2).add(gust.z.mul(5.0)), fall.negate(), u.gale.mul(1.0));
+    const ahead = wClip(world.add(going.mul(0.04)));
+    const sc = clip.xy.div(max(clip.w, 0.3));
+    const heading = ahead.xy.div(max(ahead.w, 0.3)).sub(sc).mul(half);
+    const along = heading.div(max(length(heading), 1e-3));
+    const across = vec2(along.y.negate(), along.x);
+    const driven = smoothstep(0.24, 0.7, u.gale.add(gust.z.mul(0.8)));
+    const stretch = driven.mul(2.6).add(1.0);
+    const streaked = along.mul(positionGeometry.y.mul(stretch)).add(across.mul(positionGeometry.x));
+    const offset = mix(positionGeometry.xy, streaked, driven);
+    material.vertexNode = vec4(clip.xy.add(offset.mul(px.mul(2.0)).div(half).mul(clip.w)), clip.z, clip.w);
 
     const toFlake = normalize(world.sub(cameraPosition));
     const toMoon = max(dot(toFlake, u.moonDir), 0.0);
@@ -86,9 +100,13 @@ export function createSnowfall(u, count) {
     const edge = smoothstep(0.5, 0.4, abs(local.x).div(box.x)).mul(smoothstep(0.5, 0.4, abs(local.z).div(box.z)))
         .mul(smoothstep(0.5, 0.42, abs(local.y).div(box.y)));
     const dim = clamp(rawPx.div(1.3), 0.3, 1.0);
+    // How much of the pool is in the air is the weather's too: each flake has its own place in the
+    // queue, so the snowfall thickens and thins flake by flake, never all at once.
+    const falling = smoothstep(0.0, 0.05, u.weather.x.sub(fract(seed.x.mul(7.31).add(seed.z.mul(3.17)))).add(0.05));
     const vLight = varying(lit.mul(u.breath.mul(0.8).add(0.2)), 'wFlakeLight');
     // (alpha, pixels across, spin)
-    const vShape = varying(vec3(edge.mul(dim), px, seed.z.mul(6.28).add(u.time.mul(seed.x.sub(0.5)).mul(0.9))), 'wFlakeShape');
+    const spin = seed.z.mul(6.28).add(u.time.mul(seed.x.sub(0.5)).mul(0.9));
+    const vShape = varying(vec3(edge.mul(dim).mul(falling), px, spin), 'wFlakeShape');
     material.colorNode = Fn(() => {
         const q = uv().sub(0.5).mul(2.0);
         const d = length(q);
@@ -146,7 +164,9 @@ export function createDust(u, count) {
             .add(u.heat.y.mul(1.2))
             .add(u.heat.z.mul(1.6))));
     // More of it hangs in the air as the fires rise, and as play runs hot.
+    // (In the ice haze the air is full of it whatever play does.)
     const present = smoothstep(0.0, 0.06, u.power.mul(0.75).add(0.3).add(u.surge.mul(0.4)).add(u.heat.x.mul(0.3))
+        .add(u.weather.w.mul(0.6))
         .sub(seed.z));
     const vLight = varying(light.mul(flash.mul(reach).mul(present)).mul(u.breath), 'wDust');
     material.colorNode = Fn(() => {

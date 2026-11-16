@@ -2,19 +2,21 @@
  * Verdant Hills — the weathers of the kite day.
  *
  * The sun does not move: the oak's shade on the hill is drawn once for where it stands. The
- * day's weather does. Five weathers follow one another and come round, each a June day on the
- * downs:
+ * day's weather does, and with it the hour the light reads as. Seven weathers follow one another
+ * and come round, each a June day on the downs:
  *
- *   kite day         fair-weather cumulus in a washed blue sky (the day as it was built, and
- *                    where a session starts)
+ *   kite day         fair-weather cumulus, white on a deep blue sky (where a session starts)
  *   honey afternoon  the light warms to butter, the cumulus build, a creamy horizon
- *   long gold        the light goes gold and the haze honey, the clouds thin and gild
- *   showers coming   the cumulus crowd into slate heaps and their shadows cover the valley; the
- *                    sun breaks through white between them and the greens stand rich
+ *   storm light      the cumulus crowd into indigo heaps with white crowns; the sun comes down
+ *                    between them in shafts and the greens stand rich in its pools
  *   after the rain   rinsed air: a deep blue sky to the horizon, small white heaps, the far
- *                    ridges sharp
+ *                    ridges sharp, and a rainbow standing over the valley
+ *   long gold        the light goes gold and the haze honey, the clouds thin and gild
+ *   afterglow        the sun is down behind the windmill: an orange rim under a violet sky, the
+ *                    first stars, and fireflies over the grass
+ *   morning mist     a pale gold morning with the valley under mist, the hills standing out of it
  *
- * and from the rinsed air back to the kite day. The clock turns them by itself, a weather every
+ * and from the mist back to the kite day. The clock turns them by itself, a weather every
  * VERDANT_HILLS_MOOD_SECONDS, resting a share of that pure before it melts into the next; every
  * level is one weather on from wherever the clock has brought the day. Hot play still clears the
  * air, thins the cumulus and warms the light on top of whichever weather it is.
@@ -24,8 +26,8 @@
  */
 import { meltPalettes, moodDrift, wheelAt } from '../shared/mood-clock.js';
 
-/** Seconds from one weather to the next: about nine minutes for the day to come round. */
-export const VERDANT_HILLS_MOOD_SECONDS = 110;
+/** Seconds from one weather to the next: about twelve minutes for the day to come round. */
+export const VERDANT_HILLS_MOOD_SECONDS = 105;
 /** The share of its period a weather rests, pure, before it melts into the next. */
 export const VERDANT_HILLS_MOOD_HOLD = 0.35;
 
@@ -38,11 +40,22 @@ export const VERDANT_HILLS_MOOD_COLOURS = Object.freeze([
     'sun', 'skyLight', 'bounce', 'zenith', 'skyMid', 'horizon', 'horizonSun', 'hazeCool', 'hazeWarm',
     'cloudBase', 'cloudTop', 'cirrus',
 ]);
-/** And the numbers: the haze density per metre, the share of the sky under cloud, the exposure against rest. */
-export const VERDANT_HILLS_MOOD_SCALARS = Object.freeze(['haze', 'cover', 'exposure']);
+/**
+ * And the numbers: the haze density per metre, the share of the sky under cloud, the exposure
+ * against rest, how much mist lies in the valley (0..1), how far night has come (0..1: the stars
+ * and the fireflies), how brightly the rainbow stands (0..1) and how strongly the sun's shafts
+ * stand in the air between the clouds (0..1).
+ */
+export const VERDANT_HILLS_MOOD_SCALARS = Object.freeze([
+    'haze', 'cover', 'exposure', 'mist', 'night', 'bow', 'beams',
+]);
 
 const mood = (name, values) => Object.freeze({
     name,
+    mist: 0,
+    night: 0,
+    bow: 0,
+    beams: 0,
     ...Object.fromEntries(Object.entries(values).map(([key, value]) => [
         key, Array.isArray(value) ? Object.freeze(value.slice()) : value,
     ])),
@@ -53,86 +66,125 @@ export const VERDANT_HILLS_MOODS = Object.freeze([
         sun: [3.5, 3.2, 2.7],
         skyLight: [0.3, 0.44, 0.66],
         bounce: [0.13, 0.2, 0.07],
-        zenith: [0.035, 0.15, 0.5],
-        skyMid: [0.1, 0.34, 0.74],
-        horizon: [0.42, 0.6, 0.8],
-        horizonSun: [0.86, 0.86, 0.78],
-        hazeCool: [0.24, 0.38, 0.58],
+        zenith: [0.015, 0.08, 0.42],
+        skyMid: [0.045, 0.21, 0.68],
+        horizon: [0.34, 0.56, 0.82],
+        horizonSun: [0.8, 0.84, 0.8],
+        hazeCool: [0.22, 0.37, 0.6],
         hazeWarm: [0.8, 0.76, 0.6],
-        cloudBase: [0.06, 0.08, 0.125],
-        cloudTop: [0.27, 0.33, 0.45],
+        cloudBase: [0.095, 0.133, 0.228],
+        cloudTop: [0.342, 0.418, 0.59],
         cirrus: [0.86, 0.9, 0.96],
-        haze: 0.00016,
-        cover: 0.25,
+        haze: 0.00012,
+        cover: 0.22,
         exposure: 1,
     }),
     mood('honey afternoon', {
-        sun: [3.8, 3.05, 2.0],
-        skyLight: [0.29, 0.42, 0.64],
+        sun: [3.9, 3.05, 1.95],
+        skyLight: [0.29, 0.41, 0.62],
         bounce: [0.16, 0.2, 0.06],
-        zenith: [0.03, 0.14, 0.48],
-        skyMid: [0.09, 0.33, 0.72],
-        horizon: [0.44, 0.6, 0.78],
-        horizonSun: [0.98, 0.92, 0.76],
-        hazeCool: [0.25, 0.37, 0.56],
-        hazeWarm: [0.92, 0.8, 0.58],
-        cloudBase: [0.06, 0.075, 0.115],
-        cloudTop: [0.26, 0.31, 0.44],
-        cirrus: [0.9, 0.91, 0.93],
-        haze: 0.00015,
-        cover: 0.33,
+        zenith: [0.016, 0.08, 0.4],
+        skyMid: [0.05, 0.21, 0.64],
+        horizon: [0.42, 0.56, 0.74],
+        horizonSun: [1.05, 0.92, 0.7],
+        hazeCool: [0.25, 0.36, 0.54],
+        hazeWarm: [0.95, 0.8, 0.55],
+        cloudBase: [0.1, 0.125, 0.2],
+        cloudTop: [0.36, 0.41, 0.55],
+        cirrus: [0.92, 0.91, 0.9],
+        haze: 0.00016,
+        cover: 0.3,
         exposure: 1,
     }),
-    mood('long gold', {
-        sun: [3.95, 2.75, 1.5],
-        skyLight: [0.24, 0.33, 0.58],
-        bounce: [0.17, 0.15, 0.05],
-        zenith: [0.02, 0.09, 0.4],
-        skyMid: [0.07, 0.25, 0.62],
-        horizon: [0.4, 0.5, 0.7],
-        horizonSun: [1.12, 0.9, 0.66],
-        hazeCool: [0.23, 0.3, 0.48],
-        hazeWarm: [0.95, 0.76, 0.52],
-        cloudBase: [0.06, 0.065, 0.11],
-        cloudTop: [0.25, 0.28, 0.44],
-        cirrus: [0.94, 0.9, 0.88],
-        haze: 0.00012,
-        cover: 0.2,
-        exposure: 0.97,
-    }),
-    mood('showers coming', {
-        sun: [2.5, 2.54, 2.5],
-        skyLight: [0.27, 0.35, 0.49],
-        bounce: [0.1, 0.15, 0.06],
-        zenith: [0.05, 0.1, 0.24],
-        skyMid: [0.12, 0.21, 0.4],
-        horizon: [0.34, 0.42, 0.52],
-        horizonSun: [0.6, 0.66, 0.7],
-        hazeCool: [0.2, 0.27, 0.38],
-        hazeWarm: [0.5, 0.54, 0.54],
-        cloudBase: [0.05, 0.06, 0.08],
-        cloudTop: [0.27, 0.3, 0.37],
-        cirrus: [0.62, 0.67, 0.74],
-        haze: 0.00024,
+    mood('storm light', {
+        sun: [3.7, 3.5, 3.1],
+        skyLight: [0.2, 0.29, 0.5],
+        bounce: [0.1, 0.16, 0.06],
+        zenith: [0.012, 0.05, 0.28],
+        skyMid: [0.035, 0.13, 0.44],
+        horizon: [0.24, 0.36, 0.56],
+        horizonSun: [0.72, 0.74, 0.72],
+        hazeCool: [0.16, 0.25, 0.42],
+        hazeWarm: [0.74, 0.72, 0.62],
+        cloudBase: [0.03, 0.055, 0.15],
+        cloudTop: [0.36, 0.43, 0.62],
+        cirrus: [0.5, 0.58, 0.72],
+        haze: 0.00015,
         cover: 0.34,
-        exposure: 1.16,
+        exposure: 1.1,
+        beams: 1,
     }),
     mood('after the rain', {
         sun: [3.6, 3.4, 3.0],
         skyLight: [0.26, 0.44, 0.72],
         bounce: [0.11, 0.21, 0.08],
-        zenith: [0.02, 0.12, 0.5],
-        skyMid: [0.06, 0.3, 0.78],
-        horizon: [0.3, 0.55, 0.82],
-        horizonSun: [0.75, 0.85, 0.88],
+        zenith: [0.012, 0.08, 0.46],
+        skyMid: [0.035, 0.2, 0.74],
+        horizon: [0.26, 0.52, 0.84],
+        horizonSun: [0.7, 0.82, 0.88],
         hazeCool: [0.2, 0.36, 0.6],
         hazeWarm: [0.7, 0.75, 0.68],
-        cloudBase: [0.05, 0.075, 0.12],
-        cloudTop: [0.25, 0.33, 0.48],
+        cloudBase: [0.09, 0.13, 0.23],
+        cloudTop: [0.35, 0.44, 0.64],
         cirrus: [0.84, 0.9, 1.0],
-        haze: 0.00009,
-        cover: 0.18,
+        haze: 0.00007,
+        cover: 0.16,
         exposure: 0.98,
+        bow: 1,
+    }),
+    mood('long gold', {
+        sun: [4.6, 2.75, 1.1],
+        skyLight: [0.2, 0.26, 0.44],
+        bounce: [0.2, 0.15, 0.05],
+        zenith: [0.014, 0.06, 0.34],
+        skyMid: [0.06, 0.19, 0.52],
+        horizon: [0.5, 0.48, 0.56],
+        horizonSun: [1.5, 0.98, 0.52],
+        hazeCool: [0.26, 0.29, 0.42],
+        hazeWarm: [1.15, 0.8, 0.42],
+        cloudBase: [0.11, 0.1, 0.17],
+        cloudTop: [0.42, 0.35, 0.42],
+        cirrus: [1.0, 0.86, 0.72],
+        haze: 0.0002,
+        cover: 0.2,
+        exposure: 0.97,
+        beams: 0.35,
+    }),
+    mood('afterglow', {
+        sun: [1.5, 0.62, 0.3],
+        skyLight: [0.085, 0.12, 0.26],
+        bounce: [0.035, 0.04, 0.035],
+        zenith: [0.006, 0.014, 0.085],
+        skyMid: [0.03, 0.045, 0.17],
+        horizon: [0.2, 0.14, 0.26],
+        horizonSun: [1.7, 0.62, 0.22],
+        hazeCool: [0.07, 0.08, 0.18],
+        hazeWarm: [0.75, 0.34, 0.2],
+        cloudBase: [0.022, 0.024, 0.06],
+        cloudTop: [0.075, 0.06, 0.13],
+        cirrus: [0.85, 0.4, 0.36],
+        haze: 0.00013,
+        cover: 0.18,
+        exposure: 1.22,
+        night: 1,
+    }),
+    mood('morning mist', {
+        sun: [3.3, 2.9, 2.2],
+        skyLight: [0.3, 0.4, 0.56],
+        bounce: [0.12, 0.17, 0.07],
+        zenith: [0.03, 0.12, 0.42],
+        skyMid: [0.14, 0.3, 0.6],
+        horizon: [0.62, 0.66, 0.7],
+        horizonSun: [1.1, 0.98, 0.8],
+        hazeCool: [0.4, 0.48, 0.58],
+        hazeWarm: [0.95, 0.86, 0.68],
+        cloudBase: [0.12, 0.15, 0.22],
+        cloudTop: [0.4, 0.44, 0.56],
+        cirrus: [1.0, 0.92, 0.84],
+        haze: 0.00018,
+        cover: 0.12,
+        exposure: 1,
+        mist: 1,
     }),
 ]);
 

@@ -47,6 +47,8 @@ import * as THREE from 'three/webgpu';
 import {
     ANSWER_DELAY,
     ANSWER_GAP,
+    BOLT_STYLE,
+    BOOM_SPEED,
     DEG,
     FLASH_SLOTS,
     HELD_MAX,
@@ -57,8 +59,10 @@ import {
     RIPPLE_SPEED,
     SHOCK_FADE,
     SHOCK_SLOTS,
+    SHEET_SPEED,
     SHOCK_SPEED,
     STORM,
+    TAU,
     TOWER,
     TOWER_MAX,
     VOLTAGE_STORM_PALETTES,
@@ -72,6 +76,7 @@ import {
     createStormUniforms,
     hash2,
     heldAt,
+    lerp,
     mulberry32,
     paletteAt,
     paletteMix,
@@ -80,7 +85,9 @@ import {
     powerForCombo,
     smooth,
     stormAnchors,
+    stormWeather,
     supportsFloatTargets,
+    vaultBase,
 } from './voltage-storm-tsl.js';
 import { tierFor } from './voltage-storm-quality.js';
 import { createSky } from './voltage-storm-sky.js';
@@ -164,6 +171,16 @@ const RIPPLE_FADE = 0.8;
 const PULSE_CLIMB = 0.3;
 const PULSE_FADE = 2.2;
 
+/** What rain and miles of air make of a far bolt's light (scene-linear). */
+const FAR_BOLT = Object.freeze([1.0, 0.62, 0.5]);
+/** A perfect clear's eye: seconds it takes to open, stands open, and takes to close again. */
+export const EYE_OPENS = 1.8;
+export const EYE_STANDS = 5.5;
+export const EYE_CLOSES = 6;
+
+/** How far (metres) a web of arcs runs over the water from a point `dist` metres off: the same on screen near and far. */
+const webReach = (dist) => Math.max(16, Math.min(70, dist * 0.085));
+
 const byTime = (a, b) => a.time - b.time;
 const NO_LIGHTS = Object.freeze([]);
 const NO_SPILL = Object.freeze({
@@ -185,7 +202,7 @@ export class VoltageStormWorld {
      *                                     without float colour buffers gets)
      */
     constructor({
-        scene, quality = 'High', renderer = null, capture = false, seed = 0x57a7, floatSky,
+        scene, quality = 'High', renderer = null, capture = false, seed = 0x57a7, floatSky, skyLayers = null,
     } = {}) {
         this.scene = scene;
         this.quality = quality;
@@ -194,6 +211,8 @@ export class VoltageStormWorld {
         this.capture = capture;
         this.seed = seed;
         this.floatSky = floatSky ?? supportsFloatTargets(renderer);
+        /** The sky's own layers to paint (captures, bisecting a look): null paints them all. */
+        this.skyLayers = Array.isArray(skyLayers) ? skyLayers : null;
         this.root = new THREE.Group();
         this.root.name = 'VoltageStorm';
         this.parts = {};
@@ -269,6 +288,10 @@ export class VoltageStormWorld {
         });
         /** The lens's kick: every thunderclap adds to what is still shaking. */
         this.kickSwell = new Swell({ release: 0.2, ceiling: 1, knee: 0.6 });
+        /** A twist's funnel under the cloud: how far down it has come. */
+        this.funnel = new Swell({
+            attack: 0.5, release: 1.5, ceiling: 1, knee: 0.8,
+        });
         /** The cloud's glow, written into the flash table as one wide light. */
         this.glowLight = {
             x: 0, y: STORM.cloudBase, z: -900, reach: 600, r: 1, g: 1, b: 1, k: 0,
@@ -276,6 +299,20 @@ export class VoltageStormWorld {
         /** The colour the field holds (each tower's tint by its charge) and how much it holds. */
         this._heldTint = [0, 0, 0];
         this._heldTotal = 0;
+        /**
+         * The storm's own weather (`stormWeather` in the core: it gathers, breaks, eases and lulls
+         * by the clock) and what play makes of it: `heavy` 0..1 is how hard the storm stands now.
+         * `weatherPin` (captures) holds it at one value.
+         */
+        this.weather = {};
+        this._beatWeather = {};
+        this.weatherPin = null;
+        /** What a run that has just ended leaves of the weather it raised, and when it ended. */
+        this.heavyCarry = 0;
+        this.heavyCarryAt = 0;
+        this.heavy = 0.5;
+        this.lift = 0;
+        this.tierHeight = STORM.tierHeight;
         this.resetState(0);
     }
 
@@ -292,6 +329,9 @@ export class VoltageStormWorld {
         this.level = 1;
         this.kick = 0;
         this.kickSwell.reset();
+        this.funnel.reset();
+        /** When a perfect clear last opened the eye in the vault. */
+        this.eyeBirth = -100;
         this.dip = 0;
         this.breath = 1;
         this.twist = 0;
@@ -329,7 +369,7 @@ export class VoltageStormWorld {
             };
         }
         this.counts = {
-            locks: 0, clears: 0, quads: 0, arcs: 0, strikes: 0, flickers: 0, crowns: 0,
+            locks: 0, clears: 0, quads: 0, arcs: 0, strikes: 0, flickers: 0, crowns: 0, spiders: 0, streamers: 0, trees: 0,
         };
         this.queue.length = 0;
         // The slow clocks are functions of the world clock until gameplay bends them.
@@ -338,6 +378,13 @@ export class VoltageStormWorld {
         this.churn = time;
         this.driftX = STORM.drift[0] * time;
         this.driftZ = STORM.drift[2] * time;
+        this.vaultTurn = STORM.spin * time;
+        this.scudX = STORM.scudDrift[0] * time;
+        this.scudZ = STORM.scudDrift[2] * time;
+        if (!keepHeat) {
+            this.heavyCarry = 0;
+            this.readWeather(time);
+        }
         this.beat = Math.floor(time / AMBIENT_BEAT);
         this.bolts?.reset();
         this.sparks?.reset();
@@ -360,6 +407,9 @@ export class VoltageStormWorld {
             this.u.shockCount.value = 0;
             this.u.sheet.value.set(0, 0, -100, 0);
             this.u.veil.value.set(0, 0, 0);
+            this.u.boom.value.set(0, 0, 0, -100);
+            this.u.eye.value.w = 0;
+            this.u.funnel.value.z = 0;
         }
     }
 
@@ -378,7 +428,14 @@ export class VoltageStormWorld {
         // Under Reduce flashing from the very first bolt, not from the first strike.
         this.bolts.calm = this.stillFlash();
 
-        this.sky = createSky(u, { march: tier.march, detail: tier.detail, flashSteps: tier.flashSteps });
+        this.sky = createSky(u, {
+            march: tier.march,
+            detail: tier.detail,
+            flashSteps: tier.flashSteps,
+            scud: tier.scud !== false && this.skyLayer('scud'),
+            far: this.skyLayer('far'),
+            curtains: this.skyLayer('curtains'),
+        });
         this.addPart('sky', this.sky);
         this.addPart('water', createWater(u, { rings: tier.rain >= 1800 }));
 
@@ -407,6 +464,11 @@ export class VoltageStormWorld {
         this.parts[name] = part;
         this.root.add(part.mesh);
         this.disposables.push(part);
+    }
+
+    /** Whether the sky paints one of its own layers ('scud', 'far', 'curtains'). */
+    skyLayer(name) {
+        return !this.skyLayers || this.skyLayers.includes(name);
     }
 
     /** Draw only the named parts (captures, bisecting a look). */
@@ -475,16 +537,67 @@ export class VoltageStormWorld {
             churn: this.churn,
             driftX: this.driftX,
             driftZ: this.driftZ,
+            vaultTurn: this.vaultTurn,
+            scudX: this.scudX,
+            scudZ: this.scudZ,
             beat: this.beat,
             // The charge and the overdrive ease away (a cut would jump the camera and the iris),
             // and so does how hot play ran (the weather it raised settles over a few seconds).
             power: this.power,
             surge: this.surge,
         };
+        const stood = this.heavy;
         this.resetState(this.time, true);
         Object.assign(this, keep);
+        // The weather play raised settles over a few seconds instead of dropping with the run.
+        this.readWeather(this.time);
+        this.heavyCarry = Math.max(0, stood - this.heavy);
+        this.heavyCarryAt = this.time;
+        this.readWeather(this.time);
         // The palette eases back to the first level's in update().
         this.writeTowers();
+    }
+
+    /**
+     * Read the storm's weather at `time`: its own turn by the clock, pushed harder by how hot play
+     * runs (a quick hand brings the storm down whatever act it is in). Nothing here is eased: at
+     * rest the weather is a pure function of the clock (so a frame is the same however the frames
+     * before it were cut), and the heat of play that pushes it is itself a smooth reading. The
+     * vault's lift and the tiers' height follow `heavy`.
+     */
+    readWeather(time) {
+        const weather = stormWeather(time, this.weather);
+        this.heavy = this.heavyAt(time, weather);
+        this.lift = STORM.liftCalm * (1 - this.heavy) ** 1.4;
+        this.tierHeight = lerp(STORM.tierHeightCalm, STORM.tierHeight, this.heavy);
+        return weather;
+    }
+
+    /**
+     * How heavy the storm stands at `time` (0..1): the weather's own weight, pushed up by the heat
+     * of play as the swell reads it at that moment (a pure function of the clock, so an event
+     * that is worked out at its own moment sees the same storm however the frames were cut), plus
+     * what a run that has just ended leaves behind, settling.
+     */
+    heavyAt(time, weather = stormWeather(time, this._beatWeather)) {
+        const own = this.weatherPin === null ? weather.heavy : this.weatherPin;
+        const push = smooth(0.1, 0.9, this.pace.level.valueAt(time)) * 0.8;
+        const left = this.heavyCarry > 0 ? this.heavyCarry * Math.exp(-Math.max(0, time - this.heavyCarryAt) / 2.5) : 0;
+        return Math.max(0, Math.min(1, 1 - (1 - own) * (1 - push) + left));
+    }
+
+    /** Hold the storm's weather at one weight 0..1 (captures; null lets the clock run it). */
+    pinWeather(heavy) {
+        this.weatherPin = Number.isFinite(heavy) ? Math.max(0, Math.min(1, heavy)) : null;
+        this.readWeather(this.time);
+    }
+
+    /** The height (metres) at which a bolt leaves the cloud over a point of the plain. */
+    cloudUnder(x, z) {
+        // (At this moment's weather, which for a queued event is its own moment, not the frame's.)
+        const heavy = this.heavyAt(this.time);
+        const tierHeight = lerp(STORM.tierHeightCalm, STORM.tierHeight, heavy);
+        return vaultBase(x, z, tierHeight, STORM.liftCalm * (1 - heavy) ** 1.4) + 10;
     }
 
     /** Nothing here is layered; kept so the theme and the playground bind every world alike. */
@@ -697,21 +810,50 @@ export class VoltageStormWorld {
         return out;
     }
 
+    /**
+     * Where an arc from a screen point to a tower leaves the picture: the world point at the
+     * tower's own distance along the ray through the screen point. A ray that dips under the
+     * horizon (a lock low on the board) would meet the water close to the lens, and an arc from
+     * there to a far tower is a ruled line across the foreground: it leaves instead from the water
+     * on the same bearing, at least half the tower's distance out, so every arc is far lightning.
+     */
+    arcStart(sx, sy, tower, out = this._from) {
+        const camera = this._camera || this.restCamera();
+        this._ray.set(sx * 2 - 1, 1 - sy * 2, 0.5).unproject(camera).sub(camera.position).normalize();
+        const far = tower.dist * 0.94;
+        const flat = Math.max(1e-4, Math.hypot(this._ray.x, this._ray.z));
+        // The furthest along the ray that is still over the water.
+        const over = this._ray.y < -1e-4 ? (camera.position.y - 1.5) / -this._ray.y : Infinity;
+        if (over >= far) {
+            out[0] = camera.position.x + this._ray.x * far;
+            out[1] = camera.position.y + this._ray.y * far;
+            out[2] = camera.position.z + this._ray.z * far;
+            return out;
+        }
+        const reach = Math.max(over * flat, tower.dist * 0.52);
+        out[0] = camera.position.x + (this._ray.x / flat) * reach;
+        out[1] = 1.5;
+        out[2] = camera.position.z + (this._ray.z / flat) * reach;
+        return out;
+    }
+
     /** Throw an arc from a screen point to a tower. Returns the moment it lands. */
     throwArc(towerIndex, sx, sy, rgb, {
-        power = 0.6, width = 2.4, branches = 0.6, leader = 0.06, strokes = 2, time = this.time,
+        power = 0.6, width = 2.4, branches = 1, leader = 0.06, strokes = 2, time = this.time,
+        style = BOLT_STYLE.filament, reach = 0.05,
     } = {}) {
         const tower = this.towers[towerIndex];
         if (!tower || !this.bolts) return time;
-        const start = [...this.screenToWorld(sx, sy, tower.dist * 0.94)];
+        const start = [...this.arcStart(sx, sy, tower)];
         const end = this.electrodePoint(tower, start);
         this.bolts.fire({
             kind: 'arc',
+            style,
             start,
             end,
             rgb,
             time,
-            reach: 0.05,
+            reach,
             width,
             power,
             leader: this.reducedMotion ? 0.02 : leader,
@@ -723,6 +865,82 @@ export class VoltageStormWorld {
         });
         this.counts.arcs += 1;
         return time + (this.reducedMotion ? 0.02 : leader);
+    }
+
+    /**
+     * The storm's lightning is not one colour: a bolt's own, drawn from two rolls 0..1. It stands
+     * between the palette's bolt colour and its chain colour, whitened by its heat; `warm` 0..1
+     * reddens it as rain and distance do.
+     */
+    boltColour(a, b, warm = 0, out = [0, 0, 0]) {
+        const p = this._palette;
+        const toChain = a * a * 0.7;
+        const white = b * 0.42;
+        const o = out;
+        for (let k = 0; k < 3; k++) {
+            const hue = p.bolt[k] + (p.chain[k] - p.bolt[k]) * toChain;
+            const hot = hue + (1 - hue) * white;
+            o[k] = hot + (FAR_BOLT[k] - hot) * warm;
+        }
+        return o;
+    }
+
+    /**
+     * Arcs skitter out over the water from a point (a struck tower's foot, a strike on the open
+     * plain): a web of frantic, flat forks in a colour, each with its image under it. `n` arcs,
+     * `reach` metres long at most.
+     */
+    skitter(x, z, rgb, n, reach, time = this.time, power = 0.8) {
+        if (!this.bolts) return;
+        const rand = mulberry32(0x5c1 + this.counts.arcs * 53);
+        const turn = rand() * TAU;
+        for (let i = 0; i < n; i++) {
+            // Round the point, but mostly ACROSS the view: an arc that runs toward the lens is a dot.
+            const bearing = turn + (i / n) * TAU + (rand() - 0.5) * 0.9;
+            const far = reach * (0.55 + 0.45 * rand());
+            this.bolts.fire({
+                kind: 'arc',
+                style: BOLT_STYLE.skitter,
+                start: [x + Math.cos(bearing) * 3, 0.5, z + Math.sin(bearing) * 3],
+                end: [x + Math.cos(bearing) * far, 0.4, z + Math.sin(bearing) * far * 0.45],
+                rgb,
+                time: time + i * 0.018,
+                reach: 0.055,
+                width: 1.6,
+                power,
+                leader: this.reducedMotion ? 0.02 : 0.11 + rand() * 0.07,
+                strokes: 2,
+                glow: 0,
+                now: this.time,
+            });
+            this.counts.arcs += 1;
+        }
+    }
+
+    /**
+     * A brush of fire off a tower's finial: the streamer it sends up to meet a leader coming down
+     * (or, in a heavy storm, simply because the air is that charged). `tall` metres.
+     */
+    streamer(tower, rgb, tall, time = this.time, life = 0.1, power = 0.7) {
+        if (!this.bolts || !tower || this.reducedMotion) return;
+        const rand = mulberry32(0x77d + this.counts.streamers * 29 + tower.index * 11);
+        this.counts.streamers += 1;
+        const tip = tower.height * TOWER.tip;
+        this.bolts.fire({
+            kind: 'arc',
+            style: BOLT_STYLE.streamer,
+            start: [tower.x, tip, tower.z],
+            end: [tower.x + (rand() - 0.5) * tall * 0.5, tip + tall, tower.z + (rand() - 0.5) * tall * 0.3],
+            rgb,
+            time,
+            reach: 0.12,
+            width: 1.5,
+            power,
+            leader: life,
+            strokes: 1,
+            glow: 0,
+            now: this.time,
+        });
     }
 
     /** A tower takes a lock's charge: its rings light in that colour and a pulse climbs them. */
@@ -752,12 +970,12 @@ export class VoltageStormWorld {
             x: tower.x,
             y: tower.height * TOWER.toroid,
             z: tower.z,
-            n: (hard ? 18 : 7) * pool,
+            n: (hard ? 26 : 7) * pool,
             rgb,
             time: this.time,
-            out: [10, hard ? 52 : 34],
-            life: [0.35, 0.9],
-            size: 0.24,
+            out: [10, hard ? 60 : 34],
+            life: [0.35, hard ? 1.2 : 0.9],
+            size: hard ? 0.3 : 0.24,
         });
     }
 
@@ -811,20 +1029,24 @@ export class VoltageStormWorld {
     }
 
     /**
-     * Lightning inside the cloud over a point of the plain: a crawler and its glow. `lit` false:
-     * the crawler runs through the cloud without lighting it (a flash held back).
+     * Lightning INSIDE the cloud over a point of the plain: its channel runs through the lobes, so
+     * it shows only as a thread of glow, and its light swells in the cloud round it and draws the
+     * lobes that hang in front. `lit` false: it runs through the cloud without lighting it (a
+     * flash held back).
      */
     flicker(x, z, rgb, power, time = this.time, salt = 0, lit = true) {
         if (!this.bolts) return;
         const rand = mulberry32(0x3c1 + this.counts.flickers * 131 + salt);
         this.counts.flickers += 1;
-        // In the cloud's lowest lobes, and well inside the cell (far out it would hang in clear air).
-        const y = STORM.cloudBase - STORM.cloudSag + 14 + rand() * 40;
+        // Well inside the cell (far out it would hang in clear air).
         const run = (rand() < 0.5 ? -1 : 1) * (240 + rand() * 620);
         const cx = Math.max(-1300, Math.min(1300, x));
         const cz = Math.max(-1500, Math.min(-380, z));
+        const under = this.cloudUnder(cx, cz);
+        const y = under + 20 + rand() * 50;
         this.bolts.fire({
             kind: 'crawler',
+            style: BOLT_STYLE.spider,
             start: [cx - run * 0.5, y, cz + (rand() - 0.5) * 240],
             end: [cx + run * 0.5, y + (rand() - 0.5) * 30, cz + (rand() - 0.5) * 380],
             rgb,
@@ -834,9 +1056,51 @@ export class VoltageStormWorld {
             power,
             leader: 0.14 + rand() * 0.1,
             strokes: 2 + Math.floor(rand() * 2),
-            branches: 1,
-            glow: 300,
-            glowGain: lit ? 2.2 : 0,
+            branches: 0.4,
+            veil: under - 70,
+            glow: 280 + rand() * 120,
+            glowGain: lit ? 2.6 : 0,
+            glowLift: 70,
+            now: this.time,
+        });
+    }
+
+    /**
+     * Spider lightning: a wide tree that crawls ALONG the cloud's underside, in plain sight, limb
+     * after limb, and then lights whole. It runs mostly across the view (toward the lens it would
+     * be a knot). `lit` false: it crawls without lighting the cloud.
+     */
+    spider(x, z, rgb, power, time = this.time, salt = 0, lit = true) {
+        if (!this.bolts) return;
+        const rand = mulberry32(0x9d3 + this.counts.spiders * 173 + salt);
+        this.counts.spiders += 1;
+        const run = (rand() < 0.5 ? -1 : 1) * (520 + rand() * 640);
+        const cx = Math.max(-1200, Math.min(1200, x));
+        const cz = Math.max(-1700, Math.min(-420, z));
+        const fromX = cx - run * 0.5;
+        const toX = cx + run * 0.5;
+        const fromZ = cz + (rand() - 0.5) * 200;
+        const toZ = cz + (rand() - 0.5) * 420;
+        const under = Math.min(this.cloudUnder(fromX, fromZ), this.cloudUnder(toX, toZ)) - 10;
+        this.bolts.fire({
+            kind: 'crawler',
+            style: BOLT_STYLE.spider,
+            start: [fromX, under - 4 - rand() * 10, fromZ],
+            end: [toX, under - 4 - rand() * 14, toZ],
+            rgb,
+            time,
+            reach: 0.05,
+            width: 1.7 + rand() * 0.7,
+            power,
+            // It is seen to crawl: most of a second from end to end.
+            leader: this.reducedMotion ? 0.05 : 0.45 + rand() * 0.55,
+            strokes: 2 + Math.floor(rand() * 2),
+            gap: 0.09,
+            spread: 0.14,
+            veil: under + 4,
+            glow: 340 + rand() * 120,
+            glowGain: lit ? 1.7 : 0,
+            glowLift: 90,
             now: this.time,
         });
     }
@@ -847,12 +1111,15 @@ export class VoltageStormWorld {
     }
 
     /**
-     * The sky strikes a tower: a leader comes down from the cloud beyond it, and when it connects
-     * the tower goes white and lets go of what it holds, all but the share `keep`. `light` scales
-     * the light the bolt throws on the cloud (0: the channel only).
+     * The sky strikes a tower: a leader comes down from the cloud beyond it (a brush of fire rises
+     * off the finial to meet it), and when it connects the tower goes white and lets go of what it
+     * holds, all but the share `keep`. `light` scales the light the bolt throws on the cloud (0:
+     * the channel only). `look`: 'fork' (a forked strike), 'ribbon' (each return stroke a little
+     * to the side of the last) or 'giant' (one trunk that burns on); drawn by the bolt when not
+     * given, so no two answers are the same.
      */
     strike(towerIndex, time, {
-        power = 1, strokes = 3, width = 3.3, leader = 0.1, superbolt = false, keep = 0, light = 1,
+        power = 1, strokes = 3, width = 3.3, leader = 0.1, superbolt = false, keep = 0, light = 1, look = null,
     } = {}) {
         const tower = this.towers[towerIndex];
         if (!tower || !this.bolts) return;
@@ -863,35 +1130,64 @@ export class VoltageStormWorld {
         // channel crosses the open sky beside the card.
         const eyeX = this._rest.position.x;
         const eyeZ = this._rest.position.z;
-        const under = STORM.cloudBase - STORM.cloudSag + 10;
         const topTan = this.restPitchTan() + Math.tan((fovForAspect(this.aspect) * DEG) / 2) * 0.96;
-        const meets = (under - STORM.eye) / Math.max(0.15, topTan);
+        const meets = (this.cloudUnder(tower.x, tower.z) - STORM.eye) / Math.max(0.15, topTan);
         const reach = Math.max(meets, tower.dist + 60 + rand() * 200);
         const bearing = Math.atan2(tower.x - eyeX, -(tower.z - eyeZ)) - tower.side * (0.06 + rand() * 0.11);
         const startX = eyeX + Math.sin(bearing) * reach;
         const startZ = eyeZ - Math.cos(bearing) * reach;
+        // (It leaves the vault where the vault hangs there: a tier's wall, or high overhead.)
+        const under = this.cloudUnder(startX, startZ);
         const lead = this.reducedMotion ? 0.03 : leader;
         // Reduced motion or Reduce flashing: one stroke, no flicker (the bolts' own beat too).
         const stillFlash = this.reducedMotion || prefersReducedFlashing();
         if (this.bolts) this.bolts.calm = stillFlash;
-        const flashes = stillFlash ? 1 : strokes;
-        const { bolt } = this._palette;
+        const roll = rand();
+        let kind = look;
+        if (!kind) {
+            if (roll < 0.56) kind = 'fork';
+            else if (roll < 0.8) kind = 'ribbon';
+            else kind = 'giant';
+        }
+        if (superbolt) kind = 'giant';
+        const giant = kind === 'giant';
+        let flashes = strokes;
+        if (kind === 'ribbon') flashes = strokes + 2;
+        else if (giant && !superbolt) flashes = 2;
+        if (stillFlash) flashes = 1;
+        // A giant burns on (a continuing current) instead of flickering out.
+        let hold = 0;
+        if (giant && !stillFlash) hold = superbolt ? 0.36 : 0.2;
+        const rgb = this.boltColour(rand(), superbolt ? 0.9 : rand(), 0, [0, 0, 0]);
         this.bolts.fire({
             kind: 'strike',
+            style: giant ? BOLT_STYLE.giant : BOLT_STYLE.fork,
             start: [startX, under, startZ],
             end: [tower.x, tower.height * TOWER.tip, tower.z],
-            rgb: superbolt ? [bolt[0] * 0.6 + 0.4, bolt[1] * 0.6 + 0.4, bolt[2] * 0.6 + 0.4] : bolt,
+            rgb,
             time,
             reach: 0.04 + rand() * 0.022,
-            width,
+            width: giant && !superbolt ? width * 1.3 : width,
             power,
             leader: lead,
             strokes: flashes,
-            branches: 1,
+            gap: kind === 'ribbon' ? 0.05 : undefined,
+            hold,
+            ribbon: kind === 'ribbon' ? (rand() < 0.5 ? -1 : 1) * (4 + rand() * 4) : 0,
+            veil: under + 6,
+            // Its light burns in the cloud it leaves, from inside; and at its foot, on the tower
+            // and the water round it.
             glow: superbolt ? 400 : 270,
-            glowGain: (superbolt ? 4.2 : 3.0) * light,
+            // (Upright, the cloud a bolt leaves fills the narrow frame's sky: it is lit more gently.)
+            glowGain: (superbolt ? 4.2 : 3.0) * light * lerp(0.55, 1, smooth(0.8, 1.45, this.aspect)),
+            glowAt: 0,
+            glowLift: 80,
+            footGlow: superbolt ? 190 : 130,
+            footGain: (superbolt ? 3.0 : 2.0) * Math.max(light, 0.35),
             now: this.time,
         });
+        // The near towers answer the leader with a streamer off their finial.
+        if (tower.dist < 800) this.streamer(tower, this._palette.corona, 12 + 12 * power, time, lead, 0.5 + 0.3 * power);
         if (light > 0) this.tookFlash(time + lead);
         this.schedule(time + lead, () => this.connect(towerIndex, power, superbolt, keep));
     }
@@ -922,6 +1218,10 @@ export class VoltageStormWorld {
         // so lock after lock the field fills instead of being wiped at every clear.
         tower.epoch = kept > 1e-3 ? addHeld(-1e9, this.time, kept) : -1e9;
         this.shock(tower.x, tower.z, this.time, Math.min(1.5, 0.45 + power * 0.45));
+        // What it held runs off over the water from its foot as a web of arcs in its colour.
+        if (!this.reducedMotion && (lost > 0.5 || superbolt)) {
+            this.skitter(tower.x, tower.z, rgb, superbolt ? 5 : 3, webReach(tower.dist) * (superbolt ? 1.7 : 1), this.time, 0.6 + 0.2 * power);
+        }
         // Every thunderclap adds to the shake still running.
         this.kickSwell.hit(Math.min(1, 0.22 + power * 0.3) * 0.75, this.time);
         if (superbolt) {
@@ -929,23 +1229,138 @@ export class VoltageStormWorld {
             this.surge = Math.min(SURGE_MAX, this.surge + 1);
             this.sheetPush(tower.x, tower.z - 160, this.reducedMotion ? 0.5 : 1);
             this.ripplePush(this.reducedMotion ? 0.25 : 1);
+            this.boomPush(tower.x, tower.height * 0.5, tower.z, this.reducedMotion ? 0.3 : 1);
+            // And the lens feels it when the shell arrives, a moment after the light.
+            this.schedule(this.time + tower.dist / BOOM_SPEED, () => this.kickSwell.hit(this.reducedMotion ? 0 : 0.3, this.time));
         }
     }
 
     /**
-     * Sheet lightning runs out through the cloud from (x, z). While one is still running, a new
-     * one drives it brighter instead of pulling its front back to the start.
+     * Upward lightning: a tower sends a trunk up off its finial that forks like a tree into the
+     * cloud, and lets go of what it holds as it connects (all but the share `keep`). It is the
+     * field's own answer to a superbolt: lightning that climbs.
      */
-    sheetPush(x, z, strength) {
+    upward(towerIndex, time, {
+        power = 0.9, width = 3.0, keep = 0, light = 1,
+    } = {}) {
+        const tower = this.towers[towerIndex];
+        if (!tower || !this.bolts) return;
+        const rand = mulberry32(0x4f7 + this.counts.strikes * 613 + towerIndex * 17);
+        this.counts.strikes += 1;
+        this.counts.trees += 1;
+        // It leans out from the middle of the picture as it climbs, so its crown spreads in the
+        // open sky beside the card.
+        const lean = tower.side * (40 + rand() * 110);
+        const endX = tower.x + lean;
+        const endZ = tower.z - 60 - rand() * 160;
+        const under = this.cloudUnder(endX, endZ);
+        const climb = this.reducedMotion ? 0.03 : 0.16 + rand() * 0.1;
+        const stillFlash = this.reducedMotion || prefersReducedFlashing();
+        this.bolts.fire({
+            kind: 'strike',
+            style: BOLT_STYLE.tree,
+            start: [tower.x, tower.height * TOWER.tip, tower.z],
+            end: [endX, under + 30, endZ],
+            rgb: this.boltColour(0.5 + rand() * 0.5, rand() * 0.6, 0, [0, 0, 0]),
+            time,
+            reach: 0.05 + rand() * 0.02,
+            width,
+            power,
+            leader: climb,
+            strokes: stillFlash ? 1 : 2 + Math.floor(rand() * 2),
+            hold: stillFlash ? 0 : 0.12,
+            veil: under + 2,
+            glow: 250,
+            glowGain: 2.2 * light,
+            glowAt: 1,
+            glowLift: 50,
+            footGlow: 110,
+            footGain: 0,
+            now: this.time,
+        });
+        // The electrode flares as the trunk leaves it; the tower lets go as it connects.
+        this.schedule(time, () => {
+            tower.strike = Math.max(tower.strike, 0.5);
+        });
+        if (light > 0) this.tookFlash(time + climb);
+        this.schedule(time + climb, () => this.connect(towerIndex, power, false, keep));
+    }
+
+    /**
+     * The storm strikes the open plain (its own lightning, on no tower): a forked bolt from the
+     * cloud onto the water at (x, z), a ring and a web of arcs where it lands. `lit` false: the
+     * channel only.
+     */
+    groundStrike(x, z, time, {
+        power = 0.8, width = 2.6, lit = true, warm = 0,
+    } = {}) {
+        if (!this.bolts) return;
+        const rand = mulberry32(0x6a9 + this.counts.strikes * 449);
+        this.counts.strikes += 1;
+        const startX = x + (rand() - 0.5) * 380;
+        const startZ = z - 80 - rand() * 220;
+        const under = this.cloudUnder(startX, startZ);
+        const lead = this.reducedMotion ? 0.03 : 0.1 + rand() * 0.05;
+        const rgb = this.boltColour(rand(), rand(), warm, [0, 0, 0]);
+        const far = Math.hypot(x, z) > 1700;
+        this.bolts.fire({
+            kind: 'strike',
+            style: far ? BOLT_STYLE.hair : BOLT_STYLE.fork,
+            start: [startX, under, startZ],
+            end: [x, 0, z],
+            rgb,
+            time,
+            reach: 0.045 + rand() * 0.02,
+            width,
+            power,
+            leader: lead,
+            strokes: 2 + Math.floor(rand() * 4),
+            gap: far ? 0.07 : undefined,
+            spread: far ? 0.16 : undefined,
+            ribbon: rand() < 0.3 ? (rand() < 0.5 ? -1 : 1) * (3 + rand() * 3) : 0,
+            veil: under + 6,
+            glow: far ? 420 : 280,
+            glowGain: lit ? 2.2 : 0,
+            glowAt: 0,
+            glowLift: 80,
+            footGlow: far ? 0 : 150,
+            footGain: lit ? 1.8 : 0.6,
+            now: this.time,
+        });
+        if (far) return;
+        this.schedule(time + lead, () => {
+            this.shock(x, z, this.time, 0.7 + 0.4 * power, rgb);
+            if (!this.reducedMotion) this.skitter(x, z, rgb, 4, webReach(Math.hypot(x, z)) * 1.3, this.time, 0.7);
+            const pool = this.sparks ? this.sparks.count / 448 : 0;
+            this.sparks?.emit({
+                x, y: 1, z, n: 16 * pool, rgb, time: this.time, out: [10, 46], lift: 1.6, life: [0.4, 1.1], size: 0.3,
+            });
+            this.kickSwell.hit(0.12 * power * Math.max(0.15, 1 - Math.hypot(x, z) / 1600), this.time);
+        });
+    }
+
+    /**
+     * Sheet lightning runs out through the cloud from (x, z). While one is still running, a new
+     * one drives it brighter instead of pulling its front back to the start. `rgb` and `speed`
+     * (m/s) are its own: a superbolt's is the storm's flash at 1,500 m/s, a new level's a slow
+     * front in the light that is coming.
+     */
+    sheetPush(x, z, strength, { rgb = this._palette.flash, speed = SHEET_SPEED } = {}) {
+        if (!this.u) return;
         const sheet = this.u.sheet.value;
+        const look = this.u.sheetLook.value;
         // Frame-wide light through the whole cloud: Reduce flashing keeps a trace of it.
         const s = strength * flashScale();
         const age = this.time - sheet.z;
-        const left = age >= 0 ? sheet.w * Math.exp(-age * SHEET_FADE) : 0;
-        if (age >= 0 && age < 1.2 && left > s * 0.35) {
-            const back = Math.exp(age * SHEET_FADE);
+        const fade = SHEET_FADE * (look.w / SHEET_SPEED);
+        const left = age >= 0 ? sheet.w * Math.exp(-age * fade) : 0;
+        if (age >= 0 && age < 1.2 && left > s * 0.35 && Math.abs(look.w - speed) < 1) {
+            const back = Math.exp(age * fade);
             sheet.w = Math.min(sheet.w + s * back, Math.max(sheet.w, 1.5 * back));
-        } else sheet.set(x, z, this.time, s);
+        } else {
+            sheet.set(x, z, this.time, s);
+            look.set(rgb[0], rgb[1], rgb[2], speed);
+        }
     }
 
     /** The picture ripples from the hero's finial; a ripple still spreading is driven on, not restarted. */
@@ -962,6 +1377,24 @@ export class VoltageStormWorld {
             r.x = this.heart.x;
             r.y = this.heart.y;
         }
+    }
+
+    /**
+     * Thunder: a shell of pressure runs out from a strike at the speed of sound and shoulders the
+     * rain aside as it passes the lens (the one moment the air itself is seen to move).
+     */
+    boomPush(x, y, z, strength) {
+        if (!this.u) return;
+        this.u.boom.value.set(x, y, z, this.time);
+        this.u.boomGain.value = strength;
+    }
+
+    /**
+     * A funnel comes down out of the cloud over the hero tower (a twist): it reaches lower the
+     * harder it is driven, turns, and draws back up.
+     */
+    funnelPush(strength) {
+        this.funnel.hit(strength, this.time);
     }
 
     /**
@@ -1000,23 +1433,32 @@ export class VoltageStormWorld {
         const target = this.pickTower(side);
         if (target >= 0) {
             const tower = this.towers[target];
+            // A lock's charge is a thread of plasma in the piece's colour; a hard drop lashes.
             const land = this.throwArc(target, wx, wy, rgb, hardDrop
                 ? {
-                    power: 1, width: 3.6, branches: 1, leader: 0.05, strokes: 3,
+                    power: 1, width: 3.4, leader: 0.05, strokes: 3, style: BOLT_STYLE.lash, reach: 0.06,
                 }
-                : { power: 0.6, width: 2.4, branches: 0.55 });
+                : { power: 0.6, width: 2.3 });
             this.schedule(land, () => this.charge(target, rgb, hardDrop ? 0.9 : 0.55, hardDrop));
-            // The cloud above it flickers back in the piece's colour (under fast play, at most
-            // a few times a second: the rest glows in the cloud instead).
+            // The cloud above it answers in the piece's colour: now and then for a lock, always for
+            // a hard drop (and under fast play at most a few times a second: the rest glows in
+            // the cloud instead).
             const tint = rgb.map((c) => c * 0.75 + 0.25);
-            this.schedule(land + 0.07, () => this.cloudFlicker(tower.x, tower.z - 130, tint, hardDrop ? 0.34 : 0.2));
+            if (hardDrop || hash2(this.counts.locks, 733) < 0.4) {
+                this.schedule(land + 0.07, () => this.cloudFlicker(tower.x, tower.z - 130, tint, hardDrop ? 0.34 : 0.2));
+            } else this.glow.hit(0.05, land);
             if (hardDrop) {
                 const other = this.pickTower(side, 1);
                 if (other >= 0 && other !== target) {
-                    const landed = this.throwArc(other, wx, wy, rgb, { power: 0.55, width: 2.2, branches: 0.4 });
+                    const landed = this.throwArc(other, wx, wy, rgb, { power: 0.55, width: 2.1 });
                     this.schedule(landed, () => this.charge(other, rgb, 0.4, false));
                 }
-                this.schedule(land, () => this.shock(tower.x, tower.z, this.time, 0.75, rgb));
+                // It goes to ground: a ring across the water and a web of arcs in the piece's
+                // colour skittering out from the tower's foot.
+                this.schedule(land, () => {
+                    this.shock(tower.x, tower.z, this.time, 0.75, rgb);
+                    if (!this.reducedMotion) this.skitter(tower.x, tower.z, rgb, 4, webReach(tower.dist) * 1.2, this.time, 0.75);
+                });
             }
         }
         this.kickSwell.hit(hardDrop ? 0.3 : 0.05, this.time);
@@ -1066,8 +1508,9 @@ export class VoltageStormWorld {
                 this.throwArc(target, side < 0 ? card.x0 : card.x1, y, rgb, {
                     power: 0.5 + 0.1 * n,
                     width: 1.9 + 0.15 * n,
-                    branches: 0.4,
                     leader: 0.045,
+                    style: BOLT_STYLE.lash,
+                    reach: 0.055,
                     // Four lines hold their charge through the hush and let go with the superbolt.
                     time: (quad ? now + HUSH_HOLD : now) + i * 0.022,
                 });
@@ -1081,42 +1524,45 @@ export class VoltageStormWorld {
         const twin = b2b && this.towers.length > 1;
         let answered = now + ANSWER_DELAY + n * ANSWER_GAP;
         if (quad) {
-            // The storm holds its breath; then the hero tower takes a superbolt and the rest follow.
-            // From cold it holds it fully; the hotter play already runs the shallower the hush, so
-            // a four in the middle of a fever inhales instead of putting the storm out.
+            // The storm holds its breath; then the hero tower takes a superbolt (one trunk that
+            // burns on), and the field answers it: the towers round it send lightning UP, trunks
+            // that fork like trees into the cloud, one after another out along the rows.
+            // From cold it holds its breath fully; the hotter play already runs the shallower the
+            // hush, so a four in the middle of a fever inhales instead of putting the storm out.
             const birth = now + HUSH_HOLD;
             this.hushUntil = birth;
             this.hushDepth = Math.max(0.15, 1 - 0.85 * before);
             answered = birth;
             this.strike(0, birth, {
                 power: perfect ? 1.6 : 1.4,
-                strokes: 5,
+                strokes: 4,
                 width: 6.4 + hot * 1.2,
                 leader: 0.07,
                 superbolt: true,
                 keep: keep * 0.5,
             });
-            // The four nearest others follow (a bolt on every far mast would only tangle the sky).
+            // The four nearest others answer (a tree on every far mast would only tangle the sky).
             let turn = 0;
             for (let i = 0; i < order.length; i++) {
-                if (order[i] === 0 || order[i] > 4 || (twin && order[i] === 1)) continue;
+                if (order[i] === 0 || order[i] > 3 || (twin && order[i] === 1)) continue;
                 turn += 1;
-                this.strike(order[i], birth + 0.16 + turn * 0.075, {
-                    power: 0.95 - turn * 0.04, strokes: 3, width: 3.6, leader: 0.08, keep: keep * 0.5,
+                this.upward(order[i], birth + 0.2 + turn * 0.11, {
+                    power: 0.95 - turn * 0.04, width: 3.4, keep: keep * 0.5, light: 0.6,
                 });
             }
-            // Lightning runs off through the cloud: the first crawler lights it, the others take
-            // their turn (they fall within the superbolt's own flash: their light joins the glow).
-            this.schedule(birth + 0.3, () => {
+            // And the cloud takes it up: spider lightning crawls out across the vault (the first
+            // lights it; the others take their turn, their light joining its glow).
+            this.schedule(birth + 0.45, () => {
                 for (let k = 0; k < 3; k++) {
                     const tower = this.towers[(k * 3) % this.towers.length];
-                    const at = this.time + k * 0.12;
-                    if (k === 0) {
-                        this.flicker(tower.x * 1.6, tower.z - 300 - k * 260, p.flash, 0.7, at, k);
-                        this.tookFlash(at);
-                    } else this.cloudFlicker(tower.x * 1.6, tower.z - 300 - k * 260, p.flash, 0.7, at, k);
+                    const at = this.time + k * 0.22;
+                    const lit = k === 0 || this.mayFlash(at, 0.7);
+                    this.spider(tower.x * 1.6, tower.z - 300 - k * 260, this.boltColour(0.3 + 0.3 * k, 0.3, 0, [0, 0, 0]), 0.75, at, k, lit);
+                    if (k === 0) this.tookFlash(at);
                 }
             });
+            // A perfect clear opens the eye in the vault once the superbolt has had its moment.
+            if (perfect) this.eyeBirth = birth + 0.5;
             this.counts.quads += 1;
         } else if (wave >= 2) {
             // A cascade's waves walk out into the storm: each strikes the pair of towers one row
@@ -1142,15 +1588,25 @@ export class VoltageStormWorld {
             answered = now + ANSWER_DELAY + turn * 0.06;
             this.glow.hit(0.1 * wave * (1 + hot), now + ANSWER_DELAY);
         } else {
+            // One bolt a line, and no two alike: a forked strike first, then (two lines) a ribbon,
+            // then (three) a giant that burns on.
+            const looks = ['fork', 'ribbon', 'giant'];
             for (let i = 0; i < n && i < order.length; i++) {
                 this.strike(order[i], now + ANSWER_DELAY + i * ANSWER_GAP, {
-                    power: 0.75 + 0.1 * n + 0.15 * hot, strokes: 2 + n, width: 3.6 + 0.3 * n + 0.6 * hot, keep,
+                    power: 0.75 + 0.1 * n + 0.15 * hot,
+                    strokes: 2 + n,
+                    width: 3.6 + 0.3 * n + 0.6 * hot,
+                    keep,
+                    look: n === 1 ? null : looks[(i + this.counts.clears) % 3],
+                    // (Three at once: the cloud takes one swell of light from them, not three.)
+                    light: i === 0 ? 1 : 0.55,
                 });
             }
             if (n === 3) {
+                // Three lines: the cloud answers after the strikes with spider lightning.
                 const hero = this.towers[0];
-                this.schedule(now + 0.4, () => {
-                    this.flicker(hero.x, hero.z - 420, p.flash, 0.6);
+                this.schedule(now + 0.45, () => {
+                    this.spider(hero.x, hero.z - 420, this.boltColour(0.4, 0.3, 0, [0, 0, 0]), 0.7, this.time, 3, true);
                     this.tookFlash(this.time);
                 });
             }
@@ -1167,6 +1623,7 @@ export class VoltageStormWorld {
                 width: 4.6 + 0.5 * run,
                 leader: 0.07,
                 keep: keep * 0.5,
+                look: 'fork',
                 // (Beside a superbolt: their channels carry the moment, not more light on the cloud.)
                 light: 0.7,
             };
@@ -1180,31 +1637,36 @@ export class VoltageStormWorld {
             });
         }
         if (twist) {
-            // The cell winds up over the hero tower and an arc climbs its mast.
+            // The cell winds up over the hero tower: a funnel comes down out of the cloud toward
+            // its finial, and a helix of fire climbs its mast to meet it.
             this.twistVelocity += 3.2;
-            this.climbMast(0.8, 3, 2.6);
+            this.funnelPush(1);
+            this.climbMast(0.9, 3, 2.8);
             const hero = this.towers[0];
             this.schedule(now + 0.3, () => this.cloudFlicker(hero.x, hero.z - 140, p.chain, 0.5));
         }
         this.counts.clears += 1;
     }
 
-    /** An arc climbs the hero tower's mast from the water to its electrode (a twist). */
+    /** A helix of fire winds up the hero tower's mast from the water to its electrode (a twist). */
     climbMast(power, strokes, width) {
         const hero = this.towers[0];
         if (!hero || !this.bolts) return;
         this.bolts.fire({
             kind: 'arc',
+            style: BOLT_STYLE.helix,
             start: [hero.x, 1, hero.z],
             end: [hero.x, hero.height * TOWER.toroid, hero.z],
             rgb: this._palette.chain,
             time: this.time,
-            reach: 0.05,
+            reach: 0.02,
             width,
             power,
-            leader: this.reducedMotion ? 0.03 : 0.3,
+            leader: this.reducedMotion ? 0.03 : 0.34,
             strokes,
-            branches: 0.4,
+            // It stands a moment once it has reached the electrode, then lets go.
+            hold: this.stillFlash() ? 0 : 0.3,
+            helix: [hero.height * 0.17, 3.5],
             glow: 130,
             glowGain: 1.6,
             now: this.time,
@@ -1214,10 +1676,11 @@ export class VoltageStormWorld {
     /**
      * A perfect clear that came on a frame of its own (physics sends it after the last wave of the
      * clear that emptied the board): the crown on the clear still playing, never a second hush.
-     * The whole field lets go of everything it holds: walking out from the hero down both rows,
-     * every tower holding charge throws it as sparks of its colours and the fullest are struck;
-     * the cloud lights from within in one slow swell (not a barrage of flashes), the sheet
-     * lightning and the ripple still running are driven on, and then the storm breathes out.
+     * The storm OPENS: an eye widens in the vault over the field and the evening above pours down
+     * through it, and the whole field lets go of everything it holds: walking out from the hero
+     * down both rows, every tower holding charge throws it as sparks of its colours and the
+     * fullest send it up into the eye as lightning that climbs. The cloud lights from within in
+     * one slow swell (not a barrage of flashes); then the eye closes and the storm breathes out.
      */
     onPerfect({ b2b = false } = {}) {
         if (!this.u || !this.bolts || !this.towers.length) return;
@@ -1227,19 +1690,20 @@ export class VoltageStormWorld {
         const order = this.towers.map((tower) => tower.index)
             .filter((i) => holding(i) > 0.02)
             .sort((a, b) => this.towers[a].dist - this.towers[b].dist);
-        // The fullest six take a bolt each (the strike pool is shared with the clear still in
+        // The fullest four send lightning up (the strike pool is shared with the clear still in
         // the air); every holder lets go.
-        const fullest = [...order].sort((a, b) => holding(b) - holding(a)).slice(0, 6);
+        const fullest = [...order].sort((a, b) => holding(b) - holding(a)).slice(0, 4);
         order.forEach((index, turn) => {
-            const at = now + 0.05 + turn * 0.07;
+            const at = now + 0.05 + turn * 0.09;
+            // Their light is the glow's: a walking barrage of flashes would strobe the frame.
             if (fullest.includes(index)) {
-                // Their light is the glow's: a walking barrage of flashes would strobe the frame.
-                this.strike(index, at, {
-                    power: 0.95, strokes: 2, width: 3.6, leader: 0.06, keep: 0, light: 0,
+                this.upward(index, at, {
+                    power: 0.9, width: 3.0, keep: 0, light: 0,
                 });
             } else this.schedule(at + 0.06, () => this.connect(index, 0.7, false, 0));
         });
         const hero = this.towers[0];
+        this.eyeBirth = now;
         this.glow.hit(1.3, now);
         this.surge = Math.min(SURGE_MAX, this.surge + 0.6);
         this.sheetPush(hero.x, hero.z - 160, this.reducedMotion ? 0.4 : 0.8);
@@ -1248,11 +1712,12 @@ export class VoltageStormWorld {
         this.counts.crowns += 1;
     }
 
-    /** A twist that cleared nothing: the cell turns a little over the hero, a small arc climbs its mast. */
+    /** A twist that cleared nothing: the cell turns a little over the hero, a small helix climbs its mast. */
     onTwist() {
         if (!this.u || !this.bolts || !this.towers.length) return;
         this.twistVelocity += 1.4;
-        this.climbMast(0.45, 2, 1.9);
+        this.funnelPush(0.45);
+        this.climbMast(0.5, 2, 2.0);
         this.kickSwell.hit(0.06, this.time);
     }
 
@@ -1272,17 +1737,50 @@ export class VoltageStormWorld {
         this.combo = n;
     }
 
-    /** A new level: the storm's light steps one palette on from wherever it has drifted to. */
+    /**
+     * A new level: the storm's light steps one palette on from wherever it has drifted to, and the
+     * field shows it coming. The towers light one after another out along both rows, each ring
+     * stack pulsing in the light that is coming (running lights, from the hero to the horizon); a
+     * slow front of that light crosses the whole vault; and spider lightning in it crawls after.
+     */
     levelUp(level, { silent = false } = {}) {
         const asked = Number(level);
         this.level = Number.isFinite(asked) ? Math.max(1, Math.min(9999, Math.round(asked))) : 1;
         if (silent) this.applyPalette(1);
-        else if (this.towers.length) {
+        else if (this.towers.length && this.u && this.bolts) {
             const next = paletteAt(palettePhase(this.level, this.time), this._wheel);
-            for (let k = 0; k < 2; k++) {
-                const tower = this.towers[(k * 2 + 1) % this.towers.length];
-                this.cloudFlicker(tower.x, tower.z - 260, next.flash, 0.6, this.time + k * 0.18, k);
+            const light = [...next.flash];
+            const fire = [...next.corona];
+            const now = this.time;
+            for (let i = 0; i < this.towers.length; i++) {
+                const tower = this.towers[i];
+                this.schedule(now + 0.1 + tower.row * 0.16 + (tower.side > 0 ? 0.05 : 0), () => {
+                    tower.pulseTime = this.time;
+                    tower.pulseStrength = 1.3;
+                    tower.strike = Math.max(tower.strike, 0.3);
+                    const pool = this.sparks ? this.sparks.count / 448 : 0;
+                    this.sparks?.emit({
+                        x: tower.x,
+                        y: tower.height * TOWER.tip,
+                        z: tower.z,
+                        n: 9 * pool,
+                        rgb: fire,
+                        time: this.time,
+                        out: [6, 26],
+                        lift: 2.2,
+                        life: [0.5, 1.3],
+                        size: 0.26,
+                    });
+                    this.streamer(tower, fire, 10 + tower.height * 0.12, this.time, 0.22, 0.6);
+                });
             }
+            // The front leaves the horizon ahead and crosses the vault toward the lens in a few
+            // seconds: slow enough to follow, never a flash.
+            this.sheetPush(0, -2600, this.reducedMotion ? 0.5 : 1.1, { rgb: light, speed: 520 });
+            this.schedule(now + 0.9, () => {
+                const tower = this.towers[1 % this.towers.length];
+                this.spider(tower.x * 0.4, tower.z - 380, light, 0.6, this.time, 5, this.mayFlash(this.time, 0.6));
+            });
             this.pace.levelUp(this.time);
         }
     }
@@ -1315,46 +1813,77 @@ export class VoltageStormWorld {
 
     // ── Frame ───────────────────────────────────────────────────────────────────
 
-    /** The storm's own lightning, on its own clock. */
-    ambient(beat) {
+    /**
+     * The storm's own lightning, on its own clock, and never the same thing twice running: what
+     * it does on a beat depends on the act its weather is in (`stormWeather`) and a roll.
+     *   far strike   a hairline onto the plain in the clear strip (any act; all a lull has)
+     *   glimmer      lightning inside the cloud: no channel, a swell of light in the lobes
+     *   spider       a tree crawling wide along the vault's underside (an easing storm's above all)
+     *   strike       a forked bolt onto the open water between the rows (the break's)
+     *   brush        fire off a tower's finial, the air that charged (a heavy storm's)
+     */
+    ambient(beat, echo = false) {
         const p = this._palette;
+        // (The weather at the beat's own moment, not the frame's: the same bolt however frames are cut.)
+        const weather = stormWeather(this.time, this._beatWeather);
+        const heavy = this.heavyAt(this.time, weather);
+        const { act } = weather;
+        // The weather sets the pace without bending the clock: in a lull most beats pass in
+        // silence, at the break every beat fires and many are answered half a beat on.
+        if (!echo) {
+            if (hash2(beat, 97) > 0.3 + 0.7 * smooth(0.08, 0.6, heavy)) return;
+            if (hash2(beat, 101) < (heavy - 0.55) * 1.5) {
+                this.schedule(this.time + AMBIENT_BEAT * 0.5, () => this.ambient(beat + 7919, true));
+            }
+        }
         const roll = hash2(beat, 7);
         const power = 0.3 + this.power * 0.5 + hash2(beat, 3) * 0.25;
         // Its light waits its turn behind the player's flashes and its own: held back, the bolt
         // still runs and its light joins the cloud's glow.
         const lit = this.mayFlash(this.time, power);
-        if (roll < 0.26) {
-            // Far off, in the clear strip: a thin strike onto the plain.
+        // The odds of each, by the weather (they need not sum to one: the rest is a glimmer).
+        const far = act === 'lull' ? 0.8 : 0.24 - 0.1 * heavy;
+        const spider = (act === 'ease' ? 0.36 : 0.1) * smooth(0.15, 0.5, heavy);
+        const strike = (act === 'break' ? 0.3 : 0.1) * smooth(0.45, 0.85, heavy);
+        const brush = 0.12 * smooth(0.55, 0.9, heavy);
+        if (roll < far) {
+            // Far off, in the clear strip: a thin strike onto the plain, reddened by the rain.
             const x = (hash2(beat, 17) - 0.42) * 4200;
             const z = -(2300 + hash2(beat, 19) * 1100);
-            this.bolts.fire({
-                kind: 'strike',
-                start: [x + (hash2(beat, 23) - 0.5) * 500, STORM.cloudBase - STORM.cloudSag + 10, z - 200],
-                end: [x, 0, z],
-                rgb: p.bolt,
-                time: this.time,
-                reach: 0.045,
-                width: 1.5,
-                power: 0.5 + power * 0.4,
-                leader: 0.12,
-                strokes: 2 + Math.floor(hash2(beat, 29) * 3),
-                branches: 0.9,
-                glow: 420,
-                glowGain: lit ? 2.0 : 0,
-                now: this.time,
+            this.groundStrike(x, z, this.time, {
+                power: 0.5 + power * 0.4, width: 1.5, lit, warm: 0.25 + 0.35 * hash2(beat, 43),
             });
+        } else if (roll < far + spider) {
+            const x = (hash2(beat, 31) - 0.5) * 1800;
+            const z = -(500 + hash2(beat, 37) * 900);
+            this.spider(x, z, this.boltColour(hash2(beat, 47), hash2(beat, 53), 0, [0, 0, 0]), power + 0.2, this.time, beat, lit);
+        } else if (roll < far + spider + strike) {
+            // Onto the open water, to one side of the card or the other, between the rows.
+            const side = hash2(beat, 59) < 0.5 ? -1 : 1;
+            const z = -(520 + hash2(beat, 61) * 900);
+            const x = side * (0.16 + hash2(beat, 67) * 0.2) * -z;
+            this.groundStrike(x, z, this.time, { power: 0.7 + power * 0.4, width: 2.4 + hash2(beat, 71), lit });
+        } else if (roll < far + spider + strike + brush && this.towers.length) {
+            const tower = this.towers[Math.floor(hash2(beat, 73) * this.towers.length) % this.towers.length];
+            this.streamer(tower, p.corona, 16 + tower.height * 0.2, this.time, 0.3, 0.7);
+            this.glow.hit(power * GLOW_FOLD * 0.5, this.time);
         } else {
             const x = (hash2(beat, 31) - 0.5) * 2600;
             const z = -(450 + hash2(beat, 37) * 950);
-            this.flicker(x, z, p.flash, power, this.time, beat, lit);
-            if (roll > 0.8) this.cloudFlicker(x * 0.5 + 300, z - 500, p.flash, power * 0.7, this.time + 0.21, beat + 1);
+            this.flicker(x, z, this.boltColour(hash2(beat, 47), hash2(beat, 53) * 0.6, 0, [0, 0, 0]), power, this.time, beat, lit);
+            // Now and then it travels: a second swell further along the cloud.
+            if (roll > 0.8) {
+                this.cloudFlicker(x * 0.5 + 300, z - 500, p.flash, power * 0.7, this.time + 0.36, beat + 1);
+            }
         }
     }
 
     /**
      * Raise or let go of the standing arcs: one for every step of a chain past the first, and in a
-     * fever the field arcs to itself whatever the chain. When the chain ends they let go one
-     * after another, the last raised first, instead of all on the same frame.
+     * fever the field arcs to itself whatever the chain. They are plasma, not lightning: each
+     * stands between two tower tops, rises and writhes like a Jacob's ladder and strikes again.
+     * When the chain ends they let go one after another, the last raised first, instead of all on
+     * the same frame.
      */
     holdChain(dt) {
         const cap = this.reducedMotion ? 2 : MAX_CHAIN_ARCS;
@@ -1372,16 +1901,16 @@ export class VoltageStormWorld {
             if (i < want && !live) {
                 this.bolts.fire({
                     kind: 'chain',
+                    style: BOLT_STYLE.plasma,
                     index: i,
                     held: true,
                     start: [a.x, a.height * TOWER.tip, a.z],
                     end: [b.x, b.height * TOWER.tip, b.z],
                     rgb: p.chain,
                     time: this.time,
-                    reach: 0.035,
-                    width: 1.9,
+                    reach: 0.055,
+                    width: 2.3,
                     power: 0.8,
-                    branches: 0.5,
                     glow: 200,
                     glowGain: 0.8,
                 });
@@ -1446,7 +1975,8 @@ export class VoltageStormWorld {
         if (dt > 0) this.spillGlow += (spill.k - this.spillGlow) * approach(3, dt);
         // A light inside the cloud, not a wash over it: it lights the lobes it hangs in.
         const held = this.glow.valueAt(t) * GLOW_HELD * (reduced ? 0.4 : 1);
-        const base = this.drive * GLOW_HEAT + this.surge * 0.04;
+        // (A storm at its break carries a light of its own in the cloud, whoever is playing.)
+        const base = this.drive * GLOW_HEAT + this.surge * 0.04 + smooth(0.55, 1, this.heavy) * 0.2;
         const breathe = steady ? 1 : 0.8 + 0.2 * Math.sin(t * 2.1) * Math.sin(t * 0.83 + 1.7);
         const k = (base * (reduced ? 0.8 : 1) + held + this.spillGlow * GLOW_SPILL * (reduced ? 0.4 : 1))
             * breathe * (0.3 + 0.7 * this.breath);
@@ -1456,8 +1986,8 @@ export class VoltageStormWorld {
         }
         const roll = t * 0.17;
         L.x = Math.sin(roll * 1.3) * 700;
-        L.y = STORM.cloudBase - 20;
         L.z = -(780 + 280 * Math.sin(roll * 0.9 + 1.1));
+        L.y = this.cloudUnder(L.x, L.z) + 70;
         L.reach = 380 + 160 * this.drive;
         // The cloud glows in the storm's light, leaning to the colours the field holds (and to
         // those of the bolts whose light it carries).
@@ -1523,6 +2053,9 @@ export class VoltageStormWorld {
         else this.drive += (driveTo - this.drive) * approach(2, dt);
         const { drive } = this;
         this.kick = this.kickSwell.valueAt(t);
+        // ── The storm's weather: its own turn by the clock, pushed harder by play ──
+        const weather = this.readWeather(t);
+        const { heavy } = this;
 
         // ── The charge ──
         const target = powerForCombo(this.combo);
@@ -1556,6 +2089,9 @@ export class VoltageStormWorld {
         this.driftX += STORM.drift[0] * dt * gust;
         this.driftZ += STORM.drift[2] * dt * gust;
         this.churn += dt * gust;
+        this.vaultTurn += STORM.spin * dt * gust;
+        this.scudX += STORM.scudDrift[0] * dt * gust;
+        this.scudZ += STORM.scudDrift[2] * dt * gust;
         this.rainClock += dt * (1 - 0.95 * hush) * (1 + this.power * 0.3 + drive * 0.4);
         const stormRate = (1 - hush)
             * (1 + Math.min(AMBIENT_MAX_RATE - 1, (this.power * 6.5 + this.surge * 3 + drive * 2) * hurry));
@@ -1647,14 +2183,35 @@ export class VoltageStormWorld {
         u.drift.value.set(this.driftX, 0, this.driftZ);
         u.churn.value = this.churn;
         u.rainClock.value = this.rainClock;
-        // The rain thickens and leans into the wind as the storm builds (and the water roughens
-        // with it: its rings follow the rain's weight).
+        // The vault: how heavy the storm stands, how far its underside has lifted, how deep its
+        // tiers hang, how much scud races under it; its turn, and how far the scud has run.
+        u.storm.value.set(heavy, this.lift, this.tierHeight, smooth(0.22, 0.8, heavy));
+        u.vault.value.set(Math.cos(this.vaultTurn), Math.sin(this.vaultTurn), this.scudX, this.scudZ);
+        // The rain is the weather's: drizzle in a lull, squalls at the break (bursts a quarter of a
+        // minute apart), and it thickens and leans into the wind as play builds the storm (the
+        // water roughens with it: its rings follow the rain's weight).
+        const squall = 0.55 + 0.9 * weather.squall * heavy;
         u.rainLean.value.set(
-            0.16 + this.power * 0.2 + this.surge * 0.12 + drive * 0.16,
-            0.05 + this.power * 0.05 + drive * 0.04,
+            0.05 + 0.2 * heavy * squall + this.power * 0.2 + this.surge * 0.12 + drive * 0.16,
+            0.02 + 0.05 * heavy + this.power * 0.05 + drive * 0.04,
         );
-        u.rainGain.value = 0.85 + this.power * 0.8 + this.surge * 0.5 + drive * 0.9;
+        u.rainGain.value = (0.22 + 0.95 * heavy) * squall + this.power * 0.8 + this.surge * 0.5 + drive * 0.9;
         u.twist.value.z = this.twist * TWIST_REACH * (this.reducedMotion ? 0.25 : 1);
+        // A twist's funnel hangs under the cloud ahead of the hero tower, turning as the cloud does.
+        const hero0 = this.towers[0];
+        if (hero0) {
+            // (Well beyond the tower on its own bearing: from the lens, a funnel right over it would
+            // hang out of the top of the frame.)
+            u.funnel.value.set(hero0.x * 3.3, hero0.z * 3.3, this.funnel.valueAt(t), this.churn * 2.4 + this.twist * 3);
+            // A perfect clear's eye stands open over the field beyond it, beside the card.
+            const eyeAge = t - this.eyeBirth;
+            const open = eyeAge >= 0
+                ? smooth(0, EYE_OPENS, eyeAge) * (1 - smooth(EYE_OPENS + EYE_STANDS, EYE_OPENS + EYE_STANDS + EYE_CLOSES, eyeAge))
+                : 0;
+            // (In a wide frame it stands in the open sky left of the card; upright, over it.)
+            const wide = smooth(0.8, 1.45, this.aspect);
+            u.eye.value.set(lerp(0, -398, wide), lerp(-470, -1095, wide), lerp(190, 260, wide), open);
+        }
         const p = this._palette;
         // The chain lifts the clear strip; the heat of play closes the cell over it (the storm
         // gathers: the evening light behind it dims, the lit towers and the strokes stand out).
@@ -1699,7 +2256,9 @@ export class VoltageStormWorld {
         post.streak = Math.min(1, strokeVeil * 0.35 + this.surge * 0.2);
         // The iris closes on a stroke, so the cloud it lights keeps its shape, and a little as the
         // storm builds, so its colours stay deep.
-        post.exposure = 1 / (1 + veil * 0.3 + this.surge * 0.25 + this.power * 0.12 + drive * 0.1);
+        // (Gently: the whole frame follows the iris, and a frame that dips with every bolt is a
+        // flash of its own. The cloud and the rain take a stroke's light where it is, not here.)
+        post.exposure = 1 / (1 + Math.min(veil, 3) * 0.11 + this.surge * 0.2 + this.power * 0.12 + drive * 0.1);
         const rippleAge = t - this.ripple.birth;
         post.ripple.x = this.ripple.x;
         post.ripple.y = this.ripple.y;

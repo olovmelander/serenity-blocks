@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-    attribute, float, fwidth, mix, normalWorld, positionGeometry, sin, smoothstep,
+    Fn, attribute, cos, float, fwidth, mix, normalWorld, positionGeometry, positionLocal, sin, smoothstep,
     texture, uniform, uniformArray, uv, vec2, vec3, length, exp, max, dot,
     atan, clamp,
 } from 'three/tsl';
@@ -95,6 +95,11 @@ export function createWolfhourNightLight() {
     return light;
 }
 
+/** The pole the stars turn about (the star layer's own units): above the frame, a little right of centre. */
+export const STAR_POLE = Object.freeze({ x: 140, y: 760 });
+/** A vector's direction (never the zero vector's: a star on the pole keeps its place). */
+const normalize2 = (v) => v.div(max(length(v), 1e-3));
+
 /**
  * The halo plane reaches HALO_SPAN times the corona's old reach, so the lunar halo ring fits on it;
  * the corona is computed in the same units as before (identical at rest).
@@ -186,6 +191,12 @@ export function createWolfhourSky({
     const uMoonSky = uniform(new THREE.Vector2(-500, 225));
     const uMoonStars = uniform(new THREE.Vector2(-500, 225));
     const uMoonRadius = uniform(55);
+    // The wheel of the stars (a level's hour passing in a breath): how far the sky has turned
+    // about its pole (radians), how long a streak each star leaves while it turns (radians of
+    // arc), and how far the cloud has been swept on (world units).
+    const uSpin = uniform(0);
+    const uStreak = uniform(0);
+    const uCloudRush = uniform(0);
     const noiseMap = makeWolfhourNoiseTexture();
     // Procedural detail belongs to the sky plane. Translating it for parallax
     // must not make the cloud/noise pattern slide over the surface.
@@ -205,7 +216,10 @@ export function createWolfhourSky({
     const cirrus = smoothstep(0.53, 0.78, n.add(fine.mul(0.13)))
         .mul(exp(p.y.sub(45).div(230).pow2().negate()));
     const skyColor = skyBase
-        .add(vec3(0.0028, 0.0034, 0.0052).mul(band).mul(dust).mul(uOpen.mul(1.3).add(1)))
+        // (The star band: faint under the silver moon, clear at deep midnight when the stars are
+        // at their most, gone as the day comes.)
+        .add(vec3(0.0028, 0.0034, 0.0052).mul(band).mul(dust).mul(uOpen.mul(1.3).add(1))
+            .mul(nightLight.uStars.mul(nightLight.uStars).mul(1.5).add(0.25)))
         .add(vec3(0.0052, 0.0068, 0.0115).mul(nightLight.uGlow).mul(moonScatter).mul(uWake.mul(0.9).add(1)))
         .add(vec3(0.0045, 0.0062, 0.0105).mul(nightLight.uGlow).mul(moonGlow).mul(uWake.mul(1.5).add(1)))
         .add(vec3(0.008, 0.0092, 0.0125).mul(cirrus).mul(float(0.1).add(uPulse.mul(0.04))));
@@ -236,7 +250,24 @@ export function createWolfhourSky({
     const center = attribute('aCenter', 'vec2');
     const twinkle = sin(uTime.mul(a.y).add(a.x)).mul(mix(0.1, 0.055, a.w)).mul(uStarGain.mul(1.6).add(1))
         .add(0.9);
-    const moonSuppression = smoothstep(uMoonRadius.mul(1.05), uMoonRadius.mul(2.6), length(center.sub(uMoonStars)));
+    // The stars turn about a pole above the frame; while they turn each is drawn out along its
+    // path, longer the farther it stands from the pole (as a long exposure shows them).
+    const fromPole = center.sub(vec2(STAR_POLE.x, STAR_POLE.y));
+    const turned = vec2(
+        fromPole.x.mul(cos(uSpin)).sub(fromPole.y.mul(sin(uSpin))),
+        fromPole.x.mul(sin(uSpin)).add(fromPole.y.mul(cos(uSpin))),
+    );
+    starsMaterial.positionNode = Fn(() => {
+        const along = normalize2(vec2(turned.y.negate(), turned.x));
+        const drawn = along.mul(dot(positionGeometry.xy, along)).mul(length(fromPole)).mul(uStreak).mul(2);
+        const offset = turned.sub(fromPole).add(drawn);
+        return positionLocal.add(vec3(offset, 0));
+    })();
+    const moonSuppression = smoothstep(
+        uMoonRadius.mul(1.05),
+        uMoonRadius.mul(2.6),
+        length(turned.add(vec2(STAR_POLE.x, STAR_POLE.y)).sub(uMoonStars)),
+    );
     // Widen subpixel cores by their pixel footprint, conserving integrated light.
     // This keeps faint stars from blinking out as the camera crosses a pixel.
     const footprint = fwidth(starP);
@@ -263,7 +294,7 @@ export function createWolfhourSky({
         const bandStar = i % 4 === 0;
         const y = bandStar
             ? x * 0.16 + 220 + (random() + random() + random() - 1.5) * 190
-            : random() * 1000 - 240;
+            : random() * 1140 - 240;
         const bright = random();
         const anchor = !bandStar && bright > 0.996;
         const prominent = !bandStar && bright > 0.97;
@@ -331,7 +362,7 @@ export function createWolfhourSky({
     let clouds = null;
     if (quality !== 'Minimal') {
         const cp = positionGeometry.xy;
-        const drift = vec2(cp.x.add(uTime.mul(5.5)), cp.y);
+        const drift = vec2(cp.x.add(uTime.mul(5.5)).add(uCloudRush), cp.y);
         const broad = texture(noiseMap, drift.mul(vec2(0.00034, 0.0011)).add(vec2(0.21, 0.63))).r;
         const detail = texture(noiseMap, drift.mul(vec2(0.0011, 0.0034))
             .add(vec2(uTime.mul(0.0007).add(0.57), 0.12))).r;
@@ -439,6 +470,15 @@ export function createWolfhourSky({
             uHalo.value = clampTo(ring, 1.6);
             uOpen.value = clampTo(open, 1);
             uStarGain.value = clampTo(starGain, 1.4);
+        },
+        /**
+         * The wheel of the stars: `spin` radians the sky has turned about its pole, `streak` the
+         * arc each star is drawn out over while it turns, `rush` how far the cloud has been swept on.
+         */
+        setWheel(spin = 0, streak = 0, rush = 0) {
+            uSpin.value = Number.isFinite(spin) ? spin : 0;
+            uStreak.value = clampTo(streak, 0.2);
+            uCloudRush.value = Number.isFinite(rush) ? rush : 0;
         },
         applyParallax,
         resize,

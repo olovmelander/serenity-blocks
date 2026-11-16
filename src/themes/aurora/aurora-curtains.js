@@ -28,6 +28,9 @@ import {
     WEATHER, envelopePhase, meanderPhase,
 } from './aurora-field.js';
 import { AURORA_COLORS } from './aurora-palette.js';
+import {
+    addCrown, addCurls, addPillars, createFormTable,
+} from './aurora-forms.js';
 
 const { resetRendererState, restoreRendererState } = THREE.RendererUtils;
 
@@ -174,6 +177,8 @@ export class AuroraCurtains {
                 Array.from({ length: AURORA_ARCS.length * WEATHER.slots }, () => new THREE.Vector4(0, 1, 0, 0)),
                 'vec4',
             ),
+            // The crown, the curls and the pillars (aurora-forms.js): one table of rows.
+            forms: createFormTable(),
         };
 
         this.renderTarget = new THREE.RenderTarget(16, 16, {
@@ -239,6 +244,11 @@ export class AuroraCurtains {
                         rd, curve, tNear, tFar, light,
                     });
                 });
+
+                // The rarer forms: the crown's rays, a twist's curl, a level's pillars.
+                addCrown(light, rd, u.forms, noiseTexture, u.tau);
+                addCurls(light, rd, u.forms);
+                addPillars(light, rd, u.forms, noiseTexture, u.tau);
 
                 // Diffuse aurora: a broad, slowly drifting veil between the arcs, and the
                 // glow of displays beyond the horizon.

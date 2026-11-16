@@ -12,8 +12,9 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Break, Fn, If, Loop, cameraPosition, dot, exp, float, floor, hash, max, min, mix, normalize,
-    positionWorld, pow, saturate, screenCoordinate, screenUV, smoothstep, texture, uniform, uv, vec2, vec3, vec4,
+    Break, Fn, If, Loop, asin, atan, cameraPosition, dot, exp, float, floor, fract, hash, length, max, min, mix,
+    normalize, positionWorld, pow, saturate, screenCoordinate, screenUV, sin, smoothstep, texture, uniform, uv, vec2,
+    vec3, vec4,
 } from 'three/tsl';
 import {
     VERDANT_HILLS_CLOUD_BASE, VERDANT_HILLS_CLOUD_TILE, VERDANT_HILLS_CLOUD_TOP,
@@ -49,8 +50,8 @@ export class VerdantHillsSky {
         // Extinction of the view ray through full cloud per metre, how fast distance dissolves a
         // cloud into the horizon's air, and how dark a cloud's own shade is.
         this.uSigma = uniform(0.008);
-        this.uVeil = uniform(0.00006);
-        this.uShade = uniform(0.68);
+        this.uVeil = uniform(0.00004);
+        this.uShade = uniform(1);
         this.size = { width: 0, height: 0 };
         this.frame = 0;
         this.drawing = new THREE.Vector2();
@@ -208,6 +209,38 @@ export class VerdantHillsSky {
         return vec4(mix(horizon, colour, veil).mul(cover), cover.oneMinus());
     }
 
+    /**
+     * The stars that come out as the day goes down: the dome as a grid of cells a degree and a
+     * half across, at most one star in each, a few bright and most faint, each twinkling on its
+     * own beat. Behind a branch on the night itself, so by day the sky pays nothing for them.
+     */
+    stars(direction) {
+        const { light } = this;
+        return Fn(() => {
+            const lit = vec3(0).toVar();
+            If(light.uNight.greaterThan(0.02), () => {
+                // Cells shifted positive: a hash wants whole, non-negative numbers.
+                const at = vec2(atan(direction.x, direction.z.negate()), asin(direction.y.clamp(-1, 1)))
+                    .div(0.027).add(vec2(400, 200)).toVar();
+                const cell = floor(at).toVar();
+                const seed = cell.x.add(cell.y.mul(1024)).toVar();
+                const here = vec2(hash(seed.add(11)), hash(seed.add(23))).mul(0.6).add(0.2);
+                const away = length(fract(at).sub(here));
+                // Two cells in three are empty sky; of the rest most are faint.
+                const born = smoothstep(0.66, 0.7, hash(seed.add(37)));
+                const size = hash(seed.add(53));
+                const bright = size.mul(size).mul(size).mul(0.9).add(0.1);
+                const twinkle = sin(light.uTime.mul(size.mul(2.5).add(1.6)).add(seed)).mul(0.28).add(0.78);
+                const point = exp(away.mul(away).mul(-900)).mul(born).mul(bright).mul(twinkle);
+                // A star or two in ten is warm, another blue-white.
+                const tint = mix(vec3(1.0, 0.86, 0.7), vec3(0.78, 0.88, 1.0), hash(seed.add(71)));
+                const high = smoothstep(0.03, 0.3, direction.y);
+                lit.assign(tint.mul(point).mul(high).mul(light.uNight.mul(light.uNight)).mul(4.5));
+            });
+            return lit;
+        })();
+    }
+
     buildDome() {
         const { light } = this;
         const material = this.own(new THREE.MeshBasicNodeMaterial({
@@ -225,6 +258,8 @@ export class VerdantHillsSky {
         const cirrus = smoothstep(0.5, 0.86, streak.mul(0.72).add(wisp.mul(0.28)))
             .mul(smoothstep(0.05, 0.3, direction.y)).mul(0.3);
         sky = mix(sky, light.uCirrus.mul(light.uWarmth.mul(0.08).add(1)), cirrus);
+        // The first stars of the afterglow: behind the cirrus's veil and behind every cumulus.
+        sky = sky.add(this.stars(direction).mul(cirrus.mul(2.2).oneMinus()));
         let clouds;
         if (this.target) {
             // Four taps a half-texel apart: a tent that takes the march's grain out.

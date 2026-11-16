@@ -1,173 +1,37 @@
 /* eslint-disable import/no-unresolved, import/no-extraneous-dependencies */
 /**
- * Waves — the pod: dolphins that leave the face of the wave ahead, cross the eye of the barrel
- * against the evening, and go back into the sea in front of it.
+ * Waves — the sea life: who is in the water right now, and where.
  *
- * A chain of clears calls them. Each leap is a plain ballistic arc in the wave's slow motion
- * (the same gravity the spray falls under), so a dolphin hangs at the top of it for a long
- * moment; the tallest leaps are thrown so that their top crosses the sun.
+ * Two sources of acts (waves-acts.js) are drawn together:
  *
- * The animal is generated (a lofted body, a dorsal fin, two pectoral fins, the flukes) and
- * drawn with one material and one draw call: every dolphin is an instance placed by its own
- * rows of an interleaved buffer (where it is, which way it heads, how it is bent), written on
- * the CPU each frame from the arcs in flight. Nothing is loaded.
+ *   the sea's own   visits that come by the clock whatever the board does (waves-ambient.js): a
+ *                   pod in the wall beside the rider, dolphins rolling through the trough, a
+ *                   whale far out, flying fish, shearwaters;
+ *   the board's     what play calls up (the world adds them: `add`): the pod a chain of clears
+ *                   grows, a spinner for a twist, flying fish for every line, the humpback for a
+ *                   perfect clear.
+ *
+ * Each frame every act is asked where its animal is (a closed form of the world's clock) and the
+ * answers are written to the renderer (waves-fauna.js), kind by kind, as many as that kind may
+ * draw. The moments an act breaks the surface are handed to the world once each, as the clock
+ * passes them, so it can throw the water (waves-splash.js).
+ *
+ * The bodies come from the pack (waves-cast.js). Until it has arrived, and if it never does, the
+ * acts still run (the world's counts and its splashes do not depend on a file) and nothing is
+ * drawn.
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, attribute, cameraPosition, clamp, cross, dot, float, frontFacing, max, mix, normalize, positionGeometry,
-    reflect, select, sin, smoothstep, varying, vec3, vec4,
-} from 'three/tsl';
-import {
-    clamp01, lerp, mulberry32, smooth, wavePoint,
-} from './waves-core.js';
-import { GRAVITY } from './waves-spray.js';
+    FLUKE_REACH, KINDS, NOSE_REACH, SPECIES, actAlive, actPose, dolphinPose, emptyPose, makeLeap, surfaceTimes,
+    troughRow,
+} from './waves-acts.js';
+import { WavesAmbient } from './waves-ambient.js';
+import { createFauna, slotsFor } from './waves-fauna.js';
+import { mulberry32, wavePoint } from './waves-core.js';
 
-/** Nose to the end of the tail stock, metres (the model itself is 2 units long). */
-export const DOLPHIN_LENGTH = 2.5;
-
-/** Girth along the body: [s (0 nose .. 1 tail), radius, lift of the section's centre]. */
-const GIRTH = [
-    [0.0, 0.004, -0.02], [0.05, 0.034, -0.02], [0.105, 0.05, -0.015], [0.15, 0.118, 0.02], [0.25, 0.17, 0.02],
-    [0.4, 0.2, 0.0], [0.6, 0.16, 0.0], [0.8, 0.085, 0.01], [0.94, 0.036, 0.015], [1.0, 0.02, 0.015],
-];
-
-function girthAt(s) {
-    for (let i = 1; i < GIRTH.length; i += 1) {
-        if (s <= GIRTH[i][0]) {
-            const a = GIRTH[i - 1];
-            const b = GIRTH[i];
-            const t = smooth(a[0], b[0], s);
-            return [lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
-        }
-    }
-    const last = GIRTH[GIRTH.length - 1];
-    return [last[1], last[2]];
-}
-
-/**
- * The dolphin: x along the body (nose at +1, tail stock at −1), y up, z to its left.
- * @returns {{ positions: Float32Array, normals: Float32Array, indices: Uint16Array, body: number }}
- *          `body` = how many of the first vertices are the lofted body (the rest are fins).
- */
-export function buildDolphin(rings = 26, sides = 12) {
-    const positions = [];
-    const indices = [];
-    for (let i = 0; i <= rings; i += 1) {
-        const s = i / rings;
-        const [radius, lift] = girthAt(s);
-        const x = 1 - 2 * s;
-        // The tail stock is a blade: deep, narrow.
-        const narrow = 1 - 0.45 * smooth(0.72, 0.96, s);
-        const arch = 0.035 * Math.sin(Math.PI * s);
-        for (let j = 0; j < sides; j += 1) {
-            const a = (j / sides) * Math.PI * 2;
-            positions.push(x, lift + arch + Math.cos(a) * radius * 1.04, Math.sin(a) * radius * narrow);
-        }
-    }
-    for (let i = 0; i < rings; i += 1) {
-        for (let j = 0; j < sides; j += 1) {
-            const a = i * sides + j;
-            const b = i * sides + ((j + 1) % sides);
-            const c = a + sides;
-            const d = b + sides;
-            // Outward: the ring index runs toward −x, the side index from +y round to +z.
-            indices.push(a, c, b, b, c, d);
-        }
-    }
-    const body = positions.length / 3;
-    /** A flat fin as a fan of triangles; drawn two-sided. */
-    const fin = (points) => {
-        const base = positions.length / 3;
-        points.forEach((p) => positions.push(p[0], p[1], p[2]));
-        for (let i = 1; i < points.length - 1; i += 1) indices.push(base, base + i, base + i + 1);
-    };
-    // Dorsal fin: swept back, in the body's own plane.
-    fin([[0.2, 0.18, 0], [0.05, 0.33, 0], [-0.13, 0.47, 0], [-0.17, 0.44, 0], [-0.1, 0.3, 0], [-0.14, 0.17, 0]]);
-    // Pectoral fins: down and out, one each side.
-    [1, -1].forEach((side) => {
-        fin([
-            [0.42, -0.1, 0.13 * side], [0.3, -0.21, 0.3 * side], [0.13, -0.3, 0.43 * side],
-            [0.1, -0.27, 0.4 * side], [0.2, -0.14, 0.17 * side],
-        ]);
-        // Flukes: flat, a crescent each side of the notch.
-        fin([
-            [-0.9, 0.015, 0.025 * side], [-1.05, 0.015, 0.2 * side], [-1.21, 0.015, 0.37 * side],
-            [-1.17, 0.015, 0.28 * side], [-1.09, 0.015, 0.13 * side], [-1.03, 0.015, 0],
-        ]);
-    });
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geometry.setIndex(indices);
-    geometry.computeVertexNormals();
-    return {
-        positions: new Float32Array(positions),
-        normals: new Float32Array(geometry.getAttribute('normal').array),
-        indices: new Uint16Array(indices),
-        body,
-        geometry,
-    };
-}
-
-const STRIDE = 12;
-
-/** How far from the middle of the body the nose and the flukes reach (half body lengths). */
-export const NOSE_REACH = 1.0;
-export const FLUKE_REACH = 1.1;
-
-/**
- * Where a dolphin is `t` seconds into its leap, which way it heads and how fast (the arc
- * WavesPod.update flies, on the CPU): x, y, z; the unit heading fx, fy, fz; vx, vy, vz; speed.
- */
-export function dolphinPose(arc, t, out = {}) {
-    const vy = arc.vy - GRAVITY * t;
-    const speed = Math.hypot(arc.vx, vy, arc.vz) || 1;
-    out.x = arc.x + arc.vx * t;
-    out.y = arc.y + arc.vy * t - 0.5 * GRAVITY * t * t;
-    out.z = arc.z + arc.vz * t;
-    out.vx = arc.vx;
-    out.vy = vy;
-    out.vz = arc.vz;
-    out.speed = speed;
-    out.fx = arc.vx / speed;
-    out.fy = vy / speed;
-    out.fz = arc.vz / speed;
-    return out;
-}
-
-/** Where `f(t)` (falling through zero between lo and hi) crosses it. */
-function crossing(f, lo, hi) {
-    let a = lo;
-    let b = hi;
-    for (let i = 0; i < 40; i += 1) {
-        const m = (a + b) / 2;
-        if (f(m) > 0) a = m;
-        else b = m;
-    }
-    return (a + b) / 2;
-}
-
-/**
- * Seconds into a leap when the flukes clear the face it left (`clearAt`), when the nose touches
- * the water on the way down (`noseAt`) and when the flukes go under after it (`tailAt`). The
- * middle of the body crosses the surface at `flight`.
- */
-export function surfaceTimes(arc, out = {}) {
-    const pose = {};
-    const tip = (t, reach) => {
-        dolphinPose(arc, t, pose);
-        return pose.y + pose.fy * arc.size * reach;
-    };
-    // The flukes are out of the hole once the middle is a body's reach along its path from it.
-    const reach = FLUKE_REACH * arc.size;
-    out.clearAt = crossing((t) => {
-        dolphinPose(arc, t, pose);
-        return reach - Math.hypot(pose.x - arc.x, pose.y - arc.y, pose.z - arc.z);
-    }, 0, arc.flight / 2);
-    const top = Math.min(arc.flight, Math.max(0, arc.vy / GRAVITY));
-    out.noseAt = crossing((t) => tip(t, NOSE_REACH), top, arc.flight);
-    out.tailAt = crossing((t) => tip(t, -FLUKE_REACH), arc.flight, arc.flight + 3);
-    return out;
-}
+export {
+    FLUKE_REACH, NOSE_REACH, dolphinPose, surfaceTimes,
+};
 
 /** How many dolphins a chain of `combo` clears sends over the water at once. */
 export function leapersFor(combo) {
@@ -177,153 +41,92 @@ export function leapersFor(combo) {
     return combo >= 3 ? 1 : 0;
 }
 
-export class WavesPod {
+/** The kinds a chain's pod is made of: the leapers the board can call. */
+const LEAPERS = Object.freeze(['bottlenose', 'spinner']);
+
+export class WavesLife {
     /**
      * @param {object} p
      * @param {object} p.tier
      * @param {object} p.U
      * @param {{x: number, y: number, z: number}} p.sun   unit vector toward the sun
      * @param {{x: number, y: number, z: number}} p.eye   the rider's eye (the leaps are staged for it)
+     * @param {number} [p.seed]
+     * @param {boolean} [p.ambient=true]   the sea sends its own visits
      */
     constructor({
-        tier, U, sun, eye, seed = 21,
+        tier, U, sun, eye, seed = 21, ambient = true,
     }) {
-        this.count = Math.max(1, tier.dolphins);
+        this.tier = tier;
         this.U = U;
         this.sun = sun;
         this.eye = eye;
         this.seed = seed;
         this.rand = mulberry32(seed * 2749 + 1);
-        /** One arc per dolphin: start time, start point, launch velocity, flight time. */
-        this.arcs = Array.from({ length: this.count }, () => ({
-            active: false,
-            started: false,
-            landed: false,
-            t0: 0,
-            x: 0,
-            y: 0,
-            z: 0,
-            vx: 0,
-            vy: 0,
-            vz: 0,
-            flight: 1,
-            size: 1,
-            phase: 0,
-            row: 0,
-            open: 0,
-            entered: false,
-            clearAt: 0,
-            noseAt: 1,
-            tailAt: 1,
-        }));
-        this.cursor = 0;
-        this.data = new Float32Array(this.count * STRIDE);
-        const model = buildDolphin();
-        const geometry = new THREE.InstancedBufferGeometry();
-        geometry.index = model.geometry.index;
-        geometry.setAttribute('position', model.geometry.getAttribute('position'));
-        geometry.setAttribute('normal', model.geometry.getAttribute('normal'));
-        this.buffer = new THREE.InstancedInterleavedBuffer(this.data, STRIDE);
-        this.buffer.setUsage(THREE.DynamicDrawUsage);
-        geometry.setAttribute('aPlace', new THREE.InterleavedBufferAttribute(this.buffer, 4, 0));
-        geometry.setAttribute('aHead', new THREE.InterleavedBufferAttribute(this.buffer, 4, 4));
-        geometry.setAttribute('aPose', new THREE.InterleavedBufferAttribute(this.buffer, 4, 8));
-        geometry.instanceCount = this.count;
-        this.geometry = geometry;
-        this.model = model;
-
-        /** (x, y, z, size), (heading, arch), (swim phase, beat, wetness, -). */
-        const aPlace = attribute('aPlace', 'vec4');
-        const aHead = attribute('aHead', 'vec4');
-        const aPose = attribute('aPose', 'vec4');
-        const material = new THREE.MeshBasicNodeMaterial({ fog: false, side: THREE.DoubleSide });
-        material.name = 'waves-dolphin';
-
-        const local = positionGeometry;
-        // The body beats up and down, more toward the tail, and arcs along its flight.
-        const toTail = float(1.0).sub(local.x).mul(0.5);
-        const beat = sin(aPose.x.sub(toTail.mul(3.4))).mul(aPose.y).mul(toTail.mul(toTail));
-        const arched = local.x.mul(local.x).mul(aHead.w).negate();
-        const bent = vec3(local.x, local.y.add(beat).add(arched), local.z);
-        const forward = normalize(aHead.xyz);
-        const side = normalize(cross(forward, vec3(0.0, 1.0, 0.0)));
-        const up = cross(side, forward);
-        const toWorld = (v) => forward.mul(v.x).add(up.mul(v.y)).add(side.mul(v.z));
-        material.positionNode = aPlace.xyz.add(toWorld(bent).mul(aPlace.w));
-        const vNormal = varying(toWorld(attribute('normal', 'vec3')), 'vWaveDolphinNormal');
-        const vBack = varying(attribute('normal', 'vec3').y, 'vWaveDolphinBack');
-        const vWorld = varying(aPlace.xyz.add(toWorld(bent).mul(aPlace.w)), 'vWaveDolphinAt');
-        const vWet = varying(aPose.z, 'vWaveDolphinWet');
-
-        material.colorNode = Fn(() => {
-            const n0 = normalize(vNormal);
-            const N = select(frontFacing, n0, n0.negate()).toVar();
-            const V = normalize(cameraPosition.sub(vWorld)).toVar();
-            const L = U.sun;
-            // Slate on the back, pale under: countershading, as the animal has it.
-            const hide = mix(vec3(0.2, 0.25, 0.27), vec3(0.02, 0.032, 0.045), smoothstep(-0.35, 0.3, vBack));
-            const { fireTint, skyTint } = U.light;
-            const sky = mix(vec3(0.08, 0.14, 0.16), vec3(0.2, 0.28, 0.38), N.y.mul(0.5).add(0.5)).mul(skyTint);
-            const sunFace = clamp(dot(N, L), 0.0, 1.0);
-            const lit = hide.mul(sky.add(vec3(2.1, 1.35, 0.72).mul(fireTint).mul(sunFace)));
-            // Wet skin: the sun slides along it, and its far edge takes the evening.
-            const facing = clamp(dot(N, V), 0.0, 1.0);
-            const rim = float(1.0).sub(facing);
-            const r2 = rim.mul(rim);
-            const gleam = clamp(dot(reflect(V.negate(), N), L), 0.0, 1.0);
-            const g2 = gleam.mul(gleam);
-            const g8 = g2.mul(g2).mul(g2).mul(g2);
-            const wet = vWet.mul(0.6).add(0.4);
-            const shine = vec3(3.2, 2.2, 1.2).mul(g8.mul(g8).mul(g2)).mul(wet)
-                .add(vec3(1.0, 0.6, 0.3).mul(r2.mul(rim)).mul(max(dot(L, V.negate()), 0.0).mul(0.9).add(0.15)))
-                .mul(fireTint);
-            return vec4(lit.add(shine).mul(mix(vec3(1.0), vec3(1.12, 1.0, 0.84), U.warm)), 1.0);
-        })();
-        this.material = material;
-        this.mesh = new THREE.Mesh(geometry, material);
-        this.mesh.name = 'waves-dolphins';
-        this.mesh.frustumCulled = false;
-        this.mesh.renderOrder = 12;
-        this.reset();
+        /** How many of each kind may be drawn at once, and the pod a chain may call in all. */
+        this.capacity = Object.fromEntries(KINDS.map((kind) => [kind, slotsFor(kind, tier)]));
+        this.count = Math.max(1, tier.dolphins);
+        this.ambient = ambient ? new WavesAmbient({ seed, scale: tier.life ?? 1 }) : null;
+        /** The board's acts, oldest first. */
+        this.acts = [];
+        this.mesh = new THREE.Group();
+        this.mesh.name = 'waves-life';
+        this.fauna = null;
+        this.airborne = 0;
+        this.drawn = Object.fromEntries(KINDS.map((kind) => [kind, 0]));
+        this.last = Number.NaN;
+        this._pose = emptyPose();
+        this._at = emptyPose();
+        this._list = [];
+        this._visits = [];
     }
 
+    /** The bodies have arrived: build what draws them. */
+    attach(pack) {
+        if (this.fauna || !pack?.kinds) return false;
+        this.fauna = createFauna({ U: this.U, pack, tier: this.tier });
+        this.mesh.add(this.fauna.mesh);
+        return true;
+    }
+
+    /** A new run, or a seek: nothing the board called is left; the sea's own visits go on. */
     reset() {
         this.rand = mulberry32(this.seed * 2749 + 1);
-        this.cursor = 0;
-        this.arcs.forEach((arc) => {
-            arc.active = false;
-        });
-        this.data.fill(0);
-        // Unit headings even while hidden: a zero vector would be normalised into NaN.
-        for (let i = 0; i < this.count; i += 1) this.data[i * STRIDE + 4] = 1;
-        this.buffer.needsUpdate = true;
+        this.acts.length = 0;
         this.airborne = 0;
+        this.last = Number.NaN;
+    }
+
+    /** Add one of the board's acts. */
+    add(act) {
+        this.acts.push(act);
+        return act;
     }
 
     /**
-     * Send one dolphin over the water.
+     * Send one dolphin over the water (the board's pod).
      * @param {number} time   when it breaks the surface
-     * @param {number} open   the barrel's opening (the face it leaves follows the wave)
+     * @param {number} open   the barrel's opening (the water it leaves follows the wave)
      * @param {object} [o]
      * @param {number} [o.d]        metres ahead of the eye
      * @param {boolean} [o.hero]    throw it across the sun
      * @param {number} [o.height]   metres its back rises above where it left the water
-     * @param {number} [o.slot]     the dolphin to send (freeSlot()); else the next in turn
+     * @param {string} [o.kind]     which dolphin; else mostly bottlenose
+     * @param {string} [o.style]    how it flies (waves-acts.js LEAP_STYLES); else by its kind
      */
     leap(time, open, {
-        d = null, hero = false, height = null, slot = null,
+        d = null, hero = false, height = null, kind = null, style = null, turns = null,
     } = {}) {
         const { rand } = this;
-        const index = Number.isInteger(slot) && slot >= 0 && slot < this.count ? slot : this.cursor;
-        const arc = this.arcs[index];
-        this.cursor = (index + 1) % this.count;
-        const ahead = d ?? 9 + rand() * 9;
-        // It leaves the lower face, heading out of the wave and a little down the line.
-        const row = 0.16 + rand() * 0.08;
+        const which = kind || (hero || rand() < 0.68 ? 'bottlenose' : 'spinner');
+        const ahead = d ?? 8.5 + rand() * 7;
+        // It leaves the trough at the foot of the face (where the card does not hide it), heading
+        // out from the wave and a little down the line.
+        // (A hero leaves near the foot, so the sun's line is always further out than it starts.)
+        const row = troughRow(-0.7 - rand() * (hero ? 0.5 : 2.3), ahead);
         const from = wavePoint(row, ahead, open);
         const rise = height ?? 1.5 + rand() * 1.3;
-        let vy = Math.sqrt(2 * GRAVITY * rise);
-        let flight = (2 * vy) / GRAVITY;
+        let vy = Math.sqrt(2 * 0.46 * rise);
         let vx = -(0.95 + rand() * 0.5);
         let vz = (rand() - 0.35) * 0.5;
         if (hero) {
@@ -332,133 +135,115 @@ export class WavesPod {
             const topX = this.eye.x + this.sun.x * reach;
             const topY = this.eye.y + this.sun.y * reach;
             const climb = Math.max(1.2, topY - from.y - 0.1);
-            vy = Math.sqrt(2 * GRAVITY * climb);
-            flight = (2 * vy) / GRAVITY;
-            vx = (topX - from.x) / (flight * 0.5);
+            vy = Math.sqrt(2 * 0.46 * climb);
+            vx = (topX - from.x) / (vy / 0.46);
             vz = 0.06;
         }
-        // It comes down where it left, in height: on the trough in front of the wave. From a
-        // point up the face it has a little further to fall.
-        const drop = Math.max(0, from.y);
-        flight = (vy + Math.sqrt(vy * vy + 2 * GRAVITY * drop)) / GRAVITY;
-        Object.assign(arc, {
-            active: true,
-            started: false,
-            entered: false,
-            landed: false,
-            t0: time,
-            x: from.x,
-            y: from.y,
-            z: from.z,
+        const roll = rand();
+        let flown = style;
+        if (!flown) {
+            if (hero) flown = 'arc';
+            else if (which === 'spinner') flown = roll < 0.7 ? 'spin' : 'arc';
+            else if (roll < 0.16) flown = 'flip';
+            else flown = roll < 0.3 ? 'side' : 'arc';
+        }
+        return this.add(makeLeap({
+            kind: which,
+            at: time,
+            row,
+            d: ahead,
+            open,
             vx,
             vy,
             vz,
-            flight,
-            size: (DOLPHIN_LENGTH / 2) * (0.86 + rand() * 0.28),
+            metres: SPECIES[which].metres * (0.88 + rand() * 0.24),
+            style: flown,
+            turns: turns ?? (flown === 'spin' ? 2 + Math.floor(rand() * 3) : 1),
             phase: rand() * 6.28,
-            row,
-            open,
-        });
-        surfaceTimes(arc, arc);
-        return arc;
+            variant: rand(),
+            hero,
+        }));
     }
 
-    /**
-     * A dolphin free to be sent at `time`: one at rest (the next in turn first), else the one that
-     * went back into the sea longest ago (it is under the water, out of sight). -1 while every one
-     * of them is in the air or waiting to break the surface: a call waits for one, it never takes a
-     * dolphin out of the air.
-     */
-    freeSlot(time) {
-        let best = -1;
-        let since = -Infinity;
-        for (let k = 0; k < this.count; k += 1) {
-            const i = (this.cursor + k) % this.count;
-            const arc = this.arcs[i];
-            if (!arc.active) return i;
-            const under = time - (arc.t0 + arc.flight);
-            if (arc.landed && under > since) {
-                since = under;
-                best = i;
-            }
-        }
-        return best;
-    }
-
-    /** Dolphins in the air or about to break the surface. */
+    /** The board's leapers in the air or about to break the surface. */
     live() {
         let n = 0;
-        for (let i = 0; i < this.count; i += 1) if (this.arcs[i].active && !this.arcs[i].landed) n += 1;
+        for (let i = 0; i < this.acts.length; i += 1) {
+            const act = this.acts[i];
+            if (act.type === 'leap' && LEAPERS.includes(act.kind) && !act.landed) n += 1;
+        }
         return n;
     }
 
+    /** Whether the board may send one more leaper at `time` (never more than its pod at once). */
+    canLeap() {
+        return this.live() < this.count;
+    }
+
     /**
-     * Fly the arcs. `onSplash(x, y, z, strength, arc)` is called once where a dolphin breaks the
-     * surface and once where it goes back in, as its nose touches the water (`arc.entered` tells
-     * which); the arc is the whole leap, so the splash can be choreographed from it
-     * (waves-splash.js).
+     * Everything in the water at `clock`. `onEvent(act, event, pose)` is called once for each
+     * moment an act breaks the surface since the last frame (never across a seek).
      */
-    update(time, onSplash) {
-        const { data } = this;
+    update(clock, open, onEvent) {
+        const { fauna, drawn } = this;
+        const from = this.last;
+        const stepped = Number.isFinite(from) && clock >= from && clock - from < 2;
+        this.last = clock;
+        // The board's acts that have run their course are let go.
+        let kept = 0;
+        for (let i = 0; i < this.acts.length; i += 1) {
+            const act = this.acts[i];
+            if (clock - act.t0 <= act.life) {
+                this.acts[kept] = act;
+                kept += 1;
+            }
+        }
+        this.acts.length = kept;
+        const list = this._list;
+        list.length = 0;
+        // The board's own first: what play called is always drawn, even when its kind's slots are
+        // full of the sea's own visitors (Minimal draws one whale: a perfect clear's must be it).
+        for (let i = 0; i < this.acts.length; i += 1) list.push(this.acts[i]);
+        if (this.ambient) {
+            const visits = this.ambient.actsAt(clock, this._visits);
+            for (let i = 0; i < visits.length; i += 1) list.push(visits[i]);
+        }
+
+        KINDS.forEach((kind) => {
+            drawn[kind] = 0;
+        });
         let airborne = 0;
-        for (let i = 0; i < this.count; i += 1) {
-            const arc = this.arcs[i];
-            const at = i * STRIDE;
-            if (!arc.active) {
-                data[at + 3] = 0;
-                continue;
+        for (let i = 0; i < list.length; i += 1) {
+            const act = list[i];
+            const t = clock - act.t0;
+            if (act.type === 'leap') {
+                act.landed = t >= act.flight;
+                if (t >= 0 && t <= act.flight) airborne += 1;
             }
-            const t = time - arc.t0;
-            if (t < -0.35) {
-                data[at + 3] = 0;
-                continue;
+            // The moments it breaks the surface, as the clock passes them.
+            if (stepped && onEvent && act.events) {
+                for (let e = 0; e < act.events.length; e += 1) {
+                    const event = act.events[e];
+                    const when = act.t0 + event.t;
+                    if (when > from && when <= clock) onEvent(act, event, actPose(act, when, open, this._at));
+                }
             }
-            // A body length of run-up under the surface before it breaks, and after it is in (at
-            // least until its flukes are under: a long, slow dolphin is never cut off in the air).
-            const lead = Math.max(0.9, arc.tailAt - arc.flight + 0.25);
-            // The splashes first: a long frame may carry an arc past its end in one step.
-            if (!arc.started && t >= 0) {
-                arc.started = true;
-                onSplash?.(arc.x, arc.y, arc.z, 0.8, arc);
-            }
-            if (!arc.entered && t >= arc.noseAt) {
-                arc.entered = true;
-                onSplash?.(arc.x + arc.vx * arc.flight, 0, arc.z + arc.vz * arc.flight, 1, arc);
-            }
-            if (!arc.landed && t >= arc.flight) arc.landed = true;
-            if (t > arc.flight + lead) {
-                arc.active = false;
-                data[at + 3] = 0;
-                continue;
-            }
-            const x = arc.x + arc.vx * t;
-            const y = arc.y + arc.vy * t - 0.5 * GRAVITY * t * t;
-            const z = arc.z + arc.vz * t;
-            const vy = arc.vy - GRAVITY * t;
-            const speed = Math.hypot(arc.vx, vy, arc.vz) || 1;
-            const inAir = clamp01(t / 0.5) * clamp01((arc.flight + lead - t) / 0.5);
-            data[at] = x;
-            data[at + 1] = y;
-            data[at + 2] = z;
-            data[at + 3] = arc.size * smooth(-0.35, 0.1, t);
-            data[at + 4] = arc.vx / speed;
-            data[at + 5] = vy / speed;
-            data[at + 6] = arc.vz / speed;
-            // Arched over the top of the leap, straight as it goes in.
-            data[at + 7] = 0.07 + 0.09 * Math.sin(Math.PI * clamp01(t / arc.flight));
-            data[at + 8] = arc.phase + time * 3.1;
-            data[at + 9] = 0.1 + 0.08 * (1 - inAir);
-            data[at + 10] = 1 - 0.5 * clamp01(t / arc.flight);
-            if (t >= 0 && t <= arc.flight) airborne += 1;
+            if (!actAlive(act, t)) continue;
+            const pose = actPose(act, clock, open, this._pose);
+            if (!(pose.metres > 0)) continue;
+            const slot = drawn[act.kind];
+            if (slot >= this.capacity[act.kind]) continue;
+            drawn[act.kind] = slot + 1;
+            if (fauna) fauna.set(act.kind, slot, pose);
         }
         this.airborne = airborne;
-        this.buffer.needsUpdate = true;
+        if (fauna) fauna.commit(drawn);
     }
 
     dispose() {
         this.mesh.removeFromParent();
-        this.geometry.dispose();
-        this.model.geometry.dispose();
-        this.material.dispose();
+        this.fauna?.dispose();
+        this.fauna = null;
+        this.acts.length = 0;
     }
 }

@@ -17,6 +17,7 @@ import * as THREE from 'three/webgpu';
 import {
     Fn,
     abs,
+    atan,
     cameraPosition,
     cameraProjectionMatrix,
     cameraViewMatrix,
@@ -25,8 +26,10 @@ import {
     dot,
     exp,
     float,
+    floor,
     fract,
     length,
+    log,
     max,
     min,
     mix,
@@ -273,6 +276,35 @@ export const LOOK = {
     auroraRayAlong: 0.003,
     auroraRayFrom: 0.24,
     auroraRayTo: 0.8,
+    // How much of its light a sheet keeps between its rays as a smooth arc (form.rays = 0) and as a
+    // comb of rays (form.rays = 1): [rays' share, the glow between them].
+    auroraArcGain: 0.15,
+    auroraArcBase: 0.85,
+    // An energetic sheet fills in between its rays (their heights even out, a glow rises under
+    // them): four sheets of on/off rays stacked on one another read as a bar code over the sky.
+    auroraFill: 0.62,
+    // Its top turns the deep red of the highest aurora when it burns hard (0 = never).
+    auroraRedTop: 0.55,
+    // The corona: how bright the rays that converge overhead are, and how fast they fall off
+    // from the point they converge on (per unit of tangent).
+    coronaGain: 1.5,
+    coronaFall: 1.1,
+    // The high thin cloud: how bright the moon makes it round itself, and how much of what is
+    // behind it shows through where it is thickest.
+    veilSilver: 1.5,
+    veilThrough: 0.42,
+    // The band of the galaxy over the left of the sky (0 = none).
+    milkyWay: 1.0,
+    // The far range behind the fells: where its crests stand (the sine of their elevation: the
+    // lowest saddle, and what the highest summit adds), how much of it is lost to the air, and
+    // how dark its rock is against its snow.
+    rangeBase: 0.12,
+    rangeRise: 0.125,
+    // The fells' own relief: gullies and shoulders the moon rakes across (the slope two reads
+    // of the noise give the far ground; 0 = the smooth backs the plan's heights alone draw).
+    fellRelief: 0.5,
+    rangeAir: 0.56,
+    rangeRock: 0.7,
     // The moon's face: its brightness (scene-linear, × the hour's moon colour) and its seas'
     // albedo against the highlands' 1.
     moonGain: 1.6,
@@ -393,6 +425,36 @@ export function createWinterUniforms(textures) {
         /** Clears strum the sky: per slot (birth time, strength, half width, speed), STRUM_SLOTS. */
         strums: [],
         /**
+         * The form the aurora takes (winter-weather.js): (rays: how much of a sheet's light is in
+         * its rays, folds: how deeply the sheets fold, tall: how tall the rays stand, hem: how bright
+         * the lower border is), each against the planned sheet; and (corona: rays that converge on
+         * a point overhead, pulse: how far the light gathers into patches that pulse, red: how far
+         * the tops burn red, spare).
+         */
+        form: uniform(new THREE.Vector4(0.6, 1, 1, 1)),
+        form2: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** The point the corona's rays converge on (a unit vector), and its own right and up. */
+        coronaDir: uniform(new THREE.Vector3(0, 0.56, -0.83)),
+        coronaRight: uniform(new THREE.Vector3(1, 0, 0)),
+        coronaUp: uniform(new THREE.Vector3(0, 0.83, 0.56)),
+        /**
+         * The weather (winter-weather.js): (snow: the share of the snowfall's pool in the air, veil:
+         * high thin cloud over the sky, mist: how thick it lies on the lake, dust: diamond dust).
+         */
+        weather: uniform(new THREE.Vector4(1 / 1.6, 0.3, 0.35, 0)),
+        /** (how large the flakes are, how far the high cloud has drifted in its own plane: x, z, spare). */
+        weather2: uniform(new THREE.Vector4(1, 0, 0, 0)),
+        /** The air's own thickness: (the mist on the lake, the haze everywhere), per metre. */
+        air: uniform(new THREE.Vector2(1 / 1500, 1 / 6500)),
+        /**
+         * Pillars of light over the far land: (how bright the fires' own stand, how far they have
+         * risen 0..1.5, how bright the moon's pale ones stand in the ice haze, spare).
+         */
+        pillars: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** A twist winds the fires into a spiral: (bearing as tan, elevation as tan, birth time, strength) + colour. */
+        swirlA: uniform(new THREE.Vector4(0, 0.3, -100, 0)),
+        swirlC: uniform(new THREE.Vector3(0.3, 1, 0.6)),
+        /**
          * How hot play runs (src/themes/shared/gameplay-surge.js), as the world spends it on the
          * snow, the air and the ice: (glitter: how much of the snow and the air's diamond dust is
          * alight, fever: how far they take the fires' colours, crown: a perfect clear's flash
@@ -500,7 +562,7 @@ export const wSkyTint = (u, q, base) => {
  * the true perspective for nothing: sheets arch toward the horizon at their ends, folds
  * foreshorten, rays converge overhead. `count` sheets; `fine` = false drops the rays (mirrors).
  */
-export const wAurora = (u, dir, { count = 3, fine = true } = {}) => {
+export const wAurora = (u, dir, { count = 3, fine = true, tint = null } = {}) => {
     const q = dir.x.div(max(dir.z.negate(), 0.2));
     // A clear strums every sheet outward from the board; a cascade's waves follow one another
     // out like plucked strings, each deeper one wider and faster.
@@ -511,7 +573,8 @@ export const wAurora = (u, dir, { count = 3, fine = true } = {}) => {
         strum = strum.add(exp(wSq(abs(q).sub(strumAge.mul(S.w)).div(S.z)).negate())
             .mul(S.y).mul(exp(max(strumAge, 0.0).div(-STRUM_FADE))).mul(step(0.0, strumAge)));
     }
-    const tinted = wSkyTint(u, q, u.fire);
+    // (The sky hands in the colour it has already worked out for this bearing; a mirror works its own.)
+    const tinted = tint || wSkyTint(u, q, u.fire);
     // (The fox of light brightens the sky it runs under.)
     const underSpirit = exp(wSq(q.sub(u.spirit.x).div(0.5)).negate()).mul(u.spirit.z);
     // (Strums that overlap ride up together under a soft ceiling: they pluck the fires, never
@@ -520,6 +583,13 @@ export const wAurora = (u, dir, { count = 3, fine = true } = {}) => {
     const lift = float(1.0).add(tinted.w.mul(1.5)).add(plucked.mul(1.6)).add(underSpirit.mul(1.0));
     let sum = vec3(0.0);
     const energies = [u.curtains.x, u.curtains.y, u.curtains.z, u.curtains.w];
+    // The form the night has given it (winter-weather.js): a smooth arc, a comb of rays, deep
+    // folds, patches that pulse.
+    const rayed = u.form.x;
+    const folded = u.form.y;
+    const height = u.form.z;
+    const hemmed = u.form.w;
+    const pulsing = u.form2.y;
     for (let i = 0; i < Math.min(count, CURTAINS.length); i++) {
         const c = CURTAINS[i];
         const E = energies[i];
@@ -531,7 +601,8 @@ export const wAurora = (u, dir, { count = 3, fine = true } = {}) => {
         const phase = i * 2.4 + 0.7;
         const run = u.auroraRun.mul(0.21 + i * 0.05);
         const fold = (x) => sin(x.mul(c.wave).add(phase).add(run)).mul(c.fold)
-            .add(sin(x.mul(c.wave * 2.7).sub(phase * 1.7).add(run.mul(1.6))).mul(c.fold * 0.4));
+            .add(sin(x.mul(c.wave * 2.7).sub(phase * 1.7).add(run.mul(1.6))).mul(c.fold * 0.4))
+            .mul(folded);
         let t = float(c.reach).div(fwd);
         t = float(c.reach).add(fold(dx.mul(t))).div(fwd);
         t = float(c.reach).add(fold(dx.mul(t))).div(fwd);
@@ -539,12 +610,15 @@ export const wAurora = (u, dir, { count = 3, fine = true } = {}) => {
         const a = dir.y.mul(t).sub(AURORA_FOOT);
         // Seen edge on, a fold is brighter: the ray runs along the sheet.
         const slope = cos(x.mul(c.wave).add(phase).add(run)).mul(c.fold * c.wave)
-            .add(cos(x.mul(c.wave * 2.7).sub(phase * 1.7).add(run.mul(1.6))).mul(c.fold * 0.4 * c.wave * 2.7));
+            .add(cos(x.mul(c.wave * 2.7).sub(phase * 1.7).add(run.mul(1.6))).mul(c.fold * 0.4 * c.wave * 2.7))
+            .mul(folded);
         const flatLength = length(vec2(dx, dz));
         const edgeOn = min(sqrt(float(1.0).add(wSq(slope))).mul(flatLength)
             .div(max(abs(dz.add(dx.mul(slope))), flatLength.mul(0.36))), 2.6);
         const broad = u.noise(vec2(x.mul(c.rays * 0.16).add(run.mul(0.06)), i * 0.31 + 0.11));
         const patch = smoothstep(0.28, 0.72, broad.r);
+        // An energetic sheet fills in between its rays.
+        const filled = smoothstep(0.75, 1.6, E).mul(LOOK.auroraFill);
         let ray = float(0.5);
         let hair = float(1.0);
         if (fine) {
@@ -554,16 +628,33 @@ export const wAurora = (u, dir, { count = 3, fine = true } = {}) => {
             ray = smoothstep(LOOK.auroraRayFrom, LOOK.auroraRayTo, strands.r);
             // Fine rays ride on the broad ones, and are never all one width.
             hair = u.noise(vec2(x.mul(c.rays * 2.3).add(run.mul(0.8)), i * 0.23 + 0.37)).a.mul(0.7).add(0.65);
+            hair = mix(float(1.0), hair, rayed.mul(0.7).add(0.3));
         }
-        const tall = ray.mul(ray).mul(LOOK.auroraTallRay).add(LOOK.auroraTallBase).mul(E.mul(0.5).add(0.65));
+        // How tall this ray stands, and how tall the sheet stands about it: the colour climbs with
+        // the sheet's height, not with each ray's, so a ray is green at its foot and violet at its
+        // top instead of every other ray being one colour from foot to top.
+        const span = E.mul(0.5).add(0.65).mul(height);
+        const rise = mix(ray.mul(ray), float(0.3), filled).mul(mix(float(0.25), float(1.0), rayed));
+        const tall = rise.mul(LOOK.auroraTallRay).add(LOOK.auroraTallBase).mul(span);
+        const sheetTall = mix(float(0.075), float(0.3), rayed).mul(LOOK.auroraTallRay).add(LOOK.auroraTallBase)
+            .mul(span);
         let body = smoothstep(LOOK.auroraFootFrom, LOOK.auroraFootTo, a).mul(exp(max(a, 0.0).div(tall).negate()));
         if (LOOK.auroraHem > 0) {
-            body = body.mul(float(1.0).add(exp(max(a, 0.0).div(-LOOK.auroraHemFall)).mul(LOOK.auroraHem)));
+            body = body.mul(float(1.0).add(exp(max(a, 0.0).div(-LOOK.auroraHemFall)).mul(hemmed.mul(LOOK.auroraHem))));
         }
-        const bright = patch.mul(1.5).add(0.1).mul(ray.mul(LOOK.auroraRayGain).add(LOOK.auroraRayBase)).mul(hair);
+        const inRays = mix(float(LOOK.auroraArcGain), float(LOOK.auroraRayGain), rayed);
+        const between = mix(float(LOOK.auroraArcBase), float(LOOK.auroraRayBase), rayed).add(filled.mul(0.5));
+        // Patches that pulse: each brightens and sinks at its own beat, a few seconds to a breath.
+        const beat = sin(u.time.mul(1.25 + i * 0.31).add(broad.a.mul(21.0)).add(i * 2.1)).mul(0.5).add(0.5);
+        const patches = mix(float(1.0), wSq(beat).mul(patch).mul(1.9).add(0.12), pulsing);
+        const bright = patch.mul(1.5).add(0.1).mul(ray.mul(inRays).add(between)).mul(hair)
+            .mul(patches);
         // The foot of an energetic sheet burns rose.
         const hem = exp(wSq(a.sub(1.5).div(6.0)).negate()).mul(smoothstep(0.7, 1.6, E));
-        const colour = mix(tinted.rgb, u.crown, smoothstep(0.12, 1.15, max(a, 0.0).div(tall)))
+        const climbed = max(a, 0.0).div(sheetTall);
+        // ...and its top the deep red of the highest air, when it burns hard.
+        const red = smoothstep(1.3, 3.2, climbed).mul(smoothstep(0.6, 1.5, E)).mul(u.form2.z);
+        const colour = mix(mix(tinted.rgb, u.crown, smoothstep(0.12, 1.15, climbed)), vec3(1.0, 0.1, 0.2), red)
             .add(vec3(1.0, 0.3, 0.62).mul(hem.mul(0.9)));
         // It sinks into the haze at its ends and is lost behind the fells.
         const fade = smoothstep(0.012, 0.085, dir.y).mul(exp(t.mul(-1 / 1700)));
@@ -573,6 +664,194 @@ export const wAurora = (u, dir, { count = 3, fine = true } = {}) => {
     // The brightest folds saturate toward their own colour, never to white.
     const lit = sum.mul(lift);
     return lit.div(wMax3(lit).div(3.4).add(1.0)).mul(u.breath);
+};
+
+/**
+ * The corona: when the aurora breaks up overhead its rays, which all run along the same lines,
+ * are seen from below and converge on one point of the sky. Here that point stands just over the
+ * top of the frame above the board, so the rays fan down either side of it: a crown over the
+ * board. `u.form2.x` is how bright it burns; `tinted` is the colour the fires have at this bearing
+ * (wSkyTint). Two noise reads; the caller skips it when it is out.
+ */
+export const wCorona = (u, dir, tinted) => {
+    const facing = max(dot(dir, u.coronaDir), 0.12);
+    const p = vec2(dot(dir, u.coronaRight), dot(dir, u.coronaUp)).div(facing);
+    const r = length(p);
+    // Rays are read along their own bearing round the point and nothing else: a read that also
+    // varies with the distance out turns rays to smoke. A whole number of tiles of noise goes
+    // once round, so the bearing's own seam (−π meets π) is no seam in the texture.
+    const turn = atan(p.y, p.x).mul(5 / TAU);
+    const bundles = u.noise(vec2(turn.add(u.auroraRun.mul(0.0035)), 0.37)).r;
+    const fineRays = u.noise(vec2(turn.mul(4.0).sub(u.auroraRun.mul(0.009)), min(r, 0.7).mul(0.03).add(0.71))).a;
+    const ray = smoothstep(0.34, 0.66, bundles).mul(wSq(fineRays).mul(2.0).add(0.16));
+    // Dark at the point itself, brightest a little way out, gone by the horizon.
+    const reach = smoothstep(0.05, 0.32, r).mul(exp(r.mul(-LOOK.coronaFall)));
+    // Light runs out along the rays.
+    const shimmer = sin(r.mul(8.0).sub(u.time.mul(2.6)).add(bundles.mul(14.0))).mul(0.22).add(0.78);
+    const colour = mix(tinted.rgb, u.crown, smoothstep(0.3, 1.5, r))
+        .add(vec3(1.0, 0.3, 0.62).mul(exp(r.mul(-4.5)).mul(0.6)));
+    const lit = colour.mul(ray.mul(reach).mul(shimmer).mul(u.form2.x).mul(LOOK.coronaGain)
+        .mul(smoothstep(0.012, 0.085, dir.y)));
+    return lit.div(wMax3(lit).div(3.4).add(1.0)).mul(u.breath);
+};
+
+/**
+ * A twist winds the fires into a spiral: two arms that open from a point in the sky, turn as
+ * they spread and are gone in a few seconds, in the piece's colour at the heart and the hour's
+ * crown at the rim. One noise read; the caller skips it when there is none.
+ */
+export const wSwirl = (u, dir) => {
+    const fwd = max(dir.z.negate(), 0.2);
+    const p = vec2(dir.x.div(fwd).sub(u.swirlA.x), dir.y.div(fwd).sub(u.swirlA.y));
+    const r = max(length(p), 1e-3);
+    const age = max(u.time.sub(u.swirlA.z), 0.0);
+    const opened = float(1.0).sub(exp(age.div(-0.7)));
+    const size = opened.mul(0.42).add(0.05);
+    const bearing = atan(p.y, p.x);
+    const wound = bearing.mul(2.0).sub(log(r.div(size)).mul(3.4)).sub(age.mul(2.6));
+    const arms = wPow4(sin(wound).mul(0.5).add(0.5));
+    // (Threads along the arms: read along the spiral's own winding, slowly across it.)
+    const threads = u.noise(vec2(wound.mul(1 / TAU), r.div(size).mul(0.35).add(0.19))).r.mul(0.9).add(0.4);
+    const body = arms.mul(threads).mul(exp(wSq(r.div(size)).mul(-1.2))).mul(smoothstep(0.0, 0.25, r.div(size)));
+    const heart = exp(wSq(r.div(size.mul(0.22))).negate()).mul(0.7);
+    const env = smoothstep(0.0, 0.18, age).mul(exp(age.div(-1.9))).mul(u.swirlA.w)
+        .mul(step(0.0, u.time.sub(u.swirlA.z)));
+    const colour = mix(u.swirlC, u.crown, smoothstep(0.35, 1.2, r.div(size)));
+    const lit = colour.mul(body.add(heart)).mul(env).mul(2.6).mul(smoothstep(0.012, 0.085, dir.y));
+    return lit.div(wMax3(lit).div(3.4).add(1.0)).mul(u.breath);
+};
+
+/**
+ * Pillars of light standing over the far land, in the fires' colours: a perfect clear stands
+ * them up one after another along the whole horizon. No noise: a pillar is a hash of the
+ * bearing's cell.
+ */
+export const wPillars = (u, dir) => {
+    const q = dir.x.div(max(dir.z.negate(), 0.2));
+    const cells = q.mul(5.2).add(64.0);
+    const cell = floor(cells);
+    const h = wHash23(vec2(cell, 7.0));
+    const off = cells.sub(cell).sub(0.5).sub(h.x.sub(0.5).mul(0.56));
+    const wide = h.y.mul(0.07).add(0.05);
+    const shaft = exp(wSq(off.div(wide)).negate());
+    const top = h.z.mul(0.2).add(0.16);
+    const up = max(dir.y, 0.0);
+    // Each stands up at its own moment as the row rises.
+    const risen = smoothstep(h.z.mul(0.6), h.z.mul(0.6).add(0.4), u.pillars.y);
+    const lifted = top.mul(risen.mul(0.75).add(0.25));
+    const flicker = sin(u.time.mul(h.x.mul(2.0).add(1.4)).add(up.mul(36.0)).add(h.y.mul(40.0))).mul(0.14).add(0.86);
+    const cool = mix(u.fire, vec3(0.5, 0.85, 1.0), step(0.5, h.x));
+    const warm = mix(u.crown, vec3(1.0, 0.45, 0.75), step(0.75, h.y));
+    const hue = mix(cool, warm, step(0.5, h.y));
+    const fires = hue.mul(risen).mul(u.pillars.x).mul(exp(wSq(up.div(lifted)).mul(-1.4)));
+    return fires.mul(shaft).mul(smoothstep(0.0, 0.03, up)).mul(flicker).mul(u.breath);
+};
+
+/** The far range's crests stand under this (the sine of an elevation): above it there is only sky. */
+export const RANGE_TOP = 0.26;
+/** Its rows of summits: [how far apart they stand (radians of bearing), how tall against the look's rise, seed]. */
+const RANGE_ROWS = Object.freeze([[0.21, 1, 11], [0.083, 0.5, 29]]);
+
+/**
+ * The far range: sharp summits behind the round fells, pale in the air. vec4(colour, how much of
+ * the sky it hides). It is a painted skyline, not ground: a row of hashed summits gives the
+ * crest and which way each face is turned, and one noise read lays ribs of rock and chutes of
+ * snow down the faces. `air` is the colour of the sky behind it, which it pales toward.
+ *
+ * The moon stands ahead and to the right, so faces turned right are moonlit and faces turned
+ * left are in shade, where the last light on the horizon reaches them: two tones, as on the
+ * drifts at the viewer's feet.
+ */
+export const wRange = (u, dir, air) => {
+    const straight = atan(dir.x, dir.z.negate());
+    // (No mountain's flank is a ruled line: the bearing is bent by a slow read before the summits
+    // are laid on it, and the same read notches the crest.)
+    const rough = u.noise(vec2(straight.mul(1.7).add(0.21), dir.y.mul(2.2).add(0.47)));
+    const bearing = straight.add(rough.r.sub(0.5).mul(0.085));
+    // The skyline is the highest of a row of summits, each a peak with straight flanks: where it
+    // stands, how tall and how steep are hashed from its place in the row, so the skyline is
+    // sharp at any size and costs no read. Two rows: the great summits and the lesser ones
+    // between them. (`over`: this summit's height over the pixel's bearing; `from`: how far the
+    // pixel is to the right of its top; `top`: how tall it is.)
+    let over = float(0.0);
+    let from = float(0.0);
+    let top = float(1.0);
+    RANGE_ROWS.forEach(([width, gain, seed]) => {
+        const place = bearing.div(width).add(64.0);
+        for (let k = -1; k <= 1; k++) {
+            const cell = floor(place).add(k);
+            const h = wHash23(vec2(cell, seed));
+            const centre = cell.sub(64.0).add(0.5).add(h.x.sub(0.5).mul(0.7)).mul(width);
+            const tall = wSq(h.y).mul(0.85).add(0.15).mul(gain * LOOK.rangeRise);
+            const d = bearing.sub(centre);
+            const here = tall.sub(abs(d).mul(h.z.mul(0.5).add(0.5)));
+            const wins = step(over, here);
+            over = mix(over, here, wins);
+            from = mix(from, d, wins);
+            top = mix(top, tall, wins);
+        }
+    });
+    const crest = over.add(rough.a.sub(0.5).mul(0.022)).add(LOOK.rangeBase);
+    // +1: this side of the summit falls away to the right (it is turned to the moon); −1: to the left.
+    const side = clamp(from.mul(70.0), -1.0, 1.0);
+    const below = max(crest.sub(dir.y), 0.0);
+    // Ribs of rock and chutes of snow run down from the top: the read is along the bearing about
+    // the summit as seen from it, so its streaks fan out from the top down each face.
+    const fan = from.div(max(top.add(LOOK.rangeBase).sub(dir.y), 0.004));
+    const ribs = u.noise(vec2(fan.mul(0.55).add(top.mul(31.0)), below.mul(1.5).add(0.61))).r;
+    const moonLit = smoothstep(-0.2, 0.6, side).mul(0.8).add(0.06);
+    const flat = dir.xz.div(max(length(dir.xz), 1e-3));
+    const toward = dot(flat, u.glowDir).mul(0.5).add(0.5);
+    const snow = vec3(0.9, 0.93, 1.0).mul(
+        u.moonCol.mul(moonLit).add(u.shade.mul(0.85)).add(u.zenith.mul(0.25))
+            .add(u.glow.mul(max(side.negate(), 0.0).mul(0.5).add(0.12)).mul(wSq(toward))),
+    );
+    // Rock shows on the steep faces under the crest, in ribs; lower down the snow lies unbroken.
+    const steep = abs(side).mul(smoothstep(0.09, 0.0, below));
+    const rock = smoothstep(0.5, 0.64, ribs).mul(steep).mul(LOOK.rangeRock);
+    const burning = u.curtains.x.add(u.curtains.y).add(u.curtains.z).add(u.curtains.w);
+    const face = mix(snow, vec3(0.05, 0.06, 0.09).add(u.shade.mul(0.3)), rock)
+        .add(mix(u.fire, u.crown, 0.25).mul(burning.mul(0.02)))
+        .mul(u.breath.mul(0.65).add(0.35));
+    // (About a pixel of soft edge at 1080p: the skyline is drawn, not sampled.)
+    const hides = smoothstep(crest.add(0.0012), crest.sub(0.0012), dir.y);
+    return vec4(mix(face, air, LOOK.rangeAir), hides);
+};
+
+/**
+ * The high thin cloud that drifts over on some nights: vec4(its own light, how much of the sky
+ * behind it is hidden). Long fibres run with the wind (one noise read stretched eight to one,
+ * its domain bent by a slow warp at a much lower frequency), thicker in lumps; the moon lights it
+ * silver round itself, the last light warms it on the horizon, and the fires put a little of
+ * their colour under it. `u.weather.y` is how much of it there is.
+ */
+export const wVeil = (u, dir, { lumps = true } = {}) => {
+    const up = max(dir.y, 0.0);
+    const q = dir.xz.div(up.add(0.17));
+    const drift = u.weather2.yz;
+    const warp = u.noise(q.mul(0.043).add(drift.mul(0.3)));
+    const at = vec2(q.x.mul(0.05), q.y.mul(0.4)).add(warp.gb.mul(0.05)).add(drift);
+    let field = u.noise(at).r;
+    if (lumps) field = field.mul(0.62).add(u.noise(q.mul(0.12).add(drift.mul(1.9)).add(vec2(0.5, 0.2))).a.mul(0.38));
+    const cover = u.weather.y;
+    const from = mix(float(0.74), float(0.2), cover);
+    const dense = smoothstep(from, from.add(0.34), field).mul(smoothstep(0.0, 0.08, cover));
+    // Thin toward the zenith, where one looks straight through it; gone into the haze at the horizon.
+    const hidden = dense.mul(1 - LOOK.veilThrough).mul(smoothstep(0.0, 0.06, up)).mul(float(1.0).sub(up.mul(0.45)));
+    const cs = max(dot(dir, u.moonDir), 0.0);
+    const cs4 = wPow4(cs);
+    const cs16 = wPow4(cs4);
+    const silver = u.moonCol.mul(wPow4(cs16).mul(1.1).add(cs16.mul(0.5)).add(cs4.mul(0.16))
+        .add(0.1)
+        .mul(LOOK.veilSilver));
+    const flat = dir.xz.div(max(length(dir.xz), 1e-3));
+    const toward = dot(flat, u.glowDir).mul(0.5).add(0.5);
+    const warm = u.glow.mul(wSq(toward).mul(toward).mul(exp(up.mul(-7.0))).mul(0.85));
+    const burning = u.curtains.x.add(u.curtains.y).add(u.curtains.z).add(u.curtains.w);
+    const under = mix(u.fire, u.crown, 0.3).mul(burning.mul(0.035));
+    const own = u.shade.mul(0.85).add(u.band.mul(0.3)).add(silver).add(warm)
+        .add(under);
+    return vec4(own.mul(u.breath.mul(0.65).add(0.35)), hidden);
 };
 
 /**
@@ -602,9 +881,12 @@ export const wAir = (u, col, p, gain = 1) => {
     const dist = length(rel);
     const dir = rel.div(max(dist, 1e-3));
     const low = exp(max(p.y.add(cameraPosition.y).mul(0.5).sub(ICE_Y), 0.0).div(-16.0));
-    const depth = dist.mul(low.mul(1 / 1500).add(1 / 6500)).mul(u.gale.mul(0.5).add(0.9));
+    // (How thick the mist lies and how hazy the air is are the weather's: u.air.)
+    const depth = dist.mul(low.mul(u.air.x).add(u.air.y)).mul(u.gale.mul(0.5).add(0.9));
     const lost = float(1.0).sub(exp(depth.mul(gain).negate()));
-    const flat = vec3(dir.x, max(dir.y, 0.0).mul(0.5).add(0.012), dir.z);
+    // (A hand above the horizon, not on it: the last light is brightest on the horizon itself,
+    // and air thick with snow or ice took its rose and laid it over the fells.)
+    const flat = vec3(dir.x, max(dir.y, 0.0).mul(0.5).add(0.045), dir.z);
     return mix(col, wSky(u, flat.div(length(flat))), lost);
 };
 
