@@ -122,8 +122,10 @@ export function buildSpiresGeometry(spires) {
         const shoulder = [];
         const sh = [];
         for (let k = 0; k < SIDES; k++) {
-            // It runs a little below the water so the mirror meets it cleanly.
-            foot.push(at(k, c.radius * 1.06, -0.04 * c.height - 0.3));
+            // It runs a little below the water so the mirror meets it cleanly, sunk further by
+            // its lean (the ring is square to the axis, so a leaning crystal's foot tilts up on
+            // the side it leans away from).
+            foot.push(at(k, c.radius * 1.06, -0.04 * c.height - 0.3 - c.radius * 1.06 * Math.hypot(c.lean[0], c.lean[1])));
             // The shoulders stand at different heights: the point is cut askew, as quartz is.
             const h = shoulderAt + drop * Math.cos((k / SIDES) * Math.PI * 2 + tilt) + (rand() - 0.5) * 0.03;
             sh.push(h);
@@ -136,16 +138,18 @@ export function buildSpiresGeometry(spires) {
             const a0 = k / SIDES;
             const a1 = (k + 1) / SIDES;
             // A side of the prism: two triangles; their shared diagonal is no edge of the crystal.
+            // The ring turns clockwise seen from above (W = A x U), so each triangle is listed
+            // foot, foot, shoulder: counter-clockwise from outside, its face looking out.
             put(foot[k], c, 0, A, 0, 0, a0, [2, 0, 0]);
-            put(shoulder[k], c, sh[k], A, 0, 0, a0, [0, 1, 0]);
             put(foot[j], c, 0, A, 1, 0, a1, [0, 0, 1]);
-            put(foot[j], c, 0, A, 1, 0, a1, [1, 0, 0]);
             put(shoulder[k], c, sh[k], A, 0, 0, a0, [0, 1, 0]);
+            put(foot[j], c, 0, A, 1, 0, a1, [1, 0, 0]);
             put(shoulder[j], c, sh[j], A, 1, 0, a1, [0, 0, 2]);
+            put(shoulder[k], c, sh[k], A, 0, 0, a0, [0, 1, 0]);
             // A facet of the point.
             put(shoulder[k], c, sh[k], A, 0, 1, a0, [1, 0, 0]);
-            put(tip, c, 1, A, 0.5, 1, (a0 + a1) / 2, [0, 1, 0]);
             put(shoulder[j], c, sh[j], A, 1, 1, a1, [0, 0, 1]);
+            put(tip, c, 1, A, 0.5, 1, (a0 + a1) / 2, [0, 1, 0]);
             // What can glint: the facets of the point, and (on the tall ones) a place on each side.
             const mid = [
                 (shoulder[k][0] + shoulder[j][0] + tip[0]) / 3,

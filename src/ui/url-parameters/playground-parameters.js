@@ -2156,6 +2156,50 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'cam',
+        category: 'Playground',
+        scope: 'playground.html — vesper-chrysalis',
+        description: 'A free camera for close looks, in place of the rest rig: from one world point, look at '
+            + 'another (the lake’s mirror follows it).',
+        values: 'x,y,z,tx,ty,tz[,fov]: the eye and the point it looks at (world metres), and the vertical field '
+            + 'of view (degrees); fewer than six numbers keep the rig.',
+        defaultValue: 'The rest rig.',
+        example: 'cam=-6,16,-52,0,16,-70,30',
+        notes: 'Use on playground.html with effect=vesper-chrysalis.',
+        sources: [
+            'src/playground/effects/vesper-chrysalis.effect.js',
+        ],
+    },
+    {
+        name: 'ghost',
+        category: 'Playground',
+        scope: 'playground.html — vesper-chrysalis',
+        description: 'Make the mock board and its HUD all but invisible while the layout still counts: the '
+            + 'chrysalis hangs clear of the board and events aim at it.',
+        values: '1 enables; requires board=1.',
+        defaultValue: 'Off.',
+        example: 'ghost=1',
+        notes: 'Use on playground.html with effect=vesper-chrysalis&board=1.',
+        sources: [
+            'src/playground/effects/vesper-chrysalis.effect.js',
+        ],
+    },
+    {
+        name: 'happen',
+        category: 'Playground',
+        scope: 'playground.html — vesper-chrysalis',
+        description: 'Hold off the evening’s own happenings (a fish rising, a gust, a falling star…): only what '
+            + 'the URL asks for plays.',
+        values: '0 holds them off.',
+        defaultValue: 'On: about one happening every 8 seconds, drawn from the clock (a seek lands on the same '
+            + 'evening).',
+        example: 'happen=0',
+        notes: 'Use on playground.html with effect=vesper-chrysalis.',
+        sources: [
+            'src/playground/effects/vesper-chrysalis.effect.js',
+        ],
+    },
+    {
         name: 'iconY',
         category: 'Playground',
         scope: 'playground.html — ocean, stillwater',
@@ -3269,8 +3313,9 @@ export const PLAYGROUND_URL_PARAMETERS = [
         values: 'Comma-separated part IDs accepted by that effect world. Void Ember also takes rocks for '
             + 'its three classes of stone, Stellar Drift ice for its boulders, shards and motes. '
             + 'Moonlit Greenhouse takes glass, iron, floor, lanterns, palms, ferns, leaves, vines, '
-            + 'water, pads, reeds, fireflies, moths, motes, dew, blooms, queen and glows. Kaleidosonic '
-            + 'has a single part, temple.',
+            + 'water, pads, reeds, fireflies, moths, motes, dew, blooms, queen and glows. Vesper Chrysalis '
+            + 'takes sky, lake, spires, reeds, chrysalis, threads, wings, blooms, moths, dust, fireflies, '
+            + 'blades, glints, flutter and meteors. Kaleidosonic has a single part, temple.',
         defaultValue: 'All parts.',
         example: 'parts=sky',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',

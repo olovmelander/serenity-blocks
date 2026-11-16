@@ -401,8 +401,10 @@ export function bloomTides(hour, out = [0, 0, 0]) {
  * Each: { x, z, size, seed }.
  */
 export function planPads(blooms, perLily = 2, seed = 9133) {
-    const rand = mulberry32(seed);
     const out = [];
+    // None asked for is none (a tier without loose pads), not a few by chance.
+    if (!(perLily > 0)) return out;
+    const rand = mulberry32(seed);
     blooms.forEach((b) => {
         const n = Math.max(0, Math.round(perLily + (rand() - 0.5) * 1.6));
         for (let i = 0; i < n; i++) {

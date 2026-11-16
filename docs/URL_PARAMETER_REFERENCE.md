@@ -61,7 +61,10 @@ playground `nopost`, which the theme used to forward from the page URL, and the 
 `vesper-lake`, `vesper-relic` and `vesper-sky` playground effects) and added the capture flags
 `vesperChrysalisTime`, `vesperChrysalisFixedDt`, `vesperChrysalisParts` and
 `vesperChrysalisFalseColor` plus the controls of the rebuilt `vesper-chrysalis` playground
-effect. The foxes' rebuild (Winter's, then Sakura Twilight's, on one shared rig) added `foxCam`,
+effect. Its masterpiece pass (2026-11-16) gave that effect entries of its own for `cam` (a free
+camera for close looks), `ghost` (the mock board all but invisible while its layout still counts)
+and `happen` (`happen=0` holds off the evening's own happenings), and its `parts` now also take
+`glints`, `flutter` and `meteors`. The foxes' rebuild (Winter's, then Sakura Twilight's, on one shared rig) added `foxCam`,
 `foxCamYaw`, `foxCamFov`, `foxAct` and `foxActAge` to the `winter` and `sakura-twilight` playground
 effects, and `foxWhich` to the latter; Sakura Twilight keeping one fox of its pair
 (2026-10-18) retired `foxWhich` again.

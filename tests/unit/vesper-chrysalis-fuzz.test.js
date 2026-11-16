@@ -21,7 +21,7 @@ import {
     REST_RIG, VESPER_PARTS, VesperWorld, fovForAspect,
 } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-world.js';
 import {
-    BLOOM_FULL, BLOOM_HOLD, BLOOM_RISE, HUSH_HOLD, MOTH_FLIGHT, RING_LIVE, SWELL_LIVE, WING_FALL,
+    BLOOM_FULL, BLOOM_HOLD, BLOOM_RISE, HEART_DROP, HUSH_HOLD, MOTH_FLIGHT, RING_LIVE, STALK, SWELL_LIVE, WING_FALL,
     mulberry32, swellPassTime, wingForCombo,
 } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-core.js';
 import { QUALITY_NAMES } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-quality.js';
@@ -91,11 +91,20 @@ function sharedNumbers(world) {
     return out;
 }
 
+/** The swells the world keeps of its own (each read 0..its ceiling), by name. */
+const WORLD_SWELLS = ['gild', 'starFlare', 'scatter', 'vortex', 'gather', 'lift'];
+
 /**
  * Play `events` random events on a new world and audit every frame.
- * @returns {{ faults: string[], stats: object }}
+ *
+ * `happenings: false` holds off the evening's own happenings (a fish rising, a gust, a falling
+ * star…): those runs balance the pools' books from what was played alone and find the lake at
+ * rest at the end. With them on, the evening's own rings are tallied as they are written, so
+ * the books still balance, and only the rings' live flag may stand at the end (a fish may be
+ * rising): everything else is audited the same, and the happenings themselves are fuzzed.
+ * @returns {{ faults: string[], stats: object, final: number[] }}
  */
-function play(seed, { events = 2500, quality = 'Low' } = {}) {
+function play(seed, { events = 2500, quality = 'Low', happenings = false } = {}) {
     const rand = mulberry32(seed);
     const pick = (list) => list[Math.floor(rand() * list.length)];
     let [width, height] = pick(FRAMES);
@@ -103,6 +112,7 @@ function play(seed, { events = 2500, quality = 'Low' } = {}) {
     const shape = width / height;
     const camera = new THREE.PerspectiveCamera(fovForAspect(shape), shape, REST_RIG.near, REST_RIG.far);
     const world = new VesperWorld({ scene, quality, capture: true }).build();
+    world.setHappenings(happenings);
     world.bindCamera(camera);
     world.setViewport(width, height, shape);
     world.setLayout(someLayout(rand, width, height), shape);
@@ -125,6 +135,8 @@ function play(seed, { events = 2500, quality = 'Low' } = {}) {
         mostPending: 0,
         mothsCut: 0,
         ringsUnseen: 0,
+        happenings: 0,
+        eveningRings: 0,
     };
     /** What this run has asked of the world since its last new run or seek: what its counts report. */
     const asked = { locks: 0, clears: 0, moths: 0 };
@@ -171,9 +183,26 @@ function play(seed, { events = 2500, quality = 'Low' } = {}) {
         landing[slot] = moth.time + moth.flight;
         return slot;
     };
+    // The evening's own happenings write rings of their own: they are tallied as they are
+    // written (a ring asked for inside a happening is the evening's), so the books balance.
+    let evening = false;
+    const happen = world.happen.bind(world);
+    world.happen = (...args) => {
+        evening = true;
+        stats.happenings += 1;
+        try {
+            return happen(...args);
+        } finally {
+            evening = false;
+        }
+    };
     const ring = world.ring.bind(world);
     world.ring = (...args) => {
         if (world.u.ringA[world.ringSlot()].value.z > world.time) stats.ringsUnseen += 1;
+        if (evening) {
+            written.rings += 1;
+            stats.eveningRings += 1;
+        }
         return ring(...args);
     };
     // The fastest a lily's light can change: its rise (a smoothstep over BLOOM_RISE) plus its fade.
@@ -317,6 +346,49 @@ function play(seed, { events = 2500, quality = 'Low' } = {}) {
             u.combo.value === world.combo && Number.isInteger(world.combo) && world.combo >= 0,
             () => `combo ${world.combo}`,
         );
+        // The evening's life: every share of it is a share (0..1), and every swell the world
+        // keeps reads between nothing and its own ceiling.
+        const shares = [
+            ['flies', u.flies.value.toArray()], ['flutter', u.flutter.value.toArray()],
+            ['beat', u.beat.value.toArray()], ['burst strength', [u.burst.value.y]],
+        ];
+        for (const [name, list] of shares) {
+            list.forEach((v, k) => need(v >= 0 && v <= 1, () => `${name}[${k}] ${v}`));
+        }
+        for (const name of WORLD_SWELLS) {
+            const swell = world[name];
+            const v = swell.valueAt(t);
+            need(v >= 0 && v <= swell.ceiling + 1e-9, () => `the ${name} swell reads ${v} (ceiling ${swell.ceiling})`);
+        }
+
+        // ── The chrysalis: where it hangs and how it is turned ──
+        const axes = [u.relicX.value, u.relicY.value, u.relicZ.value];
+        const frame = axes.every((a) => Math.abs(a.length() - 1) < 1e-9)
+            && Math.abs(axes[0].dot(axes[1])) < 1e-9 && Math.abs(axes[1].dot(axes[2])) < 1e-9
+            && Math.abs(axes[0].dot(axes[2])) < 1e-9
+            && axes[0].clone().cross(axes[1]).distanceTo(axes[2]) < 1e-9;
+        need(frame, () => `the chrysalis's axes are no frame: ${axes.map((a) => a.toArray().join(',')).join(' | ')}`);
+        const { perch, perchGoal } = world;
+        need(
+            [perch.x, perch.y, perchGoal.x, perchGoal.y].every(Number.isFinite),
+            () => `perch ${perch.x}, ${perch.y} going to ${perchGoal.x}, ${perchGoal.y}`,
+        );
+        // It hangs from the top of its stalk, moved by the perch alone; its light lies down its own axis.
+        const at = u.relicAt.value;
+        need(
+            Math.abs(at.x - (STALK[0] + perch.x)) < 1e-9 && Math.abs(at.y - (STALK[1] + perch.y)) < 1e-9
+                && at.z === STALK[2],
+            () => `hung from ${at.toArray()} with a perch of ${perch.x}, ${perch.y}`,
+        );
+        const heart = at.clone().addScaledVector(axes[1], -HEART_DROP);
+        need(
+            heart.distanceTo(u.relicHeart.value) < 1e-9,
+            () => `its light at ${u.relicHeart.value.toArray()}, not ${heart.toArray()}`,
+        );
+        need(
+            u.perch.value.x === perch.x && u.perch.value.y === perch.y,
+            () => `the shaders' perch ${u.perch.value.toArray()} is not the world's ${perch.x}, ${perch.y}`,
+        );
 
         // ── Live flags against the slots' own ages ──
         const ages = (slots, component) => slots.map((slot) => t - slot.value.getComponent(component));
@@ -345,8 +417,8 @@ function play(seed, { events = 2500, quality = 'Low' } = {}) {
         if (!(post.prism.radius >= 0 && post.prism.strength >= 0 && post.prism.strength <= 1)) {
             fault(`post.prism ${post.prism.radius} / ${post.prism.strength}`);
         }
-        if (!(post.heart.x >= -0.5 && post.heart.x <= 1.5 && post.heart.y >= -0.5 && post.heart.y <= 1.5)) {
-            fault(`heart at ${post.heart.x}, ${post.heart.y}`);
+        for (const [name, p] of [['heart', post.heart], ['origin', post.origin]]) {
+            if (!(p.x >= -0.5 && p.x <= 1.5 && p.y >= -0.5 && p.y <= 1.5)) fault(`${name} at ${p.x}, ${p.y}`);
         }
         if (![...camera.matrixWorld.elements, camera.fov].every(Number.isFinite)) fault('the camera is not finite');
         if (!(camera.fov > 10 && camera.fov <= REST_RIG.maxFov)) fault(`lens ${camera.fov}`);
@@ -370,8 +442,11 @@ function play(seed, { events = 2500, quality = 'Low' } = {}) {
         }
     };
 
-    /** What eases toward a target frame by frame. */
-    const eased = () => [world.wing, world.breath, world.crack, world.eyeHind, world.eyeFore, world.power];
+    /** What eases toward a target frame by frame (the perch, the sleep, the heartbeat's phase among them). */
+    const eased = () => [
+        world.wing, world.breath, world.crack, world.eyeHind, world.eyeFore, world.power,
+        world.perch.x, world.perch.y, world.sleep, world.beatPhase,
+    ];
 
     const step = (delta, pointer = null) => {
         time += delta;
@@ -380,6 +455,8 @@ function play(seed, { events = 2500, quality = 'Low' } = {}) {
         };
         const before = eased();
         const { moulting } = world;
+        const perchWas = { ...world.perch };
+        const goal = { ...world.perchGoal };
         world.updateCamera(camera, sim);
         world.update(sim, camera);
         stats.frames += 1;
@@ -388,6 +465,15 @@ function play(seed, { events = 2500, quality = 'Low' } = {}) {
             !moulting || before[0] - world.wing <= delta / WING_FALL + 1e-9,
             () => `moulting wings fell from ${before[0]} to ${world.wing} in ${delta} s`,
         );
+        // The chrysalis glides toward where it is to hang: never past it, never away from it.
+        for (const k of ['x', 'y']) {
+            const lo = Math.min(perchWas[k], goal[k]) - 1e-9;
+            const hi = Math.max(perchWas[k], goal[k]) + 1e-9;
+            need(
+                world.perch[k] >= lo && world.perch[k] <= hi,
+                () => `the perch's ${k} went from ${perchWas[k]} to ${world.perch[k]} on its way to ${goal[k]}`,
+            );
+        }
         // A frame of no time moves nothing that eases, whatever was asked of the world before it.
         if (delta === 0) {
             const after = eased();
@@ -628,7 +714,9 @@ function play(seed, { events = 2500, quality = 'Low' } = {}) {
     if (world.blooms.pending.length) fault(`${world.blooms.pending.length} changes never arrived`);
     world.onCombo(0);
     for (let i = 0; i < 200; i++) step((BLOOM_HOLD * 14) / 200);
-    const flags = [world.u.ringsLive.value, world.u.swellLive.value, world.u.pulsesLive.value];
+    // (With the evening's own happenings on, a fish may be rising: the rings' flag is the slots' to
+    // say, and the audit has checked it against them. No happening makes a swell or a pulse.)
+    const flags = [happenings ? 0 : world.u.ringsLive.value, world.u.swellLive.value, world.u.pulsesLive.value];
     if (flags.some((flag) => flag !== 0)) fault(`live flags ${flags} at rest`);
     if (world.wing !== 0) fault(`wings ${world.wing} at rest`);
     if (world.getState().held > 1e-3) fault(`the lake still holds ${world.getState().held} at rest`);
@@ -637,21 +725,30 @@ function play(seed, { events = 2500, quality = 'Low' } = {}) {
     if (post.flash > 1e-6 || post.kick > 1e-6 || post.prism.strength !== 0 || Math.abs(post.exposure - 1) > 1e-4) {
         fault(`the post is not at rest: ${JSON.stringify(post)}`);
     }
+    const final = [...sharedNumbers(world).map(([, v]) => v), world.perch.x, world.perch.y, world.meteors.cursor];
     world.dispose();
-    return { faults, stats };
+    return { faults, stats, final };
 }
 
 describe('vesper world: random play', () => {
+    // A quiet evening (no happenings of its own) for the first eight: the pools' books are
+    // balanced from what was played alone, and the lake must lie still at the end. Then one run
+    // a tier with the evening's own happenings on, so they are played into everything else.
     const runs = [
-        [0x1001, 'Minimal'], [0x2002, 'Low'], [0x3003, 'Medium'], [0x4004, 'High'], [0x5005, 'Ultra'],
-        [0x6006, 'Extreme'], [0x7007, 'Low'], [0x8008, 'High'],
+        [0x1001, 'Minimal', false], [0x2002, 'Low', false], [0x3003, 'Medium', false], [0x4004, 'High', false],
+        [0x5005, 'Ultra', false], [0x6006, 'Extreme', false], [0x7007, 'Low', false], [0x8008, 'High', false],
+        [0x1101, 'Minimal', true], [0x2202, 'Low', true], [0x3303, 'Medium', true], [0x4404, 'High', true],
+        [0x5505, 'Ultra', true], [0x6606, 'Extreme', true],
     ];
 
-    it.each(runs)('keeps every invariant through 2500 random events (seed %i, %s)', (seed, quality) => {
-        const { faults, stats } = play(seed, { events: 2500, quality });
+    it.each(runs)('keeps every invariant through 2500 events (seed %i, %s, happenings %s)', (seed, quality, on) => {
+        const { faults, stats } = play(seed, { events: 2500, quality, happenings: on });
         // VESPER_FUZZ_STATS=1 prints each run's tallies (what was played, what the pools' reuse cost).
         if (process.env.VESPER_FUZZ_STATS) console.log(`seed ${seed} ${quality}: ${JSON.stringify(stats)}`);
         expect(faults).toEqual([]);
+        // The evening had its own happenings, or none at all, as the run asked.
+        if (on) expect(stats.happenings).toBeGreaterThan(20);
+        else expect(stats.happenings).toBe(0);
         // The run was a run: it did what it set out to do.
         expect(stats.events).toBeGreaterThanOrEqual(2500);
         expect(stats.locks).toBeGreaterThan(800);
@@ -666,15 +763,23 @@ describe('vesper world: random play', () => {
         expect(stats.mostPending).toBeGreaterThan(3);
     });
 
-    it('covers every tier the theme offers', () => {
-        expect([...new Set(runs.map(([, quality]) => quality))].sort()).toEqual([...QUALITY_NAMES].sort());
+    it('covers every tier the theme offers, with the evening\'s own happenings and without', () => {
+        for (const on of [false, true]) {
+            const tiers = runs.filter(([, , happenings]) => happenings === on).map(([, quality]) => quality);
+            expect([...new Set(tiers)].sort(), `happenings ${on}`).toEqual([...QUALITY_NAMES].sort());
+        }
     });
 
+    // (The evening's own happenings on: they are drawn from the clock, and must play the same too.)
     it('plays the same game from the same seed', () => {
-        const a = play(0x9009, { events: 400, quality: 'Low' });
-        const b = play(0x9009, { events: 400, quality: 'Low' });
+        const a = play(0x9009, { events: 400, quality: 'Low', happenings: true });
+        const b = play(0x9009, { events: 400, quality: 'Low', happenings: true });
         expect(a.faults).toEqual([]);
+        expect(a.stats.happenings).toBeGreaterThan(0);
         expect(b.stats).toEqual(a.stats);
+        // To the last number every shader reads.
+        expect(a.final.length).toBeGreaterThan(100);
+        expect(b.final).toEqual(a.final);
     });
 });
 

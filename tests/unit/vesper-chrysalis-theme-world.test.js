@@ -421,17 +421,37 @@ describe('Vesper Chrysalis theme on its real world', () => {
         expect(theme.world.getState().layoutLive).toBe(true);
         const fired = vi.spyOn(theme.world.blades, 'fire');
         const launched = vi.spyOn(theme.world.moths, 'launch');
+        const fed = vi.spyOn(theme.world, 'queueFed');
+        const { time } = theme.world;
         clearingPiece(T);
         stepFrames(theme, 1);
         expect(fired).toHaveBeenCalledOnce();
-        const [ys, x0, x1] = fired.mock.calls[0];
-        expect(x0).toBeCloseTo(480 / 1280, 9);
-        expect(x1).toBeCloseTo(800 / 1280, 9);
-        // The cleared row is the floor of the board on screen.
-        expect(ys).toHaveLength(1);
-        expect(ys[0]).toBeGreaterThan(110 / 720);
-        expect(ys[0]).toBeLessThan(630 / 720);
-        expect(ys[0]).toBeCloseTo((110 + 520 * (19.5 / 20)) / 720, 6);
+        const [list, rgb, at, strength, flight] = fired.mock.calls[0];
+        // Fired on the frame the clear landed on.
+        expect(at).toBeGreaterThanOrEqual(time);
+        expect(at).toBeLessThanOrEqual(theme.world.time);
+        expect(strength).toBeGreaterThan(0);
+        expect(flight).toBeGreaterThan(0);
+        expect(rgb.every((c) => c > 0 && c <= 1)).toBe(true);
+        // One cleared row, two blades: out of the card's left edge and out of its right, both at
+        // the row's height on screen (the row is the floor of the board), 24 m out along the ray.
+        expect(list).toHaveLength(2);
+        const row = (110 + 520 * (19.5 / 20)) / 720;
+        list.forEach((blade, i) => {
+            const side = i === 0 ? -1 : 1;
+            const leaves = new THREE.Vector3(...blade.at);
+            expect(leaves.distanceTo(theme.camera.position)).toBeCloseTo(24, 6);
+            const screen = leaves.clone().project(theme.camera);
+            expect(screen.x * 0.5 + 0.5).toBeCloseTo((side < 0 ? 480 : 800) / 1280, 6);
+            expect(0.5 - screen.y * 0.5).toBeCloseTo(row, 6);
+            // It bows out over the water on its own side, and up, before it turns for home.
+            expect(Math.sign(blade.via[0] - blade.at[0])).toBe(side);
+            expect(blade.via[1]).toBeGreaterThan(blade.at[1]);
+        });
+        // When the last of them arrives the chrysalis takes the row in: it is fed then.
+        const home = fired.mock.results[0].value;
+        expect(home).toBeGreaterThan(at);
+        expect(fed.mock.calls.some(([when]) => when === home)).toBe(true);
         // The piece's moth left the card's edge on its side (a T at columns 3..5: the left).
         const [moth] = launched.mock.calls[0];
         const start = new THREE.Vector3(...moth.from).project(theme.camera);

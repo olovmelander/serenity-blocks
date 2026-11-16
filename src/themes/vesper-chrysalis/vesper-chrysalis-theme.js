@@ -434,22 +434,22 @@ export default class VesperChrysalisTheme extends BaseTheme {
 
     /**
      * The run is over: the world may mark the ending (it need not have the hook), and then the
-     * session is reset whatever that did.
+     * session is reset whatever that did. The evening stays asleep until play comes back.
      */
     handleGameOver() {
         try {
             this.world?.onGameOver?.();
         } finally {
-            this.resetSession();
+            this.resetSession({ wake: false });
         }
     }
 
     /** A new run: the world back at rest, no combo in flight, no level reached. */
-    resetSession() {
+    resetSession({ wake = true } = {}) {
         this.director?.reset();
         this.combos.clear();
         this.level = 0;
-        this.world?.resetSession();
+        this.world?.resetSession({ wake });
         this.scheduleLayoutReads();
     }
 
@@ -548,7 +548,10 @@ export default class VesperChrysalisTheme extends BaseTheme {
         this.modeManager = manager;
         const relayout = () => this.scheduleLayoutReads();
         this.eventUnsubscribers.push(
-            manager.on('modeStarted', relayout),
+            manager.on('modeStarted', () => {
+                this.world?.wake?.();
+                relayout();
+            }),
             manager.on('modeActivated', relayout),
             manager.on('modeStopped', () => this.resetSession()),
         );

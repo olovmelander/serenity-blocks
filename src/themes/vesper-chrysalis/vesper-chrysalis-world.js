@@ -11,11 +11,12 @@
  *
  *   lock     a moth of the piece's colour leaves the card and flutters out over the lake to a
  *            lily, which opens and keeps that light; a ring runs out over the water from it.
- *            A hard drop sends three moths, strikes the lake under the chrysalis and sends
- *            light down the silk.
- *   clear    the cleared rows leave the card as blades of light and a swell crosses the lake
- *            from under the chrysalis, one front per line; every lily it passes lets its light
- *            go, and the light streams back to the chrysalis.
+ *            A hard drop sends three moths, strikes the lake under the board, throws the
+ *            fireflies out, rings the crystal, swings the chrysalis and sends light down the silk.
+ *   clear    the cleared rows leave both edges of the card as blades of light that fly home
+ *            to the chrysalis, and a swell crosses the lake from under the board, one front per
+ *            line; every lily it passes lets its light go, and the light streams back to the
+ *            chrysalis where it hangs.
  *   combo    the chrysalis HATCHES: for every step of the chain its wings of light unfurl
  *            further to either side of the board — veins first, then the bands, then the eyes
  *            open — and the aurora rises. When the chain breaks the wings MOULT: they fold
@@ -25,7 +26,7 @@
  *            then the wings beat once: a ring crosses the sky and the water, the aurora
  *            blazes, every lily flares.
  *   cascade  every wave of one lock is a deeper swell than the last: more fronts, hotter,
- *            nearer vesperfire, with a ring under the chrysalis that reaches further each wave.
+ *            nearer vesperfire, with a ring under the board that reaches further each wave.
  *   b2b      the second difficult clear gilds the wings' veins and rings the silk in gold.
  *   perfect  a perfect clear that comes after its clear is a crown on it, not a second clear:
  *            every lily relit in vesperfire from the chrysalis outward, the wings gilded and
@@ -612,6 +613,8 @@ export class VesperWorld {
         this.applyPalette(1);
         this.perch.x = this.perchGoal.x;
         this.perch.y = this.perchGoal.y;
+        // The wings' cover too: a board that had only just come back is simply there.
+        this.coverStrength = this.layoutLive ? 1 : 0;
         this.poseRelic(0);
     }
 
@@ -619,9 +622,10 @@ export class VesperWorld {
      * A new run. The evening goes back to rest the way it would by itself: a chain still
      * standing breaks (the wings fall), every lily lets its light go, and nothing still on its
      * way lands. What is already in the air — scales, moths, rings on the water — runs out;
-     * the hour of the evening stays.
+     * the hour of the evening stays. `wake: false` (the run has just ended) leaves the evening
+     * asleep until play comes back (`wake`, or the next run's first lock).
      */
-    resetSession() {
+    resetSession({ wake = true } = {}) {
         if (this.combo > 0) this.onCombo(0);
         this.combo = 0;
         this.hushUntil = -1;
@@ -631,7 +635,11 @@ export class VesperWorld {
         this.counts = {
             locks: 0, clears: 0, quads: 0, moths: 0, falls: 0,
         };
-        // What was asleep wakes: a stir in the chrysalis, and the moths come back.
+        if (wake) this.wake();
+    }
+
+    /** What was asleep wakes: a stir in the chrysalis, and the moths come back. */
+    wake() {
         if (this.asleep) this.twitchNow(this.time + 0.3, 0.8);
         this.asleep = false;
     }
@@ -649,9 +657,14 @@ export class VesperWorld {
      * flash. A fainter chime than the one still climbing leaves it be.
      */
     chimeNow(time, strength, rgb) {
+        if (!this.u) return;
         const C = this.u.chime.value;
         const age = time - C.x;
-        const left = age >= 0 && age < 3 ? C.y * Math.exp(-age * 1.4) : 0;
+        // One still to come counts in full: a four-line clear's chime waits out the hush, and a
+        // fainter clear on another board in the same frame must not take its place.
+        let left = 0;
+        if (age < 0) left = C.y;
+        else if (age < 3) left = C.y * Math.exp(-age * 1.4);
         if (strength < left) return;
         C.set(time, strength, 0, 0);
         this.u.chimeTint.value.set(rgb[0], rgb[1], rgb[2]);
@@ -659,33 +672,38 @@ export class VesperWorld {
 
     /** A wave of opening sets out across the lake: every lily it passes opens, then shuts again. */
     bloomWaveNow(time, strength, heading = null) {
+        if (!this.u) return;
         const B = this.u.bloomWave.value;
         const age = time - B.z;
-        if (age >= 0 && age < 9 && strength < B.w) return;
+        // A stronger wave still running, or still to come, is not cut short (see chimeNow).
+        if (age < 9 && strength < B.w) return;
         const ang = heading ?? (time * 0.37) % TAU;
         B.set(Math.cos(ang), Math.sin(ang), time, strength);
     }
 
     /** A cloud of moths leaves the chrysalis at once. */
     burstNow(time, strength) {
+        if (!this.u) return;
         const B = this.u.burst.value;
         const age = time - B.x;
-        // A burst still in the air is not cut short by a fainter one.
-        if (age >= 0 && age < 5 && strength <= B.y) return;
+        // A burst still in the air, or still to come, is not cut short by a fainter one.
+        if (age < 5 && strength <= B.y) return;
         B.set(time, strength, 0, 0);
     }
 
     /** The chrysalis turning stirs a whirl into the water under it. */
     whirlNow(time, strength, rgb) {
+        if (!this.u) return;
         const W = this.u.whirl.value;
         const age = time - W.z;
-        if (age >= 0 && age < 4 && strength < W.w * Math.exp(-age * 0.5)) return;
+        if (age < 4 && strength < W.w * Math.exp(-Math.max(0, age) * 0.5)) return;
         W.set(this.relicHeart[0], this.relicHeart[2] + 2, time, strength);
         this.u.whirlTint.value.set(rgb[0], rgb[1], rgb[2]);
     }
 
     /** A lotus of light opens on the lake. */
     lotusNow(time, strength) {
+        if (!this.u) return;
         this.u.lotus.value.set(HEART[0], HEART[2] + 6, time, strength);
     }
 
@@ -825,8 +843,15 @@ export class VesperWorld {
         applyCameraBreath(camera, t, { scale: this.reducedMotion ? 0 : 1 });
         camera.updateMatrixWorld();
         this._camera = camera;
-        // The chrysalis on screen: where the shafts come from. And the wings' root, behind the
-        // board: where the ring through the frame starts.
+        this.projectMarks(camera);
+    }
+
+    /**
+     * The chrysalis on screen: where the shafts come from. And the wings' root, behind the board:
+     * where the ring through the frame starts. (The playground calls it again after it moves the
+     * camera itself.)
+     */
+    projectMarks(camera) {
         const h = this.relicHeart;
         this._ray.set(h[0], h[1], h[2]).project(camera);
         this.heart.x = Math.max(-0.5, Math.min(1.5, this._ray.x * 0.5 + 0.5));
@@ -864,8 +889,10 @@ export class VesperWorld {
 
     /** Turn the chrysalis on its thread: `turns` whole turns over `seconds`, easing out. */
     turn(time, turns, seconds = 3) {
-        // What the last turn had made by now stays made.
-        this.twistBase += this.spinAngle(time);
+        // What the last turn had made by now stays made. Under reduced motion it was never
+        // shown (poseRelic stills the turn), so there is nothing to keep: keeping it would
+        // swing the chrysalis round in one frame when the next turn starts.
+        if (!this.reducedMotion) this.twistBase += this.spinAngle(time);
         this.spin.time = time;
         this.spin.turns = turns;
         this.spin.seconds = Math.max(0.2, seconds);
@@ -883,7 +910,10 @@ export class VesperWorld {
     /** What is inside twitches: a quick wriggle, and its light swells. */
     twitchNow(time, strength = 1) {
         const age = time - this.twitch.time;
-        const left = age >= 0 && age < TWITCH_LIVE ? this.twitch.strength * Math.exp(-age * 3.2) : 0;
+        // One still to come (the blades are on their way) counts in full.
+        let left = 0;
+        if (age < 0) left = this.twitch.strength;
+        else if (age < TWITCH_LIVE) left = this.twitch.strength * Math.exp(-age * 3.2);
         if (strength < left) return;
         this.twitch.time = time;
         this.twitch.strength = strength;
@@ -1089,6 +1119,8 @@ export class VesperWorld {
         u = 0.5, rows = null, hardDrop = false, color = null, player = 0, screen = null,
     } = {}) {
         if (!this.u) return;
+        // Play is back: an evening asleep since the last run ended wakes.
+        if (this.asleep) this.wake();
         const rgb = pieceColor(color);
         let wx = 0.5;
         let wy = 0.6;
@@ -1197,7 +1229,7 @@ export class VesperWorld {
             if (second >= 0) this.sendMoth(second, [...from], rgb, 0.6, false);
             const third = this.pickBloom(-side, [first, second]);
             if (third >= 0) this.sendMoth(third, [...from], rgb, 0.6, false);
-            // …the board strikes the lake under the chrysalis, and the silk rings with it.
+            // …the board strikes the lake under it, and the silk rings with it.
             this.ring(HEART[0], HEART[2] + 6, this.time, 1.0, rgb, 2.4);
             this.threadPulse(this.time, 0, 1, rgb);
             // The blow throws the fireflies outward, rings the crystal and sets the chrysalis swinging.
@@ -1435,7 +1467,7 @@ export class VesperWorld {
             this.counts.quads += 1;
         }
         if (deeper > 0) {
-            // Each wave strikes the water under the chrysalis further out, and the silk rings.
+            // Each wave strikes the water under the board further out, and the silk rings.
             this.ring(HEART[0], HEART[2] + 6, birth, 0.6 + 0.15 * deeper, rgb, 1.3 + 0.45 * deeper);
             this.threadPulse(birth, 0, 0.6 + 0.12 * deeper, rgb);
             this.beatKick = Math.max(this.beatKick, 0.3 + 0.15 * deeper);

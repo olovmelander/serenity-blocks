@@ -29,8 +29,9 @@
  *   reduce=1                 reduced motion
  *   happen=0                 hold off the evening's own happenings (a fish rising, a gust, a
  *                            falling star…): only what the URL asks for plays
- *   cam=ex,ey,ez,tx,ty,tz,fov   a free camera for close looks: the eye, what it looks at, and the
- *                            vertical field of view in degrees (the mirror follows it)
+ *   cam=ex,ey,ez,tx,ty,tz[,fov]   a free camera for close looks: the eye, what it looks at, and
+ *                            (optional) the vertical field of view in degrees; the mirror, the
+ *                            shafts and the prism ring follow it
  *   icon=1                   the theme-icon framing: a longer lens on the chrysalis (compose for
  *                            a small circle: capture a square frame); iconFov, iconX, iconY,
  *                            iconZ, iconYaw, iconPitch adjust it
@@ -185,7 +186,7 @@ export function create({
             camera.position.set(freeCam[0], freeCam[1], freeCam[2]);
             camera.up.set(0, 1, 0);
             camera.lookAt(camTarget.set(freeCam[3], freeCam[4], freeCam[5]));
-            if (Number.isFinite(freeCam[6])) camera.fov = freeCam[6];
+            if (freeCam[6] > 0 && freeCam[6] < 180) camera.fov = freeCam[6];
             camera.updateProjectionMatrix();
             camera.updateMatrixWorld();
         }
@@ -199,6 +200,8 @@ export function create({
             camera.updateProjectionMatrix();
             camera.updateMatrixWorld();
         }
+        // The post's shafts and prism ring start where this camera sees the chrysalis.
+        if (hasFreeCam || iconPose) world.projectMarks(camera);
     };
     const stepTo = (from, to, dt) => {
         const steps = Math.max(1, Math.round((to - from) / dt));

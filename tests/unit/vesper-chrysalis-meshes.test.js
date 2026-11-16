@@ -11,15 +11,17 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three/webgpu';
 
 import {
-    CHRYSALIS, DEG, EYE, WINGS, chrysalisProfile, createVesperUniforms, fovForAspect, planBlooms, planSpires, spireTip,
+    CHRYSALIS, DEG, EYE, WINGS, createVesperUniforms, fovForAspect, planBlooms, planPads, planSpires, spireTip,
     wingBase, wingOutline, wingPoint, wingScallop,
 } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-tsl.js';
 import {
-    STALK, buildChrysalisGeometry, createChrysalis, createThreads, planThreads, threadPoint,
+    STALK, buildChrysalisGeometry, chrysalisPoint, createChrysalis, createThreads, planThreads, threadPoint,
 } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-relic.js';
-import { createReeds, createSpires } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-shore.js';
+import {
+    buildSpiresGeometry, createReeds, createSpires,
+} from '../../src/themes/vesper-chrysalis/vesper-chrysalis-shore.js';
 import { buildWingGeometry, createWings } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-wings.js';
-import { createBlooms } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-blooms.js';
+import { BLOOM_SHAPES, createBlooms } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-blooms.js';
 import { createLake } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-lake.js';
 import { createSky } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-sky.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-quality.js';
@@ -72,93 +74,225 @@ function restScreen(point, aspect = 16 / 9) {
     return { x: v.x * 0.5 + 0.5, y: 0.5 - v.y * 0.5 };
 }
 
+/** The parts of the chrysalis's cut (aGem.y). */
+const STONE = 0;
+const BEAD = 1;
+const STEM = 2;
+
+/** The chrysalis's triangles with what aGem says of each: its part, its bead, its number, its height. */
+function facetsOf(geometry) {
+    const gem = geometry.getAttribute('aGem');
+    return trianglesOf(geometry).map((t, i) => ({
+        ...t,
+        index: i,
+        id: gem.getX(i * 3),
+        part: gem.getY(i * 3),
+        bead: gem.getZ(i * 3),
+        height: gem.getW(i * 3),
+    }));
+}
+
+/** The mean of a set of triangles' corners. */
+function middleOf(triangles) {
+    const sum = new THREE.Vector3();
+    triangles.forEach((t) => t.corners.forEach((corner) => sum.add(corner)));
+    return sum.divideScalar(triangles.length * 3);
+}
+
 describe('vesper chrysalis meshes: the chrysalis', () => {
     it('is a solid whose every facet faces outward', () => {
         const geometry = buildChrysalisGeometry();
-        const triangles = trianglesOf(geometry);
+        const facets = facetsOf(geometry);
         expect(geometry.getIndex()).toBeNull(); // flat-shaded: no vertex is shared between facets
         expect(geometry.getAttribute('position').count % 3).toBe(0);
-        expect(triangles.length).toBeGreaterThan(100);
-        const centre = new THREE.Vector3(CHRYSALIS.x, CHRYSALIS.foot + CHRYSALIS.length * 0.5, CHRYSALIS.z);
+        expect(facets.length).toBeGreaterThan(100);
+        // Built about the point it hangs from: the stone is centred on the vertical through it.
+        const middle = new THREE.Vector3(0, -CHRYSALIS.length / 2, 0);
         const inward = [];
         const mislit = [];
         const collapsed = [];
-        triangles.forEach((t, i) => {
+        const outwardFrom = (t, from) => t.face.dot(new THREE.Vector3().subVectors(t.centre, from).normalize()) > 0;
+        const stem = facets.filter((t) => t.part === STEM);
+        const stemMiddle = middleOf(stem);
+        facets.forEach((t) => {
             if (t.area < 1e-9) {
                 collapsed.push(t);
                 return;
             }
-            // Away from the long axis it hangs by, and away from its middle.
-            const radial = new THREE.Vector3(t.centre.x - CHRYSALIS.x, 0, t.centre.z - CHRYSALIS.z).normalize();
-            const away = new THREE.Vector3().subVectors(t.centre, centre).normalize();
-            if (t.face.dot(radial) <= 0 || t.face.dot(away) <= 0) {
-                inward.push(`facet ${i} at height ${((t.centre.y - CHRYSALIS.foot) / CHRYSALIS.length).toFixed(2)}`);
-            }
+            const at = `part ${t.part} facet ${t.index} at ${t.centre.toArray().map((v) => v.toFixed(2)).join(', ')}`;
+            if (t.part === STONE) {
+                // A facet of the stone looks away from the long axis it hangs by, and away from its middle.
+                const radial = new THREE.Vector3(t.centre.x, 0, t.centre.z).normalize();
+                if (t.face.dot(radial) <= 0 || !outwardFrom(t, middle)) inward.push(at);
+            } else if (t.part === BEAD) {
+                // A bead of gold is a small solid of its own: its facets look away from its middle.
+                const bead = facets.filter((f) => f.part === BEAD && f.bead === t.bead);
+                if (!outwardFrom(t, middleOf(bead))) inward.push(at);
+            } else if (!outwardFrom(t, stemMiddle)) inward.push(at); // the stalk, likewise
             // The normal the shader mirrors the sky with is the facet's own.
-            if (t.stored.dot(t.face) < 0.999) mislit.push(`facet ${i}`);
+            if (t.stored.dot(t.face) < 0.999) mislit.push(at);
         });
         expect(inward).toEqual([]);
         expect(mislit).toEqual([]);
-        // The only facets with no area are the slivers that close the foot's point.
-        expect(collapsed.length).toBeLessThan(triangles.length / 10);
-        for (const t of collapsed) {
-            for (const corner of t.corners) expect(corner.y).toBeLessThan(CHRYSALIS.foot + CHRYSALIS.length * 0.15);
-        }
+        expect(collapsed).toEqual([]);
+        // Three parts and nothing else: the stone, the gold, the stalk.
+        expect(new Set(facets.map((t) => t.part))).toEqual(new Set([STONE, BEAD, STEM]));
+        expect(stem.length).toBeGreaterThan(0);
+        // The stalk is at the top, the stone's middle well under it.
+        expect(stemMiddle.y).toBeGreaterThan(-(1 - CHRYSALIS.neck) * CHRYSALIS.length - 1e-6);
+        expect(Math.hypot(stemMiddle.x, stemMiddle.z)).toBeLessThan(1e-6);
     });
 
-    it('hangs where the plan puts it, inside its own profile, with a finite normal everywhere', () => {
+    it('hangs from its stalk down to its foot, on its own skin, with a finite unit normal everywhere', () => {
         const geometry = buildChrysalisGeometry();
         const position = geometry.getAttribute('position');
         const normal = geometry.getAttribute('normal');
         const uv = geometry.getAttribute('uv');
+        const gem = geometry.getAttribute('aGem');
+        const L = CHRYSALIS.length;
         expect(normal.count).toBe(position.count);
         expect(uv.count).toBe(position.count);
+        expect(gem.count).toBe(position.count);
+        let top = -Infinity;
+        let foot = Infinity;
         let widest = 0;
+        const skin = [0, 0, 0];
+        const off = [];
         for (let i = 0; i < position.count; i++) {
-            const y = position.getY(i);
-            const t = (y - CHRYSALIS.foot) / CHRYSALIS.length;
-            expect(t).toBeGreaterThanOrEqual(-1e-6);
-            expect(t).toBeLessThanOrEqual(1 + 1e-6);
-            // `uv` = (angle round it 0..1, height 0..1): the shader's cracks and diadem are drawn by it.
-            expect(uv.getY(i)).toBeCloseTo(t, 5);
+            const p = [position.getX(i), position.getY(i), position.getZ(i)];
+            top = Math.max(top, p[1]);
+            foot = Math.min(foot, p[1]);
+            expect(Math.hypot(normal.getX(i), normal.getY(i), normal.getZ(i))).toBeCloseTo(1, 5);
+            // `uv` = (turn round it 0..1, height 0..1): the shader's cracks and diadem are drawn by it.
             expect(uv.getX(i)).toBeGreaterThanOrEqual(0);
             expect(uv.getX(i)).toBeLessThan(1);
-            const r = Math.hypot(position.getX(i) - CHRYSALIS.x, position.getZ(i) - CHRYSALIS.z);
-            // The lathe's profile, swollen by the wing cases and nudged facet by facet: never by half.
-            expect(r).toBeLessThanOrEqual(chrysalisProfile(t) * 1.5 + 1e-6);
-            widest = Math.max(widest, r);
-            expect(Number.isFinite(normal.getX(i) + normal.getY(i) + normal.getZ(i))).toBe(true);
+            expect(uv.getY(i)).toBeGreaterThanOrEqual(0);
+            expect(uv.getY(i)).toBeLessThanOrEqual(1);
+            if (gem.getY(i) === BEAD) {
+                // A bead sits on the skin (lifted a little out of it) where its uv says.
+                chrysalisPoint(uv.getX(i), uv.getY(i), skin, 1.03);
+                const fromSkin = Math.hypot(p[0] - skin[0], p[1] - skin[1], p[2] - skin[2]);
+                if (fromSkin > CHRYSALIS.radius * 0.1) off.push(`bead vertex ${i}: ${fromSkin.toFixed(3)} m off`);
+                continue;
+            }
+            widest = Math.max(widest, Math.hypot(p[0], p[2]));
+            // The stone and the stalk are their skin (chrysalisPoint, the CPU twin, at the vertex's
+            // uv), each girdle stood out of it or drawn into it a few percent; the foot and the top
+            // of the stalk are points on the axis.
+            chrysalisPoint(uv.getX(i), uv.getY(i), skin);
+            expect(p[1]).toBeCloseTo(skin[1], 4);
+            expect(uv.getY(i)).toBeCloseTo(p[1] / L + 1, 5);
+            const r = Math.hypot(p[0], p[2]);
+            if (r < 1e-6) continue;
+            const lift = r / Math.hypot(skin[0], skin[2]);
+            const along = (p[0] * skin[0] + p[2] * skin[2]) / (r * Math.hypot(skin[0], skin[2]));
+            if (lift < 0.95 || lift > 1.06 || along < 0.9999) off.push(`vertex ${i}: lift ${lift.toFixed(3)}`);
         }
-        expect(widest).toBeGreaterThan(CHRYSALIS.radius * 0.8);
-        expect(widest).toBeLessThan(CHRYSALIS.radius * 1.6);
-        // Its bounds are set: the world never asks three to compute them from a posed mesh.
+        expect(off).toEqual([]);
+        // It hangs from the origin (the top of its stalk) down to its foot, its length below it.
+        expect(top).toBeCloseTo(0, 6);
+        expect(foot).toBeCloseTo(-L, 5);
+        // As wide as its shoulder ridge, a little more where the girdles and the wing cases stand out.
+        expect(widest).toBeGreaterThan(CHRYSALIS.radius);
+        expect(widest).toBeLessThan(CHRYSALIS.radius * 1.25);
+        // Its bounds are set, and hold all of it: the world never asks three to compute them from a posed mesh.
         const sphere = geometry.boundingSphere;
         expect(sphere).toBeTruthy();
-        expect(sphere.radius).toBeGreaterThan(CHRYSALIS.length / 2 - 1e-6);
-        expect(sphere.radius).toBeLessThan(CHRYSALIS.length);
-        // The same chrysalis every time; another seed cuts other facets on the same lathe.
+        expect(sphere.radius).toBeGreaterThan(L / 2);
+        const vertex = new THREE.Vector3();
+        let furthest = 0;
+        for (let i = 0; i < position.count; i++) {
+            furthest = Math.max(furthest, vertex.fromBufferAttribute(position, i).distanceTo(sphere.center));
+        }
+        expect(furthest).toBeLessThanOrEqual(sphere.radius);
+        // The same chrysalis every time; another seed numbers the facets of the same cut otherwise
+        // (what the shader draws from a facet's number: its film, the order its cracks open in).
         const again = buildChrysalisGeometry();
         expect(Array.from(again.getAttribute('position').array)).toEqual(Array.from(position.array));
+        expect(Array.from(again.getAttribute('aGem').array)).toEqual(Array.from(gem.array));
         const other = buildChrysalisGeometry(77);
-        expect(other.getAttribute('position').count).toBe(position.count);
-        expect(Array.from(other.getAttribute('position').array)).not.toEqual(Array.from(position.array));
-        // The silk is made fast at the top of its stalk.
+        expect(Array.from(other.getAttribute('position').array)).toEqual(Array.from(position.array));
+        expect(Array.from(other.getAttribute('aGem').array)).not.toEqual(Array.from(gem.array));
+        // The silk is made fast at the top of its stalk: at rest, the origin is there.
         expect(STALK).toEqual([CHRYSALIS.x, CHRYSALIS.foot + CHRYSALIS.length, CHRYSALIS.z]);
+    });
+
+    it('wears a diadem of gold beads on its shoulder and gold spots low on its front', () => {
+        const geometry = buildChrysalisGeometry();
+        const facets = facetsOf(geometry);
+        const L = CHRYSALIS.length;
+        const shoulder = (CHRYSALIS.shoulder - 1) * L;
+        facets.forEach((t) => {
+            // Every facet has its own number 0..1, its part, and its height (of its middle) 0..1.
+            expect(t.id).toBeGreaterThanOrEqual(0);
+            expect(t.id).toBeLessThan(1);
+            expect([STONE, BEAD, STEM]).toContain(t.part);
+            expect(t.height).toBeCloseTo(t.centre.y / L + 1, 5);
+            if (t.part !== BEAD) expect(t.bead).toBe(0);
+        });
+        const beads = new Map();
+        facets.filter((t) => t.part === BEAD).forEach((t) => {
+            if (!beads.has(t.bead)) beads.set(t.bead, []);
+            beads.get(t.bead).push(t);
+        });
+        const indices = [...beads.keys()].sort((a, b) => a - b);
+        // Numbered from 0 without a gap: the diadem's first, then the spots.
+        expect(indices).toEqual(indices.map((_, i) => i));
+        expect(indices.length).toBeGreaterThan(CHRYSALIS.diadem);
+        const sizes = new Set([...beads.values()].map((list) => list.length));
+        expect(sizes.size).toBe(1); // every bead cut alike
+        const middles = indices.map((i) => middleOf(beads.get(i)));
+        // The diadem: one bead for every step of the chain, all round the shoulder ridge.
+        const diadem = middles.slice(0, CHRYSALIS.diadem);
+        diadem.forEach((m, i) => expect(m.y, `bead ${i}`).toBeCloseTo(shoulder, 1));
+        const turns = diadem.map((m) => Math.atan2(m.z, m.x));
+        expect(Math.max(...turns) - Math.min(...turns)).toBeGreaterThan(Math.PI * 1.5);
+        // The spots: lower on the stone, on its front (the side that faces the viewer at rest).
+        middles.slice(CHRYSALIS.diadem).forEach((m, i) => {
+            expect(m.y, `spot ${i}`).toBeLessThan(shoulder - 1);
+            expect(m.y, `spot ${i}`).toBeGreaterThan(-L);
+            expect(m.z, `spot ${i}`).toBeGreaterThan(0);
+        });
+    });
+
+    it('lists the stone\'s facets for what glints on them: one for each, outward, in the stone\'s own frame', () => {
+        const geometry = buildChrysalisGeometry();
+        const stone = facetsOf(geometry).filter((t) => t.part === STONE);
+        const listed = geometry.userData.facets;
+        expect(listed).toHaveLength(stone.length);
+        listed.forEach((f, i) => {
+            const t = stone[i];
+            expect(f.at[0]).toBeCloseTo(t.centre.x, 5);
+            expect(f.at[1]).toBeCloseTo(t.centre.y, 5);
+            expect(f.at[2]).toBeCloseTo(t.centre.z, 5);
+            expect(Math.hypot(...f.normal)).toBeCloseTo(1, 9);
+            expect(new THREE.Vector3(...f.normal).dot(t.face)).toBeGreaterThan(0.9999);
+            // Outward: away from the axis it hangs by.
+            expect(f.normal[0] * f.at[0] + f.normal[2] * f.at[2]).toBeGreaterThan(0);
+            expect(f.area).toBeGreaterThan(0);
+            expect(f.area).toBeCloseTo(t.area, 4);
+            expect(f.seed).toBeCloseTo(t.id, 6);
+        });
+        // The part hands the same list on.
+        const part = createChrysalis(uniforms());
+        expect(part.facets).toBe(part.geometry.userData.facets);
+        part.dispose();
     });
 
     it('is drawn single-sided with its halo behind it, both in node materials', () => {
         const part = createChrysalis(uniforms());
         const meshes = [];
         part.mesh.traverse((object) => { if (object.isMesh) meshes.push(object); });
-        expect(meshes.length).toBeGreaterThanOrEqual(2);
+        expect(meshes).toHaveLength(2);
         for (const mesh of meshes) expect(mesh.material.isNodeMaterial).toBe(true);
-        const shell = meshes.find((mesh) => mesh.geometry === part.geometry);
+        const { shell, halo } = part;
+        expect(meshes).toEqual(expect.arrayContaining([shell, halo]));
+        expect(shell.geometry).toBe(part.geometry);
         expect(shell.material).toBe(part.material);
         // Single-sided: which is why its winding matters.
         expect(shell.material.side).toBe(THREE.FrontSide);
         expect(shell.material.transparent).toBe(false);
         // The halo is a sheet of light behind the body, as seen from the viewer.
-        const halo = meshes.find((mesh) => mesh !== shell);
         expect(halo.material.transparent).toBe(true);
         expect(halo.material.depthWrite).toBe(false);
         expect(halo.position.z).toBeLessThan(CHRYSALIS.z);
@@ -170,83 +304,248 @@ describe('vesper chrysalis meshes: the chrysalis', () => {
         expect(shell.renderOrder).toBeGreaterThan(0);
         part.dispose();
     });
+
+    it('is hung, turned and lit where the world poses it, its own matrix kept', () => {
+        const part = createChrysalis(uniforms());
+        const { shell, halo } = part;
+        const L = CHRYSALIS.length;
+        // The world writes the shell's matrix itself every frame: three must not rebuild it.
+        expect(shell.matrixAutoUpdate).toBe(false);
+        // At rest it hangs from the top of its stalk, its foot where the plan has it.
+        const foot = new THREE.Vector3(0, -L, 0).applyMatrix4(shell.matrix);
+        expect(new THREE.Vector3(0, 0, 0).applyMatrix4(shell.matrix).toArray()).toEqual([...STALK]);
+        expect(foot.y).toBeCloseTo(CHRYSALIS.foot, 9);
+        // Posed: hung from another point, swung and turned, its light somewhere else.
+        const at = [-21, 17.5, -66];
+        const turn = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.12, 0.8, -0.07, 'ZXY'));
+        const heart = [-20.6, 11.3, -65.4];
+        part.setPose(at, turn, heart);
+        const top = new THREE.Vector3(0, 0, 0).applyMatrix4(shell.matrix);
+        expect(top.distanceTo(new THREE.Vector3(...at))).toBeLessThan(1e-9);
+        const hung = new THREE.Vector3(0, -L, 0).applyMatrix4(shell.matrix);
+        const expected = new THREE.Vector3(0, -L, 0).applyQuaternion(turn).add(new THREE.Vector3(...at));
+        expect(hung.distanceTo(expected)).toBeLessThan(1e-9);
+        // Turned, not scaled or mirrored: every facet still faces outward.
+        expect(shell.matrix.determinant()).toBeCloseTo(1, 9);
+        expect(shell.matrixWorldNeedsUpdate).toBe(true);
+        // The halo stands at the heart, a little behind it.
+        expect(halo.position.x).toBe(heart[0]);
+        expect(halo.position.y).toBe(heart[1]);
+        expect(halo.position.z).toBeLessThan(heart[2]);
+        expect(halo.position.z).toBeGreaterThan(heart[2] - CHRYSALIS.radius * 2);
+        part.dispose();
+    });
 });
 
+/** A crystal's own axis (the unit lean) and its foot on the water. */
+function axisOf(c) {
+    const axis = new THREE.Vector3(c.lean[0], 1, c.lean[1]).normalize();
+    return { axis, foot: new THREE.Vector3(c.x, 0, c.z) };
+}
+
+/** Each crystal of a plan with its own triangles and vertices of the merged geometry. */
+function crystalsOf(geometry, spires) {
+    const position = geometry.getAttribute('position');
+    const triangles = trianglesOf(geometry);
+    const perCrystal = position.count / spires.length;
+    return spires.map((c, k) => ({
+        c,
+        first: k * perCrystal,
+        count: perCrystal,
+        triangles: triangles.slice((k * perCrystal) / 3, ((k + 1) * perCrystal) / 3),
+    }));
+}
+
 describe('vesper chrysalis meshes: the crystal stands', () => {
-    it('cuts a crystal whose faces all look outward and whose point is its top', () => {
-        const part = createSpires(uniforms(), planSpires(5));
-        const triangles = trianglesOf(part.geometry);
-        expect(triangles).toHaveLength(18); // six sides of two triangles, six facets to the point
-        const wrong = [];
-        triangles.forEach((t, i) => {
-            expect(t.area).toBeGreaterThan(1e-4);
-            const radial = new THREE.Vector3(t.centre.x, 0, t.centre.z).normalize();
-            if (t.face.dot(radial) <= 0.05) wrong.push(`face ${i} looks inward`);
-            if (t.stored.dot(t.face) < 0.999) wrong.push(`face ${i} is lit by another face's normal`);
-            // The facets of the point also look up; no face looks down at the lake.
-            if (t.face.y < -0.2) wrong.push(`face ${i} looks down`);
-        });
-        expect(wrong).toEqual([]);
-        expect(part.material.side).toBe(THREE.FrontSide);
-        const position = part.geometry.getAttribute('position');
-        let top = -Infinity;
-        let foot = Infinity;
-        for (let i = 0; i < position.count; i++) {
-            top = Math.max(top, position.getY(i));
-            foot = Math.min(foot, position.getY(i));
-            expect(Math.hypot(position.getX(i), position.getZ(i))).toBeLessThan(1.2);
-        }
-        // Unit height, standing a hair below the water so the mirror meets it cleanly.
-        expect(top).toBe(1);
-        expect(foot).toBeLessThan(0);
-        expect(foot).toBeGreaterThan(-0.1);
-        // Its point is on its own axis: where the plan's tip is, whichever way the crystal is turned.
-        for (let i = 0; i < position.count; i++) {
-            if (position.getY(i) === 1) expect([position.getX(i), position.getZ(i)]).toEqual([0, 0]);
+    const SIZES = [...new Set(QUALITY_NAMES.map((name) => QUALITY[name].spires))];
+
+    it('cuts every crystal of the plan into one geometry, in the plan\'s order, each its own', () => {
+        for (const perSide of SIZES) {
+            const spires = planSpires(perSide);
+            const geometry = buildSpiresGeometry(spires);
+            const position = geometry.getAttribute('position');
+            expect(geometry.getIndex()).toBeNull(); // flat-shaded facets
+            // Every crystal is cut alike (six sides of two triangles, six facets to the point).
+            expect(position.count % (spires.length * 3)).toBe(0);
+            expect(position.count / spires.length / 3).toBe(18);
+            const spire = geometry.getAttribute('aSpire');
+            const axis = geometry.getAttribute('aAxis');
+            const face = geometry.getAttribute('aFace');
+            const local = geometry.getAttribute('aLocal');
+            const edge = geometry.getAttribute('aEdge');
+            for (const attribute of [spire, axis, face, local, edge]) expect(attribute.count).toBe(position.count);
+            crystalsOf(geometry, spires).forEach(({ c, first, count }) => {
+                const { axis: A } = axisOf(c);
+                let lowest = Infinity;
+                let highest = -Infinity;
+                for (let i = first; i < first + count; i++) {
+                    const label = `${perSide} a side, vertex ${i}`;
+                    // Which crystal it is (its seed), its stand (for the light a lock sends up it), its radius.
+                    expect(spire.getX(i), label).toBe(Math.fround(c.seed));
+                    expect(spire.getY(i), label).toBe(c.side);
+                    expect(spire.getW(i), label).toBe(Math.fround(c.radius));
+                    // How far up it, 0 at the foot to 1 at the point; aLocal.y the same in metres.
+                    expect(spire.getZ(i), label).toBeGreaterThanOrEqual(0);
+                    expect(spire.getZ(i), label).toBeLessThanOrEqual(1);
+                    lowest = Math.min(lowest, spire.getZ(i));
+                    highest = Math.max(highest, spire.getZ(i));
+                    expect(local.getY(i), label).toBeCloseTo(spire.getZ(i) * c.height, 4);
+                    expect(local.getX(i), label).toBeGreaterThanOrEqual(0);
+                    expect(local.getX(i), label).toBeLessThanOrEqual(1);
+                    // The crystal's own axis: the unit lean.
+                    expect(axis.getX(i), label).toBeCloseTo(A.x, 6);
+                    expect(axis.getY(i), label).toBeCloseTo(A.y, 6);
+                    expect(axis.getZ(i), label).toBeCloseTo(A.z, 6);
+                    // A side of the prism (0) or a facet of the point (1), and the place across it.
+                    expect([0, 1], label).toContain(face.getY(i));
+                    expect(face.getX(i), label).toBeGreaterThanOrEqual(0);
+                    expect(face.getX(i), label).toBeLessThanOrEqual(1);
+                }
+                expect(lowest).toBe(0);
+                expect(highest).toBe(1);
+            });
+            // Its bounds are set, and hold both stands.
+            const vertex = new THREE.Vector3();
+            for (let i = 0; i < position.count; i++) {
+                expect(vertex.fromBufferAttribute(position, i).distanceTo(geometry.boundingSphere.center))
+                    .toBeLessThanOrEqual(geometry.boundingSphere.radius);
+            }
         }
     });
 
-    it('stands every crystal of the plan upright on the lake, unmirrored, its point at the planned tip', () => {
-        for (const perSide of [...new Set(QUALITY_NAMES.map((name) => QUALITY[name].spires))]) {
+    it('stands every crystal\'s point on its own axis, at the planned tip, the highest of it', () => {
+        for (const perSide of SIZES) {
+            const spires = planSpires(perSide);
+            const geometry = buildSpiresGeometry(spires);
+            const position = geometry.getAttribute('position');
+            const spire = geometry.getAttribute('aSpire');
+            crystalsOf(geometry, spires).forEach(({ c, first, count }, k) => {
+                const { axis, foot } = axisOf(c);
+                const label = `${perSide} a side, crystal ${k}${c.shard ? ' (small)' : ''}`;
+                // The point (its one vertex at full height) is the plan's tip, where a long thread
+                // is made fast: no thread ends in the air beside it. Nothing of it stands higher.
+                const tip = new THREE.Vector3(...spireTip(c));
+                let highest = -Infinity;
+                let points = 0;
+                for (let i = first; i < first + count; i++) {
+                    const p = new THREE.Vector3().fromBufferAttribute(position, i);
+                    highest = Math.max(highest, p.y);
+                    if (spire.getZ(i) === 1) {
+                        points += 1;
+                        expect(p.distanceTo(tip), label).toBeLessThan(1e-3);
+                    }
+                    // Nothing of it reaches further up its axis than its point.
+                    expect(p.clone().sub(foot).dot(axis), label).toBeLessThanOrEqual(c.height + 1e-3);
+                }
+                expect(points, label).toBeGreaterThan(0);
+                expect(highest, label).toBeCloseTo(tip.y, 4);
+            });
+        }
+    });
+
+    // Single-sided and flat-shaded (FrontSide, normals from each triangle's own winding): a face wound
+    // the wrong way is culled from outside and the crystal is drawn from within, its far walls with
+    // their normals turned to the eye, the light on it mirrored left for right.
+    it('cuts every crystal with its faces looking outward', () => {
+        const wrong = [];
+        for (const perSide of SIZES) {
+            const spires = planSpires(perSide);
+            const geometry = buildSpiresGeometry(spires);
+            const faces = { inward: [], down: [], mislit: [] };
+            let all = 0;
+            crystalsOf(geometry, spires).forEach(({ c, triangles }, k) => {
+                const { axis, foot } = axisOf(c);
+                triangles.forEach((t, i) => {
+                    all += 1;
+                    expect(t.area).toBeGreaterThan(1e-4);
+                    const at = `crystal ${k}${c.shard ? ' (small)' : ''} face ${i}`;
+                    // Away from its own axis (the triangle's middle, less its height up the axis).
+                    const rel = new THREE.Vector3().subVectors(t.centre, foot);
+                    const radial = rel.clone().sub(axis.clone().multiplyScalar(rel.dot(axis))).normalize();
+                    if (t.face.dot(radial) <= 0.05) faces.inward.push(`${at} (${t.face.dot(radial).toFixed(2)})`);
+                    if (t.stored.dot(t.face) < 0.999) faces.mislit.push(at);
+                    // The sides stand square to the axis or lean back from it, the facets of the
+                    // point look up it: no face looks back down the crystal's own axis.
+                    if (t.face.dot(axis) < -1e-3) faces.down.push(`${at} (${t.face.dot(axis).toFixed(2)})`);
+                });
+            });
+            // One line a fault, with its count and the first few faces it was found on.
+            Object.entries({
+                'look inward': faces.inward,
+                'look down their own axis': faces.down,
+                'are lit by another face\'s normal': faces.mislit,
+            }).forEach(([what, list]) => {
+                const some = list.slice(0, 3).join('; ');
+                if (list.length) wrong.push(`${perSide} a side: ${list.length} of ${all} faces ${what}, e.g. ${some}`);
+            });
+        }
+        expect(wrong).toEqual([]);
+    });
+
+    // The cut says "it runs a little below the water so the mirror meets it cleanly": every corner of
+    // a crystal's foot is under the water. The foot ring is cut square to the crystal's axis, so on a
+    // crystal that leans far the ring's high side comes up out of the lake.
+    it('runs every crystal\'s foot a little below the water, all the way round', () => {
+        const above = [];
+        for (const perSide of SIZES) {
+            const spires = planSpires(perSide);
+            const geometry = buildSpiresGeometry(spires);
+            const position = geometry.getAttribute('position');
+            const spire = geometry.getAttribute('aSpire');
+            crystalsOf(geometry, spires).forEach(({ c, first, count }, k) => {
+                let highestFoot = -Infinity;
+                let lowestFoot = Infinity;
+                for (let i = first; i < first + count; i++) {
+                    if (spire.getZ(i) !== 0) continue;
+                    highestFoot = Math.max(highestFoot, position.getY(i));
+                    lowestFoot = Math.min(lowestFoot, position.getY(i));
+                }
+                const label = `${perSide} a side, crystal ${k}${c.shard ? ' (small, leaning '
+                    + `${Math.hypot(...c.lean).toFixed(2)})` : ''}`;
+                if (!(highestFoot < 0)) above.push(`${label}: its foot ${highestFoot.toFixed(3)} m out of the water`);
+                // A little below: never sunk by more than a tenth of its height and its width.
+                expect(lowestFoot, label).toBeGreaterThan(-(c.height * 0.1 + c.radius * 1.2 + 0.4));
+            });
+        }
+        expect(above).toEqual([]);
+    });
+
+    it('stands its glints on the crystals, and draws the stands as one plain mesh', () => {
+        for (const perSide of SIZES) {
             const spires = planSpires(perSide);
             const part = createSpires(uniforms(), spires);
+            // One draw for every crystal of the plan (no instances to mirror a crystal inside out).
+            expect(part.mesh.isMesh).toBe(true);
+            expect(part.mesh.isInstancedMesh).toBeFalsy();
             expect(part.count).toBe(spires.length);
-            expect(part.mesh.count).toBe(spires.length);
-            const position = part.geometry.getAttribute('position');
-            // The crystal's own point: its one vertex at full height.
-            let apex = null;
-            for (let i = 0; i < position.count; i++) {
-                if (position.getY(i) === 1) apex = new THREE.Vector3().fromBufferAttribute(position, i);
-            }
-            const matrix = new THREE.Matrix4();
-            const where = new THREE.Vector3();
-            const turn = new THREE.Quaternion();
-            const scale = new THREE.Vector3();
-            const seeds = part.geometry.getAttribute('aSpire');
-            spires.forEach((c, i) => {
-                const label = `${perSide} a side, crystal ${i}`;
-                part.mesh.getMatrixAt(i, matrix);
-                // A mirrored instance would turn every face inside out.
-                expect(matrix.determinant(), label).toBeGreaterThan(0);
-                matrix.decompose(where, turn, scale);
-                expect(where.x, label).toBeCloseTo(c.x, 4);
-                expect(where.y, label).toBeCloseTo(0, 6);
-                expect(where.z, label).toBeCloseTo(c.z, 4);
-                expect(scale.y, label).toBeCloseTo(c.height, 3);
-                expect(scale.x, label).toBeCloseTo(c.radius, 4);
-                expect(scale.z, label).toBeCloseTo(c.radius, 4);
-                // It leans the way the plan leans it.
-                const axis = new THREE.Vector3(0, 1, 0).applyQuaternion(turn);
-                const planned = new THREE.Vector3(c.lean[0], 1, c.lean[1]).normalize();
-                expect(axis.distanceTo(planned), label).toBeLessThan(1e-5);
-                // The plan's tip (where a long thread is made fast) IS the drawn point, to the
-                // precision of the instance's 32-bit matrix: no thread ends in the air beside it.
-                const drawn = apex.clone().applyMatrix4(matrix);
+            expect(part.mesh.geometry).toBe(part.geometry);
+            expect(part.material.side).toBe(THREE.FrontSide); // single-sided: why their winding matters
+            expect(part.glints).toBe(part.geometry.userData.glints);
+            const { glints } = part;
+            // At least a star on every point; more on the tall crystals than on the small ones.
+            expect(glints.length).toBeGreaterThanOrEqual(spires.length);
+            const starred = (c) => {
                 const tip = new THREE.Vector3(...spireTip(c));
-                expect(drawn.distanceTo(tip), label).toBeLessThan(1e-3);
-                // The stand it belongs to, for the light a lock sends up it.
-                expect(seeds.getY(i), label).toBe(c.side);
-            });
+                return glints.some((g) => tip.distanceTo(new THREE.Vector3(...g.at)) < 1e-9);
+            };
+            expect(spires.every(starred)).toBe(true);
+            for (const g of glints) {
+                expect(Math.hypot(...g.normal)).toBeCloseTo(1, 9);
+                expect(g.seed).toBeGreaterThanOrEqual(0);
+                expect(g.seed).toBeLessThan(1);
+                expect([-1, 1]).toContain(g.side);
+                // On (or just off the face of) a crystal of its own stand: inside its height, within its width.
+                const on = spires.filter((c) => c.side === g.side).some((c) => {
+                    const { axis, foot } = axisOf(c);
+                    const rel = new THREE.Vector3(...g.at).sub(foot);
+                    const up = rel.dot(axis);
+                    const out = rel.clone().sub(axis.clone().multiplyScalar(up)).length();
+                    return up >= -1e-6 && up <= c.height + 1e-6 && out <= c.radius * 1.06;
+                });
+                expect(on, `a glint at ${g.at.map((v) => v.toFixed(1)).join(', ')}`).toBe(true);
+            }
+            part.material.dispose();
+            part.geometry.dispose();
         }
     });
 
@@ -503,6 +802,11 @@ describe('vesper chrysalis meshes: the silk', () => {
                 expect(info.getY(v)).toBe(i % 2 === 0 ? -1 : 1);
                 // A long thread carries a lock's light on its own side; the fan carries every lock's.
                 expect(info.getZ(v)).toBe(thread.long ? thread.side : 0);
+                // Its seed, and above it whether it is a long one: the vertex stage moves the whole
+                // fan with the chrysalis where it hangs, a long thread only at the chrysalis's end
+                // (its other end is made fast to the crystal).
+                expect(info.getW(v) >= 1.5).toBe(thread.long);
+                expect(info.getW(v) % 1).toBeCloseTo(thread.seed, 5);
                 threadPoint(thread, s, p);
                 worst = Math.max(
                     worst,
@@ -557,10 +861,12 @@ describe('vesper chrysalis meshes: the lake, the sky and the lilies', () => {
         mirrored.reflection.dispose?.();
     });
 
-    it('floats a pad face up under every lily and gives every petal a place on its lily', () => {
+    it('floats a pad face up under every lily, and the loose pads round them', () => {
         const plan = planBlooms(6);
-        for (const whorls of [1, 2, 3]) {
-            const part = createBlooms(uniforms(), plan, { whorls });
+        const loose = planPads(plan, 2);
+        expect(loose.length).toBeGreaterThan(0);
+        for (const whorls of [2, 3]) {
+            const part = createBlooms(uniforms(), plan, { whorls, pads: loose });
             expect(part.count).toBe(plan.length);
             expect(part.plan).toEqual(plan);
             const meshes = [];
@@ -575,22 +881,102 @@ describe('vesper chrysalis meshes: the lake, the sky and the lilies', () => {
             expect(petals.renderOrder).toBeGreaterThan(0);
             expect(pads.renderOrder).toBeGreaterThan(petals.renderOrder);
             expect(auras.renderOrder).toBeGreaterThan(pads.renderOrder);
-            // Petals: the same number in every whorl of every lily, each told which lily is its own.
-            expect(petals.count % (plan.length * whorls)).toBe(0);
-            const lily = petals.geometry.getAttribute('aLily');
-            const perLily = petals.count / plan.length;
-            for (let i = 0; i < petals.count; i++) {
-                const index = lily.getW(i);
-                expect(index).toBe(Math.floor(i / perLily));
-                expect(lily.getX(i)).toBeCloseTo(plan[index].x, 4);
-                expect(lily.getY(i)).toBeCloseTo(plan[index].z, 4);
-                expect(lily.getZ(i)).toBeCloseTo(plan[index].size, 5);
+            // Pads: one a lily, then the loose ones; each a quad lying on the water, wound to be seen from above.
+            expect(pads.count).toBe(plan.length + loose.length);
+            const at = pads.geometry.getAttribute('aLily');
+            const pad = pads.geometry.getAttribute('aPad');
+            for (let i = 0; i < pads.count; i++) {
+                const own = i < plan.length;
+                const p = own ? plan[i] : loose[i - plan.length];
+                expect(at.getX(i)).toBeCloseTo(p.x, 4);
+                expect(at.getY(i)).toBeCloseTo(p.z, 4);
+                expect(at.getZ(i)).toBeCloseTo(p.size, 5);
+                // A lily's own pad knows its lily (its light pools round it); a loose one is nobody's (−1).
+                expect(at.getW(i)).toBe(own ? i : -1);
+                expect(pad.getX(i)).toBeCloseTo(p.seed, 6);
+                expect(pad.getY(i)).toBe(own ? p.kind : 0);
             }
-            // Pads: one a lily, a quad lying on the water, wound to be seen from above.
-            expect(pads.count).toBe(plan.length);
             for (const t of trianglesOf(pads.geometry)) expect(t.face.y).toBeCloseTo(1, 6);
+            // An aura for every lily.
+            expect(auras.count).toBe(plan.length);
             part.dispose();
         }
+        // Without loose pads, a pad a lily.
+        const bare = createBlooms(uniforms(), plan);
+        const bareMeshes = [];
+        bare.mesh.traverse((object) => { if (object.isMesh) bareMeshes.push(object); });
+        expect(bareMeshes[1].count).toBe(plan.length);
+        bare.dispose();
+    });
+
+    it('gives every lily the petals of its kind, and every petal its place on its lily', () => {
+        const plan = planBlooms(6);
+        // All three kinds are among them.
+        expect(new Set(plan.map((b) => b.kind)).size).toBe(BLOOM_SHAPES.length);
+        expect(BLOOM_SHAPES).toHaveLength(3);
+        /**
+         * Petals a lily of `kind` has: three whorls and its stamens; a lean tier (fewer than three
+         * whorls) drops the innermost whorl and half the stamens.
+         */
+        const petalsOf = (kind, whorls) => BLOOM_SHAPES[kind].reduce((sum, row, role) => {
+            if (role === 2 && whorls < 3) return sum;
+            return sum + (role === 3 && whorls < 3 ? Math.ceil(row.n / 2) : row.n);
+        }, 0);
+        for (const whorls of [1, 2, 3]) {
+            const part = createBlooms(uniforms(), plan, { whorls });
+            const [petals] = (() => {
+                const found = [];
+                part.mesh.traverse((object) => { if (object.isMesh) found.push(object); });
+                return found;
+            })();
+            const lily = petals.geometry.getAttribute('aLily');
+            const petal = petals.geometry.getAttribute('aPetal');
+            const shape = petals.geometry.getAttribute('aShape');
+            const curl = petals.geometry.getAttribute('aCurl');
+            expect(petals.count).toBe(plan.reduce((sum, b) => sum + petalsOf(b.kind, whorls), 0));
+            // In lily order, each lily's petals together, each told which lily is its own.
+            let first = 0;
+            plan.forEach((b, index) => {
+                const n = petalsOf(b.kind, whorls);
+                const roles = new Map();
+                for (let i = first; i < first + n; i++) {
+                    const label = `whorls ${whorls}, lily ${index}, petal ${i}`;
+                    expect(lily.getW(i), label).toBe(index);
+                    expect(lily.getX(i), label).toBeCloseTo(b.x, 4);
+                    expect(lily.getY(i), label).toBeCloseTo(b.z, 4);
+                    expect(lily.getZ(i), label).toBeCloseTo(b.size, 5);
+                    // Its lily's kind, and its role: a whorl (0 outer .. 2 inner) or a stamen (3).
+                    expect(petal.getZ(i), label).toBe(b.kind);
+                    const role = petal.getW(i);
+                    roles.set(role, (roles.get(role) || 0) + 1);
+                    const row = BLOOM_SHAPES[b.kind][role];
+                    expect(row, label).toBeTruthy();
+                    // The row's shape: shut and open leans, its length (give or take a little) and width.
+                    expect(shape.getX(i), label).toBeCloseTo(row.shut, 6);
+                    expect(shape.getY(i), label).toBeCloseTo(row.open, 6);
+                    expect(shape.getZ(i) / row.length, label).toBeGreaterThan(0.93);
+                    expect(shape.getZ(i) / row.length, label).toBeLessThan(1.07);
+                    expect(shape.getW(i), label).toBeCloseTo(row.width, 6);
+                    expect(curl.getX(i), label).toBeCloseTo(row.bow, 6);
+                    expect(curl.getY(i), label).toBeCloseTo(row.bowAt, 6);
+                    expect(curl.getZ(i), label).toBeCloseTo(row.tip, 6);
+                    expect(curl.getW(i), label).toBeCloseTo(b.seed, 6);
+                    expect(petal.getY(i), label).toBeGreaterThanOrEqual(0);
+                    expect(petal.getY(i), label).toBeLessThan(1);
+                }
+                // Every whorl of its kind, all its petals; the lean tier without the innermost.
+                const expected = new Map();
+                BLOOM_SHAPES[b.kind].forEach((row, role) => {
+                    if (role === 2 && whorls < 3) return;
+                    expected.set(role, role === 3 && whorls < 3 ? Math.ceil(row.n / 2) : row.n);
+                });
+                expect(roles).toEqual(expected);
+                first += n;
+            });
+            part.dispose();
+        }
+        // Kinds differ: not every kind has the same number of petals.
+        expect(new Set([0, 1, 2].map((kind) => petalsOf(kind, 3))).size).toBeGreaterThan(1);
         // A plan longer than the pool is cut to it; an empty one draws nothing and breaks nothing.
         const none = createBlooms(uniforms(), []);
         expect(none.count).toBe(0);

@@ -11,19 +11,20 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    HERO_LAYER, REST_RIG, VESPER_PARTS, VesperWorld, fovForAspect,
+    HAPPEN_SLOT, HERO_LAYER, LIFE_HOURS, REST_RIG, VESPER_PARTS, VesperWorld, fovForAspect, lifeAt,
 } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-world.js';
 import {
-    BLADE_SLOTS, BLOOM_FULL, BLOOM_HOLD, BLOOM_KEEP, BLOOM_RISE, DEG, EYE, EYE_COMBO, HEART, HOUR_SECONDS, HUSH_HOLD,
-    MOTH_DEPTH, MOTH_FLIGHT, PALETTE_KEYS, RING_LIVE, RING_SLOTS, SURGE_COOL, SWELL_LIVE, SWELL_SLOTS, THREAD_PULSES,
-    VESPER_PALETTES, WING_FALL, WING_STEPS, bloomLevel, hourAt, paletteAt, pieceColor, powerForCombo, spireTip,
-    swellPassTime, wingForCombo,
+    BLADE_SLOTS, BLOOM_FULL, BLOOM_HOLD, BLOOM_KEEP, BLOOM_RISE, CHRYSALIS, DEG, EYE, EYE_COMBO, HEART, HEART_DROP,
+    HOUR_SECONDS, HUSH_HOLD, MOTH_DEPTH, MOTH_FLIGHT, PALETTE_KEYS, RING_LIVE, RING_SLOTS, STALK, SURGE_COOL,
+    SWELL_LIVE, SWELL_SLOTS, TAU, THREAD_PULSES, VESPERFIRE, VESPER_PALETTES, WING_FALL, WING_STEPS, bloomLevel,
+    hourAt, paletteAt, pieceColor, powerForCombo, spireTip, swellPassTime, wingForCombo,
 } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-quality.js';
 import {
-    boardPoint, cardUnion, fallbackLayout,
+    boardPoint, cardUnion, fallbackLayout, perchFor,
 } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-composition.js';
-import { DUST_HOME } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-fx.js';
+import { BLADE_FLIGHT, BLADE_LIFE } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-fx.js';
+import { METEOR_SLOTS } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-sky.js';
 import { PULSE_TRAVEL } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-relic.js';
 import { VesperPost } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-post.js';
 import { URL_PARAMETER_CATALOG } from '../../src/ui/url-parameters/catalog.js';
@@ -31,7 +32,10 @@ import { URL_PARAMETER_CATALOG } from '../../src/ui/url-parameters/catalog.js';
 // Every test builds a whole world (a noise field, a plan, some twenty node materials).
 vi.setConfig({ testTimeout: 60000 });
 
-/** The parts that are not mirrored by the lake's pass: the distance, the lake itself, the screen-space blades. */
+/**
+ * The parts that are not mirrored by the lake's pass: the distance, the lake itself, and the
+ * blades (the cleared rows' light, drawn over everything as it leaves the card).
+ */
 const UNMIRRORED = ['sky', 'lake', 'blades'];
 
 /** A renderer as far as the world needs one: it keeps a clear colour. */
@@ -54,8 +58,13 @@ function frame(world, camera, time, delta) {
     world.update(sim, camera);
 }
 
+/**
+ * A built world on its first frame. `happenings: false` holds off the evening's own happenings
+ * (a fish rising, a gust, a falling star…) from the very first frame: a test that counts rings
+ * or waits for the lake to fall still asks for that quiet evening, and says why.
+ */
 function makeWorld(quality = 'Low', {
-    width = 1600, height = 900, live = true, reduced = false, renderer = null, start = 10,
+    width = 1600, height = 900, live = true, reduced = false, renderer = null, start = 10, happenings = true,
 } = {}) {
     const scene = new THREE.Scene();
     const aspect = width / height;
@@ -65,6 +74,7 @@ function makeWorld(quality = 'Low', {
     }).build();
     world.bindCamera(camera);
     world.setReducedMotion(reduced);
+    world.setHappenings(happenings);
     world.setViewport(width, height, aspect);
     // As the theme does on its first frame: the live rects, or null when no board is on screen.
     world.setLayout(live ? fallbackLayout(width, height) : null, aspect);
@@ -151,6 +161,24 @@ function onScreen(point, camera) {
     return { x: v.x * 0.5 + 0.5, y: 0.5 - v.y * 0.5 };
 }
 
+/**
+ * The band the chrysalis's light (u.wake) breathes in at rest: it is alight with nothing played,
+ * something alive in it breathing on the slow clock. Read on the world itself over half a minute
+ * with nothing played (more than a whole breath).
+ */
+function restingWake(world, camera) {
+    let low = Infinity;
+    let high = -Infinity;
+    for (let i = 0; i < 300; i++) {
+        run(world, camera, 0.1, 1);
+        low = Math.min(low, world.u.wake.value);
+        high = Math.max(high, world.u.wake.value);
+    }
+    expect(low).toBeGreaterThan(0);
+    expect(high).toBeLessThan(1);
+    return { low, high };
+}
+
 /** A world whose lilies hold light on both sides: four hard drops, landed and opened. */
 function litWorld(quality = 'Low', options = {}) {
     const made = makeWorld(quality, options);
@@ -179,6 +207,20 @@ function slotNumbers(places, colours, birth) {
     });
 }
 
+/**
+ * The shared uniforms the redesign brought: the chrysalis's pose, the sky's clockwork, the
+ * evening's life and what crosses the lake (a number or a vector each).
+ */
+const LIVING_UNIFORMS = [
+    'relicAt', 'relicX', 'relicY', 'relicZ', 'relicHeart', 'perch', 'beat', 'lakeLight', 'skyTurn', 'rays',
+    'planetSun', 'ringSun', 'planetSpin', 'cloudCover', 'gust', 'whirl', 'whirlTint', 'lotus', 'flutter', 'burst',
+    'flies', 'flyScatter', 'tide', 'bloomWave', 'chime', 'chimeTint', 'heat',
+];
+const uniformNumbers = (u, keys) => keys.flatMap((key) => {
+    const { value } = u[key];
+    return typeof value === 'number' ? [value] : value.toArray();
+});
+
 /** Everything a frame of the world is made of, but the dust: numbers, in a fixed order. */
 function snapshot(world, camera) {
     const { u } = world;
@@ -187,6 +229,9 @@ function snapshot(world, camera) {
     const post = world.getPostState();
     return [
         ...scalars,
+        ...uniformNumbers(u, LIVING_UNIFORMS),
+        ...world.relicAt, ...world.relicHeart, world.perch.x, world.perch.y, post.origin.x, post.origin.y,
+        world.meteors.cursor, world.swingCursor, world.twistBase, world.beatPhase, world.sleep, world.wheelBase,
         ...PALETTE_KEYS.flatMap((key) => u[key].value.toArray()),
         ...u.fed.value.toArray(),
         ...u.wing.value.toArray(),
@@ -308,12 +353,28 @@ describe('vesper world: build', () => {
             expect(world.blooms, quality).toBe(world.parts.blooms);
             expect(world.blooms.count, quality).toBe(tier.blooms);
             expect(world.blooms.plan, quality).toHaveLength(tier.blooms);
-            expect(world.parts.spires.count, quality).toBe(tier.spires * 2);
-            expect(world.spires, quality).toHaveLength(tier.spires * 2);
+            // Two stands of `spires` crystals each, and the shards at the waterline after them:
+            // the part draws every one of them.
+            const stands = world.spires.filter((c) => !c.shard);
+            expect(stands, quality).toHaveLength(tier.spires * 2);
+            expect(world.spires.slice(0, stands.length), quality).toEqual(stands);
+            expect(world.spires.length, quality).toBeGreaterThan(stands.length);
+            expect(world.parts.spires.count, quality).toBe(world.spires.length);
             expect(world.parts.threads.count, quality).toBe(tier.threads);
             expect(world.dust.count, quality).toBe(tier.dust);
             if (tier.fireflies > 0) expect(world.parts.fireflies.count, quality).toBe(tier.fireflies);
             if (tier.reeds > 0) expect(world.parts.reeds.count, quality).toBe(tier.reeds);
+            // The moths about the chrysalis and the burst out of it; the stars on cut stone (the
+            // chrysalis's largest facets and every glintStride-th of the crystals' points); the
+            // blades, two to a row; the falling stars.
+            const { flutter, glints } = world.parts;
+            expect([flutter.ambient, flutter.burst], quality).toEqual([tier.flutter, tier.flutterBurst]);
+            expect(flutter.count, quality).toBe(tier.flutter + tier.flutterBurst);
+            const facets = Math.min(tier.glints, world.parts.chrysalis.facets.length);
+            const points = Math.ceil(world.parts.spires.glints.length / tier.glintStride);
+            expect(glints.count, quality).toBe(facets + points);
+            expect(world.blades.count, quality).toBe(BLADE_SLOTS * 2);
+            expect(world.meteors.count, quality).toBe(METEOR_SLOTS);
             expect(world.getState(), quality).toMatchObject({
                 quality,
                 time: 10,
@@ -324,7 +385,7 @@ describe('vesper world: build', () => {
                 blooms: tier.blooms,
                 held: 0,
                 dust: tier.dust,
-                spires: tier.spires * 2,
+                spires: world.spires.length,
                 threads: tier.threads,
                 fireflies: tier.fireflies,
                 mirror: tier.mirror > 0,
@@ -367,16 +428,16 @@ describe('vesper world: build', () => {
 
     it('draws only the named parts when asked, and takes a part its tier does not have in its stride', () => {
         const { camera, world } = makeWorld('Minimal');
-        // The lowest tier has no reeds and no fireflies: they are absent, not broken.
+        // The lowest tier has no reeds: they are absent, not broken. (It keeps its fireflies.)
         expect(QUALITY.Minimal.reeds).toBe(0);
         expect(world.parts.reeds).toBeUndefined();
-        expect(world.parts.fireflies).toBeUndefined();
-        expect(world.getState().fireflies).toBe(0);
+        expect(world.parts.fireflies.count).toBe(QUALITY.Minimal.fireflies);
+        expect(world.getState().fireflies).toBe(QUALITY.Minimal.fireflies);
         world.showOnlyParts(['sky', 'wings', 'reeds', 'no-such-part']);
         Object.keys(world.parts).forEach((name) => {
             expect(world.parts[name].mesh.visible, name).toBe(name === 'sky' || name === 'wings');
         });
-        world.showOnlyParts(['fireflies']);
+        world.showOnlyParts(['reeds']);
         expect(Object.values(world.parts).some((part) => part.mesh.visible)).toBe(false);
         world.showOnlyParts([]);
         expect(Object.values(world.parts).some((part) => part.mesh.visible)).toBe(false);
@@ -475,7 +536,7 @@ describe('vesper world: build', () => {
         // The sky is the last of the solid draws: its shader runs only where sky shows.
         expect(place(order.solid, /Sky/)).toBe(order.solid.length - 1);
         expect(place(order.solid, /Shell/)).toBeLessThan(place(order.solid, /Lake/));
-        // The pads lie on the water under every light; the screen-space blades are over everything.
+        // The pads lie on the water under every light; the blades leaving the card are over everything.
         expect(place(order.blended, /Blooms|Pad/)).toBe(0);
         expect(place(order.blended, /Blades/)).toBe(order.blended.length - 1);
         expect(place(order.blended, /Halo/)).toBeLessThan(place(order.blended, /Wings/));
@@ -578,7 +639,10 @@ describe('vesper world: build', () => {
 describe('vesper world: camera', () => {
     it('rests at the eye, looking a little up at the chrysalis, with the lens its frame asks for', () => {
         for (const [width, height] of [[1600, 900], [390, 844], [3440, 1440]]) {
-            const { camera, world } = makeWorld('Minimal', { width, height, reduced: true });
+            // (A quiet evening: at rest, nothing of its own stirs the chrysalis on the first frame.)
+            const { camera, world } = makeWorld('Minimal', {
+                width, height, reduced: true, happenings: false,
+            });
             const aspect = width / height;
             expect(camera.position.toArray()).toEqual([EYE.x, EYE.y, EYE.z]);
             expect(camera.fov).toBe(fovForAspect(aspect));
@@ -587,17 +651,22 @@ describe('vesper world: camera', () => {
             const gaze = camera.getWorldDirection(new THREE.Vector3());
             expect(gaze.x).toBeCloseTo(0, 9);
             expect(Math.atan2(gaze.y, -gaze.z)).toBeCloseTo(EYE.pitch, 9);
-            // The heart on screen is where a pinhole at the eye puts it (the model the core and
-            // mesh tests measure the composition in).
+            // The wings' root (the chrysalis's heart at rest, behind the board) is where a pinhole
+            // at the eye puts it (the model the core and mesh tests measure the composition in).
             const dy = HEART[1] - EYE.y;
             const dz = HEART[2] - EYE.z;
             const depth = dy * Math.sin(EYE.pitch) - dz * Math.cos(EYE.pitch);
             const rise = dy * Math.cos(EYE.pitch) + dz * Math.sin(EYE.pitch);
             const lens = Math.tan((fovForAspect(aspect) * DEG) / 2);
-            expect(world.heart.x).toBeCloseTo(0.5, 9);
-            expect(world.heart.y).toBeCloseTo(0.5 - (rise / (depth * lens)) * 0.5, 9);
-            // The post reads the same point, not a copy of it.
+            expect(world.origin.x).toBeCloseTo(0.5, 9);
+            expect(world.origin.y).toBeCloseTo(0.5 - (rise / (depth * lens)) * 0.5, 9);
+            // The heart on screen is where the camera sees the chrysalis's light, wherever it hangs.
+            const seen = onScreen(world.relicHeart, camera);
+            expect(world.heart.x).toBeCloseTo(seen.x, 9);
+            expect(world.heart.y).toBeCloseTo(seen.y, 9);
+            // The post reads the same points, not copies of them.
             expect(world.getPostState().heart).toBe(world.heart);
+            expect(world.getPostState().origin).toBe(world.origin);
             expect(world.getState().heart).toEqual(world.heart);
             expect(world.getState().heart).not.toBe(world.heart);
             world.dispose();
@@ -609,22 +678,34 @@ describe('vesper world: camera', () => {
 
     it('stands in a boat that is all but still: it sways, never far, never losing the chrysalis', () => {
         const { camera, world } = makeWorld('Minimal');
+        const card = cardUnion(world.layout);
         const rest = new THREE.Vector3(EYE.x, EYE.y, EYE.z);
         let wandered = 0;
         for (let i = 0; i < 90; i++) {
+            // The camera is placed first in a frame, then the chrysalis is hung: the heart on
+            // screen is where this frame's camera sees it as it hung when the frame began.
+            const hung = [...world.relicHeart];
             run(world, camera, 2, 1);
             const away = camera.position.distanceTo(rest);
             wandered = Math.max(wandered, away);
             expect(away).toBeLessThan(3);
             expect(camera.position.y).toBeGreaterThan(EYE.y * 0.8); // above the water
-            expect(world.heart.x).toBeGreaterThan(0.4);
-            expect(world.heart.x).toBeLessThan(0.6);
+            // The chrysalis hangs in the open water left of the card, never out of the frame...
+            expect(world.heart.x).toBeGreaterThan(0);
+            expect(world.heart.x).toBeLessThan(card.x0);
             expect(world.heart.y).toBeGreaterThan(0);
             expect(world.heart.y).toBeLessThan(0.5);
-            // The heart on screen is where the camera really sees it.
-            const seen = onScreen(HEART, camera);
+            const seen = onScreen(hung, camera);
             expect(world.heart.x).toBeCloseTo(seen.x, 9);
             expect(world.heart.y).toBeCloseTo(seen.y, 9);
+            // ...and the wings' root stays behind the middle of the card, where the camera sees it.
+            expect(world.origin.x).toBeGreaterThan(0.4);
+            expect(world.origin.x).toBeLessThan(0.6);
+            expect(world.origin.y).toBeGreaterThan(card.y0);
+            expect(world.origin.y).toBeLessThan(0.5);
+            const root = onScreen(HEART, camera);
+            expect(world.origin.x).toBeCloseTo(root.x, 9);
+            expect(world.origin.y).toBeCloseTo(root.y, 9);
         }
         expect(wandered).toBeGreaterThan(0.1);
         world.dispose();
@@ -861,8 +942,9 @@ describe('vesper world: locks', () => {
     });
 
     it('sends three moths to three lilies on a hard drop, strikes the lake and rings all the silk', () => {
-        const soft = makeWorld('Low');
-        const hard = makeWorld('Low');
+        // (Quiet evenings: the rings are counted, and a fish rising would add its own.)
+        const soft = makeWorld('Low', { happenings: false });
+        const hard = makeWorld('Low', { happenings: false });
         const launches = record(hard.world.moths, 'launch');
         const ordered = recordStrikes(hard.world);
         const softOrdered = recordStrikes(soft.world);
@@ -1191,7 +1273,7 @@ describe('vesper world: the board on screen', () => {
         world.dispose();
     });
 
-    it('fires the cleared rows out of the card as blades only while a board is live', () => {
+    it('fires the cleared rows from both edges of the card home to the chrysalis while a board is live', () => {
         const { camera, world } = makeWorld('Low');
         const fires = record(world.blades, 'fire');
         const card = cardUnion(world.layout);
@@ -1199,29 +1281,51 @@ describe('vesper world: the board on screen', () => {
         const t0 = world.time;
         world.onClear({ rows: [19, 17], lines: 2 });
         expect(fires).toHaveLength(1);
-        let [ys, x0, x1, rgb, time, strength] = fires[0];
-        expect(ys).toHaveLength(2);
-        expect(ys[0]).toBeCloseTo(boardPoint(board, 0.5, 19).y, 9);
-        expect(ys[1]).toBeCloseTo(boardPoint(board, 0.5, 17).y, 9);
-        expect([x0, x1]).toEqual([card.x0, card.x1]);
+        const [list, rgb, time, strength, flight] = fires[0];
+        /** Each blade of a fire: the row it is of, the edge it leaves, where it shows and where it bows through. */
+        const blades = (sent, rows) => sent.map(({ at, via }, k) => ({
+            row: rows[Math.floor(k / 2)],
+            side: k % 2 ? 1 : -1,
+            at,
+            via,
+            seen: onScreen(at, camera),
+            bow: onScreen(via, camera),
+        }));
+        // Two a row, one out of each edge of the card, at that row's height (a world point on the
+        // ray through it: the blade flies through the world to wherever the chrysalis hangs).
+        expect(list).toHaveLength(4);
+        for (const blade of blades(list, [19, 17])) {
+            const label = `row ${blade.row}, side ${blade.side}`;
+            expect(blade.seen.x, label).toBeCloseTo(blade.side < 0 ? card.x0 : card.x1, 6);
+            expect(blade.seen.y, label).toBeCloseTo(boardPoint(board, 0.5, blade.row).y, 6);
+            // It bows out over the water on its own side, and up, before it turns for home.
+            if (blade.side < 0) expect(blade.bow.x, label).toBeLessThan(card.x0);
+            else expect(blade.bow.x, label).toBeGreaterThan(card.x1);
+            expect(blade.bow.y, label).toBeLessThan(blade.seen.y);
+            expect(blade.via[2], label).toBeLessThan(blade.at[2]);
+        }
         expect(time).toBe(t0);
         expect(strength).toBeGreaterThan(0);
+        expect(flight).toBe(BLADE_FLIGHT);
         expect(rgb.every((c) => c > 0 && c <= 1)).toBe(true);
-        // Where a blade ends it comes apart into scales, to either side of the card.
-        const ends = dustInUse(world).map((scale) => onScreen(scale.at, camera).x);
-        expect(ends.some((x) => x < card.x0)).toBe(true);
-        expect(ends.some((x) => x > card.x1)).toBe(true);
-        // With no rows named, the rows are the floor's; never more blades than the pool has.
+        // The card sheds a puff of scales where they leave, at both edges.
+        const puffs = dustInUse(world).map((scale) => onScreen(scale.at, camera).x);
+        expect(puffs.length).toBeGreaterThan(0);
+        for (const x of puffs) expect(Math.min(Math.abs(x - card.x0), Math.abs(x - card.x1))).toBeLessThan(0.05);
+        expect(puffs.some((x) => x < 0.5)).toBe(true);
+        expect(puffs.some((x) => x > 0.5)).toBe(true);
+        // With no rows named, the rows are the floor's.
         run(world, camera, 1);
         world.onClear({ lines: 3 });
-        [ys] = fires[1];
-        expect(ys).toHaveLength(3);
-        expect(ys[0]).toBeCloseTo(boardPoint(board, 0.5, 19).y, 9);
-        expect(ys[2]).toBeCloseTo(boardPoint(board, 0.5, 17).y, 9);
+        const floor = blades(fires[1][0], [19, 18, 17]);
+        expect(floor).toHaveLength(6);
+        for (const blade of floor) expect(blade.seen.y).toBeCloseTo(boardPoint(board, 0.5, blade.row).y, 6);
+        // Four rows at most (a board clears no more at once), and the pool holds three four-line
+        // clears' blades in the air at once.
         world.onClear({ lines: 4, rows: [19, 18, 17, 16, 15, 14] });
-        [ys, x0, x1, rgb, time, strength] = fires[2];
-        expect(ys).toHaveLength(4); // four rows at most: a board clears no more at once
-        expect(BLADE_SLOTS).toBeGreaterThanOrEqual(12); // three clears' worth in the air at once
+        expect(fires[2][0]).toHaveLength(8);
+        expect(world.blades.count).toBe(BLADE_SLOTS * 2);
+        expect(world.blades.count).toBeGreaterThanOrEqual(3 * 8);
         // A clear that names a point on screen (a mode without a board) throws no blades...
         world.onClear({ lines: 2, screen: { x: 0.5, y: 0.5 } });
         expect(fires).toHaveLength(3);
@@ -1363,11 +1467,15 @@ describe('vesper world: clears', () => {
         world.dispose();
     });
 
+    // (No board on screen in these: with one, the cleared rows fly home as blades and feed the
+    // chrysalis too, a feed of their own; here only what the lilies give back is in question.)
     it('streams the light the lilies let go back to the chrysalis, which glows in it', () => {
-        const { camera, world, lit } = litWorld('Low');
+        const { camera, world, lit } = litWorld('Low', { live: false });
         const t0 = world.time;
         const tints = lit.map((index) => world.blooms.colourOf(index));
         expect(world.fed).toBe(0);
+        // The scales go home to the chrysalis as it hangs when the clear comes: just in front of its light.
+        const heart = [world.relicHeart[0], world.relicHeart[1], world.relicHeart[2] + 1.5];
         world.onClear({ lines: 1 });
         // Scales leave each lily as the swell passes it, and every one of them ends at the chrysalis.
         const home = dustInUse(world).filter((scale) => scale.size < 0);
@@ -1385,7 +1493,7 @@ describe('vesper world: clears', () => {
             expect(scale.time).toBeGreaterThan(t0 + swellPassTime(b.x, b.z) - 1e-3);
             expect(scale.time).toBeLessThan(t0 + swellPassTime(b.x, b.z) + 1);
             for (let k = 0; k < 3; k++) {
-                expect(scale.at[k] + scale.velocity[k] * scale.life).toBeCloseTo(DUST_HOME[k], 2);
+                expect(scale.at[k] + scale.velocity[k] * scale.life).toBeCloseTo(heart[k], 2);
             }
         }
         expect([...sources].sort((a, b) => a - b)).toEqual(lit);
@@ -1415,7 +1523,7 @@ describe('vesper world: clears', () => {
     });
 
     it('feeds the chrysalis nothing from a dark lake', () => {
-        const { camera, world } = makeWorld('Low');
+        const { camera, world } = makeWorld('Low', { live: false });
         world.onClear({ lines: 3 });
         expect(world.blooms.pending).toHaveLength(0);
         expect(world.pendingFed.time).toBe(Infinity);
@@ -1431,8 +1539,8 @@ describe('vesper world: clears', () => {
      * chrysalis (the swell reaches it first, long before a moth can), one to the lily furthest
      * from it (its moth is there well before the swell).
      */
-    function mothsAndSwell(quality = 'High') {
-        const made = makeWorld(quality);
+    function mothsAndSwell(quality = 'High', options = {}) {
+        const made = makeWorld(quality, options);
         const { camera, world } = made;
         const byPass = world.blooms.plan.map((b, index) => ({ index, pass: swellPassTime(b.x, b.z) }))
             .sort((a, b) => a.pass - b.pass);
@@ -1459,10 +1567,11 @@ describe('vesper world: clears', () => {
     // swell reaches a near lily. If the clear counted every moth on its way, light would leave a
     // lily that is still shut and the chrysalis be "fed" light no lily held: it asks what each
     // lily will hold WHEN the front reaches it (blooms.heldAt).
+    // (No board on screen: the rows' own feed is not in question here.)
     it('sends no light home from a lily that is still dark when the swell passes it', () => {
         const {
             world, t0, late, early,
-        } = mothsAndSwell();
+        } = mothsAndSwell('High', { live: false });
         world.onClear({ lines: 1, rows: [19] });
         // The lily whose moth is still in the air: nothing to let go, nothing sent home.
         expect(world.blooms.heldAt(late.index, t0 + late.pass)).toBe(0);
@@ -1485,7 +1594,7 @@ describe('vesper world: clears', () => {
         world.pendingFed.rgb.forEach((c, k) => expect(c).toBeCloseTo([0.2, 0.5, 1][k], 12));
         world.dispose();
         // A clear with only moths still in the air to meet: no release, no scales, no feed.
-        const only = makeWorld('High');
+        const only = makeWorld('High', { live: false });
         const first = only.world.blooms.plan.map((b, index) => ({ index, pass: swellPassTime(b.x, b.z) }))
             .sort((a, b) => a.pass - b.pass)[0];
         const from = only.world.screenToWorld(0.39, 0.6, MOTH_DEPTH, [0, 0, 0]);
@@ -2482,8 +2591,9 @@ describe('vesper world: it builds with play', () => {
         const taken = [];
         const fire = world.blades.fire.bind(world.blades);
         world.blades.fire = (...args) => {
-            fire(...args);
-            taken.push([...world.blades.taken]);
+            const home = fire(...args);
+            taken.push({ time: args[2], slots: [...world.blades.taken] });
+            return home;
         };
         world.onClear({ lines: 4, rows: [19, 18, 17, 16] });
         run(world, camera, HUSH_HOLD + 0.2);
@@ -2498,11 +2608,13 @@ describe('vesper world: it builds with play', () => {
         expect(world.shock.strength).toBeGreaterThanOrEqual(ring.strength);
         run(world, camera, 1 / 60, 1);
         expect(world.getPostState().prism.strength).toBeGreaterThan(prism * Math.exp(-1 / 60 / 0.75));
-        // The single's blade takes a spent slot: the four blades of the quad fly on.
+        // The single's two blades take spent slots: the eight blades of the quad (two a row), still
+        // in the air, fly on.
         expect(taken).toHaveLength(2);
-        expect(taken[0]).toHaveLength(4);
-        expect(taken[1]).toHaveLength(1);
-        expect(taken[0]).not.toContain(taken[1][0]);
+        expect(taken[1].time - taken[0].time).toBeLessThan(BLADE_LIFE);
+        expect(taken[0].slots).toHaveLength(8);
+        expect(taken[1].slots).toHaveLength(2);
+        for (const slot of taken[1].slots) expect(taken[0].slots).not.toContain(slot);
         // The overdrive of a perfect clear is not cut back by a four-line clear after it.
         world.onClear({ lines: 4, perfect: true });
         const overdrive = world.surge;
@@ -2549,6 +2661,7 @@ describe('vesper world: it builds with play', () => {
         world.applyPalette(1);
         run(world, camera, 1);
         const rest = reading(world);
+        const breathing = restingWake(world, camera);
         expect(rest.warm).toBe(0);
         expect(rest.fever).toBe(0);
         const seen = [];
@@ -2583,9 +2696,12 @@ describe('vesper world: it builds with play', () => {
         const after = reading(world);
         expect(after.warm).toBe(0);
         expect(after.fever).toBe(0);
-        for (const key of ['aurora', 'night', 'wake', 'shafts', 'exposure']) {
+        for (const key of ['aurora', 'night', 'shafts', 'exposure']) {
             expect(after[key], key).toBeCloseTo(rest[key], 2);
         }
+        // The chrysalis's light is back to breathing as it does at rest.
+        expect(after.wake).toBeGreaterThanOrEqual(breathing.low - 1e-3);
+        expect(after.wake).toBeLessThanOrEqual(breathing.high + 1e-3);
         world.dispose();
     });
 
@@ -2761,7 +2877,8 @@ describe('vesper world: reduced motion', () => {
 
 describe('vesper world: what the shaders and the post are told', () => {
     it('raises a live flag while a ring, a swell or a pulse is running, and drops it after', () => {
-        const { camera, world } = makeWorld('Low');
+        // (A quiet evening: the flags must drop, and a fish rising by itself would raise the rings' again.)
+        const { camera, world } = makeWorld('Low', { happenings: false });
         const live = () => [world.u.ringsLive.value, world.u.swellLive.value, world.u.pulsesLive.value];
         const settle = () => run(world, camera, 30, 300);
         /** What the slots themselves say is on the water / on the silk right now. */
@@ -2816,7 +2933,8 @@ describe('vesper world: what the shaders and the post are told', () => {
     });
 
     it('reuses its slots in turn: the oldest ring, swell or pulse makes way for the newest', () => {
-        const { camera, world } = makeWorld('Low');
+        // (A quiet evening: the evening's own rings would take slots of their own between these.)
+        const { camera, world } = makeWorld('Low', { happenings: false });
         for (let i = 0; i < RING_SLOTS * 2 + 3; i++) {
             run(world, camera, 0.05);
             const cursor = world.ringCursor;
@@ -3053,14 +3171,44 @@ describe('vesper world: time', () => {
         // to the last bit: a seek puts the palette back with `p += (target - p) * 1`, which can
         // leave a colour one unit in the last place from where a new world has it.)
         expect(apart(first, again)).toBeLessThan(1e-9);
-        // Every moth again, from the same point to the same lily; every blade, in the same colour.
+        // Every moth again, from the same point to the same lily; every blade from the same place,
+        // through the same point, in the same colour, at the same moment.
         expect(moths).toEqual(flown);
         expect(blades).toHaveLength(fired.length);
-        expect(apart(fired.flat(2), blades.flat(2))).toBeLessThan(1e-9);
+        const bladeNumbers = (calls) => calls.flatMap(([list, rgb, ...rest]) => [
+            list.length, ...list.flatMap(({ at, via }) => [...at, ...via]), ...rgb, ...rest,
+        ]);
+        expect(bladeNumbers(fired).length).toBeGreaterThan(20);
+        expect(apart(bladeNumbers(fired), bladeNumbers(blades))).toBeLessThan(1e-9);
         // The dust too: every scale in the same slot, at the same place, on the same course (to
         // the precision of the 32-bit attributes it is kept in).
         expect(apart(firstDust, dustSnapshot(world))).toBeLessThan(1e-4);
         world.dispose();
+    });
+
+    // SOURCE FAULT, left failing on purpose (see the report that came with it): how far the card
+    // counts as covering the wings (world.coverStrength, eased in as a board comes back) survives
+    // a seek, while the perch that eases alongside it snaps. Replayed wings are then cut by a
+    // cover table a fresh world does not have, for as long as the old ease takes to run out.
+    it('replays the wings\' cover too: a seek forgets that the board had only just come back', () => {
+        const [a, b] = [makeWorld('Low', { happenings: false }), makeWorld('Low', { happenings: false })];
+        a.world.onCombo(4);
+        run(a.world, a.camera, 3);
+        a.world.setLayout(null);
+        run(a.world, a.camera, 0.3);
+        a.world.setLayout(fallbackLayout(1600, 900), 1600 / 900);
+        for (const { world, camera } of [a, b]) {
+            world.seek(10);
+            frame(world, camera, 10, 0);
+            world.onCombo(3);
+            run(world, camera, 0.5);
+        }
+        const cover = ({ world }) => world.parts.wings.cover.flatMap((v) => v.toArray());
+        const [mine, fresh] = [cover(a), cover(b)];
+        expect(fresh.some((v) => v > 0)).toBe(true); // the card does hide some of the wings
+        expect(Math.max(...mine.map((v, i) => Math.abs(v - fresh[i])))).toBeLessThan(1e-9);
+        a.world.dispose();
+        b.world.dispose();
     });
 
     // The dust pool draws each scale's scatter, speed, life and size from a generator of its own.
@@ -3285,13 +3433,14 @@ describe('vesper world: time', () => {
     });
 
     it('returns to its resting look long after the last event', () => {
-        const { camera, world } = makeWorld('Low');
+        // (A quiet evening: at rest the live flags must be down, and a fish rising by itself would raise one.)
+        const { camera, world } = makeWorld('Low', { happenings: false });
         // (Held at one hour: left to itself the evening moves on, and its resting look with it.)
         world.setHourDrift(false);
         world.applyPalette(1);
         run(world, camera, 1);
         const rest = { ...world.getPostState() };
-        const wake = world.u.wake.value;
+        const breathing = restingWake(world, camera);
         const aurora = world.u.aurora.value;
         world.onLock({ u: 0.5, hardDrop: true });
         world.onCombo(5);
@@ -3307,7 +3456,9 @@ describe('vesper world: time', () => {
         expect(post.exposure).toBeCloseTo(1, 5);
         expect(post.prism).toEqual({ radius: 0, strength: 0 });
         expect(world.u.breath.value).toBeCloseTo(1, 6);
-        expect(world.u.wake.value).toBeCloseTo(wake, 5);
+        // The chrysalis's light breathes again as it does at rest.
+        expect(world.u.wake.value).toBeGreaterThanOrEqual(breathing.low - 1e-5);
+        expect(world.u.wake.value).toBeLessThanOrEqual(breathing.high + 1e-5);
         expect(world.u.aurora.value).toBeCloseTo(aurora, 5);
         expect([world.u.ringsLive.value, world.u.swellLive.value, world.u.pulsesLive.value]).toEqual([0, 0, 0]);
         expect(world.getState()).toMatchObject({ combo: 0, wing: 0 });
@@ -3325,10 +3476,12 @@ describe('vesper world: time', () => {
 describe('vesper world: the moth and ring pools', () => {
     /**
      * `drops` hard drops, one every `gap` seconds. Counts what the pools' reuse takes away: moths
-     * overwritten before they have landed, and rings overwritten before they have begun.
+     * overwritten before they have landed, and rings overwritten before they have begun. (On a
+     * quiet evening, as the rings are counted to the last one: with its own happenings on, the
+     * evening's rings are tallied and checked apart, `happenings: true`.)
      */
-    function hardDrops(quality, gap, drops = 40) {
-        const { camera, world } = makeWorld(quality);
+    function hardDrops(quality, gap, drops = 40, { happenings = false } = {}) {
+        const { camera, world } = makeWorld(quality, { happenings });
         const lost = { moths: 0, rings: 0 };
         const landing = [];
         const { launch } = world.moths;
@@ -3338,20 +3491,43 @@ describe('vesper world: the moth and ring pools', () => {
             landing[slot] = moth.time + moth.flight;
             return slot;
         };
+        // The evening's own rings are known by being written inside one of its happenings.
+        const theirs = new Set();
+        let evening = false;
+        const happen = world.happen.bind(world);
+        world.happen = (...args) => {
+            evening = true;
+            try {
+                return happen(...args);
+            } finally {
+                evening = false;
+            }
+        };
         const ring = world.ring.bind(world);
+        let played = 0;
         world.ring = (...args) => {
-            // (The slot the world is about to take: the one with least left to give.)
-            if (world.u.ringA[world.ringSlot()].value.z > world.time + 1e-9) lost.rings += 1;
+            // (The slot the world is about to take: the one with least left to give.) The faint
+            // rings of the evening's own may make way; play's never do.
+            const slot = world.u.ringA[world.ringSlot()].value;
+            if (slot.z > world.time + 1e-9 && !theirs.has(slot.toArray().join())) lost.rings += 1;
+            played += 1;
+            // (A slot holds x, z, birth, strength: the ring's first four arguments.)
+            if (evening) theirs.add(args.slice(0, 4).join());
             return ring(...args);
         };
+        const mine = world.ringCursor;
         for (let i = 0; i < drops; i++) {
+            const before = played;
             world.onLock({ u: i % 2 ? 0.8 : 0.2, hardDrop: true, rows: [18] });
+            // A hard drop writes two rings: its own lily's, and the strike under the chrysalis.
+            expect(played - before).toBe(2);
             run(world, camera, gap);
         }
         expect(world.counts.moths).toBe(drops * 3);
         expect(world.moths.cursor).toBe(drops * 3);
-        // A hard drop writes two rings: its own lily's, and the strike under the chrysalis.
-        expect(world.ringCursor).toBe(drops * 2);
+        // On a quiet evening those are all the rings there are.
+        if (!happenings) expect(world.ringCursor - mine).toBe(drops * 2);
+        expect(world.ringCursor - mine).toBe(played);
         world.dispose();
         return lost;
     }
@@ -3369,5 +3545,813 @@ describe('vesper world: the moth and ring pools', () => {
         for (const quality of QUALITY_NAMES) {
             expect(hardDrops(quality, 0.5), quality).toEqual({ moths: 0, rings: 0 });
         }
+    });
+
+    // The evening's own happenings write rings into the same pool (a fish rising, something
+    // skimming the water). Faint as they are, they make way for play's when the pool is full:
+    // play's moths and rings are never the ones cut.
+    it('lets every moth and ring of play run its course with the evening\'s own happenings going on', () => {
+        for (const quality of ['Minimal', 'High']) {
+            for (const gap of [1, 0.5]) {
+                const lost = hardDrops(quality, gap, 40, { happenings: true });
+                expect(lost, `${quality}, ${gap} s`).toEqual({ moths: 0, rings: 0 });
+            }
+        }
+    });
+});
+
+describe('vesper world: where the chrysalis hangs', () => {
+    /** Two boards side by side, the open water between them. */
+    const TWO_BOARDS = {
+        cardCount: 2,
+        cards: [{
+            x0: 0.08, y0: 0.12, x1: 0.4, y1: 0.92,
+        }, {
+            x0: 0.6, y0: 0.12, x1: 0.92, y1: 0.92,
+        }],
+        hud: null,
+        boards: [null, {
+            x0: 0.1, y0: 0.3, x1: 0.38, y1: 0.88,
+        }, {
+            x0: 0.62, y0: 0.3, x1: 0.9, y1: 0.88,
+        }, null, null],
+    };
+    const inside = (p, r) => p.x > r.x0 && p.x < r.x1 && p.y > r.y0 && p.y < r.y1;
+
+    it('hangs in its place at rest with no board on screen, and between two boards', () => {
+        const { camera, world } = makeWorld('Low', { live: false, happenings: false });
+        expect(world.perch).toEqual({ x: 0, y: 0 });
+        expect(world.perchGoal).toEqual({ x: 0, y: 0 });
+        expect(world.relicAt).toEqual([...STALK]);
+        expect(world.u.relicAt.value.toArray()).toEqual([...STALK]);
+        expect(world.u.perch.value.toArray()).toEqual([0, 0, 0]);
+        // Its light lies HEART_DROP down its own axis, never far off the plumb line: at rest it is
+        // the heart the scene is composed about, and on screen it is where the wings' root is.
+        expect(new THREE.Vector3(...world.relicHeart).distanceTo(new THREE.Vector3(...HEART))).toBeLessThan(0.5);
+        expect(Math.hypot(world.heart.x - world.origin.x, world.heart.y - world.origin.y)).toBeLessThan(0.01);
+        // Between two boards the middle of the picture is open water: it stays where it is.
+        world.setLayout(TWO_BOARDS, 16 / 9);
+        expect(world.perchGoal).toEqual({ x: 0, y: 0 });
+        run(world, camera, 3);
+        expect(world.perch).toEqual({ x: 0, y: 0 });
+        expect(inside(world.heart, TWO_BOARDS.cards[0]) || inside(world.heart, TWO_BOARDS.cards[1])).toBe(false);
+        world.dispose();
+    });
+
+    it('hangs clear of a solo board: in the open water beside it, or above it on an upright phone', () => {
+        for (const [width, height, where] of [
+            [1600, 900, 'left'], [3440, 1440, 'left'], [1000, 1000, 'left'], [390, 844, 'above'],
+        ]) {
+            const label = `${width}x${height}`;
+            const { camera, world } = makeWorld('Low', { width, height, happenings: false });
+            const card = cardUnion(world.layout);
+            // Where it is to hang is the composition's answer; a world whose first board is this
+            // one has it there from the first frame.
+            expect(world.perchGoal, label).toEqual(perchFor(world.layout, width / height));
+            expect(world.perch, label).toEqual(world.perchGoal);
+            expect(world.relicAt, label).toEqual([STALK[0] + world.perch.x, STALK[1] + world.perch.y, STALK[2]]);
+            expect(world.u.perch.value.toArray(), label).toEqual([world.perch.x, world.perch.y, 0]);
+            if (where === 'left') {
+                // Left of the card (the HUD stands to the right), at the height it hangs at rest...
+                expect(world.perch.x, label).toBeLessThan(0);
+                expect(world.perch.y, label).toBe(0);
+                expect(world.heart.x, label).toBeGreaterThan(0);
+                // ...and clear of the card: not its light alone, the stone at its widest.
+                const flank = [world.relicHeart[0] + CHRYSALIS.radius, world.relicHeart[1], world.relicHeart[2]];
+                expect(onScreen(flank, camera).x, label).toBeLessThan(card.x0);
+            } else {
+                // No open water beside a card that fills the width: up into the strip of sky above it.
+                expect(world.perch.x, label).toBe(0);
+                expect(world.perch.y, label).toBeGreaterThan(0);
+                expect(world.heart.y, label).toBeGreaterThan(0);
+                expect(world.heart.y, label).toBeLessThan(card.y0);
+            }
+            expect(inside(world.heart, card), label).toBe(false);
+            // The wings still grow from behind the board: their root stays behind the card.
+            expect(inside(world.origin, card), label).toBe(true);
+            world.dispose();
+        }
+    });
+
+    it('glides to a new place when the board comes or goes, never jumps, and a seek puts it there at once', () => {
+        const { camera, world } = makeWorld('Low', { live: false, happenings: false });
+        const goal = perchFor(fallbackLayout(1600, 900), 16 / 9);
+        expect(goal.x).toBeLessThan(-5);
+        world.setLayout(fallbackLayout(1600, 900), 16 / 9);
+        expect(world.perchGoal).toEqual(goal);
+        // Not at once: this world's first board was none, and the chrysalis already hung.
+        expect(world.perch).toEqual({ x: 0, y: 0 });
+        let previous = 0;
+        let heartWas = world.heart.x;
+        let frames = 0;
+        while (Math.abs(world.perch.x - goal.x) > Math.abs(goal.x) * 0.01 && frames < 600) {
+            run(world, camera, 1 / 60, 1);
+            frames += 1;
+            const step = world.perch.x - previous;
+            // Toward it, never past it, and never more than a sliver of the way in one frame.
+            expect(step).toBeLessThan(0);
+            expect(world.perch.x).toBeGreaterThanOrEqual(goal.x);
+            expect(-step).toBeLessThan(-goal.x * 0.05);
+            expect(world.u.perch.value.x).toBe(world.perch.x);
+            expect(world.relicAt[0]).toBe(STALK[0] + world.perch.x);
+            // On screen too it glides.
+            expect(Math.abs(world.heart.x - heartWas)).toBeLessThan(0.01);
+            previous = world.perch.x;
+            heartWas = world.heart.x;
+        }
+        // Over a moment, not for ever.
+        expect(frames).toBeGreaterThan(30);
+        expect(frames).toBeLessThan(600);
+        // The board goes: it glides back the same way.
+        world.setLayout(null);
+        expect(world.perchGoal).toEqual({ x: 0, y: 0 });
+        run(world, camera, 1 / 60, 1);
+        expect(world.perch.x).toBeGreaterThan(previous);
+        expect(world.perch.x).toBeLessThan(0);
+        // A seek puts it where it is to hang at once (a capture lands on the very frame it asks for).
+        world.seek(world.time);
+        expect(world.perch).toEqual({ x: 0, y: 0 });
+        expect(world.relicAt).toEqual([...STALK]);
+        world.setLayout(fallbackLayout(1600, 900), 16 / 9);
+        expect(world.perch).toEqual({ x: 0, y: 0 });
+        world.seek(30);
+        expect(world.perch).toEqual(goal);
+        expect(world.relicAt).toEqual([STALK[0] + goal.x, STALK[1], STALK[2]]);
+        expect(world.u.relicAt.value.toArray()).toEqual(world.relicAt);
+        world.dispose();
+        // A world whose first layout has a board on screen has it in its place before its first frame.
+        const fresh = new VesperWorld({ scene: new THREE.Scene(), quality: 'Minimal' }).build();
+        fresh.setLayout(fallbackLayout(1600, 900), 16 / 9);
+        expect(fresh.perch).toEqual(goal);
+        fresh.dispose();
+    });
+});
+
+describe('vesper world: the chrysalis on its thread', () => {
+    /** Two quiet worlds run side by side, frame for frame: one is told something, the other not. */
+    function twins(options = {}) {
+        const quiet = { happenings: false, ...options };
+        return [makeWorld('Low', quiet), makeWorld('Low', quiet)];
+    }
+    const together = (pair, seconds, steps) => pair.forEach(({ world, camera }) => run(world, camera, seconds, steps));
+    // How far apart two worlds' chrysalises lean (their own up) and face (their own across): the
+    // chord between the two unit axes, the angle between them to within a hair for small angles.
+    const tilt = (a, b) => a.world.u.relicY.value.distanceTo(b.world.u.relicY.value);
+    const facing = (a, b) => a.world.u.relicX.value.distanceTo(b.world.u.relicX.value);
+    const between = (a, b) => Math.hypot(...a.map((v, k) => v - b[k]));
+
+    it('swings from a knock, about the point it hangs by, and the swing dies away', () => {
+        const pair = twins();
+        const [still, knocked] = pair;
+        knocked.world.knock(knocked.world.time, 0.05, 1, 0.4);
+        let early = 0;
+        let moved = 0;
+        for (let i = 0; i < 240; i++) {
+            together(pair, 1 / 60, 1);
+            early = Math.max(early, tilt(still, knocked));
+            moved = Math.max(moved, between(knocked.world.relicHeart, still.world.relicHeart));
+            // It swings about the point it hangs by: that does not move.
+            expect(knocked.world.relicAt).toEqual(still.world.relicAt);
+        }
+        expect(early).toBeGreaterThan(0.02);
+        expect(moved).toBeGreaterThan(0.1); // its light swings with it
+        together(pair, 4, 240);
+        let late = 0;
+        for (let i = 0; i < 240; i++) {
+            together(pair, 1 / 60, 1);
+            late = Math.max(late, tilt(still, knocked));
+        }
+        expect(late).toBeLessThan(early * 0.3);
+        // Long after, it hangs exactly as one never knocked.
+        together(pair, 20, 200);
+        expect(tilt(still, knocked)).toBeLessThan(1e-9);
+        expect(knocked.world.relicHeart).toEqual(still.world.relicHeart);
+        pair.forEach(({ world }) => world.dispose());
+    });
+
+    it('turns on its thread: whole turns, easing out, and a second turn carries on from the first', () => {
+        const pair = twins();
+        const [plain, turned] = pair;
+        const { world } = turned;
+        const angle = () => world.twistBase + world.spinAngle(world.time);
+        const t0 = world.time;
+        world.turn(t0, 2, 3.4);
+        expect(angle()).toBe(0);
+        let previous = 0;
+        let fastest = 0;
+        let last = Infinity;
+        while (world.time < t0 + 3.4 + 0.5) {
+            together(pair, 1 / 60, 1);
+            const now = angle();
+            const step = now - previous;
+            // One way round, no further than its turns, quick at first and slowing to a stop.
+            expect(step).toBeGreaterThanOrEqual(0);
+            expect(step).toBeLessThanOrEqual(last + 1e-12);
+            expect(now).toBeLessThanOrEqual(2 * TAU);
+            fastest = Math.max(fastest, step);
+            last = step;
+            previous = now;
+        }
+        expect(fastest).toBeLessThan(0.25);
+        // It ends on whole turns, exactly: it faces as it would have had it never turned.
+        expect(world.spinAngle(t0 + 3.4)).toBe(2 * TAU);
+        expect(world.spinAngle(t0 + 60)).toBe(2 * TAU);
+        expect(facing(plain, turned)).toBeLessThan(1e-9);
+        expect(tilt(plain, turned)).toBeLessThan(1e-9);
+        // A second turn mid-way through a first (a twist, then a spin that cleared nothing)
+        // carries on from wherever the first had got to: the angle never jumps.
+        world.turn(world.time, 2, 3.4);
+        together(pair, 1, 60);
+        const before = angle();
+        let shown = world.u.relicX.value.clone();
+        world.turn(world.time, 1, 2.4);
+        expect(angle()).toBe(before);
+        for (let i = 0; i < 180; i++) {
+            together(pair, 1 / 60, 1);
+            expect(world.u.relicX.value.angleTo(shown)).toBeLessThan(0.25);
+            shown = world.u.relicX.value.clone();
+        }
+        expect(angle()).toBeCloseTo(before + TAU, 9);
+        pair.forEach((made) => made.world.dispose());
+    });
+
+    it('does not turn under reduced motion', () => {
+        const pair = twins({ reduced: true });
+        const [plain, turned] = pair;
+        turned.world.turn(turned.world.time, 2, 3.4);
+        for (let i = 0; i < 60; i++) {
+            together(pair, 1 / 15, 1);
+            expect(facing(plain, turned)).toBeLessThan(1e-9);
+        }
+        pair.forEach((made) => made.world.dispose());
+    });
+
+    // SOURCE FAULT, left failing on purpose (see the report that came with it): under reduced
+    // motion poseRelic leaves the running turn out (spinAngle × 0), but turn() still banks the
+    // angle the running turn has made into twistBase, which poseRelic adds in full. A second turn
+    // mid-way through a first (a twist, then a spin) snaps the still chrysalis round by that angle
+    // in one frame.
+    it('does not jump under reduced motion when a second turn comes mid-way through a first', () => {
+        const pair = twins({ reduced: true });
+        const [plain, turned] = pair;
+        turned.world.turn(turned.world.time, 2, 3.4);
+        together(pair, 1, 60);
+        turned.world.turn(turned.world.time, 1, 2.4);
+        for (let i = 0; i < 60; i++) {
+            together(pair, 1 / 30, 1);
+            expect(facing(plain, turned), `frame ${i}`).toBeLessThan(1e-9);
+        }
+        pair.forEach((made) => made.world.dispose());
+    });
+
+    it('twitches: what is inside stirs, its light flares and fades, and the chrysalis wriggles', () => {
+        const pair = twins();
+        const [still, stirred] = pair;
+        const { world } = stirred;
+        const beat = () => world.u.beat.value;
+        expect(beat().z).toBe(0);
+        const t0 = world.time;
+        world.twitchNow(t0, 1);
+        let flare = 0;
+        let flaredAt = 0;
+        let stir = 0;
+        let wriggle = 0;
+        for (let i = 0; i < 180; i++) {
+            together(pair, 1 / 60, 1);
+            if (beat().z > flare) {
+                flare = beat().z;
+                flaredAt = world.time;
+            }
+            stir = Math.max(stir, beat().y - still.world.u.beat.value.y);
+            wriggle = Math.max(wriggle, facing(still, stirred));
+            expect(beat().z).toBeLessThanOrEqual(1);
+        }
+        // Quick to flare, slower to fade; and what is inside stirs with it.
+        expect(flare).toBeGreaterThan(0.5);
+        expect(flaredAt - t0).toBeLessThan(0.5);
+        expect(stir).toBeGreaterThan(0.2);
+        expect(wriggle).toBeGreaterThan(0.01);
+        // Then it is over, light and wriggle both.
+        expect(beat().z).toBe(0);
+        expect(facing(still, stirred)).toBeLessThan(1e-9);
+        // A fainter twitch never cuts one still running short.
+        world.twitchNow(world.time, 1);
+        world.twitchNow(world.time + 0.1, 0.3);
+        expect(world.twitch).toEqual({ time: world.time, strength: 1 });
+        pair.forEach((made) => made.world.dispose());
+    });
+
+    it('keeps every number of its pose finite, and its axes a true frame, through a whole run of play', () => {
+        const { camera, world } = makeWorld('High');
+        const update = world.update.bind(world);
+        let frames = 0;
+        world.update = (...args) => {
+            update(...args);
+            frames += 1;
+            const { u } = world;
+            for (const key of ['relicAt', 'relicX', 'relicY', 'relicZ', 'relicHeart', 'perch', 'beat']) {
+                expect(u[key].value.toArray().every(Number.isFinite), key).toBe(true);
+            }
+            const [x, y, z] = [u.relicX.value, u.relicY.value, u.relicZ.value];
+            for (const axis of [x, y, z]) expect(axis.length()).toBeCloseTo(1, 12);
+            expect(x.dot(y)).toBeCloseTo(0, 12);
+            expect(y.dot(z)).toBeCloseTo(0, 12);
+            expect(x.dot(z)).toBeCloseTo(0, 12);
+            expect(x.clone().cross(y).distanceTo(z)).toBeLessThan(1e-12);
+            // It hangs head down from its thread: its own up is never far from the world's, and its
+            // light lies HEART_DROP down its own axis from the point it hangs by.
+            expect(y.y).toBeGreaterThan(0.95);
+            const heart = u.relicAt.value.clone().addScaledVector(y, -HEART_DROP);
+            expect(heart.distanceTo(u.relicHeart.value)).toBeLessThan(1e-12);
+            expect(u.relicHeart.value.toArray()).toEqual(world.relicHeart);
+        };
+        longScript(world, camera);
+        world.onClear({ lines: 4, twist: true });
+        world.onSpin();
+        run(world, camera, 3);
+        expect(frames).toBeGreaterThan(300);
+        world.dispose();
+    });
+});
+
+describe('vesper world: the evening\'s own happenings', () => {
+    /** Everything a happening writes: the rings on the water, a gust, a wave of opening, a chime, a stir. */
+    const happenedNumbers = (world) => [
+        ...slotNumbers(world.u.ringA, world.u.ringC, 2),
+        ...uniformNumbers(world.u, ['gust', 'bloomWave', 'chime', 'chimeTint']),
+        world.twitch.time, world.twitch.strength, world.meteors.cursor, world.ringCursor,
+    ];
+    /** When each of those was last set going (a ring slot's birth, the gust's, the wave's, the chime's, the stir's). */
+    const births = (world) => [
+        ...world.u.ringA.map((slot) => slot.value.z),
+        world.u.gust.value.z, world.u.bloomWave.value.z, world.u.chime.value.x, world.twitch.time,
+    ];
+
+    it('has happenings of its own, drawn from the clock: after a seek, the same evening whatever came before', () => {
+        const played = makeWorld('Low');
+        longScript(played.world, played.camera);
+        played.world.levelUp(4);
+        played.world.setReducedMotion(true);
+        run(played.world, played.camera, 20, 200);
+        played.world.setReducedMotion(false);
+        const fresh = makeWorld('Low');
+        for (const { world, camera } of [played, fresh]) {
+            world.seek(50);
+            frame(world, camera, 50, 0);
+            run(world, camera, HAPPEN_SLOT * 8, 480);
+        }
+        const { world } = fresh;
+        // Things of several kinds happened on the way, with nothing played...
+        const kinds = [
+            world.ringCursor > 0, world.u.gust.value.z > -50, world.u.bloomWave.value.z > -50,
+            world.u.chime.value.x > -50, world.twitch.time > -50, world.meteors.cursor > 0,
+        ];
+        expect(kinds.filter(Boolean).length).toBeGreaterThanOrEqual(3);
+        // ...and the very same in both, to a hair (a seek puts the palette back to within a unit
+        // in the last place, and the evening's colours are drawn from it).
+        const a = happenedNumbers(played.world);
+        const b = happenedNumbers(world);
+        expect(b).toHaveLength(a.length);
+        expect(Math.max(...a.map((v, i) => Math.abs(v - b[i])))).toBeLessThan(1e-9);
+        played.world.dispose();
+        world.dispose();
+    });
+
+    it('lands a seek on the happenings the evening lived through: the same, at the same moments and places', () => {
+        const since = 50;
+        /** Every ring a world asks for from now on: where, when and how strong (its colour and slot are the pool's). */
+        const rung = (world) => {
+            const list = [];
+            const ring = world.ring.bind(world);
+            world.ring = (...args) => {
+                list.push(args.slice(0, 4));
+                return ring(...args);
+            };
+            return list;
+        };
+        const lived = makeWorld('Low');
+        const livedRings = rung(lived.world);
+        run(lived.world, lived.camera, 120, 1200);
+        const sought = makeWorld('Low', { start: since });
+        const soughtRings = rung(sought.world);
+        sought.world.seek(since);
+        frame(sought.world, sought.camera, since, 0);
+        run(sought.world, sought.camera, 80, 800);
+        expect(lived.world.time).toBe(sought.world.time);
+        // Every ring set going from the moment sought, in the same order.
+        const after = (list) => list.filter(([, , birth]) => birth >= since);
+        expect(after(livedRings).length).toBeGreaterThan(2);
+        expect(after(soughtRings)).toEqual(after(livedRings));
+        // The last gust, wave of opening, chime and stir (each with its birth third): the same,
+        // unless the evening lived through had its last before the seek (the sought one then has
+        // none, or that same one).
+        const last = (world) => [
+            world.u.gust.value.toArray(), world.u.bloomWave.value.toArray(),
+            [world.u.chime.value.y, 0, world.u.chime.value.x], [world.twitch.strength, 0, world.twitch.time],
+        ];
+        const [mine, theirs] = [last(sought.world), last(lived.world)];
+        let born = 0;
+        theirs.forEach((wanted, k) => {
+            if (wanted[2] >= since) {
+                born += 1;
+                expect(mine[k], `kind ${k}`).toEqual(wanted);
+            } else expect(mine[k][2] === wanted[2] || mine[k][2] < -50, `kind ${k}`).toBe(true);
+        });
+        expect(born).toBeGreaterThanOrEqual(2);
+        lived.world.dispose();
+        sought.world.dispose();
+    });
+
+    it('holds them off when asked: a minute of still water, and nothing owed when they come back', () => {
+        const { camera, world } = makeWorld('Low');
+        run(world, camera, 12, 120);
+        world.setHappenings(false);
+        const held = happenedNumbers(world);
+        run(world, camera, 60, 600);
+        // The lake's rings, the air, the crystal and the chrysalis: all as they were.
+        expect(happenedNumbers(world)).toEqual(held);
+        // Back on: nothing is played for the minute they were off...
+        const back = world.time;
+        const before = births(world);
+        const stars = world.meteors.cursor;
+        world.setHappenings(true);
+        run(world, camera, 1 / 60, 1);
+        expect(happenedNumbers(world)).toEqual(held);
+        // ...and what comes after is new: everything they set going from now is born after they came back.
+        run(world, camera, HAPPEN_SLOT * 6, 480);
+        const after = births(world);
+        const changed = after.filter((v, i) => v !== before[i]);
+        expect(changed.length + world.meteors.cursor - stars).toBeGreaterThan(0);
+        for (const birth of changed) expect(birth).toBeGreaterThan(back);
+        world.dispose();
+    });
+});
+
+describe('vesper world: what each event adds to the evening', () => {
+    /** Quiet worlds side by side, frame for frame (nothing of the evening's own between their events). */
+    const quiet = (n) => Array.from({ length: n }, () => makeWorld('Low', { happenings: false }));
+    const together = (made, seconds, steps) => made.forEach(({ world, camera }) => run(world, camera, seconds, steps));
+    const tilt = (a, b) => a.world.u.relicY.value.distanceTo(b.world.u.relicY.value);
+
+    it('answers a hard drop: the fireflies are thrown out, the crystal rings and the chrysalis swings', () => {
+        const pair = quiet(2);
+        const [soft, hard] = pair;
+        const t0 = hard.world.time;
+        const rgb = pieceColor('#ffa050');
+        soft.world.onLock({ u: 0.3, color: '#ffa050' });
+        hard.world.onLock({ u: 0.3, hardDrop: true, color: '#ffa050' });
+        // The crystal rings now, in the piece's colour washed toward white; a soft lock rings nothing.
+        expect(hard.world.u.chime.value.x).toBe(t0);
+        expect(hard.world.u.chime.value.y).toBeGreaterThan(0);
+        expect(soft.world.u.chime.value.x).toBeLessThan(-50);
+        hard.world.u.chimeTint.value.toArray().forEach((c, k) => {
+            expect(c).toBeGreaterThanOrEqual(rgb[k]);
+            expect(c).toBeLessThanOrEqual(1);
+        });
+        // The fireflies are thrown out (eased in, not at once) and come back; the chrysalis swings.
+        expect(hard.world.u.flyScatter.value.w).toBe(0);
+        let thrown = 0;
+        let swing = 0;
+        for (let i = 0; i < 180; i++) {
+            together(pair, 1 / 60, 1);
+            thrown = Math.max(thrown, hard.world.u.flyScatter.value.w);
+            swing = Math.max(swing, tilt(soft, hard));
+            expect(soft.world.u.flyScatter.value.w).toBe(0);
+        }
+        expect(thrown).toBeGreaterThan(0.3);
+        expect(swing).toBeGreaterThan(0.01);
+        together(pair, 10, 300);
+        expect(hard.world.u.flyScatter.value.w).toBeLessThan(thrown * 0.05);
+        pair.forEach(({ world }) => world.dispose());
+    });
+
+    it('answers two, three and four lines with more each: a chime, a wave of opening, a burst of moths', () => {
+        const made = quiet(4);
+        const t0 = made[0].world.time;
+        made.forEach(({ world }, i) => world.onClear({ lines: i + 1 }));
+        const [one, two, three, four] = made.map(({ world }) => world.u);
+        // One line: none of these.
+        expect(one.chime.value.x).toBeLessThan(-50);
+        expect(one.bloomWave.value.z).toBeLessThan(-50);
+        expect(one.burst.value.x).toBeLessThan(-50);
+        // Two: the crystal chimes (and the moths are drawn in, below).
+        expect(two.chime.value.x).toBe(t0);
+        expect(two.chime.value.y).toBeGreaterThan(0);
+        expect(two.bloomWave.value.z).toBeLessThan(-50);
+        expect(two.burst.value.x).toBeLessThan(-50);
+        // Three: a louder chime, a wave of opening across the lake and a few moths out of the chrysalis.
+        expect(three.chime.value.y).toBeGreaterThan(two.chime.value.y);
+        expect(three.bloomWave.value.z).toBe(t0);
+        expect(three.bloomWave.value.w).toBeGreaterThan(0);
+        expect(Math.hypot(three.bloomWave.value.x, three.bloomWave.value.y)).toBeCloseTo(1, 12);
+        expect(three.burst.value.x).toBe(t0);
+        expect(three.burst.value.y).toBeGreaterThan(0);
+        expect(three.burst.value.y).toBeLessThan(1);
+        // Four, as the hush lets go: the whole cloud of moths, the crystal rung in vesperfire as
+        // hard as it rings, the strongest wave.
+        const birth = t0 + HUSH_HOLD;
+        expect(four.burst.value.toArray().slice(0, 2)).toEqual([birth, 1]);
+        expect(four.chime.value.toArray().slice(0, 2)).toEqual([birth, 1]);
+        expect(four.chimeTint.value.toArray()).toEqual([...VESPERFIRE]);
+        expect(four.bloomWave.value.z).toBe(birth);
+        expect(four.bloomWave.value.w).toBeGreaterThan(three.bloomWave.value.w);
+        together(made, 1, 60);
+        // The moths are drawn in by two lines and more; four lines throw the fireflies and swing the chrysalis.
+        expect(two.flutter.value.y).toBeGreaterThan(one.flutter.value.y);
+        expect(four.flyScatter.value.w).toBeGreaterThan(0.3);
+        expect(one.flyScatter.value.w).toBe(0);
+        expect(tilt(made[0], made[3])).toBeGreaterThan(0.01);
+        made.forEach(({ world }) => world.dispose());
+    });
+
+    it('turns the chrysalis on a twist, stirs a whirl into the water under it and draws the fireflies round it', () => {
+        const pair = quiet(2);
+        const [plain, twisted] = pair;
+        const { world } = twisted;
+        const t0 = world.time;
+        world.onClear({ lines: 2, twist: true });
+        plain.world.onClear({ lines: 2 });
+        expect(world.spin).toMatchObject({ time: t0, turns: 2 });
+        expect(plain.world.spin.turns).toBe(0);
+        // The whirl is under the chrysalis wherever it hangs (here, beside the board).
+        expect(world.relicHeart[0]).toBeLessThan(-5);
+        const whirl = world.u.whirl.value;
+        expect(whirl.x).toBe(world.relicHeart[0]);
+        expect(whirl.y).toBeGreaterThan(world.relicHeart[2]);
+        expect(whirl.y - world.relicHeart[2]).toBeLessThan(5);
+        expect(whirl.z).toBe(t0);
+        expect(whirl.w).toBeGreaterThan(0);
+        expect(plain.world.u.whirl.value.z).toBeLessThan(-50);
+        together(pair, 1, 60);
+        expect(world.twistBase + world.spinAngle(world.time)).toBeGreaterThan(0);
+        expect(world.u.flies.value.w).toBeGreaterThan(0.3);
+        expect(plain.world.u.flies.value.w).toBe(0);
+        pair.forEach((m) => m.world.dispose());
+    });
+
+    it('opens a lotus on the lake for a perfect clear, lifts the fireflies and makes stars fall', () => {
+        const pair = quiet(2);
+        const [plain, perfect] = pair;
+        const { world } = perfect;
+        const t0 = world.time;
+        world.onClear({ lines: 4, perfect: true });
+        plain.world.onClear({ lines: 4 });
+        const birth = t0 + HUSH_HOLD;
+        expect(world.u.lotus.value.z).toBe(birth);
+        expect(world.u.lotus.value.w).toBeGreaterThan(0);
+        expect(plain.world.u.lotus.value.z).toBeLessThan(-50);
+        expect(world.meteors.cursor).toBeGreaterThan(plain.world.meteors.cursor);
+        together(pair, 3, 180);
+        expect(world.u.flies.value.z).toBeGreaterThan(plain.world.u.flies.value.z + 0.2);
+        // A perfect clear that crowns the clear before it does the same.
+        const crowned = world.meteors.cursor;
+        world.onCrown({ player: 0 });
+        expect(world.u.lotus.value.z).toBe(world.time);
+        expect(world.meteors.cursor).toBeGreaterThan(crowned);
+        pair.forEach((m) => m.world.dispose());
+    });
+
+    it('never cuts a chime, a burst or a whirl still running short with a fainter one', () => {
+        const { camera, world } = makeWorld('Low', { happenings: false });
+        world.onClear({ lines: 4 });
+        run(world, camera, HUSH_HOLD + 0.1);
+        const kept = () => [
+            ...world.u.chime.value.toArray(), ...world.u.chimeTint.value.toArray(), ...world.u.burst.value.toArray(),
+            ...world.u.bloomWave.value.toArray(),
+        ];
+        const strong = kept();
+        // Three lines a moment later: a fainter chime, a smaller burst, a weaker wave. The four's ring on.
+        world.onClear({ lines: 3 });
+        world.levelUp(2);
+        expect(kept()).toEqual(strong);
+        // A twist's whirl, then a spin's fainter one: the twist's turns on.
+        world.onClear({ lines: 1, twist: true });
+        const whirl = world.u.whirl.value.toArray();
+        run(world, camera, 0.2);
+        world.onSpin();
+        expect(world.u.whirl.value.toArray()).toEqual(whirl);
+        // Once they have died down, a fainter one rings out anew.
+        run(world, camera, 10);
+        world.onClear({ lines: 3 });
+        expect(world.u.chime.value.x).toBe(world.time);
+        expect(world.u.burst.value.x).toBe(world.time);
+        world.dispose();
+    });
+
+    // SOURCE FAULT, left failing on purpose (see the report that came with it): chimeNow,
+    // burstNow and bloomWaveNow keep a stronger answer only once it has begun (`age >= 0`). A
+    // four-line clear's answers wait out its hush, so a fainter clear on another board in the same
+    // frame (local multiplayer) replaces the four's chime, burst and wave before they ever play.
+    it('keeps a four-line clear\'s chime, burst and wave from a fainter clear on another board in its frame', () => {
+        const { world } = makeWorld('Low', { happenings: false });
+        const birth = world.time + HUSH_HOLD;
+        world.onClear({ lines: 4, player: 1 });
+        world.onClear({ lines: 3, player: 2 });
+        expect(world.u.chime.value.toArray().slice(0, 2)).toEqual([birth, 1]);
+        expect(world.u.burst.value.toArray().slice(0, 2)).toEqual([birth, 1]);
+        expect(world.u.bloomWave.value.toArray().slice(2)).toEqual([birth, 1]);
+        world.dispose();
+    });
+
+    it('wheels the stars on a new level, smoothly, far past their own slow turn', () => {
+        const pair = quiet(2);
+        const [silent, levelled] = pair;
+        const turn = ({ world }) => Math.atan2(world.u.skyTurn.value.y, world.u.skyTurn.value.x);
+        const apart = () => {
+            const d = turn(levelled) - turn(silent);
+            return Math.atan2(Math.sin(d), Math.cos(d));
+        };
+        const t0 = levelled.world.time;
+        const own = turn(silent);
+        const stars = levelled.world.meteors.cursor;
+        levelled.world.levelUp(2);
+        silent.world.levelUp(2, { silent: true });
+        // A few stars fall, a wave of opening crosses the lake and the crystal chimes.
+        expect(levelled.world.meteors.cursor).toBeGreaterThan(stars);
+        expect(levelled.world.u.bloomWave.value.z).toBe(t0);
+        expect(levelled.world.u.chime.value.x).toBe(t0);
+        expect(silent.world.meteors.cursor).toBe(stars);
+        let previous = 0;
+        let largest = 0;
+        for (let i = 0; i < 360; i++) {
+            together(pair, 1 / 60, 1);
+            const now = apart();
+            expect(now).toBeGreaterThanOrEqual(previous - 1e-12); // one way, never back
+            largest = Math.max(largest, now - previous);
+            previous = now;
+        }
+        // Far past what the clock alone turns them in the time; never a jump on the way; and done.
+        const clock = Math.abs(turn(silent) - own);
+        expect(previous).toBeGreaterThan(clock * 10);
+        expect(previous).toBeGreaterThan(0.1);
+        expect(largest).toBeLessThan(previous * 0.05);
+        together(pair, 3, 60);
+        expect(apart()).toBeCloseTo(previous, 9);
+        pair.forEach((m) => m.world.dispose());
+    });
+
+    it('puts the evening to sleep when the run ends, and wakes it with a new run', () => {
+        const pair = quiet(2);
+        const [awake, over] = pair;
+        over.world.onGameOver();
+        expect(over.world.asleep).toBe(true);
+        // (Measured against the twin that plays on, which has the same hour and the same breath.)
+        const share = () => over.world.u.flutter.value.x / awake.world.u.flutter.value.x;
+        let previous = share();
+        expect(previous).toBeCloseTo(1, 12);
+        for (let i = 0; i < 60; i++) {
+            together(pair, 0.1, 1);
+            // The moths leave, slowly: never all at once.
+            expect(share()).toBeLessThanOrEqual(previous + 1e-12);
+            expect(previous - share()).toBeLessThan(0.1);
+            previous = share();
+        }
+        // The moths have gone from about it, its light is low, the cloud comes over.
+        expect(over.world.u.flutter.value.x).toBeLessThan(awake.world.u.flutter.value.x * 0.5);
+        expect(over.world.u.wake.value).toBeLessThan(awake.world.u.wake.value);
+        expect(over.world.u.cloudCover.value).toBeGreaterThan(awake.world.u.cloudCover.value);
+        // A new run wakes it: what is inside stirs, and the moths come back.
+        over.world.resetSession();
+        expect(over.world.asleep).toBe(false);
+        let stir = 0;
+        for (let i = 0; i < 60; i++) {
+            together(pair, 1 / 30, 1);
+            stir = Math.max(stir, over.world.u.beat.value.z);
+        }
+        expect(stir).toBeGreaterThan(0.3);
+        together(pair, 10, 300);
+        expect(over.world.u.flutter.value.x).toBeCloseTo(awake.world.u.flutter.value.x, 2);
+        expect(over.world.u.wake.value).toBeCloseTo(awake.world.u.wake.value, 2);
+        // A new run with nothing asleep wakes nothing: no stir.
+        awake.world.resetSession();
+        together(pair, 1, 30);
+        expect(awake.world.u.beat.value.z).toBe(0);
+        pair.forEach((m) => m.world.dispose());
+    });
+});
+
+describe('vesper world: the evening\'s life by the hour', () => {
+    const KEYS = Object.keys(LIFE_HOURS[0]);
+
+    it('gives each whole hour its own row, blends between them without a jump, and comes round again', () => {
+        const n = LIFE_HOURS.length;
+        expect(n).toBe(VESPER_PALETTES.length);
+        LIFE_HOURS.forEach((row, hour) => {
+            expect(Object.keys(row).sort()).toEqual([...KEYS].sort());
+            for (const key of ['flutter', 'swarm', 'sync', 'rise', 'behind']) {
+                expect(row[key], `${hour}.${key}`).toBeGreaterThanOrEqual(0);
+                expect(row[key], `${hour}.${key}`).toBeLessThanOrEqual(1);
+            }
+            expect(row.rays).toBeGreaterThanOrEqual(0);
+            expect(lifeAt(hour)).toEqual(row);
+            expect(lifeAt(hour + n)).toEqual(row);
+            expect(lifeAt(hour - n)).toEqual(row);
+        });
+        // Between two hours: between their two rows, half way at the half hour, and never a jump.
+        const steps = 200;
+        let previous = lifeAt(0);
+        for (let i = 1; i <= n * steps; i++) {
+            const hour = i / steps;
+            const now = lifeAt(hour);
+            const a = LIFE_HOURS[Math.floor(hour - 1e-9) % n];
+            const b = LIFE_HOURS[(Math.floor(hour - 1e-9) + 1) % n];
+            for (const key of KEYS) {
+                expect(now[key]).toBeGreaterThanOrEqual(Math.min(a[key], b[key]) - 1e-12);
+                expect(now[key]).toBeLessThanOrEqual(Math.max(a[key], b[key]) + 1e-12);
+                expect(Math.abs(now[key] - previous[key])).toBeLessThan(0.02);
+            }
+            previous = now;
+        }
+        const half = lifeAt(2.5);
+        for (const key of KEYS) expect(half[key]).toBeCloseTo((LIFE_HOURS[2][key] + LIFE_HOURS[3][key]) / 2, 12);
+        // It fills what it is handed; a clock that is not a number is the first hour.
+        const out = {};
+        expect(lifeAt(1.25, out)).toBe(out);
+        expect(out).toEqual(lifeAt(1.25));
+        expect(lifeAt(NaN)).toEqual(LIFE_HOURS[0]);
+        expect(lifeAt(Infinity)).toEqual(LIFE_HOURS[0]);
+    });
+
+    it('lets each hour set the life over the lake: none where it asks none, the most where it asks most', () => {
+        const { camera, world } = makeWorld('Low', { happenings: false });
+        world.setHourDrift(false);
+        /** What reaches the shaders of each part of the hour's life. */
+        const shown = {
+            swarm: () => world.u.flies.value.x,
+            sync: () => world.u.flies.value.y,
+            rise: () => world.u.flies.value.z,
+            flutter: () => world.u.flutter.value.x,
+            rays: () => world.u.rays.value,
+        };
+        const seen = LIFE_HOURS.map((row, hour) => {
+            world.levelUp(hour + 1, { silent: true });
+            run(world, camera, 1, 10);
+            expect(world.hourNow()).toBe(hour);
+            const values = {};
+            for (const key of Object.keys(shown)) {
+                values[key] = shown[key]();
+                // Never more than the hour asks; at least half of it.
+                expect(values[key], `${hour}.${key}`).toBeLessThanOrEqual(row[key] + 1e-9);
+                expect(values[key], `${hour}.${key}`).toBeGreaterThanOrEqual(row[key] * 0.5 - 1e-9);
+            }
+            // The cloud stands about where the hour puts it.
+            expect(Math.abs(world.u.cloudCover.value - row.cloud), `${hour}.cloud`).toBeLessThan(0.05);
+            return values;
+        });
+        for (const key of Object.keys(shown)) {
+            const most = LIFE_HOURS.reduce((best, row, i) => (row[key] > LIFE_HOURS[best][key] ? i : best), 0);
+            for (let hour = 0; hour < LIFE_HOURS.length; hour++) {
+                if (LIFE_HOURS[hour][key] === 0) expect(seen[hour][key], `${hour}.${key}`).toBe(0);
+                if (LIFE_HOURS[hour][key] < LIFE_HOURS[most][key] * 0.5) {
+                    expect(seen[hour][key], `${hour}.${key}`).toBeLessThan(seen[most][key]);
+                }
+            }
+        }
+        world.dispose();
+    });
+});
+
+describe('vesper world: the cleared rows fly home', () => {
+    it('feeds the chrysalis with the rows when their blades arrive, not before, and it stirs', () => {
+        const { camera, world } = makeWorld('Low', { happenings: false });
+        // A dark lake: the lilies give nothing back, so what feeds the chrysalis here is the rows alone.
+        const fired = [];
+        const fire = world.blades.fire.bind(world.blades);
+        world.blades.fire = (...args) => {
+            const home = fire(...args);
+            fired.push({ rgb: [...args[1]], home });
+            return home;
+        };
+        const t0 = world.time;
+        world.onClear({ lines: 2, rows: [19, 18] });
+        expect(fired).toHaveLength(1);
+        const [{ rgb, home }] = fired;
+        // They arrive when the last of them has flown home (the rows leave a moment apart).
+        expect(home).toBeGreaterThanOrEqual(t0 + BLADE_FLIGHT);
+        expect(home).toBeLessThan(t0 + BLADE_FLIGHT + 0.5);
+        expect(world.blooms.pending).toEqual([]);
+        expect(world.pendingFed.time).toBe(home);
+        // Nothing until they arrive...
+        run(world, camera, home - t0 - 0.05);
+        expect(world.fed).toBe(0);
+        expect(world.u.fed.value.w).toBe(0);
+        expect(world.u.beat.value.z).toBe(0);
+        // ...then it takes them in, in their colour, and what is inside stirs.
+        run(world, camera, 0.25);
+        expect(world.fed).toBeGreaterThan(0);
+        expect(world.u.fed.value.w).toBe(world.fed);
+        world.u.fed.value.toArray().slice(0, 3).forEach((c, k) => expect(c).toBeCloseTo(rgb[k], 12));
+        expect(world.u.beat.value.z).toBeGreaterThan(0);
+        expect(world.pendingFed.time).toBe(Infinity);
+        world.dispose();
+        // More rows feed it more.
+        const [single, quad] = [1, 4].map((lines) => {
+            const made = makeWorld('Low', { happenings: false });
+            made.world.onClear({ lines });
+            const { amount } = made.world.pendingFed;
+            made.world.dispose();
+            return amount;
+        });
+        expect(quad).toBeGreaterThan(single);
     });
 });
