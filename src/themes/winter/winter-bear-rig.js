@@ -137,10 +137,15 @@ export const BEAR_FEET = Object.freeze([
  *  reach          the neck lowered and stretched (+) or raised (−)
  *  earL, earR     each ear laid back (+) or pricked (−)
  *  tailYaw, tailLift
+ *  loose          how far its head goes with its trunk (0: held part-way level, as it walks .. 1: the
+ *                 chest's own, as when it rolls over)
  * and for each foot (BEAR_FEET order): dx, dy, dz where the ball of its foot is from where it
  * stands; pitch, its heel up about the ball (+); curl, the wrist or ankle flexed as it swings (+),
  * the toes with it; yaw, the foot turned (+ toes to its left); ground, the whole paw tipped to the
- * slope it stands on (+ toes down); air, how far it is off its weight (0 bearing it .. 1 lifted).
+ * slope it stands on (+ toes down); air, how far it is off its weight (0 bearing it .. 1 lifted);
+ * free, whose the leg is (0: the paw is placed and turned in the frame it stands in, flat on the
+ * ice .. 1: in its body's own frame, so the leg goes with the trunk as it rolls over, dx, dy, dz
+ * then drawing the paw in toward the body or out from it).
  */
 export const SPEC = Object.freeze({
     drop: 0,
@@ -161,11 +166,12 @@ export const SPEC = Object.freeze({
     earR: 15,
     tailYaw: 16,
     tailLift: 17,
-    feet: 18,
+    loose: 18,
+    feet: 19,
 });
 /** Where a foot's numbers are in a spec: `FOOT.FL + FOOT.dz` is the left forepaw's reach ahead. */
 export const FOOT = Object.freeze({
-    size: 8,
+    size: 9,
     dx: 0,
     dy: 1,
     dz: 2,
@@ -174,10 +180,11 @@ export const FOOT = Object.freeze({
     yaw: 5,
     ground: 6,
     air: 7,
+    free: 8,
     FL: SPEC.feet,
-    FR: SPEC.feet + 8,
-    BL: SPEC.feet + 16,
-    BR: SPEC.feet + 24,
+    FR: SPEC.feet + 9,
+    BL: SPEC.feet + 18,
+    BR: SPEC.feet + 27,
 });
 export const SPEC_SIZE = SPEC.feet + 4 * FOOT.size;
 export const createBearSpec = () => new Float64Array(SPEC_SIZE);
@@ -189,6 +196,10 @@ const BACK = REST[B.chest][2] - REST[B.pelvis][2];
 const ANCHOR = (REST[B.spine2][2] - REST[B.pelvis][2]) / BACK;
 /** How much of the trunk's pitch and roll its head does not take. */
 const HEAD_STEADY = 0.6;
+/** How far under the second spine joint the line it rolls about lies (model metres). */
+const ROLL_ABOUT = 0.3;
+/** The lowest the wrist or heel of a leg that is the body's own is carried (model metres). */
+const FREE_CLEAR = 0.26;
 /** How far a shoulder blade swings (radians) for a forepaw a long reach ahead or behind, and lifts. */
 const SCAP_SWING = 0.55;
 const SCAP_LIFT = 0.25;
@@ -228,6 +239,11 @@ const LIMBS = BEAR_FEET.map((foot) => {
         toe,
         carrier: foot.front ? B.chest : B.pelvis,
         ball,
+        // From what carries the leg (the chest or the pelvis) to the ball of the foot, at rest.
+        fromCarrier: (() => {
+            const c = REST[foot.front ? B.chest : B.pelvis];
+            return [ball[0] - c[0], ball[1] - c[1], ball[2] - c[2]];
+        })(),
         // From the ball of the foot to the wrist or the heel (the last joint), and to the toe joint.
         heel: [REST[last][0] - ball[0], REST[last][1] - ball[1], REST[last][2] - ball[2]],
         knuckle: [REST[toe][0] - ball[0], REST[toe][1] - ball[1], REST[toe][2] - ball[2]],
@@ -409,10 +425,11 @@ function solveOnce(spec, posture) {
         const [bone, k] = shares[i];
         qMul(Q3, qTurn(bend * k, arch * k, twist * k, Q1), world[bone]);
     }
-    // Held at the second spine joint: lowered by its share of the drop and the fore.
+    // Held at the second spine joint: lowered by its share of the drop and the fore. It rolls about
+    // the middle of its body, ROLL_ABOUT under that joint: rolled over, its back comes down.
     const anchor = at[B.spine2];
-    anchor[0] = REST[B.spine2][0] + spec[S.sway] - roll * 0.3;
-    anchor[1] = REST[B.spine2][1] - (spec[S.drop] + (spec[S.fore] - spec[S.drop]) * ANCHOR);
+    anchor[0] = REST[B.spine2][0] + spec[S.sway] - Math.sin(roll) * ROLL_ABOUT;
+    anchor[1] = REST[B.spine2][1] - (spec[S.drop] + (spec[S.fore] - spec[S.drop]) * ANCHOR) - (1 - Math.cos(roll)) * ROLL_ABOUT;
     anchor[2] = REST[B.spine2][2] + spec[S.shift];
     placeBack(posture, B.spine2, B.spine1);
     placeBack(posture, B.spine1, B.pelvis);
@@ -422,7 +439,7 @@ function solveOnce(spec, posture) {
     qTurn(spec[S.headYaw], -spec[S.headPitch], spec[S.headRoll], Q1);
     qMul(world[B.chest], Q1, Q2);
     qMul(qTurn(yaw + bend * 0.5, 0, 0, Q3), Q1, Q1);
-    qSlerp(Q2, Q1, HEAD_STEADY, world[B.head]);
+    qSlerp(Q2, Q1, HEAD_STEADY * (1 - clamp01(spec[S.loose])), world[B.head]);
     const lift = spec[S.reach];
     qSlerp(world[B.chest], world[B.head], 0.34, Q1);
     qMul(Q1, qTurn(0, lift * 0.6, 0, Q2), world[B.neck1]);
@@ -467,10 +484,33 @@ function solveOnce(spec, posture) {
         TARGET[0] = limb.ball[0] + dx + V3[0];
         TARGET[1] = limb.ball[1] + dy + V3[1];
         TARGET[2] = limb.ball[2] + dz + V3[2];
+        const free = clamp01(spec[f + FOOT.free]);
+        if (free > 0) {
+            // The body's own: the paw where the trunk carries it, turned as the trunk is.
+            const carry = world[limb.carrier];
+            const from = at[limb.carrier];
+            qMul(carry, world[limb.last], Q1);
+            V1[0] = limb.fromCarrier[0] + dx + V3[0];
+            V1[1] = limb.fromCarrier[1] + dy + V3[1];
+            V1[2] = limb.fromCarrier[2] + dz + V3[2];
+            qRotate(carry, V1, V2);
+            TARGET[0] += (from[0] + V2[0] - TARGET[0]) * free;
+            TARGET[1] += (from[1] + V2[1] - TARGET[1]) * free;
+            TARGET[2] += (from[2] + V2[2] - TARGET[2]) * free;
+            qSlerp(world[limb.last], Q1, free, world[limb.last]);
+            // The ice is still there: a leg the body would carry into it folds on it instead (the
+            // wrist or heel no lower than FREE_CLEAR, eased so it does not snap).
+            const over = TARGET[1] - FREE_CLEAR;
+            TARGET[1] += (FREE_CLEAR + 0.5 * (over + Math.sqrt(over * over + 0.0025)) - TARGET[1]) * free;
+        }
         posture.short[i] = reach(posture, limb, TARGET);
         // (The last joint is where the leg reached: if short, the paw comes up with it.)
         // The toes stay flat on the ice as the heel peels; swinging, they curl with the paw.
         qTurn(footYaw, curl * 1.25 + tilt, 0, world[limb.toe]);
+        if (free > 0) {
+            qMul(world[limb.carrier], world[limb.toe], Q1);
+            qSlerp(world[limb.toe], Q1, free, world[limb.toe]);
+        }
         place(posture, limb.toe);
     }
 
@@ -515,7 +555,10 @@ export function bearPaw(posture, i, out = [0, 0, 0]) {
 /** Seconds into `Lie` by which it lies flat (a plan holds it there until it gets up). */
 export const LIE_HOLD = 3.2;
 
-/** Seconds each thing it does takes (`Walk` and `Stand` are any length; `Lie` holds at LIE_HOLD). */
+/**
+ * Seconds each thing it does takes (`Walk` and `Stand` are any length; `Lie` holds at LIE_HOLD).
+ * Those in BEAR_ACT_SPAN may be given another length: what they hold in the middle is held longer.
+ */
 export const BEAR_ACTS = Object.freeze({
     Stand: 1,
     Walk: 1,
@@ -525,10 +568,153 @@ export const BEAR_ACTS = Object.freeze({
     Rear: 6.8,
     Lie: 4,
     Rise: 2.4,
+    Sit: 11,
+    Rest: 18,
+    Roll: 15.8,
+    Hunt: 12.6,
+    Pounce: 5.2,
+    Dig: 7.6,
+    Stretch: 7.8,
+    Upright: 5.4,
+    Shake: 2.8,
+    Wonder: 12,
+    Wind: 3.4,
+    Glance: 2.6,
 });
 
-const { FL, FR, BL } = FOOT;
+/** The shortest and the longest each act of adjustable length may be given (seconds). */
+export const BEAR_ACT_SPAN = Object.freeze({
+    Sit: Object.freeze([8, 16]),
+    Rest: Object.freeze([13, 30]),
+});
+
+const {
+    FL, FR, BL, BR,
+} = FOOT;
 const STEP = FOOT.size;
+
+/** 0 before `a`, 1 after `b`, from rest to rest between with no jolt at either end. */
+const glide = (a, b, t) => {
+    const s = clamp01((t - a) / (b - a));
+    return s * s * s * (s * (s * 6 - 15) + 10);
+};
+/** A bump between `a` and `b` that leaves and comes back at rest (0 outside). */
+const bump = (a, b, t) => {
+    const s = clamp01((t - a) / (b - a));
+    return 16 * s * s * (1 - s) * (1 - s);
+};
+/** How far a paw is off its weight once it has begun to leave the ice (`up` 0..1): at once. */
+const offIce = (up) => Math.min(1, up * 12);
+/**
+ * A paw stepped by (dx, dz) between `a` and `b` seconds: lifted off the ice as it goes and set down
+ * again, so it is never dragged. (A step back is the same with the signs turned.)
+ */
+function step(s, f, t, a, b, dx, dz, lift = 0.09) {
+    const g = glide(a, b, t);
+    const up = bump(a, b, t);
+    s[f + FOOT.dx] += dx * g;
+    s[f + FOOT.dz] += dz * g;
+    s[f + FOOT.dy] += lift * up;
+    s[f + FOOT.curl] += 0.35 * up;
+    s[f + FOOT.air] += offIce(up);
+}
+/**
+ * It shakes itself: a shudder that starts at its head and runs down its body to its tail, each
+ * part rolling one way and the other a few times, the next a beat behind it. `k` is how hard.
+ */
+function shake(s, t, from, k = 1) {
+    const u = t - from;
+    if (u <= 0 || u >= 2.5) return;
+    const beat = TAU * 4.6;
+    const head = hold(u, 0.05, 0.3, 1.2, 1.7) * k;
+    const chest = hold(u, 0.3, 0.6, 1.5, 2.0) * k;
+    const hips = hold(u, 0.55, 0.9, 1.8, 2.4) * k;
+    const c = 0.15 * Math.sin(beat * u - 1.3) * chest;
+    const h = 0.13 * Math.sin(beat * u - 2.7) * hips;
+    s[SPEC.headRoll] += 0.5 * Math.sin(beat * u) * head;
+    s[SPEC.headYaw] += 0.12 * Math.sin(beat * u + 1.2) * head;
+    s[SPEC.headPitch] += -0.1 * head;
+    s[SPEC.reach] += 0.12 * head;
+    s[SPEC.roll] += (c + h) * 0.5;
+    s[SPEC.twist] += c - h;
+    s[SPEC.sway] += 0.02 * Math.sin(beat * u - 2.0) * hips;
+    s[SPEC.fore] += 0.03 * chest;
+    s[SPEC.drop] += 0.03 * hips;
+    s[SPEC.tailYaw] += 0.7 * Math.sin(beat * u - 3.4) * hips;
+    s[SPEC.earL] += 0.5 * head;
+    s[SPEC.earR] += 0.5 * head;
+}
+/**
+ * The pose of a bear lying on its chest (the sphinx): `down` is how far it has gone down (0..1), the
+ * hips folding first and the chest following onto the forearms. Its paws are stepped out by the act.
+ */
+function couched(s, hips, chest) {
+    s[SPEC.drop] += 0.47 * hips;
+    s[SPEC.fore] += 0.5 * chest;
+    s[SPEC.shift] += -0.06 * chest;
+    s[SPEC.arch] += 0.06 * chest;
+    for (let f = FL; f <= FR; f += STEP) s[f + FOOT.pitch] += -0.2 * chest;
+    for (let f = BL; f <= BR; f += STEP) s[f + FOOT.pitch] += -0.3 * hips;
+}
+/** Sitting on its haunches (`down` 0..1): hips on its heels, forelegs straight, back sloping up. */
+function seated(s, down) {
+    s[SPEC.drop] += 0.45 * down;
+    s[SPEC.fore] += 0.06 * down;
+    s[SPEC.shift] += -0.13 * down;
+    s[SPEC.arch] += 0.42 * down;
+    s[SPEC.headPitch] += -0.1 * down;
+    s[SPEC.reach] += -0.06 * down;
+    s[SPEC.tailLift] += -0.3 * down;
+    s[BL + FOOT.yaw] += 0.25 * down;
+    s[BR + FOOT.yaw] += -0.25 * down;
+}
+/**
+ * Up on its hind legs (`up` 0..1), its forepaws off the ice (`off`) and hanging before its belly
+ * from bent wrists: the stance of Rear, for what else stands up.
+ */
+function reared(s, up, off) {
+    s[SPEC.fore] += -0.78 * up;
+    s[SPEC.drop] += 0.16 * up;
+    s[SPEC.shift] += -0.4 * up;
+    s[SPEC.pitch] += 0.08 * up;
+    s[SPEC.arch] += 0.12 * up;
+    s[SPEC.earL] += -0.4 * up;
+    s[SPEC.earR] += -0.4 * up;
+    for (let f = FL; f <= FR; f += STEP) {
+        s[f + FOOT.dx] += (f === FL ? -0.01 : 0.01) * off;
+        s[f + FOOT.dy] += 0.92 * off;
+        s[f + FOOT.dz] += -0.28 * off;
+        s[f + FOOT.curl] += 1.1 * off;
+        s[f + FOOT.air] += offIce(off);
+    }
+}
+/**
+ * Half up (`up`) and down on both forepaws (`down`): they leave the ice as it goes up from `a`
+ * seconds, come down together a pace ahead of where they stood, and are stepped back under it one
+ * after the other from `back` seconds.
+ */
+function pounced(s, t, up, down, a, back) {
+    s[SPEC.fore] += -0.44 * up + 0.28 * down;
+    s[SPEC.drop] += 0.1 * up - 0.03 * down;
+    s[SPEC.shift] += -0.24 * up + 0.1 * down;
+    s[SPEC.arch] += 0.1 * up - 0.06 * down;
+    s[SPEC.pitch] += 0.05 * up;
+    const ahead = glide(a, a + 0.9, t);
+    for (let f = FL; f <= FR; f += STEP) {
+        s[f + FOOT.dy] += 0.56 * up;
+        s[f + FOOT.dz] += 0.2 * ahead - 0.1 * up;
+        s[f + FOOT.curl] += 0.9 * up;
+        s[f + FOOT.air] += offIce(up);
+    }
+    step(s, FL, t, back, back + 0.55, 0, -0.2);
+    step(s, FR, t, back + 0.5, back + 1.05, 0, -0.2);
+}
+/** How far round it is when it lies on its back (radians): not quite flat, its legs to one side. */
+const ON_ITS_BACK = 2.7;
+/** How far its paws are lifted as it rolls onto them or off them (model metres, at the most). */
+const ROLL_CLEAR = 0.6;
+/** The strokes of `Dig`: [when each starts (seconds), which forepaw]. */
+const DIG_STROKES = [[1.2, FR], [1.85, FL], [2.5, FR], [3.15, FL], [3.8, FR], [4.45, FL], [5.1, FR]];
 
 /** What it looks like `t` seconds into each act (spec, t). Its feet are its gait's unless it says. */
 const ACTS = {
@@ -647,15 +833,304 @@ const ACTS = {
     Rise(s, t) {
         ACTS.Lie(s, LIE_HOLD * (1 - smooth(0, BEAR_ACTS.Rise, t)));
     },
+    /**
+     * It sits down on its haunches like a great dog: the hips fold onto the heels, the forelegs
+     * stay straight under the shoulders, the back slopes up to a head held level; it looks about,
+     * one way and the other, and gets up again.
+     */
+    Sit(s, t, T = BEAR_ACTS.Sit) {
+        const down = hold(t, 0.4, 2.4, T - 2.3, T - 0.4);
+        const look = Math.sin(0.8 * (t - 2.6)) * hold(t, 2.6, 3.6, T - 3.6, T - 2.5);
+        seated(s, down);
+        s[SPEC.headPitch] += -0.08 * (1 - down) + 0.07 * Math.abs(look);
+        s[SPEC.reach] += 0.06 * (1 - down);
+        s[SPEC.headYaw] = 0.85 * look;
+        s[SPEC.headRoll] = -0.07 * look;
+        s[SPEC.bend] = 0.08 * look;
+        s[SPEC.earL] = -0.3 * Math.max(0, look);
+        s[SPEC.earR] = -0.3 * Math.max(0, -look);
+    },
+    /**
+     * It lies down for a rest, on its chest like a sphinx: the hind paws shuffle in and the hips
+     * fold, the forepaws step out ahead and the chest comes down onto the forearms. It keeps its
+     * head up and looks about; given long enough it lays its chin on its paws a while. Then the
+     * forepaws step back under it, the chest comes up, and the hips.
+     */
+    Rest(s, t, T = BEAR_ACTS.Rest) {
+        const hips = smooth(0.5, 2.0, t) - smooth(T - 1.9, T - 0.5, t);
+        const chest = smooth(0.9, 2.6, t) - smooth(T - 2.8, T - 1.5, t);
+        couched(s, hips, chest);
+        step(s, BL, t, 0.2, 0.75, 0.1, 0.12);
+        step(s, BR, t, 0.5, 1.05, -0.1, 0.12);
+        step(s, FL, t, 0.7, 1.3, -0.03, 0.36);
+        step(s, FR, t, 1.1, 1.7, 0.03, 0.36);
+        step(s, FL, t, T - 2.9, T - 2.3, 0.03, -0.36);
+        step(s, FR, t, T - 2.5, T - 1.9, -0.03, -0.36);
+        step(s, BL, t, T - 1.1, T - 0.6, -0.1, -0.12);
+        step(s, BR, t, T - 0.8, T - 0.3, 0.1, -0.12);
+        const chin = T >= 15 ? hold(t, 6, 8, T - 7.2, T - 5.4) : 0;
+        const look = Math.sin(0.55 * (t - 3)) * hold(t, 3, 4.2, T - 4.6, T - 3.2) * (1 - chin);
+        s[SPEC.headPitch] = -0.08 * (1 - chest) + chest * (0.2 * (1 - chin) - 0.14 * chin) + 0.05 * Math.abs(look);
+        s[SPEC.reach] = 0.06 * (1 - chest) + chest * (-0.5 * (1 - chin) + 0.3 * chin);
+        s[SPEC.headYaw] = 0.75 * look;
+        s[SPEC.headRoll] = -0.06 * look;
+        s[SPEC.earL] = 0.25 * chin - 0.3 * Math.max(0, look);
+        s[SPEC.earR] = 0.25 * chin - 0.3 * Math.max(0, -look);
+    },
+    /**
+     * A snow bath. It goes down on its chest and one shoulder, rolls over that shoulder onto its
+     * back with its paws in the air, wriggles there (its back curving one way and the other, its
+     * legs working, its head rubbing in the snow), rolls back, gets up, and shakes the snow off.
+     */
+    Roll(s, t) {
+        const hips = smooth(0.5, 1.8, t) - smooth(11.3, 12.7, t);
+        const chest = smooth(0.8, 2.2, t) - smooth(10.4, 11.7, t);
+        const over = glide(2.3, 4.0, t) - glide(8.6, 10.3, t);
+        const wriggle = hold(t, 3.8, 4.4, 8.1, 8.7);
+        const beat = TAU * 0.85 * (t - 3.8);
+        const roll = ON_ITS_BACK * over + 0.3 * Math.sin(beat) * wriggle;
+        // Rolled, it lies on its side, then its back: less far down than on its chest.
+        const turned = Math.abs(roll);
+        const lower = 1 - 0.3 * smooth(0, 1.5, turned) - 0.42 * smooth(1.5, 2.7, turned);
+        couched(s, hips * lower, chest * lower);
+        // Its paws are stepped out as it goes down, and back under it as it gets up (as in Rest).
+        step(s, BL, t, 0.2, 0.7, 0.1, 0.12);
+        step(s, BR, t, 0.45, 0.95, -0.1, 0.12);
+        step(s, FL, t, 0.5, 1.05, -0.03, 0.36);
+        step(s, FR, t, 0.8, 1.35, 0.03, 0.36);
+        step(s, FL, t, 10.3, 10.9, 0.03, -0.36);
+        step(s, FR, t, 10.7, 11.3, -0.03, -0.36);
+        step(s, BL, t, 12.1, 12.6, -0.1, -0.12);
+        step(s, BR, t, 12.4, 12.9, 0.1, -0.12);
+        const lean = hold(t, 1.5, 2.3, 2.6, 3.2);
+        s[SPEC.roll] = roll;
+        s[SPEC.twist] = 0.25 * lean + 0.2 * Math.sin(beat + 0.5) * wriggle;
+        s[SPEC.bend] = -0.2 * lean + 0.28 * Math.sin(beat + 1.4) * wriggle;
+        s[SPEC.sway] = 0.04 * Math.sin(beat + 0.7) * wriggle;
+        // Its legs are its body's own once it is over on its side: drawn in (those under it
+        // most, as it goes over them), then working at the air.
+        const free = smooth(0.12, 0.8, turned);
+        const under = bump(0, 2.5, turned);
+        for (let f = FL; f <= BR; f += STEP) {
+            const front = f <= FR;
+            const side = f === FL || f === BL ? 1 : -1;
+            const kick = Math.sin(beat * 1.5 + (front ? 0 : 2.1) + side * 0.9) * wriggle;
+            s[f + FOOT.free] = free;
+            s[f + FOOT.air] += offIce(free);
+            // (Lifted clear of the ice as it changes hands, from the ground's to the body's.)
+            s[f + FOOT.dy] += ((front ? 0.4 : 0.28) + (side > 0 ? 0.04 : 0.2) * under + 0.08 * kick) * free
+                + ROLL_CLEAR * free * (1 - free);
+            s[f + FOOT.dz] += (front ? -0.3 : 0.08) * free + 0.1 * Math.cos(beat * 1.5 + side) * wriggle;
+            s[f + FOOT.dx] += side * 0.03 * free;
+            s[f + FOOT.curl] += (front ? 0.9 : 0.25) * free;
+            s[f + FOOT.pitch] += (front ? 0.2 : 0.65) * free;
+        }
+        // Its head goes with it: down to the snow on the shoulder it rolls over, then rubbing.
+        const lying = chest * (1 - over);
+        s[SPEC.loose] = smooth(0.2, 1.2, turned);
+        s[SPEC.headPitch] = -0.08 * (1 - chest) - 0.2 * lying + 0.2 * over + 0.08 * Math.sin(beat * 2) * wriggle;
+        s[SPEC.reach] = 0.06 * (1 - chest) + 0.3 * lying - 0.1 * over;
+        s[SPEC.headYaw] = -0.45 * lean + 0.5 * Math.sin(beat + 2.6) * wriggle;
+        s[SPEC.headRoll] = 0.3 * lean + 0.25 * Math.sin(beat + 2.0) * wriggle;
+        s[SPEC.earL] = 0.3 * over;
+        s[SPEC.earR] = 0.3 * over;
+        s[SPEC.tailYaw] = 0.5 * Math.sin(beat * 2) * wriggle;
+        shake(s, t, 13.0);
+    },
+    /**
+     * The seal-hole hunt. It stops, puts its head down to the snow and holds quite still,
+     * listening, its head cocked one way and the other; then it rears up and comes down with both
+     * forepaws to break through, once and again; noses into what it broke, finds nothing, lifts
+     * its head and looks about, and steps back.
+     */
+    Hunt(s, t) {
+        const low = hold(t, 0.3, 1.3, 4.25, 4.65);
+        const cock = Math.sin(0.95 * (t - 1.5)) * hold(t, 1.5, 2.1, 3.7, 4.2);
+        const up = glide(4.4, 5.0, t) - glide(5.08, 5.48, t) + 0.6 * (glide(6.0, 6.5, t) - glide(6.55, 6.85, t));
+        const down = (glide(5.08, 5.48, t) - glide(10.0, 11.1, t)) * (1 - Math.min(1, up));
+        const nose = hold(t, 6.75, 7.3, 9.5, 10.1);
+        const quit = hold(t, 10.1, 10.9, 11.6, 12.3);
+        const stand = Math.max(0, 1 - low - Math.min(1, up) - down - quit);
+        pounced(s, t, up, down, 4.4, 11.0);
+        s[SPEC.fore] += 0.05 * low;
+        s[SPEC.shift] += 0.03 * low;
+        s[SPEC.headPitch] = -0.08 * stand - 0.58 * low - 0.42 * up - (0.5 + 0.08 * nose) * down + 0.12 * quit
+            + 0.04 * Math.sin(TAU * 1.7 * t) * nose;
+        s[SPEC.reach] = 0.06 * stand + 0.5 * low + 0.05 * up + (0.42 + 0.1 * nose) * down - 0.04 * quit;
+        s[SPEC.headRoll] = 0.16 * cock;
+        s[SPEC.headYaw] = 0.1 * cock + 0.14 * Math.sin(TAU * 1.1 * t) * nose + 0.55 * Math.sin(1.9 * (t - 10.3)) * quit;
+        s[SPEC.earL] = -0.4 * low - 0.3 * quit + 0.3 * up;
+        s[SPEC.earR] = -0.4 * low - 0.3 * quit + 0.3 * up;
+    },
+    /** One pounce, as a cub plays at it: a crouch, up, down on both forepaws, a nose at the place. */
+    Pounce(s, t) {
+        const crouch = hold(t, 0.2, 0.8, 1.0, 1.4);
+        const up = glide(1.0, 1.5, t) - glide(1.58, 1.95, t);
+        const down = (glide(1.58, 1.95, t) - glide(3.3, 4.1, t)) * (1 - up);
+        const stand = Math.max(0, 1 - up - down - crouch);
+        pounced(s, t, up, down, 1.0, 3.9);
+        s[SPEC.fore] += 0.1 * crouch;
+        s[SPEC.drop] += 0.14 * crouch;
+        s[SPEC.shift] += -0.08 * crouch;
+        s[SPEC.headPitch] = -0.08 * stand - 0.2 * crouch - 0.42 * up - 0.54 * down
+            + 0.04 * Math.sin(TAU * 1.9 * t) * down;
+        s[SPEC.reach] = 0.06 * stand + 0.3 * crouch + 0.05 * up + 0.46 * down;
+        s[SPEC.headYaw] = 0.12 * Math.sin(TAU * 1.2 * t) * down;
+        s[SPEC.earL] = -0.3 * crouch + 0.3 * up;
+        s[SPEC.earR] = -0.3 * crouch + 0.3 * up;
+        s[SPEC.tailLift] = 0.4 * crouch;
+    },
+    /**
+     * It digs at the ice: its forequarters low over the place, one forepaw and then the other
+     * reaching out and raking back, its shoulders rocking with each stroke; a sniff at what it has
+     * scraped.
+     */
+    Dig(s, t) {
+        const low = hold(t, 0.3, 1.1, 6.3, 7.1);
+        const sniffs = hold(t, 5.6, 5.8, 6.3, 6.5);
+        // [when the stroke starts, which paw]
+        let rock = 0;
+        let nod = 0;
+        for (let i = 0; i < DIG_STROKES.length; i++) {
+            const [at, f] = DIG_STROKES[i];
+            const p = (t - at) / 0.66;
+            if (p <= 0 || p >= 1) continue;
+            const out = glide(0, 0.38, p);
+            const rake = glide(0.42, 1, p);
+            const lifted = bump(0, 0.46, p);
+            s[f + FOOT.dz] = 0.3 * (out - rake);
+            s[f + FOOT.dy] = 0.2 * lifted + 0.012 * hold(p, 0.4, 0.5, 0.9, 1);
+            s[f + FOOT.curl] = 0.9 * lifted;
+            s[f + FOOT.air] = Math.max(offIce(lifted), hold(p, 0.02, 0.1, 0.9, 0.98));
+            rock = (f === FL ? 1 : -1) * Math.sin(Math.PI * p);
+            nod = Math.sin(Math.PI * p);
+        }
+        s[SPEC.fore] = 0.16 * low + 0.03 * nod;
+        s[SPEC.drop] = -0.02 * low;
+        s[SPEC.shift] = 0.06 * low;
+        s[SPEC.twist] = -0.12 * rock;
+        s[SPEC.sway] = -0.03 * rock;
+        s[SPEC.arch] = -0.06 * low;
+        s[SPEC.headPitch] = -0.08 * (1 - low) - 0.52 * low - 0.05 * nod + 0.04 * Math.sin(TAU * 3.3 * t) * sniffs;
+        s[SPEC.reach] = 0.06 * (1 - low) + 0.46 * low + 0.1 * sniffs;
+        s[SPEC.headYaw] = 0.1 * rock;
+        s[SPEC.earL] = -0.25 * low;
+        s[SPEC.earR] = -0.25 * low;
+    },
+    /**
+     * A long stretch. Its forepaws step out ahead and its chest goes down between them, rump high,
+     * back hollow, head up; then it draws itself forward over its forepaws, its back rounding and
+     * one hind leg trailing straight out behind, toes dragging; and it steps back square.
+     */
+    Stretch(s, t) {
+        const bow = hold(t, 0.9, 2.2, 3.3, 4.3);
+        const forward = hold(t, 3.8, 4.9, 5.7, 6.8);
+        const trail = bump(4.3, 6.3, t);
+        step(s, FL, t, 0.3, 0.85, 0, 0.34);
+        step(s, FR, t, 0.7, 1.25, 0, 0.34);
+        step(s, FL, t, 6.1, 6.7, 0, -0.34);
+        step(s, FR, t, 6.6, 7.2, 0, -0.34);
+        s[SPEC.fore] = 0.45 * bow + 0.03 * forward;
+        s[SPEC.drop] = -0.04 * bow + 0.1 * forward;
+        s[SPEC.shift] = -0.06 * bow + 0.2 * forward;
+        s[SPEC.arch] = -0.24 * bow + 0.12 * forward;
+        s[SPEC.headPitch] = -0.08 * (1 - bow - forward) + 0.34 * bow + 0.22 * forward;
+        s[SPEC.reach] = 0.06 * (1 - bow - forward) - 0.12 * bow + 0.3 * forward;
+        s[SPEC.earL] = 0.3 * (bow + forward);
+        s[SPEC.earR] = 0.3 * (bow + forward);
+        s[SPEC.tailLift] = 0.3 * bow;
+        for (let f = FL; f <= FR; f += STEP) s[f + FOOT.pitch] += -0.16 * bow;
+        // One hind leg left out behind as the body goes forward, then drawn up under it again.
+        s[BL + FOOT.dz] += -0.3 * trail;
+        s[BL + FOOT.dy] += 0.05 * trail;
+        s[BL + FOOT.pitch] += 1.0 * trail;
+        s[BL + FOOT.air] += Math.min(1, 3 * trail);
+        s[BR + FOOT.pitch] += 0.35 * forward * (1 - trail);
+    },
+    /**
+     * It stands up on its hind legs a moment to scent the wind, as Rear but of its own accord and
+     * shorter: its nose high and working, its head turning to find where the scent comes from.
+     */
+    Upright(s, t) {
+        const up = hold(t, 0.35, 1.6, 3.5, 5.0);
+        const off = hold(t, 0.55, 1.15, 4.0, 4.85);
+        const bursts = hold(t, 1.7, 1.9, 2.5, 2.7) + hold(t, 2.9, 3.1, 3.5, 3.7);
+        reared(s, up, off);
+        s[SPEC.headPitch] = -0.08 * (1 - up) + (0.3 + 0.045 * Math.sin(TAU * 3.2 * t) * bursts) * up;
+        s[SPEC.reach] = 0.06 * (1 - up) - 0.18 * up;
+        s[SPEC.headYaw] = 0.28 * Math.sin(1.3 * (t - 1.6)) * hold(t, 1.6, 2.2, 3.4, 4.0);
+    },
+    /** It shakes itself, from its head down its body to its tail. */
+    Shake(s, t) {
+        ACTS.Stand(s);
+        shake(s, t, 0.15);
+    },
+    /**
+     * What the board's greatest moment makes it do: it stands up on its hind legs, as at four
+     * lines, but does not drop back: it sits down where it stood and watches the sky, its head
+     * following the light across, and only then gets up.
+     */
+    Wonder(s, t) {
+        const up = hold(t, 0.35, 1.7, 4.0, 5.4);
+        const off = hold(t, 0.55, 1.15, 4.5, 5.3);
+        const sat = hold(t, 4.3, 6.0, 9.9, 11.6);
+        reared(s, up, off);
+        seated(s, sat);
+        for (let f = BL; f <= BR; f += STEP) {
+            s[f + FOOT.dz] += -0.06 * up;
+            s[f + FOOT.pitch] += -0.12 * up;
+        }
+        // (Up, its head is Rear's own, so a four it was already up for hands over without a start;
+        // sitting, it follows the light across the sky.)
+        const follow = smooth(5.2, 9.8, t) * 2 - 1;
+        s[SPEC.headPitch] += 0.16 * up + 0.04 * Math.sin(TAU * 2.6 * t) * hold(t, 2.2, 2.5, 3.6, 3.9) + 0.3 * sat;
+        s[SPEC.reach] += -0.1 * up - 0.08 * sat;
+        s[SPEC.headYaw] = 0.22 * Math.sin(1.1 * (t - 1.8)) * hold(t, 1.7, 2.3, 4.2, 4.8)
+            + 0.5 * follow * hold(t, 5.4, 6.4, 9.4, 10.2);
+    },
+    /** It lifts its head and scents the wind, without breaking its stride (the head alone). */
+    Wind(s, t) {
+        const up = hold(t, 0.1, 0.9, 2.3, 3.3);
+        const bursts = hold(t, 0.9, 1.1, 1.6, 1.8) + hold(t, 1.9, 2.1, 2.4, 2.6);
+        s[SPEC.headPitch] = (0.5 + 0.045 * Math.sin(TAU * 3.2 * t) * bursts) * up;
+        s[SPEC.reach] = -0.3 * up;
+        s[SPEC.headYaw] = 0.2 * Math.sin(1.6 * (t - 0.8)) * up;
+        s[SPEC.earL] = -0.35 * up;
+        s[SPEC.earR] = -0.35 * up;
+    },
+    /**
+     * Its head turned sharply to something (the head alone): `toward` is how far round it lies
+     * (radians, + to its left); it holds the look, then lets it go.
+     */
+    Glance(s, t, T = BEAR_ACTS.Glance, toward = 1) {
+        const k = glide(0.04, 0.3, t) - glide(T - 0.9, T - 0.1, t);
+        const yaw = clamp(toward, -1.25, 1.25);
+        s[SPEC.headYaw] = yaw * k;
+        s[SPEC.headPitch] = 0.1 * k;
+        s[SPEC.headRoll] = -0.08 * yaw * k;
+        s[SPEC.reach] = -0.06 * k;
+        s[SPEC.earL] = -0.4 * k;
+        s[SPEC.earR] = -0.4 * k;
+    },
 };
 
-/** Whether an act places its feet itself (the gait's feet are left to it). */
-export const OWNS_FEET = Object.freeze({ Rear: true, Lie: true, Rise: true });
+/**
+ * Whether an act places its feet itself (the gait's feet are left to it). The rest add to the
+ * gait's feet: their paws are stepped from where they stand.
+ */
+export const OWNS_FEET = Object.freeze({
+    Rear: true, Lie: true, Rise: true, Wonder: true,
+});
+/** The acts that move its head alone: laid over its walk or whatever else it is doing. */
+export const HEAD_ONLY = Object.freeze({ Wind: true, Glance: true });
 
-/** Fill a spec with what an act looks like `t` seconds in (unknown names: it stands). */
-export function bearAct(spec, name, t) {
+/**
+ * Fill a spec with what an act looks like `t` seconds in (unknown names: it stands). `length` is
+ * how long it has been given (BEAR_ACT_SPAN); `toward`, where a Glance looks.
+ */
+export function bearAct(spec, name, t, length, toward) {
     spec.fill(0);
-    (ACTS[name] || ACTS.Stand)(spec, Math.max(0, t));
+    (ACTS[name] || ACTS.Stand)(spec, Math.max(0, t), length || undefined, toward);
     return spec;
 }
 

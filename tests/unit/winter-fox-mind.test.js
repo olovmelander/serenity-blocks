@@ -3,12 +3,12 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-    FOX_BLEND, FOX_CLIPS, FOX_TROT, FOX_WANDER, FOX_WANDER_STOPS, FoxMind, MOUSING, POUNCE_AIR, SLEEP_HOLD, foxGaitAmp,
-    foxRunSpeed, foxStride,
+    AFTER_ZOOM, FOX_BLEND, FOX_CLIPS, FOX_TROT, FOX_WANDER, FOX_WANDER_STOPS, FoxMind, MOUSING, POUNCE_AIR, SLEEP_HOLD,
+    foxGaitAmp, foxRunSpeed, foxStride,
 } from '../../src/themes/winter/winter-fox-mind.js';
 import {
-    FOOT, FOX_ACTS, FOX_BONES, FOX_BONE_INDEX, FOX_LEGS, FOX_MARKS, FOX_RIG, SPEC, createFoxPosture, createFoxSpec,
-    foxAct, foxGallop, foxPoint, foxSpec, solveFox,
+    FOOT, FOX_ACTS, FOX_BONES, FOX_BONE_INDEX, FOX_LEGS, FOX_MARKS, FOX_RIG, SPEC, SPEC_SIZE, createFoxPosture,
+    createFoxSpec, foxAct, foxGallop, foxPoint, foxSpec, solveFox,
 } from '../../src/themes/winter/winter-fox-rig.js';
 import {
     EYE, FOX_SCALE, FRAME_TREES, bearingFor, foxAt, foxRound, groundHeight,
@@ -178,8 +178,15 @@ const landingsOf = (mind) => mind.events.filter((event) => event.type === 'land'
 describe('winter fox mind: the module', () => {
     it('is three-free: it knows the plan of the place and its own body, and nothing of how either is drawn', () => {
         const imports = [...source.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]);
-        expect(imports).toEqual(['./winter-core.js', './winter-fox-rig.js', '../shared/fox-mind.js', '../shared/fox-wander.js']);
-        expect(source).not.toMatch(/\bTHREE\b|\bdocument\b|\bwindow\b|performance\.now|Date\.now|Math\.random/);
+        expect(imports).toEqual([
+            './winter-core.js', './winter-fox-rig.js', './winter-fox-life.js', '../shared/fox-mind.js',
+            '../shared/fox-wander.js', './winter-fox-visitor.js',
+        ]);
+        // (Its own life and the visitor's way are files of their own, as free of them as it is.)
+        const own = ['winter-fox-life.js', 'winter-fox-visitor.js'];
+        const all = own.reduce((text, file) => text + themeSource('winter', file), source);
+        expect(all).not.toMatch(/\bTHREE\b|\bdocument\b|\bwindow\b|performance\.now|Date\.now|Math\.random/);
+        expect(all).not.toMatch(/from\s+'three/);
         // (Its body is as free of them, and so is the mind the themes share and how it wanders:
         // winter-fox-rig.test.js, shared-fox-mind.test.js, shared-fox-wander.test.js.)
     });
@@ -1473,12 +1480,18 @@ describe('winter fox mind: how its body carries it', () => {
         const named = (key) => FOX_CLIPS[pose[key]] > 0 || (key === 'was' && pose.was === null);
         /** Where its paws are held from its gait: two numbers a paw, never further than a leg holds one. */
         const held = () => pose.plant.length === 8 && Array.from(pose.plant).every((v) => Math.abs(v) <= 0.12 + 1e-9);
+        /** Its pace: how much of a walk, a lope and a bound its gait is, and how far each cycle carries it. */
+        const paced = () => ['walk', 'lope', 'bound'].every((name) => pose.pace[name] >= 0 && pose.pace[name] <= 1)
+            && pose.pace.stretch >= 1 && pose.pace.stretch <= 1.6;
+        /** What it lays over its whole pose: a spec's worth of numbers, small ones. */
+        const laid = () => pose.over.length === SPEC_SIZE && Array.from(pose.over).every((v) => Math.abs(v) <= 1);
+        const OWN = { plant: held, pace: paced, over: laid };
         const check = (m, now) => {
             const sound = m.pose === pose
                 && Object.keys(pose).length === keys.length
                 && keys.every((key) => {
                     if (ACTS_OF_IT.includes(key)) return named(key);
-                    return key === 'plant' ? held() : Number.isFinite(pose[key]);
+                    return OWN[key] ? OWN[key]() : Number.isFinite(pose[key]);
                 })
                 && ['blend', 'hold', 'amp', 'step', 'gallop', 'eyes'].every((key) => within(key, 0, 1))
                 && pose.wasTime >= 0
@@ -1947,9 +1960,9 @@ describe('winter fox mind: as it wanders (the game\'s fox)', () => {
         for (const seed of [0xf0c5, 7, 12345, 99]) {
             const { stops } = wander(seed);
             expect(new Set(stops.map((stop) => stop.what)).size, `seed ${seed}`).toBeGreaterThanOrEqual(8);
-            stops.forEach((stop) => {
-                expect(FOX_WANDER_STOPS.some(([acts]) => acts.join('+') === stop.what), stop.what).toBe(true);
-            });
+            // (Each is one of its stops, or what it does when it has skidded out of its circle.)
+            const known = [...FOX_WANDER_STOPS.map(([acts]) => acts), ...AFTER_ZOOM].map((acts) => acts.join('+'));
+            stops.forEach((stop) => expect(known, stop.what).toContain(stop.what));
             repeats += stops.filter((stop, i) => i > 0 && stop.what === stops[i - 1].what).length;
             count += stops.length;
         }

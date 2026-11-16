@@ -1324,7 +1324,7 @@ describe('WinterWorld: the fox on the snow', () => {
         world.dispose();
     });
 
-    it('has the fox look to where a piece\'s sparks leave, and round at the viewer when the sky is strummed', () => {
+    it('has the fox look to where a piece\'s sparks leave, and up at the sky when a level brings its stars down', () => {
         const { world, camera } = makeWorld();
         step(world, camera, 0, 2);
         expect(world.mind.attending).toBeNull();
@@ -1353,15 +1353,17 @@ describe('WinterWorld: the fox on the snow', () => {
         expect(turned).toBeGreaterThan(0.05);
         expect([world.mind.pose.x, world.mind.pose.z]).toEqual([untold.mind.pose.x, untold.mind.pose.z]);
         untold.dispose();
-        // A new level: it looks at whoever is playing.
+        // A new level brings a shower of shooting stars down: it stops and looks up at the sky.
         step(world, camera, world.time, world.time + 4);
         world.levelUp(2);
-        expect(world.mind.attending).toMatchObject({ x: EYE.x, y: EYE.y, z: EYE.z });
-        expect(world.mind.attending.until).toBeGreaterThan(world.time);
+        step(world, camera, world.time, world.time + 0.6);
+        expect(world.mind.act).toEqual(['SkyGaze']);
         // Told of a level in silence (a restored game), it is not disturbed.
-        const told = world.mind.attending;
+        const before = { act: world.mind.act, attending: world.mind.attending, meteors: world.counts.meteors };
         world.levelUp(3, { silent: true });
-        expect(world.mind.attending).toBe(told);
+        expect(world.mind.act).toBe(before.act);
+        expect(world.mind.attending).toBe(before.attending);
+        expect(world.counts.meteors).toBe(before.meteors);
         world.dispose();
     });
 
@@ -1378,7 +1380,8 @@ describe('WinterWorld: the fox on the snow', () => {
             const calls = emit.mock.calls.length;
             const { sparks } = world.counts;
             frame(world, camera, t + 1 / 60, 1 / 60);
-            const events = mind.events.map((event) => event.type);
+            // (A paw it puts down as it pulls up leaves a print: pressed into the snow, not thrown.)
+            const events = mind.events.map((event) => event.type).filter((type) => type !== 'print');
             const emitted = emit.mock.calls.slice(calls).map(([options]) => options);
             const where = `${mind.clip} at ${mind.clipTime.toFixed(2)} s`;
             // Nothing is thrown but by something the fox did: one throw for each thing it did.

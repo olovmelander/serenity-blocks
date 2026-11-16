@@ -138,26 +138,27 @@ def design(J, M):
         (Ellipsoid(nose + P(0, 0.002, -0.008), (0.0145, 0.0115, 0.0105)), 0.006),
     ], k=0.024)
 
-    # Ears: small and round, set wide, cupped forward and out.
+    # Ears: small and round, set wide, cupped forward and out; tall and thin enough that their
+    # shape, and the hollow in each, reads from across the snowfield.
     ears = []
     for s in sides:
-        base = P(0.062 * s, 0.566, 0.358)
-        tip = P(0.09 * s, 0.626, 0.344)
+        base = P(0.063 * s, 0.566, 0.358)
+        tip = P(0.097 * s, 0.643, 0.341)
         facing = _unit((0.45 * s, 0.1, 1.0))
-        ear = RoundCone(base, tip, 0.046, 0.024, (facing, 0.44))
-        cup = Ellipsoid(base * 0.45 + tip * 0.55 + facing * 0.013, (0.0265, 0.031, 0.0125), along=facing)
+        ear = RoundCone(base, tip, 0.047, 0.021, (facing, 0.38))
+        cup = Ellipsoid(base * 0.42 + tip * 0.58 + facing * 0.0135, (0.0275, 0.037, 0.0125), along=facing)
         ears.append(Carve(ear, cup, 0.004))
 
     def paw(ball, ahead):
         """A paw furred over its toes: a soft pad and four rounded toes along its front."""
         across = np.array([ahead[2], 0.0, -ahead[0]])
-        centre = ball + P(0, 0.024, 0) - ahead * 0.012
-        parts = [Ellipsoid(centre, (0.034, 0.026, 0.046), along=ahead)]
+        centre = ball + P(0, 0.023, 0) - ahead * 0.014
+        parts = [Ellipsoid(centre, (0.032, 0.024, 0.041), along=ahead)]
         for k in range(4):
             a = (k - 1.5) / 1.5
-            toe = ball + across * (0.022 * a) + ahead * (0.027 - 0.012 * a * a) + P(0, 0.013, 0)
-            parts.append((Ellipsoid(toe, (0.0135, 0.0145, 0.0165), along=ahead), 0.011))
-        return Union(parts, k=0.012)
+            toe = ball + across * (0.0235 * a) + ahead * (0.033 - 0.014 * a * a) + P(0, 0.0125, 0)
+            parts.append((Ellipsoid(toe, (0.0118, 0.013, 0.02), along=ahead), 0.0055))
+        return Union(parts, k=0.008)
 
     def front(side):
         s = 1.0 if side == "L" else -1.0
@@ -166,7 +167,7 @@ def design(J, M):
         mid = (elbow + wrist) * 0.5 + P(0, 0, 0.003)
         return Union([
             Tube([shoulder + P(0, 0.03, 0), elbow], [0.05, 0.04]),
-            Tube([elbow, mid, wrist], [0.04, 0.03, 0.0245], squash_axis=Z_AXIS, squash=[1.0, 1.1, 1.08]),
+            Tube([elbow, mid, wrist], [0.039, 0.0275, 0.0215], squash_axis=Z_AXIS, squash=[1.0, 1.1, 1.08]),
             (paw(ball, _unit((-0.08 * s, 0.0, 1.0))), 0.016),
         ], k=0.018)
 
@@ -177,16 +178,18 @@ def design(J, M):
         mid = (knee + heel) * 0.5 + P(0, 0, -0.004)
         return Union([
             Tube([hip, knee], [0.06, 0.04]),
-            Tube([knee, mid, heel], [0.04, 0.029, 0.0205], squash_axis=Z_AXIS, squash=[1.0, 1.1, 1.05]),
-            Tube([heel, ball + P(0, 0.028, -0.012)], [0.0205, 0.0235]),
+            Tube([knee, mid, heel], [0.039, 0.0265, 0.019], squash_axis=Z_AXIS, squash=[1.0, 1.1, 1.05]),
+            Tube([heel, ball + P(0, 0.028, -0.012)], [0.019, 0.0215]),
             (paw(ball, _unit((-0.05 * s, 0.0, 1.0))), 0.015),
         ], k=0.016)
 
     legs = [front("L"), front("R"), hind("L"), hind("R")]
 
-    # The tail: a great brush along its chain, widest two thirds of the way, ending in a soft point.
-    brush = _along([J["tail1"], J["tail2"], J["tail3"], J["tail4"], M["tailTip"]],
-                   [0.05, 0.076, 0.094, 0.07, 0.012], 20)
+    # The tail: a great brush along its chain, thin where it leaves the body, widest two thirds
+    # of the way, drawn out to a tip.
+    tail_tip = np.asarray(M["tailTip"], dtype=np.float64)
+    brush = _along([J["tail1"], J["tail2"], J["tail3"], J["tail4"], tail_tip, tail_tip + P(0, 0.03, -0.034)],
+                   [0.042, 0.07, 0.097, 0.084, 0.04, 0.007], 24)
 
     body = Union([(trunk, 0.0), (neck, 0.05), (head, 0.05), *[(ear, 0.012) for ear in ears],
                   *[(leg, 0.03) for leg in legs]])

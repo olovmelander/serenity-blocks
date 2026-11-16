@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 /**
- * Winter — model and rig the polar bear.
+ * Winter — model and rig the polar bears.
  *
- * The bear is the project's own: no scan, no download, no clip. Two steps make it:
+ * The bears are the project's own: no scan, no download, no clip. There are two bodies on the one
+ * skeleton, the grown bear (assets/polar-bear.glb) and a cub (assets/polar-bear-cub.glb: the same
+ * animal with a cub's proportions, see KINDS in the Blender script). Two steps make each:
  *
  *   model   headless Blender (scripts/blender/winter_polar_bear.py) builds the animal as a
  *           signed distance field round the joints of the theme's rig — this script hands it the
@@ -18,10 +20,11 @@
  *
  * No clips are written: the theme animates the skeleton itself (winter-bear-rig.js).
  *
- *   node scripts/winter/model-bear.mjs                     model with Blender, rig, write the asset
- *   node scripts/winter/model-bear.mjs --preview=<dir>     ... and Blender's stills of the mesh
- *   node scripts/winter/model-bear.mjs --from=<mesh.glb>   rig a mesh Blender already wrote
- *   node scripts/winter/model-bear.mjs --mesh=<file>       keep Blender's mesh there
+ *   node scripts/winter/model-bear.mjs                     model both with Blender, rig, write the assets
+ *   node scripts/winter/model-bear.mjs --kind=cub          only the cub (or --kind=adult)
+ *   node scripts/winter/model-bear.mjs --preview=<dir>     ... and Blender's stills of the mesh (in <dir>/<kind>)
+ *   node scripts/winter/model-bear.mjs --kind=cub --from=<mesh.glb>   rig a mesh Blender already wrote
+ *   node scripts/winter/model-bear.mjs --kind=cub --mesh=<file>       keep Blender's mesh there
  *   node scripts/winter/model-bear.mjs --blender=<exe>     (default: Blender 5.2 where it installs)
  *   node scripts/winter/model-bear.mjs --dry               do everything but write the asset
  *
@@ -44,11 +47,16 @@ import { adjacency, relax, writeGlb } from '../fox/mesh-tools.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..', '..');
-const ASSET = join(ROOT, 'src', 'themes', 'winter', 'assets', 'polar-bear.glb');
+const ASSETS = join(ROOT, 'src', 'themes', 'winter', 'assets');
+/** The bodies: the asset each is written to, its name in it, and how far its ears reach (model metres). */
+const KINDS = Object.freeze({
+    adult: Object.freeze({ file: 'polar-bear.glb', name: 'PolarBear', ear: 1 }),
+    cub: Object.freeze({ file: 'polar-bear-cub.glb', name: 'PolarBearCub', ear: 1.5 }),
+});
 const MODEL_SCRIPT = join(ROOT, 'scripts', 'blender', 'winter_polar_bear.py');
 const BLENDER = 'C:\\Program Files\\Blender Foundation\\Blender 5.2\\blender.exe';
 /** Stamped into the asset. */
-const RIG_VERSION = 2;
+const RIG_VERSION = 3;
 
 /** The parts Blender sorts the mesh into (winter_polar_bear.py PARTS). */
 const PART = Object.freeze({
@@ -115,7 +123,7 @@ function back(z, give, share) {
  * A vertex's bones, by its part and where it is.
  * @returns {Map<string, number>} bone name → weight
  */
-function weigh(p, part) {
+function weigh(p, part, kind) {
     const [x, y, z] = p;
     const side = x >= 0 ? 'L' : 'R';
     const w = new Map();
@@ -159,8 +167,10 @@ function weigh(p, part) {
         // Along the neck's two bones to the skull, which is the head's; the ears their own; at its
         // base the neck hands over to the chest.
         const neck = along(NECK_CHAIN, p);
-        const ear = Math.hypot(Math.abs(x) - JOINT.earL[0], y - JOINT.earL[1], z - JOINT.earL[2]);
-        const onEar = (1 - smooth(0.035, 0.07, ear)) * smooth(JOINT.earL[1] - 0.04, JOINT.earL[1] + 0.01, y);
+        // (A cub's ears are bigger and stand further out: they are weighed about where they are.)
+        const at = kind.earAt || JOINT.earL;
+        const ear = Math.hypot(Math.abs(x) - at[0], y - at[1], z - at[2]) / kind.ear;
+        const onEar = (1 - smooth(0.035, 0.07, ear)) * smooth(at[1] - 0.04 * kind.ear, at[1] + 0.01, y);
         give(`ear${side}`, onEar);
         const rest = 1 - onEar;
         const base = 1 - smooth(-0.25, 0.3, neck.u);
@@ -195,12 +205,12 @@ function weigh(p, part) {
     return w;
 }
 
-function skin(positions, parts, indices) {
+function skin(positions, parts, indices, kind) {
     const count = positions.length / 3;
     const bones = BEAR_BONES.length;
     const raw = new Float64Array(count * bones);
     for (let i = 0; i < count; i++) {
-        const w = weigh([positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]], parts[i]);
+        const w = weigh([positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]], parts[i], kind);
         w.forEach((value, name) => {
             raw[i * bones + BEAR_BONE_INDEX[name]] = value;
         });
@@ -231,15 +241,17 @@ function skin(positions, parts, indices) {
 
 // ── Main ────────────────────────────────────────────────────────────────────────
 
-function model({ blender, preview, keep }) {
+function model({
+    kind, blender, preview, keep,
+}) {
     const work = mkdtempSync(join(tmpdir(), 'winter-bear-'));
     try {
         const skeleton = join(work, 'skeleton.json');
         writeFileSync(skeleton, JSON.stringify({ bones: BEAR_BONES, marks: BEAR_MARKS }));
         const mesh = keep || join(work, 'polar-bear-mesh.glb');
         const args = ['--background', '--factory-startup', '--python', MODEL_SCRIPT, '--',
-            '--skeleton', skeleton, '--out', mesh];
-        if (preview) args.push('--preview', preview);
+            '--skeleton', skeleton, '--out', mesh, '--kind', kind];
+        if (preview) args.push('--preview', join(preview, kind));
         const run = spawnSync(blender, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
         const said = `${run.stdout || ''}${run.stderr || ''}`.split(/\r?\n/);
         const worth = said.filter((l) => /\[winter-bear\]|Error|Traceback/.test(l));
@@ -248,13 +260,13 @@ function model({ blender, preview, keep }) {
             const why = `${run.error?.message || ''}\n${run.stderr || ''}`;
             throw new Error(`Blender did not model the bear (status ${run.status}): ${why}`);
         }
-        return rig(mesh);
+        return rig(mesh, kind);
     } finally {
         rmSync(work, { recursive: true, force: true });
     }
 }
 
-function rig(meshFile) {
+function rig(meshFile, kind) {
     const { json, read } = readGlb(meshFile);
     const prim = json.meshes[0].primitives[0];
     const node = json.nodes.find((n) => n.mesh === 0);
@@ -265,13 +277,16 @@ function rig(meshFile) {
     const parts = Uint8Array.from(read(prim.attributes._PART));
     const indices = Uint16Array.from(read(prim.indices));
     const count = positions.length / 3;
-    const { joints, weights } = skin(positions, parts, indices);
     const extras = json.scenes[0].extras || {};
+    if ((extras.kind || 'adult') !== kind) throw new Error(`the mesh is a ${extras.kind}'s, not a ${kind}'s`);
+    const { joints, weights } = skin(positions, parts, indices, { ...KINDS[kind], earAt: extras.ear });
     const bytes = writeGlb({
-        name: 'PolarBear',
+        name: KINDS[kind].name,
         bones: BEAR_BONES,
         extras: {
             winterBear: RIG_VERSION,
+            kind,
+            nose: extras.nose,
             shoulderHeight: extras.shoulderHeight,
             rumpHeight: extras.rumpHeight,
             length: extras.length,
@@ -294,25 +309,35 @@ function main() {
         const [k, ...v] = a.replace(/^--/, '').split('=');
         return [k, v.length ? v.join('=') : true];
     }));
-    const started = Date.now();
-    const result = typeof args.from === 'string'
-        ? rig(resolve(args.from))
-        : model({
-            blender: typeof args.blender === 'string' ? args.blender : BLENDER,
-            preview: typeof args.preview === 'string' ? resolve(args.preview) : null,
-            keep: typeof args.mesh === 'string' ? resolve(args.mesh) : null,
-        });
-    const hash = createHash('sha256').update(result.bytes).digest('hex');
-    console.log(`bear: ${result.count} vertices, ${result.triangles} triangles, ${BEAR_BONES.length} bones, `
-        + `${(result.bytes.length / 1024).toFixed(0)} KiB, ${Date.now() - started} ms`);
-    const { shoulderHeight, rumpHeight, length } = result.extras;
-    console.log(`  shoulder ${shoulderHeight} m, rump ${rumpHeight} m, length ${length} m`);
-    console.log(`  sha256 ${hash}`);
-    if (!args.dry) {
-        const out = typeof args.out === 'string' ? resolve(args.out) : ASSET;
-        writeFileSync(out, result.bytes);
-        console.log(`  wrote ${out}`);
+    const kinds = typeof args.kind === 'string' && args.kind !== 'all' ? [args.kind] : Object.keys(KINDS);
+    kinds.forEach((kind) => {
+        if (!KINDS[kind]) throw new Error(`unknown kind ${kind} (one of: ${Object.keys(KINDS).join(', ')})`);
+    });
+    if (kinds.length > 1 && (typeof args.from === 'string' || typeof args.mesh === 'string' || typeof args.out === 'string')) {
+        throw new Error('--from, --mesh and --out are for one body: say which with --kind');
     }
+    kinds.forEach((kind) => {
+        const started = Date.now();
+        const result = typeof args.from === 'string'
+            ? rig(resolve(args.from), kind)
+            : model({
+                kind,
+                blender: typeof args.blender === 'string' ? args.blender : BLENDER,
+                preview: typeof args.preview === 'string' ? resolve(args.preview) : null,
+                keep: typeof args.mesh === 'string' ? resolve(args.mesh) : null,
+            });
+        const hash = createHash('sha256').update(result.bytes).digest('hex');
+        console.log(`${kind}: ${result.count} vertices, ${result.triangles} triangles, ${BEAR_BONES.length} bones, `
+            + `${(result.bytes.length / 1024).toFixed(0)} KiB, ${Date.now() - started} ms`);
+        const { shoulderHeight, rumpHeight, length } = result.extras;
+        console.log(`  shoulder ${shoulderHeight} m, rump ${rumpHeight} m, length ${length} m`);
+        console.log(`  sha256 ${hash}`);
+        if (!args.dry) {
+            const out = typeof args.out === 'string' ? resolve(args.out) : join(ASSETS, KINDS[kind].file);
+            writeFileSync(out, result.bytes);
+            console.log(`  wrote ${out}`);
+        }
+    });
 }
 
 main();

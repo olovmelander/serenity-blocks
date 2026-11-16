@@ -114,9 +114,10 @@ import { createMist } from './winter-mist.js';
 import {
     NowAndThen, SNOW_HEADROOM, auroraSwell, formAt, formDrift, formName, weatherAt, weatherDrift, weatherName,
 } from './winter-weather.js';
-import { FoxMind } from './winter-fox-mind.js';
+import { FoxMind, VisitorMind } from './winter-fox-mind.js';
+import { VISITOR_RIG } from './winter-fox-rig.js';
 import {
-    createFox, createSpiritFox, loadFox, spiritPath,
+    FOX_COATS, createFox, createSpiritFox, loadFox, spiritPath,
 } from './winter-fox.js';
 import { BearMind } from './winter-bear-plan.js';
 import { BEAR_SCALE } from './winter-bear-rig.js';
@@ -127,6 +128,12 @@ import {
 
 export { REST_RIG, fovForAspect };
 
+/**
+ * The visitor's coat: this share of the fox's shells (it is further off), and the fewest it is
+ * worth drawing in (tiers whose share comes to fewer leave the visitor out).
+ */
+const VISITOR_FUR = 0.4;
+const VISITOR_SHELLS_LEAST = 4;
 /** Frames the fox of light is drawn dark after it arrives, so its pipeline is built before play calls it. */
 const SPIRIT_WARM_FRAMES = 120;
 const PARTS = [
@@ -178,6 +185,8 @@ export class WinterWorld {
     } = {}) {
         this.wantsFox = fox !== false;
         this.fox = null;
+        /** The second fox, of the other coat, that comes and goes at the back of the snowfield. */
+        this.visitor = null;
         this.spirit = null;
         this.foxReady = Promise.resolve(false);
         this.wantsBear = bear !== false;
@@ -220,6 +229,7 @@ export class WinterWorld {
         this.heart = { x: 0.9, y: 0.14 };
         // It wanders: off its round a little, at its own pace, stopping where it likes, turning back.
         this.mind = new FoxMind(foxRound(this.aspect), seed, { wander: true, aspect: this.aspect });
+        this.visitorMind = new VisitorMind(this.aspect, ((seed ?? 0xf0c5) ^ 0xb1ce) >>> 0);
         this._camera = null;
         this._look = new THREE.Vector3();
         this._ray = new THREE.Vector3();
@@ -227,6 +237,7 @@ export class WinterWorld {
         this._point = { x: 0.5, y: 0.5 };
         this._from = [0, 0, 0];
         this._tail = [0, 0, 0];
+        this._foxEnv = { power: 0, surge: 0, aurora: 0 };
         this._hour = {};
         HOUR_KEYS.forEach((key) => {
             this._hour[key] = [...HOURS[0].calm[key]];
@@ -351,6 +362,8 @@ export class WinterWorld {
             queued.due = Infinity;
         });
         this.pendingPounce = Infinity;
+        /** When the fox is to rejoice at a perfect clear (after the pounce four lines make). */
+        this.pendingRejoice = Infinity;
         /** Tail flicks waiting for their ring to reach the fox, and loads waiting for their gust. */
         this.flicks = [];
         this.dumps = [];
@@ -364,6 +377,7 @@ export class WinterWorld {
         this._curtains = [...CURTAIN_REST];
         if (fox) {
             this.mind.reset(time);
+            this.visitorMind.reset(time);
             this.bearMind.reset(time);
         }
         this.sparks?.reset();
@@ -451,6 +465,15 @@ export class WinterWorld {
             this.fox = createFox(this.u, gltf, { shells: this.tier.fur });
             this.parts.fox = this.fox;
             this.root.add(this.fox.mesh);
+            // The visitor: the blue fox, further off, in fewer shells; the lower tiers do without it.
+            const visitorShells = Math.round(this.tier.fur * VISITOR_FUR);
+            if (visitorShells >= VISITOR_SHELLS_LEAST) {
+                this.visitor = createFox(this.u, gltf, {
+                    shells: visitorShells, coat: FOX_COATS.blue, rig: VISITOR_RIG, second: true,
+                });
+                this.visitor.mesh.visible = false;
+                this.root.add(this.visitor.mesh);
+            }
             if (this.tier.spirit) {
                 this.spirit = createSpiritFox(this.u, gltf, { shells: this.tier.veils });
                 this.parts.spirit = this.spirit;
@@ -635,6 +658,7 @@ export class WinterWorld {
         const moon = moonDirection(this.aspect);
         const glow = glowDirection(this.aspect);
         this.mind.setRound(foxRound(this.aspect), this.aspect);
+        this.visitorMind.setAspect(this.aspect);
         this.bearMind.setAspect(this.aspect, this.time);
         if (!this.u) return;
         this.u.moonDir.value.set(moon[0], moon[1], moon[2]);
@@ -1254,6 +1278,10 @@ export class WinterWorld {
         const sx = edge + side * out;
         const foot = this.screenToSnow(sx, 0.87, 16);
         const rgb = this._lastRgb;
+        // The fox leaps and turns once round in the air; out on the lake the bear's head snaps round
+        // to the board.
+        this.mind.twirl?.(at);
+        this.bearMind.glance?.(at + 0.2);
         // (Under reduced motion the sky still winds, slowly; the turning funnel is left out.)
         if (!this.reducedMotion) {
             this.devil.raise({
@@ -1314,6 +1342,11 @@ export class WinterWorld {
         this.coronaEnv.hit(1, at);
         this.pillarEnv.hit(1, at + 0.2);
         if (at + 0.2 - this.crownAt > 6) this.crownAt = at + 0.2;
+        // The animals answer the board's greatest moment their own way: the fox bounces three
+        // times on stiff legs once its pounce is over, and the bear out on the lake stands up and
+        // then sits down where it stood to watch the sky.
+        this.pendingRejoice = Math.min(this.pendingRejoice, at);
+        this.bearMind.wonder(at + 0.3);
     }
 
     /** The true combo changed (0 = the chain broke). */
@@ -1343,10 +1376,12 @@ export class WinterWorld {
         if (!this.u || !this.sparks) return;
         // A shower of shooting stars falls from one point over the frame.
         this.starShower(this.time + 0.25);
-        // The sky is strummed, and the fox answers with a shower from its tail and a look at the viewer.
+        // The sky is strummed; the fox answers with a shower from its tail, then stops and looks up
+        // at the stars falling, and out on the lake the bear lifts its head into the wind.
         this.strum(this.time, 1.1);
         this.mind.startle(0.6);
-        this.mind.attend(EYE.x, EYE.y, EYE.z, this.time + 2.2, 0.9);
+        if (!this.mind.gaze?.(this.time + 0.4)) this.mind.attend(EYE.x, EYE.y, EYE.z, this.time + 2.2, 0.9);
+        this.bearMind.scent?.(this.time + 0.6);
         this.counts.sparks += this.sparks.emit({
             from: this.mind.tail(this._tail),
             toward: [0, 1, 0],
@@ -1502,6 +1537,11 @@ export class WinterWorld {
             if (this.mind.mode === 'pounce') this.mind.startle(1.2);
             else this.mind.pounce(this.pendingPounce);
             this.pendingPounce = Infinity;
+        }
+        // (Its pounce first: rejoicing in the air, it waits until it has landed.)
+        if (t >= this.pendingRejoice && this.pendingPounce === Infinity) {
+            this.mind.rejoice?.(this.pendingRejoice);
+            this.pendingRejoice = Infinity;
         }
         const hush = t < this.hushUntil ? this.hushDepth : 0;
         const breathTarget = hush > 0 ? 1 - 0.88 * hush : 1 - this.dip;
@@ -1745,7 +1785,13 @@ export class WinterWorld {
         // (It runs with the player too: a quick hand sets it trotting, then running, chain or none.)
         const H = this.heatOfPlay;
         const pace = Math.max(this.power, H.warm * 0.3 + H.hot * 0.3 + H.fever * 0.25);
-        mind.step(dt, t, { power: pace, surge: this.surge });
+        // (How strong the aurora is over its rest: under a strong one the foxes sit and watch.)
+        const lit = this._curtains;
+        this._foxEnv.power = pace;
+        this._foxEnv.surge = this.surge;
+        this._foxEnv.aurora = clamp01((lit[0] + lit[1] + lit[2] + lit[3] - 0.5) / 1.6);
+        mind.step(dt, t, this._foxEnv);
+        this.stepVisitor(dt, t);
         const { pose } = mind;
         for (let i = 0; i < mind.events.length; i++) {
             const e = mind.events[i];
@@ -1769,6 +1815,27 @@ export class WinterWorld {
                         jitter: 0.06,
                     });
                 }
+            } else if (e.type === 'roll' || e.type === 'hop' || e.type === 'skid') {
+                // It wriggles on its back, lands from a bounce or skids to a stop: powder, low
+                // and wide (a skid throws it on ahead).
+                const skid = e.type === 'skid';
+                const sin = Math.sin(pose.heading);
+                const cos = Math.cos(pose.heading);
+                this.counts.sparks += this.sparks.emit({
+                    from: [pose.x + (skid ? sin * 0.4 : 0), pose.y + 0.1, pose.z + (skid ? cos * 0.4 : 0)],
+                    toward: skid ? [sin, 0.5, cos] : [0, 1, 0],
+                    n: this.handful(skid ? 9 : 4),
+                    rgb: [0.55, 0.65, 0.8],
+                    time: t,
+                    speed: skid ? [1.2, 3.4] : [0.5, 1.8],
+                    cone: skid ? 0.6 : 1.1,
+                    life: [0.6, 1.3],
+                    size: skid ? 0.22 : 0.16,
+                    glow: 0.13,
+                    powder: true,
+                    jitter: 0.35,
+                    stagger: 0.1,
+                });
             } else if (e.type === 'shake' || (e.type === 'land' && e.soft)) {
                 // It shakes itself, or comes down nose first on what it heard: snow flies.
                 const shaking = e.type === 'shake';
@@ -1891,6 +1958,33 @@ export class WinterWorld {
         this.fox?.update(pose);
     }
 
+    /**
+     * Step the visitor's mind and pose its body. It is drawn only while it is where it could be
+     * seen; each fox looks over at the other when the visitor comes into sight, and now and then
+     * while both stand still.
+     */
+    stepVisitor(dt, t) {
+        const mind = this.visitorMind;
+        const fox = this.mind.pose;
+        const was = mind.present && !mind.away;
+        // (It keeps off the fox: it pulls up short of it and waits, or turns back.)
+        const met = was && dt > 0 ? mind.keepOff(fox.x, fox.z, t) : false;
+        if (!was) mind.clearWay();
+        mind.step(dt, t, this._foxEnv);
+        const here = mind.present && !mind.away;
+        const { pose } = mind;
+        if (here && !this.mind.asleep && dt > 0) {
+            const every = Math.floor(t / 3) !== Math.floor((t - dt) / 3);
+            if (!was || (every && (met || (this.mind.mode === 'idle' && mind.mode === 'idle')))) {
+                this.mind.attend(pose.x, pose.y + 0.5, pose.z, t + 2.4, 0.85);
+                mind.attend(fox.x, fox.y + 0.5, fox.z, t + 2.4, 0.85);
+            }
+        }
+        if (!this.visitor) return;
+        this.visitor.mesh.visible = here && (!this.shown || this.shown.has('fox'));
+        if (here) this.visitor.update(pose);
+    }
+
     /** Walk the polar bear on along its course, pose its body and lay its shadow on the ice. */
     stepBear(t) {
         const pose = this.bearMind.step(t);
@@ -1907,16 +2001,18 @@ export class WinterWorld {
         const fz = Math.cos(pose.heading);
         const lengthwise = Math.abs(fx * mx + fz * mz);
         const crosswise = Math.abs(fz * mx - fx * mz);
-        const down = pose.over === 'Lie' || pose.over === 'Rise' ? pose.overBlend : 0;
-        const up = pose.over === 'Rear' ? pose.overBlend : 0;
-        const tall = (1 - 0.6 * down) * (1 + 0.7 * up) * BEAR_SCALE;
+        // (As big as this lap's bear is, and as tall as it stands: lying, sitting, up on its hind legs.)
+        const big = BEAR_SCALE * pose.size;
+        const tall = pose.tall * big;
         u.bearShadow.value.set(
             pose.x - mx * 1.6 * tall,
             pose.z - mz * 1.6 * tall,
-            1.7 * tall + 1.25 * BEAR_SCALE * lengthwise,
-            (0.42 + 1.1 * crosswise) * BEAR_SCALE,
+            1.7 * tall + 1.25 * big * lengthwise,
+            (0.42 + 1.1 * crosswise) * big,
         );
-        u.bearContact.value.set(pose.x, pose.z, fx, fz);
+        // (The ground cuts the shade under it for the big male: a smaller bear's heading is handed
+        // over longer by as much as it is smaller, which shrinks the shade to it.)
+        u.bearContact.value.set(pose.x, pose.z, fx / pose.size, fz / pose.size);
         u.bearIce.value = lakeMask(pose.x, pose.z);
     }
 
@@ -1964,11 +2060,23 @@ export class WinterWorld {
                 act: this.mind.act ? this.mind.act.join('+') : null,
                 turns: this.mind.walk?.turns.length ?? 0,
                 restless: this.mind.restless ?? null,
+                going: this.mind.going,
+                heading: pose.heading,
+            },
+            visitor: {
+                body: Boolean(this.visitor),
+                here: this.visitorMind.present && !this.visitorMind.away,
+                x: this.visitorMind.pose.x,
+                z: this.visitorMind.pose.z,
+                act: this.visitorMind.act ? this.visitorMind.act.join('+') : null,
+                going: this.visitorMind.going,
             },
             spirit: this.spiritGlow,
             bear: {
                 body: Boolean(this.bear),
                 way: this.bearMind.wayAt(this.time),
+                cast: this.bearMind.castAt(this.time),
+                cub: this.bearMind.pose.cub.present ? this.bearMind.pose.cub.clip : null,
                 act: this.bearMind.pose.clip,
                 x: this.bearMind.pose.x,
                 z: this.bearMind.pose.z,
@@ -1987,9 +2095,11 @@ export class WinterWorld {
             part.geometry?.dispose?.();
             part.material?.dispose?.();
         });
+        this.visitor?.dispose();
         this.fox?.dispose();
         this.spirit?.dispose();
         this.bear?.dispose();
+        this.visitor = null;
         this.fox = null;
         this.spirit = null;
         this.bear = null;
