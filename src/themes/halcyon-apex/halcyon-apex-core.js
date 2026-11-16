@@ -433,6 +433,8 @@ export function compositionFor(aspect) {
     const wide = smooth(0.8, 1.45, a);
     return {
         sun: { x: lerp(0.8, 0.866, wide), y: lerp(0.085, 0.35, wide) },
+        /** The giant that hangs in the dawn: over the left ranges in a wide frame, high beside the Apex in an upright one. */
+        planet: { x: lerp(0.16, 0.072, wide), y: lerp(0.045, 0.2, wide) },
         /** Radians the rig turns left of −Z, and how far it tips (up in a wide frame, down in an upright one). */
         yaw: lerp(24.5 * DEG, 0, wide),
         pitch: lerp(-13 * DEG, 5 * DEG, wide),
