@@ -97,7 +97,8 @@ export class AuroraAtmosphere {
         const pathLength = length(point.sub(eye)).toVar();
         const h0 = abs(eye.y);
         const h1 = abs(point.y);
-        let mist = layerDepth(h0, h1, pathLength, MIST.height, MIST.density);
+        // The hour of the night thickens and thins the mist (aurora-hours.js).
+        let mist = layerDepth(h0, h1, pathLength, MIST.height, MIST.density).mul(u.mistGain);
         if (patchy) {
             // Banks of mist drift over the water; the read is taken where the path ends, and
             // only counts where that end lies low (in front of a peak the mist is even).

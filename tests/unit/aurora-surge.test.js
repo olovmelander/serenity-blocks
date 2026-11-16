@@ -8,9 +8,10 @@ import {
 } from '../../src/themes/aurora/aurora-field.js';
 import { AuroraWorld } from '../../src/themes/aurora/aurora-world.js';
 
-function create(seed = 11) {
+/** `ambient: false` leaves out the sky's own life, for a test that watches play's light alone. */
+function create(seed = 11, options = {}) {
     const excitation = new ExcitationMap();
-    const director = new AuroraDirector({ excitation, seed });
+    const director = new AuroraDirector({ excitation, seed, ...options });
     return { director, excitation };
 }
 
@@ -167,7 +168,8 @@ describe('Aurora builds with play instead of popping', () => {
     });
 
     it('breathes back to an exactly calm sky once the hands rest', () => {
-        const { director, excitation } = create();
+        // Play's own light: the sky's own substorms (tests/unit/aurora-life.test.js) are left out.
+        const { director, excitation } = create(11, { ambient: false });
         CHAIN.forEach((lines) => {
             clearingLock(director, lines);
             advance(director, 0.64);
