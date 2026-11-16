@@ -1,22 +1,24 @@
 /**
- * Wolfhour Theme - Tetromino Visual Configuration
- *
- * Mystical cosmic palette with celestial blues, ethereal cyans, and nebula purples.
- * Each piece glows like a cosmic entity in the mystical night sky.
+ * Wolfhour — the pieces wear the valley's own colours, one each: the moon's silver, the northern
+ * lights' green, the ember of the hut's fire, the violet of dusk, the blue of ice, the rose of the
+ * alpenglow and the blue-grey of granite in shade. None sits in the hue a falling-block game
+ * usually gives its shape, and every pair stays apart (CIELAB ΔE > 16) to full, protan, deutan and
+ * tritan sight (tests/unit/wolfhour-night.test.js): the seven silvers they replace were within
+ * ΔE 5 of one another.
  */
 
 export const WOLFHOUR_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#ddeeff', // Celestial silver - bright moonlit beam (very light)
-        O: '#f5f8fa', // Moonlight silver - pristine starlight (brightest)
-        T: '#b0c4d8', // Mystic silver - ethereal cloud (medium-light)
-        S: '#a0b8cc', // Spirit silver - gentle essence (medium)
-        Z: '#98a8bc', // Twilight silver - mystical shimmer (medium-dark)
-        J: '#708090', // Deep silver - shadowed depths (dark - slate gray)
-        L: '#c8d8e8', // Crystal silver - luminous glow (light)
-        GARBAGE: '#1a1a1a', // Cosmic void - deep darkness (matches foreground mountain)
+        I: '#F1F5FC', // moon silver
+        O: '#2DA084', // northern lights
+        T: '#DF8D38', // the hut's ember
+        S: '#8A70EA', // dusk violet
+        Z: '#84C8F9', // ice
+        J: '#F3A9C1', // alpenglow
+        L: '#46608F', // granite in shade
+        GARBAGE: '#222a38', // rock under the snow
     },
 
     renderMode: 'glow',

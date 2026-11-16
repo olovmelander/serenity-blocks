@@ -119,6 +119,27 @@ export const REPERTOIRES = Object.freeze({
         seed: 53,
         actions: Object.freeze([['idle', 3.2], ['lie', 3], ['look', 2], ['yawn', 1], ['scratch', 0.8]]),
     }),
+    // The lead's mate rests: lying, its head on its paws, now and then up for a look or a shake.
+    mate: Object.freeze({
+        slot: 16,
+        home: 'lying',
+        facing: -1,
+        seed: 67,
+        actions: Object.freeze([
+            ['idle', 2.4], ['lie', 3.4], ['look', 1.8], ['yawn', 1], ['rise', 0.9], ['scratch', 0.6],
+        ]),
+    }),
+    // The yearling cannot keep still: it plays, digs, listens, stretches, and never for long.
+    yearling: Object.freeze({
+        slot: 9,
+        home: 'standing',
+        facing: 1,
+        seed: 83,
+        actions: Object.freeze([
+            ['play', 3], ['dig', 2], ['look', 1.4], ['shake', 1], ['lookBack', 1], ['sit', 1.4],
+            ['stretch', 1], ['alert', 1.2], ['scratch', 0.6],
+        ]),
+    }),
 });
 
 /** Under Reduce motion these actions do not play: the wolves still look, yawn, sit, lie and howl. */

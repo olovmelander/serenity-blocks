@@ -113,9 +113,10 @@ describe('Wolfhour props on the ridge', () => {
             expect(scale.y).toBeLessThanOrEqual(at.scale + 1e-9);
             expect(scale.y).toBeGreaterThanOrEqual(at.scale * 0.7);
         }
-        // A narrow screen's steep ridge holds two of the pack (three would crowd into one shape).
+        // A narrow screen's steep ridge holds two of the pack (more would crowd into one shape);
+        // a wide one holds the tier's whole pack (four on Low).
         const shown = pack.wolves.filter((entry) => entry.mesh.visible);
-        expect(shown).toHaveLength(aspect < 1 ? 2 : 3);
+        expect(shown).toHaveLength(aspect < 1 ? 2 : 4);
         // Each shown wolf's paws rest on the crest under it, sunk a little into the rock.
         const spurs = ranges[WOLFHOUR_PROPS.pack.range];
         for (const entry of [...shown, pack.answerer.wolf]) {
@@ -123,7 +124,9 @@ describe('Wolfhour props on the ridge', () => {
             expect(entry.mesh.parent.parent).toBe(spurs);
             const local = spurs.worldToLocal(world.clone());
             const crest = landscape.crestPoint(WOLFHOUR_PROPS.pack.range, local.x);
-            const sink = crest.y - local.y;
+            // (A wolf on the near face of the spur stands its own drop below the crest.)
+            entry.mesh.parent.getWorldScale(scale);
+            const sink = crest.y - local.y - (entry.spec.drop ?? 0) * scale.y;
             expect(sink).toBeGreaterThan(0);
             expect(sink).toBeLessThan(4);
         }
