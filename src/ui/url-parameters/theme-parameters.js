@@ -200,7 +200,7 @@ const captureThemes = [
     ['tornado',
         'tornado',
         'Tornado',
-        'sky, ground, wheat, props, funnel, debris, motes, bolts'],
+        'sky, ground, wheat, props, funnel, debris, air, motes, bolts'],
 
     ['vesper-chrysalis',
         'vesperChrysalis',

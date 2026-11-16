@@ -160,8 +160,20 @@ export const RINGS = 4;
 export const FLASHES = 3;
 /** Locked pieces whose sparks are in the air at once (a quick hand keeps eight aloft). */
 export const FLIGHTS = 8;
-/** Lightning channels at once (a quad's four, and the storm's own at full fury). */
-export const BOLTS = 6;
+/** Lightning channels at once (a quad's four and its crawlers, and the storm's own at full fury). */
+export const BOLTS = 10;
+/** Bursts of straw in the air at once (a hard drop throws two, one from each foot of the card). */
+export const BURSTS = 6;
+/** The box of air round the lens the chaff rides through (metres): across, up, deep, and how far ahead. */
+export const AIR_BOX = Object.freeze({
+    wide: 90, tall: 22, deep: 90, ahead: 86,
+});
+/** The same for the rain. */
+export const RAIN_BOX = Object.freeze({
+    wide: 60, tall: 26, deep: 60, ahead: 56,
+});
+/** The drift of the air is wrapped at this many boxes (every speed is a quarter step: exact). */
+export const DRIFT_WRAP = 4;
 
 const rows = (count) => Array.from({ length: count }, () => new THREE.Vector4(0, 0, 0, 0));
 const colour = (r, g, b) => uniform(new THREE.Vector3(r, g, b));
@@ -178,6 +190,8 @@ export function createUniforms() {
         flights: rows(FLIGHTS * 2),
         // per channel: (light, 0, 0, 0)
         bolts: rows(BOLTS),
+        // per burst of straw: (origin xyz, start time) + (rgb, power: its sign is the side it is thrown to)
+        bursts: rows(BURSTS * 2),
     };
     return {
         tables,
@@ -186,6 +200,7 @@ export function createUniforms() {
         flashes: uniformArray(tables.flashes, 'vec4'),
         flights: uniformArray(tables.flights, 'vec4'),
         bolts: uniformArray(tables.bolts, 'vec4'),
+        bursts: uniformArray(tables.bursts, 'vec4'),
 
         time: uniform(0),
         /** The storm's clocks: accumulated, so a change of speed never jumps. */
@@ -207,6 +222,38 @@ export function createUniforms() {
         shock: uniform(new THREE.Vector4(0, 0, 0, 0)), // the dust front: (radius, strength, 0, 0)
         /** The chain's colours burning in the wall cloud and the deck's heart (rgb × light, 0 at rest). */
         charge: uniform(new THREE.Vector3(0, 0, 0)),
+
+        /** The funnel's kind (tornado-core.js STAGES): how much wider it is aloft than at the ground. */
+        taper: uniform(1),
+        /** How far down the funnel reaches (1 = on the ground), and how much of it is in the dirt. */
+        touch: uniform(1),
+        contact: uniform(1),
+        /** The weather (tornado-core.js weatherAt): (rain core's drift, rain, edge, mammatus). */
+        weather: uniform(new THREE.Vector4(0, 1, 1, 0.5)),
+        /** Rain over the lens, 0..1. */
+        squall: uniform(0),
+        /** The deck parts over the gap (a perfect clear; the storm spent), 0..1. */
+        open: uniform(0),
+        /** A ring of light running out through the deck (four lines): (radius m, light, width m, 0). */
+        pulse: uniform(new THREE.Vector4(0, 0, 200, 0)),
+        pulseRgb: uniform(new THREE.Vector3(1, 0.8, 0.5)),
+        /** A band of sun crossing the field toward the lens (a new level): (metres out, light, width, 0). */
+        sweep: uniform(new THREE.Vector4(0, 0, 60, 0)),
+        /** The twin funnel of a twist: (x, z, how far down it reaches, girth). */
+        twin: uniform(new THREE.Vector4(400, -700, 0, 1)),
+        /** The pools of sun on the field: how far they have drifted, tiles. */
+        pools: uniform(new THREE.Vector2(0, 0)),
+        /** The air at the lens: how far the inflow has carried it (metres, wrapped), which way it runs. */
+        airDrift: uniform(new THREE.Vector3(0, 0, 0)),
+        inflow: uniform(new THREE.Vector2(-0.42, -0.91)),
+        /** (the share of the chaff that flies, its streak's length m, the wind on a burst m/s², 0). */
+        air: uniform(new THREE.Vector4(0.3, 0.5, 4, 0)),
+        /** How far the rain has fallen, metres (wrapped). */
+        rainFall: uniform(0),
+        /** The tramlines' run through the wheat (unit x, z): toward where the funnel stands. */
+        tram: uniform(new THREE.Vector2(-0.42, -0.91)),
+        /** Lightning running up the funnel (a back-to-back): (height of the front 0..1.2, light). */
+        surge: uniform(new THREE.Vector2(0, 0)),
 
         sunDir: uniform(new THREE.Vector3(0.5, 0.05, -0.86)),
         sunPower: uniform(15),
@@ -241,7 +288,7 @@ export const noiseAt = (tex, uvNode, level = 0) => texture(tex, uvNode).level(le
 export function funnelRadiusNode(u, hIn) {
     const h = clamp(hIn, 0.0, 1.0);
     return float(WORLD.radiusGround).mul(u.girth)
-        .add(pow(h, 1.7).mul(WORLD.radiusTop - WORLD.radiusGround))
+        .add(pow(h, 1.7).mul(WORLD.radiusTop - WORLD.radiusGround).mul(u.taper))
         .add(exp(h.oneMinus().mul(-8.0)).mul(u.flare).mul(WORLD.flare))
         .add(exp(h.mul(-16.0)).mul(WORLD.foot));
 }

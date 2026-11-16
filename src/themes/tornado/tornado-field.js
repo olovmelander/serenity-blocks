@@ -6,6 +6,11 @@
  * gust rings a locked piece sends out and the dust front of a four-line clear. Round the lens the
  * same field is real geometry: stalks with ears, bent toward the funnel by the inflow and laid
  * flat by the same rings, so the picture has a foreground that moves.
+ *
+ * The field is not one tone. Pools of sun drift across it (the deck lets the light through in
+ * patches: bands of gold and shade out on the plain, a pool passing over the stalks at the
+ * lens), tramlines run through the crop toward the place the funnel stands, a new level sends a
+ * band of light in from the horizon, and a perfect clear lights all of it.
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -61,6 +66,40 @@ function ringsAt(u, p) {
     return { glow, push };
 }
 
+/** Tramlines: pairs of wheel tracks this far apart, each this far off the pair's middle. */
+const TRAM_EVERY = 24;
+const TRAM_HALF = 0.95;
+
+/**
+ * The pools of sun on the field at a ground point, 0 (under the deck's shade) to 1: two reads
+ * that drift with the weather. A perfect clear lights the whole field.
+ */
+function poolsAt(u, noise, p, level = null) {
+    const read = (uvNode) => (level === null ? texture(noise, uvNode) : noiseAt(noise, uvNode, level));
+    // Pools some thirty metres across (the stand at the lens is banded with them) inside
+    // fields of light half a kilometre wide (the whole foreground goes gold, then into shade).
+    const near = read(p.div(290.0).add(u.pools.mul(3.4))).b;
+    const wide = read(p.div(1900.0).add(u.pools.mul(0.52)).add(0.31)).r;
+    return mix(smoothstep(0.3, 0.54, near.mul(0.42).add(wide.mul(0.58))), float(1.0), u.open);
+}
+
+/** The band of sun a new level sends in from the horizon: 0..1 at `far` metres from the lens. */
+function sweepAt(u, far) {
+    return tnGauss(far.sub(u.sweep.x).div(u.sweep.z)).mul(u.sweep.y);
+}
+
+/**
+ * The tramlines at a ground point, 0..1: two wheel tracks every TRAM_EVERY metres, run toward
+ * the funnel (u.tram), the lens standing between two pairs.
+ */
+function tramAt(u, p) {
+    const across = p.x.mul(u.tram.y).sub(p.y.mul(u.tram.x));
+    const off = fract(across.div(TRAM_EVERY)).sub(0.5).abs().oneMinus()
+        .sub(0.5)
+        .mul(TRAM_EVERY);
+    return tnGauss(off.abs().sub(TRAM_HALF).div(0.2));
+}
+
 /** The dust front of a four-line clear: 0..1 at a ground point. */
 function shockAt(u, p) {
     const fromFoot = length(p.sub(u.axis.xz));
@@ -81,11 +120,16 @@ function createGround({ u, noise }) {
         const g2 = texture(noise, p.div(24.0).add(u.gust.mul(2.3))).g;
         const sheen = smoothstep(0.42, 0.8, g1).mul(g2.mul(0.5).add(0.5)).toVar();
         const grain = texture(noise, p.div(3.3)).a;
-        // Cloud shadow: the deck lets the sun through in patches.
-        const patch = texture(noise, p.div(1500.0).add(u.gust.mul(0.02))).b;
-        const light = smoothstep(0.2, 0.75, patch).mul(0.55).add(0.45).mul(grain.mul(0.45).add(0.6))
-            .toVar();
+        // The deck lets the sun through in patches: pools of gold drifting over a shaded plain.
+        const pool = poolsAt(u, noise, p).toVar();
+        const light = mix(float(0.5), float(1.16), pool).mul(grain.mul(0.45).add(0.6)).toVar();
         light.addAssign(sheen.mul(0.3));
+        // Tramlines: the crop is thin on the wheel tracks and the soil shows (lost where a track
+        // is under a pixel, and broken here and there where the crop has closed over it).
+        const tram = tramAt(u, p).mul(exp(far.div(-420.0)))
+            .mul(smoothstep(0.3, 0.5, texture(noise, p.div(210.0)).g))
+            .toVar();
+        light.mulAssign(tram.mul(-0.26).add(1.0));
 
         // The funnel's shadow, lying away from the sun and widening.
         const rel = p.sub(funnelCentreNode(u, float(0.0)).xz).toVar();
@@ -97,6 +141,8 @@ function createGround({ u, noise }) {
 
         const col = mix(u.wheatShade, u.wheatLit, clamp(light, 0.0, 1.3)).toVar();
         col.mulAssign(smoothstep(22.0, 62.0, far).mul(0.55).add(0.45));
+        // A new level: a band of sun runs in from the horizon (the hour's own light on the crop).
+        col.mulAssign(sweepAt(u, far).mul(1.25).add(1.0));
         // Dust thickens toward the foot.
         col.assign(mix(col, u.dust.mul(0.8), exp(length(rel).div(-150.0)).mul(0.6)));
 
@@ -172,7 +218,10 @@ function createWheat({ u, noise, tier }) {
         .add(shock.mul(1.4));
     const sway = sin(u.wind.mul(3.1).add(seed.mul(40.0)).add(stalk.x.mul(0.7))).mul(0.08);
     const bend = clamp(lean.add(sway), 0.0, 1.5);
-    const tall = stalk.z.mul(smoothstep(WHEAT_REACH * 0.72, WHEAT_REACH, range).oneMinus());
+    // The crop is short on the wheel tracks.
+    const tram = tramAt(u, root).mul(smoothstep(0.3, 0.5, noiseAt(noise, root.div(210.0)).g));
+    const tall = stalk.z.mul(smoothstep(WHEAT_REACH * 0.72, WHEAT_REACH, range).oneMinus())
+        .mul(tram.mul(-0.36).add(1.0));
     const tip = y.mul(y).mul(tall);
     // The ear: a bulge near the top; stalks further off are drawn wider so the field stays full.
     const ear = smoothstep(0.58, 0.8, y).mul(smoothstep(0.92, 1.0, y).mul(-0.75).add(1.0));
@@ -186,6 +235,8 @@ function createWheat({ u, noise, tier }) {
     const tone = varying(vec3(gust, ring.push.add(shock), seed));
     const earAt = varying(ear);
     const ringGlow = varying(ring.glow);
+    // The pool of sun this stalk stands in, and the band of light of a new level.
+    const sunlit = varying(vec2(poolsAt(u, noise, root, 0), sweepAt(u, range)));
     material.fragmentNode = Fn(() => {
         const far = length(positionWorld.sub(cameraPosition));
         // Dark between the stalks, the ears catching the low sun from behind.
@@ -194,6 +245,7 @@ function createWheat({ u, noise, tier }) {
         const col = mix(u.wheatShade.mul(0.85), u.wheatLit.mul(1.05), lift).toVar();
         col.mulAssign(mix(vec3(0.86, 1.0, 0.78), vec3(1.12, 0.94, 0.8), fract(tone.z.mul(7.31))));
         col.mulAssign(tone.x.mul(0.6).add(0.7));
+        col.mulAssign(mix(float(0.6), float(1.14), sunlit.x).mul(sunlit.y.mul(1.25).add(1.0)));
         // The stem low down is greener and in the crop's own shade.
         const low = smoothstep(0.45, 0.05, clamp(y, 0.0, 1.0));
         col.assign(mix(col, col.mul(vec3(0.62, 0.7, 0.42)), low.mul(0.7)));
@@ -206,7 +258,8 @@ function createWheat({ u, noise, tier }) {
         const grain = cos(rows.mul(TAU)).mul(0.5).add(0.5);
         const rounded = clamp(abs(positionGeometry.x).mul(2.0), 0.0, 1.0);
         col.mulAssign(mix(float(1.0), grain.mul(0.32).add(0.78).mul(rounded.mul(-0.25).add(1.1)), earF.mul(rowRoom)));
-        col.addAssign(u.sun.mul(earF).mul(tone.z.mul(0.12).add(0.1)).mul(mix(float(1.0), grain.mul(0.6).add(0.7), rowRoom)));
+        col.addAssign(u.sun.mul(earF).mul(tone.z.mul(0.12).add(0.1)).mul(mix(float(1.0), grain.mul(0.6).add(0.7), rowRoom))
+            .mul(sunlit.x.mul(0.85).add(0.15)));
         col.addAssign(ringGlow.mul(0.22).mul(lift).add(u.wheatLit.mul(tone.y).mul(0.18)));
         col.assign(mix(col, u.haze, exp(far.div(-2600.0)).oneMinus()));
         return vec4(col, 1.0);

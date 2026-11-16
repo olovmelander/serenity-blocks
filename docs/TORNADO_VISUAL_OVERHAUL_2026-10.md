@@ -32,15 +32,18 @@ of the board.
 
 | Play | The storm |
 | --- | --- |
-| Lock | A burst opens at the card's edge, at the piece's height: sparks in the piece's colour leave it, fly out over the field as short streaks and into the funnel's foot. When they arrive the funnel lights a ribbon of that colour that climbs it. Under the piece's column a gust ring in the same colour runs out through the wheat (the stalks lie down as it passes). The ring starts out in the field, never under the lens, and is a line, not a wash of colour. |
-| Hard drop | The same with more sparks' light, a wider, faster ring, a flicker in the cloud and a jolt of the lens. |
-| Clear | The funnel lets its ribbons go: they flare and shoot up into the cloud, which lights from inside. Lightning comes down beside the card, one channel per line, each with a ring through the wheat where it lands. The channels are aimed at screen columns that the card, the HUD and the funnel leave free. |
-| Four lines, perfect clear | The funnel swells into a wedge, and a low wall of dust rolls out from its foot across the field and over the lens; the picture bends as it passes. A perfect clear also opens the sun's shafts. |
-| T-spin | The funnel spins up for a moment. |
+| Lock | A burst opens at the card's edge, at the piece's height: sparks in the piece's colour leave it, fly out over the field as short streaks and into the funnel's foot. When they arrive the funnel lights a ribbon of that colour that climbs it. Under the piece's column a gust ring in the same colour runs out through the wheat (the stalks lie down as it passes). The ring starts out in the field, never under the lens, and is a line, not a wash of colour. Straw is kicked up out of the wheat at the card's foot on the piece's side. |
+| Hard drop | The same with more sparks' light, a wider, faster ring, a flicker in the cloud and a jolt of the lens; the field is slammed: straw in the piece's colour and puffs of dust thrown up at both feet of the card, and a gust at the lens (more chaff in the air, faster). A quick hand's drops throw less and less, straw alone. |
+| Clear | The funnel lets its ribbons go: they flare and shoot up into the cloud, which lights from inside. Lightning comes down beside the card, one channel per line, each with a ring through the wheat where it lands. The channels are aimed at screen columns that the card, the HUD and the funnel leave free. Three lines also send a crawler along under the deck overhead. |
+| Four lines | The funnel swells into a wedge, and a low wall of dust rolls out from its foot across the field and over the lens; the picture bends as it passes. The storm's heart beats: a ring of light in the colours the funnel holds runs out through the base, and four crawlers fan out across the whole sky one after another. |
+| Back-to-back | Twin channels either side of the funnel, and the funnel takes the strike: light runs up it from the foot through every ribbon it holds. |
+| Perfect clear | The storm breaks. The funnel lets go of everything it holds and of the ground, and is drawn up under the wall cloud; the deck parts from the sun's side and the light floods the field; the wind drops. A few seconds later the wall cloud lowers a new funnel and it touches down (a ring of dust through the wheat). On four lines this crowns the quad's own storm. |
+| T-spin | The funnel spins up, and a twin comes down out of the base in open sky on the far side of the card: a thin rope that writhes to the field, touches down with a ring of dust and is drawn back up. More lines keep it down longer; a second twist while it is down fattens it. |
 | Chain of clears | The storm's fury, eased in and let go slowly: the funnel thickens and turns faster, more debris lifts, the dust skirt grows, the wheat lies down, the cloud winds faster and turns green at its heart, the cloud flickers more often, the rain thickens. Once the chain is long, thin satellite vortices circle the foot and wind into the stem, and the lens is buffeted. |
-| Level up | The hour turns one step, with a stroke of lightning: golden hour, ember dusk, green sky, blue hour, and round again. |
-| The clock, with no play at all | The same wheel turns by itself, slowly, whatever the level: one hour in 100 s, resting 15 s on an hour and on its way to the next for the other 70 s. A level-up is a step added on top of where the clock has carried the light (`wheel = clock / 100 + level − 1`), so the colours never wait for a level. |
-| New run | The funnel lets go of what it holds and the light eases back to golden hour. |
+| Level up | The hour turns one step, with a stroke of lightning: golden hour, ember dusk, green sky, blue hour, storm night, first light, and round again. The hour is wound on by hand: the deck races for a moment, a band of sun runs in across the field from the horizon to the lens, and lightning crawls the base. |
+| The clock, with no play at all | The same wheel turns by itself, slowly, whatever the level: one hour in 100 s, resting 15 s on an hour and on its way to the next for the other 70 s. A level-up is a step added on top of where the clock has carried the light (`wheel = clock / 100 + level − 1`), so the colours never wait for a level. The storm has clocks of its own besides (see "The living storm"). |
+| Run over | The funnel lets go of the ground and is drawn up under the wall cloud; the storm dims and waits. |
+| New run | The funnel lets go of what it holds and the light eases back to golden hour; the first piece brings the funnel down onto the field. |
 
 ## How it is built
 
@@ -211,6 +214,89 @@ pole is under 5 px; the arms are square and the wires sit on them. Checked in th
 Low, High and Ultra, 2485 × 1245, 16:9 with the board mock and 2538 × 760, with clean consoles.
 
 ![Before and after: the wires stop on the near pole; now they run on out of the frame](tornado-captures/power-line.jpg)
+
+## Third pass (2026-11-16): the living storm
+
+Branch `feature/tornado-living-storm`. Olov asked for the theme to become one of the game's most
+stunning, varied over time, with every event its own and the biggest the most spectacular, while
+staying smooth and readable.
+
+**The audit.** The picture was one storm at one moment: the same cone in the same place, the same
+deck, an even field, and only the hour turning. The cloud base was a flat sheet of streaks with no
+structure; the field one tone to the horizon; the funnel hung from nothing (no wall cloud), and
+its dust skirt read as a glass bowl. The air at the lens never moved (the inflow showed only in the
+wheat). Most events were the same two gestures, lightning and a dust front, at different
+strengths: a twist only spun the funnel, a level-up was a stroke and a colour change, a perfect
+clear was a quad with a brighter gap, a lock's ring ran out behind the card where it was never
+seen, and the end of a run did nothing.
+
+![The funnel's kinds through the six hours](tornado-captures/living-kinds.jpg)
+
+**The living storm** (every clock its own, none sharing a period with another, so the picture
+never repeats in a session):
+
+- **The funnel's kinds** (`STAGES`, `stageAt` in `tornado-core.js`): cone, stovepipe, wedge,
+  elephant trunk, rope, and aloft (it lets go of the ground and hangs under the wall cloud until
+  the next cone comes down: a touchdown, with a ring of dust through the wheat). One kind every
+  47 s, resting on each for 42 % of it. One profile makes all of them (`taper` is new: how much
+  wider the funnel is aloft). A chain plants a funnel that hangs in the air.
+- **It travels** (`roam`): nearer and further (±25 % of its range) and across the room beside
+  the card, never over it, eased in after the first quarter minute.
+- **The wall cloud** (`kind: 'wall'`): a squat block of cloud under the base that the funnel hangs
+  from, darker than the deck, its torn foot and sunward flank lit.
+- **The weather** (`weatherAt`): the rain core drifts along the horizon and thickens and thins,
+  the storm's edge breathes so the bright gap opens and narrows, fields of mammatus come and go
+  overhead, and every 167 s a squall crosses the lens (rain streaks, the far deck hazed).
+- **The deck**: tiers round the mesocyclone (uneven arcs whose sunward slopes catch the low sun),
+  mammatus pouches overhead on the sun's side, high cirrus where a parted deck shows the sky, the
+  sun's disc barred by thin strata, broader and fewer shafts low over the field.
+- **The field**: pools of sun drifting across it (fields of light half a kilometre wide with
+  pools of thirty metres in them, passing over the stalks at the lens), tramlines running toward
+  the funnel.
+- **The air** (`tornado-air.js`, the new `air` part): chaff on the inflow past the lens, thin at
+  rest and thick when the storm is wound up; the straw a landing piece throws; the squall's rain.
+  All are lit things with cover (#1702), wrapped in a box of air round the lens on a drift that
+  wraps exactly, so nothing is simulated and a seek replays it.
+- **Two new hours**: storm night (the last ember in the gap, the storm lit by its own lightning,
+  which also crawls the base) and first light (pale lemon gap, peach under the lobes).
+
+**The events** are in the table above. What is new, each its own gesture: straw at the card's feet
+(lock, hard drop), crawlers under the deck (three and four lines, level-up, the dark hours), a
+ring of light through the base (four lines), light up the funnel (back-to-back), the twin (twist),
+the storm breaking and a new touchdown (perfect clear), the deck racing and a band of sun (level),
+the funnel drawn up (run over). The biggest moments stack the most: a four-line back-to-back is the
+wedge, the dust front, the ring through the deck, four crawlers, twin channels and the surge up the
+funnel together.
+
+![Hard drop, three lines, four lines, twist, back-to-back, perfect clear, new level, run over, squall](tornado-captures/living-events.jpg)
+
+**Readability and cost.** Nothing new is drawn over the card except what passes behind its calm
+zone; the straw is thrown from its feet outward. A burst limiter (`burstPower`, `PUFF_POWER`)
+keeps a quick hand's drops from piling dust into a bank at the card's foot (found in a real run).
+Streaks have a pixel ceiling as well as a floor (#1708). Every flash-like addition (crawlers, the
+ring through the deck, the surge) is scaled or thinned under Reduce flashing, and the travel,
+lapse and gusts are held back under reduced motion. Tiers: every tier keeps every part and event;
+chaff, straw and rain counts rise with the tier (`tornado-quality.js`); the mammatus needs the
+fine-detail tier, its lit side the relief tier. The twin and the rain are parked and warmed with
+the satellites and the dust front.
+
+**Checks.** `tests/unit/tornado-storm-life.test.js` (new, 23 tests: the kinds, the weather's
+bounds, the crawler path, the tiers, the session opening as composed, the touchdown, the roam,
+the drift's wrap, the rain, the straw and its limiter, the crawlers per clear, the ring through
+the deck, the twin, the storm breaking, the level's lapse and band, the surge, the run's end);
+the shader gate builds every material (chaff, bursts, rain, wall, twin included) on both backends
+at High and Minimal under the 48 KiB budget (largest: the sky's GLSL fragment, 25.1 KiB).
+Playground on native WebGPU (RTX 5080 Laptop): every kind at every hour, every event, a held
+chain, a squall, 21:9, and 390 × 844 portrait; on the WebGL2 backend at High and Minimal; Low and
+Minimal on WebGPU. Consoles clean. The real game: two single-player runs with real key presses
+(48 and 33 hard drops), console clean of anything from the theme. GPU time at 1080p, 30 fps cap,
+the playground's demo script, main against this branch: p50 0.50–0.54 ms against 0.58–0.59 ms
+(and 0.58 ms with a squall and the wedge).
+
+**Open calls for the owner** (mine, not decided): the rope and elephant trunk lean a long way at
+the top in a tall frame; the hard drop's sparks are still the old cyan streaks (only the straw is
+new); the mammatus is a stylisation and shows only when its field is up; the twin is pale in the
+bright gap; the squall's rain is subtle at 1080p.
 
 ## Captured previews
 
