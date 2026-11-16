@@ -155,7 +155,7 @@ ms at rest, 0.22 ms with everything on. Low with everything on: CPU 1.8 ms, GPU 
 are one pipeline; the aurora, arcs, snow, dust and devil are parked (not drawn) while idle and are
 warmed with the theme's other parked effects.
 
-## Traps (new gotcha rows #1401, #1705)
+## Traps (new gotcha rows #1402, #1707)
 
 - **Rays in noise are rain unless they are wide.** The first aurora read as a curtain of falling
   rain: the ray read was at 0.005/unit, a few pixels per streak at 1600 px. Half the frequency and

@@ -96,7 +96,7 @@ export class AuroraAir {
             const s4 = s2.mul(s2);
             const s8 = s4.mul(s4);
             const flare = s8.mul(s8);
-            const shine = flare.mul(5).add(0.06);
+            const shine = flare.mul(5).add(0.06).mul(u.dustGain);
             // The colour of what the crystal mirrors: the aurora above it, with a cold core.
             const light = vec3(0.32, 0.4, 0.5).add(u.auroraLight.mul(3)).add(atmosphere.auroraAbove(world).mul(0.55));
             vColor.assign(light.mul(shine).mul(presence).mul(energy));
