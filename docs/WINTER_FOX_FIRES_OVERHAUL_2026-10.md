@@ -746,3 +746,121 @@ turn-backs, its heading at most 3.0° a frame (was 7.9°), never out of frame.
 Playground: `foxTurn=<s>` is new (the fox pulls up and turns back that long before the frame);
 `bearAt=<s>` (the bear that far into its own clock) now reaches any of its ways and laps; the
 diagnostics name the bear's way (`way: "far#3"`) and the fox's turns and restlessness.
+
+## The night's own clocks, the far range, and events of their own (2026-11-16)
+
+The ask: audit the theme and raise all of it: a landscape with more depth, an aurora, weather and
+light that change as you play "so it never looks the same for long", animals with more variety,
+and "every event should have its own distinct effect … the biggest moments feeling the most
+spectacular", while play stays smooth and easy to read.
+
+### What the audit found
+
+Captured first: the five hours, every event, the lean tier, the WebGL2 backend, an upright frame,
+both animals close up and at game size. What worked was kept: the composition, the snow ghosts,
+the moon, the hours, the fox fires' idea, the fox of light on four lines. What was weak:
+
+- **The night only changed its colours.** The hours turned, but the aurora was always the same
+  bands with rays, the snowfall always the same snowfall, the sky always clear. After one round
+  of the hours a player had seen everything the sky does at rest.
+- **Lit by play, the aurora was a bar code.** Every ray's height and colour rode on one per-ray
+  number, so a chain or a four turned three or four sheets into on/off stripes over the whole
+  sky, every other stripe one flat colour from foot to top.
+- **Events shared one vocabulary.** A lock, a clear, a twist and a perfect clear were all sparks
+  of the same shape, a ring and a strum of the sky. A twist's "wheel of sparks" was not told from
+  a clear in a still, and a perfect clear was a four with brighter numbers.
+- **The land was flat in depth.** Snowfield, a strip of lake, one tree line, a smooth dune of a
+  fell, sky. Nothing stood behind the fells, and the fells themselves had no relief.
+- **Nothing happened by itself** but the fox's round and the bear's walk.
+- **The animals repeated.** One fox with a trot, a gallop and ten things it does at a stop; one
+  bear at one pace with four. See "The animals" below.
+
+### What changed
+
+| What | Before | After |
+| --- | --- | --- |
+| **The aurora's form** (`winter-weather.js`, `wAurora`) | One form: bands with rays. | Six, turning by their own clock (64 s each, resting 23 s, then melting into the next): bands with rays (the look the theme opens on), quiet arcs, tall rays, deep folded curtains with a bright hem, a corona breaking overhead, patches that pulse. The display also breathes at rest (`auroraSwell`). A chain makes any form more rayed and taller; patches pulse only while the night is quiet. |
+| **Lit by play** (`wAurora`) | A wall of stripes. | An energetic sheet fills in between its rays, the colour climbs with the sheet's height (every ray green at its foot, violet at its top), and the highest tops burn the deep red of the highest air. |
+| **The corona** (`wCorona`) | None. | When the fires break up overhead their rays converge on one point of the sky. That point stands just over the top of the frame above the board, so the rays fan down both sides of it: a crown over the board. It stands by itself in one of the six forms and at full strength on a perfect clear. |
+| **The weather** (`winter-weather.js`) | One: light snowfall under a clear sky. | Five, by their own clock (82 s each): light snowfall (the look the theme opens on), a clear still night with more stars, ice haze (diamond dust in the air, mist in banks on the lake, a ring round the moon, the moon's pillar), a flurry on the wind under cloud (the flakes become streaks), and big slow flakes in still air under a thin veil. The pool of flakes holds a flurry's worth; the weather says how much of it is in the air. |
+| **High cloud** (`wVeil`) | None. | Long fibres of thin cloud drift over on some nights: the moon lights them silver, the last light warms them on the horizon, the fires colour them from above; they hide stars sooner than the fires. Under cloud the trees' moon shadows soften. |
+| **The ring round the moon** | Lit by play only. | It stands when there is ice in the air (the cloud, the diamond dust), as it does: all but gone on a clear night, plain in the ice haze. Play still lights it further. |
+| **The galaxy** (`winter-sky.js`) | None. | A band of points too faint to count rises from the horizon left of the board, with a glow under them and a dark lane; seen in the dark hours and when play brings the night on. |
+| **Mist on the lake** (`winter-mist.js`) | A term in the air's haze. | Banks of mist at four depths across the lake, the last behind the first trees of the far shore: the bear walks into them and out, the far shore is seen through them. They take the moon's light, the twilight's on its side, and the fires' colour. |
+| **The far range** (`wRange`) | Nothing behind the fells. | Sharp summits behind the round fells, pale in the air: moonlit on the faces turned to the moon, in shade and warmed by the twilight on the others, ribs of rock running down from each top. |
+| **The fells** (`winter-ground.js`) | Smooth dunes. | Relief of their own far off (shoulders and gullies the moon rakes across), from two reads of the noise the ground already made. |
+| **By itself** (`NowAndThen`) | Nothing. | A shooting star every quarter to three quarters of a minute, a bough that lets its load of snow go, a gust that crosses the snowfield when the wind is up. When each falls is dealt from a seed by its number. |
+| **Sparks** (`winter-fx.js`) | Long dashes: confetti. | A hot point with a short tail and a soft halo. |
+
+The three clocks (hours 5 × 96 s, weather 5 × 82 s, forms 6 × 64 s) share no period, so the same
+hour meets another weather and another form each time it comes round; all three are back at
+their starts together only after more than an hour. Each is a function of the time alone, as the
+hours are, so a seek and a replay agree at any frame rate (a test compares a seek with playing
+there at 12 and at 60 frames a second).
+
+### Event language, as it now stands
+
+| Event | Its own answer |
+| --- | --- |
+| Piece lock | (as before) Sparks in the piece's colour go up, the sky takes and holds that colour, a ring of powder runs over the snow and flicks the fox's tail. |
+| Hard drop | The same harder, and **a second, tighter ring** runs out inside the first with a crown of powder round where it landed. |
+| Line clear | (as before) Blades of light from the cleared rows, a gust, the sky strummed outward, the fox springs; from three lines the trees shed their loads. |
+| Chain | (as before) The fires burn brighter sheet after sheet, **and now change shape**: more rayed, taller, deeper folded, filled in between their rays. |
+| Four lines | (as before) The hush, the fox's pounce, the fox of light across the whole sky. |
+| Twist | **A snow devil** stands up from the snow beside the board on the side the piece went in, a leaning funnel of spindrift five metres tall in the piece's colour, and walks off across the snowfield; over it **the fires are wound into a spiral** of two arms that opens and is gone in a few seconds. A twist that clears nothing raises a smaller one. |
+| Perfect clear | **The corona**: the fires break up overhead and their rays stand as a crown over the board; **pillars of light** in the fires' colours stand up one after another along the whole far land; beside what was there (the fox of light, the moon's ring and pillar, every crystal alight). A four alone lights no corona: it is the perfect clear's own. |
+| Level up | **A shower of nine shooting stars** falls out of one point just over the frame, on one side of the sky one level and on the other the next; the hour turns one step (as before). |
+| Game over | The fires sink and the fox sleeps (as before), and **the night closes in**: the snow falls thicker in bigger flakes, the wind dies, cloud draws over. A new run opens it again from where it stands. |
+
+![The six forms the aurora takes](winter-fox-fires/night-forms.webp)
+
+![The five weathers, and the night closed in after a run](winter-fox-fires/night-weathers.webp)
+
+![Events of their own: a hard drop, a twist, four lines, a perfect clear, a new level, a chain of eight](winter-fox-fires/night-events.webp)
+
+![One untouched session, a frame every 42 s for eight minutes](winter-fox-fires/night-lapse.webp)
+
+### How it is built
+
+- `winter-weather.js` (three-free): the two tables and their clocks (`clockDrift` is the hours'
+  rest-then-melt for any period), the display's breathing, and `NowAndThen`, a stream of moments
+  whose nth gap is dealt from a seed by n.
+- The world mixes each table at its clock's phase every frame and writes `u.form`, `u.form2`,
+  `u.weather`, `u.weather2` and `u.air`; `holdWeather` and `holdForm` hold either for a capture.
+- The sky branches out what only some of it needs (`If`): the moon's face is worked out on the
+  moon, the corona, the spiral, the pillars and the cloud only while there is any, the far range
+  only under its tallest summit. The colour the fires have at a bearing (six slots) is worked out
+  once and handed to the aurora and the corona.
+- The far range is painted in the sky, not ground: two rows of hashed summits with straight
+  flanks give the crest with no texture read, one slow noise read bends the bearing so no flank
+  is a ruled line, and the ribs are read in the fan about each summit. A noise-profile skyline
+  read as a striped ice wall and bare hashed summits as pyramids before this (skill gotcha #1600).
+- Shooting stars (`winter-meteors.js`), the snow devil (`winter-devil.js`) and the mist
+  (`winter-mist.js`) are pools drawn always and closed form in the time since they were thrown,
+  like the sparks: nothing is created at event time.
+
+### Tiers
+
+| Tier | Galaxy | Cloud's second read | Mist banks | Snow devil sprites | Flakes in the pool |
+| --- | --- | --- | ---: | ---: | ---: |
+| Minimal | no | no | 2 | 90 | 1,120 |
+| Low | yes | no | 3 | 130 | 2,080 |
+| Medium | yes | yes | 4 | 180 | 3,520 |
+| High | yes | yes | 4 | 240 | 5,440 |
+| Ultra | yes | yes | 4 | 300 | 7,680 |
+| Extreme | yes | yes | 4 | 380 | 10,240 |
+
+Every tier keeps every form, every weather and every event. The sky's fragment stage is 40.8 KiB
+of WGSL and 43.8 KiB of GLSL at High against the 48 KiB gate (it was 22 and 24): anything more in
+the sky must share work first.
+
+### Reproduce
+
+`/playground.html?effect=winter&t=20&quality=High&board=1&hud=0` with, new: `form=bands|arcs|rays|
+curtains|corona|pulsing`, `weather=snowfall|clear|ice-haze|flurry|soft-flakes` (or a number of
+steps into the round: `weather=1.5` is half-way from clear to ice haze), `event=spin` (a twist
+that cleared nothing), and `P.<name>=` for the new look numbers (`auroraFill`, `auroraRedTop`,
+`coronaGain`, `veilSilver`, `milkyWay`, `rangeBase`, `rangeRise`, `rangeAir`, `fellRelief`).
+`event=twist` and `event=spin` now lock a piece first (the whirl takes its colour and its side);
+`event=perfect` sends the clear and then the crown, as the game does. `parts=` knows `meteors`,
+`mist` and `devil`.

@@ -23,6 +23,7 @@ import { BEAM_ROWS, BEAM_SETS } from '../../src/themes/winter/winter-fx.js';
 import { spiritPath } from '../../src/themes/winter/winter-fox.js';
 import { FOX_CLIPS, MOUSING } from '../../src/themes/winter/winter-fox-mind.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/winter/winter-quality.js';
+import { SNOW_HEADROOM } from '../../src/themes/winter/winter-weather.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from '../../src/themes/winter/winter-composition.js';
@@ -157,7 +158,8 @@ describe('WinterWorld: what it builds', () => {
             expect(state.source).toBe('plan');
             expect(state.groundVertices).toBe((tier.ground[0] + 1) * (tier.ground[1] + 1));
             expect(state.sparks).toBe(tier.sparks);
-            expect(state.snow).toBe(tier.snow);
+            // (The pool holds a flurry's worth: the weather says how much of it is in the air.)
+            expect(state.snow).toBe(Math.round(tier.snow * SNOW_HEADROOM));
             expect(world.prints.count).toBe(tier.prints);
             if (tier.dust > 0) expect(world.parts.dust.count).toBe(tier.dust);
             // Every tree of the plan is planted, the framing ones among them.
@@ -502,8 +504,11 @@ describe('WinterWorld: a piece locks', () => {
         world.onLock({
             u: 0.85, rows: [15], color: '#6de0ff', hardDrop: true,
         });
-        // The next slot of each (the first still runs), harder and reaching farther.
-        expect(world.lastRing).toBe(1);
+        // The next slot of each (the first still runs), harder and reaching farther; a hard drop's
+        // second, tighter ring follows in the slot after.
+        expect(world.lastRing).toBe(2);
+        expect(world.u.ringA[2].value.z).toBeGreaterThan(world.time);
+        expect(world.u.ringC[2].value.w).toBeLessThan(world.u.ringC[1].value.w);
         expect(world.u.ringA[1].value.z).toBe(world.time);
         expect(world.u.ringA[1].value.w).toBeGreaterThan(soft.ring.w);
         expect(world.u.ringC[1].value.w).toBeGreaterThan(soft.reach);
@@ -703,11 +708,15 @@ describe('WinterWorld: lines clear', () => {
         expect(sum(lifted.curtains)).toBeGreaterThan(sum(rest.curtains));
         expect(lifted.storm).toBeGreaterThan(rest.storm);
         expect(lifted.fox.speed).toBeGreaterThan(rest.fox.speed);
-        // ...and it passes.
+        // ...and it passes: the fires are back to what the night alone makes of them by then (they
+        // breathe by themselves, so that is read off a night in which nothing was played).
         step(world, camera, 2.5, 30);
         const after = world.getState();
         expect(after.swell).toBeLessThan(lifted.swell * 0.01);
-        expect(sum(after.curtains)).toBeCloseTo(sum(rest.curtains), 2);
+        const quiet = makeWorld();
+        step(quiet.world, quiet.camera, 0, 30);
+        expect(sum(after.curtains)).toBeCloseTo(sum(quiet.world.getState().curtains), 2);
+        quiet.world.dispose();
         world.dispose();
     });
 
@@ -956,7 +965,11 @@ describe('WinterWorld: the chain', () => {
         step(world, camera, 21, 45);
         const sunk = world.getState();
         expect(sunk.power).toBeLessThan(0.01);
-        expect(sum(sunk.curtains)).toBeCloseTo(sum(rest.curtains), 1);
+        // (Back to what the night alone makes of them at that hour of the clock: they breathe.)
+        const quiet = makeWorld();
+        step(quiet.world, quiet.camera, 0, 45);
+        expect(sum(sunk.curtains)).toBeCloseTo(sum(quiet.world.getState().curtains), 1);
+        quiet.world.dispose();
         expect(sunk.fox.glow).toBeLessThan(0.05);
         world.dispose();
     });

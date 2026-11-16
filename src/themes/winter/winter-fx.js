@@ -125,7 +125,8 @@ export function createSparks(u, count) {
     // Powder spreads as it hangs.
     const metres = tint.w.mul(mix(float(1.0), t.mul(1.5).add(1.0), snowy));
     const wide = max(u.pxScale.mul(metres).div(max(clip.w, 0.3)), mix(float(1.3), float(2.0), snowy));
-    const stretch = mix(clamp(pace.mul(0.55), 0.0, 9.0).add(1.6), float(1.0), snowy);
+    // (A short tail: a long one read as a dash of confetti, not as a spark on its way up.)
+    const stretch = mix(clamp(pace.mul(0.3), 0.0, 4.2).add(1.5), float(1.0), snowy);
     const offset = along.mul(positionGeometry.y.mul(wide).mul(stretch)).add(across.mul(positionGeometry.x.mul(wide)));
     material.vertexNode = vec4(sc.add(offset.mul(2.0).div(half).mul(alive)).mul(clip.w), clip.z, clip.w);
 
@@ -139,9 +140,11 @@ export function createSparks(u, count) {
         const q = uv().sub(0.5).mul(2.0);
         const d = length(q);
         const isPowder = clamp(vKind.x, 0.0, 1.0);
-        // A spark: a hot hairline with a halo, brightest at its head.
-        const core = exp(q.x.mul(q.x).mul(-14.0)).mul(exp(q.y.mul(q.y).mul(-3.2))).mul(clamp(q.y.mul(0.4).add(0.6), 0.0, 1.0));
-        const halo = exp(d.mul(d).mul(-3.0)).mul(0.1);
+        // A spark: a hot point with a tail behind it and a soft halo round it.
+        const tail = exp(q.x.mul(q.x).mul(-14.0)).mul(exp(q.y.mul(q.y).mul(-3.2))).mul(clamp(q.y.mul(0.4).add(0.6), 0.0, 1.0));
+        const head = exp(vec2(q.x, q.y.sub(0.35).mul(2.4)).lengthSq().mul(-9.0));
+        const core = tail.mul(0.55).add(head.mul(0.9));
+        const halo = exp(d.mul(d).mul(-2.6)).mul(0.16);
         const spark = mix(vTint.rgb, vec3(1.0), core.mul(0.45)).mul(core.add(halo)).mul(vKind.y).mul(vTint.a)
             .mul(8.0);
         // Powder: a soft cloud lit like the drifts, with a little of the piece's colour in it.

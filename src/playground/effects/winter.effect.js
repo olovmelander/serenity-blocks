@@ -13,10 +13,13 @@
  *   combo=<n>                hold a combo of n (how brightly the fires burn)
  *   level=<n>                rest on level n's hour
  *   locks=<n>                before anything else, play n locks
- *   event=lock|drop|clear|quad|twist|perfect|levelUp|over   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|spin|perfect|levelUp|over   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
  *   power=<0..1>             hold the fires at this charge (overrides the chain)
+ *   weather=<name|steps>     hold the weather (snowfall, clear, ice-haze, flurry, soft-flakes, or a
+ *                            number of steps into the round: 1.5 is half-way from clear to ice haze)
+ *   form=<name|steps>        hold the aurora's form (bands, arcs, rays, curtains, corona, pulsing)
  *   demo=1                   live only: play a looping gameplay script
  *   parts=sky,ground,...     draw only these parts
  *   falseColor=1             post debug view: band the pre-tone-map max channel
@@ -52,12 +55,22 @@ import { WinterPost, POST_LOOK } from '../../themes/winter/winter-post.js';
 import { readLayoutRects } from '../../themes/winter/winter-composition.js';
 import { planGhosts } from '../../themes/winter/winter-ghosts.js';
 import { tuneLook } from '../../themes/winter/winter-tsl.js';
+import { AURORA_FORMS, WEATHERS } from '../../themes/winter/winter-weather.js';
 
 export const meta = {
     id: 'winter',
     title: 'Winter (full world)',
     description: 'Fox fires: a snowfield in the polar twilight, and an arctic fox whose tail strikes the aurora from the snow.',
 };
+
+/** A held place in a round: a row's name, or a number of steps into it (null: its clock has it). */
+function heldAt(table, value) {
+    if (value === null || value === '') return null;
+    const named = table.findIndex((row) => row.name === value);
+    if (named >= 0) return named;
+    const steps = Number.parseFloat(value);
+    return Number.isFinite(steps) ? steps : null;
+}
 
 function num(params, key, fallback = 0) {
     const v = Number.parseFloat(params.get(key));
@@ -153,6 +166,8 @@ export function create({
         fox: params.get('fox') !== '0',
         bear: params.get('bear') !== '0',
     });
+    world.holdWeather(heldAt(WEATHERS, params.get('weather')));
+    world.holdForm(heldAt(AURORA_FORMS, params.get('form')));
     const noPost = params.get('noPost') === '1';
     const overlay = params.get('board') === '1' ? mountBoardOverlay(params.get('statsHud') !== '0') : null;
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
@@ -268,9 +283,18 @@ export function create({
             });
         } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
-        else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
-        else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
-        else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
+        else if (eventName === 'twist') {
+            // (A twist is a piece that locked and cleared: the whirl takes its colour and its side.)
+            world.onLock({ rows: [19, 18], u, color: eventColor });
+            world.onClear({ rows: bottom(2), lines: 2, twist: true });
+        } else if (eventName === 'spin') {
+            world.onLock({ rows: [19, 18], u, color: eventColor });
+            world.onSpin();
+        } else if (eventName === 'perfect') {
+            // (As the game sends it: the clear, and the crown that settles a moment after it.)
+            world.onClear({ rows: bottom(4), lines: 4 });
+            world.onClear({ crown: true });
+        } else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
         else if (eventName === 'over') world.onGameOver();
     };
 

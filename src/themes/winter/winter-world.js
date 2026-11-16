@@ -62,6 +62,7 @@ import {
     HOURS,
     HOUR_KEYS,
     HUSH_HOLD,
+    LOOK,
     REST_RIG,
     RING_FADE,
     SKY_HOLD,
@@ -83,11 +84,15 @@ import {
     fovForAspect,
     foxRound,
     glowDirection,
+    groundHeight,
+    halfWidthFor,
     hourAt,
     hourDrift,
     hourName,
     lakeMask,
+    lerp,
     moonDirection,
+    mulberry32,
     nearestTurn,
     pieceColor,
     plantTrees,
@@ -103,6 +108,12 @@ import { createGround } from './winter-ground.js';
 import { createTrees } from './winter-trees.js';
 import { createDust, createSnowfall } from './winter-snowfall.js';
 import { createPrints, createRowBeams, createSparks } from './winter-fx.js';
+import { createMeteors } from './winter-meteors.js';
+import { createDevil } from './winter-devil.js';
+import { createMist } from './winter-mist.js';
+import {
+    NowAndThen, SNOW_HEADROOM, auroraSwell, formAt, formDrift, formName, weatherAt, weatherDrift, weatherName,
+} from './winter-weather.js';
 import { FoxMind } from './winter-fox-mind.js';
 import {
     createFox, createSpiritFox, loadFox, spiritPath,
@@ -118,7 +129,10 @@ export { REST_RIG, fovForAspect };
 
 /** Frames the fox of light is drawn dark after it arrives, so its pipeline is built before play calls it. */
 const SPIRIT_WARM_FRAMES = 120;
-const PARTS = ['sky', 'ground', 'trees', 'prints', 'snow', 'dust', 'sparks', 'beams', 'fox', 'spirit', 'bear'];
+const PARTS = [
+    'sky', 'ground', 'trees', 'prints', 'meteors', 'mist', 'snow', 'dust', 'devil', 'sparks', 'beams', 'fox', 'spirit',
+    'bear',
+];
 
 /** Metres from the eye at which the sparks leave the card's edge. */
 export const SPARK_DEPTH = 5.4;
@@ -128,6 +142,8 @@ const SPARK_POOL = 1000;
 export const SWELL_FADE = 2.3;
 /** Each sheet of aurora at rest, and what the chain adds to it when it is fully awake. */
 const CURTAIN_REST = [0.22, 0.05, 0.12, 0];
+/** What a form that spreads over more of the sky (its `wide`) adds to each sheet at rest. */
+const CURTAIN_WIDE = [0.02, 0.2, 0.16, 0.1];
 const CURTAIN_LIT = [1.15, 1.2, 0.9, 1.2];
 /** The charge at which each sheet begins to wake, and is fully awake. */
 const CURTAIN_WAKE = [[0, 0.5], [0.08, 0.62], [0.02, 0.8], [0.4, 1]];
@@ -237,6 +253,27 @@ export class WinterWorld {
         this.spiritBoost = new Swell({
             attack: 0.2, release: 2.5, ceiling: 0.9, knee: 0.6,
         });
+        /** A perfect clear's corona over the board, and the pillars it stands along the far land. */
+        this.coronaEnv = new Swell({
+            attack: 0.45, release: 5.5, ceiling: 1.3, knee: 0.9,
+        });
+        this.pillarEnv = new Swell({
+            attack: 0.3, release: 5, ceiling: 1.3, knee: 0.9,
+        });
+        /** The weather and the aurora's form now (winter-weather.js), and a held one (captures). */
+        this._weather = {};
+        this._form = {};
+        this.heldWeather = null;
+        this.heldForm = null;
+        /** What happens now and then by itself: a shooting star, a bough's load let go, a gust. */
+        const own = (seed ?? 0) >>> 0;
+        this.sometimes = {
+            star: new NowAndThen(0x57a2 ^ own, 13, 52, 7),
+            load: new NowAndThen(0x10ad ^ own, 22, 76, 15),
+            gust: new NowAndThen(0x9057 ^ own, 11, 40, 6),
+        };
+        this._lastRgb = [0.4, 1, 0.7];
+        this._lastSide = 1;
         /** How hot play runs: the whole night spends it (see update()). */
         this.play = new GameplaySurge();
         this.heatOfPlay = {
@@ -293,13 +330,19 @@ export class WinterWorld {
         this.spiritAt = -100;
         this.spiritGlow = 0;
         this.tailDebt = 0;
+        /** When the last perfect clear's pillars began to rise. */
+        this.crownAt = -100;
+        /** The run is over (the night closes in), and how far it has closed. */
+        this.closed = false;
+        this.closing = 0;
+        Object.keys(this.sometimes).forEach((key) => this.sometimes[key].seek(time));
         /** Back-to-backs in a row (the moon answers each brighter), and the gale's shedding. */
         this.b2bRun = 0;
         this.shedDebt = 0;
         this.shedCursor = 0;
         [
             this.surgeEnv, this.swellEnv, this.liftEnv, this.kickEnv, this.flashEnv, this.crownEnv, this.b2bEnv,
-            this.spiritBoost, this.play,
+            this.spiritBoost, this.coronaEnv, this.pillarEnv, this.play,
         ].forEach((swell) => swell.reset());
         Object.keys(this.heatOfPlay).forEach((key) => {
             this.heatOfPlay[key] = 0;
@@ -312,7 +355,7 @@ export class WinterWorld {
         this.flicks = [];
         this.dumps = [];
         this.counts = {
-            locks: 0, clears: 0, quads: 0, crowns: 0, spins: 0, sparks: 0, flicks: 0, prints: 0,
+            locks: 0, clears: 0, quads: 0, crowns: 0, spins: 0, sparks: 0, flicks: 0, prints: 0, meteors: 0, devils: 0,
         };
         const still = this.reducedMotion ? 0.3 : 1;
         // The wind and the rays are functions of the world clock until gameplay bends them.
@@ -326,7 +369,11 @@ export class WinterWorld {
         this.sparks?.reset();
         this.beams?.reset();
         this.prints?.reset();
+        this.meteors?.reset();
+        this.devil?.reset();
         if (this.u) {
+            this.u.swirlA.value.set(0, 0.3, -100, 0);
+            this.u.pillars.value.set(0, 0, 0, 0);
             for (let i = 0; i < this.u.ringA.length; i++) this.u.ringA[i].value.set(0, 0, -100, 0);
             for (let i = 0; i < this.u.gustA.length; i++) this.u.gustA[i].value.set(0, 0, -100, 0);
             for (let i = 0; i < this.u.skyA.length; i++) this.u.skyA[i].value.set(0, -100, 0, HELD);
@@ -379,11 +426,17 @@ export class WinterWorld {
         this._fan = null;
         this.treePart = createTrees(u, this.ghosts, this.trees, { ghostLod: tier.ghostLod, glints: tier.glints });
         this.addPart('trees', this.treePart);
-        this.addPart('sky', createSky(u, { curtains: tier.curtains }));
+        this.addPart('sky', createSky(u, { curtains: tier.curtains, galaxy: tier.galaxy, lumps: tier.lumps }));
         this.prints = createPrints(u, tier.prints);
         this.addPart('prints', this.prints);
-        this.addPart('snow', createSnowfall(u, tier.snow));
+        this.meteors = createMeteors(u);
+        this.addPart('meteors', this.meteors);
+        this.addPart('mist', createMist(u, tier.mist));
+        // (The pool holds a flurry's worth: the weather says how much of it is in the air.)
+        this.addPart('snow', createSnowfall(u, Math.round(tier.snow * SNOW_HEADROOM)));
         if (tier.dust > 0) this.addPart('dust', createDust(u, tier.dust));
+        this.devil = createDevil(u, tier.devil);
+        this.addPart('devil', this.devil);
         this.sparks = createSparks(u, tier.sparks);
         this.addPart('sparks', this.sparks);
         this.beams = createRowBeams(u);
@@ -505,6 +558,7 @@ export class WinterWorld {
             time, windRun, auroraRun, power, surge, swell, breath, storm, halo, mind, _curtains, hourStep, heatEase,
         } = this;
         const { prints, play } = this;
+        const closingWas = this.closing;
         // The overdrive and the lift go on falling from where they stand (what was still on its
         // way, a four behind its hush, is dropped with everything else in flight); the heat of
         // play breathes back on its own.
@@ -517,8 +571,10 @@ export class WinterWorld {
         this.surgeEnv.hit(overdrive, time);
         this.swellEnv.hit(lifted, time);
         play.importState(heat);
+        // (The night that had closed in opens again from where it stands.)
+        const closing = closingWas;
         Object.assign(this, {
-            windRun, auroraRun, power, surge, swell, breath, storm, halo, _curtains, hourStep, heatEase,
+            windRun, auroraRun, power, surge, swell, breath, storm, halo, _curtains, hourStep, heatEase, closing,
         });
         mind.flick = 0;
         mind.dash = 0;
@@ -530,6 +586,18 @@ export class WinterWorld {
     /** Hold the fires at a charge (0..1), or null to give them back to the chain. */
     holdPower(power) {
         this.heldPower = Number.isFinite(power) ? clamp01(power) : null;
+    }
+
+    /**
+     * Hold the weather / the aurora's form at a place in its round (a number of steps, as
+     * weatherAt and formAt take it), or null to give it back to its clock. Captures and tuning.
+     */
+    holdWeather(phase) {
+        this.heldWeather = Number.isFinite(phase) ? phase : null;
+    }
+
+    holdForm(phase) {
+        this.heldForm = Number.isFinite(phase) ? phase : null;
     }
 
     /** Called once the camera that will render the world is known. */
@@ -571,6 +639,11 @@ export class WinterWorld {
         if (!this.u) return;
         this.u.moonDir.value.set(moon[0], moon[1], moon[2]);
         this.u.glowDir.value.set(glow[0], glow[1]);
+        // The corona's rays converge just over the top of the frame, above the board.
+        const over = REST_RIG.pitch + (fovForAspect(this.aspect) * DEG) / 2 + 5 * DEG;
+        this.u.coronaDir.value.set(0, Math.sin(over), -Math.cos(over));
+        this.u.coronaRight.value.set(1, 0, 0);
+        this.u.coronaUp.value.set(0, Math.cos(over), Math.sin(over));
         this.fitGlints();
         // (Between about 10:9 and 2:1 the frame holds its planned 38°: nothing moves.)
         const moved = this.plantedFor === null || Math.abs(moonDirection(this.plantedFor)[0] - moon[0]) > 1e-4;
@@ -845,6 +918,10 @@ export class WinterWorld {
                 wy = this._point.y;
             }
         }
+        this._lastRgb[0] = rgb[0];
+        this._lastRgb[1] = rgb[1];
+        this._lastRgb[2] = rgb[2];
+        this._lastSide = side;
         // (The hotter play runs, the more of the piece goes up: a flurry of hard drops is a squall.)
         const more = 1 + 0.35 * this.heatOfPlay.level;
         // ── The ring: the piece lands in the snow under the foot of the board ──
@@ -864,6 +941,31 @@ export class WinterWorld {
             powder: true,
             jitter: 0.5,
         });
+        if (hardDrop) {
+            // A hard drop lands like a dropped stone: a second, tighter ring runs out inside the
+            // first, and the snow stands up round it in a crown of powder that opens and settles.
+            this.ring(strike.x, strike.z, this.time + 0.16, 1.1, rgb, 0.7);
+            const puffs = Math.max(6, this.handful(11));
+            for (let k = 0; k < puffs; k++) {
+                const a = ((k + 0.5 * (this.counts.locks % 2)) / puffs) * Math.PI * 2;
+                const cx = Math.cos(a);
+                const cz = Math.sin(a);
+                this.counts.sparks += this.sparks.emit({
+                    from: [strike.x + cx * 0.9, 0.2, strike.z + cz * 0.9],
+                    toward: [cx, 0.5, cz],
+                    n: 1,
+                    rgb,
+                    time: this.time,
+                    speed: [4.5, 7],
+                    cone: 0.12,
+                    life: [1.2, 2],
+                    size: 0.36,
+                    glow: 0.34,
+                    powder: true,
+                    jitter: 0.12,
+                });
+            }
+        }
 
         // ── The handful: the piece's colour struck into sparks, and the sky draws them up ──
         const from = this.screenToWorld(wx, wy, SPARK_DEPTH);
@@ -1040,10 +1142,15 @@ export class WinterWorld {
                 });
             }
         }
+        // (A perfect clear told in the clear's own frame lights its crown with it.)
+        if (perfect) this.crownLights(birth + 0.3);
         if (twist) {
-            // The wind turns on itself: a wheel of sparks and powder spins up round the card.
+            // The wind turns on itself: a wheel of sparks spins up round the card, a snow devil
+            // stands up from the snow beside the board and walks off, and the fires over it are
+            // wound into a spiral.
             this.storm = Math.max(this.storm, 1.1);
             if (card && !screen) this.wheel(card, 14, 7, birth);
+            this.whirl(card, birth, Math.min(1.3, 0.8 + 0.15 * n));
         }
         if (b2b) {
             // Back to back: the moon answers. Its ring of ice-light flares with its moon dogs and a
@@ -1128,7 +1235,48 @@ export class WinterWorld {
         this.play.spin(this.time);
         const card = cardUnion(this.layout);
         if (card && !screen) this.wheel(card, 7, 4, this.time);
+        this.whirl(card, this.time, 0.5);
         this.counts.spins += 1;
+    }
+
+    /**
+     * The wind turns on itself beside the board: a snow devil stands up from the snow on the side
+     * the piece went in and walks off outward, and the fires over that side are wound into a
+     * spiral, both in the piece's colour. A second twist while one still stands takes its place.
+     */
+    whirl(card, at, strength) {
+        const { u } = this;
+        if (!u || !this.devil) return;
+        const side = this._lastSide < 0 ? -1 : 1;
+        let edge = 0.5 + side * 0.11;
+        if (card) edge = side < 0 ? card.x0 : card.x1;
+        const out = Math.min(0.14, Math.max(0.06, (side < 0 ? edge : 1 - edge) * 0.42));
+        const sx = edge + side * out;
+        const foot = this.screenToSnow(sx, 0.87, 16);
+        const rgb = this._lastRgb;
+        // (Under reduced motion the sky still winds, slowly; the turning funnel is left out.)
+        if (!this.reducedMotion) {
+            this.devil.raise({
+                x: foot.x,
+                z: foot.z,
+                y: groundHeight(foot.x, foot.z),
+                time: at,
+                strength,
+                walk: [side * 0.85, -0.4],
+                rgb,
+                hand: side,
+            });
+        }
+        // Over it, in the open sky on that side: the same point seen at a third of the frame's height.
+        const sky = this.screenToWorld(sx + side * 0.04, 0.2, 100, this._from);
+        const camera = this._camera || this.restCamera();
+        const dx = sky[0] - camera.position.x;
+        const dy = sky[1] - camera.position.y;
+        const dz = Math.min(-1, sky[2] - camera.position.z);
+        u.swirlA.value.set(dx / -dz, dy / -dz, at, strength);
+        const peak = Math.max(rgb[0], rgb[1], rgb[2], 1e-4);
+        u.swirlC.value.set(rgb[0] / peak, rgb[1] / peak, rgb[2] / peak);
+        this.counts.devils += 1;
     }
 
     /**
@@ -1143,6 +1291,7 @@ export class WinterWorld {
         if (!u || !this.sparks) return;
         const t = this.time;
         this.crownEnv.hit(1, t);
+        this.crownLights(t);
         this.play.crown(t);
         this.callSpirit(t + 0.15, 0.9);
         this.strike(0.35, 0.16, t);
@@ -1154,6 +1303,17 @@ export class WinterWorld {
         this.strum(t, 1.2, STRUM_WIDTH * 1.8, STRUM_SPEED * 0.8);
         this.shakeTrees(foot, t, true);
         this.counts.crowns += 1;
+    }
+
+    /**
+     * What a perfect clear alone lights: the fires break up overhead, so a corona stands over the
+     * board, and pillars of light stand up one after another along the whole far land. A second
+     * one while they stand lifts them; the pillars already up stay up.
+     */
+    crownLights(at) {
+        this.coronaEnv.hit(1, at);
+        this.pillarEnv.hit(1, at + 0.2);
+        if (at + 0.2 - this.crownAt > 6) this.crownAt = at + 0.2;
     }
 
     /** The true combo changed (0 = the chain broke). */
@@ -1181,6 +1341,8 @@ export class WinterWorld {
         this.strike(0, 0.1, this.time);
         this.play.levelUp(this.time);
         if (!this.u || !this.sparks) return;
+        // A shower of shooting stars falls from one point over the frame.
+        this.starShower(this.time + 0.25);
         // The sky is strummed, and the fox answers with a shower from its tail and a look at the viewer.
         this.strum(this.time, 1.1);
         this.mind.startle(0.6);
@@ -1200,9 +1362,80 @@ export class WinterWorld {
         });
     }
 
-    /** The run is over: the fires sink and the fox curls up. */
+    /**
+     * One shooting star, thrown at `at` from three numbers in 0..1: where over the frame it
+     * starts (clear of the board in the middle), which way it falls, and how long a streak it is.
+     */
+    shootingStar(at, roll) {
+        if (!this.meteors) return;
+        const half = halfWidthFor(this.aspect);
+        const top = REST_RIG.pitch + (fovForAspect(this.aspect) * DEG) / 2;
+        const across = roll[1] * 2 - 1;
+        const side = across < 0 ? -1 : 1;
+        // (The middle of the frame is the board's: it starts over one of the open sides.)
+        const bearing = side * (0.3 + 0.62 * Math.abs(across)) * half;
+        const elevation = top * (0.45 + 0.45 * roll[2]);
+        const lean = (0.25 + 0.95 * roll[0]) * (roll[2] > 0.5 ? 1 : -1);
+        this.meteors.emit({
+            bearing,
+            elevation,
+            heading: -Math.PI / 2 + lean,
+            arc: 0.1 + 0.2 * roll[0],
+            lasts: 0.55 + 0.6 * roll[2],
+            time: at,
+            // (In the bright hours only the brightest of them shows.)
+            bright: (0.7 + 0.9 * roll[1]) * (0.4 + 0.6 * Math.min(1, this._hourStars * 1.4)),
+            width: 0.7 + 0.6 * roll[0],
+            warmth: roll[2],
+        });
+        this.counts.meteors += 1;
+        // The fox sees it fall: it looks up at where it went.
+        const ce = Math.cos(elevation);
+        this.mind.attend(
+            EYE.x + Math.sin(bearing) * ce * 400,
+            EYE.y + Math.sin(elevation) * 400,
+            EYE.z - Math.cos(bearing) * ce * 400,
+            at + 1.8,
+            0.7,
+        );
+    }
+
+    /**
+     * A shower: nine shooting stars over two and a half seconds, all falling out of one point just
+     * over the top of the frame, on the side of the open sky away from the moon one time and on
+     * the moon's side the next.
+     */
+    starShower(at) {
+        if (!this.meteors) return;
+        const half = halfWidthFor(this.aspect);
+        const top = REST_RIG.pitch + (fovForAspect(this.aspect) * DEG) / 2;
+        const side = this.level % 2 ? 1 : -1;
+        const from = [side * 0.52 * half, top + 3 * DEG];
+        const rand = mulberry32(0x5a0e + this.counts.meteors * 7919);
+        for (let k = 0; k < 9; k++) {
+            // Each falls its own way out of the point, and is first seen a little way from it.
+            const heading = -Math.PI / 2 + (rand() - 0.5) * 2.1;
+            const off = (2 + 7 * rand()) * DEG;
+            const elevation = Math.max(4 * DEG, from[1] + Math.sin(heading) * off);
+            this.meteors.emit({
+                bearing: from[0] + (Math.cos(heading) * off) / Math.cos(elevation),
+                elevation,
+                heading,
+                arc: 0.2 + 0.3 * rand(),
+                lasts: 0.8 + 0.6 * rand(),
+                time: at + k * 0.27 + rand() * 0.18,
+                bright: 1.5 + 1.1 * rand(),
+                width: 1 + 0.9 * rand(),
+                warmth: rand(),
+            });
+            this.counts.meteors += 1;
+        }
+    }
+
+    /** The run is over: the fires sink, the fox curls up, and the night closes in. */
     onGameOver() {
         this.combo = 0;
+        this.closed = true;
         this.dip = Math.max(this.dip, 0.4);
         this.mind.sleep(this.time);
         this.bearMind.lie(this.time);
@@ -1283,10 +1516,24 @@ export class WinterWorld {
         this.applyHour();
         this.settleSky(t);
 
+        // ── The night's own clocks: the weather, and the form the fires take ──
+        const W = weatherAt(this.heldWeather ?? weatherDrift(t), this._weather);
+        const F = formAt(this.heldForm ?? formDrift(t), this._form);
+        // The run is over: the night closes in. The snow falls thicker in bigger flakes, the wind
+        // dies, cloud draws over. A new run opens it again.
+        this.closing += ((this.closed ? 1 : 0) - this.closing) * (dt === 0 ? 1 : approach(0.45, dt));
+        const shut = this.closing;
+        const snowing = lerp(W.snow, Math.max(W.snow, 1.25), shut);
+        const flake = lerp(W.flake, Math.max(W.flake, 1.3), shut);
+        const wind = lerp(W.wind, Math.min(W.wind, 0.25), shut);
+        const veil = lerp(W.veil, Math.max(W.veil, 0.65), shut);
+        // (Ice in the air: the cloud's and the diamond dust's. It is what rings the moon.)
+        const haze = clamp01(veil * 0.5 + W.dust * 0.8);
+
         // ── The wind, and the rays' run: the gale rises with the pace ──
-        const gale = 0.2 + this.power * 0.3 + this.storm * 0.55 + this.surge * 0.35
+        const gale = 0.2 * wind + this.power * 0.3 + this.storm * 0.55 + this.surge * 0.35
             + warm * 0.08 + hot * 0.1 + fever * 0.16 + punch * 0.06;
-        const blow = dt * motion * (0.55 + gale * 1.7);
+        const blow = dt * motion * (0.25 + 0.3 * wind * Math.max(1, wind) + gale * 1.7);
         this.windRun[0] += WIND.x * blow;
         this.windRun[1] += WIND.z * blow;
         this.auroraRun += dt * motion * (0.55 + this.power * 1.5 + this.surge * 2.2 + this.swell * 1.5
@@ -1294,9 +1541,13 @@ export class WinterWorld {
 
         // ── The sheets wake one after another (and the far ones burn on in a fever) ──
         const k = dt === 0 ? 1 : approach(2.4, dt);
+        // (At rest the display breathes by itself, in the form the night has given it; when the
+        // run is over it sinks toward the horizon.)
+        const resting = F.gain * auroraSwell(t) * (1 - 0.5 * shut);
         for (let i = 0; i < 4; i++) {
             const awake = smooth(CURTAIN_WAKE[i][0], CURTAIN_WAKE[i][1], this.power);
-            const wanted = CURTAIN_REST[i] + CURTAIN_LIT[i] * awake + this.surge * 0.7 + this.swell * (0.5 + 0.2 * i)
+            const wanted = (CURTAIN_REST[i] + CURTAIN_WIDE[i] * F.wide) * resting + CURTAIN_LIT[i] * awake
+                + this.surge * 0.7 + this.swell * (0.5 + 0.2 * i)
                 + (hot * 0.12 + fever * 0.3) * (i >= 2 ? 1 : 0.35);
             // (In a fever they burn a shade lower and the night between them deepens: deep, not washed.)
             const held = softCeiling(wanted, CURTAIN_KNEE, CURTAIN_CEILING) * (1 - 0.1 * fever);
@@ -1341,6 +1592,24 @@ export class WinterWorld {
             if (this.shadowCool === 0 && this.shadowDue) {
                 this.shadowDue = false;
                 this.redrawShadows();
+            }
+        }
+
+        // ── Now and then, by itself: a shooting star, a bough lets its load go, a gust crosses ──
+        for (let roll = this.sometimes.star.due(t); roll; roll = this.sometimes.star.due(t)) {
+            this.shootingStar(this.sometimes.star.at, roll);
+        }
+        for (let roll = this.sometimes.load.due(t); roll; roll = this.sometimes.load.due(t)) {
+            const top = this.crowns?.[Math.floor(roll[1] * (this.crowns?.length ?? 0))];
+            if (top && this.dumps.length < MAX_DUMPS && !this.dumps.some((dump) => dump.crown === top)) {
+                this.dumps.push({ time: this.sometimes.load.at, crown: top, heavy: roll[2] > 0.72 });
+            }
+        }
+        for (let roll = this.sometimes.gust.due(t); roll; roll = this.sometimes.gust.due(t)) {
+            // (From upwind, off to the left: it crosses the snowfield as the resting wind blows.)
+            if (wind > 0.45) {
+                const strength = (0.3 + 0.45 * roll[1]) * Math.min(1.6, wind);
+                this.gust(-34, -26 + roll[2] * 30, this.sometimes.gust.at, strength);
             }
         }
 
@@ -1390,9 +1659,40 @@ export class WinterWorld {
         u.gale.value = gale;
         u.auroraRun.value = this.auroraRun;
         u.curtains.value.set(this._curtains[0], this._curtains[1], this._curtains[2], this._curtains[3]);
-        // The ring of ice-light round the moon: the chain, the fours, play running hot, and the
-        // moon's own answer to a back-to-back and to the crown.
-        u.halo.value = 0.2 + this.power * 0.45 + this.surge * 0.6 + hot * 0.2 + fever * 0.4 + b2b * 0.75 + crown * 0.7;
+        // The form: the chain and the fours make it more rayed, deeper folded and taller; a perfect
+        // clear breaks it up overhead; patches pulse only while the night is quiet.
+        u.form.value.set(
+            clamp01(F.rays + this.power * 0.25 + this.surge * 0.15),
+            F.folds * (1 + this.surge * 0.25 + this.swell * 0.15),
+            F.tall * (1 + this.power * 0.2),
+            F.hem,
+        );
+        u.form2.value.set(
+            softCeiling(F.corona * auroraSwell(t + 40) + this.coronaEnv.valueAt(t) * 1.15 + fever * 0.25, 1, 1.5),
+            F.pulse * (1 - clamp01(heat * 1.6)),
+            LOOK.auroraRedTop,
+            0,
+        );
+        // The weather: how much of the snowfall is in the air, the cloud, the mist, the diamond dust.
+        u.weather.value.set(clamp01(snowing / SNOW_HEADROOM), veil, W.mist, W.dust);
+        // (The high cloud drifts by the clock alone.)
+        u.weather2.value.set(flake, t * 0.0016, t * 0.0005, 0);
+        u.air.value.set(
+            (0.37 + 1.8 * W.mist) / 1500,
+            (1 + 2.7 * Math.max(0, snowing - 1) + 0.9 * W.dust + 0.5 * veil) / 6500,
+        );
+        // Pillars of light along the far land: a perfect clear stands them up one after another.
+        u.pillars.value.set(
+            this.pillarEnv.valueAt(t) * (0.6 + 0.4 * this.breath),
+            Math.max(0, Math.min(1.5, (t - this.crownAt) / 1.7)),
+            0,
+            0,
+        );
+        // The ring of ice-light round the moon stands when there is ice in the air (the high cloud,
+        // the diamond dust); the chain, the fours, play running hot, and the moon's own answer to
+        // a back-to-back and to the crown light it further.
+        u.halo.value = 0.03 + haze * 0.5 + this.power * 0.45 + this.surge * 0.6 + hot * 0.2 + fever * 0.4 + b2b * 0.75
+            + crown * 0.7;
         u.spirit.value.set(Math.tan(spiritBearing), 0.3, spiritGlow, 0);
         // The snow, the dust and the ice: how much of them is alight, how far in the fires' colours,
         // the crown's flash through all of it, and the pillar over the moon.
@@ -1400,14 +1700,16 @@ export class WinterWorld {
             warm * 0.45 + hot * 0.45 + fever * 0.6 + crown * 0.8,
             fever,
             crown,
-            fever * 0.5 + b2b * 0.65 + crown * 0.9,
+            // (In the ice haze the moon's own pillar stands by itself.)
+            fever * 0.5 + b2b * 0.65 + crown * 0.9 + W.dust * 0.5,
         );
         const p = this._hour;
         HOUR_KEYS.forEach((key) => {
             const node = key === 'moon' ? u.moonCol : u[key];
             node.value.set(p[key][0], p[key][1], p[key][2]);
         });
-        // Night falls as play runs hot: the stars come out in their thousands.
+        // Night falls as play runs hot: the stars come out in their thousands. (How many of them
+        // the weather lets through is the sky's own reckoning, from the weather.)
         u.stars.value = this._hourStars * (1 + hot * 0.45 + fever * 0.6 + crown * 0.3);
 
         const sky = this.parts.sky?.mesh;
@@ -1638,6 +1940,9 @@ export class WinterWorld {
             // (The hour the sky is turning to, and how far round the day it stands now.)
             hour: hourName(nearestTurn(this.hourStep, this.level - 1) + hourDrift(this.time)),
             hourPhase: ((this.hourPhase() % HOURS.length) + HOURS.length) % HOURS.length,
+            weather: weatherName(this.heldWeather ?? weatherDrift(this.time)),
+            form: formName(this.heldForm ?? formDrift(this.time)),
+            closing: this.closing,
             counts: { ...this.counts },
             source: this.ghosts?.source ?? null,
             trees: this.trees.length,
@@ -1695,6 +2000,8 @@ export class WinterWorld {
         this.sparks = null;
         this.beams = null;
         this.prints = null;
+        this.meteors = null;
+        this.devil = null;
         this.treePart = null;
         this.ghosts = null;
         this.u = null;
