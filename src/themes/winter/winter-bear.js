@@ -1,13 +1,18 @@
 /* eslint-disable import/no-unresolved */
 /**
- * Winter — the polar bear, drawn.
+ * Winter — the polar bears, drawn.
  *
- * The model is the theme's own (assets/polar-bear.glb: one skinned mesh on the skeleton of
- * winter-bear-rig.js, modelled in Blender and rigged by scripts/winter/model-bear.mjs; see
- * assets/ATTRIBUTION.md). It carries no clips: every frame the plan's pose (winter-bear-plan.js) is
- * solved by the rig and the rotations are copied onto its bones. It loads off the frame and joins
- * the scene when it arrives; until then the bear still walks its course as far as the plan goes —
- * it simply has no body yet.
+ * The models are the theme's own (assets/polar-bear.glb and assets/polar-bear-cub.glb: each one
+ * skinned mesh on the skeleton of winter-bear-rig.js, modelled in Blender and rigged by
+ * scripts/winter/model-bear.mjs; see assets/ATTRIBUTION.md). They carry no clips: every frame the
+ * plan's pose (winter-bear-plan.js) is solved by the rig and the rotations are copied onto the
+ * bones. They load off the frame and join the scene when they arrive; until then the bear still
+ * walks its course as far as the plan goes — it simply has no body yet.
+ *
+ * One grown body is every grown bear: who walks a lap (the big male, a smaller and slimmer female)
+ * is the pose's size, how broad it is, the tone of its coat and the length of its hair. The cub
+ * has a body of its own, on the same skeleton, drawn beside its mother on the laps that have one.
+ * Both wear the same three materials: what differs between them reaches the shader per object.
  *
  * It is seen fifty to a hundred and forty metres off, so it is drawn for its silhouette and its
  * colour. A polar bear's coat is not the white of snow: it is a cream that turns to old ivory in
@@ -38,6 +43,7 @@ import {
     positionLocal,
     positionWorld,
     smoothstep,
+    uniform,
     varying,
     vec2,
     vec3,
@@ -52,6 +58,7 @@ import {
 } from './winter-bear-rig.js';
 
 export const BEAR_URL = new URL('./assets/polar-bear.glb', import.meta.url).href;
+export const BEAR_CUB_URL = new URL('./assets/polar-bear-cub.glb', import.meta.url).href;
 
 /** How far over the ice (metres) its mirror image is laid: in front of the ice, never through it. */
 const MIRROR_LIFT = 0.03;
@@ -59,8 +66,14 @@ const MIRROR_LIFT = 0.03;
 const HAIR = 0.085;
 /** Tiles of the noise texture to a model metre of coat: its grain is the locks of hair. */
 const FUR_GRAIN = 17;
+/** How much further its longest hair stands off than HAIR (a share of it). */
+const LONG_HAIR = 0.7;
 /** How thick the whole coat is: the optical depth of all its shells at the skin. */
 const FUR_DENSITY = 9;
+/** The cub's shells of fur, against its mother's. */
+const CUB_SHELLS = 0.6;
+/** Frames the cub's body is drawn for when it arrives, lap with a cub or not (its pipelines). */
+const CUB_WARM_FRAMES = 8;
 
 /** The same mesh drawn `count` times over its skin in one call (the attributes shared, not copied). */
 function shelled(source, count) {
@@ -73,11 +86,23 @@ function shelled(source, count) {
     return geometry;
 }
 
-/** Fetch the model. Resolves null when it cannot be read (the lake does without its bear). */
-export async function loadBear(url = BEAR_URL) {
+/**
+ * Fetch the models. Resolves null when the bear's cannot be read (the lake does without its bear);
+ * the cub's rides along as `cub` (null if it cannot be read: its mother then walks alone).
+ */
+export async function loadBear(url = BEAR_URL, cubUrl = BEAR_CUB_URL) {
     try {
         if (typeof fetch !== 'function' || typeof document === 'undefined') return null;
-        return await new GLTFLoader().loadAsync(url);
+        const loader = new GLTFLoader();
+        const [gltf, cub] = await Promise.all([
+            loader.loadAsync(url),
+            cubUrl ? loader.loadAsync(cubUrl).catch((error) => {
+                console.warn('[Winter] the bear cub did not arrive:', error?.message || error);
+                return null;
+            }) : null,
+        ]);
+        gltf.cub = cub;
+        return gltf;
     } catch (error) {
         console.warn('[Winter] the bear did not arrive:', error?.message || error);
         return null;
@@ -117,19 +142,25 @@ function makePoser(model) {
  * trees in front of it hide it as they hide the ice, and the bear's own legs stand in front of it.
  * It takes as much of the ice's mirror as the ice there gives (bare, and how grazing the view), and
  * on snow there is none.
+ *
+ * A lap may bring a cub (the pose's `cub`): it is drawn the same way, in its own body, where the
+ * tier draws a coat of shells at all (every tier but the lowest; `cub` says otherwise).
  * @param {object} u     shared uniforms
- * @param {object} gltf  what loadBear() resolved
+ * @param {object} gltf  what loadBear() resolved (its `cub`: the cub's model, or none)
  * @param {object} [o]
  * @param {boolean} [o.mirror=true]  draw its image in the bare ice
  * @param {number} [o.shells=0]  shells of fur drawn over its skin (0: the skin is the coat)
+ * @param {boolean} [o.cub]  draw the cub on the laps that have one (default: where shells > 0)
  */
-export function createBear(u, gltf, { mirror = true, shells = 0 } = {}) {
+export function createBear(u, gltf, { mirror = true, shells = 0, cub } = {}) {
     const layers = Math.max(0, Math.round(shells));
-    const model = gltf.scene;
-    const skins = [];
-    model.traverse((child) => {
-        if (child.isSkinnedMesh) skins.push(child);
-    });
+    // What differs from one body to the next reaches the three materials per object (userData.bear).
+    const own = (key, fallback) => uniform(fallback)
+        .onObjectUpdate(({ object }) => object.userData.bear?.[key] ?? fallback);
+    /** The tone of its coat (0 white .. 1 old ivory), how long its hair stands, its shells of fur. */
+    const uTone = own('tone', 0.5);
+    const uHair = own('hair', 1);
+    const uLayers = own('layers', Math.max(1, layers));
     // pad, fur length, dark, sky seen
     const vCoat = varying(attribute('color', 'vec4'), 'wBearCoat');
 
@@ -141,7 +172,10 @@ export function createBear(u, gltf, { mirror = true, shells = 0 } = {}) {
         const dark = max(clamp(vCoat.z, 0.0, 1.0), clamp(vCoat.x, 0.0, 1.0).mul(0.85));
         const sees = clamp(vCoat.w, 0.0, 1.0);
         const fur = clamp(vCoat.y, 0.0, 1.0);
-        const albedo = mix(vec3(LOOK.bearCoatR, LOOK.bearCoatG, LOOK.bearCoatB), vec3(0.03, 0.028, 0.032), dark);
+        // (Bear by bear the coat runs from nearly white to old ivory; the look's cream is the middle.)
+        const cream = vec3(LOOK.bearCoatR, LOOK.bearCoatG, LOOK.bearCoatB)
+            .mul(mix(vec3(1.03, 1.065, 1.16), vec3(0.97, 0.935, 0.84), uTone));
+        const albedo = mix(cream, vec3(0.03, 0.028, 0.032), dark);
         // It walks through the trees' shadows like everything else (out on the ice there are none).
         const shadow = wMoonShadow(u, P.xz).toVar();
         // Lit as the snow is (winter-ground.js), but fur: the moon's light wraps a little way round
@@ -182,27 +216,23 @@ export function createBear(u, gltf, { mirror = true, shells = 0 } = {}) {
         // (Under shells of fur the skin is the coat's depths; without them it is the coat.)
         return wAir(u, coat(P, normalize(normalWorld), V, float(layers > 0 ? 0.0 : 0.7)), P);
     })();
-    model.traverse((child) => {
-        if (!child.isMesh) return;
-        (Array.isArray(child.material) ? child.material : [child.material]).forEach((m) => m?.dispose?.());
-        child.material = material;
-        child.frustumCulled = false;
-    });
 
     // ── Its coat: the same body again, in shells that stand off the skin ──
     // Each shell is a veil as thick as the share of the hairs that grow that long, so the coat is
     // dense at the skin and thins to a mist at its tips; the hair is combed back and down.
     let furMaterial = null;
-    const coats = [];
-    const furs = [];
     if (layers > 0) {
         furMaterial = wFxMaterial('WinterBearFur');
         furMaterial.side = THREE.FrontSide;
-        const shell = float(instanceIndex).add(1.0).div(layers + 1);
+        const shell = float(instanceIndex).add(1.0).div(uLayers.add(1.0));
         furMaterial.positionNode = Fn(() => {
-            const reach = attribute('color', 'vec4').y.mul(HAIR).mul(shell);
+            // Where the hair is long (the locks behind its legs, its trousers, the fringe under its
+            // belly, a cub's fluff) it stands further off the skin yet, and hangs.
+            const fur = attribute('color', 'vec4').y;
+            const long = smoothstep(0.6, 1.0, fur);
+            const reach = fur.mul(long.mul(LONG_HAIR).add(1.0)).mul(uHair.mul(HAIR)).mul(shell);
             const grow = normalize(normalLocal.add(vec3(0.0, -0.35, -0.5).mul(shell)));
-            const droop = vec3(0.0, -1.0, 0.0).mul(reach.mul(shell).mul(0.3));
+            const droop = vec3(0.0, -1.0, 0.0).mul(reach.mul(shell).mul(long.mul(0.45).add(0.3)));
             return positionLocal.add(grow.mul(reach)).add(droop);
         })();
         const vShell = varying(shell, 'wBearShell');
@@ -215,32 +245,18 @@ export function createBear(u, gltf, { mirror = true, shells = 0 } = {}) {
             const tall = clamp(grain.r.sub(0.5).mul(1.7).add(0.55), 0.0, 1.0);
             const strand = smoothstep(height.sub(0.3), height.add(0.12), tall.mul(1.05));
             const thick = float(1.0).sub(height).pow(1.5).mul(strand.mul(0.75).add(0.25));
-            const a = float(1.0).sub(thick.mul(-FUR_DENSITY / layers).exp()).mul(smoothstep(0.05, 0.25, vCoat.y));
+            const a = float(1.0).sub(thick.mul(float(-FUR_DENSITY).div(uLayers)).exp())
+                .mul(smoothstep(0.05, 0.25, vCoat.y));
             const P = positionWorld.toVar();
             const toEye = cameraPosition.sub(P);
             const V = toEye.div(max(length(toEye), 1e-3));
             const tone = grain.a.mul(0.12).add(0.94);
             return vec4(wAir(u, coat(P, normalize(normalWorld), V, height).mul(tone), P).mul(a), a);
         })();
-        skins.forEach((skin) => {
-            const geometry = shelled(skin.geometry, layers);
-            coats.push(geometry);
-            const fur = new THREE.SkinnedMesh(geometry, furMaterial);
-            fur.name = 'WinterBearFur';
-            fur.position.copy(skin.position);
-            fur.quaternion.copy(skin.quaternion);
-            fur.scale.copy(skin.scale);
-            fur.bind(skin.skeleton, skin.bindMatrix);
-            fur.frustumCulled = false;
-            fur.renderOrder = 8;
-            skin.parent.add(fur);
-            furs.push(fur);
-        });
     }
 
     // ── Its image in the bare ice ──
     let mirrorMaterial = null;
-    const images = [];
     if (mirror) {
         mirrorMaterial = wFxMaterial('WinterBearMirror');
         // (Mirrored, its outside faces turn their backs: those are the ones that face the eye.)
@@ -271,53 +287,131 @@ export function createBear(u, gltf, { mirror = true, shells = 0 } = {}) {
             const k = bare.mul(fresnel).mul(0.66 * LOOK.bearMirror).mul(u.bearIce);
             return vec4(wAir(u, seen, P).mul(k), k);
         })();
-        skins.forEach((skin) => {
-            const image = new THREE.SkinnedMesh(skin.geometry, mirrorMaterial);
-            image.name = 'WinterBearMirror';
-            image.position.copy(skin.position);
-            image.quaternion.copy(skin.quaternion);
-            image.scale.copy(skin.scale);
-            image.bind(skin.skeleton, skin.bindMatrix);
-            image.frustumCulled = false;
-            // (After the ground it lies on, before the snow that falls in front of it.)
-            image.renderOrder = 4;
-            skin.parent.add(image);
-            images.push(image);
-        });
     }
 
-    // pivot (its place and heading on the ice) → model (its body, solved)
-    const pivot = new THREE.Group();
-    pivot.name = 'WinterBear';
-    pivot.add(model);
-    pivot.scale.setScalar(BEAR_SCALE);
-    const poser = makePoser(model);
+    /**
+     * One body dressed for the scene: its skin in the coat's material, its shells of fur and its
+     * image in the ice (each the same buffers and skeleton drawn again), on a pivot that is its place
+     * and heading on the ice.
+     */
+    const dress = (model, name, furLayers) => {
+        const skins = [];
+        model.traverse((child) => {
+            if (child.isSkinnedMesh) skins.push(child);
+        });
+        /** What the materials read of this body (per object). */
+        const look = { tone: 0.5, hair: 1, layers: Math.max(1, furLayers) };
+        model.traverse((child) => {
+            if (!child.isMesh) return;
+            (Array.isArray(child.material) ? child.material : [child.material]).forEach((m) => m?.dispose?.());
+            child.material = material;
+            child.frustumCulled = false;
+            child.userData.bear = look;
+        });
+        const again = (skin, geometry, drawn, suffix, order) => {
+            const mesh = new THREE.SkinnedMesh(geometry, drawn);
+            mesh.name = `${name}${suffix}`;
+            mesh.position.copy(skin.position);
+            mesh.quaternion.copy(skin.quaternion);
+            mesh.scale.copy(skin.scale);
+            mesh.bind(skin.skeleton, skin.bindMatrix);
+            mesh.frustumCulled = false;
+            mesh.renderOrder = order;
+            mesh.userData.bear = look;
+            skin.parent.add(mesh);
+            return mesh;
+        };
+        const coats = [];
+        const furs = [];
+        if (furMaterial && furLayers > 0) {
+            skins.forEach((skin) => {
+                const geometry = shelled(skin.geometry, furLayers);
+                coats.push(geometry);
+                furs.push(again(skin, geometry, furMaterial, 'Fur', 8));
+            });
+        }
+        // (Its image: after the ground it lies on, before the snow that falls in front of it.)
+        const images = mirrorMaterial
+            ? skins.map((skin) => again(skin, skin.geometry, mirrorMaterial, 'Mirror', 4))
+            : [];
+        const pivot = new THREE.Group();
+        pivot.name = name;
+        pivot.add(model);
+        pivot.scale.setScalar(BEAR_SCALE);
+        const poser = makePoser(model);
+        return {
+            pivot,
+            look,
+            poser,
+            shells: furs.length ? furLayers : 0,
+            triangles: skins.reduce((n, skin) => n + (skin.geometry.index ? skin.geometry.index.count / 3 : 0), 0),
+            /** Draw a pose: its place and heading, who it is, and its bones. */
+            update(pose) {
+                const size = BEAR_SCALE * (pose.size ?? 1);
+                // (Its paws press a little into the snow on the ice.)
+                pivot.position.set(pose.x, pose.y - 0.01 * (pose.size ?? 1), pose.z);
+                pivot.rotation.set(0, pose.heading, 0);
+                pivot.scale.set(size * (pose.slim ?? 1), size, size);
+                look.tone = pose.tone ?? 0.5;
+                look.hair = pose.hair ?? 1;
+                poser.pose(pose);
+                pivot.updateMatrixWorld(true);
+            },
+            dispose() {
+                images.forEach((image) => image.removeFromParent());
+                furs.forEach((fur) => fur.removeFromParent());
+                coats.forEach((geometry) => geometry.dispose());
+                skins.forEach((skin) => skin.geometry.dispose());
+            },
+        };
+    };
+
+    const bear = dress(gltf.scene, 'WinterBear', layers);
+    // The cub: where the tier draws a coat of shells at all, in a few fewer of them (it is half
+    // its mother's size on screen).
+    const withCub = (cub ?? layers > 0) && gltf.cub?.scene;
+    const young = withCub ? dress(gltf.cub.scene, 'WinterBearCub', Math.ceil(layers * CUB_SHELLS)) : null;
+    const root = new THREE.Group();
+    root.name = 'WinterBears';
+    root.add(bear.pivot);
+    if (young) {
+        root.add(young.pivot);
+        // Drawn out of sight for its first frames, so its pipelines are not built on the frame it
+        // first walks in beside its mother.
+        young.warm = CUB_WARM_FRAMES;
+    }
 
     return {
-        mesh: pivot,
+        mesh: root,
         material,
         mirrorMaterial,
         furMaterial,
         shells: layers,
         /** Whether the model is on the theme's skeleton (it is posed) or stands as it came. */
-        rigged: poser.whole,
-        triangles: skins.reduce((n, skin) => n + (skin.geometry.index ? skin.geometry.index.count / 3 : 0), 0),
-        /** Draw the pose the plan resolved. */
+        rigged: bear.poser.whole,
+        /** The triangles of one drawing of each body (the image and each shell draw them again). */
+        triangles: bear.triangles,
+        cubTriangles: young ? young.triangles : 0,
+        cubShells: young ? young.shells : 0,
+        /** Draw the pose the plan resolved (and its cub's, on a lap that has one). */
         update(pose) {
-            // (Its paws press a little into the snow on the ice.)
-            pivot.position.set(pose.x, pose.y - 0.01, pose.z);
-            pivot.rotation.set(0, pose.heading, 0);
-            poser.pose(pose);
-            pivot.updateMatrixWorld(true);
+            bear.update(pose);
+            if (!young) return;
+            const there = Boolean(pose.cub?.present);
+            if (there) young.update(pose.cub);
+            else if (young.warm > 0) {
+                // (Beside the bear, which starts every lap past the frame's edge.)
+                young.warm -= 1;
+                young.update({ ...pose, size: 0.4 });
+            }
+            young.pivot.visible = there || young.warm > 0;
         },
         dispose() {
             material.dispose();
             mirrorMaterial?.dispose();
             furMaterial?.dispose();
-            images.forEach((image) => image.removeFromParent());
-            furs.forEach((fur) => fur.removeFromParent());
-            coats.forEach((geometry) => geometry.dispose());
-            skins.forEach((skin) => skin.geometry.dispose());
+            bear.dispose();
+            young?.dispose();
         },
     };
 }

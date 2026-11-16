@@ -10,6 +10,7 @@
  *   node scripts/fox/preview-fox.mjs --fox=winter --act=Sit --frames=8      an act, start to end
  *   node scripts/fox/preview-fox.mjs --fox=sakura --act=Pounce --from=0.3 --to=1.2 --frames=10
  *   node scripts/fox/preview-fox.mjs --fox=sakura --gait=1.5 --frames=8     one cycle at 1.5 m/s
+ *   node scripts/fox/preview-fox.mjs --fox=winter --gait=2 --pace=bound --stretch=1.5   one of its own paces
  *   node scripts/fox/preview-fox.mjs --fox=winter --mind=round --from=4 --to=12 --frames=16
  *                           the mind itself: round (at rest), run, pounce, sleep, hunt, an act
  *
@@ -220,14 +221,19 @@ if (typeof args.act === 'string') {
 } else if (args.gait !== undefined) {
     const speed = number('gait', 1.5);
     name += `-gait-${speed}`;
+    // (A pace of its own, for a fox that has them: walk, lope or bound, wholly.)
+    const pace = typeof args.pace === 'string' ? {
+        walk: 0, lope: 0, bound: 0, stretch: number('stretch', 1), [args.pace]: 1,
+    } : undefined;
     for (let i = 0; i < frames; i++) {
         const phase = number('from', 0) + i / frames;
         spec.fill(0);
-        rig.gait(spec, phase, speed, 1);
+        rig.gait(spec, phase, speed, 1, 0, rig.gallop(speed), pace);
         draw(`gait ${phase.toFixed(2)}`);
     }
-    console.log(`stride ${rig.stride(speed).toFixed(3)} m, ${(speed / rig.stride(speed)).toFixed(2)} cycles a second, `
-        + `on the ground ${(rig.duty(speed) * 100).toFixed(0)}% of each, gallop ${rig.gallop(speed).toFixed(2)}`);
+    const metres = rig.stride(speed, pace);
+    console.log(`stride ${metres.toFixed(3)} m, ${(speed / metres).toFixed(2)} cycles a second, `
+        + `on the ground ${(rig.duty(speed, pace) * 100).toFixed(0)}% of each, gallop ${rig.gallop(speed).toFixed(2)}`);
 } else if (typeof args.mind === 'string') {
     const mind = await fox.mind();
     const from = number('from', 0);
