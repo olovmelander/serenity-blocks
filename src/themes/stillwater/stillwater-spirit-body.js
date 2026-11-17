@@ -36,6 +36,8 @@ export const SPIRIT_ACT = Object.freeze({ kneel: 2.2, rise: 1.8 });
 
 /** Metres a second she drifts at most, unless asked to go slower. */
 export const SPIRIT_PACE = 0.6;
+/** The fastest she is ever carried over the water (a glide she is asked for: `want.pace`). */
+export const SPIRIT_GLIDE_MAX = 1.4;
 
 /** How her look moves (as the troll's, TROLL_LOOK, a little lighter). */
 export const SPIRIT_LOOK = Object.freeze({
@@ -220,7 +222,8 @@ export class SpiritBody {
             const dy = want.at[1] - c[1];
             const dz = want.at[2] - c[2];
             const d = Math.hypot(dx, dy, dz);
-            const pace = Math.min(SPIRIT_PACE, want.pace || SPIRIT_PACE) * clamp(d / 0.7, 0.3, 1);
+            // (Her own pace unless she is asked for another: over open water she may glide.)
+            const pace = Math.min(SPIRIT_GLIDE_MAX, want.pace || SPIRIT_PACE) * clamp(d / 0.7, 0.3, 1);
             const step = Math.min(d, pace * dt);
             if (d > 1e-6) {
                 c[0] += (dx / d) * step;

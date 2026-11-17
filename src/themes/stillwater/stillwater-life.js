@@ -31,14 +31,14 @@
  */
 
 import {
-    EYE, HEART, MOON, SPIRIT, TROLL, clamp01, lerp, mulberry32, skyDirection,
+    EYE, HEART, MOON, PULSE_SPEED, SPIRIT, TROLL, clamp01, lerp, mulberry32, skyDirection,
 } from './stillwater-core.js';
 
 /** How near the two have grown (0..1): where a night begins, and what moves it on. */
 export const KIN = Object.freeze({
     start: 0.1,
-    /** A second of calm together (ten quiet minutes alone bring them about half the way). */
-    calm: 0.0008,
+    /** A second of the night together, play or none (a quiet quarter of an hour alone brings them all the way). */
+    calm: 0.001,
     /** A line cleared, a step of a chain, a heart she takes, a second the path of light runs. */
     line: 0.0015,
     chain: 0.004,
@@ -50,16 +50,27 @@ export const KIN = Object.freeze({
 });
 
 /** Seconds one of them, free and due for a scene of their own, waits for the other to be free for one of theirs. */
-export const DUET_WAIT = 14;
+export const DUET_WAIT = 20;
 
 /** Below this they are shy of each other's eyes; from this they are fond. */
 export const SHY_BELOW = 0.3;
 export const FOND_FROM = 0.5;
 
-/** How much calm (seconds since play last did anything) a scene needs before it may begin. */
+/**
+ * How much calm a scene needs before it may begin: seconds since play last STIRRED the tarn (a clear,
+ * a hard drop out of a calm, the hour turning). Pieces set down at an even pace do not count: the
+ * two live their lives beside steady play, not only when the hands rest.
+ */
 export const SCENE_CALM = 2.5;
-/** Play this quick (the story's `busy`, 0..1) ends a scene; a scene waits for less. */
+/** Play this quick (the story's `busy`, 0..1) ends a scene; a scene begins only below `SCENE_STEADY`. */
 export const SCENE_BUSY = 0.45;
+export const SCENE_STEADY = 0.3;
+
+/** Metres a second she glides when she crosses the open water to him. */
+export const SPIRIT_GLIDE = 1.25;
+/** What a visit leaves behind a long while: her light in his lantern, his ember by her stone (seconds). */
+export const RELIT_TIME = 85;
+export const EMBER_TIME = 150;
 
 const LOOK = 0.9;
 const FAR = 200;
@@ -85,6 +96,12 @@ export const PLACES = Object.freeze({
     ]),
     /** A little way out on the water, where she dances. */
     dance: Object.freeze([-4.9, 0.04, -9.5]),
+    /** Her stone. */
+    spiritHome: Object.freeze([SPIRIT.home[0], SPIRIT.home[1], SPIRIT.home[2]]),
+    /** Across the tarn, on the water just off his shore: where she stands when she comes to him. */
+    visit: Object.freeze([5.5, 0.04, -9.3]),
+    /** Where the ember she carries home burns, on the moss by her stone. */
+    ember: Object.freeze([SPIRIT.home[0] - 0.62, SPIRIT.home[1] + 0.2, SPIRIT.home[2] + 0.42]),
     /** Where she kneels on the water off her stone (the story's kneeling place). */
     kneel: Object.freeze([
         lerp(SPIRIT.home[0], SPIRIT.reach[0], 0.28), 0.04, lerp(SPIRIT.home[2], SPIRIT.reach[2], 0.28),
@@ -200,6 +217,177 @@ function gestureBeat(who, name, len, {
             else if (lookKey) look(o, lookKey, typeof lookAt === 'function' ? lookAt(c) : lookAt, weight);
         },
     };
+}
+
+/** Seconds a pulse of light takes to cross the water between their two places. */
+export const PULSE_CROSS = Math.hypot(TROLL.home[0] - SPIRIT.home[0], TROLL.home[2] - SPIRIT.home[2]) / PULSE_SPEED;
+
+const partnerOf = (who) => (who === 'troll' ? 'spirit' : 'troll');
+/** Who acts in a scene's `first` or `second` turn. */
+const turnOf = (run, which) => (which === 'first' ? run.vars.first : partnerOf(run.vars.first));
+
+/** One of them lifts their light and sends it out over the water (a pulse: the world draws it). */
+function sendBeat(which, len = 2.6, strength = 1) {
+    return {
+        len,
+        enter: (run, c, life, time) => life.emit({
+            type: 'pulse', who: turnOf(run, which), start: time + 0.9, strength,
+        }),
+        troll: (t, c, o, run) => {
+            o.sit = false;
+            atPartnerT(o, c, 0.95);
+            if (turnOf(run, which) === 'troll') o.staff = 'raise';
+        },
+        spirit: (t, c, o, run) => {
+            o.kneel = false;
+            atPartnerS(o, c, 0.95);
+            if (turnOf(run, which) === 'spirit') o.hands = 'open';
+        },
+    };
+}
+
+/** Where a pulse `which` of them sent is on its way over the water, `t` seconds into the watching. */
+function pulsePoint(c, run, which, t, out) {
+    const troll = turnOf(run, which) === 'troll';
+    const from = troll ? c.lantern : c.spiritHeart;
+    const to = troll ? c.spiritHeart : c.lantern;
+    const k = clamp01((t + 0.9) / PULSE_CROSS);
+    out[0] = lerp(from[0], to[0], k);
+    out[1] = 0;
+    out[2] = lerp(from[2], to[2], k);
+    return out;
+}
+
+/** Both watch the light cross the water; the one it goes to is on their feet by the time it comes. */
+function crossBeat(which, len = PULSE_CROSS - 0.9) {
+    return {
+        len,
+        troll: (t, c, o, run) => {
+            o.sit = false;
+            look(o, 'light', pulsePoint(c, run, which, t, run.scratch(4)), 0.95);
+        },
+        spirit: (t, c, o, run) => {
+            o.kneel = false;
+            look(o, 'light', pulsePoint(c, run, which, t, run.scratch(5)), 0.95);
+        },
+    };
+}
+
+/**
+ * She crosses the water to him: she rises and sets out, glides the whole way over the tarn (out of
+ * sight behind the board a while, then out again on his side), and he comes down to the water's
+ * edge and holds his lantern up to light her way, then out to her as she comes; they greet.
+ */
+function crossingBeats() {
+    return [
+        {
+            ...spiritRises,
+            troll: (t, c, o) => atPartnerT(o, c, 0.8),
+        },
+        {
+            ...driftBeat(PLACES.dance, { pace: 0.6, through: true }),
+            troll: (t, c, o) => {
+                o.sit = false;
+                atPartnerT(o, c, 0.95);
+            },
+        },
+        {
+            until: spiritAt(PLACES.visit, 0.35),
+            max: 26,
+            // (He lifts his lantern to her: its light runs out over the water to meet her.)
+            enter: (run, c, life, time) => life.emit({
+                type: 'pulse', who: 'troll', start: time + 2.4, strength: 0.8,
+            }),
+            spirit: (t, c, o) => {
+                o.at = PLACES.visit;
+                o.kneel = false;
+                o.pace = SPIRIT_GLIDE;
+                atPartnerS(o, c, 0.95);
+                if (c.spirit[0] > 3.2) o.hands = 'reach';
+            },
+            troll: (t, c, o) => {
+                o.at = PLACES.trollEdge;
+                o.sit = false;
+                o.pace = 0.5;
+                o.staff = c.spirit[0] > 2.6 ? 'offer' : 'high';
+                atPartnerT(o, c, 0.97);
+            },
+        },
+        {
+            len: 3.2,
+            troll: (t, c, o, run) => {
+                o.at = PLACES.trollEdge;
+                o.gesture = run.gesture('troll', 'bow', 3.2);
+                atPartnerT(o, c, 0.97);
+            },
+            spirit: (t, c, o, run) => {
+                o.at = PLACES.visit;
+                o.facePartner = true;
+                o.gesture = run.gesture('spirit', 'curtsy', 3.2);
+                atPartnerS(o, c, 0.97);
+            },
+        },
+    ];
+}
+
+/** The two by his shore, each watching the other (the body of a visit's beats). */
+const byHisShore = {
+    troll: (t, c, o) => {
+        o.at = PLACES.trollEdge;
+        o.staff = 'offer';
+        atPartnerT(o, c, 0.97);
+    },
+    spirit: (t, c, o) => {
+        o.at = PLACES.visit;
+        o.facePartner = true;
+        atPartnerS(o, c, 0.97);
+    },
+};
+
+/**
+ * She takes her leave and glides home; he lifts his lantern high and watches her the whole way,
+ * and goes back up to his stone once she is past the middle. `carry`: she holds a light to her
+ * breast as she goes.
+ */
+function homewardBeats({ carry = false } = {}) {
+    return [
+        {
+            len: 2.8,
+            troll: (t, c, o, run) => {
+                o.at = PLACES.trollEdge;
+                o.staff = 'raise';
+                o.gesture = run.gesture('troll', 'wave', 2.8);
+                atPartnerT(o, c, 0.97);
+            },
+            spirit: (t, c, o, run) => {
+                o.at = PLACES.visit;
+                o.facePartner = true;
+                if (carry) o.hands = 'heart';
+                else o.gesture = run.gesture('spirit', 'wave', 2.8);
+                atPartnerS(o, c, 0.97);
+            },
+        },
+        {
+            until: spiritAt(PLACES.spiritHome, 0.3),
+            max: 26,
+            spirit: (t, c, o) => {
+                o.at = PLACES.spiritHome;
+                o.kneel = false;
+                o.pace = SPIRIT_GLIDE;
+                if (carry) o.hands = 'heart';
+                // (A look back over her shoulder as she sets out, and again as she comes home.)
+                if (t < 2.2 || c.spirit[0] < -4.5) atPartnerS(o, c, 0.9);
+            },
+            troll: (t, c, o) => {
+                const gone = c.spirit[0] < 0.5;
+                o.at = gone ? PLACES.trollHome : PLACES.trollEdge;
+                o.sit = false;
+                o.pace = 0.46;
+                o.staff = 'high';
+                atPartnerT(o, c, 0.97);
+            },
+        },
+    ];
 }
 
 /** The stone's skips across the water from where he throws (stage [x, z]) toward her. */
@@ -623,7 +811,7 @@ export const SCENES = Object.freeze({
     },
     call: {
         who: 'both',
-        kin: [0.25, 1],
+        kin: [0.2, 1],
         weight: 0.9,
         may: (c) => dist2(c.troll, PLACES.trollHome) < 0.6,
         beats: [
@@ -698,7 +886,7 @@ export const SCENES = Object.freeze({
     },
     skip: {
         who: 'both',
-        kin: [0.4, 1],
+        kin: [0.3, 1],
         weight: 1,
         may: (c) => dist2(c.troll, PLACES.trollHome) < 0.6,
         beats: [
@@ -770,7 +958,7 @@ export const SCENES = Object.freeze({
     },
     gift: {
         who: 'both',
-        kin: [0.35, 1],
+        kin: [0.25, 1],
         weight: 1,
         beats: [
             {
@@ -874,7 +1062,7 @@ export const SCENES = Object.freeze({
     },
     song: {
         who: 'both',
-        kin: [0.5, 1],
+        kin: [0.35, 1],
         weight: 0.8,
         beats: [
             {
@@ -904,7 +1092,7 @@ export const SCENES = Object.freeze({
     },
     dance: {
         who: 'both',
-        kin: [0.55, 1],
+        kin: [0.4, 1],
         weight: 0.9,
         may: (c) => dist3(c.spirit, SPIRIT.home) < 1.2 || dist3(c.spirit, PLACES.kneel) < 0.6,
         beats: [
@@ -990,7 +1178,7 @@ export const SCENES = Object.freeze({
     },
     moon: {
         who: 'both',
-        kin: [0.65, 1],
+        kin: [0.5, 1],
         weight: 0.7,
         beats: [
             {
@@ -1024,7 +1212,7 @@ export const SCENES = Object.freeze({
     },
     boat: {
         who: 'both',
-        kin: [0.75, 1],
+        kin: [0.7, 1],
         weight: 0.9,
         may: (c) => dist2(c.troll, PLACES.trollHome) < 0.6,
         beats: [
@@ -1121,6 +1309,274 @@ export const SCENES = Object.freeze({
     },
 
     // ── Reflexes: their eyes meet ──
+    // ── Light sent across the water, and answered ──
+    signal: {
+        who: 'both',
+        kin: [0.12, 1],
+        weight: 1.3,
+        vars: (rand) => ({ first: rand() < 0.6 ? 'troll' : 'spirit', again: rand() < 0.5 }),
+        beats: [
+            {
+                until: (c, run) => (run.vars.first === 'troll' ? trollUp(c) : spiritUp(c)),
+                max: 3.5,
+                troll: (t, c, o, run) => {
+                    if (run.vars.first !== 'troll') return;
+                    o.sit = false;
+                    atPartnerT(o, c);
+                },
+                spirit: (t, c, o, run) => {
+                    if (run.vars.first !== 'spirit') return;
+                    o.kneel = false;
+                    atPartnerS(o, c);
+                },
+            },
+            sendBeat('first'),
+            crossBeat('first'),
+            sendBeat('second'),
+            crossBeat('second'),
+            // Once they know each other a little, both send at once: the two lights meet in the middle.
+            {
+                lenOf: (run, c) => (run.vars.again && c.kin >= SHY_BELOW ? 2.6 : 0),
+                enter: (run, c, life, time) => {
+                    if (!(run.vars.again && c.kin >= SHY_BELOW)) return;
+                    life.emit({
+                        type: 'pulse', who: 'troll', start: time + 0.9, strength: 0.9,
+                    });
+                    life.emit({
+                        type: 'pulse', who: 'spirit', start: time + 0.9, strength: 0.9,
+                    });
+                },
+                troll: (t, c, o) => {
+                    o.sit = false;
+                    o.staff = 'raise';
+                    atPartnerT(o, c, 0.95);
+                },
+                spirit: (t, c, o) => {
+                    o.kneel = false;
+                    o.hands = 'open';
+                    atPartnerS(o, c, 0.95);
+                },
+            },
+            {
+                lenOf: (run, c) => (run.vars.again && c.kin >= SHY_BELOW ? PULSE_CROSS * 0.5 : 0),
+                troll: (t, c, o) => {
+                    o.sit = false;
+                    look(o, 'middle', [0.4, 0, -10.2], 0.95);
+                },
+                spirit: (t, c, o) => {
+                    o.kneel = false;
+                    look(o, 'middle', [0.4, 0, -10.2], 0.95);
+                },
+            },
+            {
+                len: 2.4,
+                troll: (t, c, o, run) => {
+                    o.gesture = run.gesture('troll', 'nod', 2.4);
+                    atPartnerT(o, c, 0.95);
+                },
+                spirit: (t, c, o, run) => {
+                    o.gesture = run.gesture('spirit', c.kin < SHY_BELOW ? 'shy' : 'tilt', 2.4);
+                    atPartnerS(o, c, 0.95);
+                },
+            },
+        ],
+    },
+    // ── She comes to him across the water ──
+    // Her light for his lantern: she holds her hands to it and it burns pale gold a long while after.
+    visit: {
+        who: 'both',
+        kin: [0.45, 1],
+        weight: 1.4,
+        may: (c) => dist2(c.troll, PLACES.trollHome) < 0.8 && dist3(c.spirit, PLACES.spiritHome) < 4.5,
+        vars: (rand) => ({ stay: 5 + rand() * 4 }),
+        beats: [
+            ...crossingBeats(),
+            {
+                len: 4.4,
+                enter: (run, c, life, time) => {
+                    life.emit({ type: 'relit', start: time + 2.1, length: RELIT_TIME });
+                    life.emit({ type: 'swirl', start: time + 2.1 });
+                    life.emit({
+                        type: 'pulse', who: 'troll', start: time + 2.1, strength: 1,
+                    });
+                    life.emit({
+                        type: 'pulse', who: 'spirit', start: time + 2.1, strength: 1,
+                    });
+                },
+                troll: (t, c, o) => {
+                    o.at = PLACES.trollEdge;
+                    o.staff = 'offer';
+                    look(o, 'lantern', c.lantern, 0.97);
+                },
+                spirit: (t, c, o) => {
+                    o.at = PLACES.visit;
+                    o.facePartner = true;
+                    o.hands = 'reach';
+                    look(o, 'lantern', c.lantern, 0.97);
+                },
+            },
+            {
+                lenOf: (run) => run.vars.stay * 0.5,
+                ...byHisShore,
+            },
+            {
+                lenOf: (run) => run.vars.stay * 0.5,
+                troll: (t, c, o) => {
+                    o.at = PLACES.trollEdge;
+                    look(o, 'moon', PLACES.moon, 0.95);
+                },
+                spirit: (t, c, o) => {
+                    o.at = PLACES.visit;
+                    o.facePartner = true;
+                    look(o, 'moon', PLACES.moon, 0.95);
+                },
+            },
+            ...homewardBeats(),
+            ...walkBeats([PLACES.trollHome], { pace: 0.46 }),
+        ],
+    },
+    // A dance by his shore: she turns on the water before him, he sways and tries a turn of his own.
+    waltz: {
+        who: 'both',
+        kin: [0.55, 1],
+        weight: 1.1,
+        may: (c) => dist2(c.troll, PLACES.trollHome) < 0.8 && dist3(c.spirit, PLACES.spiritHome) < 4.5,
+        beats: [
+            ...crossingBeats(),
+            {
+                len: 6.4,
+                enter: (run, c, life, time) => {
+                    life.emit({ type: 'twirl', start: time });
+                    life.emit({ type: 'swirl', start: time + 1.0 });
+                    life.emit({
+                        type: 'pulse', who: 'spirit', start: time + 0.6, strength: 0.8,
+                    });
+                },
+                troll: (t, c, o, run) => {
+                    o.at = PLACES.trollEdge;
+                    o.gesture = run.gesture('troll', 'sway', 6.4);
+                    atPartnerT(o, c, 0.97);
+                },
+                spirit: (t, c, o, run) => {
+                    o.at = PLACES.visit;
+                    o.gesture = run.gesture('spirit', 'twirl', 6.4);
+                    atPartnerS(o, c, 0.6);
+                },
+            },
+            {
+                len: 4.6,
+                enter: (run, c, life, time) => life.emit({
+                    type: 'pulse', who: 'troll', start: time + 1.6, strength: 0.8,
+                }),
+                troll: (t, c, o, run) => {
+                    o.at = PLACES.trollEdge;
+                    o.gesture = run.gesture('troll', 'spin', 4.6);
+                    atPartnerT(o, c, 0.8);
+                },
+                spirit: (t, c, o, run) => {
+                    o.at = PLACES.visit;
+                    o.facePartner = true;
+                    if (t > 1.8) o.gesture = run.gesture('spirit', 'clap', 4.6);
+                    atPartnerS(o, c, 0.97);
+                },
+            },
+            {
+                len: 3,
+                ...byHisShore,
+            },
+            ...homewardBeats(),
+            ...walkBeats([PLACES.trollHome], { pace: 0.46 }),
+        ],
+    },
+    // An ember of his lantern for her: he trims it, a warm light passes to her hands, and she
+    // carries it home over the water and sets it by her stone, where it burns a long while.
+    ember: {
+        who: 'both',
+        kin: [0.62, 1],
+        weight: 1.1,
+        may: (c) => dist2(c.troll, PLACES.trollHome) < 0.8 && dist3(c.spirit, PLACES.spiritHome) < 4.5,
+        beats: [
+            ...crossingBeats(),
+            {
+                len: 3.4,
+                enter: (run, c, life, time) => life.emit({ type: 'tend', start: time + 0.4, length: 3 }),
+                troll: (t, c, o, run) => {
+                    o.at = PLACES.trollEdge;
+                    o.staff = 'tend';
+                    o.gesture = run.gesture('troll', 'tend', 3.4);
+                    look(o, 'lantern', c.lantern, 0.95);
+                },
+                spirit: (t, c, o) => {
+                    o.at = PLACES.visit;
+                    o.facePartner = true;
+                    look(o, 'lantern', c.lantern, 0.95);
+                },
+            },
+            {
+                len: 3.6,
+                enter: (run, c, life, time) => {
+                    // A light of his crosses the little way to her hands, and is hers to carry.
+                    life.emit({
+                        type: 'gift',
+                        from: 'troll',
+                        to: 'spirit',
+                        start: time + 0.5,
+                        length: 1.9,
+                        warm: true,
+                        lift: 0.5,
+                    });
+                    run.vars.carry = life.emit({
+                        type: 'held', who: 'spirit', start: time + 2.4, length: 90, warm: true,
+                    });
+                },
+                troll: (t, c, o) => {
+                    o.at = PLACES.trollEdge;
+                    o.staff = 'offer';
+                    atPartnerT(o, c, 0.97);
+                },
+                spirit: (t, c, o) => {
+                    o.at = PLACES.visit;
+                    o.facePartner = true;
+                    o.hands = t > 2.2 ? 'heart' : 'receive';
+                    look(o, 'lantern', c.lantern, 0.9);
+                },
+            },
+            ...homewardBeats({ carry: true }),
+            {
+                // Home: she kneels and sets it down on the moss by her stone.
+                len: 3.2,
+                enter: (run, c, life, time) => {
+                    if (run.vars.carry) run.vars.carry.length = Math.max(0.1, time + 1.5 - run.vars.carry.start);
+                    life.emit({ type: 'ember', start: time + 1.4, length: EMBER_TIME });
+                },
+                spirit: (t, c, o) => {
+                    o.at = PLACES.spiritHome;
+                    o.kneel = true;
+                    o.hands = t < 1.5 ? 'heart' : 'rest';
+                    look(o, 'ember', PLACES.ember, 0.95);
+                },
+                troll: (t, c, o) => {
+                    o.at = PLACES.trollHome;
+                    o.sit = false;
+                    o.staff = 'high';
+                    atPartnerT(o, c, 0.95);
+                },
+            },
+            {
+                len: 2.6,
+                spirit: (t, c, o) => {
+                    o.at = PLACES.spiritHome;
+                    o.kneel = true;
+                    atPartnerS(o, c, 0.95);
+                },
+                troll: (t, c, o, run) => {
+                    o.at = PLACES.trollHome;
+                    o.gesture = run.gesture('troll', 'nod', 2.6);
+                    atPartnerT(o, c, 0.95);
+                },
+            },
+        ],
+    },
     shy: {
         who: 'both',
         reflex: true,
@@ -1224,6 +1680,7 @@ function emptyIntent(o) {
     o.look = null;
     o.pace = null;
     o.scene = null;
+    o.facePartner = null;
     return o;
 }
 
@@ -1240,10 +1697,12 @@ export class StillwaterLife {
         this.kin = kin;
         this.draws = 0;
         this.runs = { troll: null, spirit: null };
-        this.next = { troll: time + 7, spirit: time + 9, both: time + 16 };
+        this.next = { troll: time + 7, spirit: time + 9, both: time + 11 };
         /** A scene of theirs is due: whoever is free waits (until `until`) for the other. */
         this.waiting = null;
         this.lastScene = { troll: [], spirit: [], both: [] };
+        /** The scenes of theirs this night has already seen (the story tells each once before any twice). */
+        this.seen = new Set();
         this.lastReflex = time - 100;
         this.wasMeeting = false;
         /** What the scenes set in motion, for the world to take (`drain`). */
@@ -1286,6 +1745,12 @@ export class StillwaterLife {
         if (SCENES[name]) this.cues.push({ name, at: time, done: false });
     }
 
+    /** True while the two are in a scene of theirs together (not a mere reflex of the eyes). */
+    get duet() {
+        const run = this.runs.troll;
+        return Boolean(run && run === this.runs.spirit && !run.def.reflex);
+    }
+
     /** The scene one of them is in (its name), or null. */
     sceneOf(who) {
         const run = this.runs[who];
@@ -1300,7 +1765,7 @@ export class StillwaterLife {
         this.time = time;
         ctx.time = time;
         ctx.kin = this.kin;
-        if (!ctx.engaged && ctx.calm > SCENE_CALM) this.grow(KIN.calm * Math.max(0, dt));
+        if (!ctx.engaged) this.grow(KIN.calm * Math.max(0, dt));
         // Play takes them: whatever they were doing ends where it stands.
         const stop = ctx.engaged || ctx.busy > SCENE_BUSY;
         if (stop) {
@@ -1330,7 +1795,9 @@ export class StillwaterLife {
             });
             this.begin(cue.name, time, ctx);
         }
-        if (!stop && ctx.calm > SCENE_CALM) this.choose(time, ctx);
+        // (A scene begins beside steady play too; only what stirs the tarn makes them wait.)
+        const quiet = (ctx.still ?? ctx.calm) > SCENE_CALM && ctx.busy < SCENE_STEADY;
+        if (!stop && quiet) this.choose(time, ctx);
         this.step(time, ctx);
     }
 
@@ -1339,8 +1806,8 @@ export class StillwaterLife {
         // A scene of theirs comes due now and then (more often as they grow near): from then on
         // whoever is free waits for the other, a while, rather than begin something alone.
         if (!this.waiting && time >= this.next.both) {
-            if (this.rand() < 0.4 + 0.45 * this.kin) this.waiting = { until: time + DUET_WAIT };
-            else this.next.both = time + 6 + this.rand() * 6;
+            if (this.rand() < 0.7 + 0.3 * this.kin) this.waiting = { until: time + DUET_WAIT };
+            else this.next.both = time + 5 + this.rand() * 5;
         }
         if (this.waiting) {
             if (!this.runs.troll && !this.runs.spirit) {
@@ -1350,10 +1817,10 @@ export class StillwaterLife {
                     this.begin(name, time, ctx);
                     return;
                 }
-                this.next.both = time + 6 + this.rand() * 6;
+                this.next.both = time + 5 + this.rand() * 5;
             } else if (time > this.waiting.until) {
                 this.waiting = null;
-                this.next.both = time + 4 + this.rand() * 4;
+                this.next.both = time + 3 + this.rand() * 3;
             } else return;
         }
         const trollFree = !this.runs.troll && time >= this.next.troll;
@@ -1385,6 +1852,17 @@ export class StillwaterLife {
             return w;
         });
         if (!(total > 0)) return null;
+        // Their story unfolds in order: a scene of theirs this night has not yet seen comes before
+        // any it has, the one that needs the least nearness first (a wave before a bow, a light
+        // sent across before she crosses herself). Once all are told, the draw is free.
+        if (who === 'both') {
+            let first = -1;
+            for (let i = 0; i < names.length; i++) {
+                if (!(weights[i] > 0) || this.seen.has(names[i])) continue;
+                if (first < 0 || (SCENES[names[i]].kin?.[0] ?? 0) < (SCENES[names[first]].kin?.[0] ?? 0)) first = i;
+            }
+            if (first >= 0) return names[first];
+        }
         let r = this.rand() * total;
         for (let i = 0; i < names.length; i++) {
             r -= weights[i];
@@ -1399,6 +1877,7 @@ export class StillwaterLife {
         if (who === 'both' || who === 'troll') this.runs.troll = run;
         if (who === 'both' || who === 'spirit') this.runs.spirit = run;
         if (!run.def.reflex) {
+            if (who === 'both') this.seen.add(name);
             const recent = this.lastScene[who];
             recent.push(name);
             if (recent.length > 2) recent.shift();
@@ -1431,7 +1910,7 @@ export class StillwaterLife {
         if (run.has('troll')) this.next.troll = Math.max(this.next.troll, rest('troll'));
         if (run.has('spirit')) this.next.spirit = Math.max(this.next.spirit, rest('spirit'));
         if (run.def.who === 'both' && !run.def.reflex) {
-            this.next.both = Math.max(this.next.both, time + 16 + this.rand() * 18 - this.kin * 8);
+            this.next.both = Math.max(this.next.both, time + 11 + this.rand() * 12 - this.kin * 4);
         }
     }
 

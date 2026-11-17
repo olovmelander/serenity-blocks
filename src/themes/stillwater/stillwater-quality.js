@@ -19,6 +19,8 @@
  * troll       which of the troll's four meshes (0 = the finest)
  * spirit      which of the spirit's two meshes (0 = the full figure, 1 = half)
  * motes       motes of light that rise round the spirit
+ * rain        streaks of rain in the air at its hardest (0 = rings on the water only)
+ * birds       wings in the flight that leaves the far wood when the hour turns
  */
 import { normalizeQuality } from '../../utils/quality.js';
 
@@ -46,6 +48,8 @@ export const QUALITY = Object.freeze({
         troll: 3,
         spirit: 1,
         motes: 0,
+        rain: 0,
+        birds: 4,
     }),
     Low: Object.freeze({
         mirror: 0,
@@ -70,6 +74,8 @@ export const QUALITY = Object.freeze({
         troll: 3,
         spirit: 1,
         motes: 16,
+        rain: 140,
+        birds: 5,
     }),
     Medium: Object.freeze({
         mirror: 0.4,
@@ -94,6 +100,8 @@ export const QUALITY = Object.freeze({
         troll: 2,
         spirit: 0,
         motes: 20,
+        rain: 300,
+        birds: 7,
     }),
     High: Object.freeze({
         mirror: 0.5,
@@ -118,6 +126,8 @@ export const QUALITY = Object.freeze({
         troll: 1,
         spirit: 0,
         motes: 32,
+        rain: 520,
+        birds: 9,
     }),
     Ultra: Object.freeze({
         mirror: 0.6,
@@ -142,6 +152,8 @@ export const QUALITY = Object.freeze({
         troll: 0,
         spirit: 0,
         motes: 40,
+        rain: 700,
+        birds: 11,
     }),
     Extreme: Object.freeze({
         mirror: 0.75,
@@ -166,6 +178,8 @@ export const QUALITY = Object.freeze({
         troll: 0,
         spirit: 0,
         motes: 40,
+        rain: 900,
+        birds: 11,
     }),
 });
 

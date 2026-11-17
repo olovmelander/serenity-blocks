@@ -23,7 +23,15 @@
  *                            so a strip of frames shows one continuous story. Comma-separated
  *                            kind@time[:arg]: c combo n, l lock at u, d hard drop at u, x clear n
  *                            lines, q four lines, v level up, g game over (e.g. c@6:1,x@6:1,q@14)
+ *   air=still|mist|clear|rain|breeze   hold the night's weather on one air (without it the
+ *                            weather turns by its own clock: stillwater-night.js)
+ *   visitors=0               nobody comes by the clock (only who `visitor=` asks for)
+ *   visitor=<kind>@<t>,...   one of the night's visitors at that time: fish, star, shower, owl,
+ *                            flock, elk
  *   kin=<0..1>               how near the two have grown (which of their scenes may come)
+ *   reach=<hers>,<his>,<braid>   hold how far each one's light lies out on the water (0..1.5)
+ *   pulse=<s|t>@<time>,...   one of them (s the spirit, t the troll) sends a pulse of light over
+ *                            the water at that time
  *   scene=<name@t,...>       begin one of their scenes (stillwater-life.js SCENES) at time t,
  *                            whatever they are doing (e.g. scene=skip@4 or scene=greet@3,gift@20)
  *   parts=sky,water,crowns,veil,...   draw only these parts (STILLWATER_PARTS)
@@ -151,6 +159,21 @@ export function create({
         return m ? { name: m[1], at: Number(m[2]) } : null;
     }).filter(Boolean);
     const cueScenes = () => sceneCues.forEach((c) => world.cueScene(c.name, c.at));
+    if (params.has('reach')) world.setReachHold(params.get('reach').split(','));
+    if (params.has('air')) world.setAirHold(params.get('air'));
+    if (params.get('visitors') === '0') world.setVisitors(false);
+    /** Visitors asked for at set times (`visitor=`): cued again after every seek. */
+    const visitorCues = (params.get('visitor') || '').split(',').map((token) => {
+        const m = /^([a-z]+)@([\d.]+)$/.exec(token.trim());
+        return m ? { kind: m[1], at: Number(m[2]) } : null;
+    }).filter(Boolean);
+    const cueVisitors = () => visitorCues.forEach((c, i) => world.visitor(c.kind, c.at, (0.37 + i * 0.21) % 1));
+    /** Pulses of light asked for at set times (`pulse=`): sent again after every seek. */
+    const pulseCues = (params.get('pulse') || '').split(',').map((token) => {
+        const m = /^([st])@([\d.]+)$/.exec(token.trim());
+        return m ? { who: m[1] === 't' ? 'troll' : 'spirit', at: Number(m[2]) } : null;
+    }).filter(Boolean);
+    const cuePulses = () => pulseCues.forEach((c) => world.sendPulse(c.who, c.at, 1));
     if (params.has('trollLook')) world.troll?.setLook(params.get('trollLook'));
     // A capture that names its level wants that hour, not that hour plus however long `t` is.
     if (params.has('level')) world.setHourDrift(false);
@@ -252,7 +275,7 @@ export function create({
         } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
         else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
-        else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
+        else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4 });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
         else if (eventName === 'break') world.onCombo(0);
     };
@@ -279,6 +302,8 @@ export function create({
     const seekStory = (time) => {
         world.seek(0);
         cueScenes();
+        cuePulses();
+        cueVisitors();
         if (level > 1) world.levelUp(level, { silent: true });
         frame(0, 0);
         let cursor = 0;
@@ -302,6 +327,8 @@ export function create({
         const start = Math.max(0, time - lead);
         world.seek(start);
         cueScenes();
+        cuePulses();
+        cueVisitors();
         if (level > 1) world.levelUp(level, { silent: true });
         frame(start, 0);
         // Locks played before the event: the wisps they leave standing over the water.
@@ -331,7 +358,13 @@ export function create({
         if (eventTime > cursor) stepTo(cursor, eventTime, 0.05);
         if (eventName) {
             fireEvent();
-            stepTo(eventTime, time, 1 / 120);
+            // (A perfect clear settles on its four lines a moment after them, as in the game.)
+            const crownAt = eventTime + 0.36;
+            if (eventName === 'perfect' && time > crownAt) {
+                stepTo(eventTime, crownAt, 1 / 120);
+                world.onClear({ crown: true });
+                stepTo(crownAt, time, 1 / 120);
+            } else stepTo(eventTime, time, 1 / 120);
         }
         frame(time, 0);
         pushPost(time);
