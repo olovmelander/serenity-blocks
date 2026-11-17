@@ -336,8 +336,7 @@ the sky flowers are sited for a landscape screen first).
   on WebGPU and one on the forced WebGL2 backend in the white night under a sun shower. Each
   played real hard drops from the keyboard, then a double, four lines, a twist, a back-to-back, a
   perfect clear, a level-up and a cascade through the game's event bus. Every run: console clean,
-  one canvas, the night at the level's hour, and no main-thread task over 21 ms in about 5,400
-  animation frames.
+  one canvas, and no main-thread task over 21 ms in about 5,400 animation frames.
 - **GPU time a frame** (the playground's profiler at 1920 x 1080, capped at 30 frames a second,
   evening, fair weather; the untouched main checkout served beside the branch for "before"):
   High 1.97 ms before and 1.85 to 2.15 ms after (2.0 to 2.3 in a sun shower); Medium 1.02 ms
