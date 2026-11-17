@@ -254,10 +254,13 @@ Sunfall (2026-10-20), a new theme in Moonrise Summit's place, adds the capture f
 `sunfallNoPost`; the part names are `sky`, `cave`, `jungle`, `beam`, `mist`, `water`, `roots`,
 `birds` and `gours`. Its `sunfall` playground effect reads 28 parameters, catalogued as its own
 rows; `beamGain` (scale the sunfall pillar's volumetric intensity) is a new name, and `station`
-and `weather` hold the five solar stations and four subterranean microclimates (without them the
+and `weather` hold the five solar stations and the subterranean microclimates (without them the
 stations turn by the clock, `t` included). Moonrise Summit's `moonriseForceWebGL` reader and its
 share of `forceWebGL` are retired with it. Use
-`effect=sunfall&t=40&station=<0..4>&weather=<0..3>` for a deterministic playground capture.
+`effect=sunfall&t=40&station=<0..4>&weather=<0..4>` for a deterministic playground capture.
+Since 2026-11-17 there are five weathers (`clear`, `mist`, `shower`, `steam`, `cloud`) and one
+more parameter, `cloud=<-1..1>`, which places a cumulus's shadow over the oculus
+([SUNFALL_LIVING_DOLINE_2026-11.md](SUNFALL_LIVING_DOLINE_2026-11.md)).
 
 Spring (2026-10-18), a new theme in Moonlit Forest's place, adds the capture flags
 `springForceWebGL`, `springTime`, `springFixedDt`, `springParts` and `springFalseColor`; the part
