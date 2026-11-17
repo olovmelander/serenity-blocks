@@ -49,6 +49,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
+    COMET,
     DEG,
     ERUPTION_SECONDS,
     HOUR_SECONDS,
@@ -60,14 +61,18 @@ import {
     PROMINENCES,
     PROMINENCE_LIFE,
     PROMINENCE_RISE,
+    RANGES,
     STREAMERS,
     STREAMER_SET,
     TAU,
+    WEATHERS,
+    WEATHER_KEYS,
     WORLD,
     approach,
     axisAt,
     clamp,
     clamp01,
+    cometAt,
     exposureFor,
     groundOf,
     hexToLinear,
@@ -76,10 +81,13 @@ import {
     mulberry32,
     paletteAt,
     prominenceShape,
+    shadowEdgeAt,
+    shadowReachAt,
     smooth01,
     streamersAt,
     sunFrame,
     umbraAzAt,
+    weatherAt,
     wrapAngle,
 } from './solar-eclipse-core.js';
 import { sessionEclipseBakes } from './solar-eclipse-bakes.js';
@@ -89,6 +97,7 @@ import {
 } from './solar-eclipse-tsl.js';
 import { createSky } from './solar-eclipse-sky.js';
 import { createFx } from './solar-eclipse-fx.js';
+import { createFlamingos } from './solar-eclipse-flamingos.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './solar-eclipse-composition.js';
@@ -110,7 +119,7 @@ export function fovForAspect(aspect) {
     return Math.min(74, (Math.atan(Math.max(wide, need)) * 360) / Math.PI);
 }
 
-const PARTS = ['sky', 'motes'];
+const PARTS = ['sky', 'motes', 'flamingos'];
 
 /** The frame height every pixel size in the scene is authored for. */
 export const DESIGN_LINES = 1080;
@@ -124,10 +133,10 @@ const DIAMOND_OPEN = 0.38;
 const DIAMOND_HOLD = 0.55;
 const DIAMOND_CLOSE = 1.5;
 /** A twist's twist of the corona (radians at the limb) and how it rings down. */
-const TWIST = 1.0;
+const TWIST = 1.45;
 const TWIST_DECAY = 1.5;
 /** Below this the twist has rung down (radians). */
-const TWIST_REST = 0.002;
+const TWIST_REST = 0.004;
 /**
  * The necklace: the most pearls round the limb at once (a ring), how fast it turns (radians a
  * second, at rest), how bright a clear's light reads per unit of its swell, below what light it
@@ -159,6 +168,29 @@ const RING = Object.freeze({
 });
 /** How bright the diamond's glitter path burns on the water, per unit of its glare. */
 const GLINT_POWER = 5.5;
+
+/** The volcano: its bearing and distance, for whether its summit stands in the sunlight. */
+const VOLCANO_RANGE = RANGES.find((range) => range.cone);
+
+/**
+ * The moon's shadow sweeping back across the sky (a perfect clear's second totality, the end of a
+ * run coming back): its front leaves the west (left, bearing `from`) and runs east at `speed`
+ * radians a second, `soft` wide, a darker curtain at its edge; whatever it has not reached yet
+ * keeps the daylight it had.
+ */
+export const SWEEP = Object.freeze({
+    from: -1.15, speed: 1.25, soft: 0.11, curtain: 0.55, seconds: 2.6,
+});
+
+/**
+ * The end of a run is third contact: the moon slides off the sun, the diamond opens into a sliver
+ * of the sun's own face, daylight floods back and the corona fades. It holds `hold` seconds (or
+ * until the next run starts) and then the shadow sweeps back in and totality returns.
+ *   open   seconds to slide off; slide  how far (solar radii); day  the daylight it lets back
+ */
+export const THIRD_CONTACT = Object.freeze({
+    open: 2.6, hold: 11, close: 1.8, slide: 0.068, day: 0.82, glare: 1.15,
+});
 
 /** Where smooth01 reads `s` (0..1): its inverse, by bisection. */
 function unsmooth01(s) {
@@ -240,8 +272,16 @@ export class SolarEclipseWorld {
             },
             /** The water: where the horizon stands on screen (y down) and how far it stirs. */
             water: { horizon: WORLD.horizonY, stir: 1 },
+            /** The lens's ghosts strung from the diamond's glare through the frame. */
+            ghost: { x: 0.2, y: 0.3, strength: 0 },
         };
         this._level = [0, 0, -1];
+        /** The weather as it stands this frame (core.js weatherAt), and a pinned one (captures). */
+        this._weather = {};
+        this.weatherPin = null;
+        /** The comet as it stands this frame (core.js cometAt), and a pinned age (captures). */
+        this._comet = {};
+        this.cometPin = null;
         this.frame = sunFrame(0, 12 * DEG);
         this.sunAz = 0;
         this.sunAlt = 12 * DEG;
@@ -269,13 +309,17 @@ export class SolarEclipseWorld {
         this.shake = new Swell({ release: 0.35, ceiling: 0.0034, knee: 0.0024 });
         this.kick = new Swell({ release: 0.3, ceiling: 1.1, knee: 0.7 });
         this.twist = new Swell({
-            attack: 0.3, release: TWIST_DECAY, ceiling: 1.8, knee: 1.2,
+            attack: 0.45, release: TWIST_DECAY, ceiling: 1.8, knee: 1.2,
         });
         this.burst = new Swell({
             attack: 0.1, release: 0.2, ceiling: 1.6, knee: 1.0,
         });
         this.beadLight = new Swell({
             attack: 0.04, release: 1.9, ceiling: 1.25, knee: 0.9,
+        });
+        /** The shadow bands a double (and a triple) sends racing over the flat. */
+        this.bandSwell = new Swell({
+            attack: 0.18, release: 1.5, ceiling: 1.0, knee: 0.75,
         });
         /** The necklace: its turn (radians), when it began, the pearls it holds and those shown. */
         this.necklace = {
@@ -309,6 +353,15 @@ export class SolarEclipseWorld {
         this.twist.reset();
         this.burst.reset();
         this.beadLight.reset();
+        this.bandSwell.reset();
+        /** The shadow sweeping back in: when its front left the west, and the daylight it held. */
+        this.sweep = { at: -1000, day: 0 };
+        /** Third contact (the run's end): when it began and when totality comes back. */
+        this.over = { at: -1000, until: -1000, angle: 0 };
+        /** A clear's waves through the corona (two may run), a halo CME, a level-up's pulse. */
+        this.waves = [{ at: -100, strength: 0 }, { at: -100, strength: 0 }];
+        this.halo = { at: -100, power: 0 };
+        this.pulse = { at: -100, strength: 0 };
         this.necklace.angle = 0;
         this.necklace.at = -100;
         this.necklace.count = 0;
@@ -351,6 +404,10 @@ export class SolarEclipseWorld {
         u.twist.value = 0;
         u.diamond.value.set(1, 0, 0, 0);
         u.daylight.value = 0;
+        u.sweep.value.set(-3, SWEEP.soft, 0, 0);
+        u.pulse.value.set(-100, 0, 0.8, 0);
+        u.coronaWave.value.set(-100, 0, -100, 0);
+        u.halo.value.set(-100, 0, 0, 0);
     }
 
     build() {
@@ -365,6 +422,8 @@ export class SolarEclipseWorld {
         this.fx = createFx({ u, tier });
         this.addPart('sky', this.sky.object);
         this.addPart('motes', this.fx.motes);
+        this.flamingos = createFlamingos({ u, tier });
+        this.addPart('flamingos', this.flamingos.object);
         this.scene.add(this.root);
         this.compose();
         this.applyPalette();
@@ -811,6 +870,14 @@ export class SolarEclipseWorld {
         this.addBeads(pearls, (big ? 1.3 : 1) + Math.min(0.6, wave * 0.15), time + 0.04, most);
         this.flashes.hit((0.45 + lines * 0.12) * (1 + 0.15 * Math.min(wave, 4)), time);
         this.corona.hit(0.14 * lines + 0.06 * Math.min(wave, 6), time);
+        // Each size of clear has a signature of its own on top of the beads: two lines send
+        // shadow bands racing over the flat, three a wave of light out through the corona along
+        // its streamers (and fainter bands), four the diamond ring.
+        if (lines === 2) this.bandSwell.hit(0.85, time);
+        if (lines === 3) {
+            this.bandSwell.hit(0.45, time);
+            this.coronaWave(1 + 0.15 * Math.min(wave, 4), time + 0.06);
+        }
 
         // The oldest prominences erupt: two per line, every one on a great clear. The hotter play
         // runs, the more of the newest stand: a crown of coloured flux ropes that thickens through
@@ -868,6 +935,10 @@ export class SolarEclipseWorld {
             if (c.perfect) {
                 this.flashes.hit(0.9, time);
                 this.schedule(time + 1.1, () => this.addBeads(6, 1.4, this.time));
+                // The second totality: as the diamond closes, the moon's shadow rushes back
+                // across the sky from the west, the daylight held ahead of it.
+                this.schedule(time + 0.14 + DIAMOND_OPEN + DIAMOND_HOLD + 0.15, () => this.startSweep(0.75 * power));
+                this.schedule(time + 0.14 + DIAMOND_OPEN + DIAMOND_HOLD + 0.9, () => this.coronaWave(1.3, this.time));
             }
         } else if (wave >= 2 && wave % 3 === 2) {
             // The third wave of a cascade (and every third after it) throws off mass.
@@ -875,7 +946,9 @@ export class SolarEclipseWorld {
             this.schedule(time + 0.3, () => this.ejection(aim.cme + (this.rand() - 0.5) * 0.9, power));
         }
         if (c.b2b) {
-            // Back-to-back: twin ejections, either side of the crown, and the corona flares.
+            // Back-to-back: a halo CME, a shell of the corona blown out all round the sun, twin
+            // ejections either side of the crown, and the corona flares.
+            this.haloCme(big ? 1.2 : 1.0);
             const twin = Math.PI - aim.cme;
             this.schedule(time + 0.62, () => this.ejection(twin + (this.rand() - 0.5) * 0.3, 1.1));
             if (!big) this.schedule(time + 0.5, () => this.ejection(aim.cme + (this.rand() - 0.5) * 0.3, 1.1));
@@ -898,6 +971,7 @@ export class SolarEclipseWorld {
         const aim = this.sunBeside ? BESIDE : ABOVE;
         this.schedule(time + 0.05, () => this.diamondRing(aim.diamond + (this.rand() - 0.5) * 0.5, 1.3));
         this.schedule(time + 0.35, () => this.addBeads(BEADS_MAX, 1.4, this.time));
+        this.schedule(time + 0.05 + DIAMOND_OPEN + DIAMOND_HOLD + 0.15, () => this.startSweep(0.8));
         this.flashes.hit(0.8, time);
         this.corona.hit(0.5, time);
         this.kick.hit(0.25, time);
@@ -990,6 +1064,82 @@ export class SolarEclipseWorld {
         pick.set(angle, time, power, 0.62 + power * 0.18);
     }
 
+    /**
+     * A wave of light out through the corona. Two may run at once; a new one takes the older
+     * slot, and never the one still near the limb (a third that close only strengthens it).
+     */
+    coronaWave(strength, at = this.time) {
+        const [a, b] = this.waves;
+        const older = a.at <= b.at ? a : b;
+        const newer = older === a ? b : a;
+        if (at - newer.at < 0.25) {
+            newer.strength = Math.min(1.8, Math.max(newer.strength, strength) + 0.2);
+            return;
+        }
+        older.at = at;
+        older.strength = strength;
+    }
+
+    /** A halo CME: one still young is fed (it brightens), never restarted. */
+    haloCme(power) {
+        const { time, halo } = this;
+        if (time - halo.at < 2.2 && halo.power > 0) {
+            halo.power = Math.min(1.6, Math.max(halo.power, power) + 0.15);
+            return;
+        }
+        halo.at = time;
+        halo.power = power;
+    }
+
+    /** The moon's shadow sweeps back across the sky from the west, holding `day` ahead of it. */
+    startSweep(day) {
+        const { sweep, time } = this;
+        // One still crossing keeps going; it only takes the brighter daylight.
+        if (time - sweep.at < SWEEP.seconds * 0.5) {
+            sweep.day = Math.max(sweep.day, clamp01(day));
+            return;
+        }
+        sweep.at = time;
+        sweep.day = clamp01(day);
+    }
+
+    /**
+     * The run is over: third contact. The moon slides off, the diamond opens into a sliver of the
+     * sun's face, the daylight floods back and the corona fades; the prominences let go. It holds
+     * until the next run starts (onSessionStart) or THIRD_CONTACT.hold has passed; then the
+     * shadow sweeps back in and totality returns.
+     */
+    onGameOver() {
+        const { time, over } = this;
+        if (time < over.until) return;
+        const aim = this.sunBeside ? BESIDE : ABOVE;
+        over.at = time;
+        over.until = time + THIRD_CONTACT.open + THIRD_CONTACT.hold;
+        over.angle = aim.diamond;
+        over.swept = false;
+        this.burst.hit(1.1, time + THIRD_CONTACT.open * 0.35);
+        this.flashes.hit(0.8, time + THIRD_CONTACT.open * 0.3);
+        this.exposureTarget = 0;
+        this.prominences.forEach((p) => {
+            if (p.on) p.fades = Math.min(p.fades, time + 2.2);
+        });
+    }
+
+    /** A new run: a sun left uncovered by the last run's end is covered again now. */
+    onSessionStart() {
+        const { over, time } = this;
+        if (time < over.until) over.until = Math.max(time, over.at + THIRD_CONTACT.open * 0.5);
+    }
+
+    /** How far third contact stands open at `time`, 0..1 (0 in totality). */
+    thirdContact(time) {
+        const { over } = this;
+        if (time < over.at) return 0;
+        const open = smooth01((time - over.at) / THIRD_CONTACT.open);
+        const close = smooth01((time - over.until) / THIRD_CONTACT.close);
+        return open * (1 - close);
+    }
+
     /** The true combo (0 = the chain broke). */
     onCombo(combo) {
         this.combo = Math.max(0, Math.round(combo || 0));
@@ -1008,12 +1158,55 @@ export class SolarEclipseWorld {
         this.flashes.hit(1, this.time);
         this.corona.hit(0.5, this.time);
         this.addBeads(2, 1.1, this.time + 0.05);
+        // The shadow moves on: a pulse of light runs round the horizon from its bright side.
+        const live = this.time - this.pulse.at < 1.2;
+        this.pulse.strength = live ? Math.min(1.6, this.pulse.strength + 0.4) : 1;
+        if (!live) this.pulse.at = this.time;
         const echo = this.reflectionPoint(0, 0);
         if (echo) this.ripple(echo[0], echo[1], { strength: RING.level });
         this.surge.levelUp(this.time);
     }
 
     // ── frame ───────────────────────────────────────────────────────────────────
+
+    /** Pin a weather by name (captures, the playground), or null to let the clock turn it. */
+    pinWeather(name) {
+        this.weatherPin = WEATHERS.find((w) => w.name === name) || null;
+    }
+
+    /** The weather at `time`: the clock's, or the pinned one. */
+    weatherNow(time) {
+        const w = this._weather;
+        if (this.weatherPin) {
+            for (let i = 0; i < WEATHER_KEYS.length; i += 1) w[WEATHER_KEYS[i]] = this.weatherPin[WEATHER_KEYS[i]];
+            w.name = this.weatherPin.name;
+            w.index = WEATHERS.indexOf(this.weatherPin);
+            w.turn = 0;
+            return w;
+        }
+        return weatherAt(time, w);
+    }
+
+    /**
+     * The clouds and the shadow's reach as they stand at `time`: the weather's layers, the
+     * clouds' clock, how far the shadow reaches (it breathes), and whether the volcano's summit
+     * stands in the sunlight beyond it (its summit is higher than the shore, so it catches the
+     * light a little sooner).
+     */
+    writeWeather(time) {
+        const { u } = this;
+        const w = this.weatherNow(time);
+        u.weather.value.set(w.rows, w.towers, w.deck, w.lenticular);
+        u.cloudClock.value = time;
+        // The comet now and then (a pinned age shows the first one at that age).
+        const comet = cometAt(this.cometPin === null ? time : COMET.offset + this.cometPin, this._comet);
+        u.comet.value.set(comet.angle, comet.distance, comet.power * (this.sunBeside ? 1 : 0.7), comet.curl);
+        const reach = shadowReachAt(time);
+        u.shadowReach.value = reach;
+        const edge = shadowEdgeAt(VOLCANO_RANGE.cone.az, u.umbraAz.value, reach);
+        u.summitLit.value = smooth01((VOLCANO_RANGE.distance * 1.1 - edge * 0.95) / (edge * 0.14));
+        return w;
+    }
 
     wheel() {
         return this.time / HOUR_SECONDS + this.hourShift;
@@ -1027,6 +1220,7 @@ export class SolarEclipseWorld {
             u[key].value.set(p[key][0], p[key][1], p[key][2]);
         }
         u.glowHeight.value = p.glowHeight;
+        u.bandHeight.value = p.bandHeight;
         u.starPower.value = p.starPower;
         u.alpenPower.value = p.alpenPower;
         u.cycle.value = p.cycle;
@@ -1139,6 +1333,65 @@ export class SolarEclipseWorld {
         // Daylight floods the whole sky for the diamond's breath: a frame-wide flash (ADR-0021).
         u.daylight.value = clamp01(swing * 0.75 * power) * fs;
 
+        // Third contact (the run's end): the moon slides off further than for any diamond, a
+        // sliver of the sun's face burns and the daylight floods back; its glare takes the
+        // diamond's place whenever it is the brighter. Then the shadow sweeps back in.
+        const third = this.thirdContact(time);
+        const { ghost } = this._post;
+        ghost.strength = 0;
+        if (third > 0.001) {
+            const ax = Math.cos(this.over.angle);
+            const ay = Math.sin(this.over.angle);
+            const slide = THIRD_CONTACT.slide * third ** 0.8;
+            if (slide > MOON.diamond * swing) {
+                moon[0] = moon[0] * (1 - third) - ax * slide;
+                moon[1] = moon[1] * (1 - third) - ay * slide;
+            }
+            const g = third ** 1.4 * THIRD_CONTACT.glare;
+            if (g > glare) {
+                glare = g;
+                u.diamond.value.set(ax * 0.995, ay * 0.995, glare, 0.5);
+                const bead = this.sunPoint(ax * 0.995, ay * 0.995);
+                u.glint.value.set(bead[0], bead[1], bead[2], glare * GLINT_POWER * 0.7);
+            }
+            u.daylight.value = Math.max(u.daylight.value, third * THIRD_CONTACT.day * fs);
+        }
+        if (this.over.at > -1000 && !this.over.swept && time >= this.over.until) {
+            this.over.swept = true;
+            this.startSweep(THIRD_CONTACT.day);
+        }
+        // The lens's ghosts on the diamond's (or third contact's) glare, strung through the frame.
+        if (glare > 0.02) {
+            const ga = Math.atan2(u.diamond.value.y, u.diamond.value.x);
+            const at = this.screenOf(this.sunPoint(Math.cos(ga), Math.sin(ga)));
+            ghost.x = at.x;
+            ghost.y = at.y;
+            ghost.strength = this.reduced ? 0 : clamp01(glare) * fs;
+        }
+
+        // Shadow bands: the diamond's, or a double's racing over the flat.
+        u.bands.value = Math.max(u.bands.value, this.reduced ? 0 : this.bandSwell.valueAt(time));
+
+        // The shadow sweeping back across the sky, the daylight held ahead of its front.
+        const sw = this.sweep;
+        const sAge = time - sw.at;
+        if (sAge >= 0 && sAge < SWEEP.seconds && sw.day > 0) {
+            const fadeOut = 1 - smooth01((sAge - (SWEEP.seconds - 0.6)) / 0.6);
+            u.sweep.value.set(
+                SWEEP.from + sAge * SWEEP.speed,
+                SWEEP.soft,
+                sw.day * fs * fadeOut,
+                SWEEP.curtain * smooth01(sAge / 0.3) * fadeOut,
+            );
+        } else {
+            u.sweep.value.set(-3, SWEEP.soft, 0, 0);
+        }
+        // The waves through the corona, the halo CME, the level-up's pulse round the horizon.
+        const [wa, wb] = this.waves;
+        u.coronaWave.value.set(wa.at, wa.strength, wb.at, wb.strength);
+        u.halo.value.set(this.halo.at, this.halo.power * (this.reduced ? 0.6 : 1), 0, 0);
+        u.pulse.value.set(this.pulse.at, this.pulse.strength * fs, umbraAzAt(time) + 0.25, 0);
+
         // The heat opens the exposure a little by itself (a quick hand with no chain still brings
         // the outer corona and the first stars out); the chain opens it all the way.
         const open = 0.22 * level + 0.3 * fever;
@@ -1168,6 +1421,7 @@ export class SolarEclipseWorld {
         u.time.value = time;
         u.axis.value = axisAt(time);
         u.umbraAz.value = umbraAzAt(time);
+        this.writeWeather(time);
         u.exposure.value = exposure;
         // A chain stills the water to glass (a fever all the way).
         u.glass.value = clamp01(this.exposure * 1.2 + 0.3 * fever);
@@ -1192,6 +1446,7 @@ export class SolarEclipseWorld {
         u.mid.value.multiplyScalar(1 - 0.25 * fever);
         this.writeTables();
         if (camera) this.sky?.update(camera);
+        this.flamingos?.update(this);
 
         const post = this._post;
         post.flash = clamp01(glare * 0.5);
@@ -1258,6 +1513,10 @@ export class SolarEclipseWorld {
             level: this.level,
             palette,
             paletteTurn: this._palette.turn ?? 0,
+            weather: this._weather.name ?? null,
+            weatherTurn: Math.round((this._weather.turn ?? 0) * 100) / 100,
+            summitLit: Math.round(this.u.summitLit.value * 100) / 100,
+            comet: Math.round(this.u.comet.value.z * 100) / 100,
             cycle: this.u.cycle.value,
             prominences: held,
             erupting,
@@ -1265,6 +1524,8 @@ export class SolarEclipseWorld {
             ripples,
             glass: this.u.glass.value,
             diamond: this.diamond ? Math.round(this.u.diamond.value.z * 100) / 100 : 0,
+            thirdContact: Math.round(this.thirdContact(this.time) * 100) / 100,
+            sweeping: this.u.sweep.value.z > 0,
             beads: Math.round(this.necklace.shown * 100) / 100,
             heat: Math.round(this.heat.level * 100) / 100,
             fever: Math.round(this.heat.fever * 100) / 100,
@@ -1280,12 +1541,14 @@ export class SolarEclipseWorld {
         this.scene?.remove(this.root);
         this.sky?.dispose();
         this.fx?.dispose();
+        this.flamingos?.dispose();
         this.noise?.dispose();
         this.rangeTexture?.dispose();
         this.root.clear();
         this.parts.clear();
         this.sky = null;
         this.fx = null;
+        this.flamingos = null;
         this.noise = null;
         this.rangeTexture = null;
         this.ranges = null;

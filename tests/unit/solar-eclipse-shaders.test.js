@@ -172,7 +172,7 @@ function problemsOf({
     return problems;
 }
 
-describe.each(['High', 'Minimal'])('solar eclipse shaders at %s', (quality) => {
+describe.each(['High', 'Low', 'Minimal'])('solar eclipse shaders at %s', (quality) => {
     const built = [];
     let world;
 
@@ -223,7 +223,7 @@ describe.each(['High', 'Minimal'])('solar eclipse shaders at %s', (quality) => {
     });
 
     it('builds every material for WebGPU and for the WebGL2 fallback without a word, under budget', () => {
-        expect(built.length).toBe(6);
+        expect(built.length).toBe(10);
         expect(built.flatMap(problemsOf)).toEqual([]);
         const dome = built.find((b) => b.name === 'solar-eclipse-sky' && b.label === 'WGSL');
         expect(dome.out.fragment.length).toBeGreaterThan(20_000);

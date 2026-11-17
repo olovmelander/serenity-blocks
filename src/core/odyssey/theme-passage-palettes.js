@@ -50,7 +50,7 @@ export const ODYSSEY_THEME_PASSAGE_PALETTES = Object.freeze({
     'sakura-twilight': ['#fde4f4', '#da7c9f', '#aa6fae', '#7d447c', 0.58],
     'serenity-warp': ['#d0f1ee', '#6a649a', '#90669a', '#433c60', 0.46],
     'shifting-sands': ['#fad0b0', '#d59264', '#e6ae86', '#744f3f', 0.59],
-    'solar-eclipse': ['#ebd5c4', '#b76544', '#7a4856', '#21152a', 0.33],
+    'solar-eclipse': ['#ecd5c7', '#df703b', '#904c63', '#241328', 0.36],
     spring: ['#fcfefe', '#4979e2', '#54791f', '#1e2f36', 0.44],
     starlight: ['#e5edf0', '#5071a0', '#93a9c4', '#294671', 0.5],
     'stellar-drift': ['#c7d6ca', '#2d345c', '#b38d66', '#10102c', 0.3],

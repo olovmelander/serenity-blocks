@@ -169,13 +169,36 @@ export function createUniforms() {
         cme2: uniform(new THREE.Vector4(0, -100, 0, 0.6)),
         /** Daylight returning for the moment the diamond burns, 0..1. */
         daylight: uniform(0),
+        /**
+         * The moon's shadow sweeping back across the sky (a perfect clear, the run's end coming
+         * back): (the front's bearing, its softness in radians, the daylight still held ahead of
+         * it, the depth of the curtain at its edge).
+         */
+        sweep: uniform(new THREE.Vector4(-3, 0.12, 0, 0)),
+        /** A level-up's pulse of light round the horizon: (start, strength, the bearing it leaves from, −). */
+        pulse: uniform(new THREE.Vector4(-100, 0, 0.8, 0)),
+        /** Up to two waves of light running out through the corona: (start, strength) twice. */
+        coronaWave: uniform(new THREE.Vector4(-100, 0, -100, 0)),
+        /** The comet, now and then: (position angle, the head's distance in solar radii, power, curl). */
+        comet: uniform(new THREE.Vector4(2.4, 3, 0, 1)),
+        /** A back-to-back's halo CME: (start, power, −, −). */
+        halo: uniform(new THREE.Vector4(-100, 0, 0, 0)),
         /** The bearing the moon's shadow ends nearest (core.js umbraAzAt), radians east of north. */
         umbraAz: uniform(0.5),
+        /** How far the shadow reaches on average (km, core.js shadowReachAt): it breathes. */
+        shadowReach: uniform(52),
+        /** How far the volcano's summit stands in the sunlight beyond the shadow, 0..1. */
+        summitLit: uniform(1),
+        /** The weather's clouds: (rows, towers, deck, lenticular) weights, 0..1 (core.js weatherAt). */
+        weather: uniform(new THREE.Vector4(1, 0.25, 0, 0.6)),
+        /** The clouds' own clock (seconds): their drift, their boil. */
+        cloudClock: uniform(0),
 
         zenith: colour(0.0035, 0.006, 0.02),
         mid: colour(0.013, 0.014, 0.04),
         horizon: colour(0.075, 0.032, 0.052),
         glow: colour(0.5, 0.2, 0.055),
+        belt: colour(0.05, 0.022, 0.05),
         haze: colour(0.13, 0.058, 0.048),
         ridge: colour(0.0045, 0.005, 0.011),
         alpen: colour(0.64, 0.28, 0.11),
@@ -184,6 +207,7 @@ export function createUniforms() {
         chromo: colour(1.0, 0.16, 0.3),
         earth: colour(0.45, 0.55, 0.8),
         glowHeight: uniform(0.035),
+        bandHeight: uniform(0.07),
         starPower: uniform(1),
         alpenPower: uniform(1),
     };
