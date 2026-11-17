@@ -11,15 +11,17 @@ import {
 } from '../../src/themes/neon-district/neon-district-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/neon-district/neon-district-quality.js';
 import { fallbackLayout } from '../../src/themes/neon-district/neon-district-composition.js';
-import {
-    DRAGON, DRAGON_FLIGHT, DRAGON_LANE, DRAGON_OVERHEAD, dragonPath, sparkHeight,
-} from '../../src/themes/neon-district/neon-district-fx.js';
+import { sparkHeight } from '../../src/themes/neon-district/neon-district-fx.js';
+import { DRAGON_SCHEME_MOON } from '../../src/themes/neon-district/neon-district-dragon.js';
 import { KIT_KINDS, KIT_PIECES } from '../../src/themes/neon-district/neon-district-kit.js';
 
 function makeWorld(quality = 'Minimal', { width = 1600, height = 900, live = true } = {}) {
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(60, width / height, REST_RIG.near, REST_RIG.far);
     const world = new NeonDistrictWorld({ scene, quality, capture: true }).build();
+    // Held on the night's first weather (today's rain), so a test of the palettes or the play
+    // is not also a test of the weather (tests/unit/neon-district-night.test.js is).
+    world.weatherHold = 0;
     world.bindCamera(camera);
     world.setViewport(width, height, width / height);
     if (live) world.setLayout(fallbackLayout(width, height), width / height);
@@ -479,9 +481,9 @@ describe('neon district world: clears, combos and the four-line overdrive', () =
         const { camera, world } = makeWorld('High');
         world.onClear({ lines: 4, combo: 6 });
         const wave = world.u.clearA[0].value.clone();
-        const flight = world.dragon.uniforms.flight.value;
         run(world, camera, 0.56);
-        const launched = flight.x;
+        const lead = world.flights[0];
+        const launched = lead.at;
         const neonBefore = world.u.neon.value;
         const mistBefore = world.getPostState().glassMist;
         world.onPerfect({ combo: 6 });
@@ -496,32 +498,41 @@ describe('neon district world: clears, combos and the four-line overdrive', () =
         expect(world.counts.perfects).toBe(1);
         expect(world.u.clearA[0].value.x).toBe(wave.x);
         expect(world.u.clearA[0].value.z).toBeGreaterThan(wave.z);
-        // The dragon is not yanked back to the haze: it burns brighter where it is.
-        expect(flight.x).toBe(launched);
-        expect(flight.y).toBeGreaterThan(1);
+        // The dragon is not yanked back: it burns brighter where it is, and the crown calls a
+        // second, white-gold one to fly beside it.
+        expect(world.flights[0]).toBe(lead);
+        expect(lead.at).toBe(launched);
+        expect(lead.light).toBeGreaterThan(1);
+        expect(world.dragon.light(0)).toBeGreaterThan(1);
+        expect(world.flights[1].plan.scheme).toBe(DRAGON_SCHEME_MOON);
+        expect(world.flights[1].at).toBeGreaterThan(lead.at);
         // The glass wipes clear and the rain lets up.
         expect(world.getPostState().glassMist).toBeLessThan(mistBefore * 0.5);
         expect(world.u.rain.value).toBeLessThan(1);
-        // The crown feeds the dragon in flight; it does not call a second one after it.
-        run(world, camera, DRAGON_FLIGHT);
+        // The crown feeds the dragon in flight; it does not queue another to follow it.
+        expect(world.dragonNext).toBe(Infinity);
+        run(world, camera, 16);
         expect(world.getState().dragon).toBe(false);
         world.dispose();
     });
 
     it('sends a second dragon after the first when quads come back to back', () => {
         const { camera, world } = makeWorld('High');
-        const flight = world.dragon.uniforms.flight.value;
         world.onClear({ lines: 4, combo: 1 });
         run(world, camera, 2);
-        const first = flight.x;
+        const first = world.flights[0];
         world.onClear({ lines: 4, combo: 2, b2b: true });
-        // The one in the street is not yanked back to the haze: it burns brighter.
-        expect(flight.x).toBe(first);
-        expect(flight.y).toBeGreaterThan(1);
+        // The one in the street is not yanked back: it burns brighter.
+        expect(world.flights[0]).toBe(first);
+        expect(first.light).toBeGreaterThan(1);
         // Back-to-back quads stack the overdrive instead of resetting it.
         expect(world.overdrive).toBeGreaterThan(1);
-        run(world, camera, DRAGON_FLIGHT);
-        expect(flight.x).toBeCloseTo(first + DRAGON_FLIGHT, 6);
+        run(world, camera, first.at + first.plan.duration - world.time + 0.1);
+        // Another follows it as it leaves, and flies some other way.
+        const second = world.flights[0];
+        expect(second).not.toBe(first);
+        expect(second.at).toBeCloseTo(first.at + first.plan.duration, 6);
+        expect(second.plan.recipe).not.toBe(first.plan.recipe);
         expect(world.getState().dragon).toBe(true);
         world.dispose();
     });
@@ -628,11 +639,14 @@ describe('neon district world: clears, combos and the four-line overdrive', () =
         expect(gold.y).toBeGreaterThan(gold.z);
         // The dragon is in the street, and the district stays warm for as long as it is.
         expect(world.getState().dragon).toBe(true);
-        expect(world.dragon.uniforms.flight.value.y).toBe(1);
-        run(world, camera, DRAGON_FLIGHT * 0.8);
+        expect(world.flights[0].light).toBe(1);
+        expect(world.flights[1]).toBeNull();
+        const { duration } = world.flights[0].plan;
+        run(world, camera, duration * 0.8);
         expect(world.overdrive).toBeGreaterThanOrEqual(0.3);
-        run(world, camera, DRAGON_FLIGHT);
+        run(world, camera, duration);
         expect(world.getState().dragon).toBe(false);
+        expect(world.dragon.light(0)).toBe(0);
         run(world, camera, 12);
         expect(world.overdrive).toBeLessThan(0.02);
         expect(world.getPostState().exposure).toBeGreaterThan(0.99);
@@ -640,12 +654,12 @@ describe('neon district world: clears, combos and the four-line overdrive', () =
         world.dispose();
     });
 
-    it('sends the dragon beside the card on a wide frame and over it on a tall one', () => {
+    it('gives the dragon a lane beside the card on a wide frame and only the air over it on a tall one', () => {
         const wide = makeWorld('High');
-        expect(wide.world.dragonLane()).toBe(DRAGON_LANE);
+        expect(wide.world.dragonStage().left).toBeTruthy();
         wide.world.dispose();
         const tall = makeWorld('High', { width: 430, height: 932 });
-        expect(tall.world.dragonLane()).toBe(DRAGON_OVERHEAD);
+        expect(tall.world.dragonStage()).toMatchObject({ left: null, right: null });
         tall.world.onCombo(5);
         run(tall.world, tall.camera, 2);
         // No room beside the card for the hologram either.
@@ -837,7 +851,8 @@ describe('neon district world: time', () => {
         for (let i = 0; i < LOCK_SLOTS; i++) expect(world.u.lockA[i].value.w).toBe(0);
         for (let i = 0; i < CLEAR_SLOTS; i++) expect(world.u.clearA[i].value.z).toBe(0);
         expect(world.beams.uniforms.frame.value.w).toBe(0);
-        expect(world.dragon.uniforms.flight.value.y).toBe(0);
+        expect(world.flights.every((flight) => flight === null)).toBe(true);
+        expect(world.dragon.light(0)).toBe(0);
         world.seek(40);
         expect(world.time).toBe(40);
         expect(world.scroll).toBeCloseTo(40 * CRUISE_SPEED, 9);
@@ -890,26 +905,5 @@ describe('neon district effects: closed forms', () => {
         expect(secondPeak).toBeGreaterThan(0);
         expect(secondPeak).toBeLessThan(firstPeak * 0.25);
         expect(sparkHeight(vy, airborne * 3)).toBe(0);
-    });
-
-    it('swims the dragon out of the haze on the centre line, across to its lane and up over the camera', () => {
-        const start = dragonPath(0);
-        expect(start.x).toBeCloseTo(0, 6);
-        expect(start.z).toBe(DRAGON.start);
-        const mid = dragonPath(60);
-        expect(Math.abs(mid.x - DRAGON_LANE[0])).toBeLessThan(1);
-        expect(Math.abs(mid.y - DRAGON_LANE[1])).toBeLessThan(1.5);
-        const end = dragonPath(DRAGON.travel + 6);
-        expect(end.z).toBeGreaterThan(20);
-        expect(end.y).toBeGreaterThan(mid.y + 5);
-        // Inside the canyon all the way: never through a wall.
-        for (let d = 0; d <= DRAGON.travel; d += 4) {
-            expect(Math.abs(dragonPath(d).x) + DRAGON.radius).toBeLessThan(STREET.halfStreet);
-            expect(dragonPath(d).y).toBeGreaterThan(5);
-        }
-        const overhead = dragonPath(60, DRAGON_OVERHEAD);
-        expect(Math.abs(overhead.x)).toBeLessThan(1);
-        expect(overhead.y).toBeGreaterThan(18);
-        expect(DRAGON_FLIGHT).toBeCloseTo((DRAGON.travel + DRAGON.length) / DRAGON.speed, 9);
     });
 });
