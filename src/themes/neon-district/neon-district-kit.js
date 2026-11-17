@@ -305,7 +305,13 @@ export function createKitMaterial(u) {
             .mul(max(vNormal.y, 0.0).mul(0.7).add(0.3));
         // Light from the street reaches faces that look down or across more than faces that look up.
         const street = float(1.0).sub(max(vNormal.y, 0.0).mul(0.6));
-        const paint = mix(vec3(0.03, 0.033, 0.042), vec3(0.05, 0.036, 0.03), ndHash11(seed.mul(0.37).add(1.0)));
+        const metal = mix(vec3(0.03, 0.033, 0.042), vec3(0.05, 0.036, 0.03), ndHash11(seed.mul(0.37).add(1.0)));
+        // Most pieces are painted the colour of their own lamp (a canopy the colour of its shop,
+        // a vending machine of its brand); a canopy is striped with cream.
+        const hue = tint.rgb.div(max(max(tint.x, max(tint.y, tint.z)), 0.05));
+        const stripes = step(0.5, fract(pW.z.sub(u.scroll).mul(1.3))).mul(step(0.5, abs(vNormal.y))).mul(step(pW.y, 6.6));
+        const coat = mix(hue.mul(0.09).add(0.012), vec3(0.11, 0.1, 0.085), stripes);
+        const paint = mix(metal, coat, step(ndHash11(seed.mul(0.73).add(5.0)), 0.72).mul(0.88));
         const body = paint.mul(mask.x)
             .mul(vec3(0.028, 0.038, 0.066).add(glow.mul(1.1).mul(street)).add(skyLight.mul(4.0)).add(pulse.mul(3.2)));
         const flick = step(0.06, ndHash11(floor(u.time.mul(11.0)).add(seed))).mul(0.25).add(0.75);
