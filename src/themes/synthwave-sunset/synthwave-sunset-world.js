@@ -9,34 +9,42 @@
  * screen (menus) the camera faces the sun. Layout changes ease in as a slow pan. The lens is Hor+
  * (fixed vertical FOV, horizontal capped), and the pitch puts the horizon at RIG.horizonFrac.
  *
- * The evening runs on one number, `dusk` (0..1). It walks by the world's clock in every mode, the
- * menus and Serenity included (EVENING_WALK): from DUSK.rest, the sun on the sea, to the
- * afterglow and back, resting on the way, so the sun sinks into the sea and the pier's lights come
- * on from the land end out to the wheel, then the sun rises out of the sea again. A level steps it
- * on along the same walk, and the wheel's neon ring turns to its other colour at every stop.
+ * The evening has four clocks (synthwave-sunset-evening.js), each a function of the time alone and
+ * each of its own length, so the same picture does not come round for a long while. The hour
+ * walks in every mode, the menus and Serenity included: from the sunset (the opening look: the
+ * sun on the sea) through the afterglow to a moonlit night, back through the sunset to the golden
+ * hour, the sun in the wheel's hub, and round again; a level steps it on, and the wheel's neon
+ * ring turns to its other colour at every stop. Tonight's colours turn through four temperaments,
+ * the sky's weather through four (streaks, a mackerel sky, clear, cumulus towers with heat
+ * lightning after dark), the sea through its states; the wheel's lights through five programmes.
  *
- * Gameplay:
- *   lock         two bands of the piece's colour run round the wheel's rims from the side of its
- *                column and meet at the top (a hard drop's band burns brighter; bands that pile
- *                up under rapid locks add their light instead of cutting each other off)
- *   line clear   one firework shell per line from the barge off the pier; four lines, a finale
- *                closed by a gold willow. The show has memory: a longer chain and hotter play
- *                fire more and bigger shells, glitter and then willows join the volley, and each
- *                cascade wave bursts higher and fuller than the last
- *   twist       the wheel whirls round and a lilac ring bursts (with no lines, the whirl alone
- *                and a lilac band round the rims)
- *   back-to-back a salute: a row of rings bursting together in the wheel's neon colours (one more
- *                for each back-to-back in a row), and both rims ring round
- *   perfect      the crown, over the clear still in the air: a curtain of gold willows across
- *                the free sky and the whole bay at full blaze
+ * Gameplay: every event has an instrument of its own.
+ *   lock         the wheel's rims: two bands of the piece's colour run round from the side of its
+ *                column and meet at the top (bands that pile up under rapid locks add their light
+ *                instead of cutting each other off)
+ *   hard drop    the pier's lights: a pulse of the piece's colour runs out along the pier from
+ *                the land end to the wheel, brighter the further the piece fell
+ *   line clear   the barge's shells, a figure for each count: one shell whose kind turns with
+ *                each clear; a pair bursting side by side; a fan under a gold palm; four lines,
+ *                the finale across the whole free sky closed by a gold brocade crown while the
+ *                wheel's face bursts in gold. The show has memory: a longer chain and hotter
+ *                play fire more and bigger shells, and each cascade wave bursts higher
+ *   cascade      the pier's deck: roman candles, more of them the deeper the wave
+ *   twist        the wheel: it whirls and throws sparks off its rim like a Catherine wheel
+ *   back-to-back the wheel's hub: a fan of lasers, a beam more for each in a row, over the
+ *                salute's row of rings
+ *   perfect      the whole pier: a wall of gold comets, then a waterfall of gold sparks off its
+ *                seaward edge into the sea, under a curtain of gold willows, the bay at full blaze
  *   chain        the coaster climbs the lift hill a notch per link (its lift's bulbs fill like a
  *                meter, past eight links ever closer to the crest and ever brighter); when the
  *                chain breaks after three or more it goes round the circuit into the station
  *                (faster and with a longer trail for a longer chain, twice round from ten), and
  *                the lemon drains down the lift instead of going dark. A chain built during a
  *                ride charges the lift ahead of the train, which climbs it on its return
- *   level up     the evening steps on along its walk, the wheel's neon ring turns on to its
- *                next colour, two shells (the shells and the surge only with reactions on)
+ *   level up     a new act: searchlights sweep up from the pier and cross over the bay, a broad
+ *                wave of gold runs out along its lights, the wheel's face bursts in its next
+ *                colour, a saturn and a ring go up; the evening steps on along its walk (the
+ *                show only with reactions on)
  *
  * The crescendo (src/themes/shared/gameplay-surge.js, sampled once a frame on the world's clock):
  * as play heats, the pleasure pier powers up ahead of the evening. Warm: the pier's lights race
@@ -50,14 +58,19 @@
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import { GameplaySurge, SURGE_WEIGHTS, Swell } from '../shared/gameplay-surge.js';
-import {
-    MOOD_HOLD, meltColour, moodDrift, pingPong,
-} from '../shared/mood-clock.js';
+import { meltColour, moodDrift, wheelAt } from '../shared/mood-clock.js';
 import { RIG, SUN } from './synthwave-sunset-tsl.js';
+import {
+    EVENING, HOUR, SKY_KEYS, eveningHour, eveningLights, eveningLook, eveningStops, hourOfDusk,
+    moonDirection, seaStateAt, skyColours, temperamentPhase, weatherAt, weatherPhase,
+} from './synthwave-sunset-evening.js';
 import { createSky } from './synthwave-sunset-sky.js';
 import { createSea } from './synthwave-sunset-sea.js';
 import { NEON_RING, WHEEL, createWheel } from './synthwave-sunset-wheel.js';
 import { createPier } from './synthwave-sunset-pier.js';
+import { PIER, PIER_HEAD, pierFrame } from './synthwave-sunset-layout.js';
+import { Beams } from './synthwave-sunset-beams.js';
+import { createLife } from './synthwave-sunset-life.js';
 import { createCoaster } from './synthwave-sunset-coaster.js';
 import { createPromenadeSteps } from './synthwave-sunset-promenade.js';
 import { createPalms } from './synthwave-sunset-palms.js';
@@ -75,7 +88,9 @@ import { flashScale, prefersReducedFlashing } from '../../utils/photosensitivity
 export const MIRROR_LAYER = 3;
 
 /** The parts, in build order (the playground's `parts=` names). */
-export const SYNTHWAVE_PARTS = Object.freeze(['sky', 'sea', 'wheel', 'pier', 'coaster', 'promenade', 'palms', 'gulls', 'fireworks']);
+export const SYNTHWAVE_PARTS = Object.freeze([
+    'sky', 'sea', 'wheel', 'pier', 'coaster', 'promenade', 'palms', 'life', 'gulls', 'fireworks', 'beams',
+]);
 
 /** Per-tier content. Every tier keeps the full composition; tiers trade detail, not layout. */
 export const WORLD_QUALITY = Object.freeze({
@@ -90,7 +105,8 @@ export const WORLD_QUALITY = Object.freeze({
         mirrorScale: 0,
         palms: 6,
         gulls: 3,
-        fireworks: 1200,
+        strollers: 12,
+        fireworks: 2000,
         stars0: 70,
         finale: 3,
     },
@@ -100,12 +116,14 @@ export const WORLD_QUALITY = Object.freeze({
         shooting: true,
         seaTrains: 5,
         seaClouds: 0,
+        mackerel: false,
         swash: true,
         sandDetail: false,
         mirrorScale: 0.25,
         palms: 10,
         gulls: 4,
-        fireworks: 1800,
+        strollers: 18,
+        fireworks: 2800,
         stars0: 90,
         finale: 4,
     },
@@ -119,7 +137,8 @@ export const WORLD_QUALITY = Object.freeze({
         mirrorScale: 0.35,
         palms: 14,
         gulls: 5,
-        fireworks: 2600,
+        strollers: 30,
+        fireworks: 4200,
         stars0: 120,
         finale: 5,
     },
@@ -133,7 +152,8 @@ export const WORLD_QUALITY = Object.freeze({
         mirrorScale: 0.5,
         palms: 20,
         gulls: 7,
-        fireworks: 3400,
+        strollers: 44,
+        fireworks: 6200,
         stars0: 150,
         finale: 6,
     },
@@ -147,7 +167,8 @@ export const WORLD_QUALITY = Object.freeze({
         mirrorScale: 0.5,
         palms: 24,
         gulls: 8,
-        fireworks: 4200,
+        strollers: 52,
+        fireworks: 7400,
         stars0: 170,
         finale: 7,
     },
@@ -161,42 +182,51 @@ export const WORLD_QUALITY = Object.freeze({
         mirrorScale: 0.6,
         palms: 28,
         gulls: 9,
-        fireworks: 5200,
+        strollers: 60,
+        fireworks: 8800,
         stars0: 200,
         finale: 8,
     },
 });
 
-/** The evening: its rest value (where the walk sets out: the sun on the sea), a level's step. */
-export const DUSK = Object.freeze({
-    rest: 0.14,
-    levelStep: 0.08,
+export {
+    EVENING, HOUR, eveningHour, eveningStops,
+};
+
+/** The evening's old measure at the sunset stop, where the walk sets out (the playground's dusk=). */
+export const DUSK = Object.freeze({ rest: EVENING.restDusk });
+
+/** The uniform each of tonight's colours is written into (SKY_KEYS, in order). */
+export const SKY_UNIFORMS = Object.freeze({
+    horizon0: 'skyHorizon0',
+    horizon1: 'skyHorizon1',
+    low0: 'skyLow0',
+    low1: 'skyLow1',
+    mid0: 'skyMid0',
+    mid1: 'skyMid1',
+    high: 'skyHigh',
+    zenith: 'skyZenith',
+    cloud0: 'cloud0',
+    cloud1: 'cloud1',
+    disc0: 'sunDisc0',
+    disc1: 'sunDisc1',
+    disc2: 'sunDisc2',
+    warm: 'sunWarm',
+    band: 'sunBand',
+    glint: 'sunGlint',
 });
 
 /**
- * The evening walks by the clock (shared/mood-clock.js), there and back between DUSK.rest and the
- * afterglow: the sun on the sea, the sun half sunk, the afterglow, half sunk again, the sun on the
- * sea. Each stop rests `hold` of its `seconds` and then melts into the next, so a whole walk there
- * and back takes 2 · stops · seconds (eight minutes); `stops` is the stops a leg has.
+ * Heat lightning in the cumulus towers: the flickers of one flash (seconds after it starts,
+ * strength), how wide a stretch of the bank it lights (rad) and the wait between flashes (s).
  */
-export const EVENING_WALK = Object.freeze({ seconds: 120, hold: MOOD_HOLD, stops: 2 });
-
-/**
- * The stops the clock alone has walked the evening by `time` (whole: a stop; between: the melt).
- * @param {number} time
- */
-export const eveningStops = (time) => moodDrift(time, EVENING_WALK.seconds, EVENING_WALK.hold);
-
-/**
- * The evening at `time` with `steps` (dusk units, a level's DUSK.levelStep each) walked on top of
- * the clock: folded there and back between DUSK.rest and 1, so it never comes to rest at either end.
- * @param {number} steps
- * @param {number} time
- */
-export function eveningAt(steps, time) {
-    const span = 1 - DUSK.rest;
-    return DUSK.rest + span * pingPong(steps / span + eveningStops(time) / EVENING_WALK.stops);
-}
+export const LIGHTNING = Object.freeze({
+    flickers: Object.freeze([[0.03, 0.6], [0.13, 1], [0.19, 0.45], [0.36, 0.8]]),
+    flicker: 0.035,
+    life: 0.6,
+    waitMin: 2.6,
+    waitSpread: 7,
+});
 
 /** The theme's piece palette (synthwave-sunset-tetrominos.js), for a lock's chase colour. */
 export const PIECE_COLORS = Object.freeze(Object.fromEntries(['I', 'O', 'T', 'S', 'Z', 'J', 'L']
@@ -275,6 +305,44 @@ const PINK = new THREE.Color(FIREWORK_COLORS[1]);
 const LEMON = new THREE.Color(FIREWORK_COLORS[2]);
 const LILAC = new THREE.Color(FIREWORK_COLORS[3]);
 
+/**
+ * A hard drop's pulse along the pier: its strength at a full drop, its speed (pier lengths a
+ * second: the land end to the wheel in under a second), its width (pier lengths) and the fall
+ * (rows) that counts as a full drop.
+ */
+export const PULSE = Object.freeze({
+    strength: 1.3, speed: 1.15, width: 0.06, fullDrop: 16,
+});
+/** Pulses running out along the pier at once. */
+export const PULSE_SLOTS = 4;
+
+/** The beams' slots: the back-to-back's lasers first, then the level's searchlights. */
+export const LASER_SLOTS = 6;
+export const SEARCH_SLOTS = 4;
+export const BEAMS = Object.freeze({
+    laserLength: 300, laserLevel: 1.15, searchLength: 330, searchLevel: 0.42,
+});
+const LASER_COLORS = [0xff5fa8, 0x7ff0d4, 0xc8a2ff, 0xffe46a, 0x6fd8ff, 0xff8a5c]
+    .map((hex) => new THREE.Color(hex).multiplyScalar(1.5));
+const SEARCH_COLOR = new THREE.Color(0xfff0d2);
+
+/**
+ * The figures a clear draws in the sky: the kinds a single line turns through, the kinds a pair
+ * takes, the order of a finale's volley.
+ */
+const SINGLES = ['peony', 'pistil', 'chrys', 'crossette'];
+const DOUBLES = ['pistil', 'ring', 'strobe'];
+const FINALE = ['chrys', 'pistil', 'ring', 'crossette', 'peony', 'saturn', 'strobe', 'palm'];
+
+/**
+ * Where the pier's roman candles stand (metres from the wheel's end): the stretch a game shows
+ * left of its board, and the short one beside the board's far side.
+ */
+export const CANDLES = Object.freeze({ far: Object.freeze([12, 74]), near: Object.freeze([128, 152]) });
+
+/** The wheel's light programmes: how many, seconds each shows, the share of that it rests. */
+export const WHEEL_SHOW = Object.freeze({ programmes: 5, seconds: 46, hold: 0.9 });
+
 /** Chain lengths that send a shooting star over the bay. */
 const SHOOT_MILESTONES = new Set([5, 8, 10, 12, 15, 20, 25, 30]);
 
@@ -296,11 +364,32 @@ export function createWorldUniforms() {
         sunAz: uniform(new THREE.Vector2(0, -1)),
         sunRadius: uniform(Math.sin(SUN.radius)),
         sunTan: uniform(Math.tan(SUN.radius)),
-        /** The evening: 0 = the sun on the sea, 1 = afterglow, the sun gone. */
+        /** The evening's old measure: 0 = the golden hour, 1 = afterglow and night, the sun gone. */
         dusk: uniform(0),
+        /** The golden hour (1) melting into the sunset (0). */
+        gold: uniform(0),
+        /** The daylight left on what stands in the scene (1 at the sunset's start, less by night). */
+        ambient: uniform(1),
+        /** The weather: how much (cirrus, mackerel sky, cumulus towers) the sky carries. */
+        cloudCover: uniform(new THREE.Vector4(0.78, 0, 0, 0)),
+        /** How far the stars are out, the moon's light, the evening star's, the night (0..1). */
+        skyLights: uniform(new THREE.Vector4(0, 0, 1, 0)),
+        /** The crescent moon's frame: its direction, toward the sun across its disc, and up. */
+        moonDir: uniform(new THREE.Vector3(-0.13, 0.42, -0.9).normalize()),
+        moonRight: uniform(new THREE.Vector3(1, 0, 0)),
+        moonUp: uniform(new THREE.Vector3(0, 1, 0)),
+        /** Heat lightning in the towers: (bearing rad, width rad, strength, 0). */
+        bolt: uniform(new THREE.Vector4(0, 0.2, 0, 0)),
+        /** How lively the sea runs (a scale on the swell's slopes; 1 = a light breeze). */
+        seaState: uniform(1),
         /** The ferris wheel: its angle (rad), how bright its lights burn, the neon ring's hue. */
         wheelAngle: uniform(0),
         wheelGlow: uniform(1),
+        /** The wheel's light programme: (the one showing, the one it turns to, how far, 0). */
+        wheelShow: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** The wheel's starburst: (start time, strength, 0, 0) and its colour. */
+        wheelBurst: uniform(new THREE.Vector4(-1e6, 0, 0, 0)),
+        wheelBurstCol: uniform(new THREE.Color(1, 1, 1)),
         /** How far the neon ring has turned from pink (0) to mint (1), and its colour (NEON_RING). */
         wheelNeonMix: uniform(0),
         wheelNeon: uniform(new THREE.Color(...NEON_RING[0])),
@@ -339,6 +428,17 @@ export function createWorldUniforms() {
         u[`chase${i}`] = uniform(new THREE.Vector4(-1e6, 0, 0, 0));
         u[`chaseCol${i}`] = uniform(new THREE.Color(1, 1, 1));
     }
+    for (let i = 0; i < PULSE_SLOTS; i += 1) {
+        u[`pulse${i}`] = uniform(new THREE.Vector4(-1e6, 0, 1, 0.05));
+        u[`pulseCol${i}`] = uniform(new THREE.Color(1, 1, 1));
+    }
+    // Tonight's colours: the opening look (the sunset, the first temperament) until the world
+    // writes its own (applyEvening).
+    const opening = skyColours(eveningLook(EVENING.start), 0);
+    for (const key of SKY_KEYS) {
+        const [r, g, b] = opening[key];
+        u[SKY_UNIFORMS[key]] = uniform(new THREE.Color().setRGB(r, g, b, THREE.LinearSRGBColorSpace));
+    }
     return u;
 }
 
@@ -372,26 +472,67 @@ export class SynthwaveWorld {
         this.sunDir = new THREE.Vector3(0, 0, -1);
         this.sunUp = new THREE.Vector3(0, 1, 0);
         this.sunRight = new THREE.Vector3(1, 0, 0);
-        this.dusk = DUSK.rest;
-        /** The levels' steps along the evening's walk (dusk units), eased toward duskTarget. */
-        this.duskSteps = 0;
-        this.duskTarget = 0;
-        /** An evening held still (the playground's dusk=): duskBase, whatever the clock. */
-        this.duskBase = DUSK.rest;
-        this.duskHeld = false;
         /**
-         * What play adds to the bay's lights this frame (updateSurge writes it, applyDusk folds it
-         * in): the pier's light front, the bulbs' glow, the town's lights; and the wheel's extra
+         * The evening: its hour along the walk (HOUR: 0 golden hour .. 3 night), what that looks
+         * like (gold, dusk, night) and the light it gives the bay. `dusk` is the look's old
+         * measure, kept for the gulls' roost and the tests.
+         */
+        this.hour = EVENING.start;
+        this.look = eveningLook(EVENING.start);
+        this.lights = eveningLights(this.look);
+        this.dusk = this.look.dusk;
+        /** The levels' steps along the evening's walk (hours), eased toward hourTarget. */
+        this.hourSteps = 0;
+        this.hourTarget = 0;
+        /** An evening held still (the playground's hour= and dusk=): hourBase, whatever the clock. */
+        this.hourBase = EVENING.start;
+        this.hourHeld = false;
+        /**
+         * Tonight's colours, the weather and the sea, each on its own clock (a held value, the
+         * playground's temper=, weather= and sea=, stands whatever the clock).
+         */
+        this.temper = 0;
+        this.temperHeld = null;
+        this.weather = weatherAt(0);
+        this.weatherHeld = null;
+        this.seaHeld = null;
+        this._sky = {};
+        this._moon = [0, 0, 0];
+        this._v = new THREE.Vector3();
+        /** Heat lightning: the flash in the air (its start, bearing and width) and the next one. */
+        this.lightning = {
+            t0: -1e6, az: 0, width: 0.2, next: 6,
+        };
+        /**
+         * What play adds to the bay's lights this frame (updateSurge writes it, applyEvening folds
+         * it in): the pier's light front, the bulbs' glow, the town's lights; and the wheel's extra
          * turn, the chase lights' pace and the breeze. All rest at 0 (1 for the paces).
          */
         this.bay = {
             power: 0, glow: 0, town: 0, spin: 0, chase: 1, breeze: 1,
         };
-        this.setDusk(DUSK.rest);
+        this.setHour(EVENING.start);
 
         // Reactive state
         this.chases = Array.from({ length: CHASE_SLOTS }, () => ({ t0: -1e6, strength: 0 }));
         this.lastLockColor = new THREE.Color(FIREWORK_COLORS[0]);
+        /** When each pulse along the pier set out (its slot gives way to a new one, oldest first). */
+        this.pulses = new Array(PULSE_SLOTS).fill(-1e6);
+        /** Which figure the next single and the next pair draw (they turn with each clear). */
+        this.figures = { single: 0, double: 0 };
+        /**
+         * The beams: the back-to-back's lasers (their light, and how many the streak has lit)
+         * and the level's searchlights, both accumulating swells; the clock they sweep on.
+         */
+        this.lasers = new Swell({
+            attack: 0.25, release: 2.6, ceiling: 1.3, knee: 1.0,
+        });
+        this.laserCount = 2;
+        this.search = new Swell({
+            attack: 0.5, release: 3.4, ceiling: 1.2, knee: 0.95,
+        });
+        this.beamClock = 0;
+        this.beamsLit = false;
         /**
          * The neon ring's colour walk: the clock turns it on to its other colour at every stop of
          * the evening, and each level turns it on once more (eased), never back.
@@ -454,9 +595,16 @@ export class SynthwaveWorld {
      */
     * buildSteps() {
         const { q, u, rand } = this;
-        this.parts.sky = createSky(u, { cloudOctaves: q.cloudOctaves, stars: q.stars, shootingStars: q.shooting });
+        this.parts.sky = createSky(u, {
+            cloudOctaves: q.cloudOctaves, stars: q.stars, shootingStars: q.shooting, mackerel: q.mackerel !== false,
+        });
         this.parts.sea = createSea(u, {
-            trains: q.seaTrains, clouds: q.seaClouds, swash: q.swash, mirrorScale: q.mirrorScale, sandDetail: q.sandDetail !== false,
+            trains: q.seaTrains,
+            clouds: q.seaClouds,
+            swash: q.swash,
+            mirrorScale: q.mirrorScale,
+            sandDetail: q.sandDetail !== false,
+            mackerel: q.mackerel !== false,
         });
         this.reflection = this.parts.sea.userData.reflection ?? null;
         if (this.reflection) this.root.add(this.reflection.target);
@@ -470,12 +618,29 @@ export class SynthwaveWorld {
         yield 'hotels';
         this.parts.palms = createPalms(u, { rand, count: q.palms });
         yield 'palms';
+        this.parts.life = createLife(u, { strollers: q.strollers, mirrorLayer: MIRROR_LAYER });
+        yield 'strollers and boats';
         this.gulls = new SynthwaveGulls(u, { count: q.gulls, mirrorLayer: MIRROR_LAYER });
         this.parts.gulls = this.gulls.group;
         this.fireworks = new Fireworks(u, { capacity: q.fireworks, rand, mirrorLayer: MIRROR_LAYER });
         // A bang startles the gulls (on their clock, which lags the world's under Reduce motion).
         this.fireworks.onBurst = (b) => this.gulls?.hit(b.scale ?? 1, b.at - (this.gullLag ?? 0), this.motion ?? 1);
         this.parts.fireworks = this.fireworks.mesh;
+        this.beams = new Beams(u, { mirrorLayer: MIRROR_LAYER });
+        this.parts.beams = this.beams.mesh;
+        // Where the pier's own effects stand: its frame, the wheel's face (the hub in front of
+        // the near rim, the plane's two axes and the axle) and the searchlights' feet on the deck.
+        this.pierAt = pierFrame();
+        const { wheel } = this.parts;
+        wheel.updateMatrixWorld(true);
+        const axle = new THREE.Vector3().setFromMatrixColumn(wheel.matrixWorld, 2).normalize();
+        this.wheelFace = {
+            ax: new THREE.Vector3().setFromMatrixColumn(wheel.matrixWorld, 0).normalize(),
+            ay: new THREE.Vector3().setFromMatrixColumn(wheel.matrixWorld, 1).normalize(),
+            axle,
+            center: new THREE.Vector3().setFromMatrixPosition(wheel.matrixWorld).addScaledVector(axle, WHEEL.depth / 2 + 0.6),
+        };
+        this.searchFeet = [26, 62, 132, 150].map((along, i) => this.pierAt.at(along, (i % 2 ? -1 : 1) * 1.5, PIER.deckY + 1.4));
         this.track = this.parts.coaster.userData;
         this.coaster.t = this.track.marks.station;
         this.coaster.meter = this.track.marks.liftFoot;
@@ -510,45 +675,84 @@ export class SynthwaveWorld {
     // ── The evening ──────────────────────────────────────────────────────────
 
     /**
-     * Set the evening (0..1) at once; with `hold` it stays there whatever the clock (the next
-     * frame otherwise takes it back to the walk). The sun sinks from its rest height on the sea to
-     * below the horizon (SUN.lift → SUN.setLift, in disc radii); the sky's colours follow `u.dusk`.
+     * Set the evening's hour (HOUR: 0 golden hour, 1 sunset, 2 afterglow, 3 night) at once; with
+     * `hold` it stays there whatever the clock (the next frame otherwise takes it back to the
+     * walk).
      */
-    setDusk(value, { hold = false } = {}) {
-        const dusk = THREE.MathUtils.clamp(Number(value) || 0, 0, 1);
-        this.dusk = dusk;
-        this.duskBase = dusk;
-        if (hold) this.duskHeld = true;
-        this.applyDusk();
+    setHour(value, { hold = false } = {}) {
+        const hour = THREE.MathUtils.clamp(Number.isFinite(Number(value)) ? Number(value) : EVENING.start, HOUR.gold, HOUR.night);
+        this.hour = hour;
+        this.hourBase = hour;
+        if (hold) this.hourHeld = true;
+        this.applyEvening();
+    }
+
+    /** Set the evening by its old measure (0 = the golden hour .. 1 = the afterglow). */
+    setDusk(value, opts) {
+        this.setHour(hourOfDusk(Number(value) || 0), opts);
     }
 
     /**
      * Where the evening's walk stands at `time`: the clock's walk there and back plus the levels'
-     * steps along it (DUSK.rest..1: DUSK.rest at time 0 with no level).
+     * steps along it, as an hour (or the hour it is held at).
      * @param {number} time
      */
-    eveningAt(time) {
-        return eveningAt(this.duskSteps, time);
+    hourAt(time) {
+        return this.hourHeld ? this.hourBase : eveningHour(this.hourSteps, time);
     }
 
-    applyDusk() {
-        const { dusk } = this;
-        this.u.dusk.value = dusk;
-        const lift = SUN.lift + (SUN.setLift - SUN.lift) * dusk ** 1.15;
+    /** The evening's old measure at `time` (the gulls' roost reads it ahead and behind). */
+    duskAt(time) {
+        this._lookAt ??= { gold: 0, dusk: 0, night: 0 };
+        return eveningLook(this.hourAt(time), this._lookAt).dusk;
+    }
+
+    /**
+     * Write the evening into the uniforms: the sun's height (it stands in the wheel's hub at the
+     * golden hour, sits on the sea at the sunset and is gone by the afterglow), tonight's
+     * colours, the bay's lights with what play adds to them, the stars and the moon.
+     */
+    applyEvening() {
+        const { u } = this;
+        const look = eveningLook(this.hour, this.look);
+        const { dusk, gold, night } = look;
+        this.dusk = dusk;
+        u.dusk.value = dusk;
+        u.gold.value = gold;
+        const lift = SUN.lift + (SUN.setLift - SUN.lift) * dusk ** 1.15 + (SUN.goldLift - SUN.lift) * gold;
         const elev = SUN.radius * lift;
         this.sunDir.set(0, Math.sin(elev), -Math.cos(elev));
         this.sunUp.set(0, Math.cos(elev), Math.sin(elev));
-        this.u.sunDir.value.copy(this.sunDir);
-        this.u.sunUp.value.copy(this.sunUp);
-        this.u.sunRight.value.copy(this.sunRight);
-        this.u.sunAz.value.set(this.sunDir.x, this.sunDir.z).normalize();
+        u.sunDir.value.copy(this.sunDir);
+        u.sunUp.value.copy(this.sunUp);
+        u.sunRight.value.copy(this.sunRight);
+        u.sunAz.value.set(this.sunDir.x, this.sunDir.z).normalize();
+
+        const sky = skyColours(look, this.temper, this._sky);
+        for (const key of SKY_KEYS) {
+            const c = sky[key];
+            u[SKY_UNIFORMS[key]].value.setRGB(c[0], c[1], c[2], THREE.LinearSRGBColorSpace);
+        }
+
         // The pier lights come on from the land end as the evening deepens; the town too. Play
         // powers them up ahead of the evening (this.bay: 0 at rest and under casual play).
+        const L = eveningLights(look, this.lights);
         const { bay } = this;
-        this.u.pierPower.value = THREE.MathUtils.clamp(0.42 + dusk * 0.85 + bay.power, 0, 1);
-        this.u.wheelGlow.value = (0.85 + dusk * 0.5) * (1 + bay.glow);
-        this.u.pierGlow.value = (0.85 + dusk * 0.5) * (1 + bay.glow * 0.8);
-        this.u.townLights.value = Math.min(1.35, 0.5 + dusk * 0.5 + bay.town);
+        u.pierPower.value = THREE.MathUtils.clamp(L.power + bay.power, 0, 1);
+        u.wheelGlow.value = L.glow * (1 + bay.glow);
+        u.pierGlow.value = L.glow * (1 + bay.glow * 0.8);
+        u.townLights.value = Math.min(1.35, L.town + bay.town);
+        u.ambient.value = L.ambient;
+        // The evening star is the first light out and is gone in the golden hour's bright sky.
+        u.skyLights.value.set(L.stars, L.moon, (0.9 + dusk * 1.6) * (1 - gold) ** 2, night);
+
+        // The moon: its horns turn from the sun, so "right" across its disc is toward the sun.
+        const m = moonDirection(look, this._moon);
+        u.moonDir.value.set(m[0], m[1], m[2]);
+        const right = this._v.copy(this.sunDir).addScaledVector(u.moonDir.value, -this.sunDir.dot(u.moonDir.value));
+        if (right.lengthSq() < 1e-8) right.set(1, 0, 0);
+        u.moonRight.value.copy(right.normalize());
+        u.moonUp.value.crossVectors(u.moonDir.value, u.moonRight.value).normalize();
     }
 
     // ── Composition ─────────────────────────────────────────────────────────
@@ -661,7 +865,7 @@ export class SynthwaveWorld {
         u.time.value = t;
         const motion = this.motion ?? 1;
 
-        // How hot play runs, and what the bay makes of it (applyDusk folds it into the lights).
+        // How hot play runs, and what the bay makes of it (applyEvening folds it into the lights).
         this.updateSurge(t);
         const { bay } = this;
 
@@ -690,15 +894,25 @@ export class SynthwaveWorld {
         u.chaseTime.value = this.chaseClock;
         u.breeze.value = 1 + (bay.breeze - 1) * motion;
 
-        // The evening walks by the clock in every mode; a level's step eases in on top.
-        this.duskSteps += (this.duskTarget - this.duskSteps) * approach(0.6, dt);
-        if (Math.abs(this.duskTarget - this.duskSteps) < 1e-5) this.duskSteps = this.duskTarget;
-        this.dusk = this.duskHeld ? this.duskBase : this.eveningAt(t);
-        this.applyDusk();
+        // The evening walks by the clock in every mode; a level's step eases in on top. Tonight's
+        // colours, the weather and the sea turn on clocks of their own.
+        this.hourSteps += (this.hourTarget - this.hourSteps) * approach(0.6, dt);
+        if (Math.abs(this.hourTarget - this.hourSteps) < 1e-5) this.hourSteps = this.hourTarget;
+        this.hour = this.hourAt(t);
+        this.temper = this.temperHeld ?? temperamentPhase(t);
+        this.applyEvening();
+        weatherAt(this.weatherHeld ?? weatherPhase(t), this.weather);
+        u.cloudCover.value.set(this.weather.cirrus, this.weather.mackerel, this.weather.towers, 0);
+        u.seaState.value = this.seaHeld ?? seaStateAt(t);
+        this.updateLightning(t);
         // The gulls go to roost as the evening runs out (and come back when it turns back).
-        this.gulls?.update(u.gullTime.value, this.dusk, (time) => (this.duskHeld ? this.duskBase : this.eveningAt(time + this.gullLag)));
+        this.gulls?.update(u.gullTime.value, this.dusk, (time) => this.duskAt(time + this.gullLag));
 
         this.updateCoaster(dt, motion);
+        this.updateBeams(t, dt, motion);
+        // The wheel's light programme turns by the clock (the classic first: the opening look).
+        const show = wheelAt(moodDrift(t, WHEEL_SHOW.seconds, WHEEL_SHOW.hold), WHEEL_SHOW.programmes, this._show ??= { a: 0, b: 0, melt: 0 });
+        u.wheelShow.value.set(show.a, show.b, show.melt, 0);
 
         // Fireworks: bursts arriving, the sky glows round them (held back under Reduce flashing).
         this.fireworks.update(t);
@@ -742,7 +956,40 @@ export class SynthwaveWorld {
     }
 
     /**
-     * How hot play runs, made into the bay (this.bay, folded into the lights by applyDusk). All of
+     * Heat lightning: once the evening is dark enough and a bank of towers stands on the horizon,
+     * a flash now and then flickers inside it, somewhere along the bank (left of the sunset, or
+     * round to the right of it). Silent, far away, and held back under Reduce flashing.
+     */
+    updateLightning(t) {
+        const li = this.lightning;
+        const dark = THREE.MathUtils.smoothstep(this.dusk, 0.45, 0.9);
+        const stand = this.weather.towers * dark;
+        if (stand > 0.35 && t >= li.next) {
+            const r = this.rand;
+            li.t0 = t;
+            li.az = r() < 0.6 ? -(0.22 + r() * 0.5) : 0.24 + r() * 0.9;
+            li.width = 0.07 + r() * 0.09;
+            li.next = t + LIGHTNING.waitMin + r() * LIGHTNING.waitSpread;
+        }
+        const age = t - li.t0;
+        let level = 0;
+        if (age >= 0 && age < LIGHTNING.life) {
+            if (prefersReducedFlashing()) {
+                // One soft swell in place of the flickers.
+                const k = (age - LIGHTNING.life * 0.4) / (LIGHTNING.life * 0.3);
+                level = Math.exp(-k * k) * 0.6;
+            } else {
+                for (const [at, strength] of LIGHTNING.flickers) {
+                    const k = (age - at) / LIGHTNING.flicker;
+                    level = Math.max(level, strength * Math.exp(-k * k));
+                }
+            }
+        }
+        this.u.bolt.value.set(li.az, li.width, level * stand * flashScale(), 0);
+    }
+
+    /**
+     * How hot play runs, made into the bay (this.bay, folded into the lights by applyEvening). All of
      * it rests at nothing under casual play, so the evening looks as it always did:
      *   warm   the pier powers up ahead of the evening: its light front races out to the wheel,
      *          the bulbs burn brighter, the hotels switch more rooms on, the chases quicken;
@@ -794,9 +1041,9 @@ export class SynthwaveWorld {
         if (t < this.nextVolleyAt) return;
         const r = this.rand;
         const reduced = (this.motion ?? 1) < 0.5;
-        const kinds = ['chrys', 'ring', 'peony', 'chrys', 'willow'];
+        const kinds = ['chrys', 'ring', 'pistil', 'crackle', 'saturn', 'strobe', 'willow'];
         const kind = kinds[Math.floor(r() * kinds.length)];
-        const stars = Math.round(this.q.stars0 * (reduced ? 0.6 : 1) * (kind === 'willow' ? 0.55 : 0.8));
+        const stars = Math.round(this.q.stars0 * (reduced ? 0.6 : 1) * 0.8);
         this.fireworks.launch(t, {
             kind,
             color: new THREE.Color(FIREWORK_COLORS[Math.floor(r() * FIREWORK_COLORS.length)]),
@@ -901,11 +1148,26 @@ export class SynthwaveWorld {
         this.nextVolleyAt = -1e6;
         this.nextFeverShoot = -1e6;
         this.chaseClock = time;
+        this.lasers.reset();
+        this.search.reset();
+        this.laserCount = 2;
+        this.beamClock = time;
+        this.beams?.clear();
+        this.beamsLit = false;
+        this.figures.single = 0;
+        this.figures.double = 0;
+        this.pulses.fill(-1e6);
+        for (let i = 0; i < PULSE_SLOTS; i += 1) this.u[`pulse${i}`].value.set(-1e6, 0, 1, 0.05);
+        this.u.wheelBurst.value.set(-1e6, 0, 0, 0);
         this.u.chaseTime.value = time;
-        this.duskSteps = 0;
-        this.duskTarget = 0;
-        this.dusk = this.duskHeld ? this.duskBase : this.eveningAt(time);
-        this.applyDusk();
+        this.hourSteps = 0;
+        this.hourTarget = 0;
+        this.hour = this.hourAt(time);
+        this.temper = this.temperHeld ?? temperamentPhase(time);
+        this.applyEvening();
+        this.lightning.t0 = -1e6;
+        this.lightning.next = time + 3 + this.rand() * LIGHTNING.waitSpread;
+        this.u.bolt.value.z = 0;
         this.neonTarget = 0;
         this.neonPhase = 0;
         this.chases.forEach((ch, i) => {
@@ -937,9 +1199,11 @@ export class SynthwaveWorld {
     /**
      * A piece locked: two bands of its colour run round the wheel's rims from its column's side
      * (left columns start left of the bottom, right columns right of it) and meet at the top. A
-     * hard drop's bands burn brighter.
+     * hard drop is the pier's as well: a pulse of the piece's colour runs out along the pier's
+     * lights from the land to the wheel, brighter the further the piece fell, and its bands on
+     * the rims burn brighter.
      */
-    onPieceLock(piece, { hardDrop = false } = {}) {
+    onPieceLock(piece, { hardDrop = false, distance = 0 } = {}) {
         const color = (() => {
             if (typeof piece?.color === 'string' || typeof piece?.color === 'number') {
                 try {
@@ -954,6 +1218,10 @@ export class SynthwaveWorld {
         const column = Number.isFinite(piece?.x) ? THREE.MathUtils.clamp(piece.x + 1, 0, 9) : this.rand() * 9;
         const start = RIM_BOTTOM + ((column - 4.5) / 4.5) * 0.7;
         this.runChase(start, color, hardDrop ? 1.25 : 1);
+        if (hardDrop) {
+            const fall = THREE.MathUtils.clamp((Number(distance) || 0) / PULSE.fullDrop, 0, 1);
+            this.runPulse(color, PULSE.strength * (0.55 + 0.45 * fall), PULSE.speed, PULSE.width);
+        }
         this.surge.lock({ hardDrop }, this.time);
     }
 
@@ -985,12 +1253,38 @@ export class SynthwaveWorld {
     }
 
     /**
-     * Lines cleared (one call per cascade wave): one shell per line from the barge, the first in
-     * the locking piece's colour; four lines, a finale closed by a gold willow. The show has
-     * memory: the chain (`combo`), the wave's depth and the heat of play add shells, size and
-     * stars, graduate their kinds (glitter, then willows) and tighten the volley, and each wave
-     * bursts higher and fuller than the last. A twist whirls the wheel under a lilac ring; a
-     * back-to-back fires the salute.
+     * Send a pulse of light out along the pier, from the land end to the wheel: `speed` in pier
+     * lengths a second, `width` in pier lengths. The pulse furthest along gives way to a new one
+     * (it is at the wheel by then), so rapid hard drops follow each other down the pier.
+     */
+    runPulse(color, strength, speed = PULSE.speed, width = PULSE.width) {
+        let oldest = 0;
+        for (let i = 1; i < PULSE_SLOTS; i += 1) {
+            if (this.pulses[i] < this.pulses[oldest]) oldest = i;
+        }
+        this.pulses[oldest] = this.time;
+        this.u[`pulse${oldest}`].value.set(this.time, strength, speed, width);
+        this.u[`pulseCol${oldest}`].value.copy(color);
+    }
+
+    /** The wheel's starburst: a ring of `color` bursts from the hub out to the rim. */
+    flareWheel(color, strength = 1) {
+        this.u.wheelBurst.value.set(this.time, strength * flashScale(), 0, 0);
+        this.u.wheelBurstCol.value.copy(color);
+    }
+
+    /**
+     * Lines cleared (one call per cascade wave). Each count has its own figure in the sky:
+     *   one line     one shell in the locking piece's colour, its kind turning with each clear
+     *   two lines    a pair of the same kind bursting together, side by side
+     *   three lines  a fan: two chrysanthemums low, then a gold palm above them
+     *   four lines   the finale: a volley across the whole free sky, each shell higher than the
+     *                last, closed by a gold brocade crown, while the wheel's face bursts in gold
+     * The show has memory: the chain (`combo`), the wave's depth and the heat of play add shells,
+     * size and stars and tighten the volley, and each wave bursts higher and fuller than the
+     * last. A cascade's later waves are the pier's too: roman candles fire from its deck, more
+     * the deeper the wave. A twist turns the wheel into a Catherine wheel; a back-to-back fires
+     * the salute and lights the lasers.
      * @param {number} [lines]
      * @param {{ cascade?: number, combo?: number, twist?: boolean, b2b?: boolean }} [info]
      */
@@ -1014,68 +1308,170 @@ export class SynthwaveWorld {
         const pick = () => new THREE.Color(FIREWORK_COLORS[Math.floor(r() * FIREWORK_COLORS.length)]);
         if (b2b) this.b2bStreak += 1;
         else if (depth === 1 && n < 4 && !twist) this.b2bStreak = 0;
-        if (twist) {
-            this.spin.hit(1, t);
-            this.runChase(RIM_BOTTOM, LILAC, 1.2);
-        }
+        if (twist) this.catherine(n);
+        const lead = twist ? LILAC : this.lastLockColor;
         if (n < 4) {
-            const kinds = ['peony', 'ring', 'chrys'];
+            const scale = 0.85 + n * 0.08 + 0.12 * level + 0.06 * wave;
+            const gap = 0.32 - 0.1 * level;
+            if (n === 1) {
+                const kind = twist ? 'saturn' : SINGLES[this.figures.single % SINGLES.length];
+                this.figures.single += 1;
+                fw.launch(t, {
+                    color: lead, kind, scale, stars, high,
+                });
+            } else if (n === 2) {
+                const kind = twist ? 'saturn' : DOUBLES[this.figures.double % DOUBLES.length];
+                this.figures.double += 1;
+                const x = (r() - 0.5) * 0.5;
+                for (const side of [-1, 1]) {
+                    fw.launch(t, {
+                        color: side < 0 ? lead : pick(), kind, scale, stars, high, x: x + side * 0.17, rise: 1.2,
+                    });
+                }
+            } else {
+                const x = (r() - 0.5) * 0.36;
+                for (const side of [-1, 1]) {
+                    fw.launch(t, {
+                        color: side < 0 ? lead : pick(), kind: 'chrys', scale, stars, high, x: x + side * 0.23, rise: 1.1,
+                    });
+                }
+                fw.launch(t, {
+                    color: twist ? LILAC : WILLOW_GOLD,
+                    kind: 'palm',
+                    scale: scale * 1.15,
+                    stars,
+                    high: Math.min(1, high + 0.55),
+                    x,
+                    rise: 1.45,
+                });
+            }
             // The chain and the cascade add shells to the volley (none to a plain clear): a
             // cascade's deeper waves always fire more than its first, however long the chain.
             const extra = reduced ? 0 : Math.min(3, Math.floor(chain / 3)) + Math.min(wave, 2);
-            const shells = n + extra;
-            const gap = 0.32 - 0.1 * level;
-            const scale = 0.85 + n * 0.08 + 0.12 * level + 0.06 * wave;
-            for (let k = 0; k < shells; k += 1) {
-                let kind = kinds[k % 3];
-                if (k >= n) kind = chain >= 5 && k === shells - 1 ? 'willow' : 'chrys';
-                let color = k === 0 ? this.lastLockColor : pick();
-                if (twist && k === 0) {
-                    kind = 'ring';
-                    color = LILAC;
-                }
+            for (let k = 0; k < extra; k += 1) {
+                let kind = k % 2 ? 'crackle' : 'chrys';
+                if (chain >= 5 && k === extra - 1) kind = 'willow';
                 fw.launch(t, {
-                    color,
+                    color: pick(),
                     kind,
                     scale,
-                    delay: k * gap,
-                    stars: kind === 'willow' ? Math.round(stars * 0.6) : stars,
+                    delay: 0.35 + k * gap,
+                    stars: kind === 'willow' ? Math.round(stars * 1.2) : stars,
                     high,
                 });
             }
         } else {
-            // The finale: a volley over a second and a half (fuller and quicker as play heats), a
-            // gold willow to close (its sky glow gold too).
+            // The finale: a volley over a second and a half (fuller and quicker as play heats)
+            // across the whole free sky, each shell higher than the last, then the crown.
             const shells = reduced ? Math.min(3, this.q.finale) : this.q.finale + Math.round(level * 2);
             const gap = 0.24 - 0.06 * level;
-            const kinds = ['chrys', 'peony', 'ring', 'peony', 'chrys', 'ring', 'peony', 'chrys'];
             for (let k = 0; k < shells; k += 1) {
                 fw.launch(t, {
-                    color: k === 0 ? this.lastLockColor : pick(),
-                    kind: kinds[k % kinds.length],
+                    color: k === 0 ? lead : pick(),
+                    kind: FINALE[k % FINALE.length],
                     scale: 1.05 + r() * 0.2 + 0.1 * level,
                     delay: k * gap,
                     stars,
-                    high,
+                    high: Math.min(1, high + (0.4 * k) / shells),
+                    x: ((k * 0.618 + 0.3) % 1) - 0.5,
                 });
             }
             fw.launch(t, {
-                kind: 'willow',
+                kind: 'brocade',
                 color: WILLOW_GOLD,
-                scale: 1.3,
+                scale: 1.45,
                 delay: shells * gap + 0.2,
                 stars: Math.round(stars * 1.3),
+                high: 1,
+                x: (r() - 0.5) * 0.3,
             });
+            this.flareWheel(WILLOW_GOLD, 1.2);
         }
         if (b2b) this.salute(stars);
-        // Each cascade wave past the first sends a band round the rims, brighter the deeper.
-        if (wave > 0) this.runChase(RIM_BOTTOM, this.lastLockColor, 1 + 0.25 * wave);
+        // Each cascade wave past the first sends a band round the rims, brighter the deeper, and
+        // fires the pier's roman candles.
+        if (wave > 0) {
+            this.runChase(RIM_BOTTOM, this.lastLockColor, 1 + 0.25 * wave);
+            this.candles(wave);
+        }
+    }
+
+    /**
+     * A twist: the wheel whirls round and throws sparks off its rim like a Catherine wheel, lilac
+     * and gold, and a lilac band runs round the rims. With lines it whirls harder and longer.
+     * @param {number} lines the lines the twist cleared (0: none)
+     */
+    catherine(lines) {
+        const t = this.time;
+        const big = lines > 0;
+        this.spin.hit(big ? 1 : 0.5, t);
+        this.runChase(RIM_BOTTOM, LILAC, 1.2);
+        const face = this.wheelFace;
+        if (!face) return;
+        const reduced = (this.motion ?? 1) < 0.5;
+        const share = big ? 1 + 0.25 * lines : 0.65;
+        this.fireworks.spray(t, {
+            center: face.center,
+            ax: face.ax,
+            ay: face.ay,
+            radius: WHEEL.radius + 0.7,
+            count: Math.round(this.q.stars0 * share * (reduced ? 0.4 : 1)),
+            seconds: big ? 1.5 : 1.0,
+            speed: 15,
+            turn: reduced ? 1.2 : 3.2,
+            colorA: LILAC,
+            colorB: WILLOW_GOLD,
+        });
+    }
+
+    /**
+     * A cascade's wave: roman candles from the pier's deck, a comet each with a long tail that
+     * ends in a puff of crackle, thrown up and out over the sea. More of them the deeper the wave,
+     * stepping out along the pier, with one or two from its near end beside the board's far side.
+     * @param {number} wave how many waves past the first (1..)
+     */
+    candles(wave) {
+        const frame = this.pierAt;
+        if (!frame) return;
+        const t = this.time;
+        const r = this.rand;
+        const reduced = (this.motion ?? 1) < 0.5;
+        const count = reduced ? 2 : 2 + wave;
+        const side = PIER.width * 0.3;
+        const up = PIER.deckY + 1.2;
+        const v = this._v;
+        for (let k = 0; k < count; k += 1) {
+            const s = CANDLES.far[0] + ((CANDLES.far[1] - CANDLES.far[0]) * (k + r() * 0.6)) / count;
+            v.set(0, 27 + r() * 5, 0)
+                .addScaledVector(frame.across, 3 + r() * 5)
+                .addScaledVector(frame.along, (r() - 0.5) * 6);
+            this.fireworks.comet(t, {
+                from: frame.at(s, side, up),
+                velocity: v,
+                color: k % 2 ? new THREE.Color(FIREWORK_COLORS[Math.floor(r() * FIREWORK_COLORS.length)]) : this.lastLockColor,
+                delay: k * 0.09,
+            });
+        }
+        for (let k = 0; k < Math.min(2, wave); k += 1) {
+            const s = CANDLES.near[0] + (CANDLES.near[1] - CANDLES.near[0]) * r();
+            v.set(0, 15 + r() * 3, 0).addScaledVector(frame.across, 2 + r() * 3);
+            this.fireworks.comet(t, {
+                from: frame.at(s, side, up),
+                velocity: v,
+                color: this.lastLockColor,
+                delay: 0.15 + k * 0.12,
+                life: 1.15,
+                size: 0.6,
+                crackle: 6,
+            });
+        }
     }
 
     /**
      * Back-to-back: the salute. A row of rings across the free sky bursting together in the
-     * wheel's neon colours, one more for each back-to-back in a row (two to five), and both rims
-     * ringing round.
+     * wheel's neon colours, one more for each back-to-back in a row (two to five), both rims
+     * ringing round, and the laser fan from the wheel's hub (a beam more for each in a row, held
+     * while they keep coming).
      */
     salute(stars) {
         const rings = Math.min(5, 1 + this.b2bStreak);
@@ -1093,19 +1489,22 @@ export class SynthwaveWorld {
         }
         this.runChase(RIM_BOTTOM, PINK, 1.3);
         this.runChase(RIM_BOTTOM + Math.PI, MINT, 1.3);
+        this.laserCount = Math.min(LASER_SLOTS, 2 + this.b2bStreak);
+        this.lasers.hit(1, this.time);
     }
 
-    /** A twist that cleared nothing: the wheel whirls a little and a lilac band runs round. */
+    /** A twist that cleared nothing: the wheel whirls a little and throws a short spray. */
     onTwist() {
-        this.spin.hit(0.5, this.time);
-        this.runChase(RIM_BOTTOM, LILAC, 1.2);
+        this.catherine(0);
         this.surgeBonus('twist', 0.45);
     }
 
     /**
      * The perfect clear: the crown over the clear still in the air (physics sends it ~0.36 s after
-     * the clear's last wave), never a second clear. A curtain of gold willows across the free
-     * sky, the rims ringing round in gold, the whole bay at full blaze, shooting stars.
+     * the clear's last wave), never a second clear. The pier itself answers: a waterfall of gold
+     * sparks pours off its whole seaward edge into the sea, lit from the land end out to the
+     * wheel, under a curtain of gold willows across the free sky; the wheel's face bursts in
+     * gold, its rims ring round, the whole bay stands at full blaze, shooting stars cross.
      */
     onPerfectClear() {
         const t = this.time;
@@ -1126,6 +1525,47 @@ export class SynthwaveWorld {
                 stars,
             });
         }
+        const frame = this.pierAt;
+        if (frame) {
+            // A wall of gold comets from the whole length of the deck, then the waterfall.
+            const wall = reduced ? 4 : 12;
+            const v = this._v;
+            const r = this.rand;
+            for (let k = 0; k < wall; k += 1) {
+                const far = k % 3 !== 2;
+                const lane = far ? CANDLES.far : CANDLES.near;
+                const s = lane[0] + (lane[1] - lane[0]) * ((Math.floor(k / 3) * (far ? 2 : 1) + (k % 3) + r() * 0.5) / (far ? 8 : 4));
+                v.set(0, far ? 30 + r() * 4 : 16 + r() * 3, 0).addScaledVector(frame.across, 1 + r() * 3);
+                this.fireworks.comet(t, {
+                    from: frame.at(s, PIER.width * 0.3, PIER.deckY + 1.2),
+                    velocity: v,
+                    color: WILLOW_GOLD,
+                    delay: 0.05 + k * 0.045,
+                    life: far ? 1.6 : 1.15,
+                    size: far ? 0.8 : 0.55,
+                    crackle: far ? 12 : 6,
+                });
+            }
+            const fall = Math.round(this.q.stars0 * (reduced ? 7 : 20));
+            const side = PIER.width / 2 + 0.2;
+            const edge = PIER.deckY - 0.5;
+            this.fireworks.waterfall(t, {
+                a: frame.at(frame.length - 5, side, edge),
+                b: frame.at(PIER_HEAD.s1, side, edge),
+                count: fall,
+                seconds: 4.2,
+                sweep: 1.1,
+            });
+            // The pier head's own edge, lit last.
+            this.fireworks.waterfall(t + 1.1, {
+                a: frame.at(PIER_HEAD.s1, PIER_HEAD.halfAcross, edge),
+                b: frame.at(PIER_HEAD.s0, PIER_HEAD.halfAcross, edge),
+                count: Math.round(fall * 0.12),
+                seconds: 3.4,
+                sweep: 0.2,
+            });
+        }
+        this.flareWheel(WILLOW_GOLD, 1.4);
         this.runChase(RIM_BOTTOM, WILLOW_GOLD, 1.3);
         this.runChase(RIM_BOTTOM + Math.PI, WILLOW_GOLD, 1.3);
         this.queueShootingStars(2);
@@ -1191,24 +1631,82 @@ export class SynthwaveWorld {
     }
 
     /**
-     * A level: the evening steps on along its walk (eased in, on top of the clock), the neon ring
-     * turns on to its next colour, two shells go up. With reactions off (`react: false`) the light
-     * still steps; the shells and the surge do not.
+     * A level: the evening steps on along its walk (eased in, on top of the clock) and the neon
+     * ring turns on to its next colour. With reactions on, the pier opens a new act: searchlights
+     * sweep up from its deck and cross over the bay, a broad wave of gold runs out along its
+     * lights to the wheel, whose face bursts in its new colour, and two shells go up, a saturn and
+     * a ring. With reactions off (`react: false`) the light still steps; the show does not.
      * @param {{ react?: boolean }} [opts]
      */
     onLevelUp({ react = true } = {}) {
-        this.duskTarget += DUSK.levelStep;
+        this.hourTarget += EVENING.levelStep;
         // Always forward: a second level mid-turn carries it on to the colour after.
         this.neonTarget = Math.floor(this.neonTarget + 1e-6) + 1;
         if (!react) return;
         this.surge.levelUp(this.time);
         const t = this.time;
+        this.search.hit(1, t);
+        this.runPulse(WILLOW_GOLD, PULSE.strength * 1.25, PULSE.speed * 0.5, PULSE.width * 2.6);
+        this.flareWheel(this.neonTarget % 2 ? MINT : PINK, 1);
         this.fireworks.launch(t, {
-            kind: 'ring', color: new THREE.Color(FIREWORK_COLORS[1]), scale: 1.1, stars: this.q.stars0,
+            kind: 'saturn', color: PINK, scale: 1.25, stars: this.q.stars0, high: 0.8, x: -0.12,
         });
         this.fireworks.launch(t, {
-            kind: 'peony', color: new THREE.Color(FIREWORK_COLORS[0]), scale: 1.1, delay: 0.3, stars: this.q.stars0,
+            kind: 'ring', color: MINT, scale: 1.15, delay: 0.3, stars: this.q.stars0, high: 0.5, x: 0.2,
         });
+    }
+
+    /**
+     * The beams, once a frame: the laser fan from the wheel's hub while a back-to-back's light
+     * lasts (a beam for each in a row, each on its own slow sweep in the wheel's plane) and the
+     * searchlights from the pier's deck after a level (swaying about the vertical, so they cross
+     * and part). They show best after dark, as beams in air do, but keep a floor by day.
+     */
+    updateBeams(t, dt, motion) {
+        const B = this.beams;
+        if (!B) return;
+        const laser = this.lasers.valueAt(t);
+        const search = this.search.valueAt(t);
+        if (laser < 0.01 && search < 0.01) {
+            if (this.beamsLit) {
+                B.clear();
+                this.beamsLit = false;
+            }
+            return;
+        }
+        this.beamsLit = true;
+        this.beamClock += dt * (0.25 + 0.75 * motion);
+        const tt = this.beamClock;
+        const air = 0.5 + 0.5 * this.dusk;
+        const face = this.wheelFace;
+        const dir = this._v;
+        B.begin();
+        for (let i = 0; i < LASER_SLOTS; i += 1) {
+            if (!face || i >= this.laserCount || laser < 0.01) {
+                B.off(i);
+                continue;
+            }
+            const a = Math.PI * (0.14 + 0.72 * ((i + 0.5) / this.laserCount)) + 0.2 * Math.sin(tt * (0.7 + 0.13 * i) + i * 2.1);
+            const lean = 0.16 * Math.sin(tt * 0.5 + i * 1.3);
+            dir.set(0, 0, 0)
+                .addScaledVector(face.ax, Math.cos(a))
+                .addScaledVector(face.ay, Math.sin(a))
+                .addScaledVector(face.axle, lean)
+                .normalize();
+            B.set(i, face.center, dir, BEAMS.laserLength, 0.5, 0.004, LASER_COLORS[i % LASER_COLORS.length], laser * air * BEAMS.laserLevel);
+        }
+        for (let j = 0; j < SEARCH_SLOTS; j += 1) {
+            const foot = this.searchFeet?.[j];
+            if (!foot || search < 0.01) {
+                B.off(LASER_SLOTS + j);
+                continue;
+            }
+            const az = j * 1.7 + tt * (0.34 + 0.07 * j) * (j % 2 ? -1 : 1);
+            const tilt = 0.3 + 0.2 * Math.sin(tt * 0.6 + j * 1.9);
+            dir.set(Math.sin(tilt) * Math.cos(az), Math.cos(tilt), Math.sin(tilt) * Math.sin(az));
+            B.set(LASER_SLOTS + j, foot, dir, BEAMS.searchLength, 2.2, 0.085, SEARCH_COLOR, search * air * BEAMS.searchLevel);
+        }
+        B.commit();
     }
 
     /** Shooting stars to send as soon as a slot is free (none under reduced motion). */
@@ -1267,6 +1765,7 @@ export class SynthwaveWorld {
             });
         }
         this.fireworks = null;
+        this.beams = null;
         this.gulls = null;
         this.parts = {};
     }

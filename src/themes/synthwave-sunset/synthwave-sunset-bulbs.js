@@ -58,6 +58,8 @@ export const BULB = Object.freeze({
  * @param {object} [opts]
  * @param {string} [opts.name]
  * @param {number} [opts.mirrorLayer]
+ * @param {boolean} [opts.pulses]  the pier's own field: its bulbs carry the pulses of light that
+ *                                 run out along the pier (u.pulse<i>, u.pulseCol<i>)
  */
 export function createBulbField(u, rows, opts = {}) {
     const count = Math.max(1, rows.length);
@@ -132,6 +134,21 @@ export function createBulbField(u, rows, opts = {}) {
             const trackCol = mix(cAttr.xyz.mul(chase), lemon, lifted.mul(min(charge, 1.0)))
                 .add(cAttr.xyz.mul(race.mul(3.0)));
             col.assign(mix(col, trackCol, isTrack));
+        }
+        if (opts.pulses && u.pulse0) {
+            // Pulses of light running out along the pier from its land end to the wheel (a hard
+            // drop's, in the piece's colour; a level's, a broad wave of gold). u.pulse<i> = (start
+            // time, strength, pier lengths a second, width in pier lengths). They light a bulb
+            // whether or not the evening has powered it yet.
+            let lit = vec3(0.0);
+            for (let i = 0; u[`pulse${i}`]; i += 1) {
+                const pulse = u[`pulse${i}`];
+                const age = t.sub(pulse.x);
+                const off = iAttr.z.sub(float(1.0).sub(age.mul(pulse.z))).div(pulse.w);
+                const band = exp(off.mul(off).negate()).mul(pulse.y).mul(step(0.0, age));
+                lit = lit.add(u[`pulseCol${i}`].mul(band));
+            }
+            col.addAssign(lit.mul(float(1.0).sub(step(3.5, program))).mul(5.0));
         }
         return col.mul(shape).mul(dim).mul(iAttr.w).mul(u.pierGlow)
             .mul(4.5);

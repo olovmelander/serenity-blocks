@@ -13,17 +13,32 @@ import * as THREE from 'three/webgpu';
 
 import SynthwaveSunsetTheme from '../../src/themes/synthwave-sunset/synthwave-sunset-theme.js';
 import {
+    CANDLES,
     DUSK,
-    EVENING_WALK,
+    EVENING,
+    HOUR,
+    LASER_SLOTS,
     PIECE_COLORS,
+    PULSE,
+    SKY_UNIFORMS,
     SynthwaveWorld,
+    WHEEL_SHOW,
     WORLD_QUALITY,
     boardRectsDiffer,
-    eveningAt,
+    eveningHour,
 } from '../../src/themes/synthwave-sunset/synthwave-sunset-world.js';
-import { pingPong } from '../../src/themes/shared/mood-clock.js';
+import {
+    SEA_STATES, SKY_KEYS, TEMPERAMENTS, TEMPERAMENT_CLOCK, WEATHERS, WEATHER_CLOCK, eveningLights, eveningLook,
+    hourOfDusk, seaStateAt, skyColours, weatherAt,
+} from '../../src/themes/synthwave-sunset/synthwave-sunset-evening.js';
+import { SHELL_KINDS } from '../../src/themes/synthwave-sunset/synthwave-sunset-fireworks.js';
+import {
+    BOAT_LANES, STROLL, boatX, strollerRows,
+} from '../../src/themes/synthwave-sunset/synthwave-sunset-life.js';
 import { RIG, SHORE, SUN } from '../../src/themes/synthwave-sunset/synthwave-sunset-tsl.js';
-import { WHEEL, pierFrame, wheelWorldPosition } from '../../src/themes/synthwave-sunset/synthwave-sunset-layout.js';
+import {
+    PIER, PIER_HEAD, WHEEL, pierFrame, wheelWorldPosition,
+} from '../../src/themes/synthwave-sunset/synthwave-sunset-layout.js';
 import { COASTER } from '../../src/themes/synthwave-sunset/synthwave-sunset-coaster.js';
 import { shoreLineZ } from '../../src/themes/synthwave-sunset/synthwave-sunset-sea.js';
 import {
@@ -139,7 +154,7 @@ describe('synthwave-sunset theme wiring', () => {
         eventBus.emit(EVENTS.LEVEL_UP, { level: 2 });
         expect(world.onPieceLock).not.toHaveBeenCalled();
         theme.flushEvents();
-        expect(world.onPieceLock).toHaveBeenCalledWith({ type: 'T', x: 3, rotation: 0 }, { hardDrop: false });
+        expect(world.onPieceLock).toHaveBeenCalledWith({ type: 'T', x: 3, rotation: 0 }, { hardDrop: false, distance: 0 });
         expect(world.onLineClear).toHaveBeenCalledWith(2, {
             cascade: 1, combo: 1, twist: false, b2b: false,
         });
@@ -216,13 +231,14 @@ describe('synthwave-sunset theme wiring', () => {
         expect(theme.combo.combo).toBe(3);
         // Switched on mid-run, the next clearing lock is the chain's fourth.
         win.settings.backgroundComboEffects = true;
-        eventBus.emit(EVENTS.HARD_DROP, { piece: { type: 'T', x: 3 } });
+        eventBus.emit(EVENTS.HARD_DROP, { piece: { type: 'T', x: 3 }, distance: 12 });
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: { type: 'T', x: 3 } });
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 2, cascadeCount: 1 });
         eventBus.emit(EVENTS.TWIST, { lineCount: 2 });
         eventBus.emit(EVENTS.B2B, { active: true });
         theme.flushEvents();
-        expect(world.onPieceLock).toHaveBeenLastCalledWith({ type: 'T', x: 3 }, { hardDrop: true });
+        // A hard drop reaches the world with how far the piece fell.
+        expect(world.onPieceLock).toHaveBeenLastCalledWith({ type: 'T', x: 3 }, { hardDrop: true, distance: 12 });
         expect(world.onLineClear).toHaveBeenLastCalledWith(2, {
             cascade: 1, combo: 4, twist: true, b2b: true,
         });
@@ -361,7 +377,7 @@ describe('synthwave-sunset world', () => {
         expect(frame.far.z).toBeLessThan(shoreLineZ(frame.far.x) - 100);
     });
 
-    it('builds the whole scene in a dozen draws and disposes it', () => {
+    it('builds the whole scene in a score of draws and disposes it', () => {
         const scene = new THREE.Scene();
         const world = new SynthwaveWorld({ scene, quality: 'High', random: seeded() }).build();
         const drawables = [];
@@ -369,10 +385,10 @@ describe('synthwave-sunset world', () => {
             if (obj.isMesh || obj.isSprite) drawables.push(obj.name);
         });
         expect(drawables.sort()).toEqual([
-            'SynthwaveCoasterBulbs', 'SynthwaveCoasterStructure', 'SynthwaveCoasterTrain', 'SynthwaveFireworks',
-            'SynthwaveGulls', 'SynthwaveHotels', 'SynthwavePalms', 'SynthwavePierBulbs', 'SynthwavePierStructure', 'SynthwavePromenadeLamps',
-            'SynthwavePromenadeStructure', 'SynthwaveSea', 'SynthwaveSkyDome', 'SynthwaveWheelBulbs',
-            'SynthwaveWheelStructure',
+            'SynthwaveBeams', 'SynthwaveBoats', 'SynthwaveCoasterBulbs', 'SynthwaveCoasterStructure', 'SynthwaveCoasterTrain',
+            'SynthwaveFireworks', 'SynthwaveGulls', 'SynthwaveHotels', 'SynthwavePalms', 'SynthwavePierBulbs',
+            'SynthwavePierStructure', 'SynthwavePromenadeLamps', 'SynthwavePromenadeStructure', 'SynthwaveSea', 'SynthwaveSkyDome',
+            'SynthwaveStrollers', 'SynthwaveWheelBulbs', 'SynthwaveWheelStructure',
         ]);
         world.dispose();
         expect(scene.children).toHaveLength(0);
@@ -485,10 +501,12 @@ describe('synthwave-sunset world', () => {
             expect(y).toBeGreaterThan(0.02);
             expect(y).toBeLessThan(0.5);
         }
-        // Four lines: the finale volley and a gold willow.
+        // Four lines: the finale volley and its gold crown, and the wheel's face bursts in gold.
         world.onLineClear(4);
         expect(world.fireworks.pending).toHaveLength(WORLD_QUALITY.High.finale + 1);
-        expect(world.fireworks.pending.at(-1).kind).toBe('willow');
+        expect(world.fireworks.pending.at(-1).kind).toBe('brocade');
+        expect(world.u.wheelBurst.value.x).toBeCloseTo(world.time, 6);
+        expect(world.u.wheelBurst.value.y).toBeGreaterThan(1);
         world.dispose();
     });
 
@@ -596,9 +614,9 @@ describe('synthwave-sunset world', () => {
         }
         // The volley built a sky brighter than one burst.
         expect(peak).toBeGreaterThan(1.3);
-        // The finale's willow is gold, and so is the sky it lights (it used to default to mint).
+        // The finale's crown is gold, and so is the sky it lights (it used to default to mint).
         world.onLineClear(4);
-        expect(world.fireworks.pending.at(-1).kind).toBe('willow');
+        expect(world.fireworks.pending.at(-1).kind).toBe('brocade');
         expect(world.fireworks.pending.at(-1).color.getHex()).toBe(new THREE.Color(0xffb04c).getHex());
 
         // Rapid locks: no band round the wheel is cut off before it has begun to fade.
@@ -710,38 +728,67 @@ describe('synthwave-sunset world', () => {
         world.dispose();
     });
 
-    it('walks the evening there and back by the clock alone, in the menus too, the neon ring turning at each stop', () => {
+    it('walks the evening by the clock alone, in the menus too: sunset, afterglow, night and back to the golden hour', () => {
         const { world } = builtWorld();
-        const { seconds, hold, stops } = EVENING_WALK;
+        const { seconds, hold } = EVENING;
         const at = (time) => {
             world.update({ time, delta: 0 });
             return {
-                dusk: world.dusk, sunY: world.sunDir.y, power: world.u.pierPower.value, neon: world.u.wheelNeonMix.value,
+                hour: world.hour,
+                dusk: world.dusk,
+                sunY: world.sunDir.y,
+                power: world.u.pierPower.value,
+                neon: world.u.wheelNeonMix.value,
+                stars: world.u.skyLights.value.x,
+                moon: world.u.skyLights.value.y,
+                night: world.u.skyLights.value.w,
+                gold: world.u.gold.value,
             };
         };
         // Mood 0 is the opening look: the sun on the sea, the ring pink, through the first rest
         // (no gameplay at all: the menus and Serenity walk the same evening).
         const opening = at(0);
+        expect(opening.hour).toBe(HOUR.sunset);
         expect(opening.dusk).toBe(DUSK.rest);
         expect(opening.neon).toBe(0);
-        expect(at(seconds * hold * 0.9).dusk).toBe(DUSK.rest);
-        const span = 1 - DUSK.rest;
-        for (let k = 0; k <= 2 * stops; k += 1) {
+        expect(opening.moon).toBe(0);
+        expect(at(seconds * hold * 0.9).hour).toBe(HOUR.sunset);
+        // Toward the night first, back through the sunset to the golden hour, and round again.
+        const walk = [HOUR.sunset, HOUR.afterglow, HOUR.night, HOUR.afterglow, HOUR.sunset, HOUR.gold, HOUR.sunset, HOUR.afterglow];
+        walk.forEach((hour, k) => {
             const s = at(k * seconds);
-            expect(s.dusk, `stop ${k}`).toBeCloseTo(DUSK.rest + span * pingPong(k / stops), 9);
+            expect(s.hour, `stop ${k}`).toBeCloseTo(hour, 9);
             expect(s.neon, `ring at stop ${k}`).toBeCloseTo(k % 2, 9);
-        }
-        // The afterglow with no level-up: the sun sunk, the pier's lights out to the wheel.
-        const afterglow = at(stops * seconds);
-        expect(afterglow.dusk).toBe(1);
+        });
+        // The afterglow: the sun sunk, the pier's lights out to the wheel, the moon out.
+        const afterglow = at(seconds);
+        expect(afterglow.dusk).toBeCloseTo(1, 9);
         expect(afterglow.sunY).toBeLessThan(opening.sunY);
         expect(afterglow.power).toBeGreaterThan(opening.power);
+        expect(afterglow.moon).toBeGreaterThan(0.3);
+        expect(afterglow.night).toBeCloseTo(0, 9);
+        // The night: the same sunk sun, the whole field of stars, a brighter moon.
+        const night = at(2 * seconds);
+        expect(night.night).toBeCloseTo(1, 9);
+        expect(night.stars).toBeGreaterThan(afterglow.stars * 4);
+        expect(night.moon).toBeGreaterThan(afterglow.moon);
+        // The golden hour: the sun stands high in the wheel's hub, the pier's lights mostly off,
+        // no star out.
+        const gold = at(5 * seconds);
+        expect(gold.gold).toBeCloseTo(1, 9);
+        expect(gold.dusk).toBeCloseTo(0, 9);
+        expect(gold.sunY).toBeGreaterThan(opening.sunY + 0.1);
+        expect(gold.power).toBeLessThan(opening.power);
+        expect(gold.stars).toBe(0);
+        const hub = wheelWorldPosition();
+        const toHub = Math.atan2(hub.y - RIG.height, Math.hypot(hub.x - RIG.x, hub.z - RIG.z));
+        expect(Math.abs(Math.asin(gold.sunY) - toHub)).toBeLessThan(SUN.radius * 0.5);
         // It melts between stops, never jumps.
-        let last = at(0).dusk;
-        for (let time = 0.5; time <= 2 * stops * seconds; time += 0.5) {
-            const d = at(time).dusk;
-            expect(Math.abs(d - last)).toBeLessThan(0.01);
-            last = d;
+        let last = at(0).hour;
+        for (let time = 0.5; time <= 6 * seconds; time += 0.5) {
+            const h = at(time).hour;
+            expect(Math.abs(h - last)).toBeLessThan(0.02);
+            last = h;
         }
         // Halfway round, the ring burns blue-violet (the short way round the colour wheel), not
         // the pale grey-white of a straight mix of pink and mint.
@@ -754,36 +801,155 @@ describe('synthwave-sunset world', () => {
         world.dispose();
     });
 
-    it('steps the evening on a level, on top of the clock, turns the ring, and never pins it at the afterglow', () => {
+    it('steps the evening on a level, on top of the clock, turns the ring, and never pins it at either end', () => {
         const { world, camera } = builtWorld();
-        const { seconds, stops } = EVENING_WALK;
-        const t1 = seconds; // resting half sunk, the ring mint
+        const { seconds } = EVENING;
+        const t1 = seconds * 0.15; // resting at the sunset, the ring pink
         world.update({ time: t1, delta: 0 });
-        const half = world.dusk;
+        const before = world.hour;
         const sunY = world.sunDir.y;
         world.onLevelUp();
-        expect(world.duskTarget).toBeCloseTo(DUSK.levelStep, 9);
+        expect(world.hourTarget).toBeCloseTo(EVENING.levelStep, 9);
         let t = run(world, camera, t1, 0.5);
-        expect(world.dusk).toBeGreaterThan(half); // eased in, not snapped
-        expect(world.dusk).toBeLessThan(half + DUSK.levelStep);
+        expect(world.hour).toBeGreaterThan(before); // eased in, not snapped
+        expect(world.hour).toBeLessThan(before + EVENING.levelStep);
         t = run(world, camera, t, 15);
-        expect(world.dusk).toBeCloseTo(half + DUSK.levelStep, 4);
+        expect(world.hour).toBeCloseTo(before + EVENING.levelStep, 3);
         expect(world.sunDir.y).toBeLessThan(sunY);
-        expect(world.u.wheelNeonMix.value).toBeCloseTo(0, 3); // mint turned on to pink
-        // A long run walks on past the afterglow instead of stopping there, and the clock still
-        // turns it.
+        expect(world.u.wheelNeonMix.value).toBeCloseTo(1, 3); // pink turned on to mint
+        // A long run walks on past the night and back instead of stopping there, and the clock
+        // still turns it.
         for (let i = 0; i < 20; i += 1) world.onLevelUp();
         t = run(world, camera, t, 20);
-        const late = world.dusk;
-        expect(late).toBeCloseTo(eveningAt(21 * DUSK.levelStep, t), 4);
-        expect(late).toBeLessThan(1);
-        world.update({ time: t + seconds * stops * 0.5, delta: 0 });
-        expect(Math.abs(world.dusk - late)).toBeGreaterThan(0.05);
+        const late = world.hour;
+        expect(late).toBeCloseTo(eveningHour(21 * EVENING.levelStep, t), 3);
+        expect(late).toBeGreaterThan(HOUR.gold);
+        expect(late).toBeLessThan(HOUR.night);
+        world.update({ time: t + seconds * 1.5, delta: 0 });
+        expect(Math.abs(world.hour - late)).toBeGreaterThan(0.2);
         // A capture's seek puts the evening back on the clock's own walk.
         world.seek(5);
-        expect(world.dusk).toBe(DUSK.rest);
-        expect(world.duskTarget).toBe(0);
+        expect(world.hour).toBe(HOUR.sunset);
+        expect(world.hourTarget).toBe(0);
+        // The playground's old measure still lands on the right hour.
+        world.setDusk(1, { hold: true });
+        expect(world.hour).toBeCloseTo(HOUR.afterglow, 9);
+        world.update({ time: 400, delta: 0 });
+        expect(world.hour).toBeCloseTo(HOUR.afterglow, 9);
+        expect(hourOfDusk(DUSK.rest)).toBeCloseTo(HOUR.sunset, 9);
         world.dispose();
+    });
+
+    it('wears a different sunset, sky and sea by clocks of their own', () => {
+        // Every temperament is a whole sky; the first is the opening look.
+        const look = eveningLook(HOUR.sunset);
+        const opening = skyColours(look, 0);
+        const { world } = builtWorld();
+        for (const key of SKY_KEYS) {
+            const c = world.u[SKY_UNIFORMS[key]].value;
+            expect([c.r, c.g, c.b], key).toEqual(opening[key]);
+        }
+        TEMPERAMENTS.forEach((temper) => {
+            for (const key of SKY_KEYS) {
+                for (const row of [temper.day, temper.dusk, temper.gold, temper.night]) {
+                    expect(row[key], `${temper.name} ${key}`).toHaveLength(3);
+                    row[key].forEach((v) => expect(Number.isFinite(v) && v >= 0).toBe(true));
+                }
+            }
+        });
+        // Whole phases are the temperaments themselves; between two the colours melt, never jump.
+        const sunAt = (phase) => skyColours(look, phase).horizon1;
+        const flamingo = sunAt(1);
+        expect(flamingo[2]).toBeGreaterThan(opening.horizon1[2] * 1.5); // pinker than tangerine
+        let last = sunAt(0);
+        for (let phase = 0.02; phase <= TEMPERAMENTS.length; phase += 0.02) {
+            const c = sunAt(phase);
+            expect(Math.hypot(c[0] - last[0], c[1] - last[1], c[2] - last[2])).toBeLessThan(0.05);
+            last = c;
+        }
+        // The night is darker overhead than the afterglow, the golden hour brighter than the sunset.
+        const lum = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+        const zenith = (hour) => lum(skyColours(eveningLook(hour), 0).zenith);
+        expect(zenith(HOUR.night)).toBeLessThan(zenith(HOUR.afterglow));
+        expect(zenith(HOUR.afterglow)).toBeLessThan(zenith(HOUR.sunset));
+        expect(zenith(HOUR.sunset)).toBeLessThan(zenith(HOUR.gold));
+        // The lights: more of the pier lit and less daylight as the evening deepens.
+        const lights = [HOUR.gold, HOUR.sunset, HOUR.afterglow, HOUR.night].map((h) => ({ ...eveningLights(eveningLook(h)) }));
+        for (let i = 1; i < lights.length; i += 1) {
+            expect(lights[i].power).toBeGreaterThanOrEqual(lights[i - 1].power);
+            expect(lights[i].ambient).toBeLessThan(lights[i - 1].ambient);
+            expect(lights[i].stars).toBeGreaterThan(lights[i - 1].stars);
+        }
+
+        // The weather: streaks first (the opening look), each weather whole on its stop.
+        expect(weatherAt(0)).toEqual({ cirrus: WEATHERS[0].cirrus, mackerel: 0, towers: 0 });
+        WEATHERS.forEach((w, k) => {
+            world.update({ time: k * WEATHER_CLOCK.seconds, delta: 0 });
+            const c = world.u.cloudCover.value;
+            expect([c.x, c.y, c.z], w.name).toEqual([w.cirrus, w.mackerel, w.towers]);
+        });
+        // The sea: a light breeze first, then calmer and fresher by its own clock.
+        expect(seaStateAt(0)).toBe(1);
+        expect(new Set(SEA_STATES).size).toBe(SEA_STATES.length);
+        world.update({ time: 0, delta: 0 });
+        expect(world.u.seaState.value).toBe(1);
+        // The three clocks and the hour's have different lengths, so the same evening does not
+        // come round for a long while.
+        const lengths = [EVENING.seconds, TEMPERAMENT_CLOCK.seconds, WEATHER_CLOCK.seconds];
+        expect(new Set(lengths).size).toBe(3);
+        // A held value stands whatever the clock (the playground's temper=, weather=, sea=).
+        world.temperHeld = 2;
+        world.weatherHeld = 3;
+        world.seaHeld = 0.6;
+        world.update({ time: 1234, delta: 0 });
+        expect(world.temper).toBe(2);
+        expect(world.u.cloudCover.value.z).toBe(1);
+        expect(world.u.seaState.value).toBe(0.6);
+        world.dispose();
+    });
+
+    it('flickers heat lightning in the towers only after dark, and holds it under Reduce flashing', () => {
+        const { world, camera } = builtWorld();
+        world.weatherHeld = 3;
+        // By day the bank stands dark.
+        world.setHour(HOUR.sunset, { hold: true });
+        let t = 0;
+        let peak = 0;
+        for (let i = 0; i < 60 * 30; i += 1) {
+            t = run(world, camera, t, 1 / 60);
+            peak = Math.max(peak, world.u.bolt.value.z);
+        }
+        expect(peak).toBe(0);
+        // After dark a flash comes within seconds, off the sun's own bearing, and goes out again.
+        world.setHour(HOUR.night, { hold: true });
+        let flashes = 0;
+        let lit = false;
+        for (let i = 0; i < 60 * 40; i += 1) {
+            t = run(world, camera, t, 1 / 60);
+            const b = world.u.bolt.value;
+            peak = Math.max(peak, b.z);
+            if (b.z > 0.05 && !lit) {
+                flashes += 1;
+                expect(Math.abs(b.x)).toBeGreaterThan(0.2);
+            }
+            lit = b.z > 0.05;
+        }
+        expect(peak).toBeGreaterThan(0.5);
+        expect(flashes).toBeGreaterThan(2);
+        world.dispose();
+        vi.stubGlobal('window', { settings: { reduceFlashing: true } });
+        const calm = builtWorld();
+        calm.world.weatherHeld = 3;
+        calm.world.setHour(HOUR.night, { hold: true });
+        let calmPeak = 0;
+        t = 0;
+        for (let i = 0; i < 60 * 40; i += 1) {
+            t = run(calm.world, calm.camera, t, 1 / 60);
+            calmPeak = Math.max(calmPeak, calm.world.u.bolt.value.z);
+        }
+        expect(calmPeak).toBeGreaterThan(0);
+        expect(calmPeak).toBeLessThan(peak * 0.5);
+        calm.world.dispose();
     });
 
     it('still sends up its shells on a level-up, and steps the light without them when reactions are off', () => {
@@ -797,9 +963,256 @@ describe('synthwave-sunset world', () => {
         quiet.world.onLevelUp({ react: false });
         expect(quiet.world.fireworks.pending.length).toBe(shells);
         run(quiet.world, quiet.camera, 0, 15);
-        expect(quiet.world.dusk).toBeCloseTo(DUSK.rest + DUSK.levelStep, 4);
+        expect(quiet.world.hour).toBeCloseTo(HOUR.sunset + EVENING.levelStep, 3);
         world.dispose();
         quiet.world.dispose();
+    });
+
+    it('gives every event an instrument of its own', () => {
+        const { world, camera } = builtWorld();
+        const { u } = world;
+        const fw = world.fireworks;
+        const launch = vi.spyOn(fw, 'launch');
+        const comet = vi.spyOn(fw, 'comet');
+        const waterfall = vi.spyOn(fw, 'waterfall');
+        const spray = vi.spyOn(fw, 'spray');
+        const shells = () => launch.mock.calls.splice(0).map(([, o]) => o);
+        let t = run(world, camera, 0, 1);
+
+        // A lock is the wheel's alone: a band round its rims, nothing on the pier.
+        world.onPieceLock({ type: 'T', x: 4 });
+        expect(u.chase0.value.x).toBeCloseTo(world.time, 6);
+        expect(u.pulse0.value.x).toBeLessThan(-1e5);
+        // A hard drop is the pier's as well: a pulse of the piece's colour sets out along its
+        // lights and is at the wheel within a second; a short fall sends a weaker one.
+        t = run(world, camera, t, 0.5);
+        world.onPieceLock({ type: 'Z', x: 4 }, { hardDrop: true, distance: PULSE.fullDrop });
+        expect(u.pulse0.value.x).toBeCloseTo(world.time, 6);
+        expect(u.pulse0.value.y).toBeCloseTo(PULSE.strength, 6);
+        expect(u.pulseCol0.value.getHex()).toBe(PIECE_COLORS.Z.getHex());
+        expect(1 / u.pulse0.value.z).toBeLessThan(1);
+        world.onPieceLock({ type: 'O', x: 4 }, { hardDrop: true, distance: 1 });
+        expect(u.pulse1.value.x).toBeCloseTo(world.time, 6);
+        expect(u.pulse1.value.y).toBeLessThan(u.pulse0.value.y * 0.7);
+        expect(launch).not.toHaveBeenCalled();
+
+        // One line: one shell, its kind turning with each clear.
+        const singles = [];
+        for (let i = 0; i < 4; i += 1) {
+            world.onLineClear(1);
+            singles.push(...shells().map((o) => o.kind));
+        }
+        expect(singles).toHaveLength(4);
+        expect(new Set(singles).size).toBe(4);
+        // Two lines: a pair of one kind bursting together, side by side.
+        world.onLineClear(2);
+        const pair = shells();
+        expect(pair).toHaveLength(2);
+        expect(pair[0].kind).toBe(pair[1].kind);
+        expect(pair[0].rise).toBe(pair[1].rise);
+        expect(Math.abs(pair[0].x - pair[1].x)).toBeCloseTo(0.34, 6);
+        // Three lines: a fan, two low and a gold palm above them.
+        world.onLineClear(3);
+        const fan = shells();
+        expect(fan.map((o) => o.kind)).toEqual(['chrys', 'chrys', 'palm']);
+        expect(fan[2].high).toBeGreaterThan(fan[0].high + 0.4);
+        expect(fan[2].rise).toBeGreaterThan(fan[0].rise);
+        expect(fan[0].x).toBeLessThan(fan[2].x);
+        expect(fan[1].x).toBeGreaterThan(fan[2].x);
+
+        // A twist: the wheel whirls and throws sparks off its rim (no shell for a bare twist).
+        const whirl = world.spin.valueAt(world.time + 0.2);
+        world.onTwist();
+        expect(spray).toHaveBeenCalledTimes(1);
+        expect(spray.mock.calls[0][1].radius).toBeGreaterThan(WHEEL.radius);
+        expect(spray.mock.calls[0][1].center.distanceTo(wheelWorldPosition())).toBeLessThan(WHEEL.depth);
+        expect(world.spin.valueAt(world.time + 0.2)).toBeGreaterThan(whirl);
+        expect(launch).not.toHaveBeenCalled();
+        // With lines the spray is fuller, and its shell is a lilac saturn.
+        world.onLineClear(1, { twist: true });
+        expect(spray).toHaveBeenCalledTimes(2);
+        expect(spray.mock.calls[1][1].count).toBeGreaterThan(spray.mock.calls[0][1].count);
+        expect(shells().map((o) => o.kind)).toEqual(['saturn']);
+
+        // A back-to-back: the salute's rings and the laser fan from the hub, a beam more for each
+        // in a row, held while they keep coming.
+        expect(world.lasers.valueAt(world.time + 1)).toBe(0);
+        world.onLineClear(2, { b2b: true });
+        expect(shells().filter((o) => o.kind === 'ring' && o.high === 0.5)).toHaveLength(2);
+        const firstFan = world.laserCount;
+        world.onLineClear(2, { b2b: true });
+        shells();
+        expect(world.laserCount).toBe(firstFan + 1);
+        expect(world.laserCount).toBeLessThanOrEqual(LASER_SLOTS);
+        t = run(world, camera, t, 1);
+        expect(world.lasers.valueAt(t)).toBeGreaterThan(0.6);
+        expect(world.beams.lit).toBe(true);
+        const colour = world.beams.iC.array;
+        const litBeams = (from, to) => {
+            let n = 0;
+            for (let i = from; i < to; i += 1) if (colour[i * 4] + colour[i * 4 + 1] + colour[i * 4 + 2] > 0) n += 1;
+            return n;
+        };
+        expect(litBeams(0, LASER_SLOTS)).toBe(world.laserCount);
+        expect(litBeams(LASER_SLOTS, LASER_SLOTS + 4)).toBe(0);
+        // Every laser leaves the hub and climbs above the horizon.
+        for (let i = 0; i < world.laserCount; i += 1) {
+            expect(world.beams.iB.array[i * 4 + 1]).toBeGreaterThan(0.2);
+        }
+        t = run(world, camera, t, 14);
+        expect(world.beams.lit).toBe(false);
+        expect(litBeams(0, LASER_SLOTS + 4)).toBe(0);
+
+        // A cascade's later waves are the pier's: roman candles from its deck, more the deeper.
+        world.onLineClear(1, { cascade: 2 });
+        const shallow = comet.mock.calls.length;
+        expect(shallow).toBeGreaterThanOrEqual(3);
+        world.onLineClear(1, { cascade: 4 });
+        expect(comet.mock.calls.length - shallow).toBeGreaterThan(shallow);
+        const frame = pierFrame();
+        for (const [, o] of comet.mock.calls) {
+            const along = o.from.clone().sub(frame.far).dot(frame.along);
+            const onStretch = (lane) => along >= lane[0] - 1e-6 && along <= lane[1] + 1e-6;
+            expect(onStretch(CANDLES.far) || onStretch(CANDLES.near)).toBe(true);
+            expect(o.from.y).toBeGreaterThan(PIER.deckY);
+            expect(o.velocity.y).toBeGreaterThan(10);
+        }
+        expect(waterfall).not.toHaveBeenCalled();
+        shells();
+
+        // The perfect clear: the pier pours gold into the sea along its whole length, lit from
+        // the land end out, under a curtain of gold willows; the wheel's face bursts in gold.
+        comet.mockClear();
+        world.onPerfectClear();
+        expect(waterfall).toHaveBeenCalledTimes(2);
+        const fall = waterfall.mock.calls[0][1];
+        expect(fall.a.clone().sub(frame.far).dot(frame.along)).toBeGreaterThan(frame.length - 8);
+        expect(fall.b.clone().sub(frame.far).dot(frame.along)).toBeCloseTo(PIER_HEAD.s1, 6);
+        expect(fall.count).toBeGreaterThan(2000);
+        expect(comet.mock.calls.length).toBe(12);
+        expect(shells().every((o) => o.kind === 'willow')).toBe(true);
+        expect(u.wheelBurst.value.x).toBeCloseTo(world.time, 6);
+        expect(world.crown.valueAt(world.time + 0.5)).toBeGreaterThan(0.5);
+
+        // A level: searchlights from the deck, a broad wave of gold along the pier's lights, the
+        // wheel's face bursting in its new colour, a saturn and a ring.
+        t = run(world, camera, t, 6);
+        const pulsesBefore = [0, 1, 2, 3].map((i) => u[`pulse${i}`].value.x);
+        world.onLevelUp();
+        expect(shells().map((o) => o.kind)).toEqual(['saturn', 'ring']);
+        const wave = [0, 1, 2, 3].map((i) => u[`pulse${i}`].value).find((v, i) => v.x !== pulsesBefore[i]);
+        expect(wave.w).toBeGreaterThan(PULSE.width * 2);
+        expect(wave.z).toBeLessThan(PULSE.speed);
+        t = run(world, camera, t, 1.5);
+        expect(world.search.valueAt(t)).toBeGreaterThan(0.6);
+        expect(litBeams(LASER_SLOTS, LASER_SLOTS + 4)).toBe(4);
+        expect(litBeams(0, LASER_SLOTS)).toBe(0);
+        // The searchlights stand on the pier's deck and point up into the sky.
+        for (let j = LASER_SLOTS; j < LASER_SLOTS + 4; j += 1) {
+            expect(world.beams.iA.array[j * 4 + 1]).toBeGreaterThan(PIER.deckY);
+            expect(world.beams.iB.array[j * 4 + 1]).toBeGreaterThan(0.8);
+        }
+
+        // Every shell the barge can fire bursts into live stars, none of them a broken number.
+        fw.clear();
+        for (const kind of SHELL_KINDS) {
+            fw.burst({
+                at: t, pos: new THREE.Vector3(-10, 80, -180), color: new THREE.Color(0xff5fa8), kind, scale: 1, stars: 120,
+            });
+        }
+        let born = 0;
+        for (let i = 0; i < fw.capacity; i += 1) {
+            if (fw.iSpawn.array[i * 4 + 3] < t - 1) continue;
+            born += 1;
+            for (const attr of [fw.iSpawn, fw.iVel, fw.iLook, fw.iMotion]) {
+                for (let k = 0; k < 4; k += 1) expect(Number.isFinite(attr.array[i * 4 + k])).toBe(true);
+            }
+            expect(fw.iVel.array[i * 4 + 3]).toBeGreaterThan(0);
+        }
+        expect(born).toBeGreaterThan(SHELL_KINDS.length * 60);
+        // A seek leaves no event's light behind.
+        world.seek(3);
+        expect(world.lasers.valueAt(3.1)).toBe(0);
+        expect(world.search.valueAt(3.1)).toBe(0);
+        expect(u.wheelBurst.value.y).toBe(0);
+        expect(u.pulse0.value.x).toBeLessThan(-1e5);
+        world.dispose();
+    });
+
+    it('turns the wheel\'s light programmes by the clock, the classic first', () => {
+        const { world } = builtWorld();
+        const { seconds, programmes, hold } = WHEEL_SHOW;
+        world.update({ time: 0, delta: 0 });
+        expect(world.u.wheelShow.value.toArray()).toEqual([0, 1, 0, 0]);
+        world.update({ time: seconds * hold * 0.9, delta: 0 });
+        expect(world.u.wheelShow.value.z).toBe(0);
+        const seen = new Set();
+        for (let k = 0; k < programmes; k += 1) {
+            world.update({ time: k * seconds, delta: 0 });
+            const show = world.u.wheelShow.value;
+            expect(show.z).toBeCloseTo(0, 9);
+            seen.add(show.x);
+        }
+        expect(seen.size).toBe(programmes);
+        world.update({ time: programmes * seconds, delta: 0 });
+        expect(world.u.wheelShow.value.x).toBe(0);
+        world.dispose();
+    });
+
+    it('keeps the strollers on the pier and the boats clear of it', () => {
+        const frame = pierFrame();
+        const rows = strollerRows(WORLD_QUALITY.High.strollers, frame.length);
+        expect(rows).toHaveLength(WORLD_QUALITY.High.strollers);
+        const span = frame.length - STROLL.margin - STROLL.from;
+        let standing = 0;
+        for (const [s, across, speed, , height, clothes, stands] of rows) {
+            expect(height).toBeGreaterThan(1.45);
+            expect(height).toBeLessThan(1.9);
+            expect(Number.isInteger(clothes)).toBe(true);
+            if (stands) {
+                standing += 1;
+                expect(speed).toBe(0);
+                expect(s).toBeGreaterThan(PIER_HEAD.s0);
+                expect(s).toBeLessThan(PIER_HEAD.s1);
+                expect(Math.abs(across)).toBeLessThan(PIER_HEAD.halfAcross);
+            } else {
+                // A stroller's pace, inside the railings, on the stretch between the head and the land.
+                expect(Math.abs(speed)).toBeGreaterThan(0.6);
+                expect(Math.abs(speed)).toBeLessThan(1.5);
+                expect(Math.abs(across)).toBeLessThan(PIER.width / 2 - 0.3);
+                expect(s).toBeGreaterThanOrEqual(0);
+                expect(s).toBeLessThanOrEqual(span + 0.2);
+            }
+        }
+        expect(standing).toBeGreaterThan(2);
+        // The same count gives the same walk (it has a generator of its own).
+        expect(strollerRows(20, frame.length)).toEqual(strollerRows(20, frame.length));
+
+        // The boats: the dinghy sails between the beach and the pier and never reaches its piles;
+        // the others pass beyond its far end. A quarter of an hour of courses.
+        const pierX = (z) => frame.far.x + ((z - frame.far.z) / frame.along.z) * frame.along.x;
+        BOAT_LANES.forEach((lane, i) => {
+            let lo = Infinity;
+            let hi = -Infinity;
+            let step = 0;
+            let last = boatX(i, 0);
+            for (let time = 0; time <= 900; time += 1) {
+                const x = boatX(i, time);
+                lo = Math.min(lo, x);
+                hi = Math.max(hi, x);
+                step = Math.max(step, Math.abs(x - last));
+                last = x;
+            }
+            expect(hi - lo).toBeCloseTo(lane.reach * 2, 0);
+            // A sailing boat's pace: it never jumps.
+            expect(step).toBeLessThan(6);
+            if (lane.z > frame.far.z) expect(hi).toBeLessThan(pierX(lane.z) - lane.length);
+            else expect(lane.z).toBeLessThan(frame.far.z - 40);
+        });
+        // Every tier keeps both.
+        const { world } = builtWorld('Minimal');
+        expect(world.parts.life.children.map((c) => c.name)).toEqual(['SynthwaveStrollers', 'SynthwaveBoats']);
+        world.dispose();
     });
 
     it('holds the fireworks\' sky glow under Reduce flashing and fades the stars in', () => {
@@ -919,18 +1332,18 @@ describe('synthwave-sunset world', () => {
     it('sends the gulls to roost as the evening runs out, in turn and the mates together, and brings them back', () => {
         const n = GULL_FLIGHTS.length;
         const roost = new GullRoost(n);
-        const duskAt = (t) => eveningAt(0, t);
-        roost.seek(600, duskAt);
+        const duskAt = (t) => eveningLook(eveningHour(0, t)).dusk;
+        roost.seek(0, duskAt);
         const left = new Map();
         const at = [0, 0, 0, 1];
         let goneAll = false;
-        for (let t = 600; t <= 900; t += 0.5) {
+        for (let t = 0; t <= 560; t += 0.5) {
             roost.update(t, duskAt(t));
             for (let i = 0; i < n; i += 1) {
                 if (roost.leaveAt[i] > roost.backAt[i] && !left.has(i)) left.set(i, roost.leaveAt[i]);
             }
-            if (Math.abs(t - 750) < 0.25) {
-                // In the afterglow every bird has gone (drawn at nothing).
+            if (Math.abs(t - 250) < 0.25) {
+                // By night every bird has gone (drawn at nothing).
                 goneAll = GULL_FLIGHTS.every((_, i) => {
                     gullPosition(i, t, at, { leaveAt: roost.leaveAt[i], backAt: roost.backAt[i] });
                     return at[3] === 0;
@@ -947,16 +1360,16 @@ describe('synthwave-sunset world', () => {
         // Back home (on their loops, full size) once the evening has walked back.
         GULL_FLIGHTS.forEach((_, i) => {
             expect(roost.backAt[i]).toBeGreaterThan(roost.leaveAt[i]);
-            gullPosition(i, 900, at, { leaveAt: roost.leaveAt[i], backAt: roost.backAt[i] });
-            const home = loopPosition(GULL_FLIGHTS[i], 900);
+            gullPosition(i, 560, at, { leaveAt: roost.leaveAt[i], backAt: roost.backAt[i] });
+            const home = loopPosition(GULL_FLIGHTS[i], 560);
             expect(Math.hypot(at[0] - home[0], at[1] - home[1], at[2] - home[2])).toBeLessThan(1e-6);
             expect(at[3]).toBeGreaterThan(1);
         });
         // A seek rebuilds what the walk did: who is away, and since when.
-        for (const t of [670, 690, 760, 815, 840]) {
+        for (const t of [90, 105, 250, 440, 465]) {
             const walked = new GullRoost(n);
-            walked.seek(300, duskAt);
-            for (let s = 300.5; s <= t + 1e-6; s += 0.5) walked.update(s, duskAt(s));
+            walked.seek(0, duskAt);
+            for (let s = 0.5; s <= t + 1e-6; s += 0.5) walked.update(s, duskAt(s));
             const seeked = new GullRoost(n);
             seeked.seek(t, duskAt);
             for (let i = 0; i < n; i += 1) {

@@ -416,7 +416,7 @@ is a hairline with a faint wake: its skin is a length of its own, not a share of
   was a flat polygon with straight sides: under thirty voxels cross the disc. The field is
   ravelled by the finer reads before the threshold (gotcha #1409).
 - **Zigzag ripples.** The pulsar's wisps bent by a read of the coarse noise had a corner in every
-  crest; their phase is bent by a smooth function of the angle (gotcha #1726).
+  crest; their phase is bent by a smooth function of the angle (gotcha #1727).
 - **Two-tone gas went to mud.** Lighting the body of each patch in the patch's other colour (gold
   under crimson) read brown. One hue a patch stays.
 - **A corona three radii long.** The first fans washed the left third of the frame in orange and
