@@ -142,12 +142,12 @@ describe('stellar drift world: built, posed, taken down', () => {
         world.dispose();
     });
 
-    it('draws only the parts it is asked for, and `ice` means all three classes of it', () => {
+    it('draws only the parts it is asked for, and `ice` means all four classes of rock', () => {
         const { world } = makeWorld('Minimal');
         world.showOnlyParts(['space']);
         expect(world.getState().parts).toEqual(['space']);
         world.showOnlyParts(['space', 'ice']);
-        expect(world.getState().parts).toEqual(['space', 'boulders', 'shards', 'motes']);
+        expect(world.getState().parts).toEqual(['space', 'boulders', 'shards', 'heroes', 'motes']);
         world.dispose();
     });
 

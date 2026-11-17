@@ -8,7 +8,8 @@
  * storms         ovals the cloud lookup is twisted round
  * nebulaDetail   the nebula's fine field (one more fetch per sky pixel)
  * starLayers     lattices of far stars
- * ice            the drifting ice: [boulders, shards, motes]
+ * ice            the drifting rocks: [boulders, shards, motes, hero rocks] (stellar-drift-rocks.js)
+ * rockDetail     2 = the boulders' grain too, 1 = only the hero rocks' (the chips never read it)
  * sparks         the pool a lock's splash and a meteor's burst throw from
  * moonSize       width of the icy moon's baked map (the rust world's is always 512)
  */
@@ -21,7 +22,8 @@ export const QUALITY = Object.freeze({
         storms: 3,
         nebulaDetail: 0,
         starLayers: 2,
-        ice: Object.freeze([2, 24, 400]),
+        ice: Object.freeze([4, 32, 400, 2]),
+        rockDetail: 1,
         sparks: 160,
         moonSize: 512,
     }),
@@ -33,7 +35,8 @@ export const QUALITY = Object.freeze({
         storms: 4,
         nebulaDetail: 0,
         starLayers: 2,
-        ice: Object.freeze([3, 40, 700]),
+        ice: Object.freeze([6, 56, 700, 2]),
+        rockDetail: 1,
         sparks: 260,
         moonSize: 512,
     }),
@@ -45,7 +48,8 @@ export const QUALITY = Object.freeze({
         storms: 6,
         nebulaDetail: 1,
         starLayers: 3,
-        ice: Object.freeze([4, 70, 1300]),
+        ice: Object.freeze([9, 90, 1300, 3]),
+        rockDetail: 2,
         sparks: 420,
         moonSize: 1024,
     }),
@@ -57,7 +61,8 @@ export const QUALITY = Object.freeze({
         storms: 8,
         nebulaDetail: 1,
         starLayers: 3,
-        ice: Object.freeze([6, 110, 2200]),
+        ice: Object.freeze([12, 130, 2200, 3]),
+        rockDetail: 2,
         sparks: 700,
         moonSize: 1024,
     }),
@@ -69,7 +74,8 @@ export const QUALITY = Object.freeze({
         storms: 8,
         nebulaDetail: 1,
         starLayers: 3,
-        ice: Object.freeze([8, 150, 3200]),
+        ice: Object.freeze([14, 170, 3200, 3]),
+        rockDetail: 2,
         sparks: 1000,
         moonSize: 1024,
     }),
@@ -81,7 +87,8 @@ export const QUALITY = Object.freeze({
         storms: 8,
         nebulaDetail: 1,
         starLayers: 3,
-        ice: Object.freeze([10, 200, 4600]),
+        ice: Object.freeze([16, 220, 4600, 3]),
+        rockDetail: 2,
         sparks: 1400,
         moonSize: 1024,
     }),

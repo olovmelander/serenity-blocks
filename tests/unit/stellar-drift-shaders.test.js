@@ -219,8 +219,9 @@ describe.each(TIERS)('stellar-drift shaders at %s', (quality) => {
     afterAll(() => world?.dispose());
 
     it('builds every part on both backends without a warning, an undeclared binding or an unassigned read', () => {
-        // space, three classes of ice, sparks, meteors and heads, on two backends
-        expect(built.length).toBe(14);
+        // space, four classes of rock (boulders, shards, hero rocks, motes), sparks, meteors and
+        // heads, on two backends
+        expect(built.length).toBe(16);
         expect(built.flatMap(problemsOf)).toEqual([]);
     });
 
