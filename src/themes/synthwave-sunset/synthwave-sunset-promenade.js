@@ -149,10 +149,10 @@ function createPromenadeMaterial(u) {
         const V = rel.div(dist);
         const N = normalize(normalWorld).toVar();
         const facing = abs(dot(N, V));
-        const duskLight = mix(float(1.0), float(0.5), u.dusk);
+        const duskLight = u.ambient;
         const sky = rgb(0x8a7aa8, 0.3).mul(float(0.55).add(max(N.y, 0.0).mul(0.45))).mul(duskLight);
         const rim = pow3(float(1.0).sub(facing)).mul(max(dot(N, u.sunDir), 0.0).mul(0.8).add(0.2))
-            .mul(rgb(0xff8a5c, 0.45)).mul(mix(float(1.0), float(0.3), u.dusk));
+            .mul(u.sunBand.mul(0.45)).mul(mix(float(1.0), float(0.3), u.dusk));
         const lampWash = smoothstep(9.0, 0.0, p.y).mul(rgb(0xffc890, 0.14)).mul(u.pierGlow);
         const wallCol = rgb(0xc9b2bc).mul(sky.add(lampWash)).add(rim);
         const paintCol = rgb(0xece4ea).mul(sky.add(lampWash)).add(rim);

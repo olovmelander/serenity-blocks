@@ -22,6 +22,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     abs,
     cameraPosition,
     clamp,
@@ -60,6 +61,7 @@ import {
     swSky,
     swSkyGradient,
     swSunAlign,
+    MOON_RADIUS,
 } from './synthwave-sunset-tsl.js';
 
 /** Swell trains: heading (deg, 0 = toward the beach, +z), wavelength (m), steepness a·k, phase. */
@@ -117,6 +119,7 @@ const shoreZ = (x) => {
  * @param {boolean} [opts.swash=true] the swash's moving sheet and foam edge
  * @param {number} [opts.mirrorScale=0]  reflector resolution scale (0 = mirrored sky only)
  * @param {boolean} [opts.sandDetail=true] wind ripples, the wrack line and shells on the sand
+ * @param {boolean} [opts.mackerel=true]  mirror the mackerel sky (a tier may leave it out)
  */
 export function createSea(u, opts = {}) {
     const trains = WAVE_TRAINS.slice(0, Math.max(2, Math.min(WAVE_TRAINS.length, opts.trains ?? 8)));
@@ -172,6 +175,10 @@ export function createSea(u, opts = {}) {
             slope.addAssign(vec2(dx, dz).mul(cos(phase).mul(steep).mul(keep)));
             unresolved.addAssign(float(steep * steep * 0.5).mul(float(1.0).sub(keep)));
         }
+        // The sea's own clock: a glassy calm, a light breeze, a fresh one (u.seaState scales the
+        // swell's slopes, and so the slope variance the highlight carries).
+        slope.mulAssign(u.seaState);
+        unresolved.mulAssign(u.seaState.mul(u.seaState));
 
         // ── Surf: breakers rolling in across the surf zone ──
         const surfPhase = ds.div(SURF_WAVELENGTH).add(t.div(T)).add(arrive).toVar();
@@ -298,7 +305,7 @@ export function createSea(u, opts = {}) {
         const gloss = mix(sandGloss, float(1.0), water);
 
         // Diffuse base: sea body, the sheet over sand, the sand itself (all in dusk light).
-        const duskLight = mix(float(1.0), float(0.5), u.dusk);
+        const duskLight = u.ambient;
         // Beyond the promenade the land is the town's dark ground, not sand.
         const town = smoothstep(SHORE.promenade - 1.0, SHORE.promenade + 2.0, up);
         // Relief: the low sun and the bright western sky light the faces that turn toward them
@@ -351,6 +358,7 @@ export function createSea(u, opts = {}) {
             clouds: reflectionClouds,
             stars: false,
             sunDisc: false,
+            mackerel: opts.mackerel !== false,
             cloudMix: mix(float(0.25), float(1.0), water),
         });
         const mirror = sky.color.toVar();
@@ -400,8 +408,24 @@ export function createSea(u, opts = {}) {
         const sunUp = smoothstep(-0.11, 0.03, L.y);
         const glint = D.mul(swFresnel(dot(H, E))).div(ne.mul(4.0)).mul(0.055).mul(sunUp)
             .mul(gloss);
-        const glintCol = mix(rgb(0xffb060), rgb(0xff6a3a), u.dusk);
+        const glintCol = u.sunGlint;
         col.addAssign(glintCol.mul(clamp(glint, 0.0, 14.0)));
+
+        // ── The moon on the water: after dark, a cool road of light under the crescent ──
+        If(u.skyLights.y.greaterThan(0.02), () => {
+            const Hm = normalize(u.moonDir.add(E));
+            const nhm = clamp(dot(N, Hm), 1e-3, 1.0);
+            const nhm2 = nhm.mul(nhm);
+            const hma = dot(Hm, along);
+            const hmb = dot(Hm, across);
+            const mm2 = rough.mul(2.0).add(Math.tan(MOON_RADIUS) ** 2 * 2.5);
+            const mmb2 = mm2.mul(7.0);
+            const tanM2 = hma.mul(hma).div(mm2).add(hmb.mul(hmb).div(mmb2)).div(nhm2);
+            const Dm = exp(tanM2.negate()).div(sqrt(mm2.mul(mmb2)).mul(nhm2).mul(nhm2).mul(Math.PI));
+            const moonGlint = Dm.mul(swFresnel(dot(Hm, E))).div(ne.mul(4.0)).mul(0.012).mul(gloss)
+                .mul(u.skyLights.y);
+            col.addAssign(rgb(0xc8d6ff).mul(clamp(moonGlint, 0.0, 5.0)));
+        });
 
         // ── White water: surf foam and the swash's edge, lit by the dusk sky ──
         const hLen = max(length(vec2(E.x, E.z)), 1e-4);

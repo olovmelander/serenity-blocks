@@ -15,7 +15,10 @@ import {
     clamp,
     cos,
     dot,
+    exp,
     float,
+    floor,
+    fract,
     fwidth,
     length,
     max,
@@ -23,6 +26,7 @@ import {
     normalize,
     positionWorld,
     reflect,
+    sin,
     smoothstep,
     sqrt,
     texture,
@@ -31,7 +35,7 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    DEG, LIGHT_TILE, SURFACE, TAU, WINDOW_INDEX, ocBackdrop, ocBell, ocPart, ocPow4, ocPow8, ocThrough,
+    DEG, LIGHT_TILE, SURFACE, TAU, WINDOW_INDEX, ocBackdrop, ocBell, ocHash21, ocPart, ocPow4, ocPow8, ocThrough,
 } from './ocean-tsl.js';
 
 /** How far the skin's facets tilt across a thread of the light's net (slope per unit of the net). */
@@ -94,7 +98,22 @@ export function createSurface(u, { waves = WAVES.length, clouds = true, light = 
         const n2 = u.noise(st.mul(0.19).add(vec2(t.mul(-0.021), t.mul(0.015))));
         const n3 = u.noise(st.mul(0.61).add(vec2(t.mul(0.04), t.mul(-0.03))));
         slope.addAssign(n2.ba.sub(0.5).mul(0.16)
-            .add(n3.rg.sub(0.5).mul(0.2).mul(float(1.0).sub(smoothstep(0.03, 0.1, foot)))));
+            .add(n3.rg.sub(0.5).mul(0.2).mul(float(1.0).sub(smoothstep(0.03, 0.1, foot)))).mul(u.chop));
+        // Rain: every drop a ring that widens and dies, two sizes of them (seen where the pixels
+        // can still draw a ring; further off the squall's chop does the work).
+        const near = float(1.0).sub(smoothstep(0.02, 0.07, foot)).mul(u.rain).toVar();
+        [[0.85, 1.0, 0.0], [0.55, 1.37, 0.43]].forEach(([cellSize, rate, shift]) => {
+            const g = st.add(512.0 + shift * 7.0).div(cellSize);
+            const id = floor(g);
+            const h1 = ocHash21(id);
+            const h2 = ocHash21(id.add(vec2(37.0, 91.0)));
+            const off = fract(g).sub(0.5).sub(vec2(h1, h2).sub(0.5).mul(0.5));
+            const life = fract(u.time.mul(rate).add(h1.mul(7.0)).add(h2));
+            const d = length(off);
+            const ring = d.sub(life.mul(0.42));
+            const wave = sin(ring.mul(46.0)).mul(exp(ring.mul(ring).mul(-320.0))).mul(float(1.0).sub(life));
+            slope.addAssign(off.div(max(d, 1e-3)).mul(wave).mul(near).mul(0.55));
+        });
         // The skin's own crinkle: the facets that focus the light into the net on the sand. The
         // surface is that net's height (its threads are ridges), so every thread is a pair of
         // facets, one turned into the window and one out of it. It is read where the sun's ray
@@ -108,7 +127,7 @@ export function createSurface(u, { waves = WAVES.length, clouds = true, light = 
         const hz = texture(u.lightTex, st.add(vec2(0.0, step)).mul(LT)).level(lvl).r;
         /** What of the crinkle the pixels can still draw (its threads are a few centimetres wide). */
         const resolved = float(1.0).sub(smoothstep(0.035, 0.11, foot)).toVar();
-        slope.addAssign(vec2(hx.sub(h0), hz.sub(h0)).mul(CRINKLE / step).mul(resolved));
+        slope.addAssign(vec2(hx.sub(h0), hz.sub(h0)).mul(CRINKLE / step).mul(resolved).mul(u.chop.mul(0.6).add(0.4)));
         slope.mulAssign(u.swell);
         /** The underside's normal: it points down, at the viewer. */
         const N = normalize(vec3(slope.x, -1.0, slope.y)).toVar();

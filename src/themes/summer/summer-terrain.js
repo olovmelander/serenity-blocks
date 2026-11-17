@@ -479,7 +479,8 @@ export class SummerTerrain {
         // crowns, lighter on their tops.
         const wooded = smoothstep(46, 96, range);
         const crowns = light.noise(world.xz.mul(0.071));
-        const canopy = mix(color(0x08170a), color(0x21401a), smoothstep(0.34, 0.7, crowns.b.mul(0.6).add(crowns.a.mul(0.4))));
+        const crown = smoothstep(0.34, 0.7, crowns.b.mul(0.6).add(crowns.a.mul(0.4)));
+        const canopy = mix(color(0x08170a), color(0x21401a), crown);
         albedo = mix(albedo, canopy, wooded.mul(0.94));
         const smooth = normalize(normalWorld);
         // Granite shows through where the ground steepens; the far hills are forest floor.

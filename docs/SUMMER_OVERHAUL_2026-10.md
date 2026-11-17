@@ -178,6 +178,92 @@ Checked in the playground at High and Low on native WebGPU, 1920×1080, 1280×72
 1080p, interleaved against the evening before the pass: about 2.6 ms against 2.5 ms (within
 run-to-run noise). `tests/unit/summer-*.test.js`: 675 tests.
 
+## The living eve (2026-11-17)
+
+An audit of the whole theme, then a pass over what it found. Everything above still stands;
+this section records what was weak and what was built on top.
+
+### What the audit found
+
+Looked at in the playground and in the game, hour by hour and event by event, part by part:
+
+| Part | Finding |
+| --- | --- |
+| The sky | The weakest part. One flat deck of cloud seen from below: in the low band the game frames (the lowest 25 degrees) it showed as pale horizontal streaks, the same in every hour. Nothing in it moved visibly. |
+| Change over time | Only the hours (five palettes, twenty minutes a round). Within one hour the scene never changed: the same clouds, the same breeze, the same lake. |
+| The far shore and hills | A bare green slope with a tree here and there (340 sprites over 800 m of shore), which read as a park, not as woods. |
+| The lake | Good mirror and sun road. But the rings every lock and clear drops on it opened a metre and a half off the near shore, behind the crest of flowers the camera looks over: in play they were never seen. |
+| The maypole | Well modelled, thinly dressed: six narrow ribbons and small flowers on the wreaths only. |
+| The events | Every event was petals from the card's edge plus a ring and a gust. A hard drop, a twist, a back-to-back, a perfect clear and a level-up differed in amount, not in kind; a perfect clear and a level-up were both "the whole evening exhales". Game over only let the petals fall. |
+| Life | Butterflies and swallows only; nothing on the water. |
+| The meadow, the cottage and shed, the trees, the island, the light and the haze, the piece colours | Strong. Kept as they are. |
+
+### The weather
+
+Beside the hours the day now has weather, on a clock of its own
+([`summer-weather.js`](../src/themes/summer/summer-weather.js)): six kinds, 76 seconds each,
+each holding for the first part of its time and then easing into the next.
+
+| Weather | What it does |
+| --- | --- |
+| Fair evening | Scattered cumulus on a light breeze: the scene as it was built, and where a session starts. |
+| A fresh breeze | The wind doubles: cat's-paws race over the lake, fronts of wind cross the meadow and the woods every few seconds, cloud shadows hurry over the land, the air clears. |
+| Towers over the hills | The cumulus builds tall and the sun fans out between the clouds. |
+| Sun shower | Rain falls through the sunshine in front of the eye, every drop lit from behind, and dimples the lake. |
+| Mist on the water | The air stands still; mist lies on the lake and in the hollows, the far shore sinks into it, the sun's shafts stand in it. |
+| Mackerel sky | A fleece of small cloudlets high over a lake like glass. |
+
+The hours take twenty minutes to come round and the weather seven and a half, so the two never
+line up for long: with the level turning the hour as well, the picture changes about once a
+minute and does not repeat within a session. A weather is sixteen numbers the light rig copies
+into uniforms; nothing is rebuilt, so every tier and both backends show the same weather.
+
+### What was rebuilt
+
+- **The sky** ([`summer-atmosphere.js`](../src/themes/summer/summer-atmosphere.js)). Two rows of
+  cumulus are drawn from the side, in azimuth and elevation, standing on flat bases over the far
+  shore and above it: where along the horizon they mass is one slow noise, their billows a finer
+  one, and a cloud ends where its billows no longer outweigh the height above the base. The same
+  field read a step toward the sun says which side of a billow is lit, so toward the sun a cloud
+  is a shaded heart inside a burning rim and away from it a peach body with cream billows. The old
+  deck stays as high streaks; a mackerel field, a veil of cirrus, noctilucent clouds over the
+  resting sun in the white night, and a slowly turning fan of rays about the sun are new. The
+  weather says how much of each there is; the hour still says what colour it is.
+- **Cloud shadows.** The clouds' shadows drift over the meadow, the lake, the woods and the
+  buildings (`cloudLight` in the light rig: one read of the shared noise, taken once at the root
+  of a grass clump, a flower or a tree).
+- **The far woods.** Four times the sprite trees (1,400 at High), most of them on the far shore
+  and the headland, and the ground under them painted as canopy: the hills are forest now.
+- **The lake.** Rings open on the water the camera sees past the crest (17 m out and beyond);
+  the weather lays it flat or ruffles it; rain dimples it.
+- **The maypole.** Ten ribbons, three from each arm and four from the top, and posies of all
+  seven kinds tied at its head, where the arm crosses, at the arm's ends and under each wreath.
+  They are painted by the maypole's own shader, so every head is a lantern of the bouquet.
+- **The white night.** Glow-worms: the specks that drift low over the flowers breathe a
+  green-gold light on and off, and the noctilucent clouds shine over the sun.
+- **Petals.** A petal in the air is a claw that widens into a rounded blade, folded and cupped,
+  paler at the claw (it was a four-cornered kite, which read as confetti).
+
+### An effect of its own for every event
+
+| Event | What is its own |
+| --- | --- |
+| Piece lock | As before: petals of the piece's flower from the card's edge, that flower nodding and glowing wherever it grows, a gust through the grass, a ring on the lake (now seen). |
+| Hard drop | A ring of pollen runs out over the heads of the flowers from where the piece came down, under the dandelion seed it shakes loose. |
+| Line clear (1–3) | As before: twin jets at the cleared rows, a broad ring, from two lines a front of wind. |
+| Four lines | As before: the meadow lifts its petals and the swallows tower; and now the sun's fan of rays opens across the sky. |
+| Combo / streak | As before: the crown of petals and the silk ribbons round the board. They are a combo's alone now (a back-to-back or a perfect clear no longer raises the ribbons). |
+| Twist | The maypole dances: its ten ribbons fly out and wheel round the pole. The spinning garland beside the board stays. |
+| Back-to-back | A stone skips down the sun's road, ring after ring, each touch a glint, further and with more hops for every one in a row; the sun's rays answer. |
+| The bouquet | The maypole throws the bouquet, and one great flower of every colour opens over it. |
+| Perfect clear | The largest thing the evening does. Seven flowers open in the air beside the board, one after another, one for each kind: a thread of pollen climbs, and the petals of one kind are thrown from a gold heart to their places in a flower drawn in the air, five to eight great petals each made of the small ones. The air holds each for a moment and a half, then lets it fall. Six stand to either side of the board (clear of the score panel, which is measured) and the last opens over the maypole, with the sunburst and the rising meadow as before. |
+| Level up | The hour turns, and a wave of bloom rolls away from the eye through the meadow, opening and lighting every flower as it passes, and runs on across the lake as a band of sparkling water. |
+| Game over | Dusk: the wind dies, mist rises off the water, the light lowers and cools while the petals come down. It lifts again when the next session starts. |
+
+Frame-wide brightenings (the rays, the hearts of the flowers) go through `flashScale()`; what
+moves the maypole's ribbons is scaled by Reduce motion. Nothing is thrown in front of the board:
+the card and the score panel are measured, and the flowers open in the strips beside them.
+
 ## How it is built
 
 ### Trees and buildings authored in Blender

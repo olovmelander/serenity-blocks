@@ -101,13 +101,16 @@ export function fishShape({
  * A fish's place in the world from its centre, heading and local vertex, with its body bent:
  * returns { position, normal } nodes. `beat` = the swim's phase, `amp` how hard it swims.
  */
-const placeFish = (centre, heading, local, normal, along, beat, amp) => {
+const placeFish = (centre, heading, local, normal, along, beat, amp, roll = null) => {
     // The body bends from the head back, more toward the tail.
     const bend = sin(beat.sub(along.mul(5.5))).mul(along.mul(along)).mul(amp);
     const bent = vec3(local.x.add(bend), local.y, local.z);
     const f = normalize(heading);
-    const right = normalize(cross(f, vec3(0.0, 1.0, 0.0)).add(vec3(1e-4, 0.0, 0.0)));
-    const up = cross(right, f);
+    const level = normalize(cross(f, vec3(0.0, 1.0, 0.0)).add(vec3(1e-4, 0.0, 0.0)));
+    const plumb = cross(level, f);
+    // Rolled about its own heading: a flank turned up to the sky is a mirror full of light.
+    const right = roll ? level.mul(cos(roll)).add(plumb.mul(sin(roll))) : level;
+    const up = roll ? plumb.mul(cos(roll)).sub(level.mul(sin(roll))) : plumb;
     const position = centre.add(right.mul(bent.x)).add(up.mul(bent.y)).add(f.mul(bent.z));
     // (The bend turns the flank a little: enough for the glints to ripple down the body.)
     const turn = cos(beat.sub(along.mul(5.5))).mul(along).mul(amp).mul(2.5);
@@ -145,11 +148,19 @@ const silverFlank = (u, N, P, up, back, belly, glints) => {
     const lit = ocLight(u, { N, P, wrap: 0.3 });
     const flankUp = clamp(up.mul(0.5).add(0.5), 0.0, 1.0);
     const albedo = mix(belly, back, smoothstep(0.35, 0.8, flankUp));
-    const mirror = ocBackdrop(u, R).mul(float(1.0).sub(smoothstep(0.4, 0.85, flankUp)));
-    const col = albedo.mul(lit).add(mirror.mul(0.85)).toVar();
+    const flank = float(1.0).sub(smoothstep(0.4, 0.85, flankUp));
+    const mirror = ocBackdrop(u, R).mul(flank);
+    const col = albedo.mul(lit).mul(0.8).add(mirror.mul(1.15)).toVar();
+    // A flank turned up mirrors the bright window overhead: as the school rolls, it flashes.
+    const shine = smoothstep(0.14, 0.6, R.y);
+    const overhead = u.horizon.mul(0.5).add(u.sun.mul(0.3));
+    col.addAssign(overhead.mul(shine).mul(flank).mul(u.breath));
     if (glints) {
+        // The flash: a broad sheen as the flank turns toward the light, and a hard spark in it.
         const g = clamp(dot(R, u.sunDir), 0.0, 1.0);
-        col.addAssign(u.sun.mul(ocPow8(ocPow4(g))).mul(2.4).mul(float(1.0).sub(flankUp.mul(0.7))).mul(u.breath));
+        const g8 = ocPow8(g);
+        const flash = g8.mul(0.5).add(ocPow4(g8).mul(3.0));
+        col.addAssign(u.sun.mul(flash).mul(float(1.0).sub(flankUp.mul(0.7))).mul(u.breath));
     }
     return col;
 };
@@ -196,14 +207,15 @@ export function createSchool(u, count, { glints = true } = {}) {
         const seed = aFish.w;
         // ── On the loop ──
         const ph = B.y.add(s.mul(B.w)).toVar();
+        const out = sin(ph).toVar();
         const loop = vec3(
-            sin(ph).mul(A.x).mul(u.squeeze),
-            A.y.add(sin(ph.add(1.1)).mul(A.z)).add(sin(ph.mul(2.3)).mul(A.z).mul(0.35)),
+            out.mul(A.x).mul(u.squeeze),
+            A.y.add(sin(ph.add(1.1)).mul(A.z)).add(sin(ph.mul(2.3)).mul(A.z).mul(0.35)).add(C.w.mul(out).mul(out)),
             A.w.add(sin(ph.mul(2.0).add(0.6)).mul(B.x)).add(cos(ph).mul(5.0)),
         );
         const dLoop = vec3(
             cos(ph).mul(A.x).mul(u.squeeze),
-            cos(ph.add(1.1)).mul(A.z).add(cos(ph.mul(2.3)).mul(A.z).mul(0.8)),
+            cos(ph.add(1.1)).mul(A.z).add(cos(ph.mul(2.3)).mul(A.z).mul(0.8)).add(C.w.mul(sin(ph.mul(2.0)))),
             cos(ph.mul(2.0).add(0.6)).mul(B.x).mul(2.0).sub(sin(ph).mul(5.0)),
         );
         const dir = normalize(dLoop).toVar();
@@ -237,9 +249,13 @@ export function createSchool(u, count, { glints = true } = {}) {
         centre.addAssign(push);
         heading.assign(normalize(heading.add(push.mul(1.4))));
         // ── Swimming ──
-        const size = seed.mul(0.09).add(0.15);
+        const size = seed.mul(0.14).add(0.2);
         const beat = t.mul(C.z.mul(9.0).add(length(push).mul(14.0)).add(11.0)).add(seed.mul(TAU));
-        const fish = placeFish(centre, heading, positionGeometry.mul(size), attribute('normal', 'vec3'), aShape.x, beat, float(0.09));
+        // The school rolls: a wave of turning flanks runs down it, each fish a little out of step,
+        // harder when it is excited or startled, so it flashes in bands as it goes.
+        const roll = sin(t.mul(1.7).sub(s.mul(9.0)).add(seed.mul(2.4)))
+            .mul(C.z.mul(0.35).add(0.38).add(length(push).mul(0.5)));
+        const fish = placeFish(centre, heading, positionGeometry.mul(size), attribute('normal', 'vec3'), aShape.x, beat, float(0.09), roll);
         vNormal.assign(fish.normal);
         return fish.position;
     })();

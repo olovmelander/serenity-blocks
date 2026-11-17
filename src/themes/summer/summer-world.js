@@ -186,6 +186,11 @@ export class SummerWorld {
         this.placeGarlands();
     }
 
+    /** The measured score panel beside the board in screen fractions (y down), or null. */
+    setHud(rect) {
+        this.stage?.setHud(rect);
+    }
+
     /** Wind the combo's ribbons around where the board now stands. */
     placeGarlands() {
         const { stage } = this;
@@ -215,7 +220,14 @@ export class SummerWorld {
         this.lake?.reset();
         this.life?.reset();
         Object.assign(this.worn, {
-            gust: 0, gustSpeed: 0, flock: 0, flockSpeed: 0, flutter: 0, flutterSpeed: 0, warmth: 0, sunburst: 0,
+            gust: 0,
+            gustSpeed: 0,
+            flock: 0,
+            flockSpeed: 0,
+            flutter: 0,
+            flutterSpeed: 0,
+            warmth: 0,
+            sunburst: 0,
             dusk: 0,
         });
     }

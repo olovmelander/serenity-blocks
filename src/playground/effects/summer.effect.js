@@ -69,6 +69,14 @@ export function create({
             + 'border-radius:14px;background:#12171fd9;pointer-events:none;z-index:3';
         document.body.appendChild(overlay);
     }
+    // ?score=1 adds a stand-in for the single-player score panel right of the board.
+    let scorePanel;
+    if (params.get('board') === '1' && params.get('score') === '1') {
+        scorePanel = document.createElement('div');
+        scorePanel.style.cssText = 'position:fixed;left:62.4%;top:19%;width:14.8%;height:30%;'
+            + 'border-radius:14px;background:#12171fe6;pointer-events:none;z-index:3';
+        document.body.appendChild(scorePanel);
+    }
     const knob = (key) => (params.has(key) && Number.isFinite(Number(params.get(key)))
         ? Number(params.get(key)) : null);
     // ?hour=0..5 holds the night at one phase (0 evening, 1 rose hour, 2 white night, 3 dawn,
@@ -101,6 +109,9 @@ export function create({
         if (knob('fov') > 1) camera.fov = knob('fov');
         camera.updateProjectionMatrix();
         world.stage.refresh();
+        world.setHud(scorePanel ? {
+            x0: 0.624, x1: 0.772, y0: 0.19, y1: 0.49,
+        } : null);
         // ?hide=Grass,Flower hides every object whose name contains one of the words.
         const hidden = (params.get('hide') || '').split(',').filter(Boolean);
         if (hidden.length) {
@@ -191,6 +202,7 @@ export function create({
         reactions.reset();
         startLevel();
         world.resetEffects();
+        world.light.rewind();
         randomIndex = 0;
         locks = 0;
         // ?picked=n pre-picks n kinds for the bouquet before the capture's own event.
@@ -259,6 +271,7 @@ export function create({
         dispose() {
             disposed = true;
             overlay?.remove();
+            scorePanel?.remove();
             post?.dispose();
             reactions.dispose();
             world?.dispose();

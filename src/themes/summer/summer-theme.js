@@ -15,7 +15,7 @@ import { getViewport } from '../../utils/viewport.js';
 import { applyCameraBreath, prefersReducedMotion } from '../shared/camera-breath.js';
 import { seededRandom } from '../../utils/helpers.js';
 import { disposeSummerAssets, loadSummerAssets } from './summer-assets.js';
-import { readSummerBoardRect } from './summer-stage.js';
+import { readSummerBoardRect, readSummerHudRect } from './summer-stage.js';
 import { SUMMER_TETROMINOS } from './summer-tetrominos.js';
 import { SummerWorld } from './summer-world.js';
 import { SummerReactions } from './summer-reactions.js';
@@ -540,6 +540,7 @@ export default class SummerTheme extends BaseTheme {
             // The board card can move (mode, resize, multiplayer); follow it cheaply.
             this.boardPoll = BOARD_POLL_S;
             this.world?.setBoard?.(readSummerBoardRect());
+            this.world?.setHud?.(readSummerHudRect());
         }
         this.updateCamera(dt);
         // Reduce motion calms the reactions too, not only the camera.
