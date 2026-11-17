@@ -371,6 +371,19 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
     toggle('odysseyPerfGpuSync', 'Waits for GPU completion during journey warmup to separate rendering and wait time.'),
     toggle('odysseyWarmProbe', 'Logs diagnostics for chapter render-warm failures without enabling the overlay.'),
     toggle('odysseyHideLevelNodes', 'Hides orb nodes on the map for scene rendering comparisons.'),
+    parameter(
+        'odysseyFoldStretch',
+        'Keeps the longer rail inside the black hole (chapter 7); disabling lays the shorter rail '
+            + 'there too, for before-and-after comparisons.',
+        OFF,
+        'On',
+        '0',
+        {
+            sources: ['src/rendering/odyssey/path-utils.js'],
+            notes: 'The orbs keep their places, so with it disabled they bunch up inside the hole. '
+                + 'Rails and orbs outside chapter 7 are the same either way.',
+        },
+    ),
     toggle('odysseyDomeCullOff', 'Keeps the global atmosphere dome visible even when a chapter sky covers it.'),
     toggle('odysseyLightsFirst', 'Builds the initial chapter light set before starting chapter shader compilation.'),
     toggle('odysseyLightsLate', 'Restores late atmosphere-light creation for startup ordering comparisons.'),

@@ -101,7 +101,7 @@ import {
 import { computeTravelFrontier, isHeldAtFrontier } from './odyssey-travel-frontier.js';
 import { resolveOdysseyPathHorizon } from './odyssey-path-horizon.js';
 import { resolveOdysseyPathInflowWeight } from './odyssey-path-inflow.js';
-import { plungeTravelExtraMs, resolveBlackHoleFall } from './transitions/odyssey-black-hole-fall.js';
+import { foldRideBetween, plungeTravelExtraMs, resolveBlackHoleFall } from './transitions/odyssey-black-hole-fall.js';
 import { breachTravelExtraMs } from './transitions/odyssey-travel-measure.js';
 import { createFoldHypercubes } from './chapter-environments/odyssey-fold-hypercubes.js';
 import { prefersReducedMotion } from '../../themes/shared/reduced-motion.js';
@@ -4841,8 +4841,11 @@ export class OdysseyBoardController {
         const reducedMotion = this.cameraController.prefersReducedMotion?.() === true;
         const currentChapter = currentBlendState?.activeChapter ?? targetChapter;
         const traveled = currentChapter !== targetChapter;
+        // Inside the black hole a trip between orbs rides the rail (the fold is longer than its
+        // share of progress, and its orbs far apart): odyssey-black-hole-fall.js foldRideBetween.
+        const foldRide = !traveled && foldRideBetween(currentProgress, targetProgress, chapterPositions);
 
-        if (traveled || options.chapterArrival === true || options.pathTravel === true) {
+        if (traveled || foldRide || options.chapterArrival === true || options.pathTravel === true) {
             await this._requestGlideChapters(currentChapter, targetChapter);
             if (!isCurrent()) return false;
             // A request can fail, still be pending, or resolve without creating scenery.
@@ -4877,7 +4880,7 @@ export class OdysseyBoardController {
         // Chapter arrivals retain the authored follow-camera panorama; ordinary
         // orb selection still brings its node forward for inspection.
         if (options.focus !== false) {
-            let focusDuration = traveled ? 520 : 800;
+            let focusDuration = (traveled || foldRide) ? 520 : 800;
             if (reducedMotion) focusDuration = 0;
             const focused = await this.cameraController.focusOnNode(
                 nodePosition,

@@ -3,7 +3,10 @@
  * mouse pad it gets a rapid speed when it goes up the mountainside, pass the clouds out in space!!"
  * The wheel slows where the climb, the lean over the Earth and the sunset below change the picture
  * fastest (src/rendering/odyssey/odyssey-scroll-pace.js), and the camera honours it for each wheel
- * step and for its speed cap. Elsewhere nothing changes.
+ * step and for its speed cap. Elsewhere nothing changes, but for the fold's longer rail inside the
+ * black hole (2026-11-17), where the same world speed takes `rate` times less progress: there the
+ * pace is read in the world (pace x foldStretchRate), and tests/unit/odyssey-fold-longer.test.js
+ * pins it.
  */
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
@@ -13,6 +16,7 @@ import { ORBIT_EARTH_SCHEDULE, orbitEarthAt } from '../../src/rendering/odyssey/
 import { OdysseyCameraController } from '../../src/rendering/odyssey/OdysseyCameraController.js';
 import { getLevelRegistry } from '../../src/core/odyssey/LevelRegistry.js';
 import { getOdysseyPathCurve } from '../../src/rendering/odyssey/path-utils.js';
+import { foldStretchRate } from '../../src/rendering/odyssey/transitions/odyssey-fold-stretch.js';
 
 describe('odysseyScrollPace — the wheel slows through the climb into space', () => {
     const layout = getLevelRegistry().getPresentationLayout();
@@ -21,13 +25,15 @@ describe('odysseyScrollPace — the wheel slows through the climb into space', (
     const span = cp[6] - b;
     const climbEnd = b + span * ORBIT_EARTH_SCHEDULE.leanOut;
     const sweep = [];
-    for (let p = 0; p <= 1; p += 0.0005) sweep.push([p, odysseyScrollPace(p, cp)]);
+    // (in the world: the fold's longer rail takes more progress for the same world, see above)
+    for (let p = 0; p <= 1; p += 0.0005) sweep.push([p, odysseyScrollPace(p, cp) * foldStretchRate(p, cp)]);
 
     it('is 1 without a layout, through the act before the climb, and once the view is back on the rail', () => {
         expect(odysseyScrollPace(0.7, null)).toBe(1);
         expect(odysseyScrollPace(Number.NaN, cp)).toBe(1);
         sweep.filter(([p]) => p < 0.64 || p > cp[6]).forEach(([p, pace]) => {
-            expect(pace, `p ${p.toFixed(4)}`).toBe(1);
+            if (foldStretchRate(p, cp) === 1) expect(pace, `p ${p.toFixed(4)}`).toBe(1);
+            else expect(pace, `p ${p.toFixed(4)}`).toBeCloseTo(1, 12);
         });
         // (the last of the sunset under the sinking Earth is a breath, not a brake)
         sweep.filter(([p]) => p > climbEnd + 0.004).forEach(([p, pace]) => {

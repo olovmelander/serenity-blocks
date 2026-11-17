@@ -26,6 +26,7 @@
  */
 
 import { seamHalfWidth, smooth01, smoother01 } from './odyssey-seam-schedule.js';
+import { foldStretchArea, foldStretchMeasure, foldStretchRange } from './odyssey-fold-stretch.js';
 
 const DEG = Math.PI / 180;
 
@@ -468,7 +469,10 @@ function resolveTravelTable(chapterPositions) {
 export function plungeTravelMeasure(p, chapterPositions) {
     const table = resolveTravelTable(chapterPositions);
     if (!table || !Number.isFinite(p)) return p;
-    return p + extraUpTo(table, p) + extraUpTo(resolveExitTable(chapterPositions), p);
+    // ...and the fold's longer rail weighs the world it covers (odyssey-fold-stretch.js), so a trip
+    // along it eases in the world, not in progress.
+    return p + extraUpTo(table, p) + extraUpTo(resolveExitTable(chapterPositions), p)
+        + foldStretchArea(p, chapterPositions);
 }
 
 /**
@@ -482,7 +486,9 @@ export function plungeTravelProgress(m, chapterPositions) {
     if (!table || !Number.isFinite(m)) return m;
     // The measure grows at least as fast as progress, so the answer lies in [m - extra, m].
     const exit = resolveExitTable(chapterPositions);
-    let lo = m - table.area[TABLE_SAMPLES] - (exit ? exit.area[TABLE_SAMPLES] : 0) - 1e-9;
+    const fold = foldStretchRange(chapterPositions);
+    let lo = m - table.area[TABLE_SAMPLES] - (exit ? exit.area[TABLE_SAMPLES] : 0)
+        - (fold ? foldStretchArea(fold.b, chapterPositions) : 0) - 1e-9;
     let hi = m;
     for (let i = 0; i < 48; i += 1) {
         const mid = (lo + hi) / 2;
@@ -503,7 +509,9 @@ export function plungeTravelTouches(p0, p1, chapterPositions) {
     const lo = Math.min(p0, p1);
     const hi = Math.max(p0, p1);
     const exit = resolveExitTable(chapterPositions);
-    return (hi > table.lo && lo < table.hi) || (!!exit && hi > exit.lo && lo < exit.hi);
+    const fold = foldStretchRange(chapterPositions);
+    return (hi > table.lo && lo < table.hi) || (!!exit && hi > exit.lo && lo < exit.hi)
+        || (!!fold && hi > fold.a && lo < fold.b);
 }
 
 /**
@@ -522,7 +530,65 @@ export function plungeTravelExtraMs(p0, p1, chapterPositions) {
     const runIn = share(stretch.from - CH7_APPROACH.runIn, stretch.from);
     const out = resolveExitStretch(chapterPositions);
     const wayOut = out ? CH7_EXIT_TRAVEL.extraMs * share(out.from, out.to) : 0;
-    return ((T.extraMs * share(stretch.from, stretch.to)) + (T.runInExtraMs * runIn) + wayOut) * short;
+    return ((T.extraMs * share(stretch.from, stretch.to)) + (T.runInExtraMs * runIn) + wayOut
+        + foldTravelExtraMs(lo, hi, chapterPositions)) * short;
+}
+
+/**
+ * A RIDE THROUGH THE FOLD (2026-11-17). Inside the hole the orbs used to be a progress jump and an
+ * 800 ms swing apart; the fold is longer now (odyssey-fold-stretch.js) and its orbs farther
+ * apart, and a trip between two of them rides the rail (the board: `foldRideBetween`). It is given
+ * `perMeasureMs` for each unit of the world measure it covers inside the fold, from where the fold
+ * is whole (`from`, chapter 7's local progress) to where the way out's own time begins (`to`):
+ * about two seconds on top of its own for the ~75 u between two orbs.
+ */
+export const CH7_FOLD_TRAVEL = Object.freeze({
+    from: 0.25,
+    to: 0.868,
+    perMeasureMs: 70000,
+    /** No more than this for one trip, however far. */
+    maxMs: 4200,
+});
+
+/**
+ * The fold's stretch of progress (absolute), or null without a layout.
+ * @param {number[]} chapterPositions
+ * @returns {{ from: number, to: number }|null}
+ */
+export function resolveFoldTravelStretch(chapterPositions) {
+    const ch7 = chapterPositions?.[6];
+    const ch8 = chapterPositions?.[7];
+    if (!Number.isFinite(ch7) || !Number.isFinite(ch8) || !(ch8 > ch7)) return null;
+    const span = ch8 - ch7;
+    return { from: ch7 + (span * CH7_FOLD_TRAVEL.from), to: ch7 + (span * CH7_FOLD_TRAVEL.to) };
+}
+
+/**
+ * The time a ride between two orbs of the fold is given on top of its own (ms), before the
+ * plunge's short-trip fade (plungeTravelExtraMs applies it). Only a ride (both ends inside the
+ * fold): the dive (48 -> 49) and the way out (56 -> 57) keep exactly their own time.
+ * @returns {number}
+ */
+export function foldTravelExtraMs(p0, p1, chapterPositions) {
+    const fold = resolveFoldTravelStretch(chapterPositions);
+    if (!fold || !foldRideBetween(p0, p1, chapterPositions)) return 0;
+    const lo = Math.max(fold.from, Math.min(p0, p1));
+    const hi = Math.min(fold.to, Math.max(p0, p1));
+    if (!(hi > lo)) return 0;
+    const world = foldStretchMeasure(hi, chapterPositions) - foldStretchMeasure(lo, chapterPositions);
+    return Math.min(CH7_FOLD_TRAVEL.maxMs, world * CH7_FOLD_TRAVEL.perMeasureMs);
+}
+
+/**
+ * Whether a trip between two orbs is a ride through the fold: both ends inside it (the board
+ * rides the rail for it instead of a jump and a swing).
+ * @returns {boolean}
+ */
+export function foldRideBetween(p0, p1, chapterPositions) {
+    const fold = resolveFoldTravelStretch(chapterPositions);
+    if (!fold || !Number.isFinite(p0) || !Number.isFinite(p1) || Math.abs(p1 - p0) < 1e-6) return false;
+    const inside = (p) => p >= fold.from && p <= fold.to;
+    return inside(p0) && inside(p1);
 }
 
 /**

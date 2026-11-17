@@ -1,14 +1,18 @@
 /* eslint-disable import/no-unresolved, import/no-extraneous-dependencies */
 /**
- * THE FOLD'S EIGHT PLACES — chapter 7 inside the hole (masterpiece pass, 2026-11-17).
+ * THE FOLD'S PLACES — chapter 7 inside the hole (masterpiece pass, 2026-11-17; a ninth, the
+ * cradle, since the fold was made longer and every orb given a room of its own).
  *
  * The fold was one kaleidoscope corridor whose crystals changed from orb to orb: eight orbs of
- * "rings round a white light". It is now eight PLACES, each with its own geometry, light and sense
- * of scale, and none of them a corridor round a light (one file each, in fold-places/):
+ * "rings round a white light". It is now PLACES, each with its own geometry, light and sense
+ * of scale, and none of them a corridor round a light (one file each, in fold-places/). In the
+ * rooms' order (orbs 49 to 56, then the way out):
  *
  *  0 THE TIDE      an ocean of liquid colour overhead, a black mirror below, a low light on the
  *                  horizon between them, threads of light standing from the one into the other
- *                  (orbs 49 and 50: Fluid Dreams, Nebula Flow)
+ *                  (orb 49: Fluid Dreams)
+ *  8 THE CRADLE    towering pillars of dust against a glowing nebula, young stars at their tips
+ *                  (orb 50: Nebula Flow)
  *  1 THE LATTICE   beams of gold in an endless lattice that winds through itself, one hand
  *                  through the other (orb 51)
  *  2 THE NAVE      a pointed vault over a polished floor, storm light in tall windows, slow
@@ -25,14 +29,15 @@
  * Each is a function of the view ray in the room's frame (+z ahead, +x right, +y up) with the eye
  * at the origin, travelling along +z by the warp drive's phase. Four are met ANALYTICALLY (planes,
  * a vault, a gem's facets, a hall), so they are exact at any distance and cost a few noise taps;
- * four are WALKED (the lattice and the stairs along the ray, the flock and the paint layer by
- * layer), with the walk's steps from the quality tier.
+ * five are WALKED (the lattice and the stairs along the ray, the flock, the paint and the cradle
+ * layer by layer), with the walk's steps from the quality tier.
  *
  * VALUES. The Odyssey's post (chapter 7's bloom and grade) lifts everything about two stops: a
  * place is authored dark (grounds near 0.005, bodies under 0.15, only lines and lights near 1),
  * so it comes out luminous with its blacks kept, and the orbs and the rail stay the brightest
  * things in it. Judge a place only through the post (`effect=ch7-fold-places`, or the game).
  */
+import { CRADLE, placeCradle } from './fold-places/fold-cradle.tsl.js';
 import { FLOCK, placeFlock } from './fold-places/fold-flock.tsl.js';
 import { HALL, placeHall } from './fold-places/fold-hall.tsl.js';
 import { JEWEL, placeJewel } from './fold-places/fold-jewel.tsl.js';
@@ -47,10 +52,18 @@ export { CH7_FOLD_PLACE_IDS as CH7_FOLD_PLACES } from '../transitions/odyssey-fo
 
 /** Each place's own numbers (its frame's turn from the view, its sizes), by name. */
 export const CH7_FOLD_PLACE = Object.freeze({
-    tide: TIDE, lattice: LATTICE, nave: NAVE, flock: FLOCK, stairs: STAIRS, jewel: JEWEL, paint: PAINT, hall: HALL,
+    tide: TIDE,
+    lattice: LATTICE,
+    nave: NAVE,
+    flock: FLOCK,
+    stairs: STAIRS,
+    jewel: JEWEL,
+    paint: PAINT,
+    hall: HALL,
+    cradle: CRADLE,
 });
 
 /** The places, by id: each a builder of one room's colour for a ray (call inside a Fn). */
 export const CH7_FOLD_PLACE_BUILDERS = Object.freeze([
-    placeTide, placeLattice, placeNave, placeFlock, placeStairs, placeJewel, placePaint, placeHall,
+    placeTide, placeLattice, placeNave, placeFlock, placeStairs, placeJewel, placePaint, placeHall, placeCradle,
 ]);

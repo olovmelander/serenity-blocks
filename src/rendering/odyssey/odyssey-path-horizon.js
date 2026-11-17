@@ -36,6 +36,10 @@ export const ODYSSEY_PATH_HORIZON = Object.freeze({
     // Without a fall schedule or node positions: the way on is laid out over this fraction of the
     // outgoing seam half-width, ending at the boundary.
     revealFraction: 0.3,
+    // ...and never later than this far past the boundary (progress): where chapter 7's second orb
+    // stood until its orbs were spread through the longer fold (2026-11-17), so the dive lays the
+    // way on out exactly as it did.
+    revealBy: 0.0126,
 });
 
 /** A horizon past the journey's end: nothing is hidden. */
@@ -75,7 +79,8 @@ export function resolveOdysseyPathReveal(chapterPositions, levelPositions = null
         });
     }
     // No node past the inside point: laid out just after it.
-    return { start: inside, end: next ?? inside + (wOut * H.revealFraction) };
+    const by = end + H.revealBy;
+    return { start: inside, end: Math.min(next ?? inside + (wOut * H.revealFraction), Math.max(by, inside + 1e-6)) };
 }
 
 /**
