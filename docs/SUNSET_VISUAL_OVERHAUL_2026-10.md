@@ -755,3 +755,41 @@ longer end in straight walls either side of the sun: they sink and thin away tow
 Verified in the playground on WebGPU (sunset, noon, night; the clear, four lines and the twist;
 20 s strips of the horizon, living against frozen), WebGL2 at High and Low, Minimal and portrait;
 consoles clean; the 231 Sunset tests pass.
+
+## The flock comes in whole (2026-11-17, night)
+
+On `feature/sunset-flock-whole`. The owner: "When the birds fly in from the side, it feels like
+first come some birds, then a gap, then the last birds need to catch up in a way that feels
+unnatural."
+
+**What was wrong.** Three things in `sunset-birds.js`. A chain's later calls added birds to a flock
+already in the air by starting them 14 m behind the skein and closing that up in 3 s: in sight, a
+gap opened behind the flock and the latecomers raced across it at up to three times the skein's
+speed, all with the same slow wingbeat. The flight was a fixed sweep of 32 degrees either side of
+the light rather than edge to edge, so a flock flying right to left started 4 degrees right of the
+middle (behind the card, in view) and grew out of nothing there, and one flying left to right shrank
+away mid-frame at the end. And each bird's distance behind the leader was its rank times a stride of
+its own, so the last birds of a long skein straggled metres behind the rest.
+
+**Now.** The skein flies from beyond one edge of the frame to beyond the other at one pace (3 m/s
+along its line, about three degrees of the frame a second): no bird appears, vanishes or changes
+size in sight. It is called 6 s out of sight (`LEAD_SECONDS`), and the calls of a chain in that
+time take their places at its tail straight away, unseen, so a quick chain comes in as one skein.
+A newcomer joins only while its place is still out of sight; a call once the tail is in sight sets
+out a new skein on a line of its own, over or under the first and the same way across (three
+flights now share the birds). Each rank flies 1.15 to 1.65 m behind the one before it, so the line
+has no holes. The world gives the flock the frame's half-width on every send and update, so the
+edges hold on a phone too.
+
+![A chain right to left at 7, 9, 12, 16, 21 and 27 s after its first call: in at the right edge, one skein across the moon, behind the stats bar and the card, past the sun](sunset-overhaul/flock-whole-skein.jpg)
+
+Measured in node with every bird followed by flight and index (a chain of three or four calls, both
+ways, 80 and 44 degree frames): the widest gap inside a skein in sight fell from 13.7 to 1.2–2.7
+degrees, the fastest bird against its skein from 100–175 % off its speed to under 4 % (its own
+wobble), and birds growing, shrinking or popping in sight from 400–1,000 bird-frames to none. A new
+test in `tests/unit/sunset-gull.test.js` holds all three. The playground's `flock` and `flockAge`
+take a list to stage a chain, and `flockR` picks the line.
+
+Verified in the playground on WebGPU at sunset with the board (a chain right to left in six frames,
+left to right with a second skein, a phone frame); consoles clean; the Sunset tests pass. The
+change is on the CPU only: no shader changed.
