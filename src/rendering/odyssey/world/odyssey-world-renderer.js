@@ -89,6 +89,7 @@ import {
 } from './odyssey-evening.js';
 import { createOdysseyCloudSea } from './odyssey-cloud-sea.js';
 import { createOdysseySummitCap } from './odyssey-summit-cap.js';
+import { createOdysseyWallGusts, wallGustsRevealAt } from './odyssey-wall-gusts.js';
 import { findHeroSummit } from '../composition/odyssey-summit-spindrift.js';
 
 // The golden suite imports the cloud silhouette bake from here; it now lives in the pure module.
@@ -5311,6 +5312,16 @@ export function createOdysseyWorld({
         })
         : null;
     if (summitCap) group.add(summitCap.mesh);
+    // THE WALL'S GUSTS (odyssey-wall-gusts.js): spindrift blown across the face where the climb
+    // begins, the 4->5 seam's own event. Same lever.
+    const wallGusts = cloudSea && cloudField
+        ? createOdysseyWallGusts({
+            sunColour: uSunColour,
+            hazeColour: uSkyHorizon,
+            quality: quality === 'low' ? 'low' : 'high',
+        })
+        : null;
+    if (wallGusts) group.add(wallGusts.mesh);
 
     // ── god rays (Ch2 port) ─────────────────────────────────────────────────────────
     // The deep-ocean chapter's declared hero: descending light shafts with caustic shimmer.
@@ -7112,6 +7123,11 @@ export function createOdysseyWorld({
                 const capShown = authored(summitCap.mesh) && uSubmerged.value < 0.999 && !earthCovers;
                 summitCap.update(time, evening.cap, capShown);
             }
+            if (wallGusts) {
+                // (keyed on journey progress, as its window is written: Act II progress back to it)
+                const gustsShown = authored(wallGusts.mesh) && uSubmerged.value < 0.999 && !earthCovers;
+                wallGusts.update(time, wallGustsRevealAt(0.0649 + (actP * 0.6894)), gustsShown);
+            }
             // THE FOREST IS SUBMITTED UNDER WATER AND CANNOT BE SEEN (MEASURED 2026-08-13).
             // The trees are legitimately the far SHORE -- scatterTrees rejects any site below
             // seaLevel + 3, and the lowest trunk seats at y=290.3 against sea level 287.31, so
@@ -7175,6 +7191,7 @@ export function createOdysseyWorld({
                 tarnMat, showerMat, boulderMat].forEach((m) => m.dispose());
             if (cloudSeaLayer) cloudSeaLayer.dispose();
             if (summitCap) summitCap.dispose();
+            if (wallGusts) wallGusts.dispose();
             if (rayMat) rayMat.dispose();
             if (moteMat) moteMat.dispose();
             // The fish's material was missing here once (the same SB-15 teardown class heroMat was):

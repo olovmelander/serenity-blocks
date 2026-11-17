@@ -85,10 +85,16 @@ export const ODYSSEY_EVENING = Object.freeze({
      * the sun's side, seen as rays that run toward the antisolar point): in across the 4->5 seam,
      * out as the sun nears the horizon and the belt's own rays take over. */
     shafts: Object.freeze([0.335, 0.349, 0.500, 0.575]),
-    cloud: Object.freeze([0.336, 0.362]),
-    cloudShare: Object.freeze([0.16, 0.52]),
-    clear: Object.freeze([0.668, 0.715]),
-    clearShare: 0.24,
+    /** THE FAN OPENS at the 4->5 seam: the shafts stand `fan` times as strong where the eye
+     * clears the massif's shoulder at L27, easing back to their own strength up the wall. */
+    fan: 1.5,
+    fanOut: Object.freeze([0.352, 0.392]),
+    // (Round two: the clouds are gold from the first orb. They used to warm with the dusk, so
+    // L27 and L28 still wore chapter 4's white cumulus and only the banner said evening.)
+    cloud: Object.freeze([0.334, 0.349]),
+    cloudShare: Object.freeze([0.36, 0.56]),
+    clear: Object.freeze([0.690, 0.722]),
+    clearShare: 0.30,
     sea: Object.freeze([0.352, 0.585]),
     cap: Object.freeze([0.372, 0.436]),
     glory: Object.freeze([0.575, 0.628, 0.700, 0.722]),
@@ -110,7 +116,8 @@ const ramp = (a, b, x) => {
  * @returns {{dusk:number, sunElevation:number, warm:number, belt:number, beltAt:number,
  *   beltWidth:number, shadow:number, shadowTop:number, stars:number, moon:number, rays:number, shafts:number,
  *   cloud:number, sea:number, cap:number, glory:number, breath:number}} sunElevation in radians; beltAt,
- *   beltWidth and shadowTop are sines of elevations; the rest 0..1 (breath is a gain round 1)
+ *   beltWidth and shadowTop are sines of elevations; the rest 0..1 (breath is a gain round 1,
+ *   shafts a gain up to 1 + `fan`)
  */
 export function odysseyEveningAt(actT, time = 0) {
     const E = ODYSSEY_EVENING;
@@ -144,7 +151,8 @@ export function odysseyEveningAt(actT, time = 0) {
         stars: ramp(E.stars[0], E.stars[1], p) ** 1.6,
         moon: ramp(E.moonIn[0], E.moonIn[1], p) * (E.moon[0] + ((E.moon[1] - E.moon[0]) * dusk)),
         rays: belt,
-        shafts: ramp(E.shafts[0], E.shafts[1], p) * (1 - ramp(E.shafts[2], E.shafts[3], p)),
+        shafts: ramp(E.shafts[0], E.shafts[1], p) * (1 - ramp(E.shafts[2], E.shafts[3], p))
+            * (1 + (E.fan * (1 - ramp(E.fanOut[0], E.fanOut[1], p)))),
         cloud: cloudIn * (cloudFull + ((E.clearShare - cloudFull) * clear)),
         sea: ramp(E.sea[0], E.sea[1], p),
         cap: ramp(E.cap[0], E.cap[1], p),
@@ -361,11 +369,16 @@ export function eveningDome(air, dir, sunColour) {
                 // the light passes and the sky's own blue between.
                 const wide = noise2(vec2(ang.mul(3.1).add(U.time.mul(0.003)), U.time.mul(0.009).add(4.3))).mul(0.65)
                     .add(noise2(vec2(ang.mul(7.3).sub(U.time.mul(0.005)), U.time.mul(0.006).add(1.7))).mul(0.35));
-                const shaft = smoothstep(float(0.40), float(0.72), wide);
+                const shaft = smoothstep(float(0.50), float(0.68), wide).toVar();
                 const high = smoothstep(float(0.06), float(0.30), d.y)
                     .mul(float(1).sub(smoothstep(float(0.80), float(0.97), d.y)))
-                    .mul(float(1).sub(smoothstep(float(0.55), float(0.92), toSun)));
-                out.addAssign(sunColour.mul(vec3(...SUN_GOLD)).mul(shaft.mul(high).mul(U.shafts).mul(0.085)));
+                    .mul(float(1).sub(smoothstep(float(0.55), float(0.92), toSun)))
+                    .toVar();
+                // Gold where the light passes, and the sky a touch deeper between the beams
+                // (their shade), so the fan reads as rays and not as a wash.
+                out.mulAssign(float(1).sub(float(1).sub(shaft).mul(high).mul(U.shafts)
+                    .mul(0.030)));
+                out.addAssign(sunColour.mul(vec3(...SUN_GOLD)).mul(shaft.mul(high).mul(U.shafts).mul(0.075)));
                 const band = noise2(vec2(ang.mul(5.5).add(U.time.mul(0.004)), U.time.mul(0.011)))
                     .mul(0.6)
                     .add(noise2(vec2(ang.mul(13.0).sub(U.time.mul(0.006)), U.time.mul(0.007).add(9.1))).mul(0.4));

@@ -40,6 +40,11 @@ import {
     createOdysseySummitCap,
     summitCapLife,
 } from '../../src/rendering/odyssey/world/odyssey-summit-cap.js';
+import {
+    ODYSSEY_WALL_GUSTS,
+    createOdysseyWallGusts,
+    wallGustsRevealAt,
+} from '../../src/rendering/odyssey/world/odyssey-wall-gusts.js';
 import { ODYSSEY_WORLD_SUN } from '../../src/rendering/odyssey/chapter-environments/shared/chapter-profile.js';
 import { ODYSSEY_MASSIFS, odysseyWorldHeight } from '../../src/rendering/odyssey/world/odyssey-world-height.js';
 import { findHeroSummit } from '../../src/rendering/odyssey/composition/odyssey-summit-spindrift.js';
@@ -126,21 +131,30 @@ describe('the evening: its schedule', () => {
             'stars', 'moon', 'rays', 'shafts', 'cloud', 'sea', 'cap', 'glory', 'breath'];
         // The fastest thing here comes in over ~0.014 of progress (the shafts and the moon, across
         // the 4->5 glide, about a second and a half of travel): nothing may be quicker than that.
+        // (Each field against its own range: the shafts' gain runs past 1 at the seam's fan.)
         const step = 0.0005;
         const samples = [];
         for (let p = 0.30; p <= 0.78; p += step) samples.push([p, at(p, 11)]);
+        const range = Object.fromEntries(fields.map((f) => {
+            const values = samples.map(([, e]) => e[f]);
+            return [f, Math.max(Math.max(...values) - Math.min(...values), 1)];
+        }));
         samples.slice(1).forEach(([p, now], i) => {
             const before = samples[i][1];
             fields.forEach((f) => {
-                expect(Math.abs(now[f] - before[f]), `${f} at ${p.toFixed(4)}`).toBeLessThan(0.06);
+                expect(Math.abs(now[f] - before[f]) / range[f], `${f} at ${p.toFixed(4)}`).toBeLessThan(0.06);
             });
         });
     });
 
     it('orders the evening: shafts with the gold, the belt with the low sun, the stars last', () => {
         // L27 .. L29: the low sun's shafts across the sky; no belt yet.
-        expect(at(ORBS[0]).shafts).toBeGreaterThan(0.9);
         expect(at(ORBS[2]).shafts).toBeGreaterThan(0.9);
+        expect(at(ORBS[2]).shafts).toBeLessThanOrEqual(1);
+        // THE FAN at the seam: strongest where the chapter begins, eased back up the wall.
+        expect(at(ORBS[0]).shafts).toBeGreaterThan(2);
+        expect(at(ORBS[0]).shafts).toBeGreaterThan(at(0.37).shafts);
+        expect(at(ORBS[1]).shafts).toBeCloseTo(1, 6);
         expect(at(ORBS[1]).belt).toBeLessThan(0.02);
         // L31 on: the belt and its rays; the shafts have gone.
         expect(at(ORBS[4]).belt).toBeGreaterThan(0.8);
@@ -164,7 +178,10 @@ describe('the evening: its schedule', () => {
     it('clears the clouds\' light where the round Earth takes over (its own light is white)', () => {
         const peak = at(ORBS[5]).cloud;
         expect(peak).toBeGreaterThan(0.45);
-        expect(at(0.716).cloud).toBeCloseTo(ODYSSEY_EVENING.clearShare, 6);
+        expect(at(0.7225).cloud).toBeCloseTo(ODYSSEY_EVENING.clearShare, 6);
+        // ...and they are gold from the first orb of the chapter, not only once the dusk is deep.
+        expect(at(ORBS[0]).cloud).toBeGreaterThan(0.33);
+        expect(at(0.333).cloud).toBe(0);
         // ...and the Earth has arrived, in daylight, before the evening's light has cleared.
         expect(orbitEarthAt(0.66, cp).presence).toBe(1);
         expect(orbitEarthAt(ODYSSEY_EVENING.clear[0], cp).sunElevation).toBeGreaterThan(0.3);
@@ -309,8 +326,15 @@ describe('the sea of clouds', () => {
         };
         const high = createOdysseyCloudSea({ ...kit, quality: 'high' });
         const low = createOdysseyCloudSea({ ...kit, quality: 'low' });
-        expect(high.triangles).toBeLessThanOrEqual(60000);
-        expect(low.triangles).toBeLessThanOrEqual(22000);
+        // (the tops and the bed, on one ring)
+        expect(high.triangles).toBeLessThanOrEqual(120000);
+        expect(low.triangles).toBeLessThanOrEqual(44000);
+        // The bed is a blended sheet under the opaque tops, drawn with the sea.
+        expect(high.bed.material.transparent).toBe(true);
+        expect(high.bed.material.depthWrite).toBe(false);
+        expect(high.tops.material.transparent).toBe(false);
+        // After the sea (1) by order, not by a sort tie: at a tie the water drew over it from high up.
+        expect(high.bed.renderOrder).toBeGreaterThan(1);
         expect(high.mesh.visible).toBe(false);
         high.update(30, 0.6, true);
         expect(high.mesh.visible).toBe(true);
@@ -323,10 +347,12 @@ describe('the sea of clouds', () => {
         expect(Math.abs(high.uniforms.uDrift.value.x)).toBeLessThan(1);
         expect(Math.abs(high.uniforms.uDrift.value.y)).toBeLessThan(1);
         [high, low].forEach((sea) => {
-            BACKENDS.forEach(([label, Builder]) => {
-                const result = build(Builder, sea.mesh);
-                expectClean(result, `cloud sea ${label}`);
-                if (label === 'WGSL') expect(unassignedReads(result.fragment)).toEqual([]);
+            [sea.tops, sea.bed].forEach((layer) => {
+                BACKENDS.forEach(([label, Builder]) => {
+                    const result = build(Builder, layer);
+                    expectClean(result, `${layer.name} ${label}`);
+                    if (label === 'WGSL') expect(unassignedReads(result.fragment)).toEqual([]);
+                });
             });
             sea.dispose();
         });
@@ -417,6 +443,48 @@ describe('the summit\'s cap', () => {
         expect(cap.mesh.visible).toBe(false);
         BACKENDS.forEach(([label, Builder]) => expectClean(build(Builder, cap.mesh), `summit cap ${label}`));
         cap.dispose();
+    });
+});
+
+describe("the wall's gusts (the 4->5 seam's own event)", () => {
+    it('are nothing in chapter 4, whole at L27, gone before L29', () => {
+        expect(wallGustsRevealAt(0.30)).toBe(0);
+        expect(wallGustsRevealAt(0.3356)).toBe(0);
+        expect(wallGustsRevealAt(ORBS[0])).toBeGreaterThan(0.99);
+        expect(wallGustsRevealAt(0.37)).toBe(1);
+        expect(wallGustsRevealAt(ORBS[1])).toBeGreaterThan(0.6);
+        expect(wallGustsRevealAt(ORBS[2])).toBe(0);
+        for (let p = 0.33; p < 0.46; p += 0.0005) {
+            expect(Math.abs(wallGustsRevealAt(p + 0.0005) - wallGustsRevealAt(p))).toBeLessThan(0.07);
+        }
+    });
+
+    it('are born in the world, upwind of the rail up the wall, and cross it', () => {
+        const C = ODYSSEY_WALL_GUSTS;
+        const wind = new THREE.Vector3(...C.wind).normalize();
+        // Half way down a run from the box's centre the gusts are passing the rail between L27
+        // and L28 (the eye rises through them), not somewhere off the frame.
+        const mid = new THREE.Vector3(...C.centre).addScaledVector(wind, C.run * 0.5);
+        let nearest = Infinity;
+        for (let p = ORBS[0]; p <= ORBS[1]; p += 0.002) {
+            const pt = getOdysseyPathPointAt(p);
+            nearest = Math.min(nearest, Math.hypot(pt.x - mid.x, pt.y - mid.y, pt.z - mid.z));
+        }
+        expect(nearest).toBeLessThan(140);
+        // The box stands over the land, clear of the ground under it.
+        expect(C.centre[1] - C.spread[1]).toBeGreaterThan(odysseyWorldHeight(C.centre[0], C.centre[2]) - 80);
+    });
+
+    it('compile on both backends, hidden until revealed', () => {
+        const gusts = createOdysseyWallGusts({ sunColour: uniform(new THREE.Color(1, 0.8, 0.55)) });
+        expect(gusts.mesh.geometry.instanceCount).toBe(ODYSSEY_WALL_GUSTS.count.high);
+        expect(gusts.mesh.visible).toBe(false);
+        gusts.update(5, 1, true);
+        expect(gusts.mesh.visible).toBe(true);
+        gusts.update(5, 1, false);
+        expect(gusts.mesh.visible).toBe(false);
+        BACKENDS.forEach(([label, Builder]) => expectClean(build(Builder, gusts.mesh), `wall gusts ${label}`));
+        gusts.dispose();
     });
 });
 

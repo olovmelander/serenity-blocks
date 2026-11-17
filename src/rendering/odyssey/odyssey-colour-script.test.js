@@ -161,8 +161,10 @@ describe("THE EVENING — chapter 5's declared exemption (the day ends on the cl
         expect(away.length).toBeGreaterThanOrEqual(evening.length - 1);
     });
 
-    it('moves the horizon no faster than a seam does, from the last anchored keyframe on', () => {
-        const from = ODYSSEY_COLOUR_SCRIPT[first - 1].p;
+    it('moves the horizon no faster than a seam does, through the whole evening', () => {
+        // From its own first keyframe. The step INTO it (chapter 4's last orbs, script p 0.38 to
+        // 0.409) belongs to the island's stretch of the rail, whose keyframes arrive warm.
+        const from = evening[0].p;
         const to = evening.at(-1).p;
         let worst = 0;
         for (let p = from; p + 0.05 <= to + 1e-9; p += 0.0025) {
