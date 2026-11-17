@@ -1,16 +1,18 @@
 /**
  * High Coast — the fishing hamlet and the lighthouse.
  *
- *  - On the near right island: Falu-red cottages with white corner boards and window frames and
- *    dark roofs, sitting on grey stone plinths; red boathouses (sjöbodar) along the shore, gable
- *    to the water; a jetty on posts; a flagpole with the Swedish flag in the wind. The windows
- *    glow when the sun is low. As the land rises the boathouses are left high above the water,
- *    as the old ones on the High Coast are.
+ *  - On the near right island: Falu-red cottages with white corner boards, window casings and
+ *    bargeboards, a porch over the door and a chimney on the ridge, sitting on grey stone plinths;
+ *    red boathouses (sjöbodar) along the shore, gable and doors to the water; a hut or two behind
+ *    the cottages; rowing boats drawn up on the shingle; a jetty on posts; a flagpole with the
+ *    Swedish flag in the wind. The buildings shade the grass, and the windows glow when the sun
+ *    is low. As the land rises the boathouses are left high above the water, as the old ones on
+ *    the High Coast are. (The buildings themselves: high-coast-cottages.js.)
  *  - Far out, the lighthouse on its steep island: a white tower with a red lantern roof, and its
  *    light (high-coast-fx.js draws the glow and beam).
  *
- * Buildings are merged into one mesh (one material: walls, trim, roofs and plinths by a part
- * attribute and local wall coordinates), the flag is its own cloth, the lighthouse its own mesh.
+ * Buildings are merged into one mesh (one material), the flag is its own cloth, the lighthouse
+ * its own mesh.
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -18,9 +20,7 @@ import {
     attribute,
     clamp,
     dot,
-    float,
     floor,
-    fract,
     max,
     mix,
     normalWorld,
@@ -28,7 +28,6 @@ import {
     positionLocal,
     positionWorld,
     sin,
-    smoothstep,
     step,
     texture,
     uv,
@@ -40,12 +39,7 @@ import { PLACES, mulberry32 } from './high-coast-core.js';
 import { groundHeight } from './high-coast-field.js';
 import { aerial } from './high-coast-light.js';
 import { shadowAt } from './high-coast-shadow.js';
-import { flatVarying } from '../shared/flat-varying.js';
-
-/** Parts of a building's surface (the material's aPart): wall, trim, roof, plinth, glass. */
-const WALL = 0;
-const ROOF = 2;
-const PLINTH = 3;
+import { buildCottages, cottageMaterial, houseShadows } from './high-coast-cottages.js';
 
 /** Where the hamlet's buildings stand: chosen on the island by the ground, deterministic. */
 export function hamletSites(fields, seed = 0x5ab0) {
@@ -93,120 +87,45 @@ export function hamletSites(fields, seed = 0x5ab0) {
         const y = ground(x, z);
         if (y > flag.y && !cottages.some((c) => Math.hypot(c.x - x, c.z - z) < 7)) flag = { x, z, y };
     }
-    return {
-        cottages, sheds, jetty, flag,
-    };
-}
-
-/** Push one building (walls, gable roof, plinth) into the merged arrays. */
-function addBuilding(out, b, ground) {
-    const { w, d, h } = b;
-    const cy = Math.min(ground(b.x, b.z), ...[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sz]) => {
-        const lx = (sx * w) / 2;
-        const lz = (sz * d) / 2;
-        return ground(b.x + Math.cos(b.yaw) * lx + Math.sin(b.yaw) * lz, b.z - Math.sin(b.yaw) * lx + Math.cos(b.yaw) * lz);
-    }));
-    const top = Math.max(ground(b.x, b.z), cy) + 0.55;
-    const ca = Math.cos(b.yaw);
-    const sa = Math.sin(b.yaw);
-    const world = (lx, ly, lz) => [b.x + ca * lx + sa * lz, ly, b.z - sa * lx + ca * lz];
-    const push = (a, bb, c, part, la, lb, lc, n, width) => {
-        for (const [p, l] of [[a, la], [bb, lb], [c, lc]]) {
-            const wp = world(p[0], p[1], p[2]);
-            out.pos.push(...wp);
-            out.nrm.push(ca * n[0] + sa * n[2], n[1], -sa * n[0] + ca * n[2]);
-            // A boathouse's seed is lifted by 2: the shader reads it as "no windows".
-            out.local.push(l[0], l[1], part, b.seed + (b.shed ? 2 : 0));
-            out.width.push(width);
+    // (Drawn after everything above, so what stood there before stands where it stood.)
+    const clear = (x, z, r) => !cottages.some((c) => Math.hypot(c.x - x, c.z - z) < 6.5 + r)
+        && !sheds.some((c) => Math.hypot(c.x - x, c.z - z) < 5.5 + r) && Math.hypot(flag.x - x, flag.z - z) > 3;
+    // A hut behind each of the first cottages: up the slope from it, a little to one side.
+    const huts = [];
+    for (const c of cottages.slice(0, 2)) {
+        for (let tries = 0; tries < 40; tries++) {
+            const back = 6.5 + random() * 3.5;
+            const aside = (random() < 0.5 ? -1 : 1) * (2.5 + random() * 4);
+            const x = c.x - Math.sin(c.yaw) * back + Math.cos(c.yaw) * aside;
+            const z = c.z - Math.cos(c.yaw) * back - Math.sin(c.yaw) * aside;
+            const y = ground(x, z);
+            if (y < 2.6 || slopeAt(x, z) > 0.36 || !clear(x, z, 1.5) || huts.some((h) => Math.hypot(h.x - x, h.z - z) < 6)) continue;
+            huts.push({
+                x, z, yaw: c.yaw + (random() - 0.5) * 0.4, w: 2.7, d: 2.2, h: 2.0, roof: 0, seed: random(), hut: true,
+            });
+            break;
         }
-    };
-    const quad = (p0, p1, p2, p3, part, n, uw, vh) => {
-        push(p0, p1, p2, part, [0, 0], [uw, 0], [uw, vh], n, uw);
-        push(p0, p2, p3, part, [0, 0], [uw, vh], [0, vh], n, uw);
-    };
-    const x0 = -w / 2;
-    const x1 = w / 2;
-    const z0 = -d / 2;
-    const z1 = d / 2;
-    const yb = top;
-    const yt = top + h;
-    // Plinth: from deep in the rock up to the floor.
-    const pb = cy - 1.2;
-    quad([x0, pb, z1], [x1, pb, z1], [x1, yb, z1], [x0, yb, z1], PLINTH, [0, 0, 1], w, yb - pb);
-    quad([x1, pb, z0], [x0, pb, z0], [x0, yb, z0], [x1, yb, z0], PLINTH, [0, 0, -1], w, yb - pb);
-    quad([x1, pb, z1], [x1, pb, z0], [x1, yb, z0], [x1, yb, z1], PLINTH, [1, 0, 0], d, yb - pb);
-    quad([x0, pb, z0], [x0, pb, z1], [x0, yb, z1], [x0, yb, z0], PLINTH, [-1, 0, 0], d, yb - pb);
-    // Walls (long sides: front +z, back −z; gables ±x with the triangle up to the ridge).
-    quad([x0, yb, z1], [x1, yb, z1], [x1, yt, z1], [x0, yt, z1], WALL, [0, 0, 1], w, h);
-    quad([x1, yb, z0], [x0, yb, z0], [x0, yt, z0], [x1, yt, z0], WALL, [0, 0, -1], w, h);
-    const ridge = yt + d * 0.42;
-    for (const side of [1, -1]) {
-        const xs = side > 0 ? x1 : x0;
-        const n = [side, 0, 0];
-        const za = side > 0 ? z1 : z0;
-        const zb = side > 0 ? z0 : z1;
-        quad([xs, yb, za], [xs, yb, zb], [xs, yt, zb], [xs, yt, za], WALL, n, d, h);
-        push([xs, yt, za], [xs, yt, zb], [xs, ridge, 0], WALL, [0, h], [d, h], [d / 2, h + d * 0.42], n, d);
     }
-    // Roof: two slopes with a small overhang.
-    const o = 0.45;
-    const slope = [0, Math.cos(Math.atan2(d * 0.42, d / 2)), Math.sin(Math.atan2(d * 0.42, d / 2))];
-    quad([x0 - o, yt - 0.25, z1 + o], [x1 + o, yt - 0.25, z1 + o], [x1 + o, ridge + 0.05, 0], [x0 - o, ridge + 0.05, 0], ROOF + b.roof * 0.5, [0, slope[1], slope[2]], w, 1);
-    quad([x1 + o, yt - 0.25, z0 - o], [x0 - o, yt - 0.25, z0 - o], [x0 - o, ridge + 0.05, 0], [x1 + o, ridge + 0.05, 0], ROOF + b.roof * 0.5, [0, slope[1], -slope[2]], w, 1);
-}
-
-function buildingMaterial(u, t) {
-    const material = new THREE.MeshBasicNodeMaterial();
-    material.name = 'HighCoastHamlet';
-    material.fog = false;
-    material.side = THREE.DoubleSide;
-    const local = attribute('aLocal', 'vec4');
-    const width = attribute('aWidth', 'float');
-    // The part, flat: a black roof is 2.0, and read interpolated as 1.9999999 its fract made it red.
-    const partOf = flatVarying(local.z, 'vHamletPart');
-    material.colorNode = Fn(() => {
-        const P = positionWorld;
-        const n = normalize(normalWorld);
-        const lu = local.x;
-        const lv = local.y;
-        const part = partOf;
-        const seed = fract(local.w);
-        const shed = step(1.5, local.w);
-        // Falu red: a deep iron-oxide red, a little uneven board by board.
-        const board = fract(lu.div(0.2));
-        const boards = smoothstep(0.0, 0.08, board).mul(0.12).add(0.88);
-        const falu = vec3(0.26, 0.028, 0.014).mul(boards).mul(seed.mul(0.2).add(0.9));
-        // White trim: corner boards, the eaves line and window frames.
-        const corner = float(1.0).sub(step(0.22, lu.min(width.sub(lu))));
-        const win = (cx) => {
-            const dx = lu.sub(cx).abs();
-            const dy = lv.sub(1.6).abs();
-            const frame = step(dx, 0.62).mul(step(dy, 0.72));
-            const glass = step(dx, 0.48).mul(step(dy, 0.58));
-            return vec2(frame.sub(glass), glass);
-        };
-        const w1 = win(1.8);
-        const w2 = win(4.6);
-        const frame = max(w1.x, w2.x).mul(float(1.0).sub(shed));
-        const glass = max(w1.y, w2.y).mul(step(lv, 3.0)).mul(float(1.0).sub(shed));
-        const trim = max(corner, frame);
-        const wall = mix(falu, vec3(0.75, 0.74, 0.7), trim);
-        const windowDark = vec3(0.02, 0.025, 0.03);
-        const roofCol = mix(vec3(0.045, 0.045, 0.05), vec3(0.2, 0.05, 0.03), step(0.25, fract(part)));
-        const plinth = mix(vec3(0.22, 0.21, 0.2), vec3(0.32, 0.3, 0.28), texture(t.noise, P.xz.mul(1.3).add(P.y)).a);
-        const isRoof = step(1.5, part).mul(step(part, 2.9));
-        const isPlinth = step(2.9, part);
-        const albedo = mix(mix(mix(wall, windowDark, glass), roofCol, isRoof), plinth, isPlinth);
-        const L = u.sunDir;
-        const ndl = clamp(dot(n, L), 0.0, 1.0);
-        const shadow = shadowAt(t.shadow, P.xz);
-        const lit = albedo.mul(u.sun.mul(ndl).mul(shadow).mul(u.sunUp).add(u.fill.mul(n.y.mul(0.3).add(0.7)))
-            .add(u.bounce.mul(0.5))).toVar();
-        // Windows glow when the sun is low.
-        lit.addAssign(vec3(1.8, 1.05, 0.45).mul(glass).mul(u.lamps).mul(seed.mul(0.6).add(0.5)));
-        return vec4(aerial(u, P, lit), 1.0);
-    })();
-    return material;
+    // Rowing boats drawn up on the shingle beside the boathouses, stem to the land.
+    const boats = [];
+    for (const s of sheds) {
+        for (let tries = 0; tries < 40 && boats.length < 3; tries++) {
+            const aside = (random() < 0.5 ? -1 : 1) * (4.5 + random() * 4);
+            const down = 1 + random() * 4;
+            const x = s.x + Math.cos(s.yaw) * aside + Math.sin(s.yaw) * down;
+            const z = s.z - Math.sin(s.yaw) * aside + Math.cos(s.yaw) * down;
+            const y = ground(x, z);
+            if (y < 0.45 || y > 1.5 || slopeAt(x, z) > 0.3 || !clear(x, z, 1) || boats.some((b) => Math.hypot(b.x - x, b.z - z) < 3)) continue;
+            // The boat's stem (its +x) points up the shore.
+            boats.push({
+                x, z, yaw: downhill(x, z) + Math.PI / 2 + (random() - 0.5) * 0.5, seed: random(),
+            });
+            break;
+        }
+    }
+    return {
+        cottages, sheds, jetty, flag, huts, boats,
+    };
 }
 
 /** The Swedish flag: blue with a yellow Nordic cross, 1.6 × 1 m, waving at a constant pace. */
@@ -297,22 +216,16 @@ function lighthouseMaterial(u, t) {
 export function createHamlet(u, t, tier, fields) {
     const ground = (x, z) => groundHeight(fields, x, z, true);
     const sites = hamletSites(fields);
-    const out = {
-        pos: [], nrm: [], local: [], width: [],
-    };
-    for (const b of [...sites.cottages, ...sites.sheds]) addBuilding(out, b, ground);
-    // The jetty: a deck on posts (a long thin box per plank run, posts as thin boxes).
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(out.pos, 3));
-    geo.setAttribute('normal', new THREE.Float32BufferAttribute(out.nrm, 3));
-    geo.setAttribute('aLocal', new THREE.Float32BufferAttribute(out.local, 4));
-    geo.setAttribute('aWidth', new THREE.Float32BufferAttribute(out.width, 1));
-    geo.computeBoundingSphere();
-    const mat = buildingMaterial(u, t);
+    const { geometry: geo, solids } = buildCottages(sites, ground);
+    const mat = cottageMaterial(u, t);
     const buildings = new THREE.Mesh(geo, mat);
     buildings.name = 'HighCoastHamlet';
     buildings.frustumCulled = false;
     buildings.renderOrder = 2;
+    // The buildings' shadows on the yard (not on the lowest tier).
+    const shade = tier.props > 0 ? houseShadows(u, t, fields, tier, solids) : null;
+
+    // The jetty: a deck on posts.
 
     const j = sites.jetty;
     const deckGeo = new THREE.BoxGeometry(2, 0.18, j.length);
@@ -367,6 +280,7 @@ export function createHamlet(u, t, tier, fields) {
 
     const meshes = [buildings, deck, posts, pole, flag.mesh, lighthouse];
     for (const mesh of meshes) mesh.renderOrder = 2;
+    if (shade) meshes.push(shade.mesh);
     return {
         mesh: buildings,
         meshes,
@@ -385,6 +299,8 @@ export function createHamlet(u, t, tier, fields) {
             lhGeo.dispose();
             lhMat.dispose();
             posts.dispose?.();
+            shade?.geometry.dispose();
+            shade?.material.dispose();
         },
     };
 }

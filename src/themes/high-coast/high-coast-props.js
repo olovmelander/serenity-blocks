@@ -18,6 +18,7 @@ import {
     clamp,
     dot,
     float,
+    fract,
     fwidth,
     max,
     mix,
@@ -25,6 +26,7 @@ import {
     normalize,
     positionWorld,
     smoothstep,
+    step,
     texture,
     uv,
     vec2,
@@ -34,9 +36,11 @@ import {
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { EYE, PLACES, mulberry32 } from './high-coast-core.js';
 import { groundHeight } from './high-coast-field.js';
+import { ROCK, hcCells } from './high-coast-land.js';
 import { aerial } from './high-coast-light.js';
 import { shadowAt } from './high-coast-shadow.js';
 import { createPineSteps } from './high-coast-pine.js';
+import { createOldPineSteps } from './high-coast-old-pine.js';
 import { drainSteps, stepClock } from '../shared/build-steps.js';
 import { bakeSignFieldSteps } from './high-coast-sign.js';
 import { simplex } from './high-coast-plan.js';
@@ -179,16 +183,33 @@ export function nearSites(fields, { boulders = 34, tufts = 240, seed = 0xb01d } 
     return { rocks, heath };
 }
 
-function boulderGeometry() {
-    const geo = mergeVertices(new THREE.IcosahedronGeometry(1, 4));
+/**
+ * An erratic block (unit size): glacier-rounded, but broken along a few joint planes whose edges
+ * the ice only dulled, so it has faces and shoulders, not the outline of a bun.
+ */
+export function boulderGeometry(seed = 0xb0ad) {
+    const geo = mergeVertices(new THREE.IcosahedronGeometry(1, 5));
     const p = geo.attributes.position;
+    const random = mulberry32(seed);
+    const planes = Array.from({ length: 7 }, () => {
+        const a = random() * Math.PI * 2;
+        const up = -0.2 + random() * 0.95;
+        const flat = Math.sqrt(Math.max(0, 1 - up * up));
+        return { n: new THREE.Vector3(Math.cos(a) * flat, up, Math.sin(a) * flat), d: 0.58 + random() * 0.26 };
+    });
+    const v = new THREE.Vector3();
     for (let i = 0; i < p.count; i++) {
-        const x = p.getX(i);
-        const y = p.getY(i);
-        const z = p.getZ(i);
-        // Glacier-rounded, a little blocky: two scales of lumps and a flattened base.
-        const n = 1 + 0.16 * simplex(x * 1.4 + 3.1, z * 1.4 + y * 0.9) + 0.06 * simplex(x * 3.7 - y * 2.1, z * 3.7);
-        p.setXYZ(i, x * n, (y < 0 ? y * 0.55 : y) * n, z * n);
+        v.fromBufferAttribute(p, i);
+        // Two scales of lumps, then the breaks (each takes off what stands proud of its plane).
+        const n = 1 + 0.16 * simplex(v.x * 1.4 + 3.1, v.z * 1.4 + v.y * 0.9) + 0.06 * simplex(v.x * 3.7 - v.y * 2.1, v.z * 3.7);
+        v.multiplyScalar(n);
+        for (const plane of planes) {
+            const over = v.dot(plane.n) - plane.d;
+            if (over > 0) v.addScaledVector(plane.n, -over * 0.88);
+        }
+        // A flattened base: it sits in the rock, it does not balance on it.
+        if (v.y < 0) v.y *= 0.55;
+        p.setXYZ(i, v.x, v.y, v.z);
     }
     geo.computeVertexNormals();
     return geo;
@@ -204,14 +225,30 @@ function nearMaterial(u, t, kind) {
         const n = normalize(normalWorld);
         let albedo;
         if (kind === 'rock') {
-            const N1 = texture(t.noise, P.xz.mul(0.7).add(P.y.mul(0.31)));
-            const N2 = texture(t.noise, P.xz.mul(3.1).add(P.y.mul(1.7)));
-            const base = mix(vec3(0.3, 0.2, 0.16), vec3(0.32, 0.31, 0.28), smoothstep(0.35, 0.7, N1.r));
-            // Lichen: pale crust on the tops, yellow-green map lichen in patches, a dark underside.
-            const crust = smoothstep(0.55, 0.7, N2.b).mul(smoothstep(-0.2, 0.6, n.y));
-            const map = smoothstep(0.66, 0.72, N2.g).mul(smoothstep(0.0, 0.7, n.y));
-            albedo = mix(mix(base, vec3(0.5, 0.5, 0.45), crust.mul(0.7)), vec3(0.3, 0.37, 0.08), map.mul(0.7))
-                .mul(smoothstep(-0.8, 0.2, n.y).mul(0.45).add(0.55)).mul(inst.w.mul(0.25).add(0.88));
+            // The summit's own granite (weathered grey-pink, pinker where a break is fresh), read on
+            // a slanted plane so the block's sides carry it too.
+            const at = P.xz.add(vec2(0.37, 0.61).mul(P.y)).toVar();
+            const N1 = texture(t.noise, at.div(9.0)).toVar();
+            const grain = texture(t.noise, at.div(0.8)).b.toVar();
+            const base = mix(vec3(...ROCK.pink), vec3(...ROCK.granite), smoothstep(0.35, 0.65, N1.g)).toVar();
+            base.assign(mix(base, vec3(...ROCK.grey), smoothstep(0.3, 0.75, N1.r.add(n.y.mul(0.3))).mul(0.55)));
+            base.mulAssign(float(1.0).sub(smoothstep(0.7, 0.8, grain).mul(0.45)).add(float(1.0).sub(smoothstep(0.22, 0.32, grain)).mul(0.2)));
+            // The slabs' crust lichens (round patches, each one species, darker at the rim), on
+            // what faces the sky; the block's own shade below its shoulders.
+            const patch = hcCells(at.div(0.36).add(N1.ba.mul(1.1))).toVar();
+            const which = patch.z.toVar();
+            const radius = fract(which.mul(13.7)).mul(0.34).add(0.3).add(grain.sub(0.5).mul(0.16))
+                .toVar();
+            const up = smoothstep(-0.25, 0.5, n.y);
+            const grown = smoothstep(radius, radius.sub(0.07), patch.x).mul(step(0.3, which)).mul(up).toVar();
+            const tone = mix(vec3(0.37, 0.375, 0.345), vec3(0.25, 0.28, 0.225), step(0.56, which)).toVar();
+            tone.assign(mix(tone, vec3(0.15, 0.13, 0.11), step(0.72, which)));
+            tone.assign(mix(tone, vec3(...ROCK.mapLichen).mul(0.95), step(0.86, which)));
+            tone.assign(mix(tone, vec3(0.05, 0.05, 0.045), step(0.94, which)));
+            const rim = smoothstep(radius.sub(0.2), radius.sub(0.04), patch.x);
+            albedo = mix(base, tone.mul(grain.mul(0.55).add(0.7)), grown.mul(rim.mul(0.3).add(0.5)))
+                .mul(float(1.0).sub(grown.mul(rim).mul(rim).mul(0.22)))
+                .mul(smoothstep(-0.8, 0.2, n.y).mul(0.45).add(0.55)).mul(inst.w.mul(0.2).add(0.9));
         } else {
             // Heather (purple-brown, pink in flower), crowberry (dark green), reindeer lichen (pale).
             const fine = texture(t.noise, P.xz.mul(9.0).add(P.y.mul(4.0))).a;
@@ -242,15 +279,33 @@ export function createProps(u, t, tier, fields, options = {}) {
  * then the sign, then the rest. In one step the props held High Coast's first-visit switch frame
  * at 86-93 ms (the pine 71 ms, the sign's lettering 21 ms; 2026-10-31).
  */
-export function* createPropsSteps(u, t, tier, fields, { coverage = false } = {}) {
+export function* createPropsSteps(u, t, tier, fields, { coverage = false, trees = null } = {}) {
     const meshes = [];
     const disposables = [];
     const ground = (x, z) => groundHeight(fields, x, z, true);
 
-    // The old pine (its wood, its needles and its shadow on the summit). `coverage`: the scene
-    // pass is multisampled, so the needles cut out by alpha-to-coverage.
-    const pineFoot = new THREE.Vector3(PLACES.pine.x, ground(PLACES.pine.x, PLACES.pine.z) - 0.6, PLACES.pine.z);
-    const pine = yield* createPineSteps(u, t, tier, ground, pineFoot, { coverage });
+    // The old pine (its wood, its needles and its shadow on the summit): the authored tree where
+    // its assets were read (`trees`, high-coast-tree-assets.js), else the one built here.
+    // `coverage`: the scene pass is multisampled, so the needles cut out by alpha-to-coverage.
+    const pineGround = ground(PLACES.pine.x, PLACES.pine.z);
+    const pine = trees?.pine && trees.foliage
+        ? yield* createOldPineSteps(
+            u,
+            t,
+            tier,
+            ground,
+            new THREE.Vector3(PLACES.pine.x, pineGround, PLACES.pine.z),
+            trees,
+            { coverage },
+        )
+        : yield* createPineSteps(
+            u,
+            t,
+            tier,
+            ground,
+            new THREE.Vector3(PLACES.pine.x, pineGround - 0.6, PLACES.pine.z),
+            { coverage },
+        );
     meshes.push(...pine.meshes);
     disposables.push(pine);
     yield 'pine';

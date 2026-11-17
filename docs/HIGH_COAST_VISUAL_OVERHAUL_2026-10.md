@@ -102,8 +102,8 @@ sun has moved; the cloud deck's shadows drift across land and sea.
 |---|---|
 | Lock | A gust — a cat's paw — sets out across the visible water beside the card on the lock's side and runs out to a boat of the fleet on that side, which **sets a spinnaker in the piece's colour** (it pops open, glows where the low sun shines through it, holds ~24 s, is doused). The gust ruffles the water dark and blue and glitters in the piece's colour where it starts, sun-white as it runs. |
 | Hard drop | A wider, faster gust and a splash plume thrown up where it starts. |
-| Clear | **The land rises**: the sea draws back (2.4 m a line, eased over ~0.5 s), every shore widens, skerries come up, the newly risen band is bare, wet and gleams (gold toward the sun), seawater runs off the steeper risen faces in white threads, a foam line marks the waterline and sea mist breathes off the shores. The bare band dries from the top down over ~16 s. |
-| Chain | Each link lifts more (+30 % a link, up to six); the lift approaches a 30 m ceiling; the wind freshens (the fleet heels, the water sparkles) and the gulls gather low over the near bay. Between bursts the sea slowly returns (time constant 48 s). |
+| Clear | **The land rises**: the sea draws back (0.8 m a line since 2026-11-17, 2.4 before; eased over ~0.5 s), every shore widens, skerries come up, the newly risen band is bare, wet and gleams (gold toward the sun), seawater runs off the steeper risen faces in white threads, a foam line marks the waterline and sea mist breathes off the shores. The bare band dries from the top down over ~16 s. |
+| Chain | Each link lifts more (+30 % a link, up to six); the lift approaches a 9 m ceiling (30 before 2026-11-17); the wind freshens (the fleet heels, the water sparkles) and the gulls gather low over the near bay. Between bursts the sea returns (time constant 26 s; 48 before 2026-11-17). |
 | Chain break (after 3+) | A swell runs in from the open sea — long crests and surf along every shore — and the sea returns faster. |
 | Four lines | **The great rebound**: the lift plus 6 m at once, the risen rock flaring gold, spray bursts off the shores on both sides of the card, the gulls lift off. |
 | T-spin | The fleet comes about: every boat turns and heels the other way. |
@@ -471,3 +471,117 @@ sun's road had been, the lighthouse a speck. The sea by day was one flat blue.
   second server: golden hour 2.37–2.46 → 2.44–2.48 ms, morning 1.89–1.94 → 1.92–1.95 ms.
 - Tests: `tests/unit/high-coast-events.test.js` (13) holds the new choreography; the theme's 296
   tests and the shader gate pass.
+
+## Trees and houses (2026-11-17)
+
+The owner asked for the close tree, then the distant trees ("get inspiration from Verdant Hills"),
+then the small red houses. All three were the oldest geometry in the theme: a pole with painted
+plates under fans of alpha cards, a forest of icosahedron blobs and lathe cones, and seven boxes
+with windows painted on.
+
+### What is drawn now
+
+| Thing | Before | Now |
+| --- | --- | --- |
+| The old pine | built in JS: straight tube limbs, plates of 0.6–0.9 m cards | authored in Blender (`scripts/blender/high_coast/`, the Fall grove's branching library): a stout leaning bole with roots laid on the rock, fourteen crooked limbs, a bare silver limb and stubs, 2,141 needle sprays instanced on their sites, bark with relief |
+| The forest | 22,000 instanced meshes (about three million triangles) | 22,000 sprites of four Blender pines, three spruces and three groups, coloured from a data sheet and lit through a normal sheet (44,000 triangles, one draw) |
+| The hamlet | boxes with a gable roof | cottages with overhanging roofs behind white bargeboards, chimneys, porches, cased windows with glazing bars and doors; boathouses gable to the water with tarred doors and a slip; two huts; rowing boats; the buildings' shadows on the grass |
+
+Files: `high-coast-tree-assets.js` (loader), `high-coast-old-pine.js`, `high-coast-forest.js`
+(sprites beside the built meshes), `high-coast-cottages.js`, `assets/ATTRIBUTION.md`. A coast whose
+tree files cannot be read (a failed request, a unit test) still draws the built pine and the built
+forest: `HighCoastWorld.prepare` hands the world `trees` or nothing.
+
+### Decisions and traps
+
+- **The pine is authored in the frame it stands in**: +X the view's right, +Z toward the eye. A
+  front elevation in Blender is then the game's picture, and `preview.view` renders it through the
+  theme's own lens. The lens holds only its lower eleven metres, so the lowest limbs carry the
+  fullest plates and nothing hangs below the horizon line of the frame.
+- **Needles are a drawing on slim ribbons, not geometry** (gotcha #1601). Serrated blades read as
+  leaves at every size tried; three ribbons crossed about each shoot, carrying the drawn bottlebrush
+  the built pine already baked (`bakeNeedleTexture`, drawn bushier here), read as needles. Wide
+  ribbons and a drawing dense enough to be solid at the first mip both read as blades again.
+- **A crown is seen from below.** Lit like the land it was near black against the sky: it now takes
+  the rock's bounce on its undersides and the sun that comes through the needles.
+- **The roots follow the rock.** The bark's `_WOOD.y` says how far a vertex follows the ground;
+  `seatOnRock` moves it by the summit's height where it stands when the tree is built.
+- **The shadow on the summit is the old patch**: its casters are the crown's sprays gathered into
+  52 plates (farthest-point seeds, four rounds of averaging) and the bole's line from the GLB.
+- **Sub-pixel flakes sparkle.** The orange bark's flakes are finer than a pixel on the limbs: the
+  pattern fades to its mean by `fwidth` of its own coordinate.
+- **Sprites keep their proportions** (gotcha #1602). A far site stands for several trees; it gets a
+  group's tile, stretched at most 0.85–1.35, never a single tree pulled wide.
+- **House shadows lie in the land's own mesh** (gotcha #801): `yardPatch` rebuilds the land's posts
+  over the yard with the land's arithmetic (a test compares the floats). Each building is a convex
+  solid of seven planes; the lowest tier lays no shadows.
+- **Tiers.** `sprays` is the share of the pine's sprays drawn (Minimal 0.35 … High and up 1), each
+  kept spray a little larger; the lowest tier leaves the twigs out of the bark.
+
+### Checks
+
+- Playground, private dev server, headless Chrome on the RTX 5080 Laptop at `maxFps=30`: the six
+  hours, the pine close and through the game's lens, the hamlet at four hours, the headland and
+  the near island, High, Low and Minimal, WebGL2 (`forceWebGL=1`), portrait 390 × 844: consoles clean.
+- The real game (theme switched to High Coast, a single-player run with real key presses): eight
+  locks, a four-line clear and a twist with the new trees and houses in the frame, console clean.
+- Tests: `tests/unit/high-coast-trees.test.js` (22: the pack on disk, the pine's data and reach,
+  the sprites, the buildings, the shadow patch, the world with and without the authored trees);
+  the shader gate builds every material with the authored trees at High and Minimal and with the
+  built ones at High, WGSL and GLSL, under 48 KiB a stage.
+- Not measured: frame time at full speed (the forest went from about three million triangles to
+  44,000; the pine's needles are about 310,000 alpha-tested triangles at High).
+
+## The ground (2026-11-17)
+
+Asked next: "should we improve the ground as well? rocks, mountains, moss, grass, sand". Looked
+at up close, three things were weak, and they are what changed; the meadow, the shingle and the
+far ranges were left as they are.
+
+- **Cliffs and every island's rock band swirled like plank grain** (gotcha #1603). The joints
+  were drawn in a coordinate along the face taken from the slope's direction at each pixel, which
+  is not one coordinate. They now stand in the rock: two sets of upright planes across x and
+  across z, a face showing the set that crosses it; ledges come from the height. The faces read
+  as sheeted, jointed rock.
+- **The summit round the eye has a material of its own.** The land's shader is at its 48 KiB
+  gate, so the summit's detail could not grow in it. The fan's nearest rows (within `SUMMIT.reach`,
+  32 m: the plateau ends in a sheer drop about 25 m out) are drawn by `createLandMaterial(…,
+  { summit: true })`: the same posts and the same index, split by draw range, so there is no
+  seam; the summit's variant leaves out the shore, the forest, the meadow, the shingle and the wet
+  band (none reach it: a test holds that on the baked coast) and adds crust lichens as round thin
+  patches with rock between them (gotcha #1604: filled Voronoi cells read as crazy paving), a few
+  fine cracks with moss in them, and the heath's sprigs one by one with the heather in flower.
+  Everything it adds fades out between 20 and 29 m, so the two materials draw the same rock where
+  they meet.
+- **The boulders were buns.** They are erratic blocks now: the same rounded lump broken along
+  seven joint planes, in the summit's own granite with its lichens on what faces the sky.
+
+Checks: the six hours, High, Ultra, Low and Minimal (the two lowest keep the summit's cushions
+only, as before), WebGL2, portrait, the seam close up: consoles clean. The shader gate builds the
+summit's material beside the land's on both backends under budget. `tests/unit/high-coast-ground.test.js`
+(4) holds the split, the summit's clearance on the baked coast and the boulder.
+
+## The sea stays a sea (2026-11-17)
+
+The owner: "the effect of the water getting lower while playing, sometimes I feel that all water
+is gone … it feels weird." It was: the bays are shallow, so at twenty metres of lift the strait
+below the summit is bare grey seabed and at thirty nearly all the near water is gone, and the
+old numbers held steady play fifteen to twenty-three metres down. The better one played, the less
+of a coast there was to look at.
+
+The idea stays (every clear lifts the land); its range is now the one where the picture keeps its
+water (`UPLIFT` in `high-coast-core.js`):
+
+| | Before | Now |
+| --- | --- | --- |
+| A line | 2.4 m | 0.8 m |
+| Four lines on top | 6 m | 2 m |
+| Ceiling | 30 m | 9 m |
+| The sea returns (time constant) | 48 s | 26 s |
+| Steady play (16 lines a minute) | about 15 m down | about 3.5 m down |
+| Fast play with quads | about 23 m down, peaks of 26 | about 6 m down, peaks of 7.5 |
+
+At nine metres (the ceiling, which play approaches and does not reach) the hamlet's beach is
+wider, the shallows turn turquoise and a few skerries stand out of the bay; the sounds and the
+strait are still water. The run-off streams and the mist go by how hard a clear pulled in lines'
+worth, not in metres, so they are as strong as they were.

@@ -7,8 +7,10 @@
  * sky and the cumulus), the three shadow passes' quads and the post stack's output (its look per
  * tier, and the falseColor debug view) are built through three's own node builders against a stub
  * renderer: the WGSL one of the WebGPU backend and the GLSL one of the WebGL2 fallback, at the tier
- * the theme defaults to and at the leanest. A graph one builder cannot turn into a shader throws
- * or warns here instead of leaving a part undrawn on someone's machine.
+ * the theme defaults to and at the leanest, with the trees the theme ships (the authored old pine
+ * and the forest's sprites, read from disk) and, at the default tier, with the ones it builds
+ * itself when those cannot be read. A graph one builder cannot turn into a shader throws or warns
+ * here instead of leaving a part undrawn on someone's machine.
  *
  * Also gated: each stage's size (a feature unrolled in JS instead of looped shows up as a module of
  * 100 KB), MaterialX noise (`mx_*`), a smoothstep whose two edges are the same constant (a hard
@@ -30,10 +32,12 @@ import { HighCoastPost, POST_LOOK } from '../../src/themes/high-coast/high-coast
 import { planCoast } from '../../src/themes/high-coast/high-coast-assets.js';
 import { FIELD_ORDER, PIECE_COLORS } from '../../src/themes/high-coast/high-coast-core.js';
 import { hasMaterialXNoise } from './helpers/materialx-noise.js';
+import { readHighCoastTrees } from './helpers/high-coast-trees.js';
 
 vi.setConfig({ testTimeout: 60_000 });
 
-const TIERS = ['High', 'Minimal'];
+/** The tier, and whose trees stand in it: the authored ones the theme ships, or the ones it builds. */
+const CASES = [['High', 'authored'], ['Minimal', 'authored'], ['High', 'built']];
 const BACKENDS = [['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilder]];
 /**
  * Per stage, as the sibling gates (Himalayan Peak, Rainbow Terraces; Painted Ages allows its fragments
@@ -219,17 +223,19 @@ beforeAll(() => {
     fields = planCoast();
 });
 
-describe.each(TIERS)('high coast shaders at %s', (quality) => {
+describe.each(CASES)('high coast shaders at %s with %s trees', (quality, whose) => {
     let world;
     let scene;
     /** { name, object, label, out, heard } per material and backend. */
     const built = [];
 
-    beforeAll(() => {
+    beforeAll(async () => {
         scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(40, 16 / 9, 1.2, 70000);
+        const prepared = HighCoastWorld.prepareSync(quality, fields);
+        if (whose === 'authored') prepared.trees = await readHighCoastTrees();
         world = new HighCoastWorld({
-            scene, quality, capture: true, prepared: HighCoastWorld.prepareSync(quality, fields),
+            scene, quality, capture: true, prepared,
         }).build();
         world.bindCamera(camera);
         world.setViewport(1600, 900, 16 / 9);
@@ -284,6 +290,13 @@ describe.each(TIERS)('high coast shaders at %s', (quality) => {
         }
         // The sign's boards and post are children of a group: they are built too.
         expect(built.some((b) => /Sign0/.test(b.object.material.name))).toBe(true);
+        // Whose trees these are: the authored pine and the sprites, or the built ones.
+        const materials = new Set(built.map((b) => b.object.material.name));
+        const authored = ['HighCoastOldPineBark', 'HighCoastOldPineNeedles', 'HighCoastForestSprites'];
+        for (const name of authored) expect(materials.has(name), name).toBe(whose === 'authored');
+        expect(materials.has('HighCoastConifer')).toBe(whose === 'built');
+        expect(materials.has('HighCoastHamlet')).toBe(true);
+        expect(materials.has('HighCoastHamletShadow')).toBe(quality !== 'Minimal');
         expect(built.length).toBeGreaterThanOrEqual(HIGH_COAST_PARTS.length * 2);
     });
 
