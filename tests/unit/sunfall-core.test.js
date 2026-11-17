@@ -46,7 +46,7 @@ describe('sunfall-core', () => {
         ]);
     });
 
-    it('defines 5 normalized solar-shaft stations and 4 subterranean micro-weathers', () => {
+    it('defines 5 normalized solar-shaft stations and 5 subterranean micro-weathers', () => {
         expect(SUNFALL_STATIONS).toHaveLength(5);
         for (const st of SUNFALL_STATIONS) {
             const len = Math.hypot(st.sunDir[0], st.sunDir[1], st.sunDir[2]);
@@ -55,7 +55,7 @@ describe('sunfall-core', () => {
             expect(st.sunDir[1]).toBeGreaterThan(0.85);
             expect(st.sunDir[2]).toBeLessThan(0);
         }
-        expect(SUNFALL_WEATHERS).toHaveLength(4);
+        expect(SUNFALL_WEATHERS).toHaveLength(5);
     });
 
     it('interpolates stations smoothly across level progression and fractional station coordinates', () => {
