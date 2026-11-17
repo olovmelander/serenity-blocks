@@ -27,6 +27,7 @@
  *   bloom=0|1                override the tier's bloom
  *   msaa=<n>                 override the scene pass's samples
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
+ *   still=1                  hold the camera at its rest pose (no drift or breath): what moves is the world
  *   reduce=1                 reduced motion
  *   plan=1                   skip the baked trees and draw the generated stand-ins
  *   fox=0                    do not fetch the fox's body
@@ -197,6 +198,7 @@ export function create({
     const noPost = params.get('noPost') === '1';
     const overlay = params.get('board') === '1' ? mountBoardOverlay(params.get('statsHud') !== '0') : null;
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
+    const still = params.get('still') === '1';
     const iconPose = params.get('icon') === '1';
     const foxCam = num(params, 'foxCam', 0);
     const foxAct = (params.get('foxAct') || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -252,6 +254,13 @@ export function create({
     const frame = (time, delta) => {
         if (holdPower !== null) world.holdPower(holdPower);
         world.updateCamera(camera, sim(time, delta));
+        if (still) {
+            const rest = world.restCamera();
+            camera.position.copy(rest.position);
+            camera.quaternion.copy(rest.quaternion);
+            camera.updateMatrixWorld();
+            world.projectMoon(camera);
+        }
         world.update(sim(time, delta), camera);
         if (foxCam > 0) {
             // A lens on the fox: round it from its front by foxCamYaw (or on the side the game's

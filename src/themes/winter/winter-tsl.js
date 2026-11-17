@@ -461,6 +461,8 @@ export function createWinterUniforms(textures) {
          * through all of them, pillar: the column of light that stands over the moon).
          */
         heat: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** The snow ghosts' sway: (its clock in seconds, how much of it there is, spare, spare). */
+        sway: uniform(new THREE.Vector4(0, 1, 0, 0)),
         /** How far the wind has carried things (metres, xz) and how hard it blows now. */
         windRun: uniform(new THREE.Vector2(0, 0)),
         gale: uniform(0.2),
