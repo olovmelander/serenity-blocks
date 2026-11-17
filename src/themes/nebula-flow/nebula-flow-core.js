@@ -425,6 +425,41 @@ export function pillarAxisAt(p, h, out = [0, 0]) {
 /** The pillar's half-width at a share `h` of its height. */
 export const pillarWidthAt = (p, h) => lerp(p.w0, p.w1, clamp01(h) ** 0.7);
 
+/**
+ * The far range: smaller pillars further back in the cavity, behind the gas (depth for the
+ * nursery: the main pillars stand in front of a second rank). `s` is the foot's place as a share
+ * of the frame's half-width (−1 left … 1 right), the rest in nursery units: `top` the head's
+ * height, `w0`/`w1` the half-widths at the foot and the head, `lean` the head's offset in x.
+ * Laid out where the near pillars leave gaps on a wide screen (beside the card and between the
+ * pillars); the ones behind the card show on the menus.
+ */
+export const FAR_SPIRES = Object.freeze([
+    Object.freeze({
+        s: -0.86, top: -0.32, w0: 0.14, w1: 0.05, lean: 0.04,
+    }),
+    Object.freeze({
+        s: -0.43, top: -0.08, w0: 0.16, w1: 0.06, lean: 0.06,
+    }),
+    Object.freeze({
+        s: -0.3, top: -0.42, w0: 0.08, w1: 0.03, lean: -0.02,
+    }),
+    Object.freeze({
+        s: -0.07, top: 0.14, w0: 0.2, w1: 0.065, lean: -0.04,
+    }),
+    Object.freeze({
+        s: 0.16, top: -0.24, w0: 0.1, w1: 0.035, lean: 0.05,
+    }),
+    Object.freeze({
+        s: 0.41, top: 0.02, w0: 0.15, w1: 0.055, lean: -0.06,
+    }),
+    Object.freeze({
+        s: 0.75, top: -0.28, w0: 0.12, w1: 0.04, lean: -0.03,
+    }),
+]);
+/** Where the far range's feet stand, and the tallest head (the shader draws nothing above it). */
+export const FAR_FOOT = -1.2;
+export const FAR_TOP = Math.max(...FAR_SPIRES.map((f) => f.top));
+
 /** Where the cluster that lights the nursery stands (above the frame). */
 export function clusterFor(aspect) {
     const a = Math.max(0.3, Number.isFinite(aspect) ? aspect : 16 / 9);
@@ -577,6 +612,109 @@ export function paletteAt(place, out = {}) {
 export function paletteName(place) {
     const { index, next, mix } = palettePhase(place);
     return NEBULA_PALETTES[mix < 0.5 ? index : next].name;
+}
+
+// ── The weather: the nursery's own moods, on a clock of their own ─────────────────
+
+/**
+ * What a mood sets, each a multiplier on the rest look (1 = as it was) except `rays`, which is
+ * added to the cluster's shafts:
+ *   shine      the cluster's light        burn       how hot the lit rims burn
+ *   streamers  the light combed into gas  lanes      how thick the cavity's dust lanes stand
+ *   embers     the young stars buried in the pillars          outflow    their jets
+ *   rays       the shafts (added)         flow       how fast the gas streams out
+ */
+export const WEATHER_KEYS = Object.freeze(['shine', 'burn', 'streamers', 'lanes', 'embers', 'outflow', 'rays', 'flow']);
+
+const weather = (name, values) => Object.freeze({ name, ...values });
+
+/**
+ * Five moods on a wheel, each held a while and then melted into the next. With the palette's own
+ * line (PALETTE_STEP, there and back) on a clock of another length, the nursery seldom looks the
+ * same twice in a sitting.
+ *   calm   the nursery at rest, as it always was
+ *   blaze  the cluster flares: rims burn hot, the shafts pour down, the lanes thin
+ *   wind   its wind blows hard: the gas streams out fast in long streamers, the outflows lengthen
+ *   tide   the dust comes in: the cavity's lanes stand thick and dark, the light pulls back
+ *   deep   the cluster's light sinks and what the dust hides shows: the buried stars and their jets
+ */
+export const WEATHERS = Object.freeze([
+    weather('calm', {
+        shine: 1, burn: 1, streamers: 0.6, lanes: 1, embers: 1, outflow: 1, rays: 0, flow: 1,
+    }),
+    weather('blaze', {
+        shine: 1.18, burn: 1.4, streamers: 0.85, lanes: 0.75, embers: 0.8, outflow: 0.9, rays: 0.25, flow: 1.15,
+    }),
+    weather('wind', {
+        shine: 1.05, burn: 1.15, streamers: 1.45, lanes: 0.9, embers: 1, outflow: 1.3, rays: 0.08, flow: 1.7,
+    }),
+    weather('tide', {
+        shine: 0.9, burn: 0.95, streamers: 0.35, lanes: 2.0, embers: 1.15, outflow: 1.05, rays: -0.05, flow: 0.85,
+    }),
+    weather('deep', {
+        shine: 0.72, burn: 0.82, streamers: 0.4, lanes: 1.35, embers: 2.3, outflow: 1.8, rays: -0.1, flow: 0.8,
+    }),
+]);
+/** Seconds the clock alone takes to move the weather one mood on (the palette's is 95). */
+export const WEATHER_STEP = 110;
+/** The share of that time a mood rests, pure, before it melts into the next. */
+export const WEATHER_HOLD = 0.4;
+
+/** The weather at a place on its wheel (whole numbers are the moods themselves). */
+export function weatherAt(place, out = {}) {
+    const n = WEATHERS.length;
+    const x = Number.isFinite(place) ? place : 0;
+    const whole = Math.floor(x);
+    const a = WEATHERS[((whole % n) + n) % n];
+    const b = WEATHERS[(((whole + 1) % n) + n) % n];
+    const k = x - whole;
+    for (let i = 0; i < WEATHER_KEYS.length; i += 1) {
+        const key = WEATHER_KEYS[i];
+        out[key] = lerp(a[key], b[key], k);
+    }
+    out.name = k < 0.5 ? a.name : b.name;
+    return out;
+}
+
+// ── Happenings: what the nursery does by itself ──────────────────────────────────
+
+/**
+ * Every HAPPEN_GAP seconds or so (jittered) the nursery does something of its own, in a shuffled
+ * order of four:
+ *   kindle    a star lights by itself in a pillar and fires its jets (an outburst instead while
+ *             the board is kindling its own)
+ *   outburst  one of the pillars' young stars flares: the dust round it lights, its jets blaze and
+ *             a ring of light runs out through the gas round it
+ *   nova      a far star in the cavity swells to a blaze with long spikes and fades over a minute
+ *   flare     the cluster flares above the frame: its light and shafts swell, a soft front falls
+ */
+export const HAPPENINGS = Object.freeze(['kindle', 'outburst', 'nova', 'flare']);
+export const HAPPEN_GAP = 34;
+export const HAPPEN_JITTER = 12;
+/** When the first happening of a clock is due. */
+export const HAPPEN_FIRST = 9;
+
+/** The k-th happening on the clock: { time, kind, seed } (a function of k and the seed alone). */
+export function happeningAt(k, seed = 0) {
+    const index = Math.max(0, Math.floor(k));
+    const rand = mulberry32((seed * 7919 + index * 104729 + 0x51ab) >>> 0);
+    const time = HAPPEN_FIRST + index * HAPPEN_GAP + rand() * HAPPEN_JITTER;
+    // a shuffle per block of four: each kind once a block
+    const block = Math.floor(index / HAPPENINGS.length);
+    const shuffle = mulberry32((seed * 31 + block * 2654435761 + 0x9e3) >>> 0);
+    const order = [0, 1, 2, 3];
+    for (let i = order.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(shuffle() * (i + 1));
+        [order[i], order[j]] = [order[j], order[i]];
+    }
+    return { time, kind: HAPPENINGS[order[index % HAPPENINGS.length]], seed: rand() };
+}
+
+/** The index of the first happening due after `time`. */
+export function happeningAfter(time, seed = 0) {
+    let k = Math.max(0, Math.floor((time - HAPPEN_FIRST - HAPPEN_JITTER) / HAPPEN_GAP));
+    while (happeningAt(k, seed).time <= time) k += 1;
+    return k;
 }
 
 // ── Pieces ───────────────────────────────────────────────────────────────────────

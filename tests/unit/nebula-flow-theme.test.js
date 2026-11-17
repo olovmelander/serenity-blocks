@@ -215,6 +215,16 @@ vi.mock('../../src/themes/nebula-flow/nebula-flow-world.js', () => {
             this.combo = combo;
         }
 
+        onGameOver() {
+            mocks.log.push('onGameOver');
+            this.overs = (this.overs || 0) + 1;
+        }
+
+        onSessionStart() {
+            mocks.log.push('onSessionStart');
+            this.starts = (this.starts || 0) + 1;
+        }
+
         levelUp(level, options) {
             mocks.log.push('levelUp');
             this.level = level;
@@ -928,12 +938,14 @@ describe('Nebula Flow theme: one node renderer on both backends', () => {
             theme.stepFrame(16 * (i + 1));
         }
         expect(theme.world.combo).toBe(3);
-        // A lock staged on the run's last tick must not land in the next run.
+        // A lock staged on the run's last tick lands in the run it was played in, never the next.
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
         mocks.log.length = 0;
         listeners.get('gameOver')();
-        // The chain is let go first (the world hears the break), then the session is reset.
-        expect(mocks.log).toEqual(['onCombo']);
+        // The last lock lands, the chain is let go (the world hears the break), the session is
+        // reset, and only then does the run's dusk fall (a reset after it would not wipe it, but
+        // the order is the one every theme ends a run in).
+        expect(mocks.log).toEqual(['onLock', 'onCombo', 'onGameOver']);
         expect(theme.world.sessions).toBe(1);
         expect(theme.world.combo).toBe(0);
         expect(theme.combos.size).toBe(0);
@@ -1533,7 +1545,7 @@ describe.skipIf(!existsSync(worldFile) || !existsSync(postFile))('Nebula Flow th
         const listed = entry.values.replace(/^[^:]*:/, '').split(',').map((name) => name.trim());
         // The world names its parts (as GalaxyWorld does with GALAXY_PARTS).
         expect(world.NEBULA_FLOW_PARTS, 'nebula-flow-world.js exports NEBULA_FLOW_PARTS').toBeInstanceOf(Array);
-        expect([...world.NEBULA_FLOW_PARTS]).toEqual(['nebula', 'stars', 'births', 'jets', 'flights', 'blades']);
+        expect([...world.NEBULA_FLOW_PARTS]).toEqual(['nebula', 'stars', 'births', 'aura', 'jets', 'flights', 'blades']);
         expect(listed.sort()).toEqual([...world.NEBULA_FLOW_PARTS].sort());
     });
 
