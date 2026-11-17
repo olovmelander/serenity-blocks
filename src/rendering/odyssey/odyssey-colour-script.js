@@ -260,18 +260,60 @@ export const ODYSSEY_COLOUR_SCRIPT = Object.freeze([
         fogDensity: 0.00020,
         wind: 0.45,
     },
+    // ── THE ISLAND'S MORNING AND THE MOUNTAINS' AFTERNOON (masterpiece pass, 2026-11-17) ──
+    // Chapters 3 and 4 shared one noon ('shore', p 0.38, stood where these three stand). Each now
+    // has its own hour: the island keeps its fresh morning to its last orb, the day turns between
+    // the two chapters, and the mountains stand in a warm late afternoon that ends at the start of
+    // the golden hour, where the sky chapter takes it on. `hour` (see HOUR below) carries the part
+    // of that light the five colours cannot: alpenglow, the blue of long shadows, the gold in the
+    // clouds and the mist. In script p these sit at the last island orb's park (journey p 0.2323),
+    // the first mountain orbs' park (0.2689) and the last mountain orb (0.3356).
     {
-        p: 0.38,
-        name: 'shore',
+        p: 0.2690,
+        name: 'island-morning',
         medium: 'air',
-        skyZenith: 0x2a6ec2,
-        skyHorizon: 0xbdd4ea,
-        sun: 0xfff0d2,
-        groundLit: 0x6f9450,
-        groundShadow: 0x3a5566,
+        skyZenith: 0x2c6fc6,
+        skyHorizon: 0xc0d9ee,
+        sun: 0xfff4e2,
+        groundLit: 0x7ea268,
+        groundShadow: 0x3b5868,
+        exposure: 1.02,
+        fogDensity: 0.00018,
+        wind: 0.50,
+        hour: 0,
+        // The day turns after this keyframe, behind a cloud's shadow (world/odyssey-day-turn.js):
+        // the shade crosses the valley and the afternoon's light follows it up the mountain. It
+        // is NOT a declared `seamAfter`: the horizon keeps the anchor's hue through it (the
+        // evening's warmth lies in a belt under the script's horizon, see `hour`), so the hue
+        // rate limit holds across the turn with nothing suspended.
+    },
+    {
+        p: 0.3155,
+        name: 'mountain-afternoon',
+        medium: 'air',
+        skyZenith: 0x2562c4,
+        skyHorizon: 0xc9dcec,
+        sun: 0xffd9a8,
+        groundLit: 0x8a9a52,
+        groundShadow: 0x44609a,
         exposure: 1.00,
-        fogDensity: 0.00016,
-        wind: 0.55,
+        fogDensity: 0.00021,
+        wind: 0.60,
+        hour: 0.42,
+    },
+    {
+        p: 0.4050,
+        name: 'alpine-gold',
+        medium: 'air',
+        skyZenith: 0x1f5cc4,
+        skyHorizon: 0xcbdcea,
+        sun: 0xffc885,
+        groundLit: 0x9a9648,
+        groundShadow: 0x46629c,
+        exposure: 0.98,
+        fogDensity: 0.00024,
+        wind: 0.70,
+        hour: 0.62,
     },
     // ── THE EVENING (2026-11-17, the sky pass of the masterpiece round) ─────────────────────
     // Chapter 5 used to climb through the same noon as chapters 3 and 4 ('highlands', 'alpine',
@@ -464,6 +506,28 @@ const LAB_CACHE = ODYSSEY_COLOUR_SCRIPT.map((k) => {
 });
 
 /**
+ * THE HOUR (masterpiece pass, 2026-11-17) — how far the day has gone toward sunset: 0 is the clear
+ * day every keyframe had, 1 the sun on the horizon. The world's sun never moves (its direction is
+ * baked into the shadow plates), so the hour is told by colour, and five colour slots cannot tell
+ * all of it: this scalar scales the terms that only exist late in the day (alpenglow on lit snow,
+ * the sky's blue in long shadows, the sun's share of a cloud's lit side, the warm air toward the
+ * sun, the mist in the hollows; world/odyssey-day-turn.js `ODYSSEY_HOUR_LOOK`).
+ *
+ * A keyframe that names no `hour` KEEPS THE HOUR OF THE ONE BEFORE IT, so the day never jumps back
+ * to noon at a keyframe that was written before the hour existed, and a later keyframe takes the
+ * day further by naming its own.
+ */
+const HOUR_CACHE = ODYSSEY_COLOUR_SCRIPT.reduce((out, k) => {
+    out.push(Number.isFinite(k.hour) ? Math.min(Math.max(k.hour, 0), 1) : (out.at(-1) ?? 0));
+    return out;
+}, []);
+
+/** The hour each keyframe stands at (its own, or the one it inherits), for tests and tooling. */
+export function getColourScriptHours() {
+    return HOUR_CACHE.slice();
+}
+
+/**
  * Sample the script at path progress `p`.
  *
  * Colours are interpolated in Oklab and returned as LINEAR rgb triples, which is what a TSL
@@ -495,6 +559,7 @@ export function sampleColourScript(p) {
     SCALAR_SLOTS.forEach((slot) => {
         result[slot] = a[slot] + (((b[slot] ?? a[slot]) - a[slot]) * e);
     });
+    result.hour = HOUR_CACHE[i] + (((HOUR_CACHE[i + 1] ?? HOUR_CACHE[i]) - HOUR_CACHE[i]) * e);
     return result;
 }
 
