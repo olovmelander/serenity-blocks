@@ -60,9 +60,12 @@ import {
     PROMINENCES,
     PROMINENCE_LIFE,
     PROMINENCE_RISE,
+    RANGES,
     STREAMERS,
     STREAMER_SET,
     TAU,
+    WEATHERS,
+    WEATHER_KEYS,
     WORLD,
     approach,
     axisAt,
@@ -76,10 +79,13 @@ import {
     mulberry32,
     paletteAt,
     prominenceShape,
+    shadowEdgeAt,
+    shadowReachAt,
     smooth01,
     streamersAt,
     sunFrame,
     umbraAzAt,
+    weatherAt,
     wrapAngle,
 } from './solar-eclipse-core.js';
 import { sessionEclipseBakes } from './solar-eclipse-bakes.js';
@@ -159,6 +165,9 @@ const RING = Object.freeze({
 });
 /** How bright the diamond's glitter path burns on the water, per unit of its glare. */
 const GLINT_POWER = 5.5;
+
+/** The volcano: its bearing and distance, for whether its summit stands in the sunlight. */
+const VOLCANO_RANGE = RANGES.find((range) => range.cone);
 
 /** Where smooth01 reads `s` (0..1): its inverse, by bisection. */
 function unsmooth01(s) {
@@ -242,6 +251,9 @@ export class SolarEclipseWorld {
             water: { horizon: WORLD.horizonY, stir: 1 },
         };
         this._level = [0, 0, -1];
+        /** The weather as it stands this frame (core.js weatherAt), and a pinned one (captures). */
+        this._weather = {};
+        this.weatherPin = null;
         this.frame = sunFrame(0, 12 * DEG);
         this.sunAz = 0;
         this.sunAlt = 12 * DEG;
@@ -1015,6 +1027,42 @@ export class SolarEclipseWorld {
 
     // ── frame ───────────────────────────────────────────────────────────────────
 
+    /** Pin a weather by name (captures, the playground), or null to let the clock turn it. */
+    pinWeather(name) {
+        this.weatherPin = WEATHERS.find((w) => w.name === name) || null;
+    }
+
+    /** The weather at `time`: the clock's, or the pinned one. */
+    weatherNow(time) {
+        const w = this._weather;
+        if (this.weatherPin) {
+            for (let i = 0; i < WEATHER_KEYS.length; i += 1) w[WEATHER_KEYS[i]] = this.weatherPin[WEATHER_KEYS[i]];
+            w.name = this.weatherPin.name;
+            w.index = WEATHERS.indexOf(this.weatherPin);
+            w.turn = 0;
+            return w;
+        }
+        return weatherAt(time, w);
+    }
+
+    /**
+     * The clouds and the shadow's reach as they stand at `time`: the weather's layers, the
+     * clouds' clock, how far the shadow reaches (it breathes), and whether the volcano's summit
+     * stands in the sunlight beyond it (its summit is higher than the shore, so it catches the
+     * light a little sooner).
+     */
+    writeWeather(time) {
+        const { u } = this;
+        const w = this.weatherNow(time);
+        u.weather.value.set(w.rows, w.towers, w.deck, w.lenticular);
+        u.cloudClock.value = time;
+        const reach = shadowReachAt(time);
+        u.shadowReach.value = reach;
+        const edge = shadowEdgeAt(VOLCANO_RANGE.cone.az, u.umbraAz.value, reach);
+        u.summitLit.value = smooth01((VOLCANO_RANGE.distance * 1.1 - edge * 0.95) / (edge * 0.14));
+        return w;
+    }
+
     wheel() {
         return this.time / HOUR_SECONDS + this.hourShift;
     }
@@ -1027,6 +1075,7 @@ export class SolarEclipseWorld {
             u[key].value.set(p[key][0], p[key][1], p[key][2]);
         }
         u.glowHeight.value = p.glowHeight;
+        u.bandHeight.value = p.bandHeight;
         u.starPower.value = p.starPower;
         u.alpenPower.value = p.alpenPower;
         u.cycle.value = p.cycle;
@@ -1168,6 +1217,7 @@ export class SolarEclipseWorld {
         u.time.value = time;
         u.axis.value = axisAt(time);
         u.umbraAz.value = umbraAzAt(time);
+        this.writeWeather(time);
         u.exposure.value = exposure;
         // A chain stills the water to glass (a fever all the way).
         u.glass.value = clamp01(this.exposure * 1.2 + 0.3 * fever);
@@ -1258,6 +1308,9 @@ export class SolarEclipseWorld {
             level: this.level,
             palette,
             paletteTurn: this._palette.turn ?? 0,
+            weather: this._weather.name ?? null,
+            weatherTurn: Math.round((this._weather.turn ?? 0) * 100) / 100,
+            summitLit: Math.round(this.u.summitLit.value * 100) / 100,
             cycle: this.u.cycle.value,
             prominences: held,
             erupting,

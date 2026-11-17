@@ -20,6 +20,7 @@
  *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
+ *   weather=banks|towers|clear|deck|storm   hold one weather (else the clock turns them)
  *   demo=1                   live only: play a looping gameplay script
  *   parts=sky,motes          draw only these parts (SOLAR_ECLIPSE_PARTS)
  *   falseColor=1             post debug view: band the pre-tone-map max channel
@@ -126,6 +127,7 @@ export function create({
     const world = new SolarEclipseWorld({ scene, quality, capture: true }).build();
     world.bindCamera(camera);
     world.setReducedMotion(params.get('reduce') === '1');
+    if (params.get('weather')) world.pinWeather(params.get('weather'));
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
 
