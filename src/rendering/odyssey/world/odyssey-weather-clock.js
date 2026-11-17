@@ -46,8 +46,9 @@ export const ODYSSEY_WEATHER_RANGE = Object.freeze({
     cover: 0.18,
     /** The gusts' strength: [calm, gusty] multipliers. */
     gust: Object.freeze([0.45, 1.25]),
-    /** The mist's density: [thin, thick] multipliers. */
+    /** The mist's density: [thin, thick] multipliers; the pools in the hollows swing wider. */
     mist: Object.freeze([0.6, 1.5]),
+    pool: Object.freeze([0.35, 1.7]),
     /** The sun's brightness (±) and how far soft light leans to the sky's own colour. */
     light: 0.045,
     lightSoft: 0.06,
@@ -84,8 +85,8 @@ const lerp = (a, b, t) => a + ((b - a) * t);
  * @param {number} time seconds
  * @param {number} [amount] 0..1: how much of the weather applies (0 under water and in space)
  * @param {object} [out] written and returned (the world hands in its own, so a frame allocates nothing)
- * @returns {{cover:number, gust:number, mist:number, sun:number, soft:number}}
- *   `cover` added to the shadows' cover, `gust` and `mist` multipliers, `sun` a brightness
+ * @returns {{cover:number, gust:number, mist:number, pool:number, sun:number, soft:number}}
+ *   `cover` added to the shadows' cover, `gust`, `mist` and `pool` multipliers, `sun` a brightness
  *   multiplier, `soft` 0..1 how far the sun's colour leans to the sky's
  */
 export function odysseyWeatherDrive(time, amount = 1, out = {}) {
@@ -96,7 +97,9 @@ export function odysseyWeatherDrive(time, amount = 1, out = {}) {
     // (`|| 0`: a signal on its way through zero must not hand a uniform a negative zero.)
     out.cover = (signal(ODYSSEY_WEATHER.cover, t) * R.cover * k) || 0;
     out.gust = lerp(1, lerp(R.gust[0], R.gust[1], (signal(ODYSSEY_WEATHER.gust, t) * 0.5) + 0.5), k);
-    out.mist = lerp(1, lerp(R.mist[0], R.mist[1], (signal(ODYSSEY_WEATHER.mist, t) * 0.5) + 0.5), k);
+    const mist = (signal(ODYSSEY_WEATHER.mist, t) * 0.5) + 0.5;
+    out.mist = lerp(1, lerp(R.mist[0], R.mist[1], mist), k);
+    out.pool = lerp(1, lerp(R.pool[0], R.pool[1], mist), k);
     out.sun = 1 + (light * R.light * k);
     out.soft = (Math.max(0, -light) * R.lightSoft * k) || 0;
     return out;

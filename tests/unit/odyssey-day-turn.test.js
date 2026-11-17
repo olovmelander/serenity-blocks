@@ -444,16 +444,19 @@ describe("the weather's clock", () => {
             expect(d.gust).toBeLessThanOrEqual(R.gust[1] + 1e-9);
             expect(d.mist).toBeGreaterThanOrEqual(R.mist[0] - 1e-9);
             expect(d.mist).toBeLessThanOrEqual(R.mist[1] + 1e-9);
+            // (The pools in the hollows swing wider than the layer: they thin and gather again.)
+            expect(d.pool).toBeGreaterThanOrEqual(R.pool[0] - 1e-9);
+            expect(d.pool).toBeLessThanOrEqual(R.pool[1] + 1e-9);
             expect(Math.abs(d.sun - 1)).toBeLessThanOrEqual(R.light + 1e-9);
             expect(d.soft).toBeGreaterThanOrEqual(0);
             expect(d.soft).toBeLessThanOrEqual(R.lightSoft + 1e-9);
             // Under water (amount 0) the drive is neutral.
             expect(odysseyWeatherDrive(t, 0)).toEqual({
-                cover: 0, gust: 1, mist: 1, sun: 1, soft: 0,
+                cover: 0, gust: 1, mist: 1, pool: 1, sun: 1, soft: 0,
             });
         }
         expect(odysseyWeatherDrive(NaN, NaN)).toEqual({
-            cover: 0, gust: 1, mist: 1, sun: 1, soft: 0,
+            cover: 0, gust: 1, mist: 1, pool: 1, sun: 1, soft: 0,
         });
     });
 });
@@ -502,6 +505,52 @@ describe('the world wears the hour and the turn', () => {
         ['r', 'g', 'b'].forEach((c) => expect(Number.isFinite(world.fog.color[c])).toBe(true));
     });
 
+    /** The first mesh whose name starts with `name` (the boulders are named by shape and tier). */
+    const meshNamed = (name) => {
+        let found = null;
+        world.group.traverse((o) => { if (!found && o.isMesh && o.name.startsWith(name)) found = o; });
+        return found;
+    };
+    it("lets the turn's wake go once, as the shade's edge passes the rail on a glide", () => {
+        const wake = meshNamed('odyssey-world-turn-wake');
+        expect(wake).toBeTruthy();
+        // Parked on the island for a while: nothing in the air.
+        let time = 500;
+        step(from - 0.002, time);
+        time += 1 / 60;
+        step(from - 0.002, time);
+        expect(wake.visible).toBe(false);
+        // (The test above jumped across the turn and let one go, long ago on this clock.)
+        const before = wake.userData.letGo;
+        // The glide to the mountains' first orb, 1.5 s of it, then at rest there.
+        const there = to + 0.002;
+        const lets = [];
+        for (let frame = 0; frame < 60 * 8; frame += 1) {
+            time += 1 / 60;
+            const k = Math.min(frame / 90, 1);
+            step((from - 0.002) + ((there - (from - 0.002)) * k * k * (3 - (2 * k))), time);
+            if (wake.userData.letGo !== before && !lets.includes(wake.userData.letGo)) {
+                lets.push(wake.userData.letGo);
+            }
+        }
+        // One gust, let go while the shade crossed (within the turn's seconds), still in the air.
+        expect(lets.length).toBe(1);
+        expect(lets[0]).toBeGreaterThan(500);
+        expect(lets[0]).toBeLessThan(500 + ODYSSEY_DAY_TURN.seconds + 1.6);
+        expect(wake.visible).toBe(true);
+        // ...and it is over, and the draw gone, well inside a minute.
+        for (let frame = 0; frame < 60 * 40; frame += 1) {
+            time += 1 / 60;
+            step(there, time);
+        }
+        expect(wake.visible).toBe(false);
+        expect(lets.length).toBe(1);
+        // Far up the mountain the turn lets nothing go (a long flight between chapters).
+        step(0.6, time + 1);
+        step(0.6, time + 1 + (1 / 60));
+        expect(wake.visible).toBe(false);
+    });
+
     it('opens a session on its own weather, and repeats where a capture pins the clock', () => {
         // The board hands the world the wall clock; the world's own default is 0 (the playgrounds
         // and these tests), so a pinned `?t=` shot is the same shot every time.
@@ -522,13 +571,9 @@ describe('the world wears the hour and the turn', () => {
     const names = [
         'odyssey-world-ground', 'odyssey-world-water', 'odyssey-world-sky',
         'odyssey-world-forest-v2-hero', 'odyssey-world-forest-v2-far', 'odyssey-world-boulders-',
+        // Round two: the mist in the hollow and the turn's wake.
+        'odyssey-world-hollow-mist', 'odyssey-world-turn-wake',
     ];
-    /** The first mesh whose name starts with `name` (the boulders are named by shape and tier). */
-    const meshNamed = (name) => {
-        let found = null;
-        world.group.traverse((o) => { if (!found && o.isMesh && o.name.startsWith(name)) found = o; });
-        return found;
-    };
     names.forEach((name) => {
         BACKENDS.forEach(([label, Builder]) => {
             it(`${name} builds clean (${label})`, () => {

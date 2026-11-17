@@ -146,9 +146,12 @@ describe("THE EVENING — chapter 5's declared exemption (the day ends on the cl
         });
         // Nothing anchored after it: the next keyframe is the vacuum.
         expect(ODYSSEY_COLOUR_SCRIPT[first + evening.length].medium).toBe('vacuum');
-        // It starts where chapter 5 does (script p 0.409 = journey p 0.340) and no earlier:
-        // chapters 3 and 4 keep the anchor.
-        expect(evening[0].p).toBeGreaterThanOrEqual(0.40);
+        // It starts with the mountains' golden afternoon (island pass, round two: script p 0.3155
+        // = journey p 0.2689, chapter 4's first orbs) and no earlier: the sea and the island keep
+        // the anchor, and the island's morning is the last keyframe that does.
+        expect(evening[0].name).toBe('mountain-afternoon');
+        expect(evening[0].p).toBeGreaterThanOrEqual(0.31);
+        expect(ODYSSEY_COLOUR_SCRIPT[first - 1].name).toBe('island-morning');
         expect(ODYSSEY_COLOUR_SCRIPT[first - 1].horizon).toBeUndefined();
     });
 
