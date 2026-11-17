@@ -22,8 +22,12 @@ import {
     AIRS, AIR_NAMES, AIR_SECONDS, VISITOR_SPAN, airOfSlot, visitorsBetween,
 } from '../../src/themes/stillwater/stillwater-night.js';
 import {
-    ELK, FLIGHT, PILLAR, PILLARS,
+    FLIGHT, PILLAR, PILLARS, duckAt,
 } from '../../src/themes/stillwater/stillwater-air.js';
+import {
+    MOOSE, MOOSE_BEATS, MOOSE_SPAN, mooseAt,
+} from '../../src/themes/stillwater/stillwater-moose.js';
+import { BIRDS, birdGeometry, foldWing } from '../../src/themes/stillwater/stillwater-birds.js';
 import { PLACES } from '../../src/themes/stillwater/stillwater-life.js';
 import { shoreDistance } from '../../src/themes/stillwater/stillwater-plan.js';
 
@@ -36,7 +40,7 @@ vi.mock('three/addons/loaders/GLTFLoader.js', async (importOriginal) => {
     return {
         GLTFLoader: class {
             loadAsync(url) {
-                const name = String(url).match(/(?:troll|spirit)-lod\d\.glb/)?.[0];
+                const name = String(url).match(/(?:troll|spirit)-lod\d\.glb|moose\.glb/)?.[0];
                 if (!name) return Promise.reject(new Error(`no figure file at ${url}`));
                 if (!sculpt.bytes[name]) {
                     const bytes = readFileSync(new URL(`../../src/themes/stillwater/assets/${name}`, import.meta.url));
@@ -200,32 +204,70 @@ describe('stillwater tarn: who comes by', () => {
         world.dispose();
     });
 
-    it('draws the elk only while it is there, lets it drink, and turns the two to watch it', () => {
-        const { camera, world } = makeWorld('High');
+    it('brings the moose out of the mist, has him drink and look at her, and takes him home again', async () => {
+        const { camera, world } = await makeFiguredWorld('High');
         const rings = recordRings(world);
         const t0 = world.time + 0.1;
         world.visitor('elk', t0, 0.3);
-        expect(world.story.looks.filter((look) => look.key === 'elk').map((look) => look.who).sort()).toEqual(['spirit', 'troll']);
-        run(world, camera, 3);
-        const elk = world.parts.elk.mesh;
-        expect(elk.visible).toBe(true);
-        expect(world.u.elk.value.x).toBe(t0);
-        // It stands in the far shallows on the spirit's side, in open water, turned to the eye.
-        expect(elk.position.x).toBeCloseTo(ELK.at[0] * world.squeeze, 6);
-        expect(elk.position.z).toBe(ELK.at[1]);
-        expect(shoreDistance(ELK.at[0], ELK.at[1])).toBeLessThan(-1);
-        expect(ELK.at[0]).toBeLessThan(SPIRIT.reach[0]);
-        // While its head is down, rings run out from its muzzle (and at no other time).
-        run(world, camera, VISITOR_SPAN.elk);
-        const drunk = rings.filter((ring) => Math.hypot(ring.x - elk.position.x, ring.z - elk.position.z) < 4);
-        expect(drunk.length).toBeGreaterThan(3);
-        drunk.forEach((ring) => {
-            expect(ring.time - t0).toBeGreaterThanOrEqual(ELK.lower[1] - 0.1);
-            expect(ring.time - t0).toBeLessThan(ELK.lift[0] + 0.1);
-            expect(ring.edge).toBeLessThan(0);
+        // The two see him come, and again as he drinks.
+        const looks = world.story.looks.filter((look) => look.key === 'elk');
+        expect(looks.map((look) => look.who).sort()).toEqual(['spirit', 'spirit', 'troll', 'troll']);
+        expect(Math.min(...looks.map((look) => look.from))).toBeGreaterThan(t0 + MOOSE_BEATS.arrive - 5);
+        const moose = world.parts.elk.mesh;
+        const seen = [];
+        run(world, camera, MOOSE_SPAN + 2, 20, () => {
+            seen.push({
+                t: world.time - t0, visible: moose.visible, x: moose.position.x, y: moose.position.y, z: moose.position.z,
+            });
         });
-        expect(elk.visible).toBe(false);
+        const during = seen.filter((s) => s.t > 0.2 && s.t < MOOSE_SPAN - 0.2);
+        expect(during.every((s) => s.visible)).toBe(true);
+        expect(seen.filter((s) => s.t > MOOSE_SPAN + 0.5).every((s) => !s.visible)).toBe(true);
+        // He stands where he drinks, in the far shallows on her side of the board, wading no deeper than his knees.
+        const standing = seen.filter((s) => s.t > MOOSE_BEATS.squared && s.t < MOOSE_BEATS.turn);
+        standing.forEach((s) => {
+            expect(s.x).toBeCloseTo(MOOSE.at[0] * world.squeeze, 6);
+            expect(s.z).toBeCloseTo(MOOSE.at[1], 6);
+            expect(s.y).toBeGreaterThanOrEqual(-MOOSE.wade - 1e-9);
+        });
+        expect(shoreDistance(MOOSE.at[0], MOOSE.at[1])).toBeLessThan(-1);
+        expect(MOOSE.at[0]).toBeLessThan(SPIRIT.reach[0]);
+        // Every step of his path is on open water, and he comes and goes out on the far water.
+        for (let a = 0; a <= MOOSE_SPAN; a += 0.5) {
+            const p = mooseAt(a);
+            expect(shoreDistance(p.x, p.z), `at ${a.toFixed(1)} s`).toBeLessThan(0);
+        }
+        expect(mooseAt(0).z).toBeLessThan(MOOSE.at[1] - 10);
+        expect(mooseAt(MOOSE_SPAN).z).toBeLessThan(MOOSE.at[1] - 10);
+        // His hooves ring the water as he walks; his muzzle rings it while he drinks, and at no other time.
+        const near = (r, m) => Math.hypot(r.x - m[0] * world.squeeze, r.z - m[1]) < 4;
+        const sips = rings.filter((r) => near(r, MOOSE.at) && r.time - t0 > MOOSE_BEATS.drink && r.time - t0 < MOOSE_BEATS.lift);
+        expect(sips.length).toBeGreaterThan(3);
+        expect(rings.filter((r) => near(r, MOOSE.at)).every((r) => r.edge < 0)).toBe(true);
+        const steps = rings.filter((r) => r.time - t0 < MOOSE_BEATS.arrive);
+        expect(steps.length).toBeGreaterThan(6);
         world.dispose();
+    });
+
+    it('poses the moose: walking with his legs, head down to drink, head turned to her, never a jump', () => {
+        let before = mooseAt(0);
+        for (let a = 0.05; a <= MOOSE_SPAN; a += 0.05) {
+            const p = mooseAt(a);
+            expect(Math.hypot(p.x - before.x, p.z - before.z), `at ${a.toFixed(2)} s`).toBeLessThan(MOOSE.pace * 0.06 + 1e-6);
+            const turned = Math.abs(Math.atan2(Math.sin(p.heading - before.heading), Math.cos(p.heading - before.heading)));
+            expect(turned, `at ${a.toFixed(2)} s`).toBeLessThan(0.08);
+            expect(Math.abs(p.neck - before.neck), `at ${a.toFixed(2)} s`).toBeLessThan(0.08);
+            before = p;
+        }
+        const drinking = mooseAt((MOOSE_BEATS.drink + MOOSE_BEATS.lift) / 2);
+        expect(drinking.neck).toBeGreaterThan(0.8);
+        expect(drinking.walking).toBe(0);
+        expect(Math.abs(mooseAt((MOOSE_BEATS.regard + MOOSE_BEATS.turn) / 2).look)).toBeGreaterThan(0.6);
+        expect(mooseAt(MOOSE_BEATS.arrive / 2).walking).toBe(1);
+        // Broadside as he drinks.
+        expect(drinking.heading).toBeCloseTo(MOOSE.broadside, 6);
+        // The night keeps a slot as long as his visit for him (a second never cuts him short).
+        expect(MOOSE_SPAN).toBeLessThanOrEqual(VISITOR_SPAN.elk);
     });
 
     it('sends wings across the sky for the owl, and a flight out of the far wood as the hour turns', () => {
@@ -234,6 +276,8 @@ describe('stillwater tarn: who comes by', () => {
         world.visitor('owl', t0, 0.7);
         run(world, camera, 1);
         expect(world.parts.birds.mesh.visible).toBe(true);
+        expect(world.parts.birds.owl.visible).toBe(true);
+        expect(world.parts.birds.ducks.visible).toBe(false);
         expect(world.u.flight.value.toArray().slice(0, 3)).toEqual([t0, 0, 0.7]);
         run(world, camera, FLIGHT.owlSpan);
         expect(world.parts.birds.mesh.visible).toBe(false);
@@ -245,6 +289,8 @@ describe('stillwater tarn: who comes by', () => {
         expect(world.u.flight.value.x).toBeGreaterThan(turned);
         expect(world.u.flight.value.x).toBeLessThan(turned + 1);
         expect(world.parts.birds.mesh.visible).toBe(true);
+        expect(world.parts.birds.ducks.visible).toBe(true);
+        expect(world.parts.birds.owl.visible).toBe(false);
         expect(world.u.moonRing.value.x).toBeGreaterThan(turned);
         expect(world.u.moonRing.value.y).toBeGreaterThan(0.3);
         run(world, camera, FLIGHT.flockSpan + 3);
@@ -328,6 +374,64 @@ describe('stillwater tarn: who comes by', () => {
         run(world, camera, 130, 10);
         expect(spy).not.toHaveBeenCalled();
         world.dispose();
+    });
+});
+
+describe('stillwater tarn: the birds', () => {
+    it('builds each bird with two wings that fold at the shoulder and the wrist and stay joined', () => {
+        for (const kind of ['owl', 'duck']) {
+            const g = birdGeometry(kind);
+            const pos = g.getAttribute('position');
+            const wing = g.getAttribute('aWing');
+            let left = 0;
+            let right = 0;
+            let span = 0;
+            for (let i = 0; i < pos.count; i++) {
+                const side = wing.getX(i);
+                if (side > 0) left += 1;
+                if (side < 0) right += 1;
+                // Each wing lies on its own side, and the body carries no fold.
+                if (side !== 0) expect(Math.sign(pos.getX(i)), `${kind} ${i}`).toBe(side);
+                else expect([wing.getY(i), wing.getZ(i)]).toEqual([0, 0]);
+                span = Math.max(span, Math.abs(pos.getX(i)) * 2);
+            }
+            expect(left, kind).toBe(right);
+            expect(span, kind).toBeGreaterThan(BIRDS[kind].span * 0.9);
+            expect(span, kind).toBeLessThan(BIRDS[kind].span * 1.1);
+            // Folded, every vertex at the shoulder stays at the shoulder (the wing never tears off the body).
+            for (const angles of [[0.7, 0.5], [-0.5, -0.4], [0.1, -0.06]]) {
+                for (let i = 0; i < pos.count; i++) {
+                    if (wing.getX(i) === 0 || wing.getY(i) > 0) continue;
+                    const p = foldWing(kind, [pos.getX(i), pos.getY(i), pos.getZ(i)], [wing.getX(i), wing.getY(i), wing.getZ(i)], angles);
+                    expect(p[0]).toBeCloseTo(pos.getX(i), 9);
+                    expect(p[1]).toBeCloseTo(pos.getY(i), 9);
+                }
+            }
+            // Raised, both wings go up together.
+            let up = 0;
+            for (let i = 0; i < pos.count; i++) {
+                if (wing.getW(i) < 0.95) continue;
+                const p = foldWing(kind, [pos.getX(i), pos.getY(i), pos.getZ(i)], [wing.getX(i), wing.getY(i), wing.getZ(i)], [0.6, 0.3]);
+                expect(p[1]).toBeGreaterThan(pos.getY(i));
+                up += 1;
+            }
+            expect(up, kind).toBeGreaterThan(4);
+            g.dispose();
+        }
+    });
+
+    it('flies the ducks up off the far water and out over the wood, one after another', () => {
+        for (const side of [-1, 1]) {
+            for (let i = 0; i < 6; i++) {
+                const start = duckAt(i, 0, side);
+                expect(shoreDistance(start[0], start[2])).toBeLessThan(-1);
+                expect(start[1]).toBeLessThan(0.5);
+                const late = duckAt(i, FLIGHT.flockSpan, side);
+                // High over the far wood by the end, and gone off to their side.
+                expect(late[1]).toBeGreaterThan(9);
+                expect(Math.sign(late[0] - start[0])).toBe(side);
+            }
+        }
     });
 });
 
