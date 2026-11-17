@@ -34,6 +34,8 @@ import {
     smoothstep,
     sqrt,
     pow3,
+    step,
+    vec3,
 } from 'three/tsl';
 import { RIG, linearColor, rgb } from './synthwave-sunset-tsl.js';
 import { PIER, PIER_HEAD, pierFrame } from './synthwave-sunset-layout.js';
@@ -219,7 +221,7 @@ function buildPier(frame) {
     };
 }
 
-function createPierMaterial(u) {
+function createPierMaterial(u, frame) {
     const material = new THREE.MeshBasicNodeMaterial();
     material.name = 'SynthwavePier';
     material.fog = false;
@@ -231,17 +233,35 @@ function createPierMaterial(u) {
         const V = normalize(p.sub(cameraPosition)).toVar();
         const N = normalize(normalWorld).toVar();
         const facing = abs(dot(N, V));
-        const duskLight = mix(float(1.0), float(0.55), u.dusk);
+        const duskLight = u.ambient;
         // Dusk light: a lilac sky from above, the sunset behind as a warm rim.
         const sky = rgb(0x8a7aa8, 0.3).mul(float(0.55).add(max(N.y, 0.0).mul(0.45))).mul(duskLight);
         const rim = pow3(float(1.0).sub(facing)).mul(max(dot(N, u.sunDir), 0.0).mul(0.8).add(0.2))
-            .mul(rgb(0xff8a5c, 0.5)).mul(mix(float(1.0), float(0.35), u.dusk));
+            .mul(u.sunBand.mul(0.5)).mul(mix(float(1.0), float(0.35), u.dusk));
         // The railing bulbs wash the fascia and the walls just above the deck in warm light.
         const h = p.y.sub(PIER.deckY);
         const wash = exp(abs(h.sub(0.6)).mul(-0.9)).mul(rgb(0xffb070, 0.32)).mul(u.pierGlow).mul(u.pierPower);
 
-        const timberCol = rgb(0x3a2a32).mul(sky.add(wash.mul(0.7))).add(rim.mul(0.6));
-        const paintCol = rgb(0xe8dce0).mul(sky.add(wash)).add(rim);
+        // A pulse of light running out along the pier (a hard drop's, a level's: u.pulse<i> =
+        // (start time, strength, pier lengths a second, width), u.pulseCol<i>) washes the deck's
+        // edge, the railings and the foot of the walls as it passes.
+        let pulseLight = vec3(0.0);
+        if (u.pulse0) {
+            const far = vec3(frame.far.x, frame.far.y, frame.far.z);
+            const alongPier = dot(p.sub(far), vec3(frame.along.x, 0.0, frame.along.z)).div(frame.length);
+            const near = exp(abs(h.sub(0.4)).mul(-0.55));
+            for (let i = 0; u[`pulse${i}`]; i += 1) {
+                const pulse = u[`pulse${i}`];
+                const age = u.time.sub(pulse.x);
+                const off = alongPier.sub(float(1.0).sub(age.mul(pulse.z))).div(pulse.w);
+                const band = exp(off.mul(off).negate()).mul(pulse.y).mul(step(0.0, age));
+                pulseLight = pulseLight.add(u[`pulseCol${i}`].mul(band));
+            }
+            pulseLight = pulseLight.mul(near).mul(0.9).toVar();
+        }
+
+        const timberCol = rgb(0x3a2a32).mul(sky.add(wash.mul(0.7)).add(pulseLight)).add(rim.mul(0.6));
+        const paintCol = rgb(0xe8dce0).mul(sky.add(wash).add(pulseLight)).add(rim);
 
         // Walls: pastel with rows of lit arched windows.
         const wallIdx = meta.w;
@@ -257,7 +277,7 @@ function createPierMaterial(u) {
         const inY = smoothstep(0.9, float(0.9).add(fwV.mul(1.5)), wv).mul(float(1.0).sub(smoothstep(archTop.sub(fwV.mul(1.5)), archTop, wv)));
         const isWin = inX.mul(inY);
         const winCol = rgb(0xffcf8a, 1.7).mul(u.pierGlow).mul(u.pierPower.mul(0.7).add(0.3));
-        const wallCol = mix(wallAlb.mul(sky.add(wash)).add(rim), winCol, isWin);
+        const wallCol = mix(wallAlb.mul(sky.add(wash).add(pulseLight)).add(rim), winCol, isWin);
 
         // Domes: stripes round the bulb, a warm uplight from the cornice bulbs.
         const stripe = fract(meta.y.mul(16.0));
@@ -449,11 +469,11 @@ export function createPier(u, opts = {}) {
     pylon.basisX = pylonFrame(frame).basis.x;
     const group = new THREE.Group();
     group.name = 'SynthwavePier';
-    const structure = new THREE.Mesh(toGeometry(out, 'aPier'), createPierMaterial(u));
+    const structure = new THREE.Mesh(toGeometry(out, 'aPier'), createPierMaterial(u, frame));
     structure.name = 'SynthwavePierStructure';
     structure.renderOrder = -7;
     structure.frustumCulled = false;
-    const bulbs = createBulbField(u, pierBulbs(frame, lamps, domes, pylon, head), { name: 'SynthwavePierBulbs', mirrorLayer: opts.mirrorLayer });
+    const bulbs = createBulbField(u, pierBulbs(frame, lamps, domes, pylon, head), { name: 'SynthwavePierBulbs', mirrorLayer: opts.mirrorLayer, pulses: true });
     group.add(structure, bulbs);
     if (Number.isInteger(opts.mirrorLayer)) structure.layers.enable(opts.mirrorLayer);
     group.userData.meshes = [structure, bulbs];

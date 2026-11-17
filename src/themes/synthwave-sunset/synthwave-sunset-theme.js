@@ -52,6 +52,8 @@ function createStage() {
     return {
         lock: null,
         hardDrop: false,
+        /** Rows the hard-dropped piece fell. */
+        dropDistance: 0,
         waves: 0,
         waveLines: new Array(STAGED_WAVES).fill(0),
         waveDepth: new Array(STAGED_WAVES).fill(0),
@@ -431,6 +433,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         const hardDropUnsub = eventBus.on(EVENTS.HARD_DROP, (data) => {
             if (!reactive() || !local(data)) return;
             stage.hardDrop = true;
+            stage.dropDistance = Math.max(0, Number(data?.distance) || 0);
         });
         const twistUnsub = eventBus.on(EVENTS.TWIST, (data) => {
             if (!reactive() || !local(data)) return;
@@ -558,7 +561,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         const { world } = this;
         const { combo } = this.combo;
         if (stage.levelUps > 0) world.onLevelUp({ react: stage.levelReact });
-        if (stage.lock) world.onPieceLock(stage.lock, { hardDrop: stage.hardDrop });
+        if (stage.lock) world.onPieceLock(stage.lock, { hardDrop: stage.hardDrop, distance: stage.dropDistance });
         for (let i = 0; i < stage.waves; i += 1) {
             world.onLineClear(stage.waveLines[i], {
                 cascade: stage.waveDepth[i],
@@ -576,6 +579,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         else if (stage.waves > 0) world.onChain(combo);
         stage.lock = null;
         stage.hardDrop = false;
+        stage.dropDistance = 0;
         stage.waves = 0;
         stage.nextDepth = 0;
         stage.cascade = 0;

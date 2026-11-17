@@ -933,7 +933,7 @@ Playground at golden hour, day and moon, with and without the board, a four-line
 and Minimal, the turtle at 0.5, 1.5, 3 and 8 s; a real-game run (no warning names the theme or the
 renderer); the Waves suites (new: rides that rise and sink only at the ends the eye sees, rides
 and leaps that turn without a kink, short run-ups that start out of sight, the landing spray).
-Skill row #1726.
+Skill row #1727.
 
 ### Not done
 
