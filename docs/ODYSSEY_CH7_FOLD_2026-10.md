@@ -7,6 +7,11 @@ chapter. How do we improve the black hole to be a visually stunning other dimens
 Follows [the fall](ODYSSEY_CH7_FALL_2026-10.md), which this keeps: the dive into the great hole at orb
 49 and the exit onto the Retrosun.
 
+**2026-11-17: the corridor of §1, §3 and §5 is gone.** The fold is now eight places, one for each
+room, behind a ring of starlight that closes after the horizon: see
+[§6](#6-eight-places-the-masterpiece-pass-2026-11-17). §2 (the crossing) and §4 (the hypercubes)
+stand as written.
+
 ## What the player saw
 
 The dive at orb 49 works. From just before orb 50 to the exit (p ~0.881 to ~0.945; orbs 49 to 56
@@ -251,3 +256,139 @@ Retrosun, and the city takes over from there as before. The hypercubes are gone 
 - the window builds on WGSL and GLSL, a real loop, no unassigned reads.
 
 `black-hole-environment.test.js` pins the dust's two lives.
+
+## §6. Eight places (the masterpiece pass, 2026-11-17)
+
+**Why.** The audit of the whole journey ranked chapter 7 near the bottom: *"dim, every room rings
+round a white centre"*. The fold of §1–§5 was one kaleidoscope corridor whose crystals changed from
+orb to orb; eight orbs of it did not feel like eight rooms, and the frame after the horizon was a
+radial streak tunnel, the one picture of the dive that could have been any game's hyperspace.
+Sections 1, 3 and 5 above are the record of that corridor; this section is what stands now.
+
+### The places
+
+`chapter-environments/odyssey-fold-places.tsl.js` and one file each in `fold-places/`. Each is a
+function of the view ray in the room's own frame, and no two put their horizon or their way ahead
+in the same spot.
+
+| Orbs | Place | What it is | How it is drawn | Its happening |
+|---|---|---|---|---|
+| 49, 50 | The tide | an ocean of liquid colour overhead, a black mirror below, a low light on the horizon between them, threads of light standing from the one into the other | planes met exactly; the mirror is the same lookup at a longer path | a great swell comes in from far off |
+| 51 | The lattice | beams of gold in an endless lattice wound about the way ahead, a second one wound the other way through its squares | walked; light summed by step length | a bright wave runs out along the beams |
+| 52 | The nave | a pointed vault over a polished floor, a storm behind tall windows (blue-white on one side, violet on the other), shafts of its light across the nave | met exactly (a convex cross-section; the floor by unfolding the ray); the shafts by eight samples asked the window's own shape | a swell of light down the windows, an arc down the ridge |
+| 53 | The flock | veils of motes of light over a dusk horizon and its water | walked plane by plane, every mote at one place in the room | a wave of light runs through the flock |
+| 54 | The stairs | endless flights of glass stairs in three families that do not agree on which way is down, their steps climbing for ever | sphere-traced; the face from the distance's own parts | the steps melt into ramps and form again |
+| 55 | The jewel | the inside of a cut gem; in every facet one of the worlds the journey has crossed (lava, the deep sea, the island, the mountains, the Earth from orbit, the stars) | met exactly, three throws from facet to facet | one world's light floods every facet |
+| 56 | The paint | strokes of thick paint hanging in the dark, each its own pigment | walked plane by plane, nearest first, each stroke hiding what is behind it | a wet gleam runs down every stroke |
+| (none) | The hall | the way out: a round tube whose lines sway, straightening into a hall with the city's neon grid and lit squares | met exactly | a pulse runs down the lines toward the city |
+
+Orbs 49 and 50 park at one place on the rail (both sit inside the 6 → 7 seam), so they share the
+first room; the room is held in the world (below), so the two orbs still see it from two sides.
+
+**Values.** The Odyssey's post (chapter 7's bloom and grade) lifts everything about two stops. The
+first version of every place, tuned on the bare playground, came out as a pale pink wash in the
+game. A place is authored dark (grounds near 0.005, bodies under 0.15, only lines and lights near
+1) and judged only through the post: `effect=ch7-fold-places` mounts the real post for that.
+
+### The last ring of starlight
+
+`chapter-environments/odyssey-closing-sky.tsl.js`, in the window where the warp tunnel's streaks
+were. Inside a black hole the light of everything outside is still falling in after the traveller,
+bent round until the whole sky is one ring. As the hole's own rim passes the frame's edges, the
+sky the journey came through (its stars drawn out into arcs, the Milky Way's violet on one side,
+the disk's amber on the other, a razor of gold on its inner edge) comes in behind it as one ring
+and closes on the middle of the view, over the dark the eye is falling into. Where it closes to a
+point the fold opens (the crossing of §2, from the same point).
+
+- The ring's radius is the fall's (`CH7_FALL.ringFrom/ringTo/ringEase`), set inside the tail of
+  the plunge's slow travel: closed later, the whole closing was crossed in a fifth of a second.
+- The dust no longer streaks through the plunge (streaks out of the middle of the view made it a
+  hyperspace tunnel again); it streaks only on a glide inside the fold.
+
+### A room opens in its own time
+
+Between two orbs of one chapter the journey does not glide: the scenery's progress JUMPS to the
+next orb and the camera swings across (only a trip that changes chapter travels the rail). Keyed on
+progress alone, the next room cut in on one frame. What is shown now follows where the eye is on
+the clock (`advanceFoldShow` in `transitions/odyssey-fold-rooms.js`): the next room opens through
+this one from its door (a different spot of the view for every room) in a widening wave, over 1.5 s,
+with the crossing's rim of split light at its front. Each pixel walks only the place it shows (a
+per-pixel branch: the places take no screen derivative), so a room half open costs what a whole
+one does. The way out alone stays keyed on progress: the hall opens in step with the rail.
+
+### The room is held in the world
+
+The fold is drawn from the view ray, so it used to follow the gaze exactly: when the eye turned,
+the room turned with it, like a picture pasted on the lens. The room now keeps an orientation of
+its own (`CH7_FOLD_HOLD`, `followFoldRoom`): the eye turns freely within 5 degrees of it, the room
+follows more firmly out to 22 and is never left more than 30 behind. So the look-around looks
+about IN the room, a swing between orbs swings the room past, and where a room comes to rest
+depends on how the eye came in. Locked to the view under reduced motion; eased onto none for the
+hall, which must run straight into the mouth.
+
+### The way out
+
+- The hall opens from where the mouth will be and straightens as the mouth widens
+  (`CH7_FOLD_STRAIGHTEN`); the mouth's rim is the edge of a lens, the city's light split into its
+  colours across it; the city's light pours in along the hall's walls from the mouth.
+- **It takes its time** (`CH7_EXIT_TRAVEL` in `odyssey-black-hole-fall.js`). The trip from orb 56
+  to orb 57 ran about a second, and the way out was the 0.3 s in its middle. Travel now weighs it
+  as it weighs the plunge: the trip runs ~3.8 s, about 1.6 s of it from the hall opening to the
+  mouth passing the frame's corners.
+
+### Alive
+
+`transitions/odyssey-fold-clock.js`, one pure function of the world clock that every place reads:
+three moods (turns of 53, 89 and 149 s, never in step: a hue, a light's warmth, which world a
+facet shows), one happening in every 44 s at a different place in each slot, 15 s long, rising and
+falling without a step, and the fold's own travel (the drive's steps summed without a wrap: the
+places are not periodic along the way). Besides those, every place moves on its own: the tide
+flows, the lattice winds, the storm crawls behind the glass, the flock drapes, the stairs climb,
+the gem turns. All of it is still under reduced motion; the two frame-wide brightenings (the
+nave's swell, the jewel's flood) go through `flashScale`.
+
+### Cost
+
+The playground's own GPU timer (`effect=ch7-fall&p=<park>&profile=1&trackTimestamp=1&maxFps=30`,
+1707 × 1067, High, an RTX 50-series), the old fold against the places, at each room's park:
+
+| p | Before | After |
+|---|---|---|
+| 0.882 (after the horizon) | 0.79 ms | 0.08 ms |
+| 0.8941 (orbs 49, 50) | 0.75 ms | 0.14 ms (the tide) |
+| 0.8967 (orb 51) | 0.85 ms | 0.75 ms (the lattice) |
+| 0.9093 (orb 52) | 0.95 ms | 0.19 ms (the nave) |
+| 0.9225 (orb 53) | 0.89 ms | 0.82 ms (the flock) |
+| 0.9351 (orb 54) | 0.79 ms | 0.40 ms (the stairs) |
+| 0.94175 (orb 55) | 1.48 ms | 0.40 ms (the jewel) |
+| 0.9484 (orb 56) | 0.71 ms | 0.30 ms (the paint) |
+| 0.9525 (the way out) | 1.61 ms | 0.10 ms (the hall) |
+
+No room costs more than the corridor did, and most cost a half or less: four are met exactly, and
+the corridor walked its crystals, gates and walls for every pixel of every room. By pixel count
+that is 0.2–1.7 ms at 1440p against 1.4–3.3 ms.
+
+Frame luma (0–255, every 0.0025 of progress, High): the rooms 37–70 (they were 27–45), no spike;
+the largest step in the fold's own stretch is the first room opening at the crossing.
+
+Tier gating: the walks take the tier's steps (`CH7_QUALITY_TIERS.foldSteps`: 32, 22, 14; the
+lattice never fewer than 20).
+
+### Traps met
+
+- **Judged without the post, two stops too bright** (above).
+- **Progress jumps between orbs of one chapter**: anything keyed on progress alone cuts there.
+- **The drive's phase wraps**: the old tunnel's rates were chosen so it could; a place that is
+  not periodic along the way would be thrown elsewhere on one frame. The fold sums the steps.
+- **A glint is a point**: a specular term at a low power lit a whole facet of the jewel as a pale
+  wedge.
+- **A march of fourteen steps cannot pass four beams**: the Low tier's lattice was four beams and
+  the dark; it has a floor of twenty.
+
+### Tests
+
+`tests/unit/odyssey-ch7-fold.test.js` (re-pinned to the places: the schedule, the ring, eight
+rooms that are eight places, the hold, the hypercubes, the eye's line kept clear, the window on
+both backends with no unassigned read and no screen derivative) and
+`tests/unit/odyssey-fold-alive.test.js` (the clock, a room opening in its own time, the fold's
+travel across the drive's wrap, the way out's share of its trip).
