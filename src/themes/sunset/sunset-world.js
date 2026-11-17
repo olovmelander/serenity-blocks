@@ -31,7 +31,8 @@
  *               rings the light with sun dogs on the near one, the whole flock comes.
  *   combo       a chain sets the sky on fire: the clouds burn brighter and further across the
  *               sky with every clear held, the sea's road with them; from three a flock crosses
- *               the light and every clear after calls more birds into it.
+ *               the light and every clear after calls more birds: into its tail while that is
+ *               still out of sight, then as a new skein on a line of its own.
  *   level up    the day runs on an eighth of itself: the sun, the moon and the stars are seen
  *               to run across the sky.
  *
@@ -1023,10 +1024,6 @@ export class SunsetWorld {
         s.combo = next;
     }
 
-    /**
-     * Call `n` birds across the light. A flock still on its way in takes them (the skein grows
-     * with the chain); one called later sets out beside it. Nothing is refused, nothing restarted.
-     */
     /** Half the frame's horizontal field of view (degrees): where the boat comes in and goes out. */
     halfView() {
         const vertical = fovForAspect(this.aspect) * DEG;
@@ -1041,13 +1038,21 @@ export class SunsetWorld {
         this.parts.boat?.send(this.clock, this.halfView(), options);
     }
 
-    sendFlock(n) {
+    /**
+     * Call `n` birds across the light, in from beyond one edge of the frame and out past the
+     * other. A flock still coming in takes them into the places at its tail that are still out
+     * of sight (the skein grows with the chain and comes in whole); a call once its tail is in
+     * sight sets out a new flight on a line of its own. Nothing restarted, no bird seen catching up.
+     * `r` (0..1, the world's own draw unless given) picks the line: under 0.7 left to right.
+     */
+    sendFlock(n, r = undefined) {
         const s = this.state;
         if (!this.parts.birds || n <= 0) return;
         s.flockSize = n;
         s.flocks += 1;
         const target = this.light.moonKey > 0.5 ? this.U.moon.value : this.U.sun.value;
-        this.parts.birds.send(this.clock, n, target, this.rand());
+        const line = Number.isFinite(r) ? r : this.rand();
+        this.parts.birds.send(this.clock, n, target, line, this.halfView());
     }
 
     /**
@@ -1312,7 +1317,7 @@ export class SunsetWorld {
         // The boat first: its lantern joins the glows and the lamps the sea mirrors.
         this.parts.boat?.update(this.clock, { halfView: this.halfView(), night: lampForSun(this.sunArc.el) });
         this.updateLanterns(camera);
-        this.parts.birds.update(this.clock);
+        this.parts.birds.update(this.clock, this.halfView());
         this.parts.meteors?.update(this.clock);
         U.counts.value.set(this.ringCount, this.waveCount, this._lampCount ?? 0, 0);
 
