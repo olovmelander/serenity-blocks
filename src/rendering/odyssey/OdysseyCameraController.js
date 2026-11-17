@@ -7,6 +7,8 @@
 
 import * as THREE from 'three/webgpu';
 import { orbitEarthAt } from './composition/odyssey-orbit-earth.js';
+import { applyArrivalMove } from './odyssey-arrival-move.js';
+import { applyGlideLife } from './odyssey-glide-life.js';
 import { odysseyScrollPace } from './odyssey-scroll-pace.js';
 import { ODYSSEY_PATH_HORIZON, resolveOdysseyPathReveal } from './odyssey-path-horizon.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
@@ -1999,6 +2001,8 @@ export class OdysseyCameraController {
             this.camera.rotateZ(this._pendingViewRoll);
         }
         this.applyFramingRoll();
+        // A chapter arrival's gaze coming round onto its view (odyssey-arrival-move.js).
+        applyArrivalMove(this, deltaTime);
     }
 
     /**
@@ -2248,7 +2252,8 @@ export class OdysseyCameraController {
             const rollAmplitude = cc.rollAmplitude * driftScale * (1 - (seamWeight * 0.82)) * (1 - vistaWeight * 0.55);
             const roll = Math.sin(t * Math.PI * 2 * cc.rollFrequency) * rollAmplitude;
             // Deferred to after lookAt() in update() so it isn't discarded (masterplan §2 #6).
-            this._pendingViewRoll = roll;
+            // Added, not set: a glide's bank (odyssey-glide-life.js) is already in it this frame.
+            this._pendingViewRoll += roll;
         }
     }
 
@@ -3425,6 +3430,7 @@ export class OdysseyCameraController {
         this.targetPosition = travel.endPosition;
         this.updateFollowPosition({ position: nextPosition, direct: true });
         this._blendTravelStart(travel);
+        applyGlideLife(this, travel);
 
         if (elapsed >= travel.duration) {
             this.currentPosition = travel.endPosition;
