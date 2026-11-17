@@ -6246,7 +6246,21 @@ export const PLAYGROUND_URL_PARAMETERS = [
             '1.',
             '3',
         ],
-        ['parts', 'Draw only these parts.', 'Comma list of sky, land, spires, gliders.', 'All.', 'land,sky'],
+        ['parts', 'Draw only these parts.', 'Comma list of sky, land, spires, gliders, dust.', 'All.', 'land,sky'],
+        [
+            'weather',
+            'Hold one of the valley’s weathers (the clock turns them, a little over a minute each).',
+            'clear, cirrus, veil, banks, rain, wet or wind (or its number, 0 to 6).',
+            'The clock’s.',
+            'wet',
+        ],
+        [
+            'moon',
+            'Take the moon out of the sky, or hold its own clock (a pass takes 97 s and crosses the suns at its middle).',
+            'off, or seconds.',
+            'The clock’s.',
+            '47',
+        ],
         ['falseColor', 'Band the pre-tone-map brightness instead of the graded picture.', '1 enables.', 'Off.', '1'],
         ['noPost', 'Show the raw scene through the renderer’s tone map (no bloom or grade).', '1 enables.', 'Off.', '1'],
         ['bloom', 'Override the tier’s bloom.', '0 or 1.', 'The tier’s.', '0'],
@@ -6269,8 +6283,9 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
         [
             'event',
-            'Replay one gameplay reaction before the frame (morning: a game over, then a new run, the suns rising).',
-            'lock, drop, clear, quad, twist, perfect, levelUp, over or morning.',
+            'Replay one gameplay reaction before the frame (morning: a game over, then a new run, the suns rising; '
+                + 'spin: a twist that clears nothing; b2b: four lines back to back).',
+            'lock, drop, clear, quad, twist, spin, b2b, perfect, levelUp, over or morning.',
             'Idle.',
             'quad',
         ],
@@ -6278,6 +6293,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ['eventLevel', 'The level an event=levelUp steps to.', 'Integer.', 'level + 1.', '4'],
         ['lines', 'Lines in an event=clear.', '1 to 4.', '2.', '3'],
         ['turns', 'Spin-turns of an event=twist (a third of a turn of the braid each).', '1 to 3.', '2.', '1'],
+        ['col', 'The column an event=lock or event=drop lands in (which side of the board its tiles light on).', '0 to 1.', '0.3.', '0.8'],
+        ['piece', 'The piece an event is played with (its colour lights the tiles).', '0 to 6 (I T Z L S J O).', '2.', '4'],
         [
             'combo',
             'Hold a chain of this length (the braid turns faster and opens wider, its ribbons in the sky).',

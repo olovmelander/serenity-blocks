@@ -541,11 +541,15 @@ Status split:
   between the suns. T-spin: the braid twists a third of a turn per spin-turn (the suns change places, every fan's
   colours turn). Back-to-back: the ribbons brighten. Perfect clear: noon (the suns climb, the shadows shrink to the
   towers' feet). Level up: the braid winds on a sixth of a turn. Game over: the suns set; their colours linger on the
-  horizon as afterglow.
+  horizon as afterglow. Since 2026-11-17 each event also writes on the valley (SUNBRAID_LIVING_VALLEY_2026-11.md):
+  ripples of lit tiles in the piece's colour, a dust ring, a ring a line, the colour flooding back behind a front,
+  spiral arms and the gliders' wheel, a twister, rings round the suns, light climbing the towers; a weather wheel
+  (cirrus, an ice veil with sun pillars, cloud banks, rain, a wet mirror plain, wind) and a moon whose eclipses
+  recolour the valley turn beside the braid.
 - **Tech**: WebGPURenderer on both backends, self-shaded `MeshBasicNodeMaterial`s. Shadows are analytic, not shadow
   maps: towers as stacks of flat-topped vertical cylinders (one per tier, from the same profile that draws them),
-  gliders as discs, a soft penumbra from the ray's angular clearance. The towers are swept surfaces built on the CPU
-  (`sunbraid-spire-shape.js`). The mist's light is closed form: each tower's shadow under each sun is a wedge
+  gliders as discs, a soft penumbra from the ray's angular clearance. The towers are jointed monoliths sculpted by
+  script in Blender (`sunbraid-monoliths.js`), their shadow cylinders worked out from their own meshes. The mist's light is closed form: each tower's shadow under each sun is a wedge
   bounded by planes, so the ray's span through it is exact and the exponential mist integrates analytically (no
   march). One baked noise texture shared with the CPU land plan. Post: one scene pass, max-channel bloom above the
   bright floor, the mist pass at reduced resolution, calm zones, hue-preserving filmic.

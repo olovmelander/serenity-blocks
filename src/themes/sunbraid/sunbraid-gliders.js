@@ -17,7 +17,9 @@ import {
     Fn, abs, attribute, clamp, cos, cross, dot, float, fract, fwidth, max, min, mix, normalGeometry,
     normalize, positionGeometry, positionWorld, pow, select, sign, sin, smoothstep, varying, vec3, vec4,
 } from 'three/tsl';
-import { MAX_GLIDERS, gliderAt } from './sunbraid-glide.js';
+import {
+    MAX_GLIDERS, WHEEL, gliderAt, wheelAt,
+} from './sunbraid-glide.js';
 import { groundHeight } from './sunbraid-plan.js';
 import { centroidVarying } from '../shared/centroid-varying.js';
 import { TAU, haze, mist } from './sunbraid-tsl.js';
@@ -319,6 +321,17 @@ export function createGliders(u, t, count) {
     const state = {
         x: 0, y: 0, z: 0, hx: 0, hz: -1, bank: 0, pitch: 0, beat: 0, flap: 0, ripple: 0, span: 20,
     };
+    const ring = {
+        x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0,
+    };
+    // Where each glider was last frame (its heading while it leaves its loop for the wheel).
+    const last = new Float32Array(Math.max(1, n) * 3);
+    let lastClock = NaN;
+    let lastEpoch = -1;
+    const ease = (x) => {
+        const e = Math.max(0, Math.min(1, x));
+        return e * e * (3 - 2 * e);
+    };
     const qn = new THREE.Quaternion();
     const qb = new THREE.Quaternion();
     const qp = new THREE.Quaternion();
@@ -340,9 +353,50 @@ export function createGliders(u, t, count) {
             const eye = world.u.eye.value;
             const fov = (world._camera?.fov ?? 45) * (Math.PI / 180);
             const perMetre = (2 * Math.tan(fov / 2)) / Math.max(1, world.viewportHeight || 1080);
+            const gather = Math.max(0, Math.min(1, world.gather || 0));
+            const frame = world.wheel;
+            // (After a seek there is no last frame to steer by.)
+            if (world.epoch !== lastEpoch) {
+                lastEpoch = world.epoch;
+                lastClock = NaN;
+            }
+            const step = clock - lastClock;
             for (let k = 0; k < n; k++) {
                 gliderAt(k, clock, state);
-                const y = groundHeight(state.x, state.z) + state.y;
+                let y = groundHeight(state.x, state.z) + state.y;
+                // Called to the wheel: each leaves its loop in turn (the nearest first) and flies
+                // to its place on the ring round the suns; its nose follows where it is going.
+                const mine = frame ? ease(gather * 1.6 - (k / Math.max(1, n)) * 0.6) : 0;
+                if (mine > 0) {
+                    wheelAt(k, n, clock, frame, ring);
+                    state.x += (ring.x - state.x) * mine;
+                    y += (ring.y - y) * mine;
+                    state.z += (ring.z - state.z) * mine;
+                    let hx = state.hx + (ring.vx - state.hx) * mine;
+                    let hz = state.hz + (ring.vz - state.hz) * mine;
+                    let climb = ring.vy * mine;
+                    if (step > 1e-3 && step < 0.25) {
+                        // While it is on its way, the way it has actually moved.
+                        const dx = state.x - last[k * 3];
+                        const dy = y - last[k * 3 + 1];
+                        const dz = state.z - last[k * 3 + 2];
+                        const moved = Math.hypot(dx, dz);
+                        if (moved > 0.02) {
+                            hx = dx / step;
+                            hz = dz / step;
+                            climb = dy / step;
+                        }
+                    }
+                    const speed = Math.hypot(hx, hz) || 1;
+                    state.hx = hx / speed;
+                    state.hz = hz / speed;
+                    state.pitch += (Math.max(-0.5, Math.min(0.5, Math.atan2(climb, speed))) - state.pitch) * mine;
+                    state.bank += (WHEEL.bank - state.bank) * mine;
+                    state.flap += (0.55 - state.flap) * mine;
+                }
+                last[k * 3] = state.x;
+                last[k * 3 + 1] = y;
+                last[k * 3 + 2] = state.z;
                 // Heading: the nose (−z) along the travel; then bank about the nose and pitch.
                 qn.setFromAxisAngle(Y, Math.atan2(-state.hx, -state.hz));
                 qb.setFromAxisAngle(Z, state.bank);
@@ -366,6 +420,7 @@ export function createGliders(u, t, count) {
                 // The shadow: a disc a little smaller than the wings (a crescent, not a plate).
                 shadowRows[k].set(state.x, y, state.z, state.span * 0.3);
             }
+            lastClock = clock;
             for (let k = n; k < shadowRows.length; k++) shadowRows[k].set(0, -1e5, 0, 0);
             world.u.gliderCount.value = n;
             rowBuffer.needsUpdate = true;
