@@ -202,6 +202,7 @@ export function create({
         reactions.reset();
         startLevel();
         world.resetEffects();
+        world.light.rewind();
         randomIndex = 0;
         locks = 0;
         // ?picked=n pre-picks n kinds for the bouquet before the capture's own event.

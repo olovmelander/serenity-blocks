@@ -605,6 +605,15 @@ export class SummerLight {
         offset.y = (offset.y + direction.z * pace * CLOUD_SHADOW_SPEED * CLOUD_SHADOW_SCALE) % 1;
     }
 
+    /**
+     * Put the clouds and their shadows back where a session starts (a capture's seek): the game
+     * never calls this, so switching effects off does not move the sky.
+     */
+    rewind() {
+        this.uCloudDrift.value = 0;
+        this.uCloudOffset.value.set(0, 0);
+    }
+
     reset() {
         this.waves.reset();
         this.species.fill(0);
