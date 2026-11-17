@@ -375,7 +375,7 @@ export class NeonDistrictWorld {
             glassMist: 1,
             glassWet: 1,
             tint: [0.86, 0.97, 1.16],
-            sat: 1.12,
+            sat: 1.23,
         };
         /** The night's weather and its passer-by, as of the last frame (neon-district-night.js). */
         this.weather = createWeather();

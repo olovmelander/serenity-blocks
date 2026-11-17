@@ -32,22 +32,22 @@ import { smooth } from './neon-district-core.js';
  */
 export const WEATHER = Object.freeze([
     {
-        name: 'rain', span: 84, fall: 1, wind: 0.12, fog: 1, sky: 0, storm: 0.25, mist: 1, warm: 0, tint: [0.86, 0.97, 1.16], sat: 1.12,
+        name: 'rain', span: 84, fall: 1, wind: 0.12, fog: 1, sky: 0, storm: 0.25, mist: 1, warm: 0, tint: [0.86, 0.97, 1.16], sat: 1.23,
     },
     {
-        name: 'downpour', span: 72, fall: 1.65, wind: 1, fog: 1.4, sky: 0, storm: 1, mist: 0.9, warm: 0, tint: [0.8, 0.95, 1.22], sat: 1.03,
+        name: 'downpour', span: 72, fall: 1.65, wind: 1, fog: 1.4, sky: 0, storm: 1, mist: 0.9, warm: 0, tint: [0.8, 0.95, 1.22], sat: 1.14,
     },
     {
-        name: 'easing', span: 46, fall: 0.5, wind: 0.3, fog: 1, sky: 0.3, storm: 0.1, mist: 1, warm: 0.05, tint: [0.86, 0.96, 1.18], sat: 1.12,
+        name: 'easing', span: 46, fall: 0.5, wind: 0.3, fog: 1, sky: 0.3, storm: 0.1, mist: 1, warm: 0.05, tint: [0.86, 0.96, 1.18], sat: 1.23,
     },
     {
-        name: 'clear', span: 108, fall: 0, wind: 0.04, fog: 0.6, sky: 1, storm: 0, mist: 0.7, warm: 0, tint: [0.8, 0.9, 1.3], sat: 1.26,
+        name: 'clear', span: 108, fall: 0, wind: 0.04, fog: 0.6, sky: 1, storm: 0, mist: 0.7, warm: 0, tint: [0.8, 0.9, 1.3], sat: 1.37,
     },
     {
-        name: 'fog', span: 92, fall: 0.1, wind: 0, fog: 2.7, sky: 0.06, storm: 0, mist: 1.75, warm: 1, tint: [1.12, 0.97, 0.98], sat: 1.02,
+        name: 'fog', span: 92, fall: 0.1, wind: 0, fog: 2.7, sky: 0.06, storm: 0, mist: 1.75, warm: 1, tint: [1.12, 0.97, 0.98], sat: 1.13,
     },
     {
-        name: 'mizzle', span: 68, fall: 0.4, wind: 0.06, fog: 1.6, sky: 0, storm: 0, mist: 1.3, warm: 0.45, tint: [0.96, 0.97, 1.08], sat: 1.08,
+        name: 'mizzle', span: 68, fall: 0.4, wind: 0.06, fog: 1.6, sky: 0, storm: 0, mist: 1.3, warm: 0.45, tint: [0.96, 0.97, 1.08], sat: 1.19,
     },
 ]);
 
@@ -61,7 +61,7 @@ const KEYS = Object.freeze(['fall', 'wind', 'fog', 'sky', 'storm', 'mist', 'warm
 
 /** A blank reading (what weatherAt fills in). */
 export const createWeather = () => ({
-    name: WEATHER[0].name, index: 0, melt: 0, fall: 1, wind: 0, fog: 1, sky: 0, storm: 0, mist: 1, warm: 0, sat: 1.12, tint: [0.86, 0.97, 1.16],
+    name: WEATHER[0].name, index: 0, melt: 0, fall: 1, wind: 0, fog: 1, sky: 0, storm: 0, mist: 1, warm: 0, sat: 1.23, tint: [0.86, 0.97, 1.16],
 });
 
 /**
