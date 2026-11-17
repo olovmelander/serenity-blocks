@@ -28,6 +28,7 @@ export function createSky({ tier, noise, U }) {
             stars: true,
             milky: tier.milky,
             rays: true,
+            towers: tier.towers,
         });
         const below = float(1.0).sub(smoothstep(-0.002, 0.0, dir.y));
         return vec4(mix(sky, horizonHaze(dir, U), below), 1.0);

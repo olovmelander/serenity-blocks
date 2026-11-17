@@ -191,7 +191,7 @@ const captureThemes = [
 
     ['sunfall', 'sunfall', 'Sunfall', 'sky, cave, jungle, beam, mist, water, roots, birds, gours'],
 
-    ['sunset', 'sunset', 'Sunset', 'sky, sea, lanterns, glows, birds'],
+    ['sunset', 'sunset', 'Sunset', 'sky, sea, islands, lanterns, glows, birds, boat, meteors'],
 
     ['supernova', 'supernova', 'Supernova', 'sky, nebula, beams, aura, star, ring, loops, embers, streams, sparks'],
 

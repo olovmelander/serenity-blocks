@@ -380,7 +380,11 @@ describe('Sunset theme: one node renderer on both backends', () => {
         const parts = mine.find((entry) => entry.name === 'sunsetParts');
         expect(parts.sources).toContain('src/themes/sunset/sunset-world.js');
         const listed = parts.values.replace(/^[^:]*:/, '').split(',').map((name) => name.trim());
-        expect(listed.sort()).toEqual(['birds', 'glows', 'lanterns', 'sea', 'sky']);
+        // Every part the world can draw alone, as the world itself names them.
+        const world = readFileSync(path.join(themeDir, 'sunset-world.js'), 'utf8');
+        const declared = world.match(/SUNSET_PARTS = Object\.freeze\(\[([^\]]+)\]/)[1].match(/[a-z]+/g);
+        expect(declared.length).toBeGreaterThanOrEqual(5);
+        expect(listed.sort()).toEqual(declared.sort());
     });
 
     it('uses the WebGL2 backend of the node renderer when there is no GPU', async () => {

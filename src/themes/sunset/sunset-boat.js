@@ -37,20 +37,23 @@ import {
     step, uniform, vec3, vec4,
 } from 'three/tsl';
 import {
-    DEG, mulberry32, seaHeight, seaSlope, smooth,
+    DEG, mulberry32, seaMeshHeight, seaRingGap, seaSlope, smooth,
 } from './sunset-core.js';
 import { SUNSET_LONGTAIL } from './sunset-longtail-model.js';
 import { TUNE, horizonHaze, skyBase } from './sunset-tsl.js';
 
 /** When and where the boat comes (metres, metres a second, seconds, degrees). */
 export const BOAT = Object.freeze({
-    /** How far out its course runs, measured square to the view. */
-    range: Object.freeze([260, 420]),
+    /**
+     * How far out its course runs, measured square to the view: near enough to be a boat with
+     * people in it and a wake behind it, beyond where most lanterns float.
+     */
+    range: Object.freeze([110, 250]),
     speed: Object.freeze([4.6, 6.6]),
     /** After a start (a seek, a rebuild), before the first passage sets out. */
-    firstWait: Object.freeze([60, 150]),
+    firstWait: Object.freeze([30, 80]),
     /** From one passage leaving the picture to the next setting out. */
-    gap: Object.freeze([180, 420]),
+    gap: Object.freeze([100, 260]),
     /** How far past the frame's edge it comes in and goes out. */
     margin: 7,
     /** How far its course may run off square to the view (it comes a little nearer or goes away). */
@@ -71,7 +74,7 @@ export const TONE = Object.freeze({
 /** The mirror under the boat: how much of its light the water gives back, and how it breaks up. */
 export const MIRROR = Object.freeze({
     /** The water's share of the boat's light (grazing water is a good mirror; the ripples break it). */
-    strength: 0.62,
+    strength: 0.74,
     tint: Object.freeze([0.8, 0.86, 0.95]),
     /** Ripple bands: across (rad/m of height), along (rad/m), how fast they run (rad/s). */
     bands: 6.5,
@@ -110,6 +113,8 @@ export function longtailModel() {
         triangleCount: SUNSET_LONGTAIL.triangleCount,
         length: SUNSET_LONGTAIL.length,
         lantern: SUNSET_LONGTAIL.lantern,
+        propeller: SUNSET_LONGTAIL.propeller,
+        bow: SUNSET_LONGTAIL.bow,
     });
     return decoded;
 }
@@ -179,8 +184,9 @@ export function passageAt(p, clock, out = { x: 0, z: 0, u: 0 }) {
  * due and sets the mesh on the swell; `lampLight()` is the lantern's light for the glows and the
  * sea's mirror, or null when it is not lit or not in sight.
  */
-export function createBoat({ U, seed = 29 }) {
+export function createBoat({ U, seed = 29, seaRings = 220 }) {
     const geometry = buildBoatGeometry();
+    const ringGap = seaRingGap(seaRings);
     const lamp = uniform(0);
     const waterY = uniform(0);
     const aPaint = attribute('color', 'vec4');
@@ -236,7 +242,10 @@ export function createBoat({ U, seed = 29 }) {
         return cameraProjectionMatrix.mul(vec4(mv.xyz.mul(MIRROR.nearer), 1.0));
     })();
     mirror.colorNode = Fn(() => {
-        const N = normalize(normalWorld).mul(faceDirection).toVar();
+        // The water shows each face in the light it has on the boat, so the mirrored normal is
+        // turned back the right way up (lit as it lay, a hull side facing the sea took the sky).
+        const flipped = normalize(normalWorld).mul(faceDirection);
+        const N = vec3(flipped.x, flipped.y.negate(), flipped.z).toVar();
         const tint = vec3(MIRROR.tint[0], MIRROR.tint[1], MIRROR.tint[2]);
         return vec4(boatLight(N).mul(tint), 1.0);
     })();
@@ -247,7 +256,9 @@ export function createBoat({ U, seed = 29 }) {
         const under = max(waterY.sub(positionWorld.y), 0.0);
         const ripple = sin(positionWorld.y.mul(MIRROR.bands).add(positionWorld.x.mul(MIRROR.along))
             .add(U.time.mul(MIRROR.run))).mul(0.5).add(0.5);
-        return above.mul(ripple.mul(0.55).add(0.3)).mul(exp(under.mul(-MIRROR.fade))).mul(MIRROR.strength);
+        // (Whole where it meets the hull: nearer the eye a broken band there read as a gap.)
+        const broken = mix(float(1.0), ripple.mul(0.55).add(0.3), smoothstep(0.0, 0.8, under));
+        return above.mul(broken).mul(exp(under.mul(-MIRROR.fade))).mul(MIRROR.strength);
     })();
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -275,6 +286,9 @@ export function createBoat({ U, seed = 29 }) {
         x: 0,
         y: 0,
         z: 0,
+        hx: 0,
+        hz: 1,
+        run: 0,
         u: 0,
         lamp: 0,
         inSight: false,
@@ -292,6 +306,9 @@ export function createBoat({ U, seed = 29 }) {
     const lanternLocal = new THREE.Vector3(...longtailModel().lantern);
     const lampOut = {
         x: 0, y: 0, z: 0, glow: 0, rgb: LAMP_RGB,
+    };
+    const wakeOut = {
+        x: 0, y: 0, z: 0, hx: 0, hz: 1, run: 0, stern: -longtailModel().propeller[2], bow: longtailModel().bow,
     };
 
     const setOut = (clock, halfView, options = {}) => {
@@ -347,11 +364,15 @@ export function createBoat({ U, seed = 29 }) {
                 return;
             }
             passageAt(p, clock, at);
-            // It rides the swell: the hull averages the short waves, so it heaves and rocks gently.
-            const y = seaHeight(at.x, at.z, clock) * 0.75;
+            // It rides the swell as the sea's mesh draws it out there (the long trains: the hull
+            // averages the short ones anyway), so its waterline is the water's.
+            const y = seaMeshHeight(at.x, at.z, clock, ringGap);
             seaSlope(at.x, at.z, clock, slope);
             const fx = Math.sin(p.heading);
             const fz = Math.cos(p.heading);
+            state.hx = fx;
+            state.hz = fz;
+            state.run = Math.min(1, p.speed / 5.2);
             const along = slope.x * fx + slope.z * fz;
             const across = slope.x * fz - slope.z * fx;
             const pitch = -Math.atan(along) * 0.55;
@@ -375,6 +396,21 @@ export function createBoat({ U, seed = 29 }) {
             state.lamp = Math.max(0, Math.min(1, night));
             lamp.value = state.lamp;
             lantern.copy(lanternLocal).applyMatrix4(mesh.matrix);
+        },
+        /**
+         * Its wake, for whoever draws it: where the boat is, the way it heads (unit, xz), how far
+         * astern of its middle the churned water starts and how far ahead its bow cuts the sea
+         * (metres), and how hard it runs (0..1). Null when it is not on the water.
+         */
+        wake() {
+            if (!mesh.visible) return null;
+            wakeOut.x = state.x;
+            wakeOut.y = state.y;
+            wakeOut.z = state.z;
+            wakeOut.hx = state.hx;
+            wakeOut.hz = state.hz;
+            wakeOut.run = state.run;
+            return wakeOut;
         },
         /** The lantern's light for the glows and the sea's mirror, or null. */
         lampLight() {
