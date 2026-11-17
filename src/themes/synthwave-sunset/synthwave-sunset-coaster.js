@@ -232,10 +232,10 @@ function createCoasterMaterial(u, name) {
         const N = normalize(normalWorld).toVar();
         const kind = meta.x;
         const facing = abs(dot(N, V));
-        const duskLight = mix(float(1.0), float(0.55), u.dusk);
+        const duskLight = u.ambient;
         const sky = rgb(0x8a7aa8, 0.3).mul(float(0.55).add(max(N.y, 0.0).mul(0.45))).mul(duskLight);
         const rim = pow3(float(1.0).sub(facing)).mul(max(dot(N, u.sunDir), 0.0).mul(0.8).add(0.2))
-            .mul(rgb(0xff8a5c, 0.55)).mul(mix(float(1.0), float(0.35), u.dusk));
+            .mul(u.sunBand.mul(0.55)).mul(mix(float(1.0), float(0.35), u.dusk));
         // The track's bulbs wash the beam and the top of the trestle.
         const glow = rgb(0xbff0e0, 0.05).mul(u.pierGlow);
         const timber = rgb(0x3a2a30).mul(sky).add(rim.mul(0.7)).add(glow.mul(0.5));
@@ -272,7 +272,7 @@ function createTrain(u) {
     material.fog = false;
     material.colorNode = Fn(() => {
         const N = normalize(normalWorld);
-        const sky = rgb(0x8a7aa8, 0.3).mul(float(0.6).add(max(N.y, 0.0).mul(0.4))).mul(mix(float(1.0), float(0.55), u.dusk));
+        const sky = rgb(0x8a7aa8, 0.3).mul(float(0.6).add(max(N.y, 0.0).mul(0.4))).mul(u.ambient);
         return rgb(0xff8ab8).mul(sky.add(rgb(0xffe46a, 0.25).mul(u.coasterRide.add(0.3))));
     })();
     const mesh = new THREE.InstancedMesh(geometry, material, COASTER.cars);
