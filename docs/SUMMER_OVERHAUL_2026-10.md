@@ -178,6 +178,194 @@ Checked in the playground at High and Low on native WebGPU, 1920×1080, 1280×72
 1080p, interleaved against the evening before the pass: about 2.6 ms against 2.5 ms (within
 run-to-run noise). `tests/unit/summer-*.test.js`: 675 tests.
 
+## The living eve (2026-11-17)
+
+An audit of the whole theme, then a pass over what it found. Everything above still stands;
+this section records what was weak and what was built on top.
+
+### What the audit found
+
+Looked at in the playground and in the game, hour by hour and event by event, part by part:
+
+| Part | Finding |
+| --- | --- |
+| The sky | The weakest part. One flat deck of cloud seen from below: in the low band the game frames (the lowest 25 degrees) it showed as pale horizontal streaks, the same in every hour. Nothing in it moved visibly. |
+| Change over time | Only the hours (five palettes, twenty minutes a round). Within one hour the scene never changed: the same clouds, the same breeze, the same lake. |
+| The far shore and hills | A bare green slope with a tree here and there (340 sprites over 800 m of shore), which read as a park, not as woods. |
+| The lake | Good mirror and sun road. But the rings every lock and clear drops on it opened a metre and a half off the near shore, behind the crest of flowers the camera looks over: in play they were never seen. |
+| The maypole | Well modelled, thinly dressed: six narrow ribbons and small flowers on the wreaths only. |
+| The events | Every event was petals from the card's edge plus a ring and a gust. A hard drop, a twist, a back-to-back, a perfect clear and a level-up differed in amount, not in kind; a perfect clear and a level-up were both "the whole evening exhales". Game over only let the petals fall. |
+| Life | Butterflies and swallows only; nothing on the water. |
+| The meadow, the cottage and shed, the trees, the island, the light and the haze, the piece colours | Strong. Kept as they are. |
+
+### The weather
+
+Beside the hours the day now has weather, on a clock of its own
+([`summer-weather.js`](../src/themes/summer/summer-weather.js)): six kinds, 76 seconds each,
+each holding for the first part of its time and then easing into the next.
+
+| Weather | What it does |
+| --- | --- |
+| Fair evening | Scattered cumulus on a light breeze: the scene as it was built, and where a session starts. |
+| A fresh breeze | The wind doubles: cat's-paws race over the lake, fronts of wind cross the meadow and the woods every few seconds, cloud shadows hurry over the land, the air clears. |
+| Towers over the hills | The cumulus builds tall and the sun fans out between the clouds. |
+| Sun shower | Rain falls through the sunshine in front of the eye, every drop lit from behind, and dimples the lake. |
+| Mist on the water | The air stands still; mist lies on the lake and in the hollows, the far shore sinks into it, the sun's shafts stand in it. |
+| Mackerel sky | A fleece of small cloudlets high over a lake like glass. |
+
+The hours take twenty minutes to come round and the weather seven and a half, so the two never
+line up for long: with the level turning the hour as well, the picture changes about once a
+minute and does not repeat within a session. A weather is sixteen numbers the light rig copies
+into uniforms; nothing is rebuilt, so every tier and both backends show the same weather.
+
+| Fair evening | A fresh breeze | Towers over the hills |
+| --- | --- | --- |
+| ![fair](summer-overhaul/living-weather-fair.webp) | ![breeze](summer-overhaul/living-weather-breeze.webp) | ![towers](summer-overhaul/living-weather-towers.webp) |
+
+| Sun shower | Mist on the water | Mackerel sky |
+| --- | --- | --- |
+| ![shower](summer-overhaul/living-weather-shower.webp) | ![mist](summer-overhaul/living-weather-mist.webp) | ![mackerel sky](summer-overhaul/living-weather-mackerel.webp) |
+
+### What was rebuilt
+
+- **The sky** ([`summer-atmosphere.js`](../src/themes/summer/summer-atmosphere.js)). Two rows of
+  cumulus are drawn from the side, in azimuth and elevation, standing on flat bases over the far
+  shore and above it: where along the horizon they mass is one slow noise, their billows a finer
+  one, and a cloud ends where its billows no longer outweigh the height above the base. The same
+  field read a step toward the sun says which side of a billow is lit, so toward the sun a cloud
+  is a shaded heart inside a burning rim and away from it a peach body with cream billows. The old
+  deck stays as high streaks; a mackerel field, a veil of cirrus, noctilucent clouds over the
+  resting sun in the white night, and a slowly turning fan of rays about the sun are new. The
+  weather says how much of each there is; the hour still says what colour it is.
+- **Cloud shadows.** The clouds' shadows drift over the meadow, the lake, the woods and the
+  buildings (`cloudLight` in the light rig: one read of the shared noise, taken once at the root
+  of a grass clump, a flower or a tree).
+- **The far woods.** Four times the sprite trees (1,400 at High), most of them on the far shore
+  and the headland, and the ground under them painted as canopy: the hills are forest now.
+- **The lake.** Rings open on the water the camera sees past the crest (17 m out and beyond);
+  the weather lays it flat or ruffles it; rain dimples it.
+- **The maypole.** Ten ribbons, three from each arm and four from the top, and posies of all
+  seven kinds tied at its head, where the arm crosses, at the arm's ends and under each wreath.
+  They are painted by the maypole's own shader, so every head is a lantern of the bouquet.
+- **The white night.** Glow-worms: the specks that drift low over the flowers breathe a
+  green-gold light on and off, and the noctilucent clouds shine over the sun.
+- **Petals.** A petal in the air is a claw that widens into a rounded blade, folded and cupped,
+  paler at the claw (it was a four-cornered kite, which read as confetti).
+- **Swans.** A pair of mute swans and their cygnets glide a slow round on the open water left of
+  the maypole, mirrored in the lake, and a skein of them flies low across it: by itself every
+  few minutes, and on every level-up. The birds are modelled in Blender
+  (`scripts/blender/summer_swan.py`, headless, byte-reproducible) and shipped as a generated
+  module, [`summer-swan-model.js`](../src/themes/summer/summer-swan-model.js); the round and the
+  flight lines are found by numbers through the rest camera
+  ([`summer-swan-routes.js`](../src/themes/summer/summer-swan-routes.js)) and drawn in three
+  instanced draws ([`summer-swans.js`](../src/themes/summer/summer-swans.js)).
+
+| The white night: noctilucent clouds, glow-worms | A level-up sends the swans up |
+| --- | --- |
+| ![white night](summer-overhaul/living-white-night.webp) | ![swans](summer-overhaul/living-swans-flight.webp) |
+
+### An effect of its own for every event
+
+| Event | What is its own |
+| --- | --- |
+| Piece lock | As before: petals of the piece's flower from the card's edge, that flower nodding and glowing wherever it grows, a gust through the grass, a ring on the lake (now seen). |
+| Hard drop | The piece comes down like a stone in the grass: a ring of its own flower's petals leaps out of the meadow to both sides of the board's foot, pollen among them, over the dandelion seed it shakes loose. |
+| Line clear (1–3) | As before: twin jets at the cleared rows, a broad ring, from two lines a front of wind. |
+| Four lines | As before: the meadow lifts its petals and the swallows tower; and now the sun's fan of rays opens across the sky. |
+| Combo / streak | As before: the crown of petals and the silk ribbons round the board. They are a combo's alone now (a back-to-back or a perfect clear no longer raises the ribbons). |
+| Twist | The maypole dances: its ten ribbons fly out and wheel round the pole. The spinning garland beside the board stays. |
+| Back-to-back | A stone skips down the sun's road, ring after ring, each touch a glint, further and with more hops for every one in a row; the sun's rays answer. |
+| The bouquet | The maypole throws the bouquet, and one great flower of every colour opens about its head. |
+| Perfect clear | The largest thing the evening does. Seven flowers open in the air beside the board, one after another, one for each kind: a thread of pollen climbs, and the petals of one kind are thrown from a gold heart to their places in a flower drawn in the air, five to eight great petals each made of the small ones. The air holds each for a moment and a half, then lets it fall. Six stand to either side of the board and the last, in every colour, opens about the maypole's head, with the sunburst and the rising meadow as before. A flower's whole rim is kept clear of the board card, the score panel (both are measured), the screen's edges and the meadow under it: on the score panel's narrow side the three stand one above another, drawn a little smaller, and on an upright screen they open in a row above the board. |
+| Level up | The hour turns, and a wave of bloom rolls away from the eye through the meadow, opening and lighting every flower as it passes, and runs on across the lake as a band of sparkling water. A skein of swans takes wing over the lake. |
+| Game over | Dusk: the wind dies, mist rises off the water, the light lowers and cools while the petals come down. It lifts again when the next session starts. |
+
+Frame-wide brightenings (the rays, the hearts of the flowers) go through `flashScale()`; what
+moves the maypole's ribbons is scaled by Reduce motion. Nothing is thrown in front of the board:
+the card and the score panel are measured, and the flowers open in the strips beside them. The
+petal pool grew by a quarter (4,000 at High) so that the largest thing the game can ask for at
+once, four lines with a perfect clear on top, finds every petal a free place while a combo's
+crown is still turning.
+
+| Perfect clear | Twist |
+| --- | --- |
+| ![perfect clear](summer-overhaul/living-perfect-clear.webp) | ![twist](summer-overhaul/living-twist.webp) |
+
+| Back-to-back | Level up |
+| --- | --- |
+| ![back-to-back](summer-overhaul/living-back-to-back.webp) | ![level up](summer-overhaul/living-level-up.webp) |
+
+### What was kept, and what was left
+
+Kept as they were: the meadow and its flowers, the cottage, the shed and the flagpole, the
+birches and spruces, the skerry, the sun's path, the haze, the five hours' palettes, the piece
+colours, the lock, the line clears and the combo's crown. The theme icon was baked again from the
+new look and set beside the old one at picker size: the old one reads better there (warmer, the
+pole larger), so it stays.
+
+Not done: a rainbow for the sun shower (the sun is ahead of the eye, so a true bow would stand
+behind it); the far ridges and the butterflies; portrait was checked, not tuned (the swans and
+the sky flowers are sited for a landscape screen first).
+
+### How it was checked
+
+- **Unit tests.** `tests/unit/summer-*.test.js`: 14 files, 874 tests, all passing, none skipped
+  (11 files and 692 tests before). New files: the weather's table and clock (19), the swans (33),
+  and a shader gate (11) that builds the sky to WGSL and to GLSL at each of its three levels of
+  detail, holds its fragment under 24 KiB, and builds the rain. Two helper agents wrote the
+  swans and most of the new tests, the second from the modules' contracts without touching the
+  source; what its tests found is listed below.
+- **Whole suite**, run once while other sessions kept the machine busy: 1,427 files, 25,881
+  tests; 1,418 files passed. Of the eight that did not, five pass when run again on their own
+  (`theme-registry-lifecycle-acceptance`, `breath-safety-gate`, `display-settings-apply`,
+  `local-versus-cameras`, `stellar-drift-build-steps`) and three fail on this machine whatever
+  the branch: `records-view` and `game-over-modal-result-compatibility` expect `8,025` where the
+  Swedish locale prints `8 025`, and `tts-recorder-e2e` cannot make its symlink in a worktree.
+- **Gates.** Typecheck; TypeScript ratchet; lint ratchet (432 errors, the baseline); architecture
+  fitness; theme lifecycle audit; dependency boundaries (2,185 modules); perf budgets; release
+  gates; IP-string gate; production build with the boot-closure guard (the theme's chunk is
+  239 kB, 91 kB gzipped, 48 kB of it the swans' model); the skill's audit and mirror tests: all pass.
+- **Playground**, a private headless Chrome on native WebGPU (the playground names an NVIDIA
+  Blackwell adapter), 30 frames a second, every capture with a clean console: the five hours;
+  the six weathers; lock, hard drop, two lines, four lines, a held combo, twist, back-to-back,
+  the bouquet, a perfect clear at three ages, a level-up at two, game over; High on the forced
+  WebGL2 backend in a sun shower; Minimal on WebGL2 (rose hour and white night); Low; Medium;
+  430 x 900 and 1720 x 720 frames; the white night with a perfect clear; a minute run live
+  through the turn from fair weather to the breeze.
+- **The real game** (headless Chrome, dev server, single player, frame cap 30): four runs, three
+  on WebGPU and one on the forced WebGL2 backend in the white night under a sun shower. Each
+  played real hard drops from the keyboard, then a double, four lines, a twist, a back-to-back, a
+  perfect clear, a level-up and a cascade through the game's event bus. Every run: console clean,
+  one canvas, and no main-thread task over 21 ms in about 5,400 animation frames.
+- **GPU time a frame** (the playground's profiler at 1920 x 1080, capped at 30 frames a second,
+  evening, fair weather; the untouched main checkout served beside the branch for "before"):
+  High 1.97 ms before and 1.85 to 2.15 ms after (2.0 to 2.3 in a sun shower); Medium 1.02 ms
+  before and 1.19 to 1.56 after; Low 0.76 ms after (no reading before). Other sessions were using
+  the GPU: readings a few seconds apart moved by a millisecond, and one Medium reading of 6.6 ms
+  did not come back in three more.
+- **The swans' model** was generated again by headless Blender 5.2 and compared with the
+  committed module: the same bytes.
+- **Faults found on the way**, all fixed and held by tests:
+  - by the tests written against the contract: a sky flower's thread of pollen started under the
+    meadow; the rim of one flower reached behind the board card, and a stacked one hung among
+    the meadow's flower heads; a perfect clear on top of four lines asked for more petals than
+    the pool's reserve held at High and above (the pool grew by a quarter); the new petal mesh
+    had slivers without area at its claw and tip, which left a vertex with a normal of no
+    length; a flower that was still climbing counted as spent and could lose its slot to the
+    next lock at Minimal; a back-to-back woke a crown that was unwinding; a flower with a
+    nonsense place threw; on an upright screen the bouquet's flower opened behind the card;
+  - by the captures: the flowers first opened 30 m out, behind the crowns of the birch and the
+    spruce; the lake's rings and a first skipping stone lay behind the meadow's crest; a first
+    level-up effect that lived only on the lake could not be seen at game size; the hard drop's
+    ring of pollen was lost among the flower heads; and in the game one flower opened behind
+    the score panel, which the board card's rectangle does not include.
+
+Not verified: frame rate without the cap, and anything on integrated graphics or a phone;
+Extreme and Ultra in a capture; local multiplayer and Infinity layouts (the flowers' places there
+are held by tests, not seen); a whole seven-minute round of weather watched in the game. The
+six weathers, their pace, the look of every new effect and the swans are the implementer's
+choices and have not been reviewed by the owner.
+
 ## How it is built
 
 ### Trees and buildings authored in Blender
@@ -229,6 +417,8 @@ them with distance into flecks the ground shader carries.
 | `summer-garlands.js` | The silk ribbons a combo winds around the board. |
 | `summer-petal-sim.js`, `summer-petals.js` | Petals, seed and pollen: simulation, and drawing. |
 | `summer-hours.js` | The five hours of the night: their colours, the blend between them, and the hour a level stands at (pure). |
+| `summer-weather.js` | The six weathers and the clock that turns them (pure). Since 2026-11-17. |
+| `summer-swans.js`, `summer-swan-routes.js`, `summer-swan-model.js` | The swans: the instanced draws; the family's round and the skein's flight lines, found by numbers through the rest lens; the generated Blender model. Since 2026-11-17. |
 | `summer-reactions.js` | The event director (pure), and where the night stands: the level, the turn to its hour, and the slow clock. |
 | `summer-stage.js`, `summer-fx-director.js` | Board card → world, and cues → petals, force fields, rings and gusts. |
 | `summer-post.js` | Volumetric shafts, bloom, grade, FXAA. |
@@ -271,15 +461,20 @@ them with distance into flecks the ground shader carries.
 
 | Tier | Stands / far trees | Sprays kept | Grass clumps | Flowers | Petal pool | Mirror | Shafts | Post |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Extreme | 44 / 460 | 100 % | 49,000 | 35,200 | 3,600 | 0.75 | 40 steps | on |
-| Ultra | 38 / 400 | 100 % | 40,500 | 29,400 | 3,000 | 0.6 | 32 steps | on |
-| High | 32 / 340 | 86 % | 32,000 | 23,600 | 2,400 | 0.5 | 26 steps | on |
-| Medium | 24 / 250 | 62 % | 20,500 | 15,400 | 1,500 | 0.4 | 16 steps, 0.35 scale | on |
-| Low | 16 / 160 | 40 %, trunks only | 10,400 | 7,800 | 850 | 0.3 | analytic glow in the haze | off |
-| Minimal | 10 / 100 | 28 %, trunks only | 5,400 | 3,900 | 450 | 0.22 | analytic glow in the haze | off |
+| Extreme | 44 / 2,000 | 100 % | 49,000 | 35,200 | 6,000 | 0.75 | 40 steps | on |
+| Ultra | 38 / 1,700 | 100 % | 40,500 | 29,400 | 5,000 | 0.6 | 32 steps | on |
+| High | 32 / 1,400 | 86 % | 32,000 | 23,600 | 4,000 | 0.5 | 26 steps | on |
+| Medium | 24 / 950 | 62 % | 20,500 | 15,400 | 2,500 | 0.4 | 16 steps, 0.35 scale | on |
+| Low | 16 / 560 | 40 %, trunks only | 10,400 | 7,800 | 1,400 | 0.3 | analytic glow in the haze | off |
+| Minimal | 10 / 340 | 28 %, trunks only | 5,400 | 3,900 | 750 | 0.22 | analytic glow in the haze | off |
 
 "Stands" are the modelled trees beyond the nine placed by hand. Low and Minimal draw the
-same scene directly with ACES tone mapping and skip limb geometry.
+same scene directly with ACES tone mapping and skip limb geometry. (Far trees and the petal
+pool as of the living eve, 2026-11-17; before it they were 460 to 100 and 3,600 to 450.) Since
+then a tier also sets how much of the sky is drawn (`sky`: Low and Minimal one row of cumulus
+and the high deck; Medium the second row, the mackerel field, the noctilucent clouds and rain on
+the lake as well; High and up finer billows) and how many swans there are (`swans`: two to four
+cygnets with the pair, three to seven birds in a skein).
 
 | Minimal, forced WebGL2 | Portrait, High |
 | --- | --- |

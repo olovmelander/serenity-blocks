@@ -10,7 +10,7 @@
 import * as THREE from 'three/webgpu';
 import {
     attribute, cameraPosition, color, cross, dFdx, dFdy, dot, fract, instancedBufferAttribute, mix, normalize,
-    normalWorld, positionLocal, positionWorld, pow, saturate, sin, smoothstep, uv, vec2, vec3, vec4,
+    normalWorld, positionLocal, positionWorld, pow, saturate, sin, smoothstep, uv, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
     SUMMER_FEATURE_TREES, SUMMER_GROVE_CEILING, createSummerVisibilityTest, layoutSummerGrove,
@@ -162,7 +162,8 @@ export class SummerForest {
         const slope = r1.mul(dFdx(relief)).add(r2.mul(dFdy(relief))).mul(area.sign());
         const normal = normalize(smooth.mul(area.abs()).sub(slope.mul(depth)));
         const view = normalize(cameraPosition.sub(world));
-        const sun = light.sunlight();
+        // The clouds' shadow is read once for the whole tree, at its foot.
+        const sun = light.sunlight({ cloud: varying(light.cloudLight(tree.xz), 'summerBarkCloud') });
         const facing = saturate(dot(normal, light.uSunDir));
         // The sun behind a trunk wraps a thin rim of light around its silhouette.
         const rim = pow(saturate(dot(normal, view)).oneMinus(), 3)
@@ -251,7 +252,7 @@ export class SummerForest {
         // Sun through a leaf is a clear yellow-green, whatever the green in front of it.
         const glowing = pow(leaf, vec3(0.62)).mul(vec3(...look.glow));
 
-        const sun = light.sunlight();
+        const sun = light.sunlight({ cloud: varying(light.cloudLight(tree.xz), 'summerLeafCloud') });
         const facing = dot(blade, light.uSunDir);
         // A little light wraps round a crown to its shaded side (it was 0.4, which flattened the
         // crowns: the side turned from the low sun was nearly as bright as the lit side).

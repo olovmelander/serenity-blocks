@@ -32,11 +32,28 @@ const BOUQUET_KINDS = 7;
 // The roundpole fence: a line across the meadow down to the shore, left of the maypole.
 const FENCE_LINE = [[-27, 1.6], [-17.5, -2.4], [-10.6, -5.2], [-9.2, -8.2]];
 const FENCE_SECTION = 3;
-// Ribbons: where on the maypole, how long, and which colour (0 blue, 1 yellow).
+// Ribbons: where on the maypole, how long, and which colour (0 blue, 1 yellow): three from the
+// end of each arm, four from the top of the pole.
 const RIBBONS = [
-    ['armLeft', 2.5, 0], ['armLeft', 2.1, 1], ['armRight', 2.5, 1], ['armRight', 2.1, 0], ['top', 3, 0],
-    ['top', 2.6, 1],
+    ['armLeft', 2.6, 0], ['armLeft', 2.2, 1], ['armLeft', 1.8, 0],
+    ['armRight', 2.6, 1], ['armRight', 2.2, 0], ['armRight', 1.8, 1],
+    ['top', 3.3, 0], ['top', 2.9, 1], ['top', 2.5, 0], ['top', 2.1, 1],
 ];
+/** How wide a maypole ribbon is, metres. */
+const RIBBON_WIDTH = 0.1;
+/**
+ * Posies tied to the maypole, each a ball of flower heads of all seven kinds: where (an anchor
+ * of the pole, or `cross` for where the arm meets it), how far below that point, the ball's
+ * radius and how many heads it carries.
+ */
+const POSIES = [
+    ['top', 0.55, 0.3, 16], ['cross', 0, 0.36, 22], ['armLeft', 0.02, 0.24, 13], ['armRight', 0.02, 0.24, 13],
+    ['wreathLeft', 0.78, 0.17, 9], ['wreathRight', 0.78, 0.17, 9],
+];
+/** Petals to a head, and a head's radius in metres. */
+const POSY_PETALS = 6;
+const POSY_HEAD = 0.085;
+const TAU = Math.PI * 2;
 const RIBBON_STEPS = 14;
 
 const is = (code, material) => step(0.5, code.sub(material).abs()).oneMinus();
@@ -63,6 +80,12 @@ export class SummerHomestead {
          * glow a little brighter as play warms). A slow travelling wave, never a flash.
          */
         this.uFestival = uniform(0);
+        /**
+         * The maypole dancing (a twist): how far its ribbons have flown out, and where the wheel
+         * of them has turned to. The turn is summed here, so the wheel never jumps.
+         */
+        this.uWhirl = uniform(0);
+        this.uWhirlTurn = uniform(0);
         this.places = {};
     }
 
@@ -299,7 +322,7 @@ export class SummerHomestead {
             return {
                 anchor: anchor.clone().add(new THREE.Vector3(0, -0.1, 0)),
                 length,
-                width: 0.075,
+                width: RIBBON_WIDTH,
                 hue,
                 fly: 0.12,
                 taper: 0,
@@ -307,6 +330,79 @@ export class SummerHomestead {
             };
         });
         this.addStreamers(streamers, 'Summer maypole ribbons');
+        this.buildPosies(material);
+    }
+
+    /**
+     * Posies tied to the maypole: at its head, where the arm crosses it, at the arm's ends and
+     * under each wreath. Every head is one of the seven kinds, painted by the maypole's own
+     * shader, so each lights as a lantern when its piece is locked and joins the ring dance.
+     */
+    buildPosies(material) {
+        const { rng } = this;
+        const fallback = this.maypoleAnchors();
+        const read = (key) => this.anchor('maypole', key) || fallback[key];
+        const positions = [];
+        const normals = [];
+        const paints = [];
+        const out = new THREE.Vector3();
+        const side = new THREE.Vector3();
+        const lift = new THREE.Vector3();
+        const corner = new THREE.Vector3();
+        const push = (point, normal, kind, wear) => {
+            positions.push(point.x, point.y, point.z);
+            normals.push(normal.x, normal.y, normal.z);
+            // Tone is the middle of the kind's band, the code says flowers, fully lit.
+            paints.push((kind + 0.5) / BOUQUET_KINDS, 1, 1, wear);
+        };
+        POSIES.forEach(([key, drop, radius, heads], posy) => {
+            const centre = key === 'cross'
+                ? read('armLeft').clone().add(read('armRight')).multiplyScalar(0.5)
+                : read(key).clone();
+            centre.y -= drop;
+            for (let head = 0; head < heads; head += 1) {
+                // Heads spread evenly over the ball (a golden-angle spiral), each facing outward.
+                const y = 1 - (2 * (head + 0.5)) / heads;
+                const ring = Math.sqrt(Math.max(0, 1 - y * y));
+                const turn = head * 2.39996 + posy;
+                out.set(Math.cos(turn) * ring, y, Math.sin(turn) * ring);
+                const heart = centre.clone().addScaledVector(out, radius * (0.82 + 0.3 * rng()));
+                side.crossVectors(out, Math.abs(out.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0))
+                    .normalize();
+                lift.crossVectors(out, side);
+                const kind = (head + posy * 3) % BOUQUET_KINDS;
+                const size = POSY_HEAD * (0.8 + 0.5 * rng());
+                const spin = rng() * TAU;
+                for (let petal = 0; petal < POSY_PETALS; petal += 1) {
+                    const angle = spin + (petal / POSY_PETALS) * TAU;
+                    const half = Math.PI / POSY_PETALS;
+                    const at = (reach, swing, cup) => corner.copy(heart)
+                        .addScaledVector(side, Math.cos(angle + swing) * reach * size)
+                        .addScaledVector(lift, Math.sin(angle + swing) * reach * size)
+                        .addScaledVector(out, cup * size)
+                        .clone();
+                    // A petal: from the heart out to a blunt tip, cupped toward the eye.
+                    const foot = at(0.12, 0, 0);
+                    const left = at(0.7, -half * 0.8, 0.2);
+                    const right = at(0.7, half * 0.8, 0.2);
+                    const tip = at(1, 0, 0.32);
+                    [[foot, 0], [left, 0.7], [right, 0.7], [left, 0.7], [tip, 1], [right, 0.7]]
+                        .forEach(([point, wear]) => push(point, out, kind, wear));
+                }
+            }
+        });
+        const geometry = this.own(new THREE.BufferGeometry());
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+        geometry.setAttribute('color', new THREE.Float32BufferAttribute(paints, 4));
+        geometry.computeBoundingSphere();
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.name = 'Summer maypole posies';
+        mesh.castShadow = true;
+        mesh.frustumCulled = false;
+        mesh.matrixAutoUpdate = false;
+        this.group.add(mesh);
+        this.posies = mesh;
     }
 
     /** Where the bouquet is thrown from, when the pack records no anchors. */
@@ -371,9 +467,15 @@ export class SummerHomestead {
         const t = light.uTime;
         const front = saturate(this.light.frontStrength());
         const force = light.uWind.add(light.uGust.mul(1.4)).add(front).add(light.uGlow.mul(0.4));
+        // The maypole's ribbons (not the pennant) dance on a twist: each flies out from the pole
+        // on its own bearing and the whole wheel of them turns.
+        const whirl = this.uWhirl.mul(step(cloth.x, 1.5));
+        const bearing = this.uWhirlTurn.add(cloth.z.mul(1.37));
         // Still air: it hangs. Wind: it streams, and the stronger the wind the flatter it flies.
-        const lift = saturate(force.mul(0.85).add(cloth.y)).mul(1.38);
-        const wind = normalize(vec3(light.uWindDir.x, 0, light.uWindDir.z));
+        const lift = saturate(force.mul(0.85).add(cloth.y).add(whirl.mul(0.62))).mul(1.38);
+        const breeze = vec3(light.uWindDir.x, 0, light.uWindDir.z);
+        // (Never a zero vector: where the wheel points dead against the breeze the two cancel.)
+        const wind = normalize(mix(breeze, vec3(cos(bearing), 0, sin(bearing)), whirl).add(vec3(0.0007, 0, 0.0011)));
         const sideways = normalize(cross(wind, vec3(0, 1, 0)));
         const along = wind.mul(sin(lift)).add(vec3(0, -1, 0).mul(cos(lift)));
         const ripple = sin(t.mul(5.4).sub(st.y.mul(4.2)).add(cloth.z)).mul(0.5)
@@ -521,6 +623,11 @@ export class SummerHomestead {
         const flare = Math.max(unit(frame.bouquetFlash), unit(worn ? worn.sunburst : frame.sunburst) * 0.6);
         this.uFlash.value = flashScale() * flare;
         this.uFestival.value = worn ? unit(worn.fever * 0.9 + worn.level * 0.15) : 0;
+        // The dance: the ribbons fly out, and the wheel turns faster the further out they are.
+        const whirl = unit(frame.whirl) * (worn && Number.isFinite(worn.motion) ? unit(worn.motion) : 1);
+        this.uWhirl.value = whirl;
+        const passed = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.25) : 0;
+        this.uWhirlTurn.value = (this.uWhirlTurn.value + passed * whirl * (2.4 + 3.4 * whirl)) % TAU;
         const { boat } = this;
         if (!boat || !Number.isFinite(time)) return null;
         boat.position.y = Math.sin(time * 0.9) * 0.018;

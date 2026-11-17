@@ -141,7 +141,7 @@ describe('Summer quality tiers', () => {
             // Whole numbers of things, and never none of what the game throws, rings or stirs.
             for (const column of ['groveTrees', 'farTrees', 'grassNear', 'grassFar', 'flowersNear', 'flowersFar',
                 'reeds', 'rocks', 'lilies', 'petals', 'motes', 'butterflies', 'birds', 'mist', 'ripples', 'waves',
-                'godrays', 'ribbons']) {
+                'godrays', 'ribbons', 'sky']) {
                 expect(Number.isInteger(tier[column]), `${name}.${column}`).toBe(true);
             }
             for (const column of ['groveTrees', 'grassNear', 'grassFar', 'flowersNear', 'flowersFar', 'ripples',

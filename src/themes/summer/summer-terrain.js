@@ -475,8 +475,13 @@ export class SummerTerrain {
         );
         albedo = mix(albedo, petalTint, bloomMask.mul(0.85));
         // Beyond the water the land is woods: moss and needle litter under the trees.
+        // Seen from across the lake it is the canopy that shows, not the floor: dark between the
+        // crowns, lighter on their tops.
         const wooded = smoothstep(46, 96, range);
-        albedo = mix(albedo, mix(color(0x0f2409), color(0x2c4a16), fine.b), wooded.mul(0.9));
+        const crowns = light.noise(world.xz.mul(0.071));
+        const crown = smoothstep(0.34, 0.7, crowns.b.mul(0.6).add(crowns.a.mul(0.4)));
+        const canopy = mix(color(0x08170a), color(0x21401a), crown);
+        albedo = mix(albedo, canopy, wooded.mul(0.94));
         const smooth = normalize(normalWorld);
         // Granite shows through where the ground steepens; the far hills are forest floor.
         const granite = mix(color(0x55504a), color(0x9a9186), fine.a).mul(fleck.b.mul(0.4).add(0.75));
