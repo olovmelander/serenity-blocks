@@ -149,15 +149,35 @@ function rng(seed) {
 }
 
 /**
+ * How many numbers a lobe is in `planCloudSeaLobes`' rows: x, z (tile units), r (radius, tile
+ * units), top (its height, 0..1 of the relief).
+ */
+export const CLOUD_SEA_LOBE_STRIDE = 4;
+
+/**
  * The plate's lobes, in tile units (0..1 across the tile; heights 0..1 of the floor's relief):
  * the sculptor's grammar laid flat. Each mass: two or three wide low primaries, a golden-angle
  * ring of rim lobes that break its outline, and crown scallops on top.
+ *
+ * ⚠️ ROWS OF A TYPED ARRAY, NEVER OBJECTS, AND THAT IS LOAD-BEARING (2026-11-17, measured).
+ * The first cut pushed `{ x, z, r, top }` literals. A four-property literal that begins `x, z`
+ * shares its hidden class with the world's own data of that shape, whose `x` and `z` are whole
+ * numbers; these lobes' are fractions. The first plan run therefore widened that shared field's
+ * representation, which in V8 DEPRECATES the class under every object that has it, and with it
+ * the optimised code of whatever reads those objects: `odysseyWorldMacro` and the relief and
+ * macro bakes ran ~8x slower on every world build AFTER the first (the first build had planned
+ * the lobes only at its very end). Measured on three builds in a row: relief stage 1.1 s, then
+ * 3.0-3.9 s with this function alone called between builds; 1.1, 1.0, 1.0 s with the same
+ * numbers in other shapes. Numbers in a Float64Array have no hidden class to share.
+ * (Bisected with literals of other shapes: `{ lx, lz, lr, lt }` and `{ r, top, x, z }` are
+ * harmless, `{ x, z, r, top }` is not. The trap is the world's, the trigger was here.)
+ *
  * @param {number} [seed]
- * @returns {Array<{x:number, z:number, r:number, top:number}>}
+ * @returns {Float64Array} `CLOUD_SEA_LOBE_STRIDE` numbers a lobe: x, z, r, top
  */
 export function planCloudSeaLobes(seed = 20261117) {
     const rnd = rng(seed);
-    const lobes = [];
+    const rows = [];
     const GOLDEN = Math.PI * (3 - Math.sqrt(5));
     // THE FLOOR: wide low pillows that overlap into one rolling sheet, a cell in eight left open
     // (the lanes the island's sea shows through). The masses below stand on it.
@@ -169,14 +189,12 @@ export function planCloudSeaLobes(seed = 20261117) {
             const z = (j + 0.5 + ((rnd() - 0.5) * 0.6)) / F;
             const r = (0.66 + (rnd() * 0.22)) / F;
             const top = 0.24 + (rnd() * 0.18);
-            if (!open) {
-                lobes.push({
-                    x, z, r, top,
-                });
-            }
+            if (!open) rows.push(x, z, r, top);
         }
     }
     const N = 7;
+    // A mass's primaries, as flat numbers too (x, z, r, top a primary).
+    const prim = [];
     for (let i = 0; i < N; i += 1) {
         for (let j = 0; j < N; j += 1) {
             const cx = (i + 0.5 + ((rnd() - 0.5) * 0.7)) / N;
@@ -189,7 +207,7 @@ export function planCloudSeaLobes(seed = 20261117) {
             const yaw = rnd() * Math.PI;
             const cosY = Math.cos(yaw);
             const sinY = Math.sin(yaw);
-            const prim = [];
+            prim.length = 0;
             const nPrim = 2 + Math.floor(rnd() * 2);
             for (let k = 0; k < nPrim; k += 1) {
                 const lx = k === 0 ? 0 : (rnd() - 0.5) * halfW * 1.25;
@@ -198,40 +216,35 @@ export function planCloudSeaLobes(seed = 20261117) {
                 const top = tall * (k === 0 ? 1 : 0.70 + (rnd() * 0.25)) * 0.90;
                 const x = cx + ((lx * cosY) - (lz * sinY));
                 const z = cz + ((lx * sinY) + (lz * cosY));
-                prim.push({
-                    x, z, r, top,
-                });
-                lobes.push({
-                    x, z, r, top,
-                });
+                prim.push(x, z, r, top);
+                rows.push(x, z, r, top);
             }
             const nSec = 7 + Math.floor(rnd() * 4);
             for (let k = 0; k < nSec; k += 1) {
-                const host = prim[k % nPrim];
+                const host = (k % nPrim) * 4;
                 const a = (k * GOLDEN) + (rnd() * 0.35);
-                const seat = host.r * (0.70 + (rnd() * 0.26));
-                lobes.push({
-                    x: host.x + (Math.cos(a) * seat),
-                    z: host.z + (Math.sin(a) * seat * 0.8),
-                    r: halfW * (0.30 + (rnd() * 0.12)),
-                    top: host.top * (0.62 + (rnd() * 0.30)),
-                });
+                const seat = prim[host + 2] * (0.70 + (rnd() * 0.26));
+                // (the draws stay in the first cut's order: x, z, r, top, as its literal took them)
+                const x = prim[host] + (Math.cos(a) * seat);
+                const z = prim[host + 1] + (Math.sin(a) * seat * 0.8);
+                const r = halfW * (0.30 + (rnd() * 0.12));
+                const top = prim[host + 3] * (0.62 + (rnd() * 0.30));
+                rows.push(x, z, r, top);
             }
             const nTer = 4 + Math.floor(rnd() * 4);
             for (let k = 0; k < nTer; k += 1) {
-                const host = prim[k % nPrim];
+                const host = (k % nPrim) * 4;
                 const a = (k * GOLDEN * 1.7) + (rnd() * 0.4);
-                const seat = host.r * (0.15 + (rnd() * 0.45));
-                lobes.push({
-                    x: host.x + (Math.cos(a) * seat),
-                    z: host.z + (Math.sin(a) * seat * 0.8),
-                    r: halfW * (0.20 + (rnd() * 0.09)),
-                    top: host.top * (0.98 + (rnd() * 0.22)),
-                });
+                const seat = prim[host + 2] * (0.15 + (rnd() * 0.45));
+                const x = prim[host] + (Math.cos(a) * seat);
+                const z = prim[host + 1] + (Math.sin(a) * seat * 0.8);
+                const r = halfW * (0.20 + (rnd() * 0.09));
+                const top = prim[host + 3] * (0.98 + (rnd() * 0.22));
+                rows.push(x, z, r, top);
             }
         }
     }
-    return lobes;
+    return Float64Array.from(rows);
 }
 
 /** Polynomial smooth max of two heights (the melt between lobes). */
@@ -244,28 +257,41 @@ function smax(a, b, k) {
  * Bake the plate: RGBA8, R the height (0..1 of the relief), G and B its slope along x and z
  * (0.5 = level; +-1 = `SLOPE_RANGE` in relief-per-tile units), A a wide blur of the height (the
  * cover's regional field and the cast shadows' occluder). Tiles exactly (every distance wraps).
- * Pure: same bytes for the same arguments.
+ * Pure: same bytes for the same arguments, and so baked once: a later call with the same
+ * arguments returns the SAME plate (its `data` is shared by every world built this session and
+ * must never be written to).
  * @param {number} [res]
  * @param {number} [seed]
  * @returns {{data: Uint8Array, res: number, cover: number}} `cover`: the share of texels with cloud
  */
 export const CLOUD_SEA_SLOPE_RANGE = 14;
+/** The plates baked so far, by `res:seed`: a plate is the same bytes every time, so it is baked
+ * once a session and every world build after the first takes it as it is (never written to). */
+const PLATES = new Map();
+/** How many plates have been baked this session (for the test that a rebuild bakes none). */
+export const cloudSeaBakeCount = () => PLATES.size;
 export function bakeCloudSeaField(res = ODYSSEY_CLOUD_SEA.res, seed = 20261117) {
+    const key = `${res}:${seed}`;
+    const known = PLATES.get(key);
+    if (known) return known;
     const lobes = planCloudSeaLobes(seed);
-    // Lobes binned on a coarse grid (with wrap), so a texel only visits the lobes that can reach it.
+    const lobeCount = lobes.length / CLOUD_SEA_LOBE_STRIDE;
+    // Lobes binned on a coarse grid (with wrap), so a texel only visits the lobes that can reach
+    // it. A bin holds the lobes' row offsets.
     const B = 12;
     const bins = Array.from({ length: B * B }, () => []);
-    lobes.forEach((l) => {
-        const binLoX = Math.floor((l.x - l.r) * B);
-        const binHiX = Math.floor((l.x + l.r) * B);
-        const binLoZ = Math.floor((l.z - l.r) * B);
-        const binHiZ = Math.floor((l.z + l.r) * B);
+    for (let l = 0; l < lobeCount; l += 1) {
+        const o = l * CLOUD_SEA_LOBE_STRIDE;
+        const binLoX = Math.floor((lobes[o] - lobes[o + 2]) * B);
+        const binHiX = Math.floor((lobes[o] + lobes[o + 2]) * B);
+        const binLoZ = Math.floor((lobes[o + 1] - lobes[o + 2]) * B);
+        const binHiZ = Math.floor((lobes[o + 1] + lobes[o + 2]) * B);
         for (let i = binLoX; i <= binHiX; i += 1) {
             for (let j = binLoZ; j <= binHiZ; j += 1) {
-                bins[((((j % B) + B) % B) * B) + (((i % B) + B) % B)].push(l);
+                bins[((((j % B) + B) % B) * B) + (((i % B) + B) % B)].push(o);
             }
         }
-    });
+    }
     const height = new Float32Array(res * res);
     let covered = 0;
     for (let j = 0; j < res; j += 1) {
@@ -275,19 +301,20 @@ export function bakeCloudSeaField(res = ODYSSEY_CLOUD_SEA.res, seed = 20261117) 
             const bin = bins[(Math.min(Math.floor(z * B), B - 1) * B) + Math.min(Math.floor(x * B), B - 1)];
             let h = 0;
             for (let n = 0; n < bin.length; n += 1) {
-                const l = bin[n];
-                let dx = Math.abs(x - l.x);
-                let dz = Math.abs(z - l.z);
+                const o = bin[n];
+                const lr = lobes[o + 2];
+                let dx = Math.abs(x - lobes[o]);
+                let dz = Math.abs(z - lobes[o + 1]);
                 dx = Math.min(dx, Math.abs(dx - 1), Math.abs(dx + 1));
                 dz = Math.min(dz, Math.abs(dz - 1), Math.abs(dz + 1));
                 // (a lobe whose centre lies outside 0..1 wraps the other way too)
                 const ddx = Math.min(dx, 1 - Math.min(dx, 1));
                 const ddz = Math.min(dz, 1 - Math.min(dz, 1));
-                const q = ((ddx * ddx) + (ddz * ddz)) / (l.r * l.r);
+                const q = ((ddx * ddx) + (ddz * ddz)) / (lr * lr);
                 if (q < 1) {
                     // A cumulus head, not a hill: a broad round top and a steep flank (a cone's
                     // straight flanks read as snowy peaks from above, the first cut's fault).
-                    const dome = l.top * Math.sqrt(1 - (q * q));
+                    const dome = lobes[o + 3] * Math.sqrt(1 - (q * q));
                     h = h === 0 ? dome : smax(h, dome, 0.055);
                 }
             }
@@ -329,7 +356,9 @@ export function bakeCloudSeaField(res = ODYSSEY_CLOUD_SEA.res, seed = 20261117) 
             data[o + 3] = to8(blur[(j * res) + i]);
         }
     }
-    return { data, res, cover: covered / (res * res) };
+    const plate = Object.freeze({ data, res, cover: covered / (res * res) });
+    PLATES.set(key, plate);
+    return plate;
 }
 
 const smooth01 = (a, b, x) => {
@@ -420,7 +449,7 @@ function buildSeaGeometry(segments, rings) {
  * @param {((xz: object) => object)|null} [kit.cloudShadowLight] the world's drifting cloud shadows
  *   (1 = open sun) at a world place: the shadows of the cumulus above cross the floor too
  * @param {'high'|'low'} [kit.quality]
- * @returns {{mesh: THREE.Group, tops: THREE.Mesh, bed: THREE.Mesh, triangles: number,
+ * @returns {{mesh: THREE.Group, tops: THREE.Mesh, bed: THREE.Mesh, plate: THREE.DataTexture, triangles: number,
  *   update: (time: number, gather: number, shown: boolean) => void, dispose: () => void}}
  */
 export function createOdysseyCloudSea({
@@ -716,6 +745,8 @@ export function createOdysseyCloudSea({
         mesh,
         tops,
         bed,
+        /** The plate's texture (its bytes are the session's one baked plate, shared). */
+        plate,
         /** Triangles drawn: the tops and the bed share one ring. */
         triangles: triangles * 2,
         uniforms: { uGather, uDrift, uBreath },
