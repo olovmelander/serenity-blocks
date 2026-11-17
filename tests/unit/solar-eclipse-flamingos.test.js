@@ -67,11 +67,11 @@ const deformAt = (pose, b, p) => {
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
 describe('the flamingo model', () => {
-    it('decodes the mesh Blender wrote, small enough to draw by the dozen', () => {
+    it('decodes the mesh Blender wrote, lean enough to draw by the dozen (600 triangles at most)', () => {
         const m = flamingoModel();
         expect(m.positions.length).toBe(SE_FLAMINGO.vertexCount * 3);
         expect(m.index.length).toBe(SE_FLAMINGO.triangleCount * 3);
-        expect(SE_FLAMINGO.triangleCount).toBeLessThan(2500);
+        expect(SE_FLAMINGO.triangleCount).toBeLessThanOrEqual(600);
         expect(BONES).toBe(16);
         // A greater flamingo's span and its flying length, bill to toes.
         expect(SE_FLAMINGO.span).toBeGreaterThan(1.4);

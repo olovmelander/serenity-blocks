@@ -16,7 +16,10 @@ alike, are black. The theme shows it at totality against the bright band of the 
 px tall, so the shape is built for the silhouettes that name a flamingo at that size: in flight
 the long flying cross (the neck stretched straight forward, the legs trailing straight back past
 the tail, the wings beating in the middle); standing, a small body held high on two stilts with
-the neck in its S. Real size (a 1.55 m span); about 1,600 triangles.
+the neck in its S. Real size (a 1.55 m span). Nothing in the scene stands nearer than about 110 m,
+where the bird is under 30 px across, so it is cut lean: 544 triangles (an eight-sided body, the
+neck, bill and legs four-sided tubes with rings only where they bend, a wing of eight stations and
+a six-point section that still splits the coral coverts from the black flight feathers).
 
 The rig is sixteen bones: the body; four neck segments and the head; the leg (tibiotarsus) and
 shank (tarsometatarsus, the foot at its end) of each side; the arm, forearm and hand of each
@@ -315,18 +318,14 @@ def tube(b, stations, sides, look, skin, cap_start=True, cap_end=True, squash=0.
 # Body: z, half width, top, bottom, centre height (tail at the back, the neck's root in front).
 BODY = [
     (0.232, 0.030, 0.030, 0.030, 0.036),
-    (0.205, 0.058, 0.055, 0.064, 0.024),
-    (0.160, 0.088, 0.085, 0.096, 0.008),
-    (0.100, 0.106, 0.104, 0.112, 0.000),
-    (0.030, 0.113, 0.112, 0.112, -0.002),
-    (-0.045, 0.110, 0.108, 0.102, 0.002),
-    (-0.120, 0.096, 0.094, 0.082, 0.010),
-    (-0.190, 0.074, 0.070, 0.054, 0.018),
-    (-0.245, 0.048, 0.044, 0.030, 0.024),
-    (-0.290, 0.028, 0.022, 0.016, 0.028),
+    (0.170, 0.084, 0.080, 0.092, 0.011),
+    (0.080, 0.111, 0.109, 0.115, 0.000),
+    (-0.030, 0.113, 0.111, 0.107, 0.001),
+    (-0.140, 0.093, 0.091, 0.077, 0.012),
+    (-0.240, 0.050, 0.046, 0.032, 0.024),
     (-0.330, 0.012, 0.009, 0.007, 0.029),
 ]
-BODY_RING = 12
+BODY_RING = 8
 
 
 def body_colour(z, up):
@@ -354,34 +353,28 @@ def build_body(b):
 
 
 # The neck and head along z (the rest pose is the bird on the wing): z, half width, half height.
+# A ring at every joint and one between, so the S bends smoothly; the head's three at the end.
 NECK = [
-    (0.200, 0.036, 0.036), (0.235, 0.031, 0.032), (0.270, 0.025, 0.027), (0.310, 0.021, 0.023),
-    (0.355, 0.019, 0.021), (0.405, 0.018, 0.020), (0.455, 0.017, 0.019), (0.505, 0.0165, 0.0185),
-    (0.555, 0.016, 0.018), (0.605, 0.016, 0.018), (0.645, 0.016, 0.018), (0.690, 0.0165, 0.019),
-    (0.735, 0.018, 0.021), (0.765, 0.021, 0.024), (0.790, 0.025, 0.028), (0.815, 0.027, 0.029),
-    (0.840, 0.026, 0.028), (0.858, 0.022, 0.026),
+    (0.200, 0.036, 0.036), (0.262, 0.026, 0.028), (0.360, 0.019, 0.021), (0.430, 0.0175, 0.0195),
+    (0.500, 0.0165, 0.0185), (0.570, 0.016, 0.018), (0.640, 0.016, 0.018), (0.710, 0.017, 0.0195),
+    (0.776, 0.021, 0.024), (0.815, 0.027, 0.029), (0.858, 0.022, 0.026),
 ]
+TUBE_SIDES = 4
 
 
 def build_neck(b):
     stations = [((0.0, NECK_Y, z), hw, hh) for z, hw, hh in NECK]
 
     def look(i, sa):
-        z = NECK[i][0]
-        c = mix(PLUMAGE["breast"], PLUMAGE["neck"], smooth(0.22, 0.3, z))
-        # A pale eye high on the side of the head.
-        if 0.805 < z < 0.83 and 0.2 < sa < 0.7:
-            c = PLUMAGE["eye"]
-        return c
+        return mix(PLUMAGE["breast"], PLUMAGE["neck"], smooth(0.22, 0.3, NECK[i][0]))
 
-    tube(b, stations, 8, look, lambda i: neck_skin(NECK[i][0]), cap_start=True, cap_end=False)
+    tube(b, stations, TUBE_SIDES, look, lambda i: neck_skin(NECK[i][0]), cap_start=True, cap_end=False)
 
 
 # The bill: thick at its base, bent down at its middle, black from the bend (z, y, hw, hh).
 BILL = [
-    (0.852, 0.036, 0.017, 0.023), (0.880, 0.035, 0.0145, 0.020), (0.905, 0.033, 0.0125, 0.0175),
-    (0.925, 0.028, 0.011, 0.015), (0.941, 0.017, 0.0095, 0.0125), (0.951, 0.004, 0.0078, 0.010),
-    (0.956, -0.010, 0.0062, 0.0078), (0.958, -0.021, 0.0046, 0.0055),
+    (0.852, 0.036, 0.017, 0.023), (0.910, 0.032, 0.012, 0.017), (0.945, 0.012, 0.0088, 0.0115),
+    (0.958, -0.021, 0.0046, 0.0055),
 ]
 
 
@@ -389,9 +382,9 @@ def build_bill(b):
     stations = [((0.0, y, z), hw, hh) for z, y, hw, hh in BILL]
 
     def look(i, sa):
-        return PLUMAGE["billTip"] if i >= 3 else mix(PLUMAGE["bill"], PLUMAGE["billTip"], smooth(1.5, 3.0, i))
+        return PLUMAGE["billTip"] if i >= 2 else PLUMAGE["bill"]
 
-    tube(b, stations, 8, look, lambda i: ("head", "neck3", 1.0), cap_start=False, cap_end=True)
+    tube(b, stations, TUBE_SIDES, look, lambda i: ("head", "neck3", 1.0), cap_start=False, cap_end=True)
 
 
 def build_leg(b, side):
@@ -402,9 +395,8 @@ def build_leg(b, side):
     knee = (ankle - hip).length
     path = []
     # (fraction along the whole leg, half width, half height)
-    profile = [(0.00, 0.016, 0.016), (0.06, 0.013, 0.013), (0.20, 0.0105, 0.0105), (0.38, 0.0095, 0.0095),
-               (0.455, 0.013, 0.013), (0.50, 0.0105, 0.0105), (0.62, 0.0085, 0.0085), (0.80, 0.0082, 0.0082),
-               (0.88, 0.0085, 0.0085), (0.92, 0.016, 0.006), (0.97, 0.020, 0.005), (1.00, 0.012, 0.004)]
+    profile = [(0.00, 0.016, 0.016), (0.10, 0.011, 0.011), (0.40, 0.0095, 0.0095), (0.457, 0.013, 0.013),
+               (0.51, 0.0095, 0.0095), (0.88, 0.0085, 0.0085), (0.95, 0.019, 0.006), (1.00, 0.012, 0.004)]
     total = knee + (toe - ankle).length
     for f, hw, hh in profile:
         along = f * total
@@ -420,12 +412,11 @@ def build_leg(b, side):
         c = PLUMAGE["leg"]
         return mix(c, PLUMAGE["knee"], smooth(0.04, 0.0, abs(along - knee)))
 
-    tube(b, stations, 6, look, lambda i: leg_skin(path[i][3], side), cap_start=True, cap_end=True)
+    tube(b, stations, TUBE_SIDES, look, lambda i: leg_skin(path[i][3], side), cap_start=True, cap_end=True)
 
 
-# Wings: stations along the span (|x|, m), dense at the joints so the skin bends smoothly.
-STATIONS = [0.075, 0.095, 0.125, 0.165, 0.210, 0.255, 0.290, 0.325, 0.370, 0.415, 0.450, 0.470, 0.490,
-            0.530, 0.580, 0.630, 0.680, 0.720, 0.750, 0.770, 0.780]
+# Wings: stations along the span (|x|, m), one at each joint and one between.
+STATIONS = [0.075, 0.150, 0.290, 0.380, 0.470, 0.600, 0.720, 0.780]
 # Leading and trailing edges (z) along the span: long narrow wings, the hand tapering to a
 # rounded tip.
 LEADING = [(0.075, 0.140), (0.200, 0.142), (0.300, 0.138), (0.470, 0.148), (0.560, 0.124), (0.650, 0.082),
@@ -433,7 +424,8 @@ LEADING = [(0.075, 0.140), (0.200, 0.142), (0.300, 0.138), (0.470, 0.148), (0.56
 TRAILING = [(0.075, -0.062), (0.180, -0.098), (0.300, -0.106), (0.470, -0.100), (0.580, -0.090),
             (0.680, -0.070), (0.740, -0.050), (0.780, -0.026)]
 THICKNESS = [(0.075, 0.12), (0.300, 0.10), (0.470, 0.08), (0.650, 0.05), (0.780, 0.03)]
-CHORD = [0.0, 0.03, 0.11, 0.27, 0.50, 0.76, 1.0]
+# Chord fractions (leading edge 0 → trailing edge 1): the coverts end between the second and third.
+CHORD = [0.0, 0.3, 0.6, 1.0]
 WING_Y = 0.070
 
 
