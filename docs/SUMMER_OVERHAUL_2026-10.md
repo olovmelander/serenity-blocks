@@ -218,6 +218,14 @@ line up for long: with the level turning the hour as well, the picture changes a
 minute and does not repeat within a session. A weather is sixteen numbers the light rig copies
 into uniforms; nothing is rebuilt, so every tier and both backends show the same weather.
 
+| Fair evening | A fresh breeze | Towers over the hills |
+| --- | --- | --- |
+| ![fair](summer-overhaul/living-weather-fair.webp) | ![breeze](summer-overhaul/living-weather-breeze.webp) | ![towers](summer-overhaul/living-weather-towers.webp) |
+
+| Sun shower | Mist on the water | Mackerel sky |
+| --- | --- | --- |
+| ![shower](summer-overhaul/living-weather-shower.webp) | ![mist](summer-overhaul/living-weather-mist.webp) | ![mackerel sky](summer-overhaul/living-weather-mackerel.webp) |
+
 ### What was rebuilt
 
 - **The sky** ([`summer-atmosphere.js`](../src/themes/summer/summer-atmosphere.js)). Two rows of
@@ -243,6 +251,18 @@ into uniforms; nothing is rebuilt, so every tier and both backends show the same
   green-gold light on and off, and the noctilucent clouds shine over the sun.
 - **Petals.** A petal in the air is a claw that widens into a rounded blade, folded and cupped,
   paler at the claw (it was a four-cornered kite, which read as confetti).
+- **Swans.** A pair of mute swans and their cygnets glide a slow round on the open water left of
+  the maypole, mirrored in the lake, and a skein of them flies low across it: by itself every
+  few minutes, and on every level-up. The birds are modelled in Blender
+  (`scripts/blender/summer_swan.py`, headless, byte-reproducible) and shipped as a generated
+  module, [`summer-swan-model.js`](../src/themes/summer/summer-swan-model.js); the round and the
+  flight lines are found by numbers through the rest camera
+  ([`summer-swan-routes.js`](../src/themes/summer/summer-swan-routes.js)) and drawn in three
+  instanced draws ([`summer-swans.js`](../src/themes/summer/summer-swans.js)).
+
+| The white night: noctilucent clouds, glow-worms | A level-up sends the swans up |
+| --- | --- |
+| ![white night](summer-overhaul/living-white-night.webp) | ![swans](summer-overhaul/living-swans-flight.webp) |
 
 ### An effect of its own for every event
 
@@ -257,12 +277,32 @@ into uniforms; nothing is rebuilt, so every tier and both backends show the same
 | Back-to-back | A stone skips down the sun's road, ring after ring, each touch a glint, further and with more hops for every one in a row; the sun's rays answer. |
 | The bouquet | The maypole throws the bouquet, and one great flower of every colour opens over it. |
 | Perfect clear | The largest thing the evening does. Seven flowers open in the air beside the board, one after another, one for each kind: a thread of pollen climbs, and the petals of one kind are thrown from a gold heart to their places in a flower drawn in the air, five to eight great petals each made of the small ones. The air holds each for a moment and a half, then lets it fall. Six stand to either side of the board (clear of the score panel, which is measured) and the last opens over the maypole, with the sunburst and the rising meadow as before. |
-| Level up | The hour turns, and a wave of bloom rolls away from the eye through the meadow, opening and lighting every flower as it passes, and runs on across the lake as a band of sparkling water. |
+| Level up | The hour turns, and a wave of bloom rolls away from the eye through the meadow, opening and lighting every flower as it passes, and runs on across the lake as a band of sparkling water. A skein of swans takes wing over the lake. |
 | Game over | Dusk: the wind dies, mist rises off the water, the light lowers and cools while the petals come down. It lifts again when the next session starts. |
 
 Frame-wide brightenings (the rays, the hearts of the flowers) go through `flashScale()`; what
 moves the maypole's ribbons is scaled by Reduce motion. Nothing is thrown in front of the board:
 the card and the score panel are measured, and the flowers open in the strips beside them.
+
+| Perfect clear | Twist |
+| --- | --- |
+| ![perfect clear](summer-overhaul/living-perfect-clear.webp) | ![twist](summer-overhaul/living-twist.webp) |
+
+| Back-to-back | Level up |
+| --- | --- |
+| ![back-to-back](summer-overhaul/living-back-to-back.webp) | ![level up](summer-overhaul/living-level-up.webp) |
+
+### What was kept, and what was left
+
+Kept as they were: the meadow and its flowers, the cottage, the shed and the flagpole, the
+birches and spruces, the skerry, the sun's path, the haze, the five hours' palettes, the piece
+colours, the lock, the line clears and the combo's crown. The theme icon was baked again from the
+new look and set beside the old one at picker size: the old one reads better there (warmer, the
+pole larger), so it stays.
+
+Not done: a rainbow for the sun shower (the sun is ahead of the eye, so a true bow would stand
+behind it); the far ridges and the butterflies; portrait was checked, not tuned (the swans and
+the sky flowers are sited for a landscape screen first).
 
 ## How it is built
 
