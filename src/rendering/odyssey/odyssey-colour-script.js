@@ -439,11 +439,17 @@ export const ODYSSEY_ACT1_COLOUR_SCRIPT = Object.freeze([
         t: 1.00,
         name: 'crack',
         medium: 'steam',
-        skyZenith: 0x1a2630,
-        skyHorizon: 0xcfe6ff,
-        sun: 0xffb079,
-        groundLit: 0x8fa6b4,
-        groundShadow: 0x22303c,
+        // THE VENT (masterpiece pass, 2026-11-17). The crack is no longer a pale vapour that turns
+        // white and then grey: straight ahead (the "zenith" the climb looks into) is the sea's eye,
+        // blue-black; round it the steam is lit gold by the lava below; the rock of the vent's rim
+        // is black with ember in it. The picture is drawn by the steam quench and the sea vent
+        // (composition/odyssey-steam-quench.js, chapter-environments/earth-core-sea-vent.js); this
+        // keyframe is its palette.
+        skyZenith: 0x06162a,
+        skyHorizon: 0xd9822b,
+        sun: 0xffa24a,
+        groundLit: 0x3a1a0c,
+        groundShadow: 0x0b0d14,
         exposure: 1.00,
         fogDensity: 0.0040,
         wind: 0.35,

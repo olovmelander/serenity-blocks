@@ -28,6 +28,11 @@ function stubCanvasDocument() {
 // Lowered 55 -> 44 by the Act I overhaul (2026-10-20): the shaft wall and its falls (2 draws) replaced
 // the colonnade, the crossed-plane hero fall + splash, six stacked framing bundles and the chapel's
 // floating shell — 51 -> 42.
+// Raised 44 -> 45 by the masterpiece pass (2026-11-17), on purpose and by one: the sea vent at the
+// shaft's top (black smokers, their smoke, the gas and the sparks of life: 3 draws) and the lake's
+// thrown and falling matter (1 draw) replaced the magma cloud deck (1 draw, outside every frame of
+// the up-looking camera since the shaft got its wall): 42 -> 45. The owner asked for new sights; the
+// ratchet still holds everything else.
 describe('earth-core drawable budget (Wave 3b ratchet)', () => {
     it('counts drawables by family', () => {
         stubCanvasDocument();
@@ -49,7 +54,7 @@ describe('earth-core drawable budget (Wave 3b ratchet)', () => {
         );
         Object.entries(fam).sort((a, b) => b[1] - a[1])
             .forEach(([k, v]) => console.log(`  ${String(v).padStart(3)}  ${k}`));
-        expect(meshes + sprites + instanced, 'drawable ceiling — consolidate before adding').toBeLessThanOrEqual(44);
+        expect(meshes + sprites + instanced, 'drawable ceiling — consolidate before adding').toBeLessThanOrEqual(45);
         expect(meshes + sprites + instanced).toBeGreaterThan(0);
         // MATERIAL ceiling (2026-08-23). Chapter 1s pre-reveal compile barrier is ~1,850 ms over
         // these materials, and removing one is worth roughly **30 ms of fixed cost plus a term that
@@ -61,6 +66,9 @@ describe('earth-core drawable budget (Wave 3b ratchet)', () => {
         // whole materials that were never distinct in the first place.
         // Ratcheted 26 -> 25 (selenite chapel shares the node pockets molten material) -> 23 (three
         // basin coronas share one sprite material). Share an existing material before adding a new one.
-        expect(materials.size, 'material ceiling - each one costs ~30 ms + its graph').toBeLessThanOrEqual(23);
+        // 23 -> 24 (masterpiece pass, 2026-11-17): the vent's three and the lake events' one for the
+        // deck's one, 21 -> 24. Four surfaces with nothing in common to share (opaque rock, a
+        // displaced smoke tube, two instanced quad fields with different motion).
+        expect(materials.size, 'material ceiling - each one costs ~30 ms + its graph').toBeLessThanOrEqual(24);
     });
 });
