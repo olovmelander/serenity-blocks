@@ -26,12 +26,16 @@ import {
     smoother01,
 } from './transitions/odyssey-seam-schedule.js';
 import {
-    plungeTravelMeasure,
-    plungeTravelProgress,
-    plungeTravelTouches,
     resolveBlackHoleFallCamera,
     resolveBlackHoleFallExit,
 } from './transitions/odyssey-black-hole-fall.js';
+// The travel measure a trip eases in: the plunge's, with the breach's weight added to it
+// (transitions/odyssey-travel-measure.js), so a trip slows at the sea's surface as it does at the hole.
+import {
+    journeyTravelMeasure as plungeTravelMeasure,
+    journeyTravelProgress as plungeTravelProgress,
+    journeyTravelTouches as plungeTravelTouches,
+} from './transitions/odyssey-travel-measure.js';
 
 const DEFAULT_CHAPTER_POSITIONS = ODYSSEY_PATH_DATA.chapterPositions || [0, 1];
 // The progress a wheel step is walked through the scroll's pace in (odyssey-scroll-pace.js).

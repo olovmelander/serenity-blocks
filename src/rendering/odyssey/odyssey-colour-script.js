@@ -187,11 +187,15 @@ export const ODYSSEY_COLOUR_SCRIPT = Object.freeze([
         p: 0.00,
         name: 'abyss',
         medium: 'water',
-        skyZenith: 0x0a2036,
-        skyHorizon: 0x06121f,
-        sun: 0x2f5f7a,
-        groundLit: 0x143244,
-        groundShadow: 0x061420,
+        // Blue-black (masterpiece pass, 2026-11-17): the deep is dark, and the things that glow in
+        // it are its lights. The water COLUMN's own colours by depth live in the depth arc
+        // (world/odyssey-ocean-depth.js); these keyframes are what the script still drives under
+        // water: the sky seen through the surface, the shafts' light, the rail's and the orbs' fog.
+        skyZenith: 0x061426,
+        skyHorizon: 0x040c18,
+        sun: 0x2a5a80,
+        groundLit: 0x0e2a40,
+        groundShadow: 0x040e1a,
         exposure: 1.18,
         fogDensity: 0.0042,
         wind: 0.15,
@@ -201,11 +205,13 @@ export const ODYSSEY_COLOUR_SCRIPT = Object.freeze([
         p: 0.06,
         name: 'luminous-mid-water',
         medium: 'water',
-        skyZenith: 0x123a52,
-        skyHorizon: 0x1a4a6a,
-        sun: 0x4080a0,
-        groundLit: 0x1d5068,
-        groundShadow: 0x0a2432,
+        // The water the vent opens into (the journey reaches the sea at script p 0.05): a dark
+        // blue, so the eruption's glow and the quench's steam have something to burn against.
+        skyZenith: 0x0f3454,
+        skyHorizon: 0x0b2e46,
+        sun: 0x3a78a4,
+        groundLit: 0x184a64,
+        groundShadow: 0x081f2e,
         exposure: 1.12,
         fogDensity: 0.0034,
         wind: 0.22,
@@ -317,10 +323,14 @@ export const ODYSSEY_COLOUR_SCRIPT = Object.freeze([
  * brighten as the climb nears the surface. This is the multiplier on the water's IN-SCATTERED
  * light (the haze every underwater surface converges to), by the eye's depth (the world's
  * `uEyeDepth`: 0 at the surface, 1 from 140 u down). It leaves the top ~30 u untouched (the 2->3
- * breach frames and their seam gate) and is a pure function so the world, the steam quench's exit
- * colour and the whale pass all darken by the same rule.
+ * breach frames and their seam gate) and is a pure function.
+ *
+ * Since the masterpiece pass (2026-11-17) the world's own column, the whales and the visitors take
+ * their darkness from the depth arc (world/odyssey-ocean-depth.js: four waters, the abyss at 0.24);
+ * this function remains for the steam quench's exit colour, at the vent's depth, and was deepened
+ * with it (0.45 -> 0.30) so the steam clears onto the dark water that is really there.
  */
-export const DEEP_WATER_DIM = 0.45;
+export const DEEP_WATER_DIM = 0.30;
 /**
  * @param {number} eyeDepth 0..1 (0 at the surface, 1 from 140 u down)
  * @returns {number} 1 near the surface, DEEP_WATER_DIM in the deep

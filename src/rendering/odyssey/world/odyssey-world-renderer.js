@@ -72,10 +72,16 @@ import {
 import { ODYSSEY_WORLD_SUN } from '../chapter-environments/shared/chapter-profile.js';
 import {
     sampleColourScript,
-    ODYSSEY_COLOUR_SCRIPT,
     ODYSSEY_WATER_RAMP,
-    odysseyDeepWaterDim,
 } from '../odyssey-colour-script.js';
+import {
+    applyOceanClock, createOceanClock, createOceanLook, oceanClockAt, oceanDepthLook,
+} from './odyssey-ocean-depth.js';
+import {
+    SNELL_WINDOW, snellDepthLight, snellMirror, snellWindowPresence, snellWindowWorld,
+} from './odyssey-ocean-window.js';
+import { createOdysseyOceanScenery } from './odyssey-ocean-scenery.js';
+import { createOdysseyBreachBurst } from '../composition/odyssey-breach-burst.js';
 // Read-only: the 1->2 carry fades ocean life by the SAME density curve the quench veils with,
 // so a re-shaped quench cannot leave fish visible through a thinner veil.
 import { behindSteamDepth, steamQuenchDensity } from '../composition/odyssey-steam-quench.js';
@@ -497,8 +503,8 @@ const WATER_JADE = Object.freeze([0.20, 0.72, 0.60]);
  * (never replace them — the script still owns the journey's hue walk), authored bright and
  * saturated for the grade like every palette here.
  */
-const UW_LUMINOUS = Object.freeze([0.10, 0.50, 0.54]);
-const UW_INDIGO = Object.freeze([0.014, 0.026, 0.090]);
+// (2026-11-17: the two poles are the depth arc's now, one pair per water — `uWaterLum` and the
+// deep plate, written each frame from odyssey-ocean-depth.js by the eye's depth.)
 
 /**
  * THE 1->2 CARRY — embers become bubbles (seamless pass, cross-session interface).
@@ -693,20 +699,6 @@ const FIELD_FADE_FAR = 165;
 const FIELD_BREATH_AMP = 0.34;
 const FIELD_BREATH_PERIOD_MIN = 34;
 const FIELD_BREATH_PERIOD_MAX = 78;
-
-// The two fixed ends of the water banding, read ONCE from the colour script so the plates
-// and the keyframes can never drift. Sampling the script for them per frame would be three
-// more Oklab walks for values that do not change.
-const SHALLOWS_BODY = sampleColourScript(0.12).skyHorizon;
-const ABYSS_BODY = sampleColourScript(0.0).skyHorizon;
-// Where the script stops being water: the last keyframe whose medium is 'water' (today the
-// 'shallows' at 0.12 — computed, not asserted, so a script edit moves it). The MID water
-// plate tracks the live sample, and past this point the script's horizon is the breach's
-// pale AIR sky; with uSubmerged driven by the real eye, the p 0.18→0.20 ascent renders as
-// water, and an unclamped plate would paint that air INTO the water column.
-const WATER_SCRIPT_END = ODYSSEY_COLOUR_SCRIPT
-    .filter((k) => k.medium === 'water')
-    .reduce((last, k) => Math.max(last, k.p), 0);
 
 // ── bakes ────────────────────────────────────────────────────────────────────────
 
@@ -1409,7 +1401,7 @@ export function createOdysseyWorld({
     // near-surface ascent as abyss-dark water.
     const uEyeDepth = uniform(1);
     // THE DEEP IS DARK (Act I overhaul, 2026-10-20): the in-scattered light's multiplier by the
-    // eye's depth (`odysseyDeepWaterDim`), so the column is deep and dim at the vent and the
+    // eye's depth (the depth arc's `dim`), so the column is deep and dim at the vent and the
     // shafts, motes and Snell window are the lights in it. 1 near the surface (the breach).
     const uDeepDim = uniform(1);
     // 1 while the eye is AT the surface (ramping out over 6 u), 0 elsewhere — the meniscus window.
@@ -1445,11 +1437,29 @@ export function createOdysseyWorld({
     // THE 2->3 SPRAY: envelope (0 = off) and age in seconds since the eye broke the surface.
     const uSpray = uniform(0);
     const uSprayAge = uniform(0);
-    // The three water plates. Driven from the colour script's water keyframes so the ocean's
-    // depth banding and the journey's palette can never drift apart (they are the same data).
+    // The three water plates, written each frame from the depth arc (odyssey-ocean-depth.js).
     const uWaterShallow = uniform(new THREE.Color(0.29, 0.54, 0.69));
     const uWaterMid = uniform(new THREE.Color(0.10, 0.29, 0.42));
     const uWaterDeep = uniform(new THREE.Color(0.020, 0.105, 0.165));
+    // THE DEPTH ARC (odyssey-ocean-depth.js): the light the surface lets in at the eye's depth
+    // (turquoise in the shallows, a dim blue in the abyss) and how much of a well of it the
+    // zenith keeps in the dimmed column.
+    const uWaterLum = uniform(new THREE.Color(0.10, 0.50, 0.54));
+    const uWaterWell = uniform(0);
+    // ...the god rays' strength there, how much of the surface's light the water over the eye takes
+    // (per u of path), and how much of the world Snell's window shows (odyssey-ocean-window.js).
+    const uShaftGain = uniform(1);
+    const uCeilAbsorb = uniform(0);
+    const uSnellWorld = uniform(0);
+    // ALIVE ON THE CLOCK (odyssey-ocean-depth.js `oceanClockAt`): the light a passing cloud leaves
+    // the column, the surface's state (calm .. choppy; 1 out of the water, so the island's sea is
+    // its own), and the wandering plankton bloom (xyz, strength).
+    const uSeaLight = uniform(1);
+    const uSeaChop = uniform(1);
+    const uBloom = uniform(new THREE.Vector4(0, 0, 0, 0));
+    const seaClock = createOceanClock();
+    const seaClockColumn = { x: -8, z: 3, seaLevel: ODYSSEY_SEA_LEVEL };
+    const oceanLook = createOceanLook();
     /** The dawn-gold kiss the crest SSS transmits — kept OUT of the air palette on purpose. */
     const uWaterGlow = uniform(new THREE.Color(0.88, 0.75, 0.50));
     /**
@@ -1795,14 +1805,14 @@ export function createOdysseyWorld({
             const depthBelow = clamp(float(ODYSSEY_SEA_LEVEL).sub(positionWorld.y).div(160), 0, 1);
             const bandShallow = mix(uWaterShallow, uWaterMid, smoothstep(float(0.10), float(0.42), depthBelow));
             // The deep end leans INDIGO (item 4): a long water column is violet-dark, not grey-navy.
-            const deepIndigo = mix(uWaterDeep, vec3(...UW_INDIGO), 0.55);
+            const deepIndigo = uWaterDeep;
             const banded = mix(bandShallow, deepIndigo, smoothstep(float(0.45), float(0.92), depthBelow));
             // ...and in the last ~25 u under the surface the long rays converge on LUMINOUS water,
             // not mid-blue: the top metres of a sunlit sea glow. Without it the frame just under the
             // breach sat a 34-luma step below the daylight frame above it (2->3 seam gate).
             const convergePlate = mix(
                 mix(uWaterMid, deepIndigo, uEyeDepth),
-                vec3(...UW_LUMINOUS).mul(1.25),
+                uWaterLum.mul(1.25),
                 float(1).sub(smoothstep(float(0.0), float(0.18), uEyeDepth)).mul(0.8),
             );
             const bandedDir = mix(banded, convergePlate, grazing);
@@ -1813,7 +1823,7 @@ export function createOdysseyWorld({
                 // Dimmed hard with the eye's depth: the glow is the SURFACE's, so 120 u down it must
                 // sit back and let the shafts be the luminous accents (the value hierarchy) rather
                 // than wash the whole frame teal — the first capture's read.
-                vec3(...UW_LUMINOUS).mul(float(1).sub(uEyeDepth.mul(0.72))),
+                uWaterLum.mul(float(1).sub(uEyeDepth.mul(0.72))),
                 0.60,
             );
             // THE WELL OF LIGHT (Act I overhaul, 2026-10-20): in the deep the light that reaches the
@@ -1822,7 +1832,7 @@ export function createOdysseyWorld({
             const zen2 = clamp(dirY, 0, 1).mul(clamp(dirY, 0, 1));
             const zen8 = zen2.mul(zen2).mul(zen2.mul(zen2));
             const waterTarget = mix(bandedDir, glowTarget, surfaceGlow).mul(uDeepDim)
-                .add(vec3(...UW_LUMINOUS).mul(zen8.mul(float(1).sub(uDeepDim)).mul(0.42)));
+                .add(uWaterLum.mul(zen8.mul(uWaterWell).mul(0.42)));
             // Component-wise mix against the same target: the hue WALKS with distance (red gone
             // first, blue last) instead of every channel arriving together. This is what puts
             // value structure back into the frame the steam veil used to supply.
@@ -3699,10 +3709,10 @@ export function createOdysseyWorld({
     const downwelling = clamp(skyDir.y, 0, 1).pow(2.2)
         .add(smoothstep(float(-0.15), float(0.35), skyDir.y).mul(0.22));
     const skyWater = mix(
-        mix(uWaterMid, mix(uWaterDeep, vec3(...UW_INDIGO), 0.55), uEyeDepth),
+        mix(uWaterMid, uWaterDeep, uEyeDepth),
         mix(
             mix(uWaterMid, skyColourSubmergedGraze.mul(0.42), float(0.35)),
-            vec3(...UW_LUMINOUS).mul(0.85),
+            uWaterLum.mul(0.85),
             float(0.40),
         ),
         clamp(downwelling, 0, 1),
@@ -3950,7 +3960,8 @@ export function createOdysseyWorld({
     // The wind's patches roughen the chop (water pass step 4): calm lanes hold the mirror, gusts
     // break it and glitter.
     const seaGust = waterGust(positionWorld.xz).toVar();
-    const wSlope = waveSlope.add(ripple.mul(vSwellFade).mul(mix(float(0.70), float(1.45), seaGust))).toVar();
+    const wSlope = waveSlope
+        .add(ripple.mul(vSwellFade).mul(mix(float(0.70), float(1.45), seaGust)).mul(uSeaChop)).toVar();
     const wN = normalize(vec3(wSlope.x.negate(), 1, wSlope.y.negate())).toVar();
     const viewDir = normalize(cameraPosition.sub(positionWorld));
     const spec = waterSunCore(wN, viewDir);
@@ -4272,9 +4283,10 @@ export function createOdysseyWorld({
             // filled with dark blurred blades — smudges, not water. Waves that far off average
             // out; the rim keeps its ripple where the surface is near (the breach), by 3-D eye
             // distance (the column looks straight up: the horizontal range overhead is ~0).
-            const ceilDist = length(positionWorld.sub(cameraPosition));
-            const ceilN = normalize(mix(wN, vec3(0, 1, 0), smoothstep(float(40), float(180), ceilDist)));
-            const upCos = clamp(dot(viewDir.negate(), ceilN), 0, 1);
+            const ceilDist = length(positionWorld.sub(cameraPosition)).toVar();
+            const ceilN = normalize(mix(wN, vec3(0, 1, 0), smoothstep(float(40), float(180), ceilDist))).toVar();
+            const ceilIn = viewDir.negate().toVar();
+            const upCos = clamp(dot(ceilIn, ceilN), 0, 1);
             const snellWindow = smoothstep(float(0.60), float(0.72), upCos);
             // THE CAUSTIC WEB ON THE CEILING (item 4). Seen from below, a rippled surface is a
             // net of bright refracted lines, not a mottle. The lines are where the two ripple
@@ -4324,20 +4336,59 @@ export function createOdysseyWorld({
                     // into long loops across the ceiling (seen from just under the breach).
                     .mul(snellWindow.mul(0.85).add(0.15)));
             });
-            const windowSky = skyColourSubmergedUp.mul(1.30)
+            // THE WORLD IN THE WINDOW (odyssey-ocean-window.js): near the surface the window holds
+            // the sky, its cloud, the sun's glare and the island along its rim, refracted through
+            // the ripples; from deeper it is the flat glow it was. The land march is the High tier's.
+            const windowFlat = skyColourSubmergedUp.mul(1.30).toVar();
+            const windowWorld = snellWindowWorld({
+                incident: ceilIn,
+                normal: ceilN,
+                at: positionWorld,
+                flat: windowFlat,
+                presence: uSnellWorld,
+                time: uTime,
+                sunDir: uSunDir,
+                sunColour: uSunColour,
+                skyAt: skyAirAt,
+                noiseTex: detailTex,
+                march: q.waterReflections ? (P, R) => waterMarchLand(P, R, {
+                    heightAt: (xz) => {
+                        const m = texture(macroTex, waterPlateUv(xz)).level(0);
+                        return m.r.add(texture(heightTex, waterPlateUv(xz)).level(0).r.mul(m.g));
+                    },
+                    ...SNELL_WINDOW.march,
+                }) : null,
+                landLit: waterLandLit,
+            });
+            const windowSky = windowWorld
                 .add(vec3(1, 0.96, 0.88).mul(spec).mul(1.2))
-                .add(vec3(...UW_LUMINOUS).mul(0.6).add(vec3(0.26, 0.32, 0.30)).mul(ceilLines.mul(0.5)));
+                .add(uWaterLum.mul(0.6).add(vec3(0.26, 0.32, 0.30)).mul(ceilLines.mul(0.5)));
             // THE SURFACE FLOODS WITH LIGHT AS YOU REACH IT (2->3 seam). Seen from deep below, the
             // ceiling outside Snell's window is the dark total-internal-reflection body; over the
             // last ~25 u it becomes a bright, wavering lid — and without that the breach was a 37-luma
             // jump from a dark TIR frame straight into daylight (the seam gate's worst step).
             // uEyeDepth is a uniform, so this is two mixes on the ceiling, no branch.
+            // ...and that lid is a MIRROR of the water below (total internal reflection): each
+            // swell and ripple facet turns a different depth of it toward the eye, so the lid moves
+            // as the sea does instead of lying flat (`snellMirror`).
+            const tirMirror = snellMirror({
+                incident: ceilIn,
+                // (A calmer normal than the window's: a steep facet would show the deep plate as a
+                // dark stain on the lid.)
+                normal: normalize(mix(ceilN, vec3(0, 1, 0), 0.55)),
+                near: uWaterLum.mul(1.18).add(windowFlat.mul(0.16)),
+                mid: uWaterMid.mul(1.05),
+                deep: uWaterDeep.mul(1.2),
+            }).add(uWaterLum.mul(0.6).add(vec3(0.26, 0.32, 0.30)).mul(ceilLines.mul(0.35)));
             const tirBody = mix(
                 mix(uWaterMid, uWaterDeep, uEyeDepth).mul(0.6),
-                windowSky.mul(0.74),
+                tirMirror,
                 float(1).sub(smoothstep(float(0.0), float(0.18), uEyeDepth)).mul(0.85),
             );
+            // The water over the eye takes the surface's light on the way down (the depth arc's
+            // `overhead`): from the abyss the window is a far, soft well, brightest straight up.
             const underside = mix(tirBody, windowSky, snellWindow)
+                .mul(snellDepthLight(ceilDist, uCeilAbsorb).mul(uSeaLight))
                 .add(uWaterGlow.mul(sss).mul(0.55));
             // THE BREACH, PER FRAGMENT (seamless pass, 2->3). Inside the 14 u band both regimes
             // run, and this used to cross-dissolve the WHOLE plane by the eye's uSubmerged — at
@@ -5388,6 +5439,7 @@ export function createOdysseyWorld({
             .mul(rayBreath)
             .mul(uSubmerged)
             .mul(uLife)
+            .mul(uShaftGain)
             // 0.52 -> 0.62: the streaked shimmer's mean sits ~a quarter under the simplex's.
             .mul(0.62)
             .toVar();
@@ -5556,7 +5608,12 @@ export function createOdysseyWorld({
         // Item 4: ~3 % of motes are BIOLUMINESCENT — three times the size, a warmer cyan, and
         // slow to pulse — the rare larger glows that make a column of specks read as alive.
         const mGlow = tslStep(0.97, fract(mS.mul(7.13)));
-        const moteSize = mS.mul(0.6).add(0.5).mul(mGlow.mul(2.0).add(1));
+        // THE PLANKTON BLOOM (the sea's clock): where the wandering patch lies, the specks flare.
+        const vBloom = varying(
+            uBloom.w.mul(float(1).sub(smoothstep(float(9), float(46), length(moteDrift.sub(uBloom.xyz))))),
+            'vMoteBloom',
+        );
+        const moteSize = mS.mul(0.6).add(0.5).mul(mGlow.mul(2.0).add(1)).mul(vBloom.mul(0.7).add(1));
         // Droplets: FINE spray (2-6 cm) — at 2-8 u ahead of the lens that is a 5-15 px sparkle;
         // the first cut's 16 cm beads read as snowballs.
         const spraySize = fract(mS.mul(29.3)).mul(0.04).add(0.02);
@@ -5613,7 +5670,8 @@ export function createOdysseyWorld({
                 .mul(mDepth.mul(0.9).add(0.35))
                 // In a shaft it catches the light; between the shafts it sits back.
                 .mul(float(0.5).add(vShaftLit.mul(2.3)))
-                .add(vec3(0.20, 0.95, 0.88).mul(vWake).mul(0.7)),
+                .add(vec3(0.20, 0.95, 0.88).mul(vWake).mul(0.7))
+                .add(vec3(0.26, 1.0, 0.46).mul(vBloom).mul(1.1)),
             vec3(0.42, 1.0, 0.84),
             mGlow,
         );
@@ -5635,7 +5693,8 @@ export function createOdysseyWorld({
             .mul(mEnds)
             // Sinkers sit out the carry (the bubbles rise alone), then join the snow.
             .mul(float(1).sub(mSink.mul(uQuench)))
-            .mul(vWake.mul(0.8).add(1));
+            .mul(vWake.mul(0.8).add(1))
+            .mul(vBloom.mul(1.5).add(1));
         // Each droplet has its own life inside the burst (0.9-1.8 s) and fades over its last half.
         const sLifeT = clamp(uSprayAge.div(fract(mS.mul(11.1)).mul(0.9).add(0.9)), 0, 1);
         const sprayAlpha = mDot.mul(uSpray).mul(float(1).sub(smoothstep(float(0.55), float(1.0), sLifeT))).mul(0.85);
@@ -5753,7 +5812,7 @@ export function createOdysseyWorld({
         const kSwayX = sin(uTime.mul(0.55).add(kA.x).add(kY.mul(2.4))).mul(kA.y.mul(0.07)).mul(kBend);
         const kSwayZ = sin(uTime.mul(0.37).add(kA.x.mul(1.7)).add(kY.mul(3.1))).mul(kA.y.mul(0.045)).mul(kBend);
         kelpMat.positionNode = positionLocal.add(vec3(kSwayX, 0, kSwayZ));
-        const kAlbedo = mix(vec3(0.12, 0.15, 0.06), vec3(0.40, 0.44, 0.15), kY);
+        const kAlbedo = mix(vec3(0.085, 0.11, 0.04), vec3(0.27, 0.32, 0.085), kY);
         const kDown = clamp(formNormal.y.mul(0.5).add(0.5), 0, 1);
         // Seen from below, a frond glows: the surface light comes THROUGH the blade.
         const kBack = smoothstep(float(0.15), float(0.75), formEye.negate().y).mul(kY);
@@ -5780,6 +5839,35 @@ export function createOdysseyWorld({
         kelpMesh.name = 'odyssey-world-kelp';
         group.add(kelpMesh);
     }
+    // ── THE ISLAND'S UNDERWATER FLANK (masterpiece pass, 2026-11-17) ──────────────────────
+    // The kelp tower, the sea stacks, the coral and the forest on the slope every orb's close-up
+    // looks at (odyssey-ocean-reef.js plants them, odyssey-ocean-scenery.js draws them): two
+    // static draws in the world's own water haze, behind the 1->2 steam like the spires.
+    const oceanScenery = openWater.length > 2 ? createOdysseyOceanScenery({
+        heightAt: (x, z) => relief.sample(x, z),
+        rail: openWater,
+        seaLevel: ODYSSEY_SEA_LEVEL,
+        quality,
+        uTime,
+        noiseTex: detailTex,
+        haze: (c, wpos) => applyAerial(c, wpos, AERIAL_CEIL_WATER, 1, false, formLifeHaze),
+        grade: toOutput,
+        depthNode: behindSteamDepth,
+        gradeLight: (c) => toOutputFaded(c, float(0)),
+        sun: ODYSSEY_WORLD_SUN,
+        sunColour: uSunColour,
+        uLife,
+    }) : null;
+    if (oceanScenery) group.add(oceanScenery.group);
+    // THE BREACH (composition/odyssey-breach-burst.js): the crown of water, the sheet running off
+    // the lens and the light flooding in when the eye breaks the surface; bubbles when it dives.
+    const breachBurst = openWater.length > 2 ? createOdysseyBreachBurst({
+        seaLevel: ODYSSEY_SEA_LEVEL,
+        noiseTex: detailTex,
+        gradeLight: (c) => toOutputFaded(c, float(0)),
+        quality,
+    }) : null;
+    if (breachBurst) group.add(breachBurst.group);
 
     // ── forest ──
     // MEASUREMENT LEVER (see the `forest` option). When off, the scatter never runs, so no
@@ -6908,18 +6996,7 @@ export function createOdysseyWorld({
             uSunColour.value.setRGB(...cs.sun);
             uShadowTint.value.setRGB(...cs.groundShadow);
             uAerialK.value = cs.fogDensity;
-            // The depth plates come from the SCRIPT, not from constants beside it: shallow is
-            // the shallows keyframe's body, mid is this sample's own body, deep is the abyss.
-            // One table owns the ocean's colour, so a palette edit cannot desync the banding.
-            // The MID plate's sample is clamped to the script's last WATER keyframe: past it
-            // the horizon belongs to the breach's air sky, and the plates may never leave the
-            // water table (see WATER_SCRIPT_END above).
-            const csWater = scriptP > WATER_SCRIPT_END
-                ? sampleColourScript(WATER_SCRIPT_END)
-                : cs;
-            uWaterShallow.value.setRGB(...SHALLOWS_BODY);
-            uWaterMid.value.setRGB(...csWater.skyHorizon);
-            uWaterDeep.value.setRGB(...ABYSS_BODY);
+            // (The water's depth plates are written below with the depth arc, by the eye's depth.)
             uExposure.value = cs.exposure;
             const fogScale = (applyExposure ? cs.exposure : 1) * outputScale;
             const fogR = cs.skyHorizon[0] * fogScale;
@@ -6958,7 +7035,24 @@ export function createOdysseyWorld({
             const optics = antisolarSchedule(actP);
             uBow.value = optics.bow * (1 - uSubmerged.value);
             uShowerVeil.value = optics.veil * (1 - uSubmerged.value);
-            uDeepDim.value = odysseyDeepWaterDim(uEyeDepth.value);
+            // THE DEPTH ARC: the column's plates, its light and its darkness are the eye's depth's
+            // (odyssey-ocean-depth.js), so the abyss is blue-black and the shallows turquoise.
+            oceanDepthLook(ODYSSEY_SEA_LEVEL - submergedRefY, oceanLook);
+            // ...under the sea's own weather: cloud over the sun, the surface's state, the bloom.
+            oceanClockAt(time, seaClockColumn, seaClock);
+            applyOceanClock(oceanLook, seaClock);
+            uSeaLight.value = seaClock.light;
+            uSeaChop.value = 1 + ((seaClock.chop - 1) * uSubmerged.value);
+            uBloom.value.set(seaClock.bloom[0], seaClock.bloom[1], seaClock.bloom[2], seaClock.bloom[3]);
+            uWaterShallow.value.setRGB(...oceanLook.shallow);
+            uWaterMid.value.setRGB(...oceanLook.mid);
+            uWaterDeep.value.setRGB(...oceanLook.deep);
+            uWaterLum.value.setRGB(...oceanLook.luminous);
+            uWaterWell.value = oceanLook.well;
+            uShaftGain.value = oceanLook.shafts;
+            uCeilAbsorb.value = oceanLook.overhead;
+            uSnellWorld.value = uSubmerged.value > 0.001 ? snellWindowPresence(oceanLook.depth) : 0;
+            uDeepDim.value = oceanLook.dim;
             // Scene fog (the rail, the orbs) dims with the water it stands in, or the far rail
             // would fade to a brighter blue than the deep around it.
             fogState.color.multiplyScalar(1 - ((1 - uDeepDim.value) * uSubmerged.value));
@@ -7080,6 +7174,8 @@ export function createOdysseyWorld({
             }
             if (spireMesh) spireMesh.visible = uSubmerged.value > 0.001 && lifeOn;
             if (kelpMesh) kelpMesh.visible = uSubmerged.value > 0.001 && lifeOn;
+            if (oceanScenery) oceanScenery.update(oceanLook, uSubmerged.value > 0.001 && lifeOn);
+            if (breachBurst) breachBurst.update(time, viewCamera?.position ?? null);
             const forestDrawable = uSubmerged.value < 0.999 && !earthCovers;
             for (let i = 0; i < treeMeshes.length; i += 1) {
                 const c = treeMeshes[i].userData.centre;
@@ -7113,6 +7209,8 @@ export function createOdysseyWorld({
             if (jellyfish) jellyfish.dispose();
             if (spireMat) spireMat.dispose();
             if (kelpMat) kelpMat.dispose();
+            if (oceanScenery) oceanScenery.dispose();
+            if (breachBurst) breachBurst.dispose();
             if (moteMesh) moteMesh.geometry.dispose();
             if (rayMesh) rayMesh.geometry.dispose();
             [heightTex, sunVisTex, groundTex, detailTex, macroTex, summitTex, forestShadeTex, leafAtlasTex,
