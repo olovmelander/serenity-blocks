@@ -55,9 +55,12 @@ import {
     HOURS,
     HOUR_SECONDS,
     HUSH_HOLD,
+    MOON,
+    METEOR_SLOTS,
     NOISE_SIZE,
     PALETTE_KEYS,
     PALETTE_SCALARS,
+    PULSE_SPEED,
     RING_LIVE,
     RING_SLOTS,
     SPIRIT,
@@ -107,13 +110,21 @@ import {
 import { createSpirit } from './stillwater-spirit.js';
 import { createTroll } from './stillwater-troll.js';
 import { KNEEL_AT, StillwaterStory, spiritPathPoint } from './stillwater-story.js';
-import { arcAt, boatAt, skipAt } from './stillwater-life.js';
+import {
+    PLACES, arcAt, boatAt, skipAt,
+} from './stillwater-life.js';
 import {
     createDrops, createEyes, createFireflies, createHeartOrb, createMist, createSparks, createVeil, createWisps,
 } from './stillwater-fx.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './stillwater-composition.js';
+import {
+    ELK, FLIGHT, PILLAR, createBirds, createElk, createLampGlow, createPillars, createRain,
+} from './stillwater-air.js';
+import {
+    AIRS, VISITOR_SPAN, airAt, nightHash, visitorsBetween,
+} from './stillwater-night.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { drainSteps } from '../shared/build-steps.js';
 import { GameplaySurge, SURGE_WEIGHTS, Swell } from '../shared/gameplay-surge.js';
@@ -141,6 +152,10 @@ export const HOUR_TURN = 3.2;
 const WAKE_EVERY = 0.55;
 /** Seconds the little boat of light takes to rise from the water into her hands. */
 const BOAT_RISE = 1.2;
+/** Seconds between the lights the two send each other over the water as a clear's lights come home. */
+const ECHO_EVERY = 7;
+/** Seconds her light takes to come into his lantern (and, at the end, to leave it). */
+const RELIT_TURN = 2.2;
 /** The ring across the picture: how fast it fades, and how long it is still on screen. */
 const SHOCK_FADE = 0.75;
 const SHOCK_CROSS = 0.8;
@@ -148,7 +163,11 @@ const SHOCK_CROSS = 0.8;
 const PARTS = [
     'sky', 'water', 'ground', 'boulders', 'trunks', 'crowns', 'boughs', 'fringe', 'saplings', 'ferns', 'reeds', 'pads',
     'lilies', 'caps', 'spirit', 'troll', 'mist', 'veil', 'eyes', 'fireflies', 'wisps', 'drops', 'sparks', 'orb',
+    'rain', 'birds', 'elk', 'lampGlow', 'pillars',
 ];
+
+/** Parts that are hidden until their moment (the weather's rain, a visitor, four lines' pillars). */
+export const WAITING_PARTS = Object.freeze(['rain', 'birds', 'elk', 'pillars']);
 
 /** The troll's path: his seat to the shallows (for reading how far he has come). */
 const TROLL_PATH = Math.hypot(TROLL.shallows[0] - TROLL.home[0], TROLL.shallows[2] - TROLL.home[2]);
@@ -227,6 +246,13 @@ export class StillwaterWorld {
         this._lookW = [0, 0, 0];
         this._lookS = [0, 0, 0];
         this.story = new StillwaterStory();
+        /** The night's own weather now (stillwater-night.js), and an air to hold it on (captures). */
+        this.air = airAt(0);
+        this.airHold = null;
+        /** Whether the night's visitors come by the clock (captures may ask for none). */
+        this.visitorsOn = true;
+        this._visitors = [];
+        this._only = null;
         this._clear = null;
         this._palette = paletteAt(0);
         /** The night moves on by itself (captures of one hour hold it still). */
@@ -299,10 +325,34 @@ export class StillwaterWorld {
          * hands or his, one sent across the water, one let go, a little boat of light. Each is
          * the life's own event object (its length may change after it begins).
          */
+        /** What the bigger moments set off: pillars of tarnfire, the moon's ring, a whirl on the water. */
+        this.pillarsAt = { time: -100, strength: 0, pale: 0 };
+        this.moonRingAt = { time: -100, strength: 0 };
+        this.whirlAt = {
+            x: 0, z: -5, time: -100, strength: 0, rgb: [1, 1, 1],
+        };
+        /** The night's visitors: stars falling, wings in the sky, the elk in the far shallows. */
+        this.meteors = [];
+        this.flightAt = { time: -100, kind: 0, seed: 0 };
+        this.elkVisit = { time: -100, seed: 0 };
+        this.elkRing = -100;
+        this._nightFrom = time;
         this.lifeLights = [];
         /** Glows the life lends them: the lantern trimmed, her song. [{ who, start, length, amount }] */
         this.lifeGlows = [];
         this.boatWake = -10;
+        /** How far each one's light lies out on the water (eased), and how strongly the two braid. */
+        this.reachS = 0.2;
+        this.reachT = 0.2;
+        this.braid = 0;
+        /** The pulse of light each last sent over the water: { time, strength }. */
+        this.pulses = { spirit: { time: -100, strength: 0 }, troll: { time: -100, strength: 0 } };
+        /** Pulses still to be sent: { who, time, strength } (a figure sends one at a time). */
+        this.pulseQueue = [];
+        this.lastEcho = -100;
+        /** Her light in his lantern after a visit: { start, length }, and how much of it now (0..1). */
+        this.relit = { start: -1000, length: 0 };
+        this.relitNow = 0;
         this.story?.reset(time);
         this.resetFigures();
         this.lastLanding = null;
@@ -350,6 +400,14 @@ export class StillwaterWorld {
                 /** Back to back: the lantern blazes and their lights run out toward each other. */
                 flare: new Swell({
                     attack: 0.08, release: 1.6, ceiling: 2, knee: 1.2,
+                }),
+                /** Three lines: the moon's shafts stand between the trunks a moment. */
+                beams: new Swell({
+                    attack: 0.25, release: 1.5, ceiling: 1.2, knee: 0.9,
+                }),
+                /** The run ended: the night's lights sink low a while, and come back. */
+                dusk: new Swell({
+                    attack: 0.6, release: 2.8, ceiling: 1, knee: 0.8,
                 }),
             };
             this.play = new GameplaySurge();
@@ -460,6 +518,16 @@ export class StillwaterWorld {
         this.sparks = createSparks(u, tier.sparks);
         this.addPart('sparks', this.sparks, air);
         this.addPart('orb', createHeartOrb(u), air);
+        // ── The night's own weather, and who comes by (drawn only while they are there) ──
+        if (tier.rain > 0) this.addPart('rain', createRain(u, tier.rain));
+        this.addPart('birds', createBirds(u, tier.birds), air);
+        this.addPart('elk', createElk(u), air);
+        this.addPart('lampGlow', createLampGlow(u), air);
+        this.addPart('pillars', createPillars(u), air);
+        // (Each of these is drawn only while it is there: none of them costs a rest frame anything.)
+        WAITING_PARTS.forEach((name) => {
+            if (this.parts[name]) this.parts[name].mesh.visible = false;
+        });
         yield 'air';
 
         this.applySqueeze();
@@ -508,8 +576,10 @@ export class StillwaterWorld {
     /** Draw only the named parts (captures, bisecting a look). */
     showOnlyParts(names) {
         const keep = new Set(names);
+        this._only = keep;
         Object.keys(this.parts).forEach((name) => {
-            this.parts[name].mesh.visible = keep.has(name);
+            // (What waits for its moment stays hidden until then: the frame shows it when it comes.)
+            this.parts[name].mesh.visible = keep.has(name) && !WAITING_PARTS.includes(name);
         });
     }
 
@@ -538,12 +608,149 @@ export class StillwaterWorld {
         this.troll?.setSqueeze(this.squeeze);
         // The giants' boughs fringe a wide frame; drawn in over a tall one they would hang across it.
         this.parts.fringe?.mesh.scale.setScalar(this.squeeze > 0.85 ? 1 : 0);
-        moonFor(this.aspect, this._moon);
+        // The elk stands far out in the left bank's shallows, turned to the viewer's eye.
+        const elk = this.parts.elk?.mesh;
+        if (elk) {
+            elk.position.set(ELK.at[0] * this.squeeze, -ELK.wade, ELK.at[1]);
+            elk.rotation.y = Math.atan2(EYE.x - elk.position.x, EYE.z - elk.position.z);
+            elk.updateMatrixWorld(true);
+        }
+        if (this.u) this.u.squeeze.value = this.squeeze;
+        this.applyMoon();
+    }
+
+    /** Where the moon stands now: the hour says how high (it climbs and sinks as the night turns). */
+    applyMoon() {
+        moonFor(this.aspect, this._moon, (this._palette.moonEl ?? MOON.elevation / DEG) * DEG);
         skyDirection(this._moon.azimuth, this._moon.elevation, this._moonDir);
         if (!this.u) return;
-        this.u.squeeze.value = this.squeeze;
         this.u.moonDir.value.set(this._moonDir[0], this._moonDir[1], this._moonDir[2]);
         this.u.moonAz.value = this._moon.azimuth;
+    }
+
+    /** Hold the night's weather on one air (captures), or null to let its clock turn it. */
+    setAirHold(name) {
+        this.airHold = name && AIRS[name] ? name : null;
+    }
+
+    /** Let the night's visitors come by its clock (the default), or only when cued (captures). */
+    setVisitors(on) {
+        this.visitorsOn = on !== false;
+    }
+
+    /**
+     * One of the night's visitors comes at `time`: 'fish' (a rise: a ring and a splash), 'star'
+     * (one falls over the wood), 'shower' (a rain of them), 'owl' (across the moon), 'flock' (out
+     * of the far wood), 'elk' (down to the far shallows to drink).
+     */
+    visitor(kind, time = this.time, seed = 0.5) {
+        const pal = this._palette;
+        if (kind === 'fish') {
+            // Somewhere out on the open water beside the board, left or right.
+            const side = seed < 0.5 ? -1 : 1;
+            const sx = side < 0 ? lerp(0.1, 0.34, (seed * 7.3) % 1) : lerp(0.72, 0.92, (seed * 7.3) % 1);
+            const hit = this.screenToWater(sx, lerp(0.52, 0.66, (seed * 3.7) % 1), [0, 0, 0]);
+            const at = hit && this.onWater(hit[0], hit[2], 0.6) ? hit : [side * 3.4 * this.squeeze, 0, -8];
+            this.ring(at[0], at[2], time, 0.5, pal.crest, 0.75);
+            this.ring(at[0], at[2], time + 0.28, 0.26, pal.crest, 0.5);
+            this.sparks?.emit({
+                at: [at[0], 0.02, at[2]],
+                n: Math.max(3, Math.round(8 * this.sparkShare())),
+                rgb: pal.crest,
+                time,
+                vel: [0, 1.5, 0],
+                spread: 0.7,
+                life: [0.35, 0.75],
+                size: 0.05,
+                splash: true,
+            });
+        } else if (kind === 'star') {
+            this.meteor(time, seed, 1);
+        } else if (kind === 'shower') {
+            for (let i = 0; i < METEOR_SLOTS; i++) {
+                this.meteor(time + i * 0.42 + nightHash(i, 5) * 0.2, (seed + i * 0.381) % 1, 1.25);
+            }
+        } else if (kind === 'owl' || kind === 'flock') {
+            this.flightAt.time = time;
+            this.flightAt.kind = kind === 'flock' ? 1 : 0;
+            this.flightAt.seed = seed;
+        } else if (kind === 'elk') {
+            this.elkVisit.time = time;
+            this.elkVisit.seed = seed;
+            this.elkRing = time + ELK.lower[1];
+            // The two see it, and watch it a while.
+            const at = [ELK.at[0], 1.9, ELK.at[1]];
+            ['troll', 'spirit'].forEach((who, i) => this.story.looks.push({
+                who, at, from: time + 7 + i * 1.3, until: time + 12.5 + i, key: 'elk', weight: 0.74,
+            }));
+        }
+    }
+
+    /** A star falls: from high in the sky down and across, on the left of the picture or the right. */
+    meteor(time, seed, bright = 1) {
+        const side = (seed * 5.17) % 1 < 0.5 ? -1 : 1;
+        // (In the strip of sky the frame shows: under its top edge, over the far wood.)
+        const az = side * lerp(0.2, 0.56, (seed * 3.31) % 1);
+        const el = lerp(0.25, 0.315, (seed * 9.7) % 1);
+        const run = lerp(0.2, 0.36, (seed * 13.1) % 1) * ((seed * 2.3) % 1 < 0.5 ? -1 : 1);
+        if (this.meteors.length >= METEOR_SLOTS) this.meteors.shift();
+        this.meteors.push({
+            az,
+            el,
+            time,
+            life: lerp(0.8, 1.25, (seed * 17.9) % 1),
+            daz: run,
+            del: -lerp(0.07, 0.12, (seed * 4.9) % 1),
+            bright,
+        });
+    }
+
+    /** The night's weather and visitors at `t`: who comes now, and what is drawn of them. */
+    stepNight(t) {
+        const { u } = this;
+        if (this.visitorsOn && t > this._nightFrom) {
+            const list = visitorsBetween(this._nightFrom, t, this._visitors);
+            for (let i = 0; i < list.length; i++) {
+                // (The elk is not cut short by a second one, nor the owl by a flight already up.)
+                const v = list[i];
+                const busy = (v.kind === 'elk' && t - this.elkVisit.time < VISITOR_SPAN.elk)
+                    || (v.kind === 'owl' && t - this.flightAt.time < VISITOR_SPAN.owl);
+                if (!busy) this.visitor(v.kind, v.time, v.seed);
+            }
+        }
+        this._nightFrom = t;
+        // Stars falling.
+        let live = 0;
+        for (let i = this.meteors.length - 1; i >= 0; i--) {
+            if (t > this.meteors[i].time + this.meteors[i].life + 0.2) this.meteors.splice(i, 1);
+        }
+        for (let i = 0; i < this.meteors.length && live < METEOR_SLOTS; i++) {
+            const m = this.meteors[i];
+            u.meteorRows[live * 2].set(m.az, m.el, m.time, m.life);
+            u.meteorRows[live * 2 + 1].set(m.daz, m.del, m.bright, 0);
+            live += 1;
+        }
+        u.counts.value.w = live;
+        // Wings, the elk and the rain are drawn only while they are there.
+        const shown = (name) => !this._only || this._only.has(name);
+        const f = this.flightAt;
+        u.flight.value.set(f.time, f.kind, f.seed, 0);
+        const flying = t >= f.time && t - f.time < (f.kind ? FLIGHT.flockSpan + 2 : FLIGHT.owlSpan);
+        if (this.parts.birds) this.parts.birds.mesh.visible = flying && shown('birds');
+        const e = this.elkVisit;
+        u.elk.value.set(e.time, e.seed, 0, 0);
+        const here = t >= e.time && t - e.time < VISITOR_SPAN.elk;
+        if (this.parts.elk) this.parts.elk.mesh.visible = here && shown('elk');
+        if (here && this.parts.elk && t >= this.elkRing && t - e.time < ELK.lift[0]) {
+            // It drinks: rings run out from its muzzle.
+            this.elkRing = t + 1.5;
+            const m = this.parts.elk.mesh;
+            const c = Math.cos(m.rotation.y);
+            const s = Math.sin(m.rotation.y);
+            const reach = 1.8 * ELK.size;
+            this.ring(m.position.x + c * reach, m.position.z - s * reach, t, 0.3, this._palette.crest, 0.9);
+        }
+        if (this.parts.rain) this.parts.rain.mesh.visible = this.air.rain > 0.01 && shown('rain');
     }
 
     /** Radians one pixel subtends: the sky function draws its own edges with it. */
@@ -590,6 +797,54 @@ export class StillwaterWorld {
         this.story.setKin(kin);
     }
 
+    /** Hold their lights' reach on the water at [hers, his, braid] (captures); null lets the story have it. */
+    setReachHold(hold) {
+        this._reachHold = Array.isArray(hold) && hold.length >= 3 ? hold.map(Number) : null;
+    }
+
+    /**
+     * One of the two sends a pulse of light out over the water at `time` (it crosses the tarn at
+     * PULSE_SPEED; the other's light answers when it arrives: see stillwater-story.js).
+     */
+    sendPulse(who, time = this.time, strength = 1) {
+        const sender = who === 'troll' ? 'troll' : 'spirit';
+        this.pulseQueue.push({ who: sender, time, strength });
+        if (this.pulseQueue.length > 12) this.pulseQueue.shift();
+        // The other turns to it as it comes over the water.
+        const arrives = time + this.pulseTravel();
+        this.story.glanceAt(sender === 'troll' ? 'spirit' : 'troll', arrives - 1.2, arrives + 1.6, 0.66);
+    }
+
+    /** Seconds a pulse takes from one of them to the other, where they stand now. */
+    pulseTravel() {
+        const h = this._heartOf;
+        const l = this._lantern;
+        return Math.hypot(h[0] - l[0], h[2] - l[2]) / PULSE_SPEED;
+    }
+
+    /**
+     * How much brighter `who` burns for the pulses: their own as they send it (a flare that dies
+     * away), and the other's as it reaches them (they answer it with a glow).
+     */
+    pulseGlow(who, t) {
+        const mine = this.pulses[who];
+        const theirs = this.pulses[who === 'troll' ? 'spirit' : 'troll'];
+        let glow = 0;
+        const age = t - mine.time;
+        if (age >= 0) glow += 0.75 * mine.strength * Math.exp(-age / 1.1);
+        const since = t - theirs.time - this.pulseTravel();
+        if (since > -0.6 && since < 3) glow += 0.4 * theirs.strength * Math.exp(-((since - 0.2) ** 2) / 0.9);
+        return glow;
+    }
+
+    /** How much of her light his lantern burns with now (0..1): a visit leaves it there a long while. */
+    relitAt(t) {
+        const r = this.relit;
+        const age = t - r.start;
+        if (age < 0 || age > r.length) return 0;
+        return smooth(0, RELIT_TURN, age) * (1 - smooth(r.length - 12, r.length, age));
+    }
+
     /** Begin one of their scenes at `time` (captures): whatever they were doing gives way. */
     cueScene(name, time) {
         this.story.life.cue(name, time);
@@ -627,6 +882,8 @@ export class StillwaterWorld {
         if (this.combo > 0) this.onCombo(0);
         this.story.onEnd(this.time);
         this.gatherAll(this.time, 0.6);
+        // The night's lights sink low a while: the lantern, her light, every wisp on its way home.
+        this.env.dusk.hit(1, this.time);
     }
 
     /** The camera that will render the world: it sees the scene's layer, the mirror only that. */
@@ -679,7 +936,11 @@ export class StillwaterWorld {
         applyCameraBreath(camera, t, { scale: this.reducedMotion ? 0 : 1 });
         camera.updateMatrixWorld();
         this._camera = camera;
-        // The moon and the heart on screen: where the post's shafts and ring come from.
+        this.projectLights(camera);
+    }
+
+    /** The moon and the heart on screen: where the post's shafts and ring come from. */
+    projectLights(camera) {
         const m = this._moonDir;
         this._ray.set(camera.position.x + m[0] * 500, camera.position.y + m[1] * 500, camera.position.z + m[2] * 500)
             .project(camera);
@@ -1069,6 +1330,26 @@ export class StillwaterWorld {
             this.gather(w, pass);
         }
 
+        // ── As the lights come home the two send each other one of their own over the water: the
+        // one who took more first, the other in answer (not on every clear, and not over a scene
+        // of theirs, which sends its own) ──
+        // (Nor on a second difficult clear in a row: both send at once for that, below.)
+        if (!quad && !b2b && this.time - this.lastEcho > ECHO_EVERY && !this.story.life.duet) {
+            this.lastEcho = this.time;
+            let left = 0;
+            let right = 0;
+            for (let i = 0; i < this.wisps.length; i++) {
+                if (this.wisps[i].side < 0) left += 1;
+                else right += 1;
+            }
+            let first = left > right ? 'spirit' : 'troll';
+            if (left === right) first = this.counts.clears % 2 ? 'spirit' : 'troll';
+            const strength = (0.26 + 0.1 * n) * (0.6 + 0.4 * this.story.kin);
+            this.sendPulse(first, birth + 1.0, strength);
+            const answer = first === 'troll' ? 'spirit' : 'troll';
+            this.sendPulse(answer, birth + 1.0 + this.pulseTravel() * 0.85, strength * 0.85);
+        }
+
         // ── The cleared rows leave the card as drifts of sparks, out over the water ──
         const board = boardFor(this.layout, player);
         const card = cardUnion(this.layout);
@@ -1095,6 +1376,18 @@ export class StillwaterWorld {
             }
         }
 
+        // Each count of lines is its own answer. One: the swell alone. Two: the lilies open in
+        // a wave and the fireflies go up off both banks. Three: all that, the wood's eyes, and the
+        // moon's shafts standing between the trunks. (Four: the hush, and the tarnfire below.)
+        if (!quad && n >= 2) {
+            this.env.lilies.hit(n === 2 ? 0.55 : 0.8, birth + 0.3);
+            this.fireflyBurst(birth + 0.25, n - 1);
+            if (n >= 3) {
+                this.env.eyes.hit(0.55, birth + 0.4);
+                this.env.beams.hit(1, birth);
+            }
+        }
+
         // From the third wave of a cascade the tarn's heart answers too, wider each time.
         if (depth >= 3 && !quad) {
             this.ring(HEART[0] * this.squeeze, HEART[2], birth, 0.3 + 0.1 * depth, rgb, 1 + 0.25 * depth);
@@ -1106,6 +1399,8 @@ export class StillwaterWorld {
             this.hushDepth = (1 - 0.8 * this.heat.level) * flashScale();
             this.shockAt(birth, this.reducedMotion ? 0.5 : 1);
             this.ring(HEART[0] * this.squeeze, HEART[2], birth, 1.5, rgb, 2.8);
+            // The heart's gold stands up out of the tarn in pillars of light.
+            this.raisePillars(birth, 1, 0);
             // The answer waits for the hush to end (a new run lets go of one still held).
             this.answers.push(clear);
             this.counts.quads += 1;
@@ -1132,9 +1427,10 @@ export class StillwaterWorld {
         }
         if (perfect) this.lift = 1;
         if (twist) {
-            // A whirl where the piece went in: three rings on one another's heels.
+            // A whirl where the piece went in: the water winds about it, and light spirals up out of it.
             const at = this.lastLanding || [-3 * this.squeeze, -2];
-            for (let i = 0; i < 3; i++) this.ring(at[0], at[1], this.time + i * 0.22, 0.8 - i * 0.15, rgb, 0.9 + i * 0.25);
+            this.whirl(at[0], at[1], this.time, 1, rgb);
+            this.ring(at[0], at[1], this.time + 0.5, 0.32, rgb, 1.2);
             this.gust = Math.max(this.gust, 0.6);
             if (!quad) this.shockAt(this.time, this.reducedMotion ? 0.2 : 0.4);
         }
@@ -1169,6 +1465,12 @@ export class StillwaterWorld {
         const E = this.env;
         this.lift = 1;
         E.crown.hit(1, at);
+        // The pillars burn pale as the moon and taller, and the moon sends a ring out across the sky.
+        this.raisePillars(at, 1.3, 1);
+        this.moonRingAt.time = at + 0.15;
+        this.moonRingAt.strength = 1;
+        // The sky answers: stars fall over the wood, and through the tarn.
+        this.visitor('shower', at + 0.5, nightHash(this.counts.clears, 29));
         E.overdrive.hit(0.35, at);
         E.heart.hit(0.5, at);
         E.eyes.hit(0.5, at);
@@ -1215,7 +1517,7 @@ export class StillwaterWorld {
         const at = this.time;
         const spot = this.lastLanding || [-3 * this.squeeze, -2];
         const rgb = this._palette.crest;
-        for (let i = 0; i < 2; i++) this.ring(spot[0], spot[1], at + i * 0.22, 0.5 - i * 0.12, rgb, 0.8 + i * 0.2);
+        this.whirl(spot[0], spot[1], at, 0.55, rgb);
         this.gust = Math.max(this.gust, 0.35);
         this.env.eyes.hit(0.25, at);
         this.play.punch.hit(SURGE_WEIGHTS.punch.twist * 0.5, at);
@@ -1232,6 +1534,74 @@ export class StillwaterWorld {
         this.env.flare.hit(1, at + 0.1);
         this.env.flash.hit(0.05, at);
         this.story.onB2B(at);
+        // Both send their light out at once: the two fronts meet in the middle of the tarn.
+        this.sendPulse('troll', at + 0.2, 1);
+        this.sendPulse('spirit', at + 0.2, 1);
+    }
+
+    /**
+     * Raise the pillars of tarnfire at `time`. While they still stand, more only adds to them
+     * (and a perfect clear turns them pale): they are never put out and lit again.
+     */
+    raisePillars(time, strength, pale) {
+        const p = this.pillarsAt;
+        const age = time - p.time;
+        if (age >= 0 && age < PILLAR.stand + PILLAR.fade) {
+            p.strength = Math.min(1.6, p.strength + strength * 0.4);
+            p.pale = Math.max(p.pale, pale);
+            return;
+        }
+        p.time = time;
+        p.strength = strength;
+        p.pale = pale;
+    }
+
+    /** A whirl on the water at (x, z): the mirror wound about it, and motes spiralling up out of it. */
+    whirl(x, z, time, strength, rgb) {
+        const w = this.whirlAt;
+        w.x = x;
+        w.z = z;
+        w.time = time;
+        w.strength = strength;
+        w.rgb = [rgb[0], rgb[1], rgb[2]];
+        if (!this.sparks) return;
+        const many = Math.max(6, Math.round(26 * strength * this.sparkShare()));
+        for (let k = 0; k < many; k++) {
+            const a = k * 0.7;
+            const r = 0.35 + 0.9 * (k / many);
+            this.sparks.emit({
+                at: [x + Math.cos(a) * r, 0.06, z + Math.sin(a) * r],
+                n: 1,
+                rgb,
+                time: time + 0.15 + k * 0.05,
+                vel: [-Math.sin(a) * 1.5, 1.5 + 0.6 * (k / many), Math.cos(a) * 1.5],
+                spread: 0.1,
+                life: [1.3, 2.4],
+                size: 0.075,
+            });
+        }
+    }
+
+    /** The fireflies go up off both banks (`amount` 1: a few; 2: a cloud of them). */
+    fireflyBurst(time, amount = 1) {
+        if (!this.sparks) return;
+        const rgb = this._palette.firefly;
+        const sq = this.squeeze;
+        [[-7.2, 0.5, -8.4], [-5.6, 0.35, -13.2], [6.7, 0.4, -8.8], [8.3, 0.6, -13.4]].forEach((p, i) => {
+            if (amount < 2 && i % 2 === (this.counts.clears % 2)) return;
+            this.sparks.emit({
+                at: [p[0] * sq, p[1], p[2]],
+                n: Math.round(7 * amount * this.sparkShare()),
+                rgb,
+                time: time + i * 0.12,
+                vel: [(p[0] < 0 ? 0.5 : -0.5), 0.9, 0.2],
+                spread: 0.7,
+                scatter: 1.1,
+                life: [2.2, 4.0],
+                size: 0.07,
+                stagger: 0.8,
+            });
+        });
     }
 
     /**
@@ -1274,6 +1644,11 @@ export class StillwaterWorld {
         }
         this.turn = { from, to, time: this.time };
         this.story.onLevel(this.time);
+        // The moon sends a ring out across the sky as the hour turns.
+        this.moonRingAt.time = this.time + 0.2;
+        this.moonRingAt.strength = 0.6;
+        // The hour turning starts a flight of birds out of the far wood.
+        this.visitor('flock', this.time + 0.35, nightHash(next, 23));
         this.gust = Math.max(this.gust, 1);
         this.env.flash.hit(0.1, this.time);
         this.play.levelUp(this.time);
@@ -1306,6 +1681,12 @@ export class StillwaterWorld {
         const { u } = this;
         if (!u) return;
         const p = this._palette;
+        // Her light in his lantern after a visit: it burns pale gold a long while.
+        this.relitNow = this.relitAt(this.time);
+        if (this.relitNow > 0) {
+            const k = 0.62 * this.relitNow;
+            for (let c = 0; c < 3; c++) p.lantern[c] += (p.spirit[c] * [1.0, 0.95, 0.82][c] - p.lantern[c]) * k;
+        }
         for (let i = 0; i < PALETTE_KEYS.length; i++) {
             const key = PALETTE_KEYS[i];
             u[key].value.set(p[key][0], p[key][1], p[key][2]);
@@ -1496,8 +1877,22 @@ export class StillwaterWorld {
             // The one it goes to makes ready for it: his lantern lifted, her hands cupped.
             if (e.type === 'gift') this.story.onArrival(e.to === 'troll' ? 1 : -1, e.start + e.length);
             if (e.type === 'boat') this.story.onArrival(-1, e.start + e.length + BOAT_RISE);
+        } else if (e.type === 'pulse') {
+            this.sendPulse(e.who, e.start, e.strength ?? 1);
+        } else if (e.type === 'relit') {
+            this.relit.start = e.start;
+            this.relit.length = e.length;
+        } else if (e.type === 'ember') {
+            this.lifeLights.push(e);
+            if (this.lifeLights.length > 8) this.lifeLights.shift();
+        } else if (e.type === 'swirl') {
+            this.swirl(e.start);
         } else if (e.type === 'tend' || e.type === 'song') {
             const tend = e.type === 'tend';
+            // (Her song crosses the water: slow pulses of her light, one for every phrase.)
+            if (!tend) {
+                for (let i = 0; i < 2; i++) this.sendPulse('spirit', e.start + 1.2 + i * (e.length - 2.5), 0.55);
+            }
             this.lifeGlows.push({
                 who: tend ? 'troll' : 'spirit', start: e.start, length: e.length, amount: tend ? 0.45 : 0.35,
             });
@@ -1549,7 +1944,25 @@ export class StillwaterWorld {
             out[0] = p.x;
             out[1] = p.y + (e.who === 'troll' ? 0.08 : 0.04);
             out[2] = p.z + (e.who === 'troll' ? 0.05 : 0.03);
-            out[3] = 0.85 * Math.min(1, k);
+            out[3] = (e.warm ? 1.25 : 0.85) * Math.min(1, k);
+            if (e.warm) {
+                rgb[0] = pal.lantern[0];
+                rgb[1] = pal.lantern[1];
+                rgb[2] = pal.lantern[2];
+            }
+            return out;
+        }
+        if (e.type === 'ember') {
+            if (age > e.length) return null;
+            // His ember by her stone: it settles, burns a long while, and sinks at the last.
+            const k = smooth(0, 1.2, age) * (1 - smooth(e.length - 14, e.length, age));
+            out[0] = PLACES.ember[0] * sq;
+            out[1] = PLACES.ember[1] + 0.06 * Math.sin(t * 0.7);
+            out[2] = PLACES.ember[2];
+            out[3] = 0.95 * k * (0.9 + 0.1 * Math.sin(t * 2.3) * Math.sin(t * 1.3 + 1));
+            rgb[0] = pal.lantern[0];
+            rgb[1] = pal.lantern[1];
+            rgb[2] = pal.lantern[2];
             return out;
         }
         if (e.type === 'gift') {
@@ -1563,9 +1976,13 @@ export class StillwaterWorld {
             }
             const end = e.to === 'troll' ? this._lantern : this._heartOf;
             const to = [end[0], end[1], end[2]];
-            arcAt(e.from3, to, k, 1.3, out);
+            arcAt(e.from3, to, k, e.lift ?? 1.3, out);
             out[3] = 1.1 * (1 - Math.max(0, k - 0.9) * 10);
-            if (e.to === 'spirit') {
+            if (e.warm) {
+                rgb[0] = pal.lantern[0];
+                rgb[1] = pal.lantern[1];
+                rgb[2] = pal.lantern[2];
+            } else if (e.to === 'spirit') {
                 rgb[0] = (fire[0] + pal.lantern[0]) * 0.5;
                 rgb[1] = (fire[1] + pal.lantern[1]) * 0.5;
                 rgb[2] = (fire[2] + pal.lantern[2]) * 0.5;
@@ -1642,6 +2059,39 @@ export class StillwaterWorld {
     }
 
     /**
+     * Their two lights rise together in a spiral where they stand side by side (she has come to
+     * him): motes of her pale light and of his lantern's, turning about one another.
+     */
+    swirl(start) {
+        if (!this.sparks) return;
+        const h = this._heartOf;
+        const l = this._lantern;
+        const cx = (h[0] + l[0]) * 0.5;
+        const cz = (h[2] + l[2]) * 0.5;
+        const pal = this._palette;
+        const rose = [0, 1, 2].map((c) => (pal.spirit[c] + pal.lantern[c]) * 0.5 * [1.1, 0.85, 0.92][c]);
+        const many = Math.max(8, Math.round(34 * this.sparkShare()));
+        for (let k = 0; k < many; k++) {
+            const a = k * 0.62;
+            const r = 0.55 + 0.75 * (k / many);
+            const rgb = [pal.spirit, pal.lantern, rose][k % 3];
+            this.sparks.emit({
+                at: [cx + Math.cos(a) * r, 0.25 + 1.5 * (k / many), cz + Math.sin(a) * r],
+                n: 1,
+                rgb,
+                time: start + k * 0.085,
+                vel: [-Math.sin(a) * 0.9, 0.85, Math.cos(a) * 0.9],
+                spread: 0.12,
+                scatter: 0.05,
+                life: [2.4, 3.8],
+                size: 0.085,
+            });
+        }
+        // A ring on the water under them, of both their colours.
+        this.ring(cx, cz, start, 0.4, rose, 1.2);
+    }
+
+    /**
      * While a chain holds the two near, their light goes out from each toward the other over the
      * water: motes from her breast and from his lantern, meeting behind the board.
      */
@@ -1671,6 +2121,8 @@ export class StillwaterWorld {
         this.time = sim.time;
         const t = this.time;
         const motion = this.reducedMotion ? 0.3 : 1;
+        // The night's own weather (its clock never falls in step with the hours').
+        const air = airAt(t, this.air, this.airHold);
 
         // ── Four lines answered as their hush ends ──
         for (let i = 0; i < this.answers.length; i++) {
@@ -1719,7 +2171,8 @@ export class StillwaterWorld {
         }
         // The quad's hush: as deep as it was asked to be when it began (0 = none).
         const hush = t < this.hushUntil ? this.hushDepth : 0;
-        const breathTarget = hush > 0 ? 1 - 0.8 * hush : 1 - this.dip;
+        const dusk = E.dusk.valueAt(t);
+        const breathTarget = (hush > 0 ? 1 - 0.8 * hush : 1 - this.dip) * (1 - 0.45 * dusk);
         this.breath += (breathTarget - this.breath) * approach(hush > 0 ? 40 : 14, dt);
 
         // ── What the chain wakes, and what a hot run wakes whatever the chain ──
@@ -1740,11 +2193,30 @@ export class StillwaterWorld {
         // The slow clock, and the air's own phase (integrated: its pace follows the wind, gently).
         // A hot run stirs the spruces and the water; the mist and the fireflies hurry.
         const stir = (0.08 * warm + 0.1 * hot + 0.12 * fever) * motion;
-        const wind = 0.25 + this.gust * 0.75 + this.surge * 0.2 + stir;
+        const wind = 0.25 + this.gust * 0.75 + this.surge * 0.2 + stir + air.wind * motion;
         this.drift += dt * motion * (1 + this.power * 0.8 + this.surge * 1.5 + 0.3 * level + 0.4 * fever);
         this.sway += dt * motion * (0.85 + wind * 0.5);
 
+        // The pulses whose moment has come (a figure sends one at a time: the newest is the one drawn).
+        for (let i = 0; i < this.pulseQueue.length; i++) {
+            const q = this.pulseQueue[i];
+            if (t < q.time) continue;
+            const slot = this.pulses[q.who];
+            slot.time = q.time;
+            slot.strength = q.strength;
+            this.pulseQueue.splice(i, 1);
+            i -= 1;
+        }
         this.applyPalette();
+        // The air lays its own hand on the hour: how thick the mist, how many stars, what crosses the moon.
+        u.mist.value = this._palette.mist * air.mist;
+        u.stars.value = Math.max(0, this._palette.stars + air.stars);
+        u.cloud.value = air.cloud;
+        u.rain.value = air.rain;
+        this.applyMoon();
+        // (The hour may just have moved the moon: the post is told where it stands NOW.)
+        if (this._camera) this.projectLights(this._camera);
+        this.stepNight(t);
         // A fever of play draws the two out to the water's edge, chain or none.
         this.story.setFervour(smooth(0.35, 0.9, fever));
         this.placeFigures(dt);
@@ -1813,7 +2285,7 @@ export class StillwaterWorld {
             side[6] += c[2] * at[3];
             live += 1;
         }
-        u.counts.value.set(rings, strokes, live, 0);
+        u.counts.value.set(rings, strokes, live, u.counts.value.w);
         // The wisps' light on the banks, gathered into one lamp per side.
         [[u.poolL, u.poolColL], [u.poolR, u.poolColR]].forEach(([at, colour], i) => {
             const side = pool[i];
@@ -1836,9 +2308,21 @@ export class StillwaterWorld {
         u.wind.value = wind;
         u.ruffle.value = 1 - 0.85 * hush;
         u.lift.value = clamp01(this.lift);
-        u.shafts.value = 0.3 + this.power * 0.5 + this.surge * 0.5;
+        u.shafts.value = Math.max(0.1, 0.3 + this.power * 0.5 + this.surge * 0.5 + air.shafts);
         // The tarnfire: how far the heart's gold spreads through the water and the mist on it.
         u.heat.value.set(level, Math.min(1, fever + 0.5 * this.crown));
+        const beams = E.beams.valueAt(t);
+        u.shafts.value += 0.5 * beams;
+        const pl = this.pillarsAt;
+        u.pillars.value.set(pl.time, pl.strength, pl.pale, 0);
+        if (this.parts.pillars) {
+            this.parts.pillars.mesh.visible = t >= pl.time - 0.1 && t - pl.time < PILLAR.live
+                && (!this._only || this._only.has('pillars'));
+        }
+        u.moonRing.value.set(this.moonRingAt.time, this.moonRingAt.strength, 0.16, 0);
+        const wh = this.whirlAt;
+        u.whirl.value.set(wh.x, wh.z, wh.time, wh.strength);
+        u.whirlCol.value.set(wh.rgb[0], wh.rgb[1], wh.rgb[2]);
         u.eyes.value.set(this.eyes, Math.min(1, this.eyesFlash));
         u.lilies.value.set(this.lilies, Math.min(1, this.liliesFlash));
         u.caps.value.set(this.capsL, this.capsR);
@@ -1863,13 +2347,36 @@ export class StillwaterWorld {
         const h = this._heartOf;
         u.spiritAt.value.set(h[0], h[1], h[2], 0.6 + this.power * 0.3 + this.fedL * 0.6 + this.stepFlash * 0.25 + taken * 1.6
             + this.story.gaze * 0.15 + held * 0.45 + glow + this.crown * 0.5 + this.flare * 0.5
-            + this.lifeGlow('spirit', t));
+            + this.lifeGlow('spirit', t) + this.pulseGlow('spirit', t));
         const l = this._lantern;
         // (When their eyes meet, both lights warm a little.)
         u.lanternAt.value.set(l[0], l[1], l[2], 0.5 + this.power * 0.35 + this.fedR * 0.7 + this.stepFlash * 0.2
-            + this.story.gaze * 0.15 + glow * 1.15 + this.crown * 0.4 + this.flare * 1.1 + this.lifeGlow('troll', t));
+            + this.story.gaze * 0.15 + glow * 1.15 + this.crown * 0.4 + this.flare * 1.1 + this.lifeGlow('troll', t)
+            + this.pulseGlow('troll', t) + 0.25 * this.relitNow);
         // The path of light that runs between them on the water while the chain holds them near
         // (a back-to-back sends it running out from both for a moment, further for a second one).
+        // Their two lights on the water: each runs out further the nearer they have grown, further
+        // still while a chain, a meeting of eyes or a scene of theirs holds them; where both lie
+        // they braid.
+        const { kin } = this.story;
+        const duet = this.story.life.duet ? 1 : 0;
+        const near = Math.max(this.story.bond, 0.7 * this.story.gaze, 0.85 * duet);
+        // (At rest each one's light lies only on the water before them, a little further as they
+        // grow near: the tarn stays a mirror. It is the moments they share that carry it across.)
+        const lie = 0.1 + 0.1 * kin + 0.66 * near + 0.2 * fever + 0.3 * Math.min(1, this.flare) + 0.35 * this.crown;
+        const reachS = this._reachHold ? this._reachHold[0]
+            : lie + 0.25 * Math.min(1, this.fedL) + 0.3 * Math.min(1, taken);
+        const reachT = this._reachHold ? this._reachHold[1] : lie + 0.25 * Math.min(1, this.fedR);
+        const braid = this._reachHold ? this._reachHold[2]
+            : Math.min(1.5, 0.3 * kin + 0.9 * near + 0.4 * Math.min(1, this.flare) + 0.3 * fever);
+        const ease = dt > 0 ? approach(0.9, dt) : 1;
+        this.reachS += (reachS - this.reachS) * ease;
+        this.reachT += (reachT - this.reachT) * ease;
+        this.braid += (braid - this.braid) * ease;
+        u.reach.value.set(this.reachS, this.reachT, this.braid, u.reach.value.w);
+        const ps = this.pulses.spirit;
+        const pt = this.pulses.troll;
+        u.pulse.value.set(ps.time, ps.strength, pt.time, pt.strength);
         const sr = this.spirit?.rootWalk();
         u.path.value.set(Math.max(this.story.path, Math.min(1, 0.6 * this.flare)), this.story.gaze, taken, 0);
         if (sr) u.pathEnds.value.set(sr.x, sr.z, l[0], l[2]);
@@ -1882,8 +2389,8 @@ export class StillwaterWorld {
         post.kick = Math.min(1, this.kick);
         // The moon's shafts stream between the trunks as play runs hot; the hush draws them in.
         const shafts = 0.26 + this.power * 0.24 + swell * 0.25 + this.surge * 0.4
-            + 0.1 * hot + 0.22 * fever + 0.15 * this.crown;
-        post.shafts = shafts + (0.05 - shafts) * hush;
+            + 0.1 * hot + 0.22 * fever + 0.15 * this.crown + 0.55 * beams;
+        post.shafts = Math.max(0.05, shafts + air.shafts + (0.05 - shafts - air.shafts) * hush);
         post.bloomBoost = this.surge * 0.1 + swell * 0.1 + 0.04 * level + 0.08 * fever + 0.12 * this.crown;
         // The iris closes a little as the night flares and as play runs hot, so its colours
         // survive the surge (a little: the four lines' answer must not darken the night).
@@ -1920,6 +2427,10 @@ export class StillwaterWorld {
             hourFrom: names.from,
             hourTo: names.to,
             hourMix: names.mix,
+            air: this.air.from,
+            airTo: this.air.to,
+            airMelt: this.air.melt,
+            moonEl: this._moon.elevation / DEG,
             squeeze: this.squeeze,
             counts: { ...this.counts },
             rings: this.u ? this.u.counts.value.x : 0,
@@ -1941,6 +2452,8 @@ export class StillwaterWorld {
                 troll: this.story.life.sceneOf('troll') || 'none', spirit: this.story.life.sceneOf('spirit') || 'none',
             },
             looks: { troll: this.story.lookKey.troll || 'none', spirit: this.story.lookKey.spirit || 'none' },
+            // (What they have done lately: "name@start how", oldest first.)
+            sceneLog: this.story.life.log.map((e) => `${e.name}@${Math.round(e.start)} ${e.how}`),
             eyes: this.eyes,
             heart: this.heart,
             fed: [this.fedL, this.fedR],

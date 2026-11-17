@@ -72,6 +72,9 @@ The Tornado rebuild added the capture flags `tornadoForceWebGL`, `tornadoTime`,
 `tornadoFixedDt`, `tornadoParts` and `tornadoFalseColor` plus the `tornado` playground effect
 (it reads 25 parameters the other full-world effects already had, so it adds no name of its
 own); the theme it replaces read nothing from the URL, so no reader was retired.
+The Sunset living-sea pass (2026-11-17) gave the `sunset` playground effect `weather`, `moon`,
+`meteor`, `shower` and `b2b` (entries of its own for each) and the event `spin`, and the parts
+`islands`, `boat` and `meteors` to `sunsetParts`.
 The Stillwater rebuild retired that theme's old readers (`stillwaterQuality` and its `quality`
 fallback, `stillwaterPerf`, `stillwaterProfile` and their `profile` alias, `stillwaterValidation`,
 `stillwaterPowerPreference`, `stillwaterLayout`, `stillwaterReactionWarm` and `shafts`) together
@@ -240,10 +243,13 @@ and petals), and `event` also takes `spin` (a twist that clears nothing).
 
 Sunbraid (2026-10-20), a new theme in Rainy Window's place, adds the capture flags
 `sunbraidForceWebGL`, `sunbraidTime`, `sunbraidFixedDt`, `sunbraidParts` and `sunbraidFalseColor`;
-the part names are `sky`, `land`, `spires` and `gliders`. Its `sunbraid` playground effect reads 22
+the part names are `sky`, `land`, `spires`, `gliders` and `dust` (`dust` since 2026-11-17: the twists'
+twisters and the hard drops' dust rings). Its `sunbraid` playground effect reads 26
 parameters, catalogued as its own rows; `braid` (hold the three suns' braid at a phase, in degrees)
 and `turns` (the spin-turns of an `event=twist`) are new names, and `event` also takes `morning` (a
-game over, then a new run: the suns rising). Rainy Window read no URL parameters. Use
+game over, then a new run: the suns rising). Since 2026-11-17 it also reads `weather` (hold one of
+the valley's seven weathers), `moon` (`off`, or the moon's own clock in seconds), `col` and `piece`
+(the column and the piece an event is played with), and `event` takes `spin` and `b2b`. Rainy Window read no URL parameters. Use
 `effect=sunbraid&t=10&braid=<degrees>` for a deterministic playground capture.
 
 Sunfall (2026-10-20), a new theme in Moonrise Summit's place, adds the capture flags
@@ -251,10 +257,13 @@ Sunfall (2026-10-20), a new theme in Moonrise Summit's place, adds the capture f
 `sunfallNoPost`; the part names are `sky`, `cave`, `jungle`, `beam`, `mist`, `water`, `roots`,
 `birds` and `gours`. Its `sunfall` playground effect reads 28 parameters, catalogued as its own
 rows; `beamGain` (scale the sunfall pillar's volumetric intensity) is a new name, and `station`
-and `weather` hold the five solar stations and four subterranean microclimates (without them the
+and `weather` hold the five solar stations and the subterranean microclimates (without them the
 stations turn by the clock, `t` included). Moonrise Summit's `moonriseForceWebGL` reader and its
 share of `forceWebGL` are retired with it. Use
-`effect=sunfall&t=40&station=<0..4>&weather=<0..3>` for a deterministic playground capture.
+`effect=sunfall&t=40&station=<0..4>&weather=<0..4>` for a deterministic playground capture.
+Since 2026-11-17 there are five weathers (`clear`, `mist`, `shower`, `steam`, `cloud`) and one
+more parameter, `cloud=<-1..1>`, which places a cumulus's shadow over the oculus
+([SUNFALL_LIVING_DOLINE_2026-11.md](SUNFALL_LIVING_DOLINE_2026-11.md)).
 
 Spring (2026-10-18), a new theme in Moonlit Forest's place, adds the capture flags
 `springForceWebGL`, `springTime`, `springFixedDt`, `springParts` and `springFalseColor`; the part

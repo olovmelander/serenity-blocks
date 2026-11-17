@@ -21,6 +21,7 @@ import * as THREE from 'three/webgpu';
 import {
     Fn,
     If,
+    Loop,
     abs,
     atan,
     cameraPosition,
@@ -30,8 +31,10 @@ import {
     float,
     floor,
     fract,
+    int,
     length,
     max,
+    min,
     mix,
     normalize,
     sin,
@@ -49,6 +52,7 @@ import {
 import {
     HEART,
     HOURS,
+    METEOR_SLOTS,
     MOON,
     PALETTE_KEYS,
     PALETTE_SCALARS,
@@ -290,6 +294,31 @@ export function createStillwaterUniforms(textures) {
         path: uniform(new THREE.Vector4(0, 0, 0, 0)),
         /** Its ends on the water (world xz): where she is, then under his lantern. */
         pathEnds: uniform(new THREE.Vector4(-6, -10, 8, -11)),
+        /**
+         * Their two lights lying on the water, each running out from its own bank in threads: (how
+         * far hers reaches 0..1.5, how far his, how strongly the two braid where they meet 0..1.5,
+         * unused).
+         */
+        reach: uniform(new THREE.Vector4(0.2, 0.2, 0, 0)),
+        // ── The night's own weather (stillwater-night.js) ──
+        /** How hard it rains (0..1): rings all over the tarn, streaks in the air. */
+        rain: uniform(0),
+        /** Thin cloud across the moon's part of the sky (0..1.5). */
+        cloud: uniform(0.55),
+        /** Wings against the sky: (when the flight began, 0 the owl / 1 the flock, a seed, _). */
+        flight: uniform(new THREE.Vector4(-100, 0, 0, 0)),
+        /** The elk in the far shallows: (when it came, a seed, _, _). */
+        elk: uniform(new THREE.Vector4(-100, 0, 0, 0)),
+        // ── What the bigger moments of play set off ──
+        /** Pillars of tarnfire standing on the water: (when they rise, how strongly, how pale 0..1, _). */
+        pillars: uniform(new THREE.Vector4(-100, 0, 0, 0)),
+        /** A ring of light the moon sends out across the sky: (birth, strength, radians a second, _). */
+        moonRing: uniform(new THREE.Vector4(-100, 0, 0.16, 0)),
+        /** A whirl on the water where a twisted piece went in: (x, z, birth, strength), and its colour. */
+        whirl: uniform(new THREE.Vector4(0, -5, -100, 0)),
+        whirlCol: uniform(new THREE.Vector3(1, 1, 1)),
+        /** A pulse of light each can send out over the water: (hers: birth, strength; his: birth, strength). */
+        pulse: uniform(new THREE.Vector4(-100, 0, -100, 0)),
         /** The wisps' light, gathered per side: where, and how much. */
         poolL: uniform(new THREE.Vector4(-5, 0.8, -8, 0)),
         poolR: uniform(new THREE.Vector4(5, 0.8, -8, 0)),
@@ -309,7 +338,7 @@ export function createStillwaterUniforms(textures) {
          */
         heat: uniform(new THREE.Vector2(0, 0)),
         // ── Events ──
-        /** How many (rings, strokes, wisps) are live: the loops over the tables stop there. */
+        /** How many (rings, strokes, wisps, falling stars) are live: the loops over the tables stop there. */
         counts: uniform(new THREE.Vector4(0, 0, 0, 0)),
         noiseTex: textures.noise,
         shoreTex: textures.shore,
@@ -329,6 +358,12 @@ export function createStillwaterUniforms(textures) {
     u.ringRows = Array.from({ length: RING_SLOTS * 2 }, () => new THREE.Vector4(0, 0, -100, 0));
     u.strokeRows = Array.from({ length: STROKE_SLOTS * 2 }, () => new THREE.Vector4(-100, 1, 0, 0));
     u.wispRows = Array.from({ length: WISP_SLOTS * 2 }, () => new THREE.Vector4(0, -10, 0, 0));
+    /**
+     * Falling stars (counts.w of them live): row 2i = (azimuth, tan elevation, birth, seconds it
+     * falls), row 2i+1 = (azimuth per second, tan elevation per second, how bright, _).
+     */
+    u.meteorRows = Array.from({ length: METEOR_SLOTS * 2 }, () => new THREE.Vector4(0, 0, -100, 1));
+    u.meteors = uniformArray(u.meteorRows, 'vec4');
     u.rings = uniformArray(u.ringRows, 'vec4');
     u.strokes = uniformArray(u.strokeRows, 'vec4');
     u.wisps = uniformArray(u.wispRows, 'vec4');
@@ -491,17 +526,40 @@ export const swBackdrop = (u, dirIn, opts = {}) => {
     const aa = u.pixelAngle.mul(1.5 * soft).toVar();
     const gain = u.breath.mul(0.45).add(0.55).toVar();
     const clear = float(1.0).sub(u.lift.mul(0.7)).toVar();
+    /** How thick the air stands (1 = the hour's own; the night's weather thickens and thins it). */
+    const thick = clamp(u.mist.mul(float(1.0).sub(u.lift.mul(0.8))), 0.25, 2.4).toVar();
+    /** 0 on the clearest night → 1 at the hour's own mist and over. */
+    const murk = smoothstep(0.3, 1.0, thick).toVar();
 
     // ── The sky, and the moon's halo in the mist ──
     // Low down the sky IS the mist, and a little brighter than anything that stands in it: the
     // far wood is always a darker shape against it, never a pale one against the dark.
     const haze = swHaze(u, dir).toVar();
     const rise = sqrt(up);
-    const col = mix(mix(haze.mul(1.3), u.horizon, smoothstep(0.44, 0.72, rise)), u.zenith, smoothstep(0.55, 0.95, rise)).toVar();
+    // (On a clear night the dark comes far down the sky; in thick mist the whole sky is pale.)
+    const lowSky = mix(float(0.24), float(0.44), murk);
+    const col = mix(
+        mix(haze.mul(murk.mul(0.25).add(1.05)), u.horizon, smoothstep(lowSky, lowSky.add(0.28), rise)),
+        u.zenith,
+        smoothstep(lowSky.add(0.12), lowSky.add(0.5), rise),
+    ).toVar();
     // (2·(1 − cos) is the angle squared, near enough, for everything close to the moon.)
     const a2 = max(float(2.0).sub(cm.mul(2.0)), 0.0).toVar();
-    const halo = exp(a2.mul(-7.0)).mul(0.5).add(exp(a2.mul(-55.0)).mul(0.6)).add(exp(a2.mul(-520.0)).mul(1.1));
+    // (The thicker the air, the wider the moon's light stands in it.)
+    const halo = exp(a2.mul(float(11.0).sub(thick.mul(4.0)))
+        .negate()).mul(thick.mul(0.4).add(0.1))
+        .add(exp(a2.mul(-55.0)).mul(0.6))
+        .add(exp(a2.mul(-520.0)).mul(1.1));
     col.addAssign(u.glow.mul(halo).mul(clear.mul(0.75).add(0.25)).mul(gain));
+
+    // ── A ring of light the moon sends out (the hour turning, a perfect clear): thin, widening, soon gone ──
+    const ringAge = u.time.sub(u.moonRing.x).toVar();
+    const ringAt = ringAge.mul(u.moonRing.z).add(MOON.radius * 1.6);
+    const ringWide = ringAge.mul(0.012).add(0.012);
+    const moonRing = swBell(sqrt(a2).sub(ringAt).div(ringWide)).mul(exp(ringAge.mul(-0.75))).mul(step(0.0, ringAge))
+        .mul(u.moonRing.y);
+    col.addAssign(u.glow.mul(0.6).add(u.moon.mul(0.4)).mul(moonRing).mul(gain)
+        .mul(0.85 / soft));
 
     // ── Stars (one size of them on a grid over the sphere) ──
     if (!lite) {
@@ -521,6 +579,30 @@ export const swBackdrop = (u, dirIn, opts = {}) => {
             .mul(1 / soft));
     }
 
+    // ── Falling stars: a bright head on a short tail, each on its own line down the sky ──
+    if (!lite) {
+        Loop({
+            start: int(0), end: int(u.counts.w), type: 'int', condition: '<', name: 'mt',
+        }, ({ mt }) => {
+            const A = u.meteors.element(mt.mul(2));
+            const B = u.meteors.element(mt.mul(2).add(1));
+            const age = u.time.sub(A.z).toVar();
+            const k = clamp(age.div(max(A.w, 0.05)), 0.0, 1.0);
+            const rel = vec2(az, el).sub(A.xy.add(B.xy.mul(age))).toVar();
+            // (The tail is where the head was a fifth of a second ago.)
+            const tail = B.xy.mul(-0.2).toVar();
+            const h = clamp(dot(rel, tail).div(max(dot(tail, tail), 1e-8)), 0.0, 1.0).toVar();
+            const off = length(rel.sub(tail.mul(h)));
+            const wide = aa.mul(1.4).add(0.0012);
+            const live = step(0.0, age).mul(step(age, A.w)).mul(sin(k.mul(Math.PI)).max(0.0).sqrt());
+            const streak = exp(off.mul(off).div(wide.mul(wide)).negate()).mul(float(1.0).sub(h).mul(float(1.0).sub(h)))
+                .add(exp(dot(rel, rel).div(wide.mul(wide).mul(4.0)).negate()).mul(0.9));
+            col.addAssign(vec3(0.82, 0.92, 1.0).mul(streak).mul(live).mul(B.z)
+                .mul(smoothstep(0.03, 0.12, el))
+                .mul(2.4 / soft));
+        });
+    }
+
     // ── The northern lights: one curtain with a sharp hem and a long fade upward ──
     if (!lite) {
         const wave = u.noise(vec2(az.mul(0.21).add(u.drift.mul(0.004)), 0.19)).toVar();
@@ -534,8 +616,9 @@ export const swBackdrop = (u, dirIn, opts = {}) => {
     }
 
     // ── The moon ──
-    const r = MOON.radius;
-    const disc = float(1.0).sub(smoothstep(float(r).sub(aa), float(r).add(aa), sqrt(a2))).toVar();
+    // (It looks larger the lower it stands: the hour says how large.)
+    const r = u.moonSize.mul(MOON.radius).toVar();
+    const disc = float(1.0).sub(smoothstep(r.sub(aa), r.add(aa), sqrt(a2))).toVar();
     // A few seas, so it is the moon and not a lamp.
     const seas = u.noise(dir.xy.mul(7.0).add(vec2(0.31, 0.77))).r;
     const face = u.moon.mul(smoothstep(0.2, 0.75, seas).mul(0.3).add(0.75)).mul(gain.mul(2.6));
@@ -544,10 +627,12 @@ export const swBackdrop = (u, dirIn, opts = {}) => {
     // ── Thin cloud across the moon's part of the sky ──
     const veilUv = vec2(az.mul(0.55).add(u.drift.mul(0.0016)), el.mul(2.6));
     const veil = u.noise(veilUv).toVar();
-    const streak = smoothstep(0.5, 0.78, veil.g.mul(0.7).add(veil.b.mul(0.3)))
-        .mul(smoothstep(0.05, 0.14, el)).mul(clear);
+    // (The air says how much of it: none on a clear night, a low ceiling in the rain.)
+    const ceiling = u.cloud.mul(0.16);
+    const streak = smoothstep(float(0.58).sub(ceiling), float(0.86).sub(ceiling), veil.g.mul(0.7).add(veil.b.mul(0.3)))
+        .mul(smoothstep(0.05, 0.14, el)).mul(clear).mul(min(u.cloud.mul(1.8), 1.0));
     const lit = exp(a2.mul(-9.0)).mul(1.4).add(0.12);
-    col.assign(mix(col, u.glow.mul(lit).mul(0.42).add(u.horizon.mul(0.35)).mul(gain), streak.mul(0.5)));
+    col.assign(mix(col, u.glow.mul(lit).mul(0.42).add(u.horizon.mul(0.35)).mul(gain), streak.mul(u.cloud.mul(0.2).add(0.4))));
     // ── Rank behind rank of spruce, far to near, each deeper in the mist ──
     /** The wood parts where the moon stands. */
     const gap = float(1.0).sub(swBell(az.sub(u.moonAz).div(0.34)).mul(0.52)).toVar();
@@ -602,7 +687,9 @@ export const swBackdrop = (u, dirIn, opts = {}) => {
         // How far down from the trees' middle height, 0 up there → 1 at the water: the mist lies at the feet.
         const mid = ground.add(gap.mul(rank.tall * 0.6));
         const under = clamp(mid.sub(el).div(max(mid, 1e-3)), 0.0, 1.0);
-        const wall = mix(u.forest.mul(gain), haze, rank.mist);
+        // (How deep the mist has this rank: all of it in a thick air, little on a clear night.)
+        const taken = float(1.0).sub(float(1 - rank.mist).pow(thick));
+        const wall = mix(u.forest.mul(gain), haze, taken);
         const body = mix(wall, haze, under.mul(under).mul(0.75 - rank.mist * 0.35).mul(clear));
         col.assign(mix(col, body, below));
     };
@@ -611,7 +698,7 @@ export const swBackdrop = (u, dirIn, opts = {}) => {
     ranks.forEach((rank) => If(el.lessThan(rank.base + rank.tall * 1.5), () => farRank(rank)));
 
     // Mist lies on the water all the way round.
-    col.assign(mix(col, haze, exp(el.mul(-46.0)).mul(0.86).mul(clear.mul(0.6).add(0.4))));
+    col.assign(mix(col, haze, exp(el.mul(-46.0).div(thick)).mul(0.86).mul(clear.mul(0.6).add(0.4))));
     return col;
 };
 

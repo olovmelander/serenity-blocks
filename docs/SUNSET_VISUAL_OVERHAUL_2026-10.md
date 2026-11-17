@@ -494,3 +494,264 @@ still behind any lantern nearer than it.
 Not done: no wake (at this range it would be a pixel or two), no real-game or real-GPU capture
 here, and a rebuild in place (a quality change) starts the boat's evening over, so a boat
 mid-passage leaves the picture then.
+
+## The living sea (2026-11-17)
+
+On `feature/sunset-living-sea`. The owner asked for a full audit of the theme and then to raise it
+to "one of the most visually stunning themes in my game: a true graphical masterpiece": the sun,
+the moon, the sky and clouds, the boat, the water, the horizon and landscape, colour, light and
+reflections, every event with an effect of its own and the biggest the most spectacular, a picture
+that changes over time, and play that stays smooth and easy to read.
+
+![Before and after: noon, sunset, midnight](sunset-overhaul/living-before-after.jpg)
+
+### What the audit found
+
+Captured before anything was changed: fifteen hours of the day and sixteen events at 1600 × 900,
+High, WebGPU.
+
+| Part | What was weak |
+| --- | --- |
+| The sun | The theme's own subject read as a pale peach blob with a soft edge, lower in contrast than the sky round it, on a thin stem of light at sunset; a white disc ringed orange by day. |
+| The horizon | Empty at every hour: no land anywhere, nothing between the eye and the edge of the world. |
+| The stars | Five-pixel discs, all the same size, out already in the afterglow. |
+| Noon and night | The two dullest hours: a blue sky with a few streaks and a turquoise sheet; a dark sea under dots. The night is two fifths of the day's clock. |
+| The sea | Smooth paint: the roads of the sun and the moon had no sparkle in them. |
+| The boat | A 20-pixel speck 260 to 420 m out, once every three to seven minutes, with no wake. |
+| The lantern | A tulip-shaped lathe on a disc, flat and toy-like, the nearest thing to the eye. |
+| Variety | The day turned, but the weather never did: the same cloud and the same sea every evening, and the same moon every night. |
+| Clears | One, two and three lines differed only in how many lanterns lifted, and a lantern lifts slowly: a second after a clear nothing on screen had changed. |
+| Four lines, the crown | "The sky on fire" was a shift of colour; the green flash is a few pixels; at noon and at midnight, with the sun and the moon out of the picture, the halos round them were not seen at all. |
+| Hard drop | Its drops were two pixels across. |
+| Level up | The day runs on an eighth of itself: seen only by who is looking at the sky. |
+
+### The sun, the moon and the stars
+
+- **The tone curve burns out channel by channel** (`sunsetFilmic`). The hue-preserving shoulder is
+  as it was; above it the hottest values now saturate red first, then green, then blue, as film
+  does, so a low sun's heart goes from ember to gold to white. The old path went straight to white
+  and took both the disc and its road on the water through pink. Nothing under the knee changes.
+- **The disc**: a limb a pixel and a half wide whatever the lens; limb darkening by how low the sun
+  stands (strong and red on the horizon, slight at noon, where a strong one ringed a white sun
+  orange); less power on the horizon (9 → 6), so the limb stays ember and only the heart goes gold.
+- **The mirage**: under a line a fifth of a degree over the horizon the low sun's image is turned
+  over, so its lower limb comes down to meet a second limb rising from the sea and the two join in
+  a foot before the disc goes under (the omega of a sunset over warm water).
+- **A pillar of light** stands over the sun (the moon by night) for three lines and more.
+- **The moon is a different moon each night**: the gibbous moon the theme opens on, then one near
+  full, a half moon, a crescent with the earth's light on its dark side, and round again
+  (`MOON_PHASES`, `moonPhaseAt`). It changes at noon, under the sea. The light it gives the sea and
+  the air follows how much of it is lit, so a crescent night is darker and has more stars in it.
+- **Stars are points**: sized in pixels, not in lattice cells, in three densities with brightness
+  dealt steeply: a handful of bright ones, some hundreds the eye can count, a dust.
+![The low sun over the last tenth of an hour: its lower limb meets its own image](sunset-overhaul/living-sun-mirage.jpg)
+
+- **Shooting stars** (`sunset-meteors.js`): one falls now and then in a dark sky by itself, and a
+  crown at night brings a shower of thirteen. One instanced draw of ribbons that face the lens.
+
+### The weather
+
+`sunset-weather.js`: a second clock beside the day's. Five skies, 94 s each (resting 40 % of it,
+then melting into the next), 470 s round against the day's 565 s, so the same hour meets a
+different sky each time it comes:
+
+| Sky | What it is |
+| --- | --- |
+| trade | The sky the theme ships: a broken deck running in toward the sunset, cirrus over it. Every number neutral. |
+| towers | Heaps of cumulus standing along the horizon on flat bases (`o.towers` in `skyColour`: a height field over the bearing, lit on the side that faces the key, dark with a burning edge toward a low light, their feet in the haze). They stand back from where the sky sets and rises. With the light low, lightning flickers inside a far one now and then, without a sound (never under reduced motion; scaled by the flash setting). |
+| mackerel | A fuller deck broken into small cells, row on row: the widest fire at sunset; a fresher wind on the water. |
+| clear | Hardly a cloud, the air washed clean (the haze reaches 1.8 times as far), the sea near glass: the sharpest sun, the most stars. |
+| veil | High thin cloud: the light spreads wide round the sun and the moon and a 22-degree ring stands round them by itself, the distance goes soft, the stars are few. |
+
+![Towers at noon with the boat, a mackerel sky before sunset, a clear night, a veil at dusk with the crescent](sunset-overhaul/living-weather.jpg)
+
+Now and then (`NowAndThen`, dealt from a seed by number, so a seek lands on the same ones): a
+shooting star, the lightning, and by day a few gulls crossing.
+
+### The sea
+
+- **Glitter.** The roads of the sun, the moon and every wave of light are no longer an even sheen:
+  62 % of their light is sparks a pixel or two across, each flashing on a beat of its own. They lie
+  on a lattice of the eye's own angles (a bearing and a dip), so they are the same size on screen
+  near the eye and at the horizon; the lobe still says where the road lies and the chop still
+  breaks it.
+- **The sea's own fire.** Once the sky is dark, water that is stirred answers with a cold cyan
+  light: the ring a lantern lands in, and every wave a clear sends out (`U.seaFire`).
+- **The weather's hand**: the wind's chop and how far the eye sees through the air are uniforms
+  now (`U.chop`, `U.hazeReach`).
+- **The islands are mirrored in it** (below).
+
+### The horizon: islands, and the night's boats
+
+![The horizon at 2.5 times its size: noon, sunset, dusk (the lamps lit), and the rise side at noon](sunset-overhaul/living-islands.jpg)
+
+Fourteen limestone karst islands stand along the horizon, from four shapes modelled in Blender by
+`scripts/blender/sunset_islands.py` (it writes `sunset-islands-model.js`: 8,746 triangles, 132 KB):
+a cluster of top-heavy towers 131 m high with clefts and sea caves, a ridge of three humps 447 m
+long with one sheer end, a needle of 44 m with a rock at its foot, and a low islet. Each is an
+implicit solid (lumps, tiers, flutes, an eight-metre notch at the waterline) with a skin of jungle
+on what faces up, meshed, decimated, and painted per vertex with limestone, stain or jungle times
+an occlusion traced in Blender. Used at different turns and sizes the four give fourteen
+silhouettes, 1.3 to 8 km out, the nearest 93 px tall.
+
+They stand in two groups that turn with the places the sky sets and rises (`sunset-islands.js`),
+so both gates stay open sea whatever the layout: the sun goes down into the water between the long
+ridge and the tall cluster, and nothing stands within 6.9 degrees of either gate (an island that
+would stand in the other gate when the two come close is left out). The light is the boat's: the
+sky the face looks at, the sea's light from below, the key on the faces turned to it, a cut-out
+against a low light. Rock is shaded by its facets, the jungle lets the key through, and facets
+seen edge-on burn near the light. One material, two draws.
+
+**In the water.** The part bakes a skyline (for each bearing from each gate, how high the land
+stands and how far off: a 512 × 2 texture), and the sea reads it along its mirror ray: where the
+ray comes down on land the water shows the island's dark body, paled by the air between, darkest
+at the island's foot and thinning toward its mirrored top. And the far sea is no longer the colour
+of the sky it meets: rough water seen low mirrors the sky from higher up than a mirror would
+(`TUNE.roughLift`), so the sea stands a shade darker than the horizon and the islands stand on it.
+
+**Lamps.** From dusk the people who live under the near islands light their lamps: twelve warm
+points at the water's edge (the model carries the places).
+
+Far out at night six fishing boats work with their lamps over the side: a hard green-white point
+each and the haze it lights (`NIGHT_BOATS`, two soft lights a boat, placed off the gates).
+
+### The boat
+
+It passes 110 to 250 m out (it was 260 to 420), every two to four minutes (three to seven), so it
+is a boat with people in it: 60 to 100 px long. Spray trails astern of it and a wave stands at its
+bow (soft lights in the sky's colour: a wake drawn ON the sea is a fifth of a pixel tall from an
+eye 3 m up). It rides the sea as the mesh draws it out there (`seaMeshHeight`: the far rings leave
+the short wave trains out, and a boat on the full swell stood half a metre off the drawn water),
+and its mirror image is lit as the boat is.
+
+### The lantern
+
+![The nearest lanterns at four times their size: noon, the golden hour, sunset, dusk, midnight](sunset-overhaul/living-lantern.jpg)
+
+The tulip-shaped lathe became a lotus lantern, modelled in Blender by
+`scripts/blender/sunset_lantern.py` (it writes `sunset-lantern-model.js`: 680 triangles, 19 KB): a
+small dark float sitting in the water, two rings of eight folded paper petals (the outer open on
+the water, the inner cupped up, each creased down its middle and none quite like the next), and a
+bud of eight paper gores swelling between bamboo ribs, hooped at mouth and crown, open at the top.
+0.66 m tall, 0.40 m across the bud, 0.64 m across the petals. Per vertex Blender's normal and one
+RGBA8: how far up, baked occlusion, the dark lines, the part.
+
+The material is paper in the hour's light (the sky by the normal, the sea from below, the key on
+the faces turned to it and through the paper on the side turned away, occlusion in the folds) and
+a flame behind paper at once (the piece's colour most where the flame stands, a hot core found
+from the line of sight to the flame so it sits inside the bud, ribs dark against it, the inner
+wall lit through the open top, petals lit on the faces turned to the flame). How much of the flame
+shows comes from the hour's ambient light: a lantern at noon is a coloured paper thing in
+sunlight, at night a light. A seed gives each lantern its size, build, lean and paper.
+
+In the world the lantern is drawn 1.18 times life size, its halo is fitted to the bud (0.5 m
+afloat, 0.62 m in the air) and both the halo and the light the sea mirrors follow how brightly a
+flame shows against the hour (the stations' `lantern`, which nothing read before): round a paper
+lantern in full sun a glow was the least believable thing in the picture.
+
+### Every play, an effect of its own
+
+What was there stays (the lantern a lock sets down, the lanterns a clear lifts, the halo, the green
+flash, the sky's fire and the gulls of a chain, the day a level runs on). What is new is seen
+wherever the sun and the moon are, because it is on the sea and along the horizon:
+
+| Play | What it adds |
+| --- | --- |
+| Hard drop | A jet straight up over the crown of drops, the drops large enough to see, and a second ring behind the first. |
+| One line | **A wave of light** runs out over the whole sea from under the board to the horizon: sheen and sparks in the hour's own light (gold toward sunset, near white under a high sun, the sea's cyan fire by night). It gathers speed as it goes (`waveReach`), so it crosses the near water and the far water at one pace on screen and is at the horizon in four seconds. |
+| Two, three lines | A stronger wave each (also with every clear a chain holds and every wave of a cascade); from three lines **a pillar of light** over the sun or the moon. |
+| Twist | **A whirl of light** winds round where its lantern rose, in that lantern's colour, turning the way the lantern turns. One that clears nothing still turns the water. |
+| Back-to-back | **A second wave** on the heels of the first (and the sun dogs, as before). |
+| Four lines | Two waves; **the rays are thrown wide** across the sky; and **the far shore answers**: lanterns are let go all along the horizon, the letting-go running along the shore from where the sun sets, most of them candle gold and some in the colours of the lanterns that just rose. They climb, the wind takes them, and the horizon glows gold under them (`sendRelease`, 70 to 340 by tier). |
+| Perfect clear | The crown on all of it: a larger letting-go, the pillar, the great halo and the whole flock, and by night **a shower of shooting stars**. |
+| Level up | **The horizon is lit from end to end** in the hour's brightest light as the day runs on, and every flame afloat leaps. |
+
+![A hard drop, one line, three lines, a twist at night, a back-to-back at night, four lines, the far shore answering, a perfect clear at night](sunset-overhaul/living-events.jpg)
+
+### The icon
+
+![The old icon and the new, at full size and at the picker's](sunset-overhaul/living-icon.png)
+
+Re-baked from the new world (this supersedes the recipe under "Reproduce" at the top): the level
+game camera with no board, so the horizon is level, cropped square round the place the sun sets.
+Playground at 2400 × 1350: `?effect=sunset&quality=Ultra&t=40&hour=17.9&combo=5&locks=12&lift=5&liftAge=9&flock=13&flockAge=10`,
+the square 800 px wide from (330, 330), then the middle 86 % of that scaled to a 512 px disc with
+saturation × 1.1 and contrast × 1.05. The sun on the water with its glittering road, the long ridge
+and the tall cluster either side of it, lanterns rising, a skein of gulls.
+
+### Cost
+
+GPU time a frame (timestamp queries, the playground's live demo loop at 1920 × 1080, High, capped
+at 30 fps, the RTX 5080 Laptop, two rounds interleaved with the untouched base): 0.63 ms before,
+0.80 to 0.84 ms by day and 0.84 to 0.96 ms at night after. CPU time a frame unchanged (1.3 to 1.4 ms).
+
+### Reproduce
+
+Playground additions: `weather=trade|towers|mackerel|clear|veil` (or a phase number), `moon=<deg>`,
+`meteor=<s>`, `shower=<s>`, `b2b=1`, `event=spin`, `parts=…,islands,meteors`.
+
+### Verification (2026-11-17, on main 46339ef5 plus this pass)
+
+- **Playground** (private headless Chrome on the RTX 5080 Laptop, WebGPU, High, 1600 × 900, every
+  URL capped at 30 fps): every hour and every weather, each event at several ages, the moon's four
+  phases, the boat near and far, the islands' waterline and the nearest lanterns enlarged, an
+  eight-frame strip of a perfect clear. Also the WebGL2 backend at High and Low, Minimal, Medium
+  and Ultra, a 430 × 932 portrait frame and a frame with no board. No console warning or error in
+  any of them.
+- **Real game** (the dev server in headless Chrome, WebGPU, capped at 30 fps), twice, the second
+  time with everything in: a single-player run on Sunset, twelve real hard drops with real key
+  presses, then a chain of seven clears, a twist, four lines, a perfect clear and a level through
+  the game's own event bus. No warning or error that names the theme or the renderer. The scripted
+  drops top the board out before the end, so the last two frames are the game-over screen.
+- **Unit tests**: 231 in 14 Sunset files, all passing. New: `sunset-weather` (the skies, their clock
+  beside the day's, the things that happen by themselves), `sunset-events` (the wave, the whirl,
+  the ladder from one line to the crown, the far shore's lanterns, the weather in the world, the
+  shooting stars, the night boats, the boat's spray, the moon from night to night, the sea as its
+  mesh draws it), `sunset-islands` and `sunset-lantern` (the models as Blender wrote them, the
+  gates clear at every vertex, the skyline against a plane cut of the placed meshes, the sun and
+  the moon clear of all land while they are low). The shader gate builds every material, the
+  islands' and the meteors' among them, for WGSL and GLSL at High and Minimal, under budget.
+- **Gates**: typecheck, the ts and lint ratchets at baseline, architecture fitness, dependency
+  boundaries, the theme lifecycle audit, palette, perf budgets, the build with its boot-closure
+  guard, the wording gate on the built files, pages artifact and release gates: all pass. The
+  theme's chunk is 362 KB (177 KB gzipped) with the generated islands and lantern in it. Not run:
+  the full suite.
+
+![In the game](sunset-overhaul/living-ingame.jpg)
+
+Not done, and the lead's own doubts: nobody has watched it move except through strips of stills,
+so whether the sparks on the water and the edge-lit facets of the islands shimmer under the
+camera's sway on tiers without antialiasing is unseen; no integrated-GPU or phone reading and no
+uncapped frame-rate measurement; multiplayer, Infinity and meditation layouts not captured; in
+portrait with a board every island is behind the card; the islands drop out at once, not eased,
+in the narrow window where the two gates come close; a twist's whirl reads as a field of sparks
+in the lantern's colour more than as arms; `docs/theme-screenshots/sunset.png` is the old look. The five skies and their order, the four moons, the karst islands, the lotus
+lantern, and what each play adds are the session's choices.
+
+## Calmer water, living clouds (2026-11-17, evening)
+
+On `feature/sunset-calmer-sea`. After playing the living sea the owner said: "The distant clouds
+look too 'static' and the glitter or grain on the water while playing and making effects is too
+much!!!"
+
+**The water.** The sparks of the glitter lattice were in every effect that spreads over the sea
+(the wave of light a clear sends out and its wake, the rings by night), so each clear filled the
+sea with flashing single pixels: in play, grain. Now no effect carries sparks: the wave is a soft
+band of light that the water catches as it catches the sky (weighted by its Fresnel, so it runs
+over the crests and the far sea), its wake a faint afterglow, and by night a fainter glow line in
+the sea's cold colour; the rings by night glow instead of sparkling, and a wave lifts the sun's road
+a third as much. The roads of the sun and the moon still twinkle, but sparsely and slowly (larger
+cells, longer and softer twinkles, 24 % of the road's light instead of 62 %). Measured as the share
+of water pixels standing out from their neighbourhood in one frame: during effects 1.8–7.2 %
+before, 0.8–1.7 % after, against 0.7–1.3 % for the sea at rest.
+
+**The clouds.** The far clouds only slid with the wind, and near the horizon a slide is all but
+invisible. Now the layers of the field move at speeds of their own, so clouds change shape at any
+distance: the deck's clouds form and melt as they stream in (a cloud in about 45 s), the towers'
+heads drift along the horizon over their feet and boil upward, the bars drift and change. All on
+the clouds' own clock, which runs faster as play heats; no extra texture reads. The towers also no
+longer end in straight walls either side of the sun: they sink and thin away toward it.
+
+Verified in the playground on WebGPU (sunset, noon, night; the clear, four lines and the twist;
+20 s strips of the horizon, living against frozen), WebGL2 at High and Low, Minimal and portrait;
+consoles clean; the 231 Sunset tests pass.

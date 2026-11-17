@@ -6,6 +6,14 @@
  * phase-locked captures (`?t=`), replayed gameplay (`?event=`) and the icon frame (`?icon=1`)
  * match the game. The world's authored assets load asynchronously: `diagnostics().assets`
  * reads `ready` once the world is drawn (wait for it, as well as `__PLAYGROUND_READY__`).
+ *
+ * Parameters: `quality=`, `level=`, `station=<0..4|id>`, `weather=clear|mist|shower|steam|cloud`,
+ * `cloud=<-1..1>` (a cumulus's shadow placed over the opening: -1 entering, 0 over it, 1 leaving),
+ * `fringe=<deg>`, `board=1` (`statsHud=0`), `parts=`, `falseColor=1`, `noPost=1`, `reduce=1`,
+ * `event=lock|drop|clear|quad|twist|perfect|levelUp|release|over|morning` with `eventAge=`, `u=`,
+ * `row=`, `shape=`, `lines=`, `peak=`; `combo=<n>` (a chain held), `b2b=<n>`, `locks=<n>` and
+ * `clears=<n>` (play before the frame), `demo=1` (a looping script of events), `icon=1`,
+ * `look=x,y,z[,fov]`, `eye=x,y,z`. Steam and the birds are live things: run without `t=` to see them.
  */
 
 import * as THREE from 'three/webgpu';
@@ -277,9 +285,11 @@ export function create({
         if (eventName) {
             fireEvent();
             advance(Math.max(0.016, eventAge), 1 / 60);
-        } else {
-            stepDirector(0);
         }
+        // `cloud=<-1..1>`: a cumulus's shadow placed over the opening (-1 entering, 0 over it).
+        if (params.has('cloud')) director.passCloud({ at: num(params, 'cloud', 0), length: 3.4 });
+        else if (!eventName) director.cloud.active = false;
+        stepDirector(0);
     };
 
     const runDemo = (time) => {

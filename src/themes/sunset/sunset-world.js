@@ -58,23 +58,29 @@ import {
     REST_RIG, aimLanding, aimLeave, boardFor, boardPoint, cardFor, fallbackLayout, fovForAspect, frameFor,
 } from './sunset-composition.js';
 import {
-    HOUR_COLOURS, LEVEL_SECONDS, MOON_LAG, MOON_PEAK, STATIONS, SUN_PEAK, arcAt, dayHourAt, hourAngle, levelOffset,
-    lightAt, turnSeconds,
+    HOUR_COLOURS, LEVEL_SECONDS, MOON_LAG, MOON_PEAK, MOON_PHASE, STATIONS, SUN_PEAK, arcAt, dayHourAt, hourAngle,
+    levelOffset, lightAt, moonLit, moonPhaseAt, turnSeconds,
 } from './sunset-hours.js';
 import {
     TUNE, createLight, createSeaNoise, createSkyNoise, tune,
 } from './sunset-tsl.js';
 import { createSky } from './sunset-sky.js';
-import { createSea } from './sunset-sea.js';
+import { WAVE_LIFE, WHIRL_LIFE, createSea } from './sunset-sea.js';
 import { LanternPool, MOTE_SECONDS, moteAt } from './sunset-lantern-pool.js';
 import { createGlows, createLanterns } from './sunset-lanterns.js';
 import { createFlock } from './sunset-birds.js';
 import { createBoat, lampForSun } from './sunset-boat.js';
+import { createIslands } from './sunset-islands.js';
+import { createMeteors } from './sunset-meteors.js';
+import {
+    NowAndThen, skyAt, skyDrift, skyPhaseOf,
+} from './sunset-weather.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 export { REST_RIG, fovForAspect };
 
 /** The parts a capture can show alone. */
-export const SUNSET_PARTS = Object.freeze(['sky', 'sea', 'lanterns', 'glows', 'birds', 'boat']);
+export const SUNSET_PARTS = Object.freeze(['sky', 'sea', 'islands', 'lanterns', 'glows', 'birds', 'boat', 'meteors']);
 
 /** The sun's and the moon's angular radius (degrees): larger than life, as a long lens sees them. */
 export const SUN_RADIUS = 1.45;
@@ -82,6 +88,8 @@ export const MOON_RADIUS = 1.2;
 
 /** Seconds a ring stays on the water. */
 const RING_LIFE = 7;
+/** Waves of light and whirls alive at once on the sea. */
+const WAVE_ROWS = 5;
 /** A clear's halo: how long it takes to run out to its place, and its radius (degrees). */
 const HALO_RISE = 1.1;
 const HALO_RADIUS = 22;
@@ -112,8 +120,34 @@ const EMBER = Object.freeze([
     ['zenithFar', [0.8, 0.7, 0.92]],
     ['midFar', [0.92, 0.78, 0.92]],
 ].map(([name, rgb]) => Object.freeze([HOUR_COLOURS.indexOf(name), ...rgb])));
+/** The rows of the hour's colours that are the moon's light on the air and the sea. */
+const MOON_LIGHT_ROWS = Object.freeze(['moonGlow', 'moonGlint'].map((name) => HOUR_COLOURS.indexOf(name)));
 /** A splash's drops fall back within this long. */
-const DROP_LIFE = 0.9;
+const DROP_LIFE = 1.15;
+/**
+ * The far shore's answer to four lines: lanterns let go all along the horizon. How long one is
+ * seen, how far out they rise (metres), how fast (m/s), how long the letting-go takes to run
+ * along the shore from where the sun sets (seconds), and the wind that carries them (m/s).
+ */
+export const RELEASE = Object.freeze({
+    life: 15, range: Object.freeze([230, 700]), rise: Object.freeze([5.5, 10.5]), ripple: 3.0, wind: 3.2,
+});
+/**
+ * The night's fishing boats far out, their lamps over the side: [the gate each keeps its place
+ * by, degrees off it, metres out].
+ */
+export const NIGHT_BOATS = Object.freeze([
+    ['set', -15, 4200], ['set', 9.5, 3300], ['set', 20, 5200],
+    ['rise', -9, 3900], ['rise', 8, 3000], ['rise', 15, 4800],
+].map((row) => Object.freeze(row)));
+/** How large a lantern is drawn against the model's own size. */
+export const LANTERN_SIZE = 1.18;
+/** Room among the soft lights for the lamps under the islands. */
+const ISLAND_LAMPS = 24;
+/** The boat's wake: puffs of spray trailing astern. */
+const WAKE_PUFFS = 9;
+/** A shower (the crown, by night): how many fall, and over how long. */
+const SHOWER = Object.freeze({ count: 13, seconds: 2.6 });
 /** The trail a light leaves in flight: points, and seconds between them. */
 const MOTE_TRAIL = 16;
 const MOTE_STEP = 0.009;
@@ -146,7 +180,8 @@ export class SunsetWorld {
      * @param {object} [p.tune]   overrides for TUNE (the playground's P.<name>=)
      */
     constructor({
-        scene, quality = 'High', capture = false, seed = 29, hour = null, tune: overrides = null,
+        scene, quality = 'High', capture = false, seed = 29, hour = null, tune: overrides = null, weather = null,
+        moonPhase = null,
     }) {
         tune(overrides);
         this.scene = scene;
@@ -179,6 +214,15 @@ export class SunsetWorld {
             from: 0, to: 0, at: -100, seconds: 1, pin: Number.isFinite(hour) ? ((hour % 24) + 24) % 24 : null,
         };
         this.light = lightAt(12);
+        /**
+         * The weather (sunset-weather.js): the phase a capture holds it on (else its own clock
+         * turns it), and what it is now.
+         */
+        this.weatherPin = skyPhaseOf(weather);
+        this.sky = skyAt(this.weatherPin ?? 0);
+        /** The moon's phase angle (degrees): the one a capture holds it on, else the days turn it. */
+        this.moonPin = Number.isFinite(moonPhase) ? Math.max(0, Math.min(170, moonPhase)) : null;
+        this.moonPhase = MOON_PHASE;
         /** Where the sun and the moon stand: { az, el } in degrees. */
         this.sunArc = { az: 0, el: 0 };
         this.moonArc = { az: 0, el: 0 };
@@ -204,6 +248,8 @@ export class SunsetWorld {
             moonUp: uniform(0),
             /** How far the moon's face is turned as it crosses the sky (radians). */
             moonTilt: uniform(0),
+            /** Tonight's phase: (sine, cosine of its angle, the earth's light on its dark side). */
+            moonPhase: uniform(new THREE.Vector3(Math.sin(MOON_PHASE * DEG), Math.cos(MOON_PHASE * DEG), 0.018)),
             /** 0: the sun lights the clouds; 1: the moon does. */
             moonKey: uniform(0),
             stars: uniform(0),
@@ -235,22 +281,71 @@ export class SunsetWorld {
             glint: uniform(0),
             /** Radians a pixel spans (the sea and the glows size themselves by it). */
             pixelAngle: uniform(0.0008),
-            /** x: live rings, z: lanterns the water mirrors. */
+            /** x: live rings, y: waves of light and whirls, z: lanterns the water mirrors. */
             counts: uniform(new THREE.Vector4(0, 0, 0, 0)),
+            /** The weather's hand on the sea: the wind's chop (1: the day the theme ships). */
+            chop: uniform(1),
+            /** How far the eye sees through the air over the sea (metres). */
+            hazeReach: uniform(TUNE.hazeReach),
+            /** 0..1: how far the sea answers a touch with its own cold light (the night's). */
+            seaFire: uniform(0),
+            /** The clouds' own clock (seconds; it runs faster as the evening wind rises with play). */
+            cloudClock: uniform(0),
+            /** The weather's hand on the sky (1, 1, 0, 0, 0: the day the theme ships). */
+            cirrus: uniform(1),
+            bars: uniform(1),
+            towers: uniform(0),
+            veil: uniform(0),
+            mackerel: uniform(0),
+            /** Lightning inside a far tower: (its bearing in radians, how bright). */
+            bolt: uniform(new THREE.Vector2(0, 0)),
+            /** The bearings of the places the sky sets and rises (radians right of the view line). */
+            gates: uniform(new THREE.Vector2(-0.44, 0.56)),
+            /** Where the sky sets and rises, level (unit): the towers stand back from both. */
+            setDir: uniform(new THREE.Vector3(-0.4, 0, -0.9)),
+            riseDir: uniform(new THREE.Vector3(0.5, 0, -0.85)),
+            /** The horizon lit from end to end (a new level; the far shore's lanterns): rgb, 1. */
+            horizonGlow: uniform(new THREE.Vector4(0, 0, 0, 1)),
+            /** The rays thrown wide (four lines, the crown), and the pillar over the light. */
+            rayBurst: uniform(0),
+            pillar: uniform(0),
+            /** The halo's body: its right hand on the sky, and whether it is the moon (0 | 1). */
+            pulseRight: uniform(new THREE.Vector3(1, 0, 0)),
+            haloMoon: uniform(0),
         };
 
         this.ringRows = Array.from({ length: this.tier.rings * 2 }, () => new THREE.Vector4(0, 0, -100, 0));
         this.lampRows = Array.from({ length: this.tier.lit * 2 }, () => new THREE.Vector4(0, 0, 0, 0));
+        /** Waves of light and whirls: (x, z, born, strength), (r, g, b, 0 a wave | the way a whirl turns). */
+        this.waveRows = Array.from({ length: WAVE_ROWS * 2 }, () => new THREE.Vector4(0, 0, -100, 0));
         this.rows = {
             rings: uniformArray(this.ringRows, 'vec4'),
             lamps: uniformArray(this.lampRows, 'vec4'),
+            waves: uniformArray(this.waveRows, 'vec4'),
         };
         this.ringCount = 0;
+        this.waveCount = 0;
 
         this.pool = new LanternPool({ capacity: this.tier.lanterns, seed: seed + 3 });
         /** Splash drops: [x, y, z, vx, vy, vz, born, r, g, b] each, in a ring buffer. */
         this.drops = new Float32Array(this.tier.drops * 10).fill(-100);
         this.dropCursor = 0;
+        /**
+         * The far shore's lanterns: up to three lettings-go at once, each a table of
+         * [x, z, delay, rise, r, g, b, phase] rows, dealt from a generator of their own.
+         */
+        this.releases = Array.from({ length: 3 }, () => ({
+            at: -100, n: 0, rows: new Float32Array(this.tier.release * 8),
+        }));
+        this.releaseCursor = 0;
+        this.farRand = mulberry32(seed + 401);
+        /** What happens by itself: a shooting star, lightning in a far tower, a few gulls. */
+        this.ambient = {
+            meteor: new NowAndThen({ seed: seed + 71, every: [9, 26], first: 3 }),
+            bolt: new NowAndThen({ seed: seed + 113, every: [3.5, 12], first: 2 }),
+            gulls: new NowAndThen({ seed: seed + 157, every: [55, 120], first: 25 }),
+        };
+        this.boltBearing = 0;
 
         this.state = {
             combo: 0,
@@ -268,6 +363,8 @@ export class SunsetWorld {
             clears: 0,
             lifted: 0,
             flocks: 0,
+            releases: 0,
+            showers: 0,
         };
         /**
          * Every event's light ADDS to what is still lit (shared/swell.js), so a single after a
@@ -291,6 +388,26 @@ export class SunsetWorld {
             great: new Swell({
                 attack: 0.8, release: 3.4, ceiling: 1.1, knee: 0.8,
             }),
+            /** The pillar of light over the sun or the moon (three lines and more). */
+            pillar: new Swell({
+                attack: 0.35, release: 1.7, ceiling: 1.2, knee: 0.8,
+            }),
+            /** The rays thrown wide (four lines, the crown). */
+            rays: new Swell({
+                attack: 0.25, release: 2.4, ceiling: 1.2, knee: 0.8,
+            }),
+            /** The horizon lit from end to end (a new level). */
+            dawn: new Swell({
+                attack: 0.45, release: 2.4, ceiling: 1.1, knee: 0.8,
+            }),
+            /** The far shore's lanterns' light on the horizon. */
+            release: new Swell({
+                attack: 1.4, release: 7, ceiling: 1.2, knee: 0.8,
+            }),
+            /** Every flame afloat leaps (a new level). */
+            lampKick: new Swell({ release: 1.3, ceiling: 1, knee: 0.7 }),
+            /** Lightning inside a far tower. */
+            bolt: new Swell({ release: 0.16, ceiling: 1.4, knee: 1 }),
         };
         /**
          * How hot play runs (shared/gameplay-surge.js), sampled once a frame on the world's clock:
@@ -318,6 +435,10 @@ export class SunsetWorld {
         this._lamps = [];
         this._lifted = [];
         this._jitter = [0, 0];
+        this._waveRgb = [1, 0.8, 0.6];
+        this._origin = { x: 0, y: 0, z: 0 };
+        this._from = { x: 0, y: 1, z: 0 };
+        this._toward = { x: 0, y: 1, z: 0 };
         this.applyHour();
     }
 
@@ -327,15 +448,26 @@ export class SunsetWorld {
         const sea = createSeaNoise(tier.seaNoise);
         this.seaNoise = sea.map;
         this.parts.sky = createSky({ tier, noise: this.skyNoise, U });
+        // The islands before the sea: the sea mirrors them from their skyline.
+        this.parts.islands = createIslands({ U, tier, seed: this.seed });
         this.parts.sea = createSea({
-            tier, U, skyNoise: this.skyNoise, seaNoise: this.seaNoise, seaVariance: sea.variance, rows: this.rows,
+            tier,
+            U,
+            skyNoise: this.skyNoise,
+            seaNoise: this.seaNoise,
+            seaVariance: sea.variance,
+            rows: this.rows,
+            skyline: this.parts.islands.skyline,
         });
         this.parts.lanterns = createLanterns({ capacity: tier.lanterns, U });
-        // (One more for the boat's lantern.)
-        const glowCapacity = tier.lanterns + tier.motes * MOTE_TRAIL + tier.drops + 1;
+        // (One more for the boat's lantern; the far shore's lanterns, two lettings-go deep; the
+        // night's fishing boats, a lamp and the haze it lights each.)
+        const glowCapacity = tier.lanterns + tier.motes * MOTE_TRAIL + tier.drops + 1 + tier.release * 2
+            + NIGHT_BOATS.length * 2 + WAKE_PUFFS + 1 + ISLAND_LAMPS;
         this.parts.glows = createGlows({ capacity: glowCapacity, U });
         this.parts.birds = createFlock({ count: tier.birds, U, seed: this.seed });
-        this.parts.boat = createBoat({ U, seed: this.seed });
+        this.parts.boat = createBoat({ U, seed: this.seed, seaRings: tier.seaRings });
+        this.parts.meteors = createMeteors({ capacity: tier.meteors, U });
         Object.values(this.parts).forEach((part) => this.group.add(part.mesh));
         this.scene.add(this.group);
         return this;
@@ -411,8 +543,10 @@ export class SunsetWorld {
         this.ember = 0;
         this.haloHeld = 0;
         this.restoreDay(0);
-        // The boat's evening starts over too: none on the water, the first a while off.
+        // The boat's evening starts over too: none on the water, the first a while off. And so
+        // does everything else that happens by itself.
         this.parts.boat?.restart(this.clock);
+        Object.values(this.ambient).forEach((kind) => kind.restart(this.clock));
         s.pitch = null;
         this.setAz = this.frame.setAz;
         this.riseAz = this.frame.riseAz;
@@ -432,11 +566,19 @@ export class SunsetWorld {
         s.clears = 0;
         s.lifted = 0;
         s.flocks = 0;
+        s.releases = 0;
+        s.showers = 0;
         this.ringCount = 0;
+        this.waveCount = 0;
         this.pool.reset();
         this.drops.fill(-100);
         this.dropCursor = 0;
+        this.releases.forEach((batch) => {
+            batch.at = -100;
+            batch.n = 0;
+        });
         this.parts.birds?.reset();
+        this.parts.meteors?.reset();
     }
 
     // ── camera ──────────────────────────────────────────────────────────────────
@@ -528,6 +670,50 @@ export class SunsetWorld {
         this.ringRows[k + 1].set(rgb[0], rgb[1], rgb[2], light);
     }
 
+    /**
+     * A wave of light on the sea from (x, z), born at `at`, in the light `rgb`; `turn` 0 is a
+     * front racing out to the horizon (a clear), +1 or -1 a whirl turning that way where it began
+     * (a twist). When the table is full the one with the least left in it makes room.
+     */
+    addWave(x, z, at, strength, rgb, turn = 0) {
+        const cap = this.waveRows.length / 2;
+        let slot = this.waveCount;
+        if (this.waveCount >= cap) {
+            let least = Infinity;
+            for (let i = 0; i < this.waveCount; i += 1) {
+                const row = this.waveRows[i * 2];
+                const life = this.waveRows[i * 2 + 1].w !== 0 ? WHIRL_LIFE : WAVE_LIFE;
+                const left = row.w * (1 - Math.max(0, this.clock - row.z) / life);
+                if (left < least) {
+                    least = left;
+                    slot = i;
+                }
+            }
+        } else {
+            this.waveCount += 1;
+        }
+        const k = slot * 2;
+        this.waveRows[k].set(x, z, at, strength);
+        this.waveRows[k + 1].set(rgb[0], rgb[1], rgb[2], turn);
+    }
+
+    /**
+     * The light a wave on the sea is made of at this hour: the sun's own on its road by day, gold
+     * and then rose as it sets, and by night the sea's cold fire.
+     */
+    waveLight(out = this._waveRgb) {
+        const L = this.light;
+        const night = L.stars;
+        const day = clamp01(this.sunArc.el / 18);
+        // The low sun's light is ember; a wave of it would not read on a sea already red, so it
+        // runs gold at sunset and near white under a high sun.
+        const warm = [1.0, lerp(0.74, 0.92, day), lerp(0.4, 0.78, day)];
+        out[0] = lerp(warm[0], 0.1, night);
+        out[1] = lerp(warm[1], 0.8, night);
+        out[2] = lerp(warm[2], 1.0, night);
+        return out;
+    }
+
     /** A crown of `n` drops thrown up from (x, z) at `at`, in the light `rgb`. */
     splash(x, z, at, n, rgb) {
         const cap = this.drops.length / 10;
@@ -535,12 +721,14 @@ export class SunsetWorld {
             const k = this.dropCursor * 10;
             this.dropCursor = (this.dropCursor + 1) % cap;
             const a = this.rand() * Math.PI * 2;
-            const out = 0.5 + this.rand() * 1.1;
+            // A crown thrown outward, and a jet straight up from its middle.
+            const jet = i < n * 0.24;
+            const out = jet ? this.rand() * 0.22 : 0.5 + this.rand() * 1.3;
             this.drops[k] = x;
             this.drops[k + 1] = 0.05;
             this.drops[k + 2] = z;
             this.drops[k + 3] = Math.cos(a) * out;
-            this.drops[k + 4] = 1.4 + this.rand() * 1.6;
+            this.drops[k + 4] = jet ? 3.0 + this.rand() * 2.4 : 1.4 + this.rand() * 1.9;
             this.drops[k + 5] = Math.sin(a) * out;
             this.drops[k + 6] = at + this.rand() * 0.05;
             this.drops[k + 7] = lerp(rgb[0], 1, 0.35);
@@ -618,6 +806,8 @@ export class SunsetWorld {
         this.addRing(to.x, to.z, record.t0, hard ? 1.7 : 1, rgb, hard ? 1.6 : 1);
         if (hard) {
             this.splash(to.x, to.z, record.t0, Math.round(this.tier.drops / 14), rgb);
+            // Set down hard, the water answers twice: a second ring follows the first.
+            this.addRing(to.x, to.z, record.t0 + 0.26, 1.15, rgb, 1.2);
             this.fx.flash.hit(0.06, this.clock);
         }
         this.surge.lock(c, this.clock);
@@ -650,6 +840,19 @@ export class SunsetWorld {
             const r = lifted[i];
             this.addRing(r.xr, r.zr, r.tr, 1.2 * Math.min(1.6, swell), r.rgb, 0.8);
         }
+        // A wave of light races out over the sea from under the board to the horizon, in the
+        // hour's own light: stronger with every line, every wave of a cascade and every clear a
+        // chain holds. A twist winds a whirl of light round where its lanterns rose instead of
+        // (and beside) it; a back-to-back sends a second wave on the heels of the first.
+        const origin = this.castSea(0.5, 0.985, 3, 30, this._origin);
+        const tint = this.waveLight();
+        const power = (0.5 + lines * 0.2) * Math.min(1.6, swell) * (1 + 0.07 * Math.min(8, s.combo));
+        this.addWave(origin.x, origin.z, at, power, tint, 0);
+        if (c.b2b) this.addWave(origin.x, origin.z, at + 0.3, power * 0.85, tint, 0);
+        if (big && !c.b2b) this.addWave(origin.x, origin.z, at + 0.42, power * 0.7, tint, 0);
+        if (c.twist) this.whirl(lifted, at, 1.15);
+        // Three lines and more stand a pillar of light over the sun (the moon by night).
+        if (lines >= 3) this.fx.pillar.hit(0.55 + (lines - 3) * 0.35, at);
         this.sendPulse((0.5 + lines * 0.1) * swell);
         this.fx.glint.hit((0.6 + lines * 0.3) * swell, at);
         this.fx.flare.hit((0.35 + lines * 0.15) * Math.min(1.5, swell), at);
@@ -660,7 +863,10 @@ export class SunsetWorld {
         if (big) {
             this.fx.fireKick.hit(0.5, at);
             this.fx.flash.hit(0.2, at);
+            this.fx.rays.hit(0.8, at);
             this.greenFlash();
+            // And the far shore answers: lanterns let go all along the horizon.
+            this.sendRelease(at + 0.45, 1, lifted);
         }
         if (c.perfect) this.crownMoment(at);
         this.surge.clear(c, at);
@@ -689,6 +895,14 @@ export class SunsetWorld {
             this.addRing(r.xr, r.zr, r.tr, 1.4, r.rgb, 0.9);
         }
         this.sendPulse(0.45);
+        // The whole shore lets its lanterns go, the rays are thrown wide and the pillar stands;
+        // by night the sky answers with a shower of shooting stars.
+        this.sendRelease(at + 0.3, 1.6, lifted);
+        this.fx.rays.hit(1, at);
+        this.fx.pillar.hit(1, at);
+        if (this.light.stars > 0.4) this.sendShower(at + 0.35);
+        const origin = this.castSea(0.5, 0.985, 3, 30, this._origin);
+        this.addWave(origin.x, origin.z, at, 1.5, this.waveLight(), 0);
         this.fx.great.hit(1, at);
         this.fx.dogs.hit(0.8, at);
         this.fx.flare.hit(0.8, at);
@@ -706,9 +920,99 @@ export class SunsetWorld {
         lifted.length = 0;
         this.state.lifted += this.pool.lift(at, 1, { spiral: 1.25, out: lifted });
         if (lifted.length) this.addRing(lifted[0].xr, lifted[0].zr, lifted[0].tr, 1.2, lifted[0].rgb, 0.8);
+        this.whirl(lifted, at, 0.8);
         this.fx.flare.hit(0.2, at);
         this.fx.glint.hit(0.3, at);
         this.surge.spin(at);
+    }
+
+    /**
+     * A whirl of light on the water (a twist): round where the first of `lifted` rose, in its
+     * colour and turning the way it does; with none afloat, under the board in the hour's light.
+     */
+    whirl(lifted, at, strength) {
+        const first = lifted[0];
+        if (first) {
+            this.addWave(first.xr, first.zr, first.tr, strength, first.rgb, first.spiral < 0 ? -1 : 1);
+            return;
+        }
+        const origin = this.castSea(0.5, 0.985, 3, 30, this._origin);
+        this.addWave(origin.x, origin.z, at, strength, this.waveLight(), 1);
+    }
+
+    /**
+     * The far shore lets its lanterns go: `scale` of the tier's count rise all along the horizon,
+     * the letting-go running along the shore from where the sun sets, most of them candle gold and
+     * some in the colours of the lanterns that just rose (`lifted`).
+     */
+    sendRelease(at, scale = 1, lifted = null) {
+        const batch = this.releases[this.releaseCursor];
+        this.releaseCursor = (this.releaseCursor + 1) % this.releases.length;
+        const cap = batch.rows.length / 8;
+        const n = Math.min(cap, Math.round(cap * Math.min(1, 0.62 * scale)));
+        const half = this.halfView() + 4;
+        const rand = this.farRand;
+        const { rows } = batch;
+        for (let i = 0; i < n; i += 1) {
+            const az = (rand() * 2 - 1) * half;
+            const range = lerp(RELEASE.range[0], RELEASE.range[1], rand() ** 0.7);
+            const k = i * 8;
+            rows[k] = Math.sin(az * DEG) * range;
+            rows[k + 1] = -Math.cos(az * DEG) * range;
+            rows[k + 2] = 0.2 + (Math.abs(az - this.setAz) / (2 * half)) * RELEASE.ripple + rand() * 1.3;
+            rows[k + 3] = lerp(RELEASE.rise[0], RELEASE.rise[1], rand());
+            const own = lifted?.length && rand() < 0.3 ? lifted[Math.floor(rand() * lifted.length)].rgb : null;
+            const warm = rand();
+            rows[k + 4] = own ? own[0] : 1;
+            rows[k + 5] = own ? own[1] : 0.56 + 0.14 * warm;
+            rows[k + 6] = own ? own[2] : 0.2 + 0.12 * warm;
+            rows[k + 7] = rand() * Math.PI * 2;
+        }
+        batch.at = at;
+        batch.n = n;
+        this.state.releases += 1;
+        this.fx.release.hit(0.75 * Math.min(1.4, scale), at);
+    }
+
+    /** A shower of shooting stars from high over the picture (the crown, by night). */
+    sendShower(at) {
+        const { meteors } = this.parts;
+        if (!meteors) return;
+        const rand = this.farRand;
+        const half = this.halfView();
+        for (let i = 0; i < SHOWER.count; i += 1) {
+            // Each falls away from a point high over the frame, down and to one side.
+            const az = (rand() * 2 - 1) * (half - 4);
+            const el = 16 + rand() * 16;
+            const lean = (az / half) * 26 + (rand() * 2 - 1) * 10;
+            const length = 11 + rand() * 9;
+            azElDirection(az, el, this._from);
+            azElDirection(az + Math.sin(lean * DEG) * length, el - Math.cos(lean * DEG) * length, this._toward);
+            meteors.send(
+                at + (i / SHOWER.count) * SHOWER.seconds + rand() * 0.15,
+                this._from,
+                this._toward,
+                0.5 + rand() * 0.4,
+                1.6 + rand() * 1.4,
+            );
+        }
+        this.state.showers += 1;
+    }
+
+    /** One shooting star by itself, somewhere in the picture's sky. */
+    sendMeteor(at, roll) {
+        const { meteors } = this.parts;
+        if (!meteors) return;
+        const rand = this.farRand;
+        const half = this.halfView();
+        const az = (rand() * 2 - 1) * (half - 5);
+        const el = 13 + rand() * 15;
+        const lean = (roll * 2 - 1) * 62;
+        const length = 9 + rand() * 9;
+        azElDirection(az, el, this._from);
+        const low = Math.max(2, el - Math.cos(lean * DEG) * length);
+        azElDirection(az + Math.sin(lean * DEG) * length, low, this._toward);
+        meteors.send(at, this._from, this._toward, 0.45 + rand() * 0.5, 1.1 + rand() * 1.3);
     }
 
     /** The longest chain any board is holding (0 = it broke). */
@@ -758,6 +1062,10 @@ export class SunsetWorld {
             this.restoreDay((next - 1) * LEVEL_SECONDS);
         } else if (next > s.level) {
             this.surge.levelUp(this.clock);
+            // The day's turn shows first on the horizon, lit from end to end, and every flame
+            // afloat leaps.
+            this.fx.dawn.hit(1, this.clock);
+            this.fx.lampKick.hit(1, this.clock);
             day.from = this.dayOffset();
             day.to += (next - s.level) * LEVEL_SECONDS;
             day.at = this.clock;
@@ -817,8 +1125,17 @@ export class SunsetWorld {
                 v.set(v.x * lerp(1, e[1], ember), v.y * lerp(1, e[2], ember), v.z * lerp(1, e[3], ember), 0);
             }
         }
+        // The weather's hand on the hour.
+        const sky = skyAt(this.weatherPin ?? skyDrift(this.clock), this.sky);
         U.stars.value = light.stars;
-        U.cover.value = light.cover;
+        U.cover.value = clamp01(light.cover + sky.cover);
+        U.cirrus.value = sky.cirrus;
+        U.bars.value = sky.bars;
+        U.towers.value = sky.towers;
+        U.veil.value = sky.veil;
+        U.mackerel.value = sky.mackerel;
+        U.hazeReach.value = TUNE.hazeReach * sky.haze;
+        U.chop.value = sky.chop;
         U.fire.value = light.fire;
         U.moonKey.value = light.moonKey;
         // The night sky turns about its pole with the hours, the same way the sun and the moon go
@@ -835,7 +1152,7 @@ export class SunsetWorld {
         // Near the sea a body looks larger than it does high up.
         U.sunSize.value = Math.sin(SUN_RADIUS * DEG) * (1 + 0.1 * (1 - smooth(0, 15, sun.el)));
         // A low sun is a coal seen through a long way of air; a high one is white.
-        U.sunPower.value = lerp(9, 28, smooth(0, 13, sun.el) ** 1.4);
+        U.sunPower.value = lerp(6, 28, smooth(0, 13, sun.el) ** 1.4);
         // The moon, its face turning as it crosses the sky.
         const angle = hourAngle(hour, MOON_LAG);
         const moon = arcAt(angle, MOON_PEAK, this.setAz, this.riseAz, this.moonArc);
@@ -846,11 +1163,21 @@ export class SunsetWorld {
         U.moonSize.value = Math.sin(MOON_RADIUS * DEG) * (1 + 0.22 * (1 - smooth(0, 18, moon.el)));
         U.moonPower.value = lerp(0.8, 1.05, smooth(0, 8, moon.el));
         U.moonTilt.value = -0.45 * Math.sin(angle * DEG);
+        // Tonight's moon: its phase, and the light a moon of that phase gives the sea and the air
+        // (against the gibbous moon the hours are authored for).
+        const phase = this.moonPin ?? moonPhaseAt(this.wheel());
+        this.moonPhase = phase;
+        U.moonPhase.value.set(Math.sin(phase * DEG), Math.cos(phase * DEG), lerp(0.018, 0.07, smooth(60, 125, phase)));
+        const share = moonLit(phase) / moonLit(MOON_PHASE);
+        for (let i = 0; i < MOON_LIGHT_ROWS.length; i += 1) this.lightRows[MOON_LIGHT_ROWS[i]].multiplyScalar(share);
 
         // The key light's way across the cloud deck, and the streets running in toward the place
         // the sky goes down.
         const street = U.street.value;
         street.set(Math.sin(this.setAz * DEG), -Math.cos(this.setAz * DEG));
+        azElDirection(this.setAz, 0, U.setDir.value);
+        azElDirection(this.riseAz, 0, U.riseDir.value);
+        U.gates.value.set(this.setAz * DEG, this.riseAz * DEG);
         const key = tmpKey.copy(U.sun.value).lerp(U.moon.value, light.moonKey);
         const kx = key.x;
         const kz = key.z;
@@ -897,6 +1224,12 @@ export class SunsetWorld {
         this.setAz += (this.frame.setAz - this.setAz) * k;
         this.riseAz += (this.frame.riseAz - this.riseAz) * k;
         this.applyHour();
+        // The islands keep their bearings from the two gates. (To a thousandth of a degree: the
+        // eased bearings creep toward their places for a long time, and the islands redo their
+        // lamps and their skyline whenever a gate has moved at all.)
+        this.parts.islands?.update(now, {
+            setAz: Math.round(this.setAz * 1000) / 1000, riseAz: Math.round(this.riseAz * 1000) / 1000,
+        });
 
         // Rings run their course (the table is in no order: the spent ones are packed out).
         let live = 0;
@@ -909,6 +1242,20 @@ export class SunsetWorld {
             live += 1;
         }
         this.ringCount = live;
+        // …and so do the waves of light and the whirls.
+        live = 0;
+        for (let i = 0; i < this.waveCount; i += 1) {
+            const life = this.waveRows[i * 2 + 1].w !== 0 ? WHIRL_LIFE : WAVE_LIFE;
+            if (now - this.waveRows[i * 2].z > life) continue;
+            if (live !== i) {
+                this.waveRows[live * 2].copy(this.waveRows[i * 2]);
+                this.waveRows[live * 2 + 1].copy(this.waveRows[i * 2 + 1]);
+            }
+            live += 1;
+        }
+        this.waveCount = live;
+        // The sea's own cold light answers a touch once the sky is dark.
+        U.seaFire.value = this.light.stars;
 
         // The fire in the sky: the chain holds it, each clear kicks it (the kicks add up), and the
         // heat of play lays a floor under both that a fever lifts past where a chain alone goes.
@@ -927,7 +1274,8 @@ export class SunsetWorld {
         U.green.value = s.green;
         // The halo: it runs out from the disc to its place and stands as long as it is lit. The
         // heat of play holds it up; a fever puts the sun dogs on it and the great halo round it.
-        this.haloHeld = 0.2 * smooth(0.3, 0.9, level) + 0.45 * fever;
+        // (And a veil of high cloud stands one there by itself.)
+        this.haloHeld = 0.2 * smooth(0.3, 0.9, level) + 0.45 * fever + 0.34 * this.sky.veil;
         const halo = fx.halo.valueAt(now);
         if (halo + this.haloHeld < HALO_GONE && now - s.haloFrom > HALO_RISE) s.haloMoon = this.light.moonKey > 0.5;
         const reach = (0.15 + 0.85 * smooth(0, HALO_RISE, now - s.haloFrom)) * HALO_RADIUS * DEG;
@@ -940,20 +1288,33 @@ export class SunsetWorld {
         );
         U.greatHalo.value.z = softCeiling(fx.great.valueAt(now) + 0.55 * fever, 0.8, 1.1);
         U.pulseDir.value.copy(s.haloMoon ? U.moon.value : U.sun.value);
+        U.pulseRight.value.copy(s.haloMoon ? U.moonRight.value : U.sunRight.value);
+        U.haloMoon.value = s.haloMoon ? 1 : 0;
+        U.pillar.value = softCeiling(fx.pillar.valueAt(now) + 0.2 * fever, 0.8, 1.2);
+        U.rayBurst.value = fx.rays.valueAt(now);
+        // The horizon lit from end to end: a new level's turn in the hour's brightest light, and
+        // the far shore's lanterns in candle gold.
+        const dawn = fx.dawn.valueAt(now) * 0.42;
+        const shore = fx.release.valueAt(now) * 0.13;
+        const rim = this.light.cloudRim;
+        U.horizonGlow.value.set(rim[0] * dawn + shore, rim[1] * dawn + 0.55 * shore, rim[2] * dawn + 0.2 * shore, 1);
+        this.runAmbient(now);
         // The cloud deck drifts in toward the sun, faster as play heats: the evening wind rises.
         const still = this.reducedMotion ? 0.25 : 1;
         this.driftClock += dt * (1 + still * (0.8 * level + 1.4 * fever));
         U.drift.value.set(-this.driftClock * 0.0011, this.driftClock * 0.00023);
+        U.cloudClock.value = this.driftClock;
         // The lanterns burn brighter with the heat (a lock's hit kicks the ones afloat), and the
         // ones rising into a burning sky brighter still.
-        this.lampBoost = 1 + 0.22 * level + 0.3 * fever + 0.25 * punch;
+        this.lampBoost = 1 + 0.22 * level + 0.3 * fever + 0.25 * punch + 0.7 * fx.lampKick.valueAt(now);
         this.airBoost = 1 + 0.3 * level + 0.6 * fever;
 
         // The boat first: its lantern joins the glows and the lamps the sea mirrors.
         this.parts.boat?.update(this.clock, { halfView: this.halfView(), night: lampForSun(this.sunArc.el) });
         this.updateLanterns(camera);
         this.parts.birds.update(this.clock);
-        U.counts.value.set(this.ringCount, 0, this._lampCount ?? 0, 0);
+        this.parts.meteors?.update(this.clock);
+        U.counts.value.set(this.ringCount, this.waveCount, this._lampCount ?? 0, 0);
 
         if (camera) {
             this.parts.sky.follow(camera);
@@ -970,6 +1331,35 @@ export class SunsetWorld {
         }
     }
 
+    /**
+     * What happens by itself, each on a clock of its own: a shooting star in a dark sky, lightning
+     * flickering inside a far tower of cloud when the light is low, a few gulls crossing by day.
+     */
+    runAmbient(now) {
+        const { ambient, light } = this;
+        const meteor = ambient.meteor.due(now);
+        if (meteor >= 0 && light.stars > 0.55 && this.U.cover.value < 0.62) {
+            this.sendMeteor(now, ambient.meteor.roll);
+        }
+        const dim = 1 - smooth(-2, 9, this.sunArc.el);
+        const bolt = ambient.bolt.due(now);
+        // (Not under reduced motion: a flicker is the one thing here that is not slow.)
+        if (bolt >= 0 && this.sky.towers > 0.35 && dim > 0.2 && !this.reducedMotion) {
+            // A flicker of two or three flashes inside one head, somewhere along the horizon.
+            const half = this.halfView();
+            this.boltBearing = ((ambient.bolt.roll * 2 - 1) * half) * DEG;
+            this.fx.bolt.hit(1, now);
+            this.fx.bolt.hit(0.6, now + 0.1);
+            if (ambient.bolt.roll > 0.4) this.fx.bolt.hit(0.9, now + 0.24);
+        }
+        this.U.bolt.value.set(this.boltBearing, this.fx.bolt.valueAt(now) * dim * this.sky.towers * flashScale());
+        const gulls = ambient.gulls.due(now);
+        if (gulls >= 0 && light.birds > 0.5 && this.state.combo < 3 && (this.parts.birds?.airborne(now) ?? 1) === 0) {
+            this.sendFlock(3 + Math.floor(ambient.gulls.roll * 5));
+            this.state.flocks -= 1;
+        }
+    }
+
     /** The lanterns, their halos, the lights in flight, the splashes, and the lamps the sea mirrors. */
     updateLanterns(camera) {
         const { pool, clock } = this;
@@ -982,6 +1372,8 @@ export class SunsetWorld {
         lamps.length = 0;
         const st = this._lantern;
         const eye = camera ? camera.position : { x: 0, y: EYE_HEIGHT, z: 0 };
+        /** How brightly a flame shows against the hour's light (the stations' `lantern`). */
+        const shown = this.light.lantern;
         for (let i = 0; i < pool.records.length; i += 1) {
             const r = pool.records[i];
             pool.stateOf(r, clock, st);
@@ -1012,17 +1404,23 @@ export class SunsetWorld {
             const air = st.phase === 'air';
             // The heat of play: every flame burns brighter, the rising ones most.
             const glow = st.glow * (air ? this.airBoost : this.lampBoost);
-            lanterns.push(st.x, st.y, st.z, st.tiltX, st.tiltZ, st.scale, r.rgb, glow, r.seed);
-            // The halo round its flame: a soft glow a little larger than the lantern.
-            const fy = st.y + 0.26 * st.scale;
-            const halo = glow * 0.42;
-            glows.push(st.x, fy, st.z, air ? 0.75 : 0.62, r.rgb[0] * halo, r.rgb[1] * halo, r.rgb[2] * halo);
+            // (Drawn a little over life size: the lotus is finer than the shell it replaced, and
+            // at life size it was a smaller thing in the picture.)
+            const size = st.scale * LANTERN_SIZE;
+            lanterns.push(st.x, st.y, st.z, st.tiltX, st.tiltZ, size, r.rgb, glow, r.seed);
+            // The halo round its flame, a little larger than the bud, and only as strong as the
+            // hour lets a flame show: round a paper lantern in full sun a glow is the least
+            // believable thing in the picture.
+            const fy = st.y + 0.26 * size;
+            const halo = glow * 0.36 * shown;
+            const reach = (air ? 0.62 : 0.5) * LANTERN_SIZE;
+            glows.push(st.x, fy, st.z, reach, r.rgb[0] * halo, r.rgb[1] * halo, r.rgb[2] * halo);
             const dx = st.x - eye.x;
             const dz = st.z - eye.z;
             const far = Math.hypot(dx, dz);
             const score = (glow / (1 + far * 0.03)) * (fy < 40 ? 1 : 0.25);
             lamps.push({
-                x: st.x, y: fy, z: st.z, glow, rgb: r.rgb, score,
+                x: st.x, y: fy, z: st.z, glow: glow * shown, rgb: r.rgb, score,
             });
         }
         // The boat's lantern, lit from dusk: a small warm light far out, and its road on the sea.
@@ -1035,6 +1433,35 @@ export class SunsetWorld {
             lamps.push({
                 x: boatLamp.x, y: boatLamp.y, z: boatLamp.z, glow: g * 2.2, rgb, score: g / (1 + far * 0.03),
             });
+        }
+        // The boat's wake: the churned water astern and the wave at its bow, pale in the sky's
+        // light. (Seen so low over the water a wake drawn on the sea is thinner than a pixel; the
+        // spray standing a hand over it is what the eye sees.)
+        const wake = this.parts.boat?.wake();
+        if (wake) {
+            const L = this.light;
+            const lit = 0.3 * (this.U.sunUp.value * (1 - L.moonKey) + this.U.moonUp.value * L.moonKey);
+            const fr = (L.ambient[0] * 0.5 + L.cloudLit[0] * lit) * wake.run;
+            const fg = (L.ambient[1] * 0.5 + L.cloudLit[1] * lit) * wake.run;
+            const fb = (L.ambient[2] * 0.5 + L.cloudLit[2] * lit) * wake.run;
+            for (let i = 0; i < WAKE_PUFFS; i += 1) {
+                const back = wake.stern + 0.6 + i * 2.1;
+                const fade = (1 - i / WAKE_PUFFS) ** 1.4;
+                const wob = Math.sin(clock * 2.3 + i * 1.7) * 0.12 * i * 0.3;
+                glows.push(
+                    wake.x - wake.hx * back + wake.hz * wob,
+                    wake.y + 0.16,
+                    wake.z - wake.hz * back - wake.hx * wob,
+                    0.42 + i * 0.05,
+                    fr * fade,
+                    fg * fade,
+                    fb * fade,
+                    1,
+                );
+            }
+            const bx = wake.x + wake.hx * wake.bow;
+            const bz = wake.z + wake.hz * wake.bow;
+            glows.push(bx, wake.y + 0.14, bz, 0.34, fr * 0.7, fg * 0.7, fb * 0.7, 1);
         }
         // The drops of a splash: thrown up, falling back.
         const nd = this.drops.length / 10;
@@ -1049,12 +1476,65 @@ export class SunsetWorld {
                 this.drops[k] + this.drops[k + 3] * age,
                 y,
                 this.drops[k + 2] + this.drops[k + 5] * age,
-                0.022,
-                this.drops[k + 7] * 2.2 * fade,
-                this.drops[k + 8] * 2.2 * fade,
-                this.drops[k + 9] * 2.2 * fade,
+                0.045,
+                this.drops[k + 7] * 3.2 * fade,
+                this.drops[k + 8] * 3.2 * fade,
+                this.drops[k + 9] * 3.2 * fade,
                 1,
             );
+        }
+        // The far shore's lanterns: each climbs out of the distance, is taken by the wind toward
+        // the place the sun sets, and gutters out.
+        const windX = Math.sin(this.setAz * DEG);
+        const windZ = -Math.cos(this.setAz * DEG);
+        for (let b = 0; b < this.releases.length; b += 1) {
+            const batch = this.releases[b];
+            const since = clock - batch.at;
+            if (batch.n === 0 || since < 0 || since > RELEASE.life + RELEASE.ripple + 2) continue;
+            const { rows } = batch;
+            for (let i = 0; i < batch.n; i += 1) {
+                const k = i * 8;
+                const s = since - rows[k + 2];
+                if (s < 0 || s > RELEASE.life) continue;
+                const up = rows[k + 3] * (s - 1.4 * (1 - Math.exp(-s / 1.4)));
+                const away = RELEASE.wind * (s - 5 * (1 - Math.exp(-s / 5)));
+                const sway = Math.sin(s * 0.6 + rows[k + 7]) * 1.5;
+                const fade = smooth(0, 0.9, s) * (1 - smooth(RELEASE.life - 5.5, RELEASE.life, s));
+                const g = 2.3 * fade * (0.86 + 0.14 * Math.sin(clock * 7.3 + rows[k + 7] * 5));
+                glows.push(
+                    rows[k] + windX * away - windZ * sway,
+                    1.2 + up,
+                    rows[k + 1] + windZ * away + windX * sway,
+                    0.85,
+                    rows[k + 4] * g,
+                    rows[k + 5] * g,
+                    rows[k + 6] * g,
+                );
+            }
+        }
+        // The night's fishing boats far out: a hard green-white lamp each, and the haze it lights.
+        const night = this.light.stars;
+        // And the lamps of the people who live under the islands, lit as the light goes: warm
+        // points at the water's edge.
+        const dusk = lampForSun(this.sunArc.el);
+        const homes = dusk > 0.04 ? this.parts.islands?.lights() : null;
+        if (homes) {
+            for (let i = 0; i < homes.length; i += 1) {
+                const home = homes[i];
+                const lamp = dusk * (0.85 + 0.15 * Math.sin(clock * 1.3 + i * 2.7)) * 1.5;
+                glows.push(home.x, home.y + 1.5, home.z, 2.2, lamp, 0.62 * lamp, 0.26 * lamp);
+            }
+        }
+        if (night > 0.04) {
+            for (let i = 0; i < NIGHT_BOATS.length; i += 1) {
+                const [gate, off, range] = NIGHT_BOATS[i];
+                const az = ((gate === 'set' ? this.setAz : this.riseAz) + off) * DEG;
+                const x = Math.sin(az) * range;
+                const z = -Math.cos(az) * range;
+                const lamp = night * (0.9 + 0.1 * Math.sin(clock * 0.8 + i * 2.1));
+                glows.push(x, 5, z, 4, 1.1 * lamp, 2.3 * lamp, 1.6 * lamp);
+                glows.push(x, 18, z, 110, 0.03 * lamp, 0.085 * lamp, 0.062 * lamp, 1);
+            }
         }
         lanterns.end();
         glows.end();
@@ -1120,6 +1600,7 @@ export class SunsetWorld {
             floating: pool.floating(clock),
             flying: pool.flying(clock),
             rings: this.ringCount,
+            waves: this.waveCount,
             lamps: this._lampCount ?? 0,
             fire: this.U.skyFire.value,
             green: this.U.green.value,
@@ -1133,8 +1614,21 @@ export class SunsetWorld {
             clears: s.clears,
             lifted: s.lifted,
             flocks: s.flocks,
+            releases: s.releases,
+            showers: s.showers,
+            meteors: this.parts.meteors?.falling(clock) ?? 0,
+            moonPhase: this.moonPhase,
+            weather: this.sky.name,
+            weatherNext: this.sky.next,
+            weatherMix: this.sky.mix,
+            towers: this.U.towers.value,
+            veil: this.U.veil.value,
+            pillar: this.U.pillar.value,
+            rayBurst: this.U.rayBurst.value,
+            horizonGlow: Math.max(this.U.horizonGlow.value.x, this.U.horizonGlow.value.y, this.U.horizonGlow.value.z),
             birds: this.parts.birds?.airborne?.(clock) ?? 0,
             boat: this.parts.boat?.getState?.() ?? null,
+            islands: this.parts.islands?.getState?.() ?? null,
             sun: { ...this.sunScreen },
         };
     }

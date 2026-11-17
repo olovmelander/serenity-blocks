@@ -27,7 +27,13 @@
  *                            and show it <s> seconds later (boatRange=<m>, boatSlant=<deg>,
  *                            boatSpeed=<m/s>); it otherwise comes every few minutes by itself
  *   demo=1                   live only: play a looping gameplay script
- *   parts=sky,sea,...        draw only these parts (sky, sea, lanterns, glows, birds, boat)
+ *   weather=<name|n>         hold the weather: trade, towers, mackerel, clear, veil (or a phase:
+ *                            1.5 is half-way from towers to mackerel). Unset, its own clock turns it
+ *   moon=<deg>               hold the moon's phase angle: 50 the gibbous moon of the first night, 24
+ *                            near full, 86 a half moon, 120 a crescent. Unset, each day brings the next
+ *   meteor=<s>               a shooting star <s> seconds before the frame (shower=<s>: a shower)
+ *   b2b=1                    the event's clear is a back-to-back
+ *   parts=sky,sea,...        draw only these parts (sky, sea, lanterns, glows, birds, boat, meteors)
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
  *   bloom=0|1                override the tier's bloom
@@ -144,6 +150,8 @@ export function create({
         capture: true,
         seed: Math.round(num(params, 'seed', 29)),
         hour: params.has('hour') ? num(params, 'hour', 0) : null,
+        weather: params.get('weather'),
+        moonPhase: params.has('moon') ? num(params, 'moon', 50) : null,
         tune: tuneFrom(params),
     }).build();
     world.bindCamera(camera);
@@ -227,14 +235,19 @@ export function create({
         const u = num(params, 'u', 0.2);
         const lines = Math.max(1, Math.min(4, Math.round(num(params, 'lines', 2))));
         const bottom = (n) => Array.from({ length: n }, (_, i) => 19 - i);
+        const b2b = params.get('b2b') === '1';
         if (eventName === 'lock') world.onLock({ rows: [row, row - 1], u, color: eventColor });
         else if (eventName === 'drop') {
             world.onLock({
                 rows: [row, row - 1], u, hardDrop: true, color: eventColor,
             });
-        } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
-        else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
-        else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
+        } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines, b2b });
+        else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4, b2b });
+        else if (eventName === 'twist') {
+            world.onClear({
+                rows: bottom(2), lines: 2, twist: true, b2b,
+            });
+        } else if (eventName === 'spin') world.onSpin();
         else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
     };
@@ -301,6 +314,12 @@ export function create({
         }
         if (flock > 0) actions.push([time - flockAge, () => world.sendFlock(flock)]);
         if (boatDir) actions.push([time - boatAge, () => world.sendBoat(boatOptions)]);
+        if (params.has('meteor')) {
+            actions.push([time - num(params, 'meteor', 0.3), () => world.sendMeteor(world.clock, 0.3)]);
+        }
+        if (params.has('shower')) {
+            actions.push([time - num(params, 'shower', 1.5), () => world.sendShower(world.clock)]);
+        }
         if (eventName) actions.push([time - eventAge, fireEvent]);
         actions.sort((a, b) => a[0] - b[0]);
         actions.forEach(([at, act]) => {

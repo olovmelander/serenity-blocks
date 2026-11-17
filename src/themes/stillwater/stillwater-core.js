@@ -99,11 +99,12 @@ export const MOON = Object.freeze({ azimuth: -19.5 * DEG, elevation: 10.5 * DEG,
  * The moon's place for a frame: on a narrow one it comes in with the stage and climbs into the
  * strip of sky above the card.
  */
-export function moonFor(aspect, out = { azimuth: 0, elevation: 0 }) {
+export function moonFor(aspect, out = { azimuth: 0, elevation: 0 }, elevation = MOON.elevation) {
     const s = squeezeFor(aspect);
     const narrow = clamp01((1 - s) / 0.6);
     out.azimuth = Math.atan(Math.tan(MOON.azimuth) * s);
-    out.elevation = lerp(MOON.elevation, 25 * DEG, narrow);
+    // (`elevation`: where the hour has it; a narrow frame lifts it into the sky over the card.)
+    out.elevation = lerp(elevation, 25 * DEG, narrow);
     return out;
 }
 
@@ -163,6 +164,12 @@ export const STROKE_LIVE = 6;
 export function strokePassTime(distance) {
     return Math.abs(distance) / STROKE_SPEED;
 }
+
+/** Metres a second a pulse of light one of the two sends crosses the tarn. */
+export const PULSE_SPEED = 4.6;
+
+/** Stars that can be falling at once (a perfect clear's shower fills the table). */
+export const METEOR_SLOTS = 6;
 
 /** Will-o'-the-wisps a lock leaves over the water. */
 export const WISP_SLOTS = 20;
@@ -262,6 +269,8 @@ const hex = (h) => linRGB(Number.parseInt(h.slice(1), 16));
  *   spirit lantern firefly eye heart crest lily   the lights that live here
  *   stars mist aurora dawn          scalars: how many stars, how thick the mist, the northern
  *                                   lights, the first light low behind the trees
+ *   moonEl moonSize                 how high the moon stands (degrees) and how large it looks
+ *                                   (1 = its own size): it climbs and sinks as the hours turn
  */
 const HOUR_DEFS = [
     {
@@ -293,6 +302,8 @@ const HOUR_DEFS = [
         mist: 1.0,
         aurora: 0,
         dawn: 0,
+        moonEl: 10.5,
+        moonSize: 1.0,
     },
     {
         name: 'moonrise',
@@ -323,6 +334,8 @@ const HOUR_DEFS = [
         mist: 0.8,
         aurora: 0,
         dawn: 0,
+        moonEl: 8.3,
+        moonSize: 1.3,
     },
     {
         name: 'midnight',
@@ -353,6 +366,8 @@ const HOUR_DEFS = [
         mist: 0.62,
         aurora: 0.85,
         dawn: 0,
+        moonEl: 13.6,
+        moonSize: 0.9,
     },
     {
         name: 'elf dance',
@@ -383,6 +398,8 @@ const HOUR_DEFS = [
         mist: 1.45,
         aurora: 0.25,
         dawn: 0,
+        moonEl: 11.6,
+        moonSize: 1.08,
     },
     {
         name: 'first light',
@@ -413,6 +430,8 @@ const HOUR_DEFS = [
         mist: 1.2,
         aurora: 0,
         dawn: 1,
+        moonEl: 7.9,
+        moonSize: 1.36,
     },
     {
         name: 'troll gold',
@@ -443,6 +462,8 @@ const HOUR_DEFS = [
         mist: 1.25,
         aurora: 0,
         dawn: 0.35,
+        moonEl: 9.2,
+        moonSize: 1.2,
     },
     {
         name: 'moss night',
@@ -473,6 +494,8 @@ const HOUR_DEFS = [
         mist: 1.1,
         aurora: 0.3,
         dawn: 0,
+        moonEl: 12.6,
+        moonSize: 0.95,
     },
 ];
 
@@ -483,7 +506,7 @@ export const PALETTE_KEYS = Object.freeze([
 ]);
 
 /** The scalar keys of an hour. */
-export const PALETTE_SCALARS = Object.freeze(['stars', 'mist', 'aurora', 'dawn']);
+export const PALETTE_SCALARS = Object.freeze(['stars', 'mist', 'aurora', 'dawn', 'moonEl', 'moonSize']);
 
 export const HOURS = Object.freeze(HOUR_DEFS.map((def) => {
     const hour = { name: def.name };

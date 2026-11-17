@@ -23,7 +23,7 @@ import {
     sqrt, step, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import { bakeSeaNoise, bakeSkyNoise } from './sunset-core.js';
-import { HOUR_COLOURS, MOON_PHASE } from './sunset-hours.js';
+import { HOUR_COLOURS } from './sunset-hours.js';
 
 /**
  * The look's numbers, in one place. The playground can override any of them from the URL
@@ -61,6 +61,15 @@ export const TUNE = {
     rays: 0.75,
     rayReach: 9,
     rayCount: 0.55,
+    // The towers of cloud that stand along the horizon in some weathers.
+    towerSpan: 0.62, // noise tiles per radian of bearing (and of height)
+    towerTop: 0.17, // the tallest head, as dir.y
+    towerBase: [0.004, 0.018], // their flat bases: they fade in between these heights
+    towerGate: [13, 4.5], // degrees from where a body sets or rises: the towers sink away toward it
+    towerDrift: [0.0016, 0.0009], // how fast the heads and their feet drift along (tiles a second)
+    towerBoil: 0.0012, // how fast the heads boil upward (tiles a second)
+    barDrift: [0.0011, 0.0004], // the bars: along the horizon, and through the field
+    deckEvolve: 0.0016, // how fast the deck's clouds form and melt (tiles of its broad field a second)
     // Cirrus.
     cirrusCurve: 0.24,
     cirrusScale: [0.06, 0.2], // along the streets, across them
@@ -70,8 +79,10 @@ export const TUNE = {
     // The sea.
     glint: 0.04, // the sun's road: overall strength
     glintFloor: 0.0009, // the smallest slope variance a pixel is given (the sharpest glint)
-    sparkle: 22, // the diamonds in the road near the eye
+    sparkle: 7.5, // the diamonds in the roads: how bright a spark twinkles…
+    sparkleShare: 0.24, // …and the share of a road's light that is sparks, not an even sheen
     hazeReach: 2600, // metres: the air over the sea
+    roughLift: 0.55, // how far unresolved roughness lifts the sea's mirror ray (a share of its slope)
     ripple: [0.1, 0.2, 0.22], // slope of the three ripple layers
     rippleTile: [23, 6.1, 1.7], // metres a tile of each layer spans
     chop: 0.45, // the wind's chop: a gain on every train's steepness (CHOP_ROWS in sunset-core.js)
@@ -166,7 +177,8 @@ export function horizonHaze(dir, U) {
     const awayMoon = min(dot(level, U.moon).sub(1.0), 0.0);
     return skyBase(level, U)
         .add(exp(away.mul(TUNE.bloomTight)).mul(light.sunBloom))
-        .add(exp(awayMoon.mul(34.0)).mul(light.moonGlow).mul(U.moonUp));
+        .add(exp(awayMoon.mul(34.0)).mul(light.moonGlow).mul(U.moonUp))
+        .add(U.horizonGlow.xyz.mul(U.horizonGlow.w));
 }
 
 /** The moon's seas as seen with the naked eye, north up: [x, y, half-width, half-height, depth]. */
@@ -185,13 +197,16 @@ const MARIA = [
     [0.0, 0.18, 0.12, 0.09, 0.75], // Vaporum, Medii
 ];
 
-/** A body's disc: vec3(how much of the pixel it covers, 0 at its heart to 1 at its limb, height on it). */
-function discOf(dir, body, right, upAxis, size, squash, wobble) {
+/**
+ * A body's disc: vec3(how much of the pixel it covers, 0 at its heart to 1 at its limb, height on
+ * it). Its limb is `edge` of its radius wide (a pixel and a half: a crisp limb at any lens).
+ */
+function discOf(dir, body, right, upAxis, size, squash, wobble, edge) {
     const u = dot(dir, right).add(wobble);
     const v = dot(dir, upAxis).div(squash);
     const r = length(vec2(u, v)).div(size);
     const inFront = step(0.0, dot(dir, body));
-    return vec3(float(1.0).sub(smoothstep(0.94, 1.03, r)).mul(inFront), r, v.div(size));
+    return vec3(float(1.0).sub(smoothstep(float(1.0).sub(edge), float(1.0).add(edge), r)).mul(inFront), r, v.div(size));
 }
 
 /**
@@ -210,6 +225,7 @@ function discOf(dir, body, right, upAxis, size, squash, wobble) {
  * @param {boolean} o.stars    the stars
  * @param {boolean} o.milky    the Milky Way
  * @param {boolean} [o.rays]   crepuscular rays fanning from the sun across its glow
+ * @param {boolean} [o.towers] the towers of cloud along the horizon (the weather's)
  */
 export function skyColour(dir, U, noise, o) {
     const { light } = U;
@@ -227,6 +243,11 @@ export function skyColour(dir, U, noise, o) {
     const awayMoon = min(muMoon.sub(1.0), 0.0);
     const { moonUp } = U; // 0..1: how much of the moon is over the sea
     sky.addAssign(exp(awayMoon.mul(34.0)).mul(light.moonGlow).mul(moonUp));
+    // A veil of high thin cloud (the weather's): the light spreads in it, wide round each body.
+    sky.addAssign(light.sunBloom.mul(exp(away.mul(5.0)).mul(U.veil.mul(0.5))));
+    sky.addAssign(light.moonGlow.mul(exp(awayMoon.mul(7.0)).mul(U.veil.mul(1.1)).mul(moonUp)));
+    // The horizon lit from end to end (a new level: the day turning shows there first).
+    sky.addAssign(U.horizonGlow.xyz.mul(exp(up.mul(-34.0)).mul(U.horizonGlow.w)));
 
     // ── Crepuscular rays: the shadows of clouds beyond the horizon fan out across the sun's own
     // glow, light and dark, from the disc or (after it has set) from under the sea. Read on a
@@ -243,20 +264,40 @@ export function skyColour(dir, U, noise, o) {
             .mul(smoothstep(0.0, 0.05, up));
         // Strongest once the sun is on or under the sea (the twilight's display); while it is up
         // its glare all but hides them.
-        const when = U.sunLow.mul(0.7).add(0.3);
-        sky.addAssign(light.sunBloom.mul(beam.mul(fan).mul(when).mul(TUNE.rays)));
+        // (Four lines and the crown throw them wide: U.rayBurst.)
+        const when = U.sunLow.mul(0.7).add(0.3).add(U.rayBurst.mul(2.2));
+        const wide = exp(away.mul(TUNE.rayReach * 0.28)).mul(smoothstep(0.0, 0.05, up)).mul(U.rayBurst);
+        sky.addAssign(light.sunBloom.add(light.moonGlow.mul(U.moonKey))
+            .mul(beam.mul(fan.add(wide.mul(0.6))).mul(when).mul(TUNE.rays)));
     }
     if (o.discs) {
+        // A pillar of light standing over the body the halo is round (three lines and more): the
+        // light caught in the air straight above it, tall and narrow, widening as it climbs.
+        const side = dot(dir, U.pulseRight).toVar();
+        const lift = dir.y.sub(U.pulseDir.y).toVar();
+        const girth = max(lift, 0.0).mul(0.05).add(0.011);
+        const column = exp(side.mul(side).div(girth.mul(girth)).negate())
+            .mul(exp(max(lift, 0.0).mul(-5.5))).mul(smoothstep(-0.03, 0.01, lift))
+            .mul(step(0.0, dot(dir, U.pulseDir)));
+        const pillarLight = mix(light.cloudRim.mul(1.1), light.moonGlint.mul(0.9), U.haloMoon);
+        sky.addAssign(pillarLight.mul(column.mul(U.pillar)));
         sky.addAssign(exp(away.mul(TUNE.aureoleTight)).mul(light.sunAureole).mul(U.flare.mul(1.6).add(1.0)));
         sky.addAssign(exp(away.mul(TUNE.bloomTight * 2.5)).mul(light.sunBloom).mul(U.flare.mul(1.2)));
         sky.addAssign(exp(awayMoon.mul(700.0)).mul(light.moonGlow).mul(moonUp).mul(2.2));
     }
 
     // ── The discs, where they cover the sky: nothing behind them shows through ──
-    const sunD = discOf(dir, U.sun, U.sunRight, U.sunTop, U.sunSize, U.sunSquash, o.discs
+    const sunEdge = clamp(U.pixelAngle.mul(1.5).div(U.sunSize), 0.012, 0.08);
+    const moonEdge = clamp(U.pixelAngle.mul(1.5).div(U.moonSize), 0.012, 0.08);
+    // Low over a warm sea the air just above the water mirrors the sky: under a line a fifth of
+    // a degree up the sun's image is turned over, so its lower limb comes down to meet a second
+    // limb rising out of the horizon and the two join in a foot before the disc goes under.
+    const mirage = U.sunLow.mul(0.0034);
+    const sunLook = o.discs ? vec3(dir.x, abs(dir.y.sub(mirage)).add(mirage), dir.z) : dir;
+    const sunD = discOf(sunLook, U.sun, U.sunRight, U.sunTop, U.sunSize, U.sunSquash, o.discs
         ? sin(dot(dir, U.sunTop).mul(1400.0).add(U.time.mul(2.3))).mul(0.00028).mul(U.sunLow)
-        : float(0.0)).toVar();
-    const moonD = discOf(dir, U.moon, U.moonRight, U.moonTop, U.moonSize, U.moonSquash, float(0.0)).toVar();
+        : float(0.0), sunEdge).toVar();
+    const moonD = discOf(dir, U.moon, U.moonRight, U.moonTop, U.moonSize, U.moonSquash, float(0.0), moonEdge).toVar();
     const behindDiscs = o.discs ? float(1.0).sub(max(sunD.x.mul(U.sunUp), moonD.x.mul(moonUp))) : float(1.0);
 
     // ── Stars and the Milky Way: behind everything ──
@@ -268,21 +309,28 @@ export function skyColour(dir, U, noise, o) {
         const s = sin(U.starTurn);
         const axis = vec3(0.0, 0.5736, 0.8192);
         const q = dir.mul(c).add(axis.cross(dir).mul(s)).add(axis.mul(dot(axis, dir)).mul(float(1.0).sub(c))).toVar();
-        const dark = U.stars.mul(smoothstep(0.012, 0.16, up)).mul(behindDiscs);
+        const dark = U.stars.mul(smoothstep(0.012, 0.16, up)).mul(behindDiscs).mul(U.veil.mul(-0.6).add(1.0));
         // Stars on a 3D lattice: each cell holds one, put back on the sphere, so no part of the
         // sky has its stars stretched (a grid in latitude and longitude does that near its pole).
-        const starLayer = (scale, power, gain) => {
+        // A star is a point: its image is a pixel and a half across whatever the lens, plus a
+        // faint flare for the few bright ones. (Drawn a fixed share of its cell wide, the
+        // brightest layer's stars were five-pixel discs.)
+        const starLayer = (scale, power, gain, flare) => {
             const p = q.mul(scale);
             const cell = floor(p);
             const h = hash33(cell).toVar();
             const star = normalize(cell.add(h.mul(0.56).add(0.22)));
-            const off = q.sub(star).mul(scale);
-            const bright = h.y.pow(power).mul(smoothstep(0.4, 0.5, h.x));
-            const twinkle = sin(U.time.mul(h.x.mul(1.7).add(0.6)).add(h.z.mul(40.0))).mul(0.3).add(0.7);
-            const tint = mix(vec3(1.0, 0.8, 0.6), vec3(0.72, 0.84, 1.0), fract(h.z.mul(7.31)));
-            return tint.mul(exp(dot(off, off).mul(-150.0)).mul(bright).mul(twinkle).mul(gain));
+            const off = q.sub(star).div(U.pixelAngle.mul(1.25));
+            const d2 = dot(off, off).toVar();
+            const bright = h.y.pow(power).mul(smoothstep(0.4, 0.5, h.x)).toVar();
+            const twinkle = sin(U.time.mul(h.x.mul(2.3).add(0.8)).add(h.z.mul(40.0))).mul(0.26).add(0.74);
+            const tint = mix(vec3(1.0, 0.78, 0.56), vec3(0.7, 0.83, 1.0), fract(h.z.mul(7.31)));
+            const image = exp(d2.negate()).add(exp(d2.mul(-0.07)).mul(bright).mul(flare));
+            return tint.mul(image.mul(bright).mul(twinkle).mul(gain));
         };
-        const stars = starLayer(44.0, 7.0, 4.0).add(starLayer(105.0, 5.0, 0.9)).toVar();
+        // A few bright ones, some hundreds the eye can count, and a dust of faint ones.
+        const stars = starLayer(30.0, 12.0, 2.4, 0.07).add(starLayer(80.0, 8.0, 1.0, 0.0))
+            .add(starLayer(170.0, 6.0, 0.36, 0.0)).toVar();
         if (o.milky) {
             // A band of light along a great circle of the sky, clotted and split by dust: at
             // midnight it stands across the picture as below; the hours wheel it with the stars.
@@ -308,9 +356,11 @@ export function skyColour(dir, U, noise, o) {
     if (o.discs) {
         const limb = sqrt(max(float(1.0).sub(sunD.y.mul(sunD.y)), 0.0));
         // Its lower limb reddens as it comes down into the thick air (or climbs out of it).
-        const ember = mix(vec3(1.0), vec3(1.0, 0.6, 0.36), U.sunLow.mul(smoothstep(0.5, -1.0, sunD.z)));
-        // It darkens toward its limb, blue most: a bright gold heart in a deeper rim.
-        const darkening = vec3(1.0).sub(vec3(0.46, 0.6, 0.76).mul(float(1.0).sub(limb)));
+        const ember = mix(vec3(1.0), vec3(1.0, 0.62, 0.34), U.sunLow.mul(smoothstep(0.6, -1.0, sunD.z)));
+        // It darkens toward its limb, blue most: a gold heart in a deeper rim. High in the sky
+        // the rim is only a little warmer than the heart (a strong one ringed a white sun orange).
+        const limbGain = U.sunLow.mul(0.72).add(0.28);
+        const darkening = vec3(1.0).sub(vec3(0.3, 0.46, 0.7).mul(float(1.0).sub(limb)).mul(limbGain));
         sky.addAssign(light.sunDisc.mul(ember).mul(darkening).mul(U.sunPower).mul(sunD.x));
         // The green flash: for a breath the last of the upper limb burns green, a thin rim and a
         // sliver lifted clear of it (four lines, a perfect clear, while the sun is low).
@@ -330,10 +380,10 @@ export function skyColour(dir, U, noise, o) {
             const sphere = vec3(p, sqrt(max(float(1.0).sub(dot(p, p)), 0.0))).toVar();
             const sunward = normalize(vec2(dot(U.sun, U.moonRight), dot(U.sun, U.moonTop)).add(vec2(1e-4, 0.0)))
                 .toVar();
-            const phase = MOON_PHASE * (Math.PI / 180);
             const texels = noise.image?.width ?? 256;
             const lod = (scale) => max(log2(U.pixelAngle.mul(scale * texels).div(U.moonSize)), 0.0);
-            const ndl = dot(sphere, vec3(sunward.mul(Math.sin(phase)), Math.cos(phase))).toVar();
+            // (U.moonPhase: the sine and cosine of tonight's phase angle, and the earth's light.)
+            const ndl = dot(sphere, vec3(sunward.mul(U.moonPhase.x), U.moonPhase.y)).toVar();
             // Its face, turned.
             const ct = cos(U.moonTilt);
             const st = sin(U.moonTilt);
@@ -368,8 +418,8 @@ export function skyColour(dir, U, noise, o) {
                 .mul(float(1.0).sub(smoothstep(0.0, 0.35, ndl)));
             const shade = smoothstep(-0.03, 0.13, ndl).mul(clamp(ndl, 0.0, 1.0).mul(0.3).add(0.7))
                 .mul(clamp(relief.add(1.0), 0.4, 1.6));
-            // The world's own light on its night side, faint.
-            const earthshine = 0.018;
+            // The world's own light on its night side, faint (plainer on a crescent).
+            const earthshine = U.moonPhase.z;
             const moonLimb = sphere.z.mul(0.12).add(0.88);
             const moonLight = light.moonDisc.mul(tint).mul(albedo).mul(moonLimb).mul(shade.add(earthshine))
                 .mul(U.moonPower);
@@ -392,22 +442,92 @@ export function skyColour(dir, U, noise, o) {
         const comb = texture(noise, at.mul(vec2(1.9, 2.3)).add(vec2(0.43, 0.17))).a;
         const drifts = smoothstep(TUNE.cirrusPatch[0], TUNE.cirrusPatch[1], slow.b);
         const veil = smoothstep(TUNE.cirrusCover[0], TUNE.cirrusCover[1], fibre.mul(0.78).add(comb.mul(0.22)))
-            .mul(drifts).mul(smoothstep(0.03, 0.2, up)).mul(U.cover.mul(0.9).add(0.2));
+            .mul(drifts).mul(smoothstep(0.03, 0.2, up)).mul(U.cover.mul(0.9).add(0.2))
+            .mul(U.cirrus);
         const lit = light.cirrus.mul(toward.mul(0.55).add(0.45)).mul(U.skyFire.mul(0.45).add(1.0));
         sky.assign(mix(sky, lit, veil.mul(0.4)));
+    }
+
+    // ── The towers of cloud along the horizon (some weathers): far heaps standing on flat
+    // bases, lumpy heads, drawn in the plane of bearing and height. The key lights the side of
+    // each head that faces it; toward a low light they stand dark with a burning edge; the air
+    // between takes their feet. They stand back from the places the sky sets and rises. ──
+    if (o.towers) {
+        const level = normalize(vec3(dir.x, 0.0, dir.z).add(vec3(0.0, 0.0, 1e-4))).toVar();
+        const brg = atan(dir.x, dir.z.negate()).toVar();
+        // They are alive: the heads drift along the horizon with the wind, faster than the
+        // feet they stand on, and boil upward, so a tower grows, leans and falls apart as it goes.
+        // (Moved only with the deck, at this distance they stood still.)
+        const u = brg.mul(TUNE.towerSpan).toVar();
+        const v = dir.y.mul(TUNE.towerSpan).toVar();
+        const clock = U.cloudClock;
+        const uHead = u.add(clock.mul(TUNE.towerDrift[0])).toVar();
+        const vHead = v.add(0.21).sub(clock.mul(TUNE.towerBoil)).toVar();
+        const stand = texture(noise, vec2(u.add(clock.mul(TUNE.towerDrift[1])).mul(0.9), 0.37)).r;
+        const head = texture(noise, vec2(uHead, vHead)).g.toVar();
+        const torn = texture(noise, vec2(uHead.mul(2.6).add(clock.mul(TUNE.towerDrift[0] * 1.4)), vHead.mul(2.6))).a;
+        // Toward the key, in this plane.
+        const key = mix(U.sun, U.moon, U.moonKey);
+        const keyLevel = normalize(vec3(key.x, 0.0, key.z).add(vec3(0.0, 0.0, 1e-4)));
+        const turn = level.x.mul(keyLevel.z).sub(level.z.mul(keyLevel.x));
+        const toKey = normalize(vec2(turn.negate(), key.y.sub(dir.y).mul(0.6)).add(vec2(1e-4, 0.0))).mul(0.02);
+        const lee = texture(noise, vec2(uHead, vHead).add(toKey)).g;
+        const gate = (bodyDir) => {
+            const flat = normalize(vec3(bodyDir.x, 0.0, bodyDir.z).add(vec3(0.0, 0.0, 1e-4)));
+            const [wide, tight] = TUNE.towerGate.map((degrees) => Math.cos(degrees * (Math.PI / 180)));
+            return smoothstep(wide, tight, dot(level, flat));
+        };
+        const open = float(1.0).sub(max(gate(U.setDir), gate(U.riseDir)).mul(0.94));
+        const lines = smoothstep(0.2, 0.62, stand).mul(0.55).add(0.45).mul(U.towers)
+            .toVar();
+        // Toward a gate the towers sink and thin away. (Masked at their outline instead, they
+        // ended in straight walls standing either side of the sun.)
+        const stoop = open.mul(0.75).add(0.25);
+        const depth = lines.mul(0.66).add(head.sub(0.5).mul(0.72)).add(torn.sub(0.5).mul(0.24))
+            .sub(dir.y.div(stoop.mul(TUNE.towerTop)))
+            .toVar();
+        const body = smoothstep(0.0, 0.035, depth).mul(smoothstep(TUNE.towerBase[0], TUNE.towerBase[1], dir.y))
+            .mul(smoothstep(0.02, 0.2, lines))
+            .mul(smoothstep(0.0, 0.85, open))
+            .toVar();
+        const facing = clamp(head.sub(lee).mul(11.0).add(torn.sub(0.5).mul(0.9)).add(0.5), 0.0, 1.0);
+        const heart = smoothstep(0.08, 0.5, depth);
+        const dim = float(1.0).sub(smoothstep(0.02, 0.2, up)).mul(t4).mul(U.fire)
+            .mul(0.85);
+        const towerReach = clamp(t2.add(0.2).add(U.skyFire.mul(0.6)), 0.0, 1.0);
+        const towerLit = mix(light.cirrus.mul(0.85), light.cloudLit, towerReach)
+            .mul(U.skyFire.mul(0.6).add(1.0));
+        const towerBody = mix(light.cloudShade, light.cloudDeep, heart.mul(0.7));
+        const tower = mix(towerBody, towerLit, facing.mul(float(1.0).sub(heart.mul(0.45))).mul(float(1.0).sub(dim)))
+            .toVar();
+        // The lining, against the light, and the lightning that flickers inside a far head.
+        const thinEdge = body.mul(float(1.0).sub(body)).mul(4.0);
+        tower.addAssign(light.cloudRim.mul(exp(away.mul(9.0)).mul(U.sunUp)
+            .add(exp(awayMoon.mul(16.0)).mul(moonUp).mul(U.moonKey))).mul(thinEdge).mul(0.7));
+        const strike = brg.sub(U.bolt.x).div(0.11);
+        tower.addAssign(vec3(0.62, 0.74, 1.25).mul(exp(strike.mul(strike).negate()).mul(U.bolt.y)
+            .mul(head.mul(1.4).add(0.3))));
+        // Their feet stand in the air over the sea.
+        const aired = mix(tower, base, exp(dir.y.mul(-26.0)).mul(0.5).add(0.22));
+        sky.assign(mix(sky, aired, body.mul(0.94)));
     }
 
     // ── The bars of cloud low over the sea ──
     if (o.bars) {
         const bearing = atan(dir.x, dir.z.negate());
-        const at = vec2(bearing.mul(TUNE.barBearing).add(U.drift.x.mul(0.6)), dir.y.mul(TUNE.barHeight).add(0.17));
+        // They drift along the horizon and change as they go (a slow climb through the field).
+        const at = vec2(
+            bearing.mul(TUNE.barBearing).add(U.cloudClock.mul(TUNE.barDrift[0])),
+            dir.y.mul(TUNE.barHeight).add(0.17).add(U.cloudClock.mul(TUNE.barDrift[1])),
+        );
         const bar = texture(noise, at).b.toVar();
         const under = texture(noise, at.sub(vec2(0.0, 0.035))).b;
         const span = TUNE.barSpan;
         const bars = smoothstep(TUNE.barCover[0], TUNE.barCover[1], bar)
             .mul(smoothstep(span[0], span[1], dir.y))
             .mul(float(1.0).sub(smoothstep(span[2], span[3], dir.y)))
-            .mul(U.cover.mul(0.8).add(0.35));
+            .mul(U.cover.mul(0.8).add(0.35))
+            .mul(U.bars);
         // Lit along its lower edge by a low sun; a dark body against the bright band behind it.
         const edge = clamp(bar.sub(under).mul(7.0).add(0.35), 0.0, 1.0).mul(U.fire);
         const lit = mix(light.cirrus, light.cloudLit, t4).mul(U.skyFire.mul(0.5).add(1.0));
@@ -426,13 +546,19 @@ export function skyColour(dir, U, noise, o) {
         const coords = (height) => vec2(dot(plane, street).mul(TUNE.deckAlong), dot(plane, cross).mul(TUNE.deckAcross))
             .mul(height).add(U.drift);
         const mid = coords(1.0 + TUNE.deckThick * 0.5).toVar();
-        // Slow terms, read once: where there is cloud at all, and the field's broad shape.
-        const patch = texture(noise, mid.mul(0.21).add(vec2(0.13, 0.57))).b;
-        const broad = texture(noise, mid.mul(0.47).add(vec2(0.71, 0.29))).r;
+        // Slow terms, read once: where there is cloud at all, and the field's broad shape. Each
+        // creeps through the field on a way of its own, so clouds form and melt away as they
+        // stream in, and the far deck, whose drift the distance all but hides, still lives.
+        const evolve = U.cloudClock.mul(TUNE.deckEvolve);
+        const patch = texture(noise, mid.mul(0.21).add(vec2(0.13, 0.57)).add(vec2(evolve.mul(0.3), evolve.mul(0.2)))).b;
+        const broad = texture(noise, mid.mul(0.47).add(vec2(0.71, 0.29)).add(vec2(evolve, evolve.mul(-1.5)))).r;
         const coverHere = U.cover.add(patch.sub(0.5).mul(TUNE.deckPatch));
         const need = float(TUNE.deckBase).sub(coverHere.mul(TUNE.deckCover)).toVar();
         const torn = o.fine ? texture(noise, mid.mul(3.3).add(U.drift.mul(1.6))).a.sub(0.5).mul(0.13) : float(0.0);
-        const field = (at) => texture(noise, at).g.mul(0.56).add(broad.mul(0.5)).add(torn);
+        // A mackerel sky (the weather's): the field broken into small cells, row on row.
+        const ripple = texture(noise, mid.mul(vec2(2.3, 4.1)).add(vec2(0.37, 0.11))).g.sub(0.5)
+            .mul(U.mackerel.mul(0.85)).toVar();
+        const field = (at) => texture(noise, at).g.mul(0.56).add(broad.mul(0.5)).add(torn).add(ripple);
         // The light's side of a cloud: the field is thinner toward the light there.
         const lee = field(mid.add(U.keyFlat.mul(0.011)));
         const here = field(mid).toVar();
@@ -467,7 +593,8 @@ export function skyColour(dir, U, noise, o) {
         const thin = cover.mul(transmit).mul(4.0);
         const lining = light.cloudRim.mul(exp(away.mul(9.0)).mul(U.sunUp))
             .add(light.cloudRim.mul(exp(awayMoon.mul(16.0)).mul(moonUp).mul(U.moonKey)));
-        cloud.addAssign(lining.mul(thin).mul(against.mul(0.9).add(0.3)));
+        // (A mackerel sky is all edges: lined as boldly as a broken deck, every cell was outlined.)
+        cloud.addAssign(lining.mul(thin).mul(against.mul(0.9).add(0.3)).mul(U.mackerel.mul(-0.8).add(1.0)));
         // The air between: far cloud goes to the colour of the sky behind it, and the deck
         // leaves a clear slot over the horizon.
         const fog = float(1.0).sub(exp(range.mul(-TUNE.deckFog)));

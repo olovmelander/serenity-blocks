@@ -234,7 +234,7 @@ describe('waves life: the animals', () => {
         expect(life.fauna).toBeNull();
         const arc = life.leap(1, 0, { d: 11 });
         const heard = [];
-        for (let n = 0; n * DT <= arc.flight + 4; n++) life.update(n * DT, 0, (act, event) => heard.push(event.type));
+        for (let n = 0; n * DT <= arc.life + 2; n++) life.update(n * DT, 0, (act, event) => heard.push(event.type));
         expect(heard).toEqual(['breach', 'entry']);
         expect(life.drawn.bottlenose + life.drawn.spinner).toBe(0);
         // They arrive late: from then on it is drawn.

@@ -42,7 +42,9 @@ import {
 } from './stillwater-core.js';
 import { Swell, softCeiling } from '../shared/swell.js';
 import { ATTENTION, Area, Attention } from './stillwater-attention.js';
-import { KIN, StillwaterLife } from './stillwater-life.js';
+import {
+    KIN, PLACES, SPIRIT_GLIDE, StillwaterLife,
+} from './stillwater-life.js';
 
 /** How far along her path she kneels on the water off her stone. */
 export const KNEEL_AT = 0.28;
@@ -136,6 +138,8 @@ export class StillwaterStory {
         /** A chain that broke: when, and how long they hold each other's eyes before going back. */
         this.partingUntil = -1;
         this.lastEvent = time - 30;
+        /** When play last stirred the tarn (a clear, a hard drop out of a calm, the hour turning). */
+        this.lastStir = time - 30;
         this.lastLock = null;
         this.trollAt = 'home';
         this.trollHomeSince = time - SIT_AFTER - 1;
@@ -244,7 +248,10 @@ export class StillwaterStory {
             }
         }
         // A hard drop out of a calm makes him start; one in a quick run he takes in his stride.
-        if (hardDrop && calm > STARTLE_CALM) this.startleAt = time;
+        if (hardDrop && calm > STARTLE_CALM) {
+            this.startleAt = time;
+            this.lastStir = time;
+        }
         this.ended = false;
     }
 
@@ -276,6 +283,7 @@ export class StillwaterStory {
     /** Lines cleared. A four-line clear raises the heart. */
     onClear({ time, lines = 1, perfect = false }) {
         this.lastEvent = time;
+        this.lastStir = time;
         this.clearAt = time;
         const quad = lines >= 4 || perfect;
         if (quad) this.raiseHeart(time, perfect ? 1.4 : 1);
@@ -372,6 +380,7 @@ export class StillwaterStory {
     onLevel(time) {
         this.skyAt = time;
         this.lastEvent = time;
+        this.lastStir = time;
     }
 
     /** The run ended (or a new one began): no parting look, they go home. */
@@ -384,6 +393,27 @@ export class StillwaterStory {
         this.partingUntil = time + 0.8;
         this.ended = true;
         this.lastEvent = time;
+        this.lastStir = time;
+    }
+
+    /**
+     * One of them turns to the other for a while (a light of the other's has reached them over the
+     * water): a look worth `weight`, from `from` until `until`.
+     */
+    glanceAt(who, from, until, weight = 0.7) {
+        const at = this.at || {};
+        const partner = who === 'troll'
+            ? (at.spiritHeart || [SPIRIT.home[0], 1.2, SPIRIT.home[2]])
+            : (at.lantern || [TROLL.home[0] - 0.4, 2.4, TROLL.home[2] + 0.3]);
+        this.looks.push({
+            who, at: partner, from, until, key: 'partner', weight,
+        });
+    }
+
+    /** True while she is over on his side of the tarn (a visit, or play caught her there). */
+    get across() {
+        const s = this.at?.spirit;
+        return Boolean(s && s[0] > 1.5);
     }
 
     // ── The frame ───────────────────────────────────────────────────────────────
@@ -460,6 +490,7 @@ export class StillwaterStory {
         const at = this.at || {};
         const c = this._ctx;
         c.calm = time - this.lastEvent;
+        c.still = time - this.lastStir;
         c.busy = this.busy;
         c.engaged = this.engaged;
         c.meet = this.meeting;
@@ -771,6 +802,19 @@ export class StillwaterStory {
         out.pace = null;
         out.gesture = null;
         out.scene = null;
+        // Play that takes her while she is over on his side: a chain holds her there, beside him
+        // (they are as near as a chain can bring them); when it lets her go she glides home.
+        if (this.across) {
+            if (this.drawn > 0.05) {
+                out.at = [PLACES.visit[0], PLACES.visit[1], PLACES.visit[2]];
+                out.faceMode = 'lantern';
+                out.kneel = false;
+            } else {
+                out.pace = SPIRIT_GLIDE;
+                out.kneel = false;
+                out.faceMode = 'home';
+            }
+        }
         const life = this.engaged ? null : this.life.spirit;
         if (life && life.scene) {
             out.scene = life.scene;
@@ -784,6 +828,7 @@ export class StillwaterStory {
                 out.face = life.face;
                 out.faceMode = 'abs';
             }
+            if (life.facePartner) out.faceMode = 'lantern';
             if (life.hands && out.hands === 'rest') out.hands = life.hands;
             out.gesture = life.gesture;
         }

@@ -167,7 +167,7 @@ describe('waves splash: when the dolphin meets the water', () => {
         const calls = [];
         let drawnAtTail = 0;
         // (From a second before it: no moment is handed over on the first frame a clock is seen.)
-        for (let n = -60; n * DT <= arc.flight + 4; n++) {
+        for (let n = -60; n * DT <= arc.life + 1; n++) {
             const time = n * DT;
             pod.update(time, 0, (which, event) => {
                 calls.push({ time, type: event.type, landed: which.landed });

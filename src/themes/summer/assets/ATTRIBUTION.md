@@ -104,3 +104,19 @@ Growth and props are seeded and the bakes run on the CPU: on the machine that wr
 pack, three runs in a row produced all twelve files (and the manifest) byte for byte.
 Re-run the tests after regenerating. The whole pack takes about fifteen seconds on a
 laptop CPU; `--preview` adds a few minutes of stills.
+
+## The swans (beside the theme's code, not in this folder)
+
+`src/themes/summer/summer-swan-model.js` (added 2026-11-17) holds the lake's mute swans: an
+adult afloat, a cygnet and an adult on the wing. It is a project-owned original as well,
+modelled procedurally in Blender 5.2 by `scripts/blender/summer_swan.py` and written out as
+a generated JavaScript module (quantised typed arrays, no file to fetch), with no third-party
+geometry, texture or scan and nothing produced by an image or 3D model generator. Licence:
+the same as the project.
+
+```bash
+blender --background --factory-startup --python scripts/blender/summer_swan.py -- \
+    --out src/themes/summer [--preview <dir>]
+```
+
+Running it again writes the same bytes.

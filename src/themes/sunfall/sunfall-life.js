@@ -9,11 +9,13 @@ import { SUNFALL_LAYOUT, mulberry32 } from './sunfall-core.js';
 import { buildStrands } from './sunfall-strands.js';
 import { buildWater } from './sunfall-water.js';
 import { buildAirLife } from './sunfall-air-life.js';
+import { buildFlora, buildVapour } from './sunfall-flora.js';
 
 export function buildSunfallLife(world) {
     const strands = buildStrands(world, {
         strands: world.plan.curtains,
         leafSlots: world.preset.leafSlots ?? 256,
+        blossomSlots: world.preset.blossomSlots ?? 40,
     });
     world.partGroups.get('roots').add(strands.group);
     // Lianas let down from the oculus rim into the shaft: the vine fringe, against the light.
@@ -41,12 +43,18 @@ export function buildSunfallLife(world) {
     world.partGroups.get('beam').add(air.beam);
     world.partGroups.get('birds').add(air.birds);
     world.partGroups.get('mist').add(air.mist);
-    const parts = [strands, rimLianas, water, air];
+    // What play lets loose (petals, beads, whirled leaves, birds) and what the cave breathes out.
+    const flora = buildFlora(world, { strands });
+    world.partGroups.get('roots').add(flora.group);
+    const vapour = buildVapour(world);
+    world.partGroups.get('mist').add(vapour.group);
+    const parts = [strands, rimLianas, water, air, flora, vapour];
     return {
-        sprayCentre: water.sprayCentre,
         strands,
         water,
         air,
+        flora,
+        vapour,
         update(snap) {
             parts.forEach((p) => p.update?.(snap));
         },

@@ -21,12 +21,16 @@ import {
     If,
     Loop,
     abs,
+    atan,
     cameraPosition,
     clamp,
     cos,
     dot,
     exp,
     float,
+    floor,
+    fract,
+    fwidth,
     int,
     length,
     max,
@@ -45,6 +49,7 @@ import {
     vec4,
 } from 'three/tsl';
 import {
+    PULSE_SPEED,
     RING_SLOW,
     RING_SPEED,
     SHORE_SPAN,
@@ -55,6 +60,7 @@ import {
     swBell,
     swFog,
     swFresnel,
+    swHash33,
     swPart,
 } from './stillwater-tsl.js';
 
@@ -108,7 +114,9 @@ export function createWater(u, opts = {}) {
             const w3 = u.noise(st.mul(0.83).add(vec2(u.drift.mul(0.023), u.drift.mul(0.017))));
             slope.addAssign(w3.rg.sub(0.5).mul(patch.mul(0.34).add(0.03)));
         }
-        slope.mulAssign(u.wind.mul(0.065).add(0.008).mul(u.ruffle));
+        // (A breeze does more than double it: past a breath of air the mirror begins to break.)
+        const breeze = max(u.wind.sub(0.3), 0.0);
+        slope.mulAssign(u.wind.mul(0.065).add(breeze.mul(0.16)).add(0.008).mul(u.ruffle));
 
         // ── Rings: a packet of wavelets behind a crisp front, shorter the further behind ──
         const eventLight = vec3(0.0).toVar();
@@ -148,9 +156,75 @@ export function createWater(u, opts = {}) {
             const phase = back.div(STROKE_GAP).toVar();
             slope.addAssign(o.div(from).mul(sin(phase.mul(TAU))).mul(fade).mul(0.13));
             // Each front carries a thread of light on its crest.
-            const crest = swBell(phase.fract().sub(0.25).div(0.11)).mul(fade);
-            eventLight.addAssign(C.xyz.mul(crest).mul(A.w.mul(0.5).add(0.38)));
+            // (A bright thread in a soft band of its light: a swell is seen crossing, not guessed at.)
+            const off = phase.fract().sub(0.25);
+            const crest = swBell(off.div(0.11)).add(swBell(off.div(0.42)).mul(0.3))
+                .mul(fade);
+            eventLight.addAssign(C.xyz.mul(crest).mul(A.w.mul(0.5).add(0.5)));
         });
+
+        // ── A whirl where a twisted piece went in: two arms of light turning inward, the mirror wound with them ──
+        const whirlAge = u.time.sub(u.whirl.z).toVar();
+        If(whirlAge.greaterThan(0.0).and(whirlAge.lessThan(5.0)).and(u.whirl.w.greaterThan(0.01)), () => {
+            const o = st.sub(u.whirl.xy).toVar();
+            const d = max(length(o), 1e-3).toVar();
+            const wound = atan(o.y, o.x).mul(2.0).add(d.add(0.35).log().mul(5.5)).sub(whirlAge.mul(4.2));
+            const arm = sin(wound).toVar();
+            const reach = whirlAge.mul(0.55).add(0.8);
+            const live = exp(d.div(reach).mul(d.div(reach)).negate()).mul(smoothstep(0.0, 0.35, whirlAge))
+                .mul(exp(whirlAge.mul(-0.75))).mul(u.whirl.w)
+                .toVar();
+            // (The water turns about the middle and dips into it.)
+            slope.addAssign(vec2(o.y.negate(), o.x).div(d).mul(arm).mul(live)
+                .mul(0.11));
+            slope.addAssign(o.div(d).mul(live).mul(exp(d.mul(-1.6))).mul(-0.12));
+            eventLight.addAssign(u.whirlCol.mul(smoothstep(0.72, 1.0, arm)).mul(live).mul(0.5));
+        });
+
+        // ── Rain: in the near water every drop is a ring; far out the tarn is simply dimpled ──
+        If(u.rain.greaterThan(0.01), () => {
+            const near = smoothstep(17.0, 5.0, dist).toVar();
+            [[1.15, 0.0], [1.9, 7.3]].forEach(([scale, salt], layer) => {
+                // (Cells shifted positive: the hash wants whole, non-negative numbers.)
+                const g = st.mul(scale).add(vec2(700.0 + salt, 700.0 - salt)).toVar();
+                const cell = floor(g).toVar();
+                const h = swHash33(vec3(cell.x, cell.y, layer * 17.0 + 3.0)).toVar();
+                const period = h.x.mul(1.6).add(1.2);
+                const phase = fract(u.time.div(period).add(h.z)).toVar();
+                const o = g.sub(cell).sub(0.5).sub(vec2(h.y, fract(h.x.mul(7.31))).sub(0.5).mul(0.46)).toVar();
+                const d = max(length(o), 1e-3).toVar();
+                // A ring that has run a quarter of its cell is spent (it never meets the cell's edge).
+                const run = phase.mul(period).mul(0.3).toVar();
+                const spent = clamp(float(1.0).sub(run.div(0.24)), 0.0, 1.0);
+                const w = d.sub(run).toVar();
+                const wave = sin(w.mul(58.0)).mul(exp(w.mul(w).mul(-700.0))).mul(spent).mul(spent)
+                    .mul(step(h.z, u.rain.mul(0.85).add(0.1)))
+                    .mul(near);
+                slope.addAssign(o.div(d).mul(wave).mul(0.085));
+                eventLight.addAssign(u.moonLight.mul(max(wave, 0.0)).mul(0.05));
+            });
+            const dimple = u.noise(st.mul(1.9).add(vec2(u.time.mul(0.31), u.time.mul(-0.27)))).rg.sub(0.5)
+                .add(u.noise(st.mul(0.71).sub(vec2(u.time.mul(0.17), u.time.mul(0.23)))).ba.sub(0.5));
+            slope.addAssign(dimple.mul(u.rain).mul(0.03));
+        });
+
+        // ── The pulses of light the two send each other: a low swell that crosses the whole tarn ──
+        const toS = st.sub(u.spiritAt.xz).toVar();
+        const toL = st.sub(u.lanternAt.xz).toVar();
+        const dS = max(length(toS), 1e-3).toVar();
+        const dL = max(length(toL), 1e-3).toVar();
+        /** (the front's crest, the light left behind it) of a pulse born at `birth`. */
+        const front = (d, birth, strength) => {
+            const age = u.time.sub(birth);
+            const back = age.mul(PULSE_SPEED).sub(d);
+            const live = step(0.0, age).mul(exp(age.mul(-0.2))).mul(strength);
+            const wake = step(0.0, back).mul(exp(back.mul(-0.2)));
+            return vec3(swBell(back.sub(0.3).div(1.1)), wake, sin(back.mul(1.9))).mul(vec3(live, live, 1.0));
+        };
+        const pulseS = front(dS, u.pulse.x, u.pulse.y).toVar();
+        const pulseL = front(dL, u.pulse.z, u.pulse.w).toVar();
+        slope.addAssign(toS.div(dS).mul(pulseS.z).mul(pulseS.x).mul(0.05));
+        slope.addAssign(toL.div(dL).mul(pulseL.z).mul(pulseL.x).mul(0.05));
 
         // ── The mirror ──
         const N = normalize(vec3(slope.x.negate(), 1.0, slope.y.negate())).toVar();
@@ -251,7 +325,7 @@ export function createWater(u, opts = {}) {
             const f2 = u.noise(grid.mul(0.77).sub(vec2(u.drift.mul(0.015), u.drift.mul(0.021)))).g;
             const fleck = smoothstep(0.52, 0.72, f1.mul(f2).mul(2.5));
             col.addAssign(u.moon.mul(road).mul(fleck).mul(fres).mul(u.breath)
-                .mul(0.3));
+                .mul(breeze.mul(2.2).add(0.3)));
         }
 
         // ── The path of light: while a chain holds the two near, light runs out on the water from
@@ -285,6 +359,62 @@ export function createWater(u, opts = {}) {
                 .mul(power)
                 .mul(u.breath)
                 .mul(0.9));
+        });
+
+        // ── Their two lights on the water: hers runs out from her in pale threads, his from his
+        // lantern in warm ones, each further the nearer the two have grown; where both lie they
+        // braid into rose gold. A pulse either sends crosses the whole tarn as a bright front ──
+        If(u.reach.x.add(u.reach.y).add(u.pulse.y).add(u.pulse.w).greaterThan(0.004), () => {
+            // Threads that travel outward from each: thin winding lines of light (the level lines
+            // of the noise), rings of them broken along the bearing. The bearing wraps a whole
+            // number of times round the noise, so there is no seam.
+            const lace = (to, d, phase, seam) => {
+                // (The bearing's seam is turned toward each one's own bank, off the water.)
+                const bearing = atan(to.y, to.x.mul(seam)).div(TAU);
+                const run = d.mul(0.085).sub(u.drift.mul(0.012)).add(phase);
+                // (Two levels down the noise's own detail: a thread winds, it does not jitter.)
+                const a = u.noise(vec2(run, bearing.mul(4.0)).add(slope.mul(1.4))).bias(2.0).r.toVar();
+                const b = u.noise(vec2(run.mul(2.1).add(0.37), bearing.mul(9.0)).add(slope.mul(2.2))).bias(1.5).g
+                    .toVar();
+                // A thread is drawn a few pixels wide whatever its range: its width is measured
+                // on screen, so a level line is never a band in the near water or lost far out.
+                const da = abs(a.sub(0.5)).div(max(fwidth(a), 1e-5));
+                const db = abs(b.sub(0.5)).div(max(fwidth(b), 1e-5));
+                const line = float(1.0).sub(smoothstep(0.7, 2.6, da));
+                const hair = float(1.0).sub(smoothstep(0.5, 1.8, db));
+                return line.mul(smoothstep(0.3, 0.62, b).mul(0.8).add(0.2)).add(hair.mul(0.35));
+            };
+            // Light on water lies in short dashes across the line of sight: the threads are broken
+            // into them, so they glitter as they travel and never read as veins.
+            const dash = u.noise(vec2(st.x.mul(0.21), st.y.mul(0.83)).add(vec2(u.drift.mul(0.013), u.drift.mul(-0.021)))
+                .add(slope.mul(3.0))).b;
+            // (Under the viewer's feet the threads go faint: they belong out on the tarn.)
+            const far = smoothstep(2.5, 8.0, dist).mul(0.65).add(0.35);
+            const glint = smoothstep(0.34, 0.6, dash).mul(0.75).add(0.25).mul(far)
+                .toVar();
+            const laceS = lace(toS, dS, 0.0, 1.0).mul(glint).toVar();
+            const laceL = lace(toL, dL, 0.53, -1.0).mul(glint).toVar();
+            const envS = exp(dS.div(u.reach.x.mul(22.0).add(2.0)).negate()).mul(min(u.reach.x, 1.0)).toVar();
+            const envL = exp(dL.div(u.reach.y.mul(22.0).add(2.0)).negate()).mul(min(u.reach.y, 1.0)).toVar();
+            // Her light is the pale of the moon on water; his the lantern's own.
+            const pale = mix(u.spirit, u.crest, 0.45).toVar();
+            // (Under each of them the water simply glows a little: the threads begin a way out.)
+            const hers = pale.mul(envS.mul(laceS.add(exp(dS.mul(-0.6)).mul(0.2))).mul(u.spiritAt.w.mul(0.3).add(0.6)));
+            const his = u.lantern
+                .mul(envL.mul(laceL.add(exp(dL.mul(-0.6)).mul(0.14))).mul(u.lanternAt.w.mul(0.3).add(0.6)));
+            // Where the two meet they braid: where a thread of hers crosses one of his it burns
+            // rose gold, and each lends the other's threads a little of its own colour.
+            const both = min(envS, envL).mul(u.reach.z).toVar();
+            const rose = mix(pale, u.lantern, 0.5).mul(vec3(1.15, 0.8, 0.9)).toVar();
+            const braid = laceS.mul(laceL).mul(5.0).add(laceS.add(laceL).mul(0.3));
+            // A pulse: its front a soft bright crest, the threads behind it lit a while.
+            const lightS = pale.mul(pulseS.x.mul(0.34).add(pulseS.y.mul(laceS).mul(1.2)));
+            const lightL = u.lantern.mul(pulseL.x.mul(0.3).add(pulseL.y.mul(laceL).mul(1.1)));
+            const cross = rose.mul(pulseS.x.mul(pulseL.x).mul(2.2).add(pulseS.y.mul(pulseL.y).mul(braid).mul(1.0)));
+            col.addAssign(hers.mul(1.05).add(his.mul(0.55)).add(rose.mul(both).mul(braid).mul(0.8))
+                .add(lightS.add(lightL))
+                .add(cross)
+                .mul(u.breath));
         });
 
         // ── Gameplay light riding the water itself ──

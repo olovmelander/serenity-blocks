@@ -1,5 +1,10 @@
 # Stillwater — the troll and the spirit, alive
 
+> 2026-11-17: their scenes now begin beside steady play (not only in a calm), are told in order the
+> first time through, come sooner (the nearness each needs was lowered), and four were added: a
+> light signalled across the water and three kinds of visit in which she crosses to him. See
+> `docs/STILLWATER_LIVING_TARN_2026-11.md`; the table of nearness below is the version of 2026-10.
+
 Implemented 2026-10-23 on `feature/stillwater-figures-life`, on top of the figures and their story of
 2026-10-18 (`docs/STILLWATER_STORY_2026-10.md`, whose figures, story beats, heart's flight and path of
 light all stand). This pass gave the two a way of looking, a life of their own between the moments

@@ -187,13 +187,13 @@ const captureThemes = [
         'sky, water, ground, boulders, trunks, boughs, fringe, saplings, ferns, reeds, pads, lilies, '
         + 'caps, spirit, troll, mist, eyes, fireflies, wisps, drops, sparks'],
 
-    ['sunbraid', 'sunbraid', 'Sunbraid', 'sky, land, spires, gliders'],
+    ['sunbraid', 'sunbraid', 'Sunbraid', 'sky, land, spires, gliders, dust'],
 
     ['sunfall', 'sunfall', 'Sunfall', 'sky, cave, jungle, beam, mist, water, roots, birds, gours'],
 
-    ['sunset', 'sunset', 'Sunset', 'sky, sea, lanterns, glows, birds'],
+    ['sunset', 'sunset', 'Sunset', 'sky, sea, islands, lanterns, glows, birds, boat, meteors'],
 
-    ['supernova', 'supernova', 'Supernova', 'sky, nebula, beams, star, ring, loops, embers, streams, sparks'],
+    ['supernova', 'supernova', 'Supernova', 'sky, nebula, beams, aura, star, ring, loops, embers, streams, sparks'],
 
     ['thermal-bloom', 'thermalBloom', 'Thermal Bloom', 'sky, basin, terraces, steam, geyser, flora, fx'],
 
@@ -219,7 +219,7 @@ const captureThemes = [
         'Voltage Storm',
         'sky, water, towers, towerMirror, boltMirror, glows, bolts, sparks, rain'],
 
-    ['waves', 'waves', 'Waves', 'sky, water, life, mist, rain, whitewater, spray, foam'],
+    ['waves', 'waves', 'Waves', 'sky, water, life, mist, rain, whitewater, landing, spray, foam'],
 
     ['winter', 'winter', 'Winter', 'sky, ground, trees, prints, meteors, mist, snow, dust, devil, sparks, beams, fox, spirit, bear'],
 ];

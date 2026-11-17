@@ -151,7 +151,8 @@ describe('supernova core: the nebula\'s shells', () => {
     });
 
     it('keeps the shell table as large as everything it can hold at once', () => {
-        expect(SHELL_ROWS).toBe(STANDING_MAX + FRONT_SLOTS + BLAST_SHELLS);
+        // (One more row since 2026-11: the bubble a level change sheds.)
+        expect(SHELL_ROWS).toBe(STANDING_MAX + FRONT_SLOTS + BLAST_SHELLS + 1);
         const sizes = [SHELL_STRIDE, IMPACT_SLOTS, STREAM_SLOTS, LOOP_SLOTS, FRONT_SLOTS, BLAST_SHELLS, STANDING_MAX];
         for (const size of sizes) {
             expect(Number.isInteger(size)).toBe(true);

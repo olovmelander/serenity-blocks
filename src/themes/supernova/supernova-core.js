@@ -42,8 +42,11 @@ export const RING = Object.freeze({
 
 /** Lock impacts the photosphere remembers (a flash, a ripple, a patch of the piece's colour). */
 export const IMPACT_SLOTS = 10;
-/** Streams in flight at once (a lock sends one, a hard drop three, a clear one per row). */
-export const STREAM_SLOTS = 12;
+/**
+ * Streams in flight at once (a lock sends one, a hard drop three, a clear one per row, a chain
+ * that breaks one for each bead it had lit).
+ */
+export const STREAM_SLOTS = 20;
 /** Segments along one stream's ribbon. */
 export const STREAM_SEGMENTS = 20;
 /** Prominences standing on the star at once. */
@@ -56,8 +59,12 @@ export const FRONT_SLOTS = 8;
 export const BLAST_SHELLS = 3;
 /** The most standing shells any tier draws. */
 export const STANDING_MAX = 5;
+/** A level's bubble (the layer the star sheds) is one more shell. */
+export const PUFF_SHELLS = 1;
 /** Rows of the shell table the nebula's shader walks (live rows are packed at the front). */
-export const SHELL_ROWS = STANDING_MAX + FRONT_SLOTS + BLAST_SHELLS;
+export const SHELL_ROWS = STANDING_MAX + FRONT_SLOTS + BLAST_SHELLS + PUFF_SHELLS;
+/** Plumes the aura sheet can stand at once (supernova-aura.js). */
+export const AURA_PLUMES = 4;
 /** vec4s per row of the shell table. */
 export const SHELL_STRIDE = 5;
 
@@ -171,6 +178,33 @@ export function collapseScale(time, birth, hold = COLLAPSE_HOLD) {
 export function pulsarGain(age) {
     if (age < 0.25) return 0;
     return smooth(0.25, 1.1, age) * (1 - smooth(REKINDLE * 0.45, REKINDLE * 0.95, age));
+}
+
+/**
+ * Seconds of the star's own cycle of restlessness, where in it a session starts, and the
+ * seconds of its slow swell (it is a variable star).
+ */
+export const ACTIVITY_CYCLE = 232;
+export const ACTIVITY_START = 0.26;
+export const PULSE_PERIOD = 41;
+
+/**
+ * How restless the star is at `time`, 0..1: it rests quiet, stirs, holds stormy and eases,
+ * with a faster shiver on top so no two cycles are alike. A pure function of the clock.
+ */
+export function starActivity(time) {
+    const t = Number.isFinite(time) ? time : 0;
+    const p = (((t / ACTIVITY_CYCLE + ACTIVITY_START) % 1) + 1) % 1;
+    const storm = smooth(0.18, 0.46, p) * (1 - smooth(0.7, 0.98, p));
+    return clamp01(0.1 + 0.84 * storm + 0.06 * Math.sin(t * 0.113 + 1.7));
+}
+
+/** The star's slow swell, −1..1: it rises over the first third of its period and sinks slowly. */
+export function starPulse(time) {
+    const t = Number.isFinite(time) ? time : 0;
+    const p = (((t / PULSE_PERIOD) % 1) + 1) % 1;
+    const up = p < 0.32 ? smooth(0, 0.32, p) : 1 - smooth(0.32, 1, p);
+    return up * 2 - 1;
 }
 
 // ── Colour ──────────────────────────────────────────────────────────────────────
@@ -315,6 +349,27 @@ export function paletteDrift(level, clock, out = { from: 0, to: 1, blend: 0 }) {
     out.to = (out.from + 1) % count;
     out.blend = smooth(PALETTE_HOLD, 1, turned - whole);
     return out;
+}
+
+// ── The sky ─────────────────────────────────────────────────────────────────────
+
+/** Seconds the sky takes to turn once about the pole of the galaxy's band. */
+export const SKY_TURN = 4800;
+
+/**
+ * Where the band of far suns crosses the picture for an aspect ratio: a point of the frame
+ * (fractions, y down) it passes through, and how far it leans from upright (radians, clockwise).
+ * It belongs where the card leaves sky: down the right of a wide frame, past the HUD; across the
+ * foot of an upright phone, under the card.
+ */
+export function bandAnchor(aspect) {
+    const a = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9;
+    const wide = smooth(0.8, 1.25, a);
+    return {
+        x: lerp(0.5, 0.875, wide),
+        y: lerp(0.94, 0.5, wide),
+        lean: lerp(78 * DEG, 17 * DEG, wide),
+    };
 }
 
 /** The colour a detonation fires in, and what a star at full heat burns toward. */
