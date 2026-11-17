@@ -376,7 +376,7 @@ export class SummerSwans {
         return this.flights;
     }
 
-    /** Reduce motion: calmer on the water (less rocking, fewer dips), and no skeins by themselves under a half. */
+    /** Reduce motion: calmer on the water (less rocking, shallower dips), and no skeins by themselves under a half. */
     setMotion(share) {
         this.motion = Number.isFinite(share) ? clamp(share, 0, 1) : 1;
     }
@@ -432,7 +432,7 @@ export class SummerSwans {
         if (!this.built || !this.group.visible) return null;
         const at = Number.isFinite(time) ? Math.max(0, time) : this.time;
         this.frames += 1;
-        if (this.frames === PLAN_FRAME) this.plan();
+        if (this.frames === PLAN_FRAME && this.draws?.flying) this.plan();
         // The clock ran back (a seek): a skein that went up later is not in the air yet.
         if (this.flight.live && at < this.flight.start) this.flight.live = false;
         this.time = at;

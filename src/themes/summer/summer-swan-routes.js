@@ -3,16 +3,17 @@
  *
  * Both of the swans' ways are found through the rest camera at 16:9, the frame the picture is
  * composed for:
- *  - THE ROUND the family swims: the largest oval of open water that shows beside the board
+ *  - THE ROUND the family swims: the longest round of open water that shows beside the board
  *    (deeper than 0.4 m, 18 to 70 m from the eye, clear of the card, of the spruce at the frame's
  *    left edge, of the meadow's flowers and the shore's reeds). The water left of the board is
- *    taken first: in single player the stats stand right of it. The cob leads round the oval at
- *    an even pace, the pen and the cygnets swim the same line a few seconds behind him.
+ *    taken first: in single player the stats stand right of it. The cob leads round it at one
+ *    pace, the pen and the cygnets swim the same line a few seconds behind him.
  *  - A FLIGHT across the lake: candidate lines are laid through the lens (how deep they are at
  *    the frame's two edges, how they bend, how high they come in, how low they cross) and scored
- *    there. The best is seen longest in the side thirds, comes down behind the card, crosses the
- *    water left of it low under the evening sun without crossing its disc, takes 9 to 12 s from
- *    edge to edge, and begins and ends beyond the widest frame the theme is ever shown in.
+ *    there. The best is seen longest in the side thirds: in the open sky right of the card (over
+ *    where the stats stand), then, come down behind the card, low across the water left of it
+ *    under the evening sun without crossing its disc. It takes 9 to 12 s from edge to edge, and
+ *    begins and ends beyond the widest frame the theme is ever shown in.
  *
  * Everything is a closed form of the clock (the round) or of the seconds since a skein went up
  * (a flight): a seek to any time lands where play would have, nothing is integrated from frame
