@@ -192,8 +192,14 @@ export class WinterWorld {
         this.wantsBear = bear !== false;
         this.bear = null;
         this.bearReady = Promise.resolve(false);
-        /** Where the polar bear walks on the lake, and what the board has made it do. */
-        this.bearMind = new BearMind(16 / 9);
+        /**
+         * Where the polar bear walks on the lake, and what the board has made it do. In the game each
+         * start of the theme deals it a fresh seed and an open opening, so it may come first on any
+         * of its ways, as the big male, the female or the mother with her cub; a capture (or a
+         * world given a seed) keeps it as it always was, so frames can be compared.
+         */
+        const bearSeed = seed ?? (capture ? undefined : Math.floor(Math.random() * 0x7fffffff));
+        this.bearMind = new BearMind(16 / 9, bearSeed === undefined ? {} : { seed: bearSeed, open: seed === undefined });
         /** The parts a capture asked to see alone (null = all). */
         this.shown = null;
         this.scene = scene;
@@ -373,6 +379,8 @@ export class WinterWorld {
         const still = this.reducedMotion ? 0.3 : 1;
         // The wind and the rays are functions of the world clock until gameplay bends them.
         this.windRun = [time * WIND.x * 0.75 * still, time * WIND.z * 0.75 * still];
+        /** The trees' sway clock (seconds; slowed under reduced motion). */
+        this.swayRun = time * still;
         this.auroraRun = time * 0.55;
         this._curtains = [...CURTAIN_REST];
         if (fox) {
@@ -579,6 +587,7 @@ export class WinterWorld {
     resetSession() {
         const {
             time, windRun, auroraRun, power, surge, swell, breath, storm, halo, mind, _curtains, hourStep, heatEase,
+            swayRun,
         } = this;
         const { prints, play } = this;
         const closingWas = this.closing;
@@ -597,7 +606,7 @@ export class WinterWorld {
         // (The night that had closed in opens again from where it stands.)
         const closing = closingWas;
         Object.assign(this, {
-            windRun, auroraRun, power, surge, swell, breath, storm, halo, _curtains, hourStep, heatEase, closing,
+            windRun, auroraRun, power, surge, swell, breath, storm, halo, _curtains, hourStep, heatEase, closing, swayRun,
         });
         mind.flick = 0;
         mind.dash = 0;
@@ -1696,6 +1705,9 @@ export class WinterWorld {
         u.surge.value = this.surge;
         u.breath.value = this.breath;
         u.windRun.value.set(this.windRun[0], this.windRun[1]);
+        // The trees sway on their own clock; under reduced motion slower and less.
+        this.swayRun += dt * motion;
+        u.sway.value.set(this.swayRun, this.reducedMotion ? 0.4 : 1, 0, 0);
         u.gale.value = gale;
         u.auroraRun.value = this.auroraRun;
         u.curtains.value.set(this._curtains[0], this._curtains[1], this._curtains[2], this._curtains[3]);

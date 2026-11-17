@@ -8,6 +8,11 @@
  * pillow (spruce green with rime on it and the sky's blue in its shade, showing in tongues and
  * clumps rather than one even band). They take the fires' colour from above as the chain grows, sparkle where they mirror
  * the moon, and flash as a ring of powder passes their foot.
+ *
+ * They sway, a little: heavy with snow, each rocks slowly at its own pace (the taller the slower),
+ * bending more toward its top than at its foot; it leans further with the wind as the weather
+ * blows harder, and gives as a gust reaches it. The sway is a function of the world's sway clock
+ * and the gusts, so a seek shows the same frame.
  */
 
 import * as THREE from 'three/webgpu';
@@ -23,30 +28,86 @@ import {
     mix,
     normalWorld,
     normalize,
+    positionLocal,
     positionWorld,
     reflect,
+    sin,
     smoothstep,
+    sqrt,
     varying,
     vec2,
     vec3,
 } from 'three/tsl';
 import {
-    LOOK, wAir, wPow4, wRingLight, wSolidMaterial,
+    LOOK, TAU, WIND, wAir, wGust, wPow4, wRingLight, wSolidMaterial,
 } from './winter-tsl.js';
 import { ghostMesh } from './winter-ghosts.js';
 import { snowGlint } from './winter-ground.js';
 
-function ghostGeometry(mesh) {
+/**
+ * How the snow ghosts sway. `rest` is how far a tree bends at rest (its top moves this share of its
+ * height either way), `wind` what the gale adds to that, `lean` how far the steady wind holds it
+ * over, `gust` how far a gust reaching it pushes it; `pace` sets how fast it rocks (radians a
+ * second for a tree a metre tall: a taller one rocks slower, by the square root of its height).
+ */
+export const SWAY = Object.freeze({
+    rest: 0.0075,
+    wind: 0.006,
+    lean: 0.005,
+    gust: 0.02,
+    pace: 4.2,
+});
+
+/** A share of the way round for a tree's place (its own phase), from where it stands. */
+export const swayPhase = (x, z) => {
+    const s = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453;
+    return s - Math.floor(s);
+};
+
+function ghostGeometry(mesh, instances) {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3));
     geometry.setAttribute('normal', new THREE.BufferAttribute(mesh.normals, 4, true));
     geometry.setAttribute('aShade', new THREE.BufferAttribute(mesh.shade, 4, true));
+    // How far up the tree each vertex is (0 at its foot, 1 at its top): where it bends.
+    const count = mesh.positions.length / 3;
+    const up = new Float32Array(count);
+    const height = Math.max(1e-3, mesh.height);
+    for (let i = 0; i < count; i++) up[i] = Math.max(0, Math.min(1, mesh.positions[i * 3 + 1] / height));
+    geometry.setAttribute('aSway', new THREE.BufferAttribute(up, 1));
+    // Each tree's own: (its height in metres, its phase, x, z of its foot), laid by plant().
+    const tree = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, instances) * 4), 4);
+    tree.setUsage(THREE.DynamicDrawUsage);
+    geometry.setAttribute('aTree', tree);
     geometry.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
     return geometry;
 }
 
+/**
+ * The sway's offset (world metres) for a vertex `up` of the way up a tree (aTree: height, phase,
+ * x, z): it rocks at its own pace, leans with the wind and gives to a gust, bending as the square of
+ * how far up it is.
+ */
+function swayOffset(u, tree, up) {
+    const height = max(tree.x, 0.5);
+    const pace = float(SWAY.pace).div(sqrt(height));
+    const clock = u.sway.x;
+    const phase = tree.y.mul(TAU);
+    // Two beats that never fall into step: it never rocks like a metronome.
+    const rock = sin(clock.mul(pace).add(phase)).mul(0.7)
+        .add(sin(clock.mul(pace.mul(1.63)).add(phase.mul(2.3))).mul(0.3));
+    const wind = vec2(WIND.x, WIND.z).normalize();
+    const gust = wGust(u, vec3(tree.z, 0.0, tree.w));
+    const bend = float(SWAY.rest).add(u.gale.mul(SWAY.wind)).add(gust.z.mul(SWAY.gust * 0.35));
+    const lean = wind.mul(rock.mul(bend).add(u.gale.mul(SWAY.lean)))
+        .add(gust.xy.mul(SWAY.gust));
+    return vec3(lean.x, 0.0, lean.y).mul(height.mul(up).mul(up)).mul(u.sway.y);
+}
+
 function ghostMaterial(u, { glints }) {
     const material = wSolidMaterial('WinterGhosts');
+    // (positionLocal already holds the instance's matrix: the sway is added in the world's metres.)
+    material.positionNode = positionLocal.add(swayOffset(u, attribute('aTree', 'vec4'), attribute('aSway', 'float')));
     const vShade = varying(attribute('aShade', 'vec4'), 'wGhostShade');
     material.colorNode = Fn(() => {
         const P = positionWorld.toVar();
@@ -144,7 +205,7 @@ export function createTrees(u, ghosts, trees, { ghostLod = 0, glints = true } = 
 
     const buckets = lay(trees);
     buckets.forEach(({ mesh, trees: members }, key) => {
-        const geometry = ghostGeometry(mesh);
+        const geometry = ghostGeometry(mesh, members.length);
         geometries.push(geometry);
         const instanced = new THREE.InstancedMesh(geometry, material, members.length);
         instanced.name = `WinterGhosts:${key}`;
@@ -165,6 +226,7 @@ export function createTrees(u, ghosts, trees, { ghostLod = 0, glints = true } = 
             const bucket = again.get(instanced.userData.key);
             const members = bucket ? bucket.trees : [];
             const n = Math.min(members.length, instanced.instanceMatrix.count);
+            const own = instanced.geometry.getAttribute('aTree');
             for (let i = 0; i < n; i++) {
                 const tree = members[i];
                 dummy.position.set(tree.x, tree.y - 0.06, tree.z);
@@ -172,9 +234,11 @@ export function createTrees(u, ghosts, trees, { ghostLod = 0, glints = true } = 
                 dummy.scale.setScalar(tree.height / instanced.userData.height);
                 dummy.updateMatrix();
                 instanced.setMatrixAt(i, dummy.matrix);
+                own.array.set([tree.height, swayPhase(tree.x, tree.z), tree.x, tree.z], i * 4);
             }
             instanced.count = n;
             instanced.instanceMatrix.needsUpdate = true;
+            own.needsUpdate = true;
         });
     };
     plant(trees);

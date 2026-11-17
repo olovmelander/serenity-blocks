@@ -14,6 +14,7 @@
  *   trees                 conifers on the islands and the headland
  *   motes                 spray, drips and birds in the air at once
  *   props                 the hamlet, the pine and the sign: 0 = silhouette detail only
+ *   sprays                the share of the old pine's needle sprays drawn (each a little larger)
  */
 const tier = (o) => Object.freeze({ ...o, shadow: Object.freeze(o.shadow) });
 
@@ -35,6 +36,7 @@ export const QUALITY = Object.freeze({
         trees: 4000,
         motes: 256,
         props: 0,
+        sprays: 0.35,
         pixelRatioCap: 0.7,
     }),
     Low: tier({
@@ -54,6 +56,7 @@ export const QUALITY = Object.freeze({
         trees: 8000,
         motes: 512,
         props: 1,
+        sprays: 0.55,
         pixelRatioCap: 0.85,
     }),
     Medium: tier({
@@ -73,6 +76,7 @@ export const QUALITY = Object.freeze({
         trees: 14000,
         motes: 1024,
         props: 1,
+        sprays: 0.75,
         pixelRatioCap: 1.0,
     }),
     High: tier({
@@ -92,6 +96,7 @@ export const QUALITY = Object.freeze({
         trees: 22000,
         motes: 2048,
         props: 2,
+        sprays: 1,
         pixelRatioCap: 1.15,
     }),
     Ultra: tier({
@@ -111,6 +116,7 @@ export const QUALITY = Object.freeze({
         trees: 30000,
         motes: 3072,
         props: 2,
+        sprays: 1,
         pixelRatioCap: 1.35,
     }),
     Extreme: tier({
@@ -130,6 +136,7 @@ export const QUALITY = Object.freeze({
         trees: 38000,
         motes: 4096,
         props: 2,
+        sprays: 1,
         pixelRatioCap: 1.6,
     }),
 });

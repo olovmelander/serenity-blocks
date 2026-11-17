@@ -120,6 +120,24 @@ export function* fanPositionSteps(fields, cols, rows) {
     return positions;
 }
 
+/**
+ * The summit round the eye is drawn by a material of its own (createLandMaterial's `summit`):
+ * the fan's rows nearer than `reach` metres, with everything the summit adds faded out between
+ * `fade[0]` and `fade[1]`, so the two materials draw the same rock where they meet. The plateau
+ * ends in a sheer drop some 25 m out: everything within `reach` is bare rock far above the sea.
+ */
+export const SUMMIT = Object.freeze({ reach: 32, fade: Object.freeze([20, 29]) });
+
+/** How many of the fan's indices (its nearest rows) lie wholly within `reach` metres of the eye. */
+export function fanIndicesWithin(cols, rows, reach = SUMMIT.reach) {
+    const lnNear = Math.log(FAN.near);
+    const lnFar = Math.log(FAN.far);
+    let strips = 0;
+    // A strip joins row r to row r + 1: it is within reach when its outer row is.
+    while (strips < rows - 1 && Math.exp(lnNear + (lnFar - lnNear) * ((strips + 1) / (rows - 1))) <= reach) strips += 1;
+    return strips * (cols - 1) * 6;
+}
+
 export function createFanGeometry(positions, cols, rows) {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -219,46 +237,123 @@ export function outcropDetail(t, xz) {
 }
 
 /**
- * Face-space rock on a steep face: (shade multiplier, ink, block tone) from where a point lies
- * along the face and how high. Sheeting ledges every ~9 m (a lit lip, a dark undercut), vertical
- * joints every ~14 m, each block its own tone, ink streaks hanging below the ledges.
+ * The rock of a steep face: (shade multiplier, ink, block tone) from where a point stands in the
+ * world, how high, and which way its face looks (`facing`: a level unit vector, either sign).
+ * Sheeting ledges every ~9 m (a lit lip, a dark undercut), upright joints every ~14 m, each block
+ * its own tone, ink streaks hanging below the ledges.
+ *
+ * The joints stand in the rock itself: two sets of upright planes, one across x and one across z,
+ * and a face shows the set that crosses it. (A coordinate "along the face" taken from the slope's
+ * own direction is not one coordinate: the direction turns from pixel to pixel, the coordinate
+ * with it, and every line drawn in it swirled like the grain of a plank.)
  */
-export function cliffFace(t, faceU, faceV) {
-    const wobRead = texture(t.noise, vec2(faceU.div(70.0), faceV.div(50.0))).toVar();
+export function cliffFace(t, xz, faceV, facing) {
+    const wobRead = texture(t.noise, vec2(xz.x.add(xz.y.mul(0.6)).div(70.0), faceV.div(50.0))).toVar();
     const wob = wobRead.r.sub(0.5);
     // Sheeting ledges about 9 m apart, their spacing wandering up the face and along it (at an
     // even spacing, with joints at an even spacing too, the face read as a brick wall).
     const lv = faceV.div(9.0).add(wob.mul(0.8))
-        .add(faceV.div(23.0).add(faceU.div(170.0)).sin().mul(0.35)).toVar();
-    // Vertical joints about 14 m apart that run through three ledges at a time, and only in some
-    // columns: the blocks between them are of many sizes.
-    const ju = faceU.div(14.0).add(texture(t.noise, vec2(faceV.div(40.0), faceU.div(90.0))).g.sub(0.5).mul(0.6)).toVar();
+        .add(faceV.div(23.0).add(xz.x.add(xz.y).div(170.0)).sin().mul(0.35)).toVar();
     const run = floor(lv.div(3.0));
     const fv = fract(lv);
-    const fu = fract(ju);
     // Lines thinner than a few pixels fade to their mean: no grid shimmers on a far island.
     const ledgeRoom = float(1.0).sub(smoothstep(0.06, 0.25, fwidth(lv)));
-    const jointRoom = float(1.0).sub(smoothstep(0.04, 0.18, fwidth(ju)));
     const lip = smoothstep(0.86, 0.97, fv).mul(float(1.0).sub(smoothstep(0.97, 1.0, fv))).mul(ledgeRoom);
     const undercut = float(1.0).sub(smoothstep(0.0, 0.14, fv)).mul(ledgeRoom);
-    const present = step(0.42, hcHash21(vec2(floor(ju.add(0.5)), run.add(17.0))));
-    const joint = float(1.0).sub(smoothstep(0.0, 0.045, min(fu, float(1.0).sub(fu)))).mul(present).mul(jointRoom);
-    const block = hcHash21(vec2(floor(lv), floor(ju.mul(0.5))));
+    // Upright joints about 14 m apart that run through three ledges at a time, and only in some
+    // columns: the blocks between them are of many sizes.
+    const jx = xz.x.div(14.0).add(wobRead.b.sub(0.5).mul(0.7)).toVar();
+    const jz = xz.y.div(14.0).add(wobRead.a.sub(0.5).mul(0.7)).toVar();
+    const line = (j) => {
+        const f = fract(j);
+        const present = step(0.3, hcHash21(vec2(floor(j.add(0.5)), run.add(17.0))));
+        return float(1.0).sub(smoothstep(0.0, 0.045, min(f, float(1.0).sub(f)))).mul(present)
+            .mul(float(1.0).sub(smoothstep(0.04, 0.18, fwidth(j))));
+    };
+    // How much of the face looks along x: there the planes across z cross it.
+    const alongX = facing.x.mul(facing.x).toVar();
+    const joint = mix(line(jx), line(jz), alongX);
+    const block = hcHash21(vec2(floor(lv), floor(jx.mul(0.5)).add(floor(jz.mul(0.5)).mul(7.0))));
     // Broad stains across the face: grey where water runs often, pinker where the rock is fresh.
     const stain = wobRead.g;
-    const shade = float(1.0).add(lip.mul(0.32)).sub(undercut.mul(0.36)).sub(joint.mul(0.5))
+    const shade = float(1.0).add(lip.mul(0.32)).sub(undercut.mul(0.36)).sub(joint.mul(0.62))
         .mul(block.mul(0.2).add(0.9))
         .mul(smoothstep(0.25, 0.75, stain).mul(0.3).add(0.82));
-    // Ink: streaks of dark crust running down from each ledge, thinning toward the next.
-    const streak = smoothstep(0.58, 0.82, texture(t.noise, vec2(faceU.div(3.2), faceV.div(60.0))).g)
-        .mul(fv.mul(0.6).add(0.4));
+    // Ink: streaks of dark crust running down from each ledge, thinning toward the next (read
+    // across the face the same way: by the coordinate that runs along it).
+    const drip = (across) => texture(t.noise, vec2(across.div(3.2), faceV.div(60.0))).g;
+    const streak = smoothstep(0.58, 0.82, mix(drip(xz.x), drip(xz.y), alongX)).mul(fv.mul(0.6).add(0.4));
     return vec3(shade, streak, block);
+}
+
+/** Lichens of the summit's slabs (linear): pale and green-grey crusts, the brown, map lichen, the black. */
+const LICHEN = Object.freeze({
+    pale: [0.37, 0.375, 0.345], green: [0.25, 0.28, 0.225], brown: [0.15, 0.13, 0.11], map: [0.3, 0.32, 0.105], black: [0.05, 0.05, 0.045],
+});
+
+/**
+ * The summit's rock round the eye, on top of what the land draws everywhere: crust lichens as
+ * they grow on a weathered slab (round patches a hand to a forearm across, each one species,
+ * lobed at its rim and darker there, the pink rock bare between them and showing through them),
+ * a few fine cracks with moss in them. Everything is weighted by `near` (1 round the eye, 0 where
+ * the far land's own look takes over) and fades where its features are finer than a pixel.
+ * Assigns into `albedo`.
+ *
+ * (Patches drawn as the cells of a Voronoi net, each cell filled to its edges, read as crazy
+ * paving: a lichen is a disc round its own centre, and discs leave rock between them.)
+ */
+function summitRock(t, xz, albedo, {
+    steep, footprint, near, grain, M2,
+}) {
+    // Each cell's point is a patch's centre; the metre-scale noise pushes the outline about.
+    const patch = hcCells(xz.div(0.42).add(M2.rg.mul(1.1))).toVar();
+    const kind = patch.z.toVar();
+    const room = float(1.0).sub(smoothstep(0.04, 0.14, footprint)).mul(near).mul(float(1.0).sub(steep))
+        .toVar();
+    // Its radius (a share of the cell), lobed by the grain; a third of the cells grow nothing.
+    const radius = fract(kind.mul(13.7)).mul(0.34).add(0.3).add(grain.sub(0.5).mul(0.16))
+        .toVar();
+    const grown = smoothstep(radius, radius.sub(0.07), patch.x).mul(step(0.34, kind)).mul(room).toVar();
+    const tone = mix(c3(LICHEN.pale), c3(LICHEN.green), step(0.56, kind)).toVar();
+    tone.assign(mix(tone, c3(LICHEN.brown), step(0.72, kind)));
+    tone.assign(mix(tone, c3(LICHEN.map), step(0.86, kind)));
+    tone.assign(mix(tone, c3(LICHEN.black), step(0.94, kind)));
+    // A crust is thin and uneven: the rock's grain and colour show through it, most in its middle
+    // (the oldest part, which flakes away), and its growing rim is the darker.
+    const rim = smoothstep(radius.sub(0.2), radius.sub(0.04), patch.x);
+    tone.mulAssign(grain.mul(0.55).add(0.7));
+    albedo.assign(mix(albedo, tone, grown.mul(rim.mul(0.3).add(0.45))));
+    albedo.mulAssign(float(1.0).sub(grown.mul(rim).mul(rim).mul(0.22)));
+    // Fine cracks: a net a pace and a half across, most of it closed, moss in the open ones.
+    const net = hcCells(xz.div(1.5).add(M2.ba.mul(0.6))).toVar();
+    const gap = net.y.sub(net.x);
+    const open = step(0.7, fract(net.z.mul(7.3)));
+    const crackRoom = float(1.0).sub(smoothstep(0.012, 0.05, footprint)).mul(near);
+    const crack = float(1.0).sub(smoothstep(0.0, 0.012, gap)).mul(open).mul(crackRoom);
+    const moss = float(1.0).sub(smoothstep(0.0, 0.04, gap)).mul(open).mul(crackRoom)
+        .mul(step(0.5, M2.g));
+    albedo.assign(mix(albedo, vec3(0.05, 0.075, 0.025), moss.mul(0.55)));
+    albedo.mulAssign(float(1.0).sub(crack.mul(0.6)));
+}
+
+/**
+ * The summit's dwarf shrubs round the eye: the cushion's sprigs one by one (light and dark leaf
+ * rosettes a few centimetres across), the heather's among them in flower. Assigns into `veg`.
+ */
+function summitHeath(t, xz, veg, { footprint, near, heather }) {
+    const sprig = hcCells(xz.div(0.065)).toVar();
+    const room = float(1.0).sub(smoothstep(0.012, 0.04, footprint)).mul(near).toVar();
+    // Each rosette lit at its tip and dark in the gaps between it and the next.
+    const leaf = smoothstep(0.5, 0.1, sprig.x).mul(sprig.z.mul(0.7).add(0.55));
+    veg.mulAssign(mix(float(1.0), leaf.mul(1.5).add(0.25), room));
+    const bloom = step(0.7, sprig.z).mul(smoothstep(0.42, 0.12, sprig.x)).mul(heather).mul(room);
+    veg.assign(mix(veg, vec3(0.36, 0.1, 0.25), bloom.mul(0.8)));
 }
 
 /**
  * The land's albedo at a point. Returns vec4(albedo, wetness 0..1).
  */
-export function landAlbedo(u, t, P, n, slope, forest, footprint, { detail = true } = {}) {
+export function landAlbedo(u, t, P, n, slope, forest, footprint, { detail = true, summit = false, close = null } = {}) {
     const { xz } = P;
     const N1 = texture(t.noise, xz.div(57.0));
     const N2 = texture(t.noise, xz.div(13.0).add(vec2(0.31, 0.77)));
@@ -271,18 +366,21 @@ export function landAlbedo(u, t, P, n, slope, forest, footprint, { detail = true
     // Map lichen: yellow-green islands on the weathered slabs.
     const lichen = smoothstep(0.64, 0.72, N2.b).mul(weather).mul(float(1.0).sub(steep));
     albedo.assign(mix(albedo, c3(ROCK.mapLichen), lichen.mul(0.5)));
-    // ── The shore's zones, keyed to the sea at rest (thin: metres, not tens of metres) ──
     const above = P.y;
-    const black = float(1.0).sub(smoothstep(0.35, 1.0, above)).mul(smoothstep(-0.5, 0.1, above));
-    const orange = smoothstep(0.7, 1.2, above).mul(float(1.0).sub(smoothstep(1.6, 2.6, above.add(N2.r.mul(0.8)))))
-        .mul(smoothstep(0.5, 0.66, N2.a));
-    albedo.assign(mix(albedo, c3(ROCK.xanthoria), orange.mul(0.55)));
-    albedo.assign(mix(albedo, c3(ROCK.blackZone), black.mul(0.8)));
-    // ── The rising land: below the old waterline the rock is bare, an algae film at its foot ──
-    const risen = float(1.0).sub(smoothstep(-0.7, -0.05, above));
-    const algae = smoothstep(u.sea.add(2.5), u.sea, above);
-    const bare = mix(c3(ROCK.bare).mul(N1.g.mul(0.6).add(0.6)).mul(N2.r.mul(0.4).add(0.8)), c3(ROCK.algae), algae.mul(0.75));
-    albedo.assign(mix(albedo, bare, risen.mul(0.9)));
+    // (The summit stands a hundred metres over all of this: its material leaves it out.)
+    if (!summit) {
+        // ── The shore's zones, keyed to the sea at rest (thin: metres, not tens of metres) ──
+        const black = float(1.0).sub(smoothstep(0.35, 1.0, above)).mul(smoothstep(-0.5, 0.1, above));
+        const orange = smoothstep(0.7, 1.2, above).mul(float(1.0).sub(smoothstep(1.6, 2.6, above.add(N2.r.mul(0.8)))))
+            .mul(smoothstep(0.5, 0.66, N2.a));
+        albedo.assign(mix(albedo, c3(ROCK.xanthoria), orange.mul(0.55)));
+        albedo.assign(mix(albedo, c3(ROCK.blackZone), black.mul(0.8)));
+        // ── The rising land: below the old waterline the rock is bare, an algae film at its foot ──
+        const risen = float(1.0).sub(smoothstep(-0.7, -0.05, above));
+        const algae = smoothstep(u.sea.add(2.5), u.sea, above);
+        const bare = mix(c3(ROCK.bare).mul(N1.g.mul(0.6).add(0.6)).mul(N2.r.mul(0.4).add(0.8)), c3(ROCK.algae), algae.mul(0.75));
+        albedo.assign(mix(albedo, bare, risen.mul(0.9)));
+    }
 
     // ── Near the eye: the rock's own detail, scaled to the pixel ──
     const room = float(1.0).sub(smoothstep(0.03, 0.22, footprint)).toVar();
@@ -320,6 +418,11 @@ export function landAlbedo(u, t, P, n, slope, forest, footprint, { detail = true
                 .mul(float(1.0).sub(smoothstep(0.04, 0.12, footprint)));
             const tone = mix(c3(ROCK.pale), c3(ROCK.mapLichen).mul(1.4), smoothstep(0.82, 0.9, rosettes.z));
             albedo.assign(mix(albedo, tone, dot1.mul(room).mul(0.4).mul(float(1.0).sub(steep))));
+            if (summit) {
+                summitRock(t, xz, albedo, {
+                    steep, footprint, near: close, grain, M2,
+                });
+            }
             // Hollows: where soil gathers, reindeer lichen, crowberry and heather; the crowns bare.
             const tuft = texture(t.noise, xz.div(6.0).add(vec2(0.5, 0.17))).b;
             const hollow = smoothstep(0.25, 0.7, nearHollow(t, xz).add(tuft.sub(0.5).mul(0.3)));
@@ -330,6 +433,7 @@ export function landAlbedo(u, t, P, n, slope, forest, footprint, { detail = true
             // Twigs and leaves: a finer tuft read, so a cushion is dwarf shrubs, not a painted patch,
             // and it grows a little darker where it meets the rock (its edge stands up from the slab).
             veg.mulAssign(mix(float(1.0), grain.mul(0.8).add(0.6), grainRoom.mul(0.9).add(0.1)));
+            if (summit) summitHeath(t, xz, veg, { footprint, near: close, heather: smoothstep(0.3, 0.7, M1.r) });
             // Reindeer lichen: a pale fringe where the cushion meets the bare rock.
             const rim = hollow.mul(float(1.0).sub(hollow)).mul(4.0);
             veg.assign(mix(veg, c3(ROCK.reindeer).mul(0.8), rim.mul(smoothstep(0.45, 0.6, M2.b)).mul(0.6)));
@@ -344,6 +448,7 @@ export function landAlbedo(u, t, P, n, slope, forest, footprint, { detail = true
         nearVeg.assign(smoothstep(0.25, 0.7, nearHollow(t, xz)).mul(room).mul(float(1.0).sub(steep)).mul(smoothstep(4.0, 8.0, above)));
         albedo.assign(mix(albedo, mix(c3(ROCK.crowberry), c3(ROCK.heather), 0.45), nearVeg));
     }
+    if (summit) return vec4(albedo, 0.0);
     // ── Far cover ──
     const gentle = float(1.0).sub(smoothstep(0.45, 0.9, slope));
     const heathMask = smoothstep(2.5, 8.0, above).mul(gentle).mul(float(1.0).sub(forest)).mul(float(1.0).sub(room));
@@ -402,15 +507,20 @@ export function shingleMaskNode(xz, h) {
  * @param {object} t        textures: fields { near, mid, far }, cover { near, mid, far }, shadow
  *                          { near, mid, far }, noise
  * @param {object} tier     quality tier (detail: 0..2)
+ * @param {object} [options]
+ * @param {boolean} [options.summit]  the material of the summit round the eye (SUMMIT): the same
+ *                          rock with its own layers on top, and without the shore, the forest, the
+ *                          meadow, the shingle and the wet band, none of which reach it
  */
-export function createLandMaterial(u, t, tier) {
+export function createLandMaterial(u, t, tier, { summit = false } = {}) {
     const material = new THREE.MeshBasicNodeMaterial();
-    material.name = 'HighCoastLand';
+    material.name = summit ? 'HighCoastSummit' : 'HighCoastLand';
     material.fog = false;
 
     // Far forests stand up by their canopy (the near ones are real trees).
     material.positionNode = Fn(() => {
         const p = positionLocal;
+        if (summit) return p.add(vec3(0.0, outcropRelief(u, t, p.xz, p.y), 0.0));
         const d = length(p.xz.sub(u.eye.xz));
         const forest = fieldScalar(t.cover, p.xz, 0.0);
         const lift = forest.mul(smoothstep(CANOPY.from, CANOPY.to, d)).mul(CANOPY.height);
@@ -428,7 +538,9 @@ export function createLandMaterial(u, t, tier) {
         const footprint = dist.mul(u.pixelAngle).toVar();
         const grad = land.yz.toVar();
         const slope = length(grad).toVar();
-        const forest = fieldScalar(t.cover, xz, 0.0, here).toVar();
+        const forest = summit ? float(0.0) : fieldScalar(t.cover, xz, 0.0, here).toVar();
+        // 1 on the summit round the eye, 0 where the far land's own look takes over.
+        const near = summit ? float(1.0).sub(smoothstep(SUMMIT.fade[0], SUMMIT.fade[1], dist)).toVar() : null;
 
         // ── Detail near the eye: crystals, knobbles and cracks bend the normal ──
         const detailG = vec2(0.0).toVar();
@@ -465,7 +577,7 @@ export function createLandMaterial(u, t, tier) {
         });
         const n = normalize(vec3(grad.x.add(detailG.x).negate(), 1.0, grad.y.add(detailG.y).negate())).toVar();
 
-        const surface = landAlbedo(u, t, P, n, slope, forest, footprint, { detail: tier.detail > 0 }).toVar();
+        const surface = landAlbedo(u, t, P, n, slope, forest, footprint, { detail: tier.detail > 0, summit, close: near }).toVar();
         const albedo = surface.rgb.toVar();
         const wet = surface.w.toVar();
 
@@ -473,9 +585,7 @@ export function createLandMaterial(u, t, tier) {
         const faceShade = float(1.0).toVar();
         const cliffy = smoothstep(0.85, 1.6, slope).toVar();
         If(cliffy.greaterThan(0.01), () => {
-            const along = normalize(vec2(grad.y.negate(), grad.x).add(vec2(1e-5, 0.0)));
-            const faceU = dot(xz, along);
-            const face = cliffFace(t, faceU, P.y);
+            const face = cliffFace(t, xz, P.y, normalize(grad.add(vec2(1e-5, 0.0))));
             faceShade.assign(mix(float(1.0), face.x, cliffy));
             albedo.assign(mix(albedo, albedo.mul(face.z.mul(0.3).add(0.85)), cliffy));
             albedo.assign(mix(albedo, c3(ROCK.ink), face.y.mul(cliffy).mul(0.7).mul(smoothstep(4.0, 12.0, P.y))));
@@ -504,38 +614,40 @@ export function createLandMaterial(u, t, tier) {
         const bounce = u.bounce.mul(float(1.0).sub(n.y).mul(0.6).add(0.15)).mul(sky);
         const lit = albedo.mul(sunLight.add(skyLight).add(bounce)).toVar();
         // Wet rock glints toward the sun (the risen band shines gold; a four-line rebound flares).
-        If(wet.greaterThan(0.01), () => {
-            const view = V.div(max(dist, 1e-3)).negate();
-            const hv = normalize(view.add(L));
-            const spec = dot(n, hv).clamp(0.0, 1.0);
-            const s2 = spec.mul(spec);
-            const s8 = s2.mul(s2).mul(s2).mul(s2);
-            // (The rebound's flare also lifts the broad lobe a little: the whole risen band gleams.)
-            const glint = s8.mul(s8).mul(1.4).add(s8.mul(0.18)).add(s2.mul(u.rebound.mul(0.015).add(0.02)));
-            lit.addAssign(u.sun.mul(glint).mul(wet).mul(shadow).mul(clouds)
-                .mul(u.sunUp)
-                .mul(u.rebound.mul(1.5).add(1.0).add(u.heat.w.mul(0.6)))
-                .mul(float(1.0).sub(cliffy.mul(0.8))));
-            // The film of water mirrors the sky (and, fresh from the sea, gleams a while). As play
-            // heats the film takes the low sun's gold instead of the pale horizon (about as bright,
-            // deeper), gathered in the pools: the crowns between stay dark.
-            const film = float(1.0).sub(dot(view, n).clamp(0.0, 1.0)).pow(3.0).mul(0.22)
-                .add(0.02)
-                .add(u.drain.mul(0.18));
-            // Water stands in the rock's hollows and runs off its crowns: the film is patchy.
-            const pools = smoothstep(0.4, 0.62, texture(t.noise, xz.div(40.0).add(vec2(0.37, 0.19))).r);
-            const sheen = mix(u.horizon.mul(0.35).add(u.glow.mul(0.25)), u.glow.mul(0.4), gold.mul(0.85));
-            lit.addAssign(sheen.mul(film).mul(wet)
-                .mul(pools.mul(gold.mul(0.45).add(0.75)).add(float(0.25).sub(gold.mul(0.18)))));
-            // Seawater running off the risen rock: white threads down the steeper faces.
-            If(u.drain.greaterThan(0.01), () => {
-                const across = dot(xz, vec2(0.83, 0.56)).mul(1.7);
-                const run = texture(t.noise, vec2(across, P.y.mul(0.35).add(u.time.mul(1.6)))).g;
-                const threads = smoothstep(0.6, 0.8, run).mul(smoothstep(0.3, 0.9, slope));
-                lit.addAssign(u.fill.mul(2.2).add(u.sun.mul(0.25).mul(u.sunUp)).mul(threads).mul(wet)
-                    .mul(u.drain));
+        if (!summit) {
+            If(wet.greaterThan(0.01), () => {
+                const view = V.div(max(dist, 1e-3)).negate();
+                const hv = normalize(view.add(L));
+                const spec = dot(n, hv).clamp(0.0, 1.0);
+                const s2 = spec.mul(spec);
+                const s8 = s2.mul(s2).mul(s2).mul(s2);
+                // (The rebound's flare also lifts the broad lobe a little: the whole risen band gleams.)
+                const glint = s8.mul(s8).mul(1.4).add(s8.mul(0.18)).add(s2.mul(u.rebound.mul(0.015).add(0.02)));
+                lit.addAssign(u.sun.mul(glint).mul(wet).mul(shadow).mul(clouds)
+                    .mul(u.sunUp)
+                    .mul(u.rebound.mul(1.5).add(1.0).add(u.heat.w.mul(0.6)))
+                    .mul(float(1.0).sub(cliffy.mul(0.8))));
+                // The film of water mirrors the sky (and, fresh from the sea, gleams a while). As play
+                // heats the film takes the low sun's gold instead of the pale horizon (about as bright,
+                // deeper), gathered in the pools: the crowns between stay dark.
+                const film = float(1.0).sub(dot(view, n).clamp(0.0, 1.0)).pow(3.0).mul(0.22)
+                    .add(0.02)
+                    .add(u.drain.mul(0.18));
+                // Water stands in the rock's hollows and runs off its crowns: the film is patchy.
+                const pools = smoothstep(0.4, 0.62, texture(t.noise, xz.div(40.0).add(vec2(0.37, 0.19))).r);
+                const sheen = mix(u.horizon.mul(0.35).add(u.glow.mul(0.25)), u.glow.mul(0.4), gold.mul(0.85));
+                lit.addAssign(sheen.mul(film).mul(wet)
+                    .mul(pools.mul(gold.mul(0.45).add(0.75)).add(float(0.25).sub(gold.mul(0.18)))));
+                // Seawater running off the risen rock: white threads down the steeper faces.
+                If(u.drain.greaterThan(0.01), () => {
+                    const across = dot(xz, vec2(0.83, 0.56)).mul(1.7);
+                    const run = texture(t.noise, vec2(across, P.y.mul(0.35).add(u.time.mul(1.6)))).g;
+                    const threads = smoothstep(0.6, 0.8, run).mul(smoothstep(0.3, 0.9, slope));
+                    lit.addAssign(u.fill.mul(2.2).add(u.sun.mul(0.25).mul(u.sunUp)).mul(threads).mul(wet)
+                        .mul(u.drain));
+                });
             });
-        });
+        }
         const col = aerial(u, P, lit);
         return vec4(col, 1.0);
     })();

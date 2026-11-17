@@ -790,6 +790,13 @@ export function eyeHeat(chain, level) {
     return Math.min(0.5, Math.min(0.4, 0.06 * links) + Math.min(0.15, 0.03 * (lv - 1)));
 }
 
+/**
+ * The Iris's flower (a back-to-back clear): seconds it lives on the shaders' clock, and how much
+ * longer a perfect clear's (every petal, level 4) stands open before it fades.
+ */
+export const FLOWER_LIFE = 6;
+export const FLOWER_HOLD = 7;
+
 // ── Light and the one bow (§3.2, §3.4) ──────────────────────────────────────────
 
 /** The primary bow's band (degrees from the antisolar point), red outside. */

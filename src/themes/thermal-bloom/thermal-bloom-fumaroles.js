@@ -34,6 +34,8 @@ import {
     tbAerial,
     tbFxMaterial,
     tbPart,
+    tbSteamShade,
+    tbSteamSun,
 } from './thermal-bloom-tsl.js';
 
 /**
@@ -151,8 +153,8 @@ export function createFumaroles(u, count, tex) {
         // (a dense puff scatters more of the sun than the pale apron under it: it stands out white,
         // its shade side reading blue-grey against the ground)
         const side = clamp(q.x.mul(vSun).mul(0.55).add(q.y.mul(u.sunDir.y).mul(0.5)).add(0.5), 0.0, 1.0);
-        const pearl = u.sunColor.mul(1.05).add(mix(u.haze, u.zenith, 0.5).mul(0.18));
-        const shade = vec3(0.42, 0.5, 0.63).mul(mix(float(0.85), float(1.0), u.sunColor.y));
+        const pearl = tbSteamSun(u).mul(1.05).add(mix(u.haze, u.zenith, 0.5).mul(0.18));
+        const shade = tbSteamShade(u).mul(1.15);
         const P = positionWorld;
         const toCam = u.camPos.sub(P);
         const dist = length(toCam);
