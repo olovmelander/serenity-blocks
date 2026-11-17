@@ -66,13 +66,25 @@ import { latticeNoise3 } from './shared/odyssey-lattice-noise.js';
 import { orbitEarthTransmittance } from '../composition/odyssey-orbit-earth.js';
 import { keepOdysseyTexture } from './shared/odyssey-resident-textures.js';
 import { runChapterSteps } from './shared/chapter-build-steps.js';
+import { createGiantMoons, giantMoonShade } from './odyssey-giant-moons.js';
+import { flashScale } from '../../../utils/photosensitivity.js';
 
 /** Seconds one flow read takes to run its half-cycle (two reads cross-fade, so shear never winds up). */
 const FLOW_CYCLE = 140;
 /** How far (radians of longitude) the fastest jet carries the cloud across one read. */
 const FLOW_SPAN = 0.55;
-/** The giant's spin, radians per second (a giant turns slowly; its jets carry the life). */
-const SPIN_RATE = 0.0045;
+/**
+ * The giant's spin, radians per second (a giant turns slowly; its jets carry the life). 0.0045
+ * until 2026-11-17: while the eye passes it the storm now visibly rides round (a sixth of a turn a
+ * minute), still slow beside the moons.
+ */
+const SPIN_RATE = 0.0175;
+/** What the sky gives the giant's night side and its rings' unlit stretches (scene-linear). */
+const NIGHT_SKYLIGHT = Object.freeze([0.011, 0.016, 0.04]);
+/** Lightning in the night side's belts: cells per turn and per latitude span, a slot's seconds. */
+const GIANT_BOLTS = Object.freeze({
+    lon: 22, lat: 15, slot: 1.9, rate: 0.3,
+});
 
 let textures = null;
 
@@ -136,7 +148,7 @@ function ringProfileAt(tex, r, lod) {
  * The cloud tops.
  * @param {object} u shared uniforms: { uTime, uLight, uLightColor, radius }
  */
-function createSurface(u, radius, segments) {
+function createSurface(u, radius, segments, moonRows = null) {
     const T = getRingedGiantTextures();
     const P = GIANT_PALETTE;
     const material = new THREE.MeshBasicNodeMaterial();
@@ -231,19 +243,46 @@ function createSurface(u, radius, segments) {
         const day = smoothstep(-0.1, 0.2, mu0).toVar();
         const diffuse = pow(max(mu0, 0.0), 0.78).mul(mix(float(1.0), pow(max(mu, 1e-3), 0.42), 0.72));
         const dusk = mix(vec3(1.0, 0.55, 0.32), vec3(1.0), smoothstep(0.0, 0.3, mu0));
-        const lit = u.uLightColor.mul(dusk).mul(diffuse.mul(day).mul(1.12)).mul(ringShade.mul(0.94).add(0.06));
+        // The moons' shadows run across the cloud tops (odyssey-giant-moons.js).
+        const moonShade = moonRows ? giantMoonShade(moonRows, n, S) : float(1.0);
+        const lit = u.uLightColor.mul(dusk).mul(diffuse.mul(day).mul(1.12)).mul(ringShade.mul(0.94).add(0.06))
+            .mul(moonShade);
         // The night side keeps the sky's light and the rings' shine on the hemisphere facing their lit face.
         const dark = oneMinus(day);
-        const ringshine = max(n.y.mul(step(0.0, sY).mul(2.0).sub(1.0)).add(0.25), 0.0).mul(0.03);
-        const night = vec3Of(P.night).mul(0.05).add(vec3Of(P.ringIce).mul(u.uLightColor).mul(ringshine))
+        // (2026-11-17: the night side was black against a black sky, a bite out of the globe; it
+        // keeps a deep indigo now, the sky's own light, and twice the rings' shine: a sphere.)
+        const ringshine = max(n.y.mul(step(0.0, sY).mul(2.0).sub(1.0)).add(0.25), 0.0).mul(0.06);
+        const night = vec3(...NIGHT_SKYLIGHT).add(vec3Of(P.ringIce).mul(u.uLightColor).mul(ringshine))
             .mul(dark.mul(0.8).add(0.2));
         const surface = albedo.mul(lit.add(night)).toVar();
+        // Storms on the night side: lightning flickers in the belts, each cell on its own clock
+        // (whether, when and where from the lattice at whole numbers), through `uFlash`.
+        If(dark.greaterThan(0.25), () => {
+            const B = GIANT_BOLTS;
+            const g = vec2(lon.div(Math.PI * 2).mul(B.lon), latN.mul(B.lat)).toVar();
+            const cell = g.floor().toVar();
+            const own = latticeNoise3(vec3(cell.x.mod(B.lon), cell.y, 11.5)).toVar();
+            const clock = u.uTime.div(B.slot).add(own.mul(9.1)).toVar();
+            const slot = clock.floor().toVar();
+            const dice = latticeNoise3(vec3(cell.x.mod(B.lon).add(slot.mul(3.0)), cell.y.add(slot.mul(7.0)), slot.add(4.5)))
+                .toVar();
+            const fires = oneMinus(smoothstep(B.rate - 0.02, B.rate, dice));
+            const where = vec2(dice.mul(7.13).fract(), dice.mul(13.7).fract()).mul(0.5).add(0.25);
+            const since = clock.fract().mul(B.slot).sub(dice.mul(29.3).fract().mul(B.slot * 0.6)).toVar();
+            const stroke = exp(max(since, 0.0).mul(-9.0)).mul(smoothstep(-0.02, 0.0, since))
+                .add(exp(max(since.sub(0.19), 0.0).mul(-12.0)).mul(smoothstep(0.17, 0.19, since)).mul(0.5));
+            const off = g.fract().sub(where).div(0.2);
+            // In the belts (the dark bands), under the cloud's own texture.
+            const flash = exp(dot(off, off).negate()).mul(stroke).mul(fires).mul(band.a.mul(0.8).add(0.2));
+            surface.addAssign(vec3(0.5, 0.62, 1.0).mul(flash.mul(dark).mul(u.uFlash).mul(0.5))
+                .mul(mottle.mul(0.6).add(0.9)));
+        });
 
         // The air: a veil toward the limb on the day side; a thin glow keeps the night limb apart from the sky.
         const rim = oneMinus(mu);
         const rim2 = rim.mul(rim);
         surface.assign(mix(surface, vec3Of(P.haze).mul(u.uLightColor).mul(day).mul(0.42), rim2.mul(rim2).mul(0.5)));
-        surface.addAssign(vec3Of(P.night).mul(rim2.mul(rim2)).mul(dark).mul(0.5));
+        surface.addAssign(vec3(...NIGHT_SKYLIGHT).mul(rim2.mul(rim2)).mul(dark).mul(2.4));
         return surface;
     })();
     // Seen through the Earth's air as it rises over the limb (orbitEarthTransmittance).
@@ -298,8 +337,8 @@ function createRings(u, radius) {
         const pen = along.mul(0.012).add(0.008);
         const shade = mix(float(1.0), smoothstep(oneMinus(pen), pen.add(1.0), away), step(0.0, along));
         const ice = mix(vec3Of(P.ringDust), vec3Of(P.ringIce), prof.y).mul(prof.z.mul(0.66).add(0.48));
-        const lit = u.uLightColor.mul(scatter).mul(shade).mul(1.55);
-        const dim = vec3Of(P.night).mul(0.05).mul(oneMinus(exp(tau.mul(-2.0))));
+        const lit = u.uLightColor.mul(scatter).mul(shade).mul(1.85);
+        const dim = vec3(...NIGHT_SKYLIGHT).mul(0.7).mul(oneMinus(exp(tau.mul(-2.0))));
         const color = ice.mul(lit.add(dim));
         const alpha = oneMinus(exp(tau.div(muV).negate()))
             .mul(smoothstep(GIANT_RINGS.from, GIANT_RINGS.from + 0.01, rr))
@@ -373,16 +412,29 @@ export function* createRingedGiantTSLSteps(uTime, options = {}) {
         uTime: uTime ?? uniform(0),
         uLight: options.uLight ?? uniform(new THREE.Vector3(-0.3, 0.6, 0.7).normalize()),
         uLightColor: options.uLightColor ?? uniform(new THREE.Vector3(1.0, 0.88, 0.7)),
+        // How much of a flash to show (photosensitivity, ADR-0021): the night side's lightning.
+        uFlash: uniform(1),
     };
+    // The moons first: the cloud tops read their rows for the shadows they throw.
+    const moons = options.moons === false ? null : createGiantMoons(u, radius);
     // The surface's first call (once a session: the band and ring tables are baked here).
     getRingedGiantTextures();
     yield;
-    const surface = createSurface(u, radius, options.segments ?? 160);
+    const surface = createSurface(u, radius, options.segments ?? 160, moons?.rows ?? null);
     yield;
     const rings = createRings(u, radius);
     yield;
     const air = createAtmosphere(u, radius);
     return {
-        surface, rings, air, uniforms: u,
+        surface,
+        rings,
+        air,
+        moons,
+        uniforms: u,
+        /** Per frame: the moons' places on the clock and the player's flash setting. */
+        update(time) {
+            moons?.update(time);
+            u.uFlash.value = flashScale();
+        },
     };
 }

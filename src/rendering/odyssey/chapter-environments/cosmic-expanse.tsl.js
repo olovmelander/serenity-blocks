@@ -837,11 +837,15 @@ export function* createHeroPlanetTSLSteps(uTime, { aurora = true } = {}) {
     });
     const planet = giant.surface;
     group.add(planet.mesh, giant.rings.mesh, giant.air.mesh);
+    // Its moons (odyssey-giant-moons.js), on the clock: the chapter ticks `giant.update(time)`.
+    if (giant.moons) group.add(giant.moons.mesh);
+    group.userData.giant = giant;
     group.userData.uAuroraReveal = uAuroraReveal;
     group.userData.uLight = uLight;
     group.userData.uLightColor = uLightColor;
 
     const decor = [giant.rings, giant.air];
+    if (giant.moons) decor.push({ geometry: giant.moons.mesh.geometry, material: giant.moons.mesh.material });
     if (aurora) {
         const crown = createPlanetAuroraCrown(
             HERO_PLANET_RADIUS,
