@@ -82,7 +82,7 @@ import {
     BAND_SLOTS, BAND_SPEED, BAND_START, RIBBON_VELOCITY, createWater,
 } from './waves-water.js';
 import { SprayPool, createLipRain, createMist } from './waves-spray.js';
-import { createWhiteWater } from './waves-whitewater.js';
+import { createLandingSpray, createWhiteWater } from './waves-whitewater.js';
 import { WavesLife, leapersFor } from './waves-life.js';
 import { stageVisit } from './waves-ambient.js';
 import { makeRide, makeWhale } from './waves-acts.js';
@@ -110,7 +110,11 @@ const CROWN_HOLD = 1.1;
  * (seconds of the world's clock). A call is never dropped: it waits for a dolphin to come down.
  */
 const LEAP_SPACING = 0.6;
-const LEAP_LEAD = 0.3;
+/**
+ * (A second to come up: called closer to the surface, a dolphin appeared half a metre under the
+ * trough out of nothing. Its run-up starts deep however short it is: waves-acts.js makeLeap.)
+ */
+const LEAP_LEAD = 1.1;
 
 /** How far a set wave swells the tube: a level's, a back-to-back's, the clock's own, the most. */
 const LEVEL_SET_HEIGHT = 0.085;
@@ -410,6 +414,9 @@ export class WavesWorld {
         });
         this.parts.whitewater = createWhiteWater({
             tier, U, shape: this.shape, noise: this.noise, seed: this.seed,
+        });
+        this.parts.landing = createLandingSpray({
+            tier, U, shape: this.shape, seed: this.seed,
         });
         this.spray = new SprayPool({ tier, U, seed: this.seed });
         this.parts.spray = this.spray;
@@ -859,8 +866,13 @@ export class WavesWorld {
             this.spray.swirl(this.clock, open, { d: landingDistance(open) + 2.5, n: Math.round(this.spray.count / 5) });
             s.tear = 1;
             // And a spinner answers the twist with its own: thrown clear, turning on its length.
-            this.pod.leap(this.clock + 0.5, open, {
-                kind: 'spinner', style: 'spin', turns: 2 + lines, height: 1.7 + lines * 0.2, d: 8.5 + this.fxRand() * 4,
+            this.pod.leap(this.clock + LEAP_LEAD, open, {
+                kind: 'spinner',
+                style: 'spin',
+                turns: 2 + lines,
+                height: 1.7 + lines * 0.2,
+                d: 8.5 + this.fxRand() * 4,
+                lead: LEAP_LEAD,
             });
         }
         if (c.b2b === true) this.backToBack(open);
@@ -1115,7 +1127,7 @@ export class WavesWorld {
             if (!this.pod.canLeap()) return;
             const at = Math.max(this.clock + LEAP_LEAD, s.nextLeap + LEAP_SPACING);
             const hero = s.heroOwed;
-            this.pod.leap(at, this.U.open.value, { hero, d: hero ? 12.5 : null });
+            this.pod.leap(at, this.U.open.value, { hero, d: hero ? 12.5 : null, lead: at - this.clock });
             s.heroOwed = false;
             s.nextLeap = at;
             s.owed -= 1;

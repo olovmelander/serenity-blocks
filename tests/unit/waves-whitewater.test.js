@@ -14,7 +14,8 @@ import {
 import * as THREE from 'three/webgpu';
 import { uniform, uniformArray } from 'three/tsl';
 import {
-    BURST_RISE, ROLL_REACH, WHITE_WATER_KINDS, createWhiteWater,
+    BURST_RISE, LANDING_DROPS_PER_PUFF, LANDING_THROW, ROLL_REACH, SPRAY_REACH, WHITE_WATER_KINDS, createLandingSpray,
+    createWhiteWater,
 } from '../../src/themes/waves/waves-whitewater.js';
 import { LANDED_WHOLE, LANDING_ARC, createWater } from '../../src/themes/waves/waves-water.js';
 import { createLipRain, createMist } from '../../src/themes/waves/waves-spray.js';
@@ -172,6 +173,58 @@ describe('waves white water: the puffs', () => {
         expect(geometry).toHaveBeenCalledOnce();
         expect(material).toHaveBeenCalledOnce();
         expect(scene.children).toHaveLength(0);
+    });
+});
+
+describe('waves white water: the spray the landing throws', () => {
+    it('throws drops for every puff a tier pays for, as light added to the frame, the same for the same seed', () => {
+        let last = 0;
+        for (const quality of QUALITY_NAMES) {
+            const U = uniforms();
+            const tier = tierFor(quality);
+            const spray = createLandingSpray({
+                tier, U, shape: createWaveShape(U), seed: 187,
+            });
+            made.push(spray);
+            expect(spray.count, quality).toBe(Math.max(24, Math.round(tier.whitewater * LANDING_DROPS_PER_PUFF)));
+            expect(spray.count, quality).toBeGreaterThanOrEqual(last);
+            last = spray.count;
+            const { material } = spray.mesh;
+            expect(material.blending).toBe(THREE.AdditiveBlending);
+            expect(material.premultipliedAlpha).toBe(true);
+            expect(material.depthWrite).toBe(false);
+            const seeds = Array.from(spray.mesh.geometry.getAttribute('aSeed').array);
+            expect(seeds.every((s) => s >= 0 && s <= 1)).toBe(true);
+        }
+        const U = uniforms();
+        const shape = createWaveShape(U);
+        const a = createLandingSpray({
+            tier: tierFor('High'), U, shape, seed: 5,
+        });
+        const b = createLandingSpray({
+            tier: tierFor('High'), U, shape, seed: 5,
+        });
+        const c = createLandingSpray({
+            tier: tierFor('High'), U, shape, seed: 6,
+        });
+        made.push(a, b, c);
+        const seedsOf2 = (part) => Array.from(part.mesh.geometry.getAttribute('aSeed').array);
+        expect(seedsOf2(a)).toEqual(seedsOf2(b));
+        expect(seedsOf2(a)).not.toEqual(seedsOf2(c));
+    });
+
+    it('throws them up and out over the sea from the landed stretch, never from right beside the eye', () => {
+        const [upLow, upHigh] = LANDING_THROW.up;
+        const [outLow, outHigh] = LANDING_THROW.out;
+        expect(upLow).toBeGreaterThan(0);
+        expect(upHigh).toBeGreaterThan(upLow);
+        expect(outLow).toBeGreaterThan(0);
+        expect(outHigh).toBeGreaterThan(outLow);
+        // At rest none of them climbs past the eye's height.
+        expect((upHigh * upHigh) / (2 * 0.46)).toBeLessThan(REST_RIG.eye.y + 2);
+        const touchdown = landingDistance(0);
+        expect(touchdown + 0.4 - SPRAY_REACH).toBeGreaterThan(2.5);
+        expect(SPRAY_REACH).toBeLessThan(ROLL_REACH + 0.5);
     });
 });
 
