@@ -243,7 +243,7 @@ export function createLamps(u, lamps) {
         const fog = ndFogAmount(dist, pw.y);
         const k = body.mul(rise).mul(h.mul(0.8).add(0.25)).mul(rain).mul(float(1.0).sub(fog))
             .mul(u.neon.mul(0.55).add(0.45))
-            .mul(u.rain.mul(0.6).add(0.4));
+            .mul(min(u.fall, 1.75).mul(0.6).add(0.4));
         return vec4(lampCol.mul(k).mul(0.085), 0.0);
     })();
     const cones = finish('NeonDistrictLampCones', coneGeometry, coneMaterial, 18);

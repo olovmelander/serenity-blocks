@@ -63,6 +63,7 @@ const swShootingStar = /* @__PURE__ */ Fn(([p, A, B, pxRad]) => {
  * @param {number} [opts.cloudOctaves=3]  0 = no clouds, 2 or 3
  * @param {boolean} [opts.stars=true]
  * @param {boolean} [opts.shootingStars=true]
+ * @param {boolean} [opts.mackerel=true]  the mackerel sky (a tier may leave it out)
  */
 export function createSky(u, opts = {}) {
     const cloudOctaves = opts.cloudOctaves ?? 3;
@@ -83,7 +84,7 @@ export function createSky(u, opts = {}) {
         const az = atan(dir.x, dir.z.negate()).toVar();
         const pxRad = max(fwidth(e), 1e-5).toVar();
         const sky = swSky(u, dir, {
-            pxRad, clouds: cloudOctaves, stars: withStars, sunDisc: true, az,
+            pxRad, clouds: cloudOctaves, stars: withStars, sunDisc: true, az, mackerel: opts.mackerel !== false,
         });
         const col = sky.color.toVar();
 

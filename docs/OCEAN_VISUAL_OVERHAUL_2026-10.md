@@ -58,6 +58,9 @@ large animals' shadows (capsules along the sun's ray) cut the shafts and the san
 ![Four lines: the great shaft and the school round the board](ocean-overhaul/10-quad.webp)
 ![The whale over the board](ocean-overhaul/11-whale.webp)
 
+(The table above is the first design. Several rows were rebuilt on 2026-11-17: see
+[Third pass: the living sea](#third-pass-the-living-sea-2026-11-17).)
+
 ### The hours
 
 Six hours on a wheel, in the order a day runs and in hue order, so no crossing goes through grey:
@@ -318,12 +321,134 @@ laptop's Radeon 610M was left alone: captures have crashed an iGPU's driver on t
 before) or a phone; the real game with a real board; anyone watching the specks and the surface
 move for long.
 
+## Third pass: the living sea (2026-11-17)
+
+Olov: audit the Ocean theme and make it one of the most visually stunning in the game; varied
+over time, so it never looks the same for long; every event its own distinct effect, the biggest
+moments the most spectacular; smooth, and the gameplay easy to read.
+
+### What the audit found
+
+Twenty-six captures of the theme as it stood (six hours, every event, the lowest tier, WebGL2, a
+portrait frame), then the same events as strips of six ages each:
+
+- **The picture's best part was behind the board.** The blue vista down the canyon, with the
+  shafts in it, lies on the frame's middle axis; the card and the HUD cover it. What play showed
+  was the two side windows: reef, kelp and a pale veil of water.
+- **The light was flat.** The water level with the eye was nearly as bright as the water
+  overhead, so everything faded into a pastel veil; the shafts were a few broad soft columns
+  (a march of equal three-metre steps cannot draw anything narrower); nothing said where the sun
+  stood. Gold, fire and first light were the palest.
+- **The school was a smudge**, and spent most of its loop behind the card (seen 53 % of the time,
+  14 to 35 m off).
+- **The events did not tell themselves apart.** One, two and three lines looked the same; a
+  level-up showed almost nothing; a hard drop's ring was a few small dots; and the largest
+  moments, four lines and a perfect clear, were a pale column of fog on either side of the card
+  that took contrast out of the picture instead of crowning it.
+- **Time changed only the colour.** Six hours and the animals' visits; the water, the surface,
+  the current and the light's strength were always the same.
+
+![Before and after: the high sun, the gold, four lines, a perfect clear](ocean-overhaul/50-third-pass-before-after.jpg)
+
+### The light
+
+- **The water** (`ocBackdrop`): the bright water is overhead only; level with the eye the sea is
+  its deep colour, so what stands in it fades into blue, and a broad lobe of light lies round the
+  sun's direction: the picture has a bright quarter and a deep one.
+- **The shafts** (`ocean-post.js` `buildShafts`, the light pass in `ocean-tsl.js`): the pattern
+  is now curtains (the broad net's threads to the sixth power inside the open columns), and the
+  march lays its steps where the light that reaches the eye is: step `i` of `N` stands at
+  `−ln(1 − (i + jitter)/N · (1 − e^(−kR)))/k`, each carrying the same share, under a metre apart
+  at the eye. Each step reads the pattern at a level its own stride can follow. Same step counts
+  as before on every tier. The warm hours' shafts are warmer and a little under half as strong,
+  so gold rays stand in azure water instead of a yellow veil.
+- **The school** (`ocean-fauna.js`, `SCHOOL_REST`): the loop is as wide as the frame and nearer
+  (seen 75 % of the time, 10 to 30 m off, 2.6 m clear of the reef: staged by numbers in node
+  first); it climbs over the shoulders at the loop's ends; the fish are larger (0.2 to 0.34 m),
+  and they roll, a wave of turning flanks running down the school: a flank turned up mirrors the
+  bright window overhead, so the school flashes in bands as it goes.
+
+![The six hours](ocean-overhaul/51-third-pass-hours.jpg)
+
+### The sea's own weather (`ocean-weather.js`, new)
+
+Three-free and a pure function of the clock and the session's seed (a capture: seed 1).
+
+| What | How it shows |
+|---|---|
+| **Six sea states** on a second wheel, 73 s each (the hours take 100 s; neither wheel's turn is a small multiple of the other's): the trade wind, glass, the long swell, a plankton bloom, a squall, crystal water | The surface's swell and chop, how clear the water is, how strongly the shafts stand, how much drifts in the water, which side the current comes from (the kelp and the grass slowly lean the other way) and the sun's strength. In a squall the sky seen through the surface goes grey, rain rings the surface and the shafts all but go out; after it the water stands clear to the far pinnacles. |
+| **Clouds** | Shadows of a quarter of a minute cross the sun as often as the state's sky is clouded: the shafts fade, and come back in a burst. |
+| **Happenings**, one to a 17 s slot at a moment of its own | A vent on the reef lets go a string of bubbles; the fish of one garden dart for cover; the school flashes as it turns; at night the corals spawn a little by themselves. |
+
+What drifts in the water is carried by a summed flow (`u.flow`), so a turn of the current never
+makes the specks jump.
+
+![The six sea states at the high sun](ocean-overhaul/52-third-pass-sea-states.jpg)
+
+### The events, each its own
+
+| Gameplay | What the sea does now |
+|---|---|
+| Lock | As before: the piece's light sinks to the reef, a ring of its colour, the colony holds it. Bubbles are a little larger and their rims brighter, everywhere. |
+| Hard drop | Also a ring of bubbles thrown out flat over the reef from the landing. |
+| One line | The current alone: its front now carries a band of light over everything it crosses (`ocWash`: the caustics blaze for half a second as it goes by), with the lean of the kelp, the sheets of bubbles off the card and the colours let go. |
+| Two lines | And the school draws out into its ribbon and rides the current (it keeps to its loop on a single line now). |
+| Three lines | And a pod of four dolphins races the current across the canyon under the surface, 8.5 s from side to side. |
+| Twist | Strings of bubbles let go one after another round a ring, each a little further round: three strands that turn as they climb. |
+| Four lines | The hush; then a **crown of light** comes down round the board: pillars of light, each a ribbon down the sun's ray standing on a ring 5.6 m round the board, where the school winds (`createCrown`: 12 to 30 pillars a tier). The shafts round about stand back by nearly half while it is down, so the crown is the brightest thing in the sea. Pressure ring, whale, the whole reef spawning as before. |
+| Perfect clear | The crown **splits into the spectrum**, every pillar a colour by its bearing; every thread of the net on the sand becomes a band of the spectrum; each garden spawns in a colour of its own; three mantas come over; the water clears and the sea rings, as before. 4.5 s, then it eases out. |
+| Level up | The hour turns, and a **tide** of the new hour's light comes up the canyon from the blue to the eye in three seconds; behind it the reef breathes out, a column of bubbles from every garden, the far ones first. |
+| Combo, back-to-back, fever, game over | As before. (The fever's standing light is the crown now, softer.) |
+
+![A hard drop, three lines, four lines, a twist, a perfect clear, a level-up](ocean-overhaul/53-third-pass-events.jpg)
+
+### Verified
+
+- **Playground, WebGPU** (RTX 5080 Laptop, a private headless Chrome on a private dev server,
+  30 fps): about 150 frames over nine rounds: the six hours, the six sea states, every event as a
+  strip of six ages with the board mock on, the Minimal and Low tiers, the WebGL2 backend (at rest
+  and in a perfect clear), a 430 × 852 portrait frame. Every console clean.
+- **The real game** (the same Chrome, `?skipIntro=1&unlockAll=1&themeValidation=1`, 30 fps): twelve
+  real hard drops (12 colours held), then three lines, a chain of seven, a twist, four lines twice,
+  a perfect clear and a LEVEL_UP through the game's own event bus. The world's state after each:
+  the chain called the turtle, three mantas and both whales; quads 2, crowns 1; the level turned
+  the light from 0.58 to 1.63 on the wheel; the session's own weather went from a bloom to a
+  squall on its own. No warning or error naming the theme or the renderer.
+- **Cost** (playground live at 30 fps with timestamp queries, 1920 × 1080, the looping demo
+  script, this branch on one private server and the untouched main checkout on another): GPU
+  median 0.72 → 0.76 ms a frame on High (+5 %; p95 0.75 → 1.21 ms while a crown stands), 0.31 →
+  0.32 ms on Low; CPU 1.3 → 1.4 ms. A comparison, not a frame-rate measurement.
+- **Tests**: the Ocean suite, 284 tests in 13 files, with a new `ocean-weather.test.js` (the wheel,
+  the clouds, the happenings) and new cases in `ocean-world.test.js` (one line is the current
+  alone, the ribbon from two, the pod on three, the helix, the split light, the tide, the weather
+  held and turning, the flow without a jump, the happenings replaying). The shader gate builds
+  the new crown and every changed material to WGSL and GLSL at High and Minimal. `tsc`, the lint
+  and TypeScript ratchets, the architecture fitness check, the dependency boundaries and the
+  theme lifecycle audit pass.
+
+![In the real game](ocean-overhaul/54-third-pass-in-game.jpg)
+
+![The lowest tier, the WebGL2 backend, a perfect clear at night, the gold on Low](ocean-overhaul/55-third-pass-tiers.jpg)
+
+### Not done, and open calls
+
+- Nobody has watched it move: every pace (the pod's 8.5 s, the tide's 3 s, the roll of the school,
+  the clouds) is judged from strips and numbers.
+- No reading on an integrated GPU or a phone, and no perf-lane (ADR-0016) run.
+- Blender was not needed: nothing new is a model (the pod is the cast's own dolphins).
+- The theme icon is the older look (a manta in the shafts). It still shows the theme.
+- My choices, for the owner to overrule: a single line no longer draws the school into a ribbon
+  (it did on every clear); the squall dims the sea a good deal for about a minute in seven; held
+  colours read pale on the nearest corals in a bloom; bubbles are larger everywhere than they were.
+
 ## Reproduce
 
 Playground: `npm run dev:playground`, then
 `/playground.html?effect=ocean&t=20&quality=High&board=1` plus
 `event=lock|drop|clear|quad|twist|perfect|levelUp|break`, `eventAge=<s>`, `lines=`, `row=`, `u=`,
-`color=<hex>`, `combo=<n>`, `locks=<n>`, `pass=turtle|manta|whale|whaleFar&passAge=<s>`,
+`eventAt=<s>` (fire it at a moment of `t`, then seek one page through it),
+`color=<hex>`, `combo=<n>`, `locks=<n>`, `pass=turtle|manta|whale|whaleFar|pod&passAge=<s>`,
+`sea=<place>` (0 the trade wind, 1 glass, 2 the long swell, 3 a bloom, 4 a squall, 5 crystal water),
 `visit=<act>&visitK=<0..1>|visitAge=<s>&visitSide=±1&visitSeed=<n>`, `visits=0|1`,
 `hour=<place>` (0 high sun … 5 first light), `level=<n>`, `shafts=0`, `noPost=1`,
 `parts=surface,seabed,...`, `icon=1` (+ `iconFov`, `iconYaw`, `iconPitch`, …). Theme flags:

@@ -6,9 +6,9 @@
  *
  *   the sea's own   visits that come by the clock whatever the board does (waves-ambient.js): a
  *                   pod in the wall beside the rider, dolphins rolling through the trough, a
- *                   whale far out, flying fish, shearwaters;
+ *                   whale far out, shearwaters;
  *   the board's     what play calls up (the world adds them: `add`): the pod a chain of clears
- *                   grows, a spinner for a twist, flying fish for every line, the humpback for a
+ *                   grows, a spinner for a twist, its escort in the wall, the humpback for a
  *                   perfect clear.
  *
  * Each frame every act is asked where its animal is (a closed form of the world's clock) and the
@@ -53,11 +53,14 @@ export class WavesLife {
      * @param {{x: number, y: number, z: number}} p.eye   the rider's eye (the leaps are staged for it)
      * @param {number} [p.seed]
      * @param {boolean} [p.ambient=true]   the sea sends its own visits
+     * @param {THREE.Texture} [p.lace]    the field of foam cells and
+     * @param {THREE.Texture} [p.noise]   the water's noise, for the animals' skins (waves-fauna.js)
      */
     constructor({
-        tier, U, sun, eye, seed = 21, ambient = true,
+        tier, U, sun, eye, seed = 21, ambient = true, lace = null, noise = null,
     }) {
         this.tier = tier;
+        this.maps = { lace, noise };
         this.U = U;
         this.sun = sun;
         this.eye = eye;
@@ -84,7 +87,9 @@ export class WavesLife {
     /** The bodies have arrived: build what draws them. */
     attach(pack) {
         if (this.fauna || !pack?.kinds) return false;
-        this.fauna = createFauna({ U: this.U, pack, tier: this.tier });
+        this.fauna = createFauna({
+            U: this.U, pack, tier: this.tier, ...this.maps,
+        });
         this.mesh.add(this.fauna.mesh);
         return true;
     }

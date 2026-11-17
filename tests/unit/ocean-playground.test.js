@@ -31,9 +31,9 @@ const read = [...new Set([
 
 /** The parameters of the effect, as of this test. A new one is added here on purpose, with its line in the header. */
 const PARAMETERS = [
-    'bloom', 'board', 'color', 'combo', 'demo', 'event', 'eventAge', 'eventLevel', 'falseColor', 'hour', 'icon',
+    'bloom', 'board', 'color', 'combo', 'demo', 'event', 'eventAge', 'eventAt', 'eventLevel', 'falseColor', 'hour', 'icon',
     'iconFov', 'iconPitch', 'iconX', 'iconY', 'iconYaw', 'iconZ', 'level', 'lines', 'locks', 'msaa', 'noPost',
-    'parts', 'pass', 'passAge', 'px', 'py', 'quality', 'reduce', 'row', 'shafts', 'statsHud', 'u', 'visit', 'visitAge',
+    'parts', 'pass', 'passAge', 'px', 'py', 'quality', 'reduce', 'row', 'sea', 'shafts', 'statsHud', 'u', 'visit', 'visitAge',
     'visitK', 'visitSeed', 'visitSide', 'visits', 'follow', 'followFit', 'followIndex',
 ];
 

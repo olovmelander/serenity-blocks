@@ -204,7 +204,7 @@ export function createKelp(u, stands, bladesPerStand) {
             const off = kelpOffset(u, bend, aStand.w, aBlade.x, aMore.x);
             const root = vec3(aStand.x.add(off.x), aStand.y.add(aBlade.x.mul(aStand.w)), aStand.z.add(off.y));
             const heading = normalize(vec2(cos(aBlade.y), sin(aBlade.y)).mul(0.55)
-                .add(vec2(bend.x.mul(2.2).add(0.6), bend.y)));
+                .add(vec2(bend.x.mul(2.2).add(u.current.mul(2.4)), bend.y)));
             const side = vec2(heading.y.negate(), heading.x);
             const length = aBlade.z;
             const t = u.sway;

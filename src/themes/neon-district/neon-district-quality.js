@@ -11,6 +11,7 @@
  * traffic          flying vehicles
  * sparks           event spark pool
  * drones           light drones in the four-line dragon (0 = no dragon)
+ * fireworks        stars in one firework shell
  */
 export const QUALITY = Object.freeze({
     Minimal: Object.freeze({
@@ -24,6 +25,7 @@ export const QUALITY = Object.freeze({
         traffic: 24,
         sparks: 96,
         drones: 0,
+        fireworks: 24,
     }),
     Low: Object.freeze({
         rooms: false,
@@ -36,6 +38,7 @@ export const QUALITY = Object.freeze({
         traffic: 40,
         sparks: 160,
         drones: 900,
+        fireworks: 48,
     }),
     Medium: Object.freeze({
         rooms: true,
@@ -48,6 +51,7 @@ export const QUALITY = Object.freeze({
         traffic: 64,
         sparks: 320,
         drones: 2600,
+        fireworks: 80,
     }),
     High: Object.freeze({
         rooms: true,
@@ -60,6 +64,7 @@ export const QUALITY = Object.freeze({
         traffic: 96,
         sparks: 512,
         drones: 5200,
+        fireworks: 120,
     }),
     Ultra: Object.freeze({
         rooms: true,
@@ -72,6 +77,7 @@ export const QUALITY = Object.freeze({
         traffic: 128,
         sparks: 768,
         drones: 8400,
+        fireworks: 160,
     }),
     Extreme: Object.freeze({
         rooms: true,
@@ -84,6 +90,7 @@ export const QUALITY = Object.freeze({
         traffic: 160,
         sparks: 1024,
         drones: 12000,
+        fireworks: 200,
     }),
 });
 

@@ -386,11 +386,14 @@ export const SCHOOL_PACE = 0.17;
 
 /**
  * The school's resting shape: (how wide the loop is in x, its mean height, how far it swings in
- * y, the z it circles, how far it swings in z). A clear draws it out into a ribbon at the cleared
- * rows' height; the world eases between shapes and the shaders read them as one uniform row.
+ * y, the z it circles, how far it swings in z, how far it climbs over the reef's shoulders at the
+ * loop's two ends). The loop is as wide as the frame: the card hides the middle of the picture,
+ * so the school is seen where it swings out to either side, ten to thirty metres off. A clear
+ * draws it out into a ribbon at the cleared rows' height; the world eases between shapes and the
+ * shaders read them as uniform rows.
  */
 export const SCHOOL_REST = Object.freeze({
-    wide: 10.5, high: 6.6, swing: 1.5, back: -15, deep: 8,
+    wide: 14, high: 6.6, swing: 1.3, back: -10, deep: 6.5, rise: 3.4,
 });
 
 /**
@@ -399,7 +402,9 @@ export const SCHOOL_REST = Object.freeze({
  */
 export function schoolLoop(phase, shape = SCHOOL_REST, squeeze = 1, out = [0, 0, 0]) {
     out[0] = Math.sin(phase) * shape.wide * squeeze;
-    out[1] = shape.high + Math.sin(phase + 1.1) * shape.swing + Math.sin(phase * 2.3) * shape.swing * 0.35;
+    const side = Math.sin(phase);
+    out[1] = shape.high + Math.sin(phase + 1.1) * shape.swing + Math.sin(phase * 2.3) * shape.swing * 0.35
+        + (shape.rise || 0) * side * side;
     out[2] = shape.back + Math.sin(phase * 2 + 0.6) * shape.deep + Math.cos(phase) * 5;
     return out;
 }

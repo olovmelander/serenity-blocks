@@ -1,8 +1,8 @@
 /**
  * Waves — what each event adds to the sea, and what the sea does by itself.
  *
- * Every event has a form of its own (a hard drop's spout, fish startled by every line, a spinner
- * answering a twist, the tube's spit for four lines, a humpback for a perfect clear, a chain's
+ * Every event has a form of its own (a hard drop's spout, the white water heaving where the lip
+ * lands for every line, a spinner answering a twist, the tube's spit for four lines, a humpback for a perfect clear, a chain's
  * escort in the wall, shearwaters for a new level), and the sea turns through states of its own
  * on a clock beside the hours'. These tests build a real world and read back what it wrote: the
  * board's acts, the spray and the white water, and the uniforms the water reads.
@@ -13,10 +13,9 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    HARD_DROP_REST, REST_RIG, WavesWorld, fovForAspect,
+    HARD_DROP_REST, HEAVE_FALL, HEAVE_RISE, REST_RIG, WavesWorld, fovForAspect,
 } from '../../src/themes/waves/waves-world.js';
 import { fallbackLayout } from '../../src/themes/waves/waves-composition.js';
-import { QUALITY } from '../../src/themes/waves/waves-quality.js';
 import {
     SEA_KEYS, SEA_SECONDS, SEA_STATES, seaAt,
 } from '../../src/themes/waves/waves-hours.js';
@@ -134,27 +133,42 @@ describe('waves events: each its own form', () => {
         expect(world.state.hardAt).toBe(-100);
     });
 
-    it('startles flying fish out of the trough for every line: a few for one, a school for four', () => {
-        for (const quality of ['High', 'Minimal']) {
-            const counts = [1, 2, 3, 4].map((lines) => {
-                const { world } = makeWorld(quality);
-                world.onClear({ rows: [19], lines });
-                const fish = actsOf(world, 'skitter', 'flyingFish');
-                for (const act of fish) {
-                    // Out of the water just after the clear, near the card's foot, away from the wave.
-                    expect(act.t0).toBeGreaterThan(world.clock);
-                    expect(act.t0).toBeLessThan(world.clock + 4);
-                    expect(act.x).toBeLessThan(0);
-                    expect(act.z).toBeLessThan(-2);
-                    expect(act.hx).toBeLessThan(0.2);
-                }
-                return fish.length;
-            });
-            const tier = QUALITY[quality];
-            const capacity = Math.max(1, Math.round(28 * tier.life));
-            expect(counts, quality).toEqual([1, 2, 3, 4].map((lines) => Math.min(Math.round((2 + lines * 3) * tier.life), capacity)));
-            expect(counts[3]).toBeGreaterThan(counts[0]);
-        }
+    it('makes the white water heave where the lip lands for every line: harder for four than for one', () => {
+        const heaves = [1, 2, 3, 4].map((lines) => {
+            const { world, camera } = makeWorld('High');
+            const { heave, tear } = world.U;
+            // A glass sea with nothing played: the white water stands as it stands.
+            const rest = heave.value;
+            expect(rest).toBeLessThan(0.05);
+            world.onClear({ rows: [19], lines });
+            // Not at once: the throw is taken up over a third of a second (nothing in the white
+            // water jumps, its puffs are placed by this number)...
+            frame(world, camera, DT);
+            expect(heave.value).toBeGreaterThan(rest);
+            expect(heave.value).toBeLessThan(tear.value * 0.5);
+            run(world, camera, 0.3);
+            const up = heave.value;
+            expect(up).toBeGreaterThan(rest + 0.15);
+            // ...and let go of more slowly than the lip lets go of it.
+            run(world, camera, 1.5);
+            expect(heave.value).toBeLessThan(up);
+            expect(heave.value).toBeGreaterThan(tear.value);
+            run(world, camera, 9);
+            expect(heave.value).toBeLessThan(0.05);
+            // A new run starts with the sea at rest.
+            world.onClear({ rows: [19], lines });
+            run(world, camera, 0.3);
+            world.resetSession();
+            expect(heave.value).toBe(0);
+            return up;
+        });
+        for (let i = 1; i < heaves.length; i++) expect(heaves[i], `${i + 1} lines`).toBeGreaterThan(heaves[i - 1]);
+        expect(HEAVE_RISE).toBeGreaterThan(HEAVE_FALL * 4);
+        // No animal is sent for a plain clear any more (the flying fish are gone).
+        const { world } = makeWorld('High');
+        const before = world.pod.acts.length;
+        world.onClear({ rows: [19], lines: 2 });
+        expect(world.pod.acts.length).toBe(before);
     });
 
     it('answers a twist that clears with a spinner\'s own spin, a turn more for every line', () => {
@@ -306,7 +320,6 @@ describe('waves events: the water an animal throws', () => {
             [{ kind: 'humpback' }, 'whale-fall', Object.assign(pose(-30, 0, -120), { metres: 13 }), false],
             [{ kind: 'humpback' }, 'whale-blow', Object.assign(pose(-30, 0, -120), { metres: 13 }), false],
             [{ kind: 'humpback' }, 'whale-slip', Object.assign(pose(-30, 0, -120), { metres: 13 }), false],
-            [{ kind: 'flyingFish' }, 'fish-out', Object.assign(pose(-3, 0, -7), { metres: 0.5 }), false],
         ];
         for (const [act, type, where, ring] of cases) {
             const rings = world.ringCount;

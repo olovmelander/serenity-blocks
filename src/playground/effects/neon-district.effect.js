@@ -16,6 +16,18 @@
  *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
+ *   eventAt=<s>              ...or fire it at that time on the clock, whatever t is: one page load
+ *                            then shows it at any age (__PLAYGROUND__.seek(eventAt + age))
+ *   dragon=<recipe>          the flight the next dragon flies: a recipe's name or number
+ *                            (neon-district-dragon.js: serpent, spire, ouroboros, skimmer, borer,
+ *                            phoenix, leap, vanish, lantern, gyre, eight, comet); dragonSeed=<n>
+ *                            its seed, dragonScheme=<0..5> its colours, dragonSide=-1|1 its lane.
+ *                            getDiagnostics().flights names the flights in the street
+ *   dragonCam=<m>            an inspection camera that rides beside the dragon, <m> metres off
+ *                            (dragonCamBack=<0..1> the part of the body it looks at, 0 = the head)
+ *   weather=<state>          hold the night's weather on one state (neon-district-night.js:
+ *                            rain, downpour, easing, clear, fog, mizzle) instead of letting the
+ *                            clock turn it; getDiagnostics().weather names the one showing
  *   demo=1                   live only: play a looping gameplay script
  *   parts=sky,facades,...    draw only these parts
  *   falseColor=1             post debug view: band the pre-tone-map max channel
@@ -47,6 +59,8 @@ import { readLayoutRects } from '../../themes/neon-district/neon-district-compos
 import { SHOP_ARCHETYPES } from '../../themes/neon-district/neon-district-campaigns.js';
 import { BILLBOARD_CELLS } from '../../themes/neon-district/neon-district-atlas.js';
 import { STREET, wrapZ } from '../../themes/neon-district/neon-district-core.js';
+import { DRAGON_RECIPE_NAMES, flightPoint, flightState } from '../../themes/neon-district/neon-district-dragon.js';
+import { WEATHER, weatherTime } from '../../themes/neon-district/neon-district-night.js';
 
 export const meta = {
     id: 'neon-district',
@@ -136,6 +150,18 @@ export function create({
     }).build();
     world.bindCamera(camera);
     world.loadTextures();
+    if (WEATHER.some((state) => state.name === params.get('weather'))) world.weatherHold = weatherTime(params.get('weather'));
+    // A chosen flight for the dragon.
+    if (params.has('dragon') || params.has('dragonSeed') || params.has('dragonScheme') || params.has('dragonSide')) {
+        const named = DRAGON_RECIPE_NAMES.indexOf(params.get('dragon'));
+        const recipe = named >= 0 ? named : Number.parseInt(params.get('dragon'), 10);
+        world.dragonChoice = {
+            recipe: Number.isFinite(recipe) ? recipe : undefined,
+            seed: params.has('dragonSeed') ? Math.round(num(params, 'dragonSeed')) : undefined,
+            scheme: params.has('dragonScheme') ? Math.round(num(params, 'dragonScheme')) : undefined,
+            mirror: params.has('dragonSide') ? Math.sign(num(params, 'dragonSide')) || undefined : undefined,
+        };
+    }
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
 
@@ -154,6 +180,7 @@ export function create({
 
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
     const iconPose = params.get('icon') === '1';
+    const dragonCam = num(params, 'dragonCam', 0);
     const camPose = (params.get('cam') || '').split(',').map(Number.parseFloat);
     const inspect = camPose.length >= 6 && camPose.slice(0, 6).every(Number.isFinite);
     // A shop to follow: the open generated shops of one trade, the k-th of them.
@@ -225,6 +252,18 @@ export function create({
             camera.lookAt(followScreen.x, followScreen.y, z);
             camera.updateMatrixWorld();
         }
+        if (dragonCam > 0 && world.flights[0]) {
+            // Beside the dragon, looking at a point of its body.
+            const { plan, at } = world.flights[0];
+            const state = flightState(plan, time - at);
+            const aim = flightPoint(plan, state.head - plan.body * num(params, 'dragonCamBack', 0.12));
+            camera.position.set(aim.x + dragonCam * 0.55, aim.y + dragonCam * 0.18, aim.z + dragonCam * 0.8);
+            camera.fov = 50;
+            camera.updateProjectionMatrix();
+            camera.up.set(0, 1, 0);
+            camera.lookAt(aim.x, aim.y, aim.z);
+            camera.updateMatrixWorld();
+        }
         if (inspect) {
             camera.position.set(camPose[0], camPose[1], camPose[2]);
             if (Number.isFinite(camPose[6])) {
@@ -272,16 +311,18 @@ export function create({
         } else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
     };
 
+    const eventAt = params.has('eventAt') ? num(params, 'eventAt', 0) : null;
     const seekTo = (time) => {
-        const lead = (eventName ? eventAge : 0) + 8;
-        const start = Math.max(0, time - lead);
+        // The event's moment: eventAge before the frame shown, or a fixed time on the clock.
+        const fires = Boolean(eventName) && (eventAt === null || eventAt <= time);
+        const eventTime = fires ? (eventAt ?? time - eventAge) : time;
+        const start = Math.max(0, eventTime - 8);
         world.seek(start);
         if (level > 1) world.levelUp(level, { silent: true });
         if (holdCombo > 0) world.onCombo(holdCombo);
         frame(start, 0);
-        const eventTime = eventName ? time - eventAge : time;
         if (eventTime > start) stepTo(start, eventTime, 0.1);
-        if (eventName) {
+        if (fires) {
             fireEvent();
             stepTo(eventTime, time, 1 / 120);
         }

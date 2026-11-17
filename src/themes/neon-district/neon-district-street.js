@@ -226,7 +226,7 @@ export function createStreet(u, opts = {}) {
         const slope = nC.rg.sub(0.5).mul(rough.mul(0.9).add(0.04)).toVar();
         const glint = float(0.0).toVar();
         if (withRings) {
-            const wetArea = puddle.mul(0.85).add(0.15).mul(near).mul(u.rain);
+            const wetArea = puddle.mul(0.85).add(0.15).mul(near).mul(min(u.fall, 1.75));
             // On the rain's own clock: the puddles boil faster as it comes down harder.
             const r1 = rainRings(st, u.rainClock, float(0.62), float(0.9));
             const r2 = rainRings(st.add(vec2(3.7, 1.9)), u.rainClock, float(1.05), float(0.63));
