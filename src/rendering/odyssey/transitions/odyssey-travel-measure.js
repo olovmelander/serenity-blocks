@@ -108,6 +108,9 @@ export function journeyTravelMeasure(p, chapterPositions) {
  */
 export function journeyTravelProgress(m, chapterPositions) {
     if (!Number.isFinite(m)) return m;
+    // Before the first weighted stretch the measure IS progress: exactly, not to a bisection's
+    // last bit (a trip held at its start must read its start).
+    if (journeyTravelMeasure(m, chapterPositions) === m) return m;
     // The measure grows at least as fast as progress: the answer lies in [m - all the extra, m].
     let hi = m;
     let lo = m - (journeyTravelMeasure(1, chapterPositions) - 1) - 1e-9;

@@ -305,10 +305,12 @@ export function planOceanReef({
 
     // ── kelp: the tower's forest, and groves on the shelf ──
     const stipeAt = (x, baseY, z, groveYaw) => {
-        const room = (seaLevel - R.canopyDepth) - baseY;
+        // Each floats its canopy at its own depth (a little under the shallowest), so the forest's
+        // top is a ragged layer and not a ruled line.
+        const room = (seaLevel - R.canopyDepth - (rnd() * rnd() * 4.5)) - baseY;
         if (room < 8) return;
-        // Most reach the surface and lie along it; the rest stop short, so the forest has a profile.
-        const reaches = rnd() < 0.62;
+        // About half reach the surface and lie along it; the rest stop short, so the forest has a profile.
+        const reaches = rnd() < 0.52;
         const length = reaches ? room + 4 + (rnd() * 11) : room * (0.55 + (rnd() * 0.4));
         plan.stipes.push({
             x, y: baseY, z, length, room, yaw: groveYaw + ((rnd() - 0.5) * 2.6), phase: rnd() * Math.PI * 2, seed: plan.stipes.length,
