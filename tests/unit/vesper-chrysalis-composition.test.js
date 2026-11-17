@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
     BOARD_GRID, BOARD_SELECTOR, COVER_GAP, HUD_SELECTOR, PERCH_BAND, PLAYER_SLOTS, SOLO_CANVAS_SELECTORS,
     WING_COVER_SAMPLES, boardFor, boardPoint, cardUnion, fallbackLayout, fillWingCover, frontPast, layoutsDiffer,
-    perchFor, perchScreenX, perchScreenY, playerCanvasSelector, readLayoutRects, wingCoverAlong, wingCoverAt,
+    perchFor, perchPlace, perchScreenX, perchScreenY, playerCanvasSelector, readLayoutRects, wingCoverAlong, wingCoverAt,
 } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-composition.js';
 import {
-    CHRYSALIS, DEG, EYE, WINGS, fovForAspect, wingPoint,
+    CHRYSALIS, DEG, EYE, WINGS, WING_REACH, WING_REST, fovForAspect, wingPoint,
 } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-core.js';
 
 const rect = (left, top, width, height) => ({
@@ -397,6 +397,33 @@ describe('vesper chrysalis composition: where the chrysalis hangs so the board d
         };
     };
     const overlaps = (a, r) => a.x0 < r.x1 && a.x1 > r.x0 && a.y0 < r.y1 && a.y1 > r.y0;
+    /**
+     * The wings fully unfurled, hung where the chrysalis hangs at a perch (they grow out of it:
+     * at rest its heart is offset by the perch alone), as the box their margins fill on screen.
+     */
+    const wingsOnScreen = (perch, aspect) => {
+        const mount = {
+            x: perch.x, y: perch.y, z: 0, scale: perch.wings,
+        };
+        const box = {
+            x0: Infinity, x1: -Infinity, y0: Infinity, y1: -Infinity,
+        };
+        const q = [0, 0, 0];
+        for (const kind of [0, 1]) {
+            for (const side of [-1, 1]) {
+                for (let i = 0; i <= 60; i++) {
+                    for (const v of [0.7, 0.85, 1]) {
+                        const at = project(wingPoint(kind, side, i / 60, v, 1, 0, q, mount), aspect);
+                        box.x0 = Math.min(box.x0, at.x);
+                        box.x1 = Math.max(box.x1, at.x);
+                        box.y0 = Math.min(box.y0, at.y);
+                        box.y1 = Math.max(box.y1, at.y);
+                    }
+                }
+            }
+        }
+        return box;
+    };
 
     it('stays where it is with no board on screen', () => {
         for (const layout of [null, undefined, {
@@ -404,7 +431,7 @@ describe('vesper chrysalis composition: where the chrysalis hangs so the board d
         }]) {
             expect(perchScreenX(layout)).toBeNull();
             expect(perchScreenY(layout)).toBeNull();
-            expect(perchFor(layout, 16 / 9)).toEqual({ x: 0, y: 0 });
+            expect(perchFor(layout, 16 / 9)).toEqual({ x: 0, y: 0, wings: 1 });
         }
         // The band it hangs in at rest is a band of the screen, and its middle at rest is in it.
         expect(PERCH_BAND.y0).toBeGreaterThan(0);
@@ -424,12 +451,14 @@ describe('vesper chrysalis composition: where the chrysalis hangs so the board d
             const aspect = width / height;
             const layout = fallbackLayout(width, height);
             const card = layout.cards[0];
-            const sx = perchScreenX(layout);
-            // Left of the card (the HUD stands to the right), near it, inside the frame's edges.
+            const sx = perchScreenX(layout, aspect);
+            // Left of the card (the HUD stands to the right), in the middle of the open water
+            // between the frame's edge and the card, so its wings have room on either side.
             expect(sx, label).not.toBeNull();
             expect(sx, label).toBeLessThan(card.x0);
             expect(sx, label).toBeGreaterThan(0.1);
-            expect(card.x0 - sx, label).toBeLessThan(0.15);
+            expect(Math.abs(sx - card.x0 / 2), label).toBeLessThan(0.03);
+            expect(perchPlace(layout, aspect).x, label).toBe(sx);
             // The same as metres: moved to the left, not up.
             const perch = perchFor(layout, aspect);
             expect(perch.x, label).toBeLessThan(0);
@@ -443,6 +472,67 @@ describe('vesper chrysalis composition: where the chrysalis hangs so the board d
             expect(seen.x0, label).toBeGreaterThan(0);
             expect(seen.middle.y, label).toBeGreaterThan(PERCH_BAND.y0);
             expect(seen.middle.y, label).toBeLessThan(PERCH_BAND.y1);
+            // Its wings, fully unfurled, fill that water and no more: inside the frame, clear of
+            // the card and the HUD, as large as the room allows (never larger than at rest).
+            const wings = wingsOnScreen(perch, aspect);
+            expect(perch.wings, label).toBeGreaterThan(0.3);
+            expect(perch.wings, label).toBeLessThanOrEqual(1);
+            expect(wings.x0, label).toBeGreaterThan(0);
+            expect(wings.x1, label).toBeLessThan(card.x0);
+            expect(overlaps(wings, card), label).toBe(false);
+            expect(overlaps(wings, layout.hud), label).toBe(false);
+            // ...and they use it: a wing reaches most of the way to the frame's edge and to the card.
+            expect(wings.x0, label).toBeLessThan(0.06);
+            expect(card.x0 - wings.x1, label).toBeLessThan(0.06);
+        }
+    });
+
+    it('sizes the wings by the room beside the card, measured in metres at every frame shape', () => {
+        // The scale is the room a wing has (frame fractions turned into metres at the chrysalis)
+        // over the wing's own reach; a wider frame gives the same card more water beside it.
+        const scales = [[1280, 1024], [1600, 900], [2560, 1080]].map(([width, height]) => {
+            const aspect = width / height;
+            const layout = fallbackLayout(width, height);
+            const place = perchPlace(layout, aspect);
+            const across = 2 * Math.tan((fovForAspect(aspect) * DEG) / 2) * aspect * Math.abs(CHRYSALIS.z - EYE.z);
+            const perch = perchFor(layout, aspect);
+            expect(perch.wings).toBeCloseTo((place.room * across - WINGS.root[0]) / (WINGS.span * WING_REACH), 9);
+            return perch.wings;
+        });
+        expect(scales[1]).toBeGreaterThan(scales[0]);
+        expect(scales[2]).toBeGreaterThan(scales[1]);
+        // WING_REACH is the wing's own widest point, a share of its span (the shape decides it).
+        let most = 0;
+        const q = [0, 0, 0];
+        for (let i = 0; i <= 200; i++) {
+            for (const kind of [0, 1]) most = Math.max(most, wingPoint(kind, 1, i / 200, 1, 1, 0, q)[0] - WINGS.root[0]);
+        }
+        expect(WING_REACH * WINGS.span).toBeGreaterThanOrEqual(most);
+        expect(WING_REACH * WINGS.span).toBeLessThan(most * 1.01);
+        expect(WING_REACH).toBeGreaterThan(0.8);
+        expect(WING_REACH).toBeLessThan(1.2);
+    });
+
+    it('rises above the card on an upright tablet, where the water beside it is too narrow for the wings', () => {
+        for (const [width, height] of [[768, 1024], [820, 1180]]) {
+            const label = `${width}x${height}`;
+            const aspect = width / height;
+            const layout = fallbackLayout(width, height);
+            const card = layout.cards[0];
+            // There is a column beside the card...
+            expect(perchPlace(layout, aspect), label).not.toBeNull();
+            // ...but the wings would be small in it, so it hangs in the strip above the card.
+            const perch = perchFor(layout, aspect);
+            expect(perch.x, label).toBe(0);
+            expect(perch.y, label).toBeGreaterThan(0);
+            expect(perch.wings, label).toBeGreaterThan(0.5);
+            expect(perch.wings, label).toBeLessThan(1);
+            const seen = onScreen(perch, aspect);
+            expect(seen.middle.y, label).toBeLessThan(card.y0);
+            // The wings span the frame's width and no more.
+            const wings = wingsOnScreen(perch, aspect);
+            expect(wings.x0, label).toBeGreaterThan(0);
+            expect(wings.x1, label).toBeLessThan(1);
         }
     });
 
@@ -462,7 +552,7 @@ describe('vesper chrysalis composition: where the chrysalis hangs so the board d
         };
         expect(perchScreenX(layout)).toBeNull();
         expect(perchScreenY(layout)).toBeNull();
-        expect(perchFor(layout, 16 / 9)).toEqual({ x: 0, y: 0 });
+        expect(perchFor(layout, 16 / 9)).toEqual({ x: 0, y: 0, wings: 1 });
         // Seen there, between them.
         const seen = onScreen({ x: 0, y: 0 }, 16 / 9);
         layout.cards.forEach((card) => expect(overlaps(seen, card)).toBe(false));
@@ -474,8 +564,9 @@ describe('vesper chrysalis composition: where the chrysalis hangs so the board d
             const aspect = width / height;
             const layout = fallbackLayout(width, height);
             const card = layout.cards[0];
-            // No open column beside the card...
-            expect(perchScreenX(layout), label).toBeNull();
+            // No open water beside the card that would hold its wings...
+            const place = perchPlace(layout, aspect);
+            expect(place === null || place.room < 0.05, label).toBe(true);
             // ...so it hangs in the strip above it.
             const sy = perchScreenY(layout);
             expect(sy, label).not.toBeNull();
@@ -490,6 +581,12 @@ describe('vesper chrysalis composition: where the chrysalis hangs so the board d
             expect(seen.middle.y, label).toBeGreaterThan(0);
             expect(seen.middle.y, label).toBeLessThan(card.y0);
             expect(seen.middle.x, label).toBeCloseTo(0.5, 9);
+            // Its wings spread across the frame's width, and no further.
+            expect(perch.wings, label).toBeLessThan(1);
+            const wings = wingsOnScreen(perch, aspect);
+            expect(wings.x0, label).toBeGreaterThan(0);
+            expect(wings.x1, label).toBeLessThan(1);
+            expect(wings.x0, label).toBeLessThan(0.05);
         }
     });
 
@@ -504,22 +601,27 @@ describe('vesper chrysalis composition: where the chrysalis hangs so the board d
         };
         expect(perchScreenX(layout)).toBeNull();
         expect(perchScreenY(layout)).toBeNull();
-        expect(perchFor(layout, 390 / 844)).toEqual({ x: 0, y: 0 });
+        expect(perchFor(layout, 390 / 844)).toEqual({ x: 0, y: 0, wings: 1 });
     });
 
     it('writes into the object it is given, and reads a nonsense aspect as a wide desktop', () => {
         const layout = fallbackLayout(1600, 900);
-        const out = { x: 9, y: 9 };
+        const out = { x: 9, y: 9, wings: 9 };
         expect(perchFor(layout, 16 / 9, out)).toBe(out);
         expect(out.x).toBeLessThan(0);
         expect(out.y).toBe(0);
-        // Nothing on screen: back to rest, in the same object.
+        expect(out.wings).toBeLessThan(1);
+        // Nothing on screen: back to rest, in the same object, the wings at their full size.
         expect(perchFor(null, 16 / 9, out)).toBe(out);
-        expect(out).toEqual({ x: 0, y: 0 });
+        expect(out).toEqual({ x: 0, y: 0, wings: 1 });
+        expect(WING_REST).toEqual({
+            x: 0, y: 0, z: 0, scale: 1,
+        });
         for (const nonsense of [NaN, undefined, Infinity, -2]) {
             const at = perchFor(layout, nonsense);
             expect(Number.isFinite(at.x), String(nonsense)).toBe(true);
             expect(Number.isFinite(at.y), String(nonsense)).toBe(true);
+            expect(at.wings, String(nonsense)).toBeGreaterThan(0);
         }
         expect(perchFor(layout, NaN)).toEqual(perchFor(layout, 16 / 9));
     });

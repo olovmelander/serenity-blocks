@@ -14,9 +14,11 @@
  * fraying as it goes, its eaten edge in embers (u.wing.z: how hard it frays), and a new chain
  * catches it wherever it stands.
  *
- * The root is behind the board card, so the front is measured from where each ray of the wing
- * comes out from behind the card (and the HUD beside it): the cover table the world fills every
- * frame (vesper-chrysalis-composition.js). What the card hides is lit at once; every step of a
+ * The wings grow out of the chrysalis and go where it hangs (u.wingMount: its heart's offset
+ * from its place at rest, and a scale that keeps them in the open water beside a board). Where a
+ * card still stands in front of them (between two boards, or above a phone's card) the front is
+ * measured from where each ray of the wing comes out from behind the card (and the HUD beside
+ * it): the cover table the world fills every frame (vesper-chrysalis-composition.js). What the card hides is lit at once; every step of a
  * chain writes wing that can be seen, and the fold runs back to the card's edge in view. A back-to-back gilds the veins (u.heat.z); a fever draws the
  * wing more in its lines than in its veil (u.heat.y).
  *
@@ -166,18 +168,19 @@ export function createWings(u, opts = {}) {
         );
         const v2 = v.mul(v);
         const v8 = v2.mul(v2).mul(v2).mul(v2);
-        const reach = aOut.x.mul(aOut.y.mul(v8).add(1.0)).mul(v).mul(WINGS.span).mul(s.mul(0.26).add(0.74));
+        const mount = u.wingMount;
+        const reach = aOut.x.mul(aOut.y.mul(v8).add(1.0)).mul(v).mul(mount.w.mul(WINGS.span)).mul(s.mul(0.26).add(0.74));
         const lx = cos(a).mul(reach);
         const ly = sin(a).mul(reach);
         // The stroke turns the wing about the body's upright axis, its tip lagging; and the
         // membrane is never quite still.
         const th = u.wing.y.mul(v.mul(0.65).add(0.35));
-        const billow = sin(an.mul(7.0).add(v.mul(4.0)).sub(u.drift.mul(1.1)).add(kind.mul(2.0))).mul(v).mul(0.5);
+        const billow = sin(an.mul(7.0).add(v.mul(4.0)).sub(u.drift.mul(1.1)).add(kind.mul(2.0))).mul(v).mul(mount.w.mul(0.5));
         return vec3(
             side.mul(lx.mul(cos(th)).add(WINGS.root[0])),
             ly.add(WINGS.root[1]),
             abs(lx).mul(sin(th)).add(billow).add(WINGS.root[2]),
-        );
+        ).add(mount.xyz);
     })();
 
     const shade = Fn(() => {

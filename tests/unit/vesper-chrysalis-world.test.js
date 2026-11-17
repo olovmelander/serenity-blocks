@@ -17,7 +17,7 @@ import {
     BLADE_SLOTS, BLOOM_FULL, BLOOM_HOLD, BLOOM_KEEP, BLOOM_RISE, CHRYSALIS, DEG, EYE, EYE_COMBO, HEART, HEART_DROP,
     HOUR_SECONDS, HUSH_HOLD, MOTH_DEPTH, MOTH_FLIGHT, PALETTE_KEYS, RING_LIVE, RING_SLOTS, STALK, SURGE_COOL,
     SWELL_LIVE, SWELL_SLOTS, TAU, THREAD_PULSES, VESPERFIRE, VESPER_PALETTES, WING_FALL, WING_STEPS, bloomLevel,
-    hourAt, paletteAt, pieceColor, powerForCombo, spireTip, swellPassTime, wingForCombo,
+    WINGS, WING_REACH, hourAt, paletteAt, pieceColor, powerForCombo, spireTip, swellPassTime, wingForCombo, wingPoint,
 } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-quality.js';
 import {
@@ -651,14 +651,17 @@ describe('vesper world: camera', () => {
             const gaze = camera.getWorldDirection(new THREE.Vector3());
             expect(gaze.x).toBeCloseTo(0, 9);
             expect(Math.atan2(gaze.y, -gaze.z)).toBeCloseTo(EYE.pitch, 9);
-            // The wings' root (the chrysalis's heart at rest, behind the board) is where a pinhole
-            // at the eye puts it (the model the core and mesh tests measure the composition in).
-            const dy = HEART[1] - EYE.y;
-            const dz = HEART[2] - EYE.z;
+            // The wings' root (they grow out of the chrysalis: its heart at rest, carried with it to
+            // where it hangs) is where a pinhole at the eye puts it (the model the core and mesh
+            // tests measure the composition in).
+            const m = world.wingMount;
+            const root = [HEART[0] + m.x, HEART[1] + m.y, HEART[2] + m.z];
+            const dy = root[1] - EYE.y;
+            const dz = root[2] - EYE.z;
             const depth = dy * Math.sin(EYE.pitch) - dz * Math.cos(EYE.pitch);
             const rise = dy * Math.cos(EYE.pitch) + dz * Math.sin(EYE.pitch);
             const lens = Math.tan((fovForAspect(aspect) * DEG) / 2);
-            expect(world.origin.x).toBeCloseTo(0.5, 9);
+            expect(world.origin.x).toBeCloseTo(0.5 + ((root[0] - EYE.x) / (depth * lens * aspect)) * 0.5, 9);
             expect(world.origin.y).toBeCloseTo(0.5 - (rise / (depth * lens)) * 0.5, 9);
             // The heart on screen is where the camera sees the chrysalis's light, wherever it hangs.
             const seen = onScreen(world.relicHeart, camera);
@@ -698,14 +701,9 @@ describe('vesper world: camera', () => {
             const seen = onScreen(hung, camera);
             expect(world.heart.x).toBeCloseTo(seen.x, 9);
             expect(world.heart.y).toBeCloseTo(seen.y, 9);
-            // ...and the wings' root stays behind the middle of the card, where the camera sees it.
-            expect(world.origin.x).toBeGreaterThan(0.4);
-            expect(world.origin.x).toBeLessThan(0.6);
-            expect(world.origin.y).toBeGreaterThan(card.y0);
-            expect(world.origin.y).toBeLessThan(0.5);
-            const root = onScreen(HEART, camera);
-            expect(world.origin.x).toBeCloseTo(root.x, 9);
-            expect(world.origin.y).toBeCloseTo(root.y, 9);
+            // ...and the wings' root goes with it (they grow out of it), where the camera sees it.
+            expect(world.origin.x).toBeCloseTo(seen.x, 9);
+            expect(world.origin.y).toBeCloseTo(seen.y, 9);
         }
         expect(wandered).toBeGreaterThan(0.1);
         world.dispose();
@@ -3191,12 +3189,24 @@ describe('vesper world: time', () => {
     // a seek, while the perch that eases alongside it snaps. Replayed wings are then cut by a
     // cover table a fresh world does not have, for as long as the old ease takes to run out.
     it('replays the wings\' cover too: a seek forgets that the board had only just come back', () => {
+        // A card that fills the frame leaves no water beside it and no sky above it: the chrysalis
+        // stays where it is, behind the card, its wings at their full size, and the card hides part
+        // of them (beside a solo card they fit the open water and nothing does).
+        const covering = {
+            cardCount: 1,
+            cards: [{
+                x0: 0.04, y0: 0.02, x1: 0.96, y1: 0.98,
+            }],
+            hud: null,
+            boards: [null, null, null, null, null],
+        };
         const [a, b] = [makeWorld('Low', { happenings: false }), makeWorld('Low', { happenings: false })];
+        for (const { world } of [a, b]) world.setLayout(covering, 16 / 9);
         a.world.onCombo(4);
         run(a.world, a.camera, 3);
         a.world.setLayout(null);
         run(a.world, a.camera, 0.3);
-        a.world.setLayout(fallbackLayout(1600, 900), 1600 / 900);
+        a.world.setLayout(covering, 16 / 9);
         for (const { world, camera } of [a, b]) {
             world.seek(10);
             frame(world, camera, 10, 0);
@@ -3580,8 +3590,8 @@ describe('vesper world: where the chrysalis hangs', () => {
 
     it('hangs in its place at rest with no board on screen, and between two boards', () => {
         const { camera, world } = makeWorld('Low', { live: false, happenings: false });
-        expect(world.perch).toEqual({ x: 0, y: 0 });
-        expect(world.perchGoal).toEqual({ x: 0, y: 0 });
+        expect(world.perch).toEqual({ x: 0, y: 0, wings: 1 });
+        expect(world.perchGoal).toEqual({ x: 0, y: 0, wings: 1 });
         expect(world.relicAt).toEqual([...STALK]);
         expect(world.u.relicAt.value.toArray()).toEqual([...STALK]);
         expect(world.u.perch.value.toArray()).toEqual([0, 0, 0]);
@@ -3591,9 +3601,9 @@ describe('vesper world: where the chrysalis hangs', () => {
         expect(Math.hypot(world.heart.x - world.origin.x, world.heart.y - world.origin.y)).toBeLessThan(0.01);
         // Between two boards the middle of the picture is open water: it stays where it is.
         world.setLayout(TWO_BOARDS, 16 / 9);
-        expect(world.perchGoal).toEqual({ x: 0, y: 0 });
+        expect(world.perchGoal).toEqual({ x: 0, y: 0, wings: 1 });
         run(world, camera, 3);
-        expect(world.perch).toEqual({ x: 0, y: 0 });
+        expect(world.perch).toEqual({ x: 0, y: 0, wings: 1 });
         expect(inside(world.heart, TWO_BOARDS.cards[0]) || inside(world.heart, TWO_BOARDS.cards[1])).toBe(false);
         world.dispose();
     });
@@ -3627,8 +3637,24 @@ describe('vesper world: where the chrysalis hangs', () => {
                 expect(world.heart.y, label).toBeLessThan(card.y0);
             }
             expect(inside(world.heart, card), label).toBe(false);
-            // The wings still grow from behind the board: their root stays behind the card.
-            expect(inside(world.origin, card), label).toBe(true);
+            // The wings grow out of the chrysalis: their root is its heart on screen, clear of the card...
+            expect(Math.hypot(world.origin.x - world.heart.x, world.origin.y - world.heart.y), label).toBeLessThan(1e-9);
+            expect(inside(world.origin, card), label).toBe(false);
+            // ...and fully unfurled where it hangs they stay in the frame: beside the card, clear of
+            // it (above an upright phone's card the hindwings hang down behind it).
+            expect(world.wingMount.scale, label).toBe(world.perch.wings);
+            expect(world.wingMount.scale, label).toBeLessThan(1);
+            const q = [0, 0, 0];
+            for (const kind of [0, 1]) {
+                for (const side of [-1, 1]) {
+                    for (let i = 0; i <= 24; i++) {
+                        const tip = onScreen(wingPoint(kind, side, i / 24, 1, 1, 0, q, world.wingMount), camera);
+                        expect(tip.x, label).toBeGreaterThan(0);
+                        expect(tip.x, label).toBeLessThan(1);
+                        if (where === 'left') expect(tip.x, label).toBeLessThan(card.x0);
+                    }
+                }
+            }
             world.dispose();
         }
     });
@@ -3640,7 +3666,7 @@ describe('vesper world: where the chrysalis hangs', () => {
         world.setLayout(fallbackLayout(1600, 900), 16 / 9);
         expect(world.perchGoal).toEqual(goal);
         // Not at once: this world's first board was none, and the chrysalis already hung.
-        expect(world.perch).toEqual({ x: 0, y: 0 });
+        expect(world.perch).toEqual({ x: 0, y: 0, wings: 1 });
         let previous = 0;
         let heartWas = world.heart.x;
         let frames = 0;
@@ -3664,16 +3690,16 @@ describe('vesper world: where the chrysalis hangs', () => {
         expect(frames).toBeLessThan(600);
         // The board goes: it glides back the same way.
         world.setLayout(null);
-        expect(world.perchGoal).toEqual({ x: 0, y: 0 });
+        expect(world.perchGoal).toEqual({ x: 0, y: 0, wings: 1 });
         run(world, camera, 1 / 60, 1);
         expect(world.perch.x).toBeGreaterThan(previous);
         expect(world.perch.x).toBeLessThan(0);
         // A seek puts it where it is to hang at once (a capture lands on the very frame it asks for).
         world.seek(world.time);
-        expect(world.perch).toEqual({ x: 0, y: 0 });
+        expect(world.perch).toEqual({ x: 0, y: 0, wings: 1 });
         expect(world.relicAt).toEqual([...STALK]);
         world.setLayout(fallbackLayout(1600, 900), 16 / 9);
-        expect(world.perch).toEqual({ x: 0, y: 0 });
+        expect(world.perch).toEqual({ x: 0, y: 0, wings: 1 });
         world.seek(30);
         expect(world.perch).toEqual(goal);
         expect(world.relicAt).toEqual([STALK[0] + goal.x, STALK[1], STALK[2]]);
@@ -3684,6 +3710,84 @@ describe('vesper world: where the chrysalis hangs', () => {
         fresh.setLayout(fallbackLayout(1600, 900), 16 / 9);
         expect(fresh.perch).toEqual(goal);
         fresh.dispose();
+    });
+});
+
+describe('vesper world: the wings grow out of the chrysalis', () => {
+    /** The wings' mount is the chrysalis's heart's offset from its place at rest, and the perch's scale. */
+    const expectMounted = (world, label = '') => {
+        const m = world.wingMount;
+        for (let k = 0; k < 3; k++) expect(m[['x', 'y', 'z'][k]], label).toBeCloseTo(world.relicHeart[k] - HEART[k], 12);
+        expect(m.scale, label).toBe(world.perch.wings);
+        // The shader is told the same.
+        const u = world.u.wingMount.value;
+        expect([u.x, u.y, u.z, u.w], label).toEqual([m.x, m.y, m.z, m.scale]);
+    };
+
+    it('carries them wherever it hangs, swings them with it, and sizes them to its place', () => {
+        const { camera, world } = makeWorld('Low', { live: false, happenings: false });
+        // With no board they are the wings over the lake they always were, at their full size.
+        expectMounted(world, 'rest');
+        expect(world.wingMount.scale).toBe(1);
+        // A solo board: it glides to the open water beside it, and the wings shrink to fit that
+        // water as it goes, a little a frame, never past the size it is going to.
+        const goal = perchFor(fallbackLayout(1600, 900), 16 / 9);
+        expect(goal.wings).toBeGreaterThan(0.3);
+        expect(goal.wings).toBeLessThan(1);
+        world.setLayout(fallbackLayout(1600, 900), 16 / 9);
+        expect(world.perchGoal).toEqual(goal);
+        let was = world.wingMount.scale;
+        for (let i = 0; i < 240; i++) {
+            run(world, camera, 1 / 60, 1);
+            expectMounted(world, `frame ${i}`);
+            const step = world.wingMount.scale - was;
+            expect(step).toBeLessThanOrEqual(0);
+            expect(-step).toBeLessThan((1 - goal.wings) * 0.05);
+            expect(world.wingMount.scale).toBeGreaterThanOrEqual(goal.wings);
+            was = world.wingMount.scale;
+        }
+        expect(world.wingMount.scale - goal.wings).toBeLessThan(0.01);
+        // Their root went with it: on screen it is the chrysalis's heart, clear of the card.
+        const card = cardUnion(world.layout);
+        expect(Math.hypot(world.origin.x - world.heart.x, world.origin.y - world.heart.y)).toBeLessThan(0.003);
+        expect(world.origin.x).toBeLessThan(card.x0);
+        // A knock swings the chrysalis on its thread: the wings swing with its heart.
+        const before = world.wingMount.x;
+        world.knock(world.time, 1);
+        let swung = 0;
+        for (let i = 0; i < 30; i++) {
+            run(world, camera, 1 / 60, 1);
+            expectMounted(world, `swing ${i}`);
+            swung = Math.max(swung, Math.abs(world.wingMount.x - before));
+        }
+        expect(swung).toBeGreaterThan(0.05);
+        // A seek puts them where they are to hang at once, at the size they are to be.
+        world.setLayout(null);
+        world.seek(world.time + 5);
+        expect(world.wingMount.scale).toBe(1);
+        expectMounted(world, 'seek');
+        world.dispose();
+    });
+
+    it('sheds the scales of a moult from the wings where they hang', () => {
+        const { camera, world } = makeWorld('High', { happenings: false });
+        const card = cardUnion(world.layout);
+        world.onCombo(6);
+        run(world, camera, 4);
+        const before = new Set(dustInUse(world).map((scale) => scale.time));
+        // The chain breaks: the wings moult, shedding scales from their fraying margins.
+        world.onCombo(0);
+        run(world, camera, 0.5);
+        const shed = dustInUse(world).filter((scale) => !before.has(scale.time));
+        expect(shed.length).toBeGreaterThan(20);
+        // Every one leaves from the wings beside the board, not from behind the card where the
+        // wings used to grow: within a wing's reach of the chrysalis's heart.
+        const reach = WINGS.root[0] + WINGS.span * WING_REACH * world.wingMount.scale;
+        for (const scale of shed) {
+            expect(Math.abs(scale.at[0] - world.relicHeart[0])).toBeLessThan(reach + 3);
+            expect(onScreen(scale.at, camera).x).toBeLessThan(card.x0);
+        }
+        world.dispose();
     });
 });
 
