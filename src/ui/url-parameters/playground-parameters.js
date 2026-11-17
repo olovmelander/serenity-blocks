@@ -2659,6 +2659,75 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'weather',
+        category: 'Playground',
+        scope: 'playground.html — sunset',
+        description: 'Hold the Sunset weather on one sky instead of letting its own clock turn it.',
+        values: 'trade, towers, mackerel, clear or veil; or a phase number (1.5 is half-way from towers to '
+            + 'mackerel).',
+        defaultValue: 'Off (the weather turns by itself: a sky every 94 s, trade first).',
+        example: 'hour=18&weather=towers',
+        notes: 'Use on playground.html with effect=sunset.',
+        sources: [
+            'src/playground/effects/sunset.effect.js',
+        ],
+    },
+    {
+        name: 'moon',
+        category: 'Playground',
+        scope: 'playground.html — sunset',
+        description: 'Hold the Sunset moon on a phase angle instead of letting each day bring the next phase.',
+        values: 'Degrees, 0 to 170: 50 the gibbous moon of the first night, 24 near full, 86 a half moon, '
+            + '120 a crescent.',
+        defaultValue: 'Off (50 on the first night, then the next phase from each noon).',
+        example: 'hour=19.3&moon=120',
+        notes: 'Use on playground.html with effect=sunset.',
+        sources: [
+            'src/playground/effects/sunset.effect.js',
+        ],
+    },
+    {
+        name: 'meteor',
+        category: 'Playground',
+        scope: 'playground.html — sunset',
+        description: 'Let one shooting star fall this many seconds before the frame.',
+        values: 'Seconds (a star falls for about half a second to a second).',
+        defaultValue: 'Off (by night one falls now and then by itself).',
+        example: 'hour=0&meteor=0.3',
+        notes: 'Use on playground.html with effect=sunset.',
+        sources: [
+            'src/playground/effects/sunset.effect.js',
+        ],
+    },
+    {
+        name: 'shower',
+        category: 'Playground',
+        scope: 'playground.html — sunset',
+        description: 'Start the shower of shooting stars an emptied well brings by night, this many seconds '
+            + 'before the frame.',
+        values: 'Seconds (the shower lasts about three).',
+        defaultValue: 'Off.',
+        example: 'hour=0&shower=1.5',
+        notes: 'Use on playground.html with effect=sunset.',
+        sources: [
+            'src/playground/effects/sunset.effect.js',
+        ],
+    },
+    {
+        name: 'b2b',
+        category: 'Playground',
+        scope: 'playground.html — sunset',
+        description: 'Make the event\'s clear a back-to-back: a second wave of light follows the first and sun '
+            + 'dogs stand on the halo.',
+        values: '1 enables.',
+        defaultValue: 'Off.',
+        example: 'event=clear&lines=2&b2b=1',
+        notes: 'Use on playground.html with effect=sunset.',
+        sources: [
+            'src/playground/effects/sunset.effect.js',
+        ],
+    },
+    {
         name: 'clears',
         category: 'Playground',
         scope: 'playground.html — kaleidosonic, solar-eclipse, starlight',

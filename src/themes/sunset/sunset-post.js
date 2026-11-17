@@ -86,8 +86,8 @@ const roundBoxSdf = /* @__PURE__ */ Fn(([p, rect, radius]) => {
 });
 
 /**
- * Sunset filmic: a hue-preserving shoulder on the max channel (identity below `k`), then a path
- * to white for the hottest values (the sun's disc, its road on the water).
+ * Sunset filmic: a hue-preserving shoulder on the max channel (identity below `k`), then the
+ * hottest values (the sun's disc, its road on the water) burn out one channel after another.
  */
 const sunsetFilmic = /* @__PURE__ */ Fn(([cIn]) => {
     const c = max(cIn, vec3(0.0));
@@ -96,7 +96,11 @@ const sunsetFilmic = /* @__PURE__ */ Fn(([cIn]) => {
     const shoulder = k.add(float(1.0).sub(k).mul(float(1.0).sub(exp(peak.sub(k).div(float(1.0).sub(k)).negate()))));
     const mapped = select(peak.greaterThan(k), shoulder, peak);
     const toned = c.mul(mapped.div(peak));
-    return mix(toned, vec3(mapped, mapped, mapped), smoothstep(4.0, 30.0, peak).mul(0.75));
+    // The hottest values burn out channel by channel, as film does: red first, then green, then
+    // blue. So a low sun's heart goes from ember to gold to white and its road on the water to
+    // gold, where a path straight to white took both through pink.
+    const hot = vec3(1.0).sub(exp(c.mul(-0.55)));
+    return mix(toned, max(toned, hot), smoothstep(3.0, 14.0, peak).mul(0.85));
 }).setLayout({ name: 'sunset_sunsetFilmic', type: 'vec3', inputs: [{ name: 'cIn', type: 'vec3' }] });
 
 export class SunsetPost {
