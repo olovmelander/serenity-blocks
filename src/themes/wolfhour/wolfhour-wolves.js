@@ -34,7 +34,7 @@ import {
 } from './wolfhour-wolf-rig.js';
 import { WOLF_COATS, WOLF_LOOKS, roverLook } from './wolfhour-wolf-coats.js';
 import {
-    FAR_FILE, ROVER_COUNT, farFileAt, follow, moonWolfAt, roversAt, summonMoonWolf, visitPlan,
+    FAR_FILE, ROVER_COUNT, SETTLE, farFileAt, follow, moonWolfAt, roversAt, summonMoonWolf, visitPlan,
 } from './wolfhour-wolf-travel.js';
 import { WOLF_TEXELS, createWolfMaterial, createWolfTable } from './wolfhour-wolf-material.js';
 import {
@@ -203,6 +203,8 @@ export const HOWL = Object.freeze({ rise: 0.6, hold: 2.6, fall: 1.0 });
  * pack draws breath, and the next one begins a fresh howl under the one still falling.
  */
 export const HOWL_MAX_HOLD = 5.4;
+/** After a note held that long, the pack's breath (seconds) between its fall and the next note. */
+export const HOWL_BREATH = 0.6;
 /** The wolf across the valley answering on its own (a back-to-back clear). */
 export const ANSWER = Object.freeze({ rise: 0.5, hold: 1.7, fall: 0.9 });
 /** A line clear's glance: the pack turns to look at you. */
@@ -303,13 +305,15 @@ export function scoutAt(time) {
             moving: true,
             gaitKind: 'walk',
             pause: 0,
+            settled: 0,
             yaw: 0,
         };
     }
     if (local < walk + SCOUT.pause) {
         // At the end of its pause it turns round (through a view of its face) to trot back.
         const pause = local - walk;
-        const f = Math.min(1, Math.max(0, (pause - (SCOUT.pause - TURN - 0.1)) / TURN));
+        const turnsAt = SCOUT.pause - TURN - 0.1;
+        const f = Math.min(1, Math.max(0, (pause - turnsAt) / TURN));
         return {
             x: SCOUT.to,
             facing: -1,
@@ -319,6 +323,9 @@ export function scoutAt(time) {
             moving: false,
             gaitKind: 'walk',
             pause,
+            // (Settled at its lookout: it joins a howl only from a moment after it stops until a
+            // moment before it turns, so the howl never holds a turn back and lets go at once.)
+            settled: Math.min(smooth(pause / SETTLE.in), smooth((turnsAt - pause) / SETTLE.out)),
             yaw: Math.PI * smooth(f),
             step: f * 2,
             stepHeight: 1.8 * Math.sin(f * Math.PI),
@@ -336,6 +343,7 @@ export function scoutAt(time) {
             moving: true,
             gaitKind: 'trot',
             pause: 0,
+            settled: 0,
             yaw: 0,
         };
     }
@@ -574,6 +582,18 @@ export function createWolfhourPack({
     const howlIn = (howl, spec, t) => (joins(spec, howl)
         ? heldEnvelope(t - spec.delay, howl.start, howl.holdEnd, HOWL) : 0);
     const howlOf = (spec, t) => Math.max(howlIn(state.howl, spec, t), howlIn(state.echo, spec, t));
+    /**
+     * The pack's chorus reaches the wolf across the valley late (its delay). While that wolf's own
+     * answer still holds, it holds on until the chorus is up there (at most a long answer), so the
+     * one takes over from the other at the top instead of the head dipping between them.
+     */
+    const bridgeAnswer = (time) => {
+        const { answer, howl } = state;
+        if (!(time >= answer.start && time < answer.holdEnd)) return;
+        const up = howl.start + ANSWERER.delay + HOWL.rise;
+        if (!(up > time)) return;
+        answer.holdEnd = Math.max(answer.holdEnd, Math.min(up, answer.start + ANSWER.rise + ANSWER.hold * 2));
+    };
 
     /**
      * Pose one wolf into its row at `x`, facing ±1, on the ridge `groundAt` describes (the
@@ -905,22 +925,39 @@ export function createWolfhourPack({
         howl(time) {
             if (!Number.isFinite(time)) return false;
             const current = state.howl;
-            if (time >= current.start && time < current.holdEnd) {
+            // A note already due after the pack's breath: it will sound.
+            if (time < current.start) return false;
+            if (time < current.holdEnd) {
                 current.holdEnd = Math.min(
                     Math.max(current.holdEnd, time + HOWL.rise + HOWL.hold),
                     current.start + HOWL.rise + HOWL_MAX_HOLD,
                 );
                 if (current.joins) standStill(time, current.holdEnd + HOWL_STILL_TAIL);
+                bridgeAnswer(time);
                 return false;
             }
-            // The howl before keeps sounding under the fresh one until it has fallen.
+            // The howl before keeps sounding under the fresh one until it has fallen (each wolf
+            // hears it a moment late: its own delay), and the fresh one never dips under it:
+            //  - after a note held as long as a howl goes, the pack draws breath: the note falls
+            //    away and the next begins a breath after it has gone;
+            //  - while a shorter note is still falling, the next takes it up from where it is;
+            //  - from silence, it begins.
+            const level = heldEnvelope(time, current.start, current.holdEnd, HOWL);
+            const held = current.holdEnd - current.start >= HOWL.rise + HOWL_MAX_HOLD - 1e-6;
             state.echo.start = current.start;
             state.echo.holdEnd = current.holdEnd;
             state.echo.joins = current.joins;
-            current.start = time;
-            current.holdEnd = time + HOWL.rise + HOWL.hold;
-            current.joins = !busyAt('young', youngClock(time));
-            if (current.joins) standStill(time, current.holdEnd + HOWL_STILL_TAIL);
+            let start = time;
+            let sings = current.joins;
+            if (level > 0 && held) start = current.holdEnd + HOWL.fall + HOWL_BREATH;
+            else if (level > 0) start = time - HOWL.rise * inverseSmooth(level);
+            // (A note taken up keeps its singers; one begun afresh asks the young wolf again.)
+            if (!(level > 0) || held) sings = !busyAt('young', youngClock(Math.max(time, start)));
+            current.start = start;
+            current.holdEnd = start + HOWL.rise + HOWL.hold;
+            current.joins = sings;
+            if (sings) standStill(time, current.holdEnd + HOWL_STILL_TAIL);
+            bridgeAnswer(time);
             return true;
         },
         /**
@@ -928,7 +965,19 @@ export function createWolfhourPack({
          * restarted, by the next one).
          */
         answer(time) {
-            if (Number.isFinite(time)) rearm(state.answer, time, ANSWER, ANSWER.hold * 2);
+            if (!Number.isFinite(time)) return;
+            const { answer } = state;
+            if (time >= answer.start && time < answer.holdEnd) {
+                rearm(answer, time, ANSWER, ANSWER.hold * 2);
+                bridgeAnswer(time);
+                return;
+            }
+            // Its own answer rises from wherever its head already is (the pack's howl may still
+            // be falling there), so the two never meet in a dip.
+            const level = Math.max(heldEnvelope(time, answer.start, answer.holdEnd, ANSWER), howlOf(ANSWERER, time));
+            answer.start = time - ANSWER.rise * inverseSmooth(level);
+            answer.holdEnd = answer.start + ANSWER.rise + ANSWER.hold;
+            bridgeAnswer(time);
         },
         /**
          * A smaller clear: the pack turns to look at you, and keeps looking while the clears keep
@@ -1089,8 +1138,10 @@ export function createWolfhourPack({
                         hide(rover);
                         return;
                     }
+                    // It howls with the pack and looks at you only as far as it has settled where
+                    // it stands (follow(): eased in after it stops, out before it moves on).
                     const own = now.act?.howl ?? 0;
-                    const howl = Math.max(own, now.howls ? howlOf(SCOUT, t) : 0);
+                    const howl = Math.max(own, howlOf(SCOUT, t) * (now.joins ?? 0));
                     pose(rover, t, m, {
                         x: now.x,
                         groundAt: grounds.scout,
@@ -1098,7 +1149,7 @@ export function createWolfhourPack({
                         yaw: now.yaw,
                         act: now.act ?? {},
                         howl,
-                        glance: now.moving ? 0 : glance,
+                        glance: glance * (now.settled ?? 0),
                         moving: now.moving,
                         walked: now.walked,
                         pace: now.pace,
@@ -1116,7 +1167,7 @@ export function createWolfhourPack({
                     dress('scout', () => WOLF_LOOKS.scout);
                     // It fades in and out at the frame's edge rather than popping. At its lookout it
                     // looks round and at you, and howls with the pack if it stands there.
-                    const howl = walk.moving ? 0 : howlOf(SCOUT, t);
+                    const howl = howlOf(SCOUT, t) * walk.settled;
                     pose(scout, t, m, {
                         x: walk.x,
                         groundAt: grounds.scout,
@@ -1174,7 +1225,10 @@ export function createWolfhourPack({
             // is and comes and goes by fading.
             const white = state.summit ? moonWolfAt(t, state.calls) : null;
             if (white) {
-                const howl = Math.max(white.howl, howlOf(SUMMIT, t)) * white.hold;
+                // Its own song and the pack's chorus, either: as one fades while the other rises
+                // the head stays up (the higher of the two would dip where they cross).
+                const chorus = howlOf(SUMMIT, t);
+                const howl = (1 - (1 - white.howl) * (1 - chorus)) * white.hold;
                 pose(moonWolf, t, m, walking ? {
                     x: white.x,
                     groundAt: grounds.moon,
@@ -1183,7 +1237,7 @@ export function createWolfhourPack({
                     yaw: white.yaw,
                     act: white.act,
                     howl,
-                    glance: white.moving ? 0 : glance * 0.5 * white.hold,
+                    glance: glance * 0.5 * white.hold,
                     moving: white.moving,
                     walked: white.walked,
                     pace: white.pace,
