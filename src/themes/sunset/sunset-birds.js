@@ -22,9 +22,13 @@
  * The table carries each bird's whole transform and the vertex stage applies it: a positionNode's
  * output is final, so an instance matrix would be lost.
  *
- * A chain keeps calling: a flock called while one is still on its way in JOINS it (the newcomers
- * close up from behind, so the skein grows with the chain), and one called later sets out as a
- * second flight beside the first. Nothing ever restarts a flock in the air.
+ * The skein comes in whole from beyond one edge of the frame and flies out past the other: no bird
+ * appears or vanishes in sight, and every bird keeps the skein's pace. A chain keeps calling: a
+ * flock still coming in takes the newcomers straight into their places at its tail while those
+ * places are still out of sight (so the skein grows with the chain and still comes in as one), and
+ * a call once its tail is in sight sets out a new flight on a line of its own, over or under the
+ * first. Nothing ever restarts a flock in the air, and no bird is ever seen racing to catch up
+ * (latecomers that closed a gap behind the skein in plain sight looked wrong).
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -35,17 +39,26 @@ import { mulberry32, smooth } from './sunset-core.js';
 import { SUNSET_GULL } from './sunset-gull-model.js';
 import { skyBase } from './sunset-tsl.js';
 
-/** How long a flock takes to cross, and how far from the eye it flies (metres). */
-export const FLOCK_SECONDS = 22;
+/**
+ * How far from the eye the skein flies (metres), and how fast along its line (metres a second:
+ * about three degrees of the frame a second, so it takes some 27 s to cross a wide frame).
+ */
 export const FLOCK_RANGE = 58;
-/** Flights in the air at once (they share the instances), and how long one takes newcomers. */
-export const FLIGHTS = 2;
-export const JOIN_SECONDS = FLOCK_SECONDS * 0.55;
-/** A bird that joins a flight closes up from this far behind (metres) over this long (seconds). */
-const CATCH_BACK = 14;
-const CATCH_SECONDS = 3;
-/** A founding bird's join time: long before any clock. */
-const FOUNDER = -1e9;
+export const FLOCK_SPEED = 3;
+const RATE = FLOCK_SPEED / FLOCK_RANGE;
+/** Flights in the air at once (they share the instances), and the fewest birds worth a new one. */
+export const FLIGHTS = 3;
+const MIN_FLIGHT = 3;
+/**
+ * How long a called flock flies out of sight before its leader comes in (seconds): the calls of a
+ * chain in that time fill its skein unseen, so a quick chain comes in as one skein.
+ */
+export const LEAD_SECONDS = 6;
+/**
+ * How far past the frame's edge (degrees, beyond a bird's own wingtip) the skein counts as out of
+ * sight: the swell, the pointer and the breath turn the view two degrees at most.
+ */
+export const OUT_OF_SIGHT = 4;
 /** How much larger than life the skein flies (the model is a real 1.33 m gull). */
 export const GULL_SCALE = 2.1;
 
@@ -320,8 +333,9 @@ export function createFlock({ count, U, seed = 29 }) {
     table.colorSpace = THREE.NoColorSpace;
     table.name = 'sunset-gull-bones';
     table.needsUpdate = true;
-    /** Where each bird is (x, y, z) and its size: read by the tests. */
+    /** Where each bird is (x, y, z) and its size, and which flight and bird it is: read by the tests. */
     const places = new Float32Array(rows * 4);
+    const owners = new Int16Array(rows * 2);
     const pose = new Float32Array(BONES * 8);
     const turnQ = [0, 0, 0, 1];
     const where = [0, 0, 0];
@@ -398,12 +412,19 @@ export function createFlock({ count, U, seed = 29 }) {
     mesh.renderOrder = 20;
 
     const rand = mulberry32(seed + 101);
-    /** Each bird's place in the skein and its own pace. */
+    const halfSpan = gullModel().span * 0.5 * GULL_SCALE;
+    /**
+     * Each bird's place in the skein and its own pace. Each rank flies 1.15 to 1.65 m behind the
+     * one before it, so the line has no holes (a stride of its own times the rank left the last
+     * birds of a long skein straggling metres behind the rest).
+     */
+    let rankBack = 0;
     const birds = Array.from({ length: count }, (_, i) => {
         const rank = Math.ceil(i / 2);
         const side = i % 2 === 0 ? 1 : -1;
-        return {
-            back: rank * (1.15 + rand() * 0.5) + rand() * 0.6,
+        if (i % 2 === 1) rankBack += 1.15 + rand() * 0.5;
+        const bird = {
+            back: rankBack + rand() * 0.6,
             aside: side * rank * (0.75 + rand() * 0.35) + (rand() - 0.5) * 0.8,
             up: (rand() - 0.5) * 1.3 + rank * 0.1,
             pace: 2.6 + rand() * 0.9,
@@ -411,14 +432,33 @@ export function createFlock({ count, U, seed = 29 }) {
             glide: rand() * 10,
             wander: rand() * 6,
         };
+        // Flying either way (index 0 left to right): how far its bearing trails the leader's
+        // (radians), and how far its wingtips reach either side of it, with a little for its
+        // wobble. Its side of the line is nearer the eye one way across than the other.
+        const near = [1, -1].map((dir) => FLOCK_RANGE - dir * bird.aside);
+        bird.lag = near.map((d) => Math.atan2(bird.back, d));
+        bird.reach = near.map((d) => Math.atan(halfSpan / Math.hypot(bird.back, d)) + 0.6 / FLOCK_RANGE);
+        return bird;
     });
-    /** The flights: each its own line across the light; `joined` is each bird's join time. */
+    /**
+     * The flights, each its own line across the frame. Along the line the way it flies, the
+     * leader's bearing (radians, `dir` times its bearing right of the view's middle) starts at
+     * `p0`, out of sight, and goes on at RATE; `lag` is how far behind that the last wingtip
+     * trails, so the flight is over once that is out of sight past the far edge.
+     */
     const flights = Array.from({ length: FLIGHTS }, () => ({
-        at: -100, n: 0, az: 0, el: 0, dir: 1, joined: new Float64Array(count).fill(FOUNDER),
+        at: -100, n: 0, el: 0, dir: 1, p0: 0, lag: 0,
     }));
-    const inAir = (f, clock) => {
-        const s = clock - f.at;
-        return f.n > 0 && s >= 0 && s <= FLOCK_SECONDS + 6;
+    /** Half the frame's width (radians), as the world last gave it, and the out-of-sight line. */
+    let edge = 40 * DEG;
+    const away = () => edge + OUT_OF_SIGHT * DEG;
+    const way = (f) => (f.dir > 0 ? 0 : 1);
+    const lead = (f, clock) => f.p0 + RATE * (clock - f.at);
+    const inAir = (f, clock) => f.n > 0 && clock >= f.at && lead(f, clock) - f.lag < away();
+    /** Whether bird `i`'s place in `f` is still out of sight beyond the edge `f` comes in by. */
+    const unseen = (f, i, clock) => {
+        const b = birds[Math.max(0, Math.min(count - 1, i))];
+        return lead(f, clock) - b.lag[way(f)] + b.reach[way(f)] < -away();
     };
     /** Birds no other flight in the air is using. */
     const roomBeside = (f, clock) => {
@@ -428,11 +468,18 @@ export function createFlock({ count, U, seed = 29 }) {
         }
         return Math.max(0, count - used);
     };
-    /** Newcomers join `f`: the skein grows to `n`, the new birds closing up from behind. */
+    /** Bird `i` flies in `f`: its trailing wingtip may lengthen the flight. */
+    const enlist = (f, i) => {
+        const b = birds[i];
+        f.lag = Math.max(f.lag, b.lag[way(f)] + b.reach[way(f)]);
+    };
+    /** Newcomers take their places at `f`'s tail, up to `n` birds, as long as those are unseen. */
     const join = (f, n, clock) => {
-        const next = Math.min(n, roomBeside(f, clock));
-        for (let i = f.n; i < next; i += 1) f.joined[i] = clock;
-        if (next > f.n) f.n = next;
+        const most = Math.min(n, roomBeside(f, clock));
+        while (f.n < most && unseen(f, f.n, clock)) {
+            enlist(f, f.n);
+            f.n += 1;
+        }
     };
 
     return {
@@ -441,44 +488,57 @@ export function createFlock({ count, U, seed = 29 }) {
         /** Every flying bird's bones as the vertex stage reads them (a row a bird). */
         table,
         /**
-         * Call `n` birds across the light whose direction is `toward` (unit vector). A flight still
-         * on its way in takes them (it grows to `n`); otherwise a free flight sets out; if every
-         * flight is in the air and past taking newcomers, the youngest grows. Never a restart.
+         * Call `n` birds across the light whose direction is `toward` (unit vector); `half` is
+         * half the frame's width (degrees). The youngest flight still coming in takes them into
+         * the places at its tail that are still out of sight (it grows to `n`); a call once its
+         * tail is in sight sets out a free flight; with none free the call goes by. Never a restart.
          */
-        send(clock, n, toward, r = 0.5) {
+        send(clock, n, toward, r = 0.5, half = undefined) {
+            if (Number.isFinite(half) && half > 0) edge = half * DEG;
             const want = Math.min(n, count);
             if (!(want > 0)) return;
-            let joining = null;
+            let coming = null;
             let free = null;
-            let youngest = null;
             for (let k = 0; k < FLIGHTS; k += 1) {
                 const f = flights[k];
                 if (!inAir(f, clock)) {
                     if (!free) free = f;
-                } else {
-                    if (clock - f.at < JOIN_SECONDS && (!joining || f.at > joining.at)) joining = f;
-                    if (!youngest || f.at > youngest.at) youngest = f;
+                } else if (unseen(f, f.n - 1, clock) && (!coming || f.at > coming.at)) {
+                    coming = f;
                 }
             }
-            if (joining || !free) {
-                join(joining || youngest, want, clock);
-                return;
+            if (coming) {
+                if (coming.n >= want) return;
+                const had = coming.n;
+                join(coming, want, clock);
+                if (coming.n > had) return;
             }
-            const other = flights.find((f) => f !== free && inAir(f, clock)) || null;
+            if (!free) return;
+            const size = Math.min(want, roomBeside(free, clock));
+            if (size < Math.min(MIN_FLIGHT, want)) return;
+            const others = flights.filter((f) => f !== free && inAir(f, clock));
             free.at = clock;
-            free.joined.fill(FOUNDER);
-            free.n = Math.min(want, roomBeside(free, clock));
-            free.az = Math.atan2(toward.x, -toward.z);
-            const el = Math.asin(Math.max(-1, Math.min(1, toward.y)));
-            // A little above the light, never into the sea, and in the picture when it is high; a
-            // second flight keeps a line of its own, over or under the first, the same way across.
-            let apart = 0;
+            free.n = 0;
+            free.lag = 0;
+            // Flights beside each other go the same way across, so they never fly through each other.
             free.dir = r < 0.7 ? 1 : -1;
-            if (other) {
-                apart = other.el > 0.12 ? -0.04 : 0.05;
-                free.dir = other.dir;
+            if (others.length > 0) free.dir = others[0].dir;
+            let front = 0;
+            for (let i = 0; i < size; i += 1) {
+                enlist(free, i);
+                front = Math.max(front, birds[i].reach[way(free)] - birds[i].lag[way(free)]);
             }
-            free.el = Math.min(0.3 + r * 0.05, Math.max(0.035, el + 0.025 + r * 0.03 + apart));
+            free.n = size;
+            // The leader's wingtip comes into sight LEAD_SECONDS from now.
+            free.p0 = -away() - front - RATE * LEAD_SECONDS;
+            // A little above the light, never into the sea, and in the picture when it is high; a
+            // flight beside others keeps a line of its own, over or under theirs.
+            const el = Math.asin(Math.max(-1, Math.min(1, toward.y)));
+            const top = 0.3 + r * 0.05;
+            const line = (e) => Math.min(top, Math.max(0.035, e));
+            const base = line(el + 0.025 + r * 0.03);
+            free.el = [0, 0.05, -0.045, 0.1, -0.09].map((d) => line(base + d))
+                .find((e) => others.every((o) => Math.abs(o.el - e) >= 0.035)) ?? base;
         },
         reset() {
             for (let k = 0; k < FLIGHTS; k += 1) {
@@ -492,40 +552,37 @@ export function createFlock({ count, U, seed = 29 }) {
             for (let k = 0; k < FLIGHTS; k += 1) if (inAir(flights[k], clock)) n += flights[k].n;
             return n;
         },
-        update(clock) {
+        /** Fly every flight in the air to `clock`; `half` is half the frame's width (degrees). */
+        update(clock, half = undefined) {
+            if (Number.isFinite(half) && half > 0) edge = half * DEG;
             let at = 0;
             for (let k = 0; k < FLIGHTS; k += 1) {
                 const flight = flights[k];
                 if (!inAir(flight, clock)) continue;
-                const s = clock - flight.at;
-                // The leader's bearing sweeps across the light: from 32 degrees one side to 32 the other.
-                const sweep = 0.56;
-                const u = s / FLOCK_SECONDS;
-                const lead = flight.az + flight.dir * (-sweep + 2 * sweep * u);
-                const heading = lead + flight.dir * Math.PI * 0.5;
+                // The leader's bearing, and the line's heading, square to it the way it flies.
+                const bearing = flight.dir * lead(flight, clock);
+                const heading = bearing + flight.dir * Math.PI * 0.5;
                 const fx = Math.sin(heading);
                 const fz = -Math.cos(heading);
                 const sx = -fz;
                 const sz = fx;
-                const cx = Math.sin(lead) * FLOCK_RANGE;
-                const cz = -Math.cos(lead) * FLOCK_RANGE;
-                const grow = smooth(0, 1.2, s) * (1 - smooth(FLOCK_SECONDS + 4, FLOCK_SECONDS + 6, s));
+                const cx = Math.sin(bearing) * FLOCK_RANGE;
+                const cz = -Math.cos(bearing) * FLOCK_RANGE;
                 // A second flight's birds keep their own beat.
                 const own = k * 1.7;
                 for (let i = 0; i < flight.n && at < count; i += 1) {
                     const b = birds[i];
-                    // A newcomer comes in from behind the skein and closes up to its place.
-                    const late = clock - flight.joined[i];
-                    const back = b.back + CATCH_BACK * (1 - smooth(0, CATCH_SECONDS, late));
                     const wob = Math.sin(clock * 0.6 + b.wander + own) * 0.5;
                     const y = 3.2 + Math.tan(flight.el) * FLOCK_RANGE + b.up
                         + Math.sin(clock * 0.45 + b.wander + own) * 0.4;
-                    where[0] = cx - fx * back + sx * (b.aside + wob);
+                    where[0] = cx - fx * b.back + sx * (b.aside + wob);
                     where[1] = y;
-                    where[2] = cz - fz * back + sz * (b.aside + wob);
-                    const size = GULL_SCALE * Math.max(0.001, grow * smooth(0, 1, late));
+                    where[2] = cz - fz * b.back + sz * (b.aside + wob);
+                    const size = GULL_SCALE;
                     for (let c = 0; c < 3; c += 1) places[at * 4 + c] = where[c];
                     places[at * 4 + 3] = size;
+                    owners[at * 2] = k;
+                    owners[at * 2 + 1] = i;
                     // Bursts of beats and long glides.
                     const gliding = smooth(0.55, 0.85, Math.sin(clock * 0.31 + b.glide + own) * 0.5 + 0.5);
                     const bank = Math.sin(clock * 0.5 + b.wander + own) * 0.12;
@@ -541,6 +598,10 @@ export function createFlock({ count, U, seed = 29 }) {
         /** Bird `i`'s place (x, y, z) and size this frame. */
         placeOf(i) {
             return Array.from(places.subarray(i * 4, i * 4 + 4));
+        },
+        /** Which flight and which of its birds instance `i` is this frame. */
+        whoIs(i) {
+            return { flight: owners[i * 2], bird: owners[i * 2 + 1] };
         },
         dispose() {
             mesh.removeFromParent();

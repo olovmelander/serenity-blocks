@@ -2832,10 +2832,11 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'flock',
         category: 'Playground',
         scope: 'playground.html — sunset',
-        description: 'Send this many gulls across the light before the frame.',
-        values: 'Nonnegative integer (the tier caps it).',
+        description: 'Send this many gulls across the light before the frame; a comma list stages a chain, '
+            + 'one call each (with flockAge giving each call its age).',
+        values: 'Nonnegative integer (the tier caps it), or a comma list of them.',
         defaultValue: '0.',
-        example: 'flock=17',
+        example: 'flock=5,9,13&flockAge=14,12,10',
         notes: 'Use on playground.html with effect=sunset.',
         sources: [
             'src/playground/effects/sunset.effect.js',
@@ -2845,10 +2846,25 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'flockAge',
         category: 'Playground',
         scope: 'playground.html — sunset',
-        description: 'How many seconds before the frame the gulls of flock set out (they cross in about 22 s).',
-        values: 'Seconds.',
+        description: 'How many seconds before the frame the gulls of flock set out: they fly 6 s out of '
+            + 'sight, then cross a wide frame in about 27 s.',
+        values: 'Seconds, or a comma list (one a call of flock; one age serves them all).',
         defaultValue: '9.',
         example: 'flock=17&flockAge=11',
+        notes: 'Use on playground.html with effect=sunset.',
+        sources: [
+            'src/playground/effects/sunset.effect.js',
+        ],
+    },
+    {
+        name: 'flockR',
+        category: 'Playground',
+        scope: 'playground.html — sunset',
+        description: 'Pick the line of the flock calls (otherwise the world draws it): under 0.7 the gulls fly '
+            + 'left to right, from 0.7 right to left; within that it lifts the line a little.',
+        values: '0 to 1.',
+        defaultValue: 'The world\'s own draw.',
+        example: 'flock=13&flockAge=16&flockR=0.9',
         notes: 'Use on playground.html with effect=sunset.',
         sources: [
             'src/playground/effects/sunset.effect.js',
