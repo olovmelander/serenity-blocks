@@ -97,10 +97,14 @@ export function createBursts(u, perBurst) {
     const cell = max(scaleQ.div(10.0), 0.2);
     const isJet = step(abs(kind.sub(BURST_KIND.jet)), 0.5);
     const isFountain = step(abs(kind.sub(BURST_KIND.fountain)), 0.5);
-    const h1 = tbHash21(vec2(k, slot.add(1.7)));
-    const h2 = tbHash21(vec2(k.add(3.1), slot.mul(1.3).add(5.3)));
-    const h3 = tbHash21(vec2(k.mul(1.7).add(9.1), slot));
-    const h4 = tbHash21(vec2(k.add(0.37), slot.add(7.7)));
+    // Each burst's drops are its own, drawn from where and when it began: never from its slot,
+    // which passes to another burst whenever one is born (the rows are written newest first), and
+    // every drop in the air would jump to a new flight. A whole number, for the hash.
+    const id = floor(fract(A.w.mul(0.6180339).add(A.x.mul(0.0131)).add(A.z.mul(0.0077))).mul(4093.0));
+    const h1 = tbHash21(vec2(k, id.add(1.7)));
+    const h2 = tbHash21(vec2(k.add(3.1), id.mul(1.3).add(5.3)));
+    const h3 = tbHash21(vec2(k.mul(1.7).add(9.1), id));
+    const h4 = tbHash21(vec2(k.add(0.37), id.add(7.7)));
     // How high the drops climb: a splash about one to three cells, a jet four to eight, a vent
     // six to ten (each drop its own share of it).
     const top = cell.mul(mix(mix(h1.mul(2.0).add(1.0), h1.mul(4.0).add(4.0), isJet), h1.mul(4.0).add(6.0), isFountain));
@@ -134,7 +138,7 @@ export function createBursts(u, perBurst) {
             .add(u.windDir.y.mul(0.6)),
     );
     const alive = live.mul(step(A.y.sub(0.2), drop.y));
-    const vId = flatVarying(slot.mul(97.0).add(k), 'vBurstId'); // flat: a drop flashes whole
+    const vId = flatVarying(id.mul(97.0).add(k), 'vBurstId'); // flat: a drop flashes whole
     const vTint = varying(B.xyz, 'vBurstTint');
     const vJet = varying(isJet, 'vBurstJet');
     // Drops thin toward the end of their flight; a fountain fades in and out over its life.

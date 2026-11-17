@@ -166,6 +166,51 @@ These are judgements I made that you may see differently:
    the lock spring's hexagonal core and the Seal's scribbled foam (both older, both named by
    the critic), the theme icon and `docs/theme-screenshots` still show the morning only.
 
+## Smooth under play (2026-11-17, later)
+
+The owner found that the steam and the effects popped while playing. Each event looked right
+alone in the playground; the pops came from events overlapping. A CPU probe stepped a scripted
+75-second session at 60 fps (a lock every 0.8 s, 40% hard drops, clears, chains, an occasional
+four and twist) and counted every discontinuity, by the line of code that raised it:
+
+| Visible pop | before | after | before, fast play | after |
+|---|---|---|---|---|
+| steam flicking in or out of the march's 32 slots | 814 | 4 | 1,494 | 12 |
+| steam changing shape (its billow seed changed) | 284 | 0 | 531 | 0 |
+| steam jumping more than 30% in one frame | 128 | 13 | 123 | 56 |
+| steam vanishing while still showing | 58 | 0 | 81 | 5 |
+| drops in the air jumping to new paths | 963 | 0 | 1,665 | 0 |
+| ground marks (seal lips, springs) removed while showing | 5 | 1 | 105 | 4 |
+
+The causes, and what replaced them:
+
+- **The march's slots were re-chosen every frame.** Up to 67 steam bodies wanted the 32 slots
+  (the Seal's curtains alone up to 36), and the densest were kept each frame, so the bodies at
+  the limit swapped in and out. Now every event body has an identity and an admission that eases
+  (`admitVapour`): the newest are admitted first, a new one only well inside the share, one
+  that must give way thins out over 0.6 s and does not come back. The basin's own steam and the
+  eruptions always stand. Demand came down too: a seal curtain is two plumes, not four, lives
+  3.6 s, and a newer row's curtain beside it takes its place; an old lock plume crowded by newer
+  ones fades right out. Peak demand fell from 67 to 52.
+- **Seeds came from a list index.** When an older fill, rung, devil or spring left its list, every
+  younger one's billows were re-dealt. Each now draws its seed from its own identity (`seedOf`).
+- **Drops were hashed from their burst's slot,** and bursts are written newest first: every lock
+  shifted every splash and fountain in the air one slot and all their drops jumped. Drops are now
+  hashed from the burst's own start and place. There are 24 burst slots (was 16), the chain's
+  fountains keep theirs first, and the seal has 12 fill slots (was 8).
+- **Births were frame-sharp.** A lock's puff reached full density in 80 ms, its plume in 150 ms,
+  and its spring on the ground flashed at full strength in its first frame. They now take a
+  quarter to a third of a second, and the flash swells and fades.
+- **The crowding rule from the living-basin pass** halved an older plume in one frame when a
+  newer one opened beside it; it now counts the newer one in as it grows.
+
+The camera was checked too: no kick moves it more than 0.08° in a frame.
+
+Verified: the theme's 270 tests (with `tests/unit/thermal-bloom-smooth.test.js`, which plays
+24 s of quick hand and requires no body to vanish, reseed or move more than a fifth of its peak
+in a frame); playground captures of a lock, a hard drop, clears, four lines and a ten-link chain
+on WebGPU and WebGL2; a real game of rapid hard drops and a clear with a clean console.
+
 ## Reproduce
 
 `npm run dev:playground`, then `playground.html?effect=thermal-bloom&maxFps=30&board=1&…`:

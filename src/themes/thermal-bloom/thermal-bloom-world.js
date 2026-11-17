@@ -466,12 +466,17 @@ const CLOCK_WRAP = 4096;
  */
 const LADDER_OUT_STEP = 0.3;
 /** Lock springs that may still be fading into the ground beyond the live ones (bounded GPU). */
-const SPRINGS_FADING = 3;
+const SPRINGS_FADING = 5;
 /** A boil-over asked to make room thins away over this long instead of vanishing (seconds). */
 const BOIL_THIN = 0.8;
+/**
+ * The events' steam bodies share the march's slots (what the basin's own steam and the eruptions
+ * leave): newest first, each eased in over `in` seconds and out over `out` when it must give way.
+ */
+const VAPOUR_ADMIT = Object.freeze({ in: 0.35, out: 0.6, margin: 3 });
 /** Boil-overs in the air at once (the oldest beyond BOILS_SOFT thin away to make room). */
 const BOILS_SOFT = 8;
-const BOILS_MAX = 12;
+const BOILS_MAX = 16;
 /** A back-to-back clear's answer at the Consort: a burst off its pool (§3.5), fed by the next. */
 const CONSORT_KICK = Object.freeze({
     delay: 0.15, rise: 0.45, hold: 0.9, fall: 0.8, steam: 0, height: 9,
@@ -700,6 +705,11 @@ export class ThermalBloomWorld {
         this.rosettes = [];
         this.drained = 0;
         this.consortWet = 0;
+        /** The events' bodies' stable identities, and how far each is admitted to the march. */
+        this._uid = 0;
+        this._admit = new Map();
+        this._retired = new Set();
+        this._admitAt = null;
         this.phase = time % CLOCK_WRAP;
         this.counts = emptyCounts();
     }
@@ -1578,6 +1588,9 @@ export class ThermalBloomWorld {
      */
     static goOut(b, at) {
         if (b.outAt >= 0) return;
+        // (its wisp keeps the timeline it was born on)
+        b.hotStart = b.start;
+        b.hotLife = b.life;
         if (!b.vent && b.life !== BLOOM_OUT.life) {
             const age = Math.max(0, at - b.start);
             b.start = at - Math.min(BLOOM_OUT.life * 0.98, age * (BLOOM_OUT.life / Math.max(1, b.life)));
@@ -1600,36 +1613,51 @@ export class ThermalBloomWorld {
         if (!u?.tables?.bursts) return;
         const rows = u.tables.bursts;
         let n = 0;
+        // When more are in the air than there are slots, the chain's fountains (its gauge) keep
+        // theirs and then the newest do: what gives way has nearly landed.
+        const wanted = this._burstWant || (this._burstWant = []);
+        wanted.length = 0;
         this.boils = this.boils.filter((b) => t - b.start < ThermalBloomWorld.boilLife(b)
             && !(b.cut >= 0 && t - b.cut >= BOIL_THIN && t - b.start > 3));
-        for (let i = this.boils.length - 1; i >= 0 && n < BURST_SLOTS; i--) {
+        // (pooled: a frame allocates nothing)
+        const spare = this._burstPool || (this._burstPool = []);
+        const want = (start, x, y, z, r, g, b, code) => {
+            if (wanted.length >= spare.length) spare.push({});
+            const w = spare[wanted.length];
+            w.start = start;
+            w.x = x;
+            w.y = y;
+            w.z = z;
+            w.r = r;
+            w.g = g;
+            w.b = b;
+            w.code = code;
+            wanted.push(w);
+        };
+        for (let i = this.boils.length - 1; i >= 0; i--) {
             const b = this.boils[i];
             if (t - b.start > 3) continue;
             const scale = b.cell * (b.hard ? 1.2 + 0.7 * b.drop : 2) * (b.narrow ? 0.55 : 1);
-            rows[n * 2].set(b.x, b.y, b.z, this.toPhase(b.start));
             const kind = b.hard ? BURST_KIND.jet : BURST_KIND.splash;
-            rows[n * 2 + 1].set(b.rgb[0], b.rgb[1], b.rgb[2], burstCode(kind, scale));
-            n += 1;
-            if (b.hard && n < BURST_SLOTS) {
-                rows[n * 2].set(b.x, b.y, b.z, this.toPhase(b.start + 0.05));
-                rows[n * 2 + 1].set(b.rgb[0], b.rgb[1], b.rgb[2], burstCode(BURST_KIND.splash, b.cell * 2.6));
-                n += 1;
+            want(b.start, b.x, b.y, b.z, b.rgb[0], b.rgb[1], b.rgb[2], burstCode(kind, scale));
+            if (b.hard) {
+                const crown = burstCode(BURST_KIND.splash, b.cell * 2.6);
+                want(b.start + 0.05, b.x, b.y, b.z, b.rgb[0], b.rgb[1], b.rgb[2], crown);
             }
         }
         // The Seal: a splash of drops along each new lip as its pool fills and spills.
-        for (let i = this.fills.length - 1; i >= 0 && n < BURST_SLOTS; i--) {
+        for (let i = this.fills.length - 1; i >= 0; i--) {
             const f = this.fills[i];
             const a = t - f.start;
             if (!(a >= 0.3) || a > 3) continue;
             const y = f.side === 1 && this.parts.terraces?.heightAt ? this.parts.terraces.heightAt(f.x, f.z) : 0;
-            rows[n * 2].set(f.x, y, f.z, this.toPhase(f.start + 0.35));
-            rows[n * 2 + 1].set(0.55, 0.95, 1.0, burstCode(BURST_KIND.splash, f.cell * 2.2));
-            n += 1;
+            want(f.start + 0.35, f.x, y, f.z, 0.55, 0.95, 1.0, burstCode(BURST_KIND.splash, f.cell * 2.2));
         }
         // The ladder: each live vent's fountain, lit by the chain's heat; it stops when the chain
         // breaks (a last splash as it blows out).
         const heat = ThermalBloomWorld.heatColour(this.ladderChain(t), this._heatRgb || (this._heatRgb = [0, 0, 0]));
         this.ladder = this.ladder.filter((v) => !(v.out > v.start) || t - v.out < 3);
+        wanted.sort((p, q) => q.start - p.start);
         for (let i = this.ladder.length - 1; i >= 0 && n < BURST_SLOTS; i--) {
             const v = this.ladder[i];
             const blown = v.out > v.start;
@@ -1644,6 +1672,12 @@ export class ThermalBloomWorld {
                 rows[n * 2 + 1].set(vc[0], vc[1], vc[2], burstCode(BURST_KIND.splash, v.cell * 2.2));
                 n += 1;
             }
+        }
+        for (let i = 0; i < wanted.length && n < BURST_SLOTS; i++) {
+            const w = wanted[i];
+            rows[n * 2].set(w.x, w.y, w.z, this.toPhase(w.start));
+            rows[n * 2 + 1].set(w.r, w.g, w.b, w.code);
+            n += 1;
         }
         u.burstCount.value = n;
     }
@@ -2143,7 +2177,7 @@ export class ThermalBloomWorld {
     pushFill(x, z, side, index, start, cell = 2) {
         const code = side * 100 + index;
         const fill = {
-            x, z, start, code, side, cell: Math.max(0.3, cell),
+            x, z, start, code, side, cell: Math.max(0.3, cell), steamAt: start,
         };
         if (this.fills.length >= EVENT_SLOTS.fills) {
             const near = Math.max(0.3, cell) * 1.5;
@@ -2972,6 +3006,9 @@ export class ThermalBloomWorld {
                 key: 0,
                 pri: 0,
                 order: 0,
+                id: -1,
+                born: 0,
+                drop: false,
             }));
             this._vapourList = [];
         }
@@ -2991,9 +3028,13 @@ export class ThermalBloomWorld {
          * fast its billows climb in m/s: RISE unless given). A plume trails its vent: its axis bends
          * with the wind's history; any other body leans as one.
          */
-        const add = (kind, seed, x, y, z, h, r0, r1, density, lean, under = null, rise = VAPOUR_RISE) => {
+        // (`id` and `born`: an event body's identity and birth, for the admission; -1 = always shown)
+        const add = (kind, seed, x, y, z, h, r0, r1, density, lean, under, rise = VAPOUR_RISE, id = -1, born = 0) => {
             if (!(density > 1e-3) || !(h > 0.2) || list.length >= pool.length) return;
             const b = pool[list.length];
+            b.id = id;
+            b.born = born;
+            b.drop = false;
             b.rise = rise;
             if (kind === VAPOUR_KIND.plume) plumeDrift(this.time, x, z, h, riseForLean(lean), run, centre, b.drift);
             else rigidDrift(this.time, x, z, h, lean, centre, gustPhase, b.drift);
@@ -3019,6 +3060,8 @@ export class ThermalBloomWorld {
         };
         this._vapourPri = 0;
         this.vapourSources(t, add, plan);
+        this.admitVapour(list, t);
+        // (a safety net: the admission keeps the list within the slots)
         if (list.length > VAPOUR_SLOTS) {
             list.sort((a, b) => a.pri - b.pri || b.density - a.density || b.order - a.order);
             list.length = VAPOUR_SLOTS;
@@ -3038,6 +3081,105 @@ export class ThermalBloomWorld {
             rows[o + 5].set(d[8], d[9], d[10], d[11]);
         }
         u.vapourCount.value = n;
+    }
+
+    /**
+     * The march draws VAPOUR_SLOTS bodies. The basin's own steam and the eruptions always stand;
+     * the events' bodies (those added with an identity) share what is left, newest first. Each
+     * carries an admission (0..1) that eases: one that must give way to newer ones thins away over
+     * VAPOUR_ADMIT.out, and a new one begins only once a slot is free. Under quick play the old
+     * cut (the densest kept, re-chosen every frame) swapped bodies in and out of the march hundreds
+     * of times a minute, each a pop of steam; now nothing is cut while it shows.
+     */
+    admitVapour(list, t) {
+        const admit = this._admit || (this._admit = new Map());
+        const dt = this._admitAt === null || this._admitAt === undefined
+            ? 0 : Math.min(0.1, Math.max(0, t - this._admitAt));
+        this._admitAt = t;
+        const events = this._admitEvents || (this._admitEvents = []);
+        events.length = 0;
+        let fixed = 0;
+        list.forEach((b) => {
+            if (b.id >= 0) events.push(b);
+            else fixed += 1;
+        });
+        if (!events.length) {
+            admit.clear();
+            this._retired?.clear();
+            return;
+        }
+        const budget = Math.max(0, VAPOUR_SLOTS - fixed);
+        events.sort((a, b) => b.born - a.born || a.id - b.id);
+        let showing = 0;
+        events.forEach((b) => {
+            if ((admit.get(b.id) || 0) > 0) showing += 1;
+        });
+        // (when the basin's own steam grows into the events' share, those leaving go faster)
+        const outRate = showing > budget ? 3 : 1;
+        const seen = this._admitSeen || (this._admitSeen = new Set());
+        seen.clear();
+        // (a body that gave its slot up stays gone: one that came back once newer ones had died
+        // would be a plume fading away and then returning)
+        const retired = this._retired || (this._retired = new Set());
+        events.forEach((b, rank) => {
+            seen.add(b.id);
+            if (retired.has(b.id)) {
+                b.drop = true;
+                return;
+            }
+            const was = admit.get(b.id) || 0;
+            let want = rank < budget ? 1 : 0;
+            // (a body begins only well inside the share, so the next few newer ones do not push
+            // it straight back out: no faint blip of steam that comes and goes at once)
+            if (was <= 0 && rank >= budget - VAPOUR_ADMIT.margin) want = 0;
+            if (was <= 0 && want > 0) {
+                if (showing >= budget) want = 0;
+                else showing += 1;
+            }
+            const now = want > was
+                ? Math.min(1, was + dt / VAPOUR_ADMIT.in)
+                : Math.max(0, was - (dt * outRate) / VAPOUR_ADMIT.out);
+            // A capture's first frame (no time has passed) shows what stands at once.
+            const shown = dt === 0 && want > 0 && was === 0 ? 1 : now;
+            if (!(shown > 0)) {
+                admit.delete(b.id);
+                if (was > 0) retired.add(b.id);
+                b.drop = true;
+                return;
+            }
+            admit.set(b.id, shown);
+            b.density *= smooth(0, 1, shown);
+        });
+        admit.forEach((_, id) => {
+            if (!seen.has(id)) admit.delete(id);
+        });
+        retired.forEach((id) => {
+            if (!seen.has(id)) retired.delete(id);
+        });
+        let w = 0;
+        for (let i = 0; i < list.length; i++) {
+            const b = list[i];
+            if (b.drop) b.drop = false;
+            else list[w++] = b;
+        }
+        list.length = w;
+    }
+
+    /**
+     * A stable identity for an event's object (a boil-over, a fill, a rung, a devil, a spring):
+     * its steam bodies are `uid · 8 + part`, and their billows' seed is drawn from it, so no
+     * body changes shape when an older one before it in its list goes.
+     */
+    uidOf(o) {
+        if (!(o.uid >= 0)) {
+            this._uid = (this._uid || 0) + 1;
+            o.uid = this._uid;
+        }
+        return o.uid;
+    }
+
+    seedOf(o, part = 0) {
+        return (this.uidOf(o) * 37 + part * 13 + 11) % 64;
     }
 
     /** The bodies at rest and the events' (see writeVapour). */
@@ -3257,9 +3399,12 @@ export class ThermalBloomWorld {
         this._vapourPri = 2;
         // The Seal: as each new lip sets and its pool fills, a curtain of steam lifts off the
         // rim (two puffs along it), lit from below by the pool's turquoise, and drifts away.
-        this.fills.forEach((f, i) => {
-            const a = t - f.start;
-            if (!(a >= 0.2) || a > 4.5) return;
+        this.fills.forEach((f) => {
+            // (its steam keeps the time it was born: a top-up holds the pool at the brim, never
+            // re-lifts a curtain already thinning)
+            const steamAt = f.steamAt ?? f.start;
+            const a = t - steamAt;
+            if (!(a >= 0.2) || a > 3.6) return;
             const c = f.cell;
             const y = f.side === 1 && this.parts.terraces?.heightAt ? this.parts.terraces.heightAt(f.x, f.z) : 0;
             // Along the rim: across the Stair, or round the Iris.
@@ -3278,22 +3423,35 @@ export class ThermalBloomWorld {
             const g = 1 - Math.exp(-(a - 0.2) / 0.6);
             const glow = 2.2 * (1 - smooth(0.6, 3.5, a));
             const under = [0.12 * glow, 0.75 * glow, 0.85 * glow];
-            const dens = 1.25 * smooth(0.2, 0.5, a) * (1 - smooth(2.2, 4.5, a));
-            // A curtain: four narrow plumes side by side along the rim, rising as one sheet.
-            for (let k = 0; k < 4; k++) {
-                const off = c * 1.45 * (k - 1.5);
+            // The rows of one clear seal side by side: a newer curtain beside this one (on its
+            // side, within a few cells) takes its place as it rises, so a clear of four rows
+            // reads as one sheet of steam, not four stacked ones (and never fills the march).
+            let newer = 0;
+            this.fills.forEach((o) => {
+                const oAt = o.steamAt ?? o.start;
+                if (o === f || o.side !== f.side || !(oAt > steamAt)) return;
+                if (Math.hypot(o.x - f.x, o.z - f.z) < 2.6 * c) newer += smooth(0.2, 1.4, t - oAt);
+            });
+            const dens = 1.25 * smooth(0.2, 0.75, a) * (1 - smooth(1.8, 3.6, a)) * (1 - smooth(0.5, 1.8, newer));
+            // A curtain: two plumes side by side along the rim, rising as one sheet.
+            const fid = this.uidOf(f) * 8;
+            for (let k = 0; k < 2; k++) {
+                const off = c * 1.7 * (k - 0.5);
                 add(
                     VAPOUR_KIND.plume,
-                    (47 + i * 5 + k) % 64,
+                    this.seedOf(f, k),
                     f.x + rx * off,
                     y + c * 0.7 * Math.max(0, a - 1.4),
                     f.z + rz * off,
-                    c * (2.4 + 5.2 * g) * (0.85 + 0.3 * ((k * 0.618) % 1)),
-                    c * 0.9,
-                    c * (1.5 + 0.9 * g),
+                    c * (2.4 + 5.2 * g) * (0.9 + 0.2 * k),
+                    c * 1.2,
+                    c * (2.1 + 1.2 * g),
                     dens,
                     0.12,
                     under,
+                    undefined,
+                    fid + k,
+                    steamAt,
                 );
             }
         });
@@ -3309,7 +3467,7 @@ export class ThermalBloomWorld {
             // (a fever keeps them climbing past the chain's own count, white-hot)
             const tower = Math.max(0, chain - 6) + 2.5 * this.surgeFever;
             const whiteHot = Math.max(smooth(8, 10, chain), 0.8 * this.surgeFever);
-            this.ladder.forEach((v, i) => {
+            this.ladder.forEach((v) => {
                 const a = t - v.start;
                 if (!(a >= 0)) return;
                 // (a vent the break has not reached yet still stands: the thermometer cools from the top)
@@ -3323,12 +3481,15 @@ export class ThermalBloomWorld {
                 const glow = 2.6 + 0.35 * rung + 2.4 * whiteHot;
                 const vc = v.rgb || heat;
                 const under = [vc[0] * glow, vc[1] * glow, vc[2] * glow];
+                // (the chain's gauge goes before the other events' steam: it is ranked newest)
+                const vid = this.uidOf(v) * 8;
+                const vborn = v.start + 1e5;
                 if (a < 0.6) {
                     // The rung opens with a flash: a bright puff off its spring.
-                    const fl = 1 - smooth(0.1, 0.6, a);
+                    const fl = (1 - smooth(0.1, 0.6, a)) * smooth(0, 0.08, a);
                     add(
                         VAPOUR_KIND.puff,
-                        (41 + i * 3) % 64,
+                        this.seedOf(v, 0),
                         v.x,
                         v.y,
                         v.z,
@@ -3338,6 +3499,9 @@ export class ThermalBloomWorld {
                         1.6 * fl,
                         0.1,
                         [vc[0] * 7 * fl, vc[1] * 7 * fl, vc[2] * 7 * fl],
+                        undefined,
+                        vid,
+                        vborn,
                     );
                 }
                 if (!blown || since < 0.9) {
@@ -3345,7 +3509,7 @@ export class ThermalBloomWorld {
                     const lift = blown ? c * 3.5 * smooth(0, 0.9, since) : 0;
                     add(
                         VAPOUR_KIND.plume,
-                        (11 + i * 5) % 64,
+                        this.seedOf(v, 1),
                         v.x,
                         v.y + lift,
                         v.z,
@@ -3355,6 +3519,9 @@ export class ThermalBloomWorld {
                         1.9 * smooth(0, 0.2, a) * (1 - smooth(0.15, 0.9, since)),
                         0.06,
                         under,
+                        undefined,
+                        vid + 1,
+                        vborn,
                     );
                 }
                 if (blown && since < 2.8) {
@@ -3366,7 +3533,7 @@ export class ThermalBloomWorld {
                     const rz = u.camRight.value.z * away;
                     add(
                         VAPOUR_KIND.puff,
-                        (29 + i * 7) % 64,
+                        this.seedOf(v, 2),
                         v.x + rx * since * c * 2.2,
                         v.y + c * (1.2 + since * 2.6),
                         v.z + rz * since * c * 2.2,
@@ -3376,19 +3543,23 @@ export class ThermalBloomWorld {
                         1.5 * smooth(0.02, 0.25, since) * (1 - smooth(1.4, 2.8, since)),
                         0.25,
                         [under[0] * 0.5, under[1] * 0.5, under[2] * 0.5],
+                        undefined,
+                        vid + 2,
+                        vborn,
                     );
                 }
             });
         }
         // The twist's devils: slender spinning columns off the Iris, their skirts lit from below by
         // the bands they cross (turquoise core, apricot hem), fading in at birth and out at the end.
-        this.devils.forEach((d, i) => {
+        this.devils.forEach((d) => {
             const a = t - d.start;
             if (!(a >= 0) || a > d.life || d.x === undefined) return;
             const fade = smooth(0, 0.6, a) * (1 - smooth(d.life - 1.2, d.life, a));
+            const did = this.uidOf(d) * 8;
             add(
                 VAPOUR_KIND.devil,
-                (53 + i * 3) % 64,
+                this.seedOf(d, 0),
                 d.x,
                 0,
                 d.z,
@@ -3398,11 +3569,14 @@ export class ThermalBloomWorld {
                 4.0 * fade,
                 0.04,
                 [0.5 * fade, 0.55 * fade, 0.45 * fade],
+                undefined,
+                did,
+                d.start,
             );
             // Its foot whips the water into a skirt of spray.
             add(
                 VAPOUR_KIND.puff,
-                (55 + i * 3) % 64,
+                this.seedOf(d, 1),
                 d.x,
                 -1,
                 d.z,
@@ -3412,31 +3586,38 @@ export class ThermalBloomWorld {
                 1.4 * fade,
                 0.04,
                 [0.05 * fade, 0.35 * fade, 0.42 * fade],
+                undefined,
+                did + 1,
+                d.start,
             );
         });
-        // The fresh springs keep breathing: a thin wisp off each of the newest while it is hot,
-        // lit in the piece's colour.
-        for (let i = this.blooms.length - 1, n = 0; i >= 0 && n < 4; i--) {
+        // The fresh springs keep breathing: a thin wisp off each while it is hot, lit in the
+        // piece's colour (when the slots are short the oldest thin away to make room).
+        for (let i = this.blooms.length - 1; i >= 0; i--) {
             const bl = this.blooms[i];
-            const a = t - bl.start;
-            const hot = 1 - smooth(bl.life * 0.12, bl.life * 0.3, a);
-            if (!(a > 2.5) || !(hot > 0.02)) continue;
-            n += 1;
+            const born = bl.hotStart ?? bl.start;
+            const a = t - born;
+            const hot = 1 - smooth((bl.hotLife ?? bl.life) * 0.12, (bl.hotLife ?? bl.life) * 0.3, a);
+            const leaving = bl.outAt >= 0 ? 1 - smooth(0, 1.2, t - bl.outAt) : 1;
+            if (!(a > 2.5) || !(hot * leaving > 0.02)) continue;
             const y = bl.side === 1 && this.parts.terraces?.heightAt ? this.parts.terraces.heightAt(bl.x, bl.z) : 0;
             const c = bl.cell || 2;
             const glow = 1.4 * hot;
             add(
                 VAPOUR_KIND.plume,
-                (59 + i) % 64,
+                this.seedOf(bl, 0),
                 bl.x,
                 y,
                 bl.z,
                 c * 5,
                 c * 0.5,
                 c * 2.2,
-                0.55 * hot * smooth(2.5, 4, a),
+                0.55 * hot * leaving * smooth(2.5, 4, a),
                 0.12,
                 [bl.rgb[0] * glow, bl.rgb[1] * glow, bl.rgb[2] * glow],
+                undefined,
+                this.uidOf(bl) * 8,
+                born,
             );
         }
         // The locks' boil-overs: a puff of steam swelling off each, lit from below by the piece's
@@ -3447,19 +3628,23 @@ export class ThermalBloomWorld {
             if (!(a >= 0) || a > life) return;
             // Quick play never piles a bank of steam over the Stair or the mats: each newer
             // boil-over close by halves what an older one still breathes (the newest stands whole).
+            // (each newer one counts as it grows, so an older plume thins smoothly, never in a frame)
             let newer = 0;
             for (let j = bi + 1; j < this.boils.length; j++) {
                 const o = this.boils[j];
-                if (Math.hypot(o.x - b.x, o.z - b.z) < 12 * b.cell) newer += 1;
+                if (Math.hypot(o.x - b.x, o.z - b.z) < 12 * b.cell) newer += smooth(0, 1.2, t - o.start);
             }
-            const thinning = ThermalBloomWorld.boilThin(b, t) * 0.5 ** newer;
+            const thinning = ThermalBloomWorld.boilThin(b, t) * 0.5 ** Math.min(newer, 1.5)
+                * (1 - smooth(1.4, 2.6, newer));
             if (!(thinning > 0.001)) return;
             const c = b.cell * (b.hard ? 1.3 : 1);
             const slim = b.narrow ? 0.4 : 1;
             const g = 1 - Math.exp(-a / 0.9);
-            const glow = 4.5 * (1 - smooth(0.4, 4.5, a)) * thinning;
+            // (born over a fraction of a second, never in a frame: a burst, not a pop)
+            const glow = 3.6 * smooth(0, 0.25, a) * (1 - smooth(0.4, 4.5, a)) * thinning;
             const under = [b.rgb[0] * glow, b.rgb[1] * glow, b.rgb[2] * glow];
-            const density = 1.5 * smooth(0, 0.15, a) * (1 - smooth(life * 0.4, life, a)) * thinning;
+            const density = 1.5 * smooth(0, 0.3, a) * (1 - smooth(life * 0.4, life, a)) * thinning;
+            const bid = this.uidOf(b) * 8;
             // A plume off the new spring: it shoots up out of the boil-over in a second, billowing
             // as it climbs, sheared downwind, its foot lit in the piece's colour; then it lifts
             // off the ground and thins.
@@ -3474,9 +3659,12 @@ export class ThermalBloomWorld {
                     c * (0.7 + 0.5 * gr),
                     c * (1.2 + 2.6 * gr) * slim,
                     c * (1.6 + 3.2 * gr) * slim,
-                    1.3 * smooth(0, 0.08, a) * (1 - smooth(0.5, 1.4, a)) * thinning,
+                    1.3 * smooth(0, 0.22, a) * (1 - smooth(0.5, 1.4, a)) * thinning,
                     0.05,
                     [under[0] * 0.5, under[1] * 0.5, under[2] * 0.5],
+                    undefined,
+                    bid,
+                    b.start,
                 );
             }
             const lift = c * 0.9 * Math.max(0, a - 1.6);
@@ -3493,11 +3681,14 @@ export class ThermalBloomWorld {
                 density,
                 0.05,
                 under,
+                undefined,
+                bid + 1,
+                b.start,
             );
             if (b.hard) {
                 // The plunge's jet of steam, shot up with the drops.
                 const gj = 1 - Math.exp(-a / 0.35);
-                const dj = 1.3 * smooth(0, 0.1, a) * (1 - smooth(1.2, 3.5, a)) * thinning;
+                const dj = 1.3 * smooth(0, 0.2, a) * (1 - smooth(1.2, 3.5, a)) * thinning;
                 add(
                     VAPOUR_KIND.plume,
                     (b.seed + 17) % 64,
@@ -3511,6 +3702,9 @@ export class ThermalBloomWorld {
                     0.08,
                     // (a tall jet: its foot's colour faint, or a quarter of it reads as a pink pole)
                     [under[0] * 0.3, under[1] * 0.3, under[2] * 0.3],
+                    undefined,
+                    bid + 2,
+                    b.start,
                 );
             }
         });
