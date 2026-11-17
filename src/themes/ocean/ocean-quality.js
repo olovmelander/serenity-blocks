@@ -14,6 +14,7 @@
  * motes      what drifts in the water
  * near       specks right in front of the eye (sharp in a shaft, soft discs out of focus)
  * pool       pool of the bubbles, beads and comets every event is made of
+ * crown      pillars of light in the crown a four-line clear brings down round the board
  * glints     whether the school's flanks flash as it turns
  */
 import { normalizeQuality } from '../../utils/quality.js';
@@ -34,6 +35,7 @@ export const QUALITY = Object.freeze({
         motes: 260,
         near: 120,
         pool: 256,
+        crown: 12,
         glints: false,
     }),
     Low: Object.freeze({
@@ -51,6 +53,7 @@ export const QUALITY = Object.freeze({
         motes: 500,
         near: 200,
         pool: 384,
+        crown: 14,
         glints: true,
     }),
     Medium: Object.freeze({
@@ -68,6 +71,7 @@ export const QUALITY = Object.freeze({
         motes: 900,
         near: 380,
         pool: 640,
+        crown: 18,
         glints: true,
     }),
     High: Object.freeze({
@@ -85,6 +89,7 @@ export const QUALITY = Object.freeze({
         motes: 1500,
         near: 640,
         pool: 960,
+        crown: 22,
         glints: true,
     }),
     Ultra: Object.freeze({
@@ -102,6 +107,7 @@ export const QUALITY = Object.freeze({
         motes: 2100,
         near: 820,
         pool: 1280,
+        crown: 26,
         glints: true,
     }),
     Extreme: Object.freeze({
@@ -119,6 +125,7 @@ export const QUALITY = Object.freeze({
         motes: 2800,
         near: 1000,
         pool: 1600,
+        crown: 30,
         glints: true,
     }),
 });
