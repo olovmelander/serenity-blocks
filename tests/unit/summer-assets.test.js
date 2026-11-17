@@ -282,7 +282,7 @@ describe('Summer source files', () => {
         const files = scripts();
         expect(files.length).toBeGreaterThanOrEqual(24);
         for (const module of ['summer-theme.js', 'summer-world.js', 'summer-assets.js', 'summer-homestead.js',
-            'summer-rings.js']) {
+            'summer-rings.js', 'summer-swans.js', 'summer-swan-routes.js', 'summer-swan-model.js']) {
             expect(files).toContain(module);
         }
         for (const file of files) {

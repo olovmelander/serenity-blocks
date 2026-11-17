@@ -4210,6 +4210,63 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'weather',
+        category: 'Playground',
+        scope: 'playground.html — summer',
+        description: 'Hold the Summer weather at one place on its wheel of six: 0 fair evening, 1 a fresh '
+            + 'breeze, 2 towers over the hills, 3 sun shower, 4 mist on the water, 5 mackerel sky.',
+        values: 'Number on the wheel; a fraction past 0.45 is on the way to the next weather, and 6 is fair again.',
+        defaultValue: 'Not held: the weather turns by the clock, one weather every 76 seconds.',
+        example: 'weather=3',
+        notes: 'Use on playground.html with effect=summer.',
+        sources: [
+            'src/playground/effects/summer.effect.js',
+        ],
+    },
+    {
+        name: 'score',
+        category: 'Playground',
+        scope: 'playground.html — summer',
+        description: 'Add a stand-in for the single-player score panel right of the mock board, and tell the '
+            + 'Summer stage about it, so what opens in the air beside the board keeps clear of it.',
+        values: '1 shows it (with board=1); anything else leaves it out.',
+        defaultValue: 'Off.',
+        example: 'score=1',
+        notes: 'Use on playground.html with effect=summer and board=1.',
+        sources: [
+            'src/playground/effects/summer.effect.js',
+        ],
+    },
+    {
+        name: 'swans',
+        category: 'Playground',
+        scope: 'playground.html — summer',
+        description: 'Send a skein of swans across the Summer lake before the capture, or take the swans off '
+            + 'the lake.',
+        values: 'fly starts a flight flightAge seconds before the capture; 0 hides the swans.',
+        defaultValue: 'The family is on the lake and a skein flies by itself every few minutes.',
+        example: 'swans=fly',
+        notes: 'Use on playground.html with effect=summer. fly is only applied in fixed-time captures: pair '
+            + 'with t=<capture seconds>.',
+        sources: [
+            'src/playground/effects/summer.effect.js',
+        ],
+    },
+    {
+        name: 'flightAge',
+        category: 'Playground',
+        scope: 'playground.html — summer',
+        description: 'How many seconds before the capture the Summer skein of swans set out (with swans=fly).',
+        values: 'Seconds, 0 or more. The first flight is left of the board at about 10 to 14 and right of it '
+            + 'at about 16 to 17.',
+        defaultValue: '7.',
+        example: 'flightAge=13',
+        notes: 'Use on playground.html with effect=summer, swans=fly and t=<capture seconds>.',
+        sources: [
+            'src/playground/effects/summer.effect.js',
+        ],
+    },
+    {
         name: 'reduce',
         category: 'Playground',
         scope: 'playground.html — aurora, black-hole, breathing, cosmic-noir, fluid-dreams, galaxy, geode, '

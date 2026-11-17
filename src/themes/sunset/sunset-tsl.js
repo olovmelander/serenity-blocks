@@ -65,7 +65,11 @@ export const TUNE = {
     towerSpan: 0.62, // noise tiles per radian of bearing (and of height)
     towerTop: 0.17, // the tallest head, as dir.y
     towerBase: [0.004, 0.018], // their flat bases: they fade in between these heights
-    towerGate: [9.5, 4.5], // degrees from where a body sets or rises: the towers stand back from it
+    towerGate: [13, 4.5], // degrees from where a body sets or rises: the towers sink away toward it
+    towerDrift: [0.0016, 0.0009], // how fast the heads and their feet drift along (tiles a second)
+    towerBoil: 0.0012, // how fast the heads boil upward (tiles a second)
+    barDrift: [0.0011, 0.0004], // the bars: along the horizon, and through the field
+    deckEvolve: 0.0016, // how fast the deck's clouds form and melt (tiles of its broad field a second)
     // Cirrus.
     cirrusCurve: 0.24,
     cirrusScale: [0.06, 0.2], // along the streets, across them
@@ -75,8 +79,8 @@ export const TUNE = {
     // The sea.
     glint: 0.04, // the sun's road: overall strength
     glintFloor: 0.0009, // the smallest slope variance a pixel is given (the sharpest glint)
-    sparkle: 9, // the diamonds in the roads: how hard a spark flashes…
-    sparkleShare: 0.62, // …and the share of a road's light that is sparks, not an even sheen
+    sparkle: 7.5, // the diamonds in the roads: how bright a spark twinkles…
+    sparkleShare: 0.24, // …and the share of a road's light that is sparks, not an even sheen
     hazeReach: 2600, // metres: the air over the sea
     roughLift: 0.55, // how far unresolved roughness lifts the sea's mirror ray (a share of its slope)
     ripple: [0.1, 0.2, 0.22], // slope of the three ripple layers
@@ -451,17 +455,23 @@ export function skyColour(dir, U, noise, o) {
     if (o.towers) {
         const level = normalize(vec3(dir.x, 0.0, dir.z).add(vec3(0.0, 0.0, 1e-4))).toVar();
         const brg = atan(dir.x, dir.z.negate()).toVar();
-        const u = brg.mul(TUNE.towerSpan).add(U.drift.x.mul(0.18)).toVar();
+        // They are alive: the heads drift along the horizon with the wind, faster than the
+        // feet they stand on, and boil upward, so a tower grows, leans and falls apart as it goes.
+        // (Moved only with the deck, at this distance they stood still.)
+        const u = brg.mul(TUNE.towerSpan).toVar();
         const v = dir.y.mul(TUNE.towerSpan).toVar();
-        const stand = texture(noise, vec2(u.mul(0.9), 0.37)).r;
-        const head = texture(noise, vec2(u, v.add(0.21))).g.toVar();
-        const torn = texture(noise, vec2(u.mul(2.6), v.mul(2.6).add(0.55))).a;
+        const clock = U.cloudClock;
+        const uHead = u.add(clock.mul(TUNE.towerDrift[0])).toVar();
+        const vHead = v.add(0.21).sub(clock.mul(TUNE.towerBoil)).toVar();
+        const stand = texture(noise, vec2(u.add(clock.mul(TUNE.towerDrift[1])).mul(0.9), 0.37)).r;
+        const head = texture(noise, vec2(uHead, vHead)).g.toVar();
+        const torn = texture(noise, vec2(uHead.mul(2.6).add(clock.mul(TUNE.towerDrift[0] * 1.4)), vHead.mul(2.6))).a;
         // Toward the key, in this plane.
         const key = mix(U.sun, U.moon, U.moonKey);
         const keyLevel = normalize(vec3(key.x, 0.0, key.z).add(vec3(0.0, 0.0, 1e-4)));
         const turn = level.x.mul(keyLevel.z).sub(level.z.mul(keyLevel.x));
         const toKey = normalize(vec2(turn.negate(), key.y.sub(dir.y).mul(0.6)).add(vec2(1e-4, 0.0))).mul(0.02);
-        const lee = texture(noise, vec2(u, v.add(0.21)).add(toKey)).g;
+        const lee = texture(noise, vec2(uHead, vHead).add(toKey)).g;
         const gate = (bodyDir) => {
             const flat = normalize(vec3(bodyDir.x, 0.0, bodyDir.z).add(vec3(0.0, 0.0, 1e-4)));
             const [wide, tight] = TUNE.towerGate.map((degrees) => Math.cos(degrees * (Math.PI / 180)));
@@ -469,12 +479,17 @@ export function skyColour(dir, U, noise, o) {
         };
         const open = float(1.0).sub(max(gate(U.setDir), gate(U.riseDir)).mul(0.94));
         const lines = smoothstep(0.2, 0.62, stand).mul(0.55).add(0.45).mul(U.towers)
-            .mul(open);
+            .toVar();
+        // Toward a gate the towers sink and thin away. (Masked at their outline instead, they
+        // ended in straight walls standing either side of the sun.)
+        const stoop = open.mul(0.75).add(0.25);
         const depth = lines.mul(0.66).add(head.sub(0.5).mul(0.72)).add(torn.sub(0.5).mul(0.24))
-            .sub(dir.y.div(TUNE.towerTop))
+            .sub(dir.y.div(stoop.mul(TUNE.towerTop)))
             .toVar();
         const body = smoothstep(0.0, 0.035, depth).mul(smoothstep(TUNE.towerBase[0], TUNE.towerBase[1], dir.y))
-            .mul(smoothstep(0.02, 0.2, lines)).toVar();
+            .mul(smoothstep(0.02, 0.2, lines))
+            .mul(smoothstep(0.0, 0.85, open))
+            .toVar();
         const facing = clamp(head.sub(lee).mul(11.0).add(torn.sub(0.5).mul(0.9)).add(0.5), 0.0, 1.0);
         const heart = smoothstep(0.08, 0.5, depth);
         const dim = float(1.0).sub(smoothstep(0.02, 0.2, up)).mul(t4).mul(U.fire)
@@ -500,7 +515,11 @@ export function skyColour(dir, U, noise, o) {
     // ── The bars of cloud low over the sea ──
     if (o.bars) {
         const bearing = atan(dir.x, dir.z.negate());
-        const at = vec2(bearing.mul(TUNE.barBearing).add(U.drift.x.mul(0.6)), dir.y.mul(TUNE.barHeight).add(0.17));
+        // They drift along the horizon and change as they go (a slow climb through the field).
+        const at = vec2(
+            bearing.mul(TUNE.barBearing).add(U.cloudClock.mul(TUNE.barDrift[0])),
+            dir.y.mul(TUNE.barHeight).add(0.17).add(U.cloudClock.mul(TUNE.barDrift[1])),
+        );
         const bar = texture(noise, at).b.toVar();
         const under = texture(noise, at.sub(vec2(0.0, 0.035))).b;
         const span = TUNE.barSpan;
@@ -527,9 +546,12 @@ export function skyColour(dir, U, noise, o) {
         const coords = (height) => vec2(dot(plane, street).mul(TUNE.deckAlong), dot(plane, cross).mul(TUNE.deckAcross))
             .mul(height).add(U.drift);
         const mid = coords(1.0 + TUNE.deckThick * 0.5).toVar();
-        // Slow terms, read once: where there is cloud at all, and the field's broad shape.
-        const patch = texture(noise, mid.mul(0.21).add(vec2(0.13, 0.57))).b;
-        const broad = texture(noise, mid.mul(0.47).add(vec2(0.71, 0.29))).r;
+        // Slow terms, read once: where there is cloud at all, and the field's broad shape. Each
+        // creeps through the field on a way of its own, so clouds form and melt away as they
+        // stream in, and the far deck, whose drift the distance all but hides, still lives.
+        const evolve = U.cloudClock.mul(TUNE.deckEvolve);
+        const patch = texture(noise, mid.mul(0.21).add(vec2(0.13, 0.57)).add(vec2(evolve.mul(0.3), evolve.mul(0.2)))).b;
+        const broad = texture(noise, mid.mul(0.47).add(vec2(0.71, 0.29)).add(vec2(evolve, evolve.mul(-1.5)))).r;
         const coverHere = U.cover.add(patch.sub(0.5).mul(TUNE.deckPatch));
         const need = float(TUNE.deckBase).sub(coverHere.mul(TUNE.deckCover)).toVar();
         const torn = o.fine ? texture(noise, mid.mul(3.3).add(U.drift.mul(1.6))).a.sub(0.5).mul(0.13) : float(0.0);

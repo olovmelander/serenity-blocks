@@ -727,3 +727,31 @@ portrait with a board every island is behind the card; the islands drop out at o
 in the narrow window where the two gates come close; a twist's whirl reads as a field of sparks
 in the lantern's colour more than as arms; `docs/theme-screenshots/sunset.png` is the old look. The five skies and their order, the four moons, the karst islands, the lotus
 lantern, and what each play adds are the session's choices.
+
+## Calmer water, living clouds (2026-11-17, evening)
+
+On `feature/sunset-calmer-sea`. After playing the living sea the owner said: "The distant clouds
+look too 'static' and the glitter or grain on the water while playing and making effects is too
+much!!!"
+
+**The water.** The sparks of the glitter lattice were in every effect that spreads over the sea
+(the wave of light a clear sends out and its wake, the rings by night), so each clear filled the
+sea with flashing single pixels: in play, grain. Now no effect carries sparks: the wave is a soft
+band of light that the water catches as it catches the sky (weighted by its Fresnel, so it runs
+over the crests and the far sea), its wake a faint afterglow, and by night a fainter glow line in
+the sea's cold colour; the rings by night glow instead of sparkling, and a wave lifts the sun's road
+a third as much. The roads of the sun and the moon still twinkle, but sparsely and slowly (larger
+cells, longer and softer twinkles, 24 % of the road's light instead of 62 %). Measured as the share
+of water pixels standing out from their neighbourhood in one frame: during effects 1.8–7.2 %
+before, 0.8–1.7 % after, against 0.7–1.3 % for the sea at rest.
+
+**The clouds.** The far clouds only slid with the wind, and near the horizon a slide is all but
+invisible. Now the layers of the field move at speeds of their own, so clouds change shape at any
+distance: the deck's clouds form and melt as they stream in (a cloud in about 45 s), the towers'
+heads drift along the horizon over their feet and boil upward, the bars drift and change. All on
+the clouds' own clock, which runs faster as play heats; no extra texture reads. The towers also no
+longer end in straight walls either side of the sun: they sink and thin away toward it.
+
+Verified in the playground on WebGPU (sunset, noon, night; the clear, four lines and the twist;
+20 s strips of the horizon, living against frozen), WebGL2 at High and Low, Minimal and portrait;
+consoles clean; the 231 Sunset tests pass.

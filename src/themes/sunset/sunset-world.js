@@ -289,6 +289,8 @@ export class SunsetWorld {
             hazeReach: uniform(TUNE.hazeReach),
             /** 0..1: how far the sea answers a touch with its own cold light (the night's). */
             seaFire: uniform(0),
+            /** The clouds' own clock (seconds; it runs faster as the evening wind rises with play). */
+            cloudClock: uniform(0),
             /** The weather's hand on the sky (1, 1, 0, 0, 0: the day the theme ships). */
             cirrus: uniform(1),
             bars: uniform(1),
@@ -1301,6 +1303,7 @@ export class SunsetWorld {
         const still = this.reducedMotion ? 0.25 : 1;
         this.driftClock += dt * (1 + still * (0.8 * level + 1.4 * fever));
         U.drift.value.set(-this.driftClock * 0.0011, this.driftClock * 0.00023);
+        U.cloudClock.value = this.driftClock;
         // The lanterns burn brighter with the heat (a lock's hit kicks the ones afloat), and the
         // ones rising into a burning sky brighter still.
         this.lampBoost = 1 + 0.22 * level + 0.3 * fever + 0.25 * punch + 0.7 * fx.lampKick.valueAt(now);
