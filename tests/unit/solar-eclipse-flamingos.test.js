@@ -311,32 +311,52 @@ describe('the wading flock', () => {
     });
 
     it('never jumps: place, heading and every bone move smoothly from frame to frame', () => {
+        // The worst step of each kind over a whole loop, measured in plain JS and asserted once a
+        // bird: a million expect() calls (one per bone per frame) ran past 30 s on CI's runners.
         const { span } = composed(1600, 900);
         const dt = 1 / 60;
         for (let i = 0; i < 8; i += 1) {
             const bird = flockBird(i);
+            const worst = {
+                place: [0, ''], heading: [0, ''], lift: [0, ''], bone: [0, ''],
+            };
+            const note = (key, value, where) => {
+                if (value > worst[key][0]) worst[key] = [value, where];
+            };
             let last = null;
             for (let t = 0; t < bird.loop + 5; t += dt) {
                 const s = flockBirdAt(bird, t, span);
                 const pose = flamingoPose(s.weights, s.n);
                 const now = {
-                    place: [...s.place], heading: s.heading, lift: lowestToe(pose), bones: Array.from(pose),
+                    place: [s.place[0], s.place[1], s.place[2]],
+                    heading: s.heading,
+                    lift: lowestToe(pose),
+                    bones: Array.from(pose),
                 };
                 if (last) {
-                    expect(dist(now.place, last.place), `bird ${i} t ${t.toFixed(2)}`).toBeLessThan(0.02);
+                    const at = `t ${t.toFixed(2)}`;
+                    note('place', dist(now.place, last.place), at);
                     const turned = now.heading - last.heading;
-                    expect(Math.abs(Math.atan2(Math.sin(turned), Math.cos(turned)))).toBeLessThan(0.06);
-                    expect(Math.abs(now.lift - last.lift)).toBeLessThan(0.03);
+                    note('heading', Math.abs(Math.atan2(Math.sin(turned), Math.cos(turned))), at);
+                    note('lift', Math.abs(now.lift - last.lift), at);
                     for (let b = 0; b < BONES; b += 1) {
-                        const o = b * 8;
-                        const moved = dist(now.bones.slice(o + 4, o + 7), last.bones.slice(o + 4, o + 7));
-                        expect(moved, `bird ${i} bone ${b} t ${t.toFixed(2)}`).toBeLessThan(0.06);
+                        const o = b * 8 + 4;
+                        const moved = Math.hypot(
+                            now.bones[o] - last.bones[o],
+                            now.bones[o + 1] - last.bones[o + 1],
+                            now.bones[o + 2] - last.bones[o + 2],
+                        );
+                        note('bone', moved, `bone ${b} ${at}`);
                     }
                 }
                 last = now;
             }
+            expect(worst.place[0], `bird ${i} place at ${worst.place[1]}`).toBeLessThan(0.02);
+            expect(worst.heading[0], `bird ${i} heading at ${worst.heading[1]}`).toBeLessThan(0.06);
+            expect(worst.lift[0], `bird ${i} lift at ${worst.lift[1]}`).toBeLessThan(0.03);
+            expect(worst.bone[0], `bird ${i} ${worst.bone[1]}`).toBeLessThan(0.06);
         }
-    });
+    }, 60_000);
 });
 
 describe('the flamingos in the world', () => {
