@@ -1,6 +1,7 @@
 import { JourneyReturnTransition } from '../../rendering/transitions/JourneyReturnTransition.js';
 import { prefersOdysseyReducedMotion } from '../../core/game-modes/odyssey-physics-callbacks.js';
 import { waitForAnimationFrames } from './odyssey-cover-paint.js';
+import { presentOdysseyJourneyEnding } from './odyssey-journey-ending.js';
 
 /** The retained world is scenery only while its exact campaign operation owns it. */
 export function isOdysseyScenicJourney(mode) {
@@ -17,7 +18,10 @@ export function isOdysseyWorldInterlude(mode) {
 }
 
 /** Return presentation stays in UI; the mode retains simulation/session ownership. */
-export async function returnToOdysseyWorld(mode, options = {}) {
+export async function returnToOdysseyWorld(mode, returnOptions = {}) {
+    // The journey's ending (odyssey-journey-ending.js) opens on the end of the rail, not on the
+    // last orb's close-up: the eye rests there in follow mode and the world plays its ending.
+    const options = returnOptions.journeyEnding ? { ...returnOptions, settlePath: true } : returnOptions;
     console.log('[Odyssey] Returning to board view...');
     mode._perfMark('odyssey-return-start');
     const operation = {};
@@ -159,6 +163,7 @@ export async function returnToOdysseyWorld(mode, options = {}) {
     });
 
     const succeeded = isCurrent() && !!transitionResult?.success;
+    if (succeeded && options.journeyEnding && mode.isInBoardView) presentOdysseyJourneyEnding(mode, completedLevelId);
     if (mode._boardReturnOperation === operation) mode._boardReturnOperation = null;
     return succeeded;
 }
