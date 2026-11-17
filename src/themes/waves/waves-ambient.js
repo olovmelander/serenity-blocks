@@ -15,7 +15,7 @@
  */
 import { TAU, mulberry32 } from './waves-core.js';
 import {
-    makeLeap, makePorpoise, makeRide, makeSoar, makeWhale, troughRow,
+    LEAP_LEAD, makeLeap, makePorpoise, makeRide, makeSoar, makeWhale, troughRow,
 } from './waves-acts.js';
 
 /** Seconds between the moments a visit may begin. */
@@ -238,7 +238,7 @@ export function stageVisit(kind, rand, at, scale = 1) {
         const vy = Math.sqrt(2 * 0.46 * rise);
         acts.push(makeLeap({
             kind: spinner ? 'spinner' : 'bottlenose',
-            at: at + 1.6,
+            at: at + LEAP_LEAD,
             row: troughRow(x, d),
             d,
             vx: range(-1.0, -0.45),

@@ -31,7 +31,7 @@
  *   eye=x,y,z                and stand it somewhere else
  *   demo=1                   live only: play a looping gameplay script
  *   parts=sky,water,...      draw only these parts (sky, water, life, mist, rain, whitewater,
- *                            spray, foam)
+ *                            landing, spray, foam)
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
  *   bloom=0|1                override the tier's bloom

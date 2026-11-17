@@ -31,7 +31,9 @@ import {
     smoothstep, step, texture, uv, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import { FLOW, mulberry32 } from './waves-core.js';
-import { cameraRight, cameraUp, quads } from './waves-spray.js';
+import {
+    GRAVITY, additive, bead, cameraRight, cameraUp, dropLight, quads, streak,
+} from './waves-spray.js';
 
 /** Which kind each puff is, in turn: half are the roll, three in ten the burst, the rest mist. */
 export const WHITE_WATER_KINDS = Object.freeze([0, 1, 0, 2, 0, 1, 0, 1, 0, 2]);
@@ -39,6 +41,12 @@ export const WHITE_WATER_KINDS = Object.freeze([0, 1, 0, 2, 0, 1, 0, 1, 0, 2]);
 export const ROLL_REACH = 3.4;
 /** How high a burst's head is thrown at rest, and with the lip throwing its hardest (metres). */
 export const BURST_RISE = Object.freeze({ rest: [0.55, 1.2], heave: 1.7 });
+/** Drops the landing throws, for every puff of white water a tier pays for. */
+export const LANDING_DROPS_PER_PUFF = 6;
+/** How far back from the touchdown the landing throws them (metres). */
+export const SPRAY_REACH = 2.6;
+/** Their throw: metres a second up, and out over the sea in front of the wave, at rest. */
+export const LANDING_THROW = Object.freeze({ up: [0.55, 1.7], out: [0.25, 1.3] });
 
 /**
  * @param {object} p
@@ -184,8 +192,15 @@ export function createWhiteWater({
         const a = dense.mul(vWhite.a);
         // Lit from the sky above it, its underside and its hollows in its own shade.
         const shade = mix(float(0.7), float(1.0), smoothstep(0.1, 0.9, uv().y))
-            .mul(smoothstep(0.25, 0.7, heads.b).mul(0.26).add(0.72).add(froth.mul(0.1)));
-        return vec4(vWhite.rgb.mul(shade).mul(a).add(vThrough.mul(dense)), a);
+            .mul(smoothstep(0.25, 0.7, heads.b).mul(0.26).add(0.72).add(froth.mul(0.1)))
+            .toVar();
+        // White water is water full of air: in its hollows the water's own green-blue shows,
+        // and where it thins at its edge the light comes through it (a heap of cotton is white
+        // and dry all through).
+        const hollow = float(1.0).sub(smoothstep(0.62, 0.95, shade));
+        const tint = mix(vec3(1.0), vec3(0.62, 0.86, 0.88), hollow.mul(0.7));
+        const rim = dense.mul(float(1.0).sub(dense)).mul(4.0);
+        return vec4(vWhite.rgb.mul(shade).mul(tint).mul(a).add(vThrough.mul(dense.add(rim.mul(1.6)))), a);
     })();
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -193,6 +208,74 @@ export function createWhiteWater({
     mesh.frustumCulled = false;
     // After the water and what swims behind it, before the light that is added to the frame.
     mesh.renderOrder = 28;
+    return {
+        mesh,
+        material,
+        count,
+        dispose() {
+            mesh.removeFromParent();
+            geometry.dispose();
+            base.dispose();
+            material.dispose();
+        },
+    };
+}
+
+/**
+ * The spray the landing throws: drops leaving the white water along the foot of the curtain, up
+ * and out over the sea in front of the wave, each on its own loop like the lip's rain (closed
+ * form), harder while the lip throws (U.heave). Light added to the frame, like every drop: what
+ * shows of them is the low sun caught in each, a glitter over the white water.
+ * Seeds: x where along the line, y how hard it is thrown, z its loop, w its size and stray.
+ */
+export function createLandingSpray({
+    tier, U, shape, seed = 17,
+}) {
+    const count = Math.max(24, Math.round(tier.whitewater * LANDING_DROPS_PER_PUFF));
+    const rand = mulberry32(seed * 4241 + 29);
+    const seeds = new Float32Array(count * 4);
+    for (let i = 0; i < count; i += 1) {
+        seeds[i * 4] = (i + rand()) / count;
+        seeds[i * 4 + 1] = rand();
+        seeds[i * 4 + 2] = rand();
+        seeds[i * 4 + 3] = rand();
+    }
+    const { base, geometry } = quads(count);
+    geometry.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seeds, 4));
+
+    const s = attribute('aSeed', 'vec4');
+    const { heave } = U;
+    const material = additive('waves-landing-spray');
+    // Along the line it lands on, most of them near the touchdown.
+    const along = s.x.mul(s.x);
+    // (Not from the last couple of metres before the eye: a drop a metre off is a blot, not a glint.)
+    const foot = shape.point(float(1.0), shape.landing.add(0.4).sub(along.mul(SPRAY_REACH)).negate()).position;
+    const life = s.z.mul(1.4).add(1.3);
+    const age = fract(s.z.mul(9.17).add(s.x.mul(4.3)).add(U.time.div(life))).mul(life);
+    const hard = heave.mul(0.7).add(1.0);
+    const [upLow, upHigh] = LANDING_THROW.up;
+    const [outLow, outHigh] = LANDING_THROW.out;
+    const launch = vec3(
+        s.y.mul(outLow - outHigh).sub(outLow).mul(hard),
+        s.y.mul(upHigh - upLow).add(upLow).mul(hard.mul(0.8).add(0.2)),
+        sin(s.w.mul(47.0)).mul(0.35).add(FLOW.z * 0.4),
+    );
+    const from = vec3(foot.x.sub(0.05), max(foot.y, 0.0).add(0.08), foot.z);
+    const velocity = launch.add(vec3(0.0, age.mul(-GRAVITY), 0.0));
+    const centre = from.add(launch.mul(age)).add(vec3(0.0, age.mul(age).mul(-0.5 * GRAVITY), 0.0));
+    const fade = smoothstep(0.0, 0.12, age)
+        .mul(float(1.0).sub(smoothstep(life.mul(0.6), life, age)))
+        .mul(smoothstep(-0.02, 0.15, centre.y));
+    const size = s.w.mul(s.w).mul(0.016).add(0.006).mul(heave.mul(0.25).add(1.0));
+    const twinkle = sin(U.time.mul(s.w.mul(6.0).add(3.0)).add(s.x.mul(53.0))).mul(0.3).add(0.8);
+    material.positionNode = streak(centre, velocity, size, 1.1);
+    const vLook = varying(dropLight(centre, U.sun, U.warm, U.light).mul(fade).mul(twinkle).mul(0.7), 'vWaveLandingSpray');
+    material.outputNode = Fn(() => vec4(vLook.mul(bead()), 0.0))();
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = 'waves-landing-spray';
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 30;
     return {
         mesh,
         material,
