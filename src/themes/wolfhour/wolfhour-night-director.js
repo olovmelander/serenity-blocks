@@ -37,9 +37,10 @@ export const WOLFHOUR_WEATHER = Object.freeze([
     Object.freeze({
         aurora: 0, reach: 0, dust: 0.1, fall: 0, wind: 0.1,
     }),
-    // deep midnight: a low ribbon of northern lights, the air glittering
+    // deep midnight: a low ribbon of northern lights, the air glittering (silver against the
+    // night's blue needs more light than the green did to show at all)
     Object.freeze({
-        aurora: 0.4, reach: 0.1, dust: 0.3, fall: 0, wind: 0.05,
+        aurora: 0.7, reach: 0.12, dust: 0.3, fall: 0, wind: 0.05,
     }),
     // the wolf's hour: snow
     Object.freeze({
