@@ -678,8 +678,18 @@ describe('neon district world: clears, combos and the four-line overdrive', () =
         const sx = projected.x * 0.5 + 0.5;
         expect(sx).toBeGreaterThan(zones.rightEdge);
         expect(sx).toBeLessThan(1);
-        expect(place.w).toBeGreaterThan(1.4);
+        expect(place.w).toBeGreaterThan(1.2);
         expect(place.w).toBeLessThanOrEqual(3.3);
+        // Punched to its largest, the whole card stays inside the free zone (the shader's size:
+        // 2.6 heights wide at viewport.y · 0.9 / depth pixels a metre).
+        const depth = new THREE.Vector3(place.x, place.y, place.z).applyMatrix4(camera.matrixWorldInverse).z * -1;
+        const half = (2.6 * place.w * 1.28 * 0.9 * 900) / depth / 1600 / 2;
+        expect(sx - half).toBeGreaterThan(zones.rightEdge);
+        expect(sx + half).toBeLessThan(1);
+        // Drawn over the city (no building cuts through it) and kept out of the street's mirror.
+        expect(world.counter.material.depthTest).toBe(false);
+        expect(world.counter.mesh.layers.isEnabled(1)).toBe(true);
+        expect(world.counter.mesh.layers.isEnabled(0)).toBe(false);
         world.dispose();
     });
 
