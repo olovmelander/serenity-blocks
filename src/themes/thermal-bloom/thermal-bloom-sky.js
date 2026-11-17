@@ -18,18 +18,26 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     Loop,
     atan,
     clamp,
+    dot,
     exp,
     float,
+    floor,
+    fract,
     int,
+    length,
+    normalize,
+    step,
     max,
     min,
     mix,
     positionGeometry,
     screenUV,
     select,
+    sin,
     smoothstep,
     texture,
     vec2,
@@ -39,6 +47,7 @@ import {
 import {
     tbAerial,
     tbFarApron,
+    tbHash21,
     tbPart,
     tbSky,
     tbViewRay,
@@ -51,6 +60,8 @@ const FOREST_AIR = 320;
 const PLATEAU_DIST = 9000;
 /** The far range beyond the plateau (the rim's third, palest layer). */
 const RANGE_DIST = 26000;
+/** A falling star's slot (seconds): about every third slot holds one, by night. */
+const METEOR_EVERY = 5.5;
 /** The deepest the rim's forested face reaches under the horizon (radians, about half a degree). */
 const FOREST_FACE = -0.008;
 
@@ -95,8 +106,68 @@ export function tbBackdrop(u, dir, tex, ghosts = false) {
     const wispB = texture(tex.noise, cuv.mul(1.3).add(0.31)).z;
     const wisp = smoothstep(0.58, 0.9, wispA).mul(smoothstep(0.4, 0.8, wispB))
         .mul(smoothstep(0.09, 0.22, el)).mul(float(1.0).sub(smoothstep(0.55, 0.95, el)));
-    sky.assign(mix(sky, u.sunColor.mul(0.92).add(u.zenith.mul(0.22)), wisp.mul(0.32)));
-    const rangeLit = mix(u.plateau, u.sunColor.mul(0.62), 0.25).add(vec3(0.2).mul(u.snow));
+    sky.assign(mix(sky, u.sunColor.mul(0.92).add(u.zenith.mul(0.22)).add(u.alpen.mul(0.9)), wisp.mul(0.32)));
+    // ── The night sky (thermal-bloom-hours.js): stars and the galaxy's band, only while the
+    // hour shows them and only above the rim (a uniform branch: by day it costs nothing) ──
+    If(u.stars.greaterThan(0.003).and(el.greaterThan(0.0)), () => {
+        // Two layers on the sky's own grid (azimuth, elevation), cells shifted positive for the
+        // hash: many faint stars, a few bright ones that twinkle. A star is about a pixel and a half.
+        const starLayer = (cells, keep, gain, seed) => {
+            const g = vec2(az.add(4.0), el.add(1.0)).mul(cells);
+            const cell = floor(g);
+            const h1 = tbHash21(cell.add(vec2(seed, 0.5)));
+            const h2 = tbHash21(cell.add(vec2(0.5, seed + 7.0)));
+            const h3 = tbHash21(cell.add(vec2(seed + 3.0, seed + 11.0)));
+            const at = vec2(h1, h2).mul(0.6).add(0.2);
+            const d = length(fract(g).sub(at)).div(cells);
+            const r = px.mul(1.35);
+            const point = float(1.0).sub(smoothstep(r.mul(0.35), r, d));
+            const twinkle = sin(u.time.mul(h3.mul(2.4).add(0.8)).add(h1.mul(40.0))).mul(0.28).add(0.72);
+            const mag = smoothstep(keep, 1.0, h3);
+            // A star's colour: most blue-white, some warm.
+            const tint = mix(vec3(0.72, 0.84, 1.0), vec3(1.0, 0.8, 0.58), smoothstep(0.7, 1.0, h2));
+            return tint.mul(point.mul(mag).mul(mag).mul(twinkle).mul(gain));
+        };
+        // The galaxy: a band that rises out of the far rim to the left of the card and leans away
+        // to the right, cloudy, with dark lanes, densest in stars.
+        const bandN = vec3(0.86, -0.42, 0.29);
+        const off = dot(dir, bandN);
+        const bandNoise = texture(tex.noise, vec2(az.mul(1.9).add(el.mul(2.2)), el.mul(5.0).sub(az.mul(0.6))).mul(0.5))
+            .level(0);
+        const band = exp(off.mul(off).mul(-34.0)).mul(bandNoise.x.mul(0.9).add(0.35));
+        const lanes = smoothstep(0.42, 0.7, bandNoise.z).mul(exp(off.mul(off).mul(-120.0))).mul(0.7);
+        const galaxy = vec3(0.32, 0.4, 0.62).mul(band).mul(float(1.0).sub(lanes)).mul(0.05)
+            .add(vec3(0.6, 0.42, 0.34).mul(exp(off.mul(off).mul(-160.0)).mul(bandNoise.y).mul(0.022)));
+        const dense = band.mul(float(1.0).sub(lanes)).mul(1.6).add(1.0);
+        const starLight = starLayer(120.0, 0.72, 0.55, 1.0).mul(dense)
+            .add(starLayer(38.0, 0.8, 2.4, 5.0))
+            .add(galaxy);
+        // A falling star now and then: one slot every METEOR_EVERY seconds, most of them empty; a
+        // short bright streak that draws itself down the sky and is gone within a second.
+        const slot = floor(u.time.div(METEOR_EVERY));
+        const mAge = u.time.sub(slot.mul(METEOR_EVERY));
+        const m1 = tbHash21(vec2(slot, 3.7));
+        const m2 = tbHash21(vec2(slot, 11.3));
+        const m3 = tbHash21(vec2(slot, 23.9));
+        const mDir = normalize(vec2(mix(float(-1.0), float(1.0), step(0.5, m3)).mul(m2.mul(0.5).add(0.6)), -0.5));
+        const mHead = vec2(m1.sub(0.5).mul(1.3), m2.mul(0.07).add(0.1)).add(mDir.mul(mAge.mul(0.22)));
+        const mRel = vec2(az, el).sub(mHead);
+        const mAlong = dot(mRel, mDir.negate());
+        const mPerp = length(mRel.add(mDir.mul(mAlong)));
+        const mLen = float(0.07).mul(smoothstep(0.0, 0.25, mAge));
+        const mTail = clamp(float(1.0).sub(mAlong.div(max(mLen, 1e-4))), 0.0, 1.0);
+        const meteor = float(1.0).sub(smoothstep(px.mul(0.6), px.mul(2.0), mPerp))
+            .mul(step(0.0, mAlong)).mul(mTail.mul(mTail))
+            .mul(smoothstep(0.0, 0.12, mAge))
+            .mul(float(1.0).sub(smoothstep(0.45, 0.9, mAge)))
+            .mul(step(0.6, m3.add(m1).mul(0.5)));
+        // The last degrees above the rim are thick air: the stars sink into it; cirrus hides them.
+        const clear = smoothstep(0.012, 0.085, el).mul(float(1.0).sub(wisp.mul(0.8)));
+        sky.addAssign(starLight.add(vec3(0.9, 0.95, 1.0).mul(meteor.mul(2.6))).mul(u.stars).mul(clear));
+    });
+    // (the far range's crest catches the sun's last light, or its first: alpenglow)
+    const rangeLit = mix(u.plateau, u.sunColor.mul(0.62), 0.25).add(u.land.mul(0.2).mul(u.snow))
+        .add(u.alpen.mul(smoothstep(0.004, 0.03, el).mul(0.55)));
     const rangeCol = mix(rangeLit, tbAerial(u, rangeLit, float(RANGE_DIST), dir), 0.8);
     // The plateau: a distinct blue-grey step behind the forest, paler with its distance.
     const plateauLit = mix(u.plateau, u.sunColor.mul(0.55), 0.1);
@@ -116,11 +187,12 @@ export function tbBackdrop(u, dir, tex, ghosts = false) {
     // (the clumps fray the grove's edge, so it never ends in a straight vertical cut)
     const grove = smoothstep(0.55, 0.72, crestNoise(2.6, 0.71, 1).y.add(clumps.sub(0.5).mul(0.3)));
     const aspens = grove.mul(smoothstep(0.38, 0.6, clumps)).mul(u.frost).mul(float(1.0).sub(u.snow));
-    forestLit.assign(mix(forestLit, mix(vec3(0.5, 0.31, 0.05), vec3(0.52, 0.2, 0.04), stands), aspens));
+    forestLit.assign(mix(forestLit, mix(vec3(0.5, 0.31, 0.05), vec3(0.52, 0.2, 0.04), stands).mul(u.land), aspens));
     const skirt = float(1.0).sub(smoothstep(0.0, 0.0035, el.sub(base)));
     const forestCol = tbAerial(u, forestLit, mix(float(FOREST_AIR), float(FOREST_DIST), skirt), dir);
     // Snow on the rim in the cold seasons.
-    const snowy = mix(forestCol, tbAerial(u, vec3(0.75, 0.78, 0.82), float(FOREST_DIST), dir), u.snow.mul(0.35));
+    const rimSnow = tbAerial(u, vec3(0.75, 0.78, 0.82).mul(u.land), float(FOREST_DIST), dir);
+    const snowy = mix(forestCol, rimSnow, u.snow.mul(0.35));
     const above = mix(mix(mix(sky, rangeCol, inRange), plateauCol, inPlateau), snowy, inForest);
 
     // Below: the far apron beyond the basin's mesh, seen through its air, up to the forest's foot,

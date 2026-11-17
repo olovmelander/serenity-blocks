@@ -314,6 +314,9 @@ export default class ThermalBloomTheme extends BaseTheme {
         if (!this.isPaused) this.animate();
         const backend = this.isWebGPU ? 'WebGPU' : 'WebGL2';
         console.log(`${LOG_PREFIX} Scene ready (${backend}, ${this.quality})`);
+        // A validation run reaches the live theme (its world's holds, its director) from the page.
+        const query = typeof window !== 'undefined' ? window.location?.search || '' : '';
+        if (new URLSearchParams(query).has('themeValidation')) window.__THERMAL_BLOOM__ = this;
     }
 
     async createRenderer(ownerGeneration) {

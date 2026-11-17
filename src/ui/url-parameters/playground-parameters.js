@@ -5419,6 +5419,20 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'hour',
+        category: 'Playground',
+        scope: 'playground.html — thermal-bloom',
+        description: "Hold the basin's day still at a place on its wheel of hours, whatever the clock says.",
+        values: 'Number at least 0, or a name: 0 Morning, 1 Golden Hour, 2 Dusk, 3 Night, 4 Dawn '
+            + '(5 Morning again); between, the two blended. hour=night works too.',
+        defaultValue: 'The day turns with the clock alone (an hour every 130 s); a level-up never steps it.',
+        example: 'hour=3',
+        notes: 'Use on playground.html with effect=thermal-bloom.',
+        sources: [
+            'src/playground/effects/thermal-bloom.effect.js',
+        ],
+    },
+    {
         name: 'heat',
         category: 'Playground',
         scope: 'playground.html — thermal-bloom',

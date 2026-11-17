@@ -30,6 +30,14 @@ glares. Two dead lodgepole snags and a third apart stand in the near corner on t
 their long shadows rake across the floor toward the card, the clearest sign of the low morning
 sun. A thin morning mist lies over the warm ground round the Iris (never over its water).
 
+### The living basin (2026-11-17)
+
+An audit and a pass on what it found: the basin has a day beside its year (five hours on the
+clock, night among them), the springs glow as the light falls and as a chain climbs, and the
+back-to-back clear, the perfect clear and the game over each got a picture of their own. Its
+record is [THERMAL_BLOOM_LIVING_BASIN_2026-11.md](THERMAL_BLOOM_LIVING_BASIN_2026-11.md); the
+event table below is kept true to it.
+
 ### The remake (2026-10-13)
 
 The theme was remade on three r186.1 techniques after it merged, for "amazing lock and combo
@@ -121,11 +129,11 @@ ever moves more than a gust's own push in a frame.
 | combo | The ladder, a rung a link up the card's sides: each rung a glowing spring with a white fountain and a short white plume, opening with a flash; the springs zig-zag out from the card so no plume skewers the rung above; their colours climb turquoise → green → gold → orange → red → white-hot from nine links, each rung a little bigger and brighter than the last. The Chalice counts the chain in splashes, the Iris heats (the eye widens, the rim warms to lemon), the fingers run wet a notch a link; from six links a sustained column. The break: each column lifts off and a big lit puff rolls away from the card, the springs cool into the mat over 2.5 s, and a white steam phase rises over the Chalice. |
 | four lines | The Chalice's surge, then a white column of water (the resting thread steps aside), a spray veil densest at its crown with a soft bow in the dense spray only (the theme's one bow), a low skirt at the vent; spouters fire near to far; the apron floods outward from the Iris and drains; rain falls back; a steam phase swells over the Chalice. |
 | T-spin | Steam devils (one a line): slender spinning columns with a clear core and bands climbing them, wandering off the Iris toward the card's side; where each dies its foot scours a sinter rosette into the mats. |
-| back-to-back | The Consort wakes: its mound wets, a boiling dome swells in its pool, a steam column stands over it with splashes by level; with four lines it fires the double eruption. |
-| perfect clear | The Sleeper wakes: a 150 m column of water on the far rim, its steam held back while the water stands, then rolling up through the sky band; a glowing renewal wave runs out from the Iris along the fingers with the mats flushing vivid behind it; the light swells (the bloom, never the exposure); live blooms finish; the stone record stays. |
+| back-to-back | The Iris blooms: a flower of light opens out of its rim, drawn in lines (pointed petals in two rows, each an outline with three veins), more petals and longer the deeper the chain; the eye flares with it. And the Consort wakes: its mound wets, a boiling dome swells in its pool, a steam column stands over it with splashes by level; with four lines it fires the double eruption. |
+| perfect clear | The Sleeper wakes: a 150 m column of water on the far rim, its steam held back while the water stands, then rolling up through the sky band; a glowing renewal wave runs out from the Iris along the fingers with the mats flushing vivid behind it; the light swells (the bloom, never the exposure); live blooms finish; the stone record stays. With it the whole basin answers: the Iris opens every petal and holds them, the Consort and the Chalice erupt beside the Sleeper (the only time three columns stand), and the great bow, a shower's double rainbow, stands from the floor into the sky (a moonbow by night). |
 | level | The year turns (six seasons: High Summer, Straw Gold, First Frost, Deep Cold, Thaw, Bloom): a warm gold succession front sweeps out from the Iris along the fingers, the new season vivid in its wake. The year also drifts with the clock alone. |
 | gust | Every 20–40 s a front of wind crosses the basin downwind in six seconds: every column it reaches leans hard and tears thinner, the mist blows off, a cat's-paw of ripples crosses the Iris and the sheets. |
-| game over | The springs sigh: blooms bleach, the Stair's pools drain, the Chalice falls to a faint thread; the next run refills it. |
+| game over | The springs go cold: blooms bleach, the living colour pales toward sinter, the springs' own light goes out, the eye draws back, the Stair's pools drain, the Chalice falls to a faint thread. The cold holds nine seconds and warms again by itself; the next run refills the Chalice. |
 
 ## How it is built
 
@@ -150,6 +158,8 @@ ever moves more than a gust's own push in a frame.
 | `thermal-bloom-sky.js` | The backdrop: cerulean, cirrus, the far range, the plateau, the lodgepole rim, the far apron. |
 | `thermal-bloom-post.js` | One scene pass, bloom with a high knee (glints, the bow's core), heat shimmer, calm zones over the card and HUD, the mineral filmic with a toe, grade, vivid, vignette, grain, FXAA/MSAA. |
 | `thermal-bloom-director.js`, `-composition.js`, `-quality.js`, `-tetrominos.js` | Gameplay staging, layout rects, tiers, the piece palette. |
+| `thermal-bloom-hours.js` | The day (2026-11): the hours' table, the day's wheel, the blend (three-free). |
+| `thermal-bloom-aura.js` | The great bow (2026-11): a perfect clear's double rainbow, and a paler one at four lines. |
 
 No textures or models are loaded; everything is baked on the CPU at build time.
 
@@ -239,6 +249,7 @@ Playground (`npm run dev:playground`, then `playground.html?effect=thermal-bloom
 | a gust | `t=10&board=1&gust=0.5` |
 | a free camera | `cam=x,y,z,tx,ty,tz,fov` (the Iris close: `t=10&cam=-40,40,-90,-108,0,-205,46`); `sunAz=` and `sunEl=` hold the sun |
 | seasons | `t=40&level=1…6` or `season=0…5` |
+| hours | `t=40&hour=0…4` (Morning, Golden Hour, Dusk, Night, Dawn; `hour=night`) |
 | the icon | `t=40&quality=Ultra&icon=1&iconFov=30&iconYaw=0&iconPitch=5&gust=0.5` at 720×720, then saturation 1.15, contrast 1.08, brightness 1.03 and the 512 px circle (the concept's yaw −34°, pitch −8° framed the Stair once the composition settled). Superseded 2026-10-23 ([THEME_ICON_AUDIT_2026-10-23.md](THEME_ICON_AUDIT_2026-10-23.md)) |
 
 Real game: `?skipIntro=1&unlockAll=1`, then pick Thermal Bloom.
