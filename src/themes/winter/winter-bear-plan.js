@@ -1047,7 +1047,8 @@ export function bearOnCourse(course, clock, out) {
 /**
  * The bears that come by. `size` is against the big male (who is drawn BEAR_SCALE × life); `tone`
  * runs from a white coat (0) to old ivory (1); `hair` is how long the coat stands; `slim`, how
- * broad across. The first lap is always the big male as he has always been.
+ * broad across. The first lap is the big male as he has always been, unless the mind is told its
+ * opening is open (BearMind's `open`): then the first lap is dealt as any other.
  */
 export const BEAR_KINDS = Object.freeze({
     male: Object.freeze({
@@ -1136,21 +1137,23 @@ function actSeconds(rand, name, range) {
 /**
  * What lap `n` holds, from the bear's seed: who walks it, at which of the route's stops it stops
  * and what it does there, and its pace over each stretch. Never the same act at two stops running
- * (`before` is the lap before it, for the stop it ended on).
+ * (`before` is the lap before it, for the stop it ended on). The first lap is the big male unless
+ * `open`: then it is dealt as any other.
  */
-export function dealLap(seed, n, way, before = null) {
+export function dealLap(seed, n, way, before = null, { open = false } = {}) {
     const rand = mulberry32((seed ^ Math.imul(n + 1, 0x9e3779b1)) >>> 0);
     const { route, pace } = BEAR_ROUTES[way];
-    // Who: the big male first; after that by weight.
+    // Who: the big male first (unless the opening is open); after that by weight.
+    const first = n === 0 && !open;
     let kind = 'male';
     const who = rand() * (BEAR_KINDS.male.weight + BEAR_KINDS.female.weight + BEAR_KINDS.family.weight);
-    if (n > 0 && who > BEAR_KINDS.male.weight) kind = who > BEAR_KINDS.male.weight + BEAR_KINDS.female.weight ? 'family' : 'female';
+    if (!first && who > BEAR_KINDS.male.weight) kind = who > BEAR_KINDS.male.weight + BEAR_KINDS.female.weight ? 'family' : 'female';
     const family = kind === 'family';
     const K = BEAR_KINDS[family ? 'female' : kind];
     const draws = [rand(), rand(), rand()];
-    const size = n === 0 ? 1 : lerp(K.size[0], K.size[1], draws[0]);
-    const tone = n === 0 ? 0.5 : lerp(K.tone[0], K.tone[1], draws[1]);
-    const hair = n === 0 ? 1 : lerp(K.hair[0], K.hair[1], draws[2]);
+    const size = first ? 1 : lerp(K.size[0], K.size[1], draws[0]);
+    const tone = first ? 0.5 : lerp(K.tone[0], K.tone[1], draws[1]);
+    const hair = first ? 1 : lerp(K.hair[0], K.hair[1], draws[2]);
 
     // Where it stops, and what for.
     const places = [];
@@ -1514,16 +1517,20 @@ export class BearMind {
      * @param {object} [o]
      * @param {number} [o.start]  where on its clock it starts (seconds; the course's own when not given)
      * @param {number} [o.seed]   what its laps are dealt from
+     * @param {boolean} [o.open]  an open opening: its first lap is any of its ways, walked by any of
+     *                            the bears, as its seed deals them (else the big male on its first way)
      */
-    constructor(aspect = 16 / 9, { start, seed = 0xbea7 } = {}) {
+    constructor(aspect = 16 / 9, { start, seed = 0xbea7, open = false } = {}) {
         this.aspect = aspect;
         this.seed = seed;
+        this.open = open;
         this.startAt = start;
         // Its laps: which way it takes each time, how long it stays out of sight before it, and what
-        // the lap holds (dealLap). The first is its first way at once; the rest are dealt from its
-        // seed as its clock reaches them.
+        // the lap holds (dealLap). The first is its first way at once (any way, if its opening is
+        // open); the rest are dealt from its seed as its clock reaches them.
         this.lapRand = mulberry32(seed);
-        this.laps = [this.newLap(0, 0, 0, 0, null)];
+        const firstWay = open ? chooseWay(this.lapRand, -1) : 0;
+        this.laps = [this.newLap(0, firstWay, 0, 0, null)];
         this.pose = newPose();
         this.pose.cub = newPose();
         this.pose.cub.present = false;
@@ -1534,7 +1541,7 @@ export class BearMind {
 
     /** A lap: its way, its wait, when it starts, what it holds, and how long it takes (seconds). */
     newLap(n, way, wait, start, before) {
-        const deal = dealLap(this.seed, n, way, before);
+        const deal = dealLap(this.seed, n, way, before, { open: this.open });
         const lap = {
             n, way, wait, start, deal, course: null, cubCourse: null, period: 0,
         };
