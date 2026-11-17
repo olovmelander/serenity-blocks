@@ -82,9 +82,17 @@ export const ODYSSEY_EVENING = Object.freeze({
     /** The moon comes out of the afternoon's blue across the 4->5 seam (it is never switched on). */
     moonIn: Object.freeze([0.335, 0.350]),
     /** THE LOW SUN'S SHAFTS across the high sky behind the summit (the shadows of far cloud on
-     * the sun's side, seen as rays that run toward the antisolar point): in across the 4->5 seam,
-     * out as the sun nears the horizon and the belt's own rays take over. */
-    shafts: Object.freeze([0.335, 0.349, 0.500, 0.575]),
+     * the sun's side, seen as rays that run toward the antisolar point): out as the sun nears the
+     * horizon and the belt's own rays take over.
+     *
+     * THEY COME IN THROUGH THE MOUNTAINS' LAST ORBS (island pass, round two). They used to open
+     * across the 4->5 glide alone (0.335 -> 0.349), and with chapter 4 under a clean blue the sky
+     * stepped from blue to beams between two orbs. The golden afternoon now grows them from its
+     * own fifth orb: a first faint ray at L24, a few by L26, the whole fan where the eye clears
+     * the massif's shoulder at L27. `shaftsEase` is the power on that ramp: most of the fan still
+     * arrives with the seam, but none of it from nothing. */
+    shafts: Object.freeze([0.296, 0.349, 0.500, 0.575]),
+    shaftsEase: 2.2,
     /** THE FAN OPENS at the 4->5 seam: the shafts stand `fan` times as strong where the eye
      * clears the massif's shoulder at L27, easing back to their own strength up the wall. */
     fan: 1.5,
@@ -151,7 +159,7 @@ export function odysseyEveningAt(actT, time = 0) {
         stars: ramp(E.stars[0], E.stars[1], p) ** 1.6,
         moon: ramp(E.moonIn[0], E.moonIn[1], p) * (E.moon[0] + ((E.moon[1] - E.moon[0]) * dusk)),
         rays: belt,
-        shafts: ramp(E.shafts[0], E.shafts[1], p) * (1 - ramp(E.shafts[2], E.shafts[3], p))
+        shafts: (ramp(E.shafts[0], E.shafts[1], p) ** E.shaftsEase) * (1 - ramp(E.shafts[2], E.shafts[3], p))
             * (1 + (E.fan * (1 - ramp(E.fanOut[0], E.fanOut[1], p)))),
         cloud: cloudIn * (cloudFull + ((E.clearShare - cloudFull) * clear)),
         sea: ramp(E.sea[0], E.sea[1], p),
@@ -351,7 +359,8 @@ export function eveningDome(air, dir, sunColour) {
     return Fn(() => {
         const out = air.toVar();
         const d = dir.toVar();
-        If(U.dusk.greaterThan(0.001), () => {
+        // (The shafts begin before the dusk does, in the mountains' golden afternoon.)
+        If(U.dusk.greaterThan(0.001).or(U.shafts.greaterThan(0.001)), () => {
             // The low sun: a wide ember glow round it, growing as it nears the horizon.
             const toSun = dot(d, U.sunDir).toVar();
             const glow = smoothstep(float(0.72), float(1.0), toSun);

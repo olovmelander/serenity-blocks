@@ -76,7 +76,7 @@ describe('the evening: its schedule', () => {
         expect(ORBS[0]).toBeCloseTo(cp[4], 3);
     });
 
-    it('is nothing at all below chapter 4\'s last orb: chapters 2-4 keep their noon', () => {
+    it('is nothing at all below chapter 4\'s last orb, but for the first shafts of its golden afternoon', () => {
         [0.07, 0.15, 0.25, 0.30, 0.334].forEach((p) => {
             const e = at(p, 37);
             expect(e.dusk, `dusk at ${p}`).toBe(0);
@@ -84,7 +84,11 @@ describe('the evening: its schedule', () => {
             expect(e.cloud).toBe(0);
             expect(e.sea).toBe(0);
             expect(e.cap).toBe(0);
-            expect(e.shafts).toBe(0);
+            // The shafts grow through the mountains' last orbs (island pass, round two), so the
+            // fan at the 4->5 seam opens out of rays that are already there: none through L23,
+            // a faint few by L25, under half the seam's fan at L26.
+            if (p < ODYSSEY_EVENING.shafts[0]) expect(e.shafts).toBe(0);
+            expect(e.shafts).toBeLessThan(at(ORBS[0]).shafts * 0.75);
             expect(e.stars).toBe(0);
             expect(e.glory).toBe(0);
             expect(e.belt).toBe(0);
@@ -152,6 +156,13 @@ describe('the evening: its schedule', () => {
         expect(at(ORBS[2]).shafts).toBeGreaterThan(0.9);
         expect(at(ORBS[2]).shafts).toBeLessThanOrEqual(1);
         // THE FAN at the seam: strongest where the chapter begins, eased back up the wall.
+        // It grows out of the mountains' last orbs and never falls on the way in.
+        expect(at(0.2973).shafts).toBeLessThan(0.01);
+        expect(at(0.3223).shafts).toBeGreaterThan(0.1);
+        expect(at(0.3223).shafts).toBeLessThan(0.8);
+        for (let p = 0.29; p < ORBS[0]; p += 0.002) {
+            expect(at(p + 0.002).shafts).toBeGreaterThanOrEqual(at(p).shafts);
+        }
         expect(at(ORBS[0]).shafts).toBeGreaterThan(2);
         expect(at(ORBS[0]).shafts).toBeGreaterThan(at(0.37).shafts);
         expect(at(ORBS[1]).shafts).toBeCloseTo(1, 6);

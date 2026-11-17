@@ -515,6 +515,11 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
         'Removes the sea of clouds that gathers below the climb in chapter 5.',
         { scope: WORLD_SCOPE },
     ),
+    toggle(
+        'odysseyNoAutumn',
+        'Keeps the mountain green: removes the autumn palette of chapter 4 (gold crowns, tawny grass).',
+        { scope: WORLD_SCOPE },
+    ),
     parameter(
         'odysseyWorldCloudFieldCount',
         'Limits the sculpted cloud field to its first N cloud masses.',

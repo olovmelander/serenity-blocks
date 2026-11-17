@@ -261,13 +261,20 @@ export const ODYSSEY_COLOUR_SCRIPT = Object.freeze([
         wind: 0.45,
     },
     // ── THE ISLAND'S MORNING AND THE MOUNTAINS' AFTERNOON (masterpiece pass, 2026-11-17) ──
-    // Chapters 3 and 4 shared one noon ('shore', p 0.38, stood where these three stand). Each now
-    // has its own hour: the island keeps its fresh morning to its last orb, the day turns between
-    // the two chapters, and the mountains stand in a warm late afternoon that ends at the start of
-    // the golden hour, where the sky chapter takes it on. `hour` (see HOUR below) carries the part
-    // of that light the five colours cannot: alpenglow, the blue of long shadows, the gold in the
-    // clouds and the mist. In script p these sit at the last island orb's park (journey p 0.2323),
-    // the first mountain orbs' park (0.2689) and the last mountain orb (0.3356).
+    // Chapters 3 and 4 shared one noon ('shore', p 0.38, stood where these stand). Each now has
+    // its own hour: the island keeps its fresh morning to its last orb, the day turns between the
+    // two chapters, and the mountains stand in a golden afternoon that deepens orb by orb into
+    // the evening's first keyframe ('golden-hour', below), with no step between them. `hour` (see
+    // HOUR below) carries the part of that light the five colours cannot: alpenglow, the blue of
+    // long shadows, the gold in the clouds and the mist. In script p these sit at the last island
+    // orb's park (journey p 0.2323), the first mountain orbs' park (0.2689) and between the
+    // mountains' fifth and sixth orbs (0.304).
+    //
+    // ROUND TWO: the mountains' two keyframes are the evening's own (`horizon: 'evening'`, see
+    // the note at that run). The first round kept their horizons on the anchor's blue and laid
+    // the warmth in a low belt; beside a green forest that read as chapter 3's day with warmer
+    // rock, and the sky stepped from blue to cream where the evening began. The afternoon now
+    // wears the evening's recipe from its first orb: a cream horizon under a luminous azure.
     {
         p: 0.2690,
         name: 'island-morning',
@@ -283,37 +290,40 @@ export const ODYSSEY_COLOUR_SCRIPT = Object.freeze([
         hour: 0,
         // The day turns after this keyframe, behind a cloud's shadow (world/odyssey-day-turn.js):
         // the shade crosses the valley and the afternoon's light follows it up the mountain. It
-        // is NOT a declared `seamAfter`: the horizon keeps the anchor's hue through it (the
-        // evening's warmth lies in a belt under the script's horizon, see `hour`), so the hue
-        // rate limit holds across the turn with nothing suspended.
+        // is NOT a declared `seamAfter`: this is the last keyframe on the anchor, the next is the
+        // evening run's first (`horizon: 'evening'`), and the step from the anchor's blue to its
+        // cream is small enough that the hue rate limit holds across the turn with nothing
+        // suspended.
     },
     {
         p: 0.3155,
         name: 'mountain-afternoon',
         medium: 'air',
-        skyZenith: 0x2562c4,
-        skyHorizon: 0xc9dcec,
-        sun: 0xffd9a8,
+        horizon: 'evening',
+        skyZenith: 0x3476cf,
+        skyHorizon: 0xe7e3d4,
+        sun: 0xffdcae,
         groundLit: 0x8a9a52,
-        groundShadow: 0x44609a,
+        groundShadow: 0x41598a,
         exposure: 1.00,
-        fogDensity: 0.00021,
+        fogDensity: 0.00019,
         wind: 0.60,
         hour: 0.42,
     },
     {
-        p: 0.4050,
-        name: 'alpine-gold',
+        p: 0.3620,
+        name: 'mountain-gold',
         medium: 'air',
-        skyZenith: 0x1f5cc4,
-        skyHorizon: 0xcbdcea,
-        sun: 0xffc885,
+        horizon: 'evening',
+        skyZenith: 0x3a7ad3,
+        skyHorizon: 0xeee1ca,
+        sun: 0xffd49b,
         groundLit: 0x9a9648,
-        groundShadow: 0x46629c,
-        exposure: 0.98,
-        fogDensity: 0.00024,
-        wind: 0.70,
-        hour: 0.62,
+        groundShadow: 0x425a88,
+        exposure: 0.99,
+        fogDensity: 0.00018,
+        wind: 0.64,
+        hour: 0.56,
     },
     // ── THE EVENING (2026-11-17, the sky pass of the masterpiece round) ─────────────────────
     // Chapter 5 used to climb through the same noon as chapters 3 and 4 ('highlands', 'alpine',
@@ -350,6 +360,8 @@ export const ODYSSEY_COLOUR_SCRIPT = Object.freeze([
         exposure: 0.99,
         fogDensity: 0.00017,
         wind: 0.60,
+        // (The hour goes on through the evening: alpenglow and the long shadows deepen to sunset.)
+        hour: 0.66,
     },
     {
         p: 0.4875, // L28, p 0.400
@@ -364,6 +376,7 @@ export const ODYSSEY_COLOUR_SCRIPT = Object.freeze([
         exposure: 0.98,
         fogDensity: 0.00018,
         wind: 0.68,
+        hour: 0.74,
     },
     {
         p: 0.5528, // L29, p 0.450
@@ -378,6 +391,7 @@ export const ODYSSEY_COLOUR_SCRIPT = Object.freeze([
         exposure: 0.97,
         fogDensity: 0.00019,
         wind: 0.76,
+        hour: 0.82,
     },
     {
         p: 0.6193, // L30, p 0.501
@@ -392,6 +406,7 @@ export const ODYSSEY_COLOUR_SCRIPT = Object.freeze([
         exposure: 0.96,
         fogDensity: 0.00021,
         wind: 0.84,
+        hour: 0.9,
     },
     {
         p: 0.6859, // L31, p 0.552
@@ -406,6 +421,7 @@ export const ODYSSEY_COLOUR_SCRIPT = Object.freeze([
         exposure: 0.95,
         fogDensity: 0.00023,
         wind: 0.90,
+        hour: 0.96,
     },
     {
         p: 0.7512, // L32, p 0.602
@@ -420,6 +436,7 @@ export const ODYSSEY_COLOUR_SCRIPT = Object.freeze([
         exposure: 0.94,
         fogDensity: 0.00024,
         wind: 0.94,
+        hour: 1,
     },
     {
         p: 0.827, // L33, p 0.653
@@ -434,6 +451,7 @@ export const ODYSSEY_COLOUR_SCRIPT = Object.freeze([
         exposure: 0.92,
         fogDensity: 0.00027,
         wind: 0.98,
+        hour: 1,
     },
     {
         p: 0.90, // p 0.696, just before L34
@@ -450,6 +468,7 @@ export const ODYSSEY_COLOUR_SCRIPT = Object.freeze([
         exposure: 0.90,
         fogDensity: 0.00030,
         wind: 1.00,
+        hour: 1,
         seamAfter: true, // the climb out: the change happens inside the cloud deck
     },
     {
@@ -464,6 +483,7 @@ export const ODYSSEY_COLOUR_SCRIPT = Object.freeze([
         exposure: 0.86,
         fogDensity: 0.00004,
         wind: 0.30,
+        hour: 0,
     },
 ]);
 

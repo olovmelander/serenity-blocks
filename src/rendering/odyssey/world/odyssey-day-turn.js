@@ -244,6 +244,7 @@ export function dayTurnField(xz, turn, noise, cfg = ODYSSEY_DAY_TURN) {
  *   antiRose       the rose low in the sky opposite the sun (the belt over the Earth's shadow)
  *   mist, mistVeil the mist low on the land: its density and the most it may veil, as multiples
  *                  of noon's (added)
+ *   capGold        the gold on the trees' sunlit caps (see the fields)
  */
 export const ODYSSEY_HOUR_LOOK = Object.freeze({
     shadeChroma: 0.38,
@@ -253,8 +254,17 @@ export const ODYSSEY_HOUR_LOOK = Object.freeze({
     alpenglowTint: Object.freeze([1.0, 0.80, 0.74]),
     cloudSun: 1.0,
     warmAir: 0.70,
-    antiRose: 0.90,
-    antiRoseTint: Object.freeze([0.96, 0.66, 0.56]),
+    antiRose: 0.55,
+    antiRoseTint: Object.freeze([0.98, 0.74, 0.58]),
     mist: 2.8,
     mistVeil: 0.8,
+    /** The crowns' sunlit caps: how fast they go to gold (all of it by hour 1 / capGold), the
+     * tint they reach over their own colour and the cap's added reach. */
+    capGold: 1.7,
+    capGoldTint: Object.freeze([1.42, 1.19, 0.72]),
+    capGoldGain: 0.4,
+    /** The hour the clouds' light and the mist hold at through the evening (the mountains' last). */
+    hourHeld: 0.66,
+    /** The share of the evening's dusk over which the hour's warm air and belt hand over to it. */
+    eveningHandover: 0.2,
 });

@@ -67,6 +67,12 @@ import {
     ODYSSEY_DAY_TURN, ODYSSEY_HOUR_LOOK, createDayTurnPace, dayTurnField,
 } from './odyssey-day-turn.js';
 import { odysseyWeatherDrive } from './odyssey-weather-clock.js';
+import { createOdysseyHollowMist } from './odyssey-hollow-mist.js';
+import { ODYSSEY_TURN_WAKE, createOdysseyTurnWake, inTurnWakeReach } from './odyssey-turn-wake.js';
+import {
+    AUTUMN_KIND, ODYSSEY_AUTUMN, autumnCrown, autumnGrass, autumnKindNode, autumnKindOf, autumnSnowNode,
+    autumnWeight, packSnowKind,
+} from './odyssey-autumn.js';
 import { prefersReducedMotion } from '../../../themes/shared/reduced-motion.js';
 import {
     ODYSSEY_BOULDERS, boulderMatrix, buildBoulderGeometry, buildBoulderSites,
@@ -1286,6 +1292,9 @@ export function createOdysseyWorld({
     // board hands in the wall clock, so a session does not open on the same weather as the last;
     // left at 0 (the playgrounds, the tests) a pinned time repeats.
     weatherPhase = 0,
+    // AUTUMN ON THE MOUNTAIN (odyssey-autumn.js): chapter 4's palette. Ships ON;
+    // `?odysseyNoAutumn=1` on the board builds none of it (ADR-0015).
+    autumn = true,
 } = {}) {
     const weatherEpoch = Number.isFinite(weatherPhase) ? weatherPhase : 0;
     const weatherNow = {};
@@ -1397,8 +1406,9 @@ export function createOdysseyWorld({
     leafAtlasTex.needsUpdate = true;
     // THE MIST PLATE (GROUND_MIST; odyssey-valley-mist.js): R = the hollows' mist top over the
     // sea, G = the pool's depth, both in u, read at `xz / RELIEF_EXTENT + 0.5`.
+    const valleyMistPlate = bakeValleyMist(relief.sample, ODYSSEY_SEA_LEVEL);
     const valleyMistTex = (() => {
-        const plate = bakeValleyMist(relief.sample, ODYSSEY_SEA_LEVEL);
+        const plate = valleyMistPlate;
         const half = new Uint16Array(plate.data.length);
         const one = THREE.DataUtils.toHalfFloat(1);
         for (let t = 0; t < plate.data.length; t += 4) {
@@ -1562,6 +1572,12 @@ export function createOdysseyWorld({
         billow: (uvN) => texture(detailTex, uvN).level(0).b,
         scallop: (uvN) => clamp(texture(detailTex, uvN).level(0).a.sub(0.42).mul(3.57), 0, 1),
     });
+    // AUTUMN (odyssey-autumn.js): how far the season has turned ahead of the shade and behind it
+    // (0 on the island, 1 on the mountains; both the same outside the turn).
+    const uAutumn = uniform(new THREE.Vector2(0, 0));
+    const autumnOf = (y, turn) => autumnWeight(y, mix(uAutumn.x, uAutumn.y, turn.y));
+    // The palette's shade colours, by the forest's own shade law.
+    const AUTUMN_SHADES = ODYSSEY_AUTUMN.crowns.map((stop) => shadeColourFor(stop.colour, stop.role));
     const landSunOf = (turn) => mix(uLandSunA, uLandSunB, turn.y);
     const landHourOf = (turn) => mix(uLandHourA, uLandHourB, turn.y);
     // THE ANTISOLAR SKY (odyssey-sky-optics.js): the bow's and the shower veil's strengths.
@@ -2610,7 +2626,27 @@ export function createOdysseyWorld({
             return mTint;
         })();
         // The north beach: dune grass in the tufts, and paler sand with a broad tonal swell.
-        const grassPole = mix(poles('grass').mul(meadowTint), vec3(...NORTH_BEACH_PAINT.grass), nbBelt.mul(nbDune));
+        // THE DAY'S TURN at this point of the land (odyssey-day-turn.js), read once: how deep it
+        // stands in the turning shade, and whether its light is already the afternoon's.
+        const gTurn = dayTurnOf(positionWorld.xz).toVar();
+        // AUTUMN (odyssey-autumn.js): the grass goes tawny, with heath in patches, where the high
+        // band or the day's turn has reached. The patch noise is paid only where there is autumn.
+        const gAutumn = autumn ? autumnOf(height, gTurn).toVar() : null;
+        const grassGreen = mix(poles('grass').mul(meadowTint), vec3(...NORTH_BEACH_PAINT.grass), nbBelt.mul(nbDune));
+        const grassPole = autumn
+            ? Fn(() => {
+                const turnedGrass = grassGreen.toVar();
+                If(gAutumn.greaterThan(0.002), () => {
+                    turnedGrass.assign(autumnGrass({
+                        grass: grassGreen,
+                        weight: gAutumn,
+                        patch: noise2(positionWorld.xz.div(float(ODYSSEY_AUTUMN.grass.patch)).add(vec2(7.7, 3.1))),
+                        moist,
+                    }));
+                });
+                return turnedGrass;
+            })()
+            : grassGreen;
         const sandPole = mix(
             poles('sand'),
             vec3(...NORTH_BEACH_PAINT.pale).mul(mix(float(1), float(0.86), dryness.oneMinus())),
@@ -2699,7 +2735,11 @@ export function createOdysseyWorld({
         const canopyMean = vec3(forestShade.b, forestShade.a, forestShade.a.mul(0.42))
             .div(max(forestShade.g, 0.02))
             .mul(FOREST_SHADE_PLATE.colourScale * FOREST_FAR_TONE);
-        albedo = mix(albedo, canopyMean, clamp(farForest.mul(1.6), 0, 1));
+        // (In autumn the painted canopy turns with the trees it stands for.)
+        const canopyNow = autumn
+            ? mix(canopyMean, vec3(...ODYSSEY_AUTUMN.canopy), gAutumn.mul(ODYSSEY_AUTUMN.canopyShare))
+            : canopyMean;
+        albedo = mix(albedo, canopyNow, clamp(farForest.mul(1.6), 0, 1));
 
         const SHORE_TOP = ODYSSEY_SEA_LEVEL + 1.2;
         const albedoInland = albedo;
@@ -2866,9 +2906,7 @@ export function createOdysseyWorld({
          * RATIO is produced in exactly one place — `value`.
          */
         const ndl = max(dot(litNormal, uSunDir), 0);
-        // THE DAY'S TURN at this point of the land (odyssey-day-turn.js), read once: how deep it
-        // stands in the turning shade, and whether its light is already the afternoon's.
-        const gTurn = dayTurnOf(positionWorld.xz).toVar();
+        // (The day's turn at this point, `gTurn`, was read above with the grass.)
         const gSun = landSunOf(gTurn).toVar();
         const gHour = landHourOf(gTurn).toVar();
         // Drifting cloud shadows over all dry land (see GROUND_CLOUD_SHADOW); the seabed and the
@@ -5493,6 +5531,24 @@ export function createOdysseyWorld({
         })
         : null;
     if (summitCap) group.add(summitCap.mesh);
+    // MIST IN THE HOLLOW (odyssey-hollow-mist.js): the upper meadow's basin holds a pool of mist
+    // through the mountains' afternoon, a soft sheet at the pool's own level that the trees rise
+    // through. One blended draw; the high tier's (it rides the tier the cloud shadows do).
+    const hollowMist = q.cloudShadows
+        ? createOdysseyHollowMist({
+            heightAt: relief.sample,
+            plate: valleyMistPlate,
+            positionWorld,
+            cameraPosition,
+            time: uTime,
+            noise: detailTex,
+            sunColour: uSunColour,
+            sunDir: uSunDir,
+            skyAirAt,
+            toOutput: (c, at) => toOutputSurface(applyAerial(c, at, AERIAL_CEIL_LAND, AERIAL_RATE_LAND)),
+        })
+        : null;
+    if (hollowMist) group.add(hollowMist.mesh);
     // THE WALL'S GUSTS (odyssey-wall-gusts.js): spindrift blown across the face where the climb
     // begins, the 4->5 seam's own event. Same lever.
     const wallGusts = cloudSea && cloudField
@@ -6216,6 +6272,8 @@ export function createOdysseyWorld({
     ));
 
     const treeMeshes = [];
+    // The trees round the 18->19 glide's view, for the turn's wake (odyssey-turn-wake.js).
+    const wakeTrees = [];
     const greensPalette = resolveForestGreens(forestGreens);
     let forestV2Stats = null;
     let forestPlacements = null;
@@ -6293,10 +6351,27 @@ export function createOdysseyWorld({
         const fvIsCard = cards ? tslStep(float(1.5), fvVert.z) : null;
         const fvIsCrown = cards ? min(fvVert.z, 1) : fvVert.z;
         const fvH01 = fvVert.w;
-        const fvCrown = fvCrownSnow.xyz;
-        const fvShade = fvShadePhase.xyz;
-        const fvSnow = fvCrownSnow.w;
         const fvPhase = fvShadePhase.w;
+        // The crown's fourth lane is the tree's snow and, with autumn on, its kind (packSnowKind).
+        const fvKind = autumn ? autumnKindNode(fvCrownSnow.w) : null;
+        const fvSnow = autumn ? autumnSnowNode(fvCrownSnow.w, fvKind) : fvCrownSnow.w;
+        // THE DAY'S TURN (odyssey-day-turn.js): the trees stand in the turning shade with the ground
+        // under them, and take the afternoon's light, and the autumn, as it reaches them.
+        const fvTurn = dayTurnOf(positionWorld.xz).toVar();
+        // AUTUMN (odyssey-autumn.js): a crown that turns takes its own autumn colour and shade,
+        // weighed at the tree's foot so it turns whole.
+        const fvAutumn = autumn
+            ? autumnCrown({
+                crown: fvCrownSnow.xyz,
+                shade: fvShadePhase.xyz,
+                weight: autumnOf(positionWorld.y.sub(fvVert.w.mul(ODYSSEY_AUTUMN.crownReach)), fvTurn),
+                kind: fvKind,
+                phase: fvPhase,
+                shades: AUTUMN_SHADES,
+            })
+            : null;
+        const fvCrown = autumn ? fvAutumn.crown : fvCrownSnow.xyz;
+        const fvShade = autumn ? fvAutumn.shade : fvShadePhase.xyz;
         // LEAF CARDS (odyssey-forest-cards.js). The vertex stage turns each card to the eye and
         // shakes its leaves; the fragment stage draws a clump from the leaf atlas: its coverage, a
         // normal from the crown's centre with the clump's own dome, the sun's path through the
@@ -6407,9 +6482,6 @@ export function createOdysseyWorld({
         const fvSunVis = clamp(fract(fvTrunkSun.w).sub(FOREST_TRUNK_PACK.lo).div(FOREST_TRUNK_PACK.span), 0, 1);
         // ...and the drifting CLOUD shadows the ground under it takes (one fetch pair per fragment,
         // high tier only): without them a shadow crossing the island stopped at every forest edge.
-        // THE DAY'S TURN (odyssey-day-turn.js): the trees stand in the turning shade with the ground
-        // under them, and take the afternoon's light as it reaches them.
-        const fvTurn = dayTurnOf(positionWorld.xz).toVar();
         const fvSun = landSunOf(fvTurn).toVar();
         let fvCloud = float(1);
         if (q.cloudShadows) fvCloud = cards ? vCloud : cloudShadowLight(positionWorld.xz, fvTurn);
@@ -6580,10 +6652,17 @@ export function createOdysseyWorld({
             .mul(float(1).sub(fvFlat))
             .mul(fvIsCrown)
             .mul(FOREST_CAP_GAIN);
+        // THE LOW SUN'S GOLD ON THE CROWNS (round two): late in the day a crown's sunlit cap is
+        // brighter against its own shade and leans to gold (`capGold`, by the land's hour here).
+        const fvCapGold = clamp(
+            landHourOf(fvTurn).z.mul(ODYSSEY_HOUR_LOOK.capGold / ODYSSEY_HOUR_LOOK.alpenglow),
+            0,
+            1,
+        );
         const fvThree = mix(
             mix(mix(fvShadeCol, fvMidTone, fvBandLo), fvAlbedo, fvBandHi),
-            fvAlbedo.mul(vec3(...FOREST_CAP_TINT)),
-            fvCap,
+            fvAlbedo.mul(mix(vec3(...FOREST_CAP_TINT), vec3(...ODYSSEY_HOUR_LOOK.capGoldTint), fvCapGold)),
+            min(fvCap.mul(fvCapGold.mul(ODYSSEY_HOUR_LOOK.capGoldGain).add(1)), float(1)),
         );
         // PRE-SATURATED at distance, because the desaturators downstream cannot be retuned from
         // here: `applyAerial` hazes toward the sky for the whole world and the grade applies
@@ -6741,7 +6820,14 @@ export function createOdysseyWorld({
                 const greens = forestGreensCrown(t, greensPalette);
                 const crown = greens ?? t.crown;
                 const shade = greens ? shadeColourFor(greens, getForestSpecies(t.speciesId).role) : t.shade;
-                aCrownSnow.setXYZW(i, crown[0], crown[1], crown[2], t.snow);
+                // (The fourth lane: the tree's snow, and its kind in autumn. See packSnowKind.)
+                aCrownSnow.setXYZW(
+                    i,
+                    crown[0],
+                    crown[1],
+                    crown[2],
+                    autumn ? packSnowKind(t.snow, autumnKindOf(t.speciesId)) : t.snow,
+                );
                 aShadePhase.setXYZW(i, shade[0], shade[1], shade[2], t.rot * 3.7);
                 aTrunk.setXYZW(
                     i,
@@ -6754,6 +6840,15 @@ export function createOdysseyWorld({
                 cz += t.z;
                 maxY = Math.max(maxY, t.y + (src.userData.forest.totalH * t.scaleY * FOREST_V2_SCALE));
                 minY = Math.min(minY, t.y);
+                if (inTurnWakeReach(t.x, t.z)) {
+                    wakeTrees.push({
+                        x: t.x,
+                        y: t.y,
+                        z: t.z,
+                        top: t.y + (src.userData.forest.totalH * t.scaleY * FOREST_V2_SCALE),
+                        broad: autumnKindOf(t.speciesId) !== AUTUMN_KIND.evergreen,
+                    });
+                }
             });
             geo.setAttribute('aCrownSnow', aCrownSnow);
             geo.setAttribute('aShadePhase', aShadePhase);
@@ -6782,6 +6877,32 @@ export function createOdysseyWorld({
         forestClearedSites = zoned.meadowCleared ?? [];
         geoCache.forEach((cached) => cached.dispose());
     }
+    // THE TURN'S WAKE (odyssey-turn-wake.js): as the turning shade's edge passes the rail, leaves
+    // let go of the crowns along it and birds lift out of them. One alpha-tested draw, drawn only
+    // while a wake is in the air.
+    const turnWake = wakeTrees.length
+        ? createOdysseyTurnWake({
+            trees: wakeTrees,
+            heightAt: relief.sample,
+            time: uTime,
+            leaves: q.cloudShadows ? ODYSSEY_TURN_WAKE.leaves.count : Math.round(ODYSSEY_TURN_WAKE.leaves.count * 0.4),
+            // The autumn palette's own crowns, a little brighter (a leaf in the air is lit through);
+            // the summer's greens where the season is switched off.
+            tints: autumn
+                ? ODYSSEY_AUTUMN.crowns.slice(1).map((stop) => stop.colour.map((c) => c * 1.25))
+                : [[0.36, 0.46, 0.12], [0.50, 0.54, 0.15], [0.30, 0.40, 0.10], [0.58, 0.56, 0.18]],
+            lightAt: (xz) => {
+                const turn = dayTurnOf(xz).toVar();
+                return {
+                    sun: landSunOf(turn),
+                    direct: q.cloudShadows ? cloudShadowLight(xz, turn) : float(1).sub(turn.x.mul(uTurn.w)),
+                };
+            },
+            skyColour: uSkyHorizon,
+            toOutput: (c, at) => toOutputSurface(applyAerial(c, at, AERIAL_CEIL_LAND, AERIAL_RATE_LAND)),
+        })
+        : null;
+    if (turnWake) group.add(turnWake.mesh);
 
     // ── BOULDERS AND OUTCROPS (Act II leftovers, 2026-11-02; odyssey-boulders.js) ─────────────
     // Rocks for scale on the meadows and slopes, sited on the rail camera. Three shapes at two
@@ -7256,10 +7377,21 @@ export function createOdysseyWorld({
             // (The warm air and the evening belt are the lower air's: they leave with the first
             // third of the departure, so the limb the climb looks down on is the Earth's own blue.)
             const lowAir = 1 - Math.min(uWorldFade.value / 0.35, 1);
-            const hourLow = cs.hour * lowAir * lowAir * (3 - (2 * lowAir));
-            uHourSky.value.set(HL.warmAir * hourLow, HL.cloudSun * cs.hour, HL.antiRose * hourLow, 0);
-            uMist.value.set((1 + (HL.mist * cs.hour)) * weather.mist, 1 + (HL.mistVeil * cs.hour));
+            // THE EVENING TAKES THE SKY OVER (odyssey-evening.js): from the 4->5 seam its own gold
+            // arch, belt and cloud light come in, so the hour's warm air and belt hand over to
+            // them across the evening's first fifth, and the hour's share of the clouds' light
+            // and of the mist holds at the mountains' last orb (the evening's own terms go on).
+            const handover = 1 - Math.min(evening.dusk / HL.eveningHandover, 1);
+            const hourLow = cs.hour * lowAir * lowAir * (3 - (2 * lowAir))
+                * handover * handover * (3 - (2 * handover));
+            const hourHeld = Math.min(cs.hour, HL.hourHeld);
+            uHourSky.value.set(HL.warmAir * hourLow, HL.cloudSun * hourHeld, HL.antiRose * hourLow, 0);
+            uMist.value.set((1 + (HL.mist * hourHeld)) * weather.mist, 1 + (HL.mistVeil * hourHeld));
             uGust.value = weather.gust;
+            // AUTUMN rides the day's turn: none ahead of the shade and all of it behind while the
+            // shade crosses, the turn's own share when nothing travels.
+            if (sweeping) uAutumn.value.set(0, 1);
+            else uAutumn.value.set(turn.t, turn.t);
             uAerialK.value = cs.fogDensity;
             // (The water's depth plates are written below with the depth arc, by the eye's depth.)
             uExposure.value = cs.exposure;
@@ -7418,6 +7550,17 @@ export function createOdysseyWorld({
                 const capShown = authored(summitCap.mesh) && uSubmerged.value < 0.999 && !earthCovers;
                 summitCap.update(time, evening.cap, capShown);
             }
+            if (hollowMist) {
+                // (In the air only: under water the basin is far above a blue column.)
+                const mistShown = authored(hollowMist.mesh) && uSubmerged.value < 0.001 && !earthCovers;
+                hollowMist.update(cs.hour, weather.pool, mistShown);
+            }
+            if (turnWake) {
+                // (The forest sways harder for the few seconds the gust takes to pass.)
+                const wakeShown = authored(turnWake.mesh) && uSubmerged.value < 0.001 && !earthCovers;
+                uGust.value = weather.gust
+                    * (1 + turnWake.update(time, turn.front, sweeping, railPoint.x, railPoint.z, wakeShown));
+            }
             if (wallGusts) {
                 // (keyed on journey progress, as its window is written: Act II progress back to it)
                 const gustsShown = authored(wallGusts.mesh) && uSubmerged.value < 0.999 && !earthCovers;
@@ -7489,6 +7632,8 @@ export function createOdysseyWorld({
                 tarnMat, showerMat, boulderMat].forEach((m) => m.dispose());
             if (cloudSeaLayer) cloudSeaLayer.dispose();
             if (summitCap) summitCap.dispose();
+            if (hollowMist) hollowMist.dispose();
+            if (turnWake) turnWake.dispose();
             if (wallGusts) wallGusts.dispose();
             if (rayMat) rayMat.dispose();
             if (moteMat) moteMat.dispose();
