@@ -65,14 +65,21 @@ function fingerprint(world) {
     return hash.digest('hex');
 }
 
-/** Run steps on a clock that is always due, so every slice breathes; returns [steps, value]. */
-function runEveryBreath(steps) {
+/**
+ * Run steps on a clock that is always due, so every slice breathes; returns [steps, value].
+ * `makeSteps` is called under the mocked clock: a generator's default step clock is read when
+ * the generator is CALLED, and one made before the mock compared the worker's real uptime with
+ * the mock's small numbers, so it never came due in a worker that had lived for a while (the test
+ * failed only in long runs).
+ */
+function runEveryBreath(makeSteps) {
     let t = 0;
     const now = vi.spyOn(performance, 'now').mockImplementation(() => {
         t += 50;
         return t;
     });
     try {
+        const steps = makeSteps();
         let count = 0;
         let next = steps.next();
         while (!next.done) {
@@ -95,7 +102,7 @@ describe('Stellar Drift first build in steps', () => {
         const parts = new Float32Array(whole);
         const want = mipsBefore(whole, size);
         const once = createFbmTexture(whole, size);
-        const [count, sliced] = runEveryBreath(createFbmTextureSteps(parts, size));
+        const [count, sliced] = runEveryBreath(() => createFbmTextureSteps(parts, size));
         // A yield at every row of every level, converted and filtered.
         expect(count).toBeGreaterThan(2 * size);
         for (const tex of [once, sliced]) {
@@ -103,7 +110,7 @@ describe('Stellar Drift first build in steps', () => {
             tex.mipmaps.forEach((m, i) => expect(m.data, `level ${i}`).toEqual(want[i].data));
         }
         // A second texture of a field shares the chain already derived, made at once.
-        const [again, reused] = runEveryBreath(createFbmTextureSteps(parts, size));
+        const [again, reused] = runEveryBreath(() => createFbmTextureSteps(parts, size));
         expect(again).toBe(0);
         reused.mipmaps.forEach((m, i) => expect(m.data).toBe(sliced.mipmaps[i].data));
         [once, sliced, reused].forEach((tex) => tex.dispose());
@@ -112,7 +119,7 @@ describe('Stellar Drift first build in steps', () => {
     it('builds the same world a few parts to a step as its build() makes', () => {
         // The first world here of its tier: its fBm's chain is derived in the steps.
         const sliced = new StellarDriftWorld({ scene: new THREE.Scene(), quality: 'Extreme', capture: true });
-        const [count, built] = runEveryBreath(sliced.buildSteps());
+        const [count, built] = runEveryBreath(() => sliced.buildSteps());
         expect(built).toBe(sliced);
         expect(count).toBeGreaterThan(100);
         const once = new StellarDriftWorld({ scene: new THREE.Scene(), quality: 'Extreme', capture: true }).build();

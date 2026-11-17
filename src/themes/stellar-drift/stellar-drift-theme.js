@@ -378,7 +378,7 @@ export default class StellarDriftTheme extends BaseTheme {
             }),
         );
         this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
-        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+        this.registerEventListener(window, 'gameOver', () => this.endRun());
 
         const resetPointer = () => {
             this.pointer.x = 0;
@@ -419,12 +419,23 @@ export default class StellarDriftTheme extends BaseTheme {
         this.world?.onCombo(best);
     }
 
+    /**
+     * A run ended: the last lock lands in this run, the run's own state is dropped (not the world's:
+     * what is in flight plays out), and nightfall comes over the giant. The world keeps it through a
+     * later resetSession() (the menu after a run shows it); it lifts by itself or on the next run.
+     */
+    endRun() {
+        this.director?.flush();
+        this.resetSession({ world: false });
+        this.world?.onGameOver?.();
+    }
+
     /** A new run: the giant back at rest, no chain in flight. */
-    resetSession() {
+    resetSession({ world = true } = {}) {
         this.director?.reset();
         this.combos.clear();
         this.level = 1;
-        this.world?.resetSession();
+        if (world) this.world?.resetSession();
         this.scheduleLayoutReads();
     }
 
@@ -522,7 +533,11 @@ export default class StellarDriftTheme extends BaseTheme {
         this.modeManager = manager;
         const relayout = () => this.scheduleLayoutReads();
         this.eventUnsubscribers.push(
-            manager.on('modeStarted', relayout),
+            manager.on('modeStarted', () => {
+                relayout();
+                // A new run: nightfall (if a run just ended) lifts.
+                this.world?.onSessionStart?.();
+            }),
             manager.on('modeActivated', relayout),
             manager.on('modeStopped', () => this.resetSession()),
         );

@@ -6,6 +6,7 @@ import {
 import {
     stellarDriftBakeJobs, stellarDriftBakeKey, stellarDriftBakes,
 } from '../../src/themes/stellar-drift/stellar-drift-bakes.js';
+import { MOON_SIZES, bakeMoon, moonSeed } from '../../src/themes/stellar-drift/stellar-drift-moon-bake.js';
 import { tierFor } from '../../src/themes/stellar-drift/stellar-drift-quality.js';
 import { isBaked, primeBake } from '../../src/themes/shared/bake-cache.js';
 
@@ -23,9 +24,12 @@ describe('Stellar Drift bakes ahead of the build', () => {
         expect(world).toContain('bakeFbm(this.seed + 23, tier.fbmSize, tier.fbmOctaves)');
         expect(world).toContain('bakeRingProfile(tier.ringSize, this.seed + 37)');
         expect(world).toContain('bakeBandMeta(512, this.seed + 41)');
+        expect(world).toContain("bakeMoon('ice', tier.moonSize, moonSeed(this.seed))");
+        expect(world).toContain("bakeMoon('rust', MOON_SIZES.rust, moonSeed(this.seed))");
         expect(world).toContain('seed = WORLD_SEED,');
         expect(source('stellar-drift-bake.js')).not.toMatch(/from 'three/);
         expect(source('stellar-drift-core.js')).not.toMatch(/from 'three/);
+        expect(source('stellar-drift-moon-bake.js')).not.toMatch(/from 'three/);
         expect(source('stellar-drift-theme.js')).toContain('const baking = stellarDriftBakes(this.quality);');
         const tier = tierFor('High');
         expect(stellarDriftBakeJobs('High')).toEqual([
@@ -33,9 +37,11 @@ describe('Stellar Drift bakes ahead of the build', () => {
             { kind: 'fbm', args: [WORLD_SEED + 23, tier.fbmSize, tier.fbmOctaves] },
             { kind: 'ring', args: [tier.ringSize, WORLD_SEED + 37] },
             { kind: 'bands', args: [512, WORLD_SEED + 41] },
+            { kind: 'moon', args: ['ice', tier.moonSize, moonSeed(WORLD_SEED)] },
+            { kind: 'moon', args: ['rust', MOON_SIZES.rust, moonSeed(WORLD_SEED)] },
         ]);
         expect(source('stellar-drift-bake.worker.js'))
-            .toMatch(/lattice: bakeLattice, fbm: bakeFbm, ring: bakeRingProfile, bands: bakeBandMeta/);
+            .toMatch(/lattice: bakeLattice, fbm: bakeFbm, ring: bakeRingProfile, bands: bakeBandMeta, moon: bakeMoon/);
     });
 
     it('resolves at once without a Worker, leaving the build to bake as before', async () => {
@@ -44,7 +50,7 @@ describe('Stellar Drift bakes ahead of the build', () => {
 
     it('keys each job where the world\'s own call looks, so a primed bake is not baked again', () => {
         const bakes = {
-            lattice: bakeLattice, fbm: bakeFbm, ring: bakeRingProfile, bands: bakeBandMeta,
+            lattice: bakeLattice, fbm: bakeFbm, ring: bakeRingProfile, bands: bakeBandMeta, moon: bakeMoon,
         };
         for (const job of stellarDriftBakeJobs('Low', 4242)) {
             const key = stellarDriftBakeKey(job);
