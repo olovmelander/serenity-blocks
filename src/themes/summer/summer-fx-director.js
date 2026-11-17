@@ -46,7 +46,9 @@ const BLOSSOM_RISE = 0.42;
 const BLOSSOM_CLIMB = 3.4;
 /** Petals in one sky flower at the reference pool, and how far its longest petals reach, metres. */
 const BLOSSOM_PETALS = 210;
-const BLOSSOM_REACH = 1.7;
+const BLOSSOM_REACH = 1.3;
+/** The bouquet's flower opens on the line of sight to the maypole's head, this far from the eye. */
+const BLOSSOM_CROWN_DEPTH = 8.2;
 /** Seconds a sky flower holds its shape before its petals let go and fall. */
 const BLOSSOM_HANG = 1.6;
 /** How quickly the air stops a petal (the simulation's drag): a burst's reach is its speed over this. */
@@ -60,7 +62,7 @@ const BLOSSOM_MAYPOLE = -1;
  * the screen, and metres from the eye.
  */
 const BLOSSOM_SPOTS = [
-    [0.5, 0.2, 7.6], [0.5, 0.21, 7.2], [0.76, 0.46, 8], [0.74, 0.44, 7.4], [0.26, 0.36, 8.4], [0.28, 0.35, 7.8],
+    [0.56, 0.3, 7.6], [0.5, 0.22, 7.2], [0.82, 0.5, 8], [0.78, 0.48, 7.4], [0.2, 0.42, 8.4], [0.24, 0.4, 7.8],
 ];
 /** How far down the screen the flowers of a narrow side stand, one above another. */
 const BLOSSOM_STACK = [0.2, 0.46, 0.7];
@@ -239,25 +241,38 @@ export class SummerFxDirector {
     }
 
     /**
-     * A hard drop shakes the dandelion clocks: seed lifts off the meadow where the piece came
-     * down, and a ring of pollen runs out over the heads of the flowers from the spot.
+     * A hard drop comes down like a stone in the grass: a ring of the piece's own petals is
+     * knocked off the flowers under it and leaps out of the meadow to both sides of the board's
+     * foot, pollen among them, and the dandelion clocks let go of their seed. (The spot is
+     * behind the card: the ring is thrown wide and high enough to be seen leaving it.)
      */
     seeds(emitter, fresh = false) {
         const { sim } = this;
         const spot = this.meadowAt(emitter.column, this.foot);
         if (fresh) {
-            const ring = Math.round((30 + 26 * emitter.strength) * this.scale);
+            const ring = Math.round((26 + 30 * emitter.strength) * this.scale);
             for (let i = 0; i < ring; i += 1) {
                 const angle = (i / ring) * Math.PI * 2 + this.random() * 0.2;
-                const speed = (4.2 + 2.4 * emitter.strength) * (0.85 + 0.3 * this.random());
+                const speed = (5.5 + 3 * emitter.strength) * (0.85 + 0.3 * this.random());
+                const x = spot.x + Math.cos(angle) * 0.4;
+                const z = spot.z + Math.sin(angle) * 0.3;
+                const pollen = i % 4 === 3;
                 sim.spawn(
-                    spot.x + Math.cos(angle) * 0.4,
-                    this.above(spot.x, 0, spot.z, 0.75) + 0.2 * this.random(),
-                    spot.z + Math.sin(angle) * 0.3,
+                    x,
+                    // Over the heads of the flowers: among them it would never be seen.
+                    this.above(x, 0, z, FLOWER_TOPS + 0.15) + 0.3 * this.random(),
+                    z,
                     Math.cos(angle) * speed,
-                    0.5 + 0.7 * this.random(),
-                    Math.sin(angle) * speed * 0.7,
-                    { life: 0.9 + 0.7 * this.random(), kind: POLLEN, size: 0.07 + 0.05 * this.random() },
+                    2.2 + 1.6 * this.random(),
+                    Math.sin(angle) * speed * 0.6,
+                    {
+                        life: 1.3 + 0.8 * this.random(),
+                        kind: pollen ? POLLEN : PETAL,
+                        flower: emitter.flower,
+                        size: pollen ? 0.1 : 0.09 + 0.06 * this.random(),
+                        // The air carries it out before it starts to fall.
+                        hang: pollen ? 0 : 0.3,
+                    },
                 );
             }
         }
@@ -419,7 +434,10 @@ export class SummerFxDirector {
         const { stage, maypole } = this;
         this.blossomFit = 1;
         if (emitter.lines === BLOSSOM_MAYPOLE && maypole) {
-            return target.set(maypole.top.x, maypole.top.y - 0.4, maypole.top.z);
+            // On the line of sight to the pole's head, as near as the others: it is seen crowning
+            // the pole, and is as large and as crisp as the flowers beside the board.
+            return target.copy(maypole.top).sub(stage.origin).normalize().multiplyScalar(BLOSSOM_CROWN_DEPTH)
+                .add(stage.origin);
         }
         const index = Math.max(0, Math.round(emitter.lines)) % BLOSSOM_SPOTS.length;
         const [across, down, depth] = BLOSSOM_SPOTS[index];
@@ -476,12 +494,12 @@ export class SummerFxDirector {
         if (this.opened.get(emitter.id) === true) return;
         this.opened.set(emitter.id, true);
         const lobes = mixed ? 7 : 5 + (emitter.flower % 4);
-        const total = Math.round(BLOSSOM_PETALS * this.scale * strength);
-        // The bouquet's flower over the maypole stands further off, so it is the largest; one in a
-        // narrow strip beside the score panel is drawn to fit it.
-        const radius = BLOSSOM_REACH * (0.75 + 0.35 * strength) * (emitter.lines === BLOSSOM_MAYPOLE ? 1.7 : 1)
-            * this.blossomFit;
+        // The bouquet's flower crowning the maypole is a little larger and has more petals in it;
+        // one in a narrow strip beside the score panel is drawn to fit it.
+        const crowning = emitter.lines === BLOSSOM_MAYPOLE;
+        const radius = BLOSSOM_REACH * (0.75 + 0.35 * strength) * (crowning ? 1.15 : 1) * this.blossomFit;
         const reach = radius * PETAL_DRAG;
+        const total = Math.round(BLOSSOM_PETALS * this.scale * strength * (crowning ? 1.25 : 1));
         const turn = emitter.seed * Math.PI * 2;
         const wedge = Math.PI / lobes;
         for (let i = 0; i < total; i += 1) {
