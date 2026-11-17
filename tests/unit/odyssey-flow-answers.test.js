@@ -6,12 +6,12 @@
 import {
     describe, expect, it, vi,
 } from 'vitest';
+import * as THREE from 'three/webgpu';
+import { uniform } from 'three/tsl';
 import {
     RAIL_RIPPLE, STAR_LANDING, answerOrbFinished, lightRailAhead, railRippleDurationMs, resolveRailRipple,
     starLandingPose, starLandingTotalMs,
 } from '../../src/rendering/odyssey/odyssey-flow-answers.js';
-import * as THREE from 'three/webgpu';
-import { uniform } from 'three/tsl';
 import { OdysseyPathRenderer } from '../../src/rendering/odyssey/OdysseyPathRenderer.js';
 import { createPathGlowTSL, createPathOuterTSL } from '../../src/rendering/odyssey/odyssey-path-renderer.tsl.js';
 import { build, unassignedReads } from './helpers/tsl-node-build.js';
