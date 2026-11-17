@@ -3,7 +3,7 @@
  *
  * An act is one animal doing one thing: a dolphin riding inside the face of the wave, a pod
  * rolling through the trough, a leap, a spin, a somersault, a humpback throwing itself out of the
- * sea, a flying fish skittering off the water, a shearwater on the wind. Every act is written
+ * sea, a shearwater on the wind. Every act is written
  * once, when it begins, as a handful of numbers, and `actPose` says where the animal is at any
  * moment of it: a closed form of the world's clock, like the spray and the ribbons, so an act
  * looks the same at any frame rate, holds when the clock holds (four lines) and replays exactly
@@ -27,7 +27,7 @@ import {
 export const GRAVITY = 0.46;
 
 /** The animals, in the order the pack numbers them (scripts/blender/waves_sea_life/cast.py). */
-export const KINDS = Object.freeze(['bottlenose', 'spinner', 'humpback', 'manta', 'turtle', 'flyingFish', 'seabird']);
+export const KINDS = Object.freeze(['bottlenose', 'spinner', 'humpback', 'manta', 'turtle', 'seabird']);
 
 /**
  * Each animal: its length in metres (the manta: across its wings; the bird: bill to tail, its
@@ -40,16 +40,12 @@ export const SPECIES = Object.freeze({
     humpback: Object.freeze({ metres: 13, slots: 2, stroke: 0.9 }),
     manta: Object.freeze({ metres: 3.4, slots: 2, stroke: 1.15 }),
     turtle: Object.freeze({ metres: 1.05, slots: 3, stroke: 1.5 }),
-    flyingFish: Object.freeze({ metres: 0.5, slots: 28, stroke: 16 }),
     seabird: Object.freeze({ metres: 0.95, slots: 8, stroke: 3.4 }),
 });
 
 /** How far from the middle of a dolphin's body its nose and its flukes reach (half body lengths). */
 export const NOSE_REACH = 1.0;
 export const FLUKE_REACH = 1.1;
-
-/** A flying fish's wings carry most of its weight: it falls under this much of gravity. */
-export const GLIDE_GRAVITY = 0.2;
 
 const tmp = { x: 0, y: 0, z: 0 };
 const ahead = {};
@@ -632,95 +628,6 @@ function whalePose(act, t, out) {
     return out;
 }
 
-// ── Flying fish ─────────────────────────────────────────────────────────────────
-
-/**
- * A skitter: the fish bursts out of the water, spreads its wings and glides low over the sea; it
- * may touch down on its tail and take off again before it drops back in.
- *
- * @param {object} p
- * @param {number} p.x, p.z      where it leaves the water
- * @param {number} p.hx, p.hz    its heading (unit)
- * @param {number} p.speed       metres a second over the water
- * @param {number} p.vy          its launch upward (metres a second)
- * @param {number} [p.hops]      1 a single glide, 2 a touch and a second glide
- */
-export function makeSkitter({
-    at, x, z, hx, hz, speed = 2, vy = 0.42, hops = 1, metres = SPECIES.flyingFish.metres, seed = 0, variant = 0,
-    y = 0,
-}) {
-    const first = (2 * vy) / GLIDE_GRAVITY;
-    const second = hops > 1 ? first * 0.62 : 0;
-    const flight = first + second;
-    const events = [{ t: 0, type: 'fish-out' }];
-    if (hops > 1) events.push({ t: first, type: 'fish-touch' });
-    events.push({ t: flight, type: 'fish-in' });
-    return {
-        type: 'skitter',
-        kind: 'flyingFish',
-        t0: at,
-        life: flight + 0.6,
-        x,
-        y,
-        z,
-        hx,
-        hz,
-        speed,
-        vy,
-        hops,
-        first,
-        second,
-        flight,
-        metres,
-        seed,
-        variant,
-        lead: 0.55,
-        events,
-    };
-}
-
-function skitterPose(act, t, out) {
-    const { first, flight } = act;
-    let y;
-    let vy;
-    if (t < 0) {
-        y = act.vy * 1.6 * t;
-        vy = act.vy * 1.6;
-    } else if (t <= first) {
-        y = act.vy * t - 0.5 * GLIDE_GRAVITY * t * t;
-        vy = act.vy - GLIDE_GRAVITY * t;
-    } else if (t <= flight) {
-        const tau = t - first;
-        const v2 = act.vy * 0.62;
-        y = v2 * tau - 0.5 * GLIDE_GRAVITY * tau * tau;
-        vy = v2 - GLIDE_GRAVITY * tau;
-    } else {
-        const tau = t - flight;
-        y = -0.5 * (1 - Math.exp(-3 * tau));
-        vy = -1.5 * Math.exp(-3 * tau);
-    }
-    out.x = act.x + act.hx * act.speed * t;
-    out.y = act.y + y + 0.02;
-    out.z = act.z + act.hz * act.speed * t;
-    out.fx = act.hx * act.speed;
-    out.fy = vy;
-    out.fz = act.hz * act.speed;
-    square(out, 0, 1, 0);
-    // A little bank as it rides the air off the water.
-    roll(out, 0.2 * Math.sin(1.9 * t + act.seed * 4));
-    const inAir = smooth(0, 0.22, t) * (1 - smooth(flight - 0.05, flight + 0.16, t));
-    // Its tail sculls the water as it takes off, and again where it touches.
-    const touch = Math.exp(-((t - first) ** 2) / 0.05) * (act.hops > 1 ? 1 : 0);
-    out.depth = Math.max(0, -y);
-    out.metres = act.metres * smooth(-act.lead, -act.lead + 0.2, t) * (1 - smooth(act.life - 0.25, act.life, t));
-    out.phase = act.seed * 5 + (act.t0 + t) * SPECIES.flyingFish.stroke;
-    out.beat = Math.max(1 - inAir, touch, 0.12);
-    out.arch = 0;
-    out.spread = inAir;
-    out.variant = act.variant;
-    return out;
-}
-
 // ── Seabirds ────────────────────────────────────────────────────────────────────
 
 /**
@@ -808,7 +715,6 @@ export function actPose(act, clock, open = 0, out = emptyPose()) {
     case 'ride': return ridePose(act, t, open, out);
     case 'porpoise': return porpoisePose(act, t, out);
     case 'whale': return whalePose(act, t, out);
-    case 'skitter': return skitterPose(act, t, out);
     case 'soar': return soarPose(act, t, out);
     default:
         out.metres = 0;

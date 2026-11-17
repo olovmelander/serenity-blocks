@@ -5318,7 +5318,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         category: 'Playground',
         scope: 'playground.html — waves',
         description: 'Send one of the visits the Waves sea makes by itself, now (they also come by the clock).',
-        values: 'ridePod, troughPod, farPod, loneLeap, skitter, turtle, manta, whaleBlow, whaleFluke, whaleBreach, birds.',
+        values: 'ridePod, troughPod, farPod, loneLeap, turtle, manta, whaleBlow, whaleFluke, whaleBreach, birds.',
         defaultValue: 'None: only the sea’s own schedule.',
         example: 'visit=ridePod&visitAge=8',
         notes: 'Use with effect=waves; visitAge picks the moment, visitSeed another draft.',
