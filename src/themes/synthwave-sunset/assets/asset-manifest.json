@@ -13,6 +13,103 @@
       "species": "herring gull",
       "triangles": 1648,
       "sourceVertices": 837
+    },
+    {
+      "file": "strollers.glb",
+      "bytes": 496040,
+      "sha256": "e2e4d9d9ebbc9eb3be6be6bfb9fd0c506fbe8a5f98c495f89dca3ad5a8fd3442",
+      "kind": "people",
+      "generator": "scripts/blender/synthwave_strollers.py",
+      "triangles": 13424,
+      "figures": [
+        {
+          "name": "sundress",
+          "build": "woman",
+          "triangles": 2074,
+          "vertices": 1157
+        },
+        {
+          "name": "midi",
+          "build": "woman",
+          "triangles": 1788,
+          "vertices": 981
+        },
+        {
+          "name": "slacks",
+          "build": "woman",
+          "triangles": 1566,
+          "vertices": 859
+        },
+        {
+          "name": "shorts",
+          "build": "man",
+          "triangles": 1654,
+          "vertices": 922
+        },
+        {
+          "name": "chinos",
+          "build": "man",
+          "triangles": 1490,
+          "vertices": 819
+        },
+        {
+          "name": "boater",
+          "build": "man",
+          "triangles": 1676,
+          "vertices": 920
+        },
+        {
+          "name": "boy",
+          "build": "child",
+          "triangles": 1430,
+          "vertices": 789
+        },
+        {
+          "name": "girl",
+          "build": "child",
+          "triangles": 1746,
+          "vertices": 962
+        }
+      ],
+      "bones": [
+        "hips",
+        "chest",
+        "head",
+        "thighL",
+        "shinL",
+        "footL",
+        "thighR",
+        "shinR",
+        "footR",
+        "armL",
+        "forearmL",
+        "armR",
+        "forearmR"
+      ],
+      "parents": [
+        -1,
+        0,
+        1,
+        0,
+        3,
+        4,
+        0,
+        6,
+        7,
+        1,
+        9,
+        1,
+        11
+      ],
+      "slots": [
+        "skin",
+        "hair",
+        "top",
+        "bottom",
+        "shoes",
+        "hat",
+        "band"
+      ]
     }
   ],
   "rig": {
