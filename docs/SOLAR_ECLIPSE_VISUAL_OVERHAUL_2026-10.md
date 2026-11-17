@@ -61,7 +61,7 @@ What changed:
   prominences burn less white, so the pieces' colours stay saturated.
 - **The flamingos** (`solar-eclipse-flamingos.js`, `-flamingo-flight.js`, `-flamingo-model.js`,
   built by `scripts/blender/solar_eclipse_flamingo.py`, headless and byte-identical): a Blender
-  model with a 16-bone rig and sampled actions (flap, walk, glide, stand, feed, alert, a wing
+  model of 544 triangles with a 16-bone rig and sampled actions (flap, walk, glide, stand, feed, alert, a wing
   salute, rest on one leg). About one flight a minute (5–12 birds in a loose file or a shallow
   echelon, 110–200 m out, 3–7 m over the water) crosses low in front of the band, each bird
   entering and leaving beyond the frame's edge; a wading flock of up to 20 stands 150–330 m out
@@ -108,8 +108,9 @@ New playground parameters: `weather=banks|towers|clear|deck|storm`, `comet=<s>`,
   into smooth bands, not sparkle.
 - **Cost** (RTX, 1920 × 1080, `maxFps=30`, GPU timestamps, two interleaved rounds, origin/main on a
   second private server): High 0.378 ms on main, 0.42–0.43 ms with the sky and weather (banks,
-  storm), 0.48–0.54 ms with the flamingos; Low 0.238 → 0.27 → 0.31 ms. Not measured: the
-  integrated GPU, an uncapped frame rate.
+  storm), 0.45–0.48 ms with the flamingos (0.48–0.54 with their first, 1,960-triangle mesh; now
+  544 triangles a bird, at most about 33K for every bird and its image on High); Low 0.238 →
+  0.27 → 0.29 ms. Not measured: the integrated GPU, an uncapped frame rate.
 - **The icon** is re-baked from the new sky (the icon lens over sunlit towers, ember, ten
   prominences; contrast 1.16, saturation 1.25, brightness 1.05).
 
