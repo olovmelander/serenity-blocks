@@ -152,7 +152,7 @@ const GOLD = Object.freeze([1.0, 0.6, 0.16]);
 /** Below this a fed flourish (a cyclone, the strand) is out: the next one starts afresh. */
 const FLOURISH_OUT = 0.06;
 
-const PARTS = ['space', 'boulders', 'shards', 'motes', 'sparks', 'meteors', 'heads'];
+const PARTS = ['space', 'boulders', 'shards', 'heroes', 'motes', 'sparks', 'meteors', 'heads'];
 const COMBO_MILESTONES = [3, 5, 8];
 const MAX_TIMED_MOMENTS = RIPPLE_SLOTS + METEOR_SLOTS;
 /** The flourishes (stellar-drift-core.js) and what each milestone of a chain plays. */
@@ -415,9 +415,10 @@ export class StellarDriftWorld {
 
         this.addPart('space', createSpace(u, tier));
         yield 'space';
-        this.ice = createIce(u, tier.ice, this.seed + 53);
+        this.ice = createIce(u, tier.ice, this.seed + 53, { detail: tier.rockDetail });
         this.addPart('boulders', this.ice.boulders);
         this.addPart('shards', this.ice.shards);
+        this.addPart('heroes', this.ice.heroes);
         this.addPart('motes', this.ice.motes);
         this.sparks = createSparks(u, tier.sparks);
         this.addPart('sparks', this.sparks);
@@ -440,10 +441,10 @@ export class StellarDriftWorld {
         this.disposables.push(part);
     }
 
-    /** Draw only the named parts (captures, bisecting a look). `ice` names all three classes. */
+    /** Draw only the named parts (captures, bisecting a look). `ice` names all four classes of rock. */
     showOnlyParts(names) {
         const keep = new Set(names);
-        if (keep.has('ice')) ['boulders', 'shards', 'motes'].forEach((name) => keep.add(name));
+        if (keep.has('ice')) ['boulders', 'shards', 'heroes', 'motes'].forEach((name) => keep.add(name));
         Object.keys(this.parts).forEach((name) => {
             this.parts[name].mesh.visible = keep.has(name);
         });

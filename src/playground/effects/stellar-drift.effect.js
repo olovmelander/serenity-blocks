@@ -17,7 +17,7 @@
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>, cascade=<depth>; twist accepts lines=0)
  *   demo=1                   live only: play a looping gameplay script
- *   parts=space,ice,...      draw only these parts (ice = boulders, shards and motes)
+ *   parts=space,ice,...      draw only these parts (ice = boulders, shards, heroes and motes)
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
  *   bloom=0|1                override the tier's bloom
