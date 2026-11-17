@@ -44,16 +44,16 @@ describe('the depth arc: four waters, one climb', () => {
     });
 
     it('is continuous in depth: no step anywhere on the climb', () => {
-        let prev = oceanDepthLook(0, createOceanLook());
-        for (let d = 0.25; d <= 220; d += 0.25) {
-            const look = oceanDepthLook(d, createOceanLook());
+        const looks = [];
+        for (let d = 0; d <= 220; d += 0.25) looks.push(oceanDepthLook(d, createOceanLook()));
+        looks.slice(1).forEach((look, n) => {
+            const prev = looks[n];
             COLOURS.forEach((k) => look[k].forEach((c, i) => {
-                expect(Math.abs(c - prev[k][i]), `${k} at ${d}`).toBeLessThan(0.004);
+                expect(Math.abs(c - prev[k][i]), `${k} at ${look.depth}`).toBeLessThan(0.004);
             }));
-            expect(Math.abs(look.dim - prev.dim), `dim at ${d}`).toBeLessThan(0.006);
-            expect(Math.abs(look.glow - prev.glow), `glow at ${d}`).toBeLessThan(0.008);
-            prev = look;
-        }
+            expect(Math.abs(look.dim - prev.dim), `dim at ${look.depth}`).toBeLessThan(0.006);
+            expect(Math.abs(look.glow - prev.glow), `glow at ${look.depth}`).toBeLessThan(0.008);
+        });
     });
 
     it('darkens all the way down: the abyss is blue-black, the shallows bright', () => {
@@ -105,12 +105,11 @@ describe('the depth arc: four waters, one climb', () => {
         const deep = oceanHazeColour(180);
         expect(luma(near)).toBeGreaterThan(luma(deep) * 50);
         expect(near[1]).toBeGreaterThan(near[0]);
-        let prev = oceanHazeColour(0);
-        for (let d = 0.5; d <= 220; d += 0.5) {
-            const c = oceanHazeColour(d);
-            c.forEach((v, i) => expect(Math.abs(v - prev[i]), `haze at ${d}`).toBeLessThan(0.012));
-            prev = c.slice();
-        }
+        const hazes = [];
+        for (let d = 0; d <= 220; d += 0.5) hazes.push(oceanHazeColour(d).slice());
+        hazes.slice(1).forEach((c, n) => {
+            c.forEach((v, i) => expect(Math.abs(v - hazes[n][i]), `haze at ${(n + 1) * 0.5}`).toBeLessThan(0.012));
+        });
     });
 });
 

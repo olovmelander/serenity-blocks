@@ -115,6 +115,7 @@ export function createOdysseyOceanScenery({
         heightAt, rail, seaLevel, quality,
     });
     const L = OCEAN_SCENERY_LOOK;
+    const lowTier = quality === 'low';
     const group = new THREE.Group();
     group.name = 'odyssey-ocean-scenery';
     const uCaustics = uniform(0);
@@ -150,10 +151,15 @@ export function createOdysseyOceanScenery({
         const caustic = causticAt(0.047).mul(smoothstep(float(0.45), float(0.85), up)).mul(sunny).mul(uCaustics);
         const lit = albedo.mul(lamp).add(vec3(...L.causticColour).mul(caustic).mul(L.causticGain).mul(albedo.add(0.25)));
         // The living lights: small cold spots on the rock, each breathing on its own clock.
-        const spotTex = texture(noiseTex, vec2(wp.x.add(wp.y.mul(0.53)), wp.z.sub(wp.y.mul(0.41))).mul(0.19));
+        // (Tier gate, in JavaScript: the low tier does not build the spots' fetch; its dark keeps
+        // the deep garden's own light.)
         const deepMask = smoothstep(float(58), float(112), depthU);
         const breathe = sin(uTime.mul(0.55).add(grain.b.mul(31))).mul(0.4).add(0.6);
-        const spots = smoothstep(float(0.70), float(0.80), spotTex.b).mul(isRock);
+        const spots = lowTier ? float(0) : smoothstep(
+            float(0.70),
+            float(0.80),
+            texture(noiseTex, vec2(wp.x.add(wp.y.mul(0.53)), wp.z.sub(wp.y.mul(0.41))).mul(0.19)).b,
+        ).mul(isRock);
         // ...and the deep garden's coral carries its own colour as light (it is the cold kind).
         const ownLight = float(1).sub(isRock).mul(L.coralGlow);
         const glow = mix(vec3(...L.glowA), vec3(...L.glowB), smoothstep(float(0.35), float(0.65), grain.a))
@@ -198,10 +204,12 @@ export function createOdysseyOceanScenery({
         // Seen from below a frond glows: the surface's light comes through the blade.
         const back = smoothstep(float(0.05), float(0.75), eye.y.negate());
         const lamp = mix(float(1.15), float(0.42), smoothstep(float(0), float(120), depthU));
-        const caustic = causticAt(0.061).mul(sunny).mul(uCaustics);
-        const lit = base.mul(lamp)
-            .add(vec3(...L.frondBack).mul(back).mul(sunny.mul(0.8).add(0.2)).mul(blade.mul(0.12).add(0.55)))
-            .add(vec3(...L.causticColour).mul(caustic).mul(0.22));
+        const backlit = base.mul(lamp)
+            .add(vec3(...L.frondBack).mul(back).mul(sunny.mul(0.8).add(0.2)).mul(blade.mul(0.12).add(0.55)));
+        // (The caustic flicker on the fronds is the High tier's: one fetch the low tier does not build.)
+        const lit = lowTier
+            ? backlit
+            : backlit.add(vec3(...L.causticColour).mul(causticAt(0.061).mul(sunny).mul(uCaustics)).mul(0.22));
         kelpMat.colorNode = grade(haze(lit, wp));
         if (depthNode) kelpMat.depthNode = depthNode(wp);
         kelpMat.side = THREE.DoubleSide;

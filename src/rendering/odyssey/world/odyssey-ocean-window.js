@@ -99,8 +99,11 @@ export function snellWindowWorld(ctx, spec = SNELL_WINDOW) {
         const reachXZ = airDir.xz.div(max(airDir.y, float(0.06))).mul(cl.height);
         const cUv = ctx.at.xz.add(reachXZ).mul(cl.scale)
             .add(vec2(ctx.time.mul(cl.drift[0]), ctx.time.mul(cl.drift[1])));
-        const cN = texture(ctx.noiseTex, cUv).b.mul(0.62)
-            .add(texture(ctx.noiseTex, cUv.mul(2.7).add(vec2(0.37, 0.11))).b.mul(0.38));
+        // (The second octave is read on a turned lattice: the tile's value noise has square cells,
+        // and two octaves on one grid left a square of cloud in the window now and then.)
+        const cUvTurned = vec2(cUv.x.mul(0.80).sub(cUv.y.mul(0.60)), cUv.x.mul(0.60).add(cUv.y.mul(0.80)));
+        const cN = texture(ctx.noiseTex, cUv).b.mul(0.58)
+            .add(texture(ctx.noiseTex, cUvTurned.mul(2.3).add(vec2(0.37, 0.11))).b.mul(0.42));
         // (Softer with depth: the water between blurs a cloud into a paler patch of sky.)
         const cover = smoothstep(float(cl.edge[0]), float(cl.edge[1]), cN)
             .mul(smoothstep(float(0.03), float(0.16), airDir.y))
