@@ -34,6 +34,7 @@ import { SummerPetals } from './summer-petals.js';
 import { summerTier } from './summer-quality.js';
 import { SummerShore } from './summer-shore.js';
 import { SUMMER_STAGE_DEPTH, SummerStage } from './summer-stage.js';
+import { SummerSwans } from './summer-swans.js';
 import { SummerTerrain, summerGroundHeight } from './summer-terrain.js';
 import { drainSteps } from '../shared/build-steps.js';
 
@@ -140,6 +141,12 @@ export class SummerWorld {
         this.life = new SummerLife({ light, tier, rng });
         this.group.add(this.life.group);
         this.life.build();
+        this.swans = new SummerSwans({
+            light, tier, rng, groundHeight: summerGroundHeight,
+        });
+        this.group.add(this.swans.group);
+        this.swans.build();
+        this.swans.setMotion(this.motion);
         this.garlands = new SummerGarlands({ light, tier });
         this.group.add(this.garlands.group);
         this.garlands.build();
@@ -159,6 +166,7 @@ export class SummerWorld {
         // pipelines) the mirror pass no longer pays for, every frame.
         this.reflect([this.terrain.group, this.forest.group, this.backdrop.group, this.atmosphere.group,
             this.homestead.group, this.shore.group, this.life.group]);
+        this.reflect([this.swans.group]);
         this.prepareCamera(this.camera.aspect);
         this.director = new SummerFxDirector({
             stage: this.stage,
@@ -219,6 +227,7 @@ export class SummerWorld {
         this.light?.reset();
         this.lake?.reset();
         this.life?.reset();
+        this.swans?.reset();
         Object.assign(this.worn, {
             gust: 0,
             gustSpeed: 0,
@@ -239,6 +248,7 @@ export class SummerWorld {
      */
     setMotion(scale) {
         this.motion = Number.isFinite(scale) ? THREE.MathUtils.clamp(scale, 0, 1) : 1;
+        this.swans?.setMotion(this.motion);
     }
 
     /**
@@ -338,6 +348,8 @@ export class SummerWorld {
         this.atmosphere.update();
         this.petals.update(dt, env);
         this.life.update(frame, dt, worn);
+        const wake = this.swans.update(time, dt, frame, worn);
+        if (wake) this.lake.ripples.add(wake.x, wake.z, wake.strength);
         this.garlands.update(frame, worn);
         const rocked = this.homestead.update(time, dt, frame, worn);
         if (rocked) this.lake.ripples.add(rocked.x, rocked.z, 0.2);
@@ -353,6 +365,7 @@ export class SummerWorld {
             farTrees: this.backdrop?.count || 0,
             butterflies: this.life?.butterflies || 0,
             swallows: this.life?.swallows || 0,
+            swans: this.swans?.counts() || null,
             petals: this.petals?.sim?.counts() || null,
             rings: this.lake?.ripples.active() || 0,
             waves: this.light?.waves.active() || 0,
@@ -366,6 +379,7 @@ export class SummerWorld {
         this.petals?.dispose();
         this.garlands?.dispose();
         this.life?.dispose();
+        this.swans?.dispose();
         this.shore?.dispose();
         this.meadow?.dispose();
         this.homestead?.dispose();
@@ -380,6 +394,7 @@ export class SummerWorld {
         this.stage = null;
         this.garlands = null;
         this.life = null;
+        this.swans = null;
         this.shore = null;
         this.meadow = null;
         this.homestead = null;
