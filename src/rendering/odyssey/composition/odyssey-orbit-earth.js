@@ -61,8 +61,9 @@ import {
     atan,
     cameraPosition,
     clamp,
-    cos,
     cross,
+    dFdx,
+    dFdy,
     dot,
     exp,
     float,
@@ -89,6 +90,16 @@ import {
     LATTICE_NOISE_PERIOD,
 } from '../chapter-environments/shared/odyssey-lattice-noise.js';
 import { AURORA_PALETTE } from '../chapter-environments/odyssey-planet-aurora.js';
+import { flashScale } from '../../../utils/photosensitivity.js';
+import {
+    EARTH_MOON,
+    earthLandMottle,
+    earthLightningAt,
+    earthPlaneOf,
+    earthPlaneOfCpu,
+    earthTownLights,
+    earthWeatherAt,
+} from './odyssey-earth-weather.tsl.js';
 
 export const ORBIT_EARTH = Object.freeze({
     /** The backdrop sphere's radius round the eye (world units) while the world shows: behind
@@ -135,11 +146,12 @@ export const ORBIT_EARTH_AURORA = Object.freeze({
     poleArc: 0.41,
     radius: 0.35,
     foot: 0.0035,
-    top: 0.011,
+    /** (0.011 until 2026-11-17: the rays stand taller now, into their red crowns.) */
+    top: 0.0165,
     /** A sheet's thickness (radians of arc): the scale of its Gaussian profile. */
     width: 0.0021,
     fold: 0.024,
-    steps: 32,
+    steps: 40,
     gain: 170,
     /** The light's soft shoulder: seen edge-on at the limb the curtains are many times brighter
      * than from above, and this keeps both readable. */
@@ -156,23 +168,40 @@ export const ORBIT_EARTH_AURORA = Object.freeze({
      * Now each step adds the exact integral of the sheet's Gaussian profile over that step (`erf`
      * of where the step starts and ends), so a sheet seen edge-on, crossed, or just missed changes
      * smoothly; the broad glow is gone; the rays are smooth, fine and slow.
+     *
+     * THE STAIRS (2026-11-17, the masterpiece pass). From above the lower border still ran in
+     * steps, and the curtain's light changed from one stretch of it to the next. Two causes, both
+     * in how a step that is LONG beside the sheet was read (seen from above a step runs dozens of
+     * sheet widths):
+     *   - the sheet's distance at a step's two ends was clamped to +-6 widths before the crossing
+     *     was placed between them, so every crossing landed in the MIDDLE of its step: the height
+     *     the curtain was lit by came in 32 values, one per step: the stairs;
+     *   - the same clamp stood in for the true span in the path's length, so a crossing's light
+     *     grew with the step's length instead of being the sheet's own.
+     * The crossing is now placed by the true distances and then set right once against the sheet
+     * itself (the fold bends between two steps), and the path is the exact one whatever the step.
+     * The shell the march walks also reaches a little under the foot, so the soft lower border
+     * ends inside it and not on its boundary.
      *   - `lower`: the bright lower border's softness below and above the foot (radii);
-     *   - `body`: the green's fall with height (radii);
-     *   - `topAt`, `topWidth`, `topGain`: the red-violet upper glow (radii, radii, share);
-     *   - `rays`: how much the fine rays modulate the curtain (0 none, 1 full), `fineFade` where
-     *     the finest fade out with distance;
-     *   - `patch`: the calm patches along the oval (the floor of the dim stretches).
+     *   - `body`: the green's fall with height (radii), and `tall` how much taller the tallest
+     *     rays stand (a curtain is a row of rays of different heights);
+     *   - `topAt`, `topWidth`, `topGain`: the red-violet crown (radii, radii, share), brightest
+     *     over the tall rays;
+     *   - `rays`: how much the fine rays modulate the curtain (0 none, 1 full);
+     *   - `patch`: the calm patches along the oval (the floor of the dim stretches);
+     *   - `surge`: how much a brightening that travels along the curtain adds, and its pace
+     *     (radians of its phase per second).
      */
     look: Object.freeze({
         lower: Object.freeze([0.0003, 0.00022]),
-        body: 0.0026,
-        topAt: 0.0072,
-        topWidth: 0.0026,
-        topGain: 0.17,
+        body: 0.0024,
+        tall: 1.5,
+        topAt: 0.0068,
+        topWidth: 0.0034,
+        topGain: 0.26,
         rays: 0.75,
-        /** The eye distances (radii) over which the finer rays fade out (sub-pixel toward the limb). */
-        fineFade: Object.freeze([0.1, 0.24]),
         patch: 0.3,
+        surge: Object.freeze([0.55, 0.19]),
     }),
 });
 
@@ -410,6 +439,27 @@ const NIGHT_LIGHT = [0.010, 0.014, 0.028];
 const AIR_DAY = [0.26, 0.46, 0.95];
 const AIR_NIGHT = [0.004, 0.009, 0.026];
 const AIRGLOW = [0.20, 0.78, 0.46];
+const AIRGLOW_RED = [0.85, 0.12, 0.10];
+/** The air's pale line on the surface by day. */
+const RIM_DAY_LOW = [0.62, 0.82, 1.0];
+/** The sunset's layers seen toward the sun, as [height in rim scale heights, colour]. */
+const RIM_SOLAR = Object.freeze([
+    [0.0, [1.0, 0.2, 0.035]],
+    [0.55, [1.0, 0.46, 0.1]],
+    [1.25, [1.0, 0.8, 0.44]],
+    [2.0, [0.56, 0.8, 1.0]],
+    [3.1, [0.17, 0.34, 0.95]],
+    [4.6, [0.05, 0.08, 0.42]],
+]);
+/** ...and away from it: the Earth's shadow (dim slate) under the rose band, then the blue. */
+const RIM_ANTISOLAR = Object.freeze([
+    [0.0, [0.035, 0.045, 0.1]],
+    [0.7, [0.1, 0.085, 0.17]],
+    [1.5, [0.8, 0.4, 0.42]],
+    [2.6, [0.5, 0.36, 0.62]],
+    [3.8, [0.14, 0.22, 0.62]],
+    [5.0, [0.04, 0.06, 0.3]],
+]);
 const OCEAN_DEEP = [0.004, 0.017, 0.048];
 const OCEAN_SHALLOW = [0.020, 0.072, 0.085];
 const ICE = [0.70, 0.74, 0.80];
@@ -419,11 +469,24 @@ const LAND_TEMPERATE = [0.068, 0.114, 0.040];
 const LAND_STEPPE = [0.138, 0.126, 0.070];
 const LAND_DESERT = [0.300, 0.215, 0.120];
 const LAND_ROCK = [0.110, 0.096, 0.082];
-const CITY_LIGHT = [1.0, 0.70, 0.34];
+const CITY_LIGHT = [1.0, 0.66, 0.30];
+/** The sky's light on what the sun does not reach: by day, and through the dusk. */
+const SKY_SHADE_DAY = [0.16, 0.22, 0.36];
+const SKY_SHADE_DUSK = [0.11, 0.075, 0.2];
+const LIGHTNING = [0.62, 0.72, 1.0];
 const TWO_PI = Math.PI * 2;
 /** The aurora's three parallel sheets: which component of the march's distances, and how bright
  * (a real arc is a stack of curtains, the poleward ones fainter). */
 const SHEETS = [['x', 1], ['y', 0.6], ['z', 0.35]];
+/** The rays' three trains: waves round the whole oval, and each one's share of the modulation. */
+const RAY_TRAINS = Object.freeze([[397, 0.45], [1049, 0.33], [1693, 0.22]]);
+/** Each sheet's own offset from the oval's folded centre line (see the march's `f`). */
+const SHEET_OFFSET = {
+    x: () => float(0),
+    y: (o) => o.own2.add(ORBIT_EARTH_AURORA.width * 2.6),
+    z: (o) => o.own3.add(ORBIT_EARTH_AURORA.width * 5.4),
+};
+
 /** The upper glow's violet, mixed into the crimson (oxygen's red over nitrogen's blue-violet). */
 const AURORA_VIOLET = [0.42, 0.10, 0.78];
 /** How far from the oval's mean radius its sheets and their glow can reach (radians): the folds,
@@ -446,6 +509,8 @@ const U = {
     aurora: uniform(0),
     track: uniform(new THREE.Vector3(0, 0, 0)),
     time: uniform(0),
+    // How much of a flash to show (photosensitivity, ADR-0021): the lightning's.
+    flash: uniform(1),
 };
 // The oval's pole and two axes round it (world frame, from the sun's bearing): fixed.
 const NIGHT_AZIMUTH = ORBIT_EARTH_SUN_AZIMUTH + Math.PI;
@@ -485,8 +550,6 @@ const LACUNARITY = 2.03;
 // drew a grid of faint blocks over the sea seen from just above the clouds. The detail octaves
 // sample the unwarped domain (the same holds for the clouds' detail, below).
 const LAND_WARPED = 3;
-// Where in the lattice the weather systems are cut (clear sky over the coast as the haze lifts).
-const WEATHER_SEED = [23.0, 5.0, 13.0];
 
 /**
  * The continents' height above sea level at a point `n` on the unit sphere (the eye's frame: the
@@ -536,10 +599,34 @@ const uGeoPole = uniform(onSphere(ORBIT_EARTH_SURFACE.poleArc, NIGHT_AZIMUTH));
 // how far their eyes wind the field (radians of turn). The rail looks out on a bearing of about
 // -0.28 rad from 2026-10 layout's 5->6 seam: the near one sits ahead and to the left, in view as
 // the haze lifts; the wide one off to the right, in view from higher up.
-const CYCLONES = Object.freeze([
-    { at: onSphere(0.075, -0.62), radius: 0.035, turn: 1.3 },
-    { at: onSphere(0.34, 0.2), radius: 0.13, turn: 1.7 },
+// (2026-11-17) They are spirals with an eye now (odyssey-earth-weather.tsl.js `cycloneAt`), laid
+// out on the weather's plane: where (cells), how far the arms reach (cells), how many arms, how
+// tightly they wind, and how fast they turn (radians of phase per second: the eye sees them creep).
+const cycloneOnPlane = (arc, azimuth, radius, arms, pitch, spin) => Object.freeze({
+    at: Object.freeze(earthPlaneOfCpu(onSphere(arc, azimuth), ORBIT_EARTH.cells)),
+    radius: radius * ORBIT_EARTH.cells,
+    arms,
+    pitch,
+    spin,
+});
+export const ORBIT_EARTH_CYCLONES = Object.freeze([
+    cycloneOnPlane(0.075, -0.62, 0.035, 2, 3.4, 0.012),
+    cycloneOnPlane(0.34, 0.2, 0.13, 2, 3.0, 0.006),
 ]);
+// The moon: high over the night side, out of the frame (EARTH_MOON).
+const MOON = Object.freeze([
+    Math.cos(NIGHT_AZIMUTH) * Math.cos(EARTH_MOON.elevation),
+    Math.sin(EARTH_MOON.elevation),
+    Math.sin(NIGHT_AZIMUTH) * Math.cos(EARTH_MOON.elevation),
+]);
+
+// A colour ramp over `x`: the stops' colours eased from each to the next.
+function rampOf(stops, x) {
+    return stops.slice(1).reduce(
+        (colour, [at, rgb], i) => mix(colour, vec3(...rgb), smoothstep(stops[i][0], at, x)),
+        vec3(...stops[0][1]),
+    );
+}
 
 // Add `weight` x the octave `sample()` faded to its mean (0.5) by `room` to the var `sum`, sampling
 // only where it shows: the fade is a function of distance, so whole regions of the screen skip the
@@ -552,37 +639,28 @@ function addFadedOctave(sum, room, weight, sample) {
     });
 }
 
-// Turn the unit vector `v` about `axis` by an angle that is `turn` at the axis and falls off over
-// `radius` (a cyclone's spiral). Rodrigues' rotation.
-function swirl(v, { at, radius, turn }) {
-    const axis = vec3(at.x, at.y, at.z);
-    const c = dot(v, axis);
-    // (falling off as 1 / (1 + d^2): a Gaussian wound the field into rings round the eye)
-    const theta = float(turn).div(float(1).add(float(1).sub(c).div((radius * radius) / 2)));
-    const cs = cos(theta);
-    return v.mul(cs).add(cross(axis, v).mul(sin(theta))).add(axis.mul(c.mul(float(1).sub(cs))));
-}
-
 // The oval at a point `n` on the unit sphere (its direction from the centre): its angle from
 // the pole, the folded centre line of its sheets there, the sheets' activity and rays (which
 // run along the oval, so a curtain seen side-on shows them upright, field-aligned), and a broad
 // glow round their feet for the light they cast on the cloud below.
-function ovalAt(n, fine = null) {
+function ovalAt(n, grain = null) {
     const ang = acos(clamp(dot(n, uPole), -1, 1));
     const phi = atan(dot(n, uAxis2), dot(n, uAxis1));
     const turn = phi.div(TWO_PI).add(0.5); // 0..1 round the oval, seamless
     const t = U.time;
     // Folds fast enough round the oval that the stretch in view meanders (only ~1/10 of the
     // oval is ever on screen): integer frequencies, so the seam round the oval joins.
-    const fold = sin(phi.mul(11).add(t.mul(0.031))).mul(0.5)
-        .add(sin(phi.mul(27).sub(t.mul(0.047)).add(1.7)).mul(0.3))
-        .add(sin(phi.mul(53).add(t.mul(0.083)).add(4.1)).mul(0.2));
+    // (2026-11-17: the short folds are shallower, 0.3 and 0.2 until then: seen from above they
+    // drew the curtain as a zigzag of straight runs; it flows now.)
+    const fold = sin(phi.mul(11).add(t.mul(0.031))).mul(0.62)
+        .add(sin(phi.mul(27).sub(t.mul(0.047)).add(1.7)).mul(0.24))
+        .add(sin(phi.mul(53).add(t.mul(0.083)).add(4.1)).mul(0.08));
     const wander = latticeNoise3(vec3(turn.mul(N_LAT * 4), 7.1, t.mul(0.04))).sub(0.5);
     const centre = float(ORBIT_EARTH_AURORA.radius).add(fold.mul(ORBIT_EARTH_AURORA.fold))
         .add(wander.mul(ORBIT_EARTH_AURORA.fold * 0.6));
     // The poleward sheets keep their own folds, so the stack is never three copies.
-    const own2 = sin(phi.mul(19).add(t.mul(0.057)).add(2.3)).mul(ORBIT_EARTH_AURORA.fold * 0.35);
-    const own3 = sin(phi.mul(37).sub(t.mul(0.069)).add(5.2)).mul(ORBIT_EARTH_AURORA.fold * 0.45);
+    const own2 = sin(phi.mul(19).add(t.mul(0.057)).add(2.3)).mul(ORBIT_EARTH_AURORA.fold * 0.3);
+    const own3 = sin(phi.mul(31).sub(t.mul(0.069)).add(5.2)).mul(ORBIT_EARTH_AURORA.fold * 0.3);
     const near = ang.sub(centre.sub(ORBIT_EARTH_AURORA.width * 2.6)).div(0.03);
     const glow = exp(near.mul(near).negate());
     // Calm patches: broad and slow, never fully off (the curtain dims along its length, it does not
@@ -591,18 +669,39 @@ function ovalAt(n, fine = null) {
     const activity = smoothstep(0.18, 0.82, latticeNoise3(vec3(turn.mul(N_LAT * 3), 3.3, t.mul(0.03))))
         .mul(1 - L.patch).add(L.patch);
     // Fine rays along the curtain (field-aligned, so constant up its height): smooth sines at
-    // integer frequencies round the oval, drifting slowly, bent a little by the folds.
+    // integer frequencies round the oval, drifting slowly, bent a little by the folds. Their
+    // spacing wanders (the first train's phase is pushed about by two slow ones), so a curtain is
+    // never a comb.
     const ph = phi.add(fold.mul(0.012));
-    // The finer two fade with the distance (`fine`, 0..1): far along the oval, toward the limb,
-    // they would be finer than a pixel and crawl as the eye moves.
-    const fineW = fine ?? float(1);
-    const rayWave = sin(ph.mul(613).add(t.mul(0.09)).add(sin(ph.mul(23).sub(t.mul(0.05))).mul(1.4))).mul(0.45)
-        .add(sin(ph.mul(1049).sub(t.mul(0.13)).add(2.1)).mul(fineW.mul(0.33)))
-        .add(sin(ph.mul(1693).add(t.mul(0.17)).add(4.4)).mul(fineW.mul(fineW).mul(0.22)));
+    // Each train fades to its mean where a pixel covers a good share of its wavelength (`grain`:
+    // the oval angle one pixel covers there), so far along the oval, and where the eye looks along
+    // a curtain, the rays never bead or crawl. (Until 2026-11-17 the two finer ones faded with the
+    // distance alone: looking along a curtain they beaded into rows of dots.)
+    const keep = (freq) => (grain ? float(1).sub(smoothstep(0.2, 0.62, grain.mul(freq / TWO_PI))) : float(1));
+    const k1 = keep(RAY_TRAINS[0][0] * 1.25);
+    const k2 = keep(RAY_TRAINS[1][0]);
+    const k3 = keep(RAY_TRAINS[2][0]);
+    const rayWave = sin(ph.mul(RAY_TRAINS[0][0]).add(t.mul(0.09))
+        .add(sin(ph.mul(23).sub(t.mul(0.05))).mul(2.6))
+        .add(sin(ph.mul(7).add(t.mul(0.021)).add(1.3)).mul(3.1))).mul(k1.mul(RAY_TRAINS[0][1]))
+        .add(sin(ph.mul(RAY_TRAINS[1][0]).sub(t.mul(0.13)).add(2.1)).mul(k2.mul(RAY_TRAINS[1][1])))
+        .add(sin(ph.mul(RAY_TRAINS[2][0]).add(t.mul(0.17)).add(4.4)).mul(k3.mul(RAY_TRAINS[2][1])));
     const ray = rayWave.mul(0.5).add(0.5);
-    const rays = mix(float(1), ray.mul(ray).mul(1.9), L.rays);
+    // (what the faded trains would have added to the mean light is given back, so a curtain does
+    // not dim where its rays blur)
+    const lost = float(1).sub(k1.mul(k1)).mul(RAY_TRAINS[0][1] ** 2)
+        .add(float(1).sub(k2.mul(k2)).mul(RAY_TRAINS[1][1] ** 2))
+        .add(float(1).sub(k3.mul(k3)).mul(RAY_TRAINS[2][1] ** 2))
+        .mul(0.125);
+    const rays = mix(float(1), ray.mul(ray).add(lost).mul(1.9), L.rays);
+    // How tall the ray here stands (0..1): broader than the rays themselves, so a few stand out.
+    const tall = sin(ph.mul(149).sub(t.mul(0.06)).add(sin(ph.mul(41).add(t.mul(0.04))).mul(1.9))).mul(keep(230))
+        .mul(0.5).add(0.5);
+    // A brightening that travels along the curtain (a substorm's surge, slowed to a tide).
+    const wave = sin(phi.mul(9).sub(t.mul(L.surge[1])).add(sin(phi.mul(4).add(t.mul(0.05))).mul(1.3))).mul(0.5).add(0.5);
+    const surge = wave.mul(wave).mul(wave).mul(L.surge[0]).add(1);
     return {
-        ang, centre, own2, own3, activity, rays, glow,
+        ang, centre, own2, own3, activity: activity.mul(surge), rays, glow, tall: tall.mul(tall),
     };
 }
 
@@ -632,7 +731,8 @@ export function orbitAuroraSheetPath(fa, fb, dt, width = ORBIT_EARTH_AURORA.widt
     const za = Math.min(Math.max(fa / width, -6), 6);
     const zb = Math.min(Math.max(fb / width, -6), 6);
     if (!(Math.min(Math.abs(za), Math.abs(zb)) < 3.2 || za * zb < 0)) return 0;
-    const dz = zb - za;
+    // (the true span across the step, not the clamped one: the path is the sheet's own)
+    const dz = (fb - fa) / width;
     const zm = (za + zb) / 2;
     const erf = (x) => Math.tanh(Math.min(Math.max((x + (x * x * x * ERF_C)) * ERF_K, -9), 9));
     const mean = Math.abs(dz) > 0.02
@@ -681,6 +781,12 @@ function earthLook(dir, air = null, surfaceAir = air, worldAir = null) {
     ).toVar();
     const night = float(1).sub(smoothstep(-0.10, 0.05, sd)).toVar();
 
+    // The sphere laid flat about the point beneath the eye (what the weather, the land's patchwork
+    // and the towns are read on), and how a pixel's step moves on it.
+    const plane = earthPlaneOf(N, E.cells).toVar();
+    const planeDx = dFdx(plane).toVar();
+    const planeDy = dFdy(plane).toVar();
+
     // ── THE LAND (orbitEarthLandHeight is its CPU twin) ──
     const q = N.mul(S.landScale).add(vec3(...S.landSeed)).toVar();
     const qw = q.add(vec3(
@@ -711,6 +817,8 @@ function earthLook(dir, air = null, surfaceAir = air, worldAir = null) {
     const arid = mix(vec3(...LAND_STEPPE), vec3(...LAND_DESERT), smoothstep(0.62, 0.82, temperature));
     const landCol = mix(arid, vegetation, smoothstep(0.34, 0.52, moisture)).toVar();
     landCol.assign(mix(landCol, vec3(...LAND_TUNDRA), float(1).sub(smoothstep(0.24, 0.36, temperature))));
+    // The land's own patchwork (fields, woods, dry and wet ground): the grain read on the land.
+    landCol.mulAssign(earthLandMottle({ plane, gx: planeDx, gy: planeDy }));
     landCol.assign(mix(landCol, vec3(...LAND_ROCK), mountain.mul(0.75)));
     landCol.assign(mix(landCol, vec3(...ICE), mountain.mul(float(1).sub(smoothstep(0.3, 0.55, temperature)))));
     const iceEdge = colat.add(latticeNoise3(qw.mul(6.1).add(vec3(9.1, 2.2, 33.3))).sub(0.5).mul(0.09));
@@ -722,71 +830,30 @@ function earthLook(dir, air = null, surfaceAir = air, worldAir = null) {
     const ground = mix(mix(oceanCol, vec3(...ICE).mul(0.92), ice.mul(0.85)), mix(landCol, vec3(...ICE), ice), land)
         .toVar();
 
-    // ── THE WEATHER ──
-    // Systems swirled by a slow warp, wound round two cyclones, a cloud fraction that runs from
-    // clear sky to overcast across them, and detail octaves that fade where their cells fall under
-    // a pixel. The domain slides with the eye's travel and a slow drift.
-    const Nc = swirl(swirl(N, CYCLONES[0]), CYCLONES[1]);
-    const p0 = Nc.mul(E.cells).add(U.track).add(vec3(U.time.mul(0.002), 0, U.time.mul(-0.0015))).toVar();
-    const room = (freq) => roomAt(E.cells * freq);
-    const warp = vec3(
-        latticeNoise3(p0.mul(0.35).add(vec3(3.1, 7.7, 1.9))),
-        0.5,
-        latticeNoise3(p0.mul(0.35).add(vec3(11.3, 2.2, 5.4))),
-    ).sub(0.5).mul(1.5);
-    const pw = p0.add(warp).toVar();
-    const broad = latticeNoise3(pw).mul(0.46)
-        .add(latticeNoise3(pw.mul(2.03).add(vec3(17.1, 3.3, 9.7))).mul(0.24))
-        .toVar();
-    // Billowed (1 - |2n - 1|): the cauliflower of cumulus, not smooth blobs.
-    const billow = (freq, offset) => float(1).sub(abs(latticeNoise3(p0.mul(freq).add(vec3(...offset))).mul(2).sub(1)));
-    const detail = float(0).toVar();
-    [
-        [4.11, 0.13, [5.2, 31.4, 13.6]],
-        [8.3, 0.08, [29.7, 13.1, 3.8]],
-        [16.9, 0.055, [1.7, 19.4, 24.6]],
-        [34.4, 0.035, [14.2, 6.6, 30.1]],
-        [69.8, 0.022, [27.1, 11.8, 2.9]],
-        [141.7, 0.014, [6.3, 35.5, 18.4]],
-    ].forEach(([freq, w, offset]) => addFadedOctave(detail, room(freq), w, () => billow(freq, offset)));
-    const cloudN = broad.add(detail).toVar();
-    const fraction = smoothstep(0.4, 0.6, latticeNoise3(p0.mul(0.075).add(vec3(...WEATHER_SEED)))
-        .mul(0.7).add(latticeNoise3(p0.mul(0.19).add(vec3(4.4, 28.0, 11.0))).mul(0.3))).toVar();
-    // More cloud round the cyclones' eyes (their spiral bands), and a ragged clear eye in the middle.
-    const stormy = CYCLONES.reduce((sum, cy) => {
-        const near = float(1).sub(dot(N, vec3(cy.at.x, cy.at.y, cy.at.z))).div((cy.radius * cy.radius) / 2);
-        return sum.add(exp(near.mul(0.35).negate()).sub(exp(near.mul(30).negate()).mul(1.2)));
-    }, float(0));
-    const thresh = mix(float(0.74), float(0.40), fraction).sub(stormy.mul(0.12)).toVar();
-    // Crisp edges, as cumulus look from above, antialiased by the field's own derivative.
-    const cloudEdge = max(fwidth(cloudN).mul(1.2), 0.018);
-    const cover = smoothstep(thresh.sub(cloudEdge), thresh.add(cloudEdge), cloudN).toVar();
-    const thick = smoothstep(thresh, thresh.add(0.13), cloudN).toVar();
-    // A veil of cirrus, drawn out along the jet.
-    const cirrusN = latticeNoise3(p0.mul(vec3(0.32, 0.32, 2.4)).add(vec3(6.6, 40.1, 12.5)));
-    const cirrus = smoothstep(0.6, 0.86, cirrusN).mul(0.3).mul(smoothstep(0.25, 0.7, fraction));
-    const cloudA = cover.mul(mix(float(0.58), float(1), thick)).toVar();
-    cloudA.assign(cloudA.add(cirrus.mul(float(1).sub(cloudA))));
-    // Toward the sun: the cloud there shades the ground beneath (its shadow falls long at a low
-    // sun) and darkens the cloud's own far side; the side facing the sun is lit.
-    // (Only where the sun reaches: every term it feeds is lit by it.)
-    const shadow = float(0).toVar();
-    const cloudShade = float(1).toVar();
-    If(sd.greaterThan(-0.07), () => {
-        const toSun = normalize(U.sun.sub(N.mul(sd)).add(vec3(1e-5, 0, 0)));
-        // (the cloud's height over the tangent of the sun's elevation there, in radians of arc)
-        const sunCot = sqrt(max(float(1).sub(sd.mul(sd)), 0)).div(max(sd, 0.04));
-        const reach = clamp(sunCot.mul(S.cloudHeight), 0, 0.03);
-        const ps = pw.add(toSun.mul(reach.mul(E.cells)));
-        const sunward = latticeNoise3(ps).mul(0.46)
-            .add(latticeNoise3(ps.mul(2.03).add(vec3(17.1, 3.3, 9.7))).mul(0.24))
-            .add(0.17)
-            .toVar();
-        shadow.assign(smoothstep(thresh.sub(0.05), thresh.add(0.05), sunward).mul(0.72));
-        cloudShade.assign(float(1).sub(clamp(sunward.sub(broad.add(0.17)).mul(2.6), -0.22, 0.38)));
+    // ── THE WEATHER (odyssey-earth-weather.tsl.js: systems, cells and cumulus, lit as relief) ──
+    const weather = earthWeatherAt({
+        N,
+        plane,
+        gx: planeDx,
+        gy: planeDy,
+        sd,
+        sun: U.sun,
+        moon: vec3(...MOON),
+        track: U.track,
+        time: U.time,
+        cloudHeight: S.cloudHeight,
+        cells: E.cells,
+        cyclones: ORBIT_EARTH_CYCLONES,
     });
+    const { cover, thick } = weather;
+    const cloudA = cover.mul(mix(mix(float(0.74), float(0.46), weather.sheet), float(1), thick)).toVar();
+    cloudA.assign(cloudA.add(weather.veil.mul(float(1).sub(cloudA))));
+    // How the cloud here faces its light: the masses' slopes and the billows' own.
+    const facing = clamp(weather.relief.mul(0.55).add(weather.fineRelief.mul(0.5)), -1, 1).toVar();
     // Brighter where it is thick and where its billows rise.
-    const cloudCol = vec3(...CLOUD).mul(thick.mul(0.22).add(0.7).add(detail.sub(0.17).mul(0.9))).toVar();
+    const cloudCol = vec3(...CLOUD)
+        .mul(thick.mul(0.2).add(0.74).add(weather.billow.sub(0.66).mul(0.5)).add(weather.fineBillow.sub(0.66).mul(0.3)))
+        .toVar();
 
     // ── TOGETHER, LIT ──
     const albedo = mix(ground, cloudCol, cloudA).toVar();
@@ -796,37 +863,52 @@ function earthLook(dir, air = null, surfaceAir = air, worldAir = null) {
         .mul(float(1).sub(land))
         .mul(float(1).sub(ice))
         .mul(float(1).sub(cloudA));
-    const groundLit = ground.mul(float(1).sub(shadow.mul(float(1).sub(cover)))).add(glint);
-    const cloudLit = cloudCol.mul(cloudShade);
-    const surf = mix(groundLit, cloudLit, cloudA).mul(sunCol).mul(lit)
+    // A low sun rakes the cloud: its relief deepens toward the terminator, the lit sides take the
+    // sun's colour and the far sides the sky's cool shade (the warm and the cool together are what
+    // a sunset seen from above is made of).
+    const lowSun = float(1).sub(smoothstep(0.08, 0.55, sd)).toVar();
+    const cloudSun = clamp(float(0.8).add(facing.mul(mix(float(0.32), float(0.78), lowSun))), 0.06, 1.4);
+    const skyShade = mix(vec3(...SKY_SHADE_DUSK), vec3(...SKY_SHADE_DAY), smoothstep(0.0, 0.35, sd))
+        .mul(smoothstep(-0.16, 0.06, sd)).toVar();
+    const groundLit = ground.mul(float(1).sub(weather.shadow.mul(0.74).mul(float(1).sub(cover)))).add(glint);
+    const cloudLit = cloudCol.mul(sunCol.mul(lit).mul(cloudSun).add(skyShade.mul(float(1).sub(facing.mul(0.25)))));
+    const surf = mix(groundLit.mul(sunCol).mul(lit).add(ground.mul(skyShade).mul(0.45)), cloudLit, cloudA)
         .add(albedo.mul(vec3(...NIGHT_LIGHT)))
         .toVar();
-    // The towns at night: clustered on the plains and along the coasts, under the cloud (only where
-    // there is night-side land to hold them).
+    // ── THE NIGHT, ALIVE ──
+    // The moon on the cloud tops: silver where a billow faces it, deep blue in its lee.
+    const moonlit = float(1).sub(smoothstep(-0.22, -0.1, sd)).toVar();
+    surf.addAssign(vec3(...EARTH_MOON.colour).mul(moonlit).mul(mix(
+        ground.mul(1.6),
+        cloudCol.mul(clamp(float(0.5).add(facing.mul(0.75)), 0.06, 1.5)).mul(thick.mul(0.6).add(0.4)),
+        cloudA,
+    )));
+    // The towns: clustered on the plains and along the coasts, a web of roads between them, under
+    // the cloud (only where there is night-side land to hold them).
     const townsHere = land.mul(float(1).sub(ice)).mul(float(1).sub(mountain))
         .mul(float(1).sub(smoothstep(-0.12, 0.02, sd)))
-        .mul(float(1).sub(cloudA.mul(0.85)))
         .toVar();
     If(townsHere.greaterThan(0.002), () => {
-        const towns = smoothstep(0.52, 0.8, latticeNoise3(qw.mul(11.0).add(vec3(2.4, 17.8, 36.6))))
-            .mul(float(1).sub(smoothstep(0.03, 0.14, elev)).mul(0.6).add(0.4))
-            .mul(smoothstep(0.3, 0.5, temperature));
-        // Bright cores and dimmer sprawl at every scale: a product of three noises, squared, each
-        // fading to its own mean where it falls under a pixel (a flat glow there filled each cluster).
-        const glowAt = (f, offset) => {
-            const g = float(0.27).toVar();
-            const r = roomAt(S.landScale * f).toVar();
-            If(r.greaterThan(0.002), () => {
-                g.assign(mix(float(0.27), latticeNoise3(q.mul(f).add(vec3(...offset))).pow2(), r));
-            });
-            return g;
-        };
-        const townPoints = glowAt(31, [7.3, 3.1, 44.4])
-            .mul(glowAt(97, [21.5, 40.2, 3.3]))
-            .mul(glowAt(290, [4.4, 12.9, 51.7]))
-            .mul(16)
-            .pow2();
-        surf.addAssign(vec3(...CITY_LIGHT).mul(S.cityGain).mul(towns.mul(min(townPoints, 2))).mul(townsHere));
+        // Where people live: the plains, the river country (the moist lowland) and, most of all,
+        // the coasts; not the cold.
+        const shore = exp(elev.div(0.016).pow2().negate());
+        const people = max(
+            smoothstep(0.42, 0.78, latticeNoise3(qw.mul(11.0).add(vec3(2.4, 17.8, 36.6))))
+                .mul(float(1).sub(smoothstep(0.03, 0.14, elev)).mul(0.65).add(0.35)),
+            shore.mul(smoothstep(0.3, 0.6, latticeNoise3(qw.mul(5.3).add(vec3(31.4, 2.6, 9.9))))),
+        ).mul(smoothstep(0.3, 0.5, temperature)).toVar();
+        const lights = earthTownLights({ plane, gx: planeDx, gy: planeDy }, people).toVar();
+        // Whiter at a city's heart, sodium amber out along the roads; cloud hides them, thin
+        // cloud only blurs them into a glow.
+        const tint = mix(vec3(...CITY_LIGHT), vec3(1.0, 0.86, 0.66), clamp(lights.sub(0.8).mul(0.5), 0, 1));
+        const seen = float(1).sub(cloudA.mul(0.93)).add(cloudA.mul(float(1).sub(thick)).mul(people).mul(0.5));
+        surf.addAssign(tint.mul(S.cityGain).mul(min(lights, 3.2)).mul(seen).mul(townsHere));
+    });
+    // Lightning inside the storm systems (through `flash`, the player's photosensitivity choice).
+    const stormy = weather.storm.mul(cloudA).mul(float(1).sub(smoothstep(-0.16, -0.02, sd))).toVar();
+    If(stormy.greaterThan(0.01), () => {
+        const bolt = earthLightningAt(weather.plane, U.time);
+        surf.addAssign(vec3(...LIGHTNING).mul(bolt.mul(stormy).mul(U.flash)));
     });
     // The aurora lights the cloud tops under it green (a broad glow round the oval's foot).
     If(U.aurora.greaterThan(0.001), () => {
@@ -862,16 +944,36 @@ function earthLook(dir, air = null, surfaceAir = air, worldAir = null) {
     const glow = exp(above.div(E.rimHeight).negate())
         .mul(smoothstep(0.0, sinDip, dy.negate()))
         .mul(smoothstep(E.rimFrom[0], E.rimFrom[1], h)).toVar();
-    const dayRim = smoothstep(-0.10, 0.20, sdRim);
-    const warmRim = float(1).sub(smoothstep(-0.02, 0.30, sdRim)).mul(smoothstep(-0.16, 0.0, sdRim));
-    // Layered at the sunset: red low, blue above it.
-    const layered = mix(vec3(...SUNSET), vec3(...AIR_DAY), smoothstep(0.0, E.rimHeight * 2.2, above));
-    const rimCol = mix(vec3(...AIR_NIGHT).mul(2.2), vec3(...AIR_DAY).mul(0.55), dayRim)
-        .add(layered.mul(warmRim).mul(0.9));
-    const airglowLine = exp(above.sub(E.airglowAlt).div(E.airglowWidth).pow2().negate())
-        .mul(float(1).sub(dayRim)).mul(0.07);
-    const rim = rimCol.mul(glow).add(vec3(...AIRGLOW).mul(airglowLine));
-    const rimAlpha = clamp(glow.mul(mix(float(0.25), float(0.55), dayRim)), 0, 1);
+    const dayRim = smoothstep(-0.10, 0.20, sdRim).toVar();
+    // THE LAYERED EDGE (2026-11-17). Seen edge-on the air is a stack of colours, and which stack
+    // depends on the sun there and on which way the eye looks:
+    //  - by day a thin pale line on the surface under the blue;
+    //  - at sunset, toward the sun, ember on the surface, then gold, a pale line and the blue
+    //    above it; away from the sun the Earth's own shadow (slate) under a rose band;
+    //  - and as the sun sinks there the shadow climbs through the layers, so the band rises,
+    //    thins and reddens before it goes out: the dusk lingers on the limb.
+    const hN = above.div(E.rimHeight).toVar();
+    const lowSunRim = float(1).sub(smoothstep(0.0, 0.34, sdRim)).toVar();
+    const towardSun = smoothstep(-0.55, 0.65, dot(dir, U.sun)).toVar();
+    const twilight = mix(rampOf(RIM_ANTISOLAR, hN), rampOf(RIM_SOLAR, hN), towardSun);
+    const dayCol = mix(vec3(...RIM_DAY_LOW), vec3(...AIR_DAY), smoothstep(0.0, 1.4, hN)).mul(0.55);
+    // The Earth's shadow in the air: below it nothing is lit (it stands at sd^2 / 2 radii).
+    const shadowTop = select(sdRim.lessThan(0), sdRim.mul(sdRim).mul(0.5), float(0));
+    const litAir = smoothstep(shadowTop.sub(E.rimHeight * 0.35), shadowTop.add(E.rimHeight * 0.7), above)
+        .mul(smoothstep(-0.36, -0.2, sdRim)).toVar();
+    // The thin luminous line on the surface itself (a fifth of the glow's own height).
+    const line = exp(above.div(E.rimHeight * 0.2).negate());
+    const lineCol = mix(vec3(...RIM_DAY_LOW), vec3(...RIM_SOLAR[0][1]), lowSunRim);
+    const rimCol = mix(dayCol, twilight.mul(0.95), lowSunRim).mul(litAir)
+        .add(lineCol.mul(line).mul(litAir).mul(mix(float(0.45), float(0.7), towardSun))
+            .mul(mix(float(1), towardSun, lowSunRim)))
+        .add(vec3(...AIR_NIGHT).mul(2.2).mul(float(1).sub(dayRim)));
+    // The night's own light: the green airglow line, and the thin red layer high above it.
+    const nightRim = float(1).sub(smoothstep(-0.27, -0.1, sdRim));
+    const airglowLine = exp(above.sub(E.airglowAlt).div(E.airglowWidth).pow2().negate()).mul(nightRim).mul(0.07);
+    const redLine = exp(above.sub(E.airglowAlt * 2.6).div(E.airglowWidth * 2.4).pow2().negate()).mul(nightRim).mul(0.016);
+    const rim = rimCol.mul(glow).add(vec3(...AIRGLOW).mul(airglowLine)).add(vec3(...AIRGLOW_RED).mul(redLine));
+    const rimAlpha = clamp(glow.mul(mix(float(0.25), float(0.55), max(dayRim, litAir.mul(lowSunRim)))), 0, 1);
 
     // ── ONE EDGE: coverage of the disc over the limb's own screen derivative ──
     // (capped: straight down the closest approach turns as a square root and its derivative blows up)
@@ -985,9 +1087,11 @@ export function createOrbitEarth({ radius = ORBIT_EARTH.radius, haze = null, wor
     const greenCool = vec3(...AURORA_PALETTE.greenCool);
     const crimson = vec3(...AURORA_PALETTE.crimson);
     const LK = A.look;
-    const topColour = mix(crimson, vec3(...AURORA_VIOLET), 0.2);
+    const topColour = mix(crimson, vec3(...AURORA_VIOLET), 0.22).mul(vec3(1.0, 0.62, 0.8));
     const shade = Fn(() => {
         const dir = normalize(positionWorld.sub(cameraPosition)).toVar();
+        // Radians one pixel subtends (the rays' level of detail, below).
+        const pixelAngle = max(length(fwidth(dir)), 1e-5).toVar();
         const look = earthLook(dir, haze ? haze(dir) : null, haze ? haze(dir) : null, worldAir ? worldAir(dir) : null);
         const {
             k, dy, disc, t,
@@ -1001,7 +1105,8 @@ export function createOrbitEarth({ radius = ORBIT_EARTH.radius, haze = null, wor
         If(U.aurora.greaterThan(0.001), () => {
             // The point `tv` along the ray, in the Earth's frame (radii, its centre at the origin).
             const along = (tv) => vec3(dir.x.mul(tv), dir.y.mul(tv).add(k), dir.z.mul(tv));
-            const r1 = 1 + A.foot;
+            // (the shell reaches under the foot, so the soft lower border ends inside it)
+            const r1 = 1 + A.foot - (LK.lower[0] * 1.15);
             const r2 = 1 + A.top;
             const tStar = k.mul(dy).negate().toVar();
             const rMin2 = k.mul(k).mul(float(1).sub(dy.mul(dy))).toVar();
@@ -1058,30 +1163,58 @@ export function createOrbitEarth({ radius = ORBIT_EARTH.radius, haze = null, wor
                             const za = clamp(prevF[c].div(A.width), -6, 6).toVar();
                             const zb = clamp(f[c].div(A.width), -6, 6).toVar();
                             If(min(abs(za), abs(zb)).lessThan(3.2).or(za.mul(zb).lessThan(0)), () => {
-                                const dz = zb.sub(za);
+                                // (the true span, not the clamped one: see THE STAIRS)
+                                const dz = f[c].sub(prevF[c]).div(A.width).toVar();
                                 const zm = za.add(zb).mul(0.5);
+                                const wide = abs(dz).greaterThan(0.02);
                                 const mean = select(
-                                    abs(dz).greaterThan(0.02),
-                                    erfApprox(zb).sub(erfApprox(za)).div(dz).mul(Math.sqrt(Math.PI) / 2),
+                                    wide,
+                                    erfApprox(zb).sub(erfApprox(za)).div(select(wide, dz, float(1))).mul(Math.sqrt(Math.PI) / 2),
                                     exp(zm.mul(zm).negate()),
                                 );
                                 const inside = dt.mul(max(mean, 0)).toVar();
-                                // Lit where the ray is nearest the sheet in this step.
-                                const away = za.sub(zb).add(select(dz.greaterThanEqual(0), -1e-6, 1e-6));
-                                const sAt = clamp(za.div(away), 0, 1);
-                                const tAt = prevT.add(dt.mul(sAt)).toVar();
-                                const X = along(tAt).toVar();
-                                const r = length(X).toVar();
-                                const alt = r.sub(1).toVar();
-                                const fine = float(1).sub(smoothstep(LK.fineFade[0], LK.fineFade[1], tAt));
-                                const oc = ovalAt(X.div(r), fine);
+                                // Lit where the ray is nearest the sheet in this step: where the
+                                // true distances cross zero, or the nearer end.
+                                const away = prevF[c].sub(f[c]).add(select(dz.greaterThanEqual(0), -1e-9, 1e-9));
+                                const sAt = clamp(prevF[c].div(away), 0, 1);
+                                const tLin = prevT.add(dt.mul(sAt)).toVar();
+                                // The oval angle one pixel covers on the sheet there: its step
+                                // across the ray, drawn out along the curtain where the ray runs
+                                // along it (the sheet stands on the oval, its normal toward the pole).
+                                const Xn = normalize(along(tLin)).toVar();
+                                const toPole = normalize(uPole.sub(Xn.mul(dot(Xn, uPole)))).toVar();
+                                const alongOval = cross(toPole, Xn);
+                                const slant = dot(alongOval, dir).div(max(abs(dot(toPole, dir)), 0.02));
+                                const grain = pixelAngle.mul(tLin).mul(sqrt(slant.mul(slant).add(1)))
+                                    .div(Math.sin(A.radius));
+                                const oc = ovalAt(Xn, grain);
+                                // ...set right once against the sheet itself (the fold bends
+                                // between the step's ends): the sheet's true distance there splits
+                                // the step in two, and the crossing lies in the half whose ends
+                                // differ in sign, placed between them as before. Never outside
+                                // the step, so a strongly bent fold cannot throw it.
+                                const left = oc.ang.sub(oc.centre).add(SHEET_OFFSET[c](oc)).toVar();
+                                const crossed = prevF[c].mul(f[c]).lessThan(0);
+                                const early = prevF[c].mul(left).lessThan(0);
+                                const spanA = prevF[c].sub(left);
+                                const spanB = left.sub(f[c]);
+                                const safeA = select(abs(spanA).greaterThan(1e-9), spanA, float(1));
+                                const safeB = select(abs(spanB).greaterThan(1e-9), spanB, float(1));
+                                const tA = prevT.add(tLin.sub(prevT).mul(clamp(prevF[c].div(safeA), 0, 1)));
+                                const tB = tLin.add(tt.sub(tLin).mul(clamp(left.div(safeB), 0, 1)));
+                                const tAt = select(crossed, select(early, tA, tB), tLin).toVar();
+                                const alt = length(along(tAt)).sub(1).toVar();
                                 const lower = smoothstep(A.foot - LK.lower[0], A.foot + LK.lower[1], alt);
-                                const body = exp(alt.sub(A.foot).div(LK.body).negate());
-                                const high = exp(alt.sub(A.foot + LK.topAt).div(LK.topWidth).pow2().negate())
-                                    .mul(LK.topGain);
+                                // A curtain is a row of rays of different heights: the tall ones
+                                // carry the green higher and wear the red crown.
+                                const stands = oc.tall.mul(LK.tall).add(0.55);
+                                const body = exp(max(alt.sub(A.foot), 0).div(stands.mul(LK.body)).negate());
+                                const crown = exp(alt.sub(A.foot + LK.topAt).div(LK.topWidth).pow2().negate())
+                                    .mul(LK.topGain).mul(oc.tall.mul(1.3).add(0.3))
+                                    .mul(float(1).sub(smoothstep(A.top - 0.0025, A.top, alt)));
                                 const green = mix(greenWarm, greenCool, clamp(oc.rays.mul(0.5), 0, 1))
                                     .mul(lower.mul(body).mul(oc.rays));
-                                const top = topColour.mul(high.mul(oc.rays.mul(0.4).add(0.6)));
+                                const top = topColour.mul(crown.mul(oc.rays.mul(0.4).add(0.6)));
                                 light.addAssign(green.add(top).mul(oc.activity.mul(weight).mul(inside)));
                             });
                         });
@@ -1165,6 +1298,7 @@ export function createOrbitEarth({ radius = ORBIT_EARTH.radius, haze = null, wor
             U.sun.value.set(sun.x, sun.y, sun.z).normalize();
             if (track) U.track.value.set(track.x, track.y, track.z);
             U.time.value = time;
+            U.flash.value = flashScale();
             mesh.position.set(eye.x, eye.y, eye.z);
             // Behind the world while it shows (the world shows the Earth on its own surfaces); in
             // front of the far heroes, its disc in depth, once it covers the world.
