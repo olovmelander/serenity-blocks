@@ -278,9 +278,17 @@ export class VesperWorld {
          * Where the chrysalis hangs, as an offset (metres) from its place at rest: it stands clear
          * of the board so it is seen while a game is on (perchFor, composition).
          */
-        this.perch = { x: 0, y: 0 };
-        this.perchGoal = { x: 0, y: 0 };
+        this.perch = { x: 0, y: 0, wings: 1 };
+        this.perchGoal = { x: 0, y: 0, wings: 1 };
         this._perchSet = false;
+        /**
+         * Where the wings hang (WING_REST): they grow out of the chrysalis, so they go where it
+         * goes (its heart's offset from its place at rest, swing and all), sized by the perch to
+         * the open water beside the board.
+         */
+        this.wingMount = {
+            x: 0, y: 0, z: 0, scale: 1,
+        };
         /** Its pose this frame: where it hangs from, how it is turned, where its light is. */
         this.relicAt = [STALK[0], STALK[1], STALK[2]];
         this.relicHeart = [HEART[0], HEART[1], HEART[2]];
@@ -584,6 +592,7 @@ export class VesperWorld {
         if (!this._perchSet) {
             this.perch.x = this.perchGoal.x;
             this.perch.y = this.perchGoal.y;
+            this.perch.wings = this.perchGoal.wings;
             this._perchSet = true;
         }
     }
@@ -613,6 +622,7 @@ export class VesperWorld {
         this.applyPalette(1);
         this.perch.x = this.perchGoal.x;
         this.perch.y = this.perchGoal.y;
+        this.perch.wings = this.perchGoal.wings;
         // The wings' cover too: a board that had only just come back is simply there.
         this.coverStrength = this.layoutLive ? 1 : 0;
         this.poseRelic(0);
@@ -856,7 +866,9 @@ export class VesperWorld {
         this._ray.set(h[0], h[1], h[2]).project(camera);
         this.heart.x = Math.max(-0.5, Math.min(1.5, this._ray.x * 0.5 + 0.5));
         this.heart.y = Math.max(-0.5, Math.min(1.5, 0.5 - this._ray.y * 0.5));
-        this._ray.set(HEART[0], HEART[1], HEART[2]).project(camera);
+        // The wings' root goes where the chrysalis hangs (wingMount): the ring starts there.
+        const m = this.wingMount;
+        this._ray.set(HEART[0] + m.x, HEART[1] + m.y, HEART[2] + m.z).project(camera);
         this.origin.x = Math.max(-0.5, Math.min(1.5, this._ray.x * 0.5 + 0.5));
         this.origin.y = Math.max(-0.5, Math.min(1.5, 0.5 - this._ray.y * 0.5));
     }
@@ -928,6 +940,7 @@ export class VesperWorld {
         const k = dt > 0 ? approach(2.2 / PERCH_EASE, dt) : 0;
         this.perch.x += (this.perchGoal.x - this.perch.x) * k;
         this.perch.y += (this.perchGoal.y - this.perch.y) * k;
+        this.perch.wings += (this.perchGoal.wings - this.perch.wings) * k;
         const d = this.drift;
         // It hangs by silk: it is never quite still, and it turns slowly on its thread.
         let ax = (Math.sin(d * 0.31) * 0.016 + Math.sin(d * 0.47 + 1.3) * 0.009) * calm;
@@ -968,6 +981,13 @@ export class VesperWorld {
         u.relicZ.value.set(m[8], m[9], m[10]);
         u.relicHeart.value.set(heart[0], heart[1], heart[2]);
         u.perch.value.set(this.perch.x, this.perch.y, 0);
+        // The wings are rooted in it: they follow its heart, and take the size the perch allows.
+        const mount = this.wingMount;
+        mount.x = heart[0] - HEART[0];
+        mount.y = heart[1] - HEART[1];
+        mount.z = heart[2] - HEART[2];
+        mount.scale = this.perch.wings;
+        u.wingMount.value.set(mount.x, mount.y, mount.z, mount.scale);
         // Its heart: slow at rest, quicker with the chain and the pace of play.
         const rate = 0.4 + this.power * 0.7 + this.heat.fever * 0.5 + this.surge * 0.3;
         this.beatPhase = (this.beatPhase + dt * rate) % 1;
@@ -1258,7 +1278,7 @@ export class VesperWorld {
             // v0..v1 are fronts: measured, as the shader measures them, from where the card
             // stops hiding that ray of the wing.
             const v = Math.min(1, frontPast(table ? wingCoverAt(table, kind, side, an) : 0, v0 + (v1 - v0) * rand()));
-            wingPoint(kind, side, an, v, Math.max(this.wing, v1), this.beat, p);
+            wingPoint(kind, side, an, v, Math.max(this.wing, v1), this.beat, p, this.wingMount);
             if (p[1] < 0.4) continue;
             // The scales carry the wing's own colour at that distance from the root.
             const k = Math.min(1, v * 1.15);
@@ -1892,7 +1912,7 @@ export class VesperWorld {
         for (let i = 0; i < (cards?.length ?? 0); i++) rects.push(cards[i]);
         if (hud) rects.push(hud);
         this._viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-        fillWingCover(table, this._project, rects, this.aspect, this.wing, this.beat, this._coverScratch);
+        fillWingCover(table, this._project, rects, this.aspect, this.wing, this.beat, this._coverScratch, this.wingMount);
         if (k < 0.999) {
             for (let i = 0; i < table.length; i++) table[i].multiplyScalar(k);
         }

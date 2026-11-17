@@ -34,7 +34,7 @@ import {
 } from './wolfhour-wolf-rig.js';
 import { WOLF_COATS, WOLF_LOOKS, roverLook } from './wolfhour-wolf-coats.js';
 import {
-    FAR_FILE, MOON_WOLF, ROVER_COUNT, farFileAt, follow, moonWolfAt, roversAt, visitPlan,
+    FAR_FILE, ROVER_COUNT, farFileAt, follow, moonWolfAt, roversAt, summonMoonWolf, visitPlan,
 } from './wolfhour-wolf-travel.js';
 import { WOLF_TEXELS, createWolfMaterial, createWolfTable } from './wolfhour-wolf-material.js';
 import {
@@ -127,8 +127,8 @@ export const PACK = Object.freeze([
 ]);
 
 /**
- * The white wolf of the left-hand summit: it looks toward the moon (`rise`: how far below the
- * crest it comes up from).
+ * The white wolf of the left-hand summit: it looks toward the moon (its comings and goings:
+ * wolfhour-wolf-travel.js MOON_WOLF).
  */
 export const SUMMIT = Object.freeze({
     name: 'summit',
@@ -141,7 +141,6 @@ export const SUMMIT = Object.freeze({
     howl: 66,
     delay: 1.4,
     idlePhase: 3.3,
-    rise: 26,
 });
 
 /** The far file's coats (wolfhour-wolf-coats.js looks): pale ones, that the moon finds on the skyline. */
@@ -539,11 +538,13 @@ export function createWolfhourPack({
         spread: 1,
         members: wolves.length,
         // The foreground ridge from edge to edge (null: too narrow a screen for the visits), the
-        // visit its wolves are dressed for, a run called up by play, and the white wolf's summons.
+        // visit its wolves are dressed for, a run called up by play, and the stays play called the
+        // white wolf up for.
         ridge: null,
         dressed: null,
         dash: -Infinity,
-        summoned: -Infinity,
+        /** @type {import('./wolfhour-wolf-travel.js').MoonCall[]} */
+        calls: [],
         far: false,
         summit: false,
     };
@@ -954,14 +955,13 @@ export function createWolfhourPack({
             if (state.excited) standStill(time, excite.holdEnd + EXCITE.fall);
         },
         /**
-         * Call the white wolf up onto the summit (a perfect clear, a fever): it stands its full
-         * stay from now. While it is already up, the stay runs on.
+         * Call the white wolf up onto the summit (a four-line clear, a perfect clear, a fever): it
+         * stands its full stay from now. Climbing or up, it stays on (it never comes up a second
+         * time); on its way down, it comes back once it has gone over.
          */
         summon(time) {
             if (!Number.isFinite(time)) return;
-            const up = moonWolfAt(time, state.summoned);
-            // Already up: hold it there rather than bringing it up again.
-            state.summoned = up && up.up > 0.98 ? time - MOON_WOLF.rise : time;
+            state.calls = summonMoonWolf(state.calls, time);
         },
         /**
          * Send a hunt across the foreground ridge now (a level-up, a perfect clear): four or five
@@ -1168,19 +1168,37 @@ export function createWolfhourPack({
                 });
             });
 
-            // The white wolf of the summit: its own visits, and whenever play calls it up.
-            const white = state.summit ? moonWolfAt(t, state.summoned) : null;
-            if (white && white.up > 0.01) {
-                const howl = Math.max(white.howl, howlOf(SUMMIT, t)) * smooth((white.up - 0.7) / 0.3);
-                pose(moonWolf, t, m, {
+            // The white wolf of the summit: its own visits, and whenever play calls it up. It
+            // stands behind the crest, so the massif hides it until it walks up over the top (the
+            // fade only covers its ear tips' first moment); under Reduce motion it stays where it
+            // is and comes and goes by fading.
+            const white = state.summit ? moonWolfAt(t, state.calls) : null;
+            if (white) {
+                const howl = Math.max(white.howl, howlOf(SUMMIT, t)) * white.hold;
+                pose(moonWolf, t, m, walking ? {
+                    x: white.x,
+                    groundAt: grounds.moon,
+                    drop: white.drop,
+                    facing: white.facing,
+                    yaw: white.yaw,
+                    act: white.act,
+                    howl,
+                    glance: white.moving ? 0 : glance * 0.5 * white.hold,
+                    moving: white.moving,
+                    walked: white.walked,
+                    pace: white.pace,
+                    gaitKind: white.gaitKind,
+                    stride: white.stride,
+                    speed: white.moving ? white.speed * white.pace : 0,
+                    fade: smooth((1 - white.climb) / 0.12),
+                } : {
                     x: 0,
                     groundAt: grounds.moon,
-                    drop: (1 - white.up) * SUMMIT.rise,
                     facing: SUMMIT.facing,
-                    act: { sit: white.sit, head: 6 * white.look, turn: 0.5 * white.look * (1 - white.sit) },
+                    act: white.rest,
                     howl,
-                    glance: glance * 0.5,
-                    fade: smooth(white.up / 0.5),
+                    glance: glance * 0.5 * white.hold,
+                    fade: smooth(1 - white.climb),
                 });
             } else hide(moonWolf);
 
