@@ -390,6 +390,16 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
     const uQuenchSilver = uniform(new THREE.Color(0x9fc2d4)); // silvery-blue pahoehoe sheen (seam)
     const uQuenchTeal = uniform(new THREE.Color(0x2a9eaa)); // teal quench end-state (seam)
     const uSeam = options.uSeam ?? uniform(0);
+    // THE LAKE'S EVENTS (masterpiece pass, 2026-11-17; earth-core-clock.js is their schedule):
+    //   uFountain  = (x, z, radius, power): a dome fountain swelling out of the lake at a vent;
+    //   uFountainB = (height, age, 0, 0);
+    //   uPlate     = (x, z, radius, amount): a reach of crust breaking up and skinning over again;
+    //   uActivity  = the lake's mood, 0 banked .. 1 roused.
+    // All in the lake's own XZ (the chapter group's). A build without them keeps the old graph.
+    const uFountain = options.uFountain ?? null;
+    const uFountainB = options.uFountainB ?? null;
+    const uPlate = options.uPlate ?? null;
+    const uActivity = options.uActivity ?? null;
     // GENESIS PASS: crust plates with incandescent seams in the near/mid field (High tier only;
     // build-time, so the other tiers compile the unchanged graph).
     const crustPlates = options.crustPlates === true;
@@ -423,10 +433,16 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
     // (~3x amplitude); outside them the lake stays the calm mirror the value ladder
     // depends on.
     const basinV = basinMaskAt(posL.x, posL.z);
-    const displacement = bubble.mul(0.22).add(flow.mul(0.16))
+    let displacement = bubble.mul(0.22).add(flow.mul(0.16))
         .mul(rimFalloff)
         .mul(basinV.mul(2.3).add(1.0))
         .mul(uPulseIntensity.mul(0.4).add(1.0));
+    if (uFountain) {
+        // The dome: the lake's skin lifted over the fountain's vent, a few units high.
+        const domeD = length(vec2(posL.x.sub(uFountain.x), posL.z.sub(uFountain.y))).div(uFountain.z);
+        displacement = displacement.add(exp(domeD.mul(domeD).mul(0.7).negate()).mul(uFountain.w)
+            .mul(uFountainB.x.mul(0.035).add(0.75)));
+    }
     const displaced = vec3(posL.x, posL.y.add(displacement), posL.z);
 
     const vPos = varying(displaced);
@@ -444,7 +460,16 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
         0.0,
         fbm(vPos.mul(0.035).add(vec3(0.0, 0.0, ftime.mul(0.4)).add(9.0)), 3, sn),
     ).mul(6.0);
-    const wPos = vPos.add(warp);
+    // HEAT SHIMMER (masterpiece pass, 2026-11-17). Looking across the lake, the far melt is seen
+    // through a hundred units of rising hot air: the pattern itself wobbles there, a fine fast
+    // ripple that grows with distance (nothing at the eye's feet), so the far shore trembles.
+    const shimmerDist = smoothstep(35.0, 150.0, length(vPos.sub(cameraPosition)));
+    const shimmerWobble = vec3(
+        sin(uTime.mul(3.1).add(vPos.z.mul(0.9)).add(vPos.x.mul(0.37))),
+        0.0,
+        sin(uTime.mul(2.6).add(vPos.x.mul(0.8)).sub(vPos.z.mul(0.29))),
+    ).mul(shimmerDist).mul(0.55);
+    const wPos = vPos.add(warp).add(shimmerWobble);
     // Drift of the three molten fields. Default: the authored fixed vectors. With `uFlowDir`
     // (S2-a) all three translate along the fall→centre direction at their authored SPEEDS
     // (|(1,0,0.5)| = 1.118, |(-0.3,0.2,0)| → 0.36 in-plane + the same 0.2 slice drift, |(0.1,0,0.15)|
@@ -469,7 +494,36 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
     // times: at a wide window the lake is a dark floor with smears and stops being a key at
     // all; when the pale stop wins it becomes a cream beach. Crust is the MINORITY on a lake
     // that has to light a cathedral, so the window is narrowed and pushed up.
-    const crustFactor = smoothstep(0.60, 0.90, crustMap);
+    let crustFactor = smoothstep(0.60, 0.90, crustMap);
+
+    // THE EVENTS' HEAT. The fountain: a white-gold heart at its vent, and rings of fresh melt
+    // travelling out from it through the crust. The plate: a reach (its edge broken by the flow,
+    // not a disc) where the crust cracks open, glows, and skins over. The mood: the whole lake a
+    // little hotter and more open when roused, darker and more crusted when banked.
+    let eventHeat = float(0.0);
+    let fountainCore = float(0.0);
+    let plateBreak = float(0.0);
+    if (uFountain) {
+        const fd = length(vec2(vPos.x.sub(uFountain.x), vPos.z.sub(uFountain.y)));
+        const fq = fd.div(uFountain.z);
+        fountainCore = exp(fq.mul(fq).negate()).mul(uFountain.w);
+        const rings = sin(fd.mul(0.85).sub(uFountainB.y.mul(3.4))).mul(0.5).add(0.5);
+        const ringReach = exp(fq.div(-2.6)).mul(uFountain.w);
+        eventHeat = eventHeat.add(fountainCore.mul(0.6)).add(rings.mul(ringReach).mul(0.16));
+        crustFactor = crustFactor
+            .mul(oneMinus(clamp(fountainCore.mul(1.6).add(rings.mul(ringReach).mul(0.55)), 0.0, 1.0)));
+    }
+    if (uPlate) {
+        const pd = length(vec2(vPos.x.sub(uPlate.x), vPos.z.sub(uPlate.y)))
+            .add(flow2.sub(0.5).mul(uPlate.z).mul(0.9));
+        plateBreak = oneMinus(smoothstep(uPlate.z.mul(0.4), uPlate.z, pd)).mul(uPlate.w);
+        eventHeat = eventHeat.add(plateBreak.mul(0.22));
+        crustFactor = crustFactor.mul(oneMinus(plateBreak.mul(0.85)));
+    }
+    if (uActivity) {
+        eventHeat = eventHeat.add(uActivity.sub(0.5).mul(0.17));
+        crustFactor = crustFactor.mul(oneMinus(uActivity.sub(0.5).mul(0.45)));
+    }
 
     // Lower base + wider contrast so most of the lake falls into the dark charred
     // crust band (the molten reads as glowing rivers/cracks across dark rock). Inside
@@ -478,7 +532,8 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
         flow1.mul(0.52).add(flow2.mul(0.28)).add(0.24)
             .add(vElevation.mul(0.08))
             .add(vBasin.mul(0.16))
-            .mul(uPulseIntensity.mul(0.25).add(1.0)),
+            .mul(uPulseIntensity.mul(0.25).add(1.0))
+            .add(eventHeat),
         0.0,
         1.0,
     );
@@ -541,14 +596,16 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
         const { edge, cellId } = lavaPlateField(plateP);
         const near = oneMinus(smoothstep(30.0, 150.0, length(vPos.sub(cameraPosition))));
         // Seams of every width: hairline cracks to wide molten gaps, keyed on the crack field.
-        const seamWidth = mix(float(0.05), float(0.16), smoothstep(0.35, 0.75, cracks));
+        const seamWidth = mix(float(0.05), float(0.16), smoothstep(0.35, 0.75, cracks))
+            .add(plateBreak.mul(0.07));
         const seam = oneMinus(smoothstep(0.015, seamWidth, edge));
         const seamCore = oneMinus(smoothstep(0.0, seamWidth.mul(0.3), edge));
         // Plates break up where the melt runs hottest — open molten rivers show through — and thin
         // out in the basins' pools.
         const openMelt = smoothstep(0.62, 0.86, temp);
         const plateCover = mix(float(0.84), float(0.52), vBasin).mul(oneMinus(openMelt))
-            .mul(oneMinus(seam)).mul(near);
+            .mul(oneMinus(seam)).mul(near)
+            .mul(oneMinus(clamp(plateBreak.mul(0.6).add(fountainCore.mul(1.5)), 0.0, 1.0)));
         const plateColor = uColorCool.mul(cellId.mul(0.7).add(0.55)).add(uColorMid.mul(0.06));
         color = mix(color, plateColor, plateCover);
         let seamColor = mix(uColorHot, uLegacyHot, seamCore.mul(vBasin.mul(0.55).add(0.25)));
@@ -583,6 +640,12 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
         const lakeLife = alive.mul(near).mul(heatAlive);
         color = color.add(uColorHot.mul(dome.mul(dome).mul(0.75).add(ring.mul(0.55))).mul(lakeLife))
             .add(uLegacyHot.mul(burst).mul(0.7).mul(lakeLife));
+    }
+
+    if (uFountain) {
+        // The fountain's heart: white-gold where the melt wells up, falling to orange at its rim.
+        color = color.add(uLegacyHot.mul(fountainCore.mul(fountainCore).mul(fountainCore)).mul(0.6))
+            .add(uColorHot.mul(fountainCore).mul(0.30).mul(cracks.mul(0.8).add(0.5)));
     }
 
     // Fresnel grazing-angle reflection: at the shallow look-across angle the lake
@@ -644,7 +707,7 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
     // Basin vein cores may cross the 0.85 bloom threshold (sanctioned "vein centers"
     // in the palette law); outside the basins the original cap holds the dark-crust
     // value ladder, and the white-hot #ffe6b0 tier stays reserved for the First Heart.
-    const cap = mix(vec3(0.78, 0.46, 0.26), vec3(0.93, 0.9, 0.62), vBasin);
+    const cap = mix(vec3(0.78, 0.46, 0.26), vec3(0.93, 0.9, 0.62), clamp(vBasin.add(fountainCore), 0.0, 1.0));
     if (debugTiers) {
         // Tier-ID output for mask statistics (captures only), defined on the ladder's OWN fields
         // so the masks mean what the art law means (70 % crust / 30 % molten):
@@ -1336,8 +1399,13 @@ export function createMoltenHazeMaterialTSL(uTime, uPulseIntensity = uniform(0),
     // Denser far (depthT) so distant assets fade into the medium; a near-fade keeps a
     // puff from hard-cutting through a near geode (§5.7 cheap soft-particle proxy).
     const nearFade = smoothstep(6.0, 22.0, camDist);
+    // ...AND THEN THEY ARE GONE (masterpiece pass, 2026-11-17). The steam has its own near vapour
+    // now (the decks the eye climbs through, odyssey-steam-quench.js), lit and layered; these
+    // translucent puffs in front of it were flat tan discs over the billows and, worse, over the
+    // sea's dark eye (capture p 0.056-0.060: a grey veil across half the frame). The shaft's smoke
+    // thins away as the steam closes.
     material.opacityNode = feather
-        .mul(mix(depthT.mul(0.06).add(0.10), veilTrans.mul(0.46), wisp))
+        .mul(mix(depthT.mul(0.06).add(0.10), veilTrans.mul(0.0), wisp))
         .mul(nearFade).mul(uOpacity);
     material.transparent = true;
     material.depthWrite = false;
