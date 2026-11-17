@@ -120,8 +120,11 @@ import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './stillwater-composition.js';
 import {
-    ELK, FLIGHT, PILLAR, createBirds, createElk, createLampGlow, createPillars, createRain,
+    FLIGHT, PILLAR, createBirds, createLampGlow, createPillars, createRain, duckAt,
 } from './stillwater-air.js';
+import {
+    MOOSE, MOOSE_BEATS, MOOSE_SPAN, createMoose,
+} from './stillwater-moose.js';
 import {
     AIRS, VISITOR_SPAN, airAt, nightHash, visitorsBetween,
 } from './stillwater-night.js';
@@ -335,6 +338,7 @@ export class StillwaterWorld {
         this.meteors = [];
         this.flightAt = { time: -100, kind: 0, seed: 0 };
         this.elkVisit = { time: -100, seed: 0 };
+        /** When the moose last rang the water with his muzzle. */
         this.elkRing = -100;
         this._nightFrom = time;
         this.lifeLights = [];
@@ -510,7 +514,8 @@ export class StillwaterWorld {
         if (tier.mist > 0) this.addPart('mist', createMist(u, tier.mist), air);
         // (The low mist lies on the water: the mirror does not take it.)
         if (tier.veil > 0) this.addPart('veil', createVeil(u, tier.veil));
-        this.addPart('eyes', createEyes(u, planEyes(tier.eyes)), air);
+        // (Each pair stands behind one of the trunks this tier has.)
+        this.addPart('eyes', createEyes(u, planEyes(tier.eyes, 6007, this.trunkPlan)), air);
         if (tier.fireflies > 0) this.addPart('fireflies', createFireflies(u, tier.fireflies), air);
         this.addPart('wisps', createWisps(u), air);
         this.drops = createDrops(u);
@@ -521,7 +526,9 @@ export class StillwaterWorld {
         // ── The night's own weather, and who comes by (drawn only while they are there) ──
         if (tier.rain > 0) this.addPart('rain', createRain(u, tier.rain));
         this.addPart('birds', createBirds(u, tier.birds), air);
-        this.addPart('elk', createElk(u), air);
+        // The old moose (his file arrives with the figures': see prepare()).
+        this.moose = createMoose(u);
+        this.addPart('elk', this.moose, air);
         this.addPart('lampGlow', createLampGlow(u), air);
         this.addPart('pillars', createPillars(u), air);
         // (Each of these is drawn only while it is there: none of them costs a rest frame anything.)
@@ -543,10 +550,13 @@ export class StillwaterWorld {
      */
     async prepare() {
         if (!this.troll) return false;
-        const [loaded] = await Promise.all([this.troll.load(), this.spirit ? this.spirit.load() : false]);
+        const [loaded] = await Promise.all([
+            this.troll.load(), this.spirit ? this.spirit.load() : false, this.moose ? this.moose.load() : false,
+        ]);
         if (this.disposed) return false;
         this.troll.mesh.traverse((o) => o.layers.set(HERO_LAYER));
         this.spirit?.mesh.traverse((o) => o.layers.set(HERO_LAYER));
+        this.moose?.mesh.traverse((o) => o.layers.set(HERO_LAYER));
         this.resetFigures();
         this.placeFigures(0);
         return loaded;
@@ -608,13 +618,6 @@ export class StillwaterWorld {
         this.troll?.setSqueeze(this.squeeze);
         // The giants' boughs fringe a wide frame; drawn in over a tall one they would hang across it.
         this.parts.fringe?.mesh.scale.setScalar(this.squeeze > 0.85 ? 1 : 0);
-        // The elk stands far out in the left bank's shallows, turned to the viewer's eye.
-        const elk = this.parts.elk?.mesh;
-        if (elk) {
-            elk.position.set(ELK.at[0] * this.squeeze, -ELK.wade, ELK.at[1]);
-            elk.rotation.y = Math.atan2(EYE.x - elk.position.x, EYE.z - elk.position.z);
-            elk.updateMatrixWorld(true);
-        }
         if (this.u) this.u.squeeze.value = this.squeeze;
         this.applyMoon();
     }
@@ -674,15 +677,41 @@ export class StillwaterWorld {
             this.flightAt.time = time;
             this.flightAt.kind = kind === 'flock' ? 1 : 0;
             this.flightAt.seed = seed;
+            // The ducks get up off the far water: a ring and a splash where each one leaves it.
+            const n = kind === 'flock' ? Math.min(6, this.parts.birds?.count ?? 0) : 0;
+            const side = seed >= 0.5 ? 1 : -1;
+            const at = [0, 0, 0];
+            for (let i = 0; i < n; i++) {
+                duckAt(i, 0, side, at);
+                const when = time + i * 0.22;
+                this.ring(at[0], at[2], when, 0.3, pal.crest, 0.7);
+                this.sparks?.emit({
+                    at: [at[0], 0.02, at[2]],
+                    n: Math.max(2, Math.round(5 * this.sparkShare())),
+                    rgb: pal.crest,
+                    time: when,
+                    vel: [side * 0.8, 1.2, 0],
+                    spread: 0.6,
+                    life: [0.35, 0.7],
+                    size: 0.05,
+                    splash: true,
+                });
+            }
         } else if (kind === 'elk') {
             this.elkVisit.time = time;
             this.elkVisit.seed = seed;
-            this.elkRing = time + ELK.lower[1];
-            // The two see it, and watch it a while.
-            const at = [ELK.at[0], 1.9, ELK.at[1]];
-            ['troll', 'spirit'].forEach((who, i) => this.story.looks.push({
-                who, at, from: time + 7 + i * 1.3, until: time + 12.5 + i, key: 'elk', weight: 0.74,
-            }));
+            this.elkRing = -100;
+            // The two see him come out of the mist and watch him a while; and again as he drinks.
+            const at = [MOOSE.at[0], 1.9, MOOSE.at[1]];
+            const B = MOOSE_BEATS;
+            ['troll', 'spirit'].forEach((who, i) => {
+                this.story.looks.push({
+                    who, at, from: time + B.arrive - 4 + i * 1.3, until: time + B.arrive + 2 + i, key: 'elk', weight: 0.74,
+                });
+                this.story.looks.push({
+                    who, at, from: time + B.drink + 1 + i, until: time + B.drink + 5 + i, key: 'elk', weight: 0.7,
+                });
+            });
         }
     }
 
@@ -713,7 +742,7 @@ export class StillwaterWorld {
             for (let i = 0; i < list.length; i++) {
                 // (The elk is not cut short by a second one, nor the owl by a flight already up.)
                 const v = list[i];
-                const busy = (v.kind === 'elk' && t - this.elkVisit.time < VISITOR_SPAN.elk)
+                const busy = (v.kind === 'elk' && t - this.elkVisit.time < MOOSE_SPAN)
                     || (v.kind === 'owl' && t - this.flightAt.time < VISITOR_SPAN.owl);
                 if (!busy) this.visitor(v.kind, v.time, v.seed);
             }
@@ -736,19 +765,28 @@ export class StillwaterWorld {
         const f = this.flightAt;
         u.flight.value.set(f.time, f.kind, f.seed, 0);
         const flying = t >= f.time && t - f.time < (f.kind ? FLIGHT.flockSpan + 2 : FLIGHT.owlSpan);
-        if (this.parts.birds) this.parts.birds.mesh.visible = flying && shown('birds');
+        const { birds } = this.parts;
+        if (birds) {
+            birds.mesh.visible = flying && shown('birds');
+            // (The owl or the ducks: each flight is one of them.)
+            birds.owl.visible = f.kind === 0;
+            birds.ducks.visible = f.kind === 1;
+        }
         const e = this.elkVisit;
         u.elk.value.set(e.time, e.seed, 0, 0);
-        const here = t >= e.time && t - e.time < VISITOR_SPAN.elk;
+        const here = t >= e.time && t - e.time < MOOSE_SPAN && Boolean(this.moose?.ready);
         if (this.parts.elk) this.parts.elk.mesh.visible = here && shown('elk');
-        if (here && this.parts.elk && t >= this.elkRing && t - e.time < ELK.lift[0]) {
-            // It drinks: rings run out from its muzzle.
-            this.elkRing = t + 1.5;
-            const m = this.parts.elk.mesh;
-            const c = Math.cos(m.rotation.y);
-            const s = Math.sin(m.rotation.y);
-            const reach = 1.8 * ELK.size;
-            this.ring(m.position.x + c * reach, m.position.z - s * reach, t, 0.3, this._palette.crest, 0.9);
+        if (here) {
+            const events = this.moose.update(t - e.time, this.squeeze);
+            for (let i = 0; i < events.length; i++) {
+                const ev = events[i];
+                if (ev.type === 'step') this.ring(ev.x, ev.z, t, 0.2, this._palette.crest, 0.6);
+                else if (ev.type === 'sip' && t >= this.elkRing) {
+                    // He drinks: rings run out from his muzzle.
+                    this.elkRing = t + 1.4;
+                    this.ring(ev.x, ev.z, t, 0.32, this._palette.crest, 0.9);
+                }
+            }
         }
         if (this.parts.rain) this.parts.rain.mesh.visible = this.air.rain > 0.01 && shown('rain');
     }

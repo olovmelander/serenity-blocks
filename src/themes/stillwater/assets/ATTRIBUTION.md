@@ -15,6 +15,15 @@ uint8, WEIGHTS_0 uint8 summing to 255), no glTF skin and no animation. The skele
 `src/themes/stillwater/stillwater-rig.js` builds the bones from it. Every pose is made at run time
 (`stillwater-troll-body.js`, `stillwater-spirit-body.js`).
 
+## The moose
+
+`moose.glb` (2026-11-17, `scripts/blender/stillwater/moose.py`, from numbers alone): the old bull
+moose who comes to the far shallows to drink. One signed distance field of smooth masses (the
+troll's own primitives), meshed with OpenVDB, decimated to 9,000 triangles, weighted to a 16-bone
+skeleton by the masses each bone carries, ambient occlusion baked; `COLOR_0.r` says what each
+vertex is (hide, eye, leg, muzzle, antler). Built with `--only moose`. No reference picture and
+no generative model was used.
+
 ## The troll
 
 The troll is the theme's own, the author's character. He was modelled in Blender after a concept

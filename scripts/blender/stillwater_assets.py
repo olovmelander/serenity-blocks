@@ -7,7 +7,9 @@
   one signed distance field of smooth masses under a mane of
   matted moss locks (scripts/blender/stillwater/troll_shape.py), meshed once, four LODs, a 21-bone
   skeleton, every vertex told what it is, baked occlusion (scripts/blender/stillwater/troll.py);
-* spirit-lod0..1.glb: the spirit, built from numbers (scripts/blender/stillwater/spirit.py).
+* spirit-lod0..1.glb: the spirit, built from numbers (scripts/blender/stillwater/spirit.py);
+* moose.glb: the old moose who comes to the far shallows to drink (scripts/blender/stillwater/moose.py),
+  built only when asked for (`--only moose`).
 
 Both are written in the compact layout src/themes/stillwater/stillwater-rig.js reads
 (scripts/blender/stillwater/figure_glb.py): no clips, the skeleton in the scene's extras; every
@@ -23,6 +25,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
+from stillwater import moose as moose_figure  # noqa: E402
 from stillwater import spirit as spirit_figure  # noqa: E402
 from stillwater import troll as troll_figure  # noqa: E402
 
@@ -56,6 +59,8 @@ def main():
         troll_figure.build(out, log=log, preview_dir=preview, voxel=float(args.get('voxel', 0.003)))
     if 'spirit' in only:
         spirit_figure.build(out, log=log)
+    if 'moose' in only:
+        moose_figure.build(out, log=log, preview_dir=preview)
     log('done')
 
 

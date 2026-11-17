@@ -97,14 +97,61 @@ passes with nobody), each kind with its own rest:
 
 - **a fish rises**: a ring and a splash on open water beside the card;
 - **a star falls** down the strip of sky the frame shows (and through the water); never in rain or thick mist;
-- **an owl** crosses the sky on slow wings, past the moon;
-- **the old elk** comes down to the far shallows behind the spirit, turned toward her light: it
-  stands, lowers its head and drinks (rings run out from its muzzle), lifts it, and is gone after
-  46 s. Both figures turn to watch it. It is one shape, a 2D distance field of some thirty limbs
-  drawn on a quad that stands in the scene (so the mist lies in front of it and the water mirrors
-  it): nothing was modelled, and Blender was not needed.
+- **an owl** crosses the sky on slow wings, across the moon (see the polish above);
+- **the old moose** comes down to the far shallows behind the spirit to drink (see the polish
+  above: first drawn as a 2D silhouette, now a figure built in Blender that walks).
 
 ![The elk, the elk drinking in mist, the owl, a light sent across](stillwater-tarn/visitors.jpg)
+
+## Polish from play (2026-11-17, later)
+
+The owner played the merged pass in Serenity mode and sent back five things. All five are fixed.
+
+![The moose broadside and drinking, the owl across the moon, the ducks at the hour's turn, eyes peering round the trunks, the troll's hand on his staff](stillwater-tarn/polish.jpg)
+
+- **A black line across the back of the picture.** A row of dark dashes along the far waterline,
+  under the far wood, that stayed for about a minute after any pulse of light the two sent. It
+  came only in the real game, because the clock's own exchanges send pulses there and the
+  playground's captures did not. Found by switching each part off in turn in the live game: only
+  removing the water cleared it. The pulse's wake was `step(0, back) * exp(back * -0.2)`: far
+  ahead of the front `back` is hundreds of metres below zero, so the `exp` overflowed to
+  infinity, and infinity times the mask's zero is not a number; the farthest rows of water, at
+  the horizon, drew black. The term is now bounded before it is masked (`max(back, 0)`).
+- **The troll's arm stuck in his shorts.** His staff hand was planned 0.66 m from his middle
+  and 0.72 m below his chest: exactly the outside of his hip in its cloth (measured off the mesh,
+  0.67 m). The planted staff now stands further out (`STAFF_STAND`), he holds it higher (at his
+  chest, `STAFF.plant` 1.45 m up it, eased to the carried grip when he lifts it), and his free
+  hand hangs and swings clear of his hip instead of across it.
+- **The yellow eyes in front of the trees.** They were planned in open gaps of the far wood, so
+  they floated in the air. Each pair now stands behind a real trunk of the tier's own wood
+  (`planEyes(pairs, seed, trunks)`), peering round its edge: one eye clear of the bark, the
+  other half behind it, coming and going as the head sways. Every tier still gets its full count
+  (a trunk can hide a second pair on its other side, at another height).
+- **The flying bird.** A flat sprite of two wings in a V. It is now two real birds built from
+  numbers (`stillwater-birds.js`), whose wings fold at the shoulder and the wrist in the vertex
+  stage (`foldWing` is the CPU twin): a great grey owl (a big round head, broad wings with
+  fingered tips, slow deep beats and long glides) whose flight dips across the moon's disc
+  wherever the hour has the moon stand, dark on the brightest sky; and a flight of mallards that
+  get up off the far water as the hour turns (a ring and a splash where each leaves it), climb
+  over the far wood and string out across the sky. The first ducks flew against the dark far
+  wood and could not be seen at all: they now climb 13 m in their first seconds.
+- **The moose: a better look, and the bump on his neck.** The 2D silhouette is gone. He is the
+  theme's own figure now, built in Blender like the troll (`scripts/blender/stillwater/moose.py`:
+  a distance field of smooth masses meshed with OpenVDB, 9,000 triangles, a 16-bone skeleton,
+  baked occlusion, `assets/moose.glb`): a deep chest, a long smooth topline rising from the rump
+  over the shoulders and falling into the neck (a first build had a round hump over the withers
+  that read as a bump on his neck; it is a long low swell now), the overhanging muzzle and the
+  bell, pale stockings below the knees and hocks, broad palms with their points along the far rim
+  only. `stillwater-moose.js` poses him every frame: he walks in out of the mist through the far
+  shallows (a moose's walk, each leg in turn), steps round broadside, looks about, lowers his
+  head and drinks (rings from his muzzle), lifts it, turns his head to the spirit's light a long
+  moment, and turns and walks back into the mist. His hooves ring the water; he keeps to where it
+  is at his knees. Both figures watch him come and watch him drink.
+
+Checked: the real game's Serenity mode (combo, back-to-back, level-up) with the far shore
+enlarged three times; the playground on WebGPU and on the WebGL2 backend, at Minimal, Low, High and
+Ultra, and in a 390 x 844 frame. Tests: 612 in 22 files (the moose's path, pose and visit; the
+birds' meshes, fold and flight; the eyes behind trunks).
 
 ## Every event its own answer
 

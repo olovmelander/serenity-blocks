@@ -55,7 +55,7 @@ vi.mock('three/addons/loaders/GLTFLoader.js', async (importOriginal) => {
     const actual = await importOriginal();
     const { readFileSync } = await import('node:fs');
     sculpt.real = (url) => {
-        const name = String(url).match(/(?:troll|spirit)-lod\d\.glb/)?.[0];
+        const name = String(url).match(/(?:troll|spirit)-lod\d\.glb|moose\.glb/)?.[0];
         if (!name) return Promise.reject(new Error(`no figure file at ${url}`));
         if (!sculpt.bytes[name]) {
             const bytes = readFileSync(new URL(`../../src/themes/stillwater/assets/${name}`, import.meta.url));
@@ -619,15 +619,17 @@ describe('stillwater world: build', () => {
             expect(place(solid, pattern), String(pattern)).toBeGreaterThanOrEqual(0);
             expect(place(solid, pattern), String(pattern)).toBeLessThan(place(solid, /Water/));
         }
-        // The dark shapes far off first (wings, the elk: the mist lies in front of them), then the
-        // mist on the water, then the sheets of it over the water, then every light.
-        expect(place(blended, /Birds/)).toBe(0);
-        expect(place(blended, /Elk/)).toBe(1);
-        expect(place(blended, /Veil/)).toBe(2);
-        expect(place(blended, /Mist/)).toBe(3);
+        // (The birds and the moose are solid, drawn before the sky.)
+        for (const pattern of [/Owl/, /Ducks/]) {
+            expect(place(solid, pattern), String(pattern)).toBeGreaterThanOrEqual(0);
+            expect(place(solid, pattern), String(pattern)).toBeLessThan(place(solid, /Sky/));
+        }
+        // The mist on the water first, then the sheets of it over the water, then every light.
+        expect(place(blended, /Veil/)).toBe(0);
+        expect(place(blended, /Mist/)).toBe(1);
         for (const pattern of [/Wisps/, /Sparks/, /Drops/, /Eyes/, /Fireflies/, /Halo/, /Glow/, /Motes/, /HeartOrb/,
             /Pillars/, /Rain/]) {
-            expect(place(blended, pattern), String(pattern)).toBeGreaterThan(3);
+            expect(place(blended, pattern), String(pattern)).toBeGreaterThan(1);
         }
         world.dispose();
     });
@@ -769,8 +771,9 @@ describe('stillwater world: the figures', () => {
             const { camera, world } = makeWorld(quality);
             await expect(world.prepare()).resolves.toBe(true);
             const tier = QUALITY[quality];
-            // It fetched the meshes its tier pays for, one of each.
-            expect(sculpt.urls).toHaveLength(2);
+            // It fetched the meshes its tier pays for, one of each, and the moose's.
+            expect(sculpt.urls).toHaveLength(3);
+            expect(sculpt.urls.filter((url) => url.includes('moose.glb'))).toHaveLength(1);
             expect(sculpt.urls.find((url) => url.includes('troll-lod'))).toContain(`troll-lod${tier.troll}.glb`);
             expect(sculpt.urls.find((url) => url.includes('spirit-lod'))).toContain(`spirit-lod${tier.spirit}.glb`);
             expect(world.getState()).toMatchObject({
@@ -856,10 +859,16 @@ describe('stillwater world: the figures', () => {
         const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
         sculpt.load = () => Promise.reject(new Error('404'));
         await expect(world.prepare()).resolves.toBe(false);
-        expect(warned).toHaveBeenCalledTimes(2);
+        expect(warned).toHaveBeenCalledTimes(3);
         const said = warned.mock.calls.map((call) => String(call[0])).join(' | ');
         expect(said).toMatch(/troll/i);
         expect(said).toMatch(/spirit/i);
+        expect(said).toMatch(/moose/i);
+        expect(world.moose.failed).toBe(true);
+        // (Without his file the moose never comes, whatever the night says.)
+        world.visitor('elk', world.time);
+        run(world, camera, 20, 10);
+        expect(world.parts.elk.mesh.visible).toBe(false);
         expect(world.getState()).toMatchObject({ trollReady: false, spiritReady: false });
         expect(world.troll.failed).toBe(true);
         expect(world.spirit.failed).toBe(true);
@@ -901,7 +910,7 @@ describe('stillwater world: the figures', () => {
             asked.push({ url, resolve });
         });
         const preparing = world.prepare();
-        expect(asked).toHaveLength(2);
+        expect(asked).toHaveLength(3);
         world.dispose();
         const arrived = [];
         for (const { url, resolve } of asked) {
