@@ -10,7 +10,11 @@ import {
     RAIL_RIPPLE, STAR_LANDING, answerOrbFinished, lightRailAhead, railRippleDurationMs, resolveRailRipple,
     starLandingPose, starLandingTotalMs,
 } from '../../src/rendering/odyssey/odyssey-flow-answers.js';
+import * as THREE from 'three/webgpu';
+import { uniform } from 'three/tsl';
 import { OdysseyPathRenderer } from '../../src/rendering/odyssey/OdysseyPathRenderer.js';
+import { createPathGlowTSL, createPathOuterTSL } from '../../src/rendering/odyssey/odyssey-path-renderer.tsl.js';
+import { build, unassignedReads } from './helpers/tsl-node-build.js';
 
 describe('the stars landing on a finished orb', () => {
     it('drop onto their seats one after the other and settle at their own size', () => {
@@ -184,4 +188,22 @@ describe('the flow asking the world to answer', () => {
         expect(lightRailAhead(broken, { fromId: 14, toId: 15 })).toBe(false);
         warn.mockRestore();
     });
+});
+
+describe('the rail shader with the ripple in it', () => {
+    // No GPU here: the node builders write the shader text, which is where a bad graph shows.
+    it.each([['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilder]])(
+        'builds for %s, the body and the glow, with nothing said and no value read before it is set',
+        (language, Builder) => {
+            [createPathOuterTSL, createPathGlowTSL].forEach((create) => {
+                const built = create(uniform(0));
+                const mesh = built.mesh ?? new THREE.Mesh(built.geometry, built.material);
+                const out = build(Builder, mesh);
+                expect(out.thrown, `${create.name} ${language}`).toBeUndefined();
+                expect(out.heard, `${create.name} ${language}`).toEqual([]);
+                expect(out.fragment.length, `${create.name} ${language}`).toBeGreaterThan(400);
+                if (language === 'WGSL') expect(unassignedReads(out.fragment), create.name).toEqual([]);
+            });
+        },
+    );
 });
