@@ -7,15 +7,19 @@
  * stands in the free space left of the card, and the water repeats the whole sky. The board
  * writes the sky: a locking piece sends a mote of its own colour up from the card's edge, at the
  * piece's height, and it settles as a STAR in the constellation that is being drawn, while a
- * ring in the same colour runs out over the mirror under the piece's column (a hard drop is
- * brighter and wider); a clear draws the figure's lines, two for every row, and sends one
- * shooting star per row across the sky; four lines or a perfect clear finish the figure at
- * once and send a fireball over the whole sky that lights the lake; a twist makes the sky
- * pirouette; a chain of clears opens the shutter, so every star draws a trail round the pole,
- * longer with the chain (and circles, with the mirror); a new level carries the sky an hour on
- * in one breath and turns the light to the next hour (deep night, airglow, first light,
- * afterglow, zodiacal light, blue hour), which also turns by itself, slowly, with the clock,
- * as the sky itself does.
+ * ring in the same colour runs out over the open lake beside the card (a hard drop is brighter
+ * and wider); a clear draws the figure's lines, two for every row, and sends a shooting star per
+ * row across the sky (three lines an earthgrazer skimming the hills); four lines finish the
+ * figure at once and send a fireball over the whole sky that lights the lake and bursts as it
+ * lands; a perfect clear rains a storm out of one radiant and calls the great comet; a twist
+ * unfurls a spiral of light in the free sky; a chain of clears opens the shutter, so every star
+ * draws a trail round the pole, longer with the chain (and circles, with the mirror); a new level
+ * carries the sky an hour on in one breath and rolls the next hour's light up the sky as a front
+ * (deep night, airglow, first light, afterglow, zodiacal light, blue hour; the hours also turn by
+ * themselves with the clock, as the sky does); and when a run ends its constellations fall.
+ * Between them the night lives on its own: the air turns (airglow waves, a cirrus veil, rising
+ * mist, a breeze, noctilucent cloud: starlight-night.js), satellites drift over, fish rise, and
+ * now and then the great comet stands over the hills.
  *
  * Content lives in StarlightWorld (starlight-world.js), shared with the playground effect
  * src/playground/effects/starlight.effect.js, so what is iterated there ships. This class
@@ -376,7 +380,7 @@ export default class StarlightTheme extends BaseTheme {
             }),
         );
         this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
-        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+        this.registerEventListener(window, 'gameOver', () => this.endRun());
 
         const resetPointer = () => {
             this.pointer.x = 0;
@@ -417,12 +421,23 @@ export default class StarlightTheme extends BaseTheme {
         this.world?.onCombo(best);
     }
 
+    /**
+     * The run is over: the last lock lands in this run, the run's state is dropped WITHOUT wiping
+     * the world, and then the world lets the constellations the run drew fall (gotcha #1716: a
+     * reset after the effect would cut it off).
+     */
+    endRun() {
+        this.director?.flush();
+        this.resetSession({ world: false });
+        this.world?.onGameOver?.();
+    }
+
     /** A new run: the sky back at rest, no chain in flight. */
-    resetSession() {
+    resetSession({ world = true } = {}) {
         this.director?.reset();
         this.combos.clear();
         this.level = 1;
-        this.world?.resetSession();
+        if (world) this.world?.resetSession();
         this.scheduleLayoutReads();
     }
 

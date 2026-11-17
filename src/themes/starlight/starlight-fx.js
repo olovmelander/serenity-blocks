@@ -12,6 +12,8 @@
  *   fireball   the same, slow and wide, bright enough to light the lake
  *   train      the fireball's path, left glowing and bent by the high winds while it fades
  *   mote       a soft spark in the piece's colour that eases up a bowed path to its star
+ *   satellite  a steady point drifting across in half a minute, fading in and out of the
+ *              earth's shadow at its ends, now and then flaring as a panel catches the sun
  *
  * Each is drawn twice: in the sky and in the lake.
  */
@@ -69,8 +71,10 @@ function streakMaterial({
     const s = positionGeometry.x; // 0 tail … 1 head
     const side = positionGeometry.y;
 
-    const isMote = step(STREAK.mote - 0.5, shape.x).mul(step(shape.x, STREAK.mote + 0.5));
-    const isTrain = step(STREAK.mote + 0.5, shape.x);
+    const kindIs = (k) => step(k - 0.5, shape.x).mul(step(shape.x, k + 0.5));
+    const isMote = kindIs(STREAK.mote);
+    const isTrain = kindIs(STREAK.train);
+    const isSat = kindIs(STREAK.satellite);
     const isFireball = step(STREAK.fireball - 0.5, shape.x).mul(step(shape.x, STREAK.fireball + 0.5));
     const age = u.time.sub(from.w);
     const flown = clamp(age.div(max(to.w, 1e-3)), 0.0, 1.0);
@@ -82,14 +86,16 @@ function streakMaterial({
     const chase = min(head.sub(shape.y).add(over.div(METEOR_FADE).mul(shape.y)), head);
     const tail = mix(max(chase, 0.0), float(0.0), isTrain);
     const bowAxis = normalize(cross(from.xyz, to.xyz).add(vec3(0.0, 1e-5, 0.0)));
+    // (A satellite's bow is where it flares, never a bend.)
+    const bow = shape.w.mul(isSat.oneMinus());
     const placeAt = (share) => normalize(mix(from.xyz, to.xyz, share)
-        .add(bowAxis.mul(sin(share.mul(Math.PI)).mul(shape.w))));
+        .add(bowAxis.mul(sin(share.mul(Math.PI)).mul(bow))));
     const at = mix(tail, head, s);
     const d = placeAt(at);
     const ahead = placeAt(at.add(0.01));
     const run = normalize(ahead.sub(d).add(to.xyz.sub(from.xyz).mul(1e-4)));
 
-    const life = mix(mix(float(METEOR_FADE), float(0.0), isMote), float(TRAIN_LIFE), isTrain);
+    const life = mix(mix(float(METEOR_FADE), float(0.0), isMote.add(isSat)), float(TRAIN_LIFE), isTrain);
     const alive = step(0.0, age).mul(step(over, life)).mul(step(0.001, paint.w));
     // The train drifts: the high winds bend it more the longer it hangs.
     const drift = sin(at.mul(31.0).add(from.w.mul(3.7))).mul(over.add(0.15)).mul(0.0022)
@@ -109,21 +115,27 @@ function streakMaterial({
     // an arrowhead); a train is one thin thread.
     const front = clamp(s.sub(NOSE).div(1 - NOSE), 0.0, 1.0);
     const nose = front.mul(front).oneMinus().max(0.0).sqrt();
-    const taper = mix(s.pow(0.65).mul(nose), float(0.8), isTrain);
+    const taper = mix(mix(s.pow(0.65).mul(nose), float(0.8), isTrain), float(1.0), isSat);
     const width = sized(u, shape.z, 1.3).mul(taper).mul(step(0.002, shown));
     material.positionNode = cameraPosition
         .add(centre.add(aside.mul(side.mul(width).add(drift))).mul(SKY_RADIUS));
 
     // The light along it.
-    const fade = mix(
+    // A satellite comes out of the earth's shadow and goes back into it at the ends of its
+    // path, and flares for a moment where a panel catches the sun.
+    const flareAt = flown.sub(shape.w).div(0.035);
+    const flare = exp(flareAt.mul(flareAt).negate()).mul(step(0.001, shape.w)).mul(7.0);
+    const satLight = smoothstep(0.0, 0.07, flown).mul(smoothstep(1.0, 0.86, flown)).mul(flare.add(1.0));
+    const fade = mix(mix(
         mix(over.div(METEOR_FADE).oneMinus(), float(1.0), isMote),
         exp(over.div(-0.85)).mul(0.2).mul(smoothstep(0.0, 0.25, over.add(flown))),
         isTrain,
-    );
+    ), satLight, isSat);
     const vLight = varying(vec4(paint.xyz, paint.w.mul(shown).mul(max(fade, 0.0))));
     const vAt = varying(vec2(s, side));
-    // (mote, train, how far a fireball keeps its colour in its heart: more the hotter play runs)
-    const vKind = varying(vec3(isMote, isTrain, isFireball.mul(u.heat)));
+    // (mote, train, how far a fireball keeps its colour in its heart: more the hotter play runs,
+    // satellite)
+    const vKind = varying(vec4(isMote, isTrain, isFireball.mul(u.heat), isSat));
     const along = clamp(vAt.x, 0.0, 1.0);
     const profile = exp(vAt.y.mul(vAt.y).mul(-4.2));
     // A head that outshines its tail; the tail's far end cools to an ember.
@@ -139,7 +151,10 @@ function streakMaterial({
     const beads = sin(along.mul(93.0)).mul(sin(along.mul(37.0).add(1.3))).mul(0.45).add(0.6);
     const train = mix(vLight.rgb, vec3(1.0, 0.82, 0.6), 0.4).mul(beads)
         .mul(smoothstep(0.0, 0.08, along)).mul(smoothstep(1.0, 0.9, along));
-    const lit = mix(mix(meteor, mote, vKind.x), train, vKind.y);
+    // A satellite is a steady round point (its strip is a few widths long), no tail.
+    const mid = vAt.x.sub(0.5).div(0.32);
+    const sat = vLight.rgb.mul(exp(mid.mul(mid).negate())).mul(1.3);
+    const lit = mix(mix(mix(meteor, mote, vKind.x), train, vKind.y), sat, vKind.w);
     material.outputNode = vec4(lit.mul(profile).mul(vLight.a).mul(2.4), 0.0);
     material.colorNode = vec4(0.0, 0.0, 0.0, 1.0);
     return material;

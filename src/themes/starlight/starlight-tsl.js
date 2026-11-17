@@ -90,10 +90,11 @@ export const noiseSmooth = (tex, uvNode, level = 0) => {
 // ── The scene's state ────────────────────────────────────────────────────────────
 
 /**
- * Streaks in the air at once: shooting stars, a fireball and its train, the motes of locks. A
- * fever's storm, a great clear's fireball and a lock's mote all fit at once.
+ * Streaks in the air at once: shooting stars, a fireball and its train and its pieces, the motes
+ * of locks, the satellites drifting over. A perfect clear's storm, a great clear's fireball, a
+ * lock's mote and the satellites all fit at once.
  */
-export const STREAKS = 24;
+export const STREAKS = 48;
 /** Rings on the water at once. */
 export const RINGS = 6;
 
@@ -109,12 +110,15 @@ export function createUniforms() {
         rings: rows(RINGS * 2),
         // per kept figure: (light 0..1, flare, 0, 0); the last row is the catalogue's own glints
         figures: rows(FIGURES_KEPT + 1),
+        // per twist's spiral (starlight-spiral.js): (unit world direction, start) + (sense, radius, power, 0)
+        spirals: rows(4),
     };
     return {
         tables,
         streaks: uniformArray(tables.streaks, 'vec4'),
         rings: uniformArray(tables.rings, 'vec4'),
         figures: uniformArray(tables.figures, 'vec4'),
+        spirals: uniformArray(tables.spirals, 'vec4'),
 
         time: uniform(0),
         /** The sky's turn round the pole, radians: accumulated, so a change of pace never jumps. */
@@ -171,8 +175,70 @@ export function createUniforms() {
         starPower: uniform(1),
         glowHeight: uniform(0.11),
         zodiac: uniform(0.18),
+        dusk: uniform(0),
+
+        /**
+         * The night's air (starlight-night.js): (airglow waves, high veil, mist, breeze), each
+         * 0..1, and the noctilucent shine. Each weather's terms sit behind a branch on its own
+         * weight, the same for every pixel, so a clear night pays nothing for them.
+         */
+        air: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        shine: uniform(0),
+        /**
+         * A level-up's front of airglow rolling up the sky: (height it has reached, as the sine of
+         * the altitude; its depth; its strength; 0).
+         */
+        front: uniform(new THREE.Vector4(-1, 0.1, 0, 0)),
+        /**
+         * The great comet (starlight-comet.js): its head (unit world direction; how bright it
+         * is), its tail's axis at the head (away from the sun; the tail's length in radians), the
+         * side its dust tail bends to (unit; an outburst 0..1).
+         */
+        comet: uniform(new THREE.Vector4(0, 0.2, -1, 0)),
+        cometTail: uniform(new THREE.Vector4(0, 1, 0, 0.3)),
+        cometSide: uniform(new THREE.Vector4(-1, 0, 0, 0)),
     };
 }
+
+// ── The high veil ────────────────────────────────────────────────────────────────
+
+/**
+ * The way the high wind blows the veil's fibres (a unit vector in world x, z): mostly away from
+ * the lens, so the streets of cirrus run along the line of sight and fan out from a point on the
+ * horizon. (Blown across the view they lie in the frame as parallel stripes: venetian blinds.)
+ */
+const VEIL_WIND = Object.freeze([0.34, -0.94]);
+
+/**
+ * The high veil of cirrus in direction `d`: 0 clear … ~1 thick. A deck a few kilometres up, seen
+ * from below (so its streets converge toward the horizon); two layers of fibres, stretched about
+ * four to one along the wind and moving at two speeds, gathered into clumps by a third slow read,
+ * so the veil forms, stretches and melts as it goes instead of sliding past as one painted sheet.
+ * `level` is the noise's mip (an explicit one in a vertex). Thinned to nothing toward the
+ * horizon, where the deck's fibres would crowd below a pixel.
+ */
+export const veilDensity = (u, noise, d, level = null) => {
+    const up = max(d.y, 0.0);
+    const q = d.xz.div(up.add(0.05));
+    const along = q.x.mul(VEIL_WIND[0]).add(q.y.mul(VEIL_WIND[1]));
+    const across = q.y.mul(VEIL_WIND[0]).sub(q.x.mul(VEIL_WIND[1]));
+    const t = u.time;
+    const lv = level ?? 0;
+    // A fragment reads its finest layer with the texture's own mip choice; everything else at a
+    // given level.
+    const read = (uvNode, at) => (level === null && at === 0
+        ? texture(noise, uvNode)
+        : texture(noise, uvNode).level(at));
+    const warp = read(vec2(along.mul(0.018).add(t.mul(0.0004)), across.mul(0.05).add(0.61)), lv + 2).b;
+    const a = read(vec2(along.mul(0.07).sub(t.mul(0.0052)).add(warp.mul(0.3)), across.mul(0.28).add(0.13)), lv).g;
+    const bAt = vec2(along.mul(0.11).sub(t.mul(0.0088)).add(0.37), across.mul(0.42).add(warp.mul(0.4)).add(0.21));
+    const b = read(bAt, lv).r;
+    const clump = read(vec2(along.mul(0.024).sub(t.mul(0.0031)).add(0.5), across.mul(0.07).add(0.9)), lv + 2).g;
+    const cover = u.air.y;
+    const fibres = a.mul(0.55).add(b.mul(0.45)).add(smoothstep(0.3, 0.72, clump).mul(0.3)).sub(0.12);
+    return smoothstep(cover.mul(-0.3).add(0.62), cover.mul(-0.12).add(0.9), fibres)
+        .mul(smoothstep(0.012, 0.09, up)).mul(cover);
+};
 
 // ── The sky's frames ─────────────────────────────────────────────────────────────
 
@@ -203,9 +269,13 @@ export const starColour = (temp) => {
 // ── The far hills ────────────────────────────────────────────────────────────────
 
 /**
- * The hills on the horizon in a world direction: (near crest, far crest), as heights in the
- * direction's own y (the sine of the altitude). Read at an explicit level, so it is the same in
- * a vertex and in a fragment and has no seam where the azimuth wraps.
+ * The hills on the horizon in a world direction: (near crest, far crest, the distant range), as
+ * heights in the direction's own y (the sine of the altitude). Read at an explicit level, so it is
+ * the same in a vertex and in a fragment and has no seam where the azimuth wraps.
+ *
+ * The distant range stands behind both crests in stretches: peaks with sharp shoulders (a fold of
+ * the noise read twice as fast as the hills', and a finer one for its edges), so the horizon has
+ * three depths, the farthest the palest.
  */
 export const ridges = (noise, d) => {
     const ua = atan(d.x, d.z.negate()).div(TAU);
@@ -215,7 +285,15 @@ export const ridges = (noise, d) => {
     const nearFine = noiseAt(noise, vec2(ua.mul(41.0), 0.34)).b;
     const farCrest = pow(max(far.sub(0.22), 0.0), 1.6).mul(0.11).add(farFine.mul(0.007)).add(0.006);
     const nearCrest = pow(max(near.sub(0.34), 0.0), 1.9).mul(0.085).add(nearFine.mul(0.0045)).add(0.0025);
-    return vec2(nearCrest, farCrest);
+    // The range: a fold of a read nine tiles round (round tops become peaks), in stretches.
+    const range = noiseAt(noise, vec2(ua.mul(9.0).add(0.43), 0.58)).r;
+    const rangeFine = noiseAt(noise, vec2(ua.mul(23.0).add(0.2), 0.11), 1).r;
+    const stretch = smoothstep(0.36, 0.6, noiseAt(noise, vec2(ua.mul(2.0).add(0.77), 0.66)).g);
+    const peaks = abs(range.mul(2.0).sub(1.0)).oneMinus();
+    // Less a base, so the lowest folds sink behind the hills instead of standing as needles.
+    const rangeCrest = max(pow(peaks, 2.0).mul(0.088).sub(0.012).add(rangeFine.mul(0.0045)), 0.0)
+        .mul(stretch).add(0.004);
+    return vec3(nearCrest, farCrest, rangeCrest);
 };
 
 // ── The woods on the near shore ──────────────────────────────────────────────────
@@ -269,18 +347,26 @@ export const waterSlope = (u, noise, p, tier) => {
     const swell = vec2(0.94, 0.34).mul(cos(dot(p, vec2(0.94, 0.34)).mul(0.62).add(t.mul(0.42))).mul(0.0009))
         .add(vec2(-0.5, 0.87).mul(cos(dot(p, vec2(-0.5, 0.87)).mul(1.05).sub(t.mul(0.55))).mul(0.0007)))
         .add(vec2(0.2, -0.98).mul(cos(dot(p, vec2(0.2, -0.98)).mul(1.9).add(t.mul(0.8))).mul(0.0005)));
-    // A fever stills the lake: the swell and the cat's paws lie down, the rings still run.
-    let slope = swell.mul(u.still);
+    // A fever stills the lake: the swell and the cat's paws lie down, the rings still run. A
+    // breeze (the air's) lifts the swell and spreads the paws until the mirror shivers.
+    const breeze = u.air.w;
+    let slope = swell.mul(u.still).mul(breeze.mul(1.6).add(1.0));
     if (tier.ripples) {
         // Cat's paws: where the coarse read is high, a fine read roughens the mirror.
         const far = length(p);
-        const paws = smoothstep(0.52, 0.8, noiseAt(noise, p.div(95.0).add(vec2(t.mul(0.004), 0.0)), 1.0).r);
+        // (Their drift keeps one speed: the clock times a speed the breeze changes would race
+        // the pattern by t · dv while the air melts, more the longer the night has run.)
+        const paws = smoothstep(
+            breeze.mul(-0.3).add(0.52),
+            breeze.mul(-0.16).add(0.8),
+            noiseAt(noise, p.div(95.0).add(vec2(t.mul(0.004), 0.0)), 1.0).r,
+        );
         // Read softer with distance: far ripples are smaller than a pixel and would only crawl.
         const level = clamp(log2(max(far, 1.0).div(14.0)), 0.0, 6.0);
         const fine = noiseAt(noise, p.div(vec2(5.5, 9.0)).add(vec2(t.mul(0.021), t.mul(0.013))), level);
         const grain = vec2(fine.b.sub(0.5), fine.a.sub(0.5));
         slope = slope.add(grain.mul(paws.mul(0.011).add(0.0012)).mul(exp(far.div(-160.0)).mul(0.9).add(0.1))
-            .mul(u.still));
+            .mul(u.still).mul(breeze.mul(0.7).add(1.0)));
     }
     for (let i = 0; i < RINGS; i += 1) {
         const ring = u.rings.element(i * 2);

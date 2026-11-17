@@ -1,11 +1,14 @@
 /**
  * Stellar Drift — what is drawn as geometry on top of the traced picture.
  *
- *   the ice      the camera drifts in the thin haze beyond the rings: a few slow, tumbling
- *                boulders of ice near the lens, shards between them and the giant, and
- *                thousands of motes that catch the sun for an instant as they turn. They live in
- *                the resting camera's own frame and pass through it at one common drift, so the
- *                near ones cross the frame quickly and the far ones hardly move.
+ *   the rocks    the camera drifts in the thin haze beyond the rings, among what they shed: clean
+ *                ice broken along its cleavage, loose chunks of ring ice and the darker rock of
+ *                captured moonlets (six bodies made in Blender: stellar-drift-rocks.js). A few
+ *                large boulders tumble slowly near the lens, chips between them and the giant, and
+ *                thousands of motes catch the sun for an instant as they turn. They live in the
+ *                resting camera's own frame and pass through it at one common drift, so the near
+ *                ones cross the frame quickly and the far ones hardly move. Two or three hero rocks
+ *                drift on passes of their own through the open sky beside the card.
  *   sparks       the ice a lock's mote throws up where it lands in the rings: chips that streak
  *                as they fly, a pool written at event time, moved by a closed form.
  *   meteors      the mote that carries a lock from the card to the rings (an arc in the piece's
@@ -31,7 +34,6 @@ import {
     length,
     max,
     mix,
-    normalGeometry,
     normalize,
     positionGeometry,
     pow,
@@ -46,78 +48,28 @@ import {
     vec2,
     vec3,
     vec4,
-    pow3,
 } from 'three/tsl';
 import {
     METEOR_SLOTS, METEOR_TRAIN, MOTE_TRAIN, RING_RATE, TAU, mulberry32, sdFxMaterial, sdPart, sdQuadGeometry,
-    sdSolidMaterial,
 } from './stellar-drift-tsl.js';
+import {
+    FIELD_CLASSES, createHeroes, createRockGeometry, planField, rockMaterial,
+} from './stellar-drift-rocks.js';
 
-/** The common drift of the ice through the camera's frame (radii per second, to the left). */
+/** The common drift of the rocks through the camera's frame (radii per second, to the left). */
 export const ICE_DRIFT = 0.012;
 
-// ── Geometry ────────────────────────────────────────────────────────────────────
-
-/**
- * A lump of ice: an icosphere pushed in by a handful of random planes, so it has flat cleaved
- * faces and sharp ridges. Non-indexed, with one normal per face.
- */
-export function createIceGeometry(detail, seed, cuts = 9) {
-    const rand = mulberry32(seed);
-    const base = new THREE.IcosahedronGeometry(1, detail);
-    const pos = base.getAttribute('position');
-    const planes = [];
-    for (let i = 0; i < cuts; i++) {
-        const z = rand() * 2 - 1;
-        const a = rand() * TAU;
-        const s = Math.sqrt(1 - z * z);
-        planes.push([s * Math.cos(a), z, s * Math.sin(a), 0.55 + rand() * 0.38]);
-    }
-    const v = new THREE.Vector3();
-    for (let i = 0; i < pos.count; i++) {
-        v.fromBufferAttribute(pos, i);
-        for (let k = 0; k < planes.length; k++) {
-            const [nx, ny, nz, d] = planes[k];
-            const over = v.x * nx + v.y * ny + v.z * nz - d;
-            if (over > 0) {
-                v.x -= nx * over;
-                v.y -= ny * over;
-                v.z -= nz * over;
-            }
-        }
-        pos.setXYZ(i, v.x, v.y, v.z);
-    }
-    base.computeVertexNormals();
-    base.deleteAttribute('uv');
-    return base;
-}
-
-function instanced(base, count, attributes) {
-    const geometry = new THREE.InstancedBufferGeometry();
-    geometry.setAttribute('position', base.getAttribute('position'));
-    geometry.setAttribute('normal', base.getAttribute('normal'));
-    Object.keys(attributes).forEach((name) => {
-        const [data, itemSize] = attributes[name];
-        geometry.setAttribute(name, new THREE.InstancedBufferAttribute(data, itemSize));
-    });
-    geometry.instanceCount = count;
-    return geometry;
-}
-
-/** Rodrigues: `v` turned by `angle` about the unit `axis`. */
-const turn = (v, axis, angle) => {
-    const c = cos(angle);
-    const s = sin(angle);
-    return v.mul(c).add(cross(axis, v).mul(s)).add(axis.mul(dot(axis, v)).mul(float(1.0).sub(c)));
-};
-
-// ── The ice ─────────────────────────────────────────────────────────────────────
+// ── The rocks ───────────────────────────────────────────────────────────────────
 
 /**
  * @param {object} u       shared uniforms
- * @param {number[]} counts  [boulders, shards, motes]
+ * @param {number[]} counts  [boulders, shards, motes, heroes]
+ * @param {number} seed
+ * @param {object} opts
+ * @param {number} [opts.detail=2]  2 = the boulders' grain too, 1 = only the heroes' (the chips never)
  */
-export function createIce(u, counts, seed = 77) {
+export function createIce(u, counts, seed = 77, { detail = 2 } = {}) {
+    const [boulderCount, shardCount, moteCount, heroCount = 0] = counts;
     const frame = {
         home: uniform(new THREE.Vector3(0, 1, 5)),
         right: uniform(new THREE.Vector3(1, 0, 0)),
@@ -127,91 +79,70 @@ export function createIce(u, counts, seed = 77) {
         span: uniform(new THREE.Vector2(0.6, 0.34)),
         /** The drift's own clock (the world integrates it). */
         clock: uniform(0),
+        /** The resting frame's own half-height tangent and aspect, for the heroes' lanes (CPU). */
+        tanV: 0.27,
+        aspect: 16 / 9,
     };
 
     /**
-     * Where an instance is in the frame: its depth from the seed, its place across the frame
-     * carried along by the drift (nearer ice crosses faster) and wrapped.
+     * Where a body is in the frame at its own depth: its place across the frame carried along by the
+     * drift (the drift is one speed in the world, so nearer bodies cross faster) and wrapped.
      */
-    const place = (s, near, far, lean) => {
-        const depth = mix(float(near), float(far), s.z.mul(s.z));
+    const place = (s, depth, lean) => {
         const width = frame.span.x.mul(depth).mul(2.0);
         const x = fract(s.x.sub(frame.clock.mul(ICE_DRIFT).div(width))).sub(0.5).mul(width);
-        const y = fract(s.y.add(frame.clock.mul(ICE_DRIFT * lean).div(width))).sub(0.5).mul(frame.span.y.mul(depth).mul(2.0));
+        const y = fract(s.y.add(frame.clock.mul(ICE_DRIFT * lean).div(width))).sub(0.5)
+            .mul(frame.span.y.mul(depth).mul(2.0));
         return vec3(x, y, depth);
     };
     const toWorld = (p) => frame.home.add(frame.right.mul(p.x)).add(frame.up.mul(p.y)).add(frame.fwd.mul(p.z));
 
-    const rand = mulberry32(seed);
-    const seeds = (count) => {
-        const a = new Float32Array(count * 4);
-        const b = new Float32Array(count * 4);
-        for (let i = 0; i < count; i++) {
-            a[i * 4] = rand();
-            a[i * 4 + 1] = rand();
-            a[i * 4 + 2] = rand();
-            a[i * 4 + 3] = rand();
-            const z = rand() * 2 - 1;
-            const ang = rand() * TAU;
-            const s = Math.sqrt(1 - z * z);
-            b[i * 4] = s * Math.cos(ang);
-            b[i * 4 + 1] = z;
-            b[i * 4 + 2] = s * Math.sin(ang);
-            b[i * 4 + 3] = rand();
-        }
-        return { a, b };
-    };
-
-    /** A class of solid ice: lumps of one mesh, each with its own size, shape and tumble. */
-    const lumps = (name, count, detail, near, far, sizeLo, sizeHi, order) => {
-        const { a, b } = seeds(count);
-        const geometry = instanced(createIceGeometry(detail, seed + order * 131), count, { aSeed: [a, 4], aSpin: [b, 4] });
-        const material = sdSolidMaterial(name);
-        const s = attribute('aSeed', 'vec4');
+    /** A class of the drifting field: one mesh of Blender bodies, each with its own design, size and tumble. */
+    const field = (name, cls, count, salt, order, grain) => {
+        const plan = planField(seed + salt, count, cls);
+        const geometry = createRockGeometry(cls.level, count, {
+            aPlace: [plan.place, 4], aSpin: [plan.spin, 4], aLook: [plan.look, 4], aShape: [plan.shape, 4],
+        });
+        // (Seven vertex buffers: WebGPU binds eight to a pipeline.)
+        const p = attribute('aPlace', 'vec4');
         const spin = attribute('aSpin', 'vec4');
-        const angle = frame.clock.mul(spin.w.mul(0.22).add(0.04)).add(s.w.mul(TAU));
-        // Each lump is stretched its own way before it tumbles.
-        const stretch = vec3(1.0, s.x.mul(0.5).add(0.55), s.y.mul(0.4).add(0.7));
-        const size = mix(float(sizeLo), float(sizeHi), pow(s.w, 3.0));
-        const centre = toWorld(place(s, near, far, 0.16));
-        material.positionNode = centre.add(turn(positionGeometry.mul(stretch), spin.xyz, angle).mul(size));
-        const vNormal = varying(turn(normalize(normalGeometry.div(stretch)), spin.xyz, angle), `v${name}N`);
-        const vAt = varying(centre, `v${name}P`);
-        const vTone = varying(s.w, `v${name}T`);
-        material.colorNode = Fn(() => {
-            const N = normalize(vNormal).toVar();
-            const V = normalize(u.camPos.sub(vAt)).toVar();
-            const S = u.sunDir;
-            const m0 = dot(N, S).toVar();
-            const ice = mix(u.ringIce, u.ringIce.mul(vec3(0.5, 0.72, 1.0)), vTone).mul(0.9).toVar();
-            const sun = u.sun.mul(u.sunGain);
-            const lit = max(m0, 0.0).mul(0.9);
-            // Ice lets the light through its thin edges when the sun is behind it.
-            const through = pow(max(dot(V, S).negate(), 0.0), 2.0).mul(float(1.0).sub(abs(m0))).mul(0.5);
-            const halfway = normalize(S.add(V));
-            const glint = pow(max(dot(N, halfway), 0.0), 60.0).mul(2.4);
-            const rim = pow3(float(1.0).sub(max(dot(N, V), 0.0)));
-            // What reaches its dark faces: the giant's light from one side, the sky's from all.
-            const toGiant = normalize(vAt.negate());
-            const fill = u.shine.mul(max(dot(N, toGiant), 0.0).mul(0.06)).add(u.night.mul(0.05))
-                .add(mix(u.gasA, u.gasB, 0.5).mul(rim.mul(0.03)));
-            const colour = ice.mul(sun.mul(lit.add(through)).add(fill)).add(sun.mul(glint))
-                .add(u.accent.mul(u.ringGlow.x).mul(rim.mul(0.2)));
-            return vec4(colour, 1.0);
-        })();
-        return sdPart(name, geometry, material, order);
+        const look = attribute('aLook', 'vec4');
+        const shape = attribute('aShape', 'vec4');
+        const material = rockMaterial(u, name, {
+            centre: toWorld(place(p, p.z, 0.16)),
+            // Never smaller than a pixel: a chip far off is a point of light, not a flicker.
+            size: max(p.w, u.pixelAngle.mul(p.z).mul(0.8)),
+            axis: spin.xyz,
+            angle: frame.clock.mul(spin.w).add(look.w),
+            stretch: shape.xyz,
+            variant: look.x,
+            ice: look.y,
+            tone: look.z,
+        }, { grain, glint: cls.level === 'chip' ? 0.45 : 1 });
+        const part = sdPart(name, geometry, material, order);
+        part.plan = plan;
+        return part;
     };
 
-    const boulders = lumps('StellarDriftBoulders', counts[0], 2, 0.9, 3.0, 0.004, 0.017, 2);
-    const shards = lumps('StellarDriftShards', counts[1], 1, 0.7, 3.8, 0.0012, 0.0055, 3);
+    const boulders = field('StellarDriftBoulders', FIELD_CLASSES.boulders, boulderCount, 131, 2, detail >= 2);
+    const shards = field('StellarDriftShards', FIELD_CLASSES.shards, shardCount, 262, 3, false);
+    const heroes = createHeroes(u, frame, heroCount, seed + 393);
 
     // Motes: points of ice that flash as a facet finds the sun.
-    const mote = seeds(counts[2]);
-    const moteGeometry = sdQuadGeometry(counts[2], { aSeed: [mote.a, 4], aSpin: [mote.b, 4] });
+    const rand = mulberry32(seed);
+    const mote = { a: new Float32Array(moteCount * 4), b: new Float32Array(moteCount * 4) };
+    for (let i = 0; i < moteCount; i++) {
+        mote.a.set([rand(), rand(), rand(), rand()], i * 4);
+        const z = rand() * 2 - 1;
+        const ang = rand() * TAU;
+        const s = Math.sqrt(1 - z * z);
+        mote.b.set([s * Math.cos(ang), z, s * Math.sin(ang), rand()], i * 4);
+    }
+    const moteGeometry = sdQuadGeometry(moteCount, { aSeed: [mote.a, 4], aSpin: [mote.b, 4] });
     const moteMaterial = sdFxMaterial('StellarDriftMotes');
     const ms = attribute('aSeed', 'vec4');
     const mspin = attribute('aSpin', 'vec4');
-    const mAt = place(ms, 0.25, 3.8, 0.16);
+    const mAt = place(ms, mix(float(0.25), float(3.8), ms.z.mul(ms.z)), 0.16);
     // Never smaller than a pixel and a half; the near ones a few pixels across.
     const mSize = max(u.pixelAngle.mul(mAt.z).mul(1.5), mix(float(0.0006), float(0.0022), pow(ms.w, 6.0)));
     moteMaterial.positionNode = toWorld(mAt)
@@ -234,16 +165,22 @@ export function createIce(u, counts, seed = 77) {
         boulders,
         shards,
         motes,
-        /** The resting camera's frame: where the ice lives. */
+        heroes,
+        frame,
+        /** The resting camera's frame: where the rocks live. */
         setFrame(home, right, up, fwd, _distance, tanV, aspect) {
             frame.home.value.copy(home);
             frame.right.value.copy(right);
             frame.up.value.copy(up);
             frame.fwd.value.copy(fwd);
             frame.span.value.set(tanV * aspect * 1.3, tanV * 1.3);
+            frame.tanV = tanV;
+            frame.aspect = aspect;
+            heroes.update(frame.clock.value);
         },
         update(time, _dt, motion = 1) {
             frame.clock.value = time * motion;
+            heroes.update(frame.clock.value);
         },
     };
 }

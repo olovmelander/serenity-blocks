@@ -6,7 +6,8 @@ import { serveBakes } from '../shared/bake-worker-host.js';
 import {
     bakeBandMeta, bakeFbm, bakeLattice, bakeRingProfile,
 } from './stellar-drift-bake.js';
+import { bakeMoon } from './stellar-drift-moon-bake.js';
 
 serveBakes({
-    lattice: bakeLattice, fbm: bakeFbm, ring: bakeRingProfile, bands: bakeBandMeta,
+    lattice: bakeLattice, fbm: bakeFbm, ring: bakeRingProfile, bands: bakeBandMeta, moon: bakeMoon,
 });

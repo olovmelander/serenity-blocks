@@ -3675,7 +3675,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'thermal-bloom, tornado, vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Show only named parts of an effect to isolate rendering costs.',
         values: 'Comma-separated part IDs accepted by that effect world. Void Ember also takes rocks for '
-            + 'its three classes of stone, Stellar Drift ice for its boulders, shards and motes. '
+            + 'its three classes of stone, Stellar Drift ice for its boulders, shards, hero rocks and motes. '
             + 'Moonlit Greenhouse takes glass, iron, floor, lanterns, palms, ferns, leaves, vines, '
             + 'water, pads, reeds, fireflies, moths, motes, dew, blooms, queen and glows. Vesper Chrysalis '
             + 'takes sky, lake, spires, reeds, chrysalis, threads, wings, blooms, moths, dust, fireflies, '

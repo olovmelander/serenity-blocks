@@ -8,11 +8,12 @@
 import {
     LATTICE_SIZE, WORLD_SEED, bandsKey, fbmKey, latticeKey, ringKey,
 } from './stellar-drift-bake.js';
+import { MOON_SIZES, moonKey, moonSeed } from './stellar-drift-moon-bake.js';
 import { tierFor } from './stellar-drift-quality.js';
 import { bakeInWorker } from '../shared/bake-worker-client.js';
 
 const KEYS = {
-    lattice: latticeKey, fbm: fbmKey, ring: ringKey, bands: bandsKey,
+    lattice: latticeKey, fbm: fbmKey, ring: ringKey, bands: bandsKey, moon: moonKey,
 };
 
 /** The bakes a world of this quality builds from (the world's own calls, argument for argument). */
@@ -23,6 +24,8 @@ export function stellarDriftBakeJobs(quality, seed = WORLD_SEED) {
         { kind: 'fbm', args: [seed + 23, tier.fbmSize, tier.fbmOctaves] },
         { kind: 'ring', args: [tier.ringSize, seed + 37] },
         { kind: 'bands', args: [512, seed + 41] },
+        { kind: 'moon', args: ['ice', tier.moonSize, moonSeed(seed)] },
+        { kind: 'moon', args: ['rust', MOON_SIZES.rust, moonSeed(seed)] },
     ];
 }
 
