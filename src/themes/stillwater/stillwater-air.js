@@ -4,11 +4,8 @@
  *   rain    streaks of a soft rain, each lit by whatever light it falls past (the lantern's gold,
  *           the spirit's pale): placed by the clock in the vertex stage, more of them the harder
  *           it rains, none drawn when it is dry
- *   birds   dark shapes against the sky: an owl that crosses the moon on slow wings, and the
- *           flight that bursts out of the far wood when the hour turns
- *   elk     the old elk of the wood, come down to the far shallows to drink: a shape in the mist,
- *           drawn as one figure (a 2D distance field of a few dozen limbs), its head lowered to
- *           the water and lifted again by the clock
+ *   birds   an owl that crosses the sky past the moon on slow wings, and a flight of ducks that
+ *           gets up off the far water as the hour turns: real wings that fold (stillwater-birds.js)
  *   glow    the lantern's light in the mist round it: a wide soft warmth the bloom alone never gave
  *
  * Nothing is created at event time: each part reads a uniform that says when its moment began.
@@ -19,11 +16,10 @@ import {
     Fn,
     abs,
     attribute,
+    cameraPosition,
     cameraProjectionMatrix,
     cameraViewMatrix,
     clamp,
-    cos,
-    dot,
     exp,
     float,
     fract,
@@ -32,7 +28,6 @@ import {
     min,
     mix,
     positionGeometry,
-    positionWorld,
     sin,
     smoothstep,
     step,
@@ -43,8 +38,9 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    EYE, SW_CULLED, mulberry32, swFogAmount, swHaze, swPart,
+    SW_CULLED, mulberry32, swFogAmount, swHaze, swPart,
 } from './stillwater-tsl.js';
+import { BIRDS, birdGeometry } from './stillwater-birds.js';
 
 const additive = (name) => {
     const material = new THREE.MeshBasicNodeMaterial();
@@ -123,221 +119,200 @@ export function createRain(u, count) {
     return part;
 }
 
-// ── Birds ───────────────────────────────────────────────────────────────────────
-
-/** The owl's way across the sky (world metres), and how long the flights last (seconds). */
-export const FLIGHT = Object.freeze({
-    owlFrom: Object.freeze([-21, 6.4, -25]),
-    owlTo: Object.freeze([20, 5.3, -21]),
-    owlSpan: 12,
-    flockSpan: 7.5,
-});
+// ── Birds ───────────────────────────────────────────────────────────────────
 
 /**
- * Dark wings against the sky. `u.flight` = (when it began, kind: 0 the owl, 1 the flock, seed, _).
- * @param {object} u
- * @param {number} count  birds in the flock (the owl is the first of them)
+ * The flights (world metres, seconds): the owl's way across the sky, past the moon (it begins and
+ * ends out of the frame), and how long it takes; the ducks' flight off the far water, and the
+ * metres a second they fly at.
  */
-export function createBirds(u, count) {
-    const n = Math.max(1, count);
-    const geometry = new THREE.PlaneGeometry(1, 1);
-    const data = new Float32Array(n * 4); // which, three seeds
-    const rand = mulberry32(4407);
-    for (let i = 0; i < n; i++) data.set([i, rand(), rand(), rand()], i * 4);
-    geometry.setAttribute('aBird', new THREE.InstancedBufferAttribute(data, 4));
-    const mesh = new THREE.InstancedMesh(geometry, null, n);
-    mesh.frustumCulled = false;
+export const FLIGHT = Object.freeze({
+    owlFrom: Object.freeze([-19, 8.2, -16]),
+    owlTo: Object.freeze([16, 8.8, -8.5]),
+    /**
+     * Metres from the eye at which it crosses the moon's bearing, and how wide its dip there is:
+     * high over the wood elsewhere, it comes down across the moon's disc, dark on the brightest sky.
+     */
+    owlMoonRange: 20.5,
+    owlDipWidth: 6.5,
+    owlSpan: 12,
+    /** The owl: beats a second, and its beat-and-glide cycle (seconds; the share of it spent beating). */
+    owlBeat: 2.2,
+    owlCycle: 4.6,
+    owlBeating: 0.55,
+    flockFrom: Object.freeze([0.0, 0.25, -31]),
+    flockSpeed: 5.5,
+    /** Metres the ducks climb, and the seconds it takes them to (they go up over the far wood, into the sky). */
+    flockClimb: 13,
+    flockClimbTime: 2.4,
+    flockSpan: 7.5,
+    duckBeat: 5.6,
+    /** How much larger than life each is drawn (they are far off). */
+    owlScale: 1.2,
+    duckScale: 1.15,
+});
 
-    const material = new THREE.MeshBasicNodeMaterial();
-    material.name = 'StillwaterBirds';
-    material.transparent = true;
-    material.premultipliedAlpha = true;
-    material.depthWrite = false;
-    material.fog = false;
-    material.toneMapped = false;
-    material.side = THREE.DoubleSide;
-    const aBird = attribute('aBird', 'vec4');
-    const vFlap = varying(float(0.0), 'vBirdFlap');
-    const vShow = varying(float(0.0), 'vBirdShow');
-    const vMist = varying(float(0.0), 'vBirdMist');
-    const vDir = varying(vec3(0.0, 0.0, -1.0), 'vBirdDir');
-    material.vertexNode = Fn(() => {
-        const age = u.time.sub(u.flight.x).toVar();
-        const flock = step(0.5, u.flight.y).toVar();
-        const turned = step(0.5, u.flight.z).mul(2.0).sub(1.0).toVar();
-        // The owl: one bird, a long shallow bow from one side of the picture to the other.
-        const ko = clamp(age.div(FLIGHT.owlSpan), 0.0, 1.0);
-        const a = vec3(turned.mul(FLIGHT.owlFrom[0]), FLIGHT.owlFrom[1], FLIGHT.owlFrom[2]);
-        const b = vec3(turned.mul(FLIGHT.owlTo[0]), FLIGHT.owlTo[1], FLIGHT.owlTo[2]);
-        const owl = mix(a, b, ko).add(vec3(0.0, sin(ko.mul(Math.PI)).mul(1.1).add(sin(age.mul(1.3)).mul(0.12)), 0.0));
-        // The flock: each from its own place in the far wood, up and outward, a little after the last.
-        const late = aBird.y.mul(1.6);
-        const own = max(age.sub(late), 0.0).toVar();
-        const side = step(0.5, fract(aBird.x.mul(0.5))).mul(2.0).sub(1.0);
-        const from = vec3(side.mul(aBird.z.mul(11.0).add(4.0)), aBird.w.mul(1.6).add(2.2), aBird.w.mul(-9.0).sub(27.0));
-        const way = vec3(side.mul(aBird.y.mul(1.6).add(1.9)), aBird.z.mul(1.1).add(1.9), aBird.w.mul(0.8).sub(0.6));
-        const bird = from.add(way.mul(own)).add(vec3(0.0, sin(own.mul(2.1).add(aBird.z.mul(9.0))).mul(0.2), 0.0));
-        const at = mix(owl, bird, flock).toVar();
-        const span = mix(float(FLIGHT.owlSpan), float(FLIGHT.flockSpan), flock);
-        const mine = mix(age, own, flock);
-        const live = step(0.0, age).mul(step(mine, span)).mul(mix(step(aBird.x, 0.5), step(0.001, own), flock));
-        const view = cameraViewMatrix.mul(vec4(at, 1.0)).toVar();
-        // Its wings: the owl's slow and deep with a glide between, the flock's quick.
-        const beat = mix(
-            sin(age.mul(5.6)).mul(smoothstep(-0.6, 0.1, sin(age.mul(0.9)))),
-            sin(own.mul(aBird.z.mul(3.0).add(9.5)).add(aBird.y.mul(20.0))),
-            flock,
-        );
-        vFlap.assign(beat);
-        vShow.assign(live.mul(smoothstep(0.0, 0.5, mine)).mul(float(1.0).sub(smoothstep(span.sub(1.2), span, mine))));
-        vMist.assign(swFogAmount(u, at, 0.8));
-        vDir.assign(at.sub(vec3(EYE.x, EYE.y, EYE.z)).normalize());
-        const sizeOf = mix(float(1.7), aBird.w.mul(0.3).add(0.8), flock);
-        const q = positionGeometry.xy.mul(vec2(sizeOf, sizeOf.mul(0.62)));
-        const p = vec4(view.x.add(q.x), view.y.add(q.y), view.z, 1.0);
-        return mix(SW_CULLED, cameraProjectionMatrix.mul(p), step(0.5, live));
-    })();
-    material.fragmentNode = Fn(() => {
-        const p = uv().sub(0.5).mul(vec2(2.0, 1.24)).toVar();
-        const s = abs(p.x).toVar();
-        // A wing: its line rises or falls with the beat, bowed; thick at the shoulder, a point at the tip.
-        // (Between beats they are held in a shallow V, their tips a little dropped.)
-        const line = vFlap.mul(0.4).add(0.16).mul(s).mul(float(1.0).sub(s.mul(0.35)))
-            .sub(s.mul(s).mul(0.12));
-        const thick = float(1.0).sub(s).max(0.0).pow(0.7)
-            .mul(0.1)
-            .add(0.012);
-        const wing = abs(p.y.sub(line)).sub(thick).toVar();
-        const body = length(vec2(p.x.div(0.14), p.y.add(0.03).div(0.13))).sub(1.0).mul(0.12);
-        const d = min(wing, body).add(step(0.98, s).mul(1.0));
-        const a = smoothstep(0.03, -0.01, d).mul(vShow);
-        // A dark shape with the night's mist between it and the eye.
-        const col = mix(u.forest.mul(0.45), swHaze(u, vDir), vMist.mul(0.85));
-        return vec4(col.mul(a), a);
-    })();
-    mesh.material = material;
-    const part = swPart('StillwaterBirds', geometry, material, 46, { mesh });
-    part.count = n;
-    return part;
+/** Where duck `i` of the flight is `own` seconds after it got up (side ±1: the way they go). */
+export function duckAt(i, own, side, out = [0, 0, 0]) {
+    const F = FLIGHT;
+    // (They get up one after another from a little stretch of water, and string out in a line.)
+    const x0 = F.flockFrom[0] + (((i * 0.61) % 1) - 0.5) * 3 - side * i * 0.25;
+    const z0 = F.flockFrom[2] - ((i * 0.37) % 1) * 3;
+    out[0] = x0 + side * F.flockSpeed * own;
+    out[1] = F.flockFrom[1] + F.flockClimb * (1 - Math.exp(-own / F.flockClimbTime)) + Math.sin(i * 1.7) * 0.4 * Math.min(1, own);
+    out[2] = z0 - 0.4 * own;
+    return out;
 }
 
-// ── The elk ─────────────────────────────────────────────────────────────────────
-
 /**
- * Where the elk stands (stage metres: far out in the left bank's shallows, in the window of mist
- * between the spirit and the board), how deep it wades, and the beats of its visit (seconds).
- */
-export const ELK = Object.freeze({
-    at: Object.freeze([-6.6, -22.5]),
-    wade: 0.5,
-    /** (The quad, in the animal's own metres; `size` makes a big old bull of it.) */
-    width: 4.6,
-    height: 3.7,
-    size: 1.22,
-    appear: 6,
-    lower: Object.freeze([12, 15]),
-    lift: Object.freeze([25, 28]),
-    leave: Object.freeze([39, 46]),
-});
-
-/** Distance to a limb: a line from `a` to `b` whose thickness runs from `ra` to `rb`. */
-const limb = /* @__PURE__ */ Fn(([p, a, b, ra, rb]) => {
-    const pa = p.sub(a);
-    const ba = b.sub(a);
-    const h = clamp(dot(pa, ba).div(max(dot(ba, ba), 1e-5)), 0.0, 1.0);
-    return length(pa.sub(ba.mul(h))).sub(mix(ra, rb, h));
-}).setLayout({
-    name: 'sw_limb',
-    type: 'float',
-    inputs: [
-        { name: 'p', type: 'vec2' }, { name: 'a', type: 'vec2' }, { name: 'b', type: 'vec2' },
-        { name: 'ra', type: 'float' }, { name: 'rb', type: 'float' },
-    ],
-});
-
-/**
- * The elk, as one shape. `u.elk` = (when it came, a seed, _, _).
+ * The owl and the ducks. `u.flight` = (when it began, 0 the owl / 1 the ducks, which way 0..1, _).
+ * Each is a mesh of its own (stillwater-birds.js) whose wings fold in the vertex stage; the owl is
+ * one bird, the ducks one instanced draw of `count`.
  * @param {object} u
+ * @param {number} count  ducks in the flight
  */
-export function createElk(u) {
-    const geometry = new THREE.PlaneGeometry(ELK.width, ELK.height);
-    geometry.translate(0.25, ELK.height / 2 - 0.12, 0);
-    const material = new THREE.MeshBasicNodeMaterial();
-    material.name = 'StillwaterElk';
-    material.transparent = true;
-    material.premultipliedAlpha = true;
-    material.depthWrite = false;
-    material.fog = false;
-    material.toneMapped = false;
-    material.side = THREE.DoubleSide;
-    material.fragmentNode = Fn(() => {
-        // The quad's own metres: x along the animal (its head to the right), y up from its hooves.
-        const p = vec2(uv().x.sub(0.5).mul(ELK.width).add(0.25), uv().y.mul(ELK.height).sub(0.12)).toVar();
-        const t = u.time.sub(u.elk.x).toVar();
-        const lifted = smoothstep(ELK.lift[0], ELK.lift[1], t);
-        const drink = smoothstep(ELK.lower[0], ELK.lower[1], t).mul(float(1.0).sub(lifted))
-            .toVar();
-        const gone = smoothstep(ELK.leave[0], ELK.leave[1], t);
-        const show = smoothstep(0.0, ELK.appear, t).mul(float(1.0).sub(gone)).toVar();
-        // It breathes, and its head is never quite still.
-        const breath = sin(t.mul(1.3)).mul(0.012);
-        const nod = sin(t.mul(0.7).add(u.elk.y.mul(6.0))).mul(0.03).mul(float(1.0).sub(drink));
-        const v = (x, y) => vec2(x, y);
-        const d = float(10.0).toVar();
-        const add = (shape) => d.assign(min(d, shape));
-        /** A limb of this figure (plain numbers become nodes). */
-        const bone = (a, b, ra, rb) => limb(p, a, b, float(ra), float(rb));
-        // The body: a deep chest, the hump over the shoulders, the rump.
-        add(bone(v(-0.78, 1.5), v(0.55, 1.58), float(0.44).add(breath), float(0.5).add(breath)));
-        add(length(p.sub(v(0.6, 1.88))).sub(0.36));
-        add(length(p.sub(v(-0.86, 1.56))).sub(0.42));
-        add(length(p.sub(v(-1.3, 1.62))).sub(0.06));
-        // Long legs, each in two bones.
-        add(bone(v(-0.96, 1.34), v(-0.8, 0.72), 0.15, 0.075));
-        add(bone(v(-0.8, 0.72), v(-0.93, 0.0), 0.07, 0.05));
-        add(bone(v(-0.68, 1.3), v(-0.56, 0.72), 0.13, 0.07));
-        add(bone(v(-0.56, 0.72), v(-0.66, 0.0), 0.065, 0.048));
-        add(bone(v(0.64, 1.34), v(0.67, 0.7), 0.13, 0.07));
-        add(bone(v(0.67, 0.7), v(0.63, 0.0), 0.065, 0.05));
-        add(bone(v(0.4, 1.3), v(0.4, 0.7), 0.12, 0.065));
-        add(bone(v(0.4, 0.7), v(0.35, 0.0), 0.06, 0.048));
-        // The neck and the long head, lowered to the water and lifted again.
-        const base = v(0.8, 1.8);
-        const head = mix(v(1.38, 2.2), v(1.5, 0.98), drink).add(vec2(0.0, nod)).toVar();
-        const muzzle = head.add(mix(v(0.62, -0.2), v(0.3, -0.56), drink)).toVar();
-        add(bone(base, head, 0.27, 0.17));
-        add(bone(head, muzzle, 0.165, 0.115));
-        add(length(p.sub(muzzle.add(mix(v(0.02, -0.03), v(0.0, -0.05), drink)))).sub(0.135));
-        // The bell under its throat, and an ear.
-        const throat = mix(base, head, 0.78).add(v(0.04, -0.2));
-        add(bone(throat, throat.add(v(0.0, -0.2)), 0.05, 0.03));
-        // What the head carries turns with it.
-        const turn = drink.mul(-1.05).toVar();
-        const c = cos(turn);
-        const s = sin(turn);
-        const on = (x, y) => head.add(vec2(c.mul(x).sub(s.mul(y)), s.mul(x).add(c.mul(y))));
-        add(bone(on(-0.08, 0.14), on(-0.26, 0.3), 0.055, 0.02));
-        // The antlers: a broad palm with its points.
-        add(bone(on(-0.06, 0.24), on(-0.52, 0.62), 0.07, 0.13));
-        add(bone(on(-0.2, 0.42), on(-0.12, 0.8), 0.04, 0.012));
-        add(bone(on(-0.36, 0.54), on(-0.34, 0.94), 0.04, 0.012));
-        add(bone(on(-0.5, 0.62), on(-0.58, 1.0), 0.04, 0.012));
-        add(bone(on(-0.6, 0.62), on(-0.86, 0.84), 0.04, 0.012));
-        add(bone(on(-0.0, 0.26), on(0.22, 0.54), 0.035, 0.012));
-        const P = positionWorld;
-        const a = smoothstep(0.035, -0.02, d).mul(show);
-        // A shape in the mist: the wood's dark, paler along its back where the moon lies on it.
-        const dir = P.sub(vec3(EYE.x, EYE.y, EYE.z)).normalize();
-        const back = smoothstep(-0.13, 0.0, d).mul(smoothstep(1.4, 2.2, p.y)).mul(0.8);
-        const hide = mix(u.forest.mul(0.28), u.moonLight.mul(0.2).add(u.forest), back);
-        // (Less of the mist than its distance would take: it is what the eye is drawn to.)
-        const col = mix(hide, swHaze(u, dir), swFogAmount(u, P, 1.0).mul(0.42));
-        return vec4(col.mul(a), a);
-    })();
-    const mesh = new THREE.Mesh(geometry, material);
-    // (Turned to the left: it has come to look at her light.)
-    mesh.scale.set(-ELK.size, ELK.size, ELK.size);
-    return swPart('StillwaterElk', geometry, material, 47, { mesh });
+export function createBirds(u, count) {
+    const group = new THREE.Group();
+    group.name = 'StillwaterBirds';
+    const n = Math.max(1, count);
+    const flock = new Float32Array(n * 4); // index, three seeds
+    const rand = mulberry32(4407);
+    for (let i = 0; i < n; i++) flock.set([i, rand(), rand(), rand()], i * 4);
+
+    const make = (kind) => {
+        const geometry = birdGeometry(kind);
+        const instances = kind === 'owl' ? 1 : n;
+        geometry.setAttribute('aBird', new THREE.InstancedBufferAttribute(
+            kind === 'owl' ? new Float32Array([0, 0.5, 0.5, 0.5]) : flock,
+            4,
+        ));
+        const mesh = new THREE.InstancedMesh(geometry, null, instances);
+        mesh.frustumCulled = false;
+        const material = new THREE.MeshBasicNodeMaterial();
+        material.name = kind === 'owl' ? 'StillwaterOwl' : 'StillwaterDucks';
+        material.side = THREE.DoubleSide;
+        material.fog = false;
+        material.toneMapped = false;
+        const aBird = attribute('aBird', 'vec4');
+        const aWing = attribute('aWing', 'vec4');
+        const vWorld = varying(vec3(0.0), kind === 'owl' ? 'vOwlWorld' : 'vDuckWorld');
+        const vUp = varying(float(0.0), kind === 'owl' ? 'vOwlUp' : 'vDuckUp');
+        const B = BIRDS[kind];
+        material.vertexNode = Fn(() => {
+            const age = u.time.sub(u.flight.x).toVar();
+            const side = step(0.5, u.flight.z).mul(2.0).sub(1.0).toVar();
+            const at = vec3(0.0).toVar();
+            const fwd = vec3(0.0, 0.0, 1.0).toVar();
+            const own = float(0.0).toVar();
+            const glide = float(0.0).toVar();
+            const phase = float(0.0).toVar();
+            let live;
+            let scale;
+            if (kind === 'owl') {
+                const F = FLIGHT;
+                // (One line across the sky, flown either way; it dips across the moon wherever the
+                // hour has the moon stand.)
+                const raw = clamp(age.div(F.owlSpan), 0.0, 1.0);
+                const k = mix(float(1.0).sub(raw), raw, step(0.0, side));
+                const a = vec3(F.owlFrom[0], F.owlFrom[1], F.owlFrom[2]);
+                const b = vec3(F.owlTo[0], F.owlTo[1], F.owlTo[2]);
+                const moon = u.moonDir.mul(F.owlMoonRange).add(vec3(0.0, 1.65, 6.0));
+                const path = (kk) => {
+                    const line = mix(a, b, kk);
+                    const q = line.x.sub(moon.x).div(F.owlDipWidth);
+                    const dip = max(line.y.sub(moon.y), 0.0).mul(exp(q.mul(q).negate()));
+                    return line.sub(vec3(0.0, dip, 0.0));
+                };
+                at.assign(path(k).add(vec3(0.0, sin(age.mul(1.1)).mul(0.08), 0.0)));
+                fwd.assign(path(k.add(side.mul(0.004))).sub(path(k)).normalize());
+                // Beats, then a long silent glide, then beats again.
+                const c = fract(age.div(F.owlCycle));
+                glide.assign(smoothstep(F.owlBeating - 0.06, F.owlBeating + 0.04, c).mul(float(1.0).sub(smoothstep(0.93, 1.0, c))));
+                phase.assign(age.mul(F.owlBeat));
+                own.assign(age);
+                live = step(0.0, age).mul(step(age, F.owlSpan));
+                scale = F.owlScale;
+            } else {
+                const F = FLIGHT;
+                const i = aBird.x;
+                // (One after another off the water.)
+                own.assign(max(age.sub(i.mul(0.22).add(aBird.y.mul(0.15))), 0.0));
+                const x0 = float(F.flockFrom[0]).add(fract(i.mul(0.61)).sub(0.5).mul(3.0)).sub(side.mul(i).mul(0.25));
+                const z0 = float(F.flockFrom[2]).sub(fract(i.mul(0.37)).mul(3.0));
+                const climb = float(1.0).sub(exp(own.div(-F.flockClimbTime)));
+                at.assign(vec3(
+                    x0.add(side.mul(F.flockSpeed).mul(own)),
+                    float(F.flockFrom[1]).add(climb.mul(F.flockClimb)).add(sin(i.mul(1.7)).mul(0.4).mul(min(own, 1.0))),
+                    z0.sub(own.mul(0.4)),
+                ));
+                fwd.assign(vec3(side.mul(F.flockSpeed), exp(own.div(-F.flockClimbTime)).mul(F.flockClimb / F.flockClimbTime), -0.4)
+                    .normalize());
+                phase.assign(own.mul(F.duckBeat).add(aBird.z));
+                live = step(0.0, age).mul(step(0.001, own)).mul(step(own, F.flockSpan));
+                scale = F.duckScale;
+            }
+            // The wings fold at the wrist and the shoulder (stillwater-birds.js foldWing, line for line).
+            const ang = phase.mul(Math.PI * 2);
+            const owlish = kind === 'owl';
+            const beat = sin(ang).mul(owlish ? 0.62 : 0.5).add(owlish ? 0.08 : 0.12);
+            const handBeat = sin(ang.sub(0.7)).mul(owlish ? 0.45 : 0.32).sub(owlish ? 0.05 : 0.0);
+            const sAng = beat.mul(float(1.0).sub(glide)).add(glide.mul(0.1));
+            const wAng = handBeat.mul(float(1.0).sub(glide)).sub(glide.mul(0.06));
+            const p = positionGeometry.toVar();
+            const wingSide = aWing.x;
+            const turn = (q, cx, angle) => {
+                const c = angle.cos();
+                const s2 = angle.sin();
+                const dx = q.x.sub(cx);
+                return vec3(cx.add(dx.mul(c)).sub(q.y.mul(s2)), dx.mul(s2).add(q.y.mul(c)), q.z);
+            };
+            p.assign(turn(p, wingSide.mul(B.wrist), wingSide.mul(wAng).mul(aWing.z)));
+            p.assign(turn(p, wingSide.mul(B.shoulder), wingSide.mul(sAng).mul(aWing.y)));
+            // The body heaves against the wingbeat.
+            p.y.addAssign(sin(ang).mul(-0.025).mul(float(1.0).sub(glide)).mul(float(1.0).sub(abs(wingSide))));
+            // On its way, banked a little into the air it rides.
+            const upHint = vec3(0.0, 1.0, 0.0);
+            const U0 = upHint.sub(fwd.mul(fwd.dot(upHint))).normalize();
+            const X0 = U0.cross(fwd);
+            const bank = sin(own.mul(0.7).add(aBird.w.mul(6.0))).mul(0.12);
+            const X = X0.mul(bank.cos()).add(U0.mul(bank.sin()));
+            const U = U0.mul(bank.cos()).sub(X0.mul(bank.sin()));
+            const world = at.add(X.mul(p.x.mul(scale))).add(U.mul(p.y.mul(scale))).add(fwd.mul(p.z.mul(scale))).toVar();
+            vWorld.assign(world);
+            vUp.assign(U.y);
+            const clip = cameraProjectionMatrix.mul(cameraViewMatrix.mul(vec4(world, 1.0)));
+            return mix(SW_CULLED, clip, step(0.5, live));
+        })();
+        material.fragmentNode = Fn(() => {
+            const P = vWorld;
+            // A dark shape against the night: its underside darkest, a little moonlight on its back
+            // and on the edges of its wings, the mist between it and the eye.
+            const dir = P.sub(cameraPosition).normalize();
+            const towardMoon = clamp(dir.dot(u.moonDir).mul(0.5).add(0.5), 0.0, 1.0);
+            const base = u.forest.mul(0.2).add(u.moonLight.mul(0.008));
+            const rim = u.glow.mul(towardMoon.mul(towardMoon).mul(towardMoon)).mul(0.06);
+            const lamp = u.lantern.mul(u.lanternAt.w.div(P.sub(u.lanternAt.xyz).dot(P.sub(u.lanternAt.xyz)).mul(0.08).add(1.0)))
+                .mul(0.05);
+            const col = base.add(rim).add(lamp).mul(u.breath.mul(0.3).add(0.7));
+            return vec4(mix(col, swHaze(u, dir), swFogAmount(u, P, 0.75).mul(0.7)), 1.0);
+        })();
+        mesh.material = material;
+        mesh.renderOrder = 9;
+        mesh.name = material.name;
+        return mesh;
+    };
+    const owl = make('owl');
+    const ducks = make('duck');
+    group.add(owl, ducks);
+    const part = swPart('StillwaterBirds', owl.geometry, owl.material, 9, { mesh: group });
+    part.owl = owl;
+    part.ducks = ducks;
+    part.count = n;
+    part.dispose = () => {
+        ducks.geometry.dispose();
+        ducks.material.dispose();
+    };
+    return part;
 }
 
 // ── Pillars of tarnfire ─────────────────────────────────────────────────────────

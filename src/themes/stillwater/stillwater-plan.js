@@ -8,7 +8,7 @@
  */
 
 import {
-    DEG, EYE, SPIRIT, TROLL, clamp01, lerp, mulberry32, smooth,
+    DEG, EYE, MOON, SPIRIT, TROLL, clamp01, halfWidthTan, lerp, mulberry32, smooth,
 } from './stillwater-core.js';
 
 /** The stage's extent: what the terrain mesh and the shore map cover. */
@@ -515,41 +515,83 @@ export function planCaps(count = 90, seed = 3301) {
 // ── Eyes in the far wood ────────────────────────────────────────────────────────
 
 /**
- * Pairs of eyes between the far trunks. Each: { x, y, z, gap, size, seed, rank } — `rank` 0..1
- * is the order they open in as a chain grows (the shyest last). None stands behind the card.
+ * Pairs of eyes in the far wood, each BEHIND a trunk: a thing that watches from a wood watches
+ * from behind a tree, with one eye showing past its edge and the other hidden or half hidden
+ * (the head sways a little, so the hidden one comes and goes). Each: { x, y, z, gap, size, seed,
+ * rank, trunk } — `rank` 0..1 is the order they open in as a chain grows (the shyest last),
+ * `trunk` the index of the trunk it stands behind. None stands behind the card. There are as many
+ * as there are trunks to hide behind, and never more than `pairs`.
+ * @param {number} [pairs=28]
+ * @param {number} [seed=6007]
+ * @param {Array} [trunks]  the trunks that stand in this tier (planTrunks); the fullest wood's otherwise
  */
-export function planEyes(pairs = 28, seed = 6007) {
+export function planEyes(pairs = 28, seed = 6007, trunks = null) {
     const rand = mulberry32(seed);
-    const out = [];
-    let guard = 0;
-    while (out.length < pairs && guard < pairs * 400) {
-        guard += 1;
-        // (Inside the widest frame the game is composed for: an eye nobody can see takes no turn.)
-        const az = (rand() < 0.5 ? -1 : 1) * lerp(9.5, 33, rand()) * DEG;
-        const range = lerp(26, 80, rand());
-        const x = EYE.x + Math.sin(az) * range;
-        const z = EYE.z - Math.cos(az) * range;
-        const up = rand();
-        const size = rand();
-        if (shoreDistance(x, z) < 1.2) continue;
-        if (Math.abs(az) > 15.5 * DEG && Math.abs(az) < 23.5 * DEG && az < 0) continue; // the moon's own gap
-        let near = false;
-        for (let i = 0; i < out.length && !near; i++) {
-            near = Math.abs(azimuthOf(out[i].x, out[i].z) - az) < 0.85 * DEG;
-        }
-        if (near) continue;
-        out.push({
-            x,
-            y: groundHeight(x, z) + lerp(0.7, 3.4, up * up),
-            z,
-            gap: lerp(0.16, 0.36, size),
-            size: lerp(0.05, 0.11, size),
-            seed: rand() * 100,
-            rank: 0,
+    const wood = trunks || planTrunks(140);
+    const edge = halfWidthTan(16 / 9);
+    /** Each trunk's first side, then (only if more are wanted) its other side, at another height. */
+    const first = [];
+    const second = [];
+    wood.forEach((t, index) => {
+        const dx = t.x - EYE.x;
+        const dz = t.z - EYE.z;
+        const range = Math.hypot(dx, dz);
+        // (Every trunk draws its numbers, used or not: a tier with fewer trunks plans the same
+        // eyes behind those it has.)
+        const side = rand() < 0.5 ? -1 : 1;
+        const draws = [[rand(), rand(), rand() * 100], [rand(), rand(), rand() * 100]];
+        if (range < 21 || range > 80) return;
+        // Along the line of sight, and across it (to the right of the frame).
+        const fx = dx / range;
+        const fz = dz / range;
+        const rx = -fz;
+        const rz = fx;
+        [side, -side].forEach((way, k) => {
+            const [up, size, seedOf] = draws[k];
+            const gap = lerp(0.16, 0.36, size);
+            // (The second pair stands well above or below the first: two heads, not one.)
+            const lift = k === 0 ? lerp(0.9, 2.7, up * up) : lerp(0.9, 1.5, up) + (draws[0][0] < 0.5 ? 1.3 : 0);
+            // The trunk where the eyes are (it leans), and how wide it is there.
+            const cx = t.x + t.lean[0] * lift;
+            const cz = t.z + t.lean[1] * lift;
+            // Behind it, peering round its edge: the far eye clear of the bark, the near one half
+            // behind it (the head sways, so it comes and goes).
+            const back = t.radius + 0.5;
+            const across = way * (t.radius * 0.92 + gap * 0.42);
+            const x = cx + fx * back + rx * across;
+            const z = cz + fz * back + rz * across;
+            const az = azimuthOf(x, z);
+            if (Math.abs(az) < 9.7 * DEG || Math.abs(Math.tan(az)) > edge * 0.97) return;
+            if (Math.abs(az - MOON.azimuth) < 4.2 * DEG) return; // the moon's own gap
+            if (shoreDistance(x, z) < 0.3) return;
+            (k === 0 ? first : second).push({
+                x,
+                y: groundHeight(x, z) + lift,
+                z,
+                gap,
+                size: lerp(0.05, 0.11, size),
+                seed: seedOf,
+                rank: 0,
+                trunk: index,
+                az,
+            });
         });
+    });
+    // No two pairs on one bearing (a trunk's two sides are apart by its width at least).
+    const out = [];
+    [...first, ...second].forEach((e) => {
+        if (out.length >= pairs) return;
+        if (out.some((o) => Math.abs(o.az - e.az) < 0.6 * DEG)) return;
+        out.push(e);
+    });
+    // The order they open in, drawn once.
+    for (let i = out.length - 1; i > 0; i--) {
+        const j = Math.floor(rand() * (i + 1));
+        [out[i], out[j]] = [out[j], out[i]];
     }
     out.forEach((e, i) => {
         e.rank = out.length > 1 ? i / (out.length - 1) : 0;
+        delete e.az;
     });
     return out;
 }

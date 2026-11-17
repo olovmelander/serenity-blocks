@@ -218,7 +218,10 @@ export function createWater(u, opts = {}) {
             const age = u.time.sub(birth);
             const back = age.mul(PULSE_SPEED).sub(d);
             const live = step(0.0, age).mul(exp(age.mul(-0.2))).mul(strength);
-            const wake = step(0.0, back).mul(exp(back.mul(-0.2)));
+            // (Bounded before it is masked: far ahead of the front `back` is hundreds of metres
+            // below zero, exp() of that overflows, and Inf times the mask's zero is not a number.
+            // It once drew the tarn's last row at the horizon black for a minute after every pulse.)
+            const wake = step(0.0, back).mul(exp(max(back, 0.0).mul(-0.2)));
             return vec3(swBell(back.sub(0.3).div(1.1)), wake, sin(back.mul(1.9))).mul(vec3(live, live, 1.0));
         };
         const pulseS = front(dS, u.pulse.x, u.pulse.y).toVar();

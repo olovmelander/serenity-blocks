@@ -126,7 +126,7 @@ export const VISIT_SLOT = 17;
 
 /** How long each stays in the picture (seconds): the world keeps the elk from being cut short. */
 export const VISITOR_SPAN = Object.freeze({
-    fish: 2, star: 1.4, owl: 12, elk: 46,
+    fish: 2, star: 1.4, owl: 12, elk: 66,
 });
 
 /** Slots between two of the same kind at the least (the elk is a rare sight; a fish is not). */
