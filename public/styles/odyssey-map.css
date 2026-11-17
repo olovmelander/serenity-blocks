@@ -20,9 +20,9 @@
  * src/core/odyssey/data/chapter-looks.js): ember-smoked inside the Earth, deep-sea in the
  * ocean, bottle-green on the island. The header and the tray wear the chapter the world is
  * showing (html[data-ody-chapter], kept by src/ui/odyssey/odyssey-chapter-look.js); the card
- * wears its orb's. No backdrop blur by default (the map renders on underneath); see
- * odyssey-shared.css for the frosted tier. Shell: src/ui/odyssey/BoardInfoOverlay.js; the
- * panel's content: src/ui/odyssey/odyssey-level-panel.js.
+ * wears its orb's. No backdrop blur: the map renders on underneath (odyssey-shared.css has
+ * what was measured). Shell: src/ui/odyssey/BoardInfoOverlay.js; the panel's content:
+ * src/ui/odyssey/odyssey-level-panel.js.
  * ================================================================================ */
 #odyssey-board-overlay {
     --map-gutter: clamp(16px, 2.4vw, 36px);
@@ -65,8 +65,8 @@
     inset: 0 0 -36px;
     z-index: -1;
     background-color: rgb(var(--ody-glass-deep-rgb));
-    -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.62) 50%, rgba(0, 0, 0, 0) 100%);
-    mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.62) 50%, rgba(0, 0, 0, 0) 100%);
+    -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.94) 0%, rgba(0, 0, 0, 0.74) 46%, rgba(0, 0, 0, 0) 100%);
+    mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.94) 0%, rgba(0, 0, 0, 0.74) 46%, rgba(0, 0, 0, 0) 100%);
     transition: background-color 1400ms ease;
     pointer-events: none;
 }
@@ -83,8 +83,6 @@ html[data-ody-chapter] #sb-play-rail {
     border-color: rgba(var(--ody-hue-rgb), 0.22);
     background: var(--ody-glass-fill);
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3), var(--ody-glass-sheen);
-    -webkit-backdrop-filter: var(--ody-glass-blur, none);
-    backdrop-filter: var(--ody-glass-blur, none);
 }
 
 /* The row lines up with the play rail's tray: same top, same height (the tray's own rule
@@ -239,8 +237,6 @@ body:has(#sb-play-rail > #odyssey-navigator-btn.visible) #odyssey-board-overlay 
     border: 1px solid rgba(var(--ody-hue-rgb, var(--sb-lavender-rgb)), 0.24);
     background: var(--ody-glass-fill);
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3), var(--ody-glass-sheen);
-    -webkit-backdrop-filter: var(--ody-glass-blur, none);
-    backdrop-filter: var(--ody-glass-blur, none);
     color: var(--sb-lavender);
     text-shadow: none;
     font: 600 0.6875rem / 1 var(--sb-font-display);
@@ -408,8 +404,6 @@ body.sb-input-gamepad #odyssey-board-overlay #odyssey-header-charms::after {
         radial-gradient(85% 38% at 50% 0%, rgba(var(--panel-hue-rgb), 0.2), transparent 72%),
         var(--ody-glass-fill);
     box-shadow: var(--ody-glass-sheen);
-    -webkit-backdrop-filter: var(--ody-glass-blur, none);
-    backdrop-filter: var(--ody-glass-blur, none);
     pointer-events: none;
 }
 

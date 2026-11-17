@@ -71,7 +71,7 @@ export const ODYSSEY_GLASS_ALPHA = Object.freeze({ top: 0.88, foot: 0.95 });
 export const ODYSSEY_GLASS_INKS = Object.freeze({
     text: Object.freeze({ alpha: 1, minContrast: 7 }),
     muted: Object.freeze({ alpha: 0.74, minContrast: 4.5 }),
-    faint: Object.freeze({ alpha: 0.56, minContrast: 4 }),
+    faint: Object.freeze({ alpha: 0.62, minContrast: 4.5 }),
 });
 
 /** Keystone's cream (keystone.css --sb-cream-rgb): the ink of every Odyssey panel. */

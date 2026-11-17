@@ -3,10 +3,10 @@
  * play rail's tray take the look of the chapter the world is showing.
  */
 import {
-    afterEach, describe, expect, it, vi,
+    afterEach, describe, expect, it,
 } from 'vitest';
 import {
-    CHAPTER_LOOK_WATCH_MS, applyOdysseyGlassMode, odysseyChapterColor, resetOdysseyChapterLookForTests,
+    CHAPTER_LOOK_WATCH_MS, odysseyChapterColor, resetOdysseyChapterLookForTests,
     watchOdysseyChapterInView, wearOdysseyChapter,
 } from '../../src/ui/odyssey/odyssey-chapter-look.js';
 import { ODYSSEY_CHAPTER_LOOKS, odysseyLookHex } from '../../src/core/odyssey/data/chapter-looks.js';
@@ -87,25 +87,5 @@ describe('the chapter the page wears', () => {
         expect(windowRef.timers.size).toBe(1);
         expect(doc.documentElement.dataset.odyChapter).toBe('7');
         expect(() => watchOdysseyChapterInView(null, { doc, windowRef: {} })()).not.toThrow();
-    });
-
-    it('frosts the glass only where the GPU has room', () => {
-        const doc = page();
-        expect(applyOdysseyGlassMode('High', doc)).toBe('plain');
-        expect('odyGlass' in doc.documentElement.dataset).toBe(false);
-        expect(applyOdysseyGlassMode('Ultra', doc)).toBe('frost');
-        expect(doc.documentElement.dataset.odyGlass).toBe('frost');
-        expect(applyOdysseyGlassMode('Extreme', doc)).toBe('frost');
-        expect(applyOdysseyGlassMode('Minimal', doc)).toBe('plain');
-        expect('odyGlass' in doc.documentElement.dataset).toBe(false);
-        expect(applyOdysseyGlassMode(undefined, null)).toBe('plain');
-        // The watch keeps it in step with the player's setting.
-        const windowRef = fakeWindow({ effectQuality: 'Ultra' });
-        watchOdysseyChapterInView({ isActive: true, isInBoardView: true, boardController: { lastActiveChapter: 1 } }, { doc, windowRef });
-        expect(doc.documentElement.dataset.odyGlass).toBe('frost');
-        windowRef.settings.effectQuality = 'Low';
-        windowRef.tick();
-        expect('odyGlass' in doc.documentElement.dataset).toBe(false);
-        vi.restoreAllMocks();
     });
 });

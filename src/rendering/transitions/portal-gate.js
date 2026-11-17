@@ -390,6 +390,10 @@ export function createPortalGate({
         amount: 0.02 + rand() * 0.05,
     };
     const density = 0.75 + rand() * 0.5;
+    // ... how fast it runs, how wide it stands open and how near the light ahead feels.
+    const pace = 0.85 + rand() * 0.35;
+    const width = 0.9 + rand() * 0.16;
+    const ahead = 0.85 + rand() * 0.3;
     if (rand() < 0.5) layers.forEach((layer) => { layer.tint = 1 - layer.tint; });
     if (kind.align) {
         // A wire tunnel's rails line up from layer to layer.
@@ -416,9 +420,9 @@ export function createPortalGate({
         turn: (rand() < 0.5 ? -1 : 1) * (0.02 + rand() * 0.05),
         rate: 0.3 + rand() * 0.5,
         seed: rand(),
-        alpha: 0.1 + rand() * 0.13,
-        length: 0.7 + rand() * 0.5,
-        width: 0.14 + rand() * 0.16,
+        alpha: 0.12 + rand() * 0.14,
+        length: 0.62 + rand() * 0.4,
+        width: 0.12 + rand() * 0.12,
     }));
     return {
         key,
@@ -439,6 +443,9 @@ export function createPortalGate({
         matter,
         swirl,
         bend,
+        pace,
+        width,
+        ahead,
         shafts: kind.shafts ? makeShafts(Math.max(3, Math.round(kind.shafts * tier))) : [],
         worldShafts: look?.world ? makeShafts(Math.max(5, Math.round(9 * tier))) : [],
         school: kind.school ? {
@@ -493,8 +500,10 @@ function drawSprite(ctx, dpr, sprite, cx, cy, size, angle = 0) {
  */
 function drawPassage(ctx, gate, frame) {
     const {
-        width, height, dpr = 1, center, travel = 0, direction = 1, time = 0,
+        width, height, dpr = 1, center, direction = 1, time = 0,
     } = frame;
+    // This passage's own pace (its walls and its matter run by the same clock).
+    const travel = (frame.travel || 0) * (gate.pace ?? 1);
     const intensity = clamp01(frame.intensity ?? 1);
     const rush = Math.max(0, frame.rush || 0);
     const cx = center.x;
@@ -530,7 +539,7 @@ function drawPassage(ctx, gate, frame) {
             // Faint while small (they would pile up into fog round the light ahead), fullest as
             // they pass the lens.
             const alpha = intensity * layer.alpha * kind.wallAlpha
-                * smoothstep(0.12, 0.62, depth) * (1 - smoothstep(0.9, 1, depth));
+                * smoothstep(0.12, 0.62, depth) * (1 - smoothstep(0.86, 1, depth));
             if (alpha <= 0.004) continue;
             const scale = Math.exp((depth - 1) * 3.5);
             ctx.globalAlpha = Math.min(1, alpha);
@@ -540,7 +549,7 @@ function drawPassage(ctx, gate, frame) {
                 sprites.nebula[layer.tint],
                 cx + bendX * scale,
                 cy + bendY * scale,
-                reach * 3.4 * scale,
+                reach * 3.4 * scale * (gate.width ?? 1),
                 layer.turn + travel * layer.spin * kind.spin,
             );
         }
@@ -572,7 +581,7 @@ function drawPassage(ctx, gate, frame) {
         }
         // The light ahead: where this gate is taking you.
         const breathe = 1 + Math.sin(time * 1.9) * 0.05;
-        const ahead = kind.lightAhead || 1;
+        const ahead = (kind.lightAhead || 1) * (gate.ahead ?? 1);
         ctx.globalAlpha = Math.min(1, intensity * 0.22 * ahead);
         drawSprite(ctx, dpr, sprites.glowPrimary, cx, cy, reach * 0.75 * breathe * ahead);
         ctx.globalAlpha = intensity * 0.85;

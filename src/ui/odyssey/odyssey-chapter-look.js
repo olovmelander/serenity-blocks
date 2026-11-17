@@ -14,9 +14,6 @@ import { getOdysseyChapterLook, odysseyLookHex } from '../../core/odyssey/data/c
 /** How often the world's chapter is read while the map shows (ms). */
 export const CHAPTER_LOOK_WATCH_MS = 300;
 
-/** Effect qualities whose GPUs have room to frost the glass (a backdrop blur over the world). */
-const FROSTED_QUALITIES = new Set(['Ultra', 'Extreme']);
-
 let watch = null;
 
 /** The chapter's light as '#rrggbb' (the journey overlay's colour, focus rings, rules). */
@@ -40,23 +37,6 @@ export function wearOdysseyChapter(chapterId, doc = globalThis.document) {
     if (next === null) delete root.dataset.odyChapter;
     else root.dataset.odyChapter = next;
     return true;
-}
-
-/**
- * Whether the glass is frosted at this effect quality, and say so on the page
- * (`html[data-ody-glass='frost']`, read by odyssey-shared.css).
- * @param {string|null|undefined} effectQuality
- * @param {Document} [doc]
- * @returns {'frost'|'plain'}
- */
-export function applyOdysseyGlassMode(effectQuality, doc = globalThis.document) {
-    const mode = FROSTED_QUALITIES.has(effectQuality) ? 'frost' : 'plain';
-    const root = doc?.documentElement;
-    if (root?.dataset) {
-        if (mode === 'frost') root.dataset.odyGlass = 'frost';
-        else delete root.dataset.odyGlass;
-    }
-    return mode;
 }
 
 /** The chapter the world shows while the map does, else null (an orb is being played, the mode left). */
@@ -84,7 +64,6 @@ export function watchOdysseyChapterInView(mode, { doc = globalThis.document, win
             return;
         }
         wearOdysseyChapter(chapterInView(mode), doc);
-        applyOdysseyGlassMode(windowRef.settings?.effectQuality, doc);
     };
     const timer = windowRef.setInterval(tick, CHAPTER_LOOK_WATCH_MS);
     const stop = () => {

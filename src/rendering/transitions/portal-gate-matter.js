@@ -359,7 +359,7 @@ export const PASSAGE_KINDS = Object.freeze({
         matter: [{
             sprite: 'bubble', tint: 0, share: 0.5, size: 0.05, aspect: 1, orient: 'none', swirl: 0.25, wobble: 0.22,
         }],
-        shafts: 7,
+        shafts: 5,
         school: 9,
         rim: 'ripple',
     },
@@ -372,7 +372,7 @@ export const PASSAGE_KINDS = Object.freeze({
         fill: 0.05,
         streaks: 0.12,
         sprites: ['petal', 'leaf', 'shaft'],
-        shafts: 5,
+        shafts: 4,
         matter: [
             {
                 sprite: 'petal', tint: 0, share: 0.46, size: 0.056, aspect: 1.33, orient: 'tumble', swirl: 1.1, wobble: 0.12,
@@ -409,13 +409,13 @@ export const PASSAGE_KINDS = Object.freeze({
         wallAlpha: 0.75,
         spin: 0.35,
         fill: 0.07,
-        lightAhead: 1.45,
+        lightAhead: 1.25,
         streaks: 0.14,
         sprites: ['shaft'],
         matter: [{
             sprite: 'glow', tint: 1, share: 0.3, size: 0.016, aspect: 1, orient: 'none', swirl: 0.3, wobble: 0.1,
         }],
-        shafts: 11,
+        shafts: 7,
         rim: 'halo',
     },
     // Space: stars and dust, as the gate was first drawn.
@@ -523,8 +523,8 @@ export function drawMatter(ctx, gate, env) {
         const sprite = sprites.matter[piece.spec][spec.twoTone ? piece.tone : 0];
         ctx.globalAlpha = Math.min(1, alpha);
         place(ctx, dpr, sprite, x, y, length, height, rotation, flip);
-        if (spec.glow) {
-            // A hot head on what is burning.
+        if (spec.glow && piece.tone === 0) {
+            // A hot head on what is burning (every other piece: the rest are sparks).
             ctx.globalAlpha = Math.min(1, alpha * spec.glow);
             place(ctx, dpr, sprites.glowHot, x, y, height * 3.2, height * 3.2, 0);
         }

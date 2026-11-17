@@ -1056,6 +1056,86 @@ describe('Odyssey journey flow', () => {
         expect(await pending).toBe(false);
         expect(mode.launchOdysseyLevel).not.toHaveBeenCalled();
     });
+
+    /** A board with orbs on a rail, as the world's answers need them. */
+    function withRail(mode, positions) {
+        mode.boardController.nodeManager = {
+            getNodePathPosition: (id) => positions[id] ?? null,
+            pulseNode: vi.fn(),
+        };
+        mode.boardController.pathRenderer = {
+            pathCurve: { getLength: () => 2500 },
+            playRipple: vi.fn(() => true),
+        };
+        return mode.boardController.pathRenderer.playRipple;
+    }
+
+    it('lights the rail from the orb just finished to the next as the ride to it begins', async () => {
+        const { mode } = createMode();
+        const playRipple = withRail(mode, { [level.id]: 0.01, [nextLevel.id]: 0.02 });
+        expect(await continueOdysseyJourney(mode, nextLevel)).toBe(true);
+        expect(playRipple).toHaveBeenCalledOnce();
+        expect(playRipple.mock.calls[0][0]).toMatchObject({ from: 0.01, to: 0.02 });
+        // The light sets off with the ride (after the world has opened), and wakes the orb ahead
+        // when it gets there.
+        expect(mode.returnToBoard.mock.invocationCallOrder[0]).toBeLessThan(playRipple.mock.invocationCallOrder[0]);
+        expect(playRipple.mock.invocationCallOrder[0])
+            .toBeLessThan(mode.boardController.travelToLevel.mock.invocationCallOrder[0]);
+        playRipple.mock.calls[0][0].onArrive();
+        expect(mode.boardController.nodeManager.pulseNode).toHaveBeenCalledWith(nextLevel.id, 1000, 0.12);
+    });
+
+    it('lights no rail and plays no arrival move under reduced motion', async () => {
+        const { mode, settings } = createMode();
+        settings.reducedMotion = true;
+        const playRipple = withRail(mode, { [level.id]: 0.01, [nextLevel.id]: 0.02, 6: 0.066 });
+        expect(await continueOdysseyJourney(mode, nextLevel)).toBe(true);
+        expect(playRipple).not.toHaveBeenCalled();
+        const crossing = continueOdysseyJourney(mode, { id: 6, chapter: 2 });
+        await flush();
+        expect(playRipple).not.toHaveBeenCalled();
+        expect(mode.boardController.cameraController.arrivalMove ?? null).toBeNull();
+        fixture.overlays.at(-1).options.onChoose('map');
+        await crossing;
+    });
+
+    it('lands a crossing into a new chapter in its arrival move and lets it go when the chapter begins', async () => {
+        const { mode } = createMode();
+        const playRipple = withRail(mode, { [level.id]: 0.06, 6: 0.066 });
+        const camera = mode.boardController.cameraController;
+        const travel = deferred();
+        mode.boardController.travelToLevel.mockReturnValue(travel.promise);
+        const pending = continueOdysseyJourney(mode, { id: 6, chapter: 2, name: 'Ocean arrival' });
+        await flush();
+        // The move is set before the crossing starts (it rides in during it) and has not landed;
+        // the rail lights up across the seam.
+        expect(camera.arrivalMove).toMatchObject({ landedAt: null, releasing: false });
+        expect(camera.arrivalMove.spec.seconds).toBeGreaterThan(4);
+        expect(playRipple.mock.calls[0][0]).toMatchObject({ from: 0.06, to: 0.066 });
+        travel.resolve(true);
+        await flush();
+        expect(camera.arrivalMove.landedAt).not.toBeNull();
+        expect(camera.arrivalMove.releasing).toBe(false);
+        expect(fixture.overlays[0].showChapter).toHaveBeenCalledOnce();
+        // Begin chapter: the gaze is let go as the orb's gate takes the camera.
+        fixture.overlays[0].options.onChoose('next');
+        expect(await pending).toBe(true);
+        expect(camera.arrivalMove.releasing).toBe(true);
+    });
+
+    it('lets the arrival move go when the player leaves the crossing for the map', async () => {
+        const { mode } = createMode();
+        const camera = mode.boardController.cameraController;
+        const travel = deferred();
+        mode.boardController.travelToLevel.mockReturnValue(travel.promise);
+        mode.boardController.cancelTravel.mockImplementation(() => travel.resolve(false));
+        const pending = continueOdysseyJourney(mode, { id: 6, chapter: 2, name: 'Ocean arrival' });
+        await flush();
+        expect(camera.arrivalMove).toBeTruthy();
+        fixture.overlays[0].options.onChoose('map');
+        await pending;
+        expect(camera.arrivalMove.releasing).toBe(true);
+    });
     it('only calls an unlocked song "playing now" when its exact track is audible', () => {
         const { mode } = createMode();
         const sound = {

@@ -17,7 +17,7 @@
     --ody-glass-top-a: 0.88;
     --ody-glass-foot-a: 0.95;
     --ody-ink-muted: rgba(255, 246, 233, 0.74);
-    --ody-ink-faint: rgba(255, 246, 233, 0.56);
+    --ody-ink-faint: rgba(255, 246, 233, 0.62);
 }
 [data-ody-chapter='1'],
 #odyssey-level-select[data-chapter='1'],
@@ -90,9 +90,10 @@
    charm chip, the briefing docked over the ride, the navigator's cards): the chapter's glass,
    see-through enough that the world's colour carries into it, solid enough that every ink reads
    over a white world (the alphas come from the same table and are asserted by its test).
-   No backdrop blur by default: the map renders on underneath, and a blur would re-sample the
-   WebGPU canvas every frame it draws. `html[data-ody-glass='frost']` (Ultra and Extreme effect
-   quality, set by src/ui/odyssey/odyssey-chapter-look.js) adds it where the GPU has room. */
+   No backdrop blur: the map renders on underneath, and a blur would re-sample the WebGPU
+   canvas every frame it draws. It was tried (blur(14px) saturate(1.25) behind the orb card)
+   and could not be seen: at the alphas the inks need, the glass lets 5-12 % of the world
+   through, and a blur of that is the same picture. The glass is smoked, not frosted. */
 /* With no chapter worn: the old indigo. (:where: no specificity, so the page's own chapter,
    html[data-ody-chapter], outranks it.) */
 :where(:root) {
@@ -118,9 +119,6 @@
     --ody-glass-sheen: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.14), inset 0 0 0 1px rgba(var(--sb-cream-rgb), 0.03);
 }
 
-html[data-ody-glass='frost'] {
-    --ody-glass-blur: blur(14px) saturate(1.25);
-}
 
 /* ---- An orb's world in its rings ------------------------------------------------------ */
 .sb-orb-art {

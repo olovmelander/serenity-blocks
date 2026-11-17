@@ -61,6 +61,29 @@
     box-sizing: border-box;
 }
 
+/* Words set straight on the page stand over the live world and the orb's light, not on a
+   card: each carries a halo of the chapter's night, close round its letters (a shade the shape
+   of the words, so there is no box to see and nothing dims the world between them). The cards
+   and the buttons are surfaces of their own and take none. */
+#odyssey-level-select :is(.odyssey-header, .odyssey-nav__rail, .odyssey-stage__chapter, .odyssey-route, .odyssey-actions) {
+    text-shadow:
+        0 1px 2px rgba(var(--ody-glass-deep-rgb), 0.95),
+        0 0 8px rgba(var(--ody-glass-deep-rgb), 0.9),
+        0 0 18px rgba(var(--ody-glass-deep-rgb), 0.85),
+        0 0 32px rgba(var(--ody-glass-deep-rgb), 0.7);
+}
+
+/* A chapter in the ascent and an orb on the route are buttons, and a button drops an inherited
+   text shadow (the browser's own rule): they are words on the page all the same. */
+#odyssey-level-select :is(.odyssey-chapter, .odyssey-level-btn) {
+    text-shadow: inherit;
+}
+
+#odyssey-level-select :is(.sb-btn, .odyssey-btn, .odyssey-nav__close, .odyssey-stage__step, .sb-kbd, .odyssey-chapter__gem,
+    .odyssey-orb__number, .odyssey-orb__badge, .odyssey-orb__flag) {
+    text-shadow: none;
+}
+
 /* ---- The sky: night, the chapter's light, stars, the orb's world bleeding through -- */
 #odyssey-level-select .odyssey-nav__sky {
     position: fixed;
@@ -76,10 +99,10 @@
            the left, thinnest across the middle of the stage, where the world shows through. */
         linear-gradient(
             90deg,
-            rgba(var(--ody-glass-deep-rgb), 0.93) 0%,
-            rgba(var(--ody-glass-deep-rgb), 0.86) 24%,
-            rgba(var(--ody-glass-deep-rgb), 0.78) 58%,
-            rgba(var(--ody-glass-deep-rgb), 0.82) 100%
+            rgba(var(--ody-glass-deep-rgb), 0.96) 0%,
+            rgba(var(--ody-glass-deep-rgb), 0.92) 22%,
+            rgba(var(--ody-glass-deep-rgb), 0.82) 56%,
+            rgba(var(--ody-glass-deep-rgb), 0.86) 100%
         );
 }
 
@@ -118,8 +141,11 @@
     aspect-ratio: 1;
     border-radius: 50%;
     object-fit: cover;
-    opacity: 0.46;
-    filter: blur(80px) saturate(1.3);
+    /* 0.46 at full brightness over an opaque page; the live world now lends the page light of
+       its own, and under the brightest worlds (cloud tops at sunset) the two together washed
+       the small print out: the orb's light keeps its colour and gives up some of its glare. */
+    opacity: 0.3;
+    filter: blur(80px) saturate(1.4) brightness(0.72);
     transform: translateZ(0);
 }
 
@@ -142,6 +168,13 @@
     /* The play rail holds the corner: end before its three tiles, centred on its line. */
     padding: calc(var(--sb-play-inset) - 2px) calc(var(--sb-play-inset) + 3 * var(--sb-play-tile) + 28px) 14px var(--nav-gutter);
     text-align: left;
+    /* The journey's figures stand in a band of the chapter's night (the world shows below it). */
+    background: linear-gradient(
+        180deg,
+        rgba(var(--ody-glass-deep-rgb), 0.6) 0%,
+        rgba(var(--ody-glass-deep-rgb), 0.36) 68%,
+        rgba(var(--ody-glass-deep-rgb), 0) 100%
+    );
     animation: odyssey-nav-drop 0.42s var(--sb-ease-lock) both;
 }
 
