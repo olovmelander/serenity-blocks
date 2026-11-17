@@ -723,7 +723,10 @@ function createFacadeMaterial(uTime, uEnergy, {
         const toLane = clamp(n.x.mul(pc.x.sign().negate()), 0.0, 1.0);
         const facing = toLane.mul(0.85).add(abs(n.z).mul(0.38)).add(0.1);
         const fromBelow = lowLit.mul(exp(hAbove.mul(-1 / 18))).mul(1.4)
-            .add(glowSign.mul(exp(max(hAbove.sub(14.0), 0.0).mul(-1 / 22))).mul(0.42));
+            // The signs' light spills up the wall as far as the signs hang (to about the eye's
+            // height over the street), so the near walls the arrival stands between carry their
+            // colour instead of standing unlit.
+            .add(glowSign.min(vec3(1.2, 1.2, 1.2)).mul(exp(max(hAbove.sub(54.0), 0.0).mul(-1 / 26))).mul(0.5));
         // Every other street has its own signs: a per-block tint rising off the outer streets.
         const streetTint = mix(vec3(0.9, 0.12, 0.55), vec3(0.0, 0.62, 0.85), step(0.5, fract(seed.mul(1.37))));
         const sideStreet = streetTint.mul(exp(hAbove.negate().div(14.0))).mul(0.1).mul(ign.level);
@@ -733,6 +736,7 @@ function createFacadeMaterial(uTime, uEnergy, {
         const skyLight = skyFace.mul(smoothstep(-60.0, 120.0, pc.y).mul(0.6).add(0.4)).mul(0.34).toVar();
         const spire = neonSpireLight(N, pc, n);
         const light = fromBelow.mul(facing).add(sideStreet).add(skyLight).add(spire)
+            .add(N.sky.burst.mul(0.22))
             .toVar();
 
         // ── Wall: masonry in the tower's own tint, glass between ────────────────────
@@ -788,7 +792,9 @@ function createFacadeMaterial(uTime, uEnergy, {
             .add(lowLit.mul(exp(hAbove.mul(-1 / 70))).mul(0.32))
             // Its own wall's signs only where they hang (the boulevard's lower storeys): unbounded up
             // the wall, they washed a tall glass tower pale from foot to crown.
-            .add(glowSign.mul(exp(max(hAbove.sub(24.0), 0.0).mul(-1 / 30))).mul(0.12));
+            .add(glowSign.mul(exp(max(hAbove.sub(24.0), 0.0).mul(-1 / 30))).mul(0.12))
+            // ...and the fireworks' light, when there is a show.
+            .add(N.sky.burst.mul(0.6));
         const glassBase = float(0.06).add(sCurtain.mul(0.16)).add(sRibbon.mul(0.05));
         // The pane sits back in the wall: the head of the opening shades its top, the jambs its sides.
         const reveal = smoothstep(hiY, hiY.sub(0.16), f.y).mul(0.55).add(0.45)
@@ -827,7 +833,8 @@ function createFacadeMaterial(uTime, uEnergy, {
         // First light lies along the roofs: the low sun's warm wash, only at the journey's dawn.
         const dawnWash = N.sky.sunGlow.mul(N.sky.dawn).mul(0.5);
         const roofLight = skyLight.mul(2.4).add(spire).add(lowLit.mul(0.06)).add(glowSign.mul(0.05))
-            .add(dawnWash);
+            .add(dawnWash)
+            .add(N.sky.burst.mul(0.5));
         const roof = roofAlbedo.mul(roofLight)
             .add(masonry.mul(lowLit.mul(0.5).add(skyLight)).mul(parapet).mul(1.3))
             .add(skyMirror.add(N.mistLow).mul(fres.mul(0.9).add(0.12)).mul(puddleR.mul(0.85).add(0.15))
@@ -836,7 +843,18 @@ function createFacadeMaterial(uTime, uEnergy, {
         // ── Hero towers: neon edge meters that fill as the ignition passes + a crown ──
         const isHero = step(0.5, hero);
         const heroCol = mix(vec3(0.0, 0.9, 1.0), vec3(1.0, 0.2, 0.7), step(1.5, hero));
-        const edgeDist = min(vUv.x, oneMinus(vUv.x)).mul(faceW);
+        const edgeDist = min(vUv.x, oneMinus(vUv.x)).mul(faceW).toVar();
+        // THE SUN'S RIM (2026-11-17): looking toward the low sun, the towers' corners, parapets
+        // and ledges catch it: a warm line along every edge that stands against the light. A
+        // line thinner than a pixel keeps its light instead of crawling.
+        const sunward = clamp(dot(V, N.sky.sunDir), 0.0, 1.0);
+        const edgeAA = max(fwidth(edgeDist), 0.02);
+        const corner = oneMinus(smoothstep(0.1, edgeAA.add(0.2), edgeDist)).mul(float(0.2).div(edgeAA.add(0.2)));
+        const crownEdge = oneMinus(smoothstep(0.3, 0.9, oneMinus(vUv.y).mul(towerH)));
+        const rim = N.sky.sunGlow.mul(sunward.mul(sunward))
+            .mul(corner.mul(0.24).add(crownEdge.mul(0.14)).add(ledge.mul(0.3)).add(isLedge.mul(0.26)))
+            .mul(isSide)
+            .mul(N.sky.cover.mul(-0.6).add(1.0));
         const edgeTrim = oneMinus(smoothstep(0.18, 0.75, edgeDist));
         const fill = mix(float(0.28), float(1.0), inWave);
         const meterSeg = smoothstep(0.08, 0.2, abs(fract(fy.mul(0.16)).sub(0.5)));
@@ -854,7 +872,8 @@ function createFacadeMaterial(uTime, uEnergy, {
         // Lit only once the tunnel's mouth opens (`seamReveal`, the 7->8 carry), as the signs,
         // lanterns, skybridges and traffic already are: the nearest towers fade in under the
         // warp tunnel, and their window grids drew over its streaks before the city was seen.
-        const lights = windows.add(trim).add(ledgeLight.mul(isSide).mul(oneMinus(isLedge))).mul(N.seamReveal);
+        const lights = windows.add(trim).add(rim).add(ledgeLight.mul(isSide).mul(oneMinus(isLedge)))
+            .mul(N.seamReveal);
         const air = neonAir(N, pc, glowLow);
         // The air: lit windows punch a little further through it than the walls do.
         return mix(structure.add(lights), air.colour, air.amount)
@@ -1405,7 +1424,8 @@ export function createWetReflectionPlaneTSL(uTime, uEnergy, { neon, uSunVisible 
         // ── Light: the shopfronts along the walls, the mist's glow, the spire ──
         const nearWall = exp(max(float(S.walkHalf).sub(ax), 0.0).mul(-1 / 6));
         const shops = glowLow.mul(ign.level).mul(nearWall.mul(1.7).add(0.12));
-        const light = N.mistLow.mul(0.9).add(shops).add(neonSpireLight(N, pc, vec3(0.0, 1.0, 0.0)));
+        const light = N.mistLow.mul(0.9).add(shops).add(neonSpireLight(N, pc, vec3(0.0, 1.0, 0.0)))
+            .add(N.sky.burst.mul(0.3));
 
         // ── Kerb LED strips: dashed, chasing, rose down the left and cyan down the right ──
         const led = stripe(S.kerbHalf, 0.08).mul(step(fract(z.div(2.4)), 0.72));
@@ -1513,6 +1533,7 @@ export function createWetReflectionPlaneTSL(uTime, uEnergy, { neon, uSunVisible 
         const mirror = mix(wallR.add(glowSign.mul(streaks.mul(streaks).mul(0.9).add(0.04))), skyR, seeSky)
             .add(N.mistLow.mul(0.9))
             .add(sunRefl)
+            .add(N.sky.burst.mul(puddle.mul(0.45).add(0.06)))
             .add(skyR.add(N.mistLow).mul(ring.mul(0.5)))
             .mul(S.reflectGain);
 

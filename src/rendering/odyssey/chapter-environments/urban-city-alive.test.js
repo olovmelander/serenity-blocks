@@ -21,7 +21,7 @@ import {
     JOURNEY_ENDING, advanceJourneyEnding, resolveJourneyEnding,
 } from './shared/odyssey-journey-ending.js';
 import {
-    NEON_ARCHITECTURE, NEON_PART, planNeonArchitecture,
+    NEON_ARCHITECTURE, NEON_PART, arrivalLife, planNeonArchitecture,
 } from './shared/odyssey-neon-architecture.js';
 import { NEON_FAR_CITY, dealFarCity } from './shared/odyssey-neon-far-plan.js';
 import {
@@ -31,7 +31,8 @@ import {
     NEON_SKY_PALETTES, applyNeonSkyState, createNeonSkyUniforms,
 } from './shared/odyssey-neon-sky.tsl.js';
 import {
-    JOURNEY_COLOURS_FALLBACK, NEON_FIREWORKS, journeyColours, planFireworks, planSkyLanterns,
+    JOURNEY_COLOURS_FALLBACK, NEON_FIREWORKS, NEON_SKY_LANTERNS, SHELL_KIND, fireworksLightAt, journeyColours,
+    planFireworks, planSkyLanterns,
 } from './shared/odyssey-neon-celebration.tsl.js';
 import {
     NEON_SEARCHLIGHTS, planNeonHologram, planNeonSearchlights, planNeonVents,
@@ -195,6 +196,27 @@ describe("chapter 8: the city's architecture", () => {
         expect(stepped.length).toBeGreaterThan(60);
     });
 
+    it('lights more rooms in the towers the arrival stands between, and only there', () => {
+        const boosted = towers.filter((tower) => arrivalLife(tower) > 0);
+        expect(boosted.length).toBeGreaterThan(20);
+        boosted.forEach((tower) => {
+            expect(tower.bank).toBeLessThanOrEqual(1);
+            expect(tower.z).toBeGreaterThan(-130);
+            expect(tower.z).toBeLessThan(150);
+        });
+        // The walls either side of the eye's first stations (rail z 62 -> 28) carry the most.
+        const beside = towers.filter((tower) => tower.bank === 0 && tower.z > 0 && tower.z < 80);
+        expect(beside.length).toBeGreaterThanOrEqual(4);
+        beside.forEach((tower) => expect(arrivalLife(tower)).toBeCloseTo(0.3, 6));
+        plan.bases.forEach((base, i) => {
+            expect(base.occupancy).toBeCloseTo(towers[i].occupancy + arrivalLife(towers[i]), 9);
+            expect(base.occupancy).toBeLessThan(0.72);
+        });
+        // The city as a whole stays mostly dark.
+        const mean = plan.bases.reduce((sum, base) => sum + base.occupancy, 0) / plan.bases.length;
+        expect(mean).toBeLessThan(0.27);
+    });
+
     it('stacks tiers inside their tower, ledges just proud of the wall below', () => {
         const bodies = plan.tiers.filter((tier) => tier.part === NEON_PART.body);
         const ledges = plan.tiers.filter((tier) => tier.part === NEON_PART.ledge);
@@ -342,32 +364,106 @@ describe("chapter 8: the journey's ending", () => {
         expect(resolveJourneyEnding(E.rest, 0.3).dawn).toBe(0);
     });
 
-    it('lets the lanterns go from the spire outward and times a show with a finale', () => {
-        const lanterns = planSkyLanterns(360);
-        expect(lanterns).toHaveLength(360);
-        const near = lanterns.filter((l) => Math.hypot(l.x, l.z + 560) < 200);
-        const far = lanterns.filter((l) => Math.hypot(l.x, l.z + 560) > 420);
-        const mean = (list) => list.reduce((sum, l) => sum + l.delay, 0) / list.length;
-        expect(near.length).toBeGreaterThan(20);
-        expect(mean(near)).toBeLessThan(mean(far) - 6);
+    it('lets the lanterns go in drifts, the boulevard first, and fills the upper sky with a show that builds', () => {
+        const lanterns = planSkyLanterns(900);
+        expect(lanterns).toHaveLength(900);
+        // Drifts: fifteen let go from one place within a few seconds of each other.
+        const drifts = new Map();
         lanterns.forEach((l) => {
+            if (!drifts.has(l.drift)) drifts.set(l.drift, []);
+            drifts.get(l.drift).push(l);
             expect(l.speed).toBeGreaterThan(0);
             expect(l.y).toBeGreaterThan(STREET_Y);
             expect(l.colour).toBeGreaterThanOrEqual(0);
             expect(l.colour).toBeLessThan(8);
         });
-        const shells = planFireworks(28);
-        expect(shells).toHaveLength(28);
-        shells.forEach((shell) => {
-            expect(shell.at).toBeGreaterThanOrEqual(NEON_FIREWORKS.climb);
-            expect(shell.at + NEON_FIREWORKS.life).toBeLessThanOrEqual(NEON_FIREWORKS.seconds + 1);
-            expect(shell.y).toBeGreaterThan(120); // over the roofs
+        expect(drifts.size).toBe(60);
+        const mean = (list, key) => list.reduce((sum, l) => sum + l[key], 0) / list.length;
+        const middles = [];
+        drifts.forEach((drift) => {
+            const cx = mean(drift, 'x');
+            const cz = mean(drift, 'z');
+            const delays = drift.map((l) => l.delay);
+            drift.forEach((l) => expect(Math.hypot(l.x - cx, l.z - cz)).toBeLessThan(NEON_SKY_LANTERNS.spread * 2));
+            expect(Math.max(...delays) - Math.min(...delays)).toBeLessThan(5.01);
+            middles.push({ across: Math.abs(cx), delay: mean(drift, 'delay') });
         });
-        // A finale: more shells in the last quarter of the show than in any earlier quarter.
-        const quarter = (k) => shells.filter((s) => Math.floor((s.at / NEON_FIREWORKS.seconds) * 4) === k).length;
-        expect(quarter(3)).toBeGreaterThan(Math.max(quarter(0), quarter(1), quarter(2)) - 1);
-        // All eight chapters' colours fly.
+        // The boulevard's drifts go first; every drift is away within the release.
+        const inner = middles.filter((m) => m.across < 60);
+        const outer = middles.filter((m) => m.across > 150);
+        expect(inner.length).toBeGreaterThan(8);
+        expect(outer.length).toBeGreaterThan(3);
+        expect(mean(inner, 'delay')).toBeLessThan(mean(outer, 'delay') - 4);
+        lanterns.forEach((l) => expect(l.delay).toBeLessThan(NEON_SKY_LANTERNS.release + 5.01));
+
+        const F = NEON_FIREWORKS;
+        const shells = planFireworks(44);
+        expect(shells).toHaveLength(44);
+        const toDeg = 180 / Math.PI;
+        shells.forEach((shell) => {
+            expect(shell.at).toBeGreaterThanOrEqual(F.climb);
+            // Every star is out before the show's curtain.
+            expect(shell.at + shell.life).toBeLessThanOrEqual(F.seconds + 0.6 + 1e-9);
+            // In the upper sky of the risen eye's view, and large in it.
+            const dx = shell.x - F.eye[0];
+            const dy = shell.y - F.eye[1];
+            const dz = shell.z - F.eye[2];
+            const distance = Math.hypot(dx, dy, dz);
+            const elevation = Math.asin(dy / distance) * toDeg;
+            const azimuth = Math.atan2(dx, -dz) * toDeg;
+            expect(elevation).toBeGreaterThanOrEqual(F.elevation[0] - 1e-6);
+            expect(elevation).toBeLessThanOrEqual(F.elevation[1] + 1e-6);
+            expect(azimuth).toBeGreaterThanOrEqual(F.azimuth[0] - 1e-6);
+            expect(azimuth).toBeLessThanOrEqual(F.azimuth[1] + 1e-6);
+            expect(Math.atan(shell.radius / distance) * toDeg).toBeGreaterThan(8.9);
+            expect(shell.y).toBeGreaterThan(200); // far over the roofs
+        });
+        // Spread over the sky, not bunched: shells in every third of the azimuth and both halves of the height.
+        const third = (s) => Math.min(2, Math.floor((((Math.atan2(s.x - F.eye[0], -(s.z - F.eye[2])) * toDeg)
+            - F.azimuth[0]) / (F.azimuth[1] - F.azimuth[0])) * 3));
+        [0, 1, 2].forEach((k) => expect(shells.filter((s) => third(s) === k).length).toBeGreaterThan(9));
+        // All four kinds fly, in all eight chapters' colours.
+        expect(new Set(shells.map((s) => s.kind))).toEqual(new Set([
+            SHELL_KIND.chrysanthemum, SHELL_KIND.willow, SHELL_KIND.ring, SHELL_KIND.crossette,
+        ]));
         expect(new Set(shells.map((s) => s.colour)).size).toBe(8);
+        // Several aloft at once through the opening, and a finale: the most aloft near the end.
+        const aloft = (t) => shells.filter((s) => t >= s.at && t < s.at + s.life).length;
+        let openingPeak = 0;
+        let finalePeak = 0;
+        let quiet = 0;
+        for (let t = F.climb + 1; t < F.seconds - 2.5; t += 0.25) {
+            const n = aloft(t);
+            if (t < F.finale[0] * F.seconds) {
+                openingPeak = Math.max(openingPeak, n);
+                if (n === 0) quiet += 0.25;
+            } else finalePeak = Math.max(finalePeak, n);
+        }
+        expect(openingPeak).toBeGreaterThanOrEqual(3);
+        expect(quiet).toBeLessThan(1.6); // the sky is never empty for long
+        expect(finalePeak).toBeGreaterThanOrEqual(8);
+        expect(finalePeak).toBeGreaterThan(openingPeak + 2);
+        expect(shells.filter((s) => s.finale).every((s) => s.radius >= 0)).toBe(true);
+
+        // The light the shells throw: nothing before the show, a bounded wash in it, the strongest in the finale.
+        const colours = JOURNEY_COLOURS_FALLBACK;
+        expect(fireworksLightAt(shells, -1, colours)).toEqual([0, 0, 0]);
+        expect(fireworksLightAt(shells, Number.NaN, colours)).toEqual([0, 0, 0]);
+        let peak = 0;
+        let finaleLight = 0;
+        let previous = fireworksLightAt(shells, 0, colours).slice();
+        for (let t = 1 / 60; t < F.seconds; t += 1 / 60) {
+            const now = fireworksLightAt(shells, t, colours);
+            const level = Math.max(...now);
+            peak = Math.max(peak, level);
+            if (t > F.finale[0] * F.seconds) finaleLight = Math.max(finaleLight, level);
+            // It comes up over frames, never in one: no channel jumps by a quarter in a frame.
+            for (let k = 0; k < 3; k += 1) expect(Math.abs(now[k] - previous[k])).toBeLessThan(0.25);
+            previous = now.slice();
+        }
+        expect(peak).toBeGreaterThan(0.6);
+        expect(peak).toBeLessThanOrEqual(1.45);
+        expect(finaleLight).toBeGreaterThan(0.9);
     });
 
     it("takes the chapters' colours from the journey's chart", () => {
@@ -421,12 +517,22 @@ describe("chapter 8: the journey's ending", () => {
         expect(neon.sky.dawn.value).toBe(0);
         run(8, 29);
         expect(group.userData.fireworks.mesh.visible).toBe(true); // the eye is over the roofs
-        run(50, 37);
+        // The shells aloft wash the sky and the city, and the smoke the earlier ones left.
+        let washed = 0;
+        for (let i = 0; i < 40; i += 1) {
+            updateUrbanDreamsEnvironment(group, 0.1, 37 + (i * 0.1), camera, 1.0);
+            washed = Math.max(washed, neon.sky.burst.value.x + neon.sky.burst.value.y + neon.sky.burst.value.z);
+            expect(group.userData.fireworks.uniforms.burst.value.equals(neon.sky.burst.value)).toBe(true);
+        }
+        expect(washed).toBeGreaterThan(0.1);
+        expect(washed).toBeLessThan(3);
+        run(50, 41);
         expect(group.userData.endingNow.seconds).toBe(JOURNEY_ENDING.rest);
         expect(neon.sky.dawn.value).toBeCloseTo(1, 6);
         expect(neon.sunPos.value.y).toBeGreaterThan(sunkY + 150);
         expect(group.userData.sun.position.y).toBe(neon.sunPos.value.y);
         expect(group.userData.fireworks.mesh.visible).toBe(false);
+        expect(neon.sky.burst.value.lengthSq()).toBe(0); // no wash once the show is over
         expect(group.userData.skyLanterns.mesh.visible).toBe(true); // the rest: still rising
         expect(uniforms.uRainDensity.value).toBe(0);
 

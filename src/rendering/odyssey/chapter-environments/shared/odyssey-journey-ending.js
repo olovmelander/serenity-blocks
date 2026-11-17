@@ -47,14 +47,14 @@ export const JOURNEY_ENDING = Object.freeze({
     /** The lanterns' release (they keep rising for ever after). */
     lanterns: 7,
     /** First light: the sky's turn from night to dawn. */
-    dawn: Object.freeze([24, 50]),
+    dawn: Object.freeze([33, 56]),
     /** The sun's return: seconds, and how far it climbs from where the chapter left it. */
-    sunrise: Object.freeze([26, 56]),
+    sunrise: Object.freeze([34, 62]),
     sunLift: 170,
     /** The fireworks' show. */
     fireworks: Object.freeze([10, 39]),
     /** The clock holds here. */
-    rest: 60,
+    rest: 66,
 });
 
 /**

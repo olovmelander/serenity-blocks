@@ -138,8 +138,8 @@ export const CH8_QUALITY_TIERS = Object.freeze({
         skyOctaves: 3,
         stars: 700,
         farStride: 1,
-        lanterns: 360,
-        fireworks: Object.freeze({ shells: 28, stars: 90 }),
+        lanterns: 900,
+        fireworks: Object.freeze({ shells: 56, stars: 110 }),
     }),
     medium: Object.freeze({
         towerBanks: 6,
@@ -149,8 +149,8 @@ export const CH8_QUALITY_TIERS = Object.freeze({
         skyOctaves: 2,
         stars: 420,
         farStride: 2,
-        lanterns: 220,
-        fireworks: Object.freeze({ shells: 18, stars: 60 }),
+        lanterns: 520,
+        fireworks: Object.freeze({ shells: 34, stars: 72 }),
     }),
     low: Object.freeze({
         towerBanks: 4,
@@ -163,7 +163,7 @@ export const CH8_QUALITY_TIERS = Object.freeze({
         interiors: false,
         rooftops: false,
         life: false,
-        lanterns: 110,
+        lanterns: 260,
         fireworks: null,
     }),
 });
@@ -897,6 +897,13 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
         fu.flash.value = flashScale();
         // (Every rocket's climb lies inside the show: its first shell bursts `climb` seconds in.)
         fireworks.mesh.visible = fu.gain.value > 0.002 && ending.fireworks >= 0;
+        // The light the shells aloft throw: a wash on the cloud, the glass, the street and the
+        // air (the sky's `burst`), and on the smoke the earlier bursts left. Through flashScale.
+        const burst = group.userData.burstLight ?? (group.userData.burstLight = [0, 0, 0]);
+        const wash = fireworks.mesh.visible ? fu.gain.value * fu.flash.value * 0.6 : 0;
+        if (wash > 0) fireworks.lightAt(ending.fireworks, burst);
+        fu.burst.value.set(burst[0] * wash, burst[1] * wash, burst[2] * wash);
+        neon?.sky?.burst.value.copy(fu.burst.value);
     }
 
     // THE JOURNEY IN THE SKY: over the journey's last stretch (the manager's journeyEnd ramp) the

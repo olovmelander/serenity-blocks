@@ -63,6 +63,19 @@ function towerOfSign(sign, towers) {
 }
 
 /**
+ * The towers the arrival stands between (the boulevard's two inner banks, from behind the eye's
+ * first station to a block past its last): their walls are the player's first sight of the city
+ * and fill a third of those frames, so more of their rooms are lit.
+ * @returns {number} added to the tower's occupancy
+ */
+export function arrivalLife(tower) {
+    if (tower.bank > 1) return 0;
+    const fromFar = Math.min(1, Math.max(0, (tower.z + 130) / 60));
+    const fromBehind = Math.min(1, Math.max(0, (150 - tower.z) / 40));
+    return (tower.bank === 0 ? 0.3 : 0.2) * fromFar * fromBehind;
+}
+
+/**
  * Plan every tower's shape.
  * @param {ReturnType<import('./odyssey-neon-city-plan.js').dealCityTowers>} towers
  * @param {object[]} [signs] planNeonSigns().signs
@@ -105,7 +118,12 @@ export function planNeonArchitecture(towers, signs = []) {
         const tint = rand();
         const H = tower.height;
         const look = {
-            seed: tower.seed, occupancy: tower.occupancy, warmBias: tower.warmBias, hero: tower.hero, style, tint,
+            seed: tower.seed,
+            occupancy: tower.occupancy + arrivalLife(tower),
+            warmBias: tower.warmBias,
+            hero: tower.hero,
+            style,
+            tint,
         };
         const part = (x, z, width, depth, from, to, kind = NEON_PART.body) => ({
             ...look,

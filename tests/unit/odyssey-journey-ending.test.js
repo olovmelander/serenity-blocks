@@ -6,6 +6,9 @@ import {
     JOURNEY_ENDING_UI, presentOdysseyJourneyEnding, readOdysseyJourneyEndingSeconds,
 } from '../../src/ui/odyssey/odyssey-journey-ending.js';
 import { JOURNEY_ENDING } from '../../src/rendering/odyssey/chapter-environments/shared/odyssey-journey-ending.js';
+import {
+    canNavigateOdysseyMap, createOdysseyMapPadControls, moveOdysseyMapSelection, playOdysseyMapSelection,
+} from '../../src/ui/odyssey/odyssey-map-input.js';
 
 function eventTarget(properties = {}) {
     const listeners = new Map();
@@ -110,6 +113,64 @@ describe("the journey's ending on the map", () => {
         const arrow = window.dispatch('keydown', { key: 'ArrowLeft' });
         expect(arrow.preventDefault).not.toHaveBeenCalled();
         expect(other._setBoardOverlaySuppressed).toHaveBeenLastCalledWith(false);
+    });
+
+    it("wakes the UI on the pad's A press too, instead of launching the unseen orb", () => {
+        const mode = createMode();
+        Object.assign(mode, {
+            selectedLevelId: 60,
+            odysseyState: { isLevelUnlocked: () => true, currentLevel: 60 },
+            levelRegistry: { getTotalLevels: () => 60, getAllChapters: () => [] },
+            launchOdysseyLevel: vi.fn().mockResolvedValue(),
+        });
+        mode.boardController.selectLevel = vi.fn();
+        presentOdysseyJourneyEnding(mode, 60);
+        // The map's own pad controls, as OdysseyMode installs them (odyssey-map-input.js).
+        const controller = { isAxisNegative: () => false, isAxisPositive: () => false };
+        const pad = createOdysseyMapPadControls(controller, {
+            isActive: () => canNavigateOdysseyMap(mode, null),
+            onMove: (move) => moveOdysseyMapSelection(mode, move),
+            onPlay: () => playOdysseyMapSelection(mode),
+        });
+        const press = (buttons) => pad.process({ buttons: Array.from({ length: 16 }, (_, i) => ({ pressed: buttons.includes(i) })) }, 0);
+        // A still held from the finale sheet's choice is not a press of the map's.
+        press([0]);
+        expect(mode._setBoardOverlaySuppressed).toHaveBeenLastCalledWith(true);
+        // A fresh press wakes the card and plays nothing.
+        press([]);
+        press([0]);
+        expect(mode._setBoardOverlaySuppressed).toHaveBeenLastCalledWith(false);
+        expect(mode._updateLevelPreview).toHaveBeenCalledWith(60);
+        expect(mode.launchOdysseyLevel).not.toHaveBeenCalled();
+        expect(mode._journeyEnding).toBeNull();
+        // With the card shown, the next press plays, as on the map.
+        press([]);
+        press([0]);
+        expect(mode.launchOdysseyLevel).toHaveBeenCalledExactlyOnceWith(60, { source: 'map-input' });
+
+        // A step on the D-pad during the ending brings the UI back and travels.
+        const other = createMode();
+        Object.assign(other, {
+            selectedLevelId: 60,
+            odysseyState: { isLevelUnlocked: () => true, currentLevel: 60 },
+            levelRegistry: { getTotalLevels: () => 60, getAllChapters: () => [] },
+        });
+        other.boardController.selectLevel = vi.fn();
+        presentOdysseyJourneyEnding(other, 60);
+        expect(moveOdysseyMapSelection(other, 'previous')).toBe(59);
+        expect(other._setBoardOverlaySuppressed).toHaveBeenLastCalledWith(false);
+        expect(other.boardController.selectLevel).toHaveBeenCalledWith(59);
+    });
+
+    it('brings the UI back once the eye has left the end of the rail', () => {
+        const world = { ending: { seconds: 0 }, endingNow: { seconds: 0 }, journeyEnd: 1 };
+        const mode = createMode(world);
+        presentOdysseyJourneyEnding(mode, 60);
+        vi.advanceTimersByTime(JOURNEY_ENDING_UI.pollMs * 2);
+        expect(mode._setBoardOverlaySuppressed).toHaveBeenCalledTimes(1);
+        world.journeyEnd = 0.2;
+        vi.advanceTimersByTime(JOURNEY_ENDING_UI.pollMs);
+        expect(mode._setBoardOverlaySuppressed).toHaveBeenLastCalledWith(false);
     });
 
     it('never touches a map that has moved on (an orb launched, the mode left)', () => {
