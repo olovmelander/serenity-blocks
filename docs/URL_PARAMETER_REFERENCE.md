@@ -147,7 +147,8 @@ retired), added the capture flags `thermalBloomForceWebGL`, `thermalBloomTime`,
 effect (every parameter it reads names `thermal-bloom` in its `playground.html` scope).
 Its remake added four entries of its own, `sunAz` and `sunEl` (the sun held), `cam` (a free
 camera for close-ups) and `chain` (a chain built link by link), and `season` now holds a place
-on the year's wheel.
+on the year's wheel. Its living-basin pass added `hour` in its scope (the day held at a place
+on its wheel of hours, by number or by name).
 The Rainbark rebuild added the capture flags `rainbarkForceWebGL`, `rainbarkTime`,
 `rainbarkFixedDt`, `rainbarkParts` and `rainbarkFalseColor` plus the `rainbark` playground
 effect, which reads 27 parameters its sibling effects already had and adds `sheds`, with

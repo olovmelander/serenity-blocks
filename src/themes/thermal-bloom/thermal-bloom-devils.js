@@ -44,6 +44,9 @@ import {
     tbAerial,
     tbFxMaterial,
     tbPart,
+    tbSteamShade,
+    tbSteamSun,
+    tbUnderLight,
 } from './thermal-bloom-tsl.js';
 
 const TAU = Math.PI * 2;
@@ -152,16 +155,18 @@ export function createDevils(u, tier, tex) {
         alpha.lessThan(0.003).discard();
         // Light: pearl toward the sun, blue-grey in shade, split on the whirl's form.
         const lit = smoothstep(-0.3, 0.6, dot(normalize(vec3(nrm.x, 0.25, nrm.y)), u.sunDir));
-        const pearl = u.sunColor.mul(0.76).add(mix(u.haze, u.zenith, 0.5).mul(0.1));
-        const shade = vec3(0.34, 0.43, 0.56).mul(mix(float(0.85), float(1.0), u.sunColor.y));
+        const pearl = tbSteamSun(u).mul(0.76).add(mix(u.haze, u.zenith, 0.5).mul(0.1));
+        const shade = tbSteamShade(u);
         // (the turns catch the light; the gaps between them are the whirl's shaded inside)
         const col = mix(shade, pearl, lit.mul(helix.mul(0.35).add(0.65))).mul(helix.mul(0.12).add(0.9)).toVar();
         // Coloured from beneath by the bands it crosses: a turquoise core over the deep water, an
         // apricot hem off the mats at its foot.
         const coreTint = core.mul(smoothstep(0.04, 0.22, vH01)).mul(float(1.0).sub(smoothstep(0.35, 0.85, vH01)));
         const hem = float(1.0).sub(smoothstep(0.12, 0.5, vH01.add(n.sub(0.5).mul(0.15))));
-        col.assign(mix(col, vec3(0.26, 0.64, 0.64).mul(u.sunColor.y.mul(0.3).add(0.7)), coreTint.mul(0.55)));
-        col.assign(mix(col, vec3(0.88, 0.55, 0.3).mul(u.sunColor.y.mul(0.3).add(0.7)), hem.mul(0.75)));
+        const underLight = tbUnderLight(u);
+        const underK = u.sunColor.y.mul(0.3).add(0.7);
+        col.assign(mix(col, vec3(0.26, 0.64, 0.64).mul(underK).mul(underLight), coreTint.mul(0.55)));
+        col.assign(mix(col, vec3(0.88, 0.55, 0.3).mul(underK).mul(underLight), hem.mul(0.75)));
         const out = tbAerial(u, col, dist, V.negate());
         return vec4(out.mul(alpha), alpha);
     });
