@@ -15,11 +15,18 @@
  *                            moves on by itself: an hour every 100 s of `t`)
  *   hour=<place>             hold the light at a place on the wheel of hours (0 = the high sun,
  *                            1 = the gold, ... 5 = first light; fractions are crossings)
+ *   sea=<place>              hold the sea state at a place on its wheel (0 = the trade wind,
+ *                            1 = glass, 2 = the long swell, 3 = a plankton bloom, 4 = a squall,
+ *                            5 = crystal water; fractions are crossings). Without it the weather
+ *                            turns by itself: a state every 73 s of `t`
  *   locks=<n>                before anything else, play n locks (colonies holding their colours)
  *   event=lock|drop|clear|quad|twist|perfect|levelUp|break   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>, eventLevel=<n> for levelUp); `break` ends the held combo
- *   pass=turtle|manta|whale|whaleFar   send for one of the large animals...
+ *   eventAt=<s>              ...or fire it at this moment of `t` instead, so one page can be
+ *                            seeked through the event (window.__PLAYGROUND__.seek(t))
+ *   pass=turtle|manta|whale|whaleFar|pod   send for one of the large animals (pod: the dolphins
+ *                            a three-line clear sends)...
  *   passAge=<s>              ...and show it <s> seconds into its pass
  *   visit=humpback|humpbackRise|blueWhale|whaleShark|manta|mantaLoop|eagleRays|turtle|turtleRise|
  *         hammerheads|dolphins|sunfish   one of the sea's own visits (ocean-visits.js ACTS)...
@@ -148,6 +155,7 @@ export function create({
     // A capture that names its level (or its place on the wheel) wants that hour, not that hour
     // plus however long `t` is.
     if (params.has('level') || params.has('hour')) world.setHourDrift(false);
+    if (params.has('sea')) world.holdSea(num(params, 'sea', 0));
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
 
@@ -221,6 +229,7 @@ export function create({
 
     const eventName = params.get('event');
     const eventAge = num(params, 'eventAge', 0.6);
+    const eventAt = params.has('eventAt') ? num(params, 'eventAt', 0) : null;
     const passName = params.get('pass');
     const passAge = num(params, 'passAge', 12);
     const holdCombo = Math.max(0, Math.round(num(params, 'combo', 0)));
@@ -248,8 +257,11 @@ export function create({
 
     const seekTo = (time) => {
         // An animal's pass, a held chain and warm-up locks all have to be played up to `time`.
-        const lead = Math.max((eventName ? eventAge : 0) + 9 + warmLocks * 0.5, passName ? passAge + 1 : 0);
+        const eventTime = eventName ? (eventAt ?? time - eventAge) : time;
+        const lead = Math.max((eventName ? Math.max(0, time - eventTime) : 0) + 9 + warmLocks * 0.5, passName ? passAge + 1 : 0);
         const start = Math.max(0, time - lead);
+        // (A level-up played before this seek must not stand in the way of playing it again.)
+        world.level = 1;
         world.seek(start);
         if (visitName) {
             world.extraVisits.length = 0;
@@ -285,7 +297,6 @@ export function create({
             });
         }
         // The chain is built one clear at a time, so the animals are called the way they are in play.
-        const eventTime = eventName ? time - eventAge : time;
         if (holdCombo > 0) {
             const span = Math.min(6, Math.max(0.4, eventTime - cursor - 2.5));
             for (let n = 1; n <= holdCombo; n++) {
@@ -295,10 +306,11 @@ export function create({
                 world.onCombo(n);
             }
         }
-        if (eventTime > cursor) stepTo(cursor, eventTime, 0.05);
-        if (eventName) {
+        const until = Math.min(eventTime, time);
+        if (until > cursor) stepTo(cursor, until, 0.05);
+        if (eventName && eventTime <= time) {
             fireEvent();
-            stepTo(eventTime, time, 1 / 120);
+            if (time > eventTime) stepTo(eventTime, time, 1 / 120);
         }
         frame(time, 0);
         pushPost(time);

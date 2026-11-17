@@ -1,19 +1,30 @@
 /**
- * Synthwave Sunset — fireworks over the sea, fired from a barge off the pier's end.
+ * Synthwave Sunset — fireworks over the sea, fired from a barge off the pier's end, and the
+ * sparks the pier and the wheel throw themselves.
  *
  * One instanced additive draw holds every particle: the rising shells with their sparking tails,
- * and the stars of each burst (peony, chrysanthemum, ring, a gold willow for the finale). Motion
- * is analytic in the vertex stage (spawn state + age: exponential drag, gravity), so a burst costs
- * one ranged upload at spawn and nothing per frame. Each particle is a camera-facing streak along
- * its own on-screen motion, sized in metres with a pixel floor, writing premultiplied light with
- * alpha 0 (it adds to the frame and leaves the reflection pass's alpha alone, so the sea and the
- * wet sand mirror the fireworks).
+ * the stars of each burst, and the ground effects (roman candles and a waterfall of sparks off
+ * the pier, the wheel's Catherine-wheel spray). Motion is analytic in the vertex stage (spawn
+ * state + age: exponential drag, gravity), so a burst costs one ranged upload at spawn and nothing
+ * per frame. Each particle is a camera-facing streak along its own on-screen motion, sized in
+ * metres with a pixel floor, writing premultiplied light with alpha 0 (it adds to the frame and
+ * leaves the reflection pass's alpha alone, so the sea and the wet sand mirror the fireworks).
+ *
+ * Trails cost no shader work: a particle born a moment after another with the same spawn state
+ * flies the same path that moment behind it, so a star's trail is a few dimmer copies of the star
+ * (`trail`), and a willow's branches droop as real curves instead of straight streaks.
+ *
+ * The shells (SHELL_KINDS): peony, chrysanthemum (glitter), ring, saturn (a ring round a core),
+ * pistil (a core of another colour), palm (a few thick arms that droop, crackling at their
+ * ends), crossette (stars that split in four), strobe (white stars that hang and blink), crackle
+ * (a cloud of popping sparks), willow and brocade (gold branches that fall a long way).
  *
  * The world also lights the sky round the bursts (`u.burst0/1`, read by the sky function); under
- * Reduce flashing that glow keeps REDUCED_FLASH_SCALE of its strength and the stars fade in
- * instead of popping. The two glows ACCUMULATE: a burst joins the weaker of them (its light added
- * to what is still lit, the glow's centre and colour easing toward the new burst), so a volley
- * builds a smoke-lit sky that the sea mirrors instead of blinking from burst to burst.
+ * Reduce flashing that glow keeps REDUCED_FLASH_SCALE of its strength, the stars fade in instead
+ * of popping and the strobes burn steady. The two glows ACCUMULATE: a burst joins the weaker of
+ * them (its light added to what is still lit, the glow's centre and colour easing toward the new
+ * burst), so a volley builds a smoke-lit sky that the sea mirrors instead of blinking from burst
+ * to burst.
  *
  * The particle pool is a ring, but a full ring never cuts a star in mid-air: a new particle takes
  * the slot with the least light left among the next few (a dead one if there is one).
@@ -27,6 +38,7 @@ import {
     clamp,
     exp,
     float,
+    fract,
     length,
     max,
     mix,
@@ -45,13 +57,17 @@ import {
 import { RIG } from './synthwave-sunset-tsl.js';
 import { Swell } from '../shared/swell.js';
 
-/** The barge the shells rise from (world), and the burst heights (m above the sea). */
+/**
+ * The barge the shells rise from (world), the burst heights (m above the sea) and where the
+ * bursts spread (m, along x round `centreX` and along z round the barge): the free sky left of a
+ * game's board, over and beside the wheel.
+ */
 export const FIREWORKS = Object.freeze({
     barge: new THREE.Vector3(-14, 1, -182),
-    burstMin: 50,
-    burstMax: 78,
-    /** Spread of the bursts round the barge (m, along x and z). */
-    spreadX: 78,
+    burstMin: 60,
+    burstMax: 92,
+    centreX: -9,
+    spreadX: 86,
     spreadZ: 34,
 });
 
@@ -60,12 +76,30 @@ export const FIREWORK_COLORS = Object.freeze([0x7ff0d4, 0xff5fa8, 0xffe46a, 0xc8
 /** The finale's willow: long-lived gold falling stars. */
 export const WILLOW_GOLD = new THREE.Color(0xffb04c);
 
+/** The shells the barge can fire. */
+export const SHELL_KINDS = Object.freeze([
+    'peony', 'chrys', 'ring', 'saturn', 'pistil', 'palm', 'crossette', 'strobe', 'crackle', 'willow', 'brocade',
+]);
+
+/** Particle kinds (iMotion.z). Stars up to the shell head are streaks along their motion. */
+const KIND = Object.freeze({
+    star: 0, glitter: 1, shell: 2, spark: 3, strobe: 5,
+});
+
 /** Slots a new particle may take, looking ahead of the ring's cursor (the one with least light left). */
 const POOL_PROBE = 48;
 /** How fast a sky glow's centre and colour follow the bursts that feed it (1/s). */
 const GLOW_FOLLOW = 7;
 /** Extra burst height (m) at `high` 1: deeper cascade waves and the crown burst higher. */
-const HIGH_LIFT = 10;
+const HIGH_LIFT = 22;
+/** Seconds between a star and each copy of it that makes its trail. */
+const TRAIL_GAP = 0.045;
+/** Seconds of its own motion a star is drawn out along (the vertex stage's streak). */
+const STREAK = 0.17;
+const G = 9.81;
+
+const WHITE = new THREE.Color(1, 0.96, 0.9);
+const CRACKLE = new THREE.Color(1, 0.86, 0.6);
 
 function instanced(count, itemSize) {
     const attr = new THREE.InstancedBufferAttribute(new Float32Array(count * itemSize), itemSize);
@@ -78,7 +112,7 @@ function instanced(count, itemSize) {
  *   iSpawn  (x, y, z, t0)          world spawn point and time
  *   iVel    (vx, vy, vz, life)     initial velocity, life (s)
  *   iLook   (r, g, b, size m)      colour (linear, HDR) and size
- *   iMotion (drag, gravity, kind, seed)  kind: 0 star, 1 glitter star, 2 shell head, 3 tail spark
+ *   iMotion (drag, gravity, kind, seed)  kind: KIND
  */
 function createParticleMaterial(u) {
     const material = new THREE.MeshBasicNodeMaterial();
@@ -115,7 +149,7 @@ function createParticleMaterial(u) {
     const moving = select(speed.greaterThan(1e-3), float(1.0), float(0.0));
     const dir = mix(vec2(0.0, 1.0), vView.div(max(speed, 1e-3)), moving);
     // The star's trail: about a sixth of a second of its own motion (a long exposure).
-    const streakLen = width.add(speed.mul(0.17).mul(step(motion.z, 2.5)));
+    const streakLen = width.add(speed.mul(STREAK).mul(step(motion.z, 2.5)));
     const corner = positionGeometry.xy;
     const offset = dir.mul(corner.x.mul(streakLen)).add(vec2(dir.y.negate(), dir.x).mul(corner.y.mul(width)));
     material.vertexNode = cameraProjectionMatrix.mul(vec4(mv.xy.add(offset.mul(alive)), mv.z, 1.0));
@@ -132,15 +166,21 @@ function createParticleMaterial(u) {
             .mul(smoothstep(-1.0, 0.3, along));
         const kind = motion.z;
         const seed = motion.w;
+        const calm = u.fireworkCalm;
         // Stars: a brief white-hot start, their colour, a last flicker; glitter twinkles out.
         const hot = exp(age.mul(-9.0)).mul(0.8);
         const fade = float(1.0).sub(smoothstep(0.55, 1.0, lifeT));
         const flick = sin(u.time.mul(38.0).add(seed.mul(91.0))).mul(0.5).add(0.5);
-        const glitter = mix(float(1.0), step(0.55, flick).mul(1.6), step(0.5, kind).mul(step(kind, 1.5)).mul(smoothstep(0.45, 0.7, lifeT)));
-        const calm = u.fireworkCalm;
+        const isGlitter = step(0.5, kind).mul(step(kind, 1.5));
+        const glitter = mix(float(1.0), step(0.55, flick).mul(1.6), isGlitter.mul(smoothstep(0.45, 0.7, lifeT)));
+        // Strobes hang and blink, each on its own beat (steady and dimmer under Reduce flashing).
+        const isStrobe = step(4.5, kind);
+        const blink = step(0.62, fract(age.mul(4.6).add(seed.mul(7.0)))).mul(2.2);
+        const strobe = mix(float(1.0), mix(blink, float(0.55), calm), isStrobe.mul(smoothstep(0.08, 0.3, lifeT)));
         const popIn = mix(float(1.0), smoothstep(0.0, 0.35, age), calm);
-        const twinkle = mix(glitter, float(1.0), calm);
-        const col = look.xyz.mul(float(1.0).add(hot.mul(float(1.0).sub(calm)))).add(vec3(hot.mul(0.6).mul(float(1.0).sub(calm))));
+        const twinkle = mix(glitter, float(1.0), calm).mul(strobe);
+        const warm = hot.mul(float(1.0).sub(calm));
+        const col = look.xyz.mul(float(1.0).add(warm)).add(vec3(warm.mul(0.6)));
         return col.mul(shape).mul(fade).mul(twinkle).mul(popIn)
             .mul(alive)
             .mul(dim)
@@ -200,7 +240,12 @@ export class Fireworks {
         this.glows = [glow(), glow()];
         this.glowClock = Number.NaN;
         this._c = new THREE.Color();
+        this._c2 = new THREE.Color();
         this._hsl = { h: 0, s: 0, l: 0 };
+        this._p = new THREE.Vector3();
+        this._v = new THREE.Vector3();
+        this._a = new THREE.Vector3();
+        this._b = new THREE.Vector3();
     }
 
     /**
@@ -252,12 +297,73 @@ export class Fireworks {
     }
 
     /**
+     * A star and its trail: `trail` dimmer copies, each born TRAIL_GAP after the last, flying the
+     * same path that much behind it.
+     */
+    star(t0, p, v, life, color, size, drag, gravity, kind, trail = 0, gap = TRAIL_GAP) {
+        this.spawn(t0, p, v, life, color, size, drag, gravity, kind);
+        // Each copy is itself a streak STREAK seconds long, so copies `gap` apart overlap: their
+        // light is shared out, and the trail burns about as bright as the star, not many times it.
+        const share = Math.min(1, (gap / STREAK) * 1.5);
+        for (let k = 1; k <= trail; k += 1) {
+            const f = 1 - k / (trail + 1);
+            this.spawn(
+                t0 + k * gap,
+                p,
+                v,
+                life,
+                this._c2.copy(color).multiplyScalar(f * f * share),
+                size * (0.55 + 0.45 * f),
+                drag,
+                gravity,
+                kind === KIND.strobe ? KIND.star : kind,
+            );
+        }
+    }
+
+    /** Where a particle is `tau` seconds after its spawn (the vertex stage's motion). */
+    static travel(p, v, drag, gravity, tau, out) {
+        const k = (1 - Math.exp(-drag * tau)) / drag;
+        return out.set(p.x + v.x * k, p.y + v.y * k - 0.5 * gravity * tau * tau, p.z + v.z * k);
+    }
+
+    /**
+     * A cloud of crackle: `count` sparks popping at random within `radius` of `pos`, between
+     * `t0` and `t0 + seconds`, each a white-gold flash a tenth of a second long.
+     */
+    crackle(t0, pos, radius, count, seconds, color = CRACKLE) {
+        const r = this.rand;
+        const p = this._p;
+        const v = this._v;
+        for (let k = 0; k < count; k += 1) {
+            // Uniform in the ball, a little flattened.
+            const a = r() * Math.PI * 2;
+            const y = r() * 2 - 1;
+            const rr = radius * Math.cbrt(r());
+            const s = Math.sqrt(1 - y * y);
+            p.set(pos.x + Math.cos(a) * s * rr, pos.y + y * rr * 0.8, pos.z + Math.sin(a) * s * rr);
+            v.set((r() - 0.5) * 6, (r() - 0.5) * 6, (r() - 0.5) * 6);
+            this.spawn(
+                t0 + r() * seconds,
+                p,
+                v,
+                0.09 + r() * 0.1,
+                this._c2.copy(color).multiplyScalar(3.4 + r() * 2),
+                0.42,
+                3.0,
+                2.0,
+                KIND.spark,
+            );
+        }
+    }
+
+    /**
      * Launch one shell now; it bursts on arrival.
      * @param {number} t      world time
-     * @param {object} o      { color (THREE.Color, linear), kind ('peony'|'chrys'|'ring'|'willow'),
-     *                         scale (0.5..1.5), delay (s), stars (count), x (-0.5..0.5: where
-     *                         across the spread it bursts; random without), high (0..1: higher),
-     *                         rise (s: the shell's flight; random without) }
+     * @param {object} o      { color (THREE.Color, linear), kind (SHELL_KINDS), scale (0.5..1.8),
+     *                         delay (s), stars (count), x (-0.5..0.5: where across the spread it
+     *                         bursts; random without), high (0..1: higher), rise (s: the shell's
+     *                         flight; random without) }
      */
     launch(t, o = {}) {
         const r = this.rand;
@@ -265,26 +371,28 @@ export class Fireworks {
         const t0 = t + (o.delay ?? 0);
         const base = FIREWORKS.barge.clone().add(new THREE.Vector3((r() - 0.5) * 18, 0, (r() - 0.5) * 12));
         const across = Number.isFinite(o.x) ? THREE.MathUtils.clamp(o.x, -0.5, 0.5) + (r() - 0.5) * 0.06 : r() - 0.5;
+        const falls = o.kind === 'willow' || o.kind === 'brocade';
         const burst = new THREE.Vector3(
-            FIREWORKS.barge.x + across * FIREWORKS.spreadX,
-            FIREWORKS.burstMin + r() * (FIREWORKS.burstMax - FIREWORKS.burstMin) * (o.kind === 'willow' ? 1.1 : 1)
+            FIREWORKS.centreX + across * FIREWORKS.spreadX,
+            FIREWORKS.burstMin + r() * (FIREWORKS.burstMax - FIREWORKS.burstMin) * (falls ? 1.1 : 1)
                 + THREE.MathUtils.clamp(o.high ?? 0, 0, 1) * HIGH_LIFT,
             FIREWORKS.barge.z + (r() - 0.5) * FIREWORKS.spreadZ,
         );
         // The shell's flight time: a salute's shells share one, so they burst together.
         const rise = Number.isFinite(o.rise) ? THREE.MathUtils.clamp(o.rise, 0.8, 1.8) : 1.05 + r() * 0.35;
         // The shell: solve the launch velocity so drag-free flight reaches the burst point at `rise`.
-        const g = 9.81;
         const v = burst.clone().sub(base).divideScalar(rise);
-        v.y += 0.5 * g * rise;
+        v.y += 0.5 * G * rise;
         const shellCol = this._c.setRGB(1.0, 0.72, 0.42).multiplyScalar(2.2);
-        this.spawn(t0, base, v, rise, shellCol, 0.55, 1e-3, g, 2);
+        this.spawn(t0, base, v, rise, shellCol, 0.55, 1e-3, G, KIND.shell);
+        // The mortar's flash on the barge.
+        this.spawn(t0, base, this._v.set(0, 3, 0), 0.14, this._c.setRGB(1.0, 0.8, 0.55).multiplyScalar(3.5), 2.6, 1.0, 0, KIND.spark);
         // A tail of sparks shed along the way.
         const tail = 14;
         for (let k = 0; k < tail; k += 1) {
             const f = (k + 0.5) / tail;
             const tk = f * rise;
-            const at = base.clone().addScaledVector(v, tk).add(new THREE.Vector3(0, -0.5 * g * tk * tk, 0));
+            const at = base.clone().addScaledVector(v, tk).add(new THREE.Vector3(0, -0.5 * G * tk * tk, 0));
             this.spawn(
                 t0 + tk,
                 at,
@@ -294,7 +402,7 @@ export class Fireworks {
                 0.32,
                 2.0,
                 4,
-                3,
+                KIND.spark,
             );
         }
         this.pending.push({
@@ -318,67 +426,269 @@ export class Fireworks {
         }
     }
 
+    /**
+     * `count` stars flung evenly over a sphere (a golden spiral) from `pos`.
+     * @param {object} s  { speed, life, drag, gravity, level, size, kind, trail, every (the
+     *                    colour of every `every`-th star: `alt`) }
+     */
+    sphere(at, pos, count, color, s, alt = null) {
+        const r = this.rand;
+        const v = this._v;
+        for (let k = 0; k < count; k += 1) {
+            const y = 1 - (2 * (k + 0.5)) / count;
+            const rad = Math.sqrt(1 - y * y);
+            const phi = k * 2.399963;
+            const sp = s.speed * (0.85 + r() * 0.3);
+            v.set(Math.cos(phi) * rad * sp, y * sp, Math.sin(phi) * rad * sp);
+            const c = alt && s.every && k % s.every === 0 ? alt : color;
+            this.star(
+                at,
+                pos,
+                v,
+                s.life + r() * 0.7,
+                this._c.copy(c).multiplyScalar(s.level),
+                s.size,
+                s.drag,
+                s.gravity,
+                s.kind ?? KIND.star,
+                s.trail ?? 0,
+            );
+        }
+    }
+
+    /** `count` stars flung round a ring square to `axis` from `pos`. */
+    ring(at, pos, count, color, axis, s) {
+        const r = this.rand;
+        const t1 = this._a.crossVectors(axis, this._p.set(1, 0, 0)).normalize();
+        const t2 = this._b.crossVectors(axis, t1);
+        const v = this._v;
+        for (let k = 0; k < count; k += 1) {
+            const a = (k / count) * Math.PI * 2;
+            const sp = s.speed * (0.94 + r() * 0.12);
+            v.copy(t1).multiplyScalar(Math.cos(a) * sp).addScaledVector(t2, Math.sin(a) * sp);
+            this.star(
+                at,
+                pos,
+                v,
+                s.life + r() * 0.5,
+                this._c.copy(color).multiplyScalar(s.level),
+                s.size,
+                s.drag,
+                s.gravity,
+                s.kind ?? KIND.star,
+                s.trail ?? 0,
+            );
+        }
+    }
+
     burst(b) {
         const r = this.rand;
-        const { pos, color, kind } = b;
-        const speed = (kind === 'willow' ? 27 : 40) * b.scale;
+        const {
+            pos, color, kind, at,
+        } = b;
+        const k = b.scale;
         const n = b.stars;
         const alt = new THREE.Color(FIREWORK_COLORS[Math.floor(r() * FIREWORK_COLORS.length)]);
-        const ringAxis = new THREE.Vector3(r() - 0.5, 1, r() - 0.5).normalize();
-        const tmp = new THREE.Vector3();
-        for (let k = 0; k < n; k += 1) {
-            // Even directions on a sphere (golden spiral), or a ring square to a tilted axis.
-            let d;
-            if (kind === 'ring') {
-                const a = (k / n) * Math.PI * 2;
-                const t1 = new THREE.Vector3().crossVectors(ringAxis, new THREE.Vector3(1, 0, 0)).normalize();
-                const t2 = new THREE.Vector3().crossVectors(ringAxis, t1);
-                d = t1.multiplyScalar(Math.cos(a)).addScaledVector(t2, Math.sin(a));
-            } else {
-                const y = 1 - (2 * (k + 0.5)) / n;
-                const rad = Math.sqrt(1 - y * y);
-                const phi = k * 2.399963;
-                d = tmp.set(Math.cos(phi) * rad, y, Math.sin(phi) * rad).clone();
+        const axis = new THREE.Vector3(r() - 0.5, 1, r() - 0.5).normalize();
+        const plain = {
+            speed: 40 * k, life: 2.1, drag: 1.45, gravity: 3.0, level: 3.2, size: 0.72,
+        };
+        if (kind === 'ring') {
+            this.ring(at, pos, Math.round(n * 0.5), color, axis, { ...plain, trail: 1 });
+        } else if (kind === 'saturn') {
+            // A ring round a core of another colour.
+            this.ring(at, pos, Math.round(n * 0.45), color, axis, { ...plain, speed: 46 * k, trail: 1 });
+            this.sphere(at, pos, Math.round(n * 0.4), alt, { ...plain, speed: 20 * k, life: 1.8 });
+        } else if (kind === 'pistil') {
+            // A sphere with a slower core of another colour inside it.
+            this.sphere(at, pos, Math.round(n * 0.75), color, plain);
+            this.sphere(at, pos, Math.round(n * 0.3), alt, {
+                ...plain, speed: 17 * k, life: 1.9, kind: KIND.glitter,
+            });
+        } else if (kind === 'chrys') {
+            this.sphere(at, pos, Math.round(n * 0.75), color, {
+                ...plain, kind: KIND.glitter, trail: 1, every: 7,
+            }, alt);
+        } else if (kind === 'willow' || kind === 'brocade') {
+            // Gold branches that fall a long way: every star trails, and the trails droop.
+            const crown = kind === 'brocade';
+            this.sphere(at, pos, Math.round(n * (crown ? 0.62 : 0.5)), WILLOW_GOLD, {
+                speed: (crown ? 35 : 27) * k,
+                life: crown ? 4.3 : 3.8,
+                drag: crown ? 0.95 : 1.0,
+                gravity: crown ? 5.2 : 6.0,
+                level: 2.4,
+                size: 0.6,
+                kind: KIND.glitter,
+                trail: crown ? 4 : 3,
+            });
+        } else if (kind === 'palm') {
+            // A few thick arms thrown up and out, each with a long trail, crackling at their ends.
+            const arms = 9 + Math.floor(r() * 4);
+            const v = this._v;
+            const tip = this._p;
+            const life = 2.5;
+            for (let a = 0; a < arms; a += 1) {
+                const az = ((a + r() * 0.5) / arms) * Math.PI * 2;
+                const el = 0.5 + r() * 0.7;
+                const sp = 37 * k * (0.9 + r() * 0.2);
+                v.set(Math.cos(az) * Math.cos(el) * sp, Math.sin(el) * sp, Math.sin(az) * Math.cos(el) * sp);
+                this.star(at, pos, v, life + r() * 0.4, this._c.copy(color).multiplyScalar(3.0), 0.95, 1.05, 7.0, KIND.star, 7, 0.05);
+                Fireworks.travel(pos, v, 1.05, 7.0, life * 0.8, tip);
+                this.crackle(at + life * 0.7, tip.clone(), 4.5 * k, Math.max(3, Math.round(n * 0.03)), 0.5);
             }
-            const vk = d.multiplyScalar(speed * (0.85 + r() * 0.3));
-            const willow = kind === 'willow';
-            let c = k % 7 === 0 ? alt : color;
-            if (willow) c = WILLOW_GOLD;
-            const level = willow ? 2.4 : 3.2;
-            this.spawn(
-                b.at,
-                pos,
-                vk,
-                (willow ? 3.8 : 2.1) + r() * 0.7,
-                c.clone().multiplyScalar(level),
-                willow ? 0.6 : 0.72,
-                willow ? 1.0 : 1.45,
-                willow ? 6.0 : 3.0,
-                willow || kind === 'chrys' ? 1 : 0,
-            );
+        } else if (kind === 'crossette') {
+            // Stars that fly out and split in four.
+            const stars = 14;
+            const split = 0.7;
+            const v = this._v;
+            const at2 = at + split;
+            const drag = 1.25;
+            for (let s = 0; s < stars; s += 1) {
+                const y = 1 - (2 * (s + 0.5)) / stars;
+                const rad = Math.sqrt(1 - y * y);
+                const phi = s * 2.399963;
+                const sp = 38 * k;
+                v.set(Math.cos(phi) * rad * sp, y * sp, Math.sin(phi) * rad * sp);
+                this.star(at, pos, v, split, this._c.copy(color).multiplyScalar(3.4), 0.85, drag, 3.0, KIND.star, 2);
+                const where = Fireworks.travel(pos, v, drag, 3.0, split, new THREE.Vector3());
+                const along = v.clone().normalize();
+                const side = new THREE.Vector3().crossVectors(along, this._p.set(0.3, 1, 0.2)).normalize();
+                const up = new THREE.Vector3().crossVectors(along, side);
+                const carry = v.clone().multiplyScalar(Math.exp(-drag * split) * 0.5);
+                for (const [a, c] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+                    const child = carry.clone().addScaledVector(side, a * 15 * k).addScaledVector(up, c * 15 * k);
+                    this.star(at2, where, child, 1.2 + r() * 0.3, this._c.copy(s % 2 ? alt : color).multiplyScalar(3.0), 0.6, 1.5, 3.5, KIND.star, 1);
+                }
+            }
+        } else if (kind === 'strobe') {
+            // White stars that stop, hang and blink.
+            this.sphere(at, pos, Math.round(n * 0.45), WHITE, {
+                speed: 34 * k, life: 3.0, drag: 2.7, gravity: 0.9, level: 2.6, size: 0.6, kind: KIND.strobe,
+            });
+            this.sphere(at, pos, Math.round(n * 0.25), color, { ...plain, speed: 44 * k, life: 1.3 });
+        } else if (kind === 'crackle') {
+            // A small burst that sets off a cloud of popping sparks.
+            this.sphere(at, pos, Math.round(n * 0.3), color, { ...plain, speed: 30 * k, life: 1.2 });
+            this.crackle(at + 0.25, pos.clone(), 19 * k, Math.round(n * 0.9), 1.1);
+        } else {
+            // Peony: a plain sphere, every seventh star another colour.
+            this.sphere(at, pos, n, color, { ...plain, every: 7 }, alt);
         }
         // Light the sky round the burst: it joins the weaker glow, adding to what is still lit.
         const [g0, g1] = this.glows;
         const glow = g0.swell.valueAt(b.at) <= g1.swell.valueAt(b.at) ? g0 : g1;
         const before = glow.swell.valueAt(b.at);
         glow.swell.hit(b.scale, b.at);
+        const gold = kind === 'willow' || kind === 'brocade';
+        const lit = gold ? WILLOW_GOLD : b.color;
         if (before < 0.02) {
             // Nothing lit there: it starts where the burst is.
             glow.pos.copy(pos);
             glow.aim.copy(pos);
-            glow.color.copy(b.color);
-            glow.tint.copy(b.color);
+            glow.color.copy(lit);
+            glow.tint.copy(lit);
         } else {
             // Lit: its centre and colour move toward the new burst by the burst's share of the light.
             const share = b.scale / (before + b.scale);
             glow.aim.lerp(pos, share);
-            glow.tint.lerp(b.color, share);
+            glow.tint.lerp(lit, share);
             // Blended colours drift toward white: keep the smoke-lit sky a colour, not a haze.
             glow.tint.getHSL(this._hsl);
             if (this._hsl.s < 0.75) glow.tint.setHSL(this._hsl.h, 0.75, this._hsl.l);
         }
-        if (kind === 'willow') glow.tint.lerp(WILLOW_GOLD, 0.5);
         this.onBurst?.(b);
+    }
+
+    /**
+     * A roman candle's comet: one bright star with a long trail thrown from `from` at `velocity`,
+     * ending in a puff of crackle.
+     * @param {number} t
+     * @param {object} o  { from, velocity (THREE.Vector3), color, delay, life, size, crackle }
+     */
+    comet(t, o) {
+        this.now = t;
+        const t0 = t + (o.delay ?? 0);
+        const life = o.life ?? 1.5;
+        const drag = 0.55;
+        const color = this._c.copy(o.color ?? WILLOW_GOLD).multiplyScalar(2.6);
+        this.star(t0, o.from, o.velocity, life, color, o.size ?? 0.8, drag, G, KIND.star, 7, 0.05);
+        // The mortar's flash on the deck.
+        this.spawn(t0, o.from, this._v.set(0, 2, 0), 0.12, this._c2.setRGB(1.0, 0.82, 0.6).multiplyScalar(3), 1.8, 1.0, 0, KIND.spark);
+        const n = o.crackle ?? 10;
+        if (n > 0) {
+            const end = Fireworks.travel(o.from, o.velocity, drag, G, life * 0.92, new THREE.Vector3());
+            this.crackle(t0 + life * 0.86, end, 3.6, n, 0.35);
+        }
+    }
+
+    /**
+     * A waterfall of sparks off an edge (the pier's seaward side): `count` gold sparks let fall
+     * from the line a → b over `seconds`, lit from a's end to b's over `sweep` seconds.
+     * @param {number} t
+     * @param {object} o  { a, b (THREE.Vector3), count, seconds, sweep, color }
+     */
+    waterfall(t, o) {
+        this.now = t;
+        const r = this.rand;
+        const p = this._p;
+        const v = this._v;
+        const seconds = o.seconds ?? 4;
+        const sweep = o.sweep ?? 0.9;
+        const color = o.color ?? WILLOW_GOLD;
+        for (let k = 0; k < o.count; k += 1) {
+            const f = r();
+            p.copy(o.a).lerp(o.b, f);
+            p.x += (r() - 0.5) * 0.5;
+            p.z += (r() - 0.5) * 0.5;
+            v.set((r() - 0.5) * 1.6, -0.6 - r() * 2.2, (r() - 0.5) * 1.6);
+            // Thick at first, thinning out toward the end.
+            const when = f * sweep + (r() ** 1.35) * seconds;
+            this.spawn(
+                t + when,
+                p,
+                v,
+                0.95 + r() * 0.5,
+                this._c.copy(color).multiplyScalar(2.0 + r() * 1.6),
+                0.3 + r() * 0.12,
+                0.5,
+                8.6,
+                KIND.glitter,
+            );
+        }
+    }
+
+    /**
+     * A Catherine wheel's spray: sparks thrown off a turning rim along its tangent.
+     * @param {number} t
+     * @param {object} o  { center, ax, ay (unit vectors spanning the rim's plane), radius, count,
+     *                    seconds, speed, spin (±1), colorA, colorB }
+     */
+    spray(t, o) {
+        this.now = t;
+        const r = this.rand;
+        const p = this._p;
+        const v = this._v;
+        const spin = o.spin ?? 1;
+        // The spray leaves from a few jets round the rim, which turn with it.
+        const jets = 5;
+        const turn = (o.turn ?? 3.2) * spin;
+        for (let k = 0; k < o.count; k += 1) {
+            const when = r() * o.seconds;
+            const a = ((k % jets) / jets) * Math.PI * 2 + turn * when + (r() - 0.5) * 0.12;
+            const ca = Math.cos(a);
+            const sa = Math.sin(a);
+            p.copy(o.center).addScaledVector(o.ax, ca * o.radius).addScaledVector(o.ay, sa * o.radius);
+            const sp = o.speed * (0.7 + r() * 0.6);
+            const out = r() * 0.35;
+            v.set(0, 0, 0)
+                .addScaledVector(o.ax, (-sa * spin + ca * out) * sp)
+                .addScaledVector(o.ay, (ca * spin + sa * out) * sp);
+            v.x += (r() - 0.5) * 3;
+            v.z += (r() - 0.5) * 3;
+            const c = r() < 0.5 ? o.colorA : o.colorB;
+            this.star(t + when, p, v, 0.7 + r() * 0.55, this._c.copy(c).multiplyScalar(3.0), 0.42, 1.3, 7.0, KIND.star, 2, 0.04);
+        }
     }
 
     /** The sky glows' summed light at `t` (unscaled), for the post stack's bloom. */
