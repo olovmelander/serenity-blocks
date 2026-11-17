@@ -13,7 +13,8 @@
  *   combo=<n>                hold a combo of n (the gear, and the starbow)
  *   level=<n>                rest on level n's palette
  *   locks=<n>                before anything else, play n locks (the course holding their hoops)
- *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|spin|perfect|b2b|cascade|gear|levelUp|gameOver|rekindle
+ *                            fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
  *   demo=1                   live only: play a looping gameplay script
@@ -23,6 +24,8 @@
  *   bloom=0|1                override the tier's bloom
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   reduce=1                 reduced motion
+ *   region=<name>            hold the voyage in one region (reach, gorge, dust, nursery,
+ *                            filaments, clearing)
  *   icon=1                   the theme-icon framing: the lens looks straight down the course
  *                            (iconFov=46; iconYaw and iconPitch in radians, both 0, turn it)
  *                            (compose for a small circle: capture a square frame)
@@ -121,6 +124,7 @@ export function create({
     }).build();
     world.bindCamera(camera);
     world.setReducedMotion(params.get('reduce') === '1');
+    if (params.get('region')) world.holdRegion(params.get('region'));
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
 
@@ -206,8 +210,22 @@ export function create({
             });
         } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
-        else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
-        else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
+        else if (eventName === 'twist') {
+            // The T that twisted locks first: its colour is the helix's.
+            world.onLock({ rows: [18, 17], u, color: PIECE_COLORS[2] });
+            world.onClear({ rows: bottom(2), lines: 2, twist: true });
+        } else if (eventName === 'spin') {
+            world.onLock({ rows: [18, 17], u, color: PIECE_COLORS[2] });
+            world.onSpin();
+        } else if (eventName === 'perfect') {
+            // The game sends the crown in the same frame or a few ticks after the clear.
+            world.onClear({ rows: bottom(4), lines: 4, perfect: true });
+            world.onPerfect();
+        } else if (eventName === 'b2b') world.onClear({ rows: bottom(lines), lines, b2b: true });
+        else if (eventName === 'cascade') world.onClear({ rows: bottom(lines), lines, cascade: 3 });
+        else if (eventName === 'gear') world.onCombo(Math.max(2, holdCombo + 1));
+        else if (eventName === 'gameOver') world.onGameOver();
+        else if (eventName === 'rekindle') world.onSessionStart();
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
     };
 
@@ -232,6 +250,13 @@ export function create({
                 color: PIECE_COLORS[i % PIECE_COLORS.length],
                 hardDrop: i % 4 === 3,
             });
+        }
+        if (eventName === 'rekindle') {
+            // The run ended four seconds before the new one starts.
+            const over = Math.max(cursor, eventTime - 4);
+            if (over > cursor) stepTo(cursor, over, 0.1);
+            cursor = over;
+            world.onGameOver();
         }
         if (eventTime > cursor) stepTo(cursor, eventTime, 0.1);
         if (eventName) {

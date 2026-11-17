@@ -180,7 +180,7 @@ const captureThemes = [
     ['stellar-drift', 'stellarDrift', 'Stellar Drift',
         'space, boulders, shards, heroes, motes, sparks, meteors, heads'],
 
-    ['stellar-velocity', 'stellarVel', 'Stellar Velocity', 'canyon, stars, motes, hoops, bolts, jets'],
+    ['stellar-velocity', 'stellarVel', 'Stellar Velocity', 'canyon, stars, motes, beacons, hoops, shocks, helix, bolts'],
 
     ['stillwater',
         'stillwater',
