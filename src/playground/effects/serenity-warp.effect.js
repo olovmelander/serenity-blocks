@@ -14,8 +14,15 @@
  *   level=<n>                rest on level n's palette
  *   locks=<n>                before anything else, play n locks (the field holding their glass)
  *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
+ *         spin|b2b|crown|step|over|open                 (third pass: a twist with no lines, a
+ *                            back-to-back clear (b2bRun=<n> before it), a crowned arrival
+ *                            (perfect clear after four lines), a chain's step (combo=<n> held,
+ *                            then one more), the run's end, the run's end then a new run
+ *                            openAt=<s> later)
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>, piece=I|O|T|S|Z|J|L, turns=<quarter turns>)
+ *   mood=<x>                 move the warp's moods this far along their clock (0 calm, 1 torrent,
+ *                            2 bloom, 3 tide; fractions melt)
  *   demo=1                   live only: play a looping gameplay script
  *   parts=sky,glass,...      draw only these parts
  *   falseColor=1             post debug view: band the pre-tone-map max channel
@@ -134,6 +141,7 @@ export function create({
     }).build();
     world.bindCamera(camera);
     world.setReducedMotion(params.get('reduce') === '1');
+    world.moodOffset = num(params, 'mood', 0);
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
 
@@ -227,6 +235,15 @@ export function create({
         else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
         else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
+        else if (eventName === 'spin') world.onSpin();
+        else if (eventName === 'b2b') {
+            for (let i = 0; i < Math.round(num(params, 'b2bRun', 0)); i++) world.b2bRun += 1;
+            world.onClear({ rows: bottom(lines), lines, b2b: true });
+        } else if (eventName === 'crown') {
+            world.onClear({ rows: bottom(4), lines: 4 });
+            world.onPerfect();
+        } else if (eventName === 'step') world.onCombo(holdCombo + 1);
+        else if (eventName === 'over' || eventName === 'open') world.onGameOver();
     };
 
     const lockAt = (i) => {
@@ -260,7 +277,13 @@ export function create({
         if (eventTime > cursor) stepTo(cursor, eventTime, 0.1);
         if (eventName) {
             fireEvent();
-            stepTo(eventTime, time, 1 / 120);
+            const openAt = num(params, 'openAt', -1);
+            if (eventName === 'open' && openAt >= 0 && openAt < eventAge) {
+                stepTo(eventTime, eventTime + openAt, 1 / 120);
+                world.resetSession();
+                world.onSessionStart();
+                stepTo(eventTime + openAt, time, 1 / 120);
+            } else stepTo(eventTime, time, 1 / 120);
         }
         frame(time, 0);
         pushPost(time);
