@@ -13,7 +13,7 @@ import {
 } from '../../src/themes/stellar-velocity/stellar-velocity-world.js';
 import {
     BOLT_FLIGHT, BOLT_SLOTS, CRUISE, FRONT_SLOTS, FRONT_SPEED, GEAR_CHAIN, HOOP_LIGHTS, HOOP_SLOTS, HOOP_STAGGER,
-    HUSH_HOLD, JET_SLOTS, JUMP_EXIT, JUMP_TUNNEL, JUMP_TUNNEL_PERFECT, NEBULA_PALETTES, PALETTE_HOME, PALETTE_STEP,
+    COMET_DEPTH, COMET_FLIGHT, FRONT_START, HUSH_HOLD, JUMP_EXIT, JUMP_TUNNEL, JUMP_TUNNEL_PERFECT, NEBULA_PALETTES, PALETTE_HOME, PALETTE_STEP,
     WARP_CHAIN, courseAnchors, gearForCombo, hoopDepth, hoopHeld, hoopRun, warpForCombo,
 } from '../../src/themes/stellar-velocity/stellar-velocity-core.js';
 import { QUALITY } from '../../src/themes/stellar-velocity/stellar-velocity-quality.js';
@@ -238,20 +238,25 @@ describe('stellar velocity world: a clear fires the drive', () => {
         expect(world.counts.clears).toBe(1);
     });
 
-    it('a front of light per line comes down the canyon, and the cleared rows leave as jets', () => {
+    it('a front of light per line comes down the canyon, and each cleared row flies into the sun as a comet', () => {
         for (const lines of [1, 2, 3]) {
             const { camera, world } = makeWorld();
             const before = world.frontCursor;
             frame(world, camera, 1 / 60, () => world.onClear({ lines }));
-            run(world, camera, 0.6);
+            const { table } = world.bolts;
+            const comets = [];
+            for (let i = 0; i < BOLT_SLOTS; i++) {
+                if (table[i * 4].w > -50 && table[i * 4 + 1].z === -COMET_DEPTH) comets.push(table[i * 4]);
+            }
+            expect(comets).toHaveLength(lines);
+            // Each comet leaves its own row's height.
+            expect(new Set(comets.map((row) => row.y.toFixed(4))).size).toBe(lines);
+            run(world, camera, COMET_FLIGHT + 0.4);
             expect(world.frontCursor - before).toBe(lines);
-            const jets = world.jets.table.filter((row, i) => i % 2 === 0 && row.w > 0);
-            expect(jets).toHaveLength(lines);
-            // Each jet leaves its own row's height.
-            const ys = new Set(jets.map((row) => row.y.toFixed(4)));
-            expect(ys.size).toBe(lines);
+            // The sun took every one: a ring of light left it for each.
+            expect(world.ringSlots.filter((slot) => slot.birth > 0)).toHaveLength(lines);
         }
-        expect(JET_SLOTS).toBeGreaterThanOrEqual(8);
+        expect(BOLT_SLOTS).toBeGreaterThanOrEqual(12);
         expect(FRONT_SLOTS).toBeGreaterThanOrEqual(6);
     });
 
@@ -457,15 +462,22 @@ describe('stellar velocity world: the nebula follows the level and the clock', (
         expect(world.u.glow.value.z).toBeCloseTo(next[2], 2);
     });
 
-    it('a level-up adds one step to wherever the clock has carried it, eased, with a front of the new colour', () => {
+    it('a level-up adds one step to wherever the clock has carried it: the new colour comes down the canyon as a wave', () => {
         const { camera, world } = makeWorld('Minimal', { at: 5 });
         const fronts = world.frontCursor;
         frame(world, camera, 1 / 60, () => world.levelUp(2));
         expect(world.frontCursor).toBe(fronts + 1);
-        // Eased: not there at once.
-        expect(world.levelPlace).toBeLessThan(0.5);
-        run(world, camera, 8);
+        // The place is the new level's at once (the sky and the far canyon turn first); the gas
+        // nearer than the wave keeps the old colour until its front has passed us.
         expect(world.levelPlace).toBe(1);
+        const wave = world.u.wave.value;
+        expect(wave).toBeGreaterThan(FRONT_START - 1);
+        expect(world.u.glowOld.value.distanceTo(world.u.glow.value)).toBeGreaterThan(0.05);
+        run(world, camera, 1.5);
+        expect(world.u.wave.value).toBeLessThan(wave - 10);
+        run(world, camera, 6.5);
+        expect(world.u.wave.value).toBe(-1000);
+        expect(world.u.glowOld.value.distanceTo(world.u.glow.value)).toBeLessThan(1e-6);
         expect(world.getState().palette).toBe(NEBULA_PALETTES[PALETTE_HOME + 1].name);
         run(world, camera, PALETTE_STEP - 8, 100);
         expect(world.getState().palette).toBe(NEBULA_PALETTES[PALETTE_HOME + 2].name);
