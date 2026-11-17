@@ -87,6 +87,7 @@ import {
 } from './odyssey-ocean-window.js';
 import { createOdysseyOceanScenery } from './odyssey-ocean-scenery.js';
 import { createOdysseyBreachBurst } from '../composition/odyssey-breach-burst.js';
+import { createOdysseyDolphins } from './odyssey-dolphins.js';
 // Read-only: the 1->2 carry fades ocean life by the SAME density curve the quench veils with,
 // so a re-shaped quench cannot leave fish visible through a thinner veil.
 import { behindSteamDepth, steamQuenchDensity } from '../composition/odyssey-steam-quench.js';
@@ -6062,6 +6063,22 @@ export function createOdysseyWorld({
         quality,
     }) : null;
     if (breachBurst) group.add(breachBurst.group);
+    // THE DOLPHINS IN THE BAY (odyssey-dolphins.js; their clock route is composition/
+    // odyssey-dolphin-pod.js): a pod porpoising between the breach and the shore, in the water's
+    // haze below the surface and the world's sun above it, decided per fragment.
+    const dolphinPod = openWater.length > 2 ? createOdysseyDolphins({
+        seaLevel: ODYSSEY_SEA_LEVEL,
+        quality,
+        noiseTex: detailTex,
+        haze: (c, wpos) => applyAerial(c, wpos, AERIAL_CEIL_WATER, 1, false, formLifeHaze, true, false),
+        grade: toOutput,
+        gradeLight: (c) => toOutputFaded(c, float(0)),
+        depthNode: behindSteamDepth,
+        sunDir: uSunDir,
+        sunColour: uSunColour,
+        skyLight: mix(uSkyHorizon, uSkyZenith, float(0.45)),
+    }) : null;
+    if (dolphinPod) group.add(dolphinPod.group);
 
     // ── forest ──
     // MEASUREMENT LEVER (see the `forest` option). When off, the scatter never runs, so no
@@ -7444,6 +7461,7 @@ export function createOdysseyWorld({
             if (kelpMesh) kelpMesh.visible = uSubmerged.value > 0.001 && lifeOn;
             if (oceanScenery) oceanScenery.update(oceanLook, uSubmerged.value > 0.001 && lifeOn);
             if (breachBurst) breachBurst.update(time, viewCamera?.position ?? null);
+            if (dolphinPod) dolphinPod.update(time, viewCamera?.position ?? null, lifeOn);
             const forestDrawable = uSubmerged.value < 0.999 && !earthCovers;
             for (let i = 0; i < treeMeshes.length; i += 1) {
                 const c = treeMeshes[i].userData.centre;
@@ -7482,6 +7500,7 @@ export function createOdysseyWorld({
             if (kelpMat) kelpMat.dispose();
             if (oceanScenery) oceanScenery.dispose();
             if (breachBurst) breachBurst.dispose();
+            if (dolphinPod) dolphinPod.dispose();
             if (moteMesh) moteMesh.geometry.dispose();
             if (rayMesh) rayMesh.geometry.dispose();
             [heightTex, sunVisTex, groundTex, detailTex, macroTex, summitTex, forestShadeTex, leafAtlasTex,

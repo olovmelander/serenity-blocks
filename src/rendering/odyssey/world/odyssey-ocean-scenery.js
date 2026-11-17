@@ -18,7 +18,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    attribute, cameraPosition, clamp, cos, cross, exp, float, length, max, min, mix, normalGeometry, normalize,
+    abs, attribute, cameraPosition, clamp, cos, cross, dot, exp, float, length, max, min, mix, normalGeometry, normalize,
     positionLocal, positionWorld, sin, smoothstep, texture, uniform, uv, varying, vec2, vec3,
 } from 'three/tsl';
 import {
@@ -42,7 +42,9 @@ export const OCEAN_SCENERY_LOOK = Object.freeze({
     glowB: Object.freeze([0.46, 0.30, 1.0]),
     glowGain: 1.5,
     /** How much of its own colour a coral in the dark gives off. */
-    coralGlow: 0.6,
+    coralGlow: 1.5,
+    /** ...and along its edges, turned away from the eye. */
+    coralEdge: 0.28,
     /** The light through a frond seen from below. */
     frondBack: Object.freeze([0.42, 0.46, 0.10]),
 });
@@ -137,10 +139,20 @@ export function createOdysseyOceanScenery({
     const rockMat = new THREE.MeshBasicNodeMaterial();
     {
         const base = attribute('color', 'vec3');
-        const up = clamp(normalGeometry.y.mul(0.5).add(0.5), 0, 1);
-        // Grey is rock; a pigment is coral (it keeps its colour and takes no crust).
-        const chroma = max(base.r, max(base.g, base.b)).sub(min(base.r, min(base.g, base.b)));
-        const isRock = float(1).sub(smoothstep(float(0.03), float(0.12), chroma));
+        // aLife = (its own light, how far it may sway, 1 on living things): odyssey-ocean-coral.js.
+        const life = attribute('aLife', 'vec3');
+        const isRock = float(1).sub(life.z);
+        // The soft ones sway (anemones, sea pens): by their height above their own foot, each on
+        // its own phase (its place in the world), so a colony stirs and never marches.
+        const swayAmp = life.y.mul(0.075);
+        const swayPh = positionLocal.x.mul(0.31).add(positionLocal.z.mul(0.23));
+        rockMat.positionNode = positionLocal.add(vec3(
+            sin(uTime.mul(0.9).add(swayPh)).mul(swayAmp),
+            float(0),
+            sin(uTime.mul(0.63).add(swayPh.mul(1.7))).mul(swayAmp.mul(0.7)),
+        ));
+        const nrm = normalize(normalGeometry);
+        const up = clamp(nrm.y.mul(0.5).add(0.5), 0, 1);
         const grain = texture(noiseTex, vec2(wp.x.add(wp.y.mul(0.37)), wp.z.add(wp.y.mul(0.61))).mul(0.041));
         const crustAmt = smoothstep(float(0.36), float(0.66), grain.b).mul(up).mul(sunny).mul(isRock)
             .mul(L.crust);
@@ -160,8 +172,12 @@ export function createOdysseyOceanScenery({
             float(0.80),
             texture(noiseTex, vec2(wp.x.add(wp.y.mul(0.53)), wp.z.sub(wp.y.mul(0.41))).mul(0.19)).b,
         ).mul(isRock);
-        // ...and the deep garden's coral carries its own colour as light (it is the cold kind).
-        const ownLight = float(1).sub(isRock).mul(L.coralGlow);
+        // ...and the deep garden carries its own light where its forms say so: at the tips, the
+        // rims and the ridges, with a faint light along every edge turned away from the eye, so a
+        // form is read in the dark by its outline.
+        const eyeDir = normalize(cameraPosition.sub(wp));
+        const edge = float(1).sub(clamp(abs(dot(nrm, eyeDir)), 0, 1));
+        const ownLight = life.x.mul(L.coralGlow).add(edge.mul(edge).mul(life.z).mul(L.coralEdge));
         const glow = mix(vec3(...L.glowA), vec3(...L.glowB), smoothstep(float(0.35), float(0.65), grain.a))
             .mul(spots)
             .mul(L.glowGain)

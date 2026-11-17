@@ -28,6 +28,8 @@
 
 import * as THREE from 'three/webgpu';
 import { OCEAN_COLUMN, OCEAN_ROAM, roamAt } from '../composition/odyssey-ocean-roam.js';
+import { CORAL_FORMS, makeLifeSink } from './odyssey-ocean-coral.js';
+import { DOLPHIN_POD, dolphinLoopPoints } from '../composition/odyssey-dolphin-pod.js';
 
 export const OCEAN_REEF = Object.freeze({
     /** The hero seamount. */
@@ -40,9 +42,21 @@ export const OCEAN_REEF = Object.freeze({
     }),
     pinnacles: 11,
     boulders: 34,
-    corals: 110,
-    /** The cold, glowing garden at the slope's foot (the abyss orbs' view). */
-    deepCorals: 78,
+    /**
+     * THE DEEP GARDEN: colonies of cold, glowing life on rock outcrops at the slope's foot, each
+     * a hero piece with smaller ones round it and bare sand between (world xz, hero form). Placed
+     * in the first three orbs' close-ups: orb 6 looks at the foot of the slope, orb 7 up it,
+     * orb 8 at the tower's wall.
+     */
+    deepColonies: Object.freeze([
+        Object.freeze([26, -25, 'tree']), Object.freeze([52, -46, 'fan']), Object.freeze([-31, -66, 'tubes']),
+        Object.freeze([9, -57, 'anemone']), Object.freeze([35, -73, 'pen']), Object.freeze([-58, -50, 'fan']),
+        Object.freeze([64, -18, 'tubes']), Object.freeze([-34, -36, 'pen']), Object.freeze([-14, -60, 'tree']),
+        Object.freeze([-64, -82, 'anemone']), Object.freeze([44, -98, 'tree']),
+    ]),
+    /** Pieces on the tower's wall facing the close-ups, and warm colonies in the light. */
+    towerGarden: 9,
+    shelfColonies: 7,
     groves: 9,
     stipesPerGrove: [7, 12],
     /** Nothing nearer than this to the submerged rail (u, horizontally), rocks' own radius added. */
@@ -138,15 +152,27 @@ export function reefKeepOut({ rail, seaLevel }) {
             ...r, cx: anchor.x, cz: anchor.z, top: seaLevel - cy - r.reach - 3,
         };
     });
-    const blockedBy = (x, z, radius, topDepth) => {
+    // `y` (optional): a low thing on the bed is measured against the rail in space, not in plan
+    // (the upper rail runs 150 u over the slope's foot; what grows down there is not in its way).
+    // The dolphins' loop: they porpoise in the top of the water all the way round it.
+    const dolphinWay = [...dolphinLoopPoints(5), ...dolphinLoopPoints(5, DOLPHIN_POD.scouts)];
+    const dolphinSide = Math.max(...DOLPHIN_POD.dolphins.map((d) => Math.abs(d.side))) + 3;
+    const dolphinDeep = Math.max(...DOLPHIN_POD.dolphins.map((d) => (d.height * (1 - DOLPHIN_POD.leap)) / DOLPHIN_POD.leap)) + 6;
+    const blockedBy = (x, z, radius, topDepth, y = null) => {
         for (let i = 0; i < rail.length; i += 1) {
-            if (Math.hypot(rail[i].x - x, rail[i].z - z) < OCEAN_REEF.corridor + radius) return 'rail';
+            const up = y === null ? 0 : rail[i].y - y;
+            if (Math.hypot(rail[i].x - x, rail[i].z - z, up) < OCEAN_REEF.corridor + radius) return 'rail';
         }
         for (let a = 0; a < paths.length; a += 1) {
             const { pts, half, up } = paths[a];
             const reach = radius + half + 2;
             for (let i = 0; i < pts.length; i += 3) {
                 if (pts[i + 1] + up + 2 > topDepth && Math.hypot(pts[i] - x, pts[i + 2] - z) < reach) return 'roamer';
+            }
+        }
+        if (topDepth < dolphinDeep) {
+            for (let i = 0; i < dolphinWay.length; i += 1) {
+                if (Math.hypot(dolphinWay[i].x - x, dolphinWay[i].z - z) < radius + dolphinSide) return 'dolphins';
             }
         }
         for (let i = 0; i < rings.length; i += 1) {
@@ -158,7 +184,7 @@ export function reefKeepOut({ rail, seaLevel }) {
         }
         return null;
     };
-    return { blocked: (x, z, radius, topDepth) => blockedBy(x, z, radius, topDepth) !== null, blockedBy };
+    return { blocked: (x, z, radius, topDepth, y = null) => blockedBy(x, z, radius, topDepth, y) !== null, blockedBy };
 }
 
 /**
@@ -170,7 +196,7 @@ export function planOceanReef({
     heightAt, rail, seaLevel, quality = 'high', seed = 1117,
 }) {
     const plan = {
-        tower: null, pinnacles: [], boulders: [], corals: [], stipes: [],
+        tower: null, pinnacles: [], boulders: [], mounds: [], corals: [], stipes: [],
     };
     if (!rail?.length || typeof heightAt !== 'function') return plan;
     const rnd = makeRng(seed);
@@ -239,68 +265,100 @@ export function planOceanReef({
         rocks.push({ x, z, r: r * 0.6 });
     }
 
-    // ── coral: on the tower's shoulders, the stacks' crowns, and the shelf under the shore ──
-    const KINDS = ['head', 'head', 'table', 'fan', 'staghorn'];
-    // The deep garden is branching and fan-shaped (cold-water coral), with few heads.
-    const DEEP_KINDS = ['fan', 'staghorn', 'fan', 'staghorn', 'table', 'head'];
-    const coralAt = (x, y, z, size, depth, deep = false) => {
-        const kinds = deep ? DEEP_KINDS : KINDS;
+    // ── coral and deep-sea life: colonies on rock, bare sand between ──
+    const WARM = [
+        [[0.95, 0.36, 0.46], [1.0, 0.72, 0.62]], [[1.0, 0.52, 0.20], [1.0, 0.82, 0.42]],
+        [[0.62, 0.38, 0.92], [0.86, 0.70, 1.0]], [[0.96, 0.80, 0.28], [1.0, 0.95, 0.66]],
+        [[0.24, 0.74, 0.66], [0.62, 0.98, 0.86]], [[0.98, 0.42, 0.72], [1.0, 0.76, 0.88]],
+    ];
+    // The cold lights of the deep: each colony takes one pair, so it reads as one growth.
+    const COLD = [
+        [[0.08, 0.72, 0.95], [0.60, 1.0, 1.0]], [[0.42, 0.28, 1.0], [0.80, 0.66, 1.0]],
+        [[0.10, 0.92, 0.58], [0.66, 1.0, 0.80]], [[0.16, 0.48, 1.0], [0.60, 0.86, 1.0]],
+        [[0.92, 0.24, 0.78], [1.0, 0.66, 0.92]],
+    ];
+    const pieceAt = (x, y, z, size, kind, pair, deep, yaw = rnd() * Math.PI * 2) => {
         plan.corals.push({
-            x, y, z, size, kind: kinds[Math.floor(rnd() * kinds.length)], hue: rnd(), yaw: rnd() * Math.PI * 2, depth, deep,
+            x, y, z, size, kind, colour: pair[0], accent: pair[1], yaw, deep, depth: seaLevel - y, seed: plan.corals.length,
         });
     };
-    const coralTarget = Math.round(R.corals * share);
-    const onTower = Math.round(coralTarget * 0.24);
-    for (let i = 0; i < onTower; i += 1) {
-        // The crown's rim and the shoulder just under it.
-        const a = rnd() * Math.PI * 2;
-        const down = rnd() * rnd() * 34;
-        const rr = towerRadiusAt(plan.tower, plan.tower.topY - down) * (down < 1 ? 0.55 + (rnd() * 0.4) : 0.93);
-        coralAt(T.x + (Math.cos(a) * rr), plan.tower.topY - down - 0.4, T.z + (Math.sin(a) * rr), 2.0 + (rnd() * 3.2), T.topDepth + down);
+    const SMALL_DEEP = ['fan', 'tubes', 'anemone', 'pen', 'tree', 'dome'];
+    const SMALL_WARM = ['dome', 'table', 'tree', 'fan', 'anemone', 'dome'];
+    /** A colony: a low outcrop, its hero piece, and smaller pieces falling away round it. */
+    const colonyAt = (cx, cz, hero, palette, deep, heroSize) => {
+        const bed = heightAt(cx, cz);
+        const depth = seaLevel - bed;
+        const moundR = 7 + (rnd() * 3.5);
+        if (!apart(cx, cz, moundR, 0.9) || keep.blocked(cx, cz, moundR, depth - (heroSize * 1.3), bed + heroSize)) return false;
+        const pair = palette[Math.floor(rnd() * palette.length)];
+        const second = palette[Math.floor(rnd() * palette.length)];
+        // The outcrop: a low, wide rise half sunk in the sand (a dusted swell, not a stone on it).
+        const moundH = moundR * 0.30;
+        plan.mounds.push({
+            x: cx, y: bed - (moundH * 0.55), z: cz, r: moundR, squash: 0.30, seed: 500 + plan.mounds.length, dusted: true,
+        });
+        const onMound = (d) => bed + (moundH * 0.42 * Math.max(0, 1 - ((d / moundR) ** 2)));
+        pieceAt(cx, onMound(0), cz, heroSize, hero, pair, deep);
+        const small = Math.round((deep ? 5 : 3) * share) + 1;
+        const kinds = deep ? SMALL_DEEP : SMALL_WARM;
+        for (let i = 0; i < small; i += 1) {
+            const a = ((i / small) * Math.PI * 2) + (rnd() * 0.9);
+            const d = moundR * (0.42 + (rnd() * 0.72));
+            const x = cx + (Math.cos(a) * d);
+            const z = cz + (Math.sin(a) * d);
+            // Smaller the further from the hero, so the colony has a middle.
+            const size = heroSize * (0.5 - (0.26 * (d / (moundR * 1.14)))) * (0.8 + (rnd() * 0.4));
+            const y = d < moundR ? onMound(d) : heightAt(x, z);
+            pieceAt(x, y - 0.15, z, size, kinds[Math.floor(rnd() * kinds.length)], rnd() < 0.7 ? pair : second, deep);
+        }
+        return true;
+    };
+    R.deepColonies.forEach(([cx, cz, hero]) => {
+        if (seaLevel - heightAt(cx, cz) > 92) colonyAt(cx, cz, hero, COLD, true, 9 + (rnd() * 4));
+    });
+    // The tower's wall, on the side the close-ups see: fans and trees standing out from its ledges.
+    for (let i = 0; i < R.towerGarden; i += 1) {
+        const a = (0.22 + (0.56 * ((i + (rnd() * 0.6)) / R.towerGarden))) * Math.PI;
+        const down = 9 + (((i * 7) % R.towerGarden) / R.towerGarden) * 58;
+        const y = plan.tower.topY - down;
+        const rr = towerRadiusAt(plan.tower, y) * 0.9;
+        const deep = T.topDepth + down > 70;
+        pieceAt(
+            T.x + (Math.cos(a) * rr),
+            y,
+            T.z + (Math.sin(a) * rr),
+            3.6 + (rnd() * 3.4),
+            ['fan', 'tree', 'tubes'][i % 3],
+            (deep ? COLD : WARM)[Math.floor(rnd() * (deep ? COLD : WARM).length)],
+            deep,
+            a + (Math.PI / 2),
+        );
     }
-    plan.pinnacles.forEach((p) => {
-        const n = 2 + Math.floor(rnd() * 3);
+    // The crown's rim and the stacks' tops: warm heads and tables in the light.
+    for (let i = 0; i < 7; i += 1) {
+        const a = ((i / 7) * Math.PI * 2) + (rnd() * 0.5);
+        const rr = T.topRadius * (0.62 + (rnd() * 0.3));
+        pieceAt(T.x + (Math.cos(a) * rr), plan.tower.topY - 0.3, T.z + (Math.sin(a) * rr), 2.2 + (rnd() * 2.4), SMALL_WARM[i % 4], WARM[i % WARM.length], false);
+    }
+    plan.pinnacles.forEach((pin, k) => {
+        const n = 2 + (k % 2);
         for (let i = 0; i < n; i += 1) {
             const a = rnd() * Math.PI * 2;
-            const rr = p.topR * rnd() * 0.8;
-            coralAt(p.x + (Math.cos(a) * rr), p.topY - 0.5, p.z + (Math.sin(a) * rr), 1.8 + (rnd() * 2.8), seaLevel - p.topY);
+            const rr = pin.topR * rnd() * 0.7;
+            pieceAt(pin.x + (Math.cos(a) * rr), pin.topY - 0.3, pin.z + (Math.sin(a) * rr), 2.0 + (rnd() * 2.6), SMALL_WARM[(i + k) % 4], WARM[(i + k) % WARM.length], false);
         }
     });
-    for (let tries = 0; plan.corals.length < coralTarget && tries < coralTarget * 40; tries += 1) {
+    // The shelf under the shore: warm colonies in the shallows.
+    const shelfTarget = Math.round(R.shelfColonies * share);
+    for (let n = 0, tries = 0; n < shelfTarget && tries < shelfTarget * 60; tries += 1) {
         const x = R.flank.x[0] + (rnd() * (R.flank.x[1] - R.flank.x[0]));
-        const z = -190 + (rnd() * 62);
+        const z = -188 + (rnd() * 56);
         const depth = depthAt(x, z);
-        if (!(depth > 5 && depth < 52)) continue;
-        const size = 2 + (rnd() * rnd() * 5.5);
-        if (depth - size < 3 || keep.blocked(x, z, size, depth - size)) continue;
-        coralAt(x, heightAt(x, z) - 0.5, z, size, depth);
-    }
-
-    // THE DEEP GARDEN: at the slope's foot, where the first orbs look, the coral is the cold kind
-    // that carries its own light (the renderer lets it glow in the dark).
-    const deepTarget = Math.round(R.deepCorals * share);
-    for (let n = 0, tries = 0; n < deepTarget && tries < deepTarget * 50; tries += 1) {
-        // It grows round the rocks (two in three) and thinly over the open bed.
-        let x = -85 + (rnd() * 160);
-        let z = -112 + (rnd() * 104);
-        const pick = rnd();
-        if (pick < 0.3) {
-            // The first orbs' window on the slope's foot.
-            x = -48 + (rnd() * 104);
-            z = -66 + (rnd() * 42);
-        } else if (pick < 0.8) {
-            const rock = rocks[Math.floor(rnd() * rocks.length)];
-            const a = rnd() * Math.PI * 2;
-            const rr = rock.r * (0.75 + (rnd() * 0.9));
-            x = rock.x + (Math.cos(a) * rr);
-            z = rock.z + (Math.sin(a) * rr);
+        if (!(depth > 9 && depth < 50) || !apart(x, z, 9, 1)) continue;
+        if (colonyAt(x, z, SMALL_WARM[n % SMALL_WARM.length], WARM, false, Math.min(depth * 0.4, 4.5 + (rnd() * 3)))) {
+            rocks.push({ x, z, r: 8 });
+            n += 1;
         }
-        const depth = depthAt(x, z);
-        if (!(depth > 100)) continue;
-        const size = 1.8 + (rnd() * rnd() * 3.6);
-        if (keep.blocked(x, z, size, depth - (size * 1.6))) continue;
-        coralAt(x, heightAt(x, z) - 0.5, z, size, depth, true);
-        n += 1;
     }
 
     // ── kelp: the tower's forest, and groves on the shelf ──
@@ -356,42 +414,76 @@ export function towerRadiusAt(stack, y) {
 /** Rock by height band (linear, authored bright for the grade): dark basalt, paler toward the light. */
 const ROCK_DARK = [0.085, 0.095, 0.105];
 const ROCK_LIGHT = [0.25, 0.25, 0.235];
-/** Coral pigments (linear): the water takes the red out of them with distance, as it does. */
-const CORAL_PIGMENTS = [
-    [0.95, 0.36, 0.46], [1.0, 0.52, 0.20], [0.62, 0.38, 0.92], [0.96, 0.80, 0.28],
-    [0.24, 0.74, 0.66], [0.92, 0.84, 0.70], [0.98, 0.42, 0.72],
-];
-/** The deep garden's: cold lights (cyan, violet, sea green, a rare magenta). */
-const DEEP_PIGMENTS = [
-    [0.10, 0.80, 0.95], [0.45, 0.30, 1.0], [0.12, 0.95, 0.60], [0.20, 0.55, 1.0], [0.95, 0.25, 0.80],
-];
+/** A grid of points' smooth normals (rows may wrap round in i): from its own two tangents. */
+function gridNormals(grid, wrap, outward) {
+    const rows = grid.length;
+    return grid.map((row, j) => row.map((pt, i) => {
+        const n = row.length;
+        const a = row[wrap ? (i + n - 1) % n : Math.max(0, i - 1)];
+        const b = row[wrap ? (i + 1) % n : Math.min(n - 1, i + 1)];
+        const c = grid[Math.max(0, j - 1)][i];
+        const d = grid[Math.min(rows - 1, j + 1)][i];
+        const du = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        const dv = [d[0] - c[0], d[1] - c[1], d[2] - c[2]];
+        let nx = (dv[1] * du[2]) - (dv[2] * du[1]);
+        let ny = (dv[2] * du[0]) - (dv[0] * du[2]);
+        let nz = (dv[0] * du[1]) - (dv[1] * du[0]);
+        const o = outward(pt, j, i);
+        if ((nx * o[0]) + (ny * o[1]) + (nz * o[2]) < 0) { nx = -nx; ny = -ny; nz = -nz; }
+        const l = Math.hypot(nx, ny, nz);
+        return l > 1e-9 ? [nx / l, ny / l, nz / l] : o;
+    }));
+}
 
-function makeSink() {
-    const positions = [];
-    const colours = [];
-    return {
-        positions,
-        colours,
-        tri(a, b, c, ca, cb = ca, cc = ca) {
-            positions.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
-            colours.push(ca[0], ca[1], ca[2], cb[0], cb[1], cb[2], cc[0], cc[1], cc[2]);
-        },
+/** Emit a wrapped grid as triangles with normals `keep` smooth and the rest the face's own. */
+function emitGrid(sink, grid, normals, tints, keep) {
+    const face = (a, b, c) => {
+        const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        const v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+        const n = [(u[1] * v[2]) - (u[2] * v[1]), (u[2] * v[0]) - (u[0] * v[2]), (u[0] * v[1]) - (u[1] * v[0])];
+        const l = Math.hypot(n[0], n[1], n[2]) || 1;
+        return [n[0] / l, n[1] / l, n[2] / l];
     };
+    const blend = (smooth, flat) => {
+        const n = [
+            (smooth[0] * keep) + (flat[0] * (1 - keep)),
+            (smooth[1] * keep) + (flat[1] * (1 - keep)),
+            (smooth[2] * keep) + (flat[2] * (1 - keep)),
+        ];
+        const l = Math.hypot(n[0], n[1], n[2]) || 1;
+        return [n[0] / l, n[1] / l, n[2] / l];
+    };
+    const tri = (j0, i0, j1, i1, j2, i2) => {
+        const f = face(grid[j0][i0], grid[j1][i1], grid[j2][i2]);
+        const v = (j, i) => ({ p: grid[j][i], n: blend(normals[j][i], f), c: tints[j][i] });
+        sink.tri(v(j0, i0), v(j1, i1), v(j2, i2));
+    };
+    for (let j = 0; j < grid.length - 1; j += 1) {
+        const n = grid[j].length;
+        for (let i = 0; i < n; i += 1) {
+            const i1 = (i + 1) % n;
+            tri(j, i, j + 1, i, j, i1);
+            tri(j, i1, j + 1, i, j + 1, i1);
+        }
+    }
 }
 
 /** A lathe of rock with terraces and noise: a sea stack standing from baseY to topY. */
 function addStack(sink, s, { sides, rings }) {
     const height = s.topY - s.baseY;
     const terraces = 4 + (s.seed % 3);
-    const ring = [];
-    const tint = [];
-    for (let j = 0; j <= rings; j += 1) {
-        const h = j / rings;
+    const grid = [];
+    const tints = [];
+    for (let j = 0; j <= rings + 1; j += 1) {
+        // The last row is the crown's centre: a low dome, so it reads as a place something can grow.
+        const crown = j === rings + 1;
+        const h = Math.min(1, j / rings);
         const y = s.baseY + (height * h);
         // Terraces: the profile holds, then steps in, so the wall has ledges.
         const step = (Math.floor(h * terraces) + fade(Math.min(1, ((h * terraces) % 1) * 1.8))) / terraces;
         const hh = (h * 0.68) + (step * 0.32);
         const base = s.topR + ((s.baseR - s.topR) * ((1 - hh) ** 1.7));
+        const lean = h * h * height;
         const row = [];
         const rowTint = [];
         for (let i = 0; i < sides; i += 1) {
@@ -403,9 +495,12 @@ function addStack(sink, s, { sides, rings }) {
             // Buttresses: the plan is lobed, not round, and the lobes turn with height.
             const lobes = (0.20 * Math.sin((a * 3) + (s.seed * 1.3) + (h * 1.9)))
                 + (0.11 * Math.sin((a * 5) - (s.seed * 0.7) - (h * 3.1)));
-            const r = base * (0.62 + (big * 0.66) + ((fine - 0.5) * 0.30) + lobes);
-            const lean = h * h * height;
-            row.push([s.x + (ca * r) + ((s.leanX || 0) * lean), y, s.z + (sa * r) + ((s.leanZ || 0) * lean)]);
+            const r = crown ? 0.02 : base * (0.62 + (big * 0.66) + ((fine - 0.5) * 0.30) + lobes);
+            row.push([
+                s.x + (ca * r) + ((s.leanX || 0) * lean),
+                crown ? y + (s.topR * 0.12) : y,
+                s.z + (sa * r) + ((s.leanZ || 0) * lean),
+            ]);
             // Strata: bands of colour by height, broken by the noise.
             const band = 0.5 + (0.5 * Math.sin((y * 0.21) + (big * 4)));
             const t = Math.min(1, Math.max(0, (h * 0.75) + (band * 0.25) + ((fine - 0.5) * 0.3)));
@@ -415,157 +510,84 @@ function addStack(sink, s, { sides, rings }) {
                 ROCK_DARK[2] + ((ROCK_LIGHT[2] - ROCK_DARK[2]) * t),
             ]);
         }
-        ring.push(row);
-        tint.push(rowTint);
+        grid.push(row);
+        tints.push(rowTint);
     }
-    for (let j = 0; j < rings; j += 1) {
-        for (let i = 0; i < sides; i += 1) {
-            const i1 = (i + 1) % sides;
-            const a = ring[j][i];
-            const b = ring[j][i1];
-            const c = ring[j + 1][i];
-            const d = ring[j + 1][i1];
-            sink.tri(a, c, b, tint[j][i]);
-            sink.tri(b, c, d, tint[j + 1][i1]);
-        }
-    }
-    // The crown: a low dome, so it reads as a place something can grow.
-    const lean = height;
-    const apex = [s.x + ((s.leanX || 0) * lean), s.topY + (s.topR * 0.12), s.z + ((s.leanZ || 0) * lean)];
-    for (let i = 0; i < sides; i += 1) {
-        sink.tri(ring[rings][i], apex, ring[rings][(i + 1) % sides], tint[rings][i]);
-    }
+    const axis = (pt, j) => {
+        const lean = (Math.min(1, j / rings) ** 2) * height;
+        const o = [pt[0] - (s.x + ((s.leanX || 0) * lean)), j > rings ? 1 : 0.15, pt[2] - (s.z + ((s.leanZ || 0) * lean))];
+        const l = Math.hypot(o[0], o[1], o[2]) || 1;
+        return [o[0] / l, o[1] / l, o[2] / l];
+    };
+    // Carved rock keeps some of its planes: half the smooth normal, half the face's own.
+    emitGrid(sink, grid, gridNormals(grid, true, axis), tints, 0.55);
 }
 
-/** A lump: a noisy squashed ball (a boulder), or the same in a pigment (a coral head). */
+/** A boulder or an outcrop: a noisy squashed ball, smooth-shaded (worn rock, not a cut gem). */
 function addLump(sink, {
-    x, y, z, r, squash = 0.7, seed = 0, colour = null, sides = 8, rows = 4, dome = false,
+    x, y, z, r, squash = 0.7, seed = 0, dusted = false,
 }) {
-    const ring = [];
-    const y0 = dome ? 0 : -rows;
-    for (let j = y0; j <= rows; j += 1) {
+    const sides = 11;
+    const rows = 5;
+    const grid = [];
+    const tints = [];
+    for (let j = -rows; j <= rows; j += 1) {
         const lat = (j / rows) * (Math.PI / 2);
         const row = [];
+        const rowTint = [];
         for (let i = 0; i < sides; i += 1) {
             const a = (i / sides) * Math.PI * 2;
-            const n = 0.72 + (reefNoise((Math.cos(a) * 1.7) + seed, (j * 0.6) + seed, (Math.sin(a) * 1.7) - seed) * 0.56);
-            const rr = r * Math.cos(lat) * n;
+            const n = 0.74 + (reefNoise((Math.cos(a) * 1.5) + seed, (j * 0.5) + seed, (Math.sin(a) * 1.5) - seed) * 0.52);
+            const rr = Math.max(0.01, r * Math.cos(lat) * n);
             row.push([x + (Math.cos(a) * rr), y + (Math.sin(lat) * r * squash * n), z + (Math.sin(a) * rr)]);
+            // A dusted outcrop is pale where the sand lies on it (low and at its skirt).
+            const t = dusted ? 1.05 + (0.5 * (1 - Math.abs(j / rows))) : ((j + rows) / (2 * rows)) * 0.8;
+            rowTint.push([
+                ROCK_DARK[0] + ((ROCK_LIGHT[0] - ROCK_DARK[0]) * t),
+                ROCK_DARK[1] + ((ROCK_LIGHT[1] - ROCK_DARK[1]) * t),
+                ROCK_DARK[2] + ((ROCK_LIGHT[2] - ROCK_DARK[2]) * t),
+            ]);
         }
-        ring.push(row);
+        grid.push(row);
+        tints.push(rowTint);
     }
-    const shade = (j) => {
-        const t = (j - y0) / (rows - y0);
-        if (colour) return [colour[0] * (0.55 + (0.45 * t)), colour[1] * (0.55 + (0.45 * t)), colour[2] * (0.55 + (0.45 * t))];
-        return [
-            ROCK_DARK[0] + ((ROCK_LIGHT[0] - ROCK_DARK[0]) * t * 0.8),
-            ROCK_DARK[1] + ((ROCK_LIGHT[1] - ROCK_DARK[1]) * t * 0.8),
-            ROCK_DARK[2] + ((ROCK_LIGHT[2] - ROCK_DARK[2]) * t * 0.8),
-        ];
+    const out = (pt) => {
+        const o = [pt[0] - x, (pt[1] - y) / (squash * squash), pt[2] - z];
+        const l = Math.hypot(o[0], o[1], o[2]) || 1;
+        return [o[0] / l, o[1] / l, o[2] / l];
     };
-    for (let j = 0; j < ring.length - 1; j += 1) {
-        for (let i = 0; i < sides; i += 1) {
-            const i1 = (i + 1) % sides;
-            sink.tri(ring[j][i], ring[j + 1][i], ring[j][i1], shade(j + y0));
-            sink.tri(ring[j][i1], ring[j + 1][i], ring[j + 1][i1], shade(j + y0 + 1));
-        }
-    }
-}
-
-/** A table coral: a short stalk under a wide thin plate. */
-function addTable(sink, c, colour) {
-    const sides = 9;
-    const plateY = c.y + (c.size * 0.55);
-    const rim = [];
-    const neck = [];
-    const foot = [];
-    for (let i = 0; i < sides; i += 1) {
-        const a = c.yaw + ((i / sides) * Math.PI * 2);
-        const wob = 0.82 + (reefNoise(i * 1.3, c.hue * 31, 2) * 0.36);
-        rim.push([c.x + (Math.cos(a) * c.size * wob), plateY + ((wob - 1) * 0.3), c.z + (Math.sin(a) * c.size * wob)]);
-        neck.push([c.x + (Math.cos(a) * c.size * 0.16), plateY - (c.size * 0.14), c.z + (Math.sin(a) * c.size * 0.16)]);
-        foot.push([c.x + (Math.cos(a) * c.size * 0.24), c.y - 0.6, c.z + (Math.sin(a) * c.size * 0.24)]);
-    }
-    const top = [c.x, plateY + (c.size * 0.05), c.z];
-    const dark = colour.map((v) => v * 0.5);
-    for (let i = 0; i < sides; i += 1) {
-        const i1 = (i + 1) % sides;
-        sink.tri(rim[i], top, rim[i1], colour);
-        sink.tri(rim[i], rim[i1], neck[i], dark);
-        sink.tri(rim[i1], neck[i1], neck[i], dark);
-        sink.tri(neck[i], neck[i1], foot[i], dark);
-        sink.tri(neck[i1], foot[i1], foot[i], dark);
-    }
-}
-
-/** A sea fan: a flat lobed fan standing across the current, drawn from both sides. */
-function addFan(sink, c, colour) {
-    const segs = 9;
-    const ax = Math.cos(c.yaw);
-    const az = Math.sin(c.yaw);
-    const base = [c.x, c.y - 0.4, c.z];
-    const pts = [];
-    for (let i = 0; i <= segs; i += 1) {
-        const a = (-0.42 + ((i / segs) * 0.84)) * Math.PI;
-        const lobe = 0.72 + (0.28 * Math.abs(Math.sin(i * 1.9 + (c.hue * 9))));
-        const r = c.size * 1.5 * lobe;
-        pts.push([c.x + (Math.sin(a) * r * ax), c.y + (Math.cos(a) * r), c.z + (Math.sin(a) * r * az)]);
-    }
-    const dark = colour.map((v) => v * 0.6);
-    for (let i = 0; i < segs; i += 1) {
-        sink.tri(base, pts[i], pts[i + 1], dark, colour, colour);
-        sink.tri(base, pts[i + 1], pts[i], dark, colour, colour);
-    }
-}
-
-/** Staghorn: a handful of thin branches from one foot. */
-function addStaghorn(sink, c, colour) {
-    const n = 6;
-    for (let k = 0; k < n; k += 1) {
-        const a = c.yaw + ((k / n) * Math.PI * 2);
-        const out = 0.25 + (reefNoise(k * 2.1, c.hue * 17, 5) * 0.75);
-        const tip = [
-            c.x + (Math.cos(a) * c.size * out), c.y + (c.size * (0.9 + (0.5 * (1 - out)))), c.z + (Math.sin(a) * c.size * out),
-        ];
-        const w = c.size * 0.13;
-        const b0 = [c.x + (Math.cos(a + 1.6) * w), c.y - 0.3, c.z + (Math.sin(a + 1.6) * w)];
-        const b1 = [c.x + (Math.cos(a - 1.6) * w), c.y - 0.3, c.z + (Math.sin(a - 1.6) * w)];
-        const b2 = [c.x + (Math.cos(a) * w), c.y - 0.3, c.z + (Math.sin(a) * w)];
-        const dark = colour.map((v) => v * 0.55);
-        sink.tri(b0, tip, b1, dark, colour, dark);
-        sink.tri(b1, tip, b2, dark, colour, dark);
-        sink.tri(b2, tip, b0, dark, colour, dark);
-    }
+    emitGrid(sink, grid, gridNormals(grid, true, out), tints, 1);
 }
 
 /**
- * The reef's rock and coral as ONE static mesh in world space: flat-shaded (each triangle its own
- * normal), coloured per vertex.
+ * The reef's rock and its life as ONE static mesh in world space: smooth-shaded, coloured per
+ * vertex, with `aLife` = (how much of its own light a vertex carries, how far it may sway, 1 on
+ * living things and 0 on rock).
  * @param {ReturnType<typeof planOceanReef>} plan
- * @returns {THREE.BufferGeometry} position, normal, color
+ * @returns {THREE.BufferGeometry} position, normal, color, aLife
  */
 export function buildReefRockGeometry(plan) {
-    const sink = makeSink();
+    const sink = makeLifeSink();
     if (plan.tower) addStack(sink, plan.tower, { sides: 30, rings: 34 });
     plan.pinnacles.forEach((p) => addStack(sink, p, { sides: 17, rings: 16 }));
     plan.boulders.forEach((b) => addLump(sink, b));
-    plan.corals.forEach((c) => {
-        const pigments = c.deep ? DEEP_PIGMENTS : CORAL_PIGMENTS;
-        const colour = pigments[Math.floor(c.hue * pigments.length) % pigments.length];
-        if (c.kind === 'table') addTable(sink, c, colour);
-        else if (c.kind === 'fan') addFan(sink, c, colour);
-        else if (c.kind === 'staghorn') addStaghorn(sink, c, colour);
-        else {
-            addLump(sink, {
-                x: c.x, y: c.y, z: c.z, r: c.size, squash: 0.75, seed: c.hue * 97, colour, sides: 7, rows: 3, dome: true,
-            });
-        }
-    });
+    plan.mounds.forEach((m) => addLump(sink, m));
+    const rockVerts = sink.positions.length / 3;
+    plan.corals.forEach((c) => CORAL_FORMS[c.kind](sink, c, makeRng(7000 + (c.seed * 13))));
+    const count = sink.positions.length / 3;
+    const life = new Float32Array(count * 3);
+    for (let i = 0; i < count; i += 1) {
+        life[i * 3] = sink.life[i * 2];
+        life[(i * 3) + 1] = sink.life[(i * 2) + 1];
+        life[(i * 3) + 2] = i < rockVerts ? 0 : 1;
+    }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(sink.positions, 3));
+    geometry.setAttribute('normal', new THREE.Float32BufferAttribute(sink.normals, 3));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(sink.colours, 3));
-    geometry.computeVertexNormals();
+    geometry.setAttribute('aLife', new THREE.BufferAttribute(life, 3));
     geometry.computeBoundingSphere();
+    if (geometry.boundingSphere) geometry.boundingSphere.radius += 4;
     return geometry;
 }
 
