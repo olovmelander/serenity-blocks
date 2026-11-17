@@ -173,11 +173,11 @@ All in `src/themes/serenity-warp/`; the new three-free module is `serenity-warp-
 
 | Where | Now |
 |---|---|
-| Streamers (`skyLight`) | Lanes of light at a constant turn of the vortex (the arms' own log spiral), broken into dashes with bright heads that run down the arms into the throat faster than the gas; a pixel wide at any distance, faded where the lanes crowd at the rim, ended at β ≈ 0.5 rad. One layer on every tier, two from High (gotcha #1414). A chain makes them brighter and faster. |
+| Streamers (`skyLight`) | Lanes of light at a constant turn of the vortex (the arms' own log spiral), broken into dashes with bright heads that run down the arms into the throat faster than the gas; a pixel wide at any distance, faded where the lanes crowd at the rim, ended at β ≈ 0.5 rad. One layer on every tier, two from High (gotcha #1415). A chain makes them brighter and faster. |
 | The open sky | Its nebula is lit by the gate: one more read of the gas a step toward it gives the clouds' gate-facing edges a rim in the gas's own glow (Medium up, read only on the cloud edges). Brighter hearts. The whole open sky turns slowly round the gate (`SKY_TURN`, a turn in 43 min) and its clouds drift through the gas volume (`CLOUD_DRIFT`), so they form and melt. Far galaxies: now and then a small tilted spiral, warm core and blue disc (Medium up, a rare coherent branch). |
 | The ring | Hot spots circle the photon ring with the gas (two, and five fainter the other way), on its glow and halo. |
 | Moods (`WARP_MOODS`) | Calm, torrent, bloom, tide, one every 117 s with a rest on each, a level a mood on: two arms or three, wound tighter or looser, the gas pouring faster or slower, more or fewer streamers, a brighter or dimmer nebula, a wider or narrower throat, how far the vortex reaches, how bright the hot spots. |
-| Wandering stars | Every ~43 s a star (ember to blue-white) is caught far out, rides an arm in with its tail behind it, spirals in at a steady pace, is torn into an arc round the throat and goes in; the ring flares in its colour. Its outer path is laid on the open side of the gate, never behind the board (gotcha #1413). |
+| Wandering stars | Every ~43 s a star (ember to blue-white) is caught far out, rides an arm in with its tail behind it, spirals in at a steady pace, is torn into an arc round the throat and goes in; the ring flares in its colour. Its outer path is laid on the open side of the gate, never behind the board (gotcha #1414). |
 | The comet | Every ~151 s a comet crosses the open sky beyond the board (right of the HUD; below the card on an upright phone), its ion tail straight and its dust tail curved, both blown away from the gate as a sun's wind blows a comet's. |
 | A twist | An OPEN pinwheel of five thin arms unwinds out of the rim and turns the way the vortex was twisted (a smaller one for a twist that cleared nothing). It replaces the twist's faint ring. |
 | A chain's step | A surge of light runs down the arms INTO the throat (the clears' rings go out; the chain pulls in). It replaces the step's ring. |
@@ -209,9 +209,9 @@ region and given cheaper hashes). The integrated GPU was not measured.
 ### Traps met
 
 - In the lensed sky the photon ring is β = 0: a star sent "to the throat's radius" stopped at
-  1.6 radii, and anything white laid on the ring vanished in it (gotcha #1413).
+  1.6 radii, and anything white laid on the ring vanished in it (gotcha #1414).
 - Lanes hashed by their raw index drew a seam at `atan`'s cut; lanes kept going far out drew rain
-  across the open sky (gotcha #1414).
+  across the open sky (gotcha #1415).
 - The gate-lit nebula lit everywhere read as grey smoke; lit in the palette's other hue (ember's
   green under its orange) it read as mud. Only the clouds' edges, in the gas's own glow.
 - The first lotus (outlined petals) read as line art, the first fill as a violet splat.

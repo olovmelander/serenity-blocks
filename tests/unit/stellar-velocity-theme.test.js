@@ -166,6 +166,15 @@ vi.mock('../../src/themes/stellar-velocity/stellar-velocity-world.js', () => {
             this.counts = { locks: 0, clears: 0 };
         }
 
+        onGameOver() {
+            mocks.log.push('onGameOver');
+            this.overs = (this.overs || 0) + 1;
+        }
+
+        onSessionStart() {
+            mocks.log.push('onSessionStart');
+        }
+
         restCamera() {
             return this.camera;
         }
@@ -879,7 +888,7 @@ describe('Stellar Velocity theme: one node renderer on both backends', () => {
         expect(system.theme.world.sims[0].reduced).toBe(true);
     });
 
-    it('lets the chain go and resets the session when a run ends', async () => {
+    it('lets the chain go and lets the drive die when a run ends', async () => {
         const { theme, listeners } = await startTheme({ quality: 'High' });
         for (let i = 0; i < 3; i++) {
             eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
@@ -891,14 +900,17 @@ describe('Stellar Velocity theme: one node renderer on both backends', () => {
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
         mocks.log.length = 0;
         listeners.get('gameOver')();
-        // The chain is let go first (the world hears the break), then the session is reset.
-        expect(mocks.log).toEqual(['onCombo']);
-        expect(theme.world.sessions).toBe(1);
+        // The chain is let go first (the world hears the break), then the drive dies; the world is
+        // not wiped (its last hoops go out as it coasts).
+        expect(mocks.log).toEqual(['onCombo', 'onGameOver']);
+        expect(theme.world.overs).toBe(1);
+        expect(theme.world.sessions).toBe(0);
         expect(theme.world.combo).toBe(0);
         expect(theme.combos.size).toBe(0);
         expect(theme.director.slots.every((slot) => !slot.assigned && !slot.pending)).toBe(true);
         theme.stepFrame(64);
-        expect(theme.world.counts).toEqual({ locks: 0, clears: 0 });
+        // The lock staged on the last tick never landed.
+        expect(theme.world.counts).toEqual({ locks: 3, clears: 3 });
         // The next run's first clear is a chain of one again.
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1, clearedRows: [23], cascadeCount: 1 });
@@ -969,9 +981,9 @@ describe('Stellar Velocity theme: one node renderer on both backends', () => {
         stepFrames(theme, 60);
         const clock = theme.time;
         expect(clock).toBeCloseTo(1, 9);
-        // A new run: the session is reset, the clock (and so the nebula's drift) runs on.
+        // A run's end: the drive dies, the clock (and so the nebula's drift) runs on.
         listeners.get('gameOver')();
-        expect(theme.world.sessions).toBe(1);
+        expect(theme.world.overs).toBe(1);
         expect(theme.time).toBe(clock);
         expect(theme.world.seeks).toEqual([0]);
         // The device is lost: the scene is rebuilt on the WebGL2 backend, at the same moment.

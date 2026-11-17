@@ -251,12 +251,13 @@ into uniforms; nothing is rebuilt, so every tier and both backends show the same
   green-gold light on and off, and the noctilucent clouds shine over the sun.
 - **Petals.** A petal in the air is a claw that widens into a rounded blade, folded and cupped,
   paler at the claw (it was a four-cornered kite, which read as confetti).
-- **Swans.** A pair of mute swans and their cygnets glide a slow round on the open water left of
-  the maypole, mirrored in the lake, and a skein of them flies low across it: by itself every
-  few minutes, and on every level-up. The birds are modelled in Blender
+- **Swans.** A pair of mute swans and their cygnets swim the whole lake, mirrored in it (at
+  first a slow round on the water left of the maypole; since the same day a voyage, below), and
+  a skein of them flies low across it: by itself every few minutes, and on every level-up. The
+  birds are modelled in Blender
   (`scripts/blender/summer_swan.py`, headless, byte-reproducible) and shipped as a generated
-  module, [`summer-swan-model.js`](../src/themes/summer/summer-swan-model.js); the round and the
-  flight lines are found by numbers through the rest camera
+  module, [`summer-swan-model.js`](../src/themes/summer/summer-swan-model.js); the voyage and the
+  flight lines are laid and checked by numbers through the rest camera
   ([`summer-swan-routes.js`](../src/themes/summer/summer-swan-routes.js)) and drawn in three
   instanced draws ([`summer-swans.js`](../src/themes/summer/summer-swans.js)).
 
@@ -366,6 +367,47 @@ are held by tests, not seen); a whole seven-minute round of weather watched in t
 six weathers, their pace, the look of every new effect and the swans are the implementer's
 choices and have not been reviewed by the owner.
 
+### The swans' voyage (2026-11-17, after play)
+
+The owner asked that the swans swim the whole lake. They now voyage
+round it on a lap of about fourteen minutes (`SWAN_VOYAGE` in
+[`summer-swan-routes.js`](../src/themes/summer/summer-swan-routes.js)), in two parts:
+
+- **The near water.** First they make a round of the water left of the board, where a swan
+  reads best at game size (60–110 m out): the sun's road by the maypole, the headland's mirror,
+  behind the skerry, and back.
+- **The voyage.** Then they go out along the headland and round its tip. They cross the far
+  water behind the board, swimming faster there because nothing of them shows. They come
+  down to the water off the homestead, between the boathouse and the cottage, and swim home
+  behind the card.
+
+**How it is built:**
+
+- The line runs through 24 places, as a smooth curve that is eased so no turn is tighter than
+  a swan swims. It weaves gently across itself.
+- It is checked against the land: the family's spread either side of it stays over a bed
+  deeper than 1.1 m, clear of the reeds.
+- A table of the seconds to each half-metre of the line keeps it a closed form of the clock,
+  so a seek lands where play would have.
+- At five places the family stays a while. It slows, draws together and spreads out across the
+  line, and dips its heads to feed far more often.
+
+**How it was judged:**
+
+- Through the rest lens, the family is in sight about two thirds of a lap, and reads as swans
+  rather than specks for 63% of it. The longest it is out of sight is about two and a half
+  minutes.
+- The sight test learned that the homestead's tip is lawn and a low boathouse, not wood. The
+  captures showed the water past the boathouse in plain view, which the old test had counted as
+  hidden behind trees.
+- In the real game the score panel stands above that water, so single player sees the family
+  there too.
+- The playground's `swanAt=<seconds>` puts the family anywhere on its voyage for a capture.
+
+| Near water, left of the board | Off the homestead, past the boathouse |
+| --- | --- |
+| ![swans in the near water](summer-overhaul/living-swans-near.webp) | ![swans off the homestead](summer-overhaul/living-swans-homestead.webp) |
+
 ## How it is built
 
 ### Trees and buildings authored in Blender
@@ -418,7 +460,7 @@ them with distance into flecks the ground shader carries.
 | `summer-petal-sim.js`, `summer-petals.js` | Petals, seed and pollen: simulation, and drawing. |
 | `summer-hours.js` | The five hours of the night: their colours, the blend between them, and the hour a level stands at (pure). |
 | `summer-weather.js` | The six weathers and the clock that turns them (pure). Since 2026-11-17. |
-| `summer-swans.js`, `summer-swan-routes.js`, `summer-swan-model.js` | The swans: the instanced draws; the family's round and the skein's flight lines, found by numbers through the rest lens; the generated Blender model. Since 2026-11-17. |
+| `summer-swans.js`, `summer-swan-routes.js`, `summer-swan-model.js` | The swans: the instanced draws; the family's voyage round the lake and the skein's flight lines, laid and checked by numbers through the rest lens; the generated Blender model. Since 2026-11-17. |
 | `summer-reactions.js` | The event director (pure), and where the night stands: the level, the turn to its hour, and the slow clock. |
 | `summer-stage.js`, `summer-fx-director.js` | Board card → world, and cues → petals, force fields, rings and gusts. |
 | `summer-post.js` | Volumetric shafts, bloom, grade, FXAA. |

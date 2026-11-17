@@ -161,7 +161,9 @@ export function createStreakField(u, { count, kind = 'stars', seed = 0x51a7 } = 
         ? mix(vec3(1.0, 0.8, 0.62), vec3(0.7, 0.84, 1.0), look.z).mul(u.starTint)
         : mix(u.sunCol, u.glow.mul(2.0), look.z.mul(0.6));
     const tinted = smoothstep(0.03, stars ? 0.45 : 0.7, beta);
-    const colour = mix(own, svStarbow(svBowShift(seenNow.seen, beta)), tinted.mul(stars ? 1.0 : 0.6));
+    const bowed = mix(own, svStarbow(svBowShift(seenNow.seen, beta)), tinted.mul(stars ? 1.0 : 0.6));
+    // After a perfect clear's crown the dust burns gold for a while, whatever the speed.
+    const colour = stars ? bowed : mix(bowed, vec3(1.6, 1.15, 0.45), min(u.crown, 1.0).mul(0.8));
     // What a pixel-wide star would have been, had it been drawn its true size.
     const shrink = min(float(1.0), wantPx.div(1.15));
     const twinkle = sin(u.time.mul(look.y.mul(1.7).add(0.6)).add(look.w)).mul(0.14).add(0.86);

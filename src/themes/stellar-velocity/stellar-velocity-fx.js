@@ -8,8 +8,10 @@
  *    faster, opens across the whole frame and is gone.
  *  - Bolts: a lock's light leaves the board as a bolt in the piece's colour and flies down the
  *    course to where its hoop will open: a bright head and a tail of motes strung along one arc.
- *  - Row jets: the cleared rows leave the card as short jets of light at their own heights,
- *    toward the sun, drawn in screen space so they line up with the rows exactly.
+ *    A clear's comets are bolts too: each cleared row leaves its card and flies into the sun.
+ *  - Shock rings: a hard drop's slam and a chain's gear change, thin rings that burst outward.
+ *  - The twist's double helix: two strands of light that grow out of the sun toward us.
+ *  - The young stars in the walls (the nursery): points of white-hot light with a halo.
  *
  * Nothing is created at event time and every pool is always drawn (dormant slots collapse to
  * zero size), so the first frame compiles every pipeline.
@@ -17,6 +19,7 @@
 
 import * as THREE from 'three/webgpu';
 import {
+    atan,
     attribute,
     cameraProjectionMatrix,
     cameraViewMatrix,
@@ -44,7 +47,8 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    BOLT_SLOTS, BOLT_TAIL, HOOP_SEGMENTS, HOOP_SLOTS, JET_LIFE, JET_SLOTS, TAU,
+    BOLT_SLOTS, BOLT_TAIL, HELIX_FAR, HELIX_LIFE, HELIX_NEAR, HELIX_SEGMENTS, HELIX_SLOTS, HELIX_SPEED,
+    HOOP_SEGMENTS, HOOP_SLOTS, SHOCK_SEGMENTS, SHOCK_SLOTS, TAU,
     mulberry32, svFxMaterial, svHash11, svPart, svQuadGeometry, svSeenCos,
 } from './stellar-velocity-tsl.js';
 
@@ -173,14 +177,15 @@ export function createBolts(u) {
     }
     const geometry = svQuadGeometry(count, { aMote: [aMote, 4] });
     const mote = attribute('aMote', 'vec4');
-    // Three rows a bolt: (where it leaves, when), (where it lands, seconds of flight),
-    // (colour, size).
-    const table = Array.from({ length: BOLT_SLOTS * 3 }, () => new THREE.Vector4(0, 0, 0, -100));
+    // Four rows a bolt: (where it leaves, when), (where it lands, seconds of flight),
+    // (colour, size), (how far its path bows, _, _, _).
+    const table = Array.from({ length: BOLT_SLOTS * 4 }, () => new THREE.Vector4(0, 0, 0, -100));
     const rows = uniformArray(table, 'vec4');
-    const base = int(mote.x.add(0.5)).mul(3);
+    const base = int(mote.x.add(0.5)).mul(4);
     const from = rows.element(base);
     const to = rows.element(base.add(1));
     const tint = rows.element(base.add(2));
+    const shape = rows.element(base.add(3));
     const beta = u.warp.mul(COURSE_WARP);
 
     const flight = max(to.w, 0.01);
@@ -192,8 +197,9 @@ export function createBolts(u) {
         // It is drawn in: slow off the card, fast into the course.
         const drawn = e.mul(e).mul(float(1.6).sub(e.mul(0.6)));
         const span = to.xyz.sub(from.xyz);
-        // The arc bows up and toward us before it falls in.
-        const bow = vec3(0.0, 0.16, 0.22).mul(length(span)).mul(drawn.mul(float(1.0).sub(drawn)).mul(4.0));
+        // The arc bows up and toward us before it falls in (a comet's long flight into the sun
+        // bows far less for its length).
+        const bow = vec3(0.0, 0.16, 0.22).mul(length(span)).mul(shape.x).mul(drawn.mul(float(1.0).sub(drawn)).mul(4.0));
         const wobble = vec3(mote.z.sub(0.5), mote.w.sub(0.5), 0.0).mul(0.03).mul(mote.y).mul(float(1.0).sub(drawn));
         const rel = from.xyz.add(span.mul(drawn)).add(bow).add(wobble).sub(u.camPos);
         return viewProjection(seenPoint(rel, beta).add(u.camPos));
@@ -244,87 +250,239 @@ export function createBolts(u) {
      * @param {{ from: number[], to: number[], rgb: number[], time: number, flight: number, size?: number }} bolt
      */
     part.launch = ({
-        from: a, to: b, rgb, time, flight: seconds, size = 1,
+        from: a, to: b, rgb, time, flight: seconds, size = 1, bow = 1,
     }) => {
         const slot = cursor % BOLT_SLOTS;
         cursor += 1;
-        table[slot * 3].set(a[0], a[1], a[2], time);
-        table[slot * 3 + 1].set(b[0], b[1], b[2], seconds);
-        table[slot * 3 + 2].set(rgb[0], rgb[1], rgb[2], size);
+        table[slot * 4].set(a[0], a[1], a[2], time);
+        table[slot * 4 + 1].set(b[0], b[1], b[2], seconds);
+        table[slot * 4 + 2].set(rgb[0], rgb[1], rgb[2], size);
+        table[slot * 4 + 3].set(bow, 0, 0, 0);
         return slot;
     };
     part.reset = () => {
         cursor = 0;
-        for (let i = 0; i < BOLT_SLOTS; i++) table[i * 3].set(0, 0, 0, -100);
+        for (let i = 0; i < BOLT_SLOTS; i++) table[i * 4].set(0, 0, 0, -100);
     };
     part.table = table;
     return part;
 }
 
-// ── Row jets ────────────────────────────────────────────────────────────────────
+// ── Shock rings ─────────────────────────────────────────────────────────────────
 
-/** How far (screen heights) a jet reaches. */
-export const JET_REACH = 0.3;
-
-/** @param {object} u */
-export function createRowJets(u) {
-    const aJet = new Float32Array(JET_SLOTS);
-    for (let i = 0; i < JET_SLOTS; i++) aJet[i] = i;
-    const geometry = svQuadGeometry(JET_SLOTS, { aJet: [aJet, 1] });
-    // Two rows a jet: (where it leaves the card, UV y down; birth; strength), (colour, _).
-    const table = Array.from({ length: JET_SLOTS * 2 }, () => new THREE.Vector4(0, 0, -100, 0));
-    const rows = uniformArray(table, 'vec4');
-    const base = int(attribute('aJet', 'float').add(0.5)).mul(2);
-    const A = rows.element(base);
-    const C = rows.element(base.add(1));
-    const age = u.time.sub(A.z);
-    const k = clamp(age.div(JET_LIFE), 0.0, 1.0);
-    const live = step(0.0, age).mul(step(age, JET_LIFE)).mul(step(1e-3, A.w));
-    // Screen heights, y up: the way from where it leaves to the sun.
-    const aspect = u.viewport.x.div(u.viewport.y);
-    const start = vec2(A.x.mul(aspect), float(1.0).sub(A.y));
-    const sun = vec2(u.sunUv.x.mul(aspect), float(1.0).sub(u.sunUv.y));
-    const way = sun.sub(start);
-    const far = max(length(way), 1e-3);
-    const dir = way.div(far);
-    const side = vec2(dir.y.negate(), dir.x);
-    // The jet runs out fast and its light runs along it after.
-    const reach = min(float(JET_REACH).mul(float(1.0).sub(exp(k.mul(-7.0)))), far.mul(0.9));
-    const along = positionGeometry.x.add(0.5);
-    const widthPx = float(5.0).mul(A.w).mul(live);
-    const at = start.add(dir.mul(along.mul(reach))).add(side.mul(positionGeometry.y.mul(2.0).mul(widthPx).div(u.viewport.y)));
-    const material = svFxMaterial('StellarVelocityRowJets');
-    material.vertexNode = vec4(at.x.div(aspect).mul(2.0).sub(1.0), at.y.mul(2.0).sub(1.0), 1.0, 1.0);
-    const vLight = varying(C.rgb.mul(A.w).mul(float(1.0).sub(k)).mul(float(1.0).sub(k)).mul(live)
-        .mul(u.iris), 'svJetLight');
-    const vAge = varying(k, 'svJetAge');
-    const st = uv();
-    const q = clamp(st.y.sub(0.5).mul(2.0), -1.0, 1.0);
-    // It tapers to a point, and a bright bead runs out along it.
-    const taper = float(1.0).sub(st.x);
-    const across = exp(q.mul(q).div(max(taper.mul(taper), 0.02)).mul(-3.5));
-    const bead = exp(st.x.sub(vAge.mul(1.6)).mul(st.x.sub(vAge.mul(1.6))).mul(-60.0)).mul(2.2);
-    const root = smoothstep(0.0, 0.06, st.x);
-    material.colorNode = vec4(vLight.mul(across).mul(taper.mul(1.2).add(bead)).mul(root), 0.0);
-
-    const part = svPart('StellarVelocityRowJets', geometry, material, 45);
-    let cursor = 0;
-    /**
-     * Fire one jet per point. `points` are where the rows leave the card (UV, y down).
-     * @param {{ x: number, y: number }[]} points
-     */
-    part.fire = (points, rgb, time, strength = 1) => {
-        for (let i = 0; i < points.length && i < 4; i++) {
-            const slot = cursor % JET_SLOTS;
-            cursor += 1;
-            table[slot * 2].set(points[i].x, points[i].y, time + i * 0.03, strength);
-            table[slot * 2 + 1].set(rgb[0], rgb[1], rgb[2], 0);
+/**
+ * Thin rings of white-hot light standing round the course that burst outward and are gone in
+ * under a second: a hard drop's slam where its hoop opens, a chain's gear change ahead of us.
+ * The world animates their radius and light; one row pair each: (depth, radius, light,
+ * thickness) + (colour, _).
+ * @param {object} u
+ */
+export function createShocks(u) {
+    const segments = SHOCK_SEGMENTS;
+    const positions = new Float32Array((segments + 1) * 2 * 3);
+    const uvs = new Float32Array((segments + 1) * 2 * 2);
+    const index = [];
+    for (let i = 0; i <= segments; i++) {
+        const k = i / segments;
+        positions.set([k, -0.5, 0, k, 0.5, 0], i * 6);
+        uvs.set([k, 0, k, 1], i * 4);
+        if (i < segments) {
+            const a = i * 2;
+            index.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
         }
+    }
+    const geometry = new THREE.InstancedBufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geometry.setIndex(index);
+    geometry.instanceCount = SHOCK_SLOTS;
+    const table = Array.from({ length: SHOCK_SLOTS * 2 }, () => new THREE.Vector4(0, 0, 0, 1));
+    const rows = uniformArray(table, 'vec4');
+    const row = int(instanceIndex).mul(2);
+    const A = rows.element(row);
+    const C = rows.element(row.add(1));
+    const beta = u.warp.mul(COURSE_WARP);
+    const ringAt = (ang) => {
+        const wound = ang.add(u.twist.mul(A.x));
+        const rel = vec3(cos(wound).mul(A.y), sin(wound).mul(A.y), A.x.negate()).sub(u.camPos);
+        return viewProjection(seenPoint(rel, beta).add(u.camPos));
     };
-    part.reset = () => {
-        cursor = 0;
-        for (let i = 0; i < JET_SLOTS; i++) table[i * 2].set(0, 0, -100, 0);
-    };
+    const ang = positionGeometry.x.mul(TAU);
+    const c0 = ringAt(ang);
+    const c1 = ringAt(ang.add(TAU / segments));
+    const half = u.viewport.mul(0.5);
+    const s0 = c0.xy.div(max(c0.w, 1e-3)).mul(half);
+    const s1 = c1.xy.div(max(c1.w, 1e-3)).mul(half);
+    const along = s1.sub(s0);
+    const dirS = along.add(vec2(1e-4, 0.0)).div(max(length(along), 1e-4));
+    const nrm = vec2(dirS.y.negate(), dirS.x);
+    const corePx = clamp(A.y.mul(0.018).mul(A.w).div(max(c0.w, 0.05).mul(u.pixelAngle)), 1.2, 22.0);
+    const lit = step(1e-3, A.z).mul(step(0.03, c0.w));
+    const widthPx = corePx.mul(5.0).mul(lit);
+    const material = svFxMaterial('StellarVelocityShocks');
+    material.vertexNode = vec4(
+        c0.xy.add(nrm.mul(positionGeometry.y.mul(2.0).mul(widthPx)).div(half).mul(c0.w)),
+        c0.z,
+        c0.w,
+    );
+    const vLight = varying(C.rgb.mul(A.z).mul(u.iris).mul(u.breath).mul(float(1.0).sub(u.jump.mul(0.9))), 'svShockLight');
+    const q = clamp(uv().y.sub(0.5).mul(2.0), -1.0, 1.0).mul(5.0);
+    // A white-hot hairline in a sheath of its own colour; brighter knots run round it.
+    const core = exp(q.mul(q).mul(-1.4));
+    const sheath = exp(q.abs().mul(-0.9)).mul(0.35);
+    const knots = u.fbmLod(vec2(uv().x.mul(9.0), C.w), 0).g.mul(0.8).add(0.6);
+    const white = mix(vLight, vec3(svHoopPeak(vLight)), core.mul(0.55));
+    material.colorNode = vec4(white.mul(core.mul(knots).add(sheath)), 0.0);
+    const part = svPart('StellarVelocityShocks', geometry, material, 22);
     part.table = table;
     return part;
+}
+
+// ── The twist's double helix ─────────────────────────────────────────────────────
+
+/**
+ * A T-spin winds two strands of light round the course: they grow out of the sun toward us,
+ * turning as they come (the other way for a spin the other way), and stand for two seconds.
+ * Two instances a helix. One row pair each: (birth, way it turns, light, phase) + (colour, _).
+ * @param {object} u
+ */
+export function createHelix(u) {
+    const segments = HELIX_SEGMENTS;
+    const positions = new Float32Array((segments + 1) * 2 * 3);
+    const uvs = new Float32Array((segments + 1) * 2 * 2);
+    const index = [];
+    for (let i = 0; i <= segments; i++) {
+        const k = i / segments;
+        positions.set([k, -0.5, 0, k, 0.5, 0], i * 6);
+        uvs.set([k, 0, k, 1], i * 4);
+        if (i < segments) {
+            const a = i * 2;
+            index.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+        }
+    }
+    const geometry = new THREE.InstancedBufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geometry.setIndex(index);
+    geometry.instanceCount = HELIX_SLOTS * 2;
+    const table = Array.from({ length: HELIX_SLOTS * 2 }, () => new THREE.Vector4(-100, 1, 0, 0));
+    const rows = uniformArray(table, 'vec4');
+    const inst = int(instanceIndex);
+    const slot = inst.div(2);
+    const strand = float(inst.sub(slot.mul(2)));
+    const A = rows.element(slot.mul(2));
+    const C = rows.element(slot.mul(2).add(1));
+    const age = u.time.sub(A.x);
+    const beta = u.warp.mul(COURSE_WARP);
+    // Where the helix has grown to (depth): it leaves the sun and comes toward us.
+    const head = float(HELIX_FAR).sub(age.mul(HELIX_SPEED));
+    const strandAt = (k) => {
+        const depth = mix(float(HELIX_FAR), float(HELIX_NEAR), k);
+        const turn = A.w.add(strand.mul(Math.PI)).add(A.y.mul(depth.mul(0.5).add(age.mul(2.4))))
+            .add(u.twist.mul(depth));
+        const radius = float(0.66).add(sin(depth.mul(0.9).add(A.w)).mul(0.07));
+        const rel = vec3(cos(turn).mul(radius), sin(turn).mul(radius), depth.negate()).sub(u.camPos);
+        return viewProjection(seenPoint(rel, beta).add(u.camPos));
+    };
+    const k = positionGeometry.x;
+    const c0 = strandAt(k);
+    const c1 = strandAt(k.add(1 / segments));
+    const half = u.viewport.mul(0.5);
+    const s0 = c0.xy.div(max(c0.w, 1e-3)).mul(half);
+    const s1 = c1.xy.div(max(c1.w, 1e-3)).mul(half);
+    const along = s1.sub(s0);
+    const dirS = along.add(vec2(1e-4, 0.0)).div(max(length(along), 1e-4));
+    const nrm = vec2(dirS.y.negate(), dirS.x);
+    const depthHere = mix(float(HELIX_FAR), float(HELIX_NEAR), k);
+    const grown = smoothstep(head.sub(0.4), head.add(1.6), depthHere);
+    const life = smoothstep(0.0, 0.05, age).mul(float(1.0).sub(smoothstep(HELIX_LIFE * 0.55, HELIX_LIFE, age)));
+    const live = step(1e-3, A.z).mul(step(0.03, c0.w)).mul(step(0.0, age)).mul(step(age, HELIX_LIFE));
+    const corePx = clamp(float(0.02).div(max(c0.w, 0.05).mul(u.pixelAngle)), 1.2, 9.0);
+    const widthPx = corePx.mul(4.0).mul(live).mul(step(0.01, grown));
+    const material = svFxMaterial('StellarVelocityHelix');
+    material.vertexNode = vec4(
+        c0.xy.add(nrm.mul(positionGeometry.y.mul(2.0).mul(widthPx)).div(half).mul(c0.w)),
+        c0.z,
+        c0.w,
+    );
+    // Its growing tip burns white; the strand is the piece's colour, fading toward the sun.
+    const tip = exp(depthHere.sub(head).mul(depthHere.sub(head)).mul(-0.5)).mul(step(0.0, head.add(1.0)));
+    const fromSun = smoothstep(float(HELIX_FAR), float(HELIX_FAR * 0.45), depthHere).mul(0.8).add(0.2);
+    const vLight = varying(
+        C.rgb.mul(A.z.mul(life).mul(grown).mul(fromSun.add(tip.mul(2.5))))
+            .mul(u.iris)
+            .mul(u.breath)
+            .mul(float(1.0).sub(u.jump.mul(0.92))),
+        'svHelixLight',
+    );
+    const vTip = varying(tip, 'svHelixTip');
+    const q = clamp(uv().y.sub(0.5).mul(2.0), -1.0, 1.0).mul(4.0);
+    const core = exp(q.mul(q).mul(-1.6));
+    const sheath = exp(q.abs().mul(-1.1)).mul(0.3);
+    const white = mix(vLight, vec3(svHoopPeak(vLight)), core.mul(vTip.mul(0.6).add(0.25)));
+    material.colorNode = vec4(white.mul(core.add(sheath)), 0.0);
+    const part = svPart('StellarVelocityHelix', geometry, material, 24);
+    part.table = table;
+    return part;
+}
+
+// ── The young stars in the walls ────────────────────────────────────────────────
+
+/**
+ * The young stars burning inside the canyon's walls (the nursery): a white-hot point, a halo in
+ * the colour of the gas it lights, and four short spikes. They come toward us with the cloud and
+ * slide past; the gas in front of one dims it.
+ * @param {object} u
+ * @param {number} slots  rows of u.beacons: (true world position, light) + (colour of the gas it
+ *                       lights, the light it casts on the gas)
+ */
+export function createBeacons(u, slots) {
+    const aSlot = new Float32Array(slots);
+    for (let i = 0; i < slots; i++) aSlot[i] = i;
+    const geometry = svQuadGeometry(slots, { aSlot: [aSlot, 1] });
+    const base = int(attribute('aSlot', 'float').add(0.5)).mul(2);
+    const A = u.beacons.element(base);
+    const C = u.beacons.element(base.add(1));
+    const beta = u.warp.mul(COURSE_WARP);
+    const clip = viewProjection(seenPoint(A.xyz.sub(u.camPos), beta).add(u.camPos));
+    const range = max(length(A.xyz.sub(u.camPos)), 0.05);
+    // The halo is a fixed share of the frame near the lens and shrinks with distance; the core
+    // never under a couple of pixels.
+    const corePx = clamp(float(0.036).div(range.mul(u.pixelAngle)), 1.6, 7.0);
+    const lit = step(1e-3, A.w).mul(step(0.05, clip.w));
+    const halfPx = corePx.mul(9.0).mul(lit);
+    const material = svFxMaterial('StellarVelocityBeacons');
+    material.vertexNode = vec4(
+        clip.xy.add(positionGeometry.xy.mul(2.0).mul(halfPx).div(u.viewport.mul(0.5)).mul(clip.w)),
+        clip.z,
+        clip.w,
+    );
+    // The gas between us and it: the canyon's own target says how much of what is behind shows.
+    const ndc = clip.xy.div(max(clip.w, 1e-3));
+    const veil = u.canyonAt(vec2(ndc.x.mul(0.5).add(0.5), float(0.5).sub(ndc.y.mul(0.5)))).a;
+    const shown = mix(veil, float(1.0), 0.45);
+    const vLight = varying(A.w.mul(shown).mul(u.iris).mul(u.breath).mul(float(1.0).sub(u.jump.mul(0.95))), 'svBeaconLight');
+    const vGas = varying(C.rgb, 'svBeaconGas');
+    // Each turns its spikes its own way: by where it stands round the course (its row in the
+    // table changes as the stars pass one another; its place does not).
+    const vTilt = varying(atan(A.y, A.x).mul(1.7), 'svBeaconTilt');
+    const q = uv().sub(0.5).mul(2.0);
+    const r = length(q);
+    // In core widths (the quad is 9 cores to a side from the middle).
+    const rc = r.mul(9.0);
+    const core = exp(rc.mul(rc).mul(-1.6));
+    const halo = float(1.0).div(float(1.0).add(rc.mul(rc).mul(0.9))).mul(float(1.0).sub(smoothstep(0.55, 1.0, r)));
+    const ca = cos(vTilt);
+    const sa = sin(vTilt);
+    const ax = q.x.mul(ca).add(q.y.mul(sa)).abs().mul(9.0);
+    const ay = q.y.mul(ca).sub(q.x.mul(sa)).abs().mul(9.0);
+    const spikes = exp(ay.mul(ay).mul(-9.0)).mul(exp(ax.mul(-0.55)))
+        .add(exp(ax.mul(ax).mul(-9.0)).mul(exp(ay.mul(-0.55))))
+        .mul(float(1.0).sub(smoothstep(0.6, 1.0, r)));
+    const white = mix(vGas, vec3(1.0), 0.72);
+    material.colorNode = vec4(
+        white.mul(core.mul(5.0).add(spikes.mul(0.9))).add(vGas.mul(halo.mul(0.55))).mul(vLight),
+        0.0,
+    );
+    return svPart('StellarVelocityBeacons', geometry, material, 15);
 }
