@@ -22,7 +22,9 @@
  *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
- *   flock=<n>&flockAge=<s>   send n birds across the light and show them <s> seconds later
+ *   flock=<n>&flockAge=<s>   send n birds across the light and show them <s> seconds later; a
+ *                            chain is a list (flock=5,9,13&flockAge=12,10,8: a call each), and
+ *                            flockR=<0..1> picks the line (under 0.7 left to right, else back)
  *   boat=1|-1&boatAge=<s>    send the longtail boat across (1 left to right, -1 right to left)
  *                            and show it <s> seconds later (boatRange=<m>, boatSlant=<deg>,
  *                            boatSpeed=<m/s>); it otherwise comes every few minutes by itself
@@ -220,8 +222,13 @@ export function create({
     const lifts = Math.max(0, Math.round(num(params, 'lift', 0)));
     const iconLanterns = iconPose ? Math.max(0, Math.round(num(params, 'iconLanterns', 0))) : 0;
     const liftAge = num(params, 'liftAge', 8);
-    const flock = Math.max(0, Math.round(num(params, 'flock', 0)));
-    const flockAge = num(params, 'flockAge', 9);
+    // A chain's calls: flock=5,9,13&flockAge=12,10,8 (an age a call; one age serves them all).
+    const flocks = (params.get('flock') || '').split(',').map((v) => Math.round(Number.parseFloat(v)))
+        .filter((n) => n > 0);
+    const flockAges = (params.get('flockAge') || '9').split(',').map((v) => Number.parseFloat(v));
+    const flockAgeOf = (i) => (Number.isFinite(flockAges[i]) ? flockAges[i] : flockAges[0] || 9);
+    const flockAge = flocks.length > 0 ? Math.max(...flocks.map((_, i) => flockAgeOf(i))) : 0;
+    const flockR = params.has('flockR') ? num(params, 'flockR', 0.5) : undefined;
     const boatDir = params.has('boat') ? Math.sign(num(params, 'boat', 1)) || 1 : 0;
     const boatAge = num(params, 'boatAge', 40);
     const boatOptions = { dir: boatDir };
@@ -259,7 +266,7 @@ export function create({
         // The playground seeks every frame while ?t= is pinned: replay once, then hold.
         if (sought === time) return;
         sought = time;
-        const staged = [eventName ? eventAge : 0, lifts > 0 ? liftAge : 0, flock > 0 ? flockAge : 0];
+        const staged = [eventName ? eventAge : 0, lifts > 0 ? liftAge : 0, flockAge];
         if (boatDir) staged.push(boatAge);
         const lead = Math.max(...staged) + LEAD + warmLocks * 0.45 + (holdCombo ? 6 : 0);
         const start = Math.max(0, time - lead);
@@ -278,7 +285,7 @@ export function create({
         const firstAct = Math.min(
             eventName ? time - eventAge : time,
             lifts > 0 ? time - liftAge : time,
-            flock > 0 ? time - flockAge : time,
+            time - flockAge,
         );
         const warmEnd = firstAct - 0.7;
         for (let i = 0; i < warmLocks; i++) {
@@ -312,7 +319,7 @@ export function create({
                 gap: 0.45, spiral: params.get('spin') === '1' ? 1.25 : 0,
             })]);
         }
-        if (flock > 0) actions.push([time - flockAge, () => world.sendFlock(flock)]);
+        flocks.forEach((n, i) => actions.push([time - flockAgeOf(i), () => world.sendFlock(n, flockR)]));
         if (boatDir) actions.push([time - boatAge, () => world.sendBoat(boatOptions)]);
         if (params.has('meteor')) {
             actions.push([time - num(params, 'meteor', 0.3), () => world.sendMeteor(world.clock, 0.3)]);
