@@ -96,6 +96,15 @@ function createBoxShell() {
 }
 
 /**
+ * What a building is painted, scene-linear (teal, coral, mustard, plum, mint, cobalt, rose, lilac):
+ * chosen by the building's seed, shown at about a quarter of this as its wall's albedo.
+ */
+export const FACADE_PAINTS = Object.freeze([
+    [0.05, 0.3, 0.34], [0.5, 0.12, 0.09], [0.5, 0.3, 0.05], [0.27, 0.07, 0.35],
+    [0.12, 0.42, 0.26], [0.06, 0.15, 0.5], [0.52, 0.13, 0.26], [0.3, 0.2, 0.5],
+]);
+
+/**
  * @param {object} u       shared district uniforms
  * @param {object[]} boxes plan.boxes or plan.megaBoxes
  * @param {object} [opts]
@@ -208,7 +217,16 @@ export function createFacades(u, boxes, opts = {}) {
         const grime = u.noise(vec2(uM.mul(0.031).add(seed.mul(0.07)), vM.mul(0.012))).r;
         const streak = u.noise(vec2(uM.mul(0.42).add(seed.mul(0.03)), vM.mul(0.021))).g;
         const tone = look.z.mul(mix(float(0.55), float(1.25), grime)).mul(mix(float(1.0), float(0.62), smoothstep(0.55, 0.8, streak)));
-        const albedo = mix(vec3(0.03, 0.034, 0.046), vec3(0.046, 0.04, 0.05), look.y).mul(tone);
+        const bare = mix(vec3(0.03, 0.034, 0.046), vec3(0.046, 0.04, 0.05), look.y);
+        // Paint: most buildings wear a colour of their own (it shows where the street's light
+        // falls on it and is night-dark elsewhere), and some change colour halfway up.
+        const paintPick = ndHash11(seedB.mul(3.1).add(seedA.mul(0.7)).add(9.0));
+        const hueId = floor(ndHash11(seedA.mul(1.9).add(seedB.mul(2.3)).add(4.0)).mul(7.99));
+        const twoTone = step(0.62, fract(paintPick.mul(7.7)));
+        const upper = step(nFloors.mul(0.5), vF).mul(twoTone);
+        const hueAt = mod(hueId.add(upper.mul(3.0)), 8.0);
+        const paint = FACADE_PAINTS.reduce((acc, rgb, i) => mix(acc, vec3(rgb[0], rgb[1], rgb[2]), step(i - 0.5, hueAt)), vec3(0.0));
+        const albedo = mix(bare, paint.mul(0.27).add(0.012), step(paintPick, 0.64)).mul(tone);
         // Panel joints and a ledge under every floor line that catches light from below.
         const jointX = float(1.0).sub(smoothstep(0.0, 0.035, min(f.x, float(1.0).sub(f.x)).mul(bayW)));
         const ledge = float(1.0).sub(smoothstep(0.0, 0.07, f.y)).mul(inFloors);
@@ -278,22 +296,31 @@ export function createFacades(u, boxes, opts = {}) {
         const meterSeg = smoothstep(0.1, 0.24, abs(fract(vM.mul(0.45)).sub(0.5)));
         const meter = step(vM.sub(plinthH).div(max(size.y.sub(plinthH), 1.0)), fill).mul(meterSeg);
         const flick = sin(u.time.mul(ndHash11(seedB.add(seedA.mul(2.3))).mul(3.0).add(1.5)).add(seed.mul(0.4))).mul(0.08).add(0.92);
+        // A line of light under every third floor's ledge, on some buildings.
+        const ledOn = step(0.68, ndHash11(seedA.mul(2.9).add(seedB.mul(1.3)).add(2.0)));
+        const ledLine = float(1.0).sub(smoothstep(0.015, 0.05, f.y)).mul(inFloors).mul(step(mod(floor(vF), 3.0), 0.5))
+            .mul(ledOn)
+            .mul(detail);
         const trim = roofLine.mul(1.6).add(corner.mul(meter).mul(1.25)).mul(trimOn)
             .add(band.mul(0.42))
+            .add(ledLine.mul(0.8))
             .mul(flick);
         const trimCol = mix(accent, vec3(1.0, 0.78, 0.3), u.heat.mul(0.85));
         const trimLight = trimCol.mul(trim).mul(u.neon).mul(2.6)
             .add(trimCol.mul(trim).mul(pulse).mul(3.0));
 
         // ── Windows ──
-        const lit = step(h3.x, look.x.add(u.power.mul(0.2)).add(clear.w.mul(0.16)));
+        const lit = step(h3.x, look.x.add(0.06).add(u.power.mul(0.2)).add(clear.w.mul(0.16)));
         const warmShare = look.y.mul(0.6).add(0.22);
         const kind = h3.y;
         const tv = step(0.94, kind);
-        const neonRoom = step(0.9, h3.z);
+        // One room in five is lit in colour: the building's own, or a strip of LEDs someone put up.
+        const neonRoom = step(0.8, h3.z);
+        const ledPick = fract(h3.x.mul(5.3));
+        const led = mix(mix(vec3(1.0, 0.2, 0.62), vec3(0.2, 0.9, 1.0), step(0.33, ledPick)), vec3(0.66, 0.34, 1.0), step(0.66, ledPick));
         const tvFlick = ndHash21(vec2(floor(u.time.mul(9.0)), cellSeed.x.add(cellSeed.y))).mul(0.5).add(0.5);
         const lamp = mix(vec3(0.62, 0.8, 1.0), vec3(1.0, 0.66, 0.36), step(fract(kind.mul(7.31)), warmShare));
-        const roomCol = mix(mix(lamp, accent, neonRoom), vec3(0.22, 0.42, 1.0).mul(tvFlick), tv);
+        const roomCol = mix(mix(lamp, mix(accent, led, step(0.5, fract(h3.y.mul(3.7)))), neonRoom), vec3(0.22, 0.42, 1.0).mul(tvFlick), tv);
         const bright = pow(h3.z, 3.0).mul(1.25).add(0.34);
 
         // Inside the window rect: a frame, a mullion in the wide ones, a transom in some.

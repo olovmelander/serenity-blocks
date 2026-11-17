@@ -475,6 +475,48 @@ Open calls for the owner:
   pass left them alone apart from the clear spell's stars and moon.
 - The theme icon still shows the two-line wave, not the new dragon.
 
+## More colour (2026-11-17, evening)
+
+After the living night landed, the owner asked for a "slightly more colorful and fun" street:
+the buildings, the storefronts, the colour grading, the colours, and the shop, restaurant and
+store rooms, "more varied, fun and more visually stunning". Two smaller requests came first and
+are recorded here too.
+
+![The street, a bar and a gym up close, and two views in game](neon-district-captures/colour.webp)
+
+- **The combo hologram is never cut.** The "×5" hung among the buildings of the free zone and
+  was depth-tested, so a corner could pass in front of it, and its size ignored how wide the
+  zone really is. It is now drawn over the city (and kept out of the street's mirror) and sized
+  from the projection so that, at its largest, it fits the zone with a margin.
+- **Buildings.** About two in three wear a paint of their own (`FACADE_PAINTS`: teal, coral,
+  mustard, plum, mint, cobalt, rose, lilac), which shows where the street's light falls on it
+  and stays night-dark elsewhere; some change colour halfway up. Some carry a line of light
+  under every third floor. One room in five is lit in colour (the building's accent, or a pink,
+  cyan or violet strip of LEDs), and a few more windows are lit.
+- **Storefronts.** Most generated shops are tiled in a glaze of one of their own colours, the
+  small tiles in a chequer of it and cream. About half have a tube of neon bent round the
+  opening. Some hang a string of warm, pink and cyan bulbs under the fascia. Door and window
+  frames are painted in the shop's second colour.
+- **Rooms.** The street sees a shop at 45 to 85 degrees, so most of what it sees of a room is a
+  side wall, and those were flat grey. Every room now has a paint of its own, darker below a
+  dado rail; two sconces that throw pools of light on the wall; framed posters; a tube of neon
+  bent into a ring, a zigzag or three bars; a wash of the shop's colour down the back wall from
+  the ceiling line; and a floor laid in two tones.
+- **The street.** Canopies and vending machines are painted the colour of their own lamp, the
+  canopies striped with cream. The paper lanterns are no longer all red and orange: among them
+  hang pink, jade and yellow ones.
+- **The grade.** Saturation is up by about a tenth in every weather (1.12 to 1.23 in the rain,
+  1.37 in a clear spell) and the picture is bent a little toward an S-curve
+  (`GRADE_CONTRAST`), so the darks are a shade deeper and the colour has something to burn
+  against.
+
+Verified: captures of the street at six moments, six rooms up close, the game view in rain, a
+clear spell and fog, a four-line clear, Low, Medium and Minimal, and forced WebGL2, all with
+clean consoles; the hologram at nine moments, whole in each. The theme's 157 tests, the
+typecheck and the lint ratchet pass. Cost on the same GPU, measured cool: 1.49 ms a frame
+against 1.46 before this pass. Not verified: an integrated GPU, and the real game after this
+pass (the shaders it changes are the ones the playground mounts).
+
 ## How it is built
 
 | File | Role |
