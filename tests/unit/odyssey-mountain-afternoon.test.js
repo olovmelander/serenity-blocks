@@ -1,22 +1,14 @@
 /**
- * THE MOUNTAINS' AUTUMN (world/odyssey-autumn.js), THE MIST IN THE HOLLOW
- * (world/odyssey-hollow-mist.js) and THE TURN'S WAKE (world/odyssey-turn-wake.js): chapter 4's own
- * palette, the weather you can see from its rail, and what the land does as the day turns.
+ * THE MOUNTAINS' GOLDEN AFTERNOON, THE MIST IN THE HOLLOW (world/odyssey-hollow-mist.js) and THE
+ * TURN'S WAKE (world/odyssey-turn-wake.js): chapter 4's light, the weather you can see from its rail,
+ * and what the land does as the day turns. (The mountain's autumn palette was taken out at the
+ * owner's word on 2026-11-17: the mountain stays green.)
  * (The world that wears them is built, both backends, in odyssey-day-turn.test.js.)
  */
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three/webgpu';
 import { uniform, vec3 } from 'three/tsl';
 
-import {
-    AUTUMN_KIND,
-    ODYSSEY_AUTUMN,
-    autumnKindOf,
-    packSnowKind,
-    unpackSnowKind,
-} from '../../src/rendering/odyssey/world/odyssey-autumn.js';
 import {
     ODYSSEY_HOLLOW_MIST,
     buildHollowMistGeometry,
@@ -42,86 +34,10 @@ import { getLevelRegistry } from '../../src/core/odyssey/LevelRegistry.js';
 import { build, unassignedReads } from './helpers/tsl-node-build.js';
 
 const BACKENDS = [['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilder]];
-const luma = (c) => (0.2126 * c[0]) + (0.7152 * c[1]) + (0.0722 * c[2]);
 const layout = getLevelRegistry().getPresentationLayout();
 /** Orb `n`'s park, journey progress; and Act II progress of journey progress `p`. */
 const orb = (n) => layout.levelPositions[n - 1];
 const actTOf = (p) => (p - layout.chapterPositions[1]) / (layout.chapterPositions[5] - layout.chapterPositions[1]);
-
-describe("the mountains' autumn", () => {
-    it('turns the broadleaves and leaves the conifers green', () => {
-        expect(autumnKindOf('S1-broadleaf')).toBe(AUTUMN_KIND.gold);
-        expect(autumnKindOf('S7-blossom')).toBe(AUTUMN_KIND.red);
-        ['S2-pine', 'S3-fir', 'S4-cypress', 'S5-birch', 'S6-maple', '', undefined, null, 7].forEach((id) => {
-            expect(autumnKindOf(id)).toBe(AUTUMN_KIND.evergreen);
-        });
-    });
-
-    it("carries a tree's kind in its snow lane without touching an evergreen's snow", () => {
-        [0, 0.01, 0.37, 0.5, 0.99, 1].forEach((snow) => {
-            // An evergreen's lane is its snow, as it was before the season existed.
-            expect(packSnowKind(snow, AUTUMN_KIND.evergreen)).toBe(snow);
-            Object.values(AUTUMN_KIND).forEach((kind) => {
-                const back = unpackSnowKind(packSnowKind(snow, kind));
-                expect(back.kind).toBe(kind);
-                expect(back.snow).toBeCloseTo(snow, 9);
-            });
-        });
-        expect(packSnowKind(NaN, AUTUMN_KIND.gold)).toBe(2);
-        expect(packSnowKind(7, AUTUMN_KIND.red)).toBe(5);
-    });
-
-    it('is a palette of gold, amber and russet with a few deep reds, in that order', () => {
-        const stops = ODYSSEY_AUTUMN.crowns;
-        expect(stops.length).toBeGreaterThanOrEqual(4);
-        stops.forEach((stop, i) => {
-            if (i > 0) expect(stop.at).toBeGreaterThan(stops[i - 1].at);
-            expect(stop.at).toBeGreaterThanOrEqual(0);
-            expect(stop.at).toBeLessThan(1);
-            // Warm: red over green over blue, every one of them.
-            expect(stop.colour[2]).toBeLessThan(stop.colour[1]);
-            expect(stop.colour[2]).toBeLessThan(stop.colour[0]);
-            expect(['workhorse', 'pastel', 'accent']).toContain(stop.role);
-        });
-        // From the first stop on, each is redder than the last (green falls against red).
-        for (let i = 2; i < stops.length; i += 1) {
-            const greenOf = (stop) => stop.colour[1] / stop.colour[0];
-            expect(greenOf(stops[i])).toBeLessThan(greenOf(stops[i - 1]));
-        }
-        // The deep reds are few: they start in the palette's last quarter.
-        expect(stops[stops.length - 1].at).toBeGreaterThan(0.75);
-        // The blossoms draw from the red end only.
-        expect(ODYSSEY_AUTUMN.blossomFrom).toBeGreaterThan(stops[2].at);
-    });
-
-    it('stands as a band on the mountain above the island: a far promise from the shore', () => {
-        // The island's meadows and the rail's own ground lie well under the band's foot...
-        expect(ODYSSEY_AUTUMN.band[0]).toBeGreaterThan(ODYSSEY_SEA_LEVEL + 100);
-        // ...and the band is whole before the massif's first snow.
-        expect(ODYSSEY_AUTUMN.band[1]).toBeGreaterThan(ODYSSEY_AUTUMN.band[0] + 40);
-        expect(ODYSSEY_AUTUMN.band[1]).toBeLessThan(640);
-        // The grass goes tawny, and heath is the darker, redder of the two.
-        const { tawny, heath } = ODYSSEY_AUTUMN.grass;
-        expect(tawny[0]).toBeGreaterThan(tawny[1]);
-        expect(luma(heath)).toBeLessThan(luma(tawny));
-        expect(heath[1] / heath[0]).toBeLessThan(tawny[1] / tawny[0]);
-    });
-
-    it('is behind a catalogued lever, and rides the turn in the world', () => {
-        const root = path.resolve(
-            path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')),
-            '../..',
-        );
-        const read = (file) => readFileSync(path.join(root, file), 'utf8');
-        expect(read('src/rendering/odyssey/OdysseyBoardController.js'))
-            .toMatch(/autumn: !readBooleanUrlFlag\('odysseyNoAutumn'\),/);
-        expect(read('src/ui/url-parameters/odyssey-parameters.js')).toMatch(/odysseyNoAutumn/);
-        const renderer = read('src/rendering/odyssey/world/odyssey-world-renderer.js');
-        // None ahead of the turning shade, all of it behind; the turn's own share at rest.
-        expect(renderer).toMatch(/if \(sweeping\) uAutumn\.value\.set\(0, 1\);/);
-        expect(renderer).toMatch(/else uAutumn\.value\.set\(turn\.t, turn\.t\);/);
-    });
-});
 
 describe("the mountains' golden afternoon meets the evening", () => {
     const named = (name) => ODYSSEY_COLOUR_SCRIPT.find((k) => k.name === name);

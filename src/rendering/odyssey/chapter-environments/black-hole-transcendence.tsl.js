@@ -181,8 +181,10 @@ export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
     const uMotion = options.uMotion ?? uniform(1);
     // The closing sky's own travel, held still once the fold begins; the fold travels on `uPhase`.
     const uTunnelPhase = options.uTunnelPhase ?? uniform(0);
-    // THE LAST RING OF STARLIGHT: its radius (rad), from the fall's schedule (wide open at rest).
+    // THE LAST RING OF STARLIGHT: its radius (rad), from the fall's schedule (wide open at rest),
+    // and its own clock (closingSkyClock: the chapter's clock modulo a period every term divides).
     const uRing = options.uRing ?? uniform(CH7_CLOSING_SKY.open);
+    const uSkyClock = options.uSkyClock ?? uniform(0);
     // THE ROOMS: the place of the fold the eye is in, the next one opening through it, and the
     // fold's clock (odyssey-fold-rooms.js, odyssey-fold-clock.js), as uniforms.
     const room = createFoldRoomUniforms();
@@ -233,7 +235,7 @@ export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
         If(uPortal.greaterThan(0.0), () => {
             If(uFold.lessThan(0.999), () => {
                 body.assign(closingSkyColour({
-                    ray, time: uTime.mul(uMotion), phase: uTunnelPhase, ring: uRing, pix,
+                    ray, clock: uSkyClock.mul(uMotion), phase: uTunnelPhase, ring: uRing, pix,
                 }));
             });
             If(uFold.greaterThan(0.001), () => {
@@ -277,7 +279,7 @@ export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
     return {
         material,
         uniforms: {
-            uPortal, uWarp, uEyeZ, uOpen, uPhase, uThrottle, uFold, uMotion, uTunnelPhase, uRing, room,
+            uPortal, uWarp, uEyeZ, uOpen, uPhase, uThrottle, uFold, uMotion, uTunnelPhase, uRing, uSkyClock, room,
         },
     };
 }

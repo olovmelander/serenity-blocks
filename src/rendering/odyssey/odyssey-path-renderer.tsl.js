@@ -559,19 +559,23 @@ function defaultPathCurve() {
  * @returns {THREE.BufferGeometry}
  */
 export function createPathCentreLineGeometry(curve, tubularSegments = 256, radialSegments = 8) {
-    const segments = Math.max(2, Math.floor(tubularSegments));
+    const evenSegments = Math.max(2, Math.floor(tubularSegments));
+    // The fold's longer rail inside the black hole gets more rings, so they are as far apart in
+    // the world there as anywhere (odyssey-path-stretch.js railSamplePlan); elsewhere the same.
+    const plan = typeof curve.railSamplePlan === 'function' ? curve.railSamplePlan(evenSegments) : null;
+    const segments = plan ? plan.us.length - 1 : evenSegments;
     const sides = Math.max(3, Math.floor(radialSegments));
     const vertexCount = (segments + 1) * (sides + 1);
     const positions = new Float32Array(vertexCount * 3);
     const normals = new Float32Array(vertexCount * 3);
     const uvs = new Float32Array(vertexCount * 2);
     const indices = new (vertexCount > 65535 ? Uint32Array : Uint16Array)(segments * sides * 6);
-    const frames = curve.computeFrenetFrames(segments, false);
+    const frames = plan ?? curve.computeFrenetFrames(segments, false);
     const point = new THREE.Vector3();
     const radial = new THREE.Vector3();
 
     for (let i = 0; i <= segments; i += 1) {
-        const t = i / segments;
+        const t = plan ? plan.us[i] : i / segments;
         curve.getPointAt(t, point);
         for (let j = 0; j <= sides; j += 1) {
             const v = j / sides;

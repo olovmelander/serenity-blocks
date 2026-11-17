@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
+import { createOdysseyPathCurve } from './odyssey-path-stretch.js';
 
 export const ODYSSEY_PATH_CURVE_TYPE = 'catmullrom';
 export const ODYSSEY_PATH_TENSION = 0.3;
@@ -38,8 +39,12 @@ export function setOdysseyPathLayout(layout = {}) {
     }
 
     if (nextChapterPositions && nextChapterPositions.length >= 2) {
+        // The fold's stretch is placed by chapter 7's boundaries: a new curve when they move.
+        const moved = nextChapterPositions.length !== activeChapterPositions.length
+            || nextChapterPositions.some((position, index) => position !== activeChapterPositions[index]);
         activeChapterPositions = [...nextChapterPositions];
         frozenChapterPositions = Object.freeze(activeChapterPositions.slice());
+        if (moved) cachedCurve = null;
     }
 }
 
@@ -62,6 +67,13 @@ export function getActiveOdysseyChapterPositions() {
     return frozenChapterPositions;
 }
 
+/** `?odysseyFoldStretch=0`: the shorter rail through chapter 7 too (A/B captures; odyssey-path-stretch.js). */
+function readFoldStretchFlag() {
+    if (typeof window === 'undefined' || !window.location?.search) return true;
+    const value = new URLSearchParams(window.location.search).get('odysseyFoldStretch')?.toLowerCase();
+    return !(value === '0' || value === 'false' || value === 'off');
+}
+
 export function buildOdysseyPathCurve(pathData = ODYSSEY_PATH_DATA) {
     const sourcePoints = pathData === ODYSSEY_PATH_DATA
         ? activeControlPoints
@@ -69,10 +81,17 @@ export function buildOdysseyPathCurve(pathData = ODYSSEY_PATH_DATA) {
     const points = sourcePoints.map(
         (point) => new THREE.Vector3(point.x, point.y, point.z),
     );
-    const curve = new THREE.CatmullRomCurve3(points);
-    curve.curveType = ODYSSEY_PATH_CURVE_TYPE;
-    curve.tension = ODYSSEY_PATH_TENSION;
-    return curve;
+    // Chapter 7's middle is longer in the world than its share of progress (the fold's stretch):
+    // the same curve everywhere else (odyssey-path-stretch.js).
+    const chapterPositions = pathData === ODYSSEY_PATH_DATA
+        ? activeChapterPositions
+        : pathData.chapterPositions;
+    return createOdysseyPathCurve(
+        points,
+        ODYSSEY_PATH_CURVE_TYPE,
+        ODYSSEY_PATH_TENSION,
+        readFoldStretchFlag() ? chapterPositions : null,
+    );
 }
 
 export function getOdysseyPathCurve(pathData = ODYSSEY_PATH_DATA) {

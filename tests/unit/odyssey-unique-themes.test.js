@@ -4,6 +4,7 @@ import { getOdysseyThemePresentationPalette } from '../../src/core/odyssey/theme
 import { ThemeCollectionService } from '../../src/core/progression/theme-collection-service.js';
 import { ODYSSEY_COLLECTION_REWARDS } from '../../src/themes/theme-collection.js';
 import { THEME_REGISTRY, resolveThemeId } from '../../src/themes/theme-registry.js';
+import { foldStretchMeasure } from '../../src/rendering/odyssey/transitions/odyssey-fold-stretch.js';
 
 const registry = new LevelRegistry();
 const levels = registry.getAllLevels();
@@ -100,12 +101,15 @@ describe('Odyssey exclusive orb themes', () => {
     });
 
     it('places the two new orbs between existing neighbors without changing chapter boundaries', () => {
-        for (const [id, left, right] of [[43, 42, 44], [55, 54, 56]]) {
-            expect(registry.getLevel(id).pathPosition).toBeCloseTo(
-                (registry.getLevel(left).pathPosition + registry.getLevel(right).pathPosition) / 2,
-                8,
-            );
-        }
+        expect(registry.getLevel(43).pathPosition).toBeCloseTo(
+            (registry.getLevel(42).pathPosition + registry.getLevel(44).pathPosition) / 2,
+            8,
+        );
+        // Orb 55 stands on the fold's longer rail (2026-11-17), halfway between its neighbours in
+        // the WORLD (within half a world unit): tests/unit/odyssey-fold-longer.test.js.
+        const cp = registry.getPresentationLayout().chapterPositions;
+        const m = (id) => foldStretchMeasure(registry.getLevel(id).pathPosition, cp);
+        expect(Math.abs(m(55) - ((m(54) + m(56)) / 2))).toBeLessThan(2e-4);
         expect(registry.getAllChapters().map((chapter) => chapter.levelRange)).toEqual([
             [1, 5], [6, 10], [11, 18], [19, 26], [27, 34], [35, 48], [49, 56], [57, 60],
         ]);

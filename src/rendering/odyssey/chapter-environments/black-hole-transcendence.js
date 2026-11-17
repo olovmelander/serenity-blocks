@@ -53,6 +53,7 @@ import { getActiveOdysseyChapterPositions, getChapterPathRange } from '../path-u
 import { prefersReducedMotion } from '../../../themes/shared/reduced-motion.js';
 import { flashScale } from '../../../utils/photosensitivity.js';
 import { resolveFoldClock } from '../transitions/odyssey-fold-clock.js';
+import { foldStretchMeasure } from '../transitions/odyssey-fold-stretch.js';
 import {
     advanceFoldShow,
     createFoldShow,
@@ -88,6 +89,7 @@ import {
 } from './black-hole-transcendence.tsl.js';
 import { runChapterSteps } from './shared/chapter-build-steps.js';
 import { createGreatHoleLensSteps } from './odyssey-great-hole-lens.tsl.js';
+import { closingSkyClock } from './odyssey-closing-sky.tsl.js';
 
 export const BLACK_HOLE_TRANSCENDENCE_CONFIG = {
     id: 7,
@@ -172,6 +174,29 @@ export const CH7_QUALITY_TIERS = Object.freeze({
         stars: 800, dust: 0.4, embers: 0.5, foldSteps: 14,
     }),
 });
+
+/**
+ * How much of the post's radial rush the fold calms on its rides (`amount`, 0..1), eased in over
+ * chapter 7's local progress from orb 49's park on (`from`..`to`): none of it before, so the dive
+ * and its closing ring keep their streaks exactly.
+ */
+export const CH7_FOLD_RUSH_CALM = Object.freeze({ amount: 0.65, from: 0.26, to: 0.36 });
+
+/**
+ * The share of the post's radial rush the fold calms at path progress `p` (0 through the dive).
+ * @param {number} p path progress
+ * @param {number} fold the fold's presence (0..1)
+ * @param {number[]} chapterPositions
+ * @returns {number}
+ */
+export function foldRushCalm(p, fold, chapterPositions) {
+    const ch7 = chapterPositions?.[6];
+    const ch8 = chapterPositions?.[7];
+    if (!Number.isFinite(p) || !Number.isFinite(ch7) || !Number.isFinite(ch8) || !(ch8 > ch7)) return 0;
+    const C = CH7_FOLD_RUSH_CALM;
+    const x = Math.min(1, Math.max(0, (((p - ch7) / (ch8 - ch7)) - C.from) / (C.to - C.from)));
+    return C.amount * x * x * (3 - (2 * x)) * Math.min(1, Math.max(0, Number.isFinite(fold) ? fold : 0));
+}
 
 /** Where along its way the fold is when the eye comes in: the clock's time within this span. */
 export const CH7_FOLD_ENTRY_SPAN = 512;
@@ -596,8 +621,11 @@ export const CH7_WARP_DRIVE = Object.freeze({
     base: 0.6,
     gain: 3.4,
     /** The phase wraps here. (The fold does not follow the wrap: its places are not periodic along
-     * the way, so inside it travels on the drive's steps summed, see `foldPhase` in the update.) */
-    wrap: 2048,
+     * the way, so inside it travels on the drive's steps summed, see `foldPhase` in the update.)
+     * The closing sky's abyss stirs on it (CH7_CLOSING_SKY.stir): 1280 x 0.05 = 64, one whole
+     * period of the lattice noise, so the wrap is seamless there (at 2048 it stepped once per
+     * half hour or so of drive). */
+    wrap: 1280,
     /** A progress jump larger than this in one frame is a teleport (map jump), not travel. */
     teleport: 0.02,
 });
@@ -776,7 +804,8 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
     if (group.userData.throttleOverride === undefined) {
         group.userData.throttleOverride = readCh7ThrottleOverride();
     }
-    advanceWarpDrive(drive, delta, cameraProgress, fall.warp, {
+    // (On the world measure: the fold's longer rail covers more world per unit of progress.)
+    advanceWarpDrive(drive, delta, foldStretchMeasure(cameraProgress, chapterPositions), fall.warp, {
         // Settings > Reduce motion or the system's, as the chapter camera reads it (the system's
         // alone, re-queried every frame, missed the in-game setting).
         reducedMotion: prefersReducedMotion(),
@@ -797,6 +826,9 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
         if (windowUniforms.uThrottle) windowUniforms.uThrottle.value = drive.throttle;
         // The last ring of starlight, closing on the middle of the view (odyssey-closing-sky.tsl.js).
         if (windowUniforms.uRing) windowUniforms.uRing.value = fall.ring ?? CH7_FALL.ringOpen;
+        // ...on its own clock: the chapter's taken modulo a period every term of the ring divides,
+        // so it looks the same at any hour of a session (odyssey-closing-sky.tsl.js).
+        if (windowUniforms.uSkyClock) windowUniforms.uSkyClock.value = closingSkyClock(time);
         // THE FOLD: the other dimension past the horizon; still under reduced motion.
         if (group.userData.foldOverride === undefined) group.userData.foldOverride = readCh7FoldOverride();
         const { foldOverride } = group.userData;
@@ -856,9 +888,11 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
         }
     }
     // The post's radial rush (zoom blur) rides the same throttle, only inside the window and gone
-    // before the mouth opens onto the city.
+    // before the mouth opens onto the city. In the fold, where every trip between orbs is now a ride
+    // through the rooms, it is a breath of speed, not the hyperspace streaks the plunge outgrew.
     if (group.userData.lensWorldPos) {
-        group.userData.lensWorldPos.rush = Math.min(1, drive.throttle) * fall.portal * (1 - open);
+        const calm = foldRushCalm(cameraProgress, windowUniforms?.uFold?.value ?? 0, chapterPositions);
+        group.userData.lensWorldPos.rush = Math.min(1, drive.throttle) * fall.portal * (1 - open) * (1 - calm);
     }
     // The disk-plane crossing: the band's plane sweeps through edge-on (a razor line) and reopens.
     // Its outer edge is held in front of the eye (<= 0.85 of the hero's distance): left at its
