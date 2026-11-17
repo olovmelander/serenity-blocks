@@ -3,6 +3,7 @@
  * the real camera, its cloud floor and cap against the real rail, and its shaders on both
  * backends without a GPU.
  */
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
@@ -28,9 +29,11 @@ import {
     updateOdysseyEvening,
 } from '../../src/rendering/odyssey/world/odyssey-evening.js';
 import {
+    CLOUD_SEA_LOBE_STRIDE,
     CLOUD_SEA_SLOPE_RANGE,
     ODYSSEY_CLOUD_SEA,
     bakeCloudSeaField,
+    cloudSeaBakeCount,
     cloudSeaCover,
     createOdysseyCloudSea,
     planCloudSeaLobes,
@@ -267,7 +270,7 @@ describe('the sea of clouds', () => {
         const b = bakeCloudSeaField(64);
         expect(a.data).toEqual(b.data);
         expect(a.cover).toBeGreaterThan(0.9);
-        expect(planCloudSeaLobes().length).toBeGreaterThan(400);
+        expect(planCloudSeaLobes().length / CLOUD_SEA_LOBE_STRIDE).toBeGreaterThan(400);
         // Tiling: the height across the wrap is as smooth as it is anywhere else.
         const res = 128;
         const plate = bakeCloudSeaField(res);
@@ -371,6 +374,59 @@ describe('the sea of clouds', () => {
             });
             sea.dispose();
         });
+    });
+});
+
+describe('the sea of clouds: a second build costs what the first did', () => {
+    // 2026-11-17, measured by the lead: every world build AFTER the first took ~2.5 s longer.
+    // Cause: the plan made its lobes as `{ x, z, r, top }` objects, whose hidden class the
+    // world's own whole-number `{ x, z, .. }` data shares; fractions in it deprecated that class
+    // and de-optimised the world's bakes from the second build on (see planCloudSeaLobes).
+    it('plans its lobes as numbers in a typed array, never as objects', () => {
+        const rows = planCloudSeaLobes();
+        expect(rows).toBeInstanceOf(Float64Array);
+        expect(rows.length % CLOUD_SEA_LOBE_STRIDE).toBe(0);
+        expect(rows.every(Number.isFinite)).toBe(true);
+        // The same plan every time (the plate's bytes are pinned by it).
+        expect(planCloudSeaLobes()).toEqual(rows);
+        // ...and nothing in the sky pass's world modules builds an array of object literals at
+        // run time (the shape of the trap): rows go into typed arrays.
+        const modules = [
+            'odyssey-cloud-sea.js', 'odyssey-evening.js', 'odyssey-summit-cap.js', 'odyssey-wall-gusts.js',
+        ];
+        modules.forEach((file) => {
+            const source = readFileSync(new URL(`../../src/rendering/odyssey/world/${file}`, import.meta.url), 'utf8');
+            expect(source, file).not.toMatch(/\.push\(\s*\{/);
+        });
+    });
+
+    it('bakes its plate once a session: a rebuild takes the same plate and does no bake', () => {
+        const first = bakeCloudSeaField(ODYSSEY_CLOUD_SEA.res);
+        const bakes = cloudSeaBakeCount();
+        expect(bakeCloudSeaField(ODYSSEY_CLOUD_SEA.res)).toBe(first);
+        expect(Object.isFrozen(first)).toBe(true);
+        const kit = {
+            cameraPosition,
+            skyAirAt: () => vec3(0.6, 0.7, 0.9),
+            toCloudOutput: (c) => c,
+            sunColour: uniform(new THREE.Color(1, 0.7, 0.5)),
+            cloudWhite: vec3(0.97, 0.975, 0.99),
+            aerialK: uniform(0.00025),
+        };
+        const a = createOdysseyCloudSea(kit);
+        const snapshot = Uint8Array.from(first.data);
+        a.dispose();
+        const b = createOdysseyCloudSea(kit);
+        // The second build: no new bake, the very same bytes (untouched by the first's dispose),
+        // and a ring of the same size.
+        expect(cloudSeaBakeCount()).toBe(bakes);
+        expect(a.plate.image.data).toBe(first.data);
+        expect(b.plate.image.data).toBe(first.data);
+        expect(first.data).toEqual(snapshot);
+        expect(b.triangles).toBe(a.triangles);
+        expect(b.tops.geometry.getAttribute('position').count).toBe(a.tops.geometry.getAttribute('position').count);
+        expect(b.plate).not.toBe(a.plate);
+        b.dispose();
     });
 });
 
