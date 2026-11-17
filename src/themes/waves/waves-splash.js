@@ -762,29 +762,3 @@ export function whaleSplash({
         );
     }
 }
-
-/** A flying fish leaving the water, touching it with its tail, or dropping back in: a few drops. */
-export function fishSplash({
-    spray, pose: at, now, density = 1, eye = null, rgb = SEA_WHITE,
-}) {
-    const { rand } = spray;
-    const range = (a, b) => a + (b - a) * rand();
-    const grow = farReach(at.x, 0, at.z, eye, 3);
-    for (let k = Math.max(2, Math.round(5 * density)); k > 0; k -= 1) {
-        const a = rand() * TAU;
-        const out = range(0.08, 0.3);
-        spray.drop(
-            now,
-            now + range(0, 0.05),
-            at.x,
-            0.02,
-            at.z,
-            Math.cos(a) * out + at.fx * 0.4,
-            range(0.15, 0.45),
-            Math.sin(a) * out + at.fz * 0.4,
-            range(0.018, 0.035) * grow,
-            rgb,
-            range(1, 1.7),
-        );
-    }
-}

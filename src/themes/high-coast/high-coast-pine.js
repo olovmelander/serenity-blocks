@@ -430,7 +430,7 @@ export function* needleGeometrySteps(plates, { density = PINE_FOLIAGE.density[1]
  * of texels an alpha test keeps stays what it is at full size (alpha-tested foliage otherwise
  * thins to nothing at a distance).
  */
-export function bakeNeedleTexture(size = 128, seed = 0x5e1) {
+export function bakeNeedleTexture(size = 128, seed = 0x5e1, { pairs = 44, thick = 1, full = 0 } = {}) {
     const random = mulberry32(seed);
     const cov = new Float32Array(size * size);
     const tone = new Float32Array(size * size);
@@ -467,14 +467,17 @@ export function bakeNeedleTexture(size = 128, seed = 0x5e1) {
         line(x0, y0, x1, y1, S * (0.012 - 0.006 * (k / 24)), 0.35, true);
     }
     // Needles in pairs along it, sweeping toward the tip, denser and shorter near the tip.
-    const count = 44;
+    // `pairs` needle pairs, `thick` their width, `full` how little of them is foreshortened (the
+    // old pine's small brushes are drawn bushier than these cards' open shoots).
+    const count = pairs;
     for (let k = 0; k < count; k++) {
         const v = 0.1 + 0.88 * (k / count) ** 0.8 + (random() - 0.5) * 0.02;
         const [bx, by] = twigAt(Math.min(0.99, v));
         for (const sideSign of [-1, 1]) {
             const ang = (0.6 + random() * 0.6 - v * 0.3) * sideSign;
             // Seen from the side a bottlebrush's needles point every way: foreshortened lengths.
-            const len = S * (0.24 + random() * 0.16) * (0.35 + 0.65 * random() ** 0.6) * (1 - (0.35 * Math.max(0, v - 0.75)) / 0.25);
+            const len = S * (0.24 + random() * 0.16) * (0.35 + 0.65 * (full + (1 - full) * random() ** 0.6))
+                * (1 - (0.35 * Math.max(0, v - 0.75)) / 0.25);
             // A needle bends a little toward the tip: two segments.
             const mx = bx + Math.sin(ang) * len * 0.55;
             const my = by + Math.cos(ang) * len * 0.55;
@@ -482,8 +485,8 @@ export function bakeNeedleTexture(size = 128, seed = 0x5e1) {
             const tx = mx + Math.sin(ang2) * len * 0.45;
             const ty = my + Math.cos(ang2) * len * 0.45;
             const t = 0.55 + random() * 0.45;
-            line(bx, by, mx, my, S * 0.0048, t * 0.85, false);
-            line(mx, my, tx, ty, S * 0.004, t, false);
+            line(bx, by, mx, my, S * 0.0048 * thick, t * 0.85, false);
+            line(mx, my, tx, ty, S * 0.004 * thick, t, false);
         }
     }
     // The tip's brush: a few short needles straight out of the end.
@@ -581,7 +584,7 @@ export function bakeNeedleTexture(size = 128, seed = 0x5e1) {
  * The crown's breath in the wind, the same field for wood and needles so they stay together:
  * nothing at the foot, more up the tree and out along the limbs.
  */
-function sway(u, p) {
+export function pineSway(u, p) {
     const axis = vec2(p.y.mul(0.16), p.y.mul(-0.015));
     const out = length(p.xz.sub(axis));
     const reach = clamp(p.y.sub(5.5).div(9.0), 0.0, 1.0).mul(clamp(out.div(5.0), 0.0, 1.0).mul(0.75).add(0.25));
@@ -602,7 +605,7 @@ function woodMaterial(u, t) {
     material.fog = false;
     const bark = attribute('aBark', 'vec2');
     const part = attribute('aPart', 'float');
-    material.positionNode = Fn(() => positionLocal.add(sway(u, positionLocal)))();
+    material.positionNode = Fn(() => positionLocal.add(pineSway(u, positionLocal)))();
     material.colorNode = Fn(() => {
         const P = positionWorld;
         const n = normalize(normalWorld);
@@ -672,7 +675,7 @@ function needleMaterial(u, t, needles, coverage = false) {
         const p = positionLocal;
         // The shoots flutter a little at their tips on top of the crown's sway.
         const flutter = sin(u.time.mul(3.1).add(seed.x.mul(40.0))).mul(0.018).mul(uv().y);
-        return p.add(sway(u, p)).add(vec3(flutter, flutter.mul(0.5), flutter.mul(0.7)));
+        return p.add(pineSway(u, p)).add(vec3(flutter, flutter.mul(0.5), flutter.mul(0.7)));
     })();
     if (coverage) {
         material.alphaTest = 0.5;
@@ -749,7 +752,7 @@ export function shadowCasters(plan, frame) {
  * The patch: the summit's ground round the pine (posts below the summit's floor dropped), raised
  * by the land's own relief, multiplied into the land under it.
  */
-function shadowPatch(u, t, ground, casters, frame) {
+export function shadowPatch(u, t, ground, casters, frame) {
     const {
         x0, x1, z0, z1, step: d,
     } = PINE_SHADOW;

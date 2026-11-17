@@ -1,0 +1,161 @@
+{
+  "schemaVersion": 1,
+  "author": "Serenity Blocks original procedural Blender authoring",
+  "license": "Proprietary (project-owned)",
+  "glTFUpAxis": "Y",
+  "assets": [
+    {
+      "file": "high-coast-foliage.glb",
+      "bytes": 12552,
+      "sha256": "95fb2b465be5fd72b5408f69e022dcce803282fc256390202d438940f87cf5e0",
+      "kind": "foliage",
+      "meshes": {
+        "pine_shoots_0": {
+          "ribbons": 36,
+          "triangles": 162
+        },
+        "pine_shoots_1": {
+          "ribbons": 27,
+          "triangles": 126
+        }
+      }
+    },
+    {
+      "file": "high-coast-trees-normal.png",
+      "bytes": 802309,
+      "sha256": "fefd6eab7d034fd2855fd198e8ca9debad74d21a8b0f4357c08df1e9dbc3f424",
+      "kind": "sprite-normals"
+    },
+    {
+      "file": "high-coast-trees.png",
+      "bytes": 729517,
+      "sha256": "42a465be7fcf55e1f5cf83a1b4c0a4b02556bdf187b07b092e8c9aca978308a6",
+      "kind": "sprites",
+      "atlasWidth": 1872,
+      "atlasHeight": 256,
+      "gutter": 12,
+      "tiles": [
+        {
+          "asset": "pine-coast-a",
+          "species": "pine",
+          "trees": 1,
+          "x": 12,
+          "pixels": 136,
+          "width": 11.261113011658892,
+          "height": 21.19738919841674,
+          "trunk": -0.08677003640766262,
+          "coverage": 0.22647633272058823
+        },
+        {
+          "asset": "pine-coast-b",
+          "species": "pine",
+          "trees": 1,
+          "x": 172,
+          "pixels": 128,
+          "width": 8.77980692131391,
+          "height": 17.55961384262782,
+          "trunk": 0.11393254647251463,
+          "coverage": 0.348541259765625
+        },
+        {
+          "asset": "pine-coast-c",
+          "species": "pine",
+          "trees": 1,
+          "x": 324,
+          "pixels": 96,
+          "width": 8.973212814958394,
+          "height": 23.928567506555716,
+          "trunk": -0.020258788215134625,
+          "coverage": 0.2863362630208333
+        },
+        {
+          "asset": "pine-coast-d",
+          "species": "pine",
+          "trees": 1,
+          "x": 444,
+          "pixels": 136,
+          "width": 10.267780413562141,
+          "height": 19.327586660822853,
+          "trunk": -0.06348655664100657,
+          "coverage": 0.27794692095588236
+        },
+        {
+          "asset": "spruce-coast-a",
+          "species": "spruce",
+          "trees": 1,
+          "x": 604,
+          "pixels": 96,
+          "width": 8.453818592862225,
+          "height": 22.5435162476326,
+          "trunk": -0.0011009617362621898,
+          "coverage": 0.3664143880208333
+        },
+        {
+          "asset": "spruce-coast-b",
+          "species": "spruce",
+          "trees": 1,
+          "x": 724,
+          "pixels": 120,
+          "width": 8.37495857498907,
+          "height": 17.866578293310013,
+          "trunk": -0.014033782606812926,
+          "coverage": 0.3501953125
+        },
+        {
+          "asset": "spruce-coast-c",
+          "species": "spruce",
+          "trees": 1,
+          "x": 868,
+          "pixels": 88,
+          "width": 8.820103464219255,
+          "height": 25.65848280500147,
+          "trunk": 0.00960907458904306,
+          "coverage": 0.35875355113636365
+        },
+        {
+          "asset": "group-pines",
+          "species": "pine",
+          "trees": 4,
+          "x": 980,
+          "pixels": 264,
+          "width": 24.676335241135583,
+          "height": 23.928567506555716,
+          "trunk": 0.0,
+          "coverage": 0.3396957859848485
+        },
+        {
+          "asset": "group-mixed",
+          "species": "mixed",
+          "trees": 5,
+          "x": 1268,
+          "pixels": 344,
+          "width": 30.224771831718186,
+          "height": 22.492853456162372,
+          "trunk": 0.0,
+          "coverage": 0.3933048691860465
+        },
+        {
+          "asset": "group-spruces",
+          "species": "mixed",
+          "trees": 4,
+          "x": 1636,
+          "pixels": 224,
+          "width": 21.55312555620123,
+          "height": 24.632143492801408,
+          "trunk": 0.0,
+          "coverage": 0.386474609375
+        }
+      ]
+    },
+    {
+      "file": "pine-old.glb",
+      "bytes": 1082860,
+      "sha256": "efc1b953ca3173992171af52f1063bd79a549b6ba90ae5268d8fb936c755ff47",
+      "kind": "tree",
+      "species": "pine",
+      "role": "hero",
+      "sites": 2141,
+      "barkTriangles": 37116
+    }
+  ]
+}

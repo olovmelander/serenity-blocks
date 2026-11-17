@@ -9,9 +9,12 @@
  *           thrown up under it, the sun sliding along its back, its fins lit through when the sun
  *           stands behind them.
  *   under   what is behind the water's surface, drawn where the depth test FAILS (the animal is
- *           behind the wave the eye sees): its shape through the glass, dimmed and turned to the
- *           water's colour by the metres of sea over it, soft at its edge, gone below a few
- *           metres. Under the moon its edge burns with the sea's own cold light.
+ *           behind the wave the eye sees): a body lit from above by the light that has come down
+ *           through the wave, with the net of light the moving surface folds it into sliding over
+ *           its back; round (dark toward its outline), its outline never quite still (the water
+ *           bends it); its red taken first and the water's own glow laid over it by the metres of
+ *           sea between it and the eye, until below a few metres it is gone. Under the moon its
+ *           edge burns with the sea's own cold light.
  *
  * A dolphin leaving the face is therefore one animal in two lights with no seam to manage: what
  * has broken the surface is drawn by the first, what is still behind it by the second.
@@ -26,15 +29,15 @@
  *   dolphins, the whale   the body beats up and down in a wave that grows toward the flukes, the
  *                         flukes pitch after it, the flippers trim; the body arches over a leap
  *   the manta             a wave runs out along each wing
- *   the turtle            the front flippers row, the rear ones trail
- *   the flying fish       the tail sweeps side to side; the wings fold back or stand spread
+ *   the turtle            the front flippers fly (down and back, feathered coming up), the rear
+ *                         ones steer, the head looks about
  *   the seabird           the wings beat from the shoulder, the tips after the arms
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, If, abs, atan, attribute, cameraPosition, clamp, cos, cross, dot, exp, float, floor, int, length, max, mix,
-    normalize, positionGeometry, positionWorld, pow, reflect, round, select, sin, smoothstep, uniformArray, varying,
-    vec3, vec4,
+    Fn, If, abs, atan, attribute, cameraPosition, clamp, cos, cross, dot, exp, float, floor, int, length, max, min, mix,
+    normalize, positionGeometry, positionWorld, pow, reflect, round, select, sin, smoothstep, texture, uniformArray,
+    varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import { KINDS, SPECIES } from './waves-acts.js';
 import { wavesSky } from './waves-tsl.js';
@@ -52,8 +55,8 @@ export const LIFE_MASK = 0.3;
  * Per kind, how it swims:
  *   A = (the body wave's height at the tail / the wing's at its tip, its wavenumber, flipper or
  *        wing amplitude, how far the head moves against the tail)
- *   B = (the flukes' extra pitch / the wing's lag out along the span, the wings' set in a glide,
- *        -, -)
+ *   B = (the flukes' extra pitch / the wing's lag out along the span / how far a turtle's
+ *        flipper feathers, the wings' set in a glide / a turtle's sweep back, -, -)
  */
 const SWIM = {
     bottlenose: [[0.07, 4.2, 0.14, 0.12], [0.5, 0, 0, 0]],
@@ -61,7 +64,6 @@ const SWIM = {
     humpback: [[0.05, 4.4, 0.16, 0.1], [0.4, 0, 0, 0]],
     manta: [[0.16, 1.3, 0, 0], [2.2, 0, 0, 0]],
     turtle: [[0, 0, 0.6, 0], [0.4, 0.5, 0, 0]],
-    flyingFish: [[0.07, 5.2, 0.08, 0.2], [0, 1.25, 0, 0]],
     seabird: [[0, 0, 0.62, 0], [1.1, 0.2, 0, 0]],
 };
 
@@ -76,7 +78,6 @@ const SKINS = {
     humpback: [[0.024, 0.028, 0.036, 0.8], [0.3, 0.32, 0.33, -0.25], [0.14, 0.15, 0.17, 0.6], [0.4, 0.42, 0.42, 0.8]],
     manta: [[0.011, 0.012, 0.016, 0.6], [0.68, 0.7, 0.7, -0.05], [0.6, 0.62, 0.63, 1], [0.04, 0.04, 0.05, 0.6]],
     turtle: [[0.11, 0.12, 0.085, 0.4], [0.36, 0.34, 0.24, -0.3], [0.16, 0.11, 0.04, 1], [0.46, 0.41, 0.23, 1]],
-    flyingFish: [[0.62, 0.68, 0.74, 2.4], [0.9, 0.92, 0.94, -0.1], [0.05, 0.12, 0.28, 1], [0.5, 0.62, 0.75, 0.85]],
     seabird: [[0.7, 0.7, 0.68, 0.2], [0.8, 0.8, 0.78, -0.2], [0.1, 0.1, 0.11, 0.9], [0.02, 0.02, 0.025, 1]],
 };
 
@@ -105,12 +106,26 @@ const bodyWave = (s, phase, amp, K, recoil, from) => {
     return env.mul(amp).mul(sin(phase.sub(s.mul(K))));
 };
 
+/** Where each kind stands in the pack (the shaders branch on it). */
+const KIND = Object.freeze(Object.fromEntries(KINDS.map((kind, i) => [kind, i])));
+
+/**
+ * The light that reaches an animal under the water comes down through the wave from above, from
+ * the side of the tube and from ahead, where the barrel opens (a fixed direction: under water the
+ * light is the water's, whatever the sun's height).
+ */
+const UNDER_LIGHT = Object.freeze([-0.42, 0.78, -0.46]);
+
 /**
  * The two materials every kind shares.
- * @param {object} U   the world's uniforms (sun, warm, light: the hour's colours, glow: 0..1 the
- *                     sea's own light at night)
+ * @param {object} U   the world's uniforms (time, sun, warm, glow, light: the hour's colours,
+ *                     glowing: 0..1 the sea's own light at night)
+ * @param {object} [maps]
+ * @param {THREE.Texture} [maps.lace]    the field of foam cells (waves-tsl.js createFoamLace): the
+ *                                       turtle's plates and scales, and the net of light on a back
+ * @param {THREE.Texture} [maps.noise]   the water's noise: streaks in a plate, mottle on a hide
  */
-export function createFaunaMaterials(U) {
+export function createFaunaMaterials(U, { lace = null, noise = null } = {}) {
     const swimA = table4(SWIM, 0);
     const swimB = table4(SWIM, 1);
     const skinBack = table4(SKINS, 0);
@@ -152,9 +167,10 @@ export function createFaunaMaterials(U) {
         const root = smoothstep(0.0, 0.3, w).toVar();
         const onFlipper = isPart(1).toVar();
         const onTail = isPart(2).toVar();
+        const onHead = isPart(4).toVar();
         const onRear = isPart(5).toVar();
 
-        If(kindF.lessThan(2.5), () => {
+        If(kindF.lessThan(KIND.humpback + 0.5), () => {
             // ── Dolphins and the whale: up and down ──
             const trim = A.z.mul(beat).mul(sin(phase.mul(0.5).add(0.8))).mul(sgn).mul(onFlipper)
                 .mul(root);
@@ -170,7 +186,7 @@ export function createFaunaMaterials(U) {
             const sag = arch.mul(local.z).mul(local.z);
             local.addAssign(vec3(0.0, h.add(aft.mul(pitch)).sub(sag), 0.0));
             nrm.assign(rotX(nrm, atan(h2.sub(h).div(0.01).add(pitch).add(arch.mul(local.z).mul(2.0)))));
-        }).ElseIf(kindF.lessThan(3.5), () => {
+        }).ElseIf(kindF.lessThan(KIND.manta + 0.5), () => {
             // ── The manta: the wings fly ──
             const span = clamp(abs(local.x).div(0.5), 0.0, 1.0);
             const wing = pow(smoothstep(0.12, 1.0, span), 1.25);
@@ -182,33 +198,27 @@ export function createFaunaMaterials(U) {
             const whip = sin(phase.mul(1.3).sub(s.mul(7.0))).mul(0.03).mul(smoothstep(0.45, 1.0, s)).mul(onTail);
             local.addAssign(vec3(whip, y0.sub(amp.mul(0.12).mul(sin(phase))), 0.0));
             nrm.assign(normalize(vec3(nrm.x.sub(lift.mul(nrm.y)), nrm.y, nrm.z)));
-        }).ElseIf(kindF.lessThan(4.5), () => {
-            // ── The turtle: the front flippers row, the rear ones trail ──
-            const row = A.z.mul(beat).mul(sin(phase)).mul(sgn).mul(onFlipper)
+        }).ElseIf(kindF.lessThan(KIND.turtle + 0.5), () => {
+            // ── The turtle: the front flippers fly (down and back, feathered on the way up), the
+            //    rear ones steer, the head looks about ──
+            const stroke = sin(phase);
+            // The power stroke is quicker than the recovery: the flipper is down longer than up.
+            const down = stroke.add(sin(phase.mul(2.0)).mul(0.22));
+            const lift = A.z.mul(beat).mul(down).mul(sgn).mul(onFlipper)
                 .mul(root);
-            const sweep = B.y.mul(beat).mul(sin(phase.sub(0.9))).mul(sgn).mul(onFlipper)
+            const sweep = B.y.mul(beat).mul(sin(phase.sub(1.0))).mul(sgn).mul(onFlipper)
                 .mul(root);
-            const trail = B.x.mul(0.4).mul(sin(phase.add(1.2))).mul(sgn).mul(onRear)
+            const feather = B.x.mul(beat).mul(cos(phase)).mul(onFlipper).mul(w);
+            const steer = sin(phase.mul(0.5).add(1.2)).mul(0.22).mul(sgn).mul(onRear)
                 .mul(root);
-            local.assign(pivot.add(rotY(rotZ(local.sub(pivot), row.add(trail)), sweep)));
-            nrm.assign(rotY(rotZ(nrm, row.add(trail)), sweep));
+            const nod = sin(phase.mul(0.37).add(0.6)).mul(0.1).mul(onHead).mul(w);
+            const v = local.sub(pivot).toVar();
+            v.assign(rotY(rotZ(rotX(v, feather.add(nod)), lift.add(steer)), sweep));
+            local.assign(pivot.add(v));
+            nrm.assign(rotY(rotZ(rotX(nrm, feather.add(nod)), lift.add(steer)), sweep));
+            // The shell rides up a little on each stroke.
+            local.addAssign(vec3(0.0, sin(phase.sub(0.6)).mul(0.012).mul(beat), 0.0));
         })
-            .ElseIf(kindF.lessThan(5.5), () => {
-            // ── The flying fish: the wings fold back along the body or stand spread; the tail sculls ──
-                const wings = onFlipper.add(onRear).mul(root);
-                const fold = float(1.0).sub(spread).mul(B.y).mul(sgn)
-                    .mul(wings);
-                const flutter = sin(phase.mul(1.7)).mul(A.z).mul(spread).mul(sgn)
-                    .mul(wings)
-                    .mul(w);
-                local.assign(pivot.add(rotZ(rotY(local.sub(pivot), fold), flutter)));
-                nrm.assign(rotZ(rotY(nrm, fold), flutter));
-                const amp = A.x.mul(beat);
-                const h = bodyWave(s, phase, amp, A.y, A.w, 0.2);
-                const h2 = bodyWave(s.add(0.01), phase, amp, A.y, A.w, 0.2);
-                local.addAssign(vec3(h, 0.0, 0.0));
-                nrm.assign(rotY(nrm, atan(h2.sub(h).div(0.01)).negate()));
-            })
             .Else(() => {
             // ── The seabird: the wings beat from the shoulder, the tips after the arms ──
                 const stroke = A.z.mul(beat).mul(sin(phase.sub(w.mul(B.x))));
@@ -232,9 +242,27 @@ export function createFaunaMaterials(U) {
         return R0.xyz.add(offset);
     })();
 
+    /**
+     * Seen through moving water an outline is never still: what is behind the surface is shifted
+     * a few centimetres this way and that, more the deeper it lies, and not at all where it
+     * breaks the surface (so the half in the air and the half behind the water still meet).
+     */
+    const positionBehind = Fn(() => {
+        const at = position.toVar();
+        const depth = max(attribute('aRow2', 'vec4').w, 0.0);
+        const t = U.time;
+        const shimmer = vec3(
+            sin(at.y.mul(5.3).add(at.z.mul(2.1)).add(t.mul(1.9))),
+            sin(at.x.mul(4.7).sub(at.z.mul(3.3)).add(t.mul(2.3))),
+            sin(at.y.mul(3.9).add(at.x.mul(2.9)).sub(t.mul(1.7))),
+        );
+        return at.add(shimmer.mul(smoothstep(0.05, 0.7, depth).mul(0.016)));
+    })();
+
     /** The animal's own colours, before any light. */
     const albedoOf = () => {
-        const kind = int(round(aShape.w.mul(255.0)));
+        const kindF = round(aShape.w.mul(255.0)).toVar();
+        const kind = int(kindF);
         const skin = attribute('aSkin', 'vec4');
         const back = skinBack.element(kind);
         const belly = skinBelly.element(kind);
@@ -244,7 +272,34 @@ export function createFaunaMaterials(U) {
         // No two animals are quite one grey.
         const own = vLook.x.sub(0.5).mul(0.3).add(1.0);
         const base = mix(belly.rgb, back.rgb, shade).mul(own);
-        const painted = mix(mix(base, accA.rgb.mul(own), skin.y.mul(accA.w)), accB.rgb, skin.z.mul(accB.w));
+        const painted = mix(mix(base, accA.rgb.mul(own), skin.y.mul(accA.w)), accB.rgb, skin.z.mul(accB.w)).toVar();
+        if (lace) {
+            const rp = positionGeometry;
+            // ── The green turtle: a shell of plates, a hide of scales ──
+            // The plates: cells of the foam-cell field, mirrored about the keel so the row down the
+            // middle is whole plates and each side answers the other. A dark seam between two,
+            // streaks of amber fanning through each.
+            const plateAt = vec2(abs(rp.x), rp.z).mul(0.82).add(vec2(0.045, 0.61));
+            const plate = texture(lace, plateAt).toVar();
+            const seam = float(1.0).sub(smoothstep(0.025, 0.085, plate.r));
+            const grain = noise
+                ? texture(noise, vec2(rp.x.mul(2.3).add(plate.b.mul(3.0)), rp.z.mul(2.3))).b
+                : float(0.5);
+            const amber = smoothstep(0.34, 0.72, grain);
+            const shell = mix(vec3(0.085, 0.07, 0.04), vec3(0.34, 0.215, 0.07), amber)
+                .mul(plate.b.mul(0.55).add(0.72))
+                .mul(float(1.0).sub(seam.mul(0.78)));
+            // The scales of its head and flippers: dark, each edged in cream.
+            const scaleAt = vec2(rp.x.add(rp.y.mul(0.7)), rp.z.sub(rp.y.mul(0.35))).mul(1.75).add(vec2(0.37, 0.11));
+            const scale = texture(lace, scaleAt).g;
+            const cream = float(1.0).sub(smoothstep(0.035, 0.13, scale));
+            const hide = mix(vec3(0.075, 0.08, 0.06), vec3(0.5, 0.46, 0.32), cream);
+            const plastron = vec3(0.56, 0.5, 0.31);
+            const bare = max(float(1.0).sub(skin.y).sub(skin.z), 0.0);
+            const turtle = shell.mul(skin.y).add(plastron.mul(skin.z)).add(hide.mul(bare)).mul(own);
+            const isTurtle = float(1.0).sub(smoothstep(0.0, 0.5, abs(kindF.sub(KIND.turtle))));
+            painted.assign(mix(painted, turtle, isTurtle));
+        }
         // The eye: dark and wet.
         return { albedo: mix(painted, vec3(0.006, 0.006, 0.008), skin.w), skin, gloss: back.w };
     };
@@ -284,9 +339,7 @@ export function createFaunaMaterials(U) {
             .add(vec3(1.5, 0.9, 0.45).mul(rim.mul(rim).mul(rim)).mul(behind.mul(1.2).add(0.1)))
             .mul(light.fireTint);
         // A fin is thin: with the sun behind it, it glows through.
-        // (A fin's tip, or the flying fish's wing membranes: its second mask.)
-        const isFish = select(aShape.w.mul(255.0).greaterThan(4.5), 1.0, 0.0);
-        const thin = max(smoothstep(0.25, 0.8, vLook.z), skin.z.mul(isFish));
+        const thin = smoothstep(0.25, 0.8, vLook.z);
         const through = sunLight.mul(albedo.add(0.08)).mul(thin).mul(behind.mul(behind).mul(0.9).add(0.12));
         const colour = lit.add(shine).add(through).mul(mix(vec3(1.0), vec3(1.12, 1.0, 0.84), warm)).toVar();
         // What is far out stands in the haze of the hour.
@@ -301,37 +354,73 @@ export function createFaunaMaterials(U) {
     });
     under.name = 'waves-life-under';
     under.depthFunc = THREE.GreaterDepth;
-    under.positionNode = position;
+    under.positionNode = positionBehind;
     under.colorNode = Fn(() => {
         const P = positionWorld;
         const N = normalize(vNormal).toVar();
         const V = normalize(cameraPosition.sub(P)).toVar();
-        const { albedo, skin } = albedoOf();
-        const depth = max(vLook.y, 0.04).toVar();
-        // What its own light keeps after the water over it, and the water's glow in front of it.
-        const kept = exp(light.absorb.mul(depth.mul(-1.5))).toVar();
-        const facing = clamp(dot(N, sun).mul(0.6).add(0.4), 0.0, 1.0);
-        const own = albedo.mul(ambientOn(N).mul(1.3).add(sunLight.mul(facing).mul(0.3)))
-            .mul(skin.x.mul(0.6).add(0.4));
-        // (It stands in the water's light: a darker shape in the glass, its belly a little paler.)
-        const veil = light.scatter.mul(vec3(0.3, 0.4, 0.5).mul(light.skyTint)).mul(0.5);
-        const colour = own.mul(kept).mul(0.8).add(veil.mul(vec3(1.0).sub(kept))).toVar();
-        const rim = float(1.0).sub(clamp(dot(N, V), 0.0, 1.0));
+        const { albedo, skin, gloss } = albedoOf();
+        const depth = max(vLook.y, 0.03).toVar();
+        const facing = clamp(dot(N, V), 0.0, 1.0).toVar();
+        // The light that has come down through the wave: the hour's sun, less what a metre of
+        // this water takes from it. It falls on the animal's back from above and from the open
+        // end of the tube, and the moving surface folds it into a net that slides over the skin.
+        const sunk = light.sunTint.mul(exp(light.absorb.mul(-1.1)));
+        const key = clamp(dot(N, vec3(...UNDER_LIGHT)).mul(0.62).add(0.38), 0.0, 1.0).toVar();
+        const net = float(0.0).toVar();
+        if (lace) {
+            const t = U.time;
+            const along = P.z.add(P.x.mul(0.35));
+            const up = P.y.add(P.x.mul(0.2));
+            // (Bent by the swell: threads of light that waver, not the straight walls of the
+            // cells they are drawn from, which on a smooth back read as a shell's plates.)
+            const bend = noise
+                ? texture(noise, vec2(along.mul(0.13).add(t.mul(0.013)), up.mul(0.13).sub(t.mul(0.009)))).rg
+                    .sub(0.5)
+                    .mul(0.34)
+                : vec2(0.0);
+            const k1 = texture(lace, vec2(along.mul(0.17).add(t.mul(0.021)), up.mul(0.17).add(0.4)).add(bend)).r;
+            const k2 = texture(lace, vec2(along.mul(0.23).sub(t.mul(0.017)).add(0.6), up.mul(0.23)).sub(bend)).r;
+            // Wide and soft: a glow that gathers toward a thread, never a drawn line.
+            const fold = float(1.0).sub(smoothstep(0.0, 0.34, min(k1, k2.mul(1.3))));
+            // (Sharp near the surface, washed out with depth.)
+            net.assign(fold.mul(fold).mul(float(1.0).sub(smoothstep(0.4, 2.2, depth))));
+        }
+        // The water's own glow lights it from every side; from below there is less of it.
+        const fill = light.scatter.mul(1.5).add(vec3(0.04, 0.06, 0.075).mul(light.skyTint))
+            .mul(N.y.mul(0.3).add(0.7));
+        // Wet skin under water still takes a sheen from the light above: a soft band down the back.
+        const R = reflect(V.negate(), N);
+        const gleam = clamp(dot(R, vec3(...UNDER_LIGHT)), 0.0, 1.0);
+        const g2 = gleam.mul(gleam);
+        const sheen = sunk.mul(g2.mul(g2).mul(gleam)).mul(gloss.mul(0.16)).mul(net.mul(0.8).add(0.6));
+        const lit = albedo.mul(fill.add(sunk.mul(key).mul(net.mul(0.85).add(0.62))))
+            .add(sheen)
+            .mul(skin.x.mul(0.55).add(0.45))
+            // Round: a body turns dark toward its outline.
+            .mul(pow(facing, 0.6).mul(0.62).add(0.38))
+            .toVar();
+        // The water between it and the eye takes its red first and lays its own glow over it.
+        const kept = exp(light.absorb.mul(depth.mul(-1.25))).toVar();
+        const veil = light.scatter.mul(U.glow.mul(0.6).add(1.0)).mul(0.62);
+        const colour = lit.mul(kept).add(veil.mul(vec3(1.0).sub(kept))).toVar();
+        const rim = float(1.0).sub(facing);
         // The sea's own light, at night: what moves through it burns cold along its edge.
         const shallow = float(1.0).sub(smoothstep(0.0, 2.6, depth));
         const cold = vec3(0.05, 0.5, 0.9).mul(U.glowing).mul(rim.mul(rim).mul(rim).mul(1.5).add(0.025)).mul(shallow);
         colour.addAssign(cold);
-        // Soft at its edge (the water bends it), fainter the deeper it lies.
-        const soft = smoothstep(0.0, 0.5, float(1.0).sub(rim));
+        // A crisp shape near the surface, softer at its outline the deeper it lies, and gone
+        // below a few metres.
+        const outline = mix(float(1.0), smoothstep(0.0, 0.42, facing), smoothstep(0.35, 1.6, depth));
         // Under the flat of the sea the eye looks along the water: most of what lies under it is
         // lost in the sky the surface mirrors, more the further off it is.
-        const along = float(1.0).sub(clamp(abs(V.y), 0.0, 1.0));
-        const a2 = along.mul(along);
-        const mirrored = a2.mul(a2).mul(along).mul(float(1.0).sub(smoothstep(0.0, 0.35, P.y)));
-        const edge = soft.mul(0.85).add(U.glowing.mul(rim.mul(rim)).mul(0.5));
-        const alpha = float(1.0).sub(smoothstep(0.5, 3.2, depth)).mul(edge)
+        const flat = float(1.0).sub(clamp(abs(V.y), 0.0, 1.0));
+        const f2 = flat.mul(flat);
+        const mirrored = f2.mul(f2).mul(flat).mul(float(1.0).sub(smoothstep(0.0, 0.35, P.y)));
+        const alpha = float(1.0).sub(smoothstep(0.9, 3.4, depth))
+            .mul(outline.add(U.glowing.mul(rim.mul(rim)).mul(0.5)))
             .mul(float(1.0).sub(mirrored.mul(0.92)))
-            .mul(0.94);
+            .mul(0.96);
         return vec4(colour.mul(mix(vec3(1.0), vec3(1.1, 1.0, 0.86), warm)), clamp(alpha, 0.0, 1.0));
     })();
 
@@ -359,9 +448,14 @@ export function slotsFor(kind, tier) {
  * @param {object} p.U       the world's uniforms
  * @param {{ kinds: object }} p.pack   what waves-cast.js parsed
  * @param {object} p.tier
+ * @param {THREE.Texture} [p.lace]    the field of foam cells, and
+ * @param {THREE.Texture} [p.noise]   the water's noise: what the skins and the light on them are
+ *                                    drawn with (without them an animal is plain)
  */
-export function createFauna({ U, pack, tier }) {
-    const materials = createFaunaMaterials(U);
+export function createFauna({
+    U, pack, tier, lace = null, noise = null,
+}) {
+    const materials = createFaunaMaterials(U, { lace, noise });
     const group = new THREE.Group();
     group.name = 'waves-life';
     const kinds = {};

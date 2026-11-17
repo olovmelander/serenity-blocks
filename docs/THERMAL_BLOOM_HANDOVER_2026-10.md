@@ -3,6 +3,11 @@
 Where the Thermal Bloom theme (built from the Iris Springs concept) stands, what is left, and how to
 pick it up in a new session.
 
+> **2026-11-17:** the living-basin pass audited the theme again and answered several of the
+> open items below (the light, the four-line eruption's weight, the marched steam's dither in
+> large bodies). Its record, with what is still open, is
+> [THERMAL_BLOOM_LIVING_BASIN_2026-11.md](THERMAL_BLOOM_LIVING_BASIN_2026-11.md).
+
 ## The remake (2026-10-13): state and what is left
 
 The owner asked for a remake into "a visual masterpiece with amazing lock piece and combo

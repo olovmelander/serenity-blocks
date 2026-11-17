@@ -48,6 +48,7 @@ function uniforms() {
         open: uniform(0),
         bulge: uniform(new THREE.Vector4(-60, 0, 5, 0)),
         tear: uniform(0),
+        heave: uniform(0),
         glowing: uniform(0),
         // The sea's own state, as it starts: glass.
         sea: uniform(new THREE.Vector4(0.3, 0, 0, 0.15)),
@@ -425,7 +426,7 @@ describe('waves life: the animals', () => {
         }
         expect(life.live()).toBe(life.count);
         expect(life.canLeap()).toBe(false);
-        // A whale, a turtle or a fish is not one of the pod.
+        // A whale, a turtle or a manta is not one of the pod.
         life.add(makeWhale({
             at: 1, mode: 'blow', x: -30, z: -120, hx: 1, hz: 0,
         }));
@@ -823,15 +824,14 @@ describe('waves pod: the standing rain and the spindrift', () => {
         }
     });
 
-    it('gives the mist both of its kinds, spread along their lines, the same for the same seed', () => {
+    it('spreads the plume along the crest, one sheet to a stretch, the same for the same seed', () => {
         const { mist, rain } = build('Medium', 187);
         const rows = [];
         const all = seeds(mist);
         for (let i = 0; i < all.length; i += 4) rows.push(all.slice(i, i + 4));
-        // The boil where the lip lands, and the plume off the crest: each sheet is one or the other.
-        expect(rows.every((row) => row[3] === 0 || row[3] === 1)).toBe(true);
-        expect(rows.some((row) => row[3] === 0)).toBe(true);
-        expect(rows.some((row) => row[3] === 1)).toBe(true);
+        // Every sheet is the plume off the crest (the white water where the lip lands is its own
+        // part, waves-whitewater.js): no sheet is marked as anything else.
+        expect(new Set(rows.map((row) => row[3])).size).toBeGreaterThan(2);
         // Stratified along the line: one sheet to each stretch of it.
         rows.forEach((row, i) => {
             expect(row[0]).toBeGreaterThanOrEqual(i / rows.length - 1e-6);

@@ -36,12 +36,12 @@ board is answered by light that starts at the board and travels through the stre
 | Event | Response |
 | --- | --- |
 | Piece lock | The piece lands in the street under the foot of the board, at its own column. A ring runs out through the puddles in the piece's colour and bends the reflections as it passes; a shell of light climbs the walls and switches dark windows on for a moment; the rain inside the shell lights up, so the shell reads as a dome; sparks skid out across the road and a comet runs down the kerb strips. |
-| Hard drop | The same, harder: a wider ring, more sparks, a camera dip. |
+| Hard drop | The same, harder: a wider ring, more sparks, a camera dip. Since 2026-11-17 its shock also breaks against the kerbs either side of the board: a column of light and a crown of sparks at each. |
 | Line clear | The cleared rows fire out of the card as beams at their own heights. Then a wave bursts out of the vanishing point and rushes up the street at the viewer, one front per line: each sign flares as a front reaches it, the windows it passes stay lit, the kerb strips light, sparks kick off both kerbs, and the canyon's rays flood as it arrives. One line answers in the district's first accent, two in the second, three in both at once. |
 | Combo | The district charges. More windows are lit, the trim on the towers climbs like level meters, the kerb strips chase faster, the city flows past faster, flying traffic speeds up and the palette warms from the level's accents to gold. A hologram beside the board counts the chain ("×3"), punched larger with each step. When the chain breaks the district browns out and drains. |
-| Four lines / perfect clear | Blackout: every light in the district drops to a ghost for a fifth of a second, signs tearing. Then the wave comes back gold with four fronts, sheet lightning runs through the smog, and a drone-show dragon swims out of the haze, down the left wall beside the card and up over the camera. The district stays in overdrive while the dragon is in the street. |
-| T-spin | The signs and screens glitch. |
-| Level up | The district changes colours: five palettes, cycled (signal, harbour, arcade, lantern, ultraviolet). |
+| Four lines / perfect clear | Blackout: every light in the district drops to a ghost for a fifth of a second, signs tearing. Then the wave comes back gold with four fronts, sheet lightning runs through the smog, and a drone-show dragon flies into the street, never the same way twice (see "The living night"). The district stays in overdrive while the dragon is in the street. A perfect clear calls two dragons and a volley of rockets, and opens the sky. |
+| T-spin | The signs and screens glitch, and spinning hoops of light run away up the canyon. |
+| Level up | The district changes colours: five palettes, cycled (signal, harbour, arcade, lantern, ultraviolet). Rockets burst between the walls in the new palette's colours. |
 
 Combo here is the true consecutive-clear combo (one `ComboTracker` per player in
 `NeonDistrictDirector`); the bus's `COMBO` event is cascade depth (ADR-0011). With several
@@ -317,6 +317,164 @@ Verified on WebGPU (RTX 3070): clean consoles on High and Medium, on forced WebG
 In game at Ultra (1584 × 813, two alternating rounds) the street read 130.7 and 131.0 fps with
 the glass against 130.8 and 130.6 without, at Electron's frame cap.
 
+## The living night (2026-11-17)
+
+The owner asked for an audit of the whole theme and a pass that makes it one of the game's most
+striking: varied over time, an effect of its own for every event, the biggest moments the most
+spectacular, and above all a dragon that is different every time it appears. The street, the
+shops, the signs, the people and the rain on the glass were kept as they are. This section
+records what the audit found and what the pass added.
+
+### What the audit found
+
+- **The dragon was one animation.** One closed-form curve with constants in it: out of the haze,
+  down the left wall, over the camera, every time. Its drones sat at random along their lines and
+  each was a round dot, so in the game it read as a string of fairy lights, not as a body.
+- **The night never changed.** The palettes turn on the clock, but they tint only the haze, the
+  sky and the waves; the signs keep their own colours. Every minute of play had the same rain,
+  the same visibility and the same grade.
+- **Events shared effects.** A hard drop was a harder lock. A twist was a sign glitch. A new
+  level was a flash and sheet lightning. A perfect clear was a four-line clear with a brighter
+  dragon.
+- **The frame decides what is seen.** The card covers the canyon's vanishing point and most of
+  the sky. What a solo game shows is two wedges of street beside the card, about 6 to 30 m
+  deep on the left and 6 to 14 m on the right (the stats bar takes the rest). Anything that
+  happens under the board, far up the street or in the sky is behind the card.
+
+### The dragon never flies the same way twice
+
+![Six flights: a spire climbed, a figure of eight, a dive to the street, a burst, the swarm gathered again in the other lane, and a ring in the real game](neon-district-captures/night-dragon.webp)
+
+Every call plans a new flight (`neon-district-dragon.js`, three-free and pure) from a seed and
+from what the frame leaves free.
+
+- **The stage.** `dragonLane` turns the live card and HUD rects into lanes: the wedge of air
+  beside the cards on each side that has room, or, on a tall frame with none, the band over the
+  card. Every figure is laid out inside a lane, sized to it, and the way from one lane to the
+  other runs behind the card.
+- **A flight is a recipe.** Twelve of them: `serpent` (a weave behind the card and a close pass
+  on the far side), `spire` (a coil climbed round an upright axis), `ouroboros` (a ring flown
+  facing the viewer, which bursts and gathers again), `skimmer` (a dive and a run along the wet
+  road in a sheet of spray), `borer` (a corkscrew bored away down the lane), `phoenix` (gathered
+  out of sparks into a ring), `leap` (a loop over on its back), `vanish` (a figure, a burst, and
+  the swarm gathers again in the other lane), `lantern` (a ring that dissolves into rising
+  sparks), `gyre` (a corkscrew flown at the camera), `eight` and `comet`.
+- **Each deal is its own.** A recipe draws its way in (out of the far haze round the card's edge,
+  down out of the smog, past the camera from behind, low along the street, or gathered out of
+  sparks), its way out (over the camera, into the haze, straight up, or dissolved), its depths,
+  turns, directions, size and one of six colour schemes. The world deals the recipes from a
+  shuffle bag: all twelve fly before any comes round again, and a new deal never opens with the
+  one just flown. A session shuffles its own order; a capture keeps one.
+- **Bursts.** The swarm leaves its seats for a cloud of glittering sparks and comes back: in
+  place, or while the head jumps to another piece of the curve, so it gathers somewhere else.
+- **It reads as a dragon.** The drones of a line are dealt evenly along it and each is drawn out
+  along its line as the screen sees it, so a row of drones is one neon tube: six contours down
+  the body, hoops round it, a sawtooth crest. The head is drawn 1.4 times the body's scale, with
+  jaws that open in a roar, teeth, forked antlers, a mane, whiskers; four legs with claws; a
+  tail fan; embers that hang where the body shed them. A low tier has fewer drones and longer
+  dashes, and is still tubes.
+- **How it is drawn.** The planner bakes the curve to 192 knots one step of arc apart, with a
+  frame at each (carried along the curve without twist, then eased upright, so the body banks
+  through a loop and levels out). Both go into one float texture the vertex stage reads by
+  index (`textureLoad`); a table of rows holds the head's place, the burst and the colours. One
+  mesh flies two dragons.
+- **A perfect clear calls two**: one white-gold, one in the district's colours.
+
+In the playground: `dragon=<recipe>`, `dragonSeed=`, `dragonScheme=0..5`, `dragonSide=-1|1`,
+and `dragonCam=<m>` for a camera that rides beside it.
+
+### A sharper window
+
+The owner liked the rain on the glass and asked for the window to be a little sharper, so the
+theme behind it shows better. The drops, the runners and their trails are as they were. The mist
+between them now blends at most 34 % of the blurred street over the picture (it was 70 %):
+`GLASS_MIST_SOFTEN` in `neon-district-post.js`.
+
+### The night turns
+
+![Rain, a downpour, a clear spell and a bank of fog](neon-district-captures/night-weather.webp)
+
+Beside the palettes, the weather turns on a clock of its own (`neon-district-night.js`), 470 s
+round against the palettes' 500, so a palette meets a weather again only after hours.
+
+| State | Seconds | What it looks like |
+| --- | --- | --- |
+| rain | 84 | Today's look, where every night starts. |
+| downpour | 72 | It comes down hard and leans in the wind, the haze thickens, sheet lightning walks, the grade cools to steel. |
+| easing | 46 | The rain thins and the first gaps open in the smog. |
+| clear | 108 | The rain stops. The air is washed clean and the far street stands sharp, the smog parts over the moon and a few stars, the drops dry off the glass, and the neon is at its most saturated over indigo shadows. The street stays wet. |
+| fog | 92 | A bank of fog rolls down the canyon: everything past the near shops dissolves, every lamp wears a wide halo, and the fog glows warm with the city. |
+| mizzle | 68 | The fog lifts into a fine rain. |
+
+Each state is held for two thirds of its span and melts into the next. Play pushes on top: hot
+play still brings the downpour, even into a clear spell, and a perfect clear's crown still opens
+the sky. `u.rain` is now how wet the surfaces are and the new `u.fall` is how much rain is
+falling, so the road keeps its mirror through a dry spell.
+
+**Passers-by.** About every 27 s something flies down the street past the camera, low between
+the walls: a cab, a patrol whose lights turn slowly from red to blue, a freighter hung with
+marker lamps, a string of courier drones. Each is one card that faces the camera, a dark hull
+with its lamps on it. Its light is the district's own (`ndGlow` reads `u.pass`), so the walls,
+the rain and the wet road all show it go by. Never the same kind twice running; none under
+reduced motion.
+
+### An effect of its own for every event
+
+![A hard drop at the kerbs, a twist's gyre, a new level's rockets, a perfect clear's white-gold dragon, a patrol passing, and a level-up in the real game](neon-district-captures/night-events.webp)
+
+| Event | What is new |
+| --- | --- |
+| Hard drop | The shock breaks against the kerbs either side of the board: a column of light stands up out of each in the piece's colour for a third of a second, with a crown of sparks thrown straight up. (The first version put one column at the landing, which is under the card.) |
+| Twist | The circuit turns over: three spinning hoops of light run away up the canyon round its walls, the other way round each time. |
+| New level | Rockets climb between the walls and burst in the colours of the palette the district is turning to. The wet road shows every star again. |
+| Perfect clear | Two dragons, a volley of white-gold rockets, and the sky opens. |
+| Four lines | The dragon, in a flight of its own. |
+
+Locks, clears, combos, cascades and back-to-backs keep their effects.
+
+### Verified
+
+- Playground captures on WebGPU (RTX laptop GPU), all with clean consoles: all twelve flights as
+  frame strips at High; every weather state; four passers-by; hard drop, twist, new level and
+  perfect clear; the dragon on forced WebGL2, at Low and Medium; rockets and the kerb columns at
+  Minimal; a perfect clear at Ultra; a 430 x 932 portrait frame through a four-line clear and a
+  new level (the dragon and the rockets take the band over the card).
+- The real game (the dev server in headless Chrome, single player, WebGPU, High): the theme
+  starts with a live layout, takes real bus events (hard drop, twist, level up, four lines),
+  counts them, flies the dragon beside the real board and logs nothing.
+- 163 tests in the theme's files and their neighbours pass, among them two new files:
+  `neon-district-dragon.test.js` (every recipe on a wide, a two-lane and a tall stage stays
+  inside the canyon; frames are unit vectors square to the curve; the head only moves forward;
+  bursts, jumps, gathering and dissolving; the bag deals every recipe once; the new parts build
+  to WGSL and GLSL) and `neon-district-night.test.js` (the weather's states and melts, what the
+  world does with them, the passers-by, and each event's own effect).
+- Typecheck, the lint and type ratchets, the fitness ratchets, dependency boundaries, the theme
+  lifecycle audit, the IP-string gate and the production build with its boot-closure guard pass.
+- The whole suite, run twice: 1,411 of 1,418 files and 25,573 of 25,615 tests passed on the
+  second run. Six files failed, none of them this theme's: `records-view` and
+  `game-over-modal-result-compatibility` (this machine prints `8 025`, the tests expect `8,025`),
+  `tts-recorder-e2e` (a symlink Windows refuses in a worktree), and `local-versus-cameras`,
+  `odyssey-layout-editor` and `stellar-drift-build-steps`, which pass when run on their own here
+  and on untouched `main` (the first run failed a different handful under the same load).
+- Cost, measured cool (the playground at 30 fps, 1920 x 1080, High, the same GPU): 1.43 ms of GPU
+  time a frame on `main` against 1.46 ms here at rest, 1.45 against 1.48 through the demo's
+  events. Time to the first frame did not differ beyond the noise between runs.
+
+Not verified: the cost on an integrated GPU and an uncapped frame rate (the owner is asked
+before any uncapped run); local multiplayer and Infinity layouts in a capture (the lanes follow
+the live rects; only the solo and tall layouts were looked at); reduced motion and reduce
+flashing in a capture (unit-tested).
+
+Open calls for the owner:
+
+- The line clears' waves still wash the near street pale as they arrive. It is the look the
+  first build chose; it could be made a sharper band.
+- The passers-by are simple shapes (a rim-lit hull with lamps). They read at the speed they
+  pass; a closer look would want modelled vehicles.
+- The megatower skyline and the sky are almost wholly behind the card in a solo game, so this
+  pass left them alone apart from the clear spell's stars and moon.
+- The theme icon still shows the two-line wave, not the new dragon.
+
 ## How it is built
 
 | File | Role |
@@ -341,7 +499,10 @@ the glass against 130.8 and 130.6 without, at Electron's frame cap.
 | `neon-district-lights.js` | Halos, street lamps and their cones, cables and lanterns, beacons, flying traffic. |
 | `neon-district-weather.js` | Rain and steam. |
 | `neon-district-sky.js` | The smog ceiling, the veiled moon, sheet lightning. |
-| `neon-district-fx.js` | Sparks, row beams, the combo hologram, the dragon. |
+| `neon-district-fx.js` | Sparks, row beams, the combo hologram, the hard drop's columns, the twist's gyre, fireworks, and the dragon's drones. |
+| `neon-district-dragon.js` | Three-free: the dragon's flights. The lanes the frame leaves free, the figures and recipes, the planner (knots, frames, times, bursts), and the drones' seats. |
+| `neon-district-night.js` | Three-free: the night's weather on its clock, and the passers-by. |
+| `neon-district-flyby.js` | The passers-by: one camera-facing card with a hull and its lamps. |
 | `neon-district-world.js` | Owns the uniforms, the parts, the camera rig and the choreography. Shared with the playground effect, so what is iterated there ships. |
 | `neon-district-director.js` | Renderer-free: stages bus events per player and resolves one lock and one clear per frame. |
 | `neon-district-composition.js` | Three-free: reads the live card, board and HUD rects and maps board columns and rows onto the screen. |
@@ -381,11 +542,11 @@ Techniques worth knowing before changing it:
   time: events write numbers into ring-buffered uniform slots and one preallocated spark pool.
   `seek(t)` plus a fixed-step replay reproduces any frame, and a test proves the same state at
   30 and 240 frames a second.
-- **The dragon is drawn with lines of drones**, as a drone show draws: four contours down the
-  body, ribs round it, a sawtooth crest, four jaw lines with the lower pair hung open, whiskers,
-  horns, a tail fan. Each drone's place is a function of the clock and its seat. It takes the
-  lane beside the card when the camera can see that lane, and passes over the card when it
-  cannot (a phone held upright).
+- **The dragon is drawn with lines of drones**, as a drone show draws: six contours down the
+  body, hoops round it, a sawtooth crest, jaws, a mane, whiskers, antlers, legs, a tail fan, each
+  drone drawn out along its line so a row is one tube. Each drone's place is a function of the
+  clock, its seat and the flight's curve, which is planned for every call inside the lanes the
+  frame leaves free (see "The living night").
 - **HDR, single output.** The scene is scene-linear; a max-channel knee selects what blooms (no
   MRT), and one output pass does the lens fringe, the calm zones on the card and HUD, bloom,
   anamorphic streaks and canyon rays (the bloom dragged sideways, and radially out of the
@@ -400,6 +561,9 @@ value read in the fragment stage is interpolated, so seeds are integers and are 
 they reach a hash; and a `floor()` of an exactly dividing quotient of such values needs a bias.
 
 ## Tiers
+
+Since 2026-11-17 the drone counts below are per dragon (one mesh seats two), and a firework
+shell has 24, 48, 80, 120, 160 and 200 stars from Minimal to Extreme.
 
 | Tier | Rooms | Mirror | Rain streaks | Sparks | Dragon drones | Bloom, streaks, rays | Scene MSAA |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -498,8 +662,11 @@ Run `npm run dev:playground`, then:
 
 `/playground.html?effect=neon-district&t=30&quality=High&board=1`
 
-Add `event=lock|drop|clear|quad|twist|perfect|levelUp` with `eventAge=<s>`, and `combo=<n>`,
-`level=<n>`, `lines=<n>`, `u=<0..1>`, `color=<hex>`. `demo=1` (without `t`) plays a looping
+Add `event=lock|drop|clear|quad|twist|perfect|levelUp` with `eventAge=<s>` (or `eventAt=<s>`,
+which fires it at that time on the clock so one page load shows it at any age), and `combo=<n>`,
+`level=<n>`, `lines=<n>`, `u=<0..1>`, `color=<hex>`. `weather=rain|downpour|easing|clear|fog|mizzle`
+holds the weather; `dragon=<recipe>`, `dragonSeed=`, `dragonScheme=`, `dragonSide=` and
+`dragonCam=<m>` choose and follow a flight. `demo=1` (without `t`) plays a looping
 script. `parts=` draws only the named parts; `falseColor=1` bands the pre-tone-map peak;
 `noPost=1` shows the raw scene; `forceWebGL=1` uses the WebGL2 backend. In the game:
 `?neonDistrictTime=`, `?neonDistrictFixedDt=`, `?neonDistrictParts=`,

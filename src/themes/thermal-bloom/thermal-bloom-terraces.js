@@ -423,8 +423,10 @@ export function* createTerracesSteps(u, tier, tex) {
         // The pools: milky, lit from within, and glassy: under a light breeze their surface sends
         // the sky to the eye (deep blue where a ripple tilts it up, haze toward the horizon).
         const inScatter = float(1.0).sub(exp(depth.mul(-2.0).sub(0.6)));
+        // (as the day's light falls the pools light themselves: lanterns of milky turquoise down
+        // the Stair, brightest where the water is deepest, the lips dark against them)
         const poolLit = poolCol.mul(u.sunColor.mul(max(u.sunDir.y, 0.0).mul(1.5).mul(inScatter).add(0.45))
-            .add(u.zenith.mul(0.3)));
+            .add(u.zenith.mul(0.3)).add(u.glow.mul(inScatter.mul(0.34).add(0.07))));
         const ripDrift = vec2(u.time.mul(0.004), u.time.mul(-0.003));
         const rip = texture(tex.noise, vec2(across, along).div(5.0).div(16.0).add(ripDrift));
         const Nw = normalize(vec3(rip.z.sub(0.5).mul(0.16), 1.0, rip.w.sub(0.5).mul(0.16)));
@@ -484,7 +486,7 @@ export function* createTerracesSteps(u, tier, tex) {
         const fillLit = poolOut.mul(1.45).add(vec3(0.35, 0.95, 1.0).mul(u.sunColor).mul(0.55));
         poolOut.assign(mix(poolOut, fillLit, fills.pool));
         // A game over drains the Chalice: the pools sink to wet, dull travertine (§1.5).
-        poolOut.assign(mix(poolOut, solidLit.mul(0.78), u.drain.mul(0.65)));
+        poolOut.assign(mix(poolOut, solidLit.mul(0.78), u.drain.mul(0.8)));
         const col = mix(solidLit, poolOut, water).toVar();
         // Glints where the overflow sheets slide over the lips and down the risers' wet faces.
         // The pools' surfaces glint where a ripple sends the sun back to the eye.

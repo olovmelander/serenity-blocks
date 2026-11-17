@@ -289,7 +289,9 @@ export class ThermalBloomPost {
             // (hue-preserving on the max channel): a bright basin must not glare through.
             const quiet = mix(S, vec3(tbLuma(S)), 0.35).toVar();
             const m = max(tbMax3(quiet), 1e-5);
-            const clipped = quiet.mul(min(m, float(0.22).add(m.mul(0.2))).div(m));
+            // (the cap is in what reaches the display: a night's wide-open exposure must not lift it)
+            const seen = max(this.uExposure.mul(this.uIris), 1.0);
+            const clipped = quiet.mul(min(m, float(0.22).add(m.mul(0.2)).div(seen)).div(m));
             S.assign(mix(S, clipped, calm.mul(0.9)));
 
             // ── Bloom ──

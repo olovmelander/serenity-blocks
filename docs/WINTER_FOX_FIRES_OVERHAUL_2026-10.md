@@ -948,3 +948,35 @@ cannot be seen; its test allows that much for the cub and no more. Retuning the 
 table (planned in its mother's measure) is the fix. The visitor fox is not in the shader gate on
 its own (its coat changes only constants in the fox's graph, which the gate builds); its WebGL2
 frame is clean. The theme icon and `docs/theme-screenshots/winter.png` still show the earlier look.
+
+## The trees sway, and the bear opens on a lap of its own (2026-11-17)
+
+The asks: "can we have the trees swaying a bit", and "the polar bear can start with a random round
+so it feels varied when we start the theme and when the theme is active".
+
+**The snow ghosts sway** (`winter-trees.js`, `SWAY`). Each tree rocks slowly at its own phase and
+pace, the taller the slower (a 10 m spruce once in about five seconds, a gnome a metre and a half
+tall in two), bending as the square of how far up it is, so its foot stands still. It leans a
+little further with the wind as the weather blows harder (a flurry more than a still night), and
+gives as a gust reaches it: a clear's gust bends the trees away from the board one after another
+as it crosses the snowfield, as their loads come down. At rest the tallest spruce's top moves
+about 6 px either way at 720p; the strongest gust (four lines) moves it under 45 cm. Each tree
+carries its height, phase and place in one instanced attribute (`aTree`), each vertex how far up
+it is (`aSway`); the offset is added in the vertex stage on the world's own sway clock
+(`u.sway`), so a seek shows the same frame. Reduced motion runs it at 0.3 the pace and 0.4 the
+reach. The moon shadows, baked once, do not sway: at this reach it does not show.
+
+**The bear's opening** (`winter-bear-plan.js` `open`, `winter-world.js`). In the game every start
+of the theme deals the bear a fresh seed with an open opening: its first lap is any of its six
+ways, walked by the big male, the female or the mother with her cub, by the same weights as every
+later lap. Before, the first lap was always the big male on his round, and with the shipped seed
+the first cub came seven and a half minutes in. A capture, or a world given a seed, keeps the old
+opening so frames still compare. Two real-game starts opened as the male on his round and as the
+female on the wide way.
+
+Playground: `still=1` holds the camera at its rest pose, so what moves is the world (how the sway
+was judged: two frames 2.8 s apart, differenced).
+
+Tests: `tests/unit/winter-sway-opening.test.js` (the bend from foot to top, every tree's own
+numbers, the sway clock under seek, reduced motion and a new run, the reach; the closed and the
+open opening, a fresh seed per start and the fixed one for captures).

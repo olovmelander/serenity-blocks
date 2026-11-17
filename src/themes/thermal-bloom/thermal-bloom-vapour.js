@@ -66,7 +66,11 @@ import {
     tbBow,
     tbCloudShade,
     tbGustBand,
+    tbBowLight,
     tbHgMix,
+    tbSteamShade,
+    tbSteamSun,
+    tbUnderLight,
     tbLuma,
 } from './thermal-bloom-tsl.js';
 
@@ -145,8 +149,13 @@ export function createVapourMarch({
         const groundAmb = vec3(0.62, 0.56, 0.46).mul(u.sunColor).mul(max(u.sunDir.y, 0.0).mul(0.42)).toVar();
         // The sun on steam: its colour a little softened (droplets scatter every colour alike; at
         // full warmth the bright billows read cream, not white).
-        const sunSteam = mix(vec3(tbLuma(u.sunColor)), u.sunColor, 0.7).toVar();
-        const shade = vec3(0.34, 0.43, 0.56).toVar();
+        const steamSun = tbSteamSun(u).toVar();
+        const sunSteam = mix(vec3(tbLuma(steamSun)), steamSun, 0.52).toVar();
+        const shade = tbSteamShade(u).toVar();
+        // The bow is the sun's light (a moonbow by night).
+        const bowSun = tbBowLight(u).toVar();
+        // What lights a body from below: the day's share, then the springs' own glow.
+        const underLight = tbUnderLight(u, 0.3).toVar();
 
         Loop({
             start: int(0), end: u.vapourCount, type: 'int', condition: '<', name: 'vb',
@@ -198,7 +207,10 @@ export function createVapourMarch({
             const b = min(tOut, sceneT).toVar();
             If(b.greaterThan(a).and(through.greaterThan(0.02)), () => {
                 // The billows' size follows the body (a 3 m puff is not made of 25 m billows).
-                const scale = clamp(mix(B.x, B.y, 0.5).mul(0.85), 2.5, 26.0).toVar();
+                // (and never finer than the march can resolve: a body hundreds of metres across
+                // is crossed in steps of tens of metres, and billows smaller than two steps show
+                // as the march's dither instead of as billows)
+                const scale = max(clamp(mix(B.x, B.y, 0.5).mul(0.85), 2.5, 26.0), rMax.mul(4.4 / steps)).toVar();
                 const ofs = vec3(seed.mul(0.137), seed.mul(0.291), seed.mul(0.073)).toVar();
                 // Billows climb at the body's own speed (a far column's with its puffs; drops fall).
                 const climb = mix(B.w, float(-FALL), isSpray).mul(t).div(scale).toVar();
@@ -255,6 +267,7 @@ export function createVapourMarch({
 
                 const span = b.sub(a).toVar();
                 const dt = span.div(steps).toVar();
+                const coarse = smoothstep(0.35, 1.1, dt.div(scale.mul(1.2))).toVar();
                 const tt = a.add(dt.mul(jitter)).toVar();
                 const bodyLight = vec3(0.0).toVar();
                 const bodyThrough = float(1.0).toVar();
@@ -278,7 +291,10 @@ export function createVapourMarch({
                             const finer = n3(s.q.mul(2.3).add(vec3(0.37, climb.mul(0.9), 0.61))).y;
                             erosion = fine.mul(0.6).add(finer.mul(0.4));
                         }
-                        const erode = mix(float(0.6), float(0.22), s.env);
+                        // (where a step is longer than an erosion cell, neighbouring pixels sample
+                        // unrelated cells and the torn edges show as the march's dither: there the
+                        // erosion eases off and the billows keep their round tops)
+                        const erode = mix(float(0.6), float(0.22), s.env).mul(float(1.0).sub(coarse.mul(0.9)));
                         billow = billow.sub(float(1.0).sub(billow).mul(erosion).mul(erode));
                         // Coverage remap: in the core the billows fill in; toward the edge only
                         // their tops survive, as round lobes.
@@ -316,7 +332,7 @@ export function createVapourMarch({
                             const rr = length(p.xz.sub(u.irisCentre)).div(IRIS_RADIUS);
                             const waterMats = smoothstep(0.8, 1.15, rr);
                             const domeUnder = mix(vec3(0.05, 0.5, 0.62), vec3(0.95, 0.45, 0.14), waterMats)
-                                .mul(exp(s.h.div(-26.0))).mul(0.85);
+                                .mul(exp(s.h.div(-26.0))).mul(0.85).mul(underLight);
                             const foot = float(1.0).sub(smoothstep(0.0, 0.26, s.f));
                             const footFall = exp(s.h.div(max(H.mul(0.12), 1.0)).negate()).mul(0.6).add(0.4);
                             const ownUnder = C.xyz.mul(foot.mul(foot)).mul(footFall);
@@ -330,13 +346,23 @@ export function createVapourMarch({
                             const sunLit = sunSteam.mul(sunT.mul(cloudLit)).mul(phase)
                                 .mul(mix(float(1.05), float(1.2), isSpray))
                                 .mul(mix(vec3(1.0), ownTint, tintAmt));
-                            const amb = mix(groundAmb, skyAmb, s.f.mul(0.7).add(0.3));
+                            // (with the sun under the horizon its last light still reaches what
+                            // stands tall: the columns' crowns blush while their feet are in shade)
+                            const crownLit = u.alpen.mul(smoothstep(28.0, 150.0, p.y)).mul(sunT.mul(0.7).add(0.3));
+                            // (under a moon the light scattered round inside a billow fills its
+                            // shade: its lumps are soft blue-grey, never black)
+                            const amb = mix(groundAmb, skyAmb, s.f.mul(0.7).add(0.3)).add(crownLit)
+                                .add(sunSteam.mul(u.stars.mul(0.16)));
                             // Drops: whiter, with the bow in them (only while the eruption lights it).
                             // (only where the spray is dense: a bow never floats in thin air)
-                            const bowLight = bow.xyz.mul(u.bow).mul(sunT).mul(isSpray).mul(0.45)
+                            const bowLight = bow.xyz.mul(bowSun).mul(u.bow).mul(sunT).mul(isSpray)
+                                .mul(0.45)
                                 .mul(smoothstep(0.12, 0.5, dens));
                             const col = sunLit.add(amb).add(under).add(shade.mul(0.12)).add(bowLight);
-                            const ext = dens.mul(SIGMA).mul(dt);
+                            // (a long step through dense steam would be opaque by itself, and the
+                            // pixel's colour would be whichever billow its jittered first step fell
+                            // in: the march's dither. Capped, a few steps share the pixel.)
+                            const ext = min(dens.mul(SIGMA).mul(dt), mix(float(6.0), float(0.62), coarse));
                             const absorb = float(1.0).sub(exp(ext.negate()));
                             bodyLight.addAssign(col.mul(absorb).mul(bodyThrough));
                             bodyThrough.mulAssign(exp(ext.negate()));
@@ -367,7 +393,7 @@ export function createVapourMarch({
                     const mistLight = vec3(0.0).toVar();
                     const mistThrough = float(1.0).toVar();
                     const drift = vec3(u.windDir.x, 0.0, u.windDir.y).mul(u.windSpeed.mul(t).mul(0.35));
-                    const sunMist = u.sunColor.mul(phase.mul(0.9)).add(skyAmb.mul(0.9));
+                    const sunMist = steamSun.mul(phase.mul(0.9)).add(skyAmb.mul(0.9));
                     Loop(n, () => {
                         const p = eye.add(dir.mul(tm)).toVar();
                         const fromIris = length(p.xz.sub(u.irisCentre)).div(IRIS_RADIUS);
@@ -429,7 +455,11 @@ export function upsampleVapour({
         for (let dx = -1; dx <= 1; dx += 1) {
             const cell = base.add(vec2(dx, dy));
             const off = abs(f.sub(cell));
-            tap(cell, max(float(1.5).sub(off.x), 0.0).mul(max(float(1.5).sub(off.y), 0.0)));
+            // (nearly a box over the nine texels, eased only at its edge: the march's jitter is
+            // interleaved gradient noise, whose values over any 3 × 3 block are evenly spread, so
+            // an even average cancels it where a tent, heavy at its centre, lets it through as a
+            // halftone on every shaded billow)
+            tap(cell, clamp(float(2.0).sub(off.x), 0.0, 1.0).mul(clamp(float(2.0).sub(off.y), 0.0, 1.0)));
         }
     }
     return sum.div(max(weight, 1e-6));

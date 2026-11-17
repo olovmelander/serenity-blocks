@@ -131,6 +131,7 @@
     "src/themes/shared/static-shadow-draws.js",
     "src/themes/shared/swell.js",
     "src/themes/shared/warm-hidden-drawables.js",
+    "src/themes/synthwave-sunset/synthwave-sunset-evening.js",
     "src/themes/theme-frame-pacer.js",
     "src/themes/wolfhour/wolfhour-hours.js",
     "src/themes/wolfhour/wolfhour-night-director.js",

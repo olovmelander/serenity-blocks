@@ -66,6 +66,9 @@ import {
     tbFxMaterial,
     tbHgMix,
     tbPart,
+    tbSteamShade,
+    tbSteamSun,
+    tbUnderLight,
     tbPlumeShade,
 } from './thermal-bloom-tsl.js';
 
@@ -352,8 +355,9 @@ export function createSteam(u, tier, tex) {
             const back = tbHgMix(dot(V, u.sunDir), float(0.35));
             // Lit: Steam Pearl (#F3F1EC) toward 0.86 on the display; shade: the sky's blue-grey
             // (#9DB1C6), never darker than it.
-            const pearlLit = u.sunColor.mul(float(0.74).add(back.mul(0.12))).add(mix(u.haze, u.zenith, 0.5).mul(0.1));
-            const shade = vec3(0.34, 0.43, 0.56).mul(mix(float(0.85), float(1.0), u.sunColor.y));
+            const pearlLit = tbSteamSun(u).mul(float(0.74).add(back.mul(0.12)))
+                .add(mix(u.haze, u.zenith, 0.5).mul(0.1));
+            const shade = tbSteamShade(u);
             const lit = mix(shade, pearlLit, shadow);
             // Underlight: the spring's glow from below (turquoise over the eye, apricot at the skirts);
             // the thread over the cone and the far columns catch only the warm ground.
@@ -373,7 +377,7 @@ export function createSteam(u, tier, tex) {
             const skirtWarm = smoothstep(0.7, 1.0, rrLean).mul(float(1.0).sub(smoothstep(6.0, 22.0, hh)));
             const crownTint = mix(vec3(1.0), vec3(0.7, 0.87, 0.92), crownCore);
             const domeTint = mix(crownTint, vec3(1.0, 0.86, 0.72), skirtWarm.mul(0.6));
-            const col = lit.mul(mix(vec3(1.0), domeTint, isDome)).add(glow).toVar();
+            const col = lit.mul(mix(vec3(1.0), domeTint, isDome)).add(glow.mul(tbUnderLight(u))).toVar();
             const outCol = tbAerial(u, col, dist, V.negate());
             out.assign(vec4(outCol.mul(alpha), alpha));
         });

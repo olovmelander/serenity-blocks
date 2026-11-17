@@ -5514,7 +5514,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         category: 'Playground',
         scope: 'playground.html — waves',
         description: 'Send one of the visits the Waves sea makes by itself, now (they also come by the clock).',
-        values: 'ridePod, troughPod, farPod, loneLeap, skitter, turtle, manta, whaleBlow, whaleFluke, whaleBreach, birds.',
+        values: 'ridePod, troughPod, farPod, loneLeap, turtle, manta, whaleBlow, whaleFluke, whaleBreach, birds.',
         defaultValue: 'None: only the sea’s own schedule.',
         example: 'visit=ridePod&visitAge=8',
         notes: 'Use with effect=waves; visitAge picks the moment, visitSeed another draft.',
@@ -5609,6 +5609,20 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + '3 Deep Cold, 4 Thaw, 5 Bloom, 6 High Summer again); between, the two blended.',
         defaultValue: 'The wheel turns with the clock (a season every 100 s) plus a step a level.',
         example: 'season=3',
+        notes: 'Use on playground.html with effect=thermal-bloom.',
+        sources: [
+            'src/playground/effects/thermal-bloom.effect.js',
+        ],
+    },
+    {
+        name: 'hour',
+        category: 'Playground',
+        scope: 'playground.html — thermal-bloom',
+        description: "Hold the basin's day still at a place on its wheel of hours, whatever the clock says.",
+        values: 'Number at least 0, or a name: 0 Morning, 1 Golden Hour, 2 Dusk, 3 Night, 4 Dawn '
+            + '(5 Morning again); between, the two blended. hour=night works too.',
+        defaultValue: 'The day turns with the clock alone (an hour every 130 s); a level-up never steps it.',
+        example: 'hour=3',
         notes: 'Use on playground.html with effect=thermal-bloom.',
         sources: [
             'src/playground/effects/thermal-bloom.effect.js',
