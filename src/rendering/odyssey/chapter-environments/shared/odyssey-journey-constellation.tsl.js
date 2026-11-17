@@ -27,6 +27,9 @@ import {
 /** How far out the stars sit from the eye (inside the city's sky dome, past its far towers). */
 const STAR_DISTANCE = 1500;
 
+/** The line's soft glow, in line widths either side of its core. */
+const LINE_GLOW = 6;
+
 /** A quad's four corners and their UVs, for the instanced stars and segments. */
 function quadGeometry(count, xs, ys) {
     const geometry = new THREE.InstancedBufferGeometry();
@@ -97,6 +100,9 @@ export function createJourneyConstellation({ count = 60, spec = JOURNEY_CONSTELL
         const look = attribute('aLook', 'vec4'); // light, index, stars, seed
         const clip = clipOf(dir).toVar();
         const index = look.y;
+        // A chapter's first orb (and the journey's last) is a knot of the figure: larger, brighter,
+        // with a cross of light and a wider halo, so the eight chapters read along the line.
+        const knot = step(1.5, look.w);
         // Lit as the line reaches it, with a short flare at the line's head.
         const lit = clamp(head.sub(index).mul(3.0).add(1.0), 0.0, 1.0);
         const at = head.sub(index);
@@ -104,13 +110,14 @@ export function createJourneyConstellation({ count = 60, spec = JOURNEY_CONSTELL
         const flare = exp(at.mul(at).mul(-5.0)).mul(finished).mul(step(u.drawn, 0.999));
         const twinkle = sin(u.time.mul(look.w.mul(1.7).add(0.9)).add(look.w.mul(31.0))).mul(0.1).add(0.9);
         // Size in 1080p pixels: a finished orb by its stars, an unfinished one a single faint point.
-        const size = mix(float(1.1), look.z.mul(0.6).add(2.0), finished).mul(pixelScale);
+        const size = mix(float(1.1), look.z.mul(0.6).add(2.0), finished).mul(knot.mul(0.85).add(1.0)).mul(pixelScale);
         const px = max(size, 1.0);
         const paid = clamp(size.div(px), 0.4, 1.0);
         const light = colour.mul(look.x).mul(lit).mul(twinkle).mul(paid.mul(paid))
+            .mul(knot.mul(0.7).add(1.0))
             .add(vec3(1.0, 0.96, 0.9).mul(flare.mul(1.4)));
         vStar.assign(light.mul(u.gain));
-        vCross.assign(step(2.5, look.z).mul(lit));
+        vCross.assign(max(step(2.5, look.z), knot.mul(1.8)).mul(lit));
         // The quad is 5 cores wide each way (the halo and the cross need the room).
         const half = px.mul(5.0);
         vCore.assign(float(1.0).div(5.0));
@@ -123,7 +130,7 @@ export function createJourneyConstellation({ count = 60, spec = JOURNEY_CONSTELL
         const q = uv().sub(0.5).mul(2.0);
         const r = length(q).div(vCore);
         const core = exp(r.mul(r).mul(-1.2));
-        const halo = exp(r.mul(-0.9)).mul(0.07);
+        const halo = exp(r.mul(-0.9)).mul(vCross.mul(0.06).add(0.07));
         // A cross of light on a three-star orb: two thin streaks fading along their length.
         const streak = (a, b) => exp(abs(a).div(vCore).mul(-3.0)).mul(float(1.0).sub(abs(b)).max(0.0).pow(2.0));
         const cross = streak(q.y, q.x).add(streak(q.x, q.y)).mul(0.32).mul(vCross);
@@ -172,13 +179,13 @@ export function createJourneyConstellation({ count = 60, spec = JOURNEY_CONSTELL
         const end = min(fill, float(1.0).sub(start));
         const t = mix(start, max(end, start), positionGeometry.x);
         const width = max(pixelScale.mul(1.15), 1.0);
-        const px = a.add(span.mul(t)).add(normal.mul(positionGeometry.y.mul(width.mul(2.0))));
+        const px = a.add(span.mul(t)).add(normal.mul(positionGeometry.y.mul(width.mul(2.0 * LINE_GLOW))));
         const z = mix(from.z.div(max(from.w, 1e-4)), to.z.div(max(to.w, 1e-4)), t);
         const colour = mix(attribute('aColFrom', 'vec3'), attribute('aColTo', 'vec3'), t);
         const shown = step(start, end).mul(step(0.0, from.w)).mul(step(0.0, to.w));
         // A line clamped up to one pixel pays the extra width back in light.
         const paid = pixelScale.mul(1.15).div(width).min(1.0);
-        vLine.assign(colour.mul(seg.x).mul(0.22).mul(shown)
+        vLine.assign(colour.mul(seg.x).mul(0.27).mul(shown)
             .mul(u.gain)
             .mul(paid));
         vAcross.assign(positionGeometry.y.mul(2.0));
@@ -186,7 +193,9 @@ export function createJourneyConstellation({ count = 60, spec = JOURNEY_CONSTELL
     })();
     lineMaterial.outputNode = Fn(() => {
         const across = vAcross;
-        const profile = exp(across.mul(across).mul(-2.2));
+        // A thin bright core in a soft glow of the chapter's colour.
+        const core = across.mul(LINE_GLOW);
+        const profile = exp(core.mul(core).mul(-2.2)).add(exp(across.mul(across).mul(-5.0)).mul(0.13));
         return vec4(vLine.mul(profile).mul(materialOpacity), 0.0);
     })();
     const line = new THREE.Mesh(lineGeometry, lineMaterial);
@@ -221,7 +230,11 @@ export function createJourneyConstellation({ count = 60, spec = JOURNEY_CONSTELL
                 const earned = list[k].completed ? Math.max(0, Math.min(3, Number(list[k].stars) || 0)) : 0;
                 const seed = fract(Math.sin((i + 1) * 12.9898) * 43758.5453);
                 // Orbs past the chart's end (fewer orbs than built) stay dark.
-                aLook.setXYZW(i, i < list.length ? light[k] : 0, i, earned, seed);
+                // The knots: where the chapter's colour changes, and the journey's last orb.
+                const before = list[Math.max(0, k - 1)].colour;
+                const turned = Math.abs(before[0] - c[0]) + Math.abs(before[1] - c[1]) + Math.abs(before[2] - c[2]) > 1e-3;
+                const knot = list[k].completed && (k === 0 || k === list.length - 1 || turned) ? 2 : 0;
+                aLook.setXYZW(i, i < list.length ? light[k] : 0, i, earned, seed + knot);
             }
             for (let i = 0; i < segments; i += 1) {
                 const a = Math.min(i, list.length - 1);

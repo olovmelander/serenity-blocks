@@ -70,7 +70,7 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
-import { odysseyDeepWaterDim } from '../odyssey-colour-script.js';
+import { oceanHazeColour } from '../world/odyssey-ocean-depth.js';
 import { hash21 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
 import { behindSteamDepth, steamVeilWeight } from './odyssey-steam-quench.js';
 import { oceanLifeDrawn, throughSurfaceNode, throughSurfaceShare } from './odyssey-through-surface.js';
@@ -410,23 +410,20 @@ function createVisitorMaterial(uWater, uSurface, seaLevel) {
 /**
  * @param {object} opts
  * @param {number} opts.seaLevel world Y of the sea surface
- * @param {THREE.Color} opts.shallowColour water near the surface
- * @param {THREE.Color} opts.deepColour water in the abyss
  * @param {string} [opts.url]
+ * (The water they haze into is the world's depth arc's, odyssey-ocean-depth.js.)
  */
-export function createOceanVisitors({
-    seaLevel, shallowColour, deepColour, url = OCEAN_VISITORS_URL,
-}) {
+export function createOceanVisitors({ seaLevel, url = OCEAN_VISITORS_URL }) {
     const group = new THREE.Group();
     group.name = 'odyssey-ocean-visitors';
     group.visible = false;
-    const uWater = uniform(new THREE.Color().copy(shallowColour));
+    const uWater = uniform(new THREE.Color(...oceanHazeColour(0)));
     const uSurface = uniform(0.5);
     const material = createVisitorMaterial(uWater, uSurface, seaLevel);
     const actors = [];
     let ready = false;
     let loaded = false;
-    const scratch = new THREE.Color();
+    const hazeColour = [0, 0, 0];
     const basis = new THREE.Matrix4();
     const vF = new THREE.Vector3();
     const vS = new THREE.Vector3();
@@ -492,9 +489,8 @@ export function createOceanVisitors({
             const eye = camera?.position ?? { x: 0, y: camY, z: 0 };
             let any = false;
             const depth = seaLevel - camY;
-            const t01 = THREE.MathUtils.clamp((depth - 20) / 220, 0, 1);
-            uWater.value.copy(scratch.copy(shallowColour).lerp(deepColour, t01))
-                .multiplyScalar(odysseyDeepWaterDim(depth / 140));
+            // The water's colour at the eye's depth, from the world's own depth arc.
+            uWater.value.setRGB(...oceanHazeColour(depth, hazeColour));
             uSurface.value = 0.35 + (0.65 * (1 - THREE.MathUtils.clamp(depth / 200, 0, 1)));
             actors.forEach((actor) => {
                 const { cast, path, mesh } = actor;

@@ -31,6 +31,7 @@ import {
     createOrbWindowTSL,
 } from './level-node-manager.tsl.js';
 import { PATH_HORIZON_OPEN, odysseyPathHorizonWeight } from './odyssey-path-horizon.js';
+import { starLandingPose, starLandingTotalMs } from './odyssey-flow-answers.js';
 import { ODYSSEY_PATH_ORB_OCCLUDERS } from './odyssey-path-renderer.tsl.js';
 
 const THEME_ICON_MODULES = import.meta.glob('../../themes/*/*-theme-icon.{png,svg}', {
@@ -1331,6 +1332,11 @@ export class LevelNodeManager {
             this._uploadDirty = true;
             if (performance.now() - this._pulse.startedAt >= this._pulse.durationMs) this._pulse = null;
         }
+        // Stars landing on an orb just finished re-place its billboards for the second it takes.
+        if (this._starLanding) {
+            this._uploadDirty = true;
+            if (performance.now() - this._starLanding.startedAt >= starLandingTotalMs()) this._starLanding = null;
+        }
         const progressMoved = !(Math.abs(this.cameraProgress - this._lastUploadProgress)
             <= UPDATE_PROGRESS_EPSILON); // NaN-safe: first frame forces a flush.
         const needsUpload = this._uploadDirty || progressMoved || this._nearFadeStale();
@@ -1507,10 +1513,14 @@ export class LevelNodeManager {
      * the pulse never showed. Audit 2026-10-23.)
      * @param {number} levelId
      * @param {number} [durationMs]
+     * @param {number} [amount] how much it swells (0.16: the entry's; an orb waking ahead of
+     *   the ride swells less)
      */
-    pulseNode(levelId, durationMs = 620) {
+    pulseNode(levelId, durationMs = 620, amount = 0.16) {
         if (!this.nodes.has(levelId) || !(durationMs > 0)) return;
-        this._pulse = { levelId, startedAt: performance.now(), durationMs };
+        this._pulse = {
+            levelId, startedAt: performance.now(), durationMs, amount,
+        };
         this._markUploadDirty();
     }
 
@@ -1521,7 +1531,19 @@ export class LevelNodeManager {
         const t = THREE.MathUtils.clamp((performance.now() - pulse.startedAt) / pulse.durationMs, 0, 1);
         const smooth = (x) => x * x * (3 - (2 * x));
         const swell = t < 0.3 ? smooth(t / 0.3) : 1 - smooth((t - 0.3) / 0.7);
-        return 1 + (swell * 0.16);
+        return 1 + (swell * (pulse.amount ?? 0.16));
+    }
+
+    /**
+     * The stars of an orb just finished land on it: each drops onto its seat over the orb's
+     * crown and settles, one after the other (odyssey-flow-answers.js STAR_LANDING). The orb
+     * must already be marked completed (updateFromProgress); it is a second of motion, no state.
+     * @param {number} levelId
+     */
+    landStars(levelId) {
+        if (!this.nodes.has(levelId)) return;
+        this._starLanding = { levelId, startedAt: performance.now() };
+        this._markUploadDirty();
     }
 
     /** The orb's slow float round its seat (X, Y, Z on their own rates and phases). @private */
@@ -1681,6 +1703,9 @@ export class LevelNodeManager {
             // Stars — three, arced over the marble's crown (ORB_STAR_SLOTS, in glass radii).
             const isCompleted = node.group.userData.completed;
             const stars = node.group.userData.stars || 0;
+            // Landing on an orb just finished: each star's own drop and swell this frame.
+            const landingMs = this._starLanding?.levelId === node.config.id
+                ? performance.now() - this._starLanding.startedAt : null;
             for (let s = 0; s < 3; s += 1) {
                 if (isCompleted) {
                     // 1 = earned, 2 = still to earn; written only when a slot changes.
@@ -1692,12 +1717,13 @@ export class LevelNodeManager {
                         starsChanged = true;
                     }
                     const place = ORB_STAR_SLOTS[s];
+                    const landing = landingMs === null ? null : starLandingPose(landingMs, s);
                     matrix.copy(this.camera.matrixWorld);
                     matrix.setPosition(this._scratchIndicatorPos.copy(pos)
                         .addScaledVector(camRight, place.right * glassRadius)
-                        .addScaledVector(camUp, place.up * glassRadius)
+                        .addScaledVector(camUp, (place.up + (landing?.lift ?? 0)) * glassRadius)
                         .addScaledVector(toCam, place.toward * glassRadius));
-                    const starScale = ORB_STAR_SIZE * glassRadius;
+                    const starScale = ORB_STAR_SIZE * glassRadius * (landing?.scale ?? 1);
                     matrix.scale(scaleVec.set(starScale, starScale, starScale));
                     this.starInstancedMesh.setMatrixAt(idx * 3 + s, matrix);
                 } else {

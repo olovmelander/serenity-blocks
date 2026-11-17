@@ -190,7 +190,8 @@ warmed with the theme's other parked effects.
 
 `effect=wolfhour` takes `event=lock|drop|clear|double|triple|howl|combo|crash|twist|b2b|perfect|level|over|dash|summon`
 with `eventAge`, and `aurora=`, `reach=`, `snow=`, `dust=`, `wind=` to hold the weather. Travellers
-on the schedule: the hunt at `t≈68-80`, the far file at `t≈100-115`, the white wolf at `t≈47-84`,
+on the schedule: the hunt at `t≈68-80`, the far file at `t≈100-115`, the white wolf at `t≈44-90`
+(climbing until ~48, going down from ~86),
 a chase at `t≈162`, a prowl at `t≈354`, the lone wolf at `t≈450`. Zoom with
 `zoom=<k>&zoomX=<x>&zoomY=<y>` (pack near `612, -176`, summit near `-640, 300`).
 
@@ -208,6 +209,36 @@ Captured on WebGPU and WebGL2, High and Low, landscape and portrait, every hour;
 Green (left) and silver (right), the same moments: the curtains held up, a howl, a perfect clear.
 
 ![silver aurora](wolfhour-masterpiece/silver-aurora.jpg)
+
+## Follow-up (2026-11-17): the white wolf no longer pops
+
+Olov saw the wolf on the highest summit "pop away" and appear and disappear strangely while
+playing. Two causes:
+
+- **Every call restarted its climb.** A fever's chorus calls the white wolf up every 2.2 s, but
+  its rise took 2.6 s, and each call began the rise again from below: it got 93 % of the way up
+  and vanished, every 2.2 s, for as long as the fever lasted. A four-line clear landing while it
+  rose or went down cut it the same way.
+- **It faded in front of the snow.** It stood 10 units in front of the crest and sank only 26
+  units (it is ~55 tall), so "coming up over the crest" was a see-through wolf sliding up out of
+  the white face.
+
+Now (`wolfhour-wolf-travel.js` `moonWolfAt` / `summonMoonWolf`): it stands 18 units *behind* the
+summit's crest (the massif's face lies at most ~9 units behind the crest just under the skyline,
+at every tier), so the mountain hides all of it below the skyline. It walks up the far side
+from 48 units to the left and 72 below, out of sight, and comes over the top, its climb easing
+onto the summit; at the end of its stay it turns round and walks back down out of sight. A call
+from play trots it up if it is away, holds it on if it is climbing or up (a fever keeps it there),
+and if it is already going down it comes back once it has gone over. Calls are kept as stays
+merged with its own visits into one timeline, so it can only appear or vanish when out of sight.
+Under Reduce motion it stays where it stands and fades in and out.
+
+Verified: a probe of the old rule (`up` 0.93 → 0 every 2.2 s under a chorus); a new test drives a
+chorus, calls at every stage of its own visit and random clears, frame by frame, and checks it
+only comes or goes out of sight and never jumps; the pack test checks it starts its climb wholly
+below the crest. Playground captures on WebGPU and WebGL2, console clean:
+
+![the white wolf's climb](wolfhour-masterpiece/summit-climb.jpg)
 
 ## Open calls (my own, if asked)
 

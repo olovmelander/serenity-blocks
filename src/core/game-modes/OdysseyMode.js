@@ -118,7 +118,7 @@ import {
     waitForCinematicLoadingOverlayPresented,
 } from '../../ui/cinematic-loading-overlay.js';
 import { COVERED_ENTRY_BUILD_BUDGET_MS, createCinematicLoadingSurface } from '../../ui/cinematic-loading-surface.js';
-import { getOdysseyThemePresentationPalette } from '../odyssey/theme-presentation.js';
+import { odysseyPassageWarmLook, resolveOdysseyPassage } from '../../ui/odyssey/odyssey-passage-look.js';
 import {
     isOdysseyLayoutEditorEnabled,
     isOdysseyDebugExposureEnabled,
@@ -360,10 +360,11 @@ export class OdysseyMode extends BaseGameMode {
         }
         if (!this.journeyEntryTransition) this.journeyEntryTransition = new JourneyEntryTransition();
         if (!this.journeyReturnTransition) this.journeyReturnTransition = new JourneyReturnTransition();
-        scheduleWarmPortalGate();
+        const warmLook = odysseyPassageWarmLook(this.odysseyState?.currentChapter);
+        scheduleWarmPortalGate(window, warmLook);
         // The gate draws in a worker where it can (the passage keeps streaming while the orb's
         // theme builds): start it and bake its sprites when the page is idle, not at the click.
-        scheduleWarmPortalGateWorker(this.deps?.settingsManager?.get?.()?.effectQuality || 'High');
+        scheduleWarmPortalGateWorker(this.deps?.settingsManager?.get?.()?.effectQuality || 'High', window, warmLook);
 
         // ═══════════════════════════════════════════════════════════════════
         // PERFORMANCE: Suspend the active theme's render loop while in
@@ -1104,32 +1105,12 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     /**
-     * Build Journey-entry particle palette from the selected level theme.
+     * The portal passage for an orb: the colours of its world and the look of its chapter
+     * (ui/odyssey/odyssey-passage-look.js). `options.returning`: the way back out.
      * @private
      */
-    _buildJourneyEntryPalette(levelConfig) {
-        const themeId = levelConfig?.transitionPaletteThemeId
-            || levelConfig?.theme?.transitionPalette
-            || levelConfig?.theme?.primary
-            || null;
-        const themePalette = getOdysseyThemePresentationPalette(themeId);
-        if (themePalette) {
-            return themePalette;
-        }
-
-        const chapterId = levelConfig?.chapter || 1;
-        const chapterColor = this.boardController?.nodeManager?.getChapterColor?.(chapterId)?.clone?.();
-        const primary = chapterColor || null;
-        const accent = chapterColor?.clone?.().offsetHSL(0.02, 0.12, 0.22) || null;
-        const highlight = chapterColor?.clone?.().offsetHSL(0, 0, 0.38) || '#ffffff';
-        const shadow = chapterColor?.clone?.().offsetHSL(0, -0.08, -0.42) || '#05070d';
-
-        return {
-            primary,
-            accent,
-            highlight,
-            shadow,
-        };
+    _buildJourneyEntryPalette(levelConfig, options) {
+        return resolveOdysseyPassage(levelConfig, options);
     }
 
     /**

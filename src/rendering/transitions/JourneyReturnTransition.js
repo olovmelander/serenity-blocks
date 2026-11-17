@@ -26,6 +26,21 @@ const WHEEL_LOCK_ATTRIBUTE = 'data-odyssey-wheel-lock';
 /** The share of the closing by which the board's gate has shut (readiness waits for it). */
 export const RETURN_GATE_SHUT_AT = 0.88;
 
+/**
+ * The world's light through the gate that opens back onto it, over the reveal (0..1): up over
+ * the first fifth (about 150 ms: a swell, not a flash), gone by `until`, so the world is never
+ * seen through a haze.
+ */
+export const RETURN_WORLD_BLOOM = Object.freeze({ peakAt: 0.2, until: 0.62 });
+
+export function returnWorldBloom(q) {
+    const { peakAt, until } = RETURN_WORLD_BLOOM;
+    if (!(q > 0) || q >= until) return 0;
+    const rise = Math.min(1, q / peakAt);
+    const fall = q <= peakAt ? 1 : 1 - (q - peakAt) / (until - peakAt);
+    return (rise * rise * (3 - 2 * rise)) * (fall * fall * (3 - 2 * fall));
+}
+
 const { clamp01 } = portalEase;
 const easeOutCubic = portalEase.outCubic;
 const easeInOutCubic = portalEase.inOutCubic;
@@ -136,6 +151,8 @@ export class JourneyReturnTransition {
         const departureAnchor = normalizeAnchor(config.departureAnchor);
         const arrivalAnchor = normalizeAnchor(config.arrivalAnchor);
         const palette = normalizePalette(config.palette);
+        // What this passage is made of, its own seed and the world's light (odyssey-passage-look.js).
+        const look = config.look ?? config.palette?.look ?? null;
         // A caller can opt in through game settings; the OS preference always wins.
         const reducedMotion = config.reducedMotion === true
             || this.window?.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
@@ -157,6 +174,7 @@ export class JourneyReturnTransition {
             // can say where the orb is now, the gate stays on it.
             trackArrivalAnchor: typeof config.trackArrivalAnchor === 'function' ? config.trackArrivalAnchor : null,
             palette,
+            look,
             timings,
             reducedMotion,
             callbacks,
@@ -235,6 +253,7 @@ export class JourneyReturnTransition {
         run.remote = startPortalGateOffThread(canvas, {
             qualityPreset: run.qualityPreset,
             palette: run.palette,
+            look: run.look,
             flash: run.flash,
             ...this.measureCanvas(),
         }, this.window);
@@ -245,7 +264,7 @@ export class JourneyReturnTransition {
                 run.dom.ctx = null;
             }
             run.gate = createPortalGate({
-                qualityPreset: run.qualityPreset, palette: run.palette, documentRef: this.document,
+                qualityPreset: run.qualityPreset, palette: run.palette, look: run.look, documentRef: this.document,
             });
         }
         this.resizeCanvas(run);
@@ -523,6 +542,9 @@ export class JourneyReturnTransition {
                 },
                 rim: 1 - q * q,
                 bloom: 0.4 * (1 - q) ** 2,
+                // Surfacing: the world's own light blooms through the gate as it opens, and is
+                // gone before the gate is wide (RETURN_WORLD_BLOOM).
+                worldBloom: returnWorldBloom(q),
                 rush: (1 - q) * 0.6,
             };
         }

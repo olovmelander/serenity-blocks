@@ -847,20 +847,24 @@ export function tbBlooms(u, P, side, tex, { channel = null } = {}) {
                 .mul(float(1.0).sub(smoothstep(0.9, 2.2, age)))));
             // Light of its own while it is hot: the deep glows up through the water in the piece's
             // colour (boiling for its first seconds), and at its birth a bright ripple runs out once.
-            const hot = float(1.0).sub(smoothstep(0.5, 4.5, age)).mul(live).mul(keep);
+            // (it warms up over a third of a second: a spring that lit at full in its first frame
+            // was a pop of colour on the ground at every lock)
+            const hot = float(1.0).sub(smoothstep(0.5, 4.5, age)).mul(smoothstep(0.0, 0.35, age)).mul(live)
+                .mul(keep);
             // (the whole water glows in the piece's colour while hot: the spring is a light)
             const coreGlow = float(1.0).sub(smoothstep(0.1, 0.6, d)).mul(hot).mul(0.85);
             const ripple = float(0.0).toVar();
             for (let ring = 0; ring < 3; ring++) {
                 const ak = age.sub(ring * 0.16);
                 const ringD = d.sub(ak.div(0.5).mul(1.15)).div(0.05);
-                const fades = step(0.0, ak).mul(float(1.0).sub(smoothstep(0.25, 0.8, ak)));
+                const fades = smoothstep(0.0, 0.1, ak).mul(float(1.0).sub(smoothstep(0.25, 0.8, ak)));
                 ripple.addAssign(exp(ringD.mul(ringD).negate()).mul(fades).mul(1.4 - ring * 0.35));
             }
             // (on the water only: rings across the ground read as a target)
             ripple.mulAssign(live.mul(inWater));
-            const flash = exp(age.div(-0.12)).mul(step(0.0, age)).mul(inWater).mul(live)
-                .mul(1.6);
+            // (a swell of light as the water breaks through, a fifth of a second up and down)
+            const flash = smoothstep(0.0, 0.08, age).mul(exp(age.div(-0.2))).mul(inWater).mul(live)
+                .mul(1.1);
             ripple.addAssign(flash);
             const halo = exp(max(d.sub(0.55), 0.0).mul(max(d.sub(0.55), 0.0)).mul(-6.0)).mul(hot).mul(0.06)
                 .mul(smoothstep(0.5, 0.7, d));

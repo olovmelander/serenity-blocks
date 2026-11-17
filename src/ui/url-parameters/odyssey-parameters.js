@@ -510,6 +510,16 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
         'Removes the sculpted cloud field for scene comparisons.',
         { scope: WORLD_SCOPE },
     ),
+    toggle(
+        'odysseyNoCloudSea',
+        'Removes the sea of clouds that gathers below the climb in chapter 5.',
+        { scope: WORLD_SCOPE },
+    ),
+    toggle(
+        'odysseyNoAutumn',
+        'Keeps the mountain green: removes the autumn palette of chapter 4 (gold crowns, tawny grass).',
+        { scope: WORLD_SCOPE },
+    ),
     parameter(
         'odysseyWorldCloudFieldCount',
         'Limits the sculpted cloud field to its first N cloud masses.',
@@ -691,7 +701,7 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
     ),
     parameter(
         'odysseyCh7Fold',
-        'Holds the black hole’s interior on the warp tunnel (0) or the other dimension (1) once the fall opens it.',
+        'Holds the black hole’s interior on the closing sky (0) or the other dimension (1) once the fall opens it.',
         '0 or 1',
         'Follows the fall',
         '0',

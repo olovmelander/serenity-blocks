@@ -16,6 +16,10 @@
 //   hide=a,b       hide every chapter mesh whose name contains one of the words
 //   field=0        leave out the chapter-8 corridor field (sheets + motes)
 //   air=k:v,...    override the neon air uniforms (e.g. mistDensity:0.012, mistLow:0.07/0.02/0.1)
+//   wt=<seconds>   pin the city's weather clock (odyssey-neon-clock.js) apart from ?t=
+//   complete=1     every orb done (the journey's chart): the ending may run at cityT=1
+//   ending=<s>     pin the ending's clock (odyssey-journey-ending.js), e.g. 0, 8, 20, 52
+//   arrival=<s>    pre-age the camera's arrival shot (the orbit and the rise over the roofs)
 import * as THREE from 'three/webgpu';
 import { CHAPTER_CONFIGS } from '../../core/odyssey/data/chapters.js';
 import {
@@ -126,7 +130,12 @@ export function create({
         post.setSize(Math.max(1, sizes?.width || 1280), Math.max(1, sizes?.height || 720));
     }
 
+    const arrival = num(params, 'arrival', 0);
     const driveCamera = () => {
+        if (arrival > 0) {
+            cameraRig._arrivalTime = arrival;
+            cameraRig._arrivalWeight = 1;
+        }
         cameraRig.setCurrentPosition(progress);
         cameraRig.setDirectorState(directorState);
         cameraRig.updateDirectorCamera(2);
@@ -138,6 +147,35 @@ export function create({
         camera.fov = cameraRig._resolveBaseFov();
         camera.updateProjectionMatrix();
         camera.updateMatrixWorld(true);
+    };
+
+    // The journey's chart (LevelNodeManager.getJourneyChart in the game): sixty orbs along the
+    // rail, each in a chapter colour, all done with ?complete=1.
+    const complete = params.get('complete') === '1';
+    const CHAPTER_TINTS = [
+        [1.0, 0.35, 0.1], [0.1, 0.6, 1.0], [0.3, 0.9, 0.4], [0.85, 0.9, 1.0],
+        [0.5, 0.75, 1.0], [0.7, 0.4, 1.0], [1.0, 0.3, 0.7], [0.1, 0.9, 1.0],
+    ];
+    const curve = getOdysseyPathCurve();
+    const chart = Array.from({ length: 60 }, (_, i) => {
+        const at = (i + 0.5) / 60;
+        const chapter = Math.max(0, positions.findIndex((start, k) => at >= start && at < (positions[k + 1] ?? 2)));
+        return {
+            id: i + 1,
+            position: curve.getPointAt(at),
+            colour: CHAPTER_TINTS[Math.min(7, chapter)],
+            completed: complete || i < 40,
+            stars: complete ? 3 : (i % 3) + 1,
+        };
+    });
+    env.userData.journeyChart = chart;
+    cameraRig.journeyComplete = complete;
+    if (params.has('ending')) env.userData.endingOverride = num(params, 'ending', 0);
+    if (params.has('wt')) env.userData.weatherTime = num(params, 'wt', 0);
+    const journeyEndAt = (p) => {
+        const from = 1 - ((1 - ch8Start) * 0.18);
+        const x = THREE.MathUtils.clamp((p - from) / (1 - from), 0, 1);
+        return x * x * (3 - (2 * x));
     };
 
     let lastTime = null;
@@ -156,6 +194,7 @@ export function create({
             // The director smooths its state by dt: a fixed ?t= frame (delta 0) would never settle.
             directorState = director.update(1 / 60, { ascentProgress: progress, blendState: blendAt(progress) });
             driveCamera();
+            env.userData.journeyEnd = journeyEndAt(progress);
             updateUrbanDreamsEnvironment(env, delta, time, camera, progress, directorState);
             pathRenderer.setProgress(progress);
             pathRenderer.update(delta, directorState);

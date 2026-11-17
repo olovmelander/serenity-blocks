@@ -1,6 +1,8 @@
+import { answerOrbFinished } from '../../rendering/odyssey/odyssey-flow-answers.js';
 import { JourneyReturnTransition } from '../../rendering/transitions/JourneyReturnTransition.js';
 import { prefersOdysseyReducedMotion } from '../../core/game-modes/odyssey-physics-callbacks.js';
 import { waitForAnimationFrames } from './odyssey-cover-paint.js';
+import { presentOdysseyJourneyEnding } from './odyssey-journey-ending.js';
 
 /** The retained world is scenery only while its exact campaign operation owns it. */
 export function isOdysseyScenicJourney(mode) {
@@ -17,7 +19,10 @@ export function isOdysseyWorldInterlude(mode) {
 }
 
 /** Return presentation stays in UI; the mode retains simulation/session ownership. */
-export async function returnToOdysseyWorld(mode, options = {}) {
+export async function returnToOdysseyWorld(mode, returnOptions = {}) {
+    // The journey's ending (odyssey-journey-ending.js) opens on the end of the rail, not on the
+    // last orb's close-up: the eye rests there in follow mode and the world plays its ending.
+    const options = returnOptions.journeyEnding ? { ...returnOptions, settlePath: true } : returnOptions;
     console.log('[Odyssey] Returning to board view...');
     mode._perfMark('odyssey-return-start');
     const operation = {};
@@ -37,9 +42,10 @@ export async function returnToOdysseyWorld(mode, options = {}) {
     const completedLevelId = options.focusLevelId ?? mode.currentLevelId;
     const completedLevelConfig = mode.currentLevelConfig;
     const departureAnchor = mode._resolveJourneyReturnDepartureAnchor();
-    const palette = mode._buildJourneyEntryPalette(completedLevelConfig);
+    const palette = mode._buildJourneyEntryPalette(completedLevelConfig, { returning: true });
     const timings = mode._buildJourneyReturnTimings(completedLevelConfig);
     const qualityPreset = window.settings?.effectQuality || 'High';
+    const reducedMotion = prefersOdysseyReducedMotion(mode, mode.deps.settingsManager?.get?.() || {});
     const session = mode._retireLevelSession();
     const retirementGeneration = session?.retirementGeneration;
     if (session?.gameState?.latestPhysicsPromise) {
@@ -73,7 +79,7 @@ export async function returnToOdysseyWorld(mode, options = {}) {
         qualityPreset,
         // A journey's own overlay answers Escape (Map); a plain return has no other owner.
         captureEscape: !journeyOwner,
-        reducedMotion: prefersOdysseyReducedMotion(mode, mode.deps.settingsManager?.get?.() || {}),
+        reducedMotion,
         callbacks: {
             onBlackoutReached: async () => {
                 if (!isCurrent()) return false;
@@ -134,6 +140,20 @@ export async function returnToOdysseyWorld(mode, options = {}) {
                     mode._unlockOdysseyBoardAfterLaunchAttempt();
                     mode.setOdysseyNavigatorButtonVisible(true);
                 }
+                // The world answers the orb just cleared as its gate opens: the stars land on
+                // it and the rail lights up toward the next (odyssey-flow-answers.js).
+                const cleared = mode._orbJustCleared;
+                mode._orbJustCleared = null;
+                if (Number.isFinite(cleared)) {
+                    const next = mode.levelRegistry?.getNextLevel?.(cleared);
+                    answerOrbFinished(mode.boardController, {
+                        finishedId: cleared,
+                        nextId: next && mode.odysseyState?.isLevelUnlocked?.(next.id) ? next.id : null,
+                        // A journey that rides on lights the rail as the ride begins.
+                        ripple: !journeyOwner,
+                        reducedMotion,
+                    });
+                }
                 return true;
             },
             onComplete: async () => {
@@ -159,6 +179,7 @@ export async function returnToOdysseyWorld(mode, options = {}) {
     });
 
     const succeeded = isCurrent() && !!transitionResult?.success;
+    if (succeeded && options.journeyEnding && mode.isInBoardView) presentOdysseyJourneyEnding(mode, completedLevelId);
     if (mode._boardReturnOperation === operation) mode._boardReturnOperation = null;
     return succeeded;
 }

@@ -22,7 +22,7 @@ import { dealCityTowers } from './shared/odyssey-neon-city-plan.js';
 import { seatNeonSkybridges } from './shared/odyssey-neon-skybridges.tsl.js';
 
 describe('Urban Dreams chapter environment (creative plan ch8)', () => {
-    it('mounts the skyline cards, horizon haze, and the Gate Bridge', () => {
+    it('mounts the skyline cards, the sky that carries the horizon, and the Gate Bridge', () => {
         const group = createUrbanDreamsEnvironment();
 
         // Two ranks ahead of the lane, and the same two behind it (looking back).
@@ -34,9 +34,15 @@ describe('Urban Dreams chapter environment (creative plan ch8)', () => {
             // The ecotone bridge must reach the cards.
             expect(card.material.uniforms?.uOpacity).toBeTruthy();
         });
-        expect(group.userData.horizonHaze?.name).toBe('horizon-haze-band');
-        expect(group.userData.horizonHaze.position.toArray()).toEqual(CH8_RETROSUN_STAGE.horizonHaze);
-        expect(group.userData.horizonHaze.geometry.parameters.height).toBe(340);
+        // 2026-11-17: the magenta haze band card is retired; the sky dome carries the hot horizon
+        // all the way round (it lies behind the far districts), with the journey's stars in it.
+        expect(group.userData.horizonHaze).toBeUndefined();
+        const dome = group.getObjectByName('neon-sky-dome');
+        expect(dome?.material.uniforms?.uOpacity).toBeTruthy();
+        expect(dome.geometry.parameters.radius).toBeGreaterThan(5000);
+        expect(group.userData.stars?.name).toBe('neon-stars');
+        expect(group.getObjectByName('neon-far-carpet')).toBeTruthy();
+        expect(group.getObjectByName('neon-far-towers')?.isInstancedMesh).toBe(true);
         expect(group.userData.gateBridge?.name).toBe('gate-bridge');
         // 2026-10-20: the deck-on-pylons + magenta billboard became glazed skybridges (one
         // instanced draw), each seated between two inner towers with its ends in their walls.

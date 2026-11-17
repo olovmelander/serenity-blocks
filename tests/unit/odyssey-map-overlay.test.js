@@ -146,7 +146,10 @@ describe('Odyssey map header: the journey in figures and cells', () => {
         expect(groups[0].children.map((cell) => cell.dataset.state))
             .toEqual(['cleared', 'cleared', 'cleared', 'next', 'locked']);
         expect(groups[1].dataset.state).toBe('locked');
-        expect(doc.map.get('odyssey-map-header').dataset).toMatchObject({ journey: 'ready', odyChapter: '1' });
+        // The header wears the chapter the WORLD shows (the page's, odyssey-chapter-look.js), so it
+        // names none of its own: the chapter the journey has reached is only a figure in it.
+        expect(doc.map.get('odyssey-map-header').dataset).toMatchObject({ journey: 'ready' });
+        expect(doc.map.get('odyssey-map-header').dataset.odyChapter).toBeUndefined();
     });
 
     it('leaves the mode’s lines in place when the journey cannot be read', () => {
