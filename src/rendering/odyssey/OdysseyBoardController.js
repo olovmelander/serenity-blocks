@@ -1300,6 +1300,10 @@ export class OdysseyBoardController {
                     // Inside the board camera's 9,000 far plane, and inside the shipped
                     // r=4000 atmosphere backstop so the world's sky paints in front of it.
                     skyRadius: ONE_WORLD_SKY_RADIUS,
+                    // The weather opens where the wall clock stands (world/odyssey-weather-clock.js),
+                    // so a session does not start on the last one's weather. The playgrounds leave
+                    // it at the world's 0, where a pinned `?t=` shot repeats.
+                    weatherPhase: (Date.now() / 1000) % 7200,
                     // Bisect lever for the boot-stall investigation (see the plan's BLOCKER
                     // note): the sheet's pipeline stays out of the in-game compile when it is
                     // not mounted.
