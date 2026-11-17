@@ -46,7 +46,7 @@ export const ODYSSEY_HOLLOW_MIST = Object.freeze({
     density: 0.020,
     graze: 0.16,
     /** The most it veils. */
-    alpha: 0.44,
+    alpha: 0.30,
     /** No mist where the pool is shallower than `depth[0]`; all of it from `depth[1]` (u). */
     depth: Object.freeze([2.5, 9]),
     /** It fades toward the sheet's own edge over this many units (the box is not a shape). */
@@ -74,10 +74,10 @@ export const ODYSSEY_HOLLOW_MIST = Object.freeze({
     /** Its colour: the sunlit white and its gain, the share of the sky's own air in it, and the
      * glow toward the sun (gain, and how tight). */
     white: Object.freeze([0.98, 0.975, 0.96]),
-    bright: 1.42,
+    bright: 1.52,
     /** How much of its white is the sun's colour (the rest stays white: mist is paler than sand). */
-    sun: 0.72,
-    air: 0.22,
+    sun: 0.50,
+    air: 0.10,
     glow: 0.42,
     /** The hour (the colour script's) it begins to gather at, and is whole by. */
     hour: Object.freeze([0.12, 0.40]),
