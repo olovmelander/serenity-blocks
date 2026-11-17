@@ -76,6 +76,7 @@ old "fire": orange and gold).
 | `nebula-flow-nebula.js` | The nursery: ONE full-screen pass, back to front — far stars, the cavity's gas carried by a flow map, the veils, the pillars (shape, relief, light), the board's lanterns and holes, fronts, the vortex and twist. |
 | `nebula-flow-stars.js` | Field stars (sprites, hidden behind the dust on the CPU) and the births (the constellation that draws into a star). |
 | `nebula-flow-fx.js` | Jets, the sparks' flights, the clears' blades. |
+| `nebula-flow-aura.js` | The big moments' shapes (2026-11-17): the great star's lobes, a T-spin's pinwheel, a back-to-back's shells, the nova happening. |
 | `nebula-flow-post.js` | One scene pass, a hue-preserving bloom (Medium and up), the cluster's shafts (the bloom dragged down from the cluster, so the pillars cast shadows down them), calm zones over the card and HUD, a hue-preserving filmic curve, grade, vignette, grain and dither. |
 | `nebula-flow-director.js`, `-composition.js` | Gameplay staging and the layout rects, as in the sibling rebuilds. |
 | `nebula-flow-quality.js` | Tiers. |
@@ -214,7 +215,7 @@ Playground (`npm run dev:playground`, then `playground.html?effect=nebula-flow&.
 | the icon | `t=20&quality=Ultra&icon=1&locks=6&event=drop&u=0.2&piece=I&color=ff5ea8&iconFov=0.55&iconPitch=0.02&iconYaw=0.04&eventAge=3.2&row=2`, captured square (1024²), contrast 1.2, saturation 1.3, a soft vignette, baked to a 512 px circle. Superseded 2026-10-23 without the falling-piece trail ([THEME_ICON_AUDIT_2026-10-23.md](THEME_ICON_AUDIT_2026-10-23.md)) |
 
 Real game: `?skipIntro=1&unlockAll=1`, then pick Nebula Flow; capture flags `nebulaFlowTime`,
-`nebulaFlowFixedDt`, `nebulaFlowParts=nebula,stars,births,jets,flights,blades`,
+`nebulaFlowFixedDt`, `nebulaFlowParts=nebula,stars,births,aura,jets,flights,blades`,
 `nebulaFlowFalseColor`, `nebulaFlowForceWebGL` (or `forceWebGL`).
 
 ## Atmosphere pass (2026-10-22)
@@ -272,3 +273,106 @@ and Low and Minimal add none.
 (`docs/theme-screenshots/nebula-flow.png` was not regenerated).
 
 **Reproduce:** the queries in the table above; `dbg=diffuse` shows the billows' shading alone.
+
+## Living nursery pass (2026-11-17)
+
+Branch `feature/star-cradle-masterpiece`. The brief: audit everything the theme is made of and
+raise it to one of the game's most striking themes, varied over time, with a distinct effect for
+every event and the biggest moments the most spectacular, smooth and readable throughout.
+
+**What the audit found.** At 1080p the pillars held up (the atmosphere pass's lit cloud and
+rims), but: their bodies were flat brown mud inside a glowing outline and every lit face the same
+tan; the pillars' own young stars threw jets that read as stray scratches (the purple and red
+streaks); the gas was generic smoke with no large structure; the picture had two planes (dust,
+gas); nothing changed by itself but the palette; four lines and a perfect clear were the same
+great star; a T-spin's twist and a back-to-back's twin fronts barely showed; a level-up was a
+global fade; a game over did nothing at all.
+
+![Every big moment in its own shape](nebula-flow-overhaul/living-events.jpg)
+
+### The picture at rest
+
+| Part | Now |
+|---|---|
+| Pillar bodies | Striations up the columns (a ridged read stretched about 7:1, a mip level up), darker dense cores, a faint rust glow through the body from the light the dust scatters inside itself, and young stars buried near the skin (small red points on a slow pulse of their own). All of it only where there is dust (a branch on the distance). |
+| Lit dust | Graded by how much light arrives: the lit colour squared (deep red) where little does, the lit colour, then toward the front's white-gold on the heads that face the cluster. |
+| Outflows | The pillars' own young stars (2 to 6 by tier, two per pillar at two heights with near-parallel axes) throw Herbig-Haro jets: violet or rose at the star, shocked red toward the tip, a faint cone, knots that crawl out in fits (each its own strength), a bow shock with a glowing wake and an older one part way out. |
+| Depth | A far range (`FAR_SPIRES`, seven smaller pillars at the far stars' to gas's parallax) standing in the gas: dark bodies, lit crowns, rims that follow their rough edges (Medium up), hiding the far stars and half the gas. Soft near dust in the lower corners of a wide frame, moving furthest with the parallax. |
+| Cavity | The cluster's light combed into streamers (a ridged read in the angle round the cluster, 12 whole tiles a turn, so no seam); far galaxies through the gaps. |
+
+### Over time
+
+- **Weather** (`WEATHERS`, `weatherAt`): calm, blaze, wind, tide, deep on a 110-s clock with a
+  40 % hold, beside the palettes' 95-s line, a level a mood on. Each sets the cluster's light, the
+  rims' burn, the streamers, the dust lanes, the buried stars, the outflows, the shafts and the
+  gas's speed. Calm is exactly the look before this pass.
+- **Happenings** (`happeningAt`, a function of the clock and the seed): every ~34 s (±12), each
+  kind once in a block of four — a star kindled by itself in a pillar (not counted as play's; an
+  outburst instead while the board is kindling), a young star's outburst (its lantern reaches
+  further, its jets blaze, a ring runs out through the gas), a far nova (a star in open sky swells
+  to a blaze with spikes and fades over most of a minute), a cluster flare (light, shafts and rims
+  swell, a soft front falls).
+
+![The five moods with the palette clock](nebula-flow-overhaul/living-moods.jpg)
+
+### Events
+
+| Event | Its own shape |
+|---|---|
+| Lock, hard drop, clear, cascade | As before: a spark, a constellation into a star, fronts and blades, stars set free. |
+| Four lines | The great star (as before) and an **hourglass of lobes** along its axis (`nebula-flow-aura.js`): filled mottled gas, brightest at the caps, a torn rim, a skirt across the waist. |
+| Perfect clear | The great star crowned, and its **light echo**: four shells (blue-white, gold, rose, violet) sweep out through the whole nursery over ten seconds, lighting the gas's own filaments (a branch on `u.echo`). The biggest moment. |
+| T-spin | A **dust pinwheel** unwinds from the star its piece kindled: one Archimedean arm for a spin, two for a clear, beaded, turning as it grows. The flow's twist as before. |
+| Back-to-back | **Nested shells** of dust (rounded squares) round the star of the moment, one more per back-to-back in a row (up to five); a four lines lays them round its great star. |
+| Chain | The vortex as before, its arms now **beaded with new stars** in the pieces' colours, laid out in the arms' own turning frame. |
+| Level-up | The new palette arrives as a **wave** from the cluster: inside its radius the new palette, outside the old (`u.wipe`, `u.wipeFrom`). |
+| Game over | **Dusk**: the cluster's light sinks, rims and shafts go out, a last deep-red front falls, the stars the board kindled glow on with the buried ones. It lifts by itself after ~13 s, at once when a new run starts (`onSessionStart` on `modeStarted`). The theme now ends a run the house way: flush the director, reset, then `onGameOver()`; the dusk outlives the menu's reset. |
+| Happenings | See above. |
+
+All event shapes are closed-form rows against the clock (a seek redraws any moment), cost nothing
+while dead (zero-sized quads, uniform-gated branches), and pass `flashScale()` where they light
+the frame quickly (the echo).
+
+![In the real game, and its dusk](nebula-flow-overhaul/living-ingame.jpg)
+![Game over: dusk](nebula-flow-overhaul/living-dusk.jpg)
+
+### Cost
+
+Capped (30 fps) GPU time from the playground's timestamp profile at 1920 × 1080, branch and the
+untouched main checkout interleaved on two private servers (RTX 5080 Laptop; capped timings drift
+±0.1 ms as the GPU clocks down between frames):
+
+| Case | main | branch |
+|---|---:|---:|
+| High, live demo | 0.81–0.84 ms | 1.03–1.12 ms |
+| Low, live demo | 0.50–0.59 ms | 0.69–0.77 ms |
+| High, nursery pass alone | 0.70–0.75 ms | 0.82–0.93 ms |
+
+Moving the dust's colour into a branch and bounding the far range changed no pixels and left the
+numbers within the noise. Switching off the far range, streamers, galaxies, palette wave and near
+dust together (`dbg=off:far+comb+gal+wipe+fore`) gives back only ~0.05 ms; the rest is spread
+over the larger shader. Not measured: an uncapped run, the integrated GPU, phones.
+
+### Verified
+
+- Playground on WebGPU and the WebGL2 backend, High and Minimal, 1280 × 720, 1920 × 1080 and an
+  upright 390 × 844: rest, every event and happening above, the five moods; consoles clean.
+- The real game in headless Chrome on WebGPU: single player, nine real hard drops (nine stars
+  kindled), a game over (dusk 1 at 4 s, back to 0 by itself), `[NebulaFlow] Scene ready (WebGPU,
+  High)`, no console error beyond the browser's Steam Cloud notes.
+- `tests/unit/nebula-flow-*.test.js`, including the new `nebula-flow-living.test.js` (weather,
+  happenings, aura shapes, echo, palette wave, dusk, far range) and the shader gate on both
+  builders at High and Minimal.
+
+### Open
+
+- The upright phone frame is pale at the top (the cluster is close above a narrow frame); it was
+  so on main and was not reworked here.
+- The theme icon and `docs/theme-screenshots/nebula-flow.png` still show the look before this pass.
+- Freed stars' long jets in many colours still cross each other on a busy pillar.
+- Blender was not needed: every new form is analytic in the shaders.
+
+**Reproduce** (playground, `quality=High&board=1`): `event=quad|perfect|twist|spin|b2b|tspinb2b`
+(`streak=<n>`), `combo=5`, `event=levelUp&eventAge=2.2`, `event=gameover&eventAge=5`
+(`dawn=<s>`), `event=happen&kind=kindle|outburst|nova|flare`; moods at `t=20, 130, 240, 350, 460`;
+cost bisects with `profile=1&trackTimestamp=1&dbg=off:far+comb+gal+wipe+fore`.

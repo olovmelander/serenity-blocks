@@ -345,8 +345,8 @@ replace it):
 | Lock, hard drop | as before, but the ring now opens on the open lake beside the card on the side the mote flies to (the column picks the place across that side's water, the row its depth), its crest a faint line of the piece's colour |
 | One or two lines | a shooting star a row (as before) |
 | Three lines | an **earthgrazer**: one long slow meteor skimming the hills from one side of the frame to the other, a slight arc and a faint train, doubled by the lake |
-| Four lines | the fireball, which now **flares and bursts** as it lands: its light spikes and four pieces fly on along its path (gotcha #1738) |
-| Twist | a **spiral** unfurls in free sky: one open arm winding a turn and a half out of a bright eye, a blue funnel hanging below it, turning, thinning away over five seconds; the sky turns only a little with it. A twist that cleared nothing sends a smaller one. Never on the comet's side (gotcha #1739) |
+| Four lines | the fireball, which now **flares and bursts** as it lands: its light spikes and four pieces fly on along its path (gotcha #1740) |
+| Twist | a **spiral** unfurls in free sky: one open arm winding a turn and a half out of a bright eye, a blue funnel hanging below it, turning, thinning away over five seconds; the sky turns only a little with it. A twist that cleared nothing sends a smaller one. Never on the comet's side (gotcha #1741) |
 | Back-to-back, cascade | as before (the amber pair; the whirl and the widening ring) |
 | Perfect clear | the biggest: a **storm** of thirty meteors in the colours played running out of ONE radiant in free sky over 2.6 s, every figure flaring, the fireball, the band's swell, and the **comet called**: it comes at once if it is away (a 100 s visit) and bursts out if it is up |
 | Level up | the next hour's light **rolls up the sky as a front**, in that hour's own colour (teal, green, gold, rose, violet, cobalt), rippled, a glow left behind it, as well as the swing and the meteor |
