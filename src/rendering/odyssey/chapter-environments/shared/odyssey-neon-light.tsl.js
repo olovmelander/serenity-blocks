@@ -197,7 +197,8 @@ export function neonAir(N, pc, glowLow = null) {
     // the ranks of towers down the boulevard fade into light, layer behind layer.
     const cs = clamp(dot(rel.div(dist.max(1e-3)), N.sky.sunDir), 0.0, 1.0);
     const cs2 = cs.mul(cs);
-    const farAir = N.sky.haze.add(N.sky.hazeSun.mul(cs2.mul(cs2).mul(0.8).add(cs2.mul(0.2))));
+    const farAir = N.sky.haze.add(N.sky.hazeSun.mul(cs2.mul(cs2).mul(0.8).add(cs2.mul(0.2))))
+        .add(N.sky.burst.mul(0.07));
     const colour = mix(farAir, mistCol, share);
     return { amount, colour, dist };
 }

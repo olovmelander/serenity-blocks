@@ -106,6 +106,8 @@ export function createNeonSkyUniforms() {
         /** How bright the stars are (the palette's, times the clearing). */
         stars: uniform(1),
         storm: uniform(0),
+        /** The light of the ending's fireworks aloft (already through flashScale): a wash. */
+        burst: uniform(new THREE.Vector3()),
     };
     PALETTE_KEYS.forEach((key) => { S[key] = uniform(new THREE.Vector3(...night[key])); });
     return S;
@@ -266,7 +268,9 @@ export function createNeonSkyDome(N, { octaves = 3 } = {}) {
 
         const withBars = mix(sky, barCol, bars.mul(0.82));
         return mix(withBars, deckCol, cloud.mul(0.93))
-            .add(vec3(0.5, 0.62, 1.0).mul(sheet).mul(S.storm).mul(0.55));
+            .add(vec3(0.5, 0.62, 1.0).mul(sheet).mul(S.storm).mul(0.55))
+            // The fireworks' light lands on the cloud's bellies and bars, and a breath of it on the air.
+            .add(S.burst.mul(cloud.mul(0.2).add(bars.mul(0.12)).add(0.025)));
     })();
 
     const material = new THREE.MeshBasicNodeMaterial();

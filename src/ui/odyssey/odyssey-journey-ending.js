@@ -18,11 +18,11 @@ import { prefersOdysseyReducedMotion } from '../../core/game-modes/odyssey-physi
 
 /**
  * Seconds of the ending after which the map's UI returns by itself (the world's clock rests at
- * 60). Under reduced motion the eye stays in the street and there is no show: the UI is back as
+ * 66). Under reduced motion the eye stays in the street and there is no show: the UI is back as
  * soon as the wave of light has crossed the city.
  */
 export const JOURNEY_ENDING_UI = Object.freeze({
-    returnAt: 56, reducedReturnAt: 14, pollMs: 400, giveUpMs: 90000, fadeMs: 1600,
+    returnAt: 61, reducedReturnAt: 14, leftBelow: 0.5, pollMs: 400, giveUpMs: 90000, fadeMs: 1600,
 });
 
 /** Seconds into the world's ending (0 when it is not running or the chapter is not built). */
@@ -89,7 +89,9 @@ export function presentOdysseyJourneyEnding(mode, levelId) {
     try { reduced = prefersOdysseyReducedMotion(mode) === true; } catch { reduced = false; }
     const returnAt = reduced ? JOURNEY_ENDING_UI.reducedReturnAt : JOURNEY_ENDING_UI.returnAt;
     timer = setInterval(() => {
-        if (!isCurrent() || readOdysseyJourneyEndingSeconds(mode) >= returnAt) finish();
+        // ...or once the eye has left the end of the rail (a pad's step travels without a DOM event).
+        const left = Number.isFinite(world?.journeyEnd) && world.journeyEnd < JOURNEY_ENDING_UI.leftBelow;
+        if (!isCurrent() || left || readOdysseyJourneyEndingSeconds(mode) >= returnAt) finish();
     }, JOURNEY_ENDING_UI.pollMs);
     giveUp = setTimeout(finish, JOURNEY_ENDING_UI.giveUpMs);
     return finish;
