@@ -14,11 +14,14 @@
  * its front passes, draws the school out into a ribbon at the cleared rows' height and lets
  * every held colour go, the corals spawning in the pieces' colours; a chain calls the sea's
  * large animals in from the blue, one more with each step — a turtle, mantas, a whale far out,
- * and at the top the whale comes over the board, its shadow cutting the shafts, and sings; four
- * lines hold the sea's breath, then one great shaft comes down over the board, the school winds
- * itself round it and the whole reef spawns. A new level turns the light to its next hour (six
- * on a wheel, from the high sun to the moon with the sea alight), and the light also moves on
- * slowly by itself, an hour every 100 s, whatever the level.
+ * and at the top the whale comes over the board, its shadow cutting the shafts, and sings; three
+ * lines send a pod of dolphins racing the current; four lines hold the sea's breath, then a crown
+ * of light comes down round the board in pillars, the school winds itself round inside it and the
+ * whole reef spawns; a perfect clear splits that light into the spectrum; a twist winds a helix
+ * of bubbles. A new level turns the light to its next hour (six on a wheel, from the high sun to
+ * the moon with the sea alight) and sends a tide of that light up the canyon, and the light also
+ * moves on slowly by itself, an hour every 100 s, whatever the level. The sea has weather of its
+ * own as well (ocean-weather.js): six sea states on a second clock, clouds over the sun, rain.
  *
  * Content lives in OceanWorld (ocean-world.js), shared with the playground effect
  * src/playground/effects/ocean.effect.js, so what is iterated there ships. One small file is

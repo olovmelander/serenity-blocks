@@ -9,7 +9,8 @@
  *
  *   lock     the piece lands in the street under the board: rings run out through the puddles in
  *            the piece's colour, bending the reflections, and a shell of light climbs the walls,
- *            switching dark windows on as it passes. A hard drop hits harder.
+ *            switching dark windows on as it passes. A hard drop hits harder, and its shock
+ *            breaks against the kerbs either side of the board in two columns of light.
  *   clear    a wave bursts out of the vanishing point behind the board and rushes up the street
  *            at the viewer, one front per cleared line: every sign flares as a front reaches it,
  *            the windows it passes stay lit a moment, the canyon's rays flood.
@@ -18,7 +19,12 @@
  *   four     blackout — every light in the district drops to a ghost for a fifth of a second —
  *            then the wave comes back gold, the smog sheets with lightning, and the district
  *            stays in overdrive while it cools. The hotter play already runs, the shallower that
- *            breath: a quad mid-fever dims the district, it does not black it out.
+ *            breath: a quad mid-fever dims the district, it does not black it out. A drone-show
+ *            dragon flies into the street, never the same way twice (neon-district-dragon.js).
+ *   twist    the circuit turns over: the signs tear and spinning hoops of light run away up the
+ *            canyon, the other way round each time.
+ *   level    rockets burst between the walls in the colours of the palette the district turns to.
+ *   perfect  two dragons, a volley of white-gold rockets, and the sky opens.
  *
  * It BUILDS (src/themes/shared/gameplay-surge.js). Every answer adds to what is still lit
  * instead of restarting: kicks, flashes, arrivals, the storm and the rays' flood are swells;
@@ -36,6 +42,10 @@
  * clock, in every mode (a match, Infinity and the menus never level up): each is seen pure for a
  * while, then melts into the next (districtDrift). A level is one step on top, eased the short
  * way round, and marked by sheet lightning and a flash as the signs refresh.
+ *
+ * Under all of it the night's weather turns on a clock of its own (neon-district-night.js): rain,
+ * a downpour, a clear spell with the moon out, a bank of fog, a fine rain, each with its own
+ * light; and now and then something flies down the street past the camera.
  *
  * Everything is a function of the world clock and event timestamps (nothing is created at event
  * time), so seek(t) plus a fixed-step replay reproduces any frame. Speeds that change are
@@ -60,6 +70,7 @@ import {
     approach,
     clamp01,
     createDistrictUniforms,
+    mulberry32,
     createGlowTexture,
     createNoiseTexture,
     linRGB,
@@ -83,9 +94,18 @@ import {
     createBeacons, createCables, createHalos, createLamps, createLanterns, createTraffic,
 } from './neon-district-lights.js';
 import { createKit } from './neon-district-kit.js';
+import { createFlyby } from './neon-district-flyby.js';
 import {
-    DRAGON_FLIGHT, DRAGON_LANE, DRAGON_OVERHEAD, createCounter, createDragon, createRowBeams, createSparks, kerbSparkDepth,
+    FLYBY_KINDS, createFlyby as createFlybyState, createWeather, flybyAt, weatherAt,
+} from './neon-district-night.js';
+import {
+    DRAGON_SLOTS, FIREWORK_RISE, createCounter, createDragon, createFireworks, createGyre, createRowBeams, createSparks,
+    createStrike, kerbSparkDepth,
 } from './neon-district-fx.js';
+import {
+    DRAGON_RECIPES, DRAGON_SCHEMES, DRAGON_SCHEME_MOON, createFlightState, dragonLane, flightPoint, flightState,
+    planDragonFlight,
+} from './neon-district-dragon.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './neon-district-composition.js';
@@ -139,6 +159,10 @@ export const OVERDRIVE_COOL = 2.6;
 export const OVERDRIVE_CAP = 1.8;
 /** How bright a dragon may burn once quads and crowns have fed it in flight. */
 const DRAGON_STRENGTH_CAP = 1.7;
+/** The least share of the frame's width a free zone beside the cards must have to be a lane. */
+const LANE_SHARE = 0.22;
+/** Seconds between the sprays of sparks a dragon throws up while it skims the street. */
+const SPRAY_STEP = 1 / 30;
 
 /** A wave's kick lands as it reaches the camera (CLEAR_TRAVEL after it leaves). */
 const ARRIVE_AT = CLEAR_TRAVEL * 0.93;
@@ -248,6 +272,11 @@ const GOLD = Object.freeze([1.0, 0.72, 0.22]);
 /** What the wave a perfect clear crowns burns toward. */
 const WHITE_GOLD = Object.freeze([1.0, 0.88, 0.64]);
 const HOT_MIST = Object.freeze([0.085, 0.036, 0.014]);
+/** What a bank of fog glows with: the city's lamps, scattered warm. */
+const FOG_GLOW = Object.freeze([0.2, 0.105, 0.07]);
+/** The patrol's two colours (its light on the street turns between them, slowly). */
+const PATROL_RED = Object.freeze([1.0, 0.1, 0.12]);
+const PATROL_BLUE = Object.freeze([0.14, 0.32, 1.0]);
 
 /** Blend `rgb` (in place) toward `target` by `k`. */
 function mixInto(rgb, target, k) {
@@ -257,7 +286,8 @@ function mixInto(rgb, target, k) {
 
 const PARTS = [
     'sky', 'mega', 'facades', 'street', 'shopfronts', 'shops', 'signs', 'marks', 'screens', 'prints', 'lamps', 'cables', 'lanterns',
-    'halos', 'cones', 'beacons', 'traffic', 'sparks', 'counter', 'dragon', 'steam', 'rain', 'beams',
+    'halos', 'cones', 'beacons', 'traffic', 'flyby', 'sparks', 'strike', 'fireworks', 'counter', 'dragon', 'steam', 'rain',
+    'gyre', 'beams',
 ];
 
 /** Seconds the shopfronts and screens take to power up once their atlas has arrived. */
@@ -312,6 +342,9 @@ export class NeonDistrictWorld {
         this.beams = null;
         this.counter = null;
         this.dragon = null;
+        this.strike = null;
+        this.gyre = null;
+        this.fireworks = null;
         this.disposed = false;
         this.reducedMotion = false;
         this.aspect = 16 / 9;
@@ -336,12 +369,33 @@ export class NeonDistrictWorld {
             exposure: 1,
             rainTime: 0,
             glassMist: 1,
+            glassWet: 1,
+            tint: [0.86, 0.97, 1.16],
+            sat: 1.12,
         };
+        /** The night's weather and its passer-by, as of the last frame (neon-district-night.js). */
+        this.weather = createWeather();
+        this.flyby = createFlybyState();
+        /** A playground's hold on the weather: a state's name, or null to let the clock turn it. */
+        this.weatherHold = null;
         this._rgb = [0, 0, 0];
         this._surgeClear = {
             lines: 1, cascade: 1, combo: 1, twist: false, perfect: false, b2b: false,
         };
         this._lock = { hardDrop: false };
+        /**
+         * What makes this world's dragons its own: every session deals the flights in another
+         * order. A capture keeps one order, so its frames can be reproduced.
+         */
+        this.dragonSalt = capture ? 0x5eed : Math.floor(Math.random() * 0x7fffffff);
+        /** A playground's choice of flight: { recipe, seed, scheme, mirror } (each optional). */
+        this.dragonChoice = null;
+        this._stage = {
+            cam: [0, REST_RIG.height, 0], tanH: 1, tanV: 0.5625, pitch: REST_RIG.pitch, left: null, right: null, top: 0.1,
+        };
+        this._flight = createFlightState();
+        this._spray = createFlightState();
+        this._sprayAt = { x: 0, y: 0, z: 0 };
 
         // ── What accumulates (src/themes/shared/swell.js): every hit adds to what is still lit ──
         /** How hot play runs: level (0..1), fever (the slow tide), punch, and the act (0..3). */
@@ -415,6 +469,14 @@ export class NeonDistrictWorld {
         this.counterValue = 0;
         this.dragonUntil = -1;
         this.dragonNext = Infinity;
+        /** The flights in the street, one per slot of the dragon mesh: { plan, at, light, sprayed }. */
+        this.flights = new Array(DRAGON_SLOTS).fill(null);
+        this.turns = 0;
+        this.volleys = 0;
+        this.dragonCalls = 0;
+        this.dragonBag = [];
+        this.dragonDeals = 0;
+        this.lastRecipe = -1;
         this.surge.reset();
         this.play.punch = 0;
         this.play.level = 0;
@@ -433,6 +495,9 @@ export class NeonDistrictWorld {
         this.sparks?.reset();
         this.beams?.reset();
         this.dragon?.reset();
+        this.strike?.reset();
+        this.gyre?.reset();
+        this.fireworks?.reset();
         if (this.u) {
             for (let i = 0; i < LOCK_SLOTS; i++) this.u.lockA[i].value.set(0, 0, -100, 0);
             for (let i = 0; i < CLEAR_SLOTS; i++) this.u.clearA[i].value.set(-100, 1, 0, 0);
@@ -520,10 +585,15 @@ export class NeonDistrictWorld {
         }
         this.addPart('beacons', createBeacons(u, plan.beacons));
         this.addPart('traffic', createTraffic(u, tier.traffic));
+        this.addPart('flyby', createFlyby(u));
 
         // ── Gameplay effects (pools, always drawn) ──
         this.sparks = createSparks(u, tier.sparks);
         this.addPart('sparks', this.sparks);
+        this.strike = createStrike(u);
+        this.addPart('strike', this.strike);
+        this.fireworks = tier.fireworks > 0 ? createFireworks(u, tier.fireworks) : null;
+        if (this.fireworks) this.addPart('fireworks', this.fireworks);
         this.counter = createCounter(u, glyphs);
         this.addPart('counter', this.counter);
         this.dragon = tier.drones > 0 ? createDragon(u, tier.drones) : null;
@@ -532,6 +602,8 @@ export class NeonDistrictWorld {
         // ── Weather and the row beams (the mirror does not render them) ──
         if (tier.steam > 0) this.addPart('steam', createSteam(u, plan.vents, tier.steam), { reflected: false });
         this.addPart('rain', createRain(u, tier.rain), { reflected: false });
+        this.gyre = createGyre(u);
+        this.addPart('gyre', this.gyre, { reflected: false });
         this.beams = createRowBeams(u);
         this.addPart('beams', this.beams, { reflected: false });
 
@@ -831,6 +903,27 @@ export class NeonDistrictWorld {
             life: hardDrop ? [0.6, 1.3] : [0.45, 0.95],
             size: hardDrop ? 0.045 : 0.034,
         });
+        if (hardDrop && !this.reducedMotion) {
+            // A hard drop's shock breaks against the kerbs either side of the board: a column of
+            // light stands up out of each, and a crown of sparks is thrown straight up with it.
+            const reach = 0.07;
+            for (let side = -1; side <= 1; side += 2) {
+                const kx = side * (STREET.halfRoad + 0.35);
+                this.strike.fire(kx, strike.z - 0.6, rgb, t + reach, this.scroll, (0.85 + 0.35 * pace) * flashScale());
+                this.sparks.emit({
+                    x: kx,
+                    z: strike.z - 0.6,
+                    n: Math.round(11 * share),
+                    rgb,
+                    time: t + reach,
+                    scroll: this.scroll,
+                    spread: [0.3, 2.6],
+                    up: [4.5, 10.5],
+                    life: [0.5, 1.05],
+                    size: 0.04,
+                });
+            }
+        }
         this.counts.locks += 1;
     }
 
@@ -924,8 +1017,12 @@ export class NeonDistrictWorld {
         if (twist) {
             this.glitch = 1;
             this.spinHits.hit(1, t);
+            this.turnOver(t, 1);
         }
-        if (perfect) this.crown.hit(1, birth);
+        if (perfect) {
+            this.crown.hit(1, birth);
+            this.celebrate(birth + 0.55, 5, [WHITE_GOLD, GOLD, WHITE_GOLD]);
+        }
         this.refreshHits(t);
         const sc = this._surgeClear;
         sc.lines = n;
@@ -969,7 +1066,7 @@ export class NeonDistrictWorld {
                 });
             }
         }
-        if (quad) this.callDragon(birth + 0.1, perfect ? 0.35 : 0.25);
+        if (quad) this.callDragon(birth + 0.1, perfect ? 0.35 : 0.25, { crown: perfect });
     }
 
     /**
@@ -984,6 +1081,7 @@ export class NeonDistrictWorld {
         if (!uniforms) return;
         const t = this.time;
         this.crown.hit(1, t);
+        this.celebrate(t + 0.4, 5, [WHITE_GOLD, GOLD, WHITE_GOLD]);
         this.overdrive = Math.min(OVERDRIVE_CAP, Math.max(this.overdrive, 1) + 0.45);
         this.stormHits.hit(0.5, t);
         this.flashHits.hit(0.22, t);
@@ -1000,7 +1098,7 @@ export class NeonDistrictWorld {
                 C.z + (WHITE_GOLD[2] * 1.3 - C.z) * 0.45,
             );
         }
-        this.callDragon(t + 0.1, 0.35, false);
+        this.callDragon(t + 0.1, 0.35, { follow: false, crown: true });
         this.refreshHits(t);
         const sc = this._surgeClear;
         sc.lines = 1;
@@ -1020,25 +1118,212 @@ export class NeonDistrictWorld {
         this.glitch = Math.max(this.glitch, 0.4);
         this.spinHits.hit(0.7, t);
         this.kickHits.hit(0.1, t);
+        this.turnOver(t, 0.62);
         this.refreshHits(t);
         this.counts.spins += 1;
     }
 
     /**
-     * The dragon out of the haze at `at`. One already in the street is never yanked back: it
-     * burns brighter by `feed`, and (for a second quad, `follow`) another follows it once it
-     * has passed over the camera. A crown only feeds the one in flight.
+     * A twist turns the circuit over: spinning hoops of light run away up the canyon, the other
+     * way round every time. (Not under reduced motion: it is all motion.)
      */
-    callDragon(at, feed, follow = true) {
+    turnOver(t, strength) {
+        if (!this.gyre || this.reducedMotion) return;
+        this.turns += 1;
+        this.gyre.fire(t, strength, this.turns % 2 ? 1 : -1);
+    }
+
+    /**
+     * Fireworks between the walls: `count` rockets, the first bursting at `at`, each in one of
+     * `colours` (scene-linear), in the lanes the frame leaves free beside the cards (or over
+     * them, on a frame with no room beside).
+     */
+    celebrate(at, count, colours) {
+        if (!this.fireworks) return;
+        const stage = this.dragonStage();
+        const left = dragonLane(stage, -1, 0.8);
+        const right = dragonLane(stage, 1, 0.8);
+        const over = left || right ? null : dragonLane(stage, 0, 0.8);
+        this.volleys += 1;
+        const rand = mulberry32(0xf00d + this.volleys * 977);
+        // Mostly in the roomier lane; every third in the other, if there is one.
+        let wide = left || right;
+        if (left && right && right.far - right.near > left.far - left.near) wide = right;
+        const narrow = wide === left ? right : left;
+        for (let i = 0; i < count; i++) {
+            const lane = (i % 3 === 2 && narrow ? narrow : wide) || over;
+            if (!lane) return;
+            const depth = lane.near + 1.5 + rand() * Math.max(1, Math.min(7, lane.far - lane.near - 5));
+            const point = lane.point(depth, 0.3 + rand() * 0.4, lane.side === 0 ? 0.5 : 0.6 + rand() * 0.3);
+            const radius = Math.max(1.8, Math.min(5.2, lane.room(depth) * 0.75));
+            this.fireworks.fire(
+                point.x,
+                point.y,
+                point.z,
+                at + FIREWORK_RISE + i * 0.26 + rand() * 0.1,
+                colours[i % colours.length],
+                radius,
+                flashScale(),
+            );
+        }
+    }
+
+    /**
+     * The dragon into the street at `at`. One already there is never yanked back: it burns
+     * brighter by `feed`, and (for a second quad, `follow`) another follows it once it has gone.
+     * A perfect clear's `crown` calls a second, white-gold dragon to fly beside it (or, with no
+     * dragon in the street, calls the pair).
+     */
+    callDragon(at, feed, { follow = true, crown = false } = {}) {
         if (!this.dragon) return;
-        const flight = this.dragon.uniforms.flight.value;
-        if (this.time < this.dragonUntil && flight.y > 0) {
-            flight.y = Math.min(DRAGON_STRENGTH_CAP, flight.y + feed);
-            if (follow && this.dragonNext === Infinity) this.dragonNext = this.dragonUntil;
+        const lead = this.flights[0];
+        if (lead && this.time < lead.at + lead.plan.duration) {
+            lead.light = Math.min(DRAGON_STRENGTH_CAP, lead.light + feed);
+            const twin = this.flights[1];
+            if (twin) twin.light = Math.min(DRAGON_STRENGTH_CAP, twin.light + feed);
+            else if (crown) {
+                this.launchDragon(1, at, { scheme: DRAGON_SCHEME_MOON, mirror: lead.plan.side < 0 ? 1 : -1, light: 1.2 });
+            } else if (follow && this.dragonNext === Infinity) this.dragonNext = lead.at + lead.plan.duration;
             return;
         }
-        this.dragon.launch(at, 1, this.dragonLane());
-        this.dragonUntil = at + DRAGON_FLIGHT;
+        const first = this.launchDragon(0, at, { light: 1, scheme: crown ? DRAGON_SCHEME_MOON : undefined });
+        if (first && crown) {
+            this.launchDragon(1, at + 0.45, { scheme: 0, mirror: first.plan.side < 0 ? 1 : -1, light: 1.1 });
+        }
+    }
+
+    /** What the frame leaves free for a dragon (neon-district-dragon.js: DragonStage). */
+    dragonStage() {
+        const stage = this._stage;
+        const zones = this.freeZones();
+        const card = cardUnion(this.layout);
+        stage.tanV = Math.tan((fovForAspect(this.aspect) * DEG) / 2);
+        stage.tanH = stage.tanV * this.aspect;
+        // A lane needs a fair share of the frame: a sliver beside the card on a tall phone is no
+        // place to fly a figure (the dragon then takes the air over the card).
+        stage.left = zones.left >= LANE_SHARE ? { a: 0, b: zones.left } : null;
+        stage.right = zones.right >= LANE_SHARE ? { a: zones.rightEdge, b: 1 } : null;
+        stage.top = card ? card.y0 : 0.1;
+        return stage;
+    }
+
+    /**
+     * The next flight to fly: every recipe is dealt once before any comes round again, in an
+     * order of this world's own, and a new deal never opens with the recipe just flown.
+     */
+    dealDragon() {
+        const count = DRAGON_RECIPES.length;
+        this.dragonCalls += 1;
+        const seed = (this.dragonSalt + this.dragonCalls * 7919) >>> 0;
+        const choice = this.dragonChoice;
+        if (choice && Number.isFinite(choice.recipe)) return { recipe: choice.recipe, seed: choice.seed ?? seed };
+        if (!this.dragonBag.length) {
+            const rand = mulberry32(this.dragonSalt + this.dragonDeals * 104729 + 17);
+            this.dragonDeals += 1;
+            const bag = Array.from({ length: count }, (_, i) => i);
+            for (let i = count - 1; i > 0; i--) {
+                const j = Math.floor(rand() * (i + 1));
+                [bag[i], bag[j]] = [bag[j], bag[i]];
+            }
+            // (dealt from the end)
+            if (bag[count - 1] === this.lastRecipe) [bag[0], bag[count - 1]] = [bag[count - 1], bag[0]];
+            this.dragonBag = bag;
+        }
+        const recipe = this.dragonBag.pop();
+        this.lastRecipe = recipe;
+        return { recipe, seed: choice?.seed ?? seed };
+    }
+
+    /**
+     * Plan a flight for this frame's stage and load it into a slot of the dragon mesh.
+     * @returns {{ plan: object, at: number, light: number, sprayed: number }|null}
+     */
+    launchDragon(slot, at, { scheme, mirror, light = 1 } = {}) {
+        if (!this.dragon) return null;
+        const { recipe, seed } = this.dealDragon();
+        const choice = this.dragonChoice;
+        const plan = planDragonFlight({
+            seed,
+            recipe,
+            stage: this.dragonStage(),
+            scheme: choice?.scheme ?? scheme,
+            mirror: choice?.mirror ?? mirror,
+        });
+        if (!plan) return null;
+        const look = DRAGON_SCHEMES[plan.scheme] || DRAGON_SCHEMES[0];
+        const p = this._palette;
+        // The imperial dragon wears the district: its belly the second accent, its crest the first.
+        const colours = {
+            body: look.body,
+            belly: look.belly || p.b.map((c) => c * 0.85 + 0.15),
+            crest: look.crest || p.a.map((c) => c * 0.8 + 0.2),
+            hot: look.hot,
+        };
+        this.dragon.fly(slot, plan, colours);
+        const flight = {
+            plan, at, light, sprayed: 0,
+        };
+        this.flights[slot] = flight;
+        this.dragonUntil = Math.max(this.dragonUntil, at + plan.duration);
+        return flight;
+    }
+
+    /** Fly every dragon in the street to `t`, and throw up the spray of the ones skimming it. */
+    updateDragons(t) {
+        const { dragon } = this;
+        if (!dragon) return;
+        for (let slot = 0; slot < DRAGON_SLOTS; slot++) {
+            const flight = this.flights[slot];
+            if (!flight) continue; // eslint-disable-line no-continue
+            const age = t - flight.at;
+            if (age > flight.plan.duration) {
+                dragon.rest(slot);
+                this.flights[slot] = null;
+                continue; // eslint-disable-line no-continue
+            }
+            const state = flightState(flight.plan, age, this._flight);
+            dragon.pose(slot, state, Math.max(0, age), flight.light);
+            this.sprayDragon(flight, age);
+        }
+    }
+
+    /**
+     * A dragon skimming the wet street throws a sheet of spray off both flanks: sparks in its own
+     * colour, thrown on a fixed beat of the flight's clock (so any frame rate throws the same).
+     */
+    sprayDragon(flight, age) {
+        const { plan } = flight;
+        if (!plan.skims.length || !this.sparks) return;
+        const look = DRAGON_SCHEMES[plan.scheme] || DRAGON_SCHEMES[0];
+        while (flight.sprayed + SPRAY_STEP <= age) {
+            flight.sprayed += SPRAY_STEP;
+            const when = flight.sprayed;
+            for (let i = 0; i < plan.skims.length; i++) {
+                const skim = plan.skims[i];
+                if (when < plan.times[skim.from] || when > plan.times[skim.to]) continue; // eslint-disable-line no-continue
+                const { head } = flightState(plan, when, this._spray);
+                const at = flightPoint(plan, head - plan.body * 0.12, this._sprayAt);
+                if (at.y > plan.scale * 3.2) continue; // eslint-disable-line no-continue
+                for (let side = -1; side <= 1; side += 2) {
+                    this.sparks.emit({
+                        x: at.x + side * plan.scale * 1.1,
+                        z: at.z,
+                        n: Math.max(2, Math.round(5 * (this.sparks.count / 512))),
+                        rgb: look.body,
+                        time: flight.at + when,
+                        scroll: this.scroll,
+                        spread: [2, 7.5],
+                        up: [2.2, 6.5],
+                        life: [0.45, 1.0],
+                        size: 0.03,
+                        arc: 1.5,
+                        heading: side > 0 ? Math.PI / 2 : -Math.PI / 2,
+                        y: 0.1,
+                    });
+                }
+                this.lastAnchor = Math.max(this.lastAnchor, flight.at + when);
+            }
+        }
     }
 
     /** The lock slot with the least light left in it (its comet fades slowest, e^(-1.3 age)). */
@@ -1121,6 +1406,9 @@ export class NeonDistrictWorld {
             this.flashHits.hit(0.18, t);
             this.refreshHits(t);
             this.surge.levelUp(t);
+            // Rockets in the colours of the palette the district is turning to.
+            const next = DISTRICT_RGB[this.paletteShown()];
+            this.celebrate(t + 0.1, 4, [next.a, next.b, GOLD, next.a.map((c, i) => (c + next.b[i]) * 0.5 + 0.2)]);
         }
     }
 
@@ -1174,11 +1462,10 @@ export class NeonDistrictWorld {
         if (t >= this.dragonNext) {
             const at = this.dragonNext;
             this.dragonNext = Infinity;
-            if (this.dragon) {
-                this.dragon.launch(at, 1.15, this.dragonLane());
-                this.dragonUntil = at + DRAGON_FLIGHT;
-            }
+            this.updateDragons(at); // (the one before it has left its slot)
+            this.launchDragon(0, at, { light: 1.15 });
         }
+        this.updateDragons(t);
         // The district stays warm for as long as the dragon is in the street.
         if (t < this.dragonUntil) this.overdrive = Math.max(this.overdrive, 0.3);
         this.glitch *= Math.exp(-dt / 0.28);
@@ -1215,16 +1502,21 @@ export class NeonDistrictWorld {
         const drive = clamp01(smooth(0.15, 0.75, level) * 0.55 + fever * 0.55) * (1 - crown);
         this.downpour += (drive - this.downpour) * approach(drive > this.downpour ? 1.1 : 0.55, dt);
         const pour = this.downpour;
+        // The night's own weather turns under that, on its clock (neon-district-night.js).
+        const w = weatherAt(this.weatherHold ?? t, this.weather);
+        // How hard it comes down, whoever brought it on: play, or the clock's downpour.
+        const heavy = clamp01(pour + Math.max(0, w.fall - 1) * 1.3);
         // Paces that change are integrated, never multiplied into the clock: nothing jumps.
-        this.rainClock += dt * (1 + 0.6 * pour);
+        this.rainClock += dt * (1 + 0.6 * heavy);
         this.trafficClock += dt * (1 + 0.5 * charge + 0.3 * fever);
         this.chasePhase = (this.chasePhase + dt * (0.22 + 1.5 * charge + 2.6 * this.spinHits.valueAt(t))) % 1;
         // In a fever, sheet lightning walks through the smog: a soft stroke every two seconds or
         // so (never a strobe), brighter the deeper the fever.
-        this.thunderPhase += dt * smooth(0.2, 0.9, fever) * STROKE_RATE;
+        // (and in the clock's downpour, whatever the play: a stroke every seven seconds or so)
+        this.thunderPhase += dt * (smooth(0.2, 0.9, fever) * STROKE_RATE + smooth(0.4, 1, w.storm) * 0.14);
         if (this.thunderPhase >= 1) {
             this.thunderPhase -= Math.floor(this.thunderPhase);
-            this.strokes.hit(0.2 + 0.2 * fever, t);
+            this.strokes.hit(0.2 + 0.2 * Math.max(fever, w.storm * 0.7), t);
         }
 
         // Distant sheet lightning now and then, on the district's own clock.
@@ -1232,9 +1524,10 @@ export class NeonDistrictWorld {
         const sheet = beat > 24 && beat < 24.7 ? (beat - 24) / 0.7 : -1;
         let ambient = 0;
         if (sheet >= 0) {
-            ambient = steady
+            // (only while there is weather for it: none in a clear spell or a fog bank)
+            ambient = (steady
                 ? Math.sin(Math.PI * sheet) * 0.16
-                : Math.abs(Math.sin(beat * 37)) * (1 - sheet) * 0.4;
+                : Math.abs(Math.sin(beat * 37)) * (1 - sheet) * 0.4) * clamp01(w.storm * 4);
         }
         const flicker = steady ? 0.6 : 0.55 + 0.45 * Math.abs(Math.sin(t * 43));
         const storm = Math.max(this.storm * flicker, ambient, this.strokes.valueAt(t)) * fs;
@@ -1252,8 +1545,13 @@ export class NeonDistrictWorld {
         const lit = (1 + charge * 0.22 + this.overdrive * 0.4 + level * 0.04 + fever * 0.06) * (1 - this.dip);
         // The blackout takes the light down from wherever it is: a shallow one is an inhale.
         u.neon.value = lit * (1 - 0.95 * blackout);
-        u.rain.value = (1 + 0.6 * pour) * (1 - 0.4 * crown);
-        u.downpour.value = pour;
+        // Wet is not the same as raining: the street stays wet through a clear spell.
+        u.rain.value = (1 + 0.6 * heavy) * (1 - 0.4 * crown);
+        u.fall.value = (w.fall + 0.75 * pour) * (1 - 0.6 * crown);
+        u.downpour.value = Math.max(pour, w.wind * clamp01(w.fall));
+        u.fog.value = w.fog * (1 - 0.3 * crown);
+        u.sky.value = Math.max(w.sky, crown);
+        u.mist.value = w.mist;
         u.rainClock.value = this.rainClock;
         u.traffic.value = this.trafficClock;
         u.chase.value = this.chasePhase;
@@ -1262,12 +1560,18 @@ export class NeonDistrictWorld {
         const h = this.heat;
         u.accentA.value.set(p.a[0] + (GOLD[0] - p.a[0]) * h * 0.8, p.a[1] + (GOLD[1] - p.a[1]) * h * 0.8, p.a[2] + (GOLD[2] - p.a[2]) * h * 0.8);
         u.accentB.value.set(p.b[0] + (GOLD[0] - p.b[0]) * h * 0.5, p.b[1] + (GOLD[1] - p.b[1]) * h * 0.5, p.b[2] + (GOLD[2] - p.b[2]) * h * 0.5);
-        u.hazeLow.value.set(
-            p.low[0] + (HOT_MIST[0] - p.low[0]) * h * 0.45,
-            p.low[1] + (HOT_MIST[1] - p.low[1]) * h * 0.45,
-            p.low[2] + (HOT_MIST[2] - p.low[2]) * h * 0.45,
-        );
-        u.hazeHigh.value.set(p.high[0], p.high[1], p.high[2]);
+        // The mist: the district's, warmed by overdrive; a bank of fog glows with the lamps in it,
+        // and a clear spell lets it thin. Over the roofs a clear night is a deeper, bluer dark.
+        const warm = w.warm * 0.7;
+        const gain = 0.45 + 0.55 * w.mist;
+        const mistAt = (c) => {
+            const hot = p.low[c] + (HOT_MIST[c] - p.low[c]) * h * 0.45;
+            return (hot + (FOG_GLOW[c] - hot) * warm) * gain;
+        };
+        u.hazeLow.value.set(mistAt(0), mistAt(1), mistAt(2));
+        const open = u.sky.value;
+        u.hazeHigh.value.set(p.high[0] * (1 - 0.25 * open), p.high[1] + 0.004 * open, p.high[2] + 0.02 * open);
+        this.updateFlyby(t, fs < 1 || still);
 
         // Atlases power up when they arrive (at once in a capture).
         const fades = [this.atlases.shopFade, this.atlases.adsFade];
@@ -1302,7 +1606,47 @@ export class NeonDistrictWorld {
             * (1 - Math.max(0, level - 0.2) * 0.1 - fever * 0.08)
             * (1 - 0.3 * blackout); // a quad's breath dims the lens as well as the lights
         // The crown wipes the condensation off the glass; it mists back over as it fades.
-        post.glassMist = 1 - 0.7 * crown;
+        post.glassMist = (1 - 0.7 * crown) * (0.35 + 0.65 * Math.min(1.4, w.fog));
+        // No rain, no drops: they dry off the glass in a clear spell and bead again as it returns.
+        post.glassWet = smooth(0.02, 0.45, u.fall.value);
+        post.tint[0] = w.tint[0];
+        post.tint[1] = w.tint[1];
+        post.tint[2] = w.tint[2];
+        post.sat = w.sat;
+    }
+
+    /**
+     * The passer-by (neon-district-night.js: flybyAt): where its card is, how much of its length
+     * the camera sees, and the pool of light it drags along the street. Reduced motion keeps the
+     * street to itself; `steady` (reduce flashing) holds the patrol's light on one colour.
+     */
+    updateFlyby(t, steady) {
+        const part = this.parts.flyby;
+        const { u } = this;
+        if (!part || !u) return;
+        const fly = flybyAt(t, this.flyby);
+        if (!fly.live || this.reducedMotion) {
+            part.uniforms.place.value.w = 0;
+            u.pass.value.y = 0;
+            return;
+        }
+        const kind = FLYBY_KINDS[fly.kind];
+        // Seen from along the street a hull is all but end-on: draw only what the eye is shown.
+        const dx = Math.abs(fly.x);
+        const seen = Math.max(kind.height * 1.25, kind.length * (dx / Math.hypot(dx, Math.max(0.5, fly.depth))));
+        part.uniforms.place.value.set(fly.x, fly.y, -fly.depth, fly.fade);
+        part.uniforms.shape.value.set(fly.kind, fly.dir, kind.name === 'couriers' ? kind.length : seen, kind.height);
+        part.uniforms.lamp.value.set(kind.lamp[0], kind.lamp[1], kind.lamp[2]);
+        part.uniforms.glow.value.set(kind.glow[0], kind.glow[1], kind.glow[2]);
+        u.pass.value.set(-fly.depth, kind.light * fly.fade, 8, fly.x);
+        if (kind.name === 'patrol') {
+            const k = steady ? 0.5 : 0.5 + 0.5 * Math.sin(t * 5.2);
+            u.passC.value.set(
+                PATROL_RED[0] + (PATROL_BLUE[0] - PATROL_RED[0]) * k,
+                PATROL_RED[1] + (PATROL_BLUE[1] - PATROL_RED[1]) * k,
+                PATROL_RED[2] + (PATROL_BLUE[2] - PATROL_RED[2]) * k,
+            );
+        } else u.passC.value.set(kind.glow[0], kind.glow[1], kind.glow[2]);
     }
 
     /**
@@ -1315,19 +1659,6 @@ export class NeonDistrictWorld {
         const { hud } = this.layout;
         const rightEdge = Math.max(card.x1, hud ? hud.x1 : 0);
         return { left: Math.max(0, card.x0), rightEdge, right: Math.max(0, 1 - rightEdge) };
-    }
-
-    /**
-     * The dragon swims down the left wall when the camera can see that lane beside the card;
-     * otherwise (a phone held upright) it passes over the top of the card.
-     */
-    dragonLane() {
-        const camera = this._camera;
-        if (!camera) return DRAGON_LANE;
-        const { left } = this.freeZones();
-        this._ray.set(DRAGON_LANE[0], DRAGON_LANE[1], -20).project(camera);
-        const sx = this._ray.x * 0.5 + 0.5;
-        return sx > 0.04 && sx < left - 0.03 ? DRAGON_LANE : DRAGON_OVERHEAD;
     }
 
     /**
@@ -1375,12 +1706,23 @@ export class NeonDistrictWorld {
             overdrive: this.overdrive,
             surge: { level: this.play.level, fever: this.play.fever, stage: this.play.stage },
             downpour: this.downpour,
+            weather: this.weather.name,
+            flyby: this.flyby.live ? FLYBY_KINDS[this.flyby.kind].name : null,
             level: this.level,
             // (the palette it is heading for, and where on the wheel it is showing now)
             palette: DISTRICT_PALETTES[this.paletteShown()].name,
             paletteTurn: this.paletteStep + districtDrift(this.time),
             counts: { ...this.counts },
             dragon: this.time < this.dragonUntil,
+            // (the flights in the street: recipe, way in, way out, lane and scheme of each)
+            flights: this.flights.filter(Boolean).map((flight) => ({
+                recipe: flight.plan.recipe,
+                entry: flight.plan.entry,
+                exit: flight.plan.exit,
+                side: flight.plan.side,
+                scheme: DRAGON_SCHEMES[flight.plan.scheme].name,
+                duration: flight.plan.duration,
+            })),
             drones: this.dragon ? this.dragon.count : 0,
             sparks: this.sparks ? this.sparks.count : 0,
             layoutLive: this.layoutLive,
@@ -1418,6 +1760,9 @@ export class NeonDistrictWorld {
         this.beams = null;
         this.counter = null;
         this.dragon = null;
+        this.strike = null;
+        this.gyre = null;
+        this.fireworks = null;
         this.u = null;
         this._camera = null;
     }

@@ -11,9 +11,11 @@
  * and brings a wave rushing up the street from the vanishing point; a chain of clears charges
  * the district (a hologram counts it, the trim on the towers climbs like level meters, the city
  * flows faster, the palette warms to gold); four lines black the district out, bring it back
- * in gold and call a drone-show dragon out of the haze; and play that stays hot brings the
- * storm in over the canyon (a downpour, sheet lightning in the smog) until a perfect clear
- * breaks it.
+ * in gold and call a drone-show dragon into the street, on a flight of its own every time; a
+ * hard drop stands columns of light up at the kerbs, a twist sends hoops spinning up the canyon,
+ * a new level sends up rockets; and play that stays hot brings the storm in over the canyon (a
+ * downpour, sheet lightning in the smog) until a perfect clear breaks it. Under it all the
+ * night's weather turns on its own clock: rain, a downpour, a clear spell, a bank of fog.
  *
  * Content lives in NeonDistrictWorld (neon-district-world.js), shared with the playground effect
  * src/playground/effects/neon-district.effect.js, so what is iterated there ships. This class

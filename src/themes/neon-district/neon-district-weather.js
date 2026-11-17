@@ -118,11 +118,12 @@ export function createRain(u, count, opts = {}) {
     const fog = ndFogAmount(dist, head.y);
     // Streaks dissolve into the haze, and the nearest ones are soft and faint (out of focus).
     const visible = float(1.0).sub(fog).mul(smoothstep(0.8, 5.0, dist)).mul(mix(float(0.35), float(1.0), smoothstep(2.0, 12.0, dist)));
-    // In a downpour (rain > 1) the drops catch more of the neon and the pulses, but the haze
+    // In a downpour (fall > 1) the drops catch more of the neon and the pulses, but the haze
     // they carry does not grow and a longer streak spreads its light thinner: thousands of
-    // streaks must not add up to a grey veil. Rain under 1 (a let-up) dims them all.
-    const caught = glow.mul(0.3).add(lamp.mul(0.55)).add(pulse).mul(u.rain);
-    const energy = ambient.mul(min(u.rain, 1.0)).add(caught)
+    // streaks must not add up to a grey veil. Under 1 (a let-up, a clear spell) they dim, to
+    // nothing when no rain falls.
+    const caught = glow.mul(0.3).add(lamp.mul(0.55)).add(pulse).mul(u.fall);
+    const energy = ambient.mul(min(u.fall, 1.0)).add(caught)
         .mul(visible)
         .div(u.downpour.mul(0.65).add(1.0))
         // A thin streak is spread over at least a pixel and a half: keep its energy.
