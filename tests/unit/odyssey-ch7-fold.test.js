@@ -178,6 +178,15 @@ describe('a room of the fold for every orb inside the hole, each a place of its 
         // The first room opens at the crossing and the hall where the mouth will: both the middle.
         expect(CH7_FOLD_ROOMS[0].door).toEqual([0, 0]);
         expect(CH7_FOLD_ROOMS[7].door).toEqual([0, 0]);
+        // The stairs' glasses are handed round by the happenings: three whole colours at every
+        // count, each family's own, and none of them a mix.
+        const { glass } = CH7_FOLD_PLACE.stairs;
+        expect(glass).toHaveLength(3);
+        for (let turns = 0; turns < 4; turns += 1) {
+            const standing = glass.map((family) => family[turns].join(','));
+            expect(new Set(standing).size, `after ${turns}`).toBe(3);
+            standing.forEach((colour) => expect(glass.map((family) => family[0].join(','))).toContain(colour));
+        }
         // Serenity Warp's room is stairs, never the game's pieces.
         expect(CH7_FOLD_ROOMS.find((r) => r.orbs.includes(54)).place).toBe('stairs');
     });

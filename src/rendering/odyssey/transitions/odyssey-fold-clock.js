@@ -8,8 +8,8 @@
  *  - a rare HAPPENING: one in every `slot` seconds, at a place inside the slot that differs from
  *    slot to slot, rising and falling over `last` seconds without a step (a great swell on the
  *    tide, a bright wave down the lattice, the flock turning, a world flooding the jewel);
- *  - TURNS: how many happenings have been, eased through the one under way. The stairs turn a
- *    quarter on each and stay turned.
+ *  - TURNS: how many happenings have been, eased through the one under way (whole again after
+ *    four), for what a happening leaves changed: the stairs' three glasses change places.
  *
  * Everything is continuous in time, and still under reduced motion (the moods rest mid-way, no
  * happening, no turn).

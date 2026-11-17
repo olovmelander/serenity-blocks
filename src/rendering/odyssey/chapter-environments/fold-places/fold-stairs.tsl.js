@@ -5,7 +5,8 @@
  * Endless flights of glass stairs through indigo air, in three families that do not agree on
  * which way is down: one climbs the floor, one a wall, one the ceiling, each running on out of
  * sight both ways and passing through the others. Their steps run up them like an escalator's,
- * for ever; on a happening they melt into smooth ramps and form again.
+ * for ever; on a happening they melt into smooth ramps and form again, and while they are melted
+ * the three families' glasses change places (so the stairs are not the same after it as before).
  *
  * Sphere-traced, solid. A family is one flight repeated across its own plane and from plane to
  * plane; in the frame turned 45 degrees its treads and risers are a zigzag with slopes of one, so
@@ -13,10 +14,10 @@
  * no normal to estimate. The eye rides the one line all three families leave clear.
  */
 import {
-    Break, If, Loop, abs, clamp, dot, exp, float, floor, int, max, min, mix, smoothstep, step, vec3,
+    Break, If, Loop, abs, clamp, dot, exp, float, floor, int, max, min, mix, mod, smoothstep, step, vec3,
 } from 'three/tsl';
 import {
-    film, frameRows, gauss, sq, stroke, turn,
+    film, frameRows, gauss, pick, sq, stroke, turn,
 } from './fold-tools.tsl.js';
 
 export const STAIRS = Object.freeze({
@@ -31,6 +32,13 @@ export const STAIRS = Object.freeze({
     fog: 0.021,
     /** The steps' climb, in steps a second. */
     climb: 0.05,
+    /** The three downs' glasses (violet, aqua, rose), as they stand after no, one, two and three
+     * happenings: each a whole colour, handed round, and as at first again after the fourth. */
+    glass: Object.freeze([
+        Object.freeze([[0.46, 0.34, 1.0], [0.10, 0.80, 0.86], [1.0, 0.42, 0.50], [1.0, 0.42, 0.50]]),
+        Object.freeze([[0.10, 0.80, 0.86], [1.0, 0.42, 0.50], [0.46, 0.34, 1.0], [0.10, 0.80, 0.86]]),
+        Object.freeze([[1.0, 0.42, 0.50], [0.46, 0.34, 1.0], [0.10, 0.80, 0.86], [0.46, 0.34, 1.0]]),
+    ]),
 });
 
 const ROWS = frameRows(STAIRS.frame);
@@ -59,7 +67,7 @@ function family(f, vOff, shift, melt) {
 }
 
 export function placeStairs({
-    rd, tm, zEye, pix, mood, event, eventAge, steps, jitter,
+    rd, tm, zEye, pix, mood, event, eventAge, turns, steps, jitter,
 }) {
     const V = STAIRS;
     const r = turn(rd, ROWS).toVar();
@@ -113,8 +121,12 @@ export function placeStairs({
         const u = of('u');
         const onTop = step(max(under, sides), top).toVar();
         const onSide = step(max(under, top), sides).toVar();
-        // The three downs, each its own glass.
-        const glass = mix(mix(vec3(1.0, 0.42, 0.50), vec3(0.10, 0.80, 0.86), isB), vec3(0.46, 0.34, 1.0), isA).toVar();
+        // The three downs, each its own glass; every happening hands the glasses round (the
+        // clock's turns, eased through the happening: as at first again after four).
+        const stood = floor(turns).toVar();
+        const handing = turns.sub(stood).toVar();
+        const glassOf = (i) => mix(pick(stood, V.glass[i]), pick(mod(stood.add(1), 4.0), V.glass[i]), handing);
+        const glass = mix(mix(glassOf(2), glassOf(1), isB), glassOf(0), isA).toVar();
         const aa = t.mul(pix).mul(1.5).toVar();
         // Each step is lit along itself: bright at its nosing, falling into the corner; a tread
         // more than a riser. The happening sends a wave of light climbing every flight.

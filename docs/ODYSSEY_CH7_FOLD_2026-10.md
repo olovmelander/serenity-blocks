@@ -277,7 +277,7 @@ in the same spot.
 | 51 | The lattice | beams of gold in an endless lattice wound about the way ahead, a second one wound the other way through its squares | walked; light summed by step length | a bright wave runs out along the beams |
 | 52 | The nave | a pointed vault over a polished floor, a storm behind tall windows (blue-white on one side, violet on the other), shafts of its light across the nave | met exactly (a convex cross-section; the floor by unfolding the ray); the shafts by eight samples asked the window's own shape | a swell of light down the windows, an arc down the ridge |
 | 53 | The flock | veils of motes of light over a dusk horizon and its water | walked plane by plane, every mote at one place in the room | a wave of light runs through the flock |
-| 54 | The stairs | endless flights of glass stairs in three families that do not agree on which way is down, their steps climbing for ever | sphere-traced; the face from the distance's own parts | the steps melt into ramps and form again |
+| 54 | The stairs | endless flights of glass stairs in three families that do not agree on which way is down, their steps climbing for ever | sphere-traced; the face from the distance's own parts | the steps melt into ramps and form again, the three families' glasses changed places |
 | 55 | The jewel | the inside of a cut gem; in every facet one of the worlds the journey has crossed (lava, the deep sea, the island, the mountains, the Earth from orbit, the stars) | met exactly, three throws from facet to facet | one world's light floods every facet |
 | 56 | The paint | strokes of thick paint hanging in the dark, each its own pigment | walked plane by plane, nearest first, each stroke hiding what is behind it | a wet gleam runs down every stroke |
 | (none) | The hall | the way out: a round tube whose lines sway, straightening into a hall with the city's neon grid and lit squares | met exactly | a pulse runs down the lines toward the city |
@@ -341,7 +341,8 @@ hall, which must run straight into the mouth.
 `transitions/odyssey-fold-clock.js`, one pure function of the world clock that every place reads:
 three moods (turns of 53, 89 and 149 s, never in step: a hue, a light's warmth, which world a
 facet shows), one happening in every 44 s at a different place in each slot, 15 s long, rising and
-falling without a step, and the fold's own travel (the drive's steps summed without a wrap: the
+falling without a step, a count of the happenings that have been (what one leaves changed), and the
+fold's own travel (the drive's steps summed without a wrap: the
 places are not periodic along the way). Besides those, every place moves on its own: the tide
 flows, the lattice winds, the storm crawls behind the glass, the flock drapes, the stairs climb,
 the gem turns. All of it is still under reduced motion; the two frame-wide brightenings (the
