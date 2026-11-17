@@ -1,9 +1,12 @@
 /**
  * Summer — the swans of the lake.
  *
- * A pair of mute swans and their cygnets glide a slow round on the open water left of the
- * board, where the sun lays its road: the cob leads, the pen follows, the young in a loose line
- * behind her. Now and then one dips its head, and the cob lifts his wings a little, like sails.
+ * A pair of mute swans and their cygnets voyage round the whole lake: out from the water left of
+ * the board where the sun lays its road, past the skerry and along the headland, round its tip to
+ * the far water, behind the board to the water off the homestead and home again, a lap of some
+ * fourteen minutes (summer-swan-routes.js: SWAN_VOYAGE). The cob leads, the pen follows, the
+ * young in a loose line behind her; where they stay a while they draw together, spread out and
+ * feed. Now and then one dips its head, and the cob lifts his wings a little, like sails.
  * And when the game asks (takeWing: a level-up), or by itself every few minutes, a skein of
  * swans crosses the lake on slow wings: in over the homestead's wood, down behind the board and
  * away low over the water under the sun (summer-swan-routes.js finds both ways by numbers).
@@ -24,8 +27,8 @@ import {
 } from 'three/tsl';
 import { SUMMER_SWAN } from './summer-swan-model.js';
 import {
-    SWAN_FLIGHT, SWAN_SKEIN_MOST, laySwanSkein, planSwanFlights, planSwanRound, seededSwans, sessionSwanFlights,
-    sessionSwanRound, swanFamily, swanFamilyPlace, swanFlightPlace, swanWingbeat,
+    SWAN_FLIGHT, SWAN_SKEIN_MOST, laySwanSkein, laySwanVoyage, planSwanFlights, seededSwans, sessionSwanFlights,
+    sessionSwanVoyage, swanFamily, swanFamilyPlace, swanFlightPlace, swanWingbeat,
 } from './summer-swan-routes.js';
 import { summerGroundHeight } from './summer-terrain.js';
 
@@ -263,9 +266,14 @@ function put(data, at, x, y, z, size, fx, fy, fz, first, ux, uy, uz, second) {
     data[o + 11] = second;
 }
 
-/** How the family behaves: how often and how long a head dips, the cob's sails, the wake's rings. */
+/**
+ * How the family behaves: how often and how long a head dips, how much more often it dips to feed
+ * where the family stays (the share of the period, and the lingering it sets in over), the cob's
+ * sails, the wake's rings.
+ */
 const MANNERS = Object.freeze({
     dip: Object.freeze({ cob: [47, 3.6, 1.75], pen: [34, 3.4, 1.8], cygnet: [15, 1.9, 1.25] }),
+    feed: Object.freeze({ every: 0.3, from: 0.2, to: 0.55 }),
     sails: Object.freeze({ every: 71, lasts: 11, rest: 0.18 }),
     wake: Object.freeze({ every: 5.5, strength: 0.13 }),
     // By itself a skein comes every three to five minutes (s), a smaller one than a level calls.
@@ -307,7 +315,10 @@ export class SummerSwans {
         this.cygnets = clamp(Math.round(Number(cygnets) || 0), 0, 8);
         this.skein = clamp(Math.round(Number(skein) || 0), 0, SWAN_SKEIN_MOST);
         this.family = swanFamily(this.cygnets);
-        this.round = null;
+        /** The family's voyage round the lake (summer-swan-routes.js), laid when built; null on a lake without one. */
+        this.voyage = null;
+        /** Seconds the voyage runs ahead of the clock (the playground's ?swanAt= puts the family anywhere on it). */
+        this.shift = 0;
         /** The lines a skein may fly, best first; null until they are scored (plan()). */
         this.flights = null;
         this.frames = 0;
@@ -330,7 +341,7 @@ export class SummerSwans {
         this.wakeBeat = -1;
         this.flying = 0;
         this.ring = { x: 0, z: 0, strength: 0 };
-        this.place = [0, 0, 0, 0];
+        this.place = [0, 0, 0, 0, 0];
         this.wing = [0, 0, 0];
         this.bird = [0, 0, 0, 0, 0, 0, 0];
         this.draws = null;
@@ -342,8 +353,8 @@ export class SummerSwans {
         if (this.built) return this;
         this.built = true;
         const { light } = this;
-        this.round = this.groundHeight === summerGroundHeight
-            ? sessionSwanRound() : planSwanRound({ groundHeight: this.groundHeight });
+        this.voyage = this.groundHeight === summerGroundHeight
+            ? sessionSwanVoyage() : laySwanVoyage({ groundHeight: this.groundHeight });
         const model = summerSwanModel();
         const draw = (shape, capacity, name, options) => {
             const material = createSwanMaterial(light, { name, ...options });
@@ -353,9 +364,9 @@ export class SummerSwans {
             return made;
         };
         const { afloat, cygnet } = SUMMER_SWAN.shapes;
-        const young = this.round ? this.cygnets : 0;
+        const young = this.voyage ? this.cygnets : 0;
         this.draws = {
-            afloat: this.round ? draw(model.afloat, 2, 'SummerSwans', { flying: false, pivot: afloat.neck }) : null,
+            afloat: this.voyage ? draw(model.afloat, 2, 'SummerSwans', { flying: false, pivot: afloat.neck }) : null,
             cygnets: young ? draw(model.cygnet, young, 'SummerCygnets', { flying: false, pivot: cygnet.neck }) : null,
             flying: this.skein ? draw(model.flying, this.skein, 'SummerSwanSkein', { flying: true }) : null,
         };
@@ -469,16 +480,17 @@ export class SummerSwans {
     }
 
     writeFamily(time, motion) {
-        const { round, draws } = this;
-        if (!round || !draws?.afloat) return;
+        const { voyage, draws } = this;
+        if (!voyage || !draws?.afloat) return;
         const { place } = this;
+        const voyageTime = time + (Number.isFinite(this.shift) ? this.shift : 0);
         // How much the water moves them: Reduce motion's share, and a little more in a gust.
         const calm = clamp(motion, 0, 2.4);
         const manner = Math.min(calm, 1);
         let cygnet = 0;
         for (let i = 0; i < this.family.length; i += 1) {
             const member = this.family[i];
-            swanFamilyPlace(round, member, time, place);
+            swanFamilyPlace(voyage, member, voyageTime, place);
             const young = member.kind === 'cygnet';
             const seed = i * 1.7;
             // Riding the water: a slow rock and nod, a breath of bob.
@@ -505,7 +517,13 @@ export class SummerSwans {
             fy /= fl;
             fz /= fl;
             const [every, lasts, deep] = MANNERS.dip[member.kind];
-            const dip = bell(time, every * (1 + 0.13 * (i % 3)), lasts, 11 + i * 9.7) * deep * manner;
+            // Where the family stays it feeds: the heads go down far more often.
+            const { feed } = MANNERS;
+            const feeding = smooth(feed.from, feed.to, place[4]);
+            const dip = Math.max(
+                bell(time, every * (1 + 0.13 * (i % 3)), lasts, 11 + i * 9.7),
+                feeding * bell(time, every * feed.every * (1 + 0.21 * (i % 4)), lasts, 5 + i * 6.1),
+            ) * deep * manner;
             if (young) {
                 put(draws.cygnets.data, cygnet, place[0], bob, place[1], member.size, fx, fy, fz, 0, ux, uy, uz, dip);
                 cygnet += 1;

@@ -4463,6 +4463,20 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'swanAt',
+        category: 'Playground',
+        scope: 'playground.html — summer',
+        description: 'Put the Summer swan family that many seconds into its voyage round the lake at the '
+            + 'capture, whatever the clock.',
+        values: 'Seconds into the voyage (a lap is about 14 minutes; it comes round).',
+        defaultValue: 'Off (the voyage runs with the clock: the family starts in the water left of the board).',
+        example: 'swanAt=660',
+        notes: 'Use on playground.html with effect=summer and t=<capture seconds>.',
+        sources: [
+            'src/playground/effects/summer.effect.js',
+        ],
+    },
+    {
         name: 'reduce',
         category: 'Playground',
         scope: 'playground.html — aurora, black-hole, breathing, cosmic-noir, fluid-dreams, galaxy, geode, '
