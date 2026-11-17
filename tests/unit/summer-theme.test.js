@@ -111,6 +111,7 @@ function stubSceneBuild(theme) {
             update: vi.fn(),
             prepareCamera: vi.fn(),
             setBoard: vi.fn(),
+            setHud: vi.fn(),
             resetEffects: vi.fn(),
             dispose: vi.fn(),
         };
@@ -1537,6 +1538,45 @@ describe('Summer board tracking and camera', () => {
         for (let frame = 0; frame < 16; frame++) theme.update(0.05);
         expect(world.setBoard).toHaveBeenCalledTimes(3);
         expect(world.setBoard).toHaveBeenLastCalledWith(null);
+        // The board's rectangle is all the board is ever told: one argument, every time.
+        for (const call of world.setBoard.mock.calls) expect(call).toHaveLength(1);
+    });
+
+    it('hands the world the score panel beside the board, measured right after it on the same clock', async () => {
+        const panel = boardCard({
+            left: 900, top: 171, width: 216, height: 270,
+        });
+        const shown = { panel };
+        document.querySelector = (selector) => (selector === '.single-player-stats-bar' ? shown.panel : null);
+        showBoardCards([boardCard({
+            left: 480, top: 90, width: 480, height: 720,
+        })]);
+        const theme = await startedTheme();
+        const { world } = theme;
+        expect(world.setHud).toHaveBeenCalledExactlyOnceWith({
+            x0: 900 / 1440, x1: 1116 / 1440, y0: 171 / 900, y1: 441 / 900,
+        });
+        // After the board, and before that frame's world update: the first flower already keeps clear of it.
+        expect(world.setBoard.mock.invocationCallOrder[0]).toBeLessThan(world.setHud.mock.invocationCallOrder[0]);
+        expect(world.setHud.mock.invocationCallOrder[0]).toBeLessThan(world.update.mock.invocationCallOrder[0]);
+        // Not every frame: with the board, every 0.75 s of simulation time.
+        for (let frame = 0; frame < 14; frame++) theme.update(0.05);
+        expect(world.setHud).toHaveBeenCalledOnce();
+        // The panel goes (a menu, another mode): the world is told there is none.
+        shown.panel = null;
+        for (let frame = 0; frame < 2; frame++) theme.update(0.05);
+        expect(world.setHud).toHaveBeenCalledTimes(2);
+        expect(world.setHud).toHaveBeenLastCalledWith(null);
+        expect(world.setBoard).toHaveBeenCalledTimes(2);
+        // And comes back.
+        shown.panel = panel;
+        for (let frame = 0; frame < 16; frame++) theme.update(0.05);
+        expect(world.setHud).toHaveBeenCalledTimes(3);
+        expect(world.setHud.mock.calls[2]).toEqual(world.setHud.mock.calls[0]);
+        // A world that knows nothing of score panels is left alone.
+        delete world.setHud;
+        expect(() => { for (let frame = 0; frame < 16; frame++) theme.update(0.05); }).not.toThrow();
+        expect(world.setBoard).toHaveBeenCalledTimes(4);
     });
 
     it('feeds every frame to the director, the world and the lens with a clamped, monotonic clock', async () => {
@@ -2169,17 +2209,32 @@ describe('Summer with its real artwork', () => {
         eventBus.emit(EVENTS.COMBO, { comboCount: 6 });
         eventBus.emit(EVENTS.TWIST, { lineCount: 2 });
         eventBus.emit(EVENTS.B2B, { active: true });
+        // Everything the piece itself set off has reached the director: an emitter for each part
+        // of the answer, the hard drop's seed and the back-to-back's skipping stone among them.
+        const played = reactions.getFrame();
+        const answered = played.emitters.map((emitter) => emitter.kind);
+        for (const kind of ['lock', 'seeds', 'clear', 'combo', 'spin', 'rise', 'skip']) {
+            expect(answered, kind).toContain(kind);
+        }
+        expect(answered.length).toBeLessThan(SUMMER_REACTION_LIMITS.High);
+        // The lock was read from the piece itself: the left of the board, and its own flower.
+        expect(played.emitters.find((emitter) => emitter.kind === 'lock'))
+            .toMatchObject({ side: -1, flower: SUMMER_PIECE_FLOWERS.T });
+        expect(played).toMatchObject({ wash: -1, flights: 0, level: 1 });
+        // The board is empty and the level turns. The perfect clear's bouquet and its seven
+        // flowers take their slots in the same pool (what has least left to do gives way to
+        // them), and the level-up sends its wave of bloom out from the eye.
         eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 1, perfectClearBonus: 800 });
         eventBus.emit(EVENTS.LEVEL_UP, { level: 2 });
         const frame = reactions.getFrame();
         const kinds = frame.emitters.map((emitter) => emitter.kind);
-        for (const kind of ['lock', 'clear', 'combo', 'spin', 'rise']) expect(kinds, kind).toContain(kind);
-        expect(kinds.length).toBeLessThanOrEqual(SUMMER_REACTION_LIMITS.High);
+        expect(kinds).toHaveLength(SUMMER_REACTION_LIMITS.High);
+        for (const kind of ['clear', 'rise', 'bouquet', 'blossom']) expect(kinds, kind).toContain(kind);
+        expect(kinds.filter((kind) => kind === 'blossom')).toHaveLength(7);
+        expect(kinds.filter((kind) => kind === 'rise')).toHaveLength(1);
+        expect(frame).toMatchObject({ wash: 0, flights: 1, level: 2 });
         expect(frame.front).not.toBeNull();
         expect(frame.flock).toBe(1);
-        // The lock was read from the piece itself: the left of the board, and its own flower.
-        expect(frame.emitters.find((emitter) => emitter.kind === 'lock'))
-            .toMatchObject({ side: -1, flower: SUMMER_PIECE_FLOWERS.T });
         expect(frame.rings.filter((ring) => ring.serial >= 0).length).toBeGreaterThan(4);
         expect(frame.waves.filter((wave) => wave.serial >= 0).length).toBeGreaterThan(2);
         expect(frame.epoch).toBe(1);

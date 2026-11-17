@@ -17,11 +17,12 @@
  * The language:
  *   lock          petals of the piece's own flower puff from the board's edge beside it, a
  *                 gust spreads through the meadow from the foot of the board and makes that
- *                 flower nod and glow wherever it grows, and a ring opens on the lake; a
- *                 long hard drop also shakes dandelion seed into the air
+ *                 flower nod and glow wherever it grows, and a ring opens on the lake
+ *   hard drop     the piece comes down hard: dandelion seed is shaken into the air where it
+ *                 landed and a ring of pollen runs out over the grass from the spot
  *   bouquet       each new kind of flower you lock is picked for the bouquet and lights a
  *                 lantern on the maypole; the seventh kind completes it, and the maypole
- *                 throws the whole bouquet into the sky
+ *                 throws the whole bouquet into the sky, where one great flower opens over it
  *   line clear    twin jets of petals blown out of both sides at the cleared rows, a broad
  *                 ring, the sun's path flaring on the water; from two lines a front of wind
  *                 crosses the meadow and the woods
@@ -32,12 +33,20 @@
  *                 unfurl around it
  *   cascade       every wave of one lock builds on the last: stronger jets, a ring further
  *                 out on the lake, and a front of wind of its own rolling after the last
- *   twist        a spinning garland beside the board (a twist that clears nothing too)
- *   back-to-back  the sun answers: a sunburst through the maypole's wreath and its road on
- *                 the water flaring, brighter for every one in a row
- *   perfect clear the crown on the clear still playing: the sunburst blazes, the maypole
- *                 throws the bouquet, the whole evening exhales (no second rising meadow)
- *   level up      the whole evening exhales: light, rings, wind, wings
+ *   twist         a spinning garland beside the board, and the maypole dances: its ribbons fly
+ *                 out and wheel round the pole (a twist that clears nothing too)
+ *   back-to-back  the sun answers: rays fan out from it across the sky, its road on the water
+ *                 flares, and a stone skips down that road toward it, ring after ring; brighter
+ *                 and further for every one in a row
+ *   perfect clear the crown on the clear still playing, and the greatest thing the evening
+ *                 does: seven flowers open in the sky, one after another, one for each kind (six
+ *                 over the lake to either side of the board and the bouquet's own over the
+ *                 maypole), while the sunburst blazes and the whole evening exhales (no second
+ *                 rising meadow)
+ *   level up      the hour turns, and a wave of bloom rolls away from you through the meadow,
+ *                 opening and lighting every flower as it passes, and runs on across the lake
+ *                 to the far shore; the evening exhales with it (light, rings, wind, wings), and
+ *                 the swans take wing
  *   the hours     the night stands one hour further on with every level, and moves on by
  *                 itself as well, slowly: evening, rose hour, white night, dawn, morning,
  *                 and evening again (summer-hours.js holds their colours)
@@ -108,8 +117,21 @@ const FRONT_EASE = 3;
 const FRONT_DIRECTION = 1;
 /** Emitters do their work early in their lives (the director spawns within these windows). */
 const WORK_SECONDS = Object.freeze({
-    lock: 0.25, seeds: 0.3, clear: 0.75, rise: 1.5, bouquet: 0.7, spin: 1.1, combo: 0.05,
+    // (A sky flower opens 0.42 s into its life: until then, and a little after, its work is ahead of it.)
+    lock: 0.25, seeds: 0.3, clear: 0.75, rise: 1.5, bouquet: 0.7, spin: 1.1, combo: 0.05, blossom: 0.9, skip: 1.1,
 });
+/** A flower in the sky climbs for a moment, opens, and hangs there while its petals fall. */
+const BLOSSOM_SECONDS = 1.4;
+/** The seven flowers of a perfect clear open this far apart, in seconds. */
+const BLOSSOM_STAGGER = 0.24;
+/** Which of an emitter's `lines` says the flower opens over the maypole, not over the lake. */
+export const SUMMER_BLOSSOM_MAYPOLE = -1;
+/** A stone skipping down the sun's road takes this long over its hops. */
+const SKIP_SECONDS = 1.3;
+/** How long the maypole's ribbons keep wheeling after a twist (the swell's release, seconds). */
+const WHIRL_RELEASE = 1.5;
+/** A level-up's wave of bloom takes this long to cross the meadow and the lake, in seconds. */
+export const SUMMER_WASH_SECONDS = 2.6;
 /** Back-to-backs further apart than this are not one run of them. */
 const B2B_RUN_SECONDS = 15;
 const BOUQUET_FLASH_DECAY = 0.55;
@@ -232,6 +254,10 @@ export class SummerReactions {
         this.sunburst = new Swell({
             release: 1.6, ceiling: 1, knee: 1, headroom: 1.4,
         });
+        /** The maypole dancing: a twist sends its ribbons wheeling round the pole. */
+        this.whirl = new Swell({
+            attack: 0.28, release: WHIRL_RELEASE, ceiling: 1, knee: 1, headroom: 1.3,
+        });
         /** The true combo: consecutive clearing locks (src/core/combo-tracker.js). */
         this.combo = new ComboTracker();
         /** How hot play runs, on this director's clock (sampled once per update). */
@@ -266,6 +292,10 @@ export class SummerReactions {
         this.depth = 1;
         this.b2bRun = 0;
         this.b2bAt = -Infinity;
+        /** When the last level-up sent its breath of wind out over the lake. */
+        this.washAt = -Infinity;
+        /** Counts level-ups that asked for a flourish (the world sends the swans up on each). */
+        this.flights = 0;
         /** The fever's own wind: a clock that sends a front through the meadow every so often. */
         this.gale = 0;
         this.crown = 0;
@@ -293,6 +323,7 @@ export class SummerReactions {
             });
         }
         this.sunburst.reset();
+        this.whirl.reset();
         this.surge.reset();
         Object.assign(this.pace, {
             punch: 0, level: 0, fever: 0, stage: 0,
@@ -360,10 +391,12 @@ export class SummerReactions {
     /**
      * Claim a free slot, else the one with the least of its work left (an emitter does its work
      * early: a jet that has thrown its petals only lingers), the furthest through its life on a
-     * tie. A burst still throwing petals is never cut for a new one.
+     * tie. A burst still throwing petals is never cut for a new one. `delay` holds the emitter
+     * back: it claims its slot now and starts its work that many seconds on (its age runs up
+     * from below zero), which is how the flowers of a perfect clear open one after another.
      */
     emit(kind, {
-        side = 0, column = 0.5, row = 0.3, strength = 0.5, lines = 0, duration = 1, flower = SUMMER_MIXED,
+        side = 0, column = 0.5, row = 0.3, strength = 0.5, lines = 0, duration = 1, flower = SUMMER_MIXED, delay = 0,
     }) {
         let selected = -1;
         let least = Infinity;
@@ -394,7 +427,7 @@ export class SummerReactions {
             strength: clamp(strength, 0, 1),
             lines,
             flower,
-            age: 0,
+            age: Number.isFinite(delay) && delay > 0 ? -delay : 0,
             duration,
             seed: this.random(),
         });
@@ -555,6 +588,10 @@ export class SummerReactions {
             });
             this.call(SUMMER_MIXED, 1);
             this.emit('bouquet', { strength: 1, duration: 2.6 });
+            // And one great flower of every colour opens over the pole.
+            this.emit('blossom', {
+                lines: SUMMER_BLOSSOM_MAYPOLE, strength: 0.8, duration: BLOSSOM_SECONDS, delay: 0.35,
+            });
             this.gust(0.5, 1.5);
         }
         return true;
@@ -664,6 +701,8 @@ export class SummerReactions {
             gust: 0.45, warmth: 0.3, shafts: 0.3, glow: 0.6, shimmer: 0.5, flutter: 0.6,
         });
         this.call(SUMMER_PIECE_FLOWERS.T, 1);
+        // The maypole dances: its ribbons fly out and wheel round the pole.
+        this.whirl.hit(1, this.time);
         this.emit('spin', {
             side: place && place.column >= 0.5 ? 1 : -1,
             row: place?.row ?? 0.3,
@@ -685,11 +724,16 @@ export class SummerReactions {
         this.b2bRun = this.time - this.b2bAt <= B2B_RUN_SECONDS ? this.b2bRun + 1 : 1;
         this.b2bAt = this.time;
         this.surge.b2b(this.time);
-        this.sunburst.hit(0.3 + 0.12 * Math.min(4, this.b2bRun - 1), this.time);
+        const run = Math.min(4, this.b2bRun - 1);
+        this.sunburst.hit(0.3 + 0.12 * run, this.time);
         this.excite({
-            warmth: 0.5, glow: 0.7, shafts: 0.45, shimmer: 0.6 + 0.1 * Math.min(4, this.b2bRun - 1),
+            warmth: 0.5, glow: 0.7, shafts: 0.45, shimmer: 0.6 + 0.1 * run,
         });
-        this.raiseCrown(Math.max(this.crownTarget, 0.55));
+        // A stone skips down the sun's road: further, and with more hops, for every one in a row.
+        this.emit('skip', { strength: 0.55 + 0.11 * run, lines: 4 + run, duration: SKIP_SECONDS });
+        // A crown a combo is still holding up holds a while longer, at its own height; a
+        // back-to-back does not raise one, nor wake one that is unwinding.
+        if (this.crownHold > 0) this.raiseCrown(this.crownTarget);
         return true;
     }
 
@@ -714,11 +758,27 @@ export class SummerReactions {
             });
         }
         this.emit('bouquet', { strength: 1, duration: 2.6 });
+        // Seven flowers open in the sky, one for each kind: as many over the lake as the tier's
+        // slots can carry beside the rising meadow and the bouquet, and the last over the maypole.
+        const sky = Math.max(1, Math.min(SUMMER_BOUQUET_KINDS - 1, this.maxEmitters - 4));
+        for (let index = 0; index < sky; index += 1) {
+            this.emit('blossom', {
+                lines: index,
+                flower: (index * 3 + 4) % SUMMER_BOUQUET_KINDS,
+                strength: 1,
+                duration: BLOSSOM_SECONDS,
+                delay: index * BLOSSOM_STAGGER,
+            });
+        }
+        this.emit('blossom', {
+            lines: SUMMER_BLOSSOM_MAYPOLE, strength: 1, duration: BLOSSOM_SECONDS, delay: sky * BLOSSOM_STAGGER,
+        });
         this.ripple(0.5, 0.1, 2.6);
         this.ripple(0.5, 0.5, 1.6);
         this.gust(0.5, 2.8);
         this.sweep(1, { join: 0.6 });
-        this.raiseCrown(0.85);
+        // The crown turns (a combo's own ribbons stay a combo's: a crown already higher keeps them).
+        this.raiseCrown(0.3);
         return true;
     }
 
@@ -757,6 +817,8 @@ export class SummerReactions {
         // The event names the level reached; one without a usable level counts as the next.
         if (!this.setLevel(unwrap(detail).level)) this.setLevel(this.level + 1);
         this.surge.levelUp(this.time);
+        this.washAt = this.time;
+        this.flights += 1;
         this.excite({
             gust: 0.6, warmth: 0.55, shafts: 0.6, glow: 0.8, shimmer: 0.8, flock: 0.7, flutter: 0.8,
         });
@@ -913,6 +975,13 @@ export class SummerReactions {
             fronts,
             // The sun answering a quad, a back-to-back and (most of all) a perfect clear.
             sunburst: this.sunburst.valueAt(this.time),
+            // The maypole's ribbons wheeling round the pole after a twist.
+            whirl: this.whirl.valueAt(this.time),
+            // A level-up's breath of wind over the lake: how far across it has got (0 at the near
+            // shore, 1 at the far one), or -1 when none is crossing; and how many have been sent.
+            wash: this.time - this.washAt < SUMMER_WASH_SECONDS
+                ? clamp((this.time - this.washAt) / SUMMER_WASH_SECONDS, 0, 1) : -1,
+            flights: this.flights,
             // How hot play runs (shared/gameplay-surge.js): SummerWorld spends it on the evening.
             surge: {
                 punch: this.pace.punch, level: this.pace.level, fever: this.pace.fever, stage: this.pace.stage,
