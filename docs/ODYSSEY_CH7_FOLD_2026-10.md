@@ -282,8 +282,8 @@ in the same spot.
 | 56 | The paint | strokes of thick paint hanging in the dark, each its own pigment | walked plane by plane, nearest first, each stroke hiding what is behind it | a wet gleam runs down every stroke |
 | (none) | The hall | the way out: a round tube whose lines sway, straightening into a hall with the city's neon grid and lit squares | met exactly | a pulse runs down the lines toward the city |
 
-Orbs 49 and 50 park at one place on the rail (both sit inside the 6 → 7 seam), so they share the
-first room; the room is held in the world (below), so the two orbs still see it from two sides.
+Orbs 49 and 50 parked at one place on the rail (both sat inside the 6 → 7 seam), so they shared
+the first room. Since §7 every orb has its own park and room: orb 50 has the cradle.
 
 **Values.** The Odyssey's post (chapter 7's bloom and grade) lifts everything about two stops. The
 first version of every place, tuned on the bare playground, came out as a pale pink wash in the
@@ -393,3 +393,142 @@ rooms that are eight places, the hold, the hypercubes, the eye's line kept clear
 both backends with no unassigned read and no screen derivative) and
 `tests/unit/odyssey-fold-alive.test.js` (the clock, a room opening in its own time, the fold's
 travel across the drive's wrap, the way out's share of its trip).
+
+## §7. The fold is longer (2026-11-17)
+
+**Why.** The owner, after §6: *"can we make inside the black hole longer and spread out the orbs
+more so it is a longer experience inside the black hole!!!"* From the end of the plunge to the
+city the drift took about a minute; orbs 49 and 50 shared a park, and between orbs 49 and 56 the
+rail ran 139 u (gaps of 0, 7, 32, 33, 32, 17 and 17 u), each trip a progress jump and an 0.8 s swing.
+
+**Why not more progress.** Progress `p` is arc length over the whole journey, and hundreds of things
+are placed by it (chapter boundaries, seams, every chapter's scenery, the camera's hairpins, the
+forest mask, goldens). Giving chapter 7 a larger share of `p` would move all of chapter 8 and every
+seam schedule after it. Instead the rail inside the hole is **longer in the world than its share of
+progress**, and chapters 1–6 and 8 keep today's `p → world` to the bit.
+
+### The longer rail
+
+- **The schedule** (`transitions/odyssey-fold-stretch.js`, pure): between chapter 7's local
+  0.5678 and 0.79 (p 0.9220 to 0.9420) a unit of progress covers `rate` = 8.8 times the world it
+  covers elsewhere, eased up over a 0.0025 shoulder at each end so the eye's world speed never
+  steps. `foldStretchMeasure` (progress plus the extra world, closed form) is the **world
+  measure** that travel, the wheel, the drift, the warp drive and the rooms run on;
+  `foldStretchReach` returns its target unchanged, to the bit, wherever a reach does not touch
+  the stretch.
+- **The curve** (`odyssey-path-stretch.js`, `OdysseyFoldStretchedCurve`): a `CatmullRomCurve3`
+  that is `super` everywhere outside the stretch (same points, same tangents, same arc lengths)
+  and inside it a section of 4096 samples: the rail leaves today's line, climbs a wide spiral
+  (radius solved by bisection so the section is exactly as long as the schedule says, 396 u where
+  today's line is 50 u) and rejoins it, C1 at both joins, turning at most ~2.5° per world unit. A
+  plain `baseCurve` over the same points carries today's frames: the camera's path table is built
+  on it (frames carried along a longer middle would come out turned after it, and chapter 8's
+  camera would twist), and inside the stretch the frame is a rotation-minimising one turned
+  (eased) from today's normal at its start to today's normal at its end (`foldFrameAt`).
+- **The A/B ends.** The start is after the camera's 6 → 7 hairpin chord (which reads the rail up to
+  p ≈ 0.9213) and after orb 49's park; the end is before orb 56's park and before the 7 → 8 seam's
+  settling (p 0.9427). Inside that window nothing but chapter 7 reads the rail.
+- **The rail tube** takes extra rings inside (`railSamplePlan`), so a ring is as far from the next
+  in the world as anywhere else; outside, today's rings with today's frames.
+- `?odysseyFoldStretch=0` lays today's rail through chapter 7 too (A/B captures).
+
+### The orbs
+
+Orbs 50–55 stand one even step of the world measure apart (`FOLD_LEVEL_POSITIONS_BY_ID` in
+`src/core/odyssey/data/odyssey-layout.js`): **69 u between every two orbs from 49 to 56**, 485 u in
+all (3.5 times the old walk). Orbs 49, 56 and 57 and the chapter boundaries do not move. Every orb
+has its own park and its own room; orb 50 (Nebula Flow) has a new place, **the cradle**
+(`fold-places/fold-cradle.tsl.js`): pillars of dark dust rising out of a glowing nebula in layers,
+rimmed in gold by a light behind them, young stars lit at their tips (its happening: the stars at
+the tips ignite). The order from the horizon builds toward the exit: the tide, the cradle, the
+lattice, the nave, the flock, the stairs, the jewel, the paint, the hall.
+
+The path's reveal during the dive was laid out to the first node past the inside point (orb 50,
+0.8835); it keeps that end (`ODYSSEY_PATH_HORIZON.revealBy`), so the dive lays the way on out as
+it did.
+
+### The time inside
+
+- **A ride between two orbs** (`foldRideBetween`: both ends inside the fold) rides the rail instead
+  of jumping: the board's trip time plus `CH7_FOLD_TRAVEL` (70 000 ms per unit of world measure, at
+  most 4.2 s), eased in the world measure so the eye moves at an even world speed through the
+  stretch's ends. The dive (48 → 49) and the way out (56 → 57) are not rides and keep their time to
+  the millisecond.
+- **The room opens during the ride** (`advanceFoldShow`, `CH7_FOLD_OPENING`): what is shown follows
+  the eye, eased (0.22 s) and never faster than 1.1 rooms a second, so the next room opens through
+  this one from its door as the eye travels toward its orb (about 1.3–1.9 s into a 3.4 s ride). A
+  jump of the progress (the map, a return from a game) opens it over about a second; a jump of more
+  than a room opens the eye's room straight through over 1.4 s, never through the rooms between.
+  The way out alone opens exactly as far as the eye has travelled toward the mouth, as before.
+- **The wheel and the drift** move the same world speed as elsewhere, so they take 8.8 times the
+  progress-time in the stretch (`odysseyScrollPace`, the camera's auto-drift).
+- **The post's rush** is calmed on the rides (`CH7_FOLD_RUSH_CALM`: 65 %, eased in after orb 49's
+  park): a ride is a breath of speed, not the hyperspace streaks. Through the dive it is not touched.
+
+| Measured in the game (1707 × 1067) | Before | After |
+|---|---|---|
+| Trips 49 → 50 … 55 → 56 (seven) | 0.81–0.83 s each, 5.8 s in all | 3.37–3.44 s each, 23.8 s in all |
+| Trip 56 → 57 (the way out) | 4.34 s | 4.33 s (computed: 3777 ms both) |
+| The dive 48 → 49 | 5.51 s | 5.53 s (computed: 4942 ms both) |
+| Every trip from 49 to 57 | 10.1 s | 28.1 s (2.8 ×) |
+| Idle drift from the inside point (0.8808) to the city (0.9609) | 63.5 s | 147.4 s (2.3 ×) |
+| ...of it from orb 49's park (0.8941) to the city | 51.4 s | 135.3 s (2.6 ×) |
+| ...of it through the stretch (0.922 to 0.942) | 13.1 s | 96.9 s |
+
+### Cost
+
+The playground's GPU timer (`effect=ch7-fall&p=<park>&profile=1&trackTimestamp=1`, uncapped,
+15 s windows of ~88 samples, 1707 × 1067, High, an RTX 50-series), p50 per room at its park:
+
+| Room | Before | After |
+|---|---|---|
+| after the horizon | 0.088 ms | 0.093 ms |
+| the tide (orb 49; and orb 50 before) | 0.155 ms | 0.172 ms |
+| the cradle (orb 50, new) | — | 0.512 ms |
+| the lattice | 0.839 ms | 0.848 ms |
+| the nave | 0.202 ms | 0.202 ms |
+| the flock | 0.957 ms | 0.978 ms |
+| the stairs | 0.437 ms | 0.451 ms |
+| the jewel | 0.434 ms | 0.440 ms |
+| the paint | 0.395 ms | 0.331 ms |
+| the hall | 0.115 ms | 0.114 ms |
+
+Every room costs what it did; the cradle (walked, a layer per ~0.42 of the tier's steps, at least
+six) sits between the nave and the lattice. The section adds about 230 rings (~2,000 vertices) to
+the rail's tubes. The curve's section table (4096 samples) is built once, on first use.
+
+### Proof that nothing outside chapter 7 changed
+
+- Curve points and tangents, the camera's path frames (position, tangent, normal, right) and the
+  rail tube's vertices are identical to the bit outside the stretch (`odyssey-fold-longer.test.js`;
+  in the game, 1960 samples of each and every ring outside the stretch, max difference 0).
+- The dive filmed in both builds from the same world clock: the same lens, ring and timing frame
+  for frame; inside the hole only what moved differs (orbs 50 and 51 and their cages no longer
+  stand by the ring; the rail ahead bends away to the spiral).
+- Stations either side of both seams (0.80–0.87, 0.9615–0.99) match main but for animation.
+- The forest visibility stamp is sampled on `baseCurve` and is unchanged.
+
+### Traps met
+
+- **Frames carried along a longer middle turn everything after it**: parallel transport over the
+  spiral added a twist (holonomy) to every frame of chapter 8, and the 7 → 8 seam's eye stepped.
+  The table is built on `baseCurve`; the stretch's own frame is twisted to meet today's at its end.
+- **three's `computeFrenetFrames` calls `getTangentAt`**, which the subclass overrides: today's
+  frames come from a plain curve, never `super`.
+- **A float reach is not a float reach**: `p + (target − p)` is not `target` to the bit; the
+  look-ahead keeps `target` itself wherever the stretch is not touched.
+- **The closing sky's look drifts with the session** (§6's ring, not this pass): its winding has a
+  term `time × turn` sheared across the ring, so after half an hour of play the ring's arcs read
+  as fine concentric rings rather than the violet and amber halves. A/B films must set the
+  environment manager's clock (`environmentManager.time`) to the same value in both builds.
+
+### Tests
+
+`tests/unit/odyssey-fold-longer.test.js` (new: the schedule, the curve, frames and rail rings to
+the bit outside, the section's length and joins, the frame's turn, the orbs' even world spacing and
+own parks, ride times of 2.5–4 s, the dive and the way out untouched, an even world speed, the
+wheel's pace, the rush calm, the path reveal). Re-pinned: `odyssey-ch7-fold.test.js` (nine rooms,
+one per orb, the cradle), `odyssey-fold-alive.test.js` (the shown room follows the eye; a
+fold ride touches the travel measure), `odyssey-scroll-pace.test.js` (the wheel's pace read in the
+world inside the stretch) and `odyssey-unique-themes.test.js` (orb 55 halfway between its
+neighbours in the world, no longer in progress).

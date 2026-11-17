@@ -27,6 +27,7 @@
  */
 import { worldClimbScale } from './world/odyssey-world-act-gate.js';
 import { orbitEarthAt } from './composition/odyssey-orbit-earth.js';
+import { foldStretchRate } from './transitions/odyssey-fold-stretch.js';
 
 export const ODYSSEY_SCROLL_PACE = Object.freeze({
     /** The climb's rate (|d ln scale| per 0.01 of progress) at which the wheel runs at half speed. */
@@ -52,7 +53,7 @@ const DEG = 180 / Math.PI;
  * into space changes the picture fastest.
  * @param {number} progress global journey progress
  * @param {number[] | null | undefined} chapterPositions the live chapter boundaries
- * @returns {number} 0 < pace <= 1
+ * @returns {number} 0 < pace <= 1 (below the floor only on the fold's longer rail)
  */
 export function odysseyScrollPace(progress, chapterPositions) {
     const P = ODYSSEY_SCROLL_PACE;
@@ -71,5 +72,7 @@ export function odysseyScrollPace(progress, chapterPositions) {
     const sunset = Math.abs(ahead.sunElevation - behind.sunElevation) * DEG * per * here.presence
         * Math.exp(-(((sunDeg - P.sunsetAt) / P.sunsetWidth) ** 2));
     const pace = 1 / (1 + (climb / P.climbRate) + (lean / P.leanRate) + (sunset / P.sunsetRate));
-    return Math.max(P.floor, Math.min(1, pace));
+    // Inside the black hole the rail is longer in the world than its share of progress
+    // (odyssey-fold-stretch.js): the wheel moves the eye as far in the world as anywhere else.
+    return Math.max(P.floor, Math.min(1, pace)) / foldStretchRate(progress, chapterPositions);
 }

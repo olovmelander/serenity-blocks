@@ -3,9 +3,10 @@
  *  - the fold's clock (transitions/odyssey-fold-clock.js): three moods never in step, one
  *    happening a slot at a different place in each, quarter turns that add up, all without a
  *    step in time, and all still under reduced motion;
- *  - what is shown (odyssey-fold-rooms.js advanceFoldShow): a trip between two orbs of the
- *    chapter JUMPS the progress, so the next room opens on the clock, never on one frame; the way
- *    out alone follows the rail;
+ *  - what is shown (odyssey-fold-rooms.js advanceFoldShow): it follows the eye, eased and never
+ *    faster than a room a second or so, so a ride between two orbs opens the next room during the
+ *    ride, a jump of the progress opens it over about a second (never on one frame), and a far
+ *    jump opens the eye's room straight through, never running through the rooms between;
  *  - the way out's share of a trip (odyssey-black-hole-fall.js CH7_EXIT_TRAVEL): the trip from
  *    orb 56 to orb 57 spends its middle there, as the 48 -> 49 trip does in the plunge.
  */
@@ -25,6 +26,10 @@ import {
     resolveFoldRoom,
     resolveFoldRoomAnchors,
 } from '../../src/rendering/odyssey/transitions/odyssey-fold-rooms.js';
+import {
+    foldStretchMeasure,
+    foldStretchProgress,
+} from '../../src/rendering/odyssey/transitions/odyssey-fold-stretch.js';
 import {
     CH7_EXIT_TRAVEL,
     plungeTravelExtraMs,
@@ -128,14 +133,15 @@ describe("the fold's clock", () => {
     });
 });
 
-describe('a room opens in its own time, however the eye got there', () => {
+describe('a room opens in time with the eye, however the eye got there', () => {
     const rig = createOdysseyCameraRig();
     const { cp } = rig;
     const anchors = resolveFoldRoomAnchors(cp);
     const at = (p) => resolveFoldRoom(p, anchors, cp);
     const idOf = (name) => CH7_FOLD_PLACE_IDS[name];
+    const room = (id) => CH7_FOLD_ROOMS.findIndex((r) => r.orbs.includes(id));
 
-    it('takes the eye\'s room whole on its first frame', () => {
+    it("takes the eye's room whole on its first frame", () => {
         const show = advanceFoldShow(createFoldShow(), at(rig.parkOf(53)), 1 / 60);
         expect(show.from).toBe(idOf('flock'));
         expect(show.to).toBe(idOf('flock'));
@@ -143,105 +149,148 @@ describe('a room opens in its own time, however the eye got there', () => {
         expect(show.exit).toBe(0);
     });
 
-    it('opens the next room over a second and more when the progress jumps from one orb to the next', () => {
+    it('opens the next room during a ride toward its orb, a little behind the eye', () => {
+        // A ride 51 -> 52 along the rail, eased over three seconds in the world measure.
+        const ease = (r) => (r < 0.5 ? 4 * r * r * r : 1 - ((((-2 * r) + 2) ** 3) / 2));
+        const m0 = foldStretchMeasure(rig.parkOf(51), cp);
+        const m1 = foldStretchMeasure(rig.parkOf(52), cp);
         const show = advanceFoldShow(createFoldShow(), at(rig.parkOf(51)), 1 / 60);
-        // The trip 51 -> 52 inside the chapter: the progress is simply at orb 52 on the next frame.
-        let frames = 0;
+        const base = room(51);
         let prev = 0;
-        let opened = null;
-        for (let t = 0; t < 3; t += 1 / 60) {
-            advanceFoldShow(show, at(rig.parkOf(52)), 1 / 60);
-            frames += 1;
-            if (frames === 1) {
-                // Not a cut: the lattice is still whole on the first frame, the nave just begun.
-                expect(show.from).toBe(idOf('lattice'));
-                expect(show.to).toBe(idOf('nave'));
-                expect(show.morph).toBeLessThan(0.01);
-                expect(show.door).toEqual(CH7_FOLD_ROOMS[2].door);
-            }
-            if (show.from !== show.to) {
-                expect(show.morph).toBeGreaterThanOrEqual(prev - 1e-12);
-                expect(show.morph - prev).toBeLessThan(0.03);
-                prev = show.morph;
-            } else if (opened === null) {
-                opened = t;
-            }
+        let worstLag = 0;
+        let half = null;
+        for (let f = 1; f <= 180; f += 1) {
+            const p = foldStretchProgress(m0 + ((m1 - m0) * ease(f / 180)), cp);
+            const target = at(p);
+            advanceFoldShow(show, target, 1 / 60);
+            expect(show.from === idOf('lattice') || show.from === idOf('nave')).toBe(true);
+            const shown = show.at - base;
+            expect(shown).toBeGreaterThanOrEqual(prev - 1e-9);
+            expect(shown - prev).toBeLessThanOrEqual((CH7_FOLD_OPENING.rate / 60) + 1e-9);
+            worstLag = Math.max(worstLag, (target.index - base) - shown);
+            if (half === null && shown >= 0.5) half = f / 60;
+            prev = shown;
         }
-        expect(opened).toBeGreaterThan(CH7_FOLD_OPENING.seconds * 0.9);
-        expect(opened).toBeLessThan(CH7_FOLD_OPENING.seconds * 1.1);
+        // The room is half open by the middle of the ride or soon after, and never far behind.
+        expect(half).toBeGreaterThan(1.0);
+        expect(half).toBeLessThan(2.4);
+        expect(worstLag).toBeLessThan(0.6);
+        for (let f = 0; f < 90; f += 1) advanceFoldShow(show, at(rig.parkOf(52)), 1 / 60);
         expect(show.from).toBe(idOf('nave'));
         expect(show.to).toBe(idOf('nave'));
     });
 
-    it('goes back the same way, and hurries a room on when another is asked for behind it', () => {
-        const show = advanceFoldShow(createFoldShow(), at(rig.parkOf(54)), 1 / 60);
-        advanceFoldShow(show, at(rig.parkOf(53)), 1 / 60);
-        expect(show.from).toBe(idOf('stairs'));
-        expect(show.to).toBe(idOf('flock'));
-        // A third of the way in, the eye jumps on to orb 51: the flock finishes fast, then the
-        // lattice opens through it (never a room swapped mid-wave).
-        for (let t = 0; t < CH7_FOLD_OPENING.seconds / 3; t += 1 / 60) {
-            advanceFoldShow(show, at(rig.parkOf(53)), 1 / 60);
-        }
-        const before = show.morph;
-        expect(before).toBeGreaterThan(0.1);
-        let swapped = null;
-        for (let t = 0; t < 3; t += 1 / 60) {
-            const wasTo = show.to;
-            const wasMorph = show.morph;
-            advanceFoldShow(show, at(rig.parkOf(51)), 1 / 60);
-            if (show.to !== wasTo && swapped === null) {
-                swapped = t;
-                // The swap comes only once the flock was whole.
-                expect(wasMorph === 0 || wasMorph > 0.97).toBe(true);
-                expect(show.from).toBe(idOf('flock'));
-                expect(show.to).toBe(idOf('lattice'));
+    it('opens the next room over about a second when the progress jumps there instead', () => {
+        const show = advanceFoldShow(createFoldShow(), at(rig.parkOf(51)), 1 / 60);
+        let opened = null;
+        let settled = null;
+        let prev = 0;
+        for (let f = 1; f <= 240; f += 1) {
+            advanceFoldShow(show, at(rig.parkOf(52)), 1 / 60);
+            if (f === 1) {
+                // Not a cut: the lattice is still nearly whole on the first frame, the nave begun.
+                expect(show.from).toBe(idOf('lattice'));
+                expect(show.to).toBe(idOf('nave'));
+                expect(show.morph).toBeLessThan(0.03);
+                expect(show.door).toEqual(CH7_FOLD_ROOMS[room(52)].door);
+            }
+            if (show.from !== show.to) {
+                expect(show.morph).toBeGreaterThanOrEqual(prev - 1e-12);
+                expect(show.morph - prev).toBeLessThanOrEqual((CH7_FOLD_OPENING.rate / 60) + 1e-9);
+                prev = show.morph;
+                if (opened === null && show.morph >= 0.95) opened = f / 60;
+            } else if (settled === null) {
+                settled = f / 60;
             }
         }
-        expect(swapped).toBeLessThan((CH7_FOLD_OPENING.seconds * (2 / 3)) / CH7_FOLD_OPENING.hurry + 0.1);
-        expect(show.to).toBe(idOf('lattice'));
+        // Nearly whole in a second and a bit, settled (to the last thousandth) a while after.
+        expect(opened).toBeGreaterThan(0.9);
+        expect(opened).toBeLessThan(1.6);
+        expect(settled).toBeLessThan(3.5);
+        expect(show.from).toBe(idOf('nave'));
+        // ...and goes back the same way.
+        prev = 0;
+        for (let f = 1; f <= 240; f += 1) {
+            advanceFoldShow(show, at(rig.parkOf(51)), 1 / 60);
+            if (show.from !== show.to) {
+                expect(show.from).toBe(idOf('lattice'));
+                expect(show.to).toBe(idOf('nave'));
+            }
+        }
         expect(show.from).toBe(idOf('lattice'));
+        expect(show.to).toBe(idOf('lattice'));
+    });
+
+    it('opens a far jump straight through, never through the rooms between, faster when the eye moves on', () => {
+        const show = advanceFoldShow(createFoldShow(), at(rig.parkOf(54)), 1 / 60);
+        advanceFoldShow(show, at(rig.parkOf(50)), 1 / 60);
+        expect(show.from).toBe(idOf('stairs'));
+        expect(show.to).toBe(idOf('cradle'));
+        const seen = new Set();
+        let prev = 0;
+        let done = null;
+        for (let f = 1; f <= 180; f += 1) {
+            advanceFoldShow(show, at(rig.parkOf(50)), 1 / 60);
+            if (show.from !== show.to) {
+                seen.add(`${show.from}>${show.to}`);
+                expect(show.morph).toBeGreaterThanOrEqual(prev - 1e-12);
+                prev = show.morph;
+            } else if (done === null) {
+                done = f / 60;
+            }
+        }
+        expect([...seen]).toEqual([`${idOf('stairs')}>${idOf('cradle')}`]);
+        expect(done).toBeGreaterThan(CH7_FOLD_OPENING.seconds - 0.1);
+        expect(done).toBeLessThan(CH7_FOLD_OPENING.seconds + 0.1);
+        expect(show.from).toBe(idOf('cradle'));
+        // A far jump that the eye leaves again before it is open finishes `hurry` times as fast.
+        advanceFoldShow(show, at(rig.parkOf(55)), 1 / 60);
+        let hurried = 0;
+        for (let f = 1; f <= 180 && show.from !== show.to; f += 1) {
+            advanceFoldShow(show, at(rig.parkOf(51)), 1 / 60);
+            hurried = f / 60;
+        }
+        expect(hurried).toBeLessThan((CH7_FOLD_OPENING.seconds / CH7_FOLD_OPENING.hurry) + 0.1);
     });
 
     it('does not flap when the eye drifts about the middle between two orbs', () => {
-        const show = advanceFoldShow(createFoldShow(), at(anchors[2]), 1 / 60);
         const mid = (anchors[2] + anchors[3]) / 2;
-        const seen = new Set();
-        for (let t = 0; t < 20; t += 1 / 60) {
+        const show = advanceFoldShow(createFoldShow(), at(mid), 1 / 60);
+        let lo = Infinity;
+        let hi = -Infinity;
+        for (let f = 0; f < 1200; f += 1) {
+            const t = f / 60;
             advanceFoldShow(show, at(mid + (Math.sin(t * 3) * (anchors[3] - anchors[2]) * 0.03)), 1 / 60);
-            seen.add(show.to);
+            if (t > 2) {
+                lo = Math.min(lo, show.at);
+                hi = Math.max(hi, show.at);
+            }
         }
-        expect([...seen]).toEqual([idOf('nave')]);
-    });
-
-    it("holds the last orb's room whole where the eye comes into it from the room before", () => {
-        // Just short of orb 56's park the room coordinate is already the paint's (the room before
-        // has given way): the hall has not begun.
-        const show = advanceFoldShow(createFoldShow(), at(rig.parkOf(55)), 1 / 60);
-        const nearly = rig.parkOf(56) - 0.0004;
-        for (let t = 0; t < 4; t += 1 / 60) advanceFoldShow(show, at(nearly), 1 / 60);
-        expect(show.to).toBe(idOf('paint'));
-        expect(show.from).toBe(idOf('paint'));
-        expect(show.exit).toBe(0);
+        // It sways with the eye a little, always between the same two rooms.
+        expect(Math.floor(lo)).toBe(Math.floor(hi));
+        expect(hi - lo).toBeLessThan(0.3);
     });
 
     it('opens the way out in step with the rail, and closes it again going back', () => {
+        const last = CH7_FOLD_ROOMS.length - 1;
         const show = advanceFoldShow(createFoldShow(), at(rig.parkOf(56)), 1 / 60);
         let prev = 0;
         for (let p = rig.parkOf(56); p <= cp[7] + 0.002; p += 0.00005) {
             const target = at(p);
             advanceFoldShow(show, target, 1 / 60);
-            const opened = Math.min(1, Math.max(0, target.index - 6));
-            expect(show.exit).toBeCloseTo(opened, 9);
-            if (opened > 0 && opened < 1) expect(show.morph).toBeCloseTo(opened, 9);
-            else expect(show.morph).toBe(0);
+            const opened = Math.min(1, Math.max(0, target.index - (last - 1)));
+            // A little behind the eye at most, never ahead of it, and never stepping.
+            expect(show.exit).toBeLessThanOrEqual(opened + 1e-9);
+            expect(opened - show.exit).toBeLessThan(0.2);
             expect(show.exit).toBeGreaterThanOrEqual(prev - 1e-12);
             expect(show.exit - prev).toBeLessThan(0.04);
             prev = show.exit;
         }
+        for (let f = 0; f < 60; f += 1) advanceFoldShow(show, at(cp[7] + 0.002), 1 / 60);
         expect(show.exit).toBe(1);
         expect(show.to).toBe(idOf('hall'));
         for (let p = cp[7]; p >= rig.parkOf(56); p -= 0.00005) advanceFoldShow(show, at(p), 1 / 60);
+        for (let f = 0; f < 60; f += 1) advanceFoldShow(show, at(rig.parkOf(56)), 1 / 60);
         expect(show.exit).toBe(0);
         expect(show.to).toBe(idOf('paint'));
         expect(show.from).toBe(idOf('paint'));
@@ -333,11 +382,14 @@ describe('the way out takes its time', () => {
             prev = m;
         }
         expect(plungeTravelTouches(rig.parkOf(56), rig.parkOf(57), cp)).toBe(true);
-        expect(plungeTravelTouches(rig.parkOf(52), rig.parkOf(55), cp)).toBe(false);
+        // (A ride inside the fold eases in the fold's world measure: odyssey-fold-longer.test.js.)
+        expect(plungeTravelTouches(rig.parkOf(52), rig.parkOf(55), cp)).toBe(true);
+        expect(plungeTravelTouches(rig.parkOf(40), rig.parkOf(45), cp)).toBe(false);
         expect(plungeTravelTouches(rig.parkOf(58), rig.parkOf(60), cp)).toBe(false);
         expect(plungeTravelExtraMs(rig.parkOf(56), rig.parkOf(57), cp)).toBeCloseTo(CH7_EXIT_TRAVEL.extraMs, 6);
         expect(plungeTravelExtraMs(rig.parkOf(57), rig.parkOf(56), cp)).toBeCloseTo(CH7_EXIT_TRAVEL.extraMs, 6);
-        expect(plungeTravelExtraMs(rig.parkOf(52), rig.parkOf(55), cp)).toBe(0);
+        expect(plungeTravelExtraMs(rig.parkOf(52), rig.parkOf(55), cp)).toBeGreaterThan(0);
+        expect(plungeTravelExtraMs(rig.parkOf(40), rig.parkOf(45), cp)).toBe(0);
         expect(plungeTravelExtraMs(rig.parkOf(20), rig.parkOf(58), cp)).toBe(0);
     });
 });

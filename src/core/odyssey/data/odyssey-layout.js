@@ -141,9 +141,29 @@ const AUTHORED_LEVEL_POSITIONS_BY_ID = Object.freeze({
     59: 1,
 });
 
-const DEFAULT_LEVEL_POSITIONS_BY_ID = Object.freeze(
-    remapAuthoredOdysseyPositions(AUTHORED_LEVEL_POSITIONS_BY_ID),
-);
+/**
+ * INSIDE THE BLACK HOLE THE ORBS ARE FAR APART (2026-11-17). The owner: "make inside the black
+ * hole longer and spread out the orbs more". Chapter 7's middle is longer in the world than its
+ * share of progress (src/rendering/odyssey/transitions/odyssey-fold-stretch.js: a wide spiral the
+ * rail climbs between p 0.922 and 0.942), and orbs 50-55 stand on it at even WORLD distances
+ * (~69 u) between orb 49's park (where the fold is whole, 0.8941) and orb 56 (0.9484, kept): each
+ * with a park and a room of its own. They are placed by that schedule, not by progress: a test
+ * holds them to it (tests/unit/odyssey-fold-longer.test.js). Orb 49 and orb 57 (the chapter's
+ * boundaries) do not move.
+ */
+const FOLD_LEVEL_POSITIONS_BY_ID = Object.freeze({
+    50: 0.921355,
+    51: 0.926134,
+    52: 0.929231,
+    53: 0.932328,
+    54: 0.935425,
+    55: 0.938522,
+});
+
+const DEFAULT_LEVEL_POSITIONS_BY_ID = Object.freeze({
+    ...remapAuthoredOdysseyPositions(AUTHORED_LEVEL_POSITIONS_BY_ID),
+    ...FOLD_LEVEL_POSITIONS_BY_ID,
+});
 
 export const ODYSSEY_LAYOUT_DATA = Object.freeze({
     controlPoints: DEFAULT_CONTROL_POINTS,

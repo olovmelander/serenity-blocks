@@ -153,22 +153,24 @@ describe('a room of the fold for every orb inside the hole, each a place of its 
             expect(anchors[i]).toBeCloseTo(at, 9);
             if (i > 0) expect(anchors[i]).toBeGreaterThan(anchors[i - 1]);
         });
-        // Orbs 49 and 50 park at one place on the rail, so they share the first room.
-        expect(rig.parkOf(49)).toBe(rig.parkOf(50));
+        // Every orb has a park and a room of its own (2026-11-17: orbs 49 and 50 used to share).
+        CH7_FOLD_ROOMS.filter((r) => r.orbs.length).forEach((room) => expect(room.orbs).toHaveLength(1));
+        const parks = [49, 50, 51, 52, 53, 54, 55, 56].map((id) => rig.parkOf(id));
+        expect(new Set(parks).size).toBe(8);
     });
 
-    it('is eight rooms that are eight different places, no two opening from the same spot', () => {
-        expect(CH7_FOLD_ROOMS).toHaveLength(8);
+    it('is nine rooms that are nine different places, no two opening from the same spot', () => {
+        expect(CH7_FOLD_ROOMS).toHaveLength(9);
         const places = CH7_FOLD_ROOMS.map((r) => r.place);
-        expect(new Set(places).size).toBe(8);
+        expect(new Set(places).size).toBe(9);
         places.forEach((name) => {
             expect(Object.keys(CH7_FOLD_PLACE_IDS)).toContain(name);
             expect(CH7_FOLD_PLACE[name], name).toBeDefined();
         });
         // One list of ids, and a builder for each.
         expect(CH7_FOLD_PLACES).toBe(CH7_FOLD_PLACE_IDS);
-        expect(Object.values(CH7_FOLD_PLACE_IDS).sort()).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
-        expect(CH7_FOLD_PLACE_BUILDERS).toHaveLength(8);
+        expect(Object.values(CH7_FOLD_PLACE_IDS).sort()).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+        expect(CH7_FOLD_PLACE_BUILDERS).toHaveLength(9);
         // The frames the places are seen in differ: no two put the way ahead in the same spot.
         const frames = Object.values(CH7_FOLD_PLACE).filter((p) => p.frame).map((p) => p.frame.slice(0, 2).join(','));
         expect(new Set(frames).size).toBe(frames.length);
@@ -177,7 +179,9 @@ describe('a room of the fold for every orb inside the hole, each a place of its 
         }
         // The first room opens at the crossing and the hall where the mouth will: both the middle.
         expect(CH7_FOLD_ROOMS[0].door).toEqual([0, 0]);
-        expect(CH7_FOLD_ROOMS[7].door).toEqual([0, 0]);
+        expect(CH7_FOLD_ROOMS[CH7_FOLD_ROOMS.length - 1].door).toEqual([0, 0]);
+        // Orb 50 (Nebula Flow) has the star cradle.
+        expect(CH7_FOLD_ROOMS.find((r) => r.orbs.includes(50)).place).toBe('cradle');
         // The stairs' glasses are handed round by the happenings: three whole colours at every
         // count, each family's own, and none of them a mix.
         const { glass } = CH7_FOLD_PLACE.stairs;

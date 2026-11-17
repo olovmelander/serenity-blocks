@@ -18,7 +18,7 @@
  */
 
 import { odysseyWorldHeight, ODYSSEY_SEA_LEVEL } from './odyssey-world-height.js';
-import { getOdysseyPathPointAt } from '../path-utils.js';
+import { getOdysseyPathCurve } from '../path-utils.js';
 
 const RAIL_SAMPLES = 96;
 const HEIGHT_GRID = 24;
@@ -41,9 +41,13 @@ function mixFloat(hash, value) {
  */
 export function forestVisibilityStamp() {
     let h = 2166136261 >>> 0;
+    // The rail the island is seen from: today's line (the fold's longer rail inside the black hole,
+    // odyssey-path-stretch.js, is never in sight of the island).
+    const curve = getOdysseyPathCurve();
+    const rail = curve.baseCurve ?? curve;
     for (let i = 0; i < RAIL_SAMPLES; i += 1) {
         const p = i / (RAIL_SAMPLES - 1);
-        const pt = getOdysseyPathPointAt(p);
+        const pt = rail.getPointAt(p);
         h = mixFloat(h, pt.x);
         h = mixFloat(h, pt.y);
         h = mixFloat(h, pt.z);

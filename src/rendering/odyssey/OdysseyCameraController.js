@@ -10,6 +10,7 @@ import { orbitEarthAt } from './composition/odyssey-orbit-earth.js';
 import { applyArrivalMove } from './odyssey-arrival-move.js';
 import { applyGlideLife } from './odyssey-glide-life.js';
 import { odysseyScrollPace } from './odyssey-scroll-pace.js';
+import { foldStretchRate, foldStretchReach } from './transitions/odyssey-fold-stretch.js';
 import { ODYSSEY_PATH_HORIZON, resolveOdysseyPathReveal } from './odyssey-path-horizon.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
 import {
@@ -1292,10 +1293,15 @@ export class OdysseyCameraController {
         const rotationAxis = new THREE.Vector3();
         const rotation = new THREE.Matrix4();
 
+        // On today's rail (the fold's longer rail inside the black hole is read from the curve
+        // itself, getPathDataAt): the table's frames are carried from the journey's start, and a
+        // longer middle would turn every frame after it.
+        const lutCurve = this.pathCurve.baseCurve ?? this.pathCurve;
+        this._foldEndNormals = null;
         for (let i = 0; i < count; i++) {
             const t = i / (count - 1);
-            this.pathCurve.getPointAt(t, point);
-            this.pathCurve.getTangentAt(t, tangent).normalize();
+            lutCurve.getPointAt(t, point);
+            lutCurve.getTangentAt(t, tangent).normalize();
 
             if (i === 0) {
                 const seedUp = Math.abs(tangent.dot(PATH_FRAME_GRAVITY_UP)) > 0.92
@@ -1343,6 +1349,20 @@ export class OdysseyCameraController {
      */
     getPathDataAt(t, optionalTargetPos, optionalTargetTangent, optionalTargetNormal, optionalTargetRight) {
         const clampedT = THREE.MathUtils.clamp(t, 0, 1);
+        // THE FOLD'S LONGER RAIL (odyssey-path-stretch.js): exact from the curve, its frame turned
+        // to meet the table's at both ends.
+        if (this.pathCurve?.inFoldStretch?.(clampedT)) {
+            const ends = this._getFoldEndNormals();
+            const pos = optionalTargetPos || new THREE.Vector3();
+            const tan = optionalTargetTangent || new THREE.Vector3();
+            const normal = optionalTargetNormal || new THREE.Vector3();
+            const right = optionalTargetRight || new THREE.Vector3();
+            if (ends && this.pathCurve.foldFrameAt(clampedT, ends.a, ends.b, pos, tan, normal, right)) {
+                return {
+                    position: pos, tangent: tan, normal, right,
+                };
+            }
+        }
         const { count } = this.pathLut;
         const rawIdx = clampedT * (count - 1);
         const i0 = Math.floor(rawIdx);
@@ -1387,6 +1407,35 @@ export class OdysseyCameraController {
             normal,
             right,
         };
+    }
+
+    /**
+     * The table's normals where the fold's longer rail leaves today's line and rejoins it (cached
+     * per table): the rail's frame inside it is carried from the one and arrives on the other.
+     * @private
+     */
+    _getFoldEndNormals() {
+        if (this._foldEndNormals !== null && this._foldEndNormals !== undefined) return this._foldEndNormals;
+        const range = this.pathCurve?.range;
+        if (!range) {
+            this._foldEndNormals = false;
+            return false;
+        }
+        const read = (p) => {
+            const { count } = this.pathLut;
+            const raw = THREE.MathUtils.clamp(p, 0, 1) * (count - 1);
+            const i0 = Math.floor(raw);
+            const i1 = Math.min(i0 + 1, count - 1);
+            const f = raw - i0;
+            const n = this.pathLut.normals;
+            return new THREE.Vector3(
+                THREE.MathUtils.lerp(n[i0 * 3], n[i1 * 3], f),
+                THREE.MathUtils.lerp(n[(i0 * 3) + 1], n[(i1 * 3) + 1], f),
+                THREE.MathUtils.lerp(n[(i0 * 3) + 2], n[(i1 * 3) + 2], f),
+            ).normalize();
+        };
+        this._foldEndNormals = { a: read(range.a), b: read(range.b) };
+        return this._foldEndNormals;
     }
 
     applyLayout(pathCurve, options = {}) {
@@ -2796,10 +2845,12 @@ export class OdysseyCameraController {
         const beatSurge = this.directorCamera.beatPulse * this.config.beatDriftScale;
         const energyLift = this.directorCamera.energy * 0.28;
         // Reduced motion: no idle drift; the camera moves only when the player moves it.
+        // (On the fold's longer rail the same world speed takes more progress: foldStretchRate.)
         const autoVelocity = this.prefersReducedMotion() ? 0 : (worldSpeed / this.travelModel.pathLength)
             * this.config.autoDriftScale
             * (1 + beatSurge + energyLift)
-            * seamSlowdown;
+            * seamSlowdown
+            * (1 / foldStretchRate(this.currentPosition, this.chapterPositions));
 
         const targetVelocity = autoVelocity + this.travelModel.inputVelocity;
         const lerp = 1 - Math.exp(-dt * 2.8);
@@ -3164,7 +3215,13 @@ export class OdysseyCameraController {
         const rawLookAheadT = clampedPosition
             + (lookAheadDistance * seamStretch * this.directorCamera.drift)
             + vistaWeight * 0.006;
-        const lookAheadT = THREE.MathUtils.clamp(rawLookAheadT, 0, 1);
+        // As far ahead in the world on the fold's longer rail as anywhere else (the same value
+        // wherever the look-ahead does not reach it).
+        const lookAheadT = THREE.MathUtils.clamp(
+            foldStretchReach(clampedPosition, rawLookAheadT, this.chapterPositions),
+            0,
+            1,
+        );
         const { position: lookTarget, tangent: lookTangent } = this.getPathDataAt(
             lookAheadT,
             this._frameLookTarget,
