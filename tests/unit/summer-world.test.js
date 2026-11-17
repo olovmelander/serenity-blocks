@@ -2837,15 +2837,26 @@ describe('Summer petal geometry', () => {
     }
     const area = ([a, b, c]) => new THREE.Vector3().subVectors(vertex(b), vertex(a))
         .cross(new THREE.Vector3().subVectors(vertex(c), vertex(a))).length() / 2;
+    /**
+     * Which vertex stands where: the claw and the tip are one vertex each (0 and 10), and between
+     * them three stations of three (left edge, midrib, right edge).
+     */
+    const CLAW = 0;
+    const TIP = 10;
+    const at = (row, column) => {
+        if (row === 0) return CLAW;
+        if (row === 4) return TIP;
+        return 1 + (row - 1) * 3 + column;
+    };
     /** The five stations from the claw to the tip: left edge, midrib, right edge. */
-    const stations = [0, 1, 2, 3, 4].map((row) => [0, 1, 2].map((column) => vertex(row * 3 + column)));
+    const stations = [0, 1, 2, 3, 4].map((row) => [0, 1, 2].map((column) => vertex(at(row, column))));
 
-    it('is fifteen vertices in five stations and sixteen triangles, all inside the unit box', () => {
-        expect(position.count).toBe(15);
-        expect(uv.count).toBe(15);
-        expect(normal.count).toBe(15);
-        expect(geometry.index.count).toBe(16 * 3);
-        expect(triangles).toHaveLength(16);
+    it('is eleven vertices (claw, three stations of three, tip) and twelve triangles in the unit box', () => {
+        expect(position.count).toBe(11);
+        expect(uv.count).toBe(11);
+        expect(normal.count).toBe(11);
+        expect(geometry.index.count).toBe(12 * 3);
+        expect(triangles).toHaveLength(12);
         for (let index = 0; index < position.count; index++) {
             const point = vertex(index);
             for (const value of point.toArray()) {
@@ -2862,10 +2873,10 @@ describe('Summer petal geometry', () => {
         }
         // Every triangle names three vertices of the petal, and no triangle twice.
         for (const corners of triangles) {
-            for (const corner of corners) expect(Number.isInteger(corner) && corner >= 0 && corner < 15).toBe(true);
+            for (const corner of corners) expect(Number.isInteger(corner) && corner >= 0 && corner < 11).toBe(true);
             expect(new Set(corners).size).toBe(3);
         }
-        expect(new Set(triangles.map((corners) => [...corners].sort((a, b) => a - b).join())).size).toBe(16);
+        expect(new Set(triangles.map((corners) => [...corners].sort((a, b) => a - b).join())).size).toBe(12);
         // It runs the whole length of the box, claw at the foot and tip at the top.
         expect(stations[0][1].y).toBe(-0.5);
         expect(stations[4][1].y).toBe(0.5);
@@ -2882,7 +2893,7 @@ describe('Summer petal geometry', () => {
         expect(widths[4]).toBe(0);
         for (const width of widths.slice(1, 4)) expect(width).toBeGreaterThan(0.2);
         const widest = widths.indexOf(Math.max(...widths));
-        const along = uv.getY(widest * 3 + 1);
+        const along = uv.getY(at(widest, 1));
         expect(along).toBeGreaterThanOrEqual(0.5);
         expect(along).toBeLessThanOrEqual(0.75);
         // It widens all the way to there and narrows from there on: one blade, no waist.
@@ -2893,9 +2904,10 @@ describe('Summer petal geometry', () => {
         expect(Math.max(...widths)).toBeLessThan(1);
         // The blunt tip: the blade is still broad a little under it; the claw comes to a fine point.
         expect(widths[3] / (0.5 - stations[3][1].y)).toBeGreaterThan(widths[1] / (stations[1][1].y + 0.5));
-        // A real surface: all but the slivers where the claw and the tip come to a point have area.
-        const solid = triangles.filter((corners) => area(corners) > 1e-6);
-        expect(solid.length).toBeGreaterThanOrEqual(12);
+        // A real surface: every triangle has area (a sliver without one would leave a vertex
+        // without a normal, and a normal of no length is a NaN in the shader).
+        const solid = triangles.filter((corners) => area(corners) > 1e-4);
+        expect(solid.length).toBe(12);
         expect(solid.reduce((total, corners) => total + area(corners), 0)).toBeGreaterThan(0.25);
     });
 
@@ -2903,7 +2915,7 @@ describe('Summer petal geometry', () => {
         for (const [left, middle, right] of stations) {
             // Mirror images about x = 0.
             expect(middle.x).toBe(0);
-            expect(left.x).toBe(-right.x);
+            expect(Math.abs(left.x + right.x)).toBe(0);
             expect(left.y).toBe(right.y);
             expect(left.z).toBe(right.z);
             // The midrib lies under the edges (the fold), and nothing dips below the claw.
@@ -2917,13 +2929,17 @@ describe('Summer petal geometry', () => {
         // Lit as a surface: every vertex a triangle with area uses has a unit normal, and across
         // the blade it leans up out of the cup, away from the midrib on either side.
         const used = new Set(triangles.filter((corners) => area(corners) > 1e-6).flat());
-        expect(used.size).toBeGreaterThanOrEqual(13);
+        expect(used.size).toBe(11);
+        // All of it faces the same way: the cup opens toward +z from the claw to the tip.
+        for (let index = 0; index < normal.count; index++) {
+            expect(new THREE.Vector3().fromBufferAttribute(normal, index).z).toBeGreaterThan(0.8);
+        }
         for (const index of used) {
             expect(new THREE.Vector3().fromBufferAttribute(normal, index).length()).toBeCloseTo(1, 5);
         }
         for (const row of [1, 2, 3]) {
             const [left, middle, right] = [0, 1, 2]
-                .map((column) => new THREE.Vector3().fromBufferAttribute(normal, row * 3 + column));
+                .map((column) => new THREE.Vector3().fromBufferAttribute(normal, at(row, column)));
             for (const direction of [left, middle, right]) expect(direction.z).toBeGreaterThan(0.9);
             expect(left.x).toBeGreaterThan(0.1);
             expect(right.x).toBeLessThan(-0.1);

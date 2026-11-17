@@ -33,14 +33,16 @@ export function summerPetalPalette() {
 /**
  * A petal: a narrow claw at the foot, widest two thirds of the way up, closed by a blunt tip;
  * folded along its midrib and cupped. (It was a four-cornered kite, which read as confetti.)
- * `uv` runs 0..1 across and from the claw to the tip.
+ * `uv` runs 0..1 across and from the claw to the tip. The claw and the tip are one vertex each
+ * with a fan of two triangles, and three stations of three vertices lie between them: no
+ * triangle is without area, so every vertex has a normal.
  */
 export function createSummerPetalGeometry() {
     // Half-width and cup of the blade at each station along the midrib.
-    const stations = [[-0.5, 0, 0], [-0.2, 0.17, 0.05], [0.14, 0.34, 0.13], [0.38, 0.27, 0.12], [0.5, 0, 0.05]];
-    const positions = [];
-    const uvs = [];
-    const indices = [];
+    const stations = [[-0.2, 0.17, 0.05], [0.14, 0.34, 0.13], [0.38, 0.27, 0.12]];
+    const positions = [0, -0.5, 0];
+    const uvs = [0.5, 0];
+    const indices = [0, 2, 1, 0, 3, 2];
     stations.forEach(([y, half, cup], row) => {
         // Left edge, midrib, right edge: the midrib lies a little under the edges (the fold).
         [[-half, cup], [0, cup * 0.2], [half, cup]].forEach(([x, z]) => {
@@ -48,11 +50,16 @@ export function createSummerPetalGeometry() {
             uvs.push(x + 0.5, y + 0.5);
         });
         if (row > 0) {
-            const a = (row - 1) * 3;
-            const b = row * 3;
+            const a = 1 + (row - 1) * 3;
+            const b = 1 + row * 3;
             indices.push(a, a + 1, b, a + 1, b + 1, b, a + 1, a + 2, b + 1, a + 2, b + 2, b + 1);
         }
     });
+    const last = 1 + (stations.length - 1) * 3;
+    const tip = last + 3;
+    positions.push(0, 0.5, 0.05);
+    uvs.push(0.5, 1);
+    indices.push(last, last + 1, tip, last + 1, last + 2, tip);
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));

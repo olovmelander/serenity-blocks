@@ -18,10 +18,12 @@ import { SUMMER_PARTICLES } from './summer-petal-sim.js';
 import { SUMMER_STAGE_DEPTH } from './summer-stage.js';
 
 /**
- * The pool the event counts below are written for (High). It is a third larger than the counts
- * need, so the flowers of a perfect clear find petals free while a combo's crown is turning.
+ * The pool the event counts below are written for (High). The largest thing the game can ask for
+ * at once (four lines and a perfect clear on top: the jets, the rising meadow, the bouquet and
+ * seven flowers) takes about 3,050 of its 3,440 reserve particles, which leaves a combo's crown
+ * its 400 while the flowers hang: tests/unit/summer-fx-director.test.js holds the headroom.
  */
-const REFERENCE_PETALS = 3200;
+const REFERENCE_PETALS = 4000;
 const CLEAR_WINDOW = 0.5;
 const RISE_WINDOW = 1.5;
 const SEED_WINDOW = 0.3;
@@ -64,8 +66,14 @@ const BLOSSOM_MAYPOLE = -1;
 const BLOSSOM_SPOTS = [
     [0.56, 0.3, 7.6], [0.5, 0.22, 7.2], [0.82, 0.5, 8], [0.78, 0.48, 7.4], [0.2, 0.42, 8.4], [0.24, 0.4, 7.8],
 ];
-/** How far down the screen the flowers of a narrow side stand, one above another. */
-const BLOSSOM_STACK = [0.2, 0.46, 0.7];
+/**
+ * How far down the screen the flowers of a narrow side stand, one above another, and how much
+ * smaller they are drawn there so that three of them find room above the meadow.
+ */
+const BLOSSOM_STACK = [0.2, 0.37, 0.54];
+const BLOSSOM_STACKED = 0.78;
+/** A flower keeps this share of the screen's width clear between its rim and the card or the edge. */
+const BLOSSOM_MARGIN = 0.008;
 /**
  * A skipping stone: metres from the eye to its first touch (the first water the eye sees past the
  * crest of the meadow), the length of its first hop, and how the hops shorten.
@@ -107,6 +115,8 @@ export class SummerFxDirector {
         /** Unit vector toward the sun (apply() keeps it): the stone skips down its road. */
         this.sun = new THREE.Vector3(-0.25, 0.16, -0.95);
         this.heart = new THREE.Vector3();
+        /** Where the maypole's head is seen on screen (scratch for blossomSpot). */
+        this.seen = { x: 0.25, y: 0.1, depth: 0 };
         this.point = new THREE.Vector3();
         this.foot = new THREE.Vector3();
         this.front = {
@@ -428,37 +438,73 @@ export class SummerFxDirector {
      * its score panel, in turn. Where a side is wide they stand in two columns; where it is
      * narrow (the score panel's side in single player) they stand one above another in the
      * middle of it, drawn small enough to fit; where there is no room beside the board at all
-     * (an upright screen) they open in a row above it. The bouquet's own opens over the maypole.
+     * (an upright screen) they open in a row above it. The bouquet's own opens about the maypole's
+     * head, or, where the board stands in front of the pole, in the open air nearest it. Wherever
+     * it opens, a flower's whole rim is kept clear of the card, the panel, the screen's edges and
+     * the meadow under it.
      */
     blossomSpot(emitter, target) {
         const { stage, maypole } = this;
-        this.blossomFit = 1;
-        if (emitter.lines === BLOSSOM_MAYPOLE && maypole) {
-            // On the line of sight to the pole's head, as near as the others: it is seen crowning
-            // the pole, and is as large and as crisp as the flowers beside the board.
-            return target.copy(maypole.top).sub(stage.origin).normalize().multiplyScalar(BLOSSOM_CROWN_DEPTH)
-                .add(stage.origin);
-        }
-        const index = Math.max(0, Math.round(emitter.lines)) % BLOSSOM_SPOTS.length;
-        const [across, down, depth] = BLOSSOM_SPOTS[index];
         const { board } = stage;
         const covered = stage.covered();
-        const left = index % 2 === 0;
+        const full = this.blossomRadius(emitter);
+        const crowning = emitter.lines === BLOSSOM_MAYPOLE && Boolean(maypole);
+        // (Anything that is not a spot's number takes the first: a junk payload opens a flower, not an error.)
+        const index = Number.isFinite(emitter.lines)
+            ? Math.max(0, Math.round(emitter.lines)) % BLOSSOM_SPOTS.length : 0;
+        const [across, down, away] = BLOSSOM_SPOTS[index];
+        const depth = crowning ? BLOSSOM_CROWN_DEPTH : away;
+        // What a share of the screen's width, and of its height, is in metres at the flower's depth.
+        const wide = 2 * stage.tanH * depth;
+        const tall = 2 * stage.tanV * depth;
+        let left = index % 2 === 0;
+        let sx = 0.5;
+        let sy = down;
+        if (crowning) {
+            // The bouquet's flower opens about the pole's head as the eye sees it, as near as the
+            // others, so it is as large and as crisp as they are.
+            const seen = stage.project(maypole.top, this.seen);
+            sx = seen ? seen.x : 0.25;
+            sy = seen ? seen.y : 0.1;
+            left = sx < (covered.x0 + covered.x1) / 2;
+        }
         const room = left ? covered.x0 : 1 - covered.x1;
-        // Half the strip's width in metres at the flower's depth: all the room its petals have.
-        const fit = (strip) => Math.min(1, (0.46 * strip * 2 * stage.tanH * depth) / BLOSSOM_REACH);
         if (room < 0.14) {
-            const top = Math.max(0.06, board.y0 * 0.55);
-            this.blossomFit = fit(1 / BLOSSOM_SPOTS.length);
-            return stage.point((index + 0.5) / BLOSSOM_SPOTS.length, top, depth, target);
+            // No room beside the board: a row above it (the bouquet's flower in the middle of it).
+            // Each is fitted to its sixth of the width and to the gap between the screen's top
+            // and the board's.
+            const strip = 1 / BLOSSOM_SPOTS.length;
+            const gap = Math.max(0.06, board.y0);
+            this.blossomFit = Math.min(1, (0.46 * strip * wide) / full, (0.46 * gap * tall) / full);
+            sx = crowning ? 0.5 : (index + 0.5) * strip;
+            sy = Math.max(0.06, board.y0 * 0.55);
+        } else {
+            const stacked = room < 0.3 && !crowning;
+            // The strip's width is all the room the petals have: the flower is drawn to fit it.
+            this.blossomFit = Math.min(1, (0.46 * room * wide) / full) * (stacked ? BLOSSOM_STACKED : 1);
+            if (stacked) {
+                sx = left ? covered.x0 * 0.5 : covered.x1 + room * 0.5;
+                sy = BLOSSOM_STACK[Math.floor(index / 2) % BLOSSOM_STACK.length];
+            } else if (!crowning) sx = left ? covered.x0 * (1 - across) : covered.x1 + room * across;
+            // Its whole rim stays in the strip: never behind the card or the panel, never off the side.
+            const half = (full * this.blossomFit) / wide + BLOSSOM_MARGIN;
+            sx = Math.min(Math.max(sx, (left ? 0 : covered.x1) + half), (left ? covered.x0 : 1) - half);
         }
-        this.blossomFit = fit(room);
-        if (room < 0.3) {
-            const sx = left ? covered.x0 * 0.5 : covered.x1 + room * 0.5;
-            return stage.point(sx, BLOSSOM_STACK[Math.floor(index / 2) % BLOSSOM_STACK.length], depth, target);
-        }
-        const sx = left ? covered.x0 * (1 - across) : covered.x1 + room * across;
-        return stage.point(sx, down, depth, target);
+        // Its rim stays under the top of the screen (the bouquet's may lose a sliver of it there,
+        // to sit as close about the pole's head as it can).
+        sy = Math.max(sy, ((full * this.blossomFit) / tall) * (crowning ? 0.8 : 1) + 0.02);
+        stage.point(sx, sy, depth, target);
+        // And it opens over the heads of the meadow's flowers, not among them.
+        const floor = Math.max(0, this.groundHeight(target.x, target.z)) + FLOWER_TOPS
+            + 0.7 * full * this.blossomFit;
+        if (target.y < floor) target.setY(floor);
+        return target;
+    }
+
+    /** A sky flower's radius in metres at its full size, before it is fitted to its place. */
+    blossomRadius(emitter) {
+        const strength = Math.max(0.2, Number.isFinite(emitter.strength) ? emitter.strength : 0.2);
+        return BLOSSOM_REACH * (0.75 + 0.35 * strength) * (emitter.lines === BLOSSOM_MAYPOLE ? 1.15 : 1);
     }
 
     /**
@@ -479,10 +525,13 @@ export class SummerFxDirector {
             for (let i = 0; i < count; i += 1) {
                 const climbed = Math.min(1, (emitter.age + this.random() * 0.03) / BLOSSOM_RISE);
                 const eased = 1 - (1 - climbed) * (1 - climbed);
+                const x = heart.x + (this.random() - 0.5) * 0.25;
+                const z = heart.z + (this.random() - 0.5) * 0.25;
                 sim.spawn(
-                    heart.x + (this.random() - 0.5) * 0.25,
-                    heart.y - BLOSSOM_CLIMB * (1 - eased),
-                    heart.z + (this.random() - 0.5) * 0.25,
+                    x,
+                    // (Never from under the meadow: the thread starts over the grass.)
+                    this.above(x, heart.y - BLOSSOM_CLIMB * (1 - eased), z, 0.35),
+                    z,
                     (this.random() - 0.5) * 0.6,
                     1.5 + this.random(),
                     (this.random() - 0.5) * 0.6,
@@ -497,7 +546,7 @@ export class SummerFxDirector {
         // The bouquet's flower crowning the maypole is a little larger and has more petals in it;
         // one in a narrow strip beside the score panel is drawn to fit it.
         const crowning = emitter.lines === BLOSSOM_MAYPOLE;
-        const radius = BLOSSOM_REACH * (0.75 + 0.35 * strength) * (crowning ? 1.15 : 1) * this.blossomFit;
+        const radius = this.blossomRadius(emitter) * this.blossomFit;
         const reach = radius * PETAL_DRAG;
         const total = Math.round(BLOSSOM_PETALS * this.scale * strength * (crowning ? 1.25 : 1));
         const turn = emitter.seed * Math.PI * 2;

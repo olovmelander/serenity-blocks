@@ -149,6 +149,25 @@ export class SummerStage {
             .addScaledVector(this.up, ny * depth * this.tanV);
     }
 
+    /**
+     * Where a world point is seen: screen fractions (y down) and its depth along the view, written
+     * into `out`; null for a point at or behind the eye.
+     */
+    project(point, out = { x: 0.5, y: 0.5, depth: 0 }) {
+        const dx = point.x - this.origin.x;
+        const dy = point.y - this.origin.y;
+        const dz = point.z - this.origin.z;
+        const depth = dx * this.forward.x + dy * this.forward.y + dz * this.forward.z;
+        if (!(depth > 0.01)) return null;
+        const across = dx * this.right.x + dy * this.right.y + dz * this.right.z;
+        const up = dx * this.up.x + dy * this.up.y + dz * this.up.z;
+        return Object.assign(out, {
+            x: 0.5 + (across / (depth * this.tanH)) * 0.5,
+            y: 0.5 - (up / (depth * this.tanV)) * 0.5,
+            depth,
+        });
+    }
+
     /** Screen position of a place on the card: column 0..1 left to right, row 0 its foot, 1 its top. */
     screen(column, row) {
         const { board } = this;

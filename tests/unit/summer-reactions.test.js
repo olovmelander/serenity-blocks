@@ -1344,6 +1344,18 @@ describe('Summer reaction director', () => {
             expect(advance(left, 30).crown).toBe(0);
             left.onBackToBack();
             expect(advance(left, 1.5)).toMatchObject({ crown: 0, ribbons: 0 });
+            // Nor does it wake a crown that is on its way down (its hold spent): the crown goes
+            // on unwinding and the ribbons stay furled.
+            const waning = create();
+            waning.onCombo(3);
+            const low = advance(waning, 6);
+            expect(low.crown).toBeGreaterThan(0.005);
+            expect(low.crown).toBeLessThan(0.1);
+            expect(low.ribbons).toBe(0);
+            waning.onBackToBack();
+            const later = advance(waning, 0.5);
+            expect(later.crown).toBeLessThan(low.crown);
+            expect(later.ribbons).toBe(0);
         });
 
         it('sets the maypole dancing on a twist: its whirl swells, wheels a moment and dies away', () => {
@@ -1576,6 +1588,33 @@ describe('Summer reaction director', () => {
                 const opened = advance(reactions, 0.1).emitters.find((emitter) => emitter.serial === flower.serial);
                 expect(opened.age).toBeGreaterThan(0);
                 expect(opened.id).toBe(flower.id);
+            }
+        });
+
+        // A flower's work is its opening, 0.42 s into its life: until then it has all of it ahead,
+        // and a lock that comes while it climbs does not take its slot, even in the smallest pool.
+        it.each(TIERS)('lets every flower of a perfect clear at %s open when the next piece locks while they climb', (
+            quality,
+        ) => {
+            for (const gap of [0.1, 0.3, 0.5]) {
+                const reactions = create(quality);
+                reactions.onPieceLock({ piece: pieceOf('I') });
+                reactions.onLineClear(1, { clearedRows: [23] });
+                advance(reactions, 0.2);
+                reactions.onPerfectClear();
+                const asked = emittersOf(reactions.frame, 'blossom').map((emitter) => emitter.serial)
+                    .sort((x, y) => x - y);
+                expect(asked.length).toBeGreaterThanOrEqual(2);
+                advance(reactions, gap);
+                reactions.onPieceLock({ piece: pieceOf('T') });
+                // Every one of them is seen past the moment it opens.
+                const opened = new Set();
+                for (let step = 0; step < 60 * 3; step++) {
+                    for (const emitter of emittersOf(reactions.update(1 / 60), 'blossom')) {
+                        if (emitter.age > 0.45) opened.add(emitter.serial);
+                    }
+                }
+                expect([...opened].sort((a, b) => a - b), `${quality}, a lock ${gap} s on`).toEqual(asked);
             }
         });
 

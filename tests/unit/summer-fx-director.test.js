@@ -2267,6 +2267,26 @@ describe('Summer effects director', () => {
             });
         });
 
+        it('opens a flower in the first place when its place is no number, and never throws', () => {
+            const { director, sim } = createDirector();
+            const first = spotOf(director, 0);
+            for (const lines of [NaN, undefined, null, 'three', Infinity, -Infinity, {}, []]) {
+                expectVector(spotOf(director, lines), first, 12);
+                expect(director.blossomFit).toBe(1);
+            }
+            for (const lines of [NaN, undefined, 'three', Infinity]) {
+                const made = createDirector();
+                expect(() => play(made.director, made.sim, [flowerOf({ lines })], { seconds: 1 })).not.toThrow();
+                expect(made.sim.thrown().filter((particle) => particle.kind === GLOW)).toHaveLength(1);
+            }
+            // A strength that is no number opens a small flower, not a broken one.
+            expect(() => play(director, sim, [flowerOf({ strength: NaN })], { seconds: 1 })).not.toThrow();
+            for (const particle of sim.thrown()) {
+                expect([particle.x, particle.y, particle.z, particle.vx, particle.vy, particle.vz]
+                    .every(Number.isFinite)).toBe(true);
+            }
+        });
+
         // The flower as it hangs fully opened, a good second after it burst (its petals are thrown
         // so that the air stops them at their places, and are all still held there).
         it.each(SKY)('keeps the petals of sky flower %i out from behind the board card', (lines) => {
@@ -2305,7 +2325,7 @@ describe('Summer effects director', () => {
             }
             // The panel's side is a narrow strip: its three stand one above another down the
             // middle of it, at the heights the director keeps for a stack.
-            const STACK = [0.2, 0.46, 0.7];
+            const STACK = [0.2, 0.37, 0.54];
             [1, 3, 5].forEach((index, level) => {
                 expect(seen[index].x, `flower ${index}`).toBeCloseTo(covered.x1 + room / 2, 9);
                 expect(seen[index].y, `flower ${index}`).toBeCloseTo(STACK[level], 9);
@@ -2340,8 +2360,11 @@ describe('Summer effects director', () => {
             expect(seen.filter((place) => within(place, flower.stage.board))).toEqual([]);
             const outside = seen.filter((place) => place.x < covered.x1 || place.x > 1);
             expect(outside.length).toBeLessThanOrEqual(flower.petals.length * 0.03);
-            expect(flower.fit).toBeLessThanOrEqual(1);
-            expect(flower.fit).toBeGreaterThan(0.8);
+            // (A stacked flower is drawn smaller, so that three find room above the meadow.)
+            expect(flower.fit).toBeLessThanOrEqual(0.78);
+            expect(flower.fit).toBeGreaterThan(0.6);
+            // And it opens over the heads of the meadow's flowers, not among them.
+            expect(flower.heart.y).toBeGreaterThan(groundUnder(flower.heart) + 1.15 + 0.6 * flower.reach);
         });
 
         it('scales a flower down to fit a narrow strip, never up, and never to nothing', () => {
@@ -2367,15 +2390,18 @@ describe('Summer effects director', () => {
                 }
                 return side;
             });
+            // (A strip this narrow carries its flowers in a stack, each drawn at this share at most.)
+            const STACKED = 0.78;
             for (let index = 1; index < fits.length; index++) {
                 fits[index].forEach((fit, flower) => {
                     const wider = fits[index - 1][flower];
-                    // Whole while it fits; smaller with every bit of room it loses after that.
-                    if (wider < 1) expect(fit).toBeLessThan(wider);
-                    else expect(fit).toBeLessThanOrEqual(1);
+                    // As large as a stacked flower may be while it fits; smaller with every bit of
+                    // room it loses after that.
+                    if (wider < STACKED) expect(fit).toBeLessThan(wider);
+                    else expect(fit).toBeLessThanOrEqual(STACKED);
                 });
             }
-            expect(Math.max(...fits[0])).toBe(1);
+            expect(Math.max(...fits[0])).toBeCloseTo(STACKED, 12);
             expect(Math.max(...fits.at(-1))).toBeLessThan(0.75);
             // In proportion: half the room, half the flower (once it no longer fits whole).
             stage.setHud({
@@ -2479,32 +2505,63 @@ describe('Summer effects director', () => {
             expect(seen).toEqual([...seen].sort((a, b) => a - b));
         });
 
-        it('opens the bouquet\'s own flower on the line of sight to the maypole\'s head, nearer than the pole', () => {
+        it('opens the bouquet\'s own flower about the maypole\'s head, nearer than the pole and clear of the card', () => {
             const CROWN_DEPTH = 8.2;
             const maypole = maypoleAnchors();
             const phone = {
                 x0: 0.05, x1: 0.95, y0: 0.16, y1: 0.9,
             };
             for (const [aspect, hud, board] of [[LANDSCAPE, null, null], [LANDSCAPE, SCORE_PANEL, null],
-                [21 / 9, null, null], [PORTRAIT, null, phone]]) {
+                [21 / 9, null, null], [PORTRAIT, null, null], [PORTRAIT, null, phone]]) {
+                const label = `aspect ${aspect.toFixed(2)}${hud ? ', score panel' : ''}${board ? ', phone board' : ''}`;
                 const { director, stage, camera } = createDirector({ aspect, maypole });
                 if (hud) stage.setHud(hud);
                 if (board) stage.setBoard(board);
                 // A narrow strip's flower first, so a fit is left over to be cleared.
                 spotOf(director, 1);
                 const heart = spotOf(director, SUMMER_BLOSSOM_MAYPOLE);
-                const toTop = maypole.top.clone().sub(stage.origin);
-                const toHeart = heart.clone().sub(stage.origin);
-                // As near as the flowers beside the board ...
-                expect(toHeart.length()).toBeCloseTo(CROWN_DEPTH, 9);
-                expect(toHeart.length()).toBeLessThan(toTop.length());
-                // ... and straight between the eye and the pole's head: seen crowning the pole.
-                expect(toHeart.clone().normalize().dot(toTop.clone().normalize())).toBeCloseTo(1, 12);
+                const fit = director.blossomFit;
+                // As near as the flowers beside the board, well in front of the pole.
+                const depth = heart.clone().sub(stage.origin).dot(stage.forward);
+                expect(depth, label).toBeGreaterThan(CROWN_DEPTH - 0.4);
+                expect(depth, label).toBeLessThan(CROWN_DEPTH + 0.4);
+                expect(depth).toBeLessThan(maypole.top.clone().sub(stage.origin).dot(stage.forward));
                 const [crown, head] = [onScreen(heart, camera), onScreen(maypole.top, camera)];
-                expect(crown.x).toBeCloseTo(head.x, 9);
-                expect(crown.y).toBeCloseTo(head.y, 9);
-                // Always at its full size, whatever stands beside the board.
-                expect(director.blossomFit).toBe(1);
+                const covered = stage.covered();
+                // Never behind the card or the panel, and on the screen.
+                expect(crown.x < covered.x0 || crown.x > covered.x1 || crown.y < stage.board.y0, label).toBe(true);
+                expect(crown.x).toBeGreaterThan(0);
+                expect(crown.x).toBeLessThan(1);
+                expect(crown.y).toBeGreaterThan(0);
+                expect(fit, label).toBeGreaterThan(0.05);
+                expect(fit, label).toBeLessThanOrEqual(1);
+                if (covered.x0 >= 0.14 && head.x < covered.x0) {
+                    // Room beside the board on the pole's side: about its head, a little under it
+                    // (the flower's rim stays under the top of the screen), as close as the card allows.
+                    expect(crown.x, label).toBeLessThanOrEqual(head.x + 1e-9);
+                    expect(crown.y, label).toBeGreaterThanOrEqual(head.y - 1e-9);
+                    expect(crown.y - head.y, label).toBeLessThan(0.22);
+                    if (head.x < covered.x0 - 0.2) expect(crown.x, label).toBeCloseTo(head.x, 9);
+                } else if (covered.x0 < 0.14 && 1 - covered.x1 < 0.14) {
+                    // No room beside the board at all: in the middle of the row above it.
+                    expect(crown.x, label).toBeCloseTo(0.5, 9);
+                    expect(crown.y, label).toBeLessThan(stage.board.y0);
+                    expect(fit, label).toBeLessThan(1);
+                }
+            }
+            // At its full size on a wide screen, whatever stands on the other side of the board,
+            // and all of it but a stray petal is seen: beside the card, on the screen.
+            for (const hud of [null, SCORE_PANEL]) {
+                const crown = bloom({
+                    lines: SUMMER_BLOSSOM_MAYPOLE, flower: SUMMER_MIXED, hud, seconds: 1.6,
+                });
+                expect(crown.fit).toBe(1);
+                const seen = crown.petals.map((petal) => onScreen(petal.at, crown.camera));
+                expect(seen.filter((place) => within(place, crown.stage.board)).length)
+                    .toBeLessThanOrEqual(seen.length * 0.01);
+                const off = seen.filter((place) => place.x < 0 || place.x > 1 || place.y < 0 || place.y > 1);
+                expect(off.length, `${off.length} of ${seen.length} petals off the screen`)
+                    .toBeLessThanOrEqual(seen.length * 0.1);
             }
             // The crowning flower is the largest and fullest of them, at the same strength.
             const count = (overrides, options) => {
@@ -2578,10 +2635,12 @@ describe('Summer effects director', () => {
                 const seen = onScreen(flower.heart, camera);
                 const kinds = new Set(flower.petals.map((petal) => petal.flower));
                 if (index === opened.length - 1) {
-                    // The last crowns the maypole, in every colour.
+                    // The last opens about the maypole's head, in every colour, clear of the card.
                     const head = onScreen(maypole.top, camera);
-                    expect(seen.x).toBeCloseTo(head.x, 6);
-                    expect(seen.y).toBeCloseTo(head.y, 6);
+                    expect(within(seen, stage.board)).toBe(false);
+                    expect(Math.abs(seen.x - head.x)).toBeLessThan(0.35);
+                    expect(seen.y).toBeGreaterThanOrEqual(head.y - 1e-6);
+                    expect(seen.y - head.y).toBeLessThan(0.25);
                     expect(kinds.size).toBe(SUMMER_BOUQUET_KINDS);
                 } else {
                     // The others stand clear of the card, each of a kind of its own.

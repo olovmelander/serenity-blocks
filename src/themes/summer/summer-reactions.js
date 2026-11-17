@@ -117,7 +117,8 @@ const FRONT_EASE = 3;
 const FRONT_DIRECTION = 1;
 /** Emitters do their work early in their lives (the director spawns within these windows). */
 const WORK_SECONDS = Object.freeze({
-    lock: 0.25, seeds: 0.3, clear: 0.75, rise: 1.5, bouquet: 0.7, spin: 1.1, combo: 0.05, blossom: 0.6, skip: 1.1,
+    // (A sky flower opens 0.42 s into its life: until then, and a little after, its work is ahead of it.)
+    lock: 0.25, seeds: 0.3, clear: 0.75, rise: 1.5, bouquet: 0.7, spin: 1.1, combo: 0.05, blossom: 0.9, skip: 1.1,
 });
 /** A flower in the sky climbs for a moment, opens, and hangs there while its petals fall. */
 const BLOSSOM_SECONDS = 1.4;
@@ -730,8 +731,9 @@ export class SummerReactions {
         });
         // A stone skips down the sun's road: further, and with more hops, for every one in a row.
         this.emit('skip', { strength: 0.55 + 0.11 * run, lines: 4 + run, duration: SKIP_SECONDS });
-        // A crown already turning holds; a back-to-back alone does not raise one.
-        if (this.crown > 0.03 || this.crownTarget > 0.03) this.raiseCrown(Math.max(this.crownTarget, 0.55));
+        // A crown a combo is still holding up holds a while longer, at its own height; a
+        // back-to-back does not raise one, nor wake one that is unwinding.
+        if (this.crownHold > 0) this.raiseCrown(this.crownTarget);
         return true;
     }
 
