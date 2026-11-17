@@ -244,7 +244,10 @@ describe('Thermal Bloom vapour: the bodies the world writes', () => {
         });
         run(world, camera, 1.6);
         const list = bodies(world);
-        expect(list.length).toBe(VAPOUR_SLOTS);
+        // Full, or nearly: the events' bodies are admitted with a little headroom, so a newcomer
+        // begins without pushing out one that is still showing (thermal-bloom-smooth.test.js).
+        expect(list.length).toBeLessThanOrEqual(VAPOUR_SLOTS);
+        expect(list.length).toBeGreaterThanOrEqual(VAPOUR_SLOTS - 4);
         expect(list.some((b) => b.kind === VAPOUR_KIND.dome)).toBe(true);
         expect(list.some((b) => b.kind === VAPOUR_KIND.spray)).toBe(true);
         for (let i = 1; i < list.length; i++) {
