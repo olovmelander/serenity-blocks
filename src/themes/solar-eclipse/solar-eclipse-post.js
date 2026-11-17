@@ -80,6 +80,18 @@ export const EXPOSURE = 1.0;
 /** The column a reflection is drawn out into on the water: (reach in screen heights, weight). */
 const WATER_STREAK = Object.freeze([[0.012, 0.62], [0.026, 0.44], [0.045, 0.28], [0.07, 0.16]]);
 
+/**
+ * The lens's ghosts on the diamond: (how far along the line from the glare through the centre,
+ * radius in screen heights, colour). Faint: scene-linear light added before the tone map.
+ */
+const GHOSTS = Object.freeze([
+    [0.55, 0.018, 0.05, 0.11, 0.09],
+    [1.25, 0.045, 0.06, 0.05, 0.1],
+    [1.6, 0.028, 0.1, 0.07, 0.03],
+    [2.15, 0.075, 0.03, 0.06, 0.07],
+    [-0.35, 0.012, 0.1, 0.08, 0.05],
+]);
+
 /** Calm rects (board cards + HUD) the output pass evaluates. */
 export const CALM_RECTS_MAX = 5;
 
@@ -146,6 +158,8 @@ export class SolarEclipsePost {
         this.uEcho = uniform(new THREE.Vector4(0.2, 0.84, 0, 0));
         /** The water: (where the horizon stands, y down in UV; how far the film is stirred, 0..1). */
         this.uWater = uniform(new THREE.Vector2(0.6, 1));
+        /** The lens's ghosts: (the glare's centre x, y in UV, its strength 0..1, −). */
+        this.uGhost = uniform(new THREE.Vector4(0.2, 0.3, 0, 0));
 
         this.calmRects = Array.from({ length: CALM_RECTS_MAX }, () => new THREE.Vector4(0, 0, 0, 0));
         this.uCalm = this.calmRects.map((v) => uniform(v));
@@ -261,7 +275,28 @@ export class SolarEclipsePost {
                 };
                 glare.mulAssign(float(1.0).sub(max(held(this.uMoon), held(this.uEcho))));
             }
-            const H = S.add(glare);
+            const H = S.add(glare).toVar();
+
+            // ── The lens's ghosts: when the diamond burns, faint coloured discs strung along the
+            // line from it through the frame's centre (the photograph's own, never the sky's) ──
+            if (look.ripple) {
+                If(this.uGhost.z.greaterThan(0.01), () => {
+                    const g = this.uGhost.xy;
+                    const axis = vec2(0.5, 0.5).sub(g);
+                    const ghosts = vec3(0.0).toVar();
+                    GHOSTS.forEach(([along, size, r, gg, b]) => {
+                        const centre = g.add(axis.mul(along));
+                        const off = screenUV.sub(centre).mul(aspect);
+                        const dist = length(off);
+                        // A soft disc with a brighter rim, as an aperture's ghost has.
+                        const disc = float(1.0).sub(smoothstep(size * 0.82, size, dist));
+                        const k = dist.sub(size * 0.9).div(size * 0.08);
+                        const rim = exp(k.mul(k).negate());
+                        ghosts.addAssign(vec3(r, gg, b).mul(disc.mul(0.55).add(rim.mul(0.45))));
+                    });
+                    H.addAssign(ghosts.mul(this.uGhost.z).mul(float(1.0).sub(calm.mul(0.9))));
+                });
+            }
 
             // ── Exposure, the flash's veil, tone map, grade ──
             const veil = vec3(0.62, 0.8, 1.0).mul(this.uFlash.mul(0.004)).mul(float(1.0).sub(calm.mul(0.85)));
@@ -313,9 +348,11 @@ export class SolarEclipsePost {
 
     /** Per-frame values (all optional). */
     update({
-        flash, kick, bloomBoost, exposure, ripple, moon, echo, water, time,
+        flash, kick, bloomBoost, exposure, ripple, moon, echo, water, ghost, time,
     } = {}) {
         if (water) this.uWater.value.set(water.horizon, water.stir);
+        // (The world has already scaled the ghosts under Reduce flashing.)
+        if (ghost) this.uGhost.value.set(ghost.x, ghost.y, ghost.strength, 0);
         if (moon) this.uMoon.value.set(moon.x, moon.y, moon.radius, moon.matte);
         if (echo) this.uEcho.value.set(echo.x, echo.y, echo.radius, echo.matte);
         if (flash !== undefined) this.uFlash.value = flash * flashScale();

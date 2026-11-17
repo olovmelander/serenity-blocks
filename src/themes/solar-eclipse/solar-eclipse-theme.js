@@ -373,7 +373,7 @@ export default class SolarEclipseTheme extends BaseTheme {
             }),
         );
         this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
-        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+        this.registerEventListener(window, 'gameOver', () => this.endRun());
 
         const resetPointer = () => {
             this.pointer.x = 0;
@@ -412,6 +412,16 @@ export default class SolarEclipseTheme extends BaseTheme {
             if (n > best) best = n;
         });
         this.world?.onCombo(best);
+    }
+
+    /**
+     * A run is over: whatever is staged still lands, the chain is let go, and the eclipse reaches
+     * third contact (the moon slides off, daylight floods back) until the next run begins.
+     */
+    endRun() {
+        this.director?.flush();
+        this.resetSession();
+        this.world?.onGameOver?.();
     }
 
     /** A new run: the crown back at rest, no chain in flight. */
@@ -518,7 +528,11 @@ export default class SolarEclipseTheme extends BaseTheme {
         this.modeManager = manager;
         const relayout = () => this.scheduleLayoutReads();
         this.eventUnsubscribers.push(
-            manager.on('modeStarted', relayout),
+            manager.on('modeStarted', () => {
+                relayout();
+                // A new run covers the sun again: the last run's third contact closes.
+                this.world?.onSessionStart?.();
+            }),
             manager.on('modeActivated', relayout),
             manager.on('modeStopped', () => this.resetSession()),
         );

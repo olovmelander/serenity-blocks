@@ -54,6 +54,18 @@ import { noiseAt, seGauss } from './solar-eclipse-tsl.js';
 /** Where the corona is no longer worth drawing (solar radii); it fades out before it. */
 export const CORONA_REACH = 18;
 
+/**
+ * A twist's twist falls off this fast with height (per solar radius): steep, so the rays wind into
+ * a pinwheel (a uniform turn of radial rays would not show at all).
+ */
+export const TWIST_FALLOFF = 0.85;
+
+/** A clear's wave of light through the corona: its speed (solar radii a second) and life (s). */
+export const CORONA_WAVE = Object.freeze({ speed: 2.4, life: 1.5, reach: 4.5 });
+
+/** A back-to-back's halo CME: how far it travels (solar radii), its e-folding (s), its life (s). */
+export const HALO = Object.freeze({ reach: 4.2, travel: 2.2, life: 6 });
+
 const PHOTOSPHERE = vec3(1.0, 0.9, 0.74);
 const WHITE_HOT = vec3(1.0, 0.96, 0.92);
 
@@ -106,7 +118,7 @@ export function drawSun(env, p, {
     // ── The corona ──
     If(r.greaterThan(0.995).and(r.lessThan(CORONA_REACH)), () => {
         // A twist twists it: most at the limb, unwinding outward.
-        const tw = u.twist.mul(exp(r.sub(1.0).mul(-0.45)));
+        const tw = u.twist.mul(exp(r.sub(1.0).mul(-TWIST_FALLOFF)));
         const ct = cos(tw);
         const st = sin(tw);
         const pt = vec2(p.x.mul(ct).sub(p.y.mul(st)), p.x.mul(st).add(p.y.mul(ct)));
@@ -207,10 +219,47 @@ export function drawSun(env, p, {
             .mul(rayMod)
             .mul(u.surge.mul(0.6).add(1.0))
             .toVar();
-        // A faint aureole round it all, then the reach's soft end.
-        light.addAssign(pow(r, -1.6).mul(0.012).mul(exposure));
+        // A faint aureole round it all: the corona's own light scattered in the air between, so
+        // the crown stands in air rather than on black. Then the reach's soft end.
+        light.addAssign(pow(r, -1.6).mul(0.016).mul(exposure));
         light.mulAssign(float(1.0).sub(smoothstep(CORONA_REACH * 0.6, CORONA_REACH, r)));
         light.mulAssign(smoothstep(0.995, 1.004, r));
+
+        // ── A clear's wave of light running out through the corona along its rays ──
+        // Two may run at once (u.coronaWave: start, strength, start, strength).
+        const wave = (start, strength) => {
+            const wAge = t.sub(start);
+            const ends = float(1.0).sub(smoothstep(CORONA_WAVE.life * 0.7, CORONA_WAVE.life, wAge));
+            const live = smoothstep(0.0, 0.05, wAge).mul(ends);
+            const crestAt = wAge.mul(CORONA_WAVE.speed).add(1.02);
+            const width = wAge.mul(0.35).add(0.18);
+            const crest = seGauss(r.sub(crestAt).div(width));
+            // Strongest along the rays, so it runs out along the streamers, not as a ring.
+            return crest.mul(live).mul(strength).mul(exp(wAge.div(-0.9)));
+        };
+        If(u.coronaWave.y.add(u.coronaWave.w).greaterThan(0.001).and(r.lessThan(CORONA_WAVE.reach + 2.0)), () => {
+            const surge = wave(u.coronaWave.x, u.coronaWave.y).add(wave(u.coronaWave.z, u.coronaWave.w));
+            light.mulAssign(surge.mul(rayMod.mul(1.6).add(0.4)).mul(2.4).add(1.0));
+        });
+
+        // ── A back-to-back's halo CME: a fibrous shell expanding all round the sun ──
+        const hAge = t.sub(u.halo.x);
+        If(u.halo.y.greaterThan(0.001).and(hAge.greaterThan(0.0)).and(hAge.lessThan(HALO.life)), () => {
+            const shellAt = float(1.0).sub(exp(hAge.div(-HALO.travel))).mul(HALO.reach).add(1.1);
+            const width = hAge.mul(0.16).add(0.12);
+            const fibreAt = vec2(cos(ang), sin(ang)).mul(1.7).add(vec2(hAge.mul(0.02), 0.71));
+            const fibre = noiseAt(noise, fibreAt, 1.0).b;
+            const bright = smoothstep(0.0, 0.25, hAge).mul(exp(hAge.div(-2.0))).mul(u.halo.y);
+            // A bright, fibrous front with a faint cavity of swept-out corona behind it.
+            const shell = seGauss(r.sub(shellAt).div(width)).mul(fibre.mul(1.1).add(0.35));
+            const cavity = smoothstep(shellAt.sub(width.mul(4.0)), shellAt.sub(width), r)
+                .mul(float(1.0).sub(smoothstep(shellAt.sub(width), shellAt, r)));
+            behind.addAssign(u.coronaIn.mul(shell).mul(bright).mul(0.3).div(shellAt.mul(0.25).add(1.0)));
+            light.mulAssign(float(1.0).sub(cavity.mul(bright).mul(0.35)));
+        });
+
+        // Daylight washes the corona out as the photosphere returns (the diamond, the run's end).
+        light.mulAssign(float(1.0).sub(u.daylight.mul(0.55)));
 
         // ── Coronal mass ejections: a bright front, a dark cavity, a twisted core. Two may be in
         // the air at once (a back-to-back's twins, a deep cascade's), so one never cuts another.
@@ -268,7 +317,7 @@ export function drawSun(env, p, {
                 const erupt = max(t.sub(B.y), 0.0).toVar();
                 const lift = erupt.mul(0.7).add(erupt.mul(erupt).mul(0.62));
                 const grow = erupt.mul(0.75).add(1.0);
-                const s = wrap(ang.add(u.twist.mul(exp(r.sub(1.0).mul(-0.45)))).sub(A.x)).mul(r).toVar();
+                const s = wrap(ang.add(u.twist.mul(exp(r.sub(1.0).mul(-TWIST_FALLOFF)))).sub(A.x)).mul(r).toVar();
                 const z = r.sub(1.0).sub(lift).toVar();
                 const rise = smoothstep(0.0, PROMINENCE_RISE, age);
                 // An erupting loop widens as it climbs: a bubble of field carried out.
@@ -388,11 +437,37 @@ export function drawSun(env, p, {
                     // piece's colour.
                     const rooted = float(1.0).sub(smoothstep(0.0, 0.4, zw.div(tall)));
                     const body = mix(C.xyz, u.chromo, rooted.mul(0.42).add(0.14));
-                    const shade = mix(body, WHITE_HOT, hot.mul(hot).mul(0.5));
-                    behind.addAssign(shade.mul(glow).mul(C.w).mul(fade).mul(1.8));
+                    const shade = mix(body, WHITE_HOT, hot.mul(hot).mul(0.28));
+                    behind.addAssign(shade.mul(glow).mul(C.w).mul(fade).mul(1.35));
                 });
             });
         });
+    });
+
+    // ── The comet, now and then: a head a few radii off the limb, its tails streaming away
+    // from the sun (u.comet: position angle, the head's distance, power, the dust tail's curl) ──
+    If(u.comet.z.greaterThan(0.001).and(r.lessThan(u.comet.y.add(10.0))), () => {
+        const axis = vec2(cos(u.comet.x), sin(u.comet.x));
+        const across = vec2(axis.y.negate(), axis.x);
+        const rel = p.sub(axis.mul(u.comet.y)).toVar();
+        const along = dot(rel, axis).toVar();
+        const aside = dot(rel, across).toVar();
+        const ahead = max(along, 0.0).toVar();
+        // The ion tail: straight, thin and blue, its knots drifting outward.
+        const knot = noiseAt(noise, vec2(along.mul(0.6).sub(t.mul(0.11)), 0.43), 0.5).g.mul(0.7).add(0.55);
+        const ion = seGauss(aside.div(ahead.mul(0.022).add(0.016))).mul(exp(ahead.div(-4.2)))
+            .mul(smoothstep(-0.05, 0.35, along)).mul(knot);
+        // The dust tail: broader and warmer, curling away to one side as it streams out.
+        const bend = aside.sub(ahead.mul(ahead).mul(0.06).mul(u.comet.w));
+        const dust = seGauss(bend.div(ahead.mul(0.13).add(0.035))).mul(exp(ahead.div(-2.7)))
+            .mul(smoothstep(-0.1, 0.6, along));
+        // The head: a bright coma round a point of a nucleus.
+        const hd = length(rel);
+        const coma = seGauss(hd.div(0.2)).mul(0.75).add(seGauss(hd.div(0.04)).mul(3.0));
+        const shine = vec3(0.55, 0.78, 1.0).mul(ion.mul(0.42))
+            .add(vec3(1.0, 0.9, 0.72).mul(dust.mul(0.45)))
+            .add(vec3(0.86, 1.0, 0.92).mul(coma.mul(0.5)));
+        behind.addAssign(shine.mul(u.comet.z));
     });
 
     // ── In front: the bead necklace the clears send round the limb ──

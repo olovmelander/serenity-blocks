@@ -418,10 +418,10 @@ surges are as before.
   only within about 2.5 radii of the limb, cut pixel by pixel by the giant's own coverage (the bead
   of the diamond ring); its glare and spikes are scaled by the share of the disc the CPU finds past
   the limb. The rings' unseen face is lit by what comes through (thin rings bright, the thick one
-  dark); the haze's forward lobe is capped so a backlit haze cannot wash the frame (gotcha #1416).
+  dark); the haze's forward lobe is capped so a backlit haze cannot wash the frame (gotcha #1417).
 - The inner moon is traced once per pixel and laid in where its distance puts it, before the far
   rings or after the giant, with the near rings dropped where they lie behind it; its shadow on the
-  giant and the rings is a ray test against its sphere (gotcha #1417).
+  giant and the rings is a ray test against its sphere (gotcha #1418).
 - Nightfall (`onGameOver`) is a level that falls over a few seconds, holds `NIGHTFALL_HOLD` seconds
   and lifts by itself; `onSessionStart` (the mode manager's `modeStarted`) lifts it at once; a
   `resetSession` (the menu) keeps it. The theme ends a run in the order gotcha #1716 asks for
