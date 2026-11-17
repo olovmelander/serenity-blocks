@@ -172,7 +172,7 @@ function problemsOf({
     return problems;
 }
 
-describe.each(['High', 'Minimal'])('solar eclipse shaders at %s', (quality) => {
+describe.each(['High', 'Low', 'Minimal'])('solar eclipse shaders at %s', (quality) => {
     const built = [];
     let world;
 
