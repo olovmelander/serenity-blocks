@@ -6,6 +6,7 @@
  * veils        the veils' second, finer filaments, and the wisps drifting in front of the dust
  * litGas       the cavity's gas lit as a volume (its billows read again a step nearer the light)
  * starLayers   lattices of far stars drawn in the nursery itself
+ * farRim       the far range's rims follow its rough edges (else a soft light on its heads)
  * stars        field stars drawn as sprites (the bright ones wear diffraction spikes)
  * ambient      young stars already in the pillars with no play (their jets breathe)
  */
@@ -16,6 +17,7 @@ export const QUALITY = Object.freeze({
         veils: false,
         litGas: false,
         starLayers: 1,
+        farRim: false,
         stars: 60,
         ambient: 2,
     }),
@@ -25,8 +27,9 @@ export const QUALITY = Object.freeze({
         veils: false,
         litGas: false,
         starLayers: 1,
+        farRim: false,
         stars: 90,
-        ambient: 2,
+        ambient: 3,
     }),
     Medium: Object.freeze({
         lightTaps: 4,
@@ -34,8 +37,9 @@ export const QUALITY = Object.freeze({
         veils: true,
         litGas: true,
         starLayers: 2,
+        farRim: true,
         stars: 120,
-        ambient: 3,
+        ambient: 4,
     }),
     High: Object.freeze({
         lightTaps: 5,
@@ -43,8 +47,9 @@ export const QUALITY = Object.freeze({
         veils: true,
         litGas: true,
         starLayers: 2,
+        farRim: true,
         stars: 150,
-        ambient: 3,
+        ambient: 5,
     }),
     Ultra: Object.freeze({
         lightTaps: 6,
@@ -52,8 +57,9 @@ export const QUALITY = Object.freeze({
         veils: true,
         litGas: true,
         starLayers: 2,
+        farRim: true,
         stars: 180,
-        ambient: 4,
+        ambient: 6,
     }),
     Extreme: Object.freeze({
         lightTaps: 7,
@@ -61,8 +67,9 @@ export const QUALITY = Object.freeze({
         veils: true,
         litGas: true,
         starLayers: 2,
+        farRim: true,
         stars: 220,
-        ambient: 4,
+        ambient: 6,
     }),
 });
 

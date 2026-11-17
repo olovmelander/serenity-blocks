@@ -48,7 +48,7 @@ import {
 } from 'three/tsl';
 
 import {
-    FRONT_ROWS, LANTERN_ROWS, NOISE_SIZE, PILLAR_ROWS, PILLAR_SLOTS, TAU,
+    FAR_FOOT, FAR_SPIRES, FAR_TOP, FRONT_ROWS, LANTERN_ROWS, NOISE_SIZE, PALETTE_KEYS, PILLAR_ROWS, PILLAR_SLOTS, TAU,
 } from './nebula-flow-core.js';
 import {
     nfGauss, nfHash23, nfHue, nfSmin, nfTaper,
@@ -73,7 +73,8 @@ const on = (cond) => cond.select(1, 0);
  *   veils (bool)       the second veil octave and the near wisps
  *   litGas (bool)      the cavity's gas lit as a volume (one more pair of reads)
  *   stars (1..2)       far-star layers
- *   debug              'diffuse' | 'lit' | 'th' | 'n' (playground only)
+ *   farRim (bool)      the far range's rims follow its rough edges (one more distance and read)
+ *   debug              'diffuse' | 'lit' | 'th' | 'n', or 'off:a+b' to leave terms out (playground only)
  */
 export function createNebulaMaterial(u, noiseTex, reliefTex, look = {}) {
     const lightTaps = Math.max(2, Math.min(LIGHT_STEPS.length, look.lightTaps ?? 5));
@@ -81,6 +82,9 @@ export function createNebulaMaterial(u, noiseTex, reliefTex, look = {}) {
     const fineVeils = look.veils !== false;
     const litGas = look.litGas !== false;
     const starLayers = look.stars ?? 2;
+    const farRim = look.farRim !== false;
+    // Playground cost bisects (`dbg=off:far+comb+gal+wipe+fore+buried`): leave a term out.
+    const skipTerms = new Set((/off:([\w+]+)/.exec(look.debug || '')?.[1] || '').split('+'));
 
     const N = (uvNode, level = null) => (level === null ? texture(noiseTex, uvNode) : texture(noiseTex, uvNode).level(level));
 
@@ -161,6 +165,28 @@ export function createNebulaMaterial(u, noiseTex, reliefTex, look = {}) {
         const lod = max(log2(u.texel.mul(0.9 * NOISE_SIZE)), 0).add(2.5);
         return texture(reliefTex, q.mul(0.9)).level(lod).yz.mul(0.26 * 0.9);
     };
+    /**
+     * The far range's signed distance (no relief): one tapered capsule per spire, its foot at its
+     * share of the frame's half-width (FAR_SPIRES, laid out once here: only the foot's x follows
+     * the aspect).
+     */
+    const farDistance = (pS) => {
+        let d = null;
+        FAR_SPIRES.forEach((f) => {
+            const hx = f.lean;
+            const hy = f.top - f.w1 - FAR_FOOT;
+            const h = Math.hypot(hx, hy);
+            const [ux, uy] = [hx / h, hy / h];
+            const b = (f.w0 - f.w1) / h;
+            const a = Math.sqrt(1 - b * b);
+            const rel = pS.sub(vec2(u.aspect.mul(f.s), FAR_FOOT));
+            const local = vec2(dot(rel, vec2(uy, -ux)), dot(rel, vec2(ux, uy)));
+            const di = nfTaper(local, float(f.w0), float(f.w1), float(h), float(a), float(b));
+            d = d ? min(d, di) : di;
+        });
+        return d;
+    };
+
     /** Thickness of the dust: 0 outside, 1 deep inside; the edge is a translucent band. */
     const thick = (d) => smoothstep(0.02, -0.22, d);
 
@@ -197,9 +223,19 @@ export function createNebulaMaterial(u, noiseTex, reliefTex, look = {}) {
         const pGas = screen.add(u.cam.mul(0.6));
         const p = screen.add(u.cam).toVar();
         const t = u.time;
+        // A level-up's palette arrives as a wave from the cluster: inside the wave's radius the
+        // new palette, outside it the one it replaces (u.wipe: centre, radius, edge; a radius far
+        // past the frame when no wave runs, and then the two palettes are one).
+        const wipeR = length(screen.add(u.cam.mul(0.6)).sub(u.wipe.xy));
+        const wipeK = smoothstep(u.wipe.z.add(u.wipe.w), u.wipe.z.sub(u.wipe.w), wipeR).toVar();
+        const P = {};
+        PALETTE_KEYS.forEach((key) => {
+            P[key] = skipTerms.has('wipe') ? u[key] : mix(u.wipeFrom[key], u[key], wipeK).toVar();
+        });
+        P.prism = skipTerms.has('wipe') ? u.prism : mix(u.wipeFrom.prism, u.prism, wipeK).toVar();
 
         // ── the deep ─────────────────────────────────────────────────────────
-        const col = mix(u.deepLow, u.deepHigh, smoothstep(-1.0, 1.2, pFar.y)).toVar();
+        const col = mix(P.deepLow, P.deepHigh, smoothstep(-1.0, 1.2, pFar.y)).toVar();
 
         // far stars: one per cell at most
         const starLayer = (scale, power, seed, rarity) => {
@@ -216,6 +252,22 @@ export function createNebulaMaterial(u, noiseTex, reliefTex, look = {}) {
         };
         let stars = starLayer(float(52.0), 1.1, vec2(3.1, 7.7), 0.8);
         if (starLayers >= 2) stars = stars.add(starLayer(float(21.0), 2.2, vec2(9.4, 1.3), 0.9));
+        // far galaxies seen through the gaps: a few small smudges, each its own tilt and shape
+        // (a deep field behind the nursery), at most one a cell and kept to the middle of it
+        if (!skipTerms.has('gal')) {
+            const g = pFar.mul(11.0).add(vec2(5.3, 2.9));
+            const cell = floor(g);
+            const h = nfHash23(cell.add(vec2(71.0, 19.0)));
+            const o = g.sub(cell.add(h.xy.mul(0.2).add(0.4)));
+            const ca = cos(h.x.mul(TAU));
+            const sa = sin(h.x.mul(TAU));
+            const along = o.x.mul(ca).add(o.y.mul(sa));
+            const across = o.y.mul(ca).sub(o.x.mul(sa)).div(h.y.mul(0.45).add(0.3));
+            const r2 = along.mul(along).add(across.mul(across));
+            const disc = exp(r2.mul(-900.0)).add(exp(r2.mul(-260.0)).mul(0.35));
+            const tint = mix(vec3(1.0, 0.6, 0.38), vec3(0.82, 0.86, 1.0), h.y.mul(h.y));
+            stars = stars.add(tint.mul(disc).mul(smoothstep(0.9, 0.97, h.z)).mul(0.5));
+        }
 
         // ── the cavity: gas streaming out of the cluster's light ─────────────
         const q = wind(pGas).toVar();
@@ -250,28 +302,76 @@ export function createNebulaMaterial(u, noiseTex, reliefTex, look = {}) {
         const vTurned = vec2(
             vAt.x.mul(u.vortexSpin.x).add(vAt.y.mul(u.vortexSpin.y)),
             vAt.y.mul(u.vortexSpin.x).sub(vAt.x.mul(u.vortexSpin.y)),
-        );
-        const spiral = cos(atan(vTurned.y, vTurned.x).add(log2(vr).mul(1.6)).mul(2.0));
-        const armsOn = clamp(u.vortex.z.div(3.0), 0, 1).mul(nfGauss(vr.div(u.vortex.w.mul(1.25))));
+        ).toVar();
+        const spiral = cos(atan(vTurned.y, vTurned.x).add(log2(vr).mul(1.6)).mul(2.0)).toVar();
+        const armsOn = clamp(u.vortex.z.div(3.0), 0, 1).mul(nfGauss(vr.div(u.vortex.w.mul(1.25)))).toVar();
         gasDen.mulAssign(mix(float(1), smoothstep(-0.35, 0.85, spiral).mul(1.5).add(0.12), armsOn));
         // the emission's colour by how close to the cluster: hot pale core, saturated middle, dim rim
-        const cavityCol = mix(u.cavityFar, u.cavityNear, smoothstep(0.0, 0.9, nearLight)).toVar();
-        cavityCol.assign(mix(cavityCol, u.clusterGlow, smoothstep(0.75, 1.2, nearLight).mul(0.6)));
+        const cavityCol = mix(P.cavityFar, P.cavityNear, smoothstep(0.0, 0.9, nearLight)).toVar();
+        cavityCol.assign(mix(cavityCol, P.clusterGlow, smoothstep(0.75, 1.2, nearLight).mul(0.6)));
         // the prismatic palette spreads the gas round the hue wheel
-        const prismHue = fract(atan(rel.y, rel.x).div(TAU).mul(3.0).add(gas.mul(0.6))
+        const relTurn = atan(rel.y, rel.x).div(TAU).toVar();
+        const prismHue = fract(relTurn.mul(3.0).add(gas.mul(0.6))
             .add(r.mul(0.18))
             .add(t.mul(0.004)));
         const prismCol = nfHue(prismHue).mul(mix(0.25, 1.0, smoothstep(0.0, 0.9, nearLight)));
-        cavityCol.assign(mix(cavityCol, prismCol, u.prism.mul(0.85)));
+        cavityCol.assign(mix(cavityCol, prismCol, P.prism.mul(0.85)));
         const glow = gasDen.mul(nearLight.mul(1.2).add(0.09)).toVar();
+        // The cluster's light combed into the gas: streamers running out from it. Read in the angle
+        // round the cluster a whole number of times a turn (the tile closes on itself, no seam)
+        // and along the log of the distance, drawn outward with the flow; ridged, a level up, so
+        // they are strands, not pepper. Strongest near the light, gone by the frame's lower half.
+        const comb = N(vec2(relTurn.mul(12.0), log2(max(r, 0.05)).mul(0.35).sub(u.flow.mul(0.09)))
+            .add(vec2(0.37, 0.71)), 2).a;
+        const combOn = smoothstep(2.7, 1.3, r).mul(smoothstep(0.75, 1.2, r)).mul(u.streamers);
+        if (!skipTerms.has('comb')) glow.mulAssign(mix(float(1), comb.mul(1.7).add(0.3), combOn));
         // the faces turned to the light are brighter and take its colour at their edges; those
         // turned away sink
         const relief = glow.mul(mix(0.55, 1.45, smoothstep(0.15, 0.85, facing)));
-        cavityCol.assign(mix(cavityCol, u.clusterGlow, smoothstep(0.6, 1.0, facing).mul(nearLight).mul(0.35)));
+        cavityCol.assign(mix(cavityCol, P.clusterGlow, smoothstep(0.6, 1.0, facing).mul(nearLight).mul(0.35)));
         // lanes of cool dust in the cavity: they hide the gas behind them
+        // (the weather's dust tide thickens them: u.lanes, 1 at rest)
         const lane = smoothstep(0.5, 0.8, N(q.mul(0.6).add(warpC.mul(0.8)).add(vec2(0.53, 0.19))).b);
-        const laneT = exp(lane.mul(-1.4));
-        col.addAssign(stars.mul(exp(gasDen.mul(-2.0))).mul(laneT));
+        const laneT = exp(lane.mul(-1.4).mul(u.lanes)).toVar();
+
+        // ── the far range: smaller pillars further back in the cavity ────────
+        // Silhouettes between the far stars' parallax and the gas's, standing in the gas (they
+        // hide the far stars and the half of the gas behind them, and the half in front veils
+        // them), their heads and the faces turned to the cluster rimmed by its light. Drawn
+        // only below the tallest head.
+        const farA = float(0).toVar();
+        const pS = screen.add(u.cam.mul(0.45)).toVar();
+        // (a cheap bound first: how far across from the nearest spire's axis, past its foot's
+        // width, its relief and its rim's reach; nothing is worked out away from them)
+        let farNear = null;
+        FAR_SPIRES.forEach((f) => {
+            const dx = abs(pS.x.sub(u.aspect.mul(f.s).add(f.lean * 0.5))).sub(f.w0 + 0.14);
+            farNear = farNear ? min(farNear, dx) : dx;
+        });
+        If(pS.y.lessThan(skipTerms.has('far') ? -10 : FAR_TOP + 0.04).and(farNear.lessThan(0)), () => {
+            const toLS = normalize(u.cluster.sub(pS));
+            const lodS = max(log2(u.texel.mul(1.3 * NOISE_SIZE)), 0);
+            const roughS = (at) => texture(reliefTex, at.mul(1.3).add(vec2(0.53, 0.29))).level(lodS).x
+                .sub(0.5).mul(0.12);
+            const dS = farDistance(pS).sub(roughS(pS)).toVar();
+            const aS = smoothstep(0.012, -0.03, dS).mul(0.8);
+            // a face the cluster's light reaches: the distance grows toward the light
+            const stepL = 0.03;
+            const litS = farRim
+                ? clamp(farDistance(pS.add(toLS.mul(stepL))).sub(roughS(pS.add(toLS.mul(stepL)))).sub(dS)
+                    .div(stepL), 0, 1)
+                : smoothstep(-0.6, 0.2, pS.y);
+            const sunS = exp(length(u.cluster.sub(pS)).sub(1.2).max(0).mul(-0.6)).mul(u.shine);
+            const rimS = exp(abs(dS.add(0.004)).mul(-70.0)).mul(litS).mul(sunS);
+            // the heads catch the most of it (a far pillar is a dark column with a lit crown)
+            const crownS = smoothstep(-0.55, 0.2, pS.y);
+            const faceS = smoothstep(-0.08, 0.0, dS).mul(litS.mul(litS)).mul(sunS).mul(crownS);
+            const bodyS = P.dustDark.mul(0.8).add(cavityCol.mul(glow.mul(0.12).add(0.012)));
+            col.assign(mix(col, bodyS.add(P.dustLit.mul(P.dustLit).mul(faceS.mul(0.22))), aS));
+            col.addAssign(mix(P.dustLit, P.front, 0.5).mul(rimS).mul(crownS.mul(0.4).add(0.12)));
+            farA.assign(aS);
+        });
+        col.addAssign(stars.mul(exp(gasDen.mul(-2.0))).mul(laneT).mul(float(1).sub(farA)));
 
         // fronts: the cluster's light sent down through the nursery by a clear
         const frontLit = vec3(0).toVar();
@@ -292,7 +392,7 @@ export function createNebulaMaterial(u, noiseTex, reliefTex, look = {}) {
         const cavityHue = cavityCol.div(max(max(cavityCol.x, max(cavityCol.y, cavityCol.z)), 1e-3));
         const frontGas = frontLit.mul(mix(vec3(1), cavityHue, 0.55)).mul(gasDen.mul(1.1).add(0.012)).mul(u.iris);
 
-        col.addAssign(cavityCol.mul(relief).mul(laneT.mul(0.7).add(0.3)));
+        col.addAssign(cavityCol.mul(relief).mul(laneT.mul(0.7).add(0.3)).mul(float(1).sub(farA.mul(0.45))));
         col.addAssign(frontGas);
         // the vortex glows in the colours of the pieces that wound it: one arm per quarter turn
         // about its heart, read in the wound gas so the arms spiral with it. The weights are the
@@ -309,8 +409,27 @@ export function createNebulaMaterial(u, noiseTex, reliefTex, look = {}) {
             .add(u.vortexArms[2].mul(armN.x.mul(armN.x)))
             .add(u.vortexArms[3].mul(armN.y.mul(armN.y)));
         col.addAssign(armTint.mul(u.vortexGlow).mul(gasDen.mul(0.8).add(0.012)).mul(windAmt).mul(u.iris));
+        // A chain's arms are where stars form: knots of new light strung along their crests, in
+        // the pieces' colours, each breathing on its own. Laid out in the arms' own turning frame
+        // (round, riding round with them; in the wound gas the shear drew them into dashes). At
+        // most one a cell, kept to its middle.
+        If(armsOn.greaterThan(0.02), () => {
+            const g = vTurned.mul(10.0).add(vec2(17.0, 31.0));
+            const cell = floor(g);
+            const h = nfHash23(cell);
+            const br = length(g.sub(cell.add(h.xy.mul(0.3).add(0.35))));
+            const crest = smoothstep(0.35, 0.95, spiral);
+            const pulse = sin(t.mul(h.z.mul(2.0).add(1.0)).add(h.x.mul(TAU))).mul(0.3).add(0.7);
+            const bead = exp(br.mul(br).mul(-110.0)).mul(2.6).add(exp(br.mul(br).mul(-16.0)).mul(0.16))
+                .mul(smoothstep(0.45, 0.8, h.z))
+                .mul(crest)
+                .mul(armsOn)
+                .mul(pulse);
+            col.addAssign(mix(armTint, vec3(1), exp(br.mul(br).mul(-300.0)).mul(0.65)).mul(bead)
+                .mul(u.vortexGlow.mul(2.6).add(0.25)).mul(u.iris));
+        });
         // the cluster's own glow, beyond the frame's top
-        col.addAssign(u.clusterGlow.mul(exp(length(pGas.sub(u.cluster)).mul(-1.6))).mul(0.45).mul(u.shine));
+        col.addAssign(P.clusterGlow.mul(exp(length(pGas.sub(u.cluster)).mul(-1.6))).mul(0.45).mul(u.shine));
 
         // ── the veils: filaments in the same current ─────────────────────────
         const side = vec2(outward.y, outward.x.negate());
@@ -326,9 +445,30 @@ export function createNebulaMaterial(u, noiseTex, reliefTex, look = {}) {
             return v;
         };
         const veil = flowed(q, outward, 1.35, 0.4, veilRead)
-            .mul(smoothstep(0.3, 0.75, gas)).mul(nearLight.mul(0.9).add(0.04));
-        const veilCol = mix(u.veil, nfHue(fract(prismHue.add(0.33))), u.prism.mul(0.85));
+            .mul(smoothstep(0.3, 0.75, gas)).mul(nearLight.mul(0.9).add(0.04)).toVar();
+        const veilCol = mix(P.veil, nfHue(fract(prismHue.add(0.33))), P.prism.mul(0.85));
         col.addAssign(veilCol.mul(veil).mul(0.55).mul(laneT).mul(frontSum.mul(1.5).add(1)));
+
+        // ── a perfect clear's light echo ─────────────────────────────────────
+        // The great star's flash reaches the dust round it later the further the dust lies, so
+        // shells of its light sweep out through the whole nursery, slowly, each in its own colour
+        // (dust at four depths), lighting the gas's own structure as they pass: its billows, and
+        // brightest its filaments, which a front never shows. Only while one runs (u.echo.w).
+        const echoLit = vec3(0).toVar();
+        If(u.echo.w.greaterThan(0.001), () => {
+            const er = length(pGas.sub(u.echo.xy));
+            const lead = u.echo.z.mul(0.55);
+            const shades = [[0.5, 0.62, 0.8], [1.0, 0.76, 0.36], [1.0, 0.34, 0.5], [0.56, 0.36, 1.0]];
+            shades.forEach(([cr, cg, cb], i) => {
+                const R = lead.sub(0.17 * i);
+                const w = u.echo.z.mul(0.006).add(0.05 + i * 0.012);
+                const band = nfGauss(er.sub(R).div(w)).mul(on(R.greaterThan(0))).mul(1 - i * 0.14);
+                echoLit.addAssign(vec3(cr, cg, cb).mul(band));
+            });
+            echoLit.mulAssign(u.echo.w.mul(u.iris));
+            const structure = gasDen.mul(1.2).add(veil.mul(3.2)).add(0.03);
+            col.addAssign(echoLit.mul(structure));
+        });
 
         // ── the pillars ──────────────────────────────────────────────────────
         // the pillars' shape once: the relief's read and the normal's slope both start from it
@@ -412,43 +552,94 @@ export function createNebulaMaterial(u, noiseTex, reliefTex, look = {}) {
         });
         // the cluster stands above and a little behind the pillars: faces stay dark, what turns
         // toward the light catches it
-        const L3 = normalize(vec3(toL, -0.15));
+        const L3 = normalize(vec3(toL, -0.15)).toVar();
         const diffuse = max(dot(n, L3).add(0.25).div(1.25), 0).toVar();
         // how strongly the cluster lights this height of the nursery
-        const sun = exp(length(u.cluster.sub(p)).sub(1.2).max(0).mul(-0.55)).mul(u.shine);
-        const alpha = float(1).sub(exp(th.mul(-5.5))).mul(float(1).sub(depth.mul(0.25))).toVar();
+        const sun = exp(length(u.cluster.sub(p)).sub(1.2).max(0).mul(-0.55)).mul(u.shine).toVar();
+        // how much of what lies behind the dust it hides (0 outside it)
+        const alpha = float(0).toVar();
 
         // the dust: dark where the light cannot reach, warm where it does; interior lanes
-        const inner = N(p.mul(1.7).add(vec2(0.77, 0.21))).r;
-        const lanes = N(p.mul(0.75).add(vec2(0.13, 0.57))).b;
-        const height = smoothstep(-1.1, 0.6, p.y);
-        // the billows stand out and the folds between them sink: an occlusion from the relief's
-        // own height
-        const fold = smoothstep(-0.07, 0.09, rough).mul(0.55).add(0.45);
-        const dustCol = u.dustDark.mul(inner.mul(0.8).add(0.45)).mul(height.mul(0.9).add(0.55)).mul(fold).toVar();
-        // the cavity's light falls on the dust from in front: a cool fill in the shadows
-        dustCol.addAssign(cavityCol.mul(glow.mul(0.25).add(0.02)).mul(max(n.z, 0).mul(0.6).add(0.2)));
-        dustCol.addAssign(u.dustLit.mul(diffuse.mul(lit)).mul(sun).mul(fold).mul(1.25));
-        // light the dust scatters on inside itself: the billows that turn toward the cluster keep
-        // a warm glow deep into a pillar, so its face is a heap of lit lumps, not a silhouette
-        const deepLight = max(dot(n, L3).add(0.3), 0).div(1.3).mul(litSoft).mul(float(1).sub(lit));
-        dustCol.addAssign(mix(u.dustLit, u.dustGlow, 0.35).mul(deepLight).mul(sun).mul(fold.mul(fold))
-            .mul(0.3));
-        dustCol.addAssign(u.dustGlow.mul(smoothstep(0.7, 1.0, inner)).mul(th.mul(th)).mul(0.25));
-        // back-lit edges: the cavity's own light through the thin rim on the shadowed side
-        const rim = th.mul(float(1).sub(th)).mul(4.0).mul(float(1).sub(lit));
-        dustCol.addAssign(cavityCol.mul(glow.mul(0.6).add(0.04)).mul(rim).mul(0.45));
-        // the stars the board kindled light the dust round them from within (the dust's own
-        // grain shows in their light)
-        dustCol.addAssign(lantern.mul(th).mul(inner.mul(0.9).add(0.25)).mul(0.32).mul(u.iris));
-        // the far pillars stand behind more of the glowing gas
-        dustCol.assign(mix(dustCol, cavityCol.mul(glow.add(0.06)), depth.mul(0.55)));
-        // translucent lanes: thinner dust lets the cavity show through
-        alpha.mulAssign(float(1).sub(smoothstep(0.45, 0.85, lanes).mul(0.35)));
-        // what shows through thin dust is reddened (it takes more blue than red), then the dust's
-        // own light on top
-        const through = pow(vec3(max(float(1).sub(alpha), 1e-4)), vec3(0.78, 1.0, 1.32));
-        col.assign(col.mul(through).add(dustCol.mul(alpha)));
+        const inner = N(p.mul(1.7).add(vec2(0.77, 0.21))).r.toVar();
+        // Striations: the dust drawn out up the columns (the pillars stand nearly upright) into
+        // long dark lanes and paler threads, wavy with the relief's own warp. Ridged threads read a
+        // level up: stretched 7:1, the finest octave would be dashes.
+        const stri = float(0.5).toVar();
+        // The dust's own colour only where there is dust (its opacity is zero past d = 0.02, so
+        // outside it the composite below is the identity): most of the frame skips two reads, a
+        // hash and every term of it.
+        If(d.lessThan(0.025), () => {
+            alpha.assign(float(1).sub(exp(th.mul(-5.5))).mul(float(1).sub(depth.mul(0.25))));
+            const lanes = N(p.mul(0.75).add(vec2(0.13, 0.57)), max(log2(u.texel.mul(0.75 * NOISE_SIZE)), 0)).b;
+            stri.assign(N(vec2(qDust.x.mul(4.4), qDust.y.mul(0.6)).add(vec2(0.31, 0.11)), 1).a);
+            const striLane = smoothstep(0.42, 0.85, stri);
+            const height = smoothstep(-1.1, 0.6, p.y);
+            // the billows stand out and the folds between them sink: an occlusion from the relief's
+            // own height
+            const fold = smoothstep(-0.07, 0.09, rough).mul(0.55).add(0.45);
+            // a column's dense core is darker than its skin
+            const core = smoothstep(-0.04, -0.3, d);
+            const dustCol = P.dustDark.mul(inner.mul(0.8).add(0.45)).mul(height.mul(0.9).add(0.55)).mul(fold)
+                .mul(float(1).sub(core.mul(0.4)))
+                .mul(float(1).sub(striLane.mul(0.3)))
+                .toVar();
+            // the cavity's light falls on the dust from in front: a cool fill in the shadows
+            dustCol.addAssign(cavityCol.mul(glow.mul(0.25).add(0.02)).mul(max(n.z, 0).mul(0.6).add(0.2)));
+            // The cluster's light on the dust, by how much of it arrives: deep and red where little
+            // does (the palette's lit colour squared), the lit colour itself, and white-gold where a
+            // head or a shoulder turns full into it. The threads catch it more than the lanes.
+            const litAmt = diffuse.mul(lit).mul(sun).toVar();
+            const litCol = mix(
+                mix(P.dustLit.mul(P.dustLit), P.dustLit, smoothstep(0.05, 0.55, litAmt)),
+                mix(P.dustLit, P.front, 0.6).mul(1.3),
+                smoothstep(0.6, 1.4, litAmt),
+            );
+            dustCol.addAssign(litCol.mul(litAmt).mul(fold).mul(stri.mul(0.5).add(0.75)).mul(1.25));
+            // Young stars still buried in the dust (the telescope's red points along every pillar): at
+            // most one a cell and kept to its middle, each glowing through the dust round it and
+            // breathing on a slow clock of its own (the weather's deep hours bring them up: u.embers)
+            {
+                const ec = p.mul(8.0);
+                const ecell = floor(ec);
+                const eh = nfHash23(ecell.add(vec2(13.0, 41.0)));
+                const er = length(ec.sub(ecell.add(eh.xy.mul(0.2).add(0.4))));
+                const ePulse = sin(t.mul(eh.y.mul(0.5).add(0.15)).add(eh.x.mul(TAU))).mul(0.3).add(0.75);
+                // most of them near a column's skin, where the light has uncovered them
+                const skinward = smoothstep(0.06, 0.32, th).mul(float(1).sub(smoothstep(0.7, 1.0, th).mul(0.75)));
+                const buried = exp(er.mul(er).mul(-420.0)).mul(3.0).add(exp(er.mul(er).mul(-45.0)).mul(0.16))
+                    .mul(smoothstep(0.9, 0.97, eh.z))
+                    .mul(eh.y.mul(eh.y).mul(0.8).add(0.35))
+                    .mul(ePulse)
+                    .mul(skinward);
+                dustCol.addAssign(mix(P.dustGlow.mul(2.5), vec3(1.0, 0.2, 0.07), 0.85).mul(buried).mul(u.embers));
+            }
+            // the body of a column glows faintly with the light it scatters all through itself, rust
+            // red and threaded along the striations: a pillar is a translucent heap, not a hole in the gas
+            dustCol.addAssign(P.dustLit.mul(P.dustLit).mul(litSoft).mul(sun).mul(stri.mul(0.9).add(0.2))
+                .mul(fold)
+                .mul(float(1).sub(core.mul(0.5)))
+                .mul(0.16));
+            // light the dust scatters on inside itself: the billows that turn toward the cluster keep
+            // a warm glow deep into a pillar, so its face is a heap of lit lumps, not a silhouette
+            const deepLight = max(dot(n, L3).add(0.3), 0).div(1.3).mul(litSoft).mul(float(1).sub(lit));
+            dustCol.addAssign(mix(P.dustLit, P.dustGlow, 0.35).mul(deepLight).mul(sun).mul(fold.mul(fold))
+                .mul(0.3));
+            dustCol.addAssign(P.dustGlow.mul(smoothstep(0.7, 1.0, inner)).mul(th.mul(th)).mul(0.25));
+            // back-lit edges: the cavity's own light through the thin rim on the shadowed side
+            const rim = th.mul(float(1).sub(th)).mul(4.0).mul(float(1).sub(lit));
+            dustCol.addAssign(cavityCol.mul(glow.mul(0.6).add(0.04)).mul(rim).mul(0.45));
+            // the stars the board kindled light the dust round them from within (the dust's own
+            // grain shows in their light)
+            dustCol.addAssign(lantern.mul(th).mul(inner.mul(0.9).add(0.25)).mul(0.32).mul(u.iris));
+            // the far pillars stand behind more of the glowing gas
+            dustCol.assign(mix(dustCol, cavityCol.mul(glow.add(0.06)), depth.mul(0.55)));
+            // translucent lanes: thinner dust lets the cavity show through
+            alpha.mulAssign(float(1).sub(smoothstep(0.45, 0.85, lanes).mul(0.35)));
+            // what shows through thin dust is reddened (it takes more blue than red), then the dust's
+            // own light on top
+            const through = pow(vec3(max(float(1).sub(alpha), 1e-4)), vec3(0.78, 1.0, 1.32));
+            col.assign(col.mul(through).add(dustCol.mul(alpha)));
+        });
         // thin dust passes the cluster's light on toward the eye (forward scatter): a warm,
         // translucent band just inside every lit edge, under the front's hairline
         // (its depth and strength vary with the billows, so it is not an outline drawn round them)
@@ -456,16 +647,18 @@ export function createNebulaMaterial(u, noiseTex, reliefTex, look = {}) {
         const sheer = exp(abs(sheerAt).mul(-26.0)).mul(lit.mul(lit)).mul(sun)
             .mul(diffuse.mul(0.6).add(0.4))
             .mul(inner.mul(0.9).add(0.3));
-        col.addAssign(mix(u.dustLit, u.front, 0.3).mul(sheer).mul(0.42));
+        col.addAssign(mix(P.dustLit, P.front, 0.3).mul(sheer).mul(0.42));
         // the lantern's haze in the gas just outside the dust
         col.addAssign(lantern.mul(float(1).sub(alpha)).mul(0.05).mul(u.iris));
+        // a light echo passing over the pillars lights their faces and their threads too
+        col.addAssign(echoLit.mul(th).mul(stri.mul(0.5).add(0.25)).mul(diffuse.mul(0.6).add(0.4)).mul(0.35));
 
         // the ionization front: a thin skin on every lit edge, flaring as a front crosses it
         const flare = frontSum.mul(3.0).add(1.0);
         const skin = exp(abs(d.add(0.008)).mul(-90.0)).mul(lit.mul(lit)).mul(sun).mul(diffuse.mul(0.7).add(0.3));
         // the heat of play keeps the rims burning (u.burn − 1 on top of their own light); the
         // fronts flare them as ever
-        col.addAssign(u.front.mul(skin).mul(1.6).mul(flare.add(u.burn).sub(1)));
+        col.addAssign(P.front.mul(skin).mul(1.6).mul(flare.add(u.burn).sub(1)));
         col.addAssign(frontLit.mul(skin).mul(2.0).mul(u.iris));
         // the burning rims of the holes the released stars boiled open
         col.addAssign(holeRim.mul(th.mul(0.6).add(0.15)).mul(0.6).mul(u.iris));
@@ -475,7 +668,7 @@ export function createNebulaMaterial(u, noiseTex, reliefTex, look = {}) {
         const streak = N(vec2(across.mul(2.0), dot(p, toL).mul(0.6).sub(u.flow.mul(0.05)))).r;
         const evap = exp(outside.mul(-13.0)).mul(lit.mul(lit)).mul(sun).mul(float(1).sub(th))
             .mul(streak.mul(0.7).add(0.45));
-        col.addAssign(u.evap.mul(evap).mul(0.3).mul(flare));
+        col.addAssign(P.evap.mul(evap).mul(0.3).mul(flare));
         // the plumes: that gas carried on toward the cluster in long, thin streamers off every lit
         // head and shoulder, running outward with the flow (faded out before the band where the
         // light is worked out ends)
@@ -485,13 +678,13 @@ export function createNebulaMaterial(u, noiseTex, reliefTex, look = {}) {
         // (a front only stirs the plumes and the halo: flared like the hairline, they washed a
         // whole pillar pale)
         const stir = frontSum.mul(0.8).add(1.0);
-        col.addAssign(mix(u.evap, u.front, 0.4).mul(plume).mul(0.5).mul(stir));
+        col.addAssign(mix(P.evap, P.front, 0.4).mul(plume).mul(0.5).mul(stir));
         // the gas just off a lit face is the densest the light reaches: a halo in the cavity's own
         // colour over every lit edge, which lifts the dust off the gas behind it
         const halo = exp(outside.mul(-6.5)).mul(smoothstep(0.32, 0.12, d)).mul(lit).mul(sun)
             .mul(float(1).sub(th))
             .mul(strand.mul(0.6).add(0.4));
-        col.addAssign(mix(cavityCol, u.clusterGlow, 0.35).mul(halo).mul(0.085).mul(stir));
+        col.addAssign(mix(cavityCol, P.clusterGlow, 0.35).mul(halo).mul(0.085).mul(stir));
 
         // ── the near air ─────────────────────────────────────────────────────
         // the pillars rise out of a haze that lies low over the ridge, and wisps of gas drift in
@@ -502,8 +695,8 @@ export function createNebulaMaterial(u, noiseTex, reliefTex, look = {}) {
         If(low.greaterThan(0.0), () => {
             const mist = N(vec2(pNear.x.mul(0.32).add(u.flow.mul(0.01)), pNear.y.mul(0.85)).add(vec2(0.41, 0.17)), 1).r;
             const haze = low.mul(low).mul(smoothstep(0.25, 0.75, mist).mul(0.75).add(0.25)).mul(0.42);
-            const hazeCol = mix(u.cavityFar, cavityCol, 0.45).mul(glow.mul(0.5).add(0.06))
-                .add(u.dustLit.mul(sun.mul(0.012)));
+            const hazeCol = mix(P.cavityFar, cavityCol, 0.45).mul(glow.mul(0.5).add(0.06))
+                .add(P.dustLit.mul(sun.mul(0.012)));
             col.assign(col.mul(float(1).sub(haze.mul(0.55))).add(hazeCol.mul(haze)));
         });
         if (fineVeils) {
@@ -514,9 +707,29 @@ export function createNebulaMaterial(u, noiseTex, reliefTex, look = {}) {
                 const wq = vec2(dot(pNear, vec2(0.87, 0.5)), dot(pNear, vec2(-0.5, 0.87)));
                 const thread = N(vec2(wq.x.mul(0.5).add(u.flow.mul(0.015)), wq.y.mul(1.4)).add(vec2(0.07, 0.29)), 1).a;
                 const wisp = smoothstep(0.55, 0.95, thread).mul(flank);
-                col.addAssign(mix(cavityCol, u.veil, 0.4).mul(wisp).mul(nearLight.mul(0.5).add(0.05)).mul(0.22));
+                col.addAssign(mix(cavityCol, P.veil, 0.4).mul(wisp).mul(nearLight.mul(0.5).add(0.05)).mul(0.22));
             });
         }
+
+        // ── the near dust ────────────────────────────────────────────────────
+        // Dark, soft masses close to the eye in the lower corners: out of focus (wide soft edges,
+        // a blurred read), their tops lit faintly from above, and they move furthest with the
+        // parallax, so the nursery has a foreground. Only on a wide frame, where the corners are
+        // clear of the card and the stats bar.
+        const pF = screen.add(u.cam.mul(2.4)).toVar();
+        const cornerX = abs(pF.x).div(u.aspect).toVar();
+        const wideF = smoothstep(1.05, 1.4, u.aspect).toVar();
+        const foreOn = pF.y.lessThan(skipTerms.has('fore') ? -10 : -0.3).and(cornerX.greaterThan(0.55));
+        If(foreOn.and(wideF.greaterThan(0.0)), () => {
+            const lump = N(vec2(pF.x.mul(0.55), pF.y.mul(0.5)).add(vec2(0.21, 0.64)), 2).r;
+            const edgeY = float(-1.02).add(cornerX.sub(0.6).mul(1.25)).add(lump.sub(0.5).mul(0.42));
+            const dF = pF.y.sub(edgeY);
+            const aF = smoothstep(0.08, -0.12, dF).mul(smoothstep(0.55, 0.72, cornerX)).mul(wideF).mul(0.93);
+            const topLit = exp(abs(dF.add(0.05)).mul(-14.0));
+            const nearCol = P.dustDark.mul(0.3)
+                .add(mix(P.dustLit.mul(P.dustLit), cavityCol, 0.5).mul(topLit).mul(0.05));
+            col.assign(mix(col, nearCol, aF));
+        });
 
         // the hush before the great star: everything sinks
         col.mulAssign(float(1).sub(u.hush.mul(0.75)));

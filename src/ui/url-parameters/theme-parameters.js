@@ -143,7 +143,7 @@ const captureThemes = [
         'glass, iron, floor, lanterns, palms, ferns, leaves, vines, water, pads, reeds, '
         + 'fireflies, moths, motes, dew, blooms, queen, glows'],
 
-    ['nebula-flow', 'nebulaFlow', 'Star Cradle', 'nebula, stars, births, jets, flights, blades'],
+    ['nebula-flow', 'nebulaFlow', 'Star Cradle', 'nebula, stars, births, aura, jets, flights, blades'],
 
     ['neon-district',
         'neonDistrict',
