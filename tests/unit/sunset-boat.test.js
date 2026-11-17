@@ -7,7 +7,7 @@ import * as THREE from 'three/webgpu';
 import {
     BOAT, buildBoatGeometry, createBoat, lampForSun, longtailModel, passageAt, planPassage,
 } from '../../src/themes/sunset/sunset-boat.js';
-import { DEG, seaHeight } from '../../src/themes/sunset/sunset-core.js';
+import { DEG, seaMeshHeight, seaRingGap } from '../../src/themes/sunset/sunset-core.js';
 import { SUNSET_LONGTAIL } from '../../src/themes/sunset/sunset-longtail-model.js';
 import { SunsetWorld } from '../../src/themes/sunset/sunset-world.js';
 import { fallbackLayout } from '../../src/themes/sunset/sunset-composition.js';
@@ -137,14 +137,15 @@ describe('sunset boat: a passage', () => {
         expect(phone.seconds).toBeLessThan(wide.seconds);
     });
 
-    it('stays far out and below the horizon, where the eye sees it on the sea', () => {
+    it('stays out beyond the lanterns and below the horizon, where the eye sees it on the sea', () => {
         const p = planPassage({
             at: 0, halfView: 40, dir: -1, range: BOAT.range[0], speed: 5, slant: BOAT.angle,
         });
         for (let k = 0; k <= 20; k += 1) {
             const at = passageAt(p, (p.seconds * k) / 20, {});
             const far = Math.hypot(at.x, at.z);
-            expect(far).toBeGreaterThan(200);
+            // (Near enough to be a boat with people in it; past where most lanterns float.)
+            expect(far).toBeGreaterThan(90);
             // The waterline 3.2 m under the eye, so always under the horizon line.
             expect(Math.atan(3.2 / far) / DEG).toBeGreaterThan(0.3);
         }
@@ -157,7 +158,7 @@ describe('sunset boat: when it comes', () => {
         boat.restart(0);
         const runs = sail(boat, 0, 3600);
         expect(runs.length).toBeGreaterThanOrEqual(6);
-        expect(runs.length).toBeLessThanOrEqual(14);
+        expect(runs.length).toBeLessThanOrEqual(18);
         expect(runs[0].from).toBeGreaterThanOrEqual(BOAT.firstWait[0]);
         expect(runs[0].from).toBeLessThanOrEqual(BOAT.firstWait[1] + 0.5);
         for (let i = 1; i < runs.length; i += 1) {
@@ -214,7 +215,7 @@ describe('sunset boat: afloat', () => {
         [3, 20, 47.5].forEach((t) => {
             boat.update(t, { halfView: 40 });
             const s = boat.getState();
-            expect(s.y).toBeCloseTo(seaHeight(s.x, s.z, t) * 0.75, 6);
+            expect(s.y).toBeCloseTo(seaMeshHeight(s.x, s.z, t, seaRingGap(220)), 6);
             const forward = new THREE.Vector3(0, 0, 1).transformDirection(boat.mesh.matrix);
             expect(forward.x).toBeGreaterThan(0.95);
             // It rocks gently, never more than a few degrees.

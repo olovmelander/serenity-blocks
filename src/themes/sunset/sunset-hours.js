@@ -83,6 +83,20 @@ export const ARC_LEAN = 0.2;
  * gibbous sphere with its shadow on the limb away from the sun (a full moon would read flat).
  */
 export const MOON_PHASE = 50;
+/**
+ * The moon is not the same moon every night: each day that passes brings the next of these phase
+ * angles (degrees; the first is the gibbous moon the theme opens on, then one near full, a half
+ * moon, and a crescent with the earth's light on its dark side), and then they come round. It
+ * changes at noon, under the sea, where nobody sees it change.
+ */
+export const MOON_PHASES = Object.freeze([MOON_PHASE, 24, 86, 120]);
+/** How long the change takes (seconds of the wheel, from noon on). */
+export const MOON_TURN_SECONDS = 20;
+
+/** The share of the moon's disc that is lit at a phase angle (degrees): 1 full, 0 new. */
+export function moonLit(phase) {
+    return (1 + Math.cos(phase * DEG)) / 2;
+}
 
 const wrap24 = (h) => ((h % 24) + 24) % 24;
 
@@ -563,6 +577,24 @@ export function wheelAt(hour) {
         else hi = m;
     }
     return (lo + hi) / 2;
+}
+
+/** The second of the wheel that stands on noon: the moon is under the sea, and changes there. */
+export const NOON_WHEEL = wheelAt(12);
+
+/**
+ * The moon's phase angle (degrees) `wheel` seconds into the days: MOON_PHASES[0] until the first
+ * noon, the next from each noon on, eased over MOON_TURN_SECONDS.
+ */
+export function moonPhaseAt(wheel) {
+    const w = Number.isFinite(wheel) ? wheel : 0;
+    const days = (w - NOON_WHEEL) / DAY_SECONDS;
+    if (days < 0) return MOON_PHASES[0];
+    const n = MOON_PHASES.length;
+    const passed = Math.floor(days);
+    const from = MOON_PHASES[passed % n];
+    const to = MOON_PHASES[(passed + 1) % n];
+    return lerp(from, to, smooth(0, MOON_TURN_SECONDS, (days - passed) * DAY_SECONDS));
 }
 
 /**

@@ -72,6 +72,9 @@ The Tornado rebuild added the capture flags `tornadoForceWebGL`, `tornadoTime`,
 `tornadoFixedDt`, `tornadoParts` and `tornadoFalseColor` plus the `tornado` playground effect
 (it reads 25 parameters the other full-world effects already had, so it adds no name of its
 own); the theme it replaces read nothing from the URL, so no reader was retired.
+The Sunset living-sea pass (2026-11-17) gave the `sunset` playground effect `weather`, `moon`,
+`meteor`, `shower` and `b2b` (entries of its own for each) and the event `spin`, and the parts
+`islands`, `boat` and `meteors` to `sunsetParts`.
 The Stillwater rebuild retired that theme's old readers (`stillwaterQuality` and its `quality`
 fallback, `stillwaterPerf`, `stillwaterProfile` and their `profile` alias, `stillwaterValidation`,
 `stillwaterPowerPreference`, `stillwaterLayout`, `stillwaterReactionWarm` and `shafts`) together

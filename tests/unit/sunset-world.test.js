@@ -73,10 +73,15 @@ describe('sunset world: building', () => {
             up += new THREE.Vector3().crossVectors(b.clone().sub(a), c.clone().sub(a)).y;
         }
         expect(up).toBeGreaterThan(0);
+        // The lantern (sunset-lantern.test.js holds it to Blender's model): lit by its normals and
+        // the four numbers in `color`; its float sits a little way into the water, the rest above.
         const lantern = buildLanternGeometry();
-        expect(lantern.getAttribute('aPart')).toBeDefined();
+        ['position', 'normal', 'color'].forEach((name) => expect(lantern.getAttribute(name)).toBeDefined());
+        expect(lantern.index.count % 3).toBe(0);
         lantern.computeBoundingBox();
-        expect(lantern.boundingBox.min.y).toBeGreaterThanOrEqual(-1e-6); // it floats on its foot
+        expect(lantern.boundingBox.min.y).toBeLessThan(0);
+        expect(lantern.boundingBox.min.y).toBeGreaterThan(-0.05);
+        expect(lantern.boundingBox.max.y).toBeGreaterThan(0.6);
         // The gull (sunset-gull.test.js holds it to Blender's rig): skinned, painted, lit by normals.
         const bird = buildBirdGeometry();
         ['position', 'normal', 'color', 'skin'].forEach((name) => expect(bird.getAttribute(name)).toBeDefined());

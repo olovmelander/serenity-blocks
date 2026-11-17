@@ -176,6 +176,34 @@ export function ringRadius(i, rings) {
     return SEA_FAN.near * (SEA_FAN.far / SEA_FAN.near) ** (i / Math.max(1, rings - 1));
 }
 
+/**
+ * How far apart the rings of the sea's mesh are, as a share of their distance from the eye's
+ * foot (a mesh of `rings` rings).
+ */
+export function seaRingGap(rings) {
+    return (SEA_FAN.far / SEA_FAN.near) ** (1 / Math.max(1, rings - 1)) - 1;
+}
+
+/**
+ * The height of the sea AS ITS MESH DRAWS IT over a point: far out the rings are too far apart
+ * to carry the short trains, and the mesh leaves them out (sunset-sea.js fades each train by the
+ * rings' spacing in the same way). What rides far from the eye sits on this, not on seaHeight:
+ * a boat set on the full swell stood a hand out of the drawn water or sank to its rail in it.
+ */
+export function seaMeshHeight(x, z, time, ringGap) {
+    const t = time * SEA_TIME;
+    const spacing = Math.hypot(x, z) * ringGap;
+    let y = 0;
+    for (let i = 0; i < SWELL_ROWS.length; i += 1) {
+        const row = SWELL_ROWS[i];
+        const length = TAU / row[2];
+        const keep = 1 - smooth(length * 0.18, length * 0.42, spacing);
+        if (keep <= 0) continue;
+        y += keep * row[4] * Math.sin(row[2] * (row[0] * x + row[1] * z) - row[3] * t + row[5]);
+    }
+    return y;
+}
+
 // ── The sun and the moon ────────────────────────────────────────────────────────────────────
 
 /**
