@@ -346,19 +346,24 @@ export function createSpace(u, tier) {
                 const h = sdHash33(floor(p).add(71.0)).toVar();
                 const f = fract(p).sub(h.xyz.mul(0.5).add(0.25));
                 const g = f.sub(rd.mul(dot(f, rd)));
-                const gx = dot(g, u.camRight).div(15.0);
-                const gy = dot(g, u.camUp).div(15.0);
-                const pxl = pixel.mul(1.1);
-                const d2 = gx.mul(gx).add(gy.mul(gy));
-                const h6 = h.z.mul(h.z).mul(h.z);
-                const mag = h6.mul(h6).mul(0.9).add(0.1).mul(step(h.x, 0.24));
-                const core = exp(d2.div(pxl.mul(pxl)).negate()).mul(2.2);
-                const halo = exp(sqrt(d2).div(pxl.mul(3.5)).negate()).mul(0.2);
-                const spikes = exp(abs(gy).div(pxl.mul(0.55)).negate()).mul(exp(abs(gx).div(pxl.mul(8.0)).negate()))
-                    .add(exp(abs(gx).div(pxl.mul(0.55)).negate()).mul(exp(abs(gy).div(pxl.mul(8.0)).negate())))
-                    .mul(smoothstep(0.72, 0.9, h.z).mul(0.45));
-                const tint = mix(vec3(0.72, 0.84, 1.0), vec3(1.0, 0.8, 0.58), h.y);
-                stars = stars.add(tint.mul(core.add(halo).add(spikes)).mul(mag));
+                const gx = dot(g, u.camRight).div(15.0).toVar();
+                const gy = dot(g, u.camUp).div(15.0).toVar();
+                const bright = vec3(0.0).toVar();
+                // Only a quarter of the cells hold one: the rest skip the work.
+                If(h.x.lessThan(0.24), () => {
+                    const pxl = pixel.mul(1.1);
+                    const d2 = gx.mul(gx).add(gy.mul(gy));
+                    const h6 = h.z.mul(h.z).mul(h.z);
+                    const mag = h6.mul(h6).mul(0.9).add(0.1);
+                    const core = exp(d2.div(pxl.mul(pxl)).negate()).mul(2.2);
+                    const halo = exp(sqrt(d2).div(pxl.mul(3.5)).negate()).mul(0.2);
+                    const spikes = exp(abs(gy).div(pxl.mul(0.55)).negate()).mul(exp(abs(gx).div(pxl.mul(8.0)).negate()))
+                        .add(exp(abs(gx).div(pxl.mul(0.55)).negate()).mul(exp(abs(gy).div(pxl.mul(8.0)).negate())))
+                        .mul(smoothstep(0.72, 0.9, h.z).mul(0.45));
+                    const tint = mix(vec3(0.72, 0.84, 1.0), vec3(1.0, 0.8, 0.58), h.y);
+                    bright.assign(tint.mul(core.add(halo).add(spikes)).mul(mag));
+                });
+                stars = stars.add(bright);
             }
             sky.addAssign(stars.mul(float(1.0).sub(dens.mul(0.6))));
 

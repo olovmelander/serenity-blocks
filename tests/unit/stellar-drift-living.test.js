@@ -206,6 +206,21 @@ describe('game over is nightfall', () => {
         world.dispose();
     });
 
+    it('ends the run level, so the next run turns the hour and sends a comet at its first level-up', () => {
+        const { world, camera } = makeWorld(20);
+        frame(world, camera, 1 / 30, () => world.levelUp(2));
+        run(world, camera, COMET_CROSS + 1);
+        world.onGameOver();
+        run(world, camera, 2);
+        world.onSessionStart();
+        expect(world.level).toBe(1);
+        frame(world, camera, 1 / 30, () => world.levelUp(2));
+        run(world, camera, 2);
+        expect(world.level).toBe(2);
+        expect(world.u.cometB.value.x).toBeGreaterThan(0);
+        world.dispose();
+    });
+
     it('lifts within seconds when the next run starts', () => {
         const { world, camera } = makeWorld(20);
         world.onGameOver();

@@ -39,21 +39,24 @@ weather on it. The rings are the chain.
 
 ## Event language
 
-As rebuilt on 2026-10-21 (see "Event pass" below).
+As rebuilt on 2026-10-21 (see "Event pass" below), with the big moments given shapes of their own
+on 2026-11-17 (see "The living pass" at the end): four lines, the crown, the perfect clear, a new
+level and the end of a run no longer share one shell of light.
 
 | Event | What happens |
 | --- | --- |
 | Lock | A comet of the piece's colour (a white-hot head with a lens's faint four-point spikes, its trail cooling into a short train) leaves the card on an arc and falls into the rings 0.42 s later: a white-hot impact, the ringlet it lands on lit along its orbit both ways (an arc that lies along the rings' grain, never a hoop across it), a splash of ice chips that streak as they fly, and a density wave that brightens and thins the rings themselves as it runs out, wound into a spiral by their shear. It leaves a stain of that colour in the ice, drawn out into an arc, for about a quarter of a minute. The piece's column chooses where along the visible arc of the rings it lands (left to right as on the board), its row how far out. |
 | Hard drop | The same, landing harder: a brighter comet, a stronger wave, twice the ice. |
 | Clear (1–3) | The rings chime: a front per line runs out through the whole system, lighting it ringlet by ringlet with a white leading edge, in the colour of the piece that made the clear. Every cleared row is written round the giant as a hairline of light with a white-hot head, racing from the limb that faces the card along its latitude, hugging the band's festoons, lit through the cloud's own relief and cooling from its far end. Lightning answers under the night side's cloud: a flash that lights the cloud from below with the branching channels in its heart. Three lines bring a meteor. |
-| Combo | The rings are the chain. Each step raises their hum in the chain's colour (slow swells, and their spokes stand out); lightning walks the night side; from the third step meteors begin to fall, more with every two steps. At 3 and 5 two arcs of the chain's light race apart round the rings from the side that faces the camera; at 8 the chain is crowned: the arcs again, the rings' hum and spokes stronger for a while, and a corona of light leaves the giant. When the chain breaks the hum sinks back over a few seconds. |
-| Four lines | A storm of seven bolides strikes the cloud tops, modelled on the comet that hit Jupiter in 1994: a blinding fireball, a broad shock that runs out through the cloud and lights its thick parts, heat cooling from white through the piece's colour to embers, then a dark scar with a crescent of ejecta thrown downrange, which the band's own wind shears as it lingers for a quarter of a minute. A corona of light leaves the giant, the icy moon vents a great fan of ice, and the rings ring four times over. |
+| Combo | The rings are the chain. Each step raises their hum in the chain's colour (slow swells, and their spokes stand out); lightning walks the night side; from the third step meteors begin to fall, more with every two steps. At 3 and 5 two arcs of the chain's light race apart round the rings from the side that faces the camera; at 8 the chain is crowned: the arcs again, the rings' hum and spokes stronger for a while, and the haze of ice round the whole system lights in the chain's colour, soft torn waves of it rolling out past the camera. When the chain breaks the hum sinks back over a few seconds. |
+| Four lines | A string of pearls: a comet broken by the giant's pull comes back as a train of seven fragments on one track, and they strike one after another in a row across the cloud tops (as the train that hit Jupiter in 1994 did): each a blinding fireball, a broad shock lit where the cloud is thick, heat cooling from white through the piece's colour to embers, then a row of dark scars with crescents of ejecta, sheared by the band's wind over a quarter of a minute. The icy moon vents a great fan of ice and the rings ring four times over. |
 | T-spin | A cyclone is spun into the cloud where the giant faces the camera in daylight: the bands wind into a tightening spiral for a few seconds and then let go, two arms of the piece's colour wound with them; a two-armed spiral of light winds round through the rings, tightening as it turns. A zero-line spin does the same, more gently. |
 | Back-to-back | A beat after the clear, the rings' outer strand blazes: two threads braided round each other, with knots of light running along them. |
-| Perfect clear | The whole answer in gold: the arcs round the rings, the crown, a gold corona, the strand ablaze, the moon's vent (with four lines' storm if it was four lines). |
-| Level up | The hour turns: the picture moves one palette round its wheel, the rings ring it in in the star's own light, and a soft corona of starlight leaves the giant. |
+| Perfect clear | An eclipse, in gold: the sun swings behind the giant (its day side shrinks to a crescent and goes out), the air round its limb burns as a ring of fire, the rings glow lit from behind (the thin ones bright, the thick one dark) and a gold corona stands round the dark disc; then the sun comes out past the limb as a diamond ring and the hour comes back. With it the arcs round the rings, every ringlet gilded, the strand ablaze and the moon's vent (with four lines' pearls if it was four lines). Under reduced motion the sun stays home; the gold remains. |
+| Level up | The hour turns: the picture moves one palette round its wheel, the rings ring it in in the star's own light, and a comet crosses the far sky to herald it. |
 | Time | By itself, with no level change, the picture drifts round the same wheel: one palette every 90 seconds. |
-| Game over, new run | Everything in flight is dropped; the giant keeps turning and the hour keeps its place. |
+| Game over | Nightfall: the sun swings round behind the giant's left limb until only a thin crescent is lit, its light dims and lightning walks the dark face. It holds behind the result screen and the menu, then lifts by itself, or at once when the next run starts. |
+| New run | The giant at rest again; it keeps turning and the hour eases back to the first level's place. |
 
 ### The hours
 
@@ -345,3 +348,120 @@ cyclone drew as in the playground, with no console error.
 
 **Not done:** no physical phone; `docs/theme-screenshots/stellar-drift.png` was not refreshed.
 
+## The living pass (2026-11-17)
+
+The owner asked for a thorough audit and for Stellar Drift to become one of the game's most
+stunning themes: everything reviewed, varied over time, a distinct effect for every event with the
+biggest moments the most spectacular, smooth and easy to read. Built on
+`feature/stellar-drift-living`; the rocks by a helper on `feature/stellar-drift-rocks`, merged in.
+
+### What the audit found
+
+- **The moons** were the weakest thing on screen: the icy moon's value-noise lattice showed as
+  square blue "camouflage" blocks, and the rust world was a flat orange dot with spots.
+- **Four lines, the chain's crown, the perfect clear and a level-up all threw the same shell of
+  radial rays** round the giant: four events told apart by colour and size only. A game over did
+  nothing.
+- **The ice** was icospheres cut by planes: tiny grey chips nobody noticed.
+- **Nothing changed by itself** but the palette wheel and the sun: the nebula was a still sheet of
+  marbled smoke, the stars a uniform dusting with nothing bright, the giant's weather the same
+  storms turning.
+
+### What it does now
+
+**By itself, over time** (none of it needs play):
+
+| What | When | How it reads |
+| --- | --- | --- |
+| The inner moon | every 200 s (`INNER_MOON`) | a small grey cratered moon on an inclined orbit just outside the rings crosses the giant's upper face (about 25-38 s into each period); 10-30 s later its shadow, a black dot, runs over the lit limb and across the rings; on the far side it slips behind the giant and through its shadow |
+| Great white storms | from 140 s, every 290 s, 130 s each (`OUTBREAK`) | a bright head of convection erupts in the north on the face the camera sees and streams downwind round its band in puffs with dark edges, then fades into the bands |
+| Comets | from 95 s, every 230 s, 16 s each (`COMET_*`) | a bright head in its coma, a broad curved dust tail and a straight blue ion tail, both away from the sun, crossing the open sky right of the card or over the top |
+| The nebula | always | its warp and its body drift at their own slow speeds, so its shapes form and melt over minutes |
+| The palette wheel | as before | one palette every 90 s, a level one more step |
+
+**The scene:**
+
+- **The moons wear baked maps** (`stellar-drift-moon-bake.js`, baked in the worker): the icy moon
+  has long double-ridged brown cracks on great and small circles, broken "chaos" ground, broad
+  blue-grey and brown provinces, a few fresh craters with bright rays and four blue stripes near its
+  south pole where its jets vent; the rust world has bright dusty plains and dark basalt provinces,
+  a long equatorial canyon, a shield volcano, many craters, a wide bright basin and white polar
+  frost, under a thin air shell that stands off its limb (bluish toward its dusk). Both turn slowly
+  and are lit per pixel from their relief: bright ice nearly flat to its limb, dust darkening toward
+  it. The inner moon wears the rust map greyed.
+- **The sky**: a galactic band through the nebula (a faint river of unresolved stars split by a
+  dark rift, thickening the far stars where it runs), a sparse layer of bright stars a pixel across
+  with a halo and, the brightest, short lens spikes, and a cluster of young blue-white stars in the
+  nebula's head that lights the gas round it.
+- **The rings** have a cast per part: the thin inner ring greyer, the broad one warm, the outer one
+  cooler.
+- **Rocks and asteroids** (`stellar-drift-rocks.js`, `stellar-drift-rock-models.js`, from
+  `scripts/blender/stellar_drift_rocks.py`): six Blender-sculpted designs (a cleaved ice block, an
+  icy rubble pile, a cratered rocky potato, a contact binary, an ice splinter, a layered slab) at
+  three levels with baked occlusion, crest and thinness; every body ice or rock; big ones near the
+  lens and small ones far off; and two or three hero rocks, 40-140 px across, drifting through their
+  own lanes of open sky (right of the card, under the giant, over the HUD), never across the card,
+  the HUD or the giant.
+
+**Events** (the table at the top has them all): four lines are a **string of pearls**; the
+chain's crown lights the **haze** round the whole system in waves; a perfect clear is an
+**eclipse** with a gold corona and a **diamond ring**; a level-up sends a **comet**; a game over is
+**nightfall**. The giant's shell of light is now the perfect clear's alone (its corona at
+totality). Lock, hard drop, clears, the twist's cyclone, the back-to-back strand and the milestone
+surges are as before.
+
+### How it is built
+
+- The eclipse swings the sun's direction, not the camera: `eclipseAt(age)` gives a weight and a
+  place as an angle from the camera-to-giant axis in giant radii and a bearing; `stageSun` lerps the
+  hour's sun onto it (and onto nightfall's crescent direction). The sun's disc is drawn in the sky
+  only within about 2.5 radii of the limb, cut pixel by pixel by the giant's own coverage (the bead
+  of the diamond ring); its glare and spikes are scaled by the share of the disc the CPU finds past
+  the limb. The rings' unseen face is lit by what comes through (thin rings bright, the thick one
+  dark); the haze's forward lobe is capped so a backlit haze cannot wash the frame (gotcha #1413).
+- The inner moon is traced once per pixel and laid in where its distance puts it, before the far
+  rings or after the giant, with the near rings dropped where they lie behind it; its shadow on the
+  giant and the rings is a ray test against its sphere (gotcha #1414).
+- Nightfall (`onGameOver`) is a level that falls over a few seconds, holds `NIGHTFALL_HOLD` seconds
+  and lifts by itself; `onSessionStart` (the mode manager's `modeStarted`) lifts it at once; a
+  `resetSession` (the menu) keeps it. The theme ends a run in the order gotcha #1716 asks for
+  (`endRun`: flush the director, reset the run without the world, then `onGameOver`), and the run's
+  level ends with it so the next run's first level-up counts.
+- New uniforms: `innerMoon`, `innerMoonLit`, `outbreak`, `outbreakDir`, `halo`, `haloTint`, `cometA`,
+  `cometB`, `sunShow`; every new term is in a branch that runs only where and while it shows.
+- Tiers: the icy moon's map is 512 px wide on Minimal and Low, 1024 above (`moonSize`); the bright
+  stars need three star layers (Medium up) and the cluster the nebula's fine field (Medium up); the
+  rocks scale their counts and drop their grain on Minimal and Low (`ice`, `rockDetail`).
+
+### Verification
+
+- Unit tests: 262 Stellar Drift tests pass, among them `tests/unit/stellar-drift-living.test.js`
+  (moon bakes, the inner moon's transit, shadow and eclipse over a period from the resting camera,
+  the eclipse's path and the sun hidden then shown then home, reduced motion, nightfall falling,
+  holding through the menu, lifting by itself and on a new run, the run's level ending, the halo,
+  comets by clock and for a level, great white storms) and the rocks' two files; the shader gate
+  builds every material to WGSL and GLSL.
+- Playground captures on WebGPU (RTX) of every event at several ages, the eclipse in six steps, the
+  halo in three, all four comet paths, the inner moon over a period, the storms over two, five
+  palettes, Ultra, Low and Minimal, the WebGL2 backend, an upright phone and 21:9; every console
+  clean.
+- The real game in a private headless Chrome on WebGPU (High, capped at 30 fps): real hard drops by
+  key, a chain to eight, a twist, four lines, a perfect clear and a level through the game's own
+  bus, a real game over (the mode's own handler) and a new run straight from the result screen:
+  every effect drew as in the playground, nightfall held behind the result screen and lifted on
+  the new run, and the console held only the browser's three usual warnings. That run found the
+  run's level surviving into the next run; fixed and pinned.
+- Cost, capped at 30 fps (`profile=1&trackTimestamp=1`, 1920 × 1080, High, branch against main
+  served from a detached worktree, interleaved): about 0.32 → 0.37 ms a frame at rest and
+  0.38 → 0.43 ms under the demo script on the RTX, within the noise of capped runs; the rocks cost
+  no more than the old ice.
+
+### Not done, and open calls
+
+- No integrated-GPU or phone reading; no uncapped frame-rate measurement.
+- The theme icon and `docs/theme-screenshots/stellar-drift.png` still show the old moons and ice.
+- Judgement calls the owner may want to make: the crown's halo is broad and strong in a fever; the
+  perfect clear's gold corona at totality is very bright; the comets' tails always stream right
+  (the sun stands on the giant's side), so they keep to the right half of the sky; the bright stars'
+  spikes; hero rocks were laid out for the solo board (several boards may hide one behind a card).
+- Nothing was watched in motion by a person: stills, strips and the CPU tests only.

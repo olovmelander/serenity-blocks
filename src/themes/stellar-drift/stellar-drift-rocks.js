@@ -592,7 +592,7 @@ export function rockMaterial(u, name, body, { grain = true, bump = false, glint 
             // texture of its own): pits and knobs in rock, softer hummocks of frost on ice.
             const fine = u.noise3(vLocal.mul(8.5).add(seedAt.zxy)).toVar();
             const relief = fine.x.mul(0.65).add(g.x.mul(0.35)).sub(0.5)
-                .mul(vLook.w.mul(mix(float(0.27), float(0.008), ice)));
+                .mul(vLook.w.mul(mix(float(0.2), float(0.008), ice)));
             const dpdx = dFdx(vWorld).toVar();
             const dpdy = dFdy(vWorld).toVar();
             const r1 = cross(dpdy, N).toVar();
@@ -601,7 +601,10 @@ export function rockMaterial(u, name, body, { grain = true, bump = false, glint 
             const slope = r1.mul(dFdx(relief)).add(r2.mul(dFdy(relief))).mul(sign(det));
             const bent = N.mul(abs(det)).sub(slope).toVar();
             const size = length(bent).toVar();
-            N.assign(mix(N, bent.div(max(size, 1e-30)), step(1e-24, size)));
+            // Faded out toward the outline: at a grazing slant the screen's derivatives are noise
+            // there, and the relief would draw a speckled, ragged rim.
+            const face = smoothstep(0.12, 0.42, float(1.0).sub(edge));
+            N.assign(normalize(mix(N, bent.div(max(size, 1e-30)), step(1e-24, size).mul(face))));
         }
         const ndl = dot(N, L).toVar();
         const ndv = clamp(dot(N, V), 0.0, 1.0).toVar();

@@ -554,6 +554,9 @@ export class StellarDriftWorld {
     onGameOver() {
         if (!this.u) return;
         this.nightfall.until = this.time + NIGHTFALL_HOLD;
+        // The run's level ends with it (the wheel eases back under the night): a next run straight
+        // from the result screen counts its levels from one again, each a new hour and a comet.
+        this.level = 1;
     }
 
     /** A run starts: the hour comes back at once (nightfall lifts over a second or two). */
