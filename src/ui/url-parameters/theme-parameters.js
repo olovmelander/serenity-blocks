@@ -187,7 +187,7 @@ const captureThemes = [
         'sky, water, ground, boulders, trunks, boughs, fringe, saplings, ferns, reeds, pads, lilies, '
         + 'caps, spirit, troll, mist, eyes, fireflies, wisps, drops, sparks'],
 
-    ['sunbraid', 'sunbraid', 'Sunbraid', 'sky, land, spires, gliders'],
+    ['sunbraid', 'sunbraid', 'Sunbraid', 'sky, land, spires, gliders, dust'],
 
     ['sunfall', 'sunfall', 'Sunfall', 'sky, cave, jungle, beam, mist, water, roots, birds, gours'],
 

@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { FLOOR_CRUST } from '../../src/themes/sunbraid/sunbraid-land.js';
-import { TOWER_RELIEF } from '../../src/themes/sunbraid/sunbraid-spires.js';
+import { TOWER_WEAR } from '../../src/themes/sunbraid/sunbraid-spires.js';
 import {
     MAX_GLIDERS, STROKE, GLIDER_LOOPS, gliderAt,
 } from '../../src/themes/sunbraid/sunbraid-glide.js';
@@ -86,8 +86,12 @@ describe('Sunbraid crust', () => {
         expect(FLOOR_CRUST.filter).toBeGreaterThanOrEqual(1);
         expect(FLOOR_CRUST.bounce).toBeGreaterThan(0);
         expect(FLOOR_CRUST.bounce).toBeLessThan(1);
-        expect(TOWER_RELIEF.step).toBeGreaterThan(0);
-        expect(TOWER_RELIEF.scale).toBeGreaterThan(TOWER_RELIEF.height);
+        // The towers' relief is their sculpt now (flat faces, no bump): what is left to tune is
+        // how its bake wears the stone, and a worn arris is never darker than a joint.
+        expect(TOWER_WEAR.crest).toBeGreaterThan(0);
+        expect(TOWER_WEAR.crevice).toBeGreaterThan(0);
+        expect(TOWER_WEAR.cavity).toBeGreaterThan(0);
+        expect(TOWER_WEAR.cavity).toBeLessThanOrEqual(1);
     });
 });
 

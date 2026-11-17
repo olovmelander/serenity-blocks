@@ -14,7 +14,6 @@ import { BRAID_EVENTS } from '../../src/themes/sunbraid/sunbraid-braid.js';
 import { FILMIC_KNEE } from '../../src/themes/sunbraid/sunbraid-post.js';
 import { FLOOR_CRUST, SELENITE } from '../../src/themes/sunbraid/sunbraid-land.js';
 import { TOWER_BEDS } from '../../src/themes/sunbraid/sunbraid-spires.js';
-import { BED_LEDGE } from '../../src/themes/sunbraid/sunbraid-spire-shape.js';
 import { CLOUD_FILL, MIST_LIGHT, SUN_LOOK } from '../../src/themes/sunbraid/sunbraid-tsl.js';
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -137,7 +136,5 @@ describe('Sunbraid atmosphere: the numbers the shaders read', () => {
         expect(TOWER_BEDS.formation).toBeGreaterThan(TOWER_BEDS.bed);
         expect(TOWER_BEDS.contrast).toBeGreaterThan(0);
         expect(TOWER_BEDS.contrast).toBeLessThanOrEqual(1);
-        expect(BED_LEDGE).toBeGreaterThan(0);
-        expect(BED_LEDGE).toBeLessThan(0.026);
     });
 });

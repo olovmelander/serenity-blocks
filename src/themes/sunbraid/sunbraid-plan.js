@@ -14,7 +14,7 @@
  */
 import { DEG, smooth } from './sunbraid-core.js';
 import { noiseAt } from './sunbraid-noise.js';
-import { spireProxies } from './sunbraid-spire-shape.js';
+import { monolithProxies } from './sunbraid-monoliths.js';
 
 /** How high the eye hovers over the valley floor (metres). */
 export const EYE_ALTITUDE = 70;
@@ -49,7 +49,7 @@ export function eyePosition(out = [0, 0, 0]) {
 }
 
 /**
- * The towers: shape (sunbraid-spire-shape.js variant: 0 2 4 6 towers, 1 5 buttes, 3 7 mittens),
+ * The towers: shape (sunbraid-monoliths.js variant: 0 2 4 6 towers, 1 5 buttes, 3 7 mittens),
  * bearing from the view axis (degrees, right positive), distance (metres), height (metres) and a
  * turn about its axis (radians).
  */
@@ -76,7 +76,7 @@ export const SPIRE_LAYOUT = Object.freeze([
     variant, bearing, distance, h, twist,
 })));
 
-/** Which shape (sunbraid-spire-shape.js) the layout's tower number `index` takes. */
+/** Which shape (sunbraid-monoliths.js) the layout's tower number `index` takes. */
 export const variantOf = (index) => SPIRE_LAYOUT[index]?.variant ?? 0;
 
 /** Where tower `s` stands (world x, floor y, z). */
@@ -88,9 +88,12 @@ export function spireFoot(s, out = [0, 0, 0]) {
     return out;
 }
 
+/** How far a shadow cylinder above the first reaches down into the one under it (unit heights). */
+export const TIER_OVERLAP = 0.03;
+
 /**
  * The towers as shadow casters: each tier a flat-topped vertical cylinder (axis x, z; from y0 to
- * y1; radius r) that follows its shape's tiers (sunbraid-spire-shape.js spireProxies), scaled to
+ * y1; radius r) that follows its shape's tiers (sunbraid-monoliths.js monolithProxies), scaled to
  * its height and turned as it is drawn. The same layout draws the towers and shadows the land.
  */
 export function spireCasters(layout = SPIRE_LAYOUT) {
@@ -100,7 +103,7 @@ export function spireCasters(layout = SPIRE_LAYOUT) {
         spireFoot(s, foot);
         const c = Math.cos(s.twist);
         const sn = Math.sin(s.twist);
-        spireProxies(s.variant).forEach((proxy, k) => {
+        monolithProxies(s.variant).forEach((proxy, k) => {
             // Three.js turns +x toward -z for a positive turn about +y.
             const lx = proxy.x * s.h;
             const lz = proxy.z * s.h;
@@ -109,13 +112,28 @@ export function spireCasters(layout = SPIRE_LAYOUT) {
                 part: k,
                 x: foot[0] + lx * c + lz * sn,
                 z: foot[2] - lx * sn + lz * c,
-                y0: foot[1] + proxy.t0 * s.h,
+                // (A tier above the first starts a little inside the one under it: stacked edge
+                // to edge, each was half hidden at the joint and a pale band crossed the shadow.)
+                y0: foot[1] + (proxy.t0 - (k > 0 ? TIER_OVERLAP : 0)) * s.h,
                 y1: foot[1] + proxy.t1 * s.h,
                 r: proxy.r * s.h,
             });
         });
     });
     return casters;
+}
+
+/**
+ * Which rows of the caster list are each tower's own: [{ first, count }] by the layout's tower
+ * number (a tower's stone leaves its own cylinders out of its shadows).
+ */
+export function casterRanges(casters = null) {
+    const out = [];
+    (casters || spireCasters()).forEach((caster, row) => {
+        if (!out[caster.stone]) out[caster.stone] = { first: row, count: 0 };
+        out[caster.stone].count += 1;
+    });
+    return out;
 }
 
 /** Most casters the shaders read (rows are allocated for this many). */

@@ -243,10 +243,13 @@ and petals), and `event` also takes `spin` (a twist that clears nothing).
 
 Sunbraid (2026-10-20), a new theme in Rainy Window's place, adds the capture flags
 `sunbraidForceWebGL`, `sunbraidTime`, `sunbraidFixedDt`, `sunbraidParts` and `sunbraidFalseColor`;
-the part names are `sky`, `land`, `spires` and `gliders`. Its `sunbraid` playground effect reads 22
+the part names are `sky`, `land`, `spires`, `gliders` and `dust` (`dust` since 2026-11-17: the twists'
+twisters and the hard drops' dust rings). Its `sunbraid` playground effect reads 26
 parameters, catalogued as its own rows; `braid` (hold the three suns' braid at a phase, in degrees)
 and `turns` (the spin-turns of an `event=twist`) are new names, and `event` also takes `morning` (a
-game over, then a new run: the suns rising). Rainy Window read no URL parameters. Use
+game over, then a new run: the suns rising). Since 2026-11-17 it also reads `weather` (hold one of
+the valley's seven weathers), `moon` (`off`, or the moon's own clock in seconds), `col` and `piece`
+(the column and the piece an event is played with), and `event` takes `spin` and `b2b`. Rainy Window read no URL parameters. Use
 `effect=sunbraid&t=10&braid=<degrees>` for a deterministic playground capture.
 
 Sunfall (2026-10-20), a new theme in Moonrise Summit's place, adds the capture flags
