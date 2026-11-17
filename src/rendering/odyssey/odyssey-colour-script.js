@@ -27,6 +27,11 @@
  *      a declared occlusion seam. A faster change than that reads as a cut, and on a rail the
  *      player cannot look away from it.
  *
+ * THE EVENING (chapter 5, 2026-11-17) is the declared exception to invariant 1 and takes
+ * invariant 2 in another form: its keyframes carry `horizon: 'evening'`, their horizons leave the
+ * anchor on purpose (the day ends on the climb), and they are rate-limited by how far the horizon
+ * colour MOVES rather than by its hue angle. See the note at those keyframes.
+ *
  * The palette is deliberately small — five slots. A journey is legible because its lighting
  * states are few and distinct, not because each one is richly specified.
  */
@@ -127,6 +132,19 @@ export const HORIZON_CHROMA_TOLERANCE = 0.02;
 
 /** Hue may not move faster than this, except across a declared seam. */
 export const MAX_HUE_RATE_DEG_PER_005P = 12;
+
+/**
+ * THE EVENING'S RATE LIMIT: how far the horizon colour may travel in the Oklab a/b plane per 0.05
+ * of path progress, from the last anchored keyframe into the evening and through it.
+ *
+ * A hue ANGLE is the wrong ruler here. The evening's horizons are pale (chroma 0.01-0.06), and on
+ * its way from the anchor's blue to gold the colour passes close to white, where the angle swings
+ * through 180 degrees while the eye sees a blue haze turn cream. What reads as a cut is the
+ * colour's own travel. 0.055 is the pace of the journey's two declared occlusion seams (0.04-0.05
+ * measured), so the evening may move as fast as a seam does and no faster; a swing from the
+ * anchor to its warm opposite inside one window (0.078) is refused.
+ */
+export const MAX_EVENING_HORIZON_TRAVEL_PER_005P = 0.055;
 
 /**
  * Keyframes along the ascent. `p` is path progress over Act II.
@@ -255,44 +273,138 @@ export const ODYSSEY_COLOUR_SCRIPT = Object.freeze([
         fogDensity: 0.00016,
         wind: 0.55,
     },
+    // ── THE EVENING (2026-11-17, the sky pass of the masterpiece round) ─────────────────────
+    // Chapter 5 used to climb through the same noon as chapters 3 and 4 ('highlands', 'alpine',
+    // 'cloud-deck': three blues a few points apart), so "Sky & Atmospheric Drift" had no sky of
+    // its own. Now the day ends on the climb: one keyframe per orb (L27 .. L34), late afternoon
+    // gold at the foot of the wall, amber, the sunset's rose on the snow, the pink belt over the
+    // Earth's shadow as the eye comes out above the summit, and the indigo of thin air where the
+    // round Earth arrives. The world's sun stays where it is (ODYSSEY_WORLD_SUN is baked into the
+    // shadow plates); what sinks is the LIGHT: its colour here, and the sky's own sun, belt and
+    // shadow in world/odyssey-evening.js.
+    //
+    // `horizon: 'evening'` DECLARES THE EXEMPTION from the horizon anchor (invariant 1), the way
+    // `medium` exempts water and vacuum. The anchor made three biomes read as one continent under
+    // one noon; an evening is the horizon leaving that blue, on purpose, in the journey's last
+    // act in the air. The owner's brief for this round (each chapter its own mood, palette and
+    // light) outranks the anchor here. What still holds is invariant 2 in the form that means
+    // something for pale colours: these horizons are held to a rate limit on how far the colour
+    // MOVES (Oklab a/b distance per 0.05 p), because a hue angle swings 180 degrees through a
+    // near-white cream without the eye seeing any change at all.
+    //
+    // The sun colours are light on SNOW: saturated enough to read as light rather than as sand
+    // (the 2026-10-20 'sand cone' was a pale warm white, which reads as dirty snow; gold and rose
+    // read as alpenglow), and the shadow tint walks to violet-blue against them.
     {
-        p: 0.58,
-        name: 'highlands',
+        p: 0.409, // journey p 0.340: where the island pass hands the light over
+        name: 'golden-hour',
         medium: 'air',
-        skyZenith: 0x1f5fbe,
-        skyHorizon: 0xb6cfe8,
-        // Whiter than the shore's afternoon (2026-10-20): under a 0xffeecb sun the massif's grey
-        // stone and its snow both went beige from the climb (the 'sand cone'). The light at
-        // altitude is clearer, not warmer — the rejected direction was the other one.
-        sun: 0xfff3e0,
-        groundLit: 0x5d8552,
-        groundShadow: 0x33506b,
-        exposure: 0.98,
-        fogDensity: 0.00019,
-        wind: 0.70,
+        horizon: 'evening',
+        skyZenith: 0x3f7ed6,
+        skyHorizon: 0xf2dfc4,
+        sun: 0xffcd8c,
+        groundLit: 0x7f9a5a,
+        groundShadow: 0x425a84,
+        exposure: 0.99,
+        fogDensity: 0.00017,
+        wind: 0.60,
     },
     {
-        p: 0.76,
-        name: 'alpine',
+        p: 0.4875, // L28, p 0.400
+        name: 'gold',
         medium: 'air',
-        skyZenith: 0x1650b4,
-        skyHorizon: 0xb2cde8,
-        sun: 0xfff8f0,
-        groundLit: 0x9fb6c6,
-        groundShadow: 0x3c5c80,
+        horizon: 'evening',
+        skyZenith: 0x4079d8,
+        skyHorizon: 0xf6d6b2,
+        sun: 0xffc377,
+        groundLit: 0x8f9a5c,
+        groundShadow: 0x465b8e,
+        exposure: 0.98,
+        fogDensity: 0.00018,
+        wind: 0.68,
+    },
+    {
+        p: 0.5528, // L29, p 0.450
+        name: 'amber',
+        medium: 'air',
+        horizon: 'evening',
+        skyZenith: 0x4370d8,
+        skyHorizon: 0xf6cbac,
+        sun: 0xffb66c,
+        groundLit: 0xa89a66,
+        groundShadow: 0x495a98,
+        exposure: 0.97,
+        fogDensity: 0.00019,
+        wind: 0.76,
+    },
+    {
+        p: 0.6193, // L30, p 0.501
+        name: 'sunset',
+        medium: 'air',
+        horizon: 'evening',
+        skyZenith: 0x4667d8,
+        skyHorizon: 0xf5c4b6,
+        sun: 0xffa56f,
+        groundLit: 0xc09a78,
+        groundShadow: 0x50589f,
+        exposure: 0.96,
+        fogDensity: 0.00021,
+        wind: 0.84,
+    },
+    {
+        p: 0.6859, // L31, p 0.552
+        name: 'alpenglow',
+        medium: 'air',
+        horizon: 'evening',
+        skyZenith: 0x445cd0,
+        skyHorizon: 0xf1c2c9,
+        sun: 0xff9782,
+        groundLit: 0xcf9c92,
+        groundShadow: 0x54559f,
+        exposure: 0.95,
+        fogDensity: 0.00023,
+        wind: 0.90,
+    },
+    {
+        p: 0.7512, // L32, p 0.602
+        name: 'belt-of-venus',
+        medium: 'air',
+        horizon: 'evening',
+        skyZenith: 0x394bbc,
+        skyHorizon: 0xe8c6d6,
+        sun: 0xff9d92,
+        groundLit: 0xd2a2a8,
+        groundShadow: 0x4f4e98,
         exposure: 0.94,
         fogDensity: 0.00024,
-        wind: 0.92,
+        wind: 0.94,
     },
     {
-        p: 0.90,
+        p: 0.827, // L33, p 0.653
+        name: 'afterglow',
+        medium: 'air',
+        horizon: 'evening',
+        skyZenith: 0x283a9c,
+        skyHorizon: 0xd4bfdc,
+        sun: 0xffb7a4,
+        groundLit: 0xd6b4bc,
+        groundShadow: 0x484a92,
+        exposure: 0.92,
+        fogDensity: 0.00027,
+        wind: 0.98,
+    },
+    {
+        p: 0.90, // p 0.696, just before L34
         name: 'cloud-deck',
         medium: 'air',
-        skyZenith: 0x0f3f9e,
-        skyHorizon: 0xbdd3e9,
-        sun: 0xfff8ee,
+        horizon: 'evening',
+        skyZenith: 0x131f66,
+        skyHorizon: 0xb4b3e0,
+        // The light clears as the eye leaves the weather: above the dense air the low sun is
+        // white again, which is the light the round Earth is lit by where it takes over.
+        sun: 0xffdccb,
         groundLit: 0xd8e4ee,
-        groundShadow: 0x6f8aa8,
+        groundShadow: 0x5a6aa6,
         exposure: 0.90,
         fogDensity: 0.00030,
         wind: 1.00,

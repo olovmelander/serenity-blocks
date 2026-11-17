@@ -510,6 +510,11 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
         'Removes the sculpted cloud field for scene comparisons.',
         { scope: WORLD_SCOPE },
     ),
+    toggle(
+        'odysseyNoCloudSea',
+        'Removes the sea of clouds that gathers below the climb in chapter 5.',
+        { scope: WORLD_SCOPE },
+    ),
     parameter(
         'odysseyWorldCloudFieldCount',
         'Limits the sculpted cloud field to its first N cloud masses.',
