@@ -234,11 +234,10 @@ describe('waves: the sea life pack', () => {
         humpback: [FLIPPER, TAIL],
         manta: [TAIL],
         turtle: [FLIPPER, REAR],
-        flyingFish: [FLIPPER, REAR, TAIL],
         seabird: [FLIPPER],
     };
 
-    it('holds the seven animals, each one body with what the shaders read of every vertex', () => {
+    it('holds the six animals, each one body with what the shaders read of every vertex', () => {
         expect(Object.keys(pack.kinds)).toEqual(KINDS);
         expect(said.scenes[0].extras.kinds).toEqual(KINDS);
         expect(pack.bytes).toBe(bytes.length);

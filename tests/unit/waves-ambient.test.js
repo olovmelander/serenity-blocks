@@ -27,7 +27,7 @@ const TOTAL = VISITS.reduce((sum, [, share]) => sum + share, 0);
 const nameAt = (seed, index) => NAMES[visitAt(seed, index)];
 
 /** The visits that come as more than one animal: a tier's share of them is fewer. */
-const GROUPS = ['ridePod', 'troughPod', 'farPod', 'skitter', 'birds'];
+const GROUPS = ['ridePod', 'troughPod', 'farPod', 'birds'];
 
 /** What each visit is made of: the act, and the animals it may be. */
 const MADE_OF = {
@@ -36,9 +36,8 @@ const MADE_OF = {
     troughPod: ['porpoise', ['bottlenose', 'spinner']],
     farPod: ['porpoise', ['spinner']],
     loneLeap: ['leap', ['bottlenose', 'spinner']],
-    skitter: ['skitter', ['flyingFish']],
     turtle: ['ride', ['turtle']],
-    manta: ['porpoise', ['manta']],
+    manta: ['ride', ['manta']],
     whaleBlow: ['whale', ['humpback']],
     whaleFluke: ['whale', ['humpback']],
     whaleBreach: ['whale', ['humpback']],
@@ -92,7 +91,7 @@ describe('waves ambient: which visit comes', () => {
             const of = (name) => counts[NAMES.indexOf(name)];
             expect(of('ridePod')).toBeGreaterThan(of('loneLeap'));
             expect(of('troughPod')).toBeGreaterThan(of('birds'));
-            expect(of('skitter')).toBeGreaterThan(of('whaleBlow'));
+            expect(of('turtle')).toBeGreaterThan(of('whaleBlow'));
             expect(of('whaleBlow')).toBeGreaterThan(of('whaleBreach'));
         }
     });
@@ -226,8 +225,6 @@ describe('waves ambient: what a visit is', () => {
         const wrong = [];
         let rides = 0;
         let overhead = 0;
-        let leftward = 0;
-        let school = 0;
         for (let seed = 1; seed <= 200; seed++) {
             const stage = (name) => stageVisit(name, mulberry32(seed), 50, 1);
             for (const leap of stage('loneLeap')) {
@@ -237,7 +234,7 @@ describe('waves ambient: what a visit is', () => {
                 if (!(leap.vy > 0 && leap.vx < 0)) wrong.push(`seed ${seed}: a leap along (${leap.vx}, ${leap.vy})`);
             }
             const pod = stage('ridePod');
-            const passing = [...pod, ...stage('turtle')];
+            const passing = [...pod, ...stage('turtle'), ...stage('manta')];
             for (let i = 0; i < passing.length; i += 1) {
                 const ride = passing[i];
                 // Inside the wall, above the foot of the face, in the stretch of tube round the rider.
@@ -247,32 +244,24 @@ describe('waves ambient: what a visit is', () => {
                 if (!(Math.min(ride.d0, ride.d1) > -9 && Math.max(ride.d0, ride.d1) < 7)) {
                     wrong.push(`seed ${seed}: a ride from ${ride.d0} to ${ride.d1}`);
                 }
-                // The first of a pod, and a turtle, pass the eye: from behind it to ahead, or back.
+                // The first of a pod, a turtle and a manta pass the eye: from behind it to ahead, or back.
                 if ((i === 0 || i >= pod.length) && !(Math.min(ride.d0, ride.d1) < 0 && Math.max(ride.d0, ride.d1) > 0)) {
                     wrong.push(`seed ${seed}: a ride that never passes the eye (${ride.d0} to ${ride.d1})`);
                 }
                 if (!(ride.depth - ride.depthAmp > 0)) wrong.push(`seed ${seed}: a ride ${ride.depth} m deep`);
             }
-            for (const roll of [...stage('troughPod'), ...stage('farPod'), ...stage('manta')]) {
+            for (const roll of [...stage('troughPod'), ...stage('farPod')]) {
                 if (!(roll.z < 0)) wrong.push(`seed ${seed}: a roll behind the eye`);
                 if (!(Math.abs(Math.hypot(roll.hx, roll.hz) - 1) < 1e-9)) wrong.push(`seed ${seed}: a roll with no heading`);
             }
             for (const whale of [...stage('whaleBlow'), ...stage('whaleFluke'), ...stage('whaleBreach')]) {
                 if (!(whale.z < -90 && whale.x < 0)) wrong.push(`seed ${seed}: a whale at (${whale.x}, ${whale.z})`);
             }
-            for (const fish of stage('skitter')) {
-                // Out of the trough ahead of the eye, and on down the line.
-                school += 1;
-                if (fish.hx < 0) leftward += 1;
-                if (!(fish.hz < 0 && fish.z < 0 && fish.vy > 0)) wrong.push(`seed ${seed}: a fish heading z ${fish.hz}`);
-            }
             for (const bird of stage('birds')) {
                 if (!(bird.z < -25 && bird.y > 1.5)) wrong.push(`seed ${seed}: a bird at y ${bird.y}, z ${bird.z}`);
             }
         }
         expect(wrong.slice(0, 8)).toEqual([]);
-        // The school fans away from the wave, toward the open sea on the left.
-        expect(leftward / school).toBeGreaterThan(0.9);
         // (waves-acts.js gives a ride's row as "0 its foot .. ~0.45 under the roof". The fourth of
         // a full pod is staged a little past that now and then, up in the roof itself: about one
         // ride in a hundred.)
@@ -389,8 +378,8 @@ describe('waves ambient: the sea at a moment', () => {
         // Every animal the sea has in the water at a moment, kind by kind, against the slots that
         // kind has (waves-fauna.js). What does not fit is not drawn, so this is a budget the
         // staging has to keep to. Measured here (seeds 1, 21 and 187, every half second of 100
-        // minutes each): at High the sea never asks for more bottlenose, whales, mantas, turtles
-        // or flying fish than can be drawn; spinners are over about 3 moments in 100 (a far pod
+        // minutes each): at High the sea never asks for more bottlenose, whales, mantas or turtles
+        // than can be drawn; spinners are over about 3 moments in 100 (a far pod
         // over a pod in the wall and one in the trough: 18 staged at the worst, for 8 slots) and
         // seabirds a handful of moments in 10 000 (two flocks: 10 for 8). The leaner tiers halve
         // the slots and the pods alike, and two whales' visits can overlap for a second or two
@@ -415,7 +404,7 @@ describe('waves ambient: the sea at a moment', () => {
             }
             for (const kind of KINDS) expect(over[kind] / moments, `${kind} at ${quality}`).toBeLessThan(0.05);
             if (quality === 'High') {
-                for (const kind of ['bottlenose', 'humpback', 'manta', 'turtle', 'flyingFish']) {
+                for (const kind of ['bottlenose', 'humpback', 'manta', 'turtle']) {
                     expect(over[kind], `${kind} at High`).toBe(0);
                 }
             }

@@ -2,8 +2,9 @@
 
 **Status: implemented on branch `feature/waves-masterpiece` (worktree `serenity-blocks-waves`).
 A record of what was built and how it was checked — not a backlog.** The newest pass
-(2026-11-16: light in the roof, the sea life, an effect for every event) is "Third pass" near the
-end; its tables of what the board does and of the modules are the current ones. Replaces the "sculpted
+(2026-11-17: where the lip lands on the sea, and the animals beside the rider) is "Fourth pass"
+near the end; the tables of what the board does and of the modules in "Third pass"
+(2026-11-16: light in the roof, the sea life, an effect for every event) are kept current. Replaces the "sculpted
 surf barrel" (a noise-textured cylinder with a painted sunset behind its far end) with the
 inside of a breaking wave that is shaped and shaded as one: a lip that is thrown and falls, water
 that is glass, and a board whose every move goes into it. Everything is on three 0.186.1 and
@@ -561,13 +562,14 @@ Read from 1:1 crops and one capture per event, at the theme's own lens with the 
 
 ### The sea life
 
-Seven animals, modelled in Blender from numbers (`scripts/blender/waves_sea_life_assets.py`, on the
+Six animals (seven until 2026-11-17, when the flying fish were taken out: see "Fourth pass"),
+modelled in Blender from numbers (`scripts/blender/waves_sea_life_assets.py`, on the
 Ocean theme's builder: smooth masses and airfoil fins as one signed distance field, meshed,
-decimated, every vertex told what it is). Four are new for Waves: a **bottlenose dolphin** (a deep
+decimated, every vertex told what it is). Three are new for Waves: a **bottlenose dolphin** (a deep
 chest, a short stout beak under a round melon, a tall hooked fin, a mouth line, an eye, a
 blowhole), a slender **spinner dolphin** (a long thin beak, an upright fin, three tones in
-bands), a **flying fish** and a **shearwater**. The **humpback**, the **manta** and the **green
-turtle** are the Ocean's own designs at Waves' triangle counts. One file, 427 kB
+bands) and a **shearwater**. The **humpback**, the **manta** and the **green
+turtle** are the Ocean's own designs at Waves' triangle counts. One file, 435 kB
 (`src/themes/waves/assets/sea-life.glb`), read by `waves-cast.js`; the wave runs without it until
 it arrives.
 
@@ -578,11 +580,10 @@ clock, like the spray, so it holds with the four-line hold and replays exactly):
 
 | Act | Who | What is seen |
 | --- | --- | --- |
-| ride | dolphins, the turtle | Inside the wall of the wave beside the rider, their backs to the tube, weaving up and down the face as they go down the line: dark shapes in lit glass. |
-| roll | dolphins, the manta | Through the trough: backs and fins through the surface and under again, pods abreast, sometimes a calf; with a tall rise, low clean leaps. The manta stays under. |
+| ride | dolphins, the turtle, the manta | Inside the wall of the wave beside the rider, their backs to the tube, weaving up and down the face as they go down the line: lit from above through the wave, the net of its light sliding over their backs. |
+| roll | dolphins | Through the trough: backs and fins through the surface and under again, pods abreast, sometimes a calf; with a tall rise, low clean leaps. |
 | leap | dolphins | Out of the trough at the foot of the wave (clear of the card), four ways: a plain arc, a spinner's spin about its own length (two to five turns), a somersault, a breach onto its side. |
 | breach, fluke, blow | the humpback | Far out: thrown clear of the sea and over onto its back; its flukes lifted as it sounds; a spout and a rolling back. |
-| skitter | flying fish | A burst out of the water, wings spread, a low glide, sometimes a touch of the tail and a second glide. |
 | soar | shearwaters | Across the opening in long banked swoops, a few beats as they climb. |
 
 **Seen through the water.** An animal is drawn twice from one buffer: by an ordinary material
@@ -600,15 +601,15 @@ the pale ghost the bloom and the shafts made of it (#900).
 **The sea's own visits** (`waves-ambient.js`). Whatever the board does, every eight seconds the
 sea may send something: a pod in the wall (one to four, bottlenose or spinner, perhaps a calf), a
 pod through the trough (away, toward the rider, or across), a far pod over the sun's road, one
-dolphin thrown clear in one of the four ways, a school of flying fish, a turtle, a manta, a whale
+dolphin thrown clear in one of the four ways, a turtle or a manta in the wall, a whale
 (a blow, its flukes, or, one visit in fifty, the whole animal), shearwaters. Which, and every
 number of it, is drawn from the visit's place in time and the world's seed alone: the same second
 always holds the same sea (a seek, a replay, a rebuild), the same kind never comes twice in a
 row, and nothing repeats for many minutes. About one visit in sixteen is a rest.
 
-| A humpback out at sea | Flying fish |
-| --- | --- |
-| ![breach](waves-overhaul/mp-breach.jpg) | ![skitter](waves-overhaul/mp-skitter.jpg) |
+| A humpback out at sea |
+| --- |
+| ![breach](waves-overhaul/mp-breach.jpg) |
 
 ### What the board does now
 
@@ -616,7 +617,7 @@ row, and nothing repeats for many minutes. About one visit in sixteen is a rest.
 | --- | --- |
 | A piece locks | Its colour arcs over the roof and falls from the lip as rain; a crown and rings where it went in. |
 | Hard drop | The same, struck harder, **and the water stands up: a spout in the piece's colour beside the card's foot, white water at its base.** One struck straight after another is a small one (a drop a second otherwise stood a forest of them beside the board). |
-| Lines clear | A sheet of spray off the lip, a ring of light down the tube for every line, **and fish startled out of the trough: five for one line, fourteen for four.** |
+| Lines clear | A sheet of spray off the lip, a ring of light down the tube for every line, **and the white water heaves where the lip lands on the sea: a little for one line, over the rider's head for four** (2026-11-17; until then fish were startled out of the trough). |
 | Twist | The rings come down as a screw, a wheel of spray, **and a spinner dolphin answers with its own: thrown clear, turning on its length, a turn more for every line.** |
 | Four lines | The wave holds with the biggest throw hanging in the air, **and the tube spits: the mist a collapsing barrel squeezes out of itself, blown from behind the rider out through the eye, hanging in the light while the clock is held.** |
 | A chain of clears | Dolphins over the water, one more at three, five, seven and nine clears, the first past seven across the sun, **each flown its own way; from four clears on the pod is also in the wall beside the rider.** |
@@ -715,8 +716,143 @@ lower two keep their sky-lookup mirror and no caustic net.
 - My own doubts, to raise if asked: a pod in the wall passes two to four metres from the eye and
   is *large* (a third of the screen wide, as a soft dark shape); the perfect clear's whale is
   closer than a whale would come to a breaking wave; the caustic net high on the wall is drawn,
-  not traced; the sea's cold light under the moon is strong on a riding pod; the flying fish are
-  half a metre long so a school reads from the board, about twice life size.
+  not traced; the sea's cold light under the moon is strong on a riding pod. (The flying fish,
+  half a metre long so a school read from the board, were the fifth doubt: the owner had them
+  taken out the next day.)
+
+## Fourth pass: where the wave meets the sea, and the animals beside the rider (2026-11-17)
+
+Olov, the day after the third pass landed: "the flying fishes we can remove, and we need to
+improve the look and feel of the fishes and turtles swimming close by in the wave. And how can we
+also improve the visuals where the wave meets the surface to the left?" Branch
+`feature/waves-close-sea`.
+
+### Where the lip lands
+
+| Before | After |
+| --- | --- |
+| ![before](waves-overhaul/cs-before-landing.jpg) | ![after](waves-overhaul/cs-landing.jpg) |
+
+**What was wrong.** The lip's edge was torn the same way all along its fall: up to 1.6 m of it
+eaten into tongues. That is right where it is thrown, eight metres ahead and three metres up. But
+the lens shows only the last metre and a half of the lip on the rider's left, where it has come
+down (projected through the rig: its foot runs from 18 % across and 74 % down the screen to the
+left edge), so *everything* the eye saw of the landed lip was inside the tears: scraps of water
+hanging in the air over a flat sea, with a faint pale patch under them. Nothing met anything.
+
+**What is there now**, three layers that are one picture:
+
+- **The lip lands** (`waves-water.js`, `LANDING_ARC`, `LANDED_WHOLE`): the tears close over the
+  last half radian of the fall, so from the touchdown back past the rider the lip is a curtain
+  standing on the sea, torn only where it is still falling. Its lower two and a half metres are a
+  fall of water full of air: white in the long soft strands of the fall, whole where it stands
+  on the sea, with the evening sky coming through it. The burning fringe the low sun gives a torn
+  edge is kept off the foot (it outlined the curtain in salmon).
+- **The carpet** (same shader, one more texture read): white water on the sea along the line
+  the lip lands on, whole at the line, opening into bubbles and then into threads as the flow
+  carries it across the floor of the tube to the foot of the face, where the lace of the third
+  pass takes it up the wall; thrown a little further out in front of the wave. It is drawn from
+  the baked foam cells with walls that thicken with the heap until they meet, whole rafts here
+  and there, and it comes in surges along the line. It is lit as white water under the open sky,
+  not as the dim lace inside the tube.
+- **The white water in the air** (`waves-whitewater.js`, new): 16 to 70 puffs by tier, each on
+  a loop of its own in closed form (a held frame holds them), of three kinds: the **roll** along
+  the foot of the curtain, heaving up and rolling in toward the face; the **burst** at the
+  touchdown, heads of white water thrown up about as high as the eye and out in front of the
+  wave; and **mist**, wide thin veils that drift back with the wind and take the sun. They are
+  drawn *over* the scene, premultiplied, with the sun's glow through them added on top: the old
+  "boil" here was light added to the frame, and on an evening sea as bright as itself it did
+  not show at all (#1306; #1702 is the same fault in sparks).
+
+**Every line is felt there.** `U.heave` follows the lip's throw (a clear, a chain, a set wave,
+hot play), taken up in a third of a second and let go over two: the touchdown is thrown higher
+and wider (over the rider's head for four lines), the roll stands taller, the carpet whitens.
+This is what a plain clear has in place of the flying fish.
+
+| The whole view (sunset, no board) | By day | Four lines |
+| --- | --- | --- |
+| ![wide](waves-overhaul/cs-landing-wide.jpg) | ![day](waves-overhaul/cs-landing-day.jpg) | ![clear](waves-overhaul/cs-clear.jpg) |
+
+### The animals beside the rider
+
+| Before | After |
+| --- | --- |
+| ![before](waves-overhaul/cs-before-turtle.jpg) | ![after](waves-overhaul/cs-turtle.jpg) |
+
+Seen through the wall, an animal was its own colours dimmed toward the water's: a turtle one flat
+olive, a dolphin a dark blob. Now (`waves-fauna.js`, the `under` material):
+
+- **Light from above, through the wave.** The hour's sun less a metre of this water, falling on
+  the back from above and from the open end of the tube, the water's own glow from every side,
+  and a soft sheen down a wet back. The **net of light** the moving surface folds it into slides
+  over the skin: two layers of the foam-cell field, bent by the swell and drawn wide and soft,
+  sharp near the surface and washed out with depth.
+- **Round, and behind moving glass.** A body darkens toward its outline; its outline is shifted
+  a centimetre or two this way and that by the water in front of it, not at all where it breaks
+  the surface (the half in the air and the half behind the water still meet).
+- **The green turtle is painted**: a shell of plates (the foam cells, mirrored about the keel so
+  the middle row is whole and each side answers the other, a dark seam between two, amber
+  streaks through each), a hide of dark scales edged in cream on the head and flippers, a pale
+  plastron. Its front flippers now fly (down and back, feathered coming up) instead of rowing,
+  the rear ones steer, the head looks about. It and the manta, seen closest, have more
+  triangles (3600 and 3000).
+- **The manta is in the wall.** It used to pass under the flat of the trough, where the sea
+  mirrors the sky at the angle the rider sees it from: nothing of it showed. A young one (2.1 to
+  2.5 m across) now flies slowly back past the rider inside the wall, deeper than the pods, its
+  whole shape turned to the glass. Turtles and mantas come by more often (from one of the
+  sea's visits in ten to nearly one in six).
+- **The flying fish are gone**: the act, the visit, the splash, the animal in the pack (rebuilt
+  headless: six animals, 435 kB) and the school a clear startled.
+
+| A pod in the wall | The manta | The wall's light |
+| --- | --- | --- |
+| ![riders](waves-overhaul/cs-riders.jpg) | ![manta](waves-overhaul/cs-manta.jpg) | ![wall](waves-overhaul/cs-wall.jpg) |
+
+**The wall's own net of light** got the same treatment: its threads were the straight walls of
+the cells drawn as hairlines, and read as wire loops laid on the glass. They are bent by the
+water's *heights* and drawn half again as wide. (Bent by its slopes they came out as
+staircases: a slope is mostly its finest octave: #1304.) The landing is #1305, the manta #1307.
+
+### Modules and cost
+
+`waves-whitewater.js` is new (the puffs); `waves-water.js` gained the landing, the carpet and
+the fall; `waves-fauna.js` the light and the paint; `waves-spray.js` lost the additive boil
+(its sheets are all the crest's plume now); `waves-acts.js`, `waves-ambient.js`,
+`waves-splash.js` and `waves-world.js` lost the fish. `parts` gained `whitewater`.
+
+The water's fragment has two more texture reads (the carpet's cells, the fall's strands) on a
+material that fills the screen; the sea life's `under` fragment has up to five (plates, scales,
+grain, two for the net) on a few thousand pixels. The puffs are 50 quads at High, three reads
+each, large on screen only in the lower left. No frame-time measurement was run (captures at
+30 fps, as before).
+
+### Verified
+
+- Playground, High, native WebGPU, console clean on every capture: the landing at golden hour,
+  sunset, afterglow, dawn and day, with and without the board; a one-line and a four-line clear;
+  a chain of seven; the turtle, a pod and the manta close and in the game view; portrait.
+- WebGL2 backend (`forceWebGL=1`) and the Minimal tier: the same picture.
+
+  ![in the game](waves-overhaul/cs-in-game.jpg)
+
+- The real game (headless Chrome, real WebGPU, 30 fps): boot, a run, twelve hard drops, a chain
+  of seven, a twist, four lines, a perfect clear, a level, game over. No warning or error names
+  the theme or the renderer.
+- `tests/unit/waves-*.test.js`: 16 files, among them the new `waves-whitewater.test.js` (counts
+  by tier, the mix of kinds, each spread along its line, drawn over and in order, where the
+  curtain is whole) and the shader gate, which builds the new material and the painted sea life
+  on WGSL and GLSL.
+
+### Not done, and calls that are the owner's
+
+- **Nobody has watched it move**, again: how the puffs roll and how fast the carpet streams are
+  judged from stills a second apart.
+- The white water stands in the lower left of the wide view. In **portrait** the foam carpet
+  near the eye is large (its cells are magnified); it was not retuned for that lens.
+- At the height of a long chain the touchdown is a tall heap of white: spectacular, and close
+  to the sun's road. If it is too much, `BURST_RISE.heave` is the one number.
+- The manta in the wall is big (a fifth of the screen wide at its nearest) and passes behind the
+  next-piece panel on its way; the turtle is the same size as before.
 
 ## Known limits
 
