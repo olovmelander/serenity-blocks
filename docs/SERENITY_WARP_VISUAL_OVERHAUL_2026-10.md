@@ -145,3 +145,119 @@ Playground (`npm run dev:playground`, then `playground.html?effect=serenity-warp
 Real game: `?skipIntro=1&unlockAll=1`, then pick Serenity Warp; capture flags
 `serenityWarpTime`, `serenityWarpFixedDt`, `serenityWarpParts=sky,glass,stars,motes,streams,flares`,
 `serenityWarpFalseColor`, `serenityWarpForceWebGL`.
+
+## Third pass (2026-11-17): a living warp, a shape for every event
+
+Asked: audit the whole theme and make it one of the most visually stunning themes in the game,
+varied over time, a distinct effect per event with the biggest moments the most spectacular,
+smooth and readable. Built on branch `feature/serenity-warp-living`.
+
+### What the audit found
+
+- **The vortex was a soft twirl.** Smooth billows wound round the gate; nothing in it moved fast
+  enough to read as space pouring in, and the "streaks of light" existed only in a chain or a jump.
+- **The open sky was wallpaper.** Right of the board (a quarter of a landscape frame) the nebula
+  peaked near 0.08 of white: a dim mauve haze under evenly sprinkled stars, the same on every
+  palette, and it never moved.
+- **Nothing changed but the colours.** The palettes walked by level and clock; the vortex's form,
+  the ring and the sky were the same for the whole session.
+- **Every event was a ring.** A clear, a chain step, a back-to-back, a twist, a level and the
+  crowned arrival all sent rings out of the rim, told apart only by colour, count and speed.
+- **Nothing happened at the end of a run** (the session simply reset).
+- **The pieces wore a dotted white outline** whenever they moved through the rush or a kick
+  (HDR fireflies: gotcha #904), and a white-hot newborn piece was a flat pale sticker.
+
+### What changed
+
+All in `src/themes/serenity-warp/`; the new three-free module is `serenity-warp-living.js`.
+
+| Where | Now |
+|---|---|
+| Streamers (`skyLight`) | Lanes of light at a constant turn of the vortex (the arms' own log spiral), broken into dashes with bright heads that run down the arms into the throat faster than the gas; a pixel wide at any distance, faded where the lanes crowd at the rim, ended at β ≈ 0.5 rad. One layer on every tier, two from High (gotcha #1414). A chain makes them brighter and faster. |
+| The open sky | Its nebula is lit by the gate: one more read of the gas a step toward it gives the clouds' gate-facing edges a rim in the gas's own glow (Medium up, read only on the cloud edges). Brighter hearts. The whole open sky turns slowly round the gate (`SKY_TURN`, a turn in 43 min) and its clouds drift through the gas volume (`CLOUD_DRIFT`), so they form and melt. Far galaxies: now and then a small tilted spiral, warm core and blue disc (Medium up, a rare coherent branch). |
+| The ring | Hot spots circle the photon ring with the gas (two, and five fainter the other way), on its glow and halo. |
+| Moods (`WARP_MOODS`) | Calm, torrent, bloom, tide, one every 117 s with a rest on each, a level a mood on: two arms or three, wound tighter or looser, the gas pouring faster or slower, more or fewer streamers, a brighter or dimmer nebula, a wider or narrower throat, how far the vortex reaches, how bright the hot spots. |
+| Wandering stars | Every ~43 s a star (ember to blue-white) is caught far out, rides an arm in with its tail behind it, spirals in at a steady pace, is torn into an arc round the throat and goes in; the ring flares in its colour. Its outer path is laid on the open side of the gate, never behind the board (gotcha #1413). |
+| The comet | Every ~151 s a comet crosses the open sky beyond the board (right of the HUD; below the card on an upright phone), its ion tail straight and its dust tail curved, both blown away from the gate as a sun's wind blows a comet's. |
+| A twist | An OPEN pinwheel of five thin arms unwinds out of the rim and turns the way the vortex was twisted (a smaller one for a twist that cleared nothing). It replaces the twist's faint ring. |
+| A chain's step | A surge of light runs down the arms INTO the throat (the clears' rings go out; the chain pulls in). It replaces the step's ring. |
+| Back-to-back | The Einstein cross: bright images of one light stand round the photon ring in the nebula's third colour (four, two more for each difficult clear in a row, up to eight) and drift a little out as they fade. It replaces the back-to-back's extra rings. |
+| A level | A lotus of the new palette's light opens out of the rim: six lobes with a burning lip, brightest at the tips. The palette and the mood both move on. It replaces the level's slow ring. |
+| A crown (perfect clear) | On the crowned arrival a corona of fine rays bursts out of the gate across the whole sky, gold with one ray in four in the nebula's third colour, over a soft glow that fades to even light at the hub (scaled by Reduce flashing). It replaces the arrival's two extra rings. |
+| The run's end | The gate closes to a pinhole, its light sinks to an ember and the gas stalls; it holds a few seconds and opens by itself, at once when the next run starts. The theme ends a run in the order flush → reset → close (`endRun`), so the reset never wipes the closing (gotcha #1716); the world keeps it shut through a later session reset (the menu) and `modeStarted` opens it. The warp now unwinds at its own pace through a session reset instead of snapping. |
+| The pieces (`serenity-warp-glass.js`) | Their surface is capped, hue kept, at 2.6 at rest and 6 while white hot or falling in; the rush's taps are capped at 6 (`serenity-warp-post.js`). A white-hot piece is white on the faces toward us and its own colour at the edges. |
+
+Event language now, in short: a lock lifts off in glass with a flare and a ripple; a clear sends
+rings out of the rim, streams from the rows and pieces into the throat; a chain winds the warp and
+pulls surges down the arms; a twist unwinds a pinwheel; a back-to-back lights the Einstein cross;
+four lines take us through the throat; a crown bursts a corona across the sky; a level opens a
+lotus; the run's end closes the gate.
+
+### Tiers
+
+Every tier gets streamers (one layer; two from High), the moods, the visitors, the comet and every
+event shape. Medium and up add the gate-lit nebula and the far galaxies. Nothing new is drawn into
+the environment pass (what the glass mirrors). The shapes, visitors and comet are loops and
+branches on counts that are zero at rest.
+
+**Cost** (RTX 5080 Laptop, playground at 1920 × 1080, `maxFps=30` with GPU timestamps, the branch
+and the untouched base served side by side and interleaved, three rounds, another session busy on
+the machine): High 0.40–0.44 → 0.45–0.52 ms a frame (+11 to +27 %), Medium about +3 to +20 %,
+Low 0.19 → 0.20–0.22 ms (+8 to +14 %; it was +22 % before the streamers were branched to their
+region and given cheaper hashes). The integrated GPU was not measured.
+
+### Traps met
+
+- In the lensed sky the photon ring is β = 0: a star sent "to the throat's radius" stopped at
+  1.6 radii, and anything white laid on the ring vanished in it (gotcha #1413).
+- Lanes hashed by their raw index drew a seam at `atan`'s cut; lanes kept going far out drew rain
+  across the open sky (gotcha #1414).
+- The gate-lit nebula lit everywhere read as grey smoke; lit in the palette's other hue (ember's
+  green under its orange) it read as mud. Only the clouds' edges, in the gas's own glow.
+- The first lotus (outlined petals) read as line art, the first fill as a violet splat.
+- The theme's own tests encoded "every event is a ring" (wave counts per chain step,
+  back-to-back and twist); they now count the shapes (`formCursor`, `surgeCursor`).
+- Capped GPU timings swing ±20 % between identical runs here; only an interleaved A/B against
+  the untouched base on a second private server gave usable numbers.
+
+### Verification
+
+- Shader gate (`serenity-warp-shaders.test.js`): every material on WGSL and GLSL at High and
+  Minimal, no warning, under budget; the read count now includes the lit nebula's read.
+- `tests/unit/serenity-warp-living.test.js` (new, 14 tests): the moods rest whole and melt without
+  a jump, a level is a mood on; visitors are a pure function of the clock, fall monotonically,
+  stand on the open side and flare the ring; comets stay in the open sky and point away from the
+  gate; nothing is alive at rest; each event throws its own shape; a live shape is never
+  re-randomised by a burst; the gate closes, holds, opens by itself, survives a session reset and
+  opens on a new run; tier flags. All 173 Serenity Warp tests pass.
+- Playground captures (private Vite, headless Chrome, `maxFps=30`), clean consoles: rest, the
+  board, every mood, a visitor riding, whipping round and torn, the comet, every event (lock,
+  drop, clear, chain step, twist, spin, back-to-back, quad, crown, level, the run's end, the
+  reopening), WebGPU and the WebGL2 backend, Minimal, Low, Medium, an upright phone, 21:9, and
+  lagoon / ember palettes.
+- The real game in headless Chrome (`?skipIntro=1&unlockAll=1`, Serenity Warp at High on WebGPU):
+  real hard drops topped the board out, the gate closed (0.112 → 0.018 rad), stayed shut behind
+  the result screen and reopened when the next run started; the world's counts reset between
+  runs; console clean but Chrome's own powerPreference note.
+
+### Reproduce
+
+Playground (`playground.html?effect=serenity-warp&maxFps=30&…`; `hud=0` hides the panel):
+
+| Frame | Query |
+|---|---|
+| a mood | `t=20&quality=High&mood=1` (0 calm, 1 torrent, 2 bloom, 3 tide) |
+| a wandering star riding / torn | `t=24&quality=High` / `t=28` / `t=30.6` |
+| the comet | `t=77&quality=High&board=1` |
+| a twist / a spin | `t=26&quality=High&board=1&locks=6&event=twist&eventAge=0.6` / `event=spin&eventAge=0.5` |
+| a chain's step | `t=26&quality=High&board=1&combo=3&event=step&eventAge=0.5` |
+| back-to-back | `t=26&quality=High&board=1&event=b2b&lines=3&b2bRun=1&eventAge=0.45` |
+| the crown | `t=26&quality=High&board=1&event=crown&eventAge=4.2` |
+| a level | `t=26&quality=High&board=1&event=levelUp&eventAge=0.9` |
+| the run's end / reopening | `t=26&quality=High&board=1&event=over&eventAge=3` / `event=open&eventAge=2.6&openAt=2` |
+
+**Open calls** (my doubts, not decisions made): the crown's corona is loud and covers the whole
+sky (it is the rarest event); the lotus is bold on the violet palettes; the ember palette's open
+sky stays brownish; the visitor's torn arc is subtle against the ring; Blender was not needed
+(nothing here is modelled); the theme icon and `docs/theme-screenshots/serenity-warp.png` still
+show the second pass; the integrated GPU's cost was not measured.

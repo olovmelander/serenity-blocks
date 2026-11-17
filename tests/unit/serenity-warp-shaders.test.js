@@ -316,10 +316,12 @@ describe.each(TIERS)('serenity-warp shaders at %s', (quality) => {
         const sky = built.find((b) => b.name === 'SerenityWarpSky' && b.label === 'WGSL');
         const env = built.find((b) => b.name === 'SerenityWarpEnvironment' && b.label === 'WGSL');
         // Our sky's reads (far gas, its curl, the vortex, its fine read, the lit face, the near
-        // dust) and the throat's two: each tier flag adds exactly its own.
+        // dust, the nebula's lit face) and the throat's two: each tier flag adds exactly its own.
         const extra = (tier.warpRead ? 1 : 0) + (tier.detail ? 1 : 0);
         const base = 2 + 2 + extra;
-        expect(gasReads(sky.out.fragment)).toBe(base + (tier.vortexLight ? 1 : 0) + (tier.vortexDust ? 1 : 0));
+        // The open sky's nebula lit by the gate (third pass) reads the far gas once more.
+        expect(gasReads(sky.out.fragment)).toBe(base + (tier.vortexLight ? 1 : 0) + (tier.vortexDust ? 1 : 0)
+            + (tier.litNebula ? 1 : 0));
         expect(gasReads(env.out.fragment)).toBe(base);
     });
 
