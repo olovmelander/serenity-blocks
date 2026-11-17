@@ -63,12 +63,34 @@ export const SWEEP = Object.freeze({ life: 2.7, span: 1500, width: 210 });
 export const RIPPLE = Object.freeze({ life: 1.5, reach: 620 });
 /** A level's wheel of the stars: how far the sky turns (radians), and how far the cloud is swept. */
 export const WHEEL = Object.freeze({ turn: 0.12, rush: 520, length: 2.6 });
+/**
+ * A band of moonlight or a sparkle ripple still lit when a newer one needs its slot is not cut
+ * off: it fades over this long (seconds) and the newer one begins as it goes.
+ */
+export const HANDOVER = Object.freeze({ sweep: 0.35, ripple: 0.18 });
+/** How long the run's-end snow takes to set in, and to stop once the next run begins (seconds). */
+const REST = Object.freeze({ settle: 5, clear: 3 });
 
 const AT = { a: 0, b: 0, melt: 0 };
 const smooth = (/** @type {number} */ t) => {
     const c = Math.min(1, Math.max(0, t));
     return c * c * (3 - 2 * c);
 };
+/** The inverse of `smooth` on 0..1: how far along its ease a value lies. */
+const inverseSmooth = (/** @type {number} */ value) => {
+    const v = Math.min(1, Math.max(0, value));
+    return 0.5 - Math.sin(Math.asin(1 - 2 * v) / 3);
+};
+/** How far a band or ripple cut at `cut` has faded out by `t` (1: not cut). */
+const handedOver = (/** @type {number} */ t, /** @type {number} */ cut, /** @type {number} */ over) => (
+    t > cut ? 1 - smooth((t - cut) / over) : 1);
+
+/**
+ * @typedef {{ at: number, dir: number, strength: number }} SweepBand
+ *   a band of moonlight: when it sets off, which way, how bright
+ * @typedef {{ at: number, x: number, y: number, strength: number }} SparkleRipple
+ *   a ring of sparkle: when and where it starts, how bright
+ */
 
 /**
  * The night's own weather `phase` hours in at `time`: the hour's (melting into the next as the
@@ -103,13 +125,25 @@ export class WolfhourNightDirector {
         this.reach = new Swell({ attack: 1.6, release: 8, ceiling: 1 });
         this.dust = new Swell({ attack: 0.5, release: 5.5, ceiling: 1.5 });
         this.wheel = new Swell({ attack: 0.9, release: 45, ceiling: 0.3 });
-        /** Two bands of moonlight at most (the older gives way). */
+        /**
+         * Two bands of moonlight at a time. A band still lit when a newer one needs its slot fades
+         * out from `cut` (HANDOVER) and the newer one waits in `next` until it has gone.
+         * @type {Array<SweepBand & { cut: number, next: SweepBand | null }>}
+         */
         this.sweeps = [
-            { at: -Infinity, dir: 1, strength: 0 },
-            { at: -Infinity, dir: 1, strength: 0 },
+            {
+                at: -Infinity, dir: 1, strength: 0, cut: Infinity, next: null,
+            },
+            {
+                at: -Infinity, dir: 1, strength: 0, cut: Infinity, next: null,
+            },
         ];
+        /**
+         * The sparkle ripple (one at a time, handed over the same way).
+         * @type {SparkleRipple & { cut: number, next: SparkleRipple | null }}
+         */
         this.ripple = {
-            at: -Infinity, x: 0, y: 0, strength: 0,
+            at: -Infinity, x: 0, y: 0, strength: 0, cut: Infinity, next: null,
         };
         this.rush = { count: 0, at: -Infinity };
         this.heat = { level: 0, fever: 0 };
@@ -138,29 +172,61 @@ export class WolfhourNightDirector {
         };
     }
 
-    /** A band of moonlight sets off at `time` from the left (`dir` 1) or the right (-1). */
-    sweep(time, dir = 1, strength = 0.7) {
+    /**
+     * A band of moonlight sets off at `time` from the left (`dir` 1) or the right (-1); `now` is
+     * when it was asked for (`time` may be a moment ahead: a double's second band).
+     */
+    sweep(time, dir = 1, strength = 0.7, now = time) {
         if (!Number.isFinite(time)) return;
-        // The slot whose band is furthest gone.
+        const band = { at: time, dir: dir < 0 ? -1 : 1, strength: Math.max(0, Math.min(1.5, strength)) };
+        const asked = Number.isFinite(now) ? Math.min(now, time) : time;
+        // When each slot is free: its band over (or faded out), and none waiting in it.
+        const freeAt = (/** @type {(typeof this.sweeps)[number]} */ slot) => (slot.next ? Infinity
+            : Math.min(slot.at + SWEEP.life, slot.cut + HANDOVER.sweep));
         const [a, b] = this.sweeps;
-        const slot = a.at <= b.at ? a : b;
-        slot.at = time;
-        slot.dir = dir < 0 ? -1 : 1;
-        slot.strength = Math.max(0, Math.min(1.5, strength));
+        let slot = freeAt(a) <= freeAt(b) ? a : b;
+        const free = freeAt(slot);
+        if (free === Infinity) {
+            // Both have a band waiting: the one waiting longest gives its place (it was never seen).
+            slot = a.next.at >= b.next.at ? a : b;
+            slot.next = { ...band, at: Math.max(band.at, slot.next.at) };
+            return;
+        }
+        if (slot.at > asked || free <= asked) {
+            // Not yet begun (never seen) or already gone: the slot is the new band's now.
+            Object.assign(slot, band, { cut: Infinity, next: null });
+            return;
+        }
+        // Still lit: if it is over before the new band begins, the new one waits for it; if not,
+        // it fades out (as late as lets the new one begin on time) and the new one follows.
+        if (free > band.at) slot.cut = Math.max(asked, Math.min(slot.cut, band.at - HANDOVER.sweep));
+        slot.next = { ...band, at: Math.max(band.at, Math.min(free, slot.cut + HANDOVER.sweep)) };
     }
 
     /** A piece came down at world (x, y): the sparkle ripple runs out from there. */
     lock(time, { x = 0, y = 0, hardDrop = false } = {}) {
         if (!Number.isFinite(time)) return;
         const { ripple } = this;
+        const strength = hardDrop ? 1 : 0.6;
+        const fresh = {
+            at: time, x: Number.isFinite(x) ? x : 0, y: Number.isFinite(y) ? y : 0, strength,
+        };
+        // One already waiting to follow the last: this one takes its place (it was never seen).
+        if (ripple.next) {
+            if (strength >= ripple.next.strength) ripple.next = { ...fresh, at: ripple.next.at };
+            return;
+        }
         // A ripple still young is not cut off by a weaker one: it is let run.
         const age = time - ripple.at;
-        const strength = hardDrop ? 1 : 0.6;
         if (age >= 0 && age < RIPPLE.life * 0.35 && ripple.strength > strength) return;
-        ripple.at = time;
-        ripple.x = Number.isFinite(x) ? x : 0;
-        ripple.y = Number.isFinite(y) ? y : 0;
-        ripple.strength = strength;
+        const lit = age >= 0 && age < RIPPLE.life && time < ripple.cut + HANDOVER.ripple;
+        if (!lit) {
+            Object.assign(ripple, fresh, { cut: Infinity, next: null });
+            return;
+        }
+        // The one still running fades out as the new one sets off.
+        ripple.cut = time;
+        ripple.next = { ...fresh, at: time + HANDOVER.ripple };
     }
 
     /**
@@ -171,7 +237,7 @@ export class WolfhourNightDirector {
         if (!Number.isFinite(time)) return;
         const n = Math.max(1, Math.min(4, Math.round(lines)));
         this.sweep(time, 1, 0.72 + n * 0.12);
-        if (n >= 2) this.sweep(time + 0.3, -1, 0.6 + n * 0.12);
+        if (n >= 2) this.sweep(time + 0.3, -1, 0.6 + n * 0.12, time);
         if (n === 3) {
             this.aurora.hit(0.42, time);
             this.reach.hit(0.14, time);
@@ -196,7 +262,7 @@ export class WolfhourNightDirector {
     /** Back to back: the answer comes back across the valley from the right. */
     backToBack(time) {
         if (!Number.isFinite(time)) return;
-        this.sweep(time + 0.15, -1, 0.95);
+        this.sweep(time + 0.15, -1, 0.95, time);
         this.aurora.hit(0.38, time);
         this.reach.hit(0.12, time);
     }
@@ -225,18 +291,26 @@ export class WolfhourNightDirector {
         this.heat.fever = Math.max(0, Math.min(1, Number.isFinite(fever) ? fever : 0));
     }
 
-    /** The run is over: the night settles under falling snow. */
-    over(time) {
-        if (this.rest.over || !Number.isFinite(time)) return;
-        this.rest.over = true;
-        this.rest.at = time;
+    /** How far the run's-end snow has set in at `t` (0..1). */
+    restAt(t) {
+        const { rest } = this;
+        return rest.over ? smooth((t - rest.at) / REST.settle) : 1 - smooth((t - rest.at) / REST.clear);
     }
 
-    /** A run begins: the snow of the last one's end stops. */
+    /** The run is over: the night settles under falling snow (from wherever it stands). */
+    over(time) {
+        if (this.rest.over || !Number.isFinite(time)) return;
+        const now = this.restAt(time);
+        this.rest.over = true;
+        this.rest.at = time - REST.settle * inverseSmooth(now);
+    }
+
+    /** A run begins: the snow of the last one's end stops (from wherever it has got to). */
     begin(time) {
         if (!this.rest.over || !Number.isFinite(time)) return;
+        const now = this.restAt(time);
         this.rest.over = false;
-        this.rest.at = time;
+        this.rest.at = time - REST.clear * inverseSmooth(1 - now);
     }
 
     /**
@@ -252,7 +326,7 @@ export class WolfhourNightDirector {
         const calm = motion < 0.5;
         const w = wolfhourWeatherAt(phase, t, this.weather);
         const { night, heat } = this;
-        const settled = this.rest.over ? smooth((t - this.rest.at) / 5) : 1 - smooth((t - this.rest.at) / 3);
+        const settled = this.restAt(t);
         // The fever holds the lights and the glitter up; the run's end lets the snow fall.
         night.aurora = Math.min(1.6, w.aurora + this.aurora.valueAt(t) + heat.fever * 0.75);
         night.reach = Math.min(1, w.reach + this.reach.valueAt(t) + heat.fever * 0.5);
@@ -261,6 +335,8 @@ export class WolfhourNightDirector {
         night.fall = Math.min(1, w.fall + settled * 0.6);
         night.wind = Math.min(1.2, w.wind + heat.level * 0.3);
         this.sweeps.forEach((slot, i) => {
+            // A band waiting for this slot takes it once the one before has gone.
+            if (slot.next && t >= slot.next.at) Object.assign(slot, slot.next, { cut: Infinity, next: null });
             const u = (t - slot.at) / SWEEP.life;
             const out = night.sweeps[i];
             if (!(u >= 0 && u <= 1)) {
@@ -268,17 +344,20 @@ export class WolfhourNightDirector {
                 return;
             }
             out[0] = calm ? 0 : slot.dir * (u * 2 - 1) * SWEEP.span;
-            out[1] = slot.strength * Math.sin(Math.PI * u) ** 0.8 * (calm ? 0.5 : 1);
+            out[1] = slot.strength * Math.sin(Math.PI * u) ** 0.8 * (calm ? 0.5 : 1)
+                * handedOver(t, slot.cut, HANDOVER.sweep);
             out[2] = calm ? SWEEP.span : SWEEP.width;
         });
         night.glow = Math.min(1.5, night.sweeps[0][1] + night.sweeps[1][1]);
         const { ripple } = this;
+        if (ripple.next && t >= ripple.next.at) Object.assign(ripple, ripple.next, { cut: Infinity, next: null });
         const age = (t - ripple.at) / RIPPLE.life;
         if (age >= 0 && age <= 1) {
             night.ripple[0] = ripple.x;
             night.ripple[1] = ripple.y;
             night.ripple[2] = 30 + RIPPLE.reach * (1 - Math.exp(-2.4 * age));
-            night.ripple[3] = ripple.strength * (1 - age) ** 1.4 * smooth(age / 0.08);
+            night.ripple[3] = ripple.strength * (1 - age) ** 1.4 * smooth(age / 0.08)
+                * handedOver(t, ripple.cut, HANDOVER.ripple);
         } else night.ripple[3] = 0;
         if (calm) {
             night.spin = 0;
@@ -305,8 +384,11 @@ export class WolfhourNightDirector {
         this.reach.reset();
         this.dust.reset();
         this.wheel.reset();
-        for (const slot of this.sweeps) slot.at = -Infinity;
-        this.ripple.at = -Infinity;
+        for (const slot of [...this.sweeps, this.ripple]) {
+            slot.at = -Infinity;
+            slot.cut = Infinity;
+            slot.next = null;
+        }
         this.rush.count = 0;
         this.rush.at = -Infinity;
         this.heat.level = 0;

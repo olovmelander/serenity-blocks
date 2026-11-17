@@ -28,6 +28,8 @@ export const VOICE = Object.freeze({
 const ARC_LIGHT = vec3(0.34, 0.44, 0.7);
 
 /** Arcs alive at once, by tier. */
+/** How far through its life an arc must be before its slot is given to a new one (it is faint by then). */
+const VOICE_REUSE = 0.85;
 const CAPACITY = Object.freeze({
     Minimal: 10, Low: 18, Medium: 36, High: 48, Ultra: 56, Extreme: 64,
 });
@@ -121,6 +123,9 @@ export function createWolfhourVoices({ quality = 'High', nightLight = createWolf
                 // A seek backward starts the count again.
                 if (t < last) lastOf[v] = -Infinity;
                 if (t - (lastOf[v] ?? -Infinity) < every * (0.9 + (v % 3) * 0.12)) continue;
+                // Never cut an arc still in the air: the oldest slot is taken only once its arc
+                // has all but faded (a full chorus on a small tier waits a frame or two instead).
+                if (t >= born[cursor * 4] && t - born[cursor * 4] < (VOICE.life / uSlow.value) * VOICE_REUSE) continue;
                 lastOf[v] = t;
                 const size = VOICE.reach * reach * (0.55 + 0.45 * Math.min(1, level));
                 // Up and toward the moon: more up than across.
