@@ -30,6 +30,16 @@
  *   time     by itself, with no level change, the sky drifts along the same line: one palette
  *            every PALETTE_STEP seconds, there and back. The two simply add.
  *
+ * The third pass (serenity-warp-living.js) gave the warp a life of its own and every event its
+ * own shape: the warp's moods turn on their own clock (two arms or three, wound tight or loose,
+ * the streamers of light down the arms, the open sky's lit nebula, the throat's width, the hot
+ * spots on its ring); wandering stars are caught by the current and torn round the throat; a
+ * comet crosses the open sky beyond the board; the open sky turns slowly round the gate and its
+ * clouds form and melt. A twist unwinds a pinwheel out of the rim, a back-to-back lights the
+ * Einstein cross, a crown a corona of rays across the sky, a level a lotus of the new light, a
+ * chain's step a surge down the arms into the throat; and a run's end closes the gate to a
+ * pinhole until it opens again by itself.
+ *
  * Nothing is created at event time: events write numbers into preallocated slots and a small
  * queue of timed moments, so seek(t) plus a fixed-step replay reproduces any frame. What is
  * integrated (how far the gas has flowed, how far each piece has come) is integrated because
@@ -44,6 +54,33 @@ import { flashScale } from '../../utils/photosensitivity.js';
 import {
     AMBIENT_FADE,
     BIRTH_COOL,
+    CLOSED_LIGHT,
+    CLOSED_THROAT,
+    COMET_EVERY,
+    COMET_FIRST,
+    COMET_LIFE,
+    FORM_KINDS,
+    FORM_SLOTS,
+    INFALL_CLEAR,
+    INFALL_EVERY,
+    INFALL_FIRST,
+    INFALL_RIDE,
+    INFALL_TEAR,
+    CLOUD_DRIFT,
+    SKY_TURN,
+    SURGE_RUN,
+    TAU,
+    VISITOR_SLOTS,
+    closedAt,
+    cometPath,
+    cometProgress,
+    formLight,
+    formReach,
+    infallPlace,
+    infallVisitor,
+    moodAt,
+    moodPlace,
+    surgePlace,
     BIRTH_DEPTH,
     BIRTH_FLIGHT,
     BIRTH_SIZE,
@@ -105,7 +142,7 @@ import {
 } from './serenity-warp-tsl.js';
 import { tierFor } from './serenity-warp-quality.js';
 import { GAS_SEED, GAS_SIZE } from './serenity-warp-bake.js';
-import { createSky } from './serenity-warp-sky.js';
+import { WIND_REST, WIND_WARP, createSky } from './serenity-warp-sky.js';
 import { createGlassSteps, matchShape } from './serenity-warp-glass.js';
 import { MOTE_DEPTH, STAR_DEPTH, createStreakField } from './serenity-warp-stars.js';
 import { createFlares, createStreams } from './serenity-warp-fx.js';
@@ -299,6 +336,29 @@ export class SerenityWarpWorld {
             punch: 0, level: 0, fever: 0, stage: 0,
         };
         this._rim = [1, 1, 1];
+        /** The shapes events throw round the gate (serenity-warp-living.js FORM_KINDS). */
+        this.formSlots = Array.from({ length: FORM_SLOTS }, () => ({
+            kind: 0, birth: -1e6, strength: 0, rgb: [1, 1, 1], seed: 0, params: [0, 0, 0, 0],
+        }));
+        /** A chain's surges down the arms (the two latest). */
+        this.surges = [{ birth: -1e6, strength: 0 }, { birth: -1e6, strength: 0 }];
+        /** The warp's mood this frame, and a fixed offset on its clock (captures). */
+        this.mood = moodAt(0);
+        this.moodOffset = 0;
+        /** The run's end: when the gate began to close, and when a new run began to open it again. */
+        this.closeStart = -1e6;
+        this.reopenStart = Infinity;
+        this.reopenFrom = 0;
+        this.closed = 0;
+        /** The last wandering star whose fall into the throat has flared the ring, and the comets' ways. */
+        this.swallowed = -1;
+        this._comet = { k: -1, path: null };
+        this._cometDir = [0, 0, 0];
+        this._cometNext = [0, 0, 0];
+        this._visitor = null;
+        this.visitorsLive = 0;
+        this.cometLive = 0;
+        this.formsLive = 0;
         this.resetState(0);
     }
 
@@ -354,6 +414,9 @@ export class SerenityWarpWorld {
         this.thereMix = 0;
         this.waveCursor = 0;
         this.rippleCursor = 0;
+        /** Event shapes and chain surges sent so far (tests count them as they count rings). */
+        this.formCursor = 0;
+        this.surgeCursor = 0;
         this.spawnClock = 0;
         this.spawned = 0;
         this.current = 1;
@@ -380,6 +443,19 @@ export class SerenityWarpWorld {
         this.pieces?.forEach((piece) => {
             piece.live = false;
         });
+        this.formSlots?.forEach((slot) => {
+            slot.birth = -1e6;
+            slot.strength = 0;
+        });
+        this.surges?.forEach((slot) => {
+            slot.birth = -1e6;
+            slot.strength = 0;
+        });
+        this.closeStart = -1e6;
+        this.reopenStart = Infinity;
+        this.closed = 0;
+        // A star already torn before this moment has flared the ring before it: only those to come do.
+        this.swallowed = Math.floor((time - INFALL_FIRST - INFALL_RIDE - INFALL_TEAR) / INFALL_EVERY);
         this.streams?.reset();
         this.flares?.reset();
         if (this.u) {
@@ -484,7 +560,7 @@ export class SerenityWarpWorld {
     /** A new run: back to rest (the gas keeps flowing, the sky keeps its place on the clock). */
     resetSession() {
         const {
-            time, inflow, spin, drift, moteRun, levelPlace,
+            time, inflow, spin, drift, moteRun, levelPlace, closeStart, reopenStart, reopenFrom, swallowed, warp,
         } = this;
         const here = this.u ? this.u.hereShift.value.clone() : null;
         const there = this.u ? this.u.thereShift.value.clone() : null;
@@ -492,8 +568,11 @@ export class SerenityWarpWorld {
         this.resetState(time);
         // The sky eases back to the first level's place; it does not jump. The glass in flight
         // stays in flight.
+        // A gate shut at the run's end stays shut through the menu (it opens by itself, or at
+        // once when the next run starts: onSessionStart).
+        // The warp unwinds at its own pace (snapped to rest, the arms unwound in one frame).
         Object.assign(this, {
-            inflow, spin, drift, moteRun, levelPlace,
+            inflow, spin, drift, moteRun, levelPlace, closeStart, reopenStart, reopenFrom, swallowed, warp,
         });
         if (here) this.u.hereShift.value.copy(here);
         if (there) this.u.thereShift.value.copy(there);
@@ -1113,10 +1192,12 @@ export class SerenityWarpWorld {
             this.tumbleBoost = Math.max(this.tumbleBoost, 0.5 + 0.2 * depth);
         }
         if (twist) {
-            // The vortex twists round the gate and springs back; the glass tumbles.
+            // The vortex twists round the gate and springs back; the glass tumbles; and an open
+            // pinwheel of light unwinds out of the rim, turning the way the vortex was twisted.
             this.twistVelocity += 0.9;
             this.tumbleBoost = Math.max(this.tumbleBoost, 1.6);
             this.kick = Math.max(this.kick, 0.3);
+            this.pinwheel(at, Math.min(1.4, 0.95 + 0.12 * n));
         }
         if (b2b) this.backToBack(at);
         else if (depth === 0) this.b2bRun = 0;
@@ -1131,20 +1212,21 @@ export class SerenityWarpWorld {
     }
 
     /**
-     * Back-to-back: the throat rings twice. Rings leave the rim together in the nebula's third
-     * colour and part as they cross (each one slower than the last), and the photon ring flares in
-     * that colour. Every difficult clear in a row rings once more and burns the ring hotter.
+     * Back-to-back: the Einstein cross. Bright images of one light stand round the photon ring in
+     * the nebula's third colour (four, two more for each difficult clear in a row, up to eight)
+     * and drift a little out as they fade, and the ring flares in that colour. Not another ring:
+     * the clear itself already sent its rings.
      */
     backToBack(at) {
         this.b2bRun += 1;
         const run = Math.min(4, this.b2bRun);
         const tint = this.accentLight();
-        const rings = 1 + Math.min(run, 2);
-        for (let i = 0; i < rings; i++) {
-            this.schedule(at + 0.05, 'wave', {
-                rgb: tint.slice(), strength: Math.min(1.6, 0.8 + 0.15 * run), slow: 1 + 0.24 * i,
-            });
-        }
+        this.addForm(FORM_KINDS.cross, at + 0.05, {
+            strength: Math.min(1.5, 0.95 + 0.14 * run),
+            rgb: tint.slice(),
+            seed: ((this.counts.b2b * 0.382) % 1),
+            params: [Math.min(8, 2 + 2 * run), 0, 0, 0],
+        });
         this.rimTint = tint;
         this.rimFlash = Math.min(1.4, Math.max(this.rimFlash, 0.75 + 0.15 * run));
         this.boost = Math.min(2, this.boost + 0.12 * run);
@@ -1159,7 +1241,7 @@ export class SerenityWarpWorld {
         this.twistVelocity += 0.45;
         this.tumbleBoost = Math.max(this.tumbleBoost, 0.9);
         this.kick = Math.max(this.kick, 0.15);
-        this.wave(t, { rgb: this.accentLight(0.3), strength: 0.5, slow: 1 });
+        this.pinwheel(t, 0.55);
         this.pace.spin(t);
         this.counts.spins += 1;
     }
@@ -1256,11 +1338,91 @@ export class SerenityWarpWorld {
         this.kick = Math.max(this.kick, 0.6);
         this.wave(time, { rgb: [...WARPLIGHT], strength: 1.6 + 0.1 * this.jumpMemory, slow: 0.7 });
         if (perfect) {
-            this.schedule(time + 0.16, 'wave', { rgb: [gate[0], gate[1], gate[2]], strength: 1.35, slow: 0.85 });
-            this.schedule(time + 0.32, 'wave', { rgb: this.accentLight(), strength: 1.15, slow: 1 });
+            // Crowned: a corona of rays bursts out of the gate across the whole sky, in the gate's
+            // own light warmed toward gold (a frame-wide light: Reduce flashing keeps a share of it).
+            const gold = [0, 1, 2].map((c) => gate[c] * 0.55 + [1.0, 0.8, 0.45][c] * 0.45);
+            this.addForm(FORM_KINDS.corona, time + 0.08, {
+                strength: 1.25 * flashScale(),
+                rgb: gold,
+                seed: (this.jumps * 0.618) % 1,
+                params: [...this.accentLight(0.25), 0],
+            });
             this.rimTint = [gate[0], gate[1], gate[2]];
             this.rimFlash = Math.max(this.rimFlash, 1.2);
         }
+    }
+
+    // ── The shapes events throw round the gate ──────────────────────────────────
+
+    /**
+     * A shape is born at `time` (it may be a moment ahead): a spent slot, else the one with the least
+     * light left. A slot keeps its shape until it is taken, so nothing alive re-randomises.
+     */
+    addForm(kind, time, {
+        strength = 1, rgb = WARPLIGHT, seed = 0, params = [0, 0, 0, 0],
+    } = {}) {
+        let pick = 0;
+        let least = Infinity;
+        for (let i = 0; i < FORM_SLOTS; i++) {
+            const s = this.formSlots[i];
+            const age = time - s.birth;
+            const left = age < 0 ? s.strength : formLight(s.kind, age) * s.strength;
+            if (left < least) {
+                least = left;
+                pick = i;
+            }
+        }
+        const slot = this.formSlots[pick];
+        this.formCursor += 1;
+        slot.kind = kind;
+        slot.birth = time;
+        slot.strength = strength;
+        slot.rgb = [rgb[0], rgb[1], rgb[2]];
+        slot.seed = seed;
+        for (let c = 0; c < 4; c++) slot.params[c] = params[c] ?? 0;
+        return slot;
+    }
+
+    /** A twist's open pinwheel, turning the way the vortex twists (alternating, as the vortex does). */
+    pinwheel(time, strength) {
+        const way = this.counts.spins + this.counts.clears;
+        this.addForm(FORM_KINDS.pinwheel, time, {
+            strength, rgb: this.accentLight(0.2), seed: (way * 0.437) % 1, params: [way % 2 ? -1 : 1, 0, 0, 0],
+        });
+    }
+
+    /** A chain's surge down the arms: it takes the older of the two. */
+    addSurge(time, strength) {
+        const slot = this.surges[0].birth <= this.surges[1].birth ? this.surges[0] : this.surges[1];
+        this.surgeCursor += 1;
+        slot.birth = time;
+        slot.strength = strength;
+    }
+
+    /**
+     * The run is over: the gate closes to a pinhole, its light sinks to an ember and the gas it
+     * drew in stalls. It holds a few seconds and opens again by itself (closedAt), or at once when
+     * the next run starts (onSessionStart). A session reset (the menu) keeps it shut.
+     */
+    onGameOver() {
+        this.closeStart = this.time;
+        this.reopenStart = Infinity;
+    }
+
+    /** A new run: a gate a run's end left shut opens now. */
+    onSessionStart() {
+        const closed = this.closedNow(this.time);
+        if (closed > 1e-3 && this.reopenStart === Infinity) {
+            this.reopenFrom = closed;
+            this.reopenStart = this.time;
+        }
+    }
+
+    /** How shut the gate is at `t` (0 open → 1 shut). */
+    closedNow(t) {
+        let c = closedAt(t - this.closeStart);
+        if (this.reopenStart < Infinity) c = Math.min(c, this.reopenFrom * (1 - smooth(0, 1.2, t - this.reopenStart)));
+        return c;
     }
 
     /** The true combo changed (0 = the chain broke). */
@@ -1276,15 +1438,12 @@ export class SerenityWarpWorld {
                 slow: 1.5,
             });
         }
-        // Another step of the chain: a ring in the nebula's own glow leaves the rim.
+        // Another step of the chain: a surge of light runs down the arms INTO the throat (the
+        // clears' rings go out; the chain pulls in).
         if (n >= 2 && n > this.combo) {
             this.boost = Math.min(2, this.boost + 0.18);
             this.tintFlash(0.05);
-            const p = this._palette.glow;
-            const peak = Math.max(p[0], p[1], p[2], 1e-4);
-            this.wave(this.time, {
-                rgb: p.map((c) => (c / peak) * 0.8 + 0.2), strength: Math.min(1.2, 0.45 + 0.08 * n), slow: 1,
-            });
+            this.addSurge(this.time, Math.min(1.3, 0.55 + 0.09 * n));
         }
         this.combo = n;
     }
@@ -1299,8 +1458,13 @@ export class SerenityWarpWorld {
         else if (this.u) {
             const tint = paletteAt(palettePlace(this.level - 1, this.time), this._ahead).glow;
             const peak = Math.max(tint[0], tint[1], tint[2], 1e-4);
-            this.wave(this.time, { rgb: tint.map((c) => (c / peak) * 0.85 + 0.15), strength: 1.4, slow: 0.55 });
-            this.tintFlash(0.12, tint.map((c) => (c / peak) * 0.85 + 0.15));
+            const light = tint.map((c) => (c / peak) * 0.85 + 0.15);
+            // A lotus of the new palette's light opens out of the rim (the warp also moves one
+            // mood on: the moods' clock reads the level's place).
+            this.addForm(FORM_KINDS.petals, this.time, {
+                strength: 1.15, rgb: light, seed: (this.level * 0.271) % 1,
+            });
+            this.tintFlash(0.12, light);
             this.pace.levelUp(this.time);
         }
     }
@@ -1495,6 +1659,169 @@ export class SerenityWarpWorld {
         }
         u.rippleCount.value = ripples;
         this.ripplesLive = ripples;
+        this.writeForms(t);
+        this.writeVisitors(t);
+        this.writeSurges(t);
+    }
+
+    /** The shapes alive, packed at the front of their rows (a slot's own order: nothing reshuffles). */
+    writeForms(t) {
+        const { u } = this;
+        const rows = u.tables.events;
+        let live = 0;
+        for (let i = 0; i < FORM_SLOTS; i++) {
+            const s = this.formSlots[i];
+            const age = t - s.birth;
+            const light = formLight(s.kind, age) * s.strength;
+            if (light <= 0.004) continue;
+            const r = EVENT_ROWS.forms + live * 3;
+            rows[r].set(s.kind, age, light, formReach(s.kind, age));
+            rows[r + 1].set(s.rgb[0], s.rgb[1], s.rgb[2], s.seed);
+            rows[r + 2].set(s.params[0], s.params[1], s.params[2], s.params[3]);
+            live += 1;
+        }
+        u.formCount.value = live;
+        this.formsLive = live;
+    }
+
+    /**
+     * The wandering stars the current has caught, from the clock (a pure function of the time, so
+     * a seek shows the same sky). Each comes in along the arm it rides, so its place is written in
+     * the vortex's own frame: the turn of the arm (which the spin and a twist carry round, as they
+     * carry the gas) and its log angle off the axis. When one goes in, the ring flares in its colour.
+     */
+    writeVisitors(t) {
+        const { u } = this;
+        const rows = u.tables.events;
+        const rim = u.gateRadius.value;
+        const wind = (WIND_REST + this.warp * WIND_WARP) * this.mood.wind;
+        let live = 0;
+        const last = Math.floor((t - INFALL_FIRST + 6) / INFALL_EVERY) + 1;
+        for (let k = Math.max(0, last - 2); k <= last && live < VISITOR_SLOTS; k++) {
+            if (!this._visitor || this._visitor.k !== k) this._visitor = infallVisitor(k, this.seed);
+            const v = this._visitor;
+            const age = t - v.birth;
+            if (age < 0 || age > INFALL_RIDE + INFALL_TEAR) continue;
+            const { L, tear } = infallPlace(age, rim);
+            // Where it leaves the board's shadow (φ, 0 = screen right, up positive): on the open
+            // side of the gate, above and left of it; further out the arm it rides reaches round
+            // the far side, and further in it whips round the throat to the ring.
+            const clear = Math.log(INFALL_CLEAR);
+            const phiClear = (0.55 + 0.12 * (v.turn / TAU)) * Math.PI;
+            const twist = this.twist * (this.reducedMotion ? 0.25 : 1) * (1.6 - L * 0.25);
+            const turn = phiClear - clear * wind + this.spin + twist;
+            const fade = smooth(0, 2, age) * (1 - smooth(0.75, 1, tear));
+            const r = EVENT_ROWS.visitors + live * 2;
+            rows[r].set(turn, L, tear, v.light * fade * (1 - 0.5 * this.closed));
+            rows[r + 1].set(v.rgb[0], v.rgb[1], v.rgb[2], v.size);
+            live += 1;
+            if (tear >= 0.8 && k > this.swallowed) {
+                this.swallowed = k;
+                if (this.rimFlash <= 0.75) this.rimTint = [v.rgb[0], v.rgb[1], v.rgb[2]];
+                this.rimFlash = Math.max(this.rimFlash, 0.75);
+                this.flares?.fire(this.heart.x, this.heart.y, v.rgb, t, 0.045, 0.7);
+            }
+        }
+        u.visitorCount.value = live;
+        this.visitorsLive = live;
+    }
+
+    /** A chain's surges as (log angle, light) × 2. */
+    writeSurges(t) {
+        const rim = this.u.gateRadius.value;
+        const out = [0, 0, 0, 0];
+        for (let i = 0; i < 2; i++) {
+            const s = this.surges[i];
+            const age = t - s.birth;
+            const L = surgePlace(age, rim);
+            if (L === null) continue;
+            out[i * 2] = L;
+            out[i * 2 + 1] = s.strength * smooth(0, 0.08, age) * (1 - smooth(SURGE_RUN * 0.7, SURGE_RUN + 0.25, age));
+        }
+        this.u.surge.value.set(out[0], out[1], out[2], out[3]);
+    }
+
+    /**
+     * The comet now in the sky, if any (one every COMET_EVERY s): its way is laid in screen fractions
+     * of the rest frame (cometPath) and turned into far directions once a crossing (and again if
+     * the frame changes shape), so it is a far thing the camera's sway does not carry.
+     */
+    writeComet(t) {
+        const { u } = this;
+        const k = Math.floor((t - COMET_FIRST) / COMET_EVERY);
+        const age = t - (COMET_FIRST + k * COMET_EVERY);
+        if (k < 0 || age > COMET_LIFE) {
+            u.cometLight.value = 0;
+            this.cometLive = 0;
+            return;
+        }
+        const c = this._comet;
+        if (c.k !== k || c.aspect !== this.aspect) {
+            const path = cometPath(k, this.aspect, this.seed);
+            const keepH = this._tanH;
+            const keepV = this._tanV;
+            const cam = this.restCamera();
+            const at = (x, y) => {
+                const r = this._v.set(x * 2 - 1, 1 - y * 2, 0.5).unproject(cam).sub(cam.position).normalize();
+                return [r.x, r.y, r.z];
+            };
+            // The middle of the crossing bends a little toward the gate (its pull).
+            const mx = (path.from.x + path.to.x) / 2;
+            const my = (path.from.y + path.to.y) / 2;
+            const hx = this.anchors.x - mx;
+            const hy = this.anchors.y - my;
+            const hl = Math.hypot(hx * this.aspect, hy) || 1;
+            const d0 = at(path.from.x, path.from.y);
+            const dm = at(mx + (hx / hl) * path.bend, my + (hy / hl) * path.bend * this.aspect);
+            const d1 = at(path.to.x, path.to.y);
+            // A quadratic through the middle point.
+            c.p0 = d0;
+            c.p1 = [0, 1, 2].map((i) => 2 * dm[i] - (d0[i] + d1[i]) / 2);
+            c.p2 = d1;
+            c.path = path;
+            c.k = k;
+            c.aspect = this.aspect;
+            this._tanH = keepH;
+            this._tanV = keepV;
+        }
+        const point = (p, out) => {
+            const a = (1 - p) * (1 - p);
+            const b = 2 * p * (1 - p);
+            const e = p * p;
+            for (let i = 0; i < 3; i++) out[i] = c.p0[i] * a + c.p1[i] * b + c.p2[i] * e;
+            const n = Math.hypot(out[0], out[1], out[2]) || 1;
+            out[0] /= n;
+            out[1] /= n;
+            out[2] /= n;
+            return out;
+        };
+        const p = cometProgress(age);
+        const d = point(p, this._cometDir);
+        const ahead = point(Math.min(1, p + 0.01), this._cometNext);
+        const g = u.gateDir.value;
+        const cosG = d[0] * g.x + d[1] * g.y + d[2] * g.z;
+        // Its tails point away from the gate (the gate's light and wind blow them, as a sun's).
+        let ax = d[0] * cosG - g.x;
+        let ay = d[1] * cosG - g.y;
+        let az = d[2] * cosG - g.z;
+        const al = Math.hypot(ax, ay, az) || 1;
+        ax /= al;
+        ay /= al;
+        az /= al;
+        let vx = ahead[0] - d[0];
+        let vy = ahead[1] - d[1];
+        let vz = ahead[2] - d[2];
+        const vl = Math.hypot(vx, vy, vz) || 1;
+        vx /= vl;
+        vy /= vl;
+        vz /= vl;
+        const rows = u.tables.events;
+        rows[EVENT_ROWS.comet].set(d[0], d[1], d[2], 0);
+        rows[EVENT_ROWS.comet + 1].set(ax, ay, az, 0.15 * c.path.tail);
+        rows[EVENT_ROWS.comet + 2].set(vx, vy, vz, 1.4);
+        const light = c.path.light * smooth(0, 1.2, age) * (1 - smooth(COMET_LIFE - 1.5, COMET_LIFE, age));
+        u.cometLight.value = light * (1 - 0.5 * this.closed);
+        this.cometLive = light > 0.001 ? 1 : 0;
     }
 
     // ── Frame ───────────────────────────────────────────────────────────────────
@@ -1518,6 +1845,12 @@ export class SerenityWarpWorld {
         this.tumbleBoost *= Math.exp(-dt / 0.9);
         this.drain(t);
 
+        // ── The warp's own life: its mood, and how shut the gate stands after a run's end ──
+        moodAt(moodPlace(this.levelPlace, t) + this.moodOffset, this.mood);
+        const { mood } = this;
+        const closed = this.closedNow(t);
+        this.closed = closed;
+
         // ── How hot play runs ──
         const heat = this.pace.sample(t);
         this.heat.punch = heat.punch;
@@ -1538,7 +1871,7 @@ export class SerenityWarpWorld {
         const warpTarget = Math.min(
             0.98,
             warpForCombo(this.combo) + Math.min(0.2, this.boost * 0.12) + this.surge * 0.06 + warm * 0.08 + hot * 0.1,
-        ) * (calm ? 0.3 : 1);
+        ) * (calm ? 0.3 : 1) * (1 - closed);
         // It winds up over the chain, not in its first three clears: each step's thrust (`boost`)
         // is felt at once, the wind itself climbs at most WARP_RISE a second.
         const wind = (warpTarget - this.warp) * approach(warpTarget > this.warp ? 2.6 : 0.7, dt);
@@ -1549,11 +1882,13 @@ export class SerenityWarpWorld {
         const crowd = clamp01(((this.liveNow || 0) - this.tier.ambient) / Math.max(1, cap - this.tier.ambient));
         const flow = currentFor(this.warp) * (1 + crowd * CROWD_GAIN) * (1 + over * 0.6)
             + this.boost * 1.5 + phase * 10;
-        this.current = (calm ? 0.5 : 1) * flow * (1 - 0.85 * hush);
+        this.current = (calm ? 0.5 : 1) * flow * (1 - 0.85 * hush) * (1 - 0.7 * closed);
         const motion = calm ? 0.5 : 1;
         // A long hot run pours the gas in and turns the vortex past what any chain alone does.
-        this.inflow += dt * INFLOW_REST * motion * (1 + this.warp * 7 + this.boost * 2 + phase * 14 + over * 6);
-        this.spin += dt * SPIN_REST * motion * (1 + this.warp * 4 + phase * 6 + over * 3);
+        // The mood pours it in faster or slower; a shut gate draws almost nothing.
+        this.inflow += dt * INFLOW_REST * motion * mood.inflow * (1 - 0.85 * closed)
+            * (1 + this.warp * 7 + this.boost * 2 + phase * 14 + over * 6);
+        this.spin += dt * SPIN_REST * motion * (1 - 0.6 * closed) * (1 + this.warp * 4 + phase * 6 + over * 3);
         this.speed = DRIFT_REST * motion * (1 + this.warp * 12 + this.boost * 3 + phase * 40 + over * 6)
             * (1 - 0.8 * hush);
         this.drift += this.speed * dt;
@@ -1566,7 +1901,9 @@ export class SerenityWarpWorld {
         this.tumbleHeat = fever * 0.3 * motion;
         // The gate opens: the throat dilates as play heats, and stands a little wider for a while
         // after each fall through it.
-        this.gateWiden = 1 + hot * 0.08 + fever * 0.2 + Math.min(3, this.jumpMemory) * 0.04;
+        // The mood breathes it wider or narrower; a run's end closes it to a pinhole.
+        this.gateWiden = (1 + hot * 0.08 + fever * 0.2 + Math.min(3, this.jumpMemory) * 0.04)
+            * mood.throat * (1 + (CLOSED_THROAT - 1) * closed);
         // The fever's heartbeat on the photon ring (integrated: it quickens with the fever).
         this.beat = (this.beat + dt * (BEAT_SLOW + (BEAT_FAST - BEAT_SLOW) * fever)) % 1;
 
@@ -1595,6 +1932,9 @@ export class SerenityWarpWorld {
         u.starTravel.value = this.drift % STAR_DEPTH;
         u.moteTravel.value = this.moteRun % MOTE_DEPTH;
         u.speed.value = this.speed;
+        u.mood.value.set(mood.arms3, mood.wind, mood.streamers, mood.nebula);
+        u.mood2.value.set(mood.knots, mood.reach, ((t / SKY_TURN) % 1) * TAU, closed);
+        u.cloudDrift.value = (t * CLOUD_DRIFT) % 64;
         // At rest a star is a point; a chain draws it out, and a long hot run draws it out further.
         const drawn = Math.min(1, this.warp / 0.9);
         if (this.stars) this.stars.uniforms.shutter.value = 0.015 + drawn * 0.4 + phase * 0.3 + over * 0.12;
@@ -1618,8 +1958,8 @@ export class SerenityWarpWorld {
         // The surge after a jump lasts seconds: a gate held twice as bright that long greyed the sky.
         // The heat of play brightens it a little at a time (the iris below closes to keep the
         // colours), and every event's punch pulses it on a floor that rapid play holds up.
-        u.gateGain.value = 1 + this.warp * 0.8 + this.surge * 0.6 + (this.flash * 1.5 + punch * 0.2) * fs
-            + rim * 0.4 + beat * 0.2 + warm * 0.08 + hot * 0.1 + fever * 0.12;
+        u.gateGain.value = (1 + this.warp * 0.8 + this.surge * 0.6 + (this.flash * 1.5 + punch * 0.2) * fs
+            + rim * 0.4 + beat * 0.2 + warm * 0.08 + hot * 0.1 + fever * 0.12) * (1 + (CLOSED_LIGHT - 1) * closed);
         u.rimFlash.value = Math.min(1, Math.max(rim, beat));
         u.rimTint.value.set(this._rim[0], this._rim[1], this._rim[2]);
         const p = this._palette;
@@ -1661,6 +2001,7 @@ export class SerenityWarpWorld {
             }
             u.gateUv.value.set(this.heart.x, this.heart.y);
         }
+        this.writeComet(t);
         this.writePieces(t);
 
         // ── Post ──
@@ -1738,6 +2079,11 @@ export class SerenityWarpWorld {
             capacity: this.capacity,
             waves: this.wavesLive || 0,
             ripples: this.ripplesLive || 0,
+            mood: this.mood.name,
+            closed: this.closed,
+            forms: this.formsLive || 0,
+            visitors: this.visitorsLive || 0,
+            comet: this.cometLive || 0,
             queued: this.queue.length,
             stars: this.stars ? this.stars.count : 0,
             motes: this.motes ? this.motes.count : 0,

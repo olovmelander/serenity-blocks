@@ -33,7 +33,7 @@ const QUALITY_NAMES = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'];
 const WORLD_METHODS = [
     'build', 'bindCamera', 'showOnlyParts', 'setViewport', 'setLayout', 'setReducedMotion', 'seek', 'resetSession',
     'restCamera', 'updateCamera', 'onLock', 'onClear', 'onCombo', 'levelUp', 'update', 'getPostState', 'getState',
-    'dispose',
+    'onGameOver', 'onSessionStart', 'dispose',
 ];
 const POST_METHODS = ['update', 'setCalmRects', 'setSize', 'render', 'dispose'];
 
@@ -164,6 +164,16 @@ vi.mock('../../src/themes/serenity-warp/serenity-warp-world.js', () => {
             this.sessions += 1;
             this.combo = 0;
             this.counts = { locks: 0, clears: 0 };
+        }
+
+        onGameOver() {
+            mocks.log.push('onGameOver');
+            this.gameOvers = (this.gameOvers || 0) + 1;
+        }
+
+        onSessionStart() {
+            mocks.log.push('onSessionStart');
+            this.sessionStarts = (this.sessionStarts || 0) + 1;
         }
 
         restCamera() {
@@ -888,7 +898,7 @@ describe('Serenity Warp theme: one node renderer on both backends', () => {
         expect(system.theme.world.sims[0].reduced).toBe(true);
     });
 
-    it('lets the chain go and resets the session when a run ends', async () => {
+    it('lets the chain go, resets the session and then closes the gate when a run ends', async () => {
         const { theme, listeners } = await startTheme({ quality: 'High' });
         for (let i = 0; i < 3; i++) {
             eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
@@ -896,13 +906,15 @@ describe('Serenity Warp theme: one node renderer on both backends', () => {
             theme.stepFrame(16 * (i + 1));
         }
         expect(theme.world.combo).toBe(3);
-        // A lock staged on the run's last tick must not land in the next run.
+        // A lock staged on the run's last tick lands in this run (flushed), never in the next one.
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
         mocks.log.length = 0;
         listeners.get('gameOver')();
-        // The chain is let go first (the world hears the break), then the session is reset.
-        expect(mocks.log).toEqual(['onCombo']);
+        // The last lock lands, the chain is let go (the world hears the break), the session is
+        // reset, and only then does the gate close (a reset after it would wipe the closing).
+        expect(mocks.log).toEqual(['onLock', 'onCombo', 'onGameOver']);
         expect(theme.world.sessions).toBe(1);
+        expect(theme.world.gameOvers).toBe(1);
         expect(theme.world.combo).toBe(0);
         expect(theme.combos.size).toBe(0);
         expect(theme.director.slots.every((slot) => !slot.assigned && !slot.pending)).toBe(true);
@@ -978,8 +990,9 @@ describe('Serenity Warp theme: one node renderer on both backends', () => {
         stepFrames(theme, 60);
         const clock = theme.time;
         expect(clock).toBeCloseTo(1, 9);
-        // A new run: the session is reset, the clock (and so the nebula's drift) runs on.
+        // A run ends and a new one starts: the clock (and so the nebula's drift) runs on.
         listeners.get('gameOver')();
+        expect(theme.world.gameOvers).toBe(1);
         expect(theme.world.sessions).toBe(1);
         expect(theme.time).toBe(clock);
         expect(theme.world.seeks).toEqual([0]);
@@ -1168,6 +1181,8 @@ describe('Serenity Warp theme: one node renderer on both backends', () => {
         stepFrames(theme, 5);
         expect(theme.world.layoutLive).toBe(false); // no polling: the next read is on a schedule
         manager.handlers.get('modeStarted')();
+        // A new run opens a gate a run's end left shut.
+        expect(theme.world.sessionStarts).toBe(1);
         stepFrames(theme, 1);
         expect(theme.world.layoutLive).toBe(true);
         expect(theme.world.layout.cardCount).toBe(1);

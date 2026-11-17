@@ -42,11 +42,13 @@ import {
     TAU,
     WAVE_SLOTS,
 } from './serenity-warp-core.js';
+import { FORM_SLOTS, VISITOR_SLOTS } from './serenity-warp-living.js';
 import { derivedOnce } from '../shared/bake-cache.js';
 import { halfBits } from '../../rendering/half-float.js';
 import { FBM_SIZE } from './serenity-warp-bake.js';
 
 export * from './serenity-warp-core.js';
+export * from './serenity-warp-living.js';
 
 // ── Hashes (GPU) ────────────────────────────────────────────────────────────────
 
@@ -236,8 +238,18 @@ const rows = (count, fill = [0, 0, 0, 0]) => Array.from(
 /** The peak the environment's light is coded against where its target is 8-bit (see `envAt`). */
 export const ENV_CODE_PEAK = 8;
 
-/** Rows of the one event table: two per wave, then two per ripple. */
-export const EVENT_ROWS = Object.freeze({ waves: 0, ripples: WAVE_SLOTS * 2, total: (WAVE_SLOTS + RIPPLE_SLOTS) * 2 });
+/**
+ * Rows of the one event table: two per wave, two per ripple, three per event shape (the third
+ * pass's forms), two per wandering star, and three for the comet.
+ */
+export const EVENT_ROWS = Object.freeze({
+    waves: 0,
+    ripples: WAVE_SLOTS * 2,
+    forms: (WAVE_SLOTS + RIPPLE_SLOTS) * 2,
+    visitors: (WAVE_SLOTS + RIPPLE_SLOTS) * 2 + FORM_SLOTS * 3,
+    comet: (WAVE_SLOTS + RIPPLE_SLOTS) * 2 + FORM_SLOTS * 3 + VISITOR_SLOTS * 2,
+    total: (WAVE_SLOTS + RIPPLE_SLOTS) * 2 + FORM_SLOTS * 3 + VISITOR_SLOTS * 2 + 3,
+});
 
 /**
  * Every uniform the scene's materials share. The world owns the values; materials only read.
@@ -316,6 +328,22 @@ export function createWarpUniforms(textures) {
         events: uniformArray(tables.events, 'vec4'),
         waveCount: uniform(0, 'int'),
         rippleCount: uniform(0, 'int'),
+        /** Event shapes alive (a twist's pinwheel, a back-to-back's cross, a crown's corona, a level's petals). */
+        formCount: uniform(0, 'int'),
+        /** Wandering stars the current has caught, and the comet's light (0 = none in the sky). */
+        visitorCount: uniform(0, 'int'),
+        cometLight: uniform(0),
+        /**
+         * The warp's mood (serenity-warp-living.js): (three arms 0..1, × wind, streamers, nebula)
+         * and (ring's hot spots, × reach, the open sky's turn round the gate (radians), how shut
+         * the gate is at a run's end 0..1).
+         */
+        mood: uniform(new THREE.Vector4(0, 1, 0.8, 1)),
+        mood2: uniform(new THREE.Vector4(0.55, 1, 0, 0)),
+        /** How far the open sky's clouds have drifted through the gas volume (they form and melt). */
+        cloudDrift: uniform(0),
+        /** A chain's surges running down the arms into the throat: (log angle, light) × 2. */
+        surge: uniform(new THREE.Vector4(0, 0, 0, 0)),
         gasTex: textures.gas,
         fbmTex: textures.fbm,
         envTex: texture(textures.env),

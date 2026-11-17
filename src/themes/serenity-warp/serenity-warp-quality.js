@@ -8,6 +8,9 @@
  * vortexDust   a second, nearer veil of dust winds across the arms more slowly (one more read)
  * heroStars    a few bright stars with halos and spikes
  * richFar      the open sky as a nebula with dust lanes under a band of stars (else one soft field)
+ * streamers    layers of streamers of light running down the arms into the throat (third pass)
+ * litNebula    the open sky's nebula lit by the gate on its facing side (one more gas read)
+ * galaxies     now and then a far galaxy in the open sky (a rare, coherent branch)
  * env          the environment target the glass refracts (width; height is half): the sky in
  *              every direction, painted each frame (`envEvery` = every n-th frame)
  * pieces       glass pieces held at once, and `ambient` how many drift there with no play
@@ -23,6 +26,9 @@ export const QUALITY = Object.freeze({
         vortexDust: false,
         heroStars: false,
         richFar: false,
+        streamers: 1,
+        litNebula: false,
+        galaxies: false,
         env: 256,
         envEvery: 2,
         pieces: 12,
@@ -39,6 +45,9 @@ export const QUALITY = Object.freeze({
         vortexDust: false,
         heroStars: false,
         richFar: false,
+        streamers: 1,
+        litNebula: false,
+        galaxies: false,
         env: 384,
         envEvery: 2,
         pieces: 16,
@@ -55,6 +64,9 @@ export const QUALITY = Object.freeze({
         vortexDust: false,
         heroStars: true,
         richFar: true,
+        streamers: 1,
+        litNebula: true,
+        galaxies: true,
         env: 512,
         envEvery: 1,
         pieces: 20,
@@ -71,6 +83,9 @@ export const QUALITY = Object.freeze({
         vortexDust: true,
         heroStars: true,
         richFar: true,
+        streamers: 2,
+        litNebula: true,
+        galaxies: true,
         env: 768,
         envEvery: 1,
         pieces: 24,
@@ -87,6 +102,9 @@ export const QUALITY = Object.freeze({
         vortexDust: true,
         heroStars: true,
         richFar: true,
+        streamers: 2,
+        litNebula: true,
+        galaxies: true,
         env: 1024,
         envEvery: 1,
         pieces: 24,
@@ -103,6 +121,9 @@ export const QUALITY = Object.freeze({
         vortexDust: true,
         heroStars: true,
         richFar: true,
+        streamers: 2,
+        litNebula: true,
+        galaxies: true,
         env: 1024,
         envEvery: 1,
         pieces: 24,
