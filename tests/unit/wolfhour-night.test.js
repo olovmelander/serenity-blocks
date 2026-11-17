@@ -3,8 +3,8 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    FAR_FILE, LONE, MOON_WOLF, TRAVEL_GAITS, VISITS, farFileAt, follow, itineraryLength, moonWolfAt, roversAt,
-    visitKind, visitPlan,
+    FAR_FILE, LONE, MOON_TIMES, MOON_WOLF, TRAVEL_GAITS, VISITS, farFileAt, follow, itineraryLength, moonWolfAt,
+    roversAt, summonMoonWolf, visitKind, visitPlan,
 } from '../../src/themes/wolfhour/wolfhour-wolf-travel.js';
 import {
     RIPPLE, SWEEP, WOLFHOUR_WEATHER, WolfhourNightDirector, wolfhourWeatherAt,
@@ -180,29 +180,88 @@ describe('Wolfhour travellers', () => {
         expect(lead(10).sink).toBe(0);
     });
 
-    it('brings the white wolf up onto the summit by itself, and at once when called', () => {
+    it('walks the white wolf up over the summit by itself, and trots it up when called', () => {
         expect(moonWolfAt(MOON_WOLF.first - 1)).toBeNull();
         const t0 = MOON_WOLF.first;
-        expect(moonWolfAt(t0 + 0.2).up).toBeLessThan(0.2);
-        const standing = moonWolfAt(t0 + MOON_WOLF.rise + 3);
-        expect(standing.up).toBe(1);
-        const howling = moonWolfAt(t0 + MOON_WOLF.rise + (MOON_WOLF.howl[0] + MOON_WOLF.howl[1]) / 2);
+        // It comes up from out of sight below the crest, walking.
+        const coming = moonWolfAt(t0 + 0.2);
+        expect(coming.climb).toBeGreaterThan(0.99);
+        expect(coming.drop).toBeGreaterThan(MOON_WOLF.below * 0.98);
+        expect(coming.facing).toBe(1);
+        const climbing = moonWolfAt(t0 + MOON_TIMES.walk / 2);
+        expect(climbing.moving).toBe(true);
+        expect(climbing.gaitKind).toBe('walk');
+        const standing = moonWolfAt(t0 + MOON_TIMES.walk + 3);
+        expect(standing.climb).toBe(0);
+        expect(standing.drop).toBe(0);
+        expect(standing.hold).toBe(1);
+        const howling = moonWolfAt(t0 + MOON_TIMES.walk + (MOON_WOLF.howl[0] + MOON_WOLF.howl[1]) / 2);
         expect(howling.howl).toBe(1);
         expect(howling.sit).toBe(1);
-        expect(moonWolfAt(t0 + MOON_WOLF.rise * 2 + MOON_WOLF.stay + 1)).toBeNull();
-        // Called between its own visits it comes up, without a howl of its own (it joins the pack's).
+        // It turns round and walks back down the way it came, out of sight.
+        const leaves = t0 + MOON_TIMES.walk + MOON_WOLF.stay;
+        expect(moonWolfAt(leaves + MOON_TIMES.leave - 0.5).facing).toBe(-1);
+        expect(moonWolfAt(leaves + MOON_TIMES.leave - 0.02).climb).toBeGreaterThan(0.99);
+        expect(moonWolfAt(leaves + MOON_TIMES.leave + 0.1)).toBeNull();
+        // Called between its own visits it trots up, without a howl of its own (it joins the pack's).
         const away = t0 + MOON_WOLF.period - 20;
         expect(moonWolfAt(away)).toBeNull();
-        const called = moonWolfAt(away + MOON_WOLF.rise + 1, away);
-        expect(called.up).toBe(1);
+        const calls = summonMoonWolf([], away);
+        expect(moonWolfAt(away + MOON_TIMES.trot / 2, calls).gaitKind).toBe('trot');
+        const called = moonWolfAt(away + MOON_TIMES.trot + 1, calls);
+        expect(called.climb).toBe(0);
         expect(called.howl).toBe(0);
-        // Continuous as it rises.
-        let previous = 0;
-        for (let u = 0; u <= MOON_WOLF.rise; u += 0.05) {
-            const { up } = moonWolfAt(away + u, away);
-            expect(up).toBeGreaterThanOrEqual(previous - 1e-9);
-            expect(up - previous).toBeLessThan(0.08);
-            previous = up;
+        // Continuous as it climbs.
+        let previous = 1;
+        for (let u = 0; u <= MOON_TIMES.trot; u += 1 / 30) {
+            const { climb } = moonWolfAt(away + u, calls);
+            expect(climb).toBeLessThanOrEqual(previous + 1e-9);
+            expect(previous - climb).toBeLessThan(0.05);
+            previous = climb;
+        }
+    });
+
+    it('keeps the white wolf up through a fever chorus, and only ever comes or goes out of sight', () => {
+        // The theme calls it every 2.2 s while a fever lasts, quicker than its climb; four-line
+        // clears call it at any moment, its own visits come by the clock. Each call used to
+        // start its climb again: it dropped out of sight just short of the top, every 2.2 s.
+        const runs = [
+            (t, f) => t >= 60 && t < 140 && f % 66 === 0,
+            (t, f) => t >= MOON_WOLF.first - 3 && t < MOON_WOLF.first + 30 && f % 66 === 0,
+            (t) => [44.5, 47, 60, 84.5, 86, 88, 90, 93].some((c) => Math.abs(t - c) < 1 / 60),
+            (() => {
+                let seed = 11;
+                return () => {
+                    seed = (seed * 16807) % 2147483647;
+                    return seed / 2147483647 < 1 / (30 * 6);
+                };
+            })(),
+        ];
+        for (const callAt of runs) {
+            let calls = [];
+            let before = null;
+            let up = false;
+            for (let frame = 0; frame < 30 * 400; frame++) {
+                const t = frame / 30;
+                if (callAt(t, frame)) calls = summonMoonWolf(calls, t);
+                const now = moonWolfAt(t, calls);
+                // Appearing or going: only from out of sight below the crest.
+                if (!now !== !before) expect((now ?? before).climb).toBeGreaterThan(0.99);
+                if (now && before) {
+                    expect(Math.abs(now.x - before.x)).toBeLessThan(2.5);
+                    expect(Math.abs(now.drop - before.drop)).toBeLessThan(3.5);
+                    // Facing flips only through a turn, or out of sight.
+                    const turned = Math.abs(now.facing * Math.cos(now.yaw) - before.facing * Math.cos(before.yaw));
+                    if (now.climb < 0.99) expect(turned).toBeLessThan(0.3);
+                }
+                before = now;
+                // Once a fever chorus has it up, it stays up while the calls keep coming.
+                if (runs.indexOf(callAt) === 0 && t > 64 && t < 140) {
+                    if (now?.climb === 0) up = true;
+                    if (up) expect(now?.climb).toBe(0);
+                }
+            }
+            expect(calls.length).toBeLessThanOrEqual(MOON_WOLF.calls);
         }
     });
 });
@@ -692,13 +751,22 @@ describe('Wolfhour pack and its travellers', () => {
         expect(pack.summit.wolf.mesh.visible).toBe(false);
         pack.summon(away);
         pack.howl(away);
-        pack.update(away + MOON_WOLF.rise + 2);
+        // As its climb begins all of it is still below the crest (the massif hides it there).
+        pack.update(away + 0.05);
+        const { capsules, mesh } = pack.summit.wolf;
+        let top = -Infinity;
+        for (let i = 0; i < CAPSULE_COUNT; i++) {
+            const o = i * CAPSULE_STRIDE;
+            top = Math.max(top, capsules[o + 1] + capsules[o + 4], capsules[o + 3] + capsules[o + 5]);
+        }
+        expect(top * mesh.scale.y + mesh.position.y).toBeLessThan(flat(0) - 2);
+        pack.update(away + MOON_TIMES.trot + 2);
         expect(pack.summit.wolf.mesh.visible).toBe(true);
         expect(pack.summit.wolf.look.coat).toBe('white');
         expect(pack.summit.wolf.howling).toBeGreaterThan(0.8);
         // Called again while it stands, it stays up (it does not come up a second time).
-        pack.summon(away + MOON_WOLF.rise + 3);
-        pack.update(away + MOON_WOLF.rise + 3.1);
+        pack.summon(away + MOON_TIMES.trot + 3);
+        pack.update(away + MOON_TIMES.trot + 3.1);
         expect(pack.summit.wolf.fade).toBe(1);
         // A screen with no room for them shows neither.
         pack.far.settle(null);
