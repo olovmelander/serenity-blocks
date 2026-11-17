@@ -46,7 +46,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import {
-    RIG, SUN, rgb, swHash21, swMax3, swSkyGradient,
+    RIG, SUN, swHash21, swMax3, swSkyGradient,
 } from './synthwave-sunset-tsl.js';
 
 /**
@@ -248,7 +248,7 @@ export class SynthwaveSunsetPost {
                 const horizonCol = swSkyGradient(u, flat).color;
                 const ahead = exp(dot(D, u.sunDir).sub(1.0).mul(10.0));
                 const sunUp = smoothstep(-0.16, 0.06, u.sunDir.y);
-                const mistCol = horizonCol.mul(0.94).add(rgb(0xffa060).mul(ahead.mul(sunUp).mul(0.5)));
+                const mistCol = horizonCol.mul(0.94).add(u.sunWarm.mul(ahead.mul(sunUp).mul(0.5)));
                 S.assign(S.mul(trans).add(mistCol.mul(float(1.0).sub(trans))));
             }
 
@@ -343,7 +343,7 @@ export class SynthwaveSunsetPost {
             const r = length(coord.sub(uSun).mul(vec2(uAspect, 1.0))).div(this.uSunR).toVar();
             const disc = float(1.0).sub(smoothstep(0.85, 1.1, r));
             const aureole = exp(r.mul(r).mul(-SHAFTS.aureole));
-            const light = mix(rgb(0xffa45a), rgb(0xff7040), u.dusk).mul(disc.mul(SHAFTS.disc).add(aureole.mul(SHAFTS.aureoleLevel)));
+            const light = u.sunGlint.mul(disc.mul(SHAFTS.disc).add(aureole.mul(SHAFTS.aureoleLevel)));
             return vec4(light.mul(sky), 1.0);
         })();
         this.shaftsEmit = rtt(emit, null, null, { resolutionScale: look.shaftScale });

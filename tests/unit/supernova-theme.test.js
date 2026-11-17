@@ -178,6 +178,18 @@ vi.mock('../../src/themes/supernova/supernova-world.js', () => {
             mocks.frame.push('level');
             this.level = level;
         }
+
+        onGameOver(...args) {
+            mocks.frame.push('over');
+            this.overCalls = (this.overCalls || 0) + 1;
+            this.overArgs = args;
+        }
+
+        onSessionStart(...args) {
+            mocks.frame.push('start');
+            this.startCalls = (this.startCalls || 0) + 1;
+            this.startArgs = args;
+        }
     }
     return { SupernovaWorld: World, REST_RIG: restRig, fovForAspect: fov };
 });
@@ -745,7 +757,7 @@ describe('Supernova theme: one node renderer on both backends', () => {
         expect(system.theme.world.reducedMotion).toBe(true);
     });
 
-    it('puts the star back at rest when a run ends', async () => {
+    it('lets the star go dark when a run ends: the chain is let go, the world is not wiped', async () => {
         const { theme, listeners } = await startTheme({ quality: 'High' });
         for (let i = 0; i < 3; i++) {
             eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
@@ -755,9 +767,17 @@ describe('Supernova theme: one node renderer on both backends', () => {
         expect(theme.world.combo).toBe(3);
         const reset = vi.spyOn(theme.world, 'resetSession');
         const { time } = theme;
+        // A lock staged in the frame the run ends in still lands, in this run.
+        eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
+        mocks.frame.length = 0;
         listeners.get('gameOver')();
-        expect(reset).toHaveBeenCalledOnce();
-        expect(theme.world.getState()).toMatchObject({ combo: 0, counts: { locks: 0, clears: 0 } });
+        // The world is told the run is over, once and with no argument, AFTER the chain was let
+        // go; it is not reset (a reset would wipe the effect in the frame it starts).
+        expect(reset).not.toHaveBeenCalled();
+        expect(theme.world.overCalls).toBe(1);
+        expect(theme.world.overArgs).toEqual([]);
+        expect(mocks.frame).toEqual(['lock', 'combo', 'over']);
+        expect(theme.world.getState()).toMatchObject({ combo: 0, counts: { locks: 4, clears: 3 } });
         expect(theme.combos.size).toBe(0);
         expect(theme.time).toBe(time); // the star keeps burning: the clock is not rewound
         // The next run's first clear is a chain of one again.
@@ -945,6 +965,11 @@ describe('Supernova theme: one node renderer on both backends', () => {
         page.cards = [];
         page.canvas = null;
         page.hud = null;
+        // A new run kindles the star a run's end left dark (told with no argument).
+        const startsBefore = theme.world.startCalls || 0;
+        manager.handlers.get('modeStarted')();
+        expect(theme.world.startCalls).toBe(startsBefore + 1);
+        expect(theme.world.startArgs).toEqual([]);
         const reset = vi.spyOn(theme.world, 'resetSession');
         manager.handlers.get('modeStopped')();
         expect(reset).toHaveBeenCalledOnce();

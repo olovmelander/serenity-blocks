@@ -13,8 +13,8 @@
  * over the roof; a clear makes the lip throw a sheet of spray and sends a band of light down the
  * tube for every line; a chain of clears holds the barrel open and its water lit, leans the
  * evening toward gold and calls the dolphins over the water (the first of a long chain crosses
- * the sun) and into the wall beside the rider; every line startles flying fish out of the trough;
- * a twist is answered by a spinner dolphin; four lines make the wave hold (its clock slows almost
+ * the sun) and into the wall beside the rider; every line makes the white water heave where the
+ * lip lands on the sea; a twist is answered by a spinner dolphin; four lines make the wave hold (its clock slows almost
  * to a stop with the biggest throw of all hanging in the air, and the tube spits its mist) before
  * everything runs on; and a perfect clear throws a humpback out of the sea in the eye of the barrel.
  *
@@ -38,7 +38,8 @@
  *   ?wavesTime=<s>      play the wave up to t (from at most 6 s before it, in fixed 1/60 s
  *                     steps), then freeze it (captures)
  *   ?wavesFixedDt=<ms>  fixed frame step
- *   ?wavesParts=sky,water,life,...   draw only these parts
+ *   ?wavesParts=sky,water,life,...   draw only these parts (sky, water, life, mist, rain,
+ *                                    whitewater, landing, spray, foam)
  *   ?wavesFalseColor=1  post debug view
  *
  * The wave is a function of its clock plus a little eased state (how far the barrel is open,

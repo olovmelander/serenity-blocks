@@ -97,11 +97,13 @@ export function createSeabed(u, { detail = 1 } = {}) {
 
         // ── The light: the net three times over, a little apart along the light ──
         const axis = normalize(u.sunDir.xz.add(vec2(1e-3, 0.0)));
+        // (A perfect clear splits it wide: every thread a band of the spectrum.)
+        const split = u.prism.mul(0.3).add(0.04);
         const net = vec3(
-            ocCaustic(u, P, axis.mul(0.04)),
+            ocCaustic(u, P, axis.mul(split)),
             ocCaustic(u, P),
-            ocCaustic(u, P, axis.mul(-0.04)),
-        );
+            ocCaustic(u, P, axis.mul(split.negate())),
+        ).mul(u.prism.mul(0.5).add(1.0));
         const light = ocLight(u, {
             N, P, caustic: net, shade: ocShade(u, P), wrap: 0.3,
         });

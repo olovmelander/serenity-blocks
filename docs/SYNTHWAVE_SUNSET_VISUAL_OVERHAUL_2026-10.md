@@ -2,7 +2,10 @@
 
 **Status: shipped (branch `feature/synthwave-sunset-overhaul`, merged to `main` 2026-10-20; a
 second pass on the air, the shore and the evening, `feature/synthwave-sunset-second-pass`,
-2026-10-21: see [Second pass](#second-pass-2026-10-21-the-air-the-shore-the-evening)). A
+2026-10-21: see [Second pass](#second-pass-2026-10-21-the-air-the-shore-the-evening); a fourth,
+2026-11-17, on branch `feature/synthwave-sunset-masterpiece`: see
+[Fourth pass](#fourth-pass-2026-11-17-an-evening-that-never-stands-still-an-instrument-for-every-event),
+which supersedes the event table and the evening described below). A
 record of what was built and how it was checked — not a backlog.** Replaces the outrun picture (a slit sun behind wireframe mountains, flat box
 buildings, palm silhouettes and a scrolling neon grid), which showed nearly the same thing as Neon
 Dusk, the orb before it, with a retro seaside at dusk. The id, the name, the song and the Odyssey
@@ -464,6 +467,183 @@ GLSL and finds the path helper emitted once and called four times.
 Cost: nine birds of 1,648 triangles, drawn twice (the mirror), each vertex evaluating its loop four
 times; small next to the scene, not measured on its own.
 
+## Fourth pass (2026-11-17): an evening that never stands still, an instrument for every event
+
+Asked for: an audit of the whole theme, then "one of the most visually stunning themes in my
+game", varied over time, every event with its own distinct effect, the biggest moments the most
+spectacular, smooth and easy to read throughout.
+
+### What the audit found
+
+The place was strong (the wheel, the pier, the coaster, the sea and its mirror). What held it back:
+
+- **Time.** One measure (`dusk`) walked between two looks, the sun on the sea and the afterglow, on
+  an eight-minute loop: one palette, one kind of cloud, no night, no moon. The stars were one size
+  and were out in hundreds while the sun was still up.
+- **Events.** Nearly every event answered with the same four kinds of shell in the same patch of
+  sky; they differed in count. A hard drop had a 25 % brighter band and nothing else, a cascade
+  and a level-up almost nothing of their own, and the perfect clear looked like the four-line
+  finale.
+- **Fireworks.** Four kinds, single-colour spheres of straight streaks, bursting level with the
+  wheel's upper half, so they sat on top of it.
+- **Life.** Nothing moved on the pier or the sea but lights and gulls; the barge the shells rose
+  from was not there at all.
+
+| Before | After (High, native WebGPU) |
+| --- | --- |
+| ![before](synthwave-sunset-captures/fourth-pass-before-game.jpg) | ![after](synthwave-sunset-captures/fourth-pass-after-game.jpg) |
+| ![before, four lines](synthwave-sunset-captures/fourth-pass-before-finale.jpg) | ![after, four lines](synthwave-sunset-captures/fourth-pass-after-finale.jpg) |
+
+### The evening: four clocks (`-evening.js`)
+
+A new module with no three and no shader code holds the evening's clocks. Each is a pure function
+of the time, so a seek, a replay and a restart land on the same picture, and their lengths differ
+(120, 210, 170 and 145 s), so the same picture does not come round for a long while.
+
+- **The hour.** Four stops instead of two looks: golden hour, sunset, afterglow, night
+  (`HOUR` 0..3, `EVENING.seconds` a stop, a level steps it on a quarter of a stop). The walk sets
+  out from the sunset, the theme's opening look, toward the night, comes back through the sunset
+  to the golden hour and turns again (twelve minutes there and back). At the golden hour the sun
+  stands clear of the sea in the wheel's hub (`SUN.goldLift`), the neon ring inside its disc; at
+  night the sky is indigo with a last ember on the sun's bearing, the Milky Way climbs over the
+  wheel and a crescent moon, its horns turned from the sun, lays a cool road on the water. The old
+  measure `dusk` is still there for the lights, the structures and the gulls' roost (0 at the
+  golden hour, 0.14 at the sunset, 1 from the afterglow on); `gold` and `night` are new.
+- **Tonight's colours.** Four temperaments, each a whole sky (horizon to zenith, toward the sun
+  and away), the sun's disc, its glow and its road on the water: tangerine (the opening look, the
+  constants the shaders held), flamingo, ember, peach and teal. The sky's shaders no longer hold
+  colours: the world melts the palettes on the CPU (the short way round the colour wheel) and
+  writes sixteen colour uniforms a frame (`SKY_KEYS` / `SKY_UNIFORMS`), which also took several
+  mixes a pixel out of the sky function. The structures' rim light and the sea's glint follow.
+- **The weather.** Long streaks of cirrus (the opening look), a mackerel sky, a clear sky, a bank
+  of cumulus towers on the horizon. The mackerel sky is drawn in the sheet's own plane, so its
+  rows close up toward the horizon; the low sun lights it from below and the light leaves its
+  high part first as the evening deepens. The towers never stand across the sun; their rims burn
+  on the side turned to it, and after dark heat lightning flickers inside them (silent, held back
+  under Reduce flashing).
+- **The sea.** Its liveliness (a scale on the swell's slopes): a light breeze, a glassy calm, a
+  fresh breeze, a slack sea.
+
+The stars come out in order of brightness: a handful at the sunset, a few hundred in the
+afterglow, the whole field at night, with a steep fall from the bright few to the faint many.
+
+![the four hours](synthwave-sunset-captures/fourth-pass-hours.jpg)
+![other skies](synthwave-sunset-captures/fourth-pass-skies.jpg)
+![twelve minutes by the clock alone](synthwave-sunset-captures/fourth-pass-clock-walk.jpg)
+
+### An instrument for every event
+
+| Event | Whose it is | What happens |
+| --- | --- | --- |
+| Lock | The wheel's rims | As before: two bands of the piece's colour run round to the top. |
+| Hard drop | The pier's lights | A pulse of the piece's colour runs out along the pier from the land end to the wheel in under a second, on the bulbs and as a wash on the deck's edge, the railings and the foot of the walls; brighter the further the piece fell. Pulses follow each other down the pier under rapid drops. |
+| One line | The barge | One shell in the piece's colour, its kind turning with each clear (peony, pistil, chrysanthemum, crossette). |
+| Two lines | The barge | A pair of one kind bursting together, side by side. |
+| Three lines | The barge | A fan: two chrysanthemums low, then a gold palm above them, crackling at the ends of its arms. |
+| Four lines | The whole sky | The finale: a volley across the whole free sky, each shell higher than the last (chrysanthemum, pistil, ring, crossette, peony, saturn, strobe, palm), closed by a gold brocade crown high over everything, while the wheel's face bursts in gold from the hub out to the rim. |
+| Twist | The wheel | A Catherine wheel: it whirls and throws lilac and gold sparks off its rim along the tangent, from jets that turn with it; with lines, harder and longer, under a lilac saturn. |
+| Back-to-back | The wheel's hub | The salute's row of rings, and a fan of lasers from the hub in the neon colours, a beam more for each back-to-back in a row, each on its own slow sweep, held while they keep coming. |
+| Cascade | The pier's deck | Roman candles: a comet each with a long tail that ends in a puff of crackle, thrown up and out over the sea, more of them the deeper the wave. |
+| Chain | The coaster | As before: the lift's meter, the ride, the riders' cheer. |
+| Perfect clear | The whole pier | A wall of gold comets from the length of the deck, then a waterfall of gold sparks pouring off its seaward edge into the sea, lit from the land end out to the wheel and mirrored in the water, under a curtain of gold willows; the wheel's face bursts in gold and the bay stands at full blaze. |
+| Level up | The pier, a new act | Searchlights sweep up from the deck and cross over the bay, a broad wave of gold runs out along the pier's lights, the wheel's face bursts in its new colour, a saturn and a ring go up; the evening steps on. |
+| Fever | The barge | As before, drawing on the new shells. |
+
+![the events](synthwave-sunset-captures/fourth-pass-events.jpg)
+
+### How it is built
+
+- **Fireworks (`-fireworks.js`).** Still one instanced draw and analytic motion. Trails cost no
+  shader work: a particle born a moment after another with the same spawn state flies the same
+  path that moment behind it, so a star's trail is a few dimmer copies of the star, and a
+  willow's branches droop as real curves. Eleven shells (`SHELL_KINDS`), crackle as short-lived
+  sparks, strobes that hang and blink (steady under Reduce flashing), and the ground effects:
+  `comet`, `waterfall`, `spray`. The bursts stand higher (60 to 92 m, the finale's crown to about 120 m),
+  over the wheel instead of on it. The pool grew (High 3,400 to 6,200) for the trails and the
+  waterfall.
+- **Beams (`-beams.js`).** One instanced additive draw of ten long quads turned about their own
+  axis to face the eye: the lasers and the searchlights. A dark beam has no width, so the draw
+  stays in the scene from the start and its pipeline is built with the world.
+- **The wheel's light programmes.** Five (the classic, a pinwheel, a bloom of gold rings, a
+  spectrum, a glitter), turned by the clock every 46 s, and a starburst for the big moments.
+- **Life (`-life.js`).** Strollers on the pier: one instanced draw of upright cards, a figure
+  drawn in the fragment stage and cut out with `maskNode`, legs scissoring with the distance
+  walked; opaque, with depth, so the railings, the pavilions and the sea mist treat them as they
+  treat the pier. Three sailing boats on there-and-back courses (they come about by turning
+  through the eye's line instead of flipping) and the fireworks' barge at anchor: one merged mesh.
+  Both are on the mirror layer.
+
+Blender was not needed: everything added is light, particles, or a silhouette a few dozen pixels
+tall, where a modelled mesh would not show.
+
+### Gotchas found on the way
+
+- **A trail of delayed copies blooms into a blob.** Each copy is itself a streak (0.17 s of its
+  own motion), so copies a few hundredths of a second apart overlap four or five deep and their
+  light adds up. Share it out (`min(1, gap / streak)`), so the trail burns about as bright as its
+  head (skill row #1726).
+- **A mackerel sky from thresholded noise is a lava lamp, from two crossed sines polka dots.** One
+  wave train, broken along its ripples by a stretched noise, is the mackerel sky (skill row #1510).
+- **The sea mist takes anything much past the pier's end.** The first boats, on lanes 640 m and
+  more out, were ghosts. Life that should be seen has to sail inside the mist's first optical
+  depth (about 400 m here).
+- **Folding a walk through a share of its span is not exact.** `3 * pingPong(1 / 3)` is
+  1.0000000000000004, and the opening look must be the opening look exactly: fold by hand.
+
+### Tiers (additions)
+
+| Tier | Mackerel sky | Strollers | Firework pool |
+| --- | --- | --- | --- |
+| Minimal | no (no cloud at all) | 12 | 2,000 |
+| Low | no | 18 | 2,800 |
+| Medium | yes | 30 | 4,200 |
+| High | yes | 44 | 6,200 |
+| Ultra | yes | 52 | 7,400 |
+| Extreme | yes | 60 | 8,800 |
+
+The four hours, the temperaments, the sea's states, the moon, the beams, the boats and every
+event's effect are on every tier; the towers and their lightning from Low up. Playground: `hour=`, `temper=`, `weather=`, `sea=` hold a
+clock still; `event=` knows `hardDrop`, `twist`, `b2b`, `salute`, `cascade`, `candles`, `perfect`
+and `shell` (`kind=`); `parts=` knows `life` and `beams`.
+
+### Accessibility
+
+Reduce motion: the beams sweep at a quarter of their pace, the Catherine wheel throws 40 % of its
+sparks from slower jets, the strollers walk on the gulls' held-back clock, the perfect clear's
+wall is four comets. Reduce flashing: the wheel's starburst and the heat lightning keep
+`flashScale()` of their strength (the lightning becomes one soft swell), the strobes burn steady.
+
+### Verification
+
+Playground captures from a private headless Chrome over CDP against a private dev server
+(1600 × 900, High, RTX 5080 Laptop, 30 fps cap): the four hours, the four temperaments, the four
+weathers, twelve minutes of the clock's own walk, every shell kind, every event at two or three
+ages, the WebGL2 backend (`forceWebGL=1`), Minimal, Low and a 390 × 844 portrait. No WebGPU
+validation error and no TSL warning on either backend. In the real game (single player, High,
+WebGPU): the events fired through the event bus, the board read clearly, no console error of the
+theme's.
+
+| | |
+| --- | --- |
+| ![the real game](synthwave-sunset-captures/fourth-pass-real-game.jpg) | ![webgl2](synthwave-sunset-captures/fourth-pass-webgl2.jpg) |
+| ![minimal](synthwave-sunset-captures/fourth-pass-minimal.jpg) | |
+
+Tests: `synthwave-sunset-theme.test.js` re-pins the evening (the walk through its four hours and
+back, a level's step, the sun in the hub at the golden hour), and adds the clocks (temperaments
+whole and melting, the weather and the sea on their stops, held values), the heat lightning (only
+after dark, off the sun's bearing, held under Reduce flashing), an instrument for every event
+(what each fires and where, the lasers' count, the searchlights' feet, every shell kind built
+from finite numbers, a seek leaving nothing behind), the wheel's programmes and the life (the
+strollers inside the railings, the boats clear of the pier). The shader gate walks the scene, so
+the beams, the strollers and the boats are built for WGSL and GLSL at High and Minimal under the
+same checks.
+
+Cost (playground, live, GPU timestamps, 1920 × 1080, RTX 5080 Laptop, capped at 30 fps, twelve
+seconds a case, `origin/main` on a second server): High at the opening look 0.48 ms before and
+0.49 to 0.50 ms after; the dearest skies (night under a mackerel sky, the afterglow with towers)
+0.57 ms; Medium 0.43 ms before, 0.51 ms at night under a mackerel sky. Not a frame-rate
+measurement, and not measured on the integrated Radeon.
+
 ## Known limits
 
 - **Portrait.** The composition solver is unchanged: on an upright phone the sun goes to the left
@@ -473,6 +653,12 @@ times; small next to the scene, not measured on its own.
 - **The reflection pass** adds one pipeline per mirrored material (its target has no MSAA).
 - **The shafts are screen-space:** they vanish with the sun off screen, as in a portrait
   framing.
+- **The strollers** are silhouettes a few dozen pixels tall: drawn figures, not models. Up close
+  (a lens on the pier) they are plainly cards.
+- **The boats** sail close in because the sea mist takes anything much past the pier's end; a
+  ship on the horizon would need the mist to spare it.
+- **Start-up and the integrated GPU:** the pass adds three draws (beams, strollers, boats) and
+  their mirror-pass pipelines; their cost at start and on the integrated Radeon is not measured.
 - **The gulls** never land: perching on the pier's railings and lamps (and taking off from them)
   is a follow-up. Near the sun the post's in-scattered light still lifts their silhouettes, as it
   lifts the wheel's spokes.

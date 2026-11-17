@@ -346,12 +346,12 @@ export function createHotelMaterial(u) {
         const seed = mod(ss, 256.0);
 
         // Light: the dusk sky from above, the sun low over the sea on the fronts that face it.
-        const duskLight = mix(float(1.0), float(0.5), u.dusk);
+        const duskLight = u.ambient;
         const facing = abs(dot(N, V));
         const sky = rgb(0xa496bc, 0.4).mul(float(0.55).add(max(N.y, 0.0).mul(0.45))).mul(duskLight);
         const sunLit = max(dot(N, normalize(vec3(u.sunDir.x, 0.0, u.sunDir.z))), 0.0);
         const sunKey = rgb(0xff9c86, 0.38).mul(sunLit).mul(float(1.0).sub(smoothstep(0.15, 0.8, u.dusk)));
-        const rim = pow3(float(1.0).sub(facing)).mul(rgb(0xff8a5c, 0.25)).mul(mix(float(1.0), float(0.3), u.dusk));
+        const rim = pow3(float(1.0).sub(facing)).mul(u.sunBand.mul(0.25)).mul(mix(float(1.0), float(0.3), u.dusk));
         const light = sky.add(sunKey);
         const lights = u.townLights;
 

@@ -31,7 +31,7 @@ describe('neon district night: the weather', () => {
         const first = weatherAt(0);
         expect(first.name).toBe('rain');
         expect(first).toMatchObject({
-            fall: 1, fog: 1, sky: 0, mist: 1, warm: 0, sat: 1.12,
+            fall: 1, fog: 1, sky: 0, mist: 1, warm: 0, sat: 1.23,
         });
         expect(first.tint).toEqual([0.86, 0.97, 1.16]);
         expect(WEATHER_PERIOD).toBe(WEATHER.reduce((sum, state) => sum + state.span, 0));

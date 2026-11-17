@@ -3,7 +3,7 @@
  *
  * An act is one animal doing one thing: a dolphin riding inside the face of the wave, a pod
  * rolling through the trough, a leap, a spin, a somersault, a humpback throwing itself out of the
- * sea, a flying fish skittering off the water, a shearwater on the wind. Every act is written
+ * sea, a shearwater on the wind. Every act is written
  * once, when it begins, as a handful of numbers, and `actPose` says where the animal is at any
  * moment of it: a closed form of the world's clock, like the spray and the ribbons, so an act
  * looks the same at any frame rate, holds when the clock holds (four lines) and replays exactly
@@ -20,14 +20,25 @@
  * happens, where), so the world can throw the water for it (waves-splash.js).
  */
 import {
-    TAU, WAVE, axisOffset, clamp01, floorRow, lerp, smooth, wavePoint,
+    TAU, WAVE, axisOffset, clamp01, floorRow, lerp, lipAngle, smooth, wavePoint,
 } from './waves-core.js';
 
 /** Gravity in the wave's slow motion (metres a second squared): what the spray falls under. */
 export const GRAVITY = 0.46;
 
+/**
+ * A leap is drawn from a run-up of LEAP_LEAD seconds under the surface (from deep enough that
+ * the water hides it) to LEAP_WAKE seconds or more after it went in, diving on down at up to
+ * WAKE_DIVE metres a second while the speed it went in with dies away (WAKE_DRAG a second).
+ */
+export const LEAP_LEAD = 2.6;
+export const LEAP_WAKE = 4;
+export const WAKE_DRAG = 0.6;
+export const WAKE_DIVE = 1.3;
+const DIVE_ONSET = GRAVITY / WAKE_DIVE;
+
 /** The animals, in the order the pack numbers them (scripts/blender/waves_sea_life/cast.py). */
-export const KINDS = Object.freeze(['bottlenose', 'spinner', 'humpback', 'manta', 'turtle', 'flyingFish', 'seabird']);
+export const KINDS = Object.freeze(['bottlenose', 'spinner', 'humpback', 'manta', 'turtle', 'seabird']);
 
 /**
  * Each animal: its length in metres (the manta: across its wings; the bird: bill to tail, its
@@ -40,16 +51,12 @@ export const SPECIES = Object.freeze({
     humpback: Object.freeze({ metres: 13, slots: 2, stroke: 0.9 }),
     manta: Object.freeze({ metres: 3.4, slots: 2, stroke: 1.15 }),
     turtle: Object.freeze({ metres: 1.05, slots: 3, stroke: 1.5 }),
-    flyingFish: Object.freeze({ metres: 0.5, slots: 28, stroke: 16 }),
     seabird: Object.freeze({ metres: 0.95, slots: 8, stroke: 3.4 }),
 });
 
 /** How far from the middle of a dolphin's body its nose and its flukes reach (half body lengths). */
 export const NOSE_REACH = 1.0;
 export const FLUKE_REACH = 1.1;
-
-/** A flying fish's wings carry most of its weight: it falls under this much of gravity. */
-export const GLIDE_GRAVITY = 0.2;
 
 const tmp = { x: 0, y: 0, z: 0 };
 const ahead = {};
@@ -233,7 +240,7 @@ export const LEAP_STYLES = Object.freeze(['arc', 'spin', 'flip', 'side']);
  */
 export function makeLeap({
     kind = 'bottlenose', at, row, d, open = 0, vx, vy, vz, metres = SPECIES[kind].metres, style = 'arc', turns = 1,
-    phase = 0, variant = 0, hero = false,
+    phase = 0, variant = 0, hero = false, lead = LEAP_LEAD,
 }) {
     const from = wavePoint(row, d, open, tmp);
     const drop = Math.max(0, from.y);
@@ -272,13 +279,14 @@ export function makeLeap({
         clearAt: 0,
         noseAt: flight,
         tailAt: flight,
-        lead: 1.5,
+        // (Long enough to come up from where the water hides it: no dolphin grows out of nothing.)
+        lead: Math.max(0.6, lead),
         life: 0,
         events: null,
     };
     surfaceTimes(arc, arc);
     // Drawn from a body's run-up under the surface until its flukes are well under again.
-    arc.wake = Math.max(1.1, arc.tailAt - flight + 0.7);
+    arc.wake = Math.max(LEAP_WAKE, arc.tailAt - flight + 0.7);
     arc.life = flight + arc.wake;
     arc.events = [
         { t: 0, type: 'breach' },
@@ -289,18 +297,25 @@ export function makeLeap({
 
 function leapPose(arc, t, open, out) {
     const { flight } = arc;
-    const speed0 = Math.hypot(arc.vx, arc.vy, arc.vz) || 1;
     let roll0 = 0;
     out.spread = 0;
     if (t < 0) {
-        // The run-up: under the surface, along the line of the launch.
-        out.x = arc.x + arc.vx * t;
-        out.y = arc.y + arc.vy * t;
-        out.z = arc.z + arc.vz * t;
-        out.fx = arc.vx / speed0;
-        out.fy = arc.vy / speed0;
-        out.fz = arc.vz / speed0;
-        out.depth = Math.max(0, -t * (arc.vx * arc.nx + arc.vy * arc.ny));
+        // The run-up: under the surface, on the curve its flight goes on with (a straight run that
+        // met a curving flight was a kink in its turn at the breach), coming up steeper from deep.
+        // A shorter one (a dolphin the board calls answers within a second) is the same path from
+        // the same depth, come up faster at first and easing to its own speed at the breach.
+        const k = t / arc.lead;
+        const quick = Math.max(0, LEAP_LEAD / arc.lead - 1);
+        const tr = t * (1 + quick * k * k);
+        const vy = arc.vy - GRAVITY * tr;
+        out.x = arc.x + arc.vx * tr;
+        out.y = arc.y + arc.vy * tr - 0.5 * GRAVITY * tr * tr;
+        out.z = arc.z + arc.vz * tr;
+        const speed = Math.hypot(arc.vx, vy, arc.vz) || 1;
+        out.fx = arc.vx / speed;
+        out.fy = vy / speed;
+        out.fz = arc.vz / speed;
+        out.depth = Math.max(0, -tr * (arc.vx * arc.nx + arc.vy * arc.ny) + 0.5 * GRAVITY * tr * tr * Math.abs(arc.ny));
         out.beat = 1.1;
         out.arch = 0.06;
     } else if (t <= flight) {
@@ -328,17 +343,27 @@ function leapPose(arc, t, open, out) {
             out.beat = 0.15;
         }
     } else {
-        // Under again: on along the way it went in, slowing.
+        // Under again: on along the way it went in, slowing, and diving on down until the water
+        // hides it (it used to level out a metre under and shrink away there: a pop).
         const vy = arc.vy - GRAVITY * flight;
         const tau = t - flight;
-        const run = (1 - Math.exp(-1.1 * tau)) / 1.1;
+        const slows = Math.exp(-WAKE_DRAG * tau);
+        const run = (1 - slows) / WAKE_DRAG;
+        // (The dive comes on at the rate gravity was bending its flight, so its path turns on
+        // through the surface without a kink.)
+        const dives = WAKE_DIVE * (1 - Math.exp(-DIVE_ONSET * tau));
         out.x = arc.x + arc.vx * flight + arc.vx * run;
-        out.y = arc.y + arc.vy * flight - 0.5 * GRAVITY * flight * flight + vy * run;
+        out.y = arc.y + arc.vy * flight - 0.5 * GRAVITY * flight * flight + vy * run
+            - WAKE_DIVE * (tau - (1 - Math.exp(-DIVE_ONSET * tau)) / DIVE_ONSET);
         out.z = arc.z + arc.vz * flight + arc.vz * run;
-        const speed = Math.hypot(arc.vx, vy, arc.vz) || 1;
-        out.fx = arc.vx / speed;
-        out.fy = (vy / speed) * Math.exp(-0.8 * tau);
-        out.fz = arc.vz / speed;
+        // Headed the way it goes.
+        const gx = arc.vx * slows;
+        const gy = vy * slows - dives;
+        const gz = arc.vz * slows;
+        const speed = Math.hypot(gx, gy, gz) || 1;
+        out.fx = gx / speed;
+        out.fy = gy / speed;
+        out.fz = gz / speed;
         out.depth = Math.max(0, -out.y);
         out.beat = 0.9;
         out.arch = 0.04;
@@ -376,18 +401,46 @@ function inward(point, d, out) {
 
 /** How far behind the wall a riding animal's middle is kept, over the water it is drawn under (metres, for a dolphin). */
 export const RIDE_CLEARANCE = 0.55;
+/**
+ * A ride that starts or ends where the eye can see it (anywhere ahead of the rider, closer than
+ * this behind it) comes up out of the deep there, or sinks back into it, over RIDE_EASE seconds:
+ * RIDE_SINK metres more water over it is past where the water hides it all (waves-fauna.js fades
+ * an animal out by 3.4 m). An end behind the rider is out of sight: there it simply swims through.
+ */
+export const RIDE_SEEN = -0.5;
+export const RIDE_EASE = 3.2;
+export const RIDE_SINK = 4.6;
+/**
+ * How much of that rise and sink tips a riding animal's nose, for every metre a second it swims
+ * along the line (the rest it does level): never more than about fifteen degrees, however
+ * slowly it goes.
+ */
+export const RIDE_DIVE_PITCH = 0.12;
 
 const wallPoint = { x: 0, y: 0, z: 0 };
 const wallNormal = { x: 0, y: 0 };
 
-function ridePoint(act, t, open, out) {
-    const s = clamp01(t / act.life);
-    const d = lerp(act.d0, act.d1, s);
+/**
+ * Where a riding animal is at `t`. `dive` is how much of its rise out of the deep (and its sink
+ * back) is counted: all of it for where it is, a little for which way it heads (counted whole,
+ * the 4.6 m it rises in three seconds against the half metre a second it swims stood it on its
+ * nose in the first and last seconds of every ride).
+ */
+function ridePoint(act, t, open, out, dive = 1) {
+    // (Not clamped at its ends: the heading is read a moment either side, and a path that stopped
+    // dead at an end swung the heading round in the last frames.)
+    const d = lerp(act.d0, act.d1, t / act.life);
     const row = Math.max(0.03, act.row + act.rowAmp * Math.sin(act.rowRate * t + act.seed));
-    // It comes up out of the deep and goes back down into it, unless it simply swims through.
-    const shown = act.fade ? smooth(0, 1.8, t) * (1 - smooth(act.life - 1.8, act.life, t)) : 1;
-    const depth = act.depth + act.depthAmp * Math.sin(0.55 * t + act.seed * 1.7) + (1 - shown) * 3.6;
-    wavePoint(row, d, open, wallPoint);
+    // It comes up out of the deep and goes back down into it at every end the eye can see (an
+    // animal that appeared, or vanished, in the open water of the wall was a pop), and simply
+    // swims through an end behind the rider.
+    const rises = act.fade || act.d0 > RIDE_SEEN ? smooth(0, RIDE_EASE, t) : 1;
+    const sinks = act.fade || act.d1 > RIDE_SEEN ? 1 - smooth(act.life - RIDE_EASE, act.life, t) : 1;
+    const shown = rises * sinks;
+    const depth = act.depth + act.depthAmp * Math.sin(0.55 * t + act.seed * 1.7) + (1 - shown) * RIDE_SINK * dive;
+    // `row` is a share of the closed tube's arc, the same angle round the tube at every distance
+    // (as a share of the lip's own reach it bent the path where the lip lands: a kink in its turn).
+    wavePoint((row * WAVE.lipClosed) / lipAngle(d, open), d, open, wallPoint);
     inward(wallPoint, d, wallNormal);
     // (Its middle is kept a fin's height and the wall's own swell behind the surface, so
     // nothing of it breaks through; it is drawn with only the water it was given over it.)
@@ -439,8 +492,9 @@ export function makeRide({
 }
 
 function ridePose(act, t, open, out) {
-    ridePoint(act, t + 0.06, open, ahead);
-    ridePoint(act, t - 0.06, open, behind);
+    const pitch = RIDE_DIVE_PITCH * Math.min(1, Math.abs(act.d1 - act.d0) / act.life);
+    ridePoint(act, t + 0.06, open, ahead, pitch);
+    ridePoint(act, t - 0.06, open, behind, pitch);
     ridePoint(act, t, open, out);
     out.fx = ahead.x - behind.x;
     out.fy = ahead.y - behind.y;
@@ -632,95 +686,6 @@ function whalePose(act, t, out) {
     return out;
 }
 
-// ── Flying fish ─────────────────────────────────────────────────────────────────
-
-/**
- * A skitter: the fish bursts out of the water, spreads its wings and glides low over the sea; it
- * may touch down on its tail and take off again before it drops back in.
- *
- * @param {object} p
- * @param {number} p.x, p.z      where it leaves the water
- * @param {number} p.hx, p.hz    its heading (unit)
- * @param {number} p.speed       metres a second over the water
- * @param {number} p.vy          its launch upward (metres a second)
- * @param {number} [p.hops]      1 a single glide, 2 a touch and a second glide
- */
-export function makeSkitter({
-    at, x, z, hx, hz, speed = 2, vy = 0.42, hops = 1, metres = SPECIES.flyingFish.metres, seed = 0, variant = 0,
-    y = 0,
-}) {
-    const first = (2 * vy) / GLIDE_GRAVITY;
-    const second = hops > 1 ? first * 0.62 : 0;
-    const flight = first + second;
-    const events = [{ t: 0, type: 'fish-out' }];
-    if (hops > 1) events.push({ t: first, type: 'fish-touch' });
-    events.push({ t: flight, type: 'fish-in' });
-    return {
-        type: 'skitter',
-        kind: 'flyingFish',
-        t0: at,
-        life: flight + 0.6,
-        x,
-        y,
-        z,
-        hx,
-        hz,
-        speed,
-        vy,
-        hops,
-        first,
-        second,
-        flight,
-        metres,
-        seed,
-        variant,
-        lead: 0.55,
-        events,
-    };
-}
-
-function skitterPose(act, t, out) {
-    const { first, flight } = act;
-    let y;
-    let vy;
-    if (t < 0) {
-        y = act.vy * 1.6 * t;
-        vy = act.vy * 1.6;
-    } else if (t <= first) {
-        y = act.vy * t - 0.5 * GLIDE_GRAVITY * t * t;
-        vy = act.vy - GLIDE_GRAVITY * t;
-    } else if (t <= flight) {
-        const tau = t - first;
-        const v2 = act.vy * 0.62;
-        y = v2 * tau - 0.5 * GLIDE_GRAVITY * tau * tau;
-        vy = v2 - GLIDE_GRAVITY * tau;
-    } else {
-        const tau = t - flight;
-        y = -0.5 * (1 - Math.exp(-3 * tau));
-        vy = -1.5 * Math.exp(-3 * tau);
-    }
-    out.x = act.x + act.hx * act.speed * t;
-    out.y = act.y + y + 0.02;
-    out.z = act.z + act.hz * act.speed * t;
-    out.fx = act.hx * act.speed;
-    out.fy = vy;
-    out.fz = act.hz * act.speed;
-    square(out, 0, 1, 0);
-    // A little bank as it rides the air off the water.
-    roll(out, 0.2 * Math.sin(1.9 * t + act.seed * 4));
-    const inAir = smooth(0, 0.22, t) * (1 - smooth(flight - 0.05, flight + 0.16, t));
-    // Its tail sculls the water as it takes off, and again where it touches.
-    const touch = Math.exp(-((t - first) ** 2) / 0.05) * (act.hops > 1 ? 1 : 0);
-    out.depth = Math.max(0, -y);
-    out.metres = act.metres * smooth(-act.lead, -act.lead + 0.2, t) * (1 - smooth(act.life - 0.25, act.life, t));
-    out.phase = act.seed * 5 + (act.t0 + t) * SPECIES.flyingFish.stroke;
-    out.beat = Math.max(1 - inAir, touch, 0.12);
-    out.arch = 0;
-    out.spread = inAir;
-    out.variant = act.variant;
-    return out;
-}
-
 // ── Seabirds ────────────────────────────────────────────────────────────────────
 
 /**
@@ -808,7 +773,6 @@ export function actPose(act, clock, open = 0, out = emptyPose()) {
     case 'ride': return ridePose(act, t, open, out);
     case 'porpoise': return porpoisePose(act, t, out);
     case 'whale': return whalePose(act, t, out);
-    case 'skitter': return skitterPose(act, t, out);
     case 'soar': return soarPose(act, t, out);
     default:
         out.metres = 0;

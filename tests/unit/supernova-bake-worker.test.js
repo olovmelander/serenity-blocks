@@ -3,7 +3,7 @@ import {
     afterEach, describe, expect, it,
 } from 'vitest';
 import { isBaked, resetBakeCache } from '../../src/themes/shared/bake-cache.js';
-import { bakeNoise3D } from '../../src/themes/supernova/supernova-tsl.js';
+import { bakeCells3D, bakeNoise3D } from '../../src/themes/supernova/supernova-tsl.js';
 import {
     SUPERNOVA_BAKE_JOBS, supernovaBakeKey, supernovaBakes,
 } from '../../src/themes/supernova/supernova-bakes.js';
@@ -23,14 +23,19 @@ describe('Supernova bakes its noise ahead of the build', () => {
         // What the world calls (supernova-world.js: its seed defaults to the bake's).
         const world = source('supernova-world.js');
         expect(world).toContain('createNoise3DTexture(bakeNoise3D(this.seed))');
+        expect(world).toContain('createCells3DTexture(bakeCells3D(this.seed))');
         expect(world).toMatch(/capture = false, seed = 1987,/);
         bakeNoise3D(1987);
+        bakeCells3D(1987);
         for (const job of SUPERNOVA_BAKE_JOBS) expect(isBaked(supernovaBakeKey(job))).toBe(true);
     });
 
     it('bakes in a module that imports no three, served by its worker under the job\'s kind', () => {
         expect(source('supernova-bake.js')).not.toMatch(/from 'three/);
         expect(source('supernova-bake.worker.js')).toMatch(/\bnoise3: bakeNoise3D\b/);
+        expect(source('supernova-bake.worker.js')).toMatch(/\bcells3: bakeCells3D\b/);
+        // Both of the world's volumes are jobs: the noise, and the photosphere's convection cells.
+        expect(SUPERNOVA_BAKE_JOBS.map((job) => job.kind)).toEqual(['noise3', 'cells3']);
     });
 
     it('starts the bake before the renderer and awaits it before the world', () => {

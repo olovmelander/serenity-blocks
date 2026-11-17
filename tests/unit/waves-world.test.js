@@ -33,7 +33,7 @@ vi.setConfig({ testTimeout: 30_000 }); // every test builds a wave or two, on a 
 
 const DT = 1 / 60;
 const EYE = REST_RIG.eye;
-const PARTS = ['foam', 'life', 'mist', 'rain', 'sky', 'spray', 'water'];
+const PARTS = ['foam', 'landing', 'life', 'mist', 'rain', 'sky', 'spray', 'water', 'whitewater'];
 /** The sea life's bodies, read from disk the way the theme reads them. */
 const PACK = parseSeaLife(readFileSync(new URL('../../src/themes/waves/assets/sea-life.glb', import.meta.url)));
 const HIT_KINDS = ['floor', 'lip', 'wall'];

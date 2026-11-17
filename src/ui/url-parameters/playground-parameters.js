@@ -1111,7 +1111,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
         values: 'Effect-specific cue, commonly lock, clear, combo, quad, twist, perfect or levelUp (Koi '
             + 'Pond, Star Cradle, Serenity Warp, Stellar Drift and Stellar Velocity: lock, '
             + 'drop, clear, quad, twist, perfect, levelUp; Void Ember: lock, drop, clear, quad, twist, '
-            + 'spin, perfect, crown, levelUp, over; Vesper Chrysalis: lock, drop, clear, quad, '
+            + 'spin, perfect, crown, levelUp, over; Supernova: lock, drop, clear, quad, twist, spin, b2b, '
+            + 'perfect, crown, break, levelUp, over; Vesper Chrysalis: lock, drop, clear, quad, '
             + 'twist, perfect, levelUp, break; Stillwater and Moonlit Greenhouse: lock, drop, clear, '
             + 'quad, twist, perfect, levelUp, break); cue names are case-sensitive in most effects. '
             + 'Summer: lock, drop, clear, double, triple, quad, combo, streak, spin, perfect, level, '
@@ -2652,6 +2653,75 @@ export const PLAYGROUND_URL_PARAMETERS = [
         values: 'Seconds.',
         defaultValue: '9.',
         example: 'flock=17&flockAge=11',
+        notes: 'Use on playground.html with effect=sunset.',
+        sources: [
+            'src/playground/effects/sunset.effect.js',
+        ],
+    },
+    {
+        name: 'weather',
+        category: 'Playground',
+        scope: 'playground.html — sunset',
+        description: 'Hold the Sunset weather on one sky instead of letting its own clock turn it.',
+        values: 'trade, towers, mackerel, clear or veil; or a phase number (1.5 is half-way from towers to '
+            + 'mackerel).',
+        defaultValue: 'Off (the weather turns by itself: a sky every 94 s, trade first).',
+        example: 'hour=18&weather=towers',
+        notes: 'Use on playground.html with effect=sunset.',
+        sources: [
+            'src/playground/effects/sunset.effect.js',
+        ],
+    },
+    {
+        name: 'moon',
+        category: 'Playground',
+        scope: 'playground.html — sunset',
+        description: 'Hold the Sunset moon on a phase angle instead of letting each day bring the next phase.',
+        values: 'Degrees, 0 to 170: 50 the gibbous moon of the first night, 24 near full, 86 a half moon, '
+            + '120 a crescent.',
+        defaultValue: 'Off (50 on the first night, then the next phase from each noon).',
+        example: 'hour=19.3&moon=120',
+        notes: 'Use on playground.html with effect=sunset.',
+        sources: [
+            'src/playground/effects/sunset.effect.js',
+        ],
+    },
+    {
+        name: 'meteor',
+        category: 'Playground',
+        scope: 'playground.html — sunset',
+        description: 'Let one shooting star fall this many seconds before the frame.',
+        values: 'Seconds (a star falls for about half a second to a second).',
+        defaultValue: 'Off (by night one falls now and then by itself).',
+        example: 'hour=0&meteor=0.3',
+        notes: 'Use on playground.html with effect=sunset.',
+        sources: [
+            'src/playground/effects/sunset.effect.js',
+        ],
+    },
+    {
+        name: 'shower',
+        category: 'Playground',
+        scope: 'playground.html — sunset',
+        description: 'Start the shower of shooting stars an emptied well brings by night, this many seconds '
+            + 'before the frame.',
+        values: 'Seconds (the shower lasts about three).',
+        defaultValue: 'Off.',
+        example: 'hour=0&shower=1.5',
+        notes: 'Use on playground.html with effect=sunset.',
+        sources: [
+            'src/playground/effects/sunset.effect.js',
+        ],
+    },
+    {
+        name: 'b2b',
+        category: 'Playground',
+        scope: 'playground.html — sunset',
+        description: 'Make the event\'s clear a back-to-back: a second wave of light follows the first and sun '
+            + 'dogs stand on the halo.',
+        values: '1 enables.',
+        defaultValue: 'Off.',
+        example: 'event=clear&lines=2&b2b=1',
         notes: 'Use on playground.html with effect=sunset.',
         sources: [
             'src/playground/effects/sunset.effect.js',
@@ -5318,7 +5388,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         category: 'Playground',
         scope: 'playground.html — waves',
         description: 'Send one of the visits the Waves sea makes by itself, now (they also come by the clock).',
-        values: 'ridePod, troughPod, farPod, loneLeap, skitter, turtle, manta, whaleBlow, whaleFluke, whaleBreach, birds.',
+        values: 'ridePod, troughPod, farPod, loneLeap, turtle, manta, whaleBlow, whaleFluke, whaleBreach, birds.',
         defaultValue: 'None: only the sea’s own schedule.',
         example: 'visit=ridePod&visitAge=8',
         notes: 'Use with effect=waves; visitAge picks the moment, visitSeed another draft.',

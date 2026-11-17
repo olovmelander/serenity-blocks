@@ -12,6 +12,7 @@
  *                     them (a twist) widens as it climbs
  *             bead    rising slowly with the water's sway: the reef spawning
  *             puff    a soft cloud of sand thrown up where something lands
+ *   crown   the pillars of light a four-line clear brings down round the board
  *   motes   marine snow: specks hanging in the water, lit where a shaft crosses them; at night
  *           a share of them is plankton that glows when a current or the whale's song passes
  */
@@ -26,6 +27,7 @@ import {
     cameraViewMatrix,
     clamp,
     cos,
+    cross,
     exp,
     float,
     fract,
@@ -45,7 +47,7 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    SURFACE, mulberry32, ocLean, ocLightPoint, ocLightRead, ocPart, ocSong, ocThrough,
+    BEAM_RING, SURFACE, mulberry32, ocLean, ocLightPoint, ocLightRead, ocPart, ocSong, ocThrough,
 } from './ocean-tsl.js';
 
 /** The pool's ways of moving, as the number the shader reads. */
@@ -80,6 +82,9 @@ const billboard = (u, view, size) => {
 };
 
 // ── The pool ────────────────────────────────────────────────────────────────────
+
+/** Radians a second a ring of bubbles turns as it climbs. */
+const RING_TURN = 1.9;
 
 /** Slots ahead of the pool's cursor a new mote looks through for one that is spent. */
 const PROBE = 6;
@@ -136,8 +141,10 @@ export function createPool(u, count) {
         const bow = sin(x.mul(Math.PI)).mul(0.45);
         const homing = nBirth.xyz.add(v.mul(life).mul(ease)).add(vec3(0.0, bow, 0.0));
         // A bubble: up, faster as it climbs, a wobble that grows; a ring of them widens.
+        // (A ring turns as it climbs: strings of bubbles let go one after another wind into a helix.)
         const ringR = nMode.y.add(nMode.z.mul(age));
-        const ring = vec3(cos(nMode.w), 0.0, sin(nMode.w)).mul(ringR).mul(step(0.001, nMode.y));
+        const turn = nMode.w.add(age.mul(RING_TURN));
+        const ring = vec3(cos(turn), 0.0, sin(turn)).mul(ringR).mul(step(0.001, nMode.y));
         const wobble = vec3(sin(age.mul(9.0).add(seed.mul(40.0))), 0.0, cos(age.mul(7.3).add(seed.mul(23.0))))
             .mul(age.mul(0.02).add(0.03)).mul(float(1.0).sub(step(0.001, nMode.y)));
         const rising = nBirth.xyz
@@ -164,7 +171,7 @@ export function createPool(u, count) {
         const fadeIn = smoothstep(0.0, mix(float(0.04), float(0.18), isBead.add(isPuff)), x);
         const fadeOut = float(1.0).sub(smoothstep(mix(float(0.6), float(0.45), isBead), 1.0, x));
         const view = cameraViewMatrix.mul(vec4(p, 1.0)).toVar();
-        const grow = float(1.0).add(age.mul(0.1).mul(isBubble)).add(x.mul(1.6).mul(isPuff));
+        const grow = float(1.0).add(age.mul(0.1).add(0.3).mul(isBubble)).add(x.mul(1.6).mul(isPuff));
         const shape = billboard(u, view, nLook.w.mul(grow).mul(live));
         vFade.assign(live.mul(fadeIn).mul(fadeOut).mul(shape.thin));
         vSeen.assign(ocThrough(u, length(p.sub(cameraPosition))));
@@ -182,7 +189,7 @@ export function createPool(u, count) {
         const rim = smoothstep(0.62, 0.9, d).mul(float(1.0).sub(smoothstep(0.9, 1.0, d)));
         const spot = exp(q.sub(vec2(-0.33, 0.36)).dot(q.sub(vec2(-0.33, 0.36))).mul(-28.0));
         const silver = u.shallow.mul(0.9).add(u.sun.mul(0.35)).add(vTint.mul(0.3));
-        const bubble = silver.mul(rim.mul(1.2).add(0.05)).add(u.sun.mul(spot).mul(0.9));
+        const bubble = silver.mul(rim.mul(2.1).add(0.12)).add(u.sun.mul(spot).mul(1.3));
         // Sand: a dim, soft cloud in the water's light.
         const puff = vTint.mul(u.ambient.add(u.sun.mul(0.25))).mul(exp(d.mul(d).mul(-2.6)).mul(0.11));
         const col = vTint.mul(glow).toVar();
@@ -213,10 +220,11 @@ export function createPool(u, count) {
      * @param {number[]} [e.home]      with mode home: the world point they sink to
      * @param {number} [e.ring=0]      with mode bubble: start them on a ring of this radius...
      * @param {number} [e.ringSpeed=0] ...widening this fast (m/s)
+     * @param {number} [e.ringPhase=0] ...the ring turned this far round (radians)
      */
     part.emit = ({
         mode: kind = 'drift', at, n: amount, rgb, time, vel = [0, 0, 0], spread = 1, scatter = 0, life = [1.0, 2.2],
-        size = 0.1, stagger = 0, home = null, ring = 0, ringSpeed = 0,
+        size = 0.1, stagger = 0, home = null, ring = 0, ringSpeed = 0, ringPhase = 0,
     }) => {
         const many = Math.max(0, Math.min(n, Math.round(amount)));
         const code = POOL_MODES[kind] ?? 0;
@@ -261,7 +269,7 @@ export function createPool(u, count) {
                     lifetime,
                 ], o);
             }
-            mode.set([code, ring, ringSpeed, ring > 0 ? (k / many) * Math.PI * 2 : rand() * 6.283], o);
+            mode.set([code, ring, ringSpeed, ring > 0 ? (k / many) * Math.PI * 2 + ringPhase : rand() * 6.283], o);
             const s = size * (0.6 + rand() * 0.8);
             const gain = kind === 'bubble' || kind === 'puff' ? 1 : 1.4 + rand() * 1.6;
             look.set([rgb[0] * gain, rgb[1] * gain, rgb[2] * gain, s], o);
@@ -283,6 +291,77 @@ export function createPool(u, count) {
         aBirth.needsUpdate = true;
         aLook.needsUpdate = true;
     };
+    return part;
+}
+
+// ── The crown ───────────────────────────────────────────────────────────────────
+
+/** How brightly a pillar of the crown stands. */
+const CROWN_RAY = 0.5;
+
+/**
+ * The crown a four-line clear brings down round the board: pillars of light, each one a ribbon
+ * down the sun's ray from the surface to the reef, turned to the eye, standing on the ring
+ * `u.beam` names (where the school winds). They come down as the beam's strength rises, turn
+ * slowly, flicker each on its own, and a perfect clear gives every one a colour of the spectrum.
+ * Always drawn: with no crown standing every ribbon is a degenerate strip.
+ * @param {object} u
+ * @param {number} [count=22]
+ */
+export function createCrown(u, count = 22) {
+    const n = Math.max(1, count);
+    const geometry = new THREE.PlaneGeometry(1, 1, 1, 8);
+    const data = new Float32Array(n * 4); // bearing round the ring, how far in or out of it, width, seed
+    const rand = mulberry32(4409);
+    for (let i = 0; i < n; i++) {
+        data.set([((i + rand() * 0.7) / n) * Math.PI * 2, rand() * 2 - 1, 0.45 + rand() * 0.9, rand()], i * 4);
+    }
+    geometry.setAttribute('aRay', new THREE.InstancedBufferAttribute(data, 4));
+    const mesh = new THREE.InstancedMesh(geometry, null, n);
+    mesh.frustumCulled = false;
+
+    const material = additive('OceanCrown');
+    material.side = THREE.DoubleSide;
+    const aRay = attribute('aRay', 'vec4');
+    const vAcross = varying(positionGeometry.x.mul(2.0), 'vCrownAcross');
+    const vAlong = varying(float(0.0), 'vCrownAlong');
+    const vLight = varying(vec3(0.0), 'vCrownLight');
+    material.vertexNode = Fn(() => {
+        const seed = aRay.w;
+        const level = clamp(u.beam.w, 0.0, 1.0).toVar();
+        const bearing = aRay.x.add(u.time.mul(0.06)).toVar();
+        const radius = u.beam.z.mul(aRay.y.mul(0.28).add(BEAM_RING));
+        const foot = vec3(u.beam.x.add(cos(bearing).mul(radius)), 0.0, u.beam.y.add(sin(bearing).mul(radius)));
+        // The light comes down: a pillar's lower end follows the beam's strength to the reef.
+        const down = smoothstep(0.0, 0.85, level.add(seed.mul(0.15)));
+        const along = mix(float(1.0).sub(down), float(1.0), positionGeometry.y.add(0.5)).toVar();
+        const span = float(SURFACE).div(max(u.sunDir.y, 0.25));
+        const p = foot.add(u.sunDir.mul(span).mul(along)).toVar();
+        const toEye = cameraPosition.sub(p).toVar();
+        const dist = max(length(toEye), 0.3).toVar();
+        const side = normalize(cross(u.sunDir, toEye.div(dist)).add(vec3(1e-4, 0.0, 0.0)));
+        p.addAssign(side.mul(positionGeometry.x).mul(aRay.z).mul(step(1e-3, level)));
+        vAlong.assign(along);
+        // Each flickers on its own; right in front of the eye a pillar fades, so none is a wall.
+        const flicker = sin(u.time.mul(seed.mul(1.9).add(1.1)).add(seed.mul(40.0))).mul(0.28).add(0.72);
+        const near = smoothstep(2.5, 8.0, dist);
+        const spectrum = cos(vec3(0.0, 0.33, 0.67).add(aRay.x.div(6.2832)).mul(6.2832)).mul(0.5).add(0.5);
+        const hue = mix(u.crown, spectrum.mul(1.6).add(0.08), u.prism);
+        const seen = ocThrough(u, dist.mul(0.6));
+        vLight.assign(hue.mul(seen).mul(level.mul(flicker).mul(near).mul(CROWN_RAY)));
+        return cameraProjectionMatrix.mul(cameraViewMatrix.mul(vec4(p, 1.0)));
+    })();
+    material.outputNode = Fn(() => {
+        // Soft across, with a brighter core; strongest under the surface, thinning to the reef.
+        const a = clamp(float(1.0).sub(vAcross.mul(vAcross)), 0.0, 1.0);
+        const across = a.mul(a).mul(0.6).add(a.mul(a).mul(a).mul(a).mul(0.7));
+        const along = clamp(vAlong, 0.0, 1.0);
+        const fall = along.mul(along).mul(0.7).add(0.3).mul(smoothstep(0.0, 0.06, along));
+        return vec4(vLight.mul(across).mul(fall).mul(u.breath), 0.0);
+    })();
+    mesh.material = material;
+    const part = ocPart('OceanCrown', geometry, material, 67, { mesh });
+    part.count = n;
     return part;
 }
 
@@ -317,7 +396,7 @@ export function createMotes(u, count) {
         const seed = aMote.w;
         const t = u.drift;
         // The snow sinks, the current carries it, each speck wanders a little.
-        const flow = vec3(u.current.mul(t).mul(0.22), t.mul(-0.045), t.mul(0.01));
+        const flow = vec3(u.flow.mul(0.88), t.mul(-0.045), t.mul(0.01));
         const wander = vec3(sin(t.mul(0.31).add(seed.mul(40.0))), sin(t.mul(0.23).add(seed.mul(17.0))), cos(t.mul(0.27).add(seed.mul(29.0))))
             .mul(0.35);
         const size = vec3(...SNOW_SIZE);
@@ -392,7 +471,7 @@ export function createNearMotes(u, count) {
         const seed = aMote.w;
         const t = u.drift;
         // Carried by the current, sinking slowly, each wandering a hand's breadth.
-        const flow = vec3(u.current.mul(t).mul(0.12), t.mul(-0.022), t.mul(0.006));
+        const flow = vec3(u.flow.mul(0.48), t.mul(-0.022), t.mul(0.006));
         const wander = vec3(
             sin(t.mul(0.21).add(seed.mul(40.0))),
             sin(t.mul(0.17).add(seed.mul(17.0))),
