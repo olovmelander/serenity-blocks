@@ -19,8 +19,8 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, attribute, cameraPosition, dot, mix, normalGeometry, normalize, positionGeometry, saturate, step,
-    varyingProperty, vec3,
+    Fn, abs, attribute, cameraPosition, dot, mix, normalGeometry, normalize, positionGeometry, pow, saturate, step,
+    varyingProperty, vec2, vec3,
 } from 'three/tsl';
 import { SUMMER_SWAN } from './summer-swan-model.js';
 import {
@@ -195,15 +195,23 @@ function createSwanMaterial(light, { name, flying, pivot }) {
         const toward = dot(N, light.uSunDir).toVar();
         // How squarely the eye looks into the sun past this bird (1: the sun right behind it).
         const against = saturate(dot(toEye, light.uSunDir).negate()).toVar();
-        const facing = saturate(toward.mul(0.85).add(0.15));
+        const facing = saturate(toward.mul(0.8).add(0.2));
         const graze = saturate(dot(N, toEye)).oneMinus().toVar();
-        const rim = graze.mul(graze).mul(graze).mul(against.mul(0.8).add(0.2));
+        const rim = graze.mul(graze).mul(against.mul(0.8).add(0.2));
         // The low sun through the thin feathers of a bird that stands against it.
         const through = tint.w.mul(against.mul(against)).mul(saturate(toward.negate().mul(0.6).add(0.6)));
         // Over the lake the light from below is the sky in the water more than the meadow's green.
         const around = mix(light.ambient(N), light.ambient(vec3(0, 1, 0)), 0.45);
-        const lit = albedo.mul(sun).mul(facing.mul(0.36).add(rim.mul(0.5)).add(through.mul(0.3)))
-            .add(albedo.mul(around).mul(rig.w));
+        // Seen against the low sun a white bird is its own shaded side: darker than the bright water
+        // behind it, with the light along its back and its edges (a bird lit as white as the glare
+        // it swims in is lost in it).
+        // Deepest in the sun's own road on the water, where the bird is a silhouette in the glitter.
+        const eyeFlat = normalize(vec2(toEye.x, toEye.z).negate().add(vec2(1e-4, 0)));
+        const sunFlat = normalize(vec2(light.uSunDir.x, light.uSunDir.z).add(vec2(1e-4, 0)));
+        const road = pow(saturate(dot(eyeFlat, sunFlat)), 48).mul(against);
+        const shaded = against.mul(against).mul(-0.42).add(1).sub(road.mul(0.3));
+        const lit = albedo.mul(sun).mul(facing.mul(0.42).add(rim.mul(0.55)).add(through.mul(0.3)))
+            .add(albedo.mul(around).mul(rig.w).mul(shaded));
         return light.haze(lit, { world: P });
     })();
     return material;

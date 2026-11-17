@@ -96,8 +96,8 @@ const FRAME = Object.freeze({
     stats: Object.freeze({
         x0: 0.64, x1: 0.74, y0: 0.27, y1: 0.73,
     }),
-    // The weeping birch's crown in the top right.
-    birch: Object.freeze({ x0: 0.66, y1: 0.3 }),
+    // The weeping birch's crown and hanging strands, right of the open sky beside the card.
+    birch: Object.freeze({ x0: 0.7, y1: 0.47 }),
 });
 
 const lensScratch = { x: 0, y: 0, depth: 0 };
@@ -391,10 +391,13 @@ export const SWAN_FLIGHT = Object.freeze({
 });
 
 /**
- * Where a line meets the rest frame (screen x): its two edges, and where the skein, coming down
- * since the right edge, is down (behind the card, before it shows left of it).
+ * Where a line meets the rest frame (screen x): its two edges; the open sky between the card and
+ * the birch, where the skein is seen on the right (its height is set there: over the stats); where
+ * it starts down, going behind the card; and where it is down, left of the card.
  */
-const MARKS = Object.freeze({ enter: 1, level: 0.41, leave: 0 });
+const MARKS = Object.freeze({
+    enter: 1, gap: 0.66, down: 0.64, level: 0.27, leave: 0,
+});
 
 /** Where the evening sun stands in the rest frame (screen fractions), as summer-hours.js has it. */
 export function swanSunOnScreen(lens) {
@@ -413,9 +416,9 @@ const climbing = (d) => (d <= 0 ? 0 : Math.min(d / SWAN_FLIGHT.ease, 1));
 /**
  * The leader's place `run` metres along a flight's line (out[0..2]) and its unit heading
  * (out[3..5]). The ground track is a gentle arc from `from` through to `to` ([x, z]); the height
- * comes down from `high` to `low` between the runs `enter` and `level`, stays low across the lake,
- * and climbs away before `enter` and after `leave` (outside the 16:9 frame). Any run will do: a
- * bird behind the leader is on the line before its start.
+ * is `high` as far as the run `down`, comes down to `low` by the run `level`, stays low across
+ * the lake, and climbs away before `enter` and after `leave` (outside the 16:9 frame). Any run
+ * will do: a bird behind the leader is on the line before its start.
  */
 export function swanFlightPoint(route, run, out = [0, 0, 0, 0, 0, 0]) {
     const u = run / route.length;
@@ -426,8 +429,8 @@ export function swanFlightPoint(route, run, out = [0, 0, 0, 0, 0, 0]) {
     const tx = 2 * v * (via[0] - from[0]) + 2 * u * (to[0] - via[0]);
     const tz = 2 * v * (via[1] - from[1]) + 2 * u * (to[1] - via[1]);
     const flat = Math.hypot(tx, tz) || 1;
-    const fall = route.level - route.enter;
-    const w = clamp((run - route.enter) / fall, 0, 1);
+    const fall = route.level - route.down;
+    const w = clamp((run - route.down) / fall, 0, 1);
     const drop = route.high - route.low;
     out[1] = route.low + drop * (1 - w * w * (3 - 2 * w))
         + SWAN_FLIGHT.climb * (climbed(route.enter - run) + climbed(run - route.leave));
@@ -484,10 +487,11 @@ function scoreFlight(lens, sun, route, groundHeight) {
                 left += dt;
                 size += dt / s.depth;
             } else if (clear && s.x > FRAME.card[1] + 0.01 && s.x < 0.97) {
-                const { stats } = FRAME;
+                const { stats, birch } = FRAME;
                 const covered = s.x > stats.x0 && s.x < stats.x1 && s.y > stats.y0 && s.y < stats.y1;
                 if (!covered && !behindLand(lens, x, y, z, groundHeight)) {
-                    right += s.x > FRAME.birch.x0 && s.y < FRAME.birch.y1 ? dt * 0.4 : dt;
+                    // Through the birch's strands a bird is only glimpsed.
+                    right += s.x > birch.x0 && s.y < birch.y1 ? dt * 0.25 : dt;
                 }
             }
         }
@@ -498,7 +502,7 @@ function scoreFlight(lens, sun, route, groundHeight) {
     const late = Math.max(0, quick - crossing, crossing - slow);
     // Near the sun's road, never through its disc: best about an eighth of the frame's height off.
     const road = Math.exp(-(((nearest - 0.13) / 0.07) ** 2));
-    const score = Math.min(left, 5.5) + 1.5 * Math.min(right, 2) + 2.2 * road - (nearest < 0.07 ? 5 : 0)
+    const score = Math.min(left, 5.5) + 3 * Math.min(right, 2) + 2.2 * road - (nearest < 0.07 ? 5 : 0)
         - 2 * late + 150 * (size / Math.max(left, dt));
     return {
         score, left, right, crossing, sun: nearest,
@@ -507,11 +511,12 @@ function scoreFlight(lens, sun, route, groundHeight) {
 
 /**
  * The lines a skein may fly, best first: each comes from beyond the right edge of the widest
- * frame, over the homestead's wood, shows in the open sky right of the board on its way down,
- * is down behind the card, crosses the water left of it low under the evening sun and climbs
- * away past the left edge (a launch may fly it the other way). Candidates are laid through the
- * rest lens (how deep the line is at the frame's two edges, how it bends, how high it comes in
- * and how low it crosses) and scored there; `route.seen` keeps what the score read.
+ * frame, over the homestead's wood, shows in the open sky right of the board (above where the
+ * stats stand in single player), comes down behind the card, crosses the water left of it low
+ * under the evening sun and climbs away past the left edge (a launch may fly it the other way).
+ * Candidates are laid through the rest lens (how deep the line is at the frame's two edges, how
+ * it bends, how high it comes in and how low it crosses) and scored there; `route.seen` keeps
+ * what the score read.
  */
 export function planSwanFlights({ aspect = SWAN_REST_ASPECT, groundHeight = summerGroundHeight } = {}) {
     const lens = summerSwanLens(aspect);
@@ -542,7 +547,7 @@ export function planSwanFlights({ aspect = SWAN_REST_ASPECT, groundHeight = summ
             for (const bulge of from && to ? [0, 8, -8] : []) {
                 const via = [(from[0] + to[0]) / 2 + dz * bulge, (from[1] + to[1]) / 2 - dx * bulge];
                 const track = {
-                    from, via, to, length: 1, low: 6, high: 6, enter: 0, level: 1, leave: 1,
+                    from, via, to, length: 1, low: 6, high: 6, enter: 0, down: 0, level: 1, leave: 1,
                 };
                 // The line's length by its chords, then the runs where it meets the frame's marks.
                 let length = 0;
@@ -555,8 +560,10 @@ export function planSwanFlights({ aspect = SWAN_REST_ASPECT, groundHeight = summ
                     pz = p[2];
                 }
                 track.length = length;
-                const runs = { enter: -1, level: -1, leave: -1 };
-                let edgeDepth = 0;
+                const runs = {
+                    enter: -1, gap: -1, down: -1, level: -1, leave: -1,
+                };
+                let gapDepth = 0;
                 for (let run = 0; run <= length; run += 2) {
                     swanFlightPoint(track, run, p);
                     const at = lens.project(p[0], 6, p[2], s);
@@ -564,15 +571,16 @@ export function planSwanFlights({ aspect = SWAN_REST_ASPECT, groundHeight = summ
                         for (const key of Object.keys(runs)) {
                             if (runs[key] < 0 && at.x <= MARKS[key]) {
                                 runs[key] = run;
-                                if (key === 'enter') edgeDepth = at.depth;
+                                if (key === 'gap') gapDepth = at.depth;
                             }
                         }
                     }
                 }
-                const whole = runs.enter >= 0 && runs.level > runs.enter && runs.leave > runs.level;
-                for (const edgeY of whole ? [0.27, 0.32] : []) {
-                    const high = lens.point(MARKS.enter, edgeY, edgeDepth, b)[1];
-                    for (const low of [6, 8]) {
+                const whole = runs.enter >= 0 && runs.down > runs.enter && runs.level > runs.down
+                    && runs.leave > runs.level;
+                for (const gapY of whole ? [0.21, 0.24] : []) {
+                    const high = lens.point(MARKS.gap, gapY, gapDepth, b)[1];
+                    for (const low of [8.5, 9.5]) {
                         const route = {
                             from,
                             via,
@@ -581,6 +589,7 @@ export function planSwanFlights({ aspect = SWAN_REST_ASPECT, groundHeight = summ
                             low,
                             high,
                             enter: runs.enter,
+                            down: runs.down,
                             level: runs.level,
                             leave: runs.leave,
                         };

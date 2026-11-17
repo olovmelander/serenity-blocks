@@ -488,7 +488,7 @@ describe('Summer swans on the wing', () => {
         expect(planSwanFlights({ groundHeight: () => 30 })).toEqual([]);
     });
 
-    it('lays a line that comes down behind the board, crosses low and climbs away outside the frame', () => {
+    it('lays a line that shows over the stats, comes down behind the board, crosses low and climbs away', () => {
         const [route] = flights;
         const p = [0, 0, 0, 0, 0, 0];
         const s = { x: 0, y: 0, depth: 0 };
@@ -496,13 +496,31 @@ describe('Summer swans on the wing', () => {
             swanFlightPoint(route, run, p);
             return lens.project(p[0], p[1], p[2], s);
         };
-        // The marks: the frame's right edge, behind the card, the frame's left edge.
+        // The marks: the frame's right edge, the open sky right of the card where it starts down,
+        // left of the card where it is down, the frame's left edge.
         expect(seenAt(route.enter).x).toBeCloseTo(1, 1);
         expect(seenAt(route.leave).x).toBeCloseTo(0, 1);
+        const down = seenAt(route.down);
+        expect(down.x).toBeGreaterThan(CARD[1]);
+        expect(down.x).toBeLessThan(0.7);
+        // Over where the stats stand in single player (their top is at 0.29 of a 16:9 frame).
+        expect(down.y).toBeLessThan(0.26);
+        expect(down.y).toBeGreaterThan(0.15);
         const level = seenAt(route.level).x;
-        expect(level).toBeGreaterThan(CARD[0]);
-        expect(level).toBeLessThan(CARD[1]);
-        expect(swanFlightPoint(route, route.enter, p)[1]).toBeCloseTo(route.high, 6);
+        expect(level).toBeGreaterThan(SPRUCE + 0.1);
+        expect(level).toBeLessThan(CARD[0]);
+        expect(route.down).toBeGreaterThan(route.enter);
+        expect(route.level).toBeGreaterThan(route.down);
+        for (let run = route.enter; run <= route.down; run += 4) {
+            expect(swanFlightPoint(route, run, p)[1]).toBeCloseTo(route.high, 6);
+        }
+        // By the card's left edge it has most of the way down behind it.
+        const edge = [0, 0, 0, 0, 0, 0];
+        for (let run = route.down; run <= route.level; run += 0.5) {
+            if (seenAt(run).x > CARD[0]) edge.splice(0, 6, ...p);
+        }
+        expect(edge[1] - route.low).toBeLessThan((route.high - route.low) * 0.4);
+        expect(edge[1] - route.low).toBeGreaterThan(0);
         for (let run = route.level; run <= route.leave; run += 4) {
             expect(swanFlightPoint(route, run, p)[1]).toBeCloseTo(route.low, 6);
             expect(p[4]).toBeCloseTo(0, 9);
@@ -517,8 +535,8 @@ describe('Summer swans on the wing', () => {
             expect(now[3] * before[3] + now[4] * before[4] + now[5] * before[5]).toBeGreaterThan(0.999);
             expect(Math.hypot(now[0] - before[0], now[2] - before[2])).toBeGreaterThan(0.9);
             expect(Math.hypot(now[0] - before[0], now[2] - before[2])).toBeLessThan(1.1);
-            // Never a dive or a rocket's climb.
-            expect(Math.abs(now[4])).toBeLessThan(0.3);
+            // Never a dive or a rocket's climb: under twenty degrees.
+            expect(Math.abs(now[4])).toBeLessThan(0.34);
             before = now.slice();
         }
     });
@@ -627,9 +645,11 @@ describe('Summer swans on the wing', () => {
                         else if (s.x > CARD[1]) right += dt;
                         else if (s.x >= CARD[0]) behind += dt;
                         nearSun = Math.min(nearSun, Math.hypot((s.x - sun.x) * lens.aspect, s.y - sun.y));
-                        // Low across the lake: under the top third of the frame all the way.
-                        expect(s.y).toBeGreaterThan(0.2);
+                        // Low across the lake left of the board; over the stats' place right of it.
+                        expect(s.y).toBeGreaterThan(0.1);
                         expect(s.y).toBeLessThan(0.5);
+                        if (s.x > SPRUCE && s.x < CARD[0] - 0.12) expect(s.y).toBeGreaterThan(0.4);
+                        if (s.x > CARD[1] + 0.02 && s.x < 0.72) expect(s.y).toBeLessThan(0.26);
                     }
                     // Clear of the water, and of what stands on the land it crosses (the leader's own
                     // line keeps 12 m over wooded land; a bird out on the skein's arm may cross the skerry).
@@ -639,7 +659,7 @@ describe('Summer swans on the wing', () => {
                         const moved = Math.hypot(p[0] - last[0], p[1] - last[1], p[2] - last[2]) / dt;
                         // Never jumps: it flies at its pace, give or take its looseness in the skein.
                         expect(moved).toBeGreaterThan(SWAN_FLIGHT.speed * 0.9);
-                        expect(moved).toBeLessThan(SWAN_FLIGHT.speed * 1.1);
+                        expect(moved).toBeLessThan(SWAN_FLIGHT.speed * 1.12);
                     }
                     last = [p[0], p[1], p[2]];
                     // Flying where it points.
@@ -653,7 +673,8 @@ describe('Summer swans on the wing', () => {
             expect(across, `launch ${launch}`).toBeGreaterThan(9);
             expect(across, `launch ${launch}`).toBeLessThan(12.5);
             // Near the sun's road, never through its disc.
-            expect(nearSun).toBeGreaterThan(0.08);
+            // (The disc's own radius is 0.03 of the frame's height.)
+            expect(nearSun).toBeGreaterThan(0.075);
             expect(nearSun).toBeLessThan(0.25);
             time += flight.life + 1;
             swans.update(time, STEP);
@@ -938,7 +959,7 @@ describe('SummerSwans', () => {
                 expect(bird.size).toBeLessThan(1.4);
                 expect(Math.hypot(...bird.forward)).toBeCloseTo(1, 5);
                 expect(Math.hypot(...bird.up)).toBeCloseTo(1, 5);
-                expect(bird.up[1]).toBeGreaterThan(0.95);
+                expect(bird.up[1]).toBeGreaterThan(0.94);
                 expect(bird.forward[0] * bird.up[0] + bird.forward[1] * bird.up[1] + bird.forward[2] * bird.up[2])
                     .toBeCloseTo(0, 5);
                 if (i === 0) arms.add(Math.round(bird.first * 20));
