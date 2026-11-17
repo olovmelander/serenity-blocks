@@ -14,8 +14,8 @@
  *     by itself;
  *   - along the right-hand massif's skyline, now and then, a file of small far wolves trotting
  *     up to the summit and over it;
- *   - on the left-hand massif's summit, beside the moon, the white wolf: it comes up over the
- *     crest, stands, sits and howls on its own, and goes again.
+ *   - on the left-hand massif's summit, beside the moon, the white wolf: it walks up over the
+ *     crest, stands, sits and howls on its own, then turns and walks back down out of sight.
  *
  * A traveller's journey is an itinerary of legs: go somewhere at a speed in a gait, stay a while
  * doing something, turn round. `follow()` reads where it is `u` seconds in: its place along the
@@ -476,48 +476,187 @@ export function farFileAt(time) {
 /* ── The white wolf of the summit ──────────────────────────────────────────────────── */
 
 /**
- * The white wolf: it comes up over the left-hand summit, stands a while, sits, howls on its own,
- * and goes back over. `summon` brings it up at once (a perfect clear, a fever).
+ * The white wolf: it walks up the far side of the left-hand summit and comes over the crest (it
+ * stands behind the crest, so the massif's face hides all of it below the skyline), stands a
+ * while, sits, howls on its own, then turns and walks back down out of sight. Play calls it too
+ * (a four-line clear, a perfect clear, a fever): it trots up if it is away, stays on if it is
+ * there, and if it is already leaving it comes back once it has gone over. It never jumps.
+ * Units: its own, from its anchor on the summit; +x right.
  */
 export const MOON_WOLF = Object.freeze({
     first: 44,
     period: 132,
-    /** Coming up over the crest and going back (seconds), and how long it stays between. */
-    rise: 2.6,
+    /** How long it stays once up (seconds; a call holds it this long from the call). */
     stay: 38,
-    /** Its own howl: when in its stay, and for how long. */
+    /** Where it climbs from: units along the ridge to the left, and below the crest (out of sight). */
+    from: -48,
+    below: 72,
+    /** Its own howl and its sit, in seconds into its stay. */
     howl: [15, 20.5],
     sit: [6.5, 30],
+    /** The most calls it remembers. */
+    calls: 6,
+});
+
+/** Its climb onto the summit (a walk on its own visits, a trot when called) and its way down. */
+const MOON_CLIMB = Object.freeze({
+    walk: /** @type {readonly Leg[]} */ (Object.freeze([{ go: 0, gait: 'walk' }])),
+    trot: /** @type {readonly Leg[]} */ (Object.freeze([{ go: 0, gait: 'trot' }])),
+});
+/** @type {readonly Leg[]} */
+const MOON_DESCENT = Object.freeze([{ turn: true }, { go: MOON_WOLF.from, gait: 'walk' }]);
+/** Up on the summit, between its climb and its way down. */
+const STANDING = Object.freeze({
+    x: 0,
+    facing: 1,
+    yaw: 0,
+    moving: false,
+    gaitKind: 'walk',
+    stride: TRAVEL_GAITS.walk.stride,
+    speed: 0,
+    walked: 0,
+    pace: 0,
+    act: null,
+});
+/** How long each takes (seconds). */
+export const MOON_TIMES = Object.freeze({
+    walk: itineraryLength(MOON_CLIMB.walk, MOON_WOLF.from),
+    trot: itineraryLength(MOON_CLIMB.trot, MOON_WOLF.from),
+    leave: itineraryLength(MOON_DESCENT, 0),
 });
 
 /**
- * The white wolf at `time`: how far up it stands (0 behind the crest .. 1 on it), its posture and
- * its own howl; null when it is away. `summoned`: a time it was called up at (it stays its full
- * stay from then).
- * @param {number} time
- * @param {number} [summoned]
+ * @typedef {{ from: number, until: number, gait: 'walk' | 'trot' }} MoonCall
+ *   a stay on the summit: when the climb begins, when the way down begins, and the climb's gait
+ * @typedef {MoonCall & { own: number | null }} MoonVisit
+ *   ... and, for one of its own visits, when its stay began (its sit and howl run from it)
  */
-export function moonWolfAt(time, summoned = -Infinity) {
-    const { rise, stay } = MOON_WOLF;
-    const total = rise * 2 + stay;
-    const visit = (/** @type {number} */ u, /** @type {boolean} */ own) => {
-        if (!(u >= 0 && u < total)) return null;
-        const up = Math.min(smooth(u / rise), 1 - smooth((u - rise - stay) / rise));
-        const s = u - rise;
-        const sit = own ? span(s, MOON_WOLF.sit[0], MOON_WOLF.sit[1], 1.1) : 0;
-        const howl = own ? span(s, MOON_WOLF.howl[0], MOON_WOLF.howl[1], 0.8) : 0;
-        return {
-            up,
-            sit,
-            howl,
-            u: s,
-            look: span(s, 1.2, 5, 0.6) + span(s, 31, 36, 0.6),
-        };
+
+/** The white wolf's own visit `index`. */
+function ownMoonVisit(/** @type {number} */ index) {
+    const from = MOON_WOLF.first + index * MOON_WOLF.period;
+    const own = from + MOON_TIMES.walk;
+    return {
+        from, until: own + MOON_WOLF.stay, gait: /** @type {'walk'} */ ('walk'), own,
     };
-    const called = visit(time - summoned, false);
+}
+
+/**
+ * The stays around `time`, its own and those play called, merged into one timeline: a stay that
+ * begins while the wolf is climbing or up runs on with it; one that begins while it is on its way
+ * down waits until it has gone.
+ * @param {number} time
+ * @param {readonly MoonCall[]} calls
+ */
+function moonVisits(time, calls) {
+    /** @type {MoonVisit[]} */
+    const list = [];
     const t = time - MOON_WOLF.first;
-    const own = Number.isFinite(t) && t >= 0
-        ? visit(t - Math.floor(t / MOON_WOLF.period) * MOON_WOLF.period, true) : null;
-    if (called && own) return called.up >= own.up ? { ...own, up: Math.max(called.up, own.up) } : own;
-    return called ?? own;
+    if (Number.isFinite(t)) {
+        const index = Math.floor(t / MOON_WOLF.period);
+        for (const k of [index - 1, index]) if (k >= 0) list.push(ownMoonVisit(k));
+    }
+    for (const call of calls) {
+        if (Number.isFinite(call?.from) && Number.isFinite(call?.until)) list.push({ ...call, own: null });
+    }
+    list.sort((a, b) => a.from - b.from);
+    /** @type {MoonVisit[]} */
+    const merged = [];
+    for (const visit of list) {
+        const last = merged[merged.length - 1];
+        if (last && visit.from < last.until) {
+            last.until = Math.max(last.until, visit.until);
+            if (visit.own !== null) last.own = visit.own;
+        } else if (last && visit.from < last.until + MOON_TIMES.leave) {
+            const wait = last.until + MOON_TIMES.leave - visit.from;
+            merged.push({
+                ...visit,
+                from: visit.from + wait,
+                until: visit.until + wait,
+                own: visit.own === null ? null : visit.own + wait,
+            });
+        } else merged.push({ ...visit });
+    }
+    return merged;
+}
+
+/** The merged stay the wolf is in at `time` (climbing, up or going down), or null. */
+function moonVisitAt(/** @type {number} */ time, /** @type {readonly MoonCall[]} */ calls) {
+    if (!Number.isFinite(time)) return null;
+    return moonVisits(time, calls).find((v) => time >= v.from && time < v.until + MOON_TIMES.leave) ?? null;
+}
+
+/**
+ * The white wolf at `time`, or null when it is away: where it is along the ridge (`x`), which way
+ * it faces and its turn (`yaw`), its gait, `climb` (0 on the summit .. 1 out of sight below it),
+ * `drop` (units below the ridge), `hold` (1 while it stands up there: its howls), its posture
+ * (`act`) and, for the still pose Reduce motion asks for, `rest`.
+ * @param {number} time
+ * @param {readonly MoonCall[]} [calls] the stays play called (summonMoonWolf)
+ */
+export function moonWolfAt(time, calls = []) {
+    const visit = moonVisitAt(time, calls);
+    if (!visit) return null;
+    const climbFor = visit.gait === 'trot' ? MOON_TIMES.trot : MOON_TIMES.walk;
+    const u = time - visit.from;
+    let state = null;
+    if (u < climbFor) state = follow(MOON_CLIMB[visit.gait], u, MOON_WOLF.from, 1);
+    else if (time >= visit.until) {
+        state = follow(MOON_DESCENT, time - visit.until, 0, 1);
+        if (!state) return null;
+    }
+    const climb = state ? Math.min(1, Math.max(0, state.x / MOON_WOLF.from)) : 0;
+    // Its own sit and howl, from when its stay began; it looks round as it comes up.
+    const s = visit.own === null ? -Infinity : time - visit.own;
+    const sit = span(s, MOON_WOLF.sit[0], MOON_WOLF.sit[1], 1.1);
+    const howl = span(s, MOON_WOLF.howl[0], MOON_WOLF.howl[1], 0.8);
+    const look = span(time - visit.from - climbFor, 1.2, 5, 0.6);
+    const rest = { sit, head: 6 * look, turn: 0.5 * look * (1 - sit) };
+    const up = state ?? STANDING;
+    return {
+        x: up.x,
+        facing: up.facing,
+        yaw: up.yaw,
+        moving: up.moving,
+        gaitKind: up.gaitKind,
+        stride: up.stride,
+        speed: up.speed,
+        walked: up.walked,
+        pace: up.pace,
+        climb,
+        // Steepest far down the hidden slope, easing onto the top.
+        drop: MOON_WOLF.below * climb * climb,
+        hold: smooth((0.3 - climb) / 0.3),
+        sit,
+        howl,
+        look,
+        act: up.act ?? rest,
+        rest,
+    };
+}
+
+/**
+ * Play calls the white wolf up at `time`: the calls to remember from now on. Climbing or up, it
+ * stays its full stay from now; on its way down, it comes back once it has gone; away, it trots up.
+ * @param {readonly MoonCall[]} calls
+ * @param {number} time
+ * @returns {MoonCall[]}
+ */
+export function summonMoonWolf(calls, time) {
+    if (!Number.isFinite(time)) return [...calls];
+    // (A call long over no longer moves any stay.)
+    let kept = calls.filter((c) => c.until + MOON_TIMES.leave + MOON_WOLF.period > time);
+    const visit = moonVisitAt(time, kept);
+    /** @type {MoonCall} */
+    let call;
+    if (visit && time < visit.until) {
+        call = { from: visit.from, until: Math.max(visit.until, time + MOON_WOLF.stay), gait: visit.gait };
+        // (It holds every call already merged into this stay: those go.)
+        kept = kept.filter((c) => !(c.from >= visit.from && c.from < visit.until));
+    } else {
+        const from = visit ? visit.until + MOON_TIMES.leave : time;
+        call = { from, until: from + MOON_TIMES.trot + MOON_WOLF.stay, gait: 'trot' };
+    }
+    kept.push(call);
+    return kept.slice(-MOON_WOLF.calls);
 }
