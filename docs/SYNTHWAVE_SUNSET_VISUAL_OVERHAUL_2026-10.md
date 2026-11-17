@@ -701,18 +701,27 @@ shoulders). Everything is a function of the clock (a seek lands right) except th
 | Tier | Minimal | Low | Medium | High | Ultra | Extreme |
 | --- | --- | --- | --- | --- | --- | --- |
 | people (fourth pass) | 12 | 18 | 30 | 44 | 52 | 60 |
-| people (now) | 4 | 6 | 7 | 10 | 12 | 14 |
+| people (now) | 5 | 7 | 9 | 12 | 14 | 16 |
 
 Measured from the game camera, the deck is seen in two places: the far stretch left of the board
 (pier metres 0–88, people 11–19 px) and a slot right of the HUD beside the first pavilion (133–140,
 about 30 px; the board hides 88–120 and the HUD 126–133). The cast is placed by that map, the most
-telling first so even Minimal shows them: a couple hand in hand, a man in a boater leaning on the
-beach-side rail beside the pavilion, a pair who step out of the pavilion's door to the rail, lean
-there half a minute and go back in, a walker in a cap, a mother with her daughter by the hand, a
-woman leaning on the sunset-side rail, two friends at the pier head's end, walkers who pause to
-look at the sea. Routes: `long` from inside the first pavilion (its walls hide the turn) out to the
-pier head and back, through the other two pavilions by their end doors only; `far` on the open
-stretch; `near` out of the pavilion and back.
+telling first so even Minimal shows them, and most of it walks, along the whole dock: a couple
+hand in hand from the land end to the pier head and back, a man in a cap and a woman in a sundress
+up and down the near stretch (seen half the time, nearest of all), a mother with her daughter by
+the hand there too, a woman on the middle loop, walkers on the far stretch who pause to look at the
+sea, a man in a boater leaning on the beach-side rail beside the pavilion, a pair who step out of
+the pavilion's door to the rail, lean there half a minute and go back in, a woman leaning on the
+sunset-side rail, two friends at the pier head's end. Every loop turns where the view cannot see
+it (past the right edge at the land end, behind the HUD, behind the board, inside the pavilion)
+and passes the pavilions by their end doors only: `full` 160 → 13.5, `gate` 160 → 128, `mid`
+160 → 104, `far` 84 → 14, `door` 145 → 136.5. Over twenty minutes at High someone is walking on
+the near stretches 87 % of the time (two or more 63 %) and on the far one 96 %; a test holds it
+above 80 % and 90 %. (The first cut of this pass walked them only from inside the first pavilion
+and on the far stretch, so the near deck was mostly empty: the owner's "there must be walking
+people along the full dock, not just furthest away!")
+
+![the near deck in the game view, every fifteen seconds for two minutes](synthwave-sunset-captures/fifth-pass-full-dock.jpg)
 
 ![out of the pavilion to the rail and back](synthwave-sunset-captures/fifth-pass-rail.jpg)
 

@@ -103,6 +103,11 @@ describe('synthwave-sunset strollers: the cast and its walks', () => {
             expect(people).toHaveLength(tier.strollers);
         }
         expect(WORLD_QUALITY.High.strollers).toBeLessThanOrEqual(12);
+        // Most of them walk, and some on the stretches nearest the eye.
+        const high = strollerCast(WORLD_QUALITY.High.strollers);
+        const walking = high.people.filter((p) => high.parties[p.party].route);
+        expect(walking.length).toBeGreaterThanOrEqual(8);
+        expect(new Set(high.parties.filter((p) => p.route).map((p) => p.route))).toEqual(new Set(['full', 'gate', 'mid', 'far', 'door']));
         expect(strollerCast(10)).toEqual(strollerCast(10));
         // Every member is a figure the model holds, coloured in every slot.
         const { people } = strollerCast(14);
@@ -121,8 +126,9 @@ describe('synthwave-sunset strollers: the cast and its walks', () => {
             for (let u = 0; u < loop.length; u += 0.25) {
                 const pt = loopPoint(loop, u);
                 expect(Math.hypot(pt.ds, pt.dc)).toBeCloseTo(1, 5);
+                // Between the pier head and the land end (turning there past the view's edge).
                 expect(pt.s).toBeGreaterThan(PIER_HEAD.s1);
-                expect(pt.s).toBeLessThan(pierFrame().length - 6);
+                expect(pt.s).toBeLessThan(pierFrame().length - 0.3);
                 const widest = Math.max(...party.members.map((m) => Math.abs(m.offset ?? 0)));
                 expect(Math.abs(pt.c) + widest).toBeLessThan(DECK.rail - 0.25);
                 // Through a pavilion only by its end walls: the lane inside its width all the way.
@@ -134,7 +140,7 @@ describe('synthwave-sunset strollers: the cast and its walks', () => {
             const b = loopPoint(loop, loop.length - 1e-6);
             expect(Math.hypot(a.s - b.s, a.c - b.c)).toBeLessThan(1e-3);
         }
-        expect(Object.keys(STROLL_ROUTES).sort()).toEqual(['far', 'long', 'near']);
+        expect(Object.keys(STROLL_ROUTES).sort()).toEqual(['door', 'far', 'full', 'gate', 'mid']);
     });
 
     it('stops where it says, eases in and out of a stop, and keeps going round', () => {
@@ -186,6 +192,34 @@ describe('synthwave-sunset strollers: the poses', () => {
                 expect(Math.abs(c)).toBeLessThan(Math.max(PIER.width / 2, s < PIER_HEAD.s1 ? PIER_HEAD.halfAcross : 0));
             });
         }
+    });
+
+    it('has someone walking near the eye most of the time, not only far out', async () => {
+        // Pier metres the 16:9 game view sees (the camera's projection): left of the board, and
+        // nearer, between the board and the HUD, beside the first pavilion, at the right edge.
+        const far = [-9, 88];
+        const near = [[120, 125.5], [133, 140.5], [151.5, 158]];
+        const life = await lifeOf(WORLD_QUALITY.High.strollers);
+        const data = new Float32Array(STROLLER_ROW * life.people.length * 4);
+        const P = life.plane;
+        let seenNear = 0;
+        let seenFar = 0;
+        const frames = 1200;
+        for (let t = 0; t < frames; t += 1) {
+            life.write(t, data);
+            let n = 0;
+            let f = 0;
+            life.state.forEach((st) => {
+                if (!st.walking || st.pace < 0.3) return;
+                const s = (st.x - P.fx) * P.ax + (st.z - P.fz) * P.az;
+                if (near.some(([lo, hi]) => s >= lo && s <= hi)) n += 1;
+                if (s >= far[0] && s <= far[1]) f += 1;
+            });
+            if (n > 0) seenNear += 1;
+            if (f > 0) seenFar += 1;
+        }
+        expect(seenNear / frames).toBeGreaterThan(0.8);
+        expect(seenFar / frames).toBeGreaterThan(0.9);
     });
 
     it('keeps a walker\'s foot still on the deck while it bears the weight', async () => {
