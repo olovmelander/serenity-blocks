@@ -1,12 +1,18 @@
 /**
  * High Coast — the pine forests of the islands, the headland's crown and the far shores.
  *
- * Instanced conifers planted by the baked forest cover: Scots pines (a bare trunk, orange-red
- * toward the top, under a flat, clumped crown) on the rock, Norway spruces (tiered dark cones) in
- * the sheltered hollows. Near trees are single; farther out a tree stands for a small group (the
- * same footprint scaled up), and past the canopy distance the land's own canopy takes over
- * (high-coast-land.js CANOPY). They stand on the land, never in the sea: a tree whose ground
- * the rising sea uncovers was always above it.
+ * Conifers planted by the baked forest cover: Scots pines (a bare trunk, orange-red toward the
+ * top, under a rounded, clumped crown) on the rock, Norway spruces (dark spires) in the sheltered
+ * hollows. Near trees are single; farther out a tree stands for a small group, and past the
+ * canopy distance the land's own canopy takes over (high-coast-land.js CANOPY). They stand on
+ * the land, never in the sea: a tree whose ground the rising sea uncovers was always above it.
+ *
+ * The nearest of them is half a kilometre from the eye (five to sixty pixels tall), so each is a
+ * sprite of a tree authored in Blender (high-coast-tree-assets.js): one quad turned to the eye
+ * about the vertical, cut out by the sheet's coverage, its needles and bark coloured here from the
+ * sheet's shading data and lit by the hour's sun through the sheet's normals, so every crown has a
+ * lit side and a shaded one. Where the sheets could not be read the trees are the simple meshes
+ * built here (pineGeometry, spruceGeometry).
  *
  * Lit like the land (sun with the terrain's and the clouds' shadows, sky fill), with light through
  * the crowns' edges when the sun stands behind them, and read through the same air.
@@ -28,6 +34,7 @@ import {
     sin,
     smoothstep,
     texture,
+    uv,
     vec2,
     vec3,
     vec4,
@@ -227,23 +234,206 @@ export function conferMaterial(u, t, { instanced = true } = {}) {
     return material;
 }
 
+// ── The forest as sprites ─────────────────────────────────────────────────────────
+
+/**
+ * The sprites: from this many trees to a site on (a far site stands for a small group, treeSites)
+ * a group's sprite is drawn; how far a group's sprite may be stretched from its own shape to its
+ * site's width; how deep a sprite's foot is sunk in the forest floor (metres).
+ */
+export const FOREST_SPRITES = Object.freeze({ group: 1.45, stretch: Object.freeze([0.85, 1.35]), sink: 0.4 });
+
+/** The sheets' tiles by what they show: single pines, single spruces, and the groups by name. */
+export function spriteTiles(layout) {
+    const { atlasWidth, tiles } = layout;
+    const of = (tile) => ({
+        asset: tile.asset,
+        u0: tile.x / atlasWidth,
+        span: tile.pixels / atlasWidth,
+        width: tile.width,
+        height: tile.height,
+        trunk: tile.trunk || 0,
+        // 0 a pine, 1 a spruce, between them a mixed group.
+        kind: { pine: 0, spruce: 1 }[tile.species] ?? 0.5,
+    });
+    const single = (species) => tiles.filter((tile) => tile.trees === 1 && tile.species === species).map(of);
+    const named = (asset) => tiles.filter((tile) => tile.asset === asset).map(of);
+    const out = {
+        pines: single('pine'),
+        spruces: single('spruce'),
+        pineGroups: [...named('group-pines'), ...named('group-pines'), ...named('group-mixed')],
+        spruceGroups: [...named('group-spruces'), ...named('group-mixed')],
+    };
+    if (!out.pines.length || !out.spruces.length) throw new Error('[High Coast] The tree sprites lack a pine or a spruce.');
+    // A sheet without groups draws its far sites as single trees.
+    if (!out.pineGroups.length) out.pineGroups = out.pines;
+    if (!out.spruceGroups.length) out.spruceGroups = out.spruces;
+    return out;
+}
+
+/** The sprite a site is drawn with: its tile, its size in metres, whether it is mirrored. */
+export function siteSprite(site, tiles) {
+    const group = clampJs(site.d / 900, 1, 3.2);
+    const grouped = group >= FOREST_SPRITES.group;
+    let list = site.kind ? tiles.spruces : tiles.pines;
+    if (grouped) list = site.kind ? tiles.spruceGroups : tiles.pineGroups;
+    // The site's seed, read three ways: which tile, mirrored or not, and (in the shader) its tone.
+    const pick = (site.seed * 977.13) % 1;
+    const tile = list[Math.min(list.length - 1, Math.floor(pick * list.length))];
+    const height = grouped ? site.height * 1.05 : site.height;
+    const own = tile.width * (height / tile.height);
+    const width = grouped ? own * clampJs(site.width / own, ...FOREST_SPRITES.stretch) : own;
+    return {
+        tile, width, height, flip: (site.seed * 7.31) % 1 < 0.5 ? -1 : 1,
+    };
+}
+
+/** The sprites' material: `coverage` when the scene pass is multisampled (alpha to coverage). */
+export function spriteMaterial(u, t, sprites, { coverage = false } = {}) {
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.name = 'HighCoastForestSprites';
+    material.fog = false;
+    material.side = THREE.DoubleSide;
+    const tree = attribute('aTree', 'vec4'); // foot xyz, height
+    const tile = attribute('aTile', 'vec4'); // u0, u span, width, the trunk's place (tile widths from the middle)
+    const look = attribute('aLook', 'vec4'); // mirrored (-1) or not (1), pine 0 … spruce 1, seed, lean
+    // The sprite's frame: it turns to the eye about the vertical.
+    const frame = () => {
+        const toEye = u.eye.xz.sub(tree.xz);
+        const flat = normalize(vec3(toEye.x, 0.0, toEye.y).add(vec3(0.0, 0.0, 1e-4)));
+        return { flat, right: vec3(flat.z, 0.0, flat.x.negate()) };
+    };
+    material.positionNode = Fn(() => {
+        const p = positionGeometry;
+        const { right } = frame();
+        // A breath of wind in the crown, and the lean the tree grew with.
+        const sway = sin(u.time.mul(0.75).add(look.z.mul(37.0))).mul(0.012).add(look.w).mul(p.y.mul(p.y))
+            .mul(tree.w);
+        const across = p.x.sub(tile.w).mul(tile.z).add(sway);
+        return tree.xyz.add(right.mul(across)).add(vec3(0.0, p.y.mul(tree.w).sub(FOREST_SPRITES.sink), 0.0));
+    })();
+    const at = () => {
+        const st = uv();
+        return vec2(tile.x.add(st.x.sub(0.5).mul(look.x).add(0.5).mul(tile.y)), st.y);
+    };
+    if (coverage) {
+        material.alphaTest = 0.5;
+        material.alphaToCoverage = true;
+    } else {
+        material.maskNode = texture(sprites.data, at()).a.greaterThan(0.5);
+    }
+    material.colorNode = Fn(() => {
+        const P = positionWorld;
+        const st = at().toVar();
+        const data = texture(sprites.data, st).toVar(); // shade, needles (1) or wood (0), hue or bark, coverage
+        const bump = texture(sprites.normal, st).xyz.mul(2.0).sub(1.0).toVar();
+        const { flat, right } = frame();
+        const n = normalize(right.mul(bump.x.mul(look.x)).add(vec3(0.0, bump.y, 0.0)).add(flat.mul(bump.z))).toVar();
+        const shade = data.r;
+        const leaf = data.g;
+        const kind = look.y;
+        // Needles: tree by tree and spray by spray between a dark and a sunlit green, the pine's
+        // warmer and lighter than the spruce's.
+        const tone = clamp(shade.mul(0.8).add(data.b.sub(0.5).mul(0.3)).add(look.z.sub(0.5).mul(0.3)), 0.0, 1.0);
+        const pineGreen = mix(vec3(0.022, 0.042, 0.024), vec3(0.078, 0.11, 0.04), tone);
+        const spruceGreen = mix(vec3(0.012, 0.028, 0.018), vec3(0.04, 0.068, 0.034), tone);
+        const needles = mix(pineGreen, spruceGreen, kind);
+        // Bark: a Scots pine's trunk is grey-brown below and glows orange-red higher up; a
+        // spruce's is grey, lichened where the mask says.
+        const pineBark = mix(vec3(0.075, 0.055, 0.045), vec3(0.42, 0.165, 0.065), data.b);
+        const spruceBark = mix(vec3(0.06, 0.047, 0.04), vec3(0.15, 0.16, 0.13), data.b);
+        const bark = mix(pineBark, spruceBark, kind).mul(shade.mul(1.3).add(0.35));
+        const albedo = mix(bark, needles, leaf);
+        const L = u.sunDir;
+        const wrap = clamp(dot(n, L).mul(0.72).add(0.28), 0.0, 1.0);
+        const shadow = shadowAt(t.shadow, P.xz);
+        const clouds = cloudShadow(u, t.noise, P);
+        const view = normalize(P.sub(u.eye));
+        // Light through the needles at the crown's edge when the sun stands behind it.
+        const rim = float(1.0).sub(clamp(bump.z, 0.0, 1.0));
+        const through = clamp(dot(view, L), 0.0, 1.0).pow(6.0).mul(rim.mul(rim)).mul(1.4)
+            .mul(leaf);
+        const direct = u.sun.mul(wrap.mul(shade.mul(0.45).add(0.55)).add(through)).mul(shadow).mul(clouds).mul(u.sunUp);
+        const sky = u.fill.mul(n.y.mul(0.35).add(0.65)).mul(shade.mul(0.55).add(0.45)).mul(0.85);
+        const lit = albedo.mul(direct.add(sky).add(u.bounce.mul(0.35)));
+        // Under alpha-to-coverage the sheet's coverage is the tree's coverage of the pixel.
+        return vec4(aerial(u, P, lit), coverage ? data.a.mul(1.25).min(1.0) : 1.0);
+    })();
+    return material;
+}
+
+/** The forest as one draw of sprites: `sites` from treeSites, `sprites` the sheets and their layout. */
+function spriteForest(u, t, sites, sprites, { coverage = false } = {}) {
+    const tiles = spriteTiles(sprites);
+    const plane = new THREE.PlaneGeometry(1, 1);
+    plane.translate(0, 0.5, 0);
+    const geometry = new THREE.InstancedBufferGeometry();
+    geometry.index = plane.index;
+    geometry.setAttribute('position', plane.attributes.position);
+    geometry.setAttribute('uv', plane.attributes.uv);
+    const count = Math.max(1, sites.length);
+    const treeData = new Float32Array(count * 4);
+    const tileData = new Float32Array(count * 4);
+    const lookData = new Float32Array(count * 4);
+    sites.forEach((s, i) => {
+        const {
+            tile, width, height, flip,
+        } = siteSprite(s, tiles);
+        treeData.set([s.x, s.y, s.z, height], i * 4);
+        tileData.set([tile.u0, tile.span, width, tile.trunk * flip], i * 4);
+        lookData.set([flip, tile.kind, s.seed, s.lean], i * 4);
+    });
+    geometry.setAttribute('aTree', new THREE.InstancedBufferAttribute(treeData, 4));
+    geometry.setAttribute('aTile', new THREE.InstancedBufferAttribute(tileData, 4));
+    geometry.setAttribute('aLook', new THREE.InstancedBufferAttribute(lookData, 4));
+    geometry.instanceCount = sites.length;
+    const material = spriteMaterial(u, t, sprites, { coverage });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = 'HighCoastForestSprites';
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 2;
+    return {
+        mesh,
+        dispose() {
+            geometry.dispose();
+            plane.dispose();
+            material.dispose();
+        },
+    };
+}
+
 /** Trees nearer than this get the detailed geometry; farther ones the cheap one. */
 export const FOREST_LOD = 650;
 
-export function createForest(u, t, tier, fields) {
-    return drainSteps(createForestSteps(u, t, tier, fields));
+export function createForest(u, t, tier, fields, options = {}) {
+    return drainSteps(createForestSteps(u, t, tier, fields, undefined, options));
 }
 
 /**
  * `createForest` as steps (the world's build breathes between them): the planting in slices
- * (treeSitesSteps), then the four pools, a yield between them once a slice has run. The same
- * trees in the same order. In one step the forest held the first-visit switch frame 38 ms.
+ * (treeSitesSteps), then the trees: one draw of sprites where the sheets were read (`sprites`,
+ * the scene pass multisampled or not by `coverage`), else the four pools of built meshes, a yield
+ * between them once a slice has run. The same trees in the same order. In one step the forest
+ * held the first-visit switch frame 38 ms.
  */
-export function* createForestSteps(u, t, tier, fields, clock = stepClock(FOREST_SLICE_MS)) {
+export function* createForestSteps(u, t, tier, fields, clock = stepClock(FOREST_SLICE_MS), { sprites = null, coverage = false } = {}) {
     const sites = yield* treeSitesSteps(fields, tier.trees, undefined, clock);
     // The pools' geometries in a step of their own (a few ms after a slice of the walk was one too many).
     yield 'tree sites';
     clock.restart();
+    if (sprites?.data && sprites.normal) {
+        const forest = spriteForest(u, t, sites, sprites, { coverage });
+        return {
+            mesh: forest.mesh,
+            meshes: [forest.mesh],
+            sites,
+            sprites: true,
+            update() {},
+            dispose() {
+                forest.dispose();
+            },
+        };
+    }
     const material = conferMaterial(u, t);
     const meshes = [];
     const geometries = [];

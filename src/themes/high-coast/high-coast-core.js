@@ -163,20 +163,28 @@ export function frameYaw(rig, aspect) {
 /**
  * The rebound's arithmetic. `ask` is how far the sea has been asked to draw back (metres below
  * rest); the shown lift eases toward it. A clear adds a step that grows with the chain and shrinks
- * as the lift nears its ceiling; between clears the sea slowly returns.
+ * as the lift nears its ceiling; between clears the sea returns.
+ *
+ * The bays are shallow: drawn back twenty metres the strait below the summit is bare seabed, and
+ * at thirty nearly all the near water is gone, so the better one played the less of a coast there
+ * was to look at (the owner, 2026-11-17: "sometimes I feel that all water is gone … it feels
+ * weird"). The lift now lives where the sea stays a sea: a line bares a wet band of rock and a
+ * skerry or two, four lines a few metres of shore at once, steady play holds the sea two to five
+ * metres down, and it is back within a minute of the last clear. (Before: 2.4 m a line and 6 for
+ * four, toward a ceiling of 30, returning over 48 s.)
  */
 export const UPLIFT = Object.freeze({
     /** Metres per cleared line. */
-    perLine: 2.4,
+    perLine: 0.8,
     /** Each link of a chain adds this share to a clear's step (up to `chainCap` links). */
     perLink: 0.3,
     chainCap: 6,
     /** Four lines add this on top: the great rebound. */
-    quadBonus: 6,
+    quadBonus: 2,
     /** The lift approaches this ceiling (each step shrinks with what is left below it). */
-    ceiling: 30,
+    ceiling: 9,
     /** The sea returns with this time constant (seconds) at rest… */
-    relax: 48,
+    relax: 26,
     /** …and this one while a released chain's swell runs in. */
     release: 7,
     /** The shown lift follows the asked one over about this long (seconds). */

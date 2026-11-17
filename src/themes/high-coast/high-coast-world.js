@@ -59,13 +59,16 @@ import {
 } from './high-coast-hours.js';
 import { tierFor } from './high-coast-quality.js';
 import { breathe, loadCoast, planCoast } from './high-coast-assets.js';
+import { disposeHighCoastTrees, loadHighCoastTrees } from './high-coast-tree-assets.js';
 import {
     GUSTS, RINGS, RING_KIND, bakeLattice, bakeNoise, createCoverTexture, createFieldTexture, createLatticeTexture,
     createNoiseTexture, createUniforms,
 } from './high-coast-tsl.js';
 import { fillFieldTextureRows } from './high-coast-field-data.js';
 import { groundHeight } from './high-coast-field.js';
-import { createFanGeometry, createLandMaterial, fanPositionSteps } from './high-coast-land.js';
+import {
+    createFanGeometry, createLandMaterial, fanIndicesWithin, fanPositionSteps,
+} from './high-coast-land.js';
 import { createSea } from './high-coast-sea.js';
 import { createShadowPass } from './high-coast-shadow.js';
 import { createSky } from './high-coast-sky.js';
@@ -161,8 +164,34 @@ function* prepareSteps(quality, fields) {
  */
 const keptPrepared = new Map();
 
-/** Read the baked coast and prepare it, yielding to the page between slices (abortable). */
+/**
+ * The authored trees (high-coast-tree-assets.js), or null where they cannot be read (no page to
+ * fetch from, a failed request): the trees are then the ones built here. Never kept: the world
+ * that builds from them disposes them.
+ */
+async function loadTrees(signal) {
+    if (typeof document === 'undefined' || typeof fetch !== 'function') return null;
+    try {
+        return await loadHighCoastTrees({ signal });
+    } catch (error) {
+        if (signal?.aborted) throw error;
+        console.warn('[High Coast] authored trees unavailable, drawing the built ones:', error?.message || error);
+        return null;
+    }
+}
+
+/** The prepared coast and, read beside it, the authored trees (`trees`, when they could be read). */
 async function prepareData(quality, { signal } = {}) {
+    const reading = loadTrees(signal);
+    // An abort while the coast is prepared leaves this one unawaited: it must not go unhandled.
+    reading.catch(() => {});
+    const coast = await prepareCoast(quality, signal);
+    const trees = await reading;
+    return trees ? { ...coast, trees } : coast;
+}
+
+/** Read the baked coast and prepare it, yielding to the page between slices (abortable). */
+async function prepareCoast(quality, signal) {
     if (keptPrepared.has(quality)) return keptPrepared.get(quality);
     const fields = await loadCoast({ signal });
     const steps = prepareSteps(quality, fields);
@@ -371,6 +400,8 @@ export class HighCoastWorld {
         const prepared = this.prepared || HighCoastWorld.prepareSync(this.quality);
         this.prepared = null;
         this.source = prepared.source;
+        /** The authored trees this world draws and disposes (null: it builds its own). */
+        this.trees = prepared.trees || null;
         const { tier } = this;
         const fieldTex = {};
         const coverTex = {};
@@ -401,19 +432,39 @@ export class HighCoastWorld {
         land.name = 'HighCoastLand';
         land.frustumCulled = false;
         land.renderOrder = 0;
+        // The summit round the eye: the fan's nearest rows, drawn by a material of their own (the
+        // same posts and the same index, so the two meet without a seam).
+        const nearest = fanIndicesWithin(tier.fanCols, tier.fanRows);
+        geometry.setDrawRange(nearest, Infinity);
+        const summitGeometry = new THREE.BufferGeometry();
+        summitGeometry.setAttribute('position', geometry.attributes.position);
+        summitGeometry.setIndex(geometry.index);
+        summitGeometry.setDrawRange(0, nearest);
+        summitGeometry.boundingSphere = geometry.boundingSphere.clone();
+        const summitMaterial = createLandMaterial(this.u, this.textures, tier, { summit: true });
+        const summit = new THREE.Mesh(summitGeometry, summitMaterial);
+        summit.name = 'HighCoastSummit';
+        summit.frustumCulled = false;
+        summit.renderOrder = 0;
         this.addPart('land', {
             mesh: land,
+            meshes: [land, summit],
             dispose() {
                 geometry.dispose();
                 material.dispose();
+                summitGeometry.dispose();
+                summitMaterial.dispose();
             },
         });
         yield 'land';
         this.addPart('sea', createSea(this.u, this.textures, tier));
         yield 'sea';
-        this.addPart('forest', yield* createForestSteps(this.u, this.textures, tier, this.fields));
+        const coverage = this.samples > 1;
+        this.addPart('forest', yield* createForestSteps(this.u, this.textures, tier, this.fields, undefined, {
+            sprites: this.trees?.sprites, coverage,
+        }));
         yield 'forest';
-        const props = yield* createPropsSteps(this.u, this.textures, tier, this.fields, { coverage: this.samples > 1 });
+        const props = yield* createPropsSteps(this.u, this.textures, tier, this.fields, { coverage, trees: this.trees });
         this.addPart('props', props);
         yield 'props';
         this.addPart('hamlet', createHamlet(this.u, this.textures, tier, this.fields));
@@ -875,9 +926,12 @@ export class HighCoastWorld {
         // The land rises: the sea draws back (each wave of a cascade a little further).
         const step = upliftStep(lines, chain) * (1 + 0.15 * Math.min(deeper, 6));
         this.liftAsk = liftAfter(this.liftAsk, step);
+        // How hard the clear pulled, in single lines' worth (the run-off and the mist go by this,
+        // not by the metres, so they keep their strength whatever a line is worth).
+        const pull = step / UPLIFT.perLine;
         // The run-off streams thicken with every clear still draining instead of starting over.
-        this.drainSwell.hit(clamp(0.45 + step / 10, 0.45, 1) * (1 + 0.2 * Math.min(deeper, 4)), this.time);
-        this.drainMist(step);
+        this.drainSwell.hit(clamp(0.45 + pull * 0.24, 0.45, 1) * (1 + 0.2 * Math.min(deeper, 4)), this.time);
+        this.drainMist(pull);
         this.surge.clear(context, this.time);
         const palette = deeper > 0 || lines === 4 ? this.paletteOf(context.rowCodes) : null;
         if (deeper > 0) this.onWave(deeper, palette);
@@ -1136,9 +1190,9 @@ export class HighCoastWorld {
     }
 
     /** The sea running off the risen rock: breaths of mist off the shores beside the card. */
-    drainMist(step) {
+    drainMist(pull) {
         if (!this.motes) return;
-        const count = Math.round(8 + step * 3);
+        const count = Math.round(8 + pull * 7.2);
         for (let i = 0; i < count; i++) this.siteQueue.push({ at: this.time, k: -1 });
     }
 
@@ -1470,6 +1524,8 @@ export class HighCoastWorld {
         this.disposed = true;
         this.root.removeFromParent();
         for (const part of this.partList) part.dispose();
+        disposeHighCoastTrees(this.trees);
+        this.trees = null;
         this.shadowPass?.dispose();
         if (this.textures) {
             for (const name of FIELD_ORDER) {
