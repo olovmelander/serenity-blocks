@@ -11,6 +11,8 @@
  *   quality=High|Ultra|...   content tier (default High)
  *   level=<n>                rest on level n (default 1); its season is (n − 1) mod 6
  *   season=0..5              hold a season, whatever the level
+ *   hour=0..5|name           hold the hour: 0 Morning, 1 Golden Hour, 2 Dusk, 3 Night, 4 Dawn (2.5 =
+ *                            half way from Dusk to Night; or a name: hour=night)
  *   heat=0..1                hold the combo heat (the eye's width, the fingers' reach)
  *   breath=0..1              hold the basin's breath (steam density and wind)
  *   gust=0..1                hold a gust tear at that phase of its crossing
@@ -22,6 +24,8 @@
  *   locks=<n>                before anything else, play n locks (alternating sides and pieces)
  *   record=<n>               pre-fill n stripes of the stone record
  *   event=lock|drop|clear|quad|twist|perfect|levelUp|release|b2b|gameOver   fire an event...
+ *                            (b2b: a back-to-back clear, a twist of lines=1..3 or four lines with
+ *                            lines=4, at the level b2b=1..3 holds)
  *   eventAge=<s>             ...and show it <s> seconds later (default 0.4)
  *   eventLevel=<n>           levelUp: the new level (default level + 1)
  *   lines=<n>                clear/twist: lines (1..4, default 2)
@@ -55,6 +59,7 @@ import { readLayoutRects, BOARD_GRID } from '../../themes/thermal-bloom/thermal-
 import { ThermalBloomDirector } from '../../themes/thermal-bloom/thermal-bloom-director.js';
 import { SHAPES, SHAPE_KEYS } from '../../themes/thermal-bloom/thermal-bloom-core.js';
 import { THERMAL_BLOOM_TETROMINOS } from '../../themes/thermal-bloom/thermal-bloom-tetrominos.js';
+import { hourIndex } from '../../themes/thermal-bloom/thermal-bloom-hours.js';
 
 export const meta = {
     id: 'thermal-bloom',
@@ -211,6 +216,7 @@ export function create({
     const holdB2B = Math.max(0, Math.min(3, Math.round(num(params, 'b2b', 0))));
     const holds = {
         season: held(params, 'season'),
+        hour: hourIndex(params.get('hour')),
         heat: held(params, 'heat'),
         breath: held(params, 'breath'),
         gust: held(params, 'gust'),
@@ -376,7 +382,12 @@ export function create({
             // The chain breaks: the world hears combo(0) after the peak it was holding.
             world.onCombo(0);
         } else if (eventName === 'b2b') {
+            // A back-to-back clear as the game sends it: a difficult clear (four lines, or a twist
+            // with fewer) on a live back-to-back chain. The Consort stands, the Iris blooms.
             world.onB2B(Math.max(1, holdB2B));
+            play(lines >= 4 ? 'clear' : 'twist', {
+                u, lines, row: num(params, 'row', lines >= 4 ? BOARD_GRID.rows - 1 : 9), b2b: true,
+            });
         } else if (eventName === 'gameOver') {
             // As the theme ends a run: the springs sigh, then a new session.
             director.reset();

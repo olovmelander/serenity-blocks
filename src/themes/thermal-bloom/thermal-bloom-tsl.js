@@ -36,6 +36,7 @@ import {
     min,
     mix,
     normalize,
+    screenUV,
     select,
     sin,
     smoothstep,
@@ -199,6 +200,29 @@ export function createThermalBloomUniforms() {
         plateau: uniform(lin(COLORS.plateau)),
         snow: uniform(season.snow),
         frost: uniform(season.frost),
+        // The hour's light (thermal-bloom-hours.js; the world blends it into the colours above too).
+        /** The light on far things the backdrop paints unlit: the forest, the plateau, the snow. */
+        land: uniform(new THREE.Vector3(1, 1, 1)),
+        /**
+         * The springs' own light: the hour's (0 by day, HOURS' glow at night: the heat shows as
+         * the light falls) raised by play (a chain, four lines, a perfect clear), about 0 … 1.1.
+         */
+        glow: uniform(0),
+        /** The Iris's flower (a back-to-back clear): its start on the wrapped clock, level, turn. */
+        flowerAt: uniform(-1e6),
+        flowerLevel: uniform(1),
+        flowerTurn: uniform(0),
+        /** The night sky (0 none … 1 full): stars and the galaxy's band. */
+        stars: uniform(0),
+        /** The rose band opposite a sun below the horizon, and the earth's shadow under it. */
+        twilight: uniform(new THREE.Vector3(0, 0, 0)),
+        earthShadow: uniform(0),
+        /** The last (or first) sunlight on whatever stands tall: column crowns, the far range. */
+        alpen: uniform(new THREE.Vector3(0, 0, 0)),
+        /** How firmly the direct light's shadows hold (a sun below the horizon casts none). */
+        shadowHold: uniform(1),
+        /** How long the hour lays them (× the morning's): long at the ends of the day. */
+        shadowLong: uniform(1),
         /** Aerial perspective: optical depth per metre of the basin's air. */
         airDensity: uniform(0.00012),
         /** The season's streamers in the runoff channels (Bloom's rose) and how strongly they show. */
@@ -214,6 +238,8 @@ export function createThermalBloomUniforms() {
         ghostCount: uniform(0, 'int'),
         /** The Chalice drained at a game over (0..1), and the Consort's mound wet (0..1). */
         drain: uniform(0),
+        /** The springs gone cold at a game over (0..1): the living colour bleached, their light out. */
+        cold: uniform(0),
         consortWet: uniform(0),
         /** The breath (0 warm/thin … 1 cold/thick) and the steam density it implies. */
         breath: uniform(0.5),
@@ -325,7 +351,16 @@ export function tbSky(u, dir) {
     const warmLow = float(1.0).sub(smoothstep(0.0, 0.35, up)).mul(clamp(sunward.add(0.2), 0.0, 1.0)).mul(0.35);
     // The whole rim warm in the morning air, the sun's side most.
     const morning = float(1.0).sub(smoothstep(0.0, 0.16, up)).mul(0.22);
-    return base.mul(float(1.0).sub(morning.mul(0.6))).add(u.sunColor.mul(glow.add(warmLow).add(morning)));
+    const day = base.mul(float(1.0).sub(morning.mul(0.6))).add(u.sunColor.mul(glow.add(warmLow).add(morning)));
+    // Twilight (thermal-bloom-hours.js): with the sun under the horizon behind us, a rose band
+    // stands over the far rim on this side of the sky, and under it the earth's own shadow, a
+    // dusky blue against the horizon. Strongest straight opposite the sun.
+    const opposite = clamp(float(0.62).sub(sunward.mul(0.5)), 0.0, 1.0);
+    // (low: the frame holds only the sky's last eight degrees, and the deep blue above the band
+    // must still show at its top)
+    const belt = smoothstep(0.006, 0.04, up).mul(float(1.0).sub(smoothstep(0.045, 0.15, up))).mul(opposite);
+    const shadowBand = float(1.0).sub(smoothstep(0.0, 0.07, up)).mul(u.earthShadow).mul(0.45);
+    return day.mul(float(1.0).sub(shadowBand)).add(u.twilight.mul(belt));
 }
 
 /** The basin air's scale height (metres): the haze lies in the floor's cold air. */
@@ -466,6 +501,39 @@ export function tbGustBand(u, xz) {
     return exp(d.mul(d).negate()).mul(ends).mul(step(0.0, g));
 }
 
+/**
+ * The light that is neither the sun's nor the sky's: what the steam and the water take from below
+ * and from the air round them. By day it is the day's (`land`, 1 in the morning); as the light
+ * falls the springs' own glow takes over (`k` of it at full night).
+ */
+export const tbUnderLight = (u, k = 0.35) => u.land.add(u.glow.mul(k));
+
+/**
+ * The direct light on steam. By night it is the moon's, and steam under a moon is the brightest
+ * thing in the landscape (pale against the sky, never the dark grey of smoke): raised with the stars.
+ */
+export const tbSteamSun = (u) => u.sunColor.mul(u.stars.mul(1.2).add(1.0));
+
+/**
+ * Steam in its own shade: lit by the sky of the hour (the morning's blue-grey #9DB1C6, a dusk's
+ * mauve, a night's deep blue), never a constant.
+ */
+export const tbSteamShade = (u) => mix(u.haze, u.zenith, 0.5).mul(vec3(0.89, 0.85, 0.78));
+
+/**
+ * How clear of the board card a pixel stands on screen: 0 under the card and against its edge …
+ * 1 a margin away. The events' own light keeps off the card, so nothing glows through it or lies
+ * flush against it. (No card: all −1, and every pixel is clear.)
+ */
+export const tbCardClear = (u, margin = 0.05) => {
+    const c = u.cardRect;
+    const out = max(max(c.x.sub(screenUV.x), screenUV.x.sub(c.z)), max(c.y.sub(screenUV.y), screenUV.y.sub(c.w)));
+    return smoothstep(0.004, margin, out);
+};
+
+/** The light a rainbow is made of: the sun's, a little whitened (1 in the morning; a moonbow by night). */
+export const tbBowLight = (u) => mix(vec3(tbLuma(u.sunColor)), u.sunColor, 0.25).mul(0.96);
+
 /** The far apron's mean albedo (linear): pale, dry sinter between its bright flats and damp grey. */
 export const TB_APRON = [0.57, 0.53, 0.46];
 
@@ -500,7 +568,8 @@ export function tbPlumeShade(u, P) {
     }, ({ pl }) => {
         const A = u.steamPlumes.element(pl.mul(2));
         const B = u.steamPlumes.element(pl.mul(2).add(1));
-        const run = u.sunDir.xz.div(max(u.sunDir.y, 0.15));
+        // (the hour stretches the shadows: long at the ends of the day)
+        const run = u.sunDir.xz.div(max(u.sunDir.y, 0.15)).mul(u.shadowLong);
         const top = A.w.mul(0.85);
         const lean = u.windDir.mul(u.windSpeed.mul(STEAM_LEAN)).mul(top.div(400.0).add(1.0));
         const a0 = A.xy.sub(run.mul(A.z.sub(P.y)));
@@ -586,7 +655,8 @@ export function tbCloudShade(u, P) {
     // A kilometre or two out the shadows melt into the haze (darker patches on the far flats read
     // as standing water, not as shade).
     cover.mulAssign(float(1.0).sub(smoothstep(CLOUDS.fadeFrom, CLOUDS.fadeTo, length(P.xz.sub(u.camPos.xz))).mul(0.85)));
-    return float(1.0).sub(cover.mul(CLOUDS.depth).mul(float(1.0).sub(high.mul(0.55))));
+    // (a sun under the horizon casts no shadows: the hour holds them)
+    return float(1.0).sub(cover.mul(CLOUDS.depth).mul(float(1.0).sub(high.mul(0.55))).mul(u.shadowHold));
 }
 
 /**

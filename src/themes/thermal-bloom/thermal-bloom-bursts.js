@@ -168,7 +168,9 @@ export function createBursts(u, perBurst) {
         const a = smoothstep(1.0, 0.25, r).mul(vLife).mul(vThin).mul(float(0.62).add(flash.mul(0.38)));
         // Hot spring water thrown into the sun: white, a breath of the mats it boiled out of.
         const water = mix(vec3(1.0), vTint, mix(float(0.2), float(0.08), vJet));
-        const col = u.sunColor.mul(water).mul(float(1.0).add(flash.mul(3.5))).add(vTint.mul(0.1));
+        // (thrown out of glowing water, they carry its light: turquoise-white, a breath of the piece)
+        const lamp = mix(vec3(0.3, 0.85, 1.0), vTint, 0.5).mul(u.glow.mul(0.55));
+        const col = u.sunColor.mul(water).mul(float(1.0).add(flash.mul(3.5))).add(vTint.mul(0.1)).add(lamp);
         return vec4(col.mul(a), a);
     });
     material.colorNode = burstFn();

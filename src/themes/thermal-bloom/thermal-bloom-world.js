@@ -49,6 +49,7 @@
 import * as THREE from 'three/webgpu';
 import {
     CHALICE,
+    COLORS,
     DEG,
     ERUPTIONS,
     EVENT_ROWS,
@@ -120,6 +121,9 @@ import {
     windRunTable,
 } from './thermal-bloom-tsl.js';
 import { tierFor } from './thermal-bloom-quality.js';
+import {
+    createHourState, hourAt, hourColour, hourWheel,
+} from './thermal-bloom-hours.js';
 import { createSky } from './thermal-bloom-sky.js';
 import { createBasin } from './thermal-bloom-basin.js';
 import { createTerracesSteps, stairBakeArgs } from './thermal-bloom-terraces.js';
@@ -132,6 +136,7 @@ import {
 import { createPines } from './thermal-bloom-flora.js';
 import { createSnags } from './thermal-bloom-snags.js';
 import { burstCode, createBursts } from './thermal-bloom-bursts.js';
+import { createAura } from './thermal-bloom-aura.js';
 import { createMotes } from './thermal-bloom-motes.js';
 import {
     bakeCellular, bakeNoise, bakeRamp, bakeVapourNoise,
@@ -337,14 +342,63 @@ function* buildGeyserSteps(world) {
     return geyser;
 }
 
+/** The events' drops (the boil-overs, the jets, the chain's vents) and the great bow, as one part. */
+function buildFx(world) {
+    const bursts = createBursts(world.u, world.tier.burstDrops || 48);
+    const aura = createAura(world.u, world.tex);
+    const group = new THREE.Group();
+    group.name = 'ThermalBloomFxGroup';
+    group.add(bursts.mesh);
+    group.add(aura.mesh);
+    return {
+        mesh: group,
+        bursts,
+        aura,
+        dispose: () => {
+            [bursts, aura].forEach((p) => {
+                p.geometry.dispose();
+                p.material.dispose();
+            });
+        },
+    };
+}
+
+/**
+ * The far columns erupt by themselves: each on its own clock (a period of FAR_ERUPT.period[0] to
+ * [1] seconds by its place in the plan), a taller, denser column for FAR_ERUPT.length seconds.
+ * Closed form in the clock (seek-safe): 0 at rest … 1 in full eruption.
+ */
+export const FAR_ERUPT = Object.freeze({ period: Object.freeze([64, 150]), length: 15, quiet: 45 });
+export function farEruption(index, t) {
+    const h = (((index * 0.6180339887 + 0.137) % 1) + 1) % 1;
+    const period = FAR_ERUPT.period[0] + (FAR_ERUPT.period[1] - FAR_ERUPT.period[0]) * h;
+    const now = Math.max(0, Number(t) || 0);
+    const age = (now + period * ((index * 0.3819660113 + 0.41) % 1)) % period;
+    // (none begins in a session's first FAR_ERUPT.quiet seconds: the basin opens as composed)
+    if (now - age < FAR_ERUPT.quiet) return 0;
+    return smooth(0, 2.2, age) * (1 - smooth(FAR_ERUPT.length * 0.55, FAR_ERUPT.length, age));
+}
+
+/** How long the springs stay cold after a game over before they warm again by themselves (s). */
+export const COLD_HOLD = 9;
+
+/** How long a perfect clear's great bow stands, and how much of it four lines raise (0..1). */
+export const GREAT_BOW = Object.freeze({
+    perfect: Object.freeze({
+        from: 1.4, full: 4.2, hold: 13, gone: 21,
+    }),
+    quad: Object.freeze({
+        from: 1.0, full: 2.6, hold: 6, gone: 11, share: 0.34,
+    }),
+});
+
 /** Builders of the parts that exist so far. */
 const PART_BUILDERS = Object.freeze({
     sky: (world) => createSky(world.u, world.tier, world.tex),
     basin: (world) => createBasin(world.u, world.tier, world.tex),
     steam: buildSteam,
     flora: buildFlora,
-    // The events' drops (the boil-overs, the jets, the chain's vents).
-    fx: (world) => createBursts(world.u, world.tier.burstDrops || 48),
+    fx: buildFx,
 });
 
 /**
@@ -451,6 +505,7 @@ function emptyCounts() {
         seasonSteps: 0,
         gameOvers: 0,
         refills: 0,
+        flowers: 0,
     };
 }
 
@@ -499,9 +554,13 @@ export class ThermalBloomWorld {
             sun: hexToLinear(s.sun),
             streamer: hexToLinear(s.streamer || '#E07FA0'),
         }));
-        /** Held values (the playground's season/heat/breath/gust; null = the clock's own). */
+        /** The day (thermal-bloom-hours.js): the hour the clock stands in, blended. */
+        this.hour = createHourState();
+        this._pearlRgb = hexToLinear(COLORS.hazePearl);
+        this._plateauRgb = hexToLinear(COLORS.plateau);
+        /** Held values (the playground's season/hour/heat/breath/gust; null = the clock's own). */
         this.held = {
-            season: null, heat: null, breath: null, gust: null, sunAz: null, sunEl: null,
+            season: null, hour: null, heat: null, breath: null, gust: null, sunAz: null, sunEl: null,
         };
         this._post = {
             exposure: 1,
@@ -604,6 +663,12 @@ export class ThermalBloomWorld {
         this.b2bAt = -1e6;
         this.floodAt = -1e6;
         this.sympathyAt = -1e6;
+        /** The Iris's flower: when it last opened, how many petals' worth (1..4), and its turn. */
+        this.flower = { at: -1e6, level: 1, turn: 0 };
+        /** The springs' own light from play (the chain's heat, a four, a perfect clear): eased. */
+        this.playGlow = 0;
+        /** How cold a game over has left the springs (0..1, eased; they warm again by themselves). */
+        this.cold = 0;
         this.lastB2BBreak = -1e6;
         this.drain = { at: -1e6, refillAt: -1e6 };
         this.lastEventAt = -1e6;
@@ -1802,7 +1867,12 @@ export class ThermalBloomWorld {
         }
         // A back-to-back clear: the Consort answers with a burst off its pool, the next one
         // feeding it higher (§3.5).
-        if (C.b2b) this.consortKick.feed(t, 1);
+        if (C.b2b) {
+            this.consortKick.feed(t, 1);
+            // …and the Iris blooms: a flower of light opens out of its rim, more petals the longer
+            // the back-to-back chain has run.
+            this.bloomIris(t, Math.max(1, this.b2b));
+        }
         // Each cascade wave past the first kicks a spouter on the mound, higher the deeper it
         // runs; from the third the fumaroles across the basin chuff with it.
         if (C.cascade >= 2) {
@@ -1832,10 +1902,54 @@ export class ThermalBloomWorld {
         p.fedAt = t;
         if (!(t - p.renewAt - RENEW.delay < RENEW.sweep)) p.renewAt = t;
         this.sleeperCol.feed(t, 1);
+        // The whole basin answers: the Iris opens every petal, and the Consort fires with the
+        // Sleeper (the far columns swell near to far, and the great bow stands in the fall-back).
+        this.bloomIris(t, 4);
+        this.consortCol.feed(t, 1);
+        // (and the Chalice with them: three columns stand at once, the only time they do)
+        this.quad.feed(t, 1);
         this.counts.perfects += 1;
         if (clear) this.surge.clear(PERFECT_ALONE, t);
         this.blooms.forEach((b) => { b.life = Math.min(b.life, t - b.start + 0.4); });
         this.lastEventAt = t;
+    }
+
+    /**
+     * The Iris blooms: a flower of light opens out of its rim over a second and a half and fades
+     * over the next four (the basin's shader draws it from `u.flowerAt`). A bloom still opening
+     * is not restarted: it takes the higher level, so quick back-to-back clears build one flower.
+     */
+    bloomIris(t, level = 1) {
+        const f = this.flower;
+        const lv = Math.max(1, Math.min(4, Math.round(Number(level) || 1)));
+        if (t - f.at < 0.9) {
+            f.level = Math.max(f.level, lv);
+            return;
+        }
+        f.at = t;
+        f.level = lv;
+        f.turn = (f.turn + 2.399963) % TAU;
+        this.counts.flowers += 1;
+    }
+
+    /**
+     * How much of the great bow stands at t (0..1) and its outer bow's share: the whole double
+     * bow in a perfect clear's fall-back, a paler single bow while four lines' column rains.
+     */
+    greatBowAt(t, out = { amount: 0, second: 0 }) {
+        const P = GREAT_BOW.perfect;
+        const Q = GREAT_BOW.quad;
+        const pAge = t - this.perfect.at;
+        const pLate = t - this.perfect.fedAt;
+        const perfect = pAge >= 0 && pLate < P.gone
+            ? smooth(P.from, P.full, pAge) * (1 - smooth(P.hold, P.gone, pLate)) : 0;
+        const qAge = t - this.quad.at;
+        const qLate = t - this.quad.kickAt;
+        const quad = qAge >= 0 && qLate < Q.gone
+            ? Q.share * smooth(Q.from, Q.full, qAge) * (1 - smooth(Q.hold, Q.gone, qLate)) : 0;
+        out.amount = Math.max(perfect, quad);
+        out.second = perfect > quad ? 0.5 : 0;
+        return out;
     }
 
     /** A cascade wave's kick at one of the mound's spouters (the oldest kick gives way). */
@@ -2679,14 +2793,21 @@ export class ThermalBloomWorld {
             if (t - this.sympathyAt > every) this.sympathyAt = t;
         }
 
+        // ── A game over: the springs go cold (the colour bleaches, their own light goes out, the
+        // eye draws back), hold it a while, and warm again by themselves; the next run warms them
+        // at once. (The Chalice's pools stay drained until that run: `drained`, below.) ──
+        const coldOn = this.drain.at > this.drain.refillAt && t - this.drain.at < COLD_HOLD;
+        this.cold += ((coldOn ? 1 : 0) - this.cold) * approach(coldOn ? 1 / 1.1 : 1 / 3.2, dt);
+
         // ── The gauges ──
         const heat = this.held.heat !== null ? clamp01(this.held.heat) : null;
         // The eye never widens under the card: its heat stops 0.02 of the screen short of it. A
         // fever keeps it widening past the chain's own cap.
+        // (at a game over the eye closes a little: the pool draws back from its rim)
         const heatTarget = Math.min(
             heat !== null ? heat * 0.5 : eyeHeat(this.combo, this.level) + 0.1 * fever,
             this.eyeHeatCap(),
-        );
+        ) - 0.16 * this.cold;
         this.heat += (heatTarget - this.heat) * approach(this.combo > 0 || fever > 0.05 ? 3 : 1 / 4, dt);
         // (a fever pushes the fingers' wet front a notch and a half past the chain's last)
         const reachTarget = heat !== null ? 1 + heat * 0.96 : fingerReach(this.combo) + 0.18 * fever;
@@ -2700,13 +2821,17 @@ export class ThermalBloomWorld {
         else if (t - this.quad.kickAt < 6) vividTarget = Math.max(vividTarget, 1.18);
         this.vivid += (vividTarget - this.vivid) * approach(1 / VIVID_TAU, dt);
 
+        // ── The day: the hour the clock stands in (held by the playground's hour) ──
+        const hour = hourAt(this.held.hour !== null ? this.held.hour : hourWheel(t), this.hour);
+
         // ── Weather ──
         const breath = this.held.breath !== null ? clamp01(this.held.breath) : breathAt(t);
         const wind = windAt(t, this._wind);
         u.breath.value = breath;
-        // The basin boils harder under hot play: more steam off every vent and pool.
+        // The basin boils harder under hot play: more steam off every vent and pool. A cold dawn
+        // steams hardest of the hours.
         u.steam.value = steamForBreath(breath) * this.seasonValue('steam') * (1 - 0.45 * (this.drained || 0))
-            * (1 + 0.14 * hot + 0.2 * fever);
+            * (1 + 0.14 * hot + 0.2 * fever) * hour.steam;
         const heading = WIND_HEADING + wind.angle; // the breeze leans the steam to the right
         u.windDir.value.set(Math.cos(heading), Math.sin(heading));
         u.windSpeed.value = wind.speed;
@@ -2746,6 +2871,22 @@ export class ThermalBloomWorld {
         u.frontRadius.value = frontR;
         u.heat.value = this.heat;
         u.reach.value = this.reach;
+        // ── The springs' own light: the hour's (the heat shows as the light falls), raised by
+        // play (the chain's heat link by link, a fever, four lines, a perfect clear) and put out
+        // by a game over until the next run ──
+        const quadAge = t - this.quad.kickAt;
+        const quadGlow = 0.55 * smooth(0.3, 1.2, quadAge) * (1 - smooth(4, 9, quadAge));
+        const perfectGlow = t - p.fedAt < 22 ? smooth(0.4, 2.0, t - p.at) * (1 - smooth(12, 22, t - p.fedAt)) : 0;
+        const playTarget = Math.min(1, Math.max(0.85 * smooth(2, 9, this.combo) + 0.3 * fever, quadGlow, perfectGlow));
+        this.playGlow += (playTarget - this.playGlow) * approach(playTarget > this.playGlow ? 2.5 : 0.6, dt);
+        u.glow.value = (hour.glow + this.playGlow * (1.1 - 0.75 * hour.glow)) * (1 - 0.92 * this.cold);
+        u.cold.value = this.cold;
+        u.flowerAt.value = this.toPhase(this.flower.at);
+        u.flowerLevel.value = this.flower.level;
+        u.flowerTurn.value = this.flower.turn;
+        // The great bow (thermal-bloom-aura.js): a perfect clear's, and a paler one at four lines.
+        const bowNow = this.greatBowAt(t, this._bowNow || (this._bowNow = { amount: 0, second: 0 }));
+        this.parts.fx?.aura?.setBow(bowNow.amount, bowNow.second);
 
         // ── The sun: eased toward the solution, never while an eruption is live ──
         const erupting = t - this.quad.kickAt < 20;
@@ -2783,10 +2924,15 @@ export class ThermalBloomWorld {
 
         // ── Post ──
         const post = this._post;
-        // The springs sigh at a game over: the light dims a little until the next run.
-        post.exposure = 1 - 0.12 * (this.drained || 0);
+        // The springs sigh at a game over: the light dims a little until the next run. The hour
+        // sets the eye's adaptation (wide open at night), its saturation and its grade.
+        post.exposure = hour.exposure * (1 - 0.12 * (this.drained || 0));
         post.iris = 1;
-        post.sat = this.seasonValue('sat');
+        post.sat = this.seasonValue('sat') * hour.sat * (1 - 0.3 * this.cold);
+        for (let i = 0; i < 3; i++) {
+            post.gradeShadow[i] = hour.gradeShadow[i];
+            post.gradeLight[i] = hour.gradeLight[i];
+        }
         post.vivid = this.vivid;
         // A perfect clear: the light itself swells for a few seconds (the bloom, never the
         // exposure), as the Sleeper wakes (a second one holds it).
@@ -2989,19 +3135,28 @@ export class ThermalBloomWorld {
                 ? smooth(0.6 + delay, 2.4 + delay, perfectAge) * (1 - smooth(14, 22, perfectLate)) : 0;
             // Every third vent breathes a broad low bank drifting off the flats, not a column.
             const bank = i % 3 === 1;
-            const glow = sym > 0 || fever > 0.01;
+            // Each erupts by itself now and then (its own clock): a taller, denser column.
+            const own = bank ? 0 : farEruption(i, t);
+            // By night each is lit from below by its own vent: its pool's pale turquoise (never
+            // an orange, which reads as fire under smoke).
+            const night = 0.3 * u.glow.value;
+            const glow = sym > 0 || fever > 0.01 || night > 0.01 || own > 0.01;
             add(
                 VAPOUR_KIND.plume,
                 seed,
                 p.x,
                 p.base,
                 p.z,
-                p.height * (bank ? 0.42 : 1) * (1 + 0.9 * sym + boil),
-                p.r0 * (bank ? 2.6 : 0.7 + 0.5 * sym + 0.15 * boil),
-                p.r1 * (bank ? 2.0 : 0.9 + 0.6 * sym + 0.3 * boil),
-                0.55 * p.density * steam * (bank ? 0.7 : 1) * (1 + 0.5 * sym + 0.35 * boil),
+                p.height * (bank ? 0.42 : 1) * (1 + 1.2 * sym + boil + 0.85 * own),
+                p.r0 * (bank ? 2.6 : 0.7 + 0.5 * sym + 0.15 * boil + 0.25 * own),
+                p.r1 * (bank ? 2.0 : 0.9 + 0.6 * sym + 0.3 * boil + 0.35 * own),
+                0.55 * p.density * steam * (bank ? 0.7 : 1) * (1 + 0.6 * sym + 0.35 * boil + 0.7 * own),
                 bank ? lean * 2.5 : lean,
-                glow ? [0.5 * sym + 0.3 * fever, 0.42 * sym + 0.19 * fever, 0.3 * sym + 0.09 * fever] : null,
+                glow ? [
+                    0.24 * sym + 0.3 * fever + 0.14 * night + 0.2 * own,
+                    0.2 * sym + 0.19 * fever + 0.42 * night + 0.17 * own,
+                    0.14 * sym + 0.09 * fever + 0.48 * night + 0.12 * own,
+                ] : null,
                 // Their billows climb with their puffs: a far column visibly breathes upward.
                 riseForLean(bank ? lean * 2.5 : lean) * 0.7,
             );
@@ -3240,7 +3395,7 @@ export class ThermalBloomWorld {
                 d.height * (0.6 + 0.4 * smooth(0, 1.2, a)),
                 d.radius * 0.7,
                 d.radius * 2.0,
-                3.0 * fade,
+                4.0 * fade,
                 0.04,
                 [0.5 * fade, 0.55 * fade, 0.45 * fade],
             );
@@ -3286,11 +3441,18 @@ export class ThermalBloomWorld {
         }
         // The locks' boil-overs: a puff of steam swelling off each, lit from below by the piece's
         // colour while the bloom is fresh, lifting off the ground and drifting downwind as it thins.
-        this.boils.forEach((b) => {
+        this.boils.forEach((b, bi) => {
             const a = t - b.start;
             const life = ThermalBloomWorld.boilLife(b);
             if (!(a >= 0) || a > life) return;
-            const thinning = ThermalBloomWorld.boilThin(b, t);
+            // Quick play never piles a bank of steam over the Stair or the mats: each newer
+            // boil-over close by halves what an older one still breathes (the newest stands whole).
+            let newer = 0;
+            for (let j = bi + 1; j < this.boils.length; j++) {
+                const o = this.boils[j];
+                if (Math.hypot(o.x - b.x, o.z - b.z) < 12 * b.cell) newer += 1;
+            }
+            const thinning = ThermalBloomWorld.boilThin(b, t) * 0.5 ** newer;
             if (!(thinning > 0.001)) return;
             const c = b.cell * (b.hard ? 1.3 : 1);
             const slim = b.narrow ? 0.4 : 1;
@@ -3374,6 +3536,31 @@ export class ThermalBloomWorld {
         set(u.rim, 'rim');
         set(u.meadow, 'meadow');
         set(u.sunColor, 'sun');
+        // ── The hour's light on the season's colours (season × mul + add, linear) ──
+        const { hour } = this;
+        const lit = (node, pair) => {
+            const v = node.value;
+            v.set(v.x * pair[0][0] + pair[1][0], v.y * pair[0][1] + pair[1][1], v.z * pair[0][2] + pair[1][2]);
+        };
+        lit(u.zenith, hour.zenith);
+        lit(u.haze, hour.haze);
+        lit(u.sunColor, hour.sun);
+        const pearl = hourColour(hour.pearl, this._pearlRgb, this._rgbA);
+        u.pearl.value.set(pearl[0], pearl[1], pearl[2]);
+        // The far rim is painted unlit: the forest and the plateau take the hour's light here.
+        u.rim.value.set(u.rim.value.x * hour.land[0], u.rim.value.y * hour.land[1], u.rim.value.z * hour.land[2]);
+        u.plateau.value.set(
+            this._plateauRgb[0] * hour.land[0],
+            this._plateauRgb[1] * hour.land[1],
+            this._plateauRgb[2] * hour.land[2],
+        );
+        u.land.value.set(hour.land[0], hour.land[1], hour.land[2]);
+        u.stars.value = hour.stars;
+        u.twilight.value.set(hour.twilight[0], hour.twilight[1], hour.twilight[2]);
+        u.earthShadow.value = hour.earthShadow;
+        u.alpen.value.set(hour.alpen[0], hour.alpen[1], hour.alpen[2]);
+        u.shadowHold.value = hour.shadow;
+        u.shadowLong.value = hour.shadowLong;
         // A low sun lights a level floor less: the light is raised to keep the mats in full colour.
         u.sunColor.value.multiplyScalar(SUN_GAIN);
         set(u.streamer, 'streamer');
@@ -3429,6 +3616,8 @@ export class ThermalBloomWorld {
             time: t,
             level: this.level,
             season: SEASONS[this.season].name,
+            hour: this.hour.name,
+            hourWheel: this.hour.wheel,
             seasonSweep: this.seasonSweepAt(t),
             seasonWheel: this.wheel,
             seasonOffset: this.seasonOffset,

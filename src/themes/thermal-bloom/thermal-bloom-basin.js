@@ -64,6 +64,8 @@ import {
 } from 'three/tsl';
 import {
     EVENT_ROWS,
+    FLOWER_HOLD,
+    FLOWER_LIFE,
     IRIS_RADIUS,
     RECORD_RING0,
     RECORD_ROWS,
@@ -78,12 +80,14 @@ import {
     tbHash21,
     tbLuma,
     tbPart,
+    tbCardClear,
     tbCloudShade,
     SURFACE_SUN,
     tbPlumeShade,
     tbSchlick,
     tbSky,
     tbSteamVeil,
+    tbUnderLight,
 } from './thermal-bloom-tsl.js';
 import { bakeBasinFan } from './thermal-bloom-bake.js';
 
@@ -457,6 +461,7 @@ export function createBasin(u, tier, tex) {
         // Jewel pools on the far apron: lime acid, champagne (a wide orange rim, fizzing), milky
         // opal — small, crisp, lobed, each its own water and rim.
         const jewelWater = float(0.0).toVar();
+        const jewelLight = vec3(0.0).toVar();
         for (let j = 0; j < 3; j++) {
             const J = u.jewels.element(j);
             const jd = length(P.xz.sub(J.xy)).div(max(J.z, 1.0))
@@ -487,6 +492,8 @@ export function createBasin(u, tier, tex) {
             const waterDeep = water.mul(float(1.0).sub(deep.mul(0.6)))
                 .add(water.sub(tbLuma(water)).mul(deep.mul(0.35)));
             albedo.assign(mix(albedo, waterDeep, inside));
+            // (its own light as the day's falls: brightest where it is deepest)
+            jewelLight.addAssign(water.mul(inside).mul(deep.mul(0.7).add(0.3)));
             // The champagne pool fizzes: beads breaking all over it, a twinkling froth.
             const fizzCell = floor(P.xz.div(0.9)).add(floor(u.time.mul(7.0)).mul(vec2(3.7, 1.3)));
             const fizz = smoothstep(0.8, 0.95, tbHash21(fizzCell)).mul(0.6).add(0.12);
@@ -591,7 +598,7 @@ export function createBasin(u, tier, tex) {
         // as the trunk does, with its broken branches' strokes off it; crisp, as a low sun's are.
         const snagT = float(1.0).toVar();
         const sdir = normalize(u.sunDir.xz.negate().add(vec2(1e-5, 0.0)));
-        const perH = length(u.sunDir.xz).div(max(u.sunDir.y, 0.08));
+        const perH = length(u.sunDir.xz).div(max(u.sunDir.y, 0.08)).mul(u.shadowLong);
         for (let i = 0; i < SNAG_SHADOWS; i++) {
             const S = u.snags.element(i);
             const sRel = P.xz.sub(S.xy);
@@ -621,7 +628,8 @@ export function createBasin(u, tier, tex) {
                 .mul(step(0.001, S.w));
             snagT.mulAssign(float(1.0).sub(inS.mul(0.88)));
         }
-        const shadowT = exp(shade.mul(u.steam).mul(-1.55)).mul(snagT).toVar();
+        // (a sun under the horizon casts none of them: the hour holds the shadows)
+        const shadowT = mix(float(1.0), exp(shade.mul(u.steam).mul(-1.55)).mul(snagT), u.shadowHold).toVar();
         // A cloud takes the direct sun only: the shade it casts is lit by the whole blue sky.
         const cloudT = tbCloudShade(u, P).toVar();
         // In a plume's shadow the sky's share dims a little too (the plume hides part of it).
@@ -694,8 +702,98 @@ export function createBasin(u, tier, tex) {
         ground.assign(mix(ground, ground.mul(0.75), bloom.pool));
         // The new springs' own light (their hot cores, the ripple at their birth).
         ground.addAssign(bloom.glow);
+        // ── The heat shows as the light falls (thermal-bloom-hours.js): the hottest bands smoulder
+        // in their own colours, and the warm water in the runoff channels carries the light out
+        // along every finger, pulsing slowly outward with the flow; the jewel pools are lamps on
+        // the far apron, and each far column's vent a small ring of embers. Never under snow. ──
+        const hotBand = smoothstep(0.5, 0.74, T).mul(float(1.0).sub(smoothstep(0.8, 0.86, T)));
+        const emberPulse = smoothstep(0.2, 0.8, flow).mul(0.7).add(0.5);
+        // (embers, never lava: the channels are thin veins of light that die away down the
+        // fingers, so the broad near runs under the camera stay dark; and none of it against or
+        // under the board card)
+        const veinReach = exp(max(rs.sub(1.0), 0.0).mul(-1.1));
+        const ember = albedo.mul(hotBand.mul(0.2).add(wet.mul(emberPulse).mul(veinReach).mul(0.3)))
+            .add(haloCol.mul(smoothstep(0.5, 0.95, halo).mul(dry).mul(0.16)));
+        const cardClear = tbCardClear(u).toVar();
+        ground.addAssign(ember.mul(onMats.max(dry)).mul(float(1.0).sub(snowCover)).mul(u.glow)
+            .mul(cardClear.mul(0.85).add(0.15))
+            .add(jewelLight.mul(u.glow.mul(0.6))));
         // The succession front glows as it runs out along the fingers (a level's year turning).
         ground.addAssign(u.frontTint.mul(fringe.mul(0.75)));
+        // ── The Iris blooms (a back-to-back clear; every petal at a perfect clear): a flower of
+        // light opens out of the rim, its petals pointed, each with a bright midrib and a hot
+        // edge; turquoise-white at the rim, then lemon, orange and rose at the tips, as the bands
+        // themselves run. It opens fast and slows, then fades from the rim outward. More petals,
+        // reaching further, the longer the chain has run. A uniform branch: nothing at rest. ──
+        const flowerAge = u.time.sub(u.flowerAt).toVar();
+        const flowerLight = vec3(0.0).toVar();
+        // (a perfect clear's flower, every petal, stands open a while before it fades)
+        const flowerLife = float(FLOWER_LIFE).add(step(3.5, u.flowerLevel).mul(FLOWER_HOLD)).toVar();
+        If(flowerAge.greaterThan(0.0).and(flowerAge.lessThan(flowerLife)), () => {
+            const petals = floor(u.flowerLevel.mul(2.0).add(8.5));
+            const open = float(1.0).sub(exp(flowerAge.mul(-1.9)));
+            const reachMax = open.mul(u.flowerLevel.mul(0.2).add(0.5));
+            // (measured mostly in plain metres from the vent: the bands' own radius is stretched
+            // downhill, which would run the downhill petals out across the whole near field)
+            const rf = mix(rr, rs, 0.3).toVar();
+            // How far out a point lies in the whole flower (0 the rim … 1 the tips): the colours
+            // run by it, pale: turquoise-white at the rim, straw, apricot, a rose at the tips.
+            const kHue = clamp(rf.sub(1.0).div(max(reachMax, 1e-3)), 0.0, 1.0);
+            const hue = mix(
+                mix(
+                    mix(vec3(0.6, 1.0, 0.95), vec3(1.0, 0.9, 0.52), smoothstep(0.0, 0.35, kHue)),
+                    vec3(1.0, 0.64, 0.32),
+                    smoothstep(0.35, 0.72, kHue),
+                ),
+                vec3(1.0, 0.46, 0.5),
+                smoothstep(0.7, 1.0, kHue),
+            );
+            // The angle a pixel covers, in petals (from its footprint on the ground, which the
+            // low view stretches): the veins never thin below it. Not fwidth of the angle, which
+            // jumps a whole turn across the seam behind the vent.
+            const metresOut = max(length(P.xz.sub(u.irisCentre)), 6.0);
+            const afw = petals.div(TAU).mul(dist.mul(u.pixelAngle).mul(3.0)).div(metresOut);
+            /**
+             * One row of petals drawn in light: each a pointed outline with three veins running
+             * to its tip and a faint glow at its foot, never a filled shape (a filled petal read
+             * as a painted blotch, and beside the card as glare).
+             */
+            const row = (offset, reachK) => {
+                const turn = th.mul(petals).add(u.flowerTurn).add(offset);
+                const petal = cos(turn).mul(0.5).add(0.5);
+                const tip = petal.mul(sqrt(petal));
+                const reachP = float(1.02).add(reachMax.mul(reachK).mul(tip.mul(0.9).add(0.1)));
+                const k = clamp(rf.sub(1.0).div(max(reachP.sub(1.0), 1e-3)), 0.0, 1.4);
+                const kfw = max(fwidth(k), 1e-3);
+                const inPetal = float(1.0).sub(smoothstep(float(0.98).sub(kfw), float(1.0).add(kfw), k))
+                    .mul(step(1.0, rf));
+                const edge = k.sub(0.97).div(kfw.mul(1.2).add(0.022));
+                const outline = exp(edge.mul(edge).negate()).mul(step(1.0, rf));
+                // Across one petal: −0.5 … 0.5, 0 on its midrib.
+                const petalAcross = fract(turn.div(TAU).add(0.5)).sub(0.5);
+                const veinW = afw.add(0.012);
+                const draw = smoothstep(0.06, 0.2, k).mul(float(1.0).sub(smoothstep(0.72, 0.96, k)));
+                const lean = float(1.0).sub(k.mul(0.75));
+                let veins = float(0.0);
+                [-0.17, 0.0, 0.17].forEach((at) => {
+                    const d = petalAcross.sub(lean.mul(at)).div(veinW);
+                    veins = veins.add(exp(d.mul(d).negate()).mul(at === 0 ? 1.0 : 0.6));
+                });
+                const petalFoot = float(1.0).sub(k);
+                const inside = veins.mul(draw).mul(0.5).add(petalFoot.mul(petalFoot).mul(0.1));
+                return outline.mul(0.95).add(inPetal.mul(inside));
+            };
+            // Two rows: the long outer petals, and between them a shorter inner row.
+            const lines = row(0.0, 1.0).add(row(Math.PI, 0.6).mul(0.7));
+            // (it fades from the rim outward: the petals' tips are the last to go)
+            const fadeFrom = flowerAge.sub(flowerLife.sub(FLOWER_LIFE - 1.3)).mul(0.42);
+            const petalFade = smoothstep(0.0, 0.18, flowerAge)
+                .mul(smoothstep(fadeFrom.sub(0.35), fadeFrom.add(0.1), kHue.mul(0.75).add(0.05)))
+                .mul(float(1.0).sub(smoothstep(flowerLife.sub(1.6), flowerLife, flowerAge)));
+            flowerLight.assign(hue.mul(lines).mul(petalFade).mul(cardClear)
+                .mul(float(1.0).sub(snowCover.mul(0.5))));
+        });
+        ground.addAssign(flowerLight);
         // Sun glints on the wet ground, out of the plumes' shadows.
         ground.addAssign(tbGlint(u, P, Nsheen, V, clamp(sheenMask, 0.0, 1.0).mul(shadowT).mul(cloudT), 0.55, 1.1));
 
@@ -794,7 +892,8 @@ export function createBasin(u, tier, tex) {
         const recLit = rec.xyz.mul(u.sunColor.mul(lit.mul(1.45)).add(skyAmb));
         ground.assign(mix(ground, recLit, recShow.mul(0.85)));
         // The new lip, the little pool behind it lit from within, and the sheet over it.
-        const poolGlow = vec3(0.5, 0.78, 0.76).mul(u.sunColor.mul(lit.mul(1.1)).add(skyAmb).add(0.1));
+        const poolGlow = vec3(0.5, 0.78, 0.76)
+            .mul(u.sunColor.mul(lit.mul(1.1)).add(skyAmb).add(tbUnderLight(u, 0.6).mul(0.1)));
         ground.assign(mix(ground, poolGlow, sealFills.pool.mul(brk.mul(0.14).add(0.14))));
         ground.assign(mix(ground, ground.mul(0.8).add(sheenCol.mul(0.22)), sealFills.sheet.mul(0.6)));
         // Low in contrast: fresh sinter a little paler than the cream round it, not a painted line.
@@ -843,11 +942,29 @@ export function createBasin(u, tier, tex) {
         const inScatter = vec3(0.004, 0.07, 0.36).mul(exp(depth.div(-18.0)).mul(0.8).add(0.2))
             .add(vec3(0.0, 0.012, 0.015).mul(boil));
         const sunIn = u.sunColor.mul(max(u.sunDir.y, 0.0).mul(1.5).add(0.2));
-        const waterLit = floorAlb.mul(trans).mul(sunIn).add(inScatter.mul(float(1.0).sub(trans)).mul(sunIn.add(0.4)));
+        const waterLit = floorAlb.mul(trans).mul(sunIn)
+            .add(inScatter.mul(float(1.0).sub(trans)).mul(sunIn.add(u.land.mul(0.4))));
+        // The Iris's own light as the day's falls: the throat lights the water from below, azure
+        // out of the deep and white-turquoise over the vent, the ledges standing dark against it
+        // (they are between the light and the eye), the shelf a ring of pale turquoise; it
+        // breathes with the convection and flares where a boil dome swells.
+        const ventNear = exp(vd.mul(vd).mul(-2.6));
+        const throatLight = mix(vec3(0.0, 0.08, 0.5), vec3(0.03, 0.4, 0.82), ventNear.mul(ventNear))
+            .mul(ventNear.mul(0.85).add(0.15)).mul(breakEdge)
+            .mul(float(1.0).sub(ledge.mul(0.35)));
+        const shelfLight = vec3(0.03, 0.36, 0.36).mul(float(1.0).sub(breakEdge)).mul(0.5);
+        const irisLight = throatLight.add(shelfLight).mul(wob.mul(0.5).add(1.0))
+            .add(vec3(0.12, 0.55, 0.7).mul(boil.mul(0.6)));
         // The surface reflects the sky some fifteen degrees up (cerulean, not the horizon haze),
         // and less of it over the throat, where the cobalt must stay near-ink.
         const fres = min(tbSchlick(max(V.y, 0.0), float(0.02)), 0.12).mul(mix(float(1.0), float(0.1), breakEdge));
-        const water = mix(waterLit, mix(u.haze, u.zenith, 0.8), fres).toVar();
+        // (the eye answers the flower: its throat flares as the petals open)
+        const flowerFlash = smoothstep(0.0, 0.25, flowerAge).mul(float(1.0).sub(smoothstep(0.4, 2.6, flowerAge)))
+            .mul(0.7)
+            .mul(step(0.0, flowerAge))
+            .mul(u.flowerLevel.mul(0.14).add(0.3));
+        const water = mix(waterLit, mix(u.haze, u.zenith, 0.8), fres)
+            .add(irisLight.mul(u.glow.add(flowerFlash))).toVar();
         // A gust's cat's-paw: where its front crosses the pool the surface roughens into a band
         // of ripples that catch the paler sky; the sun glints off them (and now and then off the
         // calm water too).
@@ -862,7 +979,9 @@ export function createBasin(u, tier, tex) {
 
         // A game over: the springs sigh, and the colours ease 15% toward muted (§1.5).
         const surface = mix(ground, water, pool);
-        const muted = mix(surface, vec3(tbLuma(surface)).mul(0.96), u.drain.mul(0.15));
+        // (the springs go cold: the living colour bleaches toward pale, cool sinter)
+        const coolSinter = vec3(tbLuma(surface)).mul(vec3(0.9, 0.96, 1.04));
+        const muted = mix(surface, coolSinter, u.drain.mul(0.15).add(u.cold.mul(0.5)));
         const col = tbSteamVeil(u, muted, P).toVar();
         // Aerial perspective: warm near, cool and pale far. Toward the mesh's far edge the ground
         // settles into the far apron the backdrop paints beyond it, so there is no seam.

@@ -86,7 +86,11 @@ import {
     tbHgMix,
     tbLuma,
     tbMax3,
+    tbBowLight,
     tbPart,
+    tbSteamShade,
+    tbSteamSun,
+    tbUnderLight,
     tbSteamVeil,
 } from './thermal-bloom-tsl.js';
 import { STAIR, stairGenerator } from './thermal-bloom-bake.js';
@@ -750,7 +754,9 @@ function createMound(u, tier, tex, {
             const boil = texture(tex.noise, P.xz.div(2.5).add(vec2(u.time.mul(0.6), u.time.mul(-0.4)))).x;
             const dome = smoothstep(pool, 0.0, r).mul(boil.mul(0.6).add(0.4)).mul(u.consortWet);
             const water = vec3(0.12, 0.42, 0.48).mul(u.sunColor.mul(0.7).add(u.zenith.mul(0.3)))
-                .add(vec3(0.1, 0.32, 0.34).mul(dome));
+                .add(vec3(0.1, 0.32, 0.34).mul(dome).mul(tbUnderLight(u)))
+                // (its own light as the day's falls: a small turquoise lamp on the far apron)
+                .add(vec3(0.03, 0.3, 0.36).mul(u.glow.mul(0.45)));
             col.assign(mix(col, water, inside));
         }
         const out = tbAerial(u, tbSteamVeil(u, col, P), dist, V.negate());
@@ -1097,7 +1103,9 @@ export function createColumns(u, tier, tex) {
         // (a standing column's steam stands whatever its splash does)
         const present = mix(smoothstep(0.0, 0.3, Af.w), float(1.0), standF.mul(isVeil));
         // (a hard drop's jet is the marched steam's and the drops' when the post marches them)
-        const jetFade = float(1.0).sub(jetF.mul(u.vapourOn).mul(0.8));
+        // (nearly all of it: what was left of the sheet showed as a grey wedge beside the
+        // marched jet in a dusk's or a night's light)
+        const jetFade = float(1.0).sub(jetF.mul(u.vapourOn).mul(0.95));
         const alpha = clamp(water.mul(isWater).add(veil.mul(isVeil)).add(collar.mul(isCollar)), 0.0, 1.0)
             .mul(vCover)
             .mul(present)
@@ -1113,10 +1121,10 @@ export function createColumns(u, tier, tex) {
         const lit = smoothstep(-0.25, 0.55, dot(N3, u.sunDir));
         const back = tbHgMix(dot(V, u.sunDir), float(0.3));
         // (the water thrown into the sun reads white: its light a little less warm than the sun's)
-        const pearl = mix(vec3(tbLuma(u.sunColor)), u.sunColor, 0.6).mul(0.9).add(mix(u.haze, u.zenith, 0.5).mul(0.1))
+        const steamSun = tbSteamSun(u);
+        const pearl = mix(vec3(tbLuma(steamSun)), steamSun, 0.6).mul(0.9).add(mix(u.haze, u.zenith, 0.5).mul(0.1))
             .mul(float(0.92).add(back.mul(0.12)));
-        const shadeBlue = vec3(0.34, 0.43, 0.56).mul(mix(float(0.85), float(1.0), u.sunColor.y))
-            .add(u.zenith.mul(0.05));
+        const shadeBlue = tbSteamShade(u).add(u.zenith.mul(0.05));
         // (thin steam — a jet, a skirt, a standing column — is lit through from the bright air and
         // the ground: its shade is a soft grey-blue, never a blue edge)
         const steamy = max(max(jetF, standF.mul(isVeil)), domeF.mul(isVeil));
@@ -1130,7 +1138,11 @@ export function createColumns(u, tier, tex) {
         // The standing steam is underlit by its pool's turquoise; a skirt and a jet by warm ground.
         const under = vec3(0.04, 0.42, 0.5).mul(exp(h.div(-12.0))).mul(standF.mul(isVeil).mul(0.9))
             .add(vec3(0.5, 0.3, 0.16).mul(exp(h.div(-6.0))).mul(max(domeF, jetF).mul(isVeil).mul(0.12)));
-        body.addAssign(under);
+        body.addAssign(under.mul(tbUnderLight(u)));
+        // (the water itself is lit from the vent as the day's light falls: a fountain of light,
+        // white-turquoise at its foot and fading up the column)
+        const ventLamp = exp(h.div(-14.0)).mul(0.8).add(0.04);
+        body.addAssign(vec3(0.3, 0.7, 0.85).mul(ventLamp).mul(isWater).mul(u.glow.mul(0.45)));
         // Never emissive, never a flat white: lit steam lands at about 0.95 on the display.
         // (its water brighter than the steam round it: the column stands out of its own steam)
         const peak = mix(float(COLUMN_PEAK), float(COLUMN_PEAK * 1.3), isWater.mul(float(1.0).sub(domeF)));
@@ -1143,7 +1155,8 @@ export function createColumns(u, tier, tex) {
             .mul(float(1.0).sub(jetF));
         const sprayPatch = smoothstep(0.35, 0.8, fine);
         const col = body.mul(mix(float(1.0), bow.w, u.bow.mul(inSpray)))
-            .add(bow.xyz.mul(u.bow).mul(inSpray).mul(sprayPatch.mul(0.6).add(0.4)).mul(0.85));
+            .add(bow.xyz.mul(tbBowLight(u)).mul(u.bow).mul(inSpray).mul(sprayPatch.mul(0.6).add(0.4))
+                .mul(0.85));
         const out = tbAerial(u, col, dist, V.negate());
         return vec4(out.mul(alpha), alpha);
     });
@@ -1239,7 +1252,8 @@ export function createSpray(u, tier) {
         const tinted = length(vBow.xyz).mul(u.bow);
         const a = smoothstep(1.0, 0.2, r).mul(vLife).mul(float(0.3).add(flash.mul(0.5)).add(tinted.mul(0.12)));
         const col = u.sunColor.mul(float(0.82).add(flash.mul(5.0))).add(mix(u.haze, u.zenith, 0.5).mul(0.2))
-            .add(vBow.xyz.mul(u.bow).mul(0.55));
+            .add(vBow.xyz.mul(u.bow).mul(0.55).mul(tbBowLight(u)))
+            .add(vec3(0.28, 0.8, 0.95).mul(u.glow.mul(0.3)));
         return vec4(col.mul(a), a);
     });
     material.colorNode = sprayFn();
