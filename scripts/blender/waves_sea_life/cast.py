@@ -1,8 +1,8 @@
 """Waves' sea life, each drawn from numbers as smooth masses and fins.
 
 The animals that share the wave with the rider: the bottlenose dolphins that ride inside its face
-and leap from it, the smaller spinner dolphins that corkscrew out of it, the flying fish that
-skitter off the trough, the seabirds that glide the updraught along its shoulder, and, from the
+and leap from it, the smaller spinner dolphins that corkscrew out of it, the seabirds that glide
+the updraught along its shoulder, and, from the
 Ocean's own cast (scripts/blender/ocean_creatures/cast.py), the humpback out at sea, the manta
 and the green turtle seen through the glass of the wall.
 
@@ -13,14 +13,13 @@ where its body runs from and to along z, how many triangles it is given, and two
 
 Families (how the runtime moves them, src/themes/waves/waves-fauna.js):
   0 whale   the body beats up and down, the flukes pitch after it, the flippers trim
-  1 fish    the tail sweeps from side to side; the wings are held spread
   2 ray     the wings fly: a wave runs out along the span
   3 turtle  the front flippers row, the rear ones trail
   5 bird    the wings beat from the shoulder, the tips after the arms
 
 Masks (packed per vertex beside the ambient occlusion): what the first two mean is the animal's
-own: the dolphins' are the dark cape over the back and the pale belly; the fish's are its blue
-back and its wings' clear membranes; the bird's are its grey mantle and its black wing tips.
+own: the dolphins' are the dark cape over the back and the pale belly; the turtle's are its shell
+above and its plastron below; the bird's are its grey mantle and its black wing tips.
 """
 
 import numpy as np
@@ -29,7 +28,7 @@ from ocean_creatures import cast as ocean
 from ocean_creatures.cast import PARTS, both, eye, groove, lip_line, notch_wave, surface_point
 from ocean_creatures.sdf import V, Prim, body_chain, fin, planform
 
-FAMILIES = {'whale': 0, 'fish': 1, 'ray': 2, 'turtle': 3, 'bird': 5}
+FAMILIES = {'whale': 0, 'ray': 2, 'turtle': 3, 'bird': 5}
 
 
 def _smooth(a, b, x):
@@ -160,61 +159,6 @@ def spinner():
     }
 
 
-# ── Flying fish ─────────────────────────────────────────────────────────────────
-
-
-def flying_fish():
-    """A cigar of a fish with wings: pectoral fins two thirds of its length, a second, smaller pair
-    behind them, and a tail whose lower lobe is the longer one (it sculls the water with it to
-    take off)."""
-    rows = [
-        (0.000, 0.014, 0.016, 0.000),
-        (0.035, 0.034, 0.038, 0.002),
-        (0.110, 0.051, 0.056, 0.002),
-        (0.240, 0.060, 0.066, 0.000),
-        (0.390, 0.059, 0.064, 0.000),
-        (0.540, 0.049, 0.054, 0.000),
-        (0.680, 0.034, 0.040, 0.000),
-        (0.780, 0.022, 0.029, 0.000),
-        (0.845, 0.015, 0.023, 0.000),
-    ]
-    body = body_chain(rows, step=0.012, k=0.014)
-    prims = list(body)
-    for side in (1, -1):
-        prims.append(eye(body, 0.42, 0.012, 0.019, side, depth=0.4))
-    # The wings: long, swept, a little raised; held spread in the glide.
-    root = surface_point(body, V(0.0, 0.022, 0.27), V(1, 0, 0)) - V(0.012, 0.0, 0.0)
-    us, lead, trail = planform(0.56, 0.15, 0.04, sweep=0.2, tip_round=0.2, trail_bulge=0.03)
-    prims += both(fin('pectoral', root, V(1.0, 0.1, -0.22), V(0, 0, -1), us, lead, trail,
-                      0.0075 - 0.004 * us / 0.56, k=0.012, tmin=0.0032, side=1, along=0.23,
-                      bow=0.02 * (us / 0.56) ** 2))
-    # The second pair, behind and below.
-    root = surface_point(body, V(0.0, -0.03, -0.07), V(1, 0, 0)) - V(0.01, 0.0, 0.0)
-    us, lead, trail = planform(0.24, 0.1, 0.03, sweep=0.09, tip_round=0.25, trail_bulge=0.012)
-    prims += both(fin('rear', root, V(1.0, -0.08, -0.3), V(0, 0, -1), us, lead, trail,
-                      0.006, k=0.01, tmin=0.003, side=1, along=0.57))
-    us, lead, trail = planform(0.06, 0.1, 0.03, sweep=0.04, tip_round=0.3)
-    prims.append(fin('dorsal', V(0.0, 0.03, -0.2), V(0.0, 1.0, -0.8), V(0, 0, -1), us, lead, trail,
-                     0.005, k=0.008, tmin=0.003))
-    # The tail: forked deep, the lower lobe half as long again as the upper.
-    us, lead, trail = planform(0.16, 0.06, 0.016, sweep=0.03, tip_round=0.15)
-    prims.append(fin('tail', V(0.0, 0.004, -0.33), V(0.0, 1.0, -1.25), V(0, 0, -1), us, lead, trail,
-                     0.008 * (1 - 0.6 * us / 0.16), k=0.01, tmin=0.003))
-    us, lead, trail = planform(0.23, 0.062, 0.016, sweep=0.03, tip_round=0.12)
-    prims.append(fin('tail', V(0.0, -0.004, -0.33), V(0.0, -1.0, -1.1), V(0, 0, -1), us, lead, trail,
-                     0.008 * (1 - 0.6 * us / 0.23), k=0.01, tmin=0.003))
-
-    def masks(P, N, part, s):
-        back = _smooth(-0.05, 0.5, N[:, 1]) * (part == PARTS['body'])
-        membrane = ((part == PARTS['pectoral']) | (part == PARTS['rear'])) * 1.0
-        return back, membrane
-
-    return prims, {
-        'family': 'fish', 'voxel': 0.0024, 'triangles': 1100, 'masks': masks,
-        'nose': 0.5, 'tail': -0.5,
-    }
-
-
 # ── Seabird ─────────────────────────────────────────────────────────────────────
 
 
@@ -274,8 +218,7 @@ CAST = {
     'bottlenose': bottlenose,
     'spinner': spinner,
     'humpback': _with(ocean.humpback, triangles=5200),
-    'manta': _with(ocean.manta, triangles=2600),
-    'turtle': _with(ocean.turtle, triangles=2400),
-    'flyingFish': flying_fish,
+    'manta': _with(ocean.manta, triangles=3000),
+    'turtle': _with(ocean.turtle, triangles=3600),
     'seabird': seabird,
 }

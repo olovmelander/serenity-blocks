@@ -25,12 +25,13 @@
  *                            1 offshore wind, 2 heavy, 3 sparkling (1.5: half-way between two)
  *   life=0                   the sea sends no visits of its own (only what the board calls)
  *   visit=<name>&visitAge=<s>   send one of the sea's visits and show it <s> seconds later:
- *                            ridePod, troughPod, farPod, loneLeap, skitter, turtle, manta,
+ *                            ridePod, troughPod, farPod, loneLeap, turtle, manta,
  *                            whaleBlow, whaleFluke, whaleBreach, birds (visitSeed=<n>: another one)
  *   look=x,y,z[,fov]         point the lens at a place in the world (metres), with a field of view
  *   eye=x,y,z                and stand it somewhere else
  *   demo=1                   live only: play a looping gameplay script
- *   parts=sky,water,...      draw only these parts (sky, water, life, mist, rain, spray, foam)
+ *   parts=sky,water,...      draw only these parts (sky, water, life, mist, rain, whitewater,
+ *                            spray, foam)
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
  *   bloom=0|1                override the tier's bloom

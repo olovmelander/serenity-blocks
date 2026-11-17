@@ -13,6 +13,7 @@
  * droplets     the lip's standing rain              spray     pool for throws and splashes
  * mist         sheets of spindrift and spray        dolphins  the largest pod a chain can call
  * foam         puffs of white water an animal tears up where it breaks the surface
+ * whitewater   puffs of white water standing where the lip lands (roll, burst and mist)
  * life         how full the sea is: the share of each pod, school and flock that comes
  */
 const tier = (values) => Object.freeze(values);
@@ -33,6 +34,7 @@ export const QUALITY = Object.freeze({
         spray: 420,
         mist: 10,
         foam: 24,
+        whitewater: 16,
         dolphins: 3,
         life: 0.5,
     }),
@@ -51,6 +53,7 @@ export const QUALITY = Object.freeze({
         spray: 700,
         mist: 14,
         foam: 32,
+        whitewater: 22,
         dolphins: 4,
         life: 0.65,
     }),
@@ -69,6 +72,7 @@ export const QUALITY = Object.freeze({
         spray: 1300,
         mist: 20,
         foam: 48,
+        whitewater: 34,
         dolphins: 5,
         life: 0.85,
     }),
@@ -87,6 +91,7 @@ export const QUALITY = Object.freeze({
         spray: 2400,
         mist: 28,
         foam: 72,
+        whitewater: 50,
         dolphins: 6,
         life: 1,
     }),
@@ -105,6 +110,7 @@ export const QUALITY = Object.freeze({
         spray: 3000,
         mist: 34,
         foam: 84,
+        whitewater: 60,
         dolphins: 7,
         life: 1,
     }),
@@ -123,6 +129,7 @@ export const QUALITY = Object.freeze({
         spray: 3600,
         mist: 40,
         foam: 96,
+        whitewater: 70,
         dolphins: 7,
         life: 1,
     }),
