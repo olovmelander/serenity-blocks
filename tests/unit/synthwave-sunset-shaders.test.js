@@ -19,7 +19,10 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import { context } from 'three/tsl';
+import { readFileSync } from 'node:fs';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { SynthwaveWorld } from '../../src/themes/synthwave-sunset/synthwave-sunset-world.js';
+import { strollerFiguresFromGltf } from '../../src/themes/synthwave-sunset/synthwave-sunset-people.js';
 import { SynthwaveSunsetPost, POST_LOOK } from '../../src/themes/synthwave-sunset/synthwave-sunset-post.js';
 import { hasMaterialXNoise } from './helpers/materialx-noise.js';
 
@@ -220,11 +223,16 @@ describe.each(TIERS)('synthwave-sunset shaders at %s', (quality) => {
     let scene;
     const built = [];
 
-    beforeAll(() => {
+    beforeAll(async () => {
         vi.spyOn(console, 'log').mockImplementation(() => {});
         scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.3, 9000);
         world = new SynthwaveWorld({ scene, quality, random: seeded() }).build();
+        // The people come with their model (fetched in the game): parse it here so their
+        // material is gated too.
+        const bytes = readFileSync(new URL('../../src/themes/synthwave-sunset/assets/strollers.glb', import.meta.url));
+        const gltf = await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '');
+        world.people.attach(strollerFiguresFromGltf(gltf));
         world.setLayout(16 / 9, null, { immediate: true });
         world.updateCamera(camera, { time: 5, delta: 0 });
         world.update({ time: 5, delta: 0 });
@@ -262,6 +270,10 @@ describe.each(TIERS)('synthwave-sunset shaders at %s', (quality) => {
         expect(gulls.out.vertex.match(/^fn sw_gullLoop\b/gm)).toHaveLength(1);
         // Called now and a step either side (the heading and the bank), and at the roost's fixed point.
         expect(gulls.out.vertex.match(/sw_gullLoop\(/g)).toHaveLength(4);
+        // The people: skinned from their rows of the pose table, both bones of a vertex.
+        const people = built.find((b) => b.object === world.people.mesh && b.label === 'WGSL');
+        expect(people).toBeTruthy();
+        expect(people.out.vertex.match(/textureLoad\(/g)).toHaveLength(4);
     });
 
     it('reads no WGSL var where it may not have been assigned', () => {

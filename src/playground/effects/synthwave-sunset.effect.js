@@ -36,6 +36,9 @@
  *                            circuit from above the sea, eye=95,38,-45&aim=37,12,-88&fov=42
  *   follow=<i>               a long lens from the rest eye that keeps gull i in the middle of the
  *                            frame (fov=<deg>, default 4): its shape, wingbeat and light up close
+ *   person=<i>               a lens that walks beside person i on the pier (personView=dist,az,h,fov:
+ *                            metres off, degrees round from their front toward their left, eye
+ *                            height over the deck, fov; default 6,90,1.4,22): their figure and gait
  *   noPost=1                 raw scene (no bloom/grade)
  *   noMist=1 / noShafts=1    the post without its sea mist / without the sun's shafts (A/B)
  *   pointerX / pointerY      hold a pointer-parallax offset (-1..1)
@@ -219,7 +222,27 @@ export function create({
         cam.lookAt(followAt[0], followAt[1], followAt[2]);
         cam.updateMatrixWorld();
     };
+    const person = params.has('person') ? Math.max(0, Math.round(num(params, 'person', 0))) : -1;
+    const personView = [6, 90, 1.4, 22];
+    (params.get('personView') || '').split(',').forEach((v, i) => {
+        if (i < 4 && v !== '' && Number.isFinite(Number(v))) personView[i] = Number(v);
+    });
+    /** Beside person `person` where the poser last put them. */
+    const aimPerson = (cam) => {
+        const st = world.people?.life?.state?.[person];
+        if (!st || st.x === undefined) return false;
+        const [dist, az, h, fov] = personView;
+        const a = st.heading + THREE.MathUtils.degToRad(az);
+        cam.position.set(st.x + Math.sin(a) * dist, 4.5 + h, st.z + Math.cos(a) * dist);
+        cam.fov = fov;
+        cam.updateProjectionMatrix();
+        cam.up.set(0, 1, 0);
+        cam.lookAt(st.x, 4.5 + 0.95, st.z);
+        cam.updateMatrixWorld();
+        return true;
+    };
     const aimIcon = (cam) => {
+        if (person >= 0 && aimPerson(cam)) return;
         if (follow >= 0) {
             aimFollow(cam);
             return;
@@ -294,9 +317,12 @@ export function create({
         seek(time) {
             seekTo(time);
         },
-        /** The first frame waits (not for long) for the gulls' model, so a capture shows the birds. */
+        /** The first frame waits (not for long) for the gulls' and the people's models, so a capture shows them. */
         async renderAsync() {
-            await Promise.race([world.gullsReady, new Promise((resolve) => { setTimeout(resolve, 6000); })]);
+            await Promise.race([
+                Promise.all([world.gullsReady, world.peopleReady]),
+                new Promise((resolve) => { setTimeout(resolve, 6000); }),
+            ]);
             for (let i = 0; i < 2; i += 1) {
                 if (post) post.render();
                 else renderer.render(scene, camera);
