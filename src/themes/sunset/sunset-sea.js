@@ -171,9 +171,11 @@ export function createSea({
             variance.addAssign(float(seaVariance * strength * strength * 0.5).mul(float(1.0).sub(seen)));
         }
 
-        // Glitter: the facets a pixel cannot resolve do not shine evenly, they flash. Sparks a
+        // Glitter: the facets a pixel cannot resolve do not shine evenly, they twinkle. Sparks a
         // pixel or two across on a lattice of the eye's own angles (a bearing and a dip, so they
-        // are the same size on screen near and far), each flashing in its own time.
+        // are the same size on screen near and far), each slowly brightening and fading in its own
+        // time. Only the roads of the sun and the moon carry them, and sparsely: denser and
+        // quicker, they read as grain on the water.
         const look = V.negate();
         const bearing = atan(look.x, look.z.negate());
         const dip = look.y.negate().div(max(length(look.xz), 1e-3));
@@ -183,15 +185,15 @@ export function createSea({
             const cell = floor(p);
             const h = hash22(cell).toVar();
             const off = p.sub(cell.add(h.mul(0.5).add(0.25))).mul(cellPixels);
-            const beat = sin(U.time.mul(h.x.mul(3.6).add(1.7)).add(h.y.mul(6.2832))).toVar();
+            const beat = sin(U.time.mul(h.x.mul(1.6).add(0.9)).add(h.y.mul(6.2832))).toVar();
             const b2 = beat.mul(beat);
-            const flash = b2.mul(b2).mul(b2).mul(step(0.0, beat));
+            const flash = b2.mul(b2).mul(step(0.0, beat));
             return exp(dot(off, off).mul(-1.1)).mul(flash);
         };
-        const glitter = sparks(3.1, 0.0).add(sparks(5.3, 37.0)).toVar();
+        const glitter = sparks(5.0, 0.0).add(sparks(8.5, 37.0)).toVar();
 
         // Rings where lanterns were set down: a few crests running out, in the lantern's colour.
-        // By night the water they stir answers with a cold light of its own.
+        // By night the water they stir answers with a cold light of its own (a glow, not sparks).
         const seaFire = vec3(0.1, 0.75, 1.0);
         const ringLight = vec3(0.0).toVar();
         Loop({
@@ -211,14 +213,15 @@ export function createSea({
             slope.addAssign(offset.div(max(d, 0.05)).mul(clamp(dh, -0.18, 0.18)));
             const stirred = mix(b.xyz, seaFire, U.seaFire.mul(0.55));
             ringLight.addAssign(stirred.mul(env.mul(max(wave, 0.0)).mul(b.w))
-                .mul(glitter.mul(U.seaFire.mul(5.0)).add(1.0))
+                .mul(U.seaFire.mul(0.6).add(1.0))
                 .div(max(d.mul(0.4).add(1.0), 1.0)));
         });
 
-        // Waves of light (a clear): a front racing out over the whole sea from where it began,
-        // sheen and sparks in its own colour, a low swell under it. And whirls (a twist): arms of
-        // light turning round where the lanterns rose. Row b's w says which: 0 a wave, otherwise
-        // a whirl turning that way.
+        // Waves of light (a clear): a front racing out over the whole sea from where it began, a
+        // soft band of light in its own colour with a low swell under it. And whirls (a twist):
+        // arms of light turning round where the lanterns rose. Row b's w says which: 0 a wave,
+        // otherwise a whirl turning that way. (No sparks: with them every clear filled the sea
+        // with flashing grain.)
         const waveLight = vec3(0.0).toVar();
         const roused = float(0.0).toVar();
         Loop({
@@ -229,14 +232,14 @@ export function createSea({
             const age = max(U.time.sub(a.z), 0.0).toVar();
             const offset = xz.sub(a.xy).toVar();
             const d = length(offset).toVar();
-            // The front, and what it leaves glittering behind it for a moment.
+            // The front, and the faint light it leaves behind it for a moment.
             const run = min(age, WAVE_LIFE);
             const reach = exp(run.mul(1.25)).sub(1.0).mul(5.0).add(run.mul(3.0));
             const width = reach.mul(0.17).add(0.7);
             const x = d.sub(reach).div(width).toVar();
             const alive = smoothstep(0.0, 0.12, age).mul(float(1.0).sub(smoothstep(WAVE_LIFE * 0.62, WAVE_LIFE, age)));
             const front = exp(min(x.mul(x), 30.0).negate());
-            const wake = exp(max(x.negate(), 0.0).mul(-0.3)).mul(step(x, 0.0)).mul(0.34);
+            const wake = exp(max(x.negate(), 0.0).mul(-0.45)).mul(step(x, 0.0)).mul(0.12);
             const ring = front.add(wake).mul(alive);
             // The whirl: three arms winding in, turning.
             const around = atan(offset.y, offset.x);
@@ -250,9 +253,9 @@ export function createSea({
             const env = mix(ring, whirl, isWhirl).mul(a.w).toVar();
             const heave = clamp(env.mul(x).mul(-0.09), -0.14, 0.14).mul(float(1.0).sub(isWhirl));
             slope.addAssign(offset.div(max(d, 0.05)).mul(heave));
-            // (By night it is the sea's own fire: sparks, and only a breath of sheen under them.
-            // An even sheen as strong as the day's lit the dark water like a floor.)
-            waveLight.addAssign(b.xyz.mul(env.mul(glitter.mul(6.0).add(mix(float(0.6), float(0.16), U.seaFire)))));
+            // (By night it is the sea's own fire, and fainter: as strong as the day's it lit the
+            // dark water like a floor.)
+            waveLight.addAssign(b.xyz.mul(env.mul(mix(float(1.0), float(0.32), U.seaFire))));
             roused.addAssign(env);
         });
 
@@ -323,11 +326,11 @@ export function createSea({
 
         // The roads: the share of facets that mirror the sun, and the moon.
         // (A share of each road is an even sheen; the rest flashes.)
-        const roadBoost = U.glint.add(1.0).add(roused.mul(1.5));
+        const roadBoost = U.glint.add(1.0).add(roused.mul(0.5));
         const flashing = glitter.mul(TUNE.sparkle).add(1.0 - TUNE.sparkleShare);
         const sunRoad = glintLobe(slope, variance, V, U.sun).x.mul(U.sunUp).mul(roadBoost);
         water.addAssign(light.sunGlint.mul(sunRoad).mul(flashing).mul(TUNE.glint));
-        const moonRoad = glintLobe(slope, variance.mul(1.4), V, U.moon).x.mul(U.moonUp).mul(roused.add(1.0));
+        const moonRoad = glintLobe(slope, variance.mul(1.4), V, U.moon).x.mul(U.moonUp).mul(roused.mul(0.4).add(1.0));
         water.addAssign(light.moonGlint.mul(moonRoad).mul(flashing).mul(TUNE.glint * 0.4));
 
         // The lanterns: each mirrored on a streak of its own light, and a pool of it on the water.
@@ -346,7 +349,9 @@ export function createSea({
         });
         water.addAssign(lit);
         water.addAssign(ringLight.mul(0.2));
-        water.addAssign(waveLight.mul(0.38));
+        // The wave's light is caught by the water as the sky is: most where it mirrors most, so it
+        // runs over the crests and the far sea and is faint on the near water looked down into.
+        water.addAssign(waveLight.mul(fresnel.mul(3.0).add(0.45)).mul(0.38));
 
         // The air over the far sea.
         const haze = float(1.0).sub(exp(dist.div(U.hazeReach).negate())).toVar();
