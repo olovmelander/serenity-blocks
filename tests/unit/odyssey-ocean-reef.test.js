@@ -60,8 +60,13 @@ describe("the island's underwater flank", () => {
         expect(plan.tower).toBeTruthy();
         expect(plan.pinnacles.length).toBeGreaterThanOrEqual(6);
         expect(plan.boulders.length).toBeGreaterThanOrEqual(24);
-        expect(plan.corals.length).toBeGreaterThanOrEqual(150);
-        expect(plan.corals.filter((c) => c.deep).length).toBeGreaterThanOrEqual(50);
+        // Fewer and better (the lead's review): colonies of forms on outcrops, not a scatter.
+        expect(plan.corals.length).toBeGreaterThanOrEqual(90);
+        expect(plan.corals.length).toBeLessThanOrEqual(140);
+        expect(plan.corals.filter((c) => c.deep).length).toBeGreaterThanOrEqual(36);
+        expect(plan.mounds.length).toBeGreaterThanOrEqual(10);
+        const forms = new Set(plan.corals.map((c) => c.kind));
+        ['tree', 'fan', 'tubes', 'anemone', 'pen', 'dome', 'table'].forEach((k) => expect(forms.has(k), k).toBe(true));
         expect(plan.stipes.length).toBeGreaterThanOrEqual(90);
     });
 
@@ -98,12 +103,18 @@ describe("the island's underwater flank", () => {
         expect(clear(plan.tower.x, plan.tower.z) - OCEAN_REEF.tower.baseRadius).toBeGreaterThan(OCEAN_REEF.corridor);
         plan.pinnacles.forEach((p) => expect(clear(p.x, p.z) - (p.baseR * 0.8)).toBeGreaterThan(OCEAN_REEF.corridor));
         plan.boulders.forEach((b) => expect(clear(b.x, b.z) - b.r).toBeGreaterThan(OCEAN_REEF.corridor));
-        plan.corals.forEach((c) => expect(clear(c.x, c.z)).toBeGreaterThan(OCEAN_REEF.corridor));
+        // What grows on the bed is measured against the rail in space (the upper rail runs 150 u
+        // over the slope's foot): nothing of it within the corridor of any rail point.
+        plan.corals.forEach((c) => {
+            const near = Math.min(...rail.map((p) => Math.hypot(p.x - c.x, p.z - c.z, p.y - (c.y + c.size))));
+            expect(near, c.kind).toBeGreaterThan(OCEAN_REEF.corridor - 1);
+        });
         plan.stipes.forEach((st) => expect(clear(st.x, st.z)).toBeGreaterThan(OCEAN_REEF.corridor));
         // Nothing between a close-up's lens and its orb (the lens sits ~10 u toward +z of the rail).
         Object.values(CLOSE_UPS).forEach((c) => {
             const near = (x, z) => Math.hypot(x - c.pos[0], z - c.pos[2]);
-            [...plan.pinnacles.map((p) => [p.x, p.z, p.baseR]), ...plan.boulders.map((b) => [b.x, b.z, b.r])]
+            [...plan.pinnacles.map((p) => [p.x, p.z, p.baseR]), ...plan.boulders.map((b) => [b.x, b.z, b.r]),
+                ...plan.mounds.map((m) => [m.x, m.z, m.r])]
                 .forEach(([x, z, r]) => expect(near(x, z) - r).toBeGreaterThan(18));
         });
     });
@@ -184,7 +195,7 @@ describe("the island's underwater flank", () => {
         expect(low.tower).toBeTruthy();
         expect(low.pinnacles.length).toBe(plan.pinnacles.length);
         expect(low.boulders.length).toBeLessThan(plan.boulders.length * 0.7);
-        expect(low.corals.length).toBeLessThan(plan.corals.length * 0.75);
+        expect(low.corals.length).toBeLessThan(plan.corals.length * 0.85);
         expect(low.stipes.length).toBeLessThan(plan.stipes.length * 0.8);
         const none = planOceanReef({ heightAt: odysseyWorldHeight, rail: [], seaLevel: SEA });
         expect(none.tower).toBeNull();
@@ -196,11 +207,32 @@ describe("the island's underwater flank", () => {
         const kelp = buildReefKelpGeometry(plan);
         const finite = (attr) => Array.from(attr.array).every(Number.isFinite);
         expect(rock.attributes.position.count % 3).toBe(0);
-        expect(rock.attributes.position.count / 3).toBeGreaterThan(8000);
-        expect(rock.attributes.position.count / 3).toBeLessThan(24000);
+        expect(rock.attributes.position.count / 3).toBeGreaterThan(20000);
+        expect(rock.attributes.position.count / 3).toBeLessThan(70000);
         expect(rock.attributes.color.count).toBe(rock.attributes.position.count);
         expect(rock.attributes.normal.count).toBe(rock.attributes.position.count);
         expect(finite(rock.attributes.position) && finite(rock.attributes.normal)).toBe(true);
+        // Smooth-shaded: every vertex carries a unit normal of its own, and the living things say
+        // where they glow (tips, rims, ridges) and how far they may sway.
+        const life = rock.attributes.aLife;
+        expect(life.itemSize).toBe(3);
+        let alive = 0;
+        let glowing = 0;
+        let swaying = 0;
+        for (let i = 0; i < life.count; i += 1) {
+            const n = Math.hypot(rock.attributes.normal.getX(i), rock.attributes.normal.getY(i), rock.attributes.normal.getZ(i));
+            expect(Math.abs(n - 1)).toBeLessThan(1e-3);
+            expect(life.getX(i)).toBeGreaterThanOrEqual(0);
+            expect(life.getX(i)).toBeLessThanOrEqual(1);
+            if (life.getZ(i) > 0.5) alive += 1;
+            else expect(life.getX(i) + life.getY(i)).toBe(0);
+            if (life.getX(i) > 0.8) glowing += 1;
+            if (life.getY(i) > 0.5) swaying += 1;
+        }
+        expect(alive).toBeGreaterThan(life.count * 0.4);
+        expect(glowing).toBeGreaterThan(500);
+        expect(glowing).toBeLessThan(alive * 0.35);
+        expect(swaying).toBeGreaterThan(500);
         expect(kelp.attributes.aKelp.itemSize).toBe(4);
         expect(kelp.attributes.aKelp.count).toBe(kelp.attributes.position.count);
         expect(kelp.attributes.position.count / 3).toBeLessThan(16000);
