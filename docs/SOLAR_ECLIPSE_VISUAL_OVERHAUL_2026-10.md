@@ -34,7 +34,7 @@ What changed:
   sky: deep blue overhead, a saturated band with its own height (`bandHeight`), a hot rim that
   turns yellow toward the shadow's near edge and redder away from it, and a new `belt` of paler
   light lifted above where the band has faded (the old terms summed complementary hues into grey:
-  gotcha #1414). The palettes now differ in the band's character: ember (amber under violet),
+  gotcha #1416). The palettes now differ in the band's character: ember (amber under violet),
   gold, jade (a coral band under a teal sky), azure (white-gold under cobalt), violet (magenta),
   rose (crimson under plum).
 - **The weather** (`solar-eclipse-clouds.js`, `WEATHERS`/`weatherAt` in core.js): five weathers

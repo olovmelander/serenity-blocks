@@ -390,7 +390,7 @@ export default class SerenityWarpTheme extends BaseTheme {
             }),
         );
         this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
-        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+        this.registerEventListener(window, 'gameOver', () => this.endRun());
 
         const resetPointer = () => {
             this.pointer.x = 0;
@@ -429,6 +429,21 @@ export default class SerenityWarpTheme extends BaseTheme {
             if (n > best) best = n;
         });
         this.world?.onCombo(best);
+    }
+
+    /**
+     * A run is over: whatever is staged still lands (the last lock belongs to this run), the chain
+     * is let go, the session goes back to rest (the sky eases back to the first level's palette,
+     * the heat of play is gone, the glass in flight stays in flight), and THEN the gate closes to a
+     * pinhole: in that order, or the reset would wipe the closing (gotcha #1716). The world keeps
+     * it shut through the menu until it opens by itself or the next run opens it
+     * (modeStarted → onSessionStart). The next run starts at rest even when no modeStopped comes
+     * between the two (a restart from the result screen).
+     */
+    endRun() {
+        this.director?.flush();
+        this.resetSession();
+        this.world?.onGameOver?.();
     }
 
     /** A new run: back to rest, no chain in flight (the clock, and so the sky's drift, runs on). */
@@ -534,7 +549,11 @@ export default class SerenityWarpTheme extends BaseTheme {
         this.modeManager = manager;
         const relayout = () => this.scheduleLayoutReads();
         this.eventUnsubscribers.push(
-            manager.on('modeStarted', relayout),
+            manager.on('modeStarted', () => {
+                relayout();
+                // A new run opens the gate a run's end left shut.
+                this.world?.onSessionStart?.();
+            }),
             manager.on('modeActivated', relayout),
             manager.on('modeStopped', () => this.resetSession()),
         );
