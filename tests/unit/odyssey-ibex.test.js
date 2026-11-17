@@ -19,6 +19,7 @@ import * as THREE from 'three/webgpu';
 import { context } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createOdysseyCameraRig } from './helpers/odyssey-camera-rig.js';
+import { describePerchFailure } from './helpers/odyssey-perch-diag.js';
 import {
     createDeerRig, deerFootAt, deerLeapAt, deerStateAt, planFootfalls, poseDeer,
 } from '../../src/rendering/odyssey/composition/odyssey-deer-herd.js';
@@ -247,14 +248,18 @@ describe('the ibex on the rock', () => {
     });
 
     it('stands on the perch rocks: on its rock the hooves bearing weight are on the rock\'s top', () => {
-        const { rocks, topAt } = buildPerchTops(H);
+        const perch = buildPerchTops(H);
+        const { rocks, topAt } = perch;
         expect(rocks).toHaveLength(ODYSSEY_PERCH_ROCKS.length);
         let perchedFrames = 0;
         herd.forEach((animal) => {
             const perches = animal.member.spots.filter((spot) => spot[2] === 1);
             perches.forEach(([px, pz]) => {
                 // Every perch's top stands proud of the shelf where it is stood on.
-                expect(topAt(px, pz) - H(px, pz), `${animal.member.name} perch (${px}, ${pz})`).toBeGreaterThan(0.6);
+                const proud = topAt(px, pz) - H(px, pz);
+                // (A CI-only flake left this -Infinity: on failure the message says what the rocks were.)
+                const why = proud > 0.6 ? '' : describePerchFailure(perch, H, [px, pz]);
+                expect(proud, `${animal.member.name} perch (${px}, ${pz})${why}`).toBeGreaterThan(0.6);
             });
             if (!perches.length) return;
             for (let t = 0; t < animal.loop; t += 0.5) {
