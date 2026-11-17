@@ -32,6 +32,9 @@
  *   bloom=0|1                override the tier's bloom
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   reduce=1                 reduced motion
+ *   flamingo=<s>             a flight of flamingos <s> seconds into its crossing at the frame's
+ *                            `t` (every other flight held back; flamingoFlight=<k> picks which
+ *                            flight: its line, lane and way, default 0)
  *   icon=1                   the theme-icon framing: the lens turned to the sun
  *                            (iconFov=13, iconYaw and iconPitch in radians, both 0, adjust it;
  *                            iconHorizon=1 turns it level at the horizon under the sun, so the
@@ -133,6 +136,9 @@ export function create({
     world.setReducedMotion(params.get('reduce') === '1');
     if (params.get('weather')) world.pinWeather(params.get('weather'));
     if (params.has('comet')) world.cometPin = num(params, 'comet', 30);
+    if (params.has('flamingo')) {
+        world.flamingos?.pin(num(params, 'flamingoFlight', 0), num(params, 't', 0) - num(params, 'flamingo', 0));
+    }
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
 

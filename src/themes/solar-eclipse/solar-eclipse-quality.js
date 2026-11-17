@@ -16,6 +16,8 @@
  * towers      the sunlit towers beyond the shadow (the weather's)
  * deck        the altocumulus deck, dark overhead, burning past the shadow's edge
  * lenticular  the cap over the volcano
+ * flamingos   the wading flock's birds and the most a flight of flamingos holds (every tier
+ *             keeps both: one draw for the birds, one for their image in the water)
  */
 export const QUALITY = Object.freeze({
     Minimal: Object.freeze({
@@ -32,6 +34,7 @@ export const QUALITY = Object.freeze({
         towers: false,
         deck: false,
         lenticular: false,
+        flamingos: Object.freeze({ flock: 8, flight: 6 }),
     }),
     Low: Object.freeze({
         rays: 1,
@@ -47,6 +50,7 @@ export const QUALITY = Object.freeze({
         towers: true,
         deck: false,
         lenticular: true,
+        flamingos: Object.freeze({ flock: 10, flight: 7 }),
     }),
     Medium: Object.freeze({
         rays: 2,
@@ -62,6 +66,7 @@ export const QUALITY = Object.freeze({
         towers: true,
         deck: true,
         lenticular: true,
+        flamingos: Object.freeze({ flock: 14, flight: 10 }),
     }),
     High: Object.freeze({
         rays: 2,
@@ -77,6 +82,7 @@ export const QUALITY = Object.freeze({
         towers: true,
         deck: true,
         lenticular: true,
+        flamingos: Object.freeze({ flock: 18, flight: 12 }),
     }),
     Ultra: Object.freeze({
         rays: 2,
@@ -92,6 +98,7 @@ export const QUALITY = Object.freeze({
         towers: true,
         deck: true,
         lenticular: true,
+        flamingos: Object.freeze({ flock: 20, flight: 12 }),
     }),
     Extreme: Object.freeze({
         rays: 2,
@@ -107,6 +114,7 @@ export const QUALITY = Object.freeze({
         towers: true,
         deck: true,
         lenticular: true,
+        flamingos: Object.freeze({ flock: 20, flight: 12 }),
     }),
 });
 
