@@ -517,10 +517,9 @@ the rail's tubes. The curve's section table (4096 samples) is built once, on fir
   frames come from a plain curve, never `super`.
 - **A float reach is not a float reach**: `p + (target − p)` is not `target` to the bit; the
   look-ahead keeps `target` itself wherever the stretch is not touched.
-- **The closing sky's look drifts with the session** (§6's ring, not this pass): its winding has a
-  term `time × turn` sheared across the ring, so after half an hour of play the ring's arcs read
-  as fine concentric rings rather than the violet and amber halves. A/B films must set the
-  environment manager's clock (`environmentManager.time`) to the same value in both builds.
+- **The closing sky's look drifted with the session** (§6's ring; fixed in §8): A/B films of the
+  dive must still set the environment manager's clock (`environmentManager.time`) to the same
+  value in both builds; the board's `bc().time` is a different clock.
 
 ### Tests
 
@@ -532,3 +531,51 @@ one per orb, the cradle), `odyssey-fold-alive.test.js` (the shown room follows t
 fold ride touches the travel measure), `odyssey-scroll-pace.test.js` (the wheel's pace read in the
 world inside the stretch) and `odyssey-unique-themes.test.js` (orb 55 halfway between its
 neighbours in the world, no longer in progress).
+
+## §8. The same dive at any hour (2026-11-17)
+
+**The fault.** The last ring of starlight (§6) wound its image by `(closed × wind + time × turn) ×
+(1 − 0.06 x)`: the clock's turn was multiplied by the lanes' factor, so the shear across the ring
+(how much farther round the inner lanes are wound) grew with the chapter's clock for as long as
+the game was open: 0.9 rad per ring width after five minutes, 5.4 after half an hour, 10.8 after
+an hour. The violet and amber halves wound into fine concentric rings, then a pink moiré. The
+chapter's clock is the environment manager's (`environmentManager.time`), which runs from the
+Odyssey's start for the whole session.
+
+**The fix** (`odyssey-closing-sky.tsl.js`). The ring runs on its OWN clock: the chapter's taken
+modulo `clockPeriod` (1800 s) on the CPU in double precision (`closingSkyClock`, written to the
+window's `uSkyClock` each frame), and every term of it is periodic in that period. The turn is a
+rigid turn, once round in `turnPeriod` (120 s, which divides the period; 0.052 rad/s against
+0.05); the lanes' shear SWAYS ahead and back as a sine over the period, as fast at first as it
+used to grow, never past 0.86 rad per width. So a fresh session's ring is as it was (within 0.15
+rad of winding over the first minute, exactly at rest and under reduced motion), and t, t + 1 h
+and t + 10 h give the same values. `closingSkyWind` is its CPU twin.
+
+**The rest of the dive and the fold, checked:**
+
+- The abyss inside the ring stirs on the drive's travel, which wraps: at 2048 the noise stepped
+  once per wrap (2048 × 0.05 is not a whole number of the lattice's 64). The wrap is 1280 now
+  (`CH7_WARP_DRIVE.wrap`, 1280 × 0.05 = 64): seamless. The fold's own travel sums the drive's
+  steps across the wrap, as before.
+- The traced disk's turns wrapped at 1e4, which is a whole number neither of the rigid turn's
+  cycles (× 0.42) nor of the flow's (÷ 2.2): once in 36 h of lens time the gas's flow stepped. They
+  wrap at 5500 now (2310 and 2500 whole cycles; `GREAT_HOLE_DISK_MOTION`): seamless.
+- The hole's life: its knots' turns are taken to 0..1 already; the stream's head turn grew by
+  0.38 a cycle and is now taken to 0..1 before the uniform (the shader reads it only round the
+  disk).
+- The fold's clock (`odyssey-fold-clock.js`): moods are cosines, happenings are slot-bounded and
+  the quarter turns wrap at four: bounded. The fold's travel starts at `time % 512` each time the
+  eye comes in and grows only with the stay inside.
+- The places, the dust, the embers, the photon ring and the fold arcs read the clock only through
+  sines, fracts, rigid turns or a drift through the periodic lattice noise: none shears, so their
+  look does not depend on the session's age. In f32 the clock still resolves 4 ms ten hours in.
+
+**Verified.** `tests/unit/odyssey-ch7-clock-bounded.test.js`: the ring's clock and winding equal at
+t, t + 1 h, t + 2 h and t + 10 h, no step where the clock comes round, the sway bounded, a fresh
+session as it was, the window's uniform as the environment writes it; the abyss across the
+drive's wrap; the drive's phase through ten hours; the disk's wrap; the life and the fold's clock
+bounded ten hours in. In the game, the dive filmed with the clocks at 2 minutes, 2 hours and 10
+hours: the same ring (before the fix, at 2 hours, the pink moiré).
+
+While at it: the cradle's gold seams (value-noise ridges) drew rounded squares across the glow
+under some moods; they are read in a frame turned off the lattice's axes now.

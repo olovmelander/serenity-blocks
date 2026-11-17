@@ -98,6 +98,15 @@ const BAND_GAIN = 1.35;
 const INNER_ORBIT_SECONDS = GREAT_HOLE_INNER_ORBIT_SECONDS;
 const FLOW_PERIOD = 2.2;
 const RIGID_RATE = 0.42;
+/**
+ * The disk's motion: the flow's reset period, the rigid turn's rate, and `turnsWrap`, below which
+ * the disk's turns are kept (seamlessly): a whole number of the rigid turn's cycles
+ * (5500 x 0.42 = 2310) and of the flow's (5500 / 2.2 = 2500), so taking it off changes nothing
+ * drawn. (It was 1e4, which is neither: once in a day and a half the gas's flow stepped.)
+ */
+export const GREAT_HOLE_DISK_MOTION = Object.freeze({
+    flowPeriod: FLOW_PERIOD, rigidRate: RIGID_RATE, turnsWrap: 5500,
+});
 const HALF_ROOT_PI = 0.8862269;
 
 /** erf, after Winitzki (within ~2e-4). */
@@ -167,7 +176,9 @@ function tickGreatHoleLife(dt, owner) {
         LIFE.knots.array[i].set(k[0], k[1], k[2], k[3]);
     }
     const st = state.stream;
-    LIFE.stream.value.set(st.radius, st.turn, st.gain, Math.max(st.length, 1e-3));
+    // (Its turn taken to 0..1: the shader reads it only round the disk, and so it stays exact
+    // however long the session; the knots' turns already are.)
+    LIFE.stream.value.set(st.radius, st.turn - Math.floor(st.turn), st.gain, Math.max(st.length, 1e-3));
     LIFE.pitch.value = st.pitch;
     // A slow swell, and still the player's choice (ADR-0021).
     LIFE.flare.value = st.flare * flashScale();
@@ -615,7 +626,7 @@ export function* createGreatHoleLensSteps({ shadowRadius, uReveal = uniform(1), 
             }
             tickGreatHoleLife(dt, mesh);
             turns += Math.max(0, Number.isFinite(dt) ? dt : 0) / INNER_ORBIT_SECONDS;
-            if (turns > 1e4) turns -= 1e4;
+            if (turns > GREAT_HOLE_DISK_MOTION.turnsWrap) turns -= GREAT_HOLE_DISK_MOTION.turnsWrap;
             const cycle = turns / FLOW_PERIOD;
             const a = cycle - Math.floor(cycle);
             const b = (cycle + 0.5) - Math.floor(cycle + 0.5);
