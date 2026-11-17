@@ -116,9 +116,18 @@ describe('Earth Core chapter environment (creative plan ch1)', () => {
 
         const group = createEarthCoreEnvironment({ particleCount: 240 });
 
+        // ...unless the chapter drives that object's handoff itself: the manager never collects an
+        // `odysseyFadeExempt` object or its descendants (the sea vent, the lake's events).
+        const exempt = (object) => {
+            for (let node = object; node; node = node.parent) {
+                if (node.userData?.odysseyFadeExempt === true) return true;
+                if (node === group) break;
+            }
+            return false;
+        };
         const missing = [];
         group.traverse((child) => {
-            if (!child.material) return;
+            if (!child.material || exempt(child)) return;
             const materials = Array.isArray(child.material) ? child.material : [child.material];
             materials.forEach((material) => {
                 // A node that multiplies materialOpacity in is still reached through

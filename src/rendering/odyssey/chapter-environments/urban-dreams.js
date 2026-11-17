@@ -42,6 +42,23 @@ import {
 } from './shared/odyssey-neon-city-plan.js';
 import { createNeonCityUniforms, createNeonGlowTexture } from './shared/odyssey-neon-light.tsl.js';
 import { createNeonRain } from './shared/odyssey-neon-rain.tsl.js';
+import { applyNeonSkyState, createNeonSkyDome, createNeonStars } from './shared/odyssey-neon-sky.tsl.js';
+import { NEON_SUN_SINK, resolveNeonSunSink, resolveNeonWeather } from './shared/odyssey-neon-clock.js';
+import { advanceJourneyEnding, resolveJourneyEnding } from './shared/odyssey-journey-ending.js';
+import { dealFarCity } from './shared/odyssey-neon-far-plan.js';
+import { createNeonCarpet, createNeonFarTowers } from './shared/odyssey-neon-far-city.tsl.js';
+import { createNeonRooftops } from './shared/odyssey-neon-rooftops.tsl.js';
+import { createNeonTrain } from './shared/odyssey-neon-train.tsl.js';
+import { createJourneyFireworks, createSkyLanterns, journeyColours } from './shared/odyssey-neon-celebration.tsl.js';
+import {
+    createNeonHologram,
+    createNeonSearchlights,
+    createNeonSteam,
+    createNeonSunShafts,
+    planNeonHologram,
+    planNeonSearchlights,
+    planNeonVents,
+} from './shared/odyssey-neon-air-life.tsl.js';
 import {
     createNeonGlyphTexture,
     createNeonSignHalos,
@@ -63,13 +80,11 @@ import {
     urbanResolve,
 } from '../composition/odyssey-stage-frame.js';
 import {
-    createSkyGradientTSL,
     createSynthwaveSunTSL,
     createCityBlocksTSL,
     createNeonCitySpireTSL,
     createWetReflectionPlaneTSL,
     createSkylineSilhouetteTSL,
-    createHorizonHazeTSL,
 } from './urban-dreams.tsl.js';
 import { runChapterSteps } from './shared/chapter-build-steps.js';
 import { advanceJourneyDrawing, JOURNEY_CONSTELLATION } from './shared/odyssey-journey-constellation.js';
@@ -116,13 +131,40 @@ export const CH8_RETROSUN_STAGE = Object.freeze({
  */
 export const CH8_QUALITY_TIERS = Object.freeze({
     high: Object.freeze({
-        towerBanks: 6, signStride: 1, rain: 1400, traffic: 180,
+        towerBanks: 6,
+        signStride: 1,
+        rain: 1400,
+        traffic: 180,
+        skyOctaves: 3,
+        stars: 700,
+        farStride: 1,
+        lanterns: 900,
+        fireworks: Object.freeze({ shells: 56, stars: 110 }),
     }),
     medium: Object.freeze({
-        towerBanks: 6, signStride: 1, rain: 900, traffic: 140,
+        towerBanks: 6,
+        signStride: 1,
+        rain: 900,
+        traffic: 140,
+        skyOctaves: 2,
+        stars: 420,
+        farStride: 2,
+        lanterns: 520,
+        fireworks: Object.freeze({ shells: 34, stars: 72 }),
     }),
     low: Object.freeze({
-        towerBanks: 4, signStride: 2, rain: 520, traffic: 90,
+        towerBanks: 4,
+        signStride: 2,
+        rain: 520,
+        traffic: 90,
+        skyOctaves: 2,
+        stars: 220,
+        farStride: 0,
+        interiors: false,
+        rooftops: false,
+        life: false,
+        lanterns: 260,
+        fireworks: null,
     }),
 });
 
@@ -176,13 +218,10 @@ export function resolveRetrosunStage() {
     return { position, quaternion };
 }
 
-function createSkyGradient(uniforms, neon) {
-    const { mesh } = createSkyGradientTSL(uniforms.uTime, uniforms.uEnergy, {
-        uReveal: neon?.reveal,
-        uStorm: neon?.storm,
-        uClear: uniforms.uClear,
-    });
-    return mesh;
+function createSkyGradient(neon, tier) {
+    // THE SKY (2026-11-17, shared/odyssey-neon-sky.tsl.js): a vault with a hot horizon, the sun's
+    // air, a deck of cloud that closes and opens with the weather, and first light at the end.
+    return createNeonSkyDome(neon, { octaves: tier.skyOctaves ?? 3 }).mesh;
 }
 
 /**
@@ -211,20 +250,26 @@ function createSynthwaveSun(uniforms) {
     // Own reveal uniform so the sun swells/heats with the finale ignition; the chapter
     // update() mirrors the eased reveal into it alongside the spire conduit's uReveal.
     const uReveal = uniform(CH8_RETROSUN_STAGE.revealFloor);
-    const { mesh } = createSynthwaveSunTSL(uniforms.uTime, uniforms.uEnergy, { uReveal });
+    // First light (the journey's ending): the disc turns from the evening's rose to gold.
+    const uDawn = uniform(0);
+    const { mesh } = createSynthwaveSunTSL(uniforms.uTime, uniforms.uEnergy, { uReveal, uDawn });
     mesh.userData.uReveal = uReveal;
+    mesh.userData.uDawn = uDawn;
     return mesh;
 }
 
-function createCityBlocks(uniforms, tier = CH8_QUALITY_TIERS.high, neon = null) {
-    const { group } = createCityBlocksTSL(uniforms.uTime, uniforms.uEnergy, {
+function createCityBlocks(uniforms, tier = CH8_QUALITY_TIERS.high, neon = null, signs = undefined) {
+    const { group, architecture } = createCityBlocksTSL(uniforms.uTime, uniforms.uEnergy, {
         neon,
         uCityLight: uniforms.uCityLight,
         uIgniteRadius: uniforms.uIgniteRadius,
         uDim: uniforms.uDim,
         bankCount: tier.towerBanks,
+        signs,
+        interiors: tier.interiors !== false,
     });
     group.name = 'city-blocks';
+    group.userData.architecture = architecture;
     return group;
 }
 
@@ -374,7 +419,7 @@ export function* buildUrbanDreamsEnvironmentSteps(options = {}) {
     group.userData.yStart = chapterRange?.start.y ?? URBAN_DREAMS_CONFIG.yStart;
     group.userData.yEnd = chapterRange?.end.y ?? URBAN_DREAMS_CONFIG.yEnd;
 
-    const sky = createSkyGradient(uniforms, neon);
+    const sky = createSkyGradient(neon, tier);
     sky.renderOrder = -100;
 
     // PATH-ALIGNED CORRIDOR: every directional set piece (city banks, ring gates, rain,
@@ -394,6 +439,11 @@ export function* buildUrbanDreamsEnvironmentSteps(options = {}) {
     // ring wrapped the view axis. Rotated with the city, the horizon glow sits behind the
     // skyline where it silhouettes the towers.
     corridor.add(sky);
+    // The journey's stars in the deck's gaps (one instanced draw, hidden where the cloud stands).
+    const stars = createNeonStars(neon, tier.stars ?? 700, { octaves: 2 });
+    corridor.add(stars);
+    group.userData.stars = stars;
+    group.userData.ending = { seconds: 0 };
     yield;
 
     // THE JOURNEY IN THE SKY (2026-11-01, shared/odyssey-journey-constellation*.js): at the end of
@@ -408,6 +458,14 @@ export function* buildUrbanDreamsEnvironmentSteps(options = {}) {
     corridor.add(constellation.group);
     group.userData.constellation = constellation;
     group.userData.journeyDraw = { drawn: 0 };
+    // THE ENDING'S LIGHTS (shared/odyssey-neon-celebration.tsl.js): lanterns in the chapters'
+    // colours let go from the streets, fireworks over the skyline as the sun comes back up.
+    const skyLanterns = createSkyLanterns(tier.lanterns ?? 360);
+    corridor.add(skyLanterns.mesh);
+    group.userData.skyLanterns = skyLanterns;
+    const fireworks = tier.fireworks ? createJourneyFireworks(tier.fireworks) : null;
+    if (fireworks) corridor.add(fireworks.mesh);
+    group.userData.fireworks = fireworks;
     yield;
 
     // (The 420-u curtain-wall backdrop is retired from the live chapter: with the 2026-10
@@ -463,12 +521,8 @@ export function* buildUrbanDreamsEnvironmentSteps(options = {}) {
         return card.mesh;
     });
     group.userData.skyline = [skylineNear.mesh, skylineFar.mesh, ...skylineBack];
-    yield;
-    const horizonHaze = createHorizonHazeTSL(uniforms.uTime);
-    horizonHaze.mesh.position.set(...CH8_RETROSUN_STAGE.horizonHaze);
-    horizonHaze.mesh.renderOrder = -98; // after the dome, BEFORE the sun (-95)
-    corridor.add(horizonHaze.mesh);
-    group.userData.horizonHaze = horizonHaze.mesh;
+    // (The magenta horizon haze band card is retired from the live chapter, 2026-11-17: the sky
+    // itself now carries the hot horizon, all the way round and from any height.)
     yield;
 
     // SKYBRIDGES (2026-10-20, after Neon District's lit bridges over its street): three glazed
@@ -485,10 +539,38 @@ export function* buildUrbanDreamsEnvironmentSteps(options = {}) {
     group.userData.gateBridge = gateBridge;
     yield;
 
-    const cityBlocks = createCityBlocks(uniforms, tier, neon);
+    const cityBlocks = createCityBlocks(uniforms, tier, neon, neonPlan.signs);
     corridor.add(cityBlocks);
     group.userData.cityBlocks = cityBlocks;
     group.userData.cityTowers = cityBlocks.getObjectByName('city-tower-instances-tsl') ?? null;
+    const cityTiers = cityBlocks.getObjectByName('city-tower-tiers-tsl') ?? null;
+    yield;
+
+    // THE CITY BEYOND THE CITY (2026-11-17, shared/odyssey-neon-far-*.js): a carpet of street
+    // lamps out to the haze under everything, and the far districts' towers on it. The journey's
+    // end rises over the roofs: from up there the dealt city used to end in a bare edge. The
+    // towers are for the tiers that rise.
+    const carpet = createNeonCarpet(neon);
+    corridor.add(carpet);
+    const farTowers = tier.farStride > 0
+        ? createNeonFarTowers(neon, dealFarCity({ stride: tier.farStride }))
+        : null;
+    if (farTowers) corridor.add(farTowers);
+    // Opaque set dressing that goes to the front of the queue once the city is fully present
+    // (as the towers do, see update()): [mesh, order].
+    // THE ROOFTOPS (shared/odyssey-neon-rooftops.tsl.js): crowns, masts, water tanks, air
+    // handlers, beacons. Low keeps the buildings' shapes and leaves the roofs bare.
+    const rooftops = tier.rooftops === false
+        ? null
+        : createNeonRooftops(neon, cityBlocks.userData.architecture.gear);
+    if (rooftops) corridor.add(rooftops);
+    group.userData.rooftops = rooftops;
+    group.userData.occluders = [
+        [cityTiers, -149],
+        ...(rooftops?.userData.solids ?? []).map((mesh) => [mesh, -148]),
+        [farTowers, -145],
+        [carpet, -140],
+    ].filter(([mesh]) => mesh);
     yield;
 
     // Lantern strings across the boulevard below the rail (2026-10-20): rows of warm points
@@ -543,6 +625,26 @@ export function* buildUrbanDreamsEnvironmentSteps(options = {}) {
     const traffic = createNeonTraffic(neon, tier.traffic ?? 160);
     corridor.add(traffic);
     group.userData.traffic = traffic;
+    yield;
+
+    // LIFE (2026-11-17): the elevated line and its trains, steam off the vents and the roofs,
+    // searchlights on the cloud, the sun's shafts in the canyon's air, a hologram of the Earth over
+    // a roof (shared/odyssey-neon-train.tsl.js, odyssey-neon-air-life.tsl.js). Not on Low.
+    if (tier.life !== false) {
+        const train = createNeonTrain(neon);
+        corridor.add(train.group);
+        group.userData.train = train;
+        train.solids.forEach((mesh) => group.userData.occluders.push([mesh, -147]));
+        yield;
+        const air = new THREE.Group();
+        air.name = 'neon-air-life';
+        air.add(createNeonSteam(neon, planNeonVents(cityBlocks.userData.architecture.gear)));
+        air.add(createNeonSearchlights(neon, planNeonSearchlights(cityPlanTowers)));
+        air.add(createNeonSunShafts(neon));
+        air.add(createNeonHologram(neon, planNeonHologram(cityPlanTowers)));
+        corridor.add(air);
+        group.userData.airLife = air;
+    }
 
     // Ambient from the chapter profile (one source of truth with the director's blended
     // atmosphere; was a hardcoded cyan-leaning 0x101a2a/0.45 that disagreed with the
@@ -614,7 +716,13 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
     if (cityTowers) {
         const towerWeight = group.userData.chapterCoverage ?? group.userData.chapterOpacity ?? 1;
         cityTowers.renderOrder = towerWeight >= 0.999 ? -150 : 0;
+        (group.userData.occluders || []).forEach(([mesh, order]) => {
+            mesh.renderOrder = towerWeight >= 0.999 ? order : 0;
+        });
     }
+
+    // The trains, by the clock.
+    group.userData.train?.update(group.userData.weatherTime ?? time);
 
     // Rain falls in the shader (shared/odyssey-neon-rain.tsl.js): a streak's height is a
     // function of uTime and its box follows the eye through neon.camCity (set below); there is
@@ -641,6 +749,26 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
     group.userData.resolve = resolve;
     group.userData.progress = cameraProgress ?? 0;
 
+    // THE CITY'S CLOCK (shared/odyssey-neon-clock.js): showers that come and pass, the cloud that
+    // gathers before them, the wet that outlasts them. `weatherTime` lets a bench pin it.
+    const weather = resolveNeonWeather(group.userData.weatherTime ?? time);
+    group.userData.weather = weather;
+
+    // FIRST LIGHT (shared/odyssey-journey-ending.js): with every orb done and the eye at the end of
+    // the rail, the ending's clock runs: the wave from the spire, the lanterns, the dawn.
+    const journeyEnd = Number.isFinite(group.userData.journeyEnd) ? group.userData.journeyEnd : 0;
+    const chart = group.userData.journeyChart;
+    const complete = Array.isArray(chart) && chart.length > 0 && chart.every((orb) => orb.completed);
+    const endingSeconds = Number.isFinite(group.userData.endingOverride)
+        ? group.userData.endingOverride
+        : advanceJourneyEnding(group.userData.ending ?? (group.userData.ending = { seconds: 0 }), {
+            journeyEnd, complete, dt: delta,
+        });
+    const ending = resolveJourneyEnding(endingSeconds, journeyEnd);
+    group.userData.endingNow = ending;
+    // How much of the ending's wave has relit the city (it undoes the resolve's dimming).
+    const relit = ending.shown * THREE.MathUtils.smoothstep(ending.wave, 0.0, 0.35);
+
     // CITY IGNITION: the arrival city is dim (fewer lit floors); as the spire fires, a ring
     // of light expands from its base across the city (buildings inside the ring switch to
     // their ignited floor count), reaching past the camera by the end of the ignition.
@@ -649,9 +777,10 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
         uniforms.uIgniteRadius.value = easedReveal * 820;
         // RESOLVE: a third of the buildings gutter out one by one over the last tenth; the
         // spire, hero trims and the Retrosun stay lit for the held final frame.
-        uniforms.uDim.value = resolve * 0.34;
-        // The rain thins out with the resolve.
-        if (uniforms.uRainDensity) uniforms.uRainDensity.value = 1 - resolve * 0.7;
+        // ...unless the journey is done: the ending's wave brings every one of them back.
+        uniforms.uDim.value = resolve * 0.34 * (1 - relit);
+        // The shower of the moment, thinned out by the resolve.
+        if (uniforms.uRainDensity) uniforms.uRainDensity.value = weather.rain * (1 - resolve * 0.7);
     }
     if (group.userData.uReveal) {
         group.userData.uReveal.value = easedReveal;
@@ -698,7 +827,29 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
             // Reduce flashing (ADR-0021): one stroke, at the strength a frame-wide flash keeps.
             const keep = flashScale();
             const storm = resolveUrbanStorm(time, { steady: keep < 1 }) * keep;
-            neon.storm.value = storm * (local === null ? 1 : 1 - resolve);
+            // Only in the heart of a shower, and never over the journey's end.
+            neon.storm.value = storm * weather.storm * (local === null ? 1 : 1 - resolve) * (1 - journeyEnd);
+        }
+        if (neon.wet) neon.wet.value = weather.wet;
+        if (neon.endWave) neon.endWave.value = ending.waveRadius * ending.shown;
+        // THE SUN sinks toward the skyline through the chapter (its last light at the last orb)
+        // and comes back up at the journey's ending. The 7->8 carry seats chapter 7's copy on the
+        // unsunk place, and the sink starts after the hand-over.
+        const sunY = CH8_RETROSUN_STAGE.sun[1] - resolveNeonSunSink(local) + ending.sunLift;
+        if (neon.sunPos) neon.sunPos.value.set(CH8_RETROSUN_STAGE.sun[0], sunY, CH8_RETROSUN_STAGE.sun[2]);
+        if (sun) sun.position.y = sunY;
+        if (sun?.userData?.uDawn) sun.userData.uDawn.value = ending.dawn;
+        if (neon.sky) {
+            applyNeonSkyState(neon.sky, {
+                dawn: ending.dawn,
+                // The afterglow dies as the sun sinks through the chapter, and is at its lowest in
+                // the ending's night, before first light.
+                dusk: ((0.5 * resolveNeonSunSink(local)) / NEON_SUN_SINK.depth) + (0.5 * ending.dusk),
+                cover: weather.cover,
+                clear: journeyEnd,
+                storm: neon.storm?.value ?? 0,
+            });
+            neon.sky.sunDir.value.copy(neon.sunPos.value).sub(neon.camCity.value).normalize();
         }
         const seamCarry = resolveSunCarry(cameraProgress, positions);
         neon.seamReveal.value = seamCarry ? THREE.MathUtils.smoothstep(seamCarry.open, 0.15, 0.85) : 1;
@@ -713,24 +864,63 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
 
     // THE RISE: the skyline cards fade as the eye climbs over the roofs (the journey's end crane,
     // JOURNEY_END_RISE in the camera), by its height in the corridor's frame.
+    let eyeY = 14;
     if (uniforms?.uSkylineFade && camera?.getWorldPosition && group.userData.corridor) {
         const eye = group.userData.corridor.worldToLocal(camera.getWorldPosition(_skylineEye));
+        eyeY = eye.y;
         uniforms.uSkylineFade.value = 1 - THREE.MathUtils.smoothstep(eye.y, ...SKYLINE_RISE_FADE);
     }
 
+    // THE ENDING'S LIGHTS: the lanterns once they are let go (they keep rising at the rest), the
+    // fireworks during their show and only for an eye that has risen over the roofs (the shells
+    // burst over the skyline: from the street they are behind the towers). No show under reduced
+    // motion; a burst's flash goes through flashScale.
+    const { skyLanterns, fireworks } = group.userData;
+    if ((skyLanterns || fireworks) && chart && chart !== group.userData.celebrationChart) {
+        group.userData.celebrationChart = chart;
+        const colours = journeyColours(chart);
+        skyLanterns?.setColours(colours);
+        fireworks?.setColours(colours);
+    }
+    if (skyLanterns) {
+        const lu = skyLanterns.uniforms;
+        lu.clock.value = ending.lanterns;
+        lu.gain.value = ending.shown;
+        lu.time.value = time;
+        skyLanterns.mesh.visible = ending.shown > 0.002 && ending.lanterns > 0;
+    }
+    if (fireworks) {
+        const fu = fireworks.uniforms;
+        const risen = THREE.MathUtils.smoothstep(eyeY, 55, 115);
+        fu.clock.value = ending.fireworks;
+        fu.gain.value = prefersReducedMotion() ? 0 : ending.shown * risen;
+        fu.flash.value = flashScale();
+        // (Every rocket's climb lies inside the show: its first shell bursts `climb` seconds in.)
+        fireworks.mesh.visible = fu.gain.value > 0.002 && ending.fireworks >= 0;
+        // The light the shells aloft throw: a wash on the cloud, the glass, the street and the
+        // air (the sky's `burst`), and on the smoke the earlier bursts left. Through flashScale.
+        const burst = group.userData.burstLight ?? (group.userData.burstLight = [0, 0, 0]);
+        const wash = fireworks.mesh.visible ? fu.gain.value * fu.flash.value * 0.6 : 0;
+        if (wash > 0) fireworks.lightAt(ending.fireworks, burst);
+        fu.burst.value.set(burst[0] * wash, burst[1] * wash, burst[2] * wash);
+        neon?.sky?.burst.value.copy(fu.burst.value);
+    }
+
     // THE JOURNEY IN THE SKY: over the journey's last stretch (the manager's journeyEnd ramp) the
-    // smog parts, and once the eye has arrived the line draws itself through every orb's star.
-    const journeyEnd = Number.isFinite(group.userData.journeyEnd) ? group.userData.journeyEnd : 0;
+    // cloud parts, and once the eye has arrived the line draws itself through every orb's star.
     if (uniforms?.uClear) uniforms.uClear.value = journeyEnd;
     // ...and the rain, thinned by the resolve above, stops under the clearing sky.
     if (uniforms?.uRainDensity) uniforms.uRainDensity.value *= 1 - journeyEnd;
     const { constellation } = group.userData;
     if (constellation) {
-        const chart = group.userData.journeyChart;
         if (chart) constellation.setChart(chart);
-        const drawn = advanceJourneyDrawing(group.userData.journeyDraw, journeyEnd, delta, {
+        let drawn = advanceJourneyDrawing(group.userData.journeyDraw, journeyEnd, delta, {
             reducedMotion: prefersReducedMotion(),
         });
+        // A bench that pins the ending's clock pins the drawing with it.
+        if (Number.isFinite(group.userData.endingOverride)) {
+            drawn = THREE.MathUtils.clamp((group.userData.endingOverride - 1.5) / JOURNEY_CONSTELLATION.drawSeconds, 0, 1);
+        }
         const cu = constellation.uniforms;
         cu.time.value = time;
         cu.drawn.value = drawn;
@@ -743,7 +933,7 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
     // the reveal-driven sun stays the LAST THING LIT. (Was keyed to global p 0.965, i.e.
     // it dimmed the city 85 % from 14 % into the chapter — during the ignition.)
     if (uniforms?.uEnergy && local !== null) {
-        uniforms.uEnergy.value *= (1 - resolve * 0.6);
+        uniforms.uEnergy.value *= (1 - resolve * 0.6 * (1 - relit));
     }
 
     const { spire } = group.userData;

@@ -4,7 +4,8 @@
 // Mounts the shipping createBlackHoleTranscendenceEnvironment(), the real OdysseyPathRenderer
 // and the live OdysseyCameraController/Director against the current path data, so the fall
 // (transitions/odyssey-black-hole-fall.js: the hole growing until it swallows the frame, the
-// disk-plane crossing, the singularity window / warp tunnel, the exit mouth onto the Retrosun)
+// disk-plane crossing, the singularity window (the closing sky, then the fold's places:
+// `effect=ch7-fold-places` shows one place alone, through the post), the exit mouth onto the Retrosun)
 // can be scrubbed and screenshotted in isolation before it is checked in the journey. The post
 // lens / bloom are NOT in the playground (they live in the Odyssey post pipeline) — verify those
 // with the in-game chapter capture.
@@ -32,8 +33,9 @@ import { resolveChapterBlendState } from '../../rendering/odyssey/ChapterEnviron
 
 export const meta = {
     id: 'ch7-fall',
-    title: 'Ch7 The Fall (black hole + warp tunnel)',
-    description: 'Chapter 7 with the real path/camera: the hole grows, the disk plane crosses, the shadow opens onto the warp tunnel.',
+    title: 'Ch7 The Fall (black hole + the fold)',
+    description: 'Chapter 7 with the real path/camera: the hole grows, the disk plane crosses, '
+        + 'the shadow opens onto the fold.',
 };
 
 const num = (params, key, dflt) => {

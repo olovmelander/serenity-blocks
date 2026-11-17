@@ -102,6 +102,7 @@ import { computeTravelFrontier, isHeldAtFrontier } from './odyssey-travel-fronti
 import { resolveOdysseyPathHorizon } from './odyssey-path-horizon.js';
 import { resolveOdysseyPathInflowWeight } from './odyssey-path-inflow.js';
 import { plungeTravelExtraMs, resolveBlackHoleFall } from './transitions/odyssey-black-hole-fall.js';
+import { breachTravelExtraMs } from './transitions/odyssey-travel-measure.js';
 import { createFoldHypercubes } from './chapter-environments/odyssey-fold-hypercubes.js';
 import { prefersReducedMotion } from '../../themes/shared/reduced-motion.js';
 import { foldHypercubeCages } from './transitions/odyssey-fold-rooms.js';
@@ -1300,6 +1301,10 @@ export class OdysseyBoardController {
                     // Inside the board camera's 9,000 far plane, and inside the shipped
                     // r=4000 atmosphere backstop so the world's sky paints in front of it.
                     skyRadius: ONE_WORLD_SKY_RADIUS,
+                    // The weather opens where the wall clock stands (world/odyssey-weather-clock.js),
+                    // so a session does not start on the last one's weather. The playgrounds leave
+                    // it at the world's 0, where a pinned `?t=` shot repeats.
+                    weatherPhase: (Date.now() / 1000) % 7200,
                     // Bisect lever for the boot-stall investigation (see the plan's BLOCKER
                     // note): the sheet's pipeline stays out of the in-game compile when it is
                     // not mounted.
@@ -1379,6 +1384,12 @@ export class OdysseyBoardController {
                     // flat sheet back alongside or instead.
                     // (Same reads as _readWorldBuildOptions — the bake and the build agree.)
                     cloudField: !readBooleanUrlFlag('odysseyWorldNoCloudField'),
+                    // THE SEA OF CLOUDS under chapter 5's evening (world/odyssey-cloud-sea.js).
+                    // BISECT LEVER: ?odysseyNoCloudSea=1.
+                    cloudSea: !readBooleanUrlFlag('odysseyNoCloudSea'),
+                    // AUTUMN ON THE MOUNTAIN, chapter 4's palette (world/odyssey-autumn.js).
+                    // A/B LEVER: ?odysseyNoAutumn=1.
+                    autumn: !readBooleanUrlFlag('odysseyNoAutumn'),
                     // `?odysseyForestGreens=` (odyssey-forest-greens.js): the broadleaf palette.
                     forestGreens: readUrlValue('odysseyForestGreens') || '',
                     cloudFieldCount: Number.parseInt(readUrlValue('odysseyWorldCloudFieldCount'), 10) || 0,
@@ -3799,6 +3810,7 @@ export class OdysseyBoardController {
                         this.orbitEarth = createOrbitEarth({
                             haze: this.oneWorld?.hazeFor ?? null,
                             worldAir: this.oneWorld?.earthAirFor ?? null,
+                            qualityTier: this.qualityName,
                         });
                         this.scene.add(this.orbitEarth.mesh);
                     }
@@ -6050,7 +6062,8 @@ export class OdysseyBoardController {
         // A short trip through the black hole's plunge is given the time to show it (the camera
         // controller slows the trip there: CH7_PLUNGE_TRAVEL).
         const plunge = plungeTravelExtraMs(fromPosition, toPosition, this.presentationLayout?.chapterPositions);
-        return Math.round(900 + (distance * 2600) + plunge);
+        // ...and a short trip through the sea's surface the time to make the breach a moment.
+        return Math.round(900 + (distance * 2600) + plunge + breachTravelExtraMs(fromPosition, toPosition));
     }
 
     /**
