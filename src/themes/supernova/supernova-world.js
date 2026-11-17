@@ -10,11 +10,13 @@
  *
  *   lock     a stream of the piece's colour leaves the card's edge at the piece's own height and
  *            falls into the star. Where it lands the surface flashes in that colour, a ripple
- *            runs round the photosphere, a prominence rises from the spot, and an echo of the
- *            colour runs out through the nebula. A hard drop sends three and hits harder.
+ *            runs round the photosphere, a prominence rises from the spot, and the colour is
+ *            breathed into each shell of the nebula in turn (no ring is drawn for it). A hard
+ *            drop sends three, hits harder and throws a tongue of plasma up off the limb.
  *   clear    the cleared rows go into the star as streaks of light and the star answers with a
  *            shock: one front per line runs out through the nebula, every shell flares in the
  *            front's colour as it is crossed, and the ring round the star flares as it passes.
+ *            Three lines also break out along the remnant's axis: two straight beams.
  *   combo    the star heats: red-gold to white to blue-white, a faster boil, a longer corona,
  *            white cracks along its lanes; and one more bead lights on the ring for every step.
  *            A chain of eight takes it to the brink: it swells, throbs and burns blue-white, and
@@ -23,17 +25,26 @@
  *            in — then detonates: a flash, a blast wave that bends the picture, a fireball of
  *            ragged shells, a spray of ejecta in the colours it was fed, an echo across the far
  *            clouds; and what is left is a pulsar whose beams sweep the nebula while a new star
- *            kindles. Four lines too soon after the last flash re-light the fireball and charge
- *            the next one; a perfect clear that settles after its clear crowns the flash.
- *   twist   the corona winds into a pinwheel and springs back (a little, for one that clears
- *            nothing).
- *   B2B      the ring of old gas flares and spins up, and a twin of the shock follows it out.
+ *            kindles (its ripples leave it one after another in the ring's plane). Four lines too
+ *            soon after the last flash re-light the fireball and charge the next one; a perfect
+ *            clear that settles after its clear crowns the flash with long rays.
+ *   twist   the corona winds up and springs back, and a corkscrew leaves the star both ways
+ *            along its axis (a short one, for a twist that clears nothing).
+ *   B2B      the ring of old gas flares and spins up, and a wave leaves it in its own plane: an
+ *            oval that leans with the ring, where a clear's fronts are circles.
  *   cascade  each wave runs deeper, wider and faster than the last, in the next gas colour.
  *   play     how hot play runs (shared/gameplay-surge.js) bends everything slowly: the star
  *            boils and swells, the corona lengthens, the ring turns, the wind quickens and the
  *            fronts burn in colour instead of white; every answer adds to what is still lit.
- *   level    the star burns a heavier element: its colours move one palette on. Time alone
- *            also carries them on, slowly, whatever the level: about eighty seconds a palette.
+ *   level    the star burns a heavier element: its colours move one palette on, and it sheds a
+ *            layer (a bubble of filaments in the new colours joins the nebula). Time alone also
+ *            carries the colours on, slowly, whatever the level: about eighty seconds a palette.
+ *   over     the star's fire fails: it falls in with no flash and stands as a dark star in a
+ *            thin ring of bent light, then kindles again (by itself, or at once on a new run).
+ *   time     the star is restless on a cycle of its own (spots, a bright network, longer rays),
+ *            swells and sinks as a variable star and erupts every so often; the sky turns about
+ *            the pole of its band; the remnant's axis rocks; every shell the star throws off is
+ *            its own.
  *
  * Everything is a function of the world clock and event timestamps (nothing is created at event
  * time), so seek(t) plus a fixed-step replay reproduces any frame.
@@ -59,6 +70,7 @@ import {
     RING,
     ROW_FLIGHT,
     SHELL_STRIDE,
+    SKY_TURN,
     STANDING_MAX,
     STAR,
     STARFIRE,
@@ -66,10 +78,13 @@ import {
     SUPERNOVA_PALETTES,
     TAU,
     approach,
+    bakeCells3D,
     bakeNoise3D,
+    bandAnchor,
     blastRadius,
     clamp01,
     collapseScale,
+    createCells3DTexture,
     createNoise3DTexture,
     createSupernovaUniforms,
     frontPassTime,
@@ -84,7 +99,9 @@ import {
     shellPhase,
     shellRadius,
     smooth,
+    starActivity,
     starAnchors,
+    starPulse,
 } from './supernova-tsl.js';
 import { tierFor } from './supernova-quality.js';
 import { createSky } from './supernova-sky.js';
@@ -92,6 +109,7 @@ import { createNebula } from './supernova-nebula.js';
 import { createStar } from './supernova-star.js';
 import { createLoops } from './supernova-loops.js';
 import { createRing } from './supernova-ring.js';
+import { PLUME_SLOTS, PLUME_STRIDE, createAura } from './supernova-aura.js';
 import {
     createBeams, createEmbers, createSparks, createStreams,
 } from './supernova-fx.js';
@@ -147,6 +165,15 @@ const CRITICAL_FALL = 2.5;
 const NOVA_MAX = 1.9;
 /** How white a front flares the shells it crosses at rest (play turns it toward its colour). */
 const FRONT_WHITE = 0.7;
+/**
+ * Where the sky's turn starts: the bulge of the galaxy's band a little way up the band from where
+ * it crosses the picture, so it comes into view over the first minutes of a session.
+ */
+const SKY_START = -0.42;
+/** A front's skin in star radii, for a skin of 1 (see front()): a hairline, not a band. */
+const FRONT_THICKNESS = 1.3;
+/** The photosphere's granules at the star's usual size: this many periods of the cell volume a radius. */
+const GRANULES = 1.7;
 
 const PENDING_SLOTS = 40;
 const KIND_IMPACT = 1;
@@ -157,7 +184,38 @@ const FLAG_AFTERSHOCK = 1;
 const FLAG_TWIST = 2;
 const FLAG_B2B = 4;
 
-const PARTS = ['sky', 'nebula', 'beams', 'star', 'ring', 'loops', 'embers', 'streams', 'sparks'];
+const PARTS = ['sky', 'nebula', 'beams', 'aura', 'star', 'ring', 'loops', 'embers', 'streams', 'sparks'];
+/** Seconds a level's bubble (the layer the star sheds) is in the nebula's table. */
+const PUFF_LIFE = 10;
+/** An aura shape is dropped once its light has fallen this far. */
+const AURA_FLOOR = 0.004;
+/**
+ * A run that ends: seconds the star takes to fall in on itself (no flash: it goes dark), how long
+ * the dark star stands, and how long a new star takes to kindle in its place. It comes back by
+ * itself (a menu must not sit over a dead sky), at once when a new run starts.
+ */
+export const HOLE_FALL = 1.7;
+export const HOLE_HOLD = 8;
+export const HOLE_BACK = 3.6;
+/** How small the dark star is, as a share of the star's radius. */
+const HOLE_SIZE = 0.4;
+/** Seconds the remnant's axis takes to rock one way and back. */
+const AXIS_ROCK = 410;
+/** Seconds between the star's own eruptions (it skips one when it is quiet). */
+export const ERUPT_BEAT = 47;
+
+/** One shape on the aura sheet: when it was thrown, how hard, how far it runs, how long it lasts. */
+function createAuraShape(reach, life) {
+    return {
+        birth: -100, strength: 0, reach, life, phase: 0, rgb: [1, 1, 1],
+    };
+}
+
+function createPlume() {
+    return {
+        birth: -100, strength: 0, height: 2, life: 1.2, dir: [0, 1, 0], rgb: [1, 1, 1],
+    };
+}
 
 /**
  * The standing shells' colours from the inside out: a shell is thrown off in the nebula's second
@@ -261,7 +319,16 @@ function createFront() {
         skin: 0.04,
         stir: 1,
         white: FRONT_WHITE,
+        /** Not drawn: it only flares the shells it crosses (a lock's echo). */
+        ghost: false,
         rgb: [1, 1, 1],
+    };
+}
+
+/** What one standing shell's gas looks like: rolled anew for every shell the star throws off. */
+function createShellLook() {
+    return {
+        gen: -1, seed: [0.5, 0.5, 0.5], freq: 0.7, sharp: 7.5, cover: 0.46, wobble: 0.26,
     };
 }
 
@@ -319,6 +386,10 @@ export class SupernovaWorld {
         this._rot3 = new THREE.Matrix3();
         this._inv3 = new THREE.Matrix3();
         this._ringFrame = new THREE.Matrix4();
+        /** The sky's frame at rest: where the band crosses the picture, its pole, the way it runs. */
+        this._bandAt = new THREE.Vector3(0.3, 0, -0.95).normalize();
+        this._bandPole = new THREE.Vector3(-0.95, 0, -0.3).normalize();
+        this._bandAlong = new THREE.Vector3(0, 1, 0);
         this._e1 = new THREE.Vector3();
         this._e2 = new THREE.Vector3();
         this._e3 = new THREE.Vector3();
@@ -340,6 +411,19 @@ export class SupernovaWorld {
         });
         this.pending = Array.from({ length: PENDING_SLOTS }, createPending);
         this.fronts = Array.from({ length: FRONT_SLOTS }, createFront);
+        this.shellLooks = Array.from({ length: STANDING_MAX }, createShellLook);
+        /** What stands on the aura sheet (supernova-aura.js): numbers, written when an event happens. */
+        this.aura = {
+            jet: createAuraShape(8, 1.4),
+            helix: createAuraShape(7, 1.6),
+            disc: createAuraShape(9, 1.8),
+            crown: createAuraShape(9, 2.6),
+            plumes: Array.from({ length: PLUME_SLOTS }, createPlume),
+        };
+        /** A level's bubble: the layer the star sheds as it starts on a heavier element. */
+        this.puff = {
+            birth: -100, strength: 0, rgbA: [1, 1, 1], rgbB: [1, 1, 1], seed: [0.3, 0.6, 0.9],
+        };
         this.impactSlots = Array.from({ length: IMPACT_SLOTS }, createImpactSlot);
         this.beadLit = new Float32Array(RING.beads);
         /**
@@ -407,6 +491,8 @@ export class SupernovaWorld {
         this.b2bRun = 0;
         /** How near the star is to going: 0 → 1 while a chain holds it at its critical step. */
         this.critical = 0;
+        /** How restless the star is (its own cycle plus what play adds), 0..1. */
+        this.activity = starActivity(time);
         /** The chain at its critical step has already set the star off (it waits for a new chain). */
         this.chainBlown = false;
         /** The star's size as play swells it (1 at rest). */
@@ -431,6 +517,9 @@ export class SupernovaWorld {
         }
         for (let i = 0; i < this.impactSlots.length; i++) Object.assign(this.impactSlots[i], createImpactSlot());
         this.blast = { birth: -1000, strength: 0 };
+        /** When the last run ended (the star went dark), and when the new star is let kindle. */
+        this.over = { at: -1e6, until: -1e6 };
+        this.eruptBeat = Math.floor(time / ERUPT_BEAT);
         this.spaceRipple = { birth: -1000, strength: 0 };
         this.lastClear = { time: -1000, lines: 0 };
         this.pulsarPhase = 0;
@@ -446,6 +535,8 @@ export class SupernovaWorld {
         // The palette's own clock: it turns the colours through their cycle whatever the level.
         this.hueClock = time;
         this.ringTurn = time * 0.035 * motion;
+        /** How far the sky has turned about the pole of its band (radians). */
+        this.skyTurn = SKY_START + (time * TAU * motion) / SKY_TURN;
         /** How much further play has turned the ring. */
         this.ringSpin = 0;
         this.loopBeat = Math.floor(time / LOOP_BEAT);
@@ -454,6 +545,22 @@ export class SupernovaWorld {
             this.fronts[i].birth = -100;
             this.fronts[i].strength = 0;
             this.fronts[i].boost = 0;
+            this.fronts[i].ghost = false;
+        }
+        if (this.shellLooks) for (let i = 0; i < this.shellLooks.length; i++) this.shellLooks[i].gen = -1;
+        if (this.aura) {
+            for (const key of ['jet', 'helix', 'disc', 'crown']) {
+                this.aura[key].birth = -100;
+                this.aura[key].strength = 0;
+            }
+            for (let i = 0; i < this.aura.plumes.length; i++) {
+                this.aura.plumes[i].birth = -100;
+                this.aura.plumes[i].strength = 0;
+            }
+        }
+        if (this.puff) {
+            this.puff.birth = -100;
+            this.puff.strength = 0;
         }
         this.beadLit.fill(0);
         this.loops?.reset();
@@ -471,14 +578,16 @@ export class SupernovaWorld {
 
     build() {
         const noise = createNoise3DTexture(bakeNoise3D(this.seed));
-        this.textures.push(noise);
-        const u = createSupernovaUniforms({ noise });
+        const cells = createCells3DTexture(bakeCells3D(this.seed));
+        this.textures.push(noise, cells);
+        const u = createSupernovaUniforms({ noise, cells });
         this.u = u;
         const { tier } = this;
 
-        this.addPart('sky', createSky(u, { layers: tier.skyLayers, clouds: tier.skyClouds }));
+        this.addPart('sky', createSky(u, { layers: tier.skyLayers, clouds: tier.skyClouds, deep: tier.skyDeep }));
         this.addPart('nebula', createNebula(u, { detail: tier.nebulaDetail }));
         this.addPart('beams', createBeams(u));
+        this.addPart('aura', createAura(u));
         this.addPart('star', createStar(u, { detail: tier.starDetail, spikes: tier.spikes }));
         this.addPart('ring', createRing(u));
         this.loops = createLoops(u, tier.loops);
@@ -556,12 +665,16 @@ export class SupernovaWorld {
     /** A new run: the star back at rest (it keeps turning). */
     resetSession() {
         const {
-            time, spin, boil, flow, drift, hueClock, ringTurn, ringSpin, loopBeat,
+            time, spin, boil, flow, drift, hueClock, ringTurn, ringSpin, loopBeat, skyTurn, eruptBeat,
         } = this;
+        // (A run that ended keeps its dark star through the menu: see onGameOver.)
+        const { at, until } = this.over;
         this.resetState(time);
         Object.assign(this, {
-            spin, boil, flow, drift, hueClock, ringTurn, ringSpin, loopBeat,
+            spin, boil, flow, drift, hueClock, ringTurn, ringSpin, loopBeat, skyTurn, eruptBeat,
         });
+        this.over.at = at;
+        this.over.until = until;
         this.applyPalette(1);
         this.pose();
         this.seedLoops();
@@ -577,6 +690,9 @@ export class SupernovaWorld {
         if (!this.u) return;
         const height = Math.max(1, this.u.viewport.value.y);
         this.u.pixelAngle.value = (2 * Math.tan((fovForAspect(this.aspect) * DEG) / 2)) / height;
+        // The granules are sized by the star's size on screen: a small star (a phone's) has fewer,
+        // larger cells, so one is never much under seven pixels (the volume has no mips).
+        this.u.granules.value = Math.max(0.45, Math.min(GRANULES, (this.anchors.radius * height) / 42));
     }
 
     // ── The star's place and pose ───────────────────────────────────────────────
@@ -611,6 +727,44 @@ export class SupernovaWorld {
         this.heart.x = a.x;
         this.heart.y = a.y;
         if (this.u) this.u.centre.value.copy(this._centre);
+        // The galaxy's band crosses the picture where the card leaves sky: the point it passes
+        // through as a direction, the way it runs there, and the pole both are square to.
+        const band = bandAnchor(this.aspect);
+        this._bandAt.set(band.x * 2 - 1, 1 - band.y * 2, 0.5).unproject(cam).normalize();
+        this._bandAlong.set(Math.sin(band.lean), Math.cos(band.lean), 0);
+        this._bandAlong.addScaledVector(this._bandAt, -this._bandAlong.dot(this._bandAt)).normalize();
+        // (z × x: the three are a right-handed frame, so the sky's turn is a rotation.)
+        this._bandPole.copy(this._bandAlong).cross(this._bandAt).normalize();
+    }
+
+    /**
+     * Stand the sky's frame for this moment: y is the pole of the galaxy's band, and the frame has
+     * turned about it by the sky's clock, so the band's line holds still in the picture while its
+     * star clouds, its rift and its bulge slide along it.
+     */
+    poseSky() {
+        const { u } = this;
+        if (!u) return;
+        const c = Math.cos(this.skyTurn);
+        const s = Math.sin(this.skyTurn);
+        const a = this._bandAt;
+        const z = this._bandAlong;
+        const p = this._bandPole;
+        // Rows: the frame's own x, y and z as world vectors (world → sky).
+        u.skyRot.value.set(
+            a.x * c + z.x * s,
+            a.y * c + z.y * s,
+            a.z * c + z.z * s,
+            p.x,
+            p.y,
+            p.z,
+            z.x * c - a.x * s,
+            z.y * c - a.y * s,
+            z.z * c - a.z * s,
+        );
+        // The picture's right and up in that frame (its first two columns).
+        u.skyRight.value.set(a.x * c + z.x * s, p.x, z.x * c - a.x * s);
+        u.skyUp.value.set(a.y * c + z.y * s, p.y, z.y * c - a.y * s);
     }
 
     /**
@@ -632,9 +786,11 @@ export class SupernovaWorld {
         this._inv3.copy(this._rot3).transpose();
         u.starRot.value.copy(this._rot3);
         u.starInv.value.copy(this._inv3);
+        this.poseSky();
 
         const swell = Math.sin(this.boil * 0.9) * 0.008 + Math.sin(this.boil * 2.3 + 1.1) * 0.004;
-        const breathe = 1 + swell * (1 + this.heat * 2);
+        // It is a variable star: it swells quickly and sinks slowly, every PULSE_PERIOD seconds.
+        const breathe = 1 + swell * (1 + this.heat * 2) + starPulse(t) * 0.02 * calm;
         const hold = this.reducedMotion ? 0.12 : COLLAPSE_HOLD;
         // What the last flash left, swelling back; and the fall toward the next one, from
         // whatever size the star has when the fall begins.
@@ -642,24 +798,31 @@ export class SupernovaWorld {
         const toFlash = this.nova.next - t;
         const fall = toFlash > 0 && toFlash < hold ? (1 - toFlash / hold) ** 3 : 0;
         const size = kindled + (COLLAPSED_SIZE - kindled) * fall;
-        this.starR = STAR.radius * size * breathe * (1 + this.pulse * 0.045) * this.swollen;
+        this.starR = STAR.radius * size * breathe * (1 + this.pulse * 0.045) * this.swollen
+            * (1 - (1 - HOLE_SIZE) * this.hole(t));
         u.starR.value = this.starR;
 
+        // The remnant's axis (the ring's normal): toward the eye, leaned back by the ring's
+        // inclination and rolled. The ring lies square to it, and the nebula's shells take their
+        // form from it (a belt round the waist, open poles).
+        const f = this._toCam;
+        const right = this._e1.set(0, 1, 0).cross(f).normalize();
+        const up = this._e2.copy(f).cross(right).normalize();
+        // (It rocks slowly: over some minutes the whole hourglass, the rings, the belts of the
+        // shells and whatever an event throws along the axis, leans one way and then the other.)
+        const roll = -0.42 + (Math.sin(t * 0.027 + 0.6) * 0.05 + Math.sin((t * TAU) / AXIS_ROCK + 0.9) * 0.2) * calm;
+        const lean = RING.inclination + (Math.sin(t * 0.041) * 0.035 + Math.sin((t * TAU) / (AXIS_ROCK * 1.37)) * 0.06)
+            * calm;
+        const tip = this._e3.copy(up).multiplyScalar(Math.cos(roll)).addScaledVector(right, Math.sin(roll));
+        const normal = this._vec.copy(f).multiplyScalar(Math.cos(lean)).addScaledVector(tip, Math.sin(lean))
+            .normalize();
+        const major = this._vec2.copy(right).multiplyScalar(Math.cos(roll)).addScaledVector(up, -Math.sin(roll))
+            .normalize();
+        const minor = this._e3.copy(normal).cross(major).normalize();
+        this._ringFrame.makeBasis(major, minor, normal).setPosition(this._centre);
+        u.axis.value.copy(normal);
         const ring = this.parts.ring?.mesh;
         if (ring) {
-            // The ring's normal: toward the eye, leaned back by its inclination and rolled.
-            const f = this._toCam;
-            const right = this._e1.set(0, 1, 0).cross(f).normalize();
-            const up = this._e2.copy(f).cross(right).normalize();
-            const roll = -0.42 + Math.sin(t * 0.027 + 0.6) * 0.05 * calm;
-            const lean = RING.inclination + Math.sin(t * 0.041) * 0.035 * calm;
-            const tip = this._e3.copy(up).multiplyScalar(Math.cos(roll)).addScaledVector(right, Math.sin(roll));
-            const normal = this._vec.copy(f).multiplyScalar(Math.cos(lean)).addScaledVector(tip, Math.sin(lean))
-                .normalize();
-            const major = this._vec2.copy(right).multiplyScalar(Math.cos(roll)).addScaledVector(up, -Math.sin(roll))
-                .normalize();
-            const minor = this._e3.copy(normal).cross(major).normalize();
-            this._ringFrame.makeBasis(major, minor, normal).setPosition(this._centre);
             ring.matrix.copy(this._ringFrame);
             ring.matrixWorld.copy(this._ringFrame);
         }
@@ -789,6 +952,7 @@ export class SupernovaWorld {
     /** Send a front out through the nebula from the star. */
     front({
         birth, strength, rgb, reach = 21, tau = 1.15, fade = 1.5, skin = 0.04, stir = 1, white = FRONT_WHITE,
+        ghost = false,
     }) {
         // The faintest front gives way (one not yet born counts as bright: it is about to be).
         let f = this.fronts[0];
@@ -810,6 +974,7 @@ export class SupernovaWorld {
         f.birth = birth;
         f.strength = strength;
         f.boost = 0;
+        f.ghost = ghost;
         f.white = white;
         f.reach = reach;
         f.tau = tau;
@@ -846,6 +1011,152 @@ export class SupernovaWorld {
     /** How white a front of an event flares the shells: less the hotter play runs. */
     whiteness() {
         return FRONT_WHITE * (1 - 0.65 * Math.max(this.play.level, this.critical));
+    }
+
+    // ── The aura sheet: an event's own shape round the star ──────────────────────
+
+    /** How much light a shape on the aura sheet still has at `t`. */
+    auraGain(shape, t) {
+        const age = t - shape.birth;
+        if (age < 0 || shape.strength <= 0) return 0;
+        const gain = shape.strength * smooth(0, 0.08, age) * Math.exp(-age / shape.life);
+        return gain < AURA_FLOOR ? 0 : gain;
+    }
+
+    /**
+     * Throw one of the sheet's single shapes. A stronger one takes the place of what is left of
+     * the last; a weaker one only adds to it (the answer in flight is never cut short).
+     */
+    throwShape(shape, time, strength, rgb, reach, life) {
+        const left = this.auraGain(shape, Math.max(time, this.time));
+        if (left > strength) {
+            shape.strength = Math.min(2.4, shape.strength + strength * 0.35);
+            return;
+        }
+        shape.birth = time;
+        shape.strength = strength;
+        shape.reach = reach;
+        shape.life = life;
+        shape.phase = this.random() * TAU;
+        if (rgb) {
+            shape.rgb[0] = rgb[0];
+            shape.rgb[1] = rgb[1];
+            shape.rgb[2] = rgb[2];
+        }
+    }
+
+    /** Two beams along the remnant's axis (three lines, an aftershock, the flash). */
+    throwJets(time, strength, rgb, reach = 8, life = 1.4) {
+        this.throwShape(this.aura.jet, time, strength, rgb, reach, life);
+    }
+
+    /** A corkscrew round the axis (a twist). */
+    windHelix(time, strength, reach = 7, life = 1.6) {
+        this.throwShape(this.aura.helix, time, strength, this._palette.rim, reach, life);
+    }
+
+    /** A wave in the ring's own plane (a back-to-back). */
+    discWave(time, strength) {
+        this.throwShape(this.aura.disc, time, strength, this._palette.rim, 10, 1.9);
+    }
+
+    /** Long rays in bundles, in the element's own colours (a perfect clear's crown). */
+    crownRays(time, strength) {
+        this.throwShape(this.aura.crown, time, strength, null, 10, 2.8);
+    }
+
+    /**
+     * A tongue of plasma thrown up off the star where `dir` (a world unit vector from its
+     * centre) leaves it. Takes the slot with the least light left.
+     */
+    throwPlume({
+        dir, rgb, time, height = 2, life = 1.2, strength = 1,
+    }) {
+        const { plumes } = this.aura;
+        let slot = plumes[0];
+        let least = Infinity;
+        for (let i = 0; i < plumes.length; i++) {
+            const left = this.auraGain(plumes[i], Math.max(time, this.time));
+            if (left < least) {
+                least = left;
+                slot = plumes[i];
+            }
+        }
+        if (least > strength) return;
+        slot.birth = time;
+        slot.strength = strength;
+        slot.height = height;
+        slot.life = life;
+        slot.dir[0] = dir.x;
+        slot.dir[1] = dir.y;
+        slot.dir[2] = dir.z;
+        slot.rgb[0] = rgb[0];
+        slot.rgb[1] = rgb[1];
+        slot.rgb[2] = rgb[2];
+    }
+
+    /** Write what stands on the aura sheet for this frame; the sheet has no size when nothing does. */
+    writeAura(t, fs) {
+        const { u, aura } = this;
+        const m = this._camera ? this._camera.matrixWorld.elements : null;
+        // The picture's right and up (the sheet's own axes).
+        const rx = m ? m[0] : 1;
+        const ry = m ? m[1] : 0;
+        const rz = m ? m[2] : 0;
+        const ux = m ? m[4] : 0;
+        const uy = m ? m[5] : 1;
+        const uz = m ? m[6] : 0;
+        // The axis's shadow on the sheet, and how much of the axis lies in it.
+        const axis = u.axis.value;
+        let ax = axis.x * rx + axis.y * ry + axis.z * rz;
+        let ay = axis.x * ux + axis.y * uy + axis.z * uz;
+        let shadow = Math.hypot(ax, ay);
+        if (shadow < 0.05) {
+            ax = 0;
+            ay = 1;
+            shadow = 0.05;
+        } else {
+            ax /= shadow;
+            ay /= shadow;
+        }
+        u.auraAxis.value.set(ax, ay, shadow, 0);
+        // What runs along the axis is seen foreshortened by as much as the axis leans to the eye.
+        const squash = 0.5 + 0.5 * shadow;
+        const jet = this.auraGain(aura.jet, t);
+        u.jet.value.set(aura.jet.birth, jet, aura.jet.reach * squash, 0);
+        u.jetCol.value.set(aura.jet.rgb[0], aura.jet.rgb[1], aura.jet.rgb[2]);
+        const helix = this.auraGain(aura.helix, t);
+        u.helix.value.set(aura.helix.birth, helix, aura.helix.reach * squash, aura.helix.phase);
+        u.helixCol.value.set(aura.helix.rgb[0], aura.helix.rgb[1], aura.helix.rgb[2]);
+        const disc = this.auraGain(aura.disc, t);
+        u.disc.value.set(aura.disc.birth, disc, aura.disc.reach, 0.16);
+        u.discCol.value.set(aura.disc.rgb[0], aura.disc.rgb[1], aura.disc.rgb[2]);
+        // The crown is a wide light that comes up fast: Reduce flashing holds most of it back.
+        const crown = this.auraGain(aura.crown, t) * (0.3 + 0.7 * fs);
+        u.crown.value.set(aura.crown.birth, crown, aura.crown.reach, 0.13 + aura.crown.phase * 0.1);
+        let n = 0;
+        let plumed = 0;
+        const rows = u.plumeRows;
+        for (let i = 0; i < aura.plumes.length; i++) {
+            const pl = aura.plumes[i];
+            const gain = this.auraGain(pl, t);
+            if (gain <= 0) continue;
+            let dx = pl.dir[0] * rx + pl.dir[1] * ry + pl.dir[2] * rz;
+            let dy = pl.dir[0] * ux + pl.dir[1] * uy + pl.dir[2] * uz;
+            const flat = Math.max(0.2, Math.hypot(dx, dy));
+            dx /= flat;
+            dy /= flat;
+            const len = Math.hypot(dx, dy) || 1;
+            rows[n * PLUME_STRIDE].set(dx / len, dy / len, pl.birth, gain);
+            const height = pl.height * (0.45 + 0.55 * Math.min(1, flat));
+            rows[n * PLUME_STRIDE + 1].set(pl.rgb[0], pl.rgb[1], pl.rgb[2], height);
+            n += 1;
+            plumed += gain;
+        }
+        u.plumeCount.value = n;
+        const wisps = u.pulsar.value.x * 0.55;
+        u.wisps.value = wisps;
+        u.auraLive.value = jet + helix + disc + crown + plumed + wisps > AURA_FLOOR ? 1 : 0;
     }
 
     // ── The photosphere's impact slots ──────────────────────────────────────────
@@ -972,6 +1283,10 @@ export class SupernovaWorld {
         const now = Math.floor(this.time / LOOP_BEAT);
         for (let i = Math.max(0, now - 3); i <= now; i++) this.ambientLoop(i, i * LOOP_BEAT);
         this.loopBeat = now;
+        // And the eruption that would be in the air.
+        const beat = Math.floor(this.time / ERUPT_BEAT);
+        this.eruptBeat = beat;
+        if (this.time - beat * ERUPT_BEAT < 3.5) this.erupt(beat, beat * ERUPT_BEAT);
     }
 
     // ── Gameplay ────────────────────────────────────────────────────────────────
@@ -1148,8 +1463,9 @@ export class SupernovaWorld {
                 from: 0.03,
             });
         }
-        // Its colour runs out through the nebula as an echo (stronger, and in more of its own
-        // colour, the hotter play runs).
+        // Its colour runs out through the nebula as an echo: no ring is drawn for it (a piece a
+        // second would keep the frame full of rings, and a clear's would mean nothing), but each
+        // shell it crosses takes a breath of the colour (more of it the hotter play runs).
         this.front({
             birth: ev.time,
             strength: 0.5 * ev.amount * (1 + level * 0.5),
@@ -1160,11 +1476,24 @@ export class SupernovaWorld {
             skin: 0.045,
             stir: 0.55,
             white: this.whiteness(),
+            ghost: true,
         });
         const { env } = this;
         env.patter.hit(0.22 * ev.amount, ev.time);
         env.flash.hit(0.03 * ev.amount, ev.time);
-        if (ev.amount > 1.2) env.kick.hit(0.4, ev.time);
+        if (ev.amount > 1.2) {
+            env.kick.hit(0.4, ev.time);
+            // A hard drop hits hard enough to throw a tongue of plasma straight up off the star.
+            this.throwPlume({
+                dir: normal,
+                rgb: ev.rgb,
+                time: ev.time,
+                // (Short: a drop a second must not keep the star wreathed in flame.)
+                height: 1.8 + level * 0.7,
+                life: 0.5,
+                strength: 1.25,
+            });
+        }
         this.counts.impacts += 1;
     }
 
@@ -1220,6 +1549,13 @@ export class SupernovaWorld {
         env.storm.hit(Math.min(1.3, 0.3 + 0.16 * n) * deeper, ev.time);
         if (ev.flag & FLAG_TWIST) this.windCorona(ev.time);
         if (ev.flag & FLAG_B2B) this.backToBack(ev.time);
+        // Three lines (and the four a young star cannot go off for) break out along its axis too:
+        // two beams, the further the deeper the cascade runs.
+        if (n >= 3) {
+            const refused = ev.flag & FLAG_AFTERSHOCK ? 1 : 0;
+            const power = 0.8 + depth * 0.06 + refused * 0.45;
+            this.throwJets(ev.time, power, rgb, 6.5 + n + depth * 0.6, 1.25 + refused * 0.5);
+        }
         if (this.sparks) {
             const share = this.sparks.count / 800;
             this.sparks.emit({
@@ -1276,9 +1612,14 @@ export class SupernovaWorld {
         env.rekindle.hit(0.6 + 0.2 * nova.charge, time);
     }
 
-    /** A twist: the corona winds up and springs back, and a thin front leaves in the rim's colour. */
+    /**
+     * A twist: the corona winds up and springs back, and a corkscrew of the rim's colour leaves
+     * the star both ways along its axis (a front no ring is drawn for still breathes the colour
+     * into each shell it crosses).
+     */
     windCorona(time) {
         this.twistVelocity += this.reducedMotion ? 1 : 4.2;
+        this.windHelix(time, 1.1, 7.5, 1.7);
         this.front({
             birth: time,
             strength: 0.7,
@@ -1289,17 +1630,20 @@ export class SupernovaWorld {
             skin: 0.03,
             stir: 0.6,
             white: 0.4,
+            ghost: true,
         });
         this.env.storm.hit(0.8, time);
     }
 
     /**
-     * A back-to-back: the ring of old gas flares and spins up, and a twin of the shock follows
-     * it out in the rim's colour, the second of a pair. Every one more in the run burns brighter.
+     * A back-to-back: the ring of old gas flares and spins up, and a wave leaves it IN ITS OWN
+     * PLANE, in the rim's colour: an oval that leans with the ring, where a clear's fronts are
+     * circles. Every one more in the run burns brighter.
      */
     backToBack(time) {
         const run = Math.min(4, Math.max(1, this.b2bRun));
         this.env.b2b.hit(0.5 + 0.2 * run, time);
+        this.discWave(time + FRONT_GAP * 0.5, 0.8 + 0.18 * run);
         this.front({
             birth: time + FRONT_GAP * 0.5,
             strength: 0.7 + 0.15 * run,
@@ -1310,6 +1654,7 @@ export class SupernovaWorld {
             skin: 0.035,
             stir: 0.8,
             white: 0.15,
+            ghost: true,
         });
     }
 
@@ -1319,6 +1664,9 @@ export class SupernovaWorld {
      */
     crown(time) {
         const p = this._palette;
+        // Long rays in the element's own colours stand round the star, and each of those
+        // colours is breathed into the shells in turn (no ring is drawn for them).
+        this.crownRays(time, 1.15);
         const hues = [p.rim, p.gasB, p.gasC];
         for (let k = 0; k < hues.length; k++) {
             this.front({
@@ -1330,6 +1678,7 @@ export class SupernovaWorld {
                 fade: 1.7,
                 skin: 0.04,
                 white: 0.15,
+                ghost: true,
             });
         }
         const { env } = this;
@@ -1438,6 +1787,14 @@ export class SupernovaWorld {
             nova.b2b = false;
             this.backToBack(t0 + 0.06);
         }
+        // The flash breaks out along the axis first: two long beams, in the rim's own fire.
+        this.throwJets(
+            t0 + 0.04,
+            1.5 * Math.min(1.5, strength),
+            [0, 1, 2].map((c) => p.rim[c] * 0.6 + STARFIRE[c] * 0.4),
+            15,
+            2.4,
+        );
         u.echo.value.set(t0, strength, 0.85, 0.045);
         u.echoCol.value.set(
             (STARFIRE[0] + p.gasC[0]) * 0.5,
@@ -1466,10 +1823,11 @@ export class SupernovaWorld {
                 for (let i = 0; i < IMPACT_SLOTS; i++) {
                     const share = this.impactLeft(i, t0) / left;
                     if (share < 0.02) continue;
+                    // (Tempered by the star's own fire: seven raw piece colours read as confetti.)
                     const c = u.impactC[i].value;
-                    this._from[0] = c.x;
-                    this._from[1] = c.y;
-                    this._from[2] = c.z;
+                    this._from[0] = c.x * 0.6 + STARFIRE[0] * 0.4;
+                    this._from[1] = c.y * 0.6 + STARFIRE[1] * 0.4;
+                    this._from[2] = c.z * 0.6 + STARFIRE[2] * 0.4;
                     burst(pool * 0.3 * share, this._from, t0 + 0.02, [3, 20], [1.4, 3.2], 0.055, 0.15);
                 }
             } else burst(pool * 0.3, p.gasB, t0 + 0.02, [3, 20], [1.4, 3.2], 0.055, 0.15);
@@ -1617,6 +1975,8 @@ export class SupernovaWorld {
         if (!this.u) return;
         const t = this.time;
         this.twistVelocity += this.reducedMotion ? 0.5 : 2.2;
+        // A short corkscrew: a turn or two, gone in a moment.
+        this.windHelix(t, 0.55, 3.2, 0.9);
         this.front({
             birth: t,
             strength: 0.4,
@@ -1627,9 +1987,152 @@ export class SupernovaWorld {
             skin: 0.03,
             stir: 0.5,
             white: 0.3,
+            ghost: true,
         });
         this.env.storm.hit(0.25, t);
         this.pressure.spin(t);
+    }
+
+    /**
+     * One of the star's own eruptions, number `index` of an endless seeded series: a tongue of
+     * plasma leaves the limb, a tall arch stands where it tore away, and sparks follow it out.
+     * A quiet star skips its turn.
+     */
+    erupt(index, time) {
+        if (!this.u || starActivity(time) < 0.3) return false;
+        const rand = mulberry32(0xe7a9 + index * 2246822519);
+        const site = this.visibleSite(rand() * TAU, rand() * 0.12, this._vec);
+        const p = this._palette;
+        const pick = rand();
+        const rgb = [0, 1, 2].map((c) => p.starHot[c] * (0.55 + pick * 0.25) + p.rim[c] * (0.45 - pick * 0.25));
+        const height = 2.6 + rand() * 1.7;
+        this.throwPlume({
+            dir: site, rgb, time, height, life: 2.3 + rand() * 0.8, strength: 0.85,
+        });
+        if (this.loops) {
+            const mid = this.toStarFrame(site);
+            const tangent = this.toStarFrame(this._vec2.copy(this._toCam).cross(site).normalize());
+            this.loops.spawn({
+                mid,
+                tangent,
+                span: 0.3 + rand() * 0.2,
+                height: 1.1 + rand() * 0.7,
+                lean: (rand() - 0.5) * 0.7,
+                width: 0.1,
+                rgb,
+                time,
+                life: LOOP_LIFE * 1.5,
+                seed: rand(),
+            });
+        }
+        if (this.sparks && !this.reducedMotion) {
+            this.sparks.emit({
+                x: this._centre.x + site.x * this.starR,
+                y: this._centre.y + site.y * this.starR,
+                z: this._centre.z + site.z * this.starR,
+                n: 34 * (this.sparks.count / 800),
+                rgb,
+                time,
+                axis: [site.x, site.y, site.z],
+                spread: 0.35,
+                out: [1.5, 6.5],
+                life: [0.9, 2.2],
+                size: 0.028,
+                stagger: 0.5,
+                from: 0.04,
+            });
+        }
+        this.env.patter.hit(0.3, time);
+        return true;
+    }
+
+    /** How far the star has gone dark after a run that ended (0 = burning, 1 = the dark star). */
+    hole(t = this.time) {
+        if (this.over.at < -1e5) return 0;
+        return smooth(0, HOLE_FALL, t - this.over.at) * (1 - smooth(0, HOLE_BACK, t - this.over.until));
+    }
+
+    /**
+     * The run is over: the star's fire fails. It falls in on itself with no flash and stands as a
+     * dark star (a black disc inside a thin ring of bent light), the ring of old gas spins up
+     * round it, its wind turns and falls back, and what it held on its limb is torn away. It
+     * kindles again by itself after a few seconds; at once when a new run starts.
+     */
+    onGameOver() {
+        if (!this.u) return;
+        const t = this.time;
+        if (t < this.over.until) return;
+        this.over.at = t;
+        this.over.until = t + HOLE_FALL + HOLE_HOLD;
+        this.loops?.retire(t, HOLE_FALL * 0.7);
+        // A star at the brink does not go off for a run that ends: its fire fails instead, and
+        // the chain it held lets go of its beads.
+        this.chainBlown = true;
+        if (this.nova.next !== Infinity) {
+            this.nova.next = Infinity;
+            for (let i = 0; i < this.pending.length; i++) {
+                if (this.pending[i].kind === KIND_DETONATE) this.pending[i].live = false;
+            }
+        }
+        if (this.combo >= 2) this.onCombo(0);
+        // Its last breath: one slow, deep-red front.
+        const p = this._palette;
+        this.front({
+            birth: t + HOLE_FALL * 0.85,
+            strength: 0.8,
+            rgb: [p.starDeep[0] * 0.9 + 0.1, p.starDeep[1] * 0.6, p.starDeep[2] * 0.6],
+            reach: 17,
+            tau: 2.2,
+            fade: 2.4,
+            skin: 0.06,
+            stir: 0.7,
+            white: 0.1,
+        });
+        this.env.dip.hit(0.35, t);
+    }
+
+    /** A new run: whatever is left of the dark star gives way to the new one at once. */
+    onSessionStart() {
+        if (this.time < this.over.until + HOLE_BACK) this.over.until = Math.min(this.over.until, this.time);
+    }
+
+    /** Where bead `i` of the ring is in the world now. */
+    beadPoint(i, out = this._vec) {
+        const turn = this.u ? this.u.ring.value.z : 0;
+        const angle = ((i + 0.5) / RING.beads) * TAU - turn;
+        return out.set(Math.cos(angle) * RING.radius, Math.sin(angle) * RING.radius, 0).applyMatrix4(this._ringFrame);
+    }
+
+    /**
+     * The chain broke: every bead still lit lets go of the ring and falls into the star along a
+     * curl of its own, the last lit first, a moment apart.
+     */
+    beadsFall() {
+        if (!this.streams || !this.u) return;
+        let sent = 0;
+        for (let rank = RING.beads - 1; rank >= 0 && sent < 8; rank--) {
+            const i = BEAD_RANK.indexOf(rank);
+            if (i < 0 || this.beadLit[i] < 0.3) continue;
+            const at = this.beadPoint(i, this._vec);
+            const from = [at.x, at.y, at.z];
+            const out = this._vec2.copy(at).sub(this._centre).normalize();
+            const dir = this.toStarFrame(out);
+            // It curls in round the star the way the ring turns.
+            const curl = this._e3.copy(this.u.axis.value).cross(out).multiplyScalar(RING.radius * 0.55);
+            const row = this.u.beadRows[i];
+            this.streams.launch({
+                from,
+                dir,
+                bow: [curl.x, curl.y, curl.z],
+                rgb: [row.x, row.y, row.z],
+                time: this.time + sent * 0.06,
+                flight: this.reducedMotion ? 0.2 : 0.62,
+                size: 0.07,
+                kind: 1,
+            });
+            this.counts.streams += 1;
+            sent += 1;
+        }
     }
 
     /**
@@ -1667,8 +2170,10 @@ export class SupernovaWorld {
         if (n < CRITICAL_COMBO && this.combo >= CRITICAL_COMBO && !this.chainBlown) {
             this.letGo();
         } else if (n === 0 && this.combo >= 2) {
-            // The chain broke: the star lets its breath go as one soft front.
+            // The chain broke: the star lets its breath go, and the beads the chain lit let go of
+            // the ring and fall back into it, the last lit first.
             this.env.dip.hit(0.25, this.time);
+            this.beadsFall();
             this.front({
                 birth: this.time,
                 strength: 0.3 + Math.min(0.5, this.combo * 0.06),
@@ -1678,6 +2183,7 @@ export class SupernovaWorld {
                 fade: 1.8,
                 skin: 0.1,
                 stir: 0.4,
+                ghost: true,
             });
         }
         if (n >= 2 && n > this.combo) {
@@ -1725,6 +2231,16 @@ export class SupernovaWorld {
             env.storm.hit(0.75, this.time);
             env.flash.hit(0.14, this.time);
             env.pulse.hit(0.5, this.time);
+            // The star sheds a layer as it starts on the heavier element: a bubble of filaments
+            // in the new element's colours swells out of it and takes its place in the nebula.
+            const { puff } = this;
+            puff.birth = this.time;
+            puff.strength = 1;
+            for (let c = 0; c < 3; c++) {
+                puff.rgbA[c] = next.gasB[c];
+                puff.rgbB[c] = next.rim[c];
+                puff.seed[c] = this.random();
+            }
             this.front({
                 birth: this.time,
                 strength: 0.9,
@@ -1734,6 +2250,7 @@ export class SupernovaWorld {
                 fade: 1.6,
                 skin: 0.045,
                 white: 0.5,
+                ghost: true,
             });
             this.pressure.levelUp(this.time);
         }
@@ -1767,6 +2284,35 @@ export class SupernovaWorld {
 
     // ── The nebula's shell table ────────────────────────────────────────────────
 
+    /**
+     * Roll the look of shell `k`'s generation `gen` (a pure function of the two and the seed, so a
+     * seek lands on the same nebula): the first generation keeps the looks the theme was drawn
+     * with, and every shell born after it is its own.
+     */
+    rollShell(look, gen, k) {
+        look.gen = gen;
+        if (gen <= 0) {
+            const seed = SHELL_SEEDS[k];
+            look.seed[0] = seed[0];
+            look.seed[1] = seed[1];
+            look.seed[2] = seed[2];
+            look.freq = 0.62 + k * 0.05;
+            look.sharp = 7.5;
+            look.cover = 0.44 + (k % 2) * 0.06;
+            look.wobble = 0.26;
+            return;
+        }
+        const rand = mulberry32((this.seed ^ Math.imul(gen, 0x9e3779b1) ^ Math.imul(k + 1, 0x85ebca6b)) >>> 0);
+        look.seed[0] = rand();
+        look.seed[1] = rand();
+        look.seed[2] = rand();
+        // Fine and wispy, or broad and heavy; sharp threads or soft ones; thin gas or thick.
+        look.freq = 0.54 + rand() * 0.32;
+        look.sharp = 6 + rand() * 3.4;
+        look.cover = 0.4 + rand() * 0.12;
+        look.wobble = 0.2 + rand() * 0.16;
+    }
+
     /** Write every live shell into the table the nebula's shader walks. Returns the row count. */
     writeShells(t) {
         const { u } = this;
@@ -1797,6 +2343,12 @@ export class SupernovaWorld {
         for (let k = 0; k < count; k++) {
             const phase = shellPhase(k, count, this.drift);
             const radius = shellRadius(phase);
+            // Every shell the star throws off is its own: when one has drifted out of sight and
+            // the next is born in its place, its gas is rolled anew (where it reads its pattern,
+            // how fine, how sharp, how much of it there is).
+            const look = this.shellLooks[k];
+            const gen = Math.floor(k / Math.max(1, count) + this.drift / NEBULA.cycle);
+            if (look.gen !== gen) this.rollShell(look, gen, k);
             // Its colour by its place in its life; its second, the next colour out (the last
             // shells take the one before theirs).
             const place = phase * (SHELL_ORDER.length - 1) * 1.15;
@@ -1829,12 +2381,12 @@ export class SupernovaWorld {
             const flare = Math.min(1.5, energy);
             const norm = 1 / (1 + energy * 0.8);
             const gain = shellGain(phase) * 1.5 * lift * (1 + flare * flaring);
-            const seed = SHELL_SEEDS[k];
+            const { seed } = look;
             put(
-                [radius, 0.3 + phase * 0.08, 0.62 + k * 0.05, 7.5],
+                [radius, 0.3 + phase * 0.08, look.freq, look.sharp],
                 [colA[0] * norm, colA[1] * norm, colA[2] * norm, gain],
-                [colB[0] * norm, colB[1] * norm, colB[2] * norm, 0.44 + (k % 2) * 0.06],
-                [0.26, k & 1, (k >> 1) & 1, 0],
+                [colB[0] * norm, colB[1] * norm, colB[2] * norm, look.cover],
+                [look.wobble, k & 1, (k >> 1) & 1, 0],
                 [seed[0], seed[1], seed[2], 0.6],
             );
         }
@@ -1847,14 +2399,16 @@ export class SupernovaWorld {
             const age = t - f.birth;
             const radius = frontRadius(age, f.reach, f.tau);
             // The front thins as it grows; it is brightest as it leaves.
-            const gain = light * (1.1 + 2.4 * Math.exp(-age / 0.3))
+            const gain = light * (1.25 + 2.4 * Math.exp(-age / 0.3))
                 * (1 - smooth(NEBULA.outer * 0.9, NEBULA.outer * 1.25, radius));
-            if (gain < FRONT_FLOOR) continue;
+            if (gain < FRONT_FLOOR || f.ghost) continue;
             ring += (f.strength + f.boost) * Math.max(0, 1 - Math.abs((radius - RING.radius) / 0.8)) ** 2;
             // Its inner face paler than its edge: as pale as the front is white.
             const pale = 0.4 * Math.min(1, f.white / FRONT_WHITE);
             put(
-                [radius, f.skin, 0.7, 2.2],
+                // A shock is thin: its skin is a length of its own (star radii), a little
+                // thicker the further it has run, never a share of its radius.
+                [radius, f.skin * FRONT_THICKNESS * (1 + radius * 0.07), 0.7, 2.2],
                 [f.rgb[0], f.rgb[1], f.rgb[2], gain],
                 [f.rgb[0] * (1 - pale) + pale, f.rgb[1] * (1 - pale) + pale, f.rgb[2] * (1 - pale) + pale, 0.2],
                 [0.07, i & 1, (i >> 1) & 1, 1],
@@ -1892,6 +2446,22 @@ export class SupernovaWorld {
                     [seed[0], seed[1], seed[2], 0.6 * Math.exp(-blastAge / 5)],
                 );
             }
+        }
+        // ── A level's bubble: the layer the star sheds as it starts on a heavier element ──
+        const puffAge = t - this.puff.birth;
+        if (puffAge >= 0 && puffAge < PUFF_LIFE && this.puff.strength > 0) {
+            // It leaves fast and comes to rest among the standing shells, thinning as it swells.
+            const radius = 1.3 + 6.4 * (1 - Math.exp(-puffAge / 3)) + puffAge * 0.14;
+            const gain = (this.puff.strength * 3.2 * smooth(0, 0.4, puffAge)
+                * (1 - smooth(PUFF_LIFE * 0.45, PUFF_LIFE, puffAge))) / (1 + (radius / 5) ** 2);
+            const { rgbA, rgbB, seed } = this.puff;
+            put(
+                [radius, 0.42, 0.95, 6.2],
+                [rgbA[0], rgbA[1], rgbA[2], gain],
+                [rgbB[0], rgbB[1], rgbB[2], 0.36],
+                [0.5, 1, 0, 0],
+                [seed[0], seed[1], seed[2], 0.3],
+            );
         }
         u.shellCount.value = r;
         this.ringFlare = Math.min(1.6, ring);
@@ -1938,6 +2508,8 @@ export class SupernovaWorld {
             * approach(wantCritical > this.critical ? CRITICAL_RISE : CRITICAL_FALL, dt);
         if (dt === 0 && this.capture) this.critical = wantCritical;
         const crit = this.critical;
+        // How far the star has gone dark (a run that ended).
+        const gone = this.hole(t);
         // Reduce flashing (ADR-0021): the flash's afterglow, the lens it lights and the throb of a
         // star at the brink keep only what the setting allows.
         const fs = flashScale();
@@ -1978,12 +2550,14 @@ export class SupernovaWorld {
         // The wind: a chain blows harder, hot play stirs it, a collapse draws it in, a detonation
         // hurls it out.
         const gust = this.heat * 3 + this.surge * 5 + this.storm * 2 + level * 1.5 + fever * 2 + crit * 1.5
-            - falling * falling * 46;
+            - falling * falling * 46 - gone * 4.5;
         this.flow += motion * (dt * (1 + gust * hurry) + thrown * 70 * hurry);
         this.drift += dt * (1 + this.surge * 22 * hurry) + thrown * 60 * hurry;
         this.ringTurn += dt * 0.035 * motion;
+        this.skyTurn = (this.skyTurn + (dt * TAU * motion) / SKY_TURN) % TAU;
         // Hot play, a star at the brink and a back-to-back spin the ring up.
-        this.ringSpin += dt * motion * hurry * (level * 0.08 + fever * 0.1 + crit * 0.18 + this.b2bGlow * 0.5);
+        this.ringSpin += dt * motion * hurry * (level * 0.08 + fever * 0.1 + crit * 0.18 + this.b2bGlow * 0.5
+            + gone * 0.45);
         this.hueClock += dt;
         const whirl = 1.6 + (newborn >= 0 ? 9 * Math.exp(-newborn / 6) : 0);
         this.pulsarPhase += dt * whirl * (this.reducedMotion ? 0.35 : 1);
@@ -1992,7 +2566,7 @@ export class SupernovaWorld {
         const beat = Math.floor(t / LOOP_BEAT);
         if (beat !== this.loopBeat) {
             this.loopBeat = beat;
-            if (dt > 0 && falling === 0 && (newborn < 0 || newborn > 3)) {
+            if (dt > 0 && falling === 0 && gone < 0.3 && (newborn < 0 || newborn > 3)) {
                 this.ambientLoop(beat, t);
                 if (this.heat > 0.45) this.ambientLoop(beat + 7919, t + 0.4);
                 // A star straining under hot play, or held at the brink, throws up more.
@@ -2000,10 +2574,17 @@ export class SupernovaWorld {
             }
         }
 
+        // One of its own eruptions every ERUPT_BEAT seconds (a quiet star skips its turn).
+        const eruptBeat = Math.floor(t / ERUPT_BEAT);
+        if (eruptBeat !== this.eruptBeat) {
+            this.eruptBeat = eruptBeat;
+            if (dt > 0 && falling === 0 && gone < 0.1 && (newborn < 0 || newborn > 6)) this.erupt(eruptBeat, t);
+        }
+
         const hush = falling > 0 ? 1 : 0;
         // How deep the hush goes was set when the fall began (shallower the hotter play ran).
         const hushDepth = this.nova.hush / 0.9;
-        const breathTarget = hush ? 1 - this.nova.hush * smooth(0, 0.6, falling) : 1 - this.dip;
+        const breathTarget = hush ? 1 - this.nova.hush * smooth(0, 0.6, falling) : (1 - this.dip) * (1 - 0.32 * gone);
         this.breath += (breathTarget - this.breath) * approach(hush ? 30 : 12, dt);
         if (dt === 0 && this.capture) this.breath = breathTarget;
         this.applyPalette(approach(0.8, dt));
@@ -2037,7 +2618,7 @@ export class SupernovaWorld {
             );
         }
         u.ring.value.set(
-            1 + this.heat * 1.5 + this.surge * 2 + level * 0.6 + crit * 0.8,
+            1 + this.heat * 1.5 + this.surge * 2 + level * 0.6 + crit * 0.8 + gone * 2.2,
             this.ringFlare + (lit >= RING.beads ? 0.5 : 0) + this.surge * 0.4 + this.b2bGlow * 0.9 + throb * 0.3
                 + this.rekindle * 0.3,
             this.ringTurn + this.ringSpin,
@@ -2074,13 +2655,20 @@ export class SupernovaWorld {
         // The light round the star is carried by its corona, the ring and the gas, in colour; the
         // lens's glare and the haze through the nebula grow less with heat than they used to, so
         // the frame keeps its darks.
-        u.coronaGain.value = (1 + this.heat * 0.6 + this.surge * 0.6 + this.pulse * 0.4 + young * 1.5 + level * 0.2
-            + fever * 0.15 + crit * 0.6 + throb * 0.25 + this.rekindle * 0.5) * (1 - falling * 0.8 * hushDepth);
+        // How restless the star is: its own slow cycle, and hot play stirs it up.
+        this.activity = clamp01(starActivity(t) + level * 0.25 + crit * 0.3);
+        u.activity.value = this.activity;
+        const swelling = starPulse(t) * (this.reducedMotion ? 0 : 1);
+        u.coronaGain.value = (0.82 + this.activity * 0.42 + swelling * 0.07 + this.heat * 0.6 + this.surge * 0.6
+            + this.pulse * 0.4 + young * 1.5 + level * 0.2 + fever * 0.15 + crit * 0.6 + throb * 0.25
+            + this.rekindle * 0.5) * (1 - falling * 0.8 * hushDepth);
         u.glare.value.set(
-            0.5 + this.heat * 0.3 + this.surge * 0.2 + (this.flash * 2.5 + afterglow * 2) * fs,
-            0.2 + this.heat * 0.2 + this.surge * 0.35 + (this.flash * 1.6 + afterglow * 2) * fs + young * 0.5
-                + crit * 0.2,
+            (0.5 + this.heat * 0.3 + this.surge * 0.2 + (this.flash * 2.5 + afterglow * 2) * fs) * (1 - gone),
+            (0.2 + this.heat * 0.2 + this.surge * 0.35 + (this.flash * 1.6 + afterglow * 2) * fs + young * 0.5
+                + crit * 0.2) * (1 - gone),
         );
+        u.hole.value = gone;
+        u.coronaGain.value *= 1 - 0.8 * gone;
         u.haze.value = (0.5 + this.heat * 0.1 + this.surge * 0.25 + this.pulse * 0.1)
             * (1 - falling * 0.7 * hushDepth);
         u.skyPulse.value = Math.min(1.2, this.storm * 0.7 + this.surge * 0.5 + fever * 0.2);
@@ -2090,6 +2678,7 @@ export class SupernovaWorld {
             13,
             0,
         );
+        this.writeAura(t, fs);
         const heatTint = clamp01(this.heat * 0.2 + young * 0.6);
         // At the brink the corona takes the electric colour of the star's own rim.
         const rimTint = clamp01(crit * 0.4 + fever * 0.15) * (1 - young);
@@ -2137,13 +2726,14 @@ export class SupernovaWorld {
         post.flash = this.flash;
         post.kick = Math.min(1, this.kick + play.punch * 0.15);
         const rays = 0.1 + this.heat * 0.08 + this.surge * 0.25 + this.pulse * 0.08 + glow * 0.6 + crit * 0.05;
-        post.rays = hush ? lerp(rays, 0.03, hushDepth) : rays;
+        post.rays = (hush ? lerp(rays, 0.03, hushDepth) : rays) * (1 - 0.85 * gone);
         post.streak = 0.08 + this.heat * 0.16 + this.surge * 0.5 + (this.flash * 0.9 + afterglow * 0.8) * fs;
         post.bloomBoost = this.surge * 0.2 + this.pulse * 0.15 + glow * 0.6 + level * 0.05;
         // The iris closes as the star flares and as play heats, so its colours survive the surge.
         post.exposure = 1 / (1 + this.surge * 0.6 + this.heat * 0.5 + this.pulse * 0.22 + this.storm * 0.12
             + glow * 1.6 + level * 0.1 + crit * 0.1);
-        post.fall = falling * falling * (this.reducedMotion ? 0.15 : 1);
+        // A dark star bends the picture toward it a little, and holds it there.
+        post.fall = Math.max(falling * falling, gone * 0.13) * (this.reducedMotion ? 0.15 : 1);
         const rippleAge = t - this.spaceRipple.birth;
         post.ripple.radius = Math.max(0, rippleAge) * RIPPLE_SPEED;
         post.ripple.strength = rippleAge >= 0

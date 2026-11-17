@@ -193,7 +193,7 @@ const captureThemes = [
 
     ['sunset', 'sunset', 'Sunset', 'sky, sea, islands, lanterns, glows, birds, boat, meteors'],
 
-    ['supernova', 'supernova', 'Supernova', 'sky, nebula, beams, star, ring, loops, embers, streams, sparks'],
+    ['supernova', 'supernova', 'Supernova', 'sky, nebula, beams, aura, star, ring, loops, embers, streams, sparks'],
 
     ['thermal-bloom', 'thermalBloom', 'Thermal Bloom', 'sky, basin, terraces, steam, geyser, flora, fx'],
 
