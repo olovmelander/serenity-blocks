@@ -24,6 +24,23 @@
  *     foot, a green body dying upward, a faint crimson top, vertical rays), so the eye sees them
  *     from below while it is under them, edge-on at the limb, and from above as it climbs past.
  *
+ * LEAVING THE EARTH, MADE A PLANET (2026-11-17, the Odyssey masterpiece pass). The owner named
+ * leaving the Earth one of the journey's three great moments; the audit found it "the right idea,
+ * rough in execution": blotchy pink smears for cloud, a flat black night with a few orange blobs,
+ * an aurora whose lower edge ran in stairs, a brief sunset. What changed, and where it lives:
+ *   - the WEATHER and the NIGHT are odyssey-earth-weather.tsl.js: cloud systems with structure
+ *     (fronts, two spiral cyclones, decks, fields of cumulus) read from a baked grain and lit as
+ *     relief, warm on the side toward a low sun and cool in its shade; towns as lamps and roads,
+ *     lightning inside the storms, cloud tops in moonlight;
+ *   - the RIM is a stack of layers (the sunset's toward the sun, the Earth's shadow under a rose
+ *     band away from it), and the shadow climbs through them as the sun sinks: the dusk lingers;
+ *   - the Earth arrives as AN EVENING EARTH, under the same low sun as the climb's sky
+ *     (ORBIT_EARTH_SCHEDULE.sunEvening);
+ *   - the AURORA stands taller, a row of rays of different heights under red crowns, its light
+ *     placed and weighed exactly whatever the march's step (ORBIT_EARTH_AURORA.look: THE STAIRS).
+ * The agreed design stands: one look (`earthLook`) for the world's far sea and the backdrop, the
+ * horizon is the limb, no front and no veil, the aurora is the Earth's, the giant rises behind it.
+ *
  * The geometry is solved in units of the Earth's radius with the eye at the origin, so the limb
  * keeps its precision at any height: a ray meets the sphere where `(k d.y)^2 > h (2 + h)` (k = 1 + h,
  * h the eye's height in radii), and the altitude of its closest approach, `k sqrt(1 - d.y^2) - 1`,
@@ -223,7 +240,10 @@ export const ORBIT_EARTH_AURORA = Object.freeze({
  * - CLOUDS: weather systems wound round two cyclones, crisper cumulus edges (antialiased by the
  *   field's own derivative, not a wide blur), thin and thick cloud (the sea shows through thin),
  *   lit on the side toward the sun and casting shadows on the ground, and a veil of cirrus.
- * - NIGHT: the coasts and plains glow with towns, under the clouds.
+ *   (2026-11-17: read from the baked grain on the sphere laid flat, odyssey-earth-weather.tsl.js;
+ *   the lattice's octaves blended in 1/256 steps and the cover read as smears.)
+ * - NIGHT: the coasts and plains glow with towns, under the clouds (lamps and roads now, gathered
+ *   at every scale), lightning flickers in the storms and the moon silvers the cloud tops.
  */
 export const ORBIT_EARTH_SURFACE = Object.freeze({
     /** The broadest continent features per radian of arc, and the warp that bends their coasts. */
@@ -614,8 +634,8 @@ function onSphere(arc, azimuth) {
 }
 // The geographic pole, toward the night like the aurora's (a little farther off).
 const uGeoPole = uniform(onSphere(ORBIT_EARTH_SURFACE.poleArc, NIGHT_AZIMUTH));
-// The weather's two cyclones: where (arc from beneath the eye, bearing), how wide (radians) and
-// how far their eyes wind the field (radians of turn). The rail looks out on a bearing of about
+// The weather's two cyclones: where (arc from beneath the eye, bearing) and how wide (radians).
+// The rail looks out on a bearing of about
 // -0.28 rad from 2026-10 layout's 5->6 seam: the near one sits ahead and to the left, in view as
 // the haze lifts; the wide one off to the right, in view from higher up.
 // (2026-11-17) They are spirals with an eye now (odyssey-earth-weather.tsl.js `cycloneAt`), laid
