@@ -950,9 +950,12 @@ function earthLook(dir, air = null, surfaceAir = air, worldAir = null) {
     // ── THE NIGHT, ALIVE ──
     // The moon on the cloud tops: silver where a billow faces it, deep blue in its lee.
     const moonlit = float(1).sub(smoothstep(-0.22, -0.1, sd)).toVar();
+    // (the masses' slopes more than the billows': by moonlight a deck is soft, and every billow
+    // lit made the night a carpet of grain)
+    const moonFacing = clamp(weather.relief.mul(0.62).add(weather.fineRelief.mul(0.16)), -1, 1);
     surf.addAssign(vec3(...EARTH_MOON.colour).mul(moonlit).mul(mix(
         ground.mul(1.6),
-        cloudCol.mul(clamp(float(0.5).add(facing.mul(0.75)), 0.06, 1.5)).mul(thick.mul(0.6).add(0.4)),
+        vec3(...CLOUD).mul(clamp(float(0.5).add(moonFacing.mul(0.8)), 0.06, 1.5)).mul(thick.mul(0.75).add(0.36)),
         cloudA,
     )));
     // The towns: clustered on the plains and along the coasts, a web of roads between them, under

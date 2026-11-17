@@ -221,10 +221,14 @@ describe('the nova in the galaxy', () => {
         expect(nova).toBeTruthy();
         expect(nova.parent).toBe(env.userData.galaxy);
         expect(nova.material.depthWrite).toBe(false);
+        // Always drawn (its pipeline is built with the chapter, not on its first light); between
+        // novae it adds nothing.
         viewAt(rig.parkOf(41), N.rise + 1);
         expect(nova.visible).toBe(true);
+        expect(nova.userData.level).toBeGreaterThan(0.9);
         viewAt(rig.parkOf(41), N.period - 2);
-        expect(nova.visible).toBe(false);
+        expect(nova.visible).toBe(true);
+        expect(nova.userData.level).toBe(0);
         [THREE_GPU.WGSLNodeBuilder, THREE_GPU.GLSLNodeBuilder].forEach((Builder) => {
             const out = build(Builder, nova);
             expect(out.thrown, `${out.thrown?.stack ?? ''}`).toBeUndefined();

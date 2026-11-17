@@ -139,7 +139,9 @@ export function createGalaxyNova(discRadius) {
             const share = flashScale() < 1 ? GALAXY_NOVA.reducedShare : 1;
             uLevel.value = nova.level * share;
             uWarm.value = nova.warm;
-            mesh.visible = nova.level > 0.002;
+            // Always drawn (a quad a few pixels across that adds nothing between novae): hidden
+            // until its first light, its pipeline would be built on the frame it first shone.
+            mesh.userData.level = uLevel.value;
         },
         dispose() {
             geometry.dispose();
