@@ -30,6 +30,8 @@ import { createThemeUnlockReward } from './ThemeUnlockReward.js';
 import { describeOpenings } from '../effects/breathing/breath-openings.js';
 import { breathPosterUrl } from '../effects/breathing/breath-catalogue.js';
 import { createChapterBreath, loadBreathPoster, resolveChapterBreathWorld } from './chapter-breath.js';
+import { odysseyChapterColor } from './odyssey-chapter-look.js';
+import { getOdysseyChapterLook } from '../../core/odyssey/data/chapter-looks.js';
 import { countWords, getCompletionHoldMs } from './journey-pacing.js';
 import { resolveHubThemeThumbnailUrl } from '../serenity-hub/theme-thumbnail-manifest.js';
 
@@ -42,10 +44,6 @@ const CEREMONY_SETTLE_MS = { reward: 2700, brief: 1600 };
 const ENTRANCE_ANIMATION_LIMIT_MS = 4000;
 /** Let a chapter's title settle before the breathing light starts to move. */
 const BREATH_DELAY_MS = 900;
-const CHAPTER_COLORS = [
-    '#f3ac77', '#8cd3ed', '#b5d4a2', '#c8d3f0',
-    '#c8b2ed', '#b5a0ee', '#e6a9dd', '#f3b29d',
-];
 
 function formatTally(results) {
     const tally = [];
@@ -156,11 +154,14 @@ export function createJourneyFlowOverlay({
     const chapterId = chapter?.id || nextLevel?.chapter || level?.chapter || 1;
     // A crossing arrives in the next chapter's breathing world: its picture loads during the ceremony.
     if (crossesChapter) loadBreathPoster(resolveChapterBreathWorld(chapterId)?.poster);
-    const chapterColor = (id) => CHAPTER_COLORS[id - 1] || CHAPTER_COLORS[0];
+    // The overlay wears a chapter (the one table, chapter-looks.js): its light as the accent
+    // colour here, its glass and inks through the stylesheet (data-ody-chapter).
+    const wearChapter = (id) => {
+        modal.dataset.odyChapter = String(getOdysseyChapterLook(id).id);
+        modal.style.setProperty('--ody-flow-color', odysseyChapterColor(id));
+    };
     // A chapter's last ceremony keeps its own colour; the next chapter's arrives with the journey.
-    modal.style.setProperty('--ody-flow-color', chapterColor(
-        variant === 'completion' && crossesChapter ? level.chapter : chapterId,
-    ));
+    wearChapter(variant === 'completion' && crossesChapter ? level.chapter : chapterId);
 
     // The portal's orbits frame the orb's world: the orb just cleared on an ordinary completion,
     // the orb ahead on the opaque cover. A first-time reward brings its own art instead.
@@ -398,7 +399,9 @@ export function createJourneyFlowOverlay({
     });
     modal.autoContinueMs = autoContinueMs;
     modal.style.setProperty('--ody-flow-hold', `${autoContinueMs}ms`);
-    const isVisible = () => !document.hidden && document.hasFocus?.() !== false;
+    // (a hold timer can outlive its page in a torn-down window or test: no document, not visible)
+    const isVisible = () => typeof document !== 'undefined' && !document.hidden
+        && document.hasFocus?.() !== false;
     const transitStatus = () => {
         if (crossesChapter && presentationVariant === 'transit' && !modal.dataset.chapterShown) {
             return {
@@ -728,7 +731,7 @@ export function createJourneyFlowOverlay({
         modal.dataset.autoState = 'off';
         const departedFrom = presentationVariant;
         stopBreath({ fade: departedFrom === 'chapter' });
-        if (crossesChapter) modal.style.setProperty('--ody-flow-color', chapterColor(chapterId));
+        if (crossesChapter) wearChapter(chapterId);
         const continuation = departedFrom === 'completion';
         presentationVariant = 'transit';
         modal.className = `ody-flow ody-flow--transit${continuation ? ' ody-flow--continuation' : ''}`;

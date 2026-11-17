@@ -65,7 +65,6 @@ import {
 import { acquireChapterLight } from './shared/chapter-light-pool.js';
 import {
     CH8_CITY_LAYOUT,
-    RETROSUN_CITY_POS,
     STREET_Y,
     bakeNeonGlow,
     dealCityTowers,
@@ -82,6 +81,8 @@ import {
     neonIgnition,
     neonSpireLight,
 } from './shared/odyssey-neon-light.tsl.js';
+import { neonSkyLite } from './shared/odyssey-neon-sky.tsl.js';
+import { planNeonArchitecture } from './shared/odyssey-neon-architecture.js';
 import { hash21 } from './shared/odyssey-tsl-noise.js';
 import { latticeNoise3 } from './shared/odyssey-lattice-noise.js';
 import { makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
@@ -272,10 +273,14 @@ export const CH8_RETROSUN_SHADER_SETTINGS = Object.freeze({
  * @param {*} uEnergy uniform(0.45) energy node
  * @param {{uReveal?:*}} opts shared finale reveal uniform (0 idle → 1 ignited)
  */
-export function createSynthwaveSunTSL(uTime, uEnergy, { uReveal } = {}) {
+export function createSynthwaveSunTSL(uTime, uEnergy, { uReveal, uDawn } = {}) {
     const uTimeNode = uTime ?? uniform(0);
     const uEnergyNode = uEnergy ?? uniform(0.45);
     const uRevealNode = uReveal ?? uniform(0.4);
+    // FIRST LIGHT (2026-11-17, the journey's ending): 0 is the evening disc (and chapter 7's copy
+    // of it, which never passes one), 1 the dawn's: gold where it was rose, its cuts thinned to a
+    // few bars of cloud across its foot, brighter.
+    const dawnNode = uDawn ?? uniform(0);
 
     // World half-extents: the disc reads as a colossal sun far down the canyon. Two
     // instances share ONE mesh — index 0 = soft halo (wider, dimmer), index 1 = disc.
@@ -311,9 +316,9 @@ export function createSynthwaveSunTSL(uTime, uEnergy, { uReveal } = {}) {
 
     // VERTICAL SUN GRADIENT: hot white/yellow crown → warm orange belly → hot magenta/pink
     // base, the canonical synthwave ramp. Two mixes give the three-stop blend.
-    const hotTop = vec3(1.25, 0.84, 0.24); // laser-lemon crown
-    const mid = vec3(1.20, 0.28, 0.02); // heavy orange body
-    const base = vec3(1.10, 0.03, 0.18); // hot magenta/pink base
+    const hotTop = mix(vec3(1.25, 0.84, 0.24), vec3(1.42, 1.02, 0.4), dawnNode); // laser-lemon crown
+    const mid = mix(vec3(1.20, 0.28, 0.02), vec3(1.34, 0.5, 0.07), dawnNode); // heavy orange body
+    const base = mix(vec3(1.10, 0.03, 0.18), vec3(1.2, 0.15, 0.13), dawnNode); // hot magenta/pink base
     const lower = mix(base, mid, smoothstep(0.0, 0.55, vTop));
     const discColor = mix(lower, hotTop, smoothstep(0.6, 1.0, vTop));
 
@@ -324,7 +329,7 @@ export function createSynthwaveSunTSL(uTime, uEnergy, { uReveal } = {}) {
     const bandFreq = float(13.0);
     const saw = fract(vTop.mul(bandFreq));
     // cut threshold: ~0 near the top (no gaps) → ~0.85 near the bottom (wide gaps).
-    const cutBelow = smoothstep(0.62, 0.0, vTop).mul(0.85);
+    const cutBelow = smoothstep(0.62, 0.0, vTop).mul(0.85).mul(dawnNode.mul(-0.62).add(1.0));
     const scan = step(cutBelow, saw); // 1 = lit band, 0 = gap
     // Keep the top third fully solid regardless (the hot crown is uninterrupted).
     const scanMask = max(scan, smoothstep(0.6, 0.86, vTop));
@@ -547,7 +552,7 @@ export function createDefaultNeon(uTime, uEnergy, {
  * Hero trims are level meters that fill as the ignition ring passes.
  */
 function createFacadeMaterial(uTime, uEnergy, {
-    uCityLight, uDim, neon,
+    uCityLight, uDim, neon, interiors = true,
 } = {}) {
     const S = CH8_FACADE_VALUE_SETTINGS;
     const N = neon;
@@ -558,6 +563,9 @@ function createFacadeMaterial(uTime, uEnergy, {
     // per-pixel seed differences that the hashes amplify into speckled, crawling windows.
     const aFacade = varying(attribute('aFacade', 'vec4'), 'vCityFacade').setInterpolation('flat', 'either');
     const aDims = varying(attribute('aDims', 'vec3'), 'vCityDimensions').setInterpolation('flat', 'either');
+    // THE ARCHITECTURE (2026-11-17, shared/odyssey-neon-architecture.js): style, the box's foot
+    // above the street (floors run on through a tower's setbacks), masonry tint, part.
+    const aArch = varying(attribute('aArch', 'vec4'), 'vCityArch').setInterpolation('flat', 'either');
     const n = varying(normalGeometry, 'vCityFaceNormal').setInterpolation('flat', 'either');
     // The resolve: whole buildings gutter out as uDim rises (per-building threshold).
     const gutter = varying(hash21(vec2(aFacade.x, 91.7)), 'vCityGutter').setInterpolation('flat', 'either');
@@ -569,31 +577,51 @@ function createFacadeMaterial(uTime, uEnergy, {
         const occupancy = aFacade.y;
         const warmBias = aFacade.z;
         const hero = aFacade.w;
+        const style = aArch.x;
+        const tint = aArch.z;
+        const isLedge = step(0.5, aArch.w);
         const pc = pcVarying.toVar();
 
-        const isRoof = step(0.5, abs(n.y));
-        const isSide = oneMinus(isRoof);
+        const isRoof = step(0.5, abs(n.y)).toVar();
+        const isSide = oneMinus(isRoof).toVar();
         // ±X faces span the tower's depth, ±Z faces its width.
-        const faceW = mix(aDims.x, aDims.z, step(0.5, abs(n.x)));
+        const onX = step(0.5, abs(n.x));
+        const faceW = mix(aDims.x, aDims.z, onX);
         const towerH = aDims.y;
 
+        // ── The style's window module (punched 0, ribbon 1, curtain 2, piers 3) ──
+        const sRibbon = step(0.5, style).mul(step(style, 1.5)).toVar();
+        const sCurtain = step(1.5, style).mul(step(style, 2.5)).toVar();
+        const sPiers = step(2.5, style).toVar();
+        const bay = float(S.bayWidth).add(sRibbon.mul(0.7)).sub(sCurtain.mul(0.4)).add(sPiers.mul(0.5))
+            .toVar();
+        const floorH = float(S.floorHeight).add(sRibbon.mul(0.2)).add(sCurtain.mul(0.4)).toVar();
+        const loX = float(0.14).sub(sRibbon.mul(0.12)).sub(sCurtain.mul(0.09)).add(sPiers.mul(0.16))
+            .toVar();
+        const hiX = oneMinus(loX).toVar();
+        const loY = float(0.2).add(sRibbon.mul(0.1)).sub(sCurtain.mul(0.14)).sub(sPiers.mul(0.08))
+            .toVar();
+        const hiY = float(0.88).sub(sRibbon.mul(0.1)).add(sCurtain.mul(0.06)).add(sPiers.mul(0.02))
+            .toVar();
+
         const vUv = uv();
-        const fx = vUv.x.mul(faceW);
-        const fy = vUv.y.mul(towerH);
-        const g = vec2(fx.div(S.bayWidth), fy.div(S.floorHeight));
-        const cell = floor(g);
-        const f = fract(g);
+        const fx = vUv.x.mul(faceW).toVar();
+        const fy = aArch.y.add(vUv.y.mul(towerH)).toVar();
+        const g = vec2(fx.div(bay), fy.div(floorH)).toVar();
+        const cell = floor(g).toVar();
+        const f = fract(g).toVar();
         // Per-face seed so the four faces of one tower don't repeat; floors use the TOWER seed
         // so a lit floor wraps the whole building.
         const faceSeed = seed.add(n.x.mul(3.17)).add(n.z.mul(7.31));
 
         // Antialiased window pane; fades to its mean coverage once a bay is sub-pixel.
         const fw = fwidth(g).max(vec2(1e-4, 1e-4)).toVar();
-        const paneX = smoothstep(0.14, fw.x.add(0.14), f.x)
-            .mul(oneMinus(smoothstep(fw.x.negate().add(0.86), 0.86, f.x)));
-        const paneY = smoothstep(0.2, fw.y.add(0.2), f.y).mul(oneMinus(smoothstep(fw.y.negate().add(0.88), 0.88, f.y)));
+        const paneX = smoothstep(loX, fw.x.add(loX), f.x)
+            .mul(oneMinus(smoothstep(hiX.sub(fw.x), hiX, f.x)));
+        const paneY = smoothstep(loY, fw.y.add(loY), f.y).mul(oneMinus(smoothstep(hiY.sub(fw.y), hiY, f.y)));
         const lod = smoothstep(0.22, 0.7, max(fw.x, fw.y)).toVar();
-        const pane = mix(paneX.mul(paneY), 0.5, lod).toVar();
+        const meanPane = hiX.sub(loX).mul(hiY.sub(loY));
+        const pane = mix(paneX.mul(paneY), meanPane, lod).mul(oneMinus(isLedge)).toVar();
 
         // ── WHICH windows are lit (the ignition ring raises the city's floor count) ─────
         const ign = neonIgnition(N, pc);
@@ -602,13 +630,33 @@ function createFacadeMaterial(uTime, uEnergy, {
         // HASH BUDGET (seamless pass): one hash per FLOOR, one per tenant RUN, one per WINDOW.
         const floorRnd = hash21(vec2(cell.y, seed.mul(0.731))).toVar();
         const floorOn = step(oneMinus(occupancy.mul(cityLight)), floorRnd);
-        const runRnd = hash21(vec2(floor(cell.x.div(4.0)), cell.y.add(faceSeed.mul(11.0))));
+        const runKey = vec2(floor(cell.x.div(4.0)), cell.y.add(faceSeed.mul(11.0))).toVar();
+        const runRnd = hash21(runKey).toVar();
         const winRnd = hash21(cell.add(vec2(faceSeed.mul(5.3), faceSeed.mul(1.9)))).toVar();
-        const inFloor = floorOn.mul(step(1.0 - S.floorFill, runRnd)).mul(step(0.1, winRnd));
+        // ALIVE (2026-11-17): a third of the tenants are restless. Their run of windows goes on
+        // or off every half minute or so, each on its own clock, easing over a few seconds (a
+        // run that snapped on a near tower read as a glitch). The rest never change.
+        const restless = step(0.66, fract(runRnd.mul(17.3)));
+        const turnPhase = uTime.div(fract(runRnd.mul(7.7)).mul(30.0).add(26.0)).add(runRnd.mul(13.0)).toVar();
+        const epoch = floor(turnPhase).mul(restless).toVar();
+        const turn = smoothstep(0.86, 1.0, fract(turnPhase)).mul(restless);
+        const runA = hash21(runKey.add(vec2(epoch.mul(3.0), epoch.mul(5.0))));
+        const runB = hash21(runKey.add(vec2(epoch.add(restless).mul(3.0), epoch.add(restless).mul(5.0))));
+        const runLit = mix(step(1.0 - S.floorFill, runA), step(1.0 - S.floorFill, runB), turn);
+        const inFloor = floorOn.mul(runLit).mul(step(0.1, winRnd));
         const single = step(oneMinus(occupancy.mul(S.scatter).mul(cityLight)), winRnd);
         const aboveLobby = step(1.0, cell.y);
         const buildingAlive = step(dim, gutter.mul(0.98).add(0.01)).toVar();
-        const lit = max(inFloor, single).mul(aboveLobby).mul(buildingAlive).mul(isSide);
+        // THE ENDING'S WAVE (the journey done): a ring of light from the spire switches every
+        // window on as it passes, window by window (each a little after the ring, by its hash).
+        const spireD = length(vec2(pc.x.sub(S.spire[0]), pc.z.sub(S.spire[1]))).toVar();
+        const waveR = N.endWave;
+        const waved = oneMinus(smoothstep(waveR.sub(50.0), waveR, spireD.add(winRnd.mul(110.0))))
+            .mul(step(0.16, winRnd)).toVar();
+        const waveFront = smoothstep(waveR.sub(120.0), waveR.sub(30.0), spireD)
+            .mul(oneMinus(smoothstep(waveR.sub(30.0), waveR.add(12.0), spireD)))
+            .mul(smoothstep(1.0, 40.0, waveR));
+        const lit = max(max(inFloor, single).mul(buildingAlive), waved).mul(aboveLobby).mul(isSide).toVar();
 
         // ── WHAT colour ───────────────────────────────────────────────────────────
         const warmRnd = fract(floorRnd.mul(13.37).add(0.37));
@@ -618,14 +666,52 @@ function createFacadeMaterial(uTime, uEnergy, {
         const cool = vec3(0.52, 0.8, 1.0).mul(S.coolGain);
         const neonTint = mix(vec3(1.0, 0.18, 0.66), vec3(0.0, 0.85, 1.0), step(0.5, fract(seed.mul(3.7))));
         const wcolor = mix(mix(cool, warm, isWarm), neonTint.mul(S.neonGain), neonFloor);
+
+        // The eye's ray, in the wall's own frame: along the face, up, into the wall.
+        const V = normalize(pc.sub(N.camCity)).toVar();
+        const vdotn = clamp(dot(V, n).negate(), 0.0, 1.0).toVar();
+
+        // ── A ROOM behind every lit pane (interior mapping): the ray is followed into a box
+        // one bay wide and one storey high to its back wall, a side wall, the floor or the
+        // ceiling, so windows have depth and the rooms slide behind the glass as the eye moves.
+        let room = float(1.0);
+        if (interiors) {
+            const T = vec3(n.z, 0.0, n.x.negate());
+            const vt = dot(V, T).div(bay).toVar();
+            const vy = V.y.div(floorH).toVar();
+            const vn = max(vdotn, 0.06).div(bay.mul(1.5)).toVar();
+            const tx = mix(f.x, oneMinus(f.x), step(0.0, vt)).div(max(abs(vt), 1e-4)).toVar();
+            const ty = mix(f.y, oneMinus(f.y), step(0.0, vy)).div(max(abs(vy), 1e-4)).toVar();
+            const tz = float(1.0).div(vn).toVar();
+            const tHit = min(tz, min(tx, ty)).toVar();
+            const back = step(tz, min(tx, ty));
+            const side = oneMinus(back).mul(step(tx, ty));
+            const flat = oneMinus(back).mul(oneMinus(side));
+            const hx = f.x.add(vt.mul(tHit));
+            const hy = f.y.add(vy.mul(tHit));
+            const hz = clamp(vn.mul(tHit), 0.0, 1.0);
+            // The back wall: brighter up by the lamps, a shelf or a desk dark against its foot.
+            const furnish = step(hy, fract(winRnd.mul(23.1)).mul(0.34).add(0.12))
+                .mul(step(fract(hx.mul(1.7).add(winRnd.mul(5.0))), 0.62));
+            const backShade = mix(float(0.74), float(1.12), hy).mul(mix(float(1.0), float(0.42), furnish));
+            const sideShade = mix(float(0.86), float(0.5), hz);
+            // The floor takes a pool of light near the window; the ceiling carries the lamps.
+            const floorShade = mix(float(0.6), float(0.3), hz);
+            const lamp = oneMinus(smoothstep(0.1, 0.34, abs(fract(hx.mul(2.0)).sub(0.5))));
+            const ceilShade = mix(float(0.8), float(1.5), lamp.mul(oneMinus(hz)));
+            const shade = back.mul(backShade).add(side.mul(sideShade))
+                .add(flat.mul(mix(floorShade, ceilShade, step(0.0, vy))));
+            room = mix(shade, float(0.82), lod);
+        }
         // Per-window brightness spread (blinds, lamps) + a rare slow flicker.
-        const winGain = fract(winRnd.mul(13.7)).mul(0.5).add(0.5)
-            .mul(mix(1.08, 0.72, f.y))
+        const winGain = fract(winRnd.mul(13.7)).mul(0.45).add(0.6)
             .mul(mix(1.0, step(0.45, fract(f.y.mul(7.0))).mul(0.6).add(0.4), step(0.83, fract(winRnd.mul(7.9)))));
         const flick = sin(uTime.mul(winRnd.mul(2.0).add(0.4)).add(winRnd.mul(40.0))).mul(0.5).add(0.5);
         const flicker = mix(1.0, flick.mul(0.6).add(0.4), step(0.985, fract(winRnd.mul(31.1))));
-        const energyGain = uEnergy.mul(0.25).add(0.82).mul(ign.front.mul(0.9).add(1.0));
-        const windows = wcolor.mul(lit).mul(pane).mul(winGain).mul(flicker)
+        const energyGain = uEnergy.mul(0.25).add(0.82).mul(ign.front.mul(0.9).add(1.0))
+            .mul(waveFront.mul(1.6).add(1.0));
+        const windows = wcolor.mul(lit).mul(pane).mul(winGain).mul(room)
+            .mul(flicker)
             .mul(energyGain);
 
         // ── The city's light on this wall ─────────────────────────────────────────
@@ -637,46 +723,100 @@ function createFacadeMaterial(uTime, uEnergy, {
         const toLane = clamp(n.x.mul(pc.x.sign().negate()), 0.0, 1.0);
         const facing = toLane.mul(0.85).add(abs(n.z).mul(0.38)).add(0.1);
         const fromBelow = lowLit.mul(exp(hAbove.mul(-1 / 18))).mul(1.4)
-            .add(glowSign.mul(exp(max(hAbove.sub(14.0), 0.0).mul(-1 / 22))).mul(0.42));
+            // The signs' light spills up the wall as far as the signs hang (to about the eye's
+            // height over the street), so the near walls the arrival stands between carry their
+            // colour instead of standing unlit.
+            .add(glowSign.min(vec3(1.2, 1.2, 1.2)).mul(exp(max(hAbove.sub(54.0), 0.0).mul(-1 / 26))).mul(0.5));
         // Every other street has its own signs: a per-block tint rising off the outer streets.
         const streetTint = mix(vec3(0.9, 0.12, 0.55), vec3(0.0, 0.62, 0.85), step(0.5, fract(seed.mul(1.37))));
-        const sideStreet = streetTint.mul(exp(fy.negate().div(14.0))).mul(0.1).mul(ign.level);
-        const skyLight = vec3(0.014, 0.011, 0.028).mul(smoothstep(-60.0, 120.0, pc.y).mul(0.75).add(0.25));
+        const sideStreet = streetTint.mul(exp(hAbove.negate().div(14.0))).mul(0.1).mul(ign.level);
+        // The sky's light on a wall: what the vault shows in the direction the wall faces (warm on
+        // the faces turned to the sun, blue-violet on those turned from it, the zenith on a roof).
+        const skyFace = neonSkyLite(N.sky, normalize(vec3(n.x, n.y.add(0.4), n.z)));
+        const skyLight = skyFace.mul(smoothstep(-60.0, 120.0, pc.y).mul(0.6).add(0.4)).mul(0.34).toVar();
         const spire = neonSpireLight(N, pc, n);
         const light = fromBelow.mul(facing).add(sideStreet).add(skyLight).add(spire)
+            .add(N.sky.burst.mul(0.22))
             .toVar();
 
-        // ── Wall: concrete piers and spandrels, glass between ────────────────────
-        const pier = step(0.94, fract(g.x.mul(0.5).add(0.03)));
-        const tone = fract(seed.mul(0.618)).mul(0.5).add(0.75);
-        const concrete = vec3(0.05, 0.047, 0.06).mul(tone);
+        // ── Wall: masonry in the tower's own tint, glass between ────────────────────
+        const tone = fract(seed.mul(0.618)).mul(0.4).add(0.8);
+        const masonry = mix(
+            mix(vec3(0.2, 0.15, 0.13), vec3(0.1, 0.125, 0.17), smoothstep(0.2, 0.3, tint)),
+            mix(vec3(0.17, 0.09, 0.13), vec3(0.08, 0.135, 0.15), smoothstep(0.7, 0.8, tint)),
+            smoothstep(0.45, 0.55, tint),
+        ).mul(tone).mul(0.62).toVar();
+        // Piers: every other bay on the punched walls, every bay on the stone ones.
+        const pierEvery = mix(float(0.5), float(1.0), sPiers);
+        const pier = step(0.93, fract(g.x.mul(pierEvery).add(0.035))).mul(oneMinus(sCurtain));
+        // A sill under each window catches the sky.
+        const sill = smoothstep(loY.sub(0.09), loY.sub(0.05), f.y).mul(oneMinus(smoothstep(loY.sub(0.03), loY, f.y)))
+            .mul(step(loX, f.x)).mul(step(f.x, hiX))
+            .mul(oneMinus(lod))
+            .mul(oneMinus(sCurtain));
         // A ledge every sixth floor catches the street's light on its underside (low floors).
         const ledge = oneMinus(smoothstep(0.0, 0.11, f.y)).mul(step(mod(cell.y, 6.0), 0.5)).mul(oneMinus(lod));
         const ledgeLight = lowLit.mul(exp(hAbove.mul(-1 / 22))).mul(0.8).add(glowSign.mul(0.12))
             .mul(ledge)
             .mul(facing);
-        const vdotn = clamp(dot(normalize(normalView), positionViewDirection), 0.0, 1.0);
         const m = oneMinus(vdotn);
         const fres = m.mul(m).mul(m).toVar();
         // Rain runs down the glass: rivulets of brighter, wetter glass that mirror the street.
         const riv = latticeNoise3(vec3(fx.mul(0.55), fy.mul(0.028).add(uTime.mul(0.32)), seed.mul(0.37)));
         const wet = mix(float(0.55), smoothstep(0.4, 0.78, riv).mul(0.9).add(0.4), oneMinus(lod));
-        // The glass mirrors the glowing mist, the canyon's light below, and the signs.
-        const mirrored = N.mistLow.mul(1.0)
+        // GLAZING THAT TAKES THE SKY: each pane mirrors the vault along the reflected ray (the
+        // sun's glow down the boulevard's walls, the cool sky on the faces turned from it), and
+        // below the horizon the glowing mist, the canyon's light and the signs.
+        // No two panes are hung quite true: each tips the mirrored ray a little.
+        // ...and each is a little bowed, so it holds a gradient of the sky, not one flat colour.
+        const tip = fract(winRnd.mul(47.3)).sub(0.5).mul(0.42).add(f.y.sub(0.5).mul(0.3));
+        const R = reflect(V, n).add(vec3(0.0, tip, 0.0)).toVar();
+        // The vault shows only where the mirrored ray clears the roofs across the street; lower
+        // down the glass holds the wall opposite: its signs, smeared along the pane.
+        const skyMirror = neonSkyLite(N.sky, normalize(R)).mul(smoothstep(0.0, 0.5, R.y)).mul(0.34)
+            .min(vec3(0.2, 0.2, 0.2))
+            .mul(N.sky.cover.mul(-0.55).add(1.0))
+            .toVar();
+        const across = float(44.0).div(max(abs(R.x), 0.2));
+        // (Bounded, and only where the ray lands on the storeys the signs hang at: the glow map
+        // is light per metre of boulevard and has no ceiling of its own.)
+        const landsAt = hAbove.add(R.y.mul(across));
+        const oppositeSigns = neonGlow(N, vec3(pc.x.negate(), pc.y, pc.z.add(R.z.mul(across))), 0)
+            .min(vec3(0.9, 0.9, 0.9))
+            .mul(ign.level).mul(oneMinus(smoothstep(0.0, 0.4, R.y)))
+            .mul(smoothstep(-6.0, 6.0, landsAt))
+            .mul(exp(max(landsAt.sub(34.0), 0.0).mul(-1 / 26)));
+        const mirrored = skyMirror
+            .add(oppositeSigns.mul(0.3))
+            .add(N.mistLow.mul(1.0))
             .add(lowLit.mul(exp(hAbove.mul(-1 / 70))).mul(0.32))
-            .add(glowSign.mul(0.2));
-        // The rain thinning over the resolve dries the glass a little.
-        const rainWet = N.uRainDensity.mul(0.4).add(0.6);
-        const glassCol = vec3(0.003, 0.004, 0.01).add(mirrored.mul(fres.mul(0.85).add(0.05)).mul(wet).mul(rainWet));
-        const diffuse = concrete.mul(light);
-        const body = mix(diffuse, glassCol.add(diffuse.mul(0.12)), pane.mul(oneMinus(pier)));
+            // Its own wall's signs only where they hang (the boulevard's lower storeys): unbounded up
+            // the wall, they washed a tall glass tower pale from foot to crown.
+            .add(glowSign.mul(exp(max(hAbove.sub(24.0), 0.0).mul(-1 / 30))).mul(0.12))
+            // ...and the fireworks' light, when there is a show.
+            .add(N.sky.burst.mul(0.6));
+        const glassBase = float(0.06).add(sCurtain.mul(0.16)).add(sRibbon.mul(0.05));
+        // The pane sits back in the wall: the head of the opening shades its top, the jambs its sides.
+        const reveal = smoothstep(hiY, hiY.sub(0.16), f.y).mul(0.55).add(0.45)
+            .mul(smoothstep(loX, loX.add(0.07), f.x).mul(0.3).add(0.7));
+        const glassCol = vec3(0.003, 0.004, 0.01)
+            .add(mirrored.mul(fres.mul(0.55).add(glassBase)).mul(wet).mul(N.wet.mul(0.5).add(0.5))
+                .mul(mix(reveal, float(0.8), lod)));
+        const diffuse = masonry.mul(light).mul(mix(float(1.0), float(1.35), pier))
+            .add(masonry.mul(skyLight).mul(sill).mul(2.2));
+        const wall = mix(diffuse, glassCol.add(diffuse.mul(0.1)), pane.mul(oneMinus(pier)));
+        // A ledge slab (the step of a setback, a cornice): its underside and edge take the street's
+        // light, its top the sky.
+        const ledgeUnder = lowLit.mul(exp(hAbove.mul(-1 / 40))).mul(1.1).add(glowSign.mul(0.3)).mul(facing.add(0.3));
+        const slab = masonry.mul(ledgeUnder.add(skyLight.mul(1.2)).add(spire));
+        const body = mix(wall, slab, isLedge);
 
         // Roofs (the eye flies over most of the city's): gravel, plant boxes, a parapet lip that
-        // catches the street's glow, and rain standing in puddles that mirror the lit mist — not
+        // catches the street's glow, and rain standing in puddles that mirror the sky — not
         // one flat sheen. Roof metres: x across the width, y across the depth.
         const rx = vUv.x.mul(aDims.x);
         const rz = vUv.y.mul(aDims.z);
-        const rimDist = min(min(rx, aDims.x.sub(rx)), min(rz, aDims.z.sub(rz)));
+        const rimDist = min(min(rx, aDims.x.sub(rx)), min(rz, aDims.z.sub(rz))).toVar();
         const parapet = oneMinus(smoothstep(0.35, 0.8, rimDist));
         const unitCell = floor(vec2(rx, rz).div(4.5));
         const unitRnd = hash21(unitCell.add(vec2(seed.mul(1.7), seed.mul(0.3))));
@@ -688,17 +828,33 @@ function createFacadeMaterial(uTime, uEnergy, {
         const gravel = latticeNoise3(vec3(rx.mul(0.7), rz.mul(0.7), seed.mul(0.21)));
         const puddleR = smoothstep(0.58, 0.68, latticeNoise3(vec3(rx.mul(0.09), rz.mul(0.09), seed.mul(0.53))))
             .mul(oneMinus(unitBox)).mul(oneMinus(parapet));
-        const roofAlbedo = vec3(0.026, 0.025, 0.032).mul(gravel.mul(0.5).add(0.75))
+        const roofAlbedo = masonry.mul(0.42).mul(gravel.mul(0.5).add(0.75))
             .mul(mix(float(1.0), float(0.55), unitBox));
-        const roofLight = skyLight.mul(2.2).add(spire).add(lowLit.mul(0.06)).add(glowSign.mul(0.05));
+        // First light lies along the roofs: the low sun's warm wash, only at the journey's dawn.
+        const dawnWash = N.sky.sunGlow.mul(N.sky.dawn).mul(0.5);
+        const roofLight = skyLight.mul(2.4).add(spire).add(lowLit.mul(0.06)).add(glowSign.mul(0.05))
+            .add(dawnWash)
+            .add(N.sky.burst.mul(0.5));
         const roof = roofAlbedo.mul(roofLight)
-            .add(concrete.mul(lowLit.mul(0.5).add(skyLight)).mul(parapet).mul(1.6))
-            .add(N.mistLow.mul(fres.mul(0.9).add(0.12)).mul(puddleR.mul(0.85).add(0.15)));
+            .add(masonry.mul(lowLit.mul(0.5).add(skyLight)).mul(parapet).mul(1.3))
+            .add(skyMirror.add(N.mistLow).mul(fres.mul(0.9).add(0.12)).mul(puddleR.mul(0.85).add(0.15))
+                .mul(N.wet));
 
         // ── Hero towers: neon edge meters that fill as the ignition passes + a crown ──
         const isHero = step(0.5, hero);
         const heroCol = mix(vec3(0.0, 0.9, 1.0), vec3(1.0, 0.2, 0.7), step(1.5, hero));
-        const edgeDist = min(vUv.x, oneMinus(vUv.x)).mul(faceW);
+        const edgeDist = min(vUv.x, oneMinus(vUv.x)).mul(faceW).toVar();
+        // THE SUN'S RIM (2026-11-17): looking toward the low sun, the towers' corners, parapets
+        // and ledges catch it: a warm line along every edge that stands against the light. A
+        // line thinner than a pixel keeps its light instead of crawling.
+        const sunward = clamp(dot(V, N.sky.sunDir), 0.0, 1.0);
+        const edgeAA = max(fwidth(edgeDist), 0.02);
+        const corner = oneMinus(smoothstep(0.1, edgeAA.add(0.2), edgeDist)).mul(float(0.2).div(edgeAA.add(0.2)));
+        const crownEdge = oneMinus(smoothstep(0.3, 0.9, oneMinus(vUv.y).mul(towerH)));
+        const rim = N.sky.sunGlow.mul(sunward.mul(sunward))
+            .mul(corner.mul(0.24).add(crownEdge.mul(0.14)).add(ledge.mul(0.3)).add(isLedge.mul(0.26)))
+            .mul(isSide)
+            .mul(N.sky.cover.mul(-0.6).add(1.0));
         const edgeTrim = oneMinus(smoothstep(0.18, 0.75, edgeDist));
         const fill = mix(float(0.28), float(1.0), inWave);
         const meterSeg = smoothstep(0.08, 0.2, abs(fract(fy.mul(0.16)).sub(0.5)));
@@ -709,13 +865,15 @@ function createFacadeMaterial(uTime, uEnergy, {
         const chase = sin(fy.mul(0.09).sub(uTime.mul(1.6)).add(seed)).mul(0.25).add(0.75);
         const trim = heroCol.mul(edgeTrim.mul(chase).mul(meter).add(crownBand.mul(inWave.mul(0.6).add(0.4))))
             .mul(isHero).mul(isSide).mul(S.trimGain)
-            .mul(buildingAlive);
+            .mul(oneMinus(isLedge))
+            .mul(max(buildingAlive, waved));
 
         const structure = mix(body, roof, isRoof);
         // Lit only once the tunnel's mouth opens (`seamReveal`, the 7->8 carry), as the signs,
         // lanterns, skybridges and traffic already are: the nearest towers fade in under the
         // warp tunnel, and their window grids drew over its streaks before the city was seen.
-        const lights = windows.add(trim).add(ledgeLight.mul(isSide)).mul(N.seamReveal);
+        const lights = windows.add(trim).add(rim).add(ledgeLight.mul(isSide).mul(oneMinus(isLedge)))
+            .mul(N.seamReveal);
         const air = neonAir(N, pc, glowLow);
         // The air: lit windows punch a little further through it than the walls do.
         return mix(structure.add(lights), air.colour, air.amount)
@@ -734,16 +892,46 @@ function createFacadeMaterial(uTime, uEnergy, {
 // the very towers the facades draw. Re-exported here for the chapter's existing importers.
 export { CH8_CITY_LAYOUT };
 
+/** One instanced draw of facade boxes (the dealt towers' bases, or their upper tiers). */
+function createFacadeInstances(boxes, material, name) {
+    const count = Math.max(1, boxes.length);
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const mesh = new THREE.InstancedMesh(geometry, material, count);
+    mesh.name = name;
+    mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+    const facadeArray = new Float32Array(count * 4); // seed, occupancy, warmBias, hero
+    const dimsArray = new Float32Array(count * 3); // width, height, depth
+    const archArray = new Float32Array(count * 4); // style, foot above the street, tint, part
+    const scratchMatrix = new THREE.Matrix4();
+    const scratchPos = new THREE.Vector3();
+    const scratchQuat = new THREE.Quaternion();
+    const scratchScale = new THREE.Vector3();
+    boxes.forEach((box, instance) => {
+        scratchPos.set(box.x, box.y, box.z);
+        scratchScale.set(box.width, box.height, box.depth);
+        scratchMatrix.compose(scratchPos, scratchQuat, scratchScale);
+        mesh.setMatrixAt(instance, scratchMatrix);
+        facadeArray.set([box.seed, box.occupancy, box.warmBias, box.hero], instance * 4);
+        dimsArray.set([box.width, box.height, box.depth], instance * 3);
+        archArray.set([box.style ?? 0, box.base ?? 0, box.tint ?? 0.5, box.part ?? 0], instance * 4);
+    });
+    mesh.count = boxes.length;
+    mesh.instanceMatrix.needsUpdate = true;
+    geometry.setAttribute('aFacade', new THREE.InstancedBufferAttribute(facadeArray, 4));
+    geometry.setAttribute('aDims', new THREE.InstancedBufferAttribute(dimsArray, 3));
+    geometry.setAttribute('aArch', new THREE.InstancedBufferAttribute(archArray, 4));
+    mesh.computeBoundingSphere();
+    return mesh;
+}
+
 export function createCityBlocksTSL(uTime, uEnergy, {
-    uCityLight, uIgniteRadius, uDim, bankCount, neon,
+    uCityLight, uIgniteRadius, uDim, bankCount, neon, signs, interiors = true,
 } = {}) {
     const uTimeNode = uTime ?? uniform(0);
     const uEnergyNode = uEnergy ?? uniform(0.45);
 
     const group = new THREE.Group();
     group.name = 'city-blocks-tsl';
-    const geometries = [];
-    const materials = [];
 
     // A CITY-AT-NIGHT the camera flies over and through. This group is parented into the
     // path-aligned corridor container (urban-dreams.js) and the camera rides that same
@@ -758,48 +946,30 @@ export function createCityBlocksTSL(uTime, uEnergy, {
     // Low tier drops the OUTERMOST banks (the skyline cards carry the horizon behind them);
     // the layout is still dealt for every bank so the kept towers are identical on all tiers
     // (dealCityTowers, odyssey-neon-city-plan.js).
+    //
+    // 2026-11-17 THE ARCHITECTURE: every dealt tower is now a building (a style, setbacks,
+    // ledges, a penthouse; shared/odyssey-neon-architecture.js). Its base is still one box in
+    // the dealt order (`city-tower-instances-tsl`); the upper tiers, penthouses and ledges are a
+    // second draw of the same material (`city-tower-tiers-tsl`).
     const dealt = dealCityTowers(bankCount);
-    const TOWER_COUNT = dealt.length;
-    const sharedBox = new THREE.BoxGeometry(1, 1, 1);
+    const architecture = planNeonArchitecture(dealt, signs ?? planNeonSigns(dealt).signs);
     const neonUniforms = neon ?? createDefaultNeon(uTimeNode, uEnergyNode, { uCityLight, uIgniteRadius, uDim });
     const facadeMaterial = createFacadeMaterial(uTimeNode, uEnergyNode, {
-        uCityLight, uIgniteRadius, uDim, neon: neonUniforms,
+        uCityLight, uIgniteRadius, uDim, neon: neonUniforms, interiors,
     });
-    const towers = new THREE.InstancedMesh(sharedBox, facadeMaterial, TOWER_COUNT);
-    towers.name = 'city-tower-instances-tsl';
-    towers.instanceMatrix.setUsage(THREE.StaticDrawUsage);
-
-    const facadeArray = new Float32Array(TOWER_COUNT * 4); // seed, occupancy, warmBias, hero
-    const dimsArray = new Float32Array(TOWER_COUNT * 3); // width, height, depth
-    const scratchMatrix = new THREE.Matrix4();
-    const scratchPos = new THREE.Vector3();
-    const scratchQuat = new THREE.Quaternion();
-    const scratchScale = new THREE.Vector3();
-    dealt.forEach((tower, instance) => {
-        scratchPos.set(tower.x, tower.y, tower.z);
-        scratchScale.set(tower.width, tower.height, tower.depth);
-        scratchMatrix.compose(scratchPos, scratchQuat, scratchScale);
-        towers.setMatrixAt(instance, scratchMatrix);
-        facadeArray[instance * 4] = tower.seed;
-        facadeArray[instance * 4 + 1] = tower.occupancy;
-        facadeArray[instance * 4 + 2] = tower.warmBias;
-        facadeArray[instance * 4 + 3] = tower.hero;
-        dimsArray[instance * 3] = tower.width;
-        dimsArray[instance * 3 + 1] = tower.height;
-        dimsArray[instance * 3 + 2] = tower.depth;
-    });
-    towers.instanceMatrix.needsUpdate = true;
-    sharedBox.setAttribute('aFacade', new THREE.InstancedBufferAttribute(facadeArray, 4));
-    sharedBox.setAttribute('aDims', new THREE.InstancedBufferAttribute(dimsArray, 3));
-    towers.computeBoundingSphere();
+    const towers = createFacadeInstances(architecture.bases, facadeMaterial, 'city-tower-instances-tsl');
     towers.userData.towers = dealt;
-
     group.add(towers);
-    geometries.push(sharedBox);
-    materials.push(facadeMaterial);
+    const tiers = createFacadeInstances(architecture.tiers, facadeMaterial, 'city-tower-tiers-tsl');
+    group.add(tiers);
 
     return {
-        group, geometries, materials, material: facadeMaterial, towers: dealt,
+        group,
+        geometries: [towers.geometry, tiers.geometry],
+        materials: [facadeMaterial],
+        material: facadeMaterial,
+        towers: dealt,
+        architecture,
     };
 }
 
@@ -1227,7 +1397,7 @@ export function createWetReflectionPlaneTSL(uTime, uEnergy, { neon, uSunVisible 
         const road = oneMinus(smoothstep(S.roadHalf - 0.15, S.roadHalf + 0.15, ax)).toVar();
         const gutter = exp(abs(ax.sub(S.roadHalf - 1.0)).mul(-1.2)).mul(0.24);
         const puddle = smoothstep(0.5, 0.64, n1.add(gutter).add(n2.mul(0.12)))
-            .mul(N.uRainDensity.mul(0.4).add(0.6)).toVar();
+            .mul(N.wet).toVar();
 
         // ── Paint: a double centre line, lane dashes, edge lines, a zebra every block ──
         const aa = fx.add(0.012);
@@ -1254,7 +1424,8 @@ export function createWetReflectionPlaneTSL(uTime, uEnergy, { neon, uSunVisible 
         // ── Light: the shopfronts along the walls, the mist's glow, the spire ──
         const nearWall = exp(max(float(S.walkHalf).sub(ax), 0.0).mul(-1 / 6));
         const shops = glowLow.mul(ign.level).mul(nearWall.mul(1.7).add(0.12));
-        const light = N.mistLow.mul(0.9).add(shops).add(neonSpireLight(N, pc, vec3(0.0, 1.0, 0.0)));
+        const light = N.mistLow.mul(0.9).add(shops).add(neonSpireLight(N, pc, vec3(0.0, 1.0, 0.0)))
+            .add(N.sky.burst.mul(0.3));
 
         // ── Kerb LED strips: dashed, chasing, rose down the left and cyan down the right ──
         const led = stripe(S.kerbHalf, 0.08).mul(step(fract(z.div(2.4)), 0.72));
@@ -1281,7 +1452,10 @@ export function createWetReflectionPlaneTSL(uTime, uEnergy, { neon, uSunVisible 
                 const zz = z.sub(uTimeNode.mul(speed * dir));
                 const cell = floor(zz.div(S.carCell));
                 const h = hash21(vec2(cell, lane * 7.13 + 3.1));
-                const present = step(0.4, h);
+                // The lights down the boulevard let the traffic through in pulses: a slow wave
+                // of denser and thinner traffic rides each lane.
+                const pulse = sin(zz.mul(0.011).add(uTimeNode.mul(0.21 + li * 0.05)).add(lane)).mul(0.24);
+                const present = step(pulse.add(0.42), h);
                 const cz = cell.add(h.mul(0.5).add(0.25)).mul(S.carCell);
                 const dz = zz.sub(cz).sub(2.1);
                 const dx = abs(x.sub(lane).sub(h.sub(0.5).mul(0.9))).sub(0.72);
@@ -1311,7 +1485,7 @@ export function createWetReflectionPlaneTSL(uTime, uEnergy, { neon, uSunVisible 
             .mul(mix(float(0.09), float(0.025), puddle));
         const nrm = normalize(vec3(slope.x, 1.0, slope.y));
         const R = reflect(V, nrm);
-        const sunAt = vec3(RETROSUN_CITY_POS[0], RETROSUN_CITY_POS[1], RETROSUN_CITY_POS[2]);
+        const sunAt = N.sunPos;
         const toSun = normalize(sunAt.sub(pc));
         const cosA = clamp(dot(R, toSun), 0.0, 1.0);
         const disc = smoothstep(0.9855, 0.9905, cosA);
@@ -1326,9 +1500,41 @@ export function createWetReflectionPlaneTSL(uTime, uEnergy, { neon, uSunVisible 
             smoothstep(0.0, 0.55, tDisc),
         );
         const sunRefl = sunCol.mul(disc.mul(1.3).add(aureole)).mul(sunVisible).mul(S.sunReflectGain);
-        const mirror = glowSign.mul(streaks.mul(streaks).mul(1.3).add(0.04))
+        // THE CANYON IN THE WATER (2026-11-17): the mirrored ray is followed across the boulevard
+        // to the wall it meets. Below the roofs it finds that wall's signs (the glow map at the
+        // place it lands) and a scatter of lit windows; above them it finds the sky, so the strip
+        // of sky between the towers lies down the middle of the wet road, with the sun in it.
+        const wallSide = R.x.sign();
+        const tWall = float(S.walkHalf + 1.0).sub(x.mul(wallSide)).div(max(abs(R.x), 0.05)).toVar();
+        const yHit = R.y.mul(tWall).toVar();
+        const zHit = z.add(R.z.mul(tWall)).toVar();
+        const roofLine = sin(zHit.mul(0.071)).mul(16.0).add(sin(zHit.mul(0.023).add(wallSide.mul(1.7))).mul(22.0))
+            .add(84.0);
+        const seeSky = smoothstep(roofLine.sub(8.0), roofLine.add(8.0), yHit).toVar();
+        // Standing water holds the sky whole; the wet asphalt between the puddles only a dim blur
+        // of it, so the road stays dark and the puddles are pools of sky.
+        // Under a closed deck the water holds the cloud's dark belly, not the clear vault.
+        const skyR = neonSkyLite(N.sky, R).min(vec3(0.6, 0.6, 0.6)).mul(mix(float(0.12), float(0.62), puddle))
+            .mul(N.sky.cover.mul(-0.8).add(1.0));
+        const wallSigns = neonGlow(N, vec3(wallSide.mul(30.0), yHit.add(STREET_Y), zHit), 0).mul(ign.level)
+            .mul(exp(max(yHit.sub(46.0), 0.0).mul(-1 / 26)));
+        const winCell = floor(vec2(zHit.div(2.4), yHit.div(3.1)));
+        const winLit = step(0.8, hash21(winCell.add(vec2(wallSide.mul(31.0).add(40.0), 7.0))))
+            .mul(oneMinus(smoothstep(110.0, 260.0, dist)));
+        const wallR = wallSigns.mul(streaks.mul(1.1).add(0.35))
+            .add(vec3(1.0, 0.6, 0.3).mul(winLit).mul(0.07));
+        // Rain rings in the puddles while it falls.
+        const ringCell = floor(vec2(x, z).div(2.6));
+        const ringRnd = hash21(ringCell.add(vec2(11.0, 3.0)));
+        const ringAge = fract(uTimeNode.mul(ringRnd.mul(0.5).add(0.7)).add(ringRnd.mul(9.0)));
+        const ringR = length(fract(vec2(x, z).div(2.6)).sub(0.5));
+        const ring = oneMinus(smoothstep(0.0, 0.035, abs(ringR.sub(ringAge.mul(0.42)))))
+            .mul(oneMinus(ringAge)).mul(N.uRainDensity).mul(oneMinus(smoothstep(40.0, 150.0, dist)));
+        const mirror = mix(wallR.add(glowSign.mul(streaks.mul(streaks).mul(0.9).add(0.04))), skyR, seeSky)
             .add(N.mistLow.mul(0.9))
             .add(sunRefl)
+            .add(N.sky.burst.mul(puddle.mul(0.45).add(0.06)))
+            .add(skyR.add(N.mistLow).mul(ring.mul(0.5)))
             .mul(S.reflectGain);
 
         const col = albedo.mul(light).mul(mix(float(1.0), float(0.5), puddle))

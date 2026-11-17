@@ -25,6 +25,8 @@
 
 import * as THREE from 'three/webgpu';
 import {
+    clamp,
+    dot,
     exp,
     float,
     length,
@@ -42,14 +44,17 @@ import {
     vec4,
 } from 'three/tsl';
 import { NEON_GLOW, STREET_Y } from './odyssey-neon-city-plan.js';
+import { createNeonSkyUniforms } from './odyssey-neon-sky.tsl.js';
 
 /** Where the spire stands (corridor x, z) — the centre of the ignition ring. */
 export const NEON_SPIRE_XZ = Object.freeze([0, -560]);
 
 /** The air's numbers (corridor units). */
 export const NEON_AIR = Object.freeze({
-    // Haze: fraction lost = 1 - exp(-(d / hazeDistance)^2 * thin(y)).
-    hazeDistance: 760,
+    // Haze: fraction lost = 1 - exp(-(d / hazeDistance)^2 * thin(y)). 760 -> 700 (2026-11-17):
+    // the far ranks now fade into the sky's own colour (N.sky.haze), in layers, instead of into
+    // dark smog, so the air can be thicker and read as depth.
+    hazeDistance: 700,
     hazeThinHigh: 0.32,
     // Street mist: density mistDensity at the street, falling by e every mistHeight up.
     mistDensity: 0.0085,
@@ -107,6 +112,14 @@ export function createNeonCityUniforms(base, glowTex) {
         mistDensity: uniform(NEON_AIR.mistDensity),
         mistGlow: uniform(NEON_AIR.mistGlow),
         glowGain: uniform(1),
+        /** 0.5..1: how wet the street and the glass are (the weather, odyssey-neon-clock.js). */
+        wet: uniform(0.8),
+        /** The sky (odyssey-neon-sky.tsl.js): its palette, the sun's bearing, the cloud, first light. */
+        sky: createNeonSkyUniforms(),
+        /** The Retrosun's centre in corridor space (it sinks through the chapter, rises at the end). */
+        sunPos: uniform(new THREE.Vector3(0, 110, -700)),
+        /** The journey's ending: the radius of the wave of light from the spire (0 = none yet). */
+        endWave: uniform(0),
         glowTex,
     };
 }
@@ -180,7 +193,13 @@ export function neonAir(N, pc, glowLow = null) {
     const ign = neonIgnition(N, pc);
     const mistCol = N.mistLow.add(glow.mul(N.mistGlow).mul(ign.level).mul(exp(b.mul(-0.6))));
     const share = mistTau.div(tau.max(1e-4));
-    const colour = mix(N.smogHigh, mistCol, share);
+    // The far air is the sky's own colour: violet away from the sun, a warm glow toward it, so
+    // the ranks of towers down the boulevard fade into light, layer behind layer.
+    const cs = clamp(dot(rel.div(dist.max(1e-3)), N.sky.sunDir), 0.0, 1.0);
+    const cs2 = cs.mul(cs);
+    const farAir = N.sky.haze.add(N.sky.hazeSun.mul(cs2.mul(cs2).mul(0.8).add(cs2.mul(0.2))))
+        .add(N.sky.burst.mul(0.07));
+    const colour = mix(farAir, mistCol, share);
     return { amount, colour, dist };
 }
 

@@ -37,15 +37,29 @@
  * progress (transitions/odyssey-black-hole-fall.js): it grows until it swallows the frustum, on the
  * glide from level 49 to level 50 (the dive, 2026-10-22), drifting onto the view axis; the disk
  * plane sweeps through edge-on; and the
- * shadow's surface becomes a window onto the singularity's interior - the warp tunnel
+ * shadow's surface becomes a window onto the singularity's interior
  * (createSingularityWindowTSL) - so the eye is "inside" without a cut.
+ *
+ * INSIDE (2026-10-26; masterpiece pass 2026-11-17): through the window, first the last ring of
+ * starlight closing on the dark (odyssey-closing-sky.tsl.js, where a warp tunnel's streaks were),
+ * then the fold: eight places, one for each room (odyssey-fold-places.tsl.js), each opening
+ * through the last in its own time and held in the world while the eye turns
+ * (transitions/odyssey-fold-rooms.js), alive on the fold's clock (transitions/odyssey-fold-clock.js).
  */
 
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import { getActiveOdysseyChapterPositions, getChapterPathRange } from '../path-utils.js';
 import { prefersReducedMotion } from '../../../themes/shared/reduced-motion.js';
-import { resolveFoldRoom, resolveFoldRoomAnchors } from '../transitions/odyssey-fold-rooms.js';
+import { flashScale } from '../../../utils/photosensitivity.js';
+import { resolveFoldClock } from '../transitions/odyssey-fold-clock.js';
+import {
+    advanceFoldShow,
+    createFoldShow,
+    followFoldRoom,
+    resolveFoldRoom,
+    resolveFoldRoomAnchors,
+} from '../transitions/odyssey-fold-rooms.js';
 import { getChapterTransitionForChapter } from './shared/chapter-profile.js';
 import { pickByQualityTier } from './shared/odyssey-quality-tier.js';
 import {
@@ -144,8 +158,9 @@ export const CH7_FOLD_ARC_SETTINGS = Object.freeze({
  * field: `stars` is the starfield count, `dust` / `embers` scale the particleCount-derived
  * densities. High is unchanged (the authored chapter).
  */
-// `foldSteps`: the march through the other dimension (odyssey-fold-space.tsl.js) per pixel; its
-// cost at 1080p on an RTX 3070 is ~0.5 ms at 16 steps and ~0.76 ms at 32 over the old tunnel.
+// `foldSteps`: the steps a walked place of the fold takes per pixel (odyssey-fold-places.tsl.js:
+// the lattice, the flock's and the paint's layers, the stairs' trace); the places met exactly take
+// none. Measured per room in docs/ODYSSEY_CH7_FOLD_2026-10.md §6.
 export const CH7_QUALITY_TIERS = Object.freeze({
     high: Object.freeze({
         stars: CH7_STARFIELD.count, dust: 1, embers: 1, foldSteps: 32,
@@ -157,6 +172,9 @@ export const CH7_QUALITY_TIERS = Object.freeze({
         stars: 800, dust: 0.4, embers: 0.5, foldSteps: 14,
     }),
 });
+
+/** Where along its way the fold is when the eye comes in: the clock's time within this span. */
+export const CH7_FOLD_ENTRY_SPAN = 512;
 
 // The tunnel mouth's final angular radius (rad): past the corners of a 70 deg-FOV frame.
 const CH7_EXIT_MOUTH_MAX = 80 * (Math.PI / 180);
@@ -173,6 +191,9 @@ const _fwd = new THREE.Vector3();
 const _toSun = new THREE.Vector3();
 const _lockDir = new THREE.Vector3();
 const _axis = new THREE.Vector3();
+const _roomTurn = new THREE.Quaternion();
+const _noTurn = new THREE.Quaternion();
+const _roomMatrix = new THREE.Matrix4();
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Environment Creation
@@ -574,7 +595,8 @@ export const CH7_WARP_DRIVE = Object.freeze({
     /** Phase rate (tunnel radii-ish per second) = base + gain * throttle^2. */
     base: 0.6,
     gain: 3.4,
-    /** The phase wraps here; every rate in the window shader is a multiple of 1/64, so 2048 wraps whole. */
+    /** The phase wraps here. (The fold does not follow the wrap: its places are not periodic along
+     * the way, so inside it travels on the drive's steps summed, see `foldPhase` in the update.) */
     wrap: 2048,
     /** A progress jump larger than this in one frame is a teleport (map jump), not travel. */
     teleport: 0.02,
@@ -628,6 +650,44 @@ function readPaintedHoleFlag() {
     if (typeof window === 'undefined' || !window.location?.search) return false;
     const value = new URLSearchParams(window.location.search).get('odysseyPaintedHole');
     return value === '1' || value === 'true';
+}
+
+/**
+ * THE ROOM IS HELD IN THE WORLD (odyssey-fold-rooms.js CH7_FOLD_HOLD): the room keeps an
+ * orientation of its own, which follows the hole's (the view's) only as far as followFoldRoom
+ * says, and the view's turn into the room's frame is written into `turn` (a Matrix3 for the
+ * fold's rays, which have +z ahead). On the way out the turn eases onto none, so the hall runs
+ * straight into the mouth. Locked to the view under reduced motion and across a jump on the map.
+ */
+function holdFoldRoom(group, viewQuaternion, delta, progress, { locked, exit, turn }) {
+    if (!viewQuaternion || !turn) return;
+    const hold = group.userData.foldHold
+        ?? (group.userData.foldHold = { room: new THREE.Quaternion(), live: false, progress: null });
+    const jumped = Number.isFinite(hold.progress) && Number.isFinite(progress)
+        && Math.abs(progress - hold.progress) > CH7_WARP_DRIVE.teleport;
+    hold.progress = progress;
+    if (!hold.live || locked || jumped) {
+        hold.room.copy(viewQuaternion);
+        hold.live = true;
+    } else {
+        const lag = THREE.MathUtils.radToDeg(hold.room.angleTo(viewQuaternion));
+        if (lag > 1e-4) hold.room.slerp(viewQuaternion, 1 - (followFoldRoom(lag, delta) / lag));
+    }
+    _roomTurn.copy(hold.room).invert().multiply(viewQuaternion);
+    if (exit > 0) _roomTurn.slerp(_noTurn, Math.min(1, exit));
+    const e = _roomMatrix.makeRotationFromQuaternion(_roomTurn).elements;
+    // The turn among rays with +z ahead: the hole's own have +z toward the eye.
+    turn.set(
+        e[0],
+        e[4],
+        -e[8],
+        e[1],
+        e[5],
+        -e[9],
+        -e[2],
+        -e[6],
+        e[10],
+    );
 }
 
 /** `?odysseyCh7Fold=0|1`: hold the fold off or on inside the hole (A/B captures and timing). */
@@ -728,13 +788,15 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
         // The mouth grows to 80 deg: past the corners of a 70 deg-FOV frame.
         windowUniforms.uOpen.value = open * CH7_EXIT_MOUTH_MAX;
         if (windowUniforms.uPhase) windowUniforms.uPhase.value = drive.phase;
-        // THE CROSSING: the tunnel's streaks follow the drive until the fold begins, then hold
-        // still (frozen strands) while the fold travels on; back out of the fold, they move again.
+        // THE CROSSING: the closing sky travels with the drive until the fold begins, then holds
+        // still while the fold travels on; back out of the fold, it moves again.
         if (windowUniforms.uTunnelPhase) {
             if (!((fall.fold ?? 0) > 0.001) || !Number.isFinite(drive.frozenPhase)) drive.frozenPhase = drive.phase;
             windowUniforms.uTunnelPhase.value = drive.frozenPhase;
         }
         if (windowUniforms.uThrottle) windowUniforms.uThrottle.value = drive.throttle;
+        // The last ring of starlight, closing on the middle of the view (odyssey-closing-sky.tsl.js).
+        if (windowUniforms.uRing) windowUniforms.uRing.value = fall.ring ?? CH7_FALL.ringOpen;
         // THE FOLD: the other dimension past the horizon; still under reduced motion.
         if (group.userData.foldOverride === undefined) group.userData.foldOverride = readCh7FoldOverride();
         const { foldOverride } = group.userData;
@@ -743,22 +805,54 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
                 ? foldOverride * (fall.portal > 0 ? 1 : 0) : (fall.fold ?? 0);
         }
         if (windowUniforms.uMotion) windowUniforms.uMotion.value = prefersReducedMotion() ? 0 : 1;
-        // THE ROOMS: the room of the fold at the eye's progress (its orb's mood), morphing
-        // into the next one's between their orbs.
-        if (windowUniforms.room && (fall.fold ?? 0) > 0) {
-            const r = resolveFoldRoom(cameraProgress, resolveFoldRoomAnchors(chapterPositions));
+        // THE ROOMS: the place of the fold at the eye's progress, the next one opening through
+        // it between their orbs, the fold's clock, and the room held in the world.
+        const foldNow = windowUniforms.uFold?.value ?? 0;
+        // THE FOLD'S OWN TRAVEL. The drive's phase wraps (the old tunnel's rates were chosen so it
+        // could), but the places are not periodic along the way: a wrap would throw the room the
+        // eye is in somewhere else on one frame. Inside, the fold travels on the drive's steps
+        // summed without a wrap (a stay of hours is still exact in a float), begun afresh each
+        // time the eye comes in, at a place that depends on when.
+        const driveStep = Number.isFinite(drive.lastPhase)
+            ? ((drive.phase - drive.lastPhase) + CH7_WARP_DRIVE.wrap) % CH7_WARP_DRIVE.wrap : 0;
+        drive.lastPhase = drive.phase;
+        if (!(foldNow > 0)) {
+            drive.foldPhase = null;
+        } else {
+            drive.foldPhase = (drive.foldPhase ?? ((Number.isFinite(time) ? Math.abs(time) : 0) % CH7_FOLD_ENTRY_SPAN))
+                + driveStep;
+            if (windowUniforms.uPhase) windowUniforms.uPhase.value = drive.foldPhase;
+        }
+        if (windowUniforms.room && foldNow > 0) {
+            const r = resolveFoldRoom(cameraProgress, resolveFoldRoomAnchors(chapterPositions), chapterPositions);
             const u = windowUniforms.room;
-            u.shapeA.value = r.shapeA;
-            u.shapeB.value = r.shapeB;
-            u.morph.value = r.morph;
-            u.hue.value = r.hue;
-            u.spread.value = r.spread;
-            u.tint.value.set(r.tint[0], r.tint[1], r.tint[2]);
-            u.tintMix.value = r.tintMix;
-            u.nebula.value = r.nebula;
-            u.nebulaHue.value = r.nebulaHue;
-            u.crackle.value = r.crackle;
-            u.grid.value = r.grid;
+            const still = prefersReducedMotion();
+            // What is shown follows where the eye is on the clock (a trip between two orbs of the
+            // chapter jumps the progress): the first frame inside takes the eye's room whole.
+            const show = advanceFoldShow(
+                group.userData.foldShow ?? (group.userData.foldShow = createFoldShow()),
+                r,
+                delta,
+                { snap: !group.userData.foldShown },
+            );
+            group.userData.foldShown = true;
+            u.placeA.value = show.from;
+            u.placeB.value = show.to;
+            u.morph.value = show.morph;
+            u.door.value.set(show.door[0], show.door[1], 1).normalize();
+            u.exit.value = show.exit;
+            u.straight.value = r.straight;
+            u.pour.value = open * CH7_EXIT_MOUTH_MAX;
+            const clock = resolveFoldClock(time, { still });
+            u.mood.value.set(clock.mood[0], clock.mood[1], clock.mood[2]);
+            u.event.value.set(clock.event, clock.eventAge, clock.eventSeed, clock.turns);
+            u.flash.value = flashScale();
+            holdFoldRoom(group, distantHole?.quaternion, delta, cameraProgress, {
+                locked: still, exit: show.exit, turn: u.turn.value,
+            });
+        } else {
+            group.userData.foldShown = false;
+            if (group.userData.foldHold) group.userData.foldHold.live = false;
         }
     }
     // The post's radial rush (zoom blur) rides the same throttle, only inside the window and gone
@@ -900,11 +994,12 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
     }
     const dustWarp = corridorDust?.userData?.flowUniforms?.uWarp;
     if (dustWarp) {
-        // THE FOLD: in the other dimension the dust drifts as motes of light, and streaks only
-        // while the eye glides between orbs (the warp drive's punch), not at rest.
+        // The dust drifts as motes of light, and streaks only while the eye glides between orbs in
+        // the fold (the warp drive's punch): not at rest, and no longer through the plunge, where
+        // streaks out of the middle of the view made the closing sky a hyperspace tunnel again.
         const fold = windowUniforms?.uFold?.value ?? 0;
         const glide = THREE.MathUtils.smoothstep(group.userData.warpDrive?.throttle ?? 0, 0.5, 1.4);
-        dustWarp.value = fall.warp * ((1 - fold) + (fold * glide));
+        dustWarp.value = fall.warp * fold * glide;
     }
 
     // Vertical shard drift runs in the TSL material; feed it the camera Y.

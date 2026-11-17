@@ -61,7 +61,23 @@ export const ACT_TIME = Object.freeze({
 const SIDES = Object.freeze({ L: 1, R: -1 });
 
 /** The staff: metres from its foot to where it is gripped, and its whole length. */
-export const STAFF = Object.freeze({ grip: 0.66, length: 2.55, hook: 0.2 });
+/**
+ * The staff (metres): how far up from its foot his hand holds it when he carries it (`grip`) and
+ * when it is planted like a walking stick (`plant`: higher, at his chest, where a tall staff is
+ * leant on), its length, and the crook's reach.
+ */
+export const STAFF = Object.freeze({
+    grip: 0.66, plant: 1.45, length: 2.55, hook: 0.2,
+});
+/**
+ * Where the planted staff stands and where his hand is on it (metres from his middle, to his left
+ * and forward; the hand's drop below his chest). He is 0.67 m from his middle to the outside of
+ * his hip in its cloth and his belly stands 0.85 m forward: a hand nearer than this is IN him
+ * (it once sat at 0.66 left and 0.72 down, in the cloth of his hip).
+ */
+export const STAFF_STAND = Object.freeze({
+    foot: Object.freeze([0.94, 0.28]), hand: Object.freeze([0.9, 0.52]), drop: 0.36, seatedOut: 0.05,
+});
 
 /**
  * Where the staff runs in his left fist, in the hand's own frame (model units from the wrist):
@@ -76,7 +92,7 @@ export const FIST = Object.freeze({ along: 0.085, off: 0.046 });
  * and only a little sliding (the staff's butt is behind the hand: it must not come back into him).
  */
 export const FIST_HOLD = Object.freeze({
-    planted: Object.freeze({ elbow: Object.freeze([60, 100]), slide: Object.freeze([-0.4, 0.8]) }),
+    planted: Object.freeze({ elbow: Object.freeze([60, 100]), slide: Object.freeze([-0.3, 0.5]) }),
     held: Object.freeze({ elbow: Object.freeze([30, 95]), slide: Object.freeze([-0.25, 0.3]) }),
 });
 /** The share of the hand's turn about the forearm that the forearm takes (the rest is the wrist's). */
@@ -289,6 +305,8 @@ export class TrollBody {
             tip: null,
             stepping: null,
             mode: 'planted',
+            /** Metres from the staff's foot to his hand: STAFF.plant planted, STAFF.grip carried (eased between). */
+            along: STAFF.plant,
         };
         /** The lantern on its cord (metres): long enough to hang below his face, and to swing slow. */
         this.lantern = new Pendulum(0.55, 1.2);
@@ -1039,7 +1057,7 @@ export class TrollBody {
     staffRestTip(out) {
         const fwd = this._v3.set(Math.sin(this.heading), 0, Math.cos(this.heading));
         const left = this._mid.set(Math.cos(this.heading), 0, -Math.sin(this.heading));
-        out.copy(this.root).addScaledVector(left, 0.74).addScaledVector(fwd, 0.26);
+        out.copy(this.root).addScaledVector(left, STAFF_STAND.foot[0]).addScaledVector(fwd, STAFF_STAND.foot[1]);
         out.y = this.ground(out.x, out.z);
         return out;
     }
@@ -1049,8 +1067,9 @@ export class TrollBody {
         this.staff.tip = tip;
         const dir = this._v.set(Math.cos(this.heading) * -0.12, 1, Math.sin(this.heading) * 0.12).normalize();
         this.staff.dir.set(dir.x, dir.y, dir.z);
-        const g = tip.clone().addScaledVector(dir, STAFF.grip);
+        const g = tip.clone().addScaledVector(dir, STAFF.plant);
         this.staff.grip.set(g.x, g.y, g.z);
+        this.staff.along = STAFF.plant;
     }
 
     /**
@@ -1066,6 +1085,9 @@ export class TrollBody {
         st.wantMode = wantMode;
         // (Seated he keeps it planted, except to draw the lantern in to trim it.)
         const lifted = wantMode !== 'walk' && (act.sit < 0.5 || wantMode === 'tend');
+        // (His hand moves along the staff as he takes it up or plants it: never a jump.)
+        const alongWant = lifted ? STAFF.grip : STAFF.plant;
+        st.along += (alongWant - st.along) * (dt > 0 ? 1 - Math.exp(-dt / 0.16) : 0);
         const fwd = this._v3.set(Math.sin(this.heading), 0, Math.cos(this.heading));
         const left = new THREE.Vector3(Math.cos(this.heading), 0, -Math.sin(this.heading));
         // (The chest as it is posed this frame: crouched or seated, the staff comes down with it.)
@@ -1107,7 +1129,7 @@ export class TrollBody {
                 const hand = chest.clone().addScaledVector(left, 0.6).addScaledVector(fwd, 0.45);
                 hand.y -= 0.3;
                 dir = hand.clone().sub(tip).normalize();
-                grip = tip.clone().addScaledVector(dir, STAFF.grip);
+                grip = tip.clone().addScaledVector(dir, st.along);
                 // The moment each knock lands.
                 const slot = gp?.staffSlot;
                 [0.46, 0.8].forEach((at, i) => {
@@ -1171,13 +1193,14 @@ export class TrollBody {
             }
             // The hand is where it is comfortable; the staff leans from its foot up to the hand.
             // (Ahead of the staff's foot: it leans forward, and the lantern hangs out before him.)
-            const hand = chest.clone().addScaledVector(left, 0.66).addScaledVector(fwd, 0.5);
-            hand.y -= 0.72 * (1 - act.sit * 0.3);
-            if (act.sit > 0) hand.addScaledVector(fwd, -act.sit * 0.05).addScaledVector(left, act.sit * 0.16);
+            // (Out past his hip and at his chest, not down beside it: see STAFF_STAND.)
+            const hand = chest.clone().addScaledVector(left, STAFF_STAND.hand[0]).addScaledVector(fwd, STAFF_STAND.hand[1]);
+            hand.y -= STAFF_STAND.drop * (1 - act.sit * 0.3);
+            if (act.sit > 0) hand.addScaledVector(fwd, -act.sit * 0.05).addScaledVector(left, act.sit * STAFF_STAND.seatedOut);
             const d = hand.clone().sub(st.tip);
             d.y = Math.max(d.y, 0.3);
             d.normalize();
-            const g = st.tip.clone().addScaledVector(d, STAFF.grip);
+            const g = st.tip.clone().addScaledVector(d, st.along);
             const k = st.wasPlanted === false ? 0.25 : 0.06;
             st.grip.step(g.x, g.y, g.z, k, dt);
             st.dir.step(d.x, d.y, d.z, k, dt);
@@ -1186,8 +1209,8 @@ export class TrollBody {
         const dl = Math.hypot(st.dir.x[0], st.dir.x[1], st.dir.x[2]) || 1;
         st.dirN = new THREE.Vector3(st.dir.x[0] / dl, st.dir.x[1] / dl, st.dir.x[2] / dl);
         st.gripAt = new THREE.Vector3(st.grip.x[0], st.grip.x[1], st.grip.x[2]);
-        st.foot = st.gripAt.clone().addScaledVector(st.dirN, -STAFF.grip);
-        st.top = st.gripAt.clone().addScaledVector(st.dirN, STAFF.length - STAFF.grip);
+        st.foot = st.gripAt.clone().addScaledVector(st.dirN, -st.along);
+        st.top = st.gripAt.clone().addScaledVector(st.dirN, STAFF.length - st.along);
         // The crook bends forward off the top; the lantern's bail hangs from its end.
         // (Out to his left and forward: the lantern lights his face from the side, it does not hide it.)
         const way = this._v2.copy(fwd).multiplyScalar(0.9).addScaledVector(left, 0.38);
@@ -1209,10 +1232,12 @@ export class TrollBody {
     /** The right hand (model frame): it swings as he walks, rests on his knee, or is held out. */
     rightHand(dt, want, act, gp = null) {
         if (!this.rest.handR) return null;
-        // Hanging relaxed at his side (the sculpt holds it up and out: we let it down).
-        let x = -0.29;
+        // Hanging relaxed at his side (the sculpt holds it up and out: we let it down). Clear of
+        // his hip: with its cloth he is 0.23 of his height from his middle to its outside there,
+        // and a hand hung at 0.29 brushed it at every stride.
+        let x = -0.335;
         let y = -0.24;
-        let z = 0.1;
+        let z = 0.11;
         // Swinging against the right leg.
         const swingL = this.feet.L.swing;
         const swingR = this.feet.R.swing;
@@ -1221,8 +1246,9 @@ export class TrollBody {
         if (swingL && !swingL.small) swing = Math.sin(Math.PI * clamp(swingL.t / swingL.time, 0, 1));
         if (swingR && !swingR.small) swing = -Math.sin(Math.PI * clamp(swingR.t / swingR.time, 0, 1));
         // (Forward and a little across him, the elbow giving; back, straighter.)
+        // (Forward it stays out beside him: swung across, it went into the cloth at his hip.)
         z += swing * 0.1 * gait;
-        x += Math.max(swing, 0) * 0.03 * gait;
+        x -= Math.max(swing, 0) * 0.01 * gait;
         y += (Math.abs(swing) * 0.02 + Math.max(swing, 0) * 0.02) * gait;
         // Held out, palm up, toward what he watches.
         const reach = clamp(want.reach || 0, 0, 1) * (1 - act.sit);

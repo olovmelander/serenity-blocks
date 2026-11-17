@@ -270,7 +270,16 @@ export function createNeonSigns(N, signs, glyphTex) {
         const buzz = mix(float(1.0), buzzTick.mul(0.6).add(0.4), buzzing);
         const hum = sin(N.uTime.mul(37.0).add(seed)).mul(0.03).add(0.97);
         const level = ign.level.mul(0.75).add(0.25).add(ign.front.mul(0.7));
-        const live = charOn.mul(buzz).mul(hum).mul(lit).mul(level)
+        // ALIVE (2026-11-17): a fifth of the signs are on a slow cycle. Every half minute or so,
+        // each on its own clock, one dims to a glimmer for a few seconds and comes back, eased
+        // both ways (never a blink), and the ending's wave of light brings every sign up.
+        const cycler = step(0.8, hash21(vec2(seed, 23.0)));
+        const cyclePhase = N.uTime.div(hash21(vec2(seed, 29.0)).mul(24.0).add(22.0)).add(seed.mul(0.173));
+        const resting = smoothstep(0.8, 0.86, fract(cyclePhase)).mul(float(1.0).sub(smoothstep(0.94, 1.0, fract(cyclePhase))));
+        const cycle = float(1.0).sub(resting.mul(cycler).mul(0.86));
+        const waved = float(1.0).sub(smoothstep(N.endWave.sub(60.0), N.endWave, dSpire));
+        const live = charOn.mul(buzz).mul(hum).mul(max(lit, waved)).mul(level)
+            .mul(cycle)
             .toVar();
         const white = mix(tint, vec3(1.0), 0.62);
 

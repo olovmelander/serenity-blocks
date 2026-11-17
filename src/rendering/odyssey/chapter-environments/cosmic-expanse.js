@@ -86,6 +86,9 @@ import { runChapterSteps } from './shared/chapter-build-steps.js';
 import { pickByQualityTier } from './shared/odyssey-quality-tier.js';
 import { createSpiralGalaxySteps } from './odyssey-spiral-galaxy.tsl.js';
 import { createSpaceMotes, updateSpaceMotes } from './odyssey-space-motes.js';
+import { greatHoleWakeAt } from './odyssey-great-hole-life.js';
+import { createGalaxyNova } from './odyssey-galaxy-nova.js';
+import { setGreatHoleWake } from './odyssey-great-hole-lens.tsl.js';
 
 /**
  * Cosmic Expanse environment configuration
@@ -396,7 +399,15 @@ export const OMEN_SPINE_ANCHOR = Object.freeze({
     // 2026-10-20 overhaul (2.9 -> 8.2 deg, 2.15x of it a scripted swell that read as the hole
     // flying at you); 0 now: one size in the world, ch7's own, and it grows by approach alone
     // (6.1 -> 8.2 deg) — a great black hole from the chapter's first frame.
-    approachGain: 0,
+    // 0.25 since 2026-11-17 (the masterpiece pass: the hole was "the same picture for seven orbs").
+    // Not the old swell: still a great hole from the first frame (1.57x by the lock; the framing
+    // test holds it under 1.6x), and its world size is steady until its light shows. Then, across
+    // `approachOver` of the way to the lock (from the orb where its light first shows to the one
+    // before the lock), it comes up to ch7's size: its shadow 12.6, 13.2, 13.9, 15.6 and 16.6 deg
+    // across at orbs 42 to 46 (it was 15.5 to 16.6 there, under a lens that widens as it nears:
+    // one size on screen), each orb a step nearer. 0 restores one size.
+    approachGain: 0.25,
+    approachOver: Object.freeze([0.6, 0.95]),
 });
 
 /**
@@ -652,7 +663,9 @@ export const OMEN_LENS = Object.freeze({
 
 export function resolveOmenSpineScale(toLock) {
     const lockScale = GREAT_HOLE_LOCK.shadowRadius / OMEN_SHADOW_RADIUS;
-    return lockScale / (1 + OMEN_SPINE_ANCHOR.approachGain * (1 - smoothstep01(toLock)));
+    const A = OMEN_SPINE_ANCHOR;
+    const come = smoothstep01((toLock - A.approachOver[0]) / (A.approachOver[1] - A.approachOver[0]));
+    return lockScale / (1 + A.approachGain * (1 - come));
 }
 
 // B3 (Overdraw) — hard caps on the nebula billboard tiers. The wispy nebula is a
@@ -729,6 +742,10 @@ export const DEEP_SPACE_BEATS = Object.freeze({
 });
 
 const DEEP_SPACE_WHOLE = Object.freeze({ milkyWay: 1, nebula: 1, hole: 1 });
+/** The hole at full blaze and alive (odyssey-great-hole-life.js), for callers without a journey. */
+const AWAKE = Object.freeze({
+    heat: 1, gain: 1, corona: 1, life: 1,
+});
 
 /**
  * How far each deep-space beat has come at journey progress `progress` (0..1 each); all 1
@@ -1332,7 +1349,7 @@ export function* buildCosmicExpanseEnvironmentSteps(options = {}) {
     }
 
     // The comet (Wave 5): the reef's authored moment — unlevered, two opaque draws.
-    const comet = ambient.comet ? createComet() : null;
+    const comet = ambient.comet ? createComet(uniforms) : null;
     if (comet) {
         corridor.add(comet);
         group.userData.comet = comet;
@@ -2202,11 +2219,34 @@ function createStreakMotes(uniforms, count) {
 // screen points at the Drift's middle (p 0.802): it enters at the right edge at mid height and
 // sweeps down-left across the open lower-right sky to the bottom of the frame, 420 -> 300 u out,
 // crossing the Milky Way and passing clear of the gas giant (>= 0.3 ndc) for the whole Drift.
+//
+// A COMET AT A DISTANCE (2026-11-17, the masterpiece pass). That chord was solved for the rail's
+// own view, before each orb had its own (CHAPTER_6_SHOTS, 2026-11-02): from orb 39, turned to
+// the giant, the comet flew straight across the giant's face 300 u from the eye, its head a
+// white ball with a blue bar for a tail, as wide as the planet. It is far now, as a comet is:
+// 1,000-1,300 u out, so small and slow, crossing the high sky from right to left over the
+// galaxy and the hole (ndc y 0.2-0.5 at orbs 40-44, off the top of the giant's own view at orb
+// 39), solved in the spine's frame at the chapter's middle (36 deg right and 15 up to 40 deg left
+// and 9 up). And rare: it takes `crossing` of each period to cross, and the sky is empty for the
+// rest.
 export const COMET_PATH = Object.freeze({
-    a: new THREE.Vector3(300, 104, -256),
-    b: new THREE.Vector3(75, -150, -210),
-    periodSec: 70,
+    a: new THREE.Vector3(583, 459, -1088),
+    b: new THREE.Vector3(-808, 11, -834),
+    periodSec: 118,
+    crossing: 0.64,
 });
+
+/**
+ * Where on its chord the comet is at `time` (0 at `a`, 1 at `b`), and whether it is crossing at
+ * all (between crossings it waits, unseen, at the chord's end).
+ * @param {number} time board clock (s)
+ * @returns {{ s: number, crossing: boolean }}
+ */
+export function resolveCometChord(time) {
+    const t = Number.isFinite(time) ? time : 0;
+    const into = (t % COMET_PATH.periodSec) / COMET_PATH.periodSec;
+    return { s: Math.min(1, into / COMET_PATH.crossing), crossing: into < COMET_PATH.crossing };
+}
 
 /**
  * The comet's window as seen by the crossing under way: the value `windowNow` had when this chord
@@ -2226,8 +2266,9 @@ export function resolveCometPassWindow(state, time, windowNow) {
     return state.passWindow;
 }
 
-function createComet() {
+function createComet(uniforms) {
     const uReveal = uniform(0);
+    const uTime = uniforms?.uTime ?? uniform(0);
     // Comet-local directions, set by update(): the tails stream AWAY from the black hole's light
     // (`uTailDir`), and the dust tail bends back along the comet's path (`uBendDir`).
     const uTailDir = uniform(new THREE.Vector3(0, 0, 1));
@@ -2241,6 +2282,8 @@ function createComet() {
     // dither: in captures a speckled pink-white blob. A comet's head is its coma — a soft glow of
     // gas round a nucleus too small to see — so it is now light: a camera-facing quad, a wide soft
     // halo and a hard bright core, fading through `uReveal` like the tails.
+    // (2026-11-17) The halo is the green of a comet's gas, the core a point: at its new distance
+    // the old white disc was a ball.
     const comaMat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
     comaMat.transparent = true;
     comaMat.depthWrite = false;
@@ -2249,11 +2292,13 @@ function createComet() {
     const toCam = normalize(camLocal);
     const right = normalize(cross(vec3(0.0, 1.0, 0.0), toCam));
     const up = cross(toCam, right);
-    const COMA = 34;
+    const COMA = 64;
     comaMat.positionNode = right.mul(positionGeometry.x.mul(COMA)).add(up.mul(positionGeometry.y.mul(COMA)));
     const cr = length(uv().sub(0.5)).mul(2.0);
-    const coma = exp(cr.mul(cr).mul(-7.0)).mul(0.55).add(exp(cr.mul(cr).mul(-120.0)).mul(2.2));
-    comaMat.colorNode = mix(vec3(0.62, 0.86, 1.0), vec3(1.0, 0.98, 0.94), exp(cr.mul(cr).mul(-60.0)));
+    const coma = exp(cr.mul(cr).mul(-9.0)).mul(0.3).add(exp(cr.mul(cr).mul(-60.0)).mul(0.5))
+        .add(exp(cr.mul(cr).mul(-900.0)).mul(2.4))
+        .mul(oneMinus(smoothstep(0.8, 1.0, cr)));
+    comaMat.colorNode = mix(vec3(0.42, 0.95, 0.74), vec3(1.0, 0.98, 0.94), exp(cr.mul(cr).mul(-160.0)));
     comaMat.opacityNode = clamp(coma, 0.0, 1.0).mul(uReveal).mul(materialOpacity);
     comaMat.userData.emitsBloom = true;
     const head = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), comaMat);
@@ -2265,8 +2310,11 @@ function createComet() {
     // turned about their own axis to face the eye (DoubleSide: a world-space ribbon's winding can
     // face away). The ION tail runs dead straight away from the light, blue and streaked; the DUST
     // tail is broader, paler gold and curves back along the path, as a real comet's two tails do.
+    // (2026-11-17) A real tail: both begin as a point at the head and open like a fan (they were
+    // bars as wide as the head), the ion tail's streamers and knots run down it on the clock, the
+    // dust tail is smooth with faint striae, and both thin out to nothing along their length.
     const ribbon = ({
-        name, length: L, width0, width1, bend, tint, streak, gain,
+        name, length: L, width0, width1, bend, tint, streak, gain, flow, knots,
     }) => {
         const mat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
         mat.transparent = true;
@@ -2278,41 +2326,53 @@ function createComet() {
         const centre = dir.mul(along.mul(L)).add(uBendDir.mul(along.mul(along).mul(bend)));
         const tangent = normalize(dir.mul(L).add(uBendDir.mul(along.mul(2.0 * bend))));
         const side = normalize(cross(tangent, normalize(camLocal.sub(centre))));
-        const w = mix(float(width0), float(width1), along);
+        // A fan: fast out of the head, then slowly wider.
+        const w = mix(float(width0), float(width1), pow(along, 0.6));
         mat.positionNode = centre.add(side.mul(positionGeometry.x.mul(w)));
         const t = uv().y;
         const across = clamp(abs(uv().x.sub(0.5)).mul(2.0), 0.0, 1.0);
-        const profile = exp(across.mul(across).mul(-3.2));
-        const fade = pow(clamp(oneMinus(t), 0.0, 1.0), 1.25).mul(smoothstep(0.0, 0.05, t));
-        const strands = latticeNoise3(vec3(uv().x.mul(streak), t.mul(2.5), 3.7)).mul(0.6).add(0.55);
+        const profile = exp(across.mul(across).mul(-3.6)).mul(oneMinus(smoothstep(0.75, 1.0, across)));
+        // Bright at the head, thinning to nothing: the gas spreads as it leaves.
+        const fade = pow(clamp(oneMinus(t), 0.0, 1.0), 1.6).mul(smoothstep(0.0, 0.03, t))
+            .div(t.mul(3.5).add(0.3));
+        // Streamers: the lattice read along the tail, running down it on the clock; knots: a
+        // coarser read that travels faster (the ion tail's disconnections).
+        const run = t.mul(2.5).sub(uTime.mul(flow));
+        const strands = latticeNoise3(vec3(uv().x.mul(streak), run, 3.7)).mul(0.75).add(0.4);
+        const lumps = latticeNoise3(vec3(uv().x.mul(1.6), t.mul(5.0).sub(uTime.mul(flow * 1.7)), 9.1))
+            .mul(knots).add(1.0 - knots * 0.5);
         mat.colorNode = tint;
-        mat.opacityNode = clamp(profile.mul(fade).mul(strands).mul(gain), 0.0, 1.0)
+        mat.opacityNode = clamp(profile.mul(fade).mul(strands).mul(lumps).mul(gain), 0.0, 1.0)
             .mul(uReveal).mul(materialOpacity);
         mat.userData.emitsBloom = true;
-        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1, 1, 32), mat);
+        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1, 1, 40), mat);
         mesh.name = name;
         mesh.frustumCulled = false;
         return mesh;
     };
     group.add(ribbon({
         name: 'comet-tail',
-        length: 230,
-        width0: 5,
-        width1: 16,
+        length: 300,
+        width0: 1.5,
+        width1: 22,
         bend: 0,
-        tint: vec3(0.42, 0.66, 1.0),
-        streak: 9.0,
-        gain: 0.9,
+        tint: vec3(0.36, 0.62, 1.0),
+        streak: 11.0,
+        gain: 0.62,
+        flow: 0.22,
+        knots: 0.7,
     }));
     group.add(ribbon({
         name: 'comet-dust-tail',
-        length: 160,
-        width0: 8,
-        width1: 46,
-        bend: 55,
-        tint: vec3(1.0, 0.86, 0.64),
+        length: 190,
+        width0: 2.5,
+        width1: 70,
+        bend: 80,
+        tint: vec3(1.0, 0.88, 0.68),
         streak: 3.0,
-        gain: 0.55,
+        gain: 0.34,
+        flow: 0.05,
+        knots: 0.15,
     }));
 
     group.userData.uReveal = uReveal;
@@ -2333,6 +2393,10 @@ function* createDistantGalaxySteps(uniforms, options = {}) {
             quality: pickByQualityTier(options.qualityTier, { high: 'high', medium: 'high', low: 'low' }),
         });
         spiral.mesh.name = 'distant-galaxy-anchor';
+        // A nova now and then in its disc (odyssey-galaxy-nova.js), on the clock.
+        const nova = createGalaxyNova(spiral.mesh.userData.discRadius);
+        spiral.mesh.add(nova.mesh);
+        spiral.mesh.userData.nova = nova;
         spiral.mesh.position.set(APPROACH.galaxyA.x, APPROACH.galaxyA.y, APPROACH.galaxyA.z);
         return spiral.mesh;
     }
@@ -2484,6 +2548,16 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     const holeBeat = camera ? deep.hole : smoothstep01(THREE.MathUtils.clamp(beatT / 0.5, 0, 1));
     const omenReveal = spaceReveal * holeBeat;
     if (blackHole?.userData?.uReveal) blackHole.userData.uReveal.value = omenReveal;
+    // THE HOLE WAKES (odyssey-great-hole-life.js): an ember where its light first shows, the full
+    // blaze at the last orb before the mouth, alive on the clock between. Headless callers see it
+    // awake and alive.
+    setGreatHoleWake(camera && Number.isFinite(cameraProgress) && Number.isFinite(chapterPositions?.[6])
+        ? greatHoleWakeAt(
+            cameraProgress,
+            chapterPositions[5] + spaceSpan * DEEP_SPACE_BEATS.hole[0],
+            chapterPositions[6],
+        )
+        : AWAKE);
     if (blackHole) {
         // THE HOLE RIDES THE PATH (resolveOmenPathPlace): placed by the progress the eased eye
         // stands at (the board's `followProgress`; a scroll eases the eye ~0.14 s behind the rail,
@@ -2572,6 +2646,8 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         // it grows only as the camera closes on it, and its spin lives in the cloud shader (the
         // group never turns, so the rings never swing). Nothing here reads the camera.
         heroPlanet.scale.setScalar(PLANET_WORLD_SEAT.radius / HERO_PLANET_RADIUS);
+        // Its moons circle on the clock (odyssey-giant-moons.js); nothing here reads the camera.
+        heroPlanet.userData.giant?.update?.(time);
         if (heroPlaces) {
             // From behind the Earth's limb up to its seat (the planetrise, by progress alone, so an
             // orb close-up never moves it); headless callers see it at its seat.
@@ -2626,6 +2702,7 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         } else {
             galaxy.position.set(APPROACH.galaxyA.x, APPROACH.galaxyA.y, APPROACH.galaxyA.z);
         }
+        galaxy.userData.nova?.update(time);
         // The quad's disc reaches 0.47 of its side: size it to the seat's angular radius.
         // (The disc's radius in the mesh's own units: the quad's feathered edge, or the spiral's arms.)
         galaxy.scale.setScalar((GALAXY_SKY_SEAT.distance * Math.tan(GALAXY_SKY_SEAT.angularRadius))
@@ -2755,7 +2832,7 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     // enters and leaves as a distant glint, never a pop.
     const { comet } = group.userData;
     if (comet?.userData?.uReveal) {
-        const s = (time % COMET_PATH.periodSec) / COMET_PATH.periodSec;
+        const { s, crossing } = resolveCometChord(time);
         comet.position.lerpVectors(COMET_PATH.a, COMET_PATH.b, s);
         // Its tails stream away from the hole's light, the dust tail bent back along its path.
         if (blackHole && comet.parent && comet.userData.uTailDir) {
@@ -2768,7 +2845,7 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
                 .normalize();
         }
         const endFade = THREE.MathUtils.smoothstep(s, 0, 0.1)
-            * (1 - THREE.MathUtils.smoothstep(s, 0.9, 1));
+            * (1 - THREE.MathUtils.smoothstep(s, 0.9, 1)) * (crossing ? 1 : 0);
         // (2026-10-03) On the chapter's BEAT, not the camera's height (`approach` is pinned at
         // 0 until p 0.766): the comet is the Drift's one event, crossing the quiet sky before
         // the gas arrives, and gone before the pull.

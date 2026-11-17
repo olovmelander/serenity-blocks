@@ -14,7 +14,14 @@ import {
     STEAM_QUENCH_HALF_WIDTH,
     STEAM_QUENCH_LUMA_CAP,
     STEAM_QUENCH_RADIUS,
+    STEAM_FIRE_RAMP,
+    STEAM_QUENCH_INTERFACE_DROP,
+    setSteamQuenchLight,
+    steamQuenchAbyssVeil,
+    steamQuenchEyeRadius,
+    steamQuenchLight,
     steamQuenchLumaCap,
+    steamQuenchNearVapourColour,
     behindSteamDepth,
     createSteamQuench,
     setSteamVeil,
@@ -141,6 +148,94 @@ describe('steam quench brightness + fog occlusion (seamless pass 2026-10-02)', (
         // ~75 % fogged at 30 u at peak density (FogExp2).
         const at30 = 1 - Math.exp(-((STEAM_QUENCH_FOG_DENSITY * 30) ** 2));
         expect(at30).toBeGreaterThan(0.7);
+    });
+});
+
+describe('the sea\'s eye and the abyss (masterpiece pass 2026-11-17)', () => {
+    // The steam is a column the eye climbs inside, lit from below; at its top is the sea, a dark
+    // eye straight ahead that opens as the eye climbs toward the vent's lip. The driver a test can
+    // hold: when the eye opens, how the dark lifts, and that the shell's light stays in range.
+    const BOUNDARY = 0.0649;
+
+    it('keeps the eye shut until the vapour has closed, and opens it steadily to the whole sky', () => {
+        // The world starts drawing behind the shell at the act gate (ADR-0017): the shell is
+        // opaque by then, and the eye it paints is the shell's own abyss, never a hole in it.
+        const gateT = steamQuenchSeamT(BOUNDARY - ONE_WORLD_ACT_MARGIN, BOUNDARY);
+        expect(steamQuenchEyeRadius(gateT)).toBeLessThan(-0.1);
+        expect(steamQuenchEyeRadius(0)).toBeLessThan(-0.1);
+        let prev = -1;
+        for (let i = 0; i <= 200; i += 1) {
+            const r = steamQuenchEyeRadius(i / 200);
+            expect(r).toBeGreaterThanOrEqual(prev - 1e-12);
+            // No jump: the eye's rim moves at most a few degrees per 1/200 of the window.
+            if (i > 0) expect(r - prev).toBeLessThan(0.06);
+            prev = r;
+        }
+        // Orb 5's station: an eye of ~15-20 degrees among the lit vapour (the sine of its half-angle).
+        const orb5 = steamQuenchEyeRadius(steamQuenchSeamT(0.056, BOUNDARY));
+        expect(orb5).toBeGreaterThan(Math.sin((12 * Math.PI) / 180));
+        expect(orb5).toBeLessThan(Math.sin((24 * Math.PI) / 180));
+        // At the boundary most of the frame (its corners are 46 degrees out); just past it, all.
+        const atLip = steamQuenchEyeRadius(0.5);
+        expect(atLip).toBeGreaterThan(Math.sin((34 * Math.PI) / 180));
+        expect(atLip).toBeLessThan(Math.sin((50 * Math.PI) / 180));
+        expect(steamQuenchEyeRadius(0.62)).toBeGreaterThan(1.1);
+    });
+
+    it('lifts the abyss evenly from the boundary to the window\'s end', () => {
+        expect(steamQuenchAbyssVeil(0.3)).toBe(1);
+        expect(steamQuenchAbyssVeil(0.5)).toBe(1);
+        expect(steamQuenchAbyssVeil(1)).toBeCloseTo(0, 9);
+        let prev = 1;
+        let steepest = 0;
+        for (let i = 0; i <= 100; i += 1) {
+            const v = steamQuenchAbyssVeil(0.5 + (i / 200));
+            expect(v).toBeLessThanOrEqual(prev + 1e-12);
+            steepest = Math.max(steepest, (prev - v) * 100);
+            prev = v;
+        }
+        // Never steeper than 1.3x an even lift: the frame's brightness climbs at a steady rate
+        // (the seam gate measures luma per 0.01 p; the squared triangle it replaced spent 44 % of
+        // the lift in the first fifth of the exit).
+        expect(steepest).toBeLessThan(1.3);
+    });
+
+    it('colours the vapour on one ramp: wine, deep red, orange, gold, pale gold', () => {
+        expect(STEAM_FIRE_RAMP).toHaveLength(5);
+        const luma = (c) => (0.2126 * c[0]) + (0.7152 * c[1]) + (0.0722 * c[2]);
+        for (let i = 1; i < STEAM_FIRE_RAMP.length; i += 1) {
+            expect(luma(STEAM_FIRE_RAMP[i])).toBeGreaterThan(luma(STEAM_FIRE_RAMP[i - 1]));
+        }
+        // The half-tones are red, not tan: until gold, red leads green by more than 3 to 1.
+        expect(STEAM_FIRE_RAMP[1][0] / STEAM_FIRE_RAMP[1][1]).toBeGreaterThan(3);
+        expect(STEAM_FIRE_RAMP[2][0] / STEAM_FIRE_RAMP[2][1]).toBeGreaterThan(3);
+        // The darkest stop is near black.
+        expect(luma(STEAM_FIRE_RAMP[0])).toBeLessThan(0.01);
+    });
+
+    it('turns the near vapour from lit gold to the abyss\'s blue-black at the lip', () => {
+        const gold = steamQuenchNearVapourColour(0.3, new THREE.Color());
+        const sea = steamQuenchNearVapourColour(0.6, new THREE.Color());
+        expect(gold.r).toBeGreaterThan(gold.b * 4);
+        expect(sea.b).toBeGreaterThan(sea.r);
+        expect(sea.r + sea.g + sea.b).toBeLessThan(0.15);
+    });
+
+    it('takes its light from the chapter, clamped', () => {
+        setSteamQuenchLight(1.1, 0.4);
+        expect(steamQuenchLight()).toEqual({ gain: 1.1, surge: 0.4 });
+        setSteamQuenchLight(9, 4);
+        expect(steamQuenchLight()).toEqual({ gain: 1.6, surge: 1 });
+        setSteamQuenchLight(NaN, NaN);
+        expect(steamQuenchLight()).toEqual({ gain: 1, surge: 0 });
+        setSteamQuenchLight(1, 0);
+    });
+
+    it('puts the vent\'s lip where the eye crosses the boundary', () => {
+        // The shell sits on the rail at the boundary; the follow camera trails the rail by ~20 u
+        // while climbing, so it passes the lip (shell centre - the drop) at the boundary.
+        expect(STEAM_QUENCH_INTERFACE_DROP).toBeGreaterThan(14);
+        expect(STEAM_QUENCH_INTERFACE_DROP).toBeLessThan(28);
     });
 });
 

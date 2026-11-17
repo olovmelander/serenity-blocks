@@ -29,6 +29,7 @@ import {
     ODYSSEY_CHAPTER_PROFILES,
 } from './chapter-environments/shared/chapter-profile.js';
 import { PATH_HORIZON_OPEN } from './odyssey-path-horizon.js';
+import { RAIL_RIPPLE, resolveRailRipple } from './odyssey-flow-answers.js';
 import {
     ODYSSEY_PATH_INFLOW,
     buildOdysseyPathInflow,
@@ -380,6 +381,58 @@ export class OdysseyPathRenderer {
     }
 
     /**
+     * THE RIPPLE: a run of light along the rail from one path position to another (the orb
+     * just finished to the orb ahead). A uniform the ribbon's shader always reads, so it costs
+     * nothing to start and never compiles; the newest ripple replaces one still running.
+     * @param {object} ripple
+     * @param {number} ripple.from path position (0..1) it starts at
+     * @param {number} ripple.to path position it runs to
+     * @param {number} [ripple.durationMs]
+     * @param {number} [ripple.delayMs] held dark this long first
+     * @param {number} [ripple.strength]
+     * @param {number} [ripple.width] world units
+     * @param {() => void} [ripple.onArrive] called once, as the light reaches `to`
+     * @returns {boolean} whether it started
+     */
+    playRipple({
+        from, to, durationMs = 1400, delayMs = 0, strength = 1, width = RAIL_RIPPLE.width, onArrive = null,
+    } = {}) {
+        if (!this._chapterUniforms?.uRipple || !Number.isFinite(from) || !Number.isFinite(to) || from === to) {
+            return false;
+        }
+        this._ripple = {
+            from: THREE.MathUtils.clamp(from, 0, 1),
+            to: THREE.MathUtils.clamp(to, 0, 1),
+            elapsed: -Math.max(0, delayMs) / 1000,
+            duration: Math.max(0.05, durationMs / 1000),
+            strength,
+            width,
+            onArrive,
+        };
+        return true;
+    }
+
+    /** @private advance the ripple on the renderer's own clock (a paused board holds it). */
+    _updateRipple(deltaTime) {
+        const uRipple = this._chapterUniforms?.uRipple;
+        const ripple = this._ripple;
+        if (!uRipple) return;
+        if (!ripple) {
+            if (uRipple.value.z !== 0) uRipple.value.z = 0;
+            return;
+        }
+        ripple.elapsed += Math.min(0.1, Math.max(0, deltaTime || 0));
+        const state = resolveRailRipple(ripple, this._chapterUniforms.uArc.value);
+        uRipple.value.set(state.head, ripple.width, state.strength, ripple.to >= ripple.from ? 1 : -1);
+        if (state.arrived && ripple.onArrive) {
+            const { onArrive } = ripple;
+            ripple.onArrive = null;
+            try { onArrive(); } catch (error) { console.warn('[OdysseyPath] ripple arrival failed:', error); }
+        }
+        if (state.done) this._ripple = null;
+    }
+
+    /**
      * Get position on path at normalized t
      * @param {number} t - 0 to 1
      * @returns {THREE.Vector3}
@@ -415,6 +468,7 @@ export class OdysseyPathRenderer {
         }
 
         this.updateChapterTransition();
+        this._updateRipple(deltaTime);
     }
 
     updateChapterTransition() {

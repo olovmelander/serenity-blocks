@@ -10,16 +10,22 @@
  * The ascent (chapters, read from the bottom up as the climb goes) on the left; the
  * stage on the right: the chapter, the selected orb's card with its world as the art,
  * and the chapter's route of orbs. Each chapter lends the page its light
- * (--nav-hue-rgb, from Earth Core's ember to the encore's neon); the selected orb's
- * world bleeds into the sky behind the card. No backdrop blur: the map renders on
+ * (--nav-hue-rgb, from Earth Core's ember to the encore's neon) and its night
+ * (the chapter's glass, odyssey-shared.css, both from src/core/odyssey/data/chapter-looks.js);
+ * the selected orb's world bleeds into the sky behind the card. The page is not a wall:
+ * the live world shows softly through its night, most in the middle of the stage, least
+ * behind the ascent's small print and at the edges. No backdrop blur: the map renders on
  * underneath (only the ambient image, a static layer of its own, is blurred).
  * Shell: src/ui/odyssey/LevelSelectOverlay.js; view: src/ui/odyssey/odyssey-navigator-list.js.
  * ================================================================================ */
 #odyssey-level-select.odyssey-level-select {
     --sb-accent: var(--sb-gold);
     --sb-accent-rgb: var(--sb-gold-rgb);
-    --nav-hue-rgb: var(--sb-gold-rgb);
-    --nav-ink: #0c0a22;
+    --nav-hue-rgb: var(--ody-hue-rgb, var(--sb-gold-rgb));
+    --nav-ink: rgb(var(--ody-glass-deep-rgb));
+    /* The inks measured for the chapter's glass (chapter-looks.js). */
+    --sb-text-muted: var(--ody-ink-muted);
+    --sb-text-faint: var(--ody-ink-faint);
     --nav-gutter: clamp(16px, 2.4vw, 36px);
     --orb-size: clamp(56px, min(4.6vw, 7.4vh), 88px);
     position: fixed;
@@ -29,7 +35,8 @@
     overflow: hidden;
     padding: 0;
     box-sizing: border-box;
-    background: #07061a;
+    /* No fill of its own: the sky below is the page's night, and the world shows through it. */
+    background: none;
     color: var(--sb-text);
     font-family: var(--sb-font-text);
     isolation: isolate;
@@ -40,20 +47,42 @@
     content: none;
 }
 
-/* The chapters' light, bottom of the climb to the top. */
-#odyssey-level-select[data-chapter='1'], #odyssey-level-select [data-chapter='1'] { --nav-hue-rgb: 255, 158, 98; }
-#odyssey-level-select[data-chapter='2'], #odyssey-level-select [data-chapter='2'] { --nav-hue-rgb: 98, 204, 255; }
-#odyssey-level-select[data-chapter='3'], #odyssey-level-select [data-chapter='3'] { --nav-hue-rgb: 172, 228, 134; }
-#odyssey-level-select[data-chapter='4'], #odyssey-level-select [data-chapter='4'] { --nav-hue-rgb: 196, 226, 255; }
-#odyssey-level-select[data-chapter='5'], #odyssey-level-select [data-chapter='5'] { --nav-hue-rgb: 255, 186, 214; }
-#odyssey-level-select[data-chapter='6'], #odyssey-level-select [data-chapter='6'] { --nav-hue-rgb: 160, 178, 255; }
-#odyssey-level-select[data-chapter='7'], #odyssey-level-select [data-chapter='7'] { --nav-hue-rgb: 206, 156, 255; }
-#odyssey-level-select[data-chapter='8'], #odyssey-level-select [data-chapter='8'] { --nav-hue-rgb: 255, 110, 204; }
+/* The chapters' light and night, bottom of the climb to the top: each element that names a
+   chapter takes that chapter's look from the shared table (odyssey-shared.css). */
+#odyssey-level-select[data-chapter],
+#odyssey-level-select [data-chapter] {
+    --nav-hue-rgb: var(--ody-hue-rgb, var(--sb-gold-rgb));
+    --nav-ink: rgb(var(--ody-glass-deep-rgb));
+}
 
 #odyssey-level-select *,
 #odyssey-level-select *::before,
 #odyssey-level-select *::after {
     box-sizing: border-box;
+}
+
+/* Words set straight on the page stand over the live world and the orb's light, not on a
+   card: each carries a halo of the chapter's night, close round its letters (a shade the shape
+   of the words, so there is no box to see and nothing dims the world between them). The cards
+   and the buttons are surfaces of their own and take none. */
+#odyssey-level-select :is(.odyssey-header, .odyssey-nav__rail, .odyssey-stage__chapter, .odyssey-route, .odyssey-actions) {
+    text-shadow:
+        0 1px 2px rgba(var(--ody-glass-deep-rgb), 0.95),
+        0 0 4px rgba(var(--ody-glass-deep-rgb), 0.9),
+        0 0 8px rgba(var(--ody-glass-deep-rgb), 0.9),
+        0 0 18px rgba(var(--ody-glass-deep-rgb), 0.85),
+        0 0 32px rgba(var(--ody-glass-deep-rgb), 0.7);
+}
+
+/* A chapter in the ascent and an orb on the route are buttons, and a button drops an inherited
+   text shadow (the browser's own rule): they are words on the page all the same. */
+#odyssey-level-select :is(.odyssey-chapter, .odyssey-level-btn) {
+    text-shadow: inherit;
+}
+
+#odyssey-level-select :is(.sb-btn, .odyssey-btn, .odyssey-nav__close, .odyssey-stage__step, .sb-kbd, .odyssey-chapter__gem,
+    .odyssey-orb__number, .odyssey-orb__badge, .odyssey-orb__flag) {
+    text-shadow: none;
 }
 
 /* ---- The sky: night, the chapter's light, stars, the orb's world bleeding through -- */
@@ -67,7 +96,15 @@
         radial-gradient(52% 62% at 30% 46%, rgba(var(--nav-hue-rgb), 0.13), transparent 72%),
         radial-gradient(46% 52% at 100% 0%, rgba(var(--nav-hue-rgb), 0.09), transparent 70%),
         radial-gradient(60% 50% at 0% 100%, rgba(var(--sb-lavender-rgb), 0.09), transparent 72%),
-        linear-gradient(180deg, #0d0b26 0%, #08071c 52%, #05040f 100%);
+        /* The chapter's night over the live world: deepest behind the ascent's small print on
+           the left, thinnest across the middle of the stage, where the world shows through. */
+        linear-gradient(
+            90deg,
+            rgba(var(--ody-glass-deep-rgb), 0.96) 0%,
+            rgba(var(--ody-glass-deep-rgb), 0.92) 22%,
+            rgba(var(--ody-glass-deep-rgb), 0.82) 56%,
+            rgba(var(--ody-glass-deep-rgb), 0.86) 100%
+        );
 }
 
 #odyssey-level-select .odyssey-nav__sky::before {
@@ -105,8 +142,11 @@
     aspect-ratio: 1;
     border-radius: 50%;
     object-fit: cover;
-    opacity: 0.46;
-    filter: blur(80px) saturate(1.3);
+    /* 0.46 at full brightness over an opaque page; the live world now lends the page light of
+       its own, and under the brightest worlds (cloud tops at sunset) the two together washed
+       the small print out: the orb's light keeps its colour and gives up some of its glare. */
+    opacity: 0.3;
+    filter: blur(80px) saturate(1.4) brightness(0.72);
     transform: translateZ(0);
 }
 
@@ -129,6 +169,13 @@
     /* The play rail holds the corner: end before its three tiles, centred on its line. */
     padding: calc(var(--sb-play-inset) - 2px) calc(var(--sb-play-inset) + 3 * var(--sb-play-tile) + 28px) 14px var(--nav-gutter);
     text-align: left;
+    /* The journey's figures stand in a band of the chapter's night (the world shows below it). */
+    background: linear-gradient(
+        180deg,
+        rgba(var(--ody-glass-deep-rgb), 0.6) 0%,
+        rgba(var(--ody-glass-deep-rgb), 0.36) 68%,
+        rgba(var(--ody-glass-deep-rgb), 0) 100%
+    );
     animation: odyssey-nav-drop 0.42s var(--sb-ease-lock) both;
 }
 
@@ -652,8 +699,8 @@
     border: 1px solid rgba(var(--nav-hue-rgb), 0.24);
     background:
         radial-gradient(60% 130% at 0% 50%, rgba(var(--nav-hue-rgb), 0.16), transparent 70%),
-        linear-gradient(180deg, rgba(27, 23, 60, 0.56) 0%, rgba(12, 10, 30, 0.72) 100%);
-    box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.07), 0 30px 80px rgba(0, 0, 0, 0.36);
+        linear-gradient(180deg, rgba(var(--ody-glass-rgb), 0.62) 0%, rgba(var(--ody-glass-deep-rgb), 0.78) 100%);
+    box-shadow: var(--ody-glass-sheen), 0 30px 80px rgba(0, 0, 0, 0.36);
 }
 
 #odyssey-level-select .odyssey-postcard.is-entering .odyssey-postcard__art,
@@ -728,7 +775,7 @@
     height: 54px;
     border-radius: 16px;
     border: 1px solid rgba(var(--sb-cream-rgb), 0.24);
-    background: rgba(12, 10, 30, 0.82);
+    background: rgba(var(--ody-glass-deep-rgb), 0.86);
     transform: translate(-50%, -50%);
 }
 
@@ -1182,9 +1229,13 @@
 
 #odyssey-level-select .odyssey-orb__name {
     display: -webkit-box;
+    /* The clamp needs overflow: hidden, which would also cut the words' halo at the box. The
+       room for it is padding the margins take back, so the words sit exactly where they did. */
+    box-sizing: content-box;
     max-width: 100%;
     min-height: 2.6em;
-    margin-top: 6px;
+    margin: 0 -12px;
+    padding: 6px 12px 0;
     overflow: hidden;
     font: 600 0.75rem / 1.3 var(--sb-font-text);
     text-align: center;
@@ -1223,7 +1274,7 @@
     margin: 0;
     padding: 12px var(--nav-gutter) max(14px, env(safe-area-inset-bottom));
     border-top: 1px solid var(--sb-line);
-    background: linear-gradient(180deg, rgba(7, 6, 26, 0.2), rgba(5, 4, 15, 0.7));
+    background: linear-gradient(180deg, rgba(var(--ody-glass-deep-rgb), 0.3), rgba(var(--ody-glass-deep-rgb), 0.8));
 }
 
 #odyssey-level-select .odyssey-actions__buttons {
@@ -1295,7 +1346,7 @@
     padding: 14px 16px;
     border-radius: var(--sb-r-sm);
     border: 1px solid var(--sb-line);
-    background: rgba(12, 10, 30, 0.9);
+    background: rgba(var(--ody-glass-deep-rgb), 0.92);
 }
 
 #odyssey-level-select .odyssey-new-journey[hidden] {
@@ -1380,7 +1431,7 @@
     }
 
     #odyssey-level-select .odyssey-orb__name {
-        margin-top: 4px;
+        padding-top: 4px;
     }
 
     #odyssey-level-select .odyssey-actions {

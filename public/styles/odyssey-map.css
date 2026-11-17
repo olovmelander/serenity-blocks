@@ -13,9 +13,16 @@
  *     windows set the art beside the title; phones dock the card as a bottom sheet.
  *
  * The overlay is a column: the header in flow, then the panel, so the panel always
- * starts below the header however tall the header grows (large text, a phone). No
- * backdrop blur: the map renders on underneath. Shell: src/ui/odyssey/BoardInfoOverlay.js;
- * the panel's content: src/ui/odyssey/odyssey-level-panel.js.
+ * starts below the header however tall the header grows (large text, a phone).
+ *
+ * It belongs to the place: the header's night, the charm chip, the play rail's tray and the
+ * orb card are the chapter's GLASS (odyssey-shared.css --ody-glass-*, from the one table in
+ * src/core/odyssey/data/chapter-looks.js): ember-smoked inside the Earth, deep-sea in the
+ * ocean, bottle-green on the island. The header and the tray wear the chapter the world is
+ * showing (html[data-ody-chapter], kept by src/ui/odyssey/odyssey-chapter-look.js); the card
+ * wears its orb's. No backdrop blur: the map renders on underneath (odyssey-shared.css has
+ * what was measured). Shell: src/ui/odyssey/BoardInfoOverlay.js; the panel's content:
+ * src/ui/odyssey/odyssey-level-panel.js.
  * ================================================================================ */
 #odyssey-board-overlay {
     --map-gutter: clamp(16px, 2.4vw, 36px);
@@ -49,14 +56,33 @@
     pointer-events: auto;
 }
 
-/* The night the header stands on reaches below its box, so the panel can start close under it. */
+/* The night the header stands on reaches below its box, so the panel can start close under it.
+   It is the chapter's own night (its glass at its deepest): one colour under a mask, not a
+   gradient of colours, so it turns from one chapter's to the next as the map crosses a seam. */
 #odyssey-board-overlay .odyssey-header-bar::before {
     content: '';
     position: absolute;
     inset: 0 0 -36px;
     z-index: -1;
-    background: linear-gradient(180deg, rgba(7, 6, 22, 0.8) 0%, rgba(7, 6, 22, 0.46) 56%, rgba(7, 6, 22, 0) 100%);
+    background-color: rgb(var(--ody-glass-deep-rgb));
+    -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.94) 0%, rgba(0, 0, 0, 0.74) 46%, rgba(0, 0, 0, 0) 100%);
+    mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.94) 0%, rgba(0, 0, 0, 0.74) 46%, rgba(0, 0, 0, 0) 100%);
+    transition: background-color 1400ms ease;
     pointer-events: none;
+}
+
+/* The header's small print keeps its contrast where the night thins over a bright world. */
+#odyssey-board-overlay .odyssey-header-bar {
+    --sb-text-muted: var(--ody-ink-muted);
+    --sb-text-faint: var(--ody-ink-faint);
+    text-shadow: 0 1px 10px rgba(var(--ody-glass-deep-rgb), 0.7);
+}
+
+/* The play rail's tray beside the header is the same glass while the map shows. */
+html[data-ody-chapter] #sb-play-rail {
+    border-color: rgba(var(--ody-hue-rgb), 0.22);
+    background: var(--ody-glass-fill);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3), var(--ody-glass-sheen);
 }
 
 /* The row lines up with the play rail's tray: same top, same height (the tray's own rule
@@ -100,7 +126,7 @@ body:has(#sb-play-rail > #odyssey-navigator-btn.visible) #odyssey-board-overlay 
     display: flex;
     flex-wrap: wrap;
     gap: 4px clamp(14px, 1.6vw, 24px);
-    color: rgba(var(--sb-cream-rgb), 0.56);
+    color: rgba(var(--sb-cream-rgb), 0.66);
     font: 600 0.5625rem / 1 var(--sb-font-display);
     letter-spacing: 0.2em;
     text-transform: uppercase;
@@ -208,10 +234,11 @@ body:has(#sb-play-rail > #odyssey-navigator-btn.visible) #odyssey-board-overlay 
     margin: 0 0 0 auto;
     padding: 0 14px;
     border-radius: 14px;
-    border: 1px solid rgba(var(--sb-lavender-rgb), 0.24);
-    background: linear-gradient(180deg, rgba(27, 23, 60, 0.84), rgba(12, 10, 30, 0.9));
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.06);
+    border: 1px solid rgba(var(--ody-hue-rgb, var(--sb-lavender-rgb)), 0.24);
+    background: var(--ody-glass-fill);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3), var(--ody-glass-sheen);
     color: var(--sb-lavender);
+    text-shadow: none;
     font: 600 0.6875rem / 1 var(--sb-font-display);
     letter-spacing: 0.08em;
     white-space: nowrap;
@@ -223,8 +250,10 @@ body:has(#sb-play-rail > #odyssey-navigator-btn.visible) #odyssey-board-overlay 
 }
 
 #odyssey-board-overlay #odyssey-header-charms:hover {
-    border-color: rgba(var(--sb-lavender-rgb), 0.55);
-    background: linear-gradient(180deg, rgba(44, 38, 92, 0.9), rgba(20, 17, 46, 0.94));
+    border-color: rgba(var(--ody-hue-rgb, var(--sb-lavender-rgb)), 0.6);
+    background:
+        linear-gradient(180deg, rgba(var(--sb-cream-rgb), 0.08), rgba(var(--sb-cream-rgb), 0.03)),
+        var(--ody-glass-fill);
 }
 
 #odyssey-board-overlay #odyssey-header-charms:active {
@@ -302,13 +331,19 @@ body.sb-input-gamepad #odyssey-board-overlay #odyssey-header-charms::after {
     pointer-events: none;
 }
 
-/* A soft night behind the words, so a bright world (snow, sky) never washes them out. */
+/* A soft night behind the words (the chapter's own), so a bright world (snow, sky) never
+   washes them out. */
 #odyssey-board-overlay .odyssey-chapter-arrival-card::before {
     content: '';
     position: absolute;
     inset: -48px -96px;
     z-index: -1;
-    background: radial-gradient(closest-side, rgba(7, 6, 22, 0.5), rgba(7, 6, 22, 0.22) 60%, transparent);
+    background: radial-gradient(
+        closest-side,
+        rgba(var(--ody-glass-deep-rgb), 0.56),
+        rgba(var(--ody-glass-deep-rgb), 0.26) 60%,
+        transparent
+    );
     pointer-events: none;
 }
 
@@ -322,7 +357,7 @@ body.sb-input-gamepad #odyssey-board-overlay #odyssey-header-charms::after {
     font: 600 0.625rem / 1 var(--sb-font-display);
     letter-spacing: 0.32em;
     text-transform: uppercase;
-    color: rgba(var(--sb-gold-rgb), 0.92);
+    color: rgba(var(--ody-hue-rgb, var(--sb-gold-rgb)), 0.96);
 }
 
 #odyssey-board-overlay .odyssey-arrival-title {
@@ -351,20 +386,24 @@ body.sb-input-gamepad #odyssey-board-overlay #odyssey-header-charms::after {
     box-shadow: 0 30px 80px rgba(0, 0, 0, 0.36);
     pointer-events: auto;
     isolation: isolate;
+    /* The inks the glass is measured for (chapter-looks.js): they read over any world. */
+    --sb-text-muted: var(--ody-ink-muted);
+    --sb-text-faint: var(--ody-ink-faint);
 }
 
-/* The fill is its own layer: night, lit from the top by the orb's chapter. */
+/* The fill is its own layer: the glass of the orb's chapter, lit from the top by its light.
+   The world shows through it a little (more at the top), so the card sits IN the place. */
 #odyssey-board-overlay .odyssey-level-panel::before {
     content: '';
     position: absolute;
     inset: 0;
     z-index: -1;
     border-radius: inherit;
-    border: 1px solid rgba(var(--panel-hue-rgb), 0.26);
+    border: 1px solid var(--ody-glass-edge);
     background:
         radial-gradient(85% 38% at 50% 0%, rgba(var(--panel-hue-rgb), 0.2), transparent 72%),
-        linear-gradient(180deg, rgba(27, 23, 60, 0.95) 0%, rgba(12, 10, 30, 0.97) 100%);
-    box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.07);
+        var(--ody-glass-fill);
+    box-shadow: var(--ody-glass-sheen);
     pointer-events: none;
 }
 

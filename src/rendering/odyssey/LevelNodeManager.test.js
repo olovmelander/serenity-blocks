@@ -195,4 +195,99 @@ describe('Odyssey orb entry pulse', () => {
         expect(scale(7)).toBeCloseTo(1, 6);
         expect(manager._markUploadDirty).toHaveBeenCalled();
     });
+
+    it('wakes an orb ahead of the ride more gently than an orb being entered', () => {
+        let now = 0;
+        vi.spyOn(performance, 'now').mockImplementation(() => now);
+        const manager = { nodes: new Map([[9, {}]]), _markUploadDirty: vi.fn() };
+        LevelNodeManager.prototype.pulseNode.call(manager, 9, 1000, 0.12);
+        now = 300;
+        expect(LevelNodeManager.prototype._pulseScale.call(manager, 9)).toBeCloseTo(1.12, 6);
+    });
+});
+
+describe('Odyssey stars landing on a finished orb', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    /** A manager with one completed orb in view of a camera at +z, as the billboard pass needs it. */
+    function landingManager() {
+        const camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 500);
+        camera.position.set(0, 0, 20);
+        camera.lookAt(0, 0, 0);
+        const stars = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial(), 3);
+        stars.geometry.setAttribute('aStar', new THREE.InstancedBufferAttribute(new Float32Array(3), 1));
+        const manager = {
+            camera,
+            starInstancedMesh: stars,
+            nodes: new Map([[5, {
+                config: { id: 5 },
+                group: {
+                    visible: true,
+                    position: new THREE.Vector3(),
+                    scale: new THREE.Vector3(1, 1, 1),
+                    userData: { completed: true, stars: 3 },
+                },
+            }]]),
+            instanceIdMap: new Map([[5, 0]]),
+            _starSlotState: new Uint8Array(3),
+            _lastIndicatorCamMatrix: new THREE.Matrix4(),
+            _scratchMatrix: new THREE.Matrix4(),
+            _scratchScaleVec: new THREE.Vector3(),
+            _scratchCamRight: new THREE.Vector3(),
+            _scratchCamUp: new THREE.Vector3(),
+            _scratchCamPos: new THREE.Vector3(),
+            _scratchToCam: new THREE.Vector3(),
+            _scratchIndicatorPos: new THREE.Vector3(),
+            _markerMeshPairs: [],
+            _markUploadDirty: vi.fn(),
+        };
+        const place = () => LevelNodeManager.prototype._updateIndicatorBillboards.call(manager, true);
+        const star = (slot) => {
+            const matrix = new THREE.Matrix4();
+            stars.getMatrixAt(slot, matrix);
+            // (Read from the columns: decompose() gives a zero-scale matrix a scale of 1.)
+            return {
+                y: new THREE.Vector3().setFromMatrixPosition(matrix).y,
+                scale: new THREE.Vector3().setFromMatrixColumn(matrix, 0).length(),
+            };
+        };
+        return { manager, place, star };
+    }
+
+    it('drops each star onto its seat, one after the other, and leaves them exactly where they rest', () => {
+        let now = 5000;
+        vi.spyOn(performance, 'now').mockImplementation(() => now);
+        const { manager, place, star } = landingManager();
+        place();
+        const rest = [0, 1, 2].map(star);
+        expect(rest[0].scale).toBeGreaterThan(0);
+
+        LevelNodeManager.prototype.landStars.call(manager, 5);
+        expect(manager._markUploadDirty).toHaveBeenCalled();
+        now += 60;
+        place();
+        // The first is on its way down, above its seat; the others have not appeared yet.
+        expect(star(0).y).toBeGreaterThan(rest[0].y + 0.3);
+        expect(star(0).scale).toBeGreaterThan(0);
+        expect(star(1).scale).toBe(0);
+        expect(star(2).scale).toBe(0);
+        now += 400;
+        place();
+        // The first is down and swelling as it lands; the last is still falling.
+        expect(star(0).scale).toBeGreaterThan(rest[0].scale);
+        expect(star(2).y).toBeGreaterThan(rest[2].y);
+        now += 2000;
+        place();
+        [0, 1, 2].forEach((slot) => {
+            expect(star(slot).y).toBeCloseTo(rest[slot].y, 5);
+            expect(star(slot).scale).toBeCloseTo(rest[slot].scale, 5);
+        });
+    });
+
+    it('lands nothing on an orb it does not have, and only on the orb asked for', () => {
+        const { manager } = landingManager();
+        LevelNodeManager.prototype.landStars.call(manager, 99);
+        expect(manager._starLanding).toBeUndefined();
+        expect(manager._markUploadDirty).not.toHaveBeenCalled();
+    });
 });

@@ -92,6 +92,8 @@ export function describeOdysseyMapSelection(mode) {
 /** Travel to the orb a step lands on; the board's selection callback fills the panel. */
 export function moveOdysseyMapSelection(mode, move) {
     if (!canNavigateOdysseyMap(mode)) return null;
+    // A step during the journey's ending (odyssey-journey-ending.js) brings the map's UI back.
+    mode._journeyEnding?.finish?.();
     const target = stepOdysseyMapSelection(describeOdysseyMapSelection(mode), move);
     if (!Number.isFinite(target)) return null;
     mode.boardController?.selectLevel?.(target);
@@ -101,6 +103,12 @@ export function moveOdysseyMapSelection(mode, move) {
 /** Play the selected orb when it is open. */
 export function playOdysseyMapSelection(mode) {
     if (!canNavigateOdysseyMap(mode)) return false;
+    // The journey's ending hides the map's card: the press that would have played an orb nobody
+    // is shown (Enter, Space, the pad's A) wakes the card instead.
+    if (mode._journeyEnding?.finish) {
+        mode._journeyEnding.finish();
+        return true;
+    }
     // The orb the map is headed to: Enter straight after a step plays that one.
     const levelId = describeOdysseyMapSelection(mode).selectedLevelId;
     if (!Number.isFinite(levelId) || !mode.odysseyState?.isLevelUnlocked?.(levelId)) return false;

@@ -34,7 +34,7 @@ import {
 } from 'three/tsl';
 import { loadOdysseyGltfCached } from '../chapter-environments/shared/odyssey-gltf-loader.js';
 import { getChapter2CreatureAssetById } from '../chapter-environments/shared/chapter-02-creature-assets.js';
-import { odysseyDeepWaterDim } from '../odyssey-colour-script.js';
+import { oceanHazeColour } from '../world/odyssey-ocean-depth.js';
 import { behindSteamDepth, steamVeilWeight } from './odyssey-steam-quench.js';
 import {
     OCEAN_ROAM, roamAt, roamHeading, roamLane, softLimit, stepRoamArrival,
@@ -138,16 +138,13 @@ function createWhaleMaterial(uWater, uFade) {
 /**
  * @param {object} opts
  * @param {number} opts.seaLevel world Y of the sea surface
- * @param {THREE.Color} opts.shallowColour water colour near the surface
- * @param {THREE.Color} opts.deepColour water colour in the abyss
+ * (The water it hazes into is the world's depth arc's, odyssey-ocean-depth.js.)
  */
-export function createWhalePass({
-    seaLevel, shallowColour, deepColour,
-}) {
+export function createWhalePass({ seaLevel }) {
     const group = new THREE.Group();
     group.name = 'odyssey-whale-pass';
     group.visible = false;
-    const uWater = uniform(new THREE.Color().copy(shallowColour));
+    const uWater = uniform(new THREE.Color(...oceanHazeColour(0)));
     const uFade = uniform(0);
     const material = createWhaleMaterial(uWater, uFade);
     const actors = [];
@@ -155,7 +152,7 @@ export function createWhalePass({
     let loaded = false;
     // The pair's arrival (one, the mother's): it fades in from the blue once the water allows it.
     let arrival = {};
-    const scratchColour = new THREE.Color();
+    const hazeColour = [0, 0, 0];
     const position = new THREE.Vector3();
     const velocity = new THREE.Vector3();
     const heading = new THREE.Vector3();
@@ -271,12 +268,10 @@ export function createWhalePass({
                 return;
             }
 
-            // Water colour at the camera's depth: shallow near the surface, abyss far below.
-            const t = THREE.MathUtils.clamp((depth - 20) / 220, 0, 1);
-            // ...dimmed by the same depth rule as the world's water (the deep is dark), so the
-            // pair dissolves into the water actually around it.
-            uWater.value.copy(scratchColour.copy(shallowColour).lerp(deepColour, t))
-                .multiplyScalar(odysseyDeepWaterDim(depth / 140));
+            // The water's colour at the camera's depth, from the world's own depth arc (turquoise
+            // near the surface, blue-black in the abyss), so the pair dissolves into the water
+            // actually around it.
+            uWater.value.setRGB(...oceanHazeColour(depth, hazeColour));
 
             // Under a thick veil of the 1->2 steam the pair is already here when it clears.
             if (steamVeilWeight() > 0.3) arrival.arrive = 1;
