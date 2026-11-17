@@ -11,6 +11,7 @@ import {
     resolveSummitEarthStaging,
     updateCosmicExpanseEnvironment,
     CH6_AMBIENT_ALL,
+    OMEN_SPINE_ANCHOR,
 } from './cosmic-expanse.js';
 
 describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
@@ -87,10 +88,17 @@ describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
         // 2026-10-22); this headless call has none, so it waits at its hand-over seat on the
         // rail's line (OMEN_SPINE_ANCHOR). The ride is guarded with the real camera in
         // tests/unit/odyssey-ch6-hero-framing.test.js.
+        // (2026-11-17) One size until its light shows; over the orbs where it does, it comes up to
+        // chapter 7's by OMEN_SPINE_ANCHOR.approachGain (each orb a step nearer; the framing test
+        // holds the whole growth on screen under 1.6x).
         expect(ahead(entry)).toBeGreaterThan(400);
         expect(blackHole.position.distanceTo(entry)).toBeLessThan(1e-6);
+        expect(blackHole.scale.x / entryScale).toBeCloseTo(1 + OMEN_SPINE_ANCHOR.approachGain, 9);
+        expect(OMEN_SPINE_ANCHOR.approachGain).toBeLessThanOrEqual(0.3);
+        expect(entryScale).toBeGreaterThan(2.5);
+        // Steady while its light is not yet up (the chapter's first half).
+        updateCosmicExpanseEnvironment(group, 0.016, 3.0, null, 0.4);
         expect(blackHole.scale.x).toBeCloseTo(entryScale, 9);
-        expect(blackHole.scale.x).toBeGreaterThan(2.5);
     });
 
     it('solves the hero triad onto the chapter corridor rather than off-frame', () => {

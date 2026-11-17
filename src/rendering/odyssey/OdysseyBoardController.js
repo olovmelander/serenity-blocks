@@ -3807,6 +3807,7 @@ export class OdysseyBoardController {
                         this.orbitEarth = createOrbitEarth({
                             haze: this.oneWorld?.hazeFor ?? null,
                             worldAir: this.oneWorld?.earthAirFor ?? null,
+                            qualityTier: this.qualityName,
                         });
                         this.scene.add(this.orbitEarth.mesh);
                     }

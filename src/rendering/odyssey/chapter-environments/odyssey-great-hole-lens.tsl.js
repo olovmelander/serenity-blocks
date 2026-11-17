@@ -27,11 +27,17 @@
 import * as THREE from 'three/webgpu';
 import {
     Break, Fn, If, Loop, abs, atan, cameraFar, cameraNear, cameraPosition, cameraViewMatrix, clamp, cross, dot,
-    exp, exp2, float, floor, fract, fwidth, length, log2, max, min, mix, modelScale, normalize, positionLocal,
-    positionWorld, pow, select, sign, sin, cos, smoothstep, sqrt, texture, uniform, vec2, vec3, vec4,
+    exp, exp2, float, floor, fract, fwidth, int, length, log2, max, min, mix, modelScale, normalize, positionLocal,
+    positionWorld, pow, select, sign, sin, cos, smoothstep, sqrt, texture, uniform, uniformArray, vec2, vec3, vec4,
     viewZToPerspectiveDepth,
 } from 'three/tsl';
 import { GREAT_HOLE_GAS, bakeGreatHoleGasSteps } from './odyssey-great-hole-gas.js';
+import {
+    GREAT_HOLE_INNER_ORBIT_SECONDS,
+    GREAT_HOLE_KNOTS,
+    greatHoleLifeAt,
+} from './odyssey-great-hole-life.js';
+import { flashScale } from '../../../utils/photosensitivity.js';
 
 const TAU = Math.PI * 2;
 
@@ -89,7 +95,7 @@ export const GREAT_HOLE_LENS_CARRIER = Object.freeze({
 const BAND_GAIN = 1.35;
 
 /** Seconds for the gas at the inner edge to circle the hole, and the shear phases' reset period. */
-const INNER_ORBIT_SECONDS = 13;
+const INNER_ORBIT_SECONDS = GREAT_HOLE_INNER_ORBIT_SECONDS;
 const FLOW_PERIOD = 2.2;
 const RIGID_RATE = 0.42;
 const HALF_ROOT_PI = 0.8862269;
@@ -100,6 +106,72 @@ const erf = (x) => {
     const inner = x2.mul(x2.mul(0.147).add(4 / Math.PI)).div(x2.mul(0.147).add(1));
     return sqrt(float(1).sub(exp(inner.negate()))).mul(sign(x));
 };
+
+/**
+ * THE HOLE IS ALIVE (2026-11-17, odyssey-great-hole-life.js): the clock's state and how far the
+ * hole has woken, shared by every lens (chapter 6's omen and chapter 7's great hole are two
+ * materials round one hole, and one hands over to the other in a frame: they must agree).
+ *  - `knots`: rows of (radius, turn, light, arc); `stream`: (head radius, head turn, light, length)
+ *    and its spiral's `pitch`; `flare` the inner disk's swell;
+ *  - `heat`, `gain`, `corona`: the waking hole's shares of its full blaze (1 = the disk as it was
+ *    composed); `life`: how much of the knots, the stream and the flare show (0 = the plain disk).
+ * Defaults are the plain disk at full blaze: a chapter that never drives them changes nothing.
+ */
+const LIFE = {
+    knots: uniformArray(GREAT_HOLE_KNOTS.map(() => new THREE.Vector4(5, 0, 0, 0.1))),
+    stream: uniform(new THREE.Vector4(8, 0, 0, 0.1)),
+    pitch: uniform(0.66),
+    flare: uniform(0),
+    heat: uniform(1),
+    gain: uniform(1),
+    corona: uniform(1),
+    life: uniform(0),
+};
+let lifeClock = 0;
+let lifeStamp = -1;
+let lifeOwner = null;
+/** A lens that has not ticked for this long (ms) has stopped drawing: another may take the clock. */
+const LIFE_OWNER_STALE_MS = 150;
+
+/**
+ * How far the hole has woken (greatHoleWakeAt), from the chapter that knows the journey's progress.
+ * @param {{ heat: number, gain: number, corona: number, life: number }} wake
+ */
+export function setGreatHoleWake(wake) {
+    LIFE.heat.value = wake.heat;
+    LIFE.gain.value = wake.gain;
+    LIFE.corona.value = wake.corona;
+    LIFE.life.value = wake.life;
+}
+
+/** The life's clock (seconds): for tests and captures. */
+export function getGreatHoleLifeClock() {
+    return lifeClock;
+}
+
+/**
+ * Advance the shared clock by `dt` and write its state. Called by each lens's update(). One lens
+ * owns the clock at a time, so two lenses updating in one frame (the hand-over's) advance it
+ * once; when the owner stops ticking (it is hidden), the other takes the clock over.
+ */
+function tickGreatHoleLife(dt, owner) {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (lifeOwner === owner || lifeOwner === null || now - lifeStamp > LIFE_OWNER_STALE_MS) {
+        lifeOwner = owner;
+        lifeStamp = now;
+        lifeClock += Math.max(0, Number.isFinite(dt) ? dt : 0);
+    }
+    const state = greatHoleLifeAt(lifeClock);
+    for (let i = 0; i < state.knots.length; i += 1) {
+        const k = state.knots[i];
+        LIFE.knots.array[i].set(k[0], k[1], k[2], k[3]);
+    }
+    const st = state.stream;
+    LIFE.stream.value.set(st.radius, st.turn, st.gain, Math.max(st.length, 1e-3));
+    LIFE.pitch.value = st.pitch;
+    // A slow swell, and still the player's choice (ADR-0021).
+    LIFE.flare.value = st.flare * flashScale();
+}
 
 /** Half of a straight-line pass's bend accumulated from closest approach out to `s`. */
 const bendTo = (b, s) => {
@@ -175,7 +247,7 @@ function makeShadeDisk(gasTex, u, detail) {
     const H = GREAT_HOLE_HOLE;
     const rowsPerRadius = GREAT_HOLE_GAS.height / (H.DISK_OUTER - H.DISK_INNER);
     return (p, radius, towardCamera, order, travelled, pixelAngle) => {
-        const turn = atan(p.z, p.x).div(TAU);
+        const turn = atan(p.z, p.x).div(TAU).toVar();
         const orbit = pow(float(H.DISK_INNER).div(radius), 1.5);
         const shear = orbit.sub(RIGID_RATE);
         const v = radius.sub(H.DISK_INNER).div(H.DISK_OUTER - H.DISK_INNER);
@@ -211,6 +283,33 @@ function makeShadeDisk(gasTex, u, detail) {
             .add(clumps)
             .add(0.04)
             .toVar();
+        // THE HOLE IS ALIVE: the knots circling in the disk and the stream winding in (LIFE).
+        if (detail) {
+            const alive = float(0).toVar();
+            Loop({
+                start: int(0), end: int(GREAT_HOLE_KNOTS.length), type: 'int', condition: '<',
+            }, ({ i }) => {
+                const knot = LIFE.knots.element(i);
+                // How far round from the knot's head this point is: ahead of it or behind (turns).
+                const off = fract(turn.sub(knot.y).add(0.5)).sub(0.5).toVar();
+                const ahead = max(off, 0).div(knot.w.mul(0.3));
+                const behind = max(off.negate(), 0).toVar();
+                const trail = behind.div(knot.w.mul(1.8));
+                // The shear draws it out: a short bright head, a long tail lagging outward.
+                const lane = knot.x.add(behind.mul(knot.x).mul(0.8));
+                const across = radius.sub(lane).div(knot.x.mul(0.06).add(0.15));
+                alive.addAssign(exp(ahead.mul(ahead).add(trail.mul(trail)).add(across.mul(across)).negate()).mul(knot.z));
+            });
+            // The stream: a thread along its spiral, brightest at the head, thinning behind it.
+            const back = fract(LIFE.stream.y.sub(turn)).toVar();
+            const thread = LIFE.stream.x.mul(exp(back.mul(LIFE.pitch)));
+            const off = radius.sub(thread).div(radius.mul(0.035).add(0.12));
+            const body = exp(back.div(LIFE.stream.w).negate())
+                .mul(smoothstep(0.0, 0.015, back))
+                .mul(float(1).sub(smoothstep(0.75, 0.95, back)));
+            alive.addAssign(exp(off.mul(off).negate()).mul(body).mul(LIFE.stream.z));
+            density.assign(max(density.add(alive.mul(LIFE.life)), 0.03));
+        }
         const innerEdge = smoothstep(H.DISK_INNER * 0.975, H.DISK_INNER * 1.12, radius);
         const plunge = smoothstep(H.PLUNGE, H.DISK_INNER, radius).mul(innerEdge.oneMinus()).mul(0.3);
         const rim = radius.div(H.DISK_OUTER).add(lanes.sub(0.5).mul(0.3)).add(streaks.sub(0.5).mul(0.08));
@@ -223,9 +322,14 @@ function makeShadeDisk(gasTex, u, detail) {
             .mul(sqrt(max(float(1).sub(float(1).div(radius)), 0.02)));
         const beaming = mix(float(1), shift.div(0.84), u.doppler);
         const warmth = pow(float(H.DISK_INNER).div(radius), 0.9);
-        const heat = warmth.mul(pow(beaming, 0.9)).mul(u.diskHeat).mul(density.mul(0.42).add(0.74));
+        // (the waking hole's heat and light, and the flare's swell on the inner disk: LIFE)
+        const swell = LIFE.flare.mul(LIFE.life).mul(exp(radius.sub(H.DISK_INNER).div(-1.9))).toVar();
+        const heat = warmth.mul(pow(beaming, 0.9)).mul(u.diskHeat).mul(LIFE.heat).mul(swell.mul(0.22).add(1))
+            .mul(density.mul(0.42).add(0.74));
         const power = pow(warmth, 2.4).mul(pow(beaming, 1.7)).mul(density.mul(density.add(0.35)));
-        const raw = blackbody(heat).mul(power).mul(u.diskGain).mul(2.7);
+        const raw = blackbody(heat).mul(power).mul(u.diskGain).mul(LIFE.gain)
+            .mul(swell.mul(1.5).add(1))
+            .mul(2.7);
         // A shoulder on the brightest channel: filaments stay filaments instead of one white plate.
         const peak = max(max(raw.r, raw.g), raw.b);
         const emission = raw.mul(float(1.25).div(peak.div(2.6).add(1)));
@@ -406,8 +510,10 @@ export function* createGreatHoleLensSteps({ shadowRadius, uReveal = uniform(1), 
         });
 
         // The corona: one colour for the column, from its light-weighted temperature.
-        const warmth = min(hazeHeat.div(max(haze, 1e-4)).mul(0.72).add(0.16), 1.1).mul(u.diskHeat);
-        const coronaGain = u.diskGain.mul(u.coronaGain).mul(CORONA.GAIN * 2.7);
+        const flared = LIFE.flare.mul(LIFE.life);
+        const warmth = min(hazeHeat.div(max(haze, 1e-4)).mul(0.72).add(0.16), 1.1).mul(u.diskHeat).mul(LIFE.heat);
+        const coronaGain = u.diskGain.mul(u.coronaGain).mul(LIFE.corona).mul(flared.mul(0.7).add(1))
+            .mul(CORONA.GAIN * 2.7);
         colour.addAssign(blackbody(warmth).mul(haze).mul(coronaGain));
         // The gas's share (the ring, below, keeps its own).
         colour.mulAssign(u.gas);
@@ -422,8 +528,8 @@ export function* createGreatHoleLensSteps({ shadowRadius, uReveal = uniform(1), 
             .mul(select(inbound, outside, float(0)))
             .mul(front);
         const side = dot(away, vec3(direction.z, 0, direction.x.negate())).mul(0.5).mul(u.doppler).add(1);
-        const ringGain = u.ringGain.mul(u.diskGain).mul(2.4);
-        colour.addAssign(blackbody(u.diskHeat.mul(1.02)).mul(ring.mul(side)).mul(ringGain));
+        const ringGain = u.ringGain.mul(u.diskGain).mul(LIFE.gain).mul(flared.mul(0.5).add(1)).mul(2.4);
+        colour.addAssign(blackbody(u.diskHeat.mul(LIFE.heat).mul(1.02)).mul(ring.mul(side)).mul(ringGain));
 
         // What is behind still shows: past the hole, what the gas leaves of the sky (`through`);
         // in the shadow, what the gas on the near side leaves of the chapter's own shadow sphere.
@@ -507,6 +613,7 @@ export function* createGreatHoleLensSteps({ shadowRadius, uReveal = uniform(1), 
                 // Rows: the disk's X, its normal (Y) and Z, in world space.
                 u.worldToDisk.value.set(_x.x, _x.y, _x.z, _n.x, _n.y, _n.z, _z.x, _z.y, _z.z);
             }
+            tickGreatHoleLife(dt, mesh);
             turns += Math.max(0, Number.isFinite(dt) ? dt : 0) / INNER_ORBIT_SECONDS;
             if (turns > 1e4) turns -= 1e4;
             const cycle = turns / FLOW_PERIOD;
