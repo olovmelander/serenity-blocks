@@ -10,6 +10,8 @@
  *   board=1                  overlay a mock gameplay board + HUD (the solo layout rules)
  *   statsHud=0               with board=1: board only, no HUD mock
  *   braid=<degrees>          hold the braid at this phase (−90: the coral sun lowest; 0: on the right)
+ *   weather=<name|0..6>      hold a weather: clear cirrus veil banks rain wet wind (default: the clock's)
+ *   moon=off|<seconds>       no moon, or hold the moon's own clock (a pass takes 97 s; its middle crosses the suns)
  *   parts=land,sky           draw only these parts
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
@@ -19,8 +21,9 @@
  *   reduce=1                 reduced motion
  *   look=x,y,z,fov           inspection lens: from the eye, look at a world point with this fov
  *   level=<n>                rest on level n (the braid wound on n − 1 sixths; the clock turns it too)
- *   event=lock|drop|clear|quad|twist|perfect|levelUp|over|morning   fire a gameplay event...
- *   eventAge=<s>             ...and show it <s> seconds later (lines=<1..4>, turns=<1..3>)
+ *   event=lock|drop|clear|quad|twist|spin|b2b|perfect|levelUp|over|morning   fire a gameplay event...
+ *   eventAge=<s>             ...and show it <s> seconds later (lines=<1..4>, turns=<1..3>,
+ *                            col=<0..1> the lock's column, piece=<0..6> its colour)
  *   combo=<n>                hold a chain of n (the braid turns faster and opens wider)
  *   locks=<n>                before the event, play n locks
  *   eventLevel=<n>           the level an event=levelUp steps to (default level + 1)
@@ -30,7 +33,8 @@ import * as THREE from 'three/webgpu';
 import { SunbraidWorld } from '../../themes/sunbraid/sunbraid-world.js';
 import { SunbraidPost, POST_LOOK } from '../../themes/sunbraid/sunbraid-post.js';
 import { readLayoutRects } from '../../themes/sunbraid/sunbraid-composition.js';
-import { DEG } from '../../themes/sunbraid/sunbraid-core.js';
+import { DEG, PIECE_COLORS } from '../../themes/sunbraid/sunbraid-core.js';
+import { weatherIndex } from '../../themes/sunbraid/sunbraid-weather.js';
 
 /** A looping script for the live demo (seconds into the loop). */
 const DEMO_LOOP = 40;
@@ -162,14 +166,30 @@ export function create({
     };
     const fireEvent = () => {
         const lines = Math.max(1, Math.min(4, Math.round(num(params, 'lines', 2))));
-        if (eventName === 'lock') world.onLock({ rows: [13, 12], u: 0.3 });
-        else if (eventName === 'drop') world.onLock({ rows: [13, 12], u: 0.3, hardDrop: true });
-        else if (eventName === 'clear') world.onClear({ lines, combo: Math.max(1, holdCombo) });
-        else if (eventName === 'quad') world.onClear({ lines: 4, combo: Math.max(1, holdCombo) });
+        const piece = Math.max(0, Math.min(6, Math.round(num(params, 'piece', 2))));
+        const col = Math.max(0, Math.min(1, num(params, 'col', 0.3)));
+        const lock = {
+            rows: [13, 12], u: col, color: PIECE_COLORS[piece], distance: 12,
+        };
+        // Rows of a clear, each made mostly of one piece (as the director's shadow well tells it).
+        const rowCodes = [];
+        for (let k = 0; k < 4; k++) {
+            for (let c = 0; c < 10; c++) rowCodes.push(c < 7 ? (piece + k * 2) % 7 : (piece + c) % 7);
+        }
+        if (eventName === 'lock') world.onLock(lock);
+        else if (eventName === 'drop') world.onLock({ ...lock, hardDrop: true });
+        else if (eventName === 'clear') world.onClear({ lines, combo: Math.max(1, holdCombo), rowCodes });
+        else if (eventName === 'quad') world.onClear({ lines: 4, combo: Math.max(1, holdCombo), rowCodes });
+        else if (eventName === 'b2b') {
+            world.onB2B(1);
+            world.onClear({
+                lines: 4, combo: Math.max(1, holdCombo), rowCodes, b2b: true,
+            });
+        } else if (eventName === 'spin') world.onSpin();
         else if (eventName === 'twist') {
             const turns = Math.max(1, Math.min(3, Math.round(num(params, 'turns', 2))));
-            world.onClear({ lines: turns, twist: true });
-        } else if (eventName === 'perfect') world.onClear({ lines: 4, perfect: true });
+            world.onClear({ lines: turns, twist: true, rowCodes });
+        } else if (eventName === 'perfect') world.onClear({ lines: 4, perfect: true, rowCodes });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
         else if (eventName === 'over') world.onGameOver();
         else if (eventName === 'morning') {
@@ -260,6 +280,11 @@ export function create({
         world.bindCamera(camera);
         world.setReducedMotion(params.get('reduce') === '1');
         if (braidHold !== null) world.setCaptureOverrides({ phase: braidHold });
+        if (params.has('weather')) world.setCaptureOverrides({ weather: weatherIndex(params.get('weather')) });
+        if (params.has('moon')) {
+            const moon = params.get('moon');
+            world.setCaptureOverrides({ moon: moon === 'off' ? false : num(params, 'moon', 0) });
+        }
         const partsParam = params.get('parts');
         if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
         if (!noPost) {

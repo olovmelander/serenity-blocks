@@ -68,11 +68,13 @@ A new run goes back to level 1 and keeps the clock, so the colours never snap ba
 | --- | --- |
 | `supernova-core.js` | Three-free constants and maths shared by the choreography, the shaders and the tests: the geometry, the shells' life cycle, how far a front or a fireball has run, the star's size round a detonation, the five palettes, where the star sits on screen for an aspect. |
 | `supernova-tsl.js` | Hashes, the baked 3D noise, the shared uniforms, the test for what hides behind the star, material and geometry helpers. |
-| `supernova-sky.js` | The dome: the void, far clouds, star lattices, and a detonation's echo crossing the clouds. |
+| `supernova-sky.js` | The dome: the void, far clouds, star lattices, and a detonation's echo crossing the clouds. Since the third pass it has a frame of its own that turns: the band of far suns, bright stars with a lens's rays, far galaxies. |
 | `supernova-nebula.js` | Every shell on screen (standing shells, fronts, the fireball) from one table walked by one loop. |
 | `supernova-star.js` | The star on one billboard: photosphere, chromosphere, corona, what the board has written on the surface, the lens's glare and spikes. |
 | `supernova-loops.js` | Prominences: ribbons along closed-form arches in the star's frame. |
-| `supernova-ring.js` | The ring and its twelve beads. |
+| `supernova-ring.js` | The ring and its twelve beads, and (third pass) the two wider rings that stand off it along the axis. |
+| `supernova-aura.js` | Third pass: one star-centred sheet with no size at rest, holding the shapes events throw round the star: jets, the corkscrew, plumes, the wave in the ring's plane, the pulsar's ripples, the crown of rays. |
+| `supernova-bake.js` | Three-free CPU bakes (in a worker on a first visit): the 3D noise, and (third pass) the volume of convection cells the photosphere's granules are read from. |
 | `supernova-fx.js` | Streams, sparks, the wind's embers, the pulsar's beams. |
 | `supernova-world.js` | Owns the uniforms, the parts, the camera rig, the star's pose and the choreography. Shared with the playground effect, so what is iterated there ships. |
 | `supernova-director.js` | Renderer-free: stages bus events per player and resolves one lock and one clear per frame. |
@@ -324,3 +326,138 @@ clear's fronts swept the frame as thick, smooth bands.
   two alternating rounds against `origin/main`): High 0.59 → 0.64 ms, Minimal 0.24 → 0.27 ms; the
   frame stayed at the display's cap.
 - **Not measured:** a physical phone, a weaker GPU, the perf lane (ADR-0016), real gameplay.
+
+## Third pass (2026-11-17): a living star, a turning sky, a shape for every event
+
+The owner asked for an audit of the whole theme and for it to be lifted to "one of the most
+visually stunning themes": varied over time, a distinct effect for every event, the biggest
+moments the most spectacular, smooth and readable. Built on `feature/supernova-masterpiece` in
+the sibling worktree `serenity-blocks-supernova-masterpiece`.
+
+### What the audit found
+
+| Part | Before | Fault |
+|---|---|---|
+| Star | Three reads of smooth noise | Blotches of two colours at the size it has in play: "an orange ball with yellow blobs". The same star for ever: only a chain changed it |
+| Sky | Three lattices of faint stars, dim far clouds | The right third of the frame (the one open column beside the HUD) was nearly empty, and nothing in the sky ever moved |
+| Nebula | Shells of filaments | One texture everywhere, the same shells for the whole session; a front was a soft band twenty to thirty pixels wide (a lens's ghost more than a shock) |
+| Events | Lock, one to three lines, twist, spin, back-to-back, crown, level, a chain breaking | Every one of them a ring through the nebula, told apart by colour and count. A piece a second kept the frame full of rings |
+| Ejecta | Streaks in the pieces' raw colours | Read as confetti |
+| Pulsar | Two hairline beams | Thin for the aftermath of the biggest moment |
+| Game over | The star reset | No effect at all |
+| Time | The palette turns (80 s a palette) | The only clock |
+
+What already worked was kept and built on: the composition (the star in the open margin, the
+shells behind the card), the streams a lock feeds the star with, one front a line, the beads of a
+chain, the five palettes, and the collapse, flash, fireball and pulsar of four lines.
+
+![Before, at rest](supernova-captures/pass3-before-rest.jpg)
+![After, at the same moment](supernova-captures/pass3-rest.jpg)
+
+### What changed
+
+**The star** (`supernova-star.js`, `supernova-bake.js`). The photosphere is granulated: a second
+baked volume (convection cells: 48³, 0.1 s, in the bake worker) gives every granule a hot dome and
+a dark lane along each wall it shares, dragged out of true by a mid-scale smooth read so the
+cells are never a honeycomb. The star is restless on a cycle of its own (`starActivity`, 232 s):
+quiet, it is an even field of granules; stormy, spots open (a dark heart in a dimmer fringe), a
+bright network gathers round them and its rays reach further. It is also a variable star
+(`starPulse`, 41 s: it swells quickly and sinks slowly). The corona has hairlines inside its fans
+and every fan a reach of its own. Every 47 s a restless star erupts by itself (`erupt`): a tongue
+of plasma off the limb, a tall arch where it tore away, sparks after it. A lock's patch of colour
+is a mark now, not a coat of paint (0.5 of the old dye), so a fast run of drops leaves the star
+its own colour.
+
+**The sky** (`supernova-sky.js`). It has a frame of its own that turns about the pole of the
+galaxy's band (`u.skyRot`, a turn in 80 minutes: about two and a half pixels a second): the band's line stands still where the card
+leaves sky (down the right of a wide frame, under a phone's card: `bandAnchor`) while its star
+clouds, its dark rift and its bulge of old suns slide along it. The band is made of points (two
+lattices of its own), not cloud. A few bright stars carry the four rays a lens gives a point, and
+a handful of far galaxies lean across the deep field.
+
+![The sky alone](supernova-captures/pass3-sky.jpg)
+
+**The nebula** (`supernova-nebula.js`, `writeShells`). The remnant has a form: every shell is
+thick in a belt round its waist and in the walls of two lobes and open at its poles, round the
+ring's own axis (`u.axis`), which rocks slowly over seven minutes. Two wider, fainter rings
+stand off the bead ring along that axis (`supernova-ring.js`): leaning, the three are an
+hourglass. Every shell the star throws off is rolled anew (`rollShell`: where it reads its
+pattern, how fine, how sharp, how much gas), so the nebula of the tenth minute is not the nebula
+of the first, and a detonation, which hurls the shells outward, brings new ones sooner. A front
+is a hairline with a faint wake: its skin is a length of its own, not a share of its radius.
+
+**A shape for every event** (`supernova-aura.js`, one star-centred sheet with no size at rest):
+
+| Event | Now |
+|---|---|
+| Lock | The stream, the flash, the ripple, the mark, the prominence. No ring: its echo is a ghost front that only breathes the colour into each shell it crosses |
+| Hard drop | The three streams, and a tongue of plasma thrown straight up off the limb where the middle one lands |
+| One, two, three lines | One hairline front a line. Three lines also break out along the axis: two straight beams with streaks running out behind a bright head |
+| Twist | A corkscrew wound round the axis, both ways out (two strands, near turns bright, far ones dim), as the corona winds. A twist that clears nothing: a short one |
+| Back-to-back | A wave in the ring's own plane: an oval that leans with the ring, where a front is a circle |
+| Chain | Heat, beads, taller prominences (as before). When it breaks, the beads it lit let go of the ring and fall into the star, the last lit first |
+| Four lines | Collapse, flash, fireball (as before), now with two long beams along the axis, ejecta as knots with wakes in colours tempered by the star's own fire, and a pulsar whose ripples leave it one after another in the ring's plane |
+| Perfect clear | The flash, crowned with long rays in bundles of unequal reach, in the element's own colours (most of it held back under Reduce flashing) |
+| Level up | The star sheds a layer: a bubble of filaments in the new element's colours swells out of it and takes its place in the nebula for ten seconds |
+| Game over | The star's fire fails: it falls in with no flash and stands as a dark star (a black disc in a thin ring of bent light), the bead ring spins up round it, its wind falls back, the picture bends toward it a little. A new star kindles by itself after about ten seconds, at once on a new run |
+
+![Three lines](supernova-captures/pass3-three-lines.jpg)
+![A twist and a back-to-back, in the real game](supernova-captures/pass3-twist-b2b-ingame.jpg)
+![Four lines: the pulsar](supernova-captures/pass3-pulsar.jpg)
+![A perfect clear's crown](supernova-captures/pass3-crown.jpg)
+![Game over](supernova-captures/pass3-game-over.jpg)
+
+### Traps met
+
+- **A net over a ball.** A cell volume alone reads as a golf ball. The drag by a smooth read,
+  lanes of uneven width and depth, and broad swings carrying most of the temperature are what
+  make it plasma (gotcha #1410).
+- **A black bite out of the star.** A spot thresholded from the broadest read of the 64³ volume
+  was a flat polygon with straight sides: under thirty voxels cross the disc. The field is
+  ravelled by the finer reads before the threshold (gotcha #1409).
+- **Zigzag ripples.** The pulsar's wisps bent by a read of the coarse noise had a corner in every
+  crest; their phase is bent by a smooth function of the angle (gotcha #1728).
+- **Two-tone gas went to mud.** Lighting the body of each patch in the patch's other colour (gold
+  under crimson) read brown. One hue a patch stays.
+- **A corona three radii long.** The first fans washed the left third of the frame in orange and
+  hid the nebula; their reach was brought back to the old corona's.
+- **A reflected sky.** The sky's frame was left-handed (pole = at × along): a test that it is a
+  rotation caught it.
+- **A star that goes off at game over.** The theme lets the chain go before it tells the world the
+  run is over, so a chain at the brink began a collapse; `onGameOver` cancels it.
+
+### Verification
+
+- **Unit tests:** seven Supernova files, 220 tests (22 new in `tests/unit/supernova-living.test.js`:
+  the clocks, the sky's turn, the shells' generations, a shape per event, the eruptions, the dark
+  star and its return). Ten older tests were re-pinned for what changed on purpose (a lock draws
+  no ring, a chain that breaks drops its beads, the end of a run does not reset the world, one
+  more bake and one more part). With the fleet-wide theme tests (registry lifecycle, dual-state
+  tripwire, URL catalogue, camera breath, Reduce flashing, the skill's contract): 13 files, 377
+  tests. Typecheck, the lifecycle audit, the boundary check and ESLint on the changed files pass.
+- **Pictures** (private Vite + headless Chrome, `maxFps=30`, clean consoles): rest at five
+  moments of the clocks, every event at one or more moments, Minimal, Low, Medium and Extreme,
+  both backends, an upright 390 × 844 frame, reduced motion, the icon lens.
+- **The real game** (headless Chrome, single player, WebGPU): six real hard drops by key, then
+  three lines, a twist with a back-to-back, a level change, four lines, a perfect clear and game
+  over on the bus; the dark star stands at +2.8 s and a new star burns at +14 s. Console clean
+  (two Steam Cloud warnings of the app's own).
+- **GPU time** (RTX, playground at 1920 × 1080, `profile=1&trackTimestamp=1&maxFps=30`, the
+  untouched main checkout and this branch on two servers, interleaved): High at rest 0.51 →
+  0.58 ms, High through the demo loop 0.58 → 0.61 ms, Minimal at rest 0.16 → 0.20 ms (taken
+  before the lean tiers' last trim, one fetch fewer on the star's disc, which was not
+  re-measured). The first
+  measurement was 0.63 ms at High; the sky's bright stars and galaxies and the star's corona
+  were then branched out of the pixels that cannot show them (gotcha #1102).
+- **Not measured:** the integrated GPU and the perf lane (ADR-0016: needs an uncapped run), a
+  physical phone, local multiplayer, Infinity and Odyssey layouts in a capture, sessions of
+  hours. The theme icon and `docs/theme-screenshots/supernova.png` still show the star of the
+  second pass. Blender was offered and not used: everything here is a sphere, shells and light.
+
+### Reproduce
+
+`/playground.html?effect=supernova&t=20&quality=High&board=1&maxFps=30`, with
+`event=lock|drop|clear|quad|twist|spin|b2b|perfect|crown|break|levelUp|over` and `eventAge=<s>`
+(`break` needs `combo=<n>`). The clocks: `t=75` is a stormy star and `t=190` a quiet one, an
+eruption stands at `t=48.5` (and every 47 s after, when the star is restless), the palettes turn
+every 80 s. `parts=` now also takes `aura`.

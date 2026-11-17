@@ -363,7 +363,7 @@ export default class SupernovaTheme extends BaseTheme {
             }),
         );
         this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
-        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+        this.registerEventListener(window, 'gameOver', () => this.endRun());
 
         const resetPointer = () => {
             this.pointer.x = 0;
@@ -404,11 +404,22 @@ export default class SupernovaTheme extends BaseTheme {
         this.world?.onCombo(best);
     }
 
+    /**
+     * A run is over: whatever is staged still lands, the chain is let go, and the star's fire
+     * fails from where it stands (the world is not wiped: its last streams still fly).
+     */
+    endRun() {
+        this.director?.flush();
+        this.resetSession({ world: false });
+        this.world?.onGameOver?.();
+    }
+
     /** A new run: the star back at rest, no combo in flight. */
-    resetSession() {
+    resetSession({ world = true } = {}) {
         this.director?.reset();
         this.combos.clear();
-        this.world?.resetSession();
+        // (A run that ended keeps what the star was doing: it goes dark from there.)
+        if (world) this.world?.resetSession();
         this.scheduleLayoutReads();
     }
 
@@ -506,7 +517,11 @@ export default class SupernovaTheme extends BaseTheme {
         this.modeManager = manager;
         const relayout = () => this.scheduleLayoutReads();
         this.eventUnsubscribers.push(
-            manager.on('modeStarted', relayout),
+            manager.on('modeStarted', () => {
+                relayout();
+                // A new run kindles the star a run's end left dark.
+                this.world?.onSessionStart?.();
+            }),
             manager.on('modeActivated', relayout),
             manager.on('modeStopped', () => this.resetSession()),
         );

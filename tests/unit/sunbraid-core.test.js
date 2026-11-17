@@ -1,7 +1,7 @@
 /**
  * Sunbraid — the three-free modules the world, the shaders and the playground share: the suns
  * (sunbraid-core.js), the baked noise (sunbraid-noise.js), the valley's plan (sunbraid-plan.js)
- * and the towers' shapes (sunbraid-spire-shape.js).
+ * and the towers' shapes (sunbraid-monoliths.js: sculpted in Blender, read here as plain arrays).
  *
  * The look is still being tuned, so these hold relations (a sun on its circle, a third of a turn
  * apart; the lowest sun named as the era; a neutral white from three colours), not numbers.
@@ -18,11 +18,12 @@ import {
     NOISE_PERIODS, NOISE_SIZE, bakeNoise, noiseAt, noiseData,
 } from '../../src/themes/sunbraid/sunbraid-noise.js';
 import {
-    EYE_ALTITUDE, MAX_CASTERS, SPIRE_LAYOUT, eyePosition, floorHeight, groundHeight, spireCasters, spireFoot, variantOf,
+    EYE_ALTITUDE, MAX_CASTERS, SPIRE_LAYOUT, TIER_OVERLAP, casterRanges, eyePosition, floorHeight, groundHeight,
+    spireCasters, spireFoot, variantOf,
 } from '../../src/themes/sunbraid/sunbraid-plan.js';
 import {
-    SPIRE_BURY, SPIRE_VARIANTS, buildSpireMesh, spireAxis, spireKind, spireProxies, spireRecipe,
-} from '../../src/themes/sunbraid/sunbraid-spire-shape.js';
+    MONOLITH_BURY, MONOLITH_LEVELS, MONOLITH_VARIANTS, monolithKind, monolithMesh, monolithProxies,
+} from '../../src/themes/sunbraid/sunbraid-monoliths.js';
 import { SUNBRAID_TETROMINOS } from '../../src/themes/sunbraid/sunbraid-tetrominos.js';
 
 const themeDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'src', 'themes', 'sunbraid');
@@ -422,7 +423,7 @@ describe('Sunbraid plan: the valley floor and the towers', () => {
         expect(SPIRE_LAYOUT.length).toBeGreaterThan(0);
         SPIRE_LAYOUT.forEach((s, index) => {
             expect(Number.isInteger(s.variant), `tower ${index}`).toBe(true);
-            expect(s.variant >= 0 && s.variant < SPIRE_VARIANTS, `tower ${index}`).toBe(true);
+            expect(s.variant >= 0 && s.variant < MONOLITH_VARIANTS, `tower ${index}`).toBe(true);
             expect(variantOf(index)).toBe(s.variant);
             expect(s.distance, `tower ${index}`).toBeGreaterThan(500);
             expect(s.h, `tower ${index}`).toBeGreaterThan(0);
@@ -441,7 +442,7 @@ describe('Sunbraid plan: the valley floor and the towers', () => {
         SPIRE_LAYOUT.forEach((s, index) => {
             const own = casters.filter((c) => c.stone === index);
             expect(own.length, `tower ${index}`).toBeGreaterThanOrEqual(1);
-            expect(own.length).toBe(spireProxies(s.variant).length);
+            expect(own.length).toBe(monolithProxies(s.variant).length);
             const foot = spireFoot(s);
             own.forEach((c) => {
                 expect(c.y1, `tower ${index} part ${c.part}`).toBeGreaterThan(c.y0);
@@ -450,42 +451,67 @@ describe('Sunbraid plan: the valley floor and the towers', () => {
                 // Near its own foot (a mitten's tower stands off to one side, never off the stone).
                 expect(Math.hypot(c.x - foot[0], c.z - foot[2])).toBeLessThan(s.h);
             });
-            // Buried a little at the foot, as tall as the tower, the tiers stacked without a gap.
-            expect(own[0].y0).toBeCloseTo(foot[1] - SPIRE_BURY * s.h, 6);
+            // Buried a little at the foot, as tall as the tower, each tier reaching a little down
+            // into the one under it (stacked edge to edge, a pale band crossed the shadow at each
+            // joint: both cylinders were half hidden there).
+            expect(own[0].y0).toBeCloseTo(foot[1] - MONOLITH_BURY * s.h, 6);
             expect(own[own.length - 1].y1).toBeCloseTo(foot[1] + s.h, 6);
-            for (let k = 1; k < own.length; k++) expect(own[k].y0).toBeCloseTo(own[k - 1].y1, 9);
+            for (let k = 1; k < own.length; k++) {
+                expect(own[k].y0).toBeCloseTo(own[k - 1].y1 - TIER_OVERLAP * s.h, 9);
+                expect(own[k].y0).toBeGreaterThan(own[k - 1].y0);
+            }
         });
+        expect(TIER_OVERLAP).toBeGreaterThan(0);
+        expect(TIER_OVERLAP).toBeLessThan(0.06);
+        // Each tower's own rows in the list (its stone leaves them out of its shadows): one run
+        // a tower, in the layout's order, covering the list exactly.
+        const ranges = casterRanges(casters);
+        expect(ranges).toHaveLength(SPIRE_LAYOUT.length);
+        let row = 0;
+        ranges.forEach((range, index) => {
+            expect(range.first, `tower ${index}`).toBe(row);
+            expect(range.count).toBe(monolithProxies(SPIRE_LAYOUT[index].variant).length);
+            for (let k = 0; k < range.count; k++) expect(casters[row + k].stone).toBe(index);
+            row += range.count;
+        });
+        expect(row).toBe(casters.length);
+        expect(casterRanges()).toEqual(ranges);
     });
 });
 
-describe('Sunbraid spire shapes', () => {
+describe('Sunbraid monoliths', () => {
     const KINDS = { tower: [0, 2, 4, 6], butte: [1, 5], mitten: [3, 7] };
+    /** Triangles a level may hold (the sculpt's own budget: scripts/blender/sunbraid_monoliths.py). */
+    const BUDGET = { hi: 9000, lo: 2500 };
+    const VARIANTS = Array.from({ length: MONOLITH_VARIANTS }, (_, v) => v);
+    const CASES = VARIANTS.flatMap((v) => MONOLITH_LEVELS.map((level) => [v, level]));
 
     it('makes towers, buttes and mittens of the variants the layout names', () => {
+        expect(MONOLITH_VARIANTS).toBe(8);
+        expect(MONOLITH_LEVELS).toEqual(['hi', 'lo']);
         for (const [kind, variants] of Object.entries(KINDS)) {
-            variants.forEach((v) => expect(spireKind(v), `variant ${v}`).toBe(kind));
+            variants.forEach((v) => expect(monolithKind(v), `variant ${v}`).toBe(kind));
         }
-        expect(spireKind(SPIRE_VARIANTS + 1)).toBe(spireKind(1));
-        expect(spireKind(-1)).toBe(spireKind(SPIRE_VARIANTS - 1));
-        // A recipe is a function of its variant.
-        expect(spireRecipe(3)).toEqual(spireRecipe(3));
-        expect(spireRecipe(3)).not.toEqual(spireRecipe(4));
+        expect(monolithKind(MONOLITH_VARIANTS + 1)).toBe(monolithKind(1));
+        expect(monolithKind(-1)).toBe(monolithKind(MONOLITH_VARIANTS - 1));
+        // A shape is decoded once a page.
+        expect(monolithMesh(3, 'hi')).toBe(monolithMesh(3, 'hi'));
+        expect(monolithMesh(3, 'hi')).not.toBe(monolithMesh(3, 'lo'));
+        expect(() => monolithMesh(0, 'mid')).toThrow(/no monolith/);
     });
 
-    // Each variant at a modest resolution (the tiers' own budgets are the world's business).
-    const VARIANTS = Array.from({ length: SPIRE_VARIANTS }, (_, v) => v);
-    const meshes = Array.from({ length: SPIRE_VARIANTS }, (_, v) => buildSpireMesh(v, 40, 80));
-
-    it.each(VARIANTS)('builds variant %i as a clean mesh', (v) => {
-        const mesh = meshes[v];
-        const count = mesh.position.length / 3;
+    it.each(CASES)('decodes variant %i at %s as a clean mesh', (v, level) => {
+        const mesh = monolithMesh(v, level);
+        const count = mesh.vertexCount;
+        expect(mesh.kind).toBe(monolithKind(v));
+        expect(mesh.position).toHaveLength(count * 3);
         expect(mesh.normal).toHaveLength(count * 3);
-        expect(mesh.spire).toHaveLength(count * 2);
+        expect(mesh.shade).toHaveLength(count * 2);
+        expect(mesh.index).toHaveLength(mesh.triangleCount * 3);
+        expect(mesh.triangleCount).toBeLessThanOrEqual(BUDGET[level]);
+        expect(mesh.triangleCount).toBeGreaterThan(400);
         expect(mesh.position.every(Number.isFinite)).toBe(true);
-        expect(mesh.normal.every(Number.isFinite)).toBe(true);
-        expect(mesh.spire.every(Number.isFinite)).toBe(true);
-        expect(mesh.index.length % 3).toBe(0);
-        expect(Math.max(...mesh.index)).toBeLessThan(count);
+        expect(Math.max(...mesh.index)).toBe(count - 1);
         for (let k = 0; k < count; k++) {
             expect(Math.hypot(mesh.normal[k * 3], mesh.normal[k * 3 + 1], mesh.normal[k * 3 + 2])).toBeCloseTo(1, 5);
         }
@@ -496,73 +522,88 @@ describe('Sunbraid spire shapes', () => {
             lo = Math.min(lo, mesh.position[k * 3 + 1]);
             hi = Math.max(hi, mesh.position[k * 3 + 1]);
         }
-        expect(lo).toBeCloseTo(-SPIRE_BURY, 6); // a Float32 attribute
-        expect(hi).toBeGreaterThanOrEqual(1);
+        expect(lo).toBeCloseTo(-MONOLITH_BURY, 3);
+        expect(hi).toBeGreaterThan(0.99);
         expect(hi).toBeLessThan(1.01);
-        // Occlusion stays in its range.
+        // Occlusion and crest stay in their range, and use it (joints dark, arrises worn).
+        let dark = 0;
+        let worn = 0;
         for (let k = 0; k < count; k++) {
-            const ao = mesh.spire[k * 2 + 1];
-            expect(ao >= 0.3 && ao <= 1).toBe(true);
+            const ao = mesh.shade[k * 2];
+            const crest = mesh.shade[k * 2 + 1];
+            expect(ao >= 0 && ao <= 1 && crest >= 0 && crest <= 1).toBe(true);
+            if (ao < 0.4) dark += 1;
+            if (crest > 0.8) worn += 1;
         }
+        expect(dark).toBeGreaterThan(count * 0.05);
+        expect(worn).toBeGreaterThan(count * 0.05);
     });
 
-    it.each(VARIANTS)('turns variant %i\'s normals outward on its sides', (v) => {
-        const mesh = meshes[v];
-        const count = mesh.position.length / 3 - 1; // the cap's centre has no side
-        const axis = [0, 0];
-        let sum = 0;
-        let n = 0;
+    it.each(CASES)('winds variant %i at %s outward, with no sliver of no area', (v, level) => {
+        const { position: P, normal: N, index: I } = monolithMesh(v, level);
         let inward = 0;
-        for (let k = 0; k < count; k++) {
-            const t = mesh.spire[k * 2];
-            if (t < 0.02 || t > 0.95) continue; // the buried foot and the broken rim under the cap
-            spireAxis(mesh.recipe, t, axis);
-            const rx = mesh.position[k * 3] - axis[0];
-            const rz = mesh.position[k * 3 + 2] - axis[1];
-            const r = Math.hypot(rx, rz);
-            if (r < 1e-6) continue;
-            const d = (mesh.normal[k * 3] * rx + mesh.normal[k * 3 + 2] * rz) / r;
-            sum += d;
-            n += 1;
-            if (d < 0) inward += 1;
+        let empty = 0;
+        for (let f = 0; f < I.length; f += 3) {
+            const a = I[f] * 3;
+            const b = I[f + 1] * 3;
+            const c = I[f + 2] * 3;
+            const u = [P[b] - P[a], P[b + 1] - P[a + 1], P[b + 2] - P[a + 2]];
+            const w = [P[c] - P[a], P[c + 1] - P[a + 1], P[c + 2] - P[a + 2]];
+            const n = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
+            if (Math.hypot(...n) < 1e-10) {
+                empty += 1;
+                continue;
+            }
+            // The face the winding makes looks the way its corners' normals do.
+            const facing = n[0] * (N[a] + N[b] + N[c]) + n[1] * (N[a + 1] + N[b + 1] + N[c + 1])
+                + n[2] * (N[a + 2] + N[b + 2] + N[c + 2]);
+            if (facing <= 0) inward += 1;
         }
-        expect(n).toBeGreaterThan(100);
-        expect(sum / n).toBeGreaterThan(0.5);
-        expect(inward / n).toBeLessThan(0.05);
+        expect(empty).toBe(0);
+        expect(inward / (I.length / 3)).toBeLessThan(0.002);
     });
 
-    it.each(VARIANTS)('stands variant %i\'s shadow cylinders inside its cliffs', (v) => {
-        const mesh = meshes[v];
-        const rec = mesh.recipe;
-        const proxies = spireProxies(v);
-        expect(proxies).toHaveLength(rec.tiers.length + 1);
-        const count = mesh.position.length / 3 - 1;
-        const axis = [0, 0];
+    it.each(VARIANTS)('stands variant %i\'s shadow cylinders in its stone', (v) => {
+        const mesh = monolithMesh(v, 'hi');
+        const proxies = monolithProxies(v);
+        // At most four (the shadow rows are a budget), stacked from the buried foot to the top.
+        expect(proxies.length).toBeGreaterThanOrEqual(2);
+        expect(proxies.length).toBeLessThanOrEqual(4);
+        expect(proxies[0].t0).toBeCloseTo(-MONOLITH_BURY, 9);
+        expect(proxies[proxies.length - 1].t1).toBe(1);
+        for (let k = 1; k < proxies.length; k++) expect(proxies[k].t0).toBe(proxies[k - 1].t1);
+        const count = mesh.vertexCount;
         proxies.forEach((proxy, k) => {
             expect(proxy.t1).toBeGreaterThan(proxy.t0);
             expect(proxy.r).toBeGreaterThan(0);
-            // The mesh's mean radius over the tier (above the scree apron on the bottom tier).
-            const from = k === 0 ? Math.max(proxy.t0, rec.apronTop) : proxy.t0;
-            let sum = 0;
-            let n = 0;
+            // Where the tier's stone stands from the cylinder's axis (above the talus at the
+            // foot): the cylinder runs through the middle of it, so a shadow has stone above it
+            // and the stone a shadow under it.
+            const radii = [];
             for (let i = 0; i < count; i++) {
-                const t = mesh.spire[i * 2];
-                if (t < from || t > Math.min(proxy.t1, rec.crown)) continue;
-                spireAxis(rec, t, axis);
-                sum += Math.hypot(mesh.position[i * 3] - axis[0], mesh.position[i * 3 + 2] - axis[1]);
-                n += 1;
+                const y = mesh.position[i * 3 + 1];
+                if (y < Math.max(proxy.t0, 0.1) || y > proxy.t1) continue;
+                radii.push(Math.hypot(mesh.position[i * 3] - proxy.x, mesh.position[i * 3 + 2] - proxy.z) / proxy.r);
             }
-            expect(n, `tier ${k}`).toBeGreaterThan(0);
-            expect(proxy.r, `tier ${k}`).toBeLessThan(sum / n);
-            expect(proxy.r, `tier ${k}`).toBeGreaterThan((sum / n) * 0.8);
-            // The cylinder's axis is the shape's own at that height.
-            spireAxis(rec, (proxy.t0 + proxy.t1) / 2, axis);
-            expect(proxy.x).toBeCloseTo(axis[0], 12);
-            expect(proxy.z).toBeCloseTo(axis[1], 12);
+            radii.sort((p, q) => p - q);
+            expect(radii.length, `tier ${k}`).toBeGreaterThan(40);
+            const median = radii[Math.floor(radii.length / 2)];
+            expect(median, `tier ${k}`).toBeGreaterThan(0.85);
+            expect(median, `tier ${k}`).toBeLessThan(1.3);
+            expect(radii[Math.floor(radii.length * 0.9)], `tier ${k}`).toBeLessThan(1.9);
         });
-        // Stacked from the buried foot to the top without a gap.
-        expect(proxies[0].t0).toBeCloseTo(-SPIRE_BURY, 12);
-        expect(proxies[proxies.length - 1].t1).toBe(1);
-        for (let k = 1; k < proxies.length; k++) expect(proxies[k].t0).toBe(proxies[k - 1].t1);
+        // A mitten's tower stands off to one side of its shoulder; a tower's tiers keep to one axis.
+        const top = proxies[proxies.length - 1];
+        const off = Math.hypot(top.x - proxies[0].x, top.z - proxies[0].z);
+        if (monolithKind(v) === 'mitten') expect(off).toBeGreaterThan(proxies[0].r * 0.5);
+        else expect(off).toBeLessThan(proxies[0].r);
+    });
+
+    it('keeps every level of every shape in the generated module, a megabyte or so in all', () => {
+        const bytes = readFileSync(path.join(themeDir, 'sunbraid-monolith-models.js')).length;
+        expect(bytes).toBeLessThan(1.3 * 1024 * 1024);
+        const source = readFileSync(path.join(themeDir, 'sunbraid-monolith-models.js'), 'utf8');
+        expect(source).toMatch(/GENERATED/);
+        expect(source).not.toMatch(/\r/);
     });
 });

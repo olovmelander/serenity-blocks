@@ -3,39 +3,47 @@
  * counts and detail, never a feature or a beat.
  *
  *  - fan: the land mesh's columns × rows (one fan round the eye);
- *  - spire: the towers' meshes, bearings × heights;
- *  - gliders: how many gliders ride the valley's air.
+ *  - monolith: the towers' level of detail (sunbraid-monoliths.js);
+ *  - gliders: how many gliders ride the valley's air;
+ *  - mirror: what the wet plain mirrors of the dome: the whole of it ('full'), or its gradient
+ *    with a glow and a glint for each sun ('lean': the towers still stand in it).
  */
 const TIERS = {
     Extreme: {
         fan: { cols: 360, rows: 300 },
-        spire: { segs: 96, rings: 200 },
-        gliders: 8,
+        monolith: 'hi',
+        gliders: 12,
+        mirror: 'full',
     },
     Ultra: {
         fan: { cols: 320, rows: 270 },
-        spire: { segs: 88, rings: 180 },
-        gliders: 8,
+        monolith: 'hi',
+        gliders: 12,
+        mirror: 'full',
     },
     High: {
         fan: { cols: 280, rows: 240 },
-        spire: { segs: 80, rings: 160 },
-        gliders: 6,
+        monolith: 'hi',
+        gliders: 10,
+        mirror: 'full',
     },
     Medium: {
         fan: { cols: 220, rows: 190 },
-        spire: { segs: 64, rings: 130 },
-        gliders: 5,
+        monolith: 'hi',
+        gliders: 8,
+        mirror: 'full',
     },
     Low: {
         fan: { cols: 160, rows: 140 },
-        spire: { segs: 48, rings: 100 },
-        gliders: 4,
+        monolith: 'lo',
+        gliders: 6,
+        mirror: 'lean',
     },
     Minimal: {
         fan: { cols: 120, rows: 104 },
-        spire: { segs: 40, rings: 80 },
-        gliders: 3,
+        monolith: 'lo',
+        gliders: 4,
+        mirror: 'lean',
     },
 };
 

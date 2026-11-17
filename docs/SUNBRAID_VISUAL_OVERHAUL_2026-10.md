@@ -18,6 +18,11 @@ world; `sunbraid-post.js` the post stack with the mist's light; `sunbraid-theme.
 shell and `sunbraid-director.js` the gameplay director, both cloned from Grainfields).
 Playground: `?effect=sunbraid` (`src/playground/effects/sunbraid.effect.js`).
 
+> **Later passes:** the atmosphere (2026-10-21), the crust and the sky rays (2026-10-25) and the
+> living valley (2026-11-17, [SUNBRAID_LIVING_VALLEY_2026-11.md](SUNBRAID_LIVING_VALLEY_2026-11.md)):
+> the towers described below (a surface swept round an axis, `sunbraid-spire-shape.js`) are now
+> monoliths sculpted in Blender, the sky, the weather and every event's own effect are in that record.
+
 ## The subject
 
 A pale world under a close triple star. Three suns, coral, jade and cobalt, wheel round one

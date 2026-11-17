@@ -13,6 +13,9 @@
  * lit          lanterns the water mirrors and is lit by     rings     rings alive on the water
  * motes        lights in flight from the card to the sea   drops     the splash pool
  * birds        the largest flock a chain can call
+ * towers       the towers of cloud along the horizon (the weather's)
+ * release      the far shore's lanterns: the most one letting-go sends up
+ * meteors      shooting stars on the sky at once
  */
 const tier = (values) => Object.freeze(values);
 
@@ -36,6 +39,9 @@ export const QUALITY = Object.freeze({
         motes: 6,
         drops: 160,
         birds: 9,
+        towers: false,
+        release: 70,
+        meteors: 8,
     }),
     Low: tier({
         skyNoise: 256,
@@ -56,6 +62,9 @@ export const QUALITY = Object.freeze({
         motes: 8,
         drops: 260,
         birds: 13,
+        towers: true,
+        release: 110,
+        meteors: 10,
     }),
     Medium: tier({
         skyNoise: 512,
@@ -76,6 +85,9 @@ export const QUALITY = Object.freeze({
         motes: 10,
         drops: 420,
         birds: 17,
+        towers: true,
+        release: 160,
+        meteors: 14,
     }),
     High: tier({
         skyNoise: 512,
@@ -96,6 +108,9 @@ export const QUALITY = Object.freeze({
         motes: 12,
         drops: 640,
         birds: 23,
+        towers: true,
+        release: 220,
+        meteors: 16,
     }),
     Ultra: tier({
         skyNoise: 512,
@@ -116,6 +131,9 @@ export const QUALITY = Object.freeze({
         motes: 14,
         drops: 820,
         birds: 29,
+        towers: true,
+        release: 280,
+        meteors: 18,
     }),
     Extreme: tier({
         skyNoise: 512,
@@ -136,6 +154,9 @@ export const QUALITY = Object.freeze({
         motes: 16,
         drops: 1000,
         birds: 35,
+        towers: true,
+        release: 340,
+        meteors: 20,
     }),
 });
 

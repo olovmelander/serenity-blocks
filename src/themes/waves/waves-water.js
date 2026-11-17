@@ -432,20 +432,32 @@ export function createWater({
         // (Finer than the lace, and not drawn out so far: it is churned, not combed.)
         // (And bent by the water's heights at every scale: straight walls of even width read as
         // flagstones.)
-        const frothAt = vec2(fc.x.mul(0.97), fc.y.mul(0.46)).add(g3.mul(0.34))
-            .add(vec2(rib.b, rib.a).sub(0.5).mul(0.22))
-            .add(vec2(fine.b, fine.a).sub(0.5).mul(0.05));
+        // (Cells a hand across, not a forearm: near the eye the larger ones read as cracked ice.)
+        const frothAt = vec2(fc.x.mul(1.7), fc.y.mul(0.85)).add(g3.mul(0.34))
+            .add(vec2(rib.b, rib.a).sub(0.5).mul(0.3))
+            .add(vec2(fine.b, fine.a).sub(0.5).mul(0.08));
         const froth = texture(cells, frothAt).toVar();
+        // And bubbles inside the bubbles: a field of cells three times finer again, so the holes
+        // between the walls are lace, not open water cut out with scissors.
+        const fizz = texture(cells, frothAt.mul(2.9).add(vec2(0.31, 0.57))).toVar();
         // The walls between its bubbles thicken until they meet: a sheet where it is heaped. No
-        // two are one width, and here and there a whole cell is still full of foam.
-        const thick = clamp(heap.mul(0.34).add(0.03), 0.0, 0.6).mul(fine.a.mul(1.1).add(0.4));
-        const raft = smoothstep(0.52, 0.74, froth.b).mul(smoothstep(0.4, 1.0, heap));
-        const bubbled = float(1.0).sub(smoothstep(thick.mul(0.35), thick, froth.r))
-            .add(float(1.0).sub(smoothstep(thick.mul(0.3), thick.mul(0.85), froth.g)).mul(0.6))
-            .add(froth.a.mul(0.3))
+        // two are one width, no hole is a polygon (its edge is eaten by the water's own noise),
+        // and here and there a whole cell is still full of foam.
+        const thick = clamp(heap.mul(0.3).add(0.03), 0.0, 0.55).mul(fine.a.mul(1.1).add(0.4));
+        const ragged = fine.b.sub(0.5).mul(0.09).add(fizz.g.sub(0.25).mul(0.07));
+        const raft = smoothstep(0.55, 0.76, froth.b).mul(smoothstep(0.4, 1.0, heap));
+        const lacy = smoothstep(0.15, 0.7, heap).mul(smoothstep(0.35, 0.65, broad.a.add(fine.b.mul(0.3))));
+        const bubbled = float(1.0).sub(smoothstep(thick.mul(0.35), thick, froth.r.add(ragged)))
+            .add(float(1.0).sub(smoothstep(thick.mul(0.3), thick.mul(0.85), froth.g)).mul(0.45))
+            .add(float(1.0).sub(smoothstep(0.03, 0.12, fizz.g)).mul(lacy).mul(0.75))
+            .add(froth.a.mul(0.25))
             .add(raft.mul(fine.b.mul(0.5).add(0.5)));
-        const carpet = max(smoothstep(0.85, 1.25, heap), smoothstep(0.3, 0.8, heap).mul(clamp(bubbled, 0.0, 1.0)))
-            .toVar();
+        // Where it is heaped it is a sheet with pinholes, not a flat white.
+        const pinholes = smoothstep(0.55, 0.9, fizz.a).mul(0.55);
+        const carpet = max(
+            smoothstep(0.85, 1.25, heap).mul(float(1.0).sub(pinholes)),
+            smoothstep(0.3, 0.8, heap).mul(clamp(bubbled, 0.0, 1.0)),
+        ).toVar();
         // The landed lip is a fall of water full of air: white in the long streaks of the fall,
         // whole and white where it stands on the sea.
         const fallen = float(1.0).sub(smoothstep(0.0, 2.6, edge)).mul(landed);

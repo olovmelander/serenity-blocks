@@ -195,6 +195,8 @@ export function* bakeAllSunfallTexturesSteps(seed = SUNFALL_SEED, assets = null)
     const fbm = repeatTexture(bakeOnce(fbmKey(seed, FBM_SIZE), () => bakeFbm(seed)), FBM_SIZE, FBM_SIZE, {
         name: 'sunfall-fbm',
     });
+    // The column's march reads the sun mask's dapple from it along each step (explicit gradients).
+    fbm.anisotropy = 16;
     const oculusData = bakeOnce(oculusKey(seed, OCULUS_TEX), () => bakeOculus(seed));
     const oculus = repeatTexture(oculusData, OCULUS_TEX.width, OCULUS_TEX.height, { name: 'sunfall-oculus' });
     oculus.wrapT = THREE.ClampToEdgeWrapping;

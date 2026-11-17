@@ -39,7 +39,7 @@
  *                     steps), then freeze it (captures)
  *   ?wavesFixedDt=<ms>  fixed frame step
  *   ?wavesParts=sky,water,life,...   draw only these parts (sky, water, life, mist, rain,
- *                                    whitewater, spray, foam)
+ *                                    whitewater, landing, spray, foam)
  *   ?wavesFalseColor=1  post debug view
  *
  * The wave is a function of its clock plus a little eased state (how far the barrel is open,

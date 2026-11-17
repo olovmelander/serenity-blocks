@@ -18,6 +18,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    Loop,
     abs,
     attribute,
     cameraPosition,
@@ -48,6 +49,8 @@ import {
 } from 'three/tsl';
 import {
     DROP_SLOTS,
+    STROKE_GAP,
+    STROKE_SPEED,
     WISP_SLOTS,
     mulberry32,
     swFogAmount,
@@ -712,6 +715,21 @@ export function createVeil(u, count) {
             .add(glow(u.poolL, u.poolColL, 0.3).mul(0.5))
             .add(glow(u.poolR, u.poolColR, 0.3).mul(0.5))
             .mul(u.breath));
+        // A clear's swells light the mist they pass under: a wave of light out through the veil,
+        // wider and brighter the more lines it was.
+        const swell = vec3(0.0).toVar();
+        Loop({
+            start: int(0), end: int(u.counts.y), type: 'int', condition: '<', name: 'vk',
+        }, ({ vk }) => {
+            const A = u.strokes.element(vk.mul(2));
+            const C = u.strokes.element(vk.mul(2).add(1));
+            const age = u.time.sub(A.x);
+            const back = age.mul(STROKE_SPEED).sub(length(P.xz.sub(u.heartAt.xz)));
+            const wide = A.y.mul(STROKE_GAP);
+            const band = smoothstep(-1.5, 0.5, back).mul(float(1.0).sub(smoothstep(wide, wide.add(5.0), back)));
+            swell.addAssign(C.xyz.mul(band.mul(step(0.0, age)).mul(exp(age.mul(-0.5))).mul(A.z).mul(A.y)));
+        });
+        col.addAssign(swell.mul(0.38).mul(u.breath));
         return vec4(col.mul(a), a);
     })();
     const part = swPart('StillwaterVeil', geometry, material, 48);

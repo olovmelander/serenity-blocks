@@ -14,7 +14,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-    FLUKE_REACH, GRAVITY, KINDS, LEAP_STYLES, NOSE_REACH, RIDE_CLEARANCE, SPECIES, WHALE_MODES, actAlive, actPose,
+    FLUKE_REACH, GRAVITY, KINDS, LEAP_LEAD, LEAP_STYLES, NOSE_REACH, RIDE_CLEARANCE, RIDE_EASE, RIDE_SEEN, RIDE_SINK, SPECIES,
+    WHALE_MODES, actAlive, actPose,
     dolphinPose, emptyPose, makeLeap, makePorpoise, makeRide, makeSoar, makeWhale, porpoiseAt, surfaceTimes, troughRow,
 } from '../../src/themes/waves/waves-acts.js';
 import {
@@ -368,9 +369,43 @@ describe('waves acts: a leap', () => {
             if (!after.every((pose, k) => k === 0 || pose.depth > after[k - 1].depth)) wrong.push(`${where}: going down`);
         }
         expect(wrong.slice(0, 8)).toEqual([]);
-        // It goes back in along the way it fell, and levels out as it slows.
+        // It goes back in along the way it fell and dives on down out of sight (it used to level
+        // out a metre under and shrink away there, in plain view). Its turn has no kink at either
+        // surface: the run-up curves into the flight, the flight into the dive.
         const arc = leapOf();
-        expect(at(arc, arc.flight + 0.05).fy).toBeLessThan(at(arc, arc.life - 0.05).fy);
+        expect(at(arc, arc.flight + 0.05).fy).toBeLessThan(0);
+        expect(at(arc, arc.life - 0.05).fy).toBeLessThan(at(arc, arc.flight + 0.05).fy);
+        expect(at(arc, arc.life - 0.05).depth).toBeGreaterThan(3.4);
+        expect(at(arc, -arc.lead + 0.05).depth).toBeGreaterThan(3.4);
+        const turn = (t) => {
+            const a = at(arc, t - 1 / 120);
+            const b = at(arc, t + 1 / 120);
+            return Math.acos(Math.min(1, a.fx * b.fx + a.fy * b.fy + a.fz * b.fz)) * 60;
+        };
+        for (const t of [0, arc.flight]) expect(Math.abs(turn(t + 0.02) - turn(t - 0.02)), `at ${t}`).toBeLessThan(0.05);
+    });
+
+    it('comes up from out of sight however little time it is given, and turns smoothly coming up', () => {
+        // The board calls a dolphin a second before it breaks the surface; the sea gives its own
+        // more. Either way the run-up starts where the water hides it (waves-fauna.js: 3.4 m), on
+        // the same path, and turns without a kink.
+        for (const lead of [0.6, 1.1, LEAP_LEAD, LEAP_LEAD + 1]) {
+            const arc = leapOf({ lead });
+            expect(arc.lead).toBeCloseTo(lead, 9);
+            expect(at(arc, -arc.lead + 0.01).depth, `lead ${lead}`).toBeGreaterThan(3.4);
+            let last = null;
+            let lastRate = null;
+            for (let t = -arc.lead + 0.02; t < 0.5; t += 1 / 60) {
+                const q = at(arc, t);
+                if (last) {
+                    const rate = Math.acos(Math.min(1, q.fx * last.fx + q.fy * last.fy + q.fz * last.fz)) * 60;
+                    expect(rate, `lead ${lead}, ${t.toFixed(2)} s`).toBeLessThan(1);
+                    if (lastRate !== null) expect(Math.abs(rate - lastRate), `lead ${lead}, ${t.toFixed(2)} s`).toBeLessThan(0.05);
+                    lastRate = rate;
+                }
+                last = { fx: q.fx, fy: q.fy, fz: q.fz };
+            }
+        }
     });
 
     it('times its flukes clear of the water, its nose back into it and its flukes after it, in that order', () => {
@@ -586,6 +621,8 @@ describe('waves acts: riding the wave', () => {
                 // Ahead is -z: an animal going down the line heads that way, one dropping back the other.
                 if (!(pose.fz * -down > 0.2)) wrong.push(`${where}: heading z ${pose.fz}, sent ${down}`);
                 // Its back toward the tube's axis, where the rider is: seen from above through the glass.
+                // (Not asked while it is down in the deep at an end, where nothing of it shows.)
+                if (pose.depth > 3.4) continue;
                 const tx = axisOffset(-pose.z) - pose.x;
                 const ty = WAVE.b - pose.y;
                 const toRider = (pose.ux * tx + pose.uy * ty) / Math.hypot(tx, ty);
@@ -608,13 +645,60 @@ describe('waves acts: riding the wave', () => {
             expect(depth(0.6)).toBeLessThan(depth(0));
             expect(depth(act.life - 0.6)).toBeLessThan(depth(act.life));
         }
-        for (const [act, open] of rides(false).slice(0, 12)) {
+        // Without it, it comes up out of the deep (or goes down into it) only at an end the eye can
+        // see: anywhere ahead of the rider. An end behind the rider it simply swims through.
+        let seenEnds = 0;
+        let hiddenEnds = 0;
+        for (const [act, open] of rides(false).slice(0, 30)) {
+            const depth = (t) => at(act, t, open).depth;
             for (let k = 0; k <= 40; k++) {
-                const { depth, metres } = at(act, (act.life * k) / 40, open);
-                expect(Math.abs(depth - act.depth)).toBeLessThanOrEqual(act.depthAmp + 1e-9);
+                const t = (act.life * k) / 40;
+                const { metres } = at(act, t, open);
                 expect(metres).toBe(act.metres);
+                if (t > RIDE_EASE && t < act.life - RIDE_EASE) {
+                    expect(Math.abs(depth(t) - act.depth)).toBeLessThanOrEqual(act.depthAmp + 1e-9);
+                }
+            }
+            for (const [end, d] of [[0, act.d0], [act.life, act.d1]]) {
+                if (d > RIDE_SEEN) {
+                    seenEnds += 1;
+                    expect(depth(end)).toBeGreaterThan(act.depth + RIDE_SINK - act.depthAmp - 1e-9);
+                } else {
+                    hiddenEnds += 1;
+                    expect(Math.abs(depth(end) - act.depth)).toBeLessThanOrEqual(act.depthAmp + 1e-9);
+                }
             }
         }
+        expect(seenEnds).toBeGreaterThan(10);
+        expect(hiddenEnds).toBeGreaterThan(10);
+        // Deep enough there that the water hides all of it (waves-fauna.js: gone by 3.4 m).
+        expect(RIDE_SINK).toBeGreaterThan(3.4 + 0.5);
+    });
+
+    it('turns smoothly all the way, the moments it rises and sinks too: no kink in its heading or its back', () => {
+        const wrong = [];
+        const angle = (a, b) => Math.acos(Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]));
+        for (const fade of [false, true]) {
+            rides(fade).forEach(([act, open], i) => {
+                let last = null;
+                let lastRate = null;
+                for (let t = 0; t <= act.life; t += 1 / 60) {
+                    const q = at(act, t, open);
+                    const now = { f: [q.fx, q.fy, q.fz], u: [q.ux, q.uy, q.uz] };
+                    if (last) {
+                        const rate = [angle(last.f, now.f) * 60, angle(last.u, now.u) * 60];
+                        // Measured on main before this was fixed: up to 9.7 rad/s, jumps of 4.4 a frame.
+                        if (rate[0] > 1.5 || rate[1] > 1.5) wrong.push(`ride ${i}: turns at ${rate.map((r) => r.toFixed(2))} rad/s ${t.toFixed(2)} s in`);
+                        if (lastRate && Math.max(Math.abs(rate[0] - lastRate[0]), Math.abs(rate[1] - lastRate[1])) > 0.25) {
+                            wrong.push(`ride ${i}: a kink ${t.toFixed(2)} s in`);
+                        }
+                        lastRate = rate;
+                    }
+                    last = now;
+                }
+            });
+        }
+        expect(wrong.slice(0, 8)).toEqual([]);
     });
 });
 

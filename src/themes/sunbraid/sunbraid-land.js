@@ -5,13 +5,14 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, dFdx, dFdy, dot, float, floor, fract, fwidth, length, max, min, mix, normalize, normalWorld,
-    positionWorld, reflect, select, smoothstep, step, texture, vec2, vec3, vec4,
+    Fn, If, Loop, abs, dFdx, dFdy, dot, float, floor, fract, fwidth, int, length, max, min, mix, normalize,
+    normalWorld, positionWorld, reflect, select, smoothstep, step, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import { groundHeight } from './sunbraid-plan.js';
 import { drainSteps, stepClock } from '../shared/build-steps.js';
 import {
-    DEG, haze, mist, sbCellEdge, sbHash21, sunLight, sunVisibility,
+    DEG, crustPulses, haze, landSuns, leanSky, mist, sbCellEdge, sbCylinderVis, sbHash21, skyColor, sunLight,
+    sunVisibility,
 } from './sunbraid-tsl.js';
 
 /** The fan's reach (metres) and bearing span (degrees either side of the view axis). */
@@ -60,6 +61,50 @@ const ridgeRise = (x) => {
     const tail = u.mul(u).mul(u).mul(float(1.0).sub(u.mul(0.5)));
     return select(x.greaterThanEqual(0.0), float(1.0).sub(tail), tail);
 };
+/**
+ * The film of water a shower leaves on the plain. It gathers in the broad lows first (`lows`:
+ * metres across one read of the noise) and the crust's ridges stand out of it; under it the gypsum
+ * is `dark` as bright; its ripples tilt the mirror by up to `ripple` (a slope): the baked noise
+ * laid `wave` metres across, so a ripple is some five metres long (ripples smaller than a pixel
+ * were a grainy speckle in the suns' images, not glitter); `shore` how far the damp runs ahead of
+ * the water (in the same units as the level); what it mirrors of a tower is `tower` of the dome's
+ * dusk; from `far` metres out the whole plain is wet.
+ */
+export const FLOOR_WATER = Object.freeze({
+    lows: 2100, dark: 0.7, ripple: 0.09, wave: 150, shore: 0.12, tower: 0.4, far: Object.freeze([700, 2200]),
+});
+
+/**
+ * The dust the ground wind drives over the crust: streamers `broad` then `fine` metres across and
+ * `long`/`short` metres long, the fine ones running `lead` times as fast; how much of the floor
+ * under a full streamer they hide; nearer than `near` metres they thin out (the lens is above them);
+ * `glow` how much brighter than the floor the dust stands (the suns are in front of the eye: it
+ * scatters their light on toward the lens), `relief` how far its sunward side out-shines its lee,
+ * read `step` metres toward the suns.
+ */
+export const FLOOR_DUST = Object.freeze({
+    broad: 150,
+    long: 1700,
+    fine: 46,
+    short: 520,
+    lead: 1.6,
+    cover: 0.62,
+    near: Object.freeze([40, 170]),
+    glow: 1.16,
+    relief: 0.34,
+    step: 14,
+});
+
+/**
+ * A pulse of light in the crust: a lit tile keeps `keep` of its own colour under the light and
+ * takes `fill` of the pulse over its face; a ridge gives up `ridge` of its own and takes `edge` of
+ * the pulse (a lock's ripple lights the ridges alone: light along the cracks, never a flood of
+ * colour beside the board).
+ */
+export const FLOOR_PULSE = Object.freeze({
+    keep: 0.45, fill: 0.42, edge: 1.5, ridge: 0.85,
+});
+
 /** The selenite: the share of the glitter's cells that hold a crystal, and how bright its glint is. */
 export const SELENITE = Object.freeze({ share: 0.018, gain: 3.6 });
 
@@ -219,10 +264,18 @@ export function* createLandSteps(u, t, tier) {
             .add(vec2(grainX, grainZ).sub(grain).mul(C.grain).div(reach))
             .mul(near);
         const Nb = normalize(N.sub(vec3(slope.x, 0.0, slope.y))).toVar();
-        const vis = sunVisibility(u, P, t.noise);
+        const vis = sunVisibility(u, P, t.noise).toVar();
+        // The suns' light here: in colour, or the one white sun's ahead of the colour's front.
+        const suns = landSuns(u, P);
         // A face turned from the suns still takes the glare off the white floor round it.
-        const lit = max(sunLight(u, Nb, vis), sunLight(u, N, vis).mul(C.bounce));
-        const ambient = mix(u.horizon, u.zenith, 0.55).mul(N.y.mul(0.35).add(0.65)).mul(0.07);
+        const flatLit = sunLight(u, N, vis, 0, suns).toVar();
+        const lit = max(sunLight(u, Nb, vis, 0, suns), flatLit.mul(C.bounce));
+        // (At dusk the afterglow comes from where the suns set: a ridge's face toward it catches
+        // it, so the crust is still a crust when the suns are gone, not a flat field.)
+        const afterDir = normalize(vec3(u.centre.x, 0.14, u.centre.z));
+        const ambient = mix(u.horizon, u.zenith, 0.55).mul(N.y.mul(0.35).add(0.65)).mul(0.07)
+            .add(u.afterglow.mul(max(dot(Nb, afterDir), 0.0).mul(2.6).add(0.3)))
+            .toVar();
         // Selenite: a crystal now and then, each turned its own way, catching a sun's glint (the
         // glints of a sun hidden by a shadow go out with it, so the fans show in the sparkle too).
         // Cells are laid out in the coordinates the eye projects along (a few pixels at any range).
@@ -238,7 +291,7 @@ export function* createLandSteps(u, t, tier) {
         const crystal = smoothstep(0.42, 0.08, length(f)).mul(step(h1, SELENITE.share));
         const tilt = vec3(h1.sub(SELENITE.share * 0.5).mul(9.0 * (0.07 / SELENITE.share)), 1.0, h2.sub(0.5).mul(0.7));
         const facet = normalize(tilt);
-        const view = normalize(P.sub(u.eye));
+        const view = normalize(P.sub(u.eye)).toVar();
         const mirror = reflect(view, facet);
         const glintOf = (S) => {
             const m = max(dot(mirror, S), 0.0);
@@ -247,11 +300,93 @@ export function* createLandSteps(u, t, tier) {
             const m8 = m4.mul(m4);
             return m8.mul(m8).mul(m8);
         };
-        const glint = u.col0.mul(glintOf(u.sun0).mul(vis.x))
-            .add(u.col1.mul(glintOf(u.sun1).mul(vis.y)))
-            .add(u.col2.mul(glintOf(u.sun2).mul(vis.z)))
+        const glint = suns.c0.mul(glintOf(u.sun0).mul(vis.x))
+            .add(suns.c1.mul(glintOf(u.sun1).mul(vis.y)))
+            .add(suns.c2.mul(glintOf(u.sun2).mul(vis.z)))
             .mul(crystal.mul(SELENITE.gain).mul(smoothstep(3000.0, 700.0, dist)));
-        const colour = albedo.mul(lit.add(ambient)).add(glint);
+        const colour = albedo.mul(lit.add(ambient)).add(glint).toVar();
+        const ridgeTop = ridge.clamp(0.0, 1.0).toVar();
+
+        // ── The dust the ground wind drives over the crust: pale streamers, lit as the floor
+        // under them is (in a shadow's band they are that band's colour) ──
+        const D = FLOOR_DUST;
+        const downwind = dot(P.xz, u.gustAlong).add(u.gustDrift).toVar();
+        const crosswind = dot(P.xz, u.gustAcross).toVar();
+        const dustAt = (cross, down) => {
+            const sheet = texture(t.noise, vec2(cross.div(D.broad), down.div(D.long))).g;
+            const strand = texture(t.noise, vec2(
+                cross.div(D.fine).add(0.37),
+                down.add(u.gustDrift.mul(D.lead - 1)).div(D.short),
+            )).b;
+            // A streamer is a sheet of dust with strands in it: no sheet, no strands (strands
+            // everywhere were a hatching over the whole floor: scan lines, not dust).
+            const body = smoothstep(0.5, 0.66, sheet.add(u.wind.mul(0.07)));
+            return body.mul(strand.mul(0.9).add(0.3)).clamp(0.0, 1.0);
+        };
+        const streamer = dustAt(crosswind, downwind).toVar();
+        // Its sunward side is the brighter (the same field read a step toward the suns: a low
+        // gain round a mid value, so a streamer has a lit flank and a lee, not a flat patch).
+        const sunward = normalize(u.centre.xz.add(vec2(1e-4, 0.0))).mul(D.step);
+        const lee = dustAt(crosswind.add(dot(sunward, u.gustAcross)), downwind.add(dot(sunward, u.gustAlong)));
+        const flank = streamer.sub(lee).mul(2.4).add(0.5).clamp(0.0, 1.0);
+        const dusty = streamer.mul(u.wind.min(1.0)).mul(D.cover).mul(smoothstep(D.near[0], D.near[1], dist)).toVar();
+        const dustLit = flatLit.mul(D.glow).add(ambient).mul(flank.sub(0.5).mul(D.relief).add(1.0))
+            .mul(vec3(0.99, 0.975, 0.95))
+            .toVar();
+
+        // ── The film of water a shower leaves: it lies in the broad lows first and the ridges
+        // stand out of it; it mirrors the sky, the suns and the towers, more the lower the eye
+        // looks along it (near the lens the crust and its coloured shadows show through) ──
+        const W = FLOOR_WATER;
+        If(u.wet.greaterThan(0.002), () => {
+            // (Far out the plain is wet as one: a dry patch there is a flat rectangle of some
+            // shadow's colour set in the mirror.)
+            const level = u.wet.mul(smoothstep(W.far[0], W.far[1], dist).mul(0.7).add(1.4))
+                .sub(texture(t.noise, P.xz.div(W.lows)).r)
+                .toVar();
+            const pool = smoothstep(0.0, 0.1, level).mul(float(1.0).sub(ridgeTop.mul(0.9))).toVar();
+            // The damp runs a little ahead of the water (dark, not yet a mirror).
+            const damp = smoothstep(-W.shore, 0.0, level);
+            colour.mulAssign(float(1.0).sub(damp.mul(1 - W.dark)));
+            // Ripples: two reads of the grain crossing one another, gone to their mean far off (the
+            // mirror is glass at the horizon and broken near the lens).
+            const wave = P.xz.div(W.wave).toVar();
+            const ripA = texture(t.noise, wave.add(u.rippleDrift)).b;
+            const ripB = texture(t.noise, wave.mul(1.7).sub(u.rippleDrift.mul(1.3))).b;
+            const Nw = normalize(vec3(ripA.sub(0.5).mul(W.ripple), 1.0, ripB.sub(0.5).mul(W.ripple))).toVar();
+            const bounce = reflect(view, Nw).toVar();
+            const R = normalize(vec3(bounce.x, max(bounce.y, 0.004), bounce.z)).toVar();
+            // What stands in the mirror: the dome and the suns, or a tower's dusk where the
+            // mirrored sight line meets one (the same cylinders that cast the shadows).
+            const open = float(1.0).toVar();
+            Loop({
+                start: int(0), end: u.solidCount, type: 'int', condition: '<', name: 'mir',
+            }, ({ mir }) => {
+                const ra = u.casters.element(mir.mul(2)).toVar();
+                const rb = u.casters.element(mir.mul(2).add(1)).toVar();
+                open.assign(min(open, sbCylinderVis(P, R, ra, rb.x, float(0.004))));
+            });
+            const dome = tier.mirror === 'lean' ? leanSky(u, R) : skyColor(u, R, { discs: true });
+            const seen = mix(mix(u.horizon, u.zenith, 0.4).mul(W.tower), dome, open);
+            // Fresnel on water: little looking down on it, nearly all at a grazing sight line.
+            const facing = max(dot(view.negate(), Nw), 0.0);
+            const g = float(1.0).sub(facing).toVar();
+            const g2 = g.mul(g);
+            const fresnel = g2.mul(g2).mul(g).mul(0.98).add(0.02);
+            colour.assign(mix(colour, mix(colour, seen, fresnel), pool));
+            dusty.mulAssign(float(1.0).sub(pool.mul(0.9)));
+        });
+        colour.assign(mix(colour, dustLit, dusty));
+
+        // ── Pulses of light in the crust: a struck tile lights whole, its ridges brightest ──
+        const K = FLOOR_PULSE;
+        const tile = P.xz.add(crust.centre.mul(crustSeen).mul(C.cell)).toVar();
+        const pulse = crustPulses(u, tile);
+        const takenFace = pulse.coverFill.clamp(0.0, 1.0).mul(1 - K.keep);
+        const takenRidge = pulse.coverEdge.clamp(0.0, 1.0).mul(ridgeTop).mul(K.ridge);
+        colour.assign(colour.mul(float(1.0).sub(max(takenFace, takenRidge)))
+            .add(pulse.fill.mul(K.fill))
+            .add(pulse.edge.mul(ridgeTop.mul(K.edge))));
         return vec4(haze(u, mist(u, colour, P, vis), P), 1.0);
     })();
     material.fog = false;

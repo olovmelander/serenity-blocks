@@ -118,9 +118,10 @@ export class WavesLife {
      * @param {number} [o.height]   metres its back rises above where it left the water
      * @param {string} [o.kind]     which dolphin; else mostly bottlenose
      * @param {string} [o.style]    how it flies (waves-acts.js LEAP_STYLES); else by its kind
+     * @param {number} [o.lead]     seconds it has to come up before `time` (from deep all the same)
      */
     leap(time, open, {
-        d = null, hero = false, height = null, kind = null, style = null, turns = null,
+        d = null, hero = false, height = null, kind = null, style = null, turns = null, lead = undefined,
     } = {}) {
         const { rand } = this;
         const which = kind || (hero || rand() < 0.68 ? 'bottlenose' : 'spinner');
@@ -167,6 +168,7 @@ export class WavesLife {
             phase: rand() * 6.28,
             variant: rand(),
             hero,
+            lead,
         }));
     }
 

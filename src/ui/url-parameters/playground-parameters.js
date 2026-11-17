@@ -1111,7 +1111,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
         values: 'Effect-specific cue, commonly lock, clear, combo, quad, twist, perfect or levelUp (Koi '
             + 'Pond, Star Cradle, Serenity Warp, Stellar Drift and Stellar Velocity: lock, '
             + 'drop, clear, quad, twist, perfect, levelUp; Void Ember: lock, drop, clear, quad, twist, '
-            + 'spin, perfect, crown, levelUp, over; Vesper Chrysalis: lock, drop, clear, quad, '
+            + 'spin, perfect, crown, levelUp, over; Supernova: lock, drop, clear, quad, twist, spin, b2b, '
+            + 'perfect, crown, break, levelUp, over; Vesper Chrysalis: lock, drop, clear, quad, '
             + 'twist, perfect, levelUp, break; Stillwater and Moonlit Greenhouse: lock, drop, clear, '
             + 'quad, twist, perfect, levelUp, break); cue names are case-sensitive in most effects. '
             + 'Summer: lock, drop, clear, double, triple, quad, combo, streak, spin, perfect, level, '
@@ -2652,6 +2653,75 @@ export const PLAYGROUND_URL_PARAMETERS = [
         values: 'Seconds.',
         defaultValue: '9.',
         example: 'flock=17&flockAge=11',
+        notes: 'Use on playground.html with effect=sunset.',
+        sources: [
+            'src/playground/effects/sunset.effect.js',
+        ],
+    },
+    {
+        name: 'weather',
+        category: 'Playground',
+        scope: 'playground.html — sunset',
+        description: 'Hold the Sunset weather on one sky instead of letting its own clock turn it.',
+        values: 'trade, towers, mackerel, clear or veil; or a phase number (1.5 is half-way from towers to '
+            + 'mackerel).',
+        defaultValue: 'Off (the weather turns by itself: a sky every 94 s, trade first).',
+        example: 'hour=18&weather=towers',
+        notes: 'Use on playground.html with effect=sunset.',
+        sources: [
+            'src/playground/effects/sunset.effect.js',
+        ],
+    },
+    {
+        name: 'moon',
+        category: 'Playground',
+        scope: 'playground.html — sunset',
+        description: 'Hold the Sunset moon on a phase angle instead of letting each day bring the next phase.',
+        values: 'Degrees, 0 to 170: 50 the gibbous moon of the first night, 24 near full, 86 a half moon, '
+            + '120 a crescent.',
+        defaultValue: 'Off (50 on the first night, then the next phase from each noon).',
+        example: 'hour=19.3&moon=120',
+        notes: 'Use on playground.html with effect=sunset.',
+        sources: [
+            'src/playground/effects/sunset.effect.js',
+        ],
+    },
+    {
+        name: 'meteor',
+        category: 'Playground',
+        scope: 'playground.html — sunset',
+        description: 'Let one shooting star fall this many seconds before the frame.',
+        values: 'Seconds (a star falls for about half a second to a second).',
+        defaultValue: 'Off (by night one falls now and then by itself).',
+        example: 'hour=0&meteor=0.3',
+        notes: 'Use on playground.html with effect=sunset.',
+        sources: [
+            'src/playground/effects/sunset.effect.js',
+        ],
+    },
+    {
+        name: 'shower',
+        category: 'Playground',
+        scope: 'playground.html — sunset',
+        description: 'Start the shower of shooting stars an emptied well brings by night, this many seconds '
+            + 'before the frame.',
+        values: 'Seconds (the shower lasts about three).',
+        defaultValue: 'Off.',
+        example: 'hour=0&shower=1.5',
+        notes: 'Use on playground.html with effect=sunset.',
+        sources: [
+            'src/playground/effects/sunset.effect.js',
+        ],
+    },
+    {
+        name: 'b2b',
+        category: 'Playground',
+        scope: 'playground.html — sunset',
+        description: 'Make the event\'s clear a back-to-back: a second wave of light follows the first and sun '
+            + 'dogs stand on the halo.',
+        values: '1 enables.',
+        defaultValue: 'Off.',
+        example: 'event=clear&lines=2&b2b=1',
         notes: 'Use on playground.html with effect=sunset.',
         sources: [
             'src/playground/effects/sunset.effect.js',
@@ -6233,7 +6303,21 @@ export const PLAYGROUND_URL_PARAMETERS = [
             '1.',
             '3',
         ],
-        ['parts', 'Draw only these parts.', 'Comma list of sky, land, spires, gliders.', 'All.', 'land,sky'],
+        ['parts', 'Draw only these parts.', 'Comma list of sky, land, spires, gliders, dust.', 'All.', 'land,sky'],
+        [
+            'weather',
+            'Hold one of the valley’s weathers (the clock turns them, a little over a minute each).',
+            'clear, cirrus, veil, banks, rain, wet or wind (or its number, 0 to 6).',
+            'The clock’s.',
+            'wet',
+        ],
+        [
+            'moon',
+            'Take the moon out of the sky, or hold its own clock (a pass takes 97 s and crosses the suns at its middle).',
+            'off, or seconds.',
+            'The clock’s.',
+            '47',
+        ],
         ['falseColor', 'Band the pre-tone-map brightness instead of the graded picture.', '1 enables.', 'Off.', '1'],
         ['noPost', 'Show the raw scene through the renderer’s tone map (no bloom or grade).', '1 enables.', 'Off.', '1'],
         ['bloom', 'Override the tier’s bloom.', '0 or 1.', 'The tier’s.', '0'],
@@ -6256,8 +6340,9 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
         [
             'event',
-            'Replay one gameplay reaction before the frame (morning: a game over, then a new run, the suns rising).',
-            'lock, drop, clear, quad, twist, perfect, levelUp, over or morning.',
+            'Replay one gameplay reaction before the frame (morning: a game over, then a new run, the suns rising; '
+                + 'spin: a twist that clears nothing; b2b: four lines back to back).',
+            'lock, drop, clear, quad, twist, spin, b2b, perfect, levelUp, over or morning.',
             'Idle.',
             'quad',
         ],
@@ -6265,6 +6350,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ['eventLevel', 'The level an event=levelUp steps to.', 'Integer.', 'level + 1.', '4'],
         ['lines', 'Lines in an event=clear.', '1 to 4.', '2.', '3'],
         ['turns', 'Spin-turns of an event=twist (a third of a turn of the braid each).', '1 to 3.', '2.', '1'],
+        ['col', 'The column an event=lock or event=drop lands in (which side of the board its tiles light on).', '0 to 1.', '0.3.', '0.8'],
+        ['piece', 'The piece an event is played with (its colour lights the tiles).', '0 to 6 (I T Z L S J O).', '2.', '4'],
         [
             'combo',
             'Hold a chain of this length (the braid turns faster and opens wider, its ribbons in the sky).',
@@ -6319,9 +6406,16 @@ export const PLAYGROUND_URL_PARAMETERS = [
         [
             'weather',
             'Pin the subterranean micro-weather.',
-            'clear, mist, shower or cloud.',
+            'clear, mist, shower, steam or cloud.',
             'Cycles automatically.',
             'mist',
+        ],
+        [
+            'cloud',
+            'Place a cumulus\'s shadow over the oculus (a cloud crossing the sun).',
+            '-1 entering, 0 over the opening, 1 leaving.',
+            'Passes by the clock (none in a fixed-time capture).',
+            '-0.4',
         ],
         [
             'fringe',

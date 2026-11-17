@@ -31,10 +31,11 @@ const read = [...new Set([
 
 /** The parameters of the effect, as of this test. A new one is added here on purpose, with its line in the header. */
 const PARAMETERS = [
-    'bloom', 'board', 'brush', 'cam', 'camAt', 'camFov', 'color', 'combo', 'demo', 'event', 'eventAge', 'eventLevel',
-    'falseColor', 'icon',
+    'air', 'bloom', 'board', 'brush', 'cam', 'camAt', 'camFov', 'color', 'combo', 'demo', 'event', 'eventAge',
+    'eventLevel', 'falseColor', 'icon',
     'iconFov', 'iconPitch', 'iconX', 'iconY', 'iconYaw', 'iconZ', 'kin', 'level', 'lines', 'locks', 'msaa', 'noPost',
-    'parts', 'px', 'py', 'quality', 'reduce', 'row', 'scene', 'statsHud', 'story', 'trollLook', 'u',
+    'parts', 'pulse', 'px', 'py', 'quality', 'reach', 'reduce', 'row', 'scene', 'statsHud', 'story', 'trollLook', 'u',
+    'visitor', 'visitors',
 ];
 
 const told = (name) => new RegExp(`(?<![A-Za-z])${name}(?![A-Za-z])`).test(header);
