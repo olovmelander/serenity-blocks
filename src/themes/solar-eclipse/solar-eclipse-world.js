@@ -89,6 +89,7 @@ import {
 } from './solar-eclipse-tsl.js';
 import { createSky } from './solar-eclipse-sky.js';
 import { createFx } from './solar-eclipse-fx.js';
+import { createFlamingos } from './solar-eclipse-flamingos.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './solar-eclipse-composition.js';
@@ -110,7 +111,7 @@ export function fovForAspect(aspect) {
     return Math.min(74, (Math.atan(Math.max(wide, need)) * 360) / Math.PI);
 }
 
-const PARTS = ['sky', 'motes'];
+const PARTS = ['sky', 'motes', 'flamingos'];
 
 /** The frame height every pixel size in the scene is authored for. */
 export const DESIGN_LINES = 1080;
@@ -365,6 +366,8 @@ export class SolarEclipseWorld {
         this.fx = createFx({ u, tier });
         this.addPart('sky', this.sky.object);
         this.addPart('motes', this.fx.motes);
+        this.flamingos = createFlamingos({ u, tier });
+        this.addPart('flamingos', this.flamingos.object);
         this.scene.add(this.root);
         this.compose();
         this.applyPalette();
@@ -1192,6 +1195,7 @@ export class SolarEclipseWorld {
         u.mid.value.multiplyScalar(1 - 0.25 * fever);
         this.writeTables();
         if (camera) this.sky?.update(camera);
+        this.flamingos?.update(this);
 
         const post = this._post;
         post.flash = clamp01(glare * 0.5);
@@ -1280,12 +1284,14 @@ export class SolarEclipseWorld {
         this.scene?.remove(this.root);
         this.sky?.dispose();
         this.fx?.dispose();
+        this.flamingos?.dispose();
         this.noise?.dispose();
         this.rangeTexture?.dispose();
         this.root.clear();
         this.parts.clear();
         this.sky = null;
         this.fx = null;
+        this.flamingos = null;
         this.noise = null;
         this.rangeTexture = null;
         this.ranges = null;

@@ -13,6 +13,8 @@
  *             and whirls are on every tier)
  * salt        the salt crust's polygons near the lens (else an unbroken mirror)
  * clouds      the cloud deck low over the far shore
+ * flamingos   the wading flock's birds and the most a flight of flamingos holds (every tier
+ *             keeps both: one draw for the birds, one for their image in the water)
  */
 export const QUALITY = Object.freeze({
     Minimal: Object.freeze({
@@ -26,6 +28,7 @@ export const QUALITY = Object.freeze({
         swell: false,
         salt: false,
         clouds: false,
+        flamingos: Object.freeze({ flock: 8, flight: 6 }),
     }),
     Low: Object.freeze({
         rays: 1,
@@ -38,6 +41,7 @@ export const QUALITY = Object.freeze({
         swell: true,
         salt: false,
         clouds: false,
+        flamingos: Object.freeze({ flock: 10, flight: 7 }),
     }),
     Medium: Object.freeze({
         rays: 2,
@@ -50,6 +54,7 @@ export const QUALITY = Object.freeze({
         swell: true,
         salt: true,
         clouds: true,
+        flamingos: Object.freeze({ flock: 14, flight: 10 }),
     }),
     High: Object.freeze({
         rays: 2,
@@ -62,6 +67,7 @@ export const QUALITY = Object.freeze({
         swell: true,
         salt: true,
         clouds: true,
+        flamingos: Object.freeze({ flock: 18, flight: 12 }),
     }),
     Ultra: Object.freeze({
         rays: 2,
@@ -74,6 +80,7 @@ export const QUALITY = Object.freeze({
         swell: true,
         salt: true,
         clouds: true,
+        flamingos: Object.freeze({ flock: 20, flight: 12 }),
     }),
     Extreme: Object.freeze({
         rays: 2,
@@ -86,6 +93,7 @@ export const QUALITY = Object.freeze({
         swell: true,
         salt: true,
         clouds: true,
+        flamingos: Object.freeze({ flock: 20, flight: 12 }),
     }),
 });
 
