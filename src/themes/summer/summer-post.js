@@ -74,7 +74,10 @@ export class SummerPost {
             // Lit air is gold toward the sun and the faint blue of haze away from it (in the
             // evening; the hour of the night sets both).
             const shaftColour = mix(light.uShaftCool, light.uShaftWarm, pow(toward, 2.1));
-            lit = lit.add(shaftColour.mul(this.shaftsBlur.r).mul(this.uShafts));
+            // The sky is drawn with the sun's glow already in it: a full measure of lit air on
+            // top washed its blue and its clouds pale, so the sky takes a share of the shafts.
+            const land = smoothstep(-3300, -2200, this.scenePass.getViewZNode());
+            lit = lit.add(shaftColour.mul(this.shaftsBlur.r).mul(this.uShafts).mul(land.mul(0.66).add(0.34)));
         }
         this.bloomNode = bloom(sceneColor, BLOOM_STRENGTH, 0.6, 1.0);
         // Soft knee on the brightest channel, so a saturated sun keeps its hue in the bloom.
@@ -142,17 +145,24 @@ export class SummerPost {
         const fever = unit(surge?.fever);
         const sunburst = unit(frame.sunburst);
         const flash = flashScale();
-        this.uExposure.value = this.exposure * (this.light?.hour?.exposure ?? 1) + warmth * 0.04 * flash
-            - Math.max(0, level - 0.25) * 0.08 - fever * 0.05;
+        // Dusk at the end of a session (the light rig keeps it): the lens closes a little and
+        // the colour cools, as the evening does when the play stops.
+        const dusk = unit(this.light?.dusk);
+        this.uExposure.value = (this.exposure * (this.light?.hour?.exposure ?? 1) + warmth * 0.04 * flash
+            - Math.max(0, level - 0.25) * 0.08 - fever * 0.05) * (1 - 0.16 * dusk);
         // The shafts' floor rises with play; the sunburst floods them for its moment.
         const lit = shafts + (1 - shafts) * (level * 0.2 + fever * 0.35);
         this.uShafts.value = 1 + (lit * 0.6 + sunburst * 0.55) * flash;
-        this.uSaturation.value = SATURATION + level * 0.05 + fever * 0.07;
+        this.uSaturation.value = SATURATION + level * 0.05 + fever * 0.07 - 0.14 * dusk;
         if (this.bloomNode) this.bloomNode.strength.value = BLOOM_STRENGTH + warmth * 0.07 * flash;
         if (this.godraysNode) {
-            // The sun pours in: its shafts thicken with the heat, the most in a fever.
-            this.godraysNode.density.value = GODRAYS_DENSITY + level * 0.02 + fever * 0.05 + sunburst * 0.03 * flash;
-            this.godraysNode.maxDensity.value = GODRAYS_MAX + level * 0.05 + fever * 0.14 + sunburst * 0.08 * flash;
+            // The sun pours in: its shafts thicken with the heat, the most in a fever; and the
+            // weather's air carries them (mist holds a shaft, a fresh breeze clears it).
+            const air = this.light?.weather?.shafts ?? 1;
+            this.godraysNode.density.value = (GODRAYS_DENSITY + level * 0.02 + fever * 0.05) * air
+                + sunburst * 0.03 * flash;
+            this.godraysNode.maxDensity.value = (GODRAYS_MAX + level * 0.05 + fever * 0.14) * (0.5 + 0.5 * air)
+                + sunburst * 0.08 * flash;
         }
         if (this.light && this.camera?.isCamera) {
             // Screen position of the sun (uv, y down) for the shaft tint.

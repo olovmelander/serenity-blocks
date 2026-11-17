@@ -6,6 +6,10 @@ import { COVERED_ENTRY_BUILD_BUDGET_MS, createCinematicLoadingSurface } from '..
 import { canWriteLegacySimulationResults } from '../../core/game-modes/single-player-result-compatibility.js';
 import { prefersOdysseyReducedMotion } from '../../core/game-modes/odyssey-physics-callbacks.js';
 import { getThemeMusic } from '../../core/progression/theme-music-catalog.js';
+import {
+    beginChapterArrivalMove, endChapterArrivalMove, landChapterArrivalMove,
+} from '../../rendering/odyssey/odyssey-arrival-move.js';
+import { lightRailAhead } from '../../rendering/odyssey/odyssey-flow-answers.js';
 
 export {
     createOdysseyEntryPresence, cancelOdysseyEntryPresence,
@@ -192,6 +196,7 @@ function holdWorldCamera(mode, operation) {
 
 function restoreWorldCamera(operation) {
     if (!operation.worldCamera) return;
+    endChapterArrivalMove(operation.worldCamera);
     operation.worldCamera.config.idleAutoDrift = operation.idleAutoDrift;
     operation.worldCamera = null;
 }
@@ -285,6 +290,8 @@ async function continueWithinChapter(mode, operation) {
     // Reduced motion retains a stable world view. Move to the destination only
     // beneath an opaque cover so a zero-duration seek cannot become a visible jump.
     if (reducedMotion && (!await modal.cover() || !canProceed(mode, operation))) return false;
+    // The rail lights up ahead of the ride, and the next orb wakes as the light reaches it.
+    lightRailAhead(mode.boardController, { fromId: operation.previousLevel?.id, toId: nextLevel.id, reducedMotion });
     const traveled = await mode.boardController.travelToLevel(nextLevel.id, {
         pathTravel: true,
         // A floor, not the trip: the board gives a trip through the black hole's plunge its
@@ -366,6 +373,10 @@ async function continueAcrossChapter(mode, operation) {
     operation.phase = 'chapter-travel';
     modal.setScenic('travel');
     if (reducedMotion && (!await modal.cover() || !canProceed(mode, operation))) return false;
+    lightRailAhead(mode.boardController, { fromId: operation.previousLevel?.id, toId: nextLevel.id, reducedMotion });
+    // The crossing lands in a move: the gaze comes round onto the new chapter as its title rises.
+    const worldCamera = mode.boardController?.cameraController;
+    beginChapterArrivalMove(worldCamera, nextLevel.chapter, { reducedMotion });
     const traveled = await mode.boardController?.travelToLevel?.(nextLevel.id, {
         chapterArrival: true,
         // A floor (see the orb-to-orb trip above): the 6 -> 7 crossing runs the whole plunge.
@@ -376,6 +387,7 @@ async function continueAcrossChapter(mode, operation) {
         isCurrent: () => canProceed(mode, operation),
         isPaused: () => modal.dataset.visibilityHeld === 'true' || document.hidden,
     });
+    landChapterArrivalMove(worldCamera);
     if (!canProceed(mode, operation)) return false;
     if (traveled === false) throw new Error('The next chapter could not be reached');
     mode.selectedLevelId = nextLevel.id;
@@ -387,6 +399,7 @@ async function continueAcrossChapter(mode, operation) {
         operation.resolveChoice = resolve;
         modal.showChapter({ onChoose: resolve, completedChapter });
     });
+    endChapterArrivalMove(worldCamera);
     if (!canProceed(mode, operation)) return false;
     if (choice !== 'next') {
         mode._chapterFlowActive = false;

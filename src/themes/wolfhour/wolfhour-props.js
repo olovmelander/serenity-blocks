@@ -22,8 +22,10 @@ export const WOLFHOUR_PROPS = Object.freeze({
     far: Object.freeze({
         range: 1, x: 668, depth: 10, scale: 0.6,
     }),
+    // (Behind the summit's crest: the massif's face, at most ~9 units behind it just under the
+    // skyline at every tier, hides the white wolf until it comes up over the top.)
     summit: Object.freeze({
-        range: 1, x: -712, depth: 10, scale: 0.92,
+        range: 1, x: -712, depth: -18, scale: 0.92,
     }),
     spindrift: Object.freeze({
         range: 1, lift: -7, depth: 20, squeeze: 0.6,

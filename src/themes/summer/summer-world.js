@@ -34,6 +34,7 @@ import { SummerPetals } from './summer-petals.js';
 import { summerTier } from './summer-quality.js';
 import { SummerShore } from './summer-shore.js';
 import { SUMMER_STAGE_DEPTH, SummerStage } from './summer-stage.js';
+import { SummerSwans } from './summer-swans.js';
 import { SummerTerrain, summerGroundHeight } from './summer-terrain.js';
 import { drainSteps } from '../shared/build-steps.js';
 
@@ -54,6 +55,8 @@ export class SummerWorld {
         this.disposed = false;
         this.built = false;
         this.boardCentre = new THREE.Vector3();
+        /** How many level-up flourishes the reactions had counted at the last frame (null: none read yet). */
+        this.flightsSeen = null;
         /** Reduce motion's share (setMotion), and the envelopes as worn (wear()). */
         this.motion = 1;
         this.worn = {
@@ -72,6 +75,7 @@ export class SummerWorld {
             fever: 0,
             punch: 0,
             motion: 1,
+            dusk: 0,
         };
     }
 
@@ -139,6 +143,12 @@ export class SummerWorld {
         this.life = new SummerLife({ light, tier, rng });
         this.group.add(this.life.group);
         this.life.build();
+        this.swans = new SummerSwans({
+            light, tier, rng, groundHeight: summerGroundHeight,
+        });
+        this.group.add(this.swans.group);
+        this.swans.build();
+        this.swans.setMotion(this.motion);
         this.garlands = new SummerGarlands({ light, tier });
         this.group.add(this.garlands.group);
         this.garlands.build();
@@ -158,6 +168,7 @@ export class SummerWorld {
         // pipelines) the mirror pass no longer pays for, every frame.
         this.reflect([this.terrain.group, this.forest.group, this.backdrop.group, this.atmosphere.group,
             this.homestead.group, this.shore.group, this.life.group]);
+        this.reflect([this.swans.group]);
         this.prepareCamera(this.camera.aspect);
         this.director = new SummerFxDirector({
             stage: this.stage,
@@ -183,6 +194,11 @@ export class SummerWorld {
         if (!this.stage) return;
         this.stage.setBoard(rect);
         this.placeGarlands();
+    }
+
+    /** The measured score panel beside the board in screen fractions (y down), or null. */
+    setHud(rect) {
+        this.stage?.setHud(rect);
     }
 
     /** Wind the combo's ribbons around where the board now stands. */
@@ -213,8 +229,17 @@ export class SummerWorld {
         this.light?.reset();
         this.lake?.reset();
         this.life?.reset();
+        this.swans?.reset();
         Object.assign(this.worn, {
-            gust: 0, gustSpeed: 0, flock: 0, flockSpeed: 0, flutter: 0, flutterSpeed: 0, warmth: 0, sunburst: 0,
+            gust: 0,
+            gustSpeed: 0,
+            flock: 0,
+            flockSpeed: 0,
+            flutter: 0,
+            flutterSpeed: 0,
+            warmth: 0,
+            sunburst: 0,
+            dusk: 0,
         });
     }
 
@@ -225,6 +250,7 @@ export class SummerWorld {
      */
     setMotion(scale) {
         this.motion = Number.isFinite(scale) ? THREE.MathUtils.clamp(scale, 0, 1) : 1;
+        this.swans?.setMotion(this.motion);
     }
 
     /**
@@ -282,6 +308,9 @@ export class SummerWorld {
         worn.shimmer = lift(unit(frame.shimmer), level * 0.3 + fever * 0.45);
         // Every flower in the meadow glows a little in a fever, as if the whole field answered.
         worn.bloom = fever * 0.32;
+        // The session is over: dusk comes down over a few seconds (mist off the water, the light
+        // lower and cooler), and lifts again when the next one starts.
+        ease('dusk', frame.settled === true ? 1 : 0, frame.settled === true ? 0.55 : 1.6);
         return worn;
     }
 
@@ -303,6 +332,7 @@ export class SummerWorld {
     /** The theme is built hidden behind the one playing: the combo ribbons draw (unseen) meanwhile. */
     setWarming(on) {
         if (this.garlands) this.garlands.warming = on === true;
+        if (this.atmosphere) this.atmosphere.warming = on === true;
     }
 
     update(rawTime, rawStep, frame = {}) {
@@ -314,11 +344,19 @@ export class SummerWorld {
         const worn = this.wear(frame || {}, dt);
         const env = this.director.apply(frame, dt, {
             x: direction.x, z: direction.z, strength: light.uWind.value,
-        }, worn);
+        }, worn, light.uSunDir.value);
         light.update(time, { ...frame, front: env.front }, worn, env.fronts);
         light.step(dt);
+        this.atmosphere.update();
         this.petals.update(dt, env);
         this.life.update(frame, dt, worn);
+        // Every level-up that asked for its flourish sends a skein of swans up over the lake.
+        if (Number.isFinite(frame?.flights)) {
+            if (this.flightsSeen !== null && frame.flights > this.flightsSeen) this.swans.takeWing();
+            this.flightsSeen = frame.flights;
+        }
+        const wake = this.swans.update(time, dt, frame, worn);
+        if (wake) this.lake.ripples.add(wake.x, wake.z, wake.strength);
         this.garlands.update(frame, worn);
         const rocked = this.homestead.update(time, dt, frame, worn);
         if (rocked) this.lake.ripples.add(rocked.x, rocked.z, 0.2);
@@ -334,6 +372,7 @@ export class SummerWorld {
             farTrees: this.backdrop?.count || 0,
             butterflies: this.life?.butterflies || 0,
             swallows: this.life?.swallows || 0,
+            swans: this.swans?.counts() || null,
             petals: this.petals?.sim?.counts() || null,
             rings: this.lake?.ripples.active() || 0,
             waves: this.light?.waves.active() || 0,
@@ -347,6 +386,7 @@ export class SummerWorld {
         this.petals?.dispose();
         this.garlands?.dispose();
         this.life?.dispose();
+        this.swans?.dispose();
         this.shore?.dispose();
         this.meadow?.dispose();
         this.homestead?.dispose();
@@ -361,6 +401,7 @@ export class SummerWorld {
         this.stage = null;
         this.garlands = null;
         this.life = null;
+        this.swans = null;
         this.shore = null;
         this.meadow = null;
         this.homestead = null;

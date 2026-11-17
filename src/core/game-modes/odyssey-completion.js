@@ -174,6 +174,8 @@ export async function completeOdysseyLevel(mode, results) {
     if (!mode._isLevelSessionCurrent(session, retirementGeneration)) return;
 
     const finalResults = saveOdysseyClear(mode, session, results);
+    // The world answers this clear when its gate opens back onto it (odyssey-world-return.js).
+    mode._orbJustCleared = Number(session.levelId);
 
     // The ceremony arrives through the showpiece's afterglow when the well played one.
     if (await flourish === true) finalResults.showpiece = true;
@@ -191,5 +193,12 @@ export async function completeOdysseyLevel(mode, results) {
 
     const nextLevel = mode._getJourneyFlowDestination(session);
     if (choice === 'next' && nextLevel) await mode._continueJourney(nextLevel);
-    else await mode.returnToBoard({ focusLevelId: choice?.focusLevelId ?? nextLevel?.id });
+    else {
+        // The campaign's last orb, just finished: the map opens on the world's ending.
+        const journeyEnding = finalResults.campaignCompleted === true && choice === 'map';
+        await mode.returnToBoard({
+            focusLevelId: choice?.focusLevelId ?? nextLevel?.id,
+            ...(journeyEnding ? { journeyEnding: true } : {}),
+        });
+    }
 }

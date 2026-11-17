@@ -10,9 +10,10 @@
  * clock and travel, and when the page goes quiet for longer than GATE_WORKER_STALL_MS it keeps
  * drawing the last description on its own frames, in real time.
  *
- * Messages in: { type: 'start', id, canvas, qualityPreset, palette, flash, width, height, dpr }
- * (the canvas transferred), { type: 'frame', id, frame }, { type: 'resize', id, width, height,
- * dpr }, { type: 'stop', id }, { type: 'warm', qualityPreset } (bakes the sprites early).
+ * Messages in: { type: 'start', id, canvas, qualityPreset, palette, look, flash, width, height,
+ * dpr } (the canvas transferred), { type: 'frame', id, frame }, { type: 'resize', id, width,
+ * height, dpr }, { type: 'stop', id }, { type: 'warm', qualityPreset, look } (bakes the sprites
+ * early: the wall and the matter of the chapter the player is in).
  */
 import { advancePortalTravel, createPortalGate, drawPortalGate } from './portal-gate.js';
 
@@ -75,7 +76,11 @@ export function createPortalGateWorkerCore({ now, requestFrame, makeCanvas }) {
 
     const handle = (message = {}) => {
         if (message.type === 'warm') {
-            createPortalGate({ qualityPreset: message.qualityPreset, documentRef: documentShim });
+            createPortalGate({
+                qualityPreset: message.qualityPreset,
+                look: { world: '#ffffff', ...message.look },
+                documentRef: documentShim,
+            });
             return;
         }
         if (message.type === 'start') {
@@ -91,7 +96,10 @@ export function createPortalGateWorkerCore({ now, requestFrame, makeCanvas }) {
                 canvas: message.canvas,
                 ctx,
                 gate: createPortalGate({
-                    qualityPreset: message.qualityPreset, palette: message.palette, documentRef: documentShim,
+                    qualityPreset: message.qualityPreset,
+                    palette: message.palette,
+                    look: message.look,
+                    documentRef: documentShim,
                 }),
                 width: message.width || 1,
                 height: message.height || 1,

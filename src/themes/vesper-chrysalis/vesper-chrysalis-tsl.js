@@ -429,6 +429,8 @@ export function createVesperUniforms(textures) {
         relicHeart: uniform(new THREE.Vector3(HEART[0], HEART[1], HEART[2])),
         /** How far the chrysalis hangs from its place at rest (it stands clear of the board). */
         perch: uniform(new THREE.Vector3(0, 0, 0)),
+        /** Where the wings hang: (offset x, y, z from their place at rest, scale on their span). */
+        wingMount: uniform(new THREE.Vector4(0, 0, 0, 1)),
         /** (heartbeat phase 0..1, how hard what is inside stirs 0..1, a twitch's flare 0..1, _). */
         beat: uniform(new THREE.Vector4(0, 0, 0, 0)),
         /** The light the lanterns on the lake throw up from below (rgb). */

@@ -29,15 +29,14 @@ import {
     atan,
     attribute,
     cameraPosition,
+    cameraProjectionMatrix,
     clamp,
     cos,
     cross,
     dot,
     exp,
     float,
-    floor,
     fract,
-    fwidth,
     length,
     log,
     max,
@@ -52,21 +51,20 @@ import {
     positionView,
     positionWorld,
     pow,
+    screenSize,
     sin,
     smoothstep,
-    texture as sampleTexture,
     uniform,
     uv,
     varying,
     vec2,
     vec3,
     vec4,
-    min,
 } from 'three/tsl';
-import { fbm3, hash21, ridged3 } from './shared/odyssey-tsl-noise.js';
+import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
 import { latticeNoise3 } from './shared/odyssey-lattice-noise.js';
-import { foldSpaceColour } from './odyssey-fold-space.tsl.js';
-import { keepOdysseyTexture } from './shared/odyssey-resident-textures.js';
+import { createFoldRoomUniforms, foldSpaceColour } from './odyssey-fold-space.tsl.js';
+import { CH7_CLOSING_SKY, closingSkyColour } from './odyssey-closing-sky.tsl.js';
 import { billboardLocal, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 
 const TAU = Math.PI * 2;
@@ -131,58 +129,13 @@ export function resolveGreatHoleFallPosition(camera, out, depth = GREAT_HOLE_LOC
         .addScaledVector(_lockRight, GREAT_HOLE_LOCK.rightBias * bias);
 }
 
-// ── The singularity window — the shadow's surface opens onto the warp tunnel (the fall) ──
-//
-// THE HOLE'S OWN LIGHT, carried inside (2026-11-02). The tunnel used to stream the colours of
-// every world the journey had crossed (ember, ocean, island green, snow, aurora, violet, amber,
-// neon pink). After the traced dive they read as garish blobs of green and pink once the warp's
-// zoom blur smeared the walls: the hole you just fell through is amber gas round a dark shadow,
-// and the inside did not follow from it. Two families now, in bands down the walls: the disk's gas
-// as it heats (ember, amber, gold, near white) and the cool of the lensed starlight round the
-// shadow (plum, violet, indigo). Authored in sRGB; the texture is tagged so the sampler returns
-// linear.
-const CH7_JOURNEY_PALETTE = Object.freeze([
-    [192, 74, 24], [240, 120, 36], [255, 186, 104], [255, 232, 200],
-    [236, 128, 48], [104, 46, 108], [86, 64, 196], [40, 34, 118],
-]);
-let _journeyPalette = null;
-function getJourneyPaletteTexture() {
-    if (_journeyPalette) return _journeyPalette;
-    const data = new Uint8Array(CH7_JOURNEY_PALETTE.length * 4);
-    CH7_JOURNEY_PALETTE.forEach(([r, g, b], i) => {
-        data.set([r, g, b, 255], i * 4);
-    });
-    const tex = new THREE.DataTexture(data, CH7_JOURNEY_PALETTE.length, 1, THREE.RGBAFormat);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.magFilter = THREE.LinearFilter;
-    tex.minFilter = THREE.LinearFilter;
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.ClampToEdgeWrapping;
-    tex.generateMipmaps = false;
-    tex.needsUpdate = true;
-    _journeyPalette = keepOdysseyTexture(tex);
-    return tex;
-}
+// ── The singularity window — the shadow's surface opens onto the hole's inside (the fall) ──
 
-/**
- * The shadow's own material during the fall: pure black while `uPortal` is 0 (the plain shadow),
- * and — as the hole swallows the frame — a window onto the interior. Opaque and depth-writing
- * like the black shadow it replaces (same pipeline state; fade-exempt), so the rail and nodes in
- * front of it still draw over it.
- *
- * The tunnel is computed from the VIEW RAY in the shadow's local frame (the face pivot turns +Z to
- * the eye; XY is the screen plane), not from geometry: a ray at angle theta from the axis meets a
- * unit-radius tunnel at depth cot(theta), so streak lanes in azimuth scrolled along that depth
- * converge on the vanishing point like hyperspace, and the same function keeps reading correctly
- * however large the sphere grows. `uEyeZ` is the eye's distance from the centre in the sphere's
- * LOCAL units (world distance / hero scale).
- * @returns {{ material: THREE.MeshBasicNodeMaterial, uniforms: object }}
- */
 /**
  * THE CROSSING (chapter 7's other dimension, step 2; docs/ODYSSEY_CH7_FOLD_2026-10.md): how the
  * fold opens. `reach` the angle from the axis (rad) the wave runs out to (past the corners of the
  * widest frame), `width` its front's half-width, `front` and `frontColour` the front's light,
- * `negative` how hard the tunnel is inverted there, `spiral` how far the streaks wind as it comes.
+ * `negative` how hard what lies outside is inverted there.
  */
 export const CH7_CROSSING = Object.freeze({
     reach: 1.05,
@@ -192,210 +145,96 @@ export const CH7_CROSSING = Object.freeze({
     halo: 0.045,
     frontColour: Object.freeze([0.86, 0.80, 1.0]),
     negative: 2.5,
-    spiral: 2.2,
 });
 
+/**
+ * The shadow's own material during the fall: pure black while `uPortal` is 0 (the plain shadow),
+ * and — as the hole swallows the frame — a window onto the interior. Opaque and depth-writing
+ * like the black shadow it replaces (same pipeline state; fade-exempt), so the rail and nodes in
+ * front of it still draw over it.
+ *
+ * What it shows is computed from the VIEW RAY in the shadow's local frame (the face pivot turns +Z
+ * to the eye; XY is the screen plane), not from geometry, so the same function keeps reading
+ * correctly however large the sphere grows. `uEyeZ` is the eye's distance from the centre in the
+ * sphere's LOCAL units (world distance / hero scale).
+ *
+ * First THE CLOSING SKY (odyssey-closing-sky.tsl.js: the last ring of starlight closing on the
+ * dark, where a warp tunnel's streaks used to be), then THE FOLD (odyssey-fold-space.tsl.js),
+ * which opens from the point the ring closes on.
+ * @returns {{ material: THREE.MeshBasicNodeMaterial, uniforms: object }}
+ */
 export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
     const uPortal = options.uPortal ?? uniform(0);
     const uWarp = options.uWarp ?? uniform(0);
     const uEyeZ = options.uEyeZ ?? uniform(GREAT_HOLE_LOCK.lockDepth);
-    // The tunnel's MOUTH at the 7->8 exit: angular radius (rad) of the opening round the vanishing
-    // point, through which the city and its sun are seen (alpha-tested away; 0 = no opening).
+    // The MOUTH at the 7->8 exit: angular radius (rad) of the opening round the vanishing point,
+    // through which the city and its sun are seen (alpha-tested away; 0 = no opening).
     const uOpen = options.uOpen ?? uniform(0);
-    // THE WARP THROTTLE (overhaul 2026-10-20). The tunnel used to stream at uTime x constant: a
-    // glide between orbs looked exactly like sitting still, so nothing in it answered the
-    // traveller. `uPhase` is the distance travelled down the tunnel, integrated on the CPU from
-    // the measured travel speed (never clock x changing rate — the closed-form phase trap), and
-    // `uThrottle` (0 cruise .. ~1.6 a glide's punch) shapes what speed looks like: longer
-    // streaks, a starbow, the near layers rushing past.
+    // THE WARP DRIVE (overhaul 2026-10-20): `uPhase` is the distance travelled inside, integrated
+    // on the CPU from the measured travel speed (never clock x changing rate — the closed-form
+    // phase trap), `uThrottle` how hard the eye is travelling (0 cruise .. ~1.6 a glide's punch).
     const uPhase = options.uPhase ?? uniform(0);
     const uThrottle = options.uThrottle ?? uniform(0);
-    // THE FOLD (2026-10-26): 0 = the warp tunnel, 1 = the other dimension (odyssey-fold-space.tsl.js);
+    // THE FOLD (2026-10-26): 0 = the closing sky, 1 = the other dimension (odyssey-fold-space.tsl.js);
     // `uMotion` 0 under reduced motion (nothing in it turns or drifts).
     const uFold = options.uFold ?? uniform(0);
     const uMotion = options.uMotion ?? uniform(1);
-    // THE CROSSING (step 2): the tunnel's own travel, held still once the fold begins (the streaks
-    // freeze into hanging strands as the wave passes over them); the fold travels on `uPhase`.
+    // The closing sky's own travel, held still once the fold begins; the fold travels on `uPhase`.
     const uTunnelPhase = options.uTunnelPhase ?? uniform(0);
-    // THE ROOMS (step 3): the room of the fold the eye is in (odyssey-fold-rooms.js), as uniforms.
-    const room = {
-        shapeA: uniform(0),
-        shapeB: uniform(0),
-        morph: uniform(0),
-        hue: uniform(0),
-        spread: uniform(0.11),
-        tint: uniform(new THREE.Vector3(1, 1, 1)),
-        tintMix: uniform(0),
-        nebula: uniform(1),
-        nebulaHue: uniform(0.7),
-        crackle: uniform(0),
-        grid: uniform(0),
-    };
+    // THE LAST RING OF STARLIGHT: its radius (rad), from the fall's schedule (wide open at rest).
+    const uRing = options.uRing ?? uniform(CH7_CLOSING_SKY.open);
+    // THE ROOMS: the place of the fold the eye is in, the next one opening through it, and the
+    // fold's clock (odyssey-fold-rooms.js, odyssey-fold-clock.js), as uniforms.
+    const room = createFoldRoomUniforms();
     const crossing = clamp(uFold, 0.0, 1.0);
-    const palette = getJourneyPaletteTexture();
 
     const ray = normalize(positionLocal.sub(vec3(0.0, 0.0, uEyeZ)));
     const cosT = ray.z.negate().max(1e-4);
     const sinT = length(vec2(ray.x, ray.y)).max(1e-4);
-    // Depth down the tunnel (cot theta), capped where the lanes would alias at the vanishing point.
-    const depth = cosT.div(sinT).min(80.0);
-    const warp = clamp(uWarp, 0.0, 1.0);
     const throttle = clamp(uThrottle, 0.0, 1.6);
     const speedLook = clamp(throttle, 0.0, 1.0);
-    const logDepth = log(depth.add(0.25));
-    // A shallow helical wall, rather than tightly wound spokes near the vanishing point. The
-    // twist rides the clock at a constant rate (a closed form may only multiply time by a
-    // constant); the travel rides uPhase.
-    // ...and as the fold arrives the streaks bend into a spiral (THE CROSSING).
-    const twist = logDepth.mul(warp.mul(0.22).add(0.08).add(crossing.mul(CH7_CROSSING.spiral)))
-        .add(uTime.mul(0.035));
-    const ang = atan(ray.y, ray.x).add(twist);
-    // The same angle with atan's cut half a turn round. A lane coordinate built from `ang` leaps
-    // a whole turn's lanes across the cut, where its fwidth would widen every streak's AA to its
-    // cap; of the two coordinates' rates the smaller is the true one.
-    const angTurned = atan(ray.y.negate(), ray.x.negate()).add(Math.PI).add(twist);
-    const laneRate = (at) => min(fwidth(at(ang)), fwidth(at(angTurned)));
-    // The angle from the axis, for the starbow and the AA of the near layers.
+    // The angle from the axis.
     const theta = atan(sinT, cosT);
-
-    // Two sparse banks of long, feathered streaks on LOG depth (the far field: it crawls at the
-    // centre and runs at the edge at one rate). Lane rates are quantised to 1/64 so the phase can
-    // wrap without a visible jump.
-    const LANES = 72;
-    const lanePosAt = (a) => a.div(TAU).add(0.5).mul(LANES);
-    const lanePos = lanePosAt(ang);
-    const lane = mod(floor(lanePos), LANES);
-    const laneF = fract(lanePos);
-    const r1 = hash21(vec2(lane, 7.13));
-    const r2 = hash21(vec2(lane, 1.91));
-    const speed = floor(mix(0.55, 1.25, r1).mul(64.0)).div(64.0);
-    const seg = fract(logDepth.mul(mix(0.65, 1.2, r2)).add(uTunnelPhase.mul(speed)).add(r1.mul(17.0)));
-    // At speed the heads stretch: a streak's length is how far it travelled in the shutter.
-    const headLen = mix(float(0.30), float(0.62), speedLook);
-    const head = smoothstep(0.0, headLen, seg).mul(oneMinus(smoothstep(headLen, headLen.add(0.06), seg)));
-    const laneAA = clamp(laneRate(lanePosAt), 0.018, 0.24);
-    const core = oneMinus(smoothstep(0.025, laneAA.add(0.06), abs(laneF.sub(0.5))));
-    const lit = smoothstep(0.62, 0.88, r2.add(warp.mul(0.20)).add(speedLook.mul(0.08)));
-    const streaks = head.mul(core).mul(lit);
-
-    const finePosAt = (a) => a.add(0.23).sub(logDepth.mul(0.10)).div(TAU).mul(116);
-    const finePos = finePosAt(ang);
-    const fineLane = mod(floor(finePos), 116);
-    const fineSeed = hash21(vec2(fineLane, 23.71));
-    const finePhase = fract(logDepth.mul(1.8).add(uTunnelPhase.mul(1.625)).add(fineSeed.mul(13.0)));
-    const fineHead = smoothstep(0.0, 0.40, finePhase)
-        .mul(oneMinus(smoothstep(0.40, 0.45, finePhase)));
-    const fineCore = oneMinus(smoothstep(
-        0.015,
-        clamp(laneRate(finePosAt), 0.015, 0.20).add(0.035),
-        abs(fract(finePos).sub(0.5)),
-    ));
-    const fineStreaks = fineHead.mul(fineCore).mul(smoothstep(0.75, 0.94, fineSeed)).mul(warp);
-
-    // THE NEAR LAYER — debris on an inner tube (radius 0.35): a ray at theta meets it at depth
-    // 0.35 cot theta, so in LINEAR depth it runs ~3x faster across the screen than the wall at the
-    // same angle. That difference is parallax: the near field rushes past while the far field
-    // crawls, which is what makes a tunnel read as flight rather than as a zoom.
-    const NEAR_LANES = 40;
-    const nearPosAt = (a) => a.mul(1.0).sub(0.6).div(TAU).add(0.5)
-        .mul(NEAR_LANES);
-    const nearPos = nearPosAt(ang);
-    const nearLane = mod(floor(nearPos), NEAR_LANES);
-    const n1 = hash21(vec2(nearLane, 3.37));
-    const n2 = hash21(vec2(nearLane, 9.11));
-    const nearDepth = depth.mul(0.35);
-    const nearRate = floor(mix(0.9, 1.6, n1).mul(64.0)).div(64.0);
-    const nearSeg = fract(nearDepth.mul(mix(0.16, 0.26, n2)).add(uTunnelPhase.mul(nearRate)).add(n1.mul(11.0)));
-    const nearHead = smoothstep(0.0, headLen.mul(0.8), nearSeg)
-        .mul(oneMinus(smoothstep(headLen.mul(0.8), headLen.mul(0.8).add(0.05), nearSeg)));
-    const nearAA = clamp(laneRate(nearPosAt), 0.02, 0.3);
-    const nearCore = oneMinus(smoothstep(0.03, nearAA.add(0.07), abs(fract(nearPos).sub(0.5))));
-    // Only near the frame's edge (theta > ~16 deg): the near tube is never seen at the centre.
-    const nearMask = smoothstep(0.28, 0.5, theta).mul(smoothstep(0.55, 0.85, n2));
-    const nearStreaks = nearHead.mul(nearCore).mul(nearMask).mul(warp);
-
-    // LOG DEPTH: cot(theta) crowds everything interesting into the centre of the frame; its log
-    // spreads features evenly across screen radius, so bands and filaments read edge to centre.
-    // WALL FILAMENTS: accretion matter spiralling past, two baked-lattice octaves, stretched along
-    // the tunnel (low frequency in depth, high in angle) and streaming toward the eye.
-    const wallDepth = logDepth.mul(1.1).add(uTunnelPhase.mul(0.75));
-    const wall = vec3(cos(ang).mul(3.4), sin(ang).mul(3.4), wallDepth);
-    const filamentField = latticeNoise3(wall).mul(0.65).add(latticeNoise3(wall.mul(2.3)).mul(0.35));
-    const filaments = smoothstep(0.5, 0.8, filamentField);
-
-    // The journey's colours, in rings down the tunnel that zoom outward past the eye.
-    const band = fract(logDepth.mul(0.32).add(uTunnelPhase.mul(0.0625)));
-    const tint = sampleTexture(palette, vec2(band, 0.5)).rgb;
-    // RIBS on LINEAR depth (the tunnel's structure passing the eye): each rib is one turn of the
-    // wall at a fixed depth, BROKEN into arcs by its own noise so the frame never reads as the
-    // concentric target the full rings drew; near ribs (the frame's edge) sweep out fast, far ones
-    // crowd the centre slowly. Dim: structure, not strobe.
-    const ribPhase = depth.mul(0.3).add(uTunnelPhase.mul(0.875));
-    const ribIndex = floor(ribPhase);
-    const ribAA = clamp(fwidth(ribPhase), 0.01, 0.2);
-    const rib = oneMinus(smoothstep(0.008, ribAA.add(0.025), abs(fract(ribPhase).sub(0.5))));
-    const ribNoise = latticeNoise3(vec3(cos(ang).mul(2.6), sin(ang).mul(2.6), ribIndex.mul(1.37)));
-    const ribBreak = smoothstep(0.42, 0.62, ribNoise);
-    const ribs = rib.mul(ribBreak).mul(smoothstep(0.22, 0.45, theta)).mul(warp);
-    // A few soft spokes of the helical wall (7, not 12: an odd count that cannot read as wedges).
-    const ridges = pow(clamp(cos(ang.mul(7.0).sub(logDepth.mul(1.4))).mul(0.5).add(0.5), 0.0, 1.0), 8.0)
-        .mul(filaments);
-    const axisFade = smoothstep(0.008, 0.055, sinT);
-    // Far down the tunnel is dimmer — except the exit light dead ahead (the light at the end,
-    // which becomes the city's sun at the 7->8 seam).
-    const far = exp(depth.mul(-0.035));
+    // One pixel's angle (radians), for line widths: from the lens, never a screen derivative.
+    const pix = float(2).div(cameraProjectionMatrix.element(1).y.mul(screenSize.y));
+    // The light dead ahead: the point the ring of starlight closes on, and, on the way out, the
+    // light at the end (which becomes the city's sun at the 7->8 seam).
     const exitLight = exp(sinT.mul(sinT).mul(-260.0));
-    // THE STARBOW: at speed the streak heads shift with their angle from the heading — violet
-    // ahead, white, then amber and red toward the frame's edge (Stellar Velocity's relative
-    // ramp: the bands cross the picture at any speed, and at cruise the tunnel keeps its own
-    // journey colours).
-    const bowT = clamp(theta.div(0.62), 0.0, 1.0);
-    const starbow = mix(
-        mix(vec3(0.62, 0.52, 1.0), vec3(1.0, 0.97, 0.92), smoothstep(0.0, 0.38, bowT)),
-        mix(vec3(1.0, 0.64, 0.32), vec3(1.0, 0.34, 0.24), smoothstep(0.72, 1.0, bowT)),
-        smoothstep(0.38, 0.72, bowT),
-    );
-    const bowMix = speedLook.mul(0.75).mul(warp);
     // The mouth: everything inside the opening is cut away (the scene behind shows through) and a
     // blazing rim rides its edge. Gated so no opening exists until the exit begins.
     const opening = smoothstep(0.0, 0.002, uOpen);
     const inMouth = oneMinus(smoothstep(uOpen.mul(0.96), uOpen.add(0.002), theta)).mul(opening);
-    const rimOffset = theta.sub(uOpen).div(0.03);
-    // The rim blazes while the mouth is small (the light at the end of the tunnel) and fades as it
-    // widens: at full width a fixed-intensity rim is a huge bright circle round the whole view
-    // (a +20 luma spike in the 7->8 seam gate).
+    const rimOffset = theta.sub(uOpen).div(0.024);
+    // The rim blazes while the mouth is small (the light at the end) and fades as it widens: at
+    // full width a fixed-intensity rim is a huge bright circle round the whole view (a +20 luma
+    // spike in the 7->8 seam gate).
     const rimFade = oneMinus(smoothstep(0.25, 1.1, uOpen));
     const rim = exp(rimOffset.mul(rimOffset).negate()).mul(opening).mul(rimFade);
-    // At speed the walls darken a touch so the added streak light does not lift the frame's luma.
-    const wallGain = oneMinus(speedLook.mul(0.3));
-    const streakColor = mix(mix(tint, vec3(1.0, 0.94, 0.84), head.mul(0.45)), starbow, bowMix);
-    // (The walls a shade lower than they were, 0.15: deep colours, so the streaks carry the light.)
-    const tunnel = tint.mul(filaments.mul(0.12).add(ridges.mul(0.06)).add(0.009)).mul(wallGain)
-        .mul(far.mul(0.8).add(0.2)).mul(axisFade)
-        .add(streakColor.mul(streaks)
-            .mul(warp.mul(1.8).add(0.35)).mul(axisFade))
-        .add(mix(mix(tint, vec3(0.74, 0.91, 1.0), 0.72), starbow, bowMix).mul(fineStreaks).mul(1.15).mul(axisFade))
-        .add(mix(vec3(0.9, 0.95, 1.0), starbow, bowMix).mul(nearStreaks).mul(speedLook.mul(1.1).add(0.55)))
-        .add(mix(tint, vec3(0.8, 0.9, 1.0), 0.25).mul(ribs).mul(0.14));
-    // The light at the end and the mouth's rim: the same in the tunnel and in the fold.
-    const lightAtEnd = vec3(1.0, 0.86, 0.62).mul(exitLight).mul(warp.mul(1.2).add(0.12).add(speedLook.mul(0.35)))
+    // The rim is the edge of a lens, as the crossing's was: the city's light split into its
+    // colours across it (violet toward the opening, red toward the hall).
+    const rimSpectrum = vec3(0.5).add(vec3(0.5).mul(cos(rimOffset.mul(1.1).add(vec3(0.0, 2.1, 4.2)))));
+    // The light ahead. Before the fold: only as the ring of starlight closes to its point (the
+    // dark it closes on is dark until then). In the fold: the way out's alone (`room.exit`): every
+    // room used to hang round one white light, and they are places of their own now.
+    const pinch = oneMinus(smoothstep(0.0, 0.3, uRing));
+    const lightAtEnd = vec3(1.0, 0.86, 0.62).mul(exitLight)
+        .mul(mix(pinch.mul(1.1), room.exit.mul(speedLook.mul(0.3).add(0.7)), crossing))
         .mul(oneMinus(opening))
-        .add(vec3(1.0, 0.82, 0.55).mul(rim).mul(1.8));
-    // Each look only while it shows (uniform branches: the fold takes screen derivatives, so it
-    // may not sit behind a per-pixel condition).
+        .add(mix(vec3(1.0, 0.82, 0.55), rimSpectrum, 0.5).mul(rim).mul(1.25));
+    // Each look only while it shows (uniform branches).
     const color = Fn(() => {
-        // ROOT-PINNED before every branch: nodes shared by the tunnel and what follows it are
+        // ROOT-PINNED before every branch: nodes shared by the closing sky and what follows it are
         // assigned where first built, so built first inside a branch they read wrong outside it.
         // (The light also pins what the alpha test reads, outside this Fn: the mouth's angle.)
         const light = lightAtEnd.toVar('ch7WindowLight');
         const body = vec3(0).toVar('ch7WindowBody');
         // NOTHING SHOWS before the portal opens: the colour is multiplied by uPortal below, so
-        // until then the window is the hole's plain black shadow, and the tunnel and the fold were
-        // evaluated on every pixel of the shadow to be multiplied by 0 (perf audit 2026-10-28). A
-        // uniform branch, as theirs are, so the derivatives inside stay legal.
+        // until then the window is the hole's plain black shadow (perf audit 2026-10-28).
         If(uPortal.greaterThan(0.0), () => {
             If(uFold.lessThan(0.999), () => {
-                body.assign(tunnel);
+                body.assign(closingSkyColour({
+                    ray, time: uTime.mul(uMotion), phase: uTunnelPhase, ring: uRing, pix,
+                }));
             });
             If(uFold.greaterThan(0.001), () => {
                 const fold = foldSpaceColour({
@@ -403,7 +242,7 @@ export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
                 });
                 // THE CROSSING: the fold opens from the centre in a widening wave. Its front is the
                 // rim of a lens: a thin edge of light split into its colours across its width (violet
-                // inside, red out), in a faint halo where the tunnel just outside shows as its own
+                // inside, red out), in a faint halo where what lies just outside shows as its own
                 // negative, once, as the wave sweeps out past the frame's edges.
                 const C = CH7_CROSSING;
                 const wave = crossing.mul(C.reach + C.width).sub(C.width);
@@ -425,8 +264,8 @@ export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
         return body.add(light);
     })();
 
-    // As the mouth widens the tunnel walls dim with it, so the frame's brightness eases down into
-    // the (darker) city instead of dropping on the frame the mouth passes the edges.
+    // As the mouth widens the walls dim with it, so the frame's brightness eases down into the
+    // (darker) city instead of dropping on the frame the mouth passes the edges.
     const leaving = oneMinus(clamp(uOpen.div(1.4), 0.0, 1.0).mul(0.45));
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color.mul(clamp(uPortal, 0.0, 1.0)).mul(leaving);
@@ -438,7 +277,7 @@ export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
     return {
         material,
         uniforms: {
-            uPortal, uWarp, uEyeZ, uOpen, uPhase, uThrottle, uFold, uMotion, uTunnelPhase, room,
+            uPortal, uWarp, uEyeZ, uOpen, uPhase, uThrottle, uFold, uMotion, uTunnelPhase, uRing, room,
         },
     };
 }

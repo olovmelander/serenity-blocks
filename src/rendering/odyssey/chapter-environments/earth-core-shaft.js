@@ -54,6 +54,7 @@ import {
     sqrt,
     step,
     fract,
+    uniform,
     uv,
     varying,
     vec2,
@@ -396,6 +397,8 @@ export function* buildShaftWallGeometrySteps(plan) {
 export function createShaftWallMaterial(u, plan) {
     const n3 = earthCoreNoise01();
     const { lakeY, falls } = plan;
+    const uFlare = u.uFlare ?? uniform(0);
+    const uActivity = u.uActivity ?? uniform(0.5);
     const vP = varying(attribute('position', 'vec3'), 'vShaftP');
     const vN = varying(normalLocal, 'vShaftN');
     const vS = varying(attribute('aStrata', 'vec4'), 'vShaftS');
@@ -429,12 +432,19 @@ export function createShaftWallMaterial(u, plan) {
         // undersides — so looking up the shaft the strata are rings of firelight on dark rock. ──
         const down = clamp(N.y.negate(), 0.0, 1.0);
         const reach = exp(hPos.div(52.0).negate()).add(exp(hPos.div(190.0).negate()).mul(0.16)).toVar();
-        const breath = magmaSurgeTSL(u.uTime).mul(0.2).add(0.8);
+        // ...AND THE LIGHT BREATHES WITH THE LAKE (masterpiece pass, 2026-11-17): a fountain
+        // below throws its light up the shaft (uFlare, already scaled by the photosensitivity
+        // setting where the chapter writes it), and the lake's mood lifts or banks the whole key.
+        const breath = magmaSurgeTSL(u.uTime).mul(0.2).add(0.8)
+            .mul(uActivity.mul(0.36).add(0.82))
+            .mul(uFlare.mul(0.75).add(1.0));
         const underside = pow(down, 2.2);
         // The lip of each ledge: a thin bright line where the underside turns up into the face.
         const f = S.y;
         const lipLine = smoothstep(0.90, 0.955, f).mul(oneMinus(smoothstep(0.955, 0.995, f))).mul(S.z).toVar();
-        const lakeLight = vec3(0.42, 0.13, 0.036).mul(reach).mul(breath)
+        const lakeLight = vec3(0.42, 0.13, 0.036)
+            .mul(reach.add(uFlare.mul(exp(hPos.div(-120.0))).mul(0.22)))
+            .mul(breath)
             .mul(underside.mul(1.5).add(lipLine.mul(1.1)).add(0.025))
             .mul(rough)
             .mul(bandReflect);
@@ -476,17 +486,37 @@ export function createShaftWallMaterial(u, plan) {
             // The throat's own ember glow, broken by the rock's grain.
             .add(vec3(0.20, 0.04, 0.010).mul(throat).mul(halo.mul(0.7).add(0.3)).mul(rough));
         const quenched = vec3(0.26, 0.46, 0.52).mul(core.add(joint.mul(0.4))).mul(0.3);
-        const crackLight = mix(hot, quenched, smoothstep(0.2, 0.9, u.uSeam))
+        // The quench cools the shaft's cracks — but not the throat's: the fire reaches the vent's
+        // lip, where it meets the sea (masterpiece pass, 2026-11-17).
+        const crackLight = mix(hot, quenched, smoothstep(0.2, 0.9, u.uSeam).mul(oneMinus(throat)))
             .mul(heat).mul(mix(darkGate, float(1.0), throat)).mul(crackBreath)
             .mul(u.uPulseIntensity.mul(0.25).add(1.0));
         lit.addAssign(crackLight);
+
+        // THE VENT'S RIM IS PILLOW LAVA (masterpiece pass, 2026-11-17). Under the lip, where the
+        // sea is a few units of steam away, the rock is fresh: its seams burn through the vapour,
+        // and a slow tide wandering through the rock opens them here and crusts them over there —
+        // a reach of the rim splits bright, dims to a dark seam, and its neighbour splits. Bright
+        // enough to read through the steam's fog on the rock (it is what the climb sees of the
+        // throat from p ~0.04 until the rim leaves the frame).
+        // Only the last stretch under the lip: from the lower shaft the throat keeps its sparse
+        // thin cracks (a first cut from h 104 filled the climb's vanishing point with blotches).
+        const rimHeat = smoothstep(118.0, 138.0, h).toVar();
+        const tide = n3(P.mul(0.05).add(vec3(0.0, u.uTime.mul(-0.021), u.uTime.mul(0.016)))).toVar();
+        const split = smoothstep(0.42, 0.66, tide).toVar();
+        const pillowCore = smoothstep(mix(float(0.92), float(0.83), split), 0.975, veins);
+        const pillowHalo = smoothstep(0.70, 0.93, veins).mul(split);
+        lit.addAssign(vec3(1.0, 0.47, 0.11).mul(pillowCore).mul(2.4)
+            .add(vec3(0.85, 0.16, 0.03).mul(pillowHalo).mul(0.32))
+            .mul(rimHeat)
+            .mul(mix(float(0.2), float(1.0), split)));
 
         // A warm rim where an edge turns away (silhouettes at the cave mouth and the ledges).
         const rimView = normalize(modelWorldMatrixInverse.mul(vec4(cameraPosition, 1.0)).xyz.sub(P));
         const rim = pow(oneMinus(clamp(abs(dot(N, rimView)), 0.0, 1.0)), 5.0);
         lit.addAssign(vec3(0.22, 0.065, 0.018).mul(rim).mul(reach.mul(0.8).add(0.12)).mul(0.5));
 
-        return min(lit, vec3(1.1, 0.95, 0.8));
+        return min(lit, mix(vec3(1.1, 0.95, 0.8), vec3(2.6, 1.6, 0.9), rimHeat));
     })();
     // Opaque: early-Z for the largest surface in the chapter. The manager's crossfade reaches it
     // through uOpacity (an authored-opaque uniform target), so it is never forced transparent.
@@ -566,6 +596,19 @@ export function createShaftFalls(u, plan) {
     const B = attribute('aFallB', 'vec4');
     // PlaneGeometry(1,1) rows: v = 1 at the top (+y) -> the lip is v = 1. Flip so s = 0 at the lip.
     const s = oneMinus(uv().y);
+    // SURGES (masterpiece pass, 2026-11-17). Every so often the lake behind a spout heaves and a
+    // gout of brighter, fuller lava comes over the lip and runs down the fall: a pulse that
+    // leaves the lip, takes ~4 s to reach the foot, and is gone. Each fall on its own period
+    // (21-47 s, from its seed), so no two surge together twice. A pure function of the clock:
+    // `front` is where the pulse is along the fall (past 1.3: none on the way).
+    const surgeSeed = fract(B.w);
+    const surgePeriod = surgeSeed.mul(26.0).add(21.0);
+    const surgeFront = fract(u.uTime.div(surgePeriod).add(surgeSeed.mul(7.3))).mul(surgePeriod).div(4.2);
+    const surgeAt = (along) => {
+        // In time-since-the-lip (sqrt of the drop): the pulse runs at the lava's own speed.
+        const gap = sqrt(max(along, 0.0)).sub(surgeFront);
+        return exp(gap.mul(gap).mul(-70.0)).mul(oneMinus(smoothstep(1.05, 1.3, surgeFront)));
+    };
     const inward = vec3(B.x, 0.0, B.y);
     const drop = B.z;
     // Thrown inward as it leaves the lip (x ~ sqrt(s): constant horizontal speed while the drop
@@ -579,11 +622,13 @@ export function createShaftFalls(u, plan) {
     const side = normalize(cross(tangent, normalize(camLocal.sub(centre))));
     // It spills wide over the lip, narrows as it speeds up, then spreads a little as it drops.
     const spill = oneMinus(smoothstep(0.0, 0.18, s)).mul(0.6);
-    const widthNow = A.w.mul(s.mul(0.35).add(0.8).add(spill)).mul(FALL_HALO);
+    const widthNow = A.w.mul(s.mul(0.35).add(0.8).add(spill)).mul(FALL_HALO)
+        .mul(surgeAt(s).mul(0.22).add(1.0));
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = centre.add(side.mul(uv().x.sub(0.5).mul(widthNow)));
 
     const vFall = varying(vec3(s, B.w, length(camLocal.sub(centre))), 'vShaftFall');
+    const vSurge = varying(surgeFront, 'vShaftFallSurge');
     // Through the steam: the fall draws after the quench's shell and dims by its fog.
     const vVeil = varying(u.uVeil ? earthCoreVeilTransmission(u.uVeil, centre) : float(1), 'vShaftFallVeil');
     material.colorNode = Fn(() => {
@@ -601,15 +646,19 @@ export function createShaftFalls(u, plan) {
         const n1 = noise2(vec2(across.mul(1.6).add(seed.mul(13.0)), tFall.mul(9.0).sub(flow.mul(2.2))));
         const n2 = noise2(vec2(across.mul(5.5).add(n1.mul(0.7)).add(seed.mul(7.0)), tFall.mul(26.0).sub(flow.mul(5.0))));
         const core = oneMinus(abs(across).mul(2.0));
+        // The surge on its way down (see surgeAt): the same pulse, from the fall's own front.
+        const surgeGap = sqrt(along).sub(vSurge);
+        const surge = exp(surgeGap.mul(surgeGap).mul(-70.0)).mul(oneMinus(smoothstep(1.05, 1.3, vSurge)));
         // Faded in over the lip's spill, so the fall has no bright comet's head from below.
         const lipIn = smoothstep(0.0, 0.16, along);
         // The throat's curtains break into spray over their last half; the big falls meet the lake.
         const footOut = oneMinus(smoothstep(mix(float(0.90), float(0.45), breaks), 1.0, along));
-        const body = smoothstep(0.0, 0.22, core.add(n2.sub(0.5).mul(1.1)).sub(along.mul(0.18)))
+        const body = smoothstep(0.0, 0.22, core.add(n2.sub(0.5).mul(1.1)).sub(along.mul(0.18)).add(surge.mul(0.5)))
             .mul(lipIn).mul(footOut);
         // Hot at the core and at the lip; streaks of cooler skin; it cools a little as it falls.
         const temp = float(0.52).add(max(core, 0.0).mul(0.42)).add(n1.sub(0.5).mul(1.0)).add(n2.sub(0.5).mul(0.45))
-            .sub(along.mul(0.2));
+            .sub(along.mul(0.2))
+            .add(surge.mul(0.55));
         const c0 = vec3(0.16, 0.012, 0.003);
         const c1 = vec3(0.78, 0.13, 0.015);
         const c2 = vec3(1.0, 0.42, 0.07);

@@ -425,7 +425,24 @@ export function createPathChapterUniforms(chapterPositions = [], opts = {}) {
             Array.from({ length: ODYSSEY_PATH_ORB_OCCLUDERS }, () => new THREE.Vector4(0, 0, 0, 0)),
             'vec4',
         ),
+        // THE RIPPLE (OdysseyPathRenderer.playRipple): a run of light along the rail from a
+        // finished orb to the next one. x: where its head is (world units along the path),
+        // y: its width (world units), z: its strength (0 = none), w: the way it runs (+1 / -1).
+        uRipple: uniform(new THREE.Vector4(0, 1, 0, 1)),
     };
+}
+
+/**
+ * The ripple at arc distance `s` (0..~1.3): a bright head and the wake it leaves on the side
+ * it came from. Both are exp of a non-positive number, so neither can overflow.
+ */
+function railRipple(s, uRipple) {
+    const d = s.sub(uRipple.x).div(uRipple.y);
+    const head = exp(d.mul(d).negate());
+    // Positive behind the head, on the side it came from.
+    const behind = uRipple.x.sub(s).mul(uRipple.w);
+    const wake = exp(max(behind, 0.0).div(uRipple.y.mul(5.0)).negate()).mul(step(0.0, behind)).mul(0.42);
+    return head.add(wake).mul(uRipple.z);
 }
 
 /**
@@ -858,7 +875,11 @@ export function createPathOuterTSL(uTime = uniform(0), opts = {}) {
             transitionBand.mul(uTransitionMix).mul(0.4),
         );
         const withCollar = mix(color, collarCol, collarGlow.mul(0.85));
-        return withCollar.div(max(max(max(withCollar.r, withCollar.g), withCollar.b), 1.0));
+        const capped = withCollar.div(max(max(max(withCollar.r, withCollar.g), withCollar.b), 1.0));
+        // The ripple: the rail turns to light from the orb just finished to the one ahead. Laid
+        // over the capped colour (a rail already at full brightness has nowhere brighter to go:
+        // added before the cap it did not show on the island's gold), toward white.
+        return mix(capped, vec3(1.0), min(railRipple(s, chapter.uRipple), 1.0).mul(0.86));
     })();
 
     const material = new THREE.MeshBasicNodeMaterial();
@@ -964,13 +985,16 @@ export function createPathGlowTSL(uTime = uniform(0), opts = {}) {
             smoothstep(0.0, uTransitionWidth, abs(vUv.x.sub(uTransitionHead))),
         );
         const collar = thresholdCollars(chapter, s);
+        // The ripple's glow in the air round the rail (it may pass the haze's usual ceiling).
+        const ripple = railRipple(s, chapter.uRipple);
         const alpha = clamp(
             R.haze.w.mul(drift).mul(lit.mul(0.6).add(0.4))
                 .add(fuse.mul(0.22))
                 .add(collar.mul(transitionBand.mul(uTransitionMix).mul(0.25).add(0.08)))
-                .add(uBeat.mul(0.04).mul(lit)),
+                .add(uBeat.mul(0.04).mul(lit))
+                .add(ripple.mul(0.7)),
             0.0,
-            0.5,
+            float(0.5).add(min(ripple, 1.0).mul(0.45)),
         ).mul(nearFade).mul(farFade).mul(soft)
             .mul(orbOcclusion(chapter, ODYSSEY_PATH_ORB_OCCLUSION.hazeInner, ODYSSEY_PATH_ORB_OCCLUSION.hazeOuter))
             // The near-eye thinning recipes' haze thins with the body (capture: the white halo of
@@ -981,7 +1005,11 @@ export function createPathGlowTSL(uTime = uniform(0), opts = {}) {
                 dView,
             )))));
         const color = mix(
-            mix(R.haze.rgb, R.emis.rgb, max(fuse, collar.mul(0.6))),
+            mix(
+                mix(R.haze.rgb, R.emis.rgb, max(fuse, collar.mul(0.6))),
+                mix(R.emis.rgb, vec3(1.0), 0.6),
+                min(ripple, 1.0),
+            ),
             uTransitionColor,
             transitionBand.mul(uTransitionMix).mul(collar),
         );

@@ -1392,7 +1392,7 @@ export function vapourDecode(code) {
 // ── The bursts: drops thrown up by the events (thermal-bloom-bursts.js) ────────
 
 /** Bursts live at once (two rows each), their kinds, and how a row packs its code. */
-export const BURST_SLOTS = 16;
+export const BURST_SLOTS = 24;
 export const BURST_KIND = Object.freeze({ splash: 0, jet: 1, fountain: 2 });
 export const BURST_CODE = Object.freeze({ scale: 8, life: 8000 });
 
@@ -1400,7 +1400,7 @@ export const BURST_CODE = Object.freeze({ scale: 8, life: 8000 });
 
 /** Slots per block of the event table, and rows per slot (§5.4). */
 export const EVENT_SLOTS = Object.freeze({
-    blooms: 24, fills: 8, jets: 8, eruptions: 8, boils: 4, devils: 3, rosettes: 6, plumes: 14, globals: 1,
+    blooms: 24, fills: 12, jets: 8, eruptions: 8, boils: 4, devils: 3, rosettes: 6, plumes: 14, globals: 1,
 });
 export const EVENT_ROWS_PER = Object.freeze({
     blooms: 2, fills: 1, jets: 1, eruptions: 2, boils: 1, devils: 2, rosettes: 1, plumes: 1, globals: 4,

@@ -8,13 +8,22 @@
  * feeds the flower crown a combo winds around the board, starts the gusts that spread
  * through the grass, and drops rings on the water — where a piece landed, where a petal
  * came down, and now and then where a fish rose. As play runs hot the meadow itself lets go of
- * its petals and seed into the evening air (drift), most of all in a fever.
+ * its petals and seed into the evening air (drift), most of all in a fever. The two largest
+ * things are its own: the flowers that open in the sky over the lake (blossom), each a thread of
+ * light that climbs and bursts into a whorl of one kind's petals, and the stone that skips down
+ * the sun's road (skip), ring after ring.
  */
 import * as THREE from 'three/webgpu';
 import { SUMMER_PARTICLES } from './summer-petal-sim.js';
 import { SUMMER_STAGE_DEPTH } from './summer-stage.js';
 
-const REFERENCE_PETALS = 2400;
+/**
+ * The pool the event counts below are written for (High). The largest thing the game can ask for
+ * at once (four lines and a perfect clear on top: the jets, the rising meadow, the bouquet and
+ * seven flowers) takes about 3,050 of its 3,440 reserve particles, which leaves a combo's crown
+ * its 400 while the flowers hang: tests/unit/summer-fx-director.test.js holds the headroom.
+ */
+const REFERENCE_PETALS = 4000;
 const CLEAR_WINDOW = 0.5;
 const RISE_WINDOW = 1.5;
 const SEED_WINDOW = 0.3;
@@ -22,12 +31,56 @@ const BOUQUET_WINDOW = 0.7;
 const FLOWER_KINDS = 7;
 /** Fronts of wind the reactions can send across at once (summer-reactions.js). */
 const FRONT_SLOTS = 3;
-/** Where a lake ring opens: metres out from the near shore for the foot of the board, and for its top. */
-const RING_NEAR = 1.5;
-const RING_REACH = 26;
+/**
+ * Where a lake ring opens: metres out from the near shore for the foot of the board, and for its
+ * top. The crest of flowers the camera looks over hides the first fifteen metres of the lake, so
+ * the nearest ring opens beyond them: it was a metre and a half out, where no ring was ever seen.
+ */
+const RING_NEAR = 17;
+const RING_REACH = 30;
 /** How far above the ground petals are released, in metres: over the heads of the meadow. */
 const FLOWER_TOPS = 1.15;
-const { petal: PETAL, seed: SEED, pollen: POLLEN } = SUMMER_PARTICLES;
+const {
+    petal: PETAL, seed: SEED, pollen: POLLEN, glow: GLOW,
+} = SUMMER_PARTICLES;
+/** A flower in the sky: seconds its shoot climbs before it opens, and how far it climbs, metres. */
+const BLOSSOM_RISE = 0.42;
+const BLOSSOM_CLIMB = 3.4;
+/** Petals in one sky flower at the reference pool, and how far its longest petals reach, metres. */
+const BLOSSOM_PETALS = 210;
+const BLOSSOM_REACH = 1.3;
+/** The bouquet's flower opens on the line of sight to the maypole's head, this far from the eye. */
+const BLOSSOM_CROWN_DEPTH = 8.2;
+/** Seconds a sky flower holds its shape before its petals let go and fall. */
+const BLOSSOM_HANG = 1.6;
+/** How quickly the air stops a petal (the simulation's drag): a burst's reach is its speed over this. */
+const PETAL_DRAG = 1.7;
+/** A flower opens over the maypole when its emitter says so (summer-reactions.js). */
+const BLOSSOM_MAYPOLE = -1;
+/**
+ * Where the flowers of a perfect clear open: in the air beside the board, nearer than the birch
+ * and the spruce that frame the picture (further off, their crowns hid every flower but one).
+ * Shares of the open strip beside the board (0 at the board, 1 at the screen's edge), how far down
+ * the screen, and metres from the eye.
+ */
+const BLOSSOM_SPOTS = [
+    [0.56, 0.3, 7.6], [0.5, 0.22, 7.2], [0.82, 0.5, 8], [0.78, 0.48, 7.4], [0.2, 0.42, 8.4], [0.24, 0.4, 7.8],
+];
+/**
+ * How far down the screen the flowers of a narrow side stand, one above another, and how much
+ * smaller they are drawn there so that three of them find room above the meadow.
+ */
+const BLOSSOM_STACK = [0.2, 0.37, 0.54];
+const BLOSSOM_STACKED = 0.78;
+/** A flower keeps this share of the screen's width clear between its rim and the card or the edge. */
+const BLOSSOM_MARGIN = 0.008;
+/**
+ * A skipping stone: metres from the eye to its first touch (the first water the eye sees past the
+ * crest of the meadow), the length of its first hop, and how the hops shorten.
+ */
+const SKIP_START = 43;
+const SKIP_HOP = 9.5;
+const SKIP_SHORTEN = 0.8;
 
 export class SummerFxDirector {
     constructor({
@@ -54,6 +107,16 @@ export class SummerFxDirector {
         this.driftFeed = 0;
         this.thrown = 0;
         this.fishClock = 3;
+        /** Which sky flowers have opened, and how many times each stone has touched (by emitter). */
+        this.opened = new Map();
+        this.hops = new Map();
+        /** How much of its full size the flower now opening may take (blossomSpot keeps it). */
+        this.blossomFit = 1;
+        /** Unit vector toward the sun (apply() keeps it): the stone skips down its road. */
+        this.sun = new THREE.Vector3(-0.25, 0.16, -0.95);
+        this.heart = new THREE.Vector3();
+        /** Where the maypole's head is seen on screen (scratch for blossomSpot). */
+        this.seen = { x: 0.25, y: 0.1, depth: 0 };
         this.point = new THREE.Vector3();
         this.foot = new THREE.Vector3();
         this.front = {
@@ -95,6 +158,8 @@ export class SummerFxDirector {
         this.epoch = epoch;
         this.serials.clear();
         this.emitted.clear();
+        this.opened.clear();
+        this.hops.clear();
         this.ringSerial = -1;
         this.waveSerial = -1;
     }
@@ -185,10 +250,42 @@ export class SummerFxDirector {
         }
     }
 
-    /** A hard drop shakes the dandelion clocks: seed lifts off the meadow where the piece came down. */
-    seeds(emitter) {
+    /**
+     * A hard drop comes down like a stone in the grass: a ring of the piece's own petals is
+     * knocked off the flowers under it and leaps out of the meadow to both sides of the board's
+     * foot, pollen among them, and the dandelion clocks let go of their seed. (The spot is
+     * behind the card: the ring is thrown wide and high enough to be seen leaving it.)
+     */
+    seeds(emitter, fresh = false) {
         const { sim } = this;
         const spot = this.meadowAt(emitter.column, this.foot);
+        if (fresh) {
+            const ring = Math.round((26 + 30 * emitter.strength) * this.scale);
+            for (let i = 0; i < ring; i += 1) {
+                const angle = (i / ring) * Math.PI * 2 + this.random() * 0.2;
+                const speed = (5.5 + 3 * emitter.strength) * (0.85 + 0.3 * this.random());
+                const x = spot.x + Math.cos(angle) * 0.4;
+                const z = spot.z + Math.sin(angle) * 0.3;
+                const pollen = i % 4 === 3;
+                sim.spawn(
+                    x,
+                    // Over the heads of the flowers: among them it would never be seen.
+                    this.above(x, 0, z, FLOWER_TOPS + 0.15) + 0.3 * this.random(),
+                    z,
+                    Math.cos(angle) * speed,
+                    2.2 + 1.6 * this.random(),
+                    Math.sin(angle) * speed * 0.6,
+                    {
+                        life: 1.3 + 0.8 * this.random(),
+                        kind: pollen ? POLLEN : PETAL,
+                        flower: emitter.flower,
+                        size: pollen ? 0.1 : 0.09 + 0.06 * this.random(),
+                        // The air carries it out before it starts to fall.
+                        hang: pollen ? 0 : 0.3,
+                    },
+                );
+            }
+        }
         const count = this.due(emitter, (34 + 52 * emitter.strength) * this.scale, SEED_WINDOW);
         for (let i = 0; i < count; i += 1) {
             const angle = this.random() * Math.PI * 2;
@@ -335,6 +432,219 @@ export class SummerFxDirector {
         }
     }
 
+    /**
+     * Where a sky flower opens, and how large it may be there (`this.blossomFit`, a share of its
+     * full size). The six of a perfect clear take the open air to either side of the board and
+     * its score panel, in turn. Where a side is wide they stand in two columns; where it is
+     * narrow (the score panel's side in single player) they stand one above another in the
+     * middle of it, drawn small enough to fit; where there is no room beside the board at all
+     * (an upright screen) they open in a row above it. The bouquet's own opens about the maypole's
+     * head, or, where the board stands in front of the pole, in the open air nearest it. Wherever
+     * it opens, a flower's whole rim is kept clear of the card, the panel, the screen's edges and
+     * the meadow under it.
+     */
+    blossomSpot(emitter, target) {
+        const { stage, maypole } = this;
+        const { board } = stage;
+        const covered = stage.covered();
+        const full = this.blossomRadius(emitter);
+        const crowning = emitter.lines === BLOSSOM_MAYPOLE && Boolean(maypole);
+        // (Anything that is not a spot's number takes the first: a junk payload opens a flower, not an error.)
+        const index = Number.isFinite(emitter.lines)
+            ? Math.max(0, Math.round(emitter.lines)) % BLOSSOM_SPOTS.length : 0;
+        const [across, down, away] = BLOSSOM_SPOTS[index];
+        const depth = crowning ? BLOSSOM_CROWN_DEPTH : away;
+        // What a share of the screen's width, and of its height, is in metres at the flower's depth.
+        const wide = 2 * stage.tanH * depth;
+        const tall = 2 * stage.tanV * depth;
+        let left = index % 2 === 0;
+        let sx = 0.5;
+        let sy = down;
+        if (crowning) {
+            // The bouquet's flower opens about the pole's head as the eye sees it, as near as the
+            // others, so it is as large and as crisp as they are.
+            const seen = stage.project(maypole.top, this.seen);
+            sx = seen ? seen.x : 0.25;
+            sy = seen ? seen.y : 0.1;
+            left = sx < (covered.x0 + covered.x1) / 2;
+        }
+        const room = left ? covered.x0 : 1 - covered.x1;
+        if (room < 0.14) {
+            // No room beside the board: a row above it (the bouquet's flower in the middle of it).
+            // Each is fitted to its sixth of the width and to the gap between the screen's top
+            // and the board's.
+            const strip = 1 / BLOSSOM_SPOTS.length;
+            const gap = Math.max(0.06, board.y0);
+            this.blossomFit = Math.min(1, (0.46 * strip * wide) / full, (0.46 * gap * tall) / full);
+            sx = crowning ? 0.5 : (index + 0.5) * strip;
+            sy = Math.max(0.06, board.y0 * 0.55);
+        } else {
+            const stacked = room < 0.3 && !crowning;
+            // The strip's width is all the room the petals have: the flower is drawn to fit it.
+            this.blossomFit = Math.min(1, (0.46 * room * wide) / full) * (stacked ? BLOSSOM_STACKED : 1);
+            if (stacked) {
+                sx = left ? covered.x0 * 0.5 : covered.x1 + room * 0.5;
+                sy = BLOSSOM_STACK[Math.floor(index / 2) % BLOSSOM_STACK.length];
+            } else if (!crowning) sx = left ? covered.x0 * (1 - across) : covered.x1 + room * across;
+            // Its whole rim stays in the strip: never behind the card or the panel, never off the side.
+            const half = (full * this.blossomFit) / wide + BLOSSOM_MARGIN;
+            sx = Math.min(Math.max(sx, (left ? 0 : covered.x1) + half), (left ? covered.x0 : 1) - half);
+        }
+        // Its rim stays under the top of the screen (the bouquet's may lose a sliver of it there,
+        // to sit as close about the pole's head as it can).
+        sy = Math.max(sy, ((full * this.blossomFit) / tall) * (crowning ? 0.8 : 1) + 0.02);
+        stage.point(sx, sy, depth, target);
+        // And it opens over the heads of the meadow's flowers, not among them.
+        const floor = Math.max(0, this.groundHeight(target.x, target.z)) + FLOWER_TOPS
+            + 0.7 * full * this.blossomFit;
+        if (target.y < floor) target.setY(floor);
+        return target;
+    }
+
+    /** A sky flower's radius in metres at its full size, before it is fitted to its place. */
+    blossomRadius(emitter) {
+        const strength = Math.max(0.2, Number.isFinite(emitter.strength) ? emitter.strength : 0.2);
+        return BLOSSOM_REACH * (0.75 + 0.35 * strength) * (emitter.lines === BLOSSOM_MAYPOLE ? 1.15 : 1);
+    }
+
+    /**
+     * A flower opens in the sky: a thread of light climbs from below, and where it stops the
+     * petals of one kind are flung out of a glowing heart to their places in a flower drawn in
+     * the air: five to eight great petals round a heart of gold, each of them made of the small
+     * ones. The air holds it a moment, so it is seen as the flower it is; then the petals let go
+     * and fall. `flower` outside the seven makes it a flower of every colour.
+     */
+    blossom(emitter) {
+        if (emitter.age < 0) return;
+        const { sim, stage } = this;
+        const heart = this.blossomSpot(emitter, this.heart);
+        const strength = Math.max(0.2, emitter.strength);
+        const mixed = !(emitter.flower >= 0 && emitter.flower < FLOWER_KINDS);
+        if (emitter.age < BLOSSOM_RISE) {
+            const count = this.due(emitter, 22 * this.scale, BLOSSOM_RISE);
+            for (let i = 0; i < count; i += 1) {
+                const climbed = Math.min(1, (emitter.age + this.random() * 0.03) / BLOSSOM_RISE);
+                const eased = 1 - (1 - climbed) * (1 - climbed);
+                const x = heart.x + (this.random() - 0.5) * 0.25;
+                const z = heart.z + (this.random() - 0.5) * 0.25;
+                sim.spawn(
+                    x,
+                    // (Never from under the meadow: the thread starts over the grass.)
+                    this.above(x, heart.y - BLOSSOM_CLIMB * (1 - eased), z, 0.35),
+                    z,
+                    (this.random() - 0.5) * 0.6,
+                    1.5 + this.random(),
+                    (this.random() - 0.5) * 0.6,
+                    { life: 0.5 + 0.4 * this.random(), kind: POLLEN, size: 0.1 + 0.06 * this.random() },
+                );
+            }
+            return;
+        }
+        if (this.opened.get(emitter.id) === true) return;
+        this.opened.set(emitter.id, true);
+        const lobes = mixed ? 7 : 5 + (emitter.flower % 4);
+        // The bouquet's flower crowning the maypole is a little larger and has more petals in it;
+        // one in a narrow strip beside the score panel is drawn to fit it.
+        const crowning = emitter.lines === BLOSSOM_MAYPOLE;
+        const radius = this.blossomRadius(emitter) * this.blossomFit;
+        const reach = radius * PETAL_DRAG;
+        const total = Math.round(BLOSSOM_PETALS * this.scale * strength * (crowning ? 1.25 : 1));
+        const turn = emitter.seed * Math.PI * 2;
+        const wedge = Math.PI / lobes;
+        for (let i = 0; i < total; i += 1) {
+            // One of the flower's great petals, and a place inside it: thin at the heart, widest
+            // two thirds of the way out, closing at the tip (most of the small petals lie toward
+            // the rim, where the outline is).
+            const along = 0.2 + 0.8 * Math.sqrt(this.random());
+            const breadth = Math.sin(along * Math.PI) ** 0.75 * wedge * 0.8;
+            const angle = turn + (i % lobes) * wedge * 2 + (this.random() * 2 - 1) * breadth;
+            // Thrown from the heart so that the air stops it at its place.
+            const speed = reach * along * (0.94 + 0.12 * this.random());
+            const across = Math.cos(angle) * speed;
+            const up = Math.sin(angle) * speed;
+            const out = (this.random() - 0.5) * 0.5;
+            sim.spawn(
+                heart.x,
+                heart.y,
+                heart.z,
+                stage.right.x * across + stage.up.x * up + stage.forward.x * out,
+                stage.right.y * across + stage.up.y * up + stage.forward.y * out,
+                stage.right.z * across + stage.up.z * up + stage.forward.z * out,
+                {
+                    life: BLOSSOM_HANG + 2 + 1.6 * this.random(),
+                    kind: PETAL,
+                    flower: mixed ? (i % lobes) % FLOWER_KINDS : emitter.flower,
+                    size: (0.09 + 0.06 * this.random()) * (radius / BLOSSOM_REACH) ** 0.5,
+                    hang: BLOSSOM_HANG * (0.8 + 0.5 * this.random()),
+                    shine: 0.4,
+                },
+            );
+        }
+        // The heart of the flower: a small gold light, and a ring of pollen thrown off it.
+        sim.spawn(heart.x, heart.y, heart.z, 0, 0, 0, {
+            life: 1.5, kind: GLOW, flower: 1, size: radius * 0.95,
+        });
+        const stamens = Math.round(18 * this.scale);
+        for (let i = 0; i < stamens; i += 1) {
+            const angle = (i / stamens) * Math.PI * 2;
+            const speed = reach * 0.17 * (0.7 + 0.6 * this.random());
+            sim.spawn(
+                heart.x,
+                heart.y,
+                heart.z,
+                (stage.right.x * Math.cos(angle) + stage.up.x * Math.sin(angle)) * speed,
+                (stage.right.y * Math.cos(angle) + stage.up.y * Math.sin(angle)) * speed,
+                (stage.right.z * Math.cos(angle) + stage.up.z * Math.sin(angle)) * speed,
+                { life: 1 + 0.8 * this.random(), kind: POLLEN, size: 0.1 + 0.05 * this.random() },
+            );
+        }
+    }
+
+    /**
+     * A stone skips down the sun's road: each touch leaves a ring a little further out and a
+     * little fainter, the hops shortening as it loses way, and a few drops jump where it touched.
+     */
+    skip(emitter) {
+        if (emitter.age < 0) return;
+        const { stage, sim, ripples } = this;
+        const hops = Math.max(3, Math.min(8, Math.round(emitter.lines) || 5));
+        const done = this.serials.get(emitter.id) === emitter.serial ? (this.hops.get(emitter.id) || 0) : 0;
+        // The stone slows: its touches come quicker and quicker (a geometric run of intervals).
+        const due = Math.min(hops, Math.floor(
+            Math.log(1 - Math.min(0.999, emitter.age / emitter.duration) * (1 - SKIP_SHORTEN ** hops))
+                / Math.log(SKIP_SHORTEN),
+        ) + 1);
+        const flat = Math.hypot(this.sun.x, this.sun.z) || 1;
+        const dx = this.sun.x / flat;
+        const dz = this.sun.z / flat;
+        for (let hop = done; hop < due; hop += 1) {
+            const out = SKIP_START + SKIP_HOP * ((1 - SKIP_SHORTEN ** hop) / (1 - SKIP_SHORTEN));
+            const x = stage.origin.x + dx * out;
+            const z = stage.origin.z + dz * out;
+            if (this.groundHeight(x, z) < -0.05) {
+                const fade = SKIP_SHORTEN ** hop;
+                ripples?.add(x, z, (1 + 1.6 * emitter.strength) * (0.4 + 0.6 * fade));
+                // A glint where the stone touches: the splash catching the sun.
+                sim.spawn(x, 0.3, z, 0, 0, 0, {
+                    life: 0.8, kind: GLOW, flower: FLOWER_KINDS, size: 2.2 + 2.4 * fade,
+                });
+                const drops = Math.round((5 + 6 * fade) * this.scale);
+                for (let i = 0; i < drops; i += 1) {
+                    sim.spawn(
+                        x,
+                        0.12,
+                        z,
+                        dx * 2.4 + (this.random() - 0.5) * 1.6,
+                        2.2 + 2.4 * this.random() * fade,
+                        dz * 2.4 + (this.random() - 0.5) * 1.6,
+                        { life: 0.5 + 0.4 * this.random(), kind: POLLEN, size: 0.09 + 0.07 * this.random() },
+                    );
+                }
+            }
+        }
+        this.hops.set(emitter.id, due);
+    }
+
     /** Throw petals into the orbit around the board, each the next of the seven kinds. */
     ring(count, energy) {
         const { stage, sim } = this;
@@ -411,12 +721,13 @@ export class SummerFxDirector {
      * world's reading of play (SummerWorld.wear: level, fever, Reduce motion's share); returns
      * the environment for SummerPetalSim.step(), with the fronts crossing in world x.
      */
-    apply(frame = {}, dt = 0, wind = { x: 1, z: 0, strength: 0.3 }, worn = null) {
+    apply(frame = {}, dt = 0, wind = { x: 1, z: 0, strength: 0.3 }, worn = null, sun = null) {
         const {
             fields, stage, ripples, waves,
         } = this;
         fields.length = 0;
         this.follow(frame.epoch);
+        if (sun && Number.isFinite(sun.x) && Number.isFinite(sun.z)) this.sun.copy(sun);
         const step = Number.isFinite(dt) ? Math.max(0, dt) : 0;
         const emitters = frame.emitters || [];
         for (let i = 0; i < emitters.length; i += 1) {
@@ -425,9 +736,13 @@ export class SummerFxDirector {
             if (fresh) {
                 this.serials.set(emitter.id, emitter.serial);
                 this.emitted.set(emitter.id, 0);
+                this.hops.set(emitter.id, 0);
+                this.opened.delete(emitter.id);
             }
             if (emitter.kind === 'lock') this.lock(emitter, fresh);
-            else if (emitter.kind === 'seeds') this.seeds(emitter);
+            else if (emitter.kind === 'seeds') this.seeds(emitter, fresh);
+            else if (emitter.kind === 'blossom') this.blossom(emitter);
+            else if (emitter.kind === 'skip') this.skip(emitter);
             else if (emitter.kind === 'clear') this.clear(emitter);
             else if (emitter.kind === 'rise') this.rise(emitter);
             else if (emitter.kind === 'bouquet') this.bouquet(emitter);

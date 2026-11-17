@@ -292,11 +292,20 @@ export function wingShape(w) {
 }
 
 /**
- * A point of a wing in the world. `side` −1 left / +1 right, `w` 0..1 how far the wings have
- * unfurled, `beat` the stroke angle (radians, + toward the viewer). The vertex shader computes
- * the same (plus a ripple of its own).
+ * Where the wings hang: an offset (metres) from their place at rest and a scale on their span.
+ * They grow out of the chrysalis, so they go where it goes; beside a board they are sized to the
+ * open water they have (perchFor). The shader reads the same as u.wingMount.
  */
-export function wingPoint(kind, side, an, v, w = 1, beat = 0, out = [0, 0, 0]) {
+export const WING_REST = Object.freeze({
+    x: 0, y: 0, z: 0, scale: 1,
+});
+
+/**
+ * A point of a wing in the world. `side` −1 left / +1 right, `w` 0..1 how far the wings have
+ * unfurled, `beat` the stroke angle (radians, + toward the viewer), `mount` where they hang
+ * (WING_REST). The vertex shader computes the same (plus a ripple of its own).
+ */
+export function wingPoint(kind, side, an, v, w = 1, beat = 0, out = [0, 0, 0], mount = WING_REST) {
     const fan = kind === 0 ? WINGS.fore : WINGS.hind;
     // A young wing is gathered toward its leading edge and a little short; it fans out as it fills.
     const fold = kind === 0 ? 1 : 0;
@@ -304,16 +313,35 @@ export function wingPoint(kind, side, an, v, w = 1, beat = 0, out = [0, 0, 0]) {
     const spread = 0.62 + 0.38 * s;
     const a = lerp(fan.a0, fan.a1, fold + (an - fold) * spread);
     const margin = wingBase(kind, an) * (1 + wingScallop(kind, an) * scallopReach(v));
-    const reach = WINGS.span * margin * v * (0.74 + 0.26 * s);
+    const reach = WINGS.span * mount.scale * margin * v * (0.74 + 0.26 * s);
     const lx = Math.cos(a) * reach;
     const ly = Math.sin(a) * reach;
     // The stroke: the wing turns about the body's upright axis, its tip lagging.
     const th = beat * (0.35 + 0.65 * v);
-    out[0] = side * (WINGS.root[0] + lx * Math.cos(th));
-    out[1] = WINGS.root[1] + ly;
-    out[2] = WINGS.root[2] + Math.abs(lx) * Math.sin(th);
+    out[0] = mount.x + side * (WINGS.root[0] + lx * Math.cos(th));
+    out[1] = mount.y + WINGS.root[1] + ly;
+    out[2] = mount.z + WINGS.root[2] + Math.abs(lx) * Math.sin(th);
     return out;
 }
+
+/**
+ * How far a whole wing reaches out sideways from its root, as a share of WINGS.span (the widest
+ * point of either fan, fully unfurled, at rest, and a hair more): what the room beside a board
+ * must hold.
+ */
+export const WING_REACH = (() => {
+    const p = [0, 0, 0];
+    let most = 0;
+    for (let kind = 0; kind < 2; kind++) {
+        for (let i = 0; i <= 600; i++) {
+            for (let k = 30; k <= 50; k++) {
+                wingPoint(kind, 1, i / 600, k / 50, 1, 0, p);
+                most = Math.max(most, p[0] - WINGS.root[0]);
+            }
+        }
+    }
+    return (most * 1.005) / WINGS.span;
+})();
 
 // ── The lantern lilies ──────────────────────────────────────────────────────────
 

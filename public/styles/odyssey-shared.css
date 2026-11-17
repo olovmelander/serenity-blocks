@@ -7,16 +7,118 @@
  * Loaded after keystone-overlays.css and before the surfaces' own sheets.
  * ================================================================================ */
 
-/* Each chapter's light, from Earth Core's ember to the encore's neon (the navigator's hues).
-   Any element can wear one: data-ody-chapter="3" sets --ody-hue-rgb for what is inside it. */
-[data-ody-chapter='1'] { --ody-hue-rgb: 255, 158, 98; }
-[data-ody-chapter='2'] { --ody-hue-rgb: 98, 204, 255; }
-[data-ody-chapter='3'] { --ody-hue-rgb: 172, 228, 134; }
-[data-ody-chapter='4'] { --ody-hue-rgb: 196, 226, 255; }
-[data-ody-chapter='5'] { --ody-hue-rgb: 255, 186, 214; }
-[data-ody-chapter='6'] { --ody-hue-rgb: 160, 178, 255; }
-[data-ody-chapter='7'] { --ody-hue-rgb: 206, 156, 255; }
-[data-ody-chapter='8'] { --ody-hue-rgb: 255, 110, 204; }
+/* Each chapter's look, from Earth Core's ember to the encore's neon: its light (--ody-hue-rgb),
+   the glass its panels are made of (--ody-glass-rgb at the lit top, --ody-glass-deep-rgb at the
+   foot) and the world's own light there (--ody-light-rgb). Any element can wear one:
+   data-ody-chapter="3" sets them for what is inside it (the navigator's data-chapter too). */
+/* @odyssey-chapter-looks:start (generated from src/core/odyssey/data/chapter-looks.js:
+   run `node scripts/sync-odyssey-chapter-looks.mjs`; do not edit by hand) */
+:root {
+    --ody-glass-top-a: 0.88;
+    --ody-glass-foot-a: 0.95;
+    --ody-ink-muted: rgba(255, 246, 233, 0.74);
+    --ody-ink-faint: rgba(255, 246, 233, 0.62);
+}
+[data-ody-chapter='1'],
+#odyssey-level-select[data-chapter='1'],
+#odyssey-level-select [data-chapter='1'] {
+    --ody-hue-rgb: 255, 158, 98;
+    --ody-glass-rgb: 58, 28, 22;
+    --ody-glass-deep-rgb: 22, 10, 10;
+    --ody-light-rgb: 255, 170, 96;
+}
+[data-ody-chapter='2'],
+#odyssey-level-select[data-chapter='2'],
+#odyssey-level-select [data-chapter='2'] {
+    --ody-hue-rgb: 98, 204, 255;
+    --ody-glass-rgb: 12, 42, 64;
+    --ody-glass-deep-rgb: 4, 17, 32;
+    --ody-light-rgb: 128, 222, 255;
+}
+[data-ody-chapter='3'],
+#odyssey-level-select[data-chapter='3'],
+#odyssey-level-select [data-chapter='3'] {
+    --ody-hue-rgb: 172, 228, 134;
+    --ody-glass-rgb: 20, 46, 40;
+    --ody-glass-deep-rgb: 8, 21, 24;
+    --ody-light-rgb: 255, 236, 170;
+}
+[data-ody-chapter='4'],
+#odyssey-level-select[data-chapter='4'],
+#odyssey-level-select [data-chapter='4'] {
+    --ody-hue-rgb: 196, 226, 255;
+    --ody-glass-rgb: 32, 44, 70;
+    --ody-glass-deep-rgb: 12, 17, 33;
+    --ody-light-rgb: 226, 240, 255;
+}
+[data-ody-chapter='5'],
+#odyssey-level-select[data-chapter='5'],
+#odyssey-level-select [data-chapter='5'] {
+    --ody-hue-rgb: 255, 186, 214;
+    --ody-glass-rgb: 54, 34, 68;
+    --ody-glass-deep-rgb: 19, 13, 35;
+    --ody-light-rgb: 255, 214, 150;
+}
+[data-ody-chapter='6'],
+#odyssey-level-select[data-chapter='6'],
+#odyssey-level-select [data-chapter='6'] {
+    --ody-hue-rgb: 160, 178, 255;
+    --ody-glass-rgb: 19, 21, 50;
+    --ody-glass-deep-rgb: 5, 6, 19;
+    --ody-light-rgb: 190, 204, 255;
+}
+[data-ody-chapter='7'],
+#odyssey-level-select[data-chapter='7'],
+#odyssey-level-select [data-chapter='7'] {
+    --ody-hue-rgb: 206, 156, 255;
+    --ody-glass-rgb: 39, 21, 60;
+    --ody-glass-deep-rgb: 13, 7, 27;
+    --ody-light-rgb: 232, 196, 255;
+}
+[data-ody-chapter='8'],
+#odyssey-level-select[data-chapter='8'],
+#odyssey-level-select [data-chapter='8'] {
+    --ody-hue-rgb: 255, 110, 204;
+    --ody-glass-rgb: 44, 14, 44;
+    --ody-glass-deep-rgb: 16, 6, 22;
+    --ody-light-rgb: 255, 132, 214;
+}
+/* @odyssey-chapter-looks:end */
+
+/* ---- Chapter glass ----------------------------------------------------------------------
+   One fill for every Odyssey panel that floats over the live world (the map's orb card and
+   charm chip, the briefing docked over the ride, the navigator's cards): the chapter's glass,
+   see-through enough that the world's colour carries into it, solid enough that every ink reads
+   over a white world (the alphas come from the same table and are asserted by its test).
+   No backdrop blur: the map renders on underneath, and a blur would re-sample the WebGPU
+   canvas every frame it draws. It was tried (blur(14px) saturate(1.25) behind the orb card)
+   and could not be seen: at the alphas the inks need, the glass lets 5-12 % of the world
+   through, and a blur of that is the same picture. The glass is smoked, not frosted. */
+/* With no chapter worn: the old indigo. (:where: no specificity, so the page's own chapter,
+   html[data-ody-chapter], outranks it.) */
+:where(:root) {
+    --ody-glass-rgb: 27, 23, 60;
+    --ody-glass-deep-rgb: 12, 10, 30;
+    --ody-light-rgb: var(--sb-gold-rgb);
+}
+
+/* Declared again on everything that wears a chapter: a custom property that reads another
+   is resolved where it is DECLARED, so inherited from :root these would stay the default's. */
+:root,
+[data-ody-chapter],
+#odyssey-level-select[data-chapter],
+#odyssey-level-select [data-chapter] {
+    --ody-glass-fill:
+        linear-gradient(
+            180deg,
+            rgba(var(--ody-glass-rgb), var(--ody-glass-top-a, 0.88)) 0%,
+            rgba(var(--ody-glass-deep-rgb), var(--ody-glass-foot-a, 0.95)) 100%
+        );
+    /* The glass's lit edge: the chapter's light along the top, fading down the sides. */
+    --ody-glass-edge: rgba(var(--ody-hue-rgb, var(--sb-gold-rgb)), 0.3);
+    --ody-glass-sheen: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.14), inset 0 0 0 1px rgba(var(--sb-cream-rgb), 0.03);
+}
+
 
 /* ---- An orb's world in its rings ------------------------------------------------------ */
 .sb-orb-art {

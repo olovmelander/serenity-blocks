@@ -64,6 +64,17 @@ import { FOREST_SHADE_PLATE, FOREST_WORLD_SCALE, bakeForestShadeData } from './o
 import { ODYSSEY_HERO_CLOUD_SPECS } from './odyssey-hero-cloud-specs.js';
 import { bakeValleyMist } from './odyssey-valley-mist.js';
 import {
+    ODYSSEY_DAY_TURN, ODYSSEY_HOUR_LOOK, createDayTurnPace, dayTurnField,
+} from './odyssey-day-turn.js';
+import { odysseyWeatherDrive } from './odyssey-weather-clock.js';
+import { createOdysseyHollowMist } from './odyssey-hollow-mist.js';
+import { ODYSSEY_TURN_WAKE, createOdysseyTurnWake, inTurnWakeReach } from './odyssey-turn-wake.js';
+import {
+    AUTUMN_KIND, ODYSSEY_AUTUMN, autumnCrown, autumnGrass, autumnKindNode, autumnKindOf, autumnSnowNode,
+    autumnWeight, packSnowKind,
+} from './odyssey-autumn.js';
+import { prefersReducedMotion } from '../../../themes/shared/reduced-motion.js';
+import {
     ODYSSEY_BOULDERS, boulderMatrix, buildBoulderGeometry, buildBoulderSites,
 } from './odyssey-boulders.js';
 import {
@@ -72,16 +83,32 @@ import {
 import { ODYSSEY_WORLD_SUN } from '../chapter-environments/shared/chapter-profile.js';
 import {
     sampleColourScript,
-    ODYSSEY_COLOUR_SCRIPT,
     ODYSSEY_WATER_RAMP,
-    odysseyDeepWaterDim,
 } from '../odyssey-colour-script.js';
+import {
+    applyOceanClock, createOceanClock, createOceanLook, oceanClockAt, oceanDepthLook,
+} from './odyssey-ocean-depth.js';
+import {
+    SNELL_WINDOW, snellDepthLight, snellMirror, snellWindowPresence, snellWindowWorld,
+} from './odyssey-ocean-window.js';
+import { createOdysseyOceanScenery } from './odyssey-ocean-scenery.js';
+import { createOdysseyBreachBurst } from '../composition/odyssey-breach-burst.js';
+import { createOdysseyDolphins } from './odyssey-dolphins.js';
 // Read-only: the 1->2 carry fades ocean life by the SAME density curve the quench veils with,
 // so a re-shaped quench cannot leave fish visible through a thinner veil.
 import { behindSteamDepth, steamQuenchDensity } from '../composition/odyssey-steam-quench.js';
 import { ORBIT_EARTH_SEAM, orbitEarthOver } from '../composition/odyssey-orbit-earth.js';
 import { createOdysseyFish } from './odyssey-fish.js';
 import { createOdysseyJellyfish } from './odyssey-jellyfish.js';
+// THE EVENING (chapter 5, 2026-11-17): the day ends on the climb. See odyssey-evening.js.
+import {
+    ODYSSEY_EVENING_U, eveningAir, eveningCirrusColour, eveningCirrusCover, eveningCloudLitShare, eveningCloudWhite,
+    eveningDome, eveningLights, updateOdysseyEvening,
+} from './odyssey-evening.js';
+import { createOdysseyCloudSea } from './odyssey-cloud-sea.js';
+import { createOdysseySummitCap } from './odyssey-summit-cap.js';
+import { createOdysseyWallGusts, wallGustsRevealAt } from './odyssey-wall-gusts.js';
+import { findHeroSummit } from '../composition/odyssey-summit-spindrift.js';
 
 // The golden suite imports the cloud silhouette bake from here; it now lives in the pure module.
 export { bakeOdysseyCloudField };
@@ -298,6 +325,11 @@ const GROUND_CLOUD_SHADOW = Object.freeze({
     regionWindow: Object.freeze([0.28, 0.58]),
 });
 /**
+ * How dark the sea's body stands where a cloud's shadow is deepest, against its sunlit self: the
+ * field takes 0.46 of the direct light, and this is the body at light 0 (so ~0.72 under a cloud).
+ */
+const SEA_CLOUD_SHADE = 0.40;
+/**
  * Cloud-shadow strength and cover over Act II progress (pure; exported for its test). The breach
  * comes up under a broken sky that opens as the shore arrives ("light floods the island"), then a
  * steady scattered cover; under water there is no ground light to shade.
@@ -497,8 +529,8 @@ const WATER_JADE = Object.freeze([0.20, 0.72, 0.60]);
  * (never replace them — the script still owns the journey's hue walk), authored bright and
  * saturated for the grade like every palette here.
  */
-const UW_LUMINOUS = Object.freeze([0.10, 0.50, 0.54]);
-const UW_INDIGO = Object.freeze([0.014, 0.026, 0.090]);
+// (2026-11-17: the two poles are the depth arc's now, one pair per water — `uWaterLum` and the
+// deep plate, written each frame from odyssey-ocean-depth.js by the eye's depth.)
 
 /**
  * THE 1->2 CARRY — embers become bubbles (seamless pass, cross-session interface).
@@ -694,19 +726,27 @@ const FIELD_BREATH_AMP = 0.34;
 const FIELD_BREATH_PERIOD_MIN = 34;
 const FIELD_BREATH_PERIOD_MAX = 78;
 
-// The two fixed ends of the water banding, read ONCE from the colour script so the plates
-// and the keyframes can never drift. Sampling the script for them per frame would be three
-// more Oklab walks for values that do not change.
-const SHALLOWS_BODY = sampleColourScript(0.12).skyHorizon;
-const ABYSS_BODY = sampleColourScript(0.0).skyHorizon;
-// Where the script stops being water: the last keyframe whose medium is 'water' (today the
-// 'shallows' at 0.12 — computed, not asserted, so a script edit moves it). The MID water
-// plate tracks the live sample, and past this point the script's horizon is the breach's
-// pale AIR sky; with uSubmerged driven by the real eye, the p 0.18→0.20 ascent renders as
-// water, and an unclamped plate would paint that air INTO the water column.
-const WATER_SCRIPT_END = ODYSSEY_COLOUR_SCRIPT
-    .filter((k) => k.medium === 'water')
-    .reduce((last, k) => Math.max(last, k.p), 0);
+// The light either side of the day's turn (odyssey-day-turn.js): the script at the two ends of its
+// window, on the same act-progress map `update` walks the script by (0.05 + actT x 0.9).
+const DAY_TURN_FROM = sampleColourScript(0.05 + (ODYSSEY_DAY_TURN.window[0] * 0.9));
+const DAY_TURN_TO = sampleColourScript(0.05 + (ODYSSEY_DAY_TURN.window[1] * 0.9));
+/** A light's sun under the weather (odyssey-weather-clock.js): softened toward its sky, then its brightness. */
+function weatherSun(light, weather, target) {
+    return target.setRGB(
+        (light.sun[0] + ((light.skyHorizon[0] - light.sun[0]) * weather.soft)) * weather.sun,
+        (light.sun[1] + ((light.skyHorizon[1] - light.sun[1]) * weather.soft)) * weather.sun,
+        (light.sun[2] + ((light.skyHorizon[2] - light.sun[2]) * weather.soft)) * weather.sun,
+    );
+}
+/** The land's share of the hour's look at `hour`: (shade chroma, snow shade chroma, alpenglow, shade depth). */
+function landHourLook(hour, look, target) {
+    return target.set(
+        look.shadeChroma * hour,
+        look.snowShadeChroma * hour,
+        look.alpenglow * hour,
+        look.shadeDeep * hour,
+    );
+}
 
 // ── bakes ────────────────────────────────────────────────────────────────────────
 
@@ -1204,6 +1244,9 @@ export function createOdysseyWorld({
     // contract file documents. One default, shared by every caller; opt back in explicitly.
     heroes = false,
     cloudField = true,
+    // THE SEA OF CLOUDS under chapter 5's evening (odyssey-cloud-sea.js). Rides the field's lever
+    // too (no field, no sea); `?odysseyNoCloudSea=1` on the board removes it alone.
+    cloudSea = true,
     cloudFieldCount = 0,
     // THE CLOUD LOOK (odyssey-cloud-looks.js): the paint the field wears, and the specs it is
     // sculpted from (the board resolves both once, so the bake worker sculpts the same masses).
@@ -1245,7 +1288,17 @@ export function createOdysseyWorld({
     // `{ relief, textures: { sunFields, atlas, detail, macro }, cloudField }`; any missing
     // piece is baked right here, synchronously, as before — one code path, pinned by goldens.
     prebaked = null,
+    // Where the weather's clock stands at world time 0 (seconds; odyssey-weather-clock.js). The
+    // board hands in the wall clock, so a session does not open on the same weather as the last;
+    // left at 0 (the playgrounds, the tests) a pinned time repeats.
+    weatherPhase = 0,
+    // AUTUMN ON THE MOUNTAIN (odyssey-autumn.js): chapter 4's palette. Ships ON;
+    // `?odysseyNoAutumn=1` on the board builds none of it (ADR-0015).
+    autumn = true,
 } = {}) {
+    const weatherEpoch = Number.isFinite(weatherPhase) ? weatherPhase : 0;
+    const weatherNow = {};
+    const dayTurnPace = createDayTurnPace(DAY_TURN_FROM, DAY_TURN_TO);
     const cloudLookPaint = cloudLook?.paint || null;
     // ── THE CLIMB'S FRAME (2026-10-24) ──────────────────────────────────────────────────
     // At the end of chapter 5 the board shrinks this whole group toward the sea-level point
@@ -1353,8 +1406,9 @@ export function createOdysseyWorld({
     leafAtlasTex.needsUpdate = true;
     // THE MIST PLATE (GROUND_MIST; odyssey-valley-mist.js): R = the hollows' mist top over the
     // sea, G = the pool's depth, both in u, read at `xz / RELIEF_EXTENT + 0.5`.
+    const valleyMistPlate = bakeValleyMist(relief.sample, ODYSSEY_SEA_LEVEL);
     const valleyMistTex = (() => {
-        const plate = bakeValleyMist(relief.sample, ODYSSEY_SEA_LEVEL);
+        const plate = valleyMistPlate;
         const half = new Uint16Array(plate.data.length);
         const one = THREE.DataUtils.toHalfFloat(1);
         for (let t = 0; t < plate.data.length; t += 4) {
@@ -1409,7 +1463,7 @@ export function createOdysseyWorld({
     // near-surface ascent as abyss-dark water.
     const uEyeDepth = uniform(1);
     // THE DEEP IS DARK (Act I overhaul, 2026-10-20): the in-scattered light's multiplier by the
-    // eye's depth (`odysseyDeepWaterDim`), so the column is deep and dim at the vent and the
+    // eye's depth (the depth arc's `dim`), so the column is deep and dim at the vent and the
     // shafts, motes and Snell window are the lights in it. 1 near the surface (the breach).
     const uDeepDim = uniform(1);
     // 1 while the eye is AT the surface (ramping out over 6 u), 0 elsewhere — the meniscus window.
@@ -1445,11 +1499,29 @@ export function createOdysseyWorld({
     // THE 2->3 SPRAY: envelope (0 = off) and age in seconds since the eye broke the surface.
     const uSpray = uniform(0);
     const uSprayAge = uniform(0);
-    // The three water plates. Driven from the colour script's water keyframes so the ocean's
-    // depth banding and the journey's palette can never drift apart (they are the same data).
+    // The three water plates, written each frame from the depth arc (odyssey-ocean-depth.js).
     const uWaterShallow = uniform(new THREE.Color(0.29, 0.54, 0.69));
     const uWaterMid = uniform(new THREE.Color(0.10, 0.29, 0.42));
     const uWaterDeep = uniform(new THREE.Color(0.020, 0.105, 0.165));
+    // THE DEPTH ARC (odyssey-ocean-depth.js): the light the surface lets in at the eye's depth
+    // (turquoise in the shallows, a dim blue in the abyss) and how much of a well of it the
+    // zenith keeps in the dimmed column.
+    const uWaterLum = uniform(new THREE.Color(0.10, 0.50, 0.54));
+    const uWaterWell = uniform(0);
+    // ...the god rays' strength there, how much of the surface's light the water over the eye takes
+    // (per u of path), and how much of the world Snell's window shows (odyssey-ocean-window.js).
+    const uShaftGain = uniform(1);
+    const uCeilAbsorb = uniform(0);
+    const uSnellWorld = uniform(0);
+    // ALIVE ON THE CLOCK (odyssey-ocean-depth.js `oceanClockAt`): the light a passing cloud leaves
+    // the column, the surface's state (calm .. choppy; 1 out of the water, so the island's sea is
+    // its own), and the wandering plankton bloom (xyz, strength).
+    const uSeaLight = uniform(1);
+    const uSeaChop = uniform(1);
+    const uBloom = uniform(new THREE.Vector4(0, 0, 0, 0));
+    const seaClock = createOceanClock();
+    const seaClockColumn = { x: -8, z: 3, seaLevel: ODYSSEY_SEA_LEVEL };
+    const oceanLook = createOceanLook();
     /** The dawn-gold kiss the crest SSS transmits — kept OUT of the air palette on purpose. */
     const uWaterGlow = uniform(new THREE.Color(0.88, 0.75, 0.50));
     /**
@@ -1468,10 +1540,46 @@ export function createOdysseyWorld({
      * ~1.4 km wavelength, travelling along +x/+z; per-tree flutter rides on top of it.
      */
     const WIND_K = 0.0045;
-    const gustFront = (xz) => sin(uTime.mul(0.6).sub(xz.x.mul(WIND_K * 0.8).add(xz.y.mul(WIND_K * 0.6))));
+    // GUSTS COME IN SPELLS (masterpiece pass, 2026-11-17): the front was one endless even wave
+    // train. A slow envelope now travels through it on its own heading (a ~4 km swell of wind
+    // every ~50 s), so a few fronts run through the meadow and the forest together and then the
+    // air stills; `uGust` is the weather's own windiness on top (odyssey-weather-clock.js).
+    const uGust = uniform(1);
+    const gustFront = (xz) => sin(uTime.mul(0.6).sub(xz.x.mul(WIND_K * 0.8).add(xz.y.mul(WIND_K * 0.6))))
+        .mul(sin(uTime.mul(0.125).sub(xz.x.mul(0.0011).sub(xz.y.mul(0.0009)))).mul(0.42).add(0.58).mul(uGust));
     // CLOUD SHADOWS (see GROUND_CLOUD_SHADOW): strength 0..1 and cover 0..1, CPU-driven.
     const uCloudShadow = uniform(0);
     const uCloudCover = uniform(0.5);
+    // THE DAY TURNS + THE HOUR (odyssey-day-turn.js). `uTurn` is the turning shade (front, width,
+    // on, depth). The land's sun and the land's share of the hour's look stand at two values, the
+    // light ahead of the shade and the light behind it; outside the turn both are the script's
+    // live value, so `mix(a, b, turned)` is that value. `uHourSky` is the hour's look for
+    // everything the shade does not cross (the dome and the clouds):
+    // (warm air, cloud sun, the evening belt, -).
+    const uTurn = uniform(new THREE.Vector4(0, ODYSSEY_DAY_TURN.width, 0, 0));
+    const uLandSunA = uniform(new THREE.Color(1, 0.95, 0.86));
+    const uLandSunB = uniform(new THREE.Color(1, 0.95, 0.86));
+    // (shade chroma, snow shade chroma, alpenglow, shade depth)
+    const uLandHourA = uniform(new THREE.Vector4(0, 0, 0, 0));
+    const uLandHourB = uniform(new THREE.Vector4(0, 0, 0, 0));
+    const uHourSky = uniform(new THREE.Vector4(0, 0, 0, 0));
+    // The mist low on the land (GROUND_MIST): its density and the most it veils, as multiples of
+    // noon's (the hour gathers it, the weather breathes it).
+    const uMist = uniform(new THREE.Vector2(1, 1));
+    // (Its outline is the detail bake's own: the value noise for the billows, and the cumulus
+    // silhouette the cloud shadows are cut from, stretched off its 0.42..0.70 band, for the heads.)
+    const dayTurnOf = (xz) => dayTurnField(xz, uTurn, {
+        billow: (uvN) => texture(detailTex, uvN).level(0).b,
+        scallop: (uvN) => clamp(texture(detailTex, uvN).level(0).a.sub(0.42).mul(3.57), 0, 1),
+    });
+    // AUTUMN (odyssey-autumn.js): how far the season has turned ahead of the shade and behind it
+    // (0 on the island, 1 on the mountains; both the same outside the turn).
+    const uAutumn = uniform(new THREE.Vector2(0, 0));
+    const autumnOf = (y, turn) => autumnWeight(y, mix(uAutumn.x, uAutumn.y, turn.y));
+    // The palette's shade colours, by the forest's own shade law.
+    const AUTUMN_SHADES = ODYSSEY_AUTUMN.crowns.map((stop) => shadeColourFor(stop.colour, stop.role));
+    const landSunOf = (turn) => mix(uLandSunA, uLandSunB, turn.y);
+    const landHourOf = (turn) => mix(uLandHourA, uLandHourB, turn.y);
     // THE ANTISOLAR SKY (odyssey-sky-optics.js): the bow's and the shower veil's strengths.
     const uBow = uniform(0);
     const uShowerVeil = uniform(0);
@@ -1481,7 +1589,8 @@ export function createOdysseyWorld({
      * field) for the shapes, and a rotated, 3.4x larger read of the value-noise channel (`.b`)
      * for which regions of sky are cloudy at all. Plain (inline) — it samples a texture.
      */
-    const cloudShadowLight = (xz) => {
+    // `turn` (optional): the caller's own `dayTurnOf(xz)`, so the turning shade is read once.
+    const cloudShadowLight = (xz, turn = null) => {
         const cs = GROUND_CLOUD_SHADOW;
         const shapes = texture(detailTex, xz.div(cs.world)
             .add(vec2(uTime.mul(cs.drift[0]).add(cs.offset[0]), uTime.mul(cs.drift[1]).add(cs.offset[1])))).a;
@@ -1495,7 +1604,9 @@ export function createOdysseyWorld({
                 float(cs.regionWindow[1]),
                 regions.add(uCloudCover.sub(0.5).mul(0.3)),
             ));
-        return float(1).sub(cover.mul(cs.depth).mul(uCloudShadow));
+        // ...and the one great shadow the day turns behind (odyssey-day-turn.js).
+        return float(1).sub(cover.mul(cs.depth).mul(uCloudShadow))
+            .mul(float(1).sub((turn || dayTurnOf(xz)).x.mul(uTurn.w)));
     };
     const SWASH_RUN = 0.62;
     const SWASH_BASE = -0.14;
@@ -1593,13 +1704,41 @@ export function createOdysseyWorld({
     });
     const SKY_SUN_FLAT_LEN = Math.hypot(ODYSSEY_WORLD_SUN[0], ODYSSEY_WORLD_SUN[2]);
     const skySunFlat = vec2(ODYSSEY_WORLD_SUN[0] / SKY_SUN_FLAT_LEN, ODYSSEY_WORLD_SUN[2] / SKY_SUN_FLAT_LEN);
-    const warmAirFor = (dir) => {
-        const side = clamp(dot(normalize(dir.xz.add(vec2(1e-4, 0))), skySunFlat), 0, 1);
+    /**
+     * The air in a view direction (unit vector): the sky's gradient plus its warm side.
+     *
+     * THE HOUR (odyssey-day-turn.js): late in the day the warm air toward the sun deepens, and the
+     * lowest sky all round the horizon takes the evening's rose, deepest OPPOSITE the sun (the belt
+     * over the Earth's shadow), which is the sky the act's camera faces. The belt is a MIX toward
+     * its own colour and lies under ~12 degrees: the script's horizon colour reaches a third of the
+     * way up the dome, and a warm horizon there mixes with the zenith's blue into a grey lilac
+     * (captured; the owner judges the sky's colour first). So the script's horizon stays the day's
+     * pale blue, the sky above the belt stays clean, and the far land takes the belt as its haze.
+     * Both terms are zero at noon.
+     *
+     * The air is read for every fragment of the world, some of them several times, so the belt is
+     * two straight ramps, squared, not smoothsteps (as smoothsteps it was the largest single cost
+     * this pass added on the meadow stations), and a caller whose direction can never lie in the
+     * belt leaves it out (`belt` false).
+     */
+    const skyAirAt = (dir, belt = true) => {
+        const toSun = dot(normalize(dir.xz.add(vec2(1e-4, 0))), skySunFlat).toVar();
+        const side = clamp(toSun, 0, 1);
         const low = float(1).sub(smoothstep(float(-0.06), float(0.19), dir.y));
-        return uSunColour.mul(vec3(...SKY_WARM_AIR)).mul(side.mul(sqrt(side)).mul(low).mul(SKY_WARM_AIR_GAIN));
+        const warm = uSunColour.mul(vec3(...SKY_WARM_AIR))
+            .mul(side.mul(sqrt(side)).mul(low).mul(float(SKY_WARM_AIR_GAIN).add(uHourSky.x)));
+        // Through chapter 5 the evening's two sides are laid over the hour's air
+        // (odyssey-evening.js; a uniform branch elsewhere).
+        if (!belt) return eveningAir(skyColourFor(dir.y).add(warm), dir, uSunColour);
+        const band = clamp(float(1).sub(dir.y.mul(1 / 0.21)), 0, 1)
+            .mul(clamp(dir.y.add(0.34).mul(1 / 0.29), 0, 1));
+        const beltAmt = band.mul(band).mul(clamp(toSun.negate(), 0, 1).mul(0.6).add(0.4)).mul(uHourSky.z);
+        return eveningAir(
+            mix(skyColourFor(dir.y), vec3(...ODYSSEY_HOUR_LOOK.antiRoseTint), beltAmt).add(warm),
+            dir,
+            uSunColour,
+        );
     };
-    /** The air in a view direction (unit vector): the sky's gradient plus its warm side. */
-    const skyAirAt = (dir) => skyColourFor(dir.y).add(warmAirFor(dir));
     /**
      * THE HORIZON IS THE LIMB (2026-10-26). Climbing, the Earth's horizon sinks under the level
      * (its limb's depression, ORBIT_EARTH_SEAM.limbSin), and the sky's bright horizon has to sink
@@ -1746,9 +1885,11 @@ export function createOdysseyWorld({
                 wp.xz.sub(vec2(...GROUND_MIST.drift).mul(uTime)).mul(GROUND_MIST.wispScale),
             ).b;
             const gmWisp = gmWispN.sub(0.5).mul(2 * GROUND_MIST.wisp).add(1);
+            // (`uMist.x`: the mist gathers late in the day and breathes with the weather.)
             const gmTau = d.mul(gmMean).mul(GROUND_MIST.density)
                 .add(gmPoolPath.mul(GROUND_MIST.pool))
-                .mul(max(gmWisp, float(0)));
+                .mul(max(gmWisp, float(0)))
+                .mul(uMist.x);
             const gmW = float(1).sub(exp(gmTau.negate()))
                 .mul(smoothstep(float(GROUND_MIST.near[0]), float(GROUND_MIST.near[1]), d))
                 .mul(float(1).sub(smoothstep(
@@ -1756,7 +1897,8 @@ export function createOdysseyWorld({
                     float(ODYSSEY_SEA_LEVEL + GROUND_MIST.eyeFade[1]),
                     cameraPosition.y,
                 )))
-                .mul(GROUND_MIST.gain * gmStrength);
+                // (`uMist.y`: late in the day it may veil a little more than at noon.)
+                .mul(uMist.y.mul(GROUND_MIST.gain * gmStrength));
             const gmSun = texture(sunVisTex, gmUv).level(0).r;
             const gmGlow = max(dot(toDir, uSunDir), 0).pow(6).mul(GROUND_MIST.forward);
             const gmCol = mix(
@@ -1795,14 +1937,14 @@ export function createOdysseyWorld({
             const depthBelow = clamp(float(ODYSSEY_SEA_LEVEL).sub(positionWorld.y).div(160), 0, 1);
             const bandShallow = mix(uWaterShallow, uWaterMid, smoothstep(float(0.10), float(0.42), depthBelow));
             // The deep end leans INDIGO (item 4): a long water column is violet-dark, not grey-navy.
-            const deepIndigo = mix(uWaterDeep, vec3(...UW_INDIGO), 0.55);
+            const deepIndigo = uWaterDeep;
             const banded = mix(bandShallow, deepIndigo, smoothstep(float(0.45), float(0.92), depthBelow));
             // ...and in the last ~25 u under the surface the long rays converge on LUMINOUS water,
             // not mid-blue: the top metres of a sunlit sea glow. Without it the frame just under the
             // breach sat a 34-luma step below the daylight frame above it (2->3 seam gate).
             const convergePlate = mix(
                 mix(uWaterMid, deepIndigo, uEyeDepth),
-                vec3(...UW_LUMINOUS).mul(1.25),
+                uWaterLum.mul(1.25),
                 float(1).sub(smoothstep(float(0.0), float(0.18), uEyeDepth)).mul(0.8),
             );
             const bandedDir = mix(banded, convergePlate, grazing);
@@ -1813,7 +1955,7 @@ export function createOdysseyWorld({
                 // Dimmed hard with the eye's depth: the glow is the SURFACE's, so 120 u down it must
                 // sit back and let the shafts be the luminous accents (the value hierarchy) rather
                 // than wash the whole frame teal — the first capture's read.
-                vec3(...UW_LUMINOUS).mul(float(1).sub(uEyeDepth.mul(0.72))),
+                uWaterLum.mul(float(1).sub(uEyeDepth.mul(0.72))),
                 0.60,
             );
             // THE WELL OF LIGHT (Act I overhaul, 2026-10-20): in the deep the light that reaches the
@@ -1822,7 +1964,7 @@ export function createOdysseyWorld({
             const zen2 = clamp(dirY, 0, 1).mul(clamp(dirY, 0, 1));
             const zen8 = zen2.mul(zen2).mul(zen2.mul(zen2));
             const waterTarget = mix(bandedDir, glowTarget, surfaceGlow).mul(uDeepDim)
-                .add(vec3(...UW_LUMINOUS).mul(zen8.mul(float(1).sub(uDeepDim)).mul(0.42)));
+                .add(uWaterLum.mul(zen8.mul(uWaterWell).mul(0.42)));
             // Component-wise mix against the same target: the hue WALKS with distance (red gone
             // first, blue last) instead of every channel arriving together. This is what puts
             // value structure back into the frame the steam veil used to supply.
@@ -2484,7 +2626,27 @@ export function createOdysseyWorld({
             return mTint;
         })();
         // The north beach: dune grass in the tufts, and paler sand with a broad tonal swell.
-        const grassPole = mix(poles('grass').mul(meadowTint), vec3(...NORTH_BEACH_PAINT.grass), nbBelt.mul(nbDune));
+        // THE DAY'S TURN at this point of the land (odyssey-day-turn.js), read once: how deep it
+        // stands in the turning shade, and whether its light is already the afternoon's.
+        const gTurn = dayTurnOf(positionWorld.xz).toVar();
+        // AUTUMN (odyssey-autumn.js): the grass goes tawny, with heath in patches, where the high
+        // band or the day's turn has reached. The patch noise is paid only where there is autumn.
+        const gAutumn = autumn ? autumnOf(height, gTurn).toVar() : null;
+        const grassGreen = mix(poles('grass').mul(meadowTint), vec3(...NORTH_BEACH_PAINT.grass), nbBelt.mul(nbDune));
+        const grassPole = autumn
+            ? Fn(() => {
+                const turnedGrass = grassGreen.toVar();
+                If(gAutumn.greaterThan(0.002), () => {
+                    turnedGrass.assign(autumnGrass({
+                        grass: grassGreen,
+                        weight: gAutumn,
+                        patch: noise2(positionWorld.xz.div(float(ODYSSEY_AUTUMN.grass.patch)).add(vec2(7.7, 3.1))),
+                        moist,
+                    }));
+                });
+                return turnedGrass;
+            })()
+            : grassGreen;
         const sandPole = mix(
             poles('sand'),
             vec3(...NORTH_BEACH_PAINT.pale).mul(mix(float(1), float(0.86), dryness.oneMinus())),
@@ -2573,7 +2735,11 @@ export function createOdysseyWorld({
         const canopyMean = vec3(forestShade.b, forestShade.a, forestShade.a.mul(0.42))
             .div(max(forestShade.g, 0.02))
             .mul(FOREST_SHADE_PLATE.colourScale * FOREST_FAR_TONE);
-        albedo = mix(albedo, canopyMean, clamp(farForest.mul(1.6), 0, 1));
+        // (In autumn the painted canopy turns with the trees it stands for.)
+        const canopyNow = autumn
+            ? mix(canopyMean, vec3(...ODYSSEY_AUTUMN.canopy), gAutumn.mul(ODYSSEY_AUTUMN.canopyShare))
+            : canopyMean;
+        albedo = mix(albedo, canopyNow, clamp(farForest.mul(1.6), 0, 1));
 
         const SHORE_TOP = ODYSSEY_SEA_LEVEL + 1.2;
         const albedoInland = albedo;
@@ -2740,12 +2906,15 @@ export function createOdysseyWorld({
          * RATIO is produced in exactly one place — `value`.
          */
         const ndl = max(dot(litNormal, uSunDir), 0);
+        // (The day's turn at this point, `gTurn`, was read above with the grass.)
+        const gSun = landSunOf(gTurn).toVar();
+        const gHour = landHourOf(gTurn).toVar();
         // Drifting cloud shadows over all dry land (see GROUND_CLOUD_SHADOW); the seabed and the
         // wet margin are left alone (their light is the water's business).
         const cloudLight = q.cloudShadows
             ? mix(
                 float(1),
-                cloudShadowLight(positionWorld.xz),
+                cloudShadowLight(positionWorld.xz, gTurn),
                 smoothstep(float(ODYSSEY_SEA_LEVEL + 1), float(ODYSSEY_SEA_LEVEL + 6), height),
             )
             : float(1);
@@ -2800,18 +2969,28 @@ export function createOdysseyWorld({
                 .add(float(ODYSSEY_GROUND_SHADE.snow.ambient).mul(kSnow)),
             openness,
         ).toVar();
-        const value = ambient.add(float(1).sub(ambient).mul(lightAmt)).mul(float(GROUND_LIT_GAIN));
+        // (`gHour.w`, the hour: under a low sun the sky's fill is a smaller share of the light, so the
+        // long shadows stand a little deeper against the lit land.)
+        const ambientNow = ambient.mul(float(1).sub(gHour.w));
+        const value = ambientNow.add(float(1).sub(ambientNow).mul(lightAmt)).mul(float(GROUND_LIT_GAIN));
         // The journey's ambient still reaches the ground — the colour script drives it — but
         // NORMALISED to luma 1 and pulled most of the way to neutral first, because a saturated
         // cool fill light is precisely what the measurement refutes for vegetation shade.
         const ambientHue = uShadowTint.div(max(dot(uShadowTint, vec3(...ODYSSEY_GROUND_LUMA)), 0.001));
+        // THE HOUR (odyssey-day-turn.js `ODYSSEY_HOUR_LOOK`): late in the day the shade takes more of
+        // the sky's hue (long blue shadows; `gHour.x` on the land, `.y` on snow), and lit snow leans
+        // from the sun's gold to rose (`gHour.z`, alpenglow). All three are zero at noon.
         const lightCol = mix(
             mix(vec3(1), ambientHue, mix(
-                mix(float(GROUND_AMBIENT_CHROMA), float(SUMMIT_LEDGES.rockSkyChroma), kRock.mul(summitGate)),
-                float(ODYSSEY_GROUND_SHADE.snow.skyChroma),
+                mix(float(GROUND_AMBIENT_CHROMA), float(SUMMIT_LEDGES.rockSkyChroma), kRock.mul(summitGate))
+                    // (...and under the turning shade the land is lit by the sky alone: cool and
+                    // silver, not merely darker.)
+                    .add(gHour.x)
+                    .add(gTurn.x.mul(ODYSSEY_DAY_TURN.silver)),
+                float(ODYSSEY_GROUND_SHADE.snow.skyChroma).add(gHour.y),
                 kSnow,
             )),
-            uSunColour,
+            gSun.mul(mix(vec3(1), vec3(...ODYSSEY_HOUR_LOOK.alpenglowTint), kSnow.mul(gHour.z))),
             lightAmt,
         );
         // Rim: unlit-compatible fake translucency on snow only, cool and weak.
@@ -2838,7 +3017,7 @@ export function createOdysseyWorld({
             // cast that the grade rendered as beige sand. Real alpenglow is light raking across
             // a slope; a band over the terminator half of the Lambert range keeps the warm kiss
             // on the turning flanks and leaves face-on snow white.
-            .add(uSunColour.mul(vec3(1.0, 0.70, 0.55))
+            .add(gSun.mul(vec3(1.0, 0.70, 0.55))
                 .mul(kSnow.mul(sunVis)
                     .mul(smoothstep(float(0.04), float(0.30), ndl))
                     .mul(float(1).sub(smoothstep(float(0.45), float(0.80), ndl)))
@@ -3647,6 +3826,9 @@ export function createOdysseyWorld({
     // there (THE HORIZON IS THE LIMB); the sun, the cirrus and the limb line keep the level.
     const skyUpY = limbUp(skyDir.y);
     const skyGradDir = vec3(skyDir.x, skyUpY, skyDir.z);
+    // The dome's own sun: the world sun, sinking in the sky through chapter 5's evening (the
+    // APPARENT sun of odyssey-evening.js; everywhere else it IS uSunDir, value for value).
+    const uSkySun = ODYSSEY_EVENING_U.sunDir;
     // THE CIRRUS (Act II pass, step 4). Between the cumulus the act's sky was one clean gradient.
     // A high wisp layer gives it a ceiling: the view ray met with a plane overhead (so the wisps
     // run to the horizon in perspective), value noise stretched along the summit's wind and
@@ -3671,22 +3853,22 @@ export function createOdysseyWorld({
         // ...and thinned in the sun's glare: looking toward the sun the eye looks along the wind,
         // so a wisp is seen end-on as an upright streak, and lit by the sun it stood over the sea
         // as a pillar of light.
-        .mul(float(1).sub(smoothstep(float(0.78), float(0.96), dot(skyDir, uSunDir)).mul(0.8)))
+        .mul(float(1).sub(smoothstep(float(0.78), float(0.96), dot(skyDir, uSkySun)).mul(0.8)))
         // ...and gone as the departure darkens the zenith: the eye is climbing out of the air, and
         // wisps left on the deepening dome read as speed lines (a fan of them round the climb).
         .mul(float(1).sub(smoothstep(float(0.0), float(0.3), uFadeZenith)))
         .mul(SKY_CIRRUS.alpha);
-    const cirrusCol = mix(
+    const cirrusCol = eveningCirrusColour(mix(
         vec3(...SKY_CIRRUS.white),
         uSunColour.mul(vec3(1.06, 0.95, 0.82)),
-        smoothstep(float(0.2), float(0.95), dot(skyDir, uSunDir)).mul(0.3),
-    );
-    const skyAir = mix(skyAirAt(skyGradDir), cirrusCol, cirrusAmt)
+        smoothstep(float(0.2), float(0.95), dot(skyDir, uSkySun)).mul(0.3),
+    ), uSunColour);
+    const skyAir = mix(eveningDome(skyAirAt(skyGradDir), skyDir, uSunColour), cirrusCol, eveningCirrusCover(cirrusAmt))
         .add(vec3(1, 0.86, 0.66).mul(
-            smoothstep(float(0.90), float(1), dot(skyDir, uSunDir)).pow(3).mul(0.3),
+            smoothstep(float(0.90), float(1), dot(skyDir, uSkySun)).pow(3).mul(0.3),
         ))
         .add(vec3(1, 0.97, 0.9).mul(
-            smoothstep(float(0.9985), float(0.9995), dot(skyDir, uSunDir)).mul(2.2),
+            smoothstep(float(0.9985), float(0.9995), dot(skyDir, uSkySun)).mul(2.2),
         ));
     // ONE COLOUR AT INFINITY. The seabed fades toward the deep plate while this dome sat
     // 6-11x brighter behind it, so the horizon carried a hard bright/dark seam that no amount
@@ -3699,10 +3881,10 @@ export function createOdysseyWorld({
     const downwelling = clamp(skyDir.y, 0, 1).pow(2.2)
         .add(smoothstep(float(-0.15), float(0.35), skyDir.y).mul(0.22));
     const skyWater = mix(
-        mix(uWaterMid, mix(uWaterDeep, vec3(...UW_INDIGO), 0.55), uEyeDepth),
+        mix(uWaterMid, uWaterDeep, uEyeDepth),
         mix(
             mix(uWaterMid, skyColourSubmergedGraze.mul(0.42), float(0.35)),
-            vec3(...UW_LUMINOUS).mul(0.85),
+            uWaterLum.mul(0.85),
             float(0.40),
         ),
         clamp(downwelling, 0, 1),
@@ -3744,6 +3926,14 @@ export function createOdysseyWorld({
                 .add(vec3(...DEPART_AIRGLOW).mul(airglowBand.mul(0.45).mul(airglowYield)).mul(uAirglowGlow.mul(uLimbYield)))
                 .mul(uOutputScale)
                 .mul(float(1).sub(uSubmerged))));
+        });
+        // THE EVENING'S LIGHTS (odyssey-evening.js): the moon over the summit, the first stars, a
+        // shooting star. Over the fade (they come out as the sky darkens), and gone with the
+        // world's own sky at the end of the departure, where chapter 6's stars take over.
+        If(ODYSSEY_EVENING_U.moon.greaterThan(0.001), () => {
+            out.addAssign(eveningLights(skyDir).mul(uOutputScale)
+                .mul(float(1).sub(smoothstep(float(0.62), float(1.0), uWorldFade)))
+                .mul(float(1).sub(uSubmerged)));
         });
         return out;
     })();
@@ -3950,7 +4140,8 @@ export function createOdysseyWorld({
     // The wind's patches roughen the chop (water pass step 4): calm lanes hold the mirror, gusts
     // break it and glitter.
     const seaGust = waterGust(positionWorld.xz).toVar();
-    const wSlope = waveSlope.add(ripple.mul(vSwellFade).mul(mix(float(0.70), float(1.45), seaGust))).toVar();
+    const wSlope = waveSlope
+        .add(ripple.mul(vSwellFade).mul(mix(float(0.70), float(1.45), seaGust)).mul(uSeaChop)).toVar();
     const wN = normalize(vec3(wSlope.x.negate(), 1, wSlope.y.negate())).toVar();
     const viewDir = normalize(cameraPosition.sub(positionWorld));
     const spec = waterSunCore(wN, viewDir);
@@ -4185,8 +4376,14 @@ export function createOdysseyWorld({
             // grazing water (where real glints live) and faded with range before they can
             // alias into shimmer.
             const sparkle = waterSparkle(seaRipples, fb, wFragDist).mul(mix(float(0.55), float(1.7), seaGust));
-            const wl = mix(bodyShoal, seaMirror, fres)
-                .add(vec3(...WATER_GLINT).mul(spec.add(road).add(sparkle)).mul(wVis))
+            // CLOUD SHADOWS ON THE SEA (masterpiece pass, 2026-11-17): the shadows that cross the
+            // land stopped at the waterline, so the sea, half of every shore orb's frame, never
+            // changed. The same field now lies on the water: under a cloud the body sinks a step
+            // deeper and loses its glints (the sky it mirrors stays), and the patches drift in
+            // from the sea and on over the beach as one shadow. High tier, as on the land.
+            const seaSun = q.cloudShadows ? cloudShadowLight(positionWorld.xz).toVar() : float(1);
+            const wl = mix(bodyShoal.mul(mix(float(SEA_CLOUD_SHADE), float(1), seaSun)), seaMirror, fres)
+                .add(vec3(...WATER_GLINT).mul(spec.add(road).add(sparkle)).mul(wVis.mul(seaSun).mul(seaSun)))
                 .mul(wVis.mul(0.18).add(0.82))
                 .toVar();
             // WHITECAPS — The Witness reference: opaque flat white with a drawn edge, so
@@ -4272,9 +4469,10 @@ export function createOdysseyWorld({
             // filled with dark blurred blades — smudges, not water. Waves that far off average
             // out; the rim keeps its ripple where the surface is near (the breach), by 3-D eye
             // distance (the column looks straight up: the horizontal range overhead is ~0).
-            const ceilDist = length(positionWorld.sub(cameraPosition));
-            const ceilN = normalize(mix(wN, vec3(0, 1, 0), smoothstep(float(40), float(180), ceilDist)));
-            const upCos = clamp(dot(viewDir.negate(), ceilN), 0, 1);
+            const ceilDist = length(positionWorld.sub(cameraPosition)).toVar();
+            const ceilN = normalize(mix(wN, vec3(0, 1, 0), smoothstep(float(40), float(180), ceilDist))).toVar();
+            const ceilIn = viewDir.negate().toVar();
+            const upCos = clamp(dot(ceilIn, ceilN), 0, 1);
             const snellWindow = smoothstep(float(0.60), float(0.72), upCos);
             // THE CAUSTIC WEB ON THE CEILING (item 4). Seen from below, a rippled surface is a
             // net of bright refracted lines, not a mottle. The lines are where the two ripple
@@ -4324,20 +4522,59 @@ export function createOdysseyWorld({
                     // into long loops across the ceiling (seen from just under the breach).
                     .mul(snellWindow.mul(0.85).add(0.15)));
             });
-            const windowSky = skyColourSubmergedUp.mul(1.30)
+            // THE WORLD IN THE WINDOW (odyssey-ocean-window.js): near the surface the window holds
+            // the sky, its cloud, the sun's glare and the island along its rim, refracted through
+            // the ripples; from deeper it is the flat glow it was. The land march is the High tier's.
+            const windowFlat = skyColourSubmergedUp.mul(1.30).toVar();
+            const windowWorld = snellWindowWorld({
+                incident: ceilIn,
+                normal: ceilN,
+                at: positionWorld,
+                flat: windowFlat,
+                presence: uSnellWorld,
+                time: uTime,
+                sunDir: uSunDir,
+                sunColour: uSunColour,
+                skyAt: skyAirAt,
+                noiseTex: detailTex,
+                march: q.waterReflections ? (P, R) => waterMarchLand(P, R, {
+                    heightAt: (xz) => {
+                        const m = texture(macroTex, waterPlateUv(xz)).level(0);
+                        return m.r.add(texture(heightTex, waterPlateUv(xz)).level(0).r.mul(m.g));
+                    },
+                    ...SNELL_WINDOW.march,
+                }) : null,
+                landLit: waterLandLit,
+            });
+            const windowSky = windowWorld
                 .add(vec3(1, 0.96, 0.88).mul(spec).mul(1.2))
-                .add(vec3(...UW_LUMINOUS).mul(0.6).add(vec3(0.26, 0.32, 0.30)).mul(ceilLines.mul(0.5)));
+                .add(uWaterLum.mul(0.6).add(vec3(0.26, 0.32, 0.30)).mul(ceilLines.mul(0.5)));
             // THE SURFACE FLOODS WITH LIGHT AS YOU REACH IT (2->3 seam). Seen from deep below, the
             // ceiling outside Snell's window is the dark total-internal-reflection body; over the
             // last ~25 u it becomes a bright, wavering lid — and without that the breach was a 37-luma
             // jump from a dark TIR frame straight into daylight (the seam gate's worst step).
             // uEyeDepth is a uniform, so this is two mixes on the ceiling, no branch.
+            // ...and that lid is a MIRROR of the water below (total internal reflection): each
+            // swell and ripple facet turns a different depth of it toward the eye, so the lid moves
+            // as the sea does instead of lying flat (`snellMirror`).
+            const tirMirror = snellMirror({
+                incident: ceilIn,
+                // (A calmer normal than the window's: a steep facet would show the deep plate as a
+                // dark stain on the lid.)
+                normal: normalize(mix(ceilN, vec3(0, 1, 0), 0.55)),
+                near: uWaterLum.mul(1.18).add(windowFlat.mul(0.16)),
+                mid: uWaterMid.mul(1.05),
+                deep: uWaterDeep.mul(1.2),
+            }).add(uWaterLum.mul(0.6).add(vec3(0.26, 0.32, 0.30)).mul(ceilLines.mul(0.35)));
             const tirBody = mix(
                 mix(uWaterMid, uWaterDeep, uEyeDepth).mul(0.6),
-                windowSky.mul(0.74),
+                tirMirror,
                 float(1).sub(smoothstep(float(0.0), float(0.18), uEyeDepth)).mul(0.85),
             );
+            // The water over the eye takes the surface's light on the way down (the depth arc's
+            // `overhead`): from the abyss the window is a far, soft well, brightest straight up.
             const underside = mix(tirBody, windowSky, snellWindow)
+                .mul(snellDepthLight(ceilDist, uCeilAbsorb).mul(uSeaLight))
                 .add(uWaterGlow.mul(sss).mul(0.55));
             // THE BREACH, PER FRAGMENT (seamless pass, 2->3). Inside the 14 u band both regimes
             // run, and this used to cross-dissolve the WHOLE plane by the eye's uSubmerged — at
@@ -4626,7 +4863,8 @@ export function createOdysseyWorld({
     // all. Earlier chapters hid this because their horizon is already pale. Mixing each tone
     // a third of the way to neutral white keeps the sky's hue in the clouds (they must still
     // belong to the scene) while guaranteeing they never inherit a saturated cast wholesale.
-    const cloudWhite = vec3(0.97, 0.975, 0.99);
+    // (Through chapter 5's evening the white takes the sun's colour: odyssey-evening.js.)
+    const cloudWhite = eveningCloudWhite(vec3(0.97, 0.975, 0.99), uSunColour);
     const cloudUnderLit = mix(uSkyHorizon.mul(1.10).add(uShadowTint.mul(0.12)), cloudWhite, 0.34);
     // ~0.86 of the lit band's luminance with a strong violet lean. The first pass used 0.96 and
     // the patches were invisible once the grade had flattened them (outputSaturation 0.72 into
@@ -5177,15 +5415,22 @@ export function createOdysseyWorld({
             float(W.tone[1]).add(storm.mul(0.04)),
             lightT,
         );
-        const skyUp = skyAirAt(normalize(vec3(cfN.x, max(cfN.y, float(0.25)), cfN.z)));
+        const skyUp = skyAirAt(normalize(vec3(cfN.x, max(cfN.y, float(0.25)), cfN.z)), false);
         const slate = mix(cloudWhite.mul(W.shadeLift), skyUp, float(W.shadeSky)).mul(storm.mul(-0.12).add(1));
-        const lit = mix(uSunColour, cloudWhite, float(0.70)).mul(W.litGain);
+        // THE HOUR (`uHourSky.y`, odyssey-day-turn.js): late in the day the white of a cumulus'
+        // lit side and of its sunward rim is the sun's own colour (peach heads over blue-slate
+        // bodies); at noon this is the cloud white it always was. The white's share falls
+        // further through chapter 5's evening (odyssey-evening.js): the lit side burns with
+        // the low sun.
+        const litWhite = mix(cloudWhite, uSunColour, uHourSky.y);
+        const lit = mix(uSunColour, litWhite, eveningCloudLitShare(float(0.70).sub(uHourSky.y.mul(0.4))))
+            .mul(W.litGain);
         const body = mix(slate, lit, tone);
         // The silver edge: the last of the silhouette brightens on the side that faces the sun.
         const silverRim = smoothstep(float(0.72), float(0.98), cfRim)
             .mul(clamp(dot(cfN, uSunDir).add(0.35), 0, 1))
             .mul(W.silver);
-        const silvered = mix(body, cloudWhite.mul(W.litGain), silverRim)
+        const silvered = mix(body, litWhite.mul(W.litGain), silverRim)
             .add(uSunColour.mul(cfSilver).mul(FIELD_MIE_GAIN));
         // The last pixel or two of the outline melt a little toward a bright sky-white: enough to
         // round a far hull's polygon corners, too narrow to let the sky through the body.
@@ -5257,6 +5502,63 @@ export function createOdysseyWorld({
         fieldProbeMesh.name = 'odyssey-world-cloud-field';
         group.add(fieldProbeMesh);
     }
+    // THE SEA OF CLOUDS (chapter 5's evening, odyssey-cloud-sea.js): the field's own paint and
+    // output on one displaced ring round the summit, gathered by the evening (hidden until then).
+    const cloudSeaLayer = cloudSea && cloudField
+        ? createOdysseyCloudSea({
+            cameraPosition,
+            skyAirAt,
+            sunColour: uSunColour,
+            cloudWhite,
+            aerialK: uAerialK,
+            climb: uClimb,
+            cloudShadowLight: q.cloudShadows ? cloudShadowLight : null,
+            toCloudOutput: (c) => intoEarth(toOutputFaded(c, uFadeHorizon.mul(notOverEarth))),
+            quality: quality === 'low' ? 'low' : 'high',
+        })
+        : null;
+    if (cloudSeaLayer) group.add(cloudSeaLayer.mesh);
+    // THE SUMMIT'S CAP (odyssey-summit-cap.js): lenticular cloud in the hero summit's lee, forming
+    // and thinning on the clock through the evening. The same kit, the same lever.
+    const summitCap = cloudSea && cloudField
+        ? createOdysseySummitCap({
+            summit: findHeroSummit(relief.sample, cfAnchorMassif),
+            cameraPosition,
+            skyAirAt,
+            sunColour: uSunColour,
+            cloudWhite,
+            toCloudOutput: (c) => intoEarth(toOutputFaded(c, uFadeHorizon.mul(notOverEarth))),
+        })
+        : null;
+    if (summitCap) group.add(summitCap.mesh);
+    // MIST IN THE HOLLOW (odyssey-hollow-mist.js): the upper meadow's basin holds a pool of mist
+    // through the mountains' afternoon, a soft sheet at the pool's own level that the trees rise
+    // through. One blended draw; the high tier's (it rides the tier the cloud shadows do).
+    const hollowMist = q.cloudShadows
+        ? createOdysseyHollowMist({
+            heightAt: relief.sample,
+            plate: valleyMistPlate,
+            positionWorld,
+            cameraPosition,
+            time: uTime,
+            noise: detailTex,
+            sunColour: uSunColour,
+            sunDir: uSunDir,
+            skyAirAt,
+            toOutput: (c, at) => toOutputSurface(applyAerial(c, at, AERIAL_CEIL_LAND, AERIAL_RATE_LAND)),
+        })
+        : null;
+    if (hollowMist) group.add(hollowMist.mesh);
+    // THE WALL'S GUSTS (odyssey-wall-gusts.js): spindrift blown across the face where the climb
+    // begins, the 4->5 seam's own event. Same lever.
+    const wallGusts = cloudSea && cloudField
+        ? createOdysseyWallGusts({
+            sunColour: uSunColour,
+            hazeColour: uSkyHorizon,
+            quality: quality === 'low' ? 'low' : 'high',
+        })
+        : null;
+    if (wallGusts) group.add(wallGusts.mesh);
 
     // ── god rays (Ch2 port) ─────────────────────────────────────────────────────────
     // The deep-ocean chapter's declared hero: descending light shafts with caustic shimmer.
@@ -5388,6 +5690,7 @@ export function createOdysseyWorld({
             .mul(rayBreath)
             .mul(uSubmerged)
             .mul(uLife)
+            .mul(uShaftGain)
             // 0.52 -> 0.62: the streaked shimmer's mean sits ~a quarter under the simplex's.
             .mul(0.62)
             .toVar();
@@ -5556,7 +5859,12 @@ export function createOdysseyWorld({
         // Item 4: ~3 % of motes are BIOLUMINESCENT — three times the size, a warmer cyan, and
         // slow to pulse — the rare larger glows that make a column of specks read as alive.
         const mGlow = tslStep(0.97, fract(mS.mul(7.13)));
-        const moteSize = mS.mul(0.6).add(0.5).mul(mGlow.mul(2.0).add(1));
+        // THE PLANKTON BLOOM (the sea's clock): where the wandering patch lies, the specks flare.
+        const vBloom = varying(
+            uBloom.w.mul(float(1).sub(smoothstep(float(9), float(46), length(moteDrift.sub(uBloom.xyz))))),
+            'vMoteBloom',
+        );
+        const moteSize = mS.mul(0.6).add(0.5).mul(mGlow.mul(2.0).add(1)).mul(vBloom.mul(0.7).add(1));
         // Droplets: FINE spray (2-6 cm) — at 2-8 u ahead of the lens that is a 5-15 px sparkle;
         // the first cut's 16 cm beads read as snowballs.
         const spraySize = fract(mS.mul(29.3)).mul(0.04).add(0.02);
@@ -5613,7 +5921,8 @@ export function createOdysseyWorld({
                 .mul(mDepth.mul(0.9).add(0.35))
                 // In a shaft it catches the light; between the shafts it sits back.
                 .mul(float(0.5).add(vShaftLit.mul(2.3)))
-                .add(vec3(0.20, 0.95, 0.88).mul(vWake).mul(0.7)),
+                .add(vec3(0.20, 0.95, 0.88).mul(vWake).mul(0.7))
+                .add(vec3(0.26, 1.0, 0.46).mul(vBloom).mul(1.1)),
             vec3(0.42, 1.0, 0.84),
             mGlow,
         );
@@ -5635,7 +5944,8 @@ export function createOdysseyWorld({
             .mul(mEnds)
             // Sinkers sit out the carry (the bubbles rise alone), then join the snow.
             .mul(float(1).sub(mSink.mul(uQuench)))
-            .mul(vWake.mul(0.8).add(1));
+            .mul(vWake.mul(0.8).add(1))
+            .mul(vBloom.mul(1.5).add(1));
         // Each droplet has its own life inside the burst (0.9-1.8 s) and fades over its last half.
         const sLifeT = clamp(uSprayAge.div(fract(mS.mul(11.1)).mul(0.9).add(0.9)), 0, 1);
         const sprayAlpha = mDot.mul(uSpray).mul(float(1).sub(smoothstep(float(0.55), float(1.0), sLifeT))).mul(0.85);
@@ -5753,7 +6063,7 @@ export function createOdysseyWorld({
         const kSwayX = sin(uTime.mul(0.55).add(kA.x).add(kY.mul(2.4))).mul(kA.y.mul(0.07)).mul(kBend);
         const kSwayZ = sin(uTime.mul(0.37).add(kA.x.mul(1.7)).add(kY.mul(3.1))).mul(kA.y.mul(0.045)).mul(kBend);
         kelpMat.positionNode = positionLocal.add(vec3(kSwayX, 0, kSwayZ));
-        const kAlbedo = mix(vec3(0.12, 0.15, 0.06), vec3(0.40, 0.44, 0.15), kY);
+        const kAlbedo = mix(vec3(0.085, 0.11, 0.04), vec3(0.27, 0.32, 0.085), kY);
         const kDown = clamp(formNormal.y.mul(0.5).add(0.5), 0, 1);
         // Seen from below, a frond glows: the surface light comes THROUGH the blade.
         const kBack = smoothstep(float(0.15), float(0.75), formEye.negate().y).mul(kY);
@@ -5780,6 +6090,51 @@ export function createOdysseyWorld({
         kelpMesh.name = 'odyssey-world-kelp';
         group.add(kelpMesh);
     }
+    // ── THE ISLAND'S UNDERWATER FLANK (masterpiece pass, 2026-11-17) ──────────────────────
+    // The kelp tower, the sea stacks, the coral and the forest on the slope every orb's close-up
+    // looks at (odyssey-ocean-reef.js plants them, odyssey-ocean-scenery.js draws them): two
+    // static draws in the world's own water haze, behind the 1->2 steam like the spires.
+    const oceanScenery = openWater.length > 2 ? createOdysseyOceanScenery({
+        heightAt: (x, z) => relief.sample(x, z),
+        rail: openWater,
+        seaLevel: ODYSSEY_SEA_LEVEL,
+        quality,
+        uTime,
+        noiseTex: detailTex,
+        haze: (c, wpos) => applyAerial(c, wpos, AERIAL_CEIL_WATER, 1, false, formLifeHaze),
+        grade: toOutput,
+        depthNode: behindSteamDepth,
+        gradeLight: (c) => toOutputFaded(c, float(0)),
+        sun: ODYSSEY_WORLD_SUN,
+        sunColour: uSunColour,
+        uLife,
+    }) : null;
+    if (oceanScenery) group.add(oceanScenery.group);
+    // THE BREACH (composition/odyssey-breach-burst.js): the crown of water, the sheet running off
+    // the lens and the light flooding in when the eye breaks the surface; bubbles when it dives.
+    const breachBurst = openWater.length > 2 ? createOdysseyBreachBurst({
+        seaLevel: ODYSSEY_SEA_LEVEL,
+        noiseTex: detailTex,
+        gradeLight: (c) => toOutputFaded(c, float(0)),
+        quality,
+    }) : null;
+    if (breachBurst) group.add(breachBurst.group);
+    // THE DOLPHINS IN THE BAY (odyssey-dolphins.js; their clock route is composition/
+    // odyssey-dolphin-pod.js): a pod porpoising between the breach and the shore, in the water's
+    // haze below the surface and the world's sun above it, decided per fragment.
+    const dolphinPod = openWater.length > 2 ? createOdysseyDolphins({
+        seaLevel: ODYSSEY_SEA_LEVEL,
+        quality,
+        noiseTex: detailTex,
+        haze: (c, wpos) => applyAerial(c, wpos, AERIAL_CEIL_WATER, 1, false, formLifeHaze, true, false),
+        grade: toOutput,
+        gradeLight: (c) => toOutputFaded(c, float(0)),
+        depthNode: behindSteamDepth,
+        sunDir: uSunDir,
+        sunColour: uSunColour,
+        skyLight: mix(uSkyHorizon, uSkyZenith, float(0.45)),
+    }) : null;
+    if (dolphinPod) group.add(dolphinPod.group);
 
     // ── forest ──
     // MEASUREMENT LEVER (see the `forest` option). When off, the scatter never runs, so no
@@ -5917,6 +6272,8 @@ export function createOdysseyWorld({
     ));
 
     const treeMeshes = [];
+    // The trees round the 18->19 glide's view, for the turn's wake (odyssey-turn-wake.js).
+    const wakeTrees = [];
     const greensPalette = resolveForestGreens(forestGreens);
     let forestV2Stats = null;
     let forestPlacements = null;
@@ -5994,10 +6351,27 @@ export function createOdysseyWorld({
         const fvIsCard = cards ? tslStep(float(1.5), fvVert.z) : null;
         const fvIsCrown = cards ? min(fvVert.z, 1) : fvVert.z;
         const fvH01 = fvVert.w;
-        const fvCrown = fvCrownSnow.xyz;
-        const fvShade = fvShadePhase.xyz;
-        const fvSnow = fvCrownSnow.w;
         const fvPhase = fvShadePhase.w;
+        // The crown's fourth lane is the tree's snow and, with autumn on, its kind (packSnowKind).
+        const fvKind = autumn ? autumnKindNode(fvCrownSnow.w) : null;
+        const fvSnow = autumn ? autumnSnowNode(fvCrownSnow.w, fvKind) : fvCrownSnow.w;
+        // THE DAY'S TURN (odyssey-day-turn.js): the trees stand in the turning shade with the ground
+        // under them, and take the afternoon's light, and the autumn, as it reaches them.
+        const fvTurn = dayTurnOf(positionWorld.xz).toVar();
+        // AUTUMN (odyssey-autumn.js): a crown that turns takes its own autumn colour and shade,
+        // weighed at the tree's foot so it turns whole.
+        const fvAutumn = autumn
+            ? autumnCrown({
+                crown: fvCrownSnow.xyz,
+                shade: fvShadePhase.xyz,
+                weight: autumnOf(positionWorld.y.sub(fvVert.w.mul(ODYSSEY_AUTUMN.crownReach)), fvTurn),
+                kind: fvKind,
+                phase: fvPhase,
+                shades: AUTUMN_SHADES,
+            })
+            : null;
+        const fvCrown = autumn ? fvAutumn.crown : fvCrownSnow.xyz;
+        const fvShade = autumn ? fvAutumn.shade : fvShadePhase.xyz;
         // LEAF CARDS (odyssey-forest-cards.js). The vertex stage turns each card to the eye and
         // shakes its leaves; the fragment stage draws a clump from the leaf atlas: its coverage, a
         // normal from the crown's centre with the clump's own dome, the sun's path through the
@@ -6108,8 +6482,9 @@ export function createOdysseyWorld({
         const fvSunVis = clamp(fract(fvTrunkSun.w).sub(FOREST_TRUNK_PACK.lo).div(FOREST_TRUNK_PACK.span), 0, 1);
         // ...and the drifting CLOUD shadows the ground under it takes (one fetch pair per fragment,
         // high tier only): without them a shadow crossing the island stopped at every forest edge.
+        const fvSun = landSunOf(fvTurn).toVar();
         let fvCloud = float(1);
-        if (q.cloudShadows) fvCloud = cards ? vCloud : cloudShadowLight(positionWorld.xz);
+        if (q.cloudShadows) fvCloud = cards ? vCloud : cloudShadowLight(positionWorld.xz, fvTurn);
         /**
          * LEAF CLUMPS (round two, the trees again, 2026-10-26). A puff lit as one smooth ball reads as a
          * toy; a painted canopy's masses are made of scalloped leaf clumps, each catching light on its
@@ -6277,10 +6652,17 @@ export function createOdysseyWorld({
             .mul(float(1).sub(fvFlat))
             .mul(fvIsCrown)
             .mul(FOREST_CAP_GAIN);
+        // THE LOW SUN'S GOLD ON THE CROWNS (round two): late in the day a crown's sunlit cap is
+        // brighter against its own shade and leans to gold (`capGold`, by the land's hour here).
+        const fvCapGold = clamp(
+            landHourOf(fvTurn).z.mul(ODYSSEY_HOUR_LOOK.capGold / ODYSSEY_HOUR_LOOK.alpenglow),
+            0,
+            1,
+        );
         const fvThree = mix(
             mix(mix(fvShadeCol, fvMidTone, fvBandLo), fvAlbedo, fvBandHi),
-            fvAlbedo.mul(vec3(...FOREST_CAP_TINT)),
-            fvCap,
+            fvAlbedo.mul(mix(vec3(...FOREST_CAP_TINT), vec3(...ODYSSEY_HOUR_LOOK.capGoldTint), fvCapGold)),
+            min(fvCap.mul(fvCapGold.mul(ODYSSEY_HOUR_LOOK.capGoldGain).add(1)), float(1)),
         );
         // PRE-SATURATED at distance, because the desaturators downstream cannot be retuned from
         // here: `applyAerial` hazes toward the sky for the whole world and the grade applies
@@ -6305,11 +6687,19 @@ export function createOdysseyWorld({
         // per-fragment band choice.
         const fvLight = mix(
             // Leaf cards' shade leans further to the sky: a shadow lit by the sky is cool.
-            mix(mix(uSunColour, uSkyHorizon, float(cards ? LEAF_LOOK.shadeSky : 0.55)), uSunColour, fvBandLo),
+            mix(
+                mix(
+                    fvSun,
+                    uSkyHorizon,
+                    float(cards ? LEAF_LOOK.shadeSky : 0.55).add(fvTurn.x.mul(ODYSSEY_DAY_TURN.silver * 0.6)),
+                ),
+                fvSun,
+                fvBandLo,
+            ),
             // 0.12, down from a first-cut 0.28: measured against §1b R9 the far forest came back
             // at 4.5x desaturation against the references' 2-3x — the flatten and the aerial haze
             // both pull toward sky, so the flatten's own pull must be gentle or they compound.
-            mix(uSunColour, uSkyHorizon, float(0.12)),
+            mix(fvSun, uSkyHorizon, float(0.12)),
             fvFlat,
         );
         const fvView = normalize(cameraPosition.sub(positionWorld));
@@ -6318,7 +6708,7 @@ export function createOdysseyWorld({
         const fvBack = clamp(dot(fvView, uSunDir).mul(-1), 0, 1).pow(2.5);
         const fvRim = float(1).sub(abs(dot(fvN, fvView)));
         let forestV2Col = fvBody.mul(fvLight)
-            .add(uSunColour.mul(fvBack.mul(fvRim).mul(fvHc).mul(FOREST_BACKLIT_GAIN)));
+            .add(fvSun.mul(fvBack.mul(fvRim).mul(fvHc).mul(FOREST_BACKLIT_GAIN)));
         if (cards) {
             // AGAINST THE LIGHT: leaves with little crown between them and the sun let it through,
             // warm through their own colour. A softer facing term than the rim's, so it starts
@@ -6326,7 +6716,7 @@ export function createOdysseyWorld({
             const back = clamp(dot(fvView, uSunDir).mul(-1), 0, 1);
             const thin = float(1).sub(smoothstep(float(0), float(LEAF_LOOK.glowPath), fvCard.path));
             const glow = select(fvOnCard, back.mul(back).mul(thin).mul(float(1).sub(fvFlat)), float(0));
-            forestV2Col = forestV2Col.add(fvAlbedo.mul(uSunColour).mul(glow.mul(LEAF_LOOK.glowGain)));
+            forestV2Col = forestV2Col.add(fvAlbedo.mul(fvSun).mul(glow.mul(LEAF_LOOK.glowGain)));
         }
 
         // The trees stand IN the valley mist with the ground under them (item 7), or every crown
@@ -6430,7 +6820,14 @@ export function createOdysseyWorld({
                 const greens = forestGreensCrown(t, greensPalette);
                 const crown = greens ?? t.crown;
                 const shade = greens ? shadeColourFor(greens, getForestSpecies(t.speciesId).role) : t.shade;
-                aCrownSnow.setXYZW(i, crown[0], crown[1], crown[2], t.snow);
+                // (The fourth lane: the tree's snow, and its kind in autumn. See packSnowKind.)
+                aCrownSnow.setXYZW(
+                    i,
+                    crown[0],
+                    crown[1],
+                    crown[2],
+                    autumn ? packSnowKind(t.snow, autumnKindOf(t.speciesId)) : t.snow,
+                );
                 aShadePhase.setXYZW(i, shade[0], shade[1], shade[2], t.rot * 3.7);
                 aTrunk.setXYZW(
                     i,
@@ -6443,6 +6840,15 @@ export function createOdysseyWorld({
                 cz += t.z;
                 maxY = Math.max(maxY, t.y + (src.userData.forest.totalH * t.scaleY * FOREST_V2_SCALE));
                 minY = Math.min(minY, t.y);
+                if (inTurnWakeReach(t.x, t.z)) {
+                    wakeTrees.push({
+                        x: t.x,
+                        y: t.y,
+                        z: t.z,
+                        top: t.y + (src.userData.forest.totalH * t.scaleY * FOREST_V2_SCALE),
+                        broad: autumnKindOf(t.speciesId) !== AUTUMN_KIND.evergreen,
+                    });
+                }
             });
             geo.setAttribute('aCrownSnow', aCrownSnow);
             geo.setAttribute('aShadePhase', aShadePhase);
@@ -6471,6 +6877,32 @@ export function createOdysseyWorld({
         forestClearedSites = zoned.meadowCleared ?? [];
         geoCache.forEach((cached) => cached.dispose());
     }
+    // THE TURN'S WAKE (odyssey-turn-wake.js): as the turning shade's edge passes the rail, leaves
+    // let go of the crowns along it and birds lift out of them. One alpha-tested draw, drawn only
+    // while a wake is in the air.
+    const turnWake = wakeTrees.length
+        ? createOdysseyTurnWake({
+            trees: wakeTrees,
+            heightAt: relief.sample,
+            time: uTime,
+            leaves: q.cloudShadows ? ODYSSEY_TURN_WAKE.leaves.count : Math.round(ODYSSEY_TURN_WAKE.leaves.count * 0.4),
+            // The autumn palette's own crowns, a little brighter (a leaf in the air is lit through);
+            // the summer's greens where the season is switched off.
+            tints: autumn
+                ? ODYSSEY_AUTUMN.crowns.slice(1).map((stop) => stop.colour.map((c) => c * 1.25))
+                : [[0.36, 0.46, 0.12], [0.50, 0.54, 0.15], [0.30, 0.40, 0.10], [0.58, 0.56, 0.18]],
+            lightAt: (xz) => {
+                const turn = dayTurnOf(xz).toVar();
+                return {
+                    sun: landSunOf(turn),
+                    direct: q.cloudShadows ? cloudShadowLight(xz, turn) : float(1).sub(turn.x.mul(uTurn.w)),
+                };
+            },
+            skyColour: uSkyHorizon,
+            toOutput: (c, at) => toOutputSurface(applyAerial(c, at, AERIAL_CEIL_LAND, AERIAL_RATE_LAND)),
+        })
+        : null;
+    if (turnWake) group.add(turnWake.mesh);
 
     // ── BOULDERS AND OUTCROPS (Act II leftovers, 2026-11-02; odyssey-boulders.js) ─────────────
     // Rocks for scale on the meadows and slopes, sited on the rail camera. Three shapes at two
@@ -6524,7 +6956,9 @@ export function createOdysseyWorld({
                 P.xz.sub(vec2(FOREST_SHADE_PLATE.x, FOREST_SHADE_PLATE.z)).div(FOREST_SHADE_PLATE.extent).add(0.5),
             );
             const treeLight = float(1).sub(shadeHere.r.mul(FOREST_SHADOW_DEPTH));
-            const cloudLight = q.cloudShadows ? cloudShadowLight(P.xz) : float(1);
+            // (The day's turn, as the ground under the stone takes it: odyssey-day-turn.js.)
+            const bTurn = dayTurnOf(P.xz).toVar();
+            const cloudLight = q.cloudShadows ? cloudShadowLight(P.xz, bTurn) : float(1);
             const ndl = max(dot(N, uSunDir), 0);
             const lightAmt = smoothstep(
                 float(ODYSSEY_GROUND_SHADE.terminator[0]),
@@ -6548,7 +6982,11 @@ export function createOdysseyWorld({
             const skyTop = N.y.mul(0.22).add(0.84);
             const value = ambient.add(float(1).sub(ambient).mul(lightAmt)).mul(float(GROUND_LIT_GAIN)).mul(skyTop);
             const ambientHue = uShadowTint.div(max(dot(uShadowTint, vec3(...ODYSSEY_GROUND_LUMA)), 0.001));
-            const lightCol = mix(mix(vec3(1), ambientHue, float(GROUND_AMBIENT_CHROMA)), uSunColour, lightAmt);
+            const lightCol = mix(
+                mix(vec3(1), ambientHue, float(GROUND_AMBIENT_CHROMA).add(landHourOf(bTurn).x)),
+                landSunOf(bTurn),
+                lightAmt,
+            );
             return surface.mul(lightCol).mul(value);
         })();
         boulderMat.colorNode = toOutputSurface(applyAerial(
@@ -6657,6 +7095,10 @@ export function createOdysseyWorld({
         lifePresence: 1,
         // Seconds since the eye broke the surface (null when no spray is live) — instruments only.
         sprayAge: null,
+        // The hour the world wears (0 noon .. 1 sunset) and the day's turn (0 the island's
+        // morning .. 1 the mountains' afternoon; between them the shade is crossing).
+        hour: 0,
+        dayTurn: 0,
     };
     // THE CARRY'S HANDSHAKE. `setQuenchCarry(t)` may be called every frame or only inside the
     // quench window (the board owns that), so each call is CONSUMED by the next update(): a frame
@@ -6903,23 +7345,55 @@ export function createOdysseyWorld({
                 ? 0.05 + (actP * 0.9)
                 : runoutStart + (((actP - SCRIPT_RUNOUT_FROM) / (1 - SCRIPT_RUNOUT_FROM)) * (1 - runoutStart));
             const cs = sampleColourScript(scriptP);
+            // THE EVENING (odyssey-evening.js): chapter 5's sky state for this frame; its light
+            // breathes on the clock (a gain of 1 outside the evening).
+            const evening = updateOdysseyEvening(actP, time, viewCamera);
+            // THE DAY'S TURN, AT A CLOUD'S PACE (odyssey-day-turn.js): `cs` becomes the light the
+            // world wears now, and `turn` says where the turning shade stands and what the land's
+            // light is ahead of it and behind it. With reduced motion the light still turns over
+            // the same seconds, with no shade travelling across the land.
+            const turn = dayTurnPace.step(cs, actP, time);
+            const sweeping = turn.on && !prefersReducedMotion();
+            // THE WEATHER (odyssey-weather-clock.js), in the air only: the light softens and
+            // clears, the cover (below), the wind and the mist follow it.
+            const weather = odysseyWeatherDrive(time + weatherEpoch, 1 - uSubmerged.value, weatherNow);
             uSkyHorizon.value.setRGB(...cs.skyHorizon);
             uSkyZenith.value.setRGB(...cs.skyZenith);
-            uSunColour.value.setRGB(...cs.sun);
+            weatherSun(cs, weather, uSunColour.value).multiplyScalar(evening.breath);
             uShadowTint.value.setRGB(...cs.groundShadow);
+            // THE HOUR: the land's share at the two sides of the shade (both this frame's own
+            // outside the turn), and the sky's.
+            const HL = ODYSSEY_HOUR_LOOK;
+            uTurn.value.set(
+                turn.front,
+                ODYSSEY_DAY_TURN.width,
+                sweeping ? 1 : 0,
+                sweeping ? ODYSSEY_DAY_TURN.depth * (1 - uSubmerged.value) : 0,
+            );
+            weatherSun(sweeping ? turn.ahead : cs, weather, uLandSunA.value);
+            weatherSun(sweeping ? turn.behind : cs, weather, uLandSunB.value);
+            landHourLook(sweeping ? turn.ahead.hour : cs.hour, HL, uLandHourA.value);
+            landHourLook(sweeping ? turn.behind.hour : cs.hour, HL, uLandHourB.value);
+            // (The warm air and the evening belt are the lower air's: they leave with the first
+            // third of the departure, so the limb the climb looks down on is the Earth's own blue.)
+            const lowAir = 1 - Math.min(uWorldFade.value / 0.35, 1);
+            // THE EVENING TAKES THE SKY OVER (odyssey-evening.js): from the 4->5 seam its own gold
+            // arch, belt and cloud light come in, so the hour's warm air and belt hand over to
+            // them across the evening's first fifth, and the hour's share of the clouds' light
+            // and of the mist holds at the mountains' last orb (the evening's own terms go on).
+            const handover = 1 - Math.min(evening.dusk / HL.eveningHandover, 1);
+            const hourLow = cs.hour * lowAir * lowAir * (3 - (2 * lowAir))
+                * handover * handover * (3 - (2 * handover));
+            const hourHeld = Math.min(cs.hour, HL.hourHeld);
+            uHourSky.value.set(HL.warmAir * hourLow, HL.cloudSun * hourHeld, HL.antiRose * hourLow, 0);
+            uMist.value.set((1 + (HL.mist * hourHeld)) * weather.mist, 1 + (HL.mistVeil * hourHeld));
+            uGust.value = weather.gust;
+            // AUTUMN rides the day's turn: none ahead of the shade and all of it behind while the
+            // shade crosses, the turn's own share when nothing travels.
+            if (sweeping) uAutumn.value.set(0, 1);
+            else uAutumn.value.set(turn.t, turn.t);
             uAerialK.value = cs.fogDensity;
-            // The depth plates come from the SCRIPT, not from constants beside it: shallow is
-            // the shallows keyframe's body, mid is this sample's own body, deep is the abyss.
-            // One table owns the ocean's colour, so a palette edit cannot desync the banding.
-            // The MID plate's sample is clamped to the script's last WATER keyframe: past it
-            // the horizon belongs to the breach's air sky, and the plates may never leave the
-            // water table (see WATER_SCRIPT_END above).
-            const csWater = scriptP > WATER_SCRIPT_END
-                ? sampleColourScript(WATER_SCRIPT_END)
-                : cs;
-            uWaterShallow.value.setRGB(...SHALLOWS_BODY);
-            uWaterMid.value.setRGB(...csWater.skyHorizon);
-            uWaterDeep.value.setRGB(...ABYSS_BODY);
+            // (The water's depth plates are written below with the depth arc, by the eye's depth.)
             uExposure.value = cs.exposure;
             const fogScale = (applyExposure ? cs.exposure : 1) * outputScale;
             const fogR = cs.skyHorizon[0] * fogScale;
@@ -6954,11 +7428,29 @@ export function createOdysseyWorld({
             uEyeDepth.value = Math.max(0, Math.min(1, (ODYSSEY_SEA_LEVEL - submergedRefY) / 140));
             const shadowPlan = cloudShadowSchedule(actP);
             uCloudShadow.value = shadowPlan.strength * (1 - uSubmerged.value);
-            uCloudCover.value = shadowPlan.cover;
+            // (+ the weather: more cloud over the land for a while, then less.)
+            uCloudCover.value = Math.min(Math.max(shadowPlan.cover + weather.cover, 0), 1);
             const optics = antisolarSchedule(actP);
             uBow.value = optics.bow * (1 - uSubmerged.value);
             uShowerVeil.value = optics.veil * (1 - uSubmerged.value);
-            uDeepDim.value = odysseyDeepWaterDim(uEyeDepth.value);
+            // THE DEPTH ARC: the column's plates, its light and its darkness are the eye's depth's
+            // (odyssey-ocean-depth.js), so the abyss is blue-black and the shallows turquoise.
+            oceanDepthLook(ODYSSEY_SEA_LEVEL - submergedRefY, oceanLook);
+            // ...under the sea's own weather: cloud over the sun, the surface's state, the bloom.
+            oceanClockAt(time, seaClockColumn, seaClock);
+            applyOceanClock(oceanLook, seaClock);
+            uSeaLight.value = seaClock.light;
+            uSeaChop.value = 1 + ((seaClock.chop - 1) * uSubmerged.value);
+            uBloom.value.set(seaClock.bloom[0], seaClock.bloom[1], seaClock.bloom[2], seaClock.bloom[3]);
+            uWaterShallow.value.setRGB(...oceanLook.shallow);
+            uWaterMid.value.setRGB(...oceanLook.mid);
+            uWaterDeep.value.setRGB(...oceanLook.deep);
+            uWaterLum.value.setRGB(...oceanLook.luminous);
+            uWaterWell.value = oceanLook.well;
+            uShaftGain.value = oceanLook.shafts;
+            uCeilAbsorb.value = oceanLook.overhead;
+            uSnellWorld.value = uSubmerged.value > 0.001 ? snellWindowPresence(oceanLook.depth) : 0;
+            uDeepDim.value = oceanLook.dim;
             // Scene fog (the rail, the orbs) dims with the water it stands in, or the far rail
             // would fade to a brighter blue than the deep around it.
             fogState.color.multiplyScalar(1 - ((1 - uDeepDim.value) * uSubmerged.value));
@@ -7023,6 +7515,9 @@ export function createOdysseyWorld({
             state.submerged = uSubmerged.value;
             state.scriptName = cs.name;
             state.actT = progress;
+            // The hour the world wears and where the day's turn stands (odyssey-day-turn.js).
+            state.hour = cs.hour;
+            state.dayTurn = turn.t;
             // WAVE 0's MEASURED DEFECT. `odyssey-world-clouds` was submitted and rasterised
             // at every fully-submerged station with its alpha provably zero (three texture
             // fetches per covered pixel of a sky-covering sheet, on the lane that measures
@@ -7043,6 +7538,33 @@ export function createOdysseyWorld({
             // altitude band, so it must share their CPU `.visible` write too.
             if (fieldProbeMesh) {
                 fieldProbeMesh.visible = authored(fieldProbeMesh) && uSubmerged.value < 0.999 && !earthCovers;
+            }
+            if (cloudSeaLayer) {
+                cloudSeaLayer.update(
+                    time,
+                    evening.sea,
+                    authored(cloudSeaLayer.mesh) && uSubmerged.value < 0.999 && !earthCovers,
+                );
+            }
+            if (summitCap) {
+                const capShown = authored(summitCap.mesh) && uSubmerged.value < 0.999 && !earthCovers;
+                summitCap.update(time, evening.cap, capShown);
+            }
+            if (hollowMist) {
+                // (In the air only: under water the basin is far above a blue column.)
+                const mistShown = authored(hollowMist.mesh) && uSubmerged.value < 0.001 && !earthCovers;
+                hollowMist.update(cs.hour, weather.pool, mistShown);
+            }
+            if (turnWake) {
+                // (The forest sways harder for the few seconds the gust takes to pass.)
+                const wakeShown = authored(turnWake.mesh) && uSubmerged.value < 0.001 && !earthCovers;
+                uGust.value = weather.gust
+                    * (1 + turnWake.update(time, turn.front, sweeping, railPoint.x, railPoint.z, wakeShown));
+            }
+            if (wallGusts) {
+                // (keyed on journey progress, as its window is written: Act II progress back to it)
+                const gustsShown = authored(wallGusts.mesh) && uSubmerged.value < 0.999 && !earthCovers;
+                wallGusts.update(time, wallGustsRevealAt(0.0649 + (actP * 0.6894)), gustsShown);
             }
             // THE FOREST IS SUBMITTED UNDER WATER AND CANNOT BE SEEN (MEASURED 2026-08-13).
             // The trees are legitimately the far SHORE -- scatterTrees rejects any site below
@@ -7080,6 +7602,9 @@ export function createOdysseyWorld({
             }
             if (spireMesh) spireMesh.visible = uSubmerged.value > 0.001 && lifeOn;
             if (kelpMesh) kelpMesh.visible = uSubmerged.value > 0.001 && lifeOn;
+            if (oceanScenery) oceanScenery.update(oceanLook, uSubmerged.value > 0.001 && lifeOn);
+            if (breachBurst) breachBurst.update(time, viewCamera?.position ?? null);
+            if (dolphinPod) dolphinPod.update(time, viewCamera?.position ?? null, lifeOn);
             const forestDrawable = uSubmerged.value < 0.999 && !earthCovers;
             for (let i = 0; i < treeMeshes.length; i += 1) {
                 const c = treeMeshes[i].userData.centre;
@@ -7105,6 +7630,11 @@ export function createOdysseyWorld({
             // escape hatch still renders it and must not leak (the SB-15 teardown class).
             [groundMat, waterMat, skyMat, treeMat, forestV2Mat, forestCardMat, cloudMat, heroMat, fieldMat, lakeMat,
                 tarnMat, showerMat, boulderMat].forEach((m) => m.dispose());
+            if (cloudSeaLayer) cloudSeaLayer.dispose();
+            if (summitCap) summitCap.dispose();
+            if (hollowMist) hollowMist.dispose();
+            if (turnWake) turnWake.dispose();
+            if (wallGusts) wallGusts.dispose();
             if (rayMat) rayMat.dispose();
             if (moteMat) moteMat.dispose();
             // The fish's material was missing here once (the same SB-15 teardown class heroMat was):
@@ -7113,6 +7643,9 @@ export function createOdysseyWorld({
             if (jellyfish) jellyfish.dispose();
             if (spireMat) spireMat.dispose();
             if (kelpMat) kelpMat.dispose();
+            if (oceanScenery) oceanScenery.dispose();
+            if (breachBurst) breachBurst.dispose();
+            if (dolphinPod) dolphinPod.dispose();
             if (moteMesh) moteMesh.geometry.dispose();
             if (rayMesh) rayMesh.geometry.dispose();
             [heightTex, sunVisTex, groundTex, detailTex, macroTex, summitTex, forestShadeTex, leafAtlasTex,

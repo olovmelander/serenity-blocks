@@ -43,12 +43,14 @@ function ensureWorker() {
 /**
  * Start the worker and bake its sprites before the first portal (the map is up and idle).
  * @param {string} [qualityPreset]
+ * @param {Window} [windowRef]
+ * @param {{kind?: string}|null} [look] the passage of the chapter the player is in
  * @returns {boolean} whether the worker is (now) running
  */
-export function warmPortalGateWorker(qualityPreset = 'High', windowRef = globalThis.window) {
+export function warmPortalGateWorker(qualityPreset = 'High', windowRef = globalThis.window, look = null) {
     if (!supported(windowRef)) return false;
     try {
-        ensureWorker().postMessage({ type: 'warm', qualityPreset });
+        ensureWorker().postMessage({ type: 'warm', qualityPreset, look });
         return true;
     } catch (error) {
         broken = true;
@@ -63,10 +65,12 @@ export function warmPortalGateWorker(qualityPreset = 'High', windowRef = globalT
  * load and a new 2D raster context on the GPU process beside the board's build, measured).
  * Never throws.
  * @param {string} [qualityPreset]
+ * @param {Window} [windowRef]
+ * @param {{kind?: string}|null} [look] the passage of the chapter the player is in
  */
-export function scheduleWarmPortalGateWorker(qualityPreset = 'High', windowRef = globalThis.window) {
+export function scheduleWarmPortalGateWorker(qualityPreset = 'High', windowRef = globalThis.window, look = null) {
     if (!supported(windowRef)) return;
-    const warm = () => { warmPortalGateWorker(qualityPreset, windowRef); };
+    const warm = () => { warmPortalGateWorker(qualityPreset, windowRef, look); };
     if (typeof windowRef?.requestIdleCallback === 'function') windowRef.requestIdleCallback(warm, { timeout: 4000 });
     else windowRef?.setTimeout?.(warm, 1500);
 }
@@ -75,8 +79,8 @@ export function scheduleWarmPortalGateWorker(qualityPreset = 'High', windowRef =
  * Hand a gate's canvas to the worker. After this the canvas belongs to the worker: the page must
  * not size it or ask it for a context.
  * @param {HTMLCanvasElement} canvas
- * @param {{qualityPreset?: string, palette?: object, flash?: number, width: number,
- *   height: number, dpr: number}} options
+ * @param {{qualityPreset?: string, palette?: object, look?: object|null, flash?: number,
+ *   width: number, height: number, dpr: number}} options
  * @returns {{draw: (frame: object) => void, resize: (width: number, height: number,
  *   dpr: number) => void, stop: () => void}|null} null: draw on the page instead
  */
@@ -105,6 +109,7 @@ export function startPortalGateOffThread(canvas, options = {}, windowRef = globa
         canvas: offscreen,
         qualityPreset: options.qualityPreset || 'High',
         palette: options.palette || {},
+        look: options.look || null,
         flash: options.flash ?? 1,
         width: options.width || 1,
         height: options.height || 1,

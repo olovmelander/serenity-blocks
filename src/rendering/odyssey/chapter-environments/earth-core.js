@@ -67,8 +67,14 @@ import { createShaftFalls, createShaftWallSteps, planEarthCoreShaft } from './ea
 import { runChapterSteps } from './shared/chapter-build-steps.js';
 import { lakeNoiseBakeEnabled } from './shared/odyssey-lake-noise-bake.js';
 import {
-    steamQuenchDensity, steamQuenchFogColour, steamQuenchSeamT, steamQuenchWarmHue,
+    setSteamQuenchLight, steamQuenchDensity, steamQuenchEyeRadius, steamQuenchNearVapourColour, steamQuenchSeamT,
+    steamQuenchWarmHue,
 } from '../composition/odyssey-steam-quench.js';
+import { createSeaVent, updateSeaVent } from './earth-core-sea-vent.js';
+import { sampleEarthCoreClock } from './earth-core-clock.js';
+import { createLakeEvents, updateLakeEvents } from './earth-core-lake-events.js';
+import { flashScale } from '../../../utils/photosensitivity.js';
+import { prefersReducedMotion } from '../../../themes/shared/reduced-motion.js';
 
 // The cavern's lights draw after the quench's steam (see earthCoreVeilTransmission).
 import { acquireChapterLight } from './shared/chapter-light-pool.js';
@@ -639,6 +645,8 @@ function createRisingEmbers(uniforms, count, staging = null, { yTop = LAVA_LAKE_
         .mul(oneMinus(uniforms.uSeam.mul(0.35)))
         .mul(mix(float(1), float(0.55), cinder))
         .mul(emberVeil)
+        // A gust carries more of them, brighter.
+        .mul(uniforms.uGust ? uniforms.uGust.mul(0.7).add(1.0) : float(1))
         .mul(uniforms.uOpacity);
     material.transparent = true;
     material.depthWrite = false;
@@ -803,86 +811,6 @@ function createMoltenHaze(uniforms, count, yLow, yHigh) {
 /**
  * Create the Earth Core environment group
  */
-/**
- * Overhead magma-cloud puffs. This is the particle counterpart to the canopy dome:
- * slower, darker smoke sheets with small lava-lit pockets, arranged above the path so
- * the chapter has a visible boiling "sky" instead of only background color.
- */
-function createMagmaCloudDeck(uniforms, count, corridorHigh) {
-    const bases = new Float32Array(count * 3);
-    const seeds = new Float32Array(count);
-    const sizes = new Float32Array(count);
-    const colors = new Float32Array(count * 3);
-
-    const coolSmoke = new THREE.Color(0x080712);
-    const warmSmoke = new THREE.Color(0x221a16); // warm grey (was 0x2a0a05, a pure red in linear)
-    for (let i = 0; i < count; i++) {
-        const zT = Math.random();
-        const x = (Math.random() - 0.5) * 140;
-        const y = corridorHigh - 4 - Math.random() * 24;
-        const z = 3 - 24 - zT * 150;
-        bases[i * 3] = x;
-        bases[i * 3 + 1] = y;
-        bases[i * 3 + 2] = z;
-        seeds[i] = Math.random();
-        // WAVE 3b: deck puffs 28-92u -> 18-60u. After the count cut the deck was still the
-        // largest per-puff fill in the chapter; area scales with the square of this number.
-        sizes[i] = 18 + Math.random() * 42;
-
-        const color = coolSmoke.clone().lerp(warmSmoke, Math.random() * 0.8);
-        colors[i * 3] = color.r;
-        colors[i * 3 + 1] = color.g;
-        colors[i * 3 + 2] = color.b;
-    }
-
-    const cloudMap = createCloudTexture();
-    const geometry = makeQuadInstancedGeometry(count, {
-        aBase: { array: bases, itemSize: 3 },
-        aSeed: { array: seeds, itemSize: 1 },
-        aSize: { array: sizes, itemSize: 1 },
-        aColor: { array: colors, itemSize: 3 },
-    });
-
-    const aBase = attribute('aBase', 'vec3');
-    const aSeed = attribute('aSeed', 'float');
-    const aSize = attribute('aSize', 'float');
-    const aColor = attribute('aColor', 'vec3');
-    const { uTime, uPulseIntensity } = uniforms;
-
-    const driftT = uTime.mul(0.045).add(aSeed.mul(TAU));
-    const center = aBase.add(vec3(
-        sin(driftT).mul(5.5),
-        sin(driftT.mul(0.7)).mul(2.0),
-        cos(driftT.mul(0.8)).mul(6.0),
-    ));
-    const worldSize = aSize.mul(uPulseIntensity.mul(0.08).add(1.0));
-
-    const material = new THREE.MeshBasicNodeMaterial();
-    material.positionNode = billboardWorld(center, worldSize);
-    const sprite = texture(cloudMap, uv());
-    const hotPocket = pow(sprite.a, 2.4)
-        .mul(sin(uTime.mul(0.35).add(aSeed.mul(9.0))).mul(0.18).add(0.82));
-    material.colorNode = aColor
-        .add(vec3(0.34, 0.14, 0.06).mul(hotPocket).mul(0.42))
-        .mul(uPulseIntensity.mul(0.08).add(1.0));
-    material.opacityNode = sprite.a.mul(0.18)
-        .mul(sin(driftT.mul(0.5)).mul(0.12).add(0.88))
-        .mul(uniforms.uOpacity);
-    material.transparent = true;
-    material.depthWrite = false;
-    material.blending = THREE.NormalBlending;
-    material.side = THREE.DoubleSide;
-    material.forceSinglePass = true;
-    material.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
-
-    const deck = new THREE.Mesh(geometry, material);
-    deck.name = 'magma-cloud-deck';
-    deck.frustumCulled = false;
-    deck.renderOrder = -88;
-    deck.userData.ownedTexture = cloudMap; // OD-11: TSL-node-bound, surfaced for eviction disposal
-    return deck;
-}
-
 export function createEarthCoreEnvironment(options = {}) {
     return runChapterSteps(buildEarthCoreEnvironmentSteps(options));
 }
@@ -956,8 +884,30 @@ export function* buildEarthCoreEnvironmentSteps(options = {}) {
         // reads as warm-lit without per-fragment light loops. 1 = full bake (the look
         // the removed lights produced); a future adaptive controller can dial it.
         uBakedBounce: uniform(1),
+        // ── THE CHAPTER'S EVENTS (masterpiece pass, 2026-11-17; earth-core-clock.js). ──
+        // The lake's mood, 0 banked .. 1 roused.
+        uActivity: uniform(0.5),
+        // The light an event throws up the shaft (a fountain most of all), already scaled by the
+        // photosensitivity setting where it is written.
+        uFlare: uniform(0),
+        // The ember gust (0..1): the updraft takes a breath.
+        uGust: uniform(0),
+        // The dome fountain on the lake: (x, z, radius, power) and (height, age, 0, 0).
+        uFountain: uniform(new THREE.Vector4(0, 0, 8, 0)),
+        uFountainB: uniform(new THREE.Vector4(12, 0, 0, 0)),
+        // The reach of crust that breaks up: (x, z, radius, amount).
+        uPlate: uniform(new THREE.Vector4(0, 0, 30, 0)),
+        // The camera's own right and up, for quads that are seen from straight below.
+        uCamRight: uniform(new THREE.Vector3(1, 0, 0)),
+        uCamUp: uniform(new THREE.Vector3(0, 0, 1)),
     };
     group.userData.uniforms = uniforms;
+    // THE CHAPTER'S CLOCK (earth-core-clock.js) starts somewhere else each session, so the first
+    // visit of two sessions does not open on the same minute of the lake's life. A test or a
+    // capture pins it (options.clockOffset, or this field).
+    let { clockOffset } = options;
+    if (!Number.isFinite(clockOffset)) clockOffset = typeof window !== 'undefined' ? (Date.now() / 1000) % 5400 : 0;
+    group.userData.clockOffset = clockOffset;
 
     // OD-11: TSL-node-bound textures (bound only via texture() nodes, never as material
     // .map / uniform .value) are invisible to the traverse in _freeEnvironmentResources,
@@ -1119,20 +1069,10 @@ export function* buildEarthCoreEnvironmentSteps(options = {}) {
     group.userData.smoke = smoke;
     yield;
 
-    // 8. Magma horizon — §3.1: the 3 bands now read as the lake's FAR SHORE, aligned so
-    //    their bright rim line sits at the lake surface (LAVA_LAKE_Y) instead of floating
-    //    mid-air. The magma-horizon's bright rim is at uv.y≈0.32 of a 200-unit plane, so
-    //    a band whose rim aligns to the lake has centerY = LAVA_LAKE_Y + 36*scaleY. This
-    //    turns the bands into a continuous far-shore line under the assets.
-    // WAVE 3b — deck density 140 -> 56: the deck is the second-largest additive fill layer
-    // after the canopy (140 sizeable billboard puffs overhead), and the canopy already owns
-    // the vault reading after 3a. Fewer, unchanged puffs keeps the broken-cloud look; count
-    // is the fill lever that does not change any per-puff appearance.
-    const cloudDeckCount = Math.min(options.particleCount ? Math.floor(options.particleCount * 0.4) : 56, 56);
-    const magmaCloudDeck = createMagmaCloudDeck(uniforms, cloudDeckCount, corridorHigh);
-    group.add(magmaCloudDeck);
-    group.userData.magmaCloudDeck = magmaCloudDeck;
-    yield;
+    // 8. (REMOVED 2026-11-17, masterpiece pass) The magma cloud deck: 56 dark puffs hung over the
+    // corridor's top, 20-170 u off the shaft's axis and level with the eye where the climb leaves
+    // the vent — outside every frame of the up-looking camera since the shaft got its wall. Its
+    // draw and its material are spent on the sea vent instead (step 11b).
     // (REMOVED 2026-10-01) The magma "far horizon": a 560 x 200 ADDITIVE plane with depthTest
     // OFF, seated ~6 u in front of the opening camera rather than at any far shore — it painted
     // an orange wash over the lake and the vault from the first frame (the Earth Core audit's
@@ -1218,6 +1158,18 @@ export function* buildEarthCoreEnvironmentSteps(options = {}) {
     group.add(lavaFallGroup);
     group.userData.lavaFall = lavaFallGroup;
     group.userData.shaftFalls = shaftFalls;
+    // 11b. THE SEA VENT (masterpiece pass, 2026-11-17) — earth-core-sea-vent.js. What stands on
+    // the vent's lip where the shaft opens onto the sea floor: black smokers, their smoke, the
+    // gas racing up past the eye, sparks of life in the dark water beyond. The 1->2 seam is the
+    // eye climbing out between them.
+    const seaVent = createSeaVent(uniforms, shaftPlan, options);
+    group.add(seaVent);
+    group.userData.seaVent = seaVent;
+    // 11c. WHAT THE LAKE THROWS AND THE SHAFT DROPS — earth-core-lake-events.js: the dome
+    // fountain's gobbets and the rock fall's chunks, one instanced draw.
+    const lakeEvents = createLakeEvents(uniforms, shaftPlan, options);
+    group.add(lakeEvents);
+    group.userData.lakeEvents = lakeEvents;
     // `fallFrame` (the old seat's frame) only steers the lake's flow direction above.
     group.userData.lavaFallSeat = { frame: fallFrame, base: fallBase };
     yield;
@@ -1589,6 +1541,10 @@ function createLavaFloor(uniforms, basins = [], { addGlows = true, crustPlates =
             uFlowDir: lakeNoise.flowDir ? uniforms.uLakeFlowDir : null,
             rimCrustBias: lakeNoise.rimCrust ? 0.12 : 0,
             crustPlates,
+            uFountain: uniforms.uFountain,
+            uFountainB: uniforms.uFountainB,
+            uPlate: uniforms.uPlate,
+            uActivity: uniforms.uActivity,
         },
     );
     group.add(lavaSurface);
@@ -1659,34 +1615,6 @@ function createLavaFloor(uniforms, basins = [], { addGlows = true, crustPlates =
     return group;
 }
 
-/**
- * Create volcanic crater rim with jagged rock formations
- */
-/**
- * Generate a soft radial gradient texture for cloud particles
- */
-function createCloudTexture() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 128;
-    canvas.height = 128;
-    const ctx = canvas.getContext('2d');
-
-    const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-    // Soft white puff center
-    gradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
-    // Fade out
-    gradient.addColorStop(0.4, 'rgba(255, 255, 255, 0.4)');
-    gradient.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
-
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 128, 128);
-
-    return new THREE.CanvasTexture(canvas);
-}
-
-/**
- * Volcanic background sphere (enhanced)
- */
 function createVolcanoBackground(uniforms) {
     // Validated TSL builder sets name/renderOrder(-90)/BackSide/depthWrite=false and
     // shares in the chapter's uTime/uPulseIntensity uniforms so animation ticks unchanged.
@@ -2140,7 +2068,7 @@ function setupVolcanicLighting(group) {
  * `camera` is part of the ChapterEnvironmentManager update contract (kept for API
  * parity); `cameraProgress` drives the descent uniform (0 vault-top → 1 at the lake).
  */
-// eslint-disable-next-line no-unused-vars, max-len
+// eslint-disable-next-line max-len
 export function updateEarthCoreEnvironment(group, delta, time, camera = null, cameraProgress = null, directorState = null) {
     const { uniforms } = group.userData;
     if (uniforms?.uTime) {
@@ -2176,6 +2104,43 @@ export function updateEarthCoreEnvironment(group, delta, time, camera = null, ca
         }
     }
 
+    // THE CHAPTER'S CLOCK: what the lake, the shaft and the vent are doing this second.
+    const reducedMotion = prefersReducedMotion();
+    const clock = sampleEarthCoreClock(time + (group.userData.clockOffset ?? 0), group.userData.clock);
+    group.userData.clock = clock;
+    if (uniforms?.uActivity) {
+        uniforms.uActivity.value = clock.activity;
+        // A light that swells over a second and a half is no strobe, but it is frame-wide: it
+        // goes through the photosensitivity setting like every flash (ADR-0021).
+        uniforms.uFlare.value = clock.flare * flashScale();
+        uniforms.uGust.value = reducedMotion ? 0 : clock.gust;
+        uniforms.uFountain.value.set(clock.fountain.x, clock.fountain.z, clock.fountain.radius, clock.fountain.power);
+        uniforms.uFountainB.value.set(clock.fountain.height, Math.max(0, clock.fountain.age), 0, 0);
+        uniforms.uPlate.value.set(clock.plate.x, clock.plate.z, clock.plate.radius, clock.plate.amount);
+        if (camera?.matrixWorld) {
+            const e = camera.matrixWorld.elements;
+            uniforms.uCamRight.value.set(e[0], e[1], e[2]);
+            uniforms.uCamUp.value.set(e[4], e[5], e[6]);
+        }
+        // The steam at the shaft's top is lit by the same lake: its light follows the mood and
+        // the fountain, and the vent's pulse pushes the vapour up into the sea's eye.
+        // (0.86 .. 1.14: at 1.4 the billows' heads went past pale gold to white, capture p 0.050.)
+        setSteamQuenchLight(
+            0.86 + (0.16 * clock.activity) + (0.12 * uniforms.uFlare.value),
+            reducedMotion ? 0 : clock.vent,
+        );
+    }
+    if (group.userData.lakeEvents) {
+        // The watcher's height above the lake, and how much of the cavern is still the frame.
+        const eyeHeight = camera ? camera.position.y - group.position.y - LAVA_LAKE_Y : 0;
+        updateLakeEvents(group.userData.lakeEvents, {
+            clock,
+            eyeHeight,
+            presence: 1 - THREE.MathUtils.smoothstep(uniforms?.uVeil?.value ?? 0, 0.25, 0.85),
+            reducedMotion,
+        });
+    }
+
     // THE VEIL (Act I overhaul): the quench's density squared at the camera — the board's own
     // steam-fog weight — which the lights drawn through the steam dim by.
     if (uniforms?.uVeil && cameraProgress != null) {
@@ -2183,7 +2148,21 @@ export function updateEarthCoreEnvironment(group, delta, time, camera = null, ca
         const veilT = steamQuenchSeamT(cameraProgress, boundary);
         const veil = steamQuenchDensity(veilT);
         uniforms.uVeil.value = veil * veil;
-        if (uniforms.uVeilColour) steamQuenchFogColour(veilT, uniforms.uVeilColour.value);
+        // The shaft's haze thins away as the steam closes (the steam has its own near vapour, the
+        // decks); what is left of a puff on the way takes the near vapour's colour.
+        if (uniforms.uVeilColour) steamQuenchNearVapourColour(veilT, uniforms.uVeilColour.value);
+        if (group.userData.seaVent) {
+            updateSeaVent(group.userData.seaVent, {
+                delta,
+                camera,
+                progress: cameraProgress,
+                boundary,
+                veil: veil * veil,
+                eyeRadius: steamQuenchEyeRadius(veilT),
+                pulse: clock.vent,
+                reducedMotion,
+            });
+        }
         if (uniforms.uFlecks) uniforms.uFlecks.value = 1 - steamQuenchWarmHue(veilT);
         // The haze draws after the steam's shell while it is the steam's near billows (a sort
         // key only: no pipeline changes).
@@ -2199,7 +2178,9 @@ export function updateEarthCoreEnvironment(group, delta, time, camera = null, ca
             : 0;
         group.userData.gustLastProgress = cameraProgress;
         const beat = directorState ? THREE.MathUtils.clamp(directorState.beatPulse || 0, 0, 1) : 0;
-        const want = 1 + (0.9 * beat) + (1.2 * glide);
+        // ...and on the chapter's own gusts (earth-core-clock.js), so a parked eye sees the updraft
+        // take a breath now and then.
+        const want = 1 + (0.9 * beat) + (1.2 * glide) + (1.9 * (uniforms.uGust?.value ?? 0));
         const gust = group.userData.gust ?? 1;
         group.userData.gust = gust + ((want - gust) * Math.min(1, dt * 3));
         uniforms.uRisePhase.value += dt * group.userData.gust;
@@ -2257,7 +2238,8 @@ export function updateEarthCoreEnvironment(group, delta, time, camera = null, ca
     // Animate lava lights
     const { lavaLight } = group.userData;
     if (lavaLight) {
-        lavaLight.intensity = 4 + Math.sin(time * 2.5) * 1 + Math.sin(time * 4.3) * 0.5;
+        lavaLight.intensity = (4 + Math.sin(time * 2.5) * 1 + Math.sin(time * 4.3) * 0.5)
+            * (0.85 + (0.3 * clock.activity) + (0.8 * (uniforms?.uFlare?.value ?? 0)));
     }
 
     const { lavaGlow } = group.userData;

@@ -18,6 +18,7 @@
  * header refresh, and the play-button → launchOdysseyLevel handler) since those need mode state.
  * The look lives in public/styles/odyssey-map.css.
  */
+import { watchOdysseyChapterInView } from './odyssey-chapter-look.js';
 import { buildOdysseyNavigatorModel } from './odyssey-navigator-model.js';
 
 /** A keycap, and the controller button that does the same (body.sb-input-gamepad swaps them). */
@@ -228,11 +229,10 @@ export function renderOdysseyMapHeader(source, doc = globalThis.document) {
             return group;
         }));
     }
+    // The header wears the chapter the world is showing (the page's, odyssey-chapter-look.js),
+    // not the chapter the journey has reached: its night is the place you are looking at.
     const header = doc.getElementById('odyssey-map-header');
-    if (header?.dataset) {
-        header.dataset.journey = 'ready';
-        header.dataset.odyChapter = String(journey.chapter);
-    }
+    if (header?.dataset) header.dataset.journey = 'ready';
     return journey;
 }
 
@@ -246,6 +246,8 @@ let pendingHeader = null;
  * @param {Document} [doc]
  */
 export function scheduleOdysseyMapHeader(source, doc = globalThis.document) {
+    // The mode itself asks: from here on the page wears the chapter its world is showing.
+    if (source?.odysseyState && source.isActive) watchOdysseyChapterInView(source, { doc });
     const queued = pendingHeader !== null;
     pendingHeader = { source, doc };
     if (queued) return;
