@@ -1,5 +1,11 @@
 # Vesper Chrysalis: the wings show past the board (2026-10-25)
 
+> **Since 2026-11-17** the chrysalis hangs beside a solo card and its wings grow out of it, sized
+> to the open water there ([VESPER_CHRYSALIS_MASTERPIECE_2026-11.md](VESPER_CHRYSALIS_MASTERPIECE_2026-11.md)),
+> so a solo card no longer hides them. The cover table below still works and still applies
+> wherever a card stands in front of the wings' root (a card that fills the frame); it is now
+> measured from where the wings hang.
+
 **A record.** The report: "When playing and having the vesper chrysalis theme, it is hard to see
 the folding butterfly behind the game canvas. is this something we can improve?"
 

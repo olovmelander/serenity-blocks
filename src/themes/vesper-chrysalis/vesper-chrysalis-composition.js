@@ -10,7 +10,7 @@
  */
 
 import {
-    CHRYSALIS, DEG, EYE, fovForAspect, wingPoint,
+    CHRYSALIS, DEG, EYE, WINGS, WING_REACH, fovForAspect, wingPoint,
 } from './vesper-chrysalis-core.js';
 
 /** The playfield every board canvas shows. */
@@ -160,19 +160,35 @@ export function cardUnion(layout) {
 
 /** The band of the screen the chrysalis hangs in at rest (fractions, y down). */
 export const PERCH_BAND = Object.freeze({ y0: 0.26, y1: 0.54 });
-/** The frame's edges are kept clear (the crystal stands there). */
+/** The chrysalis itself keeps clear of the frame's edges (the crystal stands there). */
 const PERCH_EDGE = 0.13;
-/** The narrowest open column worth moving to, and the room kept between the chrysalis and a card. */
+/** The open middle (between two boards) the chrysalis stays in; the narrowest side column. */
 const PERCH_ROOM = 0.13;
-const PERCH_GAP = 0.085;
+/**
+ * The least scale on the wings an open column beside a board must allow: narrower than that (an
+ * upright tablet) the chrysalis rises into the sky above the card instead, where there is one.
+ */
+const PERCH_SIDE_WINGS = 0.3;
+/** A wing may reach this close to the frame's edge, and no closer than this to a card. */
+const WING_EDGE = 0.015;
+const WING_GAP = 0.02;
+
+/** Metres across the whole frame at the chrysalis's distance, for a frame of `aspect`. */
+function acrossFor(aspect) {
+    const a = Math.max(0.2, Number.isFinite(aspect) ? aspect : 16 / 9);
+    return 2 * Math.tan((fovForAspect(a) * DEG) / 2) * a * Math.abs(CHRYSALIS.z - EYE.z);
+}
 
 /**
- * Where on screen (x, a fraction) the chrysalis should hang so that it is seen: null when it can
- * stay where it is (nothing covers the middle of the frame, or nowhere is better). The card
- * stands in front of the middle of the picture, so in a solo game the chrysalis hangs in the
- * open water beside it; between two boards it stays between them.
+ * Where on screen the chrysalis should hang so that it is seen, with its wings: `{ x, room }`,
+ * x a fraction of the width and room how far a wing may reach to either side of it (the same
+ * unit), or null when it can stay where it is (nothing covers the middle of the frame, or
+ * nowhere is better). The card stands in front of the middle of the picture, so in a solo game
+ * the chrysalis hangs in the middle of the open water beside it, its wings spread over that
+ * water and no further; between two boards it stays between them. `aspect` sizes the chrysalis
+ * on screen (it keeps itself off the crystal stands at the frame's edges).
  */
-export function perchScreenX(layout) {
+export function perchPlace(layout, aspect = 16 / 9) {
     const rects = [];
     (layout?.cards ?? []).forEach((r) => { if (r) rects.push(r); });
     if (layout?.hud) rects.push(layout.hud);
@@ -181,14 +197,14 @@ export function perchScreenX(layout) {
         .map((r) => [r.x0, r.x1])
         .sort((a, b) => a[0] - b[0]);
     if (!blocks.length) return null;
-    // The open columns between the covers, inside the frame's kept edges.
+    // The open columns between the covers (the wings may reach almost to the frame's edge).
     const open = [];
-    let at = PERCH_EDGE;
+    let at = WING_EDGE;
     blocks.forEach(([x0, x1]) => {
-        if (x0 > at) open.push([at, Math.min(x0, 1 - PERCH_EDGE), true]);
-        at = Math.max(at, x1);
+        if (x0 - WING_GAP > at) open.push([at, Math.min(x0 - WING_GAP, 1 - WING_EDGE)]);
+        at = Math.max(at, x1 + WING_GAP);
     });
-    if (at < 1 - PERCH_EDGE) open.push([at, 1 - PERCH_EDGE, false]);
+    if (at < 1 - WING_EDGE) open.push([at, 1 - WING_EDGE]);
     // The middle is open (two boards with the chrysalis between them): it stays.
     const middle = open.find(([x0, x1]) => x0 <= 0.5 - PERCH_ROOM / 2 && x1 >= 0.5 + PERCH_ROOM / 2);
     if (middle) return null;
@@ -200,10 +216,17 @@ export function perchScreenX(layout) {
         if (!best || width > best[1] - best[0] + 0.02) best = column;
     });
     if (!best) return null;
-    const [x0, x1, coverToRight] = best;
-    const inset = Math.min(PERCH_GAP, (x1 - x0) / 2);
-    // It hangs near the card, not out at the frame's edge.
-    return coverToRight ? x1 - inset : x0 + inset;
+    const [x0, x1] = best;
+    // The middle of the column, so the wings have as much room on one side as the other; the
+    // chrysalis itself stays off the crystal stands at the frame's edges.
+    const body = (CHRYSALIS.radius * 1.15) / acrossFor(aspect);
+    const x = Math.max(PERCH_EDGE + body, Math.min(1 - PERCH_EDGE - body, (x0 + x1) / 2));
+    return { x, room: Math.max(0, Math.min(x - x0, x1 - x)) };
+}
+
+/** Where on screen (x, a fraction of the width) the chrysalis hangs beside a board, or null. */
+export function perchScreenX(layout, aspect = 16 / 9) {
+    return perchPlace(layout, aspect)?.x ?? null;
 }
 
 /** The least strip above the cards (a share of the screen's height) the chrysalis is hung in. */
@@ -226,29 +249,45 @@ export function perchScreenY(layout) {
     return top >= PERCH_STRIP ? top * 0.5 + 0.004 : null;
 }
 
+/** The wings' scale that lets a wing reach `room` metres out from the chrysalis's middle, at most 1. */
+function wingsFor(room) {
+    return Math.max(0.2, Math.min(1, (room - WINGS.root[0]) / (WINGS.span * WING_REACH)));
+}
+
 /**
  * The same as an offset in metres from the chrysalis's place at rest, for a frame of `aspect`:
- * to the side of the board when there is open water there, else up into the sky above it.
- * @returns {{ x: number, y: number }}
+ * to the side of the board when there is open water there, else up into the sky above it. And
+ * `wings`, the scale on the wings' span that keeps them in the room they have there (1 where
+ * nothing stands in front of the picture, or between two boards).
+ * @returns {{ x: number, y: number, wings: number }}
  */
-export function perchFor(layout, aspect, out = { x: 0, y: 0 }) {
+export function perchFor(layout, aspect, out = { x: 0, y: 0, wings: 1 }) {
     out.x = 0;
     out.y = 0;
+    out.wings = 1;
     if (!layout) return out;
     const a = Math.max(0.2, Number.isFinite(aspect) ? aspect : 16 / 9);
     const halfHeight = Math.tan((fovForAspect(a) * DEG) / 2);
     const distance = Math.abs(CHRYSALIS.z - EYE.z);
-    const sx = perchScreenX(layout);
-    if (sx !== null) {
-        out.x = (sx - 0.5) * 2 * halfHeight * a * distance - CHRYSALIS.x;
+    // Metres across the frame at the chrysalis, for one whole screen width.
+    const across = acrossFor(a);
+    const place = perchPlace(layout, a);
+    const side = place ? wingsFor(place.room * across) : 0;
+    const beside = () => {
+        out.x = (place.x - 0.5) * across - CHRYSALIS.x;
+        out.wings = side;
         return out;
-    }
+    };
+    // Beside the board, when the open water there holds the wings at a size worth the name.
+    if (place && side >= PERCH_SIDE_WINGS) return beside();
     const sy = perchScreenY(layout);
-    if (sy === null) return out;
-    // The height at which its middle stands at that place on the screen.
+    if (sy === null) return place ? beside() : out;
+    // Else up in the sky above the card: the height at which its middle stands at that place on
+    // the screen, the wings spread across the whole width of the frame and no further.
     const elevation = EYE.pitch + Math.atan((0.5 - sy) * 2 * halfHeight);
     const middle = EYE.y + distance * Math.tan(elevation);
     out.y = Math.max(0, middle - (CHRYSALIS.foot + CHRYSALIS.length * 0.5));
+    out.wings = wingsFor((0.5 - WING_EDGE) * across);
     return out;
 }
 
@@ -283,11 +322,11 @@ function coveredBy(rects, x, y) {
  * returns false when it is behind the eye; `w` and `beat` are the wings' unfurling and stroke
  * now (a young wing is gathered, and the stroke turns it), so the answer is for this frame.
  */
-export function wingCoverAlong(project, rects, aspect, kind, side, an, w, beat, scratch = {}) {
+export function wingCoverAlong(project, rects, aspect, kind, side, an, w, beat, scratch = {}, mount = undefined) {
     const p = scratch.p || (scratch.p = [0, 0, 0]);
     const s = scratch.s || (scratch.s = { x: 0, y: 0 });
     const at = (v) => {
-        wingPoint(kind, side, an, v, w, beat, p);
+        wingPoint(kind, side, an, v, w, beat, p, mount);
         return project(p, s) ? coveredBy(rects, s.x, s.y) : false;
     };
     if (!rects?.length || !at(0)) return 0;
@@ -325,15 +364,15 @@ export function wingCoverAlong(project, rects, aspect, kind, side, an, w, beat, 
  * The whole cover table: for each ray i, (left forewing, right forewing, left hindwing, right
  * hindwing), the layout the wing shader reads (out[i] is anything with set(x, y, z, w)).
  */
-export function fillWingCover(out, project, rects, aspect, w, beat, scratch = {}) {
+export function fillWingCover(out, project, rects, aspect, w, beat, scratch = {}, mount = undefined) {
     const n = Math.min(out.length, WING_COVER_SAMPLES);
     for (let i = 0; i < n; i++) {
         const an = i / (WING_COVER_SAMPLES - 1);
         out[i].set(
-            wingCoverAlong(project, rects, aspect, 0, -1, an, w, beat, scratch),
-            wingCoverAlong(project, rects, aspect, 0, 1, an, w, beat, scratch),
-            wingCoverAlong(project, rects, aspect, 1, -1, an, w, beat, scratch),
-            wingCoverAlong(project, rects, aspect, 1, 1, an, w, beat, scratch),
+            wingCoverAlong(project, rects, aspect, 0, -1, an, w, beat, scratch, mount),
+            wingCoverAlong(project, rects, aspect, 0, 1, an, w, beat, scratch, mount),
+            wingCoverAlong(project, rects, aspect, 1, -1, an, w, beat, scratch, mount),
+            wingCoverAlong(project, rects, aspect, 1, 1, an, w, beat, scratch, mount),
         );
     }
     return out;
