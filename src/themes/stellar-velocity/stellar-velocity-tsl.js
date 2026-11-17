@@ -39,9 +39,11 @@ import {
     HOOP_SLOTS,
     NEBULA_PALETTES,
     STARBOW,
+    SUN_RING_SLOTS,
 } from './stellar-velocity-core.js';
 import { derivedOnce } from '../shared/bake-cache.js';
 import { FBM_SIZE } from './stellar-velocity-bake.js';
+import { BEACON_SLOTS } from './stellar-velocity-voyage.js';
 
 export * from './stellar-velocity-core.js';
 
@@ -259,6 +261,8 @@ export function createStellarUniforms(textures) {
         hoops: rows(HOOP_SLOTS * 2, [-100, 1, 0, 0]),
         hoopLights: rows(HOOP_LIGHTS * 2, [-100, 1, 0, 0]),
         fronts: rows(FRONT_SLOTS * 2, [-100, 1, 0, 0]),
+        beacons: rows(BEACON_SLOTS * 2, [0, 0, 100, 0]),
+        sunRings: rows(SUN_RING_SLOTS * 2, [0, 0.01, 0, 0]),
     };
     const u = {
         time: uniform(0),
@@ -324,6 +328,32 @@ export function createStellarUniforms(textures) {
         /** Fronts of light in the canyon: (depth ahead now, width, strength, _) + (colour, _). */
         fronts: uniformArray(tables.fronts, 'vec4'),
         frontCount: uniform(0, 'int'),
+        /**
+         * Where we are on the voyage (stellar-velocity-voyage.js): (how far the walls stand,
+         * how much less cloud, how much is dust, the streamers' gain) and (the young stars'
+         * light, the ionisation fronts' gain, the far haze's share, _).
+         */
+        region: uniform(new THREE.Vector4(1, 0, 1, 1)),
+        region2: uniform(new THREE.Vector4(0.3, 1, 1, 0)),
+        /**
+         * The young stars burning in the walls, two rows each: (true world position, light) and
+         * (colour, size). The lit ones nearest the camera come first: the march carries the
+         * light of the first `beaconLightCount` on the gas.
+         */
+        beacons: uniformArray(tables.beacons, 'vec4'),
+        beaconLightCount: uniform(0, 'int'),
+        /** Rings of light round the sun: (angle off the course now, width, light, _) + (colour, _). */
+        sunRings: uniformArray(tables.sunRings, 'vec4'),
+        sunRingCount: uniform(0, 'int'),
+        /**
+         * A level's new colour comes down the canyon from the sun: gas further ahead than `wave`
+         * is in the palette above (the new one), nearer gas still in these (the old). With no
+         * wave running, `wave` stands far behind the camera.
+         */
+        wave: uniform(-1000),
+        glowOld: v3(p.glow),
+        deepOld: v3(p.deep),
+        accentOld: v3(p.accent),
         canyonTex: textures.canyon,
         canyonFarTex: textures.canyonFar,
         fbmTex: textures.fbm,

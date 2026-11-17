@@ -14,10 +14,12 @@
  *            Where it arrives a hoop of plasma opens in that colour and stands in the canyon as
  *            a ring of light, and a pulse of the same colour comes down the walls toward us.
  *            The course holds the hoop for half a minute. A hard drop hits harder.
- *   clear    the drive fires. The cleared rows leave the card as jets, and we go through every
- *            hoop we have laid: each comes at us ever faster, opens across the whole frame and
- *            is gone, and a front of white light per line comes down the canyon after them.
- *            The more the board has laid, the more a clear sets off.
+ *   clear    the drive fires. Each cleared row leaves its card as a comet that flies down the
+ *            course into the sun, and the sun flares as it takes it (a ring of light leaves
+ *            it). We go through every hoop we have laid: each comes at us ever faster, opens
+ *            across the whole frame and is gone, and a front of white light per line comes down
+ *            the canyon after them. The more the board has laid, the more a clear sets off.
+ *   drop     a hard drop slams its hoop open: a white-hot shock ring bursts out of it.
  *   combo    each step of a chain is a gear. The canyon rushes, the near stars draw out into
  *            trails, and the whole sky bunches toward the sun and splits into the starbow: blue
  *            dead ahead, then white, amber and red out to the sides.
@@ -31,13 +33,22 @@
  *            its threads burn gold, and we arrive with fronts of the same gold.
  *   cascade  each wave past the first is an afterburner stage: a harder thrust, fronts that run
  *            faster and bluer, the sky pulled further toward the jump, the sun's corona swelling.
- *   b2b      the sun's spikes flare gold and a gold front comes down; a second one in a row
+ *   b2b      the sun's spikes flare gold and a broad gold ring leaves it; a second one in a row
  *            burns brighter still, and a back-to-back jump arrives in gold.
- *   twist   the canyon rolls: cloud, stars and hoops wind round the course and spring back.
- *   level    the nebula moves one palette along its line of six, and a slow front of the new
- *            colour comes down the canyon.
+ *   twist    the canyon rolls, and a double helix of light in the twisting piece's colour grows
+ *            out of the sun toward us, turning as it comes.
+ *   level    the nebula moves one palette along its line of six: the new colour comes down the
+ *            canyon from the sun as a wave, the gas behind its front already turned, the gas
+ *            before it still the old, and a ring of the new colour leaves the sun.
+ *   gear     each step of a chain is a shock ring bursting ahead of us and a ring off the sun.
+ *   over     the run's end: the drive dies. We coast to a drift, the sun sinks to an ember and
+ *            the nebula's light drains toward it; a ring falls into the sun. A new run
+ *            rekindles it (or it finds its breath by itself after a while).
  *   time     by itself, with no level change, the nebula drifts along the same line: one
- *            palette every PALETTE_STEP seconds, there and back. The two simply add.
+ *            palette every PALETTE_STEP seconds, there and back. The two simply add. And the
+ *            voyage (stellar-velocity-voyage.js) carries the canyon through its regions: an
+ *            open reach, a gorge, lanes of dust, a nursery of young stars burning in the walls,
+ *            a field of filaments, a clearing. A jump drops us out in the next one.
  *
  * Play itself builds (src/themes/shared/gameplay-surge.js): calm play looks as it always did.
  * Warm, the drive takes notice: we run faster, the sun stands brighter. Hot, the course keeps a
@@ -58,10 +69,22 @@ import {
     B2B_GOLD,
     BOLT_FLIGHT,
     CANYON,
+    COMET_DEPTH,
+    COMET_FLIGHT,
     CROWN_FIRE,
     CRUISE,
     DEG,
     DRIVEFIRE,
+    EMBER,
+    GAME_OVER_REST,
+    HELIX_LIFE,
+    HELIX_SLOTS,
+    SHOCK_LIFE,
+    SHOCK_SLOTS,
+    STALL_FALL,
+    SUN_RING_SLOTS,
+    WAVE_SPEED,
+    sunRingRadius,
     FRONT_END,
     FRONT_SLOTS,
     FRONT_SPEED,
@@ -116,7 +139,12 @@ import { createCanyon } from './stellar-velocity-nebula.js';
 import {
     MOTE_DEPTH, STAR_DEPTH, createStreakField,
 } from './stellar-velocity-stars.js';
-import { createBolts, createHoops, createRowJets } from './stellar-velocity-fx.js';
+import {
+    createBeacons, createBolts, createHelix, createHoops, createShocks,
+} from './stellar-velocity-fx.js';
+import {
+    BEACON_LIGHTS, BEACON_SLOTS, REGIONS, beaconDepth, beaconFade, beaconSites, skipToNext, voyageAt, voyagePlace,
+} from './stellar-velocity-voyage.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './stellar-velocity-composition.js';
@@ -165,7 +193,16 @@ const JUMP_FALL = 2;
 const PULSE_SLOW = 0.8;
 const PULSE_FAST = 0.36;
 
-const PARTS = ['canyon', 'stars', 'motes', 'hoops', 'bolts', 'jets'];
+const PARTS = ['canyon', 'stars', 'motes', 'beacons', 'hoops', 'shocks', 'helix', 'bolts'];
+
+/** The palette's colours the run's end drains toward the ember. */
+const STALL_KEYS = Object.freeze(['glow', 'deep', 'accent', 'sun']);
+/** How far ahead (canyon units) a young star still lights the gas round it. */
+const BEACON_CAST_FAR = 14;
+/** How fast a young star given one of the march's light slots eases its light in (per second). */
+const BEACON_ADMIT = 2.5;
+/** The young stars' gas light for each kind: hot white-blue (read from the glow), the third colour, rose. */
+const BEACON_ROSE = Object.freeze([1.0, 0.3, 0.42]);
 
 const KEYS = PALETTE_KEYS;
 
@@ -200,7 +237,8 @@ export class StellarVelocityWorld {
         this.stars = null;
         this.motes = null;
         this.bolts = null;
-        this.jets = null;
+        this.shocks = null;
+        this.helix = null;
         this.disposed = false;
         this.reducedMotion = false;
         this.aspect = 16 / 9;
@@ -245,6 +283,21 @@ export class StellarVelocityWorld {
         this.frontSlots = Array.from({ length: FRONT_SLOTS }, () => ({
             birth: -1e6, speed: 1, rgb: [1, 1, 1], strength: 0, width: 1,
         }));
+        /** Rings of light leaving the sun, shock rings on the course, the twist's helices. */
+        this.ringSlots = Array.from({ length: SUN_RING_SLOTS }, () => ({
+            birth: -1e6, reach: 0.3, rate: 2, width: 0.02, strength: 0, fade: 1, rgb: [1, 1, 1],
+        }));
+        this.shockSlots = Array.from({ length: SHOCK_SLOTS }, () => ({
+            birth: -1e6, depth: 3, from: 0.3, to: 1, strength: 0, thickness: 1, rgb: [1, 1, 1],
+        }));
+        this.helixSlots = Array.from({ length: HELIX_SLOTS }, () => ({
+            birth: -1e6, way: 1, strength: 0, phase: 0, rgb: [1, 1, 1],
+        }));
+        /** The palette before a level's wave (its place on the line), live with the clock. */
+        this._oldPalette = {};
+        KEYS.forEach((key) => {
+            this._oldPalette[key] = [...NEBULA_PALETTES[PALETTE_HOME][key]];
+        });
         this._lit = [];
         /**
          * How hot play runs (src/themes/shared/gameplay-surge.js), fed by every lock, clear and
@@ -270,6 +323,15 @@ export class StellarVelocityWorld {
         this.crown = new Swell({
             attack: 0.08, release: 2.4, ceiling: 1.4, knee: 1,
         });
+        /** The sun taking a comet: each one adds to what it still burns with. */
+        this.flareSwell = new Swell({
+            attack: 0.04, release: 0.9, ceiling: 1.6, knee: 1,
+        });
+        /** Where we are on the voyage (stellar-velocity-voyage.js), as of the last frame. */
+        this.region = {};
+        /** A region held for captures (holdRegion), else null. */
+        this.regionHold = null;
+        this._beaconOrder = [];
         this.resetState(0);
     }
 
@@ -311,8 +373,26 @@ export class StellarVelocityWorld {
         this.jumps = 0;
         /** The fever's next pulse down the walls. */
         this.pulseAt = -Infinity;
+        /** The sun's own breath: when it next throws a ring of its own (none in the first seconds). */
+        this.breathAt = time + 9;
+        this.breaths = 0;
         this.frontCursor = 0;
         this.lastClear = { time: -100, lines: 0 };
+        /** Whole regions the jumps have skipped: each arrival is in the next one. */
+        this.voyageSkip = 0;
+        /** The run's end: the drive dies (stalled), and how far it has sunk as shown. */
+        this.stalled = false;
+        this.stallAt = -Infinity;
+        this.stallShown = 0;
+        /** A level's colour wave: when it left the sun, and the place it carries the old palette from. */
+        this.waveBirth = -1e6;
+        this.levelPlaceOld = this.levelPlace;
+        /** The colour of the last piece that locked (a twist's helix burns in it). */
+        this.lastLockRgb = [1, 0.79, 0.29];
+        this.helixWay = 1;
+        /** The young stars of this stretch of the course (a jump draws a new stretch). */
+        this.beaconSites = beaconSites(0);
+        voyageAt(voyagePlace(time, 0), this.region);
         /** Timed moments still ahead: a bolt's landing, a hoop passing us, a jump, an arrival. */
         this.queue = [];
         this.counts = {
@@ -343,8 +423,12 @@ export class StellarVelocityWorld {
             slot.birth = -1e6;
             slot.strength = 0;
         });
+        [this.ringSlots, this.shockSlots, this.helixSlots].forEach((slots) => slots?.forEach((slot) => {
+            slot.birth = -1e6;
+            slot.strength = 0;
+        }));
+        this.flareSwell?.reset();
         this.bolts?.reset();
-        this.jets?.reset();
         if (this.u) {
             this.u.shift.value.set(0, 0, 0);
             this.writeCourse();
@@ -366,20 +450,28 @@ export class StellarVelocityWorld {
         this.u = u;
 
         this.canyon = createCanyon(u, {
-            march: tier.march, detail: tier.detail, taps: tier.taps, lights: tier.lights, skyLayers: tier.skyLayers,
+            march: tier.march,
+            detail: tier.detail,
+            taps: tier.taps,
+            lights: tier.lights,
+            skyLayers: tier.skyLayers,
+            beacons: tier.beacons,
         });
         this.addPart('canyon', this.canyon);
         this.stars = createStreakField(u, { count: tier.stars, kind: 'stars', seed: this.seed + 11 });
         this.addPart('stars', this.stars);
         this.motes = createStreakField(u, { count: tier.motes, kind: 'motes', seed: this.seed + 23 });
         this.addPart('motes', this.motes);
+        this.addPart('beacons', createBeacons(u, BEACON_SLOTS));
 
         // ── Gameplay effects (pools, always drawn) ──
         this.addPart('hoops', createHoops(u));
+        this.shocks = createShocks(u);
+        this.addPart('shocks', this.shocks);
+        this.helix = createHelix(u);
+        this.addPart('helix', this.helix);
         this.bolts = createBolts(u);
         this.addPart('bolts', this.bolts);
-        this.jets = createRowJets(u);
-        this.addPart('jets', this.jets);
 
         this.resetState(this.time);
         this.applyPalette(1);
@@ -431,6 +523,11 @@ export class StellarVelocityWorld {
 
     setReducedMotion(reduced) {
         this.reducedMotion = reduced === true;
+    }
+
+    /** Hold the voyage in one region (captures; null lets the clock run it again). */
+    holdRegion(name) {
+        this.regionHold = REGIONS.find((r) => r.name === name) || null;
     }
 
     /** Jump the clock (captures): drops every event in flight. */
@@ -656,6 +753,9 @@ export class StellarVelocityWorld {
             else if (kind === 'front') this.front(time, data);
             else if (kind === 'pass') this.pass(time, data);
             else if (kind === 'kick') this.kick = Math.max(this.kick, data);
+            else if (kind === 'flare') this.takeComet(time, data);
+            else if (kind === 'shock') this.shock(time, data);
+            else if (kind === 'ring') this.sunRing(time, data);
             else if (kind === 'boost') {
                 // As if it had begun at its own moment, whatever frame noticed it.
                 this.boost = Math.min(BOOST_MAX, this.boost + data * Math.exp(-(t - time) / BOOST_COOL));
@@ -762,6 +862,102 @@ export class StellarVelocityWorld {
         slot.width = width;
     }
 
+    /**
+     * A ring of light leaves the sun (or, with a negative reach, falls into it). The slot taken
+     * is a finished one, else the one with the least light left.
+     */
+    sunRing(time, {
+        reach = 0.4, rate = 2, width = 0.02, strength = 1, fade = 1, rgb = DRIVEFIRE,
+    } = {}) {
+        let best = 0;
+        let least = Infinity;
+        for (let i = 0; i < SUN_RING_SLOTS; i++) {
+            const slot = this.ringSlots[i];
+            const left = slot.strength * Math.exp(-Math.max(0, time - slot.birth) / slot.fade);
+            if (left < least) {
+                least = left;
+                best = i;
+            }
+        }
+        const slot = this.ringSlots[best];
+        Object.assign(slot, {
+            birth: time, reach, rate, width, strength, fade,
+        });
+        slot.rgb = [rgb[0], rgb[1], rgb[2]];
+    }
+
+    /** A shock ring bursts out on the course at `depth`, from radius `from` toward `to`. */
+    shock(time, {
+        depth = 3, from = 0.3, to = 2, strength = 1, thickness = 1, rgb = DRIVEFIRE,
+    } = {}) {
+        let best = 0;
+        for (let i = 1; i < SHOCK_SLOTS; i++) {
+            if (this.shockSlots[i].birth < this.shockSlots[best].birth) best = i;
+        }
+        const slot = this.shockSlots[best];
+        Object.assign(slot, {
+            birth: time, depth, from, to, strength, thickness,
+        });
+        slot.rgb = [rgb[0], rgb[1], rgb[2]];
+    }
+
+    /** A comet reaches the sun: it flares, and a ring of the comet's light leaves it. */
+    takeComet(time, { rgb = DRIVEFIRE, strength = 1 } = {}) {
+        this.flareSwell.hit(0.32 * strength, time);
+        this.sunRing(time, {
+            reach: 0.3 + 0.06 * strength, rate: 3.4, width: 0.011, strength: 0.9 * strength, fade: 0.55, rgb,
+        });
+    }
+
+    /** A twist's double helix grows out of the sun in the twisting piece's colour. */
+    windHelix(time, strength) {
+        let best = 0;
+        for (let i = 1; i < HELIX_SLOTS; i++) {
+            if (this.helixSlots[i].birth < this.helixSlots[best].birth) best = i;
+        }
+        const slot = this.helixSlots[best];
+        this.helixWay = -this.helixWay;
+        slot.birth = time;
+        slot.way = this.helixWay;
+        slot.strength = strength;
+        slot.phase = (this.counts.clears * 2.39996 + this.counts.locks * 0.7) % (Math.PI * 2);
+        slot.rgb = [...this.lastLockRgb];
+    }
+
+    /**
+     * The run is over: the drive dies. We coast to a drift, the sun sinks to an ember and the
+     * light drains toward it, and a ring falls into the sun. (Not under reduced motion's flash
+     * rules: nothing here flashes.)
+     */
+    onGameOver() {
+        if (!this.u || this.stalled) return;
+        const t = this.time;
+        this.stalled = true;
+        this.stallAt = t;
+        this.combo = 0;
+        this.dip = Math.max(this.dip, 0.25);
+        this.sunRing(t, {
+            reach: -0.42, rate: 1.0, width: 0.012, strength: 0.75, fade: 2.2, rgb: EMBER.accent,
+        });
+    }
+
+    /** A run starts: if the drive had died, it rekindles. */
+    onSessionStart() {
+        if (this.stalled) this.rekindle(this.time);
+    }
+
+    /** The drive catches again: the sun flares back from its ember, a ring of white leaves it. */
+    rekindle(time) {
+        if (!this.stalled) return;
+        this.stalled = false;
+        this.sunRing(time, {
+            reach: 0.95, rate: 1.8, width: 0.035, strength: 1.4, fade: 1.2, rgb: DRIVEFIRE,
+        });
+        this.flareSwell.hit(0.8, time);
+        this.boost = Math.min(BOOST_MAX, this.boost + 0.6);
+        this.tintFlash(0.08);
+    }
+
     /** A fired hoop passes the camera: its colour crosses the frame. */
     pass(time, { rgb, strength }) {
         this.tintFlash(0.1 + 0.12 * strength, rgb);
@@ -854,6 +1050,9 @@ export class StellarVelocityWorld {
         this.jumps += 1;
         const rand = mulberry32(this.seed + this.jumps * 7919);
         if (this.u) this.u.shift.value.set((rand() - 0.5) * 9, (rand() - 0.5) * 9, rand() * TRAVEL_WRAP);
+        // Somewhere else: the next region of the voyage, already there, with young stars of its own.
+        this.voyageSkip += skipToNext(voyagePlace(time, this.voyageSkip));
+        this.beaconSites = beaconSites(this.jumps);
         let afterglow = 1;
         let tint = DRIVEFIRE;
         if (perfect) {
@@ -866,8 +1065,20 @@ export class StellarVelocityWorld {
         this.surge = Math.max(this.surge, afterglow);
         this.tintFlash(0.8, tint);
         this.kick = Math.max(this.kick, 0.7);
+        // The sun we arrive at throws a great ring of light out over the new stretch (a perfect
+        // clear's arrival: two, in the crown's gold).
+        this.sunRing(time, {
+            reach: 1.15, rate: 1.5, width: 0.045, strength: 2.4, fade: 1.3, rgb: tint,
+        });
+        if (perfect) {
+            // We arrive crowned: the sun, its spikes and the dust burn the crown's gold again.
+            this.crown.hit(0.9, time);
+            this.sunRing(time + 0.18, {
+                reach: 0.7, rate: 1.9, width: 0.03, strength: 1.3, fade: 1.6, rgb: CROWN_FIRE,
+            });
+        }
         this.front(time, {
-            speed: FRONT_SPEED.clear * 0.6, rgb: [...DRIVEFIRE], strength: 1.5, width: 2.6,
+            speed: FRONT_SPEED.clear * 0.6, rgb: [...DRIVEFIRE], strength: 1.0, width: 1.9,
         });
         if (perfect) {
             // The crown comes down the new stretch after us: three more fronts of the drive's fire.
@@ -907,6 +1118,9 @@ export class StellarVelocityWorld {
             py = this._point.y;
         }
         const t = this.time;
+        // Play after a run's end (a restart may not announce itself): the drive catches again.
+        if (this.stalled) this.rekindle(t);
+        this.lastLockRgb = rgb;
         const slot = this.weakestHoop(t);
         const depth = hoopDepth(slot);
         const flight = this.reducedMotion ? 0.12 : BOLT_FLIGHT * (0.8 + depth / 14);
@@ -924,7 +1138,13 @@ export class StellarVelocityWorld {
         this.schedule(land, 'front', {
             speed: FRONT_SPEED.lock, rgb: [rgb[0], rgb[1], rgb[2]], strength: hardDrop ? 0.85 : 0.5, width: 1.1,
         });
-        if (hardDrop) this.schedule(t, 'kick', 0.5);
+        if (hardDrop) {
+            this.schedule(t, 'kick', 0.5);
+            // It slams its hoop open: a white-hot shock ring bursts out where it lands.
+            this.schedule(land, 'shock', {
+                depth, from: hoopRadius(slot) * 0.7, to: hoopRadius(slot) * 3.4, strength: 2.4, thickness: 1, rgb,
+            });
+        }
         // Every piece is a little thrust.
         this.boost = Math.min(BOOST_MAX, this.boost + (hardDrop ? 0.07 : 0.035));
         this.pace.lock({ hardDrop }, t);
@@ -1002,30 +1222,48 @@ export class StellarVelocityWorld {
         // Back-to-back: the sun burns gold and its spikes flare (a second in a row adds to the
         // first). Not a gold front: the gas answers a front in its own glow, and gold in teal gas
         // is mud.
-        if (gold) this.gild.hit(1, birth);
+        if (gold) {
+            this.gild.hit(1, birth);
+            // A broad ring of gold leaves the sun (a second in a row: brighter still).
+            this.schedule(birth, 'ring', {
+                reach: 0.9, rate: 1.3, width: 0.04, strength: 1.1 + 0.4 * Math.min(1, this.gild.valueAt(birth)), fade: 1.5, rgb: B2B_GOLD,
+            });
+        }
+        // Each wave of a cascade past the first bursts a ring of the afterburner's blue ahead.
+        if (stage > 0) {
+            this.schedule(birth + 0.04, 'shock', {
+                depth: 4.5, from: 0.35, to: 2.4 + 0.3 * stage, strength: 1.2 + 0.25 * stage, thickness: 1.2, rgb: AFTERBURN,
+            });
+        }
         this.schedule(birth, 'boost', 0.42 + 0.2 * n + Math.min(0.55, weight * 0.07) + 0.12 * stage);
         this.schedule(birth + 0.05, 'kick', 0.25 + 0.1 * n + 0.08 * stage);
         this.lastClear = { time: birth, lines: n };
 
-        // ── The cleared rows leave the card as jets ──
+        // ── The cleared rows leave the card as comets and fly into the sun ──
         const board = boardFor(this.layout, player);
         const ownCard = this.cardFor(board);
-        if (board && ownCard && this.jets && !screen) {
+        if (board && ownCard && !screen) {
             const list = Array.isArray(rows) && rows.length ? rows : Array.from({ length: n }, (_, i) => 19 - i);
-            const points = [];
             for (let i = 0; i < list.length && i < 4; i++) {
                 boardPoint(board, 0.5, list[i], this._point);
                 this.cardExit(this._point.x, this._point.y, ownCard, this._point);
-                points.push({ x: this._point.x, y: this._point.y });
+                const from = [...this.screenToWorld(this._point.x, this._point.y, BOLT_DEPTH)];
+                const leave = t + i * 0.045;
+                const flight = (this.reducedMotion ? 0.35 : COMET_FLIGHT) + i * 0.05;
+                this.bolts.launch({
+                    from, to: [0, 0, -COMET_DEPTH], rgb, time: leave, flight, size: 1.2 + 0.1 * n, bow: 0.1 + 0.03 * i,
+                });
+                this.schedule(leave + flight, 'flare', { rgb: [...rgb], strength: 0.75 + 0.1 * n + 0.1 * stage });
             }
-            this.jets.fire(points, rgb, t, Math.min(1.4, 0.7 + 0.18 * n));
         }
 
         if (quad) this.counts.quads += 1;
         if (twist) {
-            // The canyon rolls round the course and springs back.
+            // The canyon rolls round the course and springs back, and a double helix of the
+            // twisting piece's colour grows out of the sun toward us.
             this.twistVelocity += 0.5;
             this.kick = Math.max(this.kick, 0.35);
+            this.windHelix(birth, 1.15 + 0.12 * n);
         }
         this.counts.clears += 1;
     }
@@ -1043,6 +1281,9 @@ export class StellarVelocityWorld {
         this.pace.crown(t);
         this.crown.hit(1, t);
         this.tintFlash(0.3, CROWN_FIRE);
+        this.sunRing(t, {
+            reach: 0.6, rate: 2.2, width: 0.025, strength: 1.3, fade: 1.4, rgb: CROWN_FIRE,
+        });
         this.kick = Math.max(this.kick, 0.5);
         const running = this.leapAt < Infinity || this.jumpLive(t);
         const birth = this.leap(t, { perfect: true });
@@ -1062,6 +1303,7 @@ export class StellarVelocityWorld {
         this.pace.spin(this.time);
         this.twistVelocity += 0.24;
         this.kick = Math.max(this.kick, 0.18);
+        this.windHelix(this.time, 0.6);
     }
 
     /** The true combo changed (0 = the chain broke). */
@@ -1078,6 +1320,16 @@ export class StellarVelocityWorld {
             this.front(this.time, {
                 speed: FRONT_SPEED.clear, rgb: p.map((c) => (c / peak) * 0.8 + 0.2), strength: Math.min(1, 0.4 + 0.07 * n), width: 1.4,
             });
+            // The gear changes: a shock ring bursts ahead of us and a ring leaves the sun, bluer
+            // the deeper the chain (the light of a faster ship).
+            const k = Math.min(1, (n - 1) / 8);
+            const tint = [0, 1, 2].map((c) => DRIVEFIRE[c] * (1 - k) + AFTERBURN[c] * k);
+            this.shock(this.time + 0.05, {
+                depth: 5.5, from: 0.45, to: 2.2 + 0.08 * n, strength: 1.0 + 0.06 * Math.min(n, 10), thickness: 0.9, rgb: tint,
+            });
+            this.sunRing(this.time, {
+                reach: 0.45 + 0.02 * Math.min(n, 10), rate: 2.4, width: 0.016, strength: 0.6, fade: 0.8, rgb: tint,
+            });
         }
         this.combo = n;
     }
@@ -1090,14 +1342,24 @@ export class StellarVelocityWorld {
         this.level = Math.max(1, Math.round(Number(level) || 1));
         if (silent) this.applyPalette(1);
         else if (this.u) {
-            // The front comes in the colour the nebula is on its way to.
-            const tint = paletteAt(palettePlace(this.level - 1, this.time), this._ringPalette).glow;
+            // The new colour comes down the canyon as a wave from the sun: the gas it has
+            // passed is already turned, the gas nearer us still the old (held at the place the
+            // canyon stood). Its front is a slow sheet of the new colour.
+            const t = this.time;
+            if (t - this.waveBirth > 24 / WAVE_SPEED + 1) this.levelPlaceOld = this.levelPlace;
+            this.levelPlace = this.level - 1;
+            this.waveBirth = t;
+            const tint = paletteAt(palettePlace(this.level - 1, t), this._ringPalette).glow;
             const peak = Math.max(tint[0], tint[1], tint[2], 1e-4);
-            this.front(this.time, {
-                speed: FRONT_SPEED.level, rgb: tint.map((c) => (c / peak) * 0.85 + 0.15), strength: 1.2, width: 3.4,
+            const rgb = tint.map((c) => (c / peak) * 0.85 + 0.15);
+            this.front(t, {
+                speed: WAVE_SPEED, rgb, strength: 1.3, width: 3.0,
+            });
+            this.sunRing(t, {
+                reach: 1.0, rate: 0.9, width: 0.06, strength: 1.1, fade: 2.2, rgb,
             });
             this.tintFlash(0.12);
-            this.pace.levelUp(this.time);
+            this.pace.levelUp(t);
         }
     }
 
@@ -1156,6 +1418,8 @@ export class StellarVelocityWorld {
                     }
                 }
             }
+            // As the drive dies at a run's end, the hoops it laid go out with it.
+            light *= 1 - 0.7 * this.stallShown;
             const turn = hoop.seed * 2.39996 + t * 0.022 * (i % 2 ? 1 : -1) + this.twist * (1.5 + (i % 3));
             rows[i * 2].set(depth, radius, light, turn);
             rows[i * 2 + 1].set(hoop.rgb[0], hoop.rgb[1], hoop.rgb[2], hoop.seed);
@@ -1192,6 +1456,128 @@ export class StellarVelocityWorld {
         u.frontCount.value = live;
         this.frontsLive = live;
         this.hoopsLit = lit.length;
+    }
+
+    /** Write the sun's rings, the shock rings and the helices as they stand at this moment. */
+    writeEvents() {
+        const { u } = this;
+        const t = this.time;
+        const rings = u.tables.sunRings;
+        let live = 0;
+        for (let i = 0; i < SUN_RING_SLOTS; i++) {
+            const slot = this.ringSlots[i];
+            const age = t - slot.birth;
+            if (age < 0 || slot.strength <= 0) continue;
+            // It comes on in a few hundredths of a second and fades as it spreads.
+            const light = slot.strength * smooth(0, 0.05, age) * Math.exp(-age / slot.fade);
+            if (light < 0.004) continue;
+            const radius = sunRingRadius(age, slot.reach, slot.rate);
+            // A ring that falls into the sun goes out as it reaches it.
+            const shown = slot.reach < 0 ? light * smooth(0.0, 0.08, radius) : light;
+            rings[live * 2].set(Math.max(0.002, radius), slot.width * (1 + age * 0.6), shown, 0);
+            rings[live * 2 + 1].set(slot.rgb[0], slot.rgb[1], slot.rgb[2], 0);
+            live += 1;
+        }
+        u.sunRingCount.value = live;
+        this.ringsLive = live;
+
+        const shocks = this.shocks?.table;
+        if (shocks) {
+            for (let i = 0; i < SHOCK_SLOTS; i++) {
+                const slot = this.shockSlots[i];
+                const age = t - slot.birth;
+                const A = shocks[i * 2];
+                if (age < 0 || age > SHOCK_LIFE || slot.strength <= 0) {
+                    A.set(0, 0, 0, 1);
+                    continue;
+                }
+                const k = 1 - Math.exp(-age * 7);
+                const radius = slot.from + (slot.to - slot.from) * k;
+                const light = slot.strength * smooth(0, 0.03, age) * Math.exp(-age / 0.2);
+                A.set(slot.depth, radius, light, slot.thickness * (1 - 0.5 * k));
+                shocks[i * 2 + 1].set(slot.rgb[0], slot.rgb[1], slot.rgb[2], i * 0.37);
+            }
+        }
+
+        const helix = this.helix?.table;
+        if (helix) {
+            for (let i = 0; i < HELIX_SLOTS; i++) {
+                const slot = this.helixSlots[i];
+                const age = t - slot.birth;
+                const live2 = age >= 0 && age <= HELIX_LIFE && slot.strength > 0;
+                helix[i * 2].set(slot.birth, slot.way, live2 ? slot.strength : 0, slot.phase);
+                helix[i * 2 + 1].set(slot.rgb[0], slot.rgb[1], slot.rgb[2], 0);
+            }
+        }
+    }
+
+    /**
+     * The young stars in the walls as they stand now: each site of this stretch comes toward us
+     * with the cloud (and winds with it in a twist). The lit ones go into the table nearest
+     * first; the march lights the gas with the first BEACON_LIGHTS of them.
+     */
+    writeBeacons(nursery, dt = 0) {
+        const { u } = this;
+        const rows = u.tables.beacons;
+        const order = this._beaconOrder;
+        order.length = 0;
+        const sites = this.beaconSites;
+        for (let i = 0; i < sites.length; i++) {
+            const depth = beaconDepth(sites[i], this.distance);
+            const light = beaconFade(depth) * nursery * sites[i].power;
+            if (light > 0.01) order.push(i);
+        }
+        // Nearest first, but any already behind us last: the march's few lights go to the ones ahead.
+        const key = (i) => {
+            const depth = beaconDepth(sites[i], this.distance);
+            return depth < -0.5 ? depth + 1000 : depth;
+        };
+        order.sort((a, b) => key(a) - key(b));
+        const p = this._palette;
+        const g = p.glow;
+        const gPeak = Math.max(g[0], g[1], g[2], 1e-4);
+        const a = p.accent;
+        const aPeak = Math.max(a[0], a[1], a[2], 1e-4);
+        const t = this.time;
+        let lights = 0;
+        for (let k = 0; k < BEACON_SLOTS; k++) {
+            const A = rows[k * 2];
+            const C = rows[k * 2 + 1];
+            if (k >= order.length) {
+                A.set(0, 0, 100, 0);
+                continue;
+            }
+            const site = sites[order[k]];
+            const depth = beaconDepth(site, this.distance);
+            // A young star flickers a little in the gas round it.
+            const flicker = 0.88 + 0.12 * Math.sin(t * (0.9 + site.power) + site.phase);
+            const light = beaconFade(depth) * nursery * site.power * flicker;
+            const angle = site.angle - this.twist * depth * 0.8;
+            A.set(Math.cos(angle) * site.radius, Math.sin(angle) * site.radius, -depth, light);
+            // The light it casts on the gas: none once it is level with us (so leaving the march's
+            // few slots never cuts it off) and none far ahead (where a fourth one may wait for a
+            // slot): it fades in and out of both ends of that stretch.
+            const reach = light * smooth(-0.5, 1.2, depth) * smooth(BEACON_CAST_FAR, BEACON_CAST_FAR - 5, depth);
+            // Only the first few ahead are carried by the march. A star that is given a slot (when
+            // the nearest has passed us) eases its light in from nothing: a fourth one already in
+            // the lit stretch would otherwise appear at full strength in one frame.
+            const carried = depth > -0.5 && k === lights && lights < BEACON_LIGHTS;
+            const target = carried ? reach : 0;
+            // (Only on the way in: on the way out its light already falls smoothly with depth.)
+            site.cast = dt > 0 && Number.isFinite(site.cast) && target > site.cast
+                ? site.cast + (target - site.cast) * approach(BEACON_ADMIT, dt)
+                : target;
+            const { cast } = site;
+            // The gas round a hot young star glows white-blue in the nebula's glow; the others in
+            // the third colour, or rose.
+            if (site.kind === 0) {
+                C.set(0.32 + 0.4 * (g[0] / gPeak), 0.38 + 0.45 * (g[1] / gPeak), 0.45 + 0.55 * (g[2] / gPeak), cast);
+            } else if (site.kind === 1) C.set(a[0] / aPeak, a[1] / aPeak, a[2] / aPeak, cast);
+            else C.set(BEACON_ROSE[0], BEACON_ROSE[1], BEACON_ROSE[2], cast);
+            if (carried) lights += 1;
+        }
+        u.beaconLightCount.value = Math.min(lights, BEACON_LIGHTS);
+        this.beaconsLit = order.length;
     }
 
     // ── Frame ───────────────────────────────────────────────────────────────────
@@ -1241,7 +1627,17 @@ export class StellarVelocityWorld {
         this.gear += (gearTarget - this.gear) * approach(gearTarget > this.gear ? 3 : 0.6, dt);
         if (dt === 0 && this.queue.length === 0 && this.boost === 0) this.gear = gearTarget;
         const gear = calm ? 1 + (this.gear - 1) * 0.12 : this.gear + phase * GEAR_JUMP;
-        this.speed = CRUISE * gear * (calm ? 0.5 : 1);
+        // Where we are on the voyage: a gorge is run faster than a clearing.
+        const region = voyageAt(voyagePlace(t, this.voyageSkip), this.region);
+        if (this.regionHold) Object.assign(region, this.regionHold, { mix: 0, next: this.regionHold.name });
+        // The run's end: the drive dies and we coast; it rekindles by itself after a while.
+        if (this.stalled && t - this.stallAt > GAME_OVER_REST) this.rekindle(t);
+        const stallTarget = this.stalled ? 1 : 0;
+        this.stallShown = dt > 0
+            ? this.stallShown + (stallTarget - this.stallShown) * approach(this.stalled ? 1.6 / STALL_FALL : 1.8, dt)
+            : stallTarget;
+        const stall = this.stallShown;
+        this.speed = CRUISE * gear * (calm ? 0.5 : region.pace) * (1 - 0.86 * stall);
         this.distance += this.speed * dt;
         const spool = Math.max(hushing ? 1 : 0, phase) * WARP_JUMP;
         // A chain bunches the sky up to WARP_CHAIN at most; a fever past it, and a cascade's
@@ -1262,10 +1658,49 @@ export class StellarVelocityWorld {
         this.jumpClock = (this.jumpClock + dt) % 64;
 
         // The hush: from cold every light sinks; in a fever the drive only inhales.
-        const breathTarget = hushing ? 1 - 0.9 * hush : 1 - this.dip;
+        const breathTarget = (hushing ? 1 - 0.9 * hush : 1 - this.dip) * (1 - 0.45 * stall);
         this.breath += (breathTarget - this.breath) * approach(hushing ? 40 : 14, dt);
         if (dt === 0) this.breath = breathTarget;
         this.applyPalette(approach(1.1, dt));
+        // A level's colour wave: where its front stands (depth ahead), and the palette the gas
+        // nearer than it still holds. Once it has passed us the old palette is the new.
+        const waveAge = t - this.waveBirth;
+        const waveDepth = frontDepth(waveAge, WAVE_SPEED);
+        const waving = waveAge >= 0 && waveDepth > -4;
+        if (!waving) this.levelPlaceOld = this.levelPlace;
+        paletteAt(palettePlace(this.levelPlaceOld, t), this._oldPalette);
+        if (stall > 0) {
+            // The light drains toward an ember as the drive dies: it dims first and reddens as it
+            // goes, so it passes through the dark, not through grey.
+            for (let i = 0; i < 2; i++) {
+                const pal = i ? this._oldPalette : this._palette;
+                for (let j = 0; j < STALL_KEYS.length; j++) {
+                    const key = STALL_KEYS[j];
+                    const dim = key === 'sun' ? 1 : 1 - 0.6 * stall;
+                    for (let c = 0; c < 3; c++) {
+                        const v = pal[key][c] * dim;
+                        pal[key][c] = v + (EMBER[key][c] - v) * 0.72 * stall;
+                    }
+                }
+            }
+        }
+
+        // ── The sun breathes by itself: now and then a soft ring of its own light leaves it ──
+        if (t >= this.breathAt) {
+            this.breaths += 1;
+            const rand = mulberry32(0x5b + this.breaths * 131);
+            if (!this.stalled && phase < 0.2) {
+                const g = this._palette.glow;
+                const gPeak = Math.max(g[0], g[1], g[2], 1e-4);
+                const mixSun = 0.35 + 0.4 * rand();
+                const rgb = [0, 1, 2].map((c) => this._palette.sun[c] * mixSun + (g[c] / gPeak) * (1 - mixSun));
+                this.sunRing(t, {
+                    reach: 0.35 + 0.35 * rand(), rate: 0.7 + 0.4 * rand(), width: 0.02 + 0.02 * rand(), strength: 0.35 + 0.25 * rand(), fade: 2.4, rgb,
+                });
+                this.flareSwell.hit(0.12, t);
+            }
+            this.breathAt = t + 24 + 18 * rand();
+        }
 
         // ── The fever's pulse: the drive's beat running down the walls, ever faster ──
         if (fever > 0.15 && phase < 0.5) {
@@ -1300,6 +1735,9 @@ export class StellarVelocityWorld {
         u.starTravel.value = this.distance % STAR_DEPTH;
         u.moteTravel.value = this.distance % MOTE_DEPTH;
         u.speed.value = this.speed;
+        // At a glide the dust draws a short streak of its own, so the drift reads as motion; at
+        // speed its shutter is the near stars' own.
+        if (this.motes) this.motes.uniforms.shutter.value = 0.09 + 0.15 / (1 + this.speed * 4);
         u.warp.value = this.warp;
         u.twist.value = this.twist * (calm ? 0.25 : 1);
         u.breath.value = this.breath;
@@ -1308,11 +1746,13 @@ export class StellarVelocityWorld {
         u.crown.value = crown;
         // The sun stands brighter the hotter play runs and blazes in a fever; a cascade's
         // afterburner swells its corona, a back-to-back and a crown light it gold.
-        u.sunGain.value = 1 + this.warp * 1.4 + this.surge * 1.6 + this.flash * 1.2
-            + level * 0.2 + fever * 0.55 + afterburn * 0.6 + gild * 0.35 + crown * 0.8;
+        const flare = this.flareSwell.valueAt(t);
+        u.sunGain.value = (1 + this.warp * 1.4 + this.surge * 1.6 + this.flash * 1.2
+            + level * 0.2 + fever * 0.55 + afterburn * 0.6 + gild * 0.35 + crown * 0.8 + flare * 0.9)
+            * (1 - 0.62 * stall);
         const p = this._palette;
         // A back-to-back and a perfect clear's crown turn the sun gold for a while.
-        const sunGold = Math.min(0.6, gild * 0.5 + crown * 0.4);
+        const sunGold = Math.min(0.7, gild * 0.5 + crown * 0.65);
         u.glow.value.set(p.glow[0], p.glow[1], p.glow[2]);
         u.deep.value.set(p.deep[0], p.deep[1], p.deep[2]);
         u.accent.value.set(p.accent[0], p.accent[1], p.accent[2]);
@@ -1324,7 +1764,16 @@ export class StellarVelocityWorld {
         );
         u.skyCol.value.set(p.sky[0], p.sky[1], p.sky[2]);
         u.starTint.value.set(p.star[0], p.star[1], p.star[2]);
+        u.region.value.set(region.scale, region.thin, region.dust, region.threads);
+        u.region2.value.set(region.nursery, region.rim, region.haze, 0);
+        const o = this._oldPalette;
+        u.wave.value = waving ? waveDepth : -1000;
+        u.glowOld.value.set(o.glow[0], o.glow[1], o.glow[2]);
+        u.deepOld.value.set(o.deep[0], o.deep[1], o.deep[2]);
+        u.accentOld.value.set(o.accent[0], o.accent[1], o.accent[2]);
         this.writeCourse();
+        this.writeBeacons(region.nursery * (1 - 0.6 * stall), dt);
+        this.writeEvents();
 
         // What follows the camera: its own frame for the canyon's target, and the sun on screen.
         if (camera) {
@@ -1359,7 +1808,7 @@ export class StellarVelocityWorld {
             0.16 + this.warp * 0.45 + this.surge * 0.4 + this.flash * 0.3 + level * 0.06 + fever * 0.12
                 + afterburn * 0.12 + gild * 0.18,
         );
-        post.rays = rays + (0.03 - rays) * hush;
+        post.rays = (rays + (0.03 - rays) * hush) * (1 - 0.55 * stall);
         post.blur = calm ? 0 : Math.min(1, share * 0.55 + phase * 0.9 + kick * 0.12 + hush * 0.5);
         post.bloomBoost = this.surge * 0.2 + this.flash * 0.3 + fever * 0.12;
         // The sun's spikes and streak: brighter at speed, in a fever and after a jump, flaring
@@ -1368,7 +1817,7 @@ export class StellarVelocityWorld {
             * (1 - phase * 0.95);
         const g = p.glow;
         const gPeak = Math.max(g[0], g[1], g[2], 1e-4);
-        const golden = Math.min(0.75, gild * 0.6);
+        const golden = Math.min(0.8, gild * 0.6 + crown * 0.8);
         for (let c = 0; c < 3; c++) {
             const tint = p.sun[c] * 0.45 + (g[c] / gPeak) * 0.55;
             post.glintTint[c] = tint + (B2B_GOLD[c] - tint) * golden;
@@ -1415,6 +1864,13 @@ export class StellarVelocityWorld {
             stage: this.heat.stage,
             distance: this.distance,
             level: this.level,
+            stalled: this.stalled,
+            stall: this.stallShown,
+            rings: this.ringsLive || 0,
+            wave: this.u ? this.u.wave.value : -1000,
+            region: this.region.name,
+            regionMix: this.region.mix,
+            beacons: this.beaconsLit || 0,
             palette: paletteName(palettePlace(this.levelPlace, this.time)),
             paletteMix: palettePhase(palettePlace(this.levelPlace, this.time)).mix,
             counts: { ...this.counts },
@@ -1447,7 +1903,8 @@ export class StellarVelocityWorld {
         this.stars = null;
         this.motes = null;
         this.bolts = null;
-        this.jets = null;
+        this.shocks = null;
+        this.helix = null;
         this.u = null;
         this._camera = null;
     }

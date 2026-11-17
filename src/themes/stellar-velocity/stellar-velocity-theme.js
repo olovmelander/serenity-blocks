@@ -387,7 +387,7 @@ export default class StellarVelocityTheme extends BaseTheme {
             }),
         );
         this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
-        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+        this.registerEventListener(window, 'gameOver', () => this.endRun());
 
         const resetPointer = () => {
             this.pointer.x = 0;
@@ -428,12 +428,22 @@ export default class StellarVelocityTheme extends BaseTheme {
         this.world?.onCombo(best);
     }
 
+    /**
+     * A run is over: what was staged on its last tick is dropped (it must not land in the next
+     * run), the chain is let go, and the drive dies from where it stands (the world is not wiped:
+     * its last hoops go out as we coast).
+     */
+    endRun() {
+        this.resetSession({ world: false });
+        this.world?.onGameOver?.();
+    }
+
     /** A new run: back to a glide, no chain in flight (the clock, and so the nebula's drift, runs on). */
-    resetSession() {
+    resetSession({ world = true } = {}) {
         this.director?.reset();
         this.combos.clear();
         this.level = 1;
-        this.world?.resetSession();
+        if (world) this.world?.resetSession();
         this.scheduleLayoutReads();
     }
 
@@ -531,7 +541,11 @@ export default class StellarVelocityTheme extends BaseTheme {
         this.modeManager = manager;
         const relayout = () => this.scheduleLayoutReads();
         this.eventUnsubscribers.push(
-            manager.on('modeStarted', relayout),
+            manager.on('modeStarted', () => {
+                relayout();
+                // A new run rekindles the drive a run's end let die.
+                this.world?.onSessionStart?.();
+            }),
             manager.on('modeActivated', relayout),
             manager.on('modeStopped', () => this.resetSession()),
         );
