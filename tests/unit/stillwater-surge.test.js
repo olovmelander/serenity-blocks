@@ -29,6 +29,9 @@ function makeWorld({ width = 1600, height = 900, start = 10 } = {}) {
     const world = new StillwaterWorld({ scene, quality: 'Low', capture: true }).build();
     world.bindCamera(camera);
     world.setHourDrift(false);
+    // (The night's own weather and visitors are held off: these are tests of play.)
+    world.setAirHold('still');
+    world.setVisitors(false);
     world.setViewport(width, height, aspect);
     world.setLayout(fallbackLayout(width, height), aspect);
     world.seek(start);
@@ -207,12 +210,15 @@ describe('stillwater surge: moments of their own', () => {
         const { camera, world } = makeWorld();
         world.onLock({ u: 0.3, rows: [18, 19] });
         run(world, camera, 1);
-        const rings = world.u.counts.value.x;
         const wind = world.u.wind.value;
         const strokes = strokesLive(world);
+        const t0 = world.time;
         world.onClear({ lines: 0, twist: true, rows: [] });
         run(world, camera, 0.5);
-        expect(world.u.counts.value.x).toBeGreaterThan(rings);
+        // (A whirl on the water, weaker than a clearing twist's.)
+        expect(world.u.whirl.value.z).toBe(t0);
+        expect(world.u.whirl.value.w).toBeGreaterThan(0);
+        expect(world.u.whirl.value.w).toBeLessThan(1);
         expect(world.u.wind.value).toBeGreaterThan(wind);
         expect(strokesLive(world)).toBe(strokes);
         expect(world.counts.clears).toBe(0);

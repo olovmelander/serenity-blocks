@@ -9,8 +9,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-    DUET_WAIT, FOND_FROM, KIN, PLACES, SCENES, SCENE_BUSY, SCENE_CALM, SCENE_NAMES, SHY_BELOW, StillwaterLife,
-    arcAt, boatAt, skipAt, skipPath,
+    DUET_WAIT, EMBER_TIME, FOND_FROM, KIN, PLACES, PULSE_CROSS, RELIT_TIME, SCENES, SCENE_BUSY, SCENE_CALM, SCENE_NAMES,
+    SCENE_STEADY, SHY_BELOW, SPIRIT_GLIDE, StillwaterLife, arcAt, boatAt, skipAt, skipPath,
 } from '../../src/themes/stillwater/stillwater-life.js';
 import { SPIRIT, TROLL } from '../../src/themes/stillwater/stillwater-core.js';
 
@@ -89,6 +89,8 @@ function carryOut(body, life, dt) {
 function context(body, play = {}) {
     return {
         calm: play.calm ?? 30,
+        // (How long since play last stirred the tarn: when a test does not say, as long as the calm.)
+        still: play.still ?? play.calm ?? 30,
         busy: play.busy ?? 0,
         engaged: Boolean(play.engaged),
         meet: Boolean(play.meet),
@@ -328,5 +330,194 @@ describe('stillwater life: lights across the water', () => {
             expect(p[1]).toBeCloseTo(0, 9);
         });
         expect(skipAt(path, from, path.at(-1).t + 1)).toBeNull();
+    });
+});
+
+describe('stillwater life: beside play', () => {
+    it('begins scenes beside steady play, and waits only for what stirs the tarn or runs quick', () => {
+        // Pieces set down at an even pace (no calm since the last one) are no reason to wait.
+        const steady = new StillwaterLife();
+        live(steady, standIn(), 60, { play: () => ({ calm: 0.4, still: 30, busy: SCENE_STEADY - 0.1 }) });
+        expect(steady.log.length).toBeGreaterThan(2);
+        // A tarn just stirred (a clear, a hard drop out of a calm) makes them wait...
+        const stirred = new StillwaterLife();
+        live(stirred, standIn(), 60, { play: () => ({ calm: 0.4, still: SCENE_CALM - 0.5, busy: 0 }) });
+        expect(stirred.log).toEqual([]);
+        // ...and so does play that has grown quick, though not yet quick enough to end a scene.
+        const brisk = new StillwaterLife();
+        live(brisk, standIn(), 60, { play: () => ({ calm: 0.4, still: 30, busy: (SCENE_STEADY + SCENE_BUSY) / 2 }) });
+        expect(brisk.log).toEqual([]);
+    });
+
+    it('grows them nearer through play as through a calm, but not while play has them', () => {
+        const life = new StillwaterLife();
+        life.next = { troll: 1e9, spirit: 1e9, both: 1e9 };
+        const start = life.kin;
+        live(life, standIn(), 60, { play: () => ({ calm: 0.2, still: 0.2, busy: 0.2 }) });
+        expect(life.kin - start).toBeCloseTo(KIN.calm * 60, 3);
+        const held = life.kin;
+        live(life, standIn(), 60, { play: () => ({ engaged: true }) });
+        expect(life.kin).toBe(held);
+    });
+});
+
+describe('stillwater life: the story of the two', () => {
+    /** The scenes of theirs a long night tells, in the order they first came. */
+    function firstTellings(seconds) {
+        const life = new StillwaterLife();
+        const body = standIn();
+        const order = [];
+        const kinAt = {};
+        live(life, body, seconds, {
+            each: (l) => {
+                const name = l.sceneOf('troll');
+                if (name && SCENE_NAMES.both.includes(name) && l.sceneOf('spirit') === name && !order.includes(name)) {
+                    order.push(name);
+                    kinAt[name] = l.kin;
+                }
+            },
+        });
+        return { order, kinAt, life };
+    }
+
+    it('tells every scene of theirs once before any twice, the one that needs the least nearness first', () => {
+        const { order, kinAt, life } = firstTellings(1500);
+        expect([...order].sort()).toEqual([...SCENE_NAMES.both].sort());
+        // Each came only once they were near enough for it...
+        order.forEach((name) => expect(kinAt[name], name).toBeGreaterThanOrEqual((SCENES[name].kin || [0])[0] - 1e-9));
+        // ...and in the order of what each asks: a light sent across before she crosses herself.
+        const asks = order.map((name) => (SCENES[name].kin || [0])[0]);
+        for (let i = 1; i < asks.length; i++) expect(asks[i], `${order[i - 1]} then ${order[i]}`).toBeGreaterThanOrEqual(asks[i - 1]);
+        expect(order.indexOf('signal')).toBeLessThan(order.indexOf('visit'));
+        expect(order.indexOf('visit')).toBeLessThan(order.indexOf('ember'));
+        // Before the last of them was told for the first time, none was told twice.
+        const lastFirst = life.log.findIndex((entry) => entry.name === order.at(-1));
+        const told = life.log.slice(0, lastFirst).filter((entry) => SCENE_NAMES.both.includes(entry.name) && entry.how === 'done');
+        expect(new Set(told.map((entry) => entry.name)).size).toBe(told.length);
+    });
+
+    it('tells a scene of theirs every half minute or so in a night left to itself', () => {
+        const life = new StillwaterLife();
+        live(life, standIn(), 600);
+        const duets = life.log.filter((entry) => SCENE_NAMES.both.includes(entry.name));
+        expect(duets.length).toBeGreaterThan(10);
+        expect(duets[0].start).toBeLessThan(75);
+    });
+});
+
+describe('stillwater life: light sent across, and a visit', () => {
+    /** Play one scene of theirs through on stand-in bodies; returns what it set in motion and where she went. */
+    function tell(name, kin = 0.9, seconds = 200) {
+        const life = new StillwaterLife();
+        life.reset(0, kin);
+        life.next = { troll: 1e9, spirit: 1e9, both: 1e9 };
+        life.cue(name, 1);
+        const body = standIn();
+        const events = [];
+        let east = -Infinity;
+        let fastest = 0;
+        let before = [...body.spirit];
+        live(life, body, seconds, {
+            each: (l) => {
+                const drained = l.drain();
+                if (drained) events.push(...drained);
+                east = Math.max(east, body.spirit[0]);
+                fastest = Math.max(fastest, Math.hypot(body.spirit[0] - before[0], body.spirit[2] - before[2]) / DT);
+                before = [...body.spirit];
+            },
+        });
+        return {
+            life, body, events, east, fastest, run: life.log.find((entry) => entry.name === name),
+        };
+    }
+
+    it('sends a light over the water and has the other answer it only once it has crossed', () => {
+        for (const kin of [0.15, 0.9]) {
+            const { events, run } = tell('signal', kin);
+            expect(run.how).toBe('done');
+            const pulses = events.filter((e) => e.type === 'pulse');
+            expect(pulses.length).toBeGreaterThanOrEqual(2);
+            // One of them, then the other.
+            expect(pulses[1].who).not.toBe(pulses[0].who);
+            expect(pulses[1].start - pulses[0].start).toBeGreaterThanOrEqual(PULSE_CROSS - 1e-6);
+            pulses.forEach((p) => {
+                expect(['troll', 'spirit']).toContain(p.who);
+                expect(p.strength).toBeGreaterThan(0.5);
+                expect(p.start).toBeGreaterThan(1);
+            });
+        }
+        // Strangers still, they never send both at once; that comes once they know each other.
+        const shy = tell('signal', 0.15).events.filter((e) => e.type === 'pulse');
+        expect(shy).toHaveLength(2);
+        expect(PULSE_CROSS).toBeGreaterThan(2);
+        expect(PULSE_CROSS).toBeLessThan(5);
+    });
+
+    it('brings her across the water to his shore and home again, in every kind of visit', () => {
+        for (const name of ['visit', 'waltz', 'ember']) {
+            const {
+                body, events, east, fastest, run,
+            } = tell(name);
+            expect(run.how, name).toBe('done');
+            // She came all the way over, to the water off his shore, and no faster than a glide.
+            expect(east, name).toBeGreaterThan(PLACES.visit[0] - 0.4);
+            expect(fastest, name).toBeLessThanOrEqual(SPIRIT_GLIDE + 1e-6);
+            // He lit her way (a light of his on the water as she set out), and came down to the edge.
+            expect(events.some((e) => e.type === 'pulse' && e.who === 'troll'), name).toBe(true);
+            // Both are home again at the end: she by her stone, he by his.
+            // (On her stone, or kneeling at the water off it, where she rests.)
+            const rest = [PLACES.spiritHome, PLACES.kneel].map((p) => Math.hypot(body.spirit[0] - p[0], body.spirit[2] - p[2]));
+            expect(Math.min(...rest), name).toBeLessThan(0.5);
+            expect(Math.hypot(body.troll[0] - PLACES.trollHome[0], body.troll[1] - PLACES.trollHome[1]), name).toBeLessThan(0.5);
+        }
+        // Where she stands by him is open water, clear of his shore, and near enough to reach his lantern.
+        expect(PLACES.visit[0]).toBeGreaterThan(4);
+        expect(Math.hypot(PLACES.visit[0] - PLACES.trollEdge[0], PLACES.visit[2] - PLACES.trollEdge[1])).toBeLessThan(3.2);
+    });
+
+    it('leaves something of each with the other: her light in his lantern, his ember by her stone', () => {
+        const visit = tell('visit').events;
+        const relit = visit.find((e) => e.type === 'relit');
+        expect(relit).toMatchObject({ length: RELIT_TIME });
+        expect(visit.some((e) => e.type === 'swirl')).toBe(true);
+        // Both lights flare as hers goes into his.
+        const flare = visit.filter((e) => e.type === 'pulse' && Math.abs(e.start - relit.start) < 1e-6);
+        expect(flare.map((e) => e.who).sort()).toEqual(['spirit', 'troll']);
+
+        const ember = tell('ember');
+        const carried = ember.events.find((e) => e.type === 'held' && e.warm);
+        const set = ember.events.find((e) => e.type === 'ember');
+        expect(carried).toMatchObject({ who: 'spirit' });
+        expect(set).toMatchObject({ length: EMBER_TIME });
+        // She carries it the whole way home and sets it down there: it leaves her hands as the ember is lit.
+        expect(carried.start + carried.length).toBeGreaterThan(set.start - 0.5);
+        expect(carried.start + carried.length).toBeLessThan(set.start + 0.5);
+        expect(set.start - carried.start).toBeGreaterThan(8);
+        // The ember's place is on her bank, by her stone.
+        expect(Math.hypot(PLACES.ember[0] - SPIRIT.home[0], PLACES.ember[2] - SPIRIT.home[2])).toBeLessThan(1);
+    });
+
+    it('lets the light she carries go out with a visit that play cuts short', () => {
+        const life = new StillwaterLife();
+        life.reset(0, 0.9);
+        life.next = { troll: 1e9, spirit: 1e9, both: 1e9 };
+        life.cue('ember', 1);
+        const body = standIn();
+        const events = [];
+        let cut = null;
+        live(life, body, 120, {
+            play: (time) => ({ engaged: cut !== null && time >= cut }),
+            each: (l, time) => {
+                const drained = l.drain();
+                if (drained) events.push(...drained);
+                if (cut === null && events.some((e) => e.type === 'held' && e.warm) && body.spirit[0] < 2) cut = time + 0.5;
+            },
+        });
+        expect(cut).not.toBeNull();
+        const run = life.log.find((entry) => entry.name === 'ember');
+        expect(run.how).toBe('play');
+        const carried = events.find((e) => e.type === 'held' && e.warm);
+        expect(carried.start + carried.length).toBeLessThanOrEqual(run.end + 1e-6);
+        expect(events.some((e) => e.type === 'ember')).toBe(false);
     });
 });

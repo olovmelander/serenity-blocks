@@ -7,6 +7,10 @@
 > 2026-10-21: the wood and the air were reworked (spruce crowns on every tree, the far wood as
 > tiered spruce, the boughs, the veil of mist on the water); read
 > `docs/STILLWATER_SPRUCE_WOOD_2026-10.md` for those, and for the tiers' new `wood` and `veil`.
+>
+> 2026-11-17: the night got weather of its own and visitors, every event an answer of its own, and
+> the two a story told beside play (`docs/STILLWATER_LIVING_TARN_2026-11.md`). The event table
+> below is the version of 2026-10: the newer one is in that record.
 
 Implemented 2026-10-09 on `feature/stillwater-masterpiece`, with Three.js 0.186.1. A from-scratch
 rebuild: it replaces the earlier theme in full (a 2,000-line lifecycle adapter with a pooled
