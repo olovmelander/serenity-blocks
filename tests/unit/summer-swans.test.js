@@ -14,9 +14,9 @@ import { SUMMER_TIERS } from '../../src/themes/summer/summer-quality.js';
 import { SUMMER_DEFAULT_BOARD } from '../../src/themes/summer/summer-stage.js';
 import { SUMMER_SWAN } from '../../src/themes/summer/summer-swan-model.js';
 import {
-    SWAN_FLIGHT, SWAN_REST_ROUND, SWAN_ROUND, SWAN_SKEIN_MOST, laySwanSkein, planSwanFlights, planSwanRound,
-    seededSwans, sessionSwanRound, summerSwanLens, swanFamily, swanFamilyPlace, swanFlightPlace, swanFlightPoint,
-    swanRoundHolds, swanRoundLap, swanRoundPoint, swanSunOnScreen, swanWaterSide, swanWingbeat,
+    SWAN_FLIGHT, SWAN_SIGHT, SWAN_SKEIN_MOST, SWAN_VOYAGE, laySwanSkein, laySwanVoyage, planSwanFlights, seededSwans,
+    sessionSwanVoyage, summerSwanLens, swanFamily, swanFamilyPlace, swanFlightPlace, swanFlightPoint, swanSunOnScreen,
+    swanVoyagePoint, swanVoyageRun, swanWaterSide, swanWingbeat,
 } from '../../src/themes/summer/summer-swan-routes.js';
 import {
     SWAN_STRIDE, SummerSwans, poseAfloat, poseFlying, summerSwanModel,
@@ -318,38 +318,81 @@ describe('Summer swan model', () => {
 });
 
 describe('Summer swans on the lake', () => {
-    const round = sessionSwanRound();
+    const voyage = sessionSwanVoyage();
     const family = swanFamily(4);
+    /** Where the cob is seen over a lap, sampled every `dt` seconds. */
+    function sightings(dt = 0.5) {
+        const p = [0, 0, 0, 0, 0, 0];
+        const seen = {
+            left: 0, right: 0, hidden: 0, reads: 0, longestHidden: 0, near: Infinity, far: 0,
+        };
+        let hidden = 0;
+        for (let time = 0; time < voyage.period; time += dt) {
+            swanFamilyPlace(voyage, family[0], time, p);
+            const side = swanWaterSide(lens, p[0], p[1]);
+            const range = Math.hypot(p[0] - lens.eye[0], p[1] - lens.eye[2]);
+            if (side < 0) seen.left += dt;
+            else if (side > 0) seen.right += dt;
+            else seen.hidden += dt;
+            if (side !== 0 && range <= SWAN_SIGHT.reads) seen.reads += dt;
+            if (side !== 0) {
+                seen.near = Math.min(seen.near, range);
+                seen.far = Math.max(seen.far, range);
+            }
+            hidden = side === 0 ? hidden + dt : 0;
+            seen.longestHidden = Math.max(seen.longestHidden, hidden);
+        }
+        return seen;
+    }
 
-    it('finds the round by numbers through the rest camera, and keeps the one it found', () => {
-        const found = planSwanRound();
-        expect(found).not.toBeNull();
-        // The pinned round is the search's own answer (re-pin SWAN_REST_ROUND if the land or the lens moves).
-        expect(found).toEqual(SWAN_REST_ROUND);
-        expect(round).toBe(SWAN_REST_ROUND);
-        expect(swanRoundHolds(lens, round)).toBe(true);
-        // Left of the board: in single player the stats stand right of it.
-        expect(round.side).toBe(-1);
-        expect(round.a).toBeGreaterThanOrEqual(5.5);
-        expect(round.period).toBeCloseTo(swanRoundLap(round) / SWAN_ROUND.speed, 9);
-        expect(round.period).toBeGreaterThan(45);
-        // A lake with no water in view has no round.
-        expect(planSwanRound({ groundHeight: () => 2 })).toBeNull();
-        // A round laid on the meadow does not hold.
-        expect(swanRoundHolds(lens, { ...round, z: 4 })).toBe(false);
+    it('lays the voyage round the whole lake once a session, on deep water all the way', () => {
+        expect(voyage).not.toBeNull();
+        expect(sessionSwanVoyage()).toBe(voyage);
+        // Laid by numbers, the same every time.
+        const again = laySwanVoyage();
+        expect(again.period).toBe(voyage.period);
+        expect(Array.from(again.line)).toEqual(Array.from(voyage.line));
+        // A long way round, at a swan's pace: a lap of some minutes, not a pond's round.
+        expect(voyage.length).toBeGreaterThan(300);
+        expect(voyage.length).toBeLessThan(450);
+        expect(voyage.period / 60).toBeGreaterThan(11);
+        expect(voyage.period / 60).toBeLessThan(18);
+        expect(voyage.step).toBeCloseTo(SWAN_VOYAGE.step, 1);
+        expect(voyage.calls).toHaveLength(SWAN_VOYAGE.calls.length);
+        // Every sample of the line, with the family's beam either side of it, over deep water;
+        // and the line reaches across the lake: both sides of the board, the near water and the far.
+        let [x0, x1, z0, z1] = [Infinity, -Infinity, Infinity, -Infinity];
+        for (let k = 0; k < voyage.count; k += 1) {
+            const [x, z, hx, hz] = voyage.line.subarray(4 * k, 4 * k + 4);
+            expect(Math.hypot(hx, hz)).toBeCloseTo(1, 5);
+            for (const aside of [0, SWAN_VOYAGE.beam, -SWAN_VOYAGE.beam]) {
+                expect(summerGroundHeight(x + hz * aside, z - hx * aside), `${x}, ${z}`).toBeLessThan(SWAN_VOYAGE.deep);
+            }
+            [x0, x1, z0, z1] = [Math.min(x0, x), Math.max(x1, x), Math.min(z0, z), Math.max(z1, z)];
+        }
+        expect(x0).toBeLessThan(-40);
+        expect(x1).toBeGreaterThan(30);
+        expect(z1).toBeGreaterThan(-50);
+        expect(z0).toBeLessThan(-125);
+        // A lake with no water has no voyage, and one laid over the meadow does not hold.
+        expect(laySwanVoyage({ groundHeight: () => 2 })).toBeNull();
+        const meadow = { ...SWAN_VOYAGE, calls: SWAN_VOYAGE.calls.map(([x, z, stay]) => [x, z + 60, stay]) };
+        expect(laySwanVoyage({ voyage: meadow })).toBeNull();
     });
 
     it('reads the lake as the camera sees it', () => {
-        // On the round: open water left of the board.
-        expect(swanWaterSide(lens, round.x, round.z)).toBe(-1);
-        // The meadow, the shallows, behind the board card, beyond 70 m, behind the homestead's wood.
+        // The water left of the board in the sun's road; the water off the homestead past the boathouse.
+        expect(swanWaterSide(lens, -25, -47)).toBe(-1);
+        expect(swanWaterSide(lens, 37, -84)).toBe(1);
+        // The meadow, the shallows, behind the board card, behind the homestead's tip, under the
+        // meadow's flowers, behind the spruce at the frame's edge, too far to make out.
         expect(swanWaterSide(lens, 0, 5)).toBe(0);
         expect(swanWaterSide(lens, -20, -10.5)).toBe(0);
         expect(swanWaterSide(lens, 0, -46)).toBe(0);
-        expect(swanWaterSide(lens, -22, -75)).toBe(0);
-        expect(swanWaterSide(lens, 22, -44)).toBe(0);
-        // Too near: under the flowers of the meadow.
+        expect(swanWaterSide(lens, 34, -59)).toBe(0);
         expect(swanWaterSide(lens, -22, -30)).toBe(0);
+        expect(swanWaterSide(lens, -50, -50)).toBe(0);
+        expect(swanWaterSide(lens, -60, -160)).toBe(0);
         // The lens puts its own target in the middle of the frame, and finds a point again.
         const centre = lens.project(0, 4, -45.5);
         expect(centre.x).toBeCloseTo(0.5, 9);
@@ -362,87 +405,144 @@ describe('Summer swans on the lake', () => {
         expect(lens.project(0, 3, 40)).toBeNull();
     });
 
-    it('keeps every swan on deep water, in sight beside the board, for every moment of a lap', () => {
-        const p = [0, 0, 0, 0];
-        const s = { x: 0, y: 0, depth: 0 };
-        for (let time = 0; time <= round.period * 2; time += 0.25) {
+    it('keeps the family in sight most of a lap, on both sides of the board, never gone for long', () => {
+        const seen = sightings();
+        const lap = voyage.period;
+        // Seen two thirds of the lap, and as a swan (not a speck) for more than half of it.
+        expect((seen.left + seen.right) / lap).toBeGreaterThan(0.62);
+        expect(seen.reads / lap).toBeGreaterThan(0.55);
+        // Most of it in the left third (in single player the stats stand right of the board), and
+        // a while in the right one too.
+        expect(seen.left / lap).toBeGreaterThan(0.5);
+        expect(seen.right).toBeGreaterThan(40);
+        // Behind the board or out of sight for three minutes at most at a time.
+        expect(seen.longestHidden).toBeLessThan(200);
+        // Near and far: the whole lake.
+        expect(seen.near).toBeLessThan(65);
+        expect(seen.far).toBeGreaterThan(110);
+        // The session opens on them, in plain sight in the near water: a minute at least.
+        const p = [0, 0, 0, 0, 0, 0];
+        for (let time = 0; time <= 60; time += 1) {
+            swanFamilyPlace(voyage, family[0], time, p);
+            expect(swanWaterSide(lens, p[0], p[1]), `at ${time}`).toBe(-1);
+            expect(Math.hypot(p[0] - lens.eye[0], p[1] - lens.eye[2])).toBeLessThan(80);
+        }
+    });
+
+    it('keeps every swan on deep water, for every moment of two laps', () => {
+        const p = [0, 0, 0, 0, 0, 0];
+        for (let time = 0; time <= voyage.period * 2; time += 0.5) {
             for (const member of family) {
-                swanFamilyPlace(round, member, time, p);
-                const [x, z] = p;
-                expect(summerGroundHeight(x, z), `${member.kind} at ${time}`).toBeLessThan(SWAN_ROUND.deep);
-                const range = Math.hypot(x - lens.eye[0], z - lens.eye[2]);
-                expect(range).toBeGreaterThan(SWAN_ROUND.range[0]);
-                expect(range).toBeLessThan(SWAN_ROUND.range[1]);
-                expect(lens.project(x, 0, z, s)).not.toBeNull();
-                // In the left third: clear of the board card and of the spruce at the frame's edge.
-                expect(s.x).toBeGreaterThan(SPRUCE);
-                expect(s.x).toBeLessThan(CARD[0] - SWAN_ROUND.beside);
-                // Above the meadow's flowers, below the far shore.
-                expect(s.y).toBeLessThan(SWAN_ROUND.meadow);
-                expect(s.y).toBeGreaterThan(0.52);
-                expect(swanWaterSide(lens, x, z)).toBe(-1);
+                swanFamilyPlace(voyage, member, time, p);
+                expect(summerGroundHeight(p[0], p[1]), `${member.kind} at ${time}`).toBeLessThan(SWAN_SIGHT.deep);
             }
         }
     });
 
-    it('swims a closed round at a swan\'s pace, never jumping, each bird headed where it goes', () => {
-        const lap = swanRoundLap(round);
-        const a = swanRoundPoint(round, 3.7);
-        const b = swanRoundPoint(round, 3.7 + lap);
-        const c = swanRoundPoint(round, 3.7 - 2 * lap);
-        for (let k = 0; k < 4; k += 1) {
-            expect(b[k]).toBeCloseTo(a[k], 9);
-            expect(c[k]).toBeCloseTo(a[k], 9);
+    it('swims a closed line at a swan\'s pace, never jumping, each bird headed where it goes', () => {
+        const { length } = voyage;
+        const a = swanVoyagePoint(voyage, 3.7);
+        const b = swanVoyagePoint(voyage, 3.7 + length);
+        const c = swanVoyagePoint(voyage, 3.7 - 2 * length);
+        for (let k = 0; k < 6; k += 1) {
+            expect(b[k]).toBeCloseTo(a[k], 4);
+            expect(c[k]).toBeCloseTo(a[k], 4);
         }
-        // The line itself: one pace all the way round, and no corner in it.
-        const dt = 0.25;
-        let before = swanRoundPoint(round, 0).slice();
-        for (let run = 0.05; run <= lap; run += 0.05) {
-            const now = swanRoundPoint(round, run);
+        // The line itself: evenly laid, and no corner in it (it turns at most 3 degrees in 10 cm).
+        let before = swanVoyagePoint(voyage, 0).slice();
+        for (let run = 0.1; run <= length + 0.05; run += 0.1) {
+            const now = swanVoyagePoint(voyage, run);
             const moved = Math.hypot(now[0] - before[0], now[1] - before[1]);
-            expect(moved).toBeGreaterThan(0.03);
-            expect(moved).toBeLessThan(0.075);
+            expect(moved).toBeGreaterThan(0.07);
+            expect(moved).toBeLessThan(0.13);
             expect(Math.hypot(now[2], now[3])).toBeCloseTo(1, 9);
-            // The heading turns by no more than the tightest end allows in 5 cm.
-            expect(now[2] * before[2] + now[3] * before[3]).toBeGreaterThan(0.995);
+            expect(now[2] * before[2] + now[3] * before[3], `at ${run}`).toBeGreaterThan(Math.cos(Math.PI / 60));
             before = now.slice();
         }
-        const p = [0, 0, 0, 0];
+        // The leader's run goes on as the clock does, and comes round at the lap.
+        let last = swanVoyageRun(voyage, 0);
+        for (let time = 0.5; time <= voyage.period * 1.2; time += 0.5) {
+            const run = swanVoyageRun(voyage, time);
+            const ahead = (((run - last) % length) + length) % length;
+            expect(ahead).toBeGreaterThan(0.02);
+            expect(ahead).toBeLessThan(0.5);
+            last = run;
+        }
+        expect(swanVoyageRun(voyage, 123)).toBeCloseTo(swanVoyageRun(voyage, 123 + voyage.period), 4);
+        // Every bird: no teleport, never stopping dead, never sliding sideways or backing.
+        const dt = 0.5;
+        const p = [0, 0, 0, 0, 0, 0];
         for (const member of family) {
-            let last = null;
-            for (let time = 0; time <= round.period * 1.5; time += dt) {
-                swanFamilyPlace(round, member, time, p);
+            let prior = null;
+            for (let time = 0; time <= voyage.period + 5; time += dt) {
+                swanFamilyPlace(voyage, member, time, p);
                 expect(p.every(Number.isFinite)).toBe(true);
-                if (last) {
-                    const dx = p[0] - last[0];
-                    const dz = p[1] - last[1];
-                    // No teleport: under a metre a second.
-                    expect(Math.hypot(dx, dz) / dt).toBeLessThan(1);
-                    expect(Math.hypot(dx, dz) / dt).toBeGreaterThan(0.15);
-                    // Never sliding sideways: it moves the way it points.
-                    expect((dx * p[2] + dz * p[3]) / Math.hypot(dx, dz)).toBeGreaterThan(0.75);
+                expect(Math.hypot(p[2], p[3])).toBeCloseTo(1, 9);
+                if (prior) {
+                    const dx = p[0] - prior[0];
+                    const dz = p[1] - prior[1];
+                    const speed = Math.hypot(dx, dz) / dt;
+                    expect(speed, `${member.kind} at ${time}`).toBeLessThan(1);
+                    expect(speed, `${member.kind} at ${time}`).toBeGreaterThan(0.08);
+                    expect((dx * p[2] + dz * p[3]) / Math.hypot(dx, dz), `${member.kind} at ${time}`)
+                        .toBeGreaterThan(0.9);
                 }
-                last = [p[0], p[1]];
+                prior = [p[0], p[1]];
             }
         }
+    });
+
+    it('stays to feed at its places, and hurries over the water where nothing of it shows', () => {
+        const p = [0, 0, 0, 0, 0, 0];
+        SWAN_VOYAGE.calls.forEach(([, , stay, pace], i) => {
+            swanVoyagePoint(voyage, voyage.calls[i], p);
+            if (stay > 0) {
+                // Slowed to well under half its pace, and lingering.
+                expect(p[4], `call ${i}`).toBeGreaterThan(0.45);
+                expect(p[5], `call ${i}`).toBeLessThan(0.3);
+            } else if (pace > 1.3) {
+                // Out of sight it swims on with a will: faster than its cruise, and never lingering.
+                expect(p[4], `call ${i}`).toBeLessThan(0.05);
+                expect(p[5], `call ${i}`).toBeGreaterThan(SWAN_VOYAGE.cruise * 1.2);
+                expect(swanWaterSide(lens, p[0], p[1]), `call ${i}`).toBe(0);
+            }
+        });
+        // Where it stays, the family draws together and spreads out across the line.
+        const spread = (time) => {
+            const xs = family.map((member) => swanFamilyPlace(voyage, member, time, [0, 0, 0, 0, 0, 0]).slice(0, 2));
+            const [cx, cz] = xs[0];
+            return Math.max(...xs.map(([x, z]) => Math.hypot(x - cx, z - cz)));
+        };
+        const stayAt = SWAN_VOYAGE.calls.findIndex(([, , stay]) => stay >= 40);
+        const timeAt = (run) => {
+            for (let time = 0; time < voyage.period; time += 0.25) {
+                const r = swanVoyageRun(voyage, time);
+                if (Math.abs(r - run) < 0.3) return time;
+            }
+            return NaN;
+        };
+        const staying = timeAt(voyage.calls[stayAt]);
+        const swimming = timeAt(voyage.calls[stayAt] + 30);
+        expect(Number.isFinite(staying) && Number.isFinite(swimming)).toBe(true);
+        expect(spread(staying)).toBeLessThan(spread(swimming));
     });
 
     it('keeps the family together: the cob ahead, the pen behind him, the cygnets behind her', () => {
         expect(family.map((member) => member.kind)).toEqual(['cob', 'pen', 'cygnet', 'cygnet', 'cygnet', 'cygnet']);
         expect(swanFamily(0)).toHaveLength(2);
-        for (let i = 1; i < family.length; i += 1) expect(family[i].delay).toBeGreaterThan(family[i - 1].delay);
+        for (let i = 1; i < family.length; i += 1) expect(family[i].gap).toBeGreaterThan(family[i - 1].gap);
         // The cob is the largest; all are drawn a little larger than life.
         expect(family[0].size).toBeGreaterThan(family[1].size);
         for (const member of family) {
             expect(member.size).toBeGreaterThanOrEqual(1);
             expect(member.size).toBeLessThan(1.4);
         }
-        const p = [0, 0, 0, 0];
-        const q = [0, 0, 0, 0];
-        for (let time = 0; time < round.period; time += 1.7) {
+        const p = [0, 0, 0, 0, 0, 0];
+        const q = [0, 0, 0, 0, 0, 0];
+        for (let time = 0; time < voyage.period; time += 1.7) {
             for (let i = 1; i < family.length; i += 1) {
-                swanFamilyPlace(round, family[i - 1], time, p);
-                swanFamilyPlace(round, family[i], time, q);
+                swanFamilyPlace(voyage, family[i - 1], time, p);
+                swanFamilyPlace(voyage, family[i], time, q);
                 const apart = Math.hypot(p[0] - q[0], p[1] - q[1]);
                 // Never on top of each other, never strung out across the lake.
                 expect(apart, `${i} at ${time}`).toBeGreaterThan(0.45);
@@ -778,18 +878,18 @@ describe('SummerSwans', () => {
         }
     });
 
-    it('writes upright, finite birds that sit in the water and swim the round', () => {
+    it('writes upright, finite birds that sit in the water and swim the voyage', () => {
         const { swans } = createSwans('High');
         swans.build();
         const [afloat, cygnets] = swans.group.children.map((mesh) => mesh.geometry.getAttribute('iSwanA').data.array);
-        const place = [0, 0, 0, 0];
+        const place = [0, 0, 0, 0, 0, 0];
         for (const time of [0, 12, 33.3, 250, 4000]) {
             swans.update(time, STEP);
             swans.family.forEach((member, i) => {
                 const bird = member.kind === 'cygnet' ? birdOf(cygnets, i - 2) : birdOf(afloat, i);
                 expect([...bird.position, ...bird.forward, ...bird.up, bird.size, bird.first, bird.second]
                     .every(Number.isFinite)).toBe(true);
-                swanFamilyPlace(swans.round, member, time, place);
+                swanFamilyPlace(swans.voyage, member, time, place);
                 expect(bird.position[0]).toBeCloseTo(place[0], 4);
                 expect(bird.position[2]).toBeCloseTo(place[1], 4);
                 // The model's waterline rides at the lake's level, give or take a breath of bob.
@@ -878,6 +978,24 @@ describe('SummerSwans', () => {
         arrays.forEach((array, k) => expect(Array.from(array)).toEqual(stepped[k]));
     });
 
+    it('puts the family anywhere on its voyage by its shift (the playground\'s swanAt)', () => {
+        const { swans } = createSwans('High');
+        swans.build();
+        const afloat = swans.group.children[0].geometry.getAttribute('iSwanA').data.array;
+        swans.update(400, STEP);
+        const later = birdOf(afloat, 0).position;
+        swans.shift = 390;
+        swans.update(10, STEP);
+        const shifted = birdOf(afloat, 0).position;
+        expect(shifted[0]).toBeCloseTo(later[0], 5);
+        expect(shifted[2]).toBeCloseTo(later[2], 5);
+        // Junk is no shift at all.
+        swans.shift = NaN;
+        swans.update(10, STEP);
+        const place = swanFamilyPlace(swans.voyage, swans.family[0], 10);
+        expect(birdOf(afloat, 0).position[0]).toBeCloseTo(place[0], 5);
+    });
+
     it('leaves a faint ring in a swan\'s wake every few seconds, and none on a settled lake', () => {
         const { swans } = createSwans('High');
         swans.build();
@@ -892,7 +1010,7 @@ describe('SummerSwans', () => {
                 // Faint, on deep water, just behind the cob or the pen.
                 expect(ring.strength).toBeGreaterThan(0.03);
                 expect(ring.strength).toBeLessThanOrEqual(0.18);
-                expect(summerGroundHeight(ring.x, ring.z)).toBeLessThan(SWAN_ROUND.deep);
+                expect(summerGroundHeight(ring.x, ring.z)).toBeLessThan(SWAN_SIGHT.deep);
                 const near = Math.min(...[0, 1].map((i) => Math.hypot(
                     ring.x - birdOf(afloat, i).position[0],
                     ring.z - birdOf(afloat, i).position[2],
@@ -1099,7 +1217,7 @@ describe('SummerSwans', () => {
             swans.update(time, 0.25, {}, { motion: 1, gust: 1 });
             still = Math.max(still, lean());
             dipped = Math.max(dipped, birdOf(afloat, 0).second, birdOf(afloat, 1).second);
-            // Still in the water, still swimming the round: only the manner is calmer (the cob's
+            // Still in the water, still on its voyage: only the manner is calmer (the cob's
             // wings stay as he always carries them, a little raised).
             expect(birdOf(afloat, 0).first).toBeCloseTo(0.18, 6);
         }
@@ -1228,8 +1346,15 @@ describe('Summer swans in the world', () => {
         expect(updated).toHaveBeenCalledTimes(15 * 60);
         expect(updated.mock.calls[7].slice(0, 2)).toEqual([7 * STEP, STEP]);
         expect(updated.mock.calls[7][3]).toBe(world.worn);
-        const { round } = swans;
-        const wakes = added.mock.calls.filter(([x, z]) => Math.hypot(x - round.x, z - round.z) < round.a + 2);
+        // The swans' rings, told from the boat's by where they open: on the family's line.
+        const onLine = (x, z) => {
+            let best = Infinity;
+            for (let k = 0; k < swans.voyage.count; k += 1) {
+                best = Math.min(best, Math.hypot(x - swans.voyage.line[4 * k], z - swans.voyage.line[4 * k + 1]));
+            }
+            return best < 3;
+        };
+        const wakes = added.mock.calls.filter(([x, z]) => onLine(x, z));
         expect(wakes.length).toBeGreaterThanOrEqual(2);
         for (const [, , strength] of wakes) expect(strength).toBeLessThanOrEqual(0.18);
         // A level's flight (the lead wires the call), seen in the diagnostics; a reset forgets it.
