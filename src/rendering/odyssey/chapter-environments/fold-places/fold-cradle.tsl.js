@@ -131,7 +131,14 @@ export function placeCradle({
     // The nebula: churning gas lit from within, brightest toward the light behind the pillars.
     const q = r.mul(2.1).add(vec3(0.0, 0.0, tm.mul(0.012))).toVar();
     const gas = N(q).mul(0.62).add(N(q.mul(2.3).add(vec3(4.1, 1.7, 2.9))).mul(0.38)).toVar();
-    const fold = N(q.mul(4.6).add(vec3(9.3, 2.2, 6.1))).toVar();
+    // The folds' seams are the noise's ridges: read in a frame turned off the lattice's axes, or
+    // the ridges of value noise draw rounded squares across the glow.
+    const qr = vec3(
+        dot(q, vec3(0.36, 0.48, -0.8)),
+        dot(q, vec3(-0.8, 0.6, 0.0)),
+        dot(q, vec3(0.48, 0.64, 0.6)),
+    ).toVar();
+    const fold = N(qr.mul(4.6).add(vec3(9.3, 2.2, 6.1))).toVar();
     const warmth = smoothstep(0.35, 0.8, gas).toVar();
     const body = mix(teal.mul(0.30), mix(rose, gold, sq(toLight)), warmth);
     // Dark lanes of dust across the glow.

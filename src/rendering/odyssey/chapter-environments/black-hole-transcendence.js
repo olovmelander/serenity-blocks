@@ -89,6 +89,7 @@ import {
 } from './black-hole-transcendence.tsl.js';
 import { runChapterSteps } from './shared/chapter-build-steps.js';
 import { createGreatHoleLensSteps } from './odyssey-great-hole-lens.tsl.js';
+import { closingSkyClock } from './odyssey-closing-sky.tsl.js';
 
 export const BLACK_HOLE_TRANSCENDENCE_CONFIG = {
     id: 7,
@@ -620,8 +621,11 @@ export const CH7_WARP_DRIVE = Object.freeze({
     base: 0.6,
     gain: 3.4,
     /** The phase wraps here. (The fold does not follow the wrap: its places are not periodic along
-     * the way, so inside it travels on the drive's steps summed, see `foldPhase` in the update.) */
-    wrap: 2048,
+     * the way, so inside it travels on the drive's steps summed, see `foldPhase` in the update.)
+     * The closing sky's abyss stirs on it (CH7_CLOSING_SKY.stir): 1280 x 0.05 = 64, one whole
+     * period of the lattice noise, so the wrap is seamless there (at 2048 it stepped once per
+     * half hour or so of drive). */
+    wrap: 1280,
     /** A progress jump larger than this in one frame is a teleport (map jump), not travel. */
     teleport: 0.02,
 });
@@ -822,6 +826,9 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
         if (windowUniforms.uThrottle) windowUniforms.uThrottle.value = drive.throttle;
         // The last ring of starlight, closing on the middle of the view (odyssey-closing-sky.tsl.js).
         if (windowUniforms.uRing) windowUniforms.uRing.value = fall.ring ?? CH7_FALL.ringOpen;
+        // ...on its own clock: the chapter's taken modulo a period every term of the ring divides,
+        // so it looks the same at any hour of a session (odyssey-closing-sky.tsl.js).
+        if (windowUniforms.uSkyClock) windowUniforms.uSkyClock.value = closingSkyClock(time);
         // THE FOLD: the other dimension past the horizon; still under reduced motion.
         if (group.userData.foldOverride === undefined) group.userData.foldOverride = readCh7FoldOverride();
         const { foldOverride } = group.userData;

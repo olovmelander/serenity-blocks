@@ -15,12 +15,27 @@
  * into the first room.
  *
  * A function of the view ray in the hole's frame, the ring's radius (`ring`, radians: the fall's
- * schedule) and the clock. No screen derivative: the razor's width comes from the pixel's angle.
+ * schedule), the ring's own clock and the drive's travel. No screen derivative: the razor's width
+ * comes from the pixel's angle.
+ *
+ * THE SAME RING AT ANY HOUR (2026-11-17). The ring's slow turn used to be `time * turn` added to
+ * its winding, and the winding is sheared across the ring (the inner lanes a little ahead): so the
+ * shear grew with the chapter's clock without end. Ten minutes in it was a swirl; after half an
+ * hour of play the violet and amber halves were wound into fine concentric rings, and after hours
+ * into a pink moiré. The ring now runs on its OWN clock, the chapter's clock taken modulo
+ * `clockPeriod` on the CPU (`closingSkyClock`, in double precision), and every term of it is
+ * periodic in that period: the turn goes once round in `turnPeriod` (which divides it) and the
+ * lanes' shear SWAYS (ahead and back, a sine over `clockPeriod`) instead of growing, as fast at
+ * first as it used to grow. So a fresh session looks as it did, and so does every hour after it:
+ * the same values at t, t + 1 h and t + 10 h. The abyss stirs on the drive's travel, whose wrap
+ * (CH7_WARP_DRIVE.wrap) is a whole number of the lattice's periods at `stir`: no step at the wrap.
  */
 import {
     abs, atan, clamp, cos, exp, float, length, log, max, mix, sin, smoothstep, step, vec3,
 } from 'three/tsl';
 import { latticeNoise3 } from './shared/odyssey-lattice-noise.js';
+
+const TAU = Math.PI * 2;
 
 export const CH7_CLOSING_SKY = Object.freeze({
     /** The ring's radius (rad) before it closes: past the frame's far corner. */
@@ -28,13 +43,54 @@ export const CH7_CLOSING_SKY = Object.freeze({
     /** Its width (rad) wide open, and nearly closed. */
     widthOpen: 0.13,
     widthClosed: 0.03,
-    /** How far the sky's image winds round as the ring closes (rad), and its own slow turn (rad/s). */
+    /** How far the sky's image winds round as the ring closes (rad). */
     wind: 4.2,
-    turn: 0.05,
+    /** How much farther round the inner lanes are wound than the outer, per unit across the ring. */
+    lanes: 0.06,
+    /** The ring's own clock comes round every this many seconds (every term below divides it). */
+    clockPeriod: 1800,
+    /** The image's own slow turn: once round in this many seconds (~0.052 rad/s). */
+    turnPeriod: 120,
+    /** The lanes' sway at its fastest (rad/s of winding), swinging ahead and back over the period. */
+    sway: 0.05,
+    /** How fast the abyss stirs per unit of the drive's travel (the wrap times this is 64k). */
+    stir: 0.05,
     /** Where round the ring the Milky Way and the disk's light sit (rad), on opposite sides. */
     galaxyAt: 2.5,
     diskAt: -0.5,
 });
+
+/**
+ * The ring's own clock (seconds, 0..clockPeriod) for the chapter's clock `time`: written to the
+ * window's uniform each frame, in double precision, so the shader never sees a large time.
+ * @param {number} time the chapter's clock (seconds)
+ * @returns {number}
+ */
+export function closingSkyClock(time) {
+    const P = CH7_CLOSING_SKY.clockPeriod;
+    if (!Number.isFinite(time)) return 0;
+    const c = time % P;
+    return c < 0 ? c + P : c;
+}
+
+/** The lanes' sway's reach (rad of winding): its fastest rate over the period's angular rate. */
+const SWAY_REACH = (CH7_CLOSING_SKY.sway * CH7_CLOSING_SKY.clockPeriod) / TAU;
+
+/**
+ * How far round the sky's image is wound (rad) at one place across the ring: the CPU twin of the
+ * shader's winding, for tests and probes.
+ * @param {number} clock the ring's own clock (closingSkyClock; 0 under reduced motion)
+ * @param {number} closed how far the ring has closed (0 open .. 1 closed)
+ * @param {number} x across the ring, in its widths (0 on its line, positive outward)
+ * @returns {number}
+ */
+export function closingSkyWind(clock, closed, x) {
+    const V = CH7_CLOSING_SKY;
+    const xc = Math.min(4, Math.max(-2, x));
+    const turn = (clock * TAU) / V.turnPeriod;
+    const sway = SWAY_REACH * Math.sin((clock * TAU) / V.clockPeriod);
+    return ((closed * V.wind) * (1 - (xc * V.lanes))) + turn - (sway * xc * V.lanes);
+}
 
 const N = latticeNoise3;
 const sq = (x) => x.mul(x);
@@ -43,14 +99,14 @@ const sq = (x) => x.mul(x);
  * The closing sky's colour for one view ray (linear; call inside a Fn).
  * @param {object} o
  * @param {*} o.ray the view ray in the hole's frame (+Z toward the eye)
- * @param {*} o.time seconds (times 0 under reduced motion: the caller's)
+ * @param {*} o.clock the ring's own clock (closingSkyClock; times 0 under reduced motion: the caller's)
  * @param {*} o.phase the tunnel's travel (the warp drive's, held once the fold begins)
  * @param {*} o.ring the ring's radius, radians
  * @param {*} o.pix one pixel's angle, radians
  * @returns {*} vec3 node
  */
 export function closingSkyColour({
-    ray, time, phase, ring, pix,
+    ray, clock, phase, ring, pix,
 }) {
     const V = CH7_CLOSING_SKY;
     const sinT = max(length(ray.xy), 1e-4).toVar();
@@ -59,8 +115,15 @@ export function closingSkyColour({
     const width = mix(float(V.widthOpen), float(V.widthClosed), closed).toVar();
     // Across the ring: 0 on its line, positive outward.
     const x = theta.sub(ring).div(width).toVar();
-    // Round the ring: the sky's image winds as the ring tightens (the inner lanes a little ahead).
-    const wind = closed.mul(V.wind).add(time.mul(V.turn)).mul(float(1).sub(clamp(x, -2.0, 4.0).mul(0.06))).toVar();
+    // Round the ring: the sky's image winds as the ring tightens (the inner lanes a little ahead),
+    // turns slowly, and its lanes sway ahead and back (closingSkyWind is the same on the CPU).
+    const xc = clamp(x, -2.0, 4.0).toVar();
+    const turn = clock.mul(TAU / V.turnPeriod);
+    const sway = sin(clock.mul(TAU / V.clockPeriod)).mul(SWAY_REACH);
+    const wind = closed.mul(V.wind).mul(float(1).sub(xc.mul(V.lanes)))
+        .add(turn)
+        .sub(sway.mul(xc).mul(V.lanes))
+        .toVar();
     const cw = cos(wind);
     const sw = sin(wind);
     const cphi = ray.x.div(sinT).mul(cw).sub(ray.y.div(sinT).mul(sw)).toVar();
@@ -87,7 +150,7 @@ export function closingSkyColour({
     // Outside it, what has already passed: the same arcs again, fainter and redder, dying away.
     const after = arcs.mul(exp(max(x.sub(1.5), 0.0).mul(-0.32))).mul(smoothstep(1.2, 2.4, x)).mul(0.10);
     // Inside it the dark the eye is falling into: never dead black, a deep violet stirring slowly.
-    const deep = N(vec3(cphi.mul(1.4), sphi.mul(1.4), log(theta.add(0.03)).mul(1.3).sub(phase.mul(0.05))));
+    const deep = N(vec3(cphi.mul(1.4), sphi.mul(1.4), log(theta.add(0.03)).mul(1.3).sub(phase.mul(V.stir))));
     const abyss = vec3(0.0035, 0.0018, 0.0090)
         .add(vec3(0.020, 0.006, 0.050).mul(smoothstep(0.45, 0.85, deep)).mul(smoothstep(0.02, 0.25, theta)));
     return sky.add(vec3(0.80, 0.26, 0.20).mul(after)).add(abyss);
