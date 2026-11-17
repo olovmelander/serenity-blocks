@@ -2515,6 +2515,103 @@ describe('Summer world weather, dusk and the level-up\'s wave', () => {
         expect([wash.x, wash.y]).toEqual([0, 0]);
     }, SLOW);
 
+    it('sends a skein of swans up once for each level-up\'s flourish, and none for a session it takes up', async () => {
+        const { world, tier } = await buildWorld('Minimal');
+        const { swans } = world;
+        const takeWing = vi.spyOn(swans, 'takeWing');
+        let clock = 0;
+        const frame = (state) => {
+            clock += STEP;
+            world.update(clock, STEP, state);
+        };
+        expect(world.flightsSeen).toBeNull();
+        expect(swans.counts()).toEqual({ afloat: 2, cygnets: tier.swans[0], flying: 0 });
+        // Frames that say nothing of flights, or nothing usable: no count is read and nothing flies.
+        for (const state of [{}, undefined, { flights: undefined }, { flights: NaN }, { flights: 'two' },
+            { flights: null }, { flights: Infinity }]) {
+            frame(state);
+            expect(world.flightsSeen).toBeNull();
+        }
+        expect(takeWing).not.toHaveBeenCalled();
+        // The first frame that carries a count only records it: a scene rebuilt in the middle of a
+        // session does not send the swans up for the level-ups that came before it.
+        frame({ flights: 3 });
+        expect(world.flightsSeen).toBe(3);
+        expect(takeWing).not.toHaveBeenCalled();
+        // The same count, frame after frame, and a frame without one in between: still nothing.
+        for (let step = 0; step < 30; step++) frame(step % 7 === 3 ? {} : { flights: 3 });
+        expect(takeWing).not.toHaveBeenCalled();
+        expect(world.flightsSeen).toBe(3);
+        expect(swans.counts().flying).toBe(0);
+        // One more level-up has asked for its flourish: one skein, in the air that very frame.
+        frame({ flights: 4 });
+        expect(takeWing).toHaveBeenCalledOnce();
+        expect(takeWing).toHaveBeenLastCalledWith();
+        expect(takeWing).toHaveLastReturnedWith(true);
+        expect(world.flightsSeen).toBe(4);
+        const { flying } = swans.counts();
+        expect(flying).toBeGreaterThan(0);
+        expect(flying).toBeLessThanOrEqual(tier.swans[1]);
+        // Not again while the count stands, however long the skein is in the air.
+        for (let step = 0; step < 60; step++) frame({ flights: 4 });
+        expect(takeWing).toHaveBeenCalledOnce();
+        expect(swans.counts().flying).toBe(flying);
+        // Each rise is one call, whether or not a skein is already up, and however far it rose.
+        frame({ flights: 5 });
+        expect(takeWing).toHaveBeenCalledTimes(2);
+        frame({ flights: 9 });
+        expect(takeWing).toHaveBeenCalledTimes(3);
+        expect(world.flightsSeen).toBe(9);
+        expect(swans.counts().flying).toBe(flying);
+        // A new session counts from nothing: the count falling back sends none, the next rise does.
+        frame({ flights: 0 });
+        expect(takeWing).toHaveBeenCalledTimes(3);
+        expect(world.flightsSeen).toBe(0);
+        frame({ flights: 1 });
+        expect(takeWing).toHaveBeenCalledTimes(4);
+        // Forgetting every effect in flight brings the skein down; the count read so far is kept.
+        world.resetEffects();
+        expect(swans.counts().flying).toBe(0);
+        frame({ flights: 1 });
+        expect(takeWing).toHaveBeenCalledTimes(4);
+        expect(swans.counts().flying).toBe(0);
+    }, SLOW);
+
+    it('lets the swans take wing on a level-up through the director, and not when only the level is set', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { swans } = world;
+        const reactions = new SummerReactions({ quality: 'Minimal', rng: seededRandom(5) });
+        const takeWing = vi.spyOn(swans, 'takeWing');
+        // Play that is no level-up, and the level alone (effects off): the pair stays on the lake.
+        reactions.onPieceLock({ piece: piece('I') });
+        reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
+        reactions.onPerfectClear();
+        advance(world, reactions, 0.5);
+        reactions.setLevel(4);
+        advance(world, reactions, 0.5);
+        expect(takeWing).not.toHaveBeenCalled();
+        expect(world.flightsSeen).toBe(0);
+        expect(swans.counts().flying).toBe(0);
+        // The level turns with its flourish: the skein goes up with the wave of bloom.
+        reactions.onLevelUp({ level: 5 });
+        advance(world, reactions, STEP);
+        expect(takeWing).toHaveBeenCalledOnce();
+        expect(swans.counts().flying).toBeGreaterThan(0);
+        expect(world.light.uWash.value.x).toBeGreaterThan(0);
+        advance(world, reactions, 1);
+        expect(takeWing).toHaveBeenCalledOnce();
+        // The next session starts its own count: its first level-up sends them again.
+        reactions.reset();
+        world.resetEffects();
+        advance(world, reactions, 0.2);
+        expect(world.flightsSeen).toBe(0);
+        expect(swans.counts().flying).toBe(0);
+        reactions.onLevelUp();
+        advance(world, reactions, STEP);
+        expect(takeWing).toHaveBeenCalledTimes(2);
+        expect(swans.counts().flying).toBeGreaterThan(0);
+    }, SLOW);
+
     it('fans the sun\'s rays across the sky for a sunburst, held back where flashes are reduced', async () => {
         const { world } = await buildWorld('Minimal');
         const { light } = world;
