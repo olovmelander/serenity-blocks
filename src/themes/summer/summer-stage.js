@@ -15,6 +15,8 @@ export const SUMMER_DEFAULT_BOARD = Object.freeze({
 });
 export const SUMMER_STAGE_DEPTH = 8.5;
 const BOARD_SELECTOR = '.player-card[data-player]';
+/** The score panel that stands beside the board in single player. */
+const HUD_SELECTOR = '.single-player-stats-bar';
 const WATER_NEAR = 4;
 const WATER_FAR = 64;
 const GROUND_NEAR = 1.5;
@@ -55,12 +57,36 @@ export function readSummerBoardRect(doc = globalThis.document, win = globalThis.
     return rect;
 }
 
+/**
+ * The score panel beside the board in screen fractions (y down), or null when none is showing.
+ * What is thrown into the air beside the board keeps clear of it as well as of the card.
+ */
+export function readSummerHudRect(doc = globalThis.document, win = globalThis.window) {
+    if (!doc || !win || typeof doc.querySelector !== 'function') return null;
+    const element = doc.querySelector(HUD_SELECTOR);
+    if (typeof element?.getBoundingClientRect !== 'function') return null;
+    const width = Math.max(1, win.innerWidth || 1);
+    const height = Math.max(1, win.innerHeight || 1);
+    const box = element.getBoundingClientRect();
+    if (!(box.width > 8 && box.height > 8)) return null;
+    if (box.right <= 0 || box.bottom <= 0 || box.left >= width || box.top >= height) return null;
+    const style = typeof win.getComputedStyle === 'function' ? win.getComputedStyle(element) : null;
+    if (style && (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) < 0.05)) {
+        return null;
+    }
+    return {
+        x0: box.left / width, x1: box.right / width, y0: box.top / height, y1: box.bottom / height,
+    };
+}
+
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
 
 export class SummerStage {
     constructor(camera) {
         this.camera = camera;
         this.board = { ...SUMMER_DEFAULT_BOARD };
+        /** The score panel beside the board, or null (setHud). */
+        this.hud = null;
         this.origin = new THREE.Vector3();
         this.right = new THREE.Vector3(1, 0, 0);
         this.up = new THREE.Vector3(0, 1, 0);
@@ -79,6 +105,26 @@ export class SummerStage {
         this.board = {
             x0: clamp01(next.x0), x1: clamp01(next.x1), y0: clamp01(next.y0), y1: clamp01(next.y1),
         };
+    }
+
+    /** Accept a measured score panel in screen fractions, or forget it; ignore nonsense. */
+    setHud(rect) {
+        const valid = rect && [rect.x0, rect.x1, rect.y0, rect.y1].every(Number.isFinite)
+            && rect.x1 - rect.x0 > 0.01 && rect.y1 - rect.y0 > 0.01;
+        this.hud = valid ? {
+            x0: clamp01(rect.x0), x1: clamp01(rect.x1), y0: clamp01(rect.y0), y1: clamp01(rect.y1),
+        } : null;
+    }
+
+    /**
+     * What covers the middle of the screen, left edge to right edge in screen fractions: the
+     * board card, widened by the score panel when one stands beside it.
+     */
+    covered() {
+        const { board, hud } = this;
+        return hud
+            ? { x0: Math.min(board.x0, hud.x0), x1: Math.max(board.x1, hud.x1) }
+            : { x0: board.x0, x1: board.x1 };
     }
 
     /** Re-read the camera's rest pose (call after it has been framed). */
@@ -101,6 +147,25 @@ export class SummerStage {
             .addScaledVector(this.forward, depth)
             .addScaledVector(this.right, nx * depth * this.tanH)
             .addScaledVector(this.up, ny * depth * this.tanV);
+    }
+
+    /**
+     * Where a world point is seen: screen fractions (y down) and its depth along the view, written
+     * into `out`; null for a point at or behind the eye.
+     */
+    project(point, out = { x: 0.5, y: 0.5, depth: 0 }) {
+        const dx = point.x - this.origin.x;
+        const dy = point.y - this.origin.y;
+        const dz = point.z - this.origin.z;
+        const depth = dx * this.forward.x + dy * this.forward.y + dz * this.forward.z;
+        if (!(depth > 0.01)) return null;
+        const across = dx * this.right.x + dy * this.right.y + dz * this.right.z;
+        const up = dx * this.up.x + dy * this.up.y + dz * this.up.z;
+        return Object.assign(out, {
+            x: 0.5 + (across / (depth * this.tanH)) * 0.5,
+            y: 0.5 - (up / (depth * this.tanV)) * 0.5,
+            depth,
+        });
     }
 
     /** Screen position of a place on the card: column 0..1 left to right, row 0 its foot, 1 its top. */
