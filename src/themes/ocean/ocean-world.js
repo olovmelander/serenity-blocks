@@ -16,18 +16,26 @@
  *   lock     the piece's light sinks from the card to the reef on its side: where it lands a
  *            ring of its colour runs out over sand and coral, bubbles go up, the fish nearby
  *            dart away, and the colonies round that place light up in the piece's colour and
- *            hold it. A hard drop lands harder: a ring of pressure crosses the picture.
- *   clear    a current crosses the canyon: kelp and grass lean as its front passes, the school
- *            draws out into a ribbon and streams across at the height of the cleared rows, the
- *            shafts flare, and every colony holding a colour lets it go as the front reaches
- *            it — a slow upward snow of beads in the colours of the pieces that fed it.
+ *            hold it. A hard drop lands as a blow: a ring of pressure crosses the picture and a
+ *            ring of bubbles is thrown out flat over the reef.
+ *   clear    a current crosses the canyon: kelp and grass lean as its front passes, a band of
+ *            light rides on the front over everything it crosses (ocWash), and every colony
+ *            holding a colour lets it go as the front reaches it — a slow upward snow of beads
+ *            in the colours of the pieces that fed it. From two lines up the school draws out
+ *            into a ribbon and streams across at the height of the cleared rows; three lines
+ *            send a pod of dolphins racing the current.
+ *   twist    strings of bubbles wind into a helix where the piece went in, turning as they climb.
  *   combo    the sea's large animals are called in from the blue, one more with each step of a
  *            chain: a turtle, then mantas, then a whale far out, and at the top the whale comes
  *            through the canyon over the board, its shadow cutting the shafts, and sings.
- *   four     the sea holds its breath; then one great shaft of light comes down over the board,
- *            the school winds itself round it, and the whole reef spawns at once.
- *   level    the light turns to its next hour (six of them on a wheel) and a long swell passes
- *            overhead.
+ *   four     the sea holds its breath; then a crown of light comes down round the board, pillar
+ *            by pillar (ocean-fx.js createCrown), the school winds itself round inside it, the
+ *            shafts round about stand back, and the whole reef spawns at once.
+ *   perfect  the crown splits into the colours of the spectrum, every thread of the net on the
+ *            sand a rainbow, each garden spawning in a colour of its own, three mantas over.
+ *   level    the light turns to its next hour (six of them on a wheel), a long swell passes
+ *            overhead, a tide of the new hour's light comes up the canyon from the blue to the
+ *            eye, and the reef breathes out: a column of bubbles from every garden.
  *
  * Fast play BUILDS (shared/gameplay-surge.js: the heat of play, fed by every event). Nothing a
  * later event does cuts what an earlier one lit: a second four restarts no shaft and no hush, a
@@ -42,7 +50,11 @@
  * reef spawns at once, the water clears), and the chain's end lets go what it kept alight.
  *
  * The light also moves on by itself, whatever the level: an hour every 100 s of the world's
- * clock, so the colour of the water is never quite the same twice.
+ * clock, so the colour of the water is never quite the same twice. And the sea has weather of
+ * its own on a second clock (ocean-weather.js): six sea states, 73 s each (the trade wind, glass,
+ * the long swell, a plankton bloom, a squall with rain on the surface, crystal water), clouds
+ * that cross the sun so the shafts fade and burst back, and small happenings at irregular times
+ * (a vent's bubbles, a garden's fish darting, the school flashing, the corals spawning at night).
  *
  * Everything is a function of the world clock and event timestamps (nothing is created at event
  * time), so seek(t) plus a fixed-step replay reproduces any frame.
@@ -86,6 +98,11 @@ import {
     VORTEX,
     VORTEX_HOLD,
     approach,
+    happenSlot,
+    happeningAt,
+    seaAt,
+    seaPlace,
+    sunGain,
     bakeNoiseSteps,
     clamp01,
     createLightPass,
@@ -120,10 +137,13 @@ import { creaturesLoaded, loadCreatures } from './ocean-creatures.js';
 import {
     CAST, KINDS, laneVisit, makeVisit, planVisits, poseOnRoute,
 } from './ocean-visits.js';
-import { createMotes, createNearMotes, createPool } from './ocean-fx.js';
+import {
+    createCrown, createMotes, createNearMotes, createPool,
+} from './ocean-fx.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './ocean-composition.js';
+import { OCEAN_TETROMINOS } from './ocean-tetrominos.js';
 
 /** The rest camera's lens (the theme builds its camera from it). */
 export const REST_RIG = Object.freeze({
@@ -141,7 +161,7 @@ const SHOCKS = 2;
 
 /** The school drawn out into a ribbon while a clear's current runs: its shape, and how long it holds. */
 const RIBBON = Object.freeze({
-    wide: 17, swing: 0.3, back: -5.5, deep: 2.4, hold: 3.4,
+    wide: 17, swing: 0.3, back: -5.5, deep: 2.4, rise: 2.6, hold: 3.4,
 });
 
 /** The overdrive a run of four-line clears can stack to. */
@@ -156,6 +176,19 @@ const STAIN_SPENT = 1.8;
 const STAIN_SETTLE = 0.5;
 /** A whale already in the water answers a call by singing, at most this often (seconds). */
 const ENCORE_GAP = 1.1;
+/** The pod of dolphins a three-line clear sends racing its current: their lane, and how long they take. */
+const POD_LANE = Object.freeze({
+    side: 1, z: -6, y: 9.2, bow: 3.5, reach: 27, lift: 1.5,
+});
+const POD_SECONDS = 8.5;
+/** A new level's tide of light: where its front sets out (z), metres a second, and how long it lives. */
+const TIDE_FROM = -46;
+const TIDE_SPEED = 21;
+const TIDE_SECONDS = 3;
+/** Seconds a perfect clear's light stays split into its colours. */
+const PRISM_HOLD = 4.5;
+/** The pieces' colours as light, in the order of the spectrum: what a perfect clear's spawning is dealt from. */
+const SPECTRUM = Object.freeze(['L', 'J', 'I', 'T', 'O', 'Z', 'S'].map((k) => pieceColor(OCEAN_TETROMINOS.colors[k])));
 
 /**
  * The heat of play as the sea wears it (the shared GameplaySurge's level, 0..1): `warm` is the
@@ -187,11 +220,11 @@ const GIANT_PARTS = KINDS.map((kind) => `giant:${kind}`);
 
 const PARTS = [
     'backdrop', 'surface', 'seabed', 'branching', 'tables', 'brains', 'sponges', 'fans', 'anemones', 'kelp', 'grass',
-    'school', 'reefFish', ...GIANT_PARTS, 'jellies', 'motes', 'nearMotes', 'pool',
+    'school', 'reefFish', ...GIANT_PARTS, 'jellies', 'crown', 'motes', 'nearMotes', 'pool',
 ];
 
 const copyShape = (shape) => ({
-    wide: shape.wide, high: shape.high, swing: shape.swing, back: shape.back, deep: shape.deep,
+    wide: shape.wide, high: shape.high, swing: shape.swing, back: shape.back, deep: shape.deep, rise: shape.rise,
 });
 
 export class OceanWorld {
@@ -260,6 +293,11 @@ export class OceanWorld {
         this._sun = [0, 1, 0];
         this._air = [0, 1, 0];
         this._hour = hourAt(0);
+        /** The sea state as last read (ocean-weather.js), a held place on its wheel (captures), the sun's gain under the clouds. */
+        this._sea = seaAt(0);
+        this.seaHold = null;
+        this.sunLight = 1;
+        this._happening = {};
         this._pose = {};
         this._post = {
             flash: 0,
@@ -351,19 +389,31 @@ export class OceanWorld {
          * far out and the whale over the board are two passes: a far one never keeps the near one away.
          */
         this.calls = {
-            turtle: null, mantas: [null, null, null], whale: null, whaleFar: null,
+            turtle: null, mantas: [null, null, null], whale: null, whaleFar: null, pod: null,
         };
+        /** A perfect clear's split light: standing from `prismFrom` to `prismUntil`, eased in `prism`. */
+        this.prism = 0;
+        this.prismFrom = -100;
+        this.prismUntil = -100;
+        /** When the last level's tide of light set out up the canyon. */
+        this.tideAt = -100;
         this.counts = {
             locks: 0, clears: 0, quads: 0, crowns: 0, spins: 0, stains: 0, released: 0, kept: 0, passes: 0,
         };
         // The slow clock and the flora's own phase are functions of the world clock until gameplay bends them.
         this.drift = time * (this.reducedMotion ? 0.3 : 1);
         this.sway = time * 0.975;
+        /** Metres the steady current has carried what drifts. */
+        this.flow = time * 0.25 * (this.reducedMotion ? 0.3 : 1);
+        // The sea's small happenings: the next slot whose moment is still to come.
+        this.happenNext = happenSlot(time);
+        if (happeningAt(this.happenNext, this.visitSeed, this._happening).at <= time) this.happenNext += 1;
         this.pool?.reset();
         if (this.u) {
             this.u.counts.value.set(0, 0, 0, 0);
             this.u.counts2.value.set(0, 0, 0, 0);
             this.u.beam.value.w = 0;
+            this.u.prism.value = 0;
         }
     }
 
@@ -388,6 +438,8 @@ export class OceanWorld {
         // The light pattern needs the uniforms (it reads the slow clock and the noise) and they need its texture.
         this.light = createLightPass(u, tier.light);
         u.lightTex = this.light.texture;
+        /** The pattern's edge in texels: the shafts' march reads it no finer than its steps. */
+        u.lightTexels = tier.light;
 
         this.backdrop = createBackdrop(u);
         this.addPart('backdrop', this.backdrop);
@@ -417,6 +469,7 @@ export class OceanWorld {
             });
         }
         if (tier.jellies > 0) this.addPart('jellies', createJellies(u, tier.jellies));
+        this.addPart('crown', createCrown(u, tier.crown));
         this.addPart('motes', createMotes(u, tier.motes));
         this.addPart('nearMotes', createNearMotes(u, tier.near));
         this.pool = createPool(u, tier.pool);
@@ -494,6 +547,11 @@ export class OceanWorld {
     /** Let the light move on by itself (the default), or hold it at the level's own hour. */
     setHourDrift(drifting) {
         this.hourDrift = drifting !== false;
+    }
+
+    /** Hold the sea state at a place on its wheel (captures), or let it turn again (null). */
+    holdSea(place) {
+        this.seaHold = Number.isFinite(place) ? place : null;
     }
 
     /** Hold the light at a place on the wheel of hours (captures). */
@@ -894,6 +952,52 @@ export class OceanWorld {
         return this.pool ? Math.min(1.6, this.pool.count / 960) : 0;
     }
 
+    // ── What the sea does by itself ─────────────────────────────────────────────
+
+    /** Fire the small happenings whose moment has come (ocean-weather.js deals one to a slot). */
+    happenings(t) {
+        for (let guard = 0; guard < 3; guard++) {
+            const h = happeningAt(this.happenNext, this.visitSeed, this._happening);
+            if (h.at > t) return;
+            this.happenNext += 1;
+            // (One whose moment is long past, after a jump of the clock, is not played late.)
+            if (t - h.at < 4) this.happen(h);
+        }
+        // A clock that leapt far ahead: go on from here.
+        this.happenNext = Math.max(this.happenNext, happenSlot(t));
+    }
+
+    /** One small happening at a garden of the reef. */
+    happen(h) {
+        const g = this.gardens[Math.floor(h.a * this.gardens.length) % this.gardens.length];
+        if (!g) return;
+        const x = g[0] * this.squeeze;
+        const z = g[1];
+        const y = this.groundAt(x, z);
+        const night = this._hour.night > 0.3;
+        const kind = h.kind === 'spawn' && !night ? 'vent' : h.kind;
+        if (kind === 'vent' && this.pool) {
+            // A vent in the reef lets go a string of bubbles, in puffs.
+            const share = this.poolShare();
+            const puffs = 5 + Math.round(h.b * 5);
+            for (let i = 0; i < puffs; i++) {
+                this.pool.emit({
+                    mode: 'bubble', at: [x, y + 0.3, z], n: Math.round(5 * share), rgb: [0.8, 0.95, 1], time: h.at + i * 0.65, vel: [0, 0.85, 0], spread: 0.16, scatter: 0.14, life: [4, 7.5], size: 0.06, stagger: 0.6,
+                });
+            }
+        } else if (kind === 'dart') {
+            this.scare(x, y + 1, z, h.at, 0.5 + 0.3 * h.b, 5.5);
+        } else if (kind === 'flash') {
+            this.school.excite = Math.max(this.school.excite, 0.95);
+        } else if (kind === 'spawn') {
+            // At night the corals spawn a little by themselves, in the hour's own light.
+            const { glow } = this._hour;
+            const peak = Math.max(glow[0], glow[1], glow[2], 1e-4);
+            const rgb = glow.map((c) => (c / peak) * 0.85 + 0.15);
+            this.spawn(x, y, z, rgb, h.at, 0.7 + 0.5 * h.b);
+        }
+    }
+
     // ── Gameplay ────────────────────────────────────────────────────────────────
 
     /**
@@ -974,6 +1078,10 @@ export class OceanWorld {
         if (hardDrop) {
             this.shock(to[0], to[1] + 0.3, to[2], lands, 0.8);
             this.scare(from[0], from[1], from[2], t, 0.7, 5);
+            // It lands as a blow: a ring of bubbles is thrown out flat over the reef.
+            this.pool?.emit({
+                mode: 'bubble', at: [to[0], to[1] + 0.25, to[2]], n: Math.round(24 * share), rgb, time: lands, vel: [0, 0.3, 0], spread: 0.03, ring: 0.3, ringSpeed: 2.2, life: [1.5, 2.5], size: 0.075, scatter: 0.02,
+            });
         }
     }
 
@@ -1082,14 +1190,18 @@ export class OceanWorld {
         }
         // A ribbon still streaming streams on (it never eases out for a quad's hush); a new one
         // starts when the last has let go.
+        // (One line is the current alone; from two lines up, or deep in a cascade, the school rides it.)
         const { ribbon } = this.school;
         const until = birth + RIBBON.hold + 0.4 * n + 0.6 * deep;
-        if (t >= ribbon.from && t < ribbon.until) ribbon.until = Math.max(ribbon.until, until);
-        else {
+        const streaming = t >= ribbon.from && t < ribbon.until;
+        if (streaming) ribbon.until = Math.max(ribbon.until, until);
+        else if (n >= 2 || deep > 0) {
             ribbon.from = birth;
             ribbon.until = until;
         }
-        ribbon.high = high;
+        if (streaming || n >= 2 || deep > 0) ribbon.high = high;
+        // Three lines: a pod of dolphins races the current across the canyon.
+        if (n === 3 && !quad) this.call('pod', t + 0.1);
 
         // ── The cleared rows leave the card as sheets of bubbles, carried off by the current ──
         if (this.pool && board && card && !screen) {
@@ -1154,17 +1266,25 @@ export class OceanWorld {
         if (twist) {
             // A ring of bubbles blown where the piece went in, widening as it climbs.
             const at = this.lastLanding || [-6 * this.squeeze, this.groundAt(-6 * this.squeeze, -2), -2];
-            if (this.pool) {
-                for (let i = 0; i < 2; i++) {
-                    this.pool.emit({
-                        mode: 'bubble', at: [at[0], at[1] + 0.4, at[2]], n: Math.round(34 * share), rgb, time: t + i * 0.45, vel: [0, 1.15, 0], spread: 0.03, ring: 0.45 + i * 0.1, ringSpeed: 0.75, life: [4.5, 6], size: 0.085, scatter: 0.02,
-                    });
-                }
-            }
+            this.helix(at, t, rgb, 1);
             this.ring(at[0], at[2], t, 1.1, rgb, 1.2);
             if (!quad) this.shock(at[0], at[1] + 0.5, at[2], t, 0.5);
         }
         this.counts.clears += 1;
+    }
+
+    /**
+     * A twist's helix: strings of bubbles let go one after another round a ring, each a little
+     * further round, so they wind into three strands that turn as they climb.
+     */
+    helix(at, time, rgb, gain = 1) {
+        if (!this.pool) return;
+        const turns = Math.max(4, Math.round(16 * gain * Math.min(1, this.poolShare())));
+        for (let i = 0; i < turns; i++) {
+            this.pool.emit({
+                mode: 'bubble', at: [at[0], at[1] + 0.35, at[2]], n: 3, rgb, time: time + i * 0.085, vel: [0, 1.25, 0], spread: 0.02, ring: 0.42, ringSpeed: 0.3, ringPhase: i * 0.36, life: [4, 5.5], size: 0.1, scatter: 0.015,
+            });
+        }
     }
 
     /** How much of its colour a colony keeps as a current passes: none in calm play, most of it hot. */
@@ -1180,6 +1300,17 @@ export class OceanWorld {
     crown(at) {
         this.releaseAll(at, 0.9, 1.2);
         this.lift = Math.max(this.lift, 0.6);
+        // The light splits into its colours: the crown round the board a glory, every thread of
+        // the net on the sand a band of the spectrum; a crown still standing only holds on.
+        if (!(at < this.prismUntil && at >= this.prismFrom)) this.prismFrom = at;
+        this.prismUntil = at + PRISM_HOLD;
+        // Every garden of the reef spawns, each in a colour of its own: the spectrum again, rising.
+        this.gardens.forEach((g, i) => {
+            const x = g[0] * this.squeeze;
+            this.spawn(x, this.groundAt(x, g[1]), g[1], SPECTRUM[i % SPECTRUM.length], at + 0.25 + 0.12 * i, 1.1);
+        });
+        // And the mantas come over, three of them.
+        for (let i = 0; i < 3; i++) this.call('manta', at + 0.5 + i * 1.1);
         this.sing(0, 3.6, VORTEX.z, at + 0.2);
         this.flare = Math.max(this.flare, 0.8);
         const b = this.beam;
@@ -1203,22 +1334,7 @@ export class OceanWorld {
         const { glow } = this._hour;
         const peak = Math.max(glow[0], glow[1], glow[2], 1e-4);
         const rgb = glow.map((c) => (c / peak) * 0.85 + 0.15);
-        if (this.pool) {
-            this.pool.emit({
-                mode: 'bubble',
-                at: [at[0], at[1] + 0.4, at[2]],
-                n: Math.round(26 * this.poolShare()),
-                rgb,
-                time: t,
-                vel: [0, 1.05, 0],
-                spread: 0.03,
-                ring: 0.4,
-                ringSpeed: 0.6,
-                life: [3.5, 5],
-                size: 0.08,
-                scatter: 0.02,
-            });
-        }
+        this.helix(at, t, rgb, 0.6);
         this.ring(at[0], at[2], t, 0.8, rgb, 0.9);
         this.counts.spins += 1;
     }
@@ -1238,6 +1354,17 @@ export class OceanWorld {
             const side = this.counts.passes % 2 ? 1 : -1;
             this.calls.turtle = {
                 start: time, side, visit: laneVisit('turtle', LANES.turtle, time, PASS_SECONDS.turtle, side, [member({ variant: 0.2 })]),
+            };
+        } else if (kind === 'pod') {
+            const c = this.calls.pod;
+            if (c && time < c.start + POD_SECONDS) return false;
+            // They swim the way the current runs (a pass crosses from its side to the other).
+            const side = this.surgeDir > 0 ? -1 : 1;
+            const members = [0, 1, 2, 3].map((i) => member({
+                lag: i * 0.035, off: [0, (i % 2) * 1.0 - 0.4, -i * 1.2], scale: 1 - i * 0.06, phase: i * 1.3, variant: 0.2 + i * 0.2,
+            }));
+            this.calls.pod = {
+                start: time, side, visit: laneVisit('dolphin', POD_LANE, time, POD_SECONDS, side, members),
             };
         } else if (kind === 'manta') {
             const slot = this.calls.mantas.findIndex((c) => !c || time >= c.start + PASS_SECONDS.manta);
@@ -1348,13 +1475,31 @@ export class OceanWorld {
         const to = this.turn.to + gained;
         this.turn = { from, to, time: this.time };
         this.swell = Math.max(this.swell, 1.9);
+        this.tideAt = this.time;
         this.flare = Math.max(this.flare, 0.7);
         this.flash = Math.max(this.flash, 0.1);
         this.school.excite = 1;
         this.heat.levelUp(this.time);
-        // A ring of the new hour's light runs out over the whole canyon floor.
+        // A ring of the new hour's light runs out over the whole canyon floor, and its echo.
         const { glow } = hourAt(hourPlace(to, this.time, this.hourDrift));
-        this.ring(0, -4, this.time, 1.3, glow, 2.6);
+        this.ring(0, -4, this.time, 2.0, glow, 2.6);
+        this.ring(0, -4, this.time + 0.5, 1.1, glow, 2.6);
+        // The reef breathes out: every garden lets go a column of bubbles, the far ones first, so
+        // a curtain of them climbs through the whole canyon toward the viewer; the fish start.
+        if (this.pool) {
+            const share = this.poolShare();
+            const order = [...this.gardens].sort((a, b) => a[1] - b[1]);
+            order.forEach((g, i) => {
+                const x = g[0] * this.squeeze;
+                const at = [x, this.groundAt(x, g[1]) + 0.3, g[1]];
+                for (let puff = 0; puff < 4; puff++) {
+                    this.pool.emit({
+                        mode: 'bubble', at, n: Math.round(6 * share), rgb: glow, time: this.time + 0.14 * i + puff * 0.32, vel: [0, 1.25, 0], spread: 0.3, scatter: 0.45, life: [3.5, 6.5], size: 0.075, stagger: 0.3,
+                    });
+                }
+            });
+        }
+        this.scare(0, 3, -4, this.time, 0.35, 16);
     }
 
     /** Write the hour's light into the shared uniforms. */
@@ -1370,6 +1515,13 @@ export class OceanWorld {
         const bearing = h.azimuth * DEG * Math.max(0.45, this.squeeze);
         skyDirection(bearing, h.elevation * DEG, this._sun);
         refractToAir(this._sun, this._air);
+        // The crown's light: the hour's shafts, lifted toward white.
+        const peak = Math.max(h.shaft[0], h.shaft[1], h.shaft[2], 1e-4);
+        u.crown.value.set(
+            (h.shaft[0] / peak) * 0.65 + 0.35,
+            (h.shaft[1] / peak) * 0.65 + 0.35,
+            (h.shaft[2] / peak) * 0.65 + 0.35,
+        );
         u.sunDir.value.set(this._sun[0], this._sun[1], this._sun[2]);
         u.sunAir.value.set(this._air[0], this._air[1], this._air[2]);
         // The reef's own light: with the hour, the chain's charge, the overdrive, and the heat of
@@ -1377,6 +1529,24 @@ export class OceanWorld {
         const play = this.warm * 0.22 + this.fever * 0.3;
         u.fluor.value = Math.min(1.6, h.fluor + this.charge * 0.3 + this.surge * 0.35 + play);
         u.night.value = h.night;
+        // ── The weather on the light: the sun goes in and out behind cloud, a squall greys the
+        // sky, a bloom fills the water with specks ──
+        const sea = this._sea;
+        const sun = this.sunLight;
+        u.sun.value.multiplyScalar(sun);
+        u.disc.value.multiplyScalar(sun);
+        u.halo.value.multiplyScalar(0.5 + 0.5 * sun);
+        u.spark.value.multiplyScalar(sea.motes);
+        const sky = 0.55 + 0.45 * sun;
+        const grey = 0.7 * sea.rain;
+        [u.zenith.value, u.horizon.value].forEach((c) => {
+            const luma = c.x * 0.2126 + c.y * 0.7152 + c.z * 0.0722;
+            c.set(
+                lerp(c.x, luma * 0.85, grey) * sky,
+                lerp(c.y, luma * 0.95, grey) * sky,
+                lerp(c.z, luma * 1.1, grey) * sky,
+            );
+        });
     }
 
     // ── The large animals ───────────────────────────────────────────────────────
@@ -1457,6 +1627,8 @@ export class OceanWorld {
             }
         }
         if (this.calls.turtle) place(this.calls.turtle.visit, this.calls.turtle.visit.members[0]);
+        const { pod } = this.calls;
+        if (pod) for (let m = 0; m < pod.visit.members.length; m++) place(pod.visit, pod.visit.members[m]);
 
         // ── The sea's own visitors ──
         const live = this._live;
@@ -1492,6 +1664,10 @@ export class OceanWorld {
         this.warm = warmOf(heat.level);
         this.hot = hotOf(heat.level);
         const { warm, hot, fever } = this;
+        // ── The sea's own weather: the state on its wheel, the clouds over the sun ──
+        const sea = seaAt(this.seaHold ?? seaPlace(t, this.visitSeed), this._sea);
+        this.sunLight = sea.sun * sunGain(t, sea.clouds, this.visitSeed);
+        this.happenings(t);
         // Stepping up into an act calls the sea's own: a manta glides over as play turns hot, and
         // the whale comes over the board for a fever (or, already here, sings).
         if (heat.stage > this.act) {
@@ -1519,7 +1695,7 @@ export class OceanWorld {
         this.lift *= Math.exp(-dt / 6);
         this.flare *= Math.exp(-dt / 1.1);
         // The surface stands steeper as play heats, and rolls in a fever.
-        this.swell += (1 + this.surge * 0.5 + (0.3 * hot + 0.35 * fever) * motion - this.swell) * approach(0.45, dt);
+        this.swell += (sea.swell * (1 + this.surge * 0.5 + (0.3 * hot + 0.35 * fever) * motion) - this.swell) * approach(0.45, dt);
         const hush = t < this.hushUntil ? 1 : 0;
         const breathTarget = hush ? 1 - this.hushDepth : 1;
         this.breath += (breathTarget - this.breath) * approach(hush ? 40 : 14, dt);
@@ -1534,7 +1710,9 @@ export class OceanWorld {
             if (age > SURGE_LIVE) this.surges.splice(i, 1);
             else if (age >= 0) pull = Math.max(pull, s.strength * Math.exp(-age / 2.2));
         }
-        this.current += (0.25 + charge * 0.12 + hot * 0.1 - this.current) * approach(1.2, dt);
+        // (The sea state names the current's side and strength; play makes it pull harder.)
+        this.current += (sea.current * (1 + charge * 0.5 + hot * 0.4) - this.current) * approach(1.2, dt);
+        this.flow += dt * motion * this.current;
         // The slow clock, and the flora's own phase (integrated: their pace follows the water, gently).
         this.drift += dt * motion * (1 + charge * 0.25 + this.surge * 0.5 + fever * 0.3);
         this.sway += dt * motion * (0.9 + this.current * 0.4 + pull * 0.25);
@@ -1550,6 +1728,7 @@ export class OceanWorld {
             swing: lerp(SCHOOL_REST.swing, RIBBON.swing, k),
             back: lerp(SCHOOL_REST.back, RIBBON.back, k),
             deep: lerp(SCHOOL_REST.deep, RIBBON.deep, k),
+            rise: lerp(SCHOOL_REST.rise, RIBBON.rise, k),
         };
         const ease = approach(2.6, dt);
         Object.keys(ask).forEach((key) => {
@@ -1565,7 +1744,7 @@ export class OceanWorld {
         sc.spin += dt * motion * (0.55 + sc.vortex * 1.1);
         u.schoolA.value.set(sc.shape.wide, sc.shape.high, sc.shape.swing, sc.shape.back);
         u.schoolB.value.set(sc.shape.deep, sc.phase, sc.vortex, SCHOOL_SPAN);
-        u.schoolC.value.set(sc.spin, sc.tight, sc.excite, 0);
+        u.schoolC.value.set(sc.spin, sc.tight, sc.excite, sc.shape.rise);
 
         this.applyHour();
         // The sea's visitors are planned and their routes sampled a minute ahead, a little a frame.
@@ -1643,7 +1822,19 @@ export class OceanWorld {
         if (b.level < 1e-3 && !standing) b.level = 0;
         const feverShaft = 0.36 * smooth(0.3, 0.95, fever);
         const beamOn = Math.max(b.level * b.strength, feverShaft);
-        u.beam.value.set(0, VORTEX.z - 1, 3.2 + beamOn * 0.8 + b.wide * 0.7 * b.level, beamOn);
+        // (Its ring stands where the school winds; on a narrow frame both are drawn in.)
+        const beamWide = (3.3 + beamOn * 0.2 + b.wide * 0.45 * b.level) * Math.max(this.squeeze, 0.6);
+        u.beam.value.set(0, VORTEX.z - 1, beamWide, beamOn);
+        // A perfect clear's split light.
+        const split = t >= this.prismFrom && t < this.prismUntil ? 1 : 0;
+        this.prism += (split - this.prism) * approach(split ? 3.5 : 0.9, dt);
+        if (this.prism < 1e-3 && !split) this.prism = 0;
+        u.prism.value = this.prism;
+        // A new level's tide: its front comes up the canyon from the blue to the eye.
+        const tideAge = t - this.tideAt;
+        const tideOn = tideAge >= 0 && tideAge < TIDE_SECONDS
+            ? smooth(0, 0.35, tideAge) * (1 - smooth(TIDE_SECONDS - 0.8, TIDE_SECONDS, tideAge)) : 0;
+        u.tide.value.set(TIDE_FROM + tideAge * TIDE_SPEED, tideOn * 1.5, 0, 0);
 
         // ── Uniforms ──
         u.time.value = t;
@@ -1653,8 +1844,13 @@ export class OceanWorld {
         // (The motes stir with the overdrive, and with the heat of play.)
         u.surge.value = this.surge + 0.4 * hot + 0.6 * fever;
         u.breath.value = this.breath;
-        u.lift.value = clamp01(this.lift);
+        // (A perfect clear clears the water whatever the weather; the weather has it otherwise.)
+        const lifted = clamp01(this.lift);
+        u.lift.value = lifted + sea.clarity * (1 - lifted);
         u.current.value = this.current;
+        u.flow.value = this.flow;
+        u.chop.value = sea.chop;
+        u.rain.value = sea.rain;
         u.swell.value = this.swell;
 
         // ── Post ──
@@ -1664,9 +1860,9 @@ export class OceanWorld {
         post.kick = this.kick;
         // The light comes down with the play: the shafts stand stronger as it heats, and the sea's
         // breath (a quad's hush) takes them away only as far as it is held.
-        const lit = 1 + charge * 0.35 + this.flare * 0.9 + this.surge * 0.7 + warm * 0.08 + fever * 0.12;
-        const shafts = h.shafts * lit;
-        post.shafts = lerp(shafts, 0.25, inhale);
+        const lit = 1 + charge * 0.25 + this.flare * 0.5 + this.surge * 0.3 + warm * 0.08 + fever * 0.12;
+        const shafts = h.shafts * lit * sea.shafts * this.sunLight ** 1.5;
+        post.shafts = lerp(shafts * (1 - 0.45 * beamOn), 0.25, inhale);
         post.bloomBoost = this.surge * 0.15 + this.flare * 0.15;
         // The iris closes a little as the sea flares and heats, so its colours survive the surge.
         const iris = this.surge * 0.35 + this.flare * 0.12 + beamOn * 0.25 + this.lift * 0.3
@@ -1732,6 +1928,11 @@ export class OceanWorld {
             hourNext: h.next,
             hourMix: h.mix,
             hourSeconds: HOUR_SECONDS,
+            /** The sea's weather: the state it stands nearer to, the one it is turning to, the sun under the clouds. */
+            sea: this._sea.name,
+            seaNext: this._sea.next,
+            seaMix: this._sea.mix,
+            sunLight: this.sunLight,
             hours: HOURS.length,
             squeeze: this.squeeze,
             counts: { ...this.counts },
@@ -1752,7 +1953,10 @@ export class OceanWorld {
                     || (this.calls.whaleFar && this.time < this.calls.whaleFar.start + PASS_SECONDS.whaleFar)),
                 whaleNear: Boolean(this.calls.whale && this.time < this.calls.whale.start + PASS_SECONDS.whale),
                 whaleFar: Boolean(this.calls.whaleFar && this.time < this.calls.whaleFar.start + PASS_SECONDS.whaleFar),
+                /** The dolphins a three-line clear sent are in the water. */
+                pod: Boolean(this.calls.pod && this.time < this.calls.pod.start + POD_SECONDS),
             },
+            prism: this.prism,
             /** The sea's own visitors in the water now (act names), and the next to come. */
             visits: visiting.map((v) => v.act),
             nextVisit: upcoming ? { act: upcoming.act, start: upcoming.start } : null,

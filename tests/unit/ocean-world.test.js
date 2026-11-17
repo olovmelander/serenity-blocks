@@ -138,13 +138,43 @@ describe('Ocean world: a clear', () => {
         releases.forEach((r) => expect(r).toBeLessThan(NEVER));
         // The front crosses the frame: the two sides are let go at different moments.
         expect(releases[0]).not.toBe(releases[1]);
-        // The school draws out into a ribbon while the current runs.
+        // One line is the current alone: the school keeps to its loop.
         run(world, camera, 1.5);
-        expect(world.getState().school.ribbon).toBeGreaterThan(0.5);
+        expect(world.getState().school.ribbon).toBeLessThan(0.05);
         run(world, camera, Math.max(SURGE_LIVE, STAIN_FADE) + 6);
         expect(world.surges).toHaveLength(0);
         expect(world.stains).toHaveLength(0);
+    });
+
+    it('draws the school out into a ribbon from two lines up, and lets it back to its loop', () => {
+        const { world, camera } = build();
+        world.onClear({ rows: [19, 18], lines: 2 });
+        run(world, camera, 1.5);
+        expect(world.getState().school.ribbon).toBeGreaterThan(0.5);
+        expect(world.getState().calls.pod).toBe(false);
+        run(world, camera, SURGE_LIVE + 6);
         expect(world.getState().school.ribbon).toBeLessThan(0.2);
+    });
+
+    it('sends a pod of dolphins racing the current on three lines, once while they are in the water', () => {
+        const { world, camera } = build();
+        world.onClear({ rows: [19, 18, 17], lines: 3 });
+        // (They set out one after another, a third of a second apart.)
+        run(world, camera, 1.6);
+        expect(world.getState().calls.pod).toBe(true);
+        const { start, side } = world.calls.pod;
+        // They swim the way the current runs.
+        expect(side).toBe(world.surgeDir > 0 ? -1 : 1);
+        expect(world.getState().giants.dolphin).toBeGreaterThanOrEqual(3);
+        world.onClear({ rows: [19, 18, 17], lines: 3 });
+        run(world, camera, 0.5);
+        expect(world.calls.pod.start).toBe(start);
+        run(world, camera, 12);
+        expect(world.getState().calls.pod).toBe(false);
+        // Four lines are the crown's, not the pod's.
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        run(world, camera, 1);
+        expect(world.getState().calls.pod).toBe(false);
     });
 
     it('never lets a colour go before its light has landed', () => {
@@ -320,6 +350,89 @@ describe('Ocean world: the hours', () => {
         const state = world.getState();
         expect(state.hourName).toBe(HOURS[4].name);
         expect(world.u.night.value).toBeCloseTo(HOURS[4].night, 6);
+    });
+});
+
+describe('Ocean world: a new level', () => {
+    it('sends a tide of light up the canyon toward the eye, and the reef breathes out', () => {
+        const { world, camera } = build();
+        expect(world.u.tide.value.y).toBe(0);
+        const { cursor } = world.pool;
+        world.levelUp(2);
+        expect(world.pool.cursor).toBeGreaterThan(cursor + 20);
+        run(world, camera, 0.6);
+        const early = world.u.tide.value.x;
+        expect(world.u.tide.value.y).toBeGreaterThan(0.5);
+        run(world, camera, 1);
+        // Its front comes nearer (z grows toward the eye).
+        expect(world.u.tide.value.x).toBeGreaterThan(early + 10);
+        run(world, camera, 3);
+        expect(world.u.tide.value.y).toBe(0);
+        // A rebuild's silent level sends none.
+        world.levelUp(5, { silent: true });
+        run(world, camera, 0.5);
+        expect(world.u.tide.value.y).toBe(0);
+    });
+});
+
+describe('Ocean world: the sea\'s own weather', () => {
+    it('turns the sea state by the clock, and holds one for a capture', () => {
+        const { world, camera } = build();
+        expect(world.getState().sea).toBe('trade');
+        const names = new Set();
+        for (let i = 0; i < 40; i++) {
+            run(world, camera, 10, 1 / 10);
+            names.add(world.getState().sea);
+        }
+        expect(names.size).toBeGreaterThanOrEqual(5);
+        world.holdSea(4);
+        run(world, camera, 0.5);
+        expect(world.getState().sea).toBe('squall');
+        expect(world.u.rain.value).toBe(1);
+        expect(world.getState().sunLight).toBeLessThan(0.75);
+        expect(world.getPostState().shafts).toBeLessThan(0.4);
+        world.holdSea(5);
+        run(world, camera, 0.5);
+        expect(world.u.rain.value).toBe(0);
+        // Crystal water: the weather has cleared it (a perfect clear would clear it further).
+        expect(world.u.lift.value).toBeGreaterThan(0.4);
+        world.holdSea(null);
+        run(world, camera, 0.2);
+        expect(world.seaHold).toBeNull();
+    });
+
+    it('carries what drifts without a jump when the current turns to the other side', () => {
+        const { world, camera } = build();
+        world.holdSea(0);
+        run(world, camera, 4);
+        expect(world.u.current.value).toBeGreaterThan(0.15);
+        world.holdSea(2);
+        let prev = world.u.flow.value;
+        let turned = false;
+        for (let i = 0; i < 600; i++) {
+            run(world, camera, 1 / 60);
+            expect(Math.abs(world.u.flow.value - prev)).toBeLessThan(0.02);
+            prev = world.u.flow.value;
+            if (world.u.current.value < -0.15) turned = true;
+        }
+        expect(turned).toBe(true);
+    });
+
+    it('lets the small happenings come by themselves, the same ones again after a seek', () => {
+        const { world, camera } = build();
+        const play = () => {
+            world.seek(10);
+            const cursors = [];
+            for (let i = 0; i < 120; i++) {
+                run(world, camera, 1, 1 / 10);
+                cursors.push(world.pool.cursor + world.scares.length * 1000);
+            }
+            return cursors;
+        };
+        const first = play();
+        // Something happened: a vent's bubbles or a startle among the reef fish.
+        expect(first[first.length - 1]).toBeGreaterThan(0);
+        expect(play()).toEqual(first);
     });
 });
 
@@ -527,6 +640,35 @@ describe('Ocean world: play builds instead of popping', () => {
         run(world, camera, 0.5);
         expect(world.u.lift.value).toBeGreaterThan(0.4);
         expect(world.getState().beam).toBeGreaterThan(0.5);
+    });
+
+    it('splits the light into its colours on a perfect clear, for a while, and sends the mantas over', () => {
+        const { world, camera } = build();
+        expect(world.u.prism.value).toBe(0);
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4, perfect: true });
+        run(world, camera, HUSH_HOLD + 1.2);
+        expect(world.getState().prism).toBeGreaterThan(0.8);
+        expect(world.u.prism.value).toBe(world.getState().prism);
+        expect(world.getState().calls.mantas).toBe(3);
+        // A second crown while it stands holds it on; it never restarts.
+        const { prismFrom } = world;
+        world.onPerfect();
+        expect(world.prismFrom).toBe(prismFrom);
+        run(world, camera, 16);
+        expect(world.getState().prism).toBe(0);
+        // A quad alone leaves the light whole.
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        run(world, camera, 2);
+        expect(world.getState().prism).toBe(0);
+    });
+
+    it('winds a twist into a helix of bubbles: strings let go one after another, each further round', () => {
+        const { world } = build();
+        world.onLock({ u: 0.3, rows: [19], color: pieces[5] });
+        const { cursor } = world.pool;
+        world.onClear({ rows: [19, 18], lines: 2, twist: true });
+        // (Two sheets of bubbles off the card's edges, and the helix's strings of three.)
+        expect(world.pool.cursor - cursor).toBeGreaterThan(40);
     });
 
     it('answers a twist that cleared nothing with a ring where the piece went in', () => {

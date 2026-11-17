@@ -20,8 +20,10 @@
  *   heat        hot play (U.heat, 0 at rest): the bands of light come down a little brighter and
  *               may add up further where they overlap (one multiply, one clamp);
  *   ribbons     each locked piece's colour, a comet the flow draws up and over;
- *   foam        the streaks drawn up the face, the boil where the lip comes down, the lip's
- *               white edge, torn into fingers.
+ *   foam        the lace drawn up the face; the lip's white edge, torn into fingers where it
+ *               falls and whole where it has landed (a curtain of white water standing on the
+ *               sea); the carpet of white water on the sea along the line it lands on. The white
+ *               water that stands in the air there is waves-whitewater.js.
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -51,6 +53,12 @@ export const RING_SPEED = 1.25;
 /** A band of light comes down the tube at this speed (metres a second), from this far ahead. */
 export const BAND_SPEED = 11;
 export const BAND_START = 24;
+/**
+ * The lip lands over this much of its arc (radians short of where it has closed), and a landed
+ * lip keeps this share of its tears closed: the rain that leaves its edge reads the same two.
+ */
+export const LANDING_ARC = 0.5;
+export const LANDED_WHOLE = 0.88;
 
 /**
  * The grid the vertex stage folds: x holds the row parameter (−1..0 the trough, 0..1 the wave),
@@ -182,7 +190,13 @@ export function createWater({
         // flow only about three to one), frayed finer at their tips.
         const lace = texture(noise, vec2(fc.x.mul(0.62), fc.y.mul(0.2))).a.toVar();
         const torn = smoothstep(WAVE.lipCrest + 0.25, WAVE.lipClosed - 0.4, lip);
-        const reach = mix(float(0.12), float(1.6), torn).mul(U.tear.mul(0.9).add(1.0));
+        // Where the lip has come down it is a curtain that stands on the sea: the tears close as
+        // it lands (torn all the way down, everything the eye sees of the lip on its left was
+        // inside the tears: scraps of water hanging in the air over a flat sea).
+        const landed = smoothstep(WAVE.lipClosed - LANDING_ARC, WAVE.lipClosed - 0.04, lip).toVar();
+        const reach = mix(float(0.12), float(1.6), torn).mul(U.tear.mul(0.9).add(1.0))
+            .mul(float(1.0).sub(landed.mul(LANDED_WHOLE)))
+            .toVar();
         const frayed = texture(noise, vec2(fc.x.mul(2.3).add(0.21), fc.y.mul(0.8))).b;
         const cut = edge.sub(lace.mul(lace).mul(reach)).sub(frayed.sub(0.5).mul(reach).mul(0.3)).toVar();
         // The very edge is spray, not a line: a fine lace of holes and drops (a grain of the
@@ -274,10 +288,13 @@ export function createWater({
             const c2 = texture(noise, vec2(fc.x.mul(0.55), fc.y.mul(0.07).sub(time.mul(0.02)))).a;
             net.assign(smoothstep(0.42, 0.8, c1).mul(smoothstep(0.3, 0.75, c2)).mul(2.2));
             // (Two nets of cell walls sliding through each other: light gathers where they meet.)
-            const wander = g3.mul(0.16);
+            // (Bent by the water's own heights, and drawn soft: the straight walls of the cells,
+            // drawn as hairlines, read as wire loops laid on the glass. By its heights, not its
+            // slopes: a slope is mostly its finest octave, and bends a thread into a staircase.)
+            const wander = g3.mul(0.16).add(vec2(rib.b, rib.a).sub(0.5).mul(0.13));
             const k1 = texture(cells, vec2(fc.x.mul(0.2).add(time.mul(0.017)), fc.y.mul(0.085).add(0.4)).add(wander)).r;
             const k2 = texture(cells, vec2(fc.x.mul(0.26).sub(time.mul(0.013)).add(0.6), fc.y.mul(0.11)).sub(wander)).r;
-            const fold = float(1.0).sub(smoothstep(0.0, 0.11, min(k1, k2.mul(1.3))));
+            const fold = float(1.0).sub(smoothstep(0.0, 0.18, min(k1, k2.mul(1.3))));
             veins.assign(fold.mul(fold).mul(U.sea.w.mul(0.9).add(0.6)));
         }
         const sweep = float(0.0).toVar();
@@ -394,17 +411,55 @@ export function createWater({
             .mul(patches.mul(0.85).add(0.15));
         // On the lower face, and on the trough near its foot: not out on the open sea.
         const low = float(1.0).sub(smoothstep(0.3, 1.9, phi)).mul(smoothstep(-11.0, -1.5, sU));
-        // Where the lip comes down on the trough.
-        const down = smoothstep(4.7, 5.7, lip);
-        const fromLanding = sU.sub(sin(lip).mul(WAVE.a)).div(1.5);
-        const boil = exp(fromLanding.mul(fromLanding).negate()).mul(down)
-            .mul(float(1.0).sub(smoothstep(0.0, 0.5, phi)))
-            .mul(broad.b.mul(0.9).add(0.45));
+        // ── White water: where the lip comes down on the trough ──
+        // A carpet of it on the sea along the line the lip lands on: whole and white at the line,
+        // opening into bubbles and then into threads as the flow carries it across the floor of
+        // the tube to the foot of the face (where the lace above takes it up the wall), and thrown
+        // a little further out in front of the wave. It comes in surges, as the lip does.
+        const fromLine = sU.sub(sin(lip).mul(WAVE.a)).toVar();
+        const span = fromLine.greaterThan(0.0).select(float(1.3), float(2.1));
+        const fromHeap = fromLine.div(span);
+        const touched = smoothstep(WAVE.lipClosed - 0.3, WAVE.lipClosed - 0.03, lip);
+        const surge = texture(noise, vec2(sZ.mul(0.06).add(time.mul(0.045)), time.mul(0.019))).b;
+        const heap = exp(fromHeap.mul(fromHeap).negate()).mul(touched)
+            .mul(float(1.0).sub(smoothstep(0.1, 0.6, phi)))
+            .mul(surge.mul(0.55).add(0.72))
+            .mul(U.sea.z.mul(0.3).add(0.85).add(U.heave.mul(0.3)))
+            .mul(1.7)
+            .add(broad.b.sub(0.5).mul(0.6))
+            .add(rib.b.sub(0.5).mul(0.3))
+            .toVar();
+        // (Finer than the lace, and not drawn out so far: it is churned, not combed.)
+        // (And bent by the water's heights at every scale: straight walls of even width read as
+        // flagstones.)
+        const frothAt = vec2(fc.x.mul(0.97), fc.y.mul(0.46)).add(g3.mul(0.34))
+            .add(vec2(rib.b, rib.a).sub(0.5).mul(0.22))
+            .add(vec2(fine.b, fine.a).sub(0.5).mul(0.05));
+        const froth = texture(cells, frothAt).toVar();
+        // The walls between its bubbles thicken until they meet: a sheet where it is heaped. No
+        // two are one width, and here and there a whole cell is still full of foam.
+        const thick = clamp(heap.mul(0.34).add(0.03), 0.0, 0.6).mul(fine.a.mul(1.1).add(0.4));
+        const raft = smoothstep(0.52, 0.74, froth.b).mul(smoothstep(0.4, 1.0, heap));
+        const bubbled = float(1.0).sub(smoothstep(thick.mul(0.35), thick, froth.r))
+            .add(float(1.0).sub(smoothstep(thick.mul(0.3), thick.mul(0.85), froth.g)).mul(0.6))
+            .add(froth.a.mul(0.3))
+            .add(raft.mul(fine.b.mul(0.5).add(0.5)));
+        const carpet = max(smoothstep(0.85, 1.25, heap), smoothstep(0.3, 0.8, heap).mul(clamp(bubbled, 0.0, 1.0)))
+            .toVar();
+        // The landed lip is a fall of water full of air: white in the long streaks of the fall,
+        // whole and white where it stands on the sea.
+        const fallen = float(1.0).sub(smoothstep(0.0, 2.6, edge)).mul(landed);
+        const strand = texture(noise, vec2(fc.x.mul(6.5).add(0.4), fc.y.mul(0.24)));
+        const streaks = smoothstep(0.22, 0.8, strand.a.mul(0.45).add(strand.b.mul(0.3)).add(fine.b.mul(0.25)));
+        // (Streaked, never striped: the white between two strands is thinner, not gone.)
+        const pour = fallen.mul(fallen).mul(streaks.mul(0.5).add(0.42))
+            .add(float(1.0).sub(smoothstep(0.0, 0.4, edge)).mul(landed).mul(streaks.mul(0.3).add(0.5)));
         const white = float(1.0).sub(smoothstep(0.0, reach.mul(0.16).add(0.12), cut)).mul(0.4);
         // (How much lace the sea carries, and how hard its landing boils, are the sea's own state.)
+        const churned = clamp(carpet.add(pour.mul(thin)), 0.0, 1.0).toVar();
         const foam = clamp(
             lines.mul(low).mul(U.sea.x.mul(0.4).add(0.22))
-                .add(boil.mul(U.sea.z.mul(0.5).add(0.8)))
+                .add(churned)
                 .add(white.mul(thin)),
             0.0,
             1.0,
@@ -412,7 +467,15 @@ export function createWater({
         const foamLight = ambient.mul(0.9).add(vec3(0.16, 0.2, 0.24).mul(light.skyTint))
             .add(min(lightIn, vec3(1.4)).mul(vec3(0.95, 0.92, 0.8)).mul(0.7))
             .add(through.mul(behind).mul(thin).mul(0.3));
-        const foamColour = vec3(0.8, 0.93, 0.91).mul(foamLight);
+        // White water is white: it stands at the tube's open side under the whole sky, and the
+        // low sun comes through what the lip pours (a fall of it glows where the sun is behind).
+        const openSky = clamp(fromLine.mul(-0.4).add(0.7), 0.35, 1.0);
+        const whiteLight = vec3(0.4, 0.47, 0.54).mul(light.skyTint).mul(openSky)
+            .add(light.sunTint.mul(vec3(0.5, 0.42, 0.32)).mul(f2.mul(0.9).add(0.35)).mul(openSky))
+            .add(behind.mul(thin).mul(0.3));
+        // (Heaped foam is not one flat white: it has hollows.)
+        const hollows = fine.b.mul(0.34).add(froth.r.mul(0.2)).add(0.62);
+        const foamColour = vec3(0.8, 0.93, 0.91).mul(foamLight.add(whiteLight.mul(churned).mul(hollows)));
 
         // ── Compose ──
         const colour = body.mul(float(1.0).sub(fresnel)).add(mirror.mul(fresnel)).toVar();
@@ -424,12 +487,14 @@ export function createWater({
         colour.assign(mix(colour, foamColour, foam));
         // The sea's own light, when the hour is dark: what is stirred burns cold for a moment. The
         // lace on the face, the boil under the lip, every ring a piece lays.
-        const stirred = lines.mul(low).mul(0.5).add(boil.mul(0.8)).add(ringGleam.mul(0.35))
+        const stirred = lines.mul(low).mul(0.5).add(carpet.mul(0.8)).add(ringGleam.mul(0.35))
             .add(cell.a.mul(low).mul(0.25));
         colour.addAssign(vec3(0.05, 0.5, 0.95).mul(U.glowing).mul(stirred).mul(0.55));
         // The low sun through the lip's thin torn edge: a fringe of its own light along every lobe,
         // strongest looking toward it, a little of it all along the lip (the water scatters it).
-        const fringe = float(1.0).sub(smoothstep(0.0, reach.mul(0.22).add(0.16), cut)).mul(torn).mul(thin);
+        // (Not where the lip stands on the sea: its foot is white water, not a burning edge.)
+        const fringe = float(1.0).sub(smoothstep(0.0, reach.mul(0.22).add(0.16), cut)).mul(torn).mul(thin)
+            .mul(float(1.0).sub(landed.mul(0.85)));
         const toSun = forward.mul(forward);
         colour.addAssign(light.bloom.mul(light.fireTint).mul(fringe)
             .mul(toSun.mul(toSun).mul(2.2).add(toSun.mul(0.5)).add(0.08))
