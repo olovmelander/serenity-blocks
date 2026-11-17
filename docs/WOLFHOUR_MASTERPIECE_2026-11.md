@@ -194,10 +194,23 @@ on the schedule: the hunt at `t≈68-80`, the far file at `t≈100-115`, the whi
 a chase at `t≈162`, a prowl at `t≈354`, the lone wolf at `t≈450`. Zoom with
 `zoom=<k>&zoomX=<x>&zoomY=<y>` (pack near `612, -176`, summit near `-640, 300`).
 
+## Follow-up (2026-11-17): a silver aurora
+
+Olov asked to try the northern lights in silver instead of green. The curtains (`wolfhour-aurora.js`)
+now hang in the moon's own light: a bright silver hem at the foot, a cool silver veil, a faint
+blue-lilac top, each as bright as the green it replaces, and tinted by the hour's moonlight
+(`uGlow`), so they turn honey under the hunter's moon and rose at alpenglow. Silver against the
+night's blue needs more light than green to show at all, so deep midnight's own faint ribbon was
+lifted (`WOLFHOUR_WEATHER` aurora 0.4 → 0.7). The howl, the perfect clear and the fever are
+unchanged in timing and reach; together with the silver howl arcs the sky now answers in one colour.
+Captured on WebGPU and WebGL2, High and Low, landscape and portrait, every hour; console clean.
+
+Green (left) and silver (right), the same moments: the curtains held up, a howl, a perfect clear.
+
+![silver aurora](wolfhour-masterpiece/silver-aurora.jpg)
+
 ## Open calls (my own, if asked)
 
-- The aurora is green-to-violet, the classic look; a whiter, colder one would sit closer to the
-  silver moon.
 - The arcs of the howl are a stylisation; plain breath alone would be more literal.
 - The pieces now carry colour where they were silver: the board reads far better, but it is a
   change of character.

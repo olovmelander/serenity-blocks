@@ -3,7 +3,8 @@
  *
  * Curtains of light hang behind the mountains, between the stars and the moon: each a ribbon whose
  * foot wanders along the sky, sharp along its lower edge and fading upward, combed into rays that
- * drift along it, green at the foot through teal to violet at its top. At rest there is none. A
+ * drift along it: silver, the moon's own light, brightest along the hem at its foot and cooling to
+ * a faint blue-lilac at its top, tinted by the hour's moonlight. At rest there is none. A
  * deep-midnight hour lets a low, faint ribbon show over the far range; a four-line clear lights
  * the curtains for as long as the howl lasts; a perfect clear or a fever raises them over the
  * whole sky. `level` is how bright (0 none), `reach` how high and how many (0 one low ribbon over
@@ -34,10 +35,14 @@ export const AURORA_CURTAINS = Object.freeze([
         foot: 120, tall: 420, sway: 80, wave: 0.0012, drift: 0.012, gain: 0.7, from: 0.62,
     }),
 ]);
-/** The light at a curtain's foot, its middle and its top (linear, before the grade). */
-const FOOT = vec3(0.07, 0.42, 0.2);
-const BODY = vec3(0.05, 0.3, 0.3);
-const TOP = vec3(0.24, 0.1, 0.42);
+/**
+ * The light at a curtain's foot, its middle and its top (linear, before the grade): silver, the
+ * moon's colour rather than the sky's green, as bright as the green it replaces (luminance 0.33,
+ * 0.25, 0.15), a little bluer and dimmer as it climbs so the curtain keeps its depth.
+ */
+const FOOT = vec3(0.3, 0.33, 0.39);
+const BODY = vec3(0.21, 0.245, 0.32);
+const TOP = vec3(0.14, 0.14, 0.235);
 
 /** Creates the aurora (no renderer); null on the lowest tier. */
 export function createWolfhourAurora({
@@ -94,7 +99,9 @@ export function createWolfhourAurora({
             // Along its length a curtain comes and goes in patches.
             const patch = smoothstep(0.43, 0.68, wander.add(uReach.mul(0.07)));
             const shown = smoothstep(curtain.from, curtain.from + 0.3, uReach.add(0.001));
-            const colour = mix(mix(FOOT, BODY, smoothstep(0, 0.4, lift)), TOP, smoothstep(0.3, 1, lift));
+            // (The hour's moonlight tints the silver: honey under the hunter's moon, rose at alpenglow.)
+            const colour = mix(mix(FOOT, BODY, smoothstep(0, 0.4, lift)), TOP, smoothstep(0.3, 1, lift))
+                .mul(nightLight.uGlow);
             total.addAssign(colour.mul(body).mul(bright).mul(patch).mul(shown)
                 .mul(curtain.gain));
         }
