@@ -209,7 +209,7 @@ export function createSparks(u, count) {
     const at = (t) => birth.xyz.add(vel.xyz.mul(float(1.0).sub(exp(t.mul(-SPARK_DRAG))).div(SPARK_DRAG)));
     // A streak from where the spark was a moment ago to where it is.
     const t = max(tau, 0.0);
-    const c0 = viewProjection(at(max(t.sub(0.06), 0.0)));
+    const c0 = viewProjection(at(max(t.sub(0.1), 0.0)));
     const c1 = viewProjection(at(t));
     const along = positionGeometry.x.add(0.5);
     const half = u.viewport.mul(0.5);
@@ -218,7 +218,7 @@ export function createSparks(u, count) {
     const dir = normalize(s1.sub(s0).add(vec2(1e-4, 0.0)));
     const nrm = vec2(dir.y.negate(), dir.x);
     const clip = mix(c0, c1, along);
-    const widthPx = max(tint.w.div(max(clip.w, 1.0).mul(u.pixelAngle)), u.viewport.y.mul(0.0015)).mul(alive);
+    const widthPx = max(tint.w.mul(0.74).div(max(clip.w, 1.0).mul(u.pixelAngle)), u.viewport.y.mul(0.0012)).mul(alive);
     const lead = dir.mul(along.sub(0.5).mul(2.0)).mul(widthPx);
     material.vertexNode = vec4(
         clip.xy.add(nrm.mul(positionGeometry.y.mul(2.0).mul(widthPx)).add(lead).div(half).mul(clip.w)),
@@ -233,8 +233,9 @@ export function createSparks(u, count) {
     material.colorNode = Fn(() => {
         const st = uv();
         const across = float(1.0).sub(abs(st.y.sub(0.5)).mul(2.0));
-        const tail = smoothstep(0.0, 0.8, st.x);
-        return vec4(vLight.mul(across.mul(across)).mul(tail), 0.0);
+        // A hot head and a tail that thins to nothing behind it: a knot with a wake, not a stick.
+        const tail = st.x.mul(st.x).mul(smoothstep(0.0, 0.25, st.x));
+        return vec4(vLight.mul(across.mul(across)).mul(tail).mul(1.5), 0.0);
     })();
 
     const part = snPart('SupernovaSparks', geometry, material, 45);

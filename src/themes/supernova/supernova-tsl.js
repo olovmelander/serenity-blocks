@@ -37,13 +37,14 @@ import {
 } from 'three/tsl';
 
 import {
+    AURA_PLUMES,
     IMPACT_SLOTS,
     RING,
     SHELL_ROWS,
     SHELL_STRIDE,
     SUPERNOVA_PALETTES,
 } from './supernova-core.js';
-import { NOISE3_SIZE } from './supernova-bake.js';
+import { CELLS3_SIZE, NOISE3_SIZE } from './supernova-bake.js';
 
 export * from './supernova-core.js';
 
@@ -91,7 +92,16 @@ export const snRidge = (n) => float(1.0).sub(abs(n.mul(2.0).sub(1.0)));
 // ── The noise texture ───────────────────────────────────────────────────────────
 
 // The bake is pure and three-free (supernova-bake.js): a first visit runs it in a worker.
-export { NOISE3_SIZE, bakeNoise3D } from './supernova-bake.js';
+export {
+    CELLS3_GRID, CELLS3_SIZE, NOISE3_SIZE, bakeCells3D, bakeNoise3D,
+} from './supernova-bake.js';
+
+/** The baked convection cells as a tileable 3D texture. */
+export function createCells3DTexture(data, size = CELLS3_SIZE) {
+    const tex = createNoise3DTexture(data, size);
+    tex.name = 'supernova-cells';
+    return tex;
+}
 
 /** The baked fields as a tileable 3D texture (bytes filter on every device). */
 export function createNoise3DTexture(data, size = NOISE3_SIZE) {
@@ -117,7 +127,7 @@ const v3 = (a) => uniform(new THREE.Vector3(a[0], a[1], a[2]));
 
 /**
  * Every uniform the supernova's materials share. The world owns the values; materials only read.
- * @param {{ noise: THREE.Data3DTexture }} textures
+ * @param {{ noise: THREE.Data3DTexture, cells: THREE.Data3DTexture }} textures
  */
 export function createSupernovaUniforms(textures) {
     const p = SUPERNOVA_PALETTES[0];
@@ -172,6 +182,12 @@ export function createSupernovaUniforms(textures) {
         shellCount: uniform(0),
         /** The scattered light that fills the nebula round the star. */
         haze: uniform(0.5),
+        /**
+         * The remnant's axis (a world unit vector: the ring's normal), and how strongly the
+         * shells take their form from it (0 = balls of gas, 1 = a belt, two lobes and open poles).
+         */
+        axis: uniform(new THREE.Vector3(0, 1, 0)),
+        form: uniform(1),
         /** The flash crossing the far clouds: (birth, strength, radians per second, width) + colour. */
         echo: uniform(new THREE.Vector4(-100, 0, 0.9, 0.05)),
         echoCol: v3([1, 0.9, 0.75]),
@@ -179,13 +195,51 @@ export function createSupernovaUniforms(textures) {
         starDir: uniform(new THREE.Vector3(0, 0, -1)),
         /** The sky's stars answer a clear: 0..1. */
         skyPulse: uniform(0),
+        /**
+         * The sky's own frame (world → sky): y is the pole of the galaxy's band, and the frame
+         * turns about it. And the picture's right and up in that frame (a bright star's rays).
+         */
+        skyRot: uniform(new THREE.Matrix3()),
+        skyRight: uniform(new THREE.Vector3(1, 0, 0)),
+        skyUp: uniform(new THREE.Vector3(0, 1, 0)),
         /** The ring's beads: (colour, how lit). */
         beads: null,
         /** The ring itself: (base glow, flare, turn, _). */
         ring: uniform(new THREE.Vector4(0.5, 0, 0, 0)),
         /** The pulsar: (gain, phase of its turn, beam length, _). */
         pulsar: uniform(new THREE.Vector4(0, 0, 14, 0)),
+        // ── The aura sheet (supernova-aura.js): an event's own shape round the star ──
+        /** 1 while anything on the sheet is alive (it has no size otherwise). */
+        auraLive: uniform(0),
+        /** The remnant's axis on the plane of the picture: (unit x, unit y, how much of it lies there, _). */
+        auraAxis: uniform(new THREE.Vector4(0, 1, 1, 0)),
+        /** Jets: (birth, light now, reach in radii, _) and their colour. */
+        jet: uniform(new THREE.Vector4(-100, 0, 8, 0)),
+        jetCol: v3([1, 1, 1]),
+        /** The corkscrew: (birth, light now, reach, where its winding starts) and its colour. */
+        helix: uniform(new THREE.Vector4(-100, 0, 7, 0)),
+        helixCol: v3([1, 1, 1]),
+        /** The wave in the ring's plane: (birth, light now, how far it runs, its width) and its colour. */
+        disc: uniform(new THREE.Vector4(-100, 0, 9, 0.16)),
+        discCol: v3([1, 1, 1]),
+        /** The crown of rays: (birth, light now, reach, which rays). */
+        crown: uniform(new THREE.Vector4(-100, 0, 9, 0.3)),
+        /** The pulsar's ripples in the ring's plane: their light now. */
+        wisps: uniform(0),
+        /** How far the star has gone dark after a run that ended: 0 = burning, 1 = a dark star. */
+        hole: uniform(0),
+        /** Plumes: (unit x, unit y on the sheet, birth, light now) + (colour, height); live rows first. */
+        plumes: null,
+        plumeCount: uniform(0),
         noiseTex: textures.noise,
+        cellsTex: textures.cells,
+        /**
+         * How restless the star is, 0..1: its spots, its bright network, the reach of its rays.
+         * A slow cycle of its own (see starActivity).
+         */
+        activity: uniform(0.4),
+        /** The granules' size: periods of the cell volume across one star radius. */
+        granules: uniform(1.7),
     };
     for (let i = 0; i < IMPACT_SLOTS; i++) {
         u.impactA.push(uniform(new THREE.Vector4(0, 1, 0, -100)));
@@ -195,8 +249,12 @@ export function createSupernovaUniforms(textures) {
     u.shells = uniformArray(u.shellRows, 'vec4');
     u.beadRows = Array.from({ length: RING.beads }, () => new THREE.Vector4(1, 1, 1, 0));
     u.beads = uniformArray(u.beadRows, 'vec4');
+    u.plumeRows = Array.from({ length: AURA_PLUMES * 2 }, () => new THREE.Vector4(0, 1, -100, 0));
+    u.plumes = uniformArray(u.plumeRows, 'vec4');
     /** Four smooth fields at a point of the texture's own space (period 1). */
     u.noise = (point) => texture3D(u.noiseTex, point).level(0);
+    /** The convection cells at a point of their own space (period 1): dome, wall, number, network. */
+    u.cells = (point) => texture3D(u.cellsTex, point).level(0);
     return u;
 }
 

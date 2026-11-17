@@ -13,7 +13,10 @@
  *   combo=<n>                hold a combo of n (the star's heat, the ring's beads)
  *   level=<n>                rest on level n's palette
  *   locks=<n>                before anything else, play n locks (the star wearing their colours)
- *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|spin|b2b|perfect|crown|break|levelUp|over
+ *                            fire a gameplay event (spin = a twist that clears nothing, crown = a
+ *                            perfect clear that settles after its clear, break = the chain held by
+ *                            combo= lets go, over = the run ends)...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
  *   demo=1                   live only: play a looping gameplay script
@@ -205,6 +208,11 @@ export function create({
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
         else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
         else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
+        else if (eventName === 'b2b') world.onClear({ rows: bottom(lines), lines, b2b: true });
+        else if (eventName === 'spin') world.onSpin();
+        else if (eventName === 'crown') world.onCrown();
+        else if (eventName === 'break') world.onCombo(0);
+        else if (eventName === 'over') world.onGameOver?.();
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
     };
 

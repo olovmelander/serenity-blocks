@@ -10,7 +10,9 @@
  * sparks       ejecta pool (a lock's spray, a shock's debris, a detonation's knots)
  * loops        prominences that can stand on the star at once
  * skyLayers    lattices of faint stars on the dome
- * skyClouds    lit clouds on the dome (two reads), which also carry a detonation's echo
+ * skyClouds    lit clouds on the dome (two reads), which also carry a detonation's echo and shape
+ *              the band of far suns (without them the band is a plain river of points)
+ * skyDeep      1 adds the bright stars with a lens's four rays; 2 adds the far galaxies
  */
 export const QUALITY = Object.freeze({
     Minimal: Object.freeze({
@@ -23,6 +25,7 @@ export const QUALITY = Object.freeze({
         loops: 4,
         skyLayers: 1,
         skyClouds: false,
+        skyDeep: 0,
     }),
     Low: Object.freeze({
         shells: 3,
@@ -34,6 +37,7 @@ export const QUALITY = Object.freeze({
         loops: 6,
         skyLayers: 2,
         skyClouds: true,
+        skyDeep: 1,
     }),
     Medium: Object.freeze({
         shells: 3,
@@ -45,6 +49,7 @@ export const QUALITY = Object.freeze({
         loops: 8,
         skyLayers: 2,
         skyClouds: true,
+        skyDeep: 1,
     }),
     High: Object.freeze({
         shells: 4,
@@ -56,6 +61,7 @@ export const QUALITY = Object.freeze({
         loops: 10,
         skyLayers: 3,
         skyClouds: true,
+        skyDeep: 2,
     }),
     Ultra: Object.freeze({
         shells: 5,
@@ -67,6 +73,7 @@ export const QUALITY = Object.freeze({
         loops: 10,
         skyLayers: 3,
         skyClouds: true,
+        skyDeep: 2,
     }),
     Extreme: Object.freeze({
         shells: 5,
@@ -78,6 +85,7 @@ export const QUALITY = Object.freeze({
         loops: 10,
         skyLayers: 3,
         skyClouds: true,
+        skyDeep: 2,
     }),
 });
 

@@ -7,11 +7,12 @@ import {
 } from '../../src/themes/supernova/supernova-world.js';
 import {
     BLAST_SHELLS, COLLAPSE_HOLD, CRITICAL_COMBO, DEG, FRONT_GAP, IMPACT_SLOTS, LOOP_SLOTS, NOVA_REARM, PALETTE_DRIFT,
-    PALETTE_HOLD, REKINDLE, RING, ROW_FLIGHT, SHELL_ROWS, SHELL_STRIDE, STAR, STREAM_SLOTS, SUPERNOVA_PALETTES,
+    PALETTE_HOLD, REKINDLE, RING, ROW_FLIGHT, SHELL_ROWS, SHELL_STRIDE, STAR, STARFIRE, STREAM_SLOTS,
+    SUPERNOVA_PALETTES,
     heatForCombo, paletteDrift, pieceColor, starAnchors,
 } from '../../src/themes/supernova/supernova-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/supernova/supernova-quality.js';
-import { NOISE3_SIZE } from '../../src/themes/supernova/supernova-tsl.js';
+import { CELLS3_SIZE, NOISE3_SIZE } from '../../src/themes/supernova/supernova-tsl.js';
 import { resetBakeCache } from '../../src/themes/shared/bake-cache.js';
 import { boardPoint, cardUnion, fallbackLayout } from '../../src/themes/supernova/supernova-composition.js';
 import { STREAM_TAIL, streamPoint } from '../../src/themes/supernova/supernova-fx.js';
@@ -27,6 +28,11 @@ vi.mock('../../src/themes/supernova/supernova-tsl.js', async (importOriginal) =>
         bakeNoise3D: (seed = 1987, size = actual.NOISE3_SIZE) => {
             const key = `${seed}/${size}`;
             if (!baked.has(key)) baked.set(key, actual.bakeNoise3D(seed, size));
+            return baked.get(key);
+        },
+        bakeCells3D: (seed = 1987, size = actual.CELLS3_SIZE) => {
+            const key = `cells/${seed}/${size}`;
+            if (!baked.has(key)) baked.set(key, actual.bakeCells3D(seed, size));
             return baked.get(key);
         },
     };
@@ -313,8 +319,14 @@ describe('supernova world: build', () => {
 
     it('bakes one small tileable noise volume on the CPU, the same for a seed, centred in every channel', async () => {
         const { world } = makeWorld('Minimal');
-        expect(world.textures).toHaveLength(1);
-        const [noise] = world.textures;
+        // Two volumes: the noise, and the photosphere's convection cells.
+        expect(world.textures).toHaveLength(2);
+        const [noise, cellVolume] = world.textures;
+        expect(cellVolume.isData3DTexture).toBe(true);
+        expect(world.u.cellsTex).toBe(cellVolume);
+        expect(cellVolume.image.width).toBe(CELLS3_SIZE);
+        expect(cellVolume.image.data).toHaveLength(CELLS3_SIZE ** 3 * 4);
+        expect(cellVolume.generateMipmaps).toBe(false);
         expect(noise.isData3DTexture).toBe(true);
         expect(world.u.noiseTex).toBe(noise);
         const { width, height, depth } = noise.image;
@@ -390,7 +402,7 @@ describe('supernova world: build', () => {
             disposals.push(vi.spyOn(part.geometry, 'dispose'), vi.spyOn(part.material, 'dispose'));
         });
         world.textures.forEach((texture) => disposals.push(vi.spyOn(texture, 'dispose')));
-        expect(disposals).toHaveLength(SUPERNOVA_PARTS.length * 2 + 1);
+        expect(disposals).toHaveLength(SUPERNOVA_PARTS.length * 2 + 2);
         expect(world.disposed).toBe(false);
         world.dispose();
         expect(world.disposed).toBe(true);
@@ -701,21 +713,33 @@ describe('supernova world: locks', () => {
         look.slice(0, 3).forEach((channel, c) => expect(channel).toBeCloseTo(colour[c], 5));
         // ...sparks fly from it...
         expect(sparkBirths(world).filter((birth) => Math.abs(birth - land) < 1e-4).length).toBeGreaterThan(0);
-        // ...and its colour runs out through the nebula as an echo.
+        // ...and its colour runs out through the nebula as an echo. No ring is drawn for it (a
+        // piece a second would keep the frame full of rings): it only breathes its colour into
+        // each shell it crosses.
         const echoes = frontsOut(world);
         expect(echoes).toHaveLength(1);
         expect(echoes[0].birth).toBe(land);
         expect(echoes[0].rgb).toEqual(colour);
+        expect(echoes[0].ghost).toBe(true);
         expect(world.getState()).toMatchObject({
-            shells: standing + 1, pending: 0, counts: { impacts: 1, fronts: 1, streams: 1 },
+            shells: standing, pending: 0, counts: { impacts: 1, fronts: 1, streams: 1 },
         });
-        const echo = shellRow(world, standing);
-        expect(echo.rgb).toEqual(colour);
-        expect(echo.gain).toBeGreaterThan(0);
-        expect(echo.radius).toBeGreaterThan(STAR.radius);
         expect(world.getState().pulse).toBeGreaterThan(0);
-        // The echo fades from the table; the mark stays on the star a while.
-        run(world, camera, 12, 240);
+        // The echo crosses the innermost shell within the second: the shell flares as it passes.
+        const innermost = () => Math.min(...Array.from({ length: standing }, (_, r) => shellRow(world, r).radius));
+        const gainOfInnermost = () => {
+            const least = innermost();
+            for (let r = 0; r < standing; r++) if (shellRow(world, r).radius === least) return shellRow(world, r).gain;
+            return 0;
+        };
+        const resting = gainOfInnermost();
+        let flared = resting;
+        run(world, camera, 1.2, 72, () => {
+            flared = Math.max(flared, gainOfInnermost());
+        });
+        expect(flared).toBeGreaterThan(resting * 1.05);
+        // The mark stays on the star a while.
+        run(world, camera, 10.8, 216);
         expect(world.getState().shells).toBe(standing);
         expect(world.u.impactsLive.value).toBe(1);
         run(world, camera, 30, 300);
@@ -1756,18 +1780,32 @@ describe('supernova world: the chain', () => {
         expect(loopsOf(world)).toHaveLength(loops);
         run(world, camera, 1);
         expect(world.getState().counts.fronts).toBe(0);
-        // The chain breaks: one soft front, and every light dips for a moment.
+        // The chain breaks: one soft breath through the nebula (no ring is drawn for it), every
+        // light dips for a moment, and the beads the chain still holds lit (it stood at two when
+        // it broke) fall back into the star.
         const t0 = world.time;
+        const streamsBefore = world.getState().counts.streams;
         world.onCombo(0);
         expect(world.getState().counts.fronts).toBe(1);
         expect(world.fronts.filter((front) => front.strength > 0).map((front) => front.birth)).toEqual([t0]);
+        expect(world.fronts.find((front) => front.strength > 0).ghost).toBe(true);
+        expect(world.getState().counts.streams - streamsBefore).toBe(2);
+        const falling = streamsOf(world).filter((stream) => stream.time >= t0 - 1e-6);
+        expect(falling).toHaveLength(2);
+        for (const stream of falling) {
+            // Each leaves the ring (not the card), a moment after the last, and only arrives.
+            const from = new THREE.Vector3(...stream.from).sub(world.u.centre.value);
+            expect(from.length()).toBeCloseTo(RING.radius, 3);
+            expect(stream.kind).toBe(1);
+        }
+        expect(new Set(falling.map((stream) => stream.time.toFixed(3))).size).toBe(2);
         let least = 1;
         run(world, camera, 0.5, 60, () => {
             least = Math.min(least, world.getState().breath);
         });
         expect(least).toBeLessThan(0.95);
         expect(least).toBeGreaterThan(0.5);
-        expect(world.getState().shells).toBe(standing + 1);
+        expect(world.getState().shells).toBe(standing);
         run(world, camera, 4);
         expect(world.getState().breath).toBeCloseTo(1, 4);
         // A chain of one that ends is not a chain breaking.
@@ -3085,7 +3123,12 @@ describe('supernova world: play builds', () => {
         const settled = sample();
         expect(settled.level).toBeLessThan(0.02);
         expect(settled.stage).toBe(0);
-        expect(settled.corona).toBeCloseTo(rest.corona, 2);
+        // (The corona also follows the star's own slow cycle: rest is what an untouched star
+        // shows at this same moment.)
+        const twin = makeWorld('High', { capture: false, time: world.time });
+        expect(settled.corona).toBeCloseTo(twin.world.u.coronaGain.value, 2);
+        twin.world.dispose();
+        expect(rest.corona).toBeGreaterThan(0.7);
         expect(settled.ring).toBeCloseTo(rest.ring, 2);
         expect(settled.exposure).toBeCloseTo(rest.exposure, 2);
         world.dispose();
@@ -3258,7 +3301,8 @@ describe('supernova world: play builds', () => {
 
     it('throws the colours it was fed back out when it goes off', () => {
         const { camera, world } = makeWorld('High');
-        const fed = pieceColor('#00ff88');
+        // (Tempered by the star's own fire: seven raw piece colours read as confetti.)
+        const fed = pieceColor('#00ff88').map((channel, c) => channel * 0.6 + STARFIRE[c] * 0.4);
         world.onLock({ u: 0.4, rows: [19], color: '#00ff88' });
         run(world, camera, 1);
         world.onClear({ rows: bottom(4), lines: 4 });
