@@ -182,7 +182,11 @@ export class SummerMeadow {
         material.positionNode = plant.position;
         const st = uv();
         const { root, paint } = plant;
-        const air = varying(vec3(plant.air.gust, plant.air.bloom, plant.air.front), 'summerGrassAir');
+        // (A level-up's wave lifts light off the grass as a gust ring does, only more of it.)
+        const air = varying(
+            vec3(plant.air.gust, plant.air.bloom.add(plant.air.wash.mul(1.6)), plant.air.front),
+            'summerGrassAir',
+        );
         const world = positionWorld;
         const view = normalize(cameraPosition.sub(world));
         const field = light.noise(root.xz.mul(0.021));
@@ -285,8 +289,10 @@ export class SummerMeadow {
         const albedo = attribute('color', 'vec3');
         // A flower answers twice: every head swells as a ring from the board goes by, and
         // the kind the game has just called on swells and stays lit a moment longer.
+        // A level-up's wave of bloom opens every head it passes, whatever its kind.
         const answer = (air) => saturate(air.bloom.mul(0.3)
-            .add(light.speciesGlow(head.w).mul(air.bloom.mul(0.5).add(0.4))));
+            .add(light.speciesGlow(head.w).mul(air.bloom.mul(0.5).add(0.4)))
+            .add(air.wash.mul(0.85)));
         const plant = this.stand(0.42, (air) => head.xyz.mul(answer(air).mul(0.42)));
         material.positionNode = plant.position;
         const { paint, turn } = plant;

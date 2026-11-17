@@ -43,7 +43,10 @@
  *                 over the lake to either side of the board and the bouquet's own over the
  *                 maypole), while the sunburst blazes and the whole evening exhales (no second
  *                 rising meadow)
- *   level up      the whole evening exhales: light, rings, wind, wings
+ *   level up      the hour turns, and a wave of bloom rolls away from you through the meadow,
+ *                 opening and lighting every flower as it passes, and runs on across the lake
+ *                 to the far shore; the evening exhales with it (light, rings, wind, wings), and
+ *                 the swans take wing
  *   the hours     the night stands one hour further on with every level, and moves on by
  *                 itself as well, slowly: evening, rose hour, white night, dawn, morning,
  *                 and evening again (summer-hours.js holds their colours)
@@ -126,6 +129,8 @@ export const SUMMER_BLOSSOM_MAYPOLE = -1;
 const SKIP_SECONDS = 1.3;
 /** How long the maypole's ribbons keep wheeling after a twist (the swell's release, seconds). */
 const WHIRL_RELEASE = 1.5;
+/** A level-up's wave of bloom takes this long to cross the meadow and the lake, in seconds. */
+export const SUMMER_WASH_SECONDS = 2.6;
 /** Back-to-backs further apart than this are not one run of them. */
 const B2B_RUN_SECONDS = 15;
 const BOUQUET_FLASH_DECAY = 0.55;
@@ -286,6 +291,10 @@ export class SummerReactions {
         this.depth = 1;
         this.b2bRun = 0;
         this.b2bAt = -Infinity;
+        /** When the last level-up sent its breath of wind out over the lake. */
+        this.washAt = -Infinity;
+        /** Counts level-ups that asked for a flourish (the world sends the swans up on each). */
+        this.flights = 0;
         /** The fever's own wind: a clock that sends a front through the meadow every so often. */
         this.gale = 0;
         this.crown = 0;
@@ -806,6 +815,8 @@ export class SummerReactions {
         // The event names the level reached; one without a usable level counts as the next.
         if (!this.setLevel(unwrap(detail).level)) this.setLevel(this.level + 1);
         this.surge.levelUp(this.time);
+        this.washAt = this.time;
+        this.flights += 1;
         this.excite({
             gust: 0.6, warmth: 0.55, shafts: 0.6, glow: 0.8, shimmer: 0.8, flock: 0.7, flutter: 0.8,
         });
@@ -964,6 +975,11 @@ export class SummerReactions {
             sunburst: this.sunburst.valueAt(this.time),
             // The maypole's ribbons wheeling round the pole after a twist.
             whirl: this.whirl.valueAt(this.time),
+            // A level-up's breath of wind over the lake: how far across it has got (0 at the near
+            // shore, 1 at the far one), or -1 when none is crossing; and how many have been sent.
+            wash: this.time - this.washAt < SUMMER_WASH_SECONDS
+                ? clamp((this.time - this.washAt) / SUMMER_WASH_SECONDS, 0, 1) : -1,
+            flights: this.flights,
             // How hot play runs (shared/gameplay-surge.js): SummerWorld spends it on the evening.
             surge: {
                 punch: this.pace.punch, level: this.pace.level, fever: this.pace.fever, stage: this.pace.stage,

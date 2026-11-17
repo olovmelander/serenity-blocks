@@ -93,9 +93,12 @@ export class SummerLake {
         const paws = smoothstep(0.42, 0.7, light.noise(world.xz.mul(0.004).sub(drift.mul(0.12))).g.mul(0.7)
             .add(swell.b.mul(0.3)));
         const lee = smoothstep(0.02, 0.5, map.g);
+        // A level-up's wave (the light rig keeps it): when it has crossed the meadow it runs on over
+        // the water as a band of ruffled, sparkling lake.
+        const wash = exp(range.sub(light.uWash.x).div(range.mul(0.1).add(3)).pow2().negate()).mul(light.uWash.y);
         // The weather lays the water flat as glass or sets the whole lake sparkling.
         const ruffle = paws.mul(0.75).add(0.14).mul(lee.mul(0.8).add(0.2)).mul(light.uRuffle)
-            .add(light.uGust.mul(0.3));
+            .add(light.uGust.mul(0.3)).add(wash.mul(1.6));
         const waves = swell.rg.sub(0.5).mul(0.05)
             .add(chop.gb.sub(0.5).mul(0.11))
             .add(ripple.ba.sub(0.5).mul(0.16))
@@ -182,7 +185,10 @@ export class SummerLake {
             .mul(sunlit)
             .mul(smoothstep(180, 6, range));
         const surface = mix(body, mirrored, fresnel)
-            .add(light.uSunColor.mul(glitter.add(sparks.mul(2.5))).mul(this.uShimmer.mul(1.2).add(1.25)))
+            .add(light.uSunColor.mul(glitter.add(sparks.mul(2.5))).mul(this.uShimmer.mul(1.2).add(1.25))
+                .mul(wash.mul(2.2).add(1)))
+            // The breath of wind itself lifts a pale light off the water as it passes.
+            .add(light.uSkyLight.add(light.uSunColor.mul(0.12)).mul(wash.mul(0.3)))
             // Rings carry a thread of light on their crests.
             .add(vec3(1.5, 1.24, 0.72).mul(ringLight).mul(light.uGlow.mul(0.5).add(0.2)));
         // The waterline is soft: the last finger of water barely tints the sand under it.
@@ -198,6 +204,7 @@ export class SummerLake {
         const source = worn && Number.isFinite(worn.shimmer) ? worn.shimmer : frame.shimmer;
         const shimmer = Number.isFinite(source) ? THREE.MathUtils.clamp(source, 0, 1) : 0;
         this.uShimmer.value = shimmer;
+
     }
 
     reset() {

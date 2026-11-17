@@ -19,6 +19,7 @@ import {
 } from './summer-hours.js';
 import { widthPcfShadowFilter } from '../shared/width-pcf-shadow-filter.js';
 import { redrawStaticShadow } from '../shared/static-shadow-draws.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 import { SummerRings } from './summer-rings.js';
 import { createSummerWeatherState, summerWeatherAt, summerWeatherPhase } from './summer-weather.js';
 
@@ -157,6 +158,12 @@ export class SummerLight {
         this.uCloudOffset = uniform(new THREE.Vector2(0, 0));
         /** The sun answering the game (a quad, a back-to-back, a perfect clear): rays across the sky. */
         this.uSunburst = uniform(0);
+        /**
+         * A level-up's wave of bloom: it sets out from the eye, rolls away through the meadow
+         * lighting every flower as it passes, and runs on across the lake to the far shore.
+         * How far from the eye its front is, in metres, and how strong it still is.
+         */
+        this.uWash = uniform(new THREE.Vector2(0, 0));
         this.hourUniforms = {
             sun: this.uSunColor,
             skyLight: this.uSkyLight,
@@ -457,8 +464,11 @@ export class SummerLight {
             push = push.add(offset.div(distance).mul(amplitude.mul(1.25)));
             bloom = bloom.add(amplitude);
         }
+        // The level-up's wave: a band a few metres deep, measured from the eye.
+        const reach = length(root.xz.sub(cameraPosition.xz));
+        const wash = exp(reach.sub(this.uWash.x).div(reach.mul(0.08).add(1.8)).pow2().negate()).mul(this.uWash.y);
         return {
-            push, gust: saturate(force.mul(0.9)), bloom: saturate(bloom), front: saturate(front),
+            push, gust: saturate(force.mul(0.9)), bloom: saturate(bloom), front: saturate(front), wash,
         };
     }
 
@@ -493,8 +503,19 @@ export class SummerLight {
         // keeps the birches and the maypole's ribbons streaming.
         // (The weather sets the breeze at rest: a still lake, or cat's-paws racing over it.)
         this.uWind.value = weather.wind * (1 - 0.7 * this.dusk) + (level * 0.18 + fever * 0.22) * motion;
-        // The sun's answer to a quad, a back-to-back and a perfect clear: rays across the sky.
-        this.uSunburst.value = clamp01(worn ? worn.sunburst : frame.sunburst);
+        // The sun's answer to a quad, a back-to-back and a perfect clear: rays across the sky. They
+        // brighten much of the frame for a moment, so Reduce flashing holds them back (ADR-0021).
+        this.uSunburst.value = flashScale() * clamp01(worn ? worn.sunburst : frame.sunburst);
+        // A level-up's wave of bloom: through the meadow in the first second, then faster and
+        // fainter over the lake. (`wash` is how far across it has got, or -1 when none is.)
+        const crossed = Number.isFinite(frame.wash) && frame.wash >= 0 ? Math.min(1, frame.wash) : -1;
+        if (crossed < 0) this.uWash.value.set(0, 0);
+        else {
+            this.uWash.value.set(
+                2 + 95 * crossed + 195 * crossed * crossed * crossed,
+                Math.min(1, crossed * 9) * (1 - crossed) ** 0.7,
+            );
+        }
         // The evening deepens toward gold as play runs hot: the low sun burns richer, the sky
         // and the clouds toward it glow rose-gold, and the freshening wind clears the air so the
         // far shore stands out instead of milking over. Heat reads as richer colour, not paler.

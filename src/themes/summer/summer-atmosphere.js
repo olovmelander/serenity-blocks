@@ -306,13 +306,23 @@ export class SummerAtmosphere {
             sin(t.mul(0.17).add(phase.mul(2.3))).mul(0.45),
             cos(t.mul(0.19).add(phase.mul(1.7))).mul(0.6),
         );
-        const size = mote.w.mul(0.035).add(0.022);
+        // (A glow-worm's light is a little larger than a grain of pollen.)
+        const size = mote.w.mul(0.035).add(0.022).mul(light.uSky2.w.mul(0.9).add(1));
         material.positionNode = positionLocal.mul(size).add(mote.xyz).add(drift);
         const disc = saturate(float(1).sub(length(uv().sub(0.5)).mul(2)));
         const twinkle = sin(t.mul(mote.w.mul(2).add(1.3)).add(phase.mul(7))).mul(0.4).add(0.6);
-        material.colorNode = light.uSunColor.mul(0.42).add(light.uHazeWarm.mul(light.uGlow));
-        material.opacityNode = disc.pow2().mul(twinkle)
-            .mul(light.sunlight({ cloud: false }).mul(0.9).add(light.uGlow.mul(0.3)));
+        // In the white night the specks that drift low over the flowers are something else:
+        // glow-worms, each breathing its own green-gold light slowly on and off.
+        const night = light.uSky2.w;
+        const lamp = pow(sin(t.mul(mote.w.mul(0.5).add(0.45)).add(phase.mul(3))).mul(0.5).add(0.5), 3)
+            .mul(night).mul(smoothstep(0.62, 0.3, mote.w));
+        material.colorNode = mix(
+            light.uSunColor.mul(0.42).add(light.uHazeWarm.mul(light.uGlow)),
+            vec3(0.75, 1.15, 0.3),
+            saturate(lamp.mul(3)),
+        );
+        material.opacityNode = disc.pow2().mul(twinkle
+            .mul(light.sunlight({ cloud: false }).mul(0.9).add(light.uGlow.mul(0.3))).add(lamp.mul(1.6)));
         const motes = new THREE.InstancedMesh(this.own(new THREE.PlaneGeometry(1, 1)), material, count);
         motes.name = 'SummerPollen';
         // Specks this small do not survive the mirror's half-size, rippled image.
