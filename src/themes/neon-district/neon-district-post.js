@@ -91,6 +91,14 @@ export const BLOOM_KNEE = 0.5;
 export const BLOOM_RADIUS = 0.5;
 export const EXPOSURE = 1.0;
 
+/**
+ * How far the mist on the glass softens the street behind it (0 = a clean pane between the
+ * drops, 1 = the blurred copy wherever the mist is thickest). It was 0.7 until 2026-11-17, when
+ * the owner asked for a sharper window: the drops and the runners keep their lenses, the pane
+ * between them shows the street nearly as it is.
+ */
+export const GLASS_MIST_SOFTEN = 0.34;
+
 /** Calm rects (board cards + HUD) the output pass evaluates. */
 export const CALM_RECTS_MAX = 5;
 
@@ -155,6 +163,11 @@ export class NeonDistrictPost {
         /** The rain on the glass: its own clock (held still under reduced motion) and how misted. */
         this.uRainTime = uniform(0);
         this.uGlassMist = uniform(1);
+        /** How much rain beads on the glass (0 in a clear spell: the drops dry off). */
+        this.uGlassWet = uniform(1);
+        /** The weather's grade: what the shadows are multiplied by, and the saturation. */
+        this.uTint = uniform(new THREE.Vector3(0.86, 0.97, 1.16));
+        this.uSat = uniform(1.12);
         this.blurNode = look.glass > 0 && look.glassBlur
             ? gaussianBlur(sceneColor, null, 3, { resolutionScale: 0.25 })
             : null;
@@ -226,9 +239,9 @@ export class NeonDistrictPost {
             if (look.glass > 0) {
                 const pane = ndGlass(st, this.uAspect, this.uRainTime, look.glass);
                 const clearOfCard = float(1.0).sub(calm);
-                const cover = pane.cover.mul(clearOfCard);
+                const cover = pane.cover.mul(clearOfCard).mul(this.uGlassWet);
                 const mist = pane.mist.mul(clearOfCard).mul(this.uGlassMist);
-                const through = vec3(sceneColor.sample(st.add(pane.offset.mul(clearOfCard))).level(0).rgb);
+                const through = vec3(sceneColor.sample(st.add(pane.offset.mul(clearOfCard).mul(this.uGlassWet))).level(0).rgb);
                 const soft = this.blurNode ? vec3(this.blurNode.getTextureNode().sample(st).rgb) : S;
                 // The drop: the street through the lens, the rim dark where the light turns away, a
                 // glint of the neon behind it on the shoulder that faces the lights overhead.
@@ -242,7 +255,7 @@ export class NeonDistrictPost {
                 const drop = through.mul(float(1.15).sub(rim.mul(0.55))).add(lamp.mul(glint).mul(3.2))
                     .add(soft.mul(foot).mul(0.35));
                 // The mist: the street softened and its darks lifted by the light it scatters.
-                const misted = mix(S, soft.mul(0.95).add(vec3(0.004, 0.005, 0.008)), mist.mul(0.7));
+                const misted = mix(S, soft.mul(0.95).add(vec3(0.004, 0.005, 0.008)), mist.mul(GLASS_MIST_SOFTEN));
                 S.assign(mix(misted, drop, cover));
                 // Playground diagnostic: the glass alone (drops pale, the mist and its wiped
                 // trails in violet), to judge the water's shapes and motion.
@@ -302,8 +315,10 @@ export class NeonDistrictPost {
             const L = ndLuma(T);
             // Cold, slightly lifted shadows (rain haze in the lens); the lights keep their hues.
             const lo = float(1.0).sub(smoothstep(0.0, 0.32, L));
-            T.assign(mix(T, T.mul(vec3(0.86, 0.97, 1.16)).add(vec3(0.0006, 0.0012, 0.003)), lo.mul(0.5)));
-            T.assign(mix(vec3(ndLuma(T)), T, 1.12));
+            // (the tint and the saturation turn with the weather: steel in a downpour, indigo
+            // and vivid when it clears, warm and soft in fog)
+            T.assign(mix(T, T.mul(this.uTint).add(vec3(0.0006, 0.0012, 0.003)), lo.mul(0.5)));
+            T.assign(mix(vec3(ndLuma(T)), T, this.uSat));
             // Vignette, measured from the frame, a touch heavier in the corners.
             const cv = fromCentre.mul(vec2(this.uAspect.div(1.778), 1.0));
             const vig = smoothstep(0.42, 1.05, length(cv.mul(1.5)));
@@ -342,10 +357,13 @@ export class NeonDistrictPost {
 
     /** Per-frame values (all optional). */
     update({
-        heart, flash, kick, bloomBoost, exposure, rays, streak, time, rainTime, glassMist,
+        heart, flash, kick, bloomBoost, exposure, rays, streak, time, rainTime, glassMist, glassWet, tint, sat,
     } = {}) {
         if (rainTime !== undefined) this.uRainTime.value = rainTime;
         if (glassMist !== undefined) this.uGlassMist.value = glassMist;
+        if (glassWet !== undefined) this.uGlassWet.value = glassWet;
+        if (tint) this.uTint.value.set(tint[0], tint[1], tint[2]);
+        if (sat !== undefined) this.uSat.value = sat;
         if (heart) this.uHeart.value.set(heart.x, heart.y);
         if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (kick !== undefined) this.uKick.value = kick;
