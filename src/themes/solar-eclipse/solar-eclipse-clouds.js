@@ -45,11 +45,6 @@ import {
 import { noiseAt, seGauss } from './solar-eclipse-tsl.js';
 
 const VOLCANO = RANGES.find((range) => range.cone).cone;
-/** The volcano's distance (km): the lenticular stands over it. */
-export const VOLCANO_KM = RANGES.find((range) => range.cone).distance;
-
-/** The highest any cloud may stand (radians): the deck reaches the top of the frame. */
-export const CLOUD_LAYER_TOP = Math.max(TOWERS.top, CLOUDS.rows.reduce((m, row) => Math.max(m, cloudRowSpan(row).top), 0));
 
 /**
  * @param {{ u: object, noise: THREE.Texture, tier: object }} env
@@ -80,7 +75,7 @@ export function drawClouds(env, c) {
     // edges glow with the light scattered forward through them, brightest near the sun's bearing.
     if (tier.towers) {
         If(u.weather.y.greaterThan(0.01).and(alt.greaterThan(-0.004)).and(alt.lessThan(TOWERS.top + 0.012)), () => {
-            const span = TOWERS.span;
+            const { span } = TOWERS;
             const uu = az.mul(span).toVar();
             const vv = alt.mul(span).toVar();
             // The heads run ahead of their feet and boil upward.
@@ -94,7 +89,8 @@ export function drawClouds(env, c) {
             const stepUv = toSun.mul(0.035);
             const heap = (du, dv) => {
                 const h = noiseAt(noise, vec2(uHead.add(du), vHead.add(dv)), 0.4).g;
-                const billow = noiseAt(noise, vec2(uHead.add(du).mul(2.4).add(0.37), vHead.add(dv).mul(2.4)), fineLod).b;
+                const billowAt = vec2(uHead.add(du).mul(2.4).add(0.37), vHead.add(dv).mul(2.4));
+                const billow = noiseAt(noise, billowAt, fineLod).b;
                 return h.sub(0.5).mul(0.8).add(billow.sub(0.5).mul(0.2));
             };
             // They sink away toward the sun's bearing (masked at an outline they would end in
@@ -144,7 +140,8 @@ export function drawClouds(env, c) {
             const at = P.add(head.mul(clock.mul(DECK.drift[0]))).toVar();
             const fieldAt = P.add(vec2(clock.mul(DECK.drift[1]), clock.mul(-DECK.drift[1] * 0.6))).div(DECK.field);
             const field = noiseAt(noise, fieldAt.mul(0.25), lodFor(DECK.field * 4)).r;
-            const bend = noiseAt(noise, at.div(DECK.field * 0.7).add(vec2(0.31, 0.17)), lodFor(DECK.field * 0.7)).g.sub(0.5);
+            const bendAt = at.div(DECK.field * 0.7).add(vec2(0.31, 0.17));
+            const bend = noiseAt(noise, bendAt, lodFor(DECK.field * 0.7)).g.sub(0.5);
             const phase = dot(at, head).mul((Math.PI * 2) / DECK.wave).add(bend.mul(7.0));
             const breakAt = vec2(dot(at, across).div(DECK.wave * 2.6), dot(at, head).div(DECK.wave * 1.1));
             const breaks = noiseAt(noise, breakAt.mul(0.25).add(vec2(0.57, 0.11)), lodFor(DECK.wave * 4.4)).b;
@@ -157,7 +154,9 @@ export function drawClouds(env, c) {
             // rows are too fine to see the deck closes into the veil it is from afar (its mean
             // falls below a cloudlet's threshold, so the threshold falls with it).
             const veil = float(1.0).sub(seen).mul(0.36);
-            const dens = smoothstep(float(1.02).sub(cover.mul(0.32)).sub(veil), float(1.32).sub(cover.mul(0.3)).sub(veil), cells)
+            const lo = float(1.02).sub(cover.mul(0.32)).sub(veil);
+            const hi = float(1.32).sub(cover.mul(0.3)).sub(veil);
+            const dens = smoothstep(lo, hi, cells)
                 .mul(cover)
                 .toVar();
             // Near the sun the deck thins, so the corona's inner crown stays clean.
@@ -218,7 +217,8 @@ export function drawClouds(env, c) {
                     // A wide ramp: its edges are soft, never a cut-out.
                     const inside = smoothstep(thr.sub(0.03), thr.add(0.2), mass);
                     const based = smoothstep(pxKm.mul(-1.5), pxKm.mul(2.5).add(row.depth * 0.05), h);
-                    const cloud = inside.mul(based).mul(clear).mul(CLOUDS.opacity).mul(u.weather.x).toVar();
+                    const cloud = inside.mul(based).mul(clear).mul(CLOUDS.opacity).mul(u.weather.x)
+                        .toVar();
                     If(cloud.greaterThan(0.002), () => {
                         const thick = smoothstep(thr, thr.add(0.3), mass);
                         // Lit with a low gain round a mid value (a large gain is 0 or 1 nearly
@@ -260,7 +260,8 @@ export function drawClouds(env, c) {
             for (let i = 0; i < LENTICULAR.plates; i += 1) {
                 // A stack of plates, each a little narrower and fainter than the one under it.
                 const w = 1 - i * 0.2;
-                const yi = alt.sub(alt0 + (i - 0.6) * LENTICULAR.halfHeight * 1.35).div(LENTICULAR.halfHeight * (1 - i * 0.12))
+                const layer = alt0 + (i - 0.6) * LENTICULAR.halfHeight * 1.35;
+                const yi = alt.sub(layer).div(LENTICULAR.halfHeight * (1 - i * 0.12))
                     .sub(glide.mul(0.5));
                 const xi = x.div(w);
                 const shape = xi.mul(xi).add(yi.mul(yi).mul(xi.mul(xi).mul(0.6).add(1.0)));

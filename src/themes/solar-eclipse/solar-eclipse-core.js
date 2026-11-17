@@ -196,31 +196,6 @@ export const WEATHER_BLEND = 22;
 export const WEATHER_CYCLE = WEATHERS.reduce((s, w) => s + w.seconds, 0);
 
 /**
- * The weather at time `t` (seconds): every key's weight, the weather it is in (`index`, `name`)
- * and how far it has turned to the next (`turn`, 0..1 across the last WEATHER_BLEND seconds).
- */
-export function weatherAt(t, out = {}) {
-    const n = WEATHERS.length;
-    let local = ((t % WEATHER_CYCLE) + WEATHER_CYCLE) % WEATHER_CYCLE;
-    let i = 0;
-    while (i < n - 1 && local >= WEATHERS[i].seconds) {
-        local -= WEATHERS[i].seconds;
-        i += 1;
-    }
-    const a = WEATHERS[i];
-    const b = WEATHERS[(i + 1) % n];
-    const k = smooth01((local - (a.seconds - WEATHER_BLEND)) / WEATHER_BLEND);
-    for (let j = 0; j < WEATHER_KEYS.length; j += 1) {
-        const key = WEATHER_KEYS[j];
-        out[key] = lerp(a[key], b[key], k);
-    }
-    out.index = i;
-    out.name = a.name;
-    out.turn = k;
-    return out;
-}
-
-/**
  * The moon's shadow on the land: the lens does not stand at its middle, so its edge lies nearer
  * on one bearing (`az`, radians east of north: right of the line of sight) than on the opposite
  * one. There the band of light round the horizon burns brighter and reaches higher, and the
@@ -294,6 +269,31 @@ export const smooth01 = (t) => {
 export const approach = (rate, dt) => 1 - Math.exp(-rate * Math.max(0, dt));
 /** An angle folded into (−π, π]. */
 export const wrapAngle = (a) => a - TAU * Math.round(a / TAU);
+
+/**
+ * The weather at time `t` (seconds): every key's weight, the weather it is in (`index`, `name`)
+ * and how far it has turned to the next (`turn`, 0..1 across the last WEATHER_BLEND seconds).
+ */
+export function weatherAt(t, out = {}) {
+    const n = WEATHERS.length;
+    let local = ((t % WEATHER_CYCLE) + WEATHER_CYCLE) % WEATHER_CYCLE;
+    let i = 0;
+    while (i < n - 1 && local >= WEATHERS[i].seconds) {
+        local -= WEATHERS[i].seconds;
+        i += 1;
+    }
+    const a = WEATHERS[i];
+    const b = WEATHERS[(i + 1) % n];
+    const k = smooth01((local - (a.seconds - WEATHER_BLEND)) / WEATHER_BLEND);
+    for (let j = 0; j < WEATHER_KEYS.length; j += 1) {
+        const key = WEATHER_KEYS[j];
+        out[key] = lerp(a[key], b[key], k);
+    }
+    out.index = i;
+    out.name = a.name;
+    out.turn = k;
+    return out;
+}
 
 export function mulberry32(seed) {
     let a = seed >>> 0;

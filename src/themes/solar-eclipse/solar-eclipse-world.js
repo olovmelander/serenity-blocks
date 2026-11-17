@@ -1337,7 +1337,7 @@ export class SolarEclipseWorld {
         // sliver of the sun's face burns and the daylight floods back; its glare takes the
         // diamond's place whenever it is the brighter. Then the shadow sweeps back in.
         const third = this.thirdContact(time);
-        const ghost = this._post.ghost;
+        const { ghost } = this._post;
         ghost.strength = 0;
         if (third > 0.001) {
             const ax = Math.cos(this.over.angle);

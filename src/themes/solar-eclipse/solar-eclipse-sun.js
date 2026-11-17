@@ -229,10 +229,11 @@ export function drawSun(env, p, {
         // Two may run at once (u.coronaWave: start, strength, start, strength).
         const wave = (start, strength) => {
             const wAge = t.sub(start);
-            const live = smoothstep(0.0, 0.05, wAge).mul(float(1.0).sub(smoothstep(CORONA_WAVE.life * 0.7, CORONA_WAVE.life, wAge)));
-            const front = wAge.mul(CORONA_WAVE.speed).add(1.02);
+            const ends = float(1.0).sub(smoothstep(CORONA_WAVE.life * 0.7, CORONA_WAVE.life, wAge));
+            const live = smoothstep(0.0, 0.05, wAge).mul(ends);
+            const crestAt = wAge.mul(CORONA_WAVE.speed).add(1.02);
             const width = wAge.mul(0.35).add(0.18);
-            const crest = seGauss(r.sub(front).div(width));
+            const crest = seGauss(r.sub(crestAt).div(width));
             // Strongest along the rays, so it runs out along the streamers, not as a ring.
             return crest.mul(live).mul(strength).mul(exp(wAge.div(-0.9)));
         };
@@ -244,15 +245,16 @@ export function drawSun(env, p, {
         // ── A back-to-back's halo CME: a fibrous shell expanding all round the sun ──
         const hAge = t.sub(u.halo.x);
         If(u.halo.y.greaterThan(0.001).and(hAge.greaterThan(0.0)).and(hAge.lessThan(HALO.life)), () => {
-            const front = float(1.0).sub(exp(hAge.div(-HALO.travel))).mul(HALO.reach).add(1.1);
+            const shellAt = float(1.0).sub(exp(hAge.div(-HALO.travel))).mul(HALO.reach).add(1.1);
             const width = hAge.mul(0.16).add(0.12);
             const fibreAt = vec2(cos(ang), sin(ang)).mul(1.7).add(vec2(hAge.mul(0.02), 0.71));
             const fibre = noiseAt(noise, fibreAt, 1.0).b;
             const bright = smoothstep(0.0, 0.25, hAge).mul(exp(hAge.div(-2.0))).mul(u.halo.y);
             // A bright, fibrous front with a faint cavity of swept-out corona behind it.
-            const shell = seGauss(r.sub(front).div(width)).mul(fibre.mul(1.1).add(0.35));
-            const cavity = smoothstep(front.sub(width.mul(4.0)), front.sub(width), r).mul(float(1.0).sub(smoothstep(front.sub(width), front, r)));
-            behind.addAssign(u.coronaIn.mul(shell).mul(bright).mul(0.3).div(front.mul(0.25).add(1.0)));
+            const shell = seGauss(r.sub(shellAt).div(width)).mul(fibre.mul(1.1).add(0.35));
+            const cavity = smoothstep(shellAt.sub(width.mul(4.0)), shellAt.sub(width), r)
+                .mul(float(1.0).sub(smoothstep(shellAt.sub(width), shellAt, r)));
+            behind.addAssign(u.coronaIn.mul(shell).mul(bright).mul(0.3).div(shellAt.mul(0.25).add(1.0)));
             light.mulAssign(float(1.0).sub(cavity.mul(bright).mul(0.35)));
         });
 

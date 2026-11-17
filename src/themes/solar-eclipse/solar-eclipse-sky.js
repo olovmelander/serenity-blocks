@@ -37,7 +37,6 @@ import {
     float,
     floor,
     fract,
-    length,
     log2,
     max,
     mix,
@@ -273,23 +272,30 @@ export function createSky({
                     // flank toward the shadow's bright side takes the band's light, snow lies
                     // above a ragged line that lingers down the gullies, and when the shadow draws
                     // back off its summit the sunlight creeps down from the top and the snow burns.
-                    const cone = RANGES[k].cone;
+                    const { cone } = RANGES[k];
                     const off = az.sub(cone.az).toVar();
-                    const hw = select(off.lessThan(0.0), float(cone.halfWidth * (1 + cone.skew)),
-                        float(cone.halfWidth * (1 - cone.skew * 0.5)));
+                    const hw = select(
+                        off.lessThan(0.0),
+                        float(cone.halfWidth * (1 + cone.skew)),
+                        float(cone.halfWidth * (1 - cone.skew * 0.5)),
+                    );
                     const x = off.div(hw).toVar();
                     const hf = clamp(alt.div(cone.peak), 0.0, 1.2).toVar();
                     const onCone = smoothstep(1.0, 0.8, abs(x)).mul(smoothstep(-0.05, 0.12, hf)).toVar();
                     If(onCone.greaterThan(0.001), () => {
-                        const fan = x.div(max(float(1.0).sub(hf.mul(0.84)), 0.1)).toVar();
-                        const gLod = clamp(log2(max(u.texel.mul(256 * 1.6).div(hw.mul(max(float(1.0).sub(hf.mul(0.84)), 0.1))), 1.0)), 0.0, 5.0);
-                        const gully = noiseAt(noise, vec2(fan.mul(1.6).add(0.3), hf.mul(0.3).add(0.71)), gLod).b.toVar();
+                        // Across the fan the gullies converge on the summit: their own scale.
+                        const narrow = max(float(1.0).sub(hf.mul(0.84)), 0.1).toVar();
+                        const fan = x.div(narrow).toVar();
+                        const gLod = clamp(log2(max(u.texel.mul(256 * 1.6).div(hw.mul(narrow)), 1.0)), 0.0, 5.0);
+                        const gullyAt = vec2(fan.mul(1.6).add(0.3), hf.mul(0.3).add(0.71));
+                        const gully = noiseAt(noise, gullyAt, gLod).b.toVar();
                         const ridge = smoothstep(0.3, 0.75, gully).toVar();
                         // In the shadow: the flank that faces the bright side holds a little of
                         // the band's light, the ribs between the gullies more than the gullies.
                         const flank = clamp(x.mul(0.55).add(0.5), 0.0, 1.0);
                         const bandLight = u.horizon.mul(0.22).add(u.belt.mul(0.45)).add(u.mid.mul(0.8))
-                            .mul(flank.mul(0.7).add(0.3)).mul(ridge.mul(0.5).add(0.5));
+                            .mul(flank.mul(0.7).add(0.3))
+                            .mul(ridge.mul(0.5).add(0.5));
                         body.mulAssign(float(1.0).sub(onCone.mul(0.22)));
                         body.addAssign(bandLight.mul(onCone).mul(0.32));
                         // The snow, its line ragged and lingering down the gullies.
@@ -302,8 +308,8 @@ export function createSky({
                         // The sunlight on the summit, creeping down as the shadow draws back; the
                         // flank toward the sun (left) takes it first.
                         const litLine = float(1.0).sub(u.summitLit.mul(0.42));
-                        const face = clamp(float(0.55).sub(x.mul(0.6)), 0.12, 1.0);
-                        const sunOn = smoothstep(litLine.sub(0.05), litLine.add(0.03), hf).mul(u.summitLit).mul(face)
+                        const sunSide = clamp(float(0.55).sub(x.mul(0.6)), 0.12, 1.0);
+                        const sunOn = smoothstep(litLine.sub(0.05), litLine.add(0.03), hf).mul(u.summitLit).mul(sunSide)
                             .toVar();
                         const rockLit = u.alpen.mul(u.alpenPower).mul(sunOn).mul(ridge.mul(0.5).add(0.5)).mul(0.12);
                         const snowLit = mix(snowShade, u.alpen.mul(u.alpenPower).mul(0.62), sunOn);

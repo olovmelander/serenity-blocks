@@ -11,9 +11,110 @@ the lens came down from a high ridge to the edge of a flooded salt flat, and the
 whole eclipse back. The third pass kept all of that and worked on the air and the light in it: the
 flat cloud deck became rows of heaped cloud, the sky leans toward the near edge of the moon's
 shadow, the prominences became flux ropes that erupt as loops, and the water draws its bright
-reflections out into a soft column. Solar Eclipse keeps its identity — the sun and the moon in one line, a
-corona, a diamond ring. This document records the shipped design and what was verified. It is a
-reference, not a backlog.
+reflections out into a soft column. The fourth pass (2026-11-17, `feature/solar-eclipse-living`,
+three r187) made it live: a totality sky in every palette, a weather of real cloud forms, a
+sculpted volcano whose summit passes in and out of the sunlight, a sungrazing comet now and then,
+flamingos, an effect of its own for every event, and the end of a run as third contact (the next
+section). Solar Eclipse keeps its identity — the sun and the moon in one line, a corona, a
+diamond ring. This document records the shipped design and what was verified. It is a reference,
+not a backlog.
+
+## The living totality (2026-11-17)
+
+The audit (captures at rest, through the clock and on every event, and measured pixel columns)
+found: the sky a low-saturation mauve wash (the band peaked at a peachy (178, 120, 102), the
+middle of the sky (94, 75, 87)), with three of the six palettes tinting the whole frame (an olive
+jade, a grey azure); the clouds flat cut-out patches with orange decals on top, a camouflage the
+mirror doubled; the volcano a flat brown paper cut-out; nothing but the palette changing over
+time; level-ups, CMEs and twists hard to see, and the clears looking alike but for their beads.
+
+What changed:
+
+- **The air** (`solar-eclipse-sky.js`, `PALETTES` in core.js): every palette keeps a real totality
+  sky: deep blue overhead, a saturated band with its own height (`bandHeight`), a hot rim that
+  turns yellow toward the shadow's near edge and redder away from it, and a new `belt` of paler
+  light lifted above where the band has faded (the old terms summed complementary hues into grey:
+  gotcha #1413). The palettes now differ in the band's character: ember (amber under violet),
+  gold, jade (a coral band under a teal sky), azure (white-gold under cobalt), violet (magenta),
+  rose (crimson under plum).
+- **The weather** (`solar-eclipse-clouds.js`, `WEATHERS`/`weatherAt` in core.js): five weathers
+  turn by the clock (banks, towers, clear, deck, storm; 70–100 s each, 22 s hand-overs), mixing
+  four layers. *Towers*: far cumulus beyond the moon's shadow, in full sunlight while everything
+  round the lens is dark; the uneclipsed sun stands behind them, so their cores are dusky, the
+  face toward the sun burns and their thin parts glow with forward-scattered light; their heads
+  run ahead of their feet and boil, so a tower grows and falls apart. *Deck*: altocumulus rows in
+  their own plane, dark overhead and burning where the sheet reaches out past the shadow's edge,
+  so the edge of the shadow is drawn across the sky (gotcha #1514 for its far veil). *Rows*: the
+  old three rows restyled as long soft bars, dark bodies lit from below by the band, their thin
+  edges letting it through. *Lenticular*: a stack of smooth lenses over the volcano, sunlit when
+  its summit is. Every layer changes shape as it drifts (its layers move at different speeds).
+- **The shadow breathes** (`shadowReachAt`): its reach swings ±20 % over 173 s, so the volcano's
+  summit (`summitLit`) and the far clouds pass into the sunlight and out of it.
+- **The volcano** is sculpted (gotcha #1606): gullies fanning from the summit, the flank toward the
+  bright side holding the band's light, snow above a ragged line lingering in the gullies, cool
+  grey snow in the shadow, and sunlight that creeps down from the summit as the shadow draws back.
+  A near range's backlit rim no longer draws a line across it (gotcha #1605).
+- **The comet** (`COMET`/`cometAt`): every 290 s a sungrazer stands in the corona for 80 s, a few
+  radii off the limb, a straight blue ion tail and a curling dust tail streaming away from the
+  sun; each one takes the next of four places.
+- **The corona** stands in an aureole of its own scattered light and fades in daylight; the
+  prominences burn less white, so the pieces' colours stay saturated.
+- **The flamingos** (`solar-eclipse-flamingos.js`, `-flamingo-flight.js`, `-flamingo-model.js`,
+  built by `scripts/blender/solar_eclipse_flamingo.py`, headless and byte-identical): a Blender
+  model with a 16-bone rig and sampled actions (flap, walk, glide, stand, feed, alert, a wing
+  salute, rest on one leg). About one flight a minute (5–12 birds in a loose file or a shallow
+  echelon, 110–200 m out, 3–7 m over the water) crosses low in front of the band, each bird
+  entering and leaving beyond the frame's edge; a wading flock of up to 20 stands 150–330 m out
+  between the sun's column and the card, each bird running its own loop of acts. Every bird is
+  doubled in the mirror by the same bones turned over the water. Thin parts are widened to at
+  least 1.2 px with coverage alpha, since the post has no MSAA. Two draws; their stable identities
+  come from the flight's slot and the bird's rank, never from a list index.
+
+The events, each now its own (the table under "Event language" still holds for the rest):
+
+| Event | Its own effect, added this pass |
+|---|---|
+| Two lines | Shadow bands race over the whole flat (a swell; none under reduced motion). |
+| Three lines | A wave of light runs out through the corona along its streamers (two may run; a quick second feeds the first). |
+| T-spin | The twist falls off steeply with height (`TWIST_FALLOFF`), so the rays wind into a visible pinwheel (1.45 rad at the limb). |
+| Back-to-back | A halo CME: a fibrous shell blown out all round the sun to about four radii, a cavity behind it, beside the twin ejections; fed, never restarted. |
+| Four lines | The diamond now strings the lens's ghosts through the frame (post, High and up). |
+| Perfect clear | The second totality: as the diamond closes, the moon's shadow sweeps back across the sky from the west, the daylight held ahead of its front, a darker curtain at its edge; a wave runs out through the corona after it. |
+| Level up | A pulse of light runs round the horizon from the shadow's bright side. |
+| Game over | Third contact: the moon slides off further than for any diamond, a sliver of the sun burns, daylight floods back and the corona fades, for 11 s or until the next run starts (`onSessionStart`, from the mode manager's `modeStarted`); then the shadow sweeps back in. |
+
+New playground parameters: `weather=banks|towers|clear|deck|storm`, `comet=<s>`, `flamingo=<s>`
+(`flamingoFlight=<k>`), and the events `clear&lines=2|3`, `b2b`, `gameOver`, `return`.
+
+### Verification (the living pass)
+
+- **Unit tests:** the eight Solar Eclipse files, 213 tests, green: `solar-eclipse-living.test.js`
+  (17: the palettes' belt and deep air, the weather's cycle and hand-overs, the shadow's breath
+  and the summit's light, the comet, each event's own effect, third contact and the return, a
+  seek forgetting everything, reduced motion), `solar-eclipse-flamingos.test.js` (17), and the
+  shader gate now building High, Low and Minimal through both builders (the High dome is 88.5 KB
+  of WGSL, 73 KB before; the budget is 112 KB).
+- **Playground** (WebGPU on the RTX, `maxFps=30`): the six palettes, the five weathers, an
+  eight-minute clock strip, every event, close-ups of the volcano, the clouds, the halo, the comet
+  and the water; Minimal, Low, Medium, Ultra, the WebGL2 backend at rest and on four lines, a
+  390 × 844 portrait (at rest and in third contact) and 21:9; consoles clean.
+- **Real game** (private headless Chrome, WebGPU, 30 fps): the theme pinned, real hard drops,
+  then three lines, four lines with a back-to-back, a perfect clear and a game over through the
+  app's own bus and window event; every effect drew and the console was clean.
+- **Water grain** (owner feedback on Sunset: no sparkle fields on water in play): the share of
+  pixels 22 levels brighter than their 7 × 7 mean on the left half of the water is 0.6 % at
+  rest, 0.8–1.6 % on single, double and four-line clears (1.0–1.2 % before this pass); a perfect
+  clear reaches 2.9 % on its lower water, which is its rings breaking the reflected corona's rays
+  into smooth bands, not sparkle.
+- **Cost** (RTX, 1920 × 1080, `maxFps=30`, GPU timestamps, two interleaved rounds, origin/main on a
+  second private server): High 0.378 ms on main, 0.42–0.43 ms with the sky and weather (banks,
+  storm), 0.48–0.54 ms with the flamingos; Low 0.238 → 0.27 → 0.31 ms. Not measured: the
+  integrated GPU, an uncapped frame rate.
+- **The icon** is re-baked from the new sky (the icon lens over sunlit towers, ember, ten
+  prominences; contrast 1.16, saturation 1.25, brightness 1.05).
+
+Not verified in this pass: a real phone, multiplayer and Odyssey layouts, anyone watching it in
+motion for minutes; the flamingos ignore reduced motion (calm ambient life, a judgement call).
 
 ## The picture
 
@@ -168,12 +269,15 @@ the board's foot, was tried in this pass and taken out again.
 Every tier keeps the whole picture and every event (`solar-eclipse-quality.js`); the mirror, its
 rings and whirls, the glitter path and the reflected motes are on every tier:
 
-| Tier | Corona rays | Outflow | Prominence threads | Sunlit range's snow | Valley mist | Exposure stars | Swell | Salt crust | Cloud rows | Motes | Bloom (and the water's column) |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| Minimal | 1 octave | — | — | — | — | — | — | — | — | 8 | — |
-| Low | 1 octave | — | yes | — | — | yes | yes | — | — | 10 | — |
-| Medium | 2 octaves | yes | yes | yes | — | yes | yes | yes | yes | 12 | yes |
-| High, Ultra, Extreme | 2 octaves | yes | yes | yes | yes | yes | yes | yes | yes | 14–16 | yes |
+| Tier | Corona rays | Outflow | Prominence threads | Snow, gullies | Valley mist | Exposure stars | Swell | Salt crust | Cloud rows | Towers, cap | Deck | Flamingos (flock / flight) | Motes | Bloom (and the water's column) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Minimal | 1 octave | — | — | — | — | — | — | — | — | — | — | 8 / 6 | 8 | — |
+| Low | 1 octave | — | yes | — | — | yes | yes | — | — | yes | — | 10 / 7 | 10 | — |
+| Medium | 2 octaves | yes | yes | yes | — | yes | yes | yes | yes | yes | yes | 14 / 10 | 12 | yes |
+| High, Ultra, Extreme | 2 octaves | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | 18–20 / 12 | 14–16 | yes |
+
+The comet, the shadow's sweep, the halo CME, the waves through the corona and third contact are
+on every tier; the lens's ghosts ride on the lens breath (Medium and up).
 
 The pixel-ratio cap rises with the tier (0.7 → 1.6), as in the sibling themes.
 
@@ -190,9 +294,11 @@ Real game: `?eclipseTime=<s>` (frozen), `?eclipseFixedDt=<ms>`, `?eclipseParts=s
 `?eclipseFalseColor=1`, `?eclipseForceWebGL=1` (or `?forceWebGL=1`). The theme needs
 `unlockAll=1` in a fresh profile.
 
-The icon: `t=14&quality=Ultra&icon=1&iconHorizon=1&iconFov=34&locks=10` captured square
-(840 px), centre-cropped full and baked to a 512 px circle with contrast 1.16, saturation 1.3 and
-brightness 1.04: the black sun over its own reflection, the burning horizon between.
+The icon (re-baked in the living pass): `t=14&quality=Ultra&icon=1&iconHorizon=1&iconFov=34&locks=10&weather=towers&hud=0`
+captured square (840 px), the whole frame baked to a 512 px circle with contrast 1.16, saturation
+1.25 and brightness 1.05: the black sun over its own reflection, the burning horizon and the
+sunlit towers between. (Superseded: the earlier pass's icon, saturation 1.3, brightness 1.04,
+without the weather.)
 
 ## Verification
 
@@ -286,6 +392,18 @@ build; real game on the RTX (WebGPU 132 fps, WebGL2 127–128), iGPU 132; valida
 PASS; phone validator Low/Minimal pass. Recorded in full in this file's history (6c14c6bf).
 
 ## Captured previews
+
+- `solar-eclipse-captures/living-palettes.jpg` — the six palettes at their rest (the living pass).
+- `solar-eclipse-captures/living-clock.jpg` — eight minutes of the clock alone: the weather, the
+  light, the comet, the summit in and out of the sunlight.
+- `solar-eclipse-captures/living-events.jpg` — a clear of each size, four lines, the perfect
+  clear's sweep, a twist, a back-to-back's halo, a level-up's pulse, third contact and the return.
+- `solar-eclipse-captures/living-ingame.jpg` — the real game: rest, hard drops, three lines, four
+  lines and a back-to-back, the perfect clear's sweep, third contact.
+- `solar-eclipse-captures/living-flamingos.jpg` — flights left of the card and right of the HUD,
+  the wading flock, in three palettes.
+
+Earlier passes:
 
 - `solar-eclipse-captures/third-pass.jpg` — before and after the atmosphere pass, at rest and on
   four lines.
