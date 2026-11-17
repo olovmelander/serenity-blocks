@@ -46,7 +46,7 @@ export const cameraRight = () => vec3(cameraViewMatrix[0].x, cameraViewMatrix[1]
 export const cameraUp = () => vec3(cameraViewMatrix[0].y, cameraViewMatrix[1].y, cameraViewMatrix[2].y);
 
 /** A quad turned to the eye and drawn out along a velocity, as the eye sees it. */
-const streak = (centre, velocity, size, stretchPerSpeed) => {
+export const streak = (centre, velocity, size, stretchPerSpeed) => {
     const viewVel = cameraViewMatrix.mul(vec4(velocity, 0.0)).xyz;
     const speed = length(viewVel.xy);
     const along = viewVel.xy.div(max(speed, 1e-3));
@@ -60,7 +60,7 @@ const streak = (centre, velocity, size, stretchPerSpeed) => {
  * How a drop takes the hour: a little of the sky, and the sun (or the moon) when it stands
  * behind it. `light` = the hour's colours (waves-tsl.js createLight).
  */
-const dropLight = (position, sun, warm, light) => {
+export const dropLight = (position, sun, warm, light) => {
     const toDrop = normalize(position.sub(cameraPosition));
     const forward = clamp(dot(toDrop, sun), 0.0, 1.0);
     const f2 = forward.mul(forward);
@@ -71,7 +71,7 @@ const dropLight = (position, sun, warm, light) => {
         .mul(mix(vec3(1.0), vec3(1.15, 1.0, 0.82), warm));
 };
 
-const bead = () => {
+export const bead = () => {
     const p = uv().sub(0.5).mul(2.0);
     const d = length(p);
     return exp(d.mul(d).mul(-5.0)).mul(float(1.0).sub(smoothstep(0.78, 1.0, d)));
