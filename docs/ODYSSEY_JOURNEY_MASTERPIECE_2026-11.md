@@ -254,6 +254,8 @@ filmed on the merged build before the next merge.
 
 ![The eight passages](images/odyssey-journey-masterpiece-2026-11/passages.jpg)
 
+![A portal in, the exit, the glide across the chapter 5 boundary and its arrival sheet (merged build, 0.3 to 0.4 s a frame)](images/odyssey-journey-masterpiece-2026-11/flow-portal-exit-arrival.jpg)
+
 ![The map card over the fold, the evening sky and the mountains, and the navigator with the world behind it (merged build)](images/odyssey-journey-masterpiece-2026-11/ui-chapter-glass.jpg)
 
 ## 6. How it was checked
@@ -294,6 +296,14 @@ filmed on the merged build before the next merge.
   The heaviest station is 1.90 ms (was 1.61). CPU frame time is 4.1 to 4.5 ms at every station
   in both builds. Reported texture memory went from 118 to 131 MB. Not measured: the integrated
   GPU, uncapped frame rate, and the extra pipelines' compile time at boot.
+- **The world's CPU build.** `createOdysseyWorld` built three times in a row in one process
+  (High, ms): 2009, 1954, 1818 before; 1892, 1741, 1734 after. A fault found on the way: with
+  the cloud sea's first cut the second and third builds took 4.0 s. Its lobes were planned as
+  `{ x, z, r, top }` object literals with fractional fields, and from the second build on the
+  world's relief and macro bakes ran about eight times slower (the bisect points at V8
+  de-optimising code that reads objects of that shape; not confirmed with V8 natives). The
+  lobes are now rows of a `Float64Array`, the plate is baked once a session, and tests hold
+  both.
 - **Gates** on the merged build: typecheck, the TypeScript and lint ratchets, architecture
   fitness, the theme lifecycle audit, module boundaries, the full unit suite, performance
   budgets, release gates, the build with its boot closure, and the IP string gate. Results are
@@ -304,9 +314,24 @@ filmed on the merged build before the next merge.
 
 ### 6.1 Gate results
 
-See the pass's closing message; the known local-only failures are the sv-SE number formats
-(`records-view`, `game-over-modal-result-compatibility`, `odyssey-level-briefing`) and
-`tts-recorder-e2e` (a symlink Windows refuses in a worktree).
+On the final merged build:
+
+- Typecheck, the TypeScript ratchet, the lint ratchet (432 errors, at baseline), architecture
+  fitness, the theme lifecycle audit, module boundaries, performance budgets, release gates,
+  the build with its boot closure and the IP string gate: all pass.
+- `npx vitest run src/rendering/odyssey`: 69 files, 702 tests pass. The Odyssey, Earth core,
+  journey and portal unit tests with the URL catalogue: 223 files, 2,544 tests pass.
+- The full suite (1,439 files, 25,935 tests) was run before the cloud-sea fix: 25,881 passed.
+  The failures were the known local ones (the sv-SE number formats in `records-view` and
+  `game-over-modal-result-compatibility`; `tts-recorder-e2e`, a symlink Windows refuses in a
+  worktree), five timing tests under full-suite load that pass when run alone
+  (`display-settings-apply`, `local-versus-cameras`, `painted-ages-prepared-session`,
+  `session-geometry`, `odyssey-ground-animals`), and `odyssey-forest-lever`, whose two-world
+  hook ran past 30 s because of the slow second build above; it takes 4 s alone after the fix.
+  The full suite was not re-run after that fix; the Odyssey suites were.
+- Fixed while gating: type errors in three new `@ts-check` files; a sky test that assumed the
+  Earth arrives in daylight (it now arrives under the evening sun); three new mentions of a
+  ratcheted theme name; a flow-sheet hold timer that threw when its page was gone.
 
 ## 7. For the owner to judge
 
@@ -356,6 +381,9 @@ only), a physical gamepad, and a phone frame.
 - A place tuned without the Odyssey post is about two stops too bright.
 - An apparent sun for the sky alone (dome, cloud floor, moon) can sink without re-baking
   anything that reads the world sun.
+- Object literals of a shape the world's own data uses (`{ x, z, ... }`) with fractional fields,
+  created at run time, slowed every later world build about 2.5 s: keep planned geometry in
+  typed arrays.
 - Radial-gradient sizes reject CSS math functions in this Chrome and drop the whole layer.
 - Tooling: headless Chrome over CDP drives the real game (see the session memory note);
   `pauseOnFocusLoss` must be off; a save is seeded through `odysseyState.completeLevel`.
