@@ -885,7 +885,10 @@ describe('Summer petal simulation', () => {
             const shown = (env) => {
                 sim.step(0, env);
                 return {
-                    glow: drawn(sim, glow), petal: drawn(sim, petal).light, pollen: drawn(sim, pollen).light, down: drawn(sim, 0).light,
+                    glow: drawn(sim, glow),
+                    petal: drawn(sim, petal).light,
+                    pollen: drawn(sim, pollen).light,
+                    down: drawn(sim, 0).light,
                 };
             };
             const full = shown({});
@@ -948,7 +951,7 @@ describe('Summer petal simulation', () => {
             expect(sim.life[hung]).toBeCloseTo(sim.life[loose], 5);
         });
 
-        it('lets the air stop a thrown petal at its place, twice as far for twice the speed, and keeps it there', () => {
+        it('lets the air stop a thrown petal at its place, twice as far for twice the speed, and holds it', () => {
             const sim = create();
             const at = [1, 30, -2];
             const throwOne = (speed) => sim.spawn(...at, 0.6 * speed, 0.8 * speed, 0, { life: 9, hang: 3 });
@@ -1012,7 +1015,7 @@ describe('Summer petal simulation', () => {
             expectFinite(pushed.sim);
         });
 
-        it('leans a hanging petal on the wind only a little, and lets it go sooner once the evening has settled', () => {
+        it('leans a hanging petal on the wind only a little, and lets it go sooner once the game is over', () => {
             const at = [0, 20, 0];
             const fly = (env, hang) => {
                 const sim = create();

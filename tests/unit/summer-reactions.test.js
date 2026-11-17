@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     SUMMER_BLOSSOM_MAYPOLE, SUMMER_BOUQUET_KINDS, SUMMER_MIXED, SUMMER_PIECE_FLOWERS, SUMMER_REACTION_LIMITS,
-    SummerReactions, summerFlowerForPiece,
+    SUMMER_WASH_SECONDS, SummerReactions, summerFlowerForPiece,
 } from '../../src/themes/summer/summer-reactions.js';
 import {
     SUMMER_HOUR_SECONDS, SUMMER_HOUR_TURN_SECONDS, SUMMER_HOURS, summerHourForLevel,
@@ -13,15 +13,17 @@ const LETTERS = Object.keys(SUMMER_PIECE_FLOWERS);
 const FRAME_KEYS = ['epoch', 'level', 'hour', 'crown', 'heat', 'ribbons', 'streak', 'settled', 'species', 'bouquet',
     'bouquetFlash',
     'bouquets', 'picked', 'front', 'rings', 'waves', 'emitters', 'gust', 'warmth', 'shafts', 'glow', 'shimmer',
-    'flock', 'flutter', 'sunburst', 'whirl'];
+    'flock', 'flutter', 'sunburst', 'whirl', 'wash', 'flights'];
+// A level-up's wave of bloom: this is what `wash` reads when none is crossing.
+const NO_WASH = -1;
 // The emitters the director knows how to play (summer-fx-director.js): the whole language.
 const EMITTER_KINDS = ['blossom', 'bouquet', 'clear', 'combo', 'lock', 'rise', 'seeds', 'skip', 'spin'];
 // How many hops a skipping stone may be given, and how many flowers can open over the lake.
 const SKIP_HOPS = [4, 8];
 const SKY_FLOWERS = SUMMER_BOUQUET_KINDS - 1;
-// Whole numbers, and the hour of the night (a phase on its circle); every other number at the
-// top of a frame is a level in 0..1.
-const COUNTERS = ['epoch', 'streak', 'bouquets', 'picked', 'level', 'hour'];
+// Whole numbers, the hour of the night (a phase on its circle) and the level-up's wave (how far
+// across it has got, or NO_WASH); every other number at the top of a frame is a level in 0..1.
+const COUNTERS = ['epoch', 'streak', 'bouquets', 'picked', 'level', 'hour', 'flights', 'wash'];
 const BOARD_ROWS = 20;
 const MALFORMED_COUNTS = [NaN, Infinity, -Infinity, -5, 0, 0.8, '', ' ', 'garbage', null, false, true, [], [4], {},
     { lineCount: [] }, { detail: { lineCount: true } }, Symbol('count'), 4n];
@@ -118,6 +120,9 @@ function frameProblems(frame, reactions) {
         Number.isFinite(frame.hour) && frame.hour >= 0 && frame.hour < SUMMER_HOURS.length,
         `hour = ${String(frame.hour)}`,
     );
+    check(Number.isInteger(frame.flights) && frame.flights >= 0, `flights = ${String(frame.flights)}`);
+    // The wave is on its way across (0 where it sets out, 1 at the far shore), or there is none.
+    check(frame.wash === NO_WASH || unit(frame.wash), `wash = ${String(frame.wash)}`);
     check(frame.species.length >= SUMMER_BOUQUET_KINDS, `${frame.species.length} species`);
     frame.species.forEach((level, kind) => check(unit(level), `species ${kind} = ${level}`));
     check(frame.bouquet.length === SUMMER_BOUQUET_KINDS, `${frame.bouquet.length} lanterns`);
@@ -199,8 +204,11 @@ function expectBounded(frame, reactions) {
  */
 function expectAtRest(frame) {
     for (const [key, value] of Object.entries(frame)) {
-        if (typeof value === 'number' && !['epoch', 'level', 'hour'].includes(key)) expect(value, key).toBe(0);
+        if (typeof value === 'number' && !['epoch', 'level', 'hour', 'wash'].includes(key)) expect(value, key).toBe(0);
     }
+    // No level-up's wave is crossing, and none has been sent this session.
+    expect(frame.wash).toBe(NO_WASH);
+    expect(frame.flights).toBe(0);
     expect(frame.settled).toBe(false);
     expect(frame.front).toBeNull();
     expect(frame.emitters).toEqual([]);
@@ -633,7 +641,8 @@ describe('Summer reaction director', () => {
             // A great flower, if not quite the flowers of a perfect clear.
             const perfect = create();
             perfect.onPerfectClear();
-            const crowning = emittersOf(perfect.frame, 'blossom').find((entry) => entry.lines === SUMMER_BLOSSOM_MAYPOLE);
+            const crowning = emittersOf(perfect.frame, 'blossom')
+                .find((entry) => entry.lines === SUMMER_BLOSSOM_MAYPOLE);
             expect(flower.strength).toBeGreaterThan(0.5);
             expect(flower.strength).toBeLessThan(crowning.strength);
             expect(flower.duration).toBe(crowning.duration);
@@ -1316,7 +1325,7 @@ describe('Summer reaction director', () => {
                 reactions.onCombo(8);
                 advance(reactions, 2.2);
             }
-            const crown = held.frame.crown;
+            const { crown } = held.frame;
             expect(crown).toBeGreaterThan(0.6);
             expect(left.frame.crown).toBe(crown);
             // The combo's hold is nearly up. A back-to-back renews it; without one the crown unwinds.
@@ -1368,7 +1377,9 @@ describe('Summer reaction director', () => {
             expect(peak / 60).toBeLessThan(1);
             for (let step = 1; step <= peak; step++) expect(seen[step]).toBeGreaterThanOrEqual(seen[step - 1]);
             // ... then only ever falling, for a few seconds, to rest exactly.
-            for (let step = peak + 1; step < seen.length; step++) expect(seen[step]).toBeLessThanOrEqual(seen[step - 1]);
+            for (let step = peak + 1; step < seen.length; step++) {
+                expect(seen[step]).toBeLessThanOrEqual(seen[step - 1]);
+            }
             expect(seen.at(-1)).toBe(0);
             expect(seen.length / 60).toBeGreaterThan(3);
             expect(seen.length / 60).toBeLessThan(45);
@@ -1380,7 +1391,7 @@ describe('Summer reaction director', () => {
             again.onTwist();
             const before = advance(again, 1).whirl;
             again.onTwist();
-            expect(again.frame.whirl).toBeGreaterThanOrEqual(before);
+            expect(again.frame.whirl).toBeGreaterThanOrEqual(before - 1e-9);
             const lone = create();
             lone.onTwist();
             expect(advance(again, 1).whirl).toBeGreaterThan(advance(lone, 2).whirl);
@@ -1416,10 +1427,10 @@ describe('Summer reaction director', () => {
             expect(advance(clear, 1).crown).toBe(0);
             let highest = 0;
             for (let step = 0; step < 60 * 3; step++) {
-                const frame = reactions.update(1 / 60);
-                highest = Math.max(highest, frame.crown);
-                expect(frame.ribbons).toBe(0);
-                expect(frame.heat).toBe(0);
+                const turning = reactions.update(1 / 60);
+                highest = Math.max(highest, turning.crown);
+                expect(turning.ribbons).toBe(0);
+                expect(turning.heat).toBe(0);
             }
             expect(highest).toBeGreaterThan(0.2);
             expect(highest).toBeLessThan(0.5);
@@ -1481,7 +1492,7 @@ describe('Summer reaction director', () => {
             },
         );
 
-        it('gives a perfect clear more flowers the more the tier can carry, all six kinds beside the maypole\'s at the top', () => {
+        it('gives a perfect clear more flowers the more the tier can carry, and all seven at the top', () => {
             const flowers = TIERS.map((quality) => {
                 const reactions = create(quality);
                 reactions.onPerfectClear();
@@ -1515,19 +1526,17 @@ describe('Summer reaction director', () => {
                 const frame = reactions.update(1 / 60);
                 clock += 1 / 60;
                 const now = new Map(emittersOf(frame, 'blossom').map((flower) => [flower.serial, flower]));
-                start.forEach((flower, index) => {
+                for (const [index, flower] of start.entries()) {
                     const playing = now.get(flower.serial);
-                    if (!playing) {
-                        if (!gone.has(index)) gone.set(index, clock);
-                        return;
-                    }
-                    // The same slot from the moment it was asked for, however long it waits.
-                    expect(playing.id).toBe(flower.id);
-                    // Its age is the clock less its wait: it never restarts and never skips.
-                    expect(playing.age).toBeCloseTo(clock - waits[index], 9);
-                    expect(playing.progress).toBeCloseTo(Math.max(0, playing.age) / playing.duration, 9);
-                    if (playing.age >= 0 && !opened.has(index)) opened.set(index, clock);
-                });
+                    if (playing) {
+                        // The same slot from the moment it was asked for, however long it waits.
+                        expect(playing.id).toBe(flower.id);
+                        // Its age is the clock less its wait: it never restarts and never skips.
+                        expect(playing.age).toBeCloseTo(clock - waits[index], 9);
+                        expect(playing.progress).toBeCloseTo(Math.max(0, playing.age) / playing.duration, 9);
+                        if (playing.age >= 0 && !opened.has(index)) opened.set(index, clock);
+                    } else if (!gone.has(index)) gone.set(index, clock);
+                }
                 expectBounded(frame, reactions);
             }
             // Every one began its work when its wait was up (to the frame) and played its whole life after.
@@ -1546,7 +1555,9 @@ describe('Summer reaction director', () => {
                 // A flower held back a second, in a pool otherwise full of bursts already under way.
                 const flower = { ...reactions.emit('blossom', { strength: 1, duration: 1.4, delay: 1 }) };
                 expect(flower.age).toBe(-1);
-                for (let slot = 1; slot < capacity; slot++) reactions.emit('clear', { strength: 1, duration: 1.6, lines: 4 });
+                for (let slot = 1; slot < capacity; slot++) {
+                    reactions.emit('clear', { strength: 1, duration: 1.6, lines: 4 });
+                }
                 reactions.update(1 / 60);
                 // A storm of new emitters for as long as it waits: three times the pool, every frame.
                 for (let step = 0; step < 58; step++) {
@@ -1555,7 +1566,8 @@ describe('Summer reaction director', () => {
                             strength: 1, duration: 1.2, lines: 1,
                         });
                     }
-                    const waiting = reactions.update(1 / 60).emitters.find((emitter) => emitter.serial === flower.serial);
+                    const waiting = reactions.update(1 / 60).emitters
+                        .find((emitter) => emitter.serial === flower.serial);
                     expect(waiting, `${quality}, frame ${step}`).toBeDefined();
                     expect(waiting.id).toBe(flower.id);
                     expect(waiting.age).toBeLessThan(0);
@@ -1599,6 +1611,86 @@ describe('Summer reaction director', () => {
             }
             expect(newest(frame.rings).strength).toBeLessThan(live(perfect.frame.rings)[0].strength);
             expect(newest(frame.waves).strength).toBeLessThan(newest(perfect.frame.waves).strength);
+        });
+
+        it('sends a wave of bloom across the meadow and the lake on a level-up, and counts the flight', () => {
+            const reactions = create();
+            expect(reactions.frame).toMatchObject({ wash: NO_WASH, flights: 0 });
+            expect(advance(reactions, 1)).toMatchObject({ wash: NO_WASH, flights: 0 });
+            expect(SUMMER_WASH_SECONDS).toBeGreaterThan(1);
+            expect(SUMMER_WASH_SECONDS).toBeLessThan(6);
+            reactions.onLevelUp({ level: 2 });
+            // It sets out at the eye the moment the level turns ...
+            expect(reactions.frame).toMatchObject({ wash: 0, flights: 1 });
+            // ... and crosses at a steady pace: a share of the way for the same share of its time.
+            let previous = 0;
+            const frames = Math.round(SUMMER_WASH_SECONDS * 60);
+            for (let step = 1; step < frames; step++) {
+                const { wash, flights } = reactions.update(1 / 60);
+                expect(wash).toBeGreaterThan(previous);
+                expect(wash).toBeLessThanOrEqual(1);
+                expect(wash).toBeCloseTo((step / 60) / SUMMER_WASH_SECONDS, 9);
+                expect(flights).toBe(1);
+                previous = wash;
+            }
+            expect(previous).toBeGreaterThan(0.98);
+            // Across: there is no wave any more, from that frame on. The count stays.
+            expect(advance(reactions, 2 / 60)).toMatchObject({ wash: NO_WASH, flights: 1 });
+            for (let step = 0; step < 120; step++) expect(reactions.update(1 / 60).wash).toBe(NO_WASH);
+            // The same wave whatever the frame rate: it is read off the clock.
+            for (const fps of [24, 144]) {
+                const other = create();
+                other.onLevelUp();
+                expect(advance(other, 1, fps).wash).toBeCloseTo(1 / SUMMER_WASH_SECONDS, 9);
+            }
+            // One long frame does not leave it half way.
+            const hitch = create();
+            hitch.onLevelUp();
+            expect(hitch.update(SUMMER_WASH_SECONDS * 2).wash).toBe(NO_WASH);
+        });
+
+        it('counts a flight for every level-up that asks for a flourish, and for nothing else', () => {
+            const reactions = create();
+            // Everything but a level-up: no wave, no flight.
+            reactions.onHardDrop({ distance: 18 });
+            reactions.onPieceLock({ piece: pieceOf('T') });
+            reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
+            reactions.onCombo(7);
+            reactions.onTwist({ piece: pieceOf('T') });
+            reactions.onBackToBack();
+            reactions.onPerfectClear();
+            expect(reactions.frame).toMatchObject({ wash: NO_WASH, flights: 0 });
+            expect(advance(reactions, 0.5)).toMatchObject({ wash: NO_WASH, flights: 0 });
+            // The level alone (the theme's call when effects are off, and a rebuilt scene taking up
+            // its night) turns the hour and sends nothing.
+            expect(reactions.setLevel(5)).toBe(true);
+            expect(reactions.restoreNight({ level: 6, hourTurn: 1, hourDrift: 0.2 })).toBe(true);
+            expect(advance(reactions, 0.5)).toMatchObject({ wash: NO_WASH, flights: 0, level: 6 });
+            // Every level-up is one more, whatever it names, a second wave setting out as the first crosses.
+            reactions.onLevelUp({ level: 7 });
+            advance(reactions, 0.5);
+            reactions.onLevelUp();
+            expect(reactions.frame).toMatchObject({ flights: 2, level: 8 });
+            expect(reactions.frame.wash).toBeGreaterThanOrEqual(0);
+            for (const junk of [null, 'up', { level: NaN }, { detail: { level: 'x' } }]) reactions.onLevelUp(junk);
+            expect(reactions.frame.flights).toBe(6);
+            expectBounded(reactions.frame, reactions);
+            // Game over does not call the wave back.
+            reactions.onGameOver();
+            expect(reactions.frame.wash).toBeGreaterThanOrEqual(0);
+            expect(advance(reactions, SUMMER_WASH_SECONDS + 0.1)).toMatchObject({ wash: NO_WASH, flights: 6 });
+            // A new session counts from nothing again, with no wave left over; so does one that keeps its night.
+            reactions.onLevelUp();
+            reactions.reset({ keepNight: true });
+            expect(reactions.frame).toMatchObject({ wash: NO_WASH, flights: 0 });
+            expect(advance(reactions, 1)).toMatchObject({ wash: NO_WASH, flights: 0 });
+            reactions.onLevelUp();
+            reactions.reset();
+            expect(reactions.frame).toMatchObject({ wash: NO_WASH, flights: 0 });
+            // A disposed director sends none.
+            reactions.dispose();
+            expect(reactions.onLevelUp()).toBe(false);
+            expect(reactions.frame).toMatchObject({ wash: NO_WASH, flights: 0 });
         });
 
         it('settles the evening at game over without cutting the petals already in flight', () => {
@@ -2073,6 +2165,13 @@ describe('Summer reaction director', () => {
                 const random = seededRandom(31);
                 const used = new Set();
                 const kinds = new Set();
+                // What the storm asked for, whether or not it lived to be seen in a frame.
+                const asked = new Set();
+                const emit = reactions.emit.bind(reactions);
+                reactions.emit = (kind, options) => {
+                    asked.add(kind);
+                    return emit(kind, options);
+                };
                 const letter = () => LETTERS[Math.floor(random() * LETTERS.length)];
                 const events = [
                     () => reactions.onPieceLock({
@@ -2104,9 +2203,51 @@ describe('Summer reaction director', () => {
                 expect([...used].sort((a, b) => a - b)).toEqual([...Array(capacity).keys()]);
                 expect(reactions.emitters).toHaveLength(capacity);
                 // The storm reached the whole language, the bouquet, the flowers in the sky and the
-                // skipping stone included.
-                expect([...kinds].sort()).toEqual(EMITTER_KINDS);
+                // skipping stone included. (Asked for, not seen: flowers held back for their turn keep
+                // their slots, so with a perfect clear every tenth of a second, as no game can send
+                // them, the pool is nearly all waiting flowers and the rest are given up within the
+                // frame. What a frame shows at the pace of play is the next test's.)
+                expect([...asked].sort()).toEqual(EMITTER_KINDS);
+                for (const kind of kinds) expect(EMITTER_KINDS).toContain(kind);
+                expect(kinds).toContain('blossom');
                 expect(reactions.frame.bouquets).toBeGreaterThan(0);
+            },
+        );
+
+        // src/core/physics.js holds the cleared rows this long (and then lets the stack settle)
+        // before it can know the board is empty: a perfect clear never comes sooner after its clear.
+        const ROWS_HOLD = 0.16;
+
+        it.each(TIERS.flatMap((quality) => [[quality, 1], [quality, 4]]))(
+            'shows a frame everything a perfect clear asks for at %s, after a clear of %i',
+            (quality, lines) => {
+                const reactions = create(quality);
+                reactions.onHardDrop({ distance: 12 });
+                reactions.onPieceLock({ piece: pieceOf('I') });
+                reactions.onLineClear(lines, { clearedRows: [20, 21, 22, 23].slice(0, lines) });
+                advance(reactions, ROWS_HOLD);
+                const first = reactions.serial;
+                reactions.onPerfectClear();
+                const asked = reactions.serial - first;
+                const frame = reactions.update(1 / 60);
+                // Every emitter of its own is there for the effects to play: the bouquet, each flower
+                // in its turn, and a rising meadow (its own, or the one the four lines raised).
+                const own = frame.emitters.filter((emitter) => emitter.serial >= first);
+                expect(own).toHaveLength(asked);
+                expect(emittersOf(frame, 'bouquet')).toHaveLength(1);
+                expect(emittersOf(frame, 'rise')).toHaveLength(1);
+                const flowers = emittersOf(frame, 'blossom');
+                expect(flowers).toHaveLength(Math.max(1, Math.min(SKY_FLOWERS, reactions.maxEmitters - 4)) + 1);
+                expect(flowers.filter((flower) => flower.lines === SUMMER_BLOSSOM_MAYPOLE)).toHaveLength(1);
+                expectBounded(frame, reactions);
+                // And every flower lives to open, with nothing else happening.
+                const opened = new Set();
+                for (let step = 0; step < 60 * 4; step++) {
+                    for (const flower of emittersOf(reactions.update(1 / 60), 'blossom')) {
+                        if (flower.age > 0.5) opened.add(flower.serial);
+                    }
+                }
+                expect(opened.size).toBe(flowers.length);
             },
         );
 

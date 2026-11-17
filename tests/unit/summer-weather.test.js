@@ -35,7 +35,8 @@ describe('Summer weather', () => {
             // Every scalar is one this file knows the meaning of.
             expect([...SUMMER_WEATHER_SCALARS].sort()).toEqual([...SHARES, ...FACTORS, 'wind'].sort());
             for (const weather of SUMMER_WEATHERS) {
-                expect(Object.keys(weather).sort(), weather.id).toEqual(['id', 'name', ...SUMMER_WEATHER_SCALARS].sort());
+                expect(Object.keys(weather).sort(), weather.id)
+                    .toEqual(['id', 'name', ...SUMMER_WEATHER_SCALARS].sort());
                 for (const key of SUMMER_WEATHER_SCALARS) {
                     expect(Number.isFinite(weather[key]), `${weather.id}.${key}`).toBe(true);
                 }
@@ -97,7 +98,9 @@ describe('Summer weather', () => {
             expect(byId('shower').rays).toBeGreaterThan(fair.rays);
             // After the rain and under the mackerel sky the air stands still and the lake lies flat.
             for (const id of ['mist', 'still']) {
-                for (const key of ['wind', 'drift', 'ruffle']) expect(byId(id)[key], `${id}.${key}`).toBeLessThan(fair[key]);
+                for (const key of ['wind', 'drift', 'ruffle']) {
+                    expect(byId(id)[key], `${id}.${key}`).toBeLessThan(fair[key]);
+                }
             }
             // The mackerel sky has the mackerel field, over a lake like glass.
             expect(most('mackerel')).toBe('still');

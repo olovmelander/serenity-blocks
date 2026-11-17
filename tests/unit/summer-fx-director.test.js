@@ -7,11 +7,15 @@ import { SummerFxDirector } from '../../src/themes/summer/summer-fx-director.js'
 import { SUMMER_PARTICLES, SummerPetalSim } from '../../src/themes/summer/summer-petal-sim.js';
 import { SUMMER_TIERS } from '../../src/themes/summer/summer-quality.js';
 import {
-    SUMMER_BOUQUET_KINDS, SUMMER_MIXED, SUMMER_PIECE_FLOWERS, SummerReactions,
+    SUMMER_HOURS, summerHourAt, summerSunDirection,
+} from '../../src/themes/summer/summer-hours.js';
+import {
+    SUMMER_BLOSSOM_MAYPOLE, SUMMER_BOUQUET_KINDS, SUMMER_MIXED, SUMMER_PIECE_FLOWERS, SUMMER_REACTION_LIMITS,
+    SummerReactions,
 } from '../../src/themes/summer/summer-reactions.js';
 import { SummerRings } from '../../src/themes/summer/summer-rings.js';
 import {
-    SUMMER_DEFAULT_BOARD, SUMMER_STAGE_DEPTH, SummerStage, readSummerBoardRect,
+    SUMMER_DEFAULT_BOARD, SUMMER_STAGE_DEPTH, SummerStage, readSummerBoardRect, readSummerHudRect,
 } from '../../src/themes/summer/summer-stage.js';
 import {
     SUMMER_PLACES, summerGroundHeight, summerShoreDistance,
@@ -22,11 +26,21 @@ const PORTRAIT = 9 / 19.5;
 const STEP = 1 / 60;
 const TIERS = Object.keys(SUMMER_TIERS);
 const LETTERS = Object.keys(SUMMER_PIECE_FLOWERS);
-const { petal: PETAL, seed: SEED, pollen: POLLEN } = SUMMER_PARTICLES;
+const {
+    petal: PETAL, seed: SEED, pollen: POLLEN, glow: GLOW,
+} = SUMMER_PARTICLES;
 /** The pool the director's throws are written for; other tiers scale from it. */
 const REFERENCE = SUMMER_TIERS.High;
 /** Land everywhere, a metre up: for tests that must not depend on where the shore runs. */
 const PLAIN = () => 1;
+/** Open water everywhere, two metres deep. */
+const OPEN_WATER = () => -2;
+/** The single-player score panel as it stands right of the board on a 16:9 screen. */
+const SCORE_PANEL = Object.freeze({
+    x0: 0.624, x1: 0.772, y0: 0.19, y1: 0.49,
+});
+/** The glint where a skipping stone touches the lake: the only light the director lays on the water. */
+const isGlint = (particle) => particle.kind === GLOW && particle.y < 1;
 
 function seededRandom(seed = 271) {
     let state = seed;
@@ -185,6 +199,61 @@ const groundUnder = (point) => Math.max(0, summerGroundHeight(point.x, point.z))
 const pieceOf = (letter, x = 4, y = 20) => ({
     x, y, shape: [[1]], shapeKey: letter,
 });
+/** Where a world point is seen, in screen fractions (y down), as DOM rectangles are measured. */
+const onScreen = (point, camera) => {
+    const seen = ndc(point, camera);
+    return { x: (seen.x + 1) / 2, y: (1 - seen.y) / 2 };
+};
+/** Inside a rectangle of screen fractions. */
+const within = (seen, rect) => seen.x > rect.x0 && seen.x < rect.x1 && seen.y > rect.y0 && seen.y < rect.y1;
+/** A sky flower as the reactions describe one. */
+const flowerOf = (overrides = {}) => ({
+    kind: 'blossom', lines: 0, flower: 2, strength: 1, duration: 1.4, ...overrides,
+});
+
+/**
+ * Open one sky flower into a real petal simulation and let the air carry it for `seconds`: where
+ * its heart is, what was thrown, and where every petal of it has got to.
+ */
+function bloom({
+    aspect = LANDSCAPE, board = null, hud = null, tier = 'High', seconds = 1.5, groundHeight = summerGroundHeight,
+    maypole = maypoleAnchors(), ...flower
+} = {}) {
+    const budget = SUMMER_TIERS[tier];
+    const sim = new SummerPetalSim({
+        count: budget.petals, reserve: Math.round(budget.petals * 0.86), rng: seededRandom(4), groundHeight,
+    });
+    const spawned = vi.spyOn(sim, 'spawn');
+    const made = createDirector({
+        aspect, sim, petals: budget.petals, groundHeight, maypole,
+    });
+    if (board) made.stage.setBoard(board);
+    if (hud) made.stage.setHud(hud);
+    const spec = flowerOf(flower);
+    let fit = null;
+    const steps = Math.round(seconds / STEP);
+    for (let step = 0; step <= steps; step++) {
+        const age = step * STEP;
+        const before = spawned.mock.calls.length;
+        const env = made.director.apply(frameWith(age < spec.duration ? [emitter({ ...spec, age })] : []), STEP);
+        // The share of its full size the flower was given, read in the frame it opened.
+        if (fit === null && spawned.mock.calls.slice(before).some(([, , , , , , options]) => options?.kind === PETAL)) {
+            fit = made.director.blossomFit;
+        }
+        sim.step(STEP, env);
+    }
+    const particles = spawned.mock.calls.map(([x, y, z, vx, vy, vz, options = {}], call) => ({
+        index: spawned.mock.results[call].value, x, y, z, vx, vy, vz, ...options,
+    }));
+    const place = (particle) => new THREE.Vector3(sim.x[particle.index], sim.y[particle.index], sim.z[particle.index]);
+    const heart = made.director.heart.clone();
+    const petals = particles.filter((particle) => particle.kind === PETAL)
+        .map((particle) => ({ ...particle, at: place(particle) }));
+    const reach = Math.max(...petals.map((petal) => petal.at.distanceTo(heart)));
+    return {
+        ...made, sim, heart, particles, petals, fit, reach,
+    };
+}
 
 afterEach(() => {
     vi.unstubAllGlobals();
@@ -681,6 +750,114 @@ describe('Summer stage', () => {
         expect(ndc(framed.centre(), camera).y).toBeCloseTo(0, 9);
     });
 
+    describe('what covers the middle of the screen', () => {
+        it('is the board card alone until a score panel is measured beside it', () => {
+            const stage = new SummerStage(frameCamera());
+            expect(stage.hud).toBeNull();
+            expect(stage.covered()).toEqual({ x0: SUMMER_DEFAULT_BOARD.x0, x1: SUMMER_DEFAULT_BOARD.x1 });
+            // A reading of its own each time: changing one does not move the board.
+            const first = stage.covered();
+            first.x0 = 0;
+            first.x1 = 1;
+            expect(stage.covered()).toEqual({ x0: SUMMER_DEFAULT_BOARD.x0, x1: SUMMER_DEFAULT_BOARD.x1 });
+            expect(stage.board).toEqual(SUMMER_DEFAULT_BOARD);
+            // It follows the card wherever that is measured to be.
+            stage.setBoard({
+                x0: 0.1, x1: 0.4, y0: 0.2, y1: 0.8,
+            });
+            expect(stage.covered()).toEqual({ x0: 0.1, x1: 0.4 });
+        });
+
+        it('is widened by the score panel on whichever side it stands, and by no more than that', () => {
+            const stage = new SummerStage(frameCamera());
+            const { x0, x1 } = SUMMER_DEFAULT_BOARD;
+            // Right of the board, as in single player: the right edge moves out, the left stays.
+            stage.setHud(SCORE_PANEL);
+            expect(stage.covered()).toEqual({ x0, x1: SCORE_PANEL.x1 });
+            expect(stage.hud).toEqual(SCORE_PANEL);
+            // The stage keeps its own copy of the panel.
+            expect(stage.hud).not.toBe(SCORE_PANEL);
+            const measured = { ...SCORE_PANEL };
+            stage.setHud(measured);
+            measured.x1 = 0.99;
+            expect(stage.covered().x1).toBe(SCORE_PANEL.x1);
+            // Left of it: the left edge moves out instead.
+            stage.setHud({
+                x0: 0.2, x1: 0.36, y0: 0.3, y1: 0.6,
+            });
+            expect(stage.covered()).toEqual({ x0: 0.2, x1 });
+            // Straddling the card on both sides: both edges.
+            stage.setHud({
+                x0: 0.3, x1: 0.7, y0: 0.05, y1: 0.08,
+            });
+            expect(stage.covered()).toEqual({ x0: 0.3, x1: 0.7 });
+            // Inside the card's own width (above or below it): nothing is added.
+            stage.setHud({
+                x0: 0.42, x1: 0.58, y0: 0.01, y1: 0.07,
+            });
+            expect(stage.covered()).toEqual({ x0, x1 });
+            // A panel hanging off the screen is clamped onto it.
+            stage.setHud({
+                x0: 0.7, x1: 1.4, y0: -0.2, y1: 0.5,
+            });
+            expect(stage.hud).toEqual({
+                x0: 0.7, x1: 1, y0: 0, y1: 0.5,
+            });
+            expect(stage.covered()).toEqual({ x0, x1: 1 });
+            // The card itself is untouched by all of it: its edges, rows and centre are the board's.
+            const camera = frameCamera();
+            const plain = new SummerStage(camera);
+            const panelled = new SummerStage(camera);
+            panelled.setHud(SCORE_PANEL);
+            expect(panelled.board).toEqual(plain.board);
+            for (const row of [0, 0.5, 1]) {
+                expectVector(panelled.edge(1, row), plain.edge(1, row), 12);
+                expectVector(panelled.edge(-1, row), plain.edge(-1, row), 12);
+            }
+            expectVector(panelled.centre(), plain.centre(), 12);
+            expect(panelled.screen(1, 0)).toEqual(plain.screen(1, 0));
+        });
+
+        it('forgets the panel when it is gone or when what is measured is no panel', () => {
+            const stage = new SummerStage(frameCamera());
+            const board = { x0: SUMMER_DEFAULT_BOARD.x0, x1: SUMMER_DEFAULT_BOARD.x1 };
+            const junk = [null, undefined, {}, 'panel', 42, [], true, {
+                x0: NaN, x1: 0.8, y0: 0.2, y1: 0.5,
+            }, { x0: 0.6, x1: 0.8, y0: 0.2 }, {
+                x0: '0.6', x1: 0.8, y0: 0.2, y1: 0.5,
+            }, {
+                x0: 0.8, x1: 0.6, y0: 0.2, y1: 0.5,
+            }, {
+                x0: 0.6, x1: 0.8, y0: 0.5, y1: 0.2,
+            },
+            // A hairline is not a panel.
+            {
+                x0: 0.7, x1: 0.705, y0: 0.2, y1: 0.5,
+            }, {
+                x0: 0.6, x1: 0.8, y0: 0.2, y1: 0.205,
+            }, {
+                x0: 0.6, x1: Infinity, y0: 0.2, y1: 0.5,
+            }];
+            for (const rect of junk) {
+                stage.setHud(SCORE_PANEL);
+                expect(stage.covered().x1).toBe(SCORE_PANEL.x1);
+                expect(() => stage.setHud(rect)).not.toThrow();
+                expect(stage.hud, JSON.stringify(rect)).toBeNull();
+                expect(stage.covered(), JSON.stringify(rect)).toEqual(board);
+            }
+            // The panel is the page's, not the camera's: it outlasts a refresh and a new board.
+            stage.setHud(SCORE_PANEL);
+            stage.refresh();
+            stage.setBoard({
+                x0: 0.3, x1: 0.5, y0: 0.1, y1: 0.9,
+            });
+            expect(stage.covered()).toEqual({ x0: 0.3, x1: SCORE_PANEL.x1 });
+            // Nonsense for a board falls back to the default card, still widened by the panel.
+            stage.setBoard(null);
+            expect(stage.covered()).toEqual({ x0: SUMMER_DEFAULT_BOARD.x0, x1: SCORE_PANEL.x1 });
+        });
+    });
+
     it('keeps the rest pose it read until it is refreshed', () => {
         const camera = frameCamera();
         const stage = new SummerStage(camera);
@@ -822,6 +999,99 @@ describe('reading the Summer board card from the page', () => {
         vi.stubGlobal('document', undefined);
         vi.stubGlobal('window', undefined);
         expect(readSummerBoardRect()).toBeNull();
+    });
+});
+
+describe('reading the Summer score panel from the page', () => {
+    const SELECTOR = '.single-player-stats-bar';
+    const win = (overrides = {}) => ({
+        innerWidth: 1000, innerHeight: 500, getComputedStyle: (element) => element.style ?? {}, ...overrides,
+    });
+    const panel = ({
+        left = 624, top = 95, width = 148, height = 150, style = {},
+    } = {}) => ({
+        style,
+        getBoundingClientRect: () => ({
+            left, top, right: left + width, bottom: top + height, width, height,
+        }),
+    });
+    const page = (element) => ({ querySelector: vi.fn((selector) => (selector === SELECTOR ? element : null)) });
+
+    it('measures the panel beside the board in screen fractions', () => {
+        const doc = page(panel());
+        const rect = readSummerHudRect(doc, win());
+        expect(doc.querySelector).toHaveBeenCalledExactlyOnceWith(SELECTOR);
+        expect(Object.keys(rect).sort()).toEqual(['x0', 'x1', 'y0', 'y1']);
+        expect(rect.x0).toBeCloseTo(SCORE_PANEL.x0, 12);
+        expect(rect.x1).toBeCloseTo(SCORE_PANEL.x1, 12);
+        expect(rect.y0).toBeCloseTo(SCORE_PANEL.y0, 12);
+        expect(rect.y1).toBeCloseTo(SCORE_PANEL.y1, 12);
+        // What it reads is what the stage takes: the board's cover reaches the panel's far edge.
+        const stage = new SummerStage(frameCamera());
+        stage.setHud(rect);
+        expect(stage.covered().x1).toBeCloseTo(SCORE_PANEL.x1, 12);
+        // A faint panel is still a panel.
+        expect(readSummerHudRect(page(panel({ style: { opacity: '0.3' } })), win())).not.toBeNull();
+    });
+
+    it('reads no panel where none shows: hidden, collapsed, off the screen or not there at all', () => {
+        const ghosts = [
+            panel({ style: { display: 'none' } }),
+            panel({ style: { visibility: 'hidden' } }),
+            panel({ style: { opacity: '0.01' } }),
+            panel({ width: 4 }),
+            panel({ height: 0 }),
+            panel({ left: -500 }),
+            panel({ left: 1000 }),
+            panel({ top: -400 }),
+            panel({ top: 500 }),
+            {},
+            null,
+            undefined,
+        ];
+        for (const ghost of ghosts) expect(readSummerHudRect(page(ghost), win())).toBeNull();
+        // No page, no window, or a page that cannot be asked.
+        expect(readSummerHudRect(null, win())).toBeNull();
+        expect(readSummerHudRect(page(panel()), null)).toBeNull();
+        expect(readSummerHudRect({}, win())).toBeNull();
+        expect(readSummerHudRect({ querySelectorAll: () => [panel()] }, win())).toBeNull();
+        // The stage forgets its panel when it is handed that answer.
+        const stage = new SummerStage(frameCamera());
+        stage.setHud(SCORE_PANEL);
+        stage.setHud(readSummerHudRect(page(null), win()));
+        expect(stage.hud).toBeNull();
+        expect(stage.covered()).toEqual({ x0: SUMMER_DEFAULT_BOARD.x0, x1: SUMMER_DEFAULT_BOARD.x1 });
+    });
+
+    it('never divides by an unknown window size, and reports a panel hanging off the screen as it is', () => {
+        const rect = readSummerHudRect(page(panel({
+            left: 0, top: 0, width: 20, height: 40,
+        })), { innerWidth: 0, innerHeight: undefined });
+        expect(Object.values(rect).every(Number.isFinite)).toBe(true);
+        const hanging = readSummerHudRect(page(panel({ left: 900, width: 300 })), win());
+        expect(hanging.x1).toBeCloseTo(1.2, 12);
+        // The stage clamps it.
+        const stage = new SummerStage(frameCamera());
+        stage.setHud(hanging);
+        expect(stage.hud.x1).toBe(1);
+        expect(stage.covered().x1).toBe(1);
+        // A window that cannot say how an element is styled: the panel is taken as showing.
+        expect(readSummerHudRect(page(panel({ style: { display: 'none' } })), { innerWidth: 1000, innerHeight: 500 }))
+            .not.toBeNull();
+    });
+
+    it('reads the live document and window by default', () => {
+        vi.stubGlobal('window', win());
+        vi.stubGlobal('document', page(panel({
+            left: 700, top: 100, width: 200, height: 300,
+        })));
+        expect(readSummerHudRect()).toEqual({
+            x0: 0.7, x1: 0.9, y0: 0.2, y1: 0.8,
+        });
+        vi.unstubAllGlobals();
+        vi.stubGlobal('document', undefined);
+        vi.stubGlobal('window', undefined);
+        expect(readSummerHudRect()).toBeNull();
     });
 });
 
@@ -1045,8 +1315,13 @@ describe('Summer effects director', () => {
         });
 
         it('takes every ring and gust of a busy frame and keeps count across the wrap of the queues', () => {
-            const { director, rung, blown } = createDirector();
+            const {
+                director, rung, blown, sim,
+            } = createDirector();
             const reactions = new SummerReactions({ rng: seededRandom(1) });
+            // Besides the rings the reactions queue, a back-to-back's stone leaves one where it
+            // touches the lake, with a glint: those are the director's own and are counted apart.
+            const touches = () => sim.thrown().filter(isGlint).length;
             const events = [
                 () => reactions.onPieceLock({ piece: pieceOf('I') }),
                 () => { reactions.onPieceLock({ piece: pieceOf('O') }); reactions.onLineClear(4); },
@@ -1069,13 +1344,16 @@ describe('Summer effects director', () => {
                     expect(reactions.ringSerial - rings).toBeLessThanOrEqual(reactions.rings.length);
                     expect(reactions.waveSerial - gusts).toBeLessThanOrEqual(reactions.waves.length);
                     director.apply(reactions.update(STEP), STEP);
-                    expect(rung).toHaveBeenCalledTimes(reactions.ringSerial);
+                    expect(rung).toHaveBeenCalledTimes(reactions.ringSerial + touches());
                     expect(blown).toHaveBeenCalledTimes(reactions.waveSerial);
                     for (let step = 0; step < 5; step++) director.apply(reactions.update(STEP), STEP);
-                    expect(rung).toHaveBeenCalledTimes(reactions.ringSerial);
+                    expect(rung).toHaveBeenCalledTimes(reactions.ringSerial + touches());
                     expect(blown).toHaveBeenCalledTimes(reactions.waveSerial);
                 }
             }
+            // The stones did skip (four back-to-backs), and each touch was one ring, no more.
+            expect(touches()).toBeGreaterThan(3);
+            expect(touches()).toBeLessThanOrEqual(4 * 8);
             expect(reactions.ringSerial).toBeGreaterThan(reactions.rings.length * 3);
             expect(reactions.waveSerial).toBeGreaterThan(reactions.waves.length * 3);
             expect(director.ringSerial).toBe(reactions.ringSerial - 1);
@@ -1400,10 +1678,14 @@ describe('Summer effects director', () => {
             const log = play(director, sim, [{
                 kind: 'seeds', side: 1, column: 0.8, row: 0, strength: 0.8, duration: 0.9,
             }], { seconds: 1.2 });
-            const thrown = sim.thrown();
+            // (The ring of petals the drop knocks out of the meadow in its first frame is the next test's.)
+            const ring = log[0].spawned - sim.thrown().slice(0, log[0].spawned)
+                .filter((particle) => particle.kind === SEED).length;
+            const thrown = sim.thrown().filter((particle) => particle.kind === SEED);
             expect(thrown.length).toBeGreaterThan(20);
+            expect(sim.thrown().length).toBe(thrown.length + ring);
             // Shaken loose over a moment, not in one frame, and all of it early in the emitter's life.
-            expect(log[0].spawned).toBeLessThan(thrown.length / 2);
+            expect(log[0].spawned - ring).toBeLessThan(thrown.length / 2);
             const last = log.findLastIndex((entry) => entry.spawned > 0);
             expect(log[last].age).toBeGreaterThan(0.1);
             expect(log[last].age).toBeLessThan(0.7);
@@ -1428,10 +1710,97 @@ describe('Summer effects director', () => {
             play(other.director, other.sim, [{
                 kind: 'seeds', side: -1, column: 0.2, row: 0, strength: 0.4, duration: 0.9,
             }], { seconds: 1.2 });
-            expect(other.sim.thrown().length).toBeLessThan(thrown.length);
+            const fewer = other.sim.thrown().filter((particle) => particle.kind === SEED);
+            expect(fewer.length).toBeGreaterThan(0);
+            expect(fewer.length).toBeLessThan(thrown.length);
             if (aspect === LANDSCAPE) {
-                expect(mean(other.sim.thrown().map((seed) => seed.x))).toBeLessThan(mean(thrown.map((seed) => seed.x)));
+                expect(mean(fewer.map((seed) => seed.x))).toBeLessThan(mean(thrown.map((seed) => seed.x)));
             }
+        });
+
+        it.each([
+            ['landscape', LANDSCAPE], ['portrait', PORTRAIT],
+        ])('knocks a ring of the piece\'s own petals out of the meadow where it came down, once (%s)', (_l, aspect) => {
+            const flower = SUMMER_PIECE_FLOWERS.J;
+            const drop = {
+                kind: 'seeds', side: 1, column: 0.7, row: 0, strength: 0.8, duration: 0.9, flower,
+            };
+            const { director, sim, stage } = createDirector({ aspect });
+            const log = play(director, sim, [drop], { seconds: 1.2 });
+            const ring = sim.thrown().filter((particle) => particle.kind !== SEED);
+            expect(ring.length).toBeGreaterThan(20);
+            // All of it in the frame the piece lands: the ring is thrown once and never again.
+            expect(sim.thrown().slice(0, log[0].spawned).filter((particle) => particle.kind !== SEED))
+                .toHaveLength(ring.length);
+            // Three in four are petals of the piece's flower, every fourth a mote of pollen among them.
+            const petals = ring.filter((particle) => particle.kind === PETAL);
+            const pollen = ring.filter((particle) => particle.kind === POLLEN);
+            expect(petals.length + pollen.length).toBe(ring.length);
+            expect(pollen.length).toBe(Math.floor(ring.length / 4));
+            ring.forEach((particle, index) => {
+                expect(particle.kind, `ring ${index}`).toBe(index % 4 === 3 ? POLLEN : PETAL);
+            });
+            const foot = stage.screen(0.7, 0);
+            const under = stage.ground(foot.x, Math.min(1, foot.y + 0.03), summerGroundHeight);
+            for (const particle of ring) {
+                // From the spot the piece came down on, in the meadow ...
+                expect(flatDistance(particle, under)).toBeLessThan(1);
+                expect(summerGroundHeight(particle.x, particle.z)).toBeGreaterThan(0);
+                // ... over the heads of the flowers (among them it would never be seen), and leaping up.
+                expect(particle.y).toBeGreaterThanOrEqual(groundUnder(particle) + 1.3 - 1e-9);
+                expect(particle.y).toBeLessThan(groundUnder(particle) + 2);
+                expect(particle.vy).toBeGreaterThan(1.5);
+                expect(particle.life).toBeGreaterThan(1);
+                expect([particle.x, particle.y, particle.z, particle.vx, particle.vy, particle.vz]
+                    .every(Number.isFinite)).toBe(true);
+            }
+            for (const petal of petals) {
+                expect(petal.flower).toBe(flower);
+                // Large enough to read as petals, and carried out a moment before they start to fall.
+                expect(petal.size).toBeGreaterThanOrEqual(0.09);
+                expect(petal.size).toBeLessThanOrEqual(0.15);
+                expect(petal.hang).toBeGreaterThan(0.1);
+                expect(petal.hang).toBeLessThan(1);
+            }
+            for (const mote of pollen) expect(mote.hang || 0).toBe(0);
+            // A ring: out all round the spot, fastest across the view, each a step further round than the last.
+            const bearings = ring.map((particle) => Math.atan2(particle.vz / 0.6, particle.vx));
+            for (const quadrant of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+                expect(ring.filter((particle) => particle.vx * quadrant[0] > 0 && particle.vz * quadrant[1] > 0).length)
+                    .toBeGreaterThan(ring.length / 8);
+            }
+            expect(new Set(bearings.map((bearing) => bearing.toFixed(2))).size).toBeGreaterThan(ring.length * 0.9);
+            expect(Math.max(...ring.map((particle) => Math.abs(particle.vx))))
+                .toBeGreaterThan(Math.max(...ring.map((particle) => Math.abs(particle.vz))));
+            for (const particle of ring) expect(Math.hypot(particle.vx, particle.vz)).toBeGreaterThan(2);
+            // The same frame again, and every later frame of the same drop, throws no second ring;
+            // the next hard drop in the same slot throws its own.
+            const again = createDirector({ aspect });
+            const count = () => again.sim.thrown().filter((particle) => particle.kind !== SEED).length;
+            const landed = (serial, age = 0) => frameWith([emitter({
+                ...drop, id: 2, serial, age,
+            })]);
+            again.director.apply(landed(5), STEP);
+            expect(count()).toBe(ring.length);
+            again.director.apply(landed(5), STEP);
+            again.director.apply(landed(5, 0.2), STEP);
+            expect(count()).toBe(ring.length);
+            again.director.apply(landed(6), STEP);
+            expect(count()).toBe(ring.length * 2);
+            // A longer fall knocks out more, faster; a smaller pool fewer; a piece nobody named, petals of every kind.
+            const ringOf = (overrides, options) => {
+                const made = createDirector({ aspect, ...options });
+                made.director.apply(frameWith([emitter({ ...drop, ...overrides })]), STEP);
+                return made.sim.thrown().filter((particle) => particle.kind !== SEED);
+            };
+            const gentle = ringOf({ strength: 0.35 });
+            expect(gentle.length).toBeGreaterThan(5);
+            expect(gentle.length).toBeLessThan(ring.length);
+            const speed = (particles) => mean(particles.map((particle) => Math.hypot(particle.vx, particle.vz)));
+            expect(speed(gentle)).toBeLessThan(speed(ring));
+            expect(ringOf({}, { petals: SUMMER_TIERS.Minimal.petals }).length).toBeLessThan(ring.length / 2);
+            expect(ringOf({ flower: SUMMER_MIXED }).filter((particle) => particle.kind === PETAL)
+                .every((petal) => petal.flower === SUMMER_MIXED)).toBe(true);
         });
     });
 
@@ -1631,6 +2000,870 @@ describe('Summer effects director', () => {
             }).not.toThrow();
             expect(sim.spawn).not.toHaveBeenCalled();
             expect(log.every((entry) => entry.fields.length === 0)).toBe(true);
+        });
+    });
+
+    describe('flowers in the sky', () => {
+        /** The frames of a played log with what each one threw. */
+        const byFrame = (log, thrown) => {
+            let from = 0;
+            return log.map((entry) => {
+                const frame = { ...entry, thrown: thrown.slice(from, from + entry.spawned) };
+                from += entry.spawned;
+                return frame;
+            });
+        };
+        const spotOf = (director, lines) => director.blossomSpot(emitter(flowerOf({ lines })), new THREE.Vector3());
+        const SKY = [0, 1, 2, 3, 4, 5];
+
+        it('waits its turn, climbs as a thread of pollen, and opens exactly once', () => {
+            const { director, sim } = createDirector();
+            const flower = flowerOf({ lines: 1, flower: 3 });
+            // Held back for its turn (its age runs up from below zero): nothing at all.
+            for (const age of [-1.2, -0.5, -STEP]) {
+                const env = director.apply(frameWith([emitter({ ...flower, age })]), STEP);
+                expect(env.fields).toEqual([]);
+            }
+            expect(sim.spawn).not.toHaveBeenCalled();
+            const frames = byFrame(play(director, sim, [flower], { seconds: 1.38 }), sim.thrown());
+            const heart = director.heart.clone();
+            const opening = frames.findIndex((frame) => frame.thrown.some((particle) => particle.kind === PETAL));
+            // A moment's climb, and then it opens: well inside its emitter's life.
+            expect(frames[opening].age).toBeGreaterThan(0.25);
+            expect(frames[opening].age).toBeLessThan(0.7);
+            // The climb: pollen only, a couple of dozen motes over many frames, under the heart
+            // and on their way up to it, the later ones higher.
+            const thread = frames.slice(0, opening).flatMap((frame) => frame.thrown);
+            expect(thread.length).toBeGreaterThan(10);
+            expect(thread.length).toBeLessThan(40);
+            expect(frames.slice(0, opening).filter((frame) => frame.spawned > 0).length).toBeGreaterThan(8);
+            for (const mote of thread) {
+                expect(mote.kind).toBe(POLLEN);
+                expect(Math.hypot(mote.x - heart.x, mote.z - heart.z)).toBeLessThan(0.3);
+                expect(mote.y).toBeLessThanOrEqual(heart.y + 1e-9);
+                expect(mote.y).toBeGreaterThan(heart.y - 4.5);
+                expect(mote.vy).toBeGreaterThan(1);
+                expect(mote.life).toBeLessThan(1.5);
+            }
+            expect(thread.at(-1).y).toBeGreaterThan(thread[0].y + 1.5);
+            expect(thread.at(-1).y).toBeGreaterThan(heart.y - 0.5);
+            // The opening: every petal from the one heart, one light in it, and a ring of pollen off it.
+            const burst = frames[opening].thrown;
+            expect(burst.filter((particle) => particle.kind === PETAL).length).toBeGreaterThan(150);
+            expect(burst.filter((particle) => particle.kind === GLOW)).toHaveLength(1);
+            expect(burst.filter((particle) => particle.kind === POLLEN).length).toBeGreaterThan(8);
+            expect(burst.filter((particle) => particle.kind === SEED)).toEqual([]);
+            for (const particle of burst) expect([particle.x, particle.y, particle.z]).toEqual(heart.toArray());
+            const [light] = burst.filter((particle) => particle.kind === GLOW);
+            expect([light.vx, light.vy, light.vz]).toEqual([0, 0, 0]);
+            // The light is about the size of the flower, and gone while the petals still hang.
+            expect(light.size).toBeGreaterThan(0.8);
+            expect(light.size).toBeLessThan(2.5);
+            expect(light.life).toBeGreaterThan(0.5);
+            expect(light.life).toBeLessThan(3);
+            // Nothing more for the rest of its life, nor when the same frame is applied again.
+            expect(sum(frames.slice(opening + 1).map((frame) => frame.spawned))).toBe(0);
+            const thrown = sim.spawn.mock.calls.length;
+            director.apply(frameWith([emitter({ ...flower, age: 1.2 })]), STEP);
+            director.apply(frameWith([emitter({ ...flower, age: 1.2 })]), 0);
+            expect(sim.spawn.mock.calls.length).toBe(thrown);
+            // A flower needs no field: the air alone stops its petals where they belong.
+            expect(frames.every((frame) => frame.fields.length === 0)).toBe(true);
+            // One first seen when its climb is already over opens all the same, once.
+            const late = createDirector();
+            late.director.apply(frameWith([emitter({ ...flower, age: 1 })]), STEP);
+            late.director.apply(frameWith([emitter({ ...flower, age: 1 + STEP })]), STEP);
+            expect(late.sim.thrown().filter((particle) => particle.kind === GLOW)).toHaveLength(1);
+            expect(late.sim.thrown().filter((particle) => particle.kind === PETAL).length)
+                .toBe(burst.filter((particle) => particle.kind === PETAL).length);
+        });
+
+        // Every throw the director makes is a real place in the air, where it can be seen (the
+        // storm over the real meadow further down holds all of them to that): so is the thread.
+        it.each([
+            ['the board', null], ['the board and its score panel', SCORE_PANEL],
+        ])('starts the thread of every flower in the air over the meadow, beside %s', (_label, hud) => {
+            const under = {};
+            for (const lines of [...SKY, SUMMER_BLOSSOM_MAYPOLE]) {
+                const { director, sim, stage } = createDirector();
+                if (hud) stage.setHud(hud);
+                play(director, sim, [flowerOf({ lines })], { seconds: 0.4 });
+                const thread = sim.thrown();
+                expect(thread.length).toBeGreaterThan(10);
+                expect(thread.every((mote) => mote.kind === POLLEN)).toBe(true);
+                const clear = thread.map((mote) => mote.y - groundUnder(mote));
+                const buried = clear.filter((height) => !(height > 0.1));
+                if (buried.length) {
+                    under[`flower ${lines}`] = `${buried.length} of ${thread.length} motes thrown at or under the `
+                        + `ground, the lowest ${(-Math.min(...clear)).toFixed(2)} m below it`;
+                }
+            }
+            expect(under).toEqual({});
+        });
+
+        it.each([0, 1, 2, 3, 4, 5, 6, SUMMER_MIXED])(
+            'draws a flower of kind %i in the air facing the camera: five to eight great petals of small ones',
+            (kind) => {
+                const { director, sim, stage } = createDirector();
+                const seed = 0.37;
+                play(director, sim, [flowerOf({ flower: kind, seed })], { seconds: 1 });
+                const petals = sim.thrown().filter((particle) => particle.kind === PETAL);
+                expect(petals.length).toBeGreaterThan(150);
+                const turned = petals.map((petal) => {
+                    const velocity = new THREE.Vector3(petal.vx, petal.vy, petal.vz);
+                    return {
+                        ...petal,
+                        speed: velocity.length(),
+                        // Round the heart in the plane the camera looks at, and out of that plane.
+                        angle: Math.atan2(velocity.dot(stage.up), velocity.dot(stage.right)),
+                        depth: velocity.dot(stage.forward),
+                    };
+                });
+                for (const petal of turned) {
+                    // Flung outward in the picture's own plane, hardly toward the eye or away.
+                    expect(petal.speed).toBeGreaterThan(0.3);
+                    expect(petal.speed).toBeLessThan(4);
+                    expect(Math.abs(petal.depth)).toBeLessThan(0.3);
+                    // Held where the air stops it, long enough to be seen as the flower it is, and
+                    // lit a little while it is; then it has seconds left to fall.
+                    expect(petal.hang).toBeGreaterThan(1);
+                    expect(petal.hang).toBeLessThan(3);
+                    expect(petal.life).toBeGreaterThan(petal.hang + 1);
+                    expect(petal.shine).toBeGreaterThan(0);
+                    expect(petal.shine).toBeLessThanOrEqual(1);
+                    expect(petal.size).toBeGreaterThan(0.05);
+                    expect(petal.size).toBeLessThan(0.4);
+                }
+                // Great petals stand evenly round the heart, with open air between them: exactly
+                // one count from five to eight fits where the small petals were thrown.
+                const offAxis = (angle, lobes) => {
+                    const spacing = (Math.PI * 2) / lobes;
+                    const turn = (((angle - seed * Math.PI * 2) % spacing) + spacing) % spacing;
+                    return Math.min(turn, spacing - turn);
+                };
+                const fitting = [5, 6, 7, 8].filter((lobes) => turned
+                    .every((petal) => offAxis(petal.angle, lobes) < (0.82 * Math.PI) / lobes));
+                expect(fitting).toHaveLength(1);
+                const [lobes] = fitting;
+                // Thin at the heart and at the tip, widest between: the slow petals near the heart
+                // and the fastest at the tips keep closer to their great petal's axis than those between.
+                const spread = (from, to) => Math.max(...turned
+                    .filter((petal) => petal.speed >= from && petal.speed < to)
+                    .map((petal) => offAxis(petal.angle, lobes)));
+                const fastest = Math.max(...turned.map((petal) => petal.speed));
+                expect(spread(fastest * 0.4, fastest * 0.7)).toBeGreaterThan(spread(fastest * 0.93, Infinity));
+                if (kind === SUMMER_MIXED) {
+                    // Every colour at once, a colour to each great petal.
+                    expect(new Set(petals.map((petal) => petal.flower)).size).toBe(SUMMER_BOUQUET_KINDS);
+                    const colours = new Map();
+                    for (const petal of turned) {
+                        const lobe = Math.round((((petal.angle - seed * Math.PI * 2) / (Math.PI * 2)) * lobes)) % lobes;
+                        const key = (lobe + lobes) % lobes;
+                        if (!colours.has(key)) colours.set(key, new Set());
+                        colours.get(key).add(petal.flower);
+                    }
+                    expect(colours.size).toBe(lobes);
+                    for (const kinds of colours.values()) expect(kinds.size).toBe(1);
+                } else for (const petal of petals) expect(petal.flower).toBe(kind);
+            },
+        );
+
+        it('gives the seven kinds flowers of different make, and a weaker flower fewer and shorter petals', () => {
+            const fastestOf = (petals) => Math.max(...petals.map((petal) => Math.hypot(petal.vx, petal.vy, petal.vz)));
+            const made = (overrides) => {
+                const { director, sim } = createDirector();
+                play(director, sim, [flowerOf(overrides)], { seconds: 0.8 });
+                const petals = sim.thrown().filter((particle) => particle.kind === PETAL);
+                return { count: petals.length, fastest: fastestOf(petals) };
+            };
+            const full = made({ strength: 1 });
+            const weak = made({ strength: 0.5 });
+            expect(weak.count).toBeLessThan(full.count * 0.7);
+            expect(weak.count).toBeGreaterThan(full.count * 0.3);
+            expect(weak.fastest).toBeLessThan(full.fastest);
+            // No strength at all is still a flower: the director never opens nothing.
+            expect(made({ strength: 0 }).count).toBeGreaterThan(10);
+            // The pool scales the petals, not the flower.
+            const { director, sim } = createDirector({ petals: SUMMER_TIERS.Minimal.petals });
+            play(director, sim, [flowerOf()], { seconds: 0.8 });
+            const few = sim.thrown().filter((particle) => particle.kind === PETAL);
+            expect(few.length).toBeGreaterThan(20);
+            expect(few.length).toBeLessThan(full.count / 2);
+            expect(fastestOf(few)).toBeCloseTo(full.fastest, 0);
+        });
+
+        it('lets the air stop the petals where the flower is drawn, holds it there, and then lets it fall', () => {
+            const flower = bloom({ lines: 1, seconds: 1.5 });
+            const { sim, heart, petals } = flower;
+            expect(flower.fit).toBe(1);
+            expect(petals.length).toBeGreaterThan(150);
+            // A flower a couple of metres across, round its heart, in the plane facing the camera.
+            expect(flower.reach).toBeGreaterThan(0.9);
+            expect(flower.reach).toBeLessThan(1.7);
+            const depth = petals.map((petal) => Math.abs(petal.at.clone().sub(heart).dot(flower.stage.forward)));
+            expect(Math.max(...depth)).toBeLessThan(0.4);
+            const centre = petals.reduce((total, petal) => total.add(petal.at), new THREE.Vector3())
+                .divideScalar(petals.length);
+            expect(centre.distanceTo(heart)).toBeLessThan(0.25);
+            // It hangs: a fifth of a second on, no petal has moved more than a hand's breadth.
+            const where = (petal) => new THREE.Vector3(sim.x[petal.index], sim.y[petal.index], sim.z[petal.index]);
+            const env = { ...flower.director.env, fields: [] };
+            for (let step = 0; step < 12; step++) sim.step(STEP, env);
+            for (const petal of petals) expect(where(petal).distanceTo(petal.at)).toBeLessThan(0.12);
+            // Then the petals let go and come down, and in the end the air is clear again.
+            const height = () => mean(petals.filter((petal) => sim.life[petal.index] > 0)
+                .map((petal) => where(petal).y));
+            const held = height();
+            for (let step = 0; step < 60 * 2; step++) sim.step(STEP, env);
+            expect(height()).toBeLessThan(held - 0.4);
+            for (let step = 0; step < 60 * 5; step++) sim.step(STEP, env);
+            expect(sim.counts().live).toBe(0);
+            // A weaker flower is a smaller one.
+            expect(bloom({ lines: 1, strength: 0.4 }).reach).toBeLessThan(flower.reach * 0.92);
+        });
+
+        it('opens the six flowers of a perfect clear in the open air beside the board, left and right in turn', () => {
+            const { director, stage, camera } = createDirector();
+            const { board } = stage;
+            const hearts = SKY.map((lines) => spotOf(director, lines));
+            hearts.forEach((heart, index) => {
+                const seen = onScreen(heart, camera);
+                // Never behind the card: in the strip left of it, then the strip right of it, in turn.
+                if (index % 2 === 0) expect(seen.x, `flower ${index}`).toBeLessThan(board.x0);
+                else expect(seen.x, `flower ${index}`).toBeGreaterThan(board.x1);
+                // On the screen, in the sky and the air over the lake, not down in the meadow.
+                expect(seen.x).toBeGreaterThan(0.02);
+                expect(seen.x).toBeLessThan(0.98);
+                expect(seen.y).toBeGreaterThan(0.1);
+                expect(seen.y).toBeLessThan(0.6);
+                // Nearer than the trees that frame the picture, about as far as the board's own plane.
+                const depth = heart.clone().sub(stage.origin).dot(stage.forward);
+                expect(depth).toBeGreaterThanOrEqual(7);
+                expect(depth).toBeLessThanOrEqual(8.5);
+                expect(heart.y).toBeGreaterThan(groundUnder(heart) + 2.5);
+                expect(director.blossomFit, `flower ${index}`).toBe(1);
+            });
+            // Six places, no two of them the same patch of sky.
+            hearts.forEach((heart, index) => hearts.slice(index + 1).forEach((other) => {
+                expect(heart.distanceTo(other)).toBeGreaterThan(1.2);
+            }));
+            // A place past the sixth comes round to the first; one that is no place is the first.
+            expectVector(spotOf(director, 6), hearts[0], 12);
+            expectVector(spotOf(director, 9), hearts[3], 12);
+            expectVector(spotOf(director, -3), hearts[0], 12);
+            expectVector(spotOf(director, 2.2), hearts[2], 12);
+            // It writes into the vector it is given.
+            const target = new THREE.Vector3(9, 9, 9);
+            expect(director.blossomSpot(emitter(flowerOf({ lines: 4 })), target)).toBe(target);
+            expectVector(target, hearts[4], 12);
+            // The card moves: the flowers move with it and stay clear of it.
+            stage.setBoard({
+                x0: 0.52, x1: 0.74, y0: 0.1, y1: 0.9,
+            });
+            SKY.forEach((lines) => {
+                const seen = onScreen(spotOf(director, lines), camera);
+                expect(seen.x < 0.52 || seen.x > 0.74, `flower ${lines}`).toBe(true);
+                expect(seen.x > 0.52).toBe(lines % 2 === 1);
+            });
+        });
+
+        // The flower as it hangs fully opened, a good second after it burst (its petals are thrown
+        // so that the air stops them at their places, and are all still held there).
+        it.each(SKY)('keeps the petals of sky flower %i out from behind the board card', (lines) => {
+            const flower = bloom({ lines, seconds: 1.6 });
+            const seen = flower.petals.map((petal) => onScreen(petal.at, flower.camera));
+            const hidden = seen.filter((place) => within(place, flower.stage.board));
+            // The whole flower is drawn beside the card, not only its heart: all but a stray petal.
+            expect(hidden.length, `${hidden.length} of ${seen.length} petals behind the card`)
+                .toBeLessThanOrEqual(seen.length * 0.01);
+            // And most of it is on the screen.
+            const off = seen.filter((place) => place.x < 0 || place.x > 1 || place.y < 0 || place.y > 1);
+            expect(off.length).toBeLessThan(flower.petals.length * 0.1);
+        });
+
+        it('keeps every flower clear of the score panel when one stands beside the board', () => {
+            const { director, stage, camera } = createDirector();
+            const plain = SKY.map((lines) => onScreen(spotOf(director, lines), camera));
+            stage.setHud(SCORE_PANEL);
+            const covered = stage.covered();
+            expect(covered).toEqual({ x0: stage.board.x0, x1: SCORE_PANEL.x1 });
+            const room = 1 - covered.x1;
+            const seen = SKY.map((lines) => onScreen(spotOf(director, lines), camera));
+            seen.forEach((place, index) => {
+                // Outside everything that covers the middle, the panel included, on its own side.
+                if (index % 2 === 0) expect(place.x, `flower ${index}`).toBeLessThan(covered.x0);
+                else expect(place.x, `flower ${index}`).toBeGreaterThan(covered.x1);
+                expect(place.x).toBeGreaterThan(0);
+                expect(place.x).toBeLessThan(1);
+                expect(within(place, SCORE_PANEL), `flower ${index}`).toBe(false);
+                expect(within(place, stage.board), `flower ${index}`).toBe(false);
+            });
+            // The open side keeps its two columns exactly as without the panel.
+            for (const index of [0, 2, 4]) {
+                expect(seen[index].x).toBeCloseTo(plain[index].x, 9);
+                expect(seen[index].y).toBeCloseTo(plain[index].y, 9);
+            }
+            // The panel's side is a narrow strip: its three stand one above another down the
+            // middle of it, at the heights the director keeps for a stack.
+            const STACK = [0.2, 0.46, 0.7];
+            [1, 3, 5].forEach((index, level) => {
+                expect(seen[index].x, `flower ${index}`).toBeCloseTo(covered.x1 + room / 2, 9);
+                expect(seen[index].y, `flower ${index}`).toBeCloseTo(STACK[level], 9);
+            });
+            // The panel on the other side of the board: the stack is on that side instead.
+            stage.setHud({
+                x0: 1 - SCORE_PANEL.x1, x1: 1 - SCORE_PANEL.x0, y0: SCORE_PANEL.y0, y1: SCORE_PANEL.y1,
+            });
+            const mirrored = SKY.map((lines) => onScreen(spotOf(director, lines), camera));
+            [0, 2, 4].forEach((index, level) => {
+                expect(mirrored[index].x).toBeCloseTo(stage.covered().x0 / 2, 9);
+                expect(mirrored[index].y).toBeCloseTo(STACK[level], 9);
+            });
+            for (const index of [1, 3, 5]) expect(mirrored[index].x).toBeGreaterThan(stage.board.x1);
+            // The panel gone: the flowers are back where they were.
+            stage.setHud(null);
+            SKY.forEach((lines) => {
+                const place = onScreen(spotOf(director, lines), camera);
+                expect(place.x).toBeCloseTo(plain[lines].x, 9);
+                expect(place.y).toBeCloseTo(plain[lines].y, 9);
+            });
+        });
+
+        it.each([1, 3, 5])('draws stacked flower %i to fit the strip beside the score panel, petals and all', (
+            lines,
+        ) => {
+            const flower = bloom({ lines, hud: SCORE_PANEL, seconds: 1.6 });
+            const covered = flower.stage.covered();
+            const seen = flower.petals.map((petal) => onScreen(petal.at, flower.camera));
+            // Not a petal behind the panel or the card, and all but the rim inside the strip.
+            expect(seen.filter((place) => within(place, SCORE_PANEL))).toEqual([]);
+            expect(seen.filter((place) => within(place, flower.stage.board))).toEqual([]);
+            const outside = seen.filter((place) => place.x < covered.x1 || place.x > 1);
+            expect(outside.length).toBeLessThanOrEqual(flower.petals.length * 0.03);
+            expect(flower.fit).toBeLessThanOrEqual(1);
+            expect(flower.fit).toBeGreaterThan(0.8);
+        });
+
+        it('scales a flower down to fit a narrow strip, never up, and never to nothing', () => {
+            const { director, stage } = createDirector();
+            const fitOf = (lines) => {
+                spotOf(director, lines);
+                return director.blossomFit;
+            };
+            // Wide strips on both sides: every flower at its full size.
+            expect(director.blossomFit).toBe(1);
+            for (const lines of SKY) expect(fitOf(lines)).toBe(1);
+            // The narrower the strip on a flower's side, the smaller it is drawn; the other side keeps its size.
+            const fits = [0.29, 0.25, 0.2, 0.16, 0.141].map((room) => {
+                stage.setHud({
+                    x0: 0.62, x1: 1 - room, y0: 0.2, y1: 0.5,
+                });
+                expect(1 - stage.covered().x1).toBeCloseTo(room, 12);
+                for (const lines of [0, 2, 4]) expect(fitOf(lines), `left, room ${room}`).toBe(1);
+                const side = [1, 3, 5].map(fitOf);
+                for (const fit of side) {
+                    expect(fit, `room ${room}`).toBeGreaterThan(0);
+                    expect(fit, `room ${room}`).toBeLessThanOrEqual(1);
+                }
+                return side;
+            });
+            for (let index = 1; index < fits.length; index++) {
+                fits[index].forEach((fit, flower) => {
+                    const wider = fits[index - 1][flower];
+                    // Whole while it fits; smaller with every bit of room it loses after that.
+                    if (wider < 1) expect(fit).toBeLessThan(wider);
+                    else expect(fit).toBeLessThanOrEqual(1);
+                });
+            }
+            expect(Math.max(...fits[0])).toBe(1);
+            expect(Math.max(...fits.at(-1))).toBeLessThan(0.75);
+            // In proportion: half the room, half the flower (once it no longer fits whole).
+            stage.setHud({
+                x0: 0.62, x1: 0.8, y0: 0.2, y1: 0.5,
+            });
+            const wide = fitOf(1);
+            stage.setHud({
+                x0: 0.62, x1: 0.85, y0: 0.2, y1: 0.5,
+            });
+            expect(fitOf(1) / wide).toBeCloseTo(0.75, 9);
+            // The next flower on the open side is whole again: the fit is each flower's own.
+            expect(fitOf(0)).toBe(1);
+            // It is the flower that shrinks, not the count of its petals.
+            const whole = bloom({ lines: 1 });
+            const fitted = bloom({
+                lines: 1,
+                hud: {
+                    x0: 0.62, x1: 0.84, y0: 0.2, y1: 0.5,
+                },
+            });
+            expect(fitted.fit).toBeLessThan(0.75);
+            expect(fitted.petals.length).toBe(whole.petals.length);
+            expect(fitted.reach / whole.reach).toBeGreaterThan(fitted.fit * 0.85);
+            expect(fitted.reach / whole.reach).toBeLessThan(fitted.fit * 1.15);
+        });
+
+        it('stands the flowers in two columns, in a stack or in a row above the board by the room beside it', () => {
+            const { director, stage, camera } = createDirector();
+            const layout = (room) => {
+                stage.setBoard({
+                    x0: room, x1: 1 - room, y0: 0.16, y1: 0.9,
+                });
+                return SKY.map((lines) => {
+                    const place = onScreen(spotOf(director, lines), camera);
+                    return { ...place, fit: director.blossomFit };
+                });
+            };
+            // Room enough: two columns a side, each flower at its own height.
+            for (const room of [0.301, 0.36, 0.45]) {
+                const seen = layout(room);
+                expect(new Set(seen.map((place) => place.x.toFixed(4))).size, `room ${room}`).toBe(6);
+                seen.forEach((place, index) => {
+                    const beside = index % 2 === 0 ? place.x < room : place.x > 1 - room;
+                    expect(beside, `room ${room}, flower ${index}`).toBe(true);
+                });
+            }
+            // A narrow strip: one column a side, down its middle, three heights.
+            for (const room of [0.141, 0.2, 0.299]) {
+                const seen = layout(room);
+                for (const index of [0, 2, 4]) expect(seen[index].x, `room ${room}`).toBeCloseTo(room / 2, 9);
+                for (const index of [1, 3, 5]) expect(seen[index].x, `room ${room}`).toBeCloseTo(1 - room / 2, 9);
+                expect(seen[0].y).toBeLessThan(seen[2].y - 0.15);
+                expect(seen[2].y).toBeLessThan(seen[4].y - 0.15);
+                [0, 2, 4].forEach((index) => expect(seen[index + 1].y).toBeCloseTo(seen[index].y, 9));
+                for (const place of seen) {
+                    expect(place.y).toBeGreaterThan(0.1);
+                    expect(place.y).toBeLessThan(0.8);
+                }
+            }
+            // No room at all: a row above the board, left to right, small enough to stand side by side.
+            for (const room of [0, 0.05, 0.139]) {
+                const seen = layout(room);
+                seen.forEach((place, index) => {
+                    expect(place.x, `room ${room}`).toBeCloseTo((index + 0.5) / 6, 9);
+                    expect(place.y, `room ${room}`).toBeLessThan(0.16);
+                    expect(place.y).toBeGreaterThan(0.03);
+                    expect(place.y).toBeCloseTo(seen[0].y, 9);
+                    expect(place.fit).toBeLessThanOrEqual(1);
+                });
+            }
+            // A board hard against the top of the screen still leaves the row on the screen.
+            stage.setBoard({
+                x0: 0.02, x1: 0.98, y0: 0, y1: 0.9,
+            });
+            for (const lines of SKY) expect(onScreen(spotOf(director, lines), camera).y).toBeGreaterThan(0.03);
+        });
+
+        it('opens them in a row above the board on an upright screen, each fitted to its sixth of the width', () => {
+            const phone = {
+                x0: 0.05, x1: 0.95, y0: 0.16, y1: 0.9,
+            };
+            const seen = [];
+            for (const lines of SKY) {
+                const flower = bloom({
+                    aspect: PORTRAIT, board: phone, lines, seconds: 1.6,
+                });
+                const heart = onScreen(flower.heart, flower.camera);
+                expect(heart.y).toBeLessThan(phone.y0);
+                expect(heart.x).toBeCloseTo((lines + 0.5) / 6, 6);
+                expect(flower.fit).toBeLessThan(0.6);
+                expect(flower.fit).toBeGreaterThan(0.05);
+                const places = flower.petals.map((petal) => onScreen(petal.at, flower.camera));
+                // Above the card, on the screen, and inside its own sixth of the width but for the rim.
+                expect(places.filter((place) => within(place, phone))).toEqual([]);
+                expect(places.filter((place) => place.y < 0 || place.x < 0 || place.x > 1).length)
+                    .toBeLessThanOrEqual(flower.petals.length * 0.03);
+                const strayed = places.filter((place) => Math.abs(place.x - heart.x) > 1 / 12 + 0.01);
+                expect(strayed.length).toBeLessThanOrEqual(flower.petals.length * 0.03);
+                seen.push(heart.x);
+            }
+            expect(seen).toEqual([...seen].sort((a, b) => a - b));
+        });
+
+        it('opens the bouquet\'s own flower on the line of sight to the maypole\'s head, nearer than the pole', () => {
+            const CROWN_DEPTH = 8.2;
+            const maypole = maypoleAnchors();
+            const phone = {
+                x0: 0.05, x1: 0.95, y0: 0.16, y1: 0.9,
+            };
+            for (const [aspect, hud, board] of [[LANDSCAPE, null, null], [LANDSCAPE, SCORE_PANEL, null],
+                [21 / 9, null, null], [PORTRAIT, null, phone]]) {
+                const { director, stage, camera } = createDirector({ aspect, maypole });
+                if (hud) stage.setHud(hud);
+                if (board) stage.setBoard(board);
+                // A narrow strip's flower first, so a fit is left over to be cleared.
+                spotOf(director, 1);
+                const heart = spotOf(director, SUMMER_BLOSSOM_MAYPOLE);
+                const toTop = maypole.top.clone().sub(stage.origin);
+                const toHeart = heart.clone().sub(stage.origin);
+                // As near as the flowers beside the board ...
+                expect(toHeart.length()).toBeCloseTo(CROWN_DEPTH, 9);
+                expect(toHeart.length()).toBeLessThan(toTop.length());
+                // ... and straight between the eye and the pole's head: seen crowning the pole.
+                expect(toHeart.clone().normalize().dot(toTop.clone().normalize())).toBeCloseTo(1, 12);
+                const [crown, head] = [onScreen(heart, camera), onScreen(maypole.top, camera)];
+                expect(crown.x).toBeCloseTo(head.x, 9);
+                expect(crown.y).toBeCloseTo(head.y, 9);
+                // Always at its full size, whatever stands beside the board.
+                expect(director.blossomFit).toBe(1);
+            }
+            // The crowning flower is the largest and fullest of them, at the same strength.
+            const count = (overrides, options) => {
+                const { director, sim } = createDirector({ maypole, ...options });
+                play(director, sim, [flowerOf(overrides)], { seconds: 0.8 });
+                const petals = sim.thrown().filter((particle) => particle.kind === PETAL);
+                return {
+                    petals,
+                    fastest: Math.max(...petals.map((petal) => Math.hypot(petal.vx, petal.vy, petal.vz))),
+                    light: sim.thrown().find((particle) => particle.kind === GLOW),
+                };
+            };
+            const sky = count({ lines: 0, flower: SUMMER_MIXED });
+            const crowning = count({ lines: SUMMER_BLOSSOM_MAYPOLE, flower: SUMMER_MIXED });
+            expect(crowning.petals.length / sky.petals.length).toBeGreaterThan(1.15);
+            expect(crowning.petals.length / sky.petals.length).toBeLessThan(1.4);
+            expect(crowning.fastest / sky.fastest).toBeGreaterThan(1.05);
+            expect(crowning.fastest / sky.fastest).toBeLessThan(1.3);
+            expect(crowning.light.size).toBeGreaterThan(sky.light.size);
+            expect(new Set(crowning.petals.map((petal) => petal.flower)).size).toBe(SUMMER_BOUQUET_KINDS);
+            // The bouquet's (a little under full strength) is a little less than a perfect clear's.
+            const bouquet = count({ lines: SUMMER_BLOSSOM_MAYPOLE, flower: SUMMER_MIXED, strength: 0.8 });
+            expect(bouquet.petals.length).toBeLessThan(crowning.petals.length);
+            expect(bouquet.petals.length).toBeGreaterThan(sky.petals.length * 0.8);
+            // A world without a maypole opens it beside the board instead, and does not fail.
+            const bare = createDirector({ maypole: null });
+            expectVector(spotOf(bare.director, SUMMER_BLOSSOM_MAYPOLE), spotOf(bare.director, 0), 12);
+            expect(() => play(bare.director, bare.sim, [flowerOf({ lines: SUMMER_BLOSSOM_MAYPOLE })], { seconds: 1 }))
+                .not.toThrow();
+            expect(bare.sim.thrown().filter((particle) => particle.kind === GLOW)).toHaveLength(1);
+        });
+
+        it.each([
+            ['High', LANDSCAPE], ['Medium', LANDSCAPE], ['Minimal', LANDSCAPE], ['High', PORTRAIT],
+        ])('plays the flowers of a perfect clear at %s one after another, each once (aspect %f)', (tier, aspect) => {
+            const maypole = maypoleAnchors();
+            const {
+                director, sim, stage, camera,
+            } = createDirector({
+                aspect, maypole, petals: SUMMER_TIERS[tier].petals, groundHeight: PLAIN,
+            });
+            const reactions = new SummerReactions({ quality: tier, rng: seededRandom(1) });
+            reactions.onPerfectClear();
+            const asked = reactions.frame.emitters.filter((entry) => entry.kind === 'blossom')
+                .sort((a, b) => a.serial - b.serial);
+            const beat = asked.length > 1 ? -asked[1].age : 0;
+            const opened = [];
+            for (let step = 0; step < 60 * 4; step++) {
+                const before = sim.spawn.mock.calls.length;
+                director.apply(reactions.update(STEP), STEP);
+                const fresh = sim.thrown().slice(before);
+                const hearts = fresh.filter((particle) => particle.kind === GLOW);
+                // Never two flowers in one frame: they open in turn.
+                expect(hearts.length).toBeLessThanOrEqual(1);
+                if (hearts.length) {
+                    opened.push({
+                        at: reactions.time,
+                        heart: hearts[0],
+                        // (The rising meadow and the bouquet throw petals too: a flower's are the ones that hang.)
+                        petals: fresh.filter((particle) => particle.kind === PETAL && particle.hang > 1),
+                    });
+                }
+            }
+            // As many as the tier's pool carries, every one of them, once.
+            expect(opened).toHaveLength(Math.max(1, Math.min(6, SUMMER_REACTION_LIMITS[tier] - 4)) + 1);
+            expect(opened).toHaveLength(asked.length);
+            opened.forEach((flower, index) => {
+                expect(flower.petals.length).toBeGreaterThan(20);
+                // A beat apart, in the order they were asked for.
+                if (index > 0) expect(flower.at - opened[index - 1].at).toBeCloseTo(beat, 1);
+                const seen = onScreen(flower.heart, camera);
+                const kinds = new Set(flower.petals.map((petal) => petal.flower));
+                if (index === opened.length - 1) {
+                    // The last crowns the maypole, in every colour.
+                    const head = onScreen(maypole.top, camera);
+                    expect(seen.x).toBeCloseTo(head.x, 6);
+                    expect(seen.y).toBeCloseTo(head.y, 6);
+                    expect(kinds.size).toBe(SUMMER_BOUQUET_KINDS);
+                } else {
+                    // The others stand clear of the card, each of a kind of its own.
+                    expect(within(seen, stage.board), `flower ${index}`).toBe(false);
+                    expect(kinds.size).toBe(1);
+                    expect([...kinds][0]).toBe(asked[index].flower);
+                }
+            });
+            const sky = opened.slice(0, -1).map((flower) => flower.petals[0].flower);
+            expect(new Set(sky).size).toBe(sky.length);
+            // The hearts are lights, lit where the flowers are, one each.
+            expect(sim.thrown().filter((particle) => particle.kind === GLOW)).toHaveLength(opened.length);
+        });
+    });
+
+    describe('a stone down the sun\'s road', () => {
+        const stone = (overrides = {}) => ({
+            kind: 'skip', lines: 4, strength: 0.55, duration: 1.3, ...overrides,
+        });
+        /** Throw one stone over a lake and report every touch. */
+        const skip = (overrides = {}, {
+            groundHeight = OPEN_WATER, dt = STEP, sun, ...options
+        } = {}) => {
+            const made = createDirector({ groundHeight, ...options });
+            const spec = stone(overrides);
+            const touches = [];
+            const steps = Math.round((spec.duration + 0.1) / dt);
+            for (let step = 0; step <= steps; step++) {
+                const age = step * dt;
+                const before = made.rung.mock.calls.length;
+                const live = age < spec.duration ? [emitter({ ...spec, age })] : [];
+                made.director.apply(frameWith(live), dt, undefined, null, sun);
+                for (const [x, z, strength] of made.rung.mock.calls.slice(before)) {
+                    touches.push({
+                        x, z, strength, age, out: flatDistance({ x, z }, made.stage.origin),
+                    });
+                }
+            }
+            return { ...made, touches, thrown: made.sim.thrown() };
+        };
+
+        it.each([4, 5, 6, 7, 8])('skips %i times on open water, each touch further out, fainter and sooner', (hops) => {
+            const {
+                touches, thrown, director, stage,
+            } = skip({ lines: hops, strength: 0.7 });
+            expect(touches).toHaveLength(hops);
+            const flat = Math.hypot(director.sun.x, director.sun.z);
+            touches.forEach((touch, index) => {
+                // Down one road from the eye: the sun's bearing.
+                expect((touch.x - stage.origin.x) / touch.out).toBeCloseTo(director.sun.x / flat, 9);
+                expect((touch.z - stage.origin.z) / touch.out).toBeCloseTo(director.sun.z / flat, 9);
+                expect(touch.strength).toBeGreaterThan(0.3);
+                if (index === 0) return;
+                const previous = touches[index - 1];
+                expect(touch.out).toBeGreaterThan(previous.out + 0.5);
+                expect(touch.strength).toBeLessThan(previous.strength);
+                expect(touch.age).toBeGreaterThan(previous.age);
+                if (index > 1) {
+                    // The stone loses way: shorter hops, and (to the frame) quicker ones.
+                    const before = touches[index - 2];
+                    expect(touch.out - previous.out).toBeLessThan(previous.out - before.out);
+                    expect(touch.age - previous.age).toBeLessThanOrEqual(previous.age - before.age + STEP + 1e-9);
+                }
+            });
+            // The first touch is at once, out on the water past the meadow; the last before the stone is spent.
+            expect(touches[0].age).toBe(0);
+            expect(touches[0].out).toBeGreaterThan(30);
+            expect(touches.at(-1).age).toBeLessThan(1.3);
+            expect(touches.at(-1).age).toBeGreaterThan(0.8);
+            expect(touches.at(-1).out).toBeLessThan(120);
+            // Every touch is lit by one glint on the water where it rang, smaller each time, soon gone.
+            const glints = thrown.filter(isGlint);
+            expect(glints).toHaveLength(hops);
+            glints.forEach((glint, index) => {
+                expect([glint.x, glint.z]).toEqual([touches[index].x, touches[index].z]);
+                expect(glint.y).toBeGreaterThan(0);
+                expect([glint.vx, glint.vy, glint.vz]).toEqual([0, 0, 0]);
+                expect(glint.life).toBeGreaterThan(0.3);
+                expect(glint.life).toBeLessThan(2);
+                expect(glint.size).toBeGreaterThan(1);
+                if (index > 0) expect(glint.size).toBeLessThan(glints[index - 1].size);
+            });
+            // And a few drops jump from it, on down the road.
+            const drops = thrown.filter((particle) => particle.kind === POLLEN);
+            expect(thrown).toHaveLength(glints.length + drops.length);
+            const at = (touch) => drops.filter((drop) => drop.x === touch.x && drop.z === touch.z);
+            expect(sum(touches.map((touch) => at(touch).length))).toBe(drops.length);
+            for (const touch of touches) {
+                expect(at(touch).length).toBeGreaterThan(3);
+                expect(at(touch).length).toBeLessThan(20);
+            }
+            expect(at(touches[0]).length).toBeGreaterThanOrEqual(at(touches.at(-1)).length);
+            for (const drop of drops) {
+                expect(drop.y).toBeGreaterThan(0.02);
+                expect(drop.y).toBeLessThan(0.5);
+                expect(drop.vy).toBeGreaterThan(1);
+                expect(drop.life).toBeLessThan(1.5);
+            }
+            expect(mean(drops.map((drop) => drop.vx * director.sun.x + drop.vz * director.sun.z))).toBeGreaterThan(0);
+        });
+
+        it('rings the water once for each touch, however often a frame is applied, and again for a new stone', () => {
+            const { director, rung, sim } = createDirector({ groundHeight: OPEN_WATER });
+            const frame = (age, serial = 3) => frameWith([emitter(stone({
+                id: 2, serial, age, lines: 5,
+            }))]);
+            // Held back: nothing yet.
+            director.apply(frame(-0.3), STEP);
+            expect(rung).not.toHaveBeenCalled();
+            expect(sim.spawn).not.toHaveBeenCalled();
+            director.apply(frame(0), STEP);
+            expect(rung).toHaveBeenCalledOnce();
+            for (let again = 0; again < 5; again++) director.apply(frame(0), STEP);
+            director.apply(frame(0), 0);
+            expect(rung).toHaveBeenCalledOnce();
+            // Seen late, it catches up with every touch it owes, in order, and no more after.
+            director.apply(frame(1.29), STEP);
+            expect(rung).toHaveBeenCalledTimes(5);
+            const outs = rung.mock.calls.map(([x, z]) => flatDistance({ x, z }, director.stage.origin));
+            expect(outs).toEqual([...outs].sort((a, b) => a - b));
+            director.apply(frame(1.29), STEP);
+            director.apply(frame(0.5), STEP);
+            expect(rung).toHaveBeenCalledTimes(5);
+            // The next stone in the same slot skips from the first touch again.
+            director.apply(frame(0, 4), STEP);
+            expect(rung).toHaveBeenCalledTimes(6);
+            expect(rung.mock.calls[5].slice(0, 2)).toEqual(rung.mock.calls[0].slice(0, 2));
+            // A session reset forgets what was played, as for every other emitter.
+            director.apply({ ...frame(0, 4), epoch: 2 }, STEP);
+            expect(rung).toHaveBeenCalledTimes(7);
+        });
+
+        it('never touches land: a hop that would come down on a shore leaves nothing', () => {
+            const camera = frameCamera();
+            const eye = camera.position;
+            // An island across the road, 50 to 64 m out, and shallows too thin to be the lake beyond 75.
+            const island = (x, z) => {
+                const out = Math.hypot(x - eye.x, z - eye.z);
+                if (out > 50 && out < 64) return 1.2;
+                return out > 75 ? -0.02 : -2;
+            };
+            const open = skip({ lines: 8 });
+            const blocked = skip({ lines: 8 }, { groundHeight: island });
+            expect(open.touches).toHaveLength(8);
+            const wet = open.touches.filter((touch) => island(touch.x, touch.z) < -0.05);
+            expect(wet.length).toBeGreaterThan(2);
+            expect(wet.length).toBeLessThan(8);
+            // Exactly the touches that find water, where and as strong as they would have been.
+            expect(blocked.touches.map(({ x, z, strength }) => [x, z, strength]))
+                .toEqual(wet.map(({ x, z, strength }) => [x, z, strength]));
+            expect(blocked.thrown.filter(isGlint)).toHaveLength(wet.length);
+            for (const particle of blocked.thrown) expect(island(particle.x, particle.z)).toBeLessThan(-0.05);
+            // The stone carries on past the island: a touch beyond it is among them.
+            expect(Math.max(...blocked.touches.map((touch) => touch.out))).toBeGreaterThan(64);
+            // No lake at all: no ring, no glint, no drop, and no failure.
+            const dry = skip({ lines: 8 }, { groundHeight: PLAIN });
+            expect(dry.touches).toEqual([]);
+            expect(dry.sim.spawn).not.toHaveBeenCalled();
+            // No lake to ring: the glints and the drops are still thrown.
+            const silent = skip({ lines: 4 }, { ripples: null });
+            expect(silent.thrown.filter(isGlint)).toHaveLength(4);
+        });
+
+        it.each([
+            ['landscape', LANDSCAPE], ['portrait', PORTRAIT],
+        ])('finds water down the sun\'s road on the real lake at every hour of the night (%s)', (_label, aspect) => {
+            for (let phase = 0; phase < SUMMER_HOURS.length; phase += 0.25) {
+                const hour = summerHourAt(phase);
+                const sun = new THREE.Vector3(...summerSunDirection(hour.sunAzimuth, hour.sunElevation));
+                for (const hops of [4, 8]) {
+                    const { touches, stage, camera } = skip({ lines: hops }, {
+                        groundHeight: summerGroundHeight, aspect, sun,
+                    });
+                    // A first back-to-back's stone touches every time; the longest run may meet the skerry.
+                    if (hops === 4) expect(touches, `phase ${phase}`).toHaveLength(4);
+                    expect(touches.length, `phase ${phase}`).toBeGreaterThanOrEqual(4);
+                    expect(touches.length).toBeLessThanOrEqual(hops);
+                    for (const touch of touches) {
+                        expect(summerGroundHeight(touch.x, touch.z), `phase ${phase}`).toBeLessThan(-0.05);
+                        // Toward the sun: ahead of the camera and to its left, where the sun always stands.
+                        expect(touch.z).toBeLessThan(stage.origin.z);
+                        expect(ndc({ x: touch.x, y: 0, z: touch.z }, camera).z).toBeLessThan(1);
+                    }
+                    if (aspect === LANDSCAPE) for (const touch of touches) expect(touch.x).toBeLessThan(stage.origin.x);
+                }
+            }
+        });
+
+        it('follows the sun the world hands it, and keeps the last one for nonsense', () => {
+            const east = skip({}, { sun: new THREE.Vector3(1, 0.2, 0) });
+            for (const touch of east.touches) {
+                expect(touch.x).toBeGreaterThan(east.stage.origin.x + 30);
+                expect(touch.z).toBeCloseTo(east.stage.origin.z, 9);
+            }
+            // The height of the sun does not shorten the throw: only its bearing counts.
+            const low = skip({}, { sun: new THREE.Vector3(0.6, 0.05, -0.8).normalize() });
+            const high = skip({}, { sun: new THREE.Vector3(0.6, 0.9, -0.8).normalize() });
+            expect(high.touches.map((touch) => touch.out)).toEqual(low.touches.map((touch) => touch.out)
+                .map((out) => expect.closeTo(out, 9)));
+            // Before any sun is given it is the evening's: ahead and to the left.
+            const first = skip();
+            for (const touch of first.touches) {
+                expect(touch.z).toBeLessThan(first.stage.origin.z - 30);
+                expect(touch.x).toBeLessThan(first.stage.origin.x);
+            }
+            // A sun that is no direction leaves the road where it was.
+            const { director, rung } = createDirector({ groundHeight: OPEN_WATER });
+            const thrown = (serial, sun) => director
+                .apply(frameWith([emitter(stone({ serial }))]), STEP, undefined, null, sun);
+            thrown(1, new THREE.Vector3(1, 0.2, 0));
+            const [x, z] = rung.mock.calls[0];
+            [null, undefined, {}, 'sun', { x: NaN, y: 0, z: 1 }, { x: 1, y: 0, z: Infinity }].forEach((junk, index) => {
+                thrown(2 + index, junk);
+                expect(rung.mock.calls.at(-1).slice(0, 2)).toEqual([x, z]);
+            });
+            expect(director.sun.toArray().every(Number.isFinite)).toBe(true);
+        });
+
+        it('gives a stone between three and eight hops whatever it is asked for, at any frame rate', () => {
+            const hopsFor = (lines, options) => skip({ lines }, options).touches.length;
+            expect(hopsFor(3)).toBe(3);
+            expect(hopsFor(1)).toBe(3);
+            expect(hopsFor(-4)).toBe(3);
+            expect(hopsFor(99)).toBe(8);
+            expect(hopsFor(6.4)).toBe(6);
+            // No count at all is a middling throw.
+            const middling = hopsFor(0);
+            expect(middling).toBeGreaterThanOrEqual(3);
+            expect(middling).toBeLessThanOrEqual(8);
+            for (const lines of [NaN, undefined, null, 'far']) expect(hopsFor(lines), String(lines)).toBe(middling);
+            // The touches are the stone's age, not the frames that happened to be drawn.
+            const reference = skip({ lines: 7 }).touches;
+            for (const fps of [30, 144]) {
+                const other = skip({ lines: 7 }, { dt: 1 / fps }).touches;
+                expect(other.map(({ x, z, strength }) => [x, z, strength]))
+                    .toEqual(reference.map(({ x, z, strength }) => [x, z, strength]));
+            }
+            // The pool scales the drops, never the touches or their glints.
+            const small = skip({ lines: 7 }, { petals: SUMMER_TIERS.Minimal.petals });
+            expect(small.touches).toHaveLength(7);
+            expect(small.thrown.filter(isGlint)).toHaveLength(7);
+            const drops = (made) => made.thrown.filter((particle) => particle.kind === POLLEN).length;
+            expect(drops(small)).toBeLessThan(drops(skip({ lines: 7 })));
+            expect(drops(small)).toBeGreaterThan(0);
+            // A harder throw rings harder.
+            const hard = skip({ lines: 5, strength: 1 }).touches;
+            const soft = skip({ lines: 5, strength: 0.3 }).touches;
+            hard.forEach((touch, index) => expect(touch.strength).toBeGreaterThan(soft[index].strength));
+        });
+
+        it('skips the back-to-back\'s own stone on the real lake: four touches, then five for the next', () => {
+            const {
+                director, rung, sim, stage,
+            } = createDirector();
+            const reactions = new SummerReactions({ rng: seededRandom(1) });
+            const [evening] = SUMMER_HOURS;
+            const sun = new THREE.Vector3(...summerSunDirection(evening.sunAzimuth, evening.sunElevation));
+            const run = () => {
+                for (let step = 0; step < 100; step++) {
+                    director.apply(reactions.update(STEP), STEP, undefined, null, sun);
+                }
+            };
+            reactions.onBackToBack();
+            run();
+            expect(rung).toHaveBeenCalledTimes(4);
+            const glints = () => sim.thrown().filter(isGlint);
+            expect(glints()).toHaveLength(4);
+            rung.mock.calls.forEach(([x, z], index) => {
+                expect(summerGroundHeight(x, z)).toBeLessThan(-0.05);
+                // Out past the crest of the meadow, where the camera can see the water.
+                expect(flatDistance({ x, z }, stage.origin)).toBeGreaterThan(35);
+                expect([x, z]).toEqual([glints()[index].x, glints()[index].z]);
+            });
+            // (From here on a fish may rise as well: the stone's touches are the ones with a glint.)
+            reactions.onBackToBack();
+            run();
+            expect(glints()).toHaveLength(4 + 5);
+            for (const glint of glints()) {
+                expect(rung.mock.calls.some(([x, z]) => x === glint.x && z === glint.z)).toBe(true);
+            }
+            // The reactions' own ring queue was never asked: these are the stone's alone.
+            expect(reactions.ringSerial).toBe(0);
         });
     });
 
@@ -1873,8 +3106,17 @@ describe('Summer effects director', () => {
                 // The reactions still hold every ring, gust and emitter: none of them is played twice.
                 expect(interrupted.rung.mock.calls.length, `rings, reset at ${resetAt}`).toBe(asked[0]);
                 expect(interrupted.blown.mock.calls.length, `gusts, reset at ${resetAt}`).toBe(asked[1]);
-                expect(interrupted.sim.spawn.mock.calls.length, `petals, reset at ${resetAt}`).toBe(asked[2]);
+                // (The crown is fed in fractions of a petal, and a reset drops the fraction it was owed
+                // with everything else in flight: one petal fewer at most, and never one more.)
+                const petals = interrupted.sim.spawn.mock.calls.length;
+                expect(petals, `petals, reset at ${resetAt}`).toBeLessThanOrEqual(asked[2]);
+                expect(petals, `petals, reset at ${resetAt}`).toBeGreaterThanOrEqual(asked[2] - 1);
+                // What the events themselves throw is thrown once each, to the petal: every flower
+                // of the perfect clear opened once, with one heart of light.
+                const hearts = (made) => made.sim.thrown().filter((particle) => particle.kind === GLOW).length;
+                expect(hearts(interrupted), `hearts, reset at ${resetAt}`).toBe(hearts(whole));
             }
+            expect(whole.sim.thrown().filter((particle) => particle.kind === GLOW)).toHaveLength(7);
         });
 
         it('starts afresh when the reactions start over, and only then', () => {
@@ -1943,7 +3185,7 @@ describe('Summer effects director', () => {
         it('scales every throw with the petal budget of the tier, down to a floor', () => {
             const thrownAt = (petals) => {
                 const counts = {};
-                for (const kind of ['lock', 'seeds', 'clear', 'rise', 'bouquet', 'spin', 'combo']) {
+                for (const kind of ['lock', 'seeds', 'clear', 'rise', 'bouquet', 'spin', 'combo', 'blossom']) {
                     const { director, sim } = createDirector({ petals, groundHeight: PLAIN });
                     play(director, sim, [{
                         kind, strength: 1, lines: 4, duration: 3,
@@ -1955,6 +3197,16 @@ describe('Summer effects director', () => {
                 counts.crown = sim.spawn.mock.calls.length;
                 return counts;
             };
+            // The throws are written for High's pool: there each is exactly its written size, and
+            // no tier's pool scales them by more than a little either way of that.
+            expect(createDirector({ petals: REFERENCE.petals }).director.scale).toBe(1);
+            let larger = Infinity;
+            for (const tier of TIERS) {
+                const { scale } = createDirector({ petals: SUMMER_TIERS[tier].petals }).director;
+                expect(scale, tier).toBeGreaterThanOrEqual(0.2);
+                expect(scale, tier).toBeLessThanOrEqual(Math.min(2, larger));
+                larger = scale;
+            }
             const reference = thrownAt(REFERENCE.petals);
             const double = thrownAt(REFERENCE.petals * 2);
             const half = thrownAt(REFERENCE.petals / 2);
@@ -1997,30 +3249,42 @@ describe('Summer effects director', () => {
             const real = new SummerPetalSim({ count: 200, reserve: 150, rng: seededRandom(2) });
             const live = createDirector({ sim: real });
             let serial = 0;
-            for (const kind of ['lock', 'seeds', 'clear', 'rise', 'bouquet', 'spin', 'combo']) {
-                for (const junk of [{ row: NaN }, { strength: NaN }, { column: NaN }, { side: NaN }, { age: NaN }]) {
+            for (const kind of ['lock', 'seeds', 'clear', 'rise', 'bouquet', 'spin', 'combo', 'blossom', 'skip']) {
+                for (const junk of [{ row: NaN }, { strength: NaN }, { column: NaN }, { side: NaN }, { age: NaN },
+                    { flower: NaN }, { seed: NaN }, { duration: NaN }, { duration: 0 }]) {
                     serial += 1;
                     const broken = emitter({ kind, ...junk, serial });
-                    expect(() => live.director.apply(frameWith([broken]), STEP)).not.toThrow();
+                    expect(() => live.director.apply(frameWith([broken]), STEP), `${kind} ${JSON.stringify(junk)}`)
+                        .not.toThrow();
                 }
             }
-            for (const name of ['x', 'y', 'z', 'vx', 'vy', 'vz', 'life', 'size']) {
+            for (const name of ['x', 'y', 'z', 'vx', 'vy', 'vz', 'life', 'size', 'hang', 'shine']) {
                 expect(real[name].every(Number.isFinite), name).toBe(true);
             }
+            // Nor does a stone with nonsense in it ring the lake with anything but a ring.
+            const wet = createDirector({ groundHeight: OPEN_WATER });
+            const stones = [{ strength: NaN }, { age: NaN }, { duration: NaN }, { duration: 0 }, { lines: NaN }]
+                .map((junk, index) => emitter({ kind: 'skip', ...junk, serial: serial + 1 + index }));
+            for (const stone of stones) {
+                expect(() => wet.director.apply(frameWith([stone]), STEP)).not.toThrow();
+            }
+            for (const ring of wet.ripples.rings) expect(ring.toArray().every(Number.isFinite)).toBe(true);
         });
 
         it('keeps a broken random source inside its range', () => {
             for (const rng of [() => NaN, () => Infinity, () => -3, () => 7, () => undefined, () => '0.5', () => 1]) {
                 const { director, sim } = createDirector({ rng, groundHeight: PLAIN });
-                const kinds = ['lock', 'seeds', 'clear', 'rise', 'bouquet', 'spin', 'combo'];
+                const kinds = ['lock', 'seeds', 'clear', 'rise', 'bouquet', 'spin', 'combo', 'blossom'];
                 expect(() => play(director, sim, kinds.map((kind) => ({ kind, strength: 1, lines: 2 })), {
                     seconds: 0.5, frame: { crown: 0.9 },
                 })).not.toThrow();
                 const thrown = sim.thrown();
                 expect(thrown.length).toBeGreaterThan(50);
+                // (A flower's heart is a light, metres across; everything else is a petal's size.)
                 const sane = (petal) => [petal.x, petal.y, petal.z, petal.vx, petal.vy, petal.vz].every(Number.isFinite)
                     && Math.hypot(petal.vx, petal.vy, petal.vz) < 40
-                    && petal.life > 0 && petal.life < 12 && petal.size > 0 && petal.size < 0.4;
+                    && petal.life > 0 && petal.life < 12
+                    && petal.size > 0 && petal.size < (petal.kind === GLOW ? 16 : 0.4);
                 expect(thrown.filter((petal) => !sane(petal))).toEqual([]);
                 expect(Number.isFinite(director.fishClock)).toBe(true);
             }
@@ -2107,7 +3371,8 @@ describe('Summer effects director', () => {
                     expect(world.director.fields.length).toBeLessThanOrEqual(reactions.maxEmitters + 1);
                 }
                 // The storm reached every part of the language and filled the air.
-                expect([...kinds].sort()).toEqual(['bouquet', 'clear', 'combo', 'lock', 'rise', 'seeds', 'spin']);
+                expect([...kinds].sort())
+                    .toEqual(['blossom', 'bouquet', 'clear', 'combo', 'lock', 'rise', 'seeds', 'skip', 'spin']);
                 expect(busiest).toBeGreaterThan(sim.reserve * 0.3);
                 expect(world.ripples.rings).toHaveLength(budget.ripples);
                 expect(world.waves.rings).toHaveLength(budget.waves);
@@ -2128,6 +3393,61 @@ describe('Summer effects director', () => {
                 }
             },
         );
+
+        // The reference pool is sized for the greatest thing the evening does (summer-fx-director.js:
+        // "so the flowers of a perfect clear find petals free"). A petal thrown into a full pool
+        // takes the place of one still in the air: here, of a flower the air has not let go of yet.
+        it('finds a free place in the pool for every petal of a perfect clear\'s flowers, in calm play', () => {
+            const cut = {};
+            for (const tier of TIERS) {
+                const budget = SUMMER_TIERS[tier];
+                // The pool as SummerPetals builds it for the tier, over the real meadow and lake.
+                const sim = new SummerPetalSim({
+                    count: budget.petals,
+                    reserve: Math.round(budget.petals * 0.86),
+                    rng: seededRandom(9),
+                    groundHeight: summerGroundHeight,
+                });
+                const { director } = createDirector({
+                    petals: budget.petals, sim, rings: budget.ripples, gusts: budget.waves, seed: 9,
+                });
+                const reactions = new SummerReactions({ quality: tier, rng: seededRandom(9) });
+                const tick = () => sim.step(STEP, director.apply(reactions.update(STEP), STEP));
+                // One hard-dropped piece clears four lines and empties the board; nothing else is
+                // going on: no combo's crown is turning and play is not running hot.
+                reactions.onHardDrop({ distance: 14 });
+                reactions.onPieceLock({ piece: pieceOf('I') });
+                reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
+                for (let step = 0; step < 12; step++) tick();
+                reactions.onPerfectClear();
+                const spawn = sim.spawn.bind(sim);
+                const hanging = new Set();
+                const count = { flowers: 0, lost: 0, peak: 0 };
+                sim.spawn = (x, y, z, vx, vy, vz, options = {}) => {
+                    const [life, hang] = [sim.life.slice(), sim.hang.slice()];
+                    const index = spawn(x, y, z, vx, vy, vz, options);
+                    if (index < 0) return index;
+                    // The place it was given still held a petal of a flower that was hanging in the air.
+                    if (hanging.has(index) && life[index] > 0 && hang[index] > 0) count.lost += 1;
+                    if (options.kind === PETAL && options.hang > 1) {
+                        hanging.add(index);
+                        count.flowers += 1;
+                    } else hanging.delete(index);
+                    return index;
+                };
+                for (let step = 0; step < 60 * 4; step++) {
+                    tick();
+                    count.peak = Math.max(count.peak, sim.counts().live);
+                }
+                expect(count.flowers, tier).toBeGreaterThan(50);
+                expect(count.peak, tier).toBeLessThanOrEqual(sim.reserve);
+                if (count.lost > 0) {
+                    cut[tier] = `${count.lost} of ${count.flowers} flower petals lost their place while they hung `
+                        + `(${count.peak} of ${sim.reserve} in the air at the peak)`;
+                }
+            }
+            expect(cut).toEqual({});
+        });
 
         it('keeps hostile payloads out of the air, the lake and the meadow', () => {
             const world = createWorld({ tier: 'Medium' });
