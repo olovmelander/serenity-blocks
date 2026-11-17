@@ -68,7 +68,7 @@ describe('Wolfhour effect accumulation', () => {
         expect(theme.getLunarReactionSlotCapacity()).toBe(expectedSlots);
     });
 
-    it('replaces only the closest-to-expiry reaction when the bounded pool is full', () => {
+    it('never cuts a ring still lit: with the bounded pool full, a new one waits for the first to run out', () => {
         const theme = createTheme();
         const startsAndDurations = [
             [0, 10],
@@ -98,18 +98,39 @@ describe('Wolfhour effect accumulation', () => {
         const serialsAfter = theme.lunarReactions.slice(0, 4)
             .map((reaction) => reaction.serial);
 
+        // Slot 2's ring (0.2 s + 4 s) runs out first: the new one waits there, and every ring
+        // still lit rings on untouched.
         expect(replacedIndex).toBe(2);
-        expect(serialsAfter[0]).toBe(serialsBefore[0]);
-        expect(serialsAfter[1]).toBe(serialsBefore[1]);
-        expect(serialsAfter[2]).not.toBe(serialsBefore[2]);
-        expect(serialsAfter[3]).toBe(serialsBefore[3]);
-        expect(theme.lunarReactions[2]).toMatchObject({
-            active: true,
-            startTime: 3,
+        expect(serialsAfter).toEqual(serialsBefore);
+        expect(theme.lunarReactions[2].next).toMatchObject({
+            startTime: 4.2,
             duration: 2,
             strength: 1.2,
             combo: 1,
         });
+        // It takes over the moment that ring has run out.
+        theme.time = 4.25;
+        theme.updateLunarReaction();
+        expect(theme.lunarReactions[2]).toMatchObject({
+            active: true,
+            startTime: 4.2,
+            duration: 2,
+            strength: 1.2,
+            combo: 1,
+            next: null,
+        });
+        expect(theme.lunarReactions[2].serial).not.toBe(serialsBefore[2]);
+        // With every slot holding one waiting, a weaker ring is let go, a stronger one waits
+        // in place of the weakest waiting.
+        theme.time = 4.3;
+        for (const [index, reaction] of theme.lunarReactions.slice(0, 4).entries()) {
+            reaction.next = {
+                startTime: 20, duration: 1, strength: 0.4 + index * 0.1, combo: 0, serial: 99,
+            };
+        }
+        expect(theme.triggerLunarReaction({ strength: 0.3 })).toBe(-1);
+        expect(theme.triggerLunarReaction({ strength: 0.9 })).toBe(0);
+        expect(theme.lunarReactions[0].next.strength).toBe(0.9);
     });
 
     it('adds effect-state energy and clamps it at the configured cap', () => {
