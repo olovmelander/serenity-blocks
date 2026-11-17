@@ -5,6 +5,9 @@
  * (ndHaze), so the far end of the canyon and the feet of the megatowers dissolve into it. Above:
  * a ceiling of smog lit from below by the city (two fetches of the baked noise, drifting), a moon
  * that never quite gets through, and sheet lightning that the gameplay drives (`storm`).
+ *
+ * In a clear spell (`u.sky`: neon-district-night.js, and a perfect clear's crown) the smog parts:
+ * the gaps widen and deepen to indigo, a few stars stand in them, and the moon comes through.
  */
 
 import * as THREE from 'three/webgpu';
@@ -14,16 +17,20 @@ import {
     dot,
     exp,
     float,
+    floor,
+    fract,
+    length,
     max,
     mix,
     normalize,
     positionWorld,
     pow,
     smoothstep,
+    step,
     vec2,
     vec3,
 } from 'three/tsl';
-import { ndHaze } from './neon-district-tsl.js';
+import { ndHash21, ndHaze } from './neon-district-tsl.js';
 
 /** Unit direction to the veiled moon (right of the street, over the roofs). */
 export const MOON_DIR = Object.freeze((() => {
@@ -55,7 +62,8 @@ export function createSky(u) {
         const n1 = u.noise(cuv.mul(0.11).add(vec2(drift, drift.mul(0.6)))).r;
         const n2 = u.noise(cuv.mul(0.29).add(vec2(drift.mul(-1.7), drift.mul(0.9)))).g;
         const body = n1.mul(0.64).add(n2.mul(0.36));
-        const cloud = smoothstep(0.34, 0.72, body);
+        // The clearer the night, the less of the ceiling is cloud.
+        const cloud = smoothstep(u.sky.mul(0.24).add(0.34), u.sky.mul(0.16).add(0.72), body);
         const veil = smoothstep(0.02, 0.22, up);
 
         // The city lights the cloud bottoms: rose over one bank, cyan over the next.
@@ -63,7 +71,18 @@ export function createSky(u) {
         const underlight = mix(u.hazeLow.mul(2.2), tint.mul(0.085), 0.42)
             .mul(exp(up.mul(-1.25)).mul(1.5).add(0.22))
             .mul(float(1.0).add(u.power.mul(0.35)));
-        const gap = vec3(0.004, 0.005, 0.014);
+        // The gaps: night sky, a deeper indigo when it clears, with the brighter stars in it.
+        const cells = cuv.mul(21.0);
+        const cellId = floor(cells);
+        const seedOf = ndHash21(cellId.add(vec2(17.0, 43.0)));
+        const spot = fract(cells).sub(vec2(seedOf, fract(seedOf.mul(7.31))).mul(0.6).add(0.2));
+        const twinkle = fract(seedOf.mul(13.7)).mul(3.0).add(1.2);
+        const star = step(0.72, seedOf)
+            .mul(exp(length(spot).mul(-26.0)))
+            .mul(u.time.mul(twinkle).add(seedOf.mul(40.0)).sin().mul(0.3)
+                .add(0.7));
+        const gap = vec3(0.004, 0.005, 0.014).add(vec3(0.004, 0.009, 0.03).mul(u.sky))
+            .add(vec3(0.75, 0.85, 1.0).mul(star).mul(u.sky).mul(0.55));
         const ceiling = mix(gap, underlight, cloud);
         base.assign(mix(base, ceiling, veil));
 
@@ -73,7 +92,8 @@ export function createSky(u) {
         const disc = smoothstep(0.9988, 0.9994, md);
         const corona = pow(md, 90.0).mul(0.42).add(pow(md, 900.0).mul(1.4));
         const thin = float(1.0).sub(cloud.mul(0.82));
-        base.addAssign(vec3(0.62, 0.74, 1.0).mul(corona.mul(0.5).add(disc.mul(thin).mul(1.6))).mul(veil).mul(0.55));
+        base.addAssign(vec3(0.62, 0.74, 1.0).mul(corona.mul(0.5).add(disc.mul(thin).mul(1.6))).mul(veil)
+            .mul(u.sky.mul(1.3).add(0.55)));
 
         // ── Sheet lightning inside the smog ──
         const cell = u.noise(cuv.mul(0.05).add(vec2(u.time.mul(0.011), 1.3))).a;
