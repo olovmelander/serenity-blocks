@@ -99,6 +99,9 @@ export const EXPOSURE = 1.0;
  */
 export const GLASS_MIST_SOFTEN = 0.34;
 
+/** How far the grade bends the picture toward an S-curve (0 = none). */
+export const GRADE_CONTRAST = 0.16;
+
 /** Calm rects (board cards + HUD) the output pass evaluates. */
 export const CALM_RECTS_MAX = 5;
 
@@ -167,7 +170,7 @@ export class NeonDistrictPost {
         this.uGlassWet = uniform(1);
         /** The weather's grade: what the shadows are multiplied by, and the saturation. */
         this.uTint = uniform(new THREE.Vector3(0.86, 0.97, 1.16));
-        this.uSat = uniform(1.12);
+        this.uSat = uniform(1.24);
         this.blurNode = look.glass > 0 && look.glassBlur
             ? gaussianBlur(sceneColor, null, 3, { resolutionScale: 0.25 })
             : null;
@@ -318,7 +321,11 @@ export class NeonDistrictPost {
             // (the tint and the saturation turn with the weather: steel in a downpour, indigo
             // and vivid when it clears, warm and soft in fog)
             T.assign(mix(T, T.mul(this.uTint).add(vec3(0.0006, 0.0012, 0.003)), lo.mul(0.5)));
-            T.assign(mix(vec3(ndLuma(T)), T, this.uSat));
+            T.assign(max(mix(vec3(ndLuma(T)), T, this.uSat), vec3(0.0)));
+            // A little more contrast: the darks a shade deeper, so the colour has something to
+            // burn against (the lights are already on the curve's shoulder and barely move).
+            const C = clamp(T, 0.0, 1.0);
+            T.assign(mix(T, C.mul(C).mul(vec3(3.0).sub(C.mul(2.0))), GRADE_CONTRAST));
             // Vignette, measured from the frame, a touch heavier in the corners.
             const cv = fromCentre.mul(vec2(this.uAspect.div(1.778), 1.0));
             const vig = smoothstep(0.42, 1.05, length(cv.mul(1.5)));

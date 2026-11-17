@@ -290,7 +290,9 @@ export function createCounter(u, glyphTex) {
         /** (combo, shown 0..1, punch 0..1, _) */
         state: uniform(new THREE.Vector4(0, 0, 0, 0)),
     };
-    const material = ndFxMaterial('NeonDistrictCounter');
+    // Drawn over the city, never behind it: a building corner in the free zone must not cut
+    // through the count (it hangs in the air the player reads, not among the signs).
+    const material = ndFxMaterial('NeonDistrictCounter', { depthTest: false });
     const shown = uniforms.state.y;
     const punch = uniforms.state.z;
     const size = uniforms.place.w.mul(punch.mul(0.28).add(1.0));
@@ -350,7 +352,8 @@ export function createCounter(u, glyphTex) {
             .mul(punch.mul(1.2).add(1.0));
         return vec4(rgb, 0.0);
     })();
-    const part = finish('NeonDistrictCounter', geometry, material, 34, true);
+    // Not in the mirror: drawn without depth, it would show over everything the street reflects.
+    const part = finish('NeonDistrictCounter', geometry, material, 45, false);
     part.uniforms = uniforms;
     return part;
 }
