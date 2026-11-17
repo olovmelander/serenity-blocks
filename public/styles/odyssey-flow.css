@@ -543,7 +543,22 @@
 .ody-flow[data-layout='chapter']::after { opacity: 0; }
 /* Set on the scenery, the words carry a shade of their own as well. */
 .ody-flow[data-layout='chapter'] .ody-flow__content {
+    isolation: isolate;
     text-shadow: 0 1px 2px rgba(var(--ody-glass-deep-rgb), 0.85), 0 2px 22px rgba(var(--ody-glass-deep-rgb), 0.7);
+}
+/* And a second, soft shade the size of the words themselves, so the top of a long title or of
+   large text is never left standing on bright sky above the pool. Only a shadow: the box that
+   casts it stands two views off to the left (where nothing scrolls), so the shade has no edge
+   and no hole, is painted once, and adds nothing to the scroll height. */
+.ody-flow[data-layout='chapter'] .ody-flow__content::before {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    inset: -10% 0 0 -6%;
+    border-radius: 30%;
+    transform: translateX(-200vw);
+    box-shadow: 200vw 0 120px 40px rgba(var(--ody-glass-deep-rgb), 0.6);
+    pointer-events: none;
 }
 .ody-flow[data-layout='chapter'] .ody-flow__content .sb-btn { text-shadow: none; }
 .ody-flow[data-layout='chapter'] .ody-flow__portal,

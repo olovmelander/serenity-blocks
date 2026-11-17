@@ -68,6 +68,7 @@
 #odyssey-level-select :is(.odyssey-header, .odyssey-nav__rail, .odyssey-stage__chapter, .odyssey-route, .odyssey-actions) {
     text-shadow:
         0 1px 2px rgba(var(--ody-glass-deep-rgb), 0.95),
+        0 0 4px rgba(var(--ody-glass-deep-rgb), 0.9),
         0 0 8px rgba(var(--ody-glass-deep-rgb), 0.9),
         0 0 18px rgba(var(--ody-glass-deep-rgb), 0.85),
         0 0 32px rgba(var(--ody-glass-deep-rgb), 0.7);
@@ -1228,9 +1229,13 @@
 
 #odyssey-level-select .odyssey-orb__name {
     display: -webkit-box;
+    /* The clamp needs overflow: hidden, which would also cut the words' halo at the box. The
+       room for it is padding the margins take back, so the words sit exactly where they did. */
+    box-sizing: content-box;
     max-width: 100%;
     min-height: 2.6em;
-    margin-top: 6px;
+    margin: 0 -12px;
+    padding: 6px 12px 0;
     overflow: hidden;
     font: 600 0.75rem / 1.3 var(--sb-font-text);
     text-align: center;
@@ -1426,7 +1431,7 @@
     }
 
     #odyssey-level-select .odyssey-orb__name {
-        margin-top: 4px;
+        padding-top: 4px;
     }
 
     #odyssey-level-select .odyssey-actions {

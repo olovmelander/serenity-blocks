@@ -140,6 +140,12 @@ describe('the surfaces over the live world', () => {
         const strongest = Math.max(...[...shade.matchAll(/rgba\(var\(--ody-glass-deep-rgb\), ([\d.]+)\)/g)].map((m) => Number(m[1])));
         expect(strongest).toBeLessThanOrEqual(0.9);
         expect(flow).toContain(".ody-flow[data-layout='chapter']::after { opacity: 0; }");
+        // The words carry a shade of their own size as well (large text, a long title): a shadow
+        // cast from off the page, so it has no box to see, no filter to run and nothing to scroll.
+        const hug = rule(flow, ".ody-flow[data-layout='chapter'] .ody-flow__content::before");
+        expect(hug).toContain('transform: translateX(-200vw)');
+        expect(hug).toMatch(/box-shadow: 200vw 0 \d+px \d+px rgba\(var\(--ody-glass-deep-rgb\), 0\.\d+\)/);
+        expect(hug).not.toMatch(/background|filter/);
     });
 
     it('show the world through the navigator: its page has no fill of its own', () => {
@@ -154,5 +160,11 @@ describe('the surfaces over the live world', () => {
         expect(Math.max(...alphas)).toBeLessThan(1);
         expect(alphas[0]).toBeGreaterThan(Math.min(...alphas));
         expect(sky).not.toMatch(/#0d0b26|#05040f/);
+        // A route name is clamped (overflow: hidden), which would cut its halo at the box: the
+        // room for the halo is padding that the margins take back, so the name does not move.
+        const name = rule(navigator, '#odyssey-level-select .odyssey-orb__name');
+        expect(name).toContain('box-sizing: content-box');
+        expect(name).toContain('margin: 0 -12px');
+        expect(name).toContain('padding: 6px 12px 0');
     });
 });
