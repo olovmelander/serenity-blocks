@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-    SUMMER_BOUQUET_KINDS, SUMMER_MIXED, SUMMER_PIECE_FLOWERS, SUMMER_REACTION_LIMITS, SummerReactions,
-    summerFlowerForPiece,
+    SUMMER_BLOSSOM_MAYPOLE, SUMMER_BOUQUET_KINDS, SUMMER_MIXED, SUMMER_PIECE_FLOWERS, SUMMER_REACTION_LIMITS,
+    SUMMER_WASH_SECONDS, SummerReactions, summerFlowerForPiece,
 } from '../../src/themes/summer/summer-reactions.js';
 import {
     SUMMER_HOUR_SECONDS, SUMMER_HOUR_TURN_SECONDS, SUMMER_HOURS, summerHourForLevel,
@@ -13,10 +13,17 @@ const LETTERS = Object.keys(SUMMER_PIECE_FLOWERS);
 const FRAME_KEYS = ['epoch', 'level', 'hour', 'crown', 'heat', 'ribbons', 'streak', 'settled', 'species', 'bouquet',
     'bouquetFlash',
     'bouquets', 'picked', 'front', 'rings', 'waves', 'emitters', 'gust', 'warmth', 'shafts', 'glow', 'shimmer',
-    'flock', 'flutter'];
-// Whole numbers, and the hour of the night (a phase on its circle); every other number at the
-// top of a frame is a level in 0..1.
-const COUNTERS = ['epoch', 'streak', 'bouquets', 'picked', 'level', 'hour'];
+    'flock', 'flutter', 'sunburst', 'whirl', 'wash', 'flights'];
+// A level-up's wave of bloom: this is what `wash` reads when none is crossing.
+const NO_WASH = -1;
+// The emitters the director knows how to play (summer-fx-director.js): the whole language.
+const EMITTER_KINDS = ['blossom', 'bouquet', 'clear', 'combo', 'lock', 'rise', 'seeds', 'skip', 'spin'];
+// How many hops a skipping stone may be given, and how many flowers can open over the lake.
+const SKIP_HOPS = [4, 8];
+const SKY_FLOWERS = SUMMER_BOUQUET_KINDS - 1;
+// Whole numbers, the hour of the night (a phase on its circle) and the level-up's wave (how far
+// across it has got, or NO_WASH); every other number at the top of a frame is a level in 0..1.
+const COUNTERS = ['epoch', 'streak', 'bouquets', 'picked', 'level', 'hour', 'flights', 'wash'];
 const BOARD_ROWS = 20;
 const MALFORMED_COUNTS = [NaN, Infinity, -Infinity, -5, 0, 0.8, '', ' ', 'garbage', null, false, true, [], [4], {},
     { lineCount: [] }, { detail: { lineCount: true } }, Symbol('count'), 4n];
@@ -73,6 +80,24 @@ function snapshot(frame) {
 const lanterns = (reactions) => Array.from(reactions.getFrame().bouquet);
 const lit = (reactions) => lanterns(reactions).filter((level) => level > 0).length;
 
+const WAITS = new Map();
+/**
+ * The longest any emitter of a tier is held back before it starts, in seconds: the last flower of
+ * a perfect clear, or the flower the bouquet opens over the maypole. Read off the director itself,
+ * so the frame checks below follow the tuning; the tests of those two events pin what the waits are.
+ */
+function longestWait(quality = 'Extreme') {
+    if (!WAITS.has(quality)) {
+        const perfect = create(quality);
+        perfect.onPerfectClear();
+        const bouquet = create(quality);
+        LETTERS.forEach((letter) => bouquet.onPieceLock({ piece: pieceOf(letter) }));
+        const waiting = [...perfect.frame.emitters, ...bouquet.frame.emitters].map((emitter) => -emitter.age);
+        WAITS.set(quality, Math.max(0, ...waiting));
+    }
+    return WAITS.get(quality);
+}
+
 /** Every way a frame can leave its documented ranges, as readable messages. */
 function frameProblems(frame, reactions) {
     const problems = [];
@@ -95,6 +120,9 @@ function frameProblems(frame, reactions) {
         Number.isFinite(frame.hour) && frame.hour >= 0 && frame.hour < SUMMER_HOURS.length,
         `hour = ${String(frame.hour)}`,
     );
+    check(Number.isInteger(frame.flights) && frame.flights >= 0, `flights = ${String(frame.flights)}`);
+    // The wave is on its way across (0 where it sets out, 1 at the far shore), or there is none.
+    check(frame.wash === NO_WASH || unit(frame.wash), `wash = ${String(frame.wash)}`);
     check(frame.species.length >= SUMMER_BOUQUET_KINDS, `${frame.species.length} species`);
     frame.species.forEach((level, kind) => check(unit(level), `species ${kind} = ${level}`));
     check(frame.bouquet.length === SUMMER_BOUQUET_KINDS, `${frame.bouquet.length} lanterns`);
@@ -126,6 +154,8 @@ function frameProblems(frame, reactions) {
         new Set(frame.emitters.map((emitter) => emitter.serial)).size === frame.emitters.length,
         'duplicate serials',
     );
+    // An emitter held back waits below zero, never longer than the longest wait its tier ever asks for.
+    const wait = longestWait(reactions?.quality) + 1e-9;
     for (const emitter of frame.emitters) {
         const label = `emitter ${emitter.id}/${emitter.kind}`;
         check(emitter.active === true, `${label} inactive`);
@@ -133,14 +163,29 @@ function frameProblems(frame, reactions) {
         check(Number.isInteger(emitter.id) && emitter.id >= 0, `${label} id`);
         check(Number.isInteger(emitter.serial) && emitter.serial >= 0, `${label} serial ${emitter.serial}`);
         check(emitter.duration > 0, `${label} duration ${emitter.duration}`);
-        check(emitter.age >= 0 && emitter.age < emitter.duration, `${label} age ${emitter.age}`);
+        check(emitter.age >= -wait && emitter.age < emitter.duration, `${label} age ${emitter.age}`);
         check(emitter.progress >= 0 && emitter.progress < 1, `${label} progress ${emitter.progress}`);
+        // One that is still waiting has done nothing of its work yet.
+        if (emitter.age < 0) check(emitter.progress === 0, `${label} progress ${emitter.progress} while waiting`);
         check(emitter.strength > 0 && emitter.strength <= 1, `${label} strength ${emitter.strength}`);
         check(emitter.seed >= 0 && emitter.seed < 1, `${label} seed ${emitter.seed}`);
         check(emitter.side === 1 || emitter.side === -1, `${label} side ${emitter.side}`);
         check(unit(emitter.column), `${label} column ${emitter.column}`);
         check(unit(emitter.row), `${label} row ${emitter.row}`);
-        check(Number.isInteger(emitter.lines) && emitter.lines >= 0, `${label} lines ${emitter.lines}`);
+        if (emitter.kind === 'blossom') {
+            // Which place in the sky a flower opens at, or the one mark for "over the maypole".
+            check(
+                Number.isInteger(emitter.lines) && (emitter.lines === SUMMER_BLOSSOM_MAYPOLE
+                    || (emitter.lines >= 0 && emitter.lines < SKY_FLOWERS)),
+                `${label} lines ${emitter.lines}`,
+            );
+        } else if (emitter.kind === 'skip') {
+            // The hops of a skipping stone.
+            check(
+                Number.isInteger(emitter.lines) && emitter.lines >= SKIP_HOPS[0] && emitter.lines <= SKIP_HOPS[1],
+                `${label} lines ${emitter.lines}`,
+            );
+        } else check(Number.isInteger(emitter.lines) && emitter.lines >= 0, `${label} lines ${emitter.lines}`);
         check(
             Number.isInteger(emitter.flower) && emitter.flower >= SUMMER_MIXED && emitter.flower < SUMMER_BOUQUET_KINDS,
             `${label} flower ${emitter.flower}`,
@@ -159,8 +204,11 @@ function expectBounded(frame, reactions) {
  */
 function expectAtRest(frame) {
     for (const [key, value] of Object.entries(frame)) {
-        if (typeof value === 'number' && !['epoch', 'level', 'hour'].includes(key)) expect(value, key).toBe(0);
+        if (typeof value === 'number' && !['epoch', 'level', 'hour', 'wash'].includes(key)) expect(value, key).toBe(0);
     }
+    // No level-up's wave is crossing, and none has been sent this session.
+    expect(frame.wash).toBe(NO_WASH);
+    expect(frame.flights).toBe(0);
     expect(frame.settled).toBe(false);
     expect(frame.front).toBeNull();
     expect(frame.emitters).toEqual([]);
@@ -529,6 +577,8 @@ describe('Summer reaction director', () => {
                 const last = index === letters.length - 1;
                 expect(frame.bouquets, `after ${letter}`).toBe(last ? 1 : 0);
                 expect(emittersOf(frame, 'bouquet').length, `after ${letter}`).toBe(last ? 1 : 0);
+                // The one great flower over the maypole belongs to the whole bouquet, and to nothing less.
+                expect(emittersOf(frame, 'blossom').length, `after ${letter}`).toBe(last ? 1 : 0);
                 // The tally starts over the moment the bouquet is whole.
                 expect(frame.picked).toBe(last ? 0 : seen.size);
                 expect(frame.bouquetFlash > 0).toBe(last);
@@ -570,6 +620,46 @@ describe('Summer reaction director', () => {
             expect(burst.flower).toBe(SUMMER_MIXED);
             expect(burst.strength).toBeGreaterThan(emittersOf(thrown, 'lock').at(-1).strength);
             expect(burst.duration).toBeGreaterThan(emittersOf(thrown, 'lock').at(-1).duration);
+            // An ordinary lock opens no flower in the sky.
+            expect(emittersOf(plain, 'blossom')).toEqual([]);
+        });
+
+        it('opens one great flower of every colour over the maypole a moment after the bouquet is thrown', () => {
+            const reactions = create();
+            lockKinds(reactions, LETTERS.slice(0, 6));
+            reactions.onPieceLock({ piece: pieceOf(LETTERS[6]) });
+            const [flower, ...others] = emittersOf(reactions.frame, 'blossom');
+            expect(others).toEqual([]);
+            // Over the pole, not out over the lake, and of all seven kinds at once.
+            expect(flower).toMatchObject({ lines: SUMMER_BLOSSOM_MAYPOLE, flower: SUMMER_MIXED, progress: 0 });
+            // It waits for the bouquet to leave the pole first: a moment, not a second.
+            expect(flower.age).toBeLessThan(-0.1);
+            expect(flower.age).toBeGreaterThan(-1);
+            const [burst] = emittersOf(reactions.frame, 'bouquet');
+            expect(flower.serial).toBeGreaterThan(burst.serial);
+            expect(burst.age).toBe(0);
+            // A great flower, if not quite the flowers of a perfect clear.
+            const perfect = create();
+            perfect.onPerfectClear();
+            const crowning = emittersOf(perfect.frame, 'blossom')
+                .find((entry) => entry.lines === SUMMER_BLOSSOM_MAYPOLE);
+            expect(flower.strength).toBeGreaterThan(0.5);
+            expect(flower.strength).toBeLessThan(crowning.strength);
+            expect(flower.duration).toBe(crowning.duration);
+            // It opens once its wait is over, and plays out with the bouquet still in the air.
+            const wait = -flower.age;
+            const opened = emittersOf(advance(reactions, wait + 0.1), 'blossom');
+            expect(opened).toHaveLength(1);
+            expect(opened[0]).toMatchObject({ id: flower.id, serial: flower.serial });
+            expect(opened[0].age).toBeCloseTo(0.1, 1);
+            expect(emittersOf(reactions.frame, 'bouquet')).toHaveLength(1);
+            expect(emittersOf(advance(reactions, flower.duration), 'blossom')).toEqual([]);
+            // The next bouquet opens the next flower: one each.
+            lockKinds(reactions, LETTERS.slice(0, 6));
+            expect(emittersOf(reactions.frame, 'blossom')).toEqual([]);
+            reactions.onPieceLock({ piece: pieceOf(LETTERS[6]) });
+            expect(emittersOf(reactions.frame, 'blossom')).toHaveLength(1);
+            expect(reactions.frame.bouquets).toBe(2);
         });
 
         it('does not pick a flower for a piece it cannot name', () => {
@@ -1154,19 +1244,161 @@ describe('Summer reaction director', () => {
             expect(live(bare.frame.rings)[0]).toMatchObject({ column: 0.5, row: bare.frame.emitters[0].row });
         });
 
-        it('lets a back-to-back lift the light and hold the crown without an emitter, a ring or a gust', () => {
+        it('lets a back-to-back lift the light and skip a stone down the sun\'s road, without a ring or a gust', () => {
             const reactions = create();
             expect(reactions.onBackToBack()).toBe(true);
             const { frame } = reactions;
-            expect(frame.emitters).toEqual([]);
+            // One emitter, the stone: where its rings open is the effects director's to say (they
+            // lie on the sun's road, not behind a place on the board), so the ring queue is not asked.
+            expect(frame.emitters.map((emitter) => emitter.kind)).toEqual(['skip']);
+            expect(frame.emitters[0]).toMatchObject({ age: 0, progress: 0, flower: SUMMER_MIXED });
+            expect(frame.emitters[0].lines).toBe(SKIP_HOPS[0]);
             expect(live(frame.rings)).toEqual([]);
             expect(live(frame.waves)).toEqual([]);
-            for (const key of ['warmth', 'glow', 'shafts', 'shimmer']) expect(frame[key], key).toBeGreaterThan(0);
+            for (const key of ['warmth', 'glow', 'shafts', 'shimmer', 'sunburst']) {
+                expect(frame[key], key).toBeGreaterThan(0);
+            }
             expect(frame.gust).toBe(0);
             expect(frame.flock).toBe(0);
-            const later = advance(reactions, 1.5);
-            expect(later.crown).toBeGreaterThan(0);
-            expect(later.ribbons).toBeGreaterThan(0);
+            expect(frame.front).toBeNull();
+            // The sun answers; the petals do not. A back-to-back alone winds no crown and no ribbons.
+            for (let step = 0; step < 150; step++) {
+                expect(reactions.update(1 / 60)).toMatchObject({ crown: 0, heat: 0, ribbons: 0 });
+            }
+            // Nor does a whole run of them.
+            for (let run = 0; run < 5; run++) {
+                reactions.onBackToBack();
+                expect(advance(reactions, 0.7)).toMatchObject({ crown: 0, heat: 0, ribbons: 0 });
+            }
+            expectBounded(reactions.frame, reactions);
+        });
+
+        it('skips the stone further, with more hops, for every back-to-back in a row, up to a limit', () => {
+            const reactions = create();
+            const stones = [];
+            for (let run = 0; run < 8; run++) {
+                reactions.onBackToBack();
+                const stone = emittersOf(reactions.frame, 'skip').at(-1);
+                stones.push({ ...stone });
+                expect(stone.age).toBe(0);
+                // Each stone has skipped its last before the next is thrown.
+                advance(reactions, stone.duration + 0.1);
+                expect(emittersOf(reactions.frame, 'skip')).toEqual([]);
+            }
+            const hops = stones.map((stone) => stone.lines);
+            const strengths = stones.map((stone) => stone.strength);
+            expect(hops[0]).toBe(SKIP_HOPS[0]);
+            // One hop more each time, until the stone has as many as it can carry.
+            const full = hops.indexOf(SKIP_HOPS[1]);
+            expect(full).toBeGreaterThan(1);
+            for (let run = 1; run <= full; run++) {
+                expect(hops[run]).toBe(hops[run - 1] + 1);
+                expect(strengths[run]).toBeGreaterThan(strengths[run - 1]);
+            }
+            for (let run = full; run < hops.length; run++) {
+                expect(hops[run]).toBe(SKIP_HOPS[1]);
+                expect(strengths[run]).toBe(strengths[full]);
+            }
+            expect(strengths[full]).toBeLessThanOrEqual(1);
+            expect(strengths[0]).toBeGreaterThan(0.3);
+            // The same throw each time: one length of flight, one emitter of every colour.
+            expect(new Set(stones.map((stone) => stone.duration)).size).toBe(1);
+            expect(stones[0].duration).toBeGreaterThan(0.8);
+            expect(stones[0].duration).toBeLessThan(2.5);
+            expect(new Set(stones.map((stone) => stone.serial)).size).toBe(stones.length);
+            // A back-to-back long after the last is the first of a new run.
+            advance(reactions, 20);
+            reactions.onBackToBack();
+            expect(emittersOf(reactions.frame, 'skip')[0]).toMatchObject({ lines: hops[0], strength: strengths[0] });
+            // And two at once are two stones, the second the longer throw.
+            reactions.onBackToBack();
+            const pair = emittersOf(reactions.frame, 'skip').sort((a, b) => a.serial - b.serial);
+            expect(pair).toHaveLength(2);
+            expect(pair[1].lines).toBe(pair[0].lines + 1);
+            expectBounded(reactions.frame, reactions);
+        });
+
+        it('lets a back-to-back hold a crown that a combo is already turning, where alone it winds none', () => {
+            const held = create();
+            const left = create();
+            for (const reactions of [held, left]) {
+                reactions.onCombo(8);
+                advance(reactions, 2.2);
+            }
+            const { crown } = held.frame;
+            expect(crown).toBeGreaterThan(0.6);
+            expect(left.frame.crown).toBe(crown);
+            // The combo's hold is nearly up. A back-to-back renews it; without one the crown unwinds.
+            held.onBackToBack();
+            const [after, without] = [advance(held, 2), advance(left, 2)];
+            expect(after.crown).toBeGreaterThanOrEqual(crown - 1e-9);
+            expect(after.ribbons).toBeGreaterThan(0);
+            expect(without.crown).toBeLessThan(crown * 0.6);
+            // It holds the crown where the combo wound it: it does not wind it further.
+            expect(after.crown).toBeLessThan(crown + 0.02);
+            // The same back-to-back before any combo: nothing to hold.
+            const alone = create();
+            alone.onBackToBack();
+            expect(advance(alone, 2)).toMatchObject({ crown: 0, ribbons: 0 });
+            // And once the crown has unwound to rest, a back-to-back does not bring it back.
+            expect(advance(left, 30).crown).toBe(0);
+            left.onBackToBack();
+            expect(advance(left, 1.5)).toMatchObject({ crown: 0, ribbons: 0 });
+        });
+
+        it('sets the maypole dancing on a twist: its whirl swells, wheels a moment and dies away', () => {
+            const reactions = create();
+            expect(reactions.frame.whirl).toBe(0);
+            // Nothing but a twist starts it.
+            reactions.onPieceLock({ piece: pieceOf('T') });
+            reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
+            reactions.onCombo(6);
+            reactions.onBackToBack();
+            reactions.onPerfectClear();
+            reactions.onLevelUp();
+            expect(advance(reactions, 1).whirl).toBe(0);
+            reactions.onTwist({ piece: pieceOf('T') });
+            // The ribbons are thrown out, not snapped out: nothing at the instant of the twist ...
+            expect(reactions.frame.whirl).toBe(0);
+            const seen = [];
+            for (let step = 0; step < 60 * 90; step++) {
+                const frame = reactions.update(1 / 60);
+                expect(frame.whirl).toBeGreaterThanOrEqual(0);
+                expect(frame.whirl).toBeLessThanOrEqual(1);
+                seen.push(frame.whirl);
+                if (frame.whirl === 0 && step > 30) break;
+            }
+            // ... full out within the second, at a twist's full strength ...
+            const peak = seen.indexOf(Math.max(...seen));
+            expect(seen[0]).toBeGreaterThan(0);
+            expect(seen[0]).toBeLessThan(0.3);
+            expect(seen[peak]).toBeGreaterThan(0.9);
+            expect(peak / 60).toBeGreaterThan(0.2);
+            expect(peak / 60).toBeLessThan(1);
+            for (let step = 1; step <= peak; step++) expect(seen[step]).toBeGreaterThanOrEqual(seen[step - 1]);
+            // ... then only ever falling, for a few seconds, to rest exactly.
+            for (let step = peak + 1; step < seen.length; step++) {
+                expect(seen[step]).toBeLessThanOrEqual(seen[step - 1]);
+            }
+            expect(seen.at(-1)).toBe(0);
+            expect(seen.length / 60).toBeGreaterThan(3);
+            expect(seen.length / 60).toBeLessThan(45);
+            // Still wheeling well after the garland beside the board has gone, gone long before a minute.
+            expect(seen[Math.round(2 * 60)]).toBeGreaterThan(0.15);
+            expect(seen[Math.round(8 * 60)]).toBeLessThan(0.1);
+            // A second twist while it wheels adds to the dance and never checks it.
+            const again = create();
+            again.onTwist();
+            const before = advance(again, 1).whirl;
+            again.onTwist();
+            expect(again.frame.whirl).toBeGreaterThanOrEqual(before - 1e-9);
+            const lone = create();
+            lone.onTwist();
+            expect(advance(again, 1).whirl).toBeGreaterThan(advance(lone, 2).whirl);
+            // A new session starts with the ribbons at rest.
+            again.reset();
+            expect(again.frame.whirl).toBe(0);
+            expect(advance(again, 1).whirl).toBe(0);
         });
 
         it('makes the whole evening exhale on a perfect clear', () => {
@@ -1187,11 +1419,176 @@ describe('Summer reaction director', () => {
             expect(live(frame.waves).length).toBeGreaterThanOrEqual(1);
             expect(Math.max(...live(frame.rings).map((ring) => ring.strength)))
                 .toBeGreaterThan(Math.max(...live(clear.frame.rings).map((ring) => ring.strength)));
-            // The strongest front there is, and a crown from nothing.
+            // The strongest front there is, and a crown from nothing: a low one, turning without the
+            // ribbons and the glow, which stay a combo's own.
             const front = advance(reactions, 1).front.strength;
             expect(front).toBeGreaterThan(advance(clear, 1).front.strength);
-            expect(reactions.frame.crown).toBeGreaterThan(0.5);
+            expect(reactions.frame.crown).toBeGreaterThan(0.15);
+            expect(advance(clear, 1).crown).toBe(0);
+            let highest = 0;
+            for (let step = 0; step < 60 * 3; step++) {
+                const turning = reactions.update(1 / 60);
+                highest = Math.max(highest, turning.crown);
+                expect(turning.ribbons).toBe(0);
+                expect(turning.heat).toBe(0);
+            }
+            expect(highest).toBeGreaterThan(0.2);
+            expect(highest).toBeLessThan(0.5);
             expectBounded(reactions.frame, reactions);
+            // A crown a combo has wound higher is left as it is: the perfect clear never pulls it down.
+            const wound = create();
+            wound.onCombo(12);
+            const before = advance(wound, 1.5);
+            expect(before.ribbons).toBeGreaterThan(0.5);
+            wound.onPerfectClear();
+            const after = advance(wound, 1);
+            expect(after.crown).toBeGreaterThanOrEqual(before.crown - 1e-9);
+            expect(after.ribbons).toBeGreaterThanOrEqual(before.ribbons - 1e-9);
+        });
+
+        it.each(TIERS)(
+            'opens the flowers of a perfect clear in the sky at %s: as many as the pool carries, the maypole\'s last',
+            (quality) => {
+                const reactions = create(quality);
+                const capacity = SUMMER_REACTION_LIMITS[quality];
+                reactions.onPerfectClear();
+                const { frame } = reactions;
+                const blossoms = emittersOf(frame, 'blossom').sort((a, b) => a.serial - b.serial);
+                const sky = blossoms.slice(0, -1);
+                const pole = blossoms.at(-1);
+                // Beside the rising meadow and the bouquet, and all of it inside the tier's pool.
+                expect(emittersOf(frame, 'rise')).toHaveLength(1);
+                expect(emittersOf(frame, 'bouquet')).toHaveLength(1);
+                expect(frame.emitters).toHaveLength(blossoms.length + 2);
+                expect(frame.emitters.length).toBeLessThanOrEqual(capacity);
+                // Over the lake: as many as the pool carries with a slot to spare, never none, and
+                // never more than one for each kind that is not the maypole's own.
+                expect(sky).toHaveLength(Math.max(1, Math.min(SKY_FLOWERS, capacity - 4)));
+                expect(sky.map((flower) => flower.lines)).toEqual([...Array(sky.length).keys()]);
+                // Each of one kind, no two the same.
+                for (const flower of sky) {
+                    expect(Number.isInteger(flower.flower) && flower.flower >= 0, `kind ${flower.flower}`).toBe(true);
+                    expect(flower.flower).toBeLessThan(SUMMER_BOUQUET_KINDS);
+                }
+                expect(new Set(sky.map((flower) => flower.flower)).size).toBe(sky.length);
+                // The last of all over the maypole, in every colour.
+                expect(pole).toMatchObject({ lines: SUMMER_BLOSSOM_MAYPOLE, flower: SUMMER_MIXED });
+                expect(pole.serial).toBe(Math.max(...frame.emitters.map((emitter) => emitter.serial)));
+                // One after another: the first at once, each the same beat behind the one before.
+                expect(blossoms[0].age).toBe(0);
+                const beat = -blossoms[1].age;
+                expect(beat).toBeGreaterThan(0.1);
+                expect(beat).toBeLessThan(0.5);
+                blossoms.forEach((flower, index) => {
+                    expect(flower.age).toBeCloseTo(-index * beat, 12);
+                    expect(flower.progress).toBe(0);
+                    // All at full strength, each with the same time to climb, open and hang.
+                    expect(flower.strength).toBe(1);
+                    expect(flower.duration).toBe(blossoms[0].duration);
+                });
+                // The whole show has begun within a couple of seconds, while the first petals still hang.
+                expect(-pole.age).toBeLessThan(2);
+                expectBounded(frame, reactions);
+            },
+        );
+
+        it('gives a perfect clear more flowers the more the tier can carry, and all seven at the top', () => {
+            const flowers = TIERS.map((quality) => {
+                const reactions = create(quality);
+                reactions.onPerfectClear();
+                return emittersOf(reactions.frame, 'blossom');
+            });
+            for (let index = 1; index < flowers.length; index++) {
+                expect(flowers[index].length, TIERS[index]).toBeLessThanOrEqual(flowers[index - 1].length);
+            }
+            // The dearest tiers open all seven; the cheapest still opens one over the lake and one over the pole.
+            expect(flowers[0]).toHaveLength(SUMMER_BOUQUET_KINDS);
+            expect(flowers.at(-1)).toHaveLength(2);
+            expect(new Set(flowers[0].map((flower) => flower.flower)).size).toBe(SUMMER_BOUQUET_KINDS);
+            // The same flowers in the same places, tier by tier: a cheaper tier opens the first of them.
+            const key = (flower) => `${flower.lines}/${flower.flower}/${flower.age.toFixed(6)}`;
+            const sky = (list) => list.filter((flower) => flower.lines !== SUMMER_BLOSSOM_MAYPOLE)
+                .sort((a, b) => a.lines - b.lines).map(key);
+            for (let index = 1; index < flowers.length; index++) {
+                expect(sky(flowers[index])).toEqual(sky(flowers[0]).slice(0, flowers[index].length - 1));
+            }
+        });
+
+        it('holds each flower back for its turn, in the slot it claimed, and lets it age up through zero', () => {
+            const reactions = create('Extreme');
+            reactions.onPerfectClear();
+            const start = emittersOf(reactions.frame, 'blossom').sort((a, b) => a.serial - b.serial);
+            const waits = start.map((flower) => -flower.age);
+            const opened = new Map();
+            const gone = new Map();
+            let clock = 0;
+            for (let step = 0; step < 60 * 4; step++) {
+                const frame = reactions.update(1 / 60);
+                clock += 1 / 60;
+                const now = new Map(emittersOf(frame, 'blossom').map((flower) => [flower.serial, flower]));
+                for (const [index, flower] of start.entries()) {
+                    const playing = now.get(flower.serial);
+                    if (playing) {
+                        // The same slot from the moment it was asked for, however long it waits.
+                        expect(playing.id).toBe(flower.id);
+                        // Its age is the clock less its wait: it never restarts and never skips.
+                        expect(playing.age).toBeCloseTo(clock - waits[index], 9);
+                        expect(playing.progress).toBeCloseTo(Math.max(0, playing.age) / playing.duration, 9);
+                        if (playing.age >= 0 && !opened.has(index)) opened.set(index, clock);
+                    } else if (!gone.has(index)) gone.set(index, clock);
+                }
+                expectBounded(frame, reactions);
+            }
+            // Every one began its work when its wait was up (to the frame) and played its whole life after.
+            start.forEach((flower, index) => {
+                expect(opened.get(index), `flower ${index}`).toBeGreaterThanOrEqual(waits[index] - 1e-9);
+                expect(opened.get(index), `flower ${index}`).toBeLessThan(waits[index] + 1 / 60 + 1e-9);
+                expect(gone.get(index), `flower ${index}`).toBeCloseTo(waits[index] + flower.duration, 1);
+            });
+            expect([...opened.values()]).toEqual([...opened.values()].sort((a, b) => a - b));
+        });
+
+        it('never gives up a flower that is still waiting while the pool holds anything that has begun', () => {
+            for (const quality of TIERS) {
+                const reactions = create(quality);
+                const capacity = reactions.maxEmitters;
+                // A flower held back a second, in a pool otherwise full of bursts already under way.
+                const flower = { ...reactions.emit('blossom', { strength: 1, duration: 1.4, delay: 1 }) };
+                expect(flower.age).toBe(-1);
+                for (let slot = 1; slot < capacity; slot++) {
+                    reactions.emit('clear', { strength: 1, duration: 1.6, lines: 4 });
+                }
+                reactions.update(1 / 60);
+                // A storm of new emitters for as long as it waits: three times the pool, every frame.
+                for (let step = 0; step < 58; step++) {
+                    for (let burst = 0; burst < capacity * 3; burst++) {
+                        reactions.emit(['lock', 'clear', 'spin', 'rise', 'combo'][burst % 5], {
+                            strength: 1, duration: 1.2, lines: 1,
+                        });
+                    }
+                    const waiting = reactions.update(1 / 60).emitters
+                        .find((emitter) => emitter.serial === flower.serial);
+                    expect(waiting, `${quality}, frame ${step}`).toBeDefined();
+                    expect(waiting.id).toBe(flower.id);
+                    expect(waiting.age).toBeLessThan(0);
+                }
+                // Its wait over, it opens in the slot it claimed a second ago.
+                const opened = advance(reactions, 0.1).emitters.find((emitter) => emitter.serial === flower.serial);
+                expect(opened.age).toBeGreaterThan(0);
+                expect(opened.id).toBe(flower.id);
+            }
+        });
+
+        it('takes a delay in seconds only, and holds nothing back for nonsense', () => {
+            const reactions = create();
+            const ageOf = (delay) => reactions.emit('blossom', { strength: 1, duration: 1.4, delay }).age;
+            expect(ageOf(0.5)).toBe(-0.5);
+            expect(ageOf(2)).toBe(-2);
+            for (const delay of [0, -1, NaN, Infinity, -Infinity, undefined, null, '1', {}]) {
+                expect(ageOf(delay), String(delay)).toBe(0);
+            }
+            // No delay is what every emitter had before there was one.
+            expect(reactions.emit('lock', {}).age).toBe(0);
         });
 
         it('rings the lake, stirs the meadow and sweeps a front on a level up', () => {
@@ -1214,6 +1611,86 @@ describe('Summer reaction director', () => {
             }
             expect(newest(frame.rings).strength).toBeLessThan(live(perfect.frame.rings)[0].strength);
             expect(newest(frame.waves).strength).toBeLessThan(newest(perfect.frame.waves).strength);
+        });
+
+        it('sends a wave of bloom across the meadow and the lake on a level-up, and counts the flight', () => {
+            const reactions = create();
+            expect(reactions.frame).toMatchObject({ wash: NO_WASH, flights: 0 });
+            expect(advance(reactions, 1)).toMatchObject({ wash: NO_WASH, flights: 0 });
+            expect(SUMMER_WASH_SECONDS).toBeGreaterThan(1);
+            expect(SUMMER_WASH_SECONDS).toBeLessThan(6);
+            reactions.onLevelUp({ level: 2 });
+            // It sets out at the eye the moment the level turns ...
+            expect(reactions.frame).toMatchObject({ wash: 0, flights: 1 });
+            // ... and crosses at a steady pace: a share of the way for the same share of its time.
+            let previous = 0;
+            const frames = Math.round(SUMMER_WASH_SECONDS * 60);
+            for (let step = 1; step < frames; step++) {
+                const { wash, flights } = reactions.update(1 / 60);
+                expect(wash).toBeGreaterThan(previous);
+                expect(wash).toBeLessThanOrEqual(1);
+                expect(wash).toBeCloseTo((step / 60) / SUMMER_WASH_SECONDS, 9);
+                expect(flights).toBe(1);
+                previous = wash;
+            }
+            expect(previous).toBeGreaterThan(0.98);
+            // Across: there is no wave any more, from that frame on. The count stays.
+            expect(advance(reactions, 2 / 60)).toMatchObject({ wash: NO_WASH, flights: 1 });
+            for (let step = 0; step < 120; step++) expect(reactions.update(1 / 60).wash).toBe(NO_WASH);
+            // The same wave whatever the frame rate: it is read off the clock.
+            for (const fps of [24, 144]) {
+                const other = create();
+                other.onLevelUp();
+                expect(advance(other, 1, fps).wash).toBeCloseTo(1 / SUMMER_WASH_SECONDS, 9);
+            }
+            // One long frame does not leave it half way.
+            const hitch = create();
+            hitch.onLevelUp();
+            expect(hitch.update(SUMMER_WASH_SECONDS * 2).wash).toBe(NO_WASH);
+        });
+
+        it('counts a flight for every level-up that asks for a flourish, and for nothing else', () => {
+            const reactions = create();
+            // Everything but a level-up: no wave, no flight.
+            reactions.onHardDrop({ distance: 18 });
+            reactions.onPieceLock({ piece: pieceOf('T') });
+            reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
+            reactions.onCombo(7);
+            reactions.onTwist({ piece: pieceOf('T') });
+            reactions.onBackToBack();
+            reactions.onPerfectClear();
+            expect(reactions.frame).toMatchObject({ wash: NO_WASH, flights: 0 });
+            expect(advance(reactions, 0.5)).toMatchObject({ wash: NO_WASH, flights: 0 });
+            // The level alone (the theme's call when effects are off, and a rebuilt scene taking up
+            // its night) turns the hour and sends nothing.
+            expect(reactions.setLevel(5)).toBe(true);
+            expect(reactions.restoreNight({ level: 6, hourTurn: 1, hourDrift: 0.2 })).toBe(true);
+            expect(advance(reactions, 0.5)).toMatchObject({ wash: NO_WASH, flights: 0, level: 6 });
+            // Every level-up is one more, whatever it names, a second wave setting out as the first crosses.
+            reactions.onLevelUp({ level: 7 });
+            advance(reactions, 0.5);
+            reactions.onLevelUp();
+            expect(reactions.frame).toMatchObject({ flights: 2, level: 8 });
+            expect(reactions.frame.wash).toBeGreaterThanOrEqual(0);
+            for (const junk of [null, 'up', { level: NaN }, { detail: { level: 'x' } }]) reactions.onLevelUp(junk);
+            expect(reactions.frame.flights).toBe(6);
+            expectBounded(reactions.frame, reactions);
+            // Game over does not call the wave back.
+            reactions.onGameOver();
+            expect(reactions.frame.wash).toBeGreaterThanOrEqual(0);
+            expect(advance(reactions, SUMMER_WASH_SECONDS + 0.1)).toMatchObject({ wash: NO_WASH, flights: 6 });
+            // A new session counts from nothing again, with no wave left over; so does one that keeps its night.
+            reactions.onLevelUp();
+            reactions.reset({ keepNight: true });
+            expect(reactions.frame).toMatchObject({ wash: NO_WASH, flights: 0 });
+            expect(advance(reactions, 1)).toMatchObject({ wash: NO_WASH, flights: 0 });
+            reactions.onLevelUp();
+            reactions.reset();
+            expect(reactions.frame).toMatchObject({ wash: NO_WASH, flights: 0 });
+            // A disposed director sends none.
+            reactions.dispose();
+            expect(reactions.onLevelUp()).toBe(false);
+            expect(reactions.frame).toMatchObject({ wash: NO_WASH, flights: 0 });
         });
 
         it('settles the evening at game over without cutting the petals already in flight', () => {
@@ -1544,10 +2021,15 @@ describe('Summer reaction director', () => {
             lockKinds(reactions, LETTERS);
             reactions.onPerfectClear();
             let previous = snapshot(reactions.frame);
+            // (The crown is a spring that rises to its target, and the maypole's whirl swells before
+            // it dies away: neither is an envelope that starts at its height. Both have tests of their own.)
             const levels = (frame) => Object.entries(frame)
                 .filter(([key, value]) => typeof value === 'number' && !COUNTERS.includes(key)
-                    && !['crown', 'heat', 'ribbons'].includes(key));
+                    && !['crown', 'heat', 'ribbons', 'whirl'].includes(key));
             expect(levels(previous).every(([, value]) => value > 0)).toBe(true);
+            // Everything else at the top of a frame is one of them: nothing new slips past unseen.
+            expect(levels(previous).map(([key]) => key).sort()).toEqual(['bouquetFlash', 'flock', 'flutter', 'glow',
+                'gust', 'shafts', 'shimmer', 'sunburst', 'warmth']);
             for (let step = 0; step < 60; step++) {
                 const frame = snapshot(reactions.update(0.25));
                 for (const [key, value] of levels(frame)) expect(value, key).toBeLessThanOrEqual(previous[key]);
@@ -1568,6 +2050,10 @@ describe('Summer reaction director', () => {
             const later = advance(reactions, 60);
             for (const [key, value] of levels(later)) expect(value, key).toBe(0);
             expect(Array.from(later.species).every((level) => level === 0)).toBe(true);
+            // The crown and the whirl have come to rest with them.
+            expect(later).toMatchObject({
+                crown: 0, heat: 0, ribbons: 0, whirl: 0,
+            });
         });
 
         it('advances envelopes, the crown, fronts and emitter ages identically at 30, 60 and 144 Hz', () => {
@@ -1679,6 +2165,13 @@ describe('Summer reaction director', () => {
                 const random = seededRandom(31);
                 const used = new Set();
                 const kinds = new Set();
+                // What the storm asked for, whether or not it lived to be seen in a frame.
+                const asked = new Set();
+                const emit = reactions.emit.bind(reactions);
+                reactions.emit = (kind, options) => {
+                    asked.add(kind);
+                    return emit(kind, options);
+                };
                 const letter = () => LETTERS[Math.floor(random() * LETTERS.length)];
                 const events = [
                     () => reactions.onPieceLock({
@@ -1709,9 +2202,52 @@ describe('Summer reaction director', () => {
                 expect(peak).toBe(capacity);
                 expect([...used].sort((a, b) => a - b)).toEqual([...Array(capacity).keys()]);
                 expect(reactions.emitters).toHaveLength(capacity);
-                // The storm reached the whole language, the bouquet included.
-                expect([...kinds].sort()).toEqual(['bouquet', 'clear', 'combo', 'lock', 'rise', 'seeds', 'spin']);
+                // The storm reached the whole language, the bouquet, the flowers in the sky and the
+                // skipping stone included. (Asked for, not seen: flowers held back for their turn keep
+                // their slots, so with a perfect clear every tenth of a second, as no game can send
+                // them, the pool is nearly all waiting flowers and the rest are given up within the
+                // frame. What a frame shows at the pace of play is the next test's.)
+                expect([...asked].sort()).toEqual(EMITTER_KINDS);
+                for (const kind of kinds) expect(EMITTER_KINDS).toContain(kind);
+                expect(kinds).toContain('blossom');
                 expect(reactions.frame.bouquets).toBeGreaterThan(0);
+            },
+        );
+
+        // src/core/physics.js holds the cleared rows this long (and then lets the stack settle)
+        // before it can know the board is empty: a perfect clear never comes sooner after its clear.
+        const ROWS_HOLD = 0.16;
+
+        it.each(TIERS.flatMap((quality) => [[quality, 1], [quality, 4]]))(
+            'shows a frame everything a perfect clear asks for at %s, after a clear of %i',
+            (quality, lines) => {
+                const reactions = create(quality);
+                reactions.onHardDrop({ distance: 12 });
+                reactions.onPieceLock({ piece: pieceOf('I') });
+                reactions.onLineClear(lines, { clearedRows: [20, 21, 22, 23].slice(0, lines) });
+                advance(reactions, ROWS_HOLD);
+                const first = reactions.serial;
+                reactions.onPerfectClear();
+                const asked = reactions.serial - first;
+                const frame = reactions.update(1 / 60);
+                // Every emitter of its own is there for the effects to play: the bouquet, each flower
+                // in its turn, and a rising meadow (its own, or the one the four lines raised).
+                const own = frame.emitters.filter((emitter) => emitter.serial >= first);
+                expect(own).toHaveLength(asked);
+                expect(emittersOf(frame, 'bouquet')).toHaveLength(1);
+                expect(emittersOf(frame, 'rise')).toHaveLength(1);
+                const flowers = emittersOf(frame, 'blossom');
+                expect(flowers).toHaveLength(Math.max(1, Math.min(SKY_FLOWERS, reactions.maxEmitters - 4)) + 1);
+                expect(flowers.filter((flower) => flower.lines === SUMMER_BLOSSOM_MAYPOLE)).toHaveLength(1);
+                expectBounded(frame, reactions);
+                // And every flower lives to open, with nothing else happening.
+                const opened = new Set();
+                for (let step = 0; step < 60 * 4; step++) {
+                    for (const flower of emittersOf(reactions.update(1 / 60), 'blossom')) {
+                        if (flower.age > 0.5) opened.add(flower.serial);
+                    }
+                }
+                expect(opened.size).toBe(flowers.length);
             },
         );
 

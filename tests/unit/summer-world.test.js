@@ -9,6 +9,7 @@ import {
     summerPropRecord,
 } from '../../src/themes/summer/summer-assets.js';
 import { SUMMER_SUN_RADIUS_DEGREES } from '../../src/themes/summer/summer-atmosphere.js';
+import { SummerBackdrop } from '../../src/themes/summer/summer-backdrop.js';
 import {
     SUMMER_FEATURE_TREES, SUMMER_VIEWS, summerEye, summerViewFor,
 } from '../../src/themes/summer/summer-composition.js';
@@ -21,15 +22,22 @@ import { SummerLife } from '../../src/themes/summer/summer-life.js';
 import { SUMMER_MIRROR_LAYER } from '../../src/themes/summer/summer-lake.js';
 import { SUMMER_BREEZE, SUMMER_SUN_DIRECTION } from '../../src/themes/summer/summer-light.js';
 import { SUMMER_PARTICLES } from '../../src/themes/summer/summer-petal-sim.js';
+import { createSummerPetalGeometry } from '../../src/themes/summer/summer-petals.js';
 import { SummerPost } from '../../src/themes/summer/summer-post.js';
 import { SUMMER_TIERS } from '../../src/themes/summer/summer-quality.js';
-import { SUMMER_PIECE_FLOWERS, SummerReactions } from '../../src/themes/summer/summer-reactions.js';
+import {
+    SUMMER_PIECE_FLOWERS, SUMMER_WASH_SECONDS, SummerReactions,
+} from '../../src/themes/summer/summer-reactions.js';
 import { SUMMER_DEFAULT_BOARD, SUMMER_STAGE_DEPTH } from '../../src/themes/summer/summer-stage.js';
 import {
     SUMMER_BOUNDS, SUMMER_PLACES, SUMMER_TERRACES, summerGroundHeight, summerShoreDistance, summerShores,
 } from '../../src/themes/summer/summer-terrain.js';
+import {
+    SUMMER_WEATHER_HOLD, SUMMER_WEATHER_SECONDS, SUMMER_WEATHERS,
+} from '../../src/themes/summer/summer-weather.js';
 import { SummerWorld } from '../../src/themes/summer/summer-world.js';
 import { seededRandom } from '../../src/utils/helpers.js';
+import { REDUCED_FLASH_SCALE, holdFlashing } from '../../src/utils/photosensitivity.js';
 
 const assetDirectory = new URL('../../src/themes/summer/assets/', import.meta.url);
 const TREE_NAMES = Object.keys(SUMMER_TREE_URLS);
@@ -43,15 +51,16 @@ const SEED = 624;
 // Building the meadow from the real asset pack takes a second or so on a busy machine.
 const SLOW = 120000;
 const LETTERS = Object.keys(SUMMER_PIECE_FLOWERS);
-const { petal: PETAL } = SUMMER_PARTICLES;
+const { petal: PETAL, glow: GLOW } = SUMMER_PARTICLES;
 // The parts of the world the lake mirrors, in the order the world builds them; the meadow
 // lies behind its own crest as the lake sees it and is left out.
 const MIRRORED = ['terrain', 'forest', 'backdrop', 'atmosphere', 'homestead', 'shore', 'life'];
 // Hung near the eye: their images would land on the meadow, so they stay out of the mirror whole.
 const UNMIRRORED = ['garlands', 'petals'];
 const PARTS = [...MIRRORED, ...UNMIRRORED, 'meadow', 'lake'];
-// Small things the half-size, rippled mirror never shows, or whose image lies under them.
-const SPECKS = /^(SummerPollen|SummerButterflies|SummerLilies [01])$/;
+// Small things the half-size, rippled mirror never shows, or whose image lies under them: pollen,
+// the fine streaks of a sun shower, butterflies, and the lily pads lying flat on the water.
+const SPECKS = /^(SummerPollen|SummerRain|SummerButterflies|SummerLilies [01])$/;
 // What getDiagnostics() counts, besides the petal pool.
 const COUNTS = ['trees', 'sprays', 'grass', 'flowers', 'reeds', 'lilies', 'farTrees', 'butterflies', 'swallows'];
 // Meshes drawn straight from the geometry of the shared asset pack.
@@ -453,6 +462,17 @@ describe('Summer world scene contracts', () => {
         expect(named(world.group, 'SummerSky')).toHaveLength(1);
         expect(named(world.group, /^SummerMistBank /)).toHaveLength(tier.mist);
         expect(count(world.group, 'SummerPollen')).toBe(tier.motes);
+        // The rain of a sun shower: one instanced draw in the air, more drops than motes on every
+        // tier, light blended over the scene like the pollen, and never a caster of shadow.
+        const [rain, ...moreRain] = named(world.group, 'SummerRain');
+        expect(moreRain).toEqual([]);
+        expect(rain).toBe(world.atmosphere.rain);
+        expect(rain.parent).toBe(world.atmosphere.group);
+        expect(rain.isInstancedMesh).toBe(true);
+        expect(rain.count).toBeGreaterThan(tier.motes);
+        expect(rain.count).toBeLessThanOrEqual(tier.motes * 3);
+        expect(rain.material.blending).toBe(THREE.AdditiveBlending);
+        expect(rain.frustumCulled).toBe(false);
 
         // The meadow: all grass in one material and all flowers in another, whatever their
         // kind or level of detail.
@@ -486,9 +506,18 @@ describe('Summer world scene contracts', () => {
 
         // The things people made.
         for (const prop of ['cottage', 'shed', 'maypole', 'jetty', 'rowboat', 'flagpole', 'pennant',
-            'maypole ribbons', 'fence']) {
+            'maypole ribbons', 'maypole posies', 'fence']) {
             expect(named(world.homestead.group, `Summer ${prop}`), prop).toHaveLength(1);
         }
+        // The posies tied to the pole are painted by the maypole's own shader (their heads are
+        // lanterns with the rest of it) and stand in the sun like the pole: they cast its shadow.
+        const [posies] = named(world.homestead.group, 'Summer maypole posies');
+        expect(posies).toBe(world.homestead.posies);
+        expect(posies.material).toBe(named(world.group, 'Summer maypole')[0].material);
+        expect(posies.castShadow).toBe(true);
+        expect(posies.geometry.index).toBeNull();
+        expect(posies.geometry.attributes.position.count % 3).toBe(0);
+        expect(posies.geometry.attributes.position.count).toBeGreaterThan(300);
         expect(world.homestead.boat).toBe(named(world.group, 'Summer rowboat')[0]);
         // Someone has the stove lit, since the pack says where the chimney ends.
         expect(summerPropRecord('cottage').anchors.chimneyTop).toHaveLength(3);
@@ -594,7 +623,10 @@ describe('Summer world scene contracts', () => {
         // Besides the specks, only draws of the woods opt out, and every one of them says which it is.
         const woods = drawables(world.forest.group);
         const specks = flagged.filter((object) => SPECKS.test(object.name));
-        expect(specks.map((object) => object.name).sort()).toEqual(['SummerButterflies', 'SummerLilies 0', 'SummerLilies 1', 'SummerPollen']);
+        expect(specks.map((object) => object.name).sort())
+            .toEqual(['SummerButterflies', 'SummerLilies 0', 'SummerLilies 1', 'SummerPollen', 'SummerRain']);
+        // The rain is the air's: it falls in front of the eye, where its image would land on the meadow.
+        expect(specks.find((object) => object.name === 'SummerRain')).toBe(world.atmosphere.rain);
         expect(flagged.every((object) => woods.includes(object) || specks.includes(object))).toBe(true);
         for (const mesh of woods) expect(typeof mesh.userData.unmirrored, mesh.name).toBe('boolean');
 
@@ -965,6 +997,45 @@ describe('Summer world scene contracts', () => {
             expect(summerShoreDistance(wreath.x, wreath.z)).toBeGreaterThan(0);
         }
         expect(bouquet.wreaths[0].distanceTo(bouquet.wreaths[1])).toBeGreaterThan(2);
+        // Ten ribbons hang from it: three from the end of each arm and four from the top of the
+        // pole, a hand's breadth wide, blue and yellow by turns, no two the same length on one anchor.
+        const [ribbons] = named(world.homestead.group, 'Summer maypole ribbons');
+        const { position, uv, cloth } = ribbons.geometry.attributes;
+        const strips = new Map();
+        for (let vertex = 0; vertex < position.count; vertex++) {
+            const phase = cloth.getZ(vertex);
+            if (!strips.has(phase)) {
+                strips.set(phase, {
+                    anchor: new THREE.Vector3().fromBufferAttribute(position, vertex),
+                    hue: cloth.getX(vertex),
+                    length: 0,
+                });
+            }
+            const strip = strips.get(phase);
+            strip.length = Math.max(strip.length, uv.getY(vertex));
+            // Every vertex of a ribbon sits on its anchor (the shader hangs it from there), half the width to a side.
+            expect(new THREE.Vector3().fromBufferAttribute(position, vertex).distanceTo(strip.anchor)).toBe(0);
+            expect(Math.abs(uv.getX(vertex))).toBeCloseTo(0.05, 6);
+            expect(cloth.getX(vertex)).toBe(strip.hue);
+        }
+        const hung = [...strips.values()];
+        expect(hung).toHaveLength(10);
+        const fromAnchor = (key) => hung.filter((strip) => strip.anchor.distanceTo(at(key)) < 0.2);
+        expect(fromAnchor('armLeft')).toHaveLength(3);
+        expect(fromAnchor('armRight')).toHaveLength(3);
+        expect(fromAnchor('top')).toHaveLength(4);
+        for (const key of ['armLeft', 'armRight', 'top']) {
+            const lengths = fromAnchor(key).map((strip) => strip.length);
+            expect(new Set(lengths.map((length) => length.toFixed(3))).size).toBe(lengths.length);
+            for (const length of lengths) {
+                expect(length).toBeGreaterThan(1.2);
+                // Never long enough to trail on the mown ring.
+                expect(length).toBeLessThan(at(key).y - foot);
+            }
+            const hues = fromAnchor(key).map((strip) => strip.hue);
+            expect(new Set(hues)).toEqual(new Set([0, 1]));
+        }
+        expect(hung.filter((strip) => strip.hue === 0)).toHaveLength(5);
     });
 
     it('runs the jetty from the bank out over the lake and floats the boat beside it', () => {
@@ -1974,6 +2045,901 @@ describe('Summer world in play', () => {
     }, SLOW);
 });
 
+describe('Summer world weather, dusk and the level-up\'s wave', () => {
+    /** The single-player score panel as it stands right of the board on a 16:9 screen. */
+    const SCORE_PANEL = Object.freeze({
+        x0: 0.624, x1: 0.772, y0: 0.19, y1: 0.49,
+    });
+    /** A moment into the n-th weather, while it still holds as itself. */
+    const during = (index) => index * SUMMER_WEATHER_SECONDS + 1;
+
+    it('wears the weather its own clock has reached, fair at the start, and keeps the hour\'s colours', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light } = world;
+        const state = light.weather;
+        const wears = (weather, label) => {
+            const close = (actual, expected) => actual.forEach(
+                (value, index) => expect(value, `${label}[${index}]`).toBeCloseTo(expected[index], 12),
+            );
+            // The sky: the low cumulus and its height, the row above it, the high deck; then the
+            // mackerel field, the cirrus and the fan of rays (the last is the hour's: the white night).
+            close(light.uSky.value.toArray(), [weather.low, weather.tall, weather.mid, weather.deck]);
+            close(light.uSky2.value.toArray().slice(0, 3), [weather.mackerel, weather.cirrus, weather.rays]);
+            // The air: mist, rain, how deep a cloud's shadow is, how veiled the sun.
+            close(light.uAir.value.toArray(), [weather.mist, weather.rain, weather.shade, weather.veil]);
+            expect(light.uRuffle.value, label).toBeCloseTo(weather.ruffle, 12);
+            // The breeze at rest is the weather's, and the haze the hour's own times the weather's share.
+            expect(light.uWind.value, label).toBeCloseTo(weather.wind, 12);
+            expect(light.uHaze.value, label).toBeCloseTo(light.hour.haze * weather.haze, 12);
+        };
+        const [fair] = SUMMER_WEATHERS;
+        // Before any frame and on the first: the fair evening the scene was built in.
+        wears(fair, 'built');
+        expect(light.uWind.value).toBe(SUMMER_BREEZE);
+        expect(light.uHaze.value).toBe(SUMMER_HOURS[0].haze);
+        world.update(0, 0, {});
+        wears(fair, 'first frame');
+        expect(light.weatherPin).toBeNull();
+        // Each weather in its turn, as the clock reaches it, and fair again when the wheel has come round.
+        SUMMER_WEATHERS.forEach((weather, index) => {
+            world.update(during(index), STEP, {});
+            wears(weather, weather.id);
+            expect(light.weather.phase).toBeCloseTo(during(index) / SUMMER_WEATHER_SECONDS, 9);
+        });
+        world.update(during(SUMMER_WEATHERS.length), STEP, {});
+        wears(fair, 'round again');
+        // Half way through a turn: half way between the two.
+        const turning = (2 + SUMMER_WEATHER_HOLD + (1 - SUMMER_WEATHER_HOLD) / 2) * SUMMER_WEATHER_SECONDS;
+        world.update(turning, STEP, {});
+        const [towers, shower] = [SUMMER_WEATHERS[2], SUMMER_WEATHERS[3]];
+        expect(light.uAir.value.y).toBeCloseTo(0.5, 9);
+        expect(light.uSky.value.x).toBeCloseTo((towers.low + shower.low) / 2, 9);
+        expect(light.uWind.value).toBeCloseTo((towers.wind + shower.wind) / 2, 9);
+        // The weather changes the air, never the hour's own colours or its lamps.
+        const colours = () => Object.values(light.hourUniforms).map((uniform) => uniform.value.toArray());
+        world.update(during(0), STEP, { hour: 1 });
+        const inFair = colours();
+        world.update(during(4), STEP, { hour: 1 });
+        expect(colours()).toEqual(inFair);
+        expect(light.uLamps.value).toBe(SUMMER_HOURS[1].lamps);
+        expect(light.uHaze.value).toBeCloseTo(SUMMER_HOURS[1].haze * SUMMER_WEATHERS[4].haze, 12);
+        // Nothing was rebuilt to change it: one state, written into every frame.
+        expect(light.weather).toBe(state);
+        // A haze override (a playground knob) is the haze, whatever the weather.
+        light.hazeOverride = 0.004;
+        world.update(during(4), STEP, {});
+        expect(light.uHaze.value).toBe(0.004);
+        light.hazeOverride = null;
+        // Time that is no time leaves the weather where the clock last stood.
+        world.update(during(3), STEP, {});
+        for (const junk of [NaN, undefined, null, 'later']) {
+            world.update(junk, STEP, {});
+            wears(SUMMER_WEATHERS[3], String(junk));
+        }
+    }, SLOW);
+
+    it('holds the weather at a pinned phase for a capture, and lets the clock run again without one', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light } = world;
+        SUMMER_WEATHERS.forEach((weather, index) => {
+            light.weatherPin = index;
+            // Whatever the clock says.
+            world.update(during((index + 2) % SUMMER_WEATHERS.length), STEP, {});
+            expect(light.uAir.value.y, weather.id).toBe(weather.rain);
+            expect(light.uSky.value.y, weather.id).toBe(weather.tall);
+            expect(light.uWind.value, weather.id).toBeCloseTo(weather.wind, 12);
+            expect(light.weather.phase).toBe(index);
+        });
+        // A phase between two, and one round the wheel.
+        light.weatherPin = SUMMER_WEATHERS.length + 3;
+        world.update(0, STEP, {});
+        expect(light.uAir.value.y).toBe(1);
+        // Anything that is no phase lets the weather turn by the clock.
+        for (const pin of [null, undefined, NaN, 'shower', Infinity]) {
+            light.weatherPin = pin;
+            world.update(during(1), STEP, {});
+            expect(light.uWind.value, String(pin)).toBeCloseTo(SUMMER_WEATHERS[1].wind, 12);
+        }
+    }, SLOW);
+
+    it('says how far into the white night the hour stands, for what only shows then', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light } = world;
+        const nightAt = (hour) => {
+            world.update(1, STEP, { hour });
+            return light.uSky2.value.w;
+        };
+        const night = SUMMER_HOURS.findIndex((hour) => hour.id === 'white-night');
+        expect(nightAt(0)).toBe(0);
+        expect(nightAt(night)).toBeGreaterThan(0.5);
+        expect(nightAt(night)).toBeLessThanOrEqual(1);
+        // Deepest at the white night itself, coming on and going through the hours beside it.
+        SUMMER_HOURS.forEach((hour, index) => {
+            const depth = nightAt(index);
+            expect(depth, hour.id).toBeGreaterThanOrEqual(0);
+            expect(depth, hour.id).toBeLessThanOrEqual(nightAt(night));
+        });
+        let previous = 0;
+        for (let phase = night - 1; phase <= night; phase += 0.1) {
+            const depth = nightAt(phase);
+            expect(depth).toBeGreaterThanOrEqual(previous - 1e-12);
+            previous = depth;
+        }
+        // And where the sun stands in the sky's own layout: its bearing from straight ahead and
+        // the tangent of its height, hour by hour.
+        SUMMER_HOURS.forEach((hour, index) => {
+            world.update(1, STEP, { hour: index });
+            const radians = THREE.MathUtils.degToRad;
+            expect(light.uSunSky.value.x, hour.id).toBeCloseTo(radians(hour.sunAzimuth), 12);
+            expect(light.uSunSky.value.y, hour.id).toBeCloseTo(Math.tan(radians(hour.sunElevation)), 12);
+            const direction = light.uSunDir.value;
+            expect(Math.atan2(direction.x, -direction.z)).toBeCloseTo(light.uSunSky.value.x, 9);
+            expect(direction.y / Math.hypot(direction.x, direction.z)).toBeCloseTo(light.uSunSky.value.y, 9);
+        });
+    }, SLOW);
+
+    it('carries the clouds and their shadows on at the weather\'s pace, and rewinds them for a capture', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light } = world;
+        const offset = light.uCloudOffset.value;
+        expect(light.uCloudDrift.value).toBe(0);
+        expect(offset.toArray()).toEqual([0, 0]);
+        const run = (seconds, pin = 0) => {
+            light.weatherPin = pin;
+            const before = { drift: light.uCloudDrift.value, x: offset.x, y: offset.y };
+            for (let step = 0; step < Math.round(seconds / STEP); step++) world.update(1, STEP, {});
+            return { drift: light.uCloudDrift.value - before.drift, x: offset.x - before.x, y: offset.y - before.y };
+        };
+        const fair = run(2);
+        expect(fair.drift).toBeGreaterThan(0);
+        // The shadows travel the way the wind blows.
+        const wind = light.uWindDir.value;
+        expect(fair.x * wind.x + fair.y * wind.z).toBeGreaterThan(0);
+        expect(fair.x / fair.y).toBeCloseTo(wind.x / wind.z, 9);
+        // Every weather at its own pace: the fresh breeze hurries them, the mackerel sky hardly moves.
+        SUMMER_WEATHERS.forEach((weather, index) => {
+            const moved = run(2, index);
+            expect(moved.drift / fair.drift, weather.id).toBeCloseTo(weather.drift / SUMMER_WEATHERS[0].drift, 6);
+            expect(moved.x / fair.x, weather.id).toBeCloseTo(weather.drift / SUMMER_WEATHERS[0].drift, 6);
+        });
+        // No time, no travel; and a hitch is a short step, not a leap across the sky.
+        const still = { drift: light.uCloudDrift.value, x: offset.x, y: offset.y };
+        for (const dt of [0, -1, NaN, undefined, null, 'soon', -Infinity]) world.update(1, dt, {});
+        expect({ drift: light.uCloudDrift.value, x: offset.x, y: offset.y }).toEqual(still);
+        light.weatherPin = 0;
+        world.update(1, 60, {});
+        const hitch = light.uCloudDrift.value - still.drift;
+        expect(hitch).toBeGreaterThan(0);
+        expect(hitch).toBeLessThan(fair.drift);
+        // An evening long: the shadows' offset stays inside one tile of the noise, the drift only grows.
+        let previous = light.uCloudDrift.value;
+        light.weatherPin = 1;
+        for (let step = 0; step < 4000; step++) {
+            light.step(0.25);
+            expect(Math.abs(offset.x)).toBeLessThan(1);
+            expect(Math.abs(offset.y)).toBeLessThan(1);
+            expect(light.uCloudDrift.value).toBeGreaterThan(previous);
+            previous = light.uCloudDrift.value;
+        }
+        expect(Number.isFinite(previous)).toBe(true);
+        // Switching effects off (or a new session) does not move the sky ...
+        const before = { drift: light.uCloudDrift.value, x: offset.x, y: offset.y };
+        world.resetEffects();
+        light.reset();
+        expect({ drift: light.uCloudDrift.value, x: offset.x, y: offset.y }).toEqual(before);
+        // ... a capture's seek does: back to where a session starts, in the vector the shaders hold.
+        light.rewind();
+        expect(light.uCloudDrift.value).toBe(0);
+        expect(light.uCloudOffset.value).toBe(offset);
+        expect(offset.toArray()).toEqual([0, 0]);
+    }, SLOW);
+
+    it('brings the dusk down over a few seconds when the session is over, and lifts it for the next', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light } = world;
+        world.update(0, 0, {});
+        expect(world.worn.dusk).toBe(0);
+        const settled = [];
+        for (let step = 0; step < 60 * 8; step++) {
+            world.update(step * STEP, STEP, { settled: true });
+            settled.push(world.worn.dusk);
+            // The light rig wears what the world has eased.
+            expect(light.dusk).toBe(world.worn.dusk);
+        }
+        // Only ever deeper, never at once, and all but down within a few seconds.
+        for (let step = 1; step < settled.length; step++) expect(settled[step]).toBeGreaterThan(settled[step - 1]);
+        expect(settled[0]).toBeLessThan(0.05);
+        expect(settled[59]).toBeGreaterThan(0.2);
+        expect(settled[59]).toBeLessThan(0.7);
+        expect(settled.at(-1)).toBeGreaterThan(0.9);
+        expect(settled.at(-1)).toBeLessThanOrEqual(1);
+        // What dusk is: mist off the water and a veiled sun where the weather had neither, the
+        // wind gone still and the lake flat.
+        const { dusk } = world.worn;
+        const [fair] = SUMMER_WEATHERS;
+        expect(fair.mist).toBe(0);
+        expect(light.uAir.value.x).toBeGreaterThan(0.4);
+        expect(light.uAir.value.w).toBeGreaterThan(0.3);
+        expect(light.uAir.value.y).toBe(0);
+        expect(light.uWind.value).toBeLessThan(fair.wind * 0.5);
+        expect(light.uWind.value).toBeGreaterThan(0);
+        expect(light.uRuffle.value).toBeLessThan(fair.ruffle * 0.6);
+        // Never less mist or veil than the weather's own.
+        light.weatherPin = SUMMER_WEATHERS.findIndex((weather) => weather.id === 'mist');
+        world.update(9, STEP, { settled: true });
+        expect(light.uAir.value.x).toBe(SUMMER_WEATHERS[light.weatherPin].mist);
+        light.weatherPin = null;
+        // The next session starts: the dusk lifts, sooner than it fell.
+        const lifting = [];
+        for (let step = 0; step < 60 * 5; step++) {
+            world.update(9 + step * STEP, STEP, { settled: false });
+            lifting.push(world.worn.dusk);
+        }
+        for (let step = 1; step < lifting.length; step++) expect(lifting[step]).toBeLessThan(lifting[step - 1]);
+        expect(lifting[59]).toBeLessThan(dusk * 0.4);
+        expect(lifting[59]).toBeLessThan(1 - settled[59]);
+        expect(lifting.at(-1)).toBeLessThan(0.01);
+        expect(light.uAir.value.x).toBeLessThan(0.01);
+        expect(light.uWind.value).toBeCloseTo(fair.wind, 2);
+        // Only a session that is really over brings it down: anything but `true` is play.
+        for (const junk of ['true', 1, {}, null, undefined]) {
+            for (let step = 0; step < 30; step++) world.update(20, STEP, { settled: junk });
+            expect(world.worn.dusk, String(junk)).toBeLessThan(0.01);
+        }
+        // A frame with no time in it (the first frame of a rebuilt scene, a seek) shows it as it stands.
+        world.update(20, 0, { settled: true });
+        expect(world.worn.dusk).toBe(1);
+        expect(light.dusk).toBe(1);
+        expect(light.uAir.value.x).toBeGreaterThan(0.5);
+        // Forgetting every effect in flight lifts it at once.
+        world.resetEffects();
+        expect(world.worn.dusk).toBe(0);
+        world.update(20, STEP, {});
+        expect(light.dusk).toBeLessThan(0.05);
+    }, SLOW);
+
+    it('lets it rain only in the sun shower: the rain is in the scene while it falls or is warmed', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light, atmosphere } = world;
+        const { rain } = atmosphere;
+        expect(named(world.group, 'SummerRain')).toEqual([rain]);
+        // Built hidden: nothing is drawn of it before the first frame.
+        expect(rain.visible).toBe(false);
+        expect(rain.userData.unmirrored).toBe(true);
+        expect(rain.layers.isEnabled(SUMMER_MIRROR_LAYER)).toBe(false);
+        expect(rain.castShadow).toBe(false);
+        // The first few frames draw it (at no strength: there is no rain in fair weather) so its
+        // pipeline exists before the first shower; then it is out of the scene.
+        const shown = [];
+        for (let frame = 0; frame < 20; frame++) {
+            world.update(frame * STEP, STEP, {});
+            shown.push(rain.visible);
+            expect(light.uAir.value.y).toBe(0);
+        }
+        expect(shown[0]).toBe(true);
+        const warmed = shown.lastIndexOf(true) + 1;
+        expect(warmed).toBeGreaterThanOrEqual(2);
+        expect(warmed).toBeLessThanOrEqual(6);
+        expect(shown.slice(0, warmed).every(Boolean)).toBe(true);
+        expect(shown.slice(warmed).some(Boolean)).toBe(false);
+        // The shower, by the pin of a capture and by the weather's own clock.
+        const shower = SUMMER_WEATHERS.findIndex((weather) => weather.id === 'shower');
+        light.weatherPin = shower;
+        world.update(1, STEP, {});
+        expect(light.uAir.value.y).toBe(1);
+        expect(rain.visible).toBe(true);
+        light.weatherPin = null;
+        world.update(1, STEP, {});
+        expect(rain.visible).toBe(false);
+        world.update(during(shower), STEP, {});
+        expect(rain.visible).toBe(true);
+        // No other weather has it ...
+        SUMMER_WEATHERS.forEach((weather, index) => {
+            world.update(during(index), STEP, {});
+            expect(rain.visible, weather.id).toBe(index === shower);
+        });
+        // ... but it comes on as the towers turn to the shower and thins out into the mist after it.
+        const turn = (index, share) => (index + SUMMER_WEATHER_HOLD + (1 - SUMMER_WEATHER_HOLD) * share)
+            * SUMMER_WEATHER_SECONDS;
+        world.update(turn(shower - 1, 0.5), STEP, {});
+        expect(rain.visible).toBe(true);
+        world.update(turn(shower, 0.5), STEP, {});
+        expect(rain.visible).toBe(true);
+        world.update(turn(shower, 0.999), STEP, {});
+        expect(rain.visible).toBe(false);
+        // Built hidden behind the theme now playing: drawn (unseen) all the while, then not.
+        world.update(1, STEP, {});
+        expect(rain.visible).toBe(false);
+        world.setWarming(true);
+        expect(atmosphere.warming).toBe(true);
+        for (let frame = 0; frame < 30; frame++) {
+            world.update(1 + frame * STEP, STEP, {});
+            expect(rain.visible).toBe(true);
+        }
+        world.setWarming(false);
+        world.update(2, STEP, {});
+        expect(rain.visible).toBe(false);
+        for (const junk of ['yes', 1, {}, null, undefined]) {
+            world.setWarming(junk);
+            world.update(2, STEP, {});
+            expect(rain.visible, String(junk)).toBe(false);
+        }
+        // Dusk at the end of a session lays mist, not rain.
+        world.update(2, 0, { settled: true });
+        expect(rain.visible).toBe(false);
+    }, SLOW);
+
+    it('sends fronts of the breeze\'s own through the meadow when the weather blows fresh, by the clock', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light } = world;
+        const frontAt = (time, frame = {}) => {
+            world.update(time, STEP, frame);
+            return { x: light.uFront2.value.z, push: light.uFront2.value.w };
+        };
+        const crossings = (seconds) => {
+            const found = [];
+            let open = null;
+            for (let time = 0.02; time < seconds; time += 0.05) {
+                const front = frontAt(time);
+                if (front.push > 0) {
+                    if (!open) {
+                        open = { from: time, fronts: [] };
+                        found.push(open);
+                    }
+                    open.fronts.push(front);
+                    open.to = time;
+                } else open = null;
+            }
+            return found;
+        };
+        // Fair weather, and every weather calmer than a fresh breeze: none.
+        for (const weather of SUMMER_WEATHERS.filter((entry) => entry.id !== 'breeze')) {
+            light.weatherPin = SUMMER_WEATHERS.indexOf(weather);
+            expect(crossings(20), weather.id).toEqual([]);
+        }
+        // The breeze: one sets out every so many seconds and crosses the view with the wind.
+        light.weatherPin = SUMMER_WEATHERS.findIndex((weather) => weather.id === 'breeze');
+        const found = crossings(40);
+        expect(found.length).toBeGreaterThanOrEqual(3);
+        const starts = found.map((crossing) => crossing.from);
+        const period = starts[1] - starts[0];
+        expect(period).toBeGreaterThan(5);
+        expect(period).toBeLessThan(15);
+        for (let index = 2; index < starts.length; index++) {
+            expect(starts[index] - starts[index - 1]).toBeCloseTo(period, 1);
+        }
+        for (const crossing of found.slice(0, -1)) {
+            // A couple of seconds each, with a rest between two: from the upwind side to the downwind.
+            expect(crossing.to - crossing.from).toBeGreaterThan(1.5);
+            expect(crossing.to - crossing.from).toBeLessThan(period * 0.6);
+            const xs = crossing.fronts.map((front) => front.x);
+            for (let index = 1; index < xs.length; index++) expect(xs[index]).toBeGreaterThan(xs[index - 1]);
+            expect(xs[0]).toBeLessThan(-20);
+            expect(xs.at(-1)).toBeGreaterThan(20);
+            // It swells in and dies away, and is a gentler thing than a front the game sends.
+            const pushes = crossing.fronts.map((front) => front.push);
+            const peak = pushes.indexOf(Math.max(...pushes));
+            expect(peak).toBeGreaterThan(pushes.length * 0.15);
+            expect(peak).toBeLessThan(pushes.length * 0.85);
+            expect(Math.max(...pushes)).toBeLessThan(1);
+            expect(pushes[0]).toBeLessThan(Math.max(...pushes) * 0.5);
+        }
+        // Read off the clock: a seek shows the same front in the same place, and so does a period later.
+        const at = frontAt(starts[1] + 1);
+        expect(frontAt(starts[1] + 1)).toEqual(at);
+        frontAt(3.3);
+        expect(frontAt(starts[1] + 1)).toEqual(at);
+        const later = frontAt(starts[1] + 1 + period * 2);
+        expect(later.x).toBeCloseTo(at.x, 1);
+        // Reduce motion calms it with the rest of the wind.
+        world.setMotion(0.5);
+        expect(frontAt(starts[1] + 1).push).toBeCloseTo(at.push / 2, 9);
+        world.setMotion(1);
+        // The game's own fronts come first: when it has three crossing, the third slot is its.
+        const game = [-0.5, 0, 0.5].map((position) => ({ position, direction: 1, strength: 0.6 }));
+        const taken = frontAt(starts[1] + 1, { front: game[2], fronts: game });
+        expect(taken.x).toBeCloseTo(0.5 * world.stage.halfWidth(40), 9);
+        expect(taken.push).toBeCloseTo(0.6 * 2, 9);
+        // With two of the game's, the breeze has the third.
+        const shared = frontAt(starts[1] + 1, { front: game[1], fronts: game.slice(0, 2) });
+        expect(shared).toEqual(at);
+        expect(light.uFront2.value.y).toBeCloseTo(0.6 * 2, 9);
+        // When the session is over the wind dies, the breeze's fronts with it.
+        world.update(starts[1] + 1, 0, { settled: true });
+        expect(light.uFront2.value.w).toBe(0);
+    }, SLOW);
+
+    it('rolls the level-up\'s wave of bloom out from the eye, through the meadow and on across the lake', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light } = world;
+        const wash = light.uWash.value;
+        const washAt = (crossed) => {
+            world.update(1, STEP, { wash: crossed });
+            return [wash.x, wash.y];
+        };
+        /** Where the front is (metres from the eye) and how strong, for a share of the way across. */
+        const waveOf = (c) => [2 + 95 * c + 195 * c ** 3, Math.min(1, 9 * c) * (1 - c) ** 0.7];
+        // No wave crossing: nothing, whatever stands in for "none".
+        expect([wash.x, wash.y]).toEqual([0, 0]);
+        for (const none of [-1, -0.2, undefined, null, NaN, Infinity, -Infinity, 'half']) {
+            expect(washAt(none), String(none)).toEqual([0, 0]);
+        }
+        // It sets out at the eye with no strength yet ...
+        expect(washAt(0)).toEqual([2, 0]);
+        let previous = washAt(0);
+        let strongest = 0;
+        for (let crossed = 0.01; crossed <= 1.0001; crossed += 0.01) {
+            const [distance, strength] = washAt(crossed);
+            const [expectedDistance, expectedStrength] = waveOf(Math.min(1, crossed));
+            expect(distance).toBeCloseTo(expectedDistance, 9);
+            expect(strength).toBeCloseTo(expectedStrength, 9);
+            // ... runs only ever away from the eye, never stronger than full ...
+            expect(distance).toBeGreaterThan(previous[0]);
+            expect(strength).toBeGreaterThanOrEqual(0);
+            expect(strength).toBeLessThanOrEqual(1);
+            strongest = Math.max(strongest, strength);
+            previous = [distance, strength];
+        }
+        // ... is at its strongest early, in the meadow, and has spent itself at the far shore.
+        expect(strongest).toBeGreaterThan(0.8);
+        expect(washAt(0.12)[1]).toBeGreaterThan(washAt(0.6)[1]);
+        expect(washAt(1)[1]).toBe(0);
+        expect(washAt(1)[0]).toBeGreaterThan(250);
+        // Faster over the lake than through the grass: the second half covers most of the way.
+        const [half] = washAt(0.5);
+        expect(washAt(1)[0] - half).toBeGreaterThan(half * 2);
+        // Past the far shore is the far shore.
+        expect(washAt(7)).toEqual(washAt(1));
+        // The vector the shaders hold is the one it writes into.
+        expect(light.uWash.value).toBe(wash);
+
+        // Through the director: a level-up sends it, and it is gone when its time is up.
+        const reactions = new SummerReactions({ quality: 'Minimal', rng: seededRandom(5) });
+        advance(world, reactions, 0.2);
+        expect([wash.x, wash.y]).toEqual([0, 0]);
+        reactions.onLevelUp({ level: 2 });
+        let front = 0;
+        let seen = 0;
+        advance(world, reactions, SUMMER_WASH_SECONDS - 0.1, () => {
+            expect(wash.x).toBeGreaterThan(front);
+            front = wash.x;
+            seen = Math.max(seen, wash.y);
+        });
+        expect(front).toBeGreaterThan(200);
+        expect(seen).toBeGreaterThan(0.8);
+        advance(world, reactions, 0.3);
+        expect([wash.x, wash.y]).toEqual([0, 0]);
+        // The level alone (effects off) turns the hour and sends no wave.
+        reactions.setLevel(3);
+        advance(world, reactions, 0.3);
+        expect([wash.x, wash.y]).toEqual([0, 0]);
+    }, SLOW);
+
+    it('sends a skein of swans up once for each level-up\'s flourish, and none for a session it takes up', async () => {
+        const { world, tier } = await buildWorld('Minimal');
+        const { swans } = world;
+        const takeWing = vi.spyOn(swans, 'takeWing');
+        let clock = 0;
+        const frame = (state) => {
+            clock += STEP;
+            world.update(clock, STEP, state);
+        };
+        expect(world.flightsSeen).toBeNull();
+        expect(swans.counts()).toEqual({ afloat: 2, cygnets: tier.swans[0], flying: 0 });
+        // Frames that say nothing of flights, or nothing usable: no count is read and nothing flies.
+        for (const state of [{}, undefined, { flights: undefined }, { flights: NaN }, { flights: 'two' },
+            { flights: null }, { flights: Infinity }]) {
+            frame(state);
+            expect(world.flightsSeen).toBeNull();
+        }
+        expect(takeWing).not.toHaveBeenCalled();
+        // The first frame that carries a count only records it: a scene rebuilt in the middle of a
+        // session does not send the swans up for the level-ups that came before it.
+        frame({ flights: 3 });
+        expect(world.flightsSeen).toBe(3);
+        expect(takeWing).not.toHaveBeenCalled();
+        // The same count, frame after frame, and a frame without one in between: still nothing.
+        for (let step = 0; step < 30; step++) frame(step % 7 === 3 ? {} : { flights: 3 });
+        expect(takeWing).not.toHaveBeenCalled();
+        expect(world.flightsSeen).toBe(3);
+        expect(swans.counts().flying).toBe(0);
+        // One more level-up has asked for its flourish: one skein, in the air that very frame.
+        frame({ flights: 4 });
+        expect(takeWing).toHaveBeenCalledOnce();
+        expect(takeWing).toHaveBeenLastCalledWith();
+        expect(takeWing).toHaveLastReturnedWith(true);
+        expect(world.flightsSeen).toBe(4);
+        const { flying } = swans.counts();
+        expect(flying).toBeGreaterThan(0);
+        expect(flying).toBeLessThanOrEqual(tier.swans[1]);
+        // Not again while the count stands, however long the skein is in the air.
+        for (let step = 0; step < 60; step++) frame({ flights: 4 });
+        expect(takeWing).toHaveBeenCalledOnce();
+        expect(swans.counts().flying).toBe(flying);
+        // Each rise is one call, whether or not a skein is already up, and however far it rose.
+        frame({ flights: 5 });
+        expect(takeWing).toHaveBeenCalledTimes(2);
+        frame({ flights: 9 });
+        expect(takeWing).toHaveBeenCalledTimes(3);
+        expect(world.flightsSeen).toBe(9);
+        expect(swans.counts().flying).toBe(flying);
+        // A new session counts from nothing: the count falling back sends none, the next rise does.
+        frame({ flights: 0 });
+        expect(takeWing).toHaveBeenCalledTimes(3);
+        expect(world.flightsSeen).toBe(0);
+        frame({ flights: 1 });
+        expect(takeWing).toHaveBeenCalledTimes(4);
+        // Forgetting every effect in flight brings the skein down; the count read so far is kept.
+        world.resetEffects();
+        expect(swans.counts().flying).toBe(0);
+        frame({ flights: 1 });
+        expect(takeWing).toHaveBeenCalledTimes(4);
+        expect(swans.counts().flying).toBe(0);
+    }, SLOW);
+
+    it('lets the swans take wing on a level-up through the director, and not when only the level is set', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { swans } = world;
+        const reactions = new SummerReactions({ quality: 'Minimal', rng: seededRandom(5) });
+        const takeWing = vi.spyOn(swans, 'takeWing');
+        // Play that is no level-up, and the level alone (effects off): the pair stays on the lake.
+        reactions.onPieceLock({ piece: piece('I') });
+        reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
+        reactions.onPerfectClear();
+        advance(world, reactions, 0.5);
+        reactions.setLevel(4);
+        advance(world, reactions, 0.5);
+        expect(takeWing).not.toHaveBeenCalled();
+        expect(world.flightsSeen).toBe(0);
+        expect(swans.counts().flying).toBe(0);
+        // The level turns with its flourish: the skein goes up with the wave of bloom.
+        reactions.onLevelUp({ level: 5 });
+        advance(world, reactions, STEP);
+        expect(takeWing).toHaveBeenCalledOnce();
+        expect(swans.counts().flying).toBeGreaterThan(0);
+        expect(world.light.uWash.value.x).toBeGreaterThan(0);
+        advance(world, reactions, 1);
+        expect(takeWing).toHaveBeenCalledOnce();
+        // The next session starts its own count: its first level-up sends them again.
+        reactions.reset();
+        world.resetEffects();
+        advance(world, reactions, 0.2);
+        expect(world.flightsSeen).toBe(0);
+        expect(swans.counts().flying).toBe(0);
+        reactions.onLevelUp();
+        advance(world, reactions, STEP);
+        expect(takeWing).toHaveBeenCalledTimes(2);
+        expect(swans.counts().flying).toBeGreaterThan(0);
+    }, SLOW);
+
+    it('fans the sun\'s rays across the sky for a sunburst, held back where flashes are reduced', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light } = world;
+        const raysFor = (sunburst) => {
+            // (A frame with no time in it wears the envelope as it stands.)
+            world.update(1, 0, { sunburst });
+            return light.uSunburst.value;
+        };
+        expect(light.uSunburst.value).toBe(0);
+        expect(raysFor(0.8)).toBeCloseTo(0.8, 12);
+        expect(raysFor(1)).toBe(1);
+        expect(raysFor(40)).toBe(1);
+        for (const none of [0, -3, NaN, undefined, null, 'bright']) expect(raysFor(none), String(none)).toBe(0);
+        try {
+            holdFlashing(true);
+            expect(REDUCED_FLASH_SCALE).toBeLessThan(0.2);
+            expect(raysFor(0.8)).toBeCloseTo(0.8 * REDUCED_FLASH_SCALE, 12);
+            expect(raysFor(1)).toBeCloseTo(REDUCED_FLASH_SCALE, 12);
+        } finally {
+            holdFlashing(false);
+        }
+        expect(raysFor(0.8)).toBeCloseTo(0.8, 12);
+        // Over time it eases in rather than snapping: a perfect clear's rays open over a moment.
+        world.update(1, 0, { sunburst: 0 });
+        world.update(1, STEP, { sunburst: 1 });
+        expect(light.uSunburst.value).toBeGreaterThan(0);
+        expect(light.uSunburst.value).toBeLessThan(0.5);
+    }, SLOW);
+
+    it('lights the heart of a sky flower, dimmed where flashes are reduced while its petals fly as ever', async () => {
+        const { world } = await buildWorld('Low');
+        const { sim } = world.petals;
+        const reactions = new SummerReactions({ quality: 'Low', rng: seededRandom(5) });
+        /** What is drawn of every particle in the air: its kind and how bright. */
+        const drawn = () => {
+            const found = [];
+            for (let index = sim.ambient; index < sim.count; index++) {
+                if (sim.life[index] > 0) {
+                    found.push({ index, kind: sim.kind[index], light: sim.outLook[index * 4 + 3] });
+                }
+            }
+            return found;
+        };
+        reactions.onPerfectClear();
+        // Nothing is lit while the first flower is still climbing.
+        advance(world, reactions, 0.3);
+        expect(drawn().filter((particle) => particle.kind === GLOW)).toEqual([]);
+        advance(world, reactions, 0.4);
+        // A frame with no time in it, drawn three times over: as the player has it, with flashes
+        // held back, and as before again.
+        const still = () => {
+            world.update(reactions.time, 0, reactions.getFrame());
+            return drawn();
+        };
+        const full = still();
+        const hearts = full.filter((particle) => particle.kind === GLOW);
+        expect(hearts.length).toBeGreaterThanOrEqual(1);
+        expect(Math.max(...hearts.map((heart) => heart.light))).toBeGreaterThan(0.3);
+        // The heart is where its flower is: metres up in the air, and metres across.
+        for (const heart of hearts) {
+            const ground = Math.max(0, summerGroundHeight(sim.x[heart.index], sim.z[heart.index]));
+            expect(sim.y[heart.index]).toBeGreaterThan(ground + 2);
+            expect(sim.outPlace[heart.index * 4 + 3]).toBeGreaterThan(0.2);
+            expect(sim.outLook[heart.index * 4 + 1]).toBe(GLOW);
+        }
+        let held;
+        try {
+            holdFlashing(true);
+            held = still();
+        } finally {
+            holdFlashing(false);
+        }
+        expect(held).toHaveLength(full.length);
+        held.forEach((particle, slot) => {
+            const before = full[slot];
+            expect(particle.index).toBe(before.index);
+            // The lights keep the share a reduced flash keeps; every petal, seed and mote is as it was.
+            if (particle.kind === GLOW) expect(particle.light).toBeCloseTo(before.light * REDUCED_FLASH_SCALE, 6);
+            else expect(particle.light).toBe(before.light);
+        });
+        expect(still()).toEqual(full);
+        // The petals are there in numbers either way.
+        expect(full.filter((particle) => particle.kind === PETAL).length).toBeGreaterThan(50);
+    }, SLOW);
+
+    it('sets the maypole\'s ribbons wheeling on a twist, the wheel only ever turning on', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { homestead } = world;
+        const TURN = Math.PI * 2;
+        expect(homestead.uWhirl.value).toBe(0);
+        expect(homestead.uWhirlTurn.value).toBe(0);
+        world.update(1, STEP, {});
+        expect([homestead.uWhirl.value, homestead.uWhirlTurn.value]).toEqual([0, 0]);
+        // How far the ribbons fly out is the frame's whirl; the wheel turns while they are out.
+        world.update(1, STEP, { whirl: 0.6 });
+        expect(homestead.uWhirl.value).toBe(0.6);
+        const slow = homestead.uWhirlTurn.value;
+        expect(slow).toBeGreaterThan(0);
+        // The further out, the faster it wheels.
+        world.update(1, STEP, { whirl: 1 });
+        expect(homestead.uWhirlTurn.value - slow).toBeGreaterThan(slow);
+        // Round and round inside one turn, never jumping back but for the wrap.
+        let previous = homestead.uWhirlTurn.value;
+        let wraps = 0;
+        for (let step = 0; step < 60 * 10; step++) {
+            world.update(1, STEP, { whirl: 1 });
+            const turn = homestead.uWhirlTurn.value;
+            expect(turn).toBeGreaterThanOrEqual(0);
+            expect(turn).toBeLessThan(TURN);
+            if (turn < previous) {
+                wraps += 1;
+                expect(previous - turn).toBeGreaterThan(TURN * 0.9);
+            } else expect(turn - previous).toBeLessThan(0.2);
+            previous = turn;
+        }
+        expect(wraps).toBeGreaterThan(3);
+        // The ribbons come to rest where the wheel stands: it does not unwind, and no time is no turn.
+        world.update(1, STEP, { whirl: 0 });
+        expect(homestead.uWhirl.value).toBe(0);
+        expect(homestead.uWhirlTurn.value).toBe(previous);
+        for (const dt of [0, NaN, -1, undefined]) world.update(1, dt, { whirl: 1 });
+        expect(homestead.uWhirlTurn.value).toBe(previous);
+        // In range, and nothing for nonsense.
+        world.update(1, 0, { whirl: 9 });
+        expect(homestead.uWhirl.value).toBe(1);
+        for (const junk of [NaN, -2, 'round', null, undefined, Infinity]) {
+            world.update(1, 0, { whirl: junk });
+            expect(homestead.uWhirl.value, String(junk)).toBe(0);
+        }
+        // Reduce motion calms the dance with everything else that moves.
+        world.setMotion(0.25);
+        world.update(1, 0, { whirl: 0.8 });
+        expect(homestead.uWhirl.value).toBeCloseTo(0.2, 12);
+        world.setMotion(1);
+        // Through the director: a twist, and nothing else, starts it.
+        const reactions = new SummerReactions({ quality: 'Minimal', rng: seededRandom(5) });
+        reactions.onPieceLock({ piece: piece('T') });
+        reactions.onLineClear(2, { clearedRows: [22, 23] });
+        advance(world, reactions, 0.5);
+        expect(homestead.uWhirl.value).toBe(0);
+        reactions.onTwist({ piece: piece('T') });
+        advance(world, reactions, 0.5);
+        expect(homestead.uWhirl.value).toBeGreaterThan(0.8);
+        advance(world, reactions, 30);
+        expect(homestead.uWhirl.value).toBe(0);
+    }, SLOW);
+
+    it('tells its stage where the score panel stands, so the flowers of a perfect clear open clear of it', async () => {
+        const { world, camera } = await buildWorld('Minimal');
+        const { stage, director } = world;
+        expect(stage.hud).toBeNull();
+        const seenAt = (lines) => {
+            const heart = director.blossomSpot({ lines }, new THREE.Vector3()).project(camera);
+            return (heart.x + 1) / 2;
+        };
+        const open = [1, 3, 5].map(seenAt);
+        world.setHud(SCORE_PANEL);
+        expect(stage.hud).toEqual(SCORE_PANEL);
+        expect(stage.covered()).toEqual({ x0: SUMMER_DEFAULT_BOARD.x0, x1: SCORE_PANEL.x1 });
+        // The board is as it was: only what covers the middle is wider.
+        expect(stage.board).toEqual(SUMMER_DEFAULT_BOARD);
+        for (const lines of [0, 1, 2, 3, 4, 5]) {
+            const x = seenAt(lines);
+            expect(x < SUMMER_DEFAULT_BOARD.x0 || x > SCORE_PANEL.x1, `flower ${lines} at ${x}`).toBe(true);
+        }
+        [1, 3, 5].forEach((lines, index) => expect(seenAt(lines)).not.toBeCloseTo(open[index], 3));
+        // A new board keeps the panel; the panel gone (or nonsense) forgets it.
+        world.setBoard({
+            x0: 0.36, x1: 0.6, y0: 0.1, y1: 0.9,
+        });
+        expect(stage.covered()).toEqual({ x0: 0.36, x1: SCORE_PANEL.x1 });
+        world.setBoard(null);
+        for (const none of [null, undefined, 'panel', {}]) {
+            world.setHud(SCORE_PANEL);
+            world.setHud(none);
+            expect(stage.hud, String(none)).toBeNull();
+        }
+        [1, 3, 5].forEach((lines, index) => expect(seenAt(lines)).toBeCloseTo(open[index], 9));
+        // A world that has not been built yet, or has been disposed of, has no stage to tell.
+        const unbuilt = createWorld('Minimal', null);
+        expect(() => unbuilt.world.setHud(SCORE_PANEL)).not.toThrow();
+        world.dispose();
+        expect(() => world.setHud(SCORE_PANEL)).not.toThrow();
+    }, SLOW);
+
+    it('never plants more sprite trees on the far shores than a tier allows, and nearly as many', () => {
+        const impostors = summerImpostorLayout();
+        expect(impostors.tiles.length).toBeGreaterThan(0);
+        let dearer = Infinity;
+        for (const [name, tier] of Object.entries(SUMMER_TIERS)) {
+            const counts = [SEED, 1, 77, 4242].map((seed) => {
+                const backdrop = new SummerBackdrop({
+                    light: null, impostors, tier, rng: seededRandom(seed),
+                });
+                const cards = backdrop.layout();
+                // The shares of the six bands are rounded one by one: never past the tier's own number.
+                expect(cards.length, `${name}, seed ${seed}`).toBeLessThanOrEqual(tier.farTrees);
+                expect(cards.length, `${name}, seed ${seed}`).toBeGreaterThan(tier.farTrees * 0.9);
+                for (const card of cards) {
+                    expect([card.x, card.y, card.z, card.scale, card.tone, card.phase, card.yaw].every(Number.isFinite))
+                        .toBe(true);
+                    expect(impostors.tiles).toContain(card.tile);
+                }
+                return cards;
+            });
+            const [cards] = counts;
+            // The far shore across the lake is woods: it carries the most of them by far.
+            const far = cards.filter((card) => card.z < -290);
+            expect(far.length, name).toBeGreaterThan(cards.length * 0.4);
+            expect(cards.length, name).toBeLessThanOrEqual(dearer);
+            dearer = cards.length;
+        }
+    });
+});
+
+describe('Summer petal geometry', () => {
+    const geometry = createSummerPetalGeometry();
+    const { position, uv, normal } = geometry.attributes;
+    const vertex = (index) => new THREE.Vector3().fromBufferAttribute(position, index);
+    const triangles = [];
+    for (let index = 0; index < geometry.index.count; index += 3) {
+        triangles.push([geometry.index.getX(index), geometry.index.getX(index + 1), geometry.index.getX(index + 2)]);
+    }
+    const area = ([a, b, c]) => new THREE.Vector3().subVectors(vertex(b), vertex(a))
+        .cross(new THREE.Vector3().subVectors(vertex(c), vertex(a))).length() / 2;
+    /** The five stations from the claw to the tip: left edge, midrib, right edge. */
+    const stations = [0, 1, 2, 3, 4].map((row) => [0, 1, 2].map((column) => vertex(row * 3 + column)));
+
+    it('is fifteen vertices in five stations and sixteen triangles, all inside the unit box', () => {
+        expect(position.count).toBe(15);
+        expect(uv.count).toBe(15);
+        expect(normal.count).toBe(15);
+        expect(geometry.index.count).toBe(16 * 3);
+        expect(triangles).toHaveLength(16);
+        for (let index = 0; index < position.count; index++) {
+            const point = vertex(index);
+            for (const value of point.toArray()) {
+                expect(Number.isFinite(value)).toBe(true);
+                expect(Math.abs(value)).toBeLessThanOrEqual(0.5);
+            }
+            // Laid out 0..1 across and from the claw to the tip, as the shader paints it.
+            expect(uv.getX(index)).toBeCloseTo(point.x + 0.5, 6);
+            expect(uv.getY(index)).toBeCloseTo(point.y + 0.5, 6);
+            expect(uv.getX(index)).toBeGreaterThanOrEqual(0);
+            expect(uv.getX(index)).toBeLessThanOrEqual(1);
+            expect(uv.getY(index)).toBeGreaterThanOrEqual(0);
+            expect(uv.getY(index)).toBeLessThanOrEqual(1);
+        }
+        // Every triangle names three vertices of the petal, and no triangle twice.
+        for (const corners of triangles) {
+            for (const corner of corners) expect(Number.isInteger(corner) && corner >= 0 && corner < 15).toBe(true);
+            expect(new Set(corners).size).toBe(3);
+        }
+        expect(new Set(triangles.map((corners) => [...corners].sort((a, b) => a - b).join())).size).toBe(16);
+        // It runs the whole length of the box, claw at the foot and tip at the top.
+        expect(stations[0][1].y).toBe(-0.5);
+        expect(stations[4][1].y).toBe(0.5);
+        for (let row = 1; row < stations.length; row++) {
+            expect(stations[row][1].y).toBeGreaterThan(stations[row - 1][1].y);
+            for (const point of stations[row]) expect(point.y).toBe(stations[row][1].y);
+        }
+    });
+
+    it('is a petal: a claw that widens to a blade, widest past the middle, closed by a blunt tip', () => {
+        const widths = stations.map(([left, , right]) => right.x - left.x);
+        // A point at the claw and at the tip, a blade between.
+        expect(widths[0]).toBe(0);
+        expect(widths[4]).toBe(0);
+        for (const width of widths.slice(1, 4)) expect(width).toBeGreaterThan(0.2);
+        const widest = widths.indexOf(Math.max(...widths));
+        const along = uv.getY(widest * 3 + 1);
+        expect(along).toBeGreaterThanOrEqual(0.5);
+        expect(along).toBeLessThanOrEqual(0.75);
+        // It widens all the way to there and narrows from there on: one blade, no waist.
+        for (let row = 1; row <= widest; row++) expect(widths[row]).toBeGreaterThan(widths[row - 1]);
+        for (let row = widest + 1; row < widths.length; row++) expect(widths[row]).toBeLessThan(widths[row - 1]);
+        // Narrower than it is long, wide enough to read as a petal and not a blade of grass.
+        expect(Math.max(...widths)).toBeGreaterThan(0.5);
+        expect(Math.max(...widths)).toBeLessThan(1);
+        // The blunt tip: the blade is still broad a little under it; the claw comes to a fine point.
+        expect(widths[3] / (0.5 - stations[3][1].y)).toBeGreaterThan(widths[1] / (stations[1][1].y + 0.5));
+        // A real surface: all but the slivers where the claw and the tip come to a point have area.
+        const solid = triangles.filter((corners) => area(corners) > 1e-6);
+        expect(solid.length).toBeGreaterThanOrEqual(12);
+        expect(solid.reduce((total, corners) => total + area(corners), 0)).toBeGreaterThan(0.25);
+    });
+
+    it('is the same on both sides of its midrib, folded along it and cupped', () => {
+        for (const [left, middle, right] of stations) {
+            // Mirror images about x = 0.
+            expect(middle.x).toBe(0);
+            expect(left.x).toBe(-right.x);
+            expect(left.y).toBe(right.y);
+            expect(left.z).toBe(right.z);
+            // The midrib lies under the edges (the fold), and nothing dips below the claw.
+            expect(middle.z).toBeLessThanOrEqual(left.z);
+            expect(middle.z).toBeGreaterThanOrEqual(0);
+        }
+        for (const [left, middle] of stations.slice(1, 4)) expect(left.z).toBeGreaterThan(middle.z + 0.02);
+        // Cupped: the blade rises from the claw.
+        expect(stations[2][0].z).toBeGreaterThan(stations[1][0].z);
+        expect(stations[0][0].z).toBe(0);
+        // Lit as a surface: every vertex a triangle with area uses has a unit normal, and across
+        // the blade it leans up out of the cup, away from the midrib on either side.
+        const used = new Set(triangles.filter((corners) => area(corners) > 1e-6).flat());
+        expect(used.size).toBeGreaterThanOrEqual(13);
+        for (const index of used) {
+            expect(new THREE.Vector3().fromBufferAttribute(normal, index).length()).toBeCloseTo(1, 5);
+        }
+        for (const row of [1, 2, 3]) {
+            const [left, middle, right] = [0, 1, 2]
+                .map((column) => new THREE.Vector3().fromBufferAttribute(normal, row * 3 + column));
+            for (const direction of [left, middle, right]) expect(direction.z).toBeGreaterThan(0.9);
+            expect(left.x).toBeGreaterThan(0.1);
+            expect(right.x).toBeLessThan(-0.1);
+            expect(Math.abs(middle.x)).toBeLessThan(Math.abs(left.x));
+        }
+        for (let index = 0; index < normal.count; index++) {
+            expect(new THREE.Vector3().fromBufferAttribute(normal, index).toArray().every(Number.isFinite)).toBe(true);
+        }
+        // Each call hands out a geometry of its own (the world disposes of the one it draws).
+        const other = createSummerPetalGeometry();
+        expect(other).not.toBe(geometry);
+        expect(Array.from(other.attributes.position.array)).toEqual(Array.from(position.array));
+        other.dispose();
+    });
+});
+
 describe('Summer world ownership', () => {
     it('builds only once', async () => {
         const { world, scene } = await buildWorld('Minimal');
@@ -2504,6 +3470,80 @@ describe('Summer post tier ownership', () => {
         renderer.render.mockImplementation(() => { drawn = renderer.toneMappingExposure; });
         direct.render();
         expect(drawn).toBeCloseTo(0.9 + (hot.exposure - calm.exposure), 12);
+    });
+
+    it('closes the lens and cools the colour as dusk comes down, and carries the shafts on the weather\'s air', () => {
+        const { light } = meadow.world;
+        const { post } = createPost('High', lit());
+        const rest = { dusk: light.dusk, shafts: light.weather.shafts };
+        const read = (frame = {}) => {
+            post.update(frame);
+            return {
+                exposure: post.uExposure.value,
+                saturation: post.uSaturation.value,
+                density: post.godraysNode.density.value,
+                ceiling: post.godraysNode.maxDensity.value,
+            };
+        };
+        try {
+            light.dusk = 0;
+            light.weather.shafts = 1;
+            const day = read();
+            // The session is over: a little darker and a little cooler, by degrees.
+            light.dusk = 0.5;
+            const falling = read();
+            light.dusk = 1;
+            const dusk = read();
+            for (const key of ['exposure', 'saturation']) {
+                expect(falling[key], key).toBeLessThan(day[key]);
+                expect(dusk[key], key).toBeLessThan(falling[key]);
+                expect(day[key] - falling[key], key).toBeCloseTo(falling[key] - dusk[key], 9);
+            }
+            // A dimming of the evening, not a fade to black.
+            expect(dusk.exposure).toBeGreaterThan(day.exposure * 0.7);
+            expect(dusk.exposure).toBeLessThan(day.exposure * 0.95);
+            expect(dusk.saturation).toBeGreaterThan(day.saturation * 0.7);
+            // The events still lift the exposure at dusk, in proportion.
+            expect(read({ warmth: 1 }).exposure).toBeGreaterThan(dusk.exposure);
+            // Out of range or not a number: no dusk.
+            for (const junk of [NaN, -3, undefined, null, 'late']) {
+                light.dusk = junk;
+                expect(read().exposure, String(junk)).toBe(day.exposure);
+            }
+            light.dusk = 7;
+            expect(read().exposure).toBe(dusk.exposure);
+            light.dusk = 0;
+            // The weather's air: mist holds a shaft of sun, a fresh breeze clears it.
+            const dense = (shafts) => {
+                light.weather.shafts = shafts;
+                return read();
+            };
+            const [thin, misty] = [dense(0.85), dense(1.6)];
+            expect(thin.density).toBeLessThan(day.density);
+            expect(misty.density).toBeGreaterThan(day.density);
+            expect(misty.density / day.density).toBeCloseTo(1.6, 9);
+            // The ceiling follows more gently than the density.
+            expect(misty.ceiling).toBeGreaterThan(day.ceiling);
+            expect(misty.ceiling / day.ceiling).toBeLessThan(misty.density / day.density);
+            expect(thin.ceiling).toBeLessThan(day.ceiling);
+            // Neither moves the exposure: the air changes the shafts, not the lens.
+            expect(misty.exposure).toBe(day.exposure);
+            // A sunburst floods them on top, the same in any weather.
+            const burst = (shafts) => {
+                light.weather.shafts = shafts;
+                const calm = read().density;
+                return read({ sunburst: 1 }).density - calm;
+            };
+            expect(burst(1)).toBeGreaterThan(0);
+            expect(burst(1.6)).toBeCloseTo(burst(1), 12);
+        } finally {
+            light.dusk = rest.dusk;
+            light.weather.shafts = rest.shafts;
+        }
+        // A lens without a light rig has no dusk and no weather: it grades as at rest.
+        const { post: bare } = createPost('High', { scene: meadow.scene, camera: meadow.camera });
+        bare.update({});
+        expect(bare.uExposure.value).toBe(bare.exposure);
     });
 
     it('tints its shafts from where the sun really stands on screen', () => {
