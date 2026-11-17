@@ -62,6 +62,8 @@ const BLOSSOM_MAYPOLE = -1;
 const BLOSSOM_SPOTS = [
     [0.5, 0.2, 7.6], [0.5, 0.21, 7.2], [0.76, 0.46, 8], [0.74, 0.44, 7.4], [0.26, 0.36, 8.4], [0.28, 0.35, 7.8],
 ];
+/** How far down the screen the flowers of a narrow side stand, one above another. */
+const BLOSSOM_STACK = [0.2, 0.46, 0.7];
 /**
  * A skipping stone: metres from the eye to its first touch (the first water the eye sees past the
  * crest of the meadow), the length of its first hop, and how the hops shorten.
@@ -98,6 +100,8 @@ export class SummerFxDirector {
         /** Which sky flowers have opened, and how many times each stone has touched (by emitter). */
         this.opened = new Map();
         this.hops = new Map();
+        /** How much of its full size the flower now opening may take (blossomSpot keeps it). */
+        this.blossomFit = 1;
         /** Unit vector toward the sun (apply() keeps it): the stone skips down its road. */
         this.sun = new THREE.Vector3(-0.25, 0.16, -0.95);
         this.heart = new THREE.Vector3();
@@ -404,25 +408,38 @@ export class SummerFxDirector {
     }
 
     /**
-     * Where a sky flower opens. The six of a perfect clear take the open sky to either side of
-     * the board, in turn; where the board leaves no room beside it (an upright screen) they open
-     * in a row above it. The bouquet's own opens over the maypole.
+     * Where a sky flower opens, and how large it may be there (`this.blossomFit`, a share of its
+     * full size). The six of a perfect clear take the open air to either side of the board and
+     * its score panel, in turn. Where a side is wide they stand in two columns; where it is
+     * narrow (the score panel's side in single player) they stand one above another in the
+     * middle of it, drawn small enough to fit; where there is no room beside the board at all
+     * (an upright screen) they open in a row above it. The bouquet's own opens over the maypole.
      */
     blossomSpot(emitter, target) {
         const { stage, maypole } = this;
+        this.blossomFit = 1;
         if (emitter.lines === BLOSSOM_MAYPOLE && maypole) {
             return target.set(maypole.top.x, maypole.top.y - 0.4, maypole.top.z);
         }
         const index = Math.max(0, Math.round(emitter.lines)) % BLOSSOM_SPOTS.length;
         const [across, down, depth] = BLOSSOM_SPOTS[index];
         const { board } = stage;
+        const covered = stage.covered();
         const left = index % 2 === 0;
-        const room = left ? board.x0 : 1 - board.x1;
+        const room = left ? covered.x0 : 1 - covered.x1;
+        // Half the strip's width in metres at the flower's depth: all the room its petals have.
+        const fit = (strip) => Math.min(1, (0.46 * strip * 2 * stage.tanH * depth) / BLOSSOM_REACH);
         if (room < 0.14) {
             const top = Math.max(0.06, board.y0 * 0.55);
+            this.blossomFit = fit(1 / BLOSSOM_SPOTS.length);
             return stage.point((index + 0.5) / BLOSSOM_SPOTS.length, top, depth, target);
         }
-        const sx = left ? board.x0 * (1 - across) : board.x1 + room * across;
+        this.blossomFit = fit(room);
+        if (room < 0.3) {
+            const sx = left ? covered.x0 * 0.5 : covered.x1 + room * 0.5;
+            return stage.point(sx, BLOSSOM_STACK[Math.floor(index / 2) % BLOSSOM_STACK.length], depth, target);
+        }
+        const sx = left ? covered.x0 * (1 - across) : covered.x1 + room * across;
         return stage.point(sx, down, depth, target);
     }
 
@@ -460,8 +477,10 @@ export class SummerFxDirector {
         this.opened.set(emitter.id, true);
         const lobes = mixed ? 7 : 5 + (emitter.flower % 4);
         const total = Math.round(BLOSSOM_PETALS * this.scale * strength);
-        // The bouquet's flower over the maypole stands further off, so it is the largest.
-        const radius = BLOSSOM_REACH * (0.75 + 0.35 * strength) * (emitter.lines === BLOSSOM_MAYPOLE ? 1.7 : 1);
+        // The bouquet's flower over the maypole stands further off, so it is the largest; one in a
+        // narrow strip beside the score panel is drawn to fit it.
+        const radius = BLOSSOM_REACH * (0.75 + 0.35 * strength) * (emitter.lines === BLOSSOM_MAYPOLE ? 1.7 : 1)
+            * this.blossomFit;
         const reach = radius * PETAL_DRAG;
         const turn = emitter.seed * Math.PI * 2;
         const wedge = Math.PI / lobes;
@@ -532,7 +551,7 @@ export class SummerFxDirector {
         const dx = this.sun.x / flat;
         const dz = this.sun.z / flat;
         for (let hop = done; hop < due; hop += 1) {
-            const out = SKIP_START + SKIP_HOP * (1 - SKIP_SHORTEN ** hop) / (1 - SKIP_SHORTEN);
+            const out = SKIP_START + SKIP_HOP * ((1 - SKIP_SHORTEN ** hop) / (1 - SKIP_SHORTEN));
             const x = stage.origin.x + dx * out;
             const z = stage.origin.z + dz * out;
             if (this.groundHeight(x, z) < -0.05) {

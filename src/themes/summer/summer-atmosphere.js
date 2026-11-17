@@ -202,7 +202,8 @@ export class SummerAtmosphere {
             // Toward the sun it stands against the light: a shaded heart inside a burning rim.
             const lighted = mix(shade, body, sunlit.mul(0.8).add(0.2).mul(deep.mul(back).mul(0.55).oneMinus()));
             const gilded = saturate(sunlit.mul(sunlit).mul(back.mul(0.4).oneMinus()).mul(0.8)
-                .mul(deep.mul(0.4).oneMinus()).add(rim.mul(back).mul(0.95)));
+                .mul(deep.mul(0.4).oneMinus())
+                .add(rim.mul(back).mul(0.95)));
             const tone = mix(mix(lighted, shade, under.mul(0.62)), gilt, gilded).mul(relief);
             return { cloud, tone };
         };
@@ -270,7 +271,9 @@ export class SummerAtmosphere {
             // The weather thickens the banks when mist rises off the water, and fills their gaps.
             const risen = light.uAir.x;
             material.opacityNode = smoothstep(float(0.36).sub(risen.mul(0.2)), 0.84, billow).mul(band).mul(sides)
-                .mul(risen.mul(1.5).add(1)).mul(thickness * 0.6).min(0.92);
+                .mul(risen.mul(1.5).add(1))
+                .mul(thickness * 0.6)
+                .min(0.92);
             const mist = new THREE.Mesh(geometry, material);
             mist.position.set(0, -0.05, z);
             mist.scale.set(460 + -z * 3.2, height, 1);

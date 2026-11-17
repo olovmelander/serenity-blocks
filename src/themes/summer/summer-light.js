@@ -146,11 +146,19 @@ export class SummerLight {
         this.weather = summerWeatherAt(0, createSummerWeatherState());
         /** A playground knob: a phase here holds the weather (0 fair ... 5 still). */
         this.weatherPin = null;
-        this.uSky = uniform(new THREE.Vector4(this.weather.low, this.weather.tall, this.weather.mid,
-            this.weather.deck));
+        this.uSky = uniform(new THREE.Vector4(
+            this.weather.low,
+            this.weather.tall,
+            this.weather.mid,
+            this.weather.deck,
+        ));
         this.uSky2 = uniform(new THREE.Vector4(this.weather.mackerel, this.weather.cirrus, this.weather.rays, 0));
-        this.uAir = uniform(new THREE.Vector4(this.weather.mist, this.weather.rain, this.weather.shade,
-            this.weather.veil));
+        this.uAir = uniform(new THREE.Vector4(
+            this.weather.mist,
+            this.weather.rain,
+            this.weather.shade,
+            this.weather.veil,
+        ));
         this.uRuffle = uniform(this.weather.ruffle);
         // Where the clouds have got to: the sky's drift (its own units, summed with the weather's
         // pace) and the shadows' offset over the land (tiles of the noise texture, wrapped).
@@ -382,8 +390,12 @@ export class SummerLight {
         this.uSky2.value.set(weather.mackerel, weather.cirrus, weather.rays, night);
         // (Dusk at the end of a session lays its own mist on the water: update() keeps `dusk`.)
         const dusk = this.dusk || 0;
-        this.uAir.value.set(Math.max(weather.mist, dusk * 0.6), weather.rain, weather.shade,
-            Math.max(weather.veil, dusk * 0.5));
+        this.uAir.value.set(
+            Math.max(weather.mist, dusk * 0.6),
+            weather.rain,
+            weather.shade,
+            Math.max(weather.veil, dusk * 0.5),
+        );
         this.uRuffle.value = weather.ruffle * (1 - 0.6 * dusk);
         if (!Number.isFinite(this.hazeOverride)) this.uHaze.value *= weather.haze;
         return weather;
@@ -582,9 +594,9 @@ export class SummerLight {
     /** Age the gusts in the meadow, and carry the clouds and their shadows on with the weather's wind. */
     step(dt) {
         this.waves.update(dt);
-        const step = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.25) : 0;
-        if (!(step > 0)) return;
-        const pace = this.weather.drift * step;
+        const passed = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.25) : 0;
+        if (!(passed > 0)) return;
+        const pace = this.weather.drift * passed;
         this.uCloudDrift.value += pace * CLOUD_DRIFT;
         const offset = this.uCloudOffset.value;
         const direction = this.uWindDir.value;

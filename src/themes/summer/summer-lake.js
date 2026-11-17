@@ -98,7 +98,8 @@ export class SummerLake {
         const wash = exp(range.sub(light.uWash.x).div(range.mul(0.1).add(3)).pow2().negate()).mul(light.uWash.y);
         // The weather lays the water flat as glass or sets the whole lake sparkling.
         const ruffle = paws.mul(0.75).add(0.14).mul(lee.mul(0.8).add(0.2)).mul(light.uRuffle)
-            .add(light.uGust.mul(0.3)).add(wash.mul(1.6));
+            .add(light.uGust.mul(0.3))
+            .add(wash.mul(1.6));
         const waves = swell.rg.sub(0.5).mul(0.05)
             .add(chop.gb.sub(0.5).mul(0.11))
             .add(ripple.ba.sub(0.5).mul(0.16))
@@ -204,7 +205,6 @@ export class SummerLake {
         const source = worn && Number.isFinite(worn.shimmer) ? worn.shimmer : frame.shimmer;
         const shimmer = Number.isFinite(source) ? THREE.MathUtils.clamp(source, 0, 1) : 0;
         this.uShimmer.value = shimmer;
-
     }
 
     reset() {

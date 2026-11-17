@@ -626,8 +626,8 @@ export class SummerHomestead {
         // The dance: the ribbons fly out, and the wheel turns faster the further out they are.
         const whirl = unit(frame.whirl) * (worn && Number.isFinite(worn.motion) ? unit(worn.motion) : 1);
         this.uWhirl.value = whirl;
-        const step = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.25) : 0;
-        this.uWhirlTurn.value = (this.uWhirlTurn.value + step * whirl * (2.4 + 3.4 * whirl)) % TAU;
+        const passed = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.25) : 0;
+        this.uWhirlTurn.value = (this.uWhirlTurn.value + passed * whirl * (2.4 + 3.4 * whirl)) % TAU;
         const { boat } = this;
         if (!boat || !Number.isFinite(time)) return null;
         boat.position.y = Math.sin(time * 0.9) * 0.018;
