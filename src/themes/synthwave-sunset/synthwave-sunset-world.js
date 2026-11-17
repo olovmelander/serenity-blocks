@@ -71,6 +71,7 @@ import { createPier } from './synthwave-sunset-pier.js';
 import { PIER, PIER_HEAD, pierFrame } from './synthwave-sunset-layout.js';
 import { Beams } from './synthwave-sunset-beams.js';
 import { createLife } from './synthwave-sunset-life.js';
+import { loadStrollerFigures } from './synthwave-sunset-people.js';
 import { createCoaster } from './synthwave-sunset-coaster.js';
 import { createPromenadeSteps } from './synthwave-sunset-promenade.js';
 import { createPalms } from './synthwave-sunset-palms.js';
@@ -105,7 +106,7 @@ export const WORLD_QUALITY = Object.freeze({
         mirrorScale: 0,
         palms: 6,
         gulls: 3,
-        strollers: 12,
+        strollers: 4,
         fireworks: 2000,
         stars0: 70,
         finale: 3,
@@ -122,7 +123,7 @@ export const WORLD_QUALITY = Object.freeze({
         mirrorScale: 0.25,
         palms: 10,
         gulls: 4,
-        strollers: 18,
+        strollers: 6,
         fireworks: 2800,
         stars0: 90,
         finale: 4,
@@ -137,7 +138,7 @@ export const WORLD_QUALITY = Object.freeze({
         mirrorScale: 0.35,
         palms: 14,
         gulls: 5,
-        strollers: 30,
+        strollers: 7,
         fireworks: 4200,
         stars0: 120,
         finale: 5,
@@ -152,7 +153,7 @@ export const WORLD_QUALITY = Object.freeze({
         mirrorScale: 0.5,
         palms: 20,
         gulls: 7,
-        strollers: 44,
+        strollers: 10,
         fireworks: 6200,
         stars0: 150,
         finale: 6,
@@ -167,7 +168,7 @@ export const WORLD_QUALITY = Object.freeze({
         mirrorScale: 0.5,
         palms: 24,
         gulls: 8,
-        strollers: 52,
+        strollers: 12,
         fireworks: 7400,
         stars0: 170,
         finale: 7,
@@ -182,7 +183,7 @@ export const WORLD_QUALITY = Object.freeze({
         mirrorScale: 0.6,
         palms: 28,
         gulls: 9,
-        strollers: 60,
+        strollers: 14,
         fireworks: 8800,
         stars0: 200,
         finale: 8,
@@ -619,12 +620,17 @@ export class SynthwaveWorld {
         this.parts.palms = createPalms(u, { rand, count: q.palms });
         yield 'palms';
         this.parts.life = createLife(u, { strollers: q.strollers, mirrorLayer: MIRROR_LAYER });
+        this.people = this.parts.life.userData.people;
         yield 'strollers and boats';
         this.gulls = new SynthwaveGulls(u, { count: q.gulls, mirrorLayer: MIRROR_LAYER });
         this.parts.gulls = this.gulls.group;
         this.fireworks = new Fireworks(u, { capacity: q.fireworks, rand, mirrorLayer: MIRROR_LAYER });
         // A bang startles the gulls (on their clock, which lags the world's under Reduce motion).
-        this.fireworks.onBurst = (b) => this.gulls?.hit(b.scale ?? 1, b.at - (this.gullLag ?? 0), this.motion ?? 1);
+        // The people on the pier look up at it (on the same clock).
+        this.fireworks.onBurst = (b) => {
+            this.gulls?.hit(b.scale ?? 1, b.at - (this.gullLag ?? 0), this.motion ?? 1);
+            this.people?.notice(b.pos, b.at - (this.gullLag ?? 0), b.scale ?? 1);
+        };
         this.parts.fireworks = this.fireworks.mesh;
         this.beams = new Beams(u, { mirrorLayer: MIRROR_LAYER });
         this.parts.beams = this.beams.mesh;
@@ -660,6 +666,11 @@ export class SynthwaveWorld {
             this.gulls.attach(geometry);
             return true;
         });
+        // So do the people's figures (`peopleReady` for a capture).
+        this.peopleReady = this.people?.count > 0 ? loadStrollerFigures().then((figures) => {
+            if (!figures || this.disposed || !this.people) return false;
+            return this.people.attach(figures);
+        }) : Promise.resolve(false);
         return this;
     }
 
@@ -907,6 +918,8 @@ export class SynthwaveWorld {
         this.updateLightning(t);
         // The gulls go to roost as the evening runs out (and come back when it turns back).
         this.gulls?.update(u.gullTime.value, this.dusk, (time) => this.duskAt(time + this.gullLag));
+        // The people walk on the same clock (they slow with the gulls under reduced motion).
+        this.people?.update(u.gullTime.value);
 
         this.updateCoaster(dt, motion);
         this.updateBeams(t, dt, motion);
@@ -1134,6 +1147,7 @@ export class SynthwaveWorld {
         this.u.time.value = time;
         this.u.gullTime.value = time - (this.gullLag ?? 0);
         this.gulls?.seek();
+        this.people?.seek();
         this.surge.reset();
         this.crown.reset();
         this.spin.reset();
@@ -1758,6 +1772,8 @@ export class SynthwaveWorld {
         this.reflection?.dispose?.();
         this._camera?.layers?.disable?.(MIRROR_LAYER);
         this.reflection = null;
+        this.people?.dispose();
+        this.people = null;
         for (const part of Object.values(this.parts)) {
             part?.traverse((object) => {
                 object.geometry?.dispose();

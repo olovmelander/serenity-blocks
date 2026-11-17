@@ -32,9 +32,7 @@ import {
     hourOfDusk, seaStateAt, skyColours, weatherAt,
 } from '../../src/themes/synthwave-sunset/synthwave-sunset-evening.js';
 import { SHELL_KINDS } from '../../src/themes/synthwave-sunset/synthwave-sunset-fireworks.js';
-import {
-    BOAT_LANES, STROLL, boatX, strollerRows,
-} from '../../src/themes/synthwave-sunset/synthwave-sunset-life.js';
+import { BOAT_LANES, boatX } from '../../src/themes/synthwave-sunset/synthwave-sunset-life.js';
 import { RIG, SHORE, SUN } from '../../src/themes/synthwave-sunset/synthwave-sunset-tsl.js';
 import {
     PIER, PIER_HEAD, WHEEL, pierFrame, wheelWorldPosition,
@@ -388,8 +386,11 @@ describe('synthwave-sunset world', () => {
             'SynthwaveBeams', 'SynthwaveBoats', 'SynthwaveCoasterBulbs', 'SynthwaveCoasterStructure', 'SynthwaveCoasterTrain',
             'SynthwaveFireworks', 'SynthwaveGulls', 'SynthwaveHotels', 'SynthwavePalms', 'SynthwavePierBulbs',
             'SynthwavePierStructure', 'SynthwavePromenadeLamps', 'SynthwavePromenadeStructure', 'SynthwaveSea', 'SynthwaveSkyDome',
-            'SynthwaveStrollers', 'SynthwaveWheelBulbs', 'SynthwaveWheelStructure',
+            'SynthwaveWheelBulbs', 'SynthwaveWheelStructure',
         ]);
+        // The people are drawn once their model has come (synthwave-sunset-strollers.test.js
+        // attaches it): one more draw, 'SynthwaveStrollers'.
+        expect(world.people.group.name).toBe('SynthwaveStrollers');
         world.dispose();
         expect(scene.children).toHaveLength(0);
     });
@@ -1159,35 +1160,8 @@ describe('synthwave-sunset world', () => {
         world.dispose();
     });
 
-    it('keeps the strollers on the pier and the boats clear of it', () => {
+    it('keeps the boats clear of the pier', () => {
         const frame = pierFrame();
-        const rows = strollerRows(WORLD_QUALITY.High.strollers, frame.length);
-        expect(rows).toHaveLength(WORLD_QUALITY.High.strollers);
-        const span = frame.length - STROLL.margin - STROLL.from;
-        let standing = 0;
-        for (const [s, across, speed, , height, clothes, stands] of rows) {
-            expect(height).toBeGreaterThan(1.45);
-            expect(height).toBeLessThan(1.9);
-            expect(Number.isInteger(clothes)).toBe(true);
-            if (stands) {
-                standing += 1;
-                expect(speed).toBe(0);
-                expect(s).toBeGreaterThan(PIER_HEAD.s0);
-                expect(s).toBeLessThan(PIER_HEAD.s1);
-                expect(Math.abs(across)).toBeLessThan(PIER_HEAD.halfAcross);
-            } else {
-                // A stroller's pace, inside the railings, on the stretch between the head and the land.
-                expect(Math.abs(speed)).toBeGreaterThan(0.6);
-                expect(Math.abs(speed)).toBeLessThan(1.5);
-                expect(Math.abs(across)).toBeLessThan(PIER.width / 2 - 0.3);
-                expect(s).toBeGreaterThanOrEqual(0);
-                expect(s).toBeLessThanOrEqual(span + 0.2);
-            }
-        }
-        expect(standing).toBeGreaterThan(2);
-        // The same count gives the same walk (it has a generator of its own).
-        expect(strollerRows(20, frame.length)).toEqual(strollerRows(20, frame.length));
-
         // The boats: the dinghy sails between the beach and the pier and never reaches its piles;
         // the others pass beyond its far end. A quarter of an hour of courses.
         const pierX = (z) => frame.far.x + ((z - frame.far.z) / frame.along.z) * frame.along.x;

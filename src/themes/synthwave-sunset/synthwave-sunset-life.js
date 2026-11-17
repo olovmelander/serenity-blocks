@@ -4,14 +4,9 @@
  *
  * Two draws, both on the mirror layer (the sea reflects them):
  *
- *   The STROLLERS. One instanced draw of upright cards turned to the eye about the vertical, each
- *   a figure drawn in the fragment stage (a head, shoulders tapering to a waist, two legs that
- *   scissor with the distance walked, so nobody slides) and cut out with `maskNode`. They walk
- *   the pier's deck at a stroller's pace, there and back (the walk is a function of the clock
- *   alone: no state, a seek lands right), singly and in pairs, some standing at the pier head's
- *   rail under the wheel. Against the sunset they are silhouettes; after dark the railing's bulbs
- *   light them from below. Opaque, with depth: the railings, the pavilions and the sea mist treat
- *   them as they treat the pier.
+ *   The PEOPLE (synthwave-sunset-people.js): modelled figures, skinned and posed by the clock,
+ *   strolling the deck, leaning on the rails, looking up at the fireworks. Drawn once their
+ *   model has come.
  *
  *   The BOATS. One merged mesh: three sailing boats on lanes across the bay (a dinghy close in,
  *   a sloop, a ketch far out), moved along their lanes in the vertex stage, and the fireworks'
@@ -22,21 +17,15 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
-    abs,
     attribute,
     cameraPosition,
-    cameraProjectionMatrix,
-    cameraViewMatrix,
-    clamp,
     cos,
     dot,
     exp,
     float,
     length,
     max,
-    min,
     mix,
-    mod,
     normalWorld,
     normalize,
     positionGeometry,
@@ -46,152 +35,17 @@ import {
     sin,
     smoothstep,
     sqrt,
-    uv,
     vec2,
     vec3,
-    vec4,
 } from 'three/tsl';
 import {
     SEA_HAZE, rgb, swSkyGradient, swSunAlign,
 } from './synthwave-sunset-tsl.js';
-import { PIER, PIER_HEAD, pierFrame } from './synthwave-sunset-layout.js';
 import {
     box, makeOut, strut, toGeometry,
 } from './synthwave-sunset-geo.js';
 import { FIREWORKS } from './synthwave-sunset-fireworks.js';
-import { flatVarying } from '../shared/flat-varying.js';
-
-/** A stroller's card (m): wide enough for a stride, a little taller than the tallest figure. */
-const CARD = Object.freeze({ width: 1.0, height: 2.0 });
-/** The stretch of the pier the strollers walk (metres from the wheel's end). */
-export const STROLL = Object.freeze({ from: PIER_HEAD.s1 + 2, margin: 6 });
-/** Clothes: dusk-dark, with a few pale summer things among them (sRGB). */
-const CLOTHES = [0x2a2438, 0x3a2c44, 0x1f2c3c, 0x46303c, 0xd8c8c0, 0xc88a9a, 0x7fb8b0, 0xe0c890];
-
-/**
- * The strollers' layout: per figure (start along the pier m, across the deck m, speed m/s,
- * phase) and (height m, clothes index, standing 0|1, 0). Pure (a seeded walk), for the tests.
- * @param {number} count
- * @param {number} pierLength the pier's length (m)
- */
-export function strollerRows(count, pierLength) {
-    const rows = [];
-    // A small generator of its own: the walk must not shift the world's random sequence.
-    let seed = 0x5eed1e;
-    const rand = () => {
-        seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-        return seed / 4294967296;
-    };
-    const half = PIER.width / 2;
-    const span = pierLength - STROLL.margin - STROLL.from;
-    const standing = Math.max(2, Math.round(count * 0.16));
-    for (let i = 0; i < count; i += 1) {
-        const height = 1.55 + rand() * 0.3;
-        const clothes = Math.floor(rand() * CLOTHES.length);
-        if (i < standing) {
-            // At the pier head's rail, watching the sea (the side the eye sees).
-            rows.push([
-                PIER_HEAD.s0 + 1.5 + rand() * (PIER_HEAD.s1 - PIER_HEAD.s0 - 3), PIER_HEAD.halfAcross - 0.7 - rand() * 0.5, 0, rand() * 6.28,
-                height, clothes, 1, 0,
-            ]);
-            continue;
-        }
-        // The near side of the deck mostly (it is the side seen), a few across the way.
-        const side = rand() < 0.78 ? 1 : -1;
-        const across = side * (half - 0.9 - rand() * 2.2);
-        const speed = (0.75 + rand() * 0.55) * (rand() < 0.5 ? 1 : -1);
-        const row = [rand() * span, across, speed, rand() * 6.28, height, clothes, 0, 0];
-        rows.push(row);
-        // Now and then a companion walks beside.
-        if (i + 1 < count && rand() < 0.35) {
-            i += 1;
-            rows.push([row[0] + 0.15, across - side * 0.62, speed, rand() * 6.28, 1.5 + rand() * 0.32, Math.floor(rand() * CLOTHES.length), 0, 0]);
-        }
-    }
-    return rows;
-}
-
-function createStrollers(u, count, mirrorLayer) {
-    const frame = pierFrame();
-    const rows = strollerRows(count, frame.length);
-    const geometry = new THREE.PlaneGeometry(1, 1);
-    const A = new Float32Array(rows.length * 4);
-    const B = new Float32Array(rows.length * 4);
-    rows.forEach((row, i) => {
-        A.set(row.slice(0, 4), i * 4);
-        B.set(row.slice(4, 8), i * 4);
-    });
-    geometry.setAttribute('iWalkA', new THREE.InstancedBufferAttribute(A, 4));
-    geometry.setAttribute('iWalkB', new THREE.InstancedBufferAttribute(B, 4));
-
-    const material = new THREE.MeshBasicNodeMaterial();
-    material.name = 'SynthwaveStrollers';
-    material.fog = false;
-    material.side = THREE.DoubleSide;
-
-    const a = attribute('iWalkA', 'vec4');
-    const b = attribute('iWalkB', 'vec4');
-    const span = frame.length - STROLL.margin - STROLL.from;
-    // The walk: there and back along the stretch on the gulls' clock (held back under reduced
-    // motion), so a figure turns round at the ends instead of vanishing. Standing figures stay.
-    const clock = u.gullTime ?? u.time;
-    const lap = mod(a.x.add(a.z.mul(clock)), span * 2);
-    const walked = float(span).sub(abs(lap.sub(span)));
-    const along = mix(walked.add(STROLL.from), a.x, b.z);
-    const far = vec3(frame.far.x, PIER.deckY, frame.far.z);
-    const foot = far.add(vec3(frame.along.x, 0.0, frame.along.z).mul(along))
-        .add(vec3(frame.across.x, 0.0, frame.across.z).mul(a.y));
-    // Turned to the eye about the vertical.
-    const toEye = cameraPosition.sub(foot);
-    const right = normalize(vec3(toEye.z, 0.0, toEye.x.negate()));
-    const corner = positionGeometry.xy;
-    const world = foot.add(right.mul(corner.x.mul(CARD.width)))
-        .add(vec3(0.0, corner.y.add(0.5).mul(CARD.height), 0.0));
-    material.vertexNode = cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(world, 1.0));
-
-    const figure = flatVarying(vec4(b.x, b.y, b.z, a.w), 'vStroller');
-    // The stride's phase rides on the distance walked, so the feet do not slide.
-    const stride = flatVarying(along.mul(4.4).add(a.w), 'vStride');
-
-    const shape = Fn(() => {
-        const q = uv();
-        const h = figure.x;
-        const x = q.x.sub(0.5).mul(CARD.width);
-        const y = q.y.mul(CARD.height);
-        // Head, a torso from the shoulders in to the waist, two legs from the hip to the feet.
-        const head = length(vec2(x, y.sub(h.mul(0.92)))).sub(h.mul(0.062));
-        const up = clamp(y.sub(h.mul(0.5)).div(h.mul(0.33)), 0.0, 1.0);
-        const waist = abs(x).sub(mix(h.mul(0.075), h.mul(0.115), up));
-        const torso = max(waist, abs(y.sub(h.mul(0.665))).sub(h.mul(0.165)));
-        const swing = sin(stride).mul(h.mul(0.13)).mul(float(1.0).sub(figure.z));
-        const down = clamp(float(1.0).sub(y.div(h.mul(0.5))), 0.0, 1.0);
-        const legA = abs(x.sub(swing.mul(down)).sub(h.mul(0.03))).sub(h.mul(0.034));
-        const legB = abs(x.add(swing.mul(down)).add(h.mul(0.03))).sub(h.mul(0.034));
-        const legs = max(min(legA, legB), y.sub(h.mul(0.52)));
-        return min(min(head, torso), legs);
-    });
-    material.maskNode = shape().lessThan(0.0);
-
-    material.colorNode = Fn(() => {
-        const idx = figure.y;
-        const pick = (k) => clamp(float(1.0).sub(abs(idx.sub(k))), 0.0, 1.0);
-        let cloth = vec3(0.0);
-        CLOTHES.forEach((hex, k) => { cloth = cloth.add(rgb(hex).mul(pick(k))); });
-        const y = uv().y.mul(CARD.height);
-        // The evening's own light from above; the railing's bulbs from below once they are lit.
-        const sky = float(0.34).mul(u.ambient);
-        const lit = u.pierGlow.mul(u.pierPower);
-        const bulbs = exp(y.mul(-0.9)).mul(0.5).add(0.12).mul(lit);
-        return cloth.mul(sky).add(cloth.mul(rgb(0xffb878)).mul(bulbs));
-    })();
-
-    const mesh = new THREE.InstancedMesh(geometry, material, rows.length);
-    mesh.name = 'SynthwaveStrollers';
-    mesh.frustumCulled = false;
-    mesh.renderOrder = -5;
-    if (Number.isInteger(mirrorLayer)) mesh.layers.enable(mirrorLayer);
-    return mesh;
-}
+import { SynthwavePeople } from './synthwave-sunset-people.js';
 
 /**
  * The boats' courses. Each sails there and back along a line square to the eye (z, m): round
@@ -332,18 +186,19 @@ function createBoats(u, mirrorLayer) {
 }
 
 /**
- * @param {object} u  world uniforms (time, gullTime, ambient, pierGlow, pierPower, the sun's frame,
- *                    tonight's colours, seaState, dusk)
+ * @param {object} u  world uniforms (time, ambient, pierGlow, pierPower, the sun's frame, tonight's
+ *                    colours, seaState, dusk)
  * @param {object} [opts]
- * @param {number} [opts.strollers=36]  figures on the pier (a tier's count; 0 = none)
+ * @param {number} [opts.strollers=10]  people on the pier (a tier's count; 0 = none)
  * @param {number} [opts.mirrorLayer]
- * @returns {THREE.Group}
+ * @returns {THREE.Group} with `userData.people`, the SynthwavePeople to attach the figures to
  */
 export function createLife(u, opts = {}) {
     const group = new THREE.Group();
     group.name = 'SynthwaveLife';
-    const count = opts.strollers ?? 36;
-    if (count > 0) group.add(createStrollers(u, count, opts.mirrorLayer));
+    const people = new SynthwavePeople(u, { count: opts.strollers ?? 10, mirrorLayer: opts.mirrorLayer });
+    group.add(people.group);
     group.add(createBoats(u, opts.mirrorLayer));
+    group.userData.people = people;
     return group;
 }

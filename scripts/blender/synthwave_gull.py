@@ -402,7 +402,11 @@ def export(obj, path):
 
 
 def write_manifest(path, glb, tris, verts):
+    """Write the gull's entry (first) and its rig; the other assets' entries are kept."""
     data = glb.read_bytes()
+    others = []
+    if path.exists():
+        others = [a for a in json.loads(path.read_text(encoding="utf-8")).get("assets", []) if a.get("file") != glb.name]
     manifest = {
         "schemaVersion": 1,
         "author": "Serenity Blocks original procedural Blender authoring",
@@ -417,7 +421,7 @@ def write_manifest(path, glb, tris, verts):
             "species": "herring gull",
             "triangles": tris,
             "sourceVertices": verts,
-        }],
+        }] + others,
         "rig": {
             "frame": "x left, y up, z forward (metres, real size)",
             "span": SPAN,
