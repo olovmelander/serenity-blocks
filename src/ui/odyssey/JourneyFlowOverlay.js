@@ -399,7 +399,9 @@ export function createJourneyFlowOverlay({
     });
     modal.autoContinueMs = autoContinueMs;
     modal.style.setProperty('--ody-flow-hold', `${autoContinueMs}ms`);
-    const isVisible = () => !document.hidden && document.hasFocus?.() !== false;
+    // (a hold timer can outlive its page in a torn-down window or test: no document, not visible)
+    const isVisible = () => typeof document !== 'undefined' && !document.hidden
+        && document.hasFocus?.() !== false;
     const transitStatus = () => {
         if (crossesChapter && presentationVariant === 'transit' && !modal.dataset.chapterShown) {
             return {

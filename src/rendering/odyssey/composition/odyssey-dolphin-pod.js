@@ -107,7 +107,20 @@ function loopTable(spec) {
     return made;
 }
 
-/** The loop's whole length (u). */
+/**
+ * A closed swimming loop: the pod's own, or the scouts' smaller one.
+ * @typedef {{ centre: readonly number[], along: number, across: number, speed: number, turn: number }} DolphinLoop
+ */
+/**
+ * One dolphin's place in its group and the measure of its leap.
+ * @typedef {{ group: number, lag: number, side: number, length: number, period: number, phase: number,
+ *   height: number, scout?: boolean }} DolphinSpec
+ */
+
+/**
+ * The loop's whole length (u).
+ * @param {DolphinLoop} [spec]
+ */
 export function dolphinLoopLength(spec = DOLPHIN_POD) {
     return loopTable(spec).length;
 }
@@ -116,6 +129,7 @@ export function dolphinLoopLength(spec = DOLPHIN_POD) {
  * The point `arc` u along the loop (world xz), its unit tangent, and the loop's curvature there.
  * @param {number} arc
  * @param {{ x: number, z: number, tx: number, tz: number }} [out]
+ * @param {DolphinLoop} [spec]
  */
 export function dolphinLoopAt(arc, out = {
     x: 0, z: 0, tx: 1, tz: 0,
@@ -185,13 +199,14 @@ const _q = { y: 0, dy: 0 };
 
 /**
  * Where dolphin `d` is at world time `t`.
- * @param {typeof DOLPHIN_POD.dolphins[number]} d
+ * @param {DolphinSpec} d
  * @param {number} t seconds (the board's clock)
  * @param {DolphinPose} [out]
  * @returns {DolphinPose}
  */
 export function dolphinAt(d, t, out = /** @type {DolphinPose} */ ({}), spec = DOLPHIN_POD) {
     const time = Number.isFinite(t) ? t : 0;
+    /** @type {DolphinLoop} */
     const lp = d.scout ? spec.scouts : spec;
     const length = dolphinLoopLength(lp);
     const arc = (lp.speed * time) + (d.group * length * 0.5) - d.lag;
@@ -222,13 +237,14 @@ export function dolphinAt(d, t, out = /** @type {DolphinPose} */ ({}), spec = DO
 /**
  * The two marks a dolphin leaves on the surface: where it last left the water and where it last
  * went back in, with the age of each (s). The splashes are drawn there until `splashLife`.
- * @param {typeof DOLPHIN_POD.dolphins[number]} d
+ * @param {DolphinSpec} d
  * @param {number} t
  * @param {{ exit: { x: number, z: number, age: number }, entry: { x: number, z: number, age: number } }} [out]
  */
 export function dolphinSplashes(d, t, out = { exit: { x: 0, z: 0, age: 0 }, entry: { x: 0, z: 0, age: 0 } }, spec = DOLPHIN_POD) {
     const time = Number.isFinite(t) ? t : 0;
     const c = ((((time / d.period) + d.phase) % 1) + 1) % 1;
+    /** @type {DolphinLoop} */
     const lp = d.scout ? spec.scouts : spec;
     const length = dolphinLoopLength(lp);
     const mark = (age, into) => {
@@ -243,7 +259,11 @@ export function dolphinSplashes(d, t, out = { exit: { x: 0, z: 0, age: 0 }, entr
     return out;
 }
 
-/** The loop sampled as points (world xz), for what must keep clear of it. */
+/**
+ * The loop sampled as points (world xz), for what must keep clear of it.
+ * @param {number} [step]
+ * @param {DolphinLoop} [spec]
+ */
 export function dolphinLoopPoints(step = 6, spec = DOLPHIN_POD) {
     const pts = [];
     const length = dolphinLoopLength(spec);

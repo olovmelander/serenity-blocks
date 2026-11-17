@@ -10,7 +10,7 @@
  *                  horizon between them, threads of light standing from the one into the other
  *                  (orbs 49 and 50: Fluid Dreams, Nebula Flow)
  *  1 THE LATTICE   beams of gold in an endless lattice that winds through itself, one hand
- *                  through the other (orb 51: Chiral Gold)
+ *                  through the other (orb 51)
  *  2 THE NAVE      a pointed vault over a polished floor, storm light in tall windows, slow
  *                  arcs crawling its ribs (orb 52: Voltage Storm)
  *  3 THE FLOCK     veils of motes of light wheeling over a dusk horizon (orb 53: Murmuration)

@@ -125,6 +125,8 @@ export function planNeonArchitecture(towers, signs = []) {
             style,
             tint,
         };
+        /** @param {number} x @param {number} z @param {number} width @param {number} depth
+         *  @param {number} from @param {number} to @param {number} [kind] one of NEON_PART */
         const part = (x, z, width, depth, from, to, kind = NEON_PART.body) => ({
             ...look,
             x,

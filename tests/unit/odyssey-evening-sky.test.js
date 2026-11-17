@@ -175,16 +175,20 @@ describe('the evening: its schedule', () => {
         expect(at(0.722).glory).toBe(0);
     });
 
-    it('clears the clouds\' light where the round Earth takes over (its own light is white)', () => {
+    it('eases the clouds\' light where the round Earth takes over, under the same low sun', () => {
         const peak = at(ORBS[5]).cloud;
         expect(peak).toBeGreaterThan(0.45);
         expect(at(0.7225).cloud).toBeCloseTo(ODYSSEY_EVENING.clearShare, 6);
         // ...and they are gold from the first orb of the chapter, not only once the dusk is deep.
         expect(at(ORBS[0]).cloud).toBeGreaterThan(0.33);
         expect(at(0.333).cloud).toBe(0);
-        // ...and the Earth has arrived, in daylight, before the evening's light has cleared.
+        // ...and the Earth has arrived before the evening's light has eased, lit by the evening's
+        // own low sun (the evening Earth of odyssey-orbit-earth.js: it used to arrive in daylight,
+        // its sun at 0.3 rad and more).
         expect(orbitEarthAt(0.66, cp).presence).toBe(1);
-        expect(orbitEarthAt(ODYSSEY_EVENING.clear[0], cp).sunElevation).toBeGreaterThan(0.3);
+        const earthSun = orbitEarthAt(ODYSSEY_EVENING.clear[0], cp).sunElevation;
+        expect(earthSun).toBeGreaterThan(0.04);
+        expect(earthSun).toBeLessThan(0.14);
     });
 
     it('breathes on the clock, within its bound, only while the evening runs', () => {

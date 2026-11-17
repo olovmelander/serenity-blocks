@@ -31,10 +31,10 @@
  * @typedef {object} OceanZone
  * @property {string} name
  * @property {number} depth the eye's depth this zone is centred on (u under the surface)
- * @property {number[]} shallow the plate water near the surface takes, seen from this depth
- * @property {number[]} mid the plate of the water round the eye
- * @property {number[]} deep the plate a long column converges on
- * @property {number[]} luminous the light the surface lets in: the glow overhead and near it
+ * @property {readonly number[]} shallow the plate water near the surface takes, seen from this depth
+ * @property {readonly number[]} mid the plate of the water round the eye
+ * @property {readonly number[]} deep the plate a long column converges on
+ * @property {readonly number[]} luminous the light the surface lets in: the glow overhead and near it
  * @property {number} dim the in-scattered light's multiplier (the deep is dark)
  * @property {number} well how strongly the zenith keeps a well of light in the dimmed column
  * @property {number} shafts the god rays' strength

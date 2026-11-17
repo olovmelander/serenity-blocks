@@ -309,7 +309,7 @@ describe('a hypercube round every orb inside the hole (step 4)', () => {
         expect(foldHypercubeCages(1, eye, at(CH7_FOLD_CAGE.farTo + 1), 0.5)).toHaveLength(0);
         expect(foldHypercubeCages(0, eye, at(100), 0.5)).toHaveLength(0);
         expect(foldHypercubeCages(1, eye, at(100), CH7_FOLD_CAGE.outTo + 0.01)).toHaveLength(0);
-        // Chiral Gold's orb is caged in gold.
+        // Orb 51 (the lattice) is caged in gold.
         const gold = mid.find((c) => c.id === 51).colour;
         expect(gold.r).toBeGreaterThan(gold.b);
     });

@@ -1,6 +1,6 @@
 /* eslint-disable import/no-unresolved, import/no-extraneous-dependencies */
 /**
- * THE LATTICE — the fold's second place (orb 51: Chiral Gold).
+ * THE LATTICE — the fold's second place (orb 51).
  *
  * Beams of gold in an endless lattice that winds through itself: two lattices, each wound about
  * the way ahead, one to the right and one to the left, the second half a cell off so it runs
