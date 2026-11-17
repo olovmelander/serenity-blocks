@@ -1,10 +1,12 @@
 /**
- * THE FOLD — chapter 7's other dimension (2026-10-26, docs/ODYSSEY_CH7_FOLD_2026-10.md). Pinned
- * here: when the fall hands the hole's interior from the warp's streaks to the fold (the schedule,
- * pure), the march's cost per quality tier, the dust's two lives, and the window shader building
- * clean on both backends with the fold in it — with no var read where its assignment may not have
- * run (the trap that, mid-pass, washed the plunge out in salmon: the tunnel's light was first built
- * inside the tunnel's uniform branch, and read after both).
+ * THE FOLD — chapter 7's other dimension (2026-10-26; eight places since the masterpiece pass,
+ * 2026-11-17; docs/ODYSSEY_CH7_FOLD_2026-10.md). Pinned here: when the fall hands the hole's
+ * interior from the closing sky to the fold (the schedule, pure), the rooms and the places they
+ * are, how a room is held in the world, the hypercubes, the walk's cost per quality tier, and the
+ * window shader building clean on both backends with the fold in it — with no var read where its
+ * assignment may not have run (the trap that, mid-pass, washed the plunge out in salmon: a light
+ * was first built inside one uniform branch, and read after both), and with no screen derivative
+ * (the places sit behind a per-pixel branch while one room opens through another).
  */
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three/webgpu';
@@ -19,12 +21,21 @@ import {
     CH7_QUALITY_TIERS,
     createBlackHoleTranscendenceEnvironment,
 } from '../../src/rendering/odyssey/chapter-environments/black-hole-transcendence.js';
-import { CH7_FOLD } from '../../src/rendering/odyssey/chapter-environments/odyssey-fold-space.tsl.js';
+import {
+    CH7_FOLD,
+    CH7_FOLD_PLACE,
+    CH7_FOLD_PLACES,
+} from '../../src/rendering/odyssey/chapter-environments/odyssey-fold-space.tsl.js';
+import { CH7_FOLD_PLACE_BUILDERS } from '../../src/rendering/odyssey/chapter-environments/odyssey-fold-places.tsl.js';
+import { CH7_CLOSING_SKY } from '../../src/rendering/odyssey/chapter-environments/odyssey-closing-sky.tsl.js';
 import {
     CH7_FOLD_CAGE,
+    CH7_FOLD_HOLD,
+    CH7_FOLD_PLACE_IDS,
     CH7_FOLD_ROOMS,
-    CH7_FOLD_SHAPES,
+    CH7_FOLD_STRAIGHTEN,
     foldHypercubeCages,
+    followFoldRoom,
     resolveFoldRoom,
     resolveFoldRoomAnchors,
 } from '../../src/rendering/odyssey/transitions/odyssey-fold-rooms.js';
@@ -37,7 +48,7 @@ import { getActiveOdysseyChapterPositions } from '../../src/rendering/odyssey/pa
 import { build, unassignedReads } from './helpers/tsl-node-build.js';
 import { createOdysseyCameraRig } from './helpers/odyssey-camera-rig.js';
 
-describe('the fold takes over the hole\'s interior from the warp', () => {
+describe('the fold takes over the hole\'s interior from the closing sky', () => {
     const cp = getActiveOdysseyChapterPositions();
     const ch7 = cp[6];
     const span = cp[7] - cp[6];
@@ -73,7 +84,56 @@ describe('the fold takes over the hole\'s interior from the warp', () => {
     });
 });
 
-describe('a room of the fold for every orb inside the hole (step 3)', () => {
+describe('the last ring of starlight closes on the dark, and the fold opens where it closes', () => {
+    const cp = getActiveOdysseyChapterPositions();
+    const ch7 = cp[6];
+    const span = cp[7] - cp[6];
+    const at = (local) => resolveBlackHoleFall(ch7 + (span * local), cp);
+
+    it('is wide open (past the frame\'s far corner) until the eye is inside', () => {
+        // A 16:9 frame's corner is under 1 rad from the middle at the lens the plunge is seen
+        // through (and a 21:9 frame's 1.05).
+        expect(CH7_FALL.ringOpen).toBeGreaterThan(1.05);
+        expect(CH7_CLOSING_SKY.open).toBe(CH7_FALL.ringOpen);
+        expect(blackHoleFallAtRest().ring).toBe(CH7_FALL.ringOpen);
+        // It starts as the hole's rim passes the frame's edges (the hole over 45 degrees), before
+        // the eye is wholly inside.
+        const inside = (resolveBlackHoleInsideProgress(cp) - ch7) / span;
+        expect(at(CH7_FALL.ringFrom).alpha).toBeGreaterThan((45 * Math.PI) / 180);
+        expect(CH7_FALL.ringFrom).toBeLessThan(inside);
+        // ...and for as long as the ring is outside the hole's own rim it is not seen at all.
+        for (let local = CH7_FALL.ringFrom; local < CH7_FALL.ringTo; local += 0.001) {
+            const f = at(local);
+            if (f.ring > f.alpha) expect(f.alpha, `local ${local.toFixed(3)}`).toBeLessThan((62 * Math.PI) / 180);
+        }
+        for (let local = -0.1; local <= CH7_FALL.ringFrom; local += 0.01) {
+            expect(at(local).ring, `local ${local.toFixed(2)}`).toBe(CH7_FALL.ringOpen);
+        }
+    });
+
+    it('closes to a point without a step, and stays closed', () => {
+        let prev = CH7_FALL.ringOpen;
+        for (let local = 0; local < 0.4; local += 0.0005) {
+            const { ring } = at(local);
+            expect(ring).toBeLessThanOrEqual(prev + 1e-12);
+            expect(prev - ring).toBeLessThan(0.02);
+            prev = ring;
+        }
+        expect(at(CH7_FALL.ringTo).ring).toBe(0);
+        expect(at(0.9).ring).toBe(0);
+    });
+
+    it('hands over to the fold: the fold begins as the ring is nearly closed, not before', () => {
+        expect(CH7_FALL.foldFrom).toBeGreaterThan(CH7_FALL.ringFrom);
+        expect(CH7_FALL.foldFrom).toBeLessThan(CH7_FALL.ringTo);
+        expect(at(CH7_FALL.foldFrom).ring).toBeLessThan(0.2);
+        // ...and the ring is seen for most of its closing with nothing of the fold over it.
+        const half = (CH7_FALL.ringFrom + CH7_FALL.ringTo) / 2;
+        expect(at(half).fold).toBe(0);
+    });
+});
+
+describe('a room of the fold for every orb inside the hole, each a place of its own', () => {
     const rig = createOdysseyCameraRig();
     const { cp } = rig;
     const anchors = resolveFoldRoomAnchors(cp);
@@ -81,11 +141,10 @@ describe('a room of the fold for every orb inside the hole (step 3)', () => {
     it('covers orbs 49 to 56 once each, in order, each room anchored where its first orb parks', () => {
         const orbs = CH7_FOLD_ROOMS.flatMap((r) => r.orbs);
         expect(orbs).toEqual([49, 50, 51, 52, 53, 54, 55, 56]);
-        // ...and the way out after them, its walls the city's square neon grid (step 5).
+        // ...and the way out after them: the hall, with no orb of its own.
         const out = CH7_FOLD_ROOMS[CH7_FOLD_ROOMS.length - 1];
         expect(out.orbs).toEqual([]);
-        expect(out.grid).toBe(1);
-        expect(CH7_FOLD_ROOMS.slice(0, -1).every((r) => r.grid === 0)).toBe(true);
+        expect(out.place).toBe('hall');
         expect(anchors).toHaveLength(CH7_FOLD_ROOMS.length);
         CH7_FOLD_ROOMS.forEach((room, i) => {
             const at = room.orbs.length
@@ -93,41 +152,124 @@ describe('a room of the fold for every orb inside the hole (step 3)', () => {
                 : cp[6] + ((cp[7] - cp[6]) * room.exitAt);
             expect(anchors[i]).toBeCloseTo(at, 9);
             if (i > 0) expect(anchors[i]).toBeGreaterThan(anchors[i - 1]);
-            expect(Object.values(CH7_FOLD_SHAPES)).toContain(CH7_FOLD_SHAPES[room.shape]);
         });
+        // Orbs 49 and 50 park at one place on the rail, so they share the first room.
+        expect(rig.parkOf(49)).toBe(rig.parkOf(50));
     });
 
-    it("is each orb's own room, unmixed, where the orb parks, and the first and last beyond them", () => {
+    it('is eight rooms that are eight different places, no two opening from the same spot', () => {
+        expect(CH7_FOLD_ROOMS).toHaveLength(8);
+        const places = CH7_FOLD_ROOMS.map((r) => r.place);
+        expect(new Set(places).size).toBe(8);
+        places.forEach((name) => {
+            expect(Object.keys(CH7_FOLD_PLACE_IDS)).toContain(name);
+            expect(CH7_FOLD_PLACE[name], name).toBeDefined();
+        });
+        // One list of ids, and a builder for each.
+        expect(CH7_FOLD_PLACES).toBe(CH7_FOLD_PLACE_IDS);
+        expect(Object.values(CH7_FOLD_PLACE_IDS).sort()).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+        expect(CH7_FOLD_PLACE_BUILDERS).toHaveLength(8);
+        // The frames the places are seen in differ: no two put the way ahead in the same spot.
+        const frames = Object.values(CH7_FOLD_PLACE).filter((p) => p.frame).map((p) => p.frame.slice(0, 2).join(','));
+        expect(new Set(frames).size).toBe(frames.length);
+        for (let i = 2; i < CH7_FOLD_ROOMS.length - 1; i += 1) {
+            expect(CH7_FOLD_ROOMS[i].door).not.toEqual(CH7_FOLD_ROOMS[i - 1].door);
+        }
+        // The first room opens at the crossing and the hall where the mouth will: both the middle.
+        expect(CH7_FOLD_ROOMS[0].door).toEqual([0, 0]);
+        expect(CH7_FOLD_ROOMS[7].door).toEqual([0, 0]);
+        // The stairs' glasses are handed round by the happenings: three whole colours at every
+        // count, each family's own, and none of them a mix.
+        const { glass } = CH7_FOLD_PLACE.stairs;
+        expect(glass).toHaveLength(3);
+        for (let turns = 0; turns < 4; turns += 1) {
+            const standing = glass.map((family) => family[turns].join(','));
+            expect(new Set(standing).size, `after ${turns}`).toBe(3);
+            standing.forEach((colour) => expect(glass.map((family) => family[0].join(','))).toContain(colour));
+        }
+        // Serenity Warp's room is stairs, never the game's pieces.
+        expect(CH7_FOLD_ROOMS.find((r) => r.orbs.includes(54)).place).toBe('stairs');
+    });
+
+    it("is each orb's own place, whole, where the orb parks, and the first and last beyond them", () => {
         CH7_FOLD_ROOMS.forEach((room, i) => {
-            const r = resolveFoldRoom(anchors[i], anchors);
+            const r = resolveFoldRoom(anchors[i], anchors, cp);
             expect(r.morph, room.theme).toBe(0);
-            expect(r.shapeA).toBe(CH7_FOLD_SHAPES[room.shape]);
-            expect(r.hue).toBeCloseTo(room.hue, 9);
-            expect(r.tintMix).toBeCloseTo(room.tintMix, 9);
+            expect(r.placeA).toBe(CH7_FOLD_PLACE_IDS[room.place]);
+            expect(r.exit).toBe(room.place === 'hall' ? 1 : 0);
         });
-        expect(resolveFoldRoom(anchors[0] - 0.01, anchors).shapeA).toBe(CH7_FOLD_SHAPES[CH7_FOLD_ROOMS[0].shape]);
-        const last = CH7_FOLD_ROOMS[CH7_FOLD_ROOMS.length - 1];
-        const after = resolveFoldRoom(cp[7], anchors);
+        expect(resolveFoldRoom(anchors[0] - 0.01, anchors, cp).placeA).toBe(CH7_FOLD_PLACE_IDS.tide);
+        const after = resolveFoldRoom(cp[7], anchors, cp);
         expect(after.morph).toBe(0);
-        expect(after.shapeA).toBe(CH7_FOLD_SHAPES[last.shape]);
-        // Serenity Warp's room is built of glass polycubes (corners, jacks and gates of seven
-        // cubes, one solid each), never the game's pieces.
-        expect(CH7_FOLD_ROOMS.find((r) => r.orbs.includes(54)).shape).toBe('polycube');
-        expect(Object.keys(CH7_FOLD_SHAPES)).not.toContain('tetromino');
+        expect(after.placeA).toBe(CH7_FOLD_PLACE_IDS.hall);
+        expect(after.exit).toBe(1);
     });
 
-    it('morphs from one room into the next between their orbs, without a step', () => {
+    it('opens the next room through this one between their orbs, without a step', () => {
         for (let i = 0; i < anchors.length - 1; i += 1) {
             let prev = 0;
             const span = anchors[i + 1] - anchors[i];
             for (let p = anchors[i]; p < anchors[i + 1]; p += span / 200) {
-                const r = resolveFoldRoom(p, anchors);
+                const r = resolveFoldRoom(p, anchors, cp);
                 expect(r.morph).toBeGreaterThanOrEqual(prev - 1e-12);
                 expect(r.morph - prev).toBeLessThan(0.05);
+                expect(r.placeB).toBe(CH7_FOLD_PLACE_IDS[CH7_FOLD_ROOMS[i + 1].place]);
+                expect(r.door).toEqual(CH7_FOLD_ROOMS[i + 1].door);
                 prev = r.morph;
             }
             expect(prev).toBeGreaterThan(0.99);
         }
+    });
+
+    it('straightens the hall into the city\'s grid as the mouth opens, whole by the seam', () => {
+        const local = (v) => cp[6] + ((cp[7] - cp[6]) * v);
+        expect(resolveFoldRoom(local(CH7_FOLD_STRAIGHTEN.from), anchors, cp).straight).toBeCloseTo(0, 9);
+        expect(resolveFoldRoom(local(CH7_FOLD_STRAIGHTEN.to), anchors, cp).straight).toBeCloseTo(1, 9);
+        expect(CH7_FOLD_STRAIGHTEN.to).toBeLessThan(1);
+        expect(resolveFoldRoom(cp[7], anchors, cp).straight).toBe(1);
+        let prev = 0;
+        for (let v = 0.8; v <= 1; v += 0.001) {
+            const { straight } = resolveFoldRoom(local(v), anchors, cp);
+            expect(straight).toBeGreaterThanOrEqual(prev - 1e-12);
+            expect(straight - prev).toBeLessThan(0.03);
+            prev = straight;
+        }
+        // The hall has begun to open by the time it straightens (it is a tube first).
+        expect(local(CH7_FOLD_STRAIGHTEN.from)).toBeGreaterThan(anchors[6]);
+    });
+});
+
+describe('the room is held in the world while the eye turns in it', () => {
+    it('lets the eye turn freely a little, follows more firmly further out, and is never left far behind', () => {
+        const H = CH7_FOLD_HOLD;
+        // Within the free angle the room does not move at all.
+        expect(followFoldRoom(H.free * 0.8, 1 / 60)).toBe(H.free * 0.8);
+        expect(followFoldRoom(0, 1 / 60)).toBe(0);
+        // Further out it follows: a little a frame, never past the view, never the wrong way.
+        for (let lag = H.free + 0.5; lag <= 60; lag += 0.5) {
+            const next = followFoldRoom(lag, 1 / 60);
+            expect(next).toBeLessThanOrEqual(lag);
+            expect(next).toBeGreaterThan(0);
+            expect(next).toBeLessThanOrEqual(H.most);
+        }
+        // Firmer the further behind it is.
+        const eased = (lag) => (lag - followFoldRoom(lag, 1 / 60)) / lag;
+        expect(eased(H.firm)).toBeGreaterThan(eased((H.free + H.firm) / 2));
+        expect(eased((H.free + H.firm) / 2)).toBeGreaterThan(0);
+    });
+
+    it('comes to rest inside the firm angle after a swing, and does not depend on the frame rate', () => {
+        const settle = (dt) => {
+            let lag = 28;
+            for (let t = 0; t < 4; t += dt) lag = followFoldRoom(lag, dt);
+            return lag;
+        };
+        expect(settle(1 / 60)).toBeLessThan(CH7_FOLD_HOLD.firm * 0.6);
+        expect(settle(1 / 60)).toBeGreaterThan(CH7_FOLD_HOLD.free);
+        expect(Math.abs(settle(1 / 30) - settle(1 / 120))).toBeLessThan(0.5);
+        // A stalled frame does not throw the room.
+        expect(followFoldRoom(20, 5)).toBeGreaterThan(0);
+        expect(followFoldRoom(Number.NaN, 0.016)).toBe(0);
     });
 });
 
@@ -191,7 +333,7 @@ describe('a hypercube round every orb inside the hole (step 4)', () => {
     });
 });
 
-describe('the march costs less on the lower tiers', () => {
+describe('the walk costs less on the lower tiers', () => {
     it('steps down from High to Low, High at the module default', () => {
         expect(CH7_QUALITY_TIERS.high.foldSteps).toBe(CH7_FOLD.steps);
         expect(CH7_QUALITY_TIERS.medium.foldSteps).toBeLessThan(CH7_QUALITY_TIERS.high.foldSteps);
@@ -199,10 +341,24 @@ describe('the march costs less on the lower tiers', () => {
         expect(CH7_QUALITY_TIERS.low.foldSteps).toBeGreaterThanOrEqual(12);
     });
 
-    it('keeps the tesseracts off the axis, so the path and its orbs stay in the open', () => {
-        expect(CH7_FOLD.ringRadius - (CH7_FOLD.size * Math.sqrt(3))).toBeGreaterThan(1.5);
-        expect(CH7_FOLD.shellIn).toBeLessThan(CH7_FOLD.ringRadius - (CH7_FOLD.size * Math.sqrt(3)));
-        expect(CH7_FOLD.shellOut).toBeGreaterThan(CH7_FOLD.ringRadius + (CH7_FOLD.size * 1.75));
+    it("keeps the eye's own line clear in the places that are walked, so the path stays in the open", () => {
+        // The stairs: the eye rides between the planes its flights stand in, and between the
+        // flights of the family whose planes it crosses.
+        const S = CH7_FOLD_PLACE.stairs;
+        expect((S.planes / 2) - (S.width / 2)).toBeGreaterThan(6);
+        expect((S.apart / 2) - S.thick - S.tread).toBeGreaterThan(6);
+        // The lattice winds, so its beams do cross the eye's line: they fade before they reach it.
+        const L = CH7_FOLD_PLACE.lattice;
+        expect(L.nearFrom).toBeGreaterThanOrEqual(1);
+        expect(L.nearTo).toBeGreaterThan(L.nearFrom + 1);
+        // The flock's and the paint's nearest layers are not drawn; the tide's threads stand well out.
+        expect(CH7_FOLD_PLACE.paint.near).toBeGreaterThanOrEqual(2);
+        expect(CH7_FOLD_PLACE.tide.threads.near).toBeGreaterThan(5);
+        // The nave and the hall are rooms round the eye: it stands inside them.
+        const N = CH7_FOLD_PLACE.nave;
+        expect(Math.abs(N.eye[0])).toBeLessThan(N.halfWidth - 2);
+        expect(N.eye[1]).toBeGreaterThan(-N.floor + 1);
+        expect(N.eye[1]).toBeLessThan(N.spring);
     });
 });
 
@@ -219,9 +375,12 @@ describe('the hole\'s window builds on both backends with the fold in it', () =>
                 expect(out.thrown, `${out.thrown?.stack ?? ''}`).toBeUndefined();
                 expect(out.heard).toEqual([]);
                 expect(out.fragment).not.toMatch(/\bNaN\b|\bInfinity\b|object Object/);
-                // The march is a real loop (not unrolled), and the mouth still cuts.
-                expect(out.fragment).toMatch(/\bfor\s*\(/);
+                // The walks are real loops (not unrolled), and the mouth still cuts.
+                expect((out.fragment.match(/\bfor\s*\(/g) ?? []).length).toBeGreaterThanOrEqual(6);
                 expect(out.fragment).toMatch(/discard/);
+                // No screen derivative anywhere in it: a place runs behind a per-pixel branch
+                // while one room opens through another, where WGSL allows none.
+                expect(out.fragment).not.toMatch(/\b(dpdx|dpdy|fwidth|dFdx|dFdy)\w*\s*\(/);
                 if (label === 'WGSL') {
                     expect(unassignedReads(out.fragment), 'fragment').toEqual([]);
                 }

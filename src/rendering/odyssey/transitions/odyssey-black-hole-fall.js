@@ -73,18 +73,31 @@ export const CH7_FALL = Object.freeze({
     /** The band, its fold arcs and the embers fade out once the disk has swept past. */
     bandFadeFrom: 0.30 * PLUNGE,
     bandFadeTo: 0.44 * PLUNGE,
-    /** The warp (streak speed / zoom) ramps up across the horizon. */
+    /** The warp (the drive's travel inside, the post's rush) ramps up across the horizon. */
     warpFrom: 0.36 * PLUNGE,
     warpTo: 0.52 * PLUNGE,
     /** "Inside": from this far before the horizon, over this span (the far stars and the dome
      * stop drawing once the window covers every pixel). */
     insideLead: 0.04 * PLUNGE,
     insideSpan: 0.06 * PLUNGE,
-    /** THE FOLD (2026-10-26): past the horizon the warp's streaks give way to the other dimension
-     * (chapter-environments/odyssey-fold-space.tsl.js) across [foldFrom, foldTo] (local), before
-     * orbs 49 and 50 park inside (local ~0.26). */
-    foldFrom: 0.11,
-    foldTo: 0.24,
+    /** THE LAST RING OF STARLIGHT (2026-11-17; chapter-environments/odyssey-closing-sky.tsl.js):
+     * as the hole swallows the frame, the light of the sky the eye came through comes in from the
+     * frame's edges as one ring (`ringOpen` radians across: past the frame's far corner) and
+     * closes on the middle of the view across [ringFrom, ringTo] (local). That stretch is the
+     * tail of the plunge's slow travel (CH7_PLUNGE_TRAVEL), so the closing is watched for most of
+     * a second; closed later, it was crossed in a fifth of one. It starts as the hole's own rim
+     * passes the frame's edges (the ring comes in behind it, with no dark beat between), moves
+     * off at once and slows as it closes (`ringEase`: the power of what is left of the way). */
+    ringOpen: 1.12,
+    ringFrom: 0.094,
+    ringTo: 0.152,
+    ringEase: 1.6,
+    /** THE FOLD (2026-10-26): where the ring closes the other dimension opens
+     * (chapter-environments/odyssey-fold-space.tsl.js), across [foldFrom, foldTo] (local): from
+     * the ring's last point, and whole just as orbs 49 and 50 park inside (local ~0.258), so the
+     * first room finishes opening on the trip's slow last stretch. */
+    foldFrom: 0.150,
+    foldTo: 0.255,
     /** Camera: a brief compression gives the attraction weight before the horizon rush. */
     fovCompressionDeg: 2.2,
     /** Frame dragging and speed stay bounded; the camera never changes logical rail progress. */
@@ -152,6 +165,7 @@ const REST = Object.freeze({
     band: 1,
     warp: 0,
     inside: 0,
+    ring: CH7_FALL.ringOpen,
     fold: 0,
     rollDeg: 0,
     fovOffset: 0,
@@ -212,8 +226,8 @@ export function resolveBlackHoleFallCamera(local, exit = 0.82) {
  * @param {number} progress absolute path progress
  * @param {number[]} chapterPositions live chapter boundaries
  * @returns {{active:boolean, local:number, u:number, alpha:number, centring:number, portal:number,
- *   diskTilt:number, band:number, warp:number, inside:number, fold:number, rollDeg:number,
- *   fovOffset:number, camForward:number}}
+ *   diskTilt:number, band:number, warp:number, inside:number, ring:number, fold:number,
+ *   rollDeg:number, fovOffset:number, camForward:number}}
  */
 export function resolveBlackHoleFall(progress, chapterPositions) {
     const ch7Start = chapterPositions?.[6];
@@ -242,6 +256,8 @@ export function resolveBlackHoleFall(progress, chapterPositions) {
         band: 1 - smooth01((local - F.bandFadeFrom) / (F.bandFadeTo - F.bandFadeFrom)),
         warp: smooth01((local - F.warpFrom) / (F.warpTo - F.warpFrom)),
         inside: smooth01((local - (F.horizon - F.insideLead)) / F.insideSpan),
+        ring: F.ringOpen
+            * ((1 - Math.min(1, Math.max(0, (local - F.ringFrom) / (F.ringTo - F.ringFrom)))) ** F.ringEase),
         fold: smooth01((local - F.foldFrom) / (F.foldTo - F.foldFrom)),
         rollDeg: camera.rollDeg,
         fovOffset: camera.fovOffset,
@@ -333,8 +349,81 @@ export function resolveBlackHoleApproachProgress(deg, chapterPositions) {
     return (lo + hi) / 2;
 }
 
+/**
+ * THE WAY OUT TAKES ITS TIME (2026-11-17). The trip from orb 56 to orb 57 runs about a second, and
+ * the way out (the hall opening through the last room, its walls straightening into the city's
+ * grid, the mouth widening over the city until it passes the frame's edges) was the 0.3 s in its
+ * middle, where the ease runs fastest: four frames, for the moment the whole chapter falls toward.
+ * Travel now weighs the way out as it weighs the plunge: `dwell` times open path between `from`
+ * and `to` (chapter 7's local progress: where the hall begins to open, just past orb 56's park, to
+ * where the mouth has passed the corners of a 16:9 frame), and a short trip across it is given
+ * `extraMs` more. A trip eases in and out, so only a stretch that is most of its measure gets the
+ * middle of its time: the weight is that heavy for that reason (the 56 -> 57 trip runs ~3.8 s,
+ * about two of them through the way out).
+ */
+export const CH7_EXIT_TRAVEL = Object.freeze({
+    from: 0.868,
+    to: 0.957,
+    dwell: 22,
+    shoulder: 0.0015,
+    extraMs: 2800,
+});
+
+/**
+ * The way out's stretch: from where the hall opens, just past orb 56, to the mouth past the frame's corners.
+ * @param {number[]} chapterPositions live chapter boundaries
+ * @returns {{ from: number, to: number }|null} null without a usable layout
+ */
+export function resolveExitStretch(chapterPositions) {
+    const ch7Start = chapterPositions?.[6];
+    const ch8Start = chapterPositions?.[7];
+    if (!Number.isFinite(ch7Start) || !Number.isFinite(ch8Start) || ch8Start <= ch7Start) return null;
+    const span = ch8Start - ch7Start;
+    return { from: ch7Start + (span * CH7_EXIT_TRAVEL.from), to: ch7Start + (span * CH7_EXIT_TRAVEL.to) };
+}
+
 const TABLE_SAMPLES = 2048;
 let travelTable = null;
+let exitTable = null;
+
+/** A weight's extra over open path, integrated from `lo` to `hi`. */
+function integrateExtra(lo, hi, extra) {
+    const step = (hi - lo) / TABLE_SAMPLES;
+    const area = new Float64Array(TABLE_SAMPLES + 1);
+    let prev = extra(lo);
+    for (let i = 1; i <= TABLE_SAMPLES; i += 1) {
+        const next = extra(lo + (i * step));
+        area[i] = area[i - 1] + ((prev + next) * 0.5 * step);
+        prev = next;
+    }
+    return {
+        lo, hi, step, area,
+    };
+}
+
+/** The extra a table has gathered up to `p`. */
+function extraUpTo(table, p) {
+    if (!table || p <= table.lo) return 0;
+    if (p >= table.hi) return table.area[TABLE_SAMPLES];
+    const x = (p - table.lo) / table.step;
+    const i = Math.min(TABLE_SAMPLES - 1, Math.floor(x));
+    return table.area[i] + ((table.area[i + 1] - table.area[i]) * (x - i));
+}
+
+/**
+ * The way out's extra weight, integrated once per layout.
+ * @returns {{ lo: number, hi: number, step: number, area: Float64Array }|null}
+ */
+function resolveExitTable(chapterPositions) {
+    const stretch = resolveExitStretch(chapterPositions);
+    if (!stretch) return null;
+    if (exitTable && exitTable.a === stretch.from && exitTable.b === stretch.to) return exitTable;
+    const E = CH7_EXIT_TRAVEL;
+    const s = E.shoulder;
+    const extra = (p) => (E.dwell - 1) * smooth01((p - (stretch.from - s)) / s) * (1 - smooth01((p - stretch.to) / s));
+    exitTable = { a: stretch.from, b: stretch.to, ...integrateExtra(stretch.from - s, stretch.to + s, extra) };
+    return exitTable;
+}
 
 /**
  * The travel weight's extra over open path, integrated once per layout: from where the run-in's
@@ -362,23 +451,16 @@ function resolveTravelTable(chapterPositions) {
     const extra = (p) => ((T.runInDwell - 1) * plateau(p, runFrom, b))
         + ((T.dwell - T.runInDwell) * plateau(p, a, b))
         + (Number.isFinite(beatAt) ? T.beatDwell * Math.exp(-(((p - beatAt) / sigma) ** 2)) : 0);
-    const step = (hi - lo) / TABLE_SAMPLES;
-    const area = new Float64Array(TABLE_SAMPLES + 1);
-    let prev = extra(lo);
-    for (let i = 1; i <= TABLE_SAMPLES; i += 1) {
-        const next = extra(lo + (i * step));
-        area[i] = area[i - 1] + ((prev + next) * 0.5 * step);
-        prev = next;
-    }
     travelTable = {
-        a, b, c: ch8Start, lo, hi, step, area,
+        a, b, c: ch8Start, ...integrateExtra(lo, hi, extra),
     };
     return travelTable;
 }
 
 /**
- * The travel measure of progress `p`: progress itself plus the run-in's, the plunge's and the
- * beat's extra weight up to `p` (monotone, so it inverts). Travel eased in this measure slows there.
+ * The travel measure of progress `p`: progress itself plus the run-in's, the plunge's, the beat's
+ * and the way out's extra weight up to `p` (monotone, so it inverts). Travel eased in this measure
+ * slows there.
  * @param {number} p path progress
  * @param {number[]} chapterPositions live chapter boundaries
  * @returns {number}
@@ -386,12 +468,7 @@ function resolveTravelTable(chapterPositions) {
 export function plungeTravelMeasure(p, chapterPositions) {
     const table = resolveTravelTable(chapterPositions);
     if (!table || !Number.isFinite(p)) return p;
-    if (p <= table.lo) return p;
-    if (p >= table.hi) return p + table.area[TABLE_SAMPLES];
-    const x = (p - table.lo) / table.step;
-    const i = Math.min(TABLE_SAMPLES - 1, Math.floor(x));
-    const f = x - i;
-    return p + table.area[i] + ((table.area[i + 1] - table.area[i]) * f);
+    return p + extraUpTo(table, p) + extraUpTo(resolveExitTable(chapterPositions), p);
 }
 
 /**
@@ -404,7 +481,8 @@ export function plungeTravelProgress(m, chapterPositions) {
     const table = resolveTravelTable(chapterPositions);
     if (!table || !Number.isFinite(m)) return m;
     // The measure grows at least as fast as progress, so the answer lies in [m - extra, m].
-    let lo = m - table.area[TABLE_SAMPLES] - 1e-9;
+    const exit = resolveExitTable(chapterPositions);
+    let lo = m - table.area[TABLE_SAMPLES] - (exit ? exit.area[TABLE_SAMPLES] : 0) - 1e-9;
     let hi = m;
     for (let i = 0; i < 48; i += 1) {
         const mid = (lo + hi) / 2;
@@ -415,17 +493,22 @@ export function plungeTravelProgress(m, chapterPositions) {
 }
 
 /**
- * Whether a trip between `p0` and `p1` passes through the weighted stretch (run-in, plunge, beat).
+ * Whether a trip between `p0` and `p1` passes through a weighted stretch (the run-in, the plunge
+ * and its beat, or the way out).
  * @returns {boolean}
  */
 export function plungeTravelTouches(p0, p1, chapterPositions) {
     const table = resolveTravelTable(chapterPositions);
     if (!table || !Number.isFinite(p0) || !Number.isFinite(p1)) return false;
-    return Math.max(p0, p1) > table.lo && Math.min(p0, p1) < table.hi;
+    const lo = Math.min(p0, p1);
+    const hi = Math.max(p0, p1);
+    const exit = resolveExitTable(chapterPositions);
+    return (hi > table.lo && lo < table.hi) || (!!exit && hi > exit.lo && lo < exit.hi);
 }
 
 /**
- * The time a trip between `p0` and `p1` is given on top of its own for the run-in and the plunge (ms).
+ * The time a trip between `p0` and `p1` is given on top of its own for the run-in, the plunge and
+ * the way out (ms).
  * @returns {number}
  */
 export function plungeTravelExtraMs(p0, p1, chapterPositions) {
@@ -437,7 +520,9 @@ export function plungeTravelExtraMs(p0, p1, chapterPositions) {
     const T = CH7_PLUNGE_TRAVEL;
     const short = 1 - smooth01(((hi - lo) - T.longTrip) / T.longFade);
     const runIn = share(stretch.from - CH7_APPROACH.runIn, stretch.from);
-    return ((T.extraMs * share(stretch.from, stretch.to)) + (T.runInExtraMs * runIn)) * short;
+    const out = resolveExitStretch(chapterPositions);
+    const wayOut = out ? CH7_EXIT_TRAVEL.extraMs * share(out.from, out.to) : 0;
+    return ((T.extraMs * share(stretch.from, stretch.to)) + (T.runInExtraMs * runIn) + wayOut) * short;
 }
 
 /**
