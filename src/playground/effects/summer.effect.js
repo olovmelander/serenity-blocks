@@ -112,6 +112,8 @@ export function create({
         world.setHud(scorePanel ? {
             x0: 0.624, x1: 0.772, y0: 0.19, y1: 0.49,
         } : null);
+        // ?swans=0 takes the swans off the lake (hidden, they leave no rings and send no skein).
+        if (params.get('swans') === '0' && world.swans) world.swans.group.visible = false;
         // ?hide=Grass,Flower hides every object whose name contains one of the words.
         const hidden = (params.get('hide') || '').split(',').filter(Boolean);
         if (hidden.length) {
@@ -190,6 +192,7 @@ export function create({
         else if (event === 'perfect') reactions.onPerfectClear();
         else if (event === 'level') reactions.onLevelUp();
         else if (event === 'over') reactions.onGameOver();
+        else if (event === 'swans') world?.swans?.takeWing();
     };
     const seek = (time) => {
         if (!Number.isFinite(time)) return;
@@ -215,6 +218,9 @@ export function create({
         const dt = target / steps;
         let next = eventTime;
         let early = picked > 0 ? Math.max(0, eventTime - 6) : null;
+        // ?swans=fly sends a skein of swans across the lake ?flightAge= seconds (7) before the capture.
+        const flightAge = Number(params.get('flightAge') ?? 7);
+        let flight = params.get('swans') === 'fly' ? Math.max(0, target - (flightAge >= 0 ? flightAge : 7)) : null;
         for (let i = 1; i <= steps; i += 1) {
             if (early !== null && i * dt >= early) {
                 for (let n = 0; n < picked; n += 1) {
@@ -225,6 +231,10 @@ export function create({
                     });
                 }
                 early = null;
+            }
+            if (flight !== null && i * dt >= flight) {
+                world.swans?.takeWing();
+                flight = null;
             }
             if (next !== null && i * dt >= next) {
                 fire(params.get('event'));

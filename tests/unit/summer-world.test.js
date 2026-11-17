@@ -588,6 +588,7 @@ describe('Summer world scene contracts', () => {
             farTrees: world.backdrop.count,
             butterflies: tier.butterflies,
             swallows: tier.birds,
+            swans: { afloat: 2, cygnets: tier.swans[0], flying: 0 },
             petals: { ambient: sim.ambient, reserve: sim.reserve, live: 0 },
             rings: 0,
             waves: 0,
@@ -2903,7 +2904,7 @@ describe('Summer world ownership', () => {
             world.resetEffects();
         }).not.toThrow();
         expect(world.getDiagnostics()).toEqual({
-            quality: 'Minimal', farTrees: 0, butterflies: 0, swallows: 0, petals: null, rings: 0, waves: 0,
+            quality: 'Minimal', farTrees: 0, butterflies: 0, swallows: 0, swans: null, petals: null, rings: 0, waves: 0,
         });
 
         // The bundle is released by whoever loaded it, once.
@@ -2934,7 +2935,7 @@ describe('Summer world ownership', () => {
         expect(unspecified.quality).toBe('High');
         expect(unspecified.tier).toBe(SUMMER_TIERS.High);
         const idle = {
-            farTrees: 0, butterflies: 0, swallows: 0, petals: null, rings: 0, waves: 0,
+            farTrees: 0, butterflies: 0, swallows: 0, swans: null, petals: null, rings: 0, waves: 0,
         };
         expect(unspecified.getDiagnostics()).toEqual({ quality: 'High', ...idle });
         // An unknown tier name reads as High too.
