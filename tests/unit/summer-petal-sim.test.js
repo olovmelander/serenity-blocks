@@ -3,7 +3,9 @@ import { SUMMER_PARTICLES, SummerPetalSim } from '../../src/themes/summer/summer
 
 const STEP = 1 / 60;
 const FLOWER_KINDS = 7;
-const { petal: PETAL, seed: SEED, pollen: POLLEN } = SUMMER_PARTICLES;
+const {
+    petal: PETAL, seed: SEED, pollen: POLLEN, glow: GLOW,
+} = SUMMER_PARTICLES;
 /** Open water everywhere, as the simulation assumes when it is told nothing. */
 const LAKE = () => -1;
 /** A meadow half a metre above the lake. */
@@ -113,10 +115,13 @@ function orbit(sim, field) {
 
 describe('Summer petal simulation', () => {
     describe('construction', () => {
-        it('names the three kinds of particle', () => {
+        it('names the four kinds of particle', () => {
             expect(Object.isFrozen(SUMMER_PARTICLES)).toBe(true);
-            expect(Object.keys(SUMMER_PARTICLES).sort()).toEqual(['petal', 'pollen', 'seed']);
-            expect(new Set(Object.values(SUMMER_PARTICLES)).size).toBe(3);
+            // Three things that fly, and a light that stays where it was lit.
+            expect(Object.keys(SUMMER_PARTICLES).sort()).toEqual(['glow', 'petal', 'pollen', 'seed']);
+            expect(new Set(Object.values(SUMMER_PARTICLES)).size).toBe(4);
+            // A petal is what a particle is when nothing says otherwise: a cleared slot reads as one.
+            expect(PETAL).toBe(0);
             // Stored in a byte and handed to the shader as a number.
             for (const kind of Object.values(SUMMER_PARTICLES)) {
                 expect(Number.isInteger(kind) && kind >= 0 && kind < 256).toBe(true);
@@ -127,7 +132,7 @@ describe('Summer petal simulation', () => {
             const sim = create();
             expect(sim).toMatchObject({ count: 60, reserve: 40, ambient: 20 });
             for (const name of ['x', 'y', 'z', 'vx', 'vy', 'vz', 'life', 'span', 'kind', 'flower', 'size', 'spin',
-                'seed']) {
+                'seed', 'hang', 'shine']) {
                 expect(sim[name], name).toHaveLength(60);
             }
             expect(sim.home).toHaveLength(20 * 3);
@@ -283,10 +288,22 @@ describe('Summer petal simulation', () => {
             expect(handful).toBeLessThan(2);
             expect(thrown({ size: -1 }).size).toBe(speck);
             for (const size of [NaN, Infinity, 'big', null]) expect(thrown({ size }).size).toBe(plain.size);
-            // Only the three kinds exist.
+            // Only the four kinds exist.
             expect(thrown({ kind: SEED }).kind).toBe(SEED);
             expect(thrown({ kind: POLLEN }).kind).toBe(POLLEN);
-            for (const kind of [-1, 3, 99, NaN, 'seed', null]) expect(thrown({ kind }).kind).toBe(PETAL);
+            expect(thrown({ kind: GLOW }).kind).toBe(GLOW);
+            const unknown = Math.max(...Object.values(SUMMER_PARTICLES)) + 1;
+            for (const kind of [-1, unknown, 99, 2.5, NaN, 'seed', 'glow', null]) {
+                expect(thrown({ kind }).kind, String(kind)).toBe(PETAL);
+            }
+            // A glow is a light, metres across: its size has a ceiling of its own, far above a
+            // petal's, and the same floor.
+            const light = thrown({ kind: GLOW, size: 1e6 }).size;
+            expect(light).toBeGreaterThan(handful * 4);
+            expect(light).toBeLessThanOrEqual(20);
+            expect(thrown({ kind: GLOW, size: 3.5 }).size).toBe(3.5);
+            expect(thrown({ kind: GLOW, size: 0 }).size).toBe(speck);
+            for (const kind of [PETAL, SEED, POLLEN]) expect(thrown({ kind, size: 3.5 }).size).toBe(handful);
             expectFinite(sim);
         });
 
@@ -306,6 +323,14 @@ describe('Summer petal simulation', () => {
             }
             // Mixed petals really are mixed.
             expect(picked.size).toBe(FLOWER_KINDS);
+            // A glow may also be lit in the pale colour of seed down, the eighth of the palette;
+            // nothing that flies may, and no light has a ninth.
+            const lit = (flower, kind = GLOW) => sim.flower[sim.spawn(0, 20, 0, 0, 0, 0, { flower, kind })];
+            for (let kind = 0; kind <= FLOWER_KINDS; kind++) expect(lit(kind)).toBe(kind);
+            for (const kind of [PETAL, SEED, POLLEN]) expect(lit(FLOWER_KINDS, kind)).toBeLessThan(FLOWER_KINDS);
+            for (const flower of [FLOWER_KINDS + 1, -1, 99, 6.5, NaN, null]) {
+                expect(lit(flower), String(flower)).toBeLessThan(FLOWER_KINDS);
+            }
         });
 
         it('takes the particle nearest its end when the whole reserve is in the air', () => {
@@ -738,6 +763,336 @@ describe('Summer petal simulation', () => {
         });
     });
 
+    describe('lights in the air', () => {
+        /** Everything the air can do to a particle at once: wind, a gust, and three fields on top of it. */
+        const storm = (at) => ({
+            windX: 0.6,
+            windZ: -0.8,
+            wind: 1,
+            gust: 1,
+            fields: [
+                {
+                    kind: 'burst', x: at[0] + 0.5, y: at[1] - 0.5, z: at[2], radius: 6, power: 40, up: 12,
+                },
+                {
+                    kind: 'jet', x: at[0], y: at[1], z: at[2], dx: 1, dy: 0.3, dz: 0, radius: 6, power: 30,
+                },
+                crownField({ x: at[0] + 2, z: at[2], top: at[1] }),
+            ],
+        });
+
+        it('lights a glow where it is asked and leaves it there, whatever blows', () => {
+            const at = [3, 6, -4];
+            const sim = create({ groundHeight: MEADOW });
+            // Thrown like anything else, with a speed of its own: a light is not a thing, and stays.
+            const glow = sim.spawn(...at, 4, 5, -3, {
+                life: 1.2, kind: GLOW, flower: 2, size: 2,
+            });
+            const petal = sim.spawn(...at, 4, 5, -3, { life: 1.2 });
+            expect(glow).toBeGreaterThanOrEqual(sim.ambient);
+            expect(sim.counts().live).toBe(2);
+            for (let frame = 0; frame < 60; frame++) {
+                sim.step(STEP, frame % 2 ? { ...storm(at), settled: frame > 30 } : storm(at));
+                expect([sim.x[glow], sim.y[glow], sim.z[glow]]).toEqual(at);
+                const shown = drawn(sim, glow);
+                expect([shown.x, shown.y, shown.z]).toEqual(at);
+                expect(shown.kind).toBe(GLOW);
+                expect(shown.flower).toBe(2);
+            }
+            // The petal beside it went where all of that carried it.
+            expect(Math.hypot(sim.x[petal] - at[0], sim.y[petal] - at[1], sim.z[petal] - at[2])).toBeGreaterThan(1);
+            expectFinite(sim);
+        });
+
+        it('keeps a glow alight for the life it was given, over water and grass alike, and then it is gone', () => {
+            for (const groundHeight of [LAKE, MEADOW]) {
+                const sim = create({ groundHeight });
+                // Low over the water: a petal here would be taken by the lake at once.
+                const glow = sim.spawn(0, 0.01, 0, 0, -3, 0, { life: 0.8, kind: GLOW, size: 3 });
+                const petal = sim.spawn(5, 0.01, 0, 0, -3, 0, { life: 0.8 });
+                let touches = 0;
+                for (let frame = 0; frame < 46; frame++) {
+                    sim.step(STEP, STILL);
+                    touches += sim.touchCount;
+                    expect(sim.life[glow], `frame ${frame}`).toBeGreaterThan(0);
+                    expect(sim.life[glow]).toBeCloseTo(0.8 - (frame + 1) * STEP, 5);
+                    expect(drawn(sim, glow).size).toBeGreaterThan(0);
+                    expect(sim.y[glow]).toBeCloseTo(0.01, 6);
+                }
+                // The petal met the lake (and rang it) or the grass; the light met neither.
+                expect(touches).toBe(groundHeight === LAKE ? 1 : 0);
+                if (groundHeight === LAKE) expect(sim.life[petal]).toBe(0);
+                run(sim, 0.1, STILL);
+                expect(sim.life[glow]).toBeLessThanOrEqual(0);
+                expect(drawn(sim, glow)).toMatchObject({ size: 0, light: 0 });
+                run(sim, 2, STILL);
+                expect(sim.counts().live).toBe(0);
+                // Its slot is free for the next thing thrown.
+                expect(sim.life[sim.spawn(0, 9, 0, 0, 0, 0, { life: 1 })]).toBe(1);
+                expectFinite(sim);
+            }
+        });
+
+        it('swells a glow to its size early in its life and holds it there while its light goes', () => {
+            const sim = create();
+            const size = 4;
+            const life = 1.5;
+            const glow = sim.spawn(0, 9, 0, 0, 0, 0, {
+                life, kind: GLOW, flower: 1, size,
+            });
+            const seen = [];
+            for (let frame = 0; frame < Math.round(life * 60) - 1; frame++) {
+                sim.step(STEP, STILL);
+                seen.push({ ...drawn(sim, glow), lived: 1 - sim.life[glow] / life });
+            }
+            // It opens small, never from nothing, and only ever grows ...
+            expect(seen[0].size).toBeGreaterThan(size * 0.2);
+            expect(seen[0].size).toBeLessThan(size * 0.5);
+            for (let frame = 1; frame < seen.length; frame++) {
+                expect(seen[frame].size).toBeGreaterThanOrEqual(seen[frame - 1].size);
+            }
+            // ... to the size it was given, reached in the first third of its life and held to the end.
+            const grown = seen.findIndex((entry) => entry.size === size);
+            expect(grown).toBeGreaterThan(3);
+            expect(seen[grown].lived).toBeLessThan(1 / 3);
+            expect(seen.slice(grown).every((entry) => entry.size === size)).toBe(true);
+            // Its light comes up with it, is brightest about when it is full grown, and then only falls.
+            const lights = seen.map((entry) => entry.light);
+            const peak = lights.indexOf(Math.max(...lights));
+            expect(lights[0]).toBeLessThan(lights[peak] * 0.25);
+            expect(Math.abs(peak - grown)).toBeLessThanOrEqual(2);
+            expect(lights[peak]).toBeGreaterThan(0.3);
+            expect(lights[peak]).toBeLessThanOrEqual(1);
+            for (let frame = 1; frame <= peak; frame++) expect(lights[frame]).toBeGreaterThan(lights[frame - 1]);
+            for (let frame = peak + 1; frame < lights.length; frame++) {
+                expect(lights[frame]).toBeLessThan(lights[frame - 1]);
+            }
+            // It goes out: all but dark in its last frames, and nothing at all once its life is up.
+            expect(lights.at(-1)).toBeGreaterThanOrEqual(0);
+            expect(lights.at(-1)).toBeLessThan(lights[peak] * 0.01);
+            run(sim, 3 * STEP, STILL);
+            expect(drawn(sim, glow)).toMatchObject({ size: 0, light: 0 });
+            // The renderer is told what it is all the while.
+            for (const entry of seen) expect(entry).toMatchObject({ kind: GLOW, flower: 1 });
+        });
+
+        it('dims its glows by the share of flashes the player allows, and nothing else by it', () => {
+            const sim = create();
+            const glow = sim.spawn(0, 9, 0, 0, 0, 0, { life: 2, kind: GLOW, size: 3 });
+            const petal = sim.spawn(2, 9, 0, 0, 0, 0, { life: 2 });
+            const pollen = sim.spawn(4, 9, 0, 0, 0, 0, { life: 2, kind: POLLEN });
+            run(sim, 0.6, STILL);
+            const shown = (env) => {
+                sim.step(0, env);
+                return {
+                    glow: drawn(sim, glow), petal: drawn(sim, petal).light, pollen: drawn(sim, pollen).light, down: drawn(sim, 0).light,
+                };
+            };
+            const full = shown({});
+            expect(full.glow.light).toBeGreaterThan(0.2);
+            // No word about flashes is all of them: so is anything that is not a share.
+            for (const flash of [1, 7, undefined, null, NaN, Infinity, -Infinity, 'dim']) {
+                expect(shown({ flash }).glow.light, String(flash)).toBe(full.glow.light);
+            }
+            const half = shown({ flash: 0.5 });
+            expect(half.glow.light).toBeCloseTo(full.glow.light / 2, 6);
+            expect(shown({ flash: 0.25 }).glow.light).toBeCloseTo(full.glow.light / 4, 6);
+            // Reduce flashing all the way: the light is not shown at all, though it is still there.
+            for (const flash of [0, -0.5, -3]) {
+                const dark = shown({ flash });
+                expect(dark.glow.light, String(flash)).toBe(0);
+                expect(dark.glow.size).toBe(full.glow.size);
+                // The petals still fly, as bright as ever.
+                expect([dark.petal, dark.pollen, dark.down]).toEqual([full.petal, full.pollen, full.down]);
+            }
+            expect([half.petal, half.pollen, half.down]).toEqual([full.petal, full.pollen, full.down]);
+            // The share is read every frame it flies, too.
+            sim.step(STEP, { ...STILL, flash: 0 });
+            expect(drawn(sim, glow).light).toBe(0);
+            sim.step(STEP, STILL);
+            expect(drawn(sim, glow).light).toBeGreaterThan(0.2);
+            // write() on its own takes the same share, and all of it when it is told nothing.
+            sim.write(0, 0, 0.5);
+            const written = drawn(sim, glow).light;
+            sim.write(0, 0);
+            expect(written).toBeCloseTo(drawn(sim, glow).light / 2, 6);
+        });
+    });
+
+    describe('petals that hang in the air', () => {
+        /** How far a particle is from a place. */
+        const from = (sim, index, [x, y, z]) => Math.hypot(sim.x[index] - x, sim.y[index] - y, sim.z[index] - z);
+
+        it('holds a petal up where it was thrown while it hangs, then lets it fall like any other', () => {
+            const sim = create();
+            const at = [0, 20, 0];
+            const hung = sim.spawn(...at, 0, 0, 0, { life: 9, hang: 1.5 });
+            const loose = sim.spawn(...at, 0, 0, 0, { life: 9 });
+            let strayed = 0;
+            for (let frame = 0; frame < 84; frame++) {
+                sim.step(STEP, STILL);
+                strayed = Math.max(strayed, from(sim, hung, at));
+            }
+            // A second and a half on it is within a few centimetres of where it was let go, while
+            // the petal thrown beside it without a hold has dropped away.
+            expect(strayed).toBeLessThan(0.06);
+            expect(at[1] - sim.y[loose]).toBeGreaterThan(0.25);
+            expect(at[1] - sim.y[loose]).toBeGreaterThan((at[1] - sim.y[hung]) * 8);
+            // Then the air lets go of it, and it comes down as the other did.
+            run(sim, 1.5, STILL);
+            expect(at[1] - sim.y[hung]).toBeGreaterThan(0.25);
+            expect(sim.hang[hung]).toBeLessThanOrEqual(0);
+            // It is a petal like any other all the while: drawn, tumbling, growing older.
+            expect(drawn(sim, hung)).toMatchObject({ kind: PETAL });
+            expect(drawn(sim, hung).size).toBeGreaterThan(0);
+            expect(sim.life[hung]).toBeCloseTo(sim.life[loose], 5);
+        });
+
+        it('lets the air stop a thrown petal at its place, twice as far for twice the speed, and keeps it there', () => {
+            const sim = create();
+            const at = [1, 30, -2];
+            const throwOne = (speed) => sim.spawn(...at, 0.6 * speed, 0.8 * speed, 0, { life: 9, hang: 3 });
+            const [slow, fast] = [throwOne(1.5), throwOne(3)];
+            run(sim, 2, STILL);
+            const reach = (index) => [sim.x[index] - at[0], sim.y[index] - at[1], sim.z[index] - at[2]];
+            const [near, far] = [reach(slow), reach(fast)];
+            // Out along the way it was thrown, and no further for the time it has had: the air has
+            // all but stopped it.
+            for (const [index, place] of [[slow, near], [fast, far]]) {
+                expect(Math.hypot(sim.vx[index], sim.vy[index], sim.vz[index])).toBeLessThan(0.2);
+                expect(place[0] / Math.hypot(...place)).toBeCloseTo(0.6, 1);
+                expect(place[1] / Math.hypot(...place)).toBeCloseTo(0.8, 1);
+            }
+            expect(Math.hypot(...near)).toBeGreaterThan(0.5);
+            expect(Math.hypot(...far) / Math.hypot(...near)).toBeGreaterThan(1.8);
+            expect(Math.hypot(...far) / Math.hypot(...near)).toBeLessThan(2.2);
+            // It stays where the air stopped it for as long as it hangs.
+            const [held, heldFar] = [[sim.x[slow], sim.y[slow], sim.z[slow]], [sim.x[fast], sim.y[fast], sim.z[fast]]];
+            run(sim, 0.8, STILL);
+            expect(from(sim, slow, held)).toBeLessThan(0.08);
+            expect(from(sim, fast, heldFar)).toBeLessThan(0.12);
+        });
+
+        it('keeps a hanging petal out of every field until it lets go', () => {
+            const at = [2, 20, 0];
+            const fields = [
+                // A crown turning right through it, a jet and a burst on top of it.
+                crownField({ x: 0, z: 0, top: 20 }),
+                {
+                    kind: 'jet', x: 2, y: 20, z: 0, dx: 0, dy: 0, dz: 1, radius: 5, power: 30,
+                },
+                {
+                    kind: 'burst', x: 1.5, y: 19.5, z: 0.2, radius: 5, power: 30, up: 8,
+                },
+            ];
+            const fly = (env, options) => {
+                const sim = create();
+                const index = sim.spawn(...at, 0.5, 0.2, 0, { life: 20, ...options });
+                return { sim, index, env };
+            };
+            const free = fly(STILL, { hang: 1 });
+            const pushed = fly({ ...STILL, fields }, { hang: 1 });
+            const plain = fly({ ...STILL, fields }, {});
+            for (let frame = 0; frame < 58; frame++) {
+                for (const flight of [free, pushed, plain]) flight.sim.step(STEP, flight.env);
+                // Exactly the flight of its twin in empty air, frame after frame.
+                expectUntouched(pushed.sim, free.sim, pushed.index);
+            }
+            // The same fields had the petal without a hold from the first frame.
+            expect(from(plain.sim, plain.index, at)).toBeGreaterThan(from(pushed.sim, pushed.index, at) + 1);
+            // Its hold over, the fields take it as they take anything.
+            for (let frame = 0; frame < 30; frame++) {
+                for (const flight of [free, pushed]) flight.sim.step(STEP, flight.env);
+            }
+            expect(Math.hypot(
+                pushed.sim.x[pushed.index] - free.sim.x[free.index],
+                pushed.sim.y[pushed.index] - free.sim.y[free.index],
+                pushed.sim.z[pushed.index] - free.sim.z[free.index],
+            )).toBeGreaterThan(0.5);
+            expectFinite(pushed.sim);
+        });
+
+        it('leans a hanging petal on the wind only a little, and lets it go sooner once the evening has settled', () => {
+            const at = [0, 20, 0];
+            const fly = (env, hang) => {
+                const sim = create();
+                const index = sim.spawn(...at, 0, 0, 0, { life: 9, hang });
+                run(sim, 1, env);
+                return { along: sim.x[index] - at[0], drop: at[1] - sim.y[index] };
+            };
+            const windy = {
+                windX: 1, windZ: 0, wind: 0.6, gust: 0.5,
+            };
+            const [hung, loose] = [fly(windy, 2), fly(windy, 0)];
+            // Carried the way the wind blows, but a fraction as far as a petal it has all to itself.
+            expect(hung.along).toBeGreaterThan(0);
+            expect(hung.along).toBeLessThan(loose.along / 2.5);
+            expect(hung.drop).toBeLessThan(0.05);
+            // The game is over: the flower comes apart in a third of the time, and falls.
+            const over = fly({ ...STILL, settled: true }, 2);
+            const playing = fly(STILL, 2);
+            expect(playing.drop).toBeLessThan(0.05);
+            expect(over.drop).toBeGreaterThan(playing.drop + 0.1);
+        });
+
+        it('takes a hold and a shine in range only, and nothing for nonsense', () => {
+            const sim = create({ count: 140, reserve: 120 });
+            const given = (options) => {
+                const index = sim.spawn(0, 20, 0, 0, 0, 0, { life: 9, ...options });
+                return { hang: sim.hang[index], shine: sim.shine[index] };
+            };
+            expect(given({})).toEqual({ hang: 0, shine: 0 });
+            expect(given({ hang: 1.5, shine: 0.25 })).toEqual({ hang: 1.5, shine: 0.25 });
+            for (const junk of [NaN, Infinity, -Infinity, -2, 'long', null, undefined, {}]) {
+                expect(given({ hang: junk, shine: junk }), String(junk)).toEqual({ hang: 0, shine: 0 });
+            }
+            // A hold is seconds, and never many; a shine is a share of full light.
+            const longest = given({ hang: 1e9 }).hang;
+            expect(longest).toBeGreaterThan(2);
+            expect(longest).toBeLessThan(20);
+            expect(given({ hang: 1e12 }).hang).toBe(longest);
+            expect(given({ shine: 40 }).shine).toBe(1);
+            // The next thing thrown from the same slot carries neither over.
+            const small = create({ count: 4, reserve: 2 });
+            const first = small.spawn(0, 20, 0, 0, 0, 0, { life: 0.3, hang: 2, shine: 0.9 });
+            run(small, 0.5, STILL);
+            small.spawn(0, 20, 0, 0, 0, 0, { life: 0.3 });
+            const again = small.spawn(0, 20, 0, 0, 0, 0, { life: 0.3 });
+            expect(again).toBe(first);
+            expect([small.hang[again], small.shine[again]]).toEqual([0, 0]);
+        });
+
+        it('adds a petal\'s shine to the light it is drawn with, and to nothing else about it', () => {
+            // The same petal three times over, in three evenings that differ in nothing else.
+            const thrown = (shine) => {
+                const sim = create();
+                const index = sim.spawn(0, 20, 0, 0, 0, 0, { life: 6, flower: 3, shine });
+                run(sim, 1, STILL);
+                return { sim, index };
+            };
+            const [plain, bright, brightest] = [0, 0.4, 1].map(thrown);
+            const [dull, lit, most] = [plain, bright, brightest].map(({ sim, index }) => drawn(sim, index));
+            expect(lit.light - dull.light).toBeCloseTo(0.4, 6);
+            expect(most.light - dull.light).toBeCloseTo(1, 6);
+            for (const key of ['x', 'y', 'z', 'size', 'flower', 'kind', 'spin']) expect(lit[key], key).toBe(dull[key]);
+            // On top of the evening's glow and the crown's heat, not instead of them.
+            for (const { sim } of [plain, bright]) sim.step(0, { glow: 1, heat: 1 });
+            const warmed = drawn(plain.sim, plain.index).light;
+            expect(warmed).toBeGreaterThan(dull.light);
+            expect(drawn(bright.sim, bright.index).light - warmed).toBeCloseTo(0.4, 6);
+            // Seed and pollen carry it the same way.
+            for (const kind of [SEED, POLLEN]) {
+                const sim = create();
+                const pair = [0, 0.3].map((shine) => sim.spawn(0, 20, 0, 0, 0, 0, { life: 6, kind, shine }));
+                run(sim, 1, STILL);
+                expect(drawn(sim, pair[1]).light - drawn(sim, pair[0]).light).toBeCloseTo(0.3, 6);
+            }
+            // It goes as the petal goes: nothing is drawn of it once its life is up.
+            run(bright.sim, 6, STILL);
+            expect(drawn(bright.sim, bright.index)).toMatchObject({ size: 0, light: 0 });
+        });
+    });
+
     describe('ambient down', () => {
         it('wanders about its home and keeps to the air when nothing happens at all', () => {
             const sim = create();
@@ -923,9 +1278,12 @@ describe('Summer petal simulation', () => {
                         (random() - 0.5) * 2e3,
                         {
                             life: random() < 0.1 ? pick(junk) : random() * 6,
-                            kind: random() < 0.1 ? pick(junk) : Math.floor(random() * 3),
+                            // (Glows among them: one more kind than the three that fly.)
+                            kind: random() < 0.1 ? pick(junk) : Math.floor(random() * 4),
                             flower: random() < 0.1 ? pick(junk) : Math.floor(random() * 9) - 1,
                             size: random() < 0.1 ? pick(junk) : random() * 0.3,
+                            hang: random() < 0.2 ? pick(junk) : random() * 3 - 1,
+                            shine: random() < 0.2 ? pick(junk) : random() * 3 - 1,
                         },
                     );
                 }
@@ -962,6 +1320,7 @@ describe('Summer petal simulation', () => {
                     gust: random() < 0.2 ? pick(junk) : random() * 4,
                     glow: random() < 0.2 ? pick(junk) : random() * 2,
                     heat: random() < 0.2 ? pick(junk) : random() * 2,
+                    flash: random() < 0.2 ? pick(junk) : random() * 2,
                     settled: random() < 0.2 ? pick(junk) : random() < 0.3,
                     fields,
                 });
@@ -1091,7 +1450,9 @@ describe('Summer petal simulation', () => {
             const opening = snapshot(sim);
             // A different, busier evening first.
             for (let frame = 0; frame < 400; frame++) {
-                sim.spawn(frame % 11, 0.3 + (frame % 3), frame % 5, 3, 1, -2, { life: 5, kind: frame % 3, size: 0.2 });
+                sim.spawn(frame % 11, 0.3 + (frame % 3), frame % 5, 3, 1, -2, {
+                    life: 5, kind: frame % 4, size: 0.2, hang: 4, shine: 0.6,
+                });
                 sim.step(STEP, {
                     gust: 1, heat: 1, glow: 1, fields: [crownField({ top: 2 })],
                 });
@@ -1103,7 +1464,7 @@ describe('Summer petal simulation', () => {
             expect(sim.counts().live).toBe(0);
             const reopened = snapshot(sim);
             for (const name of ['outPlace', 'outLook', 'x', 'y', 'z', 'vx', 'vy', 'vz', 'life', 'spin', 'home',
-                'seed']) {
+                'seed', 'hang', 'shine', 'kind']) {
                 expect(reopened[name], name).toEqual(opening[name]);
             }
             // No cooldown is left over to swallow the first touch of the new session.
