@@ -23,6 +23,7 @@ import {
     cos,
     exp,
     float,
+    floor,
     int,
     length,
     max,
@@ -40,10 +41,10 @@ import {
 } from 'three/tsl';
 
 import {
-    BIRTH_ROWS, BIRTH_SLOTS, JET_LIFE, JET_RUN, KIND_AMBIENT, KIND_DROP, KIND_GREAT,
+    BIRTH_ROWS, BIRTH_SLOTS, JET_LIFE, JET_RUN, KIND_AMBIENT, KIND_DROP, KIND_GREAT, TAU,
 } from './nebula-flow-core.js';
 import {
-    nfClip, nfGauss, nfLightMaterial, nfPart, nfQuadGeometry,
+    nfClip, nfGauss, nfHash11, nfLightMaterial, nfPart, nfQuadGeometry,
 } from './nebula-flow-tsl.js';
 
 /** Twin of jetReach() in core. */
@@ -73,16 +74,19 @@ function jetStar(u, aJet) {
     const isGreat = kind.greaterThan(KIND_GREAT - 0.5).and(kind.lessThan(KIND_GREAT + 0.5)).toVar();
     const isAmbient = kind.greaterThan(KIND_AMBIENT - 0.5).toVar();
     const isDrop = kind.greaterThan(KIND_DROP - 0.5).and(kind.lessThan(KIND_DROP + 0.5)).toVar();
-    const reachBase = isGreat.select(1.35, isDrop.select(0.4, isAmbient.select(0.17, 0.3))).mul(E.z);
+    // (a young star of the pillars' own throws a long, thin outflow out of the dust: the purple
+    // and red streaks the telescope sees leaving every pillar)
+    const reachBase = isGreat.select(1.35, isDrop.select(0.4, isAmbient.select(0.3, 0.3))).mul(E.z);
     const run = max(jetReachNode(ageFire), jetReachNode(ageFree).mul(1.2));
-    // an ambient star's jets never die; they breathe
-    const breath = sin(u.time.mul(0.35).add(E.w.mul(30.0))).mul(0.25).add(0.45);
+    // an ambient star's jets never die; they breathe, slowly
+    const breath = sin(u.time.mul(0.21).add(E.w.mul(30.0))).mul(0.18).add(0.62);
     const lightNow = isAmbient.select(
-        breath,
+        // (a flare lifts the star's power, and its jets blaze with it)
+        breath.mul(u.outflow).mul(min(A.w.div(0.45), 4.0)),
         jetLightNode(ageFire).add(jetLightNode(ageFree).mul(1.5)),
     ).mul(A.w.greaterThan(0.001).select(1, 0)).mul(ageFire.greaterThan(0).select(1, 0)).toVar();
     const len = reachBase.mul(isAmbient.select(1.0, run)).mul(lightNow.greaterThan(0.002).select(1, 0)).toVar();
-    const bow = float(0.018).mul(E.z).mul(isGreat.select(3.0, 1.0)).toVar();
+    const bow = float(0.018).mul(E.z).mul(isGreat.select(3.0, isAmbient.select(1.25, 1.0))).toVar();
     // the quad stands well clear of the shock and its glow, which are windowed to nothing at its
     // edges (a great star's shock is bright enough to show a cut-off edge otherwise)
     const reach = bow.mul(2.6);
@@ -124,41 +128,64 @@ export function createJets(u) {
         } = jetStar(u, aJet);
         const s = along.mul(len.add(tip));
         const frac = s.div(max(len, 1e-4));
+        const f = clamp(frac, 0, 1);
+        const hh = isAmbient.select(1, 0);
         // the jet precesses: a slow wiggle that grows along it
         const wiggle = sin(s.mul(float(26.0).div(E.z)).add(E.w.mul(40.0)).sub(u.time.mul(0.9)))
-            .mul(0.006).mul(E.z).mul(clamp(frac, 0, 1));
+            .mul(0.006).mul(E.z).mul(f);
         const x = positionGeometry.x.mul(halfW).sub(wiggle);
         // the beam is a hair near the star and frays toward the tip
-        const w = mix(0.0016, 0.0055, clamp(frac, 0, 1)).mul(E.z).mul(isGreat.select(2.5, 1.0));
+        const w = mix(0.0016, 0.0055, f).mul(E.z).mul(isGreat.select(2.5, 1.0));
         const fall = pow(clamp(float(1).sub(frac), 0, 1), 0.6);
-        const beam = nfGauss(x.div(w)).mul(step1(len.sub(s))).mul(fall);
-        const haze = nfGauss(x.div(w.mul(4.0))).mul(step1(len.sub(s))).mul(fall).mul(0.12);
+        const inside = step1(len.sub(s));
+        const beam = nfGauss(x.div(w)).mul(inside).mul(fall);
+        const haze = nfGauss(x.div(w.mul(4.0))).mul(inside).mul(fall).mul(0.12);
+        // the cavity the outflow has blown: a faint cone of lit gas round the beam
+        const cone = nfGauss(x.div(w.mul(3.0).add(f.mul(bow).mul(0.55)))).mul(inside).mul(smoothstep(0.0, 0.25, f))
+            .mul(0.05);
         const age = isAmbient.select(u.time, max(ageFire, 0));
         // knots: shocks that run outward along the beam, unevenly spaced (the outflow comes in
-        // fits)
+        // fits, so each knot burns at its own strength); an ambient star's crawl out slowly
         // (spaced so that even a short jet carries several: at a third of this, a lock's jet was
         // shorter than one spacing and drew as a lit rod)
-        const knotPhase = s.mul(isAmbient.select(64.0, 46.0).div(E.z)).sub(age.mul(5.0))
-            .add(sin(s.mul(isAmbient.select(23.0, 16.0).div(E.z)).add(E.w.mul(17.0))).mul(1.4));
-        const knot = pow(clamp(cos(knotPhase).mul(0.5).add(0.5), 0, 1), 10.0);
+        const knotPhase = s.mul(isAmbient.select(64.0, 46.0).div(E.z)).sub(age.mul(isAmbient.select(1.6, 5.0)))
+            .add(sin(s.mul(isAmbient.select(23.0, 16.0).div(E.z)).add(E.w.mul(17.0))).mul(1.4))
+            .toVar();
+        const fit = nfHash11(floor(knotPhase.div(TAU).add(0.5)).add(floor(E.w.mul(97.0))).add(20000.0));
+        const knot = pow(clamp(cos(knotPhase).mul(0.5).add(0.5), 0, 1), 10.0).mul(fit.mul(0.75).add(0.35));
         // the bow shock: a small cap at the tip, opening back toward the star (blunt, and dim off
         // the axis, so its arms never reach back round the star like a ring); it forms once the
-        // jet has run out a few widths
+        // jet has run out a few widths. Behind it the shocked gas glows faintly.
         const tx = s.sub(len);
         const arc = tx.add(x.mul(x).div(bow.mul(1.6)));
         const shock = nfGauss(arc.div(0.0045)).mul(nfGauss(x.div(bow.mul(0.75))))
             .mul(smoothstep(bow.mul(3.0), bow.mul(8.0), len));
         const glow = nfGauss(length(vec2(tx, x)).div(bow.mul(1.2))).mul(0.25);
+        const wake = nfGauss(x.div(bow.mul(0.6))).mul(smoothstep(bow.mul(-4.0), 0, tx)).mul(inside).mul(0.12);
+        // a young star's older outflow: a second, fainter bow shock part way out, left by an
+        // earlier fit
+        const tx2 = s.sub(len.mul(0.6));
+        const arc2 = tx2.add(x.mul(x).div(bow.mul(2.2)));
+        const shock2 = nfGauss(arc2.div(0.0042)).mul(nfGauss(x.div(bow.mul(0.6)))).mul(nfGauss(tx2.div(bow.mul(0.9))))
+            .mul(hh)
+            .mul(0.3);
         const edge = float(1).sub(smoothstep(0.55, 1.0, abs(positionGeometry.x)))
             .mul(float(1).sub(smoothstep(0.45, 1.0, tx.div(tip))));
-        // an outflow is a chain of knots in a faint beam, not a lit rod capped at both ends; an
-        // ambient star's is fainter still
-        const between = isAmbient.select(0.04, 0.2);
-        const core = beam.mul(knot.mul(2.2).add(between)).add(haze.mul(isAmbient.select(0.55, 1.0)));
-        const colour = mix(C.rgb, vec3(1), clamp(beam.mul(knot).mul(0.5), 0, 0.7));
-        const cap = shock.mul(isAmbient.select(0.18, 0.6)).add(glow.mul(isAmbient.select(0.4, 1.0)));
-        const rgb = colour.mul(core.mul(2.2).add(cap))
-            .mul(lightNow).mul(isAmbient.select(0.65, 1.0)).mul(u.iris)
+        // an outflow is a chain of knots in a faint beam, not a lit rod capped at both ends
+        const between = isAmbient.select(0.06, 0.2);
+        const core = beam.mul(knot.mul(2.2).add(between)).add(haze.mul(isAmbient.select(0.7, 1.0))).add(cone);
+        // A young star's own outflow glows in the gas's emission: its own hue at the star (violet
+        // or rose), shocked red out toward the tip and in its bow shocks. A lock's jets wear the
+        // piece's colour as ever.
+        const shockRed = vec3(1.0, 0.13, 0.2);
+        const body = mix(C.rgb, shockRed, f.mul(0.7).mul(hh));
+        const colour = mix(body, vec3(1), clamp(beam.mul(knot).mul(0.5), 0, 0.7));
+        const capRgb = mix(C.rgb, shockRed, hh.mul(0.75));
+        const cap = shock.mul(isAmbient.select(0.42, 0.6)).add(glow.mul(isAmbient.select(0.45, 1.0))).add(wake)
+            .add(shock2);
+        const rgb = colour.mul(core.mul(2.2)).add(capRgb.mul(cap))
+            .mul(lightNow).mul(isAmbient.select(0.8, 1.0))
+            .mul(u.iris)
             .mul(edge);
         return vec4(rgb, 0);
     })();

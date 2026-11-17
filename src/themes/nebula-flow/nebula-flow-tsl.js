@@ -233,6 +233,21 @@ export function createNebulaUniforms() {
         hole: uniform(new THREE.Vector4(0, -10, 0, 0)),
         /** The hush before the great star (0..1: everything sinks). */
         hush: uniform(0),
+        /** How strongly the cluster's light combs the gas into streamers (the weather's wind). */
+        streamers: uniform(0.6),
+        /** How thick the cavity's dust lanes stand (1 at rest; the weather's dust tide). */
+        lanes: uniform(1),
+        /** How brightly the young stars buried in the pillars glow (1 at rest; the deep hours). */
+        embers: uniform(1),
+        /** How brightly the young stars of the pillars' own drive their outflows (1 at rest). */
+        outflow: uniform(1),
+        /** A perfect clear's light echo: (centre x, centre y, age in seconds, strength; 0 = none). */
+        echo: uniform(new THREE.Vector4(0, -10, 0, 0)),
+        /**
+         * A level-up's palette wave: (centre x, centre y, radius, edge width). Inside the radius the
+         * palette is the live one; outside it, wipeFrom (the one the wave replaces).
+         */
+        wipe: uniform(new THREE.Vector4(0, 2, 1000, 0.2)),
         /** 1 / exposure ^ 0.8: event lights multiply by it so they read while the iris closes. */
         iris: uniform(1),
         prism: uniform(home.prism),
@@ -240,16 +255,21 @@ export function createNebulaUniforms() {
     PALETTE_KEYS.forEach((key) => {
         u[key] = colour(home[key]);
     });
+    /** The palette a level-up's wave replaces (the live one when no wave runs). */
+    u.wipeFrom = { prism: uniform(home.prism) };
+    PALETTE_KEYS.forEach((key) => {
+        u.wipeFrom[key] = colour(home[key]);
+    });
     return u;
 }
 
 /** Copy a palette (paletteAt's output) into the uniforms. */
-export function writePalette(u, pal) {
+export function writePalette(u, pal, target = u) {
     PALETTE_KEYS.forEach((key) => {
         const c = pal[key];
-        u[key].value.set(c[0], c[1], c[2]);
+        target[key].value.set(c[0], c[1], c[2]);
     });
-    u.prism.value = pal.prism ?? 0;
+    target.prism.value = pal.prism ?? 0;
 }
 
 /** A nursery-space point → clip space through the frame's view. */

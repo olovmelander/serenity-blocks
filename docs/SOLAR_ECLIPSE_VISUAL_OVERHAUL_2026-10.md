@@ -44,7 +44,7 @@ What changed:
   face toward the sun burns and their thin parts glow with forward-scattered light; their heads
   run ahead of their feet and boil, so a tower grows and falls apart. *Deck*: altocumulus rows in
   their own plane, dark overhead and burning where the sheet reaches out past the shadow's edge,
-  so the edge of the shadow is drawn across the sky (gotcha #1516 for its far veil). *Rows*: the
+  so the edge of the shadow is drawn across the sky (gotcha #1517 for its far veil). *Rows*: the
   old three rows restyled as long soft bars, dark bodies lit from below by the band, their thin
   edges letting it through. *Lenticular*: a stack of smooth lenses over the volcano, sunlit when
   its summit is. Every layer changes shape as it drifts (its layers move at different speeds).
