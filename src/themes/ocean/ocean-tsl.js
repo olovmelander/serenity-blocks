@@ -75,6 +75,7 @@ import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 export * from './ocean-core.js';
 export * from './ocean-hours.js';
+export * from './ocean-weather.js';
 
 /** Capsules that stand in the sun's way: the large animals throw shadows through the shafts. */
 export const SHADE_SLOTS = 4;
@@ -283,8 +284,14 @@ export function createOceanUniforms(textures) {
         surge: uniform(0),
         /** How far the water has cleared (a perfect clear): 0..1. */
         lift: uniform(0),
-        /** The steady current's lean on everything that grows (0.25 at rest). */
+        /** The steady current's lean on everything that grows (0.25 at rest; its sign is its side). */
         current: uniform(0.25),
+        /** How far that current has carried what drifts (metres; summed, so a turn of the current never jumps). */
+        flow: uniform(0),
+        /** How much the small waves and the skin's crinkle stand (1 at rest: the sea state's). */
+        chop: uniform(1),
+        /** 0..1: rain ringing the surface. */
+        rain: uniform(0),
         /** How steep the surface's waves stand (1 at rest; a level's set swell and the overdrive raise it). */
         swell: uniform(1),
         /** How strongly the reef fluoresces, and how much of the night's own light is out. */
@@ -292,13 +299,19 @@ export function createOceanUniforms(textures) {
         night: uniform(h.night),
         /** The great shaft a four-line clear opens: (world x, z where it meets the sand, radius, strength). */
         beam: uniform(new THREE.Vector4(0, 0, 3, 0)),
+        /** The colour of that light (the hour's shafts, lifted; a perfect clear splits it). */
+        crown: uniform(new THREE.Vector3(1.0, 0.95, 0.8)),
+        /** 0..1: a perfect clear splits the light into its colours (the crown, the net on the sand). */
+        prism: uniform(0),
+        /** A new level's tide of light: (the z its front stands at, its strength, _, _). */
+        tide: uniform(new THREE.Vector4(-100, 0, 0, 0)),
         // ── The silver school ──
         /** (how wide its loop is, its mean height, its swing in y, the z it circles). */
         schoolA: uniform(new THREE.Vector4(SCHOOL_REST.wide, SCHOOL_REST.high, SCHOOL_REST.swing, SCHOOL_REST.back)),
         /** (its swing in z, its phase on the loop, how far it is wound into the vortex 0..1, its span on the loop). */
         schoolB: uniform(new THREE.Vector4(SCHOOL_REST.deep, 0, 0, SCHOOL_SPAN)),
-        /** (the vortex's own phase, how tight the school packs 1 = at rest, how excited 0..1, _). */
-        schoolC: uniform(new THREE.Vector4(0, 1, 0, 0)),
+        /** (the vortex's own phase, how tight the school packs 1 = at rest, how excited 0..1, its climb over the shoulders). */
+        schoolC: uniform(new THREE.Vector4(0, 1, 0, SCHOOL_REST.rise)),
         // ── Events ──
         /** How many (rings, stains, surges, scares) are live: the loops over the tables stop there. */
         counts: uniform(new THREE.Vector4(0, 0, 0, 0)),
@@ -357,13 +370,18 @@ export function ocPart(name, geometry, material, renderOrder = 0, extra = {}) {
  */
 export const ocBackdrop = (u, dir) => {
     const up = clamp(dir.y, -1.0, 1.0);
-    const above = mix(u.deep, u.shallow, smoothstep(-0.05, 0.85, up));
+    // (The bright water is overhead only: level with the eye the sea is its deep colour, so what
+    // stands in it fades into blue, not into a pale veil.)
+    const lift = smoothstep(0.0, 0.92, up);
+    const above = mix(u.deep, u.shallow, lift.mul(lift));
     const body = mix(above, u.abyss, float(1.0).sub(smoothstep(-0.75, 0.0, up)));
     const toward = clamp(dot(dir, u.sunDir), 0.0, 1.0);
     const t2 = toward.mul(toward);
     const t6 = t2.mul(t2).mul(t2);
     const t24 = ocPow4(t6);
-    const halo = u.halo.mul(t6.mul(0.55).add(t24.mul(1.4)));
+    // (A broad lobe as well as the tight ones: the water is lit from ONE side, so the picture
+    // has a bright quarter and a deep one instead of one even veil.)
+    const halo = u.halo.mul(t2.mul(0.1).add(t6.mul(0.55)).add(t24.mul(1.4)));
     return body.add(halo).mul(u.breath.mul(0.5).add(0.5));
 };
 
@@ -437,14 +455,39 @@ export const ocShade = (u, P) => {
     return lit;
 };
 
+/** Where the crown's ring of light stands, and how thick its wall is, in beam radii. */
+export const BEAM_RING = 1.6;
+export const BEAM_WALL = 0.42;
+
 /**
- * The great shaft a four-line clear opens, at a world point: a column of light down the sun's
- * ray to where `u.beam` says it meets the sand (0 while there is none).
+ * The great light a four-line clear opens, at a world point: a crown of light down the sun's
+ * ray, a ring round where `u.beam` says it meets the sand (x, z, radius, strength) and a softer
+ * column inside it (0 while there is none).
  */
 export const ocBeam = (u, P) => {
     const foot = P.xz.sub(u.sunDir.xz.mul(P.y.div(max(u.sunDir.y, 0.25))));
-    const off = foot.sub(u.beam.xy).div(max(u.beam.z, 0.1));
-    return exp(dot(off, off).negate()).mul(u.beam.w);
+    const r = length(foot.sub(u.beam.xy)).div(max(u.beam.z, 0.1));
+    // A crown: a ring of light standing round the board (where the school winds), with a softer
+    // column inside it. The card hides the middle of the picture; the ring stands beside it.
+    const wall = r.sub(BEAM_RING).div(BEAM_WALL);
+    return exp(r.mul(r).negate()).mul(0.3).add(exp(wall.mul(wall).negate())).mul(u.beam.w);
+};
+
+/**
+ * The light a passing current carries on its front, at a stage x: the water it piles up is a
+ * lens, so the caustics blaze in a band a few metres wide just behind the front as it crosses.
+ */
+export const ocWash = (u, x) => {
+    const wash = float(0.0).toVar();
+    Loop({
+        start: int(0), end: int(u.counts.z), type: 'int', condition: '<', name: 'ws',
+    }, ({ ws }) => {
+        const A = u.surges.element(ws);
+        const age = u.time.sub(A.x).toVar();
+        const back = age.mul(SURGE_SPEED).sub(SURGE_START).sub(x.mul(A.y)).toVar();
+        wash.addAssign(ocBell(back.sub(1.4).div(3.4)).mul(A.z).mul(step(0.0, age)));
+    });
+    return wash;
 };
 
 /**
@@ -466,8 +509,13 @@ export const ocLight = (u, {
     const sunk = exp(u.ext.mul(depth).mul(-0.32));
     const facing = clamp(dot(N, u.sunDir).mul(1 - wrap).add(wrap), 0.0, 1.0);
     const net = caustic || ocCaustic(u, P);
-    const direct = u.sun.mul(facing.mul(facing)).mul(net).mul(shade || float(1.0))
-        .add(u.shaft.mul(ocBeam(u, P)).mul(facing.mul(0.6).add(0.4)).mul(1.4));
+    // A clear's current crossing: its front carries a band of light over everything it passes.
+    const wash = ocWash(u, P.x.div(u.squeeze));
+    // A new level's tide: a band of the hour's own light coming up the canyon toward the eye.
+    const tide = ocBell(P.z.sub(u.tide.x).div(4.0)).mul(u.tide.y);
+    const direct = u.sun.mul(facing.mul(facing)).mul(net).mul(shade || float(1.0)).mul(wash.mul(0.9).add(1.0))
+        .add(u.glow.mul(net.mul(0.5).add(0.5)).mul(wash.mul(0.3).add(tide)))
+        .add(u.crown.mul(ocBeam(u, P)).mul(facing.mul(0.6).add(0.4)).mul(1.1));
     const sky = u.ambient.mul(N.y.mul(0.5).add(0.5));
     const ground = u.bounce.mul(float(0.5).sub(N.y.mul(0.5)));
     return direct.add(sky).mul(sunk).add(ground).mul(u.breath.mul(0.6).add(0.4));
@@ -654,8 +702,13 @@ export function createLightPass(u, size = 512) {
         const s = causticNet(st.mul(TAU * 3).add(vec2(4.1, 2.9)), t.mul(0.31).add(5.0));
         const f1 = texture(u.noiseTex, st.add(vec2(t.mul(0.006), t.mul(0.0035)))).level(2.0).r;
         const f2 = texture(u.noiseTex, st.add(vec2(t.mul(-0.0045), t.mul(0.005))).add(vec2(0.37, 0.61))).level(2.0).g;
-        const open = smoothstep(0.5, 0.7, f1.add(f2).mul(0.5));
-        const shaft = clamp(open.mul(s.mul(s).mul(0.7).add(0.4)), 0.0, 1.0);
+        const open = smoothstep(0.44, 0.68, f1.add(f2).mul(0.5));
+        // Inside a column the light stands in curtains: the broad net's threads, each a sheet of
+        // light hanging down the sun's ray. Between them the column is nearly dark, so a line of
+        // sight that runs along a curtain is bright and its neighbour is not: rays, not a veil.
+        const s2 = s.mul(s);
+        const curtain = s2.mul(s2).mul(s2);
+        const shaft = clamp(open.mul(curtain.mul(1.3).add(0.07)), 0.0, 1.0);
         return vec4(net.sqrt(), shaft.sqrt(), f1, 1.0);
     })();
     const quad = new THREE.QuadMesh(material);

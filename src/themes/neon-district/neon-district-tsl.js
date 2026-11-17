@@ -62,6 +62,13 @@ import { derivedOnce } from '../shared/bake-cache.js';
 
 export * from './neon-district-core.js';
 
+/**
+ * How dense the haze is (1 = an ordinary night; a clear spell thins it, a fog bank thickens it).
+ * One node for the module: ndFogAmount is called with a distance and a height alone, from every
+ * material, and the world that is drawing sets it each frame.
+ */
+const ND_FOG = /* @__PURE__ */ uniform(1);
+
 /** An sRGB hex as a scene-linear vec3 node. */
 export function lin(hex) {
     const [r, g, b] = linRGB(hex);
@@ -200,6 +207,17 @@ export function createDistrictUniforms(textures) {
         rain: uniform(1),
         /** 0..1: how hard it is coming down (the rain leans in the wind and streaks longer). */
         downpour: uniform(0),
+        /** How much rain is falling: 1 an ordinary night, 0 a clear spell, ~1.7 a downpour. */
+        fall: uniform(1),
+        /** The haze's density (see ND_FOG). */
+        fog: ND_FOG,
+        /** 0..1: how far the smog has parted over the canyon (the moon and stars show). */
+        sky: uniform(0),
+        /** How bright the mist at street level glows with the signs' light (1 = an ordinary night). */
+        mist: uniform(1),
+        /** A passer-by's light: (world z, strength, reach along the street, world x) and its colour. */
+        pass: uniform(new THREE.Vector4(0, 0, 8, 0)),
+        passC: uniform(new THREE.Vector3(1, 1, 1)),
         /**
          * Clocks that integrate a changing pace (seconds at the resting pace), so speeding up
          * never jumps anything: the rain's fall (and the puddles' rings), the flying traffic, and
@@ -249,13 +267,17 @@ export function createDistrictUniforms(textures) {
 export function ndGlow(u, p) {
     const s = fract(p.z.sub(u.scroll).div(STREET.period));
     const t = smoothstep(-STREET.halfStreet, STREET.halfStreet, p.x).mul(0.5).add(0.25);
-    return texture(u.glowTex, vec2(s, t)).rgb.mul(u.neon);
+    // ... and what a vehicle flying by throws as it passes (a pool of light that travels with it).
+    const dz = p.z.sub(u.pass.x).div(u.pass.z);
+    const dx = p.x.sub(u.pass.w).mul(1 / 9);
+    const passing = u.passC.mul(u.pass.y).mul(exp(dz.mul(dz).add(dx.mul(dx)).negate()));
+    return texture(u.glowTex, vec2(s, t)).rgb.mul(u.neon).add(passing);
 }
 
 /** Fraction of light lost between the camera and a point `dist` away at height `y`. */
 export function ndFogAmount(dist, y) {
     const thin = mix(float(1.0), float(0.06), smoothstep(6.0, 150.0, y));
-    const k = dist.mul(1 / 172);
+    const k = dist.mul(1 / 172).mul(ND_FOG);
     return float(1.0).sub(exp(k.mul(k).mul(thin).negate()));
 }
 
@@ -278,7 +300,7 @@ export function ndAtmosphere(u, col, p) {
     const dist = length(rel);
     const f = ndFogAmount(dist, max(p.y, 0.0));
     // Mist near the ground also carries the local signs' colour.
-    const local = ndGlow(u, p).mul(exp(max(p.y, 0.0).mul(-0.11))).mul(0.16);
+    const local = ndGlow(u, p).mul(exp(max(p.y, 0.0).mul(-0.11))).mul(u.mist.mul(0.16));
     return mix(col, ndHaze(u, rel).add(local), f);
 }
 
