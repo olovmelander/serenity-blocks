@@ -102,6 +102,7 @@ import { computeTravelFrontier, isHeldAtFrontier } from './odyssey-travel-fronti
 import { resolveOdysseyPathHorizon } from './odyssey-path-horizon.js';
 import { resolveOdysseyPathInflowWeight } from './odyssey-path-inflow.js';
 import { plungeTravelExtraMs, resolveBlackHoleFall } from './transitions/odyssey-black-hole-fall.js';
+import { breachTravelExtraMs } from './transitions/odyssey-travel-measure.js';
 import { createFoldHypercubes } from './chapter-environments/odyssey-fold-hypercubes.js';
 import { prefersReducedMotion } from '../../themes/shared/reduced-motion.js';
 import { foldHypercubeCages } from './transitions/odyssey-fold-rooms.js';
@@ -6050,7 +6051,8 @@ export class OdysseyBoardController {
         // A short trip through the black hole's plunge is given the time to show it (the camera
         // controller slows the trip there: CH7_PLUNGE_TRAVEL).
         const plunge = plungeTravelExtraMs(fromPosition, toPosition, this.presentationLayout?.chapterPositions);
-        return Math.round(900 + (distance * 2600) + plunge);
+        // ...and a short trip through the sea's surface the time to make the breach a moment.
+        return Math.round(900 + (distance * 2600) + plunge + breachTravelExtraMs(fromPosition, toPosition));
     }
 
     /**
