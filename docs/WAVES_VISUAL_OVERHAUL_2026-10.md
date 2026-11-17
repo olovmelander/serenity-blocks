@@ -3,7 +3,7 @@
 **Status: implemented on branch `feature/waves-masterpiece` (worktree `serenity-blocks-waves`).
 A record of what was built and how it was checked — not a backlog.** The newest pass
 (2026-11-17: where the lip lands on the sea, and the animals beside the rider) is "Fourth pass"
-near the end; the tables of what the board does and of the modules in "Third pass"
+near the end, followed by "Fifth pass" (no pops, smooth turns, a livelier landing); the tables of what the board does and of the modules in "Third pass"
 (2026-11-16: light in the roof, the sea life, an effect for every event) are kept current. Replaces the "sculpted
 surf barrel" (a noise-textured cylinder with a painted sunset behind its far end) with the
 inside of a breaking wave that is shaped and shaded as one: a lip that is thrown and falls, water
@@ -853,6 +853,93 @@ each, large on screen only in the lower left. No frame-time measurement was run 
   to the sun's road. If it is too much, `BURST_RISE.heave` is the one number.
 - The manta in the wall is big (a fifth of the screen wide at its nearest) and passes behind the
   next-piece panel on its way; the turtle is the same size as before.
+
+## Fifth pass: no pops, smooth turns, a livelier landing (2026-11-17, later)
+
+Olov, after the fourth pass: "we need to keep improving where the waves meet the surface to the
+left. and the drifting by turtle and fishes in the wave to the right just pops up from nowhere.
+we should have no popping", and then: "when the dolphins turn it look not as smooth". Branch
+`feature/waves-landing-2`.
+
+### No animal appears or vanishes in view
+
+**What was wrong.** A ride (a pod, a turtle, a manta in the wall) began where it was staged and
+ended where its path ran out, and most of those places are in plain view: the turtle's visit began
+5 to 6.5 m ahead, beside the next-piece panel, and a pod going down the line ended 5.4 m ahead.
+Only rides marked `fade` came up out of the deep, and none were. A leap's run-up began 1.5 s
+before it broke the surface, two metres under, where it grew out of nothing in half a second;
+after it went back in it levelled out a metre under and shrank away there. The board's own leaps
+(a chain's dolphins, the twist's spinner) were called 0.3 s before the breach, half a metre under
+the trough.
+
+**Now** (`waves-acts.js`, checked by projecting every act of 80 seeds of every visit at its
+first and last moment through three lenses, scratch `pops.mjs`: no act is visible at either):
+
+- A ride comes up out of the deep at any end ahead of the rider (`RIDE_SEEN`), over 3.2 s, from
+  4.6 m more water than it swims with (`RIDE_EASE`, `RIDE_SINK`; the water hides everything by
+  3.4 m), and sinks back the same way. An end behind the rider it still swims through.
+- A leap's run-up is 2.6 s (`LEAP_LEAD`) on the curve its flight continues, so it starts five
+  metres down. After it goes in it dives on out of sight (`LEAP_WAKE`, `WAKE_DIVE`).
+- A leap given less time (the board calls one 1.1 s ahead now) runs the same path from the same
+  depth, faster at first and easing to its own speed at the breach.
+
+| The turtle 0.5, 1.5, 3 and 8 s into its visit |
+| --- |
+| ![turtle rises](waves-overhaul/l2-turtle-rises.jpg) |
+
+### Turns without a kink
+
+Measured as the angle the heading and the back turn through each 1/60 s frame, over every act of
+40 seeds of every visit (scratch `turns.mjs`):
+
+| | Before (main) | After |
+| --- | --- | --- |
+| A ride: fastest turn | 9.7 rad/s | 0.6 rad/s |
+| A ride: largest jump in turn rate between two frames | 4.4 rad/s | 0.04 rad/s |
+| A leap: largest jump (at the breach and the entry) | 0.38 rad/s | 0.01 rad/s (0.19 in a somersault) |
+
+The causes were three. A ride's path was clamped at its ends, and its heading (read a moment
+either side) swung round in its first and last frames. Its height on the face was a share of the
+lip's reach, and that share bends where the lip lands, five metres ahead: every ride kinked as it
+passed there (`row` is now a share of the closed tube's arc, one angle at every distance). And a
+straight run-up met a curving flight at the breach, a curving flight a levelling wake at the
+entry: the run-up is now the flight's own curve, and the dive comes on at the rate gravity was
+bending the flight. The rise and sink of a ride tip its nose only a little, in proportion to how
+fast it swims (`RIDE_DIVE_PITCH`; counted whole they stood a slow turtle on its nose).
+
+### The landing, again
+
+| Before (the fourth pass) | After |
+| --- | --- |
+| ![before](waves-overhaul/l2-before.jpg) | ![after](waves-overhaul/l2-after.jpg) |
+
+- **The carpet** read as cracked ice near the eye: big even cells. Its cells are now a hand
+  across, their holes are eaten ragged by the water's noise, a field of cells three times finer
+  fills them with lace, and where it is heaped it is a sheet with pinholes.
+- **Spray off the landing** (`createLandingSpray`, new part `landing`): drops thrown up and out
+  over the sea from the landed stretch (not the last 2.4 m before the eye, where a drop is a
+  blot), streaked along their flight, catching the low sun; harder while the lip throws. 96 to
+  420 by tier.
+- **The puffs** read as cotton: their hollows now take the water's green-blue, and their thin
+  edges let the light through.
+
+| Four lines | WebGL2, Minimal, day, moon |
+| --- | --- |
+| ![quad](waves-overhaul/l2-quad.jpg) | ![hours](waves-overhaul/l2-hours.jpg) |
+
+### Verified
+
+Playground at golden hour, day and moon, with and without the board, a four-line clear, WebGL2
+and Minimal, the turtle at 0.5, 1.5, 3 and 8 s; a real-game run (no warning names the theme or the
+renderer); the Waves suites (new: rides that rise and sink only at the ends the eye sees, rides
+and leaps that turn without a kink, short run-ups that start out of sight, the landing spray).
+Skill row #1727.
+
+### Not done
+
+Nobody has watched it move: smoothness was measured, not seen. The porpoising pods far out turn
+at up to 3.5 rad/s at the top of each roll (no jumps); a somersault keeps a small step at the
+entry.
 
 ## Known limits
 
