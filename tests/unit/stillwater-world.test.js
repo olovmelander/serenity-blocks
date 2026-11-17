@@ -18,7 +18,7 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    HERO_LAYER, HOUR_TURN, REST_RIG, STILLWATER_PARTS, StillwaterWorld, fovForAspect,
+    HERO_LAYER, HOUR_TURN, REST_RIG, STILLWATER_PARTS, StillwaterWorld, WAITING_PARTS, fovForAspect,
 } from '../../src/themes/stillwater/stillwater-world.js';
 import {
     DEG, DROP_FLIGHT, EYE, HEART, HOURS, HOUR_SECONDS, HUSH_HOLD, MOON, PALETTE_KEYS, PALETTE_SCALARS, RING_LIVE,
@@ -78,9 +78,12 @@ vi.mock('three/addons/loaders/GLTFLoader.js', async (importOriginal) => {
 /** What stands on the banks (drawn in with them on a narrow frame), what hangs in the air, and what is not mirrored. */
 const BANKS = ['ground', 'boulders', 'trunks', 'crowns', 'boughs', 'fringe', 'saplings', 'ferns', 'reeds', 'pads',
     'lilies', 'caps', 'spirit', 'troll'];
-const AIR = ['mist', 'eyes', 'fireflies', 'wisps', 'drops', 'sparks', 'orb'];
-/** (The low mist lies ON the water: what stands over it is mirrored, the veil itself is not.) */
-const UNMIRRORED = ['sky', 'water', 'veil'];
+const AIR = ['mist', 'eyes', 'fireflies', 'wisps', 'drops', 'sparks', 'orb', 'birds', 'elk', 'lampGlow', 'pillars'];
+/**
+ * (The low mist lies ON the water: what stands over it is mirrored, the veil itself is not. Nor
+ * is the rain: its rings are the water's own.)
+ */
+const UNMIRRORED = ['sky', 'water', 'veil', 'rain'];
 
 /** The parts a tier may leave out, and the tier's number that says so. */
 const OPTIONAL = {
@@ -92,6 +95,7 @@ const OPTIONAL = {
     mist: 'mist',
     veil: 'veil',
     fireflies: 'fireflies',
+    rain: 'rain',
 };
 const partsOf = (tier) => STILLWATER_PARTS.filter((name) => !(name in OPTIONAL) || tier[OPTIONAL[name]] > 0);
 
@@ -118,8 +122,12 @@ function frame(world, camera, time, delta, pointer = {}) {
     world.update(sim, camera);
 }
 
+/**
+ * `night`: let the night's own weather turn and its visitors come by its clock (stillwater-night.js).
+ * Without it the air is held still and nobody comes, so a test of play sees play alone.
+ */
 function makeWorld(quality = 'Low', {
-    width = 1600, height = 900, live = true, reduced = false, renderer = null, start = 10, drift = true,
+    width = 1600, height = 900, live = true, reduced = false, renderer = null, start = 10, drift = true, night = false,
 } = {}) {
     const scene = new THREE.Scene();
     const aspect = width / height;
@@ -130,6 +138,10 @@ function makeWorld(quality = 'Low', {
     world.bindCamera(camera);
     world.setReducedMotion(reduced);
     world.setHourDrift(drift);
+    if (!night) {
+        world.setAirHold('still');
+        world.setVisitors(false);
+    }
     world.setViewport(width, height, aspect);
     // As the theme does on its first frame: the live rects, or null when no board is on screen.
     world.setLayout(live ? fallbackLayout(width, height) : null, aspect);
@@ -386,7 +398,9 @@ describe('stillwater world: build', () => {
                 const part = world.parts[name];
                 const label = `${quality}.${name}`;
                 expect(part.mesh, label).toBeTruthy();
-                expect(part.mesh.visible, label).toBe(true); // no pool waits hidden for its first event
+                // No pool waits hidden for its first event; what the weather and the big moments
+                // bring (rain, wings, the elk, the pillars) is drawn only while it is there.
+                expect(part.mesh.visible, label).toBe(!WAITING_PARTS.includes(name));
                 part.mesh.traverse((object) => {
                     if (!object.material) return;
                     drawn.push(object);
@@ -495,7 +509,10 @@ describe('stillwater world: build', () => {
         world.showOnlyParts([]);
         expect(Object.values(world.parts).some((part) => part.mesh.visible)).toBe(false);
         world.showOnlyParts(STILLWATER_PARTS);
-        expect(Object.values(world.parts).every((part) => part.mesh.visible)).toBe(true);
+        // (All of them but what waits for its moment: the rain, a visitor, the pillars.)
+        Object.keys(world.parts).forEach((name) => {
+            expect(world.parts[name].mesh.visible, name).toBe(!WAITING_PARTS.includes(name));
+        });
         // And the whole of play runs without what the tier leaves out.
         expect(() => play(world, camera)).not.toThrow();
         for (const [name, value] of sharedNumbers(world)) expect(Number.isFinite(value), name).toBe(true);
@@ -602,11 +619,15 @@ describe('stillwater world: build', () => {
             expect(place(solid, pattern), String(pattern)).toBeGreaterThanOrEqual(0);
             expect(place(solid, pattern), String(pattern)).toBeLessThan(place(solid, /Water/));
         }
-        // The mist on the water first, then the sheets of it over the water, then every light.
-        expect(place(blended, /Veil/)).toBe(0);
-        expect(place(blended, /Mist/)).toBe(1);
-        for (const pattern of [/Wisps/, /Sparks/, /Drops/, /Eyes/, /Fireflies/, /Halo/, /Glow/, /Motes/, /HeartOrb/]) {
-            expect(place(blended, pattern), String(pattern)).toBeGreaterThan(0);
+        // The dark shapes far off first (wings, the elk: the mist lies in front of them), then the
+        // mist on the water, then the sheets of it over the water, then every light.
+        expect(place(blended, /Birds/)).toBe(0);
+        expect(place(blended, /Elk/)).toBe(1);
+        expect(place(blended, /Veil/)).toBe(2);
+        expect(place(blended, /Mist/)).toBe(3);
+        for (const pattern of [/Wisps/, /Sparks/, /Drops/, /Eyes/, /Fireflies/, /Halo/, /Glow/, /Motes/, /HeartOrb/,
+            /Pillars/, /Rain/]) {
+            expect(place(blended, pattern), String(pattern)).toBeGreaterThan(3);
         }
         world.dispose();
     });
@@ -1762,7 +1783,8 @@ describe('stillwater world: clears', () => {
                 expect(world.getState().fed[mine]).toBeLessThan(0.01);
                 expect(calm.world.time).toBe(world.time);
                 const calmHome = side < 0 ? calm.world.u.spiritAt : calm.world.u.lanternAt;
-                expect(home.value.w).toBeCloseTo(calmHome.value.w, 2);
+                // (To a twentieth: a light one of them sent the other over the water may still be dying away.)
+                expect(home.value.w).toBeCloseTo(calmHome.value.w, 1);
                 calm.world.dispose();
                 world.dispose();
             }
@@ -1959,20 +1981,20 @@ describe('stillwater world: clears', () => {
         const rest = world.u.wind.value;
         const t0 = world.time;
         world.onClear({ rows: [19, 18], lines: 2, twist: true });
-        const whirl = rings.slice(1);
-        expect(whirl.length).toBeGreaterThanOrEqual(2);
-        for (const ring of whirl) {
-            expect([ring.x, ring.z]).toEqual([landing.x, landing.z]);
-            expect(ring.edge).toBeLessThan(0);
-            expect(ring.time).toBeGreaterThanOrEqual(t0);
-            expect(ring.time).toBeLessThan(t0 + 2);
-        }
-        // On one another's heels: each a little later and a little wider than the one before.
-        for (let i = 1; i < whirl.length; i++) {
-            expect(whirl[i].time).toBeGreaterThan(whirl[i - 1].time);
-            expect(whirl[i].reach).toBeGreaterThan(whirl[i - 1].reach);
-        }
+        // The water winds about the place (a whirl, not a ring: the tarn's own answer to a twist),
+        // with one ring running out of it a moment after.
+        expect([world.whirlAt.x, world.whirlAt.z]).toEqual([landing.x, landing.z]);
+        expect(world.whirlAt.time).toBe(t0);
+        expect(world.whirlAt.strength).toBeGreaterThan(0.5);
+        const after = rings.slice(1).filter((ring) => ring.x === landing.x && ring.z === landing.z);
+        expect(after).toHaveLength(1);
+        expect(after[0].edge).toBeLessThan(0);
+        expect(after[0].time).toBeGreaterThan(t0);
+        expect(after[0].time).toBeLessThan(t0 + 2);
         run(world, camera, 1 / 60);
+        const w = world.u.whirl.value;
+        expect([w.x, w.y, w.z]).toEqual([landing.x, landing.z, t0]);
+        expect(w.w).toBeGreaterThan(0.5);
         expect(world.u.wind.value).toBeGreaterThan(rest);
         expect(world.getPostState().prism.strength).toBeGreaterThan(0);
         world.dispose();
@@ -1980,8 +2002,9 @@ describe('stillwater world: clears', () => {
         const fresh = makeWorld('Low', { width: 390, height: 844 });
         const first = recordRings(fresh.world);
         fresh.world.onClear({ lines: 1, twist: true });
-        expect(first.length).toBeGreaterThanOrEqual(2);
+        expect(first.length).toBeGreaterThanOrEqual(1);
         for (const ring of first) expect(ring.edge).toBeLessThan(0);
+        expect(fresh.world.onWater(fresh.world.whirlAt.x, fresh.world.whirlAt.z, 0)).toBe(true);
         fresh.world.dispose();
     });
 
@@ -2356,7 +2379,8 @@ describe('stillwater world: a chain', () => {
         // their own: the night that had a chain has brought them nearer, and they live it
         // differently, so that is taken out of both before they are compared.)
         expect(calm.world.time).toBe(world.time);
-        const own = (w, who) => 0.15 * w.story.gaze + w.lifeGlow(who, w.time);
+        const own = (w, who) => 0.15 * w.story.gaze + w.lifeGlow(who, w.time) + w.pulseGlow(who, w.time)
+            + (who === 'troll' ? 0.25 * w.relitNow : 0);
         const bare = (w, uniform, who) => w.u[uniform].value.w - own(w, who);
         expect(bare(world, 'spiritAt', 'spirit')).toBeCloseTo(bare(calm.world, 'spiritAt', 'spirit'), 2);
         expect(bare(world, 'lanternAt', 'troll')).toBeCloseTo(bare(calm.world, 'lanternAt', 'troll'), 2);
@@ -2638,9 +2662,10 @@ describe('stillwater world: runs, captures and motion', () => {
                 if (turned === null && moved > 0.05) turned = world.time - t0;
             });
             runs[how] = turned;
-            // Home again: he by his stone (and down on it in time), she at rest on her side of the water.
+            // Home again: he by his stone (down on it, unless something of his own life has him
+            // on his feet there), she at rest on her side of the water.
             expect(world.getState().troll, how).toBeLessThan(0.05);
-            expect(world.getState().trollMode, how).toBe('seated');
+            if (world.getState().scenes.troll === 'none') expect(world.getState().trollMode, how).toBe('seated');
             expect(world.getState().spirit, how).toBeLessThan(0.35);
             expect(['standing', 'kneel', 'kneeling'], how).toContain(world.getState().spiritMode);
             world.dispose();

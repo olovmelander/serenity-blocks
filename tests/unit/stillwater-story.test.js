@@ -455,10 +455,19 @@ describe('stillwater story: what he means to do', () => {
         expect(rested).not.toBeNull();
         expect(rested).toBeGreaterThanOrEqual(broke + PARTING + SIT_AFTER - 1e-6);
         expect(rested).toBeLessThan(broke + PARTING + SIT_AFTER + 0.1);
-        // And nods off after a long calm, seated.
+        // And nods off after a long calm, seated (in a moment his own life leaves him to himself).
         const calm = story.time;
-        runTo(story, calm + DOZE_AFTER + 1);
-        expect(story.trollWant(story.time).doze).toBe(true);
+        let dozed = false;
+        runTo(story, calm + DOZE_AFTER + 45, (time) => {
+            const wanted = story.trollWant(time);
+            if (wanted.doze) {
+                dozed = true;
+                expect(wanted.sit).toBe(true);
+                expect(wanted.scene).toBeNull();
+                expect(time - calm).toBeGreaterThan(DOZE_AFTER - SIT_AFTER - PARTING - 3);
+            }
+        });
+        expect(dozed).toBe(true);
     });
 
     it('lowers his staff to the water and crouches for the heart\'s rise when he is out, and lifts it after', () => {
@@ -554,11 +563,13 @@ describe('stillwater story: what he means to do', () => {
         runTo(story, 3.5);
         expect(story.trollWant(3.5).startleAt).toBe(3);
         expect(story.trollWant(3.5).look).toEqual([4, 0.1, -6]);
-        // A soft one on her side turns her, not him.
-        story.onLock({ time: 10, side: -1, at: [-4, -6] });
-        runTo(story, 10.5);
-        expect(story.spiritWant(10.5).look).toEqual([-4, 0.1, -6]);
-        expect(story.trollWant(10.5).look).not.toEqual([-4, 0.1, -6]);
+        // A soft one on her side turns her, not him (while nothing of her own life has her eyes).
+        runTo(story, 6);
+        expect(story.life.sceneOf('spirit')).toBeNull();
+        story.onLock({ time: 6, side: -1, at: [-4, -6] });
+        runTo(story, 6.5);
+        expect(story.spiritWant(6.5).look).toEqual([-4, 0.1, -6]);
+        expect(story.trollWant(6.5).look).not.toEqual([-4, 0.1, -6]);
     });
 });
 
@@ -752,12 +763,16 @@ describe('stillwater story: a quick run', () => {
         // (Read back over a second quick minute, the story already busy.)
         let n = 0;
         let next = story.time;
+        const from = story.time;
         runTo(story, story.time + 60, (time) => {
             if (time >= next) {
                 n += 1;
                 story.onLock({ time, side: n % 2 ? 1 : -1, at: scattered(n) });
                 next += 0.4;
             }
+            // (The run's first lights fall into a calm night and are followed down, as a single
+            // light is; the reading begins once the run is under way.)
+            if (time < from + 5) return;
             for (const who of ['troll', 'spirit']) {
                 const key = story.lookKey[who];
                 seen[who].add(key);
