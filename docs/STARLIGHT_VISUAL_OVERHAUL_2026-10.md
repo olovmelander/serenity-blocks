@@ -322,7 +322,7 @@ function of the night's clock; a seek lands on the same air; `air=` holds one in
 | Air | The sky |
 | --- | --- |
 | clear | the dark sky (one state in three: the dark night stays the theme's own) |
-| waves | airglow: a patchy green-gold sheen low over the horizon with fine rippling crests, a dull red high up (gotcha #1413: bold bands read as an aurora) |
+| waves | airglow: a patchy green-gold sheen low over the horizon with fine rippling crests, a dull red high up (gotcha #1414: bold bands read as an aurora) |
 | veil | high cirrus in streets fanning from a point on the horizon, two fibre layers at two speeds and a slow clump read, so it forms and melts; lit from below by the hour and the town; the stars hide in it and shine in its gaps (gotcha #1414) |
 | mist | the lake's mist rises and thickens over the far shore, wider haloes round the lamps, a breath of it over the near water |
 | breeze | the swell lifts and the cat's paws spread: the mirror shivers |

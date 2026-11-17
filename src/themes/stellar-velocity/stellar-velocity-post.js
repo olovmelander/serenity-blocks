@@ -23,6 +23,7 @@ import {
     Fn,
     If,
     abs,
+    atan,
     clamp,
     exp,
     float,
@@ -82,6 +83,26 @@ export const EXPOSURE = 1.0;
 
 /** Calm rects (board cards + HUD) the output pass evaluates. */
 export const CALM_RECTS_MAX = 5;
+
+/** The starburst's rays round the sun, and the halo ring's radius (screen heights). */
+const STARBURST_RAYS = 120;
+const HALO_R = 0.19;
+/** How far from the sun (screen heights) the burst and the ring are read: past it both are gone. */
+const STARBURST_REACH = 0.45;
+/**
+ * The lens's ghosts: [where down the line from the middle of the frame to the sun (1 = the sun,
+ * negative = past the middle), radius (screen heights), colour, how much of it is a ring].
+ */
+const GHOSTS = Object.freeze([
+    [0.42, 0.016, 0.55, 0.85, 1.0, 0.1],
+    [-0.3, 0.042, 0.35, 1.0, 0.7, 0.0],
+    [-0.62, 0.026, 0.8, 0.45, 1.0, 0.15],
+    [-1.02, 0.07, 1.0, 0.62, 0.3, 0.2],
+    [-1.42, 0.09, 0.45, 0.8, 1.0, 0.25],
+]);
+
+/** x². */
+const sq = (x) => x.mul(x);
 
 /** Rounded-box signed distance in pixels. rect = (x0, y0, x1, y1) in pixels (top-left origin). */
 const roundBoxSdf = /* @__PURE__ */ Fn(([p, rect, radius]) => {
@@ -283,8 +304,52 @@ export class StellarVelocityPost {
                     }
                     const ax = abs(d.x);
                     const streak = exp(abs(d.y).mul(-520.0)).mul(exp(ax.mul(-4.2))).div(ax.mul(8.0).add(1.0));
-                    const glint = vec3(spikes.mul(2.4)).add(this.uGlintTint.mul(streak.mul(1.5)));
-                    glare.addAssign(glint.mul(shown).mul(float(1.0).sub(calm.mul(0.9))));
+                    // A broad, faint second streak: the lens's anamorphic bloom.
+                    const veilStreak = exp(abs(d.y).mul(-55.0)).mul(exp(ax.mul(-2.2))).mul(0.05);
+                    const r = length(d).toVar();
+                    const near = vec3(0.0).toVar();
+                    // Read only within reach of the sun: past it the burst and the ring are gone.
+                    If(r.lessThan(STARBURST_REACH), () => {
+                        // The starburst: a crown of fine rays of every length round the heart,
+                        // turning slowly (the lens's iris, not the star).
+                        const turn = atan(d.y, d.x).div(Math.PI * 2).add(0.5).add(this.uTime.mul(0.004));
+                        const bin = turn.mul(STARBURST_RAYS);
+                        const i0 = floor(bin);
+                        const fr = bin.sub(i0);
+                        const h0 = svHash21(vec2(i0.mod(STARBURST_RAYS), 3.7));
+                        const h1 = svHash21(vec2(i0.add(1.0).mod(STARBURST_RAYS), 3.7));
+                        const rayLen = mix(h0, h1, smoothstep(0.0, 1.0, fr));
+                        const sharp = float(1.0).sub(fr.sub(0.5).abs().mul(2.0)).mul(0.6).add(0.4);
+                        const burst = rayLen.mul(rayLen).mul(rayLen).mul(rayLen).mul(sharp)
+                            .mul(exp(r.div(rayLen.mul(0.075).add(0.008)).negate()))
+                            .mul(0.3);
+                        // A thin halo ring round the sun, its edges split by colour.
+                        const ring = vec3(
+                            exp(sq(r.sub(HALO_R * 1.025).div(0.0055)).negate()),
+                            exp(sq(r.sub(HALO_R).div(0.0055)).negate()),
+                            exp(sq(r.sub(HALO_R * 0.975).div(0.0055)).negate()),
+                        ).mul(0.045);
+                        near.assign(vec3(burst).add(ring));
+                    });
+                    const glint = vec3(spikes.mul(2.4)).add(this.uGlintTint.mul(streak.mul(1.5).add(veilStreak)))
+                        .add(near);
+                    // Ghosts of the aperture down the line from the sun through the middle of the
+                    // frame: a few soft discs and rings in the lens's coatings' colours.
+                    const ghosts = vec3(0.0).toVar();
+                    const axis = heart.sub(0.5);
+                    for (let k = 0; k < GHOSTS.length; k++) {
+                        const [f, radius, cr, cg, cb, ringy] = GHOSTS[k];
+                        const at = vec2(0.5, 0.5).add(axis.mul(f));
+                        const gd = length(st.sub(at).mul(aspect));
+                        const disc = float(1.0).sub(smoothstep(radius * 0.72, radius, gd));
+                        const edge = exp(sq(gd.sub(radius * 0.94).div(radius * 0.1)).negate());
+                        ghosts.addAssign(vec3(cr, cg, cb).mul(disc.mul(1 - ringy).add(edge.mul(ringy * 1.6))));
+                    }
+                    // The ghosts are as bright as the sun in the frame, and fade as it nears the
+                    // middle (they fold into it).
+                    const spread = smoothstep(0.04, 0.22, length(axis.mul(aspect)));
+                    glare.addAssign(glint.mul(shown).add(ghosts.mul(shown.mul(spread).mul(0.012)))
+                        .mul(float(1.0).sub(calm.mul(0.92))));
                 });
             }
             const H = S.add(glare);
