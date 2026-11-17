@@ -240,6 +240,55 @@ below the crest. Playground captures on WebGPU and WebGL2, console clean:
 
 ![the white wolf's climb](wolfhour-masterpiece/summit-climb.jpg)
 
+## Follow-up (2026-11-17): smooth under play
+
+Olov: some event effects felt like "popping back and forth", the howling and other things for the
+wolves. Every event looked right alone; the pops came from events meeting. Two CPU probes replayed
+a busy 10-minute run frame by frame, one through the pack (the theme's real calls: glances,
+quads, back to backs, combos, two fevers, level-up runs, a perfect clear) and one through the
+night director, old code against new:
+
+| What | Before | After |
+| --- | --- | --- |
+| The scout snapping round at its lookout (a howl held its turn back, then let go in one frame) | 4 × 42-unit jumps | 0 |
+| A howl level stepping in a frame | 4 | 0 |
+| Heads nodding down and straight back up in a fever chorus (≥ 0.15 within 1.2 s) | 114 | 0 |
+| Moonlight bands / their glow cut off for a newer band (frame jump at 240 fps) | 1.08 / 1.50 | 0.02 / 0.04 |
+| Sparkle ripple cut off by the next lock (at 240 fps) | 0.56 | 0.05 |
+| Run's-end snow on a quick restart | 0.30 | 0.001 |
+
+What changed:
+
+- **The howl** (`wolfhour-wolves.js` `howl()`): a quad while the note is falling takes it up from
+  where it is (the old note keeps sounding underneath, so wolves that hear it late, by their own
+  delay, fall to the same level and rise; nobody dips). After a note held as long as a howl goes
+  (5.4 s) the pack draws a real breath: the note falls away and the next begins 0.6 s after it has
+  gone. It used to begin a fresh note at once under the falling one, so every head nodded every
+  ~6.6 s of a fever.
+- **Travellers** (`follow()`: `settled`, `joins`; `scoutAt`: `settled`): what a wolf on the ridge
+  does only while standing, joining the pack's howl and turning to look at you, eases in after it
+  stops and out before it turns or moves on, instead of switching on and off.
+- **Two songs at once**: the wolf across the valley hears the chorus 1.9 s late; its own answer to
+  a back to back now starts from wherever its head is and holds until the chorus is up there. The
+  white wolf's own song and the chorus combine as "either", so a hand-over never dips the head.
+- **The night director**: a band of moonlight or a sparkle ripple still lit when a newer one needs
+  its slot fades out (0.35 s / 0.18 s) and the newer one begins as it goes; the run's-end snow
+  carries on from wherever it is when a run ends or begins.
+- **The theme's event energy** (`effectState`, stepped in by every lock and clear): what the eye
+  sees is now `effectShown`, eased up over a few frames (two stages of 0.06 s) and following the
+  energy's own decay down. The ranges' moonlight, the sky, the mist, the bloom and the camera's
+  approach wear it; the camera's shake stays a jolt.
+- **Moon rings, arcs, the snow devil**: with the corona's ring slots full, a new ring waits for the
+  first to run out instead of cutting it; a howl arc's slot is reused only once its arc has faded
+  (Low and Minimal cut them mid-air under a full chorus); a second twist swells the devil over
+  0.35 s, and one in its second half fades it out over 0.25 s before the next rises.
+
+Tests: `tests/unit/wolfhour-smooth.test.js` (busy play through the pack: nothing jumps a frame, no
+howl steps, no nod in the chorus; the director at 240 fps; the devil; the arcs on Low; the eased
+energy). All five fail on the old code. `wolfhour-effect-accumulation.test.js` now expects a full
+ring pool to queue rather than cut. Playground (twist, perfect clear) and a real-game run in
+headless Chrome on WebGPU: no errors beyond the browser's autoplay notices.
+
 ## Open calls (my own, if asked)
 
 - The arcs of the howl are a stylisation; plain breath alone would be more literal.
