@@ -34,7 +34,7 @@ What changed:
   sky: deep blue overhead, a saturated band with its own height (`bandHeight`), a hot rim that
   turns yellow toward the shadow's near edge and redder away from it, and a new `belt` of paler
   light lifted above where the band has faded (the old terms summed complementary hues into grey:
-  gotcha #1413). The palettes now differ in the band's character: ember (amber under violet),
+  gotcha #1414). The palettes now differ in the band's character: ember (amber under violet),
   gold, jade (a coral band under a teal sky), azure (white-gold under cobalt), violet (magenta),
   rose (crimson under plum).
 - **The weather** (`solar-eclipse-clouds.js`, `WEATHERS`/`weatherAt` in core.js): five weathers
@@ -44,7 +44,7 @@ What changed:
   face toward the sun burns and their thin parts glow with forward-scattered light; their heads
   run ahead of their feet and boil, so a tower grows and falls apart. *Deck*: altocumulus rows in
   their own plane, dark overhead and burning where the sheet reaches out past the shadow's edge,
-  so the edge of the shadow is drawn across the sky (gotcha #1514 for its far veil). *Rows*: the
+  so the edge of the shadow is drawn across the sky (gotcha #1516 for its far veil). *Rows*: the
   old three rows restyled as long soft bars, dark bodies lit from below by the band, their thin
   edges letting it through. *Lenticular*: a stack of smooth lenses over the volcano, sunlit when
   its summit is. Every layer changes shape as it drifts (its layers move at different speeds).

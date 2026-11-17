@@ -6,7 +6,8 @@ adaptive scaler, compute starfield, MRT audit and classic-WebGL fallback materia
 "luminous slipstream" atmosphere of 2026-06). Stellar Velocity keeps its identity — a run at
 speed through a bright nebula toward a far light, with the stars drawn out into trails — and
 everything else is new. This document records the shipped design and what was verified. It is a
-reference, not a backlog.
+reference, not a backlog. Its third pass, the living one (regions, young stars, an effect per event,
+the run's end), is [STELLAR_VELOCITY_LIVING_2026-11.md](STELLAR_VELOCITY_LIVING_2026-11.md).
 
 ## The picture
 

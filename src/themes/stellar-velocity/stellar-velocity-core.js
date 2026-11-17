@@ -136,20 +136,71 @@ export const FRONT_SLOTS = 8;
 export const FRONT_START = 24;
 export const FRONT_END = -3;
 /** Speeds (canyon units per second): a lock's pulse, a clear's front, a level's slow front. */
-export const FRONT_SPEED = Object.freeze({ lock: 46, clear: 34, level: 9 });
+export const FRONT_SPEED = Object.freeze({ lock: 46, clear: 34, level: 7.5 });
 
 /** A front's depth ahead `age` seconds after it left the sun's end of the canyon. */
 export const frontDepth = (age, speed) => FRONT_START - Math.max(0, age) * speed;
 
-/** Bolts in flight at once (a lock throws one, a hard drop three), and motes per bolt's tail. */
-export const BOLT_SLOTS = 10;
+/** Bolts in flight at once (a lock throws one; a clear throws a comet per row), and motes per tail. */
+export const BOLT_SLOTS = 16;
 export const BOLT_TAIL = 26;
 /** Seconds a bolt takes from the card to its place on the course. */
 export const BOLT_FLIGHT = 0.36;
 
-/** Row jets a clear fires from the card (one per cleared row), and how long one lives. */
-export const JET_SLOTS = 8;
-export const JET_LIFE = 0.75;
+/**
+ * A clear's comets: each cleared row leaves its card as a comet that flies down the course into
+ * the sun (this far ahead, in this many seconds), and the sun flares as it takes each one.
+ */
+export const COMET_DEPTH = 30;
+export const COMET_FLIGHT = 0.78;
+
+/**
+ * Rings of light round the sun (a comet taken, a chain's gear, a back-to-back's gold, an arrival,
+ * a level's new colour, the run's end): they stand in the deep sky, so the cloud hides them.
+ */
+export const SUN_RING_SLOTS = 6;
+/**
+ * A ring's angle off the course (radians) `age` seconds after it left the sun, for how far it
+ * runs (`reach`) and how fast it gets there (`rate`): fast at first, slowing as it spreads. A
+ * negative reach draws one that falls INTO the sun from that angle (the run's end).
+ */
+export function sunRingRadius(age, reach, rate) {
+    const k = 1 - Math.exp(-Math.max(0, age) * rate);
+    return reach >= 0 ? reach * k : -reach * (1 - k);
+}
+
+/** Shock rings standing on the course: a hard drop's slam, a chain's gear change. */
+export const SHOCK_SLOTS = 4;
+/** Segments round a shock ring, and how long one lives (s). */
+export const SHOCK_SEGMENTS = 96;
+export const SHOCK_LIFE = 0.9;
+
+/** The twist's double helix: helices at once, segments down a strand, its reach and life. */
+export const HELIX_SLOTS = 2;
+export const HELIX_SEGMENTS = 160;
+export const HELIX_FAR = 26;
+export const HELIX_NEAR = 0.7;
+/** Canyon units a second the helix grows toward us, and the seconds it stands. */
+export const HELIX_SPEED = 34;
+export const HELIX_LIFE = 2.1;
+
+/**
+ * The run's end: the drive dies. Over this many seconds we coast to a drift, the sun sinks to an
+ * ember and the nebula's light drains toward it; it rekindles when a run starts, or by itself
+ * after GAME_OVER_REST seconds.
+ */
+export const STALL_FALL = 2.6;
+export const GAME_OVER_REST = 14;
+/** What the nebula's light drains toward when the drive dies (scene-linear). */
+export const EMBER = Object.freeze({
+    glow: [0.42, 0.07, 0.04],
+    deep: [0.12, 0.02, 0.1],
+    accent: [0.9, 0.3, 0.08],
+    sun: [1.0, 0.42, 0.18],
+});
+
+/** How fast a level's new colour comes down the canyon toward us (canyon units per second). */
+export const WAVE_SPEED = FRONT_SPEED.level;
 
 // ── The jump ────────────────────────────────────────────────────────────────────
 
