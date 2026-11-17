@@ -56,7 +56,7 @@ import { EARTH_WEATHER_NOISE, getEarthWeatherNoise } from './odyssey-earth-weath
  * each), its turn (degrees) and its offset (tiles), so no two reads line up.
  */
 export const EARTH_WEATHER = Object.freeze({
-    /** The systems: coverage, fronts (a tile is ~16,000 km, its cells ~1,000 km). */
+    /** The systems: where the sky is unsettled, and the fronts (a tile is ~16,000 km). */
     synoptic: Object.freeze({ tile: 176, turn: 17, offset: Object.freeze([0.31, 0.77]) }),
     /** Cloud masses (a tile ~2,000 km). */
     mass: Object.freeze({ tile: 23, turn: -38, offset: Object.freeze([0.63, 0.12]) }),
@@ -68,7 +68,7 @@ export const EARTH_WEATHER = Object.freeze({
     fine: Object.freeze({ tile: 0.12, turn: -57, offset: Object.freeze([0.07, 0.35]) }),
     /** Cirrus: the drift channel drawn out along the jet. */
     cirrus: Object.freeze({
-        tile: 26, turn: 24, long: 5, offset: Object.freeze([0.4, 0.2]),
+        tile: 6, turn: 24, long: 3.5, offset: Object.freeze([0.4, 0.2]),
     }),
     /** How much each read adds to the cloud's grain (mass, deck, puff, fine). */
     weights: Object.freeze([0.34, 0.26, 0.24, 0.16]),
@@ -79,13 +79,14 @@ export const EARTH_WEATHER = Object.freeze({
      * THE SKY'S COVER: the share of the sky the cloud fills at a place (0 clear, 1 overcast; the
      * grain is cut at one minus it, so a low share leaves scattered cumulus and a high one a deck
      * with holes): what the unsettled regions, the cloud masses, a front and a cyclone each add,
-     * and what the clear sky takes back.
+     * what the clear sky takes back, and how far a patch of fair-weather cumulus lifts it.
      */
     cover: Object.freeze({
-        unsettled: 0.72, mass: 0.75, front: 0.55, spiral: 0.95, clear: 0.42,
+        unsettled: 0.72, mass: 0.75, front: 0.55, spiral: 0.95, clear: 0.42, fair: 0.36,
     }),
-    /** How wide a frontal band is (in the synoptic read's lanes channel). */
-    frontWidth: 0.1,
+    /** The level of the synoptic read's drift channel a front runs along, and its half-width. */
+    frontAt: 0.57,
+    frontWidth: 0.028,
     /** The drift of the whole field (cells per second, x and z). */
     drift: Object.freeze([0.002, -0.0015]),
     /** Lightning: the storm cells' grid (cells), a flash's radius (grid cells), the clock's slot
@@ -164,7 +165,9 @@ function cycloneAt(s, cy, time) {
     const reach = exp(r.mul(r).mul(-0.42));
     const shield = exp(r.mul(r).mul(-7));
     const eye = exp(r.mul(r).mul(-190));
-    return reach.mul(band.mul(0.75).add(0.1)).add(shield.mul(0.75)).sub(eye.mul(1.9));
+    // Cloud along the arms and clear air between them (a cyclone's arms are seen by the gaps),
+    // a solid shield round the centre, and the eye.
+    return reach.mul(band.mul(1.5).sub(0.62)).add(shield.mul(0.9)).sub(eye.mul(2.2));
 }
 
 /**
@@ -208,21 +211,26 @@ export function earthWeatherAt(c) {
     const syn = read(W.synoptic).toVar();
     const mass = read(W.mass).toVar();
     const spiral = c.cyclones.reduce((sum, cy) => sum.add(cycloneAt(c.plane, cy, c.time)), float(0)).toVar();
-    // Where the sky is unsettled, and the fronts: long bands along the lanes between the broad
-    // cells there.
+    // Where the sky is unsettled, and the fronts: long winding bands along the edge of the
+    // unsettled air (a contour of the same smooth field: the broad read is magnified forty
+    // times from just above the clouds, and its cell lanes would show their texels as stairs).
     const unsettled = smoothstep(0.36, 0.68, syn.a).toVar();
-    const front = float(1).sub(smoothstep(0.0, W.frontWidth, syn.b)).mul(smoothstep(0.3, 0.55, syn.a)).toVar();
+    const offFront = syn.a.sub(W.frontAt).div(W.frontWidth);
+    const front = exp(offFront.mul(offFront).negate()).toVar();
     const fill = unsettled.mul(W.cover.unsettled)
         .add(mass.a.sub(0.5).mul(W.cover.mass))
         .add(front.mul(W.cover.front))
         .add(spiral.mul(W.cover.spiral))
         .sub(W.cover.clear)
         .toVar();
+    // Fair-weather cumulus: where the sky is otherwise clear, fields of small heaps stand in
+    // patches (only the grain's highest peaks rise through so low a fill: scattered puffs).
+    const deck = read(W.deck).toVar();
+    fill.assign(max(fill, smoothstep(0.38, 0.72, deck.a).mul(W.cover.fair).sub(0.34)));
     // Layered cloud (sheets and decks) away from the broad cells' hearts, heaped cloud near them.
     const sheet = smoothstep(0.3, 0.62, syn.g).mul(float(1).sub(front.mul(0.7))).toVar();
 
     // ── THE CLOUD'S GRAIN ──
-    const deck = read(W.deck).toVar();
     const puff = read(W.puff).toVar();
     const fine = read(W.fine).toVar();
     // A deck breaks into cells with clear lanes between them (not everywhere along a lane).
@@ -241,12 +249,12 @@ export function earthWeatherAt(c) {
     const depth = toDepth(broadGrain, laneOf(deck, puff)).toVar();
     // Crisp where the eye can resolve it: the edge is as wide as the field changes across a pixel
     // (and softer in a sheet, which has no cauliflower edge).
-    const edge = clamp(length(vec2(dFdx(depth), dFdy(depth))).mul(1.1), 0.035, 0.3).add(sheet.mul(0.1));
+    const edge = clamp(length(vec2(dFdx(depth), dFdy(depth))).mul(1.1), 0.05, 0.3).add(sheet.mul(0.1));
     const cover = smoothstep(edge.negate(), edge, depth).toVar();
     const thick = smoothstep(0.0, 0.55, depth).toVar();
     // Cirrus: fibres drawn out along the jet, a veil over the unsettled sky.
     const fibre = read(W.cirrus).a;
-    const veil = smoothstep(0.56, 0.86, fibre).mul(smoothstep(0.2, 0.7, unsettled)).mul(0.34).toVar();
+    const veil = smoothstep(0.5, 0.9, fibre).mul(smoothstep(0.2, 0.7, unsettled)).mul(0.26).toVar();
     // Deep convection: the thick heart of a front or a cyclone.
     const storm = smoothstep(0.35, 0.9, depth).mul(clamp(front.add(spiral.mul(0.8)).add(unsettled.mul(0.3)), 0, 1))
         .toVar();

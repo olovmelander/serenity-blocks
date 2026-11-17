@@ -129,6 +129,9 @@ const LIFE = {
 };
 let lifeClock = 0;
 let lifeStamp = -1;
+let lifeOwner = null;
+/** A lens that has not ticked for this long (ms) has stopped drawing: another may take the clock. */
+const LIFE_OWNER_STALE_MS = 150;
 
 /**
  * How far the hole has woken (greatHoleWakeAt), from the chapter that knows the journey's progress.
@@ -147,14 +150,16 @@ export function getGreatHoleLifeClock() {
 }
 
 /**
- * Advance the shared clock by `dt` and write its state. Called by each lens's update(); two lenses
- * updating in one frame (the hand-over's) advance it once.
+ * Advance the shared clock by `dt` and write its state. Called by each lens's update(). One lens
+ * owns the clock at a time, so two lenses updating in one frame (the hand-over's) advance it
+ * once; when the owner stops ticking (it is hidden), the other takes the clock over.
  */
-function tickGreatHoleLife(dt) {
+function tickGreatHoleLife(dt, owner) {
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    if (now - lifeStamp > 2) {
-        lifeClock += Math.max(0, Number.isFinite(dt) ? dt : 0);
+    if (lifeOwner === owner || lifeOwner === null || now - lifeStamp > LIFE_OWNER_STALE_MS) {
+        lifeOwner = owner;
         lifeStamp = now;
+        lifeClock += Math.max(0, Number.isFinite(dt) ? dt : 0);
     }
     const state = greatHoleLifeAt(lifeClock);
     for (let i = 0; i < state.knots.length; i += 1) {
@@ -608,7 +613,7 @@ export function* createGreatHoleLensSteps({ shadowRadius, uReveal = uniform(1), 
                 // Rows: the disk's X, its normal (Y) and Z, in world space.
                 u.worldToDisk.value.set(_x.x, _x.y, _x.z, _n.x, _n.y, _n.z, _z.x, _z.y, _z.z);
             }
-            tickGreatHoleLife(dt);
+            tickGreatHoleLife(dt, mesh);
             turns += Math.max(0, Number.isFinite(dt) ? dt : 0) / INNER_ORBIT_SECONDS;
             if (turns > 1e4) turns -= 1e4;
             const cycle = turns / FLOW_PERIOD;

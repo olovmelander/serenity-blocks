@@ -91,6 +91,7 @@ import {
 } from '../chapter-environments/shared/odyssey-lattice-noise.js';
 import { AURORA_PALETTE } from '../chapter-environments/odyssey-planet-aurora.js';
 import { flashScale } from '../../../utils/photosensitivity.js';
+import { pickByQualityTier } from '../chapter-environments/shared/odyssey-quality-tier.js';
 import {
     EARTH_MOON,
     earthLandMottle,
@@ -151,7 +152,7 @@ export const ORBIT_EARTH_AURORA = Object.freeze({
     /** A sheet's thickness (radians of arc): the scale of its Gaussian profile. */
     width: 0.0021,
     fold: 0.024,
-    steps: 40,
+    steps: Object.freeze({ high: 34, medium: 26, low: 20 }),
     gain: 170,
     /** The light's soft shoulder: seen edge-on at the limb the curtains are many times brighter
      * than from above, and this keeps both readable. */
@@ -269,9 +270,14 @@ export const ORBIT_EARTH_SCHEDULE = Object.freeze({
     /** ...growing by this much by b + outFrom, eased by this power. */
     dipGrowth: 40,
     dipPower: 3,
-    /** The sun's elevation at the eye (degrees): from the world sun's, it sets (crosses 0) at
-     * ~b - 0.17 span, so the night comes in time for the aurora, is at sunAtBoundary at the
-     * boundary and sunEnd by b + outFrom. */
+    /** The sun's elevation at the eye (degrees). AN EVENING EARTH (2026-11-17): the climb's sky is
+     * the day ending now (the sky pass: its sun 4.5 deg up from p 0.61 to the world's end, a belt
+     * of Venus over the Earth's shadow), so the Earth arrives lit by that same low sun (it was
+     * the world's old noon sun, 25 deg, until the departure: a noon planet under an evening sky).
+     * It holds `sunEvening` until b - sunFrom, sets at the eye at ~b - 0.21 span (p ~0.730, the
+     * limb's sunset), is at sunAtBoundary at the boundary and sunEnd by b + outFrom. */
+    sunEvening: 4.5,
+    sunFrom: 0.36,
     sunAtBoundary: -7,
     sunEnd: -18,
     /** The aurora: in across [b - auroraIn[0], b - auroraIn[1]], out across
@@ -317,7 +323,8 @@ export const ORBIT_EARTH_COVERS = 0.999;
 // side, the planetrise beside it), pinned: the world's own sun turned to the side for Act II
 // (2026-10-25), and the Earth's sun sits behind the eye at the seam either way.
 const EARTH_SUN = Object.freeze([-0.46, 0.36, 0.61]);
-const WORLD_SUN_ELEVATION = Math.asin(EARTH_SUN[1] / Math.hypot(...EARTH_SUN));
+/** The evening sun the Earth arrives under (ORBIT_EARTH_SCHEDULE.sunEvening), radians. */
+const EVENING_SUN_ELEVATION = (4.5 * Math.PI) / 180;
 /** The world sun's bearing in the xz plane (from +x toward +z), which the setting sun keeps. */
 export const ORBIT_EARTH_SUN_AZIMUTH = Math.atan2(EARTH_SUN[2], EARTH_SUN[0]);
 
@@ -347,7 +354,7 @@ export function orbitEarthAt(p, chapterPositions, eyeHeight = null) {
         presence: 0,
         dip: 0,
         altitude: 0,
-        sunElevation: WORLD_SUN_ELEVATION,
+        sunElevation: EVENING_SUN_ELEVATION,
         aurora: 0,
         lookDownDeg: 0,
         widenDeg: 0,
@@ -376,10 +383,11 @@ export function orbitEarthAt(p, chapterPositions, eyeHeight = null) {
         altitude = Math.max(own, scheduled * late);
     }
     const dip = Math.acos(1 / (1 + altitude));
-    const toB = smooth01((p - start) / (b - start));
+    const setting = smooth01((p - (b - (span * S.sunFrom))) / (span * S.sunFrom));
     const pastB = smooth01((p - b) / (settle - b));
-    const sunElevation = WORLD_SUN_ELEVATION
-        + ((((S.sunAtBoundary * Math.PI) / 180) - WORLD_SUN_ELEVATION) * toB)
+    const evening = (S.sunEvening * Math.PI) / 180;
+    const sunElevation = evening
+        + ((((S.sunAtBoundary * Math.PI) / 180) - evening) * setting)
         + ((((S.sunEnd - S.sunAtBoundary) * Math.PI) / 180) * pastB);
     const aurora = smooth01((p - (b - (span * S.auroraIn[0]))) / (span * (S.auroraIn[0] - S.auroraIn[1])))
         * (1 - smooth01((p - (b + (span * S.auroraOut[0]))) / (span * (S.auroraOut[1] - S.auroraOut[0]))));
@@ -433,6 +441,7 @@ export function orbitEarthSunDirection(elevation, out = new THREE.Vector3()) {
 const OCEAN = [0.010, 0.030, 0.070];
 const CLOUD = [0.86, 0.89, 0.93];
 const SUNLIGHT = [1.0, 0.97, 0.92];
+const SUN_EVENING = [1.0, 0.84, 0.72];
 const SUNSET = [1.0, 0.40, 0.14];
 const SUNSET_DEEP = [0.75, 0.13, 0.07];
 const NIGHT_LIGHT = [0.010, 0.014, 0.028];
@@ -453,10 +462,10 @@ const RIM_SOLAR = Object.freeze([
 ]);
 /** ...and away from it: the Earth's shadow (dim slate) under the rose band, then the blue. */
 const RIM_ANTISOLAR = Object.freeze([
-    [0.0, [0.035, 0.045, 0.1]],
-    [0.7, [0.1, 0.085, 0.17]],
-    [1.5, [0.8, 0.4, 0.42]],
-    [2.6, [0.5, 0.36, 0.62]],
+    [0.0, [0.05, 0.065, 0.15]],
+    [0.7, [0.13, 0.12, 0.25]],
+    [1.5, [1.15, 0.56, 0.58]],
+    [2.6, [0.62, 0.44, 0.76]],
     [3.8, [0.14, 0.22, 0.62]],
     [5.0, [0.04, 0.06, 0.3]],
 ]);
@@ -489,9 +498,23 @@ const SHEET_OFFSET = {
 
 /** The upper glow's violet, mixed into the crimson (oxygen's red over nitrogen's blue-violet). */
 const AURORA_VIOLET = [0.42, 0.10, 0.78];
-/** How far from the oval's mean radius its sheets and their glow can reach (radians): the folds,
- * the wander, the poleward sheets' offsets and own folds, and the glow round them. */
-const OVAL_REACH = (ORBIT_EARTH_AURORA.fold * (1 + 0.3 + 0.45)) + (ORBIT_EARTH_AURORA.width * (5.4 + 3.2 * 2.5));
+/**
+ * How far from the oval's mean radius its sheets' light can reach (radians), toward the pole and
+ * away from it: the centre line's folds (their amplitudes' sum, FOLD_SWING) and wander, the
+ * poleward sheets' offsets and own folds (toward the pole only), and the sheets' own profile
+ * (the march reads it out to 3.2 widths). Tight on purpose: the eye passes THROUGH the shell the
+ * curtains stand in a little outside the oval, and with one loose bound either side every ray
+ * that looked up from in there walked the whole march and met nothing.
+ */
+const FOLD_SWING = 0.62 + 0.24 + 0.08;
+const OVAL_SWING = (ORBIT_EARTH_AURORA.fold * (FOLD_SWING + 0.3)) + (ORBIT_EARTH_AURORA.width * 3.4);
+const OVAL_REACH_OUT = OVAL_SWING + 0.002;
+const OVAL_REACH_IN = OVAL_SWING + (ORBIT_EARTH_AURORA.fold * 0.3) + (ORBIT_EARTH_AURORA.width * 5.4) + 0.002;
+
+/** The oval's reach from its mean radius (radians): `toward` the pole and `away` from it. */
+export function orbitAuroraOvalReach() {
+    return { toward: OVAL_REACH_IN, away: OVAL_REACH_OUT };
+}
 
 // ── ONE EARTH, ONE LOOK ──────────────────────────────────────────────────────────────
 // The Earth's state is the module's, not one mesh's: its backdrop draws it, and while it arrives
@@ -652,6 +675,7 @@ function ovalAt(n, grain = null) {
     // oval is ever on screen): integer frequencies, so the seam round the oval joins.
     // (2026-11-17: the short folds are shallower, 0.3 and 0.2 until then: seen from above they
     // drew the curtain as a zigzag of straight runs; it flows now.)
+    // (their amplitudes' sum is FOLD_SWING: the march's bound on the oval's reach)
     const fold = sin(phi.mul(11).add(t.mul(0.031))).mul(0.62)
         .add(sin(phi.mul(27).sub(t.mul(0.047)).add(1.7)).mul(0.24))
         .add(sin(phi.mul(53).add(t.mul(0.083)).add(4.1)).mul(0.08));
@@ -774,8 +798,10 @@ function earthLook(dir, air = null, surfaceAir = air, worldAir = null) {
     const sd = dot(N, U.sun).toVar();
     const lit = smoothstep(-0.07, 0.10, sd);
     const warm = float(1).sub(smoothstep(0.0, 0.32, sd));
+    // The sun's own colour there: white high up, a pale warm light when it is low (the evening
+    // sky's own, a few degrees up), ember only along the terminator, deep red past it.
     const sunCol = mix(
-        mix(vec3(...SUNLIGHT), vec3(...SUNSET), warm),
+        mix(mix(vec3(...SUNLIGHT), vec3(...SUN_EVENING), warm), vec3(...SUNSET), float(1).sub(smoothstep(-0.01, 0.07, sd))),
         vec3(...SUNSET_DEEP),
         float(1).sub(smoothstep(-0.05, 0.03, sd)),
     ).toVar();
@@ -1070,6 +1096,8 @@ export const ORBIT_EARTH_SEAM = Object.freeze({
  * @param {number} [opts.radius] backdrop radius (world units)
  * @param {(dir: *) => *} [opts.haze] the world's air for a view direction (a TSL node builder:
  *   the colour the world gives its far sea and sky there), which the Earth wears while it arrives
+ * @param {string} [opts.qualityTier] the board's quality name: the aurora's march is shorter on
+ *   the lower tiers (ORBIT_EARTH_AURORA.steps)
  * @returns {{
  *   mesh: THREE.Mesh,
  *   occluder: THREE.Mesh,
@@ -1080,9 +1108,14 @@ export const ORBIT_EARTH_SEAM = Object.freeze({
  *   dispose: () => void,
  * }}
  */
-export function createOrbitEarth({ radius = ORBIT_EARTH.radius, haze = null, worldAir = null } = {}) {
+export function createOrbitEarth({
+    radius = ORBIT_EARTH.radius, haze = null, worldAir = null, qualityTier = null,
+} = {}) {
     const E = ORBIT_EARTH;
     const A = ORBIT_EARTH_AURORA;
+    // The curtains' march by the board's tier (the crossing is placed exactly whatever the step,
+    // so fewer steps only miss the tightest folds).
+    const steps = pickByQualityTier(qualityTier, A.steps);
     const greenWarm = vec3(...AURORA_PALETTE.greenWarm);
     const greenCool = vec3(...AURORA_PALETTE.greenCool);
     const crimson = vec3(...AURORA_PALETTE.crimson);
@@ -1130,8 +1163,8 @@ export function createOrbitEarth({ radius = ORBIT_EARTH.radius, haze = null, wor
             const angA = angOf(first).toVar();
             const angB = angOf(last).toVar();
             const angM = angOf(first.add(last).mul(0.5)).toVar();
-            const reach = float(A.radius - OVAL_REACH);
-            const beyond = float(A.radius + OVAL_REACH);
+            const reach = float(A.radius - OVAL_REACH_IN);
+            const beyond = float(A.radius + OVAL_REACH_OUT);
             const nearOval = max(angA, max(angB, angM)).greaterThan(reach)
                 .and(min(angA, min(angB, angM)).lessThan(beyond));
             If(total.greaterThan(1e-6).and(nearOval), () => {
@@ -1140,11 +1173,11 @@ export function createOrbitEarth({ radius = ORBIT_EARTH.radius, haze = null, wor
                 // it. Each crossing is lit by its height (a sharp green foot, a body dying upward,
                 // a faint crimson top) and its rays, over the path the ray spends inside a sheet
                 // `width` thick there, which brightens a curtain seen edge-on.
-                const step = total.div(A.steps).toVar();
+                const step = total.div(steps).toVar();
                 const prevT = float(0).toVar();
                 const prevF = vec3(0).toVar();
                 Loop({
-                    start: int(0), end: int(A.steps + 1), type: 'int', condition: '<',
+                    start: int(0), end: int(steps + 1), type: 'int', condition: '<',
                 }, ({ i }) => {
                     const s = float(i).mul(step).toVar();
                     const tt = select(s.lessThanEqual(lenA).and(lenA.greaterThan(0)), a0.add(s), b0.add(s.sub(lenA)))
