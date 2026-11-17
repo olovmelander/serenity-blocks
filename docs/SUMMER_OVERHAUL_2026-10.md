@@ -307,6 +307,66 @@ Not done: a rainbow for the sun shower (the sun is ahead of the eye, so a true b
 behind it); the far ridges and the butterflies; portrait was checked, not tuned (the swans and
 the sky flowers are sited for a landscape screen first).
 
+### How it was checked
+
+- **Unit tests.** `tests/unit/summer-*.test.js`: 14 files, 874 tests, all passing, none skipped
+  (11 files and 692 tests before). New files: the weather's table and clock (19), the swans (33),
+  and a shader gate (11) that builds the sky to WGSL and to GLSL at each of its three levels of
+  detail, holds its fragment under 24 KiB, and builds the rain. Two helper agents wrote the
+  swans and most of the new tests, the second from the modules' contracts without touching the
+  source; what its tests found is listed below.
+- **Whole suite**, run once while other sessions kept the machine busy: 1,427 files, 25,881
+  tests; 1,418 files passed. Of the eight that did not, five pass when run again on their own
+  (`theme-registry-lifecycle-acceptance`, `breath-safety-gate`, `display-settings-apply`,
+  `local-versus-cameras`, `stellar-drift-build-steps`) and three fail on this machine whatever
+  the branch: `records-view` and `game-over-modal-result-compatibility` expect `8,025` where the
+  Swedish locale prints `8 025`, and `tts-recorder-e2e` cannot make its symlink in a worktree.
+- **Gates.** Typecheck; TypeScript ratchet; lint ratchet (432 errors, the baseline); architecture
+  fitness; theme lifecycle audit; dependency boundaries (2,185 modules); perf budgets; release
+  gates; IP-string gate; production build with the boot-closure guard (the theme's chunk is
+  239 kB, 91 kB gzipped, 48 kB of it the swans' model); the skill's audit and mirror tests: all pass.
+- **Playground**, a private headless Chrome on native WebGPU (the playground names an NVIDIA
+  Blackwell adapter), 30 frames a second, every capture with a clean console: the five hours;
+  the six weathers; lock, hard drop, two lines, four lines, a held combo, twist, back-to-back,
+  the bouquet, a perfect clear at three ages, a level-up at two, game over; High on the forced
+  WebGL2 backend in a sun shower; Minimal on WebGL2 (rose hour and white night); Low; Medium;
+  430 x 900 and 1720 x 720 frames; the white night with a perfect clear; a minute run live
+  through the turn from fair weather to the breeze.
+- **The real game** (headless Chrome, dev server, single player, frame cap 30): four runs, three
+  on WebGPU and one on the forced WebGL2 backend in the white night under a sun shower. Each
+  played real hard drops from the keyboard, then a double, four lines, a twist, a back-to-back, a
+  perfect clear, a level-up and a cascade through the game's event bus. Every run: console clean,
+  one canvas, the night at the level's hour, and no main-thread task over 21 ms in about 5,400
+  animation frames.
+- **GPU time a frame** (the playground's profiler at 1920 x 1080, capped at 30 frames a second,
+  evening, fair weather; the untouched main checkout served beside the branch for "before"):
+  High 1.97 ms before and 1.85 to 2.15 ms after (2.0 to 2.3 in a sun shower); Medium 1.02 ms
+  before and 1.19 to 1.56 after; Low 0.76 ms after (no reading before). Other sessions were using
+  the GPU: readings a few seconds apart moved by a millisecond, and one Medium reading of 6.6 ms
+  did not come back in three more.
+- **The swans' model** was generated again by headless Blender 5.2 and compared with the
+  committed module: the same bytes.
+- **Faults found on the way**, all fixed and held by tests:
+  - by the tests written against the contract: a sky flower's thread of pollen started under the
+    meadow; the rim of one flower reached behind the board card, and a stacked one hung among
+    the meadow's flower heads; a perfect clear on top of four lines asked for more petals than
+    the pool's reserve held at High and above (the pool grew by a quarter); the new petal mesh
+    had slivers without area at its claw and tip, which left a vertex with a normal of no
+    length; a flower that was still climbing counted as spent and could lose its slot to the
+    next lock at Minimal; a back-to-back woke a crown that was unwinding; a flower with a
+    nonsense place threw; on an upright screen the bouquet's flower opened behind the card;
+  - by the captures: the flowers first opened 30 m out, behind the crowns of the birch and the
+    spruce; the lake's rings and a first skipping stone lay behind the meadow's crest; a first
+    level-up effect that lived only on the lake could not be seen at game size; the hard drop's
+    ring of pollen was lost among the flower heads; and in the game one flower opened behind
+    the score panel, which the board card's rectangle does not include.
+
+Not verified: frame rate without the cap, and anything on integrated graphics or a phone;
+Extreme and Ultra in a capture; local multiplayer and Infinity layouts (the flowers' places there
+are held by tests, not seen); a whole seven-minute round of weather watched in the game. The
+six weathers, their pace, the look of every new effect and the swans are the implementer's
+choices and have not been reviewed by the owner.
+
 ## How it is built
 
 ### Trees and buildings authored in Blender
