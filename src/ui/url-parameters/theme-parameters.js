@@ -143,7 +143,7 @@ const captureThemes = [
         'glass, iron, floor, lanterns, palms, ferns, leaves, vines, water, pads, reeds, '
         + 'fireflies, moths, motes, dew, blooms, queen, glows'],
 
-    ['nebula-flow', 'nebulaFlow', 'Star Cradle', 'nebula, stars, births, jets, flights, blades'],
+    ['nebula-flow', 'nebulaFlow', 'Star Cradle', 'nebula, stars, births, aura, jets, flights, blades'],
 
     ['neon-district',
         'neonDistrict',
@@ -179,7 +179,7 @@ const captureThemes = [
 
     ['stellar-drift', 'stellarDrift', 'Stellar Drift', 'space, boulders, shards, motes, sparks, meteors, heads'],
 
-    ['stellar-velocity', 'stellarVel', 'Stellar Velocity', 'canyon, stars, motes, hoops, bolts, jets'],
+    ['stellar-velocity', 'stellarVel', 'Stellar Velocity', 'canyon, stars, motes, beacons, hoops, shocks, helix, bolts'],
 
     ['stillwater',
         'stillwater',

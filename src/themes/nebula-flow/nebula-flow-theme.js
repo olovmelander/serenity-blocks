@@ -393,7 +393,7 @@ export default class NebulaFlowTheme extends BaseTheme {
             }),
         );
         this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
-        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+        this.registerEventListener(window, 'gameOver', () => this.endRun());
 
         const resetPointer = () => {
             this.pointer.x = 0;
@@ -432,6 +432,18 @@ export default class NebulaFlowTheme extends BaseTheme {
             if (n > best) best = n;
         });
         this.world?.onCombo(best);
+    }
+
+    /**
+     * A run is over: whatever is staged still lands, the run's state is let go (the world keeps
+     * its stars and its clock), and then the cluster's light sinks into a dusk. Order matters: a
+     * reset after the dusk began would not wipe it (the world carries it), but the last lock must
+     * land in this run.
+     */
+    endRun() {
+        this.director?.flush();
+        this.resetSession();
+        this.world?.onGameOver?.();
     }
 
     /** A new run: back to rest, no chain in flight (the clock, and so the palette's drift, runs on). */
@@ -539,7 +551,11 @@ export default class NebulaFlowTheme extends BaseTheme {
         this.modeManager = manager;
         const relayout = () => this.scheduleLayoutReads();
         this.eventUnsubscribers.push(
-            manager.on('modeStarted', relayout),
+            manager.on('modeStarted', () => {
+                relayout();
+                // a new run lifts the dusk the last run's end left
+                this.world?.onSessionStart?.();
+            }),
             manager.on('modeActivated', relayout),
             manager.on('modeStopped', () => this.resetSession()),
         );

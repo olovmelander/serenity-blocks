@@ -14,7 +14,8 @@
  *   level=<n>                rest on level n's palette (the palette also drifts with the clock
  *                            alone: one step every 95 s of `t`, resting 15 % at either end)
  *   locks=<n>                before anything else, play n locks (the pillars holding their stars)
- *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|spin|b2b|tspinb2b|perfect|levelUp|happen|gameover   fire an event...
+ *                            (b2b: streak=<n> shells; happen: kind=kindle|outburst|nova|flare, seed=)
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>, piece=I|O|T|S|Z|J|L, turns=<quarter turns>)
  *   demo=1                   live only: play a looping gameplay script
@@ -217,8 +218,31 @@ export function create({
         else if (eventName === 'drop') world.onLock(piece(true));
         else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
-        else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
-        else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
+        else if (eventName === 'twist') {
+            // a T-spin: its T locks, then the clear it made (the pinwheel stands on its star)
+            world.onLock({ ...piece(false), cells: turned('T', 2) });
+            world.onClear({ rows: bottom(2), lines: 2, twist: true });
+        } else if (eventName === 'spin') {
+            world.onLock({ ...piece(false), cells: turned('T', 2) });
+            world.onSpin();
+        } else if (eventName === 'b2b' || eventName === 'tspinb2b') {
+            // the streak's earlier back-to-backs, then this one (streak=<n> shells in all)
+            world.b2bStreak = Math.max(0, Math.round(num(params, 'streak', 3)) - 1);
+            if (eventName === 'b2b') world.onClear({ rows: bottom(4), lines: 4, b2b: true });
+            else {
+                world.onLock({ ...piece(false), cells: turned('T', 2) });
+                world.onClear({
+                    rows: bottom(2), lines: 2, twist: true, b2b: true,
+                });
+            }
+        } else if (eventName === 'gameover') {
+            world.onGameOver();
+            // dawn=<s>: a new run starts that long after the run ended
+            const dawn = num(params, 'dawn', -1);
+            if (dawn >= 0) world.schedule(world.time + dawn, 'dawn');
+        } else if (eventName === 'happen') {
+            world.happen({ time: world.time, kind: params.get('kind') || 'nova', seed: num(params, 'seed', 0.37) });
+        } else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
     };
 

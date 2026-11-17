@@ -193,7 +193,7 @@ describe.each(TIERS)('Stellar Velocity shaders at %s', (quality) => {
     afterAll(() => world?.dispose());
 
     it('builds the canyon and every part on both backends, cleanly', () => {
-        expect(built.length).toBe(14);
+        expect(built.length).toBe(18);
         expect(built.flatMap(problemsOf)).toEqual([]);
     });
 
@@ -212,7 +212,7 @@ describe.each(TIERS)('Stellar Velocity shaders at %s', (quality) => {
                 ? /\b(NodeBuffer_\d+)\b|\b(nodeUniform\d+)\.value\[/g
                 : /\b(buffer\d+)\b|\b(nodeUniform\d+)\[/g;
             const tables = new Set([...code.matchAll(indexed)].map((m) => m[1] ?? m[2]));
-            expect(tables.size).toBe(quality === 'Minimal' ? 0 : 2);
+            expect(tables.size).toBe(quality === 'Minimal' ? 0 : 3);
         }
     });
 });

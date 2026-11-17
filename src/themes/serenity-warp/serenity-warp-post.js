@@ -76,6 +76,8 @@ export const POST_LOOK = Object.freeze({
 });
 
 export const BLOOM_THRESHOLD = 1.0;
+/** The brightest a tap of the rush's blur may be (scene-linear). */
+export const RUSH_PEAK = 6;
 export const BLOOM_KNEE = 0.5;
 /** Tight: the wide mips of a broad bloom laid a grey veil over the whole gate in a chain. */
 export const BLOOM_RADIUS = 0.42;
@@ -215,7 +217,10 @@ export class SerenityWarpPost {
                         const w = 1 - (i / rushTaps) * 0.6;
                         total += w;
                         const f = jitter.add(i).div(rushTaps).mul(reach);
-                        sum.addAssign(sceneColor.sample(st.add(toHeart.mul(f))).level(0).rgb.mul(w));
+                        // Each tap held to RUSH_PEAK (hue kept): one blazing sample dragged along
+                        // the rush is a dot, not a streak.
+                        const tap = sceneColor.sample(st.add(toHeart.mul(f))).level(0).rgb;
+                        sum.addAssign(tap.mul(min(float(1.0), float(RUSH_PEAK).div(max(swMax3(tap), 1e-4)))).mul(w));
                     }
                     S.assign(sum.mul(1 / total));
                 });

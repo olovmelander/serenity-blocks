@@ -109,8 +109,91 @@ export function cloudRowSpan(row) {
     };
 }
 
-/** The highest any cloud is drawn (radians of altitude). */
+/** The highest any cloud of the rows is drawn (radians of altitude). */
 export const CLOUDS_TOP = CLOUDS.rows.reduce((m, row) => Math.max(m, cloudRowSpan(row).top), 0);
+
+/**
+ * Towers of cumulus standing far beyond the moon's shadow, along the horizon: in full sunlight,
+ * they burn while everything round the lens is dark. A height field over the bearing (no volume):
+ *
+ *   span     noise units per radian of bearing and of height (a head is as tall as it is wide)
+ *   top      the tallest head's altitude (radians)
+ *   drift    the heads' and the feet's drift along the horizon (noise units a second): the heads
+ *            run ahead of the feet they stand on, so a tower grows, leans and falls apart
+ *   boil     how fast the heads climb through the field (noise units a second)
+ *   sunGate  how close to the sun's bearing (radians) they sink away, so no head stands in the
+ *            black disc
+ */
+export const TOWERS = Object.freeze({
+    span: 3.2,
+    top: 0.085,
+    drift: Object.freeze([0.0016, 0.0005]),
+    boil: 0.0011,
+    sunGate: 0.09,
+});
+
+/**
+ * The altocumulus deck: a sheet of cloudlets in rows, `height` km over the water. Overhead it lies
+ * in the moon's shadow, dark; toward the horizon it reaches out beyond the shadow's edge into the
+ * sunlight and burns, so the edge of the shadow is drawn across the sky.
+ *
+ *   wave     the cloudlets' spacing across the rows (km) and the rows' heading (radians)
+ *   field    the size of the fields of cloudlets (km)
+ *   drift    the deck's drift (km a second) and the fields' own slower drift, so cloudlets form
+ *            and melt as they go
+ *   fadeLow  below this altitude (radians) the deck is too foreshortened to draw
+ */
+export const DECK = Object.freeze({
+    height: 4.6,
+    wave: 1.15,
+    heading: 0.6,
+    field: 26,
+    drift: Object.freeze([0.012, 0.0045]),
+    fadeLow: Object.freeze([0.012, 0.045]),
+});
+
+/**
+ * The lenticular cap over the volcano's summit: a stack of smooth lenses standing in the wind
+ * (bearing offset from the summit, altitude over it, half-width, half-height, all radians).
+ */
+export const LENTICULAR = Object.freeze({
+    az: 0.4 * DEG,
+    over: 0.0058,
+    halfWidth: 4.8 * DEG,
+    halfHeight: 0.0034,
+    plates: 3,
+});
+
+/**
+ * The weather: which clouds stand over the salt flat. The clock turns it, one weather after
+ * another in a fixed order (a session never looks the same for long), each holding about a minute
+ * and a half and handing over to the next across WEATHER_BLEND seconds.
+ *
+ *   rows        the bars of cloud low over the far shore
+ *   towers      the sunlit towers beyond the shadow
+ *   deck        the altocumulus deck, dark overhead, burning toward the horizon
+ *   lenticular  the cap over the volcano
+ */
+export const WEATHER_KEYS = Object.freeze(['rows', 'towers', 'deck', 'lenticular']);
+export const WEATHERS = Object.freeze([
+    Object.freeze({
+        name: 'banks', seconds: 95, rows: 1, towers: 0.25, deck: 0, lenticular: 0.6,
+    }),
+    Object.freeze({
+        name: 'towers', seconds: 85, rows: 0.45, towers: 1, deck: 0, lenticular: 0,
+    }),
+    Object.freeze({
+        name: 'clear', seconds: 70, rows: 0.2, towers: 0, deck: 0, lenticular: 1,
+    }),
+    Object.freeze({
+        name: 'deck', seconds: 100, rows: 0.25, towers: 0, deck: 1, lenticular: 0,
+    }),
+    Object.freeze({
+        name: 'storm', seconds: 80, rows: 0.6, towers: 0.85, deck: 0.55, lenticular: 0,
+    }),
+]);
+export const WEATHER_BLEND = 22;
+export const WEATHER_CYCLE = WEATHERS.reduce((s, w) => s + w.seconds, 0);
 
 /**
  * The moon's shadow on the land: the lens does not stand at its middle, so its edge lies nearer
@@ -130,8 +213,19 @@ export function umbraAzAt(t) {
 }
 
 /** Where the shadow ends on a bearing `az` (km), seen from the lens; nearest at umbraAz. */
-export function shadowEdgeAt(az, umbraAz = UMBRA.az) {
-    return CLOUDS.shadowEdge * (1 - UMBRA.lean * Math.cos(az - umbraAz));
+export function shadowEdgeAt(az, umbraAz = UMBRA.az, reach = CLOUDS.shadowEdge) {
+    return reach * (1 - UMBRA.lean * Math.cos(az - umbraAz));
+}
+
+/**
+ * How far the shadow reaches (km, on average round the lens) at time `t`: it breathes slowly as
+ * the shadow sweeps on, so the volcano's summit and the far clouds pass into the sunlight and out
+ * of it again. `breath` is the share it swings by, `seconds` its period.
+ */
+export const SHADOW_BREATH = Object.freeze({ breath: 0.2, seconds: 173 });
+
+export function shadowReachAt(t) {
+    return CLOUDS.shadowEdge * (1 + SHADOW_BREATH.breath * Math.sin((t / SHADOW_BREATH.seconds) * TAU + 0.6));
 }
 
 /**
@@ -175,6 +269,31 @@ export const smooth01 = (t) => {
 export const approach = (rate, dt) => 1 - Math.exp(-rate * Math.max(0, dt));
 /** An angle folded into (−π, π]. */
 export const wrapAngle = (a) => a - TAU * Math.round(a / TAU);
+
+/**
+ * The weather at time `t` (seconds): every key's weight, the weather it is in (`index`, `name`)
+ * and how far it has turned to the next (`turn`, 0..1 across the last WEATHER_BLEND seconds).
+ */
+export function weatherAt(t, out = {}) {
+    const n = WEATHERS.length;
+    let local = ((t % WEATHER_CYCLE) + WEATHER_CYCLE) % WEATHER_CYCLE;
+    let i = 0;
+    while (i < n - 1 && local >= WEATHERS[i].seconds) {
+        local -= WEATHERS[i].seconds;
+        i += 1;
+    }
+    const a = WEATHERS[i];
+    const b = WEATHERS[(i + 1) % n];
+    const k = smooth01((local - (a.seconds - WEATHER_BLEND)) / WEATHER_BLEND);
+    for (let j = 0; j < WEATHER_KEYS.length; j += 1) {
+        const key = WEATHER_KEYS[j];
+        out[key] = lerp(a[key], b[key], k);
+    }
+    out.index = i;
+    out.name = a.name;
+    out.turn = k;
+    return out;
+}
 
 export function mulberry32(seed) {
     let a = seed >>> 0;
@@ -609,6 +728,47 @@ export function moonWander(t, out = [0, 0]) {
     return out;
 }
 
+// ── The comet ────────────────────────────────────────────────────────────────────
+
+/**
+ * Now and then a sungrazing comet stands in the corona, as comets have at real eclipses: a bright
+ * head a few solar radii off the limb, a straight blue ion tail and a broader, curved dust tail
+ * streaming away from the sun. It comes every `period` seconds (the first `offset` seconds in),
+ * brightens over `rise`, stands, and fades over `rise` again, `life` seconds in all. Each one
+ * takes the next of `places`: (position angle in degrees, screen-aligned, the head's distance in
+ * solar radii, which side its dust tail curls to).
+ */
+export const COMET = Object.freeze({
+    period: 290,
+    offset: 70,
+    life: 80,
+    rise: 10,
+    places: Object.freeze([
+        Object.freeze([142, 2.35, 1]),
+        Object.freeze([204, 2.25, -1]),
+        Object.freeze([118, 2.55, -1]),
+        Object.freeze([166, 2.15, 1]),
+    ]),
+});
+
+/**
+ * The comet at time `t`: `power` 0..1 (0 when none stands), its position angle (radians), the
+ * head's distance (solar radii) and its tail's curl, into `out`.
+ */
+export function cometAt(t, out = {}) {
+    const k = Math.floor((t - COMET.offset) / COMET.period);
+    const age = t - COMET.offset - k * COMET.period;
+    const place = COMET.places[((k % COMET.places.length) + COMET.places.length) % COMET.places.length];
+    out.index = k;
+    out.angle = place[0] * DEG;
+    out.distance = place[1];
+    out.curl = place[2];
+    out.power = t < COMET.offset || age > COMET.life
+        ? 0
+        : smooth01(age / COMET.rise) * (1 - smooth01((age - (COMET.life - COMET.rise)) / COMET.rise));
+    return out;
+}
+
 // ── The sky's bright points ──────────────────────────────────────────────────────
 
 /**
@@ -630,135 +790,159 @@ export const BRIGHT_POINTS = Object.freeze([
 
 /**
  * The light at totality, one palette per step of the wheel. Scene-linear colours authored
- * through the post's tone map. They stand in hue order round the wheel (ember → gold → jade →
- * azure → violet → rose → ember), and their glow and band are staggered by a family, so two
- * neighbours never mix through grey.
+ * through the post's tone map. Every palette keeps the structure of a real totality sky: deep
+ * blue air overhead, a saturated band of sunset light all round the horizon (the sky beyond the
+ * moon's shadow is still in sunlight), a hot rim at the horizon itself and a belt of paler light
+ * where the band gives way to the dark. They differ in the band's character, never by tinting
+ * the whole sky one colour. They stand in hue order round the wheel (ember → gold → jade → azure
+ * → violet → rose → ember), and their glow and band are staggered by a family, so two neighbours
+ * never mix through grey.
  *
  * zenith, mid       the dark air overhead and a third of the way up
  * horizon           the band of light low in the sky, from beyond the moon's shadow
- * glow              the bright rim right at the horizon
+ * glow              the hot rim right at the horizon
+ * belt              the paler light where the band gives way to the dark
  * haze              the mist in the valleys between the ranges
  * ridge             the near ranges, in the shadow
- * alpen             the farthest range, still in sunlight
+ * alpen             the farthest range and the clouds still in sunlight
  * coronaIn/Out      the corona's colour near the limb and far out
  * chromo            the chromosphere and the colourless prominences' pink
  * earth             earthshine on the moon's face
- * glowHeight        how high the horizon's glow reaches (radians of altitude)
+ * glowHeight        how high the horizon's rim reaches (radians of altitude)
+ * bandHeight        how high the band reaches (radians of altitude)
  * starPower         how brightly the planets and stars show
  * cycle             where the solar cycle stands (0 minimum: long equatorial wings, polar plumes;
  *                   1 maximum: a round crown of streamers)
- * alpenPower        how strongly the sunlit range glows
+ * alpenPower        how strongly the sunlit range and the sunlit clouds glow
  */
 export const PALETTE_KEYS = Object.freeze([
-    'zenith', 'mid', 'horizon', 'glow', 'haze', 'ridge', 'alpen', 'coronaIn', 'coronaOut', 'chromo', 'earth',
+    'zenith', 'mid', 'horizon', 'glow', 'belt', 'haze', 'ridge', 'alpen', 'coronaIn', 'coronaOut', 'chromo', 'earth',
 ]);
-export const PALETTE_SCALARS = Object.freeze(['glowHeight', 'starPower', 'cycle', 'alpenPower']);
+export const PALETTE_SCALARS = Object.freeze(['glowHeight', 'bandHeight', 'starPower', 'cycle', 'alpenPower']);
 
 export const PALETTES = Object.freeze([
     Object.freeze({
+        // Amber rim, a red-orange band, a mauve belt under deep navy: the classic.
         name: 'ember',
-        zenith: [0.0035, 0.006, 0.02],
-        mid: [0.013, 0.014, 0.04],
-        horizon: [0.075, 0.032, 0.052],
-        glow: [0.5, 0.2, 0.055],
-        haze: [0.13, 0.058, 0.048],
-        ridge: [0.0045, 0.005, 0.011],
-        alpen: [0.64, 0.28, 0.11],
-        coronaIn: [1.0, 0.93, 0.82],
+        zenith: [0.0018, 0.0036, 0.017],
+        mid: [0.0055, 0.008, 0.036],
+        horizon: [0.15, 0.036, 0.026],
+        glow: [0.95, 0.34, 0.055],
+        belt: [0.04, 0.016, 0.05],
+        haze: [0.15, 0.055, 0.04],
+        ridge: [0.0035, 0.004, 0.0095],
+        alpen: [0.95, 0.38, 0.12],
+        coronaIn: [1.0, 0.94, 0.84],
         coronaOut: [0.84, 0.88, 1.0],
         chromo: [1.0, 0.16, 0.3],
         earth: [0.45, 0.55, 0.8],
-        glowHeight: 0.035,
+        glowHeight: 0.026,
+        bandHeight: 0.055,
         starPower: 1.0,
         cycle: 0.12,
         alpenPower: 1.0,
     }),
     Object.freeze({
+        // A golden rim, an amber band and a pale green belt (twilight's own) under deep blue.
         name: 'gold',
-        zenith: [0.003, 0.008, 0.02],
-        mid: [0.01, 0.02, 0.036],
-        horizon: [0.08, 0.05, 0.03],
-        glow: [0.52, 0.32, 0.07],
-        haze: [0.13, 0.085, 0.04],
-        ridge: [0.005, 0.0055, 0.01],
-        alpen: [0.68, 0.42, 0.14],
-        coronaIn: [1.0, 0.95, 0.8],
-        coronaOut: [0.9, 0.92, 1.0],
+        zenith: [0.0015, 0.0042, 0.018],
+        mid: [0.0035, 0.009, 0.036],
+        horizon: [0.15, 0.068, 0.016],
+        glow: [1, 0.6, 0.13],
+        belt: [0.045, 0.024, 0.035],
+        haze: [0.14, 0.085, 0.035],
+        ridge: [0.0035, 0.0045, 0.009],
+        alpen: [0.95, 0.55, 0.16],
+        coronaIn: [1.0, 0.96, 0.82],
+        coronaOut: [0.88, 0.92, 1.0],
         chromo: [1.0, 0.2, 0.26],
         earth: [0.5, 0.58, 0.75],
-        glowHeight: 0.04,
-        starPower: 0.9,
+        glowHeight: 0.03,
+        bandHeight: 0.055,
+        starPower: 0.95,
         cycle: 0.38,
         alpenPower: 1.05,
     }),
     Object.freeze({
+        // A lemon rim, a coral band and an aquamarine belt under a deep teal sky.
         name: 'jade',
-        zenith: [0.002, 0.008, 0.016],
-        mid: [0.006, 0.02, 0.028],
-        horizon: [0.04, 0.08, 0.032],
-        glow: [0.36, 0.37, 0.13],
-        haze: [0.06, 0.1, 0.075],
-        ridge: [0.003, 0.006, 0.009],
-        alpen: [0.52, 0.43, 0.24],
-        coronaIn: [0.95, 1.0, 0.9],
+        zenith: [0.0008, 0.0042, 0.013],
+        mid: [0.0018, 0.011, 0.028],
+        horizon: [0.12, 0.048, 0.036],
+        glow: [0.92, 0.52, 0.17],
+        belt: [0.008, 0.038, 0.045],
+        haze: [0.1, 0.06, 0.05],
+        ridge: [0.0025, 0.0048, 0.0075],
+        alpen: [0.9, 0.5, 0.25],
+        coronaIn: [0.95, 1.0, 0.92],
         coronaOut: [0.78, 0.95, 1.0],
         chromo: [1.0, 0.22, 0.42],
         earth: [0.4, 0.6, 0.7],
-        glowHeight: 0.045,
+        glowHeight: 0.03,
+        bandHeight: 0.05,
         starPower: 1.05,
         cycle: 0.72,
-        alpenPower: 0.85,
+        alpenPower: 0.95,
     }),
     Object.freeze({
+        // Thin, cold desert air: a white-gold rim, a peach band, an icy belt under cobalt.
         name: 'azure',
-        zenith: [0.002, 0.005, 0.024],
-        mid: [0.006, 0.014, 0.05],
-        horizon: [0.04, 0.07, 0.12],
-        glow: [0.3, 0.36, 0.42],
-        haze: [0.07, 0.09, 0.13],
-        ridge: [0.003, 0.005, 0.013],
-        alpen: [0.54, 0.41, 0.42],
+        zenith: [0.001, 0.003, 0.02],
+        mid: [0.0025, 0.008, 0.046],
+        horizon: [0.13, 0.06, 0.045],
+        glow: [0.9, 0.66, 0.32],
+        belt: [0.012, 0.03, 0.08],
+        haze: [0.07, 0.075, 0.1],
+        ridge: [0.0025, 0.004, 0.011],
+        alpen: [0.9, 0.55, 0.42],
         coronaIn: [0.94, 0.97, 1.0],
         coronaOut: [0.75, 0.86, 1.0],
         chromo: [1.0, 0.2, 0.4],
         earth: [0.4, 0.55, 0.9],
-        glowHeight: 0.05,
+        glowHeight: 0.032,
+        bandHeight: 0.048,
         starPower: 1.15,
         cycle: 0.95,
-        alpenPower: 0.8,
+        alpenPower: 0.9,
     }),
     Object.freeze({
+        // A rose-orange rim, a magenta band and a violet belt under deep indigo.
         name: 'violet',
-        zenith: [0.005, 0.003, 0.022],
-        mid: [0.018, 0.01, 0.05],
-        horizon: [0.09, 0.04, 0.12],
-        glow: [0.45, 0.2, 0.34],
-        haze: [0.1, 0.05, 0.11],
-        ridge: [0.006, 0.004, 0.013],
-        alpen: [0.62, 0.3, 0.42],
+        zenith: [0.0032, 0.002, 0.02],
+        mid: [0.01, 0.005, 0.042],
+        horizon: [0.15, 0.03, 0.08],
+        glow: [0.9, 0.27, 0.16],
+        belt: [0.045, 0.015, 0.075],
+        haze: [0.11, 0.045, 0.1],
+        ridge: [0.0045, 0.003, 0.011],
+        alpen: [0.92, 0.36, 0.42],
         coronaIn: [1.0, 0.93, 0.95],
         coronaOut: [0.88, 0.84, 1.0],
         chromo: [1.0, 0.16, 0.46],
         earth: [0.5, 0.5, 0.85],
-        glowHeight: 0.04,
+        glowHeight: 0.028,
+        bandHeight: 0.055,
         starPower: 1.1,
         cycle: 0.6,
-        alpenPower: 0.95,
+        alpenPower: 1.0,
     }),
     Object.freeze({
+        // A coral rim, a crimson band and a plum belt under a dark wine sky.
         name: 'rose',
-        zenith: [0.005, 0.003, 0.014],
-        mid: [0.022, 0.009, 0.034],
-        horizon: [0.12, 0.04, 0.07],
-        glow: [0.57, 0.2, 0.17],
-        haze: [0.14, 0.05, 0.07],
-        ridge: [0.006, 0.0035, 0.009],
-        alpen: [0.72, 0.28, 0.26],
+        zenith: [0.0035, 0.002, 0.013],
+        mid: [0.011, 0.005, 0.03],
+        horizon: [0.17, 0.03, 0.04],
+        glow: [0.98, 0.3, 0.12],
+        belt: [0.05, 0.014, 0.045],
+        haze: [0.15, 0.045, 0.06],
+        ridge: [0.0045, 0.0028, 0.0085],
+        alpen: [0.98, 0.36, 0.3],
         coronaIn: [1.0, 0.92, 0.88],
         coronaOut: [0.92, 0.86, 1.0],
         chromo: [1.0, 0.14, 0.34],
         earth: [0.5, 0.5, 0.75],
-        glowHeight: 0.035,
+        glowHeight: 0.026,
+        bandHeight: 0.055,
         starPower: 1.0,
         cycle: 0.3,
         alpenPower: 1.05,

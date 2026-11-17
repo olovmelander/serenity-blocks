@@ -114,6 +114,8 @@ export function create({
         } : null);
         // ?swans=0 takes the swans off the lake (hidden, they leave no rings and send no skein).
         if (params.get('swans') === '0' && world.swans) world.swans.group.visible = false;
+        // ?swanAt=<seconds> has the family that far into its voyage round the lake at the capture's ?t=.
+        if (knob('swanAt') !== null && world.swans) world.swans.shift = knob('swanAt') - Math.max(0, knob('t') ?? 0);
         // ?hide=Grass,Flower hides every object whose name contains one of the words.
         const hidden = (params.get('hide') || '').split(',').filter(Boolean);
         if (hidden.length) {

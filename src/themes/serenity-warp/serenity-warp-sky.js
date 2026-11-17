@@ -45,6 +45,7 @@ import {
     max,
     min,
     mix,
+    mod,
     positionGeometry,
     pow,
     screenUV,
@@ -60,11 +61,19 @@ import {
     pow2,
 } from 'three/tsl';
 import {
+    CORONA_SECTORS,
     EVENT_ROWS,
     ENV_CODE_PEAK,
     GATE,
+    PETALS,
+    PINWHEEL_ARMS,
+    PINWHEEL_WIND,
+    STREAMER_LAYERS,
+    STREAMER_RUN,
+    SURGE_WIDTH,
     TAU,
     swEnvDir,
+    swHash21,
     swHash23,
     swPart,
     swPassMaterial,
@@ -92,12 +101,14 @@ export const WIND_WARP = 1.1;
  * @param {object} u          the shared uniforms
  * @param {object} d          unit direction (vec3 node)
  * @param {object} footprint  radians of view one pixel of whatever is being painted covers
- * @param {object} options    { detail, warpRead, skyLayers, vortexLight, vortexDust, heroStars, richFar }
+ * @param {object} options    { detail, warpRead, skyLayers, vortexLight, vortexDust, heroStars, richFar,
+ *                             streamers (layers), litNebula, galaxies, visitors, forms }
  * @returns {object} vec3 node (scene-linear HDR)
  */
 export function skyLight(u, d, footprint, {
     detail = true, warpRead = true, skyLayers = 3,
     vortexLight = true, vortexDust = true, heroStars = true, richFar = true,
+    streamers = 2, litNebula = true, galaxies = true, visitors = true, forms = true,
 } = {}) {
     const G = u.gateDir;
     const cosT = clamp(dot(d, G), -1.0, 1.0);
@@ -150,15 +161,28 @@ export function skyLight(u, d, footprint, {
     // ── Outside: our sky, bent round the throat ──
     If(outside.greaterThan(0.001), () => {
         const beta = max(th.sub(alpha.mul(alpha).div(th)), 0.0).toVar();
-        const dir = u.gateDir.mul(cos(beta))
-            .add(u.gateX.mul(cos(phi)).add(u.gateY.mul(sin(phi))).mul(sin(beta)))
-            .toVar();
+        const cosB = cos(beta).toVar();
+        const sinB = sin(beta).toVar();
+        // The open sky turns slowly round the gate (mood2.z, a turn in SKY_TURN seconds): the same
+        // stars and clouds are never in the same place for long.
+        const phiSky = phi.add(u.mood2.z);
+        const across = u.gateX.mul(cos(phiSky)).add(u.gateY.mul(sin(phiSky))).toVar();
+        const dir = u.gateDir.mul(cosB).add(across.mul(sinB)).toVar();
         const shift = u.hereShift;
+        // ...and its clouds drift through the gas volume as they turn, so they form and melt
+        // rather than slide (far clouds that only translate look painted on).
+        const drift = vec3(u.cloudDrift.mul(0.6), u.cloudDrift.mul(-0.3), u.cloudDrift).toVar();
+        // A pixel of whatever is painted, in the bent sky (the lens magnifies it by 1 + α²/θ²).
+        const lens = float(1.0).add(alpha.mul(alpha).div(th.mul(th))).toVar();
+        const pixB = pix.mul(lens).div(1.2).toVar();
+        const nebula = u.mood.w;
 
         // ── Deep space far from the gate, in plain direction space ──
-        const far = vec4(u.gas(dir.mul(0.55).add(shift))).toVar();
+        const far = vec4(u.gas(dir.mul(0.55).add(shift).add(drift))).toVar();
+        const farMass = far.x.toVar();
         if (warpRead) {
-            const curl = vec4(u.gas(dir.mul(1.3).add(shift.mul(1.7)).add(far.xyz.sub(0.5).mul(0.42))));
+            const curl = vec4(u.gas(dir.mul(1.3).add(shift.mul(1.7)).sub(drift.mul(1.4))
+                .add(far.xyz.sub(0.5).mul(0.42))));
             far.assign(mix(far, curl, 0.45));
         }
         // On the lean tiers the open sky stays one soft field (its sky shader is what an iGPU
@@ -183,20 +207,44 @@ export function skyLight(u, d, footprint, {
                 .add(rift.mul(2.2)).negate()).toVar();
             // The band's own light: the stars too far to tell apart, warm, brightest on its spine.
             const milk = mix(vec3(0.62, 0.55, 0.7), u.starTint, 0.4).mul(u.dust.mul(0.5).add(0.5));
+            const em2 = em.mul(em);
             sky.assign(u.skyCol.mul(far.x.mul(1.2).add(0.45))
-                .add(nebCol.mul(em.mul(0.03).add(em.mul(em).mul(0.13))).mul(clear))
+                .add(nebCol.mul(em.mul(0.05).add(em2.mul(0.22)).add(em2.mul(em2).mul(0.3))).mul(clear).mul(nebula))
                 .add(milk.mul(band.mul(band).mul(far.x.mul(0.6).add(0.4)).mul(0.03)).mul(clear))
-                .add(u.accent.mul(pow(far.y, 4.0).mul(em).mul(0.09)).mul(clear)));
+                .add(u.accent.mul(pow(far.y, 4.0).mul(em).mul(0.09)).mul(clear).mul(nebula)));
+            if (litNebula) {
+                // The nebula lit by the gate: the same gas a step nearer to it. Where the gas
+                // thickens away from the gate its face looks at it and burns in its light, so the
+                // clouds beyond the board stand round the gate as round a star, not as wallpaper.
+                // Only the clouds' edges: a lit rim where the gas begins, not the whole mass (that
+                // read as grey smoke over the open sky). The second read is made only there: the
+                // clouds are tens of pixels across, so the branch is coherent.
+                const rim = smoothstep(0.33, 0.47, farMass).mul(float(1.0).sub(smoothstep(0.56, 0.8, farMass))).toVar();
+                If(rim.greaterThan(0.002), () => {
+                    const bIn = beta.sub(0.045);
+                    const dirIn = u.gateDir.mul(cos(bIn)).add(across.mul(sin(bIn)));
+                    const massIn = u.gas(dirIn.mul(0.55).add(shift).add(drift)).x;
+                    const facing = clamp(farMass.sub(massIn).mul(26.0), 0.0, 1.0);
+                    const face = facing.mul(facing).mul(rim);
+                    // The gate's light spreads: the faces far from it are lit less. The rims glow
+                    // in the gas's own glow (an ionised front), touched by the gate's white.
+                    const spread = float(1.0).div(float(1.0).add(beta.mul(beta).mul(1.6)));
+                    // (In the glow alone: lit in the palette's other hue, gold under green, it was mud.)
+                    const rimCol = mix(u.glow, u.gateCol, 0.28);
+                    sky.addAssign(rimCol.mul(face.mul(spread).mul(clear).mul(nebula).mul(0.55)));
+                });
+            }
         } else {
-            const farMass = smoothstep(0.36, 0.86, far.x).mul(far.w.mul(0.6).add(0.4));
+            const farSoft = smoothstep(0.36, 0.86, far.x).mul(far.w.mul(0.6).add(0.4));
             sky.assign(u.skyCol.mul(far.x.mul(1.4).add(0.6))
-                .add(u.deep.mul(farMass.mul(0.05)))
-                .add(u.accent.mul(pow(far.y, 3.0).mul(farMass).mul(0.03))));
+                .add(u.deep.mul(farSoft.mul(0.05)).mul(nebula))
+                .add(u.accent.mul(pow(far.y, 3.0).mul(farSoft).mul(0.03))));
         }
 
         // ── The vortex: log-polar about the axis, wound, flowing in ──
         const L = log(max(beta, 0.0035)).toVar();
-        const wind = float(WIND_REST).add(u.warp.mul(WIND_WARP)).toVar();
+        // The mood winds the arms tighter or looser (mood.y) on top of what a chain does.
+        const wind = float(WIND_REST).add(u.warp.mul(WIND_WARP)).mul(u.mood.y).toVar();
         const turn = phi.sub(L.mul(wind)).add(u.spin).add(u.twist.mul(float(1.6).sub(L.mul(0.25)))).toVar();
         const ring = vec2(cos(turn), sin(turn));
         const P = vec3(ring.mul(0.42), L.add(u.inflow).mul(0.23)).add(shift.mul(1.3));
@@ -217,18 +265,28 @@ export function skyLight(u, d, footprint, {
             facing.assign(clamp(coarse.sub(u.gas(Pin).x).mul(5.5).add(0.5), 0.0, 1.0));
         }
         const shade = mix(float(0.3), float(1.6), facing.mul(facing).mul(float(3.0).sub(facing.mul(2.0)))).toVar();
-        // Two arms, frayed by the gas itself; the gaps between them stay dark.
-        const arms = smoothstep(-0.1, 0.95, cos(turn.mul(2.0).add(gas.w.mul(2.6)))).toVar();
-        // The gate lights the gas near it; the vortex fades out far from it.
+        // Two arms or three (the mood, mood.x), frayed by the gas itself; the gaps stay dark.
+        const twoArms = cos(turn.mul(2.0).add(gas.w.mul(2.6)));
+        const threeArms = cos(turn.mul(3.0).add(gas.w.mul(2.6)).add(0.7));
+        const arms = smoothstep(-0.1, 0.95, mix(twoArms, threeArms, u.mood.x)).toVar();
+        // The gate lights the gas near it; the vortex fades out far from it (how far: the mood).
         const near = float(1.0).div(float(1.0).add(beta.mul(beta).mul(55.0))).toVar();
-        const reach = float(1.0).sub(smoothstep(0.3, 1.2, beta)).toVar();
+        const reach = float(1.0).sub(smoothstep(u.mood2.y.mul(0.3), u.mood2.y.mul(1.2), beta)).toVar();
         // Far out the log-polar read is magnified into long smears: break the outer arms up with
         // the clouds of the open sky, which keep their own size everywhere.
         const outer = smoothstep(0.12, 0.5, beta);
         const clumps = mix(float(1.0), smoothstep(0.25, 0.75, far.x).mul(1.25).add(0.2), outer.mul(0.8));
         const mass = smoothstep(0.4, 0.86, gas.x).mul(arms.mul(0.85).add(0.15)).mul(clumps).toVar();
+        // A chain's surges: a band of light that runs down the arms into the throat (worked out
+        // only while one runs: the branch is on a uniform).
+        const surge = float(1.0).toVar();
+        If(u.surge.y.add(u.surge.w).greaterThan(1e-3), () => {
+            surge.addAssign(exp(pow2(L.sub(u.surge.x).div(SURGE_WIDTH)).negate()).mul(u.surge.y).mul(2.6)
+                .add(exp(pow2(L.sub(u.surge.z).div(SURGE_WIDTH)).negate()).mul(u.surge.w).mul(2.6)));
+        });
         const lit = near.mul(1.25).add(0.06).mul(reach)
             .mul(u.warp.mul(0.35).add(1.0))
+            .mul(surge)
             .toVar();
         const threads = pow(gas.y, 4.0).mul(mass.add(0.15));
         // Knots: bright clumps strung along the arms, in the third colour.
@@ -248,8 +306,60 @@ export function skyLight(u, d, footprint, {
             .add(u.gateCol.mul(pow(facing, 4.0).mul(mass).mul(near)
                 .mul(reach)
                 .mul(0.35)))
-            .mul(veil)
             .toVar();
+        // ── Streamers: lanes of light down the arms, broken into dashes that run into the throat ──
+        // Each lane is a constant turn of the vortex (a logarithmic spiral, the arms' own shape);
+        // the dashes on it run inward faster than the gas. A line is a pixel or so wide at any
+        // distance (its width follows the pixel's angle there), and the lanes fade where they
+        // crowd closer than a few pixels, so the rim is never a haze of hairlines.
+        const slant = sqrt(wind.mul(wind).add(1.0)).toVar();
+        if (streamers > 0) {
+            // They end well inside the frame (β 0.52): every pixel further out skips them.
+            If(beta.lessThan(0.52), () => {
+                const S = L.add(u.inflow.mul(STREAMER_RUN)).toVar();
+                const lines = float(0.0).toVar();
+                const heads = float(0.0).toVar();
+                STREAMER_LAYERS.slice(0, streamers).forEach(({
+                    lanes, dashes, seed, gain,
+                }) => {
+                    const a = turn.div(TAU).mul(lanes).add(seed);
+                    const laneAt = floor(a);
+                    // Lanes are hashed modulo their count: the turn wraps by whole turns (the screen's
+                    // seam left of the gate, the spin's wrap), and a hash of the raw index drew a seam.
+                    // One cheap hash a lane and one a dash; their other numbers are its fractions.
+                    const lh = swHash21(vec2(mod(laneAt, lanes), seed * 7.0)).toVar();
+                    const s = S.mul(dashes).mul(fract(lh.mul(13.37)).mul(0.6).add(0.7)).add(lh.mul(9.0));
+                    const dash = floor(s);
+                    const along = fract(s);
+                    const dh = swHash21(vec2(mod(laneAt, lanes), dash).add(seed * 3.1)).toVar();
+                    const len = mix(float(0.3), float(0.9), fract(dh.mul(17.31)));
+                    const body = smoothstep(0.0, 0.035, along)
+                        .mul(float(1.0).sub(smoothstep(len.mul(0.3), len, along)));
+                    // A pixel of view in lane units (the lanes are 2π/lanes of turn apart, which is
+                    // β·2π/lanes/slant of view at this distance from the gate).
+                    const pixLane = pixB.mul(slant).mul(lanes / TAU).div(max(beta, 1e-3));
+                    const w = max(pixLane, 0.006);
+                    const line = exp(pow2(fract(a).sub(0.5).div(w)).negate())
+                        .mul(float(1.0).sub(smoothstep(0.1, 0.36, pixLane)));
+                    const on = step(0.35, fract(lh.mul(71.13))).mul(step(0.42, dh))
+                        .mul(fract(dh.mul(41.7)).mul(0.8).add(0.5))
+                        .mul(gain);
+                    const lit2 = line.mul(body).mul(on);
+                    lines.addAssign(lit2);
+                    heads.addAssign(lit2.mul(exp(along.mul(-16.0))));
+                });
+                // Brightest near the gate and in the arms; the mood and a chain light them up.
+                const strength = near.mul(2.4).add(0.16).mul(reach).mul(float(1.0).sub(smoothstep(0.26, 0.52, beta)))
+                    .mul(mass.mul(1.1).add(0.4))
+                    .mul(u.mood.z)
+                    .mul(u.warp.mul(1.6).add(1.0))
+                    .mul(surge);
+                vortex.addAssign(mix(u.glow, u.gateCol, 0.4).mul(lines).add(u.gateCol.mul(heads.mul(1.2))).mul(strength)
+                    .mul(1.6));
+            });
+        }
+        // The gate shut at a run's end (mood2.w): the gas it lit goes dim with it.
+        vortex.mulAssign(veil.mul(float(1.0).sub(u.mood2.w.mul(0.72))));
         // A second, nearer veil of dust that winds more slowly than the gas behind it: its threads
         // cross the arms and stand dark against the glow (it is what puts depth into the drain).
         const front = float(1.0).toVar();
@@ -264,8 +374,43 @@ export function skyLight(u, d, footprint, {
         }
         sky.assign(sky.mul(veil.mul(0.5).add(0.5)).add(vortex.mul(u.breath)).mul(front));
 
+        // ── Wandering stars the current has caught: in on an arm, torn round the throat ──
+        if (visitors) {
+            const caught = vec3(0.0).toVar();
+            Loop({
+                start: int(0), end: u.visitorCount, type: 'int', condition: '<', name: 'v',
+            }, ({ v }) => {
+                // (its turn of the vortex, its log angle, how torn it is, light) and (colour, size)
+                const A = u.events.element(v.mul(2).add(EVENT_ROWS.visitors)).toVar();
+                const C = u.events.element(v.mul(2).add(EVENT_ROWS.visitors + 1)).toVar();
+                const dT = fract(turn.sub(A.x).div(TAU).add(0.5)).sub(0.5).mul(TAU).toVar();
+                const dL = L.sub(A.y).toVar();
+                const px = pixB.mul(C.w).toVar();
+                // Across its lane and along it (radians of view).
+                const xT = beta.mul(dT).div(slant);
+                const xL = beta.mul(dL).mul(slant);
+                const r2 = xT.mul(xT).add(xL.mul(xL));
+                const head = exp(r2.div(px.mul(px).mul(5.0)).negate());
+                const halo = float(1.0).div(float(1.0).add(r2.div(px.mul(px).mul(150.0)))).mul(0.35);
+                // Its tail lies behind it up the lane it came down (an arc length of view, so a
+                // star near the ring has a tail as long as one far out), widening as it goes.
+                const back = max(xL, 0.0);
+                const tw = px.mul(1.4).add(back.mul(0.06));
+                const tail = exp(pow2(xT.div(tw)).negate()).mul(smoothstep(px.negate(), px, xL))
+                    .mul(exp(back.div(-0.09)))
+                    .mul(float(1.0).sub(A.z));
+                // Torn: an arc behind it along its orbit, at its own distance from the gate, that
+                // reaches round the ring as the star goes in.
+                const spread = A.z.mul(2.7).add(0.02);
+                const arc = exp(pow2(xL.div(slant).div(px.mul(1.5))).negate())
+                    .mul(smoothstep(-0.04, 0.03, dT)).mul(float(1.0).sub(smoothstep(spread.mul(0.35), spread, dT)))
+                    .mul(A.z.mul(float(1.0).sub(A.z.mul(0.55))));
+                caught.addAssign(C.rgb.mul(A.w).mul(head.mul(4.0).add(halo).add(tail.mul(1.3)).add(arc.mul(5.0))));
+            });
+            sky.addAssign(caught.mul(u.breath));
+        }
+
         // ── Far stars, bent with the rest: arcs near the rim, gone in the squeeze, faded at speed ──
-        const lens = float(1.0).add(alpha.mul(alpha).div(th.mul(th))).toVar();
         // Dust hides stars as it hides the gas; the band holds more of them.
         const seenStars = richFar ? clear.mul(veil).mul(front).mul(band.mul(0.9).add(0.55)).toVar() : front;
         const stars = vec3(0.0).toVar();
@@ -325,7 +470,71 @@ export function skyLight(u, d, footprint, {
                 stars.addAssign(starColor(hg.z).mul(core.add(spikes.mul(0.09)).add(glowR.mul(0.02)).mul(bright)));
             });
         }
+        // Far galaxies: now and then a small spiral or a lens of light, tilted every way, its
+        // core warm and its disc blue. A cell is ~6° wide and one in fifteen holds one: the branch
+        // is coherent and the rest of the sky pays nothing for them.
+        if (galaxies) {
+            const GS = 9.0;
+            const gp = dir.mul(GS).add(vec3(6.7, 2.9, 4.1));
+            const gc = floor(gp);
+            const gh = swHash23(gc.xy.add(gc.z.mul(vec2(47.0, 19.0))).add(5.3)).toVar();
+            If(gh.z.greaterThan(0.935), () => {
+                const gg = swHash23(gc.xy.add(gc.z.mul(vec2(-23.0, 31.0))).add(8.7)).toVar();
+                const dp = gp.sub(gc.add(0.5).add(vec3(gh.x, gh.y, gg.x).sub(0.5).mul(0.4))).div(GS).toVar();
+                const ex = dot(dp, u.camRight);
+                const ey = dot(dp, u.camUp);
+                const ang = gg.y.mul(TAU);
+                const ca = cos(ang);
+                const sa = sin(ang);
+                const tilt = mix(float(0.22), float(0.95), gg.z);
+                const qx = ex.mul(ca).add(ey.mul(sa));
+                const qy = ey.mul(ca).sub(ex.mul(sa)).div(tilt);
+                const size = mix(float(0.008), float(0.021), gh.x.mul(gh.y)).toVar();
+                const rho = sqrt(qx.mul(qx).add(qy.mul(qy))).div(size).toVar();
+                const core = exp(rho.div(0.13).pow(2.0).negate());
+                const disc = exp(rho.mul(-3.4));
+                const spiral = cos(atan(qy, qx).mul(2.0).sub(log(max(rho, 0.05)).mul(3.2))).mul(0.35).add(0.65);
+                const hueG = mix(vec3(1.0, 0.82, 0.62), vec3(0.62, 0.76, 1.0), smoothstep(0.1, 0.9, rho));
+                const gain = mix(float(0.3), float(0.8), gg.x).div(lens);
+                stars.addAssign(hueG.mul(core.mul(1.4).add(disc.mul(spiral).mul(0.32))).mul(gain));
+            });
+        }
         sky.addAssign(stars.mul(u.starTint).mul(seenStars).mul(float(1.0).sub(smoothstep(0.1, 0.7, u.warp).mul(0.8))).mul(u.breath));
+
+        // ── A comet across the open sky, its tails blown straight away from the gate ──
+        if (visitors) {
+            If(u.cometLight.greaterThan(0.001), () => {
+                // (head direction, _), (tail axis away from the gate, tail length rad), (motion, size)
+                const H = u.events.element(EVENT_ROWS.comet).toVar();
+                const Q = u.events.element(EVENT_ROWS.comet + 1).toVar();
+                const R = u.events.element(EVENT_ROWS.comet + 2).toVar();
+                // In the frame the comet was laid in (the sky's slow turn is not on it).
+                const straight = u.gateDir.mul(cosB).add(u.gateX.mul(cos(phi)).add(u.gateY.mul(sin(phi))).mul(sinB));
+                const v = straight.sub(H.xyz).toVar();
+                const along = dot(v, Q.xyz).toVar();
+                const side = v.sub(Q.xyz.mul(along)).toVar();
+                const px = pixB.mul(R.w).toVar();
+                const r2 = dot(v, v);
+                const coma = exp(r2.div(px.mul(px).mul(3.0)).negate()).mul(3.2)
+                    .add(float(1.0).div(float(1.0).add(r2.div(px.mul(px).mul(60.0)))).mul(0.16));
+                const k = clamp(along.div(max(Q.w, 1e-3)), 0.0, 1.0).toVar();
+                const behind = smoothstep(px.negate(), px.mul(3.0), along)
+                    .mul(float(1.0).sub(smoothstep(0.75, 1.0, k)));
+                // The ion tail: straight and thin, blue in the gate's light.
+                const ionW = px.mul(1.3).add(along.mul(0.022));
+                const ion = exp(pow2(length(side).div(ionW)).negate()).mul(exp(k.mul(-2.2))).mul(behind);
+                // The dust tail: broader, warm, curving back along the way it came.
+                const lag = side.add(R.xyz.mul(along.mul(along).mul(1.9).div(max(Q.w, 1e-3))));
+                const dustW = px.mul(2.4).add(along.mul(0.1));
+                const dustT = exp(pow2(length(lag).div(dustW)).negate()).mul(exp(k.mul(-1.5))).mul(behind);
+                const headCol = mix(vec3(1.0), u.gateCol, 0.3);
+                const ionCol = mix(u.gateCol, vec3(0.55, 0.8, 1.0), 0.55);
+                const dustCol = mix(vec3(1.0, 0.82, 0.56), u.accent, 0.2);
+                sky.addAssign(headCol.mul(coma).add(ionCol.mul(ion.mul(1.1))).add(dustCol.mul(dustT.mul(0.7)))
+                    .mul(u.cometLight)
+                    .mul(u.breath));
+            });
+        }
 
         // ── The gate's light in space round it: the photon ring, its glow, a halo and a wide glow ──
         const off = th.sub(alpha).div(max(alpha, 1e-3)).toVar();
@@ -338,8 +547,20 @@ export function skyLight(u, d, footprint, {
         // The gas behind the throat, lensed into arcs along the ring (at the rim the vortex's read
         // depends on the turn alone).
         const arcs = mix(float(0.5), float(1.4), smoothstep(0.3, 0.85, gas.x));
+        // Hot spots circling the ring with the gas (two, and five fainter the other way round):
+        // the ring's light moves even at rest (how bright: the mood, mood2.x).
+        // Worked out only near the ring (they fade out by half a radius off it).
+        const hotSpots = float(0.0).toVar();
+        If(off.lessThan(0.5), () => {
+            const b1 = max(cos(phi.mul(2.0).sub(u.spin.mul(5.0))).mul(0.5).add(0.5), 0.0);
+            const b2 = max(cos(phi.mul(5.0).add(u.spin.mul(3.0)).add(1.3)).mul(0.5).add(0.5), 0.0);
+            const b1s = b1.mul(b1).mul(b1.mul(b1));
+            const b2s = b2.mul(b2).mul(b2.mul(b2));
+            hotSpots.assign(b1s.mul(b1s).mul(b1).add(b2s.mul(b2s).mul(b2s).mul(0.5)).mul(u.mood2.x)
+                .mul(float(1.1).sub(smoothstep(0.25, 0.5, off).mul(1.1))));
+        });
         const rimRing = exp(off.mul(off).mul(sharp.negate())).mul(4.2).mul(arcs)
-            .add(exp(off.mul(off).mul(-180.0)).mul(0.55))
+            .add(exp(off.mul(off).mul(-180.0)).mul(hotSpots.mul(2.4).add(0.55)))
             // A second, fainter ring a little outside: light that went round the throat twice.
             .add(exp(pow2(off.sub(0.07)).mul(sharp.mul(-1.4))).mul(0.7));
         const halo = float(0.28).div(float(1.0).add(off.mul(off).mul(22.0)))
@@ -349,7 +570,99 @@ export function skyLight(u, d, footprint, {
         // The halo takes half of a surge (all of it washed the whole gate grey), in the gas's glow.
         const haloLight = mix(float(1.0), gateLight, 0.5);
         sky.addAssign(rimCol.mul(rimRing.mul(beamGain)).mul(gateLight)
-            .add(mix(u.gateCol, u.glow, 0.5).mul(halo.mul(0.5).mul(beamGain.mul(0.4).add(0.6))).mul(haloLight)));
+            .add(mix(u.gateCol, u.glow, 0.5)
+                .mul(halo.mul(0.5).mul(beamGain.mul(0.4).add(0.6)).mul(hotSpots.mul(0.6).add(1.0)))
+                .mul(haloLight)));
+
+        // ── The shapes events throw round the gate (none at rest: the loop runs zero times) ──
+        if (forms) {
+            const shapes = vec3(0.0).toVar();
+            const r = th.div(max(alpha, 1e-3)).toVar();
+            const pixR = pix.div(1.2).div(max(alpha, 1e-3)).toVar();
+            const logR = log(max(r, 1.0)).toVar();
+            Loop({
+                start: int(0), end: u.formCount, type: 'int', condition: '<', name: 'e',
+            }, ({ e }) => {
+                // (kind, age, light, reach in throat radii), (colour, seed), (the kind's own numbers)
+                const A = u.events.element(e.mul(3).add(EVENT_ROWS.forms)).toVar();
+                const B = u.events.element(e.mul(3).add(EVENT_ROWS.forms + 1)).toVar();
+                const D = u.events.element(e.mul(3).add(EVENT_ROWS.forms + 2)).toVar();
+                const shape = float(0.0).toVar();
+                If(A.x.lessThan(1.5), () => {
+                    // A twist: an OPEN pinwheel of thin arms unwinding out of the rim and turning.
+                    const psi = phi.mul(D.x).sub(A.y.mul(1.7)).sub(logR.mul(PINWHEEL_WIND));
+                    const offA = fract(psi.mul(PINWHEEL_ARMS / TAU).add(0.5)).sub(0.5)
+                        .mul((TAU / PINWHEEL_ARMS) / Math.sqrt(1 + PINWHEEL_WIND * PINWHEEL_WIND)).mul(r);
+                    const w = max(pixR.mul(1.3), 0.035);
+                    const line = exp(pow2(offA.div(w)).negate());
+                    // A soft wake behind each arm as it turns.
+                    const wake = exp(min(offA, 0.0).div(0.3)).mul(step(offA, 0.0)).mul(0.2);
+                    const span = smoothstep(1.0, 1.22, r).mul(float(1.0).sub(smoothstep(A.w.mul(0.72), A.w, r)));
+                    const along = mix(float(1.0), float(0.4), clamp(r.sub(1.0).div(max(A.w.sub(1.0), 0.1)), 0.0, 1.0));
+                    shape.assign(line.mul(1.3).add(wake).mul(span).mul(along));
+                }).ElseIf(A.x.lessThan(2.5), () => {
+                    // A back-to-back: the Einstein cross, bright images of one light standing round
+                    // the ring (four, more for a longer run), drifting a little out as they fade.
+                    const sector = float(TAU).div(max(D.x, 1.0));
+                    const rel = phi.sub(B.w.mul(TAU)).toVar();
+                    const dphi = rel.sub(floor(rel.div(sector).add(0.5)).mul(sector));
+                    const radial = r.sub(A.w);
+                    const arc = exp(pow2(dphi.div(0.2)).negate())
+                        .mul(exp(pow2(radial.div(max(pixR.mul(1.4), 0.016))).negate()));
+                    const d2 = pow2(dphi.mul(r)).add(pow2(radial));
+                    const glow = exp(d2.div(0.012).negate()).mul(0.3);
+                    const core = exp(d2.div(max(pixR.mul(pixR).mul(5.0), 2e-4)).negate()).mul(3.0);
+                    shape.assign(arc.mul(2.2).add(glow).add(core));
+                }).ElseIf(A.x.lessThan(3.5), () => {
+                    // A crown: a corona of fine rays across the whole sky, of many lengths, over a
+                    // soft glow; the rays fade to an even light toward the gate (no spokes at the hub).
+                    const tinted = vec3(0.0).toVar();
+                    CORONA_SECTORS.forEach((M, i) => {
+                        const a = phi.div(TAU).add(1.5).add(B.w).add(A.y.mul(i ? -0.006 : 0.009))
+                            .mul(M);
+                        const sec = floor(a);
+                        const h = swHash23(vec2(mod(sec, M), 13.0 + i * 7.0));
+                        const offR = fract(a).sub(0.5).sub(h.x.sub(0.5).mul(0.7)).mul(TAU / M)
+                            .mul(r);
+                        const len = h.y.mul(h.y).mul(A.w.sub(1.0)).mul(0.95).add(0.5);
+                        const wR = max(pixR.mul(1.25), r.mul(0.0025).add(0.008));
+                        const ray = exp(pow2(offR.div(wR)).negate())
+                            .mul(exp(r.sub(1.0).div(len.mul(0.42)).negate()))
+                            .mul(float(1.0).sub(smoothstep(len.mul(0.7), len, r.sub(1.0))))
+                            .mul(h.z.mul(0.7).add(0.3))
+                            .mul(step(0.4, h.z));
+                        // One ray in four in the nebula's third colour (D.xyz), the rest in the crown's gold.
+                        tinted.addAssign(mix(B.rgb, D.xyz, step(0.75, h.x)).mul(ray.mul(i ? 0.7 : 1.0)));
+                    });
+                    const hub = smoothstep(1.0, 1.8, r);
+                    const glow = exp(r.sub(1.0).div(1.5).negate()).mul(0.14);
+                    // Its rays carry their own colours: the shape adds them here and stays 0 below.
+                    shapes.addAssign(tinted.mul(hub).mul(1.6).add(B.rgb.mul(glow)).mul(A.z));
+                }).Else(() => {
+                    // A level: a lotus of the new palette's light opening out of the rim, two rings
+                    // of petals, the inner turned half a petal and shorter.
+                    const turnP = phi.sub(B.w.mul(TAU)).sub(A.y.mul(0.2)).toVar();
+                    // Lobes round the rim: the corolla's front stands furthest out at each petal's
+                    // middle. Inside it the new light fills, brightest toward the front.
+                    const lobe = cos(turnP.mul(PETALS)).mul(0.5).add(0.5);
+                    const lip = float(1.0).add(A.w.sub(1.0).mul(lobe.mul(0.62).add(0.38))).toVar();
+                    const t = r.sub(1.0).div(max(lip.sub(1.0), 0.05)).toVar();
+                    const inside = float(1.0).sub(smoothstep(0.97, 1.03, t)).mul(smoothstep(0.0, 0.1, t));
+                    const fill = t.mul(t).mul(t).mul(0.16).add(0.015)
+                        .mul(inside);
+                    // The lip burns at the petals' tips and fades into the valleys between them.
+                    const edge = exp(pow2(r.sub(lip).div(max(pixR.mul(1.4), 0.022))).negate())
+                        .mul(lobe.mul(1.3).add(0.35));
+                    // A vein down each petal's middle.
+                    const vein = exp(pow2(fract(turnP.mul(PETALS / TAU).add(0.5)).sub(0.5).mul(TAU / PETALS).mul(r)
+                        .div(max(pixR.mul(1.3), 0.02))).negate())
+                        .mul(inside).mul(t).mul(0.5);
+                    shape.assign(fill.add(edge).add(vein));
+                });
+                shapes.addAssign(B.rgb.mul(shape.mul(A.z)));
+            });
+            sky.addAssign(shapes.mul(u.iris));
+        }
         result.assign(sky);
     });
 
@@ -461,14 +774,29 @@ export function createSky(u, tier) {
         vortexDust: tier.vortexDust !== false,
         heroStars: tier.heroStars !== false,
         richFar: tier.richFar !== false,
+        streamers: Math.max(0, Math.min(STREAMER_LAYERS.length, tier.streamers ?? 1)),
+        litNebula: tier.litNebula === true && tier.richFar !== false,
+        galaxies: tier.galaxies === true,
+        visitors: true,
+        forms: true,
     };
 
-    // ── The environment pass (what the glass mirrors: no spikes, no second veil, no relief) ──
+    // ── The environment pass (what the glass mirrors: no spikes, no second veil, no relief, and
+    //    none of the third pass's fine light: streamers, lit faces, galaxies, visitors, shapes) ──
     const envTexel = uniform(TAU / 512);
     const envFn = Fn(() => {
         const d = swEnvDir(uv()).toVar();
         const light = skyLight(u, d, envTexel, {
-            ...options, skyLayers: Math.min(2, options.skyLayers), vortexLight: false, vortexDust: false, heroStars: false,
+            ...options,
+            skyLayers: Math.min(2, options.skyLayers),
+            vortexLight: false,
+            vortexDust: false,
+            heroStars: false,
+            streamers: 0,
+            litNebula: false,
+            galaxies: false,
+            visitors: false,
+            forms: false,
         });
         // Where the target is 8-bit, keep the dark sky's steps: store √(light / peak).
         const stored = u.floatTarget ? light : sqrt(clamp(light.div(ENV_CODE_PEAK), 0.0, 1.0));
