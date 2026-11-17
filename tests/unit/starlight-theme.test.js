@@ -105,6 +105,8 @@ vi.mock('../../src/themes/starlight/starlight-world.js', () => ({
             this.counts = { locks: 0, clears: 0, quads: 0 };
         }
 
+        onGameOver() { this.gameOvers = (this.gameOvers || 0) + 1; }
+
         updateCamera() { return this; }
 
         update(sim) { this.time = sim.time; }
@@ -761,7 +763,7 @@ describe('Starlight theme: one node renderer on both backends', () => {
         expect(() => stepFrames(system.theme, 30)).not.toThrow();
     });
 
-    it('puts the sky back at rest when a run ends', async () => {
+    it('ends a run by letting its constellations fall, without wiping the world first', async () => {
         const { theme, listeners } = await startTheme({ quality: 'High' });
         for (let i = 0; i < 3; i++) {
             eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
@@ -770,12 +772,18 @@ describe('Starlight theme: one node renderer on both backends', () => {
         }
         expect(theme.world.combo).toBe(3);
         expect(counts(theme)).toMatchObject({ locks: 3, clears: 3 });
+        // A lock staged in the frame the run ends still lands in this run.
+        eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
         const reset = vi.spyOn(theme.world, 'resetSession');
+        const fall = vi.spyOn(theme.world, 'onGameOver');
         listeners.get('gameOver')();
-        expect(reset).toHaveBeenCalledOnce();
-        expect(theme.world.getState()).toMatchObject({
-            combo: 0, counts: { locks: 0, clears: 0, quads: 0 },
-        });
+        // The world keeps what the run drew (a reset would cut the fall off: gotcha #1716) …
+        expect(reset).not.toHaveBeenCalled();
+        expect(fall).toHaveBeenCalledOnce();
+        expect(reset.mock.invocationCallOrder.length).toBe(0);
+        expect(counts(theme).locks).toBe(4);
+        // … and the chain is broken.
+        expect(theme.world.getState()).toMatchObject({ combo: 0 });
         expect(theme.combos.size).toBe(0);
         expect(theme.level).toBe(1);
         expect(theme.director.slots.every((slot) => !slot.assigned)).toBe(true);

@@ -1,13 +1,15 @@
 /**
  * Starlight — composition (CPU only, three-free).
  *
- * The gameplay card hangs in front of the storm like a pane of dark glass. The picture is built
+ * The gameplay card hangs in front of the night like a pane of dark glass. The picture is built
  * for what stays visible round it:
  *
- *   LEFT   — the tornado and the bright horizon gap.
- *   BEHIND — the far prairie and the horizon: what shows through the card is soft-clipped by the post.
- *   RIGHT  — the low sun in the gap, the rain shafts and the farmstead.
- *   ABOVE  — the rotating cloud base.
+ *   LEFT   — the pole star the sky wheels round, the Milky Way's heart and its nebulae, the great
+ *            comet when it visits, the open lake where locks and fish ring.
+ *   BEHIND — the far shore and the hills: what shows through the card is soft-clipped by the post.
+ *   RIGHT  — beyond the HUD, the constellations being drawn, the distant range, the lamps of the
+ *            far shore and their paths on the water.
+ *   ABOVE  — the shower's radiant, the satellites drifting over, a twist's spiral.
  *
  * This module reads the live card, board and HUD rects (screen fractions, y down) and maps board
  * columns and rows onto the screen; the world turns those into rays (where a lock leaves the

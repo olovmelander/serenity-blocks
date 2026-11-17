@@ -13,12 +13,16 @@
  *   combo=<n>                hold a combo of n (the shutter open: every star draws a trail)
  *   heat=<0..1>&fever=<0..1> hold the gameplay surge at this level and fever (the night's
  *                            build-up: warm ≈ 0.3, hot ≈ 0.6, fever = heat 0.9 + fever 1)
+ *   air=clear|waves|veil|mist|breeze|shine   hold the night's air in one state (it otherwise
+ *                            turns by the clock: starlight-night.js)
+ *   visitors=0               no satellites or fish of their own (the comet keeps its clock)
  *   level=<n>                level n's hour and the sky swung n − 1 hours on (the light also
  *                            turns with the clock alone: one hour every 100 s of `t`, resting
  *                            15 s, so t=14 is still on the level's own)
  *   locks=<n>                before anything else, play n locks (the stars they kindle)
  *   clears=<n>               ...and n single-line clears among them (the figure's lines)
- *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|perfect|levelUp|b2b|cascade|gameOver   fire a gameplay event,
+ *         or a visitor: satellite|station|fish|comet ...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
  *   demo=1                   live only: play a looping gameplay script
@@ -125,6 +129,8 @@ export function create({
     const world = new StarlightWorld({ scene, quality, capture: true }).build();
     world.bindCamera(camera);
     world.setReducedMotion(params.get('reduce') === '1');
+    if (params.has('air')) world.setAirHold(params.get('air'));
+    if (params.get('visitors') === '0') world.setVisitors(false);
     if (params.has('heat') || params.has('fever')) {
         // Hold the surge: the world reads what play would have built up to.
         const held = {
@@ -216,6 +222,12 @@ export function create({
         else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
         else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
+        else if (eventName === 'b2b') world.onClear({ rows: bottom(lines), lines, b2b: true });
+        else if (eventName === 'cascade') world.onClear({ rows: bottom(lines), lines, cascade: 3 });
+        else if (eventName === 'gameOver') world.onGameOver();
+        else if (eventName === 'satellite' || eventName === 'station') world.satellite(eventName === 'station');
+        else if (eventName === 'fish') world.fish();
+        else if (eventName === 'comet') world.summonComet?.();
     };
 
     let lastSeek = null;

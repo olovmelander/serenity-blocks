@@ -25,6 +25,8 @@
  */
 import * as THREE from 'three/webgpu';
 import {
+    Fn,
+    If,
     abs,
     attribute,
     cameraPosition,
@@ -52,7 +54,8 @@ import {
     FIGURES_KEPT, FIGURE_LINES, FIGURE_STARS,
 } from './starlight-core.js';
 import {
-    SKY_RADIUS, mirrorDir, mirrorShare, ridges, sized, skyDir, skyTangent, slLuma, starColour, woodsTop,
+    SKY_RADIUS, mirrorDir, mirrorShare, ridges, sized, skyDir, skyTangent, slLuma, starColour, veilDensity,
+    woodsTop,
 } from './starlight-tsl.js';
 
 /** Catalogue stars bright enough to carry a glint (the catalogue is sorted brightest first). */
@@ -80,11 +83,39 @@ const throughAir = (y) => {
     return { kept, tint: mix(vec3(1.0, 0.78, 0.56), vec3(1.0, 1.0, 1.0), kept) };
 };
 
-/** 1 above the far hills and the woods on the near crest, 0 behind them. */
-const aboveHills = (noise, d) => {
-    const crest = ridges(noise, d);
-    return smoothstep(0.0, 0.004, d.y.sub(max(crest.x.add(woodsTop(noise, d)), crest.y)));
-};
+/**
+ * How much of a star's light the high veil lets through in direction `d` (1 on a clear night):
+ * the same density the sky draws (veilDensity), read at an explicit mip in the vertex, and only
+ * while the air has a veil (the branch is the same for every vertex).
+ */
+const veilClear = (u, noise, depth = 0.85) => Fn(([dIn]) => {
+    const kept = float(1.0).toVar();
+    If(u.air.y.greaterThan(0.002), () => {
+        kept.assign(veilDensity(u, noise, dIn, 1).mul(-depth).add(1.0));
+    });
+    return kept;
+});
+
+/**
+ * Nothing on the horizon stands higher than this (the sine of the altitude): the far crest tops out
+ * near 0.087, the distant range near 0.085, the near crest and its woods near 0.051, whatever the
+ * noise reads (starlight-tsl.js ridges, each read at most 1).
+ */
+const HILLS_TOP = 0.12;
+
+/**
+ * 1 above the far hills, the distant range and the woods on the near crest, 0 behind them. The
+ * hills' eight noise reads are taken only for a direction low enough to meet them: most stars
+ * stand far above, and every star vertex used to pay for them.
+ */
+const aboveHills = (noise, d) => Fn(([dIn]) => {
+    const seen = float(1.0).toVar();
+    If(dIn.y.lessThan(HILLS_TOP), () => {
+        const crest = ridges(noise, dIn);
+        seen.assign(smoothstep(0.0, 0.004, dIn.y.sub(max(max(crest.x.add(woodsTop(noise, dIn)), crest.y), crest.z))));
+    });
+    return seen;
+})(d);
 
 // ── The field ────────────────────────────────────────────────────────────────────
 
@@ -137,7 +168,7 @@ function fieldMaterial({
     // The trail's length on the sky, in quad half-widths.
     const reach = u.exposure.mul(polar.y).div(half);
 
-    const sees = aboveHills(noise, d);
+    const sees = aboveHills(noise, d).mul(veilClear(u, noise)(d));
     const air = throughAir(d.y);
     let centre = d;
     let alongOut = along;
@@ -255,7 +286,7 @@ function glintMaterial({
     const born = u.time.sub(polar.w);
     const there = step(0.0, born).mul(step(0.001, weight)).mul(figure.x);
     const d = skyDir(u, polar.x, polar.y, polar.z.add(u.skyAngle));
-    const sees = aboveHills(noise, d);
+    const sees = aboveHills(noise, d).mul(veilClear(u, noise, 0.6)(d));
     const air = throughAir(d.y);
     let centre = d;
     let shown = sees.mul(there);
@@ -274,8 +305,18 @@ function glintMaterial({
     const breath = sin(u.time.mul(1.3).add(polar.z.mul(7.0))).mul(0.1).add(1.0);
     const power = weight.mul(air.kept).mul(shown).mul(breath)
         .mul(arrival.mul(3.2).add(1.0).add(figure.y.mul(2.2)));
+    // Scintillation: a bright star low in the sky flashes colours as the air bends its light
+    // (the catalogue's own glints only: a kindled star keeps its piece's colour). Three slow beats
+    // a channel, so it shimmers through red, white and blue instead of strobing.
+    const catalogue = step(FIGURES_KEPT - 0.5, floor(paint.w));
+    const low = exp(max(d.y, 0.0).div(-0.13)).mul(catalogue).mul(u.shutter.oneMinus());
+    const flicker = vec3(
+        sin(u.time.mul(5.3).add(polar.z.mul(31.0))),
+        sin(u.time.mul(6.7).add(polar.z.mul(17.0)).add(2.1)),
+        sin(u.time.mul(4.1).add(polar.z.mul(23.0)).add(4.2)),
+    ).mul(low.mul(0.42)).add(1.0);
     // (the glint's half-size in pixels of the buffer: the fragment draws its spikes a pixel wide)
-    const vLight = varying(vec4(paint.xyz.mul(air.tint).mul(power), span.div(u.texel)));
+    const vLight = varying(vec4(paint.xyz.mul(air.tint).mul(flicker).mul(power), span.div(u.texel)));
     const q = uv().sub(0.5).mul(2.0);
     const r2 = q.dot(q);
     const r = r2.sqrt();

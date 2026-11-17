@@ -216,8 +216,12 @@ describe.each(TIERS)('starlight shaders at %s', (quality) => {
     afterAll(() => world?.dispose());
 
     it('builds every part on both backends without a warning, an undeclared binding or an unassigned read', () => {
-        // sky, field (sky + lake), glints (sky + lake), lines (sky + lake), streaks (sky + lake)
-        expect(built.length).toBeGreaterThanOrEqual(18);
+        // sky, field, glints, lines, streaks, the comet and the spirals (each sky + lake except
+        // the sky), on two backends; the comet and the spirals are hidden until needed and are
+        // gated all the same.
+        expect(built.length).toBeGreaterThanOrEqual(26);
+        ['starlight-comet', 'starlight-comet-mirror', 'starlight-spirals', 'starlight-spirals-mirror']
+            .forEach((name) => expect(built.filter((b) => b.name === name)).toHaveLength(2));
         expect(built.flatMap(problemsOf)).toEqual([]);
     });
 
