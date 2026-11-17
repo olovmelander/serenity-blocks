@@ -1379,6 +1379,9 @@ export class OdysseyBoardController {
                     // flat sheet back alongside or instead.
                     // (Same reads as _readWorldBuildOptions — the bake and the build agree.)
                     cloudField: !readBooleanUrlFlag('odysseyWorldNoCloudField'),
+                    // THE SEA OF CLOUDS under chapter 5's evening (world/odyssey-cloud-sea.js).
+                    // BISECT LEVER: ?odysseyNoCloudSea=1.
+                    cloudSea: !readBooleanUrlFlag('odysseyNoCloudSea'),
                     // `?odysseyForestGreens=` (odyssey-forest-greens.js): the broadleaf palette.
                     forestGreens: readUrlValue('odysseyForestGreens') || '',
                     cloudFieldCount: Number.parseInt(readUrlValue('odysseyWorldCloudFieldCount'), 10) || 0,

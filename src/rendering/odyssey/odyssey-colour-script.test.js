@@ -4,6 +4,7 @@ import {
     HORIZON_ANCHOR,
     HORIZON_CHROMA_TOLERANCE,
     HORIZON_HUE_TOLERANCE_DEG,
+    MAX_EVENING_HORIZON_TRAVEL_PER_005P,
     MAX_HUE_RATE_DEG_PER_005P,
     ODYSSEY_COLOUR_SCRIPT,
     hexToOklab,
@@ -63,10 +64,11 @@ describe('INVARIANT 1 — horizon convergence', () => {
     const anchorHue = oklabHue(anchor);
     const anchorChroma = oklabChroma(anchor);
 
-    const airFrames = ODYSSEY_COLOUR_SCRIPT.filter((k) => k.medium === 'air');
+    // The evening (chapter 5) is the declared exemption: its own describe block below.
+    const airFrames = ODYSSEY_COLOUR_SCRIPT.filter((k) => k.medium === 'air' && k.horizon !== 'evening');
 
     it('has atmospheric keyframes to check', () => {
-        expect(airFrames.length).toBeGreaterThanOrEqual(4);
+        expect(airFrames.length).toBeGreaterThanOrEqual(2);
     });
 
     it.each(airFrames.map((k) => [k.name, k]))(
@@ -109,6 +111,13 @@ describe('INVARIANT 2 — hue rate limit', () => {
                 || ODYSSEY_COLOUR_SCRIPT[frameIdx]?.seamAfter;
             if (spansSeam) continue;
 
+            // The evening is held to its own ruler (the describe block below): a hue angle
+            // means nothing for a horizon passing close to white.
+            const lastAnchored = ODYSSEY_COLOUR_SCRIPT[
+                ODYSSEY_COLOUR_SCRIPT.findIndex((k) => k.horizon === 'evening') - 1
+            ].p;
+            if (p + 0.05 > lastAnchored + 1e-9) continue;
+
             const d = Math.abs(hueDelta(oklabHue(a.skyHorizonLab), oklabHue(b.skyHorizonLab)));
             if (d > MAX_HUE_RATE_DEG_PER_005P) offenders.push({ p: +p.toFixed(3), delta: +d.toFixed(1) });
         }
@@ -118,6 +127,80 @@ describe('INVARIANT 2 — hue rate limit', () => {
     it('declares exactly the two occlusion seams the journey is allowed to cut at', () => {
         const seams = ODYSSEY_COLOUR_SCRIPT.filter((k) => k.seamAfter).map((k) => k.name);
         expect(seams).toEqual(['abyss', 'cloud-deck']);
+    });
+});
+
+describe("THE EVENING — chapter 5's declared exemption (the day ends on the climb)", () => {
+    const anchor = hexToOklab(HORIZON_ANCHOR);
+    const anchorHue = oklabHue(anchor);
+    const anchorChroma = oklabChroma(anchor);
+    const first = ODYSSEY_COLOUR_SCRIPT.findIndex((k) => k.horizon === 'evening');
+    const evening = ODYSSEY_COLOUR_SCRIPT.filter((k) => k.horizon === 'evening');
+    const travel = (x, y) => Math.hypot(x.a - y.a, x.b - y.b);
+
+    it("is one unbroken run of air keyframes, from the climb's foot to the edge of the air", () => {
+        expect(evening.length).toBeGreaterThanOrEqual(6);
+        evening.forEach((k, i) => {
+            expect(k.medium).toBe('air');
+            expect(ODYSSEY_COLOUR_SCRIPT[first + i]).toBe(k);
+        });
+        // Nothing anchored after it: the next keyframe is the vacuum.
+        expect(ODYSSEY_COLOUR_SCRIPT[first + evening.length].medium).toBe('vacuum');
+        // It starts where chapter 5 does (script p 0.409 = journey p 0.340) and no earlier:
+        // chapters 3 and 4 keep the anchor.
+        expect(evening[0].p).toBeGreaterThanOrEqual(0.40);
+        expect(ODYSSEY_COLOUR_SCRIPT[first - 1].horizon).toBeUndefined();
+    });
+
+    it('genuinely leaves the anchor (the exemption is doing real work)', () => {
+        const away = evening.filter((k) => {
+            const lab = hexToOklab(k.skyHorizon);
+            return Math.abs(hueDelta(anchorHue, oklabHue(lab))) > HORIZON_HUE_TOLERANCE_DEG
+                || Math.abs(oklabChroma(lab) - anchorChroma) > HORIZON_CHROMA_TOLERANCE;
+        });
+        expect(away.length).toBeGreaterThanOrEqual(evening.length - 1);
+    });
+
+    it('moves the horizon no faster than a seam does, from the last anchored keyframe on', () => {
+        const from = ODYSSEY_COLOUR_SCRIPT[first - 1].p;
+        const to = evening.at(-1).p;
+        let worst = 0;
+        for (let p = from; p + 0.05 <= to + 1e-9; p += 0.0025) {
+            const here = sampleColourScript(p).skyHorizonLab;
+            worst = Math.max(worst, travel(here, sampleColourScript(p + 0.05).skyHorizonLab));
+        }
+        expect(worst).toBeLessThanOrEqual(MAX_EVENING_HORIZON_TRAVEL_PER_005P);
+        // The ruler has teeth: the anchor to its warm opposite inside one window is refused.
+        expect(travel(hexToOklab(0xb8d2ea), hexToOklab(0xead2b8))).toBeGreaterThan(MAX_EVENING_HORIZON_TRAVEL_PER_005P);
+    });
+
+    it('keeps the sky clean and luminous: no grey, brown or muddy horizon, no dull light', () => {
+        evening.forEach((k) => {
+            const horizon = hexToOklab(k.skyHorizon);
+            // A pale, bright horizon all evening (the owner judges sky colour first).
+            expect(horizon.L, `${k.name} horizon`).toBeGreaterThan(0.76);
+            // The zenith stays a blue, never a grey: between azure and violet, with real chroma.
+            const zenith = hexToOklab(k.skyZenith);
+            const zenithHue = oklabHue(zenith);
+            expect(zenithHue, `${k.name} zenith hue`).toBeGreaterThan(250);
+            expect(zenithHue, `${k.name} zenith hue`).toBeLessThan(290);
+            expect(oklabChroma(zenith), `${k.name} zenith chroma`).toBeGreaterThan(0.09);
+            // The sun's light is warm and bright (gold through rose), never neutral or dim...
+            const sun = hexToOklab(k.sun);
+            const sunHue = oklabHue(sun);
+            expect(sun.L, `${k.name} sun`).toBeGreaterThan(0.78);
+            expect(sunHue < 100 || sunHue > 340, `${k.name} sun hue ${sunHue}`).toBe(true);
+            // ...against a cool shadow: the hue difference is the evening's form.
+            const shadowHue = oklabHue(hexToOklab(k.groundShadow));
+            expect(shadowHue, `${k.name} shadow hue`).toBeGreaterThan(240);
+            expect(shadowHue, `${k.name} shadow hue`).toBeLessThan(300);
+        });
+        // The light warms to the sunset and clears again where the Earth's own white light takes over.
+        const chroma = evening.map((k) => oklabChroma(hexToOklab(k.sun)));
+        const peak = chroma.indexOf(Math.max(...chroma));
+        expect(peak).toBeGreaterThan(1);
+        expect(peak).toBeLessThan(evening.length - 1);
+        expect(chroma.at(-1)).toBeLessThan(chroma[peak] * 0.6);
     });
 });
 
