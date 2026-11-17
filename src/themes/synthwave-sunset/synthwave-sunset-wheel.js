@@ -213,7 +213,7 @@ function createStructureMaterial(u) {
         const facing = abs(dot(N, V));
         // Backlit steel: dark, a warm rim where the surface turns toward the sun behind it.
         const rim = pow3(float(1.0).sub(facing)).mul(max(dot(N, u.sunDir), 0.0).mul(0.8).add(0.2));
-        const steel = rgb(0x1f1626).add(rgb(0xff8a5c).mul(rim.mul(0.55)).mul(mix(float(1.0), float(0.4), u.dusk)));
+        const steel = rgb(0x1f1626).add(u.sunBand.mul(rim.mul(0.55)).mul(mix(float(1.0), float(0.4), u.dusk)));
         // The bulbs light the rim and the spokes near it (cheap: by local radius).
         const local = positionGeometry;
         const r = length(vec2(local.x, local.y));
@@ -316,20 +316,62 @@ function createBulbs(u) {
         const t = u.time;
         // The chase programmes run on the midway's clock, which quickens as play heats.
         const pace = u.chaseTime ?? t;
-        // Programme: warm steady with a slow twinkle; every third rim bulb flamingo, every fifth
-        // mint; a soft chase runs round the rims; spokes pulse outward.
         const tw = sin(t.mul(2.3).add(swHash11(idx.add(ring.mul(311.0))).mul(40.0))).mul(0.12).add(0.88);
+        const isRim = step(ring, 1.5);
+        const rad = A.x.div(WHEEL.radius);
+        // ── The wheel's light programmes (u.wheelShow = (the one showing, the one it is turning
+        // to, how far): the world turns them by its clock, so the wheel never wears one for long.
+        // 0 the classic: warm steady with a slow twinkle; every third rim bulb flamingo, every
+        //   fifth mint; a soft chase runs round the rims; the spokes pulse outward.
         const third = step(fract(idx.div(3.0)), 0.2);
         const fifth = step(fract(idx.div(5.0)), 0.12);
         const rimCol = mix(mix(rgb(0xffd88a), rgb(0xff6fae), third), rgb(0x7ff0d4), fifth);
         const chase = smoothstep(0.82, 1.0, fract(idx.div(n).mul(6.0).sub(pace.mul(0.22)))).mul(0.8);
         const spokePulse = smoothstep(0.6, 1.0, fract(idx.div(WHEEL.spokeBulbs).sub(pace.mul(0.5)))).mul(0.6);
         const level = select(ring.lessThan(1.5), float(1.0).add(chase), select(ring.lessThan(2.5), float(0.8).add(spokePulse), float(0.9)));
-        const baseCol = select(ring.lessThan(1.5), rimCol, rgb(0xffe2b0)).mul(level).mul(tw).toVar();
+        const classic = select(ring.lessThan(1.5), rimCol, rgb(0xffe2b0)).mul(level);
+        // 1 the pinwheel: three spiral arms of light sweep round the whole face, flamingo and mint.
+        const arms = smoothstep(0.5, 1.0, cos(theta.mul(3.0).sub(pace.mul(0.9)).sub(rad.mul(2.4))));
+        const pinwheel = mix(rgb(0xff6fae), rgb(0x7ff0d4), step(0.0, sin(theta.mul(1.5).sub(pace.mul(0.45)))))
+            .mul(float(0.22).add(arms.mul(1.9)));
+        // 2 the bloom: rings of gold open from the hub out to the rim.
+        const rings = smoothstep(0.62, 1.0, fract(rad.mul(1.3).sub(pace.mul(0.32))));
+        const bloom = rgb(0xffd070).mul(float(0.26).add(rings.mul(1.8)));
+        // 3 the spectrum: the neon colours turn slowly round the face.
+        const hue = fract(theta.div(Math.PI * 2).add(pace.mul(0.05)).add(rad.mul(0.18))).mul(5.0).toVar();
+        const stop = (k) => clamp(float(1.0).sub(abs(hue.sub(k))), 0.0, 1.0);
+        const spectrum = rgb(0xff6fae).mul(stop(0.0).add(stop(5.0)))
+            .add(rgb(0xffe46a).mul(stop(1.0)))
+            .add(rgb(0x7ff0d4).mul(stop(2.0)))
+            .add(rgb(0x6fd8ff).mul(stop(3.0)))
+            .add(rgb(0xc8a2ff).mul(stop(4.0)))
+            .mul(1.15);
+        // 4 the glitter: a dim lilac wheel on which bulbs flash white, each on its own beat.
+        const beat = fract(pace.mul(0.7).add(swHash11(idx.add(ring.mul(311.0)).add(5.0)).mul(19.0)));
+        const glitter = mix(rgb(0xb89cff, 0.3), rgb(0xfff4e6, 2.6), smoothstep(0.86, 0.94, beat).mul(float(1.0).sub(smoothstep(0.94, 1.0, beat))));
+        const show = u.wheelShow;
+        const weight = (k) => clamp(float(1.0).sub(abs(show.x.sub(k))), 0.0, 1.0).mul(float(1.0).sub(show.z))
+            .add(clamp(float(1.0).sub(abs(show.y.sub(k))), 0.0, 1.0).mul(show.z));
+        const baseCol = classic.mul(weight(0.0))
+            .add(pinwheel.mul(weight(1.0)))
+            .add(bloom.mul(weight(2.0)))
+            .add(spectrum.mul(weight(3.0)))
+            .add(glitter.mul(weight(4.0)))
+            .mul(tw)
+            .toVar();
+        // The starburst (a quad, a level, the perfect clear): a ring of light bursts from the hub
+        // out along the spokes to the rim, which flares as it arrives (u.wheelBurst = (start
+        // time, strength, 0, 0)).
+        const burstAge = t.sub(u.wheelBurst.x);
+        const front = burstAge.mul(2.4);
+        const gap = rad.sub(front).div(0.16);
+        const flare = exp(gap.mul(gap).negate()).add(isRim.mul(smoothstep(0.38, 0.46, burstAge)).mul(exp(burstAge.sub(0.46).mul(-2.2))))
+            .mul(u.wheelBurst.y).mul(step(0.0, burstAge));
+        baseCol.addAssign(u.wheelBurstCol.mul(flare.mul(2.2)));
         // Lock chases (see wheelChase): the bands of the piece's colour on the rim bulbs; where
         // bands pile up (rapid locks, a hard drop) the bulbs burn brighter, not only recoloured.
         const ch = wheelChase(u, theta);
-        const onRim = step(ring, 1.5);
+        const onRim = isRim;
         baseCol.assign(mix(baseCol, ch.xyz.mul(1.4), clamp(ch.w, 0.0, 1.0).mul(onRim)));
         baseCol.addAssign(ch.xyz.mul(max(ch.w.sub(1.0), 0.0).mul(0.35).mul(onRim)));
         const col = baseCol;
