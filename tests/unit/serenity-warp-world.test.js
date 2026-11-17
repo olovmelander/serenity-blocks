@@ -266,8 +266,9 @@ describe('Serenity Warp world', () => {
             last = s.warp;
         }
         expect(world.getState().current).toBeGreaterThan(rest.current);
-        // Each step sent a ring in the nebula's glow.
-        expect(world.waveCursor).toBe(5);
+        // Each step sent a surge down the arms into the throat (a chain pulls in; it sends no rings).
+        expect(world.surgeCursor).toBe(5);
+        expect(world.waveCursor).toBe(0);
         world.onCombo(0);
         run(world, camera, 6, 1 / 30);
         expect(world.getState().warp).toBeLessThan(last * 0.3);
@@ -390,8 +391,10 @@ describe('Serenity Warp world', () => {
         const rings = world.waveCursor;
         run(world, camera, JUMP_TUNNEL + JUMP_EXIT + 1, 1 / 30);
         expect(world.getState().jumps).toBe(1);
-        // Crowned: the arrival sent more than its one ring, and its afterglow is the perfect one.
-        expect(world.waveCursor - rings).toBeGreaterThanOrEqual(3);
+        // Crowned: the arrival sent its ring and a corona of rays (kind 3), and its afterglow is
+        // the perfect one.
+        expect(world.waveCursor - rings).toBeGreaterThanOrEqual(1);
+        expect(world.formSlots.some((s) => s.kind === 3 && s.birth > 20)).toBe(true);
         expect(world.getState().counts.crowns).toBe(1);
         expect(world.surge).toBeGreaterThan(0.5);
     });
@@ -518,35 +521,47 @@ describe('Serenity Warp world', () => {
         expect(counts[3]).toBeGreaterThan(counts[0]);
     });
 
-    it('rings twice for a back-to-back, more the longer the run, and answers a twist that cleared nothing', () => {
+    it('lights the Einstein cross for a back-to-back (more images the longer the run); a twist unwinds a pinwheel', () => {
         const { world, camera } = makeWorld('High', { at: 20 });
         let rim = 0;
+        const crosses = () => world.formSlots.filter((s) => s.kind === 2 && s.birth >= world.time - 0.5);
         const clear = (b2b) => {
-            const before = world.waveCursor;
+            const rings = world.waveCursor;
+            const forms = world.formCursor;
             frame(world, camera, 1 / 60, () => world.onClear({
                 rows: [19, 18], lines: 2, twist: true, b2b,
             }));
             rim = world.rimFlash;
             run(world, camera, 0.4, 1 / 60);
-            return world.waveCursor - before;
+            return { rings: world.waveCursor - rings, forms: world.formCursor - forms };
         };
         const plain = clear(false);
+        // A twist clear: its rings and an open pinwheel (kind 1); no cross.
+        expect(plain.forms).toBe(1);
+        expect(crosses()).toHaveLength(0);
         const once = clear(true);
-        expect(once).toBeGreaterThanOrEqual(plain + 2);
+        // A back-to-back adds the cross, not more rings.
+        expect(once.rings).toBe(plain.rings);
+        expect(once.forms).toBe(2);
         expect(rim).toBeGreaterThan(0.7);
-        const twice = clear(true);
-        expect(twice).toBeGreaterThan(once);
+        const first = crosses().at(-1).params[0];
+        expect(first).toBe(4);
+        clear(true);
+        expect(crosses().at(-1).params[0]).toBeGreaterThan(first);
         expect(world.getState().b2bRun).toBe(2);
         clear(false);
         expect(world.getState().b2bRun).toBe(0);
-        // A twist that cleared nothing: a small twist, the glass turning over, one faint ring.
+        // A twist that cleared nothing: a small twist, the glass turning over, a small pinwheel.
         run(world, camera, 4, 1 / 30);
         const before = world.waveCursor;
+        const forms = world.formCursor;
         const { level } = world.heat;
         frame(world, camera, 1 / 60, () => world.onSpin({ player: 0 }));
         run(world, camera, 0.15, 1 / 60);
         expect(Math.abs(world.twist)).toBeGreaterThan(0.01);
-        expect(world.waveCursor).toBe(before + 1);
+        expect(world.waveCursor).toBe(before);
+        expect(world.formCursor).toBe(forms + 1);
+        expect(world.formSlots.some((s) => s.kind === 1 && s.strength < 1 && s.birth > world.time - 0.3)).toBe(true);
         expect(world.heat.level).toBeGreaterThan(level);
         expect(world.getState().counts.spins).toBe(1);
     });

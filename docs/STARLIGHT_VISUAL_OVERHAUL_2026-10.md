@@ -309,7 +309,7 @@ tornado.
 rose hydrogen clouds with filaments and dark globules and paler hearts, a blue reflection cloud and
 a golden glow above the core (the colourful region of a real sky), and a faint arc of hydrogen
 below the band. Two reads of smooth fields at mip 2 shared by all of them, read only inside
-`|b| < 0.3, |l| < 0.95` and only where one is near (gotcha #1416).
+`|b| < 0.3, |l| < 0.95` and only where one is near (gotcha #1418).
 
 **The horizon.** A third, distant range behind the two crests: peaks from a fold of the noise less
 a base, in stretches, the palest silhouette (the most air in front of it). The stars, the comet and
@@ -322,8 +322,8 @@ function of the night's clock; a seek lands on the same air; `air=` holds one in
 | Air | The sky |
 | --- | --- |
 | clear | the dark sky (one state in three: the dark night stays the theme's own) |
-| waves | airglow: a patchy green-gold sheen low over the horizon with fine rippling crests, a dull red high up (gotcha #1414: bold bands read as an aurora) |
-| veil | high cirrus in streets fanning from a point on the horizon, two fibre layers at two speeds and a slow clump read, so it forms and melts; lit from below by the hour and the town; the stars hide in it and shine in its gaps (gotcha #1415) |
+| waves | airglow: a patchy green-gold sheen low over the horizon with fine rippling crests, a dull red high up (gotcha #1416: bold bands read as an aurora) |
+| veil | high cirrus in streets fanning from a point on the horizon, two fibre layers at two speeds and a slow clump read, so it forms and melts; lit from below by the hour and the town; the stars hide in it and shine in its gaps (gotcha #1417) |
 | mist | the lake's mist rises and thickens over the far shore, wider haloes round the lamps, a breath of it over the near water |
 | breeze | the swell lifts and the cat's paws spread: the mirror shivers |
 | shine | noctilucent cloud: silver-blue threads low over the horizon (ridges of a smooth field on its own deck), bright in the twilight hours, faint in the dark ones |
@@ -335,7 +335,7 @@ the open water beside the card: rings with no light of their own, only a bend in
 left of the card in the sky's own frame (it turns with the stars and sets behind the hills), its
 green-cyan coma and white nucleus, a curved striated golden dust tail and a straight blue ion tail
 with streamers running outward, the tails pointing away from a sun below the northern horizon, all
-mirrored in the lake (gotcha #1417).
+mirrored in the lake (gotcha #1419).
 
 **Events, each its own shape** (the first pass's table above still holds where this one does not
 replace it):

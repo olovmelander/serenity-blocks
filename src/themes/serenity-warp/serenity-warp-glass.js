@@ -61,6 +61,9 @@ import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 /** Floats per piece in an instance buffer: place, turn, tint, shape, state (five vec4). */
 export const GLASS_STRIDE = 20;
+/** The brightest a piece's surface is ever drawn (scene-linear, its hue kept). */
+export const GLASS_PEAK = 6;
+export const GLASS_REST_PEAK = 2.6;
 /** Index of refraction, and how strongly the crystal is stained per cell of path. */
 export const GLASS_IOR = 1.5;
 export const GLASS_ABSORB = 1.6;
@@ -383,7 +386,8 @@ export function* createGlassSteps(u, { count = 24, bevel = 3 } = {}) {
         const across = dot(o, vec3(0.62, 0.48, 0.3)).sub(runAt);
         const sheen = exp(across.mul(across).mul(-2.5)).mul(0.35);
 
-        const heat = mix(rgb, vec3(1.0), 0.45).mul(hot.mul(hot).mul(1.5));
+        // White hot where it faces us, still its colour at its edges (a flat white sticker before).
+        const heat = mix(rgb, vec3(1.0), cosI.mul(cosI).mul(0.6).add(0.15)).mul(hot.mul(hot).mul(1.5));
         const col = body.mul(0.82).add(seen.mul(0.3))
             .mul(float(1.0).sub(F))
             .add(reflected.mul(F))
@@ -397,6 +401,13 @@ export function* createGlassSteps(u, { count = 24, bevel = 3 } = {}) {
             .toVar();
         // Falling into the throat it burns to light.
         col.assign(mix(col, rgb.mul(5.0).add(u.gateCol.mul(1.5)), fallen.mul(fallen)));
+        // Never brighter than GLASS_PEAK (hue kept): the gate's glint at a grazing edge reached
+        // seventy times white, and MSAA's resolve and the rush's taps turned single samples of it
+        // into a dotted white outline round every piece.
+        // At rest a piece needs far less (only white heat and the fall burn brighter).
+        const peak = max(col.x, max(col.y, col.z));
+        const cap = mix(float(GLASS_REST_PEAK), float(GLASS_PEAK), max(hot, fallen));
+        col.mulAssign(min(float(1.0), cap.div(max(peak, 1e-4))));
         return vec4(max(col.mul(u.breath.mul(0.75).add(0.25)), vec3(0.0)), 1.0);
     })();
 
