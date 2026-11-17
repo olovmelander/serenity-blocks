@@ -17,6 +17,7 @@
  * godrays, godraysScale   raymarch steps and resolution of the volumetric sun shafts
  *                         (0 leaves a warmer haze toward the sun instead)
  * ribbons                 streamers a long combo unfurls around the board
+ * swans                   [cygnets with the pair on the lake, birds in a skein that flies across it]
  * bloomScale, post        the RenderPipeline (off: the scene is drawn directly with ACES)
  */
 const COLUMNS = ['groveTrees', 'farTrees', 'foliage', 'limbs', 'shadowMap', 'grassNear', 'grassFar', 'flowersNear',
@@ -36,6 +37,11 @@ const ROWS = {
     Minimal: [10, 100, 0.28, false, [1024, 512], 1800, 3600, 700, 3200, 240, 12, 28, 450, 70, 8, 0, 2, 4,
         4, 0.22, 0, 0, 2, 0, false],
 };
+// The swans (summer-swans.js): the pair is always on the lake.
+COLUMNS.push('swans');
+Object.entries({
+    Extreme: [4, 7], Ultra: [4, 7], High: [3, 6], Medium: [3, 5], Low: [2, 4], Minimal: [2, 3],
+}).forEach(([name, swans]) => ROWS[name].push(Object.freeze(swans)));
 
 export const SUMMER_TIERS = Object.freeze(Object.fromEntries(Object.entries(ROWS).map(([name, row]) => [
     name,
