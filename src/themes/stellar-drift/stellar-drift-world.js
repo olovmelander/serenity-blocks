@@ -53,13 +53,21 @@ import {
     BOLT_SLOTS,
     CHIME_LIVE,
     CHIME_SLOTS,
+    COMET_CROSS,
+    COMET_FIRST,
+    COMET_PATHS,
+    COMET_PERIOD,
     DEG,
+    ECLIPSE,
+    ECLIPSE_LIFE,
     EVENT_ROWS,
     GIANT,
+    HALO_LIFE,
     JET_LIFE,
     JET_SLOTS,
     METEOR_SLOTS,
     MOTE_FLIGHT,
+    NIGHTFALL_HOLD,
     PALETTES,
     PALETTE_KEYS,
     RINGS,
@@ -68,6 +76,7 @@ import {
     SHOCK_LIFE,
     STRIKE_LIFE,
     STRIKE_SLOTS,
+    SUN_RADIUS,
     SURGE_LIFE,
     SURGE_SPEED,
     TAU,
@@ -77,19 +86,25 @@ import {
     bakeBandMeta,
     bakeFbm,
     bakeLattice,
+    bakeMoon,
     bakeRingProfile,
     bandPlace,
     clamp01,
+    eclipseAt,
     createBandBlurTexture,
     createBandColorTexture,
     createBandMetaTexture,
     createFbmTextureSteps,
     createLatticeTexture,
+    createMoonTexture,
     createRingTexture,
     createStellarDriftUniforms,
     giantAnchors,
+    innerMoonAt,
+    INNER_MOON,
     lerp,
     mulberry32,
+    outbreakAt,
     paletteAt,
     paletteName,
     palettePhase,
@@ -102,6 +117,7 @@ import {
     sunDirection,
 } from './stellar-drift-tsl.js';
 import { WORLD_SEED } from './stellar-drift-bake.js';
+import { MOON_SIZES, moonSeed } from './stellar-drift-moon-bake.js';
 import { tierFor } from './stellar-drift-quality.js';
 import { EventPool } from './stellar-drift-pool.js';
 import { createSpace } from './stellar-drift-space.js';
@@ -251,6 +267,10 @@ export class StellarDriftWorld {
         this.aspect = 16 / 9;
         this.layout = fallbackLayout(1600, 900);
         this.layoutLive = false;
+        /** Game over's nightfall: how far it has fallen (0..1) and until when it holds. */
+        this.nightfall = { level: 0, until: -1e6 };
+        this._sunHour = [0, 0, 1];
+        this._ecl = { w: 0, rho: 1.2, psi: 0 };
         /** The giant on screen (fractions, y down), and its radius in screen heights. */
         this.heart = { x: 0.2, y: 0.47 };
         this.heartRadius = 0.26;
@@ -334,6 +354,13 @@ export class StellarDriftWorld {
         });
         this.gilt.reset();
         this.depth.reset();
+        /** A perfect clear's eclipse (its birth), a chain's crown in the haze, the comet in the sky. */
+        this.eclipseBirth = -1e6;
+        this.halo = { birth: -1e6, power: 0, rgb: [1, 1, 1] };
+        this.comet = {
+            birth: -1e6, path: 0, power: 0, seed: 0,
+        };
+        this.cometTick = Math.floor((time - COMET_FIRST) / COMET_PERIOD);
         this._post.flash = 0;
         this._post.kick = 0;
         this._post.bloomBoost = 0;
@@ -403,14 +430,25 @@ export class StellarDriftWorld {
         const rings = createRingTexture(this.ringProfile);
         const meta = bakeBandMeta(512, this.seed + 41);
         const colors = bakeBandColors(meta, PALETTES);
+        this.bandMeta = meta;
         const bandMeta = createBandMetaTexture(meta);
         const bands = createBandColorTexture(colors);
         const bandsFar = createBandBlurTexture(colors);
-        this.textures.push(lattice, fbm, rings, bandMeta, bands, bandsFar);
+        const iceMap = bakeMoon('ice', tier.moonSize, moonSeed(this.seed));
+        const rustMap = bakeMoon('rust', MOON_SIZES.rust, moonSeed(this.seed));
+        const moonIce = createMoonTexture(iceMap, 'stellar-drift-moon-ice');
+        const moonRust = createMoonTexture(rustMap, 'stellar-drift-moon-rust');
+        this.textures.push(lattice, fbm, rings, bandMeta, bands, bandsFar, moonIce, moonRust);
         this.noiseTexture = fbm;
         const u = createStellarDriftUniforms({
-            lattice, fbm, rings, bandMeta, bands, bandsFar,
-        }, { fbmSize: tier.fbmSize, ringSize: tier.ringSize, bandSize: meta.size });
+            lattice, fbm, rings, bandMeta, bands, bandsFar, moonIce, moonRust,
+        }, {
+            fbmSize: tier.fbmSize,
+            ringSize: tier.ringSize,
+            bandSize: meta.size,
+            moonIceSize: iceMap.width,
+            moonRustSize: rustMap.width,
+        });
         this.u = u;
 
         this.addPart('space', createSpace(u, tier));
@@ -501,13 +539,25 @@ export class StellarDriftWorld {
     /** A new run: the giant at rest again (it keeps turning, and the hour keeps its place). */
     resetSession() {
         const {
-            time, spin, flow, flutter, levelPlace, boltTick, meteorTick, meteorPhase, iceClock,
+            time, spin, flow, flutter, levelPlace, boltTick, meteorTick, meteorPhase, iceClock, comet, cometTick,
         } = this;
         this.resetState(time);
-        // The wheel eases back to the first level's place; it does not jump.
+        // The wheel eases back to the first level's place; it does not jump. A comet in the sky
+        // finishes its crossing, and nightfall (game over) keeps falling: the menu after a run shows it.
         Object.assign(this, {
-            spin, flow, flutter, levelPlace, boltTick, meteorTick, meteorPhase, iceClock,
+            spin, flow, flutter, levelPlace, boltTick, meteorTick, meteorPhase, iceClock, comet, cometTick,
         });
+    }
+
+    /** A run ended: nightfall over the giant (it lifts by itself, or when the next run starts). */
+    onGameOver() {
+        if (!this.u) return;
+        this.nightfall.until = this.time + NIGHTFALL_HOLD;
+    }
+
+    /** A run starts: the hour comes back at once (nightfall lifts over a second or two). */
+    onSessionStart() {
+        this.nightfall.until = Math.min(this.nightfall.until, this.time);
     }
 
     /** Nothing here is layered; kept so the theme and the playground bind every world alike. */
@@ -892,6 +942,39 @@ export class StellarDriftWorld {
         });
     }
 
+    /**
+     * A chain's crown: the haze of ice round the whole system lights in the chain's colour, and
+     * soft, torn waves of it roll out through the haze past the camera. A second crown while one
+     * still burns feeds it.
+     */
+    haloAt(time, power, rgb) {
+        const h = this.halo;
+        const scaled = power * (this.reducedMotion ? 0.35 : 1);
+        if (time - h.birth < HALO_LIFE * 0.4) {
+            h.power = Math.min(1.6, h.power + scaled * 0.5);
+            for (let i = 0; i < 3; i++) h.rgb[i] = lerp(h.rgb[i], rgb[i], 0.5);
+        } else {
+            h.birth = time;
+            h.power = scaled;
+            for (let i = 0; i < 3; i++) h.rgb[i] = rgb[i];
+        }
+    }
+
+    /** A comet: one crosses the far sky; `power` 1 for a new level, less for one that comes by itself. */
+    cometAt(time, power, salt, path = null) {
+        const c = this.comet;
+        if (time - c.birth >= 0 && time - c.birth < COMET_CROSS) {
+            // One is already crossing: it brightens for the new level.
+            c.power = Math.max(c.power, power);
+            return;
+        }
+        c.birth = time;
+        c.power = power * (this.reducedMotion ? 0.6 : 1);
+        c.path = Number.isInteger(path) ? path % COMET_PATHS.length
+            : Math.floor(mulberry32(0xc0e7 + salt * 7919)() * COMET_PATHS.length) % COMET_PATHS.length;
+        c.seed = (salt % 97) * 0.37;
+    }
+
     /** A shell of light thrown off the giant. */
     shockAt(time, power, rgb) {
         this.flourishAt('shock', 'shock', time, power, rgb);
@@ -912,7 +995,12 @@ export class StellarDriftWorld {
         this.ringChime(t + 0.04, 1.3, 4, 0, gold);
         this.surgeAt(t + 0.1, 'crown', 1.5, 1.3, gold);
         this.crownBoost = Math.max(this.crownBoost, calm ? 0.3 : 1);
-        this.shockAt(t + 0.05, 0.8, gold);
+        // The eclipse: the sun swings behind the giant (not under reduced motion: the light would
+        // sweep the whole face in a second). Its gold corona stands round the dark disc at totality,
+        // and the sun comes back out past the limb as a diamond ring.
+        const eclipsing = t - this.eclipseBirth < ECLIPSE_LIFE;
+        if (!calm && !eclipsing) this.eclipseBirth = t;
+        this.shockAt(t + (calm || eclipsing ? 0.05 : ECLIPSE.dusk * 0.85), 0.9, gold);
         this.flourishAt('strand', 'strand', t + 0.25, 1.3, gold, { seed: (seed % 1000) * 0.53 });
         this.vent = Math.max(this.vent, calm ? 0.3 : 1);
         this.surge = Math.min(1.4, this.surge + (calm ? 0.2 : 0.5));
@@ -942,7 +1030,7 @@ export class StellarDriftWorld {
         this.surgeAt(time + 0.08, crown ? 'crown' : 'surge', power, tall, rgb);
         if (crown) {
             this.crownBoost = Math.max(this.crownBoost, this.reducedMotion ? 0.3 : 1);
-            this.shockAt(time + 0.12, 0.6, rgb);
+            this.haloAt(time + 0.1, 1, rgb);
         }
         this.counts.milestones += 1;
     }
@@ -1033,18 +1121,18 @@ export class StellarDriftWorld {
             this.flourishAt('strand', 'strand', t + 0.3, blaze, pale, { seed: (seed % 1000) * 0.37 });
             this.counts.b2b += 1;
         }
-        // Four lines throw a shell of light off the giant in the piece's colour.
-        if (quad) this.shockAt(t + 0.05, 0.7, pale);
         // A perfect clear staged with its clear: the crown on top of it.
         if (perfect) this.crownPerfect(t, rgb, seed);
 
         // Varying approach bearings keep the meteor rewards from looking like the same salvo.
         const chainFall = lines > 0 ? Math.max(0, Math.min(3, Math.floor((combo - 1) / 2))) : 0;
         const echoFall = echo ? Math.min(2, deeper) : 0;
-        const fall = calm ? 0 : Math.min(8, (quad ? 7 : Math.max(0, lines - 2) + chainFall) + echoFall);
+        const fall = calm ? 0 : Math.min(8, (quad ? 0 : Math.max(0, lines - 2) + chainFall) + echoFall);
         for (let i = 0; i < fall; i++) {
-            this.throwMeteor(t + 0.12 + i * (quad ? 0.13 : 0.2), seed + i, rgb, quad ? 1.2 : 0.8);
+            this.throwMeteor(t + 0.12 + i * 0.2, seed + i, rgb, 0.8);
         }
+        // Four lines: a string of pearls, a broken comet's fragments striking in a row.
+        if (quad && !calm) this.throwPearls(t, seed, rgb);
         if (quad) {
             this.vent = Math.max(this.vent, calm ? 0.3 : 1);
             this.counts.quads += 1;
@@ -1130,6 +1218,57 @@ export class StellarDriftWorld {
         return bolt;
     }
 
+    /**
+     * Four lines: a string of pearls. A comet broken by the giant's pull comes back as a train of
+     * fragments, one behind another on one track, and they strike one after another in a row across
+     * the cloud tops on the face the camera sees: a march of fireballs, then a row of scars the wind
+     * shears (as the train that struck Jupiter in 1994 did).
+     */
+    throwPearls(time, salt, rgb, count = 7) {
+        if (!this.meteors) return;
+        const rand = mulberry32(this.seed + 0x9ea7 + salt * 7919);
+        const camera = this._camera || this.restCamera();
+        const toCam = this._c.copy(camera.position).normalize();
+        const camLon = Math.atan2(toCam.z, toCam.x);
+        const lat0 = lerp(0.14, 0.5, rand());
+        const way = rand() < 0.5 ? -1 : 1;
+        const span = 1.15 + rand() * 0.2;
+        const start = camLon - way * span * 0.5 + (rand() - 0.5) * 0.25;
+        // One approach for all: over one shoulder of the giant, toward the camera.
+        const bearing = lerp(0.35, Math.PI - 0.35, rand());
+        const reach = 2.1 + rand() * 0.4;
+        const near = 0.45 + rand() * 0.4;
+        const ax = this._right.x * Math.cos(bearing) + this._up.x * Math.sin(bearing);
+        const ay = this._right.y * Math.cos(bearing) + this._up.y * Math.sin(bearing);
+        const az = this._right.z * Math.cos(bearing) + this._up.z * Math.sin(bearing);
+        const flight = 0.62;
+        for (let i = 0; i < count; i++) {
+            const k = count > 1 ? i / (count - 1) : 0.5;
+            const lon = start + way * span * k;
+            const lat = lat0 + (rand() - 0.5) * 0.06;
+            const c = Math.cos(lat);
+            const to = this._b.set(c * Math.cos(lon), Math.sin(lat), c * Math.sin(lon));
+            const from = this._a.copy(to).multiplyScalar(1.02);
+            from.x += ax * reach + toCam.x * near;
+            from.y += ay * reach + toCam.y * near;
+            from.z += az * reach + toCam.z * near;
+            // The middle fragments are the great ones.
+            const strength = 0.55 + Math.sin(k * Math.PI) * 0.45 + rand() * 0.15;
+            const birth = time + 0.12 + i * 0.17;
+            const hue = [lerp(rgb[0], 1, k * 0.35), lerp(rgb[1], 1, k * 0.35), lerp(rgb[2], 1, k * 0.35)];
+            const way3 = this._ray.copy(to).sub(from);
+            const east = way3.x * -Math.sin(lon) + way3.z * Math.cos(lon);
+            const north = -way3.x * Math.sin(lat) * Math.cos(lon) + way3.y * c - way3.z * Math.sin(lat) * Math.sin(lon);
+            this.meteors.launch({
+                from, to, birth, flight, rgb: hue, size: strength, mote: false,
+            });
+            this.schedule(birth + flight, 'strike', {
+                lon, lat, rgb: hue, strength, bearing: Math.atan2(north, east),
+            });
+            this.counts.meteors += 1;
+        }
+    }
+
     /** A meteor: it crosses the sky and burns into the cloud tops. */
     throwMeteor(time, salt, rgb, strength = 0.8) {
         if (!this.meteors) return;
@@ -1191,8 +1330,8 @@ export class StellarDriftWorld {
         chime.fronts = 2;
         chime.arms = 0;
         chime.rgb = [1.0, 0.94, 0.82];
-        // ...and a soft shell of the star's own light leaves the giant.
-        this.shockAt(this.time, 0.55, [1.0, 0.92, 0.78]);
+        // ...and a comet crosses the far sky to herald it.
+        this.cometAt(this.time + 0.3, 1, 0x1e7e1 + next);
         this.surge = Math.min(1.4, this.surge + (this.reducedMotion ? 0.2 : 0.5));
         if (!this.reducedMotion) this.flash = Math.min(1, this.flash + 0.3);
     }
@@ -1213,8 +1352,56 @@ export class StellarDriftWorld {
         }
         u.shine.value.set(this._shine[0], this._shine[1], this._shine[2]);
         u.bandPlace.value = bandPlace(this.place);
-        sunDirection(this.place, this._sun);
+        sunDirection(this.place, this._sunHour);
+        this.stageSun(this.time);
         u.sunDir.value.set(this._sun[0], this._sun[1], this._sun[2]);
+    }
+
+    /**
+     * Where the sun stands now: the hour's own direction, unless an eclipse (a perfect clear) or
+     * nightfall (game over) has swung it. Also how much of its disc shows past the giant, for the
+     * diamond ring's glare. Fills this._sun.
+     */
+    stageSun(t) {
+        const { u } = this;
+        const out = this._sun;
+        out[0] = this._sunHour[0];
+        out[1] = this._sunHour[1];
+        out[2] = this._sunHour[2];
+        // The camera's way to the giant, and the giant's angular radius from there.
+        const dist = Math.max(1.001, this._home.length());
+        const bx = -this._home.x / dist;
+        const by = -this._home.y / dist;
+        const bz = -this._home.z / dist;
+        const alpha = Math.asin(1 / dist);
+        const R = this._right;
+        const U = this._up;
+        const toward = (rho, psi, w) => {
+            const a = rho * alpha;
+            const cr = Math.cos(psi);
+            const sr = Math.sin(psi);
+            const tx = bx * Math.cos(a) + (R.x * cr + U.x * sr) * Math.sin(a);
+            const ty = by * Math.cos(a) + (R.y * cr + U.y * sr) * Math.sin(a);
+            const tz = bz * Math.cos(a) + (R.z * cr + U.z * sr) * Math.sin(a);
+            const x = lerp(out[0], tx, w);
+            const y = lerp(out[1], ty, w);
+            const z = lerp(out[2], tz, w);
+            const l = Math.hypot(x, y, z) || 1;
+            out[0] = x / l;
+            out[1] = y / l;
+            out[2] = z / l;
+        };
+        // Nightfall: round toward the far side, until only a thin crescent on the left is lit.
+        const nf = this.nightfall.level;
+        if (nf > 1e-4) toward(2.5, 188 * DEG, smooth(0, 1, nf) * 0.94);
+        const e = eclipseAt(t - this.eclipseBirth, this._ecl);
+        if (e.w > 0) toward(e.rho, e.psi, e.w);
+        // How much of the sun's disc shows past the giant's limb (seen from the resting camera).
+        const sep = Math.acos(Math.max(-1, Math.min(1, out[0] * bx + out[1] * by + out[2] * bz)));
+        const show = smooth(alpha - SUN_RADIUS, alpha + SUN_RADIUS, sep);
+        // The disc is drawn only near the limb, so it is never seen sweeping across the frame.
+        const nearLimb = 1 - smooth(1.6 * alpha, 2.6 * alpha, sep);
+        if (u) u.sunShow.value.set(show, e.w * nearLimb, e.w, nf);
     }
 
     /**
@@ -1229,7 +1416,8 @@ export class StellarDriftWorld {
             // One tick per frame at most: a long pause must not release a salvo.
             this.boltTick = tick;
             const rand = mulberry32(0x5f3 + tick * 2654435761);
-            const chance = Math.min(0.96, 0.2 + chainHeat(this.combo) * 0.55 + warm * 0.1 + hot * 0.12 + fever * 0.2);
+            const chance = Math.min(0.96, 0.2 + chainHeat(this.combo) * 0.55 + warm * 0.1 + hot * 0.12 + fever * 0.2
+                + this.nightfall.level * 0.45);
             if (rand() < chance) {
                 const first = this.throwBolt(t, 0x4000 + tick);
                 const near = { lon: first.lon, lat: first.lat };
@@ -1238,6 +1426,12 @@ export class StellarDriftWorld {
                     this.throwBolt(t + 0.06 + i * 0.08 + rand() * 0.05, 0x6000 + tick * 7 + i, -1, near);
                 }
             }
+        }
+        // A comet now and then, by itself.
+        const cometTick = Math.floor((t - COMET_FIRST) / COMET_PERIOD);
+        if (cometTick !== this.cometTick) {
+            this.cometTick = cometTick;
+            if (cometTick >= 0) this.cometAt(t, 0.62, 0xc0 + cometTick);
         }
         this.meteorPhase += dt * (1 / METEOR_PERIOD + warm * 0.06 + hot * 0.22 + fever * 0.55);
         const beat = Math.floor(this.meteorPhase);
@@ -1293,6 +1487,11 @@ export class StellarDriftWorld {
         const target = this.level - 1;
         this.levelPlace += (target - this.levelPlace) * approach(PLACE_RATE, dt);
         if (Math.abs(target - this.levelPlace) < 1e-4) this.levelPlace = target;
+        // Nightfall falls over a few seconds and lifts a little faster.
+        const nf = this.nightfall;
+        const night = t < nf.until ? 1 : 0;
+        nf.level += (night - nf.level) * approach(night > nf.level ? 0.75 : 0.9, dt);
+        if (nf.level < 1e-4 && night === 0) nf.level = 0;
         this.applyPalette();
 
         // The chain.
@@ -1335,6 +1534,19 @@ export class StellarDriftWorld {
             lerp(this._accent[1], GOLD[1], gilt),
             lerp(this._accent[2], GOLD[2], gilt),
         );
+        // The inner moon on its orbit, and whether it stands in the giant's shadow.
+        this.placeInnerMoon(t);
+        // Nightfall dims the sun; the eclipse tints it gold.
+        const nightfall = this.nightfall.level;
+        u.sunGain.value = 1 - nightfall * 0.4;
+        const eclipse = u.sunShow.value.z;
+        if (eclipse > 0) {
+            const g = eclipse * 0.55;
+            u.sun.value.set(lerp(u.sun.value.x, 1.0, g), lerp(u.sun.value.y, 0.74, g), lerp(u.sun.value.z, 0.42, g));
+        }
+        this.writeHalo(t);
+        this.writeComet(t);
+        this.writeOutbreak(t);
         // The icy moon's jets climb with play, from wisps to a tall fan in a fever.
         u.plume.value = VENT_REST * (0.8 + 0.2 * Math.sin(t * 0.23)) + this.vent * 0.9 + this.surge * 0.12
             + warm * 0.06 + hot * 0.14 + fever * 0.4;
@@ -1415,6 +1627,25 @@ export class StellarDriftWorld {
         post.exposure = 1 - warm * 0.03 - hot * 0.04 - fever * 0.06;
     }
 
+    /** The inner moon at `t`: its centre, its radius, and how much sunlight reaches it. */
+    placeInnerMoon(t) {
+        const { u } = this;
+        const p = innerMoonAt(t, this._moonAt || (this._moonAt = [0, 0, 0]));
+        u.innerMoon.value.set(p[0], p[1], p[2], INNER_MOON.radius);
+        const s = u.sunDir.value;
+        const along = -(p[0] * s.x + p[1] * s.y + p[2] * s.z);
+        let lit = 1;
+        if (along > 0) {
+            const ax = p[0] + s.x * along;
+            const ay = p[1] + s.y * along;
+            const az = p[2] + s.z * along;
+            const away = Math.hypot(ax, ay, az);
+            const pen = INNER_MOON.radius + along * 0.012;
+            lit = smooth(1 - pen, 1 + pen, away);
+        }
+        u.innerMoonLit.value = lit;
+    }
+
     /** The flourishes in play, as the full-screen pass reads them. */
     writeFlourishes(t) {
         const { u, flourish, lanes } = this;
@@ -1430,6 +1661,68 @@ export class StellarDriftWorld {
         u.shockTint.value.set(shockA.rgb[0], shockA.rgb[1], shockA.rgb[2]);
         u.shockB.value.set(shockB.birth, shockB.power, 0, 0);
         u.shockTintB.value.set(shockB.rgb[0], shockB.rgb[1], shockB.rgb[2]);
+    }
+
+    /** The great white storm in progress (if any), in the giant's own frame. */
+    writeOutbreak(t) {
+        const { u } = this;
+        const o = outbreakAt(t);
+        if (!o) {
+            u.outbreak.value.w = 0;
+            return;
+        }
+        // Its tail spreads the way its band's wind blows (toward a greater longitude, the camera's
+        // left, for an eastward wind), so it rises on the side that leaves the tail the lit face.
+        const meta = this.bandMeta;
+        let dir = 1;
+        if (meta) {
+            const i = Math.max(0, Math.min(meta.size - 1, Math.round((o.lat / Math.PI + 0.5) * (meta.size - 1))));
+            dir = meta.data[i * 4 + 1] >= 128 ? 1 : -1;
+        }
+        const lonSky = Math.PI / 2 + (dir > 0 ? lerp(0.0, 0.25, o.pick) : lerp(0.62, 0.85, o.pick));
+        // Where it rose, carried round with the cloud since: the giant's frame holds it still.
+        const lon = lonSky + this.spin - o.age * SPIN_RATE * (this.reducedMotion ? 0.3 : 1);
+        u.outbreak.value.set(lon, o.lat, o.age, o.strength);
+        u.outbreakDir.value = dir;
+    }
+
+    /** The crown's halo as the full-screen pass reads it. */
+    writeHalo(t) {
+        const h = this.halo;
+        const age = t - h.birth;
+        const live = age >= 0 && age < HALO_LIFE;
+        this.u.halo.value.set(h.birth, live ? h.power : 0, 0, 0);
+        this.u.haloTint.value.set(h.rgb[0], h.rgb[1], h.rgb[2]);
+    }
+
+    /** The comet: where its head is on the sky's sheet, which way its tail streams, how bright. */
+    writeComet(t) {
+        const { u, comet } = this;
+        const age = t - comet.birth;
+        if (!(age >= 0 && age < COMET_CROSS) || comet.power <= 0) {
+            u.cometB.value.set(0, 0.5, 0, 0);
+            return;
+        }
+        const p = age / COMET_CROSS;
+        const [[x0, y0], [x1, y1]] = COMET_PATHS[comet.path];
+        const halfW = (this.aspect >= 0.95 ? this.aspect : Math.max(0.5, this.aspect)) * 0.5;
+        const hx = lerp(x0, x1, p) * halfW;
+        const hy = lerp(y0, y1, p) * 0.5;
+        // Its tails stream away from the sun, as the sky's sheet sees that way.
+        const s = u.sunDir.value;
+        let tx = -(s.x * u.skyRight.value.x + s.y * u.skyRight.value.y + s.z * u.skyRight.value.z);
+        let ty = -(s.x * u.skyUp.value.x + s.y * u.skyUp.value.y + s.z * u.skyUp.value.z);
+        const tl = Math.hypot(tx, ty);
+        if (tl < 0.15) {
+            tx = 0.96;
+            ty = 0.28;
+        } else {
+            tx /= tl;
+            ty /= tl;
+        }
+        const env = smooth(0, 0.12, p) * (1 - smooth(0.82, 1, p)) * comet.power;
+        u.cometA.value.set(hx, hy, tx, ty);
+        u.cometB.value.set(env, 0.32 + comet.power * 0.12, comet.seed, 0);
     }
 
     /** One surge laid out: how far round it has run, and how strong it still is. */

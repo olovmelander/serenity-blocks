@@ -31,7 +31,7 @@ const QUALITY_NAMES = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'];
 const WORLD_METHODS = [
     'build', 'bindCamera', 'showOnlyParts', 'setViewport', 'setLayout', 'setReducedMotion', 'seek', 'resetSession',
     'restCamera', 'updateCamera', 'onLock', 'onClear', 'onCombo', 'levelUp', 'update', 'getPostState', 'getState',
-    'dispose',
+    'dispose', 'onGameOver', 'onSessionStart',
 ];
 const POST_METHODS = ['update', 'setCalmRects', 'setSize', 'render', 'dispose'];
 
@@ -111,6 +111,8 @@ vi.mock('../../src/themes/stellar-drift/stellar-drift-world.js', () => {
             this.camera = null;
             this.seeks = [];
             this.sessions = 0;
+            this.gameOvers = 0;
+            this.sessionStarts = 0;
             this.counts = { locks: 0, clears: 0 };
             this.locks = [];
             this.clears = [];
@@ -162,6 +164,16 @@ vi.mock('../../src/themes/stellar-drift/stellar-drift-world.js', () => {
             this.sessions += 1;
             this.combo = 0;
             this.counts = { locks: 0, clears: 0 };
+        }
+
+        onGameOver() {
+            mocks.log.push('onGameOver');
+            this.gameOvers += 1;
+        }
+
+        onSessionStart() {
+            mocks.log.push('onSessionStart');
+            this.sessionStarts += 1;
         }
 
         restCamera() {
@@ -842,7 +854,7 @@ describe('Stellar Drift theme: one node renderer on both backends', () => {
         expect(system.theme.world.sims[0].reduced).toBe(true);
     });
 
-    it('puts the giant back at rest when a run ends', async () => {
+    it('lets nightfall come over the giant when a run ends, and the chain go', async () => {
         const { theme, listeners } = await startTheme({ quality: 'High' });
         for (let i = 0; i < 3; i++) {
             eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
@@ -850,17 +862,24 @@ describe('Stellar Drift theme: one node renderer on both backends', () => {
             theme.stepFrame(16 * (i + 1));
         }
         expect(theme.world.combo).toBe(3);
-        // A lock staged on the run's last tick must not land in the next run.
+        // A lock staged on the run's last tick lands in this run, not the next.
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
         mocks.log.length = 0;
         listeners.get('gameOver')();
-        // The chain is let go first (the world hears the break), then the session is reset.
-        expect(mocks.log).toEqual(['onCombo']);
-        expect(theme.world.sessions).toBe(1);
+        // The last lock lands, the chain is let go (the world hears the break), and nightfall
+        // starts. The world itself is not reset: what is in flight plays out, and the menu after the
+        // run shows the night (it lifts by itself, or when the next run starts).
+        expect(mocks.log).toEqual(['onLock', 'onCombo', 'onGameOver']);
+        expect(theme.world.sessions).toBe(0);
+        expect(theme.world.gameOvers).toBe(1);
         expect(theme.world.combo).toBe(0);
         expect(theme.combos.size).toBe(0);
         expect(theme.director.slots.every((slot) => !slot.assigned && !slot.pending)).toBe(true);
         theme.stepFrame(64);
+        expect(theme.world.counts.locks).toBe(4);
+        // The mode stops (the menu): now the world is put back at rest.
+        theme.resetSession();
+        expect(theme.world.sessions).toBe(1);
         expect(theme.world.counts).toEqual({ locks: 0, clears: 0 });
         // The next run's first clear is a chain of one again.
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
@@ -1074,6 +1093,8 @@ describe('Stellar Drift theme: one node renderer on both backends', () => {
         stepFrames(theme, 5);
         expect(theme.world.layoutLive).toBe(false); // no polling: the next read is on a schedule
         manager.handlers.get('modeStarted')();
+        // A new run lifts any nightfall a game over left.
+        expect(theme.world.sessionStarts).toBe(1);
         stepFrames(theme, 1);
         expect(theme.world.layoutLive).toBe(true);
         expect(theme.world.layout.cardCount).toBe(1);

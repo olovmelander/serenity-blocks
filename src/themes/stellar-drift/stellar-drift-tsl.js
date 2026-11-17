@@ -44,6 +44,7 @@ import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 export * from './stellar-drift-core.js';
 export * from './stellar-drift-bake.js';
+export * from './stellar-drift-moon-bake.js';
 
 // ── Hashes (GPU) ────────────────────────────────────────────────────────────────
 
@@ -239,6 +240,22 @@ function tableTexture(data, width, height, name, srgb) {
     return tex;
 }
 
+/** A moon's baked map (stellar-drift-moon-bake.js) with its averaged mip chain; longitude wraps. */
+export function createMoonTexture(moon, name) {
+    const top = moon.levels[0];
+    const tex = new THREE.DataTexture(top.data, top.width, top.height, THREE.RGBAFormat, THREE.UnsignedByteType);
+    tex.mipmaps = moon.levels.map((level) => ({ data: level.data, width: level.width, height: level.height }));
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.generateMipmaps = false;
+    tex.colorSpace = THREE.NoColorSpace;
+    tex.name = name;
+    tex.needsUpdate = true;
+    return tex;
+}
+
 export const createBandMetaTexture = (meta) => tableTexture(meta.data, meta.size, 1, 'stellar-drift-band-meta', false);
 export const createBandColorTexture = (colors) => tableTexture(
     colors.data,
@@ -261,8 +278,8 @@ const v3 = (a) => uniform(new THREE.Vector3(a[0], a[1], a[2]));
 
 /**
  * Every uniform the scene's materials share. The world owns the values; materials only read.
- * @param {{ lattice, fbm, rings, bandMeta, bands, bandsFar }} textures
- * @param {{ fbmSize: number, ringSize: number, bandSize: number }} sizes
+ * @param {{ lattice, fbm, rings, bandMeta, bands, bandsFar, moonIce, moonRust }} textures
+ * @param {{ fbmSize: number, ringSize: number, bandSize: number, moonIceSize: number, moonRustSize: number }} sizes
  */
 export function createStellarDriftUniforms(textures, sizes) {
     const p = PALETTES[0];
@@ -305,6 +322,10 @@ export function createStellarDriftUniforms(textures, sizes) {
         /** The moons: centre and radius. */
         moonA: uniform(new THREE.Vector4(6, 2, -8, 0.5)),
         moonB: uniform(new THREE.Vector4(5, -2, -4, 0.2)),
+        /** The small inner moon (stellar-drift-core.js INNER_MOON): centre and radius. */
+        innerMoon: uniform(new THREE.Vector4(0, 0.8, 2.6, 0.05)),
+        /** How much sunlight reaches it (0 while it is in the giant's shadow). */
+        innerMoonLit: uniform(1),
         /** The icy moon's plumes (0..1), and the way they point. */
         plume: uniform(0.25),
         plumeDir: uniform(new THREE.Vector3(0.2, -0.95, 0.2).normalize()),
@@ -346,6 +367,26 @@ export function createStellarDriftUniforms(textures, sizes) {
         /** The outer strand ablaze: (birth, light now, seed, _), and its colour. */
         strand: uniform(new THREE.Vector4(-1000, 0, 0, 0)),
         strandTint: uniform(new THREE.Vector3(1, 0.9, 0.7)),
+        /**
+         * A great white storm on the giant (stellar-drift-core.js OUTBREAK): (longitude in the giant's
+         * frame, latitude, age, strength), and which way its tail spreads (±1, the band's wind).
+         */
+        outbreak: uniform(new THREE.Vector4(0, 0.5, 0, 0)),
+        outbreakDir: uniform(1),
+        /** A chain's crown in the haze round the system: (birth, power, seed, _), and its colour. */
+        halo: uniform(new THREE.Vector4(-1000, 0, 0, 0)),
+        haloTint: uniform(new THREE.Vector3(1, 1, 1)),
+        /**
+         * A comet crossing the far sky: (head x, head y on the sky's sheet, tail direction x, y), and
+         * (how bright, how long its tail, seed, _).
+         */
+        cometA: uniform(new THREE.Vector4(0, 0, 1, 0)),
+        cometB: uniform(new THREE.Vector4(0, 0.5, 0, 0)),
+        /**
+         * The sun as a disc in the frame (it only comes into view in an eclipse): (how much of it shows
+         * past the giant 0..1, how strongly it is drawn 0..1, the eclipse's weight 0..1, _).
+         */
+        sunShow: uniform(new THREE.Vector4(0, 0, 0, 0)),
         /** A shell of light thrown off the giant: (birth, power, _, _), and its colour. */
         shock: uniform(new THREE.Vector4(-1000, 0, 0, 0)),
         shockTint: uniform(new THREE.Vector3(1, 0.9, 0.7)),
@@ -364,6 +405,10 @@ export function createStellarDriftUniforms(textures, sizes) {
         bandMetaTex: textures.bandMeta,
         bandTex: textures.bands,
         bandFarTex: textures.bandsFar,
+        moonIceTex: textures.moonIce,
+        moonRustTex: textures.moonRust,
+        moonIceSize: sizes.moonIceSize,
+        moonRustSize: sizes.moonRustSize,
         fbmSize: sizes.fbmSize,
         ringSize: sizes.ringSize,
         bandSize: sizes.bandSize,

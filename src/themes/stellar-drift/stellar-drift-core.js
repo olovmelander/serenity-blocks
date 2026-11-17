@@ -149,6 +149,163 @@ export function bell(x) {
     return k > 0 ? k * k : 0;
 }
 
+// ── The inner moon ──────────────────────────────────────────────────────────────
+
+/**
+ * A small grey moon on an inclined orbit just outside the rings. Every `period` seconds it
+ * crosses the giant's face, and a little later its shadow, a black dot with a soft edge, runs
+ * across the cloud tops; on the far side it slips behind the giant and through its shadow.
+ * `high` is the bearing (atan2(z, x), the camera stands at 90°) where the orbit stands highest
+ * over the rings, between the camera's bearing and the sun's, so the moon and its shadow both
+ * cross the hemisphere that shows. `highAt` is a time it stands at that high point: with the
+ * camera of the 16:9 frame it then crosses the giant's upper face some twenty seconds before (about
+ * 25-38 s into each period) and its shadow runs over the lit limb some ten to thirty seconds after.
+ */
+export const INNER_MOON = Object.freeze({
+    radius: 0.05,
+    orbit: 2.85,
+    period: 200,
+    inclination: 22 * DEG,
+    high: 125 * DEG,
+    highAt: 52,
+});
+
+/**
+ * Where the inner moon is at a time (the world's frame); fills `out` = [x, y, z]. Its angle
+ * round the orbit is 90° (the orbit's high point) at every `highAt + k · period`.
+ */
+export function innerMoonAt(time, out = [0, 0, 0]) {
+    const m = INNER_MOON;
+    const theta = Math.PI / 2 + (TAU * (time - m.highAt)) / m.period;
+    const node = m.high - Math.PI / 2;
+    const ax = Math.cos(node);
+    const az = Math.sin(node);
+    const bx = Math.cos(m.high);
+    const bz = Math.sin(m.high);
+    const c = Math.cos(theta) * m.orbit;
+    const s = Math.sin(theta) * m.orbit;
+    out[0] = c * ax + s * bx * Math.cos(m.inclination);
+    out[1] = s * Math.sin(m.inclination);
+    out[2] = c * az + s * bz * Math.cos(m.inclination);
+    return out;
+}
+
+// ── The giant's own weather ────────────────────────────────────────────────────
+
+/**
+ * A great white storm: by the clock alone, every `period` seconds (the first `first` seconds in),
+ * a bright head of convection erupts in the giant's north on the face the camera sees, and over a
+ * minute or two its clouds spread downwind round its band, then fade back into the bands.
+ */
+export const OUTBREAK = Object.freeze({
+    period: 290, first: 140, life: 130,
+});
+
+/**
+ * The storm in progress at a time, or null: `index` (which one), `age` (seconds), `lat`
+ * (radians), `pick` (0..1: where along its side of the face it rose; the world places it by its
+ * band's wind, so its tail spreads over the lit face), `strength` (its envelope, 0..1).
+ */
+export function outbreakAt(time) {
+    const { period, first, life } = OUTBREAK;
+    if (time < first) return null;
+    const index = Math.floor((time - first) / period);
+    const age = time - first - index * period;
+    if (age >= life) return null;
+    const rand = mulberry32(0x0b5e + index * 7919);
+    return {
+        index,
+        age,
+        lat: lerp(0.36, 0.72, rand()),
+        pick: rand(),
+        strength: smooth(0, 7, age) * (1 - smooth(life - 35, life, age)),
+    };
+}
+
+// ── The big moments ─────────────────────────────────────────────────────────────
+
+/**
+ * A perfect clear's eclipse, in seconds: the sun swings behind the giant (`dusk`: its day side
+ * shrinks to a crescent and goes out), travels behind it while the air round its limb burns and
+ * the rings glow lit from behind (`total`), comes out past the limb as a diamond ring (`ring`)
+ * and swings home (`dawn`).
+ */
+export const ECLIPSE = Object.freeze({
+    dusk: 1.8, total: 2.8, ring: 0.8, dawn: 3.4,
+});
+export const ECLIPSE_LIFE = ECLIPSE.dusk + ECLIPSE.total + ECLIPSE.ring + ECLIPSE.dawn;
+
+/** The sun's angular radius as the camera sees it (radians): the bead of the diamond ring. */
+export const SUN_RADIUS = 0.45 * DEG;
+
+/**
+ * Where the eclipse puts the sun `age` seconds in: `w` = how far it has left its hour for the
+ * path (0 = at home, 1 = on it), and the path's place as an angle from the giant's centre seen from
+ * the camera (`rho`, in giant radii: under 1 is behind the disc) and a bearing round it (`psi`,
+ * radians from the camera's right toward its up).
+ */
+export function eclipseAt(age, out = {
+    w: 0, rho: 1.2, psi: 0,
+}) {
+    const {
+        dusk, total, ring, dawn,
+    } = ECLIPSE;
+    out.w = 0;
+    out.rho = 1.12;
+    out.psi = 45 * DEG;
+    if (!(age >= 0) || age >= ECLIPSE_LIFE) return out;
+    if (age < dusk) {
+        out.w = smooth(0, dusk, age);
+        out.rho = 0.45;
+        out.psi = 215 * DEG;
+        return out;
+    }
+    let a = age - dusk;
+    if (a < total) {
+        const k = smooth(0, total, a);
+        out.w = 1;
+        out.rho = lerp(0.45, 0.94, k);
+        out.psi = lerp(215, 45, k) * DEG;
+        return out;
+    }
+    a -= total;
+    if (a < ring) {
+        out.w = 1;
+        out.rho = lerp(0.94, 1.12, smooth(0, ring, a));
+        return out;
+    }
+    a -= ring;
+    out.w = 1 - smooth(0, dawn, a);
+    return out;
+}
+
+/**
+ * Game over: nightfall. The sun swings round behind the giant's left limb until only a thin
+ * crescent of it is lit, its light dims and lightning walks the dark face; then, by itself (or at
+ * once when a new run starts), the hour comes back. Seconds it holds after falling.
+ */
+export const NIGHTFALL_HOLD = 9;
+
+/**
+ * Comets cross the far sky: one by itself every COMET_PERIOD seconds, and one at once for a new
+ * level. Each takes COMET_CROSS seconds over one of these paths, given in the sky's own sheet as
+ * fractions of the frame's half-width (x) and half-height (y), from the centre, y up. They keep to
+ * the open sky right of the card and over the top, the head never so far right that the tail
+ * (which streams away from the sun, rightward: the sun stands on the giant's side) leaves the frame.
+ */
+export const COMET_PERIOD = 230;
+export const COMET_FIRST = 95;
+export const COMET_CROSS = 16;
+export const COMET_PATHS = Object.freeze([
+    [[0.3, 1.06], [0.5, 0.18]],
+    [[-0.78, 1.06], [0.08, 0.8]],
+    [[0.24, -0.8], [0.62, 0.2]],
+    [[0.66, 1.06], [0.3, 0.36]],
+]);
+
+/** A chain's crown: the haze of ice round the whole system lights in waves (seconds it lives). */
+export const HALO_LIFE = 6.5;
+
 // ── Colour ──────────────────────────────────────────────────────────────────────
 
 const srgbToLinear = (v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);

@@ -13,7 +13,8 @@
  *   combo=<n>                hold a combo of n (the rings' hum)
  *   level=<n>                rest on level n's palette
  *   locks=<n>                before anything else, play n locks (their ripples in the rings)
- *   event=lock|drop|clear|quad|twist|perfect|b2b|cascade|levelUp   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|perfect|b2b|cascade|levelUp|over|comet   fire a gameplay event
+ *                            (over = game over's nightfall; comet = one crossing, path=<0..3>)...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>, cascade=<depth>; twist accepts lines=0)
  *   demo=1                   live only: play a looping gameplay script
@@ -213,6 +214,8 @@ export function create({
         else if (eventName === 'perfect') clear({ rows: bottom(4), lines: 4, perfect: true });
         else if (eventName === 'b2b') clear({ b2b: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
+        else if (eventName === 'over') world.onGameOver();
+        else if (eventName === 'comet') world.cometAt(world.time, 1, 0, Math.round(num(params, 'path', 0)));
     };
 
     const seekTo = (time) => {

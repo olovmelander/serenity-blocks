@@ -302,8 +302,11 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
         expect(played(world).surge).toBe(2);
         clear(world, { combo: 5 });
         clear(world, { combo: 8 });
-        // The fifth step surges again; the eighth crowns the chain and throws a corona.
-        expect(played(world)).toMatchObject({ surge: 3, crown: 1, shock: 1 });
+        // The fifth step surges again; the eighth crowns the chain: the haze round the whole system
+        // lights in its colour (no shell: that is the perfect clear's alone).
+        expect(played(world)).toMatchObject({ surge: 3, crown: 1, shock: 0 });
+        expect(world.halo.power).toBeGreaterThan(0);
+        expect(world.halo.birth).toBeGreaterThan(world.time);
         clear(world, { combo: 20 });
         expect(world.counts.milestones).toBe(4);
         // A fresh chain earns the milestones again while another player's combo is held.
@@ -341,12 +344,24 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
         clear(world, { lines: 1, perfect: true });
         expect(played(world)).toMatchObject({ crown: 1, shock: 1, strand: 2 });
         expect(world.counts).toMatchObject({ perfects: 1, quads: 0, b2b: 1 });
+        // The perfect clear's eclipse has begun.
+        expect(world.eclipseBirth).toBe(world.time);
         const meteorsBefore = world.counts.meteors;
+        const strikesBefore = world.queue.filter((m) => m.kind === 'strike').length;
         clear(world, { lines: 4, rows: [19, 18, 17, 16] });
         expect(world.counts.quads).toBe(1);
         expect(world.counts.meteors - meteorsBefore).toBeGreaterThanOrEqual(5);
+        // Four lines are a string of pearls: fragments striking one after another in a row, at
+        // one latitude, marching one way round the giant. No shell.
+        const pearls = world.queue.filter((m) => m.kind === 'strike').slice(strikesBefore)
+            .sort((a, b) => a.time - b.time);
+        expect(pearls.length).toBeGreaterThanOrEqual(5);
+        const lats = pearls.map((m) => m.data.lat);
+        expect(Math.max(...lats) - Math.min(...lats)).toBeLessThan(0.1);
+        const steps = pearls.slice(1).map((m, i) => m.data.lon - pearls[i].data.lon);
+        expect(steps.every((d) => Math.sign(d) === Math.sign(steps[0]) && Math.abs(d) > 0.05)).toBe(true);
         expect(played(world)).toEqual({
-            cyclone: 1, surge: 0, crown: 1, strand: 2, shock: 2,
+            cyclone: 1, surge: 0, crown: 1, strand: 2, shock: 1,
         });
         world.dispose();
     });
@@ -561,14 +576,14 @@ describe('stellar drift world: it builds with play instead of popping', () => {
 
     it('lets a weak flourish join a strong one still running instead of wiping it', () => {
         const { world, camera } = makeWorld();
-        // A four-line clear's shell, then a level-up's softer one a beat later.
-        frame(world, camera, 1 / 60, () => clear(world, { rows: [19, 18, 17, 16], lines: 4 }));
+        // A perfect clear's gold corona (it stands at totality, a beat ahead), then a second perfect
+        // clear a moment later: its corona goes beside the first, which is untouched.
+        frame(world, camera, 1 / 60, () => clear(world, { rows: [19, 18, 17, 16], lines: 4, perfect: true }));
         run(world, camera, 0.2, 12);
-        const quadShell = { ...world.u.shock.value };
-        frame(world, camera, 1 / 60, () => world.levelUp(2));
-        // Both shells are in flight: the quad's is untouched and the new one went beside it.
+        const firstShell = { ...world.u.shock.value };
+        frame(world, camera, 1 / 60, () => clear(world, { rows: [], lines: 0, perfect: true }));
         const shells = [world.u.shock.value, world.u.shockB.value];
-        expect(shells.some((v) => v.x === quadShell.x && v.y === quadShell.y)).toBe(true);
+        expect(shells.some((v) => v.x === firstShell.x && v.y === firstShell.y)).toBe(true);
         expect(shells.every((v) => v.y > 0 && world.time - v.x < 1)).toBe(true);
         // Two milestones of a chain a second apart: both surges race round the rings at once.
         frame(world, camera, 1 / 60, () => clear(world, { combo: 3 }));
@@ -662,8 +677,6 @@ describe('stellar drift world: it builds with play instead of popping', () => {
         run(world, camera, 0.36, 11);
         const { clears, quads } = world.counts;
         const { jets } = live(world);
-        const quadShell = world.flourish.shock;
-        const quadBirth = quadShell.birth;
         const glowBefore = world.u.ringGlow.value.x;
         frame(world, camera, 1 / 60, () => clear(world, {
             rows: [], lines: 0, combo: 1, perfect: true,
@@ -672,10 +685,10 @@ describe('stellar drift world: it builds with play instead of popping', () => {
         expect(world.counts).toMatchObject({ clears, quads, perfects: 1 });
         // No stray row is written round the giant.
         expect(live(world).jets).toBeLessThanOrEqual(jets);
-        // The quad's shell runs on, and the crown's gold one goes beside it.
-        expect(world.lanes.shock.some((f) => f.birth === quadBirth)).toBe(true);
-        expect(world.flourish.shock.birth).toBeGreaterThan(quadBirth);
-        expect(played(world)).toMatchObject({ crown: 1, shock: 2, strand: 1 });
+        // The crown's eclipse begins, its gold corona to stand at totality.
+        expect(world.eclipseBirth).toBeGreaterThan(world.time - 0.3);
+        expect(world.flourish.shock.birth).toBeGreaterThan(world.time);
+        expect(played(world)).toMatchObject({ crown: 1, shock: 1, strand: 1 });
         // Every ringlet gilded: the rings' colour leans to gold and their glow lifts.
         expect(world.u.ringGlow.value.x).toBeGreaterThan(glowBefore);
         expect(world.u.accent.value.x).toBeGreaterThan(world.u.accent.value.z);
@@ -790,18 +803,25 @@ describe('stellar drift world: the hour', () => {
 });
 
 describe('stellar drift world: a capture can be repeated', () => {
-    it('varies meteor bearings while repeating the same seed and event sequence exactly', () => {
+    it('flies a storm\'s pearls on one track, varies it storm to storm, and repeats a seed exactly', () => {
         const { world } = makeWorld();
         const paths = [];
         vi.spyOn(world.meteors, 'launch').mockImplementation(({ from, to }) => {
-            const direction = from.clone().sub(to);
+            const direction = from.clone().sub(to).normalize();
             paths.push([direction.dot(world._right), direction.dot(world._up)]);
         });
-        const storm = () => clear(world, { rows: [19, 18, 17, 16], lines: 4, combo: 8 });
+        const storm = () => clear(world, { rows: [19, 18, 17, 16], lines: 4, combo: 1 });
         storm();
         const first = paths.splice(0);
-        expect(first.some(([x]) => x > 0)).toBe(true);
-        expect(first.some(([x]) => x < 0)).toBe(true);
+        expect(first.length).toBeGreaterThanOrEqual(5);
+        // One track: every fragment comes in from (almost) the same way.
+        first.forEach(([x, y]) => {
+            expect(Math.abs(x - first[0][0])).toBeLessThan(0.15);
+            expect(Math.abs(y - first[0][1])).toBeLessThan(0.15);
+        });
+        storm();
+        const second = paths.splice(0);
+        expect(Math.hypot(second[0][0] - first[0][0], second[0][1] - first[0][1])).toBeGreaterThan(0.05);
         world.seek(10);
         storm();
         expect(paths).toEqual(first);

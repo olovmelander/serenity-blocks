@@ -75,6 +75,7 @@ import {
     RIPPLE_SHEAR,
     RIPPLE_SPEED,
     SHOCK_LIFE,
+    SUN_RADIUS,
     TAU,
     sdBell,
     sdHash33,
@@ -214,6 +215,42 @@ export function createSpace(u, tier) {
         const shockA = shockLane(u.shock);
         const shockB = shockLane(u.shockB);
 
+        // ── The inner moon ──────────────────────────────────────────────────────
+        // A small grey moon just outside the rings (stellar-drift-core.js INNER_MOON). It may stand
+        // in front of the giant or behind it, and on either side of the ring plane, so it is traced
+        // here and laid into the picture where its distance puts it.
+        const IM = u.innerMoon;
+        const ocI = ro.sub(IM.xyz).toVar();
+        const bI = dot(ocI, rd).toVar();
+        const d2I = max(dot(ocI, ocI).sub(bI.mul(bI)), 0.0).toVar();
+        const pxI = u.pixelAngle.mul(max(bI.negate(), 0.05)).toVar();
+        const covI = clamp(float(0.5).sub(sqrt(d2I).sub(IM.w).div(pxI)), 0.0, 1.0).mul(step(0.0, bI.negate())).toVar();
+        const tI = bI.negate().sub(sqrt(max(IM.w.mul(IM.w).sub(d2I), 0.0))).toVar();
+        const moonCol = vec3(0.0).toVar();
+        If(covI.greaterThan(0.001), () => {
+            const N = normalize(ro.add(rd.mul(tI)).sub(IM.xyz)).toVar();
+            const mu = max(dot(N, V), 0.05).toVar();
+            const cl = max(sqrt(max(float(1.0).sub(N.y.mul(N.y)), 0.0)), 1e-3).toVar();
+            // It wears the rust world's map, greyed: old cratered ice under dust, one great crater.
+            const st = vec2(atan(N.z, N.x).div(TAU).add(0.5), asin(clamp(N.y, -1.0, 1.0)).div(Math.PI).add(0.5));
+            const lod = clamp(log2(max(pxI.div(IM.w).mul(u.moonRustSize / TAU).div(sqrt(mu)), 1.0)), 0.0, 9.0);
+            const map = texture(u.moonRustTex, st).level(lod).toVar();
+            const E = vec3(N.z.negate(), 0.0, N.x).div(cl).toVar();
+            const North = vec3(E.y.mul(N.z).sub(E.z.mul(N.y)), E.z.mul(N.x).sub(E.x.mul(N.z)), E.x.mul(N.y).sub(E.y.mul(N.x)));
+            const slope = map.ba.mul(2.0).sub(1.0);
+            const Np = normalize(N.sub(E.mul(slope.x).add(North.mul(slope.y)).mul(0.8))).toVar();
+            const grey = mix(u.ringIce, vec3(0.8, 0.8, 0.8), 0.5);
+            const albedo = grey.mul(mix(float(0.62), float(1.0), mix(map.r, float(1.0), 0.45)).add(map.g.mul(0.12)));
+            const m0 = max(dot(Np, S), 0.0);
+            const day = smoothstep(-0.03, 0.07, dot(N, S));
+            const diffuse = m0.mul(mix(float(1.0), pow(mu, 0.3), 0.4)).mul(day).mul(u.innerMoonLit);
+            // So near the giant, its light is strong on the side that faces it.
+            const shine = max(dot(Np, normalize(IM.xyz.negate())), 0.0).mul(0.14);
+            moonCol.assign(albedo.mul(sunLight.mul(diffuse).mul(1.08).add(u.shine.mul(shine)).add(u.night.mul(0.03))));
+        });
+        /** 1 when the ray crosses the ring plane before it reaches the moon. */
+        const ringFirst = step(0.0, tR).mul(step(tR, tI)).toVar();
+
         // ── The sky ─────────────────────────────────────────────────────────────
         If(cover.lessThan(0.999), () => {
             const fz = max(dot(rd, u.skyFwd), 0.25);
@@ -221,9 +258,12 @@ export function createSpace(u, tier) {
             // Inside a branch the sampler may not choose a mip: the sheet's scale is the same all
             // over the frame, so the level follows from the uniforms.
             const skyLod = (freq) => clamp(log2(u.pixelAngle.mul(u.skyScale).mul(freq * u.fbmSize)), 0.0, 6.0);
-            const n1 = u.fbmLod(s.mul(0.42).add(vec2(0.13, 0.71)), skyLod(0.42)).toVar();
+            // The gas lives: its warp and its body drift at their own slow speeds and ways, so its
+            // shapes form and melt over minutes (a frame to the next, nothing moves you could see).
+            const drift = u.time.mul(0.0008);
+            const n1 = u.fbmLod(s.mul(0.42).add(vec2(0.13, 0.71)).add(vec2(drift, drift.mul(-0.6))), skyLod(0.42)).toVar();
             const sw = s.add(n1.rg.sub(0.5).mul(0.46)).toVar();
-            const n2 = u.fbmLod(sw.mul(1.05).add(vec2(0.57, 0.19)), skyLod(1.05)).toVar();
+            const n2 = u.fbmLod(sw.mul(1.05).add(vec2(0.57, 0.19)).add(vec2(drift.mul(-0.55), drift.mul(0.4))), skyLod(1.05)).toVar();
             const n3 = (tier.nebulaDetail > 0
                 ? u.fbmLod(sw.mul(3.1).add(n2.rg.mul(0.3)), skyLod(3.1))
                 : vec4(n2.b, n2.a, n2.r, n2.g)).toVar();
@@ -265,6 +305,17 @@ export function createSpace(u, tier) {
                 .add(veil.mul(float(1.0).sub(lane.mul(0.6))))
                 .toVar();
 
+            // The galaxy's band: the nebula lies in it. A faint river of unresolved stars along the
+            // bank, split by a dark rift, thickening the far stars where it runs.
+            const bandDir = normalize(u.skyBank.xy.sub(u.skyBank.zw));
+            const bandMid = u.skyBank.xy.add(u.skyBank.zw).mul(0.5);
+            const across = dot(s.sub(bandMid), vec2(bandDir.y.negate(), bandDir.x)).toVar();
+            const milky = exp(across.mul(across).mul(-34.0)).mul(n1.g.mul(0.9).add(0.25)).toVar();
+            const riftAt = across.add(0.025);
+            const rift = smoothstep(0.42, 0.7, n2.b.mul(0.6).add(n1.a.mul(0.4))).mul(exp(riftAt.mul(riftAt).mul(-150.0)));
+            milky.mulAssign(float(1.0).sub(rift.mul(0.85)));
+            sky.addAssign(mix(u.starTint, vec3(1.0, 0.88, 0.74), 0.45).mul(milky.mul(0.02)));
+
             // Far stars: one per cell of a lattice the sphere of directions cuts through.
             const pixel = u.pixelAngle;
             const starLayer = (scale, chance, size, gain) => {
@@ -281,51 +332,179 @@ export function createSpace(u, tier) {
                 const mag = m2.mul(m2).mul(h.z).mul(0.95).add(0.05);
                 const twinkle = sin(u.time.mul(h.y.mul(2.4).add(0.6)).add(h.x.mul(40.0))).mul(0.22).add(0.78);
                 const tint = mix(u.starTint, vec3(1.0, 0.82, 0.62), smoothstep(0.7, 1.0, h.y));
-                return tint.mul(core.mul(mag).mul(twinkle).mul(step(h.x, chance)).mul(gain));
+                return tint.mul(core.mul(mag).mul(twinkle).mul(step(h.x, milky.mul(1.6).add(1.0).mul(chance))).mul(gain));
             };
             let stars = vec3(0.0);
             for (let i = 0; i < Math.min(tier.starLayers, STAR_LAYERS.length); i++) {
                 const [scale, chance, size, gain] = STAR_LAYERS[i];
                 stars = stars.add(starLayer(scale, chance, size, gain));
             }
+            // A few bright stars, a pixel across with a halo and, the brightest, short lens spikes
+            // (sized in pixels, so a star is a point at any lens and resolution).
+            if (tier.starLayers >= 3) {
+                const p = rd.mul(15.0);
+                const h = sdHash33(floor(p).add(71.0)).toVar();
+                const f = fract(p).sub(h.xyz.mul(0.5).add(0.25));
+                const g = f.sub(rd.mul(dot(f, rd)));
+                const gx = dot(g, u.camRight).div(15.0);
+                const gy = dot(g, u.camUp).div(15.0);
+                const pxl = pixel.mul(1.1);
+                const d2 = gx.mul(gx).add(gy.mul(gy));
+                const h6 = h.z.mul(h.z).mul(h.z);
+                const mag = h6.mul(h6).mul(0.9).add(0.1).mul(step(h.x, 0.24));
+                const core = exp(d2.div(pxl.mul(pxl)).negate()).mul(2.2);
+                const halo = exp(sqrt(d2).div(pxl.mul(3.5)).negate()).mul(0.2);
+                const spikes = exp(abs(gy).div(pxl.mul(0.55)).negate()).mul(exp(abs(gx).div(pxl.mul(8.0)).negate()))
+                    .add(exp(abs(gx).div(pxl.mul(0.55)).negate()).mul(exp(abs(gy).div(pxl.mul(8.0)).negate())))
+                    .mul(smoothstep(0.72, 0.9, h.z).mul(0.45));
+                const tint = mix(vec3(0.72, 0.84, 1.0), vec3(1.0, 0.8, 0.58), h.y);
+                stars = stars.add(tint.mul(core.add(halo).add(spikes)).mul(mag));
+            }
             sky.addAssign(stars.mul(float(1.0).sub(dens.mul(0.6))));
+
+            // In the nebula's head a cluster of young stars burns blue-white, and the gas round it
+            // is lit pale by them: the picture's far focal point.
+            if (tier.nebulaDetail > 0) {
+                const toHead = s.sub(u.skyBank.xy.add(vec2(-0.03, 0.012))).toVar();
+                const near = dot(toHead, toHead).toVar();
+                If(near.lessThan(0.05), () => {
+                    sky.addAssign(mix(gas, vec3(0.86, 0.93, 1.0), 0.55).mul(dens.mul(exp(near.mul(-70.0))).mul(0.42)));
+                    const sp = u.pixelAngle.mul(u.skyScale).mul(1.25);
+                    let cluster = float(0.0);
+                    for (const [ox, oy, b] of [[0, 0, 1], [0.034, 0.026, 0.55], [-0.028, 0.038, 0.4], [0.018, -0.032, 0.65], [-0.046, -0.012, 0.3]]) {
+                        const d = toHead.sub(vec2(ox, oy));
+                        const dd = dot(d, d);
+                        const spikes = exp(abs(d.y).div(sp.mul(0.6)).negate()).mul(exp(abs(d.x).div(0.018).negate()))
+                            .add(exp(abs(d.x).div(sp.mul(0.6)).negate()).mul(exp(abs(d.y).div(0.018).negate())));
+                        const star = exp(dd.div(sp.mul(sp)).negate()).mul(3.0);
+                        const aura = exp(dd.div(0.0004).negate()).mul(0.1);
+                        cluster = cluster.add(star.add(aura).add(spikes.mul(0.3)).mul(b));
+                    }
+                    sky.addAssign(vec3(0.76, 0.86, 1.0).mul(cluster));
+                });
+            }
+
+            // A comet crossing the far sky: a bright head in its coma, a broad dust tail that curves
+            // as it widens, and a straight, narrow ion tail of blue streamers, both away from the sun.
+            If(u.cometB.x.greaterThan(0.003), () => {
+                const v = s.sub(u.cometA.xy).toVar();
+                const dir = u.cometA.zw;
+                const tailAlong = dot(v, dir).toVar();
+                const tailAcross = v.x.mul(dir.y).sub(v.y.mul(dir.x)).toVar();
+                const L = u.cometB.y;
+                If(tailAlong.greaterThan(-0.06).and(tailAlong.lessThan(L.mul(1.8))).and(abs(tailAcross).lessThan(L.mul(0.5))), () => {
+                    const a = max(tailAlong, 0.0).toVar();
+                    const sheetPx = u.pixelAngle.mul(u.skyScale);
+                    const curl = a.mul(a).mul(0.6);
+                    const dx = tailAcross.sub(curl);
+                    const dw = max(a.mul(0.17).add(0.003), sheetPx.mul(1.5));
+                    const dust = exp(dx.mul(dx).div(dw.mul(dw)).negate()).mul(exp(a.div(L.mul(0.5)).negate()))
+                        .mul(smoothstep(-0.004, 0.025, tailAlong));
+                    const iw = max(a.mul(0.028).add(0.0018), sheetPx.mul(1.2));
+                    const ionCore = exp(tailAcross.mul(tailAcross).div(iw.mul(iw)).negate()).mul(exp(a.div(L).negate()))
+                        .mul(smoothstep(-0.002, 0.04, tailAlong));
+                    const streak = u.fbmLod(vec2(tailAcross.mul(55.0).add(u.cometB.z), a.mul(2.5).sub(u.time.mul(0.12))), 1.0).r;
+                    const ion = ionCore.mul(streak.mul(1.4).add(0.3));
+                    const r2 = dot(v, v);
+                    const coma = exp(r2.div(0.00003).negate()).mul(2.2).add(exp(r2.div(0.0005).negate()).mul(0.3));
+                    const light = vec3(1.0, 0.9, 0.74).mul(dust.mul(0.42))
+                        .add(vec3(0.42, 0.7, 1.0).mul(ion.mul(0.5)))
+                        .add(vec3(0.88, 0.97, 1.0).mul(coma));
+                    sky.addAssign(light.mul(sunLight).mul(u.cometB.x).mul(float(1.0).sub(dens.mul(0.3))));
+                });
+            });
+
+            // The sun's own disc (only an eclipse brings it into the frame): the bead of a diamond
+            // ring where it stands at the giant's limb (the giant's own edge cuts it, pixel by pixel).
+            If(u.sunShow.y.greaterThan(0.002), () => {
+                const th = sqrt(max(float(2.0).mul(float(1.0).sub(dot(rd, S))), 0.0));
+                const disc = float(1.0).sub(smoothstep(float(SUN_RADIUS).sub(u.pixelAngle), u.pixelAngle.add(SUN_RADIUS), th));
+                const bead = disc.mul(40.0).add(exp(th.div(0.004).negate()).mul(3.0));
+                sky.addAssign(sunLight.mul(bead).mul(u.sunShow.y));
+            });
             col.assign(sky);
 
             // ── The moons ───────────────────────────────────────────────────────
+            // Each wears a baked map (stellar-drift-moon-bake.js): its bright and dark ground, its one
+            // special material (the ice's brown cracks, the rust world's polar frost) and its relief,
+            // turning slowly about its own axis and lit per pixel in its own (turned) frame.
             const moon = (M, kind) => {
                 const oc = ro.sub(M.xyz).toVar();
                 const b = dot(oc, rd).toVar();
                 const d2 = max(dot(oc, oc).sub(b.mul(b)), 0.0).toVar();
-                const mpx = u.pixelAngle.mul(max(b.negate(), 0.05));
-                const cov = clamp(float(0.5).sub(sqrt(d2).sub(M.w).div(mpx)), 0.0, 1.0).mul(step(0.0, b.negate())).toVar();
-                If(cov.greaterThan(0.001), () => {
-                    const tm = b.negate().sub(sqrt(max(M.w.mul(M.w).sub(d2), 0.0)));
-                    const N = normalize(ro.add(rd.mul(tm)).sub(M.xyz)).toVar();
-                    const q = N.mul(kind === 0 ? 7.0 : 5.0).add(vec3(u.time.mul(kind === 0 ? 0.006 : 0.011), 3.1, 1.7)).toVar();
-                    const a = u.noise3(q).toVar();
-                    const bN = u.noise3(q.mul(2.7).add(11.0)).toVar();
-                    const albedo = vec3(0.0).toVar();
-                    if (kind === 0) {
-                        // Ice: pale plains, blue-grey patches, and long cracks.
-                        const crack = float(1.0).sub(abs(bN.x.mul(2.0).sub(1.0)));
-                        const lines = pow(crack, 12.0).mul(smoothstep(0.35, 0.7, a.y));
-                        albedo.assign(mix(u.moonIce, u.moonIce.mul(vec3(0.5, 0.62, 0.8)), smoothstep(0.38, 0.72, a.x)));
-                        albedo.mulAssign(float(0.86).add(bN.y.mul(0.2)).sub(lines.mul(0.42)));
-                    } else {
-                        // Rust: sulphur plains, dark calderas with pale rims.
-                        const spot = smoothstep(0.66, 0.8, bN.x);
-                        const rim = sdBell(bN.x.sub(0.64).div(0.05));
-                        albedo.assign(mix(u.moonRust, u.moonRust.mul(vec3(1.2, 1.1, 0.72)), smoothstep(0.3, 0.75, a.x)));
-                        albedo.assign(mix(albedo, u.moonRust.mul(vec3(0.22, 0.12, 0.1)), spot.mul(0.85)));
-                        albedo.mulAssign(float(0.82).add(a.y.mul(0.26)).add(rim.mul(0.3)));
+                const mpx = u.pixelAngle.mul(max(b.negate(), 0.05)).toVar();
+                const dm = sqrt(d2).toVar();
+                const cov = clamp(float(0.5).sub(dm.sub(M.w).div(mpx)), 0.0, 1.0).mul(step(0.0, b.negate())).toVar();
+                // The rust world's thin air reaches a little past its limb.
+                const reach = kind === 1 ? M.w.mul(1.16).add(mpx.mul(2.0)) : M.w.add(mpx.mul(2.0));
+                If(dm.lessThan(reach).and(b.lessThan(0.0)), () => {
+                    // Its own turn, about its own axis (the world's +Y).
+                    const ang = u.time.mul(kind === 0 ? 0.0045 : 0.008).add(kind === 0 ? 2.2 : 0.6);
+                    const cs = cos(ang).toVar();
+                    const sn = sin(ang).toVar();
+                    const turn = (v) => vec3(v.x.mul(cs).sub(v.z.mul(sn)), v.y, v.x.mul(sn).add(v.z.mul(cs)));
+                    const Sb = turn(S).toVar();
+                    If(cov.greaterThan(0.001), () => {
+                        const tm = b.negate().sub(sqrt(max(M.w.mul(M.w).sub(d2), 0.0)));
+                        const N = normalize(ro.add(rd.mul(tm)).sub(M.xyz)).toVar();
+                        const Nb = turn(N).toVar();
+                        const mu = max(dot(N, V), 0.05).toVar();
+                        const cl = max(sqrt(max(float(1.0).sub(Nb.y.mul(Nb.y)), 0.0)), 1e-3).toVar();
+                        const st = vec2(atan(Nb.z, Nb.x).div(TAU).add(0.5), asin(clamp(Nb.y, -1.0, 1.0)).div(Math.PI).add(0.5));
+                        // Texels of the map that one pixel spans (wider across the slant of the limb).
+                        const size = kind === 0 ? u.moonIceSize : u.moonRustSize;
+                        const lod = clamp(log2(max(mpx.div(M.w).mul(size / TAU).div(sqrt(mu)), 1.0)), 0.0, 9.0);
+                        const map = texture(kind === 0 ? u.moonIceTex : u.moonRustTex, st).level(lod).toVar();
+                        // The relief: the map's slopes east and north tilt the normal.
+                        const E = vec3(Nb.z.negate(), 0.0, Nb.x).div(cl).toVar();
+                        const North = vec3(E.y.mul(Nb.z).sub(E.z.mul(Nb.y)), E.z.mul(Nb.x).sub(E.x.mul(Nb.z)), E.x.mul(Nb.y).sub(E.y.mul(Nb.x)));
+                        const slope = map.ba.mul(2.0).sub(1.0);
+                        const Np = normalize(Nb.sub(E.mul(slope.x).add(North.mul(slope.y)).mul(kind === 0 ? 0.55 : 0.7))).toVar();
+                        const albedo = vec3(0.0).toVar();
+                        if (kind === 0) {
+                            // Young ice: bright plains, blue-grey provinces, brown cracks and chaos.
+                            const dark = u.moonIce.mul(vec3(0.5, 0.64, 0.86));
+                            const stain = u.moonIce.mul(vec3(0.62, 0.42, 0.28));
+                            albedo.assign(mix(mix(dark, u.moonIce, map.r), stain, map.g));
+                        } else {
+                            // Old dust: ochre plains, dark basalt, white frost at the poles.
+                            const dark = u.moonRust.mul(vec3(0.3, 0.2, 0.17));
+                            const frost = mix(vec3(0.94, 0.94, 0.96), u.moonIce, 0.25);
+                            albedo.assign(mix(mix(dark, u.moonRust.mul(1.06), map.r), frost, map.g));
+                        }
+                        const m0 = dot(Np, Sb).toVar();
+                        const m0c = max(m0, 0.0);
+                        // A crisp terminator, read from the true sphere so the relief cannot speckle past it.
+                        const day = smoothstep(-0.03, 0.07, dot(Nb, Sb));
+                        // Bright ice is lit almost flat to its limb (Lommel–Seeliger); dust darkens toward it.
+                        const diffuse = kind === 0
+                            ? mix(m0c, m0c.mul(2.0).div(m0c.add(mu)), 0.55)
+                            : m0c.mul(mix(float(1.0), pow(mu, 0.3), 0.45));
+                        // The giant's own light on the side that faces it, and the sky's on the rest.
+                        const toGiant = turn(normalize(M.xyz.negate()));
+                        const shine = max(dot(Np, toGiant), 0.0).mul(0.05);
+                        const light = sunLight.mul(diffuse.mul(day)).mul(1.08).add(u.shine.mul(shine)).add(u.night.mul(0.02));
+                        const surface = albedo.mul(light).toVar();
+                        if (kind === 1) {
+                            // Its thin air veils the day side's limb.
+                            const rim = float(1.0).sub(mu);
+                            const airVeil = rim.mul(rim).mul(rim).mul(0.45).mul(smoothstep(-0.2, 0.3, dot(Nb, Sb)));
+                            const airHue = mix(u.moonRust, vec3(1.0, 0.88, 0.76), 0.55);
+                            surface.assign(mix(surface, airHue.mul(sunLight).mul(0.7), airVeil));
+                        }
+                        col.assign(mix(col, surface, cov));
+                    });
+                    if (kind === 1) {
+                        // ...and stands off its limb as a thin bright shell, bluish toward its dusk.
+                        const T = turn(normalize(oc.add(rd.mul(b.negate()))));
+                        const h = max(dm.sub(M.w), 0.0).div(M.w);
+                        const air = exp(h.div(0.045).negate()).mul(float(1.0).sub(cov)).mul(step(M.w, dm.add(mpx)));
+                        const facing = dot(T, Sb);
+                        const lit = smoothstep(-0.3, 0.25, facing);
+                        const forward = pow(max(dot(rd, S), 0.0), 4.0).mul(2.0).add(0.45);
+                        const hue = mix(mix(u.moonRust, vec3(1.0, 0.86, 0.72), 0.6), vec3(0.55, 0.72, 1.0), smoothstep(0.3, -0.15, facing).mul(0.6));
+                        col.addAssign(hue.mul(sunLight).mul(air.mul(lit).mul(forward).mul(0.55)));
                     }
-                    const m0 = dot(N, S).toVar();
-                    const lit = pow(max(m0, 0.0), 0.84).mul(smoothstep(-0.03, 0.1, m0));
-                    // The giant's own light on the side that faces it.
-                    const toGiant = normalize(M.xyz.negate());
-                    const shine = max(dot(N, toGiant), 0.0).mul(0.035);
-                    const light = sunLight.mul(lit).mul(1.05).add(u.shine.mul(shine)).add(u.night.mul(0.015));
-                    col.assign(mix(col, albedo.mul(light), cov));
                 });
             };
             moon(u.moonA, 0);
@@ -363,6 +542,12 @@ export function createSpace(u, tier) {
             const away = sqrt(max(dot(hit, hit).sub(along.mul(along)), 0.0)).toVar();
             const pen = along.mul(0.012).add(0.008);
             const shade = mix(float(1.0), smoothstep(float(1.0).sub(pen), float(1.0).add(pen), away), step(0.0, along)).toVar();
+            // The inner moon's shadow, when it falls on the rings.
+            const toMR = IM.xyz.sub(hit);
+            const alongMR = dot(toMR, S).toVar();
+            const offMR = sqrt(max(dot(toMR, toMR).sub(alongMR.mul(alongMR)), 0.0));
+            const penMR = alongMR.mul(0.006).add(u.pixelAngle.mul(tR).mul(1.5));
+            shade.mulAssign(mix(float(1.0), smoothstep(IM.w.sub(penMR), IM.w.add(penMR), offMR), step(0.0, alongMR)));
             // The last light through the giant's air, along the shadow's edge.
             const ember = sdBell(away.sub(1.0).div(pen.mul(2.2))).mul(step(0.0, along));
             const cosA = dot(S, V).toVar();
@@ -387,9 +572,19 @@ export function createSpace(u, tier) {
                 const smudge = smoothstep(0.52, 0.8, spoke.r).mul(smoothstep(1.55, 1.7, rr))
                     .mul(float(1.0).sub(smoothstep(1.86, 1.95, rr))).mul(u.ringGlow.y);
                 const grain = u.fbmLod(vec2(theta.div(TAU).mul(24.0).sub(u.time.mul(0.004)), rr.mul(9.0)), 1.0).g;
-                const ice = mix(u.ringDust, u.ringIce, prof.y).mul(prof.z.mul(0.66).add(0.48))
-                    .mul(grain.mul(0.16).add(0.92)).mul(float(1.0).sub(smudge.mul(0.3)));
-                const lit = sunLight.mul(refl).mul(phase).mul(shade).mul(1.55);
+                // Each part of the rings has its own cast: the thin inner ring greyer, the broad one
+                // warm, the outer ring cooler.
+                const inner = mix(vec3(0.84, 0.84, 0.86), vec3(1.04, 0.99, 0.92), smoothstep(RINGS.cInner, RINGS.bInner, rr));
+                const cast = mix(inner, vec3(0.94, 0.96, 1.0), smoothstep(RINGS.bOuter, RINGS.aInner, rr));
+                const ice = mix(u.ringDust, u.ringIce, prof.y).mul(cast)
+                    .mul(prof.z.mul(0.66).add(0.48))
+                    .mul(grain.mul(0.16).add(0.92))
+                    .mul(float(1.0).sub(smudge.mul(0.3)));
+                // Lit from the face the camera does not see (an eclipse puts the sun below the rings),
+                // light comes through: the thin rings glow and the thick ones stand dark.
+                const unlit = step(S.y.mul(V.y), 0.0);
+                const through = refl.mul(exp(tau.mul(-1.15))).mul(1.6);
+                const lit = sunLight.mul(mix(refl, through, unlit)).mul(phase).mul(shade).mul(1.55);
                 // In the shadow the rings keep the giant's own light and the sky's.
                 const dim = u.shine.mul(0.02).add(u.night.mul(0.035)).mul(float(1.0).sub(exp(tau.mul(-2.0))));
                 ringCol.assign(ice.mul(lit.add(dim))
@@ -532,15 +727,36 @@ export function createSpace(u, tier) {
                 const span = smoothstep(RINGS.hazeInner, RINGS.hazePeak, rr)
                     .mul(float(1.0).sub(smoothstep(RINGS.hazePeak, RINGS.hazeOuter, rr)));
                 const column = span.mul(RINGS.hazeThickness).div(muV).min(3.0);
-                const forward = sdPhase(cosA.negate(), float(0.72)).mul(0.5).add(0.12);
+                // (Capped: lit from behind, as in an eclipse, the lobe would wash the whole frame.)
+                const forward = min(sdPhase(cosA.negate(), float(0.72)), 3.2).mul(0.5).add(0.12);
                 ringCol.assign(mix(u.ringIce, u.haze, 0.3).mul(sunLight).mul(forward).mul(shade)
                     .mul(0.085));
                 ringA.assign(float(1.0).sub(exp(column.mul(-0.5))));
                 // (Faint: this haze covers much of the sky, and a lift there veils the whole frame.)
                 ringGlow.assign(u.accent.mul(u.ringGlow.x).mul(ringA).mul(0.012));
+                // A chain's crown: the haze lights in the chain's colour, and soft waves of it, torn
+                // by the haze's own clumps, roll out through it past the camera.
+                If(u.halo.y.greaterThan(0.003), () => {
+                    const age = max(u.time.sub(u.halo.x), 0.0).toVar();
+                    const env = smoothstep(0.0, 0.35, age).mul(exp(age.mul(-0.42))).mul(u.halo.y).toVar();
+                    const tear = u.fbmLod(vec2(theta.div(TAU).mul(11.0), rr.mul(0.45).sub(age.mul(0.25))), 1.0).toVar();
+                    let waves = float(0.0);
+                    for (let k = 0; k < 3; k++) {
+                        const since = age.sub(k * 0.6);
+                        const crest = since.mul(1.55).add(RINGS.hazeInner);
+                        const x = rr.sub(crest).div(since.mul(0.05).add(0.15));
+                        waves = waves.add(exp(x.mul(x).negate()).mul(step(0.0, since)).mul(1.0 - k * 0.22));
+                    }
+                    const torn = smoothstep(0.25, 0.75, tear.r.mul(0.7).add(tear.g.mul(0.3)));
+                    ringGlow.addAssign(u.haloTint.mul(span).mul(waves.mul(torn.mul(0.8).add(0.2)).mul(2.1).add(0.12)).mul(env)
+                        .mul(ringA.mul(0.7).add(0.1)));
+                });
             });
         });
 
+        // The inner moon, where a far crossing of the rings stands in front of it.
+        const moonEarly = covI.mul(ringFirst).mul(float(1.0).sub(front)).toVar();
+        col.assign(mix(col, moonCol, moonEarly));
         // The rings' far side goes in before the giant.
         const far = ringA.mul(float(1.0).sub(front));
         col.assign(mix(col, ringCol, far).add(ringGlow.mul(float(1.0).sub(front))));
@@ -689,6 +905,34 @@ export function createSpace(u, tier) {
             albedo.assign(mix(albedo, vec3(0.92, 0.9, 0.86), clamp(pale, 0.0, 1.0).mul(0.6)));
             albedo.mulAssign(float(1.0).sub(clamp(collar, 0.0, 1.0).mul(0.3)));
 
+            // A great white storm (by the clock: stellar-drift-core.js OUTBREAK): a bright head of
+            // convection that grows, and its clouds spreading downwind round the band in puffs.
+            If(u.outbreak.w.greaterThan(0.003), () => {
+                const dyO = lat0.sub(u.outbreak.y).toVar();
+                If(abs(dyO).lessThan(0.17), () => {
+                    const age = u.outbreak.z;
+                    const xO = wrapPi(lon0.sub(u.outbreak.x)).mul(cosLat).toVar();
+                    const hs = min(age.mul(0.003).add(0.014), 0.075);
+                    const head = exp(xO.mul(xO).add(dyO.mul(dyO)).div(hs.mul(hs)).negate());
+                    const down = xO.mul(u.outbreakDir).toVar();
+                    const reach = age.mul(0.0105).add(0.01);
+                    const inTail = smoothstep(-0.02, 0.04, down).mul(float(1.0).sub(smoothstep(reach.mul(0.65), reach, down)));
+                    const k = clamp(down.div(reach), 0.0, 1.0);
+                    const width = k.mul(0.06).add(0.026).toVar();
+                    const wave = dyO.sub(sin(down.mul(23.0).add(nA.r.mul(4.0))).mul(0.016).mul(k)).toVar();
+                    const tail = exp(wave.mul(wave).div(width.mul(width)).negate()).mul(inTail);
+                    const puffs = smoothstep(-0.28, 0.22, nB.a.mul(0.8).add(nC.g.mul(0.7)).add(0.08)).toVar();
+                    const body = clamp(head.mul(1.4).add(tail.mul(0.95)).mul(u.outbreak.w), 0.0, 1.0);
+                    // High, sunlit convection: brighter than any zone, with dark lanes between its puffs.
+                    const towers = vec3(1.36, 1.32, 1.24).mul(puffs.mul(0.62).add(0.52)).mul(mottle.mul(0.2).add(1.0));
+                    // Its edges are drawn dark, where the storm's downdrafts clear the haze.
+                    const edge = abs(wave).sub(width.mul(1.15)).div(width.mul(0.45));
+                    const rim = exp(edge.mul(edge).negate()).mul(inTail).mul(u.outbreak.w).mul(0.28);
+                    albedo.mulAssign(float(1.0).sub(rim));
+                    albedo.assign(mix(albedo, towers, body.mul(0.9)));
+                });
+            });
+
             // The rings' shadow on the cloud tops: the same profile, seen through from below.
             const ringShade = float(1.0).toVar();
             const ts = P.y.negate().div(max(abs(S.y), 0.03).mul(step(0.0, S.y).mul(2.0).sub(1.0))).toVar();
@@ -701,11 +945,19 @@ export function createSpace(u, tier) {
                 ringShade.assign(mix(float(1.0), exp(prof.x.div(max(abs(S.y), 0.05)).negate()), inside));
             });
 
+            // The inner moon's shadow: a black dot with a soft edge, wherever it falls.
+            const toM = IM.xyz.sub(P);
+            const alongM = dot(toM, S).toVar();
+            const offM = sqrt(max(dot(toM, toM).sub(alongM.mul(alongM)), 0.0));
+            const penM = alongM.mul(0.006).add(arc.mul(1.2));
+            const moonShade = mix(float(1.0), smoothstep(IM.w.sub(penM), IM.w.add(penM), offM), step(0.0, alongM)).toVar();
+
             // Sunlight: a soft terminator that reddens, a limb that darkens.
             const day = smoothstep(-0.1, 0.2, mu0).toVar();
             const diffuse = pow(max(mu0, 0.0), 0.78).mul(mix(float(1.0), pow(mu, 0.42), 0.72));
             const dusk = mix(vec3(1.0, 0.6, 0.4), vec3(1.0), smoothstep(0.0, 0.3, mu0));
-            const light = sunLight.mul(dusk).mul(diffuse.mul(day).mul(1.12)).mul(ringShade.mul(0.94).add(0.06));
+            const light = sunLight.mul(dusk).mul(diffuse.mul(day).mul(1.12)).mul(ringShade.mul(0.94).add(0.06))
+                .mul(moonShade);
             // The night side keeps the sky's light and the rings' (on the hemisphere that sees their lit face).
             const dark = float(1.0).sub(day);
             const ringshine = max(P.y.mul(step(0.0, S.y).mul(2.0).sub(1.0)).add(0.25), 0.0).mul(0.02);
@@ -868,7 +1120,7 @@ export function createSpace(u, tier) {
             const facing = dot(T, S).toVar();
             const sunny = smoothstep(-0.3, 0.2, facing);
             // Looking toward the sun through the air, it blazes: the thin bright arc of a crescent.
-            const forward = pow(max(dot(rd, S), 0.0), 5.0).mul(2.6).add(0.3);
+            const forward = pow(max(dot(rd, S), 0.0), 5.0).mul(u.sunShow.z.mul(3.5).add(2.6)).add(0.3);
             const dusk = mix(vec3(1.0, 0.62, 0.4), vec3(1.0), smoothstep(-0.05, 0.3, facing));
             col.addAssign(u.haze.mul(sunLight).mul(dusk).mul(air.mul(sunny).mul(forward).mul(0.5))
                 .add(u.night.mul(air).mul(float(1.0).sub(sunny)).mul(0.22)));
@@ -892,8 +1144,15 @@ export function createSpace(u, tier) {
             col.addAssign(hue.mul(air.mul(streamer.mul(0.9).add(0.25)).mul(nightward).mul(u.drive.z).mul(0.55)));
         });
 
+        // ── The inner moon, in front of the giant ───────────────────────────────
+        const moonLate = covI.mul(float(1.0).sub(ringFirst.mul(float(1.0).sub(front))))
+            .mul(float(1.0).sub(cover.mul(step(tP, tI)))).toVar();
+        col.assign(mix(col, moonCol, moonLate));
+        /** What of the rings' near side still shows: none of a crossing behind the moon. */
+        const nearShows = front.mul(float(1.0).sub(moonLate.mul(float(1.0).sub(ringFirst))));
+
         // ── The rings' near side ────────────────────────────────────────────────
-        col.assign(mix(col, ringCol, ringA.mul(front)).add(ringGlow.mul(front)));
+        col.assign(mix(col, ringCol, ringA.mul(nearShows)).add(ringGlow.mul(nearShows)));
 
         // ── The flare a large reward throws off the giant ───────────────────────
         // A shell of plasma with a soft Gaussian profile, seen through: brightest where the ray
@@ -927,6 +1186,18 @@ export function createSpace(u, tier) {
                 const light = u.shockTint.mul(shownA).add(u.shockTintB.mul(shownB));
                 col.addAssign(mix(light, vec3(shown), s4.mul(0.4)).mul(filaments));
             });
+        });
+
+        // ── The sun's glare, when an eclipse brings it out past the giant's limb ───────
+        If(u.sunShow.y.greaterThan(0.002).and(u.sunShow.x.greaterThan(0.002)), () => {
+            const th = sqrt(max(float(2.0).mul(float(1.0).sub(dot(rd, S))), 0.0));
+            const ox = dot(rd, u.camRight).sub(dot(S, u.camRight));
+            const oy = dot(rd, u.camUp).sub(dot(S, u.camUp));
+            const glare = exp(th.div(0.008).negate()).mul(1.4).add(exp(th.div(0.04).negate()).mul(0.25))
+                .add(exp(th.div(0.15).negate()).mul(0.05));
+            const spikes = exp(abs(oy).div(0.0014).negate()).mul(exp(abs(ox).div(0.1).negate()))
+                .add(exp(abs(ox).div(0.0014).negate()).mul(exp(abs(oy).div(0.1).negate())));
+            col.addAssign(sunLight.mul(glare.add(spikes.mul(0.7))).mul(u.sunShow.x).mul(u.sunShow.y).mul(1.8));
         });
 
         return vec4(max(col, vec3(0.0)), 1.0);

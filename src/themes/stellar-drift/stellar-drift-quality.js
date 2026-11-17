@@ -10,6 +10,7 @@
  * starLayers     lattices of far stars
  * ice            the drifting ice: [boulders, shards, motes]
  * sparks         the pool a lock's splash and a meteor's burst throw from
+ * moonSize       width of the icy moon's baked map (the rust world's is always 512)
  */
 export const QUALITY = Object.freeze({
     Minimal: Object.freeze({
@@ -22,6 +23,7 @@ export const QUALITY = Object.freeze({
         starLayers: 2,
         ice: Object.freeze([2, 24, 400]),
         sparks: 160,
+        moonSize: 512,
     }),
     Low: Object.freeze({
         fbmSize: 256,
@@ -33,6 +35,7 @@ export const QUALITY = Object.freeze({
         starLayers: 2,
         ice: Object.freeze([3, 40, 700]),
         sparks: 260,
+        moonSize: 512,
     }),
     Medium: Object.freeze({
         fbmSize: 512,
@@ -44,6 +47,7 @@ export const QUALITY = Object.freeze({
         starLayers: 3,
         ice: Object.freeze([4, 70, 1300]),
         sparks: 420,
+        moonSize: 1024,
     }),
     High: Object.freeze({
         fbmSize: 512,
@@ -55,6 +59,7 @@ export const QUALITY = Object.freeze({
         starLayers: 3,
         ice: Object.freeze([6, 110, 2200]),
         sparks: 700,
+        moonSize: 1024,
     }),
     Ultra: Object.freeze({
         fbmSize: 512,
@@ -66,6 +71,7 @@ export const QUALITY = Object.freeze({
         starLayers: 3,
         ice: Object.freeze([8, 150, 3200]),
         sparks: 1000,
+        moonSize: 1024,
     }),
     Extreme: Object.freeze({
         fbmSize: 512,
@@ -77,6 +83,7 @@ export const QUALITY = Object.freeze({
         starLayers: 3,
         ice: Object.freeze([10, 200, 4600]),
         sparks: 1400,
+        moonSize: 1024,
     }),
 });
 
