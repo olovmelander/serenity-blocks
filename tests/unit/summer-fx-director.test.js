@@ -2505,7 +2505,7 @@ describe('Summer effects director', () => {
             expect(seen).toEqual([...seen].sort((a, b) => a - b));
         });
 
-        it('opens the bouquet\'s own flower about the maypole\'s head, nearer than the pole and clear of the card', () => {
+        it('opens the bouquet\'s own flower about the maypole\'s head, in front of it and clear of the card', () => {
             const CROWN_DEPTH = 8.2;
             const maypole = maypoleAnchors();
             const phone = {

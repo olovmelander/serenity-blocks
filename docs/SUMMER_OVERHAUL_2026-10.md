@@ -269,20 +269,23 @@ into uniforms; nothing is rebuilt, so every tier and both backends show the same
 | Event | What is its own |
 | --- | --- |
 | Piece lock | As before: petals of the piece's flower from the card's edge, that flower nodding and glowing wherever it grows, a gust through the grass, a ring on the lake (now seen). |
-| Hard drop | A ring of pollen runs out over the heads of the flowers from where the piece came down, under the dandelion seed it shakes loose. |
+| Hard drop | The piece comes down like a stone in the grass: a ring of its own flower's petals leaps out of the meadow to both sides of the board's foot, pollen among them, over the dandelion seed it shakes loose. |
 | Line clear (1–3) | As before: twin jets at the cleared rows, a broad ring, from two lines a front of wind. |
 | Four lines | As before: the meadow lifts its petals and the swallows tower; and now the sun's fan of rays opens across the sky. |
 | Combo / streak | As before: the crown of petals and the silk ribbons round the board. They are a combo's alone now (a back-to-back or a perfect clear no longer raises the ribbons). |
 | Twist | The maypole dances: its ten ribbons fly out and wheel round the pole. The spinning garland beside the board stays. |
 | Back-to-back | A stone skips down the sun's road, ring after ring, each touch a glint, further and with more hops for every one in a row; the sun's rays answer. |
-| The bouquet | The maypole throws the bouquet, and one great flower of every colour opens over it. |
-| Perfect clear | The largest thing the evening does. Seven flowers open in the air beside the board, one after another, one for each kind: a thread of pollen climbs, and the petals of one kind are thrown from a gold heart to their places in a flower drawn in the air, five to eight great petals each made of the small ones. The air holds each for a moment and a half, then lets it fall. Six stand to either side of the board (clear of the score panel, which is measured) and the last opens over the maypole, with the sunburst and the rising meadow as before. |
+| The bouquet | The maypole throws the bouquet, and one great flower of every colour opens about its head. |
+| Perfect clear | The largest thing the evening does. Seven flowers open in the air beside the board, one after another, one for each kind: a thread of pollen climbs, and the petals of one kind are thrown from a gold heart to their places in a flower drawn in the air, five to eight great petals each made of the small ones. The air holds each for a moment and a half, then lets it fall. Six stand to either side of the board and the last, in every colour, opens about the maypole's head, with the sunburst and the rising meadow as before. A flower's whole rim is kept clear of the board card, the score panel (both are measured), the screen's edges and the meadow under it: on the score panel's narrow side the three stand one above another, drawn a little smaller, and on an upright screen they open in a row above the board. |
 | Level up | The hour turns, and a wave of bloom rolls away from the eye through the meadow, opening and lighting every flower as it passes, and runs on across the lake as a band of sparkling water. A skein of swans takes wing over the lake. |
 | Game over | Dusk: the wind dies, mist rises off the water, the light lowers and cools while the petals come down. It lifts again when the next session starts. |
 
 Frame-wide brightenings (the rays, the hearts of the flowers) go through `flashScale()`; what
 moves the maypole's ribbons is scaled by Reduce motion. Nothing is thrown in front of the board:
-the card and the score panel are measured, and the flowers open in the strips beside them.
+the card and the score panel are measured, and the flowers open in the strips beside them. The
+petal pool grew by a quarter (4,000 at High) so that the largest thing the game can ask for at
+once, four lines with a perfect clear on top, finds every petal a free place while a combo's
+crown is still turning.
 
 | Perfect clear | Twist |
 | --- | --- |
@@ -355,6 +358,8 @@ them with distance into flecks the ground shader carries.
 | `summer-garlands.js` | The silk ribbons a combo winds around the board. |
 | `summer-petal-sim.js`, `summer-petals.js` | Petals, seed and pollen: simulation, and drawing. |
 | `summer-hours.js` | The five hours of the night: their colours, the blend between them, and the hour a level stands at (pure). |
+| `summer-weather.js` | The six weathers and the clock that turns them (pure). Since 2026-11-17. |
+| `summer-swans.js`, `summer-swan-routes.js`, `summer-swan-model.js` | The swans: the instanced draws; the family's round and the skein's flight lines, found by numbers through the rest lens; the generated Blender model. Since 2026-11-17. |
 | `summer-reactions.js` | The event director (pure), and where the night stands: the level, the turn to its hour, and the slow clock. |
 | `summer-stage.js`, `summer-fx-director.js` | Board card → world, and cues → petals, force fields, rings and gusts. |
 | `summer-post.js` | Volumetric shafts, bloom, grade, FXAA. |
@@ -397,15 +402,20 @@ them with distance into flecks the ground shader carries.
 
 | Tier | Stands / far trees | Sprays kept | Grass clumps | Flowers | Petal pool | Mirror | Shafts | Post |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Extreme | 44 / 460 | 100 % | 49,000 | 35,200 | 3,600 | 0.75 | 40 steps | on |
-| Ultra | 38 / 400 | 100 % | 40,500 | 29,400 | 3,000 | 0.6 | 32 steps | on |
-| High | 32 / 340 | 86 % | 32,000 | 23,600 | 2,400 | 0.5 | 26 steps | on |
-| Medium | 24 / 250 | 62 % | 20,500 | 15,400 | 1,500 | 0.4 | 16 steps, 0.35 scale | on |
-| Low | 16 / 160 | 40 %, trunks only | 10,400 | 7,800 | 850 | 0.3 | analytic glow in the haze | off |
-| Minimal | 10 / 100 | 28 %, trunks only | 5,400 | 3,900 | 450 | 0.22 | analytic glow in the haze | off |
+| Extreme | 44 / 2,000 | 100 % | 49,000 | 35,200 | 6,000 | 0.75 | 40 steps | on |
+| Ultra | 38 / 1,700 | 100 % | 40,500 | 29,400 | 5,000 | 0.6 | 32 steps | on |
+| High | 32 / 1,400 | 86 % | 32,000 | 23,600 | 4,000 | 0.5 | 26 steps | on |
+| Medium | 24 / 950 | 62 % | 20,500 | 15,400 | 2,500 | 0.4 | 16 steps, 0.35 scale | on |
+| Low | 16 / 560 | 40 %, trunks only | 10,400 | 7,800 | 1,400 | 0.3 | analytic glow in the haze | off |
+| Minimal | 10 / 340 | 28 %, trunks only | 5,400 | 3,900 | 750 | 0.22 | analytic glow in the haze | off |
 
 "Stands" are the modelled trees beyond the nine placed by hand. Low and Minimal draw the
-same scene directly with ACES tone mapping and skip limb geometry.
+same scene directly with ACES tone mapping and skip limb geometry. (Far trees and the petal
+pool as of the living eve, 2026-11-17; before it they were 460 to 100 and 3,600 to 450.) Since
+then a tier also sets how much of the sky is drawn (`sky`: Low and Minimal one row of cumulus
+and the high deck; Medium the second row, the mackerel field, the noctilucent clouds and rain on
+the lake as well; High and up finer billows) and how many swans there are (`swans`: two to four
+cygnets with the pair, three to seven birds in a skein).
 
 | Minimal, forced WebGL2 | Portrait, High |
 | --- | --- |
