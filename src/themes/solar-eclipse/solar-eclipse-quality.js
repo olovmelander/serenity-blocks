@@ -5,14 +5,19 @@
  * rays        octaves of the corona's fine rays (1 or 2)
  * flow        the corona's slow outflow (puffs drifting out along the streamers)
  * fibres      the prominences' fine threads (their arches and sheets stay on every tier)
- * faces       the sunlit range's snowfields and couloirs (else a smooth glow)
+ * faces       the sunlit range's snowfields and couloirs, the volcano's gullies (else smooth)
  * mist        the valley mist's drifting banks (else an even layer)
  * stars       the faint stars a long exposure brings out (the planets are on every tier)
  * motes       motes in the air at once (a lock's flight to the limb)
  * swell       the mirror's long swell and the wind's patches (else glass; the gameplay's rings
  *             and whirls are on every tier)
  * salt        the salt crust's polygons near the lens (else an unbroken mirror)
- * clouds      the cloud deck low over the far shore
+ * clouds      the rows of bars low over the far shore
+ * towers      the sunlit towers beyond the shadow (the weather's)
+ * deck        the altocumulus deck, dark overhead, burning past the shadow's edge
+ * lenticular  the cap over the volcano
+ * flamingos   the wading flock's birds and the most a flight of flamingos holds (every tier
+ *             keeps both: one draw for the birds, one for their image in the water)
  */
 export const QUALITY = Object.freeze({
     Minimal: Object.freeze({
@@ -26,6 +31,10 @@ export const QUALITY = Object.freeze({
         swell: false,
         salt: false,
         clouds: false,
+        towers: false,
+        deck: false,
+        lenticular: false,
+        flamingos: Object.freeze({ flock: 8, flight: 6 }),
     }),
     Low: Object.freeze({
         rays: 1,
@@ -38,6 +47,10 @@ export const QUALITY = Object.freeze({
         swell: true,
         salt: false,
         clouds: false,
+        towers: true,
+        deck: false,
+        lenticular: true,
+        flamingos: Object.freeze({ flock: 10, flight: 7 }),
     }),
     Medium: Object.freeze({
         rays: 2,
@@ -50,6 +63,10 @@ export const QUALITY = Object.freeze({
         swell: true,
         salt: true,
         clouds: true,
+        towers: true,
+        deck: true,
+        lenticular: true,
+        flamingos: Object.freeze({ flock: 14, flight: 10 }),
     }),
     High: Object.freeze({
         rays: 2,
@@ -62,6 +79,10 @@ export const QUALITY = Object.freeze({
         swell: true,
         salt: true,
         clouds: true,
+        towers: true,
+        deck: true,
+        lenticular: true,
+        flamingos: Object.freeze({ flock: 18, flight: 12 }),
     }),
     Ultra: Object.freeze({
         rays: 2,
@@ -74,6 +95,10 @@ export const QUALITY = Object.freeze({
         swell: true,
         salt: true,
         clouds: true,
+        towers: true,
+        deck: true,
+        lenticular: true,
+        flamingos: Object.freeze({ flock: 20, flight: 12 }),
     }),
     Extreme: Object.freeze({
         rays: 2,
@@ -86,6 +111,10 @@ export const QUALITY = Object.freeze({
         swell: true,
         salt: true,
         clouds: true,
+        towers: true,
+        deck: true,
+        lenticular: true,
+        flamingos: Object.freeze({ flock: 20, flight: 12 }),
     }),
 });
 
