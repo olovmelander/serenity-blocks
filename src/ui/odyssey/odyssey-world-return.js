@@ -1,3 +1,4 @@
+import { answerOrbFinished } from '../../rendering/odyssey/odyssey-flow-answers.js';
 import { JourneyReturnTransition } from '../../rendering/transitions/JourneyReturnTransition.js';
 import { prefersOdysseyReducedMotion } from '../../core/game-modes/odyssey-physics-callbacks.js';
 import { waitForAnimationFrames } from './odyssey-cover-paint.js';
@@ -37,9 +38,10 @@ export async function returnToOdysseyWorld(mode, options = {}) {
     const completedLevelId = options.focusLevelId ?? mode.currentLevelId;
     const completedLevelConfig = mode.currentLevelConfig;
     const departureAnchor = mode._resolveJourneyReturnDepartureAnchor();
-    const palette = mode._buildJourneyEntryPalette(completedLevelConfig);
+    const palette = mode._buildJourneyEntryPalette(completedLevelConfig, { returning: true });
     const timings = mode._buildJourneyReturnTimings(completedLevelConfig);
     const qualityPreset = window.settings?.effectQuality || 'High';
+    const reducedMotion = prefersOdysseyReducedMotion(mode, mode.deps.settingsManager?.get?.() || {});
     const session = mode._retireLevelSession();
     const retirementGeneration = session?.retirementGeneration;
     if (session?.gameState?.latestPhysicsPromise) {
@@ -73,7 +75,7 @@ export async function returnToOdysseyWorld(mode, options = {}) {
         qualityPreset,
         // A journey's own overlay answers Escape (Map); a plain return has no other owner.
         captureEscape: !journeyOwner,
-        reducedMotion: prefersOdysseyReducedMotion(mode, mode.deps.settingsManager?.get?.() || {}),
+        reducedMotion,
         callbacks: {
             onBlackoutReached: async () => {
                 if (!isCurrent()) return false;
@@ -133,6 +135,20 @@ export async function returnToOdysseyWorld(mode, options = {}) {
                 if (!options.preserveJourneyFlow || options.preserveJourneyFlow !== mode._journeyFlowOperation) {
                     mode._unlockOdysseyBoardAfterLaunchAttempt();
                     mode.setOdysseyNavigatorButtonVisible(true);
+                }
+                // The world answers the orb just cleared as its gate opens: the stars land on
+                // it and the rail lights up toward the next (odyssey-flow-answers.js).
+                const cleared = mode._orbJustCleared;
+                mode._orbJustCleared = null;
+                if (Number.isFinite(cleared)) {
+                    const next = mode.levelRegistry?.getNextLevel?.(cleared);
+                    answerOrbFinished(mode.boardController, {
+                        finishedId: cleared,
+                        nextId: next && mode.odysseyState?.isLevelUnlocked?.(next.id) ? next.id : null,
+                        // A journey that rides on lights the rail as the ride begins.
+                        ripple: !journeyOwner,
+                        reducedMotion,
+                    });
                 }
                 return true;
             },

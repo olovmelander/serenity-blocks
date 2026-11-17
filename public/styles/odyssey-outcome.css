@@ -23,7 +23,10 @@
     --outcome-art: clamp(156px, min(17vw, 30vh), 232px);
     background:
         radial-gradient(56% 64% at 34% 46%, rgba(var(--outcome-rgb), 0.1), transparent 72%),
-        rgba(5, 4, 14, 0.72);
+        rgba(var(--ody-glass-deep-rgb), 0.76);
+    /* The inks measured for the chapter's glass (chapter-looks.js). */
+    --sb-text-muted: var(--ody-ink-muted);
+    --sb-text-faint: var(--ody-ink-faint);
 }
 
 /* A fall keeps the orb's own light; with no chapter to lend one, the sheet rests in lavender. */
@@ -56,7 +59,10 @@
     background:
         radial-gradient(46% 86% at 0% 42%, rgba(var(--outcome-rgb), 0.17), transparent 72%),
         radial-gradient(52% 60% at 100% 0%, rgba(var(--outcome-rgb), 0.07), transparent 72%),
-        linear-gradient(180deg, rgba(27, 23, 60, 0.96) 0%, rgba(12, 10, 30, 0.97) 100%);
+        /* The orb's chapter's glass, a little more solid than a card over the map: this sheet
+           is read at length. */
+        linear-gradient(180deg, rgba(var(--ody-glass-rgb), 0.95) 0%, rgba(var(--ody-glass-deep-rgb), 0.97) 100%);
+    box-shadow: var(--ody-glass-sheen), 0 40px 110px rgba(0, 0, 0, 0.5);
 }
 
 :is(#odyssey-results-modal, #odyssey-failure-modal) .sb-ody-outcome {
@@ -629,7 +635,7 @@
     gap: 10px 24px;
     padding: 16px var(--outcome-pad) max(16px, env(safe-area-inset-bottom));
     border-top: 1px solid var(--sb-line);
-    background: linear-gradient(180deg, rgba(7, 6, 26, 0.2), rgba(5, 4, 15, 0.62));
+    background: linear-gradient(180deg, rgba(var(--ody-glass-deep-rgb), 0.25), rgba(var(--ody-glass-deep-rgb), 0.7));
     animation: sb-ody-outcome-rise 0.5s 0.16s var(--sb-ease-lock) both;
 }
 

@@ -8,6 +8,11 @@
  * Layout lives in data-layout; data-world-stage, data-covered, data-revealing and
  * data-visibility-held keep their lifecycle meanings. Motion uses Material 3's emphasized
  * curves; every animation has a still reduced-motion composition.
+ *
+ * The overlay wears a chapter (data-ody-chapter, set by JourneyFlowOverlay.js): its shades and
+ * its docked briefing are that chapter's glass (odyssey-shared.css --ody-glass-*), its accents
+ * the chapter's light (--ody-flow-color). A chapter arrival is laid LIGHTLY over the world: the
+ * world is the picture, and the words stand in a pool of the chapter's night only where they are.
  */
 .ody-flow {
     --ody-flow-color: #e8bc92;
@@ -43,7 +48,7 @@
     opacity: 0;
     transition: opacity 700ms var(--ody-ease);
 }
-.ody-flow::before { background: rgba(7, 6, 18, 0.86); }
+.ody-flow::before { background: rgba(var(--ody-glass-deep-rgb, 7, 6, 18), 0.88); }
 .ody-flow::after {
     z-index: -2;
     background: linear-gradient(180deg, transparent 50%, rgba(5, 5, 16, 0.2) 72%, rgba(5, 5, 16, 0.64));
@@ -421,10 +426,15 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     text-align: left;
-    background: linear-gradient(160deg, rgba(16, 13, 36, 0.92), rgba(8, 7, 19, 0.95) 70%);
+    /* The briefing rides over the live world on the chapter's glass. */
+    background:
+        radial-gradient(90% 60% at 0% 0%, color-mix(in srgb, var(--ody-flow-color) 16%, transparent), transparent 70%),
+        var(--ody-glass-fill);
     border: 1px solid color-mix(in srgb, var(--ody-flow-color) 34%, transparent);
     border-radius: 16px;
-    box-shadow: 0 22px 60px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    box-shadow: 0 22px 60px rgba(0, 0, 0, 0.45), var(--ody-glass-sheen);
+    -webkit-backdrop-filter: var(--ody-glass-blur, none);
+    backdrop-filter: var(--ody-glass-blur, none);
     animation: ody-flow-dock 620ms var(--ody-ease-out) both;
     scrollbar-width: thin;
 }
@@ -492,7 +502,7 @@
     gap: 8px;
     margin: 10px -18px 0;
     padding: 8px 18px 12px;
-    background: linear-gradient(180deg, rgba(8, 7, 19, 0), #080713 30%);
+    background: linear-gradient(180deg, rgba(var(--ody-glass-deep-rgb), 0), rgb(var(--ody-glass-deep-rgb)) 30%);
 }
 .ody-flow[data-layout='scenic'] .sb-btn { min-width: 0; max-width: 100%; white-space: normal; }
 .ody-flow[data-layout='scenic'] .ody-flow__quiet { font-size: 0.78rem; }
@@ -506,13 +516,35 @@
     /* No bottom padding: the action bar carries it, so it can stay in view as the story scrolls. */
     padding: clamp(20px, 4.4vh, 40px) clamp(24px, 7vw, 110px) 0;
 }
+/* The world is the picture. The shade is a pool of the chapter's night where the words stand
+   (the lower left) and a smaller one under the breathing light; the sky and the far side of the
+   view stay clear. It used to be a sheet over the whole frame (0.78 across, solid at the foot). */
 .ody-flow[data-layout='chapter']::before {
     opacity: 1;
     background:
-        linear-gradient(90deg, rgba(5, 5, 16, 0.78), rgba(5, 5, 16, 0.66) 38%, transparent 78%),
-        linear-gradient(180deg, transparent 0%, rgba(5, 5, 16, 0.08) 20%, rgba(5, 5, 16, 0.66) 58%, #080713 100%);
+        radial-gradient(
+            ellipse 62% 74% at 16% 84%,
+            rgba(var(--ody-glass-deep-rgb), 0.9) 0%,
+            rgba(var(--ody-glass-deep-rgb), 0.78) 46%,
+            rgba(var(--ody-glass-deep-rgb), 0.3) 78%,
+            rgba(var(--ody-glass-deep-rgb), 0) 100%
+        ),
+        radial-gradient(
+            ellipse 21% 36% at 81% 58%,
+            rgba(var(--ody-glass-deep-rgb), 0.64) 0%,
+            rgba(var(--ody-glass-deep-rgb), 0.36) 60%,
+            rgba(var(--ody-glass-deep-rgb), 0) 100%
+        ),
+        linear-gradient(180deg, rgba(var(--ody-glass-deep-rgb), 0) 80%, rgba(var(--ody-glass-deep-rgb), 0.5) 100%);
     transition-duration: 1100ms;
 }
+/* The framing layer's foot shade would dim the whole width again: the pool carries it here. */
+.ody-flow[data-layout='chapter']::after { opacity: 0; }
+/* Set on the scenery, the words carry a shade of their own as well. */
+.ody-flow[data-layout='chapter'] .ody-flow__content {
+    text-shadow: 0 1px 2px rgba(var(--ody-glass-deep-rgb), 0.85), 0 2px 22px rgba(var(--ody-glass-deep-rgb), 0.7);
+}
+.ody-flow[data-layout='chapter'] .ody-flow__content .sb-btn { text-shadow: none; }
 .ody-flow[data-layout='chapter'] .ody-flow__portal,
 .ody-flow[data-layout='chapter'] .ody-flow__achievement,
 .ody-flow[data-layout='chapter'] .ody-flow__stars,
@@ -626,25 +658,32 @@
     padding: 12px 16px max(clamp(16px, 4.4vh, 40px), env(safe-area-inset-bottom));
 }
 /* A feathered shade, not a box: it is solid under the buttons and fades out only beyond them,
-   so scrolled text vanishes under the bar instead of showing through it. */
+   so scrolled text vanishes under the bar instead of showing through it. Over the open world
+   its far end fades long (from past the buttons to its edge), into the pool the words stand in. */
 .ody-flow[data-layout='chapter'] .ody-flow__actions::before {
     content: '';
     position: absolute;
     inset: -32px -56px 0;
     z-index: -1;
     pointer-events: none;
-    background: #080713;
+    background: rgb(var(--ody-glass-deep-rgb, 8, 7, 19));
     -webkit-mask-image:
         linear-gradient(180deg, transparent, #000 32px),
-        linear-gradient(90deg, transparent, #000 56px, #000 calc(100% - 56px), transparent);
+        linear-gradient(90deg, transparent, #000 56px, #000 52%, transparent);
     -webkit-mask-composite: source-in;
     mask-image:
         linear-gradient(180deg, transparent, #000 32px),
-        linear-gradient(90deg, transparent, #000 56px, #000 calc(100% - 56px), transparent);
+        linear-gradient(90deg, transparent, #000 56px, #000 52%, transparent);
     mask-composite: intersect;
 }
 .ody-flow[data-layout='chapter'] .ody-flow__breath { flex: 1 1 200px; max-width: 34ch; margin: 0 0 0 6px; text-wrap: balance; }
-.ody-flow[data-layout='chapter'] .ody-breath { grid-column: 2; grid-row: 1; align-self: center; justify-self: center; }
+.ody-flow[data-layout='chapter'] .ody-breath {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+    justify-self: center;
+    text-shadow: 0 1px 2px rgba(var(--ody-glass-deep-rgb), 0.85), 0 2px 18px rgba(var(--ody-glass-deep-rgb), 0.7);
+}
 
 /* ---- Departing: the visible composition fades in place ------------------------- */
 .ody-flow[data-layout][data-departing='true'] .ody-flow__content,

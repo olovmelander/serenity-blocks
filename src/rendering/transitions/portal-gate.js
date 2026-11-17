@@ -3,21 +3,35 @@
  *
  * Entering an orb, light gathers onto it (motes spiral in, a ring closes on it), the orb opens
  * into a circular gate with a bright rim, the gate swells over the whole screen and its centre
- * glides to the middle while the world darkens around it, and inside it is the passage: clouds in
- * the destination's colours rushing past, streaks of light, the destination's own light ahead.
+ * glides to the middle while the world darkens around it, and inside it is the passage: the
+ * walls of a way through rushing past, matter flying by, the destination's own light ahead.
  * The passage is what plays while the next board prepares. On arrival the light ahead swells and
  * a second gate opens from it onto the board. Leaving, the board closes into a shrinking gate,
- * the passage streams the other way, and the world opens through a gate at the finished orb.
+ * the passage streams the other way, and the world opens through a gate at the finished orb,
+ * its own light blooming through.
+ *
+ * It is seen in and out of every orb, 120 times a journey, so no two are alike: the passage is
+ * MADE OF the chapter you are in (portal-gate-matter.js: embers, bubbles, petals, snow, cloud,
+ * stars, facets, neon), PAINTED IN the colours of the world you are going to (the palette: its
+ * two strongest hues on the walls, its key light on the streaks, the rim and the light ahead,
+ * its brightness lifting or deepening the whole), and LAID OUT from a seed of its own (`look`:
+ * which way it swirls, how it curves, where everything in it starts).
  *
  * Plain 2D canvas: no WebGPU pipeline of its own, so nothing here compiles while the level's
- * theme does. The textures (a procedural nebula ring, a streak, a glow) are made once on the CPU,
- * the noise once per page and the tints once per palette, and every frame is a few dozen scaled
- * image draws and ring strokes. Pure functions; the transitions own timing and the DOM.
+ * theme does. The textures (a wall ring, a few sprites, a streak, a glow) are made once on the
+ * CPU, the noise once per kind and the tints once per palette, and every frame is a few dozen
+ * scaled image draws and ring strokes. Pure functions; the transitions own timing and the DOM.
  */
+import {
+    DEFAULT_PASSAGE_KIND, PASSAGE_KINDS, bakeMatterSprite, bakeWallRing, drawMatter, drawPassageExtras,
+    drawRimOrnament, resolvePassageKind,
+} from './portal-gate-matter.js';
+
+export { bakeNebulaRing } from './portal-gate-matter.js';
 
 const TAU = Math.PI * 2;
 
-/** Per quality preset: nebula layers, streaks, gathering motes, and the nebula texture's size. */
+/** Per quality preset: wall layers, streaks and matter, gathering motes, and the wall texture's size. */
 export const PORTAL_GATE_COUNTS = Object.freeze({
     Minimal: Object.freeze({
         layers: 3, streaks: 22, motes: 12, texture: 224,
@@ -58,77 +72,25 @@ const smoothstep = (lo, hi, value) => {
     return t * t * (3 - 2 * t);
 };
 
-// ── Noise (CPU, once) ───────────────────────────────────────────────────────────
-
-function hash(x, y, seed) {
-    let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(seed, 2246822519);
-    h = Math.imul(h ^ (h >>> 13), 1274126177);
-    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-}
-
-/** Value noise, periodic in x with `period` cells. */
-function valueNoise(x, y, period, seed) {
-    const xi = Math.floor(x);
-    const yi = Math.floor(y);
-    const xf = x - xi;
-    const yf = y - yi;
-    const u = xf * xf * (3 - 2 * xf);
-    const v = yf * yf * (3 - 2 * yf);
-    const x0 = ((xi % period) + period) % period;
-    const x1 = (x0 + 1) % period;
-    const a = hash(x0, yi, seed);
-    const b = hash(x1, yi, seed);
-    const c = hash(x0, yi + 1, seed);
-    const d = hash(x1, yi + 1, seed);
-    return (a + (b - a) * u) + ((c + (d - c) * u) - (a + (b - a) * u)) * v;
-}
-
-/**
- * The nebula ring as alpha (white light): clouds drawn out along the radius (the noise is read in
- * turn and log radius, so a layer zooming past reads as a passage, not a stamp), with filaments
- * where the clouds cross their middle, faded out at the centre and at the rim.
- * @returns {Uint8ClampedArray} size² RGBA
- */
-export function bakeNebulaRing(size, seed = 7) {
-    const data = new Uint8ClampedArray(size * size * 4);
-    const half = size / 2;
-    const period = 9;
-    for (let y = 0; y < size; y++) {
-        for (let x = 0; x < size; x++) {
-            const dx = (x + 0.5 - half) / half;
-            const dy = (y + 0.5 - half) / half;
-            const r = Math.hypot(dx, dy);
-            const o = (y * size + x) * 4;
-            const envelope = smoothstep(0.1, 0.42, r) * (1 - smoothstep(0.72, 0.99, r));
-            if (envelope <= 0) continue;
-            const u = (Math.atan2(dy, dx) / TAU + 0.5) * period;
-            const v = Math.log(Math.max(r, 0.02)) * 2.4;
-            let n = 0;
-            let amp = 0.55;
-            let total = 0;
-            for (let octave = 0; octave < 4; octave++) {
-                const k = 2 ** octave;
-                n += valueNoise(u * k, v * k, period * k, seed + octave * 31) * amp;
-                total += amp;
-                amp *= 0.5;
-            }
-            n /= total;
-            const cloud = smoothstep(0.44, 0.82, n);
-            const thread = (1 - Math.abs(n * 2 - 1)) ** 8 * 0.7;
-            const a = Math.min(1, (cloud * 0.85 + thread) * envelope);
-            data[o] = 255;
-            data[o + 1] = 255;
-            data[o + 2] = 255;
-            data[o + 3] = Math.round(a * 255);
-        }
-    }
-    return data;
+/** A small seeded generator (mulberry32): one passage's layout from one number. */
+export function seededRandom(seed) {
+    let state = (Number(seed) || 0) >>> 0;
+    return () => {
+        state = (state + 0x6d2b79f5) >>> 0;
+        let t = state;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
 }
 
 // ── Sprites (DOM canvases, once per palette) ────────────────────────────────────
 
-const nebulaCache = new Map();
+/** White-light bases: a wall ring per kind and size, a matter sprite per name. Baked once a page. */
+const baseCache = new Map();
+/** Sprites in a palette's colours. A palette is a theme and a session visits a handful. */
 const tintCache = new Map();
+const TINT_CACHE_LIMIT = 96;
 
 function makeCanvas(documentRef, width, height) {
     const canvas = documentRef?.createElement?.('canvas');
@@ -145,17 +107,37 @@ function makeCanvas(documentRef, width, height) {
     return { canvas, ctx };
 }
 
-function nebulaBase(documentRef, size) {
-    if (nebulaCache.has(size)) return nebulaCache.get(size);
-    const made = makeCanvas(documentRef, size, size);
+/** Keep a sprite, letting the oldest go once the cache is full. */
+function remember(key, canvas) {
+    if (tintCache.size >= TINT_CACHE_LIMIT) tintCache.delete(tintCache.keys().next().value);
+    tintCache.set(key, canvas);
+    return canvas;
+}
+
+/** A canvas holding baked white-light pixels, made once per key. */
+function baseSprite(documentRef, key, width, height, bake) {
+    if (baseCache.has(key)) return baseCache.get(key);
+    const made = makeCanvas(documentRef, width, height);
     if (!made || typeof made.ctx.createImageData !== 'function' || typeof made.ctx.putImageData !== 'function') {
         return null;
     }
-    const image = made.ctx.createImageData(size, size);
-    image.data.set(bakeNebulaRing(size));
+    const image = made.ctx.createImageData(width, height);
+    image.data.set(bake());
     made.ctx.putImageData(image, 0, 0);
-    nebulaCache.set(size, made.canvas);
+    baseCache.set(key, made.canvas);
     return made.canvas;
+}
+
+/** The passage's wall for a kind, as white light. */
+function wallBase(documentRef, wall, size) {
+    return baseSprite(documentRef, `wall|${wall}|${size}`, size, size, () => bakeWallRing(wall, size));
+}
+
+/** One of a kind's matter sprites (a bubble, a petal, a shard ...), as white light. */
+function matterBase(documentRef, name) {
+    const baked = bakeMatterSprite(name);
+    if (!baked) return null;
+    return baseSprite(documentRef, `matter|${name}`, baked.width, baked.height, () => baked.data);
 }
 
 /** A white-light sprite turned to one colour (its alpha kept). */
@@ -168,10 +150,7 @@ function tinted(documentRef, source, color, key) {
     made.ctx.globalCompositeOperation = 'source-in';
     made.ctx.fillStyle = color;
     made.ctx.fillRect(0, 0, source.width, source.height);
-    // A small cache: a palette is a theme, and a session visits a handful.
-    if (tintCache.size > 48) tintCache.delete(tintCache.keys().next().value);
-    tintCache.set(key, made.canvas);
-    return made.canvas;
+    return remember(key, made.canvas);
 }
 
 /** A soft round glow in one colour: white at the heart for the hottest of them. */
@@ -188,8 +167,7 @@ function glowSprite(documentRef, color, key, hot = false) {
     g.addColorStop(1, colorWithAlpha(color, 0));
     made.ctx.fillStyle = g;
     made.ctx.fillRect(0, 0, size, size);
-    tintCache.set(key, made.canvas);
-    return made.canvas;
+    return remember(key, made.canvas);
 }
 
 /** A streak of light along +x: a fading tail, a bright head, a soft glow round its line. */
@@ -219,8 +197,7 @@ function streakSprite(documentRef, color, key) {
         }
     }
     made.ctx.putImageData(image, 0, 0);
-    tintCache.set(key, made.canvas);
-    return made.canvas;
+    return remember(key, made.canvas);
 }
 
 /** '#rrggbb', '#rgb' or 'rgb(a)(…)' → [r, g, b] (0..255). Anything else is white. */
@@ -247,12 +224,8 @@ function mixColor(a, b, t) {
     return ca.map((v, i) => Math.round(v + (cb[i] - v) * t));
 }
 
-/**
- * A colour set to a lightness and a floor of saturation (HSL), keeping its hue: palettes are
- * authored for UI (pale, light), and light added onto light washes out to a white fog, so the
- * passage's clouds take their hue at a deep, saturated value instead.
- */
-export function deepen(color, lightness = 0.42, minSaturation = 0.7) {
+/** A colour as hue, saturation and lightness (each 0..1). */
+function toHsl(color) {
     const [r, g, b] = parseColor(color).map((v) => v / 255);
     const max = Math.max(r, g, b);
     const min = Math.min(r, g, b);
@@ -267,7 +240,10 @@ export function deepen(color, lightness = 0.42, minSaturation = 0.7) {
         else h = (r - g) / d + 4;
         h /= 6;
     }
-    const sat = max === min ? 0 : Math.max(s, minSaturation);
+    return [h, s, l];
+}
+
+function fromHsl(h, sat, lightness) {
     const q = lightness < 0.5 ? lightness * (1 + sat) : lightness + sat - lightness * sat;
     const p = 2 * lightness - q;
     const channel = (t0) => {
@@ -283,32 +259,82 @@ export function deepen(color, lightness = 0.42, minSaturation = 0.7) {
     return `rgb(${out.map((v) => Math.round(v * 255)).join(', ')})`;
 }
 
-// ── The gate ────────────────────────────────────────────────────────────────────
+/**
+ * A colour set to a lightness and a floor of saturation (HSL), keeping its hue: palettes are
+ * authored for UI (pale, light), and light added onto light washes out to a white fog, so the
+ * passage's clouds take their hue at a deep, saturated value instead.
+ */
+export function deepen(color, lightness = 0.42, minSaturation = 0.7) {
+    const [h, s] = toHsl(color);
+    return fromHsl(h, s === 0 ? 0 : Math.max(s, minSaturation), lightness);
+}
 
 /**
- * Everything one run draws with: sprites in its palette and a fixed layout of layers, streaks
- * and motes (deterministic when `random` is).
+ * A colour of the destination's picture at the lightness the passage needs, its saturation
+ * lifted in proportion to what it HAS. A floor of saturation (deepen) turns the faint cast of a
+ * grey into a vivid hue: a storm-cloud grey became a blue passage into a golden prairie (audit
+ * 2026-11-17). Here a moonlit grey-blue world keeps a muted passage and a golden one a rich one.
+ */
+export function passageTint(color, lightness, lift = 1.5, most = 0.88) {
+    const [h, s] = toHsl(color);
+    const sat = s < 0.04 ? 0 : Math.min(most, Math.max(s, s * lift + 0.06));
+    return fromHsl(h, sat, clamp01(lightness));
+}
+
+// ── The gate ────────────────────────────────────────────────────────────────────
+
+/** How many marks a rim's ornament is made of (portal-gate-matter.js drawRimOrnament). */
+const RIM_MARKS = Object.freeze({
+    molten: 9, wreath: 14, frost: 26, orbit: 2, polygon: 1, tube: 6,
+});
+
+/**
+ * Everything one run draws with: sprites in its palette and a fixed layout of layers, streaks,
+ * matter and motes (deterministic when `random` is, or when `look.seed` is given).
+ * @param {object} [options]
+ * @param {string} [options.qualityPreset]
+ * @param {{primary?: string, accent?: string, highlight?: string, shadow?: string}} [options.palette]
+ *   the destination's colours: its two strongest hues, its key light, its shadow
+ * @param {{kind?: string, seed?: number, key?: number, world?: string}|null} [options.look] what
+ *   the passage is made of (a PASSAGE_KINDS name: the chapter you are in), this passage's own
+ *   seed, how bright the destination is (0 a night, 1 a white-out), and the light of the world
+ *   the gate opens back onto (the emergence's bloom)
+ * @param {() => number} [options.random] overrides the seed (tests)
+ * @param {Document|{createElement: Function}|null} [options.documentRef]
  */
 export function createPortalGate({
-    qualityPreset = 'High', palette = {}, random = Math.random, documentRef = globalThis.document,
+    qualityPreset = 'High', palette = {}, look = null, random = null, documentRef = globalThis.document,
 } = {}) {
     const counts = PORTAL_GATE_COUNTS[qualityPreset] || PORTAL_GATE_COUNTS.High;
+    const kindName = Object.hasOwn(PASSAGE_KINDS, look?.kind) ? look.kind : DEFAULT_PASSAGE_KIND;
+    const kind = resolvePassageKind(kindName);
+    let rand = random;
+    if (typeof rand !== 'function') rand = Number.isFinite(look?.seed) ? seededRandom(look.seed) : Math.random;
+    const brightness = clamp01(Number.isFinite(look?.key) ? look.key : 0.35);
     const colors = {
         primary: palette.primary || '#ffd38a',
         accent: palette.accent || '#fff3c8',
         highlight: palette.highlight || '#ffffff',
         shadow: palette.shadow || '#05070d',
     };
-    const base = nebulaBase(documentRef, counts.texture);
-    const key = `${colors.primary}|${colors.accent}|${colors.highlight}`;
-    // The clouds in the palette's hues at a deep value (the light comes from the streaks and the
-    // light ahead, not from fog), one cooler and one warmer of the two.
-    const cloudA = deepen(colors.primary, 0.36, 0.72);
-    const cloudB = deepen(colors.accent, 0.3, 0.6);
-    const sprites = base ? {
+    const key = `${kindName}|${colors.primary}|${colors.accent}|${colors.highlight}`;
+    // The walls in the destination's two hues at a deep value (the light comes from the streaks
+    // and the light ahead, not from fog); a bright world lifts them, a night deepens them.
+    const lift = 0.86 + 0.42 * brightness;
+    const wallA = passageTint(colors.primary, Math.min(0.7, kind.wallValue[0] * lift));
+    const wallB = passageTint(colors.accent, Math.min(0.66, kind.wallValue[1] * lift));
+    // What flies past wears the destination's light and its second hue, bright.
+    const matterTints = [passageTint(colors.highlight, 0.8, 1.2), passageTint(colors.accent, 0.64, 1.7)];
+    const wall = wallBase(documentRef, kind.wall, counts.texture);
+    const matterSprite = (name, color) => {
+        if (name === 'streak') return streakSprite(documentRef, color, `s|${color}`);
+        if (name === 'glow') return glowSprite(documentRef, color, `g|${color}`);
+        return tinted(documentRef, matterBase(documentRef, name), color, `m|${name}|${color}`);
+    };
+    const sprites = wall ? {
         nebula: [
-            tinted(documentRef, base, cloudA, `n${counts.texture}|${cloudA}`),
-            tinted(documentRef, base, cloudB, `n${counts.texture}|${cloudB}`),
+            tinted(documentRef, wall, wallA, `w|${kind.wall}|${counts.texture}|${wallA}`),
+            tinted(documentRef, wall, wallB, `w|${kind.wall}|${counts.texture}|${wallB}`),
         ],
         streak: [
             streakSprite(documentRef, colors.highlight, `s|${colors.highlight}`),
@@ -317,38 +343,130 @@ export function createPortalGate({
         glowHot: glowSprite(documentRef, colors.highlight, `gh|${colors.highlight}`, true),
         glowPrimary: glowSprite(documentRef, colors.primary, `gp|${colors.primary}`),
         glowAccent: glowSprite(documentRef, colors.accent, `ga|${colors.accent}`),
+        // Per matter spec: the sprite in its own tint and in the other one (two-tone specs).
+        matter: kind.matter.map((spec) => [
+            matterSprite(spec.sprite, matterTints[spec.tint]),
+            matterSprite(spec.sprite, matterTints[1 - spec.tint]),
+        ]),
     } : null;
-    const usable = sprites && Object.values(sprites).flat().every(Boolean);
-    const deep = mixColor(deepen(colors.shadow, 0.08, 0.5), '#000000', 0.2);
-    const heart = parseColor(deepen(colors.primary, 0.16, 0.6));
+    if (sprites && kind.shafts) sprites.shaft = matterSprite('shaft', matterTints[0]);
+    if (sprites && kind.school) sprites.school = matterSprite('fish', passageTint(colors.highlight, 0.9, 1));
+    if (sprites && look?.world) {
+        // The world the gate opens back onto: its own light, for the emergence's bloom.
+        sprites.glowWorld = glowSprite(documentRef, look.world, `gw|${look.world}`, true);
+        sprites.shaftWorld = matterSprite('shaft', passageTint(look.world, 0.82, 1.1));
+    }
+    const usable = sprites && Object.values(sprites).flat(2).every(Boolean);
+    const deep = mixColor(passageTint(colors.shadow, 0.07 + 0.06 * brightness), '#000000', 0.2);
+    const heart = parseColor(passageTint(colors.primary, 0.15 + 0.15 * brightness + (kind.fill || 0)));
+    const layers = Array.from({ length: counts.layers }, (_, index) => ({
+        phase: index / counts.layers,
+        turn: rand() * TAU,
+        spin: (index % 2 ? -1 : 1) * (0.12 + rand() * 0.18),
+        tint: index % 2,
+        alpha: 0.5 + rand() * 0.3,
+    }));
+    const streaks = Array.from({ length: counts.streaks }, (_, index) => ({
+        angle: rand() * TAU,
+        phase: rand(),
+        length: 0.55 + rand() * 0.9,
+        width: 0.7 + rand() * 1.1,
+        tint: index % 3 === 0 ? 0 : 1,
+    }));
+    const motes = Array.from({ length: counts.motes }, (_, index) => ({
+        angle: rand() * TAU,
+        from: 2.2 + rand() * 2.6,
+        delay: rand() * 0.35,
+        spin: (index % 2 ? -1 : 1) * (1.1 + rand() * 0.9),
+        size: 0.12 + rand() * 0.14,
+        hot: index % 4 === 0,
+    }));
+    // This passage's own character: which way it swirls and how hard, how it curves, how much
+    // of its matter it carries, which of its two hues its nearest wall wears.
+    const swirl = (rand() < 0.5 ? -1 : 1) * (0.65 + rand() * 0.75);
+    const bend = {
+        angle: rand() * TAU,
+        rate: (rand() < 0.5 ? -1 : 1) * (0.1 + rand() * 0.22),
+        amount: 0.02 + rand() * 0.05,
+    };
+    const density = 0.75 + rand() * 0.5;
+    if (rand() < 0.5) layers.forEach((layer) => { layer.tint = 1 - layer.tint; });
+    if (kind.align) {
+        // A wire tunnel's rails line up from layer to layer.
+        const turn = rand() * TAU;
+        layers.forEach((layer) => { layer.turn = turn; });
+    }
+    const matter = kind.matter.flatMap((spec, specIndex) => Array.from(
+        { length: Math.round(counts.streaks * spec.share * density) },
+        (_, index) => ({
+            spec: specIndex,
+            angle: rand() * TAU,
+            phase: rand(),
+            pace: 0.7 + rand() * 0.6,
+            seed: rand(),
+            scale: 0.6 + rand() * 0.8,
+            spin: (rand() < 0.5 ? -1 : 1) * (0.6 + rand() * 1.6),
+            tone: index % 2,
+        }),
+    ));
+    const tier = counts.layers / PORTAL_GATE_COUNTS.High.layers;
+    const rimMarkCount = RIM_MARKS[kind.rim] || 0;
+    const makeShafts = (count) => Array.from({ length: count }, () => ({
+        angle: rand() * TAU,
+        turn: (rand() < 0.5 ? -1 : 1) * (0.02 + rand() * 0.05),
+        rate: 0.3 + rand() * 0.5,
+        seed: rand(),
+        alpha: 0.1 + rand() * 0.13,
+        length: 0.7 + rand() * 0.5,
+        width: 0.14 + rand() * 0.16,
+    }));
     return {
         key,
+        kind,
+        kindName,
         colors,
         sprites: usable ? sprites : null,
         deep: `rgb(${deep.join(', ')})`,
+        // The passage's far wall and how dark its edges fall: a bright world's way in is airier.
+        far: `rgb(${mixColor(`rgb(${deep.join(', ')})`, '#010103', 0.85 - 0.6 * brightness).join(', ')})`,
+        vignette: `rgba(0, 0, 0, ${(0.62 - 0.3 * brightness).toFixed(3)})`,
         heart: `rgb(${heart.join(', ')})`,
-        layers: Array.from({ length: counts.layers }, (_, index) => ({
-            phase: index / counts.layers,
-            turn: random() * TAU,
-            spin: (index % 2 ? -1 : 1) * (0.12 + random() * 0.18),
-            tint: index % 2,
-            alpha: 0.5 + random() * 0.3,
+        layers,
+        streaks,
+        /** How many of the streaks stay streaks of light (the rest of the passage is its matter). */
+        streakCount: Math.round(counts.streaks * kind.streaks),
+        motes,
+        matter,
+        swirl,
+        bend,
+        shafts: kind.shafts ? makeShafts(Math.max(3, Math.round(kind.shafts * tier))) : [],
+        worldShafts: look?.world ? makeShafts(Math.max(5, Math.round(9 * tier))) : [],
+        school: kind.school ? {
+            pace: 0.1 + rand() * 0.06,
+            phase: rand(),
+            salt: Math.floor(rand() * 65536),
+            fish: Array.from({ length: Math.max(4, Math.round(kind.school * tier)) }, (_, index) => ({
+                lag: index * 0.035 + rand() * 0.03,
+                spread: (rand() - 0.5) * 0.22,
+                out: (rand() - 0.5) * 0.09,
+                scale: 0.7 + rand() * 0.6,
+                rate: 0.6 + rand() * 0.8,
+            })),
+        } : null,
+        hoopPhase: rand(),
+        rimSides: 5 + Math.floor(rand() * 4),
+        rimMarks: Array.from({ length: rimMarkCount }, (_, index) => ({
+            // Spread round the ring, each a little off its place.
+            angle: ((index + rand() * 0.8) / rimMarkCount) * TAU,
+            span: 0.14 + rand() * 0.3,
+            rate: 0.6 + rand() * 1.4,
+            seed: rand(),
+            reach: rand(),
+            turn: rand() < 0.5 ? -1 : 1,
         })),
-        streaks: Array.from({ length: counts.streaks }, (_, index) => ({
-            angle: random() * TAU,
-            phase: random(),
-            length: 0.55 + random() * 0.9,
-            width: 0.7 + random() * 1.1,
-            tint: index % 3 === 0 ? 0 : 1,
-        })),
-        motes: Array.from({ length: counts.motes }, (_, index) => ({
-            angle: random() * TAU,
-            from: 2.2 + random() * 2.6,
-            delay: random() * 0.35,
-            spin: (index % 2 ? -1 : 1) * (1.1 + random() * 0.9),
-            size: 0.12 + random() * 0.14,
-            hot: index % 4 === 0,
-        })),
+        // The gathering's motes are the kind's own matter where it has a shape (a bubble, a petal).
+        gatherSprite: usable && kind.matter[0] && !['streak', 'glow'].includes(kind.matter[0].sprite)
+            ? sprites.matter[0][0] : null,
     };
 }
 
@@ -369,7 +487,10 @@ function drawSprite(ctx, dpr, sprite, cx, cy, size, angle = 0) {
     ctx.drawImage(sprite, -size / 2, -size / 2, size, size);
 }
 
-/** The passage: nebula clouds rushing past, streaks of light, the light ahead. */
+/**
+ * The passage: its walls rushing past, the matter it is made of, streaks of light, the light
+ * ahead.
+ */
 function drawPassage(ctx, gate, frame) {
     const {
         width, height, dpr = 1, center, travel = 0, direction = 1, time = 0,
@@ -379,22 +500,28 @@ function drawPassage(ctx, gate, frame) {
     const cx = center.x;
     const cy = center.y;
     const reach = portalReach(width, height, cx, cy);
+    const { kind } = gate;
 
-    // Deep space in the destination's shadow, lit a little round the light ahead.
+    // The deep of the way through, in the destination's shadow, lit a little round the light ahead.
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
     const base = ctx.createRadialGradient(cx, cy, 0, cx, cy, reach);
     base.addColorStop(0, gate.heart);
     base.addColorStop(0.45, gate.deep);
-    base.addColorStop(1, '#010103');
+    base.addColorStop(1, gate.far);
     ctx.fillStyle = base;
     ctx.fillRect(0, 0, width, height);
 
     const { sprites } = gate;
     ctx.globalCompositeOperation = 'lighter';
     if (sprites) {
-        // Clouds: each layer swells from a speck at the light ahead to past the frame, turning
+        // The passage curves: the walls nearest the lens swing a little to one side, and that side
+        // turns slowly. The light ahead stays where the gate is.
+        const bendAngle = gate.bend.angle + time * gate.bend.rate;
+        const bendX = Math.cos(bendAngle) * reach * gate.bend.amount;
+        const bendY = Math.sin(bendAngle) * reach * gate.bend.amount;
+        // Walls: each layer swells from a speck at the light ahead to past the frame, turning
         // slowly (alternate ways), so the passage has depth; it fades in from the light and out
         // as it rushes past the lens. Outward going in, inward coming back out.
         for (const layer of gate.layers) {
@@ -402,14 +529,29 @@ function drawPassage(ctx, gate, frame) {
             if (direction < 0) depth = 1 - depth;
             // Faint while small (they would pile up into fog round the light ahead), fullest as
             // they pass the lens.
-            const alpha = intensity * layer.alpha * smoothstep(0.12, 0.62, depth) * (1 - smoothstep(0.86, 1, depth));
+            const alpha = intensity * layer.alpha * kind.wallAlpha
+                * smoothstep(0.12, 0.62, depth) * (1 - smoothstep(0.9, 1, depth));
             if (alpha <= 0.004) continue;
-            const size = reach * 3.4 * Math.exp((depth - 1) * 3.5);
-            ctx.globalAlpha = alpha;
-            drawSprite(ctx, dpr, sprites.nebula[layer.tint], cx, cy, size, layer.turn + travel * layer.spin);
+            const scale = Math.exp((depth - 1) * 3.5);
+            ctx.globalAlpha = Math.min(1, alpha);
+            drawSprite(
+                ctx,
+                dpr,
+                sprites.nebula[layer.tint],
+                cx + bendX * scale,
+                cy + bendY * scale,
+                reach * 3.4 * scale,
+                layer.turn + travel * layer.spin * kind.spin,
+            );
         }
+        const env = {
+            dpr, cx, cy, reach, travel, direction, time, intensity, rush,
+        };
+        drawPassageExtras(ctx, gate, env);
+        drawMatter(ctx, gate, env);
         // Streaks: light flying past, longer and brighter the nearer it is (and the faster we go).
-        for (const streak of gate.streaks) {
+        for (let index = 0; index < gate.streakCount; index++) {
+            const streak = gate.streaks[index];
             let depth = fract(streak.phase + travel * 0.5);
             if (direction < 0) depth = 1 - depth;
             const alpha = intensity * Math.min(1, Math.sin(Math.PI * depth) ** 0.7 * 1.15);
@@ -430,10 +572,11 @@ function drawPassage(ctx, gate, frame) {
         }
         // The light ahead: where this gate is taking you.
         const breathe = 1 + Math.sin(time * 1.9) * 0.05;
-        ctx.globalAlpha = intensity * 0.22;
-        drawSprite(ctx, dpr, sprites.glowPrimary, cx, cy, reach * 0.75 * breathe);
+        const ahead = kind.lightAhead || 1;
+        ctx.globalAlpha = Math.min(1, intensity * 0.22 * ahead);
+        drawSprite(ctx, dpr, sprites.glowPrimary, cx, cy, reach * 0.75 * breathe * ahead);
         ctx.globalAlpha = intensity * 0.85;
-        drawSprite(ctx, dpr, sprites.glowHot, cx, cy, reach * 0.17 * breathe);
+        drawSprite(ctx, dpr, sprites.glowHot, cx, cy, reach * 0.17 * breathe * ahead);
     }
 
     // Framing: the edges fall into the dark, so the passage has a wall.
@@ -442,12 +585,15 @@ function drawPassage(ctx, gate, frame) {
     ctx.globalAlpha = 1;
     const vignette = ctx.createRadialGradient(cx, cy, reach * 0.35, cx, cy, reach);
     vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    vignette.addColorStop(1, 'rgba(0, 0, 0, 0.62)');
+    vignette.addColorStop(1, gate.vignette);
     ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, width, height);
 }
 
-/** The gate's rim: a crisp ring of light with a soft glow, a slight colour split, arcs turning on it. */
+/**
+ * The gate's rim: a crisp ring of light with a soft glow and a slight colour split, and on it
+ * what the gate is made of here (molten glass, a ripple, a wreath, frost ...).
+ */
 function drawRim(ctx, gate, frame, ring) {
     const { dpr = 1, time = 0 } = frame;
     const strength = clamp01(ring.strength);
@@ -471,15 +617,21 @@ function drawRim(ctx, gate, frame, ring) {
     stroke(r + 2.6, 1.3, colors.accent, 0.5 * strength);
     stroke(Math.max(0.5, r - 2.6), 1.3, colors.primary, 0.5 * strength);
     stroke(r, 2.1, colors.highlight, 0.95 * strength);
-    // Energy running round the rim: the gate is alive.
     ctx.lineCap = 'round';
-    for (let k = 0; k < 3; k++) {
-        const at = time * (k % 2 ? -1.3 : 1.1) + k * (TAU / 3);
-        stroke(r, 4.2, colors.highlight, 0.55 * strength, at, at + 0.45 + 0.2 * Math.sin(time * 2 + k));
+    if (gate.kind.rim === 'orbit') {
+        // Energy running round the rim: the gate is alive.
+        for (let k = 0; k < 3; k++) {
+            const at = time * (k % 2 ? -1.3 : 1.1) + k * (TAU / 3);
+            stroke(r, 4.2, colors.highlight, 0.55 * strength, at, at + 0.45 + 0.2 * Math.sin(time * 2 + k));
+        }
     }
+    drawRimOrnament(ctx, gate, {
+        x: ring.x, y: ring.y, r, strength, time,
+    });
+    ctx.lineCap = 'butt';
 }
 
-/** Entering an orb: light gathers onto it before it opens. */
+/** Entering an orb: light, and the matter of the place, gathers onto it before it opens. */
 function drawGather(ctx, gate, frame, gather) {
     const { sprites } = gate;
     if (!sprites) return;
@@ -495,7 +647,7 @@ function drawGather(ctx, gate, frame, gather) {
     drawSprite(ctx, dpr, sprites.glowPrimary, gather.x, gather.y, r * (3 + 3 * swell));
     ctx.globalAlpha = (0.15 + 0.55 * swell) * fade;
     drawSprite(ctx, dpr, sprites.glowHot, gather.x, gather.y, r * (1.4 + 1.6 * swell));
-    // Motes spiral in from round the orb.
+    // Motes spiral in from round the orb: bubbles, petals, shards where the place has them.
     for (const mote of gate.motes) {
         const local = clamp01((t - mote.delay) / (1 - mote.delay));
         if (local <= 0 || local >= 1) continue;
@@ -504,13 +656,16 @@ function drawGather(ctx, gate, frame, gather) {
         const angle = mote.angle + mote.spin * local * 1.6;
         const alpha = Math.sin(Math.PI * local) * 0.9 * fade;
         ctx.globalAlpha = alpha;
+        const shaped = gate.gatherSprite && !mote.hot;
+        const glow = mote.hot ? sprites.glowHot : sprites.glowAccent;
         drawSprite(
             ctx,
             dpr,
-            mote.hot ? sprites.glowHot : sprites.glowAccent,
+            shaped ? gate.gatherSprite : glow,
             gather.x + Math.cos(angle) * radius,
             gather.y + Math.sin(angle) * radius,
-            r * mote.size * 3.4 * (1.2 - 0.5 * local),
+            r * mote.size * (shaped ? 2.2 : 3.4) * (1.2 - 0.5 * local),
+            shaped ? angle * 2 + mote.from : 0,
         );
     }
     // A ring of light closes on the orb.
@@ -518,6 +673,46 @@ function drawGather(ctx, gate, frame, gather) {
     drawRim(ctx, gate, frame, {
         x: gather.x, y: gather.y, r: r * (1.1 + 2.4 * (1 - closing)), strength: Math.sin(Math.PI * Math.min(1, t * 1.05)) * fade,
     });
+}
+
+/**
+ * Coming back out: the world's own light blooms through the opening gate. A glow on the gate
+ * and shafts of the world's light pouring out round it into the passage; never a flash (it
+ * rises and falls over tenths of a second, and Reduce flashing scales it).
+ */
+function drawWorldBloom(ctx, gate, frame, amount, flash) {
+    const { sprites } = gate;
+    const { region } = frame;
+    if (!sprites?.glowWorld || region?.kind !== 'hole') return;
+    const {
+        width, height, dpr = 1, time = 0,
+    } = frame;
+    const reach = portalReach(width, height, region.x, region.y);
+    const r = Math.max(1, region.r);
+    ctx.globalCompositeOperation = 'lighter';
+    if (sprites.shaftWorld && r < reach) {
+        // The shafts light the passage, not the world: clipped to what is still shut.
+        ctx.save();
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.beginPath();
+        ctx.rect(0, 0, width, height);
+        ctx.arc(region.x, region.y, r, 0, TAU, true);
+        ctx.clip('evenodd');
+        for (const shaft of gate.worldShafts) {
+            const angle = shaft.angle + time * shaft.turn * 3;
+            const length = reach * shaft.length * (0.45 + 0.55 * amount);
+            const thick = length * shaft.width * 1.3;
+            const cos = Math.cos(angle) * dpr;
+            const sin = Math.sin(angle) * dpr;
+            ctx.globalAlpha = Math.min(1, amount * shaft.alpha * 2.2 * flash);
+            ctx.setTransform(cos, sin, -sin, cos, (region.x + Math.cos(angle) * r * 0.82) * dpr, (region.y + Math.sin(angle) * r * 0.82) * dpr);
+            ctx.drawImage(sprites.shaftWorld, 0, -thick / 2, length, thick);
+        }
+        ctx.restore();
+        ctx.globalCompositeOperation = 'lighter';
+    }
+    ctx.globalAlpha = amount * 0.42 * flash;
+    drawSprite(ctx, dpr, sprites.glowWorld, region.x, region.y, r * 2.3 + reach * 0.3);
 }
 
 /**
@@ -540,6 +735,7 @@ function drawGather(ctx, gate, frame, gather) {
  * @param {number} [frame.dim]  how dark the scene outside a `disc` falls (0..1)
  * @param {number} [frame.rim]  the gate's rim (0..1)
  * @param {number} [frame.bloom]  the arrival's light (0..1)
+ * @param {number} [frame.worldBloom]  the world's light through a gate opening back onto it (0..1)
  * @param {number} [frame.flash]  what of a bright light the player allows (photosensitivity, 0..1)
  * @param {{x: number, y: number, r: number, t: number, fade?: number}} [frame.gather]
  * @returns {boolean} whether anything was drawn
@@ -552,6 +748,7 @@ export function drawPortalGate(ctx, gate, frame) {
     const dim = clamp01(frame.dim || 0);
     const rim = clamp01(frame.rim || 0);
     const bloom = clamp01(frame.bloom || 0);
+    const worldBloom = clamp01(frame.worldBloom || 0);
     const flash = clamp01(frame.flash ?? 1);
     const previousComposite = ctx.globalCompositeOperation;
 
@@ -582,6 +779,7 @@ export function drawPortalGate(ctx, gate, frame) {
         ctx.restore();
     }
     ctx.save();
+    if (worldBloom > 0.002) drawWorldBloom(ctx, gate, frame, worldBloom, flash);
     if (region.kind !== 'all' && rim > 0.002) {
         drawRim(ctx, gate, frame, {
             x: region.x, y: region.y, r: region.r, strength: rim,
@@ -626,6 +824,7 @@ const WARM_FRAMES = Object.freeze([
         },
         rim: 1,
         bloom: 0.6,
+        worldBloom: 0.6,
         direction: -1,
     },
 ]);
@@ -636,7 +835,8 @@ const WARM_FRAMES = Object.freeze([
  * draws, radial gradients, even-odd clips, arcs) and uploads the sprites: a real-game capture
  * froze the world and the gate for 300 ms on the first entry and not at all on the second. A
  * canvas that is never shown is drawn in software and warms nothing, so this one is on the page
- * at 1 % opacity for three frames (invisible over the map), then gone. Also bakes the noise.
+ * at 1 % opacity for three frames (invisible over the map), then gone. Also bakes the noise:
+ * with a `look`, the wall and the sprites of the chapter the player is in.
  * Once per page; call it when the map is up and idle.
  * @returns {boolean} whether it started (false when already warm or there is no page to draw on)
  */
@@ -644,6 +844,7 @@ export function warmPortalGate({
     documentRef = globalThis.document,
     requestAnimationFrameRef = globalThis.requestAnimationFrame?.bind(globalThis),
     qualityPreset = 'High',
+    look = null,
 } = {}) {
     if (warmed || !documentRef?.body || typeof requestAnimationFrameRef !== 'function') return false;
     const made = makeCanvas(documentRef, 640, 360);
@@ -654,7 +855,7 @@ export function warmPortalGate({
     canvas.style.cssText = 'position: fixed; left: 0; top: 0; width: 640px; height: 360px; '
         + 'opacity: 0.01; pointer-events: none; z-index: 2147483000;';
     documentRef.body.appendChild(canvas);
-    const gate = createPortalGate({ qualityPreset, documentRef });
+    const gate = createPortalGate({ qualityPreset, documentRef, look: { world: '#ffffff', ...look } });
     const base = {
         width: 640, height: 360, dpr: 1, travel: 0.4, time: 0.3, flash: 1, center: { x: 320, y: 180 },
     };
@@ -676,11 +877,15 @@ export function warmPortalGate({
     return true;
 }
 
-/** Warm the gate when the page is next idle, at the player's effect quality. Never throws. */
-export function scheduleWarmPortalGate(windowRef = globalThis.window) {
+/**
+ * Warm the gate when the page is next idle, at the player's effect quality. Never throws.
+ * @param {Window} [windowRef]
+ * @param {{kind?: string}|null} [look] the passage of the chapter the player is in
+ */
+export function scheduleWarmPortalGate(windowRef = globalThis.window, look = null) {
     const warm = () => {
         try {
-            warmPortalGate({ qualityPreset: windowRef?.settings?.effectQuality || 'High' });
+            warmPortalGate({ qualityPreset: windowRef?.settings?.effectQuality || 'High', look });
         } catch (error) {
             console.warn('[Odyssey] Portal warm-up skipped:', error);
         }

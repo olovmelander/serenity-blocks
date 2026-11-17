@@ -4,6 +4,7 @@ import {
 import { createJourneyFlowOverlay, DEPARTURE_MS } from '../../src/ui/odyssey/JourneyFlowOverlay.js';
 import { getLevelById } from '../../src/core/odyssey/data/levels.js';
 import { CHAPTER_CONFIGS } from '../../src/core/odyssey/data/chapters.js';
+import { getOdysseyChapterLook, odysseyLookHex } from '../../src/core/odyssey/data/chapter-looks.js';
 
 function eventTarget(properties = {}) {
     const listeners = new Map();
@@ -907,12 +908,15 @@ describe('Odyssey journey flow overlay', () => {
         expect(farewell.hidden).toBe(true);
         expect(markup(modal)).toContain('Chapter 1 complete · Next, Chapter 2');
         expect(markup(modal)).toContain('A new chapter awaits');
+        // The ceremony wears the chapter it closes (the one table's light), the journey the next.
         const colors = modal.style.setProperty.mock.calls.filter(([name]) => name === '--ody-flow-color');
-        expect(colors.at(-1)[1]).toBe('#f3ac77');
+        expect(colors.at(-1)[1]).toBe(odysseyLookHex(getOdysseyChapterLook(1).accent));
+        expect(modal.dataset.odyChapter).toBe('1');
         action(modal, 'next').dispatch('click');
         modal.beginTransit();
         expect(modal.style.setProperty.mock.calls.filter(([name]) => name === '--ody-flow-color').at(-1)[1])
-            .toBe('#8cd3ed');
+            .toBe(odysseyLookHex(getOdysseyChapterLook(2).accent));
+        expect(modal.dataset.odyChapter).toBe('2');
         expect(nodes(modal).find((node) => node.className === 'ody-flow__title').textContent)
             .toBe(CHAPTER_CONFIGS[1].name);
         modal.setScenic('travel');

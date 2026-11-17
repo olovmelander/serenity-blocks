@@ -174,6 +174,8 @@ export async function completeOdysseyLevel(mode, results) {
     if (!mode._isLevelSessionCurrent(session, retirementGeneration)) return;
 
     const finalResults = saveOdysseyClear(mode, session, results);
+    // The world answers this clear when its gate opens back onto it (odyssey-world-return.js).
+    mode._orbJustCleared = Number(session.levelId);
 
     // The ceremony arrives through the showpiece's afterglow when the well played one.
     if (await flourish === true) finalResults.showpiece = true;

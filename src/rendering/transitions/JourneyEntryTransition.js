@@ -141,6 +141,8 @@ export class JourneyEntryTransition {
     createRun(config) {
         const anchor = normalizeAnchor(config.anchor);
         const palette = normalizePalette(config.palette);
+        // What this passage is made of and its own seed (odyssey-passage-look.js).
+        const look = config.look ?? config.palette?.look ?? null;
         // A caller can opt in through game settings; the OS preference always wins.
         const reducedMotion = config.reducedMotion === true
             || this.window?.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
@@ -160,6 +162,7 @@ export class JourneyEntryTransition {
             // screen at the click has no place to gather: its gate stays centred.
             trackAnchor: anchor.onScreen && typeof config.trackAnchor === 'function' ? config.trackAnchor : null,
             palette,
+            look,
             timings,
             reducedMotion,
             callbacks,
@@ -237,6 +240,7 @@ export class JourneyEntryTransition {
         run.remote = startPortalGateOffThread(canvas, {
             qualityPreset: run.qualityPreset,
             palette: run.palette,
+            look: run.look,
             flash: run.flash,
             ...this.measureCanvas(),
         }, this.window);
@@ -247,7 +251,7 @@ export class JourneyEntryTransition {
                 run.dom.ctx = null;
             }
             run.gate = createPortalGate({
-                qualityPreset: run.qualityPreset, palette: run.palette, documentRef: this.document,
+                qualityPreset: run.qualityPreset, palette: run.palette, look: run.look, documentRef: this.document,
             });
         }
         this.resizeCanvas(run);
