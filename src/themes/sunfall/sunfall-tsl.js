@@ -55,6 +55,7 @@ import {
     step,
     texture,
     uniform,
+    uniformArray,
     vec2,
     vec3,
 } from 'three/tsl';
@@ -66,25 +67,30 @@ import {
     OCULUS_RZ,
     PIECE_SWATCH_RGB,
     SUNFALL_LAYOUT,
+    SUNFALL_SHAFTS,
     SUNFALL_STATIONS,
 } from './sunfall-core.js';
-import { LATTICE_SIZE, LATTICE_SLICE, OCULUS_TEX } from './sunfall-bake.js';
+import {
+    FBM_SIZE, LATTICE_SIZE, LATTICE_SLICE, OCULUS_TEX,
+} from './sunfall-bake.js';
 import { centroidVarying } from '../shared/centroid-varying.js';
 
 const TWO_PI = Math.PI * 2;
-/** The order the oculus fingers open in, as homes on a ring of seven: two face each other. */
-const FINGER_ORDER = Object.freeze([0, 4, 2, 6, 1, 5, 3]);
 
 /** Light gains (HDR units per unit of Blender sun/sky in the bakes). */
 export const SUNFALL_LIGHT = Object.freeze({
     sun: 13.0, // direct sun irradiance: a lit crown of albedo 0.15 shows about 2
     bounce: 3.5, // extra weight on the baked bounce (secondary light, with occlusion)
     sky: 4.0, // sky radiance seen through the oculus
-    fill: 0.0045, // the cave's own darkness floor, times occlusion
-    pool: 34.0, // art gain on the sunlit pool's light on the vault (sent upward: lobe^2.5)
-    column: 0.85, // the column's own light (irradiance at its radius) on what stands round it
+    skyShell: 2.6, // the baked sky light on the rock (it carries the rock's form)
+    fill: 0.42, // the chamber's own daylight on the rock (times the cave's shade colour)
+    pool: 58.0, // art gain on the sunlit pool's light on the vault (sent upward: lobe^2.5)
+    column: 1.7, // the column's own light (irradiance at its radius) on what stands round it
     farPool: 16.0, // art gain on the far doline's sunlit floor lighting the passage's end
 });
+
+/** The moving dapple in the sun mask: tiles per oculus radius, and the light left in its shade. */
+export const SUNFALL_DAPPLE = Object.freeze({ scale: 0.9, floor: 0.24, cloudShade: 0.8 });
 
 /** Five crown greens and two natural flush colours (linear). */
 export const CROWN_GREENS = Object.freeze([
@@ -130,6 +136,19 @@ export function createSunfallUniforms(textures = null, manifest = null) {
         mistScale: uniform(0.95),
         cloudOpacity: uniform(0.65),
         sprayRate: uniform(0.45),
+        /** The weather's rain in the light, its steam off the crowns, how deep the dapple combs
+         *  the column, and how silver the sun is through thin cloud. */
+        rain: uniform(0),
+        steam: uniform(0),
+        shafts: uniform(1),
+        cool: uniform(0),
+        /** Metres the steam has risen (a clock that runs only while the crowns steam). */
+        steamClock: uniform(0),
+        /** A cumulus outside crossing the sun: (direction x, z in oculus coordinates, the shadow's
+         *  leading edge, its trailing edge). The shadow lies between the two edges. */
+        cloudPass: uniform(new THREE.Vector4(1, 0, -9, -10)),
+        /** How much of that shadow lies over the opening's middle (the baked lights follow it). */
+        sunShade: uniform(0),
 
         flushPulse: uniform(0),
         flushU: uniform(0.5),
@@ -171,6 +190,15 @@ export function createSunfallUniforms(textures = null, manifest = null) {
         zenithPulse: uniform(0),
         overCloudClose: uniform(0),
         wet: uniform(0),
+
+        /**
+         * The chain's shafts, live rows packed at the front, two rows a shaft: (foot x, foot z,
+         * how open, radius) and (its light's tint, _). `shaftCount` of them are live.
+         */
+        shaftRows: uniformArray(Array.from({ length: SUNFALL_SHAFTS.length * 2 }, () => new THREE.Vector4()), 'vec4'),
+        shaftCount: uniform(0, 'int'),
+        /** The cataract's spray (0..1): a cloud standing over the pool, with the bow in it. */
+        spray: uniform(0),
 
         calmStrength: uniform(0.85),
         lightCeilSky: uniform(manifest?.light?.ceilings?.sky ?? 1.6),
@@ -304,6 +332,15 @@ export const sfMaskAt = (u, q, along, { vines: withVines = true, dq = null } = {
     const turned = vec2(ang.add(u.fringeAngle.div(TWO_PI)), v);
     let rim;
     let vines;
+    // The dapple: the rim forest's leaves and the thin cloud outside, drifting over the opening.
+    // It lies in the oculus plane, so it is constant along the sun: it combs the column into
+    // shafts that slowly wander, and the pool on the crowns is dappled by the same pattern.
+    // It turns with the vine fringe (the Turning): the shafts wheel about the column's axis.
+    const dc = cos(u.fringeAngle).toVar();
+    const ds = sin(u.fringeAngle).toVar();
+    const turn = (p) => vec2(p.x.mul(dc).sub(p.y.mul(ds)), p.x.mul(ds).add(p.y.mul(dc)));
+    const dappleUv = turn(qq).mul(SUNFALL_DAPPLE.scale).add(vec2(u.time.mul(0.0052), u.time.mul(-0.0034)));
+    let dapple;
     if (dq) {
         // The polar map's Jacobian at q: radial texels along e_r, angular ones along e_t / r.
         const rs = max(r, 0.08);
@@ -323,30 +360,34 @@ export const sfMaskAt = (u, q, along, { vines: withVines = true, dq = null } = {
         const gy = toUv(minor).toVar();
         rim = texture(u.oculusTex, vec2(ang, v)).grad(gx, gy).x;
         vines = withVines ? texture(u.oculusTex, turned).grad(gx, gy).y : float(1.0);
+        dapple = texture(u.fbmTex, dappleUv)
+            .grad(turn(major).mul(SUNFALL_DAPPLE.scale), turn(minor).mul(SUNFALL_DAPPLE.scale)).w;
     } else {
         // Penumbra: the sun disc (0.0093 rad) over the distance, in radial texels of the map.
         const texel = (OCULUS_TEX.reach * Math.min(OCULUS_RX, OCULUS_RZ)) / OCULUS_TEX.height;
         const lod = clamp(log2(max(along.mul(0.0093).div(texel), 1.0)), 0.0, 4.0);
         rim = texture(u.oculusTex, vec2(ang, v)).level(lod).x;
         vines = withVines ? texture(u.oculusTex, turned).level(lod).y : float(1.0);
+        const dLod = clamp(
+            log2(max(along.mul((0.0093 * SUNFALL_DAPPLE.scale * FBM_SIZE) / Math.min(OCULUS_RX, OCULUS_RZ)), 1.0)),
+            0.0,
+            6.0,
+        );
+        dapple = texture(u.fbmTex, dappleUv).level(dLod).w;
     }
-    const base = rim.mul(mix(1.0, vines, 0.9));
-    // Combo fingers: the vines close over the opening except for gaps on a ring, one per link.
-    // `n` eases between counts: each gap has a fixed home on a ring of seven (in an order that
-    // keeps the open ones spread) and fades in or out there, so no gap ever jumps; the ring
-    // turns with the fringe. A lone gap sits at the centre and moves out as the second opens.
-    const n = u.comboColumns;
-    const ring = smoothstep(1.0, 2.0, n).mul(0.52);
-    let fingers = float(0.0);
-    FINGER_ORDER.forEach((home, k) => {
-        const a = u.fringeAngle.add(home * (TWO_PI / 7) + 0.4);
-        const c = vec2(cos(a), sin(a)).mul(ring);
-        const live = clamp(n.sub(k), 0.0, 1.0);
-        fingers = max(fingers, float(1.0).sub(smoothstep(0.13, 0.19, length(q.sub(c)))).mul(live));
-    });
-    // A chain of three hints at it; four and on the light is in blades.
-    const comboOn = smoothstep(0.2, 0.55, u.comboLift);
-    return base.mul(mix(1.0, max(fingers, u.fingerFloor), comboOn));
+    const shafts = mix(
+        mix(float(1.0), float(SUNFALL_DAPPLE.floor), u.shafts),
+        float(1.0),
+        smoothstep(0.3, 0.64, dapple),
+    );
+    // The cloud's shadow crosses the opening as a band between two soft edges.
+    const along2 = dot(q, u.cloudPass.xy);
+    const shadow = smoothstep(u.cloudPass.w.sub(0.7), u.cloudPass.w.add(0.7), along2)
+        .mul(float(1.0).sub(smoothstep(u.cloudPass.z.sub(0.7), u.cloudPass.z.add(0.7), along2)));
+    // (A chain opens shafts of its own beside the sunfall, in the post's integral: the sunfall
+    // itself keeps all its light.)
+    return rim.mul(mix(1.0, vines, 0.9)).mul(shafts)
+        .mul(float(1.0).sub(shadow.mul(SUNFALL_DAPPLE.cloudShade)));
 };
 
 /**
@@ -401,7 +442,7 @@ export const sfColumnLight = (u, P, N) => {
     const facing = clamp(dot(N, toAxis.div(d)).mul(0.6).add(0.4), 0.0, 1.0);
     // 1/d beside the column, 1/d² farther out (past the column's own length its light is a
     // point's): the walls across the chamber keep their dark.
-    const falloff = float(50.0).div(max(d, 50.0)).div(d.div(150.0).add(1.0));
+    const falloff = float(50.0).div(max(d, 50.0)).div(d.div(110.0).add(1.0));
     return facing.mul(falloff.mul(SUNFALL_LIGHT.column * 1.4)).mul(u.sunGain).mul(u.mistScale);
 };
 
@@ -444,7 +485,7 @@ export function createShellMaterial(u, { kind = 'shell' } = {}) {
         // Relief the mesh is too coarse to carry (blocks, pockets, flutes): a bump on the normal
         // from screen derivatives of a rock height, faded where its grain is under a pixel.
         const relief0 = sfNoise3(u, P.mul(isLedge ? 0.9 : 0.16)).toVar();
-        const h = relief0.x.mul(0.65).add(fine.y.mul(0.35)).toVar();
+        const h = relief0.x.mul(isLedge ? 0.65 : 0.84).add(fine.y.mul(isLedge ? 0.35 : 0.16)).toVar();
         const dpdx = dFdx(P);
         const dpdy = dFdy(P);
         const r1 = cross(dpdy, N0);
@@ -453,7 +494,7 @@ export function createShellMaterial(u, { kind = 'shell' } = {}) {
         const grain = length(fwidth(P.mul(isLedge ? 0.9 : 0.16)));
         const room = float(1.0).sub(smoothstep(0.3, 0.8, grain));
         const grad = r1.mul(dFdx(h)).add(r2.mul(dFdy(h))).mul(select(det.lessThan(0.0), float(-1.0), float(1.0)));
-        const N = normalize(abs(det).mul(N0).sub(grad.mul(room.mul(isLedge ? 1.2 : 1.6)))).toVar();
+        const N = normalize(abs(det).mul(N0).sub(grad.mul(room.mul(isLedge ? 1.2 : 1.5)))).toVar();
         // Beds of uneven thickness (about 9.5 m on the walls), warped.
         const y0 = P.y.add(broad.x.sub(0.5).mul(16.0));
         const bed = (isLedge ? y0.div(1.1) : y0.div(9.5)
@@ -582,12 +623,18 @@ export function createShellMaterial(u, { kind = 'shell' } = {}) {
             .mul(aoC.mul(0.85).add(0.15))
             .mul(u.sunGain)
             .mul((SUNFALL_LIGHT.sun * 0.15 * SUNFALL_LIGHT.pool) / Math.PI);
-        const poolTint = mix(u.bounceVault, vec3(1.0, 0.86, 0.55), 0.45);
+        const poolTint = mix(u.bounceVault, vec3(1.0, 0.9, 0.5), 0.3);
         const tPool = poolTint.mul(poolLight);
         const tCol = u.beamScatter.mul(sfColumnLight(u, P, N)).mul(aoC.mul(0.8).add(0.2));
         const tSun = sun.mul(SUNFALL_LIGHT.sun).mul(u.sunGain).mul(sunTint);
-        const tSky = sky.mul(SUNFALL_LIGHT.sky * 1.5).mul(u.skyGain).mul(mix(u.skyZenith, u.skyRim, 0.35));
-        const tFill = u.caveShadow.mul(SUNFALL_LIGHT.fill * 20.0).mul(aoC);
+        const tSky = sky.mul(SUNFALL_LIGHT.sky * SUNFALL_LIGHT.skyShell).mul(u.skyGain)
+            .mul(mix(u.skyZenith, u.skyRim, 0.35));
+        // The chamber's own daylight: what the air, the mist and the far walls send back, from
+        // every side and a little more from above. Cool where the column is far, so the warm
+        // light round the column stands against a blue-green depth instead of grey.
+        const hemi = N.y.mul(0.25).add(0.75);
+        const tFill = u.caveShadow.mul(SUNFALL_LIGHT.fill).mul(hemi).mul(ao.mul(0.75).add(0.25))
+            .mul(u.skyGain.mul(0.6).add(0.4));
         // The far doline's sunlit floor at the passage's end lights the passage round it (art-
         // directed like the pool: its true bounce, a kilometre off, is lost in the dark).
         const farDrop = float(FAR_DOLINE_CENTER[1] + 152.0).div(max(u.sunDir.y, 0.15));
@@ -602,12 +649,14 @@ export function createShellMaterial(u, { kind = 'shell' } = {}) {
             .mul(u.sunGain.mul(float(1.0).add(u.echoBoost.mul(1.5))))
             .mul((SUNFALL_LIGHT.sun * 0.3 * SUNFALL_LIGHT.farPool) / Math.PI);
         const tFar = mix(u.beamCore, u.skyRim, 0.4).mul(farLight);
-        const irr = tPool.add(tCol).add(tSun).add(tSky).add(tFill)
+        const lit0 = float(1.0).sub(u.sunShade.mul(SUNFALL_DAPPLE.cloudShade));
+        const irr = tPool.add(tCol).add(tSun).mul(lit0).add(tSky)
+            .add(tFill)
             .add(tFar)
             .mul(shade)
             .toVar();
         // Relief the bake is too coarse to hold: crevices darker, bosses lighter.
-        const relief = mix(0.88, 1.08, fine.x).mul(mix(0.6, 1.0, ao));
+        const relief = mix(0.86, 1.1, fine.x).mul(mix(0.5, 1.0, ao));
         const understory = vec3(0.022, 0.05, 0.016).mul(mix(0.55, 1.35, fine.x));
         const col = mix(albedo.mul(irr).mul(relief), understory.mul(irr).mul(0.5), under).toVar();
 
@@ -741,7 +790,8 @@ export function createCrownMaterial(u) {
         const d2 = dot(toFoot, toFoot);
         const pool = exp(d2.div(-120.0 * 120.0)).mul(0.45).mul(u.sunGain);
         // The cave's own light on the canopy: the lit pool and the vault's bounce, falling away.
-        const cave = u.mistTint.mul(float(0.28).add(exp(d2.div(-300.0 * 300.0)).mul(0.6)))
+        const cave = mix(u.mistTint, u.poolSun, 0.35)
+            .mul(float(0.5).add(exp(d2.div(-300.0 * 300.0)).mul(0.9)))
             .mul(u.sunGain.mul(0.7).add(0.3));
         const shade = mix(0.3, 1.0, height).mul(ao).mul(mix(0.5, 1.0, h));
         const colLight = sfColumnLight(u, P, N).toVar();

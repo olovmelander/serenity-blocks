@@ -6262,9 +6262,16 @@ export const PLAYGROUND_URL_PARAMETERS = [
         [
             'weather',
             'Pin the subterranean micro-weather.',
-            'clear, mist, shower or cloud.',
+            'clear, mist, shower, steam or cloud.',
             'Cycles automatically.',
             'mist',
+        ],
+        [
+            'cloud',
+            'Place a cumulus\'s shadow over the oculus (a cloud crossing the sun).',
+            '-1 entering, 0 over the opening, 1 leaving.',
+            'Passes by the clock (none in a fixed-time capture).',
+            '-0.4',
         ],
         [
             'fringe',

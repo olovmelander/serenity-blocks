@@ -12,6 +12,11 @@ pass (this record, branch `feature/sunfall-overhaul`) rebuilt the whole visual l
 concept's frame: an authored, Cycles-baked chamber, a planned canopy, and the light in the air
 integrated in the world. The director, the piece palette, the rename and the gameplay grammar stay.
 
+> **2026-11-17:** the living-doline pass ([SUNFALL_LIVING_DOLINE_2026-11.md](SUNFALL_LIVING_DOLINE_2026-11.md))
+> changed the light and the air, the weathers, and what every event shows (the combo opens shafts of
+> its own instead of narrowing the sunfall; the cataract falls beside the column; the spray and the
+> bow are in the air's integral). The gameplay table below is the earlier one.
+
 ## The picture
 
 The eye stands on a rimstone ledge on the chamber's near wall, about 110 m above the canopy, looking
