@@ -133,6 +133,7 @@ show the stars themselves); the near wisps ride on the detail read (Medium and u
   Low on WebGL2, Medium, High, Extreme; an upright 430 × 852 frame at rest, through a clear and a
   twist; WebGL2 at High at rest, in the nursery and through six of the new events. No console
   errors or warnings in any capture.
+  ([WebGL2: six of the new events](stellar-velocity-living/webgl2-events.jpg))
 - **The real game** (private headless Chrome, `/?skipIntro=1&unlockAll=1`, frame rate capped at 30):
   the theme on WebGPU at High, aimed at the live board; real hard drops from the keyboard, then a
   two-line clear, a twist, a back-to-back, four lines and a level-up through the bus, then hard
