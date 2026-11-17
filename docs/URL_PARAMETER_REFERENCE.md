@@ -75,6 +75,8 @@ own); the theme it replaces read nothing from the URL, so no reader was retired.
 The Sunset living-sea pass (2026-11-17) gave the `sunset` playground effect `weather`, `moon`,
 `meteor`, `shower` and `b2b` (entries of its own for each) and the event `spin`, and the parts
 `islands`, `boat` and `meteors` to `sunsetParts`.
+The Sunset whole-skein fix (2026-11-17) let `flock` and `flockAge` take a comma list (a chain of
+calls) and added `flockR`, which picks the flock's line.
 The Stillwater rebuild retired that theme's old readers (`stillwaterQuality` and its `quality`
 fallback, `stillwaterPerf`, `stillwaterProfile` and their `profile` alias, `stillwaterValidation`,
 `stillwaterPowerPreference`, `stillwaterLayout`, `stillwaterReactionWarm` and `shafts`) together

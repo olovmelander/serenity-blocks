@@ -73,9 +73,43 @@ export function travelHash(/** @type {number} */ index, /** @type {number} */ se
  *   | { turn: true }} Leg
  */
 
+/** How long a traveller takes to settle once it stops, and to gather itself before it moves (s). */
+export const SETTLE = Object.freeze({ in: 0.5, out: 0.7 });
+
+/**
+ * How settled a traveller is `pause` seconds into stay leg `i` (0 on the move .. 1 standing): it
+ * eases in after the stays before it began and out before they end, over the run of neighbouring
+ * stays `same` accepts, so what it does only while standing (look at you, howl with the pack)
+ * never switches on or off from one frame to the next.
+ * @param {readonly Leg[]} legs
+ * @param {number} i
+ * @param {number} pause
+ * @param {(leg: Leg) => boolean} same
+ */
+function settledIn(legs, i, pause, same) {
+    const leg = legs[i];
+    if (!('stay' in leg) || !same(leg)) return 0;
+    let since = pause;
+    let until = leg.stay - pause;
+    for (let j = i - 1; j >= 0; j--) {
+        const before = legs[j];
+        if (!('stay' in before) || !same(before)) break;
+        since += before.stay;
+    }
+    for (let j = i + 1; j < legs.length; j++) {
+        const after = legs[j];
+        if (!('stay' in after) || !same(after)) break;
+        until += after.stay;
+    }
+    return Math.min(smooth(since / SETTLE.in), smooth(until / SETTLE.out));
+}
+const anyStay = () => true;
+const howlingStay = (/** @type {Leg} */ leg) => !('howls' in leg) || leg.howls !== false;
+
 /**
  * Where a traveller is `u` seconds into its itinerary, starting at `x0` facing `facing0`; null
- * once it is over (or before it began).
+ * once it is over (or before it began). `settled` (0..1) is how settled it stands, and `joins`
+ * how far it joins the pack's howl (both ease in after it stops and out before it moves on).
  * @param {readonly Leg[]} legs
  * @param {number} u
  * @param {number} x0
@@ -86,7 +120,8 @@ export function follow(legs, u, x0, facing0 = -1) {
     let x = x0;
     let at = 0;
     let facing = facing0;
-    for (const leg of legs) {
+    for (let index = 0; index < legs.length; index++) {
+        const leg = legs[index];
         if ('go' in leg) {
             const gait = TRAVEL_GAITS[leg.gait] ?? TRAVEL_GAITS.walk;
             const speed = leg.speed ?? gait.speed;
@@ -109,6 +144,8 @@ export function follow(legs, u, x0, facing0 = -1) {
                     yaw: 0,
                     pause: 0,
                     howls: false,
+                    settled: 0,
+                    joins: 0,
                     act: leg.act ? leg.act(local, length) : null,
                 };
             }
@@ -130,6 +167,8 @@ export function follow(legs, u, x0, facing0 = -1) {
                     yaw: 0,
                     pause: u - at,
                     howls: leg.howls !== false,
+                    settled: settledIn(legs, index, u - at, anyStay),
+                    joins: settledIn(legs, index, u - at, howlingStay),
                     act: leg.act ? leg.act(u - at, leg.stay) : null,
                 };
             }
@@ -150,6 +189,8 @@ export function follow(legs, u, x0, facing0 = -1) {
                     yaw: Math.PI * smooth(f),
                     pause: 0,
                     howls: false,
+                    settled: 0,
+                    joins: 0,
                     act: { step: f * 2, stepHeight: 1.8 * Math.sin(f * Math.PI), head: -5 * Math.sin(f * Math.PI) },
                 };
             }

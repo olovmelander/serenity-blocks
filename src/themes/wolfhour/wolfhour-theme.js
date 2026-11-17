@@ -375,6 +375,15 @@ const EFFECT_STATE_CAPS = Object.freeze({
     cameraShake: 0.9,
 });
 
+/**
+ * An event's energy lands in effectState at once, but the light it drives must not: each stage of
+ * the eye's copy (effectShown) closes on it with this time constant (seconds), two stages in a
+ * row, so a lock or a clear swells the ranges, the sky, the mist and the bloom over a few frames
+ * and follows the energy's own decay back down. The camera's shake stays a jolt.
+ */
+const EFFECT_EASE = 0.06;
+const EASED_CHANNELS = Object.freeze(Object.keys(EFFECT_STATE_CAPS).filter((key) => key !== 'cameraShake'));
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Deterministic Flags Pipeline
 // ─────────────────────────────────────────────────────────────────────────────
@@ -575,6 +584,8 @@ export default class WolfhourTheme extends BaseTheme {
                 strength: 0,
                 combo: 0,
                 serial: 0,
+                /** A ring waiting for this one to run out (the pool was full): never seen yet. */
+                next: null,
             }),
         );
         this.lunarReactionSerial = 0;
@@ -649,6 +660,9 @@ export default class WolfhourTheme extends BaseTheme {
             cameraShake: 0,
         };
         this.effectStateCaps = { ...EFFECT_STATE_CAPS };
+        /** What the eye sees of effectState (eased up, see EFFECT_EASE), and its first stage. */
+        this.effectShown = { ...this.effectState };
+        this.effectEasing = { ...this.effectState };
 
         // Animation
         this.time = 0;
@@ -1360,16 +1374,16 @@ export default class WolfhourTheme extends BaseTheme {
 
             if (this.spiritCompute?.computeNode) {
                 this.spiritCompute.update(deltaTime, this.time, {
-                    surge: this.effectState.spiritSurge,
-                    scatter: this.effectState.ambientScatter * 0.35,
+                    surge: this.effectShown.spiritSurge,
+                    scatter: this.effectShown.ambientScatter * 0.35,
                 });
                 this.renderer.compute(this.spiritCompute.computeNode);
             }
 
             if (this.ambientParticleCompute?.computeNode) {
                 this.ambientParticleCompute.update(deltaTime, this.time, {
-                    scatter: this.effectState.ambientScatter,
-                    swirl: this.effectState.ambientSwirl,
+                    scatter: this.effectShown.ambientScatter,
+                    swirl: this.effectShown.ambientSwirl,
                 });
                 this.renderer.compute(this.ambientParticleCompute.computeNode);
             }
@@ -2968,6 +2982,24 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     /**
+     * The eye's copy of effectState (see EFFECT_EASE): each channel closes on its energy through
+     * two eased stages on the way up and follows it straight down as it decays (the decay is
+     * already smooth), so no event steps the light from one frame to the next.
+     * @returns {Record<string, number>} effectShown, updated
+     */
+    easeEffectState(deltaTime = 0) {
+        const k = 1 - Math.exp(-Math.max(0, Number.isFinite(deltaTime) ? deltaTime : 0) / EFFECT_EASE);
+        const { effectState: energy, effectEasing: first, effectShown: shown } = this;
+        for (const key of EASED_CHANNELS) {
+            const target = energy[key] || 0;
+            first[key] = target > first[key] ? first[key] + (target - first[key]) * k : target;
+            shown[key] = first[key] > shown[key] ? shown[key] + (first[key] - shown[key]) * k : first[key];
+        }
+        shown.cameraShake = energy.cameraShake;
+        return shown;
+    }
+
+    /**
      * Ring the moon: a wave through its corona. Strength follows the play (a lock < a single <
      * … < a quad < a perfect clear); `delay` (seconds) starts it a moment later (a B2B's twin).
      */
@@ -2979,47 +3011,59 @@ export default class WolfhourTheme extends BaseTheme {
             this.moonHaloNodeData?.maxPulses ?? MAX_LUNAR_REACTION_SLOTS,
         );
         const safeDuration = Math.max(0.001, Number(duration) || 1.1);
+        const ring = {
+            startTime: this.time + Math.max(0, Number(delay) || 0),
+            duration: safeDuration,
+            strength: THREE.MathUtils.clamp(Number(strength) || 0, 0, 1.35),
+            combo: THREE.MathUtils.clamp(Number(combo) || 0, 0, 1),
+        };
 
-        for (let i = 0; i < capacity; i += 1) {
-            const reaction = this.lunarReactions[i];
-            if (reaction.active && this.time - reaction.startTime >= reaction.duration) {
-                reaction.active = false;
-            }
-        }
+        for (let i = 0; i < capacity; i += 1) this.advanceLunarSlot(this.lunarReactions[i]);
 
-        let slotIndex = this.lunarReactions
+        const slotIndex = this.lunarReactions
             .slice(0, capacity)
             .findIndex((reaction) => !reaction.active);
 
         if (slotIndex < 0) {
-            // The pool is deliberately bounded. If every ring is live, replace the one
-            // nearest natural expiry so the strongest/newest reactions remain intact.
-            let leastRemainingLife = Number.POSITIVE_INFINITY;
-            let leastStrength = Number.POSITIVE_INFINITY;
+            // The pool is deliberately bounded, and a ring still lit is never cut off: the new one
+            // waits in the slot whose ring runs out first and rings the moment it has. With every
+            // slot already holding one waiting, it takes the place of a weaker waiting ring (one
+            // never seen), or is let go: the moon is ringing as it is.
+            let soonest = -1;
+            let soonestEnd = Number.POSITIVE_INFINITY;
+            let weakest = -1;
             for (let i = 0; i < capacity; i += 1) {
                 const reaction = this.lunarReactions[i];
-                const remainingLife = Math.max(
-                    0,
-                    reaction.duration - (this.time - reaction.startTime),
-                );
-                if (
-                    remainingLife < leastRemainingLife
-                    || (remainingLife === leastRemainingLife && reaction.strength < leastStrength)
-                ) {
-                    slotIndex = i;
-                    leastRemainingLife = remainingLife;
-                    leastStrength = reaction.strength;
+                if (reaction.next) {
+                    if (weakest < 0 || reaction.next.strength < this.lunarReactions[weakest].next.strength) weakest = i;
+                    continue;
+                }
+                const end = reaction.startTime + reaction.duration;
+                if (end < soonestEnd) {
+                    soonest = i;
+                    soonestEnd = end;
                 }
             }
+            if (soonest >= 0) {
+                this.lunarReactions[soonest].next = {
+                    ...ring,
+                    startTime: Math.max(ring.startTime, soonestEnd),
+                    serial: ++this.lunarReactionSerial,
+                };
+                return soonest;
+            }
+            const waiting = this.lunarReactions[weakest]?.next;
+            if (!waiting || waiting.strength >= ring.strength) return -1;
+            this.lunarReactions[weakest].next = {
+                ...ring,
+                startTime: Math.max(ring.startTime, waiting.startTime),
+                serial: ++this.lunarReactionSerial,
+            };
+            return weakest;
         }
 
-        const reaction = this.lunarReactions[Math.max(0, slotIndex)];
-        reaction.active = true;
-        reaction.startTime = this.time + Math.max(0, Number(delay) || 0);
-        reaction.duration = safeDuration;
-        reaction.strength = THREE.MathUtils.clamp(Number(strength) || 0, 0, 1.35);
-        reaction.combo = THREE.MathUtils.clamp(Number(combo) || 0, 0, 1);
-        reaction.serial = ++this.lunarReactionSerial;
+        const reaction = this.lunarReactions[slotIndex];
+        Object.assign(reaction, ring, { active: true, serial: ++this.lunarReactionSerial });
 
         this.moonHaloNodeData?.pulseValues?.[slotIndex]?.set(
             reaction.startTime,
@@ -3028,6 +3072,20 @@ export default class WolfhourTheme extends BaseTheme {
             reaction.combo,
         );
         return slotIndex;
+    }
+
+    /**
+     * A ring that has run out: the one waiting for its slot takes over from that moment (it rose
+     * from nothing as the last one fell to nothing), or the slot is free.
+     */
+    advanceLunarSlot(reaction) {
+        if (!reaction.active || this.time - reaction.startTime < reaction.duration) return;
+        const { next } = reaction;
+        if (next) {
+            reaction.next = null;
+            Object.assign(reaction, next, { active: true });
+            this.advanceLunarSlot(reaction);
+        } else reaction.active = false;
     }
 
     /**
@@ -3045,7 +3103,7 @@ export default class WolfhourTheme extends BaseTheme {
         const wears = this.director.sample(this.time, this.nightClock.phase, motion);
         this.valleyMist?.update(
             this.time,
-            (this.effectState.mountainPulse || 0) * 0.4 + howl * 0.5 + this.night.glow + wears.glow * 0.4,
+            (this.effectShown.mountainPulse || 0) * 0.4 + howl * 0.5 + this.night.glow + wears.glow * 0.4,
         );
         this.aurora?.update(this.time, wears.aurora, wears.reach);
         this.snow?.update(this.time, wears);
@@ -3186,6 +3244,7 @@ export default class WolfhourTheme extends BaseTheme {
         for (let i = 0; i < MAX_LUNAR_REACTION_SLOTS; i += 1) {
             const reaction = this.lunarReactions[i];
             const pulseValue = this.moonHaloNodeData?.pulseValues?.[i];
+            if (i < capacity) this.advanceLunarSlot(reaction);
             if (i >= capacity || !reaction.active) {
                 pulseValue?.set(0, 0, 0, 0);
                 continue;
@@ -3197,11 +3256,6 @@ export default class WolfhourTheme extends BaseTheme {
                 0,
                 1,
             );
-            if (progress >= 1) {
-                reaction.active = false;
-                pulseValue?.set(0, 0, 0, 0);
-                continue;
-            }
 
             const envelope = Math.sin(progress * Math.PI);
             moonEnergy += envelope
@@ -4139,7 +4193,7 @@ export default class WolfhourTheme extends BaseTheme {
 
     updateNebulas(deltaTime) {
         this.nebulaPlanes.forEach((nebula) => {
-            const reactiveSpeed = 1.0 + this.effectState.nebulaDefinition * 0.45;
+            const reactiveSpeed = 1.0 + this.effectShown.nebulaDefinition * 0.45;
             nebula.position.x += nebula.userData.speed * reactiveSpeed * deltaTime;
             if (nebula.position.x > nebula.userData.wrapBoundary) {
                 nebula.position.x = -nebula.userData.wrapBoundary;
@@ -4162,83 +4216,84 @@ export default class WolfhourTheme extends BaseTheme {
         this.effectState.ambientScatter *= decay;
         this.effectState.ambientSwirl *= decay;
         this.effectState.cameraShake *= 0.9 ** (deltaTime * 60);
+        const shown = this.easeEffectState(deltaTime);
 
         if (this.usesNodeMaterials && this.materialFactories) {
             if (this.starfieldNodeData) {
-                this.starfieldNodeData.uniforms.uEventBoost.value = this.effectState.starBurstIntensity;
+                this.starfieldNodeData.uniforms.uEventBoost.value = shown.starBurstIntensity;
                 if (this.starfieldNodeData.uniforms.uDiffractionStrength) {
                     const baseDiffraction = this.qualityPreset.enableDiffraction ? 0.18 : 0.0;
                     this.starfieldNodeData.uniforms.uDiffractionStrength.value = baseDiffraction
-                        + this.effectState.starBurstIntensity * 0.12;
+                        + shown.starBurstIntensity * 0.12;
                 }
                 if (this.starfieldNodeData.uniforms.uDepthGlowStrength) {
                     this.starfieldNodeData.uniforms.uDepthGlowStrength.value = this.qualityPreset.enableDiffraction
-                        ? 0.9 + this.effectState.starBurstIntensity * 0.2
+                        ? 0.9 + shown.starBurstIntensity * 0.2
                         : 0.55;
                 }
             }
             this.mountains.forEach((m) => {
                 if (m.userData.nodeData) {
-                    m.userData.nodeData.uniforms.uPulseIntensity.value = this.effectState.mountainPulse;
-                    m.userData.nodeData.uniforms.uShockwave.value = this.effectState.mountainShockwave;
+                    m.userData.nodeData.uniforms.uPulseIntensity.value = shown.mountainPulse;
+                    m.userData.nodeData.uniforms.uShockwave.value = shown.mountainShockwave;
                     if (m.userData.nodeData.uniforms.uRidgeStrength) {
                         const baseRidge = m.userData.baseRidgeStrength ?? 0.25;
                         m.userData.nodeData.uniforms.uRidgeStrength.value = baseRidge
-                            * (0.9 + this.effectState.mountainPulse * 0.8 + this.effectState.cosmicRiftIntensity * 0.4);
+                            * (0.9 + shown.mountainPulse * 0.8 + shown.cosmicRiftIntensity * 0.4);
                     }
                     if (m.userData.nodeData.uniforms.uSnowAmount) {
                         const baseSnow = m.userData.baseSnowAmount ?? 0.22;
                         m.userData.nodeData.uniforms.uSnowAmount.value = baseSnow
-                            * (0.95 + this.effectState.nebulaDefinition * 0.35);
+                            * (0.95 + shown.nebulaDefinition * 0.35);
                     }
                 }
             });
             if (this.spiritNodeData) {
-                this.spiritNodeData.uniforms.uSurgeIntensity.value = this.effectState.spiritSurge;
+                this.spiritNodeData.uniforms.uSurgeIntensity.value = shown.spiritSurge;
             }
             this.nebulaPlanes.forEach((n) => {
                 if (n.userData.nodeData) {
-                    n.userData.nodeData.uniforms.uPulse.value = this.effectState.nebulaBoost;
+                    n.userData.nodeData.uniforms.uPulse.value = shown.nebulaBoost;
                     if (n.userData.nodeData.uniforms.uColorShift) {
-                        n.userData.nodeData.uniforms.uColorShift.value = this.effectState.nebulaColorShift;
+                        n.userData.nodeData.uniforms.uColorShift.value = shown.nebulaColorShift;
                     }
                     if (n.userData.nodeData.uniforms.uDefinition) {
-                        n.userData.nodeData.uniforms.uDefinition.value = this.effectState.nebulaDefinition;
+                        n.userData.nodeData.uniforms.uDefinition.value = shown.nebulaDefinition;
                     }
                 }
             });
             if (this.ambientParticles?.userData?.nodeData?.uniforms?.uOpacity) {
                 this.ambientParticles.userData.nodeData.uniforms.uOpacity.value = 0.42
-                    + this.effectState.ambientSwirl * 0.16;
+                    + shown.ambientSwirl * 0.16;
             }
             if (this.groundFog?.userData?.nodeData?.uniforms) {
                 const fogUniforms = this.groundFog.userData.nodeData.uniforms;
                 if (fogUniforms.uPulse) {
-                    fogUniforms.uPulse.value = this.effectState.nebulaDefinition;
+                    fogUniforms.uPulse.value = shown.nebulaDefinition;
                 }
                 if (fogUniforms.uSwirl) {
-                    fogUniforms.uSwirl.value = this.effectState.ambientSwirl;
+                    fogUniforms.uSwirl.value = shown.ambientSwirl;
                 }
             }
         } else {
             if (this.starfield) {
-                this.starfield.material.uniforms.uEventBoost.value = this.effectState.starBurstIntensity;
+                this.starfield.material.uniforms.uEventBoost.value = shown.starBurstIntensity;
             }
             this.mountains.forEach((m) => {
-                m.material.uniforms.uPulseIntensity.value = this.effectState.mountainPulse;
-                m.material.uniforms.uShockwave.value = this.effectState.mountainShockwave;
+                m.material.uniforms.uPulseIntensity.value = shown.mountainPulse;
+                m.material.uniforms.uShockwave.value = shown.mountainShockwave;
             });
             // Spirit surge updates removed
             this.nebulaPlanes.forEach((n) => {
-                n.material.uniforms.uPulse.value = this.effectState.nebulaBoost;
+                n.material.uniforms.uPulse.value = shown.nebulaBoost;
             });
             if (this.groundFog?.material?.uniforms) {
                 const fogUniforms = this.groundFog.material.uniforms;
                 if (fogUniforms.uPulse) {
-                    fogUniforms.uPulse.value = this.effectState.nebulaDefinition;
+                    fogUniforms.uPulse.value = shown.nebulaDefinition;
                 }
                 if (fogUniforms.uSwirl) {
-                    fogUniforms.uSwirl.value = this.effectState.ambientSwirl;
+                    fogUniforms.uSwirl.value = shown.ambientSwirl;
                 }
             }
         }
@@ -4246,7 +4301,7 @@ export default class WolfhourTheme extends BaseTheme {
         // The bloom swells a little with the heat of play (night.bloom; Reduce flashing holds its
         // kicks back) while the iris closes, so the added light keeps the night's darks.
         const dynamicBloomStrength = this.qualityPreset.bloomStrength
-            + this.effectState.bloomBoost * 0.5
+            + shown.bloomBoost * 0.5
             + (this.qualityPreset.bloomStrength > 0 ? this.night.bloom : 0);
         if (this.bloomPass) {
             this.bloomPass.strength = dynamicBloomStrength;
@@ -4297,7 +4352,7 @@ export default class WolfhourTheme extends BaseTheme {
                     beam.userData.nodeData.uniforms.uOpacity.value = THREE.MathUtils.smoothstep(progress, 0, 0.14)
                         * (1.0 - progress) ** 1.2;
                     if (beam.userData.nodeData.uniforms.uVolumetricPulse) {
-                        beam.userData.nodeData.uniforms.uVolumetricPulse.value = this.effectState.cosmicRiftIntensity;
+                        beam.userData.nodeData.uniforms.uVolumetricPulse.value = this.effectShown.cosmicRiftIntensity;
                     }
                 } else {
                     beam.material.uniforms.uTime.value = elapsed;
@@ -5348,8 +5403,9 @@ export default class WolfhourTheme extends BaseTheme {
             this.updateSurge();
             this.updateNightHour(deltaTime);
             this.updateEffects(deltaTime);
-            this.celestialSky?.update(this.time, this.effectState);
-            this.alpineLandscape?.update(this.time, this.effectState);
+            // (They wear what the eye sees of the events' energy: eased up, never stepped.)
+            this.celestialSky?.update(this.time, this.effectShown);
+            this.alpineLandscape?.update(this.time, this.effectShown);
             this.updateValley();
             this.processReactiveQueue();
             this.updateMeteors(deltaTime); // Shooting star system
@@ -5468,7 +5524,7 @@ export default class WolfhourTheme extends BaseTheme {
         // Impact Zoom: Zoom out slightly during high-impact events for a "push back" visceral feeling
         const impactZoom = shakeScale * 0.04;
         // During pulse-heavy moments, bias slightly toward approaching the mountains.
-        const reactiveApproach = this.effectState.mountainPulse * 0.02;
+        const reactiveApproach = this.effectShown.mountainPulse * 0.02;
         // Negative breathe = smaller frustum = zoomed IN (closer to mountains)
         const zoomFactor = THREE.MathUtils.clamp(1 - breathe - reactiveApproach + impactZoom, 0.72, 1.3);
         const aspect = window.innerWidth / window.innerHeight;
@@ -5859,6 +5915,7 @@ export default class WolfhourTheme extends BaseTheme {
             reaction.strength = 0;
             reaction.combo = 0;
             reaction.serial = 0;
+            reaction.next = null;
         });
         this.lunarReactionSerial = 0;
         this.lastReactiveOrigin = null;

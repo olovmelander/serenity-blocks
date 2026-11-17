@@ -5,7 +5,9 @@ second pass on the air, the shore and the evening, `feature/synthwave-sunset-sec
 2026-10-21: see [Second pass](#second-pass-2026-10-21-the-air-the-shore-the-evening); a fourth,
 2026-11-17, on branch `feature/synthwave-sunset-masterpiece`: see
 [Fourth pass](#fourth-pass-2026-11-17-an-evening-that-never-stands-still-an-instrument-for-every-event),
-which supersedes the event table and the evening described below). A
+which supersedes the event table and the evening described below; a fifth, the same day, on
+`feature/synthwave-strollers`: [the people on the pier](#fifth-pass-2026-11-17-the-people-on-the-pier),
+which replaces the strollers described in the fourth). A
 record of what was built and how it was checked — not a backlog.** Replaces the outrun picture (a slit sun behind wireframe mountains, flat box
 buildings, palm silhouettes and a scrolling neon grid), which showed nearly the same thing as Neon
 Dusk, the orb before it, with a retro seaside at dusk. The id, the name, the song and the Odyssey
@@ -644,6 +646,113 @@ seconds a case, `origin/main` on a second server): High at the opening look 0.48
 0.57 ms; Medium 0.43 ms before, 0.51 ms at night under a mackerel sky. Not a frame-rate
 measurement, and not measured on the integrated Radeon.
 
+## Fifth pass (2026-11-17): the people on the pier
+
+The owner's word on the fourth pass: the people walking on the pier "look a bit too bad and stiff
+and squared … we can reduce the amount of people walking but make them look better designwise and
+how they walk". The strollers were cards turned to the eye with a figure cut out of each (a disc
+of a head, a block of a torso, two scissoring sticks): no arms, square shoulders, the same flat
+front from every side, and in the game's view, where the pier runs away from the eye, plainly
+flat. They also walked straight through the pavilions' walls.
+
+| Before: the cards | After: the cast |
+| --- | --- |
+| ![before](synthwave-sunset-captures/fifth-pass-before-cards.jpg) | ![after](synthwave-sunset-captures/fifth-pass-cast.jpg) |
+| ![before, game view](synthwave-sunset-captures/fifth-pass-before-game.jpg) | ![after, game view](synthwave-sunset-captures/fifth-pass-game.jpg) |
+
+### The figures (Blender: `scripts/blender/synthwave_strollers.py` → `assets/strollers.glb`)
+
+![the cast in the studio](synthwave-sunset-captures/fifth-pass-model.jpg)
+
+Eight people on three builds (a woman, a man, a child: their own shoulders, hips, heads and limbs),
+each an outfit whose shape tells it at 15 px: a sundress with a wide straw hat and long hair, a
+blouse and midi skirt with a bun, slacks and a ponytail, a tee, shorts and a cap, chinos, a light
+jacket and a boater, a boy, a girl in a dress with pigtails. Lofted rings with the hems cut into
+them, limbs a touch thicker than life (they are seen 10 to 45 px tall), one skeleton of thirteen
+bones, two bones a vertex eased across each joint, a skirt that follows the thighs toward its hem,
+the legs under a skirt in its colour (a knee swinging into the cloth reads as cloth pushed out).
+Each vertex says what it is (skin, hair, top, bottom, shoes, hat, band) and how much sky it sees
+(ray casts against the figure itself). 1,400–2,100 triangles each, 496 KB in all. The headless
+script previews the cast from four sides and as game-sized silhouettes; that sheet is how the
+proportions were set (the first draft's arms stood up out of the shoulders like epaulettes, the
+thighs poked out of the hips, and the cap read as a helmet). Each person is dressed from colours
+that suit the figure (seeded, so the same tier dresses them the same).
+
+### The walk (`synthwave-sunset-strollers.js`, three-free)
+
+![a walk cycle](synthwave-sunset-captures/fifth-pass-gait.jpg)
+
+Every person is posed on the CPU each frame (17 µs for ten) by a model of how people walk, not a
+swing of sticks: the gait's phase rides on the distance walked; the thigh moves back steadily while
+its foot is flat and swings through fast; the knee gives as the weight lands and folds to clear the
+deck; the foot strikes heel first and rolls off the toe; the hips turn and drop over each step, the
+shoulders turn against them, the arms swing as far back as forward with the opposite leg. The
+thigh's swing is solved from the stride so the planted foot keeps still (it drifts 2.5 cm over a
+stance); the body is then set down so its lowest heel or toe stands on the deck, which gives the
+rise and fall of each step. A walker who stops slows over the last metre, the steps shortening to
+nothing, and turns on the spot with small steps; a pair turns together and ends side by side.
+Standing, the weight shifts from leg to leg; a leaner's upper arms reach down to the rail and the
+forearms, turned in, fold across it. Heads look ahead and now and then out to sea; the standers
+look about; and at a firework everyone looks up at the burst (the neck turns so far, then the
+shoulders). Everything is a function of the clock (a seek lands right) except the look at a burst.
+
+### Fewer people, in the places the eye can see them
+
+| Tier | Minimal | Low | Medium | High | Ultra | Extreme |
+| --- | --- | --- | --- | --- | --- | --- |
+| people (fourth pass) | 12 | 18 | 30 | 44 | 52 | 60 |
+| people (now) | 5 | 7 | 9 | 12 | 14 | 16 |
+
+Measured from the game camera, the deck is seen in two places: the far stretch left of the board
+(pier metres 0–88, people 11–19 px) and a slot right of the HUD beside the first pavilion (133–140,
+about 30 px; the board hides 88–120 and the HUD 126–133). The cast is placed by that map, the most
+telling first so even Minimal shows them, and most of it walks, along the whole dock: a couple
+hand in hand from the land end to the pier head and back, a man in a cap and a woman in a sundress
+up and down the near stretch (seen half the time, nearest of all), a mother with her daughter by
+the hand there too, a woman on the middle loop, walkers on the far stretch who pause to look at the
+sea, a man in a boater leaning on the beach-side rail beside the pavilion, a pair who step out of
+the pavilion's door to the rail, lean there half a minute and go back in, a woman leaning on the
+sunset-side rail, two friends at the pier head's end. Every loop turns where the view cannot see
+it (past the right edge at the land end, behind the HUD, behind the board, inside the pavilion)
+and passes the pavilions by their end doors only: `full` 160 → 13.5, `gate` 160 → 128, `mid`
+160 → 104, `far` 84 → 14, `door` 145 → 136.5. Over twenty minutes at High someone is walking on
+the near stretches 87 % of the time (two or more 63 %) and on the far one 96 %; a test holds it
+above 80 % and 90 %. (The first cut of this pass walked them only from inside the first pavilion
+and on the far stretch, so the near deck was mostly empty: the owner's "there must be walking
+people along the full dock, not just furthest away!")
+
+![the near deck in the game view, every fifteen seconds for two minutes](synthwave-sunset-captures/fifth-pass-full-dock.jpg)
+
+![out of the pavilion to the rail and back](synthwave-sunset-captures/fifth-pass-rail.jpg)
+
+### Light
+
+As the pier takes it: the evening sky from above (less where the body shuts it out), the low sun
+warm on what faces it and as a rim round the outline (they are mostly silhouettes against the
+sunset), and after dark the railing's bulbs and the lamps from below and the side. One draw for
+everyone (the figures merged and dressed when the model arrives; the poses in a float texture, a
+row a person, read with `textureLoad` on both backends), on the mirror layer.
+
+![night](synthwave-sunset-captures/fifth-pass-game-night.jpg)
+
+### Verification
+
+- Captures (headless Chrome, real WebGPU, `maxFps=30`): close-ups through a new playground lens
+  (`person=<i>&personView=dist,az,h,fov` walks beside person i), walk cycles by seek, the game view
+  at three hours, night, the four-lines finale, WebGL2 (`forceWebGL=1`), Minimal and portrait;
+  every console clean.
+- GPU and CPU at full speed (the owner's go-ahead), RTX 1080p, the branch with and without the
+  people and boats, alternating: GPU p50 0.541 against 0.542 ms at High, 0.2146 against 0.2146 ms
+  at Minimal; CPU frame p50 0.9 ms both. (At `maxFps=30` the GPU clocks down between frames and
+  some runs read about 5 ms either way: compare alternating runs, never one; gotcha #1103.)
+- Tests: `tests/unit/synthwave-sunset-strollers.test.js` (the file against its manifest entry, the
+  figures on the skeleton, each tier's count, loops that pass the pavilions by their doors only,
+  stops that ease in and out, everyone on the deck with planted feet for four minutes, the same
+  pose at the same time, heads turned to a burst, the merged draw); the shader gate now attaches
+  the parsed cast and builds its material for WGSL and GLSL at High and Minimal.
+- Gates: typecheck, lint ratchet, TypeScript ratchet, architecture fitness, dependency cruiser,
+  theme lifecycle audit, performance budgets, release gates, the build and the shipped-text gate.
+
 ## Known limits
 
 - **Portrait.** The composition solver is unchanged: on an upright phone the sun goes to the left
@@ -653,12 +762,14 @@ measurement, and not measured on the integrated Radeon.
 - **The reflection pass** adds one pipeline per mirrored material (its target has no MSAA).
 - **The shafts are screen-space:** they vanish with the sun off screen, as in a portrait
   framing.
-- **The strollers** are silhouettes a few dozen pixels tall: drawn figures, not models. Up close
-  (a lens on the pier) they are plainly cards.
+- **The people** have no faces or fingers (they are seen 10 to 45 px tall), the walk is the same
+  model for everyone (a child's only quicker), turning at a stop is a few small steps on the spot,
+  and the far stretch's people are lost in the sun's glare at the golden hour.
 - **The boats** sail close in because the sea mist takes anything much past the pier's end; a
   ship on the horizon would need the mist to spare it.
-- **Start-up and the integrated GPU:** the pass adds three draws (beams, strollers, boats) and
-  their mirror-pass pipelines; their cost at start and on the integrated Radeon is not measured.
+- **Start-up and the integrated GPU:** the fourth pass added three draws (beams, people, boats) and
+  their mirror-pass pipelines; their cost at start and on the integrated Radeon is not measured
+  (the people's cost on the RTX at full speed is below the noise).
 - **The gulls** never land: perching on the pier's railings and lamps (and taking off from them)
   is a follow-up. Near the sun the post's in-scattered light still lifts their silhouettes, as it
   lifts the wheel's spokes.
